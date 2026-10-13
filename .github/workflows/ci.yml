@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: rustyzoo-linux-x86_64
+            path: target/release/rustyzoo
+          - os: windows-2025
+            artifact: rustyzoo-windows-x86_64
+            path: target/release/rustyzoo.exe
+          - os: macos-15
+            artifact: rustyzoo-macos-universal
+            path: target/universal/rustyzoo
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The SDL3 build dependencies from SDL's docs/README-linux.md (Ubuntu 22.04+ list),
+      # without the build tools the runner already has. They make SDL build its real
+      # X11, Wayland, ALSA, PulseAudio and PipeWire backends.
+      - name: Install SDL build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev \
+            libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev \
+            liburing-dev
+
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: rustup toolchain install --profile minimal
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo build --release
+
+      # Guards against the console-build option silently producing a headless-only SDL.
+      - name: Check that SDL built the desktop backends
+        if: runner.os == 'Linux'
+        run: |
+          report=$(cat target/release/build/sdl3-sys-*/output)
+          for backend in 'Video drivers:.* x11' 'Video drivers:.* wayland' 'Audio drivers:.* alsa' \
+            'Audio drivers:.* pulseaudio' 'Audio drivers:.* pipewire'; do
+            echo "$report" | grep -Eq "$backend" || { echo "SDL was built without: $backend"; exit 1; }
+          done
+          echo "$report" | grep -E '(Video|Audio) drivers:'
+
+      # No display or sound card on the runners: use SDL's headless drivers.
+      - name: Smoke test
+        env:
+          SDL_VIDEO_DRIVER: offscreen
+          SDL_AUDIO_DRIVER: dummy
+        run: cargo run --release -- window-smoke
+
+      - name: Build the x86_64 slice and merge a universal binary
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add x86_64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/rustyzoo \
+            target/release/rustyzoo target/x86_64-apple-darwin/release/rustyzoo
+          lipo -info target/universal/rustyzoo
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error
+
+  # The single required status check: fails unless every build leg succeeded.
+  ci:
+    name: ci
+    needs: build
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: test "${{ needs.build.result }}" = success

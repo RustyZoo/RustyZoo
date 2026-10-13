@@ -1,0 +1,14 @@
+[package]
+name = "rustyzoo"
+version = "0.0.0"
+edition = "2024"
+description = "Open-source engine that loads the original Zoo Tycoon game data"
+license = "GPL-3.0-only"
+repository = "https://github.com/RustyZoo/RustyZoo"
+
+[dependencies]
+# SDL is built from source and linked statically. `build-from-source-unix-console`
+# only turns off SDL's "no X11/Wayland found" configure error (CMake option
+# SDL_UNIX_CONSOLE_BUILD); where the X11/Wayland/ALSA/PulseAudio/PipeWire headers
+# are installed, those backends are still detected and built.
+sdl3 = { version = "0.20", features = ["build-from-source-static", "build-from-source-unix-console"] }
