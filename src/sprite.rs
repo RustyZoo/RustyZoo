@@ -401,8 +401,8 @@ mod tests {
         out
     }
 
-    /// A sprite file with the given prefix flag (`None`: no prefix), palette path, frame count
-    /// field and frame records (already with their size fields).
+    /// A sprite file with the given prefix flag (`None`: no prefix), frame count field and
+    /// frame records (already with their size fields). The palette path is `animals/Lion/lion.pal`.
     fn sprite_file(prefix: Option<u8>, count: u32, frames: &[Vec<u8>]) -> Vec<u8> {
         let mut out = Vec::new();
         if let Some(flag) = prefix {
@@ -418,9 +418,10 @@ mod tests {
         out
     }
 
-    /// Two rows of a 4 pixel wide frame. Row 0: skip 1, draw indexes 1 and 2 (3 pixels, it stops
-    /// short). Row 1: draw index 3, skip 1, draw index 0.
-    const ROWS: &[u8] = &[1, 1, 2, 1, 2, 2, 0, 1, 3, 1, 1, 0];
+    /// Two rows of a 4 pixel wide frame. Row 0: skip 1, draw indexes 1 and 3 (3 pixels, it stops
+    /// short). Row 1: draw index 2, skip 1, draw index 0. The largest index, 3, is not the first
+    /// of its segment.
+    const ROWS: &[u8] = &[1, 1, 2, 1, 3, 2, 0, 1, 2, 1, 1, 0];
     const PALETTE: [[u8; 4]; 5] = [
         [10, 10, 10, 255],
         [20, 0, 0, 255],
@@ -492,24 +493,65 @@ mod tests {
 
     #[test]
     fn shadow_frame_has_no_pixel_bytes_and_draws_translucent_black() {
-        // Height 1 with bit 15 set; one row with a segment that skips 1 and covers 2 pixels.
+        // Height 2 with bit 15 set, 6 wide. Row 0: skip 1 and cover 2, skip 1 and cover 1.
+        // Row 1: cover 3. Only skip and count bytes: a reader that took `count` pixel bytes
+        // after each segment would lose its place.
+        let rows = [2, 1, 2, 1, 1, 1, 0, 3];
         let sprite = Sprite::parse(&sprite_file(
             None,
             1,
-            &[sized(&frame_data(0x8001, 3, &[1, 1, 2]))],
+            &[sized(&frame_data(0x8002, 6, &rows))],
         ))
         .unwrap();
         let frame = &sprite.frames[0];
         assert!(frame.shadow);
-        assert_eq!(frame.height, 1);
+        assert_eq!((frame.width, frame.height), (6, 2));
         assert_eq!(frame.max_index, None);
         assert!(!sprite.needs_palette());
 
-        let mut image = blank(3, 1);
+        let mut image = blank(6, 2);
         frame.draw(&Palette::default(), &mut image, 0, 0).unwrap();
-        assert_eq!(pixel(&image, 0, 0), [0, 0, 0, 0]);
-        assert_eq!(pixel(&image, 1, 0), [0, 0, 0, SHADOW_ALPHA]);
-        assert_eq!(pixel(&image, 2, 0), [0, 0, 0, SHADOW_ALPHA]);
+        let shadow = [0, 0, 0, SHADOW_ALPHA];
+        for (x, y, expected) in [
+            (0, 0, [0; 4]),
+            (1, 0, shadow),
+            (2, 0, shadow),
+            (3, 0, [0; 4]),
+            (4, 0, shadow),
+            (5, 0, [0; 4]),
+            (0, 1, shadow),
+            (1, 1, shadow),
+            (2, 1, shadow),
+            (3, 1, [0; 4]),
+        ] {
+            assert_eq!(pixel(&image, x, y), expected, "pixel ({x}, {y})");
+        }
+    }
+
+    #[test]
+    fn a_file_without_frames_is_accepted() {
+        let sprite = Sprite::parse(&sprite_file(None, 0, &[])).unwrap();
+        assert_eq!((sprite.frames.len(), sprite.extra.as_ref()), (0, None));
+        assert_eq!(sprite.all_frames().count(), 0);
+        assert!(!sprite.needs_palette());
+        assert!(sprite.check_palette(&Palette::default()).is_ok());
+    }
+
+    #[test]
+    fn bytes_after_the_last_row_of_a_frame_are_ignored() {
+        let mut padded = frame_data(2, 4, ROWS);
+        padded.extend([9, 9, 9, 9]);
+        let sprite = Sprite::parse(&sprite_file(
+            None,
+            2,
+            &[sized(&padded), sized(&frame_data(2, 4, ROWS))],
+        ))
+        .unwrap();
+        assert_eq!(sprite.frames[0], sprite.frames[1]);
+        assert_eq!(
+            sprite.frames[0],
+            Frame::parse(&frame_data(2, 4, ROWS)).unwrap()
+        );
     }
 
     #[test]
@@ -520,9 +562,9 @@ mod tests {
         frame.draw(&palette(), &mut image, 0, 0).unwrap();
         assert_eq!(pixel(&image, 0, 0), [99; 4], "skipped");
         assert_eq!(pixel(&image, 1, 0), PALETTE[1]);
-        assert_eq!(pixel(&image, 2, 0), PALETTE[2]);
+        assert_eq!(pixel(&image, 2, 0), PALETTE[3]);
         assert_eq!(pixel(&image, 3, 0), [99; 4], "the row stops short");
-        assert_eq!(pixel(&image, 0, 1), PALETTE[3]);
+        assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
         assert_eq!(pixel(&image, 1, 1), [99; 4]);
         assert_eq!(pixel(&image, 2, 1), PALETTE[0]);
     }
@@ -610,7 +652,7 @@ mod tests {
         let good = sized(&frame_data(2, 4, ROWS));
         let file = sprite_file(Some(1), 1, &[good.clone(), good.clone()]);
         // Every truncation of a valid file is an error, never a panic.
-        for len in 0..file.len() - 1 {
+        for len in 0..file.len() {
             let message = err_message(Sprite::parse(&file[..len]));
             assert!(!message.is_empty() && !message.contains('\n'), "{message}");
         }
