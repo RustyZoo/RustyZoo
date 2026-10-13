@@ -28,6 +28,13 @@ jobs:
     defaults:
       run:
         shell: bash
+    # No display, GPU or sound card on the runners: the same headless SDL settings on every OS.
+    # The dummy video driver and the software renderer need no OpenGL, which the offscreen
+    # video driver could not initialize on macOS.
+    env:
+      SDL_VIDEO_DRIVER: dummy
+      SDL_RENDER_DRIVER: software
+      SDL_AUDIO_DRIVER: dummy
     steps:
       - uses: actions/checkout@v7
         with:
@@ -87,11 +94,7 @@ jobs:
           done
           echo "$report" | grep -E '(Video|Audio) drivers:'
 
-      # No display or sound card on the runners: use SDL's headless drivers.
       - name: Smoke test
-        env:
-          SDL_VIDEO_DRIVER: offscreen
-          SDL_AUDIO_DRIVER: dummy
         run: cargo run --release -- window-smoke
 
       - name: Build the x86_64 slice and merge a universal binary
@@ -103,6 +106,10 @@ jobs:
           lipo -create -output target/universal/rustyzoo \
             target/release/rustyzoo target/x86_64-apple-darwin/release/rustyzoo
           lipo -info target/universal/rustyzoo
+
+      - name: Smoke test the universal binary
+        if: runner.os == 'macOS'
+        run: target/universal/rustyzoo window-smoke
 
       - uses: actions/upload-artifact@v7
         with:
