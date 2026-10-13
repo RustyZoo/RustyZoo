@@ -212,6 +212,7 @@ impl Frame {
         y: i32,
     ) -> Result<(), SpriteError> {
         self.check_palette(palette)?;
+        let (width, height) = (i64::from(target.width), i64::from(target.height));
         // `parse` validated the rows, so the `else` and `unwrap_or_default` cases never happen.
         let mut data = self.rows.as_slice();
         for row in 0..i64::from(self.height) {
@@ -219,6 +220,12 @@ impl Frame {
                 break;
             };
             data = rest;
+            // The pixels of this row of the framebuffer, if it is inside.
+            let line_y = i64::from(y) + row;
+            let mut line = (0..height).contains(&line_y).then(|| {
+                let start = line_y as usize * target.width as usize * 4;
+                &mut target.pixels[start..start + target.width as usize * 4]
+            });
             let mut column = i64::from(x);
             for _ in 0..segments {
                 let Some((&[skip, count], rest)) = data.split_first_chunk() else {
@@ -233,17 +240,20 @@ impl Frame {
                 };
                 data = rest;
                 column += i64::from(skip);
-                for i in 0..usize::from(count) {
-                    let color = match self.shadow {
-                        true => [0, 0, 0, SHADOW_ALPHA],
-                        false => pixels
-                            .get(i)
-                            .and_then(|&p| palette.color(p))
-                            .unwrap_or_default(),
-                    };
-                    put(target, column, i64::from(y) + row, color);
-                    column += 1;
+                // Only the part of the segment inside the framebuffer is drawn.
+                if let Some(line) = line.as_deref_mut() {
+                    for at in column.max(0)..(column + i64::from(count)).min(width) {
+                        let color = match self.shadow {
+                            true => [0, 0, 0, SHADOW_ALPHA],
+                            false => pixels
+                                .get((at - column) as usize)
+                                .and_then(|&p| palette.color(p))
+                                .unwrap_or_default(),
+                        };
+                        blend(&mut line[at as usize * 4..][..4], color);
+                    }
                 }
+                column += i64::from(count);
             }
         }
         Ok(())
@@ -261,13 +271,8 @@ impl Frame {
     }
 }
 
-/// Blends `color` over the pixel (`x`, `y`) of the framebuffer; outside it, does nothing.
-fn put(target: &mut Framebuffer, x: i64, y: i64, color: [u8; 4]) {
-    if x < 0 || y < 0 || x >= i64::from(target.width) || y >= i64::from(target.height) {
-        return;
-    }
-    let at = (y as usize * target.width as usize + x as usize) * 4;
-    let pixel = &mut target.pixels[at..at + 4];
+/// Blends `color` over `pixel`, four bytes R, G, B, A.
+fn blend(pixel: &mut [u8], color: [u8; 4]) {
     let alpha = u32::from(color[3]);
     match alpha {
         0 => {}
@@ -298,7 +303,8 @@ pub struct Sprite {
 }
 
 impl Sprite {
-    /// Decodes a sprite file. Bytes after the last frame are ignored.
+    /// Decodes a sprite file. Bytes after the last frame are ignored, and a file with no frame
+    /// at all (a frame count of 0 and no extra frame) is accepted.
     ///
     /// Fails if the data is truncated, if a count or size exceeds the bytes left, or if a
     /// frame is malformed (see [`Frame::parse`]); the message says which frame.
@@ -320,12 +326,17 @@ impl Sprite {
             return error(format!("frame count {count} exceeds the data"));
         }
 
-        let mut frames = Vec::new();
+        // `count` is bounded by the bytes left, so this reservation is too.
+        let mut frames = Vec::with_capacity(count);
         for number in 0..count {
-            frames.push(read_frame(&mut reader, &format!("frame {number}"))?);
+            let frame =
+                read_frame(&mut reader).map_err(|e| SpriteError(format!("frame {number}: {e}")))?;
+            frames.push(frame);
         }
         let extra = if has_extra {
-            Some(read_frame(&mut reader, "extra frame")?)
+            let frame =
+                read_frame(&mut reader).map_err(|e| SpriteError(format!("extra frame: {e}")))?;
+            Some(frame)
         } else {
             None
         };
@@ -354,10 +365,9 @@ impl Sprite {
     }
 }
 
-fn read_frame(reader: &mut Reader, name: &str) -> Result<Frame, SpriteError> {
-    let size = reader.len(&format!("{name} size"))?;
-    let data = reader.take(size, &format!("{name} data"))?;
-    Frame::parse(data).or_else(|e| error(format!("{name}: {e}")))
+fn read_frame(reader: &mut Reader) -> Result<Frame, SpriteError> {
+    let size = reader.len("frame size")?;
+    Frame::parse(reader.take(size, "frame data")?)
 }
 
 /// Writes the framebuffer as an 8 bit RGBA PNG. The same pixels always give the same bytes.
@@ -626,12 +636,12 @@ mod tests {
             (
                 "missing extra frame",
                 sprite_file(Some(1), 1, std::slice::from_ref(&good)),
-                "extra frame size",
+                "extra frame: truncated: frame size",
             ),
             (
                 "frame size beyond the data",
                 sprite_file(None, 1, &[[&u32::MAX.to_le_bytes()[..], &[0; 10]].concat()]),
-                "frame 0 data needs 4294967295 bytes",
+                "frame 0: truncated: frame data needs 4294967295 bytes",
             ),
             (
                 "frame without header",
