@@ -1,5 +1,7 @@
 use std::error::Error;
 use std::ffi::OsString;
+use std::fmt;
+use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -7,6 +9,7 @@ use std::process::ExitCode;
 use rustyzoo::Framebuffer;
 use rustyzoo::config::Config;
 use rustyzoo::pe;
+use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
 use sdl3::audio::AudioSpec;
@@ -28,6 +31,9 @@ usage: rustyzoo [--data <dir>] <command>
                       resolves them: the libraries in lookup order (LIB lines), then
                       ID<TAB>library<TAB>text and TEXT<TAB>name<TAB>library<TAB>bytes
   check-config        read every configuration file of the game, report empty files and ignored text
+  dump-sprite <member> <dir>
+                      write the frames of a sprite file as PNG files into <dir>, and print them
+  check-sprites       decode every sprite file; list those that fail; exit 1 if any does
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.";
@@ -47,11 +53,12 @@ fn main() -> ExitCode {
     match run(std::env::args_os().skip(1).collect()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(CliError::Usage) => {
-            eprintln!("{USAGE}");
+            // A closed standard error is not worth a panic, which `eprintln!` would raise.
+            let _ = writeln!(io::stderr(), "{USAGE}");
             ExitCode::from(2)
         }
         Err(CliError::Failed(err)) => {
-            eprintln!("rustyzoo: {err}");
+            let _ = writeln!(io::stderr(), "rustyzoo: {err}");
             ExitCode::FAILURE
         }
     }
@@ -84,6 +91,8 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         }
         ["strings"] => merged_strings(&game_folder(data_dir)?),
         ["check-config"] => check_config(&open_game(data_dir)?),
+        ["dump-sprite", member, dir] => dump_sprite(&open_game(data_dir)?, member, Path::new(dir)),
+        ["check-sprites"] => check_sprites(&open_game(data_dir)?),
         _ => Err(CliError::Usage),
     }
 }
@@ -150,7 +159,8 @@ fn dump_strings(dir: PathBuf, dll: &str, text: Option<&str>) -> Result<(), CliEr
 fn merged_strings(dir: &Path) -> Result<(), CliError> {
     let tables = StringTables::open(dir)?;
     if tables.mixed_case() {
-        eprintln!(
+        let _ = writeln!(
+            io::stderr(),
             "rustyzoo: warning: the lang*.dll names differ in letter case; they are ordered by their bytes"
         );
     }
@@ -279,6 +289,119 @@ fn ignore_closed_pipe(result: io::Result<()>) -> Result<(), CliError> {
     }
 }
 
+/// Lines for standard output that keep the work going when the reader has gone away: after the
+/// first failed write nothing more is written, and [`Report::finish`] treats a closed pipe like
+/// `ls` and `cat` do.
+struct Report {
+    out: io::StdoutLock<'static>,
+    written: io::Result<()>,
+}
+
+impl Report {
+    fn new() -> Report {
+        Report {
+            out: io::stdout().lock(),
+            written: Ok(()),
+        }
+    }
+
+    fn line(&mut self, line: fmt::Arguments) {
+        if self.written.is_ok() {
+            self.written = writeln!(self.out, "{line}");
+        }
+    }
+
+    fn finish(mut self) -> Result<(), CliError> {
+        let flushed = self.out.flush();
+        ignore_closed_pipe(self.written.and(flushed))
+    }
+}
+
+/// The file of a frame in `dump-sprite`: the frame number only, never anything from the sprite.
+fn frame_file_name(number: usize, shadow: bool, extra: bool) -> String {
+    let shadow = if shadow { "-shadow" } else { "" };
+    let extra = if extra { "-extra" } else { "" };
+    format!("{number:03}{shadow}{extra}.png")
+}
+
+fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
+    let (sprite, palette) = sprite::load(vfs, member)?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let mut report = Report::new();
+    report.line(format_args!(
+        "{member}: {} frames{}, delay {} ms, palette {:?}",
+        sprite.frames.len(),
+        if sprite.extra.is_some() {
+            " + 1 extra"
+        } else {
+            ""
+        },
+        sprite.delay_ms,
+        sprite.palette,
+    ));
+    for (number, frame) in sprite.all_frames().enumerate() {
+        let name = frame_file_name(number, frame.shadow, number == sprite.frames.len());
+        let empty = frame.width == 0 || frame.height == 0;
+        report.line(format_args!(
+            "  {name}: {}x{} x offset {} y offset {} unknown {}{}",
+            frame.width,
+            frame.height,
+            frame.x_offset,
+            frame.y_offset,
+            frame.unknown,
+            if empty { " (empty, no file)" } else { "" },
+        ));
+        if empty {
+            continue;
+        }
+        let mut image = Framebuffer::new(frame.width.into(), frame.height.into());
+        frame.draw(&palette, &mut image, 0, 0)?;
+        let path = dir.join(&name);
+        let file =
+            File::create(&path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+        write_png(&image, io::BufWriter::new(file))
+            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    }
+    report.finish()
+}
+
+/// Decodes every sprite file (a member whose last path component has no extension).
+fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
+    let mut report = Report::new();
+    let (mut files, mut frames, mut shadows, mut extras, mut failed) = (0, 0, 0, 0, 0);
+    for member in vfs.list(None) {
+        if !sprite::is_sprite_member(&member) {
+            continue;
+        }
+        files += 1;
+        match sprite::load(vfs, &member) {
+            Ok((sprite, _)) => {
+                frames += sprite.frames.len();
+                shadows += sprite.all_frames().filter(|frame| frame.shadow).count();
+                extras += usize::from(sprite.extra.is_some());
+            }
+            Err(err) => {
+                failed += 1;
+                // Paths come from the files: print them with their control characters escaped.
+                report.line(format_args!(
+                    "FAILED {}: {}",
+                    member.escape_debug(),
+                    err.to_string().escape_debug()
+                ));
+            }
+        }
+    }
+    report.line(format_args!(
+        "{files} sprite files, {frames} frames, {shadows} shadow frames, \
+         {extras} files with an extra frame, {failed} failed"
+    ));
+    report.finish()?;
+    match failed {
+        0 => Ok(()),
+        _ => Err(format!("{failed} of {files} sprite files failed").into()),
+    }
+}
+
 fn window_smoke() -> Result<(), Box<dyn Error>> {
     let mut framebuffer = Framebuffer::new(800, 600);
     framebuffer.fill_test_pattern();
@@ -314,7 +437,15 @@ fn window_smoke() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::escape;
+    use super::{escape, frame_file_name};
+
+    #[test]
+    fn frame_files_are_named_by_number_shadow_and_extra() {
+        assert_eq!(frame_file_name(0, false, false), "000.png");
+        assert_eq!(frame_file_name(12, true, false), "012-shadow.png");
+        assert_eq!(frame_file_name(1234, false, true), "1234-extra.png");
+        assert_eq!(frame_file_name(21, true, true), "021-shadow-extra.png");
+    }
 
     #[test]
     fn escape_keeps_a_text_on_one_line() {
