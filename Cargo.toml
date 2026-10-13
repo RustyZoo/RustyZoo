@@ -12,5 +12,9 @@ repository = "https://github.com/RustyZoo/RustyZoo"
 # SDL_UNIX_CONSOLE_BUILD); where the X11/Wayland/ALSA/PulseAudio/PipeWire headers
 # are installed, those backends are still detected and built.
 sdl3 = { version = "0.20", features = ["build-from-source-static", "build-from-source-unix-console"] }
-zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 png = { version = "0.18.1", default-features = false }
+flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
+
+[dev-dependencies]
+# Writes the small archives that the tests need.
+zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }

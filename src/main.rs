@@ -21,6 +21,7 @@ usage: rustyzoo [--data <dir>] <command>
   window-smoke        open a window and the default audio device, present one frame, exit
   ls [pattern]        list the game's files, sorted; in the pattern * matches any text
   cat <member>        write one of the game's files to standard output
+  which <member>      show which file or archive supplies it, and the copies it hides
   dump-strings <dll> [--text <name>]
                       print the string table of a resource DLL of the install folder (for
                       example lang0.dll) as ID<TAB>text lines sorted by ID, with \\n, \\t, \\r,
@@ -93,6 +94,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["check-config"] => check_config(&open_game(data_dir)?),
         ["dump-sprite", member, dir] => dump_sprite(&open_game(data_dir)?, member, Path::new(dir)),
         ["check-sprites"] => check_sprites(&open_game(data_dir)?),
+        ["which", member] => which(open_game(data_dir)?, member),
         _ => Err(CliError::Usage),
     }
 }
@@ -106,7 +108,43 @@ fn game_folder(data_dir: Option<OsString>) -> Result<PathBuf, CliError> {
 }
 
 fn open_game(data_dir: Option<OsString>) -> Result<Vfs, CliError> {
-    Ok(Vfs::open(&game_folder(data_dir)?)?)
+    let vfs = Vfs::open(&game_folder(data_dir)?)?;
+    for warning in vfs.warnings() {
+        eprintln!("rustyzoo: warning: {warning}");
+    }
+    Ok(vfs)
+}
+
+fn which(vfs: Vfs, member: &str) -> Result<(), CliError> {
+    let copies = vfs.which(member)?;
+    if copies.is_empty() {
+        return Err(format!("no such member: {member}").into());
+    }
+    let mut out = io::BufWriter::new(io::stdout().lock());
+    let written = copies
+        .iter()
+        .enumerate()
+        .try_for_each(|(i, copy)| {
+            let label = if i == 0 { "supplied by" } else { "shadowed" };
+            let kind = if copy.in_archive {
+                "archive"
+            } else {
+                "loose file"
+            };
+            let empty = if copy.size == 0 && !copy.in_archive {
+                ", empty: reading fails"
+            } else {
+                ""
+            };
+            writeln!(
+                out,
+                "{label:<11} {kind} {} ({} bytes{empty})",
+                copy.path.display(),
+                copy.size
+            )
+        })
+        .and_then(|()| out.flush());
+    ignore_closed_pipe(written)
 }
 
 /// Prints the string table and the `TEXT` entries of `dll`, a file of the install folder
