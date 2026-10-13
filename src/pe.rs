@@ -264,7 +264,7 @@ pub fn texts<'r, 'a>(resources: &'r [Resource<'a>]) -> Vec<(&'r str, &'a [u8])> 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     // A minimal image: headers, one section at file offset SECTION and address RVA, and a
@@ -330,6 +330,93 @@ mod tests {
         }
         tree.extend([0; 22]); // 11 empty strings
         name(&mut tree, "End"); // index 15, the last one of the block
+        image(tree)
+    }
+
+    /// A PE image whose resources are the given strings (ID and text) and `TEXT` entries
+    /// (name and bytes), in one language each.
+    pub(crate) fn library(strings: &[(u32, &str)], texts: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut blocks: BTreeMap<u32, [&str; 16]> = BTreeMap::new();
+        for (id, text) in strings {
+            blocks.entry(id / 16 + 1).or_default()[(id % 16) as usize] = text;
+        }
+        let mut types = Vec::new();
+        if !texts.is_empty() {
+            let leaves = texts
+                .iter()
+                .map(|(n, d)| (ResKey::Name(n.to_string()), d.to_vec()));
+            types.push((ResKey::Name("TEXT".to_string()), leaves.collect::<Vec<_>>()));
+        }
+        if !blocks.is_empty() {
+            let leaves = blocks.iter().map(|(number, block)| {
+                let mut data = Vec::new();
+                for text in block {
+                    name(&mut data, text);
+                }
+                (ResKey::Id(*number), data)
+            });
+            types.push((ResKey::Id(RT_STRING), leaves.collect::<Vec<_>>()));
+        }
+
+        // The layout: the root, the directories of the types, one directory of languages per
+        // resource, the data entries, the names, the data.
+        let leaf_count: usize = types.iter().map(|t| t.1.len()).sum();
+        let type_dirs: usize = types.iter().map(|t| 16 + 8 * t.1.len()).sum();
+        let languages = 16 + 8 * types.len() + type_dirs;
+        let entries = languages + 24 * leaf_count;
+        let names_at = entries + 16 * leaf_count;
+        let mut names = Vec::new();
+        let mut key = |k: &ResKey| match k {
+            ResKey::Id(number) => *number,
+            ResKey::Name(text) => {
+                let at = names_at + names.len();
+                name(&mut names, text);
+                DIR | at as u32
+            }
+        };
+        let type_keys: Vec<u32> = types.iter().map(|t| key(&t.0)).collect();
+        let leaf_keys: Vec<Vec<u32>> = types
+            .iter()
+            .map(|t| t.1.iter().map(|leaf| key(&leaf.0)).collect())
+            .collect();
+        let mut data_at = names_at + names.len();
+
+        // The counts of named and numbered entries are not told apart: the reader adds them.
+        let mut tree = Vec::new();
+        let mut next_dir = 16 + 8 * types.len();
+        let roots: Vec<(u32, u32)> = type_keys
+            .iter()
+            .zip(&types)
+            .map(|(k, t)| {
+                let at = next_dir;
+                next_dir += 16 + 8 * t.1.len();
+                (*k, DIR | at as u32)
+            })
+            .collect();
+        directory(&mut tree, 0, roots.len() as u16, &roots);
+        let mut leaf = 0;
+        for (keys, t) in leaf_keys.iter().zip(&types) {
+            let list: Vec<(u32, u32)> = keys
+                .iter()
+                .enumerate()
+                .map(|(i, k)| (*k, DIR | (languages + 24 * (leaf + i)) as u32))
+                .collect();
+            directory(&mut tree, 0, list.len() as u16, &list);
+            leaf += t.1.len();
+        }
+        for i in 0..leaf_count {
+            directory(&mut tree, 0, 1, &[(1033, (entries + 16 * i) as u32)]);
+        }
+        let mut blobs: Vec<u8> = Vec::new();
+        for (_, data) in types.iter().flat_map(|t| &t.1) {
+            for field in [RVA + data_at as u32, data.len() as u32, 0, 0] {
+                tree.extend(field.to_le_bytes());
+            }
+            data_at += data.len();
+            blobs.extend(data);
+        }
+        tree.extend(names);
+        tree.extend(blobs);
         image(tree)
     }
 
