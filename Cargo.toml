@@ -3,7 +3,7 @@ name = "rustyzoo"
 version = "0.0.0"
 edition = "2024"
 description = "Open-source engine that loads the original Zoo Tycoon game data"
-license = "GPL-3.0-only"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/RustyZoo/RustyZoo"
 
 [dependencies]
