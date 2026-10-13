@@ -1,11 +1,12 @@
 use std::error::Error;
 use std::ffi::OsString;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use rustyzoo::Framebuffer;
 use rustyzoo::pe;
+use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
 use sdl3::audio::AudioSpec;
 use sdl3::pixels::PixelFormat;
@@ -22,6 +23,9 @@ usage: rustyzoo [--data <dir>] <command>
                       \\\\ and \\u{XXXX} (other control characters) escaped, then the name and
                       size of its TEXT entries; with --text, write the bytes of one TEXT
                       entry to standard output instead
+  strings             print the texts of all lang*.dll of the install folder as the game
+                      resolves them: the libraries in lookup order (LIB lines), then
+                      ID<TAB>library<TAB>text and TEXT<TAB>name<TAB>library<TAB>bytes
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.";
@@ -76,6 +80,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["dump-strings", dll, "--text", name] => {
             dump_strings(game_folder(data_dir)?, dll, Some(name))
         }
+        ["strings"] => merged_strings(&game_folder(data_dir)?),
         _ => Err(CliError::Usage),
     }
 }
@@ -132,6 +137,33 @@ fn dump_strings(dir: PathBuf, dll: &str, text: Option<&str>) -> Result<(), CliEr
         .and_then(|()| {
             texts.iter().try_for_each(|(name, data)| {
                 writeln!(out, "TEXT\t{}\t{}", escape(name), data.len())
+            })
+        })
+        .and_then(|()| out.flush());
+    ignore_closed_pipe(written)
+}
+
+/// Prints the merged view of the `lang*.dll` libraries of the install folder.
+fn merged_strings(dir: &Path) -> Result<(), CliError> {
+    let tables = StringTables::open(dir)?;
+    if tables.mixed_case() {
+        eprintln!(
+            "rustyzoo: warning: the lang*.dll names differ in letter case; they are ordered by their bytes"
+        );
+    }
+    let mut out = io::BufWriter::new(io::stdout().lock());
+    let written = tables
+        .libraries()
+        .try_for_each(|name| writeln!(out, "LIB\t{name}"))
+        .and_then(|()| {
+            tables
+                .strings()
+                .iter()
+                .try_for_each(|(id, (lib, text))| writeln!(out, "{id}\t{lib}\t{}", escape(text)))
+        })
+        .and_then(|()| {
+            tables.texts().iter().try_for_each(|(name, (lib, data))| {
+                writeln!(out, "TEXT\t{}\t{lib}\t{}", escape(name), data.len())
             })
         })
         .and_then(|()| out.flush());
