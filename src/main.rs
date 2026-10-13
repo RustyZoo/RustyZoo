@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::ffi::OsString;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -52,11 +53,12 @@ fn main() -> ExitCode {
     match run(std::env::args_os().skip(1).collect()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(CliError::Usage) => {
-            eprintln!("{USAGE}");
+            // A closed standard error is not worth a panic, which `eprintln!` would raise.
+            let _ = writeln!(io::stderr(), "{USAGE}");
             ExitCode::from(2)
         }
         Err(CliError::Failed(err)) => {
-            eprintln!("rustyzoo: {err}");
+            let _ = writeln!(io::stderr(), "rustyzoo: {err}");
             ExitCode::FAILURE
         }
     }
@@ -157,7 +159,8 @@ fn dump_strings(dir: PathBuf, dll: &str, text: Option<&str>) -> Result<(), CliEr
 fn merged_strings(dir: &Path) -> Result<(), CliError> {
     let tables = StringTables::open(dir)?;
     if tables.mixed_case() {
-        eprintln!(
+        let _ = writeln!(
+            io::stderr(),
             "rustyzoo: warning: the lang*.dll names differ in letter case; they are ordered by their bytes"
         );
     }
@@ -286,6 +289,34 @@ fn ignore_closed_pipe(result: io::Result<()>) -> Result<(), CliError> {
     }
 }
 
+/// Lines for standard output that keep the work going when the reader has gone away: after the
+/// first failed write nothing more is written, and [`Report::finish`] treats a closed pipe like
+/// `ls` and `cat` do.
+struct Report {
+    out: io::StdoutLock<'static>,
+    written: io::Result<()>,
+}
+
+impl Report {
+    fn new() -> Report {
+        Report {
+            out: io::stdout().lock(),
+            written: Ok(()),
+        }
+    }
+
+    fn line(&mut self, line: fmt::Arguments) {
+        if self.written.is_ok() {
+            self.written = writeln!(self.out, "{line}");
+        }
+    }
+
+    fn finish(mut self) -> Result<(), CliError> {
+        let flushed = self.out.flush();
+        ignore_closed_pipe(self.written.and(flushed))
+    }
+}
+
 /// Reads a sprite file and the palette it names, and checks that the palette covers the sprite.
 /// A sprite that draws no palette index (an empty path is then allowed) gets an empty palette.
 fn load_sprite(vfs: &Vfs, member: &str) -> Result<(Sprite, Palette), Box<dyn Error>> {
@@ -304,9 +335,8 @@ fn load_sprite(vfs: &Vfs, member: &str) -> Result<(Sprite, Palette), Box<dyn Err
 fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
     let (sprite, palette) = load_sprite(vfs, member)?;
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    let mut out = io::stdout().lock();
-    writeln!(
-        out,
+    let mut report = Report::new();
+    report.line(format_args!(
         "{member}: {} frames{}, delay {} ms, palette {:?}",
         sprite.frames.len(),
         if sprite.extra.is_some() {
@@ -316,7 +346,7 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
         },
         sprite.delay_ms,
         sprite.palette,
-    )?;
+    ));
     for (number, frame) in sprite.all_frames().enumerate() {
         let is_extra = number == sprite.frames.len();
         let name = format!(
@@ -325,8 +355,7 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
             if is_extra { "-extra" } else { "" },
         );
         let empty = frame.width == 0 || frame.height == 0;
-        writeln!(
-            out,
+        report.line(format_args!(
             "  {name}: {}x{} x offset {} y offset {} unknown {}{}",
             frame.width,
             frame.height,
@@ -334,7 +363,7 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
             frame.y_offset,
             frame.unknown,
             if empty { " (empty, no file)" } else { "" },
-        )?;
+        ));
         if empty {
             continue;
         }
@@ -346,12 +375,12 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
         write_png(&image, io::BufWriter::new(file))
             .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     }
-    Ok(())
+    report.finish()
 }
 
 /// Decodes every sprite file (a member whose last path component has no extension).
 fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
-    let mut out = io::stdout().lock();
+    let mut report = Report::new();
     let (mut files, mut frames, mut shadows, mut extras, mut failed) = (0, 0, 0, 0, 0);
     for member in vfs.list(None) {
         if member
@@ -370,15 +399,15 @@ fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
             }
             Err(err) => {
                 failed += 1;
-                writeln!(out, "FAILED {member}: {err}")?;
+                report.line(format_args!("FAILED {member}: {err}"));
             }
         }
     }
-    writeln!(
-        out,
+    report.line(format_args!(
         "{files} sprite files, {frames} frames, {shadows} shadow frames, \
          {extras} files with an extra frame, {failed} failed"
-    )?;
+    ));
+    report.finish()?;
     match failed {
         0 => Ok(()),
         _ => Err(format!("{failed} of {files} sprite files failed").into()),
