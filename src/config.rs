@@ -89,7 +89,9 @@ impl Config {
                 .map_or(n, |p| from + p)
         };
         let mut config = Config::default();
-        let mut current: Option<Vec<u8>> = None;
+        // The section being filled is held here and put back into the map at the next header
+        // and at the end, so no entry looks it up by name.
+        let mut current: Option<(Vec<u8>, Section)> = None;
         let mut header_seen = false;
         let mut i = 0;
         while i < n {
@@ -103,22 +105,20 @@ impl Config {
                     Some(p) if rest[p] == b']' => {
                         let name = trim(&rest[..p]);
                         i += p + 2;
-                        current = (!name.is_empty()).then(|| name.to_vec());
-                        if let Some(name) = &current {
-                            config.sections.entry(name.clone()).or_default();
-                        }
+                        config.close(current.take());
+                        current = (!name.is_empty()).then(|| {
+                            let section = config.sections.remove(name).unwrap_or_default();
+                            (name.to_vec(), section)
+                        });
                     }
                     _ => {
                         i = line_end(i);
-                        current = None;
+                        config.close(current.take());
                     }
                 }
             } else if c == b';' {
                 i = line_end(i);
-            } else if let Some(section) = current
-                .as_ref()
-                .and_then(|name| config.sections.get_mut(name))
-            {
+            } else if let Some((_, section)) = &mut current {
                 let stop = bytes[i..].iter().position(|&b| b == b'=' || b == b'\n');
                 let j = stop.map_or(n, |p| i + p);
                 let at_equals = j < n && bytes[j] == b'=';
@@ -147,7 +147,14 @@ impl Config {
                 i = line_end(i);
             }
         }
+        config.close(current);
         Ok(config)
+    }
+
+    fn close(&mut self, section: Option<(Vec<u8>, Section)>) {
+        if let Some((name, section)) = section {
+            self.sections.insert(name, section);
+        }
     }
 
     /// Whether no section was created: the original counts such a file as not loaded.
@@ -172,16 +179,12 @@ impl Section {
     /// The first value of the key; `None` if the key is missing or has no value (`key` and
     /// `key =` are the same).
     pub fn get(&self, key: impl AsRef<[u8]>) -> Option<&[u8]> {
-        self.get_all(key).next()
+        self.get_all(key).first().map(Vec::as_slice)
     }
 
     /// All values of the key in file order; empty if the key is missing or has no value.
-    pub fn get_all(&self, key: impl AsRef<[u8]>) -> impl Iterator<Item = &[u8]> {
-        self.keys
-            .get(key.as_ref())
-            .into_iter()
-            .flatten()
-            .map(Vec::as_slice)
+    pub fn get_all(&self, key: impl AsRef<[u8]>) -> &[Vec<u8>] {
+        self.keys.get(key.as_ref()).map_or(&[], Vec::as_slice)
     }
 
     /// All keys, with or without values, in ascending byte order. This is how a list written
@@ -252,16 +255,11 @@ pub fn to_float(value: &[u8]) -> f32 {
     let mut end = usize::from(value.first().is_some_and(|b| matches!(b, b'+' | b'-')));
     let int_digits = digits_from(end);
     end += int_digits;
-    let mut mantissa_digits = int_digits;
     if value.get(end) == Some(&b'.') {
         let fraction = digits_from(end + 1);
         if int_digits + fraction > 0 {
             end += 1 + fraction;
-            mantissa_digits += fraction;
         }
-    }
-    if mantissa_digits == 0 {
-        return 0.0;
     }
     if matches!(value.get(end), Some(b'e' | b'E')) {
         let sign = usize::from(matches!(value.get(end + 1), Some(b'+' | b'-')));
@@ -298,6 +296,7 @@ mod tests {
                 .map(|key| {
                     let values: Vec<String> = section
                         .get_all(key)
+                        .iter()
                         .map(|v| v.escape_ascii().to_string())
                         .collect();
                     format!("{}({})", key.escape_ascii(), values.join(","))
@@ -399,7 +398,7 @@ mod tests {
         let config = Config::parse(b"[a]\nk\nj =\nm = 1\nm=\n").unwrap();
         let a = config.section("a").unwrap();
         assert_eq!((a.get("k"), a.get("j"), a.get("zz")), (None, None, None));
-        assert_eq!(a.get_all("k").count(), 0);
+        assert!(a.get_all("k").is_empty());
         assert_eq!(a.keys().collect::<Vec<_>>(), [b"j", b"k", b"m"]);
         assert!(config.section("b").is_none());
     }
@@ -410,10 +409,12 @@ mod tests {
         let config = Config::parse(b"[a]\nid=1002\nx=1\nid=3251\n[a]\nid=9300\n").unwrap();
         let a = config.section("a").unwrap();
         assert_eq!(a.get("id"), Some(&b"1002"[..]));
-        assert_eq!(
-            a.get_all("id").collect::<Vec<_>>(),
-            [b"1002", b"3251", b"9300"]
-        );
+        assert_eq!(a.get_all("id"), [b"1002", b"3251", b"9300"]);
+        // The values do not keep the key borrowed.
+        let mut key = b"id".to_vec();
+        let ids = a.get_all(&key);
+        key.clear();
+        assert_eq!(ids.len(), 3);
     }
 
     #[test]
@@ -497,6 +498,17 @@ mod tests {
         assert!(with_entries > 1500, "{with_entries}");
     }
 
+    /// A long section name must not make each entry cost its length.
+    #[test]
+    fn a_long_section_name_costs_nothing_per_entry() {
+        let mut text = b"[".to_vec();
+        text.extend(std::iter::repeat_n(b'n', 400_000));
+        text.extend_from_slice(b"]\n");
+        text.extend(std::iter::repeat_n(*b"a\n", 300_000).flatten());
+        let config = Config::parse(&text).unwrap();
+        assert_eq!(config.sections().next().unwrap().1.keys().count(), 1);
+    }
+
     #[test]
     fn integers() {
         for (text, expected) in [
@@ -516,6 +528,8 @@ mod tests {
             ("0x", None),
             ("0xg", None),
             ("0x1Fz", Some(31)),
+            ("0x123456789", Some(0x2345_6789)),
+            ("0x1FFFFFFFFF", Some(-1)),
             ("4294967297", Some(1)),
             ("", Some(0)),
             ("-", Some(0)),
@@ -579,7 +593,7 @@ mod tests {
         // `[2100]` stands twice; the two parts read as one section with all three ids.
         let scenario = read("scenario/scn28b/scn28b.scn");
         let ids = scenario.section("2100").unwrap().get_all("id");
-        assert_eq!(ids.collect::<Vec<_>>(), [b"1002", b"3251", b"9300"]);
+        assert_eq!(ids, [b"1002", b"3251", b"9300"]);
 
         // `Subtype =` is a key without value.
         let lion = read("animals/lion.ai");
@@ -591,7 +605,7 @@ mod tests {
             [&b"Class"[..], b"DefaultSubtype", b"Subtype", b"Type"]
         );
         let integers = lion.section("f/Characteristics/Integers").unwrap();
-        assert_eq!(integers.get_all("cPrey").count(), 62);
+        assert_eq!(integers.get_all("cPrey").len(), 62);
         assert_eq!(integers.get("cPrey").map(to_int), Some(Some(9503)));
 
         // The class chain is four bare lines in file order, listed in byte order.
@@ -633,7 +647,7 @@ mod tests {
                 sections += 1;
                 for key in section.keys() {
                     keys += 1;
-                    values += section.get_all(key).count();
+                    values += section.get_all(key).len();
                 }
             }
         }

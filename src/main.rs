@@ -242,7 +242,7 @@ fn report_config(vfs: &Vfs, out: &mut impl Write, failed: &mut usize) -> io::Res
             sections += 1;
             for key in section.keys() {
                 keys += 1;
-                values += section.get_all(key).count();
+                values += section.get_all(key).len();
             }
         }
         if config.is_empty() {
