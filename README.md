@@ -34,9 +34,20 @@ sudo apt-get install libasound2-dev libpulse-dev libaudio-dev libfribidi-dev \
 
 Other distributions: see [SDL's Linux build dependencies](https://github.com/libsdl-org/SDL/blob/main/docs/README-linux.md).
 
+## Usage
+
+Point RustyZoo at the install folder of your game (the one that holds `zoo.ini`) with `--data`, or with the `ZT_DATA_DIR` environment variable:
+
+```
+rustyzoo --data "/path/to/Zoo Tycoon" ls 'animals/lion*'   # list files, sorted; * matches any text
+ZT_DATA_DIR="/path/to/Zoo Tycoon" rustyzoo cat animals/lion.ai > lion.ai   # write one file to stdout
+```
+
+Files are found the way the game finds them: in the `.ztd` archives of the directories listed in `[resource] path` of `zoo.ini`, the earlier directory winning, ignoring letter case, with `/` or `\` as separator.
+
 ## Roadmap
 
-- [ ] Foundations: repository, CI, a window and an audio device
+- [x] Foundations: repository, CI, a window and an audio device
 - [ ] Assets: read the original game's archives and file formats
 - [ ] Static world: draw terrain, objects and animals from the original data
 - [ ] Window: game loop, camera and input
