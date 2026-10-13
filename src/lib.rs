@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod pe;
+pub mod sprite;
 pub mod strings;
 pub mod vfs;
 

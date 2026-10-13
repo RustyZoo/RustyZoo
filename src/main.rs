@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::ffi::OsString;
+use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -7,6 +8,7 @@ use std::process::ExitCode;
 use rustyzoo::Framebuffer;
 use rustyzoo::config::Config;
 use rustyzoo::pe;
+use rustyzoo::sprite::{Palette, Sprite, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
 use sdl3::audio::AudioSpec;
@@ -28,6 +30,9 @@ usage: rustyzoo [--data <dir>] <command>
                       resolves them: the libraries in lookup order (LIB lines), then
                       ID<TAB>library<TAB>text and TEXT<TAB>name<TAB>library<TAB>bytes
   check-config        read every configuration file of the game, report empty files and ignored text
+  dump-sprite <member> <dir>
+                      write the frames of a sprite file as PNG files into <dir>, and print them
+  check-sprites       decode every sprite file; list those that fail; exit 1 if any does
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.";
@@ -84,6 +89,8 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         }
         ["strings"] => merged_strings(&game_folder(data_dir)?),
         ["check-config"] => check_config(&open_game(data_dir)?),
+        ["dump-sprite", member, dir] => dump_sprite(&open_game(data_dir)?, member, Path::new(dir)),
+        ["check-sprites"] => check_sprites(&open_game(data_dir)?),
         _ => Err(CliError::Usage),
     }
 }
@@ -276,6 +283,105 @@ fn ignore_closed_pipe(result: io::Result<()>) -> Result<(), CliError> {
     match result {
         Err(err) if err.kind() != io::ErrorKind::BrokenPipe => Err(err.into()),
         _ => Ok(()),
+    }
+}
+
+/// Reads a sprite file and the palette it names, and checks that the palette covers the sprite.
+/// A sprite that draws no palette index (an empty path is then allowed) gets an empty palette.
+fn load_sprite(vfs: &Vfs, member: &str) -> Result<(Sprite, Palette), Box<dyn Error>> {
+    let sprite = Sprite::parse(&vfs.read(member)?)?;
+    let palette = if sprite.palette.is_empty() && !sprite.needs_palette() {
+        Palette::default()
+    } else {
+        let palette = Palette::parse(&vfs.read(&sprite.palette)?)
+            .map_err(|e| format!("palette {}: {e}", sprite.palette))?;
+        sprite.check_palette(&palette)?;
+        palette
+    };
+    Ok((sprite, palette))
+}
+
+fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
+    let (sprite, palette) = load_sprite(vfs, member)?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let mut out = io::stdout().lock();
+    writeln!(
+        out,
+        "{member}: {} frames{}, delay {} ms, palette {:?}",
+        sprite.frames.len(),
+        if sprite.extra.is_some() {
+            " + 1 extra"
+        } else {
+            ""
+        },
+        sprite.delay_ms,
+        sprite.palette,
+    )?;
+    for (number, frame) in sprite.all_frames().enumerate() {
+        let is_extra = number == sprite.frames.len();
+        let name = format!(
+            "{number:03}{}{}.png",
+            if frame.shadow { "-shadow" } else { "" },
+            if is_extra { "-extra" } else { "" },
+        );
+        let empty = frame.width == 0 || frame.height == 0;
+        writeln!(
+            out,
+            "  {name}: {}x{} x offset {} y offset {} unknown {}{}",
+            frame.width,
+            frame.height,
+            frame.x_offset,
+            frame.y_offset,
+            frame.unknown,
+            if empty { " (empty, no file)" } else { "" },
+        )?;
+        if empty {
+            continue;
+        }
+        let mut image = Framebuffer::new(frame.width.into(), frame.height.into());
+        frame.draw(&palette, &mut image, 0, 0)?;
+        let path = dir.join(&name);
+        let file =
+            File::create(&path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+        write_png(&image, io::BufWriter::new(file))
+            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// Decodes every sprite file (a member whose last path component has no extension).
+fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
+    let mut out = io::stdout().lock();
+    let (mut files, mut frames, mut shadows, mut extras, mut failed) = (0, 0, 0, 0, 0);
+    for member in vfs.list(None) {
+        if member
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.contains('.'))
+        {
+            continue;
+        }
+        files += 1;
+        match load_sprite(vfs, &member) {
+            Ok((sprite, _)) => {
+                frames += sprite.frames.len();
+                shadows += sprite.all_frames().filter(|frame| frame.shadow).count();
+                extras += usize::from(sprite.extra.is_some());
+            }
+            Err(err) => {
+                failed += 1;
+                writeln!(out, "FAILED {member}: {err}")?;
+            }
+        }
+    }
+    writeln!(
+        out,
+        "{files} sprite files, {frames} frames, {shadows} shadow frames, \
+         {extras} files with an extra frame, {failed} failed"
+    )?;
+    match failed {
+        0 => Ok(()),
+        _ => Err(format!("{failed} of {files} sprite files failed").into()),
     }
 }
 

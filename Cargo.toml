@@ -13,3 +13,4 @@ repository = "https://github.com/RustyZoo/RustyZoo"
 # are installed, those backends are still detected and built.
 sdl3 = { version = "0.20", features = ["build-from-source-static", "build-from-source-unix-console"] }
 zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+png = { version = "0.18.1", default-features = false }
