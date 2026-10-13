@@ -1,5 +1,7 @@
 //! Platform-free core of RustyZoo. It draws into memory; the shell in `main.rs` presents it.
 
+pub mod vfs;
+
 /// An RGBA8 image: four bytes per pixel in the order R, G, B, A, rows from top to bottom.
 pub struct Framebuffer {
     pub width: u32,
