@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use rustyzoo::Framebuffer;
+use rustyzoo::config::Config;
 use rustyzoo::pe;
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
@@ -26,6 +27,7 @@ usage: rustyzoo [--data <dir>] <command>
   strings             print the texts of all lang*.dll of the install folder as the game
                       resolves them: the libraries in lookup order (LIB lines), then
                       ID<TAB>library<TAB>text and TEXT<TAB>name<TAB>library<TAB>bytes
+  check-config        read every configuration file of the game, report empty files and ignored text
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.";
@@ -81,6 +83,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             dump_strings(game_folder(data_dir)?, dll, Some(name))
         }
         ["strings"] => merged_strings(&game_folder(data_dir)?),
+        ["check-config"] => check_config(&open_game(data_dir)?),
         _ => Err(CliError::Usage),
     }
 }
@@ -195,6 +198,77 @@ fn list(vfs: Vfs, pattern: Option<&str>) -> Result<(), CliError> {
         .try_for_each(|path| writeln!(out, "{path}"))
         .and_then(|()| out.flush());
     ignore_closed_pipe(written)
+}
+
+/// The members written in the INI-like dialect (see `rustyzoo::config`).
+const CONFIG_EXTENSIONS: [&str; 9] = [
+    ".ai", ".cfg", ".ani", ".scn", ".lyt", ".uca", ".ucb", ".ucs", ".ini",
+];
+
+/// Parses every configuration member and reports what the original would ignore. Nothing in a
+/// file is an error; only a member that cannot be read or is too large makes the command fail.
+fn check_config(vfs: &Vfs) -> Result<(), CliError> {
+    let mut out = io::BufWriter::new(io::stdout().lock());
+    let mut failed = 0;
+    let written = report_config(vfs, &mut out, &mut failed).and_then(|()| out.flush());
+    ignore_closed_pipe(written)?;
+    match failed {
+        0 => Ok(()),
+        _ => Err(format!("{failed} configuration files could not be read").into()),
+    }
+}
+
+fn report_config(vfs: &Vfs, out: &mut impl Write, failed: &mut usize) -> io::Result<()> {
+    let (mut files, mut sections, mut keys, mut values) = (0, 0, 0, 0);
+    let (mut empty, mut before, mut after) = (0, 0, 0);
+    for path in vfs.list(None) {
+        if !CONFIG_EXTENSIONS.iter().any(|ext| path.ends_with(ext)) {
+            continue;
+        }
+        files += 1;
+        let config = vfs
+            .read(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| Config::parse(&bytes).map_err(|e| e.to_string()));
+        let config = match config {
+            Ok(config) => config,
+            Err(message) => {
+                *failed += 1;
+                writeln!(out, "{path}: {message}")?;
+                continue;
+            }
+        };
+        for (_, section) in config.sections() {
+            sections += 1;
+            for key in section.keys() {
+                keys += 1;
+                values += section.get_all(key).len();
+            }
+        }
+        if config.is_empty() {
+            empty += 1;
+            writeln!(out, "{path}: no section")?;
+        }
+        let (b, a) = (
+            config.ignored_before_first_header,
+            config.ignored_after_broken_header,
+        );
+        if b + a > 0 {
+            writeln!(
+                out,
+                "{path}: ignored lines: {b} before the first header, {a} after a broken header"
+            )?;
+        }
+        before += b;
+        after += a;
+    }
+    writeln!(
+        out,
+        "{files} files, {sections} sections, {keys} keys, {values} values; \
+         {empty} files without a section; ignored lines: {before} before the first header, \
+         {after} after a broken header; {failed} unreadable",
+        failed = *failed
+    )
 }
 
 /// A reader that stops early (`| head`) is not an error of ours.

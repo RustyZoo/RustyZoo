@@ -24,7 +24,9 @@ check() {
 
 check base-trial 8853 'rz ls | wc -l'
 check base-trial 25627 'rz cat animals/lion.ai | wc -c'
+check base-trial 1883,4740,30894,38127,2,1,0,0 "rz check-config | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 10843 'rz ls | wc -l'
 check expansion-trial 24871 'rz cat animals/allo.ai | wc -c'
+check expansion-trial 2756,7580,48384,62770,3,0,0,0 "rz check-config | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 
 exit $failed

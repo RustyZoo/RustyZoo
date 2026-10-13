@@ -261,8 +261,11 @@ fn wildcard_matches(pattern: &[u8], text: &[u8]) -> bool {
     pattern[p..].iter().all(|&c| c == b'*')
 }
 
-/// The value of `path` in the `[resource]` section of an ini file. This is the little of the
-/// ini format that one key needs: `[section]` headers, `key=value` lines and `;` comment lines.
+/// The value of `path` in the `[resource]` section of the ini file next to the executable. The
+/// game reads that file through the ini reader of Windows, not through its own configuration
+/// reader (`crate::config`): names ignore letter case, only `[section]` headers, `key=value`
+/// lines and `;` comment lines count, the first `path` wins, and a value in a pair of single
+/// or double quotes loses them.
 fn resource_path(ini: &str) -> Option<String> {
     let mut in_resource = false;
     for line in ini.trim_start_matches('\u{feff}').lines() {
@@ -278,7 +281,18 @@ fn resource_path(ini: &str) -> Option<String> {
             && in_resource
             && key.trim().eq_ignore_ascii_case("path")
         {
-            return Some(value.trim().to_string());
+            let value = value.trim();
+            let quoted = value.len() >= 2
+                && (value.starts_with('"') && value.ends_with('"')
+                    || value.starts_with('\'') && value.ends_with('\''));
+            return Some(
+                if quoted {
+                    &value[1..value.len() - 1]
+                } else {
+                    value
+                }
+                .to_string(),
+            );
         }
     }
     None
@@ -500,6 +514,14 @@ mod tests {
     fn resource_path_reads_only_the_resource_section() {
         let ini = "\u{feff}[user]\r\npath=wrong\r\n; path=comment\r\n[resource]\r\n; for the demo\r\n  Path = ./a;.  \r\n[other]\r\npath=wrong\r\n";
         assert_eq!(resource_path(ini).as_deref(), Some("./a;."));
+        assert_eq!(
+            resource_path("[RESOURCE]\nPATH=\"./q;.\"\n").as_deref(),
+            Some("./q;.")
+        );
+        assert_eq!(
+            resource_path("[resource]\npath='.'\n").as_deref(),
+            Some(".")
+        );
         assert_eq!(resource_path("[resource]\nkey=1\n"), None);
         assert_eq!(resource_path("path=.\n"), None);
         assert_eq!(resource_path(""), None);
