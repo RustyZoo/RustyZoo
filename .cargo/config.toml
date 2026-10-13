@@ -1,3 +1,9 @@
 # Link the C runtime statically on Windows so the binary needs no Visual C++ redistributable.
 [target.'cfg(windows)']
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# SDL is built by CMake, which selects the C runtime on its own and ignores the /MT that Cargo
+# passes: without this, SDL's objects use the DLL runtime and the link fails. cmake-rs hands the
+# toolchain file to CMake; the variable is target-specific so other targets are unaffected.
+[env]
+CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_msvc = { value = ".cargo/static-crt.cmake", relative = true }

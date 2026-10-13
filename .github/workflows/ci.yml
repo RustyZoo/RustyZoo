@@ -66,6 +66,16 @@ jobs:
       - run: cargo test
       - run: cargo build --release
 
+      # Guards the static C runtime: SDL is built by CMake, which picks the runtime on its own.
+      - name: Check that the executable does not need the Visual C++ runtime DLLs
+        if: runner.os == 'Windows'
+        run: |
+          if grep -aqi vcruntime140 target/release/rustyzoo.exe; then
+            echo "rustyzoo.exe still references VCRUNTIME140"
+            exit 1
+          fi
+          echo "rustyzoo.exe does not reference VCRUNTIME140"
+
       # Guards against the console-build option silently producing a headless-only SDL.
       - name: Check that SDL built the desktop backends
         if: runner.os == 'Linux'
