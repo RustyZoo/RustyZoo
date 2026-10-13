@@ -26,6 +26,7 @@ use std::fmt;
 use std::io::Write;
 
 use crate::Framebuffer;
+use crate::vfs::Vfs;
 
 /// The largest width or height of a frame: 4096. The largest in the game is 800 by 657.
 pub const MAX_DIMENSION: u16 = 4096;
@@ -370,6 +371,33 @@ fn read_frame(reader: &mut Reader) -> Result<Frame, SpriteError> {
     Frame::parse(reader.take(size, "frame data")?)
 }
 
+/// Whether an archive member is a sprite file: its last path component has no extension.
+pub fn is_sprite_member(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or_default();
+    !name.is_empty() && !name.contains('.')
+}
+
+/// Reads the sprite member `member` and the palette it names, and checks that the palette
+/// covers every index the sprite draws. A sprite that draws no palette index and names no
+/// palette (an empty path) gets an empty one; if it names a palette, that must exist.
+///
+/// Fails if a member is missing or unreadable (the palette path is matched without regard to
+/// letter case, as the `Vfs` does), if the sprite or the palette is malformed, or if the palette
+/// is too short. The message is a single line, but it may hold the paths as they are in the file.
+pub fn load(vfs: &Vfs, member: &str) -> Result<(Sprite, Palette), SpriteError> {
+    let read = |path: &str| vfs.read(path).map_err(|e| SpriteError(e.to_string()));
+    let sprite = Sprite::parse(&read(member)?)?;
+    let palette = if sprite.palette.is_empty() && !sprite.needs_palette() {
+        Palette::default()
+    } else {
+        let palette = Palette::parse(&read(&sprite.palette)?)
+            .map_err(|e| SpriteError(format!("palette {:?}: {e}", sprite.palette)))?;
+        sprite.check_palette(&palette)?;
+        palette
+    };
+    Ok((sprite, palette))
+}
+
 /// Writes the framebuffer as an 8 bit RGBA PNG. The same pixels always give the same bytes.
 /// Fails if the framebuffer has no pixel (PNG has no empty images) or on a write error.
 pub fn write_png(image: &Framebuffer, out: impl Write) -> Result<(), Box<dyn Error>> {
@@ -383,6 +411,7 @@ pub fn write_png(image: &Framebuffer, out: impl Write) -> Result<(), Box<dyn Err
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vfs::Vfs;
 
     /// Frame data: height (raw, may carry the shadow bit), width, offsets y = -3 and x = 5,
     /// unknown 7, then the given row bytes.
@@ -805,6 +834,100 @@ mod tests {
         assert_eq!(pixels, image.pixels);
 
         assert!(write_png(&blank(0, 0), Vec::new()).is_err());
+    }
+
+    #[test]
+    fn sprite_members_have_no_extension() {
+        assert!(is_sprite_member("animals/lion/f/walk/e"));
+        assert!(is_sprite_member("n"));
+        assert!(!is_sprite_member("animals/lion/f/walk/walk.ani"));
+        assert!(!is_sprite_member("animals/lion.d/n.pal"));
+        assert!(is_sprite_member("animals/lion.d/n"));
+        assert!(!is_sprite_member("animals/lion/"));
+        assert!(!is_sprite_member(""));
+    }
+
+    /// An install folder with the given members in one archive, removed on drop.
+    struct Install(std::path::PathBuf);
+
+    impl Install {
+        fn new(name: &str, members: &[(&str, Vec<u8>)]) -> Install {
+            let dir =
+                std::env::temp_dir().join(format!("rustyzoo-sprite-{}-{name}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            for (name, content) in members {
+                zip.start_file(*name, zip::write::SimpleFileOptions::default())
+                    .unwrap();
+                zip.write_all(content).unwrap();
+            }
+            std::fs::write(dir.join("a.ztd"), zip.finish().unwrap().into_inner()).unwrap();
+            Install(dir)
+        }
+    }
+
+    impl Drop for Install {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A sprite file with one frame and the given palette path.
+    fn file_naming(path: &str, rows_raw_height: u16, rows: &[u8]) -> Vec<u8> {
+        let mut out = 125u32.to_le_bytes().to_vec();
+        out.extend((path.len() as u32).to_le_bytes());
+        out.extend(path.as_bytes());
+        out.extend(1u32.to_le_bytes());
+        out.extend(sized(&frame_data(rows_raw_height, 2, rows)));
+        out
+    }
+
+    #[test]
+    fn load_finds_the_palette_and_applies_the_empty_path_rule() {
+        let mut palette = 4u32.to_le_bytes().to_vec();
+        palette.extend(PALETTE[..4].iter().flatten());
+        let mut short = 2u32.to_le_bytes().to_vec();
+        short.extend(PALETTE[..2].iter().flatten());
+        let draws_3 = [1, 0, 2, 3, 3]; // one row: draws indexes 3 and 3
+        let shadow = [1, 0, 2]; // one row: covers 2 pixels
+        let install = Install::new(
+            "load",
+            &[
+                ("pals/Main.PAL", palette),
+                ("pals/short.pal", short),
+                ("ok/n", file_naming("PALS\\main.pal", 1, &draws_3)),
+                ("short/n", file_naming("pals/short.pal", 1, &draws_3)),
+                ("missing/n", file_naming("pals/none.pal", 1, &draws_3)),
+                ("nameless/n", file_naming("", 1, &draws_3)),
+                ("shadow/n", file_naming("", 0x8001, &shadow)),
+                (
+                    "shadow-named/n",
+                    file_naming("pals/none.pal", 0x8001, &shadow),
+                ),
+                ("bad-palette.pal", vec![1]),
+                ("bad/n", file_naming("bad-palette.pal", 1, &draws_3)),
+            ],
+        );
+        let vfs = Vfs::open(&install.0).unwrap();
+
+        let (sprite, palette) = load(&vfs, "OK/n").unwrap();
+        assert_eq!((sprite.frames.len(), palette.len()), (1, 4));
+
+        let message = err_message(load(&vfs, "short/n"));
+        assert_eq!(message, "palette index 3 but the palette has 2 colours");
+        assert!(err_message(load(&vfs, "missing/n")).contains("no such member: pals/none.pal"));
+        assert!(err_message(load(&vfs, "nameless/n")).contains("no such member"));
+        assert!(
+            err_message(load(&vfs, "bad/n")).contains("palette \"bad-palette.pal\": truncated")
+        );
+        assert!(err_message(load(&vfs, "nope/n")).contains("no such member: nope/n"));
+
+        // No palette index drawn and no palette named: an empty palette. A named one must exist.
+        let (sprite, palette) = load(&vfs, "shadow/n").unwrap();
+        assert!(sprite.frames[0].shadow && palette.is_empty());
+        assert!(err_message(load(&vfs, "shadow-named/n")).contains("no such member"));
     }
 
     /// The facts below were measured on Zoo Tycoon: Complete Collection.

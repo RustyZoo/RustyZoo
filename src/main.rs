@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use rustyzoo::Framebuffer;
 use rustyzoo::config::Config;
 use rustyzoo::pe;
-use rustyzoo::sprite::{Palette, Sprite, write_png};
+use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
 use sdl3::audio::AudioSpec;
@@ -317,23 +317,15 @@ impl Report {
     }
 }
 
-/// Reads a sprite file and the palette it names, and checks that the palette covers the sprite.
-/// A sprite that draws no palette index (an empty path is then allowed) gets an empty palette.
-fn load_sprite(vfs: &Vfs, member: &str) -> Result<(Sprite, Palette), Box<dyn Error>> {
-    let sprite = Sprite::parse(&vfs.read(member)?)?;
-    let palette = if sprite.palette.is_empty() && !sprite.needs_palette() {
-        Palette::default()
-    } else {
-        let palette = Palette::parse(&vfs.read(&sprite.palette)?)
-            .map_err(|e| format!("palette {}: {e}", sprite.palette))?;
-        sprite.check_palette(&palette)?;
-        palette
-    };
-    Ok((sprite, palette))
+/// The file of a frame in `dump-sprite`: the frame number only, never anything from the sprite.
+fn frame_file_name(number: usize, shadow: bool, extra: bool) -> String {
+    let shadow = if shadow { "-shadow" } else { "" };
+    let extra = if extra { "-extra" } else { "" };
+    format!("{number:03}{shadow}{extra}.png")
 }
 
 fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
-    let (sprite, palette) = load_sprite(vfs, member)?;
+    let (sprite, palette) = sprite::load(vfs, member)?;
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let mut report = Report::new();
     report.line(format_args!(
@@ -348,12 +340,7 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
         sprite.palette,
     ));
     for (number, frame) in sprite.all_frames().enumerate() {
-        let is_extra = number == sprite.frames.len();
-        let name = format!(
-            "{number:03}{}{}.png",
-            if frame.shadow { "-shadow" } else { "" },
-            if is_extra { "-extra" } else { "" },
-        );
+        let name = frame_file_name(number, frame.shadow, number == sprite.frames.len());
         let empty = frame.width == 0 || frame.height == 0;
         report.line(format_args!(
             "  {name}: {}x{} x offset {} y offset {} unknown {}{}",
@@ -383,15 +370,11 @@ fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
     let mut report = Report::new();
     let (mut files, mut frames, mut shadows, mut extras, mut failed) = (0, 0, 0, 0, 0);
     for member in vfs.list(None) {
-        if member
-            .rsplit('/')
-            .next()
-            .is_some_and(|name| name.contains('.'))
-        {
+        if !sprite::is_sprite_member(&member) {
             continue;
         }
         files += 1;
-        match load_sprite(vfs, &member) {
+        match sprite::load(vfs, &member) {
             Ok((sprite, _)) => {
                 frames += sprite.frames.len();
                 shadows += sprite.all_frames().filter(|frame| frame.shadow).count();
@@ -399,7 +382,12 @@ fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
             }
             Err(err) => {
                 failed += 1;
-                report.line(format_args!("FAILED {member}: {err}"));
+                // Paths come from the files: print them with their control characters escaped.
+                report.line(format_args!(
+                    "FAILED {}: {}",
+                    member.escape_debug(),
+                    err.to_string().escape_debug()
+                ));
             }
         }
     }
@@ -449,7 +437,15 @@ fn window_smoke() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::escape;
+    use super::{escape, frame_file_name};
+
+    #[test]
+    fn frame_files_are_named_by_number_shadow_and_extra() {
+        assert_eq!(frame_file_name(0, false, false), "000.png");
+        assert_eq!(frame_file_name(12, true, false), "012-shadow.png");
+        assert_eq!(frame_file_name(1234, false, true), "1234-extra.png");
+        assert_eq!(frame_file_name(21, true, true), "021-shadow-extra.png");
+    }
 
     #[test]
     fn escape_keeps_a_text_on_one_line() {
