@@ -111,6 +111,30 @@ jobs:
         if: runner.os == 'macOS'
         run: target/universal/rustyzoo window-smoke
 
+      # The two free official trials from Microsoft, extracted outside the checkout. Only the
+      # extracted folders are cached, and neither they nor the downloads are uploaded below.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ${{ runner.temp }}/trials/base-trial
+            ${{ runner.temp }}/trials/expansion-trial
+          key: trials-${{ runner.os }}-${{ hashFiles('ci/fetch-trials.sh') }}
+
+      # On a cache hit the script finds the folders and does nothing. When Microsoft's download
+      # is unavailable (status 3) the step warns and passes; any other failure fails it.
+      - name: Run the asset commands on the official trials
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          status=0
+          ci/fetch-trials.sh "$trials" || status=$?
+          if [ "$status" = 3 ]; then
+            rm -rf "$trials"
+            echo "::warning title=Trials skipped::A trial download was unavailable, so the asset commands did not run on real game data."
+            exit 0
+          fi
+          [ "$status" = 0 ] || exit "$status"
+          ci/check-trials.sh ${{ matrix.path }} "$trials"
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}

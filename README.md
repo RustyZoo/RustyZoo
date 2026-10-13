@@ -8,7 +8,11 @@ Pre-alpha. Nothing is playable yet: the repository currently contains a small co
 
 ## You need the original game
 
-RustyZoo only loads the data of an existing installation, so you need your own copy of Zoo Tycoon: Complete Collection. This project contains no original code or assets. It is not affiliated with or endorsed by Microsoft or Blue Fang Games.
+RustyZoo only loads the data of an existing installation, so you need your own copy of Zoo Tycoon: the full game (Complete Collection) or one of the free trials below. This project contains no original code or assets. It is not affiliated with or endorsed by Microsoft or Blue Fang Games.
+
+### The free official trials
+
+Microsoft still hosts two free trials, which you may install and use: [Zoo Tycoon](https://download.microsoft.com/download/zootycoon/Trial/2.0/W9X2KMeXP/EN-US/ZooTycoon.exe) and [Marine Mania](https://download.microsoft.com/download/zootycoon/Trial/1.0b/WIN98XP/EN-US/mardinotrial.exe). RustyZoo never redistributes them. To try RustyZoo without buying the game, run `ci/fetch-trials.sh <dir>`: it downloads both installers from Microsoft, checks their checksums and extracts them, without running anything, with [7-Zip](https://www.7-zip.org/) (`7z` or `7zz` must be on the PATH). It leaves two game folders, `<dir>/base-trial` and `<dir>/expansion-trial`, to pass to `--data`. CI does the same to run the commands on real data (`ci/check-trials.sh` lists them).
 
 ## Building
 
