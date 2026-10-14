@@ -1,5 +1,6 @@
 mod audio;
 mod input;
+mod layout;
 mod probe;
 mod run;
 mod textcmd;
@@ -143,6 +144,13 @@ usage: rustyzoo [--data <dir>] <command>
                       as tall as the text, filled with the back colour (white), text in the
                       fore colour (black), into a PNG file; prints the size and the hash of
                       the pixels; needs no game data
+  check-layouts [--expansions N]
+                      load ui/gamescrn.lyt and every layout it names into one tree, for the
+                      expansions in the mask N (bit 1 and bit 2, the `id` of an xpac*.cfg; default: those
+                      of the install), and print the elements per type, the duplicate ids and the
+                      pictures loaded and missing (missing ones are warnings on standard error);
+                      exit 1 if the load fails at a section without a known type or without a
+                      layout; the interface is then dropped
   timing              print the periods and the cap the ini file gives the main loop, then how
                       many draws, interface updates and steps a ten second run makes with a
                       pass at every millisecond
@@ -233,6 +241,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             let (rotation, options) = render_flags(flags)?;
             render_map(&open_game(data_dir)?, member, out, rotation, &options)
         }
+        ["check-layouts", flags @ ..] => layout::check_layouts(&open_game(data_dir)?, flags),
         ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, member, flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(

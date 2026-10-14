@@ -58,6 +58,7 @@ rustyzoo check-maps                               # read every .zoo file; exit 1
 rustyzoo render-ani objects/aviary/idle/idle.ani out/   # frame 0 of an animation set, one PNG per screen direction, into out/
 rustyzoo render-ani animals/lion/f out/ --anim walk     # the same for animals/lion/f/walk/walk.ani
 rustyzoo check-anis                               # load every animation set and its sprite files; a defective palette is a warning; exit 1 if one fails
+rustyzoo check-layouts [--expansions N]         # load ui/gamescrn.lyt and every layout it names; print the elements per type, duplicate ids and pictures; N is the expansion mask (bit 1 and bit 2, the `id` of an xpac*.cfg), default the install's; exit 1 if the load fails
 rustyzoo check-ground                              # render every cached ground picture again and compare; exit 1 if a covered pixel differs
 rustyzoo render-ground ztats/000004 out/g.png     # render one ground picture (key as in the cache names)
 rustyzoo render-map maps/default.zoo out.png --rotation 1   # draw a whole map into a PNG at normal zoom, and print what was drawn
