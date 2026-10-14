@@ -121,7 +121,8 @@ usage: rustyzoo [--data <dir>] <command>
                       percentile and maximum of the gaps between its firings, the period it
                       should keep, and a histogram of the gaps: information only.
                       --shot writes the pixels of the last frame, as the renderer has them
-                      (at the size in pixels), to FILE as a PNG
+                      (at the size in pixels), to FILE as a PNG, and prints its size, number of
+                      colours and hash; a blank picture is an error
   timing              print the periods and the cap the ini file gives the main loop, then how
                       many draws, interface updates and steps a ten second run makes with a
                       pass at every millisecond

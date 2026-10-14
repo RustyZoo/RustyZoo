@@ -2,11 +2,12 @@
 //! firings of the three timers on the real clock (`run --timing`), and the pixels the renderer
 //! presents (`run --shot`). Information only: no value here fails a run.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io::BufWriter;
 
 use rustyzoo::Framebuffer;
+use rustyzoo::app::frame_hash;
 use rustyzoo::sprite::write_png;
 use rustyzoo::timing::Pass;
 use sdl3::pixels::PixelFormat;
@@ -106,6 +107,8 @@ impl Timing {
 }
 
 /// Reads back what the renderer has drawn, in the pixels of the output, and writes it as a PNG.
+/// Prints the size, the number of distinct colours and the hash of the pixels; a blank picture
+/// (one colour) is an error.
 pub fn shot(canvas: &Canvas<Window>, file: &str) -> Result<(), CliError> {
     let surface = canvas
         .read_pixels(None)?
@@ -126,8 +129,15 @@ pub fn shot(canvas: &Canvas<Window>, file: &str) -> Result<(), CliError> {
         pixels,
     };
     write_png(&frame, BufWriter::new(out))?;
-    println!("shot {width}x{height}");
-    Ok(())
+    let colours = frame.pixels.chunks(4).collect::<HashSet<_>>().len();
+    println!(
+        "shot {width}x{height} colours {colours} hash {:016x}",
+        frame_hash(&frame)
+    );
+    match colours {
+        0..=1 => Err("the picture read back is blank".into()),
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]

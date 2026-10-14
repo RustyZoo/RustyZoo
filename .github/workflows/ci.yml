@@ -113,7 +113,7 @@ jobs:
 
       # The two free official trials from Microsoft, extracted outside the checkout. Only the
       # extracted folders are cached; neither they nor the downloads are uploaded below. The
-      # window screenshot step further down uploads one picture of a map, as a workflow artifact.
+      # window screenshot step further down checks one picture of a map and publishes none.
       - uses: actions/cache@v6
         with:
           path: |
@@ -148,32 +148,25 @@ jobs:
           ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo --timing 10000
 
       # One picture per system from the platform's real video driver and window server (X11
-      # on a virtual display for Linux), with the three sizes and the display scale. The runners
-      # have no GPU, so the software renderer draws. Uploaded as a workflow artifact only.
-      - name: Screenshot of a window on the real video driver
+      # on a virtual display for Linux). The log gets the three sizes, the display scale, the
+      # number of colours and the hash of the pixels read back; the step fails only if the mode
+      # breaks or the picture is blank. The runners have no GPU, so the software renderer draws.
+      # The picture is rendered game data: it is deleted with the runner and never uploaded.
+      - name: Check a window on the real video driver
         env:
           SDL_VIDEO_DRIVER: ${{ runner.os == 'Linux' && 'x11' || runner.os == 'macOS' && 'cocoa' || 'windows' }}
         run: |
           trials="${RUNNER_TEMP//\\//}/trials"
-          shot="${RUNNER_TEMP//\\//}/hidpi"
           if [ ! -d "$trials/base-trial" ]; then
-            echo "::warning title=Screenshot skipped::No trial data on this runner."
+            echo "::warning title=Window check skipped::No trial data on this runner."
             exit 0
           fi
-          mkdir -p "$shot"
           pre=()
           if [ "$RUNNER_OS" = Linux ]; then
             pre=(xvfb-run -a -s "-screen 0 1280x1024x24")
           fi
           "${pre[@]}" ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo \
-            --passes 60 --shot "$shot/window.png" | tee "$shot/sizes.txt"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: window-${{ matrix.artifact }}
-          path: ${{ runner.temp }}/hidpi
-          retention-days: 7
-          if-no-files-found: warn
+            --passes 60 --shot "${RUNNER_TEMP//\\//}/window.png"
 
       - uses: actions/upload-artifact@v7
         with:
