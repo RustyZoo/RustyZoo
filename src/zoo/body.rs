@@ -85,8 +85,10 @@ fn base(r: &mut Reader) -> R<Common> {
     if v >= 63 {
         behaviour_set(r)?;
     }
+    let mut colors = Vec::new();
     if v >= 67 {
-        r.skip_list(1)?;
+        let n = r.count(1)?;
+        colors = r.take(n)?.to_vec();
     }
     Ok(Common {
         x,
@@ -95,6 +97,7 @@ fn base(r: &mut Reader) -> R<Common> {
         rotation,
         id,
         name,
+        colors,
         fence: None,
     })
 }

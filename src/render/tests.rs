@@ -545,6 +545,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
             rotation: u32::MAX,
             id: 1,
             name: String::new(),
+            colors: Vec::new(),
             fence: None,
         }),
     };
@@ -649,4 +650,131 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
     assert!(without.1 > 0 && without.0 == 0, "{without:?}");
     let with = cliffs(&[config, ("fringe/f.bmp", bitmap)]);
     assert_eq!(with, (without.1, 0));
+}
+
+/// A palette file of the given colours (R, G, B), with the fourth byte 255.
+fn palette_file(colors: &[[u8; 3]]) -> Vec<u8> {
+    let mut out = (colors.len() as u32).to_le_bytes().to_vec();
+    for [r, g, b] in colors {
+        out.extend([*r, *g, *b, 255]);
+    }
+    out
+}
+
+#[test]
+fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
+    use crate::sprite::tests::{sized, sprite_file};
+    const MARKER: [u8; 3] = [255, 0, 255];
+    // One row of three pixels with the palette values 1, 2 and 3, anchored at their left end.
+    let mut frame = Vec::new();
+    for field in [1u16, 3, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 3, 1, 2, 3]);
+    let sprite = sprite_file(None, 1, &[sized(&frame)]);
+    let definition = |flag: &str, fullpal: &str| {
+        format!(
+            "[Characteristics/Integers]\ncIsColorReplaced = {flag}\n[Animations]\nidle = idle\n\
+             [colorrep]\ncolor = cr_color\nreplace = cr_part1\ndefaultpal = Pals\\Blue.pal\n\
+             [cr_color]\nncolors = 2\nfullpal = {fullpal}\ncolorpal = color.pal\n"
+        )
+        .into_bytes()
+    };
+    let members = |flag: &str, fullpal: &str| {
+        vec![
+            ("bldg.cfg", b"[building]\nshed = shed.ai\n".to_vec()),
+            ("shed.ai", definition(flag, fullpal)),
+            // A group of two colours after two fixed ones (16 in the real data).
+            (
+                "building.ai",
+                b"[cr_part1]\nncolors = 2\npal = pals/red.pal\npal = pals/blue.pal\n".to_vec(),
+            ),
+            (
+                "objects/shed/idle/idle.ani",
+                b"[animation]\ndir0 = a\ndir1 = b\nanimation = N\nx1 = 3\n".to_vec(),
+            ),
+            ("a/b/N", sprite.clone()),
+            (
+                "animals/Lion/lion.pal",
+                palette_file(&[MARKER, [1, 1, 1], [2, 2, 2], [3, 3, 3]]),
+            ),
+            ("color.pal", palette_file(&[MARKER, [9, 9, 9]])),
+            (
+                "pals/red.pal",
+                palette_file(&[MARKER, [100, 0, 0], [101, 0, 0]]),
+            ),
+            (
+                "pals/blue.pal",
+                palette_file(&[MARKER, [0, 0, 200], [0, 0, 201]]),
+            ),
+        ]
+    };
+    // The colours of the three pixels, from the left of the sprite file (this view is mirrored).
+    let draw = |name: &str, flag: &str, fullpal: &str, stored: &[u8]| {
+        let install = Install::new(name, &members(flag, fullpal));
+        let vfs = Vfs::open(&install.0).unwrap();
+        let catalogue = Catalogue::load(&vfs).unwrap();
+        let zoo = Zoo {
+            version: 106,
+            locale: 1033,
+            expansion: 0,
+            width: 1,
+            height: 1,
+            entrance: (0, 0),
+            habitat_count: 0,
+            id_counter: 0,
+            tiles: flat_map(1, 1),
+            entities: vec![crate::zoo::Entity {
+                class: "building".into(),
+                type_name: "building".into(),
+                subtype: "shed".into(),
+                body_size: None,
+                common: Some(crate::zoo::Common {
+                    x: 32,
+                    y: 32,
+                    z: 0,
+                    rotation: 0,
+                    id: 1,
+                    name: String::new(),
+                    colors: stored.to_vec(),
+                    fence: None,
+                }),
+            }],
+        };
+        let (image, summary) = MapRenderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
+        assert_eq!(summary.objects_drawn, 1, "{summary}");
+        let mut lit: Vec<[u8; 3]> = image
+            .pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|p| [p[0], p[1], p[2]])
+            .filter(|p| *p != [0, 0, 0])
+            .collect();
+        lit.reverse();
+        lit
+    };
+    // The palette of the sprite file is the one `fullpal` names, written with other letters and
+    // another separator.
+    let full = "Animals\\LION\\lion.pal";
+    // Nothing stored: the default variant, which the definition names the same way.
+    let blue = [[9, 9, 9], [0, 0, 200], [0, 0, 201]];
+    let red = [[9, 9, 9], [100, 0, 0], [101, 0, 0]];
+    assert_eq!(draw("recolour-default", "1", full, &[]), blue);
+    assert_eq!(draw("recolour-first", "1", full, &[0]), red);
+    assert_eq!(draw("recolour-second", "1", full, &[1, 7]), blue);
+    // A choice beyond the variants, or a type that does not ask for it, keeps the plain palette.
+    let plain = [[2, 2, 2], [3, 3, 3]];
+    assert_eq!(
+        draw("recolour-beyond", "1", full, &[5]),
+        [[9, 9, 9], plain[0], plain[1]]
+    );
+    assert_eq!(
+        draw("recolour-off", "0", full, &[0]),
+        [[1, 1, 1], plain[0], plain[1]]
+    );
+    // A sprite whose palette is not the `fullpal` one keeps its own fixed colours; only the
+    // group takes the variant.
+    let other = draw("recolour-other", "1", "objects/other/other.pal", &[0]);
+    assert_eq!(other, [[1, 1, 1], [100, 0, 0], [101, 0, 0]]);
 }

@@ -230,9 +230,23 @@ impl Animation {
     ///
     /// Draws nothing if the file index or the frame number is out of range.
     pub fn draw(&self, view: View, frame: usize, target: &mut Framebuffer, x: i32, y: i32) {
-        let Some((sprite, palette)) = self.sprites.get(view.file).map(|s| &**s) else {
+        self.draw_with(view, frame, target, x, y, None);
+    }
+
+    /// As [`Animation::draw`], with `palette` in place of the palette of the sprite file.
+    pub fn draw_with(
+        &self,
+        view: View,
+        frame: usize,
+        target: &mut Framebuffer,
+        x: i32,
+        y: i32,
+        palette: Option<&Palette>,
+    ) {
+        let Some((sprite, own)) = self.sprites.get(view.file).map(|s| &**s) else {
             return;
         };
+        let palette = palette.unwrap_or(own);
         let Some(frame) = sprite.frames.get(frame) else {
             return;
         };
