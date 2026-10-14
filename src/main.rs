@@ -173,7 +173,11 @@ usage: rustyzoo [--data <dir>] <command>
                       lines `startup ...` after the size and, in its first pass, `menu ...` lines
                       (continue enabled|disabled, version) and `menu exit`; a log that has them
                       replays. The first-run tutorial is not started (there are no scenarios yet)
-                      and a line says so. Starting a game from the menu comes later.
+                      and a line says so. The credits button shows the credits, whose pages replace one another
+                      every [credits] delay seconds (8) of interface time, in the order of the registry
+                      files ui/credits/credit*.cfg (descending names, version above 0): a log line
+                      `menu credits page N layout ID` for each, `menu credits end` after the last and
+                      `menu credits closed` when Exit closed them. Starting a game from the menu comes later.
   dump-layout [--size WxH] [--expansions N]
                       load the interface tree as check-layouts does and resolve it for a window
                       of W by H pixels (1024x768 by default; each side from 1 to 16384), then
