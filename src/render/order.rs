@@ -251,6 +251,11 @@ impl Scene {
         self.edge[t][d / 2]
     }
 
+    /// The number of quadrants the object holds.
+    pub fn quadrants(&self, o: usize) -> u32 {
+        self.covers[o]
+    }
+
     /// The path piece of a tile.
     pub fn path_of(&self, t: usize) -> Option<usize> {
         self.path[t]
@@ -473,6 +478,9 @@ impl Painter<'_> {
                 if self.state[p] == State::New {
                     break 'rows;
                 }
+                break;
+            }
+            if self.state[n] != State::New {
                 break;
             }
             i = n;
