@@ -18,6 +18,7 @@ use rustyzoo::sprite::write_png;
 use rustyzoo::timing::Timers;
 use rustyzoo::vfs::Vfs;
 
+use super::boot::boot;
 use super::{CliError, Report, check_types, load_map};
 
 /// The window of a run without `--size`.
@@ -182,6 +183,9 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
         .ok_or("the log does not start with its size")?;
     let mut passes: Vec<Logged> = Vec::new();
     for (n, line) in lines {
+        if line.starts_with("startup ") {
+            continue;
+        }
         let at = |why: String| format!("log line {}: {why}", n + 1);
         let mut words = line.splitn(4, ' ');
         let (Some("pass"), Some(pass), Some(clock), rest) =
@@ -199,7 +203,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             passes.push((key.0, key.1, Vec::new()));
         }
         let rest = rest.unwrap_or("");
-        if !["draw ", "interface ", "music ", "step ", "ui "]
+        if !["draw ", "interface ", "menu ", "music ", "step ", "ui "]
             .iter()
             .any(|k| rest.starts_with(k))
         {
@@ -210,7 +214,8 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
     Ok((size, passes))
 }
 
-pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
+/// Plays `member`, or, without one, starts up to the main menu.
+pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliError> {
     let flags = flags(words)?;
     let read = |file: &str| std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"));
     let (logged, size) = match &flags.replay {
@@ -226,10 +231,16 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     }
     .into_iter()
     .peekable();
-    let catalogue = Catalogue::load(vfs)?;
-    let zoo =
-        check_types(load_map(vfs, member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
     let ini = Config::parse(vfs.ini())?;
+    let loaded = match member {
+        Some(member) => {
+            let catalogue = Catalogue::load(vfs)?;
+            let zoo = check_types(load_map(vfs, member)?, &catalogue)
+                .map_err(|e| format!("{member}: {e}"))?;
+            Some((catalogue, zoo))
+        }
+        None => None,
+    };
     if !flags.headless {
         let window = crate::window::Flags {
             size: flags.size,
@@ -240,24 +251,49 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
             shot: flags.shot.as_deref(),
             show: &flags.show,
         };
-        return crate::window::run(vfs, &catalogue, zoo, &ini, window);
+        return crate::window::run(vfs, loaded, &ini, window);
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
-    let mut app = App::new(
-        MapRenderer::new(vfs, &catalogue),
-        zoo,
-        Settings::from_config(&ini),
-        Timers::from_config(&ini),
-        size,
-    )?;
-    if let Some(ui) = crate::layout::load_interface(vfs, size, &flags.show)? {
-        app.set_interface(ui);
-    }
-    // The game starts with the run: the menu music, which only the log tells of here, fades.
-    app.start_game(Music::from_config(&ini));
-    let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
+    let menu_catalogue;
     let mut report = Report::new();
-    report.line(format_args!("{}", app.log_header()));
+    let mut app = match loaded {
+        Some((catalogue, zoo)) => {
+            menu_catalogue = catalogue;
+            let mut app = App::new(
+                MapRenderer::new(vfs, &menu_catalogue),
+                zoo,
+                Settings::from_config(&ini),
+                Timers::from_config(&ini),
+                size,
+            )?;
+            if let Some(ui) = crate::layout::load_interface(vfs, size, &flags.show)? {
+                app.set_interface(ui);
+            }
+            // The game starts with the run: the menu music, which only the log tells of here,
+            // fades.
+            app.start_game(Music::from_config(&ini));
+            report.line(format_args!("{}", app.log_header()));
+            app
+        }
+        None => {
+            let booted = boot(vfs, &ini, size, &flags.show, &mut |_| Ok(()), &mut || {})?;
+            menu_catalogue = booted.catalogue;
+            let app = App::menu(
+                MapRenderer::new(vfs, &menu_catalogue),
+                Timers::from_config(&ini),
+                size,
+                booted.interface,
+                booted.menu,
+                Music::from_config(&ini),
+            )?;
+            report.line(format_args!("{}", app.log_header()));
+            for line in booted.lines {
+                report.line(format_args!("startup {line}"));
+            }
+            app
+        }
+    };
+    let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
     // Every pass of the scripted clock, or only the logged ones: a pass in which nothing fires
     // and no command comes changes nothing.
     let mut play = |pass: u64, now: u64, due: &[Command]| -> Result<bool, CliError> {

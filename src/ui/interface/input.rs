@@ -377,6 +377,7 @@ impl Interface {
 
     fn select(&mut self, b: usize) {
         let id = self.id(b);
+        self.selected.push(id);
         self.event(format!("select {id}"));
         let e = &self.tree.elements[b];
         let (action, target, layout) = (e.action, e.target, e.parent);

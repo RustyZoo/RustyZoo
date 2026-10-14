@@ -51,6 +51,9 @@ pub struct Resource<'a> {
 
 /// The resource type number of string tables (`RT_STRING`).
 pub const RT_STRING: u32 = 6;
+/// The resource type numbers of bitmaps (`RT_BITMAP`) and version information (`RT_VERSION`).
+pub const RT_BITMAP: u32 = 2;
+pub const RT_VERSION: u32 = 16;
 const MAX_NAME_CHARS: usize = 64;
 /// The Windows loader refuses more; the game's libraries have five or six.
 const MAX_SECTIONS: usize = 96;

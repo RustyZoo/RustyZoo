@@ -53,6 +53,23 @@ impl Library {
     }
 }
 
+/// The names of the files of the folder that match `<prefix>*.dll` (letter case ignored), the
+/// greatest first, comparing the names as stored: the order of lookup.
+pub(crate) fn library_names(install_dir: &Path, prefix: &str) -> Result<Vec<String>, StringsError> {
+    let listing = std::fs::read_dir(install_dir)
+        .map_err(|e| StringsError(format!("cannot read folder {}: {e}", install_dir.display())))?;
+    let names: BTreeSet<String> = listing
+        .flatten()
+        .filter(|entry| entry.path().is_file())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| {
+            let lower = name.to_ascii_lowercase();
+            lower.starts_with(prefix) && lower.ends_with(".dll")
+        })
+        .collect();
+    Ok(names.into_iter().rev().collect())
+}
+
 /// The `lang*.dll` libraries of one install, in lookup order.
 pub struct StringTables {
     libraries: Vec<Library>,
@@ -64,21 +81,9 @@ impl StringTables {
     /// Fails if the folder cannot be read or holds no usable `lang*.dll`. A matching file that
     /// is not a PE file with resources is skipped.
     pub fn open(install_dir: &Path) -> Result<StringTables, StringsError> {
-        let listing = std::fs::read_dir(install_dir).map_err(|e| {
-            StringsError(format!("cannot read folder {}: {e}", install_dir.display()))
-        })?;
-        // The match ignores letter case; the order does not.
-        let names: BTreeSet<String> = listing
-            .flatten()
-            .filter(|entry| entry.path().is_file())
-            .filter_map(|entry| entry.file_name().into_string().ok())
-            .filter(|name| {
-                let lower = name.to_ascii_lowercase();
-                lower.starts_with("lang") && lower.ends_with(".dll")
-            })
-            .collect();
+        let names = library_names(install_dir, "lang")?;
         let mut libraries = Vec::new();
-        for name in names.iter().rev() {
+        for name in &names {
             let path = install_dir.join(name);
             let size =
                 std::fs::metadata(&path).map_err(|e| StringsError(format!("{name}: {e}")))?;

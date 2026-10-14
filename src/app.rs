@@ -1,5 +1,7 @@
 //! The game state of the map view and its pass: the map, the staged picture, the camera, the
-//! timers, the calendar and the pause flag, driven by [`Command`]s. No window and no input
+//! timers, the calendar and the pause flag, driven by [`Command`]s. Before a game is started (the
+//! main menu) there is no map: the pass runs the timers and the interface, and the menu acts on
+//! what the player selects. No window and no input
 //! events: a shell turns what the player does into commands and presents the frames that
 //! [`App::pass`] paints, so a windowed run and a scripted one share every line of this.
 //!
@@ -17,6 +19,7 @@ use std::str::FromStr;
 
 use crate::Framebuffer;
 use crate::camera::{Camera, Settings};
+use crate::menu::Menu;
 use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
 use crate::timing::{Calendar, Pass, Timers};
@@ -205,14 +208,20 @@ const IDLE: Pass = Pass {
 /// What the camera looked like when a frame was painted: the frame changes with nothing else.
 type Look = ((i32, i32), i32, u8);
 
-pub struct App<'a> {
-    renderer: MapRenderer<'a>,
+/// A zoo being played.
+struct Game {
     zoo: Zoo,
     staged: Staged,
     camera: Camera,
-    timers: Timers,
     calendar: Calendar,
     paused: bool,
+}
+
+pub struct App<'a> {
+    renderer: MapRenderer<'a>,
+    /// The zoo being played; `None` in the main menu.
+    game: Option<Game>,
+    timers: Timers,
     quit: bool,
     pointer: Option<(i32, i32)>,
     frame: Framebuffer,
@@ -232,8 +241,14 @@ pub struct App<'a> {
     /// sounds it asked for.
     ui_events: Vec<String>,
     ui_sounds: Vec<&'static str>,
-    /// The camera when the last draw fired, before the interface moved it.
-    drawn_at: Look,
+    /// The camera when the last draw fired, before the interface moved it; `None` without a game.
+    drawn_at: Option<Look>,
+    /// The main menu, while the player is in it.
+    menu: Option<Menu>,
+    /// What the menu did and has not been logged yet, one line each (the lines of its first
+    /// show open the log of the first pass), and what it did in the last pass.
+    menu_events: Vec<String>,
+    menu_lines: Vec<String>,
     /// The menu music, until the game has none (`noMenuMusic`) or it is stopped.
     music: Option<Music>,
     /// Whether the interface update of the last pass changed the music's volume or stopped it.
@@ -243,24 +258,54 @@ pub struct App<'a> {
 impl<'a> App<'a> {
     /// A game on `zoo` seen through a window of `size` pixels, with the camera the map stores.
     pub fn new(
-        mut renderer: MapRenderer<'a>,
+        renderer: MapRenderer<'a>,
         zoo: Zoo,
         settings: Settings,
         timers: Timers,
         size: (u32, u32),
     ) -> Result<App<'a>, RenderError> {
-        check_size(&[0, 0, i64::from(size.0), i64::from(size.1)])?;
+        let mut app = App::empty(renderer, timers, size)?;
         let camera = Camera::open(&zoo.view, (size.0 as i32, size.1 as i32), settings);
-        let staged = renderer.stage(&zoo, camera.rotation, false)?;
-        let drawn_at = (camera.scroll, camera.zoom, camera.rotation);
-        Ok(App {
-            renderer,
+        let staged = app.renderer.stage(&zoo, camera.rotation, false)?;
+        app.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation));
+        app.game = Some(Game {
             zoo,
             staged,
             camera,
-            timers,
             calendar: Calendar::new(),
             paused: false,
+        });
+        Ok(app)
+    }
+
+    /// The main menu seen through a window of `size` pixels: no game yet, the `menu` acting on
+    /// what is selected in `ui`, and the menu music (if any) playing at full level.
+    pub fn menu(
+        renderer: MapRenderer<'a>,
+        timers: Timers,
+        size: (u32, u32),
+        mut ui: Interface,
+        mut menu: Menu,
+        music: Option<Music>,
+    ) -> Result<App<'a>, RenderError> {
+        let mut app = App::empty(renderer, timers, size)?;
+        app.menu_events = menu.show(&mut ui);
+        app.set_interface(ui);
+        app.menu = Some(menu);
+        app.music = music;
+        Ok(app)
+    }
+
+    fn empty(
+        renderer: MapRenderer<'a>,
+        timers: Timers,
+        size: (u32, u32),
+    ) -> Result<App<'a>, RenderError> {
+        check_size(&[0, 0, i64::from(size.0), i64::from(size.1)])?;
+        Ok(App {
+            renderer,
+            game: None,
+            timers,
             quit: false,
             pointer: None,
             frame: Framebuffer::new(size.0, size.1),
@@ -272,7 +317,10 @@ impl<'a> App<'a> {
             drew: false,
             ui_events: Vec::new(),
             ui_sounds: Vec::new(),
-            drawn_at,
+            drawn_at: None,
+            menu: None,
+            menu_events: Vec::new(),
+            menu_lines: Vec::new(),
             music: None,
             music_changed: false,
         })
@@ -304,6 +352,7 @@ impl<'a> App<'a> {
     /// after it and the timers do not run (main loop 3.1), and neither does any later pass.
     pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
+        self.menu_lines.clear();
         (self.ui_events, self.ui_sounds) = (Vec::new(), Vec::new());
         self.music_changed = false;
         for &command in commands {
@@ -320,14 +369,21 @@ impl<'a> App<'a> {
             self.ui_events.extend(ui.take_events());
             self.ui_sounds.extend(ui.take_sounds());
         }
+        self.menu_acts();
+        self.menu_lines = std::mem::take(&mut self.menu_events);
+        if self.quit {
+            return None;
+        }
         self.fired = self.timers.pass(now, 1.0);
         if self.fired.draw {
             self.drawn_at = self.look();
             self.drew = self.paint();
         }
         if let Some(period) = self.fired.interface {
-            if self.map_keys() {
-                self.camera.edge_scroll(&self.zoo, now, self.pointer);
+            if self.map_keys()
+                && let Some(game) = &mut self.game
+            {
+                game.camera.edge_scroll(&game.zoo, now, self.pointer);
             }
             if let Some(ui) = &mut self.ui {
                 ui.update(period);
@@ -338,10 +394,11 @@ impl<'a> App<'a> {
                 self.music_changed = music.update(period);
             }
         }
-        if let Some(step) = self.fired.step
-            && !self.paused
+        if let Some(game) = &mut self.game
+            && let Some(step) = self.fired.step
+            && !game.paused
         {
-            self.calendar.advance(step);
+            game.calendar.advance(step);
         }
         self.drew.then_some(&self.frame)
     }
@@ -366,35 +423,48 @@ impl<'a> App<'a> {
     }
 
     fn apply(&mut self, command: Command) {
-        match command {
-            Command::Scroll(x, y) if self.map_keys() => self.camera.key_scroll(&self.zoo, (x, y)),
-            Command::Pointer(at) => self.pointer = at,
-            Command::Rotate(clockwise) if self.map_keys() => {
-                let before = self.camera.clone();
-                self.camera.rotate(&self.zoo, None, clockwise);
-                // Restage from the new side. If that fails the view stays as it was.
-                match self.renderer.stage(&self.zoo, self.camera.rotation, false) {
-                    Ok(staged) => self.staged = staged,
-                    Err(_) => self.camera = before,
-                }
-            }
-            Command::Zoom(zoom_in) if self.map_keys() => self.camera.zoom(&self.zoo, None, zoom_in),
-            Command::Fullscreen(on) => self.camera.set_fullscreen(&self.zoo, on),
-            Command::Pause if self.map_keys() => self.paused = !self.paused,
-            Command::Quit => self.quit = true,
-            Command::Mouse(mouse) => {
+        let keys = self.map_keys();
+        match (command, &mut self.game) {
+            (Command::Pointer(at), _) => self.pointer = at,
+            (Command::Quit, _) => self.quit = true,
+            (Command::Mouse(mouse), _) => {
                 if let Some(ui) = &mut self.ui {
                     ui.mouse(mouse);
                 }
             }
-            // The map view's keys while it does not have them, and the keys and characters,
-            // which the widgets that take them (text fields, dialogs) read in later issues.
-            Command::Scroll(..)
-            | Command::Rotate(_)
-            | Command::Zoom(_)
-            | Command::Pause
-            | Command::Key(..)
-            | Command::Char(_) => {}
+            (Command::Scroll(x, y), Some(game)) if keys => {
+                game.camera.key_scroll(&game.zoo, (x, y));
+            }
+            (Command::Rotate(clockwise), Some(game)) if keys => {
+                let before = game.camera.clone();
+                game.camera.rotate(&game.zoo, None, clockwise);
+                // Restage from the new side. If that fails the view stays as it was.
+                match self.renderer.stage(&game.zoo, game.camera.rotation, false) {
+                    Ok(staged) => game.staged = staged,
+                    Err(_) => game.camera = before,
+                }
+            }
+            (Command::Zoom(zoom_in), Some(game)) if keys => {
+                game.camera.zoom(&game.zoo, None, zoom_in);
+            }
+            (Command::Fullscreen(on), Some(game)) => game.camera.set_fullscreen(&game.zoo, on),
+            (Command::Pause, Some(game)) if keys => game.paused = !game.paused,
+            // The map view's keys while it does not have them or there is no game, and the keys
+            // and characters, which the widgets that take them (text fields, dialogs) read in
+            // later issues.
+            _ => {}
+        }
+    }
+
+    /// The menu acts on what the player selected in the last pass.
+    fn menu_acts(&mut self) {
+        let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) else {
+            return;
+        };
+        for id in ui.take_selected() {
+            let (lines, exit) = menu.selected(ui, id);
+            self.menu_events.extend(lines);
+            self.quit |= exit;
         }
     }
 
@@ -402,7 +472,7 @@ impl<'a> App<'a> {
     /// interface changed.
     fn paint(&mut self) -> bool {
         let look = self.look();
-        let moved = self.painted != Some(look);
+        let moved = self.painted != look;
         if !moved && !self.ui.as_ref().is_some_and(Interface::dirty) {
             return false;
         }
@@ -411,38 +481,46 @@ impl<'a> App<'a> {
             Some(_) => &mut self.map,
             None => &mut self.frame,
         };
-        if moved {
-            self.staged.draw(
+        if moved && let Some(game) = &self.game {
+            game.staged.draw(
                 target,
-                self.camera.scroll.0,
-                self.camera.scroll.1,
-                self.camera.zoom,
+                game.camera.scroll.0,
+                game.camera.scroll.1,
+                game.camera.zoom,
             );
-            self.painted = Some(look);
+            self.painted = look;
         }
         if let Some(ui) = &mut self.ui {
             let map = &self.map;
+            let game = self.game.is_some();
             ui.paint(&mut self.frame, &mut |frame, rect| {
-                copy_rect(frame, map, rect)
+                if game {
+                    copy_rect(frame, map, rect);
+                }
             });
         }
         true
     }
 
-    fn look(&self) -> Look {
-        (self.camera.scroll, self.camera.zoom, self.camera.rotation)
+    /// The camera as it looks now; `None` without a game.
+    fn look(&self) -> Option<Look> {
+        self.game
+            .as_ref()
+            .map(|g| (g.camera.scroll, g.camera.zoom, g.camera.rotation))
     }
 
-    pub fn camera(&self) -> &Camera {
-        &self.camera
+    /// The camera of the game; `None` in the menu.
+    pub fn camera(&self) -> Option<&Camera> {
+        self.game.as_ref().map(|g| &g.camera)
     }
 
-    pub fn calendar(&self) -> &Calendar {
-        &self.calendar
+    /// The calendar of the game; `None` in the menu.
+    pub fn calendar(&self) -> Option<&Calendar> {
+        self.game.as_ref().map(|g| &g.calendar)
     }
 
     pub fn paused(&self) -> bool {
-        self.paused
+        self.game.as_ref().is_some_and(|g| g.paused)
     }
 
     /// Whether the player asked to close the game.
@@ -468,10 +546,12 @@ impl<'a> App<'a> {
 
     /// The lines of the last pass, each led by the pass index and the clock: one per command it
     /// applied, in the text form of a script, then one per thing the interface did (`ui hover 7111`,
-    /// `ui press ...`, `ui sound uiclick`, `ui select`, `ui show`, `ui hide`, `ui drag`), then one per timer that fired, in the order draw,
+    /// `ui press ...`, `ui sound uiclick`, `ui select`, `ui show`, `ui hide`, `ui drag`), then one per thing the main menu did
+    /// (`menu continue enabled NAME`, `menu continue disabled`, `menu version V` when it appears, `menu exit`),
+    /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
-    /// with, a step the new date. A pass that did nothing has no line.
+    /// with (none without a game), a step the new date (none without a game). A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
@@ -479,15 +559,18 @@ impl<'a> App<'a> {
         let lead = format!("pass {pass} t={now}");
         lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
         lines.extend(self.ui_events.iter().map(|e| format!("{lead} ui {e}")));
+        lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
         if self.fired.draw {
             let hash = match self.drew {
                 true => format!("{:016x}", frame_hash(&self.frame)),
                 false => "-".into(),
             };
-            let ((x, y), zoom, rotation) = self.drawn_at;
-            lines.push(format!(
-                "{lead} draw {hash} view={x},{y} rotation={rotation} zoom={zoom}"
-            ));
+            lines.push(match self.drawn_at {
+                Some(((x, y), zoom, rotation)) => {
+                    format!("{lead} draw {hash} view={x},{y} rotation={rotation} zoom={zoom}")
+                }
+                None => format!("{lead} draw {hash}"),
+            });
         }
         if let Some(period) = self.fired.interface {
             lines.push(format!("{lead} interface {period}"));
@@ -495,9 +578,11 @@ impl<'a> App<'a> {
                 lines.push(format!("{lead} {}", music.log_line()));
             }
         }
-        if let Some(step) = self.fired.step {
-            let d = self.calendar.date();
-            let paused = if self.paused { " paused" } else { "" };
+        if let Some(step) = self.fired.step
+            && let Some(game) = &self.game
+        {
+            let d = game.calendar.date();
+            let paused = if game.paused { " paused" } else { "" };
             lines.push(format!(
                 "{lead} step {step} {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}{paused}",
                 d.year, d.month, d.day, d.hour, d.minute, d.second, d.millisecond

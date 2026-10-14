@@ -416,6 +416,14 @@ impl Vfs {
         Ok(())
     }
 
+    /// The number of directories of the search path that exist.
+    pub fn directory_count(&self) -> usize {
+        self.sources
+            .iter()
+            .filter(|s| matches!(s, Source::Directory(_)))
+            .count()
+    }
+
     /// The number of archives (`*.ztd` and `*.zip`) accepted.
     pub fn archive_count(&self) -> usize {
         self.sources
@@ -744,7 +752,7 @@ fn resource_path(ini: &str) -> Option<String> {
 
 /// The entry of `directory` called `name` in any letter case, of the given kind (directory or
 /// file). If several differ only in case, the first in sorted order is taken.
-fn find_ignoring_case(
+pub(crate) fn find_ignoring_case(
     directory: &Path,
     name: &str,
     want_directory: bool,
