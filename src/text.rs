@@ -5,7 +5,8 @@
 //! ("Arial Bold", "11"). The size in points becomes a pixel size (ppem) at 96 dpi, the line
 //! height and baseline follow from the vertical metrics of Arial, and every advance is rounded
 //! to whole pixels per character, so a string's width is the sum of whole advances with no
-//! kerning. Strings are Windows-1252 bytes.
+//! kerning. Strings are Windows-1252 bytes. Text is wrapped, aligned, clipped and drawn into a
+//! canvas as `DrawText` does it (`layout`, `draw`).
 //!
 //! The font files are embedded unmodified (see `fonts/README.md`), so the metrics and the
 //! pictures are the same on every system. Fonts are cached per (face, size) and glyphs per
@@ -202,6 +203,12 @@ pub fn to_cp1252(text: &str) -> Vec<u8> {
         .map(|c| (0..=255u8).find(|&b| from_cp1252(b) == c).unwrap_or(b'?'))
         .collect()
 }
+
+mod draw;
+mod layout;
+
+pub use draw::{Style, draw, fill_color, text_color};
+pub use layout::{Justify, Line, Rect, layout, measure, tooltip_size};
 
 #[cfg(test)]
 mod tests;
