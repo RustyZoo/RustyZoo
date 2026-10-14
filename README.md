@@ -63,6 +63,10 @@ The game loads every `lang*.dll` of the install folder, ordered by file name fro
 
 The plan and its progress are in the [milestones](https://github.com/RustyZoo/RustyZoo/milestones); the work in progress is on the public [project board](https://github.com/orgs/RustyZoo/projects/1).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [architecture](docs/architecture.md).
+
 ## Related projects
 
 - [OpenZT](https://github.com/openzt1/openzt): a work-in-progress reimplementation of Zoo Tycoon (2001), written in Rust.
