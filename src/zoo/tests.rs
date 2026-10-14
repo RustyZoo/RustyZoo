@@ -114,8 +114,7 @@ fn tail(w: &mut W, v: u32) {
     if v >= 51 {
         w.u32(4 + 5 + 4 + 8).str("scn/x").u32(8).z(8);
     } else {
-        w.u32(5).str("x"); // the bytes of a name, here a string, five of them
-        w.z(0);
+        w.u32(5).str("x"); // before 51 the block is the name alone
     }
     w.u32(2).str("a").u32(1).str("b").u32(2); // name counters
     w.z(4 + 12 + 1 + 16 + 4 + 8);
@@ -157,7 +156,7 @@ fn tail(w: &mut W, v: u32) {
     }
 }
 
-/// The common part of a body; the fields before it are `prefix`.
+/// The common part of every body.
 fn base(w: &mut W, v: u32, rot: u32, id: u32, name: &str) {
     w.i32(100).i32(-5).i32(32).u32(rot).u32(id).str(name);
     if v <= 62 {
@@ -271,8 +270,8 @@ fn fence(v: u32, id: u32) -> Vec<u8> {
 
 /// Every version that has a distinct layout somewhere.
 const VERSIONS: [u32; 28] = [
-    38, 40, 45, 48, 55, 58, 60, 63, 66, 67, 70, 71, 75, 82, 83, 85, 89, 90, 96, 97, 98, 99, 101,
-    103, 104, 105, 106, 69,
+    38, 40, 45, 48, 55, 58, 60, 63, 66, 67, 69, 70, 71, 75, 82, 83, 85, 89, 90, 96, 97, 98, 99,
+    101, 103, 104, 105, 106,
 ];
 
 #[test]
