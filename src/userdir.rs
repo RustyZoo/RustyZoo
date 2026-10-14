@@ -78,32 +78,35 @@ pub fn save(dir: &Path, section: &str, key: &str, value: &str) -> Result<(), Str
 mod tests {
     use super::*;
 
-    fn paths(os: &str, vars: &[(&str, &str)]) -> Option<String> {
+    fn paths(os: &str, vars: &[(&str, &str)]) -> Option<PathBuf> {
         dir_of(os, |name| {
             vars.iter()
                 .find(|(n, _)| *n == name)
                 .map(|(_, value)| OsString::from(value))
         })
-        .map(|dir| dir.to_string_lossy().replace('\\', "/"))
     }
 
     #[test]
     fn the_folder_depends_on_the_system() {
         let home = [("HOME", "/h")];
-        assert_eq!(paths("linux", &home).unwrap(), "/h/.config/RustyZoo");
-        let xdg = [("HOME", "/h"), ("XDG_CONFIG_HOME", "/x")];
-        assert_eq!(paths("linux", &xdg).unwrap(), "/x/RustyZoo");
+        let path = |text: &str| Some(PathBuf::from(text));
+        assert_eq!(paths("linux", &home), path("/h/.config/RustyZoo"));
+        // Absolute on the host that runs the test, whatever its rules for paths.
+        let absolute = std::env::temp_dir();
+        let xdg = absolute.to_str().unwrap();
+        let set = [("HOME", "/h"), ("XDG_CONFIG_HOME", xdg)];
+        assert_eq!(paths("linux", &set), Some(absolute.join("RustyZoo")));
         let relative = [("HOME", "/h"), ("XDG_CONFIG_HOME", "x")];
-        assert_eq!(paths("linux", &relative).unwrap(), "/h/.config/RustyZoo");
+        assert_eq!(paths("linux", &relative), path("/h/.config/RustyZoo"));
         let empty = [("HOME", "/h"), ("XDG_CONFIG_HOME", "")];
-        assert_eq!(paths("linux", &empty).unwrap(), "/h/.config/RustyZoo");
+        assert_eq!(paths("linux", &empty), path("/h/.config/RustyZoo"));
         assert_eq!(
-            paths("macos", &home).unwrap(),
-            "/h/Library/Application Support/RustyZoo"
+            paths("macos", &home),
+            path("/h/Library/Application Support/RustyZoo")
         );
         assert_eq!(
-            paths("windows", &[("APPDATA", "C:/a")]).unwrap(),
-            "C:/a/RustyZoo"
+            paths("windows", &[("APPDATA", "C:/a")]),
+            path("C:/a/RustyZoo")
         );
     }
 
@@ -114,8 +117,8 @@ mod tests {
         assert_eq!(paths("windows", &[("HOME", "/h")]), None);
         assert_eq!(paths("macos", &[]), None);
         let both = [("HOME", "/h"), ("RUSTYZOO_USER_DIR", "/t")];
-        assert_eq!(paths("linux", &both).unwrap(), "/t");
-        assert_eq!(paths("windows", &both).unwrap(), "/t");
+        assert_eq!(paths("linux", &both), Some(PathBuf::from("/t")));
+        assert_eq!(paths("windows", &both), Some(PathBuf::from("/t")));
         assert_eq!(paths("linux", &[("RUSTYZOO_USER_DIR", "")]), None);
     }
 
