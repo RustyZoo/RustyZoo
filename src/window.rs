@@ -155,14 +155,11 @@ pub fn run(
     // The scale of the display, before there is a window: its content scale and pixel density.
     let density = display.get_mode().map_or(1.0, |m| m.pixel_density);
     let scale = display.get_content_scale().unwrap_or(1.0) * density;
-    let (size, usable) = match flags.size {
-        Some(size) => (size, (0, 0)),
-        None => {
-            let pixels = |n: u32| (n as f32 * density) as u32;
-            let game = clamp(ini_size(ini), (pixels(usable.0), pixels(usable.1)));
-            (game, usable)
-        }
-    };
+    // `--size` is not cut, but the factor still gives way when the window does not fit.
+    let size = flags.size.unwrap_or_else(|| {
+        let pixels = |n: u32| (n as f32 * density) as u32;
+        clamp(ini_size(ini), (pixels(usable.0), pixels(usable.1)))
+    });
     let (k, want) = plan(size, scale, density, usable);
     let window = video
         .window("RustyZoo", want.0, want.1)

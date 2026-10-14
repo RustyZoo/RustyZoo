@@ -81,7 +81,7 @@ The game loads every `lang*.dll` of the install folder, ordered by file name fro
 
 `rustyzoo run <map>` opens a window and plays the map in it with the loop of the original: it handles all waiting events, runs the three timers (draw, interface, simulation) on the real clock, and sleeps until the next one is due. Closing the window ends the run.
 
-- The game is `screenwidth` x `screenheight` pixels in the ini file, cut to the usable area of the display; `--size WxH` overrides it and is not cut. The window is enlarged by the display scale (see below).
+- The game is `screenwidth` x `screenheight` pixels in the ini file, cut to the usable area of the display; `--size WxH` overrides it and is not cut (the factor still gives way if the window does not fit). The window is enlarged by the display scale (see below).
 - `--passes N` ends the run after N passes, `--timing MS` after MS milliseconds. `--log FILE` writes the lines a headless run prints, and `run --headless --replay FILE` plays them again with the same frame hashes. `run --headless` needs no window at all: it takes a scripted clock (`--passes` with `--clock`) or a replay.
 - While the window is minimised or hidden, the loop blocks (no drawing, no simulation, almost no CPU) and resumes when it is shown again.
 - `--timing MS` prints, for each timer, the count, minimum, median, 95th percentile and maximum of the gaps between its firings in milliseconds, next to the period it should keep, and a histogram of the gaps. It is information: nothing fails on a value.
