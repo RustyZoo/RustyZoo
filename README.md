@@ -71,6 +71,10 @@ The game loads every `lang*.dll` of the install folder, ordered by file name fro
 - [ ] Full game: scenarios, campaigns and everything else the original has
 - [ ] Packaging: ready-to-run releases for Windows, macOS and Linux
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [architecture](docs/architecture.md).
+
 ## Related projects
 
 - [OpenZT](https://github.com/openzt1/openzt): a work-in-progress reimplementation of Zoo Tycoon (2001), written in Rust.
