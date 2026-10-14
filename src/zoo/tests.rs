@@ -695,3 +695,79 @@ fn the_rich_files_parse() {
         assert!(z.entities[0].common.is_some());
     }
 }
+
+/// The facts below were measured on Zoo Tycoon: Complete Collection.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_facts() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let load = |member: &str| Zoo::parse(&vfs.read(member).unwrap());
+
+    let map = load("maps/default.zoo").unwrap();
+    assert_eq!(
+        (map.version, map.locale, map.width, map.height),
+        (70, 1033, 75, 75)
+    );
+    assert_eq!(
+        (map.entrance, map.habitat_count, map.id_counter),
+        ((11, 42), 0, 14907)
+    );
+    assert_eq!((map.tiles.len(), map.entities.len()), (5625, 392));
+    let first = map.tiles[0];
+    assert_eq!(
+        (first.elevation, first.shape, first.terrain, first.edges),
+        (0, 0, 0, 0)
+    );
+    let fence = &map.entities[0];
+    assert_eq!(
+        (&*fence.class, &*fence.type_name, &*fence.subtype),
+        ("fences", "zoowall", "f")
+    );
+    assert_eq!(fence.body_size, Some(98));
+    let c = fence.common.as_ref().unwrap();
+    assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (767, 2848, 0, 2, 2));
+
+    let save = load("saved games/test.zoo").unwrap();
+    assert_eq!(
+        (save.version, save.expansion, save.width, save.height),
+        (106, 0, 125, 125)
+    );
+    assert_eq!(
+        (save.entrance, save.habitat_count, save.id_counter),
+        ((12, 73), 6, 166520)
+    );
+    assert_eq!((save.tiles.len(), save.entities.len()), (15625, 1683));
+    let first = save.tiles[0];
+    assert_eq!((first.elevation, first.shape, first.terrain), (-2, 0, 10));
+    let path = &save.entities[0];
+    assert_eq!(
+        (&*path.class, &*path.type_name, &*path.subtype),
+        ("paths", "paths", "path")
+    );
+    assert_eq!(path.body_size, Some(84));
+    let c = path.common.as_ref().unwrap();
+    assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (800, 4704, 0, 4, 37091));
+
+    // Every .zoo file: 96 load, 3 are older than version 38, 6 of version 38 are corrupted.
+    let (mut ok, mut old, mut corrupted, mut transient, mut skipped) = (0, 0, 0, 0, 0);
+    for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
+        match load(member) {
+            Ok(zoo) => {
+                ok += 1;
+                transient += zoo
+                    .entities
+                    .iter()
+                    .filter(|e| e.body_size == Some(0))
+                    .count();
+                skipped += zoo.entities.iter().filter(|e| e.common.is_none()).count();
+            }
+            Err(ZooError::TooOld(_)) => old += 1,
+            Err(ZooError::Corrupted(_)) => corrupted += 1,
+            Err(e) => panic!("{member}: {e}"),
+        }
+    }
+    assert_eq!((ok, old, corrupted), (96, 3, 6));
+    // The only bodies not decoded are the 939 of size 0.
+    assert_eq!((transient, skipped), (939, 939));
+}
