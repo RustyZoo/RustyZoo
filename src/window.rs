@@ -106,6 +106,9 @@ fn plan(game: (u32, u32), scale: f32, density: f32, usable: (u32, u32)) -> (u32,
     (k, (points(game.0), points(game.1)))
 }
 
+/// The most the loop spins at the end of a wait, in milliseconds, however late a wait was.
+const MAX_SLACK_MS: f64 = 10.0;
+
 /// Whether the window is hidden or minimised, from its flags. The flags are read, not followed
 /// through the events: a restore that comes as another event cannot leave the loop asleep.
 fn asleep(flags: WindowFlags) -> bool {
@@ -246,6 +249,7 @@ pub fn run(
     let mut shown = false;
     let mut pointer = None;
     let mut held = false;
+    let mut slack = 0.0_f64;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
@@ -325,10 +329,26 @@ pub fn run(
         if app.quit() || timed || flags.passes.is_some_and(|n| pass >= n) {
             break;
         }
-        // Sleep until a timer is due or something happens.
+        // Wait for an event until shortly before a timer is due, then poll until it is: a timed
+        // wait alone overshoots by milliseconds on some systems. The margin follows how far
+        // the waits overshot lately, so a precise system spins for a millisecond only.
         let due = app.next_due(sdl3::timer::ticks() - start);
-        if let Some(event) = pump.wait_event_timeout_ms(due.min(u64::from(u32::MAX)) as u32) {
-            state.note(event, &mut commands);
+        let early = due
+            .saturating_sub(slack.ceil() as u64 + 1)
+            .min(u64::from(u32::MAX));
+        let waited = std::time::Instant::now();
+        match pump.wait_event_timeout_ms(early as u32) {
+            Some(event) => state.note(event, &mut commands),
+            None => {
+                let over = waited.elapsed().as_secs_f64() * 1e3 - early as f64;
+                slack = over.clamp(0.0, MAX_SLACK_MS).max(slack * 0.95);
+                while app.next_due(sdl3::timer::ticks() - start) > 0 {
+                    if let Some(event) = pump.poll_event() {
+                        state.note(event, &mut commands);
+                    }
+                    std::thread::yield_now();
+                }
+            }
         }
     }
     if let Some(mut log) = log {
