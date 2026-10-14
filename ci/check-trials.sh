@@ -93,6 +93,9 @@ check expansion-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | pa
 # Headless frames equal the same window drawn by render-map: four frames of a scripted run.
 check base-trial 4same "same_frames maps/default.zoo"
 check expansion-trial 4same "same_frames maps/scn19.zoo"
+# A log replayed gives the same log, so the same frame hashes: its commands and the clock of each
+# pass that did something are read back, at the size of the window. The clock here is irregular.
+check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate cw\n5 pointer 0 0\n9 pause\n11 quit\n" >"$f"; rz run maps/default.zoo --headless --passes 12 --clock 23 --size 640x480 --script "$f" >"$g"; rz run maps/default.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$f" "$g"'
 
 # WAV files decoded: files, ok, failed; the counts per format (sample type, rate, channels).
 check base-trial 48,48,0 "rz check-wavs | tail -1 | grep -o '[0-9]*' | paste -sd, -"

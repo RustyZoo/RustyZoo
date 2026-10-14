@@ -77,6 +77,13 @@ impl FromStr for Command {
     }
 }
 
+/// A pass in which no timer fired.
+const IDLE: Pass = Pass {
+    draw: false,
+    interface: None,
+    step: None,
+};
+
 /// What the camera looked like when a frame was painted: the frame changes with nothing else.
 type Look = ((i32, i32), i32, u8);
 
@@ -93,7 +100,8 @@ pub struct App<'a> {
     frame: Framebuffer,
     /// The look of the frame in `frame`; `None` before the first one.
     painted: Option<Look>,
-    /// What the last pass did.
+    /// What the last pass did: the commands it applied and the timers it fired.
+    applied: Vec<Command>,
     fired: Pass,
     /// Whether the last pass painted a frame.
     drew: bool,
@@ -126,11 +134,8 @@ impl<'a> App<'a> {
             pointer: None,
             frame: Framebuffer::new(size.0, size.1),
             painted: None,
-            fired: Pass {
-                draw: false,
-                interface: None,
-                step: None,
-            },
+            applied: Vec::new(),
+            fired: IDLE,
             drew: false,
             drawn_at,
         })
@@ -138,17 +143,24 @@ impl<'a> App<'a> {
 
     /// One pass at the clock reading `now` (ms) with the commands that came before it. Returns
     /// the frame when this pass painted one: a due draw paints only when the camera has moved
-    /// since the last frame.
+    /// since the last frame. A `Quit` ends the game before the rest of the pass: the commands
+    /// after it and the timers do not run (main loop 3.1), and neither does any later pass.
     pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
+        (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         for &command in commands {
+            if self.quit {
+                return None;
+            }
+            self.applied.push(command);
             self.apply(command);
+        }
+        if self.quit {
+            return None;
         }
         self.fired = self.timers.pass(now, 1.0);
         if self.fired.draw {
             self.drawn_at = self.look();
             self.drew = self.paint();
-        } else {
-            self.drew = false;
         }
         if self.fired.interface.is_some() {
             self.camera.edge_scroll(&self.zoo, now, self.pointer);
@@ -224,13 +236,21 @@ impl<'a> App<'a> {
         self.fired
     }
 
-    /// One line per timer that fired in the last pass, in the order draw, interface, step,
-    /// each led by the pass index and the clock: a draw tells the hash of the frame it painted
-    /// (`-` if it painted none) and the camera it drew with, a step the new date. A windowed run prints the
-    /// same lines, so a replay of its commands gives the same hashes.
+    /// The first line of a log: the size of the window, which the frames depend on.
+    pub fn log_header(&self) -> String {
+        format!("size {}x{}", self.frame.width, self.frame.height)
+    }
+
+    /// The lines of the last pass, each led by the pass index and the clock: one per command it
+    /// applied, in the text form of a script, then one per timer that fired, in the order draw,
+    /// interface, step. A draw tells the hash of the frame it painted (`-` if it painted none)
+    /// and the camera it drew with, a step the new date. A pass that did nothing has no line.
+    /// A log, with the size of the window, is all a replay needs: the commands and the clock of
+    /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
         let mut lines = Vec::new();
         let lead = format!("pass {pass} t={now}");
+        lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
         if self.fired.draw {
             let hash = match self.drew {
                 true => format!("{:016x}", frame_hash(&self.frame)),

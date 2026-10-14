@@ -72,6 +72,25 @@ fn the_timers_fire_in_the_sequence_of_a_scripted_clock() {
 }
 
 #[test]
+fn the_log_tells_the_commands_of_a_pass_before_its_timers() {
+    with_app("app-commands-log", |app, _| {
+        app.pass(0, &[]);
+        app.pass(20, &[Command::Scroll(1, 0), Command::Pointer(None)]);
+        let lines = app.log_lines(1, 20);
+        assert_eq!(
+            lines[..2],
+            ["pass 1 t=20 scroll 1 0", "pass 1 t=20 pointer none"]
+        );
+        assert!(lines[2].starts_with("pass 1 t=20 draw "));
+        assert_eq!(lines.len(), 3);
+        assert_eq!(app.log_header(), "size 64x48");
+        // A pass that applied nothing and fired nothing has no line.
+        app.pass(25, &[]);
+        assert!(app.log_lines(2, 25).is_empty());
+    });
+}
+
+#[test]
 fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
     with_app("app-log", |app, _| {
         app.pass(0, &[]);
@@ -139,10 +158,13 @@ fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass()
         assert_eq!(app.camera().zoom, 2);
         app.pass(160, &[Command::Zoom(true)]);
         assert_eq!(app.camera().zoom, 2, "the limit");
-        // Quit is a flag the shell reads.
+        // Quit is a flag the shell reads. The pass that gets it runs no timer, and no command
+        // after it; the log still tells the commands it applied.
         assert!(!app.quit());
-        app.pass(180, &[Command::Quit]);
-        assert!(app.quit());
+        assert!(app.pass(180, &[Command::Quit, Command::Pause]).is_none());
+        assert!(app.quit() && !app.paused() && !app.fired().draw);
+        assert_eq!(app.log_lines(9, 180), ["pass 9 t=180 quit"]);
+        assert!(app.pass(200, &[]).is_none() && app.log_lines(10, 200).is_empty());
     });
 }
 

@@ -62,7 +62,8 @@ rustyzoo check-ground                              # render every cached ground 
 rustyzoo render-ground ztats/000004 out/g.png     # render one ground picture (key as in the cache names)
 rustyzoo render-map maps/default.zoo out.png --rotation 1   # draw a whole map into a PNG at normal zoom, and print what was drawn
 rustyzoo render-map maps/default.zoo out.png --view 0 0 800 600 --no-units   # only the 800 x 600 window of the view whose top left pixel is the view-space point (0, 0), without animals, guests and staff
-rustyzoo run maps/default.zoo --headless --passes 100 --clock 20 --script keys.txt --png-every 10   # play a map without a window on a scripted clock (a pass every 20 ms), print one line per timer firing with the frame hash, and write every 10th painted frame as a PNG
+rustyzoo run maps/default.zoo --headless --passes 100 --clock 20 --script keys.txt --png-every 10   # play a map without a window on a scripted clock (a pass every 20 ms), print the commands and timer firings of each pass with the frame hash, and write the frame painted by every 10th pass as a PNG
+rustyzoo run maps/default.zoo --headless --replay log.txt   # run again the passes of a saved output, giving the same lines
 rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
 rustyzoo check-bitmaps                           # convert the root bitmaps of the terrain and compare them with the shipped copies; exit 1 on a mismatch
 rustyzoo check-wavs                              # decode every .wav file and count them by format; exit 1 if one fails

@@ -1,6 +1,7 @@
-//! `rustyzoo run`: the map view's game driven by a scripted clock and a script of commands,
-//! without a window. It prints the lines of [`App::log_lines`], the same ones a windowed run
-//! prints, so a log replayed here gives the same frame hashes.
+//! `rustyzoo run`: the map view's game driven by a scripted clock and a script of commands, or by
+//! the log of an earlier run, without a window. It prints the size of the window and the lines
+//! of [`App::log_lines`], the same ones a windowed run prints, so a log replayed here gives the
+//! same frame hashes.
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -30,11 +31,14 @@ struct Flags {
     png_every: Option<u64>,
     size: Option<(u32, u32)>,
     out: Option<String>,
+    /// A log to run again instead of `passes` and `clock`.
+    replay: Option<String>,
 }
 
 fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
     let mut flags = Flags::default();
     let (mut headless, mut passes, mut clock) = (false, false, false);
+    let mut size = false;
     let number = |w: &str| w.parse::<u64>().map_err(|_| CliError::Usage);
     while let [word, rest @ ..] = words {
         words = match (*word, rest) {
@@ -61,10 +65,18 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
                 }
                 rest
             }
-            ("--size", [size, rest @ ..]) => {
-                let (w, h) = size.split_once('x').ok_or(CliError::Usage)?;
+            ("--size", [text, rest @ ..]) => {
+                let (w, h) = text.split_once('x').ok_or(CliError::Usage)?;
                 let side = |s: &str| s.parse::<u32>().map_err(|_| CliError::Usage);
-                flags.size = Some((side(w)?, side(h)?));
+                let (w, h) = (side(w)?, side(h)?);
+                if w == 0 || h == 0 {
+                    return Err("--size: the window needs at least one pixel".into());
+                }
+                (flags.size, size) = (Some((w, h)), true);
+                rest
+            }
+            ("--replay", [file, rest @ ..]) => {
+                flags.replay = Some(file.to_string());
                 rest
             }
             ("--out", [dir, rest @ ..]) => {
@@ -74,8 +86,11 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
             _ => return Err(CliError::Usage),
         };
     }
-    // The window is not there yet: only the headless run exists.
-    match headless && passes && clock {
+    // The window is not there yet: only the headless run exists. A replay brings its own passes,
+    // clock, commands and size.
+    let scripted = passes && clock;
+    let replayed = flags.replay.is_some() && !(passes || clock || size || flags.script.is_some());
+    match headless && (scripted != flags.replay.is_some()) && (scripted || replayed) {
         true => Ok(flags),
         false => Err(CliError::Usage),
     }
@@ -102,10 +117,65 @@ fn script(text: &str) -> Result<Vec<(u64, Command)>, String> {
     Ok(commands)
 }
 
+/// One pass of a log: its index, its clock and the commands it applied.
+type Logged = (u64, u64, Vec<Command>);
+
+/// The size and the passes of a log, as [`App::log_header`] and [`App::log_lines`] print them. A
+/// pass is a run of lines with the same index and clock; the lines of the timers only say that
+/// the pass ran, and the commands are read back.
+fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
+    let mut lines = text
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| !l.trim().is_empty());
+    let (_, header) = lines.next().ok_or("the log is empty")?;
+    let size = header
+        .strip_prefix("size ")
+        .and_then(|s| s.split_once('x'))
+        .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+        .ok_or("the log does not start with its size")?;
+    let mut passes: Vec<Logged> = Vec::new();
+    for (n, line) in lines {
+        let at = |why: String| format!("log line {}: {why}", n + 1);
+        let mut words = line.splitn(4, ' ');
+        let (Some("pass"), Some(pass), Some(clock), rest) =
+            (words.next(), words.next(), words.next(), words.next())
+        else {
+            return Err(at(format!("not a log line: {line:?}")));
+        };
+        let number = |w: &str, prefix: &str| {
+            w.strip_prefix(prefix)
+                .and_then(|n| n.parse::<u64>().ok())
+                .ok_or_else(|| at(format!("not a pass: {line:?}")))
+        };
+        let key = (number(pass, "")?, number(clock, "t=")?);
+        if passes.last().is_none_or(|p| (p.0, p.1) != key) {
+            passes.push((key.0, key.1, Vec::new()));
+        }
+        let rest = rest.unwrap_or("");
+        if !["draw ", "interface ", "step "]
+            .iter()
+            .any(|k| rest.starts_with(k))
+        {
+            let last = passes.last_mut().expect("just pushed");
+            last.2.push(rest.parse().map_err(at)?);
+        }
+    }
+    Ok((size, passes))
+}
+
 pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     let flags = flags(words)?;
+    let read = |file: &str| std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"));
+    let (logged, size) = match &flags.replay {
+        Some(file) => {
+            let (size, passes) = replay(&read(file)?).map_err(|e| format!("{file}: {e}"))?;
+            (Some(passes), Some(size))
+        }
+        None => (None, flags.size),
+    };
     let mut commands = match &flags.script {
-        Some(file) => script(&std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?)?,
+        Some(file) => script(&read(file)?)?,
         None => Vec::new(),
     }
     .into_iter()
@@ -119,18 +189,16 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         zoo,
         Settings::from_config(&ini),
         Timers::from_config(&ini),
-        flags.size.unwrap_or(DEFAULT_SIZE),
+        size.unwrap_or(DEFAULT_SIZE),
     )?;
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
     let mut report = Report::new();
-    for pass in 0..flags.passes {
-        let now = pass.saturating_mul(flags.clock);
-        let mut due = Vec::new();
-        while let Some((_, command)) = commands.next_if(|&(at, _)| at <= pass) {
-            due.push(command);
-        }
-        if let Some(frame) = app.pass(now, &due)
-            && flags.png_every.is_some_and(|k| pass % k == 0)
+    report.line(format_args!("{}", app.log_header()));
+    // Every pass of the scripted clock, or only the logged ones: a pass in which nothing fires
+    // and no command comes changes nothing.
+    let mut play = |pass: u64, now: u64, due: &[Command]| -> Result<bool, CliError> {
+        if let Some(frame) = app.pass(now, due)
+            && flags.png_every.is_some_and(|k| pass.is_multiple_of(k))
         {
             let file = out.join(format!("frame-{pass:06}.png"));
             let png = File::create(&file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -140,10 +208,26 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         for line in app.log_lines(pass, now) {
             report.line(format_args!("{line}"));
         }
-        if app.quit() {
-            break;
+        Ok(app.quit())
+    };
+    if let Some(passes) = logged {
+        for (pass, now, due) in passes {
+            if play(pass, now, &due)? {
+                break;
+            }
+        }
+    } else {
+        for pass in 0..flags.passes {
+            let mut due = Vec::new();
+            while let Some((_, command)) = commands.next_if(|&(at, _)| at <= pass) {
+                due.push(command);
+            }
+            if play(pass, pass.saturating_mul(flags.clock), &due)? {
+                break;
+            }
         }
     }
+    drop(play);
     report.finish()
 }
 
@@ -153,6 +237,19 @@ mod tests {
 
     #[test]
     fn flags_come_in_any_order_and_bad_ones_are_refused() {
+        assert!(flags(&["--headless", "--replay", "log", "--png-every", "2"]).is_ok());
+        assert!(matches!(
+            flags(&[
+                "--headless",
+                "--passes",
+                "1",
+                "--clock",
+                "1",
+                "--size",
+                "0x0"
+            ]),
+            Err(CliError::Failed(_))
+        ));
         let got = flags(&[
             "--clock",
             "20",
@@ -188,6 +285,17 @@ mod tests {
             ],
             &["--headless", "--passes", "1", "--clock", "1", "--png-every"],
             &["--headless", "--passes", "1", "--clock", "1", "--window"],
+            &[
+                "--headless",
+                "--replay",
+                "log",
+                "--passes",
+                "1",
+                "--clock",
+                "1",
+            ],
+            &["--headless", "--replay", "log", "--size", "1x1"],
+            &["--headless", "--replay", "log", "--script", "s"],
         ] {
             assert!(flags(bad).is_err(), "{bad:?}");
         }
@@ -208,5 +316,37 @@ mod tests {
             assert!(script(bad).is_err(), "{bad:?}");
         }
         assert!(script("4 fly").unwrap_err().starts_with("script line 1:"));
+    }
+
+    #[test]
+    fn a_log_is_read_back_as_passes_with_their_clock_and_commands() {
+        let log = "size 64x48\n\
+                   pass 0 t=0 draw 0123456789abcdef view=1,2 rotation=0 zoom=0\n\
+                   pass 0 t=0 step 200 2001-01-01 00:24:00.000\n\
+                   pass 3 t=67 scroll -1 0\n\
+                   pass 3 t=67 pointer none\n\
+                   pass 3 t=67 interface 66\n\
+                   pass 4 t=70 quit\n";
+        assert_eq!(
+            replay(log).unwrap(),
+            (
+                (64, 48),
+                vec![
+                    (0, 0, vec![]),
+                    (3, 67, vec![Command::Scroll(-1, 0), Command::Pointer(None)]),
+                    (4, 70, vec![Command::Quit]),
+                ]
+            )
+        );
+        for bad in [
+            "",
+            "pass 0 t=0 draw -",
+            "size 64\n",
+            "size 64x48\npass 0 draw",
+            "size 64x48\npass x t=0 pause",
+            "size 64x48\npass 0 t=0 fly",
+        ] {
+            assert!(replay(bad).is_err(), "{bad:?}");
+        }
     }
 }
