@@ -56,6 +56,9 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
                 rest
             }
             ("--passes", [n, rest @ ..]) => {
+                if number(n)? == 0 {
+                    return Err("--passes: at least one pass".into());
+                }
                 (flags.passes, passes) = (Some(number(n)?), true);
                 rest
             }
@@ -345,6 +348,8 @@ mod tests {
             &["--png-every", "1"],
             &["--out", "d"],
             &["--headless", "--passes", "1", "--clock", "1", "--log", "l"],
+            &["--passes", "0"],
+            &["--headless", "--passes", "0", "--clock", "1"],
         ] {
             assert!(flags(bad).is_err(), "{bad:?}");
         }

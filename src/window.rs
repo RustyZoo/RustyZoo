@@ -128,8 +128,11 @@ pub fn run(
     texture.set_scale_mode(ScaleMode::Nearest);
 
     // A missing sound device or music file is silence, as in the game.
-    let audio = Audio::open(&sdl.audio()?);
-    let music = match &audio {
+    let audio = sdl
+        .audio()
+        .map_err(Into::into)
+        .and_then(|a| Audio::open(&a));
+    let mut music = match &audio {
         Ok(audio) => audio.menu_music(vfs, true, false).unwrap_or_else(|e| {
             eprintln!("rustyzoo: no menu music: {e}");
             None
@@ -197,8 +200,11 @@ pub fn run(
                 writeln!(log, "{line}")?;
             }
         }
-        if let Some(music) = &music {
-            music.1.update()?;
+        if let Some((_, voice)) = &music
+            && let Err(e) = voice.update()
+        {
+            eprintln!("rustyzoo: the menu music stops: {e}");
+            music = None;
         }
         pass += 1;
         if app.quit() || flags.passes.is_some_and(|n| pass >= n) {

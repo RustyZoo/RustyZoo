@@ -122,6 +122,9 @@ check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate 
 # The window of the ini file (800x600 in both trials), shown by the dummy video driver.
 check base-trial 800x600,800x600,800x600,frames,same "windowed maps/default.zoo"
 check expansion-trial 800x600,800x600,800x600,frames,same "windowed maps/scn19.zoo"
+# No sound system is silence with a warning, not a failed run; no pass at all is refused.
+check base-trial 0 'SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=none-such rz run maps/default.zoo --passes 3 >/dev/null 2>&1; echo $?'
+check base-trial 1 'SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 0 >/dev/null 2>&1; echo $?'
 
 # WAV files decoded: files, ok, failed; the counts per format (sample type, rate, channels).
 check base-trial 48,48,0 "rz check-wavs | tail -1 | grep -o '[0-9]*' | paste -sd, -"
