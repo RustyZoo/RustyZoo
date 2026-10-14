@@ -58,16 +58,7 @@ impl Timers {
     /// Reads `UpdateRate`, `DrawRate` and `MaxSimTick` from the `[user]` section of the game's
     /// ini file. Section and key names ignore case, as in the original's ini reading.
     pub fn from_config(ini: &Config) -> Self {
-        let value = |key: &str| {
-            ini.sections()
-                .filter(|(name, _)| name.eq_ignore_ascii_case(b"user"))
-                .find_map(|(_, section)| {
-                    let k = section
-                        .keys()
-                        .find(|k| k.eq_ignore_ascii_case(key.as_bytes()))?;
-                    section.get(k)
-                })
-        };
+        let value = |key: &str| user_value(ini, key);
         let period = |key, fallback| value(key).map_or(fallback, |v| period_of(v, fallback));
         let cap = value("MaxSimTick")
             .and_then(whole)
@@ -141,6 +132,23 @@ impl Timers {
             .min()
             .unwrap_or(0)
     }
+}
+
+/// The value of a key of `[user]`; section and key names ignore case.
+fn user_value<'a>(ini: &'a Config, key: &str) -> Option<&'a [u8]> {
+    ini.sections()
+        .filter(|(name, _)| name.eq_ignore_ascii_case(b"user"))
+        .find_map(|(_, section)| {
+            let k = section
+                .keys()
+                .find(|k| k.eq_ignore_ascii_case(key.as_bytes()))?;
+            section.get(k)
+        })
+}
+
+/// A whole-number setting of `[user]` (`screenwidth`, ...), read like the loop settings.
+pub fn user_whole(ini: &Config, key: &str) -> Option<i32> {
+    user_value(ini, key).and_then(whole)
 }
 
 /// A whole number as `%d` of `sscanf` reads it, which is how the executable's ini reader reads
