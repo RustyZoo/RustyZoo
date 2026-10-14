@@ -2,6 +2,7 @@ mod audio;
 mod input;
 mod probe;
 mod run;
+mod textcmd;
 mod window;
 
 use std::collections::{BTreeMap, HashSet};
@@ -130,6 +131,11 @@ usage: rustyzoo [--data <dir>] <command>
                       --shot writes the pixels of the last frame, as the renderer has them
                       (at the size in pixels), to FILE as a PNG, and prints its size, number of
                       colours and hash; a blank picture is an error
+  text-width <text> [--font FACE] [--size POINTS]
+                      print the width in pixels of the text on one line in the original's
+                      font (Liberation Sans, whole-pixel advances, no kerning): FACE is a
+                      face string, \"Arial\" (the default) or \"Arial Bold\", and POINTS a size
+                      string (8 by default); needs no game data
   timing              print the periods and the cap the ini file gives the main loop, then how
                       many draws, interface updates and steps a ten second run makes with a
                       pass at every millisecond
@@ -208,6 +214,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["check-wavs"] => check_wavs(&open_game(data_dir)?),
         ["check-music"] => check_music(&open_game(data_dir)?),
         ["check-anis"] => check_anis(&open_game(data_dir)?),
+        ["text-width", text, flags @ ..] => textcmd::text_width(text, flags),
         ["timing"] => timing(&open_game(data_dir)?),
         ["check-ground"] => check_ground(&open_game(data_dir)?),
         ["render-ground", key, out] => render_ground(&open_game(data_dir)?, key, Path::new(out)),

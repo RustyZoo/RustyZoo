@@ -68,12 +68,15 @@ rustyzoo run maps/default.zoo                      # play a map in a window: arr
 rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
 rustyzoo check-bitmaps                           # convert the root bitmaps of the terrain and compare them with the shipped copies; exit 1 on a mismatch
 rustyzoo check-wavs                              # decode every .wav file and count them by format; exit 1 if one fails
+rustyzoo text-width "Jan, Year 1" --font "Arial Bold" --size 11   # width in pixels of a text in the original's font; needs no game data
 rustyzoo check-music                             # queue the menu music paused on the audio device and print its format, gain and queued bytes
 ```
 
 Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.
 
 The names, descriptions and labels the game shows are not in the `.ztd` archives but in the resource DLLs of the install folder (`lang0.dll` and its siblings). `dump-strings` prints the string table of one DLL, newline, tab, backslash and other control characters escaped (`\n`, `\t`, `\\`, `\u{0000}`), followed by the name and size of its `TEXT` entries; `--text` writes the bytes of one of them.
+
+Text is drawn in Liberation Sans (Regular and Bold, SIL Open Font License 1.1, embedded unmodified; see `fonts/README.md`), which has the metrics of the Arial the original asks for: the pixel size is `round(points * 96 / 72)`, a line is ascent plus descent of Arial's vertical metrics tall, every character advances by a whole number of pixels and there is no kerning. `text-width` prints the width of a text that way; `--font` is the face string of a layout file (`Arial` or `Arial Bold`, a bold face for any name with ` Bold`) and `--size` its size string (the leading digits are the points, 8 without any, at most 200).
 
 The game loads every `lang*.dll` of the install folder, ordered by file name from the greatest to the smallest (`lang300.dll` first, `lang0.dll` last), and a string number or a `TEXT` name comes from the first library that has it non-empty. `strings` prints that merged view; the `[lib]` and `[language]` entries of `zoo.ini` are not used.
 
@@ -122,4 +125,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and the [architecture](docs/architecture.
 
 ## Licence
 
-RustyZoo is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE).
+RustyZoo is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE). The two font files in `fonts/` are under their own licence, the SIL Open Font License 1.1 (`fonts/OFL.txt`).
