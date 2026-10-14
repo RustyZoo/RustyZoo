@@ -6,7 +6,7 @@ use std::error::Error;
 
 use rustyzoo::config::{Config, to_flag, to_int};
 use rustyzoo::vfs::Vfs;
-use sdl3::audio::{AudioDevice, AudioFormat, AudioSpec, AudioSpecWAV, AudioStreamOwner};
+use sdl3::audio::{AudioDevice, AudioFormat, AudioSpec, AudioStreamOwner};
 use sdl3::iostream::IOStream;
 
 /// The gain for an attenuation in hundredths of a decibel (0 is full volume, -10000 is silent
@@ -27,14 +27,57 @@ pub struct Sound {
 
 impl Sound {
     /// Decodes the bytes of a WAV file; a malformed file is an error.
+    ///
+    /// SDL is called directly: the safe wrapper of the `sdl3` crate builds a slice from a null
+    /// pointer for an empty sound, which panics in debug builds.
     pub fn decode(bytes: &[u8]) -> Result<Sound, Box<dyn Error>> {
-        let mut source = IOStream::from_bytes(bytes)?;
-        let wav = AudioSpecWAV::load_wav_rw(&mut source)?;
+        use sdl3::sys::audio as sys;
+        let source = IOStream::from_bytes(bytes)?;
+        let mut spec = std::mem::MaybeUninit::<sys::SDL_AudioSpec>::uninit();
+        let mut buffer = std::ptr::null_mut();
+        let mut length = 0u32;
+        // SAFETY: the stream outlives the call and is not closed by it; on success SDL fills
+        // `spec` and hands over `length` bytes at `buffer`, which are copied and freed below.
+        let loaded = unsafe {
+            sys::SDL_LoadWAV_IO(
+                source.raw(),
+                false,
+                spec.as_mut_ptr(),
+                &mut buffer,
+                &mut length,
+            )
+        };
+        if !loaded {
+            return Err(sdl3::get_error().into());
+        }
+        // SAFETY: `spec` is filled on success.
+        let spec = unsafe { spec.assume_init() };
+        let data = if buffer.is_null() {
+            Vec::new()
+        } else {
+            // SAFETY: SDL allocated `length` bytes at `buffer`.
+            unsafe { std::slice::from_raw_parts(buffer, length as usize) }.to_vec()
+        };
+        // SAFETY: the buffer came from SDL and is not used again.
+        unsafe { sdl3::sys::stdinc::SDL_free(buffer.cast()) };
+        let format = match spec.format {
+            sys::SDL_AUDIO_U8 => AudioFormat::U8,
+            sys::SDL_AUDIO_S8 => AudioFormat::S8,
+            sys::SDL_AUDIO_S16LE => AudioFormat::S16LE,
+            sys::SDL_AUDIO_S16BE => AudioFormat::S16BE,
+            sys::SDL_AUDIO_S32LE => AudioFormat::S32LE,
+            sys::SDL_AUDIO_S32BE => AudioFormat::S32BE,
+            sys::SDL_AUDIO_F32LE => AudioFormat::F32LE,
+            sys::SDL_AUDIO_F32BE => AudioFormat::F32BE,
+            other => return Err(format!("unsupported sample format {}", other.0).into()),
+        };
+        let channels =
+            u8::try_from(spec.channels).map_err(|_| format!("{} channels", spec.channels))?;
         Ok(Sound {
-            freq: wav.freq,
-            channels: wav.channels,
-            format: wav.format,
-            data: wav.buffer().to_vec(),
+            freq: spec.freq,
+            channels,
+            format,
+            data,
         })
     }
 
@@ -205,6 +248,11 @@ mod tests {
         assert_eq!(sound.describe(), "S16LE 22050 Hz 2 ch");
         assert_eq!(sound.data.len(), 400);
         assert_eq!(sound.bytes_per_second(), 88200);
+    }
+
+    #[test]
+    fn a_wav_without_samples_is_not_a_panic() {
+        let _ = Sound::decode(&wav(1, 1, 22050, 16, &[]));
     }
 
     #[test]
