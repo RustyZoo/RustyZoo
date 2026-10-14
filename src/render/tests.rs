@@ -672,18 +672,18 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
     }
     frame.extend([1, 0, 3, 1, 2, 3]);
     let sprite = sprite_file(None, 1, &[sized(&frame)]);
-    let definition = |flag: &str| {
+    let definition = |flag: &str, fullpal: &str| {
         format!(
             "[Characteristics/Integers]\ncIsColorReplaced = {flag}\n[Animations]\nidle = idle\n\
              [colorrep]\ncolor = cr_color\nreplace = cr_part1\ndefaultpal = Pals\\Blue.pal\n\
-             [cr_color]\nncolors = 2\ncolorpal = color.pal\n"
+             [cr_color]\nncolors = 2\nfullpal = {fullpal}\ncolorpal = color.pal\n"
         )
         .into_bytes()
     };
-    let members = |flag: &str| {
+    let members = |flag: &str, fullpal: &str| {
         vec![
             ("bldg.cfg", b"[building]\nshed = shed.ai\n".to_vec()),
-            ("shed.ai", definition(flag)),
+            ("shed.ai", definition(flag, fullpal)),
             // A group of two colours after two fixed ones (16 in the real data).
             (
                 "building.ai",
@@ -710,8 +710,8 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
         ]
     };
     // The colours of the three pixels, from the left of the sprite file (this view is mirrored).
-    let draw = |name: &str, flag: &str, stored: &[u8]| {
-        let install = Install::new(name, &members(flag));
+    let draw = |name: &str, flag: &str, fullpal: &str, stored: &[u8]| {
+        let install = Install::new(name, &members(flag, fullpal));
         let vfs = Vfs::open(&install.0).unwrap();
         let catalogue = Catalogue::load(&vfs).unwrap();
         let zoo = Zoo {
@@ -754,21 +754,27 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
         lit.reverse();
         lit
     };
-    // Nothing stored: the default variant, which the definition names with other letters and
+    // The palette of the sprite file is the one `fullpal` names, written with other letters and
     // another separator.
+    let full = "Animals\\LION\\lion.pal";
+    // Nothing stored: the default variant, which the definition names the same way.
     let blue = [[9, 9, 9], [0, 0, 200], [0, 0, 201]];
     let red = [[9, 9, 9], [100, 0, 0], [101, 0, 0]];
-    assert_eq!(draw("recolour-default", "1", &[]), blue);
-    assert_eq!(draw("recolour-first", "1", &[0]), red);
-    assert_eq!(draw("recolour-second", "1", &[1, 7]), blue);
+    assert_eq!(draw("recolour-default", "1", full, &[]), blue);
+    assert_eq!(draw("recolour-first", "1", full, &[0]), red);
+    assert_eq!(draw("recolour-second", "1", full, &[1, 7]), blue);
     // A choice beyond the variants, or a type that does not ask for it, keeps the plain palette.
     let plain = [[2, 2, 2], [3, 3, 3]];
     assert_eq!(
-        draw("recolour-beyond", "1", &[5]),
+        draw("recolour-beyond", "1", full, &[5]),
         [[9, 9, 9], plain[0], plain[1]]
     );
     assert_eq!(
-        draw("recolour-off", "0", &[0]),
+        draw("recolour-off", "0", full, &[0]),
         [[1, 1, 1], plain[0], plain[1]]
     );
+    // A sprite whose palette is not the `fullpal` one keeps its own fixed colours; only the
+    // group takes the variant.
+    let other = draw("recolour-other", "1", "objects/other/other.pal", &[0]);
+    assert_eq!(other, [[1, 1, 1], [100, 0, 0], [101, 0, 0]]);
 }

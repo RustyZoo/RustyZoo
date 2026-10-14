@@ -24,7 +24,7 @@ use crate::bitmap;
 use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
-use crate::sprite::{Frame, Palette};
+use crate::sprite::{Frame, Palette, Sprite};
 use crate::vfs::Vfs;
 use crate::zoo::{Tile, Zoo};
 use order::{Item, Kind, Object, Scene, map_direction, paint_order, project};
@@ -399,10 +399,15 @@ impl<'a> MapRenderer<'a> {
     }
 
     /// The palette to draw a recoloured building with, if its type is one (sprite drawing 8): the
-    /// palette of the sprite file with the fixed colours of the type, then, for each colour
-    /// group, the entries of the variant the building stores (the default one for a group it
+    /// palette of the sprite file with the fixed colours of the type (only if the file names the
+    /// type's `fullpal`), then, for each colour group, the entries of the variant the building stores (the default one for a group it
     /// stores nothing for). `None` draws the plain palette.
-    fn recoloured(&mut self, ty: &EntityType, base: &Palette, stored: &[u8]) -> Option<Palette> {
+    fn recoloured(
+        &mut self,
+        ty: &EntityType,
+        sprite: &(Sprite, Palette),
+        stored: &[u8],
+    ) -> Option<Palette> {
         let config = ty.config.clone()?;
         let flag = config
             .section("Characteristics/Integers")?
@@ -413,10 +418,15 @@ impl<'a> MapRenderer<'a> {
         let replaced = config.section("colorrep")?;
         let fixed = config.section(replaced.get("color")?)?;
         let mut start = usize::try_from(to_int(fixed.get("ncolors")?)?).ok()?;
-        let mut palette = base.clone();
-        if let Some(colors) = fixed
-            .get("colorpal")
-            .and_then(|member| self.palette(member))
+        let mut palette = sprite.1.clone();
+        let same = |a: &[u8], b: &[u8]| {
+            crate::vfs::normalise(&String::from_utf8_lossy(a))
+                == crate::vfs::normalise(&String::from_utf8_lossy(b))
+        };
+        // The fixed colours belong to the palette `fullpal` names, not to any other.
+        if let (Some(full), Some(colors)) = (fixed.get("fullpal"), fixed.get("colorpal"))
+            && same(sprite.0.palette.as_bytes(), full)
+            && let Some(colors) = self.palette(colors)
         {
             palette.overwrite(0, colors, 0, start);
         }
@@ -425,10 +435,6 @@ impl<'a> MapRenderer<'a> {
         for (g, name) in replaced.get_all("replace").iter().enumerate() {
             let group = groups.section(name)?;
             let variants = group.get_all("pal");
-            let same = |a: &[u8], b: &[u8]| {
-                crate::vfs::normalise(&String::from_utf8_lossy(a))
-                    == crate::vfs::normalise(&String::from_utf8_lossy(b))
-            };
             let chosen = match stored.get(g) {
                 Some(&choice) => usize::from(choice),
                 None => defaults
@@ -829,7 +835,7 @@ impl<'a> MapRenderer<'a> {
         let palette = anim
             .sprites
             .get(view.file)
-            .and_then(|sprite| self.recoloured(ty, &sprite.1, meta.colors));
+            .and_then(|sprite| self.recoloured(ty, sprite, meta.colors));
         out.push(Placed {
             x,
             y,
