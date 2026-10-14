@@ -18,6 +18,7 @@ use rustyzoo::bitmap;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::ground::{self, Key, Renderer};
+use rustyzoo::music::Music;
 use rustyzoo::pe;
 use rustyzoo::render::{MapRenderer, Options, Summary};
 use rustyzoo::sprite::{self, write_png};
@@ -1332,12 +1333,17 @@ fn check_wavs(vfs: &Vfs) -> Result<(), CliError> {
 
 fn check_music(vfs: &Vfs) -> Result<(), CliError> {
     let audio = audio::Audio::open(&sdl3::init()?.audio()?)?;
-    let Some((name, music)) = audio.menu_music(vfs, true, true)? else {
+    let Some(model) = Music::from_config(&Config::parse(vfs.ini())?) else {
+        println!("no menu music");
+        return Ok(());
+    };
+    let Some(music) = audio.menu_music(vfs, &model, true, true)? else {
         println!("no menu music");
         return Ok(());
     };
     println!(
-        "{name}: {}, gain {:.3}, queued {} bytes, paused",
+        "{}: {}, gain {:.3}, queued {} bytes, paused",
+        model.file(),
         music.sound().describe(),
         music.gain()?,
         music.queued_bytes()?

@@ -135,4 +135,16 @@ check expansion-trial 17,7,162,12 "rz check-wavs | grep -v wavs: | cut -d' ' -f1
 check base-trial sounds/mainmenu.wav:S16LE22050Hz1ch,gain0.999,queued704514bytes,paused "rz check-music"
 check expansion-trial sounds/mainmenu.wav:U822050Hz2ch,gain0.999,queued940914bytes,paused "rz check-music"
 
+# The menu music fades as a game starts (a run starts its game at once): 5 updates wait, then 90
+# steps of 0.33 dB and the music stops at the next one; headless, then in a window (800 passes of
+# the real clock outlast the fade of 6.3 s), where the music is really stopped. After 30 passes a
+# window still plays it and has queued more of it.
+fade='rz run $map --headless --passes 100 --clock 66 | awk "/ music fade/{n++; g=\$NF} / music stopped/{s=\$2} END{print n\"steps,gain\"g\",stopped@\"s}"'
+for trial in base-trial expansion-trial; do
+  map=maps/default.zoo; [ $trial = expansion-trial ] && map=maps/scn19.zoo
+  check $trial 90steps,gain0.104,stopped@95 "$fade"
+done
+check base-trial musicstopped "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 800 | tail -1 | sed 's/^music /music/'"
+check base-trial musicgain0.999 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 30 | tail -1 | cut -d' ' -f1-3 | sed 's/ //'"
+
 exit $failed

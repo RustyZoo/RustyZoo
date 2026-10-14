@@ -4,32 +4,13 @@
 
 use std::error::Error;
 
-use rustyzoo::config::{Config, to_int};
+use rustyzoo::music::{Music, gain};
 use rustyzoo::vfs::Vfs;
 use sdl3::audio::{AudioDevice, AudioFormat, AudioSpec, AudioStreamOwner};
 use sdl3::iostream::IOStream;
 
 /// The most a sound may be attenuated for it to start (sound specification 4.2).
 const START_LIMIT: i32 = 6000;
-
-/// The gain for the sum `S = G + B + F + X` of a sound's attenuation terms, in hundredths of a
-/// decibel; positive is quieter: `10^(-S/2000)`. A negative sum is replaced by 1 (-0.01 dB): the
-/// terms never make a sound louder than full level. The one place that turns attenuation into a
-/// volume (sound specification 4.1).
-pub fn gain(sum: i32) -> f32 {
-    10f32.powf(-(sum.clamp(1, 10_000) as f32) / 2000.0)
-}
-
-/// The global term `G` for the `[UI] userAttenuation` setting `u`: the slider position
-/// `s = clamp(100 - u div 15, 0, 100)` gives `(100 - s) * 15`, or 5000 at 0 (specification 4.3).
-pub fn user_term(u: i32) -> i32 {
-    let slider = (100 - u / 15).clamp(0, 100);
-    if slider == 0 {
-        5000
-    } else {
-        (100 - slider) * 15
-    }
-}
 
 /// A decoded WAV file: samples as SDL gives them (8, 16, 32 bit integer or 32 bit float).
 #[derive(Clone)]
@@ -162,31 +143,18 @@ impl Audio {
         }))
     }
 
-    /// The menu music, played with `S = G + B` (`F` and `X` are 0): `G` from
-    /// `[UI] userAttenuation`, `B` from `menuMusicAttenuation` (0 when absent). The file is
-    /// `menuMusic`, `sounds/mainmenu.wav` when absent. `None` if `noMenuMusic` is exactly 1 or
-    /// the sum is over 6000. Fails if the music cannot be read; the game treats that as silence.
+    /// The menu music, played with its sum `S = G + B + F` (`X` is 0). `None` if the sum is over
+    /// 6000. Fails if the file cannot be read; the game treats that as silence.
     pub fn menu_music(
         &self,
         vfs: &Vfs,
+        music: &Music,
         looping: bool,
         paused: bool,
-    ) -> Result<Option<(String, Voice)>, Box<dyn Error>> {
-        let ini = Config::parse(vfs.ini()).ok();
-        let ui = ini.as_ref().and_then(|ini| ini.section("UI"));
-        let get = |key: &str| ui.and_then(|ui| ui.get(key));
-        if get("noMenuMusic").and_then(to_int) == Some(1) {
-            return Ok(None);
-        }
-        let name = get("menuMusic").map_or_else(
-            || "sounds/mainmenu.wav".to_string(),
-            |name| String::from_utf8_lossy(name).into_owned(),
-        );
-        let global = user_term(get("userAttenuation").and_then(to_int).unwrap_or(0));
-        let base = get("menuMusicAttenuation").and_then(to_int).unwrap_or(0);
-        let sound = Sound::decode(&vfs.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
-        let voice = self.play(sound, global.saturating_add(base), looping, paused)?;
-        Ok(voice.map(|voice| (name, voice)))
+    ) -> Result<Option<Voice>, Box<dyn Error>> {
+        let name = music.file();
+        let sound = Sound::decode(&vfs.read(name)?).map_err(|e| format!("{name}: {e}"))?;
+        self.play(sound, music.sum(), looping, paused)
     }
 }
 
@@ -216,6 +184,11 @@ impl Voice {
 
     pub fn queued_bytes(&self) -> Result<i32, Box<dyn Error>> {
         Ok(self.stream.queued_bytes()?)
+    }
+
+    /// Sets the volume to that of the attenuation sum `sum` (see [`gain`]).
+    pub fn set_sum(&self, sum: i32) -> Result<(), Box<dyn Error>> {
+        Ok(self.stream.set_gain(gain(sum))?)
     }
 
     pub fn gain(&self) -> Result<f32, Box<dyn Error>> {
@@ -248,25 +221,6 @@ mod tests {
         out.extend((data.len() as u32).to_le_bytes());
         out.extend(data);
         out
-    }
-
-    #[test]
-    fn positive_attenuation_is_quieter_and_the_sum_is_held_to_the_range() {
-        assert_eq!(gain(0), gain(1));
-        assert!((gain(-1000) - 0.999).abs() < 1e-3);
-        assert!((gain(1000) - 0.316_227_77).abs() < 1e-6);
-        assert!((gain(2000) - 0.1).abs() < 1e-6);
-        assert_eq!(gain(i32::MAX), gain(10_000));
-        assert_eq!(gain(i32::MIN), gain(1));
-    }
-
-    #[test]
-    fn the_user_term_is_the_requantised_slider() {
-        // Specification 4.3: 600 gives 600, 37 gives 30, 1500 and more give 5000.
-        let terms: Vec<i32> = [0, 600, 37, 1485, 1499, 1500, 99_999, -5, i32::MIN]
-            .map(user_term)
-            .to_vec();
-        assert_eq!(terms, [0, 600, 30, 1485, 1485, 5000, 5000, 0, 0]);
     }
 
     #[test]
