@@ -1155,8 +1155,11 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
             report.line(format_args!("skipped {name}: cannot be loaded"));
             continue;
         };
-        match renderer.render(&zoo, rotation) {
-            Ok((_, summary)) => {
+        match renderer
+            .stage(&zoo, rotation, false)
+            .and_then(|staged| staged.size().map(|_| staged.summary))
+        {
+            Ok(summary) => {
                 maps += 1;
                 report.line(format_args!("ok {name}: {summary}"));
                 total.add(&summary);

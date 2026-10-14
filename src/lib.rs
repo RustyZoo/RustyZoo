@@ -33,6 +33,11 @@ impl Framebuffer {
         }
     }
 
+    /// Sets every pixel to `rgba`.
+    pub fn fill(&mut self, rgba: [u8; 4]) {
+        self.pixels.as_chunks_mut::<4>().0.fill(rgba);
+    }
+
     /// Fills the framebuffer with an opaque gradient: red grows to the right,
     /// green grows downwards, blue is constant.
     pub fn fill_test_pattern(&mut self) {
