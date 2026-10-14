@@ -17,7 +17,7 @@ Modules of the core:
 | `config` | Reader of the game's INI-like files (`.ai`, `.cfg`, `.lyt`, ...) |
 | `pe` | Bounded reader for the resources of the game's resource DLLs |
 | `strings` | The game's texts, merged from the `lang*.dll` libraries |
-| `text` | Liberation Sans Regular and Bold (embedded) with the metrics of Arial: line height, baseline, whole-pixel advances; wrapping, alignment, clipping, shadow and drawing into a canvas |
+| `text` | Liberation Sans Regular and Bold (embedded) with the metrics of Arial: line height, baseline, whole-pixel advances; wrapping, alignment, clipping, shadow and drawing into a canvas; templates, numbers, money and dates (`text::format`) |
 | `sprite` | Sprite files and palettes: decoding, drawing, PNG output |
 | `userdir` | The per-user folder: where it is, the settings written there, read over the game's `zoo.ini` |
 
@@ -55,7 +55,7 @@ Not implemented yet unless said otherwise.
 - **Entities.** No class hierarchy: one `Kind` enum (animal, guest, staff, scenery, building, ...) and flat properties read as the original reads them. Code branches on `Kind` only.
 - **Behaviour scripts.** The scripts of the data are parsed at load time into an enum of operations and run by a state machine per unit. An unknown operation is a load error that names it.
 - **Simulation.** Like the original: a variable step (elapsed milliseconds times the speed factor, capped by `MaxSimTick`) and three independent timers (drawing, interface, simulation). A test mode with a fixed seed and fixed steps gives the same state hash on the three systems.
-- **Text** (from M4). Liberation Sans, which has the metrics of Arial, rendered with `fontdue` (no hinting, no SIMD, so the glyphs are the same on every system). The two font files are embedded unmodified with their licence in `fonts/`. A font is asked for by a face string and a size string as the layout files give them and cached per (face, size); glyphs are cached per font and character. Text is laid out and drawn into a canvas (`Framebuffer`) that the caller has filled with the background colour: smoothed edges blend towards the pixel underneath, so they blend towards the element's own background, as in the original.
+- **Text** (from M4). Liberation Sans, which has the metrics of Arial, rendered with `fontdue` (no hinting, no SIMD, so the glyphs are the same on every system). The two font files are embedded unmodified with their licence in `fonts/`. A font is asked for by a face string and a size string as the layout files give them and cached per (face, size); glyphs are cached per font and character. Text is laid out and drawn into a canvas (`Framebuffer`) that the caller has filled with the background colour: smoothed edges blend towards the pixel underneath, so they blend towards the element's own background, as in the original. `text::format` writes the game's templates (`%s %d %m %r`, positional forms), integers, money and dates with fixed US English conventions, from the strings of the string table.
 - **Beyond the original.** Improvements such as interface scaling come after parity.
 
 ## Dependencies
