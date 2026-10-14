@@ -23,7 +23,7 @@ The core draws in software into an RGBA framebuffer (`Framebuffer`), as the orig
 
 ## Platform
 
-SDL3 (window, input, audio) is built from source and linked statically, so no system SDL is needed. `run` plays a map in the window with the loop of the original; the keys of the map view become commands in `src/input.rs`, and the loop reads the cursor for the edge scroll. `window-smoke` presents a test pattern.
+SDL3 (window, input, audio) is built from source and linked statically, so no system SDL is needed. `run` plays a map in the window with the loop of the original; the keys of the map view become commands in `src/input.rs`, and the loop reads the cursor for the edge scroll. Full screen is the state of the window flags, read on every pass like the minimised state: the loop tells the game with a `fullscreen` command when it changes, whoever caused it, so a log replays it. The camera owns the two full-screen rules (edge band, zoom limit); `src/window/fullscreen.rs` places the picture on the display. `window-smoke` presents a test pattern.
 
 ### The window
 

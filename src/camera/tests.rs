@@ -286,3 +286,57 @@ fn the_zoom_value_is_the_factor() {
     assert_eq!(at(4, (2000, 0)), at(0, (500, 0)));
     assert_eq!(at(-4, (500, 0)), at(0, (2000, 0)));
 }
+
+#[test]
+fn full_screen_has_a_band_of_two_pixels() {
+    let beach = map(75, 75, 0);
+    let start = (1888, -384);
+    let at = |pointer, fullscreen| {
+        let mut c = camera(0, 0, start, 1, BEACH);
+        c.set_fullscreen(&beach, fullscreen);
+        c.edge_scroll(&beach, 0, pointer);
+        c.scroll
+    };
+    let (x, y) = start;
+    assert_eq!(at(Some((2, 300)), true), (x - 32, y));
+    assert_eq!(at(Some((3, 300)), true), start);
+    assert_eq!(at(Some((1021, 300)), true), start);
+    assert_eq!(at(Some((1022, 300)), true), (x + 32, y));
+    assert_eq!(at(Some((300, 765)), true), start);
+    assert_eq!(at(Some((300, 766)), true), (x, y + 32));
+    assert_eq!(at(Some((3, 300)), false), (x - 32, y), "windowed: 7");
+    assert_eq!(at(Some((1021, 300)), false), (x + 32, y));
+}
+
+#[test]
+fn full_screen_at_800_wide_does_not_zoom_in() {
+    let beach = map(75, 75, 0);
+    let mut c = camera(0, 0, (1216, 16), 1, (800, 600));
+    c.set_fullscreen(&beach, true);
+    c.zoom(&beach, None, true);
+    assert_eq!(c.zoom, 0, "refused at zoom 0");
+    c.zoom(&beach, None, false);
+    c.zoom(&beach, None, true);
+    assert_eq!(c.zoom, 0);
+    // Windowed again, zoom 2 is offered.
+    c.set_fullscreen(&beach, false);
+    c.zoom(&beach, None, true);
+    assert_eq!(c.zoom, 2);
+    // Going to full screen zooms a view at zoom 2 out to 0, with the steps of a zoom change.
+    let mut want = camera(2, 0, c.scroll, 1, (800, 600));
+    want.zoom(&beach, None, false);
+    c.set_fullscreen(&beach, true);
+    assert_eq!((c.zoom, c.scroll), (want.zoom, want.scroll));
+    assert_eq!(c.zoom, 0);
+    // Other widths are not affected, nor is zoom out.
+    let mut c = camera(0, 0, (1216, 16), 1, BEACH);
+    c.set_fullscreen(&beach, true);
+    c.zoom(&beach, None, true);
+    assert_eq!(c.zoom, 2);
+    c.set_fullscreen(&beach, true);
+    assert_eq!(c.zoom, 2, "only at 800");
+    let mut c = camera(0, 0, (1216, 16), 1, (800, 600));
+    c.set_fullscreen(&beach, true);
+    c.zoom(&beach, None, false);
+    assert_eq!(c.zoom, -2);
+}

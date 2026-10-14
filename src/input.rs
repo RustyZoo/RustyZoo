@@ -19,6 +19,16 @@ pub fn command(event: &Event) -> Option<Command> {
     }
 }
 
+/// Whether the event is the release of Enter with Alt held: the switch between window and full
+/// screen (3.4). The key-down of Alt+Enter is a system key and does nothing else (4.1).
+pub fn alt_enter(event: &Event) -> bool {
+    matches!(
+        *event,
+        Event::KeyUp { scancode: Some(Scancode::Return | Scancode::KpEnter), keymod, .. }
+            if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD)
+    )
+}
+
 fn key_command(key: Scancode, keymod: Mod) -> Option<Command> {
     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
@@ -73,6 +83,32 @@ mod tests {
             which: 0,
             raw: 0,
         })
+    }
+
+    #[test]
+    fn alt_enter_is_the_release_of_enter_with_alt_held() {
+        let up = |key, keymod| {
+            alt_enter(&Event::KeyUp {
+                timestamp: 0,
+                window_id: 1,
+                keycode: None,
+                scancode: Some(key),
+                keymod,
+                repeat: false,
+                which: 0,
+                raw: 0,
+            })
+        };
+        assert!(up(Scancode::Return, Mod::LALTMOD));
+        assert!(up(Scancode::KpEnter, Mod::RALTMOD | Mod::NUMMOD));
+        assert!(!up(Scancode::Return, Mod::NOMOD));
+        assert!(!up(Scancode::Return, Mod::LCTRLMOD));
+        assert!(!up(Scancode::Space, Mod::LALTMOD));
+        assert_eq!(
+            press(Scancode::Return, Mod::LALTMOD),
+            None,
+            "key-down does nothing"
+        );
     }
 
     #[test]

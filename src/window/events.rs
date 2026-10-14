@@ -23,6 +23,10 @@ pub fn focused(flags: WindowFlags) -> bool {
 pub struct State {
     /// The system asks to draw the window again.
     pub exposed: bool,
+    /// Alt+Enter was released.
+    pub toggle: bool,
+    /// The maximise button was pressed.
+    pub maximized: bool,
 }
 
 impl State {
@@ -31,7 +35,12 @@ impl State {
         if let Some(command) = input::command(&event) {
             commands.push(command);
         }
+        self.toggle |= input::alt_enter(&event);
         match event {
+            Event::Window {
+                win_event: WindowEvent::Maximized,
+                ..
+            } => self.maximized = true,
             Event::Quit { .. }
             | Event::Window {
                 win_event: WindowEvent::CloseRequested,

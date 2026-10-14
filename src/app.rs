@@ -19,7 +19,9 @@ use crate::zoo::Zoo;
 
 /// What the player does in the map view (input 4). The text form is the script format of a
 /// headless run: `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`,
-/// `zoom in`, `zoom out`, `pause`, `quit`.
+/// `zoom in`, `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `quit`.
+/// A window reads `fullscreen` in a script as a request to switch, and makes the command itself
+/// when the window has switched, so a log replays it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
     /// One key-down message of a scroll key: the direction on each axis, -1, 0 or 1.
@@ -31,6 +33,8 @@ pub enum Command {
     Rotate(bool),
     /// Zoom in or out.
     Zoom(bool),
+    /// The window is full screen (true) or windowed (false) now.
+    Fullscreen(bool),
     /// Toggle the pause.
     Pause,
     /// Close the game.
@@ -45,6 +49,7 @@ impl fmt::Display for Command {
             Command::Pointer(None) => f.write_str("pointer none"),
             Command::Rotate(cw) => write!(f, "rotate {}", if cw { "cw" } else { "ccw" }),
             Command::Zoom(zoom_in) => write!(f, "zoom {}", if zoom_in { "in" } else { "out" }),
+            Command::Fullscreen(on) => write!(f, "fullscreen {}", if on { "on" } else { "off" }),
             Command::Pause => f.write_str("pause"),
             Command::Quit => f.write_str("quit"),
         }
@@ -71,6 +76,8 @@ impl FromStr for Command {
             ["rotate", "ccw"] => Command::Rotate(false),
             ["zoom", "in"] => Command::Zoom(true),
             ["zoom", "out"] => Command::Zoom(false),
+            ["fullscreen", "on"] => Command::Fullscreen(true),
+            ["fullscreen", "off"] => Command::Fullscreen(false),
             ["pause"] => Command::Pause,
             ["quit"] => Command::Quit,
             _ => return Err(format!("not a command: {text:?}")),
@@ -217,6 +224,7 @@ impl<'a> App<'a> {
                 }
             }
             Command::Zoom(zoom_in) => self.camera.zoom(&self.zoo, None, zoom_in),
+            Command::Fullscreen(on) => self.camera.set_fullscreen(&self.zoo, on),
             Command::Pause => self.paused = !self.paused,
             Command::Quit => self.quit = true,
         }

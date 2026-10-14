@@ -2,9 +2,11 @@
 //! tell how they came out.
 
 use rustyzoo::config::Config;
-use sdl3::render::Canvas;
+use sdl3::pixels::Color;
+use sdl3::render::{Canvas, FRect, Texture};
 use sdl3::video::Window;
 
+use super::fullscreen;
 use super::size::{clamp, ini_size, plan};
 use crate::CliError;
 
@@ -15,6 +17,49 @@ pub struct Screen {
     pub size: (u32, u32),
     /// The cursor is in points of the window; the game reads it in pixels of the game.
     pub to_game: (f32, f32),
+    /// The window is full screen: the picture is centred and scaled by a whole factor.
+    pub fullscreen: bool,
+}
+
+impl Screen {
+    /// Copies the game picture to the window.
+    pub fn copy(&mut self, texture: &Texture) -> Result<(), CliError> {
+        if !self.fullscreen {
+            return Ok(self.canvas.copy(texture, None, None)?);
+        }
+        let out = self.canvas.output_size()?;
+        let (x, y, w, h) = fullscreen::fit(out, self.size);
+        self.canvas.set_draw_color(Color::RGB(0, 0, 0));
+        self.canvas.clear();
+        Ok(self.canvas.copy(texture, None, FRect::new(x, y, w, h))?)
+    }
+
+    /// Asks the window to go to full screen or back. If it cannot, it stays as it is.
+    pub fn switch(&mut self, on: bool) {
+        if let Err(e) = self.canvas.window_mut().set_fullscreen(on) {
+            eprintln!(
+                "rustyzoo: cannot switch to {}: {e}",
+                if on { "full screen" } else { "a window" }
+            );
+        }
+    }
+
+    /// The pixel of the game under the cursor at `at`, in points of the window.
+    pub fn pointer(&self, at: (f32, f32)) -> Result<(i32, i32), CliError> {
+        if !self.fullscreen {
+            return Ok((
+                (at.0 * self.to_game.0).floor() as i32,
+                (at.1 * self.to_game.1).floor() as i32,
+            ));
+        }
+        let out = self.canvas.output_size()?;
+        Ok(fullscreen::pointer(
+            at,
+            self.canvas.window().size(),
+            out,
+            self.size,
+        ))
+    }
 }
 
 /// Opens the window for the game size `size` (the ini file's, cut to the display, when `None`).
@@ -67,5 +112,6 @@ pub fn open(
         canvas,
         size,
         to_game,
+        fullscreen: false,
     })
 }
