@@ -3,9 +3,11 @@
 pub mod anim;
 pub mod config;
 pub mod entity;
+pub mod ground;
 pub mod pe;
 pub mod sprite;
 pub mod strings;
+pub mod tga;
 pub mod vfs;
 pub mod zoo;
 
