@@ -3,9 +3,11 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::Catalogue;
+use crate::menu::Menu;
 use crate::render::Options;
 use crate::render::order::project;
 use crate::render::tests::{cache_install, flat_map, frame_file, tile_with};
+use crate::sprite::tests::Install;
 use crate::ui::interface::Interface;
 use crate::vfs::Vfs;
 
@@ -97,7 +99,7 @@ fn the_log_tells_the_commands_of_a_pass_before_its_timers() {
 fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
     with_app("app-log", |app, _| {
         app.pass(0, &[]);
-        let view = app.camera().scroll;
+        let view = app.camera().unwrap().scroll;
         let lines = app.log_lines(0, 0);
         assert_eq!(lines.len(), 3);
         let (draw, hash) = lines[0].split_once(" view=").unwrap();
@@ -119,10 +121,10 @@ fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
 #[test]
 fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass() {
     with_app("app-commands", |app, other| {
-        let start = app.camera().scroll;
+        let start = app.camera().unwrap().scroll;
         // A draw in every pass (20 ms); the interface and the step are not due after the first.
         let first = app.pass(0, &[]).unwrap().pixels.clone();
-        assert_eq!(first, reference(other, app.camera()).pixels);
+        assert_eq!(first, reference(other, app.camera().unwrap()).pixels);
         assert!(
             first.chunks(4).any(|p| p[..3] != [0, 0, 0]),
             "the map is in view"
@@ -138,8 +140,8 @@ fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass()
             .unwrap()
             .pixels
             .clone();
-        assert!(app.camera().scroll.0 > start.0);
-        assert_eq!(frame, reference(other, app.camera()).pixels);
+        assert!(app.camera().unwrap().scroll.0 > start.0);
+        assert_eq!(frame, reference(other, app.camera().unwrap()).pixels);
         assert!(app.pass(80, &[]).is_none());
         // A rotation restages the picture.
         let frame = app
@@ -147,25 +149,25 @@ fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass()
             .unwrap()
             .pixels
             .clone();
-        assert_eq!(app.camera().rotation, 1);
-        assert_eq!(frame, reference(other, app.camera()).pixels);
+        assert_eq!(app.camera().unwrap().rotation, 1);
+        assert_eq!(frame, reference(other, app.camera().unwrap()).pixels);
         let frame = app
             .pass(120, &[Command::Rotate(false), Command::Rotate(false)])
             .unwrap()
             .pixels
             .clone();
-        assert_eq!(app.camera().rotation, 3);
-        assert_eq!(frame, reference(other, app.camera()).pixels);
+        assert_eq!(app.camera().unwrap().rotation, 3);
+        assert_eq!(frame, reference(other, app.camera().unwrap()).pixels);
         // A zoom changes the camera and is a frame of its own.
         let frame = app
             .pass(140, &[Command::Zoom(true)])
             .unwrap()
             .pixels
             .clone();
-        assert_eq!(app.camera().zoom, 2);
-        assert_eq!(frame, reference(other, app.camera()).pixels);
+        assert_eq!(app.camera().unwrap().zoom, 2);
+        assert_eq!(frame, reference(other, app.camera().unwrap()).pixels);
         app.pass(160, &[Command::Zoom(true)]);
-        assert_eq!(app.camera().zoom, 2, "the limit");
+        assert_eq!(app.camera().unwrap().zoom, 2, "the limit");
         // Zoomed out, the frame is the zoomed out window of the same camera.
         for (now, want) in [(180, 0), (200, -2)] {
             let frame = app
@@ -173,8 +175,8 @@ fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass()
                 .unwrap()
                 .pixels
                 .clone();
-            assert_eq!(app.camera().zoom, want);
-            assert_eq!(frame, reference(other, app.camera()).pixels);
+            assert_eq!(app.camera().unwrap().zoom, want);
+            assert_eq!(frame, reference(other, app.camera().unwrap()).pixels);
         }
         // Quit is a flag the shell reads. The pass that gets it runs no timer, and no command
         // after it; the log still tells the commands it applied.
@@ -190,7 +192,7 @@ fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass()
 fn the_pause_stops_the_calendar_but_not_the_timers() {
     with_app("app-pause", |app, _| {
         let date = |app: &App| {
-            let d = app.calendar().date();
+            let d = app.calendar().unwrap().date();
             (d.hour, d.minute, d.second)
         };
         // A pass every 70 ms is a step every pass.
@@ -213,23 +215,23 @@ fn the_pause_stops_the_calendar_but_not_the_timers() {
 #[test]
 fn the_interface_pass_scrolls_at_the_edge_where_the_pointer_is() {
     with_app("app-edge", |app, _| {
-        let start = app.camera().scroll;
+        let start = app.camera().unwrap().scroll;
         // The pointer on the left band, halfway down. The interface fires at 0 and 70 ms.
         app.pass(0, &[Command::Pointer(Some((0, 24)))]);
-        assert_eq!(app.camera().scroll, (start.0 - 32, start.1));
+        assert_eq!(app.camera().unwrap().scroll, (start.0 - 32, start.1));
         // The frame of the next draw shows it.
         assert!(app.pass(20, &[]).is_some());
         assert_eq!(
-            app.camera().scroll,
+            app.camera().unwrap().scroll,
             (start.0 - 32, start.1),
             "no interface pass"
         );
         app.pass(70, &[]);
-        assert_eq!(app.camera().scroll, (start.0 - 64, start.1));
+        assert_eq!(app.camera().unwrap().scroll, (start.0 - 64, start.1));
         // Away from the band, or outside the window, nothing scrolls.
         app.pass(140, &[Command::Pointer(Some((32, 24)))]);
         app.pass(210, &[Command::Pointer(None)]);
-        assert_eq!(app.camera().scroll, (start.0 - 64, start.1));
+        assert_eq!(app.camera().unwrap().scroll, (start.0 - 64, start.1));
     });
 }
 
@@ -387,7 +389,7 @@ fn with_an_interface_the_map_view_paints_the_map_and_a_paint_waits_for_a_reason(
         app.set_interface(interface("paint"));
         // Only the map view is shown: the frame is the map, as without an interface.
         let first = app.pass(0, &[]).unwrap().pixels.clone();
-        assert_eq!(first, reference(other, app.camera()).pixels);
+        assert_eq!(first, reference(other, app.camera().unwrap()).pixels);
         assert!(
             app.pass(20, &[]).is_none() && app.fired().draw,
             "nothing changed"
@@ -430,20 +432,117 @@ fn the_keys_of_the_map_view_wait_while_a_field_has_the_focus_or_the_map_is_not_s
     with_app("app-ui-keys", |app, _| {
         app.set_interface(interface("keys"));
         app.pass(0, &[]);
-        let start = app.camera().scroll;
+        let start = app.camera().unwrap().scroll;
         app.pass(20, &[Command::Scroll(1, 0)]);
-        assert_ne!(app.camera().scroll, start, "the map view has the keys");
-        let moved = app.camera().scroll;
+        assert_ne!(
+            app.camera().unwrap().scroll,
+            start,
+            "the map view has the keys"
+        );
+        let moved = app.camera().unwrap().scroll;
         let field = app.interface().unwrap().tree.find(4).unwrap();
         app.interface().unwrap().tree.elements[field].state |= crate::ui::layout::FOCUSED;
         app.pass(
             40,
             &[Command::Scroll(1, 0), Command::Pause, Command::Zoom(true)],
         );
-        assert_eq!(app.camera().scroll, moved);
+        assert_eq!(app.camera().unwrap().scroll, moved);
         assert!(!app.paused());
         app.interface().unwrap().tree.elements[field].state &= !crate::ui::layout::FOCUSED;
         app.pass(60, &[Command::Pause]);
         assert!(app.paused());
+    });
+}
+
+/// Runs `body` with the main menu of a window of 64 x 48 over a map view: Exit (7116) and Continue
+/// (7113) are 10 x 10 buttons at the top left.
+fn with_menu(name: &str, body: impl FnOnce(&mut App)) {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n\
+        [b]\ntype=UILayout\nlayout=ui/startup.lyt\n";
+    let menu = "[LayoutInfo]\nid=26\nlayer=1\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
+        [x]\ntype=UIButton\nid=7116\nx=0\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
+        [y]\ntype=UIButton\nid=7113\nx=20\ny=0\ndx=10\ndy=10\ncolorasicon=1\n";
+    let files = Install::new(
+        &format!("app-menu-{name}"),
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/startup.lyt", menu.as_bytes().to_vec()),
+        ],
+    );
+    let mut tree = crate::ui::layout::Tree::load(&Vfs::open(&files.0).unwrap(), "ui/root.lyt", 0);
+    assert_eq!(tree.failure, None);
+    tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
+    let ui = Interface::new(tree, Box::new(NoTexts));
+    let menu = Menu::new(Config::default(), &files.0, None, None, 0);
+    let install = cache_install(&format!("app-menu-game-{name}"), frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut app = App::menu(
+        MapRenderer::new(&vfs, &catalogue),
+        Timers::new(66, 16, 200),
+        SIZE,
+        ui,
+        menu,
+        None,
+    )
+    .unwrap();
+    body(&mut app);
+}
+
+#[test]
+fn the_menu_has_no_game_and_paints_the_interface_alone() {
+    with_menu("paint", |app| {
+        assert!(app.camera().is_none() && app.calendar().is_none() && !app.paused());
+        let frame = app.pass(0, &[]).unwrap();
+        assert!(frame.pixels.chunks(4).all(|p| p[3] == 255), "opaque");
+        let lines = app.log_lines(0, 0);
+        assert_eq!(lines[0], "pass 0 t=0 menu continue disabled");
+        assert!(lines[1].starts_with("pass 0 t=0 draw ") && !lines[1].contains("view="));
+        assert_eq!(lines[2], "pass 0 t=0 interface 66");
+        assert_eq!(lines.len(), 3, "no step without a game: {lines:?}");
+        // The keys of the map view and a switch to full screen change nothing.
+        let keys = [
+            Command::Scroll(1, 0),
+            Command::Rotate(true),
+            Command::Zoom(true),
+            Command::Pause,
+            Command::Fullscreen(true),
+        ];
+        assert!(app.pass(20, &keys).is_none());
+        assert!(!app.paused() && !app.quit());
+        // The menu says what it did once.
+        assert!(app.pass(40, &[]).is_none());
+        assert!(app.log_lines(2, 40).iter().all(|l| !l.contains(" menu ")));
+    });
+}
+
+#[test]
+fn a_click_on_exit_ends_the_game_and_a_click_on_another_button_does_not() {
+    with_menu("exit", |app| {
+        app.pass(0, &[]);
+        let click = |x, y| {
+            [
+                Command::Mouse(Mouse::Move(x, y)),
+                Command::Mouse(Mouse::Down),
+                Command::Mouse(Mouse::Up),
+            ]
+        };
+        app.pass(20, &click(25, 5));
+        assert!(!app.quit());
+        app.pass(40, &click(40, 40));
+        assert!(!app.quit());
+        // The pass of the click is the last: it logs the click and what the menu made of it.
+        assert!(app.pass(60, &click(5, 5)).is_none());
+        assert!(app.quit());
+        let lines = app.log_lines(3, 60);
+        assert_eq!(lines.last().unwrap(), "pass 3 t=60 menu exit");
+        assert!(lines.contains(&"pass 3 t=60 ui select 7116".to_string()));
+        assert!(app.pass(80, &[]).is_none() && app.log_lines(4, 80).is_empty());
+    });
+    with_menu("close", |app| {
+        app.pass(0, &[]);
+        app.pass(20, &[Command::Quit]);
+        assert!(app.quit());
     });
 }

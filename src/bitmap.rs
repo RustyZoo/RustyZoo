@@ -14,7 +14,7 @@ use crate::sprite::{Frame, MAX_COLORS, MAX_DIMENSION, Palette};
 use crate::vfs::Vfs;
 
 /// A bitmap reduced to 5-6-5 colours: `(width, height)` and the RGB pixels, top row first.
-type Reduced = (usize, usize, Vec<[u8; 3]>);
+pub(crate) type Reduced = (usize, usize, Vec<[u8; 3]>);
 
 fn le(data: &[u8], at: usize, len: usize) -> Result<u32, String> {
     let bytes = data.get(at..at + len).ok_or("truncated bitmap")?;
@@ -30,7 +30,7 @@ fn reduce(r: u8, g: u8, b: u8) -> [u8; 3] {
 }
 
 /// Reads an uncompressed 24-bit or 8-bit Windows bitmap and reduces its colours.
-fn read(data: &[u8]) -> Result<Reduced, String> {
+pub(crate) fn read(data: &[u8]) -> Result<Reduced, String> {
     if data.get(..2) != Some(b"BM") {
         return Err("not a bitmap".into());
     }

@@ -37,6 +37,7 @@ use sdl3::render::ScaleMode;
 use sdl3::video::WindowFlags;
 
 use crate::CliError;
+use crate::boot::boot;
 use crate::probe::{self, Timing};
 use events::{State, asleep, focused, maximised};
 use screen::Screen;
@@ -91,10 +92,10 @@ fn remember(on: bool) {
     }
 }
 
+/// Plays the map `loaded` (its types and the zoo), or, without one, starts up to the main menu.
 pub fn run(
     vfs: &Vfs,
-    catalogue: &Catalogue,
-    zoo: Zoo,
+    loaded: Option<(Catalogue, Zoo)>,
     ini: &Config,
     flags: Flags,
 ) -> Result<(), CliError> {
@@ -106,21 +107,62 @@ pub fn run(
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
 
-    let (mut sound, menu) = Sound::open(&sdl, vfs, ini);
+    // Without a map the game data is loaded behind the start-up picture, which is presented
+    // each time the bar moves; the menu music starts in the middle of it.
+    let mut opened = None;
+    let booted = match loaded {
+        Some(_) => None,
+        None => {
+            let mut present = |frame: &rustyzoo::Framebuffer| -> Result<(), CliError> {
+                texture.update(None, &frame.pixels, size.0 as usize * 4)?;
+                screen.copy(&texture)?;
+                match screen.canvas.present() {
+                    true => Ok(()),
+                    false => Err(sdl3::get_error().into()),
+                }
+            };
+            let mut music = || opened = Some(Sound::open(&sdl, vfs, ini));
+            Some(boot(vfs, ini, size, flags.show, &mut present, &mut music)?)
+        }
+    };
+    let (mut sound, menu) = opened.unwrap_or_else(|| Sound::open(&sdl, vfs, ini));
     let timers = Timers::from_config(ini);
     let mut timing = flags
         .timing
         .map(|ms| Timing::new(ms, timers.draw_period(), timers.update_period()));
-    let mut app = App::new(
-        MapRenderer::new(vfs, catalogue),
-        zoo,
-        Settings::from_config(ini),
-        timers,
-        size,
-    )?;
-    if let Some(ui) = crate::layout::load_interface(vfs, size, flags.show)? {
-        app.set_interface(ui);
-    }
+    let catalogue;
+    let mut start_lines = Vec::new();
+    let mut app = match (loaded, booted) {
+        (Some((owned, zoo)), _) => {
+            catalogue = owned;
+            let mut app = App::new(
+                MapRenderer::new(vfs, &catalogue),
+                zoo,
+                Settings::from_config(ini),
+                timers,
+                size,
+            )?;
+            if let Some(ui) = crate::layout::load_interface(vfs, size, flags.show)? {
+                app.set_interface(ui);
+            }
+            // The game starts with the run: the menu music fades out.
+            app.start_game(menu);
+            app
+        }
+        (None, Some(booted)) => {
+            catalogue = booted.catalogue;
+            start_lines = booted.lines;
+            App::menu(
+                MapRenderer::new(vfs, &catalogue),
+                timers,
+                size,
+                booted.interface,
+                booted.menu,
+                menu,
+            )?
+        }
+        (None, None) => unreachable!("a run without a map boots"),
+    };
     let mut state = State {
         interface: app.interface().is_some(),
         ..State::default()
@@ -130,8 +172,6 @@ pub fn run(
         // SAFETY: the window is open and owned by `screen` for the whole run.
         unsafe { sdl3::sys::keyboard::SDL_StartTextInput(screen.canvas.window().raw()) };
     }
-    // The game starts with the run: the menu music fades out.
-    app.start_game(menu);
     let mut log = match flags.log {
         Some(file) => {
             let out = File::create(file).map_err(|e| format!("{file}: {e}"))?;
@@ -141,11 +181,20 @@ pub fn run(
     };
     if let Some(log) = &mut log {
         writeln!(log, "{}", app.log_header())?;
+        for line in &start_lines {
+            writeln!(log, "startup {line}")?;
+        }
     }
 
     let mut pump = sdl.event_pump()?;
     let mut script = flags.script.into_iter().peekable();
     let mut commands = Vec::new();
+    // What the player did during the start-up is dropped, but not closing the window.
+    while let Some(event) = pump.poll_event() {
+        state.note(event, &mut commands);
+    }
+    state.mouse.clear();
+    commands.retain(|c| *c == Command::Quit);
     // The ini file starts the game in full screen; the camera is told before the first pass, so
     // it applies the zoom limit of a full screen to the stored zoom (camera 4.2, 8.3). The mode
     // is not written back: it is what the settings already say.

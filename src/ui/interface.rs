@@ -8,14 +8,36 @@
 
 mod input;
 
+use std::collections::HashMap;
+
 use super::draw::{Painter, Rect4, Strings};
-use super::layout::{FOCUSED, HIDDEN, Kind, TIMED, Tree};
+use super::layout::{DIRTY, FOCUSED, HIDDEN, Kind, TIMED, Tree};
 use crate::Framebuffer;
+
+/// The game's strings, with the texts the game code has put in place of some of them (a version
+/// label, a tooltip with a file name in it).
+struct Texts {
+    base: Box<dyn Strings>,
+    replaced: HashMap<i32, String>,
+}
+
+impl Strings for Texts {
+    fn string(&self, id: i32) -> String {
+        match self.replaced.get(&id) {
+            Some(text) => text.clone(),
+            None => self.base.string(id),
+        }
+    }
+
+    fn text_entry(&self, name: &[u8]) -> Vec<u8> {
+        self.base.text_entry(name)
+    }
+}
 
 pub struct Interface {
     pub tree: Tree,
     painter: Painter,
-    strings: Box<dyn Strings>,
+    strings: Texts,
     /// The first `ZTMapView` of the tree.
     map_view: Option<usize>,
     dirty: bool,
@@ -25,6 +47,8 @@ pub struct Interface {
     /// one line each, and the sounds it asks for.
     events: Vec<String>,
     sounds: Vec<&'static str>,
+    /// The buttons whose action ran (see [`Interface::take_selected`]).
+    selected: Vec<i32>,
 }
 
 impl Interface {
@@ -40,12 +64,16 @@ impl Interface {
         Interface {
             tree,
             painter: Painter::default(),
-            strings,
+            strings: Texts {
+                base: strings,
+                replaced: HashMap::new(),
+            },
             map_view,
             dirty: true,
             input: input::Input::default(),
             events: Vec::new(),
             sounds: Vec::new(),
+            selected: Vec::new(),
         }
     }
 
@@ -89,9 +117,34 @@ impl Interface {
     /// Paints the whole interface into `frame`. `map` draws the map into the rectangle of the map
     /// view when it is reached.
     pub fn paint(&mut self, frame: &mut Framebuffer, map: &mut dyn FnMut(&mut Framebuffer, Rect4)) {
-        self.painter
-            .draw(&mut self.tree, frame, &*self.strings, map);
+        self.painter.draw(&mut self.tree, frame, &self.strings, map);
         self.dirty = false;
+    }
+
+    /// The text of string `id` as the elements show it.
+    pub fn string(&self, id: i32) -> String {
+        self.strings.string(id)
+    }
+
+    /// The text of string `id` as the game's libraries have it, whatever was set in its place.
+    pub fn template(&self, id: i32) -> String {
+        self.strings.base.string(id)
+    }
+
+    /// Shows `text` wherever string `id` is shown, from now on.
+    pub fn set_string(&mut self, id: i32, text: String) {
+        self.strings.replaced.insert(id, text);
+        for e in &mut self.tree.elements {
+            if e.look.text_id.first() == Some(&id) {
+                e.state |= DIRTY;
+            }
+        }
+        self.dirty = true;
+    }
+
+    /// The ids of the buttons whose action ran since the last call, in order.
+    pub fn take_selected(&mut self) -> Vec<i32> {
+        std::mem::take(&mut self.selected)
     }
 
     /// The lines that tell what the interface did since the last call (`hover 7111`, `press ...`,

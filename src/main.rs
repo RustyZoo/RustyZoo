@@ -1,4 +1,5 @@
 mod audio;
+mod boot;
 mod input;
 mod layout;
 mod probe;
@@ -102,7 +103,7 @@ usage: rustyzoo [--data <dir>] <command>
   check-anis          load every animation set and the sprite files it names; list the sets
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
-  run <map> --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
+  run [<map>] --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
       [--png-every K] [--out DIR] [--show ID]...
                       play a map (a .zoo member) without a window. N passes of the main loop
                       with a scripted clock that advances MS milliseconds per pass, the
@@ -128,9 +129,10 @@ usage: rustyzoo [--data <dir>] <command>
                       records, with its commands, and prints the same lines. A frame painted
                       in a pass whose index is a multiple of K is written to
                       DIR/frame-<pass>.png (DIR is by default the current folder)
-  run <map> [--size WxH] [--passes N] [--script FILE] [--log FILE] [--timing MS] [--shot FILE]
+  run [<map>] [--size WxH] [--passes N] [--script FILE] [--log FILE] [--timing MS] [--shot FILE]
       [--show ID]...
-                      play a map with a game size of the ini file's screenwidth and
+                      play a map (without one, start up to the main menu, see below) with a
+                      game size of the ini file's screenwidth and
                       screenheight (cut to the display; --size overrides it, uncut), in a
                       window enlarged by the display scale rounded to a whole number (the
                       factor, at least 1, smaller if the window would not fit the display),
@@ -152,6 +154,17 @@ usage: rustyzoo [--data <dir>] <command>
                       --shot writes the pixels of the last frame, as the renderer has them
                       (at the size in pixels), to FILE as a PNG, and prints its size, number of
                       colours and hash; a blank picture is an error
+                      Without a map, `run` starts up as the original does: the start-up picture of the expansion
+                      flags (those of the xpac*.cfg files) in the middle of the window with a
+                      progress bar over it, which the steps of the loading fill (and whose count
+                      is written to [UI] progresscalls of the settings of the user folder), the
+                      menu music, then the main menu: Continue enabled only when [user] lastfile
+                      names a file (otherwise it is emptied), Zoo Items disabled, the version label,
+                      Exit ending the run (closing the window too). A headless run prints the
+                      lines `startup ...` after the size and, in its first pass, `menu ...` lines
+                      (continue enabled|disabled, version) and `menu exit`; a log that has them
+                      replays. The first-run tutorial is not started (there are no scenarios yet)
+                      and a line says so. Starting a game from the menu comes later.
   dump-layout [--size WxH] [--expansions N]
                       load the interface tree as check-layouts does and resolve it for a window
                       of W by H pixels (1024x768 by default; each side from 1 to 16384), then
@@ -279,7 +292,10 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["check-layouts", flags @ ..] => layout::check_layouts(&open_game(data_dir)?, flags),
         ["dump-layout", flags @ ..] => layout::dump_layout(data_dir, flags),
         ["render-ui", out, flags @ ..] => layout::render_ui(data_dir, out, flags),
-        ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, member, flags),
+        ["run", flags @ ..] if flags.first().is_none_or(|w| w.starts_with("--")) => {
+            run::run(&open_game(data_dir)?, None, flags)
+        }
+        ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, Some(member), flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(
             &open_game(data_dir)?,

@@ -411,6 +411,12 @@ impl Catalogue {
     /// empty, damaged, without a section or too large) skips the registry or leaves the type
     /// without a configuration, with a warning.
     pub fn load(vfs: &Vfs) -> Result<Catalogue, EntityError> {
+        Catalogue::load_with(vfs, &mut || {})
+    }
+
+    /// [`Catalogue::load`], calling `step` once for every type the files name (the progress of
+    /// the start-up).
+    pub fn load_with(vfs: &Vfs, step: &mut dyn FnMut()) -> Result<Catalogue, EntityError> {
         let mut catalogue = Catalogue::default();
         for class in &CLASSES {
             let mut loaded_any = false;
@@ -432,7 +438,7 @@ impl Catalogue {
                         catalogue.warn(|| format!("staff entry of unknown kind: {}", show(key)));
                     }
                 }
-                catalogue.add_all(vfs, entries(class, &registry))?;
+                catalogue.add_all(vfs, entries(class, &registry), step)?;
             }
             if let (true, Some(extension)) = (loaded_any, class.user_extension) {
                 for name in vfs.list(Some(&format!("*{extension}"))) {
@@ -467,7 +473,7 @@ impl Catalogue {
                         subtype,
                         file: Some(name.as_bytes()),
                     });
-                    catalogue.add_all(vfs, entries)?;
+                    catalogue.add_all(vfs, entries, step)?;
                 }
             }
         }
@@ -563,6 +569,7 @@ impl Catalogue {
         &mut self,
         vfs: &Vfs,
         entries: impl Iterator<Item = Entry<'a>>,
+        step: &mut dyn FnMut(),
     ) -> Result<(), EntityError> {
         for entry in entries {
             if self.entries >= MAX_ENTRIES {
@@ -575,6 +582,7 @@ impl Catalogue {
             }
             self.entries += 1;
             self.add(vfs, entry)?;
+            step();
         }
         Ok(())
     }

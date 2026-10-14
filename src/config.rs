@@ -56,7 +56,7 @@ impl fmt::Display for TooLarge {
 impl Error for TooLarge {}
 
 /// A parsed file: sections by exact name, in ascending byte order.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Config {
     sections: BTreeMap<Vec<u8>, Section>,
     /// How many items (lines to the line end) outside any section were skipped before the first
@@ -68,7 +68,7 @@ pub struct Config {
 
 /// The keys of one section by exact name, in ascending byte order, each with its values in file
 /// order. The list of values may be empty.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Section {
     keys: BTreeMap<Vec<u8>, Vec<Vec<u8>>>,
 }

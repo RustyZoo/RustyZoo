@@ -160,6 +160,44 @@ menu_click() {
 check base-trial 'uihover7111;uisounduiclick;uipress7111;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/default.zoo"
 check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/scn19.zoo"
 
+# Start up to the main menu, headless, without a map: the picture drawn (resource number and
+# corner), the loading steps (also written to [UI] progresscalls of the user folder), Continue
+# disabled, the version label, the hash of the first frame, and a click on Exit at y ending the run
+# at its pass. The numbers depend on the data of each trial.
+startup() {
+  rm -rf "$tmp/user"
+  printf '1 mouse 512 %s\n2 down\n3 up\n' "$1" >"$tmp/exit"
+  rz run --headless --passes 6 --clock 20 --script "$tmp/exit" 2>/dev/null |
+    awk '/^startup picture/{p=$3"@"$5} /^startup steps/{s=$3} /menu continue/{c=$6} /menu version/{v=$6} / draw [0-9a-f]{16}/{if(!h)h=$5} /menu exit/{e=$2} END{print p","s","c","v","h",exit@"e}'
+  sed -n 's/^progresscalls=//p' "$tmp/user/zoo.ini"
+}
+check base-trial '502@112,84,131,disabled,10.10.00.0004,fac80cf107ea09f5,exit@3,131' 'startup 620 | paste -sd, -'
+check expansion-trial '505@112,84,253,disabled,12.05.00.0004,4e1b08d50e0b52e7,exit@3,253' 'startup 600 | paste -sd, -'
+# Continue is enabled by a last file that exists (named in the tooltip); a name that is gone
+# disables it and is written back empty; the settings of the game itself are never written.
+last() {
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[user]\nlastfile=%s\n' "$1" >"$tmp/user/zoo.ini"
+  rz run --headless --passes 1 --clock 20 2>/dev/null | sed -n 's/^pass 0 t=0 menu continue //p'
+  sed -n 's/^lastfile=//p' "$tmp/user/zoo.ini"
+}
+check base-trial 'enableddefault.zoo,maps\default.zoo' 'last "maps\\default.zoo" | tr -d " \n" | sed "s/maps/,maps/"'
+check base-trial 'disabled,' 'last "maps\\gone.zoo" | paste -sd, -'
+
+# The same in a window of the dummy video driver (the start-up picture is presented as the bar
+# moves): a click on Exit at y ends the run, and its log replays headless to the same lines.
+windowed_menu() {
+  d=$(mktemp -d)
+  printf '3 mouse 512 %s\n5 down\n6 up\n' "$1" >"$d/script"
+  SDL_VIDEO_DRIVER=dummy rz run --size 1024x768 --passes 40 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  grep -c 'menu exit' "$d/log"
+  if rz run --headless --replay "$d/log" 2>/dev/null | cmp -s - "$d/log"; then echo same; else echo different; fi
+  rm -rf "${d:?}"
+}
+check base-trial 1,same 'windowed_menu 620 | paste -sd, -'
+check expansion-trial 1,same 'windowed_menu 600 | paste -sd, -'
+
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
 check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"
