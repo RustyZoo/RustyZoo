@@ -1,6 +1,7 @@
-//! `rustyzoo run`: the map view's game driven by a scripted clock and a script of commands, or by
-//! the log of an earlier run, without a window. It prints the size of the window and the lines
-//! of [`App::log_lines`], the same ones a windowed run prints, so a log replayed here gives the
+//! `rustyzoo run`: the map view's game. With `--headless` it is driven by a scripted clock and a
+//! script of commands, or by the log of an earlier run, without a window: it prints the size of
+//! the window and the lines of [`App::log_lines`]. Without it the game opens a window (see
+//! `window.rs`) and `--log` writes the same lines to a file, so a log replayed here gives the
 //! same frame hashes.
 
 use std::fs::File;
@@ -24,7 +25,11 @@ const DEFAULT_SIZE: (u32, u32) = (1024, 768);
 /// The words after `run <map>`.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Flags {
-    passes: u64,
+    headless: bool,
+    /// Where a windowed run writes its log.
+    log: Option<String>,
+    /// The passes to run; a windowed run without it ends when the player closes the window.
+    passes: Option<u64>,
     /// Milliseconds the scripted clock advances per pass.
     clock: u64,
     script: Option<String>,
@@ -37,17 +42,21 @@ struct Flags {
 
 fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
     let mut flags = Flags::default();
-    let (mut headless, mut passes, mut clock) = (false, false, false);
+    let (mut passes, mut clock) = (false, false);
     let mut size = false;
     let number = |w: &str| w.parse::<u64>().map_err(|_| CliError::Usage);
     while let [word, rest @ ..] = words {
         words = match (*word, rest) {
             ("--headless", rest) => {
-                headless = true;
+                flags.headless = true;
+                rest
+            }
+            ("--log", [file, rest @ ..]) => {
+                flags.log = Some(file.to_string());
                 rest
             }
             ("--passes", [n, rest @ ..]) => {
-                (flags.passes, passes) = (number(n)?, true);
+                (flags.passes, passes) = (Some(number(n)?), true);
                 rest
             }
             ("--clock", [n, rest @ ..]) => {
@@ -86,11 +95,19 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
             _ => return Err(CliError::Usage),
         };
     }
-    // The window is not there yet: only the headless run exists. A replay brings its own passes,
-    // clock, commands and size.
+    // A replay brings its own passes, clock, commands and size. A window runs on the real clock
+    // and writes a log instead of printing it.
     let scripted = passes && clock;
     let replayed = flags.replay.is_some() && !(passes || clock || size || flags.script.is_some());
-    match headless && (scripted != flags.replay.is_some()) && (scripted || replayed) {
+    let ok = match flags.headless {
+        true => {
+            flags.log.is_none() && (scripted != flags.replay.is_some()) && (scripted || replayed)
+        }
+        false => {
+            !clock && flags.replay.is_none() && flags.png_every.is_none() && flags.out.is_none()
+        }
+    };
+    match ok {
         true => Ok(flags),
         false => Err(CliError::Usage),
     }
@@ -98,7 +115,7 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
 
 /// The lines `<pass index> <command>` of a script, in file order; blank lines and lines that
 /// start with `#` are skipped.
-fn script(text: &str) -> Result<Vec<(u64, Command)>, String> {
+pub fn script(text: &str) -> Result<Vec<(u64, Command)>, String> {
     let mut commands = Vec::new();
     for (n, line) in text.lines().enumerate() {
         let line = line.trim();
@@ -184,6 +201,15 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     let zoo =
         check_types(load_map(vfs, member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
     let ini = Config::parse(vfs.ini())?;
+    if !flags.headless {
+        let window = crate::window::Flags {
+            size: flags.size,
+            log: flags.log.as_deref(),
+            passes: flags.passes,
+            script: commands.collect(),
+        };
+        return crate::window::run(vfs, &catalogue, zoo, &ini, window);
+    }
     let mut app = App::new(
         MapRenderer::new(vfs, &catalogue),
         zoo,
@@ -217,7 +243,7 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
             }
         }
     } else {
-        for pass in 0..flags.passes {
+        for pass in 0..flags.passes.unwrap_or(0) {
             let mut due = Vec::new();
             while let Some((_, command)) = commands.next_if(|&(at, _)| at <= pass) {
                 due.push(command);
@@ -260,7 +286,10 @@ mod tests {
             "64x48",
         ]);
         let got = got.unwrap_or_else(|_| panic!("refused"));
-        assert_eq!((got.passes, got.clock, got.size), (5, 20, Some((64, 48))));
+        assert_eq!(
+            (got.passes, got.clock, got.size),
+            (Some(5), 20, Some((64, 48)))
+        );
         for bad in [
             &["--passes", "5", "--clock", "20"][..],
             &["--headless", "--passes", "5"],
@@ -296,6 +325,26 @@ mod tests {
             ],
             &["--headless", "--replay", "log", "--size", "1x1"],
             &["--headless", "--replay", "log", "--script", "s"],
+        ] {
+            assert!(flags(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_window_takes_its_own_flags() {
+        let got = flags(&[
+            "--size", "64x48", "--log", "l", "--passes", "3", "--script", "s",
+        ]);
+        let got = got.unwrap_or_else(|_| panic!("refused"));
+        assert!(!got.headless);
+        assert_eq!((got.log.as_deref(), got.passes), (Some("l"), Some(3)));
+        assert!(flags(&[]).is_ok());
+        for bad in [
+            &["--clock", "1"][..],
+            &["--replay", "log"],
+            &["--png-every", "1"],
+            &["--out", "d"],
+            &["--headless", "--passes", "1", "--clock", "1", "--log", "l"],
         ] {
             assert!(flags(bad).is_err(), "{bad:?}");
         }

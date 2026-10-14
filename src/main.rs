@@ -1,5 +1,6 @@
 mod audio;
 mod run;
+mod window;
 
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
@@ -101,6 +102,17 @@ usage: rustyzoo [--data <dir>] <command>
                       records, with its commands, and prints the same lines. A frame painted
                       in a pass whose index is a multiple of K is written to
                       DIR/frame-<pass>.png (DIR is by default the current folder)
+  run <map> [--size WxH] [--passes N] [--script FILE] [--log FILE]
+                      play a map in a window, set to the size of the ini file's screenwidth and
+                      screenheight (cut to the display; --size overrides it, uncut), with the
+                      menu music. The loop runs on the real clock, sleeps until the next timer
+                      is due, blocks while the window is minimised or hidden, and shows a frame
+                      only when one was painted. Closing the window ends it. --passes ends it
+                      after N passes, --script applies commands as above before the pass of
+                      their index, --log writes the lines a headless run prints, so that
+                      `run --headless --replay` plays it again with the same frame hashes. It
+                      prints the window size, the size in pixels and the output size
+                      (SDL_VIDEO_DRIVER=dummy shows no window)
   timing              print the periods and the cap the ini file gives the main loop, then how
                       many draws, interface updates and steps a ten second run makes with a
                       pass at every millisecond
