@@ -37,6 +37,12 @@ check base-trial 5,3,2,0,13750,1371 "rz check-maps | tail -1 | grep -o '[0-9]*' 
 # staff, ambient, rubble, tank walls, filters), and the types whose base animation member is missing.
 check base-trial 51,6,1,6,17,4,2,13,2,0,0,0,0 "rz types | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check base-trial 1 "rz types | awk -F'\\t' 'NF>6 && \$7==\"no\"{n++} END{print n+0}'"
+# Ground pictures of the terrain cache rendered again: pictures, covered pixels, pictures with
+# differing covered pixels, differing pixels, other cuts, without palette, failed (the numbers before
+# the semicolon); then the colour difference. The shipped plain pictures are lit and the rendered
+# ones are not, so they differ by about 11 levels; the expansion trial has no cache.
+check base-trial 2907,3126249,0,0,0,0,0 "rz check-ground | tail -1 | cut -d';' -f1 | grep -o '[0-9]*' | paste -sd, -"
+check base-trial R11.23G10.56B8.03,95thpercentile25,max220 "rz check-ground | tail -1 | sed 's/.*mean //'"
 check expansion-trial 10877 'rz ls | wc -l'
 check expansion-trial 24871 'rz cat animals/allo.ai | wc -c'
 check expansion-trial 2756,7591,48464,62849,2,0,0,0 "rz check-config | tail -1 | grep -o '[0-9]*' | paste -sd, -"
@@ -50,5 +56,6 @@ check expansion-trial 3,3924,187 "rz strings | awk '/^LIB/{l++} /^TEXT/{t++} /^[
 check expansion-trial 5,5,0,0,28125,4160 "rz check-maps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 150,14,8,17,26,8,2,47,6,0,7,14,1 "rz types | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 0 "rz types | awk -F'\\t' 'NF>6 && \$7==\"no\"{n++} END{print n+0}'"
+check expansion-trial 0,0,0,0,0,0,0 "rz check-ground | tail -1 | cut -d';' -f1 | grep -o '[0-9]*' | paste -sd, -"
 
 exit $failed
