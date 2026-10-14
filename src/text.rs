@@ -44,7 +44,7 @@ pub struct Font {
     face: &'static fontdue::Font,
     bold: bool,
     ppem: u32,
-    advances: [u8; 256],
+    advances: [u16; 256],
     glyphs: HashMap<u8, Glyph>,
 }
 
@@ -84,7 +84,7 @@ impl Font {
                 .metrics(from_cp1252(byte as u8), UNITS as f32)
                 .advance_width;
             let px = div_round(units.round() as i64 * i64::from(ppem), UNITS);
-            *advance = px.clamp(0, 255) as u8;
+            *advance = px.clamp(0, i64::from(u16::MAX)) as u16;
         }
         Font {
             face,

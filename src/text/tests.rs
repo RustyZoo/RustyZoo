@@ -34,8 +34,8 @@ fn line_height_baseline_and_advances_of_the_six_sizes() {
 #[test]
 fn width_is_the_sum_of_whole_advances() {
     let font = Font::request("Arial Bold", "11");
-    let sum: i32 = b"Jan, Year 1".iter().map(|&b| font.advance(b)).sum();
-    assert_eq!(font.width(b"Jan, Year 1"), sum);
+    let sum: i32 = b"Sample text 12".iter().map(|&b| font.advance(b)).sum();
+    assert_eq!(font.width(b"Sample text 12"), sum);
     assert_eq!(font.width(b"1234567"), 7 * 8);
     assert_eq!(font.width(b""), 0);
     // No kerning: "AV" is the sum of "A" and "V".
@@ -43,10 +43,18 @@ fn width_is_the_sum_of_whole_advances() {
 }
 
 #[test]
+fn wide_characters_are_not_clipped_at_the_largest_size() {
+    // The em dash is one em wide: 267 pixels at 200 points.
+    let font = Font::request("Arial", "200");
+    assert_eq!(font.ppem(), 267);
+    assert_eq!(font.width(&to_cp1252("\u{2014}")), 267);
+}
+
+#[test]
 fn bold_is_the_bold_face_not_an_emboldened_regular() {
     let regular = Font::request("Arial", "11");
     let bold = Font::request("Arial Bold", "11");
-    assert!(bold.width(b"Jan, Year 1") > regular.width(b"Jan, Year 1"));
+    assert!(bold.width(b"Sample text 12") > regular.width(b"Sample text 12"));
 }
 
 #[test]

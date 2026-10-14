@@ -68,7 +68,7 @@ rustyzoo run maps/default.zoo                      # play a map in a window: arr
 rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
 rustyzoo check-bitmaps                           # convert the root bitmaps of the terrain and compare them with the shipped copies; exit 1 on a mismatch
 rustyzoo check-wavs                              # decode every .wav file and count them by format; exit 1 if one fails
-rustyzoo text-width "Jan, Year 1" --font "Arial Bold" --size 11   # width in pixels of a text in the original's font; needs no game data
+rustyzoo text-width "Sample text 12" --font "Arial Bold" --size 11   # width in pixels of a text in the original's font; needs no game data
 rustyzoo check-music                             # queue the menu music paused on the audio device and print its format, gain and queued bytes
 ```
 
