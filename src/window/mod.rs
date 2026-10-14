@@ -34,7 +34,7 @@ use sdl3::render::ScaleMode;
 
 use crate::CliError;
 use crate::probe::{self, Timing};
-use events::{State, asleep};
+use events::{State, asleep, focused};
 use sound::Sound;
 use wait::Wait;
 
@@ -109,6 +109,8 @@ pub fn run(
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
         }
+        // Without the focus the sound is silent, the voices running on.
+        sound.focus(focused(canvas.window().window_flags().into()));
         // Minimised or hidden: nothing runs until something happens (a close request still
         // does). The music waits where it is and goes on at the restore, not from its beginning.
         if asleep(canvas.window().window_flags().into()) && !commands.contains(&Command::Quit) {

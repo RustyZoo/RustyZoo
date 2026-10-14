@@ -12,6 +12,12 @@ pub fn asleep(flags: WindowFlags) -> bool {
     flags.intersects(WindowFlags::HIDDEN | WindowFlags::MINIMIZED)
 }
 
+/// Whether the window has the input focus, from its flags (read, like [`asleep`]). A hidden or
+/// minimised window has none.
+pub fn focused(flags: WindowFlags) -> bool {
+    flags.contains(WindowFlags::INPUT_FOCUS)
+}
+
 /// What the window tells through its events.
 #[derive(Default)]
 pub struct State {
@@ -62,6 +68,8 @@ mod tests {
             !asleep(WindowFlags::empty()),
             "inactive but visible keeps running"
         );
+        assert!(focused(WindowFlags::INPUT_FOCUS | WindowFlags::MAXIMIZED));
+        assert!(!focused(WindowFlags::empty()) && !focused(WindowFlags::MINIMIZED));
         state.note(window(WindowEvent::FocusLost), &mut commands);
         assert!(!state.exposed && commands.is_empty());
         state.note(window(WindowEvent::Exposed), &mut commands);

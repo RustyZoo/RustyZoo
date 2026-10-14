@@ -112,6 +112,12 @@ impl Audio {
         })
     }
 
+    /// Silences the whole output (or restores it) without touching the voices: they keep
+    /// playing, as sounds do when the system mutes a program that has lost the focus.
+    pub fn mute(&self, mute: bool) -> Result<(), Box<dyn Error>> {
+        Ok(self.device.set_gain(if mute { 0.0 } else { 1.0 })?)
+    }
+
     /// Starts the sound at the volume of the attenuation sum `sum` (see [`gain`]); `None` if the
     /// sum is over 6000: such a sound does not start. With `looping` it starts again when it
     /// ends, as long as [`Voice::update`] is called at least once a second. A voice that is

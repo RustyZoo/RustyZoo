@@ -1,6 +1,6 @@
 //! The menu music of a windowed run: opened, fed, held while the window sleeps, faded by the
-//! model, and reported at the end. A missing sound device or music file is silence, as in the
-//! game; a music that fails stops for good.
+//! model, muted while the window lacks the focus, and reported at the end. A missing sound
+//! device or music file is silence, as in the game; a music that fails stops for good.
 
 use rustyzoo::app::App;
 use rustyzoo::config::Config;
@@ -10,11 +10,29 @@ use rustyzoo::vfs::Vfs;
 use crate::audio::{Audio, Voice};
 
 pub struct Sound {
-    /// Kept open as long as the voice plays.
-    _audio: Option<Audio>,
+    /// The output device; kept open as long as the voice plays.
+    audio: Option<Audio>,
     music: Option<Voice>,
     /// The music is paused.
     held: bool,
+    /// The output is silent because the window has no focus.
+    quiet: Quiet,
+}
+
+/// Whether the output is silenced for lack of the focus. The voices are not touched: they run
+/// on, silent, and are heard again where they have got to, as when the system mutes a program
+/// that is in the background (sound 10.4, O8).
+#[derive(Default)]
+struct Quiet(bool);
+
+impl Quiet {
+    /// Tells whether the window has the focus; `Some(mute)` when the output has to change.
+    fn focus(&mut self, focused: bool) -> Option<bool> {
+        (self.0 == focused).then(|| {
+            self.0 = !focused;
+            !focused
+        })
+    }
 }
 
 impl Sound {
@@ -42,9 +60,10 @@ impl Sound {
             _ => None,
         };
         let sound = Sound {
-            _audio: audio.ok(),
+            audio: audio.ok(),
             music,
             held: false,
+            quiet: Quiet::default(),
         };
         (sound, menu)
     }
@@ -68,6 +87,16 @@ impl Sound {
             && let Err(e) = if hold { voice.pause() } else { voice.resume() }
         {
             self.fail(e);
+        }
+    }
+
+    /// Silences the output while the window has no focus, and restores it with the focus.
+    pub fn focus(&mut self, focused: bool) {
+        if let Some(mute) = self.quiet.focus(focused)
+            && let Some(audio) = &self.audio
+            && let Err(e) = audio.mute(mute)
+        {
+            eprintln!("rustyzoo: the sound cannot be muted: {e}");
         }
     }
 
@@ -102,5 +131,30 @@ impl Sound {
     fn fail(&mut self, e: Box<dyn std::error::Error>) {
         eprintln!("rustyzoo: the menu music stops: {e}");
         self.music = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_output_follows_the_focus_once_per_change() {
+        let mut quiet = Quiet::default();
+        assert_eq!(
+            quiet.focus(true),
+            None,
+            "a window that starts with the focus"
+        );
+        assert_eq!(quiet.focus(false), Some(true));
+        assert_eq!(quiet.focus(false), None);
+        assert_eq!(quiet.focus(true), Some(false));
+        assert_eq!(quiet.focus(true), None);
+        let mut quiet = Quiet::default();
+        assert_eq!(
+            quiet.focus(false),
+            Some(true),
+            "a window that starts without it"
+        );
     }
 }
