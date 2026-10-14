@@ -320,3 +320,90 @@ fn the_map_view_calls_the_hook_with_its_rectangle_below_what_is_over_it() {
     assert_eq!(at(&frame, 0, 0), [0, 9, 0]);
     assert_eq!(at(&frame, 10, 6), r, "drawn over the map");
 }
+
+/// An animation `ui/<name>/<name>.ani` of one sprite file with two frames of palette colour 1 and
+/// 2 (red, green), 125 ms each, over the box and palette of [`animation`].
+pub(crate) fn two_frames(name: &str) -> Vec<(String, Vec<u8>)> {
+    let mut files = animation(name);
+    let frames: Vec<Vec<u8>> = [1u8, 2]
+        .iter()
+        .map(|&c| {
+            let mut frame = Vec::new();
+            for field in [1u16, 3, 0, 1, 7] {
+                frame.extend(field.to_le_bytes());
+            }
+            frame.extend([1, 0, 3, c, c, c]);
+            sized(&frame)
+        })
+        .collect();
+    files[1].1 = sprite_file(None, 2, &frames);
+    files
+}
+
+#[test]
+fn an_animation_advances_with_real_time_and_the_sequence_starts_again() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIImage\nid=2\nx=10\ny=5\nanimation=ui/b/b\n\
+         [b]\ntype=UIImage\nid=3\nx=20\ny=5\nanimation=ui/b/b\nupdateWhilePaused=0\n\
+         [c]\ntype=UIImage\nid=4\nx=30\ny=5\nanimation=ui/b/b\nstate=1\n"
+    );
+    let mut tree = tree("anim", &root, &two_frames("b"));
+    for e in &mut tree.elements {
+        e.state &= !HIDDEN;
+    }
+    tree.elements[3].state |= HIDDEN;
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    let colors = |painter: &mut Painter, tree: &mut Tree| {
+        let frame = paint(tree, painter, &texts);
+        [at(&frame, 10, 5), at(&frame, 20, 5), at(&frame, 30, 5)]
+    };
+    let (red, green, black) = ([255, 0, 0], [0, 255, 0], [0, 0, 0]);
+    assert_eq!(colors(&mut painter, &mut tree), [red, red, black]);
+    // The first draw only notes the clock; 124 ms later is not a frame yet, 1 ms more is.
+    assert!(!painter.animate(&tree, 1000, false));
+    assert!(!painter.animate(&tree, 1124, false));
+    assert_eq!(colors(&mut painter, &mut tree), [red, red, black]);
+    assert!(painter.animate(&tree, 1125, false));
+    assert_eq!(colors(&mut painter, &mut tree), [green, green, black]);
+    // Paused: only the element that updates while paused moves, but both keep the time.
+    assert!(painter.animate(&tree, 1250, true));
+    assert_eq!(colors(&mut painter, &mut tree), [red, green, black]);
+    // 249 ms: the first element is on its second frame with 124 ms to go, the second one reached
+    // the end of the sequence, which drops the time left over, and starts again.
+    assert!(painter.animate(&tree, 1499, false));
+    assert_eq!(colors(&mut painter, &mut tree), [green, red, black]);
+    // A stall, and no time at all.
+    assert!(painter.animate(&tree, 101_499, false));
+    assert!(!painter.animate(&tree, 101_499, false));
+    // An element that is shown the first time starts on its first frame; hidden, its time goes on
+    // and is credited whole when it is shown again.
+    tree.elements[3].state &= !HIDDEN;
+    painter.animate(&tree, 101_500, false);
+    assert_eq!(colors(&mut painter, &mut tree)[2], red);
+    tree.elements[3].state |= HIDDEN;
+    painter.animate(&tree, 101_510, false);
+    tree.elements[3].state &= !HIDDEN;
+    assert!(painter.animate(&tree, 101_630, false));
+    assert_eq!(colors(&mut painter, &mut tree)[2], green);
+}
+
+#[test]
+fn a_still_picture_never_advances() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIButton\nid=2\nx=10\ny=5\nanimation=ui/b/b\n\
+         [b]\ntype=UIImage\nid=3\nx=20\ny=5\nanimation=ui/t.tga\n"
+    );
+    let mut files = animation("b");
+    files.push(("ui/t.tga".to_string(), tga(&[&[[9, 9, 9]]])));
+    let mut tree = tree("still", &root, &files);
+    for e in &mut tree.elements {
+        e.state &= !HIDDEN;
+    }
+    let mut painter = Painter::default();
+    // One frame per set, and an image: no frame to change to, whatever the time.
+    assert!(!painter.animate(&tree, 0, false));
+    assert!(!painter.animate(&tree, 10_000, false));
+    assert!(!painter.animate(&Tree::default(), 20_000, false));
+}

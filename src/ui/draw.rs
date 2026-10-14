@@ -5,8 +5,9 @@
 //! nor its layout is hidden, never shown by its layout, or a template. Pictures:
 //!
 //! * an image has its top left corner at the element's; an animation has its anchor at the centre
-//!   of the element (`dx / 2`, `dy / 2`), shown at frame 0 of the set the widget state chooses
-//!   (a button: normal, highlighted, selected, grayed; the others: set 0);
+//!   of the element (`dx / 2`, `dy / 2`), shown at the frame [`Painter::animate`] has reached
+//!   (0 at first) of the set the widget state chooses (a button: normal, highlighted, selected,
+//!   grayed; the others: set 0);
 //! * with `transparent` (the default for pictures and buttons) the pixels equal to the top left
 //!   pixel of an image or a canvas are not copied;
 //! * texts, lists and tiled pictures are drawn into a canvas of the element's size, filled with
@@ -77,7 +78,11 @@ pub type Rect4 = (i32, i32, i32, i32);
 pub struct Painter {
     fonts: Fonts,
     canvases: HashMap<usize, (Made, Framebuffer)>,
-    cuts: HashMap<(Picture, usize), Option<Cut>>,
+    /// A cut of a picture, its set and its frame.
+    cuts: HashMap<(Picture, usize, usize), Option<Cut>>,
+    /// The frame an animated element shows, the milliseconds it has been shown and the clock when
+    /// it was last drawn.
+    frames: HashMap<usize, (usize, u64, u64)>,
 }
 
 impl Painter {
@@ -90,22 +95,54 @@ impl Painter {
         map: &mut dyn FnMut(&mut Framebuffer, Rect4),
     ) {
         frame.fill([0, 0, 0, 255]);
-        let mut stack = if tree.elements.is_empty() {
-            vec![]
-        } else {
-            vec![0]
-        };
-        while let Some(i) = stack.pop() {
+        for i in shown(tree) {
+            self.widget(tree, i, frame, strings, map);
+        }
+    }
+
+    /// Advances the animations of the shown elements at a drawn frame, `now` being the clock in
+    /// milliseconds: each by the time since it was last drawn, so one that was hidden is credited
+    /// the whole time (sprite drawing 6.2: a frame lasts the delay of its sprite file, the
+    /// sequence starts again at the end and the time left over is dropped). An element with
+    /// `updateWhilePaused=0` does not advance while `paused`, but its time moves on. Returns
+    /// whether some frame changed, so the interface has to be painted again.
+    pub fn animate(&mut self, tree: &Tree, now: u64, paused: bool) -> bool {
+        let mut changed = false;
+        for i in shown(tree) {
             let e = &tree.elements[i];
-            if e.state & (HIDDEN | NEVER_SHOWN | TEMPLATE) != 0 {
+            let Some((Picture::Animation(a), set)) = current(e, set_of(e)) else {
+                continue;
+            };
+            let Some(sprite) = tree
+                .pictures
+                .animations
+                .get(a)
+                .and_then(|a| a.sprites.get(set).or(a.sprites.first()))
+                .map(|s| &s.0)
+            else {
+                continue;
+            };
+            let (count, delay) = (sprite.frames.len(), u64::from(sprite.delay_ms));
+            let (frame, time, seen) = self.frames.entry(i).or_insert((0, 0, now));
+            let ms = now.saturating_sub(*seen);
+            *seen = now;
+            if *frame >= count {
+                (*frame, *time) = (0, 0);
+            }
+            if count < 2 || delay == 0 || (paused && !e.look.update_while_paused) {
                 continue;
             }
-            if matches!(e.kind, Kind::Layout) {
-                stack.extend(e.children.iter().rev());
-            } else {
-                self.widget(tree, i, frame, strings, map);
+            *time = time.saturating_add(ms);
+            while *time >= delay {
+                *time -= delay;
+                *frame += 1;
+                changed = true;
+                if *frame >= count {
+                    (*frame, *time) = (0, 0);
+                }
             }
         }
+        changed
     }
 
     fn widget(
@@ -136,12 +173,12 @@ impl Painter {
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
             Kind::Image => {
-                self.picture(pictures, e, 0, screen, frame);
+                self.picture(pictures, i, e, 0, screen, frame);
                 color_as_icon(frame, e, screen);
             }
             Kind::Button(_) => {
                 let set = button_set(e.state);
-                self.picture(pictures, e, set, screen, frame);
+                self.picture(pictures, i, e, set, screen, frame);
                 color_as_icon(frame, e, screen);
                 let text = element_text(e, strings);
                 if !text.is_empty() {
@@ -204,6 +241,7 @@ impl Painter {
     fn picture(
         &mut self,
         pictures: &Pictures,
+        i: usize,
         e: &Element,
         set: usize,
         (sx, sy, w, h): (i32, i32, i32, i32),
@@ -212,7 +250,8 @@ impl Painter {
         let Some((picture, set)) = current(e, set) else {
             return;
         };
-        let Some(cut) = self.cut(pictures, picture, set) else {
+        let at = self.frames.get(&i).map_or(0, |f| f.0);
+        let Some(cut) = self.cut(pictures, picture, set, at) else {
             return;
         };
         let (x, y) = if cut.animation {
@@ -244,13 +283,9 @@ impl Painter {
             };
             return Some(pixel_differs(pixels, (x - sx, y - sy), key));
         }
-        let set = if matches!(e.kind, Kind::Button(_)) {
-            button_set(e.state)
-        } else {
-            0
-        };
-        let (picture, set) = current(e, set)?;
-        let cut = self.cut(&tree.pictures, picture, set)?;
+        let (picture, set) = current(e, set_of(e))?;
+        let at = self.frames.get(&i).map_or(0, |f| f.0);
+        let cut = self.cut(&tree.pictures, picture, set, at)?;
         Some(match cut.animation {
             true => {
                 let (ox, oy) = (sx + w / 2 + cut.origin.0, sy + h / 2 + cut.origin.1);
@@ -260,18 +295,27 @@ impl Painter {
         })
     }
 
-    /// The picture ready to copy; `set` is the sprite file of an animation (0 if it has no such).
-    fn cut(&mut self, pictures: &Pictures, picture: Picture, set: usize) -> Option<&Cut> {
-        let set = match picture {
-            Picture::Image(_) => 0,
+    /// The picture ready to copy; `set` is the sprite file of an animation (0 if it has no such)
+    /// and `frame` its frame (0 if it has no such).
+    fn cut(
+        &mut self,
+        pictures: &Pictures,
+        picture: Picture,
+        set: usize,
+        frame: usize,
+    ) -> Option<&Cut> {
+        let (set, frame) = match picture {
+            Picture::Image(_) => (0, 0),
             Picture::Animation(a) => {
-                let files = pictures.animations.get(a)?.sprites.len();
-                if set < files { set } else { 0 }
+                let sprites = &pictures.animations.get(a)?.sprites;
+                let set = if set < sprites.len() { set } else { 0 };
+                let frames = sprites.get(set).map_or(0, |s| s.0.frames.len());
+                (set, if frame < frames { frame } else { 0 })
             }
         };
         self.cuts
-            .entry((picture, set))
-            .or_insert_with(|| make_cut(pictures, picture, set))
+            .entry((picture, set, frame))
+            .or_insert_with(|| make_cut(pictures, picture, set, frame))
             .as_ref()
     }
 
@@ -283,7 +327,7 @@ impl Painter {
             return;
         };
         let (w, h) = (canvas.width as i32, canvas.height as i32);
-        let Some(cut) = self.cut(pictures, picture, set) else {
+        let Some(cut) = self.cut(pictures, picture, set, 0) else {
             return;
         };
         let (cw, ch) = (cut.pixels.width as i32, cut.pixels.height as i32);
@@ -329,7 +373,7 @@ impl Painter {
             canvas.fill(back);
         }
         if let Some((picture, set)) = current(e, 0)
-            && let Some(cut) = self.cut(pictures, picture, set)
+            && let Some(cut) = self.cut(pictures, picture, set, 0)
         {
             let (x, y) = if cut.animation {
                 (w / 2 + cut.origin.0, h / 2 + cut.origin.1)
@@ -414,6 +458,36 @@ fn element_text(e: &Element, strings: &dyn Strings) -> Vec<u8> {
         .text_id
         .first()
         .map_or(vec![], |&id| to_cp1252(&strings.string(id)))
+}
+
+/// The widgets to draw, in drawing order: depth first, lower layers first.
+fn shown(tree: &Tree) -> Vec<usize> {
+    let mut order = Vec::new();
+    let mut stack = if tree.elements.is_empty() {
+        vec![]
+    } else {
+        vec![0]
+    };
+    while let Some(i) = stack.pop() {
+        let e = &tree.elements[i];
+        if e.state & (HIDDEN | NEVER_SHOWN | TEMPLATE) != 0 {
+            continue;
+        }
+        if matches!(e.kind, Kind::Layout) {
+            stack.extend(e.children.iter().rev());
+        } else {
+            order.push(i);
+        }
+    }
+    order
+}
+
+/// The set a widget draws: its state's for a button, else 0.
+fn set_of(e: &Element) -> usize {
+    match e.kind {
+        Kind::Button(_) => button_set(e.state),
+        _ => 0,
+    }
 }
 
 /// The sprite file of a button's animation for its state: 0 normal, 1 highlighted, 2 selected,
@@ -542,9 +616,9 @@ fn fill_rect(dst: &mut Framebuffer, (l, t, r, b): (i32, i32, i32, i32), color: [
     }
 }
 
-/// Cuts a picture for drawing: an image reduced to 5-6-5; an animation's set drawn once on a
-/// transparent picture of its box, the pixels it drew reduced.
-fn make_cut(pictures: &Pictures, picture: Picture, set: usize) -> Option<Cut> {
+/// Cuts a picture for drawing: an image reduced to 5-6-5; a frame of an animation's set drawn once
+/// on a transparent picture of its box, the pixels it drew reduced.
+fn make_cut(pictures: &Pictures, picture: Picture, set: usize, frame: usize) -> Option<Cut> {
     match picture {
         Picture::Image(m) => {
             let image = pictures.images.get(m)?;
@@ -579,7 +653,7 @@ fn make_cut(pictures: &Pictures, picture: Picture, set: usize) -> Option<Cut> {
                 file: set,
                 mirror: false,
             };
-            animation.draw(view, 0, &mut pixels, -s.x0, -s.y0);
+            animation.draw(view, frame, &mut pixels, -s.x0, -s.y0);
             for pixel in pixels.pixels.as_chunks_mut::<4>().0 {
                 if pixel[3] != 0 {
                     *pixel = fill_color([pixel[0], pixel[1], pixel[2]]);
@@ -595,4 +669,4 @@ fn make_cut(pictures: &Pictures, picture: Picture, set: usize) -> Option<Cut> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

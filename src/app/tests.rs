@@ -548,3 +548,48 @@ fn a_click_on_exit_ends_the_game_and_a_click_on_another_button_does_not() {
         assert!(app.quit());
     });
 }
+
+#[test]
+fn a_visible_animation_that_changes_its_frame_paints_and_a_still_interface_does_not() {
+    with_app("app-ui-anim", |app, _| {
+        let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+            [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+            [b]\ntype=UILayout\nlayout=ui/a.lyt\nstate=1\n";
+        let a = "[LayoutInfo]\nid=10\nlayer=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+            [x]\ntype=UIImage\nid=11\nx=2\ny=2\nanimation=ui/b/b\nupdateWhilePaused=0\n";
+        let mut members = crate::ui::draw::tests::two_frames("b");
+        members.push(("ui/root.lyt".to_string(), root.as_bytes().to_vec()));
+        members.push(("ui/a.lyt".to_string(), a.as_bytes().to_vec()));
+        let members: Vec<(&str, Vec<u8>)> = members
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.clone()))
+            .collect();
+        let install = crate::sprite::tests::Install::new("app-ui-anim-files", &members);
+        let mut tree =
+            crate::ui::layout::Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
+        assert_eq!(tree.failure, None);
+        tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
+        app.set_interface(Interface::new(tree, Box::new(NoTexts)));
+        assert!(app.interface().unwrap().show(10));
+        // Passes 16 ms apart (the draw period): a frame of 125 ms is replaced by the first draw
+        // 125 ms or more after the previous change, so nothing is painted in between.
+        let (mut seen, mut changes) = (std::collections::BTreeSet::new(), Vec::new());
+        for pass in 0..90u64 {
+            if let Some(hash) = app.pass(pass * 16, &[]).map(frame_hash) {
+                if pass > 0 {
+                    changes.push(pass * 16);
+                }
+                seen.insert(hash);
+            }
+        }
+        assert_eq!(seen.len(), 2, "the two frames");
+        let gaps: Vec<u64> = changes.windows(2).map(|w| w[1] - w[0]).collect();
+        assert!(
+            gaps.len() >= 3 && gaps.iter().all(|g| (125..=144).contains(g)),
+            "{gaps:?}"
+        );
+        // Paused: this element stands still, so nothing is painted again.
+        app.pass(1440, &[Command::Pause]);
+        assert!((1441..2000).step_by(16).all(|t| app.pass(t, &[]).is_none()));
+    });
+}
