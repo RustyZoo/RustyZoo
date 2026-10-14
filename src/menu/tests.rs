@@ -126,6 +126,35 @@ fn continue_is_enabled_for_a_file_that_exists_and_its_tooltip_names_it() {
 }
 
 #[test]
+fn the_last_file_is_found_whatever_the_letter_case() {
+    let install = install("menu-case");
+    std::fs::create_dir(install.0.join("Maps")).unwrap();
+    std::fs::copy(
+        install.0.join("saved.zoo"),
+        install.0.join("Maps/Beach.zoo"),
+    )
+    .unwrap();
+    for name in [
+        "MAPS\\BEACH.ZOO",
+        "maps/beach.zoo",
+        "./Maps/beach.ZOO",
+        "SAVED.zoo",
+    ] {
+        let mut ui = interface(&install);
+        let mut menu = menu(&format!("[user]\nlastfile={name}\n"), &install, None, 0);
+        let log = menu.show(&mut ui);
+        assert!(log[0].starts_with("continue enabled "), "{name}: {log:?}");
+        assert_eq!(written(&install), None, "{name}: nothing is forgotten");
+    }
+    // A name that is not there in any case, a directory, and a way out of the folder.
+    for name in ["maps/other.zoo", "maps", "maps/beach.zoo/x", "../saved.zoo"] {
+        let mut ui = interface(&install);
+        let mut menu = menu(&format!("[user]\nlastfile={name}\n"), &install, None, 0);
+        assert_eq!(menu.show(&mut ui), ["continue disabled"], "{name}");
+    }
+}
+
+#[test]
 fn long_help_takes_the_strings_30000_further() {
     let install = install("menu-long");
     let mut ui = interface(&install);

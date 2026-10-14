@@ -51,7 +51,7 @@ fn a_bitmap_resource_becomes_a_picture_with_5_6_5_colours() {
 }
 
 #[test]
-fn the_bar_is_drawn_one_change_behind_with_its_shadow_first() {
+fn the_bar_is_drawn_one_step_behind_with_its_shadow_first() {
     let mut s = screen("progresscalls=10\n", (40, 20));
     let bar = fill_color([255, 184, 43]);
     let (bar, shadow) = ([bar[0], bar[1], bar[2]], {
@@ -59,7 +59,8 @@ fn the_bar_is_drawn_one_change_behind_with_its_shadow_first() {
         [c[0], c[1], c[2]]
     });
     let black = [0, 0, 0];
-    // One pixel per step: the first change draws a bar of length 0, the second one of length 1.
+    // One pixel per step: the first step draws a bar of the length before it, 0, the second one
+    // of length 1.
     assert!(s.step());
     assert_eq!(pixel(&s, 10, 10), black);
     assert!(s.step());
@@ -72,18 +73,26 @@ fn the_bar_is_drawn_one_change_behind_with_its_shadow_first() {
     // The shadow is under the bar where they meet.
     assert_eq!(pixel(&s, 10, 11), bar);
     assert_eq!(pixel(&s, 10, 12), shadow);
-    // The bar never grows past its width, and a step that changes nothing flips nothing.
+    // Every step flips once the length is not 0; the length stops at the width, which the bar
+    // reaches one step after it.
     let flips = (0..20).filter(|_| s.step()).count();
-    assert_eq!((flips, s.steps()), (6, 24));
-    // The last change draws at the next one: the bar ends one pixel short of its width.
-    assert_eq!(pixel(&s, 18, 10), bar);
-    assert_eq!(pixel(&s, 19, 10), black);
-    assert!(!s.step());
+    assert_eq!((flips, s.steps()), (20, 24));
+    assert_eq!(pixel(&s, 19, 10), bar);
+    assert_eq!(pixel(&s, 20, 10), black);
+}
+
+#[test]
+fn the_length_may_pass_the_width_by_less_than_an_increment() {
+    // 10 pixels in 17 steps of 0.588 in single precision end at 10.588, which rounds to 11.
+    let mut s = screen("progresscalls=17\n", (40, 20));
+    (0..30).for_each(|_| _ = s.step());
+    assert_eq!(pixel(&s, 20, 10), [255, 182, 41], "the eleventh pixel");
+    assert_eq!(pixel(&s, 21, 10), [0, 0, 0]);
 }
 
 #[test]
 fn a_fractional_step_rounds_the_length() {
-    // 10 pixels in 4 steps: 2.5, 5, 7.5 and 10 give 3, 5, 8 and 10.
+    // 10 pixels in 4 steps: 2.5, 5, 7.5 and 10 give 3, 5, 8 and 10, drawn at the next step.
     let mut s = screen("progresscalls=4\n", (40, 20));
     let lengths: Vec<usize> = (0..5)
         .map(|_| {
@@ -91,7 +100,7 @@ fn a_fractional_step_rounds_the_length() {
             (0..40).filter(|&x| pixel(&s, x, 10) != [0, 0, 0]).count()
         })
         .collect();
-    assert_eq!(lengths, [0, 3, 5, 8, 8], "one change behind");
+    assert_eq!(lengths, [0, 3, 5, 8, 10], "one step behind");
 }
 
 #[test]
@@ -113,7 +122,10 @@ fn a_bar_with_odd_settings_does_not_panic() {
     // The defaults: 340 pixels in 957 steps, the rectangle 230, 480 to 570, 495.
     let mut s = Startup::new(Path::new("/nowhere"), &ini(""), 0, (800, 600));
     let flips = (0..957).filter(|_| s.step()).count();
-    assert_eq!(flips, 340);
+    assert_eq!(
+        flips, 956,
+        "every step but the first, whose length rounds to 0"
+    );
     assert_eq!(pixel(&s, 230, 480), [255, 182, 41]);
 }
 

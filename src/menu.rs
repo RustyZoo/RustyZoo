@@ -4,7 +4,7 @@
 //!
 //! A game started from the menu comes with a later issue; here Exit ends the program.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Config, to_int};
 use crate::text::format::{Arg, Strings, expand};
@@ -116,7 +116,7 @@ impl Menu {
             .setting("user", "lastfile")
             .map(|v| String::from_utf8_lossy(v).trim().to_string())
             .unwrap_or_default();
-        let exists = !last.is_empty() && self.root.join(last.replace('\\', "/")).is_file();
+        let exists = !last.is_empty() && is_file(&self.root, &last.replace('\\', "/"));
         let long = self
             .setting("UI", "helpType")
             .and_then(to_int)
@@ -155,6 +155,39 @@ impl Menu {
             _ => (Vec::new(), false),
         }
     }
+}
+
+/// Whether `path` (relative to `root`, or absolute) names a file, each part matched ignoring
+/// letter case as every file of the game is.
+fn is_file(root: &Path, path: &str) -> bool {
+    let mut found = PathBuf::new();
+    for part in Path::new(path).components() {
+        if found.as_os_str().is_empty()
+            && !matches!(part, Component::RootDir | Component::Prefix(_))
+        {
+            found.push(root);
+        }
+        let Component::Normal(name) = part else {
+            found.push(part);
+            continue;
+        };
+        let exact = found.join(name);
+        found = if exact.exists() {
+            exact
+        } else {
+            let Ok(dir) = std::fs::read_dir(&found) else {
+                return false;
+            };
+            match dir
+                .flatten()
+                .find(|e| e.file_name().eq_ignore_ascii_case(name))
+            {
+                Some(entry) => entry.path(),
+                None => return false,
+            }
+        };
+    }
+    found.is_file()
 }
 
 /// Enables or disables the button `id`, which draws grey and takes no click while disabled.

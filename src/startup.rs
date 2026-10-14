@@ -118,8 +118,8 @@ struct Bar {
     offset: (i32, i32),
     /// The progress steps the bar is meant to take.
     calls: i32,
-    /// The length the steps have added up to, and the rounded length of the last change.
-    length: f64,
+    /// The length the steps have added up to, and its rounded value after the last step.
+    length: f32,
     shown: i32,
 }
 
@@ -162,13 +162,18 @@ impl Bar {
         self.rect.2.saturating_sub(self.rect.0).max(0)
     }
 
-    /// One progress step. When the rounded length changes, the bar is drawn with the length of
-    /// the previous change (the first change draws nothing) and the screen must be flipped.
+    /// One progress step: the increment is added while the length is below the width (so it may
+    /// end less than one increment past it), single precision. Once the rounded length is not 0
+    /// the shadow and the bar are drawn, with the rounded length after the previous step, and the
+    /// screen must be flipped.
     fn step(&mut self, frame: &mut Framebuffer, origin: (i32, i32)) -> bool {
-        let width = f64::from(self.width());
-        self.length = (self.length + width / f64::from(self.calls)).min(width);
-        let now = self.length.round() as i32;
-        if now == self.shown {
+        let width = self.width() as f32;
+        if self.length < width {
+            self.length += width / self.calls as f32;
+        }
+        let before = self.shown;
+        self.shown = self.length.round() as i32;
+        if self.shown == 0 {
             return false;
         }
         let (left, top, _, bottom) = self.rect;
@@ -176,13 +181,12 @@ impl Bar {
             (
                 origin.0.saturating_add(left).saturating_add(dx),
                 origin.1.saturating_add(top).saturating_add(dy),
-                self.shown,
+                before,
                 bottom.saturating_sub(top).max(0),
             )
         };
         fill(frame, at(self.offset.0, self.offset.1), self.shadow);
         fill(frame, at(0, 0), self.color);
-        self.shown = now;
         true
     }
 }
