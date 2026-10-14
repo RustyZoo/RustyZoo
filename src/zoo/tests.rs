@@ -110,7 +110,7 @@ fn shows(w: &mut W, v: u32) {
 
 /// The sections after the entities, with something in every list.
 fn tail(w: &mut W, v: u32) {
-    w.z(20); // view
+    w.i32(-2).i32(3).i32(1216).i32(-16).u32(5); // view
     if v >= 51 {
         w.u32(4 + 5 + 4 + 8).str("scn/x").u32(8).z(8);
     } else {
@@ -321,6 +321,13 @@ fn reads_map_size_entrance_counter_and_tiles() {
     let t = z.tile(2, 1).unwrap();
     assert_eq!((t.elevation, t.shape, t.terrain, t.edges), (3, 4, 6, 6));
     assert_eq!(z.tile(3, 2).unwrap().elevation, 8);
+    let want = View {
+        zoom: -2,
+        rotation: 3,
+        scroll: (1216, -16),
+        brush: 5,
+    };
+    assert_eq!(z.view, want);
     assert!(z.tile(4, 0).is_none() && z.tile(0, 3).is_none());
     // A map without tiles is fine.
     assert!(parse(&file(70, 0, 5, &[], &[])).tiles.is_empty());

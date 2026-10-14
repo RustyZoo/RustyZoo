@@ -2,6 +2,7 @@
 
 pub mod anim;
 pub mod bitmap;
+pub mod camera;
 pub mod config;
 pub mod entity;
 pub mod ground;
