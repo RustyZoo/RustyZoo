@@ -124,6 +124,11 @@ check expansion-trial 150,14,8,17,26,8,2,47,6,0,7,14,1 "rz types | tail -1 | gre
 check expansion-trial 41,0,0,41,0 "rz check-bitmaps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 0 "rz types | awk -F'\\t' 'NF>6 && \$7==\"no\"{n++} END{print n+0}'"
 check expansion-trial 0,0,0,0,0,0,0 "rz check-ground | tail -1 | cut -d';' -f1 | grep -o '[0-9]*' | paste -sd, -"
+# The interface tree of ui/gamescrn.lyt: elements, layouts, duplicate ids, images, animations and
+# pictures missing. The base trial has no expansion data (mask 0); the expansion trial has both.
+check base-trial 902,75,0,24,174,1 "rz check-layouts 2>/dev/null | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+check expansion-trial 1119,99,0,3,244,0 "rz check-layouts 2>/dev/null | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+check expansion-trial 1013,86,0,3,224,0 "rz check-layouts --expansions 1 2>/dev/null | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
 check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"

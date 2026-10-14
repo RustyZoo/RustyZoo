@@ -15,6 +15,7 @@ pub mod strings;
 pub mod text;
 pub mod tga;
 pub mod timing;
+pub mod ui;
 pub mod userdir;
 pub mod vfs;
 pub mod zoo;
