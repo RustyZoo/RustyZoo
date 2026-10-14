@@ -16,6 +16,12 @@ pub fn ini_size(ini: &Config) -> (u32, u32) {
     }
 }
 
+/// `[user] fullscreen`: the game starts in full screen when it is a number other than 0. Missing,
+/// empty or not a number is windowed (the game's own value, when it is not 0 or 1, is not known).
+pub fn ini_fullscreen(ini: &Config) -> bool {
+    user_whole(ini, "fullscreen").is_some_and(|n| n != 0)
+}
+
 /// `size` cut down to the usable area of the display, in the same unit; an area of 0 means that
 /// the system does not say, and cuts nothing.
 pub fn clamp(size: (u32, u32), usable: (u32, u32)) -> (u32, u32) {
@@ -46,6 +52,17 @@ pub fn plan(game: (u32, u32), scale: f32, density: f32, usable: (u32, u32)) -> (
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_ini_file_starts_the_game_in_full_screen() {
+        let full = |text: &str| ini_fullscreen(&Config::parse(text.as_bytes()).unwrap());
+        assert!(full("[user]\nfullscreen=1\n") && full("[User]\nFullScreen = 2"));
+        assert!(full("[user]\nfullscreen=-1\n") && full("[user]\nfullscreen=99999999999\n"));
+        assert!(!full("[user]\nfullscreen=0\n") && !full("[user]\nfullscreen=-0\n"));
+        assert!(!full("[user]\nfullscreen=\n") && !full("[user]\nfullscreen=yes\n"));
+        assert!(!full("[user]\nscreenwidth=800\n") && !full("[ui]\nfullscreen=1\n"));
+        assert!(!full("[x]\n"));
+    }
 
     #[test]
     fn the_size_comes_from_the_ini_file_and_is_cut_to_the_display() {
