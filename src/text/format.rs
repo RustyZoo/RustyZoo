@@ -152,15 +152,57 @@ pub fn money(strings: &impl Strings, amount: i64, grouping: bool) -> String {
     currency(strings, &body, amount < 0)
 }
 
-/// An amount with cents, written with two decimals as the C library rounds them: `12.5` is
-/// "$12.50", `-1234.5` is "($1,234.50)". An amount that rounds to zero is "$0.00" whatever its
-/// sign, and one that is not a number is 0.
+/// The whole part and the two cent digits of `x` (finite, not negative) as the original's C
+/// library writes `%0.2f`: it takes 17 significant digits and rounds those half up, so 1.125 is
+/// "1.13" (round-half-even would give "1.12") while 1.005, which is a little below, stays "1.00".
+fn cents(x: f64) -> (String, String) {
+    let text = format!("{x:.16e}");
+    let (mantissa, exponent) = text.split_once('e').unwrap_or((&text, "0"));
+    let point = exponent.parse::<i32>().unwrap_or(0) + 1;
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    // The value is 0.DIGITS times ten to the power `point`.
+    let (whole, frac) = match usize::try_from(point) {
+        Ok(p) if p >= digits.len() => (
+            digits.clone() + &"0".repeat(p - digits.len()),
+            String::new(),
+        ),
+        Ok(p) if p > 0 => (digits[..p].to_string(), digits[p..].to_string()),
+        _ => (
+            "0".to_string(),
+            "0".repeat(point.unsigned_abs() as usize) + &digits,
+        ),
+    };
+    let frac: Vec<u8> = frac
+        .bytes()
+        .chain(std::iter::repeat(b'0'))
+        .take(3)
+        .collect();
+    let mut kept: Vec<u8> = whole.bytes().chain(frac[..2].iter().copied()).collect();
+    if frac[2] >= b'5' {
+        // Add one at the last digit, carrying leftwards.
+        let mut i = kept.len();
+        while i > 0 && kept[i - 1] == b'9' {
+            kept[i - 1] = b'0';
+            i -= 1;
+        }
+        match i {
+            0 => kept.insert(0, b'1'),
+            _ => kept[i - 1] += 1,
+        }
+    }
+    let split = kept.len() - 2;
+    let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+    (text(&kept[..split]), text(&kept[split..]))
+}
+
+/// An amount with cents, written with two decimals as the original's C library rounds them
+/// (see `cents`): `12.5` is "$12.50", `-1234.5` is "($1,234.50)", `1.125` is "$1.13". An amount
+/// that rounds to zero is "$0.00" whatever its sign, and one that is not a number is 0.
 pub fn money_cents(strings: &impl Strings, amount: f64) -> String {
     let amount = if amount.is_finite() { amount } else { 0.0 };
-    let text = format!("{:.2}", amount.abs());
-    let (whole, cents) = text.split_once('.').unwrap_or((&text, "00"));
-    let negative = amount < 0.0 && text != "0.00";
-    currency(strings, &format!("{}.{cents}", group(whole)), negative)
+    let (whole, cents) = cents(amount.abs());
+    let negative = amount < 0.0 && (whole != "0" || cents != "00");
+    currency(strings, &format!("{}.{cents}", group(&whole)), negative)
 }
 
 /// An amount held as a decimal number, rounded to whole units: to the nearest, halves to even.

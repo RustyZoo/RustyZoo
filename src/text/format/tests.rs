@@ -17,12 +17,12 @@ fn table(entries: &[(u32, &'static str)]) -> Table {
 fn game() -> Table {
     table(&[
         (22100, "$"),
-        (22012, "MMM',' 'Year' y"),
-        (22013, "ddd'.' MMM d"),
-        (22014, "MMM d', Year' y"),
-        (1030, "Date: %s"),
-        (154, "Are you sure you want to sell %s?\nRefund: "),
-        (5504, "Whale Shark"),
+        (22012, "MMM',' 'Era' y"),
+        (22013, "ddd',' MMM d"),
+        (22014, "MMM d', Era' y"),
+        (1030, "Day is %s"),
+        (154, "Remove %s?\nPrice: "),
+        (5504, "Sample Name"),
         (7, "%1s has %2d legs, %1s!"),
     ])
 }
@@ -40,7 +40,7 @@ fn each_placeholder_kind() {
     assert_eq!(x("%d", &[Int(-5)]), "-5");
     assert_eq!(x("cost %m", &[Int(74878)]), "cost $74,878");
     assert_eq!(x("%m", &[Int(-1234)]), "($1,234)");
-    assert_eq!(x("%r", &[Int(5504)]), "Whale Shark");
+    assert_eq!(x("%r", &[Int(5504)]), "Sample Name");
     assert_eq!(
         x("%s", &[Int(12)]),
         "12",
@@ -53,11 +53,11 @@ fn plain_values_are_taken_in_order() {
     assert_eq!(x("%s %d %s", &[Text("a"), Int(2), Text("c")]), "a 2 c");
     assert_eq!(
         build(&game(), 154, &[Text("the lion")]),
-        "Are you sure you want to sell the lion?\nRefund: "
+        "Remove the lion?\nPrice: "
     );
     assert_eq!(
-        build(&game(), 1030, &[Text("Mon. Jan 1")]),
-        "Date: Mon. Jan 1"
+        build(&game(), 1030, &[Text("Mon, Jan 1")]),
+        "Day is Mon, Jan 1"
     );
 }
 
@@ -141,6 +141,21 @@ fn the_three_money_forms() {
     assert_eq!(money_cents(&g, 1234567.891), "$1,234,567.89");
     assert_eq!(money_cents(&g, -1234.5), "($1,234.50)");
     assert_eq!(money_cents(&g, 0.004), "$0.00");
+    // Ties round up, not to even; 17 digits decide, so 1.005 (1.0049999999999999) stays below.
+    assert_eq!(money_cents(&g, 1.125), "$1.13");
+    assert_eq!(money_cents(&g, 0.125), "$0.13");
+    assert_eq!(money_cents(&g, 2.5), "$2.50");
+    assert_eq!(money_cents(&g, 1.005), "$1.00");
+    assert_eq!(
+        money_cents(&g, 0.995),
+        "$1.00",
+        "17 digits show 0.99500000000000000"
+    );
+    assert_eq!(money_cents(&g, 0.999), "$1.00");
+    assert_eq!(money_cents(&g, 999.996), "$1,000.00");
+    assert_eq!(money_cents(&g, 0.005), "$0.01");
+    assert_eq!(money_cents(&g, -1.125), "($1.13)");
+    assert_eq!(money_cents(&g, 5e-324), "$0.00");
     assert_eq!(money_cents(&g, -0.004), "$0.00");
     assert_eq!(money_cents(&g, f64::NAN), "$0.00");
     assert_eq!(money_cents(&g, f64::NEG_INFINITY), "$0.00");
@@ -195,26 +210,26 @@ fn day(year: u32, month: u32, day: u32, weekday: u32) -> Date {
 fn the_three_shipped_date_patterns() {
     let g = game();
     let first = day(2001, 1, 1, 0);
-    assert_eq!(date(g.string(22012), &first), "Jan, Year 1");
-    assert_eq!(date(g.string(22013), &first), "Mon. Jan 1");
-    assert_eq!(date(g.string(22014), &first), "Jan 1, Year 1");
+    assert_eq!(date(g.string(22012), &first), "Jan, Era 1");
+    assert_eq!(date(g.string(22013), &first), "Mon, Jan 1");
+    assert_eq!(date(g.string(22014), &first), "Jan 1, Era 1");
     let later = day(2010, 12, 25, 5);
-    assert_eq!(date(g.string(22012), &later), "Dec, Year 10");
-    assert_eq!(date(g.string(22013), &later), "Sat. Dec 25");
-    assert_eq!(date(g.string(22014), &later), "Dec 25, Year 10");
+    assert_eq!(date(g.string(22012), &later), "Dec, Era 10");
+    assert_eq!(date(g.string(22013), &later), "Sat, Dec 25");
+    assert_eq!(date(g.string(22014), &later), "Dec 25, Era 10");
 }
 
 #[test]
 fn the_year_shows_its_last_two_digits() {
     let g = game();
     let year = |y| date(g.string(22012), &day(y, 1, 1, 0));
-    assert_eq!(year(2009), "Jan, Year 9");
-    assert_eq!(year(2099), "Jan, Year 99");
+    assert_eq!(year(2009), "Jan, Era 9");
+    assert_eq!(year(2099), "Jan, Era 99");
     // The original's wrap: year 100 is shown as 0, year 101 as 1.
-    assert_eq!(year(2100), "Jan, Year 0");
-    assert_eq!(year(2101), "Jan, Year 1");
-    assert_eq!(year(2000), "Jan, Year 0");
-    assert_eq!(year(u32::MAX), format!("Jan, Year {}", u32::MAX % 100));
+    assert_eq!(year(2100), "Jan, Era 0");
+    assert_eq!(year(2101), "Jan, Era 1");
+    assert_eq!(year(2000), "Jan, Era 0");
+    assert_eq!(year(u32::MAX), format!("Jan, Era {}", u32::MAX % 100));
 }
 
 #[test]
@@ -279,13 +294,13 @@ fn the_installed_strings_format_as_the_game_does() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let tables = StringTables::open(std::path::Path::new(&dir)).unwrap();
     assert_eq!(money(&tables, 74878, true), "$74,878");
+    // The shapes of the installed patterns, without quoting them.
     let first = day(2001, 1, 1, 0);
-    assert_eq!(date(tables.string(22012), &first), "Jan, Year 1");
-    assert_eq!(date(tables.string(22013), &first), "Mon. Jan 1");
-    assert_eq!(date(tables.string(22014), &first), "Jan 1, Year 1");
+    let long = date(tables.string(22012), &first);
+    assert!(long.starts_with("Jan") && long.ends_with(" 1"), "{long}");
+    assert!(date(tables.string(22013), &first).starts_with("Mon"));
+    let full = date(tables.string(22014), &first);
+    assert!(full.starts_with("Jan 1") && full.ends_with(" 1"), "{full}");
     assert_eq!(graph_month(&tables, 12), "Dec");
-    assert_eq!(
-        build(&tables, 1030, &[Text("Mon. Jan 1")]),
-        "Date: Mon. Jan 1"
-    );
+    assert!(build(&tables, 1030, &[Text("X")]).contains('X'));
 }
