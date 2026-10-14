@@ -616,6 +616,29 @@ fn one_staging_draws_any_window_like_the_whole_map() {
 }
 
 #[test]
+fn a_map_over_the_pixel_limit_is_refused_before_any_staging() {
+    let install = cache_install("render-huge", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    // The largest map a 32 MiB file can hold: 1831 by 1831 tiles, 117184 by 58593 pixels.
+    let zoo = Zoo {
+        width: 1831,
+        height: 1831,
+        tiles: flat_map(1831, 1831),
+        ..tile_with(&[])
+    };
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    assert!(renderer.stage(&zoo, 0, false).is_err());
+    assert!(renderer.flats.is_empty() && renderer.rendered.is_empty());
+    let window = Options {
+        window: Some((0, 0, 64, 64)),
+        ..Options::default()
+    };
+    assert!(renderer.render_with(&zoo, 0, &window).is_err());
+    assert!(renderer.render(&zoo, 0).is_err());
+}
+
+#[test]
 fn windows_at_the_extremes_of_view_space_never_overflow() {
     // The picture has offsets, which are subtracted from a position that is already far away.
     let mut frame = Vec::new();

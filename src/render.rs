@@ -598,6 +598,8 @@ impl<'a> MapRenderer<'a> {
             let (x, y) = (i64::from(ox), i64::from(oy));
             bounds = union(bounds, [x, y + 16, x + 64, y + 49]);
         }
+        // Refuse a huge map before the work: staging costs memory in proportion to its tiles.
+        check_size(&bounds)?;
 
         // The objects the original keeps: those whose type it knows.
         let mut objects = Vec::new();
