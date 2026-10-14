@@ -139,7 +139,7 @@ fn which(vfs: Vfs, member: &str) -> Result<(), CliError> {
             writeln!(
                 out,
                 "{label:<11} {kind} {} ({} bytes{empty})",
-                copy.path.display(),
+                escape(&copy.path.to_string_lossy()),
                 copy.size
             )
         })
@@ -243,7 +243,7 @@ fn list(vfs: Vfs, pattern: Option<&str>) -> Result<(), CliError> {
     let written = vfs
         .list(pattern)
         .iter()
-        .try_for_each(|path| writeln!(out, "{path}"))
+        .try_for_each(|path| writeln!(out, "{}", escape(path)))
         .and_then(|()| out.flush());
     ignore_closed_pipe(written)
 }

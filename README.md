@@ -54,7 +54,7 @@ rustyzoo check-sprites                            # decode every sprite file; ex
 rustyzoo --data "/path/to/Zoo Tycoon" which animals/lion.ai   # which file or archive supplies it, and the copies it hides
 ```
 
-Files are found the way the game finds them: in the `.ztd` archives of the directories listed in `[resource] path` of `zoo.ini`, the earlier directory winning, ignoring letter case, with `/` or `\` as separator.
+Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.
 
 The names, descriptions and labels the game shows are not in the `.ztd` archives but in the resource DLLs of the install folder (`lang0.dll` and its siblings). `dump-strings` prints the string table of one DLL, newline, tab, backslash and other control characters escaped (`\n`, `\t`, `\\`, `\u{0000}`), followed by the name and size of its `TEXT` entries; `--text` writes the bytes of one of them.
 

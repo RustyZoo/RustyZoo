@@ -17,6 +17,15 @@
 //! the ZIP end record is exactly the last 22 bytes of the file, the archive is in one piece and has
 //! entries. Members of size 0 are not indexed, so a later source can supply the name. A damaged
 //! central directory ends the index at the last good record.
+//!
+//! The CRC-32 of a member is not checked. That the original does not check it either is an
+//! assumption, not something we have established; every member that supplies a name in the full
+//! game and the two trials has a matching CRC.
+//!
+//! Only problems in the content skip a copy in favour of the next: a file that is gone, not a ZIP
+//! file, too short, not inflatable. Any other error of the operating system (permissions, the
+//! limit of open files, a disk error) fails with a message that names the file, because serving
+//! an older copy of a name in its place would go unnoticed.
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -56,13 +65,15 @@ fn error<T>(message: String) -> Result<T, VfsError> {
 
 /// One copy of a name, as reported by [`Vfs::which`].
 #[derive(Debug, PartialEq, Eq)]
-pub struct Copy {
+pub struct Location {
     /// The loose file, or the archive that holds the member, relative to the install folder when
     /// it lies inside it.
     pub path: PathBuf,
     /// Whether the copy is a member of the archive `path` (else `path` is the loose file).
     pub in_archive: bool,
-    /// The size of the content in bytes. For a member that is its declared uncompressed size.
+    /// The size of the content in bytes. For a member that is the uncompressed size in the
+    /// central directory of the archive; [`Vfs::read`] goes by the local header instead, so a
+    /// damaged archive can read a different number of bytes.
     pub size: u64,
 }
 
@@ -87,10 +98,33 @@ enum Source {
 
 /// Why a source did not supply a name it has.
 enum Failure {
-    /// The search ends and the request fails, as the original does for these cases.
+    /// The search ends and the request fails. The original does this for undecodable members;
+    /// we also do it for every error of the operating system that is not about the content.
     Stop(String),
-    /// The copy is unreadable: the search goes on with the next source.
+    /// The content of the copy is broken: the search goes on with the next source.
     Damaged(String),
+}
+
+/// Sorts an error of the operating system. Only a file that is gone or whose content is wrong
+/// (too short, not inflatable) is `Damaged` and skipped. Anything else (a descriptor limit,
+/// permissions, a disk error) stops the request: skipping would silently serve an older copy.
+fn io_failure(e: io::Error) -> Failure {
+    use io::ErrorKind::*;
+    match e.kind() {
+        NotFound | UnexpectedEof | InvalidData | InvalidInput => Failure::Damaged(e.to_string()),
+        _ => Failure::Stop(e.to_string()),
+    }
+}
+
+/// `Ok(false)` if the data ended or was wrong, an error for any other failure of the system.
+fn complete(result: io::Result<()>) -> Result<bool, Failure> {
+    match result {
+        Ok(()) => Ok(true),
+        Err(e) => match io_failure(e) {
+            Failure::Damaged(_) => Ok(false),
+            stop => Err(stop),
+        },
+    }
 }
 
 impl Source {
@@ -160,8 +194,9 @@ impl Vfs {
     ///
     /// Fails if the folder or its ini file is missing or unusable, or if a directory of the
     /// search path cannot be listed. Directories of the search path that do not exist are
-    /// skipped. Archives that cannot be used are ignored and reported by
-    /// [`warnings`](Vfs::warnings).
+    /// skipped. Archives that are not acceptable ZIP files are ignored and reported by
+    /// [`warnings`](Vfs::warnings); an archive that cannot be read for any other reason (the
+    /// operating system refuses to open or read it) fails the open, naming the file.
     pub fn open(install_dir: &Path) -> Result<Vfs, VfsError> {
         let ini_path = ["zoo.ini", "zoodemo.ini"]
             .iter()
@@ -173,10 +208,10 @@ impl Vfs {
                     install_dir.display()
                 ))
             })?;
-        let ini = std::fs::read(&ini_path)
+        let ini = read_ini(&ini_path)
             .map_err(|e| VfsError(format!("cannot read {}: {e}", ini_path.display())))?;
-        let search_path = resource_path(&String::from_utf8_lossy(&ini))
-            .ok_or_else(|| VfsError(format!("{} has no [resource] path", ini_path.display())))?;
+        // Without a path the game uses the install folder itself.
+        let search_path = resource_path(&String::from_utf8_lossy(&ini)).unwrap_or(".".to_string());
 
         let real_root = install_dir
             .canonicalize()
@@ -220,9 +255,12 @@ impl Vfs {
             for path in archives {
                 match open_archive(&path, &mut vfs.warnings) {
                     Ok(source) => vfs.sources.push(source),
-                    Err(why) => vfs
+                    Err(Failure::Damaged(why)) => vfs
                         .warnings
                         .push(format!("{} is ignored: {why}", path.display())),
+                    Err(Failure::Stop(why)) => {
+                        return error(format!("cannot use {}: {why}", path.display()));
+                    }
                 }
             }
         }
@@ -234,9 +272,11 @@ impl Vfs {
     ///
     /// Fails if no source has the name, if the copy that wins is empty (an empty loose file hides
     /// the name from all later sources), has a size over [`MAX_MEMBER_SIZE`], or is encrypted or
-    /// compressed in a way other than "stored" and "deflated". A copy that is damaged (an
-    /// unreadable file, a truncated archive) is skipped in favour of the next source that has the
-    /// name, and is reported only if there is none.
+    /// compressed in a way other than "stored" and "deflated". A copy whose content is damaged (a
+    /// file that is gone, not a ZIP file, a truncated or uninflatable member) is skipped in favour
+    /// of the next source that has the name, and is reported only if there is none. Any other
+    /// error of the operating system (permissions, the descriptor limit, a disk error) fails the
+    /// read with a message that names the file: the next copy is never served in its place.
     pub fn read(&self, name: &str) -> Result<Vec<u8>, VfsError> {
         let normalised = normalise(name);
         let mut damaged = None;
@@ -254,12 +294,16 @@ impl Vfs {
     }
 
     /// Every copy of the name, in search order: the first one is what [`read`](Vfs::read) serves
-    /// (unless it fails), the others are shadowed by it. Empty if no source has the name.
+    /// (unless it fails), the others are shadowed by it. Empty if no source has the name or the
+    /// name is too long or empty for `read` to look it up.
     ///
     /// Fails if the size of a loose file cannot be read.
-    pub fn which(&self, name: &str) -> Result<Vec<Copy>, VfsError> {
+    pub fn which(&self, name: &str) -> Result<Vec<Location>, VfsError> {
         let normalised = normalise(name);
         let mut copies = Vec::new();
+        if !(1..=MAX_NAME_LENGTH).contains(&normalised.chars().count()) {
+            return Ok(copies);
+        }
         for source in self.sources.iter().filter(|s| s.has(&normalised)) {
             let (path, in_archive, size) = match source {
                 Source::Directory(files) => {
@@ -271,7 +315,7 @@ impl Vfs {
                 }
                 Source::Archive { path, members, .. } => (path, true, members[&normalised].size),
             };
-            copies.push(Copy {
+            copies.push(Location {
                 path: path.strip_prefix(&self.root).unwrap_or(path).to_path_buf(),
                 in_archive,
                 size,
@@ -357,23 +401,36 @@ fn check_size(size: u64) -> Result<(), Failure> {
 }
 
 fn read_loose_file(path: &Path) -> Result<Vec<u8>, Failure> {
-    let damaged = |e: io::Error| Failure::Damaged(e.to_string());
-    let mut file = File::open(path).map_err(damaged)?;
-    let size = file.metadata().map_err(damaged)?.len();
+    let mut file = File::open(path).map_err(io_failure)?;
+    let size = file.metadata().map_err(io_failure)?.len();
     if size == 0 {
         return Err(Failure::Stop("the file is empty".to_string()));
     }
     check_size(size)?;
-    let mut data = Vec::new();
+    let mut data = buffer(size)?;
     // `take` keeps a file that grows from producing more than it had.
     (&mut file)
         .take(size)
         .read_to_end(&mut data)
-        .map_err(damaged)?;
+        .map_err(io_failure)?;
     if data.len() as u64 != size {
         return Err(Failure::Damaged("the file got shorter".to_string()));
     }
     Ok(data)
+}
+
+/// An empty buffer with room for exactly `size` bytes (at most [`MAX_MEMBER_SIZE`]), so that
+/// reading does not double it on the way.
+fn buffer(size: u64) -> Result<Vec<u8>, Failure> {
+    let mut data = Vec::new();
+    data.try_reserve_exact(size as usize)
+        .map_err(|_| Failure::Stop(format!("no memory for {size} bytes")))?;
+    Ok(data)
+}
+
+/// The most that deflate can expand its input: 1032 to 1, plus a little for the framing.
+fn deflate_limit(compressed: u64) -> u64 {
+    compressed * 1032 + 64
 }
 
 const LOCAL_SIGNATURE: [u8; 4] = *b"PK\x03\x04";
@@ -392,16 +449,17 @@ fn le32(bytes: &[u8], at: usize) -> u32 {
 /// Reads a member by its local header, like the game: the sizes, method and flags there decide,
 /// not those of the central directory.
 fn read_member(file: &mut File, member: &Member) -> Result<Vec<u8>, Failure> {
-    let damaged = |e: io::Error| Failure::Damaged(e.to_string());
-    file.seek(SeekFrom::Start(member.offset)).map_err(damaged)?;
+    let length = file.metadata().map_err(io_failure)?.len();
+    file.seek(SeekFrom::Start(member.offset))
+        .map_err(io_failure)?;
     let mut header = [0u8; 30];
-    file.read_exact(&mut header).map_err(damaged)?;
+    file.read_exact(&mut header).map_err(io_failure)?;
     if header[..4] != LOCAL_SIGNATURE {
         return Err(Failure::Damaged("bad local header".to_string()));
     }
     let (flags, method) = (le16(&header, 6), le16(&header, 8));
     let (compressed, size) = (le32(&header, 18) as u64, le32(&header, 22) as u64);
-    let skip = le16(&header, 26) as i64 + le16(&header, 28) as i64;
+    let skip = le16(&header, 26) as u64 + le16(&header, 28) as u64;
     if flags & 1 != 0 {
         return Err(Failure::Stop("the member is encrypted".to_string()));
     }
@@ -414,16 +472,27 @@ fn read_member(file: &mut File, member: &Member) -> Result<Vec<u8>, Failure> {
         ));
     }
     check_size(size)?;
-    file.seek(SeekFrom::Current(skip)).map_err(damaged)?;
+    if member.offset + 30 + skip + compressed > length {
+        return Err(Failure::Damaged(
+            "its data runs past the end of the file".to_string(),
+        ));
+    }
+    if method == 8 && size > deflate_limit(compressed) {
+        return Err(Failure::Damaged(
+            "it declares more bytes than its data can inflate to".to_string(),
+        ));
+    }
+    file.seek(SeekFrom::Current(skip as i64))
+        .map_err(io_failure)?;
     let raw = file.take(compressed);
-    let mut data = Vec::new();
+    let mut data = buffer(size)?;
     // `take` keeps a lying header from producing more than the declared size.
     if method == 0 {
         raw.take(size).read_to_end(&mut data)
     } else {
         DeflateDecoder::new(raw).take(size).read_to_end(&mut data)
     }
-    .map_err(damaged)?;
+    .map_err(io_failure)?;
     if data.len() as u64 != size {
         return Err(Failure::Damaged(
             "it is shorter than its declared size".to_string(),
@@ -433,42 +502,47 @@ fn read_member(file: &mut File, member: &Member) -> Result<Vec<u8>, Failure> {
 }
 
 /// Accepts the ZIP file or says why not, and indexes its members.
-fn open_archive(path: &Path, warnings: &mut Vec<String>) -> Result<Source, String> {
-    let mut file = File::open(path).map_err(|e| format!("cannot open: {e}"))?;
-    let length = file.metadata().map_err(|e| e.to_string())?.len();
-    let reach = |e: io::Error| format!("cannot read: {e}");
+///
+/// `Damaged` if the file is not an acceptable ZIP file, `Stop` if the system failed to let us
+/// read it.
+fn open_archive(path: &Path, warnings: &mut Vec<String>) -> Result<Source, Failure> {
+    let bad = |why: &str| Err(Failure::Damaged(why.to_string()));
+    let mut file = File::open(path).map_err(io_failure)?;
+    let length = file.metadata().map_err(io_failure)?.len();
     if length < END_RECORD_SIZE {
-        return Err("too short for a ZIP file".to_string());
+        return bad("too short for a ZIP file");
     }
     let mut end = [0u8; END_RECORD_SIZE as usize];
     file.seek(SeekFrom::End(-(END_RECORD_SIZE as i64)))
         .and_then(|_| file.read_exact(&mut end))
-        .map_err(reach)?;
+        .map_err(io_failure)?;
     if end[..4] != END_SIGNATURE {
-        return Err("it does not end with the ZIP end record (a comment or other bytes after it are not accepted)".to_string());
+        return bad(
+            "it does not end with the ZIP end record (a comment or other bytes after it are not accepted)",
+        );
     }
     let (disk, directory_disk) = (le16(&end, 4), le16(&end, 6));
     let (entries_here, entries) = (le16(&end, 8), le16(&end, 10));
     let directory_offset = le32(&end, 16) as u64;
     if disk != 0 || directory_disk != 0 || entries_here != entries {
-        return Err("it is split over several disks".to_string());
+        return bad("it is split over several disks");
     }
     if entries == 0 {
-        return Err("it has no entries".to_string());
+        return bad("it has no entries");
     }
     if directory_offset > length - END_RECORD_SIZE {
-        return Err("its central directory lies beyond the end of the file".to_string());
+        return bad("its central directory lies beyond the end of the file");
     }
 
     let mut reader = BufReader::new(file);
     reader
         .seek(SeekFrom::Start(directory_offset))
-        .map_err(reach)?;
+        .map_err(io_failure)?;
     let mut members: HashMap<String, Member> = HashMap::new();
     let mut indexed = 0;
     for _ in 0..entries {
         let mut record = [0u8; 46];
-        if reader.read_exact(&mut record).is_err() || record[..4] != CENTRAL_SIGNATURE {
+        if !complete(reader.read_exact(&mut record))? || record[..4] != CENTRAL_SIGNATURE {
             break;
         }
         let (size, offset) = (le32(&record, 24) as u64, le32(&record, 42) as u64);
@@ -477,7 +551,7 @@ fn open_archive(path: &Path, warnings: &mut Vec<String>) -> Result<Source, Strin
             le16(&record, 30) as i64 + le16(&record, 32) as i64,
         );
         let mut name = vec![0u8; name_length];
-        if reader.read_exact(&mut name).is_err() || reader.seek_relative(rest).is_err() {
+        if !complete(reader.read_exact(&mut name))? || !complete(reader.seek_relative(rest))? {
             break;
         }
         indexed += 1;
@@ -555,6 +629,24 @@ fn wildcard_matches(pattern: &[u8], text: &[u8]) -> bool {
     pattern[p..].iter().all(|&c| c == b'*')
 }
 
+/// The largest ini file we read: the real ones are a few hundred bytes.
+const MAX_INI_SIZE: u64 = 1024 * 1024;
+
+/// Reads the ini file, which must be a regular file of at most [`MAX_INI_SIZE`] bytes: a FIFO
+/// would hang the read, a device or a huge file would fill the memory.
+fn read_ini(path: &Path) -> io::Result<Vec<u8>> {
+    let file = File::open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::other("not a regular file"));
+    }
+    let mut data = Vec::new();
+    file.take(MAX_INI_SIZE + 1).read_to_end(&mut data)?;
+    if data.len() as u64 > MAX_INI_SIZE {
+        return Err(io::Error::other(format!("more than {MAX_INI_SIZE} bytes")));
+    }
+    Ok(data)
+}
+
 /// The value of `path` in the `[resource]` section of the ini file next to the executable. The
 /// game reads that file through the ini reader of Windows, not through its own configuration
 /// reader (`crate::config`): names ignore letter case, only `[section]` headers, `key=value`
@@ -601,8 +693,11 @@ fn find_ignoring_case(
 ) -> Result<Option<PathBuf>, VfsError> {
     let entries = std::fs::read_dir(directory)
         .map_err(|e| VfsError(format!("cannot read folder {}: {e}", directory.display())))?;
+    let entries = entries
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| VfsError(format!("cannot read folder {}: {e}", directory.display())))?;
     let mut found: Vec<PathBuf> = entries
-        .flatten()
+        .into_iter()
         .filter(|entry| {
             entry
                 .file_name()
@@ -657,25 +752,34 @@ fn index_directory(
     let mut files: HashMap<String, PathBuf> = HashMap::new();
     let mut pending = vec![(root.to_path_buf(), String::new())];
     while let Some((directory, prefix)) = pending.pop() {
+        let cannot =
+            |e: io::Error| VfsError(format!("cannot read folder {}: {e}", directory.display()));
+        // A folder or an entry that vanished meanwhile is skipped; any other error would
+        // silently hide files, so it fails.
         let entries = match std::fs::read_dir(&directory) {
             Ok(entries) => entries,
-            Err(e) if directory == root => {
-                return error(format!("cannot read folder {}: {e}", directory.display()));
-            }
-            Err(e) => {
-                warnings.push(format!("cannot read folder {}: {e}", directory.display()));
-                continue;
-            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound && directory != root => continue,
+            Err(e) => return Err(cannot(e)),
         };
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(cannot(e)),
+            };
             let path = entry.path();
             let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
-            match entry.file_type() {
-                Ok(kind) if kind.is_symlink() => {
+            let kind = match entry.file_type() {
+                Ok(kind) => kind,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return error(format!("cannot read {}: {e}", path.display())),
+            };
+            match kind {
+                kind if kind.is_symlink() => {
                     warnings.push(format!("{} is a symbolic link, ignored", path.display()));
                 }
-                Ok(kind) if kind.is_dir() => pending.push((path, format!("{name}/"))),
-                Ok(kind) if kind.is_file() => match files.entry(normalise(&name)) {
+                kind if kind.is_dir() => pending.push((path, format!("{name}/"))),
+                kind if kind.is_file() => match files.entry(normalise(&name)) {
                     Entry::Vacant(slot) => {
                         slot.insert(path);
                     }
@@ -1033,33 +1137,35 @@ mod tests {
     fn the_same_name_twice_in_one_archive() {
         let dir = TempDir::new("duplicates");
         dir.ini(".");
-        let mut bytes = zip_bytes(
-            &[
-                ("a.cfg", "first"),
-                ("b.cfg", "second"),
-                ("a.txt", "first"),
-                ("b.txt", "second"),
-            ],
-            "",
-        );
+        let kinds = ["cfg", "uca", "ucb", "ucs", "scn", "txt"];
+        let members: Vec<(String, &str)> = kinds
+            .iter()
+            .flat_map(|kind| {
+                [
+                    (format!("a.{kind}"), "first"),
+                    (format!("b.{kind}"), "second"),
+                ]
+            })
+            .collect();
+        let members: Vec<(&str, &str)> = members.iter().map(|(n, c)| (n.as_str(), *c)).collect();
+        let mut bytes = zip_bytes(&members, "");
         // The writer refuses duplicates: rename in the local headers and the directory alike.
-        for (from, to) in [(&b"b.cfg"[..], &b"a.cfg"[..]), (b"b.txt", b"a.txt")] {
-            for at in find_all(&bytes, from) {
-                bytes[at..at + from.len()].copy_from_slice(to);
+        for kind in kinds {
+            let (from, to) = (format!("b.{kind}"), format!("a.{kind}"));
+            for at in find_all(&bytes, from.as_bytes()) {
+                bytes[at..at + from.len()].copy_from_slice(to.as_bytes());
             }
         }
         dir.write("a.ztd", &bytes);
         let vfs = Vfs::open(&dir.0).unwrap();
-        assert_eq!(
-            text(&vfs, "a.cfg"),
-            "first",
-            "configuration names: first record wins"
-        );
-        assert_eq!(
-            text(&vfs, "a.txt"),
-            "second",
-            "other names: last record wins"
-        );
+        for kind in kinds {
+            let expected = if kind == "txt" { "second" } else { "first" };
+            assert_eq!(
+                text(&vfs, &format!("a.{kind}")),
+                expected,
+                "{kind}: the first record wins for configuration names, the last for others"
+            );
+        }
     }
 
     #[test]
@@ -1099,11 +1205,22 @@ mod tests {
     fn encrypted_members_and_local_headers_of_size_zero_stop_the_search() {
         let dir = TempDir::new("local-header");
         dir.ini(".");
-        dir.archive("a.ztd", &[("x.txt", "fallback"), ("y.txt", "fallback")]);
-        let mut bytes = zip_bytes(&[("x.txt", "wins"), ("y.txt", "wins")], "");
+        dir.archive(
+            "a.ztd",
+            &[
+                ("x.txt", "fallback"),
+                ("y.txt", "fallback"),
+                ("z.txt", "fallback"),
+            ],
+        );
+        let mut bytes = zip_bytes(
+            &[("x.txt", "wins"), ("y.txt", "wins"), ("z.txt", "wins")],
+            "",
+        );
         let locals = find_all(&bytes, &LOCAL_SIGNATURE);
         bytes[locals[0] + 6] |= 1; // encrypted
         bytes[locals[1] + 22..locals[1] + 26].fill(0); // uncompressed size 0
+        bytes[locals[2] + 18..locals[2] + 22].fill(0); // compressed size 0
         dir.write("b.ztd", &bytes);
         let vfs = Vfs::open(&dir.0).unwrap();
         assert!(
@@ -1112,12 +1229,120 @@ mod tests {
                 .to_string()
                 .contains("encrypted")
         );
+        for name in ["y.txt", "z.txt"] {
+            let why = vfs.read(name).unwrap_err().to_string();
+            assert!(why.contains("size 0"), "{name}: {why}");
+        }
+    }
+
+    /// An archive `b.ztd` that sorts before `a.ztd` and wins, whose local headers `damage`
+    /// changes. Its members are `x.txt` (stored) and `y.txt` (deflated), made of 2000 `w`s so that
+    /// the deflated one is much smaller than it declares; `a.ztd` has `fallback` for both.
+    fn damaged_winner(name: &str, damage: impl Fn(&mut [u8], &[usize])) -> Vfs {
+        let dir = TempDir::new(name);
+        dir.ini(".");
+        dir.archive("a.ztd", &[("x.txt", "fallback"), ("y.txt", "fallback")]);
+        let wins = "w".repeat(2000);
+        let mut bytes = zip_bytes(&[("x.txt", &wins), ("y.txt", &wins)], "");
+        let locals = find_all(&bytes, &LOCAL_SIGNATURE);
+        damage(&mut bytes, &locals);
+        dir.write("b.ztd", &bytes);
+        Vfs::open(&dir.0).unwrap()
+    }
+
+    fn put32(bytes: &mut [u8], at: usize, value: u32) {
+        bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    #[test]
+    fn a_member_shorter_than_its_declared_size_falls_through() {
+        // x.txt is stored and its compressed size says 1000 bytes, y.txt inflates to its 2000
+        // bytes but declares 5000.
+        let vfs = damaged_winner("short", |bytes, locals| {
+            put32(bytes, locals[0] + 18, 1000);
+            put32(bytes, locals[1] + 22, 5000);
+        });
+        assert_eq!(text(&vfs, "x.txt"), "fallback");
+        assert_eq!(text(&vfs, "y.txt"), "fallback");
+    }
+
+    #[test]
+    fn a_member_that_runs_past_the_end_of_the_file_falls_through() {
+        let vfs = damaged_winner("past-the-end", |bytes, locals| {
+            put32(bytes, locals[0] + 18, 1_000_000);
+            put32(bytes, locals[1] + 18, 1_000_000);
+        });
+        assert_eq!(text(&vfs, "x.txt"), "fallback");
+        assert_eq!(text(&vfs, "y.txt"), "fallback");
+    }
+
+    #[test]
+    fn a_size_that_deflate_cannot_reach_falls_through() {
+        // 20 bytes of data cannot inflate to 100000 bytes: the most is 1032 to 1.
+        let vfs = damaged_winner("ratio", |bytes, locals| {
+            put32(bytes, locals[1] + 18, 20);
+            put32(bytes, locals[1] + 22, 100_000);
+        });
+        assert_eq!(text(&vfs, "y.txt"), "fallback");
+        assert_eq!(deflate_limit(20), 20 * 1032 + 64);
+    }
+
+    #[test]
+    fn a_size_over_the_limit_stops_the_search() {
+        let vfs = damaged_winner("limit", |bytes, locals| {
+            put32(bytes, locals[0] + 22, MAX_MEMBER_SIZE as u32 + 1);
+            put32(bytes, locals[1] + 22, u32::MAX);
+        });
+        for name in ["x.txt", "y.txt"] {
+            let why = vfs.read(name).unwrap_err().to_string();
+            assert!(why.contains("byte limit"), "{name}: {why}");
+        }
+    }
+
+    #[test]
+    fn a_name_of_259_characters_is_found_one_of_260_is_not() {
+        let dir = TempDir::new("long-names");
+        dir.ini(".");
+        let (short, long) = ("a".repeat(259), "b".repeat(260));
+        dir.archive("p.ztd", &[(&short, "short"), (&long, "long")]);
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert_eq!(text(&vfs, &short), "short");
+        assert_eq!(vfs.which(&short).unwrap().len(), 1);
+        assert!(vfs.read(&long).is_err());
         assert!(
-            vfs.read("y.txt")
-                .unwrap_err()
-                .to_string()
-                .contains("size 0")
+            vfs.which(&long).unwrap().is_empty(),
+            "which agrees with read"
         );
+        assert!(vfs.which("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn members_with_an_empty_name_are_not_indexed() {
+        let dir = TempDir::new("empty-name");
+        dir.ini(".");
+        let mut bytes = zip_bytes(&[("x.txt", "content")], "");
+        // Empty the name in the central record and skip its bytes as extra data instead.
+        let record = find_all(&bytes, &CENTRAL_SIGNATURE)[0];
+        bytes[record + 28..record + 30].fill(0);
+        bytes[record + 30] = 5;
+        dir.write("a.ztd", &bytes);
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert_eq!(vfs.archive_count(), 1, "{:?}", vfs.warnings());
+        assert!(!vfs.list(None).contains(&String::new()));
+        assert!(vfs.read("").is_err());
+    }
+
+    #[test]
+    fn a_directory_listed_twice_is_indexed_once() {
+        let dir = TempDir::new("repeat");
+        dir.ini(".;./.;");
+        dir.archive("a.ztd", &[("x.txt", "1")]);
+        dir.write("y.txt", b"2");
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert_eq!(vfs.archive_count(), 1);
+        assert_eq!(vfs.which("x.txt").unwrap().len(), 1);
+        assert_eq!(vfs.which("y.txt").unwrap().len(), 1);
+        assert_eq!(vfs.shadowed_count(), 0);
     }
 
     #[test]
@@ -1273,8 +1498,12 @@ mod tests {
         let dir = TempDir::new("no-ini");
         assert!(message(Vfs::open(&dir.0)).contains("no zoo.ini or zoodemo.ini"));
 
+        // Without a path the install folder itself is the search path, as in the game.
         dir.write("zoo.ini", b"[user]\nfullscreen=1\n");
-        assert!(message(Vfs::open(&dir.0)).contains("has no [resource] path"));
+        dir.archive("p.ztd", &[("x.txt", "root")]);
+        assert_eq!(text(&Vfs::open(&dir.0).unwrap(), "x.txt"), "root");
+        dir.write("zoo.ini", b"[resource]\nkey=1\n");
+        assert_eq!(text(&Vfs::open(&dir.0).unwrap(), "x.txt"), "root");
 
         dir.write("zoo.ini", b"[resource]\npath=;\n");
         assert!(message(Vfs::open(&dir.0)).contains("lists no directory"));
@@ -1298,6 +1527,93 @@ mod tests {
         assert!(check_size(MAX_MEMBER_SIZE).is_ok());
         assert!(check_size(MAX_MEMBER_SIZE + 1).is_err());
         assert!(check_size(u64::MAX).is_err());
+    }
+
+    #[test]
+    fn io_errors_are_not_damaged_content() {
+        use io::ErrorKind::*;
+        for kind in [NotFound, UnexpectedEof, InvalidData, InvalidInput] {
+            assert!(
+                matches!(io_failure(kind.into()), Failure::Damaged(_)),
+                "{kind}"
+            );
+        }
+        for kind in [PermissionDenied, Other, TimedOut, Interrupted, OutOfMemory] {
+            assert!(
+                matches!(io_failure(kind.into()), Failure::Stop(_)),
+                "{kind}"
+            );
+        }
+        assert!(matches!(complete(Ok(())), Ok(true)));
+        assert!(matches!(complete(Err(UnexpectedEof.into())), Ok(false)));
+        assert!(complete(Err(PermissionDenied.into())).is_err());
+    }
+
+    /// Removes all permissions of `path` and says whether that stops this process from opening
+    /// it (it does not if the tests run as root).
+    #[cfg(unix)]
+    fn lock(path: &Path) -> bool {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        File::open(path).is_err()
+    }
+
+    #[cfg(unix)]
+    fn unlock(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_the_system_will_not_open_is_an_error_not_a_fall_through() {
+        let dir = TempDir::new("denied");
+        dir.ini(".");
+        dir.archive("a.ztd", &[("x.txt", "older copy")]);
+        dir.write("x.txt", b"loose");
+        let vfs = Vfs::open(&dir.0).unwrap();
+        let loose = dir.0.join("x.txt");
+        if lock(&loose) {
+            let why = vfs.read("x.txt").unwrap_err().to_string();
+            assert!(
+                why.contains("x.txt") && why.contains("Permission denied"),
+                "{why}"
+            );
+        }
+        unlock(&loose);
+        assert_eq!(text(&vfs, "x.txt"), "loose");
+
+        // The same for an archive at open time, and for a sub-folder.
+        let archive = dir.0.join("a.ztd");
+        if lock(&archive) {
+            let why = message(Vfs::open(&dir.0));
+            assert!(
+                why.contains("a.ztd") && why.contains("Permission denied"),
+                "{why}"
+            );
+        }
+        unlock(&archive);
+        dir.write("sub/f.txt", b"f");
+        let sub = dir.0.join("sub");
+        if lock(&sub) {
+            let why = message(Vfs::open(&dir.0));
+            assert!(
+                why.contains("sub") && why.contains("Permission denied"),
+                "{why}"
+            );
+        }
+        unlock(&sub);
+        assert!(Vfs::open(&dir.0).is_ok());
+    }
+
+    #[test]
+    fn the_ini_file_must_be_a_small_regular_file() {
+        let dir = TempDir::new("ini-limits");
+        dir.write("big.ini", &vec![b' '; MAX_INI_SIZE as usize + 1]);
+        assert!(read_ini(&dir.0.join("big.ini")).is_err());
+        dir.write("ok.ini", &vec![b' '; MAX_INI_SIZE as usize]);
+        assert!(read_ini(&dir.0.join("ok.ini")).is_ok());
+        assert!(read_ini(&dir.0).is_err(), "a folder is not a file");
     }
 
     /// The archives (relative path and size) that hold a name, the one that supplies it first.
