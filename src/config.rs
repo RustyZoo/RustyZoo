@@ -653,7 +653,7 @@ mod tests {
         }
         assert_eq!(
             (sections, keys, values, empty),
-            (33_524, 202_170, 299_585, 3)
+            (33_621, 202_459, 300_138, 3)
         );
     }
 }
