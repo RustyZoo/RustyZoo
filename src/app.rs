@@ -12,6 +12,7 @@ use std::str::FromStr;
 
 use crate::Framebuffer;
 use crate::camera::{Camera, Settings};
+use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
 use crate::timing::{Calendar, Pass, Timers};
 use crate::zoo::Zoo;
@@ -107,6 +108,10 @@ pub struct App<'a> {
     drew: bool,
     /// The camera when the last draw fired, before the interface moved it.
     drawn_at: Look,
+    /// The menu music, until the game has none (`noMenuMusic`) or it is stopped.
+    music: Option<Music>,
+    /// Whether the interface update of the last pass changed the music's volume or stopped it.
+    music_changed: bool,
 }
 
 impl<'a> App<'a> {
@@ -138,6 +143,8 @@ impl<'a> App<'a> {
             fired: IDLE,
             drew: false,
             drawn_at,
+            music: None,
+            music_changed: false,
         })
     }
 
@@ -147,6 +154,7 @@ impl<'a> App<'a> {
     /// after it and the timers do not run (main loop 3.1), and neither does any later pass.
     pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
+        self.music_changed = false;
         for &command in commands {
             if self.quit {
                 return None;
@@ -162,8 +170,11 @@ impl<'a> App<'a> {
             self.drawn_at = self.look();
             self.drew = self.paint();
         }
-        if self.fired.interface.is_some() {
+        if let Some(period) = self.fired.interface {
             self.camera.edge_scroll(&self.zoo, now, self.pointer);
+            if let Some(music) = &mut self.music {
+                self.music_changed = music.update(period);
+            }
         }
         if let Some(step) = self.fired.step
             && !self.paused
@@ -171,6 +182,20 @@ impl<'a> App<'a> {
             self.calendar.advance(step);
         }
         self.drew.then_some(&self.frame)
+    }
+
+    /// The game starts with this menu music playing: it fades out from the first interface update
+    /// (sound specification 6.3). The caller plays it and follows [`App::music`].
+    pub fn start_game(&mut self, mut music: Option<Music>) {
+        if let Some(music) = &mut music {
+            music.start_fade();
+        }
+        self.music = music;
+    }
+
+    /// The menu music and whether the last pass changed its volume or stopped it.
+    pub fn music(&self) -> Option<(&Music, bool)> {
+        self.music.as_ref().map(|m| (m, self.music_changed))
     }
 
     /// Milliseconds from `now` to the next time a pass fires a timer: 0 when one is due.
@@ -247,8 +272,9 @@ impl<'a> App<'a> {
 
     /// The lines of the last pass, each led by the pass index and the clock: one per command it
     /// applied, in the text form of a script, then one per timer that fired, in the order draw,
-    /// interface, step. A draw tells the hash of the frame it painted (`-` if it painted none)
-    /// and the camera it drew with, a step the new date. A pass that did nothing has no line.
+    /// interface (then the music, if the update changed its volume or stopped it), step. A draw
+    /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
+    /// with, a step the new date. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
@@ -267,6 +293,9 @@ impl<'a> App<'a> {
         }
         if let Some(period) = self.fired.interface {
             lines.push(format!("{lead} interface {period}"));
+            if let Some(music) = self.music.as_ref().filter(|_| self.music_changed) {
+                lines.push(format!("{lead} {}", music.log_line()));
+            }
         }
         if let Some(step) = self.fired.step {
             let d = self.calendar.date();

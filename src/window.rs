@@ -15,6 +15,7 @@ use rustyzoo::app::{App, Command};
 use rustyzoo::camera::Settings;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
+use rustyzoo::music::Music;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::timing::{Timers, user_whole};
 use rustyzoo::vfs::Vfs;
@@ -24,11 +25,31 @@ use sdl3::pixels::PixelFormat;
 use sdl3::render::ScaleMode;
 
 use crate::CliError;
-use crate::audio::Audio;
+use crate::audio::{Audio, Voice};
 use crate::input;
 
 /// The window when the ini file does not say.
 const DEFAULT_SIZE: (u32, u32) = (1024, 768);
+
+/// Queues the music again when it runs low; a music that fails stops for good.
+fn feed(music: &mut Option<Voice>) {
+    if let Some(voice) = music
+        && let Err(e) = voice.update()
+    {
+        eprintln!("rustyzoo: the menu music stops: {e}");
+        *music = None;
+    }
+}
+
+/// Pauses or resumes the music where it is; a music that fails stops for good.
+fn hold(music: &mut Option<Voice>, hold: bool) {
+    if let Some(voice) = music
+        && let Err(e) = if hold { voice.pause() } else { voice.resume() }
+    {
+        eprintln!("rustyzoo: the menu music stops: {e}");
+        *music = None;
+    }
+}
 
 /// What the command line asks of a windowed run.
 pub struct Flags<'a> {
@@ -136,15 +157,19 @@ pub fn run(
         .audio()
         .map_err(Into::into)
         .and_then(|a| Audio::open(&a));
-    let mut music = match &audio {
-        Ok(audio) => audio.menu_music(vfs, true, false).unwrap_or_else(|e| {
-            eprintln!("rustyzoo: no menu music: {e}");
-            None
-        }),
-        Err(e) => {
+    let menu = Music::from_config(ini);
+    let mut music = match (&audio, &menu) {
+        (Ok(audio), Some(menu)) => audio
+            .menu_music(vfs, menu, true, false)
+            .unwrap_or_else(|e| {
+                eprintln!("rustyzoo: no menu music: {e}");
+                None
+            }),
+        (Err(e), _) => {
             eprintln!("rustyzoo: no sound: {e}");
             None
         }
+        _ => None,
     };
 
     let mut app = App::new(
@@ -154,6 +179,8 @@ pub fn run(
         Timers::from_config(ini),
         size,
     )?;
+    // The game starts with the run: the menu music fades out.
+    app.start_game(menu);
     let mut log = match flags.log {
         Some(file) => {
             let out = File::create(file).map_err(|e| format!("{file}: {e}"))?;
@@ -172,14 +199,24 @@ pub fn run(
     let mut pass = 0;
     let mut shown = false;
     let mut pointer = None;
+    let mut held = false;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
         }
-        // Minimised or hidden: nothing runs until something happens (a close request still does).
+        // Minimised or hidden: nothing runs until something happens (a close request still
+        // does). The music waits where it is and goes on at the restore, not from its beginning.
         if state.asleep() && !commands.contains(&Command::Quit) {
+            if !held {
+                held = true;
+                hold(&mut music, true);
+            }
             state.note(pump.wait_event(), &mut commands);
             continue;
+        }
+        if held {
+            held = false;
+            hold(&mut music, false);
         }
         while let Some((_, command)) = script.next_if(|&(at, _)| at <= pass) {
             commands.push(command);
@@ -214,12 +251,21 @@ pub fn run(
                 writeln!(log, "{line}")?;
             }
         }
-        if let Some((_, voice)) = &music
-            && let Err(e) = voice.update()
+        // The fade of the menu music: the volume follows the model, which ends by stopping it.
+        if let Some((model, true)) = app.music()
+            && let Some(voice) = &music
         {
-            eprintln!("rustyzoo: the menu music stops: {e}");
-            music = None;
+            match model.stopped() {
+                true => music = None,
+                false => {
+                    if let Err(e) = voice.set_sum(model.sum()) {
+                        eprintln!("rustyzoo: the menu music stops: {e}");
+                        music = None;
+                    }
+                }
+            }
         }
+        feed(&mut music);
         pass += 1;
         if app.quit() || flags.passes.is_some_and(|n| pass >= n) {
             break;
@@ -232,6 +278,14 @@ pub fn run(
     }
     if let Some(mut log) = log {
         log.flush()?;
+    }
+    match (&music, app.music()) {
+        (Some(voice), _) => match (voice.gain(), voice.queued_bytes()) {
+            (Ok(gain), Ok(bytes)) => println!("music gain {gain:.3} queued {bytes} bytes"),
+            (Err(e), _) | (_, Err(e)) => eprintln!("rustyzoo: the menu music state: {e}"),
+        },
+        (None, Some((model, _))) if model.stopped() => println!("music stopped"),
+        _ => println!("music none"),
     }
     Ok(())
 }

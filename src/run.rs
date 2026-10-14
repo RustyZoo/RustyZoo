@@ -12,6 +12,7 @@ use rustyzoo::app::{App, Command};
 use rustyzoo::camera::Settings;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
+use rustyzoo::music::Music;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::sprite::write_png;
 use rustyzoo::timing::Timers;
@@ -173,7 +174,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             passes.push((key.0, key.1, Vec::new()));
         }
         let rest = rest.unwrap_or("");
-        if !["draw ", "interface ", "step "]
+        if !["draw ", "interface ", "music ", "step "]
             .iter()
             .any(|k| rest.starts_with(k))
         {
@@ -220,6 +221,8 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         Timers::from_config(&ini),
         size.unwrap_or(DEFAULT_SIZE),
     )?;
+    // The game starts with the run: the menu music, which only the log tells of here, fades.
+    app.start_game(Music::from_config(&ini));
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
     let mut report = Report::new();
     report.line(format_args!("{}", app.log_header()));
@@ -380,6 +383,7 @@ mod tests {
                    pass 3 t=67 scroll -1 0\n\
                    pass 3 t=67 pointer none\n\
                    pass 3 t=67 interface 66\n\
+                   pass 3 t=67 music fade 33 sum -967 gain 0.999\n\
                    pass 4 t=70 quit\n";
         assert_eq!(
             replay(log).unwrap(),

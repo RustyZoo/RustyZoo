@@ -1,6 +1,7 @@
 //! The pass of the map view on a synthetic map: one grass tile picture of two pixels.
 
 use super::*;
+use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::render::Options;
 use crate::render::order::project;
@@ -276,4 +277,34 @@ fn a_window_of_no_size_or_beyond_the_pixel_limit_is_refused() {
         );
         assert!(app.is_err(), "{size:?}");
     }
+}
+
+#[test]
+fn the_menu_music_fades_from_the_start_of_the_game_and_the_log_tells_it() {
+    with_app("app-music", |app, _| {
+        let ini = Config::parse(b"[UI]\nmenuMusicAttenuation=-1000\n").unwrap();
+        // Once the game has started, the fade waits
+        // five interface updates and the log tells each step, then the stop.
+        app.start_game(Music::from_config(&ini));
+        let music: Vec<_> = (0..100)
+            .flat_map(|pass| {
+                app.pass(pass * 66, &[]);
+                app.log_lines(pass, pass * 66)
+            })
+            .filter(|line| line.contains(" music "))
+            .collect();
+        assert_eq!(music.len(), 91);
+        assert_eq!(music[0], "pass 5 t=330 music fade 33 sum -967 gain 0.999");
+        assert_eq!(
+            music[89],
+            "pass 94 t=6204 music fade 2970 sum 1970 gain 0.104"
+        );
+        assert_eq!(music[90], "pass 95 t=6270 music stopped");
+        assert!(
+            app.music()
+                .is_some_and(|(m, changed)| m.stopped() && !changed)
+        );
+        app.start_game(None);
+        assert!(app.music().is_none());
+    });
 }
