@@ -13,7 +13,7 @@ Modules of the core:
 
 | Module | Role |
 | --- | --- |
-| `vfs` | Read-only file system over the `.ztd` archives of the install folder |
+| `vfs` | Read-only file system over the loose files and archives of the install folder |
 | `config` | Reader of the game's INI-like files (`.ai`, `.cfg`, `.lyt`, ...) |
 | `pe` | Bounded reader for the resources of the game's resource DLLs |
 | `strings` | The game's texts, merged from the `lang*.dll` libraries |
@@ -29,7 +29,7 @@ SDL3 (window, input, audio) is built from source and linked statically, so no sy
 
 The game folder is the install folder, the one that holds `zoo.ini`. It is found with `--data <dir>`, then the `ZT_DATA_DIR` environment variable. **Planned:** a configuration file as a third source.
 
-Files are looked up as the game does: in the `.ztd` archives of the directories listed in `[resource] path` of `zoo.ini`, the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Texts come from the resource DLLs, not from the archives. Nothing is ever written into the game folder.
+Files are looked up as the game does: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins. Texts come from the resource DLLs, not from the archives. Nothing is ever written into the game folder.
 
 Everything read from a file is untrusted: malformed data gives an error, never a panic.
 
