@@ -158,7 +158,13 @@ fn whole(value: &[u8]) -> Option<i32> {
     let number = digits[..count].iter().fold(0i32, |n, &d| {
         n.wrapping_mul(10).wrapping_add(i32::from(d - b'0'))
     });
-    (count > 0).then(|| if negative { number.wrapping_neg() } else { number })
+    (count > 0).then(|| {
+        if negative {
+            number.wrapping_neg()
+        } else {
+            number
+        }
+    })
 }
 
 /// `truncate(1000 / rate)` from a rate held in single precision; the fallback when the value
@@ -312,7 +318,11 @@ mod tests {
             "unsigned: no cap"
         );
         assert_eq!(periods("[user]\nMaxSimTick=0x\n").2, 200, "0 is refused");
-        assert_eq!(periods("[user]\nMaxSimTick=0x1F\n").2, 200, "no 0x rule: reads 0");
+        assert_eq!(
+            periods("[user]\nMaxSimTick=0x1F\n").2,
+            200,
+            "no 0x rule: reads 0"
+        );
         assert_eq!(periods("[user]\nMaxSimTick=abc\n").2, 200, "unreadable");
         assert_eq!(periods("[user]\nMaxSimTick= +31x\n").2, 31);
     }
