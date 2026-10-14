@@ -6,7 +6,7 @@
 //! The frame is as large as the window in points. It goes to a streaming texture that SDL
 //! scales to the pixels of the window with the nearest pixel, so a display with a high pixel
 //! density shows the same picture with larger pixels. Only the program uses this module: the
-//! core crate does not link to SDL. Key and mouse events are not mapped yet.
+//! core crate does not link to SDL. The keys and the mouse become commands in `input`.
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -25,6 +25,7 @@ use sdl3::render::ScaleMode;
 
 use crate::CliError;
 use crate::audio::Audio;
+use crate::input;
 
 /// The window when the ini file does not say.
 const DEFAULT_SIZE: (u32, u32) = (1024, 768);
@@ -69,6 +70,16 @@ struct State {
 impl State {
     /// Turns an event into a command or a change of state.
     fn note(&mut self, event: Event, commands: &mut Vec<Command>) {
+        match input::command(&event) {
+            // Only the last pointer position of a pass is read (the edge scroll of the
+            // interface pass), so the others are not worth a command.
+            Some(Command::Pointer(at)) => match commands.last_mut() {
+                Some(Command::Pointer(last)) => *last = at,
+                _ => commands.push(Command::Pointer(at)),
+            },
+            Some(command) => commands.push(command),
+            None => {}
+        }
         match event {
             Event::Quit { .. }
             | Event::Window {
@@ -260,9 +271,47 @@ mod tests {
         state.note(window(WindowEvent::Shown), &mut commands);
         state.note(window(WindowEvent::FocusLost), &mut commands);
         assert!(!state.asleep(), "inactive but visible keeps running");
-        assert!(commands.is_empty());
+        assert_eq!(commands, [Command::Pointer(None)], "and does not scroll");
+        commands.clear();
         state.note(window(WindowEvent::CloseRequested), &mut commands);
         state.note(Event::Quit { timestamp: 0 }, &mut commands);
         assert_eq!(commands, [Command::Quit, Command::Quit]);
+    }
+
+    #[test]
+    fn a_pass_keeps_the_last_pointer_position_and_every_key() {
+        let motion = |x| Event::MouseMotion {
+            timestamp: 0,
+            window_id: 1,
+            which: 0,
+            mousestate: sdl3::mouse::MouseState::from_sdl_state(0),
+            x,
+            y: 0.0,
+            xrel: 0.0,
+            yrel: 0.0,
+        };
+        let key = Event::KeyDown {
+            timestamp: 0,
+            window_id: 1,
+            keycode: None,
+            scancode: Some(sdl3::keyboard::Scancode::Left),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: true,
+            which: 0,
+            raw: 0,
+        };
+        let (mut state, mut commands) = (State::default(), Vec::new());
+        for event in [motion(1.0), motion(2.0), key.clone(), key, motion(3.0)] {
+            state.note(event, &mut commands);
+        }
+        assert_eq!(
+            commands,
+            [
+                Command::Pointer(Some((2, 0))),
+                Command::Scroll(-1, 0),
+                Command::Scroll(-1, 0),
+                Command::Pointer(Some((3, 0))),
+            ]
+        );
     }
 }
