@@ -3,9 +3,14 @@
 //! A [`Scene`] is the map reduced to what decides the order: the tiles, and for every object
 //! where it stands (a tile list, a quadrant of a tile, a tile edge, or the path of a tile).
 //! [`paint_order`] returns the sequence of things to paint, back to front. The whole map is
-//! taken as visible, so the visibility tests of the original are always true.
+//! taken as visible, so the visibility tests of the original are always true. The tiles of a tank
+//! exhibit are painted in layers (map drawing 9.7) instead of by the walk of the other groups;
+//! the extra items they need are [`Item::Pane`], [`Item::Face`], [`Item::Surface`],
+//! [`Item::Quarter`], [`Item::Under`], [`Item::Shadow`] and [`Item::Platform`].
 
 use crate::zoo::Tile;
+
+mod tank;
 
 /// The tallest elevation a tile may have; the shipped maps stay below 13. Larger values (a
 /// damaged file) are cut so that the picture stays bounded.
@@ -21,8 +26,10 @@ pub enum Kind {
     Unit,
     /// The path piece of a tile.
     Path,
-    /// Stands on one edge of a tile, the one the facing points to: fences, tank walls.
+    /// Stands on one edge of a tile, the one the facing points to: fences.
     Edge,
+    /// A tank wall: an [`Kind::Edge`] that a tank exhibit may make active.
+    Wall,
     /// Holds the quadrants of its footprint: buildings, scenery and the rest.
     Fixed,
     /// Holds no quadrant and is in no tile list: ambient animals, attached each frame to the
@@ -44,6 +51,29 @@ pub struct Object {
     pub footprint: (i32, i32),
     /// The type asks to be painted after the other objects of its tile.
     pub late: bool,
+    /// `cHeight` of the type, in elevation steps.
+    pub height: i32,
+}
+
+/// A tank exhibit as the painter needs it.
+#[derive(Debug, Clone, Copy)]
+pub struct TankSpec {
+    /// The first tile of the exhibit and its second (gate) tile; (-1, -1) for none.
+    pub tile: (i32, i32),
+    pub gate: (i32, i32),
+    /// The tank height and the water level, in elevation steps above the floor.
+    pub height: i32,
+    pub level: i32,
+}
+
+/// The glass pane of a wall seen from a side of the tank (the `lgrey`, `bgrey`, `rgrey` and
+/// `fgrey` pictures).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Glass {
+    UpperLeft,
+    UpperRight,
+    LowerRight,
+    LowerLeft,
 }
 
 /// One thing to paint.
@@ -57,6 +87,26 @@ pub enum Item {
     Edge(usize),
     /// Any other object.
     Object(usize),
+    /// The glass pane `k` steps above the floor of a tank wall, drawn blended.
+    Pane { wall: usize, k: i32, glass: Glass },
+    /// The water face `k` steps above the floor of a tank wall (`right`: on the lower-right
+    /// wall, else on the lower-left one), drawn blended. `noise` selects the scum picture.
+    Face {
+        wall: usize,
+        k: i32,
+        right: bool,
+        noise: u8,
+    },
+    /// The water surface of a tile at world height `z`, drawn blended. `noise` selects the scum.
+    Surface { tile: usize, z: i32, noise: u8 },
+    /// One of the four quarters of the water surface (0 top, 1 right, 2 left, 3 bottom).
+    Quarter { tile: usize, z: i32, quad: u8 },
+    /// The underwater picture of an object, if its type has one.
+    Under(usize),
+    /// The ground shadow of an object, if its type draws one.
+    Shadow(usize),
+    /// The platform of the gate on a tile.
+    Platform(usize),
 }
 
 /// The map as the painter sees it.
@@ -75,6 +125,8 @@ pub struct Scene {
     list: Vec<Vec<usize>>,
     /// Per tile, the overlays (ambient animals) attached to it.
     overlay: Vec<Vec<usize>>,
+    /// Per tile, the transient entities of a tank (the ripples), painted after its water.
+    transient: Vec<Vec<usize>>,
     /// Per object, the number of quadrants it holds.
     covers: Vec<u32>,
     /// Per tile, its path piece.
@@ -84,6 +136,13 @@ pub struct Scene {
     big: Vec<Option<usize>>,
     /// Per object, whether it stands on the map at all.
     placed: Vec<bool>,
+    /// The tank exhibits, and per tile the exhibit it belongs to.
+    pub tanks: Vec<TankSpec>,
+    tank: Vec<Option<usize>>,
+    /// The pseudo-random bytes of the water (9.7.7): per tile of the sorted array, and for the
+    /// faces.
+    scum: Vec<u8>,
+    face_scum: Vec<u8>,
 }
 
 /// The tile step of each map direction, `0..8`.
@@ -163,10 +222,15 @@ impl Scene {
             quad: vec![[None; 4]; n],
             list: vec![Vec::new(); n],
             overlay: vec![Vec::new(); n],
+            transient: vec![Vec::new(); n],
             covers: vec![0; objects.len()],
             path: vec![None; n],
             big: vec![None; n],
             placed: vec![false; objects.len()],
+            tanks: Vec::new(),
+            tank: vec![None; n],
+            scum: Vec::new(),
+            face_scum: Vec::new(),
             objects,
         };
         for o in 0..scene.objects.len() {
@@ -181,7 +245,7 @@ impl Scene {
         self.index(tx, ty)
     }
 
-    fn index(&self, tx: i32, ty: i32) -> Option<usize> {
+    pub fn index(&self, tx: i32, ty: i32) -> Option<usize> {
         (tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height)
             .then(|| ty as usize * self.width + tx as usize)
     }
@@ -203,7 +267,7 @@ impl Scene {
                 self.path[t] = Some(o);
                 true
             }
-            Kind::Edge
+            Kind::Edge | Kind::Wall
                 if obj.facing.is_multiple_of(2)
                     && self.edge[t][obj.facing as usize / 2].is_none() =>
             {
@@ -219,7 +283,7 @@ impl Scene {
                 self.overlay[t].push(o);
                 true
             }
-            Kind::Path | Kind::Edge => false,
+            Kind::Path | Kind::Edge | Kind::Wall => false,
         };
     }
 
@@ -289,11 +353,118 @@ impl Scene {
         self.path[t]
     }
 
+    /// Adds a transient entity on tile `t` of a tank (map drawing 9.7.4); returns its index.
+    pub fn add_transient(&mut self, t: usize, obj: Object) -> usize {
+        self.objects.push(obj);
+        self.covers.push(0);
+        self.placed.push(true);
+        self.transient[t].push(self.objects.len() - 1);
+        self.objects.len() - 1
+    }
+
+    /// Declares the tank exhibits. `fences[o]` tells whether object `o` is a habitat fence (a
+    /// fence or tank wall whose type has a `[HabitatFence]` or `[TankFence]` section). The area
+    /// of a tank is what the original fills from the first tile of its record: every tile
+    /// reachable through edges where neither slot holds a habitat fence, whatever the heights. A
+    /// tile that is already in another exhibit is taken over.
+    pub fn set_tanks(&mut self, tanks: &[TankSpec], fences: &[bool]) {
+        self.tanks = tanks.to_vec();
+        self.tank = vec![None; self.tiles.len()];
+        let fence = |t: usize, d: usize| {
+            self.edge[t][d / 2].is_some_and(|o| fences.get(o).copied().unwrap_or(false))
+        };
+        for (k, spec) in tanks.iter().enumerate() {
+            let Some(first) = self.index(spec.tile.0, spec.tile.1) else {
+                continue;
+            };
+            let mut seen = vec![false; self.tiles.len()];
+            seen[first] = true;
+            let mut todo = vec![first];
+            while let Some(t) = todo.pop() {
+                self.tank[t] = Some(k);
+                for d in [0, 2, 4, 6] {
+                    let Some(n) = self.neighbour(t, d) else {
+                        continue;
+                    };
+                    if !seen[n] && !fence(t, d) && !fence(n, (d + 4) % 8) {
+                        seen[n] = true;
+                        todo.push(n);
+                    }
+                }
+            }
+        }
+        // The pseudo-random bytes of the water: one per tile, then one per face level.
+        let mut x = 50u32;
+        let mut next = move || {
+            x = x.wrapping_mul(214013).wrapping_add(2531011);
+            ((x >> 16) & 0x7fff) as u8 % 255
+        };
+        self.scum = (0..self.tiles.len()).map(|_| next()).collect();
+        self.face_scum = (0..255).map(|_| next()).collect();
+    }
+
+    /// The tank exhibit (an index in [`Scene::tanks`]) that tile `t` belongs to.
+    pub fn tank_of(&self, t: usize) -> Option<usize> {
+        self.tank[t]
+    }
+
+    /// The tank an active wall belongs to: a tank wall of a tank taller than 0, standing on a
+    /// tile of the tank or on the edge of one.
+    pub fn wall_tank(&self, o: usize) -> Option<usize> {
+        let obj = &self.objects[o];
+        if obj.kind != Kind::Wall || !self.placed[o] {
+            return None;
+        }
+        let t = self.tile_at(obj.x, obj.y)?;
+        let across = self.neighbour(t, obj.facing as usize % 8);
+        self.tank_of(t)
+            .or_else(|| across.and_then(|n| self.tank_of(n)))
+            .filter(|&k| self.tanks[k].height > 0)
+    }
+
+    /// The height of the water surface over tile `t`: the ground at its centre plus the level.
+    pub fn surface(&self, t: usize) -> Option<i32> {
+        let tank = &self.tanks[self.tank_of(t)?];
+        Some(ground_height(&self.tiles[t], 32, 32) + 16 * tank.level)
+    }
+
     /// The tile across the edge or corner in map direction `d`.
     pub fn neighbour(&self, t: usize, d: usize) -> Option<usize> {
         let (dx, dy) = STEP[d % 8];
         self.index((t % self.width) as i32 + dx, (t / self.width) as i32 + dy)
     }
+}
+
+/// The height in world units of the ground at the local point (`lx`, `ly`), 0 to 64, of a tile
+/// (map drawing 3.4); each term is cut towards zero on its own.
+pub fn ground_height(tile: &Tile, lx: i32, ly: i32) -> i32 {
+    let (a, b) = (lx / 4, ly / 4);
+    let rise = match tile.shape {
+        0x50 => a,
+        0x14 => b,
+        0x05 => -a,
+        0x41 => -b,
+        0x40 if lx > ly => a - b,
+        0x10 if lx + ly > 64 => a + b - 16,
+        0x04 if ly > lx => b - a,
+        0x01 if lx + ly < 64 => -a - b,
+        0x01 => -16,
+        0x54 if lx + ly < 64 => a + b,
+        0x54 => 16,
+        0x51 if ly > lx => a - b,
+        0x45 if lx + ly > 64 => 16 - a - b,
+        0x15 if lx > ly => b - a,
+        0x44 if ly > lx => b - a,
+        0x44 => a - b,
+        0x11 if lx + ly < 64 => -a - b,
+        0x11 => a + b - 32,
+        0x64 => a + b,
+        0x19 => b - a,
+        0x46 => -a - b,
+        0x91 => a - b,
+        _ => 0,
+    };
+    16 * tile.elevation + rise
 }
 
 /// The map direction of a screen direction (0 upper left edge, 1 top corner, 2 upper right edge,
@@ -305,6 +476,8 @@ pub fn map_direction(rotation: u8, screen: usize) -> usize {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
     New,
+    /// A tile of a tank exhibit, gathered and not yet painted (9.7.2).
+    Collected,
     Terrain,
     Objects,
     Done,
@@ -431,6 +604,9 @@ impl Painter<'_> {
         if self.calls > 40 * self.order.len() + 1000 {
             return;
         }
+        if self.scene.tank[self.order[start]].is_some() {
+            return self.paint_tank(start, limit);
+        }
         for edge in [UPPER_LEFT, UPPER_RIGHT] {
             if let Some(n) = self.nb(start, edge)
                 && self.state[n] != State::Done
@@ -551,43 +727,9 @@ impl Painter<'_> {
         self.state[i] = State::Objects;
         self.paint_edge(i, UPPER_LEFT);
         self.paint_edge(i, UPPER_RIGHT);
-        let t = self.order[i];
-        let scene = self.scene;
-        let rotation = scene.rotation;
-        // (paints last, forced z, view y, view x, object)
-        let mut list: Vec<(bool, i32, i32, i32, usize)> = Vec::new();
-        let push = |list: &mut Vec<_>, forced: i32, o: usize| {
-            let obj = &scene.objects[o];
-            let (px, py) = project(rotation, obj.x, obj.y, obj.z);
-            list.push((obj.late, forced, py, px, o));
-        };
-        for &o in &scene.list[t] {
-            push(&mut list, 0, o);
-        }
-        let quads = self.quads.map(|q| scene.quad[t][q]);
-        for (k, quad) in quads.iter().enumerate() {
-            let Some(o) = *quad else { continue };
-            self.counter[o] += 1;
-            if self.counter[o] != scene.covers[o] {
-                continue;
-            }
-            let forced = match k {
-                0 => -1,
-                1 | 2 if quads[0] == Some(o) => -1,
-                3 if quads[1] == Some(o) || quads[2] == Some(o) => 1,
-                _ => 0,
-            };
-            push(&mut list, forced, o);
-        }
-        // Objects that tie, the ones that paint last included, keep the order of the list.
-        list.sort_by_key(|&(late, forced, py, px, _)| (late, forced, py, px));
-        let mut over = Vec::new();
-        for &o in &scene.overlay[t] {
-            push(&mut over, 0, o);
-        }
-        over.sort_by_key(|&(late, forced, py, px, _)| (late, forced, py, px));
-        self.out
-            .extend(list.into_iter().chain(over).map(|(.., o)| Item::Object(o)));
+        let list = self.tile_entries(i, &|_| true);
+        self.out.extend(list.into_iter().map(|e| Item::Object(e.4)));
+        self.overlays(i);
     }
 }
 

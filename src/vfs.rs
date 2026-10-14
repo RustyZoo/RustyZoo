@@ -195,6 +195,7 @@ impl Failure {
 /// The sources of every directory on the resource search path of one installation.
 pub struct Vfs {
     root: PathBuf,
+    ini: Vec<u8>,
     sources: Vec<Source>,
     warnings: Vec<String>,
 }
@@ -252,6 +253,7 @@ impl Vfs {
 
         let mut vfs = Vfs {
             root: install_dir.to_path_buf(),
+            ini,
             sources: Vec::new(),
             warnings: Vec::new(),
         };
@@ -386,6 +388,11 @@ impl Vfs {
     /// names differ only in letter case. Empty on a healthy installation.
     pub fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// The bytes of the ini file next to the executable.
+    pub fn ini(&self) -> &[u8] {
+        &self.ini
     }
 
     /// The number of archives (`*.ztd` and `*.zip`) accepted.

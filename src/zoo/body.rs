@@ -16,10 +16,15 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
                     strength: r.u32()?,
                     life: r.u32()?,
                     timers: [r.u32()?, r.u32()?],
+                    portal: false,
                 });
             }
             if class == b"tankwall" && v >= 101 {
-                r.skip(2)?;
+                let portal = r.u8()? != 0;
+                r.skip(1)?;
+                if let Some(fence) = &mut common.fence {
+                    fence.portal = portal;
+                }
             }
             common
         }
@@ -99,6 +104,7 @@ fn base(r: &mut Reader) -> R<Common> {
         name,
         colors,
         fence: None,
+        movement_mode: 0,
     })
 }
 
@@ -338,9 +344,10 @@ fn base_unit(r: &mut Reader) -> R<Common> {
     if v >= 62 {
         r.skip(1)?;
     }
+    let mut mode = 0;
     if v >= 84 {
         r.skip(4)?;
-        movement(r)?;
+        mode = movement(r)?;
     }
     if v >= 85 {
         r.string()?;
@@ -348,10 +355,14 @@ fn base_unit(r: &mut Reader) -> R<Common> {
     if v >= 98 {
         r.skip(2)?;
     }
-    base(r)
+    Ok(Common {
+        movement_mode: mode as u32,
+        ..base(r)?
+    })
 }
 
-fn movement(r: &mut Reader) -> R<()> {
+/// Reads the movement block; returns the movement mode.
+fn movement(r: &mut Reader) -> R<i32> {
     let first = r.i32()?;
     let kind = if r.v >= 93 { r.i32()? } else { first };
     match kind {
@@ -360,5 +371,5 @@ fn movement(r: &mut Reader) -> R<()> {
         3 => r.skip(if r.v >= 96 { 1 + 32 } else { 1 + 12 })?,
         _ => return bad("movement of an unknown type"),
     }
-    Ok(())
+    Ok(first)
 }
