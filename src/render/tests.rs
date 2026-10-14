@@ -547,6 +547,97 @@ fn a_window_of_the_view_is_drawn_from_its_top_left_view_space_point() {
     assert!(draw((0, 0, u32::MAX, u32::MAX)).is_err());
 }
 
+/// Draws each window from `staged` and checks it against the same window cut from `whole`, the
+/// picture of the whole map whose top left pixel is the view-space point `origin`, black outside.
+fn check_windows(
+    staged: &Staged,
+    whole: &Framebuffer,
+    origin: (i32, i32),
+    windows: &[(i32, i32, u32, u32)],
+) {
+    for &(x, y, w, h) in windows {
+        let mut canvas = Framebuffer::new(w, h);
+        staged.draw(&mut canvas, x, y);
+        let mut want = Framebuffer::new(w, h);
+        want.fill([0, 0, 0, 255]);
+        for row in 0..h as i64 {
+            for column in 0..w as i64 {
+                let from = (
+                    i64::from(x) + column - i64::from(origin.0),
+                    i64::from(y) + row - i64::from(origin.1),
+                );
+                if (0..i64::from(whole.width)).contains(&from.0)
+                    && (0..i64::from(whole.height)).contains(&from.1)
+                {
+                    let at = (from.1 as usize * whole.width as usize + from.0 as usize) * 4;
+                    let to = (row as usize * w as usize + column as usize) * 4;
+                    want.pixels[to..to + 4].copy_from_slice(&whole.pixels[at..at + 4]);
+                }
+            }
+        }
+        assert!(canvas.pixels == want.pixels, "window {x},{y} {w}x{h}");
+    }
+}
+
+#[test]
+fn one_staging_draws_any_window_like_the_whole_map() {
+    let install = cache_install("render-staged", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo {
+        width: 2,
+        height: 2,
+        tiles: flat_map(2, 2),
+        ..tile_with(&[])
+    };
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let (whole, _) = renderer.render(&zoo, 0).unwrap();
+    let staged = renderer.stage(&zoo, 0, false).unwrap();
+    assert_eq!(staged.size().unwrap(), (whole.width, whole.height));
+    let origin = staged.origin();
+    // The ground of the first tile has its top left at (32, 0) of the view.
+    assert_eq!(origin, (0, -32));
+    let windows = [
+        (origin.0, origin.1, whole.width, whole.height),
+        (31, -1, 4, 3),
+        (33, 0, 1, 1),
+        (-5, -40, 200, 100),
+        (60, 10, 30, 20),
+        (i32::MIN, i32::MIN, 5, 5),
+        (i32::MAX, i32::MAX, 5, 5),
+        (i32::MIN, 0, 3, 3),
+        (0, i32::MAX, 3, 3),
+        (i32::MAX - 2, -1, 3, 3),
+    ];
+    check_windows(&staged, &whole, origin, &windows);
+    // The same staging draws again, and the caches kept their pictures.
+    assert!(!renderer.flats.is_empty());
+    check_windows(&staged, &whole, origin, &windows[..3]);
+}
+
+#[test]
+fn a_map_over_the_pixel_limit_is_refused_before_any_staging() {
+    let install = cache_install("render-huge", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    // The largest map a 32 MiB file can hold: 1831 by 1831 tiles, 117184 by 58593 pixels.
+    let zoo = Zoo {
+        width: 1831,
+        height: 1831,
+        tiles: flat_map(1831, 1831),
+        ..tile_with(&[])
+    };
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    assert!(renderer.stage(&zoo, 0, false).is_err());
+    assert!(renderer.flats.is_empty() && renderer.rendered.is_empty());
+    let window = Options {
+        window: Some((0, 0, 64, 64)),
+        ..Options::default()
+    };
+    assert!(renderer.render_with(&zoo, 0, &window).is_err());
+    assert!(renderer.render(&zoo, 0).is_err());
+}
+
 #[test]
 fn windows_at_the_extremes_of_view_space_never_overflow() {
     // The picture has offsets, which are subtracted from a position that is already far away.
@@ -1288,4 +1379,43 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         ..ty("animals")
     };
     assert!(!tank::casts_shadow(&meta(&plain, 3)));
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn on_real_maps_any_window_of_one_staging_is_a_window_of_the_whole_map() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    for member in ["maps/default.zoo", "maps/med_kids.zoo"] {
+        let zoo = Zoo::parse(&vfs.read(member).unwrap()).unwrap();
+        for rotation in [0, 1] {
+            let (whole, _) = renderer.render(&zoo, rotation).unwrap();
+            let staged = renderer.stage(&zoo, rotation, false).unwrap();
+            let origin = staged.origin();
+            let (w, h) = (whole.width as i32, whole.height as i32);
+            let windows = [
+                (origin.0, origin.1, whole.width, whole.height),
+                (origin.0 + w / 2 - 512, origin.1 + h / 2 - 384, 1024, 768),
+                (origin.0 - 100, origin.1 - 100, 1024, 768),
+                (origin.0 + w - 900, origin.1 + h - 700, 1024, 768),
+                (origin.0 + 1000, origin.1 + 300, 1, 1),
+                (origin.0 + 777, origin.1 + 555, 640, 480),
+                (i32::MIN, i32::MIN, 1024, 768),
+                (i32::MAX, i32::MAX, 1024, 768),
+                (i32::MAX - 500, origin.1, 1024, 768),
+            ];
+            check_windows(&staged, &whole, origin, &windows);
+            let mut canvas = Framebuffer::new(1024, 768);
+            let start = std::time::Instant::now();
+            for _ in 0..20 {
+                staged.draw(&mut canvas, origin.0 + w / 2 - 512, origin.1 + h / 2 - 384);
+            }
+            eprintln!(
+                "{member} rotation {rotation}: {:?} per 1024x768 draw",
+                start.elapsed() / 20
+            );
+        }
+    }
 }

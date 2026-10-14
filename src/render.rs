@@ -209,6 +209,43 @@ impl Placed {
     }
 }
 
+/// A map ready to be drawn from one rotation: its pictures placed in view space at normal zoom,
+/// in paint order, each with the box it can cover. Any window of the view is drawn from it.
+pub struct Staged {
+    placed: Vec<(Placed, [i64; 4])>,
+    /// The box `[left, top, right, bottom)` of every tile and every picture.
+    bounds: [i64; 4],
+    pub summary: Summary,
+}
+
+impl Staged {
+    /// The size of the picture of the whole map, or an error if it is empty or too big.
+    pub fn size(&self) -> Result<(u32, u32), RenderError> {
+        let (w, h) = check_size(&self.bounds)?;
+        Ok((w as u32, h as u32))
+    }
+
+    /// The view-space point of the top left pixel of the picture of the whole map.
+    pub fn origin(&self) -> (i32, i32) {
+        (self.bounds[0] as i32, self.bounds[1] as i32)
+    }
+
+    /// Draws the window of the size of `target` whose top left pixel is the view-space point
+    /// (`view_x`, `view_y`): black, then every picture whose box meets the window, in paint
+    /// order. Zoom will apply here, to the anchors and in the blitter, not to the staged boxes.
+    pub fn draw(&self, target: &mut Framebuffer, view_x: i32, view_y: i32) {
+        target.fill([0, 0, 0, 255]);
+        let (left, top) = (i64::from(view_x), i64::from(view_y));
+        let right = left + i64::from(target.width);
+        let bottom = top + i64::from(target.height);
+        for (placed, b) in &self.placed {
+            if b[0] < right && b[2] > left && b[1] < bottom && b[3] > top {
+                placed.draw(target, view_x, view_y);
+            }
+        }
+    }
+}
+
 /// Draws an RGBA image with its top left corner at (`x`, `y`), source over, clipped.
 fn blend(image: &Framebuffer, target: &mut Framebuffer, x: i32, y: i32) {
     let width = image.width as usize;
@@ -503,16 +540,37 @@ impl<'a> MapRenderer<'a> {
         self.render_with(zoo, rotation, &Options::default())
     }
 
-    /// As [`MapRenderer::render`], as `options` say.
+    /// As [`MapRenderer::render`], as `options` say: [`MapRenderer::stage`] and one
+    /// [`Staged::draw`] over the whole map or the window.
     pub fn render_with(
         &mut self,
         zoo: &Zoo,
         rotation: u8,
         options: &Options,
     ) -> Result<(Framebuffer, Summary), RenderError> {
-        // Pictures of the previous map: the blended ones are numerous and not shared.
-        self.flats.clear();
-        self.rendered.clear();
+        let staged = self.stage(zoo, rotation, options.no_units)?;
+        let (x, y, w, h) = match options.window {
+            Some(window) => window,
+            None => {
+                let (w, h) = staged.size()?;
+                (staged.origin().0, staged.origin().1, w, h)
+            }
+        };
+        check_size(&[0, 0, i64::from(w), i64::from(h)])?;
+        let mut canvas = Framebuffer::new(w, h);
+        staged.draw(&mut canvas, x, y);
+        Ok((canvas, staged.summary))
+    }
+
+    /// Does all the work of drawing the map seen from `rotation` (0 to 3) that does not depend
+    /// on the window: the objects, the scene, the paint order and the pictures placed in view
+    /// space with their bounds. The pictures stay cached in the renderer for the next call.
+    pub fn stage(
+        &mut self,
+        zoo: &Zoo,
+        rotation: u8,
+        no_units: bool,
+    ) -> Result<Staged, RenderError> {
         let rotation = rotation % 4;
         let (width, height) = (zoo.width as usize, zoo.height as usize);
         let mut summary = Summary {
@@ -524,7 +582,6 @@ impl<'a> MapRenderer<'a> {
             return Err(RenderError("the map has no tile".into()));
         }
 
-        // The pixel limit is known from the tiles alone: refuse a huge map before the work.
         let tiles: Vec<Tile> = zoo
             .tiles
             .iter()
@@ -541,9 +598,8 @@ impl<'a> MapRenderer<'a> {
             let (x, y) = (i64::from(ox), i64::from(oy));
             bounds = union(bounds, [x, y + 16, x + 64, y + 49]);
         }
-        if options.window.is_none() {
-            check_size(&bounds)?;
-        }
+        // Refuse a huge map before the work: staging costs memory in proportion to its tiles.
+        check_size(&bounds)?;
 
         // The objects the original keeps: those whose type it knows.
         let mut objects = Vec::new();
@@ -563,7 +619,7 @@ impl<'a> MapRenderer<'a> {
                 }
                 _ => Kind::Fixed,
             };
-            if options.no_units && matches!(kind, Kind::Unit | Kind::Overlay) {
+            if no_units && matches!(kind, Kind::Unit | Kind::Overlay) {
                 continue;
             }
             let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
@@ -675,25 +731,17 @@ impl<'a> MapRenderer<'a> {
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
 
-        // The canvas holds every picture and every tile, or the window.
-        if let Some((x, y, w, h)) = options.window {
-            let (x, y) = (i64::from(x), i64::from(y));
-            bounds = [x, y, x + i64::from(w), y + i64::from(h)];
-        } else {
-            bounds = placed.iter().filter_map(Placed::bounds).fold(bounds, union);
-        }
-        let (w, h) = check_size(&bounds)?;
-        let mut canvas = Framebuffer::new(w as u32, h as u32);
-        canvas
-            .pixels
-            .as_chunks_mut::<4>()
-            .0
-            .iter_mut()
-            .for_each(|p| p[3] = 255);
-        for p in &placed {
-            p.draw(&mut canvas, bounds[0] as i32, bounds[1] as i32);
-        }
-        Ok((canvas, summary))
+        // The box of every tile and every picture.
+        let placed: Vec<(Placed, [i64; 4])> = placed
+            .into_iter()
+            .filter_map(|p| p.bounds().map(|b| (p, b)))
+            .collect();
+        let bounds = placed.iter().fold(bounds, |all, (_, b)| union(all, *b));
+        Ok(Staged {
+            placed,
+            bounds,
+            summary,
+        })
     }
 
     /// The type of the terrain of a tile, as the drawing code uses it.
