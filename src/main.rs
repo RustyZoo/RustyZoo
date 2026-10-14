@@ -36,7 +36,8 @@ usage: rustyzoo [--data <dir>] <command>
                       ID<TAB>library<TAB>text and TEXT<TAB>name<TAB>library<TAB>bytes
   types               list the entity types: class, type, subtype, name id, footprint (half
                       tiles), the .ani member of the base animation and whether it exists;
-                      then counts per class; exit 1 if a registry or definition file fails
+                      then counts per class; warnings go to standard error; exit 1 only if the system
+                      fails to read a file
   check-config        read every configuration file of the game, report empty files and ignored text
   dump-sprite <member> <dir>
                       write the frames of a sprite file as PNG files into <dir>, and print them
@@ -340,9 +341,9 @@ fn types(vfs: &Vfs) -> Result<(), CliError> {
     let mut report = Report::new();
     for ty in &catalogue.types {
         let [x, y, z] = ty.footprint;
-        let (member, exists) = ty.base_animation().map_or(("-", false), |animation| {
-            (&animation.member[..], vfs.contains(&animation.member))
-        });
+        let member = ty.base_animation().and_then(|animation| animation.member);
+        let exists = member.as_deref().is_some_and(|member| vfs.contains(member));
+        let member = member.as_deref().unwrap_or("-");
         report.line(format_args!(
             "{}\t{}\t{}\t{}\t{x}x{y}x{z}\t{}\t{}",
             ty.class,

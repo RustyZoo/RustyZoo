@@ -9,17 +9,38 @@
 //! by three names: the class, the type name and the subtype name, as a map file stores them.
 //!
 //! Only what drawing a static map needs is kept per type: the identity, the name id, the
-//! footprint and height, the animation table, and the raw configuration of the definition file
-//! for later use. Names are bytes, compared byte for byte, like in the configuration reader.
+//! footprint and height, and the configuration of the definition file for later use (shared
+//! between the types that name the same file). The animation table is resolved on demand.
+//! Names are bytes, compared byte for byte, like in the configuration reader.
+//!
+//! A damaged or oversized file never stops the catalogue: a registry that cannot be read is
+//! skipped, a type whose definition file cannot be used keeps the defaults, each with a warning.
+//! Only a failure of the operating system does. The catalogue is also bounded on hostile input:
+//! the number of entries, the total size of the definition files kept and the number of
+//! warnings have a limit.
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::iter;
+use std::sync::Arc;
 
 use crate::config::{Config, Section, to_int};
 use crate::vfs::{Vfs, normalise};
 
-/// Why the catalogue could not be built: a registry or a definition file that exists but cannot
-/// be read or is too large. The message is a single line meant to be shown to the user.
+/// The most registry entries (types created or listed again) one catalogue takes. The full game
+/// has 980 types; the limit only stops a registry made to multiply names.
+pub const MAX_ENTRIES: usize = 100_000;
+
+/// The most bytes of definition files kept. The full game has about 3 MB of them; the memory of a
+/// parsed file is a multiple of its size.
+pub const MAX_DEFINITION_BYTES: usize = 8 * 1024 * 1024;
+
+/// The most warnings kept; the others are counted in a last line.
+const MAX_WARNINGS: usize = 100;
+
+/// Why the catalogue could not be built: the operating system failed to read a file. The
+/// message is a single line meant to be shown to the user.
 #[derive(Debug)]
 pub struct EntityError(String);
 
@@ -36,7 +57,8 @@ impl Error for EntityError {}
 #[derive(Debug, PartialEq, Eq)]
 pub struct Animation {
     pub name: String,
-    pub member: String,
+    /// `None` if the key has no value: the original does not resolve it.
+    pub member: Option<String>,
 }
 
 /// One entity type.
@@ -49,34 +71,95 @@ pub struct EntityType {
     pub subtype: Vec<u8>,
     /// The definition file the registry names (normalised), if it names one.
     pub file: Option<String>,
-    /// The definition file as read; `None` if there is no file, it does not exist or it holds
-    /// no section (the original then keeps the program's defaults and no animations).
-    pub config: Option<Config>,
+    /// The definition file as read, shared with the other types that name it; `None` if there is
+    /// no file, it cannot be used or it holds no section (the original then keeps the program's
+    /// defaults and no animations).
+    pub config: Option<Arc<Config>>,
     /// `cNameID`, a string table id; 0 if the file does not give one.
     pub name_id: i32,
     /// `cFootprintX/Y/Z` in half tiles (a tile is 2 x 2); 1, 1, 1 by default.
     pub footprint: [i32; 3],
     /// `cHeight`; 0 by default.
     pub height: i32,
-    /// The animation table, by animation name in ascending byte order.
-    pub animations: Vec<Animation>,
 }
 
 impl EntityType {
-    /// The animation a still picture of the type shows.
+    /// The animation section of the type (specification 9.1): the first candidate that exists
+    /// with at least one key.
+    fn animation_section(&self) -> Option<&Section> {
+        let config = self.config.as_deref()?;
+        let default = default_subtype(config);
+        // The subtype sections come first; the other classes, the helicopter included, have only
+        // the plain section.
+        let mut prefixes: Vec<&[u8]> = Vec::new();
+        match self.class {
+            "guests" => prefixes.push(&self.type_name),
+            "animals" | "keeper" | "maint" | "tour" | "fences" | "tankwall" => {
+                prefixes.push(&self.subtype)
+            }
+            _ => {}
+        }
+        if !prefixes.is_empty() && !default.is_empty() {
+            prefixes.push(default);
+        }
+        prefixes
+            .iter()
+            .map(|prefix| [prefix, &b"/Animations"[..]].concat())
+            .chain(iter::once(b"Animations".to_vec()))
+            .filter_map(|name| config.section(name))
+            .find(|section| section.keys().next().is_some())
+    }
+
+    /// The animation `name` of `section` (specification 9.2).
+    fn animation(&self, section: &Section, name: &[u8]) -> Animation {
+        // A key without value does not resolve.
+        let member = section
+            .get(name)
+            .filter(|value| !value.is_empty())
+            .map(|value| {
+                // A value with `.ani` is the member as it stands.
+                let member = if value.windows(4).any(|w| w == b".ani") {
+                    value.to_vec()
+                } else {
+                    let root = self.config.as_deref().map(|c| animation_root(self, c));
+                    [&root.unwrap_or_default()[..], value, b"/", value, b".ani"].concat()
+                };
+                normalise(&lossy(&member))
+            });
+        Animation {
+            name: lossy(name),
+            member,
+        }
+    }
+
+    /// The animations of the type, by name in ascending byte order; empty if it has no
+    /// animation section.
+    pub fn animations(&self) -> Vec<Animation> {
+        self.animation_section().map_or_else(Vec::new, |section| {
+            section
+                .keys()
+                .map(|name| self.animation(section, name))
+                .collect()
+        })
+    }
+
+    /// The animation a still picture of the type shows. Its member is `None` if the key has no
+    /// value.
     ///
     /// ponytail: the original takes the first name in byte order. For fences and tank walls the
     /// state decides (`idle` is the intact one); for food, rubble and filters, whose entity code
     /// chooses the state, this takes `idle`, else `full`, until that code is specified (open
     /// point O7 of the specification).
-    pub fn base_animation(&self) -> Option<&Animation> {
-        let named = |name: &str| self.animations.iter().find(|a| a.name == name);
-        let first = self.animations.first();
-        match self.class {
-            "fences" | "tankwall" => named("idle").or(first),
-            "food" | "rubble" | "filter" => named("idle").or(named("full")).or(first),
-            _ => first,
+    pub fn base_animation(&self) -> Option<Animation> {
+        let section = self.animation_section()?;
+        let named = |name: &'static str| section.has(name).then_some(name.as_bytes());
+        let name = match self.class {
+            "fences" | "tankwall" => named("idle"),
+            "food" | "rubble" | "filter" => named("idle").or(named("full")),
+            _ => None,
         }
+        .or_else(|| section.keys().next())?;
+        Some(self.animation(section, name))
     }
 }
 
@@ -85,9 +168,30 @@ impl EntityType {
 pub struct Catalogue {
     pub types: Vec<EntityType>,
     /// One line each, for things the original does silently or by accident: an entry without
-    /// a file, a missing definition file, a type listed again with another file, a staff entry
-    /// of an unknown kind. Names from the game files are escaped.
+    /// a file, a definition file that cannot be used, a registry that was skipped, a type
+    /// listed again with another file, a staff entry of an unknown kind. Names from the game
+    /// files are escaped. At most [`MAX_WARNINGS`] lines and a last one that counts the rest.
     pub warnings: Vec<String>,
+    /// The positions in `types` by (type name, subtype name); a few classes can share a pair.
+    index: HashMap<(Vec<u8>, Vec<u8>), Vec<usize>>,
+    /// Every definition file asked for so far, by normalised name, with the outcome.
+    files: HashMap<String, Definition>,
+    /// The bytes of the definition files loaded.
+    loaded_bytes: usize,
+    /// The entries taken.
+    entries: usize,
+    /// Whether an entry was dropped for [`MAX_ENTRIES`].
+    truncated: bool,
+    suppressed: usize,
+}
+
+/// What came of reading a definition file.
+#[derive(Debug, Clone)]
+enum Definition {
+    Config(Arc<Config>),
+    /// The file holds no section: the original counts it as not loaded, without a message.
+    NoSection,
+    Failed(String),
 }
 
 /// How a registry section turns into types (specification 3.3).
@@ -164,11 +268,22 @@ const fn subtypes(default: &'static [u8]) -> Shape {
 }
 
 /// What a registry produced for one type.
-struct Entry {
+struct Entry<'a> {
     class: &'static str,
-    type_name: Vec<u8>,
-    subtype: Vec<u8>,
-    file: Option<Vec<u8>>,
+    type_name: &'a [u8],
+    subtype: &'a [u8],
+    file: Option<&'a [u8]>,
+}
+
+impl Entry<'_> {
+    fn who(&self) -> String {
+        format!(
+            "{}/{}/{}",
+            self.class,
+            show(self.type_name),
+            show(self.subtype)
+        )
+    }
 }
 
 /// The class a staff registry key stands for; any other key is ignored.
@@ -216,34 +331,125 @@ fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
+/// The types a registry produces, entries in ascending byte order of their keys. Lazy: a
+/// registry can name more types than anyone should build.
+fn entries<'a>(class: &Class, registry: &'a Config) -> Box<dyn Iterator<Item = Entry<'a>> + 'a> {
+    let Some(section) = registry.section(class.section) else {
+        return Box::new(iter::empty());
+    };
+    let name = class.name;
+    match class.shape {
+        Shape::Flat => Box::new(section.keys().map(move |key| Entry {
+            class: name,
+            type_name: name.as_bytes(),
+            subtype: key,
+            file: section.get(key),
+        })),
+        Shape::FlatGuests => Box::new(section.keys().map(move |key| Entry {
+            class: name,
+            type_name: key,
+            subtype: b"",
+            file: section.get(key),
+        })),
+        Shape::TwoLevel => Box::new(
+            section
+                .keys()
+                // Only the keys of the first level count; a name without section adds nothing.
+                .filter_map(move |kind| registry.section(kind).map(|inner| (kind, inner)))
+                .flat_map(move |(kind, inner)| {
+                    inner.keys().map(move |key| Entry {
+                        class: name,
+                        type_name: kind,
+                        subtype: key,
+                        file: inner.get(key),
+                    })
+                }),
+        ),
+        Shape::Subtypes { .. } | Shape::Staff => {
+            let (shared, default, staff) = match class.shape {
+                Shape::Subtypes { shared, default } => (shared, default, false),
+                _ => (false, &b""[..], true),
+            };
+            let has_keys = |s: &&Section| s.keys().next().is_some();
+            // A shared list with at least one key applies to every type of the registry.
+            let shared = shared
+                .then(|| registry.section("subtypes"))
+                .flatten()
+                .filter(has_keys);
+            Box::new(
+                section
+                    .keys()
+                    .filter_map(move |key| {
+                        let own_class = if staff { staff_class(key)? } else { name };
+                        Some((key, own_class))
+                    })
+                    .flat_map(move |(key, own_class)| {
+                        let own = registry.section([key, b"/subtypes"].concat());
+                        let list = shared.or(own).filter(has_keys);
+                        let file = section.get(key);
+                        // No subtype listed: one type with the default subtype name.
+                        list.into_iter()
+                            .flat_map(Section::keys)
+                            .chain(list.is_none().then_some(default))
+                            .map(move |subtype| Entry {
+                                class: own_class,
+                                type_name: key,
+                                subtype,
+                                file,
+                            })
+                    }),
+            )
+        }
+    }
+}
+
 impl Catalogue {
     /// Builds the catalogue of the installation behind `vfs` the way the original does.
     ///
-    /// Fails if a registry or a definition file exists but cannot be read or is too large.
-    /// Everything else that would stop the original from loading something (a registry or a
-    /// definition file without a section, a definition file that does not exist) leaves the
-    /// type without a configuration, or skips the registry, as the original does.
+    /// Fails only if the operating system fails to read a file. Everything else that would stop
+    /// the original from loading something (a registry or a definition file that is missing,
+    /// empty, damaged, without a section or too large) skips the registry or leaves the type
+    /// without a configuration, with a warning.
     pub fn load(vfs: &Vfs) -> Result<Catalogue, EntityError> {
         let mut catalogue = Catalogue::default();
         for class in &CLASSES {
             let mut loaded_any = false;
             // `*` also matches `/`: the test is on the whole name, so `items/x.cfg` matches `items`.
             for name in vfs.list(Some(&format!("{}*.cfg", class.prefix))) {
-                let registry = read_config(vfs, &name)?;
-                if registry.is_empty() {
+                if catalogue.truncated {
+                    break;
+                }
+                let Some(registry) = catalogue.registry(vfs, &name)? else {
                     continue;
-                }
+                };
                 loaded_any = true;
-                for entry in catalogue.entries(class, &registry) {
-                    catalogue.add(vfs, entry)?;
+                if let (Shape::Staff, Some(section)) =
+                    (&class.shape, registry.section(class.section))
+                {
+                    // ponytail: the original ignores them; the specification (O4) recommends to
+                    // ignore and log.
+                    for key in section.keys().filter(|key| staff_class(key).is_none()) {
+                        catalogue.warn(|| format!("staff entry of unknown kind: {}", show(key)));
+                    }
                 }
+                catalogue.add_all(vfs, entries(class, &registry))?;
             }
             if let (true, Some(extension)) = (loaded_any, class.user_extension) {
                 for name in vfs.list(Some(&format!("*{extension}"))) {
+                    if catalogue.truncated {
+                        break;
+                    }
                     // The stem: the name without its extension and without the directories.
                     let stem = &name[..name.len() - extension.len()];
                     let stem = stem.rsplit('/').next().unwrap_or_default();
                     if stem.is_empty() {
+                        // The original makes a type with an empty name (O14).
+                        catalogue.warn(|| {
+                            format!(
+                                "user file {} has an empty name, skipped",
+                                show(name.as_bytes())
+                            )
+                        });
                         continue;
                     }
                     // Names of the types a user file creates: (type name, subtype name).
@@ -255,19 +461,21 @@ impl Catalogue {
                         "building" => vec![(b"building", stem.as_bytes())],
                         _ => vec![(b"other", stem.as_bytes())],
                     };
-                    for (type_name, subtype) in names {
-                        catalogue.add(
-                            vfs,
-                            Entry {
-                                class: class.name,
-                                type_name: type_name.to_vec(),
-                                subtype: subtype.to_vec(),
-                                file: Some(name.clone().into_bytes()),
-                            },
-                        )?;
-                    }
+                    let entries = names.into_iter().map(|(type_name, subtype)| Entry {
+                        class: class.name,
+                        type_name,
+                        subtype,
+                        file: Some(name.as_bytes()),
+                    });
+                    catalogue.add_all(vfs, entries)?;
                 }
             }
+        }
+        if catalogue.suppressed > 0 {
+            let more = catalogue.suppressed;
+            catalogue
+                .warnings
+                .push(format!("{more} more warnings not shown"));
         }
         Ok(catalogue)
     }
@@ -275,9 +483,16 @@ impl Catalogue {
     /// The first type, in creation order, of class `class` (or of a class below it, so that
     /// `staff` finds a keeper) with exactly these names.
     pub fn find(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<&EntityType> {
-        self.types.iter().find(|t| {
-            is_of_class(t.class, class) && t.type_name == type_name && t.subtype == subtype
-        })
+        self.position(class, type_name, subtype)
+            .map(|at| &self.types[at])
+    }
+
+    fn position(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<usize> {
+        self.index
+            .get(&(type_name.to_vec(), subtype.to_vec()))?
+            .iter()
+            .copied()
+            .find(|&at| is_of_class(self.types[at].class, class))
     }
 
     /// The number of types per registry class, in the order of the original (all staff
@@ -299,82 +514,69 @@ impl Catalogue {
             .collect()
     }
 
-    /// The types a registry produces, entries in ascending byte order of their keys.
-    fn entries(&mut self, class: &Class, registry: &Config) -> Vec<Entry> {
-        let Some(section) = registry.section(class.section) else {
-            return Vec::new();
-        };
-        let file_of = |section: &Section, key: &[u8]| section.get(key).map(<[u8]>::to_vec);
-        let mut entries = Vec::new();
-        match class.shape {
-            Shape::Flat => entries.extend(section.keys().map(|key| Entry {
-                class: class.name,
-                type_name: class.name.as_bytes().to_vec(),
-                subtype: key.to_vec(),
-                file: file_of(section, key),
-            })),
-            Shape::FlatGuests => entries.extend(section.keys().map(|key| Entry {
-                class: class.name,
-                type_name: key.to_vec(),
-                subtype: Vec::new(),
-                file: file_of(section, key),
-            })),
-            Shape::TwoLevel => {
-                for type_name in section.keys() {
-                    // Only the keys of the first level count; a name without section adds nothing.
-                    let Some(inner) = registry.section(type_name) else {
-                        continue;
-                    };
-                    entries.extend(inner.keys().map(|key| Entry {
-                        class: class.name,
-                        type_name: type_name.to_vec(),
-                        subtype: key.to_vec(),
-                        file: file_of(inner, key),
-                    }));
-                }
-            }
-            Shape::Subtypes { .. } | Shape::Staff => {
-                let (shared, default) = match class.shape {
-                    Shape::Subtypes { shared, default } => (shared, default),
-                    _ => (false, &b""[..]),
-                };
-                // A shared list with at least one key applies to every type of the registry.
-                let shared = shared
-                    .then(|| registry.section("subtypes"))
-                    .flatten()
-                    .filter(|s| s.keys().next().is_some());
-                for key in section.keys() {
-                    let own_class = match class.shape {
-                        Shape::Staff => match staff_class(key) {
-                            Some(own_class) => own_class,
-                            None => {
-                                // ponytail: the original ignores it; the specification (O4)
-                                // recommends to ignore and log.
-                                self.warnings
-                                    .push(format!("staff entry of unknown kind: {}", show(key)));
-                                continue;
-                            }
-                        },
-                        _ => class.name,
-                    };
-                    let own = registry.section([key, b"/subtypes"].concat());
-                    let mut subtypes: Vec<Vec<u8>> = shared
-                        .or(own)
-                        .map(|s| s.keys().map(<[u8]>::to_vec).collect())
-                        .unwrap_or_default();
-                    if subtypes.is_empty() {
-                        subtypes.push(default.to_vec());
-                    }
-                    entries.extend(subtypes.into_iter().map(|subtype| Entry {
-                        class: own_class,
-                        type_name: key.to_vec(),
-                        subtype,
-                        file: file_of(section, key),
-                    }));
-                }
+    fn warn(&mut self, message: impl FnOnce() -> String) {
+        if self.warnings.len() < MAX_WARNINGS {
+            self.warnings.push(message());
+        } else {
+            self.suppressed += 1;
+        }
+    }
+
+    /// The registry `name`, or `None` (with a warning, unless it simply has no section) if it
+    /// does not load: the original skips it.
+    fn registry(&mut self, vfs: &Vfs, name: &str) -> Result<Option<Config>, EntityError> {
+        match read_config(vfs, name)? {
+            Ok((config, _)) if !config.is_empty() => Ok(Some(config)),
+            Ok(_) => Ok(None),
+            Err(why) => {
+                self.warn(|| format!("registry {} skipped: {why}", show(name.as_bytes())));
+                Ok(None)
             }
         }
-        entries
+    }
+
+    /// The definition file `file` (a normalised name), read once however many types name it.
+    fn definition(&mut self, vfs: &Vfs, file: &str) -> Result<Definition, EntityError> {
+        if let Some(known) = self.files.get(file) {
+            return Ok(known.clone());
+        }
+        let definition = if self.loaded_bytes >= MAX_DEFINITION_BYTES {
+            Definition::Failed(format!(
+                "the definition files already hold {MAX_DEFINITION_BYTES} bytes, the limit"
+            ))
+        } else {
+            match read_config(vfs, file)? {
+                Ok((config, _)) if config.is_empty() => Definition::NoSection,
+                Ok((config, len)) => {
+                    self.loaded_bytes += len;
+                    Definition::Config(Arc::new(config))
+                }
+                Err(why) => Definition::Failed(why),
+            }
+        };
+        self.files.insert(file.to_string(), definition.clone());
+        Ok(definition)
+    }
+
+    /// Takes the entries one by one until none is left or [`MAX_ENTRIES`] are reached.
+    fn add_all<'a>(
+        &mut self,
+        vfs: &Vfs,
+        entries: impl Iterator<Item = Entry<'a>>,
+    ) -> Result<(), EntityError> {
+        for entry in entries {
+            if self.entries >= MAX_ENTRIES {
+                self.truncated = true;
+                // Once, and whatever the number of warnings.
+                self.warnings.push(format!(
+                    "more than {MAX_ENTRIES} entries, the others are ignored"
+                ));
+                break;
+            }
+            self.entries += 1;
+            self.add(vfs, entry)?;
+        }
+        Ok(())
     }
 
     /// Creates the type, or, if it exists, leaves it as it is.
@@ -383,17 +585,12 @@ impl Catalogue {
     /// its values again; the specification (O2) recommends to keep the first definition and log
     /// the second. The same goes for a type that a user file names again (O11: no renaming).
     fn add(&mut self, vfs: &Vfs, entry: Entry) -> Result<(), EntityError> {
-        let file = entry.file.as_deref().map(|f| normalise(&lossy(f)));
-        let who = format!(
-            "{}/{}/{}",
-            entry.class,
-            show(&entry.type_name),
-            show(&entry.subtype)
-        );
-        if let Some(existing) = self.find(entry.class, &entry.type_name, &entry.subtype) {
-            if existing.file != file {
-                self.warnings
-                    .push(format!("{who} is listed again with another file, ignored"));
+        let file = entry.file.map(|f| normalise(&lossy(f)));
+        if let Some(at) = self.position(entry.class, entry.type_name, entry.subtype) {
+            let existing = self.types[at].file.as_deref();
+            // A loose file below nested search directories has several names for one file.
+            if existing != file.as_deref() && !same_copy(vfs, existing, file.as_deref()) {
+                self.warn(|| format!("{} is listed again with another file, ignored", entry.who()));
             }
             return Ok(());
         }
@@ -401,44 +598,67 @@ impl Catalogue {
             // ponytail: the original reads the file of the entry processed just before here; the
             // specification (O3) recommends to create the type with defaults and log it.
             None => {
-                self.warnings.push(format!("{who} has no definition file"));
+                self.warn(|| format!("{} has no definition file", entry.who()));
                 None
             }
-            Some(file) if !vfs.contains(file) => {
-                self.warnings.push(format!(
-                    "{who}: definition file {} not found",
-                    show(file.as_bytes())
-                ));
-                None
-            }
-            Some(file) => Some(read_config(vfs, file)?).filter(|c| !c.is_empty()),
+            Some(file) => match self.definition(vfs, file)? {
+                Definition::Config(config) => Some(config),
+                Definition::NoSection => None,
+                Definition::Failed(why) => {
+                    self.warn(|| {
+                        format!(
+                            "{}: definition file {} cannot be used: {why}",
+                            entry.who(),
+                            show(file.as_bytes())
+                        )
+                    });
+                    None
+                }
+            },
         };
         let mut ty = EntityType {
             class: entry.class,
-            type_name: entry.type_name,
-            subtype: entry.subtype,
+            type_name: entry.type_name.to_vec(),
+            subtype: entry.subtype.to_vec(),
             file,
-            config: None,
+            config,
             name_id: 0,
             footprint: [1, 1, 1],
             height: 0,
-            animations: Vec::new(),
         };
-        if let Some(config) = &config {
-            read_values(&mut ty, config);
-            ty.animations = resolve_animations(&ty, config);
+        if let Some(config) = ty.config.clone() {
+            read_values(&mut ty, &config);
         }
-        ty.config = config;
+        self.index
+            .entry((ty.type_name.clone(), ty.subtype.clone()))
+            .or_default()
+            .push(self.types.len());
         self.types.push(ty);
         Ok(())
     }
 }
 
-fn read_config(vfs: &Vfs, member: &str) -> Result<Config, EntityError> {
-    let bytes = vfs
-        .read(member)
-        .map_err(|e| EntityError(e.to_string().escape_debug().to_string()))?;
-    Config::parse(&bytes).map_err(|e| EntityError(format!("{}: {e}", member.escape_debug())))
+/// Whether two names stand for the same copy of the same file.
+fn same_copy(vfs: &Vfs, a: Option<&str>, b: Option<&str>) -> bool {
+    let first = |name: Option<&str>| {
+        name.and_then(|name| vfs.which(name).ok())
+            .and_then(|copies| copies.into_iter().next())
+    };
+    matches!((first(a), first(b)), (Some(a), Some(b)) if a == b)
+}
+
+/// Reads and parses a file. The inner error is a reason to show (the content is unusable); the
+/// outer one is a failure of the system. The number is the size read.
+fn read_config(vfs: &Vfs, member: &str) -> Result<Result<(Config, usize), String>, EntityError> {
+    let escaped = |e: &dyn fmt::Display| e.to_string().escape_debug().to_string();
+    let bytes = match vfs.read(member) {
+        Ok(bytes) => bytes,
+        Err(e) if e.is_system() => return Err(EntityError(escaped(&e))),
+        Err(e) => return Ok(Err(escaped(&e))),
+    };
+    Ok(Config::parse(&bytes)
+        .map(|config| (config, bytes.len()))
+        .map_err(|e| escaped(&e)))
 }
 
 /// Replaces `target` by the integer value of `key` if the section has one.
@@ -449,19 +669,15 @@ fn set(section: &Section, key: &str, target: &mut i32) {
 }
 
 /// Reads the name id, footprint and height from `[<prefix>Characteristics/Integers]`.
-/// Returns whether the pass succeeded: the section exists and has the three movement rates.
-fn read_keys(ty: &mut EntityType, config: &Config, prefix: &[u8]) -> bool {
+fn read_keys(ty: &mut EntityType, config: &Config, prefix: &[u8]) {
     let Some(section) = config.section([prefix, b"Characteristics/Integers"].concat()) else {
-        return false;
+        return;
     };
     set(section, "cNameID", &mut ty.name_id);
     set(section, "cFootprintX", &mut ty.footprint[0]);
     set(section, "cFootprintY", &mut ty.footprint[1]);
     set(section, "cFootprintZ", &mut ty.footprint[2]);
     set(section, "cHeight", &mut ty.height);
-    ["cSlowRate", "cMediumRate", "cFastRate"]
-        .iter()
-        .all(|key| section.get(key).is_some())
 }
 
 fn default_subtype(config: &Config) -> &[u8] {
@@ -474,8 +690,10 @@ fn default_subtype(config: &Config) -> &[u8] {
 /// Reads the values of a type by the rules of its class (specification 6).
 fn read_values(ty: &mut EntityType, config: &Config) {
     match ty.class {
-        // Units read in passes: the default subtype's sections, then the type's own on top.
-        // Guests use their type name where the others use the subtype name.
+        // Units: the name id, footprint and height belong to the ZT unit level, which reads the
+        // default subtype's sections (the plain ones when there is no default subtype, and never
+        // as a fallback), then the type's own on top. Guests use their type name where the
+        // others use the subtype name.
         "animals" | "guests" | "keeper" | "tour" | "maint" | "helicopter" => {
             let default = default_subtype(config);
             let own = if ty.class == "guests" {
@@ -483,13 +701,12 @@ fn read_values(ty: &mut EntityType, config: &Config) {
             } else {
                 ty.subtype.clone()
             };
-            let mut passed = false;
-            if !default.is_empty() {
-                passed = read_keys(ty, config, &[default, b"/"].concat());
-            }
-            if default.is_empty() || !passed {
-                read_keys(ty, config, b"");
-            }
+            let first = if default.is_empty() {
+                Vec::new()
+            } else {
+                [default, b"/"].concat()
+            };
+            read_keys(ty, config, &first);
             // With an empty own name and a default, the prefix is `/`, which matches nothing.
             if own != default {
                 read_keys(ty, config, &[&own, &b"/"[..]].concat());
@@ -507,65 +724,12 @@ fn read_values(ty: &mut EntityType, config: &Config) {
             }
         }
         // Scenery, buildings, paths, food, rubble, filters, ambient: plain sections only.
-        _ => {
-            read_keys(ty, config, b"");
-        }
+        _ => read_keys(ty, config, b""),
     }
 }
 
-/// The animation table of a type (specification 9.1 and 9.2).
-fn resolve_animations(ty: &EntityType, config: &Config) -> Vec<Animation> {
-    let default = default_subtype(config);
-    // The subtype sections come first; the other classes have only the plain section.
-    // ponytail: the helicopter is not in the specification's list of classes with subtype
-    // sections, so it reads the plain section only.
-    let mut prefixes: Vec<&[u8]> = Vec::new();
-    if matches!(
-        ty.class,
-        "guests" | "animals" | "keeper" | "maint" | "tour" | "fences" | "tankwall"
-    ) {
-        if ty.class == "guests" {
-            prefixes.push(&ty.type_name);
-        }
-        prefixes.push(&ty.subtype);
-        if !default.is_empty() {
-            prefixes.push(default);
-        }
-    }
-    let names = prefixes
-        .iter()
-        .map(|prefix| [prefix, &b"/Animations"[..]].concat())
-        .chain(std::iter::once(b"Animations".to_vec()));
-    let section = names
-        .filter_map(|name| config.section(name))
-        .find(|section| section.keys().next().is_some());
-    let Some(section) = section else {
-        return Vec::new();
-    };
-
-    let root = animation_root(ty, config);
-    let mut animations = Vec::new();
-    for name in section.keys() {
-        let value = section.get(name).unwrap_or_default();
-        // A value with `.ani` is the member as it stands.
-        let member = if value.windows(4).any(|w| w == b".ani") {
-            value.to_vec()
-        } else if let Some(root) = &root {
-            [root, value, b"/", value, b".ani"].concat()
-        } else {
-            // An animal whose subtype has no `[AnimPath]` entry has no root.
-            continue;
-        };
-        animations.push(Animation {
-            name: lossy(name),
-            member: normalise(&lossy(&member)),
-        });
-    }
-    animations
-}
-
-/// The folder an animation value is relative to, ending in `/`.
-fn animation_root(ty: &EntityType, config: &Config) -> Option<Vec<u8>> {
+/// The folder an animation value is relative to, ending in `/` (empty if there is none).
+fn animation_root(ty: &EntityType, config: &Config) -> Vec<u8> {
     let (kind, subtype) = (&ty.type_name[..], &ty.subtype[..]);
     let joined = |parts: &[&[u8]]| {
         let mut root = Vec::new();
@@ -575,19 +739,19 @@ fn animation_root(ty: &EntityType, config: &Config) -> Option<Vec<u8>> {
         }
         root
     };
-    Some(match ty.class {
+    match ty.class {
         "objects" | "building" => joined(&[b"objects", subtype]),
         "paths" | "food" | "rubble" | "filter" => joined(&[ty.class.as_bytes(), subtype]),
         "fences" | "tankwall" => joined(&[ty.class.as_bytes(), kind, subtype]),
         "guests" => joined(&[b"guests", kind]),
-        "animals" => {
-            let path = config.section("AnimPath")?.get(subtype)?;
-            joined(&[path])
-        }
+        // An animal whose subtype has no `[AnimPath]` entry has an empty root.
+        "animals" => config
+            .section("AnimPath")
+            .and_then(|paths| paths.get(subtype))
+            .map_or_else(Vec::new, |path| joined(&[path])),
         "ambient" | "helicopter" => joined(&[ty.class.as_bytes(), kind, subtype]),
-        // ponytail: not read in the original; the data fits `staff/<type>/<subtype>/`.
         _ => joined(&[b"staff", kind, subtype]),
-    })
+    }
 }
 
 #[cfg(test)]
@@ -600,6 +764,20 @@ mod tests {
 
     use super::*;
 
+    /// The bytes of an archive with these members.
+    fn archive(members: &[(&str, &str)], method: CompressionMethod) -> Vec<u8> {
+        let mut zip = ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (member, content) in members {
+            zip.start_file(
+                *member,
+                SimpleFileOptions::default().compression_method(method),
+            )
+            .unwrap();
+            zip.write_all(content.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
     /// An installation made of one archive, in a fresh folder removed on drop.
     struct Install(PathBuf);
 
@@ -610,15 +788,20 @@ mod tests {
             let _ = std::fs::remove_dir_all(&path);
             std::fs::create_dir_all(&path).unwrap();
             std::fs::write(path.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
-            let mut zip = ZipWriter::new(std::io::Cursor::new(Vec::new()));
-            for (member, content) in members {
-                let options =
-                    SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
-                zip.start_file(*member, options).unwrap();
-                zip.write_all(content.as_bytes()).unwrap();
-            }
-            std::fs::write(path.join("a.ztd"), zip.finish().unwrap().into_inner()).unwrap();
+            std::fs::write(
+                path.join("a.ztd"),
+                archive(members, CompressionMethod::Stored),
+            )
+            .unwrap();
             Install(path)
+        }
+
+        /// Writes a loose file below the install folder.
+        fn loose(self, name: &str, content: &[u8]) -> Install {
+            let path = self.0.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, content).unwrap();
+            self
         }
 
         fn load(&self) -> Result<Catalogue, EntityError> {
@@ -836,7 +1019,7 @@ mod tests {
         for t in &c.types {
             assert!(t.config.is_none(), "{:?}", t.type_name);
             assert_eq!((t.name_id, t.footprint, t.height), (0, [1, 1, 1], 0));
-            assert!(t.animations.is_empty() && t.base_animation().is_none());
+            assert!(t.animations().is_empty() && t.base_animation().is_none());
         }
         // The fences without a file are not an error and keep the default subtype `f`.
         assert_eq!(get(&c, "fences", "novalue", "f").file, None);
@@ -900,19 +1083,236 @@ mod tests {
     }
 
     #[test]
-    fn a_registry_that_cannot_be_read_is_an_error() {
+    fn a_registry_or_definition_file_that_cannot_be_read_is_skipped_with_a_warning() {
         let huge = format!("[food]\n{}", "; padding\n".repeat(200_000));
-        let install = Install::new("huge-registry", &[("food.cfg", &huge)]);
-        let message = install.load().unwrap_err().to_string();
+        let c = catalogue(
+            "huge-registry",
+            &[
+                ("food.cfg", &huge),
+                ("food2.cfg", "[food]\nbone = b.ai\n"),
+                ("b.ai", "[Animations]\nidle = idle\n"),
+            ],
+        );
+        assert_eq!(names(&c), ["food/food/bone"]);
         assert!(
-            message.contains("food.cfg") && message.contains("limit"),
-            "{message}"
+            c.warnings.len() == 1
+                && c.warnings[0].contains("food.cfg")
+                && c.warnings[0].contains("limit"),
+            "{:?}",
+            c.warnings
         );
-        let definition = Install::new(
+        let c = catalogue(
             "huge-definition",
-            &[("food.cfg", "[food]\nbone = b.ai\n"), ("b.ai", &huge)],
+            &[
+                ("food.cfg", "[food]\nbone = b.ai\nmeat = m.ai\n"),
+                ("b.ai", &huge),
+                ("m.ai", "[Animations]\nidle = idle\n"),
+            ],
         );
-        assert!(definition.load().unwrap_err().to_string().contains("b.ai"));
+        assert_eq!(names(&c), ["food/food/bone", "food/food/meat"]);
+        assert!(get(&c, "food", "food", "bone").config.is_none());
+        assert!(get(&c, "food", "food", "meat").config.is_some());
+        assert!(c.warnings.len() == 1 && c.warnings[0].contains("b.ai"));
+    }
+
+    #[test]
+    fn a_damaged_member_leaves_the_other_types_alone() {
+        let mut bytes = archive(
+            &[
+                ("b.ai", &"[Animations]\nidle = idle\n".repeat(50)),
+                ("food.cfg", "[food]\nbone = b.ai\nmeat = m.ai\n"),
+                ("m.ai", "[Animations]\nidle = idle\n"),
+            ],
+            CompressionMethod::Deflated,
+        );
+        // Overwrite the start of the data of the first member (it is at offset 0).
+        let header = 30 + usize::from(bytes[26]) + usize::from(bytes[28]);
+        bytes[header..header + 20].fill(0xff);
+        let install = Install::new("damaged", &[]);
+        std::fs::write(install.0.join("a.ztd"), bytes).unwrap();
+        let c = install.load().unwrap();
+        assert_eq!(names(&c), ["food/food/bone", "food/food/meat"]);
+        assert!(get(&c, "food", "food", "bone").config.is_none());
+        assert!(get(&c, "food", "food", "meat").config.is_some());
+        assert!(c.warnings.len() == 1 && c.warnings[0].contains("b.ai"));
+    }
+
+    #[test]
+    fn an_empty_loose_file_hides_the_member_and_the_type_keeps_the_defaults() {
+        let install = Install::new(
+            "empty-loose",
+            &[
+                ("food.cfg", "[food]\nbone = b.ai\n"),
+                ("b.ai", "[Animations]\nidle = idle\n"),
+            ],
+        )
+        .loose("b.ai", b"");
+        let c = install.load().unwrap();
+        assert!(get(&c, "food", "food", "bone").config.is_none());
+        assert_eq!(c.warnings.len(), 1, "{:?}", c.warnings);
+    }
+
+    /// A failure of the system, unlike a file with the wrong content, stops the catalogue.
+    #[cfg(unix)]
+    #[test]
+    fn a_failure_of_the_system_is_an_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let install = Install::new("denied", &[("food.cfg", "[food]\nbone = b.ai\n")])
+            .loose("b.ai", b"[Animations]\n");
+        let path = install.0.join("b.ai");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o0)).unwrap();
+        if std::fs::File::open(&path).is_ok() {
+            return; // running as root
+        }
+        let message = install.load().unwrap_err().to_string();
+        assert!(message.contains("b.ai"), "{message}");
+    }
+
+    #[test]
+    fn a_small_registry_cannot_make_an_unbounded_catalogue() {
+        // 300 fences x 300 shared subtypes: all of them are built, and quickly.
+        let keys =
+            |prefix: &str, n: usize| (0..n).map(|i| format!("{prefix}{i}\n")).collect::<String>();
+        let registry = format!("[fences]\n{}[subtypes]\n{}", keys("w", 300), keys("s", 300));
+        let c = catalogue("many", &[("fences.cfg", &registry)]);
+        assert_eq!(c.types.len(), 90_000);
+        assert!(c.find("fences", b"w299", b"s299").is_some());
+        // 1000 x 1000 is cut at the limit, with a warning.
+        let registry = format!(
+            "[fences]\n{}[subtypes]\n{}",
+            keys("w", 1000),
+            keys("s", 1000)
+        );
+        let c = catalogue("too-many", &[("fences.cfg", &registry)]);
+        assert_eq!(c.types.len(), MAX_ENTRIES);
+        assert!(c.warnings.iter().any(|w| w.contains("ignored")));
+        // Warnings are bounded too: every entry here lacks a file.
+        assert!(c.warnings.len() <= MAX_WARNINGS + 2, "{}", c.warnings.len());
+        assert!(c.warnings.last().unwrap().contains("more warnings"));
+    }
+
+    #[test]
+    fn types_that_name_the_same_file_share_its_content() {
+        let big = "[Characteristics/Integers]\n".to_string()
+            + &(0..20_000)
+                .map(|i| format!("c{i:x}=1\n"))
+                .collect::<String>();
+        let registry = "[food]\n".to_string()
+            + &(0..200)
+                .map(|i| format!("f{i} = big.ai\n"))
+                .collect::<String>();
+        let c = catalogue("shared", &[("food.cfg", &registry), ("big.ai", &big)]);
+        assert_eq!(c.types.len(), 200);
+        let first = c.types[0].config.as_ref().unwrap();
+        assert!(
+            c.types
+                .iter()
+                .all(|t| Arc::ptr_eq(t.config.as_ref().unwrap(), first))
+        );
+        // The three subtypes of an animal share the file too, and the file is read once.
+        let c = catalogue(
+            "shared-animal",
+            &[
+                (
+                    "animals.cfg",
+                    "[animals]\nyak = y.ai\n[yak/subtypes]\nm\nf\ny\n",
+                ),
+                ("y.ai", "[Global]\n"),
+            ],
+        );
+        assert!(Arc::ptr_eq(
+            get(&c, "animals", "yak", "m").config.as_ref().unwrap(),
+            get(&c, "animals", "yak", "y").config.as_ref().unwrap()
+        ));
+    }
+
+    #[test]
+    fn a_key_without_value_does_not_resolve() {
+        let c = catalogue(
+            "no-value",
+            &[
+                (
+                    "animals.cfg",
+                    "[animals]\napato = a.ai\n[apato/subtypes]\nm\ny\n",
+                ),
+                (
+                    "a.ai",
+                    "[AnimPath]\nm = animals/apato/m\ny = animals/apato/y\n\
+                     [m/Animations]\nidle = idle\n[y/Animations]\nFrom stand\nidle = idle\n",
+                ),
+            ],
+        );
+        // The first key in byte order is the base animation, even without a member.
+        let young = get(&c, "animals", "apato", "y");
+        let base = young.base_animation().unwrap();
+        assert_eq!((base.name.as_str(), base.member), ("From stand", None));
+        assert_eq!(young.animations().len(), 2);
+        assert_eq!(
+            get(&c, "animals", "apato", "m")
+                .base_animation()
+                .unwrap()
+                .member
+                .as_deref(),
+            Some("animals/apato/m/idle/idle.ani")
+        );
+    }
+
+    #[test]
+    fn a_unit_with_a_default_subtype_never_reads_the_plain_name_id() {
+        let c = catalogue(
+            "no-fallback",
+            &[
+                (
+                    "animals.cfg",
+                    "[animals]\nleopard = l.ai\nlynx = x.ai\n[leopard/subtypes]\nm\n[lynx/subtypes]\nm\n",
+                ),
+                (
+                    "l.ai",
+                    "[Global]\nDefaultSubtype = f\n[Characteristics/Integers]\ncNameID = 7\n",
+                ),
+                ("x.ai", "[Characteristics/Integers]\ncNameID = 8\n"),
+            ],
+        );
+        assert_eq!(get(&c, "animals", "leopard", "m").name_id, 0);
+        assert_eq!(get(&c, "animals", "lynx", "m").name_id, 8);
+    }
+
+    #[test]
+    fn nested_search_directories_name_a_loose_user_file_twice() {
+        let install = Install::new(
+            "nested",
+            &[
+                ("scener.cfg", "[objects]\nother\n[other]\nrock = r.ai\n"),
+                ("r.ai", "[Global]\n"),
+            ],
+        )
+        .loose("updates/pony.ucs", b"[Global]\n")
+        .loose("a/rock2.ucs", b"[Global]\n")
+        .loose("b/rock2.ucs", b"[Global]\n");
+        std::fs::write(install.0.join("zoo.ini"), "[resource]\npath=.;./updates\n").unwrap();
+        let c = install.load().unwrap();
+        // `updates/pony.ucs` and `pony.ucs` are one file: one type, no warning.
+        assert!(c.find("objects", b"other", b"pony").is_some());
+        // Two files that share a stem are two files.
+        assert!(
+            c.warnings.iter().any(|w| w.contains("rock2")),
+            "{:?}",
+            c.warnings
+        );
+        assert_eq!(c.warnings.len(), 1, "{:?}", c.warnings);
+    }
+
+    #[test]
+    fn a_user_file_without_a_stem_is_skipped_with_a_warning() {
+        let c = catalogue(
+            "empty-stem",
+            &[
+                ("scener.cfg", "[objects]\nother\n[other]\nrock = r.ai\n"),
+                ("scenery/.ucs", "[Global]\n"),
+            ],
+        );
+        assert_eq!(names(&c), ["objects/other/rock"]);
+        assert!(c.warnings.iter().any(|w| w.contains("empty name")));
     }
 
     /// One definition file per reading rule of the values.
@@ -923,9 +1323,10 @@ mod tests {
             "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\n{rates}\
              [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\n[Characteristics/Integers]\ncNameID = 999\n"
         );
-        // The default pass fails (no rates): the plain pass follows.
+        // Name id and footprint are read at the ZT unit level, which never falls back to the
+        // plain sections when there is a default subtype: the plain name id is not used.
         let tiger = format!(
-            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 1\ncFootprintZ = 4\n[Characteristics/Integers]\ncNameID = 2\n{rates}"
+            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 1\ncFootprintZ = 4\n[Characteristics/Integers]\ncNameID = 2\ncFootprintX = 6\n{rates}"
         );
         let guests = format!(
             "[Global]\nDefaultSubtype = man\n[man/Characteristics/Integers]\ncNameID = 3\n{rates}[woman/Characteristics/Integers]\ncNameID = 4\n"
@@ -968,7 +1369,7 @@ mod tests {
         // The own pass is on top of the default one, key by key; a key without value is skipped.
         assert_eq!(values("animals", "lion", "m"), (5006, [1, 3, 1], 16));
         assert_eq!(values("animals", "lion", "y"), (5006, [1, 2, 1], 16));
-        assert_eq!(values("animals", "tiger", "m"), (2, [1, 1, 4], 0));
+        assert_eq!(values("animals", "tiger", "m"), (1, [1, 1, 4], 0));
         assert_eq!(values("guests", "man", ""), (3, [1, 1, 1], 0));
         assert_eq!(values("guests", "woman", ""), (4, [1, 1, 1], 0));
         // Fences: the plain sections, then name id and height again from the subtype's.
@@ -1029,10 +1430,10 @@ mod tests {
         );
         let member = |class, kind, subtype, name: &str| {
             get(&c, class, kind, subtype)
-                .animations
-                .iter()
+                .animations()
+                .into_iter()
                 .find(|a| a.name == name)
-                .map(|a| a.member.as_str())
+                .and_then(|a| a.member)
         };
         for (class, kind, subtype, expected) in [
             ("objects", "foliage", "tree", "objects/tree/idle/idle.ani"),
@@ -1058,31 +1459,40 @@ mod tests {
                 "helicopter/helicopter/idle/idle.ani",
             ),
         ] {
-            assert_eq!(member(class, kind, subtype, "idle"), Some(expected));
+            assert_eq!(
+                member(class, kind, subtype, "idle").as_deref(),
+                Some(expected)
+            );
         }
         // A value with `.ani` is the member itself, in its normalised form.
         assert_eq!(
-            member("objects", "foliage", "tree", "full"),
+            member("objects", "foliage", "tree", "full").as_deref(),
             Some("x/y.ani")
         );
-        assert_eq!(member("animals", "yak", "", "walk"), Some("w/w.ani"));
-        // No `[AnimPath]` entry for the subtype: only full member names resolve.
-        assert_eq!(member("animals", "yak", "", "idle"), None);
+        assert_eq!(
+            member("animals", "yak", "", "walk").as_deref(),
+            Some("w/w.ani")
+        );
+        // No `[AnimPath]` entry for the subtype: the root is empty.
+        assert_eq!(
+            member("animals", "yak", "", "idle").as_deref(),
+            Some("idle/idle.ani")
+        );
         // The animals of the empty subtype section and of the plain one: g has no animations of
         // its own, so the plain section is used; f's empty section falls back to the default's.
         assert_eq!(
-            member("fences", "rail", "g", "broke"),
+            member("fences", "rail", "g", "broke").as_deref(),
             Some("fences/rail/g/broke/broke.ani")
         );
         assert_eq!(
-            member("animals", "lion", "f", "idle"),
+            member("animals", "lion", "f", "idle").as_deref(),
             Some("animals/lion/f/stand/stand.ani")
         );
         // Names come in ascending byte order.
         let order: Vec<_> = get(&c, "objects", "foliage", "tree")
-            .animations
-            .iter()
-            .map(|a| a.name.as_str())
+            .animations()
+            .into_iter()
+            .map(|a| a.name)
             .collect();
         assert_eq!(order, ["full", "idle", "used"]);
     }
@@ -1116,12 +1526,15 @@ mod tests {
         let base = |class, kind, subtype| {
             get(&c, class, kind, subtype)
                 .base_animation()
-                .map(|a| a.name.as_str())
+                .map(|a| a.name)
         };
-        assert_eq!(base("building", "building", "shop"), Some("empty"));
-        assert_eq!(base("food", "food", "bone"), Some("idle"));
-        assert_eq!(base("food", "food", "meat"), Some("full"));
-        assert_eq!(base("fences", "rail", "f"), Some("idle"));
+        assert_eq!(
+            base("building", "building", "shop").as_deref(),
+            Some("empty")
+        );
+        assert_eq!(base("food", "food", "bone").as_deref(), Some("idle"));
+        assert_eq!(base("food", "food", "meat").as_deref(), Some("full"));
+        assert_eq!(base("fences", "rail", "f").as_deref(), Some("idle"));
     }
 
     /// The numbers of the catalogue table of the specification, for the full game.
@@ -1146,10 +1559,23 @@ mod tests {
         let missing: Vec<_> = c
             .types
             .iter()
-            .filter(|t| !t.base_animation().is_some_and(|a| vfs.contains(&a.member)))
+            .filter(|t| {
+                !t.base_animation()
+                    .and_then(|a| a.member)
+                    .is_some_and(|member| vfs.contains(&member))
+            })
             .map(|t| t.class)
             .collect();
         assert_eq!(missing, ["animals", "animals"]);
+        // The young apatosaurus has a key without value that sorts first: no member.
+        let base = get(&c, "animals", "apato", "y").base_animation().unwrap();
+        assert_eq!(base.member, None);
+        // The loaded definition files are a small part of the budget.
+        assert!(
+            c.loaded_bytes < MAX_DEFINITION_BYTES / 2,
+            "{}",
+            c.loaded_bytes
+        );
         // Lookups as the map files spell them.
         assert!(c.find("fences", b"zoowall", b"f").is_some());
         assert!(c.find("animals", b"lion", b"m").is_some());
