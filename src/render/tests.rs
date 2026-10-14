@@ -463,6 +463,7 @@ fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
             rotation: 0,
             id: 1,
             name: String::new(),
+            colors: Vec::new(),
             fence: None,
         }),
     };
@@ -819,15 +820,6 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
     assert!(without.1 > 0 && without.0 == 0, "{without:?}");
     let with = cliffs(&[config, ("fringe/f.bmp", bitmap)]);
     assert_eq!(with, (without.1, 0));
-}
-
-/// A palette file of the given colours (R, G, B), with the fourth byte 255.
-fn palette_file(colors: &[[u8; 3]]) -> Vec<u8> {
-    let mut out = (colors.len() as u32).to_le_bytes().to_vec();
-    for [r, g, b] in colors {
-        out.extend([*r, *g, *b, 255]);
-    }
-    out
 }
 
 #[test]
