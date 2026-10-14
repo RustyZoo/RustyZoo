@@ -182,6 +182,11 @@ impl Section {
         self.get_all(key).first().map(Vec::as_slice)
     }
 
+    /// Whether the key exists, with or without values.
+    pub fn has(&self, key: impl AsRef<[u8]>) -> bool {
+        self.keys.contains_key(key.as_ref())
+    }
+
     /// All values of the key in file order; empty if the key is missing or has no value.
     pub fn get_all(&self, key: impl AsRef<[u8]>) -> &[Vec<u8>] {
         self.keys.get(key.as_ref()).map_or(&[], Vec::as_slice)
