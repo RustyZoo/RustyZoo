@@ -13,6 +13,7 @@ use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::ground::{self, Key, Renderer};
 use rustyzoo::pe;
+use rustyzoo::render::{Renderer, Summary};
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
@@ -57,6 +58,15 @@ usage: rustyzoo [--data <dir>] <command>
   render-ground <key> <out.png>
                       render one ground picture to a PNG file; the key is written as in the
                       cache, for example ztats/000003 or ztatb/00/00000000/00000001/0003
+  render-map <map> <out.png> [--rotation N]
+                      draw a whole map (a .zoo member) into a PNG at normal zoom, seen from
+                      rotation N (0 to 3, default 0), and print what was drawn: the tiles whose
+                      ground picture is in the game's cache, the ground pictures missing, the
+                      cliff pieces, and the objects drawn or lacking a type or an animation
+  check-render [--rotation N]
+                      draw every .zoo file in memory and print the same summary per map and
+                      for all of them; a file that cannot be read is skipped; exit 1 only if
+                      a map cannot be drawn
   check-anis          load every animation set and the sprite files it names; list the sets
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
@@ -134,6 +144,18 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["check-anis"] => check_anis(&open_game(data_dir)?),
         ["check-ground"] => check_ground(&open_game(data_dir)?),
         ["render-ground", key, out] => render_ground(&open_game(data_dir)?, key, Path::new(out)),
+        ["render-map", member, out] => render_map(&open_game(data_dir)?, member, out, 0),
+        ["render-map", member, out, "--rotation", n] => render_map(
+            &open_game(data_dir)?,
+            member,
+            out,
+            n.parse().map_err(|_| CliError::Usage)?,
+        ),
+        ["check-render"] => check_render(&open_game(data_dir)?, 0),
+        ["check-render", "--rotation", n] => check_render(
+            &open_game(data_dir)?,
+            n.parse().map_err(|_| CliError::Usage)?,
+        ),
         _ => Err(CliError::Usage),
     }
 }
@@ -1016,6 +1038,82 @@ fn render_ground(vfs: &Vfs, key: &str, out: &Path) -> Result<(), CliError> {
         picture.y_offset
     );
     Ok(())
+/// Draws one map into a PNG file and prints the summary.
+fn render_map(vfs: &Vfs, member: &str, out: &str, rotation: u8) -> Result<(), CliError> {
+    if rotation > 3 {
+        return Err(CliError::Usage);
+    }
+    let zoo = load_map(vfs, member)?;
+    let catalogue = Catalogue::load(vfs)?;
+    let (image, summary) = Renderer::new(vfs, &catalogue).render(&zoo, rotation)?;
+    let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;
+    write_png(&image, io::BufWriter::new(file)).map_err(|e| format!("cannot write {out}: {e}"))?;
+    let mut report = Report::new();
+    report.line(format_args!(
+        "{} -> {}x{} pixels: {summary}",
+        member.escape_debug(),
+        image.width,
+        image.height
+    ));
+    report.finish()
+}
+
+/// Draws every map in memory and prints the summaries. A file the loader refuses is skipped,
+/// as `check-maps` lists it; only a map that cannot be drawn fails the command.
+fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
+    if rotation > 3 {
+        return Err(CliError::Usage);
+    }
+    let catalogue = Catalogue::load(vfs)?;
+    let mut renderer = Renderer::new(vfs, &catalogue);
+    let mut report = Report::new();
+    let (mut total, mut maps, mut skipped, mut failed) = (Summary::default(), 0, 0, 0);
+    for member in vfs.list(None) {
+        if !member.to_ascii_lowercase().ends_with(".zoo") {
+            continue;
+        }
+        let name = member.escape_debug();
+        let zoo = vfs
+            .read(&member)
+            .ok()
+            .and_then(|bytes| Zoo::parse(&bytes).ok());
+        let Some(zoo) = zoo else {
+            skipped += 1;
+            report.line(format_args!("skipped {name}: cannot be loaded"));
+            continue;
+        };
+        match renderer.render(&zoo, rotation) {
+            Ok((_, summary)) => {
+                maps += 1;
+                report.line(format_args!("ok {name}: {summary}"));
+                total.add(&summary);
+            }
+            Err(err) => {
+                failed += 1;
+                report.line(format_args!(
+                    "FAILED {name}: {}",
+                    err.to_string().escape_debug()
+                ));
+            }
+        }
+    }
+    report.line(format_args!(
+        "{maps} maps drawn, {skipped} skipped, {failed} failed; totals: tiles {} drawn, {} ground \
+         pictures missing; cliff pieces {} drawn, {} missing; objects {} drawn, {} missing a type or \
+         animation, {} not placed",
+        total.tiles_drawn,
+        total.ground_missing,
+        total.cliffs_drawn,
+        total.cliffs_missing,
+        total.objects_drawn,
+        total.objects_missing,
+        total.objects_skipped,
+    ));
+    report.finish()?;
+    match failed {
+        0 => Ok(()),
+        _ => Err(format!("{failed} maps could not be drawn").into()),
+    }
 }
 
 fn window_smoke() -> Result<(), Box<dyn Error>> {
