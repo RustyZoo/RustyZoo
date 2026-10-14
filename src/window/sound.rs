@@ -89,11 +89,9 @@ impl Sound {
             data: intro.movie.audio(),
         };
         audio
-            .play(sound, attenuation(intro.volume), false, false)
-            .unwrap_or_else(|e| {
-                eprintln!("rustyzoo: {}: {e}", intro.file);
-                None
-            })
+            .start(sound, attenuation(intro.volume), false, false)
+            .map_err(|e| eprintln!("rustyzoo: {}: {e}", intro.file))
+            .ok()
     }
 
     /// Silences the output while the window has no focus, and restores it with the focus.

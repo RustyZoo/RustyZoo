@@ -202,19 +202,20 @@ check expansion-trial 1,same 'windowed_menu 600 | paste -sd, -'
 
 # The intro movies, headless on the passes of the scripted clock: the expansion trial has one (the
 # base trial's first movie is not in its folder and is skipped with a warning): file, frames,
-# duration in ms, the hash of the first picture, pictures shown, the pass the movie ends on and the
+# duration in ms, the hash of the first picture, pictures shown, the hash of the 41st (the movie
+# stretched over the whole window), the pass the movie ends on and the
 # pass of the first menu (the pass after it). A key (or a click, or `skip`) at pass 12 stops it and
 # the menu follows.
 intro() {
   rm -rf "$tmp/user"
   printf '12 %s\n' "${1:-pause}" >"$tmp/skip"
   rz run --headless --passes 400 --clock 20 --script "$tmp/skip" 2>/dev/null |
-    awk '/^startup movie/{m=$3","$4","$6} / movie [A-Z.]* frame [0-9]/{n++; if(!h)h=$NF} / movie .* (end|skipped)$/{e=$2"@"$NF} /menu continue/{c=$2} END{print m","h","n","e","c}'
+    awk '/^startup movie/{m=$3","$4","$6} / movie [A-Z.]* frame [0-9]/{n++; if(!h)h=$NF} / movie [A-Z.]* frame 40 /{f=$NF} / movie .* (end|skipped)$/{e=$2"@"$NF} /menu continue/{c=$2} END{print m","h","n","f","e","c}'
 }
-check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,3,12@skipped,13' 'intro "key enter"'
-check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,3,12@skipped,13' 'intro down'
-check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,82,342@end,343' 'intro "mouse 1 1"'
-check base-trial ',,,,0' 'intro "key enter"'
+check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,3,,12@skipped,13' 'intro "key enter"'
+check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,3,,12@skipped,13' 'intro down'
+check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,82,21628c137396ef8d,342@end,343' 'intro "mouse 1 1"'
+check base-trial ',,,,,0' 'intro "key enter"'
 # The same in a window of the dummy video driver: a script that skips ends the movie, the log tells
 # it and replays headless to the same lines.
 windowed_intro() {

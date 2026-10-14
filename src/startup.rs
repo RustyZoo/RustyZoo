@@ -205,7 +205,7 @@ fn fill(frame: &mut Framebuffer, (x, y, w, h): (i32, i32, i32, i32), rgba: [u8; 
 }
 
 /// Copies `picture` into `frame` with its top left corner at `origin`, clipped.
-pub(crate) fn copy_picture(frame: &mut Framebuffer, picture: &Framebuffer, origin: (i32, i32)) {
+fn copy_picture(frame: &mut Framebuffer, picture: &Framebuffer, origin: (i32, i32)) {
     let (fw, fh) = (i64::from(frame.width), i64::from(frame.height));
     let (pw, ph) = (i64::from(picture.width), i64::from(picture.height));
     let (ox, oy) = (i64::from(origin.0), i64::from(origin.1));

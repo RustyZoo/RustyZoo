@@ -5,7 +5,6 @@
 use crate::Framebuffer;
 use crate::config::{Config, to_int};
 use crate::movie::{Frames, Movie};
-use crate::startup::copy_picture;
 use crate::vfs::Vfs;
 
 /// A movie that plays at start-up.
@@ -54,10 +53,15 @@ pub fn list(vfs: &Vfs, ini: &Config) -> (Vec<Intro>, Vec<String>) {
     (movies, skipped)
 }
 
-/// The decibels-to-attenuation sum of a movie volume: a media player's volume of -1000 is 10 dB
-/// down, which is the sum 1000 of the sound specification; a positive volume is full level.
+/// The attenuation sum of a movie volume. The media player takes hundredths of a decibel from
+/// -10000 (silence) to 0 (full level): -1000 is 10 dB down, which is the sum 1000 of the sound
+/// specification. A value outside that range is refused by the player, and the movie plays at
+/// full level.
 pub fn attenuation(volume: i32) -> i32 {
-    volume.saturating_neg().max(0)
+    match (-10_000..=0).contains(&volume) {
+        true => -volume,
+        false => 0,
+    }
 }
 
 /// Plays one movie against a clock: [`Player::at`] gives the picture for a time, once per frame.
@@ -136,14 +140,22 @@ impl<'a> Player<'a> {
     }
 }
 
-/// The window of the frame: black, the picture of the movie in the middle.
+/// The window of the frame: the picture of the movie stretched over all of it, as the media
+/// player's video window fills the client area, whatever the size of either.
 pub fn compose(window: &mut Framebuffer, picture: &Framebuffer) {
-    window.fill([0, 0, 0, 255]);
-    let origin = (
-        (window.width as i32 - picture.width as i32) / 2,
-        (window.height as i32 - picture.height as i32) / 2,
-    );
-    copy_picture(window, picture, origin);
+    let (w, h) = (window.width as usize, window.height as usize);
+    let (pw, ph) = (picture.width as usize, picture.height as usize);
+    if pw == 0 || ph == 0 {
+        window.fill([0, 0, 0, 255]);
+        return;
+    }
+    for y in 0..h {
+        let row = &picture.pixels[(y * ph / h) * pw * 4..][..pw * 4];
+        for x in 0..w {
+            let from = x * pw / w * 4;
+            window.pixels[(y * w + x) * 4..][..4].copy_from_slice(&row[from..from + 4]);
+        }
+    }
 }
 
 #[cfg(test)]

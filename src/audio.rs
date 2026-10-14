@@ -125,6 +125,17 @@ impl Audio {
         if sum > START_LIMIT {
             return Ok(None);
         }
+        self.start(sound, sum, looping, paused).map(Some)
+    }
+
+    /// [`Audio::play`] without the limit on the sum: the sound starts however quiet it is.
+    pub fn start(
+        &self,
+        sound: Sound,
+        sum: i32,
+        looping: bool,
+        paused: bool,
+    ) -> Result<Voice, Box<dyn Error>> {
         let stream = self.subsystem.new_playback_stream(&sound.spec(), None)?;
         self.device.bind_stream(&stream)?;
         stream.set_gain(gain(sum))?;
@@ -144,7 +155,7 @@ impl Audio {
                 return Err(sdl3::get_error().into());
             }
         }
-        Ok(Some(Voice { stream, sound }))
+        Ok(Voice { stream, sound })
     }
 
     /// The menu music, played with its sum `S = G + B + F` (`X` is 0). `None` if the sum is over

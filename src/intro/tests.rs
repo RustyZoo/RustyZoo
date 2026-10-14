@@ -60,23 +60,35 @@ fn a_movie_that_cannot_be_decoded_ends_where_it_fails() {
 }
 
 #[test]
-fn the_picture_is_composed_in_the_middle_on_black() {
+fn the_picture_is_stretched_over_the_whole_window() {
+    // 2 x 2 pixels, each different, over 6 x 4 (each pixel becomes 3 x 2) and over 1 x 1.
     let mut picture = Framebuffer::new(2, 2);
-    picture.fill([9, 8, 7, 255]);
+    for (i, px) in picture.pixels.chunks_mut(4).enumerate() {
+        px.copy_from_slice(&[i as u8 + 1, 0, 0, 255]);
+    }
     let mut window = Framebuffer::new(6, 4);
-    window.fill([1, 1, 1, 1]);
+    window.fill([9, 9, 9, 9]);
     compose(&mut window, &picture);
-    let at = |x: usize, y: usize| window.pixels[(y * 6 + x) * 4..][..4].to_vec();
-    assert_eq!(at(0, 0), [0, 0, 0, 255]);
-    assert_eq!(at(2, 1), [9, 8, 7, 255]);
-    assert_eq!(at(3, 2), [9, 8, 7, 255]);
-    assert_eq!(at(4, 2), [0, 0, 0, 255]);
-    // A picture larger than the window is cut, not refused.
+    let at = |x: usize, y: usize| window.pixels[(y * 6 + x) * 4];
+    let rows: Vec<Vec<u8>> = (0..4).map(|y| (0..6).map(|x| at(x, y)).collect()).collect();
+    assert_eq!(
+        rows,
+        [
+            [1, 1, 1, 2, 2, 2],
+            [1, 1, 1, 2, 2, 2],
+            [3, 3, 3, 4, 4, 4],
+            [3, 3, 3, 4, 4, 4]
+        ]
+    );
+    assert!(window.pixels.chunks(4).all(|p| p[3] == 255));
     let mut small = Framebuffer::new(1, 1);
     compose(&mut small, &picture);
-    assert_eq!(small.pixels, [9, 8, 7, 255]);
-    let mut none = Framebuffer::new(0, 0);
-    compose(&mut none, &picture);
+    assert_eq!(small.pixels, [1, 0, 0, 255]);
+    // A window of no size, or a picture of none, is not an error.
+    compose(&mut Framebuffer::new(0, 0), &picture);
+    let mut black = Framebuffer::new(2, 2);
+    compose(&mut black, &Framebuffer::new(0, 0));
+    assert_eq!(black.pixels, [0, 0, 0, 255].repeat(4));
 }
 
 fn vfs(name: &str, files: &[&str]) -> (Install, Vfs) {
@@ -152,6 +164,9 @@ fn a_missing_or_damaged_movie_is_skipped_with_a_reason() {
 fn a_volume_is_the_attenuation_a_media_player_reads() {
     assert_eq!(attenuation(-1000), 1000);
     assert_eq!(attenuation(0), 0);
-    assert_eq!(attenuation(500), 0, "never louder than full level");
-    assert_eq!(attenuation(i32::MIN), i32::MAX);
+    assert_eq!(attenuation(-10_000), 10_000);
+    // Outside -10000 to 0 the player refuses the value and the movie plays at full level.
+    for refused in [1, 500, -10_001, i32::MIN, i32::MAX] {
+        assert_eq!(attenuation(refused), 0, "{refused}");
+    }
 }

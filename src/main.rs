@@ -157,7 +157,7 @@ usage: rustyzoo [--data <dir>] <command>
                       Without a map, `run` starts up as the original does: first the intro movies
                       (MSLOGO.AVI, then BFLOGO.AVI when [UI] playSecondMovie is not 0, both only when
                       [UI] playMovie is not 0, volumes movievolume1 and movievolume2; one that is
-                      missing or damaged is skipped with a warning) in the window with their sound,
+                      missing or damaged is skipped with a warning) stretched over the window, with their sound,
                       the pointer hidden in full screen; a key or a left or right button press (in
                       a script: skip, key ..., down) stops the movie that plays and the next step
                       follows. A headless run prints `startup movie FILE FRAMES frames MS ms WxH`
