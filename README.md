@@ -52,7 +52,7 @@ rustyzoo --data "/path/to/Zoo Tycoon" check-config   # read all configuration fi
 rustyzoo dump-sprite animals/lion/f/walk/E out/   # one PNG per frame of a sprite file, into out/
 rustyzoo check-sprites                            # decode every sprite file; exit 1 if one fails
 rustyzoo --data "/path/to/Zoo Tycoon" which animals/lion.ai   # which file or archive supplies it, and the copies it hides
-XX version, size, terrain and entities of a map or saved game
+rustyzoo map-info maps/default.zoo                # version, size, terrain and entities of a map or saved game
 rustyzoo check-maps                               # read every .zoo file; exit 1 if one is corrupted
 ```
 
