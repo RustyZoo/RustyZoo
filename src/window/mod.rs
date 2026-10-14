@@ -29,6 +29,7 @@ use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::timing::Timers;
+use rustyzoo::userdir;
 use rustyzoo::vfs::Vfs;
 use rustyzoo::zoo::Zoo;
 use sdl3::pixels::PixelFormat;
@@ -39,6 +40,7 @@ use crate::CliError;
 use crate::probe::{self, Timing};
 use events::{State, asleep, focused};
 use screen::Screen;
+use size::ini_fullscreen;
 use sound::Sound;
 use wait::Wait;
 
@@ -71,6 +73,19 @@ fn switch(
         screen.fullscreen = on;
         state.exposed = true;
         commands.push(Command::Fullscreen(on));
+        remember(on);
+    }
+}
+
+/// Writes the mode into the settings of the user folder (`[user] fullscreen`), which the next
+/// start reads over the game's ini file. A failure only warns.
+fn remember(on: bool) {
+    let Some(dir) = userdir::dir() else {
+        eprintln!("rustyzoo: warning: no user folder, the screen mode is not remembered");
+        return;
+    };
+    if let Err(e) = userdir::save(&dir, "user", "fullscreen", if on { "1" } else { "0" }) {
+        eprintln!("rustyzoo: warning: {e}");
     }
 }
 
@@ -117,6 +132,13 @@ pub fn run(
     let mut pump = sdl.event_pump()?;
     let mut script = flags.script.into_iter().peekable();
     let (mut state, mut commands) = (State::default(), Vec::new());
+    // The ini file starts the game in full screen; the camera is told before the first pass, so
+    // it applies the zoom limit of a full screen to the stored zoom (camera 4.2, 8.3). The mode
+    // is not written back: it is what the settings already say.
+    if ini_fullscreen(ini) && screen.request(true) {
+        screen.fullscreen = true;
+        commands.push(Command::Fullscreen(true));
+    }
     let start = sdl3::timer::ticks();
     let mut pass = 0;
     let mut shown = false;

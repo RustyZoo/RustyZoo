@@ -170,6 +170,9 @@ jobs:
             pre=(xvfb-run -a -s "-screen 0 1280x1024x24")
           fi
           tmp="${RUNNER_TEMP//\\//}"
+          # The shipped ini starts the run in full screen; the picture read back must be the game's.
+          mkdir -p "$RUSTYZOO_USER_DIR"
+          printf '[user]\nfullscreen=0\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
           "${pre[@]}" ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo \
             --passes 60 --log "$tmp/window.log" --shot "$tmp/window.png" | tee "$tmp/window.out"
           # At factor 1 (a runner without display scaling) the pixels read back are the last

@@ -112,7 +112,8 @@ usage: rustyzoo [--data <dir>] <command>
                       screenheight (cut to the display; --size overrides it, uncut), in a
                       window enlarged by the display scale rounded to a whole number (the
                       factor, at least 1, smaller if the window would not fit the display),
-                      with the menu music. The loop runs on the real clock, sleeps until the next timer
+                      with the menu music; the ini file's fullscreen (not 0) starts it in full
+                      screen, and every switch is written back to the settings of the user folder. The loop runs on the real clock, sleeps until the next timer
                       is due, blocks while the window is minimised or hidden, and shows a frame
                       only when one was painted. Closing the window ends it. --passes ends it
                       after N passes, --script applies commands as above before the pass of
