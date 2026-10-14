@@ -163,6 +163,7 @@ fn animal(r: &mut Reader) -> R<()> {
     if v >= 46 {
         r.skip(4)?;
     }
+    // The escape flag counts only when it is exactly 1.
     if v >= 47 && r.u32()? == 1 {
         r.skip(8 + 8 + 12)?;
         if v >= 81 {
@@ -291,6 +292,7 @@ fn zoo_unit(r: &mut Reader, guest: bool) -> R<Common> {
     r.skip(if v <= 85 { 16 } else { 12 })?;
     r.skip(6)?;
     if v >= 97 && !guest {
+        // Two flags, each followed by a value only when it is exactly 1.
         for _ in 0..2 {
             if r.u8()? == 1 {
                 r.skip(2)?;
