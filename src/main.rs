@@ -17,6 +17,7 @@ use rustyzoo::pe;
 use rustyzoo::render::{MapRenderer, Options, Summary};
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
+use rustyzoo::timing::Timers;
 use rustyzoo::vfs::{self, Vfs};
 use rustyzoo::zoo::{Zoo, ZooError};
 use sdl3::audio::AudioSpec;
@@ -78,6 +79,9 @@ usage: rustyzoo [--data <dir>] <command>
   check-anis          load every animation set and the sprite files it names; list the sets
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
+  timing              print the periods and the cap the ini file gives the main loop, then how
+                      many draws, interface updates and steps a ten second run makes with a
+                      pass at every millisecond
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.";
@@ -151,6 +155,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ),
         ["check-bitmaps"] => check_bitmaps(&open_game(data_dir)?),
         ["check-anis"] => check_anis(&open_game(data_dir)?),
+        ["timing"] => timing(&open_game(data_dir)?),
         ["check-ground"] => check_ground(&open_game(data_dir)?),
         ["render-ground", key, out] => render_ground(&open_game(data_dir)?, key, Path::new(out)),
         ["render-map", member, out, flags @ ..] => {
@@ -1166,6 +1171,32 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
         0 => Ok(()),
         _ => Err(format!("{failed} maps could not be drawn").into()),
     }
+}
+
+/// The loop settings of the ini file, and a simulated run with a pass at every millisecond.
+fn timing(vfs: &Vfs) -> Result<(), CliError> {
+    let mut timers = Timers::from_config(&Config::parse(vfs.ini())?);
+    let mut out = io::stdout().lock();
+    let first = writeln!(
+        out,
+        "periods: update {} ms, draw {} ms, cap {} ms",
+        timers.update_period(),
+        timers.draw_period(),
+        timers.cap()
+    );
+    ignore_closed_pipe(first)?;
+    timers.pass(0, 1.0);
+    let (mut draws, mut interfaces, mut steps) = (0, 0, 0);
+    for now in 1..=10_000 {
+        let pass = timers.pass(now, 1.0);
+        draws += u32::from(pass.draw);
+        interfaces += u32::from(pass.interface.is_some());
+        steps += u32::from(pass.step.is_some());
+    }
+    ignore_closed_pipe(writeln!(
+        out,
+        "ten seconds, clock of 1 ms: {draws} draws, {interfaces} interface updates, {steps} steps"
+    ))
 }
 
 /// Converts every root bitmap of the terrain and compares it with its shipped copy.

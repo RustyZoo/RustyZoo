@@ -10,6 +10,7 @@ pub mod render;
 pub mod sprite;
 pub mod strings;
 pub mod tga;
+pub mod timing;
 pub mod vfs;
 pub mod zoo;
 
