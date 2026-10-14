@@ -228,6 +228,22 @@ windowed_intro() {
 }
 check expansion-trial 1,same 'windowed_intro | paste -sd, -'
 
+# The credits on the interface clock (a pass every 66 ms, the interface update's period): a click on
+# the credits button at y shows the first page at pass 3; with 8 s per page the second comes at pass
+# 124 and, after the last of the 16 pages, the credits end. A click on Exit (here at pass 131) closes them
+# at once. The base trial has no credits pages.
+credits() { # credits <y of the button> <passes> <pass of the click on Exit>
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 %s\n2 down\n3 up\n%s mouse 512 664\n%s down\n%s up\n' "$1" "$3" "$3" "$3" >"$tmp/credits"
+  rz run --headless --passes "$2" --clock 66 --script "$tmp/credits" 2>/dev/null |
+    awk '/menu credits page/{n++; if(n==1)f=$2; if(n==2)p=$2} /menu credits (end|closed)/{e=$2"@"$NF} END{print n","f","p","e}'
+}
+check expansion-trial '16,3,124,1954@end' 'credits 559 2200 9999'
+check expansion-trial '2,3,124,131@closed' 'credits 559 300 131'
+check base-trial ',,,' 'credits 574 300 131'
+
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
 check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"

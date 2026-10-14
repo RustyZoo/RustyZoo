@@ -376,8 +376,8 @@ impl<'a> App<'a> {
             self.ui_sounds.extend(ui.take_sounds());
         }
         self.menu_acts();
-        self.menu_lines = std::mem::take(&mut self.menu_events);
         if self.quit {
+            self.menu_lines = std::mem::take(&mut self.menu_events);
             return None;
         }
         self.fired = self.timers.pass(now, 1.0);
@@ -398,6 +398,9 @@ impl<'a> App<'a> {
             }
             if let Some(ui) = &mut self.ui {
                 ui.update(period);
+                if let Some(menu) = &mut self.menu {
+                    self.menu_events.extend(menu.update(ui, period));
+                }
                 self.ui_events.extend(ui.take_events());
                 self.ui_sounds.extend(ui.take_sounds());
             }
@@ -411,6 +414,7 @@ impl<'a> App<'a> {
         {
             game.calendar.advance(step);
         }
+        self.menu_lines = std::mem::take(&mut self.menu_events);
         self.drew.then_some(&self.frame)
     }
 

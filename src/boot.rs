@@ -5,7 +5,7 @@
 use rustyzoo::Framebuffer;
 use rustyzoo::config::{Config, to_int};
 use rustyzoo::entity::Catalogue;
-use rustyzoo::menu::Menu;
+use rustyzoo::menu::{self, Menu};
 use rustyzoo::startup::{self, Startup};
 use rustyzoo::ui::interface::Interface;
 use rustyzoo::ui::layout::{Kind, installed_expansions};
@@ -91,13 +91,15 @@ pub fn boot(
     {
         lines.push("first-run tutorial not started (there are no scenarios yet)".to_string());
     }
-    let menu = Menu::new(
+    let mut menu = Menu::new(
         ini.clone(),
         vfs.root(),
         userdir::dir(),
         startup::product_version(vfs.root()),
         expansions,
     );
+    let (pages, delay) = menu::credit_pages(vfs);
+    menu.set_credits(pages, delay);
     Ok(Booted {
         catalogue,
         interface,
