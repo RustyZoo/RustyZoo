@@ -14,6 +14,7 @@
 
 mod events;
 mod fullscreen;
+mod intro;
 mod screen;
 mod size;
 mod sound;
@@ -107,31 +108,67 @@ pub fn run(
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
 
-    // Without a map the game data is loaded behind the start-up picture, which is presented
-    // each time the bar moves; the menu music starts in the middle of it.
-    let mut opened = None;
-    let booted = match loaded {
-        Some(_) => None,
-        None => {
-            let mut present = |frame: &rustyzoo::Framebuffer| -> Result<(), CliError> {
-                texture.update(None, &frame.pixels, size.0 as usize * 4)?;
-                screen.copy(&texture)?;
-                match screen.canvas.present() {
-                    true => Ok(()),
-                    false => Err(sdl3::get_error().into()),
-                }
-            };
-            let mut music = || opened = Some(Sound::open(&sdl, vfs, ini));
-            Some(boot(vfs, ini, size, flags.show, &mut present, &mut music)?)
+    let mut sound = Sound::open(&sdl, ini);
+    let mut pump = sdl.event_pump()?;
+    let mut script = flags.script.into_iter().peekable();
+    let mut commands = Vec::new();
+    // The ini file starts the game in full screen; the camera is told before the first pass, so
+    // it applies the zoom limit of a full screen to the stored zoom (camera 4.2, 8.3). The mode
+    // is not written back: it is what the settings already say.
+    if ini_fullscreen(ini) && screen.request(true) {
+        screen.fullscreen = true;
+        commands.push(Command::Fullscreen(true));
+    }
+    let mut log = match flags.log {
+        Some(file) => {
+            let out = File::create(file).map_err(|e| format!("{file}: {e}"))?;
+            Some(BufWriter::new(out))
         }
+        None => None,
     };
-    let (mut sound, menu) = opened.unwrap_or_else(|| Sound::open(&sdl, vfs, ini));
+    if let Some(log) = &mut log {
+        writeln!(log, "size {}x{}", size.0, size.1)?;
+    }
+    let mut pass = 0;
+    let (mut menu, mut booted, mut start_lines) = (None, None, Vec::new());
+    if loaded.is_some() {
+        menu = sound.start_music(vfs, ini);
+    } else {
+        // The intro movies, then the game data loaded behind the start-up picture, which is
+        // presented each time the bar moves; the menu music starts in the middle of it.
+        let mut stage = intro::Stage {
+            sdl: &sdl,
+            screen: &mut screen,
+            texture: &mut texture,
+            pump: &mut pump,
+            sound: &mut sound,
+        };
+        if intro::play(
+            &mut stage,
+            vfs,
+            ini,
+            &mut log,
+            &mut script,
+            &mut pass,
+            flags.passes,
+        )? {
+            if let Some(mut log) = log {
+                log.flush()?;
+            }
+            return Ok(());
+        }
+        let mut present =
+            |frame: &rustyzoo::Framebuffer| intro::show(&mut screen, &mut texture, frame);
+        let mut music = || menu = sound.start_music(vfs, ini);
+        let made = boot(vfs, ini, size, flags.show, &mut present, &mut music)?;
+        start_lines = made.lines.clone();
+        booted = Some(made);
+    }
     let timers = Timers::from_config(ini);
     let mut timing = flags
         .timing
         .map(|ms| Timing::new(ms, timers.draw_period(), timers.update_period()));
     let catalogue;
-    let mut start_lines = Vec::new();
     let mut app = match (loaded, booted) {
         (Some((owned, zoo)), _) => {
             catalogue = owned;
@@ -151,7 +188,6 @@ pub fn run(
         }
         (None, Some(booted)) => {
             catalogue = booted.catalogue;
-            start_lines = booted.lines;
             App::menu(
                 MapRenderer::new(vfs, &catalogue),
                 timers,
@@ -172,38 +208,18 @@ pub fn run(
         // SAFETY: the window is open and owned by `screen` for the whole run.
         unsafe { sdl3::sys::keyboard::SDL_StartTextInput(screen.canvas.window().raw()) };
     }
-    let mut log = match flags.log {
-        Some(file) => {
-            let out = File::create(file).map_err(|e| format!("{file}: {e}"))?;
-            Some(BufWriter::new(out))
-        }
-        None => None,
-    };
     if let Some(log) = &mut log {
-        writeln!(log, "{}", app.log_header())?;
         for line in &start_lines {
             writeln!(log, "startup {line}")?;
         }
     }
-
-    let mut pump = sdl.event_pump()?;
-    let mut script = flags.script.into_iter().peekable();
-    let mut commands = Vec::new();
     // What the player did during the start-up is dropped, but not closing the window.
     while let Some(event) = pump.poll_event() {
         state.note(event, &mut commands);
     }
     state.mouse.clear();
-    commands.retain(|c| *c == Command::Quit);
-    // The ini file starts the game in full screen; the camera is told before the first pass, so
-    // it applies the zoom limit of a full screen to the stored zoom (camera 4.2, 8.3). The mode
-    // is not written back: it is what the settings already say.
-    if ini_fullscreen(ini) && screen.request(true) {
-        screen.fullscreen = true;
-        commands.push(Command::Fullscreen(true));
-    }
+    commands.retain(|c| matches!(c, Command::Quit | Command::Fullscreen(_)));
     let start = sdl3::timer::ticks();
-    let mut pass = 0;
     let mut shown = false;
     let mut pointer = None;
     let mut wait = Wait::default();

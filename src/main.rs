@@ -154,7 +154,16 @@ usage: rustyzoo [--data <dir>] <command>
                       --shot writes the pixels of the last frame, as the renderer has them
                       (at the size in pixels), to FILE as a PNG, and prints its size, number of
                       colours and hash; a blank picture is an error
-                      Without a map, `run` starts up as the original does: the start-up picture of the expansion
+                      Without a map, `run` starts up as the original does: first the intro movies
+                      (MSLOGO.AVI, then BFLOGO.AVI when [UI] playSecondMovie is not 0, both only when
+                      [UI] playMovie is not 0, volumes movievolume1 and movievolume2; one that is
+                      missing or damaged is skipped with a warning) in the window with their sound,
+                      the pointer hidden in full screen; a key or a left or right button press (in
+                      a script: skip, key ..., down) stops the movie that plays and the next step
+                      follows. A headless run prints `startup movie FILE FRAMES frames MS ms WxH`
+                      and, on the passes of the same clock, `movie FILE frame N HASH` (the picture
+                      in the window), `movie FILE end` or `skipped`; --png-every writes those
+                      pictures too. Then the start-up picture of the expansion
                       flags (those of the xpac*.cfg files) in the middle of the window with a
                       progress bar over it, which the steps of the loading fill (and whose count
                       is written to [UI] progresscalls of the settings of the user folder), the

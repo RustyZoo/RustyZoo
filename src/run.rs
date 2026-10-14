@@ -8,10 +8,12 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use rustyzoo::app::{App, Command};
+use rustyzoo::Framebuffer;
+use rustyzoo::app::{App, Command, Mouse, frame_hash};
 use rustyzoo::camera::Settings;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
+use rustyzoo::intro::{self, Player};
 use rustyzoo::music::Music;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::sprite::write_png;
@@ -203,15 +205,62 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             passes.push((key.0, key.1, Vec::new()));
         }
         let rest = rest.unwrap_or("");
-        if !["draw ", "interface ", "menu ", "music ", "step ", "ui "]
-            .iter()
-            .any(|k| rest.starts_with(k))
+        if ![
+            "draw ",
+            "interface ",
+            "menu ",
+            "movie ",
+            "music ",
+            "step ",
+            "ui ",
+        ]
+        .iter()
+        .any(|k| rest.starts_with(k))
         {
             let last = passes.last_mut().expect("just pushed");
             last.2.push(rest.parse().map_err(at)?);
         }
     }
     Ok((size, passes))
+}
+
+/// The passes of a headless run: those of a log, or one per step of the scripted clock with the
+/// commands of the script that are due.
+enum Passes {
+    Logged(std::vec::IntoIter<Logged>),
+    Scripted {
+        next: u64,
+        end: u64,
+        clock: u64,
+        commands: std::iter::Peekable<std::vec::IntoIter<(u64, Command)>>,
+    },
+}
+
+impl Iterator for Passes {
+    type Item = Logged;
+
+    fn next(&mut self) -> Option<Logged> {
+        match self {
+            Passes::Logged(passes) => passes.next(),
+            Passes::Scripted {
+                next,
+                end,
+                clock,
+                commands,
+            } => {
+                if *next >= *end {
+                    return None;
+                }
+                let pass = *next;
+                *next += 1;
+                let mut due = Vec::new();
+                while let Some((_, command)) = commands.next_if(|&(at, _)| at <= pass) {
+                    due.push(command);
+                }
+                Some((pass, pass.saturating_mul(*clock), due))
+            }
+        }
+    }
 }
 
 /// Plays `member`, or, without one, starts up to the main menu.
@@ -225,7 +274,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
         }
         None => (None, flags.size),
     };
-    let mut commands = match &flags.script {
+    let commands = match &flags.script {
         Some(file) => script(&read(file)?)?,
         None => Vec::new(),
     }
@@ -254,8 +303,30 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
         return crate::window::run(vfs, loaded, &ini, window);
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
+    let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
+    let png = |pass: u64, frame: &Framebuffer| -> Result<(), CliError> {
+        if flags.png_every.is_some_and(|k| pass.is_multiple_of(k)) {
+            let file = out.join(format!("frame-{pass:06}.png"));
+            let png = File::create(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            write_png(frame, BufWriter::new(png))
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+        }
+        Ok(())
+    };
+    // Every pass of the scripted clock, or only the logged ones: a pass in which nothing fires
+    // and no command comes changes nothing.
+    let mut passes = match logged {
+        Some(passes) => Passes::Logged(passes.into_iter()),
+        None => Passes::Scripted {
+            next: 0,
+            end: flags.passes.unwrap_or(0),
+            clock: flags.clock,
+            commands,
+        },
+    };
     let menu_catalogue;
     let mut report = Report::new();
+    report.line(format_args!("size {}x{}", size.0, size.1));
     let mut app = match loaded {
         Some((catalogue, zoo)) => {
             menu_catalogue = catalogue;
@@ -272,62 +343,88 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             // The game starts with the run: the menu music, which only the log tells of here,
             // fades.
             app.start_game(Music::from_config(&ini));
-            report.line(format_args!("{}", app.log_header()));
             app
         }
         None => {
+            // The intro movies come first, on the passes of the same clock.
+            let (intros, skipped) = intro::list(vfs, &ini);
+            for why in skipped {
+                eprintln!("rustyzoo: warning: {why}");
+            }
+            let mut window = Framebuffer::new(size.0, size.1);
+            for intro in &intros {
+                let movie = &intro.movie;
+                let (w, h) = movie.size();
+                report.line(format_args!(
+                    "startup movie {} {} frames {} ms {w}x{h}",
+                    intro.file,
+                    movie.frame_count(),
+                    movie.duration_ms()
+                ));
+                let mut player = Player::new(movie);
+                let mut started = None;
+                loop {
+                    let Some((pass, now, due)) = passes.next() else {
+                        return report.finish();
+                    };
+                    let lead = format!("pass {pass} t={now}");
+                    for command in &due {
+                        report.line(format_args!("{lead} {command}"));
+                    }
+                    if due.contains(&Command::Quit) {
+                        return report.finish();
+                    }
+                    if due.iter().any(|c| {
+                        matches!(
+                            c,
+                            Command::Skip | Command::Key(..) | Command::Mouse(Mouse::Down)
+                        )
+                    }) {
+                        report.line(format_args!("{lead} movie {} skipped", intro.file));
+                        break;
+                    }
+                    let ms = now.saturating_sub(*started.get_or_insert(now));
+                    if let Some((n, picture)) = player.at(ms) {
+                        intro::compose(&mut window, &picture);
+                        report.line(format_args!(
+                            "{lead} movie {} frame {n} {:016x}",
+                            intro.file,
+                            frame_hash(&window)
+                        ));
+                        png(pass, &window)?;
+                    }
+                    if player.done(ms) {
+                        report.line(format_args!("{lead} movie {} end", intro.file));
+                        break;
+                    }
+                }
+            }
             let booted = boot(vfs, &ini, size, &flags.show, &mut |_| Ok(()), &mut || {})?;
             menu_catalogue = booted.catalogue;
-            let app = App::menu(
+            for line in booted.lines {
+                report.line(format_args!("startup {line}"));
+            }
+            App::menu(
                 MapRenderer::new(vfs, &menu_catalogue),
                 Timers::from_config(&ini),
                 size,
                 booted.interface,
                 booted.menu,
                 Music::from_config(&ini),
-            )?;
-            report.line(format_args!("{}", app.log_header()));
-            for line in booted.lines {
-                report.line(format_args!("startup {line}"));
-            }
-            app
+            )?
         }
     };
-    let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
-    // Every pass of the scripted clock, or only the logged ones: a pass in which nothing fires
-    // and no command comes changes nothing.
-    let mut play = |pass: u64, now: u64, due: &[Command]| -> Result<bool, CliError> {
-        if let Some(frame) = app.pass(now, due)
-            && flags.png_every.is_some_and(|k| pass.is_multiple_of(k))
-        {
-            let file = out.join(format!("frame-{pass:06}.png"));
-            let png = File::create(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-            write_png(frame, BufWriter::new(png))
-                .map_err(|e| format!("{}: {e}", file.display()))?;
+    for (pass, now, due) in passes {
+        if let Some(frame) = app.pass(now, &due) {
+            png(pass, frame)?;
         }
         for line in app.log_lines(pass, now) {
             report.line(format_args!("{line}"));
         }
-        Ok(app.quit())
-    };
-    if let Some(passes) = logged {
-        for (pass, now, due) in passes {
-            if play(pass, now, &due)? {
-                break;
-            }
-        }
-    } else {
-        for pass in 0..flags.passes.unwrap_or(0) {
-            let mut due = Vec::new();
-            while let Some((_, command)) = commands.next_if(|&(at, _)| at <= pass) {
-                due.push(command);
-            }
-            if play(pass, pass.saturating_mul(flags.clock), &due)? {
-                break;
-            }
+        if app.quit() {
+            break;
         }
     }
-    drop(play);
     report.finish()
 }
 

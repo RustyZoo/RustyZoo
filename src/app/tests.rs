@@ -259,6 +259,7 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Key(Key::Y, true, true),
         Command::Char(0),
         Command::Char(255),
+        Command::Skip,
     ] {
         assert_eq!(command.to_string().parse(), Ok(command));
     }
@@ -285,6 +286,7 @@ fn commands_have_a_text_form_that_reads_back() {
         "char 256",
         "char -1",
         "char ab",
+        "skip 1",
     ] {
         assert!(bad.parse::<Command>().is_err(), "{bad:?}");
     }
