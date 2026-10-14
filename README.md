@@ -61,15 +61,7 @@ The game loads every `lang*.dll` of the install folder, ordered by file name fro
 
 ## Roadmap
 
-- [x] Foundations: repository, CI, a window and an audio device
-- [ ] Assets: read the original game's archives and file formats
-- [ ] Static world: draw terrain, objects and animals from the original data
-- [ ] Window: game loop, camera and input
-- [ ] UI: the in-game interface
-- [ ] Building: place and remove terrain, paths, fences and buildings
-- [ ] Life: animals, guests and staff, up to the first playable freeform game
-- [ ] Full game: scenarios, campaigns and everything else the original has
-- [ ] Packaging: ready-to-run releases for Windows, macOS and Linux
+The plan and its progress are in the [milestones](https://github.com/RustyZoo/RustyZoo/milestones); the work in progress is on the public [project board](https://github.com/orgs/RustyZoo/projects/1).
 
 ## Related projects
 
