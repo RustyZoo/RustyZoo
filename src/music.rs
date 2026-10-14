@@ -3,6 +3,8 @@
 
 use crate::config::{Config, to_int};
 
+/// The most a sound may be attenuated for it to start (sound specification 4.2).
+pub const START_LIMIT: i32 = 6000;
 /// The most the fade term `F` may reach before the music is stopped.
 const FADE_END: i32 = 3000;
 /// Interface updates that do nothing at the first fade of a session.
@@ -47,7 +49,8 @@ pub struct Music {
 }
 
 impl Music {
-    /// The music the `[UI]` section of the ini file asks for; `None` if `noMenuMusic` is exactly 1.
+    /// The music the `[UI]` section of the ini file asks for; `None` if `noMenuMusic` is exactly 1
+    /// or its sum is over [`START_LIMIT`]: such a music does not start, so it does not fade.
     /// The file is `menuMusic` (`sounds/mainmenu.wav` when absent), `G` comes from
     /// `userAttenuation` and `B` from `menuMusicAttenuation` (0 when absent).
     pub fn from_config(ini: &Config) -> Option<Music> {
@@ -56,7 +59,7 @@ impl Music {
         if get("noMenuMusic").and_then(to_int) == Some(1) {
             return None;
         }
-        Some(Music {
+        let music = Music {
             file: get("menuMusic").map_or_else(
                 || "sounds/mainmenu.wav".to_string(),
                 |name| String::from_utf8_lossy(name).into_owned(),
@@ -65,7 +68,8 @@ impl Music {
             base: get("menuMusicAttenuation").and_then(to_int).unwrap_or(0),
             fade: 0,
             state: State::Playing,
-        })
+        };
+        (music.sum() <= START_LIMIT).then_some(music)
     }
 
     pub fn file(&self) -> &str {
@@ -110,9 +114,8 @@ impl Music {
                 false
             }
             State::Fading => {
-                if period < 2000 {
-                    self.fade += (period / 2) as i32;
-                }
+                // The period is below 1000 ms: the ini rate is at least 1 per second.
+                self.fade += (period / 2) as i32;
                 if self.fade > FADE_END {
                     self.state = State::Stopped;
                 }
@@ -195,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fade_in_progress_is_not_started_again_and_a_slow_period_does_not_fade() {
+    fn a_fade_in_progress_is_not_started_again() {
         let mut m = music("").unwrap();
         m.start_fade();
         for _ in 0..7 {
@@ -204,12 +207,11 @@ mod tests {
         let fade = m.sum();
         m.start_fade();
         assert!(m.update(66) && m.sum() == fade + 33);
-        // At 2000 ms or more the period adds nothing: the volume is refreshed, the fade stays.
-        let mut m = music("").unwrap();
-        m.start_fade();
-        for _ in 0..20 {
-            m.update(2000);
-        }
-        assert!(m.update(2000) && m.sum() == 0 && !m.stopped());
+    }
+
+    #[test]
+    fn a_music_too_quiet_to_start_does_not_exist() {
+        assert!(music("[UI]\nuserAttenuation=1500\nmenuMusicAttenuation=1000\n").is_some());
+        assert!(music("[UI]\nuserAttenuation=1500\nmenuMusicAttenuation=1001\n").is_none());
     }
 }

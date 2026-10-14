@@ -4,13 +4,10 @@
 
 use std::error::Error;
 
-use rustyzoo::music::{Music, gain};
+use rustyzoo::music::{Music, START_LIMIT, gain};
 use rustyzoo::vfs::Vfs;
 use sdl3::audio::{AudioDevice, AudioFormat, AudioSpec, AudioStreamOwner};
 use sdl3::iostream::IOStream;
-
-/// The most a sound may be attenuated for it to start (sound specification 4.2).
-const START_LIMIT: i32 = 6000;
 
 /// A decoded WAV file: samples as SDL gives them (8, 16, 32 bit integer or 32 bit float).
 #[derive(Clone)]

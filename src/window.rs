@@ -31,13 +31,20 @@ use crate::input;
 /// The window when the ini file does not say.
 const DEFAULT_SIZE: (u32, u32) = (1024, 768);
 
-/// While the window is minimised or hidden, the music is filled up at least this often.
-const MUSIC_FEED_MS: u32 = 250;
-
 /// Queues the music again when it runs low; a music that fails stops for good.
 fn feed(music: &mut Option<Voice>) {
     if let Some(voice) = music
         && let Err(e) = voice.update()
+    {
+        eprintln!("rustyzoo: the menu music stops: {e}");
+        *music = None;
+    }
+}
+
+/// Pauses or resumes the music where it is; a music that fails stops for good.
+fn hold(music: &mut Option<Voice>, hold: bool) {
+    if let Some(voice) = music
+        && let Err(e) = if hold { voice.pause() } else { voice.resume() }
     {
         eprintln!("rustyzoo: the menu music stops: {e}");
         *music = None;
@@ -192,18 +199,24 @@ pub fn run(
     let mut pass = 0;
     let mut shown = false;
     let mut pointer = None;
+    let mut held = false;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
         }
         // Minimised or hidden: nothing runs until something happens (a close request still
-        // does), but the music goes on, so it does not start again from its beginning.
+        // does). The music waits where it is and goes on at the restore, not from its beginning.
         if state.asleep() && !commands.contains(&Command::Quit) {
-            if let Some(event) = pump.wait_event_timeout_ms(MUSIC_FEED_MS) {
-                state.note(event, &mut commands);
+            if !held {
+                held = true;
+                hold(&mut music, true);
             }
-            feed(&mut music);
+            state.note(pump.wait_event(), &mut commands);
             continue;
+        }
+        if held {
+            held = false;
+            hold(&mut music, false);
         }
         while let Some((_, command)) = script.next_if(|&(at, _)| at <= pass) {
             commands.push(command);
@@ -267,11 +280,10 @@ pub fn run(
         log.flush()?;
     }
     match (&music, app.music()) {
-        (Some(voice), _) => println!(
-            "music gain {:.3} queued {} bytes",
-            voice.gain()?,
-            voice.queued_bytes()?
-        ),
+        (Some(voice), _) => match (voice.gain(), voice.queued_bytes()) {
+            (Ok(gain), Ok(bytes)) => println!("music gain {gain:.3} queued {bytes} bytes"),
+            (Err(e), _) | (_, Err(e)) => eprintln!("rustyzoo: the menu music state: {e}"),
+        },
         (None, Some((model, _))) if model.stopped() => println!("music stopped"),
         _ => println!("music none"),
     }
