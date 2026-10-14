@@ -53,9 +53,8 @@ windowed() {
 fullscreen() {
   d=$(mktemp -d)
   printf '3 fullscreen on\n8 zoom in\n14 fullscreen off\n18 zoom in\n' >"$d/script"
-  SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 30 --script "$d/script" --log "$d/log" >/dev/null 2>"$d/err"
-  cat "$d/err" >&2
-  sed -n 's/^pass [0-9]* t=[0-9]* fullscreen \(on\|off\)$/\1/p' "$d/log" | tr '\n' ,
+  SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 30 --script "$d/script" --log "$d/log" >/dev/null
+  sed -n -E 's/^pass [0-9]+ t=[0-9]+ fullscreen (on|off)$/\1/p' "$d/log" | tr '\n' ,
   awk '/ draw /{z=$NF} END{printf "%s,", z}' "$d/log"
   if rz run "$1" --headless --replay "$d/log" | cmp -s - "$d/log"; then echo same; else echo different; fi
   rm -rf "${d:?}"
