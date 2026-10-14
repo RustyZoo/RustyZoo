@@ -480,10 +480,8 @@ fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
     }
 }
 
-#[test]
-fn a_window_of_the_view_is_drawn_from_its_top_left_view_space_point() {
-    // The ground picture of the one tile is two pixels, its top left at the view-space point
-    // (32, 0).
+/// An install whose terrain cache holds `frame` for the one grass tile.
+fn cache_install(name: &str, frame: Vec<u8>) -> Install {
     let mut palette = 2u32.to_le_bytes().to_vec();
     palette.extend([0, 0, 0, 255, 200, 100, 50, 255]);
     let mut members = vec![
@@ -494,13 +492,20 @@ fn a_window_of_the_view_is_drawn_from_its_top_left_view_space_point() {
         ("ztats/00.pal".to_string(), palette),
     ];
     for variation in 0..9 {
-        members.push((format!("ztats/0000{variation:02x}.lle"), frame_file()));
+        members.push((format!("ztats/0000{variation:02x}.lle"), frame.clone()));
     }
     let members: Vec<(&str, Vec<u8>)> = members
         .iter()
         .map(|(n, c)| (n.as_str(), c.clone()))
         .collect();
-    let install = Install::new("render-window", &members);
+    Install::new(name, &members)
+}
+
+#[test]
+fn a_window_of_the_view_is_drawn_from_its_top_left_view_space_point() {
+    // The ground picture of the one tile is two pixels, its top left at the view-space point
+    // (32, 0).
+    let install = cache_install("render-window", frame_file());
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let zoo = tile_with(&[]);
@@ -526,6 +531,29 @@ fn a_window_of_the_view_is_drawn_from_its_top_left_view_space_point() {
     // A window without area or beyond the pixel limit is an error.
     assert!(draw((0, 0, 0, 5)).is_err());
     assert!(draw((0, 0, u32::MAX, u32::MAX)).is_err());
+}
+
+#[test]
+fn windows_at_the_extremes_of_view_space_never_overflow() {
+    // The picture has offsets, which are subtracted from a position that is already far away.
+    let mut frame = Vec::new();
+    for field in [1u16, 2, 5, 7, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 2, 1, 1]);
+    let install = cache_install("render-window-extreme", frame);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[]);
+    for x in [i32::MIN, 0, i32::MAX] {
+        for y in [i32::MIN, 0, i32::MAX] {
+            let options = Options {
+                window: Some((x, y, 2, 2)),
+                ..Options::default()
+            };
+            let _ = MapRenderer::new(&vfs, &catalogue).render_with(&zoo, 0, &options);
+        }
+    }
 }
 
 #[test]

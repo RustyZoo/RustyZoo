@@ -67,7 +67,7 @@ usage: rustyzoo [--data <dir>] <command>
                       with --view, draw only the window of W by H pixels whose top left pixel is
                       the view-space point (X, Y), black where the map has nothing (the summary
                       still counts the whole map); with --no-units, leave out animals, guests,
-                      staff and ambient animals
+                      staff and ambient animals, which then are not counted either
   check-render [--rotation N]
                       draw every .zoo file in memory and print the same summary per map and
                       for all of them; a file that cannot be read is skipped; exit 1 only if
@@ -1071,7 +1071,12 @@ fn render_flags(mut flags: &[&str]) -> Result<(u8, Options), CliError> {
                 rest
             }
             ("--view", [x, y, w, h, rest @ ..]) => {
-                let size = |word: &&str| u32::try_from(number(word)?).map_err(|_| CliError::Usage);
+                let size = |word: &&str| {
+                    u32::try_from(number(word)?)
+                        .ok()
+                        .filter(|&n| n > 0)
+                        .ok_or(CliError::Usage)
+                };
                 options.window = Some((number(x)?, number(y)?, size(w)?, size(h)?));
                 rest
             }
@@ -1286,6 +1291,8 @@ mod tests {
         for bad in [
             &["--view", "1", "2", "3"][..],
             &["--view", "1", "2", "-3", "4"],
+            &["--view", "1", "2", "0", "4"],
+            &["--view", "1", "2", "3", "0"],
             &["--view", "1", "2", "3", "x"],
             &["--rotation"],
             &["--unit"],

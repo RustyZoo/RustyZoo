@@ -184,15 +184,15 @@ impl Placed {
                 frame.draw(
                     palette,
                     target,
-                    x - i32::from(frame.x_offset),
-                    y - i32::from(frame.y_offset),
+                    x.saturating_sub(i32::from(frame.x_offset)),
+                    y.saturating_sub(i32::from(frame.y_offset)),
                 );
             }
             Pic::Rendered(picture) => blend(
                 &picture.image,
                 target,
-                x - picture.x_offset,
-                y - picture.y_offset,
+                x.saturating_sub(picture.x_offset),
+                y.saturating_sub(picture.y_offset),
             ),
             Pic::Anim(anim, view) => anim.draw(*view, 0, target, x, y),
         }
