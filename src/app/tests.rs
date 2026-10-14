@@ -24,6 +24,7 @@ fn map() -> Zoo {
 fn reference(renderer: &mut MapRenderer, camera: &Camera) -> Framebuffer {
     let options = Options {
         window: Some((camera.scroll.0, camera.scroll.1, SIZE.0, SIZE.1)),
+        zoom: camera.zoom,
         ..Options::default()
     };
     renderer
@@ -154,17 +155,32 @@ fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass()
         assert_eq!(app.camera().rotation, 3);
         assert_eq!(frame, reference(other, app.camera()).pixels);
         // A zoom changes the camera and is a frame of its own.
-        assert!(app.pass(140, &[Command::Zoom(true)]).is_some());
+        let frame = app
+            .pass(140, &[Command::Zoom(true)])
+            .unwrap()
+            .pixels
+            .clone();
         assert_eq!(app.camera().zoom, 2);
+        assert_eq!(frame, reference(other, app.camera()).pixels);
         app.pass(160, &[Command::Zoom(true)]);
         assert_eq!(app.camera().zoom, 2, "the limit");
+        // Zoomed out, the frame is the zoomed out window of the same camera.
+        for (now, want) in [(180, 0), (200, -2)] {
+            let frame = app
+                .pass(now, &[Command::Zoom(false)])
+                .unwrap()
+                .pixels
+                .clone();
+            assert_eq!(app.camera().zoom, want);
+            assert_eq!(frame, reference(other, app.camera()).pixels);
+        }
         // Quit is a flag the shell reads. The pass that gets it runs no timer, and no command
         // after it; the log still tells the commands it applied.
         assert!(!app.quit());
-        assert!(app.pass(180, &[Command::Quit, Command::Pause]).is_none());
+        assert!(app.pass(220, &[Command::Quit, Command::Pause]).is_none());
         assert!(app.quit() && !app.paused() && !app.fired().draw);
-        assert_eq!(app.log_lines(9, 180), ["pass 9 t=180 quit"]);
-        assert!(app.pass(200, &[]).is_none() && app.log_lines(10, 200).is_empty());
+        assert_eq!(app.log_lines(9, 220), ["pass 9 t=220 quit"]);
+        assert!(app.pass(240, &[]).is_none() && app.log_lines(10, 240).is_empty());
     });
 }
 

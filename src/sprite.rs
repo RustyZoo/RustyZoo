@@ -423,20 +423,20 @@ impl Frame {
     }
 }
 
-/// Where the pixels of a frame land: its anchor, mirroring, zoom and geometry.
-struct Place {
-    x: i64,
-    y: i64,
-    mirror: bool,
-    zoom: Zoom,
-    x_offset: i64,
-    y_offset: i64,
-    height: i64,
+/// Where the pixels of a picture land: its anchor, mirroring, zoom and geometry.
+pub(crate) struct Place {
+    pub(crate) x: i64,
+    pub(crate) y: i64,
+    pub(crate) mirror: bool,
+    pub(crate) zoom: Zoom,
+    pub(crate) x_offset: i64,
+    pub(crate) y_offset: i64,
+    pub(crate) height: i64,
 }
 
 impl Place {
     /// The first framebuffer column and the number of columns (0: not drawn) of source column `c`.
-    fn column(&self, c: i64) -> (i64, i64) {
+    pub(crate) fn column(&self, c: i64) -> (i64, i64) {
         let d = c - self.x_offset;
         match (self.zoom, self.mirror) {
             (Zoom::Normal, false) => (self.x + d, 1),
@@ -449,7 +449,7 @@ impl Place {
     }
 
     /// The first framebuffer row and the number of rows (0: not drawn) of source row `r`.
-    fn row(&self, r: i64) -> (i64, i64) {
+    pub(crate) fn row(&self, r: i64) -> (i64, i64) {
         let d = r - self.y_offset;
         match self.zoom {
             Zoom::Normal => (self.y + d, 1),

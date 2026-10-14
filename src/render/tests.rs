@@ -557,7 +557,7 @@ fn check_windows(
 ) {
     for &(x, y, w, h) in windows {
         let mut canvas = Framebuffer::new(w, h);
-        staged.draw(&mut canvas, x, y);
+        staged.draw(&mut canvas, x, y, 0);
         let mut want = Framebuffer::new(w, h);
         want.fill([0, 0, 0, 255]);
         for row in 0..h as i64 {
@@ -1410,7 +1410,12 @@ fn on_real_maps_any_window_of_one_staging_is_a_window_of_the_whole_map() {
             let mut canvas = Framebuffer::new(1024, 768);
             let start = std::time::Instant::now();
             for _ in 0..20 {
-                staged.draw(&mut canvas, origin.0 + w / 2 - 512, origin.1 + h / 2 - 384);
+                staged.draw(
+                    &mut canvas,
+                    origin.0 + w / 2 - 512,
+                    origin.1 + h / 2 - 384,
+                    0,
+                );
             }
             eprintln!(
                 "{member} rotation {rotation}: {:?} per 1024x768 draw",
@@ -1418,4 +1423,124 @@ fn on_real_maps_any_window_of_one_staging_is_a_window_of_the_whole_map() {
             );
         }
     }
+}
+
+/// Draws the one-tile map `zoo` whole at a zoom value; the picture and the view-space point of
+/// its top left pixel.
+fn at_zoom(vfs: &Vfs, zoo: &Zoo, zoom: i32) -> (Framebuffer, (i64, i64)) {
+    let catalogue = Catalogue::load(vfs).unwrap();
+    let options = Options {
+        zoom,
+        ..Options::default()
+    };
+    let mut renderer = MapRenderer::new(vfs, &catalogue);
+    let (image, _) = renderer.render_with(zoo, 0, &options).unwrap();
+    let b = renderer.stage(zoo, 0, false).unwrap().bounds_at(zoom);
+    (image, (b[0], b[1]))
+}
+
+/// The view-space points of the pixels of `image` that are not black.
+fn lit(image: &Framebuffer, (left, top): (i64, i64)) -> Vec<(i64, i64)> {
+    let w = image.width as usize;
+    let mut points = Vec::new();
+    for (i, pixel) in image.pixels.as_chunks::<4>().0.iter().enumerate() {
+        if pixel[..3] != [0, 0, 0] {
+            points.push((left + (i % w) as i64, top + (i / w) as i64));
+        }
+    }
+    points
+}
+
+#[test]
+fn a_cached_ground_picture_is_doubled_in_place_zoomed_in_and_thinned_zoomed_out() {
+    // The two pixels of the picture are at the view-space points (32, 0) and (33, 0) at normal
+    // zoom, the anchor being (32, 0) and the offsets 0.
+    let install = cache_install("render-zoom-cached", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let zoo = tile_with(&[]);
+    let (image, at) = at_zoom(&vfs, &zoo, 0);
+    assert_eq!(lit(&image, at), [(32, 0), (33, 0)]);
+    // In: each pixel is a block of 2 by 2 from (2 * 32, 0).
+    let (image, at) = at_zoom(&vfs, &zoo, 2);
+    let want: Vec<(i64, i64)> = (0..2).flat_map(|y| (64..68).map(move |x| (x, y))).collect();
+    let mut got = lit(&image, at);
+    got.sort_by_key(|&(x, y)| (y, x));
+    assert_eq!(got, want);
+    // Out: the column of an even distance to the anchor is kept, but a picture one row high
+    // keeps no row.
+    let (image, at) = at_zoom(&vfs, &zoo, -2);
+    assert!(lit(&image, at).is_empty());
+}
+
+#[test]
+fn a_ground_picture_rendered_at_run_time_follows_the_same_rules_at_every_zoom() {
+    // A 6 by 6 red texture, 24 bits, rows bottom up.
+    let mut texture = vec![0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 6, 0, 24, 0];
+    texture.extend([0, 0, 255].repeat(36));
+    let install = Install::new(
+        "render-zoom-rendered",
+        &[
+            (
+                "terrain/tiletex.cfg",
+                b"[ttGrass]\ntype=0\ntexture=terrain/g.tga\n".to_vec(),
+            ),
+            ("terrain/g.tga", texture),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let zoo = tile_with(&[]);
+    let (image, at) = at_zoom(&vfs, &zoo, 0);
+    let normal = lit(&image, at);
+    assert!(normal.len() > 1000);
+    // The anchor of the ground is (32, 0) at normal zoom; its offsets are 32 and 16, as the
+    // diamond's. In: every pixel becomes a block of 2 by 2 about twice as far from the anchor.
+    let (image, at) = at_zoom(&vfs, &zoo, 2);
+    let mut got = lit(&image, at);
+    got.sort();
+    let mut want: Vec<(i64, i64)> = normal
+        .iter()
+        .flat_map(|&(x, y)| {
+            let (x, y) = (2 * (x - 32) + 64, 2 * y);
+            [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)]
+        })
+        .collect();
+    want.sort();
+    assert_eq!(got, want);
+    // Out: the pixels at an even distance from the anchor in both directions go to half of it; the
+    // 33 rows of the picture keep 16, those from the row of the offset 16 (even) up by pairs.
+    let (image, at) = at_zoom(&vfs, &zoo, -2);
+    let mut got = lit(&image, at);
+    got.sort();
+    let mut want: Vec<(i64, i64)> = normal
+        .iter()
+        .filter(|&&(x, y)| (x - 32) % 2 == 0 && y % 2 == 0 && y < 16)
+        .map(|&(x, y)| (16 + (x - 32) / 2, y / 2))
+        .collect();
+    want.sort();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn a_huge_zoom_factor_puts_no_tile_where_a_clamp_would() {
+    // Every tile but the first is at least 32 view-space pixels from the origin, so 2^36 and
+    // more at this factor: far from the window at 2^30, where a clamp of the corner would put
+    // them.
+    let install = cache_install("render-zoom-huge", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo {
+        width: 40,
+        height: 40,
+        tiles: flat_map(40, 40),
+        ..tile_with(&[])
+    };
+    let options = Options {
+        zoom: i32::MAX,
+        window: Some(((1 << 30) - 200, (1 << 30) - 200, 400, 400)),
+        ..Options::default()
+    };
+    let (image, _) = MapRenderer::new(&vfs, &catalogue)
+        .render_with(&zoo, 0, &options)
+        .unwrap();
+    assert!(lit(&image, (0, 0)).is_empty());
 }
