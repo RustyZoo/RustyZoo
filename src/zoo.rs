@@ -157,7 +157,8 @@ impl Zoo {
             v: version,
         };
         let mut section = "header";
-        read(&mut r, &mut section).map_err(|Bad(why)| ZooError::Corrupted(format!("{section}: {why}")))
+        read(&mut r, &mut section)
+            .map_err(|Bad(why)| ZooError::Corrupted(format!("{section}: {why}")))
     }
 }
 
