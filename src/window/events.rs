@@ -48,8 +48,11 @@ impl State {
                 win_event: WindowEvent::CloseRequested,
                 ..
             } => commands.push(Command::Quit),
+            // A resize changes where the picture goes: draw it again, even if the game paints
+            // nothing.
             Event::Window {
-                win_event: WindowEvent::Exposed,
+                win_event:
+                    WindowEvent::Exposed | WindowEvent::Resized(..) | WindowEvent::PixelSizeChanged(..),
                 ..
             } => self.exposed = true,
             _ => {}
@@ -100,6 +103,14 @@ mod tests {
         assert!(!state.exposed && commands.is_empty());
         state.note(window(WindowEvent::Exposed), &mut commands);
         assert!(state.exposed);
+        for resize in [
+            WindowEvent::Resized(5, 5),
+            WindowEvent::PixelSizeChanged(0, -1),
+        ] {
+            state.exposed = false;
+            state.note(window(resize), &mut commands);
+            assert!(state.exposed, "a resize draws the picture again");
+        }
         state.note(window(WindowEvent::CloseRequested), &mut commands);
         state.note(Event::Quit { timestamp: 0 }, &mut commands);
         assert_eq!(commands, [Command::Quit, Command::Quit]);
