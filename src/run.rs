@@ -1,7 +1,7 @@
 //! `rustyzoo run`: the map view's game. With `--headless` it is driven by a scripted clock and a
 //! script of commands, or by the log of an earlier run, without a window: it prints the size of
 //! the window and the lines of [`App::log_lines`]. Without it the game opens a window (see
-//! `window.rs`) and `--log` writes the same lines to a file, so a log replayed here gives the
+//! `window/`) and `--log` writes the same lines to a file, so a log replayed here gives the
 //! same frame hashes.
 
 use std::fs::File;

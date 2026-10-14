@@ -1,0 +1,73 @@
+//! What the window tells through its events, and whether it is asleep.
+
+use rustyzoo::app::Command;
+use sdl3::event::{Event, WindowEvent};
+use sdl3::video::WindowFlags;
+
+use crate::input;
+
+/// Whether the window is hidden or minimised, from its flags. The flags are read, not followed
+/// through the events: a restore that comes as another event cannot leave the loop asleep.
+pub fn asleep(flags: WindowFlags) -> bool {
+    flags.intersects(WindowFlags::HIDDEN | WindowFlags::MINIMIZED)
+}
+
+/// What the window tells through its events.
+#[derive(Default)]
+pub struct State {
+    /// The system asks to draw the window again.
+    pub exposed: bool,
+}
+
+impl State {
+    /// Turns an event into a command or a change of state.
+    pub fn note(&mut self, event: Event, commands: &mut Vec<Command>) {
+        if let Some(command) = input::command(&event) {
+            commands.push(command);
+        }
+        match event {
+            Event::Quit { .. }
+            | Event::Window {
+                win_event: WindowEvent::CloseRequested,
+                ..
+            } => commands.push(Command::Quit),
+            Event::Window {
+                win_event: WindowEvent::Exposed,
+                ..
+            } => self.exposed = true,
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_flags_decide_whether_the_loop_blocks() {
+        let window = |win_event| Event::Window {
+            timestamp: 0,
+            window_id: 1,
+            win_event,
+        };
+        let (mut state, mut commands) = (State::default(), Vec::new());
+        assert!(asleep(WindowFlags::MINIMIZED));
+        assert!(asleep(WindowFlags::HIDDEN | WindowFlags::INPUT_FOCUS));
+        assert!(
+            !asleep(WindowFlags::MAXIMIZED),
+            "a restore may come as Maximized"
+        );
+        assert!(
+            !asleep(WindowFlags::empty()),
+            "inactive but visible keeps running"
+        );
+        state.note(window(WindowEvent::FocusLost), &mut commands);
+        assert!(!state.exposed && commands.is_empty());
+        state.note(window(WindowEvent::Exposed), &mut commands);
+        assert!(state.exposed);
+        state.note(window(WindowEvent::CloseRequested), &mut commands);
+        state.note(Event::Quit { timestamp: 0 }, &mut commands);
+        assert_eq!(commands, [Command::Quit, Command::Quit]);
+    }
+}
