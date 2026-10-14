@@ -285,17 +285,6 @@ fn terrain_blend(vfs: &Vfs) -> Vec<bool> {
     blend
 }
 
-/// The root bitmap named in a configuration file, as a member path.
-fn bitmap_name(image: &[u8]) -> String {
-    String::from_utf8_lossy(image).trim().replace('\\', "/")
-}
-
-/// Its pre-converted copy: `ztst/<name>` with the extension taken off.
-fn converted(bitmap: &str) -> String {
-    let stem = bitmap.rsplit_once('.').map_or(bitmap, |(stem, _)| stem);
-    format!("ztst/{stem}")
-}
-
 /// Draws maps. It keeps what it loaded between maps: the catalogue, the animations and the
 /// pictures of the cache.
 pub struct MapRenderer<'a> {
@@ -327,13 +316,13 @@ impl<'a> MapRenderer<'a> {
                 to_int(name).and_then(|n| u32::try_from(n).ok()),
                 section.get("image"),
             ) {
-                fringe.insert(piece, bitmap_name(image));
+                fringe.insert(piece, bitmap::member_name(image));
             }
         }
         let mut grid = HashMap::new();
         for (name, section) in read("tile.cfg").sections() {
             if let Some(shape) = to_int(name).and_then(|n| u32::try_from(n).ok()) {
-                let sprite = |key: &str| section.get(key).map(bitmap_name);
+                let sprite = |key: &str| section.get(key).map(bitmap::member_name);
                 grid.insert(shape, (sprite("northgrid"), sprite("eastgrid")));
             }
         }
@@ -366,20 +355,13 @@ impl<'a> MapRenderer<'a> {
         found
     }
 
-    /// The picture of a root bitmap: its copy in `ztst` with the palette next to it, or, when
-    /// either is missing, the bitmap converted in memory.
+    /// The picture of a root bitmap: its shipped copy, or the bitmap converted in memory.
     fn piece(&mut self, bitmap: &str) -> Option<Flat> {
-        let stem = converted(bitmap);
-        if let Some(flat) = self.flat(&stem, &stem) {
-            return Some(flat);
-        }
-        let key = format!("{stem}|bitmap");
+        let key = format!("{bitmap}|bitmap");
         if let Some(found) = self.flats.get(&key) {
             return found.clone();
         }
-        let found = (self.vfs.read(bitmap).ok())
-            .and_then(|bytes| bitmap::convert(&bytes).ok())
-            .map(Rc::new);
+        let found = bitmap::load(self.vfs, bitmap).map(Rc::new);
         self.flats.insert(key, found.clone());
         found
     }

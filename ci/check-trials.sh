@@ -37,6 +37,9 @@ check base-trial 5,3,2,0,13750,1371 "rz check-maps | tail -1 | grep -o '[0-9]*' 
 # run time (the cache lacks them), undrawn; cliff pieces drawn, missing; objects drawn, with a
 # missing type or animation, not placed.
 check base-trial 3,2,0,13731,19,0,71,0,1371,0,0 "rz check-render | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+# Root bitmaps (grid lines, highlight, cliff pieces) converted in memory and compared with the
+# shipped copies: bitmaps, identical, differing, without a shipped copy, failed.
+check base-trial 41,41,0,0,0 "rz check-bitmaps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # Entity types: the total, then per class (food, paths, fences, buildings, animals, guests, scenery,
 # staff, ambient, rubble, tank walls, filters), and the types whose base animation member is missing.
 check base-trial 51,6,1,6,17,4,2,13,2,0,0,0,0 "rz types | tail -1 | grep -o '[0-9]*' | paste -sd, -"
@@ -58,10 +61,13 @@ check expansion-trial 6545,82588,12191,140,0,4 "rz check-sprites | tail -1 | gre
 check expansion-trial 2119,6556,0,4065,0,4,1,852,3,1,4,764,5,493,20,9,2101,9,9 "rz check-anis | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 3,3924,187 "rz strings | awk '/^LIB/{l++} /^TEXT/{t++} /^[0-9]/{s++} END{print l\",\"s\",\"t}'"
 check expansion-trial 5,5,0,0,28125,4160 "rz check-maps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
-# The expansion trial ships no ground cache, so every tile is rendered at run time; it ships no
-# cliff pieces (only their bitmaps), so cliffs are not drawn.
-check expansion-trial 5,0,0,0,28125,0,0,2434,3421,290,449 "rz check-render | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+# The expansion trial ships no ground cache, so every tile is rendered at run time. It ships no
+# converted cliff pieces either (only their bitmaps), so they are converted in memory: all 2434
+# are drawn.
+check expansion-trial 5,0,0,0,28125,0,2434,0,3421,290,449 "rz check-render | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 150,14,8,17,26,8,2,47,6,0,7,14,1 "rz types | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+# The expansion trial ships none of the 41 copies: all convert.
+check expansion-trial 41,0,0,41,0 "rz check-bitmaps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 0 "rz types | awk -F'\\t' 'NF>6 && \$7==\"no\"{n++} END{print n+0}'"
 check expansion-trial 0,0,0,0,0,0,0 "rz check-ground | tail -1 | cut -d';' -f1 | grep -o '[0-9]*' | paste -sd, -"
 

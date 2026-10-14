@@ -1,4 +1,5 @@
 use super::*;
+use crate::sprite::tests::Install;
 
 pub(crate) const WHITE: [u8; 3] = [255, 255, 255];
 pub(crate) const RED: [u8; 3] = [255, 0, 0];
@@ -184,4 +185,41 @@ fn pictures_are_compared_by_size_offsets_and_pixels() {
             .unwrap_err()
             .contains("box")
     );
+}
+
+#[test]
+fn the_names_are_those_of_the_tile_and_fringe_configurations_each_once() {
+    let install = Install::new(
+        "bitmap-names",
+        &[
+            ("tile.cfg", b"[0]\nimage=a.bmp\nnorthgrid=n0.bmp\neastgrid=e0.bmp\n\n[1]\nhighlight=s1.bmp\nnorthgrid=n0.bmp\n".to_vec()),
+            ("tile2.cfg", b"[0]\nhighlight=s2.bmp\n".to_vec()),
+            ("sub/tile3.cfg", b"[0]\nhighlight=no.bmp\n".to_vec()),
+            ("fringe.cfg", b"[1]\nimage=fringe\\l0010.bmp\nopaque=0\n".to_vec()),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    assert_eq!(
+        names(&vfs),
+        ["n0.bmp", "e0.bmp", "s1.bmp", "s2.bmp", "fringe/l0010.bmp"]
+    );
+}
+
+#[test]
+fn a_shipped_pair_is_used_and_either_file_missing_means_converting() {
+    let lle = [2u8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0];
+    let pal = [1u8, 0, 0, 0, 9, 9, 9, 255];
+    let bitmap = bmp24(&sample(), false);
+    let members = |extra: &[(&'static str, Vec<u8>)]| {
+        let mut all = vec![("a.bmp", bitmap.clone())];
+        all.extend_from_slice(extra);
+        let install = Install::new("bitmap-load", &all);
+        let vfs = Vfs::open(&install.0).unwrap();
+        load(&vfs, "a.bmp").unwrap()
+    };
+    let both = members(&[("ztst/a.lle", lle.to_vec()), ("ztst/a.pal", pal.to_vec())]);
+    assert_eq!(both.0, Frame::parse(&lle).unwrap());
+    let converted = convert(&bitmap).unwrap();
+    assert_eq!(members(&[("ztst/a.lle", lle.to_vec())]), converted);
+    assert_eq!(members(&[]), converted);
 }

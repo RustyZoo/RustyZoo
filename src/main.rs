@@ -9,6 +9,7 @@ use std::process::ExitCode;
 
 use rustyzoo::Framebuffer;
 use rustyzoo::anim::{self, AnimSet, Animation};
+use rustyzoo::bitmap;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::ground::{self, Key, Renderer};
@@ -67,6 +68,9 @@ usage: rustyzoo [--data <dir>] <command>
                       draw every .zoo file in memory and print the same summary per map and
                       for all of them; a file that cannot be read is skipped; exit 1 only if
                       a map cannot be drawn
+  check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
+                      pieces) as the engine does when their copies in ztst/ are missing, and
+                      compare each with its shipped copy; exit 1 if one differs or fails
   check-anis          load every animation set and the sprite files it names; list the sets
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
@@ -141,6 +145,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             anim::resolve_path(root, name),
             Path::new(dir),
         ),
+        ["check-bitmaps"] => check_bitmaps(&open_game(data_dir)?),
         ["check-anis"] => check_anis(&open_game(data_dir)?),
         ["check-ground"] => check_ground(&open_game(data_dir)?),
         ["render-ground", key, out] => render_ground(&open_game(data_dir)?, key, Path::new(out)),
@@ -1106,6 +1111,51 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
     match failed {
         0 => Ok(()),
         _ => Err(format!("{failed} maps could not be drawn").into()),
+    }
+}
+
+/// Converts every root bitmap of the terrain and compares it with its shipped copy.
+fn check_bitmaps(vfs: &Vfs) -> Result<(), CliError> {
+    let mut report = Report::new();
+    let (mut same, mut differ, mut alone, mut failed) = (0, 0, 0, 0);
+    let names = bitmap::names(vfs);
+    for name in &names {
+        let converted = vfs
+            .read(name)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| bitmap::convert(&bytes));
+        let shipped = bitmap::shipped(vfs, name);
+        let name = name.escape_debug();
+        match (converted, shipped) {
+            (Err(why), _) => {
+                failed += 1;
+                report.line(format_args!("FAILED {name}: {}", why.escape_debug()));
+            }
+            (Ok(_), None) => {
+                alone += 1;
+                report.line(format_args!("converted {name}: no shipped copy"));
+            }
+            (Ok(ours), Some(theirs)) => match bitmap::compare(&ours, &theirs) {
+                Ok(()) => {
+                    same += 1;
+                    report.line(format_args!("identical {name}"));
+                }
+                Err(why) => {
+                    differ += 1;
+                    report.line(format_args!("DIFFERS {name}: {why}"));
+                }
+            },
+        }
+    }
+    report.line(format_args!(
+        "{} bitmaps: {same} identical to the shipped copy, {differ} differ, \
+         {alone} without a shipped copy, {failed} failed",
+        names.len()
+    ));
+    report.finish()?;
+    match differ + failed {
+        0 => Ok(()),
+        n => Err(format!("{n} bitmaps differ or failed").into()),
     }
 }
 

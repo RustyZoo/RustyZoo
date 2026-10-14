@@ -9,7 +9,9 @@
 //! pixels, anchored at the centre of the bitmap; the palette holds the distinct reduced colours.
 
 use crate::Framebuffer;
+use crate::config::Config;
 use crate::sprite::{Frame, MAX_COLORS, MAX_DIMENSION, Palette};
+use crate::vfs::Vfs;
 
 /// A bitmap reduced to 5-6-5 colours: `(width, height)` and the RGB pixels, top row first.
 type Reduced = (usize, usize, Vec<[u8; 3]>);
@@ -147,6 +149,52 @@ pub fn convert(bitmap: &[u8]) -> Result<(Frame, Palette), String> {
     }
     let frame = Frame::parse(&lle).map_err(|e| e.to_string())?;
     Ok((frame, Palette::parse(&pal).map_err(|e| e.to_string())?))
+}
+
+/// The member path of a bitmap named in a configuration file.
+pub fn member_name(value: &[u8]) -> String {
+    String::from_utf8_lossy(value).trim().replace('\\', "/")
+}
+
+/// The bitmaps the terrain loads: the `highlight`, `northgrid` and `eastgrid` of every section of
+/// the `tile*.cfg` files and the `image` of every section of `fringe.cfg`, each once.
+pub fn names(vfs: &Vfs) -> Vec<String> {
+    let read = |member: &str| {
+        (vfs.read(member).ok())
+            .and_then(|bytes| Config::parse(&bytes).ok())
+            .unwrap_or_default()
+    };
+    let mut names = Vec::new();
+    let mut take = |config: Config, keys: &[&str]| {
+        for (_, section) in config.sections() {
+            for key in keys {
+                names.extend(section.get(key).map(member_name));
+            }
+        }
+    };
+    for member in vfs.list(Some("tile*.cfg")) {
+        if member.starts_with("tile") && !member.contains('/') {
+            take(read(&member), &["highlight", "northgrid", "eastgrid"]);
+        }
+    }
+    take(read("fringe.cfg"), &["image"]);
+    let mut seen = std::collections::HashSet::new();
+    names.retain(|name| seen.insert(name.clone()));
+    names
+}
+
+/// The shipped copy of a bitmap, `ztst/<name>` without its extension and its palette, if both exist.
+pub fn shipped(vfs: &Vfs, bitmap: &str) -> Option<(Frame, Palette)> {
+    let stem = bitmap.rsplit_once('.').map_or(bitmap, |(stem, _)| stem);
+    let frame = Frame::parse(&vfs.read(&format!("ztst/{stem}.lle")).ok()?).ok()?;
+    let palette = Palette::parse(&vfs.read(&format!("ztst/{stem}.pal")).ok()?).ok()?;
+    Some((frame, palette))
+}
+
+/// The picture of a bitmap: its shipped copy, or, when either file of the copy is missing, the
+/// bitmap converted.
+pub fn load(vfs: &Vfs, bitmap: &str) -> Option<(Frame, Palette)> {
+    shipped(vfs, bitmap).or_else(|| convert(&vfs.read(bitmap).ok()?).ok())
 }
 
 /// Compares two pictures by their size, offsets and drawn pixels (colour and transparency), not by
