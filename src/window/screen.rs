@@ -15,19 +15,15 @@ pub struct Screen {
     pub canvas: Canvas<Window>,
     /// The game size, not the window's.
     pub size: (u32, u32),
-    /// The cursor is in points of the window; the game reads it in pixels of the game.
-    pub to_game: (f32, f32),
-    /// The game is full screen: the picture is centred and scaled by a whole factor. It follows
-    /// the last switch that the window accepted, and what the window reports on its own.
+    /// The game is full screen (the camera's rules apply). It follows the last switch that the
+    /// window accepted, and what the window reports on its own.
     pub fullscreen: bool,
 }
 
 impl Screen {
-    /// Copies the game picture to the window.
+    /// Copies the game picture to the window, scaled by a whole factor and centred on black
+    /// (see [`fullscreen::fit`]); at the size the window opens with, it fills the window.
     pub fn copy(&mut self, texture: &Texture) -> Result<(), CliError> {
-        if !self.fullscreen {
-            return Ok(self.canvas.copy(texture, None, None)?);
-        }
         let out = self.canvas.output_size()?;
         let (x, y, w, h) = fullscreen::fit(out, self.size);
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -50,12 +46,6 @@ impl Screen {
 
     /// The pixel of the game under the cursor at `at`, in points of the window.
     pub fn pointer(&self, at: (f32, f32)) -> Result<(i32, i32), CliError> {
-        if !self.fullscreen {
-            return Ok((
-                (at.0 * self.to_game.0).floor() as i32,
-                (at.1 * self.to_game.1).floor() as i32,
-            ));
-        }
         let out = self.canvas.output_size()?;
         Ok(fullscreen::pointer(
             at,
@@ -87,6 +77,8 @@ pub fn open(
     let window = video
         .window("RustyZoo", want.0, want.1)
         .high_pixel_density()
+        // The maximise button, which goes to full screen, needs a resizable window.
+        .resizable()
         .build()?;
     // The game keeps its size; the window may come out another size.
     let points = window.size();
@@ -108,14 +100,9 @@ pub fn open(
     if pixels != (size.0 * k, size.1 * k) {
         eprintln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
     }
-    let to_game = (
-        size.0 as f32 / points.0 as f32,
-        size.1 as f32 / points.1 as f32,
-    );
     Ok(Screen {
         canvas,
         size,
-        to_game,
         fullscreen: false,
     })
 }

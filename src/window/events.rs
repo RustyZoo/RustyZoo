@@ -20,6 +20,12 @@ pub fn focused(flags: WindowFlags) -> bool {
     flags.contains(WindowFlags::INPUT_FOCUS)
 }
 
+/// Whether the maximise button of the title bar was pressed on a windowed game, from the flags
+/// of the window (read, like [`asleep`]): the game then goes to full screen (input 3.4).
+pub fn maximised(flags: WindowFlags, fullscreen: bool) -> bool {
+    !fullscreen && flags.contains(WindowFlags::MAXIMIZED)
+}
+
 /// What the window tells through its events.
 #[derive(Default)]
 pub struct State {
@@ -72,6 +78,15 @@ mod tests {
         assert!(
             !asleep(WindowFlags::empty()),
             "inactive but visible keeps running"
+        );
+        assert!(maximised(
+            WindowFlags::MAXIMIZED | WindowFlags::RESIZABLE,
+            false
+        ));
+        assert!(!maximised(WindowFlags::RESIZABLE, false), "just resized");
+        assert!(
+            !maximised(WindowFlags::MAXIMIZED, true),
+            "already full screen"
         );
         let full = WindowFlags::FULLSCREEN;
         assert!(

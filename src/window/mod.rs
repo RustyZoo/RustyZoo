@@ -38,7 +38,7 @@ use sdl3::video::WindowFlags;
 
 use crate::CliError;
 use crate::probe::{self, Timing};
-use events::{State, asleep, focused};
+use events::{State, asleep, focused, maximised};
 use screen::Screen;
 use size::ini_fullscreen;
 use sound::Sound;
@@ -167,6 +167,14 @@ pub fn run(
         if take(&mut state.toggle) && focused(window_flags) {
             let on = !screen.fullscreen;
             switch(&mut screen, &mut state, &mut commands, on, true);
+        }
+        // The maximise button of the title bar goes to full screen (input 3.4). The window is
+        // restored first, so that leaving full screen gives a normal window, not a maximised one.
+        if maximised(window_flags, screen.fullscreen) {
+            let window = screen.canvas.window_mut();
+            window.restore();
+            window.sync();
+            switch(&mut screen, &mut state, &mut commands, true, true);
         }
         let full = window_flags.contains(WindowFlags::FULLSCREEN);
         if full != seen {
