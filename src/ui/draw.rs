@@ -224,6 +224,42 @@ impl Painter {
         blit(frame, &cut.pixels, (x, y), key);
     }
 
+    /// Whether the point (`x`, `y`) of the screen is on an opaque pixel of what the element shows:
+    /// its current picture (for a button, the set of its state) or, for a widget with a canvas,
+    /// its canvas. `None` if it shows nothing yet. Transparent is an animation's pixel without a
+    /// run, an image's or canvas's pixel equal to its top left one (to (1, 1) for a framed text).
+    pub fn opaque_at(&mut self, tree: &Tree, i: usize, (x, y): (i32, i32)) -> Option<bool> {
+        let e = &tree.elements[i];
+        let (sx, sy) = tree.screen(i);
+        let (w, h) = e.placed.map_or((0, 0), |p| (p.dx, p.dy));
+        let canvas = matches!(
+            e.kind,
+            Kind::Text(_) | Kind::EditableText(_) | Kind::ListBox(_)
+        ) || (matches!(e.kind, Kind::Image) && (e.dynamic_width || e.dynamic_height));
+        if canvas {
+            let (made, pixels) = self.canvases.get(&i)?;
+            let key = match &e.kind {
+                Kind::Text(t) if t.show_border && made.size.0 >= 3 && made.size.1 >= 3 => (1, 1),
+                _ => (0, 0),
+            };
+            return Some(pixel_differs(pixels, (x - sx, y - sy), key));
+        }
+        let set = if matches!(e.kind, Kind::Button(_)) {
+            button_set(e.state)
+        } else {
+            0
+        };
+        let (picture, set) = current(e, set)?;
+        let cut = self.cut(&tree.pictures, picture, set)?;
+        Some(match cut.animation {
+            true => {
+                let (ox, oy) = (sx + w / 2 + cut.origin.0, sy + h / 2 + cut.origin.1);
+                alpha_at(&cut.pixels, (x - ox, y - oy))
+            }
+            false => pixel_differs(&cut.pixels, (x - sx, y - sy), (0, 0)),
+        })
+    }
+
     /// The picture ready to copy; `set` is the sprite file of an animation (0 if it has no such).
     fn cut(&mut self, pictures: &Pictures, picture: Picture, set: usize) -> Option<&Cut> {
         let set = match picture {
@@ -441,6 +477,31 @@ fn copy_canvas(
         [p[0], p[1], p[2]]
     });
     blit(frame, canvas, at, key);
+}
+
+/// Whether pixel (x, y) of `image` is not the colour of its pixel `key`; a point outside is not.
+fn pixel_differs(image: &Framebuffer, (x, y): (i32, i32), key: (usize, usize)) -> bool {
+    let at = |x: usize, y: usize| &image.pixels[(y * image.width as usize + x) * 4..][..3];
+    match (usize::try_from(x), usize::try_from(y)) {
+        (Ok(x), Ok(y)) if x < image.width as usize && y < image.height as usize => {
+            at(x, y)
+                != at(
+                    key.0.min(image.width as usize - 1),
+                    key.1.min(image.height as usize - 1),
+                )
+        }
+        _ => false,
+    }
+}
+
+/// Whether pixel (x, y) of a cut animation is drawn; a point outside is not.
+fn alpha_at(image: &Framebuffer, (x, y): (i32, i32)) -> bool {
+    match (usize::try_from(x), usize::try_from(y)) {
+        (Ok(x), Ok(y)) if x < image.width as usize && y < image.height as usize => {
+            image.pixels[(y * image.width as usize + x) * 4 + 3] != 0
+        }
+        _ => false,
+    }
 }
 
 fn top_left(image: &Framebuffer) -> [u8; 3] {

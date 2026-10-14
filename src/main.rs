@@ -115,7 +115,11 @@ usage: rustyzoo [--data <dir>] <command>
                       The interface is drawn over the map, with the layouts given by --show
                       (each ID shown, repeatable) and the map view; the keys and the edge
                       scroll of the map act only while the map view is shown and no field has
-                      the focus. The window is 1024x768 unless
+                      the focus. The mouse commands reach the widgets (hover, buttons of every
+                      kind, radio sets, the actions of buttons, draggable layouts) and a line
+                      `ui ...` tells what they did (hover, sound, press, release, select,
+                      deselect, show, hide, drag); a message over the map view belongs to the
+                      map. The window is 1024x768 unless
                       --size says otherwise. Prints the size of the window, then, for each pass
                       in which something happens: a line per command applied, then one per
                       timer that fires, draw (the hash of the frame painted, or - if none, and

@@ -6,6 +6,8 @@
 //! are shown by [`Interface::show`] (the game code, a script). Whatever changes what the tree
 //! looks like marks the interface [`dirty`](Interface::dirty); a paint clears that.
 
+mod input;
+
 use super::draw::{Painter, Rect4, Strings};
 use super::layout::{FOCUSED, HIDDEN, Kind, TIMED, Tree};
 use crate::Framebuffer;
@@ -17,6 +19,12 @@ pub struct Interface {
     /// The first `ZTMapView` of the tree.
     map_view: Option<usize>,
     dirty: bool,
+    /// The mouse: pointer, hover, capture, drag, repeat.
+    input: input::Input,
+    /// What the interface did in answer to the input since the last [`Interface::take_events`],
+    /// one line each, and the sounds it asks for.
+    events: Vec<String>,
+    sounds: Vec<&'static str>,
 }
 
 impl Interface {
@@ -35,6 +43,9 @@ impl Interface {
             strings,
             map_view,
             dirty: true,
+            input: input::Input::default(),
+            events: Vec::new(),
+            sounds: Vec::new(),
         }
     }
 
@@ -83,10 +94,23 @@ impl Interface {
         self.dirty = false;
     }
 
+    /// The lines that tell what the interface did since the last call (`hover 7111`, `press ...`,
+    /// `sound uiclick`, `show 32`, ...), without the `ui ` the log puts before them.
+    pub fn take_events(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.events)
+    }
+
+    /// The sounds the interface asked for since the last call, by file name without the
+    /// extension (`uiclick`): the shell plays them.
+    pub fn take_sounds(&mut self) -> Vec<&'static str> {
+        std::mem::take(&mut self.sounds)
+    }
+
     /// The interface update, `period` milliseconds after the last one: a timed element hides
     /// itself `timerDuration` after it was shown (the first update after showing only starts
     /// the count).
     pub fn update(&mut self, period: u32) {
+        self.repeat(period);
         let period = i64::from(period);
         for i in 0..self.tree.elements.len() {
             if self.tree.elements[i].state & TIMED == 0 {

@@ -297,6 +297,66 @@ impl Tree {
         e.placed.and_then(|p| p.anchor).or(e.parent)
     }
 
+    /// Puts the top left corner of an element at (`x`, `y`) on the screen by changing its current
+    /// position (the alternative one if it is switched to it), which stays relative to its base.
+    pub fn set_screen_position(&mut self, i: usize, (x, y): (i32, i32)) {
+        let Some(placed) = self.elements[i].placed else {
+            return;
+        };
+        let (bx, by, rw, rh) = match self.base(i) {
+            Some(b) => {
+                let (bx, by) = self.screen(b);
+                let size = self.elements[b].placed.map_or((0, 0), |p| (p.dx, p.dy));
+                (bx, by, size.0, size.1)
+            }
+            None => (0, 0, 0, 0),
+        };
+        // A negative position counts from the far edge of the reference (the screen position).
+        let from = |target: i32, base: i32, reference: i32| {
+            let offset = i64::from(target) - i64::from(base);
+            let value = if offset >= 0 || reference <= 0 {
+                offset
+            } else {
+                offset - i64::from(reference)
+            };
+            clamp(value)
+        };
+        let (px, py) = (from(x, bx, rw), from(y, by, rh));
+        let e = &mut self.elements[i];
+        let placed = match e.alt {
+            true => Placed {
+                alt_x: px,
+                alt_y: py,
+                ..placed
+            },
+            false => Placed {
+                x: px,
+                y: py,
+                ..placed
+            },
+        };
+        e.placed = Some(placed);
+    }
+
+    /// Moves an element to the end of its layout's list: drawn last, tested first, whatever its
+    /// layer, until the next sort (ui layout 6.2).
+    pub fn bring_to_front(&mut self, i: usize) {
+        if let Some(parent) = self.elements[i].parent {
+            let children = &mut self.elements[parent].children;
+            children.retain(|&c| c != i);
+            children.push(i);
+        }
+    }
+
+    /// Hides an element and, if it is a layout, everything below it.
+    pub fn hide(&mut self, i: usize) {
+        let mut stack = vec![i];
+        while let Some(i) = stack.pop() {
+            self.elements[i].state |= super::layout::HIDDEN;
+            stack.extend(self.elements[i].children.iter());
+        }
+    }
+
     /// The rectangle of an element on the screen: left, top, width, height.
     pub fn rect(&self, i: usize) -> (i32, i32, i32, i32) {
         let (x, y) = self.screen(i);

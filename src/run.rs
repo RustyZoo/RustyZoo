@@ -199,7 +199,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             passes.push((key.0, key.1, Vec::new()));
         }
         let rest = rest.unwrap_or("");
-        if !["draw ", "interface ", "music ", "step "]
+        if !["draw ", "interface ", "music ", "step ", "ui "]
             .iter()
             .any(|k| rest.starts_with(k))
         {
