@@ -1176,12 +1176,15 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
 /// The loop settings of the ini file, and a simulated run with a pass at every millisecond.
 fn timing(vfs: &Vfs) -> Result<(), CliError> {
     let mut timers = Timers::from_config(&Config::parse(vfs.ini())?);
-    println!(
+    let mut out = io::stdout().lock();
+    let first = writeln!(
+        out,
         "periods: update {} ms, draw {} ms, cap {} ms",
         timers.update_period(),
         timers.draw_period(),
         timers.cap()
     );
+    ignore_closed_pipe(first)?;
     timers.pass(0, 1.0);
     let (mut draws, mut interfaces, mut steps) = (0, 0, 0);
     for now in 1..=10_000 {
@@ -1190,10 +1193,10 @@ fn timing(vfs: &Vfs) -> Result<(), CliError> {
         interfaces += u32::from(pass.interface.is_some());
         steps += u32::from(pass.step.is_some());
     }
-    println!(
+    ignore_closed_pipe(writeln!(
+        out,
         "ten seconds, clock of 1 ms: {draws} draws, {interfaces} interface updates, {steps} steps"
-    );
-    Ok(())
+    ))
 }
 
 /// Converts every root bitmap of the terrain and compares it with its shipped copy.
