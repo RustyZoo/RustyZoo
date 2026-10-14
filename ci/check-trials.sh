@@ -12,6 +12,7 @@ export SDL_AUDIO_DRIVER=dummy # check-music opens the audio device: never a real
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+export RUSTYZOO_USER_DIR=$tmp/user # never the real user folder
 
 rz() { "$bin" --data "$dir/$trial" "$@"; }
 

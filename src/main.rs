@@ -25,6 +25,7 @@ use rustyzoo::render::{MapRenderer, Options, Summary};
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::timing::Timers;
+use rustyzoo::userdir;
 use rustyzoo::vfs::{self, Vfs};
 use rustyzoo::zoo::{Zoo, ZooError};
 use sdl3::audio::AudioSpec;
@@ -232,9 +233,14 @@ fn game_folder(data_dir: Option<OsString>) -> Result<PathBuf, CliError> {
 }
 
 fn open_game(data_dir: Option<OsString>) -> Result<Vfs, CliError> {
-    let vfs = Vfs::open(&game_folder(data_dir)?)?;
+    let mut vfs = Vfs::open(&game_folder(data_dir)?)?;
     for warning in vfs.warnings() {
         eprintln!("rustyzoo: warning: {warning}");
+    }
+    if let Some(dir) = userdir::dir()
+        && let Err(e) = userdir::apply(&mut vfs, &dir)
+    {
+        eprintln!("rustyzoo: warning: settings of the user folder not used: {e}");
     }
     Ok(vfs)
 }

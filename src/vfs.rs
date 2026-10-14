@@ -38,6 +38,8 @@ use std::sync::Mutex;
 
 use flate2::read::DeflateDecoder;
 
+use crate::config::{Config, MAX_INPUT_LEN, TooLarge};
+
 /// The largest file `Vfs::read` accepts, by its size on disk or its declared uncompressed size:
 /// 256 MiB. The biggest member in the game is below 2 MiB; the limit only stops absurd sizes in
 /// corrupt or hostile data from being read into memory.
@@ -395,6 +397,20 @@ impl Vfs {
         &self.ini
     }
 
+    /// Puts the keys of `over` on top of the ini file, as [`Config::overlay`] does; [`ini`](Vfs::ini)
+    /// then returns the merged file in the dialect of [`Config`]. Fails, changing nothing, if the
+    /// result would be too large to read.
+    pub fn overlay_ini(&mut self, over: &Config) -> Result<(), TooLarge> {
+        let mut merged = Config::parse(&self.ini)?;
+        merged.overlay(over);
+        let bytes = merged.to_bytes();
+        if bytes.len() > MAX_INPUT_LEN {
+            return Err(TooLarge { len: bytes.len() });
+        }
+        self.ini = bytes;
+        Ok(())
+    }
+
     /// The number of archives (`*.ztd` and `*.zip`) accepted.
     pub fn archive_count(&self) -> usize {
         self.sources
@@ -671,7 +687,7 @@ const MAX_INI_SIZE: u64 = 1024 * 1024;
 
 /// Reads the ini file, which must be a regular file of at most [`MAX_INI_SIZE`] bytes: a FIFO
 /// would hang the read, a device or a huge file would fill the memory.
-fn read_ini(path: &Path) -> io::Result<Vec<u8>> {
+pub(crate) fn read_ini(path: &Path) -> io::Result<Vec<u8>> {
     let file = File::open(path)?;
     if !file.metadata()?.is_file() {
         return Err(io::Error::other("not a regular file"));

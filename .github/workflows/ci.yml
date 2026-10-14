@@ -40,6 +40,10 @@ jobs:
         with:
           persist-credentials: false
 
+      # Never the real user folder of the runner.
+      - name: Set the user folder
+        run: echo "RUSTYZOO_USER_DIR=$RUNNER_TEMP/rustyzoo-user" >> "$GITHUB_ENV"
+
       # The SDL3 build dependencies from SDL's docs/README-linux.md (Ubuntu 22.04+ list),
       # without the build tools the runner already has. They make SDL build its real
       # X11, Wayland, ALSA, PulseAudio and PipeWire backends.

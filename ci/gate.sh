@@ -16,6 +16,7 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 trials=${1:-}
 logs=$(mktemp -d)
 trap 'rm -rf "$logs"' EXIT
+export RUSTYZOO_USER_DIR=$logs/user # tests never touch the real user folder
 ok=0 failed=0 skipped=0
 
 step() { # step <name> <command...>

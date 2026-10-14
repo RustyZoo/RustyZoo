@@ -77,6 +77,18 @@ The names, descriptions and labels the game shows are not in the `.ztd` archives
 
 The game loads every `lang*.dll` of the install folder, ordered by file name from the greatest to the smallest (`lang300.dll` first, `lang0.dll` last), and a string number or a `TEXT` name comes from the first library that has it non-empty. `strings` prints that merged view; the `[lib]` and `[language]` entries of `zoo.ini` are not used.
 
+## Settings and saved games
+
+RustyZoo never writes into the game folder. What it changes goes in a folder of the user:
+
+| System | Settings (`zoo.ini`) | Saved games (from M7) |
+| --- | --- | --- |
+| Linux | `$XDG_CONFIG_HOME/RustyZoo` (default `~/.config/RustyZoo`) | `Saved Games` in `$XDG_DATA_HOME/RustyZoo` (default `~/.local/share/RustyZoo`) |
+| Windows | `%APPDATA%\RustyZoo` | `Saved Games` in the same folder |
+| macOS | `~/Library/Application Support/RustyZoo` | `Saved Games` in the same folder |
+
+The `zoo.ini` of that folder holds only the keys RustyZoo changed. It is read on top of the `zoo.ini` of the game, in the same dialect: a key set there replaces the key of the game, every other key stays. A file that cannot be read is skipped with a warning. The environment variable `RUSTYZOO_USER_DIR` replaces both folders by one (tests and CI use it, so they never touch the real one).
+
 ## The window
 
 `rustyzoo run <map>` opens a window and plays the map in it with the loop of the original: it handles all waiting events, runs the three timers (draw, interface, simulation) on the real clock, and sleeps until the next one is due. Closing the window ends the run.

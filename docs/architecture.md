@@ -18,6 +18,7 @@ Modules of the core:
 | `pe` | Bounded reader for the resources of the game's resource DLLs |
 | `strings` | The game's texts, merged from the `lang*.dll` libraries |
 | `sprite` | Sprite files and palettes: decoding, drawing, PNG output |
+| `userdir` | The per-user folder: where it is, the settings written there, read over the game's `zoo.ini` |
 
 The core draws in software into an RGBA framebuffer (`Framebuffer`), as the original's software blitter does. The window only presents that framebuffer. Every result can therefore be checked without a screen: text output, PNG pictures, hashes.
 
@@ -38,7 +39,7 @@ SDL3 (window, input, audio) is built from source and linked statically, so no sy
 
 The game folder is the install folder, the one that holds `zoo.ini`. It is found with `--data <dir>`, then the `ZT_DATA_DIR` environment variable. **Planned:** a configuration file as a third source.
 
-Files are looked up as the game does: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins. Texts come from the resource DLLs, not from the archives. Nothing is ever written into the game folder.
+Files are looked up as the game does: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins. Texts come from the resource DLLs, not from the archives. Nothing is ever written into the game folder: settings that RustyZoo changes go in the `zoo.ini` of the per-user folder (`userdir`), which holds only those keys and is put on top of the game's `zoo.ini` when the game is opened (`Vfs::overlay_ini`, keys compared ignoring letter case); see the README for the folders.
 
 Everything read from a file is untrusted: malformed data gives an error, never a panic.
 
