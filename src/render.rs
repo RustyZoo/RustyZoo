@@ -3,7 +3,8 @@
 //! The ground of a tile is one picture chosen by a key (terrain type, shape, variation and the
 //! types of the eight neighbours) and read from the caches the game ships (`ztats`, `ztatb`);
 //! when the cache has none, [`crate::ground::Renderer`] makes it. Cliffs are drawn by the tile in
-//! front of them from `ztst/fringe`. Objects are drawn with the base animation of their type.
+//! front of them from `ztst/fringe`, or, when the data lacks that copy, from the root bitmaps
+//! ([`crate::bitmap`]). Objects are drawn with the base animation of their type.
 //! The order comes from [`order::paint_order`]; this module turns each item of it into pictures
 //! placed in view space, then draws them all on a canvas that holds them.
 
@@ -18,6 +19,7 @@ use std::rc::Rc;
 
 use crate::Framebuffer;
 use crate::anim::{AnimSet, Animation, View};
+use crate::bitmap;
 use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
@@ -283,24 +285,13 @@ fn terrain_blend(vfs: &Vfs) -> Vec<bool> {
     blend
 }
 
-/// The pre-converted copy of a bitmap named in a configuration file: `ztst/<name>` with the
-/// extension taken off.
-fn converted(image: &[u8]) -> String {
-    let name = String::from_utf8_lossy(image);
-    let name = name.trim().replace('\\', "/");
-    let stem = name
-        .rsplit_once('.')
-        .map_or(name.as_str(), |(stem, _)| stem);
-    format!("ztst/{stem}")
-}
-
 /// Draws maps. It keeps what it loaded between maps: the catalogue, the animations and the
 /// pictures of the cache.
 pub struct MapRenderer<'a> {
     vfs: &'a Vfs,
     catalogue: &'a Catalogue,
     blend: Vec<bool>,
-    /// The cliff pieces 1 to 15, as `ztst` names.
+    /// The cliff pieces 1 to 15, as the names of their root bitmaps.
     fringe: HashMap<u32, String>,
     /// For each shape (decimal), the north and east grid sprites.
     grid: HashMap<u32, (Option<String>, Option<String>)>,
@@ -325,13 +316,13 @@ impl<'a> MapRenderer<'a> {
                 to_int(name).and_then(|n| u32::try_from(n).ok()),
                 section.get("image"),
             ) {
-                fringe.insert(piece, converted(image));
+                fringe.insert(piece, bitmap::member_name(image));
             }
         }
         let mut grid = HashMap::new();
         for (name, section) in read("tile.cfg").sections() {
             if let Some(shape) = to_int(name).and_then(|n| u32::try_from(n).ok()) {
-                let sprite = |key: &str| section.get(key).map(converted);
+                let sprite = |key: &str| section.get(key).map(bitmap::member_name);
                 grid.insert(shape, (sprite("northgrid"), sprite("eastgrid")));
             }
         }
@@ -364,9 +355,15 @@ impl<'a> MapRenderer<'a> {
         found
     }
 
-    /// A picture of `ztst`, which has the palette next to it.
-    fn piece(&mut self, stem: &str) -> Option<Flat> {
-        self.flat(stem, stem)
+    /// The picture of a root bitmap: its shipped copy, or the bitmap converted in memory.
+    fn piece(&mut self, bitmap: &str) -> Option<Flat> {
+        let key = format!("{bitmap}|bitmap");
+        if let Some(found) = self.flats.get(&key) {
+            return found.clone();
+        }
+        let found = bitmap::load(self.vfs, bitmap).map(Rc::new);
+        self.flats.insert(key, found.clone());
+        found
     }
 
     fn animation(&mut self, member: &str) -> Option<Rc<Animation>> {
