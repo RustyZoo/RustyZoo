@@ -122,6 +122,11 @@ check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate 
 # The window of the ini file (800x600 in both trials), shown by the dummy video driver.
 check base-trial 800x600,800x600,800x600,frames,same "windowed maps/default.zoo"
 check expansion-trial 800x600,800x600,800x600,frames,same "windowed maps/scn19.zoo"
+# The timing mode (the summary of three timers) and the read-back of the presented pixels run on the
+# dummy video driver; the values are information, so only the mode is checked: three summary lines
+# and the size of the picture read back.
+check base-trial 3,800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --timing 300 --shot $tmp/s.png | awk '/^timing /{n++} /^shot /{s=\$2} END{print n\",\"s}'"
+check expansion-trial 3,800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/scn19.zoo --timing 300 --shot $tmp/s.png | awk '/^timing /{n++} /^shot /{s=\$2} END{print n\",\"s}'"
 # No sound system is silence with a warning, not a failed run; no pass at all is refused.
 check base-trial 0 'SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=none-such rz run maps/default.zoo --passes 3 >/dev/null 2>&1; echo $?'
 check base-trial 1 'SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 0 >/dev/null 2>&1; echo $?'

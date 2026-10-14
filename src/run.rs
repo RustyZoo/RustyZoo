@@ -29,6 +29,10 @@ struct Flags {
     headless: bool,
     /// Where a windowed run writes its log.
     log: Option<String>,
+    /// `--timing`: a windowed run of this many milliseconds that prints the timer intervals.
+    timing: Option<u64>,
+    /// `--shot`: where a windowed run writes the pixels the renderer presents.
+    shot: Option<String>,
     /// The passes to run; a windowed run without it ends when the player closes the window.
     passes: Option<u64>,
     /// Milliseconds the scripted clock advances per pass.
@@ -54,6 +58,17 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
             }
             ("--log", [file, rest @ ..]) => {
                 flags.log = Some(file.to_string());
+                rest
+            }
+            ("--timing", [ms, rest @ ..]) => {
+                flags.timing = Some(number(ms)?).filter(|&n| n > 0);
+                if flags.timing.is_none() {
+                    return Err(CliError::Usage);
+                }
+                rest
+            }
+            ("--shot", [file, rest @ ..]) => {
+                flags.shot = Some(file.to_string());
                 rest
             }
             ("--passes", [n, rest @ ..]) => {
@@ -105,7 +120,11 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
     let replayed = flags.replay.is_some() && !(passes || clock || size || flags.script.is_some());
     let ok = match flags.headless {
         true => {
-            flags.log.is_none() && (scripted != flags.replay.is_some()) && (scripted || replayed)
+            flags.log.is_none()
+                && flags.timing.is_none()
+                && flags.shot.is_none()
+                && (scripted != flags.replay.is_some())
+                && (scripted || replayed)
         }
         false => {
             !clock && flags.replay.is_none() && flags.png_every.is_none() && flags.out.is_none()
@@ -211,6 +230,8 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
             log: flags.log.as_deref(),
             passes: flags.passes,
             script: commands.collect(),
+            timing: flags.timing,
+            shot: flags.shot.as_deref(),
         };
         return crate::window::run(vfs, &catalogue, zoo, &ini, window);
     }
@@ -344,12 +365,37 @@ mod tests {
         let got = got.unwrap_or_else(|_| panic!("refused"));
         assert!(!got.headless);
         assert_eq!((got.log.as_deref(), got.passes), (Some("l"), Some(3)));
+        let got = flags(&["--timing", "500", "--shot", "s.png"]);
+        let got = got.unwrap_or_else(|_| panic!("refused"));
+        assert_eq!(
+            (got.timing, got.shot.as_deref()),
+            (Some(500), Some("s.png"))
+        );
         assert!(flags(&[]).is_ok());
         for bad in [
             &["--clock", "1"][..],
             &["--replay", "log"],
             &["--png-every", "1"],
             &["--out", "d"],
+            &["--timing", "0"],
+            &[
+                "--headless",
+                "--passes",
+                "1",
+                "--clock",
+                "1",
+                "--timing",
+                "5",
+            ],
+            &[
+                "--headless",
+                "--passes",
+                "1",
+                "--clock",
+                "1",
+                "--shot",
+                "s.png",
+            ],
             &["--headless", "--passes", "1", "--clock", "1", "--log", "l"],
             &["--passes", "0"],
             &["--headless", "--passes", "0", "--clock", "1"],

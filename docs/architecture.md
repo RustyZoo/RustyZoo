@@ -25,6 +25,15 @@ The core draws in software into an RGBA framebuffer (`Framebuffer`), as the orig
 
 SDL3 (window, input, audio) is built from source and linked statically, so no system SDL is needed. `run` plays a map in the window with the loop of the original; the keys of the map view become commands in `src/input.rs`, and the loop reads the cursor for the edge scroll. `window-smoke` presents a test pattern.
 
+### The window
+
+`rustyzoo run <map>` (`src/window.rs`) plays the map in a window; `run --headless` (`src/run.rs`) runs the same `App::pass` on a scripted clock without any window, and prints the log lines that `run --log` also writes, so a log replayed headless gives the same frame hashes.
+
+- **Loop.** As in the original: take every waiting event, run one `App::pass` (draw, interface, simulation timers against one clock reading), present a frame only when the pass painted one or the system asks for a redraw, then wait for an event or until the next timer is due. No spinning. While the window is hidden or minimised the loop blocks. That state is read from the window flags on every iteration, not tracked through the Minimized and Restored events, so it cannot stay asleep after a restore that comes as another event.
+- **Sizes.** The frame is as large as the window in points (the size of the ini file, cut to the usable area of the display, or `--size`), in a streaming texture that SDL scales to the output with the nearest pixel. The window asks for a high pixel density, so on macOS and Wayland the output has the display's pixels. On Windows and X11 the window size is in physical pixels, also at a display scaling of 200%: the window and the picture are not enlarged. The run checks that the renderer's output equals the window in pixels, and prints the window size, its size in pixels, the output size, the display scale and the pixel density.
+- **Measures.** `--timing MS` prints the gaps between the firings of each timer on the real clock (count, minimum, median, 95th percentile, maximum, the expected period, a histogram). `--shot FILE` reads back the presented pixels into a PNG. Both are information for a person or CI; no value fails a run.
+- **CI.** Every system runs the window with the dummy video driver, the software renderer and the dummy audio driver, and checks sizes, painted frames and the replay of the log. One extra step per system opens a window on the runner's real video driver (X11 on a virtual display on Linux, Cocoa, Windows), reads the pixels back with `--shot` and logs the sizes, the scale, the number of colours and the hash (failing only if the window mode breaks or the picture is blank). A separate step on the dummy driver prints the timing summary of a ten second run. Pictures of game data are checked in CI, never published or committed.
+
 ## Game data
 
 The game folder is the install folder, the one that holds `zoo.ini`. It is found with `--data <dir>`, then the `ZT_DATA_DIR` environment variable. **Planned:** a configuration file as a third source.
@@ -55,5 +64,5 @@ A dependency is added by the milestone that first uses it. Today: `sdl3`, `zip` 
 
 - Unit tests build synthetic bytes in code.
 - Tests on real data are `#[ignore]` and read `ZT_DATA_DIR`; run them with `cargo test -- --ignored`.
-- CI builds on Linux, Windows and macOS, runs `window-smoke`, and runs the commands on the two official trials (`ci/check-trials.sh`).
+- CI builds on Linux, Windows and macOS, runs `window-smoke`, and runs the commands on the two official trials (`ci/check-trials.sh`), including a windowed run on the dummy video driver, a timing summary and a window screenshot on the real video driver (see The window).
 - Nothing derived from the game is committed.
