@@ -122,23 +122,23 @@ fn lines(font: &Font, text: &str, width: i32) -> Vec<String> {
 
 #[test]
 fn a_message_wraps_at_the_space_before_the_word_that_does_not_fit() {
-    // The dialog message of the worked example: 286 pixels of Arial Bold 11.
+    // A message in 286 pixels of Arial Bold 11.
     let font = Font::request("Arial Bold", "11");
-    let text = "Do you want to save your current zoo before you start a new zoo?";
+    let text = "Sample message with words enough to fill one whole line and then some more";
     let wrapped = layout(&font, text.as_bytes(), 286);
     assert_eq!(
         lines(&font, text, 286),
         [
-            "Do you want to save your current zoo",
-            "before you start a new zoo?"
+            "Sample message with words enough to",
+            "fill one whole line and then some more"
         ]
     );
     // The line widths are the sums of advances; the dropped space counts on neither line.
     assert_eq!(
         wrapped[0].width,
-        font.width(b"Do you want to save your current zoo")
+        font.width(b"Sample message with words enough to")
     );
-    assert!(wrapped[0].width + font.width(b" before") > 286);
+    assert!(wrapped[0].width + font.width(b" fill") > 286);
     assert_eq!(
         measure(&font, text.as_bytes(), 286),
         (wrapped[0].width, 2 * 17)
@@ -424,7 +424,7 @@ fn a_button_centres_one_line() {
 fn a_tooltip_is_sized_to_its_text() {
     let regular = Font::request("Arial", "8"); // small
     let big = Font::request("Arial", "10");
-    let text = b"Adopt a whale shark";
+    let text = b"Sample tooltip text";
     let w = regular.width(text);
     assert_eq!(
         tooltip_size(&regular, text, false, 200, 2, 3),
@@ -440,13 +440,19 @@ fn a_tooltip_is_sized_to_its_text() {
         (big.width(text), 15)
     );
     // Too wide: three fifths of the width (at most the maximum), wrapped again.
-    let long = b"Adopt a whale shark and keep it in a big tank with its friends";
+    let long = b"Sample tooltip text that is long enough to be wrapped into several lines of text";
     let w = big.width(long);
     let (tw, th) = tooltip_size(&big, long, false, 200, 1, 1);
     let wrapped = measure(&big, long, (w * 3 / 5).min(200));
     assert!(w > 200);
     assert_eq!((tw, th), (wrapped.0 + 2, wrapped.1 + 2));
     assert!(wrapped.1 > 15 && wrapped.0 <= 200);
+    // The whole text is one line, one line high, even with a line break in it.
+    let two = b"one\ntwo";
+    assert_eq!(
+        tooltip_size(&big, two, false, 400, 0, 0),
+        (big.width(two), 15)
+    );
     // No maximum at all: every word is cut; nothing panics.
     for max in [0, -1] {
         tooltip_size(&big, long, true, max, 0, 0);
@@ -528,7 +534,7 @@ fn sample(face: &str, size: &str, justify: Justify) -> u64 {
         &mut c,
         &mut font,
         rect,
-        b"Jan, Year 1 - $74,878\nWiggle & Pixels",
+        b"Sample 12 - $74,878\nOther & Words",
         &style,
     );
     crate::app::frame_hash(&c)
@@ -539,10 +545,10 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     // Bilevel (ppem 15) and smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "2ee2173ac800bd91"
+        "7852eb4c467911b5"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
-        "023e323452b42007"
+        "8781839f00b53064"
     );
 }
