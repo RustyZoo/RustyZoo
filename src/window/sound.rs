@@ -1,5 +1,6 @@
-//! The menu music of a windowed run: opened, fed, held while the window sleeps, faded by the
-//! model, muted while the window lacks the focus, and reported at the end. A missing sound
+//! The menu music of a windowed run: opened, faded by the model, muted while the window lacks the
+//! focus (a minimised window has none), and reported at the end. The loop is kept going by the
+//! audio thread, so it runs on, silently, while the window sleeps. A missing sound
 //! device or music file is silence, as in the game; a music that fails stops for good.
 
 use rustyzoo::app::App;
@@ -13,8 +14,6 @@ pub struct Sound {
     /// The output device; kept open as long as the voice plays.
     audio: Option<Audio>,
     music: Option<Voice>,
-    /// The music is paused.
-    held: bool,
     /// The output is silent because the window has no focus.
     quiet: Quiet,
 }
@@ -62,32 +61,9 @@ impl Sound {
         let sound = Sound {
             audio: audio.ok(),
             music,
-            held: false,
             quiet: Quiet::default(),
         };
         (sound, menu)
-    }
-
-    /// Queues the music again when it runs low.
-    pub fn feed(&mut self) {
-        if let Some(voice) = &self.music
-            && let Err(e) = voice.update()
-        {
-            self.fail(e);
-        }
-    }
-
-    /// Pauses or resumes the music where it is, once per change.
-    pub fn hold(&mut self, hold: bool) {
-        if hold == self.held {
-            return;
-        }
-        self.held = hold;
-        if let Some(voice) = &self.music
-            && let Err(e) = if hold { voice.pause() } else { voice.resume() }
-        {
-            self.fail(e);
-        }
     }
 
     /// Silences the output while the window has no focus, and restores it with the focus.
