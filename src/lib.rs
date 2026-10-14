@@ -12,6 +12,7 @@ pub mod pe;
 pub mod render;
 pub mod sprite;
 pub mod strings;
+pub mod text;
 pub mod tga;
 pub mod timing;
 pub mod userdir;

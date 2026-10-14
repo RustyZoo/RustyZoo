@@ -14,6 +14,7 @@ repository = "https://github.com/RustyZoo/RustyZoo"
 sdl3 = { version = "0.20", features = ["build-from-source-static", "build-from-source-unix-console"] }
 png = { version = "0.18.1", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
+fontdue = { version = "0.9.4", default-features = false }
 
 [dev-dependencies]
 # Writes the small archives that the tests need.
