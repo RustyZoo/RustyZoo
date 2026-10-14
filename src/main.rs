@@ -146,6 +146,11 @@ usage: rustyzoo [--data <dir>] <command>
                       of W by H pixels (1024x768 by default; each side from 1 to 16384), then
                       print one line per element in drawing order: id, type, layer, state and
                       the rectangle on the screen (x, y, width, height), tab separated
+  render-ui <out.png> [--size WxH] [--expansions N] [--show ID]... [--hover ID] [--press ID]
+                      paint the interface into a PNG file (1024x768 by default): a black frame,
+                      the root, and what is shown: each --show shows the layout with that id and
+                      its children; --hover highlights an element and --press presses one. Prints
+                      the file and its size
   text-width <text> [--font FACE] [--size POINTS]
                       print the width in pixels of the text on one line in the original's
                       font (Liberation Sans, whole-pixel advances, no kerning): FACE is a
@@ -262,6 +267,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         }
         ["check-layouts", flags @ ..] => layout::check_layouts(&open_game(data_dir)?, flags),
         ["dump-layout", flags @ ..] => layout::dump_layout(data_dir, flags),
+        ["render-ui", out, flags @ ..] => layout::render_ui(data_dir, out, flags),
         ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, member, flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(

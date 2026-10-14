@@ -283,3 +283,36 @@ fn full_game_tree() {
     assert_eq!(tree.counts()["UILayout"], 102);
     assert_eq!(tree.duplicates, [] as [usize; 0]);
 }
+
+#[test]
+fn showing_a_layout_shows_its_whole_subtree_but_not_what_is_never_shown() {
+    let files = [
+        (
+            "ui/root.lyt",
+            "[LayoutInfo]\nid=1\n[a]\ntype=UILayout\nlayout=ui/one.lyt\n[b]\ntype=UILayout\nlayout=ui/three.lyt\n\
+             [c]\ntype=UIImage\nid=40\nstate=16\n",
+        ),
+        (
+            "ui/one.lyt",
+            "[LayoutInfo]\nid=10\n[x]\ntype=UIImage\nid=11\n[y]\ntype=UILayout\nlayout=ui/two.lyt\n",
+        ),
+        (
+            "ui/two.lyt",
+            "[LayoutInfo]\nid=20\n[z]\ntype=UIImage\nid=21\n",
+        ),
+        (
+            "ui/three.lyt",
+            "[LayoutInfo]\nid=30\nstate=16\n[x]\ntype=UIImage\nid=31\n",
+        ),
+    ];
+    let mut tree = load("show", &files, 0);
+    assert!(tree.show(1));
+    let state = |tree: &Tree, id: i32| tree.elements[tree.find(id).unwrap()].state;
+    for id in [1, 10, 11, 20, 21] {
+        assert_eq!(state(&tree, id) & HIDDEN, 0, "{id}");
+    }
+    // Never shown: the sub-layout and the image, and what is inside the sub-layout, as it was.
+    for id in [30, 31, 40] {
+        assert_eq!(state(&tree, id) & HIDDEN, HIDDEN, "{id}");
+    }
+}

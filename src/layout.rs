@@ -1,6 +1,12 @@
 //! The commands that show the interface tree.
 
 use std::ffi::OsString;
+use std::fs::File;
+
+use rustyzoo::Framebuffer;
+use rustyzoo::sprite::write_png;
+use rustyzoo::ui::draw::Painter;
+use rustyzoo::ui::layout::{DIRTY, HIGHLIGHTED, SELECTED};
 
 use rustyzoo::strings::StringTables;
 use rustyzoo::text::Fonts;
@@ -74,6 +80,31 @@ fn window_size(text: &str) -> Result<(i32, i32), CliError> {
     Ok((side(w)?, side(h)?))
 }
 
+/// The tree of `ui/gamescrn.lyt` resolved for a window, with the strings of the install; its
+/// warnings are printed.
+fn resolved_tree(
+    data_dir: Option<OsString>,
+    size: (i32, i32),
+    mask: Option<&str>,
+) -> Result<(Tree, StringTables), CliError> {
+    let tables = StringTables::open(&game_folder(data_dir.clone())?)?;
+    let vfs = open_game(data_dir)?;
+    let mut tree = Tree::load(&vfs, "ui/gamescrn.lyt", expansions(&vfs, mask)?);
+    let mut fonts = Fonts::default();
+    tree.resolve(size.0, size.1, |font| {
+        // Strings that do not exist are empty texts: the default font, 8 points.
+        let (face, points) = font.map_or(("Arial", "8"), |(face, points)| {
+            let string = |n: i32| u32::try_from(n).map_or("", |n| tables.string(n));
+            (string(face), string(points))
+        });
+        fonts.get(face, points).line_height()
+    });
+    for warning in &tree.warnings {
+        eprintln!("rustyzoo: warning: {warning}");
+    }
+    Ok((tree, tables))
+}
+
 /// Loads the tree, resolves it for a window and prints one line per element in the order they are
 /// drawn: id, type, layer, state and the rectangle on the screen (x, y, width, height).
 pub fn dump_layout(data_dir: Option<OsString>, flags: &[&str]) -> Result<(), CliError> {
@@ -90,21 +121,7 @@ pub fn dump_layout(data_dir: Option<OsString>, flags: &[&str]) -> Result<(), Cli
     if !rest.is_empty() {
         return Err(CliError::Usage);
     }
-    let tables = StringTables::open(&game_folder(data_dir.clone())?)?;
-    let vfs = open_game(data_dir)?;
-    let mut tree = Tree::load(&vfs, "ui/gamescrn.lyt", expansions(&vfs, mask)?);
-    let mut fonts = Fonts::default();
-    tree.resolve(size.0, size.1, |font| {
-        // Strings that do not exist are empty texts: the default font, 8 points.
-        let (face, points) = font.map_or(("Arial", "8"), |(face, points)| {
-            let string = |n: i32| u32::try_from(n).map_or("", |n| tables.string(n));
-            (string(face), string(points))
-        });
-        fonts.get(face, points).line_height()
-    });
-    for warning in tree.warnings.iter() {
-        eprintln!("rustyzoo: warning: {warning}");
-    }
+    let (tree, _) = resolved_tree(data_dir, size, mask)?;
     let mut report = Report::new();
     for i in tree.draw_order() {
         let e = &tree.elements[i];
@@ -122,4 +139,50 @@ pub fn dump_layout(data_dir: Option<OsString>, flags: &[&str]) -> Result<(), Cli
         Some(failure) => Err(format!("load stopped at {failure}").into()),
         None => Ok(()),
     }
+}
+
+/// Paints the interface into a PNG file: the root, with the layouts of `--show` shown, the
+/// element of `--hover` highlighted and the one of `--press` pressed.
+pub fn render_ui(data_dir: Option<OsString>, out: &str, flags: &[&str]) -> Result<(), CliError> {
+    let (mut size, mut mask) = (DEFAULT_SIZE, None);
+    let (mut show, mut hover, mut press) = (vec![], None, None);
+    let mut rest = flags;
+    let id = |value: &str| value.parse::<i32>().map_err(|_| CliError::Usage);
+    while let [flag, value, tail @ ..] = rest {
+        match *flag {
+            "--size" => size = window_size(value)?,
+            "--expansions" => mask = Some(*value),
+            "--show" => show.push(id(value)?),
+            "--hover" => hover = Some(id(value)?),
+            "--press" => press = Some(id(value)?),
+            _ => return Err(CliError::Usage),
+        }
+        rest = tail;
+    }
+    if !rest.is_empty() {
+        return Err(CliError::Usage);
+    }
+    let (mut tree, tables) = resolved_tree(data_dir, size, mask)?;
+    if let Some(failure) = &tree.failure {
+        return Err(format!("load stopped at {failure}").into());
+    }
+    for layout in show {
+        if !tree.show(layout) {
+            return Err(format!("no element with id {layout}").into());
+        }
+    }
+    for (id, flag) in [(hover, HIGHLIGHTED), (press, SELECTED)] {
+        if let Some(id) = id {
+            let i = tree
+                .find(id)
+                .ok_or_else(|| format!("no element with id {id}"))?;
+            tree.elements[i].state |= flag | DIRTY;
+        }
+    }
+    let mut frame = Framebuffer::new(size.0 as u32, size.1 as u32);
+    Painter::default().draw(&mut tree, &mut frame, &tables);
+    let file = File::create(out).map_err(|e| format!("cannot write {out}: {e}"))?;
+    write_png(&frame, file)?;
+    println!("{out}: {}x{}", size.0, size.1);
+    Ok(())
 }
