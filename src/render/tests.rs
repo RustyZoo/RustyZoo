@@ -3,7 +3,7 @@ use super::*;
 use crate::sprite::tests::Install;
 use crate::zoo::Tile;
 
-fn flat() -> Tile {
+pub(crate) fn flat() -> Tile {
     Tile {
         elevation: 0,
         shape: 0,
@@ -13,7 +13,7 @@ fn flat() -> Tile {
 }
 
 /// A flat map of `width` by `height` tiles.
-fn flat_map(width: usize, height: usize) -> Vec<Tile> {
+pub(crate) fn flat_map(width: usize, height: usize) -> Vec<Tile> {
     vec![flat(); width * height]
 }
 
@@ -387,7 +387,7 @@ fn an_object_that_paints_last_goes_after_the_others_of_its_tile() {
 }
 
 /// A frame of 2 pixels, palette index 1, with the given offsets.
-fn frame_file() -> Vec<u8> {
+pub(crate) fn frame_file() -> Vec<u8> {
     let mut out = Vec::new();
     for field in [1u16, 2, 0, 0, 0] {
         out.extend(field.to_le_bytes());
@@ -460,7 +460,7 @@ fn palette_file(colors: &[[u8; 3]]) -> Vec<u8> {
 }
 
 /// A map of one flat tile with the given entities, which all stand in its middle.
-fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
+pub(crate) fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
     let entity = |(class, type_name, subtype): &(&str, &str, &str)| crate::zoo::Entity {
         class: class.to_string(),
         type_name: type_name.to_string(),
@@ -495,7 +495,7 @@ fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
 }
 
 /// An install whose terrain cache holds `frame` for the one grass tile.
-fn cache_install(name: &str, frame: Vec<u8>) -> Install {
+pub(crate) fn cache_install(name: &str, frame: Vec<u8>) -> Install {
     let mut palette = 2u32.to_le_bytes().to_vec();
     palette.extend([0, 0, 0, 255, 200, 100, 50, 255]);
     let mut members = vec![

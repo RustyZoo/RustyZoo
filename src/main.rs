@@ -1,4 +1,5 @@
 mod audio;
+mod run;
 
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
@@ -84,6 +85,17 @@ usage: rustyzoo [--data <dir>] <command>
   check-anis          load every animation set and the sprite files it names; list the sets
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
+  run <map> --headless --passes N --clock MS [--script FILE] [--png-every K] [--size WxH]
+      [--out DIR]
+                      play a map (a .zoo member) without a window: N passes of the main loop
+                      with a scripted clock that advances MS milliseconds per pass, the
+                      commands of the script applied before their pass (one `<pass> <command>`
+                      per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
+                      in|out, pause, quit; # starts a comment). Prints one line per timer that
+                      fires: the pass, the clock, draw (with the hash of the frame painted, or
+                      - if none, and the view), interface, or step (with the date). Every K
+                      passes the painted frame is written to DIR/frame-<pass>.png (DIR is the
+                      current folder); the window is 1024x768 unless --size says otherwise
   timing              print the periods and the cap the ini file gives the main loop, then how
                       many draws, interface updates and steps a ten second run makes with a
                       pass at every millisecond
@@ -169,6 +181,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             let (rotation, options) = render_flags(flags)?;
             render_map(&open_game(data_dir)?, member, out, rotation, &options)
         }
+        ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, member, flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(
             &open_game(data_dir)?,
