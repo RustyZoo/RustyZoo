@@ -1,4 +1,5 @@
 mod audio;
+mod run;
 
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
@@ -84,6 +85,21 @@ usage: rustyzoo [--data <dir>] <command>
   check-anis          load every animation set and the sprite files it names; list the sets
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
+  run <map> --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
+      [--png-every K] [--out DIR]
+                      play a map (a .zoo member) without a window. N passes of the main loop
+                      with a scripted clock that advances MS milliseconds per pass, the
+                      commands of the script applied before their pass (one `<pass> <command>`
+                      per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
+                      in|out, pause, quit; # starts a comment); the window is 1024x768 unless
+                      --size says otherwise. Prints the size of the window, then, for each pass
+                      in which something happens: a line per command applied, then one per
+                      timer that fires, draw (the hash of the frame painted, or - if none, and
+                      the view), interface, or step (with the date). --replay runs again the
+                      passes of such an output saved in LOG, at the size and the clock it
+                      records, with its commands, and prints the same lines. A frame painted
+                      in a pass whose index is a multiple of K is written to
+                      DIR/frame-<pass>.png (DIR is by default the current folder)
   timing              print the periods and the cap the ini file gives the main loop, then how
                       many draws, interface updates and steps a ten second run makes with a
                       pass at every millisecond
@@ -169,6 +185,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             let (rotation, options) = render_flags(flags)?;
             render_map(&open_game(data_dir)?, member, out, rotation, &options)
         }
+        ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, member, flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(
             &open_game(data_dir)?,

@@ -14,7 +14,7 @@
 pub mod order;
 mod tank;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -1087,7 +1087,7 @@ fn union(a: [i64; 4], b: [i64; 4]) -> [i64; 4] {
 }
 
 /// The size of the picture that holds `bounds`, or an error if it is empty or too big.
-fn check_size(bounds: &[i64; 4]) -> Result<(i64, i64), RenderError> {
+pub(crate) fn check_size(bounds: &[i64; 4]) -> Result<(i64, i64), RenderError> {
     let (w, h) = (bounds[2] - bounds[0], bounds[3] - bounds[1]);
     if w <= 0 || h <= 0 || w as u64 * h as u64 > MAX_PIXELS {
         return Err(RenderError(format!(
