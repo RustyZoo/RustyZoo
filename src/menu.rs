@@ -43,7 +43,7 @@ pub struct Menu {
     user: Option<PathBuf>,
     /// The product version of the executable, for the label at the bottom of the picture.
     version: Option<String>,
-    /// The expansion flags (bit 1 Dinosaur Digs, bit 2 Marine Mania).
+    /// The expansion flags (bit 1 and bit 2, the `id` of an `xpac*.cfg`).
     expansions: i32,
 }
 

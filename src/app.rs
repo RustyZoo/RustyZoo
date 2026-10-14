@@ -546,10 +546,12 @@ impl<'a> App<'a> {
 
     /// The lines of the last pass, each led by the pass index and the clock: one per command it
     /// applied, in the text form of a script, then one per thing the interface did (`ui hover 7111`,
-    /// `ui press ...`, `ui sound uiclick`, `ui select`, `ui show`, `ui hide`, `ui drag`), then one per timer that fired, in the order draw,
+    /// `ui press ...`, `ui sound uiclick`, `ui select`, `ui show`, `ui hide`, `ui drag`), then one per thing the main menu did
+    /// (`menu continue enabled NAME`, `menu continue disabled`, `menu version V` when it appears, `menu exit`),
+    /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
-    /// with, a step the new date. A pass that did nothing has no line.
+    /// with (none without a game), a step the new date (none without a game). A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
