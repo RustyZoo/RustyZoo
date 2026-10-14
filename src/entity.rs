@@ -589,3 +589,573 @@ fn animation_root(ty: &EntityType, config: &Config) -> Option<Vec<u8>> {
         _ => joined(&[b"staff", kind, subtype]),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipWriter};
+
+    use super::*;
+
+    /// An installation made of one archive, in a fresh folder removed on drop.
+    struct Install(PathBuf);
+
+    impl Install {
+        fn new(name: &str, members: &[(&str, &str)]) -> Install {
+            let path =
+                std::env::temp_dir().join(format!("rustyzoo-entity-{}-{name}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            std::fs::write(path.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
+            let mut zip = ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            for (member, content) in members {
+                let options =
+                    SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+                zip.start_file(*member, options).unwrap();
+                zip.write_all(content.as_bytes()).unwrap();
+            }
+            std::fs::write(path.join("a.ztd"), zip.finish().unwrap().into_inner()).unwrap();
+            Install(path)
+        }
+
+        fn load(&self) -> Result<Catalogue, EntityError> {
+            Catalogue::load(&Vfs::open(&self.0).unwrap())
+        }
+    }
+
+    impl Drop for Install {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The catalogue of an installation with these members.
+    fn catalogue(name: &str, members: &[(&str, &str)]) -> Catalogue {
+        Install::new(name, members).load().unwrap()
+    }
+
+    /// `class/type/subtype` of every type, in creation order.
+    fn names(catalogue: &Catalogue) -> Vec<String> {
+        catalogue
+            .types
+            .iter()
+            .map(|t| format!("{}/{}/{}", t.class, show(&t.type_name), show(&t.subtype)))
+            .collect()
+    }
+
+    fn get<'a>(c: &'a Catalogue, class: &str, kind: &str, subtype: &str) -> &'a EntityType {
+        c.find(class, kind.as_bytes(), subtype.as_bytes())
+            .unwrap_or_else(|| panic!("no type {class}/{kind}/{subtype}"))
+    }
+
+    #[test]
+    fn registries_are_found_by_prefix_and_read_in_byte_order() {
+        let c = catalogue(
+            "order",
+            &[
+                ("animals.cfg", "[animals]\nzebra = z.ai\n"),
+                ("Animal02.cfg", "[animals]\nyak = y.ai\n"),
+                ("animal01.cfg", "[animals]\nxerus = x.ai\n"),
+                ("animalx.cfg", "no section here\n"),
+                ("sub/animal03.cfg", "[animals]\nnever = n.ai\n"),
+                ("x.ai", "[Global]\n"),
+            ],
+        );
+        assert_eq!(
+            names(&c),
+            ["animals/xerus/", "animals/yak/", "animals/zebra/"]
+        );
+        // The test is on the whole name: a folder name matches the prefix too.
+        let c = catalogue("prefix", &[("food/x.cfg", "[food]\napple = a.ai\n")]);
+        assert_eq!(names(&c), ["food/food/apple"]);
+    }
+
+    #[test]
+    fn classes_are_processed_in_the_fixed_order() {
+        let c = catalogue(
+            "classes",
+            &[
+                ("twall.cfg", "[tankwall]\nw\n"),
+                ("animals.cfg", "[animals]\na\n"),
+                ("fences.cfg", "[fences]\nf\n"),
+                ("food.cfg", "[food]\nb\n"),
+            ],
+        );
+        assert_eq!(
+            names(&c),
+            ["food/food/b", "fences/f/f", "animals/a/", "tankwall/w/f"]
+        );
+        assert_eq!(
+            c.counts().iter().map(|c| c.1).collect::<Vec<_>>(),
+            [1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+        );
+    }
+
+    #[test]
+    fn entries_follow_the_order_of_the_keys_not_of_the_file() {
+        let c = catalogue(
+            "keys",
+            &[("paths.cfg", "[paths]\nb = b.ai\nA = a.ai\na = a.ai\n")],
+        );
+        assert_eq!(
+            names(&c),
+            ["paths/paths/A", "paths/paths/a", "paths/paths/b"]
+        );
+    }
+
+    #[test]
+    fn flat_registries() {
+        let c = catalogue(
+            "flat",
+            &[
+                ("food.cfg", "[food]\nbone = b.ai\n"),
+                ("bldg.cfg", "[building]\nshop = s.ai\n"),
+                ("ambient.cfg", "[ambient]\nbird = b.ai\n"),
+                ("guests.cfg", "[guests]\nwoman = w.ai\nman = m.ai\n"),
+            ],
+        );
+        assert_eq!(
+            names(&c),
+            [
+                "food/food/bone",
+                "building/building/shop",
+                "guests/man/",
+                "guests/woman/",
+                "ambient/ambient/bird"
+            ]
+        );
+    }
+
+    #[test]
+    fn two_level_registries() {
+        let c = catalogue(
+            "two-level",
+            &[
+                (
+                    "scenery.cfg",
+                    "[objects]\nother\nfoliage = ignored\nnothing\n[foliage]\noak = o.ai\nacacia = a.ai\n[other]\nrock = r.ai\n",
+                ),
+                ("rubble.cfg", "[rubble]\nr1\n[r1]\nbig = b.ai\n"),
+                ("filter.cfg", "[filter]\nfilter1\n[filter1]\nf = f.ai\n"),
+            ],
+        );
+        assert_eq!(
+            names(&c),
+            [
+                "objects/foliage/acacia",
+                "objects/foliage/oak",
+                "objects/other/rock",
+                "rubble/r1/big",
+                "filter/filter1/f"
+            ]
+        );
+    }
+
+    #[test]
+    fn subtypes_come_from_the_shared_or_the_own_section() {
+        let c = catalogue(
+            "subtypes",
+            &[
+                // A shared section with a key wins over the own ones.
+                (
+                    "fences.cfg",
+                    "[fences]\nwall = w.ai\nrail = r.ai\n[subtypes]\ng\nf\n[wall/subtypes]\nz\n",
+                ),
+                // An empty shared section counts as absent.
+                (
+                    "animals.cfg",
+                    "[animals]\nlion = l.ai\nyak = y.ai\n[subtypes]\n[lion/subtypes]\nm\nf\n",
+                ),
+                // Staff only reads the own section, and the key decides the class.
+                (
+                    "staff.cfg",
+                    "[staff]\nscient = s.ai\ntour = t.ai\nmaint\nguide = g.ai\nhelicopter = h.ai\n[subtypes]\nx\n[scient/subtypes]\nm\nf\n",
+                ),
+                ("twall.cfg", "[tankwall]\nglass = g.ai\n"),
+            ],
+        );
+        assert_eq!(
+            names(&c),
+            [
+                "fences/rail/f",
+                "fences/rail/g",
+                "fences/wall/f",
+                "fences/wall/g",
+                "animals/lion/f",
+                "animals/lion/m",
+                "animals/yak/",
+                "helicopter/helicopter/",
+                "maint/maint/",
+                "keeper/scient/f",
+                "keeper/scient/m",
+                "tour/tour/",
+                "tankwall/glass/f",
+            ]
+        );
+        assert!(c.warnings.iter().any(|w| w.contains("unknown kind: guide")));
+        // Staff is one group of the counts.
+        assert_eq!(c.counts()[7], ("staff", 5));
+    }
+
+    #[test]
+    fn a_type_listed_again_keeps_the_first_definition() {
+        let c = catalogue(
+            "again",
+            &[
+                ("animal01.cfg", "[animals]\nyak = Y.ai\n"),
+                ("animal02.cfg", "[animals]\nyak = y.ai\n"),
+                ("animal03.cfg", "[animals]\nyak = z.ai\n"),
+                ("y.ai", "[Global]\n[Animations]\nidle = idle\n"),
+                ("z.ai", "[Global]\n"),
+            ],
+        );
+        assert_eq!(names(&c), ["animals/yak/"]);
+        assert_eq!(get(&c, "animals", "yak", "").file.as_deref(), Some("y.ai"));
+        // Another letter case of the same file is the same file; z.ai is another.
+        assert_eq!(c.warnings.len(), 1, "{:?}", c.warnings);
+        assert!(c.warnings[0].contains("another file"));
+    }
+
+    #[test]
+    fn a_missing_or_empty_definition_file_leaves_defaults() {
+        let c = catalogue(
+            "missing",
+            &[
+                (
+                    "fences.cfg",
+                    "[fences]\nnovalue\nempty =\ngone = gone.ai\nblank = blank.ai\n",
+                ),
+                ("blank.ai", "nothing but text\n"),
+                ("paths.cfg", "[paths]\nbare\n"),
+            ],
+        );
+        assert_eq!(c.types.len(), 5);
+        for t in &c.types {
+            assert!(t.config.is_none(), "{:?}", t.type_name);
+            assert_eq!((t.name_id, t.footprint, t.height), (0, [1, 1, 1], 0));
+            assert!(t.animations.is_empty() && t.base_animation().is_none());
+        }
+        // The fences without a file are not an error and keep the default subtype `f`.
+        assert_eq!(get(&c, "fences", "novalue", "f").file, None);
+        assert_eq!(c.warnings.len(), 4, "{:?}", c.warnings);
+        assert_eq!(
+            get(&c, "fences", "gone", "f").file.as_deref(),
+            Some("gone.ai")
+        );
+    }
+
+    #[test]
+    fn user_files_come_after_the_registries_of_their_class() {
+        let user = "[Global]\n[Characteristics/Integers]\ncNameID = 19000\n";
+        let members = [
+            ("animals.cfg", "[animals]\nyak = y.ai\n"),
+            ("scenery.cfg", "[objects]\nother\n[other]\nrock = r.ai\n"),
+            ("bldg.cfg", "[building]\nshop = s.ai\n"),
+            ("scenery/other/F554B047.ucs", user),
+            ("scenery/other/rock.ucs", user),
+            ("x/Pony.uca", user),
+            ("home.ucb", user),
+            ("a/.ucb", user),
+            ("y.ai", user),
+        ];
+        let c = catalogue("user", &members);
+        assert_eq!(
+            names(&c),
+            [
+                "building/building/shop",
+                "building/building/home",
+                "animals/yak/",
+                "animals/pony/m",
+                "animals/pony/f",
+                "animals/pony/y",
+                "objects/other/rock",
+                "objects/other/f554b047",
+            ]
+        );
+        // The type that a registry names keeps its file.
+        assert_eq!(
+            get(&c, "objects", "other", "rock").file.as_deref(),
+            Some("r.ai")
+        );
+        assert_eq!(
+            get(&c, "building", "building", "home").file.as_deref(),
+            Some("home.ucb")
+        );
+        assert!(c.warnings.iter().any(|w| w.contains("another file")));
+
+        // Without a loaded registry of the class, its user files are not looked at.
+        let c = catalogue(
+            "user-alone",
+            &[("a.uca", user), ("b.ucb", user), ("c.ucs", user)],
+        );
+        assert!(c.types.is_empty());
+        let c = catalogue(
+            "user-other",
+            &[("bldg.cfg", "[building]\nshop = s.ai\n"), ("a.uca", user)],
+        );
+        assert_eq!(names(&c), ["building/building/shop"]);
+    }
+
+    #[test]
+    fn a_registry_that_cannot_be_read_is_an_error() {
+        let huge = format!("[food]\n{}", "; padding\n".repeat(200_000));
+        let install = Install::new("huge-registry", &[("food.cfg", &huge)]);
+        let message = install.load().unwrap_err().to_string();
+        assert!(
+            message.contains("food.cfg") && message.contains("limit"),
+            "{message}"
+        );
+        let definition = Install::new(
+            "huge-definition",
+            &[("food.cfg", "[food]\nbone = b.ai\n"), ("b.ai", &huge)],
+        );
+        assert!(definition.load().unwrap_err().to_string().contains("b.ai"));
+    }
+
+    /// One definition file per reading rule of the values.
+    #[test]
+    fn values_follow_the_passes_of_their_class() {
+        let rates = "cSlowRate=1\ncMediumRate=2\ncFastRate=3\n";
+        let lion = format!(
+            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\n{rates}\
+             [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\n[Characteristics/Integers]\ncNameID = 999\n"
+        );
+        // The default pass fails (no rates): the plain pass follows.
+        let tiger = format!(
+            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 1\ncFootprintZ = 4\n[Characteristics/Integers]\ncNameID = 2\n{rates}"
+        );
+        let guests = format!(
+            "[Global]\nDefaultSubtype = man\n[man/Characteristics/Integers]\ncNameID = 3\n{rates}[woman/Characteristics/Integers]\ncNameID = 4\n"
+        );
+        let fence = "[Characteristics/Integers]\ncNameID = 1\ncHeight = 2\ncFootprintX = 3\n\
+                     [g/Characteristics/Integers]\ncNameID = 9\ncFootprintX = 8\n";
+        let scenery = "[Characteristics/Integers]\ncNameID = 7\ncFootprintX = 5\ncFootprintY = 6\n\
+                       [tree/Characteristics/Integers]\ncNameID = 70\n[Global]\nDefaultSubtype = tree\n";
+        let c = catalogue(
+            "values",
+            &[
+                (
+                    "animals.cfg",
+                    "[animals]\nlion = lion.ai\ntiger = tiger.ai\n[lion/subtypes]\nf\nm\ny\n[tiger/subtypes]\nm\n",
+                ),
+                (
+                    "guests.cfg",
+                    "[guests]\nman = guests.ai\nwoman = guests.ai\n",
+                ),
+                (
+                    "fences.cfg",
+                    "[fences]\nrail = fence.ai\n[rail/subtypes]\nf\ng\n",
+                ),
+                (
+                    "scenery.cfg",
+                    "[objects]\nfoliage\n[foliage]\ntree = tree.ai\n",
+                ),
+                ("lion.ai", &lion),
+                ("tiger.ai", &tiger),
+                ("guests.ai", &guests),
+                ("fence.ai", fence),
+                ("tree.ai", scenery),
+            ],
+        );
+        let values = |class, kind, subtype| {
+            let t = get(&c, class, kind, subtype);
+            (t.name_id, t.footprint, t.height)
+        };
+        assert_eq!(values("animals", "lion", "f"), (5006, [1, 2, 1], 16));
+        // The own pass is on top of the default one, key by key; a key without value is skipped.
+        assert_eq!(values("animals", "lion", "m"), (5006, [1, 3, 1], 16));
+        assert_eq!(values("animals", "lion", "y"), (5006, [1, 2, 1], 16));
+        assert_eq!(values("animals", "tiger", "m"), (2, [1, 1, 4], 0));
+        assert_eq!(values("guests", "man", ""), (3, [1, 1, 1], 0));
+        assert_eq!(values("guests", "woman", ""), (4, [1, 1, 1], 0));
+        // Fences: the plain sections, then name id and height again from the subtype's.
+        assert_eq!(values("fences", "rail", "f"), (1, [3, 1, 1], 2));
+        assert_eq!(values("fences", "rail", "g"), (9, [3, 1, 1], 2));
+        // Scenery never reads a prefixed section.
+        assert_eq!(values("objects", "foliage", "tree"), (7, [5, 6, 1], 0));
+        assert!(get(&c, "objects", "foliage", "tree").config.is_some());
+    }
+
+    #[test]
+    fn animation_sections_and_roots_by_class() {
+        let ani = "[Animations]\nidle = idle\nused = used\nfull = X\\Y.ani\n";
+        let c = catalogue(
+            "animations",
+            &[
+                (
+                    "scenery.cfg",
+                    "[objects]\nfoliage\n[foliage]\ntree = ani.ai\n",
+                ),
+                ("bldg.cfg", "[building]\nshop = ani.ai\n"),
+                ("paths.cfg", "[paths]\nroad = ani.ai\n"),
+                ("food.cfg", "[food]\nbone = ani.ai\n"),
+                ("rubble.cfg", "[rubble]\nr1\n[r1]\nbig = ani.ai\n"),
+                ("filter.cfg", "[filter]\nf1\n[f1]\nclean = ani.ai\n"),
+                ("ambient.cfg", "[ambient]\nbird = ani.ai\n"),
+                ("helicopter.cfg", "not a staff registry\n"),
+                (
+                    "fences.cfg",
+                    "[fences]\nrail = fence.ai\n[rail/subtypes]\nf\ng\n",
+                ),
+                (
+                    "animals.cfg",
+                    "[animals]\nlion = lion.ai\nyak = yak.ai\n[lion/subtypes]\nm\nf\n",
+                ),
+                ("guests.cfg", "[guests]\nman = guest.ai\n"),
+                (
+                    "staff.cfg",
+                    "[staff]\nkeeper = ani.ai\nhelicopter = ani.ai\n[keeper/subtypes]\nm\n",
+                ),
+                ("ani.ai", ani),
+                // The subtype's own section wins; an empty one does not count.
+                (
+                    "fence.ai",
+                    "[f/Animations]\nidle = idle\n[g/Animations]\n[Animations]\nbroke = broke\n",
+                ),
+                (
+                    "lion.ai",
+                    "[Global]\nDefaultSubtype = m\n[AnimPath]\nm = animals/lion/m\nf = Animals\\Lion\\F\n\
+                     [m/Animations]\nidle = stand\n[f/Animations]\n[Animations]\nidle = plain\n",
+                ),
+                ("yak.ai", "[Animations]\nidle = idle\nwalk = w/w.ani\n"),
+                (
+                    "guest.ai",
+                    "[Global]\nDefaultSubtype = man\n[man/Animations]\nidle = idle\n[Animations]\nwalk = walk\n",
+                ),
+            ],
+        );
+        let member = |class, kind, subtype, name: &str| {
+            get(&c, class, kind, subtype)
+                .animations
+                .iter()
+                .find(|a| a.name == name)
+                .map(|a| a.member.as_str())
+        };
+        for (class, kind, subtype, expected) in [
+            ("objects", "foliage", "tree", "objects/tree/idle/idle.ani"),
+            ("building", "building", "shop", "objects/shop/idle/idle.ani"),
+            ("paths", "paths", "road", "paths/road/idle/idle.ani"),
+            ("food", "food", "bone", "food/bone/idle/idle.ani"),
+            ("rubble", "r1", "big", "rubble/big/idle/idle.ani"),
+            ("filter", "f1", "clean", "filter/clean/idle/idle.ani"),
+            (
+                "ambient",
+                "ambient",
+                "bird",
+                "ambient/ambient/bird/idle/idle.ani",
+            ),
+            ("fences", "rail", "f", "fences/rail/f/idle/idle.ani"),
+            ("animals", "lion", "m", "animals/lion/m/stand/stand.ani"),
+            ("guests", "man", "", "guests/man/idle/idle.ani"),
+            ("keeper", "keeper", "m", "staff/keeper/m/idle/idle.ani"),
+            (
+                "helicopter",
+                "helicopter",
+                "",
+                "helicopter/helicopter/idle/idle.ani",
+            ),
+        ] {
+            assert_eq!(member(class, kind, subtype, "idle"), Some(expected));
+        }
+        // A value with `.ani` is the member itself, in its normalised form.
+        assert_eq!(
+            member("objects", "foliage", "tree", "full"),
+            Some("x/y.ani")
+        );
+        assert_eq!(member("animals", "yak", "", "walk"), Some("w/w.ani"));
+        // No `[AnimPath]` entry for the subtype: only full member names resolve.
+        assert_eq!(member("animals", "yak", "", "idle"), None);
+        // The animals of the empty subtype section and of the plain one: g has no animations of
+        // its own, so the plain section is used; f's empty section falls back to the default's.
+        assert_eq!(
+            member("fences", "rail", "g", "broke"),
+            Some("fences/rail/g/broke/broke.ani")
+        );
+        assert_eq!(
+            member("animals", "lion", "f", "idle"),
+            Some("animals/lion/f/stand/stand.ani")
+        );
+        // Names come in ascending byte order.
+        let order: Vec<_> = get(&c, "objects", "foliage", "tree")
+            .animations
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
+        assert_eq!(order, ["full", "idle", "used"]);
+    }
+
+    #[test]
+    fn lookup_accepts_parent_classes_and_base_animation_follows_the_class() {
+        let ani = "[Animations]\nempty = empty\nfull = full\nidle = idle\n";
+        let c = catalogue(
+            "lookup",
+            &[
+                (
+                    "staff.cfg",
+                    "[staff]\nkeeper = a.ai\n[keeper/subtypes]\nm\n",
+                ),
+                ("bldg.cfg", "[building]\nshop = a.ai\n"),
+                ("food.cfg", "[food]\nbone = a.ai\nmeat = b.ai\n"),
+                ("fences.cfg", "[fences]\nrail = c.ai\n"),
+                ("a.ai", ani),
+                ("b.ai", "[Animations]\nempty = empty\nfull = full\n"),
+                ("c.ai", "[Animations]\nbroke = broke\nidle = idle\n"),
+            ],
+        );
+        assert_eq!(c.find("staff", b"keeper", b"m").unwrap().class, "keeper");
+        assert!(c.find("keeper", b"keeper", b"m").is_some());
+        assert!(c.find("animals", b"keeper", b"m").is_none());
+        assert_eq!(
+            c.find("objects", b"building", b"shop").unwrap().class,
+            "building"
+        );
+        assert!(c.find("building", b"building", b"").is_none());
+        let base = |class, kind, subtype| {
+            get(&c, class, kind, subtype)
+                .base_animation()
+                .map(|a| a.name.as_str())
+        };
+        assert_eq!(base("building", "building", "shop"), Some("empty"));
+        assert_eq!(base("food", "food", "bone"), Some("idle"));
+        assert_eq!(base("food", "food", "meat"), Some("full"));
+        assert_eq!(base("fences", "rail", "f"), Some("idle"));
+    }
+
+    /// The numbers of the catalogue table of the specification, for the full game.
+    #[test]
+    #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+    fn full_game_counts() {
+        let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+        let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+        let c = Catalogue::load(&vfs).unwrap();
+        assert_eq!(c.types.len(), 980);
+        assert_eq!(
+            c.counts().iter().map(|c| c.1).collect::<Vec<_>>(),
+            [14, 17, 73, 173, 360, 4, 295, 11, 9, 7, 16, 1]
+        );
+        assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+        // Every definition file loads; five scenery types give the name id 0 themselves.
+        assert!(c.types.iter().all(|t| t.config.is_some()));
+        let unnamed: Vec<_> = c.types.iter().filter(|t| t.name_id == 0).collect();
+        assert_eq!(unnamed.len(), 5);
+        assert!(unnamed.iter().all(|t| t.class == "objects"));
+        // Every base animation exists except for two animals.
+        let missing: Vec<_> = c
+            .types
+            .iter()
+            .filter(|t| !t.base_animation().is_some_and(|a| vfs.contains(&a.member)))
+            .map(|t| t.class)
+            .collect();
+        assert_eq!(missing, ["animals", "animals"]);
+        // Lookups as the map files spell them.
+        assert!(c.find("fences", b"zoowall", b"f").is_some());
+        assert!(c.find("animals", b"lion", b"m").is_some());
+        assert!(c.find("staff", b"keeper", b"f").is_some());
+        assert!(c.find("building", b"building", b"restrant").is_some());
+        assert!(c.find("objects", b"foliage", b"acacia").is_some());
+        assert!(c.find("paths", b"paths", b"dirtpath").is_some());
+    }
+}
