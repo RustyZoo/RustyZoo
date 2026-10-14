@@ -1,28 +1,10 @@
-//! Switching between window and full screen (input 3.4, camera 8.3): when to switch, and how the
-//! game picture sits on a display that is larger than the game.
+//! Full screen (input 3.4, camera 8.3): how the game picture sits on a display that is larger
+//! than the game.
 //!
 //! The game keeps its size. In full screen the picture is scaled by the largest whole factor
 //! that fits and centred, with black around it, so the pixels stay sharp on any display; the
 //! cursor is mapped back, and a cursor over the black is taken for the nearest edge pixel, so the
 //! scroll band is reached at the edge of the display.
-
-use sdl3::video::WindowFlags;
-
-use super::events::asleep;
-
-/// What the window has to do about full screen, if anything: `Some(on)` is a request to switch to
-/// `on`. `toggle` is Alt+Enter, which acts only while the window is active; `maximized` is the
-/// maximise button, which only a windowed window can press. The window flags are read, not
-/// followed through events.
-pub fn request(flags: WindowFlags, toggle: bool, maximized: bool) -> Option<bool> {
-    let full = flags.contains(WindowFlags::FULLSCREEN);
-    match () {
-        _ if asleep(flags) => None,
-        _ if toggle && flags.contains(WindowFlags::INPUT_FOCUS) => Some(!full),
-        _ if maximized && !full && flags.contains(WindowFlags::MAXIMIZED) => Some(true),
-        _ => None,
-    }
-}
 
 /// Where the picture of `game` pixels goes on an output of `out` pixels: `(x, y, width, height)`.
 /// The factor is whole when the output is at least as large as the game; a smaller output scales
@@ -65,27 +47,6 @@ pub fn pointer(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const FS: WindowFlags = WindowFlags::FULLSCREEN;
-    const FOCUS: WindowFlags = WindowFlags::INPUT_FOCUS;
-
-    #[test]
-    fn alt_enter_and_the_maximise_button_switch() {
-        assert_eq!(request(FOCUS, true, false), Some(true));
-        assert_eq!(request(FS | FOCUS, true, false), Some(false));
-        assert_eq!(request(WindowFlags::empty(), true, false), None, "inactive");
-        assert_eq!(request(FOCUS | WindowFlags::MINIMIZED, true, false), None);
-        assert_eq!(request(FOCUS, false, false), None);
-        let max = WindowFlags::MAXIMIZED;
-        assert_eq!(request(max, false, true), Some(true));
-        assert_eq!(request(FS | max, false, true), None, "already full screen");
-        assert_eq!(
-            request(FOCUS, false, true),
-            None,
-            "a restore is not a maximise"
-        );
-        assert_eq!(request(max | WindowFlags::HIDDEN, false, true), None);
-    }
 
     #[test]
     fn the_picture_is_scaled_by_a_whole_factor_and_centred() {

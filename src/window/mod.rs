@@ -38,6 +38,7 @@ use sdl3::video::WindowFlags;
 use crate::CliError;
 use crate::probe::{self, Timing};
 use events::{State, asleep, focused};
+use screen::Screen;
 use sound::Sound;
 use wait::Wait;
 
@@ -55,6 +56,22 @@ pub struct Flags<'a> {
     pub timing: Option<u64>,
     /// `--shot`: write the pixels of the last frame, as the renderer has them, to this PNG.
     pub shot: Option<&'a str>,
+}
+
+/// Makes the game full screen or windowed, after asking the window to do it if `ask`; the game is
+/// told with a command, and the picture is drawn again whether or not the game paints.
+fn switch(
+    screen: &mut Screen,
+    state: &mut State,
+    commands: &mut Vec<Command>,
+    on: bool,
+    ask: bool,
+) {
+    if on != screen.fullscreen && (!ask || screen.request(on)) {
+        screen.fullscreen = on;
+        state.exposed = true;
+        commands.push(Command::Fullscreen(on));
+    }
 }
 
 pub fn run(
@@ -105,6 +122,7 @@ pub fn run(
     let mut shown = false;
     let mut pointer = None;
     let mut wait = Wait::default();
+    let mut seen = false;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
@@ -121,27 +139,21 @@ pub fn run(
             continue;
         }
         sound.hold(false);
-        // Alt+Enter, the maximise button and a script ask for the switch, the window makes it
-        // (or not), and the game is told when the window has switched, whoever did it.
+        // Alt+Enter and a script ask for the switch and the window makes it; a switch that the
+        // window makes on its own (a key of the window manager) is followed. The game is told.
         let window_flags: WindowFlags = screen.canvas.window().window_flags().into();
-        let (toggle, maximized) = (take(&mut state.toggle), take(&mut state.maximized));
-        if let Some(on) = fullscreen::request(window_flags, toggle, maximized) {
-            screen.switch(on);
+        if take(&mut state.toggle) && focused(window_flags) {
+            let on = !screen.fullscreen;
+            switch(&mut screen, &mut state, &mut commands, on, true);
         }
         let full = window_flags.contains(WindowFlags::FULLSCREEN);
-        if full != screen.fullscreen {
-            screen.fullscreen = full;
-            // The picture goes to another place: draw it again even if the game paints nothing.
-            state.exposed = true;
-            commands.push(Command::Fullscreen(full));
-            // A window that was maximised comes back from full screen as it was: restore it.
-            if !full && window_flags.contains(WindowFlags::MAXIMIZED) {
-                screen.canvas.window_mut().restore();
-            }
+        if full != seen {
+            seen = full;
+            switch(&mut screen, &mut state, &mut commands, full, false);
         }
         while let Some((_, command)) = script.next_if(|&(at, _)| at <= pass) {
             match command {
-                Command::Fullscreen(on) => screen.switch(on),
+                Command::Fullscreen(on) => switch(&mut screen, &mut state, &mut commands, on, true),
                 command => commands.push(command),
             }
         }

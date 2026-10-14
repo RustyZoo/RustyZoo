@@ -17,7 +17,8 @@ pub struct Screen {
     pub size: (u32, u32),
     /// The cursor is in points of the window; the game reads it in pixels of the game.
     pub to_game: (f32, f32),
-    /// The window is full screen: the picture is centred and scaled by a whole factor.
+    /// The game is full screen: the picture is centred and scaled by a whole factor. It follows
+    /// the last switch that the window accepted, and what the window reports on its own.
     pub fullscreen: bool,
 }
 
@@ -34,14 +35,17 @@ impl Screen {
         Ok(self.canvas.copy(texture, None, FRect::new(x, y, w, h))?)
     }
 
-    /// Asks the window to go to full screen or back. If it cannot, it stays as it is.
-    pub fn switch(&mut self, on: bool) {
-        if let Err(e) = self.canvas.window_mut().set_fullscreen(on) {
+    /// Asks the window to go to full screen or back; whether it was done. If it cannot, it
+    /// stays as it is.
+    pub fn request(&mut self, on: bool) -> bool {
+        let done = self.canvas.window_mut().set_fullscreen(on);
+        if let Err(e) = &done {
             eprintln!(
                 "rustyzoo: cannot switch to {}: {e}",
                 if on { "full screen" } else { "a window" }
             );
         }
+        done.is_ok()
     }
 
     /// The pixel of the game under the cursor at `at`, in points of the window.

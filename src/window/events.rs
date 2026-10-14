@@ -6,10 +6,12 @@ use sdl3::video::WindowFlags;
 
 use crate::input;
 
-/// Whether the window is hidden or minimised, from its flags. The flags are read, not followed
+/// Whether the window is hidden or minimised, or full screen without the focus (main loop 3.2),
+/// from its flags. The flags are read, not followed
 /// through the events: a restore that comes as another event cannot leave the loop asleep.
 pub fn asleep(flags: WindowFlags) -> bool {
     flags.intersects(WindowFlags::HIDDEN | WindowFlags::MINIMIZED)
+        || (flags.contains(WindowFlags::FULLSCREEN) && !focused(flags))
 }
 
 /// Whether the window has the input focus, from its flags (read, like [`asleep`]). A hidden or
@@ -25,8 +27,6 @@ pub struct State {
     pub exposed: bool,
     /// Alt+Enter was released.
     pub toggle: bool,
-    /// The maximise button was pressed.
-    pub maximized: bool,
 }
 
 impl State {
@@ -37,10 +37,6 @@ impl State {
         }
         self.toggle |= input::alt_enter(&event);
         match event {
-            Event::Window {
-                win_event: WindowEvent::Maximized,
-                ..
-            } => self.maximized = true,
             Event::Quit { .. }
             | Event::Window {
                 win_event: WindowEvent::CloseRequested,
@@ -77,6 +73,12 @@ mod tests {
             !asleep(WindowFlags::empty()),
             "inactive but visible keeps running"
         );
+        let full = WindowFlags::FULLSCREEN;
+        assert!(
+            asleep(full),
+            "inactive in full screen blocks like minimised"
+        );
+        assert!(!asleep(full | WindowFlags::INPUT_FOCUS));
         assert!(focused(WindowFlags::INPUT_FOCUS | WindowFlags::MAXIMIZED));
         assert!(!focused(WindowFlags::empty()) && !focused(WindowFlags::MINIMIZED));
         state.note(window(WindowEvent::FocusLost), &mut commands);
