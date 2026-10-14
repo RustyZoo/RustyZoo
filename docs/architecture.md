@@ -20,6 +20,7 @@ Modules of the core:
 | `text` | Liberation Sans Regular and Bold (embedded) with the metrics of Arial: line height, baseline, whole-pixel advances; wrapping, alignment, clipping, shadow and drawing into a canvas; templates, numbers, money and dates (`text::format`) |
 | `sprite` | Sprite files and palettes: decoding, drawing, PNG output |
 | `userdir` | The per-user folder: where it is, the settings written there, read over the game's `zoo.ini` |
+| `movie` | Intro movies: the AVI container, the Indeo 5 video decoded to RGBA pictures, the PCM audio (no window, no sound device) |
 
 The core draws in software into an RGBA framebuffer (`Framebuffer`), as the original's software blitter does. The window only presents that framebuffer. Every result can therefore be checked without a screen: text output, PNG pictures, hashes.
 
@@ -46,7 +47,7 @@ Everything read from a file is untrusted: malformed data gives an error, never a
 
 ## Commands
 
-`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `dump-sprite`, `check-sprites`, `check-layouts`, `dump-layout`, `text-width`, `draw-text` and `window-smoke`; see the README. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
+`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `dump-sprite`, `check-sprites`, `movie-info`, `check-layouts`, `dump-layout`, `text-width`, `draw-text` and `window-smoke`; see the README. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
 
 ## Design choices
 
@@ -60,7 +61,7 @@ Not implemented yet unless said otherwise.
 
 ## Dependencies
 
-A dependency is added by the milestone that first uses it. Today: `sdl3`, `zip`, `png`, `flate2` and `fontdue`.
+A dependency is added by the milestone that first uses it. Today: `sdl3`, `zip`, `png`, `flate2` and `fontdue`, and a trimmed copy of NihAV's Indeo 5 decoder in `vendor/nihav` (AGPL-3.0, pure Rust, no other dependency; see `vendor/README.md`), used by `movie`. It is vendored because NihAV is not published on crates.io; the decoder is third-party code on untrusted data, so a panic inside it is caught and reported as a decode error.
 
 ## Tests
 

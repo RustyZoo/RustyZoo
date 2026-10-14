@@ -159,6 +159,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nihav_codec_support"
+version = "0.1.0"
+dependencies = [
+ "nihav_core",
+]
+
+[[package]]
+name = "nihav_core"
+version = "0.1.0"
+
+[[package]]
+name = "nihav_indeo"
+version = "0.1.0"
+dependencies = [
+ "nihav_codec_support",
+ "nihav_core",
+]
+
+[[package]]
 name = "nix"
 version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -201,6 +220,8 @@ version = "0.0.0"
 dependencies = [
  "flate2",
  "fontdue",
+ "nihav_core",
+ "nihav_indeo",
  "png",
  "sdl3",
  "zip",

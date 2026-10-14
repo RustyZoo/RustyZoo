@@ -7,6 +7,7 @@ pub mod camera;
 pub mod config;
 pub mod entity;
 pub mod ground;
+pub mod movie;
 pub mod music;
 pub mod pe;
 pub mod render;

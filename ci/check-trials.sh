@@ -171,6 +171,13 @@ check base-trial 48,48,0 "rz check-wavs | tail -1 | grep -o '[0-9]*' | paste -sd
 check base-trial 38,2,1,1,6 "rz check-wavs | grep -v wavs: | cut -d' ' -f1 | paste -sd, -"
 check expansion-trial 198,198,0 "rz check-wavs | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 17,7,162,12 "rz check-wavs | grep -v wavs: | cut -d' ' -f1 | paste -sd, -"
+# The intro movie of each trial (Indeo 5 video, no sound): picture size, frames, frames decoded;
+# every 40th frame written as a picture; a missing file is an error, not a crash.
+check base-trial 800x600,79,79 "rz movie-info demologo.avi | grep -E '^(size|frames|decoded)' | cut -d' ' -f2 | paste -sd, -"
+check expansion-trial 800x600,82,82 "rz movie-info bflogo.avi | grep -E '^(size|frames|decoded)' | cut -d' ' -f2 | paste -sd, -"
+check base-trial 2,2 "{ rz movie-info demologo.avi --dump 40 $tmp/movie | tail -1 | grep -o '[0-9]*'; ls $tmp/movie | wc -l; } | paste -sd, -"
+check base-trial 1 'rz movie-info nope.avi >/dev/null 2>&1; echo $?'
+
 # The menu music queued on the dummy audio device, paused: format, gain, bytes.
 check base-trial sounds/mainmenu.wav:S16LE22050Hz1ch,gain0.999,queued704514bytes,paused "rz check-music"
 check expansion-trial sounds/mainmenu.wav:U822050Hz2ch,gain0.999,queued940914bytes,paused "rz check-music"
