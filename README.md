@@ -55,6 +55,9 @@ rustyzoo check-sprites                            # decode every sprite file; ex
 rustyzoo --data "/path/to/Zoo Tycoon" which animals/lion.ai   # which file or archive supplies it, and the copies it hides
 rustyzoo map-info maps/default.zoo                # version, size, terrain and entities of a map or saved game
 rustyzoo check-maps                               # read every .zoo file; exit 1 if one is corrupted
+rustyzoo render-ani objects/aviary/idle/idle.ani out/   # frame 0 of an animation set, one PNG per screen direction, into out/
+rustyzoo render-ani animals/lion/f out/ --anim walk     # the same for animals/lion/f/walk/walk.ani
+rustyzoo check-anis                               # load every animation set and its sprite files; exit 1 if one fails
 ```
 
 Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.
