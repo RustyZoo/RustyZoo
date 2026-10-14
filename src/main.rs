@@ -96,7 +96,8 @@ usage: rustyzoo [--data <dir>] <command>
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
                       per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
-                      in|out, pause, quit; # starts a comment); the window is 1024x768 unless
+                      in|out, fullscreen on|off, pause, quit; # starts a comment); the window
+                      is 1024x768 unless
                       --size says otherwise. Prints the size of the window, then, for each pass
                       in which something happens: a line per command applied, then one per
                       timer that fires, draw (the hash of the frame painted, or - if none, and
@@ -114,7 +115,8 @@ usage: rustyzoo [--data <dir>] <command>
                       is due, blocks while the window is minimised or hidden, and shows a frame
                       only when one was painted. Closing the window ends it. --passes ends it
                       after N passes, --script applies commands as above before the pass of
-                      their index, --log writes the lines a headless run prints, so that
+                      their index (fullscreen asks the window to switch), --log writes the
+                      lines a headless run prints, so that
                       `run --headless --replay` plays it again with the same frame hashes. It
                       prints the game size and the factor, the window size, the size in pixels
                       and the output size, then

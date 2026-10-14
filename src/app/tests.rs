@@ -243,6 +243,8 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Rotate(false),
         Command::Zoom(true),
         Command::Zoom(false),
+        Command::Fullscreen(true),
+        Command::Fullscreen(false),
         Command::Pause,
         Command::Quit,
     ] {
@@ -256,6 +258,8 @@ fn commands_have_a_text_form_that_reads_back() {
         "rotate left",
         "pointer x y",
         "zoom",
+        "fullscreen",
+        "fullscreen 1",
         "stop",
     ] {
         assert!(bad.parse::<Command>().is_err(), "{bad:?}");

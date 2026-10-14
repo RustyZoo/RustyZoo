@@ -46,6 +46,20 @@ windowed() {
   rm -rf "${d:?}"
 }
 
+# Switches the dummy window to full screen and back by script, with a zoom in during each. The map
+# is 800 pixels wide, so full screen refuses the zoom in at zoom 0 (camera 8.3) and the window
+# takes it. Prints the log lines of the switches, the zoom of the last draw, and whether the log
+# replayed headless gives the same lines.
+fullscreen() {
+  d=$(mktemp -d)
+  printf '3 fullscreen on\n8 zoom in\n14 fullscreen off\n18 zoom in\n' >"$d/script"
+  SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 30 --script "$d/script" --log "$d/log" >/dev/null
+  sed -n -E 's/^pass [0-9]+ t=[0-9]+ fullscreen (on|off)$/\1/p' "$d/log" | tr '\n' ,
+  awk '/ draw /{z=$NF} END{printf "%s,", z}' "$d/log"
+  if rz run "$1" --headless --replay "$d/log" | cmp -s - "$d/log"; then echo same; else echo different; fi
+  rm -rf "${d:?}"
+}
+
 check() {
   trial=$1 expected=$2 command=$3
   got=$(eval "$command" | tr -d ' \r') # wc pads its numbers on macOS
@@ -124,6 +138,9 @@ check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate 
 # The game size of the ini file (800x600 in both trials) at factor 1, on the dummy video driver.
 check base-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/default.zoo"
 check expansion-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/scn19.zoo"
+# Full screen on and off, and the zoom rule of an 800 pixel wide full screen.
+check base-trial on,off,zoom=2,same "fullscreen maps/default.zoo"
+check expansion-trial on,off,zoom=2,same "fullscreen maps/scn19.zoo"
 # The timing mode (the summary of three timers) and the read-back of the presented pixels run on the
 # dummy video driver; the values are information, so only the mode is checked: three summary lines
 # and the size of the picture read back.

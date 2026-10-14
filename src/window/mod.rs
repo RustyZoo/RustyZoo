@@ -13,6 +13,7 @@
 //! menu music), `wait` (the pacing).
 
 mod events;
+mod fullscreen;
 mod screen;
 mod size;
 mod sound;
@@ -20,6 +21,7 @@ mod wait;
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::mem::take;
 
 use rustyzoo::app::{App, Command};
 use rustyzoo::camera::Settings;
@@ -31,10 +33,12 @@ use rustyzoo::vfs::Vfs;
 use rustyzoo::zoo::Zoo;
 use sdl3::pixels::PixelFormat;
 use sdl3::render::ScaleMode;
+use sdl3::video::WindowFlags;
 
 use crate::CliError;
 use crate::probe::{self, Timing};
 use events::{State, asleep, focused};
+use screen::Screen;
 use sound::Sound;
 use wait::Wait;
 
@@ -54,6 +58,22 @@ pub struct Flags<'a> {
     pub shot: Option<&'a str>,
 }
 
+/// Makes the game full screen or windowed, after asking the window to do it if `ask`; the game is
+/// told with a command, and the picture is drawn again whether or not the game paints.
+fn switch(
+    screen: &mut Screen,
+    state: &mut State,
+    commands: &mut Vec<Command>,
+    on: bool,
+    ask: bool,
+) {
+    if on != screen.fullscreen && (!ask || screen.request(on)) {
+        screen.fullscreen = on;
+        state.exposed = true;
+        commands.push(Command::Fullscreen(on));
+    }
+}
+
 pub fn run(
     vfs: &Vfs,
     catalogue: &Catalogue,
@@ -63,12 +83,9 @@ pub fn run(
 ) -> Result<(), CliError> {
     let sdl = sdl3::init()?;
     let video = sdl.video()?;
-    let screen::Screen {
-        mut canvas,
-        size,
-        to_game,
-    } = screen::open(&video, ini, flags.size)?;
-    let textures = canvas.texture_creator();
+    let mut screen = screen::open(&video, ini, flags.size)?;
+    let size = screen.size;
+    let textures = screen.canvas.texture_creator();
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
 
@@ -105,33 +122,48 @@ pub fn run(
     let mut shown = false;
     let mut pointer = None;
     let mut wait = Wait::default();
+    let mut seen = false;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
         }
         // Without the focus the sound is silent, the voices running on.
-        sound.focus(focused(canvas.window().window_flags().into()));
+        sound.focus(focused(screen.canvas.window().window_flags().into()));
         // Minimised or hidden: nothing runs until something happens (a close request still
         // does). The music waits where it is and goes on at the restore, not from its beginning.
-        if asleep(canvas.window().window_flags().into()) && !commands.contains(&Command::Quit) {
+        if asleep(screen.canvas.window().window_flags().into())
+            && !commands.contains(&Command::Quit)
+        {
             sound.hold(true);
             state.note(pump.wait_event(), &mut commands);
             continue;
         }
         sound.hold(false);
+        // Alt+Enter and a script ask for the switch and the window makes it; a switch that the
+        // window makes on its own (a key of the window manager) is followed. The game is told.
+        let window_flags: WindowFlags = screen.canvas.window().window_flags().into();
+        if take(&mut state.toggle) && focused(window_flags) {
+            let on = !screen.fullscreen;
+            switch(&mut screen, &mut state, &mut commands, on, true);
+        }
+        let full = window_flags.contains(WindowFlags::FULLSCREEN);
+        if full != seen {
+            seen = full;
+            switch(&mut screen, &mut state, &mut commands, full, false);
+        }
         while let Some((_, command)) = script.next_if(|&(at, _)| at <= pass) {
-            commands.push(command);
+            match command {
+                Command::Fullscreen(on) => switch(&mut screen, &mut state, &mut commands, on, true),
+                command => commands.push(command),
+            }
         }
         // The edge scroll reads the cursor at its pass, not from motion events: a window
         // that is not active gets none, one that gets the focus back under the pointer does.
-        let at = (canvas.window().has_input_focus() && canvas.window().has_mouse_focus())
-            .then(|| pump.mouse_state())
-            .map(|m| {
-                (
-                    (m.x() * to_game.0).floor() as i32,
-                    (m.y() * to_game.1).floor() as i32,
-                )
-            });
+        let at = (screen.canvas.window().has_input_focus()
+            && screen.canvas.window().has_mouse_focus())
+        .then(|| pump.mouse_state())
+        .map(|m| screen.pointer((m.x(), m.y())))
+        .transpose()?;
         if at != pointer {
             pointer = at;
             commands.push(Command::Pointer(at));
@@ -150,8 +182,8 @@ pub fn run(
         }
         shown |= painted;
         if painted || (shown && std::mem::take(&mut state.exposed)) {
-            canvas.copy(&texture, None, None)?;
-            if !canvas.present() {
+            screen.copy(&texture)?;
+            if !screen.canvas.present() {
                 return Err(sdl3::get_error().into());
             }
         }
@@ -178,9 +210,9 @@ pub fn run(
     }
     if let Some(file) = flags.shot {
         // The texture goes to the renderer again, and its pixels are read before the present.
-        canvas.copy(&texture, None, None)?;
-        probe::shot(&canvas, file)?;
-        canvas.present();
+        screen.copy(&texture)?;
+        probe::shot(&screen.canvas, file)?;
+        screen.canvas.present();
     }
     Ok(())
 }

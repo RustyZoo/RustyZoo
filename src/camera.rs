@@ -3,8 +3,8 @@
 //! pointer position it saw. The checks of 6.2 (inactive window, modal dialog, terraform drag,
 //! following an entity) are the caller's too.
 //!
-//! Windowed only: the full-screen band of 2 pixels and the zoom limit at a width of 800 (C1) are
-//! not implemented.
+//! Full screen (C1) changes two rules: the edge band is 2 pixels, not 7, and the view of 800
+//! pixels in width cannot zoom in.
 
 use crate::config::{Config, to_int};
 use crate::render::order::{ground_height, project};
@@ -51,8 +51,14 @@ impl Settings {
 }
 
 /// The width of the edge band in a window (9.2): `0..=BAND` on the left and top, the last `BAND`
-/// pixels on the right and bottom.
+/// pixels on the right and bottom. In full screen it is [`FULL_BAND`].
 const BAND: i32 = 7;
+
+/// The width of the edge band in full screen (9.2).
+const FULL_BAND: i32 = 2;
+
+/// The width of the view at which full screen does not offer zoom 2 (8.3).
+const NARROW: i32 = 800;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Camera {
@@ -65,6 +71,8 @@ pub struct Camera {
     /// The size of the map view, the window's client size.
     pub size: (i32, i32),
     pub settings: Settings,
+    /// The window is full screen: the band and the zoom limit differ.
+    fullscreen: bool,
     /// The terraform brush size, 1 to 5, also the size of the selection.
     brush: i32,
     /// The first corner of the map selection, a square of `brush` tiles.
@@ -107,6 +115,7 @@ impl Camera {
             scroll: view.scroll,
             size,
             settings,
+            fullscreen: false,
             brush: ((view.brush & 0xff) as i32).clamp(1, 5),
             selection: (0, 0),
             next_edge: 0,
@@ -220,9 +229,10 @@ impl Camera {
             return;
         }
         let step = self.settings.mouse;
+        let band = if self.fullscreen { FULL_BAND } else { BAND };
         let axis = |p: i32, len: i32| match p {
-            _ if p <= BAND => -step,
-            _ if p >= len - BAND => step,
+            _ if p <= band => -step,
+            _ if p >= len - band => step,
             _ => 0,
         };
         let (dx, dy) = (axis(x, w), axis(y, h));
@@ -236,11 +246,27 @@ impl Camera {
         self.change(map, selected, |c| c.rotation = (c.rotation + turn) % 4);
     }
 
-    /// Zoom in (+2) or out (-2); nothing at the limit, as the disabled button (8.3).
+    /// Zoom in (+2) or out (-2); nothing at the limit, as the disabled button (8.3). Full screen
+    /// at a width of 800 also refuses zoom in at zoom 0.
     pub fn zoom(&mut self, map: &Zoo, selected: Option<(i32, i32)>, zoom_in: bool) {
         let (limit, step) = if zoom_in { (2, 2) } else { (-2, -2) };
-        if self.zoom != limit {
+        let refused = self.zoom == limit || (zoom_in && self.zoom == 0 && self.narrow());
+        if !refused {
             self.change(map, selected, |c| c.zoom += step);
+        }
+    }
+
+    /// Full screen with a view of 800 pixels in width (8.3).
+    fn narrow(&self) -> bool {
+        self.fullscreen && self.size.0 == NARROW
+    }
+
+    /// The window goes to full screen or back. A view at zoom 2 that full screen does not offer
+    /// is zoomed out to 0 with the steps of 8.1 (8.3).
+    pub fn set_fullscreen(&mut self, map: &Zoo, fullscreen: bool) {
+        self.fullscreen = fullscreen;
+        if self.narrow() && self.zoom == 2 {
+            self.change(map, None, |c| c.zoom = 0);
         }
     }
 
