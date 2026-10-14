@@ -612,3 +612,41 @@ fn a_tile_the_cache_lacks_is_rendered_at_run_time() {
         [255, 0, 0, 255]
     );
 }
+
+#[test]
+fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing() {
+    use crate::bitmap::tests::{RED, WHITE, bmp24};
+    let mut fringe = String::new();
+    for piece in (1..=5).chain(11..=15) {
+        fringe += &format!("[{piece}]\nimage=fringe\\f.bmp\n");
+    }
+    let bitmap = bmp24(&[vec![WHITE, RED], vec![WHITE, WHITE]], false);
+    let mut tiles = flat_map(2, 2);
+    tiles[0].elevation = 2;
+    step(&mut tiles, 2, 0, 0, 2);
+    step(&mut tiles, 2, 0, 0, 4);
+    let zoo = Zoo {
+        version: 106,
+        locale: 1033,
+        expansion: 0,
+        width: 2,
+        height: 2,
+        entrance: (0, 0),
+        habitat_count: 0,
+        id_counter: 0,
+        tiles,
+        entities: Vec::new(),
+    };
+    let cliffs = |members: &[(&str, Vec<u8>)]| {
+        let install = Install::new("render-bitmaps", members);
+        let vfs = Vfs::open(&install.0).unwrap();
+        let catalogue = Catalogue::load(&vfs).unwrap();
+        let (_, summary) = MapRenderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
+        (summary.cliffs_drawn, summary.cliffs_missing)
+    };
+    let config = ("fringe.cfg", fringe.into_bytes());
+    let without = cliffs(&[config.clone()]);
+    assert!(without.1 > 0 && without.0 == 0, "{without:?}");
+    let with = cliffs(&[config, ("fringe/f.bmp", bitmap)]);
+    assert_eq!(with, (without.1, 0));
+}
