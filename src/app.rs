@@ -10,7 +10,8 @@
 //! scroll), the simulation (only the calendar, so far; the pause stops it, main loop 3.3).
 //!
 //! With an [`Interface`] the tree is painted over the map: the map view element draws the staged
-//! map into its rectangle, and a due draw paints when the camera moved or the interface changed.
+//! map into its rectangle, and a due draw paints when the camera moved or the interface changed
+//! (a timed element hid itself, an animation showed another frame, ...).
 //! The keys and the edge scroll of the map view then act only while the map view is shown and no
 //! other element has the keyboard focus. Without one, the frame is the map alone.
 
@@ -382,6 +383,11 @@ impl<'a> App<'a> {
         self.fired = self.timers.pass(now, 1.0);
         if self.fired.draw {
             self.drawn_at = self.look();
+            // The animations advance at the drawn frame (ui layout 5.3).
+            let paused = self.paused();
+            if let Some(ui) = &mut self.ui {
+                ui.animate(now, paused);
+            }
             self.drew = self.paint();
         }
         if let Some(period) = self.fired.interface {

@@ -4,7 +4,8 @@
 //! The map view is an element of the tree. It is shown when the interface is made, and the game
 //! draws its picture into the rectangle it is given while the tree is painted; the other layouts
 //! are shown by [`Interface::show`] (the game code, a script). Whatever changes what the tree
-//! looks like marks the interface [`dirty`](Interface::dirty); a paint clears that.
+//! looks like, an animation showing another frame included, marks the interface
+//! [`dirty`](Interface::dirty); a paint clears that.
 
 mod input;
 
@@ -157,6 +158,14 @@ impl Interface {
     /// extension (`uiclick`): the shell plays them.
     pub fn take_sounds(&mut self) -> Vec<&'static str> {
         std::mem::take(&mut self.sounds)
+    }
+
+    /// Advances the animations that are shown at a drawn frame, `now` ms on the clock (see
+    /// [`Painter::animate`]): the interface is dirty when one of them changed its frame.
+    pub fn animate(&mut self, now: u64, paused: bool) {
+        if self.painter.animate(&self.tree, now, paused) {
+            self.dirty = true;
+        }
     }
 
     /// The interface update, `period` milliseconds after the last one: a timed element hides
