@@ -344,14 +344,81 @@ fn skips_the_sections_after_the_entities_of_every_version() {
     for v in VERSIONS {
         let bytes = file(v, 2, 2, &[], &[("fences", "zoowall", "f", fence(v, 5))]);
         assert_eq!(parse(&bytes).entities.len(), 1, "version {v}");
+        // Bytes after the last section are ignored.
         let mut more = bytes.clone();
-        more.push(0);
-        assert_eq!(
-            refusal(&more),
-            "corrupted: later sections: bytes left after the last section"
-        );
+        more.extend([1, 2, 3]);
+        assert_eq!(parse(&more), parse(&bytes), "version {v}");
         more.truncate(bytes.len() - 1);
         assert!(refusal(&more).starts_with("corrupted:"), "version {v}");
+    }
+}
+
+/// The offset of the first byte of `needle` in the sections after the entities.
+fn in_tail(bytes: &[u8], v: u32, needle: &[u8]) -> usize {
+    let start = bytes.len() - tail_len(v);
+    start
+        + bytes[start..]
+            .windows(needle.len())
+            .position(|w| w == needle)
+            .unwrap()
+}
+
+#[test]
+fn the_finance_table_size_does_not_overflow() {
+    let good = file(106, 1, 1, &[], &[]);
+    let mut counts = W::default();
+    counts.u32(2).u32(3);
+    let at = in_tail(&good, 106, &counts.0);
+    for (months, columns) in [
+        (u32::MAX, u32::MAX),
+        (u32::MAX, 3),
+        (2, u32::MAX),
+        (1 << 30, 1 << 30),
+    ] {
+        let mut bad = good.clone();
+        bad[at..at + 4].copy_from_slice(&months.to_le_bytes());
+        bad[at + 4..at + 8].copy_from_slice(&columns.to_le_bytes());
+        assert_eq!(
+            refusal(&bad),
+            "corrupted: later sections: finance tables pass the end of the file"
+        );
+    }
+}
+
+#[test]
+fn the_scenario_block_must_match_its_content() {
+    for v in [51, 70, 106] {
+        let good = file(v, 1, 1, &[], &[]);
+        // The size, the name (5 bytes) and the goal count (8 bytes) of the block.
+        let mut block = W::default();
+        block.u32(4 + 5 + 4 + 8).str("scn/x").u32(8);
+        let at = in_tail(&good, v, &block.0);
+        let count = at + 4 + 4 + 5;
+        // A count that is not a multiple of 4, with the size matching it.
+        let mut bad = good.clone();
+        bad[at..at + 4].copy_from_slice(&(4u32 + 5 + 4 + 6).to_le_bytes());
+        bad[count..count + 4].copy_from_slice(&6u32.to_le_bytes());
+        bad.drain(count + 4 + 6..count + 4 + 8);
+        assert_eq!(
+            refusal(&bad),
+            "corrupted: later sections: scenario goal states are not a multiple of 4 bytes"
+        );
+        // A byte left in the block after the goal states.
+        let mut bad = good.clone();
+        bad[at..at + 4].copy_from_slice(&(4u32 + 5 + 4 + 8 + 1).to_le_bytes());
+        bad.insert(count + 4 + 8, 0);
+        assert_eq!(
+            refusal(&bad),
+            "corrupted: later sections: scenario block size does not match its content"
+        );
+        // A size smaller than the content.
+        let mut bad = good.clone();
+        bad[at..at + 4].copy_from_slice(&(4u32 + 5 + 4 + 4).to_le_bytes());
+        assert!(refusal(&bad).starts_with("corrupted: later sections:"));
+        // A name that passes the end of the file.
+        let mut bad = good.clone();
+        bad[at + 4..at + 8].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(refusal(&bad).starts_with("corrupted: later sections:"));
     }
 }
 
@@ -552,19 +619,55 @@ fn research_and_movement_with_unknown_types_are_refused() {
         "corrupted: later sections: research record of an unknown type"
     );
 
-    // A movement type of 0 breaks the body, which is then skipped by its size.
+    // A movement type of 0 or above 3 breaks the body, which is then skipped by its size.
     let at = 387 + 4;
-    let mut body = unit(106, 387, 1);
-    body[at..at + 4].copy_from_slice(&0i32.to_le_bytes());
-    let z = parse(&file(106, 1, 1, &[], &[("animals", "a", "m", body)]));
-    assert_eq!(z.entities[0].common, None);
-    // Types 1 and 2 have no data.
-    for kind in [1, 2] {
+    let kind = |kind: i32| {
         let mut body = unit(106, 387, 1);
-        body[at..at + 4].copy_from_slice(&i32::to_le_bytes(kind));
+        body[at..at + 4].copy_from_slice(&kind.to_le_bytes());
         let z = parse(&file(106, 1, 1, &[], &[("animals", "a", "m", body)]));
-        assert!(z.entities[0].common.is_some());
+        z.entities[0].common.is_some()
+    };
+    for bad in [0, 4, i32::MAX] {
+        assert!(!kind(bad), "type {bad}");
     }
+    // Types 1 and 2 have no data, and neither has any negative type.
+    for good in [1, 2, -1, -2, i32::MIN] {
+        assert!(kind(good), "type {good}");
+    }
+}
+
+#[test]
+fn flags_that_are_not_exactly_1_read_nothing_more() {
+    // The escape flag of an animal.
+    let mut animal = W::default();
+    animal.z(326);
+    base(&mut animal, 60, 3, 31, "Lion");
+    for flag in [2, u8::MAX] {
+        let mut animal = animal.0.clone();
+        animal[179] = flag;
+        let z = parse(&file(60, 1, 1, &[], &[("animals", "lion", "m", animal)]));
+        assert_eq!(z.entities[0].common.as_ref().unwrap().id, 31);
+    }
+    // The escape flag and the two optional flags of the unit block.
+    for at in [179, 278, 279] {
+        let flagged = |flag| {
+            let mut body = unit(106, 387, 21);
+            body[at] = flag;
+            let z = parse(&file(106, 1, 1, &[], &[("animals", "a", "m", body)]));
+            z.entities[0].common.is_some()
+        };
+        assert!(flagged(2), "byte {at}");
+        assert!(flagged(0), "byte {at}");
+    }
+}
+
+#[test]
+fn the_rotation_is_taken_modulo_8() {
+    let mut body = W::default();
+    body.z(4);
+    base(&mut body, 106, 13, 5, "r");
+    let z = parse(&file(106, 1, 1, &[], &[("objects", "t", "s", body.0)]));
+    assert_eq!(z.entities[0].common.as_ref().unwrap().rotation, 5);
 }
 
 #[test]
@@ -572,9 +675,10 @@ fn a_file_of_version_38_with_the_old_cash_layout_is_corrupted() {
     // The leftover files of version 38 have no cash field after the calendar: four bytes short.
     let bytes = file(38, 2, 2, &[], &[("fences", "zoowall", "f", fence(38, 5))]);
     assert!(Zoo::parse(&bytes).is_ok());
-    // After the cash come the thoughts (4 + 40 bytes) and the events (8).
+    // Without the cash and with no thoughts, the file ends with a count and the events (8):
+    // the loader reads the count as the cash and then runs past the end.
     let cash = bytes.len() - 52 - 4;
-    let old: Vec<u8> = [&bytes[..cash], &bytes[cash + 4..]].concat();
+    let old = [&bytes[..cash], &[0; 12]].concat();
     assert!(refusal(&old).starts_with("corrupted: later sections:"));
 }
 
@@ -661,6 +765,12 @@ fn hostile_input_never_panics() {
                 bad[at] = value;
                 let _ = Zoo::parse(&bad);
             }
+        }
+        // Two adjacent extreme values, to reach products of counts.
+        for at in 0..good.len().saturating_sub(8) {
+            let mut bad = good.clone();
+            bad[at..at + 8].fill(0xff);
+            let _ = Zoo::parse(&bad);
         }
         // Extreme counts and sizes at every position, aligned or not.
         for at in 0..good.len().saturating_sub(4) {

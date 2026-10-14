@@ -68,7 +68,7 @@ fn scenery(r: &mut Reader) -> R<Common> {
 fn base(r: &mut Reader) -> R<Common> {
     let v = r.v;
     let (x, y, z) = (r.i32()?, r.i32()?, r.i32()?);
-    let rotation = r.u32()?;
+    let rotation = r.u32()? % 8;
     let id = r.u32()?;
     let name = r.text()?;
     if v <= 62 {
@@ -163,7 +163,7 @@ fn animal(r: &mut Reader) -> R<()> {
     if v >= 46 {
         r.skip(4)?;
     }
-    if v >= 47 && r.u32()? != 0 {
+    if v >= 47 && r.u32()? == 1 {
         r.skip(8 + 8 + 12)?;
         if v >= 81 {
             r.skip(4)?;
@@ -292,7 +292,7 @@ fn zoo_unit(r: &mut Reader, guest: bool) -> R<Common> {
     r.skip(6)?;
     if v >= 97 && !guest {
         for _ in 0..2 {
-            if r.u8()? != 0 {
+            if r.u8()? == 1 {
                 r.skip(2)?;
             }
         }
@@ -345,7 +345,8 @@ fn movement(r: &mut Reader) -> R<()> {
     let first = r.i32()?;
     let kind = if r.v >= 93 { r.i32()? } else { first };
     match kind {
-        -1 | 1 | 2 => {}
+        _ if kind < 0 => {} // no movement
+        1 | 2 => {}
         3 => r.skip(if r.v >= 96 { 1 + 32 } else { 1 + 12 })?,
         _ => return bad("movement of an unknown type"),
     }

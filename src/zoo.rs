@@ -10,12 +10,16 @@
 //! class, type and subtype names and the part every body ends with (position, rotation, id and
 //! name). The sections after the entities (view, scenario, counters, finances, thoughts, events,
 //! research, awards, marketing, cheats and the tail) are not kept: they are read and dropped,
-//! only to check that the file ends exactly after them, as the original loader requires. The
-//! habitat and show records are skipped the same way.
+//! only to refuse the files the original loader refuses. Bytes after the last section are
+//! ignored, as the original does. The habitat and show records are skipped the same way.
 //!
 //! From version 70 every entity record states the size of its body, so a record whose class or
 //! layout is not understood is skipped (its [`Entity::common`] is `None`). Before version 70 the
 //! body must be parsed to find the next record, so any unknown class is an error there.
+//!
+//! The parser knows nothing of the entity definitions. The original also refuses a file of a
+//! version below 70 whose entity has a type it has no definition for, even if its class is
+//! known; the code that places entities must do the same rather than skip such a record.
 //!
 //! Everything read from a file is untrusted. Every count and size is checked against the bytes
 //! left before anything is allocated or looped over, so the time and memory used are linear in
@@ -34,9 +38,9 @@ pub const MIN_VERSION: u32 = 38;
 /// The newest version the original accepts (and the only one it writes).
 pub const MAX_VERSION: u32 = 106;
 
-/// The biggest file [`Zoo::parse`] reads: 16 MiB. The biggest file of the game is below 0.5 MiB;
-/// the limit bounds the memory a hostile file can make the parser take.
-pub const MAX_SIZE: usize = 16 * 1024 * 1024;
+/// The biggest file [`Zoo::parse`] reads: 32 MiB. The biggest file of the game is below 0.7 MiB;
+/// the original has no limit, this one bounds the memory a hostile file can make the parser take.
+pub const MAX_SIZE: usize = 32 * 1024 * 1024;
 
 /// Why a file was refused. The messages are single lines.
 #[derive(Debug, PartialEq, Eq)]
@@ -84,7 +88,8 @@ pub struct Common {
     pub x: i32,
     pub y: i32,
     pub z: i32,
-    /// Direction, 0 to 7 in a sound file; not checked.
+    /// Direction, 0 to 7. The file may hold any value; it is stored modulo 8, as the original's
+    /// users read it.
     pub rotation: u32,
     pub id: u32,
     /// The name the file stores for the entity; each byte is one character (Latin-1).
@@ -100,7 +105,9 @@ pub struct Entity {
     /// The stored size of the body; `None` before version 70, which has none.
     pub body_size: Option<u32>,
     /// `None` when the body was skipped: size 0 (a transient entity), a class this reader does
-    /// not know, or a body that did not decode to exactly its stored size.
+    /// not know, or a body that did not decode to exactly its stored size. The original never
+    /// compares a body with its size for a class it knows (it goes on from where its decoding
+    /// stopped); such a record is kept without fields here, which the format allows.
     pub common: Option<Common>,
 }
 
@@ -139,9 +146,6 @@ impl Zoo {
         if bytes.get(..4) != Some(b"TZFB") {
             return Err(ZooError::NotASavedGame);
         }
-        if bytes.len() > MAX_SIZE {
-            return Err(ZooError::Corrupted("file too big".into()));
-        }
         let version = bytes
             .get(4..8)
             .map(|v| u32::from_le_bytes(v.try_into().unwrap()))
@@ -151,6 +155,9 @@ impl Zoo {
         }
         if version > MAX_VERSION {
             return Err(ZooError::TooNew(version));
+        }
+        if bytes.len() > MAX_SIZE {
+            return Err(ZooError::Corrupted("file too big".into()));
         }
         let mut r = Reader {
             data: &bytes[8..],
@@ -298,9 +305,6 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
 
     *section = "later sections";
     after_entities(r)?;
-    if !r.data.is_empty() {
-        return bad("bytes left after the last section");
-    }
     Ok(Zoo {
         version: v,
         locale,
@@ -435,17 +439,24 @@ fn after_entities(r: &mut Reader) -> R<()> {
     let v = r.v;
     r.skip(20)?; // view
 
-    // Scenario: a size, and that many bytes (from 51 a name and the goal states).
-    let size = r.u32()? as usize;
-    let mut block = Reader {
-        data: r.take(size)?,
-        v,
-    };
+    // Scenario: a size, then (from 51, unless the size is 0) a name and the goal states, one
+    // `u32` each. The original skips the block by its size when it starts a scenario and reads
+    // its content otherwise, and the two agree only when the size is exactly that of the
+    // content, so any other size is refused. Before 51 the block is the name alone.
+    let size = u64::from(r.u32()?);
     if size > 0 && v >= 51 {
-        let name = block.u32()? as usize;
-        block.skip(name)?;
-        let goals = block.u32()? as usize;
-        block.skip(goals)?;
+        let name = u64::from(r.u32()?);
+        r.skip(name as usize)?;
+        let goals = u64::from(r.u32()?);
+        if goals % 4 != 0 {
+            return bad("scenario goal states are not a multiple of 4 bytes");
+        }
+        r.skip(goals as usize)?;
+        if size != 8 + name + goals {
+            return bad("scenario block size does not match its content");
+        }
+    } else {
+        r.skip(size as usize)?;
     }
 
     // Name counters: type name and number.
@@ -457,11 +468,10 @@ fn after_entities(r: &mut Reader) -> R<()> {
     // Game and finances.
     r.skip(4 + 12 + 1 + 16 + 4 + 8)?;
     let (months, columns) = (u64::from(r.u32()?), u64::from(r.u32()?));
-    let tables = months * (12 + columns + 1) * 4;
-    if tables > r.data.len() as u64 {
-        return bad("finance tables pass the end of the file");
-    }
-    r.skip(tables as usize)?;
+    let tables = ((12 + columns + 1) * 4)
+        .checked_mul(months)
+        .filter(|&n| n <= r.data.len() as u64);
+    r.skip(tables.ok_or_else(|| Bad("finance tables pass the end of the file".into()))? as usize)?;
     r.skip(if v >= 39 { 4 } else { 0 } + if v >= 71 { 8 } else { 0 })?;
     r.skip(16 + 4)?; // calendar, cash
     if v >= 73 {
