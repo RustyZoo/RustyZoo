@@ -1370,7 +1370,6 @@ fn check_music(vfs: &Vfs) -> Result<(), CliError> {
     );
     // Exercises the rest of the interface; the device is dummy, so nothing is heard.
     music.resume()?;
-    music.update()?;
     music.pause()?;
     Ok(())
 }

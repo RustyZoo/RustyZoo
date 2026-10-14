@@ -152,15 +152,14 @@ pub fn run(
         // Without the focus the sound is silent, the voices running on.
         sound.focus(focused(screen.canvas.window().window_flags().into()));
         // Minimised or hidden: nothing runs until something happens (a close request still
-        // does). The music waits where it is and goes on at the restore, not from its beginning.
+        // does). The music runs on silently, the output being muted with the focus, and is heard
+        // where it has got to at the restore.
         if asleep(screen.canvas.window().window_flags().into())
             && !commands.contains(&Command::Quit)
         {
-            sound.hold(true);
             state.note(pump.wait_event(), &mut commands);
             continue;
         }
-        sound.hold(false);
         // Alt+Enter and a script ask for the switch and the window makes it; a switch that the
         // window makes on its own (a key of the window manager) is followed. The game is told.
         let window_flags: WindowFlags = screen.canvas.window().window_flags().into();
@@ -223,7 +222,6 @@ pub fn run(
             }
         }
         sound.fade(&app);
-        sound.feed();
         pass += 1;
         let timed = timing.as_ref().is_some_and(|t| t.done(now));
         if app.quit() || timed || flags.passes.is_some_and(|n| pass >= n) {

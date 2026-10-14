@@ -3,11 +3,13 @@
 //! Only the program uses this module, because the core crate does not link to SDL.
 
 use std::error::Error;
+use std::ffi::{c_int, c_void};
 
 use rustyzoo::music::{Music, START_LIMIT, gain};
 use rustyzoo::vfs::Vfs;
 use sdl3::audio::{AudioDevice, AudioFormat, AudioSpec, AudioStreamOwner};
 use sdl3::iostream::IOStream;
+use sdl3::sys::audio::{SDL_AudioStream, SDL_PutAudioStreamData};
 
 /// A decoded WAV file: samples as SDL gives them (8, 16, 32 bit integer or 32 bit float).
 #[derive(Clone)]
@@ -86,16 +88,6 @@ impl Sound {
             Some(self.format),
         )
     }
-
-    /// Bytes of one second of this sound.
-    fn bytes_per_second(&self) -> usize {
-        let sample = match self.format {
-            AudioFormat::U8 | AudioFormat::S8 => 1,
-            AudioFormat::S16LE | AudioFormat::S16BE => 2,
-            _ => 4,
-        };
-        self.freq.max(0) as usize * usize::from(self.channels) * sample
-    }
 }
 
 /// The default playback device, to which every sound is bound as its own stream.
@@ -120,8 +112,8 @@ impl Audio {
 
     /// Starts the sound at the volume of the attenuation sum `sum` (see [`gain`]); `None` if the
     /// sum is over 6000: such a sound does not start. With `looping` it starts again when it
-    /// ends, as long as [`Voice::update`] is called at least once a second. A voice that is
-    /// `paused` waits for [`Voice::resume`].
+    /// ends, queued by the audio thread (see [`refill`]), so it goes on while the program does
+    /// not call into SDL. A voice that is `paused` waits for [`Voice::resume`].
     pub fn play(
         &self,
         sound: Sound,
@@ -139,11 +131,19 @@ impl Audio {
             stream.pause()?;
         }
         stream.put_data(&sound.data)?;
-        Ok(Some(Voice {
-            stream,
-            sound,
-            looping,
-        }))
+        let sound = Box::new(sound);
+        if looping {
+            let data = std::ptr::from_ref::<Sound>(&sound).cast_mut().cast();
+            // SAFETY: `data` points to the boxed sound, which lives as long as the voice, and
+            // the voice destroys the stream before it drops the sound (see [`Voice`]).
+            let set = unsafe {
+                sdl3::sys::audio::SDL_SetAudioStreamGetCallback(stream.raw(), Some(refill), data)
+            };
+            if !set {
+                return Err(sdl3::get_error().into());
+            }
+        }
+        Ok(Some(Voice { stream, sound }))
     }
 
     /// The menu music, played with its sum `S = G + B + F` (`X` is 0). `None` if the sum is over
@@ -161,11 +161,32 @@ impl Audio {
     }
 }
 
+/// Called by SDL, on the audio thread, when a looping stream is short of data: queues the whole
+/// sound again. A loop therefore goes on, silently if the output is muted, while the main loop
+/// is blocked, and is heard where it has got to afterwards (sound 10.4, O8).
+unsafe extern "C" fn refill(
+    sound: *mut c_void,
+    stream: *mut SDL_AudioStream,
+    additional: c_int,
+    _total: c_int,
+) {
+    // SAFETY: `sound` is the boxed sound of the voice that owns the stream, alive until the
+    // stream is destroyed; nothing writes to it.
+    let sound = unsafe { &*sound.cast::<Sound>() };
+    if let (true, Ok(len)) = (additional > 0, c_int::try_from(sound.data.len()))
+        && len > 0
+    {
+        // SAFETY: SDL allows putting data from this callback; it copies `len` bytes.
+        unsafe { SDL_PutAudioStreamData(stream, sound.data.as_ptr().cast(), len) };
+    }
+}
+
 /// A sound being played.
 pub struct Voice {
+    // The stream comes first so that it is destroyed, and its callback stops, before the sound
+    // that the callback reads is dropped.
     stream: AudioStreamOwner,
-    sound: Sound,
-    looping: bool,
+    sound: Box<Sound>,
 }
 
 impl Voice {
@@ -175,14 +196,6 @@ impl Voice {
 
     pub fn resume(&self) -> Result<(), Box<dyn Error>> {
         Ok(self.stream.resume()?)
-    }
-
-    /// Queues the sound again when a looping voice has less than one second left.
-    pub fn update(&self) -> Result<(), Box<dyn Error>> {
-        if self.looping && (self.queued_bytes()? as usize) < self.sound.bytes_per_second() {
-            self.stream.put_data(&self.sound.data)?;
-        }
-        Ok(())
     }
 
     pub fn queued_bytes(&self) -> Result<i32, Box<dyn Error>> {
@@ -231,7 +244,6 @@ mod tests {
         let sound = Sound::decode(&wav(1, 2, 22050, 16, &[0; 400])).unwrap();
         assert_eq!(sound.describe(), "S16LE 22050 Hz 2 ch");
         assert_eq!(sound.data.len(), 400);
-        assert_eq!(sound.bytes_per_second(), 88200);
     }
 
     #[test]
@@ -268,5 +280,24 @@ mod tests {
         ] {
             let _ = Sound::decode(&wav(format, channels, rate, bits, &[0; 64]));
         }
+    }
+
+    #[test]
+    fn a_looping_voice_goes_on_without_the_program_but_a_one_shot_runs_out() {
+        // Never a real device.
+        assert!(sdl3::hint::set("SDL_AUDIO_DRIVER", "dummy"));
+        let sdl = sdl3::init().unwrap();
+        let audio = Audio::open(&sdl.audio().unwrap()).unwrap();
+        // A quarter of a second of silence, played for 0.7 seconds without a call into the voice.
+        let sound = || Sound::decode(&wav(1, 1, 22050, 16, &[0; 11025])).unwrap();
+        let looping = audio.play(sound(), 0, true, false).unwrap().unwrap();
+        let once = audio.play(sound(), 0, false, false).unwrap().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        assert!(
+            looping.queued_bytes().unwrap() > 1000,
+            "queued by the audio thread"
+        );
+        // Some bytes stay in the converter.
+        assert!(once.queued_bytes().unwrap() < 100, "the device did play");
     }
 }
