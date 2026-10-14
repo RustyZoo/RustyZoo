@@ -148,9 +148,9 @@ jobs:
           ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo --timing 10000
 
       # One picture per system from the platform's real video driver and window server (X11
-      # on a virtual display for Linux). The log gets the three sizes, the display scale, the
-      # number of colours and the hash of the pixels read back; the step fails only if the mode
-      # breaks or the picture is blank. The runners have no GPU, so the software renderer draws.
+      # on a virtual display for Linux). The log gets the game size and factor, the three sizes,
+      # the display scale, the number of colours and the hash of the pixels read back; the step
+      # fails only if the mode breaks or the picture is blank. The runners have no GPU, so the software renderer draws.
       # The picture is rendered game data: it is deleted with the runner and never uploaded.
       - name: Check a window on the real video driver
         env:
@@ -168,8 +168,9 @@ jobs:
           tmp="${RUNNER_TEMP//\\//}"
           "${pre[@]}" ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo \
             --passes 60 --log "$tmp/window.log" --shot "$tmp/window.png" | tee "$tmp/window.out"
-          # With one pixel per point the pixels read back are the last frame painted.
-          if grep -Eq '^window ([0-9x]+) pixels \1 ' "$tmp/window.out"; then
+          # At factor 1 (a runner without display scaling) the pixels read back are the last
+          # frame painted.
+          if grep -q '^game .* factor 1$' "$tmp/window.out"; then
             last=$(awk '$4 == "draw" && $5 != "-" { h = $5 } END { print h }' "$tmp/window.log")
             grep -q "hash $last\$" "$tmp/window.out" || { echo "the picture read back is not the last frame painted ($last)"; exit 1; }
           fi

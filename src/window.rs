@@ -3,10 +3,11 @@
 //! is minimised or hidden, run one [`App::pass`], present a frame only when the pass painted
 //! one, then sleep until the next timer is due instead of spinning.
 //!
-//! The frame is as large as the window in points. It goes to a streaming texture that SDL
-//! scales to the pixels of the window with the nearest pixel, so a display with a high pixel
-//! density shows the same picture with larger pixels. Only the program uses this module: the
-//! core crate does not link to SDL. The keys become commands in `input`; the loop reads the cursor.
+//! The frame is the game size (the ini file's or `--size`). It goes to a streaming texture that
+//! SDL scales to the window with the nearest pixel, by a whole factor `k` of the display scale,
+//! so the window has the size of the original's on every system and the picture stays sharp:
+//! see [`plan`]. Only the program uses this module: the core crate does not link to SDL. The
+//! keys become commands in `input`; the loop reads the cursor.
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -55,7 +56,7 @@ fn hold(music: &mut Option<Voice>, hold: bool) {
 
 /// What the command line asks of a windowed run.
 pub struct Flags<'a> {
-    /// `--size`: the window, instead of the ini file's, and not clamped.
+    /// `--size`: the game size, instead of the ini file's, and not clamped.
     pub size: Option<(u32, u32)>,
     /// `--log`: where to write the lines a headless run prints.
     pub log: Option<&'a str>,
@@ -78,11 +79,31 @@ fn ini_size(ini: &Config) -> (u32, u32) {
     }
 }
 
-/// `size` cut down to the usable area of the display; an area of 0 means that the system does
-/// not say, and cuts nothing.
+/// `size` cut down to the usable area of the display, in the same unit; an area of 0 means that
+/// the system does not say, and cuts nothing.
 fn clamp(size: (u32, u32), usable: (u32, u32)) -> (u32, u32) {
     let cut = |n: u32, max: u32| if max == 0 { n } else { n.min(max) };
     (cut(size.0, usable.0), cut(size.1, usable.1))
+}
+
+/// The whole factor `k` between a pixel of the game and a pixel of the screen, and the window
+/// size in points that gives it. `scale` is the display scale (the content scale of the display
+/// times its pixel density: 2 at 200% on Windows and X11, where `density` is 1 and the window
+/// is in pixels, and on macOS and Wayland, where the content scale is 1, `density` is 2 and the
+/// window is in points). So `k` is the same everywhere: the scale rounded, at least 1, and
+/// reduced until the window fits in `usable` (points, 0 meaning unknown), never below 1.
+fn plan(game: (u32, u32), scale: f32, density: f32, usable: (u32, u32)) -> (u32, (u32, u32)) {
+    let density = if density > 0.0 { density } else { 1.0 };
+    let fit = |n: u32, max: u32| match max {
+        0 => u32::MAX,
+        _ => ((max as f32 * density) / n.max(1) as f32) as u32,
+    };
+    let k = (scale.round() as u32)
+        .min(fit(game.0, usable.0))
+        .min(fit(game.1, usable.1))
+        .max(1);
+    let points = |n: u32| ((n * k) as f32 / density).round() as u32;
+    (k, (points(game.0), points(game.1)))
 }
 
 /// Whether the window is hidden or minimised, from its flags. The flags are read, not followed
@@ -128,23 +149,32 @@ pub fn run(
 ) -> Result<(), CliError> {
     let sdl = sdl3::init()?;
     let video = sdl.video()?;
-    let usable = video.get_primary_display()?.get_usable_bounds()?;
-    let want = flags
-        .size
-        .unwrap_or_else(|| clamp(ini_size(ini), (usable.width(), usable.height())));
+    let display = video.get_primary_display()?;
+    let usable = display.get_usable_bounds()?;
+    let usable = (usable.width(), usable.height());
+    // The scale of the display, before there is a window: its content scale and pixel density.
+    let density = display.get_mode().map_or(1.0, |m| m.pixel_density);
+    let scale = display.get_content_scale().unwrap_or(1.0) * density;
+    // `--size` is not cut, but the factor still gives way when the window does not fit.
+    let size = flags.size.unwrap_or_else(|| {
+        let pixels = |n: u32| (n as f32 * density) as u32;
+        clamp(ini_size(ini), (pixels(usable.0), pixels(usable.1)))
+    });
+    let (k, want) = plan(size, scale, density, usable);
     let window = video
         .window("RustyZoo", want.0, want.1)
         .high_pixel_density()
         .build()?;
-    // The system may give another size: the game is made for the window it got.
-    let size = window.size();
+    // The game keeps its size; the window may come out another size.
+    let points = window.size();
     let pixels = window.size_in_pixels();
     let (scale, density) = (window.display_scale(), window.pixel_density());
     let mut canvas = sdl3::render::create_renderer(window, None)?;
     let output = canvas.output_size()?;
+    println!("game {}x{} factor {k}", size.0, size.1);
     println!(
         "window {}x{} pixels {}x{} output {}x{}",
-        size.0, size.1, pixels.0, pixels.1, output.0, output.1
+        points.0, points.1, pixels.0, pixels.1, output.0, output.1
     );
     println!("display scale {scale} pixel density {density}");
     if output != pixels {
@@ -152,6 +182,14 @@ pub fn run(
             format!("the output is {output:?} but the window has {pixels:?} pixels").into(),
         );
     }
+    if pixels != (size.0 * k, size.1 * k) {
+        eprintln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
+    }
+    // The cursor is in points of the window; the game reads it in pixels of the game.
+    let to_game = (
+        size.0 as f32 / points.0 as f32,
+        size.1 as f32 / points.1 as f32,
+    );
     let textures = canvas.texture_creator();
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
@@ -233,7 +271,12 @@ pub fn run(
         // that is not active gets none, one that gets the focus back under the pointer does.
         let at = (canvas.window().has_input_focus() && canvas.window().has_mouse_focus())
             .then(|| pump.mouse_state())
-            .map(|m| (m.x().floor() as i32, m.y().floor() as i32));
+            .map(|m| {
+                (
+                    (m.x() * to_game.0).floor() as i32,
+                    (m.y() * to_game.1).floor() as i32,
+                )
+            });
         if at != pointer {
             pointer = at;
             commands.push(Command::Pointer(at));
@@ -331,6 +374,32 @@ mod tests {
         }
         assert_eq!(clamp((1024, 768), (800, 1000)), (800, 768));
         assert_eq!(clamp((1024, 768), (0, 0)), (1024, 768), "unknown display");
+    }
+
+    #[test]
+    fn the_window_is_enlarged_by_the_display_scale_on_every_system() {
+        let game = (800, 600);
+        // Windows and X11 at 200%: points are pixels, density 1, content scale 2.
+        assert_eq!(plan(game, 2.0, 1.0, (2560, 1440)), (2, (1600, 1200)));
+        // macOS and Wayland at scale 2: the window is in points, density 2.
+        assert_eq!(plan(game, 2.0, 2.0, (1440, 900)), (2, (800, 600)));
+        // No scaling.
+        assert_eq!(plan(game, 1.0, 1.0, (1920, 1080)), (1, game));
+        // Rounded to a whole number, at least 1; a bad value is 1.
+        assert_eq!(plan(game, 1.5, 1.0, (0, 0)).0, 2);
+        assert_eq!(plan(game, 1.25, 1.0, (0, 0)).0, 1);
+        assert_eq!(plan(game, 0.0, 1.0, (0, 0)).0, 1);
+        assert_eq!(plan(game, f32::NAN, 0.0, (0, 0)), (1, game));
+        // The factor goes down, not the game, when the window does not fit.
+        assert_eq!(plan(game, 2.0, 1.0, (1920, 1080)), (1, game));
+        assert_eq!(plan((1024, 768), 2.0, 1.0, (1920, 1080)), (1, (1024, 768)));
+        assert_eq!(plan((1024, 768), 3.0, 1.0, (2560, 1440)), (1, (1024, 768)));
+        assert_eq!(plan((800, 600), 3.0, 1.0, (2560, 1440)), (2, (1600, 1200)));
+        assert_eq!(plan((800, 600), 4.0, 2.0, (1440, 900)), (3, (1200, 900)));
+        // Too small for even one: k stays 1 (the caller cut the game size).
+        assert_eq!(plan(game, 2.0, 1.0, (640, 480)).0, 1);
+        // The system does not say how large the display is.
+        assert_eq!(plan(game, 2.0, 1.0, (0, 0)).0, 2);
     }
 
     #[test]

@@ -31,14 +31,16 @@ same_frames() {
 }
 
 # Plays a map in a window of the dummy video driver (nothing is shown) for 30 passes of the real
-# clock, with commands from a script, and writes a log. Prints the window size, the size in pixels
-# and the output size the program reports, whether at least four frames were painted, and whether
-# the log replayed headless gives the same lines, so the same frame hashes.
+# clock, with commands from a script, and writes a log. Prints the game size and the factor, the
+# window size, the size in pixels and the output size the program reports, whether at least four
+# frames were painted, and whether the log replayed headless gives the same lines, so the same
+# frame hashes.
 windowed() {
   d=$(mktemp -d)
   printf '4 scroll 1 1\n12 rotate cw\n20 scroll -1 0\n' >"$d/script"
   SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 30 --script "$d/script" --log "$d/log" |
-    sed -n 's/^window \([0-9x]*\) pixels \([0-9x]*\) output \([0-9x]*\)$/\1,\2,\3/p' | tr '\n' ,
+    sed -n -e 's/^game \([0-9x]*\) factor \([0-9]*\)$/\1,\2/p' \
+      -e 's/^window \([0-9x]*\) pixels \([0-9x]*\) output \([0-9x]*\)$/\1,\2,\3/p' | tr '\n' ,
   awk '/ draw [0-9a-f]{16} /{n++} END{printf (n >= 4 ? "frames," : "few,")}' "$d/log"
   if rz run "$1" --headless --replay "$d/log" | cmp -s - "$d/log"; then echo same; else echo different; fi
   rm -rf "${d:?}"
@@ -119,9 +121,9 @@ check expansion-trial 9same "same_frames maps/scn19.zoo"
 # pass that did something are read back, at the size of the window. The clock here is irregular.
 check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate cw\n5 pointer 0 0\n9 pause\n11 quit\n" >"$f"; rz run maps/default.zoo --headless --passes 12 --clock 23 --size 640x480 --script "$f" >"$g"; rz run maps/default.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$f" "$g"'
 
-# The window of the ini file (800x600 in both trials), shown by the dummy video driver.
-check base-trial 800x600,800x600,800x600,frames,same "windowed maps/default.zoo"
-check expansion-trial 800x600,800x600,800x600,frames,same "windowed maps/scn19.zoo"
+# The game size of the ini file (800x600 in both trials) at factor 1, on the dummy video driver.
+check base-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/default.zoo"
+check expansion-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/scn19.zoo"
 # The timing mode (the summary of three timers) and the read-back of the presented pixels run on the
 # dummy video driver; the values are information, so only the mode is checked: three summary lines
 # and the size of the picture read back.
