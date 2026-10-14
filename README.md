@@ -61,6 +61,7 @@ rustyzoo check-anis                               # load every animation set and
 rustyzoo check-ground                              # render every cached ground picture again and compare; exit 1 if a covered pixel differs
 rustyzoo render-ground ztats/000004 out/g.png     # render one ground picture (key as in the cache names)
 rustyzoo render-map maps/default.zoo out.png --rotation 1   # draw a whole map into a PNG at normal zoom, and print what was drawn
+rustyzoo render-map maps/default.zoo out.png --view 0 0 800 600 --no-units   # only the 800 x 600 window of the view whose top left pixel is the view-space point (0, 0), without animals, guests and staff
 rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
 rustyzoo check-bitmaps                           # convert the root bitmaps of the terrain and compare them with the shipped copies; exit 1 on a mismatch
 ```

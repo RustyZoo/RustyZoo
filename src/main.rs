@@ -14,7 +14,7 @@ use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::ground::{self, Key, Renderer};
 use rustyzoo::pe;
-use rustyzoo::render::{MapRenderer, Summary};
+use rustyzoo::render::{MapRenderer, Options, Summary};
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
@@ -59,11 +59,15 @@ usage: rustyzoo [--data <dir>] <command>
   render-ground <key> <out.png>
                       render one ground picture to a PNG file; the key is written as in the
                       cache, for example ztats/000003 or ztatb/00/00000000/00000001/0003
-  render-map <map> <out.png> [--rotation N]
+  render-map <map> <out.png> [--rotation N] [--view X Y W H] [--no-units]
                       draw a whole map (a .zoo member) into a PNG at normal zoom, seen from
                       rotation N (0 to 3, default 0), and print what was drawn: the tiles whose
                       ground picture is in the game's cache, the ground pictures missing, the
-                      cliff pieces, and the objects drawn or lacking a type or an animation
+                      cliff pieces, and the objects drawn or lacking a type or an animation;
+                      with --view, draw only the window of W by H pixels whose top left pixel is
+                      the view-space point (X, Y), black where the map has nothing (the summary
+                      still counts the whole map); with --no-units, leave out animals, guests,
+                      staff and ambient animals, which then are not counted either
   check-render [--rotation N]
                       draw every .zoo file in memory and print the same summary per map and
                       for all of them; a file that cannot be read is skipped; exit 1 only if
@@ -149,13 +153,10 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["check-anis"] => check_anis(&open_game(data_dir)?),
         ["check-ground"] => check_ground(&open_game(data_dir)?),
         ["render-ground", key, out] => render_ground(&open_game(data_dir)?, key, Path::new(out)),
-        ["render-map", member, out] => render_map(&open_game(data_dir)?, member, out, 0),
-        ["render-map", member, out, "--rotation", n] => render_map(
-            &open_game(data_dir)?,
-            member,
-            out,
-            n.parse().map_err(|_| CliError::Usage)?,
-        ),
+        ["render-map", member, out, flags @ ..] => {
+            let (rotation, options) = render_flags(flags)?;
+            render_map(&open_game(data_dir)?, member, out, rotation, &options)
+        }
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(
             &open_game(data_dir)?,
@@ -1059,15 +1060,52 @@ fn render_ground(vfs: &Vfs, key: &str, out: &Path) -> Result<(), CliError> {
     Ok(())
 }
 
+/// The rotation and the options of `render-map`, from the words after the output file.
+fn render_flags(mut flags: &[&str]) -> Result<(u8, Options), CliError> {
+    let (mut rotation, mut options) = (0, Options::default());
+    let number = |word: &&str| word.parse::<i32>().map_err(|_| CliError::Usage);
+    while let [flag, rest @ ..] = flags {
+        flags = match (*flag, rest) {
+            ("--rotation", [n, rest @ ..]) => {
+                rotation = n.parse().map_err(|_| CliError::Usage)?;
+                rest
+            }
+            ("--view", [x, y, w, h, rest @ ..]) => {
+                let size = |word: &&str| {
+                    u32::try_from(number(word)?)
+                        .ok()
+                        .filter(|&n| n > 0)
+                        .ok_or(CliError::Usage)
+                };
+                options.window = Some((number(x)?, number(y)?, size(w)?, size(h)?));
+                rest
+            }
+            ("--no-units", rest) => {
+                options.no_units = true;
+                rest
+            }
+            _ => return Err(CliError::Usage),
+        };
+    }
+    Ok((rotation, options))
+}
+
 /// Draws one map into a PNG file and prints the summary.
-fn render_map(vfs: &Vfs, member: &str, out: &str, rotation: u8) -> Result<(), CliError> {
+fn render_map(
+    vfs: &Vfs,
+    member: &str,
+    out: &str,
+    rotation: u8,
+    options: &Options,
+) -> Result<(), CliError> {
     if rotation > 3 {
         return Err(CliError::Usage);
     }
     let catalogue = Catalogue::load(vfs)?;
     let zoo =
         check_types(load_map(vfs, member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
-    let (image, summary) = MapRenderer::new(vfs, &catalogue).render(&zoo, rotation)?;
+    let (image, summary) =
+        MapRenderer::new(vfs, &catalogue).render_with(&zoo, rotation, options)?;
     let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;
     write_png(&image, io::BufWriter::new(file)).map_err(|e| format!("cannot write {out}: {e}"))?;
     let mut report = Report::new();
@@ -1210,7 +1248,7 @@ fn window_smoke() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape, frame_file_name};
+    use super::{escape, frame_file_name, render_flags};
 
     #[test]
     fn frame_files_are_named_by_number_shadow_and_extra() {
@@ -1227,5 +1265,39 @@ mod tests {
             escape("\0\u{1b}\u{7f}\u{85}é"),
             "\\u{0000}\\u{001b}\\u{007f}\\u{0085}é"
         );
+    }
+
+    #[test]
+    fn render_map_flags_come_in_any_order_and_bad_ones_are_refused() {
+        let ok = |flags: &[&str]| {
+            render_flags(flags)
+                .ok()
+                .map(|(r, o)| (r, o.window, o.no_units))
+        };
+        assert_eq!(ok(&[]), Some((0, None, false)));
+        assert_eq!(
+            ok(&[
+                "--no-units",
+                "--view",
+                "-5",
+                "7",
+                "30",
+                "20",
+                "--rotation",
+                "2"
+            ]),
+            Some((2, Some((-5, 7, 30, 20)), true))
+        );
+        for bad in [
+            &["--view", "1", "2", "3"][..],
+            &["--view", "1", "2", "-3", "4"],
+            &["--view", "1", "2", "0", "4"],
+            &["--view", "1", "2", "3", "0"],
+            &["--view", "1", "2", "3", "x"],
+            &["--rotation"],
+            &["--unit"],
+        ] {
+            assert!(ok(bad).is_none(), "{bad:?}");
+        }
     }
 }

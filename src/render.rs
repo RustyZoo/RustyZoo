@@ -44,6 +44,17 @@ impl fmt::Display for RenderError {
 
 impl Error for RenderError {}
 
+/// What to draw of a map besides all of it.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Options {
+    /// Draw only the window of view space with this left, top, width and height, black where
+    /// the map has nothing, instead of the whole map: the view-space point of the top left
+    /// pixel is the scroll position of the original's view.
+    pub window: Option<(i32, i32, u32, u32)>,
+    /// Leave out animals, guests, staff and ambient animals.
+    pub no_units: bool,
+}
+
 /// What a picture of a map contains.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Summary {
@@ -168,22 +179,22 @@ impl Placed {
     }
 
     fn draw(&self, target: &mut Framebuffer, dx: i32, dy: i32) {
-        let (x, y) = (self.x - dx, self.y - dy);
+        let (x, y) = (self.x.saturating_sub(dx), self.y.saturating_sub(dy));
         match &self.pic {
             Pic::Flat(flat) => {
                 let (frame, palette) = (&flat.0, &flat.1);
                 frame.draw(
                     palette,
                     target,
-                    x - i32::from(frame.x_offset),
-                    y - i32::from(frame.y_offset),
+                    x.saturating_sub(i32::from(frame.x_offset)),
+                    y.saturating_sub(i32::from(frame.y_offset)),
                 );
             }
             Pic::Rendered(picture) => blend(
                 &picture.image,
                 target,
-                x - picture.x_offset,
-                y - picture.y_offset,
+                x.saturating_sub(picture.x_offset),
+                y.saturating_sub(picture.y_offset),
             ),
             Pic::Anim(anim, view, palette) => {
                 anim.draw_with(*view, 0, target, x, y, palette.as_ref())
@@ -456,6 +467,16 @@ impl<'a> MapRenderer<'a> {
         zoo: &Zoo,
         rotation: u8,
     ) -> Result<(Framebuffer, Summary), RenderError> {
+        self.render_with(zoo, rotation, &Options::default())
+    }
+
+    /// As [`MapRenderer::render`], as `options` say.
+    pub fn render_with(
+        &mut self,
+        zoo: &Zoo,
+        rotation: u8,
+        options: &Options,
+    ) -> Result<(Framebuffer, Summary), RenderError> {
         // Pictures of the previous map: the blended ones are numerous and not shared.
         self.flats.clear();
         self.rendered.clear();
@@ -487,7 +508,9 @@ impl<'a> MapRenderer<'a> {
             let (x, y) = (i64::from(ox), i64::from(oy));
             bounds = union(bounds, [x, y + 16, x + 64, y + 49]);
         }
-        check_size(&bounds)?;
+        if options.window.is_none() {
+            check_size(&bounds)?;
+        }
 
         // The objects the original keeps: those whose type it knows.
         let mut objects = Vec::new();
@@ -495,15 +518,6 @@ impl<'a> MapRenderer<'a> {
         for entity in &zoo.entities {
             let Some(c) = &entity.common else {
                 summary.objects_skipped += 1;
-                continue;
-            };
-            let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-            let Some(ty) = self.catalogue.find(
-                &entity.class,
-                &bytes(&entity.type_name),
-                &bytes(&entity.subtype),
-            ) else {
-                summary.objects_missing += 1;
                 continue;
             };
             let kind = match entity.class.as_str() {
@@ -514,6 +528,18 @@ impl<'a> MapRenderer<'a> {
                     Kind::Unit
                 }
                 _ => Kind::Fixed,
+            };
+            if options.no_units && matches!(kind, Kind::Unit | Kind::Overlay) {
+                continue;
+            }
+            let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+            let Some(ty) = self.catalogue.find(
+                &entity.class,
+                &bytes(&entity.type_name),
+                &bytes(&entity.subtype),
+            ) else {
+                summary.objects_missing += 1;
+                continue;
             };
             let [fx, fy, _] = ty.footprint;
             objects.push(Object {
@@ -544,8 +570,13 @@ impl<'a> MapRenderer<'a> {
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
 
-        // The canvas holds every picture and every tile.
-        bounds = placed.iter().filter_map(Placed::bounds).fold(bounds, union);
+        // The canvas holds every picture and every tile, or the window.
+        if let Some((x, y, w, h)) = options.window {
+            let (x, y) = (i64::from(x), i64::from(y));
+            bounds = [x, y, x + i64::from(w), y + i64::from(h)];
+        } else {
+            bounds = placed.iter().filter_map(Placed::bounds).fold(bounds, union);
+        }
         let (w, h) = check_size(&bounds)?;
         let mut canvas = Framebuffer::new(w as u32, h as u32);
         canvas
