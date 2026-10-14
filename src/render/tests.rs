@@ -440,6 +440,147 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
     assert_eq!(at(0, 0), [0, 0, 0, 255]);
 }
 
+/// A palette file of the given colours (R, G, B), with the fourth byte 255.
+fn palette_file(colors: &[[u8; 3]]) -> Vec<u8> {
+    let mut out = (colors.len() as u32).to_le_bytes().to_vec();
+    for [r, g, b] in colors {
+        out.extend([*r, *g, *b, 255]);
+    }
+    out
+}
+
+/// A map of one flat tile with the given entities, which all stand in its middle.
+fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
+    let entity = |(class, type_name, subtype): &(&str, &str, &str)| crate::zoo::Entity {
+        class: class.to_string(),
+        type_name: type_name.to_string(),
+        subtype: subtype.to_string(),
+        body_size: None,
+        common: Some(crate::zoo::Common {
+            x: 32,
+            y: 32,
+            z: 0,
+            rotation: 0,
+            id: 1,
+            name: String::new(),
+            fence: None,
+        }),
+    };
+    Zoo {
+        version: 106,
+        locale: 1033,
+        expansion: 0,
+        width: 1,
+        height: 1,
+        entrance: (0, 0),
+        habitat_count: 0,
+        id_counter: 0,
+        tiles: flat_map(1, 1),
+        entities: entities.iter().map(entity).collect(),
+    }
+}
+
+#[test]
+fn a_window_of_the_view_is_drawn_from_its_top_left_view_space_point() {
+    // The ground picture of the one tile is two pixels, its top left at the view-space point
+    // (32, 0).
+    let mut palette = 2u32.to_le_bytes().to_vec();
+    palette.extend([0, 0, 0, 255, 200, 100, 50, 255]);
+    let mut members = vec![
+        (
+            "terrain/tiletex.cfg".to_string(),
+            b"[ttGrass]\ntype=0\n".to_vec(),
+        ),
+        ("ztats/00.pal".to_string(), palette),
+    ];
+    for variation in 0..9 {
+        members.push((format!("ztats/0000{variation:02x}.lle"), frame_file()));
+    }
+    let members: Vec<(&str, Vec<u8>)> = members
+        .iter()
+        .map(|(n, c)| (n.as_str(), c.clone()))
+        .collect();
+    let install = Install::new("render-window", &members);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[]);
+    let draw = |window| {
+        let options = Options {
+            window: Some(window),
+            ..Options::default()
+        };
+        MapRenderer::new(&vfs, &catalogue).render_with(&zoo, 0, &options)
+    };
+    let (image, summary) = draw((31, -1, 4, 3)).unwrap();
+    assert_eq!((image.width, image.height), (4, 3));
+    let (black, ground) = ([0, 0, 0, 255], [200, 100, 50, 255]);
+    let rows: Vec<&[[u8; 4]]> = image.pixels.as_chunks::<4>().0.chunks(4).collect();
+    assert_eq!(rows[0], [black; 4]);
+    assert_eq!(rows[1], [black, ground, ground, black]);
+    assert_eq!(rows[2], [black; 4]);
+    // The summary still counts the whole map.
+    assert_eq!(summary.tiles_cached, 1);
+    // A window far from the map, with extreme positions, is black and never panics.
+    let (image, _) = draw((i32::MIN, i32::MAX, 3, 2)).unwrap();
+    assert_eq!(image.pixels, [0, 0, 0, 255].repeat(6));
+    // A window without area or beyond the pixel limit is an error.
+    assert!(draw((0, 0, 0, 5)).is_err());
+    assert!(draw((0, 0, u32::MAX, u32::MAX)).is_err());
+}
+
+#[test]
+fn no_units_leaves_out_animals_guests_staff_and_ambient_animals() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani = b"[animation]\ndir0 = a\ndir1 = b\nanimation = N\nx1 = 3\n".to_vec();
+    let definition = b"[Animations]\nidle = idle\n".to_vec();
+    let install = Install::new(
+        "render-no-units",
+        &[
+            (
+                "scenery.cfg",
+                b"[objects]\nfoliage\n[foliage]\ntree = tree.ai\n".to_vec(),
+            ),
+            ("guests.cfg", b"[guests]\nman = man.ai\n".to_vec()),
+            ("ambient.cfg", b"[ambient]\nbird = bird.ai\n".to_vec()),
+            ("tree.ai", definition.clone()),
+            ("man.ai", definition.clone()),
+            ("bird.ai", definition),
+            ("objects/tree/idle/idle.ani", ani.clone()),
+            ("guests/man/idle/idle.ani", ani.clone()),
+            ("ambient/ambient/bird/idle/idle.ani", ani),
+            ("a/b/N", sprite_file(None, 1, &[sized(&frame)])),
+            (
+                "animals/Lion/lion.pal",
+                palette_file(&[[255, 0, 255], [1, 2, 3]]),
+            ),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[
+        ("objects", "foliage", "tree"),
+        ("guests", "man", ""),
+        ("ambient", "ambient", "bird"),
+    ]);
+    let drawn = |no_units| {
+        let options = Options {
+            no_units,
+            ..Options::default()
+        };
+        let (_, summary) = MapRenderer::new(&vfs, &catalogue)
+            .render_with(&zoo, 0, &options)
+            .unwrap();
+        (summary.objects_drawn, summary.objects_missing)
+    };
+    assert_eq!(drawn(false), (3, 0));
+    assert_eq!(drawn(true), (1, 0));
+}
+
 /// A small deterministic pseudo-random sequence.
 fn random(seed: &mut u64) -> u64 {
     *seed = seed
