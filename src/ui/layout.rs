@@ -25,6 +25,8 @@ use crate::config::{Config, Section, to_flag, to_int};
 use crate::tga::Texture;
 use crate::vfs::{Vfs, normalise};
 
+use super::resolve::Placed;
+
 /// State flag: not drawn, not hit. Every element starts with it.
 pub const HIDDEN: u32 = 1;
 /// State flag: set by the `timed` key.
@@ -57,11 +59,61 @@ pub enum Dim {
     FitFont,
 }
 
+impl Pos {
+    /// The number the original keeps for a word, and for a number the number itself.
+    pub fn code(self) -> i64 {
+        match self {
+            Pos::Num(n) => i64::from(n),
+            Pos::Left => -30001,
+            Pos::Right => -30002,
+            Pos::Top => -30003,
+            Pos::Bottom => -30004,
+            Pos::Center => -30005,
+        }
+    }
+
+    /// The word of a code; any other number stays a number.
+    fn from_number(n: i32) -> Pos {
+        [Pos::Left, Pos::Right, Pos::Top, Pos::Bottom, Pos::Center]
+            .into_iter()
+            .find(|p| p.code() == i64::from(n))
+            .unwrap_or(Pos::Num(n))
+    }
+}
+
+impl Dim {
+    /// As [`Pos::code`].
+    pub fn code(self) -> i64 {
+        match self {
+            Dim::Num(n) => i64::from(n),
+            Dim::Whole => -31001,
+            Dim::Half => -31002,
+            Dim::Third => -31003,
+            Dim::Quarter => -31004,
+            Dim::FitFont => -31005,
+        }
+    }
+
+    fn from_number(n: i32) -> Dim {
+        [
+            Dim::Whole,
+            Dim::Half,
+            Dim::Third,
+            Dim::Quarter,
+            Dim::FitFont,
+        ]
+        .into_iter()
+        .find(|d| d.code() == i64::from(n))
+        .unwrap_or(Dim::Num(n))
+    }
+}
+
 /// A position value: a number if it starts with `-` or a digit, else the word its first letter
-/// says (`l`, `r`, `t`, `b`, `c`); `None` for anything else, which leaves the default.
+/// says (`l`, `r`, `t`, `b`, `c`); `None` for anything else, which leaves the default. A number
+/// equal to the code of a word is that word.
 fn pos(value: &[u8]) -> Option<Pos> {
     match value.first()? {
-        b'-' | b'0'..=b'9' => to_int(value).map(Pos::Num),
+        b'-' | b'0'..=b'9' => to_int(value).map(Pos::from_number),
         b'l' => Some(Pos::Left),
         b'r' => Some(Pos::Right),
         b't' => Some(Pos::Top),
@@ -74,7 +126,7 @@ fn pos(value: &[u8]) -> Option<Pos> {
 /// A size value, as [`pos`] with `w`, `h`, `t`, `q` and `f`.
 fn dim(value: &[u8]) -> Option<Dim> {
     match value.first()? {
-        b'-' | b'0'..=b'9' => to_int(value).map(Dim::Num),
+        b'-' | b'0'..=b'9' => to_int(value).map(Dim::from_number),
         b'w' => Some(Dim::Whole),
         b'h' => Some(Dim::Half),
         b't' => Some(Dim::Third),
@@ -285,6 +337,11 @@ pub struct Element {
     pub timer_duration: i32,
     pub string_data: Vec<u8>,
     pub look: Look,
+    /// The program switched the element to its alternative position.
+    pub alt: bool,
+    /// The numbers the words of the file resolve to for a window size; `None` before
+    /// [`Tree::resolve`].
+    pub placed: Option<Placed>,
 }
 
 /// The cache of pictures, owned by the tree. A name is loaded once, found or not.
@@ -713,6 +770,8 @@ impl Tree {
             timer_duration: int("timerDuration", 3000),
             string_data: s.get("stringData").unwrap_or_default().to_vec(),
             look,
+            alt: false,
+            placed: None,
         });
         if let Some(parent) = parent {
             self.elements[parent].children.push(index);

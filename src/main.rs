@@ -132,6 +132,11 @@ usage: rustyzoo [--data <dir>] <command>
                       --shot writes the pixels of the last frame, as the renderer has them
                       (at the size in pixels), to FILE as a PNG, and prints its size, number of
                       colours and hash; a blank picture is an error
+  dump-layout [--size WxH] [--expansions N]
+                      load the interface tree as check-layouts does and resolve it for a window
+                      of W by H pixels (1024x768 by default; each side from 1 to 16384), then
+                      print one line per element in drawing order: id, type, layer, state and
+                      the rectangle on the screen (x, y, width, height), tab separated
   text-width <text> [--font FACE] [--size POINTS]
                       print the width in pixels of the text on one line in the original's
                       font (Liberation Sans, whole-pixel advances, no kerning): FACE is a
@@ -242,6 +247,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             render_map(&open_game(data_dir)?, member, out, rotation, &options)
         }
         ["check-layouts", flags @ ..] => layout::check_layouts(&open_game(data_dir)?, flags),
+        ["dump-layout", flags @ ..] => layout::dump_layout(data_dir, flags),
         ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, member, flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(
