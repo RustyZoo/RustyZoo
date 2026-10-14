@@ -63,6 +63,7 @@ rustyzoo render-ground ztats/000004 out/g.png     # render one ground picture (k
 rustyzoo render-map maps/default.zoo out.png --rotation 1   # draw a whole map into a PNG at normal zoom, and print what was drawn
 rustyzoo render-map maps/default.zoo out.png --view 0 0 800 600 --no-units   # only the 800 x 600 window of the view whose top left pixel is the view-space point (0, 0), without animals, guests and staff
 rustyzoo run maps/default.zoo --headless --passes 100 --clock 20 --script keys.txt --png-every 10   # play a map without a window on a scripted clock (a pass every 20 ms), print the commands and timer firings of each pass with the frame hash, and write the frame painted by every 10th pass as a PNG
+rustyzoo run maps/default.zoo                     # play a map in a window (see "The window" below)
 rustyzoo run maps/default.zoo --headless --replay log.txt   # run again the passes of a saved output, giving the same lines
 rustyzoo run maps/default.zoo                      # play a map in a window: arrows, Home, End, Page Up, Page Down and the screen edges scroll, Ctrl+arrows rotate (left, right) and zoom (up, down), Pause or Space pauses, closing the window quits
 rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
@@ -76,6 +77,20 @@ Files are found the way the game finds them: in the directories listed in `[reso
 The names, descriptions and labels the game shows are not in the `.ztd` archives but in the resource DLLs of the install folder (`lang0.dll` and its siblings). `dump-strings` prints the string table of one DLL, newline, tab, backslash and other control characters escaped (`\n`, `\t`, `\\`, `\u{0000}`), followed by the name and size of its `TEXT` entries; `--text` writes the bytes of one of them.
 
 The game loads every `lang*.dll` of the install folder, ordered by file name from the greatest to the smallest (`lang300.dll` first, `lang0.dll` last), and a string number or a `TEXT` name comes from the first library that has it non-empty. `strings` prints that merged view; the `[lib]` and `[language]` entries of `zoo.ini` are not used.
+
+## The window
+
+`rustyzoo run <map>` opens a window and plays the map in it with the loop of the original: it handles all waiting events, runs the three timers (draw, interface, simulation) on the real clock, and sleeps until the next one is due. Closing the window ends the run. Key and mouse input is not wired yet; `--script` feeds commands instead.
+
+- The window is the size of `screenwidth` x `screenheight` in the ini file, cut to the usable area of the display; `--size WxH` overrides it and is not cut.
+- `--passes N` ends the run after N passes, `--timing MS` after MS milliseconds. `--log FILE` writes the lines a headless run prints, and `run --headless --replay FILE` plays them again with the same frame hashes. `run --headless` needs no window at all: it takes a scripted clock (`--passes` with `--clock`) or a replay.
+- While the window is minimised or hidden, the loop blocks (no drawing, no simulation, almost no CPU) and resumes when it is shown again.
+- `--timing MS` prints, for each timer, the count, minimum, median, 95th percentile and maximum of the gaps between its firings in milliseconds, next to the period it should keep, and a histogram of the gaps. It is information: nothing fails on a value.
+- `--shot FILE` reads back what the renderer presents and writes it as a PNG, in pixels of the output.
+
+High-density displays: the game picture is as large as the window in points and SDL scales it, with the nearest pixel, to the pixels of the window, so a display with twice the pixels shows the same picture with larger pixels. The run prints the three sizes (window, window in pixels, renderer output; the last two must match) and the display scale. How the window size relates to the pixels depends on the system. On macOS and Wayland the window size is in points: at a scale of 2 an 800x600 window has 1600x1200 pixels. On Windows and X11 it is in physical pixels, even at a display scaling of 200%: the window is then not enlarged, and the picture is not either, so it is small on the screen. RustyZoo keeps that behaviour (the size the ini file asks for is the size in pixels there); scaling the window by the display scale is not done.
+
+CI runs the window on every system with the dummy video driver (`SDL_VIDEO_DRIVER=dummy`, the software renderer and `SDL_AUDIO_DRIVER=dummy`): no window server or sound card is needed, and it checks the three sizes, the frames painted and the replay of the log. A second step opens a real window on the video driver of the runner (X11 on a virtual display on Linux, Cocoa, Windows), reads the pixels back with `--shot`, and uploads the picture with the printed sizes and display scale as the workflow artifact `window-<system>`. A further step prints the `--timing` summary of a ten second run in the log.
 
 ## Roadmap
 

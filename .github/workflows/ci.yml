@@ -53,7 +53,7 @@ jobs:
             libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev \
             libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev \
             libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev \
-            liburing-dev
+            liburing-dev xvfb
 
       - name: Install the Rust toolchain from rust-toolchain.toml
         run: rustup toolchain install --profile minimal
@@ -112,7 +112,8 @@ jobs:
         run: target/universal/rustyzoo window-smoke
 
       # The two free official trials from Microsoft, extracted outside the checkout. Only the
-      # extracted folders are cached, and neither they nor the downloads are uploaded below.
+      # extracted folders are cached; neither they nor the downloads are uploaded below. The
+      # window screenshot step further down uploads one picture of a map, as a workflow artifact.
       - uses: actions/cache@v6
         with:
           path: |
@@ -134,6 +135,45 @@ jobs:
           fi
           [ "$status" = 0 ] || exit "$status"
           ci/check-trials.sh ${{ matrix.path }} "$trials"
+
+      # Information, never a failure on a value: the intervals of the draw, interface and step
+      # timers on the real clock of the runner (the dummy video driver shows no window).
+      - name: Timing summary of a ten second windowed run
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          if [ ! -d "$trials/base-trial" ]; then
+            echo "::warning title=Timing skipped::No trial data on this runner."
+            exit 0
+          fi
+          ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo --timing 10000
+
+      # One picture per system from the platform's real video driver and window server (X11
+      # on a virtual display for Linux), with the three sizes and the display scale. The runners
+      # have no GPU, so the software renderer draws. Uploaded as a workflow artifact only.
+      - name: Screenshot of a window on the real video driver
+        env:
+          SDL_VIDEO_DRIVER: ${{ runner.os == 'Linux' && 'x11' || runner.os == 'macOS' && 'cocoa' || 'windows' }}
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          shot="${RUNNER_TEMP//\\//}/hidpi"
+          if [ ! -d "$trials/base-trial" ]; then
+            echo "::warning title=Screenshot skipped::No trial data on this runner."
+            exit 0
+          fi
+          mkdir -p "$shot"
+          pre=()
+          if [ "$RUNNER_OS" = Linux ]; then
+            pre=(xvfb-run -a -s "-screen 0 1280x1024x24")
+          fi
+          "${pre[@]}" ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo \
+            --passes 60 --shot "$shot/window.png" | tee "$shot/sizes.txt"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: window-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/hidpi
+          retention-days: 7
+          if-no-files-found: warn
 
       - uses: actions/upload-artifact@v7
         with:

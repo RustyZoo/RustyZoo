@@ -23,10 +23,12 @@ use rustyzoo::zoo::Zoo;
 use sdl3::event::{Event, WindowEvent};
 use sdl3::pixels::PixelFormat;
 use sdl3::render::ScaleMode;
+use sdl3::video::WindowFlags;
 
 use crate::CliError;
 use crate::audio::{Audio, Voice};
 use crate::input;
+use crate::probe::{self, Timing};
 
 /// The window when the ini file does not say.
 const DEFAULT_SIZE: (u32, u32) = (1024, 768);
@@ -61,6 +63,10 @@ pub struct Flags<'a> {
     pub passes: Option<u64>,
     /// `--script`: the commands to apply before the pass of their index.
     pub script: Vec<(u64, Command)>,
+    /// `--timing`: run this many milliseconds, then print the intervals of the three timers.
+    pub timing: Option<u64>,
+    /// `--shot`: write the pixels of the last frame, as the renderer has them, to this PNG.
+    pub shot: Option<&'a str>,
 }
 
 /// `[user] screenwidth` and `screenheight`; the default if either is missing or not positive.
@@ -79,11 +85,15 @@ fn clamp(size: (u32, u32), usable: (u32, u32)) -> (u32, u32) {
     (cut(size.0, usable.0), cut(size.1, usable.1))
 }
 
-/// What the window says about itself: the loop blocks while it is not visible.
+/// Whether the window is hidden or minimised, from its flags. The flags are read, not followed
+/// through the events: a restore that comes as another event cannot leave the loop asleep.
+fn asleep(flags: WindowFlags) -> bool {
+    flags.intersects(WindowFlags::HIDDEN | WindowFlags::MINIMIZED)
+}
+
+/// What the window tells through its events.
 #[derive(Default)]
 struct State {
-    hidden: bool,
-    minimised: bool,
     /// The system asks to draw the window again.
     exposed: bool,
 }
@@ -100,20 +110,12 @@ impl State {
                 win_event: WindowEvent::CloseRequested,
                 ..
             } => commands.push(Command::Quit),
-            Event::Window { win_event, .. } => match win_event {
-                WindowEvent::Hidden => self.hidden = true,
-                WindowEvent::Shown => self.hidden = false,
-                WindowEvent::Minimized => self.minimised = true,
-                WindowEvent::Restored => self.minimised = false,
-                WindowEvent::Exposed => self.exposed = true,
-                _ => {}
-            },
+            Event::Window {
+                win_event: WindowEvent::Exposed,
+                ..
+            } => self.exposed = true,
             _ => {}
         }
-    }
-
-    fn asleep(&self) -> bool {
-        self.hidden || self.minimised
     }
 }
 
@@ -137,12 +139,14 @@ pub fn run(
     // The system may give another size: the game is made for the window it got.
     let size = window.size();
     let pixels = window.size_in_pixels();
+    let (scale, density) = (window.display_scale(), window.pixel_density());
     let mut canvas = sdl3::render::create_renderer(window, None)?;
     let output = canvas.output_size()?;
     println!(
         "window {}x{} pixels {}x{} output {}x{}",
         size.0, size.1, pixels.0, pixels.1, output.0, output.1
     );
+    println!("display scale {scale} pixel density {density}");
     if output != pixels {
         return Err(
             format!("the output is {output:?} but the window has {pixels:?} pixels").into(),
@@ -172,11 +176,15 @@ pub fn run(
         _ => None,
     };
 
+    let timers = Timers::from_config(ini);
+    let mut timing = flags
+        .timing
+        .map(|ms| Timing::new(ms, timers.draw_period(), timers.update_period()));
     let mut app = App::new(
         MapRenderer::new(vfs, catalogue),
         zoo,
         Settings::from_config(ini),
-        Timers::from_config(ini),
+        timers,
         size,
     )?;
     // The game starts with the run: the menu music fades out.
@@ -206,7 +214,7 @@ pub fn run(
         }
         // Minimised or hidden: nothing runs until something happens (a close request still
         // does). The music waits where it is and goes on at the restore, not from its beginning.
-        if state.asleep() && !commands.contains(&Command::Quit) {
+        if asleep(canvas.window().window_flags().into()) && !commands.contains(&Command::Quit) {
             if !held {
                 held = true;
                 hold(&mut music, true);
@@ -239,6 +247,9 @@ pub fn run(
             None => false,
         };
         commands.clear();
+        if let Some(timing) = &mut timing {
+            timing.note(now, app.fired());
+        }
         shown |= painted;
         if painted || (shown && std::mem::take(&mut state.exposed)) {
             canvas.copy(&texture, None, None)?;
@@ -267,7 +278,8 @@ pub fn run(
         }
         feed(&mut music);
         pass += 1;
-        if app.quit() || flags.passes.is_some_and(|n| pass >= n) {
+        let timed = timing.as_ref().is_some_and(|t| t.done(now));
+        if app.quit() || timed || flags.passes.is_some_and(|n| pass >= n) {
             break;
         }
         // Sleep until a timer is due or something happens.
@@ -286,6 +298,15 @@ pub fn run(
         },
         (None, Some((model, _))) if model.stopped() => println!("music stopped"),
         _ => println!("music none"),
+    }
+    if let Some(timing) = timing {
+        timing.summary().iter().for_each(|line| println!("{line}"));
+    }
+    if let Some(file) = flags.shot {
+        // The texture goes to the renderer again, and its pixels are read before the present.
+        canvas.copy(&texture, None, None)?;
+        probe::shot(&canvas, file)?;
+        canvas.present();
     }
     Ok(())
 }
@@ -313,22 +334,27 @@ mod tests {
     }
 
     #[test]
-    fn window_events_decide_whether_the_loop_blocks() {
+    fn window_flags_decide_whether_the_loop_blocks() {
         let window = |win_event| Event::Window {
             timestamp: 0,
             window_id: 1,
             win_event,
         };
         let (mut state, mut commands) = (State::default(), Vec::new());
-        state.note(window(WindowEvent::Minimized), &mut commands);
-        assert!(state.asleep());
-        state.note(window(WindowEvent::Restored), &mut commands);
-        state.note(window(WindowEvent::Hidden), &mut commands);
-        assert!(state.asleep());
-        state.note(window(WindowEvent::Shown), &mut commands);
+        assert!(asleep(WindowFlags::MINIMIZED));
+        assert!(asleep(WindowFlags::HIDDEN | WindowFlags::INPUT_FOCUS));
+        assert!(
+            !asleep(WindowFlags::MAXIMIZED),
+            "a restore may come as Maximized"
+        );
+        assert!(
+            !asleep(WindowFlags::empty()),
+            "inactive but visible keeps running"
+        );
         state.note(window(WindowEvent::FocusLost), &mut commands);
-        assert!(!state.asleep(), "inactive but visible keeps running");
-        assert!(commands.is_empty());
+        assert!(!state.exposed && commands.is_empty());
+        state.note(window(WindowEvent::Exposed), &mut commands);
+        assert!(state.exposed);
         state.note(window(WindowEvent::CloseRequested), &mut commands);
         state.note(Event::Quit { timestamp: 0 }, &mut commands);
         assert_eq!(commands, [Command::Quit, Command::Quit]);
