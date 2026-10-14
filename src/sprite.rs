@@ -453,7 +453,7 @@ pub fn write_png(image: &Framebuffer, out: impl Write) -> Result<(), Box<dyn Err
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::vfs::Vfs;
 
@@ -468,7 +468,7 @@ mod tests {
         data
     }
 
-    fn sized(data: &[u8]) -> Vec<u8> {
+    pub(crate) fn sized(data: &[u8]) -> Vec<u8> {
         let mut out = (data.len() as u32).to_le_bytes().to_vec();
         out.extend(data);
         out
@@ -476,7 +476,7 @@ mod tests {
 
     /// A sprite file with the given prefix flag (`None`: no prefix), frame count field and
     /// frame records (already with their size fields). The palette path is `animals/Lion/lion.pal`.
-    fn sprite_file(prefix: Option<u8>, count: u32, frames: &[Vec<u8>]) -> Vec<u8> {
+    pub(crate) fn sprite_file(prefix: Option<u8>, count: u32, frames: &[Vec<u8>]) -> Vec<u8> {
         let mut out = Vec::new();
         if let Some(flag) = prefix {
             out.extend(b"FATZ\0\0\0\0");
@@ -786,7 +786,11 @@ mod tests {
         let mut image = blank(2, 2);
         frame.draw_mirrored(&palette(), &mut image, 0, 0).unwrap();
         assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
-        assert_eq!(image.pixels.iter().filter(|&&b| b != 0).count(), 2, "one pixel");
+        assert_eq!(
+            image.pixels.iter().filter(|&&b| b != 0).count(),
+            2,
+            "one pixel"
+        );
         // Clipped on the right: c = 1 of row 0 lands on column 5, c = 2 on column 6.
         let mut image = blank(6, 2);
         frame.draw_mirrored(&palette(), &mut image, 6, 0).unwrap();
@@ -990,10 +994,10 @@ mod tests {
     }
 
     /// An install folder with the given members in one archive, removed on drop.
-    struct Install(std::path::PathBuf);
+    pub(crate) struct Install(pub std::path::PathBuf);
 
     impl Install {
-        fn new(name: &str, members: &[(&str, Vec<u8>)]) -> Install {
+        pub(crate) fn new(name: &str, members: &[(&str, Vec<u8>)]) -> Install {
             let dir =
                 std::env::temp_dir().join(format!("rustyzoo-sprite-{}-{name}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
