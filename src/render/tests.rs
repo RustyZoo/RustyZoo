@@ -645,7 +645,7 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
         (summary.cliffs_drawn, summary.cliffs_missing)
     };
     let config = ("fringe.cfg", fringe.into_bytes());
-    let without = cliffs(&[config.clone()]);
+    let without = cliffs(std::slice::from_ref(&config));
     assert!(without.1 > 0 && without.0 == 0, "{without:?}");
     let with = cliffs(&[config, ("fringe/f.bmp", bitmap)]);
     assert_eq!(with, (without.1, 0));
