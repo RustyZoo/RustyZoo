@@ -14,6 +14,7 @@ pub mod tga;
 pub mod timing;
 pub mod vfs;
 pub mod zoo;
+pub mod zoom;
 
 /// An RGBA8 image: four bytes per pixel in the order R, G, B, A, rows from top to bottom.
 pub struct Framebuffer {
