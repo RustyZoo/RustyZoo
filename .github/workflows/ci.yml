@@ -165,8 +165,14 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then
             pre=(xvfb-run -a -s "-screen 0 1280x1024x24")
           fi
+          tmp="${RUNNER_TEMP//\\//}"
           "${pre[@]}" ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo \
-            --passes 60 --shot "${RUNNER_TEMP//\\//}/window.png"
+            --passes 60 --log "$tmp/window.log" --shot "$tmp/window.png" | tee "$tmp/window.out"
+          # With one pixel per point the pixels read back are the last frame painted.
+          if grep -Eq '^window ([0-9x]+) pixels \1 ' "$tmp/window.out"; then
+            last=$(awk '$4 == "draw" && $5 != "-" { h = $5 } END { print h }' "$tmp/window.log")
+            grep -q "hash $last\$" "$tmp/window.out" || { echo "the picture read back is not the last frame painted ($last)"; exit 1; }
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
