@@ -8,6 +8,7 @@ set -u
 bin=$1
 dir=$2
 failed=0
+export SDL_AUDIO_DRIVER=dummy # check-music opens the audio device: never a real one
 
 rz() { "$bin" --data "$dir/$trial" "$@"; }
 
@@ -74,5 +75,14 @@ check expansion-trial 0,0,0,0,0,0,0 "rz check-ground | tail -1 | cut -d';' -f1 |
 # interface updates and steps of a ten second run with a pass at every millisecond.
 check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"
+
+# WAV files decoded: files, ok, failed; the counts per format (sample type, rate, channels).
+check base-trial 48,48,0 "rz check-wavs | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+check base-trial 38,2,1,1,6 "rz check-wavs | grep -v wavs: | cut -d' ' -f1 | paste -sd, -"
+check expansion-trial 198,198,0 "rz check-wavs | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+check expansion-trial 17,7,162,12 "rz check-wavs | grep -v wavs: | cut -d' ' -f1 | paste -sd, -"
+# The menu music queued on the dummy audio device, paused: format, gain, bytes.
+check base-trial sounds/mainmenu.wav:S16LE22050Hz1ch,gain0.999,queued704514bytes,paused "rz check-music"
+check expansion-trial sounds/mainmenu.wav:U822050Hz2ch,gain0.999,queued940914bytes,paused "rz check-music"
 
 exit $failed

@@ -64,6 +64,8 @@ rustyzoo render-map maps/default.zoo out.png --rotation 1   # draw a whole map i
 rustyzoo render-map maps/default.zoo out.png --view 0 0 800 600 --no-units   # only the 800 x 600 window of the view whose top left pixel is the view-space point (0, 0), without animals, guests and staff
 rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
 rustyzoo check-bitmaps                           # convert the root bitmaps of the terrain and compare them with the shipped copies; exit 1 on a mismatch
+rustyzoo check-wavs                              # decode every .wav file and count them by format; exit 1 if one fails
+rustyzoo check-music                             # queue the menu music paused on the audio device and print its format, gain and queued bytes
 ```
 
 Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.

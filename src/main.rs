@@ -1,3 +1,5 @@
+mod audio;
+
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::ffi::OsString;
@@ -76,6 +78,9 @@ usage: rustyzoo [--data <dir>] <command>
   check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
                       pieces) as the engine does when their copies in ztst/ are missing, and
                       compare each with its shipped copy; exit 1 if one differs or fails
+  check-wavs          decode every .wav file; count them by format; exit 1 if one fails
+  check-music         open the default audio device (SDL_AUDIO_DRIVER=dummy for none), queue the
+                      menu music paused and print its format, gain and queued bytes
   check-anis          load every animation set and the sprite files it names; list the sets
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
@@ -154,6 +159,8 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             Path::new(dir),
         ),
         ["check-bitmaps"] => check_bitmaps(&open_game(data_dir)?),
+        ["check-wavs"] => check_wavs(&open_game(data_dir)?),
+        ["check-music"] => check_music(&open_game(data_dir)?),
         ["check-anis"] => check_anis(&open_game(data_dir)?),
         ["timing"] => timing(&open_game(data_dir)?),
         ["check-ground"] => check_ground(&open_game(data_dir)?),
@@ -1242,6 +1249,66 @@ fn check_bitmaps(vfs: &Vfs) -> Result<(), CliError> {
         0 => Ok(()),
         n => Err(format!("{n} bitmaps differ or failed").into()),
     }
+}
+
+fn check_wavs(vfs: &Vfs) -> Result<(), CliError> {
+    let mut report = Report::new();
+    let mut formats = BTreeMap::new();
+    let mut failed = 0;
+    let names: Vec<String> = vfs
+        .list(None)
+        .into_iter()
+        .filter(|name| name.ends_with(".wav"))
+        .collect();
+    for name in &names {
+        let sound = vfs
+            .read(name)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| audio::Sound::decode(&bytes).map_err(|e| e.to_string()));
+        match sound {
+            Ok(sound) => *formats.entry(sound.describe()).or_insert(0) += 1,
+            Err(why) => {
+                failed += 1;
+                report.line(format_args!(
+                    "FAILED {}: {}",
+                    name.escape_debug(),
+                    why.escape_debug()
+                ));
+            }
+        }
+    }
+    for (format, count) in &formats {
+        report.line(format_args!("{count} {format}"));
+    }
+    report.line(format_args!(
+        "{} wavs: {} ok, {failed} failed",
+        names.len(),
+        names.len() - failed
+    ));
+    report.finish()?;
+    match failed {
+        0 => Ok(()),
+        n => Err(format!("{n} wavs failed").into()),
+    }
+}
+
+fn check_music(vfs: &Vfs) -> Result<(), CliError> {
+    let audio = audio::Audio::open(&sdl3::init()?.audio()?)?;
+    let Some((name, music)) = audio.menu_music(vfs, true, true)? else {
+        println!("no menu music");
+        return Ok(());
+    };
+    println!(
+        "{name}: {}, gain {:.3}, queued {} bytes, paused",
+        music.sound().describe(),
+        music.gain()?,
+        music.queued_bytes()?
+    );
+    // Exercises the rest of the interface; the device is dummy, so nothing is heard.
+    music.resume()?;
+    music.update()?;
+    music.pause()?;
+    Ok(())
 }
 
 fn window_smoke() -> Result<(), Box<dyn Error>> {
