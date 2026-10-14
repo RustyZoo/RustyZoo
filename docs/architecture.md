@@ -46,7 +46,7 @@ Everything read from a file is untrusted: malformed data gives an error, never a
 
 ## Commands
 
-`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `dump-sprite`, `check-sprites`, `check-layouts`, `text-width`, `draw-text` and `window-smoke`; see the README. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
+`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `dump-sprite`, `check-sprites`, `check-layouts`, `dump-layout`, `text-width`, `draw-text` and `window-smoke`; see the README. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
 
 ## Design choices
 
