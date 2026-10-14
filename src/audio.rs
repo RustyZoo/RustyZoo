@@ -4,6 +4,7 @@
 
 use std::error::Error;
 use std::ffi::{c_int, c_void};
+use std::sync::Arc;
 
 use rustyzoo::music::{Music, START_LIMIT, gain};
 use rustyzoo::vfs::Vfs;
@@ -131,10 +132,10 @@ impl Audio {
             stream.pause()?;
         }
         stream.put_data(&sound.data)?;
-        let sound = Box::new(sound);
+        let sound = Arc::new(sound);
         if looping {
-            let data = std::ptr::from_ref::<Sound>(&sound).cast_mut().cast();
-            // SAFETY: `data` points to the boxed sound, which lives as long as the voice, and
+            let data = Arc::as_ptr(&sound).cast_mut().cast();
+            // SAFETY: `data` points into the shared sound, which lives as long as the voice, and
             // the voice destroys the stream before it drops the sound (see [`Voice`]).
             let set = unsafe {
                 sdl3::sys::audio::SDL_SetAudioStreamGetCallback(stream.raw(), Some(refill), data)
@@ -170,7 +171,7 @@ unsafe extern "C" fn refill(
     additional: c_int,
     _total: c_int,
 ) {
-    // SAFETY: `sound` is the boxed sound of the voice that owns the stream, alive until the
+    // SAFETY: `sound` is the sound of the voice that owns the stream, alive until the
     // stream is destroyed; nothing writes to it.
     let sound = unsafe { &*sound.cast::<Sound>() };
     if let (true, Ok(len)) = (additional > 0, c_int::try_from(sound.data.len()))
@@ -186,7 +187,7 @@ pub struct Voice {
     // The stream comes first so that it is destroyed, and its callback stops, before the sound
     // that the callback reads is dropped.
     stream: AudioStreamOwner,
-    sound: Box<Sound>,
+    sound: Arc<Sound>,
 }
 
 impl Voice {
@@ -285,7 +286,12 @@ mod tests {
     #[test]
     fn a_looping_voice_goes_on_without_the_program_but_a_one_shot_runs_out() {
         // Never a real device.
-        assert!(sdl3::hint::set("SDL_AUDIO_DRIVER", "dummy"));
+        // (the override beats a driver the environment names)
+        assert!(sdl3::hint::set_with_priority(
+            "SDL_AUDIO_DRIVER",
+            "dummy",
+            &sdl3::hint::Hint::Override
+        ));
         let sdl = sdl3::init().unwrap();
         let audio = Audio::open(&sdl.audio().unwrap()).unwrap();
         // A quarter of a second of silence, played for 0.7 seconds without a call into the voice.
