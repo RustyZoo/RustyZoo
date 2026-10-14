@@ -6,6 +6,7 @@ use std::fs::File;
 use rustyzoo::Framebuffer;
 use rustyzoo::sprite::write_png;
 use rustyzoo::ui::draw::Painter;
+use rustyzoo::ui::interface::Interface;
 use rustyzoo::ui::layout::{DIRTY, HIGHLIGHTED, SELECTED};
 
 use rustyzoo::strings::StringTables;
@@ -80,16 +81,10 @@ fn window_size(text: &str) -> Result<(i32, i32), CliError> {
     Ok((side(w)?, side(h)?))
 }
 
-/// The tree of `ui/gamescrn.lyt` resolved for a window, with the strings of the install; its
+/// The tree of `ui/gamescrn.lyt` for the expansions of `mask`, resolved for a window; its
 /// warnings are printed.
-fn resolved_tree(
-    data_dir: Option<OsString>,
-    size: (i32, i32),
-    mask: Option<&str>,
-) -> Result<(Tree, StringTables), CliError> {
-    let tables = StringTables::open(&game_folder(data_dir.clone())?)?;
-    let vfs = open_game(data_dir)?;
-    let mut tree = Tree::load(&vfs, "ui/gamescrn.lyt", expansions(&vfs, mask)?);
+fn resolve_tree(vfs: &Vfs, tables: &StringTables, size: (i32, i32), mask: i32) -> Tree {
+    let mut tree = Tree::load(vfs, "ui/gamescrn.lyt", mask);
     let mut fonts = Fonts::default();
     tree.resolve(size.0, size.1, |font| {
         // Strings that do not exist are empty texts: the default font, 8 points.
@@ -102,7 +97,57 @@ fn resolved_tree(
     for warning in &tree.warnings {
         eprintln!("rustyzoo: warning: {warning}");
     }
-    Ok((tree, tables))
+    tree
+}
+
+/// The tree resolved for a window, with the strings of the install.
+fn resolved_tree(
+    data_dir: Option<OsString>,
+    size: (i32, i32),
+    mask: Option<&str>,
+) -> Result<(Tree, StringTables), CliError> {
+    let tables = StringTables::open(&game_folder(data_dir.clone())?)?;
+    let vfs = open_game(data_dir)?;
+    let mask = expansions(&vfs, mask)?;
+    Ok((resolve_tree(&vfs, &tables, size, mask), tables))
+}
+
+/// The interface of a game in a window of `size` pixels: the tree, with the layouts of `show`
+/// shown. A tree that cannot be loaded is a warning and no interface, unless layouts were asked
+/// for.
+pub fn load_interface(
+    vfs: &Vfs,
+    size: (u32, u32),
+    show: &[i32],
+) -> Result<Option<Interface>, CliError> {
+    let size = (
+        i32::try_from(size.0).unwrap_or(i32::MAX),
+        i32::try_from(size.1).unwrap_or(i32::MAX),
+    );
+    let made = StringTables::open(vfs.root())
+        .map_err(|e| e.to_string())
+        .and_then(|tables| {
+            let tree = resolve_tree(vfs, &tables, size, installed_expansions(vfs));
+            match tree.failure.clone() {
+                Some(failure) => Err(format!("load stopped at {failure}")),
+                None => Ok(Interface::new(tree, Box::new(tables))),
+            }
+        });
+    match made {
+        Ok(mut ui) => {
+            for &id in show {
+                if !ui.show(id) {
+                    return Err(format!("no layout with id {id}").into());
+                }
+            }
+            Ok(Some(ui))
+        }
+        Err(why) if show.is_empty() => {
+            eprintln!("rustyzoo: warning: no interface: {why}");
+            Ok(None)
+        }
+        Err(why) => Err(format!("no interface: {why}").into()),
+    }
 }
 
 /// Loads the tree, resolves it for a window and prints one line per element in the order they are
@@ -180,7 +225,7 @@ pub fn render_ui(data_dir: Option<OsString>, out: &str, flags: &[&str]) -> Resul
         }
     }
     let mut frame = Framebuffer::new(size.0 as u32, size.1 as u32);
-    Painter::default().draw(&mut tree, &mut frame, &tables);
+    Painter::default().draw(&mut tree, &mut frame, &tables, &mut |_, _| {});
     let file = File::create(out).map_err(|e| format!("cannot write {out}: {e}"))?;
     write_png(&frame, file)?;
     println!("{out}: {}x{}", size.0, size.1);

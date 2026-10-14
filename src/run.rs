@@ -43,6 +43,8 @@ struct Flags {
     out: Option<String>,
     /// A log to run again instead of `passes` and `clock`.
     replay: Option<String>,
+    /// `--show`: layouts of the interface to show at the start.
+    show: Vec<i32>,
 }
 
 fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
@@ -105,6 +107,10 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
             }
             ("--replay", [file, rest @ ..]) => {
                 flags.replay = Some(file.to_string());
+                rest
+            }
+            ("--show", [id, rest @ ..]) => {
+                flags.show.push(id.parse().map_err(|_| CliError::Usage)?);
                 rest
             }
             ("--out", [dir, rest @ ..]) => {
@@ -232,16 +238,21 @@ pub fn run(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
             script: commands.collect(),
             timing: flags.timing,
             shot: flags.shot.as_deref(),
+            show: &flags.show,
         };
         return crate::window::run(vfs, &catalogue, zoo, &ini, window);
     }
+    let size = size.unwrap_or(DEFAULT_SIZE);
     let mut app = App::new(
         MapRenderer::new(vfs, &catalogue),
         zoo,
         Settings::from_config(&ini),
         Timers::from_config(&ini),
-        size.unwrap_or(DEFAULT_SIZE),
+        size,
     )?;
+    if let Some(ui) = crate::layout::load_interface(vfs, size, &flags.show)? {
+        app.set_interface(ui);
+    }
     // The game starts with the run: the menu music, which only the log tells of here, fades.
     app.start_game(Music::from_config(&ini));
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));

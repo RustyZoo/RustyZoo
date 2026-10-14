@@ -41,6 +41,8 @@ pub const NEVER_SHOWN: u32 = 16;
 pub const DIRTY: u32 = 128;
 /// State flag: never drawn nor hit.
 pub const TEMPLATE: u32 = 256;
+/// State flag: the element has the keyboard focus.
+pub const FOCUSED: u32 = 512;
 /// State flag: set by the `timed` key.
 pub const TIMED: u32 = 1024;
 /// State flags: a toggle button, a sticky button.
@@ -359,6 +361,9 @@ pub struct Element {
     pub look: Look,
     /// The program switched the element to its alternative position.
     pub alt: bool,
+    /// Milliseconds left of a timed element shown; `None` until the first interface update after
+    /// it was shown.
+    pub countdown: Option<i64>,
     /// The numbers the words of the file resolve to for a window size; `None` before
     /// [`Tree::resolve`].
     pub placed: Option<Placed>,
@@ -814,6 +819,7 @@ impl Tree {
             string_data: s.get("stringData").unwrap_or_default().to_vec(),
             look,
             alt: false,
+            countdown: None,
             placed: None,
         });
         if let Some(parent) = parent {

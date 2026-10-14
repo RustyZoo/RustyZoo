@@ -6,6 +6,11 @@
 //! One pass applies the commands first (in the original they arrive between two passes, main
 //! loop 3.1), then runs the timers in their order: the draw, the interface (the camera's edge
 //! scroll), the simulation (only the calendar, so far; the pause stops it, main loop 3.3).
+//!
+//! With an [`Interface`] the tree is painted over the map: the map view element draws the staged
+//! map into its rectangle, and a due draw paints when the camera moved or the interface changed.
+//! The keys and the edge scroll of the map view then act only while the map view is shown and no
+//! other element has the keyboard focus. Without one, the frame is the map alone.
 
 use std::fmt;
 use std::str::FromStr;
@@ -15,11 +20,71 @@ use crate::camera::{Camera, Settings};
 use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
 use crate::timing::{Calendar, Pass, Timers};
+use crate::ui::interface::Interface;
 use crate::zoo::Zoo;
 
-/// What the player does in the map view (input 4). The text form is the script format of a
-/// headless run: `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`,
-/// `zoom in`, `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `quit`.
+/// A key the interface reads, by the name a script gives it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Key {
+    Enter,
+    Escape,
+    Tab,
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Y,
+    N,
+}
+
+const KEY_NAMES: [(&str, Key); 15] = [
+    ("enter", Key::Enter),
+    ("escape", Key::Escape),
+    ("tab", Key::Tab),
+    ("backspace", Key::Backspace),
+    ("delete", Key::Delete),
+    ("left", Key::Left),
+    ("right", Key::Right),
+    ("up", Key::Up),
+    ("down", Key::Down),
+    ("home", Key::Home),
+    ("end", Key::End),
+    ("pageup", Key::PageUp),
+    ("pagedown", Key::PageDown),
+    ("y", Key::Y),
+    ("n", Key::N),
+];
+
+impl Key {
+    fn name(self) -> &'static str {
+        KEY_NAMES.iter().find(|k| k.1 == self).map_or("", |k| k.0)
+    }
+}
+
+/// What the mouse does over the window, in window coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mouse {
+    /// The pointer moved here.
+    Move(i32, i32),
+    /// The left button went down or up at the pointer.
+    Down,
+    Up,
+    /// The wheel turned by this many notches (positive: away from the player).
+    Wheel(i32),
+}
+
+/// What the player does (input 4). The text form is the script format of a headless run:
+/// `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`, `zoom in`,
+/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `quit` for the map view, and for the
+/// interface `mouse X Y`, `down`, `up`, `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
+/// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n) and
+/// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
 /// A window reads `fullscreen` in a script as a request to switch, and makes the command itself
 /// when the window has switched, so a log replays it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +104,11 @@ pub enum Command {
     Pause,
     /// Close the game.
     Quit,
+    Mouse(Mouse),
+    /// A key of the interface, with Ctrl and Shift held or not.
+    Key(Key, bool, bool),
+    /// A character typed, as a Windows-1252 byte.
+    Char(u8),
 }
 
 impl fmt::Display for Command {
@@ -52,6 +122,21 @@ impl fmt::Display for Command {
             Command::Fullscreen(on) => write!(f, "fullscreen {}", if on { "on" } else { "off" }),
             Command::Pause => f.write_str("pause"),
             Command::Quit => f.write_str("quit"),
+            Command::Mouse(Mouse::Move(x, y)) => write!(f, "mouse {x} {y}"),
+            Command::Mouse(Mouse::Down) => f.write_str("down"),
+            Command::Mouse(Mouse::Up) => f.write_str("up"),
+            Command::Mouse(Mouse::Wheel(n)) => write!(f, "wheel {n}"),
+            Command::Key(key, ctrl, shift) => {
+                write!(f, "key {}", key.name())?;
+                if ctrl {
+                    f.write_str(" ctrl")?;
+                }
+                if shift {
+                    f.write_str(" shift")?;
+                }
+                Ok(())
+            }
+            Command::Char(byte) => write!(f, "char {byte}"),
         }
     }
 }
@@ -80,6 +165,31 @@ impl FromStr for Command {
             ["fullscreen", "off"] => Command::Fullscreen(false),
             ["pause"] => Command::Pause,
             ["quit"] => Command::Quit,
+            ["mouse", x, y] => Command::Mouse(Mouse::Move(number(x)?, number(y)?)),
+            ["down"] => Command::Mouse(Mouse::Down),
+            ["up"] => Command::Mouse(Mouse::Up),
+            ["wheel", n] => Command::Mouse(Mouse::Wheel(number(n)?)),
+            ["key", name, mods @ ..] => {
+                let key = KEY_NAMES
+                    .iter()
+                    .find(|k| k.0 == *name)
+                    .ok_or_else(|| format!("not a key: {name:?}"))?
+                    .1;
+                let (mut ctrl, mut shift) = (false, false);
+                for m in mods {
+                    match *m {
+                        "ctrl" => ctrl = true,
+                        "shift" => shift = true,
+                        _ => return Err(format!("not a key modifier: {m:?}")),
+                    }
+                }
+                Command::Key(key, ctrl, shift)
+            }
+            ["char", c] => match (c.parse::<u8>(), c.as_bytes()) {
+                (Ok(byte), _) => Command::Char(byte),
+                (_, [byte]) if byte.is_ascii() && !byte.is_ascii_digit() => Command::Char(*byte),
+                _ => return Err(format!("not a character: {c:?}")),
+            },
             _ => return Err(format!("not a command: {text:?}")),
         })
     }
@@ -106,7 +216,12 @@ pub struct App<'a> {
     quit: bool,
     pointer: Option<(i32, i32)>,
     frame: Framebuffer,
-    /// The look of the frame in `frame`; `None` before the first one.
+    /// The interface drawn over the map, if the game has one.
+    ui: Option<Interface>,
+    /// The map as the staged picture draws it for `painted`, when there is an interface: the map
+    /// view copies it, so a frame painted for the interface alone draws no map again.
+    map: Framebuffer,
+    /// The look of the map in `map` (`frame` without an interface); `None` before the first.
     painted: Option<Look>,
     /// What the last pass did: the commands it applied and the timers it fired.
     applied: Vec<Command>,
@@ -145,6 +260,8 @@ impl<'a> App<'a> {
             quit: false,
             pointer: None,
             frame: Framebuffer::new(size.0, size.1),
+            ui: None,
+            map: Framebuffer::new(0, 0),
             painted: None,
             applied: Vec::new(),
             fired: IDLE,
@@ -153,6 +270,26 @@ impl<'a> App<'a> {
             music: None,
             music_changed: false,
         })
+    }
+
+    /// Puts the interface around the game. The window is the size it was resolved for.
+    pub fn set_interface(&mut self, ui: Interface) {
+        self.map = Framebuffer::new(self.frame.width, self.frame.height);
+        self.painted = None;
+        self.ui = Some(ui);
+    }
+
+    /// The interface, if the game has one.
+    pub fn interface(&mut self) -> Option<&mut Interface> {
+        self.ui.as_mut()
+    }
+
+    /// Whether the keys and the edge scroll of the map view act: always without an interface,
+    /// else while the map view is shown and no other element has the keyboard focus.
+    fn map_keys(&self) -> bool {
+        self.ui
+            .as_ref()
+            .is_none_or(Interface::map_view_has_the_keys)
     }
 
     /// One pass at the clock reading `now` (ms) with the commands that came before it. Returns
@@ -178,7 +315,12 @@ impl<'a> App<'a> {
             self.drew = self.paint();
         }
         if let Some(period) = self.fired.interface {
-            self.camera.edge_scroll(&self.zoo, now, self.pointer);
+            if self.map_keys() {
+                self.camera.edge_scroll(&self.zoo, now, self.pointer);
+            }
+            if let Some(ui) = &mut self.ui {
+                ui.update(period);
+            }
             if let Some(music) = &mut self.music {
                 self.music_changed = music.update(period);
             }
@@ -212,9 +354,9 @@ impl<'a> App<'a> {
 
     fn apply(&mut self, command: Command) {
         match command {
-            Command::Scroll(x, y) => self.camera.key_scroll(&self.zoo, (x, y)),
+            Command::Scroll(x, y) if self.map_keys() => self.camera.key_scroll(&self.zoo, (x, y)),
             Command::Pointer(at) => self.pointer = at,
-            Command::Rotate(clockwise) => {
+            Command::Rotate(clockwise) if self.map_keys() => {
                 let before = self.camera.clone();
                 self.camera.rotate(&self.zoo, None, clockwise);
                 // Restage from the new side. If that fails the view stays as it was.
@@ -223,27 +365,50 @@ impl<'a> App<'a> {
                     Err(_) => self.camera = before,
                 }
             }
-            Command::Zoom(zoom_in) => self.camera.zoom(&self.zoo, None, zoom_in),
+            Command::Zoom(zoom_in) if self.map_keys() => self.camera.zoom(&self.zoo, None, zoom_in),
             Command::Fullscreen(on) => self.camera.set_fullscreen(&self.zoo, on),
-            Command::Pause => self.paused = !self.paused,
+            Command::Pause if self.map_keys() => self.paused = !self.paused,
             Command::Quit => self.quit = true,
+            // The map view's keys while it does not have them, and what reaches the widgets:
+            // the widgets take their input in the next issue.
+            Command::Scroll(..)
+            | Command::Rotate(_)
+            | Command::Zoom(_)
+            | Command::Pause
+            | Command::Mouse(_)
+            | Command::Key(..)
+            | Command::Char(_) => {}
         }
     }
 
-    /// Paints the window of the view if it differs from the last frame.
+    /// Paints the window of the view if it differs from the last frame: the camera moved or the
+    /// interface changed.
     fn paint(&mut self) -> bool {
         let look = self.look();
-        if self.painted == Some(look) {
+        let moved = self.painted != Some(look);
+        if !moved && !self.ui.as_ref().is_some_and(Interface::dirty) {
             return false;
         }
-        // The one place that draws; the zoom of the camera applies here.
-        self.staged.draw(
-            &mut self.frame,
-            self.camera.scroll.0,
-            self.camera.scroll.1,
-            self.camera.zoom,
-        );
-        self.painted = Some(look);
+        // The one place that draws the map; the zoom of the camera applies here.
+        let target = match self.ui {
+            Some(_) => &mut self.map,
+            None => &mut self.frame,
+        };
+        if moved {
+            self.staged.draw(
+                target,
+                self.camera.scroll.0,
+                self.camera.scroll.1,
+                self.camera.zoom,
+            );
+            self.painted = Some(look);
+        }
+        if let Some(ui) = &mut self.ui {
+            let map = &self.map;
+            ui.paint(&mut self.frame, &mut |frame, rect| {
+                copy_rect(frame, map, rect)
+            });
+        }
         true
     }
 
@@ -314,6 +479,22 @@ impl<'a> App<'a> {
             ));
         }
         lines
+    }
+}
+
+/// Copies the rectangle (left, top, width, height) of `from` to the same place of `to`, clipped.
+fn copy_rect(to: &mut Framebuffer, from: &Framebuffer, (x, y, w, h): (i32, i32, i32, i32)) {
+    let left = x.max(0) as usize;
+    let right =
+        (i64::from(x) + i64::from(w)).clamp(0, i64::from(to.width.min(from.width))) as usize;
+    for row in
+        y.max(0)..(i64::from(y) + i64::from(h)).min(i64::from(to.height.min(from.height))) as i32
+    {
+        let range = (row as usize * to.width as usize + left) * 4
+            ..(row as usize * to.width as usize + right) * 4;
+        if range.start < range.end {
+            to.pixels[range.clone()].copy_from_slice(&from.pixels[range]);
+        }
     }
 }
 

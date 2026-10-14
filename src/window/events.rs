@@ -1,7 +1,9 @@
 //! What the window tells through its events, and whether it is asleep.
 
-use rustyzoo::app::Command;
+use rustyzoo::app::{Command, Mouse};
+use rustyzoo::text::to_cp1252;
 use sdl3::event::{Event, WindowEvent};
+use sdl3::mouse::MouseButton;
 use sdl3::video::WindowFlags;
 
 use crate::input;
@@ -26,6 +28,15 @@ pub fn maximised(flags: WindowFlags, fullscreen: bool) -> bool {
     !fullscreen && flags.contains(WindowFlags::MAXIMIZED)
 }
 
+/// A mouse message in points of the window, kept until the loop knows where the picture is.
+#[derive(Debug, PartialEq)]
+pub enum Raw {
+    Move(f32, f32),
+    Down(f32, f32),
+    Up(f32, f32),
+    Wheel(i32),
+}
+
 /// What the window tells through its events.
 #[derive(Default)]
 pub struct State {
@@ -33,6 +44,11 @@ pub struct State {
     pub exposed: bool,
     /// Alt+Enter was released.
     pub toggle: bool,
+    /// The game has an interface: the mouse, the keys it reads and the typed characters become
+    /// commands.
+    pub interface: bool,
+    /// The mouse messages of the left button, the pointer and the wheel, in order.
+    pub mouse: Vec<Raw>,
 }
 
 impl State {
@@ -42,6 +58,31 @@ impl State {
             commands.push(command);
         }
         self.toggle |= input::alt_enter(&event);
+        if self.interface {
+            commands.extend(input::interface_command(&event));
+            match event {
+                Event::MouseMotion { x, y, .. } => self.mouse.push(Raw::Move(x, y)),
+                Event::MouseButtonDown {
+                    mouse_btn: MouseButton::Left,
+                    x,
+                    y,
+                    ..
+                } => self.mouse.push(Raw::Down(x, y)),
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Left,
+                    x,
+                    y,
+                    ..
+                } => self.mouse.push(Raw::Up(x, y)),
+                Event::MouseWheel { integer_y, .. } if integer_y != 0 => {
+                    self.mouse.push(Raw::Wheel(integer_y))
+                }
+                Event::TextInput { ref text, .. } => {
+                    commands.extend(to_cp1252(text).into_iter().map(Command::Char))
+                }
+                _ => {}
+            }
+        }
         match event {
             Event::Quit { .. }
             | Event::Window {
@@ -57,6 +98,33 @@ impl State {
             } => self.exposed = true,
             _ => {}
         }
+    }
+}
+
+impl State {
+    /// Turns the mouse messages noted so far into commands. `place` gives the pixel of the game
+    /// under a point of the window. A button message first moves the pointer to its position.
+    pub fn mouse_commands<E>(
+        &mut self,
+        mut place: impl FnMut((f32, f32)) -> Result<(i32, i32), E>,
+        commands: &mut Vec<Command>,
+    ) -> Result<(), E> {
+        for raw in std::mem::take(&mut self.mouse) {
+            match raw {
+                Raw::Move(x, y) => {
+                    let (px, py) = place((x, y))?;
+                    commands.push(Command::Mouse(Mouse::Move(px, py)));
+                }
+                Raw::Down(x, y) | Raw::Up(x, y) => {
+                    let (px, py) = place((x, y))?;
+                    commands.push(Command::Mouse(Mouse::Move(px, py)));
+                    let down = matches!(raw, Raw::Down(..));
+                    commands.push(Command::Mouse(if down { Mouse::Down } else { Mouse::Up }));
+                }
+                Raw::Wheel(n) => commands.push(Command::Mouse(Mouse::Wheel(n))),
+            }
+        }
+        Ok(())
     }
 }
 
@@ -114,5 +182,68 @@ mod tests {
         state.note(window(WindowEvent::CloseRequested), &mut commands);
         state.note(Event::Quit { timestamp: 0 }, &mut commands);
         assert_eq!(commands, [Command::Quit, Command::Quit]);
+    }
+
+    #[test]
+    fn with_an_interface_the_mouse_the_keys_and_the_text_become_commands() {
+        let button = |mouse_btn, x, y| Event::MouseButtonDown {
+            timestamp: 0,
+            window_id: 1,
+            which: 0,
+            mouse_btn,
+            clicks: 1,
+            x,
+            y,
+        };
+        let mut state = State::default();
+        let mut commands = Vec::new();
+        state.note(button(MouseButton::Left, 3.0, 4.0), &mut commands);
+        assert!(
+            state.mouse.is_empty() && commands.is_empty(),
+            "no interface"
+        );
+        state.interface = true;
+        state.note(button(MouseButton::Left, 3.0, 4.0), &mut commands);
+        state.note(button(MouseButton::Right, 9.0, 9.0), &mut commands);
+        state.note(
+            Event::MouseWheel {
+                timestamp: 0,
+                window_id: 1,
+                which: 0,
+                x: 0.0,
+                y: 1.0,
+                direction: sdl3::mouse::MouseWheelDirection::Normal,
+                mouse_x: 0.0,
+                mouse_y: 0.0,
+                integer_x: 0,
+                integer_y: -1,
+            },
+            &mut commands,
+        );
+        state.note(
+            Event::TextInput {
+                timestamp: 0,
+                window_id: 1,
+                text: "A\u{e9}\u{4e2d}".into(),
+            },
+            &mut commands,
+        );
+        assert_eq!(
+            commands,
+            [Command::Char(65), Command::Char(233), Command::Char(63)]
+        );
+        // The points of the window become pixels of the game when the loop knows where it is.
+        let mut commands = Vec::new();
+        let place = |(x, y): (f32, f32)| Ok::<_, ()>((x as i32 * 2, y as i32 * 2));
+        state.mouse_commands(place, &mut commands).unwrap();
+        assert_eq!(
+            commands,
+            [
+                Command::Mouse(Mouse::Move(6, 8)),
+                Command::Mouse(Mouse::Down),
+                Command::Mouse(Mouse::Wheel(-1)),
+            ]
+        );
+        assert!(state.mouse.is_empty());
     }
 }
