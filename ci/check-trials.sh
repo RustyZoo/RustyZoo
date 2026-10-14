@@ -139,6 +139,14 @@ check base-trial '3:17,6,179,440;1036:235,565,58,35;7100:0,0,800,600;7111:225,27
 check expansion-trial '3:17,6,179,440;1036:304,733,43,35;7100:112,84,800,600;7111:337,344,350,25;' 'rects 1024x768'
 check expansion-trial '3:17,6,179,440;1036:235,565,69,35;7100:0,0,800,600;7111:225,260,350,25;' 'rects 800x600'
 
+# The interface painted headless: the main menu with a hovered button, the size of the picture, and
+# the exit status for a layout that does not exist (1) and a size of 0 (2, a usage error).
+for trial in base-trial expansion-trial; do
+  check $trial 800x600 "rz render-ui $tmp/ui.png --size 800x600 --show 26 --hover 7111 2>/dev/null | sed 's/.*: //'"
+  check $trial 1 "rz render-ui $tmp/ui.png --show 99999 >/dev/null 2>&1; echo \$?"
+  check $trial 2 "rz render-ui $tmp/ui.png --size 0x600 >/dev/null 2>&1; echo \$?"
+done
+
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
 check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"

@@ -29,8 +29,28 @@ use super::resolve::Placed;
 
 /// State flag: not drawn, not hit. Every element starts with it.
 pub const HIDDEN: u32 = 1;
+/// State flag: a button is drawn grayed and gets no mouse input.
+pub const DISABLED: u32 = 2;
+/// State flag: the pointer is over the element.
+pub const HIGHLIGHTED: u32 = 4;
+/// State flag: a button is drawn pressed.
+pub const SELECTED: u32 = 8;
+/// State flag: not shown when its layout is shown.
+pub const NEVER_SHOWN: u32 = 16;
+/// State flag: the canvas must be drawn again.
+pub const DIRTY: u32 = 128;
+/// State flag: never drawn nor hit.
+pub const TEMPLATE: u32 = 256;
 /// State flag: set by the `timed` key.
 pub const TIMED: u32 = 1024;
+/// State flags: a toggle button, a sticky button.
+pub const TOGGLE: u32 = 2048;
+pub const STICKY: u32 = 4096;
+/// State flag of a selected toggle button held with the pointer over it: drawn unselected.
+pub const RELEASING: u32 = 8192;
+/// State flag of an unselected toggle or sticky button held with the pointer over it: drawn
+/// pressed.
+pub const PRESSING: u32 = 16384;
 
 /// The deepest chain of layouts naming layouts. The shipped files go 4 deep.
 const MAX_DEPTH: usize = 16;
@@ -140,7 +160,7 @@ fn dim(value: &[u8]) -> Option<Dim> {
 pub type Rgb = [u8; 3];
 
 /// A picture of the cache of the tree.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Picture {
     /// An index into [`Pictures::images`].
     Image(usize),
@@ -469,6 +489,29 @@ impl Tree {
             }
         }
         tree
+    }
+
+    /// Shows the layout `id` and everything below it, to any depth: clears the hidden flag of
+    /// every element except those that are never shown, and leaves everything inside a layout
+    /// that is never shown as it was. The children are shown before their layout. `false` if
+    /// there is no such element.
+    pub fn show(&mut self, id: i32) -> bool {
+        let Some(layout) = self.find(id) else {
+            return false;
+        };
+        self.show_below(layout);
+        self.elements[layout].state &= !HIDDEN;
+        true
+    }
+
+    fn show_below(&mut self, layout: usize) {
+        // The nesting of layouts is bounded by MAX_DEPTH.
+        for child in self.elements[layout].children.clone() {
+            if self.elements[child].state & NEVER_SHOWN == 0 {
+                self.show_below(child);
+                self.elements[child].state &= !HIDDEN;
+            }
+        }
     }
 
     /// The element registered under `id`.
