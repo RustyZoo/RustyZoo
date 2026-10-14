@@ -415,3 +415,50 @@ fn every_tile_and_object_is_painted_exactly_once_on_a_messy_map() {
         }
     }
 }
+
+#[test]
+fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
+    let install = Install::new("render-absurd", &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut tiles = flat_map(3, 3);
+    for (i, tile) in tiles.iter_mut().enumerate() {
+        tile.elevation = [i32::MAX, i32::MIN, 1_000_000, -7, 5][i % 5];
+        tile.shape = (i * 37) as u8;
+        tile.edges = (i * 91) as u8;
+        tile.terrain = (i * 53) as u8;
+    }
+    let entity = |class: &str, x: i32, y: i32, z: i32| crate::zoo::Entity {
+        class: class.into(),
+        type_name: "x".into(),
+        subtype: "y".into(),
+        body_size: None,
+        common: Some(crate::zoo::Common {
+            x,
+            y,
+            z,
+            rotation: u32::MAX,
+            id: 1,
+            name: String::new(),
+        }),
+    };
+    let zoo = Zoo {
+        version: 106,
+        locale: 1033,
+        expansion: 0,
+        width: 3,
+        height: 3,
+        entrance: (0, 0),
+        habitat_count: 0,
+        id_counter: 0,
+        tiles,
+        entities: vec![
+            entity("objects", i32::MAX, i32::MIN, i32::MAX),
+            entity("fences", -1, 5, i32::MIN),
+            entity("paths", 100, 100, 0),
+        ],
+    };
+    for r in 0..8 {
+        let _ = Renderer::new(&vfs, &catalogue).render(&zoo, r);
+    }
+}
