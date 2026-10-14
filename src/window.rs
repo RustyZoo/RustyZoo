@@ -6,7 +6,7 @@
 //! The frame is as large as the window in points. It goes to a streaming texture that SDL
 //! scales to the pixels of the window with the nearest pixel, so a display with a high pixel
 //! density shows the same picture with larger pixels. Only the program uses this module: the
-//! core crate does not link to SDL. Key and mouse events are not mapped yet.
+//! core crate does not link to SDL. The keys become commands in `input`; the loop reads the cursor.
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -25,6 +25,7 @@ use sdl3::render::ScaleMode;
 
 use crate::CliError;
 use crate::audio::Audio;
+use crate::input;
 
 /// The window when the ini file does not say.
 const DEFAULT_SIZE: (u32, u32) = (1024, 768);
@@ -69,6 +70,9 @@ struct State {
 impl State {
     /// Turns an event into a command or a change of state.
     fn note(&mut self, event: Event, commands: &mut Vec<Command>) {
+        if let Some(command) = input::command(&event) {
+            commands.push(command);
+        }
         match event {
             Event::Quit { .. }
             | Event::Window {
@@ -167,6 +171,7 @@ pub fn run(
     let start = sdl3::timer::ticks();
     let mut pass = 0;
     let mut shown = false;
+    let mut pointer = None;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
@@ -178,6 +183,15 @@ pub fn run(
         }
         while let Some((_, command)) = script.next_if(|&(at, _)| at <= pass) {
             commands.push(command);
+        }
+        // The edge scroll reads the cursor at its pass, not from motion events: a window
+        // that is not active gets none, one that gets the focus back under the pointer does.
+        let at = (canvas.window().has_input_focus() && canvas.window().has_mouse_focus())
+            .then(|| pump.mouse_state())
+            .map(|m| (m.x().floor() as i32, m.y().floor() as i32));
+        if at != pointer {
+            pointer = at;
+            commands.push(Command::Pointer(at));
         }
         let now = sdl3::timer::ticks() - start;
         let painted = match app.pass(now, &commands) {

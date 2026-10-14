@@ -1,4 +1,5 @@
 mod audio;
+mod input;
 mod run;
 mod window;
 

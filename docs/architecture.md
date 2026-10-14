@@ -23,7 +23,7 @@ The core draws in software into an RGBA framebuffer (`Framebuffer`), as the orig
 
 ## Platform
 
-SDL3 (window, input, audio) is built from source and linked statically, so no system SDL is needed. Today the window only presents a test pattern (`window-smoke`). **Planned:** the game loop, camera and input.
+SDL3 (window, input, audio) is built from source and linked statically, so no system SDL is needed. `run` plays a map in the window with the loop of the original; the keys of the map view become commands in `src/input.rs`, and the loop reads the cursor for the edge scroll. `window-smoke` presents a test pattern.
 
 ## Game data
 
