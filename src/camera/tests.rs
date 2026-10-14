@@ -236,3 +236,53 @@ fn absurd_values_never_panic() {
         }
     }
 }
+
+#[test]
+fn a_scroll_by_zero_does_nothing_not_even_the_range_check() {
+    let beach = map(75, 75, 0);
+    let off_map = |key| {
+        let view = View {
+            zoom: 0,
+            rotation: 0,
+            scroll: (-3000, -3000),
+            brush: 1,
+        };
+        Camera::open(
+            &view,
+            BEACH,
+            Settings {
+                key,
+                mouse: 32,
+                delay: 1,
+            },
+        )
+    };
+    let mut c = off_map((0, 64));
+    c.key_scroll(&beach, (1, 0));
+    assert_eq!(c.scroll, (-3000, -3000));
+    // Pointer inside the window, outside the band.
+    let mut c = off_map((64, 64));
+    c.edge_scroll(&beach, 1000, Some((512, 384)));
+    assert_eq!(c.scroll, (-3000, -3000));
+}
+
+#[test]
+fn the_zoom_value_is_the_factor() {
+    // The point (3, 7) is at (5, 1) before the zoom; 2.4: divide by -z below -1, multiply by z above 1.
+    for (zoom, want) in [
+        (-4, (1, 0)),
+        (-3, (1, 0)),
+        (-2, (2, 0)),
+        (-1, (5, 1)),
+        (1, (5, 1)),
+        (2, (10, 2)),
+        (4, (20, 4)),
+    ] {
+        assert_eq!(project_zoomed(0, zoom, 3, 7, 0), want, "zoom {zoom}");
+    }
+    // The picking does the reverse: at zoom 4 the view point (2000, 0) is the one at zoom 0 (500, 0).
+    let beach = map(75, 75, 0);
+    let at = |zoom, scroll| camera(zoom, 0, scroll, 1, (0, 0)).centre_point(&beach);
+    assert_eq!(at(4, (2000, 0)), at(0, (500, 0)));
+    assert_eq!(at(-4, (500, 0)), at(0, (2000, 0)));
+}

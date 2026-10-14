@@ -77,9 +77,11 @@ pub struct Camera {
 fn project_zoomed(rotation: u8, zoom: i32, wx: i32, wy: i32, wz: i32) -> (i64, i64) {
     let (px, py) = project(rotation, wx, wy, wz);
     let (px, py) = (i64::from(px), i64::from(py));
+    // The zoom value is the factor (map drawing 2.4).
+    let z = i64::from(zoom);
     match zoom {
-        ..=-2 => (px / 2, py / 2),
-        2.. => (px * 2, py * 2),
+        ..=-2 => (px / -z, py / -z),
+        2.. => (px * z, py * z),
         _ => (px, py),
     }
 }
@@ -121,11 +123,15 @@ impl Camera {
     pub fn centre_point(&self, map: &Zoo) -> (i64, i64, i32) {
         let mut px = i64::from(self.scroll.0) + i64::from(self.size.0 / 2);
         let mut py = i64::from(self.scroll.1) + i64::from(self.size.1 / 2);
+        let z = i64::from(self.zoom);
         match self.zoom {
-            ..=-2 => (px, py) = (px * 2, py * 2),
-            2.. => (px, py) = (px / 2, py / 2),
+            // Saturating, then bounded, so that the arithmetic below cannot overflow.
+            ..=-2 => (px, py) = (px.saturating_mul(-z), py.saturating_mul(-z)),
+            2.. => (px, py) = (px / z, py / z),
             _ => {}
         }
+        let bound = 1 << 40;
+        (px, py) = (px.clamp(-bound, bound), py.clamp(-bound, bound));
         let (c, s) = [(1, 0), (0, -1), (-1, 0), (0, 1)][usize::from(self.rotation)];
         let at = |h: i64| {
             let (f1, f2) = (px - 2 * (py + h), px + 2 * (py + h));
@@ -175,7 +181,11 @@ impl Camera {
         )
     }
 
+    /// A scroll by (0, 0) does nothing, not even the range check (6.1).
     fn scroll_by(&mut self, map: &Zoo, dx: i32, dy: i32) {
+        if (dx, dy) == (0, 0) {
+            return;
+        }
         self.scroll = (
             self.scroll.0.wrapping_add(dx),
             self.scroll.1.wrapping_add(dy),
@@ -190,7 +200,10 @@ impl Camera {
     }
 
     /// One interface pass at time `now` (ms) with the pointer at `pointer` in the window, if it
-    /// is inside it (9.2).
+    /// is inside it (9.2). Call it on every interface pass, with `None` while a terraform drag,
+    /// the follow mode or an inactive window forbid scrolling (6.2): the edge timer advances
+    /// then too. Only an open modal dialog stops the pass before the timer, so skip the call
+    /// for that.
     pub fn edge_scroll(&mut self, map: &Zoo, now: u64, pointer: Option<(i32, i32)>) {
         let now = i64::try_from(now).unwrap_or(i64::MAX);
         if now < self.next_edge {
@@ -209,9 +222,7 @@ impl Camera {
             _ => 0,
         };
         let (dx, dy) = (axis(x, w), axis(y, h));
-        if dx != 0 || dy != 0 {
-            self.scroll_by(map, dx, dy);
-        }
+        self.scroll_by(map, dx, dy);
     }
 
     /// A quarter turn: clockwise is rotation + 1 (8.2). `selected` is the world position
