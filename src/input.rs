@@ -4,7 +4,7 @@
 //! is the core's: the pointer only tells where it is.
 
 use rustyzoo::app::Command;
-use sdl3::event::{Event, WindowEvent};
+use sdl3::event::Event;
 use sdl3::keyboard::{Mod, Scancode};
 
 /// The command of one event, if it asks for one. Every key-down acts, a repeat included (7).
@@ -15,13 +15,6 @@ pub fn command(event: &Event) -> Option<Command> {
             keymod,
             ..
         } => key_command(key, keymod),
-        // The pointer, in points of the window.
-        Event::MouseMotion { x, y, .. } => Some(Command::Pointer(Some((x as i32, y as i32)))),
-        // An inactive window does not scroll (4.2).
-        Event::Window {
-            win_event: WindowEvent::MouseLeave | WindowEvent::FocusLost,
-            ..
-        } => Some(Command::Pointer(None)),
         _ => None,
     }
 }
@@ -29,9 +22,6 @@ pub fn command(event: &Event) -> Option<Command> {
 fn key_command(key: Scancode, keymod: Mod) -> Option<Command> {
     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
-    if key == Scancode::Pause {
-        return Some(Command::Pause);
-    }
     // With Alt the keys are system keys (4.1).
     if alt {
         return None;
@@ -62,7 +52,8 @@ fn key_command(key: Scancode, keymod: Mod) -> Option<Command> {
         (Scancode::End, _) => Command::Scroll(-1, 1),
         (Scancode::PageUp, _) => Command::Scroll(1, -1),
         (Scancode::PageDown, _) => Command::Scroll(1, 1),
-        (Scancode::Space, false) => Command::Pause,
+        // Ctrl+Space still types a space; Ctrl+Pause is another key.
+        (Scancode::Pause, false) | (Scancode::Space, _) => Command::Pause,
         _ => return None,
     })
 }
@@ -82,14 +73,6 @@ mod tests {
             which: 0,
             raw: 0,
         })
-    }
-
-    fn window(win_event: WindowEvent) -> Event {
-        Event::Window {
-            timestamp: 0,
-            window_id: 1,
-            win_event,
-        }
     }
 
     #[test]
@@ -129,6 +112,9 @@ mod tests {
     fn pause_and_space_toggle_the_pause_and_alt_makes_system_keys() {
         assert_eq!(press(Scancode::Pause, Mod::NOMOD), Some(Command::Pause));
         assert_eq!(press(Scancode::Space, Mod::NOMOD), Some(Command::Pause));
+        assert_eq!(press(Scancode::Space, Mod::LCTRLMOD), Some(Command::Pause));
+        assert_eq!(press(Scancode::Pause, Mod::LALTMOD), None);
+        assert_eq!(press(Scancode::Pause, Mod::LCTRLMOD), None);
         assert_eq!(press(Scancode::Left, Mod::LALTMOD), None);
         assert_eq!(press(Scancode::Space, Mod::RALTMOD), None);
         assert_eq!(press(Scancode::A, Mod::NOMOD), None);
@@ -150,27 +136,5 @@ mod tests {
             Some(Command::Zoom(true))
         );
         assert_eq!(press(Scancode::Kp4, Mod::NUMMOD), None);
-    }
-
-    #[test]
-    fn the_pointer_follows_the_mouse_and_goes_when_the_window_is_left_or_inactive() {
-        let motion = |x, y| Event::MouseMotion {
-            timestamp: 0,
-            window_id: 1,
-            which: 0,
-            mousestate: sdl3::mouse::MouseState::from_sdl_state(0),
-            x,
-            y,
-            xrel: 0.0,
-            yrel: 0.0,
-        };
-        assert_eq!(
-            command(&motion(7.9, 1020.0)),
-            Some(Command::Pointer(Some((7, 1020))))
-        );
-        for lost in [WindowEvent::MouseLeave, WindowEvent::FocusLost] {
-            assert_eq!(command(&window(lost)), Some(Command::Pointer(None)));
-        }
-        assert_eq!(command(&window(WindowEvent::Exposed)), None);
     }
 }
