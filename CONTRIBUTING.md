@@ -6,6 +6,8 @@ Everything is written in English: code, comments, commit messages, pull requests
 
 ## Workflow
 
+- Every change starts from an issue. If there is none, open one first. Comment on an issue to take it. Questions and decisions are discussed on the issue.
+- The pull request says `Closes #n` and carries the milestone of the issue.
 - Work on a branch named `m<N>/<slug>`, where `<N>` is the milestone number and `<slug>` a short description, for example `m0/engine-skeleton`.
 - Commit subjects are in the imperative mood and at most 72 characters: `Add framebuffer test pattern`.
 - One pull request per change. Pull requests are squash-merged.
