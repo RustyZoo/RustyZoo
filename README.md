@@ -60,6 +60,8 @@ rustyzoo render-ani animals/lion/f out/ --anim walk     # the same for animals/l
 rustyzoo check-anis                               # load every animation set and its sprite files; a defective palette is a warning; exit 1 if one fails
 rustyzoo check-ground                              # render every cached ground picture again and compare; exit 1 if a covered pixel differs
 rustyzoo render-ground ztats/000004 out/g.png     # render one ground picture (key as in the cache names)
+rustyzoo render-map maps/default.zoo out.png --rotation 1   # draw a whole map into a PNG at normal zoom, and print what was drawn
+rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
 ```
 
 Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.
