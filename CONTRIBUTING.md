@@ -20,6 +20,8 @@ Everything is written in English: code, comments, commit messages, pull requests
   cargo test
   ```
 
+  `ci/gate.sh [trials dir]` runs them all (plus the ignored full-game tests when `ZT_DATA_DIR` is set, and `ci/check-trials.sh` on the trials dir) and prints one line per step.
+
 ## Original game data
 
 Never commit original game files, or anything derived from them: extracted sprites, texts, decompiled code and the like. RustyZoo must contain no original code or assets.
