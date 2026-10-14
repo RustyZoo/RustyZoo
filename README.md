@@ -84,6 +84,7 @@ The game loads every `lang*.dll` of the install folder, ordered by file name fro
 - The game is `screenwidth` x `screenheight` pixels in the ini file, cut to the usable area of the display; `--size WxH` overrides it and is not cut (the factor still gives way if the window does not fit). The window is enlarged by the display scale (see below).
 - `--passes N` ends the run after N passes, `--timing MS` after MS milliseconds. `--log FILE` writes the lines a headless run prints, and `run --headless --replay FILE` plays them again with the same frame hashes. `run --headless` needs no window at all: it takes a scripted clock (`--passes` with `--clock`) or a replay.
 - While the window is minimised or hidden, the loop blocks (no drawing, no simulation, almost no CPU) and resumes when it is shown again.
+- While the window does not have the input focus (another application is in front, or it is minimised) the sound is silent: the output device is muted and the voices keep running, so the music is heard again where it has got to when the focus returns. A minimised or hidden window also pauses the menu music where it is.
 - `--timing MS` prints, for each timer, the count, minimum, median, 95th percentile and maximum of the gaps between its firings in milliseconds, next to the period it should keep, and a histogram of the gaps. It is information: nothing fails on a value.
 - `--shot FILE` reads back what the renderer presents and writes it as a PNG, in pixels of the output.
 
