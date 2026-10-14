@@ -1,8 +1,8 @@
-//! Full screen (input 3.4, camera 8.3): how the game picture sits on a display that is larger
-//! than the game.
+//! Full screen (input 3.4, camera 8.3): how the game picture sits on a display, or on a window
+//! the player has resized, that is larger than the game.
 //!
-//! The game keeps its size. In full screen the picture is scaled by the largest whole factor
-//! that fits and centred, with black around it, so the pixels stay sharp on any display; the
+//! The game keeps its size. The picture is scaled by the largest whole factor that fits and
+//! centred, with black around it, so the pixels stay sharp on any display; the
 //! cursor is mapped back, and a cursor over the black is taken for the nearest edge pixel, so the
 //! scroll band is reached at the edge of the display.
 
@@ -56,6 +56,10 @@ mod tests {
             (720.0, 180.0, 2400.0, 1800.0)
         );
         assert_eq!(fit((800, 600), (800, 600)), (0.0, 0.0, 800.0, 600.0));
+        // A window opened at the factor 2 is filled; one dragged larger keeps the factor and
+        // gets black bars.
+        assert_eq!(fit((1600, 1200), (800, 600)), (0.0, 0.0, 1600.0, 1200.0));
+        assert_eq!(fit((1700, 1250), (800, 600)), (50.0, 25.0, 1600.0, 1200.0));
         // A display smaller than the game: scaled down to fit, never to 0.
         assert_eq!(fit((640, 480), (1280, 960)), (0.0, 0.0, 640.0, 480.0));
         assert_eq!(fit((0, 0), (800, 600)).2, 0.0);
