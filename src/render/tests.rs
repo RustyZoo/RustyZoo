@@ -34,6 +34,7 @@ fn unit(x: i32, y: i32) -> Object {
         z: 0,
         facing: 0,
         footprint: (1, 1),
+        late: false,
     }
 }
 
@@ -102,6 +103,7 @@ fn objects_of_a_tile_go_by_view_y_then_x_and_the_top_quadrant_goes_behind() {
         z: 0,
         facing: 0,
         footprint: (1, 1),
+        late: false,
     };
     let high = unit(48, 0);
     let low = unit(16, 48);
@@ -140,6 +142,7 @@ fn a_big_object_is_painted_once_on_its_front_tile_and_in_front_of_the_units_ther
         z: 0,
         facing: 0,
         footprint: (4, 4),
+        late: false,
     };
     for r in 0..4u8 {
         let mut objects = vec![building];
@@ -215,6 +218,7 @@ fn a_fence_ends_a_group_like_a_step() {
             z: 0,
             facing: 0,
             footprint: (1, 1),
+            late: false,
         })
         .collect();
     assert_group_behind_first(&flat_map(5, 5), fences);
@@ -229,9 +233,10 @@ fn a_fence_stands_on_the_edge_its_facing_names_and_is_painted_once() {
         z: 0,
         facing,
         footprint: (1, 1),
+        late: false,
     };
     // The upper-left and the lower-right edge of tile (1,1) at rotation 0, and a second fence on
-    // the first edge, which finds the slot taken and is painted with the tile's objects.
+    // the first edge, which finds the slot taken: the original drops it at load.
     let objects = vec![
         fence(64 + 32, 64, 0),
         fence(64 + 32, 64 + 63, 4),
@@ -241,42 +246,136 @@ fn a_fence_stands_on_the_edge_its_facing_names_and_is_painted_once() {
     assert_eq!(scene.edge_object(3, 0), Some(0));
     assert_eq!(scene.edge_object(3, 4), Some(1));
     let items = paint_order(&scene);
-    for item in [Item::Edge(0), Item::Edge(1), Item::Object(2)] {
+    for item in [Item::Edge(0), Item::Edge(1)] {
         assert_eq!(items.iter().filter(|&&i| i == item).count(), 1, "{item:?}");
     }
+    assert!(!scene.is_placed(2));
+    assert!(
+        !items
+            .iter()
+            .any(|i| matches!(i, Item::Object(2) | Item::Edge(2)))
+    );
+    // A fence with an odd rotation takes no slot either.
+    let scene = Scene::new(2, 2, 0, &flat_map(2, 2), vec![fence(64 + 32, 64, 1)]);
+    assert!(!scene.is_placed(0));
 }
 
 #[test]
-fn a_footprint_turns_with_the_facing_and_quadrants_are_not_shared() {
-    let shed = |facing: u32| Object {
+fn an_object_takes_exactly_its_quadrants_or_none() {
+    let thing = |footprint: (i32, i32), x: i32, y: i32, facing: u32| Object {
         kind: Kind::Fixed,
-        x: 32,
-        y: 16,
+        x,
+        y,
         z: 0,
         facing,
-        // Two half tiles along x, one along y: a tile wide, half a tile deep.
-        footprint: (2, 1),
+        footprint,
+        late: false,
     };
     let quadrants = |objects: Vec<Object>| {
-        let scene = Scene::new(2, 2, 0, &flat_map(2, 2), objects);
+        let scene = Scene::new(4, 4, 0, &flat_map(4, 4), objects);
         (0..scene.objects.len())
-            .map(|o| scene.quadrants(o))
+            .map(|o| (scene.is_placed(o), scene.quadrants(o)))
             .collect::<Vec<_>>()
     };
-    assert_eq!(quadrants(vec![shed(0)]), [2]);
-    // Turned a quarter, it is half a tile wide and a tile deep; the half beyond the map edge
-    // (y < 0) holds no quadrant.
-    assert_eq!(quadrants(vec![shed(2)]), [4]);
-    // The second object on a quadrant holds none, and is still painted with the tile's units.
-    let quarter = Object {
-        footprint: (1, 1),
+    // An odd footprint on a quadrant corner takes the quadrant that holds the point and one on
+    // each side, never one more.
+    assert_eq!(quadrants(vec![thing((3, 1), 128, 32, 0)]), [(true, 3)]);
+    // The footprint swaps for every facing that is not 0 or 4: here 2 by 4 half tiles.
+    assert_eq!(quadrants(vec![thing((4, 2), 32, 160, 1)]), [(true, 8)]);
+    assert_eq!(quadrants(vec![thing((4, 2), 32, 160, 5)]), [(true, 8)]);
+    assert_eq!(quadrants(vec![thing((4, 2), 64, 128, 4)]), [(true, 8)]);
+    // Partly off the map: dropped. On a quadrant that is held: dropped, the first one wins.
+    assert_eq!(quadrants(vec![thing((2, 2), 0, 0, 0)]), [(false, 0)]);
+    let quarter = thing((1, 1), 16, 16, 0);
+    assert_eq!(
+        quadrants(vec![quarter, thing((2, 2), 32, 32, 0), quarter]),
+        [(true, 1), (false, 0), (false, 0)]
+    );
+    let scene = Scene::new(4, 4, 0, &flat_map(4, 4), vec![quarter, quarter]);
+    assert_eq!(paint_order(&scene).len(), 16 + 1);
+}
+
+#[test]
+fn a_run_along_a_row_stops_at_the_tiles_of_a_big_object() {
+    // A building two tiles by two on the tiles x 2 and 3, y 1 and 2 of a flat 4 by 4 map.
+    let building = Object {
+        kind: Kind::Fixed,
+        x: 192,
+        y: 128,
+        z: 0,
+        facing: 0,
+        footprint: (4, 4),
+        late: false,
+    };
+    let scene = Scene::new(4, 4, 0, &flat_map(4, 4), vec![building]);
+    let t = |x: usize, y: usize| Item::Terrain(y * 4 + x);
+    assert_eq!(
+        paint_order(&scene),
+        [
+            t(3, 0),
+            t(2, 0),
+            t(1, 0),
+            t(0, 0),
+            t(3, 1),
+            t(3, 2),
+            t(2, 1),
+            t(2, 2),
+            Item::Object(0),
+            t(3, 3),
+            t(2, 3),
+            t(1, 1),
+            t(1, 2),
+            t(1, 3),
+            t(0, 1),
+            t(0, 2),
+            t(0, 3),
+        ]
+    );
+}
+
+#[test]
+fn ambient_animals_are_overlays_painted_after_the_objects_of_their_tile() {
+    let at = |kind| Object {
+        kind,
         x: 16,
         y: 16,
-        ..shed(0)
+        z: 0,
+        facing: 0,
+        footprint: (1, 1),
+        late: false,
     };
-    assert_eq!(quadrants(vec![quarter, quarter]), [1, 0]);
-    let scene = Scene::new(1, 1, 0, &flat_map(1, 1), vec![quarter, quarter]);
-    assert_eq!(paint_order(&scene).len(), 3);
+    // The bird is first in the file but holds no quadrant and is painted after the scenery.
+    let scene = Scene::new(
+        1,
+        1,
+        0,
+        &flat_map(1, 1),
+        vec![at(Kind::Overlay), at(Kind::Fixed)],
+    );
+    assert_eq!(
+        paint_order(&scene),
+        [Item::Terrain(0), Item::Object(1), Item::Object(0)]
+    );
+}
+
+#[test]
+fn an_object_that_paints_last_goes_after_the_others_of_its_tile() {
+    let unit = |y: i32, late: bool| Object {
+        late,
+        ..unit(32, y)
+    };
+    // Rotation 0: the smaller y is higher on the screen and goes first, unless it paints last.
+    let scene = Scene::new(
+        1,
+        1,
+        0,
+        &flat_map(1, 1),
+        vec![unit(10, true), unit(50, false), unit(30, false)],
+    );
+    assert_eq!(
+        paint_order(&scene)[1..],
+        [Item::Object(2), Item::Object(1), Item::Object(0)]
+    );
 }
 
 /// A frame of 2 pixels, palette index 1, with the given offsets.
@@ -322,13 +421,13 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
         tiles: flat_map(2, 2),
         entities: Vec::new(),
     };
-    let (image, summary) = Renderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
+    let (image, summary) = MapRenderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
     assert_eq!(
         summary,
         Summary {
             width: 2,
             height: 2,
-            tiles_drawn: 4,
+            tiles_cached: 4,
             ..Summary::default()
         }
     );
@@ -372,8 +471,13 @@ fn every_tile_and_object_is_painted_exactly_once_on_a_messy_map() {
         }
         let mut objects = Vec::new();
         for _ in 0..120 {
-            let kind =
-                [Kind::Unit, Kind::Fixed, Kind::Edge, Kind::Path][random(&mut seed) as usize % 4];
+            let kind = [
+                Kind::Unit,
+                Kind::Fixed,
+                Kind::Edge,
+                Kind::Path,
+                Kind::Overlay,
+            ][random(&mut seed) as usize % 5];
             objects.push(Object {
                 kind,
                 x: random(&mut seed) as i32 % (64 * size as i32),
@@ -384,6 +488,7 @@ fn every_tile_and_object_is_painted_exactly_once_on_a_messy_map() {
                     1 + random(&mut seed) as i32 % 6,
                     1 + random(&mut seed) as i32 % 6,
                 ),
+                late: random(&mut seed).is_multiple_of(4),
             });
         }
         let r = (round % 4) as u8;
@@ -440,6 +545,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
             rotation: u32::MAX,
             id: 1,
             name: String::new(),
+            fence: None,
         }),
     };
     let zoo = Zoo {
@@ -459,6 +565,50 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
         ],
     };
     for r in 0..8 {
-        let _ = Renderer::new(&vfs, &catalogue).render(&zoo, r);
+        let _ = MapRenderer::new(&vfs, &catalogue).render(&zoo, r);
     }
+}
+
+#[test]
+fn a_tile_the_cache_lacks_is_rendered_at_run_time() {
+    // A 6 by 6 red texture, 24 bits, rows bottom up.
+    let mut texture = vec![0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 6, 0, 24, 0];
+    texture.extend([0, 0, 255].repeat(36));
+    let install = Install::new(
+        "render-ground",
+        &[
+            (
+                "terrain/tiletex.cfg",
+                b"[ttGrass]\ntype=0\ntexture=terrain/g.tga\n".to_vec(),
+            ),
+            ("terrain/g.tga", texture),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo {
+        version: 106,
+        locale: 1033,
+        expansion: 0,
+        width: 2,
+        height: 2,
+        entrance: (0, 0),
+        habitat_count: 0,
+        id_counter: 0,
+        tiles: flat_map(2, 2),
+        entities: Vec::new(),
+    };
+    let (image, summary) = MapRenderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
+    assert_eq!(
+        (
+            summary.tiles_cached,
+            summary.tiles_rendered,
+            summary.ground_missing
+        ),
+        (0, 4, 0)
+    );
+    assert_eq!(
+        image.pixels[(32 * image.width as usize + 32) * 4..][..4],
+        [255, 0, 0, 255]
+    );
 }

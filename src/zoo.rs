@@ -94,6 +94,18 @@ pub struct Common {
     pub id: u32,
     /// The name the file stores for the entity; each byte is one character (Latin-1).
     pub name: String,
+    /// The condition of a fence or tank wall of a version from 55; `None` for everything else.
+    pub fence: Option<Fence>,
+}
+
+/// The four values a fence or tank wall record holds after its common part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Fence {
+    pub strength: u32,
+    /// Below 1 the fence is broken; at or below the `cDecayedLife` of its type, decayed.
+    pub life: u32,
+    /// Two decay timers.
+    pub timers: [u32; 2],
 }
 
 /// One entity record.

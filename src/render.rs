@@ -1,8 +1,8 @@
 //! Drawing a whole map the way the original draws its map view, at normal zoom.
 //!
 //! The ground of a tile is one picture chosen by a key (terrain type, shape, variation and the
-//! types of the eight neighbours) and read from the caches the game ships (`ztats`, `ztatb`).
-//! A tile with no cached picture is left undrawn and counted. Cliffs are drawn by the tile in
+//! types of the eight neighbours) and read from the caches the game ships (`ztats`, `ztatb`);
+//! when the cache has none, [`crate::ground::Renderer`] makes it. Cliffs are drawn by the tile in
 //! front of them from `ztst/fringe`. Objects are drawn with the base animation of their type.
 //! The order comes from [`order::paint_order`]; this module turns each item of it into pictures
 //! placed in view space, then draws them all on a canvas that holds them.
@@ -20,9 +20,10 @@ use crate::Framebuffer;
 use crate::anim::{AnimSet, Animation, View};
 use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
+use crate::ground::{self, Key, Picture};
 use crate::sprite::{Frame, Palette};
 use crate::vfs::Vfs;
-use crate::zoo::Zoo;
+use crate::zoo::{Tile, Zoo};
 use order::{Item, Kind, Object, Scene, map_direction, paint_order, project};
 
 /// The most pixels of the picture; a 150 by 150 map with its relief needs about 55 million.
@@ -45,8 +46,10 @@ impl Error for RenderError {}
 pub struct Summary {
     pub width: usize,
     pub height: usize,
-    /// Tiles whose ground picture was drawn, and tiles whose picture is not in the cache.
-    pub tiles_drawn: usize,
+    /// Tiles drawn with a picture of the cache, tiles drawn with a picture rendered at run time,
+    /// and tiles left undrawn because that failed (a terrain texture is missing).
+    pub tiles_cached: usize,
+    pub tiles_rendered: usize,
     pub ground_missing: usize,
     /// Cliff pieces drawn, and wanted but not found.
     pub cliffs_drawn: usize,
@@ -59,14 +62,17 @@ pub struct Summary {
 }
 
 impl fmt::Display for Summary {
+    /// One line; the size is left out in a total over several maps.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.width > 0 {
+            write!(f, "{}x{} ", self.width, self.height)?;
+        }
         write!(
             f,
-            "{}x{} tiles: {} drawn, {} ground pictures missing; cliff pieces: {} drawn, {} missing; \
+            "tiles: {} from the cache, {} rendered, {} undrawn; cliff pieces: {} drawn, {} missing; \
              objects: {} drawn, {} with a missing type or animation, {} not placed",
-            self.width,
-            self.height,
-            self.tiles_drawn,
+            self.tiles_cached,
+            self.tiles_rendered,
             self.ground_missing,
             self.cliffs_drawn,
             self.cliffs_missing,
@@ -82,7 +88,8 @@ impl Summary {
     pub fn add(&mut self, other: &Summary) {
         self.width = 0;
         self.height = 0;
-        self.tiles_drawn += other.tiles_drawn;
+        self.tiles_cached += other.tiles_cached;
+        self.tiles_rendered += other.tiles_rendered;
         self.ground_missing += other.ground_missing;
         self.cliffs_drawn += other.cliffs_drawn;
         self.cliffs_missing += other.cliffs_missing;
@@ -97,6 +104,8 @@ type Flat = Rc<(Frame, Palette)>;
 
 enum Pic {
     Flat(Flat),
+    /// A ground picture rendered at run time; its pixels have an alpha.
+    Rendered(Rc<Picture>),
     Anim(Rc<Animation>, View),
 }
 
@@ -110,8 +119,18 @@ struct Placed {
 impl Placed {
     /// The box `[left, top, right, bottom)` of the pixels the picture can cover.
     fn bounds(&self) -> Option<[i64; 4]> {
+        if let Pic::Rendered(picture) = &self.pic {
+            let left = i64::from(self.x) - i64::from(picture.x_offset);
+            let top = i64::from(self.y) - i64::from(picture.y_offset);
+            let (w, h) = (
+                i64::from(picture.image.width),
+                i64::from(picture.image.height),
+            );
+            return Some([left, top, left + w, top + h]);
+        }
         let frames: Vec<(&Frame, bool)> = match &self.pic {
             Pic::Flat(flat) => vec![(&flat.0, false)],
+            Pic::Rendered(_) => return None,
             Pic::Anim(anim, view) => {
                 let sprite = &anim.sprites.get(view.file)?.0;
                 sprite
@@ -156,7 +175,38 @@ impl Placed {
                     y - i32::from(frame.y_offset),
                 );
             }
+            Pic::Rendered(picture) => blend(
+                &picture.image,
+                target,
+                x - picture.x_offset,
+                y - picture.y_offset,
+            ),
             Pic::Anim(anim, view) => anim.draw(*view, 0, target, x, y),
+        }
+    }
+}
+
+/// Draws an RGBA image with its top left corner at (`x`, `y`), source over, clipped.
+fn blend(image: &Framebuffer, target: &mut Framebuffer, x: i32, y: i32) {
+    let width = image.width as usize;
+    for (row, line) in image.pixels.chunks_exact(width.max(1) * 4).enumerate() {
+        let ty = i64::from(y) + row as i64;
+        if !(0..i64::from(target.height)).contains(&ty) {
+            continue;
+        }
+        for (column, pixel) in line.as_chunks::<4>().0.iter().enumerate() {
+            let tx = i64::from(x) + column as i64;
+            if pixel[3] == 0 || !(0..i64::from(target.width)).contains(&tx) {
+                continue;
+            }
+            let at = (ty as usize * target.width as usize + tx as usize) * 4;
+            let back = &mut target.pixels[at..at + 4];
+            let alpha = u32::from(pixel[3]);
+            for c in 0..3 {
+                back[c] = ((u32::from(pixel[c]) * alpha + u32::from(back[c]) * (255 - alpha)) / 255)
+                    as u8;
+            }
+            back[3] = 255;
         }
     }
 }
@@ -246,7 +296,7 @@ fn converted(image: &[u8]) -> String {
 
 /// Draws maps. It keeps what it loaded between maps: the catalogue, the animations and the
 /// pictures of the cache.
-pub struct Renderer<'a> {
+pub struct MapRenderer<'a> {
     vfs: &'a Vfs,
     catalogue: &'a Catalogue,
     blend: Vec<bool>,
@@ -255,11 +305,14 @@ pub struct Renderer<'a> {
     /// For each shape (decimal), the north and east grid sprites.
     grid: HashMap<u32, (Option<String>, Option<String>)>,
     flats: HashMap<String, Option<Flat>>,
+    /// The renderer of ground pictures the cache lacks; `None` if the data cannot make any.
+    ground: Option<ground::Renderer>,
+    rendered: HashMap<String, Option<Rc<Picture>>>,
     anims: HashMap<String, Option<Rc<Animation>>>,
 }
 
-impl<'a> Renderer<'a> {
-    pub fn new(vfs: &'a Vfs, catalogue: &'a Catalogue) -> Renderer<'a> {
+impl<'a> MapRenderer<'a> {
+    pub fn new(vfs: &'a Vfs, catalogue: &'a Catalogue) -> MapRenderer<'a> {
         let read = |member: &str| {
             vfs.read(member)
                 .ok()
@@ -282,13 +335,15 @@ impl<'a> Renderer<'a> {
                 grid.insert(shape, (sprite("northgrid"), sprite("eastgrid")));
             }
         }
-        Renderer {
+        MapRenderer {
             vfs,
             catalogue,
             blend: terrain_blend(vfs),
             fringe,
             grid,
             flats: HashMap::new(),
+            ground: ground::Renderer::load(vfs).ok(),
+            rendered: HashMap::new(),
             anims: HashMap::new(),
         }
     }
@@ -334,6 +389,7 @@ impl<'a> Renderer<'a> {
     ) -> Result<(Framebuffer, Summary), RenderError> {
         // Pictures of the previous map: the blended ones are numerous and not shared.
         self.flats.clear();
+        self.rendered.clear();
         let rotation = rotation % 4;
         let (width, height) = (zoo.width as usize, zoo.height as usize);
         let mut summary = Summary {
@@ -345,29 +401,52 @@ impl<'a> Renderer<'a> {
             return Err(RenderError("the map has no tile".into()));
         }
 
-        // The objects with a position, their types and their kinds.
+        // The pixel limit is known from the tiles alone: refuse a huge map before the work.
+        let tiles: Vec<Tile> = zoo
+            .tiles
+            .iter()
+            .map(|t| Tile {
+                elevation: t
+                    .elevation
+                    .clamp(-order::MAX_ELEVATION, order::MAX_ELEVATION),
+                ..*t
+            })
+            .collect();
+        let mut bounds = [i64::MAX, i64::MAX, i64::MIN, i64::MIN];
+        for (t, tile) in tiles.iter().enumerate() {
+            let (ox, oy) = origin(tile, (t % width) as i32, (t / width) as i32, rotation);
+            let (x, y) = (i64::from(ox), i64::from(oy));
+            bounds = union(bounds, [x, y + 16, x + 64, y + 49]);
+        }
+        check_size(&bounds)?;
+
+        // The objects the original keeps: those whose type it knows.
         let mut objects = Vec::new();
-        let mut types: Vec<Option<&EntityType>> = Vec::new();
+        let mut metas: Vec<Meta> = Vec::new();
         for entity in &zoo.entities {
             let Some(c) = &entity.common else {
                 summary.objects_skipped += 1;
                 continue;
             };
             let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-            let ty = self.catalogue.find(
+            let Some(ty) = self.catalogue.find(
                 &entity.class,
                 &bytes(&entity.type_name),
                 &bytes(&entity.subtype),
-            );
+            ) else {
+                summary.objects_missing += 1;
+                continue;
+            };
             let kind = match entity.class.as_str() {
                 "paths" => Kind::Path,
                 "fences" | "tankwall" => Kind::Edge,
+                "ambient" => Kind::Overlay,
                 "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
                     Kind::Unit
                 }
                 _ => Kind::Fixed,
             };
-            let [fx, fy, _] = ty.map_or([1, 1, 1], |t| t.footprint);
+            let [fx, fy, _] = ty.footprint;
             objects.push(Object {
                 kind,
                 x: c.x,
@@ -375,44 +454,29 @@ impl<'a> Renderer<'a> {
                 z: c.z.clamp(-4096, 4096),
                 facing: c.rotation % 8,
                 footprint: (fx, fy),
+                late: draws_late(ty),
             });
-            types.push(ty);
+            metas.push(Meta {
+                ty,
+                life: c.fence.map(|f| f.life as i32),
+            });
         }
-        let scene = Scene::new(width, height, rotation, &zoo.tiles, objects);
+        let scene = Scene::new(width, height, rotation, &tiles, objects);
 
         let mut placed: Vec<Placed> = Vec::new();
         for item in paint_order(&scene) {
             match item {
                 Item::Terrain(t) => self.terrain(&scene, t, &mut summary, &mut placed),
                 Item::Path(o) | Item::Edge(o) | Item::Object(o) => {
-                    self.object(&scene, o, types[o], &mut summary, &mut placed)
+                    self.object(&scene, o, &metas[o], &mut summary, &mut placed)
                 }
             }
         }
-        summary.objects_skipped += (0..types.len()).filter(|&o| !scene.is_placed(o)).count();
+        summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
 
         // The canvas holds every picture and every tile.
-        let mut bounds = [i64::MAX, i64::MAX, i64::MIN, i64::MIN];
-        let mut grow = |b: [i64; 4]| {
-            bounds = [
-                bounds[0].min(b[0]),
-                bounds[1].min(b[1]),
-                bounds[2].max(b[2]),
-                bounds[3].max(b[3]),
-            ]
-        };
-        for t in 0..scene.tiles.len() {
-            let (ox, oy) = origin(&scene, t);
-            let (x, y) = (i64::from(ox), i64::from(oy));
-            grow([x, y + 16, x + 64, y + 49]);
-        }
-        placed.iter().filter_map(Placed::bounds).for_each(&mut grow);
-        let (w, h) = (bounds[2] - bounds[0], bounds[3] - bounds[1]);
-        if w <= 0 || h <= 0 || w as u64 * h as u64 > MAX_PIXELS {
-            return Err(RenderError(format!(
-                "the picture would be {w}x{h} pixels, more than {MAX_PIXELS}"
-            )));
-        }
+        bounds = placed.iter().filter_map(Placed::bounds).fold(bounds, union);
+        let (w, h) = check_size(&bounds)?;
         let mut canvas = Framebuffer::new(w as u32, h as u32);
         canvas
             .pixels
@@ -477,42 +541,45 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    /// The ground picture of a tile, from the cache.
-    fn ground(&mut self, scene: &Scene, t: usize) -> Option<Flat> {
+    /// The ground picture of a tile: the cache's, or else one rendered at run time.
+    fn ground(&mut self, scene: &Scene, t: usize) -> Option<Pic> {
         let r = scene.rotation;
         let tile = scene.tiles[t];
         let (tx, ty) = ((t % scene.width) as i32, (t / scene.width) as i32);
         let kind = self.kind(scene, t);
-        let shape = tile.shape.rotate_right(2 * u32::from(r));
         let (a, b) = [(0, 1), (1, 0), (0, -1), (-1, 0)][usize::from(r)];
         let umod3 = |k: i32| (k as u32) % 3;
-        let variation = umod3(tx * b - ty * a) * 3 + umod3(tx * a + ty * b);
-        let n: Vec<u8> = (0..8)
-            .map(|k| self.seen(scene, t, map_direction(r, k)))
-            .collect();
-        let blended = n.iter().any(|&k| k != kind);
-        let stem = match blended {
-            false => format!("ztats/{kind:02x}{shape:02x}{variation:02x}"),
-            true => {
-                let hex = |s: &[u8]| s.iter().map(|k| format!("{k:02x}")).collect::<String>();
-                let dir = format!("ztatb/{kind:02x}/{}/{}", hex(&n[..4]), hex(&n[4..]));
-                format!("{dir}/{shape:02x}{variation:02x}")
-            }
+        let key = Key {
+            terrain: kind,
+            shape: tile.shape.rotate_right(2 * u32::from(r)),
+            variation: (umod3(tx * b - ty * a) * 3 + umod3(tx * a + ty * b)) as u8,
+            neighbours: std::array::from_fn(|k| self.seen(scene, t, map_direction(r, k))),
         };
-        let palette = match blended {
-            false => format!("ztats/{kind:02x}"),
-            true => stem.clone(),
-        };
-        self.flat(&stem, &palette)
+        let member = key.member();
+        let stem = member.strip_suffix(".lle").unwrap_or(&member);
+        let palette = key.palette();
+        let palette = palette.strip_suffix(".pal").unwrap_or(&palette);
+        if let Some(flat) = self.flat(stem, palette) {
+            return Some(Pic::Flat(flat));
+        }
+        if !self.rendered.contains_key(&member) {
+            let picture = self
+                .ground
+                .as_ref()
+                .and_then(|g| g.render(&key).ok())
+                .map(Rc::new);
+            self.rendered.insert(member.clone(), picture);
+        }
+        self.rendered[&member].clone().map(Pic::Rendered)
     }
 
     /// Places the pictures of one tile: cliffs, ground and forced grid lines.
     fn terrain(&mut self, scene: &Scene, t: usize, summary: &mut Summary, out: &mut Vec<Placed>) {
         let r = scene.rotation;
-        let (ox, oy) = origin(scene, t);
         let tile = scene.tiles[t];
-        let shape = tile.shape.rotate_right(2 * u32::from(r));
         let (tx, ty) = ((t % scene.width) as i32, (t / scene.width) as i32);
+        let (ox, oy) = origin(&tile, tx, ty, r);
+        let shape = tile.shape.rotate_right(2 * u32::from(r));
         let (left, top) = (i32::from(shape & 3), i32::from(shape >> 6));
         let mut forced = [false; 2];
         for (e, forced) in forced.iter_mut().enumerate() {
@@ -585,12 +652,15 @@ impl<'a> Renderer<'a> {
             }
         }
         match self.ground(scene, t) {
-            Some(flat) => {
-                summary.tiles_drawn += 1;
+            Some(pic) => {
+                match pic {
+                    Pic::Rendered(_) => summary.tiles_rendered += 1,
+                    _ => summary.tiles_cached += 1,
+                }
                 out.push(Placed {
                     x: ox + 32,
                     y: oy + 32,
-                    pic: Pic::Flat(flat),
+                    pic,
                 });
             }
             None => summary.ground_missing += 1,
@@ -615,14 +685,29 @@ impl<'a> Renderer<'a> {
     }
 
     /// The `.ani` member an object shows at rest.
-    fn member(&self, scene: &Scene, o: usize, ty: &EntityType) -> Option<String> {
-        let obj = &scene.objects[o];
+    fn member(&self, scene: &Scene, o: usize, meta: &Meta) -> Option<String> {
+        let (obj, ty) = (&scene.objects[o], meta.ty);
         let wanted = match ty.class {
             "fences" | "tankwall" => {
                 let gate = ty.subtype.first() == Some(&b'g');
-                let slope = scene.tile_at(obj.x, obj.y).filter(|_| !gate).map(|t| {
+                // A gate shows the intact row whatever its life; the others by life.
+                let decayed = ty
+                    .config
+                    .as_deref()
+                    .and_then(|c| {
+                        c.section([&ty.subtype[..], b"/Characteristics/Integers"].concat())
+                    })
+                    .and_then(|s| s.get("cDecayedLife"))
+                    .and_then(to_int)
+                    .unwrap_or(0);
+                let row = match meta.life {
+                    Some(life) if !gate && life < 1 => "broke",
+                    Some(life) if !gate && life <= decayed => "det",
+                    _ => "idle",
+                };
+                // The corners of the edge the fence stands on, in this order.
+                let slope = scene.tile_at(obj.x, obj.y).map(|t| {
                     let tile = &scene.tiles[t];
-                    // The corners of the edge the fence stands on, in this order.
                     let [c1, c2] = match obj.facing / 2 {
                         0 => [7, 1],
                         1 => [1, 3],
@@ -632,13 +717,13 @@ impl<'a> Renderer<'a> {
                     corner_elevation(tile, c2).cmp(&corner_elevation(tile, c1))
                 });
                 match slope {
-                    Some(std::cmp::Ordering::Greater) => "idle30p",
-                    Some(std::cmp::Ordering::Less) => "idle30n",
-                    _ => "idle",
+                    Some(std::cmp::Ordering::Greater) => format!("{row}30p"),
+                    Some(std::cmp::Ordering::Less) => format!("{row}30n"),
+                    _ => row.to_string(),
                 }
             }
-            "animals" | "guests" | "keeper" | "maint" | "tour" => "idle",
-            _ => "",
+            "animals" | "guests" | "keeper" | "maint" | "tour" => "idle".to_string(),
+            _ => String::new(),
         };
         let found = ty
             .animations()
@@ -652,7 +737,7 @@ impl<'a> Renderer<'a> {
         &mut self,
         scene: &Scene,
         o: usize,
-        ty: Option<&EntityType>,
+        meta: &Meta,
         summary: &mut Summary,
         out: &mut Vec<Placed>,
     ) {
@@ -660,10 +745,11 @@ impl<'a> Renderer<'a> {
         if !scene.is_placed(o) {
             return;
         }
-        let anim = ty
-            .and_then(|ty| self.member(scene, o, ty))
+        let ty = meta.ty;
+        let anim = self
+            .member(scene, o, meta)
             .and_then(|member| self.animation(&member));
-        let (Some(anim), Some(ty)) = (anim, ty) else {
+        let Some(anim) = anim else {
             summary.objects_missing += 1;
             return;
         };
@@ -684,11 +770,48 @@ impl<'a> Renderer<'a> {
     }
 }
 
-/// The image origin of a tile in view space (map drawing 4.4).
-fn origin(scene: &Scene, t: usize) -> (i32, i32) {
-    let r = scene.rotation;
-    let (tx, ty) = ((t % scene.width) as i32, (t / scene.width) as i32);
-    let height = 16 * corner_elevation(&scene.tiles[t], map_direction(r, 7));
+/// The type and the condition of an object.
+struct Meta<'a> {
+    ty: &'a EntityType,
+    /// The life of a fence or tank wall, if the record has one.
+    life: Option<i32>,
+}
+
+/// Whether the type asks to be painted after the other objects of its tile (`cDrawsLate`, read
+/// from the plain characteristics whatever the subtype, true only for 1).
+fn draws_late(ty: &EntityType) -> bool {
+    ty.config
+        .as_deref()
+        .and_then(|c| c.section("Characteristics/Integers"))
+        .and_then(|s| s.get("cDrawsLate"))
+        .and_then(to_int)
+        == Some(1)
+}
+
+/// The smallest box `[left, top, right, bottom)` that holds both.
+fn union(a: [i64; 4], b: [i64; 4]) -> [i64; 4] {
+    [
+        a[0].min(b[0]),
+        a[1].min(b[1]),
+        a[2].max(b[2]),
+        a[3].max(b[3]),
+    ]
+}
+
+/// The size of the picture that holds `bounds`, or an error if it is empty or too big.
+fn check_size(bounds: &[i64; 4]) -> Result<(i64, i64), RenderError> {
+    let (w, h) = (bounds[2] - bounds[0], bounds[3] - bounds[1]);
+    if w <= 0 || h <= 0 || w as u64 * h as u64 > MAX_PIXELS {
+        return Err(RenderError(format!(
+            "the picture would be {w}x{h} pixels, more than {MAX_PIXELS}"
+        )));
+    }
+    Ok((w, h))
+}
+
+/// The image origin of the tile (`tx`, `ty`) in view space (map drawing 4.4).
+fn origin(tile: &Tile, tx: i32, ty: i32, r: u8) -> (i32, i32) {
+    let height = 16 * corner_elevation(tile, map_direction(r, 7));
     let (px, py) = project(r, 64 * tx, 64 * ty, height);
     let (dx, dy) = ORIGIN_OFFSET[usize::from(r)];
     (px + dx, py + dy)

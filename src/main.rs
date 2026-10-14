@@ -13,7 +13,7 @@ use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::ground::{self, Key, Renderer};
 use rustyzoo::pe;
-use rustyzoo::render::{Renderer, Summary};
+use rustyzoo::render::{MapRenderer, Summary};
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
@@ -1038,6 +1038,8 @@ fn render_ground(vfs: &Vfs, key: &str, out: &Path) -> Result<(), CliError> {
         picture.y_offset
     );
     Ok(())
+}
+
 /// Draws one map into a PNG file and prints the summary.
 fn render_map(vfs: &Vfs, member: &str, out: &str, rotation: u8) -> Result<(), CliError> {
     if rotation > 3 {
@@ -1045,7 +1047,7 @@ fn render_map(vfs: &Vfs, member: &str, out: &str, rotation: u8) -> Result<(), Cl
     }
     let zoo = load_map(vfs, member)?;
     let catalogue = Catalogue::load(vfs)?;
-    let (image, summary) = Renderer::new(vfs, &catalogue).render(&zoo, rotation)?;
+    let (image, summary) = MapRenderer::new(vfs, &catalogue).render(&zoo, rotation)?;
     let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;
     write_png(&image, io::BufWriter::new(file)).map_err(|e| format!("cannot write {out}: {e}"))?;
     let mut report = Report::new();
@@ -1065,7 +1067,7 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
         return Err(CliError::Usage);
     }
     let catalogue = Catalogue::load(vfs)?;
-    let mut renderer = Renderer::new(vfs, &catalogue);
+    let mut renderer = MapRenderer::new(vfs, &catalogue);
     let mut report = Report::new();
     let (mut total, mut maps, mut skipped, mut failed) = (Summary::default(), 0, 0, 0);
     for member in vfs.list(None) {
@@ -1098,16 +1100,7 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
         }
     }
     report.line(format_args!(
-        "{maps} maps drawn, {skipped} skipped, {failed} failed; totals: tiles {} drawn, {} ground \
-         pictures missing; cliff pieces {} drawn, {} missing; objects {} drawn, {} missing a type or \
-         animation, {} not placed",
-        total.tiles_drawn,
-        total.ground_missing,
-        total.cliffs_drawn,
-        total.cliffs_missing,
-        total.objects_drawn,
-        total.objects_missing,
-        total.objects_skipped,
+        "{maps} maps drawn, {skipped} skipped, {failed} failed; totals: {total}"
     ));
     report.finish()?;
     match failed {

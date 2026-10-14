@@ -11,7 +11,7 @@ use crate::zoo::Tile;
 /// damaged file) are cut so that the picture stays bounded.
 pub const MAX_ELEVATION: i32 = 64;
 
-/// The biggest footprint side taken into account, in half tiles.
+/// The biggest footprint side accepted, in half tiles; a bigger object is dropped.
 const MAX_FOOTPRINT: i32 = 64;
 
 /// How an object takes its place on the map.
@@ -25,6 +25,9 @@ pub enum Kind {
     Edge,
     /// Holds the quadrants of its footprint: buildings, scenery and the rest.
     Fixed,
+    /// Holds no quadrant and is in no tile list: ambient animals, attached each frame to the
+    /// tile under them and painted after that tile's objects.
+    Overlay,
 }
 
 /// One object of the map.
@@ -39,6 +42,8 @@ pub struct Object {
     pub facing: u32,
     /// Footprint in half tiles along the object's own axes.
     pub footprint: (i32, i32),
+    /// The type asks to be painted after the other objects of its tile.
+    pub late: bool,
 }
 
 /// One thing to paint.
@@ -66,8 +71,10 @@ pub struct Scene {
     /// Per tile, the objects of the four quadrants, index `qy * 2 + qx` (the quadrant at local
     /// `(32 * qx, 32 * qy)`).
     quad: Vec<[Option<usize>; 4]>,
-    /// Per tile, the objects that hold no quadrant.
+    /// Per tile, the units standing on it.
     list: Vec<Vec<usize>>,
+    /// Per tile, the overlays (ambient animals) attached to it.
+    overlay: Vec<Vec<usize>>,
     /// Per object, the number of quadrants it holds.
     covers: Vec<u32>,
     /// Per tile, its path piece.
@@ -155,6 +162,7 @@ impl Scene {
             edge: vec![[None; 4]; n],
             quad: vec![[None; 4]; n],
             list: vec![Vec::new(); n],
+            overlay: vec![Vec::new(); n],
             covers: vec![0; objects.len()],
             path: vec![None; n],
             big: vec![None; n],
@@ -183,60 +191,80 @@ impl Scene {
         self.placed[o]
     }
 
+    /// Adds an object to the map as the original's loader does. One that finds no place is
+    /// dropped: it is not placed and never painted.
     fn place(&mut self, o: usize) {
         let obj = self.objects[o];
         let Some(t) = self.tile_at(obj.x, obj.y) else {
             return;
         };
-        self.placed[o] = true;
-        match obj.kind {
-            Kind::Path if self.path[t].is_none() => self.path[t] = Some(o),
+        self.placed[o] = match obj.kind {
+            Kind::Path if self.path[t].is_none() => {
+                self.path[t] = Some(o);
+                true
+            }
             Kind::Edge
                 if obj.facing.is_multiple_of(2)
                     && self.edge[t][obj.facing as usize / 2].is_none() =>
             {
-                self.edge[t][obj.facing as usize / 2] = Some(o)
+                self.edge[t][obj.facing as usize / 2] = Some(o);
+                true
             }
-            Kind::Fixed => self.place_fixed(o, t),
-            _ => self.list[t].push(o),
-        }
+            Kind::Fixed => self.place_fixed(o),
+            Kind::Unit => {
+                self.list[t].push(o);
+                true
+            }
+            Kind::Overlay => {
+                self.overlay[t].push(o);
+                true
+            }
+            Kind::Path | Kind::Edge => false,
+        };
     }
 
-    /// Enters an object in the quadrants of its footprint that are free.
-    fn place_fixed(&mut self, o: usize, t: usize) {
+    /// Takes the quadrants of the footprint, all or none: it wants the `fx * fy` quadrants
+    /// that contain the points `(x - 16 (fx - 1) + 32 i, y - 16 (fy - 1) + 32 j)`. Returns
+    /// whether it got them.
+    fn place_fixed(&mut self, o: usize) -> bool {
         let obj = self.objects[o];
         let (fx, fy) = obj.footprint;
-        let (fx, fy) = (fx.clamp(1, MAX_FOOTPRINT), fy.clamp(1, MAX_FOOTPRINT));
-        // The footprint is given along the object's own axes; a quarter turn swaps them.
-        let (fx, fy) = if obj.facing % 4 == 2 {
+        // The footprint is given along the object's own axes; it turns with the facing.
+        let (fx, fy) = if !obj.facing.is_multiple_of(4) {
             (fy, fx)
         } else {
             (fx, fy)
         };
-        let cells = |c: i32, f: i32| {
-            let from = (i64::from(c) - 16 * i64::from(f)).div_euclid(32);
-            let to = (i64::from(c) + 16 * i64::from(f) - 1).div_euclid(32);
-            from..=to
-        };
-        let large = fx > 2 || fy > 2;
-        for cy in cells(obj.y, fy) {
-            for cx in cells(obj.x, fx) {
-                let Some(tile) = self.index((cx >> 1) as i32, (cy >> 1) as i32) else {
-                    continue;
-                };
-                let q = ((cy & 1) * 2 + (cx & 1)) as usize;
-                if self.quad[tile][q].is_none() {
-                    self.quad[tile][q] = Some(o);
-                    self.covers[o] += 1;
-                    if q == 3 && large {
-                        self.big[tile] = Some(o);
+        if !(1..=MAX_FOOTPRINT).contains(&fx) || !(1..=MAX_FOOTPRINT).contains(&fy) {
+            return false;
+        }
+        let mut wanted = Vec::with_capacity((fx * fy) as usize);
+        for j in 0..fy {
+            for i in 0..fx {
+                let px = i64::from(obj.x) - 16 * i64::from(fx - 1) + 32 * i64::from(i);
+                let py = i64::from(obj.y) - 16 * i64::from(fy - 1) + 32 * i64::from(j);
+                let (cx, cy) = (px.div_euclid(32), py.div_euclid(32));
+                let tile = i32::try_from(cx >> 1)
+                    .ok()
+                    .zip(i32::try_from(cy >> 1).ok())
+                    .and_then(|(tx, ty)| self.index(tx, ty));
+                match tile {
+                    Some(tile) if self.quad[tile][((cy & 1) * 2 + (cx & 1)) as usize].is_none() => {
+                        wanted.push((tile, ((cy & 1) * 2 + (cx & 1)) as usize))
                     }
+                    _ => return false,
                 }
             }
         }
-        if self.covers[o] == 0 {
-            self.list[t].push(o);
+        let large = fx > 2 || fy > 2;
+        for &(tile, q) in &wanted {
+            self.quad[tile][q] = Some(o);
+            if q == 3 && large {
+                self.big[tile] = Some(o);
+            }
         }
+        self.covers[o] = (fx * fy) as u32;
+        true
     }
 
     /// The state of the edge of tile `t` in map direction `d` (even): 0 and 1 mean the ground
@@ -430,6 +458,7 @@ impl Painter<'_> {
                 if self.pos(jj) > limit
                     || self.state[jj] != State::New
                     || !self.joined(jj, prev, UPPER_LEFT, big)
+                    || self.big(jj) != big
                 {
                     break;
                 }
@@ -480,9 +509,6 @@ impl Painter<'_> {
                 }
                 break;
             }
-            if self.state[n] != State::New {
-                break;
-            }
             i = n;
         }
 
@@ -519,18 +545,21 @@ impl Painter<'_> {
 
     /// The objects of one tile (map drawing 9.5).
     fn paint_tile_objects(&mut self, i: usize) {
+        if matches!(self.state[i], State::Objects | State::Done) {
+            return;
+        }
         self.state[i] = State::Objects;
         self.paint_edge(i, UPPER_LEFT);
         self.paint_edge(i, UPPER_RIGHT);
         let t = self.order[i];
         let scene = self.scene;
         let rotation = scene.rotation;
-        // (forced z, view y, view x, object)
-        let mut list: Vec<(i32, i32, i32, usize)> = Vec::new();
+        // (paints last, forced z, view y, view x, object)
+        let mut list: Vec<(bool, i32, i32, i32, usize)> = Vec::new();
         let push = |list: &mut Vec<_>, forced: i32, o: usize| {
             let obj = &scene.objects[o];
             let (px, py) = project(rotation, obj.x, obj.y, obj.z);
-            list.push((forced, py, px, o));
+            list.push((obj.late, forced, py, px, o));
         };
         for &o in &scene.list[t] {
             push(&mut list, 0, o);
@@ -550,9 +579,15 @@ impl Painter<'_> {
             };
             push(&mut list, forced, o);
         }
-        list.sort();
+        // Objects that tie, the ones that paint last included, keep the order of the list.
+        list.sort_by_key(|&(late, forced, py, px, _)| (late, forced, py, px));
+        let mut over = Vec::new();
+        for &o in &scene.overlay[t] {
+            push(&mut over, 0, o);
+        }
+        over.sort_by_key(|&(late, forced, py, px, _)| (late, forced, py, px));
         self.out
-            .extend(list.into_iter().map(|(.., o)| Item::Object(o)));
+            .extend(list.into_iter().chain(over).map(|(.., o)| Item::Object(o)));
     }
 }
 

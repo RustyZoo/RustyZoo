@@ -1,7 +1,7 @@
 //! The bodies of entity records, by class. Only the common part is kept; every other field is
 //! read and dropped to reach the next record (or the end of the body).
 
-use super::{Common, R, Reader, bad};
+use super::{Common, Fence, R, Reader, bad};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -10,9 +10,13 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
         // Scenery, then (after the common part) the fields of the class.
         b"objects" | b"food" | b"paths" => scenery(r)?,
         b"fences" | b"tankwall" => {
-            let common = scenery(r)?;
+            let mut common = scenery(r)?;
             if v >= 55 {
-                r.skip(16)?;
+                common.fence = Some(Fence {
+                    strength: r.u32()?,
+                    life: r.u32()?,
+                    timers: [r.u32()?, r.u32()?],
+                });
             }
             if class == b"tankwall" && v >= 101 {
                 r.skip(2)?;
@@ -91,6 +95,7 @@ fn base(r: &mut Reader) -> R<Common> {
         rotation,
         id,
         name,
+        fence: None,
     })
 }
 
