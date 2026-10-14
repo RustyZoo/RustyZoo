@@ -69,6 +69,7 @@ rustyzoo check-render                             # draw every map in memory, pr
 rustyzoo check-bitmaps                           # convert the root bitmaps of the terrain and compare them with the shipped copies; exit 1 on a mismatch
 rustyzoo check-wavs                              # decode every .wav file and count them by format; exit 1 if one fails
 rustyzoo text-width "Sample text 12" --font "Arial Bold" --size 11   # width in pixels of a text in the original's font; needs no game data
+rustyzoo draw-text out.png --font "Arial Bold" --size 11 --width 286 --justify center --shadow "Sample message that wraps"   # draw a wrapped text into a PNG on a canvas as tall as the text; needs no game data
 rustyzoo check-music                             # queue the menu music paused on the audio device and print its format, gain and queued bytes
 ```
 
@@ -77,6 +78,8 @@ Files are found the way the game finds them: in the directories listed in `[reso
 The names, descriptions and labels the game shows are not in the `.ztd` archives but in the resource DLLs of the install folder (`lang0.dll` and its siblings). `dump-strings` prints the string table of one DLL, newline, tab, backslash and other control characters escaped (`\n`, `\t`, `\\`, `\u{0000}`), followed by the name and size of its `TEXT` entries; `--text` writes the bytes of one of them.
 
 Text is drawn in Liberation Sans (Regular and Bold, SIL Open Font License 1.1, embedded unmodified; see `fonts/README.md`), which has the metrics of the Arial the original asks for: the pixel size is `round(points * 96 / 72)`, a line is ascent plus descent of Arial's vertical metrics tall, every character advances by a whole number of pixels and there is no kerning. `text-width` prints the width of a text that way; `--font` is the face string of a layout file (`Arial` or `Arial Bold`, a bold face for any name with ` Bold`) and `--size` its size string (the leading digits are the points, 8 without any, at most 200).
+
+`draw-text` lays a text out and draws it as the original does, on a canvas `--width` pixels wide and as tall as the text, filled with `--back` (white) and written with `--fore` (black), and prints the size and a hash of the pixels. Words wrap at spaces, a carriage return or line feed ends a line, a word wider than the width is cut and ends with `...`, `--justify` aligns each line (`left`, `center`, `right`), `--shadow` draws a black copy one pixel (two at 14 points) left and down first, and everything is clipped to the canvas. The text colour is reduced to the 16-bit surface by dropping low bits and the background by the game's own rule, glyphs of 9 to 16 pixels per em are drawn without smoothing, the others smoothed towards the background colour. The same hash comes out on every system.
 
 The game loads every `lang*.dll` of the install folder, ordered by file name from the greatest to the smallest (`lang300.dll` first, `lang0.dll` last), and a string number or a `TEXT` name comes from the first library that has it non-empty. `strings` prints that merged view; the `[lib]` and `[language]` entries of `zoo.ini` are not used.
 

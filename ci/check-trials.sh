@@ -172,4 +172,15 @@ done
 check base-trial musicstopped "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 800 | tail -1 | sed 's/^music /music/'"
 check base-trial musicgain0.999 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 30 | tail -1 | cut -d' ' -f1-3 | sed 's/ //'"
 
+# Text drawn without game data: a wrapped, centred, shadowed message (bilevel glyphs) and a
+# smoothed one with a 2 pixel shadow have the same pixels, so the same hash, on every system.
+check base-trial 286x34,0da317e3f85dfc38 "rz draw-text $tmp/t.png --font 'Arial Bold' --size 11 --width 286 --justify center --shadow --fore 83 219 83 --back 68 36 20 'Sample message with words enough to fill one whole line and then some more' | tr ' ' ,"
+check base-trial 300x21,638219be485aaf40 "rz draw-text $tmp/t.png --font 'Arial Bold' --size 14 --width 300 --shadow --fore 255 186 16 --back 20 20 20 'Sample item & more text here' | tr ' ' ,"
+# A width of 0, a negative one, a huge one and none at all are refused (exit 1), a word is a usage
+# error (exit 2).
+for width in "--width 0" "--width -4" "--width 99999999999" ""; do
+  check base-trial 1 "rz draw-text $tmp/t.png $width x >/dev/null 2>&1; echo \$?"
+done
+check base-trial 2 "rz draw-text $tmp/t.png --width wide x >/dev/null 2>&1; echo \$?"
+
 exit $failed

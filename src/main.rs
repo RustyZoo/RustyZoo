@@ -136,6 +136,13 @@ usage: rustyzoo [--data <dir>] <command>
                       font (Liberation Sans, whole-pixel advances, no kerning): FACE is a
                       face string, \"Arial\" (the default) or \"Arial Bold\", and POINTS a size
                       string (8 by default); needs no game data
+  draw-text <out.png> --width W [--font FACE] [--size POINTS] [--justify left|center|right]
+      [--shadow] [--fore R G B] [--back R G B] <text>
+                      draw the text as the original does (wrapped at spaces and line feeds
+                      to W pixels, a too long word cut with ...) on a canvas W pixels wide and
+                      as tall as the text, filled with the back colour (white), text in the
+                      fore colour (black), into a PNG file; prints the size and the hash of
+                      the pixels; needs no game data
   timing              print the periods and the cap the ini file gives the main loop, then how
                       many draws, interface updates and steps a ten second run makes with a
                       pass at every millisecond
@@ -215,6 +222,10 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["check-music"] => check_music(&open_game(data_dir)?),
         ["check-anis"] => check_anis(&open_game(data_dir)?),
         ["text-width", text, flags @ ..] => textcmd::text_width(text, flags),
+        ["draw-text", out, rest @ ..] => match rest.split_last() {
+            Some((text, flags)) => textcmd::draw_text(out, text, flags),
+            None => Err(CliError::Usage),
+        },
         ["timing"] => timing(&open_game(data_dir)?),
         ["check-ground"] => check_ground(&open_game(data_dir)?),
         ["render-ground", key, out] => render_ground(&open_game(data_dir)?, key, Path::new(out)),
