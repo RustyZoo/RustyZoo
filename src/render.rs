@@ -209,14 +209,10 @@ impl Placed {
     fn anchor(&self, rotation: u8, zoom: i32, level: Zoom) -> (i64, i64) {
         match self.piece {
             Some(Piece { corner, offset }) if level != Zoom::Normal => {
+                // `piece_anchor` adds its origin unchanged, so the corner is added in i64 after.
                 let (cx, cy) = zoom_view(zoom, corner);
-                let (dx, dy) = origin_offset(rotation, level);
-                let origin = (
-                    clamp32(cx.clamp(-(1 << 30), 1 << 30)) + dx,
-                    clamp32(cy.clamp(-(1 << 30), 1 << 30)) + dy,
-                );
-                let (x, y) = piece_anchor(origin, offset, level);
-                (i64::from(x), i64::from(y))
+                let (x, y) = piece_anchor(origin_offset(rotation, level), offset, level);
+                (cx + i64::from(x), cy + i64::from(y))
             }
             _ => zoom_view(zoom, (self.x, self.y)),
         }

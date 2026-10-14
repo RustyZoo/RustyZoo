@@ -1,6 +1,7 @@
 //! The three zoom levels of the map view: the zoom value and the anchor of a tile piece (map
-//! drawing 2.4, 4.4 and 8). The blitter of [`crate::sprite::Frame::draw_zoomed`] does the rest. The view position of a world point is
-//! the camera's ([`crate::camera::zoom_view`]): the zoom value is a factor there.
+//! drawing 2.4, 4.4 and 8). The blitter of [`crate::sprite::Frame::draw_zoomed`] does the rest.
+//! The view position of a world point is the camera's ([`crate::camera::zoom_view`]): the zoom
+//! value is a factor there.
 
 /// How the map is drawn: zoomed out (value -2), normal (0) or zoomed in (2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

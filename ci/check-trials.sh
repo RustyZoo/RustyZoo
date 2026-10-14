@@ -15,15 +15,16 @@ trap 'rm -rf "$tmp"' EXIT
 
 rz() { "$bin" --data "$dir/$trial" "$@"; }
 
-# Plays a map headless with scrolls and a rotation and compares every painted frame with the
-# window `render-map --view` draws for the camera the log names, byte for byte (as PNG files).
+# Plays a map headless with scrolls, a rotation and the zoom in and out (-2, 0 and 2) and compares
+# every painted frame with the window `render-map --view` draws for the camera the log names, at
+# its zoom, byte for byte (as PNG files).
 same_frames() {
   d=$(mktemp -d)
-  printf '1 scroll 1 1\n2 rotate cw\n3 scroll -1 0\n' >"$d/script"
-  rz run "$1" --headless --passes 4 --clock 20 --script "$d/script" --png-every 1 --out "$d" |
-    sed -n 's/^pass \([0-9]*\) .* draw [0-9a-f]\{16\} view=\(-*[0-9]*\),\(-*[0-9]*\) rotation=\([0-3]\).*/\1 \2 \3 \4/p' |
-    while read -r pass x y rotation; do
-      rz render-map "$1" "$d/ref.png" --rotation "$rotation" --view "$x" "$y" 1024 768 >/dev/null || { echo failed; continue; }
+  printf '1 scroll 1 1\n2 rotate cw\n3 scroll -1 0\n4 zoom in\n5 scroll 1 0\n6 zoom out\n7 zoom out\n8 scroll 0 1\n' >"$d/script"
+  rz run "$1" --headless --passes 9 --clock 20 --script "$d/script" --png-every 1 --out "$d" |
+    sed -n 's/^pass \([0-9]*\) .* draw [0-9a-f]\{16\} view=\(-*[0-9]*\),\(-*[0-9]*\) rotation=\([0-3]\) zoom=\(-*[0-9]*\).*/\1 \2 \3 \4 \5/p' |
+    while read -r pass x y rotation zoom; do
+      rz render-map "$1" "$d/ref.png" --rotation "$rotation" --zoom "$zoom" --view "$x" "$y" 1024 768 >/dev/null || { echo failed; continue; }
       if cmp -s "$d/frame-$(printf %06d "$pass").png" "$d/ref.png"; then echo same; else echo different; fi
     done | sort | uniq -c
   rm -rf "${d:?}"
@@ -98,8 +99,8 @@ check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -
 check expansion-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"
 
 # Headless frames equal the same window drawn by render-map: four frames of a scripted run.
-check base-trial 4same "same_frames maps/default.zoo"
-check expansion-trial 4same "same_frames maps/scn19.zoo"
+check base-trial 9same "same_frames maps/default.zoo"
+check expansion-trial 9same "same_frames maps/scn19.zoo"
 # A log replayed gives the same log, so the same frame hashes: its commands and the clock of each
 # pass that did something are read back, at the size of the window. The clock here is irregular.
 check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate cw\n5 pointer 0 0\n9 pause\n11 quit\n" >"$f"; rz run maps/default.zoo --headless --passes 12 --clock 23 --size 640x480 --script "$f" >"$g"; rz run maps/default.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$f" "$g"'

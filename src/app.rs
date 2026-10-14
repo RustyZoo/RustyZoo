@@ -204,8 +204,12 @@ impl<'a> App<'a> {
             return false;
         }
         // The one place that draws; the zoom of the camera applies here.
-        self.staged
-            .draw(&mut self.frame, self.camera.scroll.0, self.camera.scroll.1);
+        self.staged.draw(
+            &mut self.frame,
+            self.camera.scroll.0,
+            self.camera.scroll.1,
+            self.camera.zoom,
+        );
         self.painted = Some(look);
         true
     }

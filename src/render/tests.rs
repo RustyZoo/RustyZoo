@@ -1519,3 +1519,28 @@ fn a_ground_picture_rendered_at_run_time_follows_the_same_rules_at_every_zoom() 
     want.sort();
     assert_eq!(got, want);
 }
+
+#[test]
+fn a_huge_zoom_factor_puts_no_tile_where_a_clamp_would() {
+    // Every tile but the first is at least 32 view-space pixels from the origin, so 2^36 and
+    // more at this factor: far from the window at 2^30, where a clamp of the corner would put
+    // them.
+    let install = cache_install("render-zoom-huge", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo {
+        width: 40,
+        height: 40,
+        tiles: flat_map(40, 40),
+        ..tile_with(&[])
+    };
+    let options = Options {
+        zoom: i32::MAX,
+        window: Some(((1 << 30) - 200, (1 << 30) - 200, 400, 400)),
+        ..Options::default()
+    };
+    let (image, _) = MapRenderer::new(&vfs, &catalogue)
+        .render_with(&zoo, 0, &options)
+        .unwrap();
+    assert!(lit(&image, (0, 0)).is_empty());
+}
