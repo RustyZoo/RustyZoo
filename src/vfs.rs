@@ -49,7 +49,16 @@ const MAX_NAME_LENGTH: usize = 259;
 /// Why an installation could not be opened or a member could not be read. The message is a
 /// single line meant to be shown to the user.
 #[derive(Debug)]
-pub struct VfsError(String);
+pub struct VfsError(String, bool);
+
+impl VfsError {
+    /// Whether the operating system failed (permissions, the descriptor limit, a disk error)
+    /// rather than the content being wrong (no such name, an empty or damaged file, a size over
+    /// the limit). Callers that can go on without a file stop on the first kind only.
+    pub fn is_system(&self) -> bool {
+        self.1
+    }
+}
 
 impl fmt::Display for VfsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -60,7 +69,7 @@ impl fmt::Display for VfsError {
 impl Error for VfsError {}
 
 fn error<T>(message: String) -> Result<T, VfsError> {
-    Err(VfsError(message))
+    Err(VfsError(message, false))
 }
 
 /// One copy of a name, as reported by [`Vfs::which`].
@@ -101,6 +110,8 @@ enum Failure {
     /// The search ends and the request fails. The original does this for undecodable members;
     /// we also do it for every error of the operating system that is not about the content.
     Stop(String),
+    /// As `Stop`, because the operating system failed, not the content.
+    System(String),
     /// The content of the copy is broken: the search goes on with the next source.
     Damaged(String),
 }
@@ -112,7 +123,7 @@ fn io_failure(e: io::Error) -> Failure {
     use io::ErrorKind::*;
     match e.kind() {
         NotFound | UnexpectedEof | InvalidData | InvalidInput => Failure::Damaged(e.to_string()),
-        _ => Failure::Stop(e.to_string()),
+        _ => Failure::System(e.to_string()),
     }
 }
 
@@ -175,6 +186,7 @@ impl Failure {
         let wrap = |reason: String| format!("{container}: cannot read {name}: {reason}");
         match self {
             Failure::Stop(reason) => Failure::Stop(wrap(reason)),
+            Failure::System(reason) => Failure::System(wrap(reason)),
             Failure::Damaged(reason) => Failure::Damaged(wrap(reason)),
         }
     }
@@ -203,19 +215,22 @@ impl Vfs {
             .find_map(|name| find_ignoring_case(install_dir, name, false).transpose())
             .transpose()?
             .ok_or_else(|| {
-                VfsError(format!(
-                    "no zoo.ini or zoodemo.ini in {}",
-                    install_dir.display()
-                ))
+                VfsError(
+                    format!("no zoo.ini or zoodemo.ini in {}", install_dir.display()),
+                    false,
+                )
             })?;
         let ini = read_ini(&ini_path)
-            .map_err(|e| VfsError(format!("cannot read {}: {e}", ini_path.display())))?;
+            .map_err(|e| VfsError(format!("cannot read {}: {e}", ini_path.display()), false))?;
         // Without a path the game uses the install folder itself.
         let search_path = resource_path(&String::from_utf8_lossy(&ini)).unwrap_or(".".to_string());
 
-        let real_root = install_dir
-            .canonicalize()
-            .map_err(|e| VfsError(format!("cannot read folder {}: {e}", install_dir.display())))?;
+        let real_root = install_dir.canonicalize().map_err(|e| {
+            VfsError(
+                format!("cannot read folder {}: {e}", install_dir.display()),
+                false,
+            )
+        })?;
         let mut directories: Vec<PathBuf> = Vec::new();
         for entry in search_path
             .split(';')
@@ -258,7 +273,7 @@ impl Vfs {
                     Err(Failure::Damaged(why)) => vfs
                         .warnings
                         .push(format!("{} is ignored: {why}", path.display())),
-                    Err(Failure::Stop(why)) => {
+                    Err(Failure::Stop(why) | Failure::System(why)) => {
                         return error(format!("cannot use {}: {why}", path.display()));
                     }
                 }
@@ -286,6 +301,7 @@ impl Vfs {
                     Ok(Some(data)) => return Ok(data),
                     Ok(None) => {}
                     Err(Failure::Stop(reason)) => return error(reason),
+                    Err(Failure::System(reason)) => return Err(VfsError(reason, true)),
                     Err(Failure::Damaged(reason)) => damaged = damaged.or(Some(reason)),
                 }
             }
@@ -309,7 +325,9 @@ impl Vfs {
                 Source::Directory(files) => {
                     let path = &files[&normalised];
                     let size = std::fs::metadata(path)
-                        .map_err(|e| VfsError(format!("cannot read {}: {e}", path.display())))?
+                        .map_err(|e| {
+                            VfsError(format!("cannot read {}: {e}", path.display()), false)
+                        })?
                         .len();
                     (path, false, size)
                 }
@@ -333,18 +351,30 @@ impl Vfs {
     // that filter, this listing is for `ls`.
     pub fn list(&self, pattern: Option<&str>) -> Vec<String> {
         let pattern = pattern.map(normalise);
-        let mut paths: Vec<String> = self
-            .distinct_names()
-            .into_iter()
+        // Filter first: building the set of all names for every call is what costs.
+        let matching: HashSet<&String> = self
+            .sources
+            .iter()
+            .flat_map(Source::names)
             .filter(|path| {
                 pattern
                     .as_ref()
                     .is_none_or(|p| wildcard_matches(p.as_bytes(), path.as_bytes()))
             })
-            .cloned()
             .collect();
+        let mut paths: Vec<String> = matching.into_iter().cloned().collect();
         paths.sort();
         paths
+    }
+
+    /// Whether [`read`](Vfs::read) can find the name: the copy that wins is not empty (an empty
+    /// loose file hides the name from all later sources). The content is not checked, so a
+    /// damaged member still counts. The path is matched like in [`Vfs::read`].
+    pub fn contains(&self, path: &str) -> bool {
+        self.which(path)
+            .ok()
+            .and_then(|copies| copies.first().map(|copy| copy.size > 0))
+            .unwrap_or(false)
     }
 
     fn distinct_names(&self) -> HashSet<&String> {
@@ -594,7 +624,7 @@ fn first_record_wins(name: &str) -> bool {
 }
 
 /// Lower-cases ASCII letters and turns `\` into `/`.
-fn normalise(path: &str) -> String {
+pub fn normalise(path: &str) -> String {
     path.chars()
         .map(|c| {
             if c == '\\' {
@@ -691,11 +721,18 @@ fn find_ignoring_case(
     name: &str,
     want_directory: bool,
 ) -> Result<Option<PathBuf>, VfsError> {
-    let entries = std::fs::read_dir(directory)
-        .map_err(|e| VfsError(format!("cannot read folder {}: {e}", directory.display())))?;
-    let entries = entries
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| VfsError(format!("cannot read folder {}: {e}", directory.display())))?;
+    let entries = std::fs::read_dir(directory).map_err(|e| {
+        VfsError(
+            format!("cannot read folder {}: {e}", directory.display()),
+            false,
+        )
+    })?;
+    let entries = entries.collect::<Result<Vec<_>, _>>().map_err(|e| {
+        VfsError(
+            format!("cannot read folder {}: {e}", directory.display()),
+            false,
+        )
+    })?;
     let mut found: Vec<PathBuf> = entries
         .into_iter()
         .filter(|entry| {
@@ -752,8 +789,12 @@ fn index_directory(
     let mut files: HashMap<String, PathBuf> = HashMap::new();
     let mut pending = vec![(root.to_path_buf(), String::new())];
     while let Some((directory, prefix)) = pending.pop() {
-        let cannot =
-            |e: io::Error| VfsError(format!("cannot read folder {}: {e}", directory.display()));
+        let cannot = |e: io::Error| {
+            VfsError(
+                format!("cannot read folder {}: {e}", directory.display()),
+                false,
+            )
+        };
         // A folder or an entry that vanished meanwhile is skipped; any other error would
         // silently hide files, so it fails.
         let entries = match std::fs::read_dir(&directory) {
@@ -1540,7 +1581,7 @@ mod tests {
         }
         for kind in [PermissionDenied, Other, TimedOut, Interrupted, OutOfMemory] {
             assert!(
-                matches!(io_failure(kind.into()), Failure::Stop(_)),
+                matches!(io_failure(kind.into()), Failure::System(_)),
                 "{kind}"
             );
         }
