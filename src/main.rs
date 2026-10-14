@@ -553,6 +553,17 @@ fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
     }
 }
 
+/// Applies [`Zoo::check_types`] with the types of `catalogue`.
+fn check_types(zoo: Zoo, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
+    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+    zoo.check_types(|e| {
+        catalogue
+            .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
+            .is_some()
+    })?;
+    Ok(zoo)
+}
+
 /// How many entities `map-info` lists one by one.
 const MAP_INFO_ENTITIES: usize = 5;
 
@@ -622,8 +633,10 @@ fn map_info(vfs: &Vfs, member: &str) -> Result<(), CliError> {
 
 /// Reads every `.zoo` member. A file the original refuses by its header (not a saved game, a
 /// version below 38 or above 106) is a refusal, as expected from leftovers; anything else that
-/// fails is a corrupted file, which makes the command fail.
+/// fails, including a version below 70 with an entity of an undefined type, is a corrupted
+/// file, which makes the command fail.
 fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
+    let catalogue = Catalogue::load(vfs)?;
     let mut report = Report::new();
     let (mut files, mut ok, mut refused, mut corrupted) = (0, 0, 0, 0);
     let (mut tiles, mut entities) = (0, 0);
@@ -636,7 +649,8 @@ fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
         let result = vfs
             .read(&member)
             .map_err(|e| ZooError::Corrupted(e.to_string()))
-            .and_then(|bytes| Zoo::parse(&bytes));
+            .and_then(|bytes| Zoo::parse(&bytes))
+            .and_then(|zoo| check_types(zoo, &catalogue));
         match result {
             Ok(zoo) => {
                 ok += 1;
@@ -1045,8 +1059,9 @@ fn render_map(vfs: &Vfs, member: &str, out: &str, rotation: u8) -> Result<(), Cl
     if rotation > 3 {
         return Err(CliError::Usage);
     }
-    let zoo = load_map(vfs, member)?;
     let catalogue = Catalogue::load(vfs)?;
+    let zoo =
+        check_types(load_map(vfs, member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
     let (image, summary) = MapRenderer::new(vfs, &catalogue).render(&zoo, rotation)?;
     let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;
     write_png(&image, io::BufWriter::new(file)).map_err(|e| format!("cannot write {out}: {e}"))?;
@@ -1078,7 +1093,8 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
         let zoo = vfs
             .read(&member)
             .ok()
-            .and_then(|bytes| Zoo::parse(&bytes).ok());
+            .and_then(|bytes| Zoo::parse(&bytes).ok())
+            .and_then(|zoo| check_types(zoo, &catalogue).ok());
         let Some(zoo) = zoo else {
             skipped += 1;
             report.line(format_args!("skipped {name}: cannot be loaded"));

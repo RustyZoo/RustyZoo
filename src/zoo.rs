@@ -19,7 +19,7 @@
 //!
 //! The parser knows nothing of the entity definitions. The original also refuses a file of a
 //! version below 70 whose entity has a type it has no definition for, even if its class is
-//! known; the code that places entities must do the same rather than skip such a record.
+//! known; [`Zoo::check_types`] does the same once the caller has the definitions.
 //!
 //! Everything read from a file is untrusted. Every count and size is checked against the bytes
 //! left before anything is allocated or looped over, so the time and memory used are linear in
@@ -151,6 +151,21 @@ impl Zoo {
         }
         self.tiles
             .get(y as usize * self.width as usize + x as usize)
+    }
+
+    /// Refuses a file of a version below 70 that holds an entity whose type `known` does not
+    /// find, as the original does: there is no body size to skip it by, so the whole load
+    /// fails. From version 70 such an entity is skipped, so the file passes.
+    pub fn check_types(&self, known: impl Fn(&Entity) -> bool) -> Result<(), ZooError> {
+        if self.version >= 70 {
+            return Ok(());
+        }
+        match self.entities.iter().position(|e| !known(e)) {
+            Some(i) => Err(ZooError::Corrupted(format!(
+                "entities: entity {i}: no definition of its type in a file without body sizes"
+            ))),
+            None => Ok(()),
+        }
     }
 
     /// Reads a file, refusing it the way the original does.
