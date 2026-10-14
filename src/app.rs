@@ -84,7 +84,8 @@ pub enum Mouse {
 
 /// What the player does (input 4). The text form is the script format of a headless run:
 /// `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`, `zoom in`,
-/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `quit` for the map view, and for the
+/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `quit` for the map view, `skip` (any key
+/// or button press, which stops an intro movie), and for the
 /// interface `mouse X Y`, `down`, `up`, `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
 /// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
@@ -112,6 +113,8 @@ pub enum Command {
     Key(Key, bool, bool),
     /// A character typed, as a Windows-1252 byte.
     Char(u8),
+    /// A key or a mouse button was pressed: stops the intro movie that plays. Ignored by the game.
+    Skip,
 }
 
 impl fmt::Display for Command {
@@ -140,6 +143,7 @@ impl fmt::Display for Command {
                 Ok(())
             }
             Command::Char(byte) => write!(f, "char {byte}"),
+            Command::Skip => f.write_str("skip"),
         }
     }
 }
@@ -168,6 +172,7 @@ impl FromStr for Command {
             ["fullscreen", "off"] => Command::Fullscreen(false),
             ["pause"] => Command::Pause,
             ["quit"] => Command::Quit,
+            ["skip"] => Command::Skip,
             ["mouse", x, y] => Command::Mouse(Mouse::Move(number(x)?, number(y)?)),
             ["down"] => Command::Mouse(Mouse::Down),
             ["up"] => Command::Mouse(Mouse::Up),

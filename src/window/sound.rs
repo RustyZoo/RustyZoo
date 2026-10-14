@@ -5,8 +5,11 @@
 
 use rustyzoo::app::App;
 use rustyzoo::config::Config;
+use rustyzoo::intro::{Intro, attenuation};
 use rustyzoo::music::{Music, global_term};
 use rustyzoo::vfs::Vfs;
+
+use sdl3::audio::AudioFormat;
 
 use crate::audio::{Audio, Sound as Wave, Voice};
 
@@ -40,37 +43,55 @@ impl Quiet {
 }
 
 impl Sound {
-    /// Opens the device and starts the menu music; the second value is the model of the music,
-    /// which the game takes over.
-    pub fn open(sdl: &sdl3::Sdl, vfs: &Vfs, ini: &Config) -> (Sound, Option<Music>) {
+    /// Opens the default output device; a failure is a warning and silence.
+    pub fn open(sdl: &sdl3::Sdl, ini: &Config) -> Sound {
         let audio = sdl
             .audio()
             .map_err(Into::into)
             .and_then(|a| Audio::open(&a));
-        let menu = Music::from_config(ini);
-        let music = match (&audio, &menu) {
-            (Ok(audio), Some(menu)) => {
-                audio
-                    .menu_music(vfs, menu, true, false)
-                    .unwrap_or_else(|e| {
-                        eprintln!("rustyzoo: no menu music: {e}");
-                        None
-                    })
-            }
-            (Err(e), _) => {
-                eprintln!("rustyzoo: no sound: {e}");
-                None
-            }
-            _ => None,
-        };
-        let sound = Sound {
+        if let Err(e) = &audio {
+            eprintln!("rustyzoo: no sound: {e}");
+        }
+        Sound {
             audio: audio.ok(),
-            music,
+            music: None,
             click: None,
             click_sum: global_term(ini),
             quiet: Quiet::default(),
+        }
+    }
+
+    /// Starts the menu music; the model of it is returned, which the game takes over.
+    pub fn start_music(&mut self, vfs: &Vfs, ini: &Config) -> Option<Music> {
+        let menu = Music::from_config(ini);
+        if let (Some(audio), Some(menu)) = (&self.audio, &menu) {
+            self.music = audio
+                .menu_music(vfs, menu, true, false)
+                .unwrap_or_else(|e| {
+                    eprintln!("rustyzoo: no menu music: {e}");
+                    None
+                });
+        }
+        menu
+    }
+
+    /// Plays the sound of an intro movie, at its own volume, until the voice is dropped. A movie
+    /// without sound, or a sound that cannot be played, is silence (the last with a warning).
+    pub fn movie(&self, intro: &Intro) -> Option<Voice> {
+        let (audio, format) = (self.audio.as_ref()?, intro.movie.audio_format()?);
+        let sound = Wave {
+            freq: i32::try_from(format.rate).ok()?,
+            channels: u8::try_from(format.channels).ok()?,
+            format: match format.bits {
+                8 => AudioFormat::U8,
+                _ => AudioFormat::S16LE,
+            },
+            data: intro.movie.audio(),
         };
-        (sound, menu)
+        audio
+            .start(sound, attenuation(intro.volume), false, false)
+            .map_err(|e| eprintln!("rustyzoo: {}: {e}", intro.file))
+            .ok()
     }
 
     /// Silences the output while the window has no focus, and restores it with the focus.

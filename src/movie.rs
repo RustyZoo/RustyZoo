@@ -383,7 +383,7 @@ fn rgba(picture: &NAVideoBufferRef<u8>) -> Framebuffer {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A chunk with its padding.
@@ -430,7 +430,7 @@ mod tests {
     }
 
     /// An AVI file: the stream headers, then the data chunks in the order given.
-    fn avi(codec: &[u8; 4], audio: u16, data: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+    pub(crate) fn avi(codec: &[u8; 4], audio: u16, data: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
         avi_of(16, 16, codec, audio, data)
     }
 
@@ -472,7 +472,7 @@ mod tests {
 
     /// An Indeo 5 key frame of `width` x `height` pixels (multiples of 16, at most 64 wide):
     /// one macroblock per 8 x 8 luma or 4 x 4 chroma block, none with coefficients.
-    fn key_frame(width: u32, height: u32) -> Vec<u8> {
+    pub(crate) fn key_frame(width: u32, height: u32) -> Vec<u8> {
         let mut bits: Vec<bool> = Vec::new();
         let put = |bits: &mut Vec<bool>, value: u32, count: u32| {
             bits.extend((0..count).map(|i| value >> i & 1 == 1))

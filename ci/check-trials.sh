@@ -166,6 +166,8 @@ check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uirelease7111insid
 # at its pass. The numbers depend on the data of each trial.
 startup() {
   rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini" # the movies are checked below
   printf '1 mouse 512 %s\n2 down\n3 up\n' "$1" >"$tmp/exit"
   rz run --headless --passes 6 --clock 20 --script "$tmp/exit" 2>/dev/null |
     awk '/^startup picture/{p=$3"@"$5} /^startup steps/{s=$3} /menu continue/{c=$6} /menu version/{v=$6} / draw [0-9a-f]{16}/{if(!h)h=$5} /menu exit/{e=$2} END{print p","s","c","v","h",exit@"e}'
@@ -178,7 +180,7 @@ check expansion-trial '505@112,84,253,disabled,12.05.00.0004,4e1b08d50e0b52e7,ex
 last() {
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[user]\nlastfile=%s\n' "$1" >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$1" >"$tmp/user/zoo.ini"
   rz run --headless --passes 1 --clock 20 2>/dev/null | sed -n 's/^pass 0 t=0 menu continue //p'
   sed -n 's/^lastfile=//p' "$tmp/user/zoo.ini"
 }
@@ -197,6 +199,34 @@ windowed_menu() {
 }
 check base-trial 1,same 'windowed_menu 620 | paste -sd, -'
 check expansion-trial 1,same 'windowed_menu 600 | paste -sd, -'
+
+# The intro movies, headless on the passes of the scripted clock: the expansion trial has one (the
+# base trial's first movie is not in its folder and is skipped with a warning): file, frames,
+# duration in ms, the hash of the first picture, pictures shown, the hash of the 41st (the movie
+# stretched over the whole window), the pass the movie ends on and the
+# pass of the first menu (the pass after it). A key (or a click, or `skip`) at pass 12 stops it and
+# the menu follows.
+intro() {
+  rm -rf "$tmp/user"
+  printf '12 %s\n' "${1:-pause}" >"$tmp/skip"
+  rz run --headless --passes 400 --clock 20 --script "$tmp/skip" 2>/dev/null |
+    awk '/^startup movie/{m=$3","$4","$6} / movie [A-Z.]* frame [0-9]/{n++; if(!h)h=$NF} / movie [A-Z.]* frame 40 /{f=$NF} / movie .* (end|skipped)$/{e=$2"@"$NF} /menu continue/{c=$2} END{print m","h","n","f","e","c}'
+}
+check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,3,,12@skipped,13' 'intro "key enter"'
+check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,3,,12@skipped,13' 'intro down'
+check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,82,21628c137396ef8d,342@end,343' 'intro "mouse 1 1"'
+check base-trial ',,,,,0' 'intro "key enter"'
+# The same in a window of the dummy video driver: a script that skips ends the movie, the log tells
+# it and replays headless to the same lines.
+windowed_intro() {
+  d=$(mktemp -d)
+  printf '10 skip\n' >"$d/script"
+  SDL_VIDEO_DRIVER=dummy rz run --size 1024x768 --passes 40 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  grep -c 'movie BFLOGO.AVI skipped' "$d/log"
+  if rz run --headless --replay "$d/log" 2>/dev/null | cmp -s - "$d/log"; then echo same; else echo different; fi
+  rm -rf "${d:?}"
+}
+check expansion-trial 1,same 'windowed_intro | paste -sd, -'
 
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
