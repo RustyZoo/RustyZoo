@@ -1,4 +1,4 @@
-//! Drawing a whole map the way the original draws its map view, at normal zoom.
+//! Drawing a whole map the way the original draws its map view, at the three zoom levels.
 //!
 //! The ground of a tile is one picture chosen by a key (terrain type, shape, variation and the
 //! types of the eight neighbours) and read from the caches the game ships (`ztats`, `ztatb`);
@@ -24,12 +24,14 @@ use std::rc::Rc;
 use crate::Framebuffer;
 use crate::anim::{AnimSet, Animation, View};
 use crate::bitmap;
+use crate::camera::zoom_view;
 use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
-use crate::sprite::{Blend, Frame, Palette, Sprite};
+use crate::sprite::{Blend, Frame, Palette, Place, Sprite};
 use crate::vfs::Vfs;
 use crate::zoo::{Tile, Zoo};
+use crate::zoom::{Zoom, origin_offset, piece_anchor};
 use order::{Item, Kind, Object, Scene, TankSpec, map_direction, paint_order, project};
 
 /// The most pixels of the picture; a 150 by 150 map with its relief needs about 55 million.
@@ -56,6 +58,9 @@ pub struct Options {
     pub window: Option<(i32, i32, u32, u32)>,
     /// Leave out animals, guests, staff and ambient animals.
     pub no_units: bool,
+    /// The zoom value of the view (-2, 0 or 2; map drawing 2.4): the picture and the window are
+    /// in the view space of that zoom.
+    pub zoom: i32,
 }
 
 /// What a picture of a map contains.
@@ -129,11 +134,26 @@ enum Pic {
     Blended(Rc<Animation>, View, Blend),
 }
 
-/// A picture placed in view space: `(x, y)` is its anchor.
+/// A piece of a tile: where its tile's corner is in view space at normal zoom, and the offset of
+/// the piece's anchor from the tile's image origin there (map drawing 8).
+#[derive(Clone, Copy)]
+struct Piece {
+    corner: (i32, i32),
+    offset: (i32, i32),
+}
+
+/// A picture placed in view space: `(x, y)` is its anchor at normal zoom.
 struct Placed {
     x: i32,
     y: i32,
+    /// Set for the pieces of a tile, which have their own anchors at the other zooms.
+    piece: Option<Piece>,
     pic: Pic,
+}
+
+/// Clamps to the range of the view-space coordinates the drawing uses.
+fn clamp32(n: i64) -> i32 {
+    n.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 impl Placed {
@@ -183,90 +203,192 @@ impl Placed {
             })
     }
 
-    fn draw(&self, target: &mut Framebuffer, dx: i32, dy: i32) {
-        let (x, y) = (self.x.saturating_sub(dx), self.y.saturating_sub(dy));
-        match &self.pic {
-            Pic::Flat(flat) => {
-                let (frame, palette) = (&flat.0, &flat.1);
-                frame.draw(
-                    palette,
-                    target,
-                    x.saturating_sub(i32::from(frame.x_offset)),
-                    y.saturating_sub(i32::from(frame.y_offset)),
+    /// The anchor at the zoom value `zoom` (level `level`), in the view space of that zoom: the
+    /// camera's conversion of the view position, and for a tile piece the origin offset and the
+    /// anchor of map drawing 4.4 and 8.
+    fn anchor(&self, rotation: u8, zoom: i32, level: Zoom) -> (i64, i64) {
+        match self.piece {
+            Some(Piece { corner, offset }) if level != Zoom::Normal => {
+                let (cx, cy) = zoom_view(zoom, corner);
+                let (dx, dy) = origin_offset(rotation, level);
+                let origin = (
+                    clamp32(cx.clamp(-(1 << 30), 1 << 30)) + dx,
+                    clamp32(cy.clamp(-(1 << 30), 1 << 30)) + dy,
                 );
+                let (x, y) = piece_anchor(origin, offset, level);
+                (i64::from(x), i64::from(y))
             }
-            Pic::Rendered(picture) => blend(
-                &picture.image,
-                target,
-                x.saturating_sub(picture.x_offset),
-                y.saturating_sub(picture.y_offset),
-            ),
+            _ => zoom_view(zoom, (self.x, self.y)),
+        }
+    }
+
+    /// The box `b` of the picture at normal zoom, moved to the zoomed `anchor`: scaled about the
+    /// anchor by the blitter, with two pixels to spare for its rounding.
+    fn zoomed_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom) -> [i64; 4] {
+        let rel = [
+            b[0] - i64::from(self.x),
+            b[1] - i64::from(self.y),
+            b[2] - i64::from(self.x),
+            b[3] - i64::from(self.y),
+        ];
+        let rel = match level {
+            Zoom::Normal => {
+                return [
+                    rel[0] + anchor.0,
+                    rel[1] + anchor.1,
+                    rel[2] + anchor.0,
+                    rel[3] + anchor.1,
+                ];
+            }
+            Zoom::In => rel.map(|n| n * 2),
+            Zoom::Out => rel.map(|n| n.div_euclid(2)),
+        };
+        [
+            rel[0] + anchor.0 - 2,
+            rel[1] + anchor.1 - 2,
+            rel[2] + anchor.0 + 2,
+            rel[3] + anchor.1 + 2,
+        ]
+    }
+
+    /// Draws the picture with its anchor at `anchor` of the view whose top left pixel is
+    /// (`dx`, `dy`), at the zoom `level`.
+    fn draw(
+        &self,
+        target: &mut Framebuffer,
+        (dx, dy): (i32, i32),
+        anchor: (i64, i64),
+        level: Zoom,
+    ) {
+        let at = (
+            clamp32(anchor.0 - i64::from(dx)),
+            clamp32(anchor.1 - i64::from(dy)),
+        );
+        match &self.pic {
+            Pic::Flat(flat) => flat.0.draw_zoomed(&flat.1, target, at, false, None, level),
+            Pic::Rendered(picture) => blend(&picture.image, target, at, picture, level),
             Pic::Anim(anim, view, palette) => {
-                anim.draw_with(*view, 0, target, x, y, palette.as_ref())
+                anim.draw_zoomed(*view, target, at, palette.as_ref(), None, level)
             }
-            Pic::Blended(anim, view, blend) => anim.draw_blended(*view, 0, target, (x, y), *blend),
+            Pic::Blended(anim, view, blend) => {
+                anim.draw_zoomed(*view, target, at, None, Some(*blend), level)
+            }
         }
     }
 }
 
 /// A map ready to be drawn from one rotation: its pictures placed in view space at normal zoom,
-/// in paint order, each with the box it can cover. Any window of the view is drawn from it.
+/// in paint order, each with the box it can cover. Any window of the view, at any zoom, is drawn
+/// from it.
 pub struct Staged {
+    rotation: u8,
     placed: Vec<(Placed, [i64; 4])>,
-    /// The box `[left, top, right, bottom)` of every tile and every picture.
+    /// The box `[left, top, right, bottom)` of every tile.
+    tile_bounds: [i64; 4],
+    /// The box of every tile and every picture.
     bounds: [i64; 4],
     pub summary: Summary,
 }
 
 impl Staged {
-    /// The size of the picture of the whole map, or an error if it is empty or too big.
+    /// The size of the picture of the whole map at normal zoom, or an error if it is empty or
+    /// too big.
     pub fn size(&self) -> Result<(u32, u32), RenderError> {
         let (w, h) = check_size(&self.bounds)?;
         Ok((w as u32, h as u32))
     }
 
-    /// The view-space point of the top left pixel of the picture of the whole map.
+    /// The view-space point of the top left pixel of the picture of the whole map at normal zoom.
     pub fn origin(&self) -> (i32, i32) {
         (self.bounds[0] as i32, self.bounds[1] as i32)
     }
 
-    /// Draws the window of the size of `target` whose top left pixel is the view-space point
-    /// (`view_x`, `view_y`): black, then every picture whose box meets the window, in paint
-    /// order. Zoom will apply here, to the anchors and in the blitter, not to the staged boxes.
-    pub fn draw(&self, target: &mut Framebuffer, view_x: i32, view_y: i32) {
+    /// The box `[left, top, right, bottom)` of the whole map in the view space of the zoom value
+    /// `zoom`.
+    pub fn bounds_at(&self, zoom: i32) -> [i64; 4] {
+        let level = Zoom::from_value(zoom);
+        if level == Zoom::Normal {
+            return self.bounds;
+        }
+        // The tiles scale by the zoom factor, with two pixels to spare.
+        let scale = |n: i64| match zoom {
+            ..=-2 => n.div_euclid(-i64::from(zoom)),
+            _ => n.saturating_mul(i64::from(zoom)),
+        };
+        let [l, t, r, b] = self.tile_bounds.map(scale);
+        let tiles = [l - 2, t - 2, r + 2, b + 2];
+        self.placed.iter().fold(tiles, |all, (placed, b)| {
+            let anchor = placed.anchor(self.rotation, zoom, level);
+            union(all, placed.zoomed_box(b, anchor, level))
+        })
+    }
+
+    /// Draws the window of the size of `target` whose top left pixel is the point (`view_x`,
+    /// `view_y`) of the view space at the zoom value `zoom` (-2, 0 or 2; map drawing 2.4): black,
+    /// then every picture whose box meets the window, in paint order. The anchors are the camera's
+    /// view positions at the zoom, the tile pieces' those of map drawing 8, and the blitter has
+    /// the variant of the zoom level.
+    pub fn draw(&self, target: &mut Framebuffer, view_x: i32, view_y: i32, zoom: i32) {
         target.fill([0, 0, 0, 255]);
+        let level = Zoom::from_value(zoom);
         let (left, top) = (i64::from(view_x), i64::from(view_y));
         let right = left + i64::from(target.width);
         let bottom = top + i64::from(target.height);
         for (placed, b) in &self.placed {
+            let anchor = placed.anchor(self.rotation, zoom, level);
+            let b = placed.zoomed_box(b, anchor, level);
             if b[0] < right && b[2] > left && b[1] < bottom && b[3] > top {
-                placed.draw(target, view_x, view_y);
+                placed.draw(target, (view_x, view_y), anchor, level);
             }
         }
     }
 }
 
-/// Draws an RGBA image with its top left corner at (`x`, `y`), source over, clipped.
-fn blend(image: &Framebuffer, target: &mut Framebuffer, x: i32, y: i32) {
+/// Draws an RGBA image whose anchor is at `at` at a zoom, source over, clipped. The pixels land
+/// as those of a frame with the same offsets do.
+fn blend(
+    image: &Framebuffer,
+    target: &mut Framebuffer,
+    (x, y): (i32, i32),
+    picture: &Picture,
+    zoom: Zoom,
+) {
+    let place = Place {
+        x: i64::from(x),
+        y: i64::from(y),
+        mirror: false,
+        zoom,
+        x_offset: i64::from(picture.x_offset),
+        y_offset: i64::from(picture.y_offset),
+        height: i64::from(image.height),
+    };
     let width = image.width as usize;
     for (row, line) in image.pixels.chunks_exact(width.max(1) * 4).enumerate() {
-        let ty = i64::from(y) + row as i64;
-        if !(0..i64::from(target.height)).contains(&ty) {
-            continue;
-        }
-        for (column, pixel) in line.as_chunks::<4>().0.iter().enumerate() {
-            let tx = i64::from(x) + column as i64;
-            if pixel[3] == 0 || !(0..i64::from(target.width)).contains(&tx) {
+        let (first, count) = place.row(row as i64);
+        for ty in first..first + count {
+            if !(0..i64::from(target.height)).contains(&ty) {
                 continue;
             }
-            let at = (ty as usize * target.width as usize + tx as usize) * 4;
-            let back = &mut target.pixels[at..at + 4];
-            let alpha = u32::from(pixel[3]);
-            for c in 0..3 {
-                back[c] = ((u32::from(pixel[c]) * alpha + u32::from(back[c]) * (255 - alpha)) / 255)
-                    as u8;
+            for (column, pixel) in line.as_chunks::<4>().0.iter().enumerate() {
+                if pixel[3] == 0 {
+                    continue;
+                }
+                let (first, copies) = place.column(column as i64);
+                for tx in first..first + copies {
+                    if !(0..i64::from(target.width)).contains(&tx) {
+                        continue;
+                    }
+                    let at = (ty as usize * target.width as usize + tx as usize) * 4;
+                    let back = &mut target.pixels[at..at + 4];
+                    let alpha = u32::from(pixel[3]);
+                    for c in 0..3 {
+                        back[c] = ((u32::from(pixel[c]) * alpha
+                            + u32::from(back[c]) * (255 - alpha))
+                            / 255) as u8;
+                    }
+                    back[3] = 255;
+                }
             }
-            back[3] = 255;
         }
     }
 }
@@ -303,10 +425,6 @@ fn corner_elevation(tile: &crate::zoo::Tile, corner: usize) -> i32 {
     };
     tile.elevation + field(corner) - field(7)
 }
-
-/// The image origin of a tile relative to the projection of its corner at the height of the
-/// screen-left corner (map drawing 4.4).
-const ORIGIN_OFFSET: [(i32, i32); 4] = [(0, -32), (-32, -16), (-64, -32), (-32, -48)];
 
 /// The terrain types: whether each takes part in blending.
 fn terrain_blend(vfs: &Vfs) -> Vec<bool> {
@@ -552,13 +670,14 @@ impl<'a> MapRenderer<'a> {
         let (x, y, w, h) = match options.window {
             Some(window) => window,
             None => {
-                let (w, h) = staged.size()?;
-                (staged.origin().0, staged.origin().1, w, h)
+                let b = staged.bounds_at(options.zoom);
+                let (w, h) = check_size(&b)?;
+                (b[0] as i32, b[1] as i32, w as u32, h as u32)
             }
         };
         check_size(&[0, 0, i64::from(w), i64::from(h)])?;
         let mut canvas = Framebuffer::new(w, h);
-        staged.draw(&mut canvas, x, y);
+        staged.draw(&mut canvas, x, y, options.zoom);
         Ok((canvas, staged.summary))
     }
 
@@ -592,14 +711,14 @@ impl<'a> MapRenderer<'a> {
                 ..*t
             })
             .collect();
-        let mut bounds = [i64::MAX, i64::MAX, i64::MIN, i64::MIN];
+        let mut tile_bounds = [i64::MAX, i64::MAX, i64::MIN, i64::MIN];
         for (t, tile) in tiles.iter().enumerate() {
             let (ox, oy) = origin(tile, (t % width) as i32, (t / width) as i32, rotation);
             let (x, y) = (i64::from(ox), i64::from(oy));
-            bounds = union(bounds, [x, y + 16, x + 64, y + 49]);
+            tile_bounds = union(tile_bounds, [x, y + 16, x + 64, y + 49]);
         }
         // Refuse a huge map before the work: staging costs memory in proportion to its tiles.
-        check_size(&bounds)?;
+        check_size(&tile_bounds)?;
 
         // The objects the original keeps: those whose type it knows.
         let mut objects = Vec::new();
@@ -736,9 +855,13 @@ impl<'a> MapRenderer<'a> {
             .into_iter()
             .filter_map(|p| p.bounds().map(|b| (p, b)))
             .collect();
-        let bounds = placed.iter().fold(bounds, |all, (_, b)| union(all, *b));
+        let bounds = placed
+            .iter()
+            .fold(tile_bounds, |all, (_, b)| union(all, *b));
         Ok(Staged {
+            rotation,
             placed,
+            tile_bounds,
             bounds,
             summary,
         })
@@ -832,7 +955,9 @@ impl<'a> MapRenderer<'a> {
         let r = scene.rotation;
         let tile = scene.tiles[t];
         let (tx, ty) = ((t % scene.width) as i32, (t / scene.width) as i32);
+        let corner = corner_view(&tile, tx, ty, r);
         let (ox, oy) = origin(&tile, tx, ty, r);
+        let piece_at = |offset: (i32, i32)| Piece { corner, offset };
         let shape = tile.shape.rotate_right(2 * u32::from(r));
         let (left, top) = (i32::from(shape & 3), i32::from(shape >> 6));
         let mut forced = [false; 2];
@@ -898,6 +1023,7 @@ impl<'a> MapRenderer<'a> {
                         out.push(Placed {
                             x: ox + x,
                             y: oy + y,
+                            piece: Some(piece_at((x, y))),
                             pic: Pic::Flat(flat),
                         });
                     }
@@ -914,6 +1040,7 @@ impl<'a> MapRenderer<'a> {
                 out.push(Placed {
                     x: ox + 32,
                     y: oy + 32,
+                    piece: Some(piece_at((32, 32))),
                     pic,
                 });
             }
@@ -932,6 +1059,7 @@ impl<'a> MapRenderer<'a> {
                 out.push(Placed {
                     x: ox + 32,
                     y: oy + 32,
+                    piece: Some(piece_at((32, 32))),
                     pic: Pic::Flat(flat),
                 });
             }
@@ -1038,6 +1166,7 @@ impl<'a> MapRenderer<'a> {
         out.push(Placed {
             x,
             y,
+            piece: None,
             pic: Pic::Anim(anim, view, palette),
         });
     }
@@ -1097,11 +1226,18 @@ pub(crate) fn check_size(bounds: &[i64; 4]) -> Result<(i64, i64), RenderError> {
     Ok((w, h))
 }
 
-/// The image origin of the tile (`tx`, `ty`) in view space (map drawing 4.4).
-fn origin(tile: &Tile, tx: i32, ty: i32, r: u8) -> (i32, i32) {
+/// The view position at normal zoom of the corner of the tile (`tx`, `ty`) that its image origin
+/// is measured from: the tile's corner 7 in plan, at the height of the screen-left corner
+/// (map drawing 4.4).
+fn corner_view(tile: &Tile, tx: i32, ty: i32, r: u8) -> (i32, i32) {
     let height = 16 * corner_elevation(tile, map_direction(r, 7));
-    let (px, py) = project(r, 64 * tx, 64 * ty, height);
-    let (dx, dy) = ORIGIN_OFFSET[usize::from(r)];
+    project(r, 64 * tx, 64 * ty, height)
+}
+
+/// The image origin of the tile (`tx`, `ty`) in view space at normal zoom (map drawing 4.4).
+fn origin(tile: &Tile, tx: i32, ty: i32, r: u8) -> (i32, i32) {
+    let (px, py) = corner_view(tile, tx, ty, r);
+    let (dx, dy) = origin_offset(r, Zoom::Normal);
     (px + dx, py + dy)
 }
 

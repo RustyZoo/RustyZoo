@@ -10,6 +10,9 @@ dir=$2
 failed=0
 export SDL_AUDIO_DRIVER=dummy # check-music opens the audio device: never a real one
 
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
 rz() { "$bin" --data "$dir/$trial" "$@"; }
 
 # Plays a map headless with scrolls and a rotation and compares every painted frame with the
@@ -52,6 +55,10 @@ check base-trial 5,3,2,0,13750,1371 "rz check-maps | tail -1 | grep -o '[0-9]*' 
 # run time (the cache lacks them), undrawn; cliff pieces drawn, missing; objects drawn, with a
 # missing type or animation, not placed.
 check base-trial 3,2,0,13731,19,0,71,0,1371,0,0 "rz check-render | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+# One map at the three zoom levels (-2, 0, 2): the size of the picture of the whole map, in the
+# view space of that zoom.
+check base-trial 2404x1233,4800x2459,9604x4922 "for z in -2 0 2; do rz render-map maps/default.zoo $tmp/z.png --zoom \$z | grep -o '[0-9]*x[0-9]* pixels'; done | tr -d ' ' | sed 's/pixels//' | paste -sd, -"
+check expansion-trial 2404x1204,4800x2401,9604x4806 "for z in -2 0 2; do rz render-map maps/sm_aqua.zoo $tmp/z.png --rotation 1 --zoom \$z | grep -o '[0-9]*x[0-9]* pixels'; done | tr -d ' ' | sed 's/pixels//' | paste -sd, -"
 # Root bitmaps (grid lines, highlight, cliff pieces) converted in memory and compared with the
 # shipped copies: bitmaps, identical, differing, without a shipped copy, failed.
 check base-trial 41,41,0,0,0 "rz check-bitmaps | tail -1 | grep -o '[0-9]*' | paste -sd, -"

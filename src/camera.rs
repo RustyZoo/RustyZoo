@@ -73,17 +73,21 @@ pub struct Camera {
     next_edge: i64,
 }
 
-/// The projection of 2.2 with the zoom of 2.4, in view space.
-fn project_zoomed(rotation: u8, zoom: i32, wx: i32, wy: i32, wz: i32) -> (i64, i64) {
-    let (px, py) = project(rotation, wx, wy, wz);
+/// A view-space position at normal zoom, with the zoom of 2.4 applied: the zoom value is the
+/// factor, `trunc(p / -z)` below -1 and `p * z` above 1.
+pub fn zoom_view(zoom: i32, (px, py): (i32, i32)) -> (i64, i64) {
     let (px, py) = (i64::from(px), i64::from(py));
-    // The zoom value is the factor (map drawing 2.4).
     let z = i64::from(zoom);
     match zoom {
         ..=-2 => (px / -z, py / -z),
         2.. => (px * z, py * z),
         _ => (px, py),
     }
+}
+
+/// The projection of 2.2 with the zoom of 2.4, in view space.
+fn project_zoomed(rotation: u8, zoom: i32, wx: i32, wy: i32, wz: i32) -> (i64, i64) {
+    zoom_view(zoom, project(rotation, wx, wy, wz))
 }
 
 fn to_i32(n: i64) -> i32 {

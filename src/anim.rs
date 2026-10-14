@@ -32,6 +32,7 @@ use crate::Framebuffer;
 use crate::config::{Config, to_int};
 use crate::sprite::{self, Blend, Palette, Sprite};
 use crate::vfs::{Vfs, normalise};
+use crate::zoom::Zoom;
 
 /// Why an animation set could not be read or loaded. The message is a single line, but it may
 /// hold names as they are in the files.
@@ -230,7 +231,7 @@ impl Animation {
     ///
     /// Draws nothing if the file index or the frame number is out of range.
     pub fn draw(&self, view: View, frame: usize, target: &mut Framebuffer, x: i32, y: i32) {
-        self.draw_inner(view, frame, target, (x, y), None, None);
+        self.draw_inner(view, frame, target, (x, y), None, None, Zoom::Normal);
     }
 
     /// As [`Animation::draw`], with `palette` in place of the palette of the sprite file.
@@ -243,7 +244,7 @@ impl Animation {
         y: i32,
         palette: Option<&Palette>,
     ) {
-        self.draw_inner(view, frame, target, (x, y), palette, None);
+        self.draw_inner(view, frame, target, (x, y), palette, None, Zoom::Normal);
     }
 
     /// As [`Animation::draw`], blended with what is behind it.
@@ -255,17 +256,33 @@ impl Animation {
         at: (i32, i32),
         blend: Blend,
     ) {
-        self.draw_inner(view, frame, target, at, None, Some(blend));
+        self.draw_inner(view, frame, target, at, None, Some(blend), Zoom::Normal);
     }
 
+    /// As [`Animation::draw_with`] or [`Animation::draw_blended`] at a zoom, frame 0, `at` being
+    /// the anchor already at the zoom ([`crate::sprite::Frame::draw_zoomed`]).
+    pub fn draw_zoomed(
+        &self,
+        view: View,
+        target: &mut Framebuffer,
+        at: (i32, i32),
+        palette: Option<&Palette>,
+        blend: Option<Blend>,
+        zoom: Zoom,
+    ) {
+        self.draw_inner(view, 0, target, at, palette, blend, zoom);
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn draw_inner(
         &self,
         view: View,
         frame: usize,
         target: &mut Framebuffer,
-        (x, y): (i32, i32),
+        at: (i32, i32),
         palette: Option<&Palette>,
         blend: Option<Blend>,
+        zoom: Zoom,
     ) {
         let Some((sprite, own)) = self.sprites.get(view.file).map(|s| &**s) else {
             return;
@@ -275,18 +292,7 @@ impl Animation {
             return;
         };
         for frame in sprite.extra.iter().chain([frame]) {
-            let top = y.saturating_sub(i32::from(frame.y_offset));
-            let left = match view.mirror {
-                true => x.saturating_add(i32::from(frame.x_offset)),
-                false => x.saturating_sub(i32::from(frame.x_offset)),
-            };
-            match (blend, view.mirror) {
-                (Some(blend), mirror) => {
-                    frame.draw_blended(palette, target, (left, top), mirror, blend)
-                }
-                (None, true) => frame.draw_mirrored(palette, target, left, top),
-                (None, false) => frame.draw(palette, target, left, top),
-            }
+            frame.draw_zoomed(palette, target, at, view.mirror, blend, zoom);
         }
     }
 

@@ -63,15 +63,16 @@ usage: rustyzoo [--data <dir>] <command>
   render-ground <key> <out.png>
                       render one ground picture to a PNG file; the key is written as in the
                       cache, for example ztats/000003 or ztatb/00/00000000/00000001/0003
-  render-map <map> <out.png> [--rotation N] [--view X Y W H] [--no-units]
-                      draw a whole map (a .zoo member) into a PNG at normal zoom, seen from
-                      rotation N (0 to 3, default 0), and print what was drawn: the tiles whose
-                      ground picture is in the game's cache, the ground pictures missing, the
-                      cliff pieces, and the objects drawn or lacking a type or an animation;
-                      with --view, draw only the window of W by H pixels whose top left pixel is
-                      the view-space point (X, Y), black where the map has nothing (the summary
-                      still counts the whole map); with --no-units, leave out animals, guests,
-                      staff and ambient animals, which then are not counted either
+  render-map <map> <out.png> [--rotation N] [--zoom Z] [--view X Y W H] [--no-units]
+                      draw a whole map (a .zoo member) into a PNG, seen from rotation N (0 to
+                      3, default 0) at zoom Z (-2 zoomed out, 0 normal, 2 zoomed in), and
+                      print what was drawn: the tiles whose ground picture is in the game's
+                      cache, the ground pictures missing, the cliff pieces, and the objects
+                      drawn or lacking a type or an animation; with --view, draw only the
+                      window of W by H pixels whose top left pixel is the view-space point
+                      (X, Y) of that zoom, black where the map has nothing (the summary still
+                      counts the whole map); with --no-units, leave out animals, guests, staff
+                      and ambient animals, which then are not counted either
   check-render [--rotation N]
                       draw every .zoo file in memory and print the same summary per map and
                       for all of them; a file that cannot be read is skipped; exit 1 only if
@@ -1113,6 +1114,10 @@ fn render_flags(mut flags: &[&str]) -> Result<(u8, Options), CliError> {
                 options.no_units = true;
                 rest
             }
+            ("--zoom", [z, rest @ ..]) => {
+                options.zoom = number(z)?;
+                rest
+            }
             _ => return Err(CliError::Usage),
         };
     }
@@ -1390,9 +1395,10 @@ mod tests {
         let ok = |flags: &[&str]| {
             render_flags(flags)
                 .ok()
-                .map(|(r, o)| (r, o.window, o.no_units))
+                .map(|(r, o)| (r, o.window, o.no_units, o.zoom))
         };
-        assert_eq!(ok(&[]), Some((0, None, false)));
+        assert_eq!(ok(&[]), Some((0, None, false, 0)));
+        assert_eq!(ok(&["--zoom", "-2"]), Some((0, None, false, -2)));
         assert_eq!(
             ok(&[
                 "--no-units",
@@ -1404,7 +1410,7 @@ mod tests {
                 "--rotation",
                 "2"
             ]),
-            Some((2, Some((-5, 7, 30, 20)), true))
+            Some((2, Some((-5, 7, 30, 20)), true, 0))
         );
         for bad in [
             &["--view", "1", "2", "3"][..],
@@ -1413,6 +1419,8 @@ mod tests {
             &["--view", "1", "2", "3", "0"],
             &["--view", "1", "2", "3", "x"],
             &["--rotation"],
+            &["--zoom"],
+            &["--zoom", "x"],
             &["--unit"],
         ] {
             assert!(ok(bad).is_none(), "{bad:?}");
