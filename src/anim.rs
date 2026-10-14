@@ -16,19 +16,22 @@
 //! ```
 //!
 //! The sprite file of an entry is `dir0/dir1[/dir2[/dir3]]/<entry>` (no extension); a missing
-//! directory ends the path. The set is only valid if all its sprite files load.
+//! directory ends the path. A set fails to load only if one of its sprite files cannot be found
+//! or read; a defective palette is a warning (see [`Animation::warning`]).
 //!
 //! Which file is drawn depends on the screen direction (see [`view_for`]), and a frame is placed
 //! relative to an anchor point (see [`Animation::draw`]). The box is kept for interface layout; the
 //! map never uses it.
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 use crate::Framebuffer;
 use crate::config::{Config, to_int};
-use crate::sprite::{self, Palette, Sprite, SpriteError};
-use crate::vfs::Vfs;
+use crate::sprite::{self, Palette, Sprite};
+use crate::vfs::{Vfs, normalise};
 
 /// Why an animation set could not be read or loaded. The message is a single line, but it may
 /// hold names as they are in the files.
@@ -164,28 +167,48 @@ pub fn view_for(file_count: usize, direction: u8) -> View {
 #[derive(Debug)]
 pub struct Animation {
     pub set: AnimSet,
-    pub sprites: Vec<(Sprite, Palette)>,
+    /// One entry per sprite file of the set, in order. Entries that name the same member share
+    /// one copy, so the memory is that of the distinct files.
+    pub sprites: Vec<Arc<(Sprite, Palette)>>,
+    /// The first defect of a palette among the sprite files, with the member it belongs to: the
+    /// palette is missing, or lacks a colour the sprite draws. The set still loads and draws as
+    /// the original does, see [`crate::sprite::Frame::draw`].
+    pub warning: Option<String>,
 }
 
 impl Animation {
-    /// Loads every sprite file of the set. One that cannot be loaded makes the whole set fail,
-    /// and the error names the first. The second value of a failure is the number of sprite
-    /// files that do not exist (their palettes are another matter).
+    /// Loads every sprite file of the set, each distinct member once. One that cannot be found
+    /// or decoded makes the whole set fail, and the error names the first. The second value of a
+    /// failure is the number of distinct sprite files that do not exist.
     pub fn open(vfs: &Vfs, set: AnimSet) -> Result<Animation, (AnimError, usize)> {
         let mut sprites = Vec::with_capacity(set.files.len());
-        let (mut first, mut missing) = (None, 0);
+        let (mut first, mut missing, mut warning) = (None, 0, None);
+        let mut loaded: HashMap<String, Option<Arc<(Sprite, Palette)>>> = HashMap::new();
         for member in &set.files {
-            match sprite::load(vfs, member) {
-                Ok(loaded) => sprites.push(loaded),
-                Err(err) => {
-                    missing += usize::from(vfs.read(member).is_err());
-                    first.get_or_insert_with(|| AnimError(format!("{member}: {err}")));
+            let shared = loaded.entry(normalise(member)).or_insert_with(|| {
+                match sprite::load(vfs, member) {
+                    Ok((sprite, palette, defect)) => {
+                        if let Some(defect) = defect {
+                            warning.get_or_insert_with(|| format!("{member}: {defect}"));
+                        }
+                        Some(Arc::new((sprite, palette)))
+                    }
+                    Err(err) => {
+                        missing += usize::from(vfs.read(member).is_err());
+                        first.get_or_insert_with(|| AnimError(format!("{member}: {err}")));
+                        None
+                    }
                 }
-            }
+            });
+            sprites.extend(shared.clone());
         }
         match first {
             Some(err) => Err((err, missing)),
-            None => Ok(Animation { set, sprites }),
+            None => Ok(Animation {
+                set,
+                sprites,
+                warning,
+            }),
         }
     }
 
@@ -205,33 +228,24 @@ impl Animation {
     /// left corner of a frame is the anchor minus its offsets; mirrored, pixel (`c`, `r`) goes
     /// to (`x + x_offset - c`, `y - y_offset + r`).
     ///
-    /// Draws nothing, and succeeds, if the file index or the frame number is out of range.
-    /// Fails if a frame uses a palette index its palette lacks.
-    pub fn draw(
-        &self,
-        view: View,
-        frame: usize,
-        target: &mut Framebuffer,
-        x: i32,
-        y: i32,
-    ) -> Result<(), SpriteError> {
-        let Some((sprite, palette)) = self.sprites.get(view.file) else {
-            return Ok(());
+    /// Draws nothing if the file index or the frame number is out of range.
+    pub fn draw(&self, view: View, frame: usize, target: &mut Framebuffer, x: i32, y: i32) {
+        let Some((sprite, palette)) = self.sprites.get(view.file).map(|s| &**s) else {
+            return;
         };
         let Some(frame) = sprite.frames.get(frame) else {
-            return Ok(());
+            return;
         };
         for frame in sprite.extra.iter().chain([frame]) {
             let top = y.saturating_sub(i32::from(frame.y_offset));
             if view.mirror {
                 let right = x.saturating_add(i32::from(frame.x_offset));
-                frame.draw_mirrored(palette, target, right, top)?;
+                frame.draw_mirrored(palette, target, right, top);
             } else {
                 let left = x.saturating_sub(i32::from(frame.x_offset));
-                frame.draw(palette, target, left, top)?;
+                frame.draw(palette, target, left, top);
             }
         }
-        Ok(())
     }
 
     /// The box of all frames of all files, background frames included, unmirrored and relative
@@ -240,7 +254,7 @@ impl Animation {
     pub fn extents(&self) -> Option<[i32; 4]> {
         self.sprites
             .iter()
-            .flat_map(|(sprite, _)| sprite.all_frames())
+            .flat_map(|loaded| loaded.0.all_frames())
             .map(|frame| {
                 let (x, y) = (-i32::from(frame.x_offset), -i32::from(frame.y_offset));
                 [
@@ -301,7 +315,11 @@ mod tests {
                 x1: 0,
                 y1: 0,
             },
-            sprites: sprites.into_iter().map(|s| (s, palette())).collect(),
+            sprites: sprites
+                .into_iter()
+                .map(|s| Arc::new((s, palette())))
+                .collect(),
+            warning: None,
         }
     }
 
@@ -525,7 +543,7 @@ mod tests {
             mirror: false,
         };
         let mut image = Framebuffer::new(7, 3);
-        anim.draw(plain, 0, &mut image, 3, 1).unwrap();
+        anim.draw(plain, 0, &mut image, 3, 1);
         assert_eq!(pixel(&image, 2, 0), RED);
         assert_eq!(pixel(&image, 3, 0), GREEN);
         assert_eq!(pixel(&image, 4, 0), BLUE);
@@ -536,7 +554,7 @@ mod tests {
             mirror: true,
         };
         let mut image = Framebuffer::new(7, 3);
-        anim.draw(mirrored, 0, &mut image, 3, 1).unwrap();
+        anim.draw(mirrored, 0, &mut image, 3, 1);
         assert_eq!(pixel(&image, 4, 0), RED);
         assert_eq!(pixel(&image, 3, 0), GREEN);
         assert_eq!(pixel(&image, 2, 0), BLUE);
@@ -545,19 +563,19 @@ mod tests {
         // An offset of 0 puts the first pixel on the anchor; mirrored, on the anchor and leftwards.
         let anim = animation(vec![sprite_of(&[row_frame(0, 0, &[1, 2, 3])], None)]);
         let mut image = Framebuffer::new(7, 1);
-        anim.draw(plain, 0, &mut image, 3, 0).unwrap();
+        anim.draw(plain, 0, &mut image, 3, 0);
         assert_eq!([pixel(&image, 3, 0), pixel(&image, 5, 0)], [RED, BLUE]);
         let mut image = Framebuffer::new(7, 1);
-        anim.draw(mirrored, 0, &mut image, 3, 0).unwrap();
+        anim.draw(mirrored, 0, &mut image, 3, 0);
         assert_eq!([pixel(&image, 3, 0), pixel(&image, 1, 0)], [RED, BLUE]);
 
         // A negative offset moves the frame to the right of the anchor, and mirrored to the left.
         let anim = animation(vec![sprite_of(&[row_frame(-2, 0, &[1])], None)]);
         let mut image = Framebuffer::new(7, 1);
-        anim.draw(plain, 0, &mut image, 3, 0).unwrap();
+        anim.draw(plain, 0, &mut image, 3, 0);
         assert_eq!(pixel(&image, 5, 0), RED);
         let mut image = Framebuffer::new(7, 1);
-        anim.draw(mirrored, 0, &mut image, 3, 0).unwrap();
+        anim.draw(mirrored, 0, &mut image, 3, 0);
         assert_eq!(pixel(&image, 1, 0), RED);
     }
 
@@ -573,7 +591,7 @@ mod tests {
         };
         for (frame, column) in [(0, 2), (1, 1)] {
             let mut image = Framebuffer::new(4, 1);
-            anim.draw(view, frame, &mut image, 2, 0).unwrap();
+            anim.draw(view, frame, &mut image, 2, 0);
             assert_eq!(pixel(&image, column, 0), RED, "frame {frame}");
         }
     }
@@ -589,7 +607,7 @@ mod tests {
             mirror: false,
         };
         let mut image = Framebuffer::new(5, 1);
-        anim.draw(plain, 0, &mut image, 2, 0).unwrap();
+        anim.draw(plain, 0, &mut image, 2, 0);
         assert_eq!(
             [0, 1, 2, 3, 4].map(|x| pixel(&image, x, 0)),
             [NONE, GREEN, RED, BLUE, NONE],
@@ -602,7 +620,7 @@ mod tests {
             mirror: true,
         };
         let mut image = Framebuffer::new(5, 1);
-        anim.draw(mirrored, 0, &mut image, 2, 0).unwrap();
+        anim.draw(mirrored, 0, &mut image, 2, 0);
         assert_eq!(
             [0, 1, 2, 3, 4].map(|x| pixel(&image, x, 0)),
             [NONE, BLUE, RED, GREEN, NONE]
@@ -610,7 +628,7 @@ mod tests {
         // The background is not an animated frame: asking for frame 1 of a one-frame file
         // draws nothing at all, not even the background.
         let mut image = Framebuffer::new(5, 1);
-        anim.draw(plain, 1, &mut image, 2, 0).unwrap();
+        anim.draw(plain, 1, &mut image, 2, 0);
         assert_eq!(image.pixels, [0; 20]);
     }
 
@@ -629,8 +647,7 @@ mod tests {
             &mut image,
             0,
             0,
-        )
-        .unwrap();
+        );
         assert_eq!([pixel(&image, 0, 0), pixel(&image, 1, 0)], [BLUE, RED]);
     }
 
@@ -643,7 +660,7 @@ mod tests {
                 file,
                 mirror: false,
             };
-            anim.draw(view, frame, &mut image, 0, 0).unwrap();
+            anim.draw(view, frame, &mut image, 0, 0);
             assert_eq!(image.pixels, [0; 8], "file {file} frame {frame}");
         }
         // A file without frames draws nothing either, even with a background frame.
@@ -657,12 +674,11 @@ mod tests {
             &mut image,
             0,
             0,
-        )
-        .unwrap();
+        );
         assert_eq!(image.pixels, [0; 8]);
         // And no file at all.
         let anim = animation(Vec::new());
-        anim.draw(anim.view(3), 0, &mut image, 0, 0).unwrap();
+        anim.draw(anim.view(3), 0, &mut image, 0, 0);
         assert_eq!(image.pixels, [0; 8]);
     }
 
@@ -684,8 +700,7 @@ mod tests {
             &mut image,
             1,
             0,
-        )
-        .unwrap();
+        );
         assert_eq!(pixel(&image, 0, 0), [200; 4]);
         assert_eq!(pixel(&image, 1, 0), [150, 150, 150, 200]);
         assert_eq!(pixel(&image, 2, 0), [150, 150, 150, 200]);
@@ -707,6 +722,14 @@ mod tests {
         };
         let sprite = |frames: &[Vec<u8>]| sprite_file(None, frames.len() as u32, frames);
         let one = sized(&row_frame(0, 0, &[1, 2, 3]));
+        let sprite_file_naming_palette = |path: &str, frame: &Vec<u8>| {
+            let mut out = 125u32.to_le_bytes().to_vec();
+            out.extend((path.len() as u32).to_le_bytes());
+            out.extend(path.as_bytes());
+            out.extend(1u32.to_le_bytes());
+            out.extend(frame);
+            out
+        };
         let install = Install::new(
             "anim-open",
             &[
@@ -721,6 +744,15 @@ mod tests {
                 ("bad.ani", b"[animation]\ndir0 = a\n".to_vec()),
                 ("a/b/short", sprite(&[sized(&row_frame(0, 0, &[9]))])),
                 ("nopal.ani", ani("animation = short\n")),
+                ("a/b/nopal", sprite_file_naming_palette("gone.pal", &one)),
+                ("gonepal.ani", ani("animation = nopal\n")),
+                (
+                    "repeat.ani",
+                    ani(&format!(
+                        "{}animation = NE\nanimation = n\n",
+                        "animation = N\n".repeat(3000)
+                    )),
+                ),
             ],
         );
         let vfs = Vfs::open(&install.0).unwrap();
@@ -730,6 +762,7 @@ mod tests {
         let anim = Animation::open(&vfs, set).unwrap();
         assert_eq!(anim.sprites.len(), 2);
         assert_eq!(anim.sprites[1].0.frames.len(), 2);
+        assert_eq!(anim.warning, None);
         assert_eq!(
             anim.view_of(2, 0),
             View {
@@ -747,11 +780,34 @@ mod tests {
             "{err}"
         );
 
-        // A palette index beyond the palette is a failure but not a missing file.
+        // A palette index beyond the palette is a warning: the set loads.
         let set = AnimSet::load(&vfs, "nopal.ani").unwrap();
-        let (err, missing) = Animation::open(&vfs, set).unwrap_err();
-        assert_eq!(missing, 0);
-        assert!(err.to_string().contains("palette index 9"), "{err}");
+        let anim = Animation::open(&vfs, set).unwrap();
+        assert_eq!(
+            anim.warning.as_deref(),
+            Some("a/b/short: palette index 9 but the palette has 4 colours")
+        );
+        // So is a palette file that does not exist, and the set draws nothing for it.
+        let set = AnimSet::load(&vfs, "gonepal.ani").unwrap();
+        let anim = Animation::open(&vfs, set).unwrap();
+        let warning = anim.warning.as_deref().unwrap();
+        assert!(
+            warning.starts_with("a/b/nopal: palette \"gone.pal\""),
+            "{warning}"
+        );
+        assert!(anim.sprites[0].1.is_empty());
+
+        // Entries that name the same member, in any letter case, share one decoded copy.
+        let set = AnimSet::load(&vfs, "repeat.ani").unwrap();
+        let anim = Animation::open(&vfs, set).unwrap();
+        assert_eq!(anim.sprites.len(), 3002);
+        assert!(
+            anim.sprites[..3000]
+                .iter()
+                .all(|s| Arc::ptr_eq(s, &anim.sprites[0]))
+        );
+        assert!(!Arc::ptr_eq(&anim.sprites[3000], &anim.sprites[0]));
+        assert!(Arc::ptr_eq(&anim.sprites[3001], &anim.sprites[0]));
 
         let message = AnimSet::load(&vfs, "bad.ani").unwrap_err().to_string();
         assert_eq!(message, "bad.ani: dir1 is missing or empty");

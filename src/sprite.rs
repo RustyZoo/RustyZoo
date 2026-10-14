@@ -38,8 +38,10 @@ pub const MAX_COLORS: usize = 256;
 /// stay. The ground shadow of an entity is drawn at this strength.
 pub const SHADOW_STRENGTH: f32 = 0.25;
 
-/// The palette entry that makes pixel value 0 transparent when it is entry 0: magenta, alpha 0.
-const MARKER: [u8; 4] = [255, 0, 255, 0];
+/// The colour drawn for a pixel value that the palette lacks (a short palette file, or a value
+/// beyond the count of the header). The original reads whatever lies past the colours, which
+/// is not reproducible; the engine draws opaque black, as the specification recommends.
+const MISSING_COLOR: [u8; 4] = [0, 0, 0, 255];
 
 /// The smallest possible frame: its 10 byte header and no row.
 const MIN_FRAME_SIZE: usize = 10;
@@ -126,11 +128,12 @@ impl Palette {
         self.colors.is_empty()
     }
 
-    /// Whether pixel value 0 is transparent: only when entry 0 is the marker `ff 00 ff 00`. The
-    /// art never uses value 0 under the marker, apart from a few stray pixels that are plain
-    /// defects; palettes that start with another colour (terrain, interface) use 0 as a colour.
+    /// Whether pixel value 0 is transparent: only when entry 0 has red 255, green 0 and blue 255
+    /// (the marker), whatever its fourth byte. The art never uses value 0 under the marker,
+    /// apart from a few stray pixels that are plain defects; palettes that start with another
+    /// colour (terrain, interface) use 0 as a colour.
     pub fn zero_is_transparent(&self) -> bool {
-        self.color(0) == Some(MARKER)
+        matches!(self.color(0), Some([255, 0, 255, _]))
     }
 
     /// The colour of a palette index, as R, G, B, A.
@@ -218,38 +221,19 @@ impl Frame {
     /// value 0 when [`Palette::zero_is_transparent`]: it is skipped. The pixels of a shadow
     /// frame darken the destination at [`SHADOW_STRENGTH`] and never use the palette.
     ///
-    /// Fails, before drawing anything, if the frame uses a palette index the palette lacks.
-    pub fn draw(
-        &self,
-        palette: &Palette,
-        target: &mut Framebuffer,
-        x: i32,
-        y: i32,
-    ) -> Result<(), SpriteError> {
-        self.draw_at(palette, target, x, y, false)
+    /// Never fails. A value the palette lacks is drawn black; an empty palette (its file is
+    /// missing) draws no ordinary frame at all.
+    pub fn draw(&self, palette: &Palette, target: &mut Framebuffer, x: i32, y: i32) {
+        self.draw_at(palette, target, x, y, false);
     }
 
     /// Like [`Frame::draw`], reflected left to right: pixel (`c`, `r`) of the frame goes to
     /// (`x - c`, `y + r`), so the frame covers the columns `x - (width - 1)` to `x`.
-    pub fn draw_mirrored(
-        &self,
-        palette: &Palette,
-        target: &mut Framebuffer,
-        x: i32,
-        y: i32,
-    ) -> Result<(), SpriteError> {
-        self.draw_at(palette, target, x, y, true)
+    pub fn draw_mirrored(&self, palette: &Palette, target: &mut Framebuffer, x: i32, y: i32) {
+        self.draw_at(palette, target, x, y, true);
     }
 
-    fn draw_at(
-        &self,
-        palette: &Palette,
-        target: &mut Framebuffer,
-        x: i32,
-        y: i32,
-        mirror: bool,
-    ) -> Result<(), SpriteError> {
-        self.check_palette(palette)?;
+    fn draw_at(&self, palette: &Palette, target: &mut Framebuffer, x: i32, y: i32, mirror: bool) {
         let skip_zero = palette.zero_is_transparent();
         let (width, height) = (i64::from(target.width), i64::from(target.height));
         // `parse` validated the rows, so the `else` and `unwrap_or_default` cases never happen.
@@ -293,9 +277,10 @@ impl Frame {
                         if self.shadow {
                             darken(pixel, SHADOW_STRENGTH);
                         } else if let Some(&value) = pixels.get(i as usize)
+                            && !palette.is_empty()
                             && !(value == 0 && skip_zero)
-                            && let Some([r, g, b, _]) = palette.color(value)
                         {
+                            let [r, g, b, _] = palette.color(value).unwrap_or(MISSING_COLOR);
                             pixel.copy_from_slice(&[r, g, b, 255]);
                         }
                     }
@@ -303,10 +288,10 @@ impl Frame {
                 column += i64::from(count);
             }
         }
-        Ok(())
     }
 
-    /// Fails if the frame uses a palette index that `palette` lacks.
+    /// Fails if the frame uses a palette index that `palette` lacks. Drawing does not care (see
+    /// [`Frame::draw`]); this is how a loader notices the defect.
     pub fn check_palette(&self, palette: &Palette) -> Result<(), SpriteError> {
         match self.max_index {
             Some(index) if usize::from(index) >= palette.len() => error(format!(
@@ -319,13 +304,12 @@ impl Frame {
 }
 
 /// Darkens the colour of `pixel` (R, G, B, then alpha, which stays) by `strength`: the share of
-/// the destination that is covered. At 0.25 three quarters stay, at 0.5 one half, computed as
-/// the original does (halve, then add half of that); other strengths keep `1 - strength`.
+/// the destination that is covered. At 0.25 three quarters stay (`floor(3c / 4)`), at 0.5 one
+/// half (`floor(c / 2)`), as the original computes them; other strengths keep `1 - strength`.
 fn darken(pixel: &mut [u8], strength: f32) {
     for channel in &mut pixel[..3] {
         *channel = if strength == 0.25 {
-            let half = *channel / 2;
-            half + half / 2
+            (u16::from(*channel) * 3 / 4) as u8
         } else if strength == 0.5 {
             *channel / 2
         } else {
@@ -421,25 +405,36 @@ pub fn is_sprite_member(path: &str) -> bool {
     !name.is_empty() && !name.contains('.')
 }
 
-/// Reads the sprite member `member` and the palette it names, and checks that the palette
-/// covers every index the sprite draws. A sprite that draws no palette index and names no
-/// palette (an empty path) gets an empty one; if it names a palette, that must exist.
+/// Reads the sprite member `member` and the palette it names. The third value is a warning
+/// when the palette is defective: the palette file is missing or unreadable (the palette is then
+/// empty), or it lacks a colour that the sprite draws. The original does not fail on these
+/// either; see [`Frame::draw`] for what is drawn. A sprite that names no palette (an empty
+/// path) gets an empty one without a warning.
 ///
-/// Fails if a member is missing or unreadable (the palette path is matched without regard to
-/// letter case, as the `Vfs` does), if the sprite or the palette is malformed, or if the palette
-/// is too short. The message is a single line, but it may hold the paths as they are in the file.
-pub fn load(vfs: &Vfs, member: &str) -> Result<(Sprite, Palette), SpriteError> {
-    let read = |path: &str| vfs.read(path).map_err(|e| SpriteError(e.to_string()));
-    let sprite = Sprite::parse(&read(member)?)?;
-    let palette = if sprite.palette.is_empty() && !sprite.needs_palette() {
-        Palette::default()
-    } else {
-        let palette = Palette::parse(&read(&sprite.palette)?)
-            .map_err(|e| SpriteError(format!("palette {:?}: {e}", sprite.palette)))?;
-        sprite.check_palette(&palette)?;
-        palette
+/// Fails if the sprite member is missing or unreadable, or malformed (the palette path is
+/// matched without regard to letter case, as the `Vfs` does). The messages are single lines, but
+/// they may hold the paths as they are in the file.
+pub fn load(vfs: &Vfs, member: &str) -> Result<(Sprite, Palette, Option<String>), SpriteError> {
+    let sprite = Sprite::parse(&vfs.read(member).map_err(|e| SpriteError(e.to_string()))?)?;
+    if sprite.palette.is_empty() {
+        let warning = sprite.check_palette(&Palette::default()).err();
+        return Ok((sprite, Palette::default(), warning.map(|e| e.to_string())));
+    }
+    let palette = vfs
+        .read(&sprite.palette)
+        .map_err(|e| e.to_string())
+        .and_then(|bytes| Palette::parse(&bytes).map_err(|e| e.to_string()));
+    let (palette, warning) = match palette {
+        Ok(palette) => {
+            let warning = sprite.check_palette(&palette).err().map(|e| e.to_string());
+            (palette, warning)
+        }
+        Err(e) => (
+            Palette::default(),
+            Some(format!("palette {:?}: {e}", sprite.palette)),
+        ),
     };
-    Ok((sprite, palette))
+    Ok((sprite, palette, warning))
 }
 
 /// Writes the framebuffer as an 8 bit RGBA PNG. The same pixels always give the same bytes.
@@ -587,9 +582,9 @@ pub(crate) mod tests {
         for px in image.pixels.chunks_mut(4) {
             px.copy_from_slice(&behind);
         }
-        frame.draw(&Palette::default(), &mut image, 0, 0).unwrap();
-        // Three quarters stay: 200 -> 100 + 50, 100 -> 50 + 25, 51 -> 25 + 12. The alpha stays.
-        let shadow = [150, 75, 37, 255];
+        frame.draw(&Palette::default(), &mut image, 0, 0);
+        // Three quarters stay, rounded down: 200 -> 150, 100 -> 75, 51 -> 38. The alpha stays.
+        let shadow = [150, 75, 38, 255];
         for (x, y, expected) in [
             (0, 0, behind),
             (1, 0, shadow),
@@ -612,12 +607,12 @@ pub(crate) mod tests {
             (0..12).for_each(|_| all.extend(behind));
             all
         });
-        frame.draw(&palette(), &mut again, 0, 0).unwrap();
+        frame.draw(&palette(), &mut again, 0, 0);
         assert_eq!(again.pixels, image.pixels);
 
         // Over nothing there is nothing to darken.
         let mut empty = blank(6, 2);
-        frame.draw(&palette(), &mut empty, 0, 0).unwrap();
+        frame.draw(&palette(), &mut empty, 0, 0);
         assert_eq!(empty.pixels, [0; 48]);
     }
 
@@ -628,8 +623,15 @@ pub(crate) mod tests {
             darken(&mut pixel, strength);
             pixel
         };
-        assert_eq!(at(0.25, 255), [190, 190, 190, 77], "127 + 63, alpha kept");
-        assert_eq!(at(0.25, 3), [1, 1, 1, 77], "1 + 0");
+        assert_eq!(
+            at(0.25, 255),
+            [191, 191, 191, 77],
+            "floor(765 / 4), alpha kept"
+        );
+        assert_eq!(at(0.25, 3), [2, 2, 2, 77], "floor(9 / 4)");
+        for c in 0..=255u16 {
+            assert_eq!(at(0.25, c as u8)[0], (c * 3 / 4) as u8, "channel {c}");
+        }
         assert_eq!(at(0.25, 0), [0, 0, 0, 77]);
         assert_eq!(at(0.5, 255), [127, 127, 127, 77]);
         assert_eq!(at(0.5, 1), [0, 0, 0, 77]);
@@ -669,7 +671,7 @@ pub(crate) mod tests {
         let frame = Frame::parse(&frame_data(2, 4, ROWS)).unwrap();
         let mut image = blank(4, 2);
         image.pixels.fill(99);
-        frame.draw(&palette(), &mut image, 0, 0).unwrap();
+        frame.draw(&palette(), &mut image, 0, 0);
         assert_eq!(pixel(&image, 0, 0), [99; 4], "skipped");
         assert_eq!(pixel(&image, 1, 0), PALETTE[1]);
         assert_eq!(pixel(&image, 2, 0), PALETTE[3]);
@@ -684,14 +686,14 @@ pub(crate) mod tests {
         let frame = Frame::parse(&frame_data(2, 4, ROWS)).unwrap();
         let mut image = blank(2, 2);
         // The frame's pixel (1, 1) lands on (0, 0); its row 0 is off the framebuffer.
-        frame.draw(&palette(), &mut image, -1, -1).unwrap();
+        frame.draw(&palette(), &mut image, -1, -1);
         assert_eq!(pixel(&image, 0, 0), [0; 4], "frame pixel (1,1) is skipped");
         assert_eq!(pixel(&image, 1, 0), PALETTE[0], "frame pixel (2,1)");
         assert_eq!(pixel(&image, 0, 1), [0; 4]);
 
         let mut image = blank(2, 2);
         // Row 0 of the frame lands on row 1; its pixel (2, 0) is clipped on the right.
-        frame.draw(&palette(), &mut image, 0, 1).unwrap();
+        frame.draw(&palette(), &mut image, 0, 1);
         assert_eq!(
             pixel(&image, 1, 1),
             PALETTE[1],
@@ -708,11 +710,11 @@ pub(crate) mod tests {
             (-4, -2),
         ] {
             let mut image = blank(2, 2);
-            frame.draw(&palette(), &mut image, x, y).unwrap();
+            frame.draw(&palette(), &mut image, x, y);
             assert_eq!(image.pixels, [0; 16], "nothing visible at ({x}, {y})");
         }
         // A framebuffer without pixels is fine too.
-        frame.draw(&palette(), &mut blank(0, 0), 0, 0).unwrap();
+        frame.draw(&palette(), &mut blank(0, 0), 0, 0);
     }
 
     #[test]
@@ -726,10 +728,10 @@ pub(crate) mod tests {
             };
             let mut image = blank(1, 1);
             image.pixels.copy_from_slice(&[0, 0, 100, 255]);
-            frame.draw(&palette, &mut image, 0, 0).unwrap();
+            frame.draw(&palette, &mut image, 0, 0);
             assert_eq!(pixel(&image, 0, 0), [200, 10, 20, 255], "alpha {alpha}");
             let mut image = blank(1, 1);
-            frame.draw(&palette, &mut image, 0, 0).unwrap();
+            frame.draw(&palette, &mut image, 0, 0);
             assert_eq!(pixel(&image, 0, 0), [200, 10, 20, 255], "alpha {alpha}");
         }
     }
@@ -744,7 +746,7 @@ pub(crate) mod tests {
         let draw = |palette: &Palette| {
             let mut image = blank(3, 1);
             image.pixels.fill(99);
-            frame.draw(palette, &mut image, 0, 0).unwrap();
+            frame.draw(palette, &mut image, 0, 0);
             image
         };
 
@@ -755,9 +757,21 @@ pub(crate) mod tests {
         assert_eq!(pixel(&image, 1, 0), [9, 8, 7, 255]);
         assert_eq!(pixel(&image, 2, 0), [99; 4]);
 
-        // Any other entry 0 is a colour, whatever its alpha: transparent black, opaque magenta,
-        // magenta with a different alpha, and no palette entry at all (never drawn).
-        for entry in [[0, 0, 0, 0], [255, 0, 255, 255], [255, 0, 254, 0]] {
+        // The fourth byte of entry 0 plays no part: opaque magenta is the marker too.
+        for alpha in [1, 128, 255] {
+            let palette = with_entry_0([255, 0, 255, alpha]);
+            assert!(palette.zero_is_transparent(), "alpha {alpha}");
+            assert_eq!(draw(&palette).pixels, image.pixels, "alpha {alpha}");
+        }
+
+        // Any other entry 0 is a colour, whatever its alpha: transparent black, and magenta
+        // with another red, green or blue.
+        for entry in [
+            [0, 0, 0, 0],
+            [255, 0, 254, 0],
+            [254, 0, 255, 255],
+            [255, 1, 255, 0],
+        ] {
             let palette = with_entry_0(entry);
             assert!(!palette.zero_is_transparent());
             let image = draw(&palette);
@@ -773,7 +787,7 @@ pub(crate) mod tests {
         let frame = Frame::parse(&frame_data(2, 4, ROWS)).unwrap();
         let mut image = blank(6, 2);
         // Pixel (c, r) of the frame goes to (4 - c, r): row 0 has values 1 and 3 at c = 1, 2.
-        frame.draw_mirrored(&palette(), &mut image, 4, 0).unwrap();
+        frame.draw_mirrored(&palette(), &mut image, 4, 0);
         assert_eq!(pixel(&image, 3, 0), PALETTE[1]);
         assert_eq!(pixel(&image, 2, 0), PALETTE[3]);
         assert_eq!(pixel(&image, 4, 0), [0; 4], "c = 0 is skipped");
@@ -784,7 +798,7 @@ pub(crate) mod tests {
 
         // Clipped on the left: only c = 0 of row 1 lands on column 0.
         let mut image = blank(2, 2);
-        frame.draw_mirrored(&palette(), &mut image, 0, 0).unwrap();
+        frame.draw_mirrored(&palette(), &mut image, 0, 0);
         assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
         assert_eq!(
             image.pixels.iter().filter(|&&b| b != 0).count(),
@@ -793,27 +807,38 @@ pub(crate) mod tests {
         );
         // Clipped on the right: c = 1 of row 0 lands on column 5, c = 2 on column 6.
         let mut image = blank(6, 2);
-        frame.draw_mirrored(&palette(), &mut image, 6, 0).unwrap();
+        frame.draw_mirrored(&palette(), &mut image, 6, 0);
         assert_eq!(pixel(&image, 5, 0), PALETTE[1]);
         assert_eq!(pixel(&image, 5, 1), [0; 4]);
         // Far outside nothing is drawn.
         for x in [i32::MIN, -1, 6 + 4, i32::MAX] {
             let mut image = blank(6, 2);
-            frame.draw_mirrored(&palette(), &mut image, x, 0).unwrap();
+            frame.draw_mirrored(&palette(), &mut image, x, 0);
             assert_eq!(image.pixels, [0; 48], "x {x}");
         }
     }
 
     #[test]
-    fn palette_index_past_the_palette_is_refused() {
+    fn a_value_the_palette_lacks_is_black_and_a_missing_palette_draws_nothing() {
         let frame = Frame::parse(&frame_data(2, 4, ROWS)).unwrap();
         let small = Palette {
             colors: PALETTE[..3].to_vec(),
         };
+        // Value 3 is beyond the palette: opaque black, never an error. The others are as usual.
         let mut image = blank(4, 2);
-        let message = err_message(frame.draw(&small, &mut image, 0, 0));
+        frame.draw(&small, &mut image, 0, 0);
+        assert_eq!(pixel(&image, 1, 0), PALETTE[1]);
+        assert_eq!(pixel(&image, 2, 0), [0, 0, 0, 255]);
+        assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
+        // No palette at all: nothing is drawn.
+        let mut image = blank(4, 2);
+        frame.draw(&Palette::default(), &mut image, 0, 0);
+        frame.draw_mirrored(&Palette::default(), &mut image, 3, 0);
+        assert_eq!(image.pixels, [0; 32]);
+
+        // The loader can still tell: the check names the first value that is missing.
+        let message = err_message(frame.check_palette(&small));
         assert_eq!(message, "palette index 3 but the palette has 3 colours");
-        assert_eq!(image.pixels, [0; 32], "nothing was drawn");
         assert!(frame.check_palette(&palette()).is_ok());
         let sprite =
             Sprite::parse(&sprite_file(None, 1, &[sized(&frame_data(2, 4, ROWS))])).unwrap();
@@ -1058,22 +1083,45 @@ pub(crate) mod tests {
         );
         let vfs = Vfs::open(&install.0).unwrap();
 
-        let (sprite, palette) = load(&vfs, "OK/n").unwrap();
-        assert_eq!((sprite.frames.len(), palette.len()), (1, 4));
+        let (sprite, palette, warning) = load(&vfs, "OK/n").unwrap();
+        assert_eq!((sprite.frames.len(), palette.len(), warning), (1, 4, None));
 
-        let message = err_message(load(&vfs, "short/n"));
-        assert_eq!(message, "palette index 3 but the palette has 2 colours");
-        assert!(err_message(load(&vfs, "missing/n")).contains("no such member: pals/none.pal"));
-        assert!(err_message(load(&vfs, "nameless/n")).contains("no such member"));
-        assert!(
-            err_message(load(&vfs, "bad/n")).contains("palette \"bad-palette.pal\": truncated")
+        // A defective palette is a warning, not a failure; a missing or unreadable one is empty.
+        let warning = |member: &str| {
+            let (_, palette, warning) = load(&vfs, member).unwrap();
+            (palette.len(), warning.unwrap())
+        };
+        assert_eq!(
+            warning("short/n"),
+            (
+                2,
+                "palette index 3 but the palette has 2 colours".to_string()
+            )
         );
+        let (len, message) = warning("missing/n");
+        assert!(
+            len == 0 && message.contains("no such member: pals/none.pal"),
+            "{message}"
+        );
+        let (len, message) = warning("nameless/n");
+        assert_eq!(
+            (len, message.as_str()),
+            (0, "palette index 3 but the palette has 0 colours")
+        );
+        let (len, message) = warning("bad/n");
+        assert!(
+            len == 0 && message.contains("palette \"bad-palette.pal\": truncated"),
+            "{message}"
+        );
+        // Only a sprite file that cannot be found fails.
         assert!(err_message(load(&vfs, "nope/n")).contains("no such member: nope/n"));
 
-        // No palette index drawn and no palette named: an empty palette. A named one must exist.
-        let (sprite, palette) = load(&vfs, "shadow/n").unwrap();
-        assert!(sprite.frames[0].shadow && palette.is_empty());
-        assert!(err_message(load(&vfs, "shadow-named/n")).contains("no such member"));
+        // No palette index drawn and no palette named: an empty palette, no warning.
+        let (sprite, palette, warning) = load(&vfs, "shadow/n").unwrap();
+        assert!(sprite.frames[0].shadow && palette.is_empty() && warning.is_none());
+        // A named palette that is missing is a warning even when nothing needs it.
+        let (_, _, warning) = load(&vfs, "shadow-named/n").unwrap();
+        assert!(warning.unwrap().contains("no such member"));
     }
 
     /// The facts below were measured on Zoo Tycoon: Complete Collection.
@@ -1083,9 +1131,8 @@ pub(crate) mod tests {
         let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
         let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
         let load = |member: &str| {
-            let sprite = Sprite::parse(&vfs.read(member).unwrap()).unwrap();
-            let palette = Palette::parse(&vfs.read(&sprite.palette).unwrap()).unwrap();
-            sprite.check_palette(&palette).unwrap();
+            let (sprite, palette, warning) = super::load(&vfs, member).unwrap();
+            assert_eq!(warning, None);
             (sprite, palette)
         };
 
@@ -1100,7 +1147,7 @@ pub(crate) mod tests {
         assert!(!first.shadow);
         assert_eq!(palette.len(), 256);
         let mut image = Framebuffer::new(47, 24);
-        first.draw(&palette, &mut image, 0, 0).unwrap();
+        first.draw(&palette, &mut image, 0, 0);
         assert!(image.pixels.chunks(4).any(|px| px[3] == 255));
 
         let (icon, _) = load("animals/lion/icflion/N");

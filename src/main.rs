@@ -42,7 +42,8 @@ usage: rustyzoo [--data <dir>] <command>
   check-config        read every configuration file of the game, report empty files and ignored text
   dump-sprite <member> <dir>
                       write the frames of a sprite file as PNG files into <dir>, and print them
-  check-sprites       decode every sprite file; list those that fail; exit 1 if any does
+  check-sprites       decode every sprite file; list those that fail or have a palette
+                      defect (a warning); exit 1 if one fails
   map-info <member>   print the version, size, tiles and entities of a map or saved game (a .zoo)
   check-maps          read every .zoo file; list those that fail; exit 1 if one is corrupted
   render-ani <member.ani> <dir> [--anim NAME]
@@ -51,7 +52,8 @@ usage: rustyzoo [--data <dir>] <command>
                       argument is an animation root (such as animals/lion/f) and NAME the
                       animation under it
   check-anis          load every animation set and the sprite files it names; list the sets
-                      as ok or FAILED, then the counts; exit 1 if a set fails
+                      as ok, warning (defective palette) or FAILED, then the counts; exit 1
+                      if a set fails
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.";
@@ -428,7 +430,7 @@ fn frame_file_name(number: usize, shadow: bool, extra: bool) -> String {
 }
 
 fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
-    let (sprite, palette) = sprite::load(vfs, member)?;
+    let (sprite, palette, warning) = sprite::load(vfs, member)?;
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let mut report = Report::new();
     report.line(format_args!(
@@ -442,6 +444,9 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
         sprite.delay_ms,
         sprite.palette,
     ));
+    if let Some(warning) = warning {
+        report.line(format_args!("warning: {}", warning.escape_debug()));
+    }
     for (number, frame) in sprite.all_frames().enumerate() {
         let name = frame_file_name(number, frame.shadow, number == sprite.frames.len());
         let empty = frame.width == 0 || frame.height == 0;
@@ -462,7 +467,7 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
             // A shadow frame only darkens what is behind it: show it on white.
             image.pixels.fill(255);
         }
-        frame.draw(&palette, &mut image, 0, 0)?;
+        frame.draw(&palette, &mut image, 0, 0);
         let path = dir.join(&name);
         let file =
             File::create(&path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
@@ -475,14 +480,23 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
 /// Decodes every sprite file (a member whose last path component has no extension).
 fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
     let mut report = Report::new();
-    let (mut files, mut frames, mut shadows, mut extras, mut failed) = (0, 0, 0, 0, 0);
+    let (mut files, mut frames, mut shadows, mut extras, mut failed, mut warned) =
+        (0, 0, 0, 0, 0, 0);
     for member in vfs.list(None) {
         if !sprite::is_sprite_member(&member) {
             continue;
         }
         files += 1;
         match sprite::load(vfs, &member) {
-            Ok((sprite, _)) => {
+            Ok((sprite, _, warning)) => {
+                if let Some(warning) = warning {
+                    warned += 1;
+                    report.line(format_args!(
+                        "warning {}: {}",
+                        member.escape_debug(),
+                        warning.escape_debug()
+                    ));
+                }
                 frames += sprite.frames.len();
                 shadows += sprite.all_frames().filter(|frame| frame.shadow).count();
                 extras += usize::from(sprite.extra.is_some());
@@ -500,7 +514,7 @@ fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
     }
     report.line(format_args!(
         "{files} sprite files, {frames} frames, {shadows} shadow frames, \
-         {extras} files with an extra frame, {failed} failed"
+         {extras} files with an extra frame, {failed} failed, {warned} with a warning"
     ));
     report.finish()?;
     match failed {
@@ -665,18 +679,27 @@ fn render_ani(vfs: &Vfs, member: String, dir: &Path) -> Result<(), CliError> {
         member.escape_debug(),
         animation.sprites.len(),
     ));
+    if !matches!(animation.sprites.len(), 1 | 4 | 5) {
+        report.line(format_args!(
+            "note: a set of {} files is not chosen by screen direction; the images show the rule for it anyway",
+            animation.sprites.len()
+        ));
+    }
+    if let Some(warning) = &animation.warning {
+        report.line(format_args!("warning: {}", warning.escape_debug()));
+    }
     // A set of shadow frames only darkens what is behind it: show it on white.
     let on_white = animation
         .sprites
         .iter()
-        .any(|(sprite, _)| sprite.frames.first().is_some_and(|frame| frame.shadow));
+        .any(|loaded| loaded.0.frames.first().is_some_and(|frame| frame.shadow));
     for (direction, name) in DIRECTIONS.iter().enumerate() {
         let view = animation.view(direction as u8);
         let mut image = Framebuffer::new(width as u32, height as u32);
         if on_white {
             image.pixels.fill(255);
         }
-        animation.draw(view, 0, &mut image, anchor_x as i32, anchor_y as i32)?;
+        animation.draw(view, 0, &mut image, anchor_x as i32, anchor_y as i32);
         let file = format!("dir{direction}-{name}.png");
         let path = dir.join(&file);
         let out =
@@ -697,11 +720,13 @@ fn render_ani(vfs: &Vfs, member: String, dir: &Path) -> Result<(), CliError> {
     report.finish()
 }
 
-/// Loads every `.ani` member and the sprite files it names. A set that cannot be read, or one of
-/// whose sprite files cannot be loaded, fails: the original would not load it either.
+/// Loads every `.ani` member and the sprite files it names. A set that cannot be read, or one
+/// with a sprite file that cannot be found, fails, as in the original. A defective palette is a
+/// warning: the set loads.
 fn check_anis(vfs: &Vfs) -> Result<(), CliError> {
     let mut report = Report::new();
-    let (mut sets, mut files, mut missing, mut mirrored, mut failed) = (0, 0, 0, 0, 0);
+    let (mut sets, mut files, mut missing, mut mirrored, mut failed, mut warned) =
+        (0, 0, 0, 0, 0, 0);
     let mut sizes = std::collections::BTreeMap::new();
     let (mut exact, mut larger, mut different) = (0, 0, 0);
     for member in vfs.list(None) {
@@ -734,7 +759,17 @@ fn check_anis(vfs: &Vfs) -> Result<(), CliError> {
                     (_, true) => larger += 1,
                     _ => different += 1,
                 }
-                report.line(format_args!("ok {}", member.escape_debug()));
+                match &animation.warning {
+                    Some(warning) => {
+                        warned += 1;
+                        report.line(format_args!(
+                            "warning {}: {}",
+                            member.escape_debug(),
+                            warning.escape_debug()
+                        ));
+                    }
+                    None => report.line(format_args!("ok {}", member.escape_debug())),
+                }
             }
             Err(err) => {
                 failed += 1;
@@ -749,8 +784,9 @@ fn check_anis(vfs: &Vfs) -> Result<(), CliError> {
     }
     let sizes: Vec<String> = sizes.iter().map(|(n, c)| format!("{n}:{c}")).collect();
     report.line(format_args!(
-        "{sets} animation sets, {files} sprite files, {missing} missing files, \
-         {mirrored} mirrored views, {failed} failed; sets by file count {}; \
+        "{sets} animation sets, {files} sprite file references, {missing} missing files, \
+         {mirrored} mirrored views by the file-count rule, {failed} failed, \
+         {warned} with a warning; sets by file count {}; \
          box: {exact} equal to the frame extents, {larger} larger, {different} different",
         sizes.join(" ")
     ));
