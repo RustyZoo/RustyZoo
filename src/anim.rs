@@ -758,4 +758,43 @@ mod tests {
         let message = AnimSet::load(&vfs, "nothing.ani").unwrap_err().to_string();
         assert!(message.contains("no such member: nothing.ani"), "{message}");
     }
+
+    /// The facts below were measured on Zoo Tycoon: Complete Collection.
+    #[test]
+    #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+    fn full_game_facts() {
+        let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+        let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+        let open = |member: &str| {
+            let set = AnimSet::load(&vfs, member).unwrap();
+            Animation::open(&vfs, set).unwrap()
+        };
+
+        let walk = open("animals/lion/f/walk/walk.ani");
+        assert_eq!(walk.sprites.len(), 5);
+        assert_eq!(walk.extents(), Some([-26, -28, 22, 13]));
+        assert_eq!(
+            (walk.set.x0, walk.set.y0, walk.set.x1, walk.set.y1),
+            (-26, -28, 22, 13)
+        );
+        // Facing 3 with rotation 2 is the screen direction 6: the east file, mirrored.
+        assert_eq!(
+            walk.view_of(3, 2),
+            View {
+                file: 2,
+                mirror: true
+            }
+        );
+
+        let aviary = open("objects/aviary/idle/idle.ani");
+        assert_eq!(aviary.sprites.len(), 4);
+        assert_eq!(aviary.extents(), Some([-204, -220, 204, 103]));
+        assert_eq!(
+            aviary.view_of(2, 0),
+            View {
+                file: 0,
+                mirror: false
+            }
+        );
+    }
 }
