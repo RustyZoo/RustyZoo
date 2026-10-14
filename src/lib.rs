@@ -1,6 +1,7 @@
 //! Platform-free core of RustyZoo. It draws into memory; the shell in `main.rs` presents it.
 
 pub mod config;
+pub mod entity;
 pub mod pe;
 pub mod sprite;
 pub mod strings;

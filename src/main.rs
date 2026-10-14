@@ -9,6 +9,7 @@ use std::process::ExitCode;
 
 use rustyzoo::Framebuffer;
 use rustyzoo::config::Config;
+use rustyzoo::entity::Catalogue;
 use rustyzoo::pe;
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
@@ -33,6 +34,9 @@ usage: rustyzoo [--data <dir>] <command>
   strings             print the texts of all lang*.dll of the install folder as the game
                       resolves them: the libraries in lookup order (LIB lines), then
                       ID<TAB>library<TAB>text and TEXT<TAB>name<TAB>library<TAB>bytes
+  types               list the entity types: class, type, subtype, name id, footprint (half
+                      tiles), the .ani member of the base animation and whether it exists;
+                      then counts per class; exit 1 if a registry or definition file fails
   check-config        read every configuration file of the game, report empty files and ignored text
   dump-sprite <member> <dir>
                       write the frames of a sprite file as PNG files into <dir>, and print them
@@ -95,6 +99,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             dump_strings(game_folder(data_dir)?, dll, Some(name))
         }
         ["strings"] => merged_strings(&game_folder(data_dir)?),
+        ["types"] => types(&open_game(data_dir)?),
         ["check-config"] => check_config(&open_game(data_dir)?),
         ["dump-sprite", member, dir] => dump_sprite(&open_game(data_dir)?, member, Path::new(dir)),
         ["check-sprites"] => check_sprites(&open_game(data_dir)?),
@@ -323,6 +328,42 @@ fn report_config(vfs: &Vfs, out: &mut impl Write, failed: &mut usize) -> io::Res
          {after} after a broken header; {failed} unreadable",
         failed = *failed
     )
+}
+
+/// Prints one line per entity type, then the counts per class. Warnings go to standard error.
+fn types(vfs: &Vfs) -> Result<(), CliError> {
+    let catalogue = Catalogue::load(vfs)?;
+    for warning in &catalogue.warnings {
+        let _ = writeln!(io::stderr(), "rustyzoo: warning: {warning}");
+    }
+    let name = |bytes: &[u8]| escape(&String::from_utf8_lossy(bytes));
+    let mut report = Report::new();
+    for ty in &catalogue.types {
+        let [x, y, z] = ty.footprint;
+        let (member, exists) = ty.base_animation().map_or(("-", false), |animation| {
+            (&animation.member[..], vfs.contains(&animation.member))
+        });
+        report.line(format_args!(
+            "{}\t{}\t{}\t{}\t{x}x{y}x{z}\t{}\t{}",
+            ty.class,
+            name(&ty.type_name),
+            name(&ty.subtype),
+            ty.name_id,
+            escape(member),
+            if exists { "yes" } else { "no" },
+        ));
+    }
+    let counts: Vec<String> = catalogue
+        .counts()
+        .iter()
+        .map(|(class, count)| format!("{class} {count}"))
+        .collect();
+    report.line(format_args!(
+        "{} types: {}",
+        catalogue.types.len(),
+        counts.join(", ")
+    ));
+    report.finish()
 }
 
 /// A reader that stops early (`| head`) is not an error of ours.

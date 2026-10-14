@@ -347,6 +347,16 @@ impl Vfs {
         paths
     }
 
+    /// Whether [`read`](Vfs::read) can find the name: the copy that wins is not empty (an empty
+    /// loose file hides the name from all later sources). The content is not checked, so a
+    /// damaged member still counts. The path is matched like in [`Vfs::read`].
+    pub fn contains(&self, path: &str) -> bool {
+        self.which(path)
+            .ok()
+            .and_then(|copies| copies.first().map(|copy| copy.size > 0))
+            .unwrap_or(false)
+    }
+
     fn distinct_names(&self) -> HashSet<&String> {
         self.sources.iter().flat_map(Source::names).collect()
     }
@@ -594,7 +604,7 @@ fn first_record_wins(name: &str) -> bool {
 }
 
 /// Lower-cases ASCII letters and turns `\` into `/`.
-fn normalise(path: &str) -> String {
+pub fn normalise(path: &str) -> String {
     path.chars()
         .map(|c| {
             if c == '\\' {
