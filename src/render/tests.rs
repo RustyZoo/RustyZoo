@@ -1,4 +1,4 @@
-use super::order::{Item, Kind, Object, Scene, paint_order, project, sort_key};
+use super::order::{Glass, Item, Kind, Object, Scene, TankSpec, paint_order, project, sort_key};
 use super::*;
 use crate::sprite::tests::Install;
 use crate::zoo::Tile;
@@ -35,6 +35,7 @@ fn unit(x: i32, y: i32) -> Object {
         facing: 0,
         footprint: (1, 1),
         late: false,
+        height: 0,
     }
 }
 
@@ -104,6 +105,7 @@ fn objects_of_a_tile_go_by_view_y_then_x_and_the_top_quadrant_goes_behind() {
         facing: 0,
         footprint: (1, 1),
         late: false,
+        height: 0,
     };
     let high = unit(48, 0);
     let low = unit(16, 48);
@@ -143,6 +145,7 @@ fn a_big_object_is_painted_once_on_its_front_tile_and_in_front_of_the_units_ther
         facing: 0,
         footprint: (4, 4),
         late: false,
+        height: 0,
     };
     for r in 0..4u8 {
         let mut objects = vec![building];
@@ -219,6 +222,7 @@ fn a_fence_ends_a_group_like_a_step() {
             facing: 0,
             footprint: (1, 1),
             late: false,
+            height: 0,
         })
         .collect();
     assert_group_behind_first(&flat_map(5, 5), fences);
@@ -234,6 +238,7 @@ fn a_fence_stands_on_the_edge_its_facing_names_and_is_painted_once() {
         facing,
         footprint: (1, 1),
         late: false,
+        height: 0,
     };
     // The upper-left and the lower-right edge of tile (1,1) at rotation 0, and a second fence on
     // the first edge, which finds the slot taken: the original drops it at load.
@@ -270,6 +275,7 @@ fn an_object_takes_exactly_its_quadrants_or_none() {
         facing,
         footprint,
         late: false,
+        height: 0,
     };
     let quadrants = |objects: Vec<Object>| {
         let scene = Scene::new(4, 4, 0, &flat_map(4, 4), objects);
@@ -306,6 +312,7 @@ fn a_run_along_a_row_stops_at_the_tiles_of_a_big_object() {
         facing: 0,
         footprint: (4, 4),
         late: false,
+        height: 0,
     };
     let scene = Scene::new(4, 4, 0, &flat_map(4, 4), vec![building]);
     let t = |x: usize, y: usize| Item::Terrain(y * 4 + x);
@@ -343,6 +350,7 @@ fn ambient_animals_are_overlays_painted_after_the_objects_of_their_tile() {
         facing: 0,
         footprint: (1, 1),
         late: false,
+        height: 0,
     };
     // The bird is first in the file but holds no quadrant and is painted after the scenery.
     let scene = Scene::new(
@@ -417,6 +425,7 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
         height: 2,
         entrance: (0, 0),
         habitat_count: 0,
+        tanks: Vec::new(),
         id_counter: 0,
         tiles: flat_map(2, 2),
         entities: Vec::new(),
@@ -465,6 +474,7 @@ fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
+            movement_mode: 0,
         }),
     };
     Zoo {
@@ -475,6 +485,7 @@ fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
         height: 1,
         entrance: (0, 0),
         habitat_count: 0,
+        tanks: Vec::new(),
         id_counter: 0,
         tiles: flat_map(1, 1),
         entities: entities.iter().map(entity).collect(),
@@ -659,6 +670,7 @@ fn every_tile_and_object_is_painted_exactly_once_on_a_messy_map() {
                     1 + random(&mut seed) as i32 % 6,
                 ),
                 late: random(&mut seed).is_multiple_of(4),
+                height: 0,
             });
         }
         let r = (round % 4) as u8;
@@ -717,6 +729,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
+            movement_mode: 0,
         }),
     };
     let zoo = Zoo {
@@ -727,6 +740,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
         height: 3,
         entrance: (0, 0),
         habitat_count: 0,
+        tanks: Vec::new(),
         id_counter: 0,
         tiles,
         entities: vec![
@@ -765,6 +779,7 @@ fn a_tile_the_cache_lacks_is_rendered_at_run_time() {
         height: 2,
         entrance: (0, 0),
         habitat_count: 0,
+        tanks: Vec::new(),
         id_counter: 0,
         tiles: flat_map(2, 2),
         entities: Vec::new(),
@@ -804,6 +819,7 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
         height: 2,
         entrance: (0, 0),
         habitat_count: 0,
+        tanks: Vec::new(),
         id_counter: 0,
         tiles,
         entities: Vec::new(),
@@ -883,6 +899,7 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
             height: 1,
             entrance: (0, 0),
             habitat_count: 0,
+            tanks: Vec::new(),
             id_counter: 0,
             tiles: flat_map(1, 1),
             entities: vec![crate::zoo::Entity {
@@ -899,6 +916,7 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
                     name: String::new(),
                     colors: stored.to_vec(),
                     fence: None,
+                    movement_mode: 0,
                 }),
             }],
         };
@@ -938,4 +956,330 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
     // group takes the variant.
     let other = draw("recolour-other", "1", "objects/other/other.pal", &[0]);
     assert_eq!(other, [[1, 1, 1], [100, 0, 0], [101, 0, 0]]);
+}
+
+/// A 4 by 4 map with a tank on the middle four tiles, `height` and `level` steps, a wall on every
+/// outer edge of it (objects 0 to 7) and then the `extra` objects.
+fn tank_scene(r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
+    let mut objects = Vec::new();
+    for (tx, ty) in [(1, 1), (2, 1), (1, 2), (2, 2)] {
+        for facing in [0u32, 2, 4, 6] {
+            // The wall stands on the edge if there is no tank tile across it.
+            let (dx, dy) = [(0, -1), (1, 0), (0, 1), (-1, 0)][facing as usize / 2];
+            if (1..=2).contains(&(tx + dx)) && (1..=2).contains(&(ty + dy)) {
+                continue;
+            }
+            let (x, y) = match facing {
+                0 => (64 * tx + 32, 64 * ty),
+                2 => (64 * tx + 63, 64 * ty + 32),
+                4 => (64 * tx + 32, 64 * ty + 63),
+                _ => (64 * tx, 64 * ty + 32),
+            };
+            objects.push(Object {
+                kind: Kind::Wall,
+                facing,
+                ..unit(x, y)
+            });
+        }
+    }
+    assert_eq!(objects.len(), 8);
+    objects.extend(extra);
+    let fences: Vec<bool> = objects.iter().map(|o| o.kind == Kind::Wall).collect();
+    let mut scene = Scene::new(4, 4, r, &flat_map(4, 4), objects);
+    scene.set_tanks(
+        &[TankSpec {
+            tile: (1, 1),
+            gate: (-1, -1),
+            height,
+            level,
+        }],
+        &fences,
+    );
+    scene
+}
+
+fn position(items: &[Item], wanted: impl Fn(&Item) -> bool) -> usize {
+    items.iter().position(wanted).expect("the item is painted")
+}
+
+#[test]
+fn a_tank_is_painted_in_layers_floor_walls_water_contents_front_walls() {
+    // A unit under the water (surface at 16 * 2 = 32), one above it.
+    let under = Object {
+        z: 8,
+        ..unit_on(1, 1)
+    };
+    let above = Object {
+        z: 48,
+        ..unit_on(2, 2)
+    };
+    for r in 0..4u8 {
+        let scene = tank_scene(r, 3, 2, vec![under, above]);
+        // The tiles of the tank and its eight walls are found.
+        assert!(
+            (0..8).all(|w| scene.wall_tank(w) == Some(0)),
+            "rotation {r}"
+        );
+        let tiles = [5, 6, 9, 10];
+        assert!(tiles.iter().all(|&t| scene.tank_of(t) == Some(0)));
+        assert_eq!(scene.tank_of(0), None);
+        let items = paint_order(&scene);
+        let at = |wanted: Item| position(&items, |&i| i == wanted);
+        let count = |wanted: fn(&Item) -> bool| items.iter().filter(|i| wanted(i)).count();
+        // Which walls are at the back and at the front of the view.
+        let front = [
+            (4 + 8 - 2 * usize::from(r)) % 8,
+            (6 + 8 - 2 * usize::from(r)) % 8,
+        ];
+        let is_front = |w: usize| front.contains(&(scene.objects[w].facing as usize));
+        let (back, front): (Vec<usize>, Vec<usize>) = (0..8).partition(|&w| !is_front(w));
+
+        let floor = tiles.iter().map(|&t| at(Item::Terrain(t))).max().unwrap();
+        let (u, a) = (at(Item::Object(8)), at(Item::Object(9)));
+        let surface = position(&items, |i| matches!(i, Item::Surface { .. }));
+        let last_surface = items
+            .iter()
+            .rposition(|i| matches!(i, Item::Surface { .. }))
+            .unwrap();
+        for &w in &back {
+            assert!(
+                floor < at(Item::Edge(w)) && at(Item::Edge(w)) < u,
+                "back wall {w}"
+            );
+        }
+        // The shadow, then the submerged unit, the underwater pictures of the unit above, the
+        // four pieces of the surface, and the unit above after all of them.
+        assert!(at(Item::Shadow(8)) < u && u < at(Item::Under(9)));
+        assert!(at(Item::Under(9)) < surface);
+        assert!(last_surface < a);
+        // The front walls come last, each after its faces.
+        for &w in &front {
+            assert!(a < at(Item::Edge(w)), "front wall {w}");
+        }
+        let first_face = position(&items, |i| matches!(i, Item::Face { .. }));
+        assert!(a < first_face);
+        assert_eq!(count(|i| matches!(i, Item::Surface { .. })), 4);
+        assert_eq!(count(|i| matches!(i, Item::Quarter { .. })), 0);
+        // Water faces up to the level and glass from there to the top of the walls.
+        assert_eq!(count(|i| matches!(i, Item::Face { .. })), 4 * 2);
+        let panes = |glass: fn(&Glass) -> bool| {
+            items
+                .iter()
+                .filter(|i| matches!(i, Item::Pane { glass: g, .. } if glass(g)))
+                .count()
+        };
+        assert_eq!(
+            panes(|g| matches!(g, Glass::UpperLeft | Glass::UpperRight)),
+            4
+        );
+        assert_eq!(
+            panes(|g| matches!(g, Glass::LowerLeft | Glass::LowerRight)),
+            4
+        );
+        // Every wall is painted once.
+        for w in 0..8 {
+            assert_eq!(items.iter().filter(|&&i| i == Item::Edge(w)).count(), 1);
+        }
+    }
+}
+
+#[test]
+fn a_tank_without_water_has_no_surface_and_no_shadows() {
+    let scene = tank_scene(0, 3, 0, vec![unit_on(1, 1)]);
+    let items = paint_order(&scene);
+    assert!(!items.iter().any(|i| matches!(
+        i,
+        Item::Surface { .. } | Item::Face { .. } | Item::Shadow(_)
+    )));
+    // The glass goes all the way down.
+    let panes = items
+        .iter()
+        .filter(|i| matches!(i, Item::Pane { .. }))
+        .count();
+    assert_eq!(panes, 8 * 3);
+}
+
+#[test]
+fn an_object_that_reaches_the_surface_is_painted_with_quarters_of_the_water() {
+    let quarters_of = |items: &[Item]| -> Vec<(usize, u8)> {
+        items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Quarter { tile, quad, .. } => Some((*tile, *quad)),
+                _ => None,
+            })
+            .collect()
+    };
+    let whole = |items: &[Item]| {
+        items
+            .iter()
+            .filter(|i| matches!(i, Item::Surface { .. }))
+            .count()
+    };
+    // A tree 5 steps tall in a tank with 2 steps of water. A tile with such an object starts a
+    // sub-group of its own, painted tile by tile: the three other tiles keep a whole surface,
+    // and the tile of the tree gets the quarters of the top and of the right quadrant (the tree
+    // stands in the right one at this rotation) before the tree, the others after it.
+    let tree = |tx, ty| Object {
+        kind: Kind::Fixed,
+        height: 5,
+        ..unit_on(tx, ty)
+    };
+    for (tx, ty, tile) in [(1, 1, 5), (2, 2, 10), (2, 1, 6), (1, 2, 9)] {
+        let items = paint_order(&tank_scene(0, 3, 2, vec![tree(tx, ty)]));
+        let quarters = quarters_of(&items);
+        assert_eq!(quarters.len(), 4, "tree on tile {tile}");
+        assert!(quarters.iter().all(|&(t, _)| t == tile));
+        assert_eq!(whole(&items), 3, "tree on tile {tile}");
+        let tree_at = position(&items, |&i| i == Item::Object(8));
+        assert_eq!(quarters_of(&items[..tree_at]), [(tile, 0), (tile, 1)]);
+    }
+}
+
+#[test]
+fn a_big_object_that_reaches_the_surface_keeps_its_tiles_in_one_sub_group() {
+    // A statue of 2 by 2 tiles in the middle of the tank, taller than the water is deep: its
+    // sub-group goes on over the tiles it stands on, so the whole tank is painted tile by tile.
+    let statue = Object {
+        kind: Kind::Fixed,
+        height: 5,
+        footprint: (4, 4),
+        ..unit(128, 128)
+    };
+    let items = paint_order(&tank_scene(0, 3, 2, vec![statue]));
+    let quarters = items
+        .iter()
+        .filter(|i| matches!(i, Item::Quarter { .. }))
+        .count();
+    assert_eq!(quarters, 16);
+    assert!(!items.iter().any(|i| matches!(i, Item::Surface { .. })));
+    // The statue is painted once.
+    assert_eq!(items.iter().filter(|&&i| i == Item::Object(8)).count(), 1);
+}
+
+#[test]
+fn the_area_of_a_tank_is_filled_up_to_the_habitat_fences_whatever_the_heights() {
+    // A 4 by 4 map with a fence around the 2 by 2 tiles at the top left, and a cliff between two
+    // of them: the fill does not look at heights.
+    let mut tiles = flat_map(4, 4);
+    step(&mut tiles, 4, 1, 0, 6);
+    let mut fences = Vec::new();
+    let mut objects = Vec::new();
+    for (x, y, facing) in [
+        (32, 128 - 1, 4),
+        (96, 128 - 1, 4),
+        (128 - 1, 32, 2),
+        (128 - 1, 96, 2),
+    ] {
+        objects.push(Object {
+            kind: Kind::Edge,
+            facing,
+            ..unit(x, y)
+        });
+        fences.push(true);
+    }
+    // A fence that is not a habitat fence ends nothing.
+    objects.push(Object {
+        kind: Kind::Edge,
+        facing: 2,
+        ..unit(64 * 2 + 63, 32)
+    });
+    fences.push(false);
+    let mut scene = Scene::new(4, 4, 0, &tiles, objects);
+    let spec = |tile| TankSpec {
+        tile,
+        gate: (-1, -1),
+        height: 3,
+        level: 2,
+    };
+    scene.set_tanks(&[spec((0, 0))], &fences);
+    let inside: Vec<usize> = (0..16).filter(|&t| scene.tank_of(t).is_some()).collect();
+    assert_eq!(inside, [0, 1, 4, 5]);
+    // A second exhibit that starts inside takes the tiles over; one that starts outside stays
+    // outside the fence.
+    scene.set_tanks(&[spec((0, 0)), spec((1, 1))], &fences);
+    assert!(inside.iter().all(|&t| scene.tank_of(t) == Some(1)));
+    scene.set_tanks(&[spec((0, 0)), spec((3, 3))], &fences);
+    assert_eq!(scene.tank_of(15), Some(1));
+    assert_eq!(scene.tank_of(0), Some(0));
+    assert_eq!((0..16).filter(|&t| scene.tank_of(t) == Some(1)).count(), 12);
+}
+
+#[test]
+fn the_ground_height_follows_the_shape() {
+    use super::order::ground_height;
+    let tile = |elevation, shape| Tile {
+        elevation,
+        shape,
+        ..flat()
+    };
+    assert_eq!(ground_height(&tile(3, 0x00), 32, 32), 48);
+    assert_eq!(ground_height(&tile(0, 0x50), 64, 0), 16);
+    assert_eq!(ground_height(&tile(0, 0x50), 32, 32), 8);
+    assert_eq!(ground_height(&tile(0, 0x54), 32, 32), 16);
+    assert_eq!(ground_height(&tile(-2, 0x01), 32, 32), -48);
+}
+
+#[test]
+fn odd_tank_values_never_break_the_order() {
+    let under = Object {
+        z: -500,
+        ..unit_on(1, 1)
+    };
+    for (height, level) in [(0, 0), (0, 5), (1, 1), (3, 9), (64, 64), (64, 0), (-3, -2)] {
+        for r in 0..4u8 {
+            let scene = tank_scene(r, height, level, vec![under]);
+            let items = paint_order(&scene);
+            for t in 0..16 {
+                let n = items.iter().filter(|&&i| i == Item::Terrain(t)).count();
+                assert_eq!(n, 1, "tile {t} at height {height}, level {level}");
+            }
+        }
+    }
+    // A tank whose tile is off the map owns no tile.
+    let mut scene = Scene::new(2, 2, 0, &flat_map(2, 2), Vec::new());
+    scene.set_tanks(
+        &[TankSpec {
+            tile: (-1, 7),
+            gate: (5, 5),
+            height: 3,
+            level: 2,
+        }],
+        &[],
+    );
+    assert!((0..4).all(|t| scene.tank_of(t).is_none()));
+    assert_eq!(paint_order(&scene).len(), 4);
+}
+
+#[test]
+fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
+    let config = std::sync::Arc::new(
+        Config::parse(b"[Characteristics/Integers]\ncUsesRealShadows = 1\n").unwrap(),
+    );
+    let ty = |class| EntityType {
+        class,
+        type_name: Vec::new(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(config.clone()),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let meta = |ty, mode| Meta {
+        ty,
+        colors: &[],
+        life: None,
+        mode,
+        portal: false,
+    };
+    let (animal, guest) = (ty("animals"), ty("guests"));
+    assert!(tank::casts_shadow(&meta(&animal, 3)));
+    assert!(!tank::casts_shadow(&meta(&animal, 2)));
+    assert!(tank::casts_shadow(&meta(&guest, 2)));
+    let plain = EntityType {
+        config: None,
+        ..ty("animals")
+    };
+    assert!(!tank::casts_shadow(&meta(&plain, 3)));
 }

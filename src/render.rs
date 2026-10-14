@@ -5,11 +5,14 @@
 //! when the cache has none, [`crate::ground::Renderer`] makes it. Cliffs are drawn by the tile in
 //! front of them from `ztst/fringe`, or, when the data lacks that copy, from the root bitmaps
 //! ([`crate::bitmap`]). Objects are drawn with the base animation of their type; a building the
-//! player can recolour is drawn with the colour variants its record stores.
+//! player can recolour is drawn with the colour variants its record stores. A tank exhibit is
+//! painted in layers (`tank.rs`): the water, its side faces and the glass are blended at one
+//! half over what is behind them, and the contents are drawn above or below the water.
 //! The order comes from [`order::paint_order`]; this module turns each item of it into pictures
 //! placed in view space, then draws them all on a canvas that holds them.
 
 pub mod order;
+mod tank;
 #[cfg(test)]
 mod tests;
 
@@ -24,10 +27,10 @@ use crate::bitmap;
 use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
-use crate::sprite::{Frame, Palette, Sprite};
+use crate::sprite::{Blend, Frame, Palette, Sprite};
 use crate::vfs::Vfs;
 use crate::zoo::{Tile, Zoo};
-use order::{Item, Kind, Object, Scene, map_direction, paint_order, project};
+use order::{Item, Kind, Object, Scene, TankSpec, map_direction, paint_order, project};
 
 /// The most pixels of the picture; a 150 by 150 map with its relief needs about 55 million.
 pub const MAX_PIXELS: u64 = 100_000_000;
@@ -122,6 +125,8 @@ enum Pic {
     Rendered(Rc<Picture>),
     /// An animation seen from a view, with the palette to draw it with in place of its own.
     Anim(Rc<Animation>, View, Option<Palette>),
+    /// An animation drawn blended with what is behind it.
+    Blended(Rc<Animation>, View, Blend),
 }
 
 /// A picture placed in view space: `(x, y)` is its anchor.
@@ -146,7 +151,7 @@ impl Placed {
         let frames: Vec<(&Frame, bool)> = match &self.pic {
             Pic::Flat(flat) => vec![(&flat.0, false)],
             Pic::Rendered(_) => return None,
-            Pic::Anim(anim, view, _) => {
+            Pic::Anim(anim, view, _) | Pic::Blended(anim, view, _) => {
                 let sprite = &anim.sprites.get(view.file)?.0;
                 sprite
                     .extra
@@ -199,6 +204,7 @@ impl Placed {
             Pic::Anim(anim, view, palette) => {
                 anim.draw_with(*view, 0, target, x, y, palette.as_ref())
             }
+            Pic::Blended(anim, view, blend) => anim.draw_blended(*view, 0, target, (x, y), *blend),
         }
     }
 }
@@ -319,6 +325,10 @@ pub struct MapRenderer<'a> {
     palettes: HashMap<String, Option<Palette>>,
     /// `building.ai`, which holds the colour groups the buildings share.
     groups: Rc<Config>,
+    /// The purities below which tank water is murky and very murky (`tanks.cfg`).
+    murky: (i32, i32),
+    /// `[advanced] useTankShadows` of the ini file: units cast shadows on the floor of a tank.
+    tank_shadows: bool,
 }
 
 impl<'a> MapRenderer<'a> {
@@ -346,6 +356,27 @@ impl<'a> MapRenderer<'a> {
                 grid.insert(shape, (sprite("northgrid"), sprite("eastgrid")));
             }
         }
+        // The original reads the very murky limit and then overwrites it with the extremely murky
+        // one, which it does read from the file (map drawing 9.7.1).
+        let tanks = read("tanks.cfg");
+        let limit = |key: &str| {
+            tanks
+                .section("tank")
+                .and_then(|s| s.get(key))
+                .and_then(to_int)
+        };
+        let murky = limit("murkyWaterPurity").unwrap_or(60);
+        let very_murky = limit("extremelyMurkyWaterPurity")
+            .or_else(|| limit("veryMurkyWaterPurity"))
+            .unwrap_or(30);
+        let tank_shadows = Config::parse(vfs.ini())
+            .ok()
+            .and_then(|c| {
+                c.section("advanced")?
+                    .get("useTankShadows")
+                    .and_then(to_int)
+            })
+            .is_none_or(|v| v == 1);
         MapRenderer {
             vfs,
             catalogue,
@@ -358,6 +389,8 @@ impl<'a> MapRenderer<'a> {
             anims: HashMap::new(),
             palettes: HashMap::new(),
             groups,
+            murky: (murky, very_murky),
+            tank_shadows,
         }
     }
 
@@ -522,7 +555,8 @@ impl<'a> MapRenderer<'a> {
             };
             let kind = match entity.class.as_str() {
                 "paths" => Kind::Path,
-                "fences" | "tankwall" => Kind::Edge,
+                "fences" => Kind::Edge,
+                "tankwall" => Kind::Wall,
                 "ambient" => Kind::Overlay,
                 "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
                     Kind::Unit
@@ -550,22 +584,93 @@ impl<'a> MapRenderer<'a> {
                 facing: c.rotation % 8,
                 footprint: (fx, fy),
                 late: draws_late(ty),
+                height: ty.height,
             });
             metas.push(Meta {
                 ty,
                 colors: &c.colors,
                 life: c.fence.map(|f| f.life as i32),
+                mode: c.movement_mode,
+                portal: c.fence.is_some_and(|f| f.portal),
             });
         }
-        let scene = Scene::new(width, height, rotation, &tiles, objects);
+        let mut scene = Scene::new(width, height, rotation, &tiles, objects);
+        let cut = |n: u32| i32::try_from(n.min(order::MAX_ELEVATION as u32)).unwrap_or(0);
+        scene.set_tanks(
+            &zoo.tanks
+                .iter()
+                .map(|t| TankSpec {
+                    tile: t.tile,
+                    gate: t.gate,
+                    height: cut(t.height),
+                    level: cut(t.level),
+                })
+                .collect::<Vec<_>>(),
+            &metas
+                .iter()
+                .map(|m| habitat_fence(m.ty))
+                .collect::<Vec<_>>(),
+        );
+        let looks: Vec<_> = zoo
+            .tanks
+            .iter()
+            .map(|t| self.look(t.salt, t.purity))
+            .collect();
+        // The game puts a ripple on the clean water against every active wall of a tank.
+        let first_ripple = metas.len();
+        let ripple = self.catalogue.find("objects", b"other", b"tankripl");
+        for (k, (tank, look)) in scene.tanks.clone().iter().zip(&looks).enumerate() {
+            let Some(ty) = ripple.filter(|_| tank.level > 0 && look.is_clean()) else {
+                continue;
+            };
+            let inside: Vec<usize> = (0..tiles.len())
+                .filter(|&t| scene.tank_of(t) == Some(k))
+                .collect();
+            for t in inside {
+                for d in [0, 2, 4, 6] {
+                    let Some(w) = scene
+                        .edge_object(t, d)
+                        .filter(|&w| scene.wall_tank(w) == Some(k))
+                    else {
+                        continue;
+                    };
+                    let wall = scene.objects[w];
+                    scene.add_transient(
+                        t,
+                        Object {
+                            kind: Kind::Unit,
+                            z: scene.surface(t).unwrap_or(0),
+                            footprint: (1, 1),
+                            late: false,
+                            height: 0,
+                            ..wall
+                        },
+                    );
+                    metas.push(Meta {
+                        ty,
+                        colors: &[],
+                        life: None,
+                        mode: 0,
+                        portal: false,
+                    });
+                }
+            }
+        }
 
         let mut placed: Vec<Placed> = Vec::new();
         for item in paint_order(&scene) {
             match item {
                 Item::Terrain(t) => self.terrain(&scene, t, &mut summary, &mut placed),
-                Item::Path(o) | Item::Edge(o) | Item::Object(o) => {
+                Item::Object(o) if o >= first_ripple => {
+                    self.object(&scene, o, &metas[o], &mut Summary::default(), &mut placed)
+                }
+                Item::Path(o) | Item::Object(o) => {
                     self.object(&scene, o, &metas[o], &mut summary, &mut placed)
                 }
+                Item::Edge(o) if scene.wall_tank(o).is_none() => {
+                    self.object(&scene, o, &metas[o], &mut summary, &mut placed)
+                }
+                item => self.tank_item(&scene, &metas, &looks, item, &mut summary, &mut placed),
             }
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
@@ -823,13 +928,28 @@ impl<'a> MapRenderer<'a> {
                     _ => row.to_string(),
                 }
             }
+            // An animal inside a tank swims: below the water it shows `subidle`, at the surface
+            // `surfidle` (sprite drawing 3.6).
+            "animals" if meta.mode == 3 => {
+                let t = scene.tile_at(obj.x, obj.y);
+                match t.and_then(|t| scene.surface(t)) {
+                    Some(surface) if obj.z >= surface => "surfidle".to_string(),
+                    Some(_) => "subidle".to_string(),
+                    None => "idle".to_string(),
+                }
+            }
             "animals" | "guests" | "keeper" | "maint" | "tour" => "idle".to_string(),
             _ => String::new(),
         };
-        let found = ty
-            .animations()
+        // Without the swimming pictures an animal in a tank shows its rest picture.
+        let tank = ty.class == "animals" && meta.mode == 3;
+        let mut animations = ty.animations();
+        let at = [wanted.as_str(), "idle"]
             .into_iter()
-            .find(|a| a.name == wanted && !wanted.is_empty());
+            .take(if tank { 2 } else { 1 })
+            .filter(|w| !w.is_empty())
+            .find_map(|w| animations.iter().position(|a| a.name == w));
+        let found = at.map(|i| animations.swap_remove(i));
         found.or_else(|| ty.base_animation()).and_then(|a| a.member)
     }
 
@@ -882,6 +1002,19 @@ struct Meta<'a> {
     colors: &'a [u8],
     /// The life of a fence or tank wall, if the record has one.
     life: Option<i32>,
+    /// The movement mode of a unit: 3 inside a tank.
+    mode: u32,
+    /// A tank wall that is a portal.
+    portal: bool,
+}
+
+/// Whether the type is a habitat fence: a fence or tank wall whose definition has a
+/// `[HabitatFence]` or `[TankFence]` section. Such a fence ends the area of an exhibit.
+fn habitat_fence(ty: &EntityType) -> bool {
+    matches!(ty.class, "fences" | "tankwall")
+        && ty.config.as_deref().is_some_and(|c| {
+            c.section("HabitatFence").is_some() || c.section("TankFence").is_some()
+        })
 }
 
 /// Whether the type asks to be painted after the other objects of its tile (`cDrawsLate`, read

@@ -38,6 +38,14 @@ pub const MAX_COLORS: usize = 256;
 /// stay. The ground shadow of an entity is drawn at this strength.
 pub const SHADOW_STRENGTH: f32 = 0.25;
 
+/// A blended draw: `strength` is the weight of the sprite (0.25 or 0.5), `black` draws every
+/// pixel of a normal frame in black instead of its palette colour (the shadow of a unit).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Blend {
+    pub strength: f32,
+    pub black: bool,
+}
+
 /// The colour drawn for a pixel value that the palette lacks (a short palette file, or a value
 /// beyond the count of the header). The original reads whatever lies past the colours, which
 /// is not reproducible; the engine draws opaque black, as the specification recommends.
@@ -233,16 +241,39 @@ impl Frame {
     /// Never fails. A value the palette lacks is drawn black; an empty palette (its file is
     /// missing) draws no ordinary frame at all.
     pub fn draw(&self, palette: &Palette, target: &mut Framebuffer, x: i32, y: i32) {
-        self.draw_at(palette, target, x, y, false);
+        self.draw_at(palette, target, x, y, false, None);
     }
 
     /// Like [`Frame::draw`], reflected left to right: pixel (`c`, `r`) of the frame goes to
     /// (`x - c`, `y + r`), so the frame covers the columns `x - (width - 1)` to `x`.
     pub fn draw_mirrored(&self, palette: &Palette, target: &mut Framebuffer, x: i32, y: i32) {
-        self.draw_at(palette, target, x, y, true);
+        self.draw_at(palette, target, x, y, true, None);
     }
 
-    fn draw_at(&self, palette: &Palette, target: &mut Framebuffer, x: i32, y: i32, mirror: bool) {
+    /// Like [`Frame::draw`] or [`Frame::draw_mirrored`], but blended with what is behind. Each
+    /// channel of a normal frame becomes `floor((dst + src) / 2)` at strength 0.5 and
+    /// `floor((floor((dst + src) / 2) + dst) / 2)` at 0.25 (sprite drawing 7.5); a shadow frame
+    /// darkens as in [`Frame::draw`] but at the strength given.
+    pub fn draw_blended(
+        &self,
+        palette: &Palette,
+        target: &mut Framebuffer,
+        (x, y): (i32, i32),
+        mirror: bool,
+        blend: Blend,
+    ) {
+        self.draw_at(palette, target, x, y, mirror, Some(blend));
+    }
+
+    fn draw_at(
+        &self,
+        palette: &Palette,
+        target: &mut Framebuffer,
+        x: i32,
+        y: i32,
+        mirror: bool,
+        blend: Option<Blend>,
+    ) {
         let skip_zero = palette.zero_is_transparent();
         let (width, height) = (i64::from(target.width), i64::from(target.height));
         // `parse` validated the rows, so the `else` and `unwrap_or_default` cases never happen.
@@ -284,13 +315,19 @@ impl Frame {
                         }
                         let pixel = &mut line[at as usize * 4..][..4];
                         if self.shadow {
-                            darken(pixel, SHADOW_STRENGTH);
+                            match blend {
+                                None => darken(pixel, SHADOW_STRENGTH),
+                                Some(blend) => darken_565(pixel, blend.strength),
+                            }
                         } else if let Some(&value) = pixels.get(i as usize)
                             && !palette.is_empty()
                             && !(value == 0 && skip_zero)
                         {
                             let [r, g, b, _] = palette.color(value).unwrap_or(MISSING_COLOR);
-                            pixel.copy_from_slice(&[r, g, b, 255]);
+                            match blend {
+                                None => pixel.copy_from_slice(&[r, g, b, 255]),
+                                Some(blend) => mix(pixel, [r, g, b], blend),
+                            }
                         }
                     }
                 }
@@ -324,6 +361,41 @@ fn darken(pixel: &mut [u8], strength: f32) {
         } else {
             (f32::from(*channel) * (1.0 - strength)) as u8
         };
+    }
+}
+
+/// The most each channel can hold on the original's 5-6-5 surface.
+const CHANNEL_MAX: [u16; 3] = [31, 63, 31];
+
+/// Blends the colour `src` into `pixel` (R, G, B, then alpha, which stays) on the original's
+/// 5-6-5 values: a channel is cut to its code (7.1), blended there, and written back as the
+/// smallest 8 bit value that has that code again.
+fn mix(pixel: &mut [u8], src: [u8; 3], blend: Blend) {
+    for ((channel, &src), max) in pixel.iter_mut().zip(&src).zip(CHANNEL_MAX) {
+        let dst = u16::from(*channel) * max / 255;
+        let src = u16::from(src) * u16::from(!blend.black) * max / 255;
+        let half = (dst + src) / 2;
+        let code = if blend.strength == 0.25 {
+            (half + dst) / 2
+        } else {
+            half
+        };
+        *channel = (code * 255).div_ceil(max) as u8;
+    }
+}
+
+/// Darkens `pixel` like [`darken`], on 5-6-5 values like [`mix`].
+fn darken_565(pixel: &mut [u8], strength: f32) {
+    for (channel, max) in pixel.iter_mut().zip(CHANNEL_MAX) {
+        let dst = u16::from(*channel) * max / 255;
+        let code = if strength == 0.25 {
+            dst * 3 / 4
+        } else if strength == 0.5 {
+            dst / 2
+        } else {
+            (f32::from(dst) * (1.0 - strength)) as u16
+        };
+        *channel = (code * 255).div_ceil(max) as u8;
     }
 }
 
@@ -623,6 +695,60 @@ pub(crate) mod tests {
         let mut empty = blank(6, 2);
         frame.draw(&palette(), &mut empty, 0, 0);
         assert_eq!(empty.pixels, [0; 48]);
+    }
+
+    /// A 4 by 2 picture of the grey 100.
+    fn grey() -> Framebuffer {
+        let mut image = blank(4, 2);
+        for p in image.pixels.as_chunks_mut::<4>().0 {
+            *p = [100, 100, 100, 255];
+        }
+        image
+    }
+
+    #[test]
+    fn blending_works_on_5_6_5_values() {
+        // Red 100 is the code 12, green 100 the code 24; the source red 20 has the code 2.
+        let mix = |src: [u8; 3], strength, black| {
+            let mut pixel = [100, 100, 100, 77];
+            super::mix(&mut pixel, src, Blend { strength, black });
+            pixel
+        };
+        // Half: (12 + 2) / 2 = 7, written as the smallest value with that code, 58.
+        assert_eq!(mix([20, 0, 0], 0.5, false), [58, 49, 50, 77]);
+        // A quarter of the sprite: ((12 + 2) / 2 + 12) / 2 = 9.
+        assert_eq!(mix([20, 0, 0], 0.25, false), [75, 73, 75, 77]);
+        assert_eq!(mix([20, 0, 0], 0.5, true), [50, 49, 50, 77]);
+        // The code of a colour mixed with itself is kept.
+        for v in 0..=255u8 {
+            let mut pixel = [v, v, v, 0];
+            super::mix(
+                &mut pixel,
+                [v, v, v],
+                Blend {
+                    strength: 0.5,
+                    black: false,
+                },
+            );
+            assert_eq!(pixel[0] as u16 * 31 / 255, v as u16 * 31 / 255, "value {v}");
+            assert_eq!(pixel[1] as u16 * 63 / 255, v as u16 * 63 / 255, "value {v}");
+        }
+        // Through a frame: the pixel with index 2 is green 30, the code 7: (24 + 7) / 2 = 15.
+        let frame = Frame::parse(&frame_data(2, 4, ROWS)).unwrap();
+        let mut image = grey();
+        let half = Blend {
+            strength: 0.5,
+            black: false,
+        };
+        frame.draw_blended(&palette(), &mut image, (0, 0), false, half);
+        assert_eq!(pixel(&image, 0, 1), [50, 61, 50, 255]);
+        assert_eq!(pixel(&image, 0, 0), [100, 100, 100, 255], "skipped");
+        // A shadow frame (two pixels in the first row) halves the code.
+        let shadow = Frame::parse(&frame_data(0x8002, 4, &[1, 0, 2, 0, 0])).unwrap();
+        let mut image = grey();
+        shadow.draw_blended(&palette(), &mut image, (0, 0), false, half);
+        assert_eq!(pixel(&image, 1, 0), [50, 49, 50, 255]);
+        assert_eq!(pixel(&image, 2, 0), [100, 100, 100, 255]);
     }
 
     #[test]

@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use crate::Framebuffer;
 use crate::config::{Config, to_int};
-use crate::sprite::{self, Palette, Sprite};
+use crate::sprite::{self, Blend, Palette, Sprite};
 use crate::vfs::{Vfs, normalise};
 
 /// Why an animation set could not be read or loaded. The message is a single line, but it may
@@ -230,7 +230,7 @@ impl Animation {
     ///
     /// Draws nothing if the file index or the frame number is out of range.
     pub fn draw(&self, view: View, frame: usize, target: &mut Framebuffer, x: i32, y: i32) {
-        self.draw_with(view, frame, target, x, y, None);
+        self.draw_inner(view, frame, target, (x, y), None, None);
     }
 
     /// As [`Animation::draw`], with `palette` in place of the palette of the sprite file.
@@ -243,6 +243,30 @@ impl Animation {
         y: i32,
         palette: Option<&Palette>,
     ) {
+        self.draw_inner(view, frame, target, (x, y), palette, None);
+    }
+
+    /// As [`Animation::draw`], blended with what is behind it.
+    pub fn draw_blended(
+        &self,
+        view: View,
+        frame: usize,
+        target: &mut Framebuffer,
+        at: (i32, i32),
+        blend: Blend,
+    ) {
+        self.draw_inner(view, frame, target, at, None, Some(blend));
+    }
+
+    fn draw_inner(
+        &self,
+        view: View,
+        frame: usize,
+        target: &mut Framebuffer,
+        (x, y): (i32, i32),
+        palette: Option<&Palette>,
+        blend: Option<Blend>,
+    ) {
         let Some((sprite, own)) = self.sprites.get(view.file).map(|s| &**s) else {
             return;
         };
@@ -252,12 +276,16 @@ impl Animation {
         };
         for frame in sprite.extra.iter().chain([frame]) {
             let top = y.saturating_sub(i32::from(frame.y_offset));
-            if view.mirror {
-                let right = x.saturating_add(i32::from(frame.x_offset));
-                frame.draw_mirrored(palette, target, right, top);
-            } else {
-                let left = x.saturating_sub(i32::from(frame.x_offset));
-                frame.draw(palette, target, left, top);
+            let left = match view.mirror {
+                true => x.saturating_add(i32::from(frame.x_offset)),
+                false => x.saturating_sub(i32::from(frame.x_offset)),
+            };
+            match (blend, view.mirror) {
+                (Some(blend), mirror) => {
+                    frame.draw_blended(palette, target, (left, top), mirror, blend)
+                }
+                (None, true) => frame.draw_mirrored(palette, target, left, top),
+                (None, false) => frame.draw(palette, target, left, top),
             }
         }
     }

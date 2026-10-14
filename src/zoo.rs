@@ -99,6 +99,8 @@ pub struct Common {
     pub colors: Vec<u8>,
     /// The condition of a fence or tank wall of a version from 55; `None` for everything else.
     pub fence: Option<Fence>,
+    /// The movement mode of a unit (3: inside a tank); 0 for everything else.
+    pub movement_mode: u32,
 }
 
 /// The four values a fence or tank wall record holds after its common part.
@@ -109,6 +111,23 @@ pub struct Fence {
     pub life: u32,
     /// Two decay timers.
     pub timers: [u32; 2],
+    /// A tank wall whose first trailing byte is not 0 is a portal.
+    pub portal: bool,
+}
+
+/// What the exhibit record keeps of a tank exhibit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tank {
+    /// The first tile of the exhibit's tile list.
+    pub tile: (i32, i32),
+    /// The second tile (the gate), or (-1, -1).
+    pub gate: (i32, i32),
+    /// The tank height and the water level, in elevation steps above the tank floor.
+    pub height: u32,
+    pub level: u32,
+    /// Not 0 in the file: salt water. Maps before version 100 hold salt water of purity 100.
+    pub salt: bool,
+    pub purity: u32,
 }
 
 /// One entity record.
@@ -139,6 +158,8 @@ pub struct Zoo {
     /// The tile of the zoo entrance.
     pub entrance: (u32, u32),
     pub habitat_count: usize,
+    /// The tank exhibits, in file order.
+    pub tanks: Vec<Tank>,
     /// The highest entity id handed out so far.
     pub id_counter: u32,
     /// `width * height` tiles, row by row: the tile in column x and row y is `y * width + x`.
@@ -294,8 +315,9 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
     let (width, height) = (r.u32()?, r.u32()?);
     let entrance = (r.u32()?, r.u32()?);
     let habitat_count = r.count(HABITAT_MIN)?;
+    let mut tanks = Vec::new();
     for _ in 0..habitat_count {
-        habitat(r)?;
+        tanks.extend(habitat(r)?);
     }
     if v >= 64 {
         r.skip(4)?;
@@ -343,6 +365,7 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
         height,
         entrance,
         habitat_count,
+        tanks,
         id_counter,
         tiles,
         entities,
@@ -352,11 +375,12 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
 /// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
 const HABITAT_MIN: usize = 76;
 
-fn habitat(r: &mut Reader) -> R<()> {
+fn habitat(r: &mut Reader) -> R<Option<Tank>> {
     let v = r.v;
-    r.skip(8)?;
+    let tile = (r.i32()?, r.i32()?);
     r.string()?;
-    r.skip(8 + 4 + 36 + 16)?;
+    let gate = (r.i32()?, r.i32()?);
+    r.skip(4 + 36 + 16)?;
     if v >= 83 {
         r.skip(4)?;
     }
@@ -365,16 +389,27 @@ fn habitat(r: &mut Reader) -> R<()> {
     if has_show {
         show_info(r)?;
     }
-    if is_tank {
-        r.skip(8)?;
-        if v >= 88 {
-            r.skip(1)?;
-        }
-        if v >= 100 {
-            r.skip(12)?;
-        }
+    if !is_tank {
+        return Ok(None);
     }
-    Ok(())
+    let (height, level) = (r.u32()?, r.u32()?);
+    if v >= 88 {
+        r.skip(1)?;
+    }
+    let (mut salt, mut purity) = (100, 100);
+    if v >= 100 {
+        salt = r.u32()?;
+        r.skip(4)?;
+        purity = r.u32()?;
+    }
+    Ok(Some(Tank {
+        tile,
+        gate,
+        height,
+        level,
+        salt: salt != 0,
+        purity,
+    }))
 }
 
 fn show_info(r: &mut Reader) -> R<()> {

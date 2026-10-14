@@ -59,12 +59,12 @@ fn habitat(w: &mut W, v: u32, tank: bool, show: bool) {
         }
     }
     if tank && v >= 85 {
-        w.z(8);
+        w.u32(9).u32(6);
         if v >= 88 {
             w.z(1);
         }
         if v >= 100 {
-            w.z(12);
+            w.u32(1).u32(5).u32(77);
         }
     }
 }
@@ -336,6 +336,15 @@ fn skips_habitats_and_shows_of_every_version() {
             (4, 7777, 4),
             "version {v}"
         );
+        // The tank fields: height 9 and level 6; salt water of purity 100 before version 100.
+        let tanks: Vec<_> = z.tanks.iter().map(|t| (t.height, t.level)).collect();
+        assert_eq!(tanks, if v >= 85 { vec![(9, 6); 2] } else { vec![] });
+        if v >= 85 {
+            let t = z.tanks[0];
+            assert_eq!((t.tile, t.gate), ((13, 45), (-1, -1)), "version {v}");
+            let (salt, purity) = if v >= 100 { (true, 77) } else { (true, 100) };
+            assert_eq!((t.salt, t.purity), (salt, purity), "version {v}");
+        }
     }
 }
 
