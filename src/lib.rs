@@ -5,6 +5,7 @@ pub mod pe;
 pub mod sprite;
 pub mod strings;
 pub mod vfs;
+pub mod zoo;
 
 /// An RGBA8 image: four bytes per pixel in the order R, G, B, A, rows from top to bottom.
 pub struct Framebuffer {

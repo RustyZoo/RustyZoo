@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fmt;
@@ -12,6 +13,7 @@ use rustyzoo::pe;
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::strings::StringTables;
 use rustyzoo::vfs::{self, Vfs};
+use rustyzoo::zoo::{Zoo, ZooError};
 use sdl3::audio::AudioSpec;
 use sdl3::pixels::PixelFormat;
 
@@ -35,6 +37,8 @@ usage: rustyzoo [--data <dir>] <command>
   dump-sprite <member> <dir>
                       write the frames of a sprite file as PNG files into <dir>, and print them
   check-sprites       decode every sprite file; list those that fail; exit 1 if any does
+  map-info <member>   print the version, size, tiles and entities of a map or saved game (a .zoo)
+  check-maps          read every .zoo file; list those that fail; exit 1 if one is corrupted
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.";
@@ -95,6 +99,8 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["dump-sprite", member, dir] => dump_sprite(&open_game(data_dir)?, member, Path::new(dir)),
         ["check-sprites"] => check_sprites(&open_game(data_dir)?),
         ["which", member] => which(open_game(data_dir)?, member),
+        ["map-info", member] => map_info(&open_game(data_dir)?, member),
+        ["check-maps"] => check_maps(&open_game(data_dir)?),
         _ => Err(CliError::Usage),
     }
 }
@@ -437,6 +443,128 @@ fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
     match failed {
         0 => Ok(()),
         _ => Err(format!("{failed} of {files} sprite files failed").into()),
+    }
+}
+
+/// How many entities `map-info` lists one by one.
+const MAP_INFO_ENTITIES: usize = 5;
+
+fn load_map(vfs: &Vfs, member: &str) -> Result<Zoo, CliError> {
+    let bytes = vfs.read(member)?;
+    Ok(Zoo::parse(&bytes).map_err(|e| format!("{member}: {e}"))?)
+}
+
+fn map_info(vfs: &Vfs, member: &str) -> Result<(), CliError> {
+    let zoo = load_map(vfs, member)?;
+    let mut report = Report::new();
+    report.line(format_args!("member: {}", member.escape_debug()));
+    report.line(format_args!("version: {}", zoo.version));
+    report.line(format_args!("locale: {}", zoo.locale));
+    report.line(format_args!("expansion: {}", zoo.expansion));
+    report.line(format_args!("map size: {}x{}", zoo.width, zoo.height));
+    report.line(format_args!(
+        "entrance: {},{}",
+        zoo.entrance.0, zoo.entrance.1
+    ));
+    report.line(format_args!("habitats: {}", zoo.habitat_count));
+    report.line(format_args!("id counter: {}", zoo.id_counter));
+    report.line(format_args!("tiles: {}", zoo.tiles.len()));
+    let mut terrain = BTreeMap::new();
+    for tile in &zoo.tiles {
+        *terrain.entry(tile.terrain).or_insert(0usize) += 1;
+    }
+    for (kind, count) in terrain {
+        report.line(format_args!("  terrain {kind}: {count}"));
+    }
+    let skipped = zoo.entities.iter().filter(|e| e.common.is_none()).count();
+    report.line(format_args!(
+        "entities: {} ({skipped} without a decoded body)",
+        zoo.entities.len()
+    ));
+    let mut classes = BTreeMap::new();
+    for entity in &zoo.entities {
+        *classes.entry(entity.class.as_str()).or_insert(0usize) += 1;
+    }
+    for (class, count) in classes {
+        report.line(format_args!("  class {}: {count}", escape(class)));
+    }
+    for entity in zoo.entities.iter().take(MAP_INFO_ENTITIES) {
+        let names = format!(
+            "{}/{}/{}",
+            escape(&entity.class),
+            escape(&entity.type_name),
+            escape(&entity.subtype)
+        );
+        match &entity.common {
+            Some(c) => report.line(format_args!(
+                "  {names} tile {},{} position {},{},{} rotation {} id {} name \"{}\"",
+                c.x.div_euclid(64),
+                c.y.div_euclid(64),
+                c.x,
+                c.y,
+                c.z,
+                c.rotation,
+                c.id,
+                escape(&c.name)
+            )),
+            None => report.line(format_args!("  {names} (body skipped)")),
+        }
+    }
+    report.finish()
+}
+
+/// Reads every `.zoo` member. A file the original refuses by its header (not a saved game, a
+/// version below 38 or above 106) is a refusal, as expected from leftovers; anything else that
+/// fails is a corrupted file, which makes the command fail.
+fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
+    let mut report = Report::new();
+    let (mut files, mut ok, mut refused, mut corrupted) = (0, 0, 0, 0);
+    let (mut tiles, mut entities) = (0, 0);
+    for member in vfs.list(None) {
+        if !member.to_ascii_lowercase().ends_with(".zoo") {
+            continue;
+        }
+        files += 1;
+        let name = member.escape_debug();
+        let result = vfs
+            .read(&member)
+            .map_err(|e| ZooError::Corrupted(e.to_string()))
+            .and_then(|bytes| Zoo::parse(&bytes));
+        match result {
+            Ok(zoo) => {
+                ok += 1;
+                tiles += zoo.tiles.len();
+                entities += zoo.entities.len();
+                report.line(format_args!(
+                    "ok {name}: version {}, {}x{}, {} tiles, {} entities",
+                    zoo.version,
+                    zoo.width,
+                    zoo.height,
+                    zoo.tiles.len(),
+                    zoo.entities.len()
+                ));
+            }
+            Err(err) => {
+                match err {
+                    ZooError::Corrupted(_) => corrupted += 1,
+                    _ => refused += 1,
+                }
+                // The text comes from the file system: keep it on one line.
+                report.line(format_args!(
+                    "FAILED {name}: {}",
+                    err.to_string().escape_debug()
+                ));
+            }
+        }
+    }
+    report.line(format_args!(
+        "{files} map files, {ok} ok, {refused} refused by version or magic, \
+         {corrupted} corrupted; {tiles} tiles, {entities} entities in the ok files"
+    ));
+    report.finish()?;
+    match corrupted {
+        0 => Ok(()),
+        _ => Err(format!("{corrupted} of {files} map files are corrupted").into()),
     }
 }
 

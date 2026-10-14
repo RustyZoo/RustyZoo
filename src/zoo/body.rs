@@ -1,0 +1,356 @@
+//! The bodies of entity records, by class. Only the common part is kept; every other field is
+//! read and dropped to reach the next record (or the end of the body).
+
+use super::{Common, R, Reader, bad};
+
+/// Reads one body. `None` is a class this reader does not know.
+pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
+    let v = r.v;
+    Ok(Some(match class {
+        // Scenery, then (after the common part) the fields of the class.
+        b"objects" | b"food" | b"paths" => scenery(r)?,
+        b"fences" | b"tankwall" => {
+            let common = scenery(r)?;
+            if v >= 55 {
+                r.skip(16)?;
+            }
+            if class == b"tankwall" && v >= 101 {
+                r.skip(2)?;
+            }
+            common
+        }
+        b"ambient" => {
+            r.skip(8)?;
+            base(r)?
+        }
+        b"filter" => {
+            let common = scenery(r)?;
+            r.skip(4)?;
+            if v >= 95 {
+                r.skip(12 + 16 + 4)?;
+            }
+            common
+        }
+        b"rubble" => {
+            let common = scenery(r)?;
+            r.skip_list(4)?;
+            r.skip(4)?;
+            common
+        }
+        b"building" => {
+            let common = scenery(r)?;
+            building(r)?;
+            common
+        }
+        b"animals" => {
+            animal(r)?;
+            zoo_unit(r, false)?
+        }
+        b"guests" => {
+            guest(r)?;
+            zoo_unit(r, true)?
+        }
+        b"staff" | b"keeper" | b"maint" | b"tour" | b"helicopter" => {
+            staff(r, class)?;
+            zoo_unit(r, false)?
+        }
+        _ => return Ok(None),
+    }))
+}
+
+/// The food counter, then the common part.
+fn scenery(r: &mut Reader) -> R<Common> {
+    r.skip(4)?;
+    base(r)
+}
+
+/// The common part of every body.
+fn base(r: &mut Reader) -> R<Common> {
+    let v = r.v;
+    let (x, y, z) = (r.i32()?, r.i32()?, r.i32()?);
+    let rotation = r.u32()? % 8;
+    let id = r.u32()?;
+    let name = r.text()?;
+    if v <= 62 {
+        r.string()?;
+    }
+    r.skip(1 + 4)?;
+    if v >= 58 {
+        r.skip(1)?;
+    }
+    if v >= 63 {
+        behaviour_set(r)?;
+    }
+    if v >= 67 {
+        r.skip_list(1)?;
+    }
+    Ok(Common {
+        x,
+        y,
+        z,
+        rotation,
+        id,
+        name,
+    })
+}
+
+/// A behaviour set holds at most one nested set, which holds one more, and so on. The leading
+/// fields of each level come first and its trailing fields after the nested set, so the levels
+/// are read in a loop: all the leading parts, then all the trailing parts, innermost first.
+fn behaviour_set(r: &mut Reader) -> R<()> {
+    let mut levels = 1;
+    loop {
+        r.string()?;
+        r.skip(1)?;
+        r.skip_strings()?;
+        r.string()?;
+        r.string()?; // the current call: name, arguments, three flags
+        r.skip_strings()?;
+        r.skip(3)?;
+        if r.u8()? == 0 {
+            break;
+        }
+        levels += 1;
+    }
+    for _ in 0..levels {
+        r.skip_strings()?;
+        r.skip(4)?;
+    }
+    Ok(())
+}
+
+fn building(r: &mut Reader) -> R<()> {
+    let v = r.v;
+    r.skip(16)?;
+    r.skip_list(8)?;
+    r.skip(4 + 16 + 8)?;
+    match v {
+        45..=47 => r.skip(2)?,
+        48..=66 => r.skip_list(1)?,
+        _ => {}
+    }
+    if v >= 68 {
+        r.skip(4)?;
+    }
+    if v >= 74 {
+        r.skip(4)?;
+    }
+    if v >= 75 {
+        r.skip_list(4)?;
+    }
+    Ok(())
+}
+
+fn animal(r: &mut Reader) -> R<()> {
+    let v = r.v;
+    r.skip(16 + 5 + 5 + 20)?;
+    r.string()?;
+    r.string()?;
+    r.skip(44)?;
+    if v <= 53 {
+        r.skip(4)?;
+    }
+    r.skip(8 + 4 + 3 + 4 + 6 + 12 + 16 + 2)?;
+    if v >= 41 {
+        r.skip(8)?;
+    }
+    if v >= 43 {
+        r.skip(13)?;
+    }
+    if v >= 44 {
+        r.skip(1)?;
+    }
+    if v >= 46 {
+        r.skip(4)?;
+    }
+    // The escape flag counts only when it is exactly 1.
+    if v >= 47 && r.u32()? == 1 {
+        r.skip(8 + 8 + 12)?;
+        if v >= 81 {
+            r.skip(4)?;
+        }
+    }
+    if v >= 52 {
+        r.skip(10)?;
+    }
+    if v >= 54 {
+        r.skip(1)?;
+    }
+    if v == 57 || v >= 61 {
+        r.skip(1)?;
+    }
+    if v >= 76 {
+        r.skip(1)?;
+    }
+    if v >= 77 {
+        r.skip(8)?;
+    }
+    if v >= 78 {
+        r.skip(1)?;
+    }
+    if v >= 79 {
+        r.skip(5)?;
+    }
+    if v >= 87 {
+        r.skip(8)?;
+    }
+    if v >= 101 {
+        r.skip(8)?;
+    }
+    Ok(())
+}
+
+fn guest(r: &mut Reader) -> R<()> {
+    let v = r.v;
+    r.skip(20 + 1 + 20)?;
+    if v <= 66 {
+        r.skip(4)?;
+    }
+    r.skip(8)?;
+    if v <= 64 {
+        r.skip(6)?;
+    }
+    r.skip(40)?;
+    r.skip_list(4)?;
+    r.skip_list(4)?;
+    if v <= 93 {
+        r.string()?;
+        r.string()?;
+    } else {
+        r.skip(4)?;
+        r.string()?;
+    }
+    r.skip_list(8)?;
+    r.skip(4 + 6 + 2 + 12 + 2 + 8)?;
+    if v >= 42 {
+        r.skip(2)?;
+    }
+    if v >= 54 {
+        r.skip(1)?;
+    }
+    if v >= 56 {
+        r.skip(1)?;
+    }
+    if v >= 65 {
+        r.skip(4)?;
+    }
+    Ok(())
+}
+
+fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
+    let v = r.v;
+    match class {
+        b"keeper" => {
+            r.skip(4 + 16 + 1)?;
+            if (52..=74).contains(&v) {
+                r.skip(4)?;
+            }
+        }
+        b"maint" => {
+            r.skip(4)?;
+            if v >= 92 {
+                r.skip(10)?;
+                r.skip_list(1)?;
+            }
+        }
+        b"tour" => {
+            r.skip(4)?;
+            if v >= 54 {
+                r.skip(4)?;
+            }
+            if (54..=64).contains(&v) {
+                r.skip(4)?;
+            }
+            if v >= 65 {
+                r.skip_list(4)?;
+            }
+            if v >= 66 {
+                r.skip(1)?;
+            }
+        }
+        b"helicopter" if v >= 75 => r.skip(12)?,
+        _ => {}
+    }
+    // The common staff block.
+    r.skip(8)?;
+    r.skip_list(8)?;
+    if v >= 75 {
+        r.skip(4)?;
+    }
+    Ok(())
+}
+
+/// The unit block of animals, guests and staff, ending with the common part.
+fn zoo_unit(r: &mut Reader, guest: bool) -> R<Common> {
+    let v = r.v;
+    if v <= 57 {
+        r.skip(1)?;
+    }
+    r.skip(1 + 5)?;
+    r.skip(if v <= 90 { 8 } else { 12 })?;
+    r.skip(8 + 8)?;
+    r.skip(if v <= 85 { 16 } else { 12 })?;
+    r.skip(6)?;
+    if v >= 97 && !guest {
+        // Two flags, each followed by a value only when it is exactly 1.
+        for _ in 0..2 {
+            if r.u8()? == 1 {
+                r.skip(2)?;
+            }
+        }
+    }
+    if v >= 98 {
+        r.skip(2)?;
+    }
+    base_unit(r)
+}
+
+fn base_unit(r: &mut Reader) -> R<Common> {
+    let v = r.v;
+    r.skip(2 + 10)?;
+    // The target block.
+    r.skip(16)?;
+    r.skip(if v <= 85 { 16 } else { 24 })?;
+    r.skip(2)?;
+    if v >= 53 {
+        r.skip(8)?;
+    }
+    if v >= 72 {
+        r.skip(8)?;
+    }
+    r.skip(4)?;
+    r.skip(if v <= 74 { 8 } else { 12 })?;
+    r.skip(4)?;
+    r.string()?;
+    r.skip(1)?;
+    r.skip_list(if v <= 83 { 8 } else { 12 })?;
+    if v >= 46 {
+        r.skip(1)?;
+    }
+    if v >= 62 {
+        r.skip(1)?;
+    }
+    if v >= 84 {
+        r.skip(4)?;
+        movement(r)?;
+    }
+    if v >= 85 {
+        r.string()?;
+    }
+    if v >= 98 {
+        r.skip(2)?;
+    }
+    base(r)
+}
+
+fn movement(r: &mut Reader) -> R<()> {
+    let first = r.i32()?;
+    let kind = if r.v >= 93 { r.i32()? } else { first };
+    match kind {
+        _ if kind < 0 => {} // no movement
+        1 | 2 => {}
+        3 => r.skip(if r.v >= 96 { 1 + 32 } else { 1 + 12 })?,
+        _ => return bad("movement of an unknown type"),
+    }
+    Ok(())
+}
