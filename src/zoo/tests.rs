@@ -563,6 +563,34 @@ fn unknown_classes_are_skipped_by_size_or_refused() {
 }
 
 #[test]
+fn a_type_without_definition_refuses_a_file_without_body_sizes() {
+    let known = |e: &Entity| e.type_name == "tree";
+    for (v, refused) in [
+        (45, true),
+        (55, true),
+        (69, true),
+        (70, false),
+        (106, false),
+    ] {
+        let ents = [
+            ("objects", "tree", "oak", scenery(v, 1, "Tree")),
+            ("objects", "lost", "oak", scenery(v, 2, "Lost")),
+        ];
+        let z = parse(&file(v, 1, 1, &[], &ents));
+        // The class is known and the body decodes; only the type is missing.
+        assert_eq!(z.check_types(known).is_err(), refused, "version {v}");
+        assert!(z.check_types(|_| true).is_ok(), "version {v}");
+    }
+    let ents = [("objects", "lost", "oak", scenery(55, 1, "Lost"))];
+    assert_eq!(
+        parse(&file(55, 1, 1, &[], &ents)).check_types(known),
+        Err(ZooError::Corrupted(
+            "entities: entity 0: no definition of its type in a file without body sizes".into()
+        ))
+    );
+}
+
+#[test]
 fn bodies_of_size_zero_and_of_the_wrong_size_are_skipped() {
     let mut long = scenery(106, 3, "Long");
     long.push(0);
@@ -878,11 +906,23 @@ fn full_game_facts() {
     let c = path.common.as_ref().unwrap();
     assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (800, 4704, 0, 4, 37091));
 
-    // Every .zoo file: 96 load, 3 are older than version 38, 6 of version 38 are corrupted.
+    // Every .zoo file: 96 parse, 3 are older than version 38, 6 of version 38 are corrupted.
+    // Two of the 96 (the leftovers of the scenario archive, versions 45 and 55) hold entities
+    // of a type without definition, which the original cannot load before version 70.
+    let catalogue = crate::entity::Catalogue::load(&vfs).unwrap();
+    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+    let mut untyped = Vec::new();
     let (mut ok, mut old, mut corrupted, mut transient, mut skipped) = (0, 0, 0, 0, 0);
     for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
         match load(member) {
             Ok(zoo) => {
+                let known = |e: &Entity| {
+                    let (t, s) = (bytes(&e.type_name), bytes(&e.subtype));
+                    catalogue.find(&e.class, &t, &s).is_some()
+                };
+                if zoo.check_types(known).is_err() {
+                    untyped.push((member.clone(), zoo.version));
+                }
                 ok += 1;
                 transient += zoo
                     .entities
@@ -897,6 +937,14 @@ fn full_game_facts() {
         }
     }
     assert_eq!((ok, old, corrupted), (96, 3, 6));
+    untyped.sort();
+    assert_eq!(
+        untyped,
+        [
+            ("scenario/scn08/scn08.zoo".to_string(), 55),
+            ("scenario/scn15/scn15.zoo".to_string(), 45)
+        ]
+    );
     // The only bodies not decoded are the 939 of size 0.
     assert_eq!((transient, skipped), (939, 939));
 }
