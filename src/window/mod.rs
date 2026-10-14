@@ -58,6 +58,8 @@ pub struct Flags<'a> {
     pub timing: Option<u64>,
     /// `--shot`: write the pixels of the last frame, as the renderer has them, to this PNG.
     pub shot: Option<&'a str>,
+    /// `--show`: layouts of the interface to show at the start.
+    pub show: &'a [i32],
 }
 
 /// Makes the game full screen or windowed, after asking the window to do it if `ask`; the game is
@@ -116,6 +118,18 @@ pub fn run(
         timers,
         size,
     )?;
+    if let Some(ui) = crate::layout::load_interface(vfs, size, flags.show)? {
+        app.set_interface(ui);
+    }
+    let mut state = State {
+        interface: app.interface().is_some(),
+        ..State::default()
+    };
+    if state.interface {
+        // The window gets typed characters as text input events.
+        // SAFETY: the window is open and owned by `screen` for the whole run.
+        unsafe { sdl3::sys::keyboard::SDL_StartTextInput(screen.canvas.window().raw()) };
+    }
     // The game starts with the run: the menu music fades out.
     app.start_game(menu);
     let mut log = match flags.log {
@@ -131,7 +145,7 @@ pub fn run(
 
     let mut pump = sdl.event_pump()?;
     let mut script = flags.script.into_iter().peekable();
-    let (mut state, mut commands) = (State::default(), Vec::new());
+    let mut commands = Vec::new();
     // The ini file starts the game in full screen; the camera is told before the first pass, so
     // it applies the zoom limit of a full screen to the stored zoom (camera 4.2, 8.3). The mode
     // is not written back: it is what the settings already say.
@@ -149,6 +163,7 @@ pub fn run(
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
         }
+        state.mouse_commands(|at| screen.pointer(at), &mut commands)?;
         // Without the focus the sound is silent, the voices running on.
         sound.focus(focused(screen.canvas.window().window_flags().into()));
         // Minimised or hidden: nothing runs until something happens (a close request still

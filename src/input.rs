@@ -3,7 +3,7 @@
 //! layout, as the virtual keys of the original. The rest, the edge scroll band and its timing,
 //! is the core's: the pointer only tells where it is.
 
-use rustyzoo::app::Command;
+use rustyzoo::app::{Command, Key};
 use sdl3::event::Event;
 use sdl3::keyboard::{Mod, Scancode};
 
@@ -17,6 +17,43 @@ pub fn command(event: &Event) -> Option<Command> {
         } => key_command(key, keymod),
         _ => None,
     }
+}
+
+/// The command for the interface of one key-down: the keys its widgets read. Alt makes system
+/// keys (4.1). The map view's own keys are [`command`]'s.
+pub fn interface_command(event: &Event) -> Option<Command> {
+    let Event::KeyDown {
+        scancode: Some(key),
+        keymod,
+        ..
+    } = *event
+    else {
+        return None;
+    };
+    if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD) {
+        return None;
+    }
+    let key = match key {
+        Scancode::Return | Scancode::KpEnter => Key::Enter,
+        Scancode::Escape => Key::Escape,
+        Scancode::Tab => Key::Tab,
+        Scancode::Backspace => Key::Backspace,
+        Scancode::Delete => Key::Delete,
+        Scancode::Left => Key::Left,
+        Scancode::Right => Key::Right,
+        Scancode::Up => Key::Up,
+        Scancode::Down => Key::Down,
+        Scancode::Home => Key::Home,
+        Scancode::End => Key::End,
+        Scancode::PageUp => Key::PageUp,
+        Scancode::PageDown => Key::PageDown,
+        Scancode::Y => Key::Y,
+        Scancode::N => Key::N,
+        _ => return None,
+    };
+    let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
+    let shift = keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD);
+    Some(Command::Key(key, ctrl, shift))
 }
 
 /// Whether the event is the release of Enter with Alt held: the switch between window and full
@@ -172,5 +209,35 @@ mod tests {
             Some(Command::Zoom(true))
         );
         assert_eq!(press(Scancode::Kp4, Mod::NUMMOD), None);
+    }
+
+    #[test]
+    fn the_interface_reads_its_keys_with_ctrl_and_shift_and_not_with_alt() {
+        let press = |key, keymod| {
+            interface_command(&Event::KeyDown {
+                timestamp: 0,
+                window_id: 1,
+                keycode: None,
+                scancode: Some(key),
+                keymod,
+                repeat: false,
+                which: 0,
+                raw: 0,
+            })
+        };
+        assert_eq!(
+            press(Scancode::Return, Mod::NOMOD),
+            Some(Command::Key(Key::Enter, false, false))
+        );
+        assert_eq!(
+            press(Scancode::Left, Mod::LSHIFTMOD | Mod::RCTRLMOD),
+            Some(Command::Key(Key::Left, true, true))
+        );
+        assert_eq!(
+            press(Scancode::Y, Mod::NOMOD),
+            Some(Command::Key(Key::Y, false, false))
+        );
+        assert_eq!(press(Scancode::Return, Mod::LALTMOD), None);
+        assert_eq!(press(Scancode::F1, Mod::NOMOD), None);
     }
 }

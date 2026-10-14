@@ -16,7 +16,8 @@
 //!   the state.
 //!
 //! Colours are reduced to the 16-bit frame of the original: fills and pictures by the rule of
-//! [`fill_color`], text by the rule of [`text_color`]. The map view, scroll bars, status bars and
+//! [`fill_color`], text by the rule of [`text_color`]. The map view calls a hook with its
+//! rectangle, which draws the map there. Scroll bars, status bars and
 //! the other widgets that later milestones fill draw nothing yet.
 
 use std::collections::HashMap;
@@ -67,6 +68,9 @@ struct Made {
     size: (i32, i32),
 }
 
+/// A rectangle as left, top, width, height.
+pub type Rect4 = (i32, i32, i32, i32);
+
 /// Draws the tree. It keeps the fonts, the canvases of the elements and the pictures cut for
 /// drawing.
 #[derive(Default)]
@@ -78,7 +82,13 @@ pub struct Painter {
 
 impl Painter {
     /// Draws the whole tree into `frame`, which is filled with black first.
-    pub fn draw(&mut self, tree: &mut Tree, frame: &mut Framebuffer, strings: &dyn Strings) {
+    pub fn draw(
+        &mut self,
+        tree: &mut Tree,
+        frame: &mut Framebuffer,
+        strings: &dyn Strings,
+        map: &mut dyn FnMut(&mut Framebuffer, Rect4),
+    ) {
         frame.fill([0, 0, 0, 255]);
         let mut stack = if tree.elements.is_empty() {
             vec![]
@@ -93,7 +103,7 @@ impl Painter {
             if matches!(e.kind, Kind::Layout) {
                 stack.extend(e.children.iter().rev());
             } else {
-                self.widget(tree, i, frame, strings);
+                self.widget(tree, i, frame, strings, map);
             }
         }
     }
@@ -104,6 +114,7 @@ impl Painter {
         i: usize,
         frame: &mut Framebuffer,
         strings: &dyn Strings,
+        map: &mut dyn FnMut(&mut Framebuffer, Rect4),
     ) {
         let Some(placed) = tree.elements[i].placed else {
             return;
@@ -164,6 +175,7 @@ impl Painter {
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
+            Kind::MapView => map(frame, screen),
             _ => {}
         }
         tree.elements[i].state &= !DIRTY;

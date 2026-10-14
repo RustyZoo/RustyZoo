@@ -76,7 +76,7 @@ fn tree(name: &str, root: &str, members: &[(String, Vec<u8>)]) -> Tree {
 
 fn paint(tree: &mut Tree, painter: &mut Painter, texts: &Texts) -> Framebuffer {
     let mut frame = Framebuffer::new(64, 48);
-    painter.draw(tree, &mut frame, texts);
+    painter.draw(tree, &mut frame, texts, &mut |_, _| {});
     frame
 }
 
@@ -295,4 +295,28 @@ fn a_button_text_is_drawn_over_its_picture_without_a_background() {
     assert_eq!(count(&frame, [255, 0, 0]), 0, "no backcolor");
     assert_eq!(at(&frame, 2, 2), blue);
     assert!(count(&frame, rgb(text_color([0, 255, 0]))) > 5);
+}
+
+#[test]
+fn the_map_view_calls_the_hook_with_its_rectangle_below_what_is_over_it() {
+    let r = [255, 0, 0];
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}[a]\ntype=ZTMapView\nid=7000\nx=4\ny=6\ndx=20\ndy=10\ntransparent=0\n\
+         [b]\ntype=UIImage\nid=2\nx=10\ny=6\nanimation=ui/r.tga\ntransparent=0\nlayer=1\n"
+    );
+    let mut tree = tree("map", &root, &[("ui/r.tga".to_string(), tga(&[&[r, r]]))]);
+    for e in &mut tree.elements {
+        e.state &= !HIDDEN;
+    }
+    let mut frame = Framebuffer::new(64, 48);
+    let mut seen = vec![];
+    Painter::default().draw(&mut tree, &mut frame, &Texts::default(), &mut |f, rect| {
+        seen.push(rect);
+        f.pixels[..4].copy_from_slice(&[0, 9, 0, 255]);
+        let at = (6 * 64 + 10) * 4;
+        f.pixels[at..at + 4].copy_from_slice(&[0, 9, 0, 255]);
+    });
+    assert_eq!(seen, [(4, 6, 20, 10)]);
+    assert_eq!(at(&frame, 0, 0), [0, 9, 0]);
+    assert_eq!(at(&frame, 10, 6), r, "drawn over the map");
 }

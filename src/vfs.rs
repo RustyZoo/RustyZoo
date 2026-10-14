@@ -392,6 +392,11 @@ impl Vfs {
         &self.warnings
     }
 
+    /// The install folder this was opened on.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// The bytes of the ini file next to the executable.
     pub fn ini(&self) -> &[u8] {
         &self.ini

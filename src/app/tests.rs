@@ -6,6 +6,7 @@ use crate::entity::Catalogue;
 use crate::render::Options;
 use crate::render::order::project;
 use crate::render::tests::{cache_install, flat_map, frame_file, tile_with};
+use crate::ui::interface::Interface;
 use crate::vfs::Vfs;
 
 const SIZE: (u32, u32) = (64, 48);
@@ -247,6 +248,15 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Fullscreen(false),
         Command::Pause,
         Command::Quit,
+        Command::Mouse(Mouse::Move(-1, 77)),
+        Command::Mouse(Mouse::Down),
+        Command::Mouse(Mouse::Up),
+        Command::Mouse(Mouse::Wheel(-2)),
+        Command::Key(Key::PageDown, false, false),
+        Command::Key(Key::Enter, true, false),
+        Command::Key(Key::Y, true, true),
+        Command::Char(0),
+        Command::Char(255),
     ] {
         assert_eq!(command.to_string().parse(), Ok(command));
     }
@@ -261,9 +271,32 @@ fn commands_have_a_text_form_that_reads_back() {
         "fullscreen",
         "fullscreen 1",
         "stop",
+        "mouse 1",
+        "mouse x 1",
+        "wheel",
+        "wheel 1.5",
+        "down 1",
+        "key",
+        "key f1",
+        "key enter alt",
+        "char",
+        "char 256",
+        "char -1",
+        "char ab",
     ] {
         assert!(bad.parse::<Command>().is_err(), "{bad:?}");
     }
+    // A character may be written as itself.
+    assert_eq!("char A".parse(), Ok(Command::Char(65)));
+    assert_eq!("char 7".parse(), Ok(Command::Char(7)));
+    assert_eq!(
+        "key left shift ctrl".parse(),
+        Ok(Command::Key(Key::Left, true, true))
+    );
+    assert_eq!(
+        Command::Key(Key::Left, true, true).to_string(),
+        "key left ctrl shift"
+    );
 }
 
 #[test]
@@ -310,5 +343,107 @@ fn the_menu_music_fades_from_the_start_of_the_game_and_the_log_tells_it() {
         );
         app.start_game(None);
         assert!(app.music().is_none());
+    });
+}
+
+struct NoTexts;
+
+impl crate::ui::draw::Strings for NoTexts {
+    fn string(&self, _: i32) -> String {
+        String::new()
+    }
+
+    fn text_entry(&self, _: &[u8]) -> Vec<u8> {
+        vec![]
+    }
+}
+
+/// An interface of a map view over the whole window and, hidden, a layout `a` (id 10) with a
+/// 40 x 20 text widget on a red background, and a text field (id 4).
+fn interface(name: &str) -> Interface {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+        [b]\ntype=UILayout\nlayout=ui/a.lyt\nstate=1\n\
+        [c]\ntype=UIEditableText\nid=4\nx=50\ny=40\ndx=4\ndy=4\n";
+    let a = "[LayoutInfo]\nid=10\nlayer=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [x]\ntype=UIText\nid=11\nx=2\ny=2\ndx=40\ndy=20\ntransparent=0\n\
+        backcolor=255\nbackcolor=0\nbackcolor=0\n";
+    let install = crate::sprite::tests::Install::new(
+        &format!("app-ui-{name}"),
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/a.lyt", a.as_bytes().to_vec()),
+        ],
+    );
+    let mut tree = crate::ui::layout::Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
+    assert_eq!(tree.failure, None);
+    tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
+    Interface::new(tree, Box::new(NoTexts))
+}
+
+#[test]
+fn with_an_interface_the_map_view_paints_the_map_and_a_paint_waits_for_a_reason() {
+    with_app("app-ui", |app, other| {
+        app.set_interface(interface("paint"));
+        // Only the map view is shown: the frame is the map, as without an interface.
+        let first = app.pass(0, &[]).unwrap().pixels.clone();
+        assert_eq!(first, reference(other, app.camera()).pixels);
+        assert!(
+            app.pass(20, &[]).is_none() && app.fired().draw,
+            "nothing changed"
+        );
+        // The mouse over the map changes nothing, so nothing is painted.
+        let moves = [
+            Command::Mouse(Mouse::Move(5, 5)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+            Command::Mouse(Mouse::Wheel(1)),
+        ];
+        assert!(app.pass(40, &moves).is_none());
+        // A change of the interface paints again; the map comes from the picture kept.
+        app.interface().unwrap().touch();
+        assert_eq!(app.pass(60, &[]).unwrap().pixels, first);
+        // A shown layout is painted over the map.
+        assert!(app.interface().unwrap().show(10));
+        let over = app.pass(80, &[]).unwrap().pixels.clone();
+        assert_ne!(over, first);
+        let at = |x: usize, y: usize| over[(y * SIZE.0 as usize + x) * 4..][..3].to_vec();
+        assert_eq!(at(2, 2), [255, 0, 0]);
+        assert_eq!(at(41, 21), [255, 0, 0]);
+        assert_eq!(
+            at(42, 22)[..],
+            first[(22 * SIZE.0 as usize + 42) * 4..][..3]
+        );
+        // The camera moving paints too, the layout staying over the map.
+        let moved = app
+            .pass(100, &[Command::Zoom(true)])
+            .unwrap()
+            .pixels
+            .clone();
+        assert_ne!(moved, over);
+        assert_eq!(moved[(2 * SIZE.0 as usize + 2) * 4..][..3], [255, 0, 0]);
+    });
+}
+
+#[test]
+fn the_keys_of_the_map_view_wait_while_a_field_has_the_focus_or_the_map_is_not_shown() {
+    with_app("app-ui-keys", |app, _| {
+        app.set_interface(interface("keys"));
+        app.pass(0, &[]);
+        let start = app.camera().scroll;
+        app.pass(20, &[Command::Scroll(1, 0)]);
+        assert_ne!(app.camera().scroll, start, "the map view has the keys");
+        let moved = app.camera().scroll;
+        let field = app.interface().unwrap().tree.find(4).unwrap();
+        app.interface().unwrap().tree.elements[field].state |= crate::ui::layout::FOCUSED;
+        app.pass(
+            40,
+            &[Command::Scroll(1, 0), Command::Pause, Command::Zoom(true)],
+        );
+        assert_eq!(app.camera().scroll, moved);
+        assert!(!app.paused());
+        app.interface().unwrap().tree.elements[field].state &= !crate::ui::layout::FOCUSED;
+        app.pass(60, &[Command::Pause]);
+        assert!(app.paused());
     });
 }

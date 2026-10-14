@@ -103,13 +103,19 @@ usage: rustyzoo [--data <dir>] <command>
                       as ok, warning (defective palette) or FAILED, then the counts; exit 1
                       if a set fails
   run <map> --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
-      [--png-every K] [--out DIR]
+      [--png-every K] [--out DIR] [--show ID]...
                       play a map (a .zoo member) without a window. N passes of the main loop
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
                       per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
-                      in|out, fullscreen on|off, pause, quit; # starts a comment); the window
-                      is 1024x768 unless
+                      in|out, fullscreen on|off, pause, quit, and for the interface mouse X Y,
+                      down, up, wheel N, key NAME [ctrl] [shift] with NAME enter, escape, tab,
+                      backspace, delete, left, right, up, down, home, end, pageup, pagedown, y
+                      or n, and char C with C a byte or one character; # starts a comment).
+                      The interface is drawn over the map, with the layouts given by --show
+                      (each ID shown, repeatable) and the map view; the keys and the edge
+                      scroll of the map act only while the map view is shown and no field has
+                      the focus. The window is 1024x768 unless
                       --size says otherwise. Prints the size of the window, then, for each pass
                       in which something happens: a line per command applied, then one per
                       timer that fires, draw (the hash of the frame painted, or - if none, and
@@ -119,6 +125,7 @@ usage: rustyzoo [--data <dir>] <command>
                       in a pass whose index is a multiple of K is written to
                       DIR/frame-<pass>.png (DIR is by default the current folder)
   run <map> [--size WxH] [--passes N] [--script FILE] [--log FILE] [--timing MS] [--shot FILE]
+      [--show ID]...
                       play a map with a game size of the ini file's screenwidth and
                       screenheight (cut to the display; --size overrides it, uncut), in a
                       window enlarged by the display scale rounded to a whole number (the
