@@ -21,6 +21,7 @@ use rustyzoo::bitmap;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::ground::{self, Key, Renderer};
+use rustyzoo::movie::Movie;
 use rustyzoo::music::Music;
 use rustyzoo::pe;
 use rustyzoo::render::{MapRenderer, Options, Summary};
@@ -58,6 +59,14 @@ usage: rustyzoo [--data <dir>] <command>
                       write the frames of a sprite file as PNG files into <dir>, and print them
   check-sprites       decode every sprite file; list those that fail or have a palette
                       defect (a warning); exit 1 if one fails
+  movie-info <member|path> [--dump K <dir>]
+                      read an intro movie (an AVI file with Indeo 5 video and PCM audio): the
+                      member of the game, or a file of this name outside the game, which wins;
+                      print its picture size, frame count, frame rate, duration and audio
+                      format, then decode every frame and print how many were decoded; exit 1
+                      if the file cannot be read or a frame cannot be decoded. With --dump,
+                      write every Kth decoded frame (K at least 1, frame 0 first) to
+                      <dir>/frame-<number>.png
   map-info <member>   print the version, size, tiles and entities of a map or saved game (a .zoo)
   check-maps          read every .zoo file; list those that fail; exit 1 if one is corrupted
   render-ani <member.ani> <dir> [--anim NAME]
@@ -220,6 +229,11 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["dump-sprite", member, dir] => dump_sprite(&open_game(data_dir)?, member, Path::new(dir)),
         ["check-sprites"] => check_sprites(&open_game(data_dir)?),
         ["which", member] => which(open_game(data_dir)?, member),
+        ["movie-info", source] => movie_info(data_dir, source, None),
+        ["movie-info", source, "--dump", k, dir] => {
+            let k = k.parse().ok().filter(|k| *k > 0).ok_or(CliError::Usage)?;
+            movie_info(data_dir, source, Some((k, Path::new(dir))))
+        }
         ["map-info", member] => map_info(&open_game(data_dir)?, member),
         ["check-maps"] => check_maps(&open_game(data_dir)?),
         ["render-ani", member, dir] => {
@@ -673,6 +687,62 @@ const MAP_INFO_ENTITIES: usize = 5;
 fn load_map(vfs: &Vfs, member: &str) -> Result<Zoo, CliError> {
     let bytes = vfs.read(member)?;
     Ok(Zoo::parse(&bytes).map_err(|e| format!("{member}: {e}"))?)
+}
+
+/// Reads a movie from a file, or else from the game, decodes it, and prints what it holds.
+fn movie_info(
+    data_dir: Option<OsString>,
+    source: &str,
+    dump: Option<(usize, &Path)>,
+) -> Result<(), CliError> {
+    let bytes = if Path::new(source).is_file() {
+        std::fs::read(source).map_err(|e| format!("cannot read {}: {e}", source.escape_debug()))?
+    } else {
+        open_game(data_dir)?.read(source)?
+    };
+    let movie = Movie::parse(bytes)?;
+    let mut report = Report::new();
+    report.line(format_args!("movie: {}", source.escape_debug()));
+    report.line(format_args!("size: {}x{}", movie.size().0, movie.size().1));
+    report.line(format_args!("frames: {}", movie.frame_count()));
+    let (rate, scale) = movie.frame_rate();
+    report.line(format_args!(
+        "frame rate: {rate}/{scale} ({:.2} per second)",
+        f64::from(rate) / f64::from(scale)
+    ));
+    report.line(format_args!("duration: {} ms", movie.duration_ms()));
+    match movie.audio_format() {
+        Some(a) => report.line(format_args!(
+            "audio: {} Hz, {} channels, {} bits, {} bytes",
+            a.rate,
+            a.channels,
+            a.bits,
+            movie.audio().len()
+        )),
+        None => report.line(format_args!("audio: none")),
+    }
+    if let Some((_, dir)) = dump {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    }
+    let (mut decoded, mut dumped) = (0, 0);
+    for (number, frame) in movie.frames().enumerate() {
+        let frame = frame.map_err(|e| format!("frame {number}: {e}"))?;
+        decoded += 1;
+        if let Some((_, dir)) = dump.filter(|(k, _)| number % k == 0) {
+            let path = dir.join(format!("frame-{number:06}.png"));
+            let file = File::create(&path)
+                .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+            write_png(&frame, io::BufWriter::new(file))
+                .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+            dumped += 1;
+        }
+    }
+    report.line(format_args!("decoded: {decoded} frames"));
+    if dump.is_some() {
+        report.line(format_args!("dumped: {dumped} pictures"));
+    }
+    report.finish()
 }
 
 fn map_info(vfs: &Vfs, member: &str) -> Result<(), CliError> {

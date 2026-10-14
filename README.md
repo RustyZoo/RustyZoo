@@ -53,6 +53,7 @@ rustyzoo --data "/path/to/Zoo Tycoon" types   # the entity types (class, type, s
 rustyzoo dump-sprite animals/lion/f/walk/E out/   # one PNG per frame of a sprite file, into out/
 rustyzoo check-sprites                            # decode every sprite file; a defective palette is a warning; exit 1 if one fails
 rustyzoo --data "/path/to/Zoo Tycoon" which animals/lion.ai   # which file or archive supplies it, and the copies it hides
+rustyzoo movie-info mslogo.avi --dump 100 out/    # size, frames, frame rate and audio of an intro movie (a game member or a file), decode every frame, write every 100th as a PNG into out/
 rustyzoo map-info maps/default.zoo                # version, size, terrain and entities of a map or saved game
 rustyzoo check-maps                               # read every .zoo file; exit 1 if one is corrupted
 rustyzoo render-ani objects/aviary/idle/idle.ani out/   # frame 0 of an animation set, one PNG per screen direction, into out/
@@ -74,6 +75,8 @@ rustyzoo text-width "Sample text 12" --font "Arial Bold" --size 11   # width in 
 rustyzoo draw-text out.png --font "Arial Bold" --size 11 --width 286 --justify center --shadow "Sample message that wraps"   # draw a wrapped text into a PNG on a canvas as tall as the text; needs no game data
 rustyzoo check-music                             # queue the menu music paused on the audio device and print its format, gain and queued bytes
 ```
+
+`movie-info` reads the intro movies (AVI files with Indeo 5 video, 640x480 or 800x600, and PCM audio; the `.wmv` copies are not used). The window does not play them yet.
 
 Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.
 
@@ -128,6 +131,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and the [architecture](docs/architecture.
 - [OpenZT](https://github.com/openzt1/openzt): a work-in-progress reimplementation of Zoo Tycoon (2001), written in Rust.
 - [zt1-engine](https://github.com/sharkwouter/zt1-engine): an unfinished open-source Zoo Tycoon engine, written in C++.
 
-## Licence
+## Licences
 
 RustyZoo is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE). The two font files in `fonts/` are under their own licence, the SIL Open Font License 1.1 (`fonts/OFL.txt`).
+
+The directory `vendor/nihav` holds a trimmed copy of the Indeo 5 video decoder of [NihAV](https://nihav.org) (Kostya Shishkov), which plays the intro movies. Those files are licensed under the GNU Affero General Public License (upstream names no version, its `COPYING` is version 3, so they are marked AGPL-3.0-or-later; see `vendor/nihav/COPYING`), not under the GPL alone; each carries an SPDX line, and `vendor/README.md` says where they come from and what was changed. Version 3 of the GPL and of the AGPL allow the two to be combined: RustyZoo's own code stays GPL-3.0-or-later, the vendored files stay under the AGPL (with its clause on offering the source to the users of a modified version over a network), and a program that includes both is distributed under both. The other dependencies are listed in `Cargo.toml`, with their own licences.

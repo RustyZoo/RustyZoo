@@ -3,7 +3,7 @@ name = "rustyzoo"
 version = "0.0.0"
 edition = "2024"
 description = "Open-source engine that loads the original Zoo Tycoon game data"
-license = "GPL-3.0-or-later"
+license = "GPL-3.0-or-later AND AGPL-3.0-or-later"
 repository = "https://github.com/RustyZoo/RustyZoo"
 
 [dependencies]
@@ -12,6 +12,9 @@ repository = "https://github.com/RustyZoo/RustyZoo"
 # SDL_UNIX_CONSOLE_BUILD); where the X11/Wayland/ALSA/PulseAudio/PipeWire headers
 # are installed, those backends are still detected and built.
 sdl3 = { version = "0.20", features = ["build-from-source-static", "build-from-source-unix-console"] }
+# NihAV's Indeo 5 decoder, vendored and trimmed (AGPL-3.0, see vendor/README.md).
+nihav_core = { path = "vendor/nihav/nihav-core" }
+nihav_indeo = { path = "vendor/nihav/nihav-indeo" }
 png = { version = "0.18.1", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 fontdue = { version = "0.9.4", default-features = false }
