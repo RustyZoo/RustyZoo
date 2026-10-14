@@ -4,7 +4,8 @@
 //! types of the eight neighbours) and read from the caches the game ships (`ztats`, `ztatb`);
 //! when the cache has none, [`crate::ground::Renderer`] makes it. Cliffs are drawn by the tile in
 //! front of them from `ztst/fringe`, or, when the data lacks that copy, from the root bitmaps
-//! ([`crate::bitmap`]). Objects are drawn with the base animation of their type.
+//! ([`crate::bitmap`]). Objects are drawn with the base animation of their type; a building the
+//! player can recolour is drawn with the colour variants its record stores.
 //! The order comes from [`order::paint_order`]; this module turns each item of it into pictures
 //! placed in view space, then draws them all on a canvas that holds them.
 
@@ -108,7 +109,8 @@ enum Pic {
     Flat(Flat),
     /// A ground picture rendered at run time; its pixels have an alpha.
     Rendered(Rc<Picture>),
-    Anim(Rc<Animation>, View),
+    /// An animation seen from a view, with the palette to draw it with in place of its own.
+    Anim(Rc<Animation>, View, Option<Palette>),
 }
 
 /// A picture placed in view space: `(x, y)` is its anchor.
@@ -133,7 +135,7 @@ impl Placed {
         let frames: Vec<(&Frame, bool)> = match &self.pic {
             Pic::Flat(flat) => vec![(&flat.0, false)],
             Pic::Rendered(_) => return None,
-            Pic::Anim(anim, view) => {
+            Pic::Anim(anim, view, _) => {
                 let sprite = &anim.sprites.get(view.file)?.0;
                 sprite
                     .extra
@@ -183,7 +185,9 @@ impl Placed {
                 x - picture.x_offset,
                 y - picture.y_offset,
             ),
-            Pic::Anim(anim, view) => anim.draw(*view, 0, target, x, y),
+            Pic::Anim(anim, view, palette) => {
+                anim.draw_with(*view, 0, target, x, y, palette.as_ref())
+            }
         }
     }
 }
@@ -300,6 +304,10 @@ pub struct MapRenderer<'a> {
     ground: Option<ground::Renderer>,
     rendered: HashMap<String, Option<Rc<Picture>>>,
     anims: HashMap<String, Option<Rc<Animation>>>,
+    /// The palette files read for recolouring, by normalised member.
+    palettes: HashMap<String, Option<Palette>>,
+    /// `building.ai`, which holds the colour groups the buildings share.
+    groups: Rc<Config>,
 }
 
 impl<'a> MapRenderer<'a> {
@@ -310,6 +318,7 @@ impl<'a> MapRenderer<'a> {
                 .and_then(|bytes| Config::parse(&bytes).ok())
                 .unwrap_or_default()
         };
+        let groups = Rc::new(read("building.ai"));
         let mut fringe = HashMap::new();
         for (name, section) in read("fringe.cfg").sections() {
             if let (Some(piece), Some(image)) = (
@@ -336,6 +345,8 @@ impl<'a> MapRenderer<'a> {
             ground: ground::Renderer::load(vfs).ok(),
             rendered: HashMap::new(),
             anims: HashMap::new(),
+            palettes: HashMap::new(),
+            groups,
         }
     }
 
@@ -376,6 +387,61 @@ impl<'a> MapRenderer<'a> {
             .map(Rc::new);
         self.anims.insert(member.to_string(), found.clone());
         found
+    }
+
+    /// The palette file `member`, read once.
+    fn palette(&mut self, member: &[u8]) -> Option<&Palette> {
+        let member = crate::vfs::normalise(&String::from_utf8_lossy(member));
+        self.palettes
+            .entry(member)
+            .or_insert_with_key(|member| Palette::parse(&self.vfs.read(member).ok()?).ok())
+            .as_ref()
+    }
+
+    /// The palette to draw a recoloured building with, if its type is one (sprite drawing 8): the
+    /// palette of the sprite file with the fixed colours of the type, then, for each colour
+    /// group, the entries of the variant the building stores (the default one for a group it
+    /// stores nothing for). `None` draws the plain palette.
+    fn recoloured(&mut self, ty: &EntityType, base: &Palette, stored: &[u8]) -> Option<Palette> {
+        let config = ty.config.clone()?;
+        let flag = config
+            .section("Characteristics/Integers")?
+            .get("cIsColorReplaced");
+        if ty.class != "building" || flag.and_then(to_int) != Some(1) {
+            return None;
+        }
+        let replaced = config.section("colorrep")?;
+        let fixed = config.section(replaced.get("color")?)?;
+        let mut start = usize::try_from(to_int(fixed.get("ncolors")?)?).ok()?;
+        let mut palette = base.clone();
+        if let Some(colors) = fixed
+            .get("colorpal")
+            .and_then(|member| self.palette(member))
+        {
+            palette.overwrite(0, colors, 0, start);
+        }
+        let groups = Rc::clone(&self.groups);
+        let defaults = replaced.get_all("defaultpal");
+        for (g, name) in replaced.get_all("replace").iter().enumerate() {
+            let group = groups.section(name)?;
+            let variants = group.get_all("pal");
+            let same = |a: &[u8], b: &[u8]| {
+                crate::vfs::normalise(&String::from_utf8_lossy(a))
+                    == crate::vfs::normalise(&String::from_utf8_lossy(b))
+            };
+            let chosen = match stored.get(g) {
+                Some(&choice) => usize::from(choice),
+                None => defaults
+                    .get(g)
+                    .and_then(|d| variants.iter().position(|v| same(v, d)))
+                    .unwrap_or(0),
+            };
+            if let Some(colors) = variants.get(chosen).and_then(|v| self.palette(v)) {
+                palette.overwrite(start, colors, 1, usize::MAX);
+            }
+            start = start.saturating_add(usize::try_from(to_int(group.get("ncolors")?)?).ok()?);
+        }
+        Some(palette)
     }
 
     /// Draws the map seen from `rotation` (0 to 3), whole, on a black background.
@@ -455,6 +521,7 @@ impl<'a> MapRenderer<'a> {
             });
             metas.push(Meta {
                 ty,
+                colors: &c.colors,
                 life: c.fence.map(|f| f.life as i32),
             });
         }
@@ -759,10 +826,14 @@ impl<'a> MapRenderer<'a> {
         };
         let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z);
         summary.objects_drawn += 1;
+        let palette = anim
+            .sprites
+            .get(view.file)
+            .and_then(|sprite| self.recoloured(ty, &sprite.1, meta.colors));
         out.push(Placed {
             x,
             y,
-            pic: Pic::Anim(anim, view),
+            pic: Pic::Anim(anim, view, palette),
         });
     }
 }
@@ -770,6 +841,8 @@ impl<'a> MapRenderer<'a> {
 /// The type and the condition of an object.
 struct Meta<'a> {
     ty: &'a EntityType,
+    /// The colour choices the record stores.
+    colors: &'a [u8],
     /// The life of a fence or tank wall, if the record has one.
     life: Option<i32>,
 }

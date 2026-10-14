@@ -94,6 +94,9 @@ pub struct Common {
     pub id: u32,
     /// The name the file stores for the entity; each byte is one character (Latin-1).
     pub name: String,
+    /// The colour choices of the entity, one byte per replaceable colour group of its type, from
+    /// version 67 (empty before, and when the entity stores none).
+    pub colors: Vec<u8>,
     /// The condition of a fence or tank wall of a version from 55; `None` for everything else.
     pub fence: Option<Fence>,
 }

@@ -95,7 +95,7 @@ impl<'a> Reader<'a> {
 }
 
 /// A palette: up to [`MAX_COLORS`] colours as R, G, B, A.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Palette {
     colors: Vec<[u8; 4]>,
 }
@@ -134,6 +134,15 @@ impl Palette {
     /// colour (terrain, interface) use 0 as a colour.
     pub fn zero_is_transparent(&self) -> bool {
         matches!(self.color(0), Some([255, 0, 255, _]))
+    }
+
+    /// Overwrites the entries from `start` with the entries of `from` from `skip` on, at most
+    /// `count` of them and none past the end of either palette.
+    pub fn overwrite(&mut self, start: usize, from: &Palette, skip: usize, count: usize) {
+        let source = from.colors.get(skip..).unwrap_or_default();
+        for (slot, color) in self.colors.iter_mut().skip(start).zip(source).take(count) {
+            *slot = *color;
+        }
     }
 
     /// The colour of a palette index, as R, G, B, A.
@@ -983,6 +992,25 @@ pub(crate) mod tests {
         assert_eq!(Palette::parse(&0u32.to_le_bytes()).unwrap().len(), 0);
         assert!(Palette::parse(&0u32.to_le_bytes()).unwrap().is_empty());
         assert!(err_message(Palette::parse(&[1, 0, 0])).contains("truncated"));
+    }
+
+    #[test]
+    fn overwrite_stays_within_both_palettes() {
+        let source = Palette {
+            colors: vec![[1; 4], [2; 4], [3; 4]],
+        };
+        let mut target = palette(); // 5 entries
+        target.overwrite(3, &source, 1, usize::MAX);
+        assert_eq!(target.colors[2..], [PALETTE[2], [2; 4], [3; 4]]);
+        let mut target = palette();
+        target.overwrite(0, &source, 0, 2);
+        assert_eq!(target.colors[..3], [[1; 4], [2; 4], PALETTE[2]]);
+        // Nothing to copy, or nowhere to put it: no change, no panic.
+        for (start, skip) in [(9, 0), (usize::MAX, 0), (0, 9), (0, usize::MAX)] {
+            let mut target = palette();
+            target.overwrite(start, &source, skip, usize::MAX);
+            assert_eq!(target, palette());
+        }
     }
 
     #[test]

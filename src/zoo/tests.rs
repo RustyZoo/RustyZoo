@@ -170,7 +170,7 @@ fn base(w: &mut W, v: u32, rot: u32, id: u32, name: &str) {
         behaviour(w, 0);
     }
     if v >= 67 {
-        w.u32(2).z(2);
+        w.u32(2).u8(3).u8(9);
     }
 }
 
@@ -465,6 +465,7 @@ fn reads_the_common_part_of_fixed_entities() {
                 .as_ref()
                 .unwrap_or_else(|| panic!("{class} at {v}"));
             assert_eq!((c.x, c.y, c.z), (100, -5, 32));
+            assert_eq!(c.colors, [3, 9], "{class} at {v}");
         }
         let c = z.entities[3].common.as_ref().unwrap();
         assert_eq!((c.rotation, c.id, &*c.name), (4, 9, "House"));
