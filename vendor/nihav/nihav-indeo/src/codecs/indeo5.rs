@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Part of NihAV by Kostya Shishkov (https://nihav.org), trimmed; see vendor/README.md and COPYING.
 use nihav_core::io::bitreader::*;
 use nihav_core::formats;
@@ -14,6 +14,8 @@ fn calc_quant(glob_q: u32, qd: i16) -> usize {
 
 struct Indeo5Parser {
     mb_cb:          IVICodebook,
+    // RustyZoo change: the picture size the stream was opened with; key frames must announce it.
+    size:           (usize, usize),
 
     width:          usize,
     height:         usize,
@@ -31,6 +33,7 @@ impl Indeo5Parser {
     fn new() -> Self {
         Indeo5Parser {
             mb_cb:      IVI_CB_ZERO,
+            size:       (0, 0),
 
             width:          0,
             height:         0,
@@ -91,6 +94,8 @@ impl IndeoXParser for Indeo5Parser {
                 w               = br.read(13)? as usize;
             }
             validate!((w != 0) && (h != 0));
+            // RustyZoo change: refuse another size before anything is allocated for it.
+            validate!((w, h) == self.size);
             self.width  = w;
             self.height = h;
 
@@ -519,6 +524,7 @@ impl NADecoder for Indeo5Decoder {
             let w = vinfo.get_width();
             let h = vinfo.get_height();
             let f = vinfo.is_flipped();
+            self.ip.size = (w, h);
             let fmt = formats::YUV410_FORMAT;
             let myinfo = NACodecTypeInfo::Video(NAVideoInfo::new(w, h, f, fmt));
             self.info = NACodecInfo::new_ref(info.get_name(), myinfo, info.get_extradata()).into_ref();

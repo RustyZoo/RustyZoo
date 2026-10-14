@@ -247,7 +247,7 @@ impl Movie {
 
     /// The duration of the video in milliseconds.
     pub fn duration_ms(&self) -> u64 {
-        self.video.len() as u64 * 1000 * u64::from(self.scale) / u64::from(self.rate)
+        duration_ms(self.video.len(), self.scale, self.rate)
     }
 
     /// The audio format, `None` if the movie has no sound.
@@ -287,6 +287,12 @@ impl Movie {
             done: !ready,
         }
     }
+}
+
+/// `frames` at `rate` per `scale` seconds, in milliseconds, saturating.
+fn duration_ms(frames: usize, scale: u32, rate: u32) -> u64 {
+    let ms = frames as u128 * 1000 * u128::from(scale) / u128::from(rate);
+    u64::try_from(ms).unwrap_or(u64::MAX)
 }
 
 /// The iterator of [`Movie::frames`].
@@ -425,7 +431,25 @@ mod tests {
 
     /// An AVI file: the stream headers, then the data chunks in the order given.
     fn avi(codec: &[u8; 4], audio: u16, data: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
-        let video = [strh(b"vids", 1001, 30000), video_format(16, 16, codec)].concat();
+        avi_of(16, 16, codec, audio, data)
+    }
+
+    fn avi_sized(width: u32, height: u32, data: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+        avi_of(width, height, b"IV50", 1, data)
+    }
+
+    fn avi_of(
+        width: u32,
+        height: u32,
+        codec: &[u8; 4],
+        audio: u16,
+        data: &[(&[u8; 4], &[u8])],
+    ) -> Vec<u8> {
+        let video = [
+            strh(b"vids", 1001, 30000),
+            video_format(width, height, codec),
+        ]
+        .concat();
         let sound = [strh(b"auds", 1, 8000), audio_format(audio, 1, 8000, 16)].concat();
         let headers = [
             chunk(b"avih", &[0; 56]),
@@ -446,9 +470,9 @@ mod tests {
         chunk(b"RIFF", &body.concat())
     }
 
-    /// An Indeo 5 key frame of 16 x 16 pixels (one macroblock per 8 x 8 luma or 4 x 4 chroma
-    /// block, none with coefficients), and a null frame.
-    fn key_frame_and_null() -> (Vec<u8>, Vec<u8>) {
+    /// An Indeo 5 key frame of `width` x `height` pixels (multiples of 16, at most 64 wide):
+    /// one macroblock per 8 x 8 luma or 4 x 4 chroma block, none with coefficients.
+    fn key_frame(width: u32, height: u32) -> Vec<u8> {
         let mut bits: Vec<bool> = Vec::new();
         let put = |bits: &mut Vec<bool>, value: u32, count: u32| {
             bits.extend((0..count).map(|i| value >> i & 1 == 1))
@@ -461,8 +485,8 @@ mod tests {
         put(&mut bits, 0, 2); // one luma band
         put(&mut bits, 0, 1); // one chroma band
         put(&mut bits, 15, 4); // an explicit size
-        put(&mut bits, 16, 13); // height
-        put(&mut bits, 16, 13); // width
+        put(&mut bits, height, 13);
+        put(&mut bits, width, 13);
         put(&mut bits, 2, 6); // luma band: macroblocks of one 8 x 8 block
         put(&mut bits, 6, 6); // chroma band: macroblocks of one 4 x 4 block
         align(&mut bits);
@@ -471,21 +495,25 @@ mod tests {
         put(&mut bits, 0, 8); // frame flags
         put(&mut bits, 0, 3); // skipped
         align(&mut bits);
-        for macroblocks in [4, 1, 1] {
+        let luma = width / 8 * (height / 8);
+        let chroma = width / 16 * (height / 16);
+        for macroblocks in [luma, chroma, chroma] {
             put(&mut bits, 0, 14); // band flags, checksum flag, quantiser
             align(&mut bits);
             put(&mut bits, 2, 2); // a coded tile
-            put(&mut bits, 3, 8); // its size in bytes
+            put(&mut bits, 2 + (2 * macroblocks).div_ceil(8), 8); // its size in bytes
             align(&mut bits);
             put(&mut bits, 0, 2 * macroblocks); // per macroblock: coded, no coefficients
             align(&mut bits);
         }
-        let pack = |bits: &[bool]| {
-            bits.chunks(8)
-                .map(|c| c.iter().enumerate().map(|(i, b)| u8::from(*b) << i).sum())
-                .collect()
-        };
-        (pack(&bits), vec![0x1F | 4 << 5, 0])
+        bits.chunks(8)
+            .map(|c| c.iter().enumerate().map(|(i, b)| u8::from(*b) << i).sum())
+            .collect()
+    }
+
+    /// A key frame of 16 x 16 pixels and a null frame.
+    fn key_frame_and_null() -> (Vec<u8>, Vec<u8>) {
+        (key_frame(16, 16), vec![0x1F | 4 << 5, 0])
     }
 
     #[test]
@@ -636,6 +664,42 @@ mod tests {
         assert!(frames[0].pixels.chunks(4).all(|p| p[3] == 255));
         assert_eq!(frames[0].pixels[..4], [130, 130, 130, 255]);
         assert!(frames[1].pixels == frames[0].pixels && frames[2].pixels == frames[0].pixels);
+    }
+
+    #[test]
+    fn a_picture_of_another_size_than_the_container_is_an_error() {
+        // The same frame is fine when the container announces its size.
+        let movie = Movie::parse(avi_sized(32, 32, &[(b"00dc", &key_frame(32, 32))])).unwrap();
+        assert_eq!(movie.frames().filter(Result::is_ok).count(), 1);
+        for (frame, container) in [
+            ((32, 32), (16, 16)),
+            ((16, 16), (32, 32)),
+            ((16, 32), (16, 16)),
+        ] {
+            let data = avi_sized(
+                container.0,
+                container.1,
+                &[(b"00dc", &key_frame(frame.0, frame.1))],
+            );
+            let movie = Movie::parse(data).unwrap();
+            let mut frames = movie.frames();
+            assert!(
+                matches!(frames.next(), Some(Err(MovieError::Decode(_)))),
+                "{frame:?} in {container:?}"
+            );
+            assert!(frames.next().is_none());
+        }
+    }
+
+    #[test]
+    fn the_duration_does_not_overflow() {
+        assert_eq!(duration_ms(0, 1, 1), 0);
+        assert_eq!(duration_ms(302, 1001, 30000), 10076);
+        assert_eq!(
+            duration_ms(4_000_000, u32::MAX, 1),
+            4_000_000 * 1000 * u64::from(u32::MAX)
+        );
+        assert_eq!(duration_ms(usize::MAX, u32::MAX, 1), u64::MAX);
     }
 
     #[test]

@@ -61,7 +61,7 @@ Not implemented yet unless said otherwise.
 
 ## Dependencies
 
-A dependency is added by the milestone that first uses it. Today: `sdl3`, `zip`, `png`, `flate2` and `fontdue`, and a trimmed copy of NihAV's Indeo 5 decoder in `vendor/nihav` (AGPL-3.0, pure Rust, no other dependency; see `vendor/README.md`), used by `movie`. It is vendored because NihAV is not published on crates.io; the decoder is third-party code on untrusted data, so a panic inside it is caught and reported as a decode error.
+A dependency is added by the milestone that first uses it. Today: `sdl3`, `zip`, `png`, `flate2` and `fontdue`, and a trimmed copy of NihAV's Indeo 5 decoder in `vendor/nihav` (AGPL version 3 or later, pure Rust, no other dependency; see `vendor/README.md`), used by `movie`. It is vendored because NihAV is not published on crates.io; the decoder is third-party code on untrusted data, so a panic inside it is caught and reported as a decode error.
 
 ## Tests
 

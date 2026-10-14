@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Part of NihAV by Kostya Shishkov (https://nihav.org), trimmed; see vendor/README.md and COPYING.
 //! Reference-counted buffer data type.
 //!
@@ -43,9 +43,6 @@ impl<T> NABufferData<T> {
     fn dec_refs(obj: &mut Self) -> bool {
         obj.refs.fetch_sub(1, Ordering::SeqCst) == 1
     }
-    fn get_num_refs(obj: &Self) -> usize {
-        obj.refs.load(Ordering::Relaxed)
-    }
     fn get_read_ptr(obj: &Self) -> &T {
         &obj.data
     }
@@ -68,12 +65,6 @@ impl<T> NABufferRef<T> {
         let bdata = NABufferData::new(val);
         let nbox: Box<_> = Box::new(bdata);
         Self { ptr: Box::into_raw(nbox) }
-    }
-    /// Reports the number of references for the current instance.
-    pub fn get_num_refs(&self) -> usize {
-        unsafe {
-            NABufferData::get_num_refs(self.ptr.as_mut().unwrap())
-        }
     }
     /// Returns a mutable pointer to the underlying data if possible.
     pub fn as_mut(&mut self) -> Option<&mut T> {

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Part of NihAV by Kostya Shishkov (https://nihav.org), trimmed; see vendor/README.md and COPYING.
 use super::ivibr::{IVICodebook,IVI_CB_ZERO,RVMap,IVI_ZERO_RVMAP,IVI_RVMAPS};
 

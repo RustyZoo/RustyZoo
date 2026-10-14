@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Part of NihAV by Kostya Shishkov (https://nihav.org), trimmed; see vendor/README.md and COPYING.
 //! Bitstream reader functionality.
 //!
@@ -33,7 +33,6 @@
 //! # Ok(())
 //! # }
 //! ```
-
 
 
 /// Bitstream reading modes.
@@ -92,8 +91,6 @@ impl<'a> BitReader<'a> {
         BitReader{ cache: 0, pos: 0, bits: 0, src, mode }
     }
 
-    /// Returns the data bitstream reader uses.
-    pub fn get_data(&self) -> &'a [u8] { self.src }
 
     /// Reports the current bit position in the bitstream (usually simply the number of bits read so far).
     pub fn tell(&self) -> usize {
@@ -179,13 +176,6 @@ impl<'a> BitReader<'a> {
         res as u32
     }
 
-    fn read_cache_s(&mut self, nbits: u8) -> i32 {
-        let res = match self.mode {
-            BitReaderMode::LE => ((self.cache as i64) << (64 - nbits)) >> (64 - nbits),
-            _                 => (self.cache as i64) >> (64 - nbits),
-        };
-        res as i32
-    }
 
     #[inline(always)]
     fn skip_cache(&mut self, nbits: u8) {
@@ -237,21 +227,6 @@ impl<'a> BitReader<'a> {
         Ok(res)
     }
 
-    /// Reads the specified amount of bits as a signed value.
-    ///
-    /// Beside signedness it behaves the same as [`read`].
-    ///
-    /// [`read`]: #method.read
-    pub fn read_s(&mut self, nbits: u8) -> BitReaderResult<i32> {
-        if nbits == 0 || nbits > 32 { return Err(TooManyBitsRequested) }
-        if self.bits < nbits {
-            self.refill()?;
-            if self.bits < nbits { return Err(BitstreamEnd) }
-        }
-        let res = self.read_cache_s(nbits);
-        self.skip_cache(nbits);
-        Ok(res)
-    }
 
     /// Reads single bit from the stream and interprets it as a boolean value.
     #[inline(always)]
@@ -317,31 +292,6 @@ impl<'a> BitReader<'a> {
         Ok(())
     }
 
-    /// Seeks to the absolute bit position in the stream.
-    /// If the requested position lies after the bitstream end the function returns [`TooManyBitsRequested`].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use nihav_core::io::bitreader::{BitReader,BitReaderMode};
-    ///
-    /// # use nihav_core::io::bitreader::BitReaderResult;
-    /// # fn foo() -> BitReaderResult<u32> {
-    /// let bits: [u8; 4] = [ 42, 43, 44, 45 ];
-    /// let mut br = BitReader::new(&bits, BitReaderMode::BE);
-    /// br.seek(16)?;
-    /// let value = br.read(8)?; // this should return 44
-    /// # Ok(value)
-    /// # }
-    /// ```
-    ///
-    /// [`TooManyBitsRequested`]: ./enum.BitReaderError.html#variant.TooManyBitsRequested
-    pub fn seek(&mut self, nbits: u32) -> BitReaderResult<()> {
-        if ((nbits + 7) >> 3) as usize > self.src.len() { return Err(TooManyBitsRequested); }
-        self.reset_cache();
-        self.pos = ((nbits / 32) * 4) as usize;
-        self.skip(nbits & 0x1F)
-    }
 
     /// Aligns the bit position to the next byte boundary. If already at byte boundary the function does nothing.
     ///
