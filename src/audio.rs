@@ -299,11 +299,21 @@ mod tests {
         let looping = audio.play(sound(), 0, true, false).unwrap().unwrap();
         let once = audio.play(sound(), 0, false, false).unwrap().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(700));
+        // The audio thread of a loaded runner can be late: wait for each condition (at most
+        // ten seconds) instead of reading the queues at one fixed instant.
+        let reached = |voice: &Voice, ok: fn(i32) -> bool| {
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !ok(voice.queued_bytes().unwrap()) && std::time::Instant::now() < end {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            ok(voice.queued_bytes().unwrap())
+        };
+        // Some bytes stay in the converter.
+        assert!(reached(&once, |n| n < 100), "the device did play");
+        // The one-shot has run out, so the loop was queued again by the audio thread.
         assert!(
-            looping.queued_bytes().unwrap() > 1000,
+            reached(&looping, |n| n > 1000),
             "queued by the audio thread"
         );
-        // Some bytes stay in the converter.
-        assert!(once.queued_bytes().unwrap() < 100, "the device did play");
     }
 }
