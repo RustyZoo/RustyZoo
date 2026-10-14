@@ -107,7 +107,7 @@ fn plan(game: (u32, u32), scale: f32, density: f32, usable: (u32, u32)) -> (u32,
 }
 
 /// The most the loop spins at the end of a wait, in milliseconds, however late a wait was.
-const MAX_SLACK_MS: f64 = 10.0;
+const MAX_SLACK_MS: f64 = 12.0;
 
 /// Whether the window is hidden or minimised, from its flags. The flags are read, not followed
 /// through the events: a restore that comes as another event cannot leave the loop asleep.
@@ -341,7 +341,7 @@ pub fn run(
             Some(event) => state.note(event, &mut commands),
             None => {
                 let over = waited.elapsed().as_secs_f64() * 1e3 - early as f64;
-                slack = over.clamp(0.0, MAX_SLACK_MS).max(slack * 0.95);
+                slack = over.clamp(0.0, MAX_SLACK_MS).max(slack * 0.99);
                 while app.next_due(sdl3::timer::ticks() - start) > 0 {
                     if let Some(event) = pump.poll_event() {
                         state.note(event, &mut commands);
