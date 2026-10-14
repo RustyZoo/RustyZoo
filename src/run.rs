@@ -18,6 +18,7 @@ use rustyzoo::music::Music;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::sprite::write_png;
 use rustyzoo::timing::Timers;
+use rustyzoo::ui::interface::Buttons;
 use rustyzoo::vfs::Vfs;
 
 use super::boot::boot;
@@ -133,6 +134,21 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
             ("--text", [id, text, rest @ ..]) => {
                 let id = id.parse().map_err(|_| CliError::Usage)?;
                 flags.fill.texts.push((id, text.to_string()));
+                rest
+            }
+            ("--ask", [id, buttons, rest @ ..]) => {
+                let id = id.parse().map_err(|_| CliError::Usage)?;
+                let mut shown = Buttons::default();
+                for name in buttons.split(',') {
+                    match name {
+                        "yes" => shown.yes = true,
+                        "no" => shown.no = true,
+                        "ok" => shown.ok = true,
+                        "cancel" => shown.cancel = true,
+                        _ => return Err(CliError::Usage),
+                    }
+                }
+                flags.fill.ask = Some((id, shown));
                 rest
             }
             ("--out", [dir, rest @ ..]) => {
@@ -551,6 +567,16 @@ mod tests {
         assert_eq!(got.fill.texts, [(11510, "12 34".to_string())]);
         assert!(matches!(rows(&["--text", "11510"]), Err(CliError::Usage)));
         assert!(matches!(rows(&["--text", "x", "a"]), Err(CliError::Usage)));
+        let got = rows(&["--ask", "45000", "yes,no"]).unwrap_or_else(|_| panic!());
+        assert_eq!(got.fill.ask, Some((45000, Buttons::YES_NO)));
+        for bad in [
+            &["--ask", "45000", "maybe"][..],
+            &["--ask", "45000", ""],
+            &["--ask", "x", "ok"],
+            &["--ask", "45000"],
+        ] {
+            assert!(matches!(rows(bad), Err(CliError::Usage)), "{bad:?}");
+        }
     }
 
     #[test]

@@ -38,7 +38,7 @@ impl Interface {
         true
     }
 
-    fn put_text(&mut self, i: usize, text: &[u8]) {
+    pub(super) fn put_text(&mut self, i: usize, text: &[u8]) {
         let e = &mut self.tree.elements[i];
         e.text = Some(text.to_vec());
         match &mut e.kind {
@@ -616,11 +616,14 @@ impl Interface {
                     self.field_changed(i);
                 }
                 self.set_focus(None);
-                let layout = self.tree.elements[i]
-                    .parent
-                    .map_or(0, |p| self.tree.elements[p].id);
+                let parent = self.tree.elements[i].parent;
+                let layout = parent.map_or(0, |p| self.tree.elements[p].id);
                 self.event(format!("key {layout} {}", key.name()));
                 self.actions.push(Action::Key(layout, key));
+                // In a question the key answers it.
+                if parent.is_some() && parent == self.modal {
+                    self.dialog_key(key);
+                }
                 return true;
             }
             // The letters Y and N come as typed characters too: the field takes the character.
@@ -698,14 +701,20 @@ impl Interface {
     /// A key of the interface, `shift` meaning the Shift key is held: the focused text field or
     /// list box reads it. Whether it handled it.
     pub fn key(&mut self, key: Key, shift: bool) -> bool {
-        let Some(i) = self.focused() else {
-            return false;
+        let handled = match self.focused() {
+            Some(i) => match self.tree.elements[i].kind {
+                Kind::EditableText(_) => self.field_key(i, key, shift),
+                Kind::ListBox(_) => self.list_key(i, key),
+                _ => false,
+            },
+            None => false,
         };
-        match self.tree.elements[i].kind {
-            Kind::EditableText(_) => self.field_key(i, key, shift),
-            Kind::ListBox(_) => self.list_key(i, key),
-            _ => false,
+        // An open question gets what the focused element leaves, and nothing goes further.
+        if !handled && self.modal.is_some() {
+            self.dialog_key(key);
+            return true;
         }
+        handled
     }
 
     /// The wheel turns by `notches` over element `i` (positive: away from the player): a list or

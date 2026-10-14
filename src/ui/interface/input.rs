@@ -25,7 +25,7 @@ pub(super) struct Input {
     /// The element that gets every mouse message while the left button is held.
     capture: Option<usize>,
     drag: Option<Drag>,
-    /// Milliseconds of interface updates so far.
+    /// The clock (ms) at the last interface update or the last [`Interface::set_time`].
     pub(super) clock: u64,
     /// A repeating button held, and when it fires next.
     repeat: Option<(usize, u64)>,
@@ -57,7 +57,8 @@ impl Interface {
 
     /// The element at a point of the screen, aliases followed: the last drawn first.
     fn hit(&mut self, at: (i32, i32)) -> Option<usize> {
-        let found = self.hit_in(0, at)?;
+        // An open question is all that can be hit.
+        let found = self.hit_in(self.modal.unwrap_or(0), at)?;
         let e = &self.tree.elements[found];
         match e.alias {
             alias if alias > 0 && alias != e.id => self.tree.find(alias).or(Some(found)),
@@ -130,10 +131,11 @@ impl Interface {
         let shown = target.filter(|t| Some(*t) != self.map_view);
         self.hover_to(shown);
         self.widget_hover(shown, at);
+        self.tooltip_for(target);
         target.is_some() && target == self.map_view
     }
 
-    fn hover_to(&mut self, target: Option<usize>) {
+    pub(super) fn hover_to(&mut self, target: Option<usize>) {
         if target == self.input.hover {
             return;
         }
@@ -344,8 +346,7 @@ impl Interface {
     }
 
     /// A repeating button held fires every 30 ms after 500 ms while the pointer is on it.
-    pub(super) fn repeat(&mut self, period: u32) {
-        self.input.clock += u64::from(period);
+    pub(super) fn repeat(&mut self) {
         self.button_repeat();
         self.bar_repeat();
     }
@@ -384,6 +385,7 @@ impl Interface {
         match action {
             1 | 3 => self.show_target(target),
             2 => self.hide_target(target),
+            5 => self.answer(target),
             4 => {
                 if let Some(layout) = layout {
                     self.hide_element(layout);
@@ -428,7 +430,7 @@ impl Interface {
         }
     }
 
-    fn hide_element(&mut self, i: usize) {
+    pub(super) fn hide_element(&mut self, i: usize) {
         self.tree.hide(i);
         let id = self.id(i);
         self.event(format!("hide {id}"));

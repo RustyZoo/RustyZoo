@@ -223,25 +223,42 @@ fn a_repeating_button_acts_at_once_then_after_500_ms_every_30_while_held_over() 
             .count()
     };
     assert_eq!(count(&mut ui), 1);
-    ui.update(499);
+    // The first repeat is 500 ms after the press, then every 30 ms; the update runs at most every
+    // 33 ms, so a repeat comes at the first update after its time.
+    ui.update(33);
+    ui.update(495);
     assert_eq!(count(&mut ui), 0);
-    ui.update(1);
+    ui.update(528);
     assert_eq!(count(&mut ui), 1);
-    ui.update(29);
-    assert_eq!(count(&mut ui), 0);
-    ui.update(1);
-    assert_eq!(count(&mut ui), 1);
+    ui.update(561);
+    assert_eq!(count(&mut ui), 1, "due at 558");
+    ui.update(594);
+    assert_eq!(count(&mut ui), 1, "due at 591");
     // Off the button it waits (1 ms) and fires again when the pointer is back.
     ui.mouse(Mouse::Move(60, 40));
-    ui.update(60);
+    ui.update(700);
     assert_eq!(count(&mut ui), 0);
     ui.mouse(Mouse::Move(50, 3));
-    ui.update(1);
+    ui.update(733);
     assert_eq!(count(&mut ui), 1);
     ui.mouse(Mouse::Up);
     ui.take_events();
-    ui.update(1000);
+    ui.update(2000);
     assert_eq!(count(&mut ui), 0, "released: no more");
+}
+
+#[test]
+fn a_button_repeats_from_the_time_it_was_pressed() {
+    let mut ui = interface("repeat-time");
+    ui.set_time(1000);
+    ui.mouse(Mouse::Move(50, 3));
+    ui.mouse(Mouse::Down);
+    ui.take_events();
+    ui.update(1400);
+    ui.update(1499);
+    assert!(ui.take_events().is_empty());
+    ui.update(1532);
+    assert_eq!(ui.take_events(), ["select 24"]);
 }
 
 #[test]

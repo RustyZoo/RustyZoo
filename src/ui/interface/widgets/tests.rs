@@ -73,6 +73,12 @@ fn interface(name: &str) -> Interface {
     ui
 }
 
+/// An interface update 33 ms after the last one.
+fn tick(ui: &mut Interface, now: &mut u64) {
+    *now += 33;
+    ui.update(*now);
+}
+
 fn rows(n: usize) -> Vec<Row> {
     (0..n)
         .map(|i| Row {
@@ -158,6 +164,7 @@ fn a_bar_follows_the_rows_of_its_list() {
 #[test]
 fn the_arrows_step_by_one_and_repeat_while_held_on_the_same_part() {
     let mut ui = interface("arrows");
+    let mut now = 0u64;
     ui.set_rows(20, rows(10));
     // The down arrow is the last 8 pixels of the bar (x 40 to 47, y 28 to 35).
     let events = press(&mut ui, 44, 30);
@@ -166,25 +173,25 @@ fn the_arrows_step_by_one_and_repeat_while_held_on_the_same_part() {
     assert_eq!(ui.take_actions(), [Action::Scroll(21, 1)]);
     // The first repeat comes 500 ms after the press, then every 30 ms; the update runs every 33.
     for _ in 0..15 {
-        ui.update(33);
+        tick(&mut ui, &mut now);
     }
     assert_eq!(position(&ui, 21), 1, "495 ms");
-    ui.update(33);
+    tick(&mut ui, &mut now);
     assert_eq!(position(&ui, 21), 2, "528 ms");
-    ui.update(33);
+    tick(&mut ui, &mut now);
     assert_eq!(position(&ui, 21), 3);
     // Off the part (onto the track): no step, and it keeps looking.
     at(&mut ui, 44, 15);
-    ui.update(33);
-    ui.update(33);
+    tick(&mut ui, &mut now);
+    tick(&mut ui, &mut now);
     assert_eq!(position(&ui, 21), 3);
     // Back on it: the steps go on. Released: they stop.
     at(&mut ui, 44, 30);
-    ui.update(33);
+    tick(&mut ui, &mut now);
     assert_eq!(position(&ui, 21), 4);
     release(&mut ui);
-    ui.update(33);
-    ui.update(33);
+    tick(&mut ui, &mut now);
+    tick(&mut ui, &mut now);
     assert_eq!(position(&ui, 21), 4);
     // The up arrow goes back, and stops at the first row.
     for _ in 0..6 {
@@ -205,6 +212,7 @@ fn the_end_of_the_range_ends_a_step_and_says_nothing() {
 #[test]
 fn a_press_on_the_track_moves_a_page_toward_the_pointer_until_the_thumb_is_there() {
     let mut ui = interface("track");
+    let mut now = 0u64;
     ui.set_rows(20, rows(10));
     // The thumb starts under the up arrow (y 8 to 15); a press below it pages down by two.
     assert_eq!(press(&mut ui, 44, 25), ["scroll 21 2"]);
@@ -212,7 +220,7 @@ fn a_press_on_the_track_moves_a_page_toward_the_pointer_until_the_thumb_is_there
     // paging; the pointer at y 14 is now over the thumb, so the paging stops.
     at(&mut ui, 44, 14);
     for _ in 0..40 {
-        ui.update(33);
+        tick(&mut ui, &mut now);
     }
     assert_eq!(position(&ui, 21), 2);
     release(&mut ui);

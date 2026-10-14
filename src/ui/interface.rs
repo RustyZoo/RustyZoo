@@ -7,10 +7,14 @@
 //! looks like, an animation showing another frame included, marks the interface
 //! [`dirty`](Interface::dirty); a paint clears that.
 
+mod dialog;
 mod input;
+mod tooltip;
 mod widgets;
 
+pub use dialog::Buttons;
 use std::collections::HashMap;
+pub use tooltip::Settings;
 
 use super::draw::{Painter, Rect4, Strings};
 use super::layout::{DIRTY, FOCUSED, HIDDEN, Kind, TIMED, Tree};
@@ -30,6 +34,8 @@ pub enum Action {
     /// A key a text field passed on to its layout (Enter or Escape ended the edit): the layout's
     /// id.
     Key(i32, Key),
+    /// The open question was answered: 1 OK, 2 Cancel, 6 Yes, 7 No.
+    Answer(i32),
 }
 
 /// The game's strings, with the texts the game code has put in place of some of them (a version
@@ -52,6 +58,9 @@ impl Strings for Texts {
     }
 }
 
+/// The least milliseconds between two runs of the interface update (main loop 8).
+const UPDATE_GAP: u64 = 33;
+
 pub struct Interface {
     pub tree: Tree,
     painter: Painter,
@@ -68,6 +77,12 @@ pub struct Interface {
     /// The buttons whose action ran (see [`Interface::take_selected`]).
     selected: Vec<i32>,
     actions: Vec<Action>,
+    settings: Settings,
+    tip: tooltip::Tip,
+    /// The layout of the open question: only it receives input, and the game stands still.
+    modal: Option<usize>,
+    /// The clock of the last interface update; `None` before the first.
+    updated: Option<u64>,
 }
 
 impl Interface {
@@ -94,7 +109,12 @@ impl Interface {
             sounds: Vec::new(),
             selected: Vec::new(),
             actions: Vec::new(),
+            settings: Settings::default(),
+            tip: tooltip::Tip::default(),
+            modal: None,
+            updated: None,
         };
+        ui.start_tooltip();
         ui.sync_owners();
         ui
     }
@@ -118,7 +138,9 @@ impl Interface {
     /// Whether the map view is on the screen and no other element holds the keyboard focus: the
     /// keys of the map view act only then.
     pub fn map_view_has_the_keys(&self) -> bool {
-        self.map_view_shown() && self.tree.elements.iter().all(|e| e.state & FOCUSED == 0)
+        self.map_view_shown()
+            && self.modal.is_none()
+            && self.tree.elements.iter().all(|e| e.state & FOCUSED == 0)
     }
 
     /// Whether the map view is on the screen.
@@ -227,12 +249,28 @@ impl Interface {
         }
     }
 
-    /// The interface update, `period` milliseconds after the last one: a timed element hides
-    /// itself `timerDuration` after it was shown (the first update after showing only starts
+    /// Tells the interface the clock (ms) at which the input that follows happens: a held button
+    /// repeats from the time it was pressed.
+    pub fn set_time(&mut self, now: u64) {
+        self.input.clock = now;
+    }
+
+    /// The interface update at the clock `now` (ms). It reads the clock itself and works at most
+    /// 30 times a second: a call less than 33 ms after the last time that worked does nothing.
+    /// It repeats held buttons and scroll bar parts, runs the tooltip's delay, and hides a timed
+    /// element `timerDuration` after it was shown (the first update after showing only starts
     /// the count).
-    pub fn update(&mut self, period: u32) {
-        self.repeat(period);
-        let period = i64::from(period);
+    pub fn update(&mut self, now: u64) {
+        let elapsed = match self.updated {
+            Some(last) if now < last.saturating_add(UPDATE_GAP) => return,
+            Some(last) => now - last,
+            None => 0,
+        };
+        self.updated = Some(now);
+        self.input.clock = now;
+        self.repeat();
+        self.tooltip_update(elapsed);
+        let period = i64::try_from(elapsed).unwrap_or(i64::MAX);
         for i in 0..self.tree.elements.len() {
             if self.tree.elements[i].state & TIMED == 0 {
                 continue;
@@ -243,13 +281,16 @@ impl Interface {
             }
             let e = &mut self.tree.elements[i];
             let left = match e.countdown {
-                None => i64::from(e.timer_duration),
+                // The update that starts the count has used up 1 ms of it.
+                None => i64::from(e.timer_duration) - 1,
                 Some(left) => left.saturating_sub(period),
             };
             if left <= 0 {
                 e.countdown = None;
                 e.state |= HIDDEN;
                 self.dirty = true;
+                let id = e.id;
+                self.events.push(format!("hide {id}"));
             } else {
                 e.countdown = Some(left);
             }

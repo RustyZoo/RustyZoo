@@ -351,6 +351,11 @@ impl<'a> App<'a> {
         self.ui.as_mut()
     }
 
+    /// Whether a question is open.
+    fn modal(&self) -> bool {
+        self.ui.as_ref().is_some_and(Interface::modal_open)
+    }
+
     /// Whether the keys and the edge scroll of the map view act: always without an interface,
     /// else while the map view is shown and no other element has the keyboard focus.
     fn map_keys(&self) -> bool {
@@ -368,6 +373,9 @@ impl<'a> App<'a> {
         self.menu_lines.clear();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.music_changed = false;
+        if let Some(ui) = &mut self.ui {
+            ui.set_time(now);
+        }
         for &command in commands {
             if self.quit {
                 return None;
@@ -405,7 +413,7 @@ impl<'a> App<'a> {
                 game.camera.edge_scroll(&game.zoo, now, self.pointer);
             }
             if let Some(ui) = &mut self.ui {
-                ui.update(period);
+                ui.update(now);
                 if let Some(menu) = &mut self.menu {
                     self.menu_events.extend(menu.update(ui, period));
                 }
@@ -417,9 +425,10 @@ impl<'a> App<'a> {
                 self.music_changed = music.update(period);
             }
         }
+        let modal = self.modal();
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
-            && !game.paused
+            && !(game.paused || modal)
         {
             game.calendar.advance(step);
         }
@@ -449,6 +458,7 @@ impl<'a> App<'a> {
     fn apply(&mut self, command: Command) {
         let keys = self.map_keys();
         let shown = self.ui.as_ref().is_none_or(Interface::map_view_shown);
+        let modal = self.modal();
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
             (Command::Quit, _) => self.quit = true,
@@ -473,7 +483,9 @@ impl<'a> App<'a> {
                 game.camera.zoom(&game.zoo, None, zoom_in);
             }
             (Command::Fullscreen(on), Some(game)) => game.camera.set_fullscreen(&game.zoo, on),
-            (Command::Pause, Some(game)) if shown => game.paused = !game.paused,
+            // The Pause key works through a question too, but the question gives the flag back as
+            // it was, so it is left alone there.
+            (Command::Pause, Some(game)) if shown && !modal => game.paused = !game.paused,
             (Command::Space, Some(game)) if keys => game.paused = !game.paused,
             // The keys and characters go to the focused field or list.
             (Command::Key(key, _, shift), _) => {
@@ -555,7 +567,7 @@ impl<'a> App<'a> {
     }
 
     pub fn paused(&self) -> bool {
-        self.game.as_ref().is_some_and(|g| g.paused)
+        self.modal() || self.game.as_ref().is_some_and(|g| g.paused)
     }
 
     /// Whether the player asked to close the game.
@@ -622,7 +634,7 @@ impl<'a> App<'a> {
             && let Some(game) = &self.game
         {
             let d = game.calendar.date();
-            let paused = if game.paused { " paused" } else { "" };
+            let paused = if self.paused() { " paused" } else { "" };
             lines.push(format!(
                 "{lead} step {step} {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}{paused}",
                 d.year, d.month, d.day, d.hour, d.minute, d.second, d.millisecond

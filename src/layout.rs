@@ -6,10 +6,11 @@ use std::fs::File;
 use rustyzoo::Framebuffer;
 use rustyzoo::sprite::write_png;
 use rustyzoo::ui::draw::Painter;
-use rustyzoo::ui::interface::Interface;
+use rustyzoo::ui::interface::{Buttons, Interface, Settings};
 use rustyzoo::ui::layout::{DIRTY, HIGHLIGHTED, SELECTED};
 use rustyzoo::ui::widgets::Row;
 
+use rustyzoo::config::Config;
 use rustyzoo::strings::StringTables;
 use rustyzoo::text::{Fonts, to_cp1252};
 use rustyzoo::ui::layout::{Tree, installed_expansions};
@@ -114,11 +115,13 @@ fn resolved_tree(
 }
 
 /// What a run puts into the interface at the start, for a script to work on: list boxes filled
-/// with that many rows (`Row 1`, `Row 2`, ...) and texts given to elements.
+/// with that many rows (`Row 1`, `Row 2`, ...), texts given to elements and a question opened.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Fill {
     pub rows: Vec<(i32, usize)>,
     pub texts: Vec<(i32, String)>,
+    /// A question to open: its layout and its buttons.
+    pub ask: Option<(i32, Buttons)>,
 }
 
 /// The interface of a game in a window of `size` pixels: the tree, with the layouts of `show`
@@ -145,6 +148,10 @@ pub fn load_interface(
         });
     match made {
         Ok(mut ui) => {
+            match Config::parse(vfs.ini()) {
+                Ok(ini) => ui.set_settings(Settings::from_config(&ini)),
+                Err(e) => eprintln!("rustyzoo: warning: ini file: {e}"),
+            }
             for &id in show {
                 if !ui.show(id) {
                     return Err(format!("no layout with id {id}").into());
@@ -158,6 +165,11 @@ pub fn load_interface(
                 if !ui.set_rows(id, list.collect()) {
                     return Err(format!("no list box with id {id}").into());
                 }
+            }
+            if let Some((id, buttons)) = fill.ask
+                && !ui.ask(id, b"Question", buttons)
+            {
+                return Err(format!("no question layout with id {id}").into());
             }
             for (id, text) in &fill.texts {
                 if !ui.set_text(*id, &to_cp1252(text)) {
