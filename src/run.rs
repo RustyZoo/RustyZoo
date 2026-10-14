@@ -23,6 +23,9 @@ use rustyzoo::vfs::Vfs;
 use super::boot::boot;
 use super::{CliError, Report, check_types, load_map};
 
+/// The most rows `--rows` makes.
+const MAX_ROWS: usize = 100_000;
+
 /// The window of a run without `--size`.
 const DEFAULT_SIZE: (u32, u32) = (1024, 768);
 
@@ -48,6 +51,8 @@ struct Flags {
     replay: Option<String>,
     /// `--show`: layouts of the interface to show at the start.
     show: Vec<i32>,
+    /// `--rows` and `--text`: what to put into the interface at the start.
+    fill: crate::layout::Fill,
 }
 
 fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
@@ -114,6 +119,20 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
             }
             ("--show", [id, rest @ ..]) => {
                 flags.show.push(id.parse().map_err(|_| CliError::Usage)?);
+                rest
+            }
+            ("--rows", [id, count, rest @ ..]) => {
+                let count = count.parse::<usize>().map_err(|_| CliError::Usage)?;
+                if count > MAX_ROWS {
+                    return Err(format!("--rows: at most {MAX_ROWS} rows").into());
+                }
+                let id = id.parse().map_err(|_| CliError::Usage)?;
+                flags.fill.rows.push((id, count));
+                rest
+            }
+            ("--text", [id, text, rest @ ..]) => {
+                let id = id.parse().map_err(|_| CliError::Usage)?;
+                flags.fill.texts.push((id, text.to_string()));
                 rest
             }
             ("--out", [dir, rest @ ..]) => {
@@ -299,6 +318,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             timing: flags.timing,
             shot: flags.shot.as_deref(),
             show: &flags.show,
+            fill: &flags.fill,
         };
         return crate::window::run(vfs, loaded, &ini, window);
     }
@@ -337,7 +357,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
                 Timers::from_config(&ini),
                 size,
             )?;
-            if let Some(ui) = crate::layout::load_interface(vfs, size, &flags.show)? {
+            if let Some(ui) = crate::layout::load_interface(vfs, size, &flags.show, &flags.fill)? {
                 app.set_interface(ui);
             }
             // The game starts with the run: the menu music, which only the log tells of here,
@@ -499,6 +519,38 @@ mod tests {
         ] {
             assert!(flags(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn rows_take_a_list_and_a_count_up_to_the_limit() {
+        let rows = |words: &[&str]| {
+            let mut all = vec!["--headless", "--passes", "1", "--clock", "1"];
+            all.extend(words);
+            flags(&all)
+        };
+        let got = rows(&["--rows", "11504", "30", "--rows", "3", "0"]).unwrap_or_else(|_| panic!());
+        assert_eq!(got.fill.rows, [(11504, 30), (3, 0)]);
+        assert!(matches!(
+            rows(&["--rows", "1", "100001"]),
+            Err(CliError::Failed(_))
+        ));
+        assert!(rows(&["--rows", "1", "100000"]).is_ok());
+        for bad in [
+            &["--rows", "1", "-1"][..],
+            &["--rows", "x", "1"],
+            &["--rows", "1"],
+            &["--rows"],
+        ] {
+            assert!(matches!(rows(bad), Err(CliError::Usage)), "{bad:?}");
+        }
+        assert!(matches!(
+            rows(&["--rows", "1", "99999999999999999999"]),
+            Err(CliError::Usage)
+        ));
+        let got = rows(&["--text", "11510", "12 34"]).unwrap_or_else(|_| panic!());
+        assert_eq!(got.fill.texts, [(11510, "12 34".to_string())]);
+        assert!(matches!(rows(&["--text", "11510"]), Err(CliError::Usage)));
+        assert!(matches!(rows(&["--text", "x", "a"]), Err(CliError::Usage)));
     }
 
     #[test]

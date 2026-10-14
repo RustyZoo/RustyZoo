@@ -62,6 +62,8 @@ pub struct Flags<'a> {
     pub shot: Option<&'a str>,
     /// `--show`: layouts of the interface to show at the start.
     pub show: &'a [i32],
+    /// `--rows` and `--text`: what to put into the interface at the start.
+    pub fill: &'a crate::layout::Fill,
 }
 
 /// Makes the game full screen or windowed, after asking the window to do it if `ask`; the game is
@@ -179,7 +181,7 @@ pub fn run(
                 timers,
                 size,
             )?;
-            if let Some(ui) = crate::layout::load_interface(vfs, size, flags.show)? {
+            if let Some(ui) = crate::layout::load_interface(vfs, size, flags.show, flags.fill)? {
                 app.set_interface(ui);
             }
             // The game starts with the run: the menu music fades out.

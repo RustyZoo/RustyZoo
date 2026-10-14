@@ -26,6 +26,7 @@ use crate::tga::Texture;
 use crate::vfs::{Vfs, normalise};
 
 use super::resolve::Placed;
+use super::widgets::{Bar, Caret, Rows};
 
 /// State flag: not drawn, not hit. Every element starts with it.
 pub const HIDDEN: u32 = 1;
@@ -37,6 +38,8 @@ pub const HIGHLIGHTED: u32 = 4;
 pub const SELECTED: u32 = 8;
 /// State flag: not shown when its layout is shown.
 pub const NEVER_SHOWN: u32 = 16;
+/// State flag: hit testing never returns the element (the tooltip).
+pub const NOT_HIT: u32 = 32;
 /// State flag: the canvas must be drawn again.
 pub const DIRTY: u32 = 128;
 /// State flag: never drawn nor hit.
@@ -48,6 +51,12 @@ pub const TIMED: u32 = 1024;
 /// State flags: a toggle button, a sticky button.
 pub const TOGGLE: u32 = 2048;
 pub const STICKY: u32 = 4096;
+/// State flag: the element gets the keyboard focus when clicked.
+pub const TAKES_FOCUS: u32 = 32768;
+/// State flag of a list box: the keys that move the selection also run its select action.
+pub const SELECT_ON_KEYS: u32 = 131_072;
+/// State flag of a list box: no mouse input.
+pub const READ_ONLY: u32 = 262_144;
 /// State flag of a selected toggle button held with the pointer over it: drawn unselected.
 pub const RELEASING: u32 = 8192;
 /// State flag of an unselected toggle or sticky button held with the pointer over it: drawn
@@ -230,6 +239,8 @@ pub struct Text {
     /// The id of the scroll bar, 0 for none.
     pub scroll_bar: i32,
     pub scroll_bar_pos: Side,
+    /// The first line shown, when a scroll bar scrolls the text.
+    pub top: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -237,6 +248,9 @@ pub struct Edit {
     pub numeric: bool,
     /// 0: no limit.
     pub char_limit: i32,
+    pub caret: Caret,
+    /// The text when the field got the focus: Escape puts it back.
+    pub saved: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -245,6 +259,7 @@ pub struct ScrollBar {
     pub down_arrow: Option<Picture>,
     pub thumb: Option<Picture>,
     pub horizontal: bool,
+    pub bar: Bar,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -264,6 +279,7 @@ pub struct ListBox {
     pub toggle_select: bool,
     pub highlight_selection: bool,
     pub handle_double_clicks: bool,
+    pub rows: Rows,
 }
 
 /// The pictures and percentages of `UIStatusImage` and `UIImageSet`.
@@ -359,6 +375,8 @@ pub struct Element {
     pub timer_duration: i32,
     pub string_data: Vec<u8>,
     pub look: Look,
+    /// The text the program gave the element, which shows instead of its `textid` or `textname`.
+    pub text: Option<Vec<u8>>,
     /// The program switched the element to its alternative position.
     pub alt: bool,
     /// Milliseconds left of a timed element shown; `None` until the first interface update after
@@ -378,6 +396,23 @@ pub struct Pictures {
 }
 
 impl Pictures {
+    /// The width and height of a picture: the box of an animation, the size of an image.
+    pub fn size(&self, picture: Picture) -> (i32, i32) {
+        let side =
+            |lo: i32, hi: i32| (i64::from(hi) - i64::from(lo)).clamp(0, i64::from(i32::MAX)) as i32;
+        match picture {
+            Picture::Image(i) => self.images.get(i).map_or((0, 0), |t| {
+                (
+                    t.width.min(i32::MAX as usize) as i32,
+                    t.height.min(i32::MAX as usize) as i32,
+                )
+            }),
+            Picture::Animation(a) => self.animations.get(a).map_or((0, 0), |a| {
+                (side(a.set.x0, a.set.x1), side(a.set.y0, a.set.y1))
+            }),
+        }
+    }
+
     /// The picture the value names: an image if it ends in `.tga` (any case), else the animation
     /// without extension. A failure is a warning, once per name.
     fn get(&mut self, vfs: &Vfs, value: &[u8], warnings: &mut Vec<String>) -> Option<Picture> {
@@ -634,10 +669,13 @@ impl Tree {
                 show_border: flag("showborder", false),
                 scroll_bar: int("scrollbar"),
                 scroll_bar_pos: side(),
+                top: 0,
             }),
             b"UIEditableText" => Kind::EditableText(Edit {
                 numeric: flag("numeric", false),
                 char_limit: int("charlimit"),
+                caret: Caret::default(),
+                saved: Vec::new(),
             }),
             b"UIRadioSet" => Kind::RadioSet(ints("button")),
             b"UIScrollBar" => Kind::ScrollBar(ScrollBar {
@@ -645,6 +683,7 @@ impl Tree {
                 down_arrow: picture("downArrow"),
                 thumb: picture("thumb"),
                 horizontal: flag("horizontal", false),
+                bar: Bar::default(),
             }),
             b"UIListBox" => Kind::ListBox(ListBox {
                 scroll_bar: int("scrollbar"),
@@ -663,6 +702,7 @@ impl Tree {
                 toggle_select: flag("toggleselect", false),
                 highlight_selection: flag("highlightselection", true),
                 handle_double_clicks: flag("handledoubleclicks", false),
+                rows: Rows::default(),
             }),
             b"UIStatusImage" | b"UIImageSet" => {
                 let levels = Levels {
@@ -818,6 +858,7 @@ impl Tree {
             timer_duration: int("timerDuration", 3000),
             string_data: s.get("stringData").unwrap_or_default().to_vec(),
             look,
+            text: None,
             alt: false,
             countdown: None,
             placed: None,

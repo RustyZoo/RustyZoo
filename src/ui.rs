@@ -4,3 +4,4 @@ pub mod draw;
 pub mod interface;
 pub mod layout;
 pub mod resolve;
+pub mod widgets;

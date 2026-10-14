@@ -100,7 +100,8 @@ fn key_command(key: Scancode, keymod: Mod) -> Option<Command> {
         (Scancode::PageUp, _) => Command::Scroll(1, -1),
         (Scancode::PageDown, _) => Command::Scroll(1, 1),
         // Ctrl+Space still types a space; Ctrl+Pause is another key.
-        (Scancode::Pause, false) | (Scancode::Space, _) => Command::Pause,
+        (Scancode::Pause, false) => Command::Pause,
+        (Scancode::Space, _) => Command::Space,
         _ => return None,
     })
 }
@@ -184,8 +185,8 @@ mod tests {
     #[test]
     fn pause_and_space_toggle_the_pause_and_alt_makes_system_keys() {
         assert_eq!(press(Scancode::Pause, Mod::NOMOD), Some(Command::Pause));
-        assert_eq!(press(Scancode::Space, Mod::NOMOD), Some(Command::Pause));
-        assert_eq!(press(Scancode::Space, Mod::LCTRLMOD), Some(Command::Pause));
+        assert_eq!(press(Scancode::Space, Mod::NOMOD), Some(Command::Space));
+        assert_eq!(press(Scancode::Space, Mod::LCTRLMOD), Some(Command::Space));
         assert_eq!(press(Scancode::Pause, Mod::LALTMOD), None);
         assert_eq!(press(Scancode::Pause, Mod::LCTRLMOD), None);
         assert_eq!(press(Scancode::Left, Mod::LALTMOD), None);

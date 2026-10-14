@@ -8,9 +8,10 @@ use rustyzoo::sprite::write_png;
 use rustyzoo::ui::draw::Painter;
 use rustyzoo::ui::interface::Interface;
 use rustyzoo::ui::layout::{DIRTY, HIGHLIGHTED, SELECTED};
+use rustyzoo::ui::widgets::Row;
 
 use rustyzoo::strings::StringTables;
-use rustyzoo::text::Fonts;
+use rustyzoo::text::{Fonts, to_cp1252};
 use rustyzoo::ui::layout::{Tree, installed_expansions};
 use rustyzoo::vfs::Vfs;
 
@@ -112,13 +113,22 @@ fn resolved_tree(
     Ok((resolve_tree(&vfs, &tables, size, mask), tables))
 }
 
+/// What a run puts into the interface at the start, for a script to work on: list boxes filled
+/// with that many rows (`Row 1`, `Row 2`, ...) and texts given to elements.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Fill {
+    pub rows: Vec<(i32, usize)>,
+    pub texts: Vec<(i32, String)>,
+}
+
 /// The interface of a game in a window of `size` pixels: the tree, with the layouts of `show`
-/// shown. A tree that cannot be loaded is a warning and no interface, unless layouts were asked
-/// for.
+/// shown and `fill` put in. A tree that cannot be loaded is a warning and no interface, unless
+/// layouts or something to fill were asked for.
 pub fn load_interface(
     vfs: &Vfs,
     size: (u32, u32),
     show: &[i32],
+    fill: &Fill,
 ) -> Result<Option<Interface>, CliError> {
     let size = (
         i32::try_from(size.0).unwrap_or(i32::MAX),
@@ -140,9 +150,23 @@ pub fn load_interface(
                     return Err(format!("no layout with id {id}").into());
                 }
             }
+            for &(id, count) in &fill.rows {
+                let list = (1..=count).map(|n| Row {
+                    text: format!("Row {n}").into_bytes(),
+                    ..Row::default()
+                });
+                if !ui.set_rows(id, list.collect()) {
+                    return Err(format!("no list box with id {id}").into());
+                }
+            }
+            for (id, text) in &fill.texts {
+                if !ui.set_text(*id, &to_cp1252(text)) {
+                    return Err(format!("no element with id {id}").into());
+                }
+            }
             Ok(Some(ui))
         }
-        Err(why) if show.is_empty() => {
+        Err(why) if show.is_empty() && *fill == Fill::default() => {
             eprintln!("rustyzoo: warning: no interface: {why}");
             Ok(None)
         }
