@@ -70,7 +70,7 @@ impl Timers {
         };
         let period = |key, fallback| value(key).map_or(fallback, |v| period_of(v, fallback));
         let cap = value("MaxSimTick")
-            .and_then(config::to_int)
+            .and_then(whole)
             .filter(|&n| n != 0)
             .map_or(DEFAULT_MAX_SIM_TICK, |n| n as u32);
         Self::new(
@@ -141,6 +141,24 @@ impl Timers {
             .min()
             .unwrap_or(0)
     }
+}
+
+/// A whole number as `%d` of `sscanf` reads it, which is how the executable's ini reader reads
+/// them: optional white space, an optional sign, decimal digits, the rest ignored. No `0x`
+/// rule: `0x1F` reads 0. `None` when the value does not start with a number. Too many digits
+/// wrap around.
+fn whole(value: &[u8]) -> Option<i32> {
+    let value = value.trim_ascii_start();
+    let (negative, digits) = match value.split_first() {
+        Some((b'-', rest)) => (true, rest),
+        Some((b'+', rest)) => (false, rest),
+        _ => (false, value),
+    };
+    let count = digits.iter().take_while(|b| b.is_ascii_digit()).count();
+    let number = digits[..count].iter().fold(0i32, |n, &d| {
+        n.wrapping_mul(10).wrapping_add(i32::from(d - b'0'))
+    });
+    (count > 0).then(|| if negative { number.wrapping_neg() } else { number })
 }
 
 /// `truncate(1000 / rate)` from a rate held in single precision; the fallback when the value
@@ -293,7 +311,10 @@ mod tests {
             u32::MAX,
             "unsigned: no cap"
         );
-        assert_eq!(periods("[user]\nMaxSimTick=0x\n").2, 200, "unreadable");
+        assert_eq!(periods("[user]\nMaxSimTick=0x\n").2, 200, "0 is refused");
+        assert_eq!(periods("[user]\nMaxSimTick=0x1F\n").2, 200, "no 0x rule: reads 0");
+        assert_eq!(periods("[user]\nMaxSimTick=abc\n").2, 200, "unreadable");
+        assert_eq!(periods("[user]\nMaxSimTick= +31x\n").2, 31);
     }
 
     /// Passes at every clock reading in `times`, collecting the firings.

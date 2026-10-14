@@ -1173,7 +1173,6 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
     }
 }
 
-/// Converts every root bitmap of the terrain and compares it with its shipped copy.
 /// The loop settings of the ini file, and a simulated run with a pass at every millisecond.
 fn timing(vfs: &Vfs) -> Result<(), CliError> {
     let mut timers = Timers::from_config(&Config::parse(vfs.ini())?);
@@ -1197,6 +1196,7 @@ fn timing(vfs: &Vfs) -> Result<(), CliError> {
     Ok(())
 }
 
+/// Converts every root bitmap of the terrain and compares it with its shipped copy.
 fn check_bitmaps(vfs: &Vfs) -> Result<(), CliError> {
     let mut report = Report::new();
     let (mut same, mut differ, mut alone, mut failed) = (0, 0, 0, 0);
