@@ -340,13 +340,17 @@ pub fn run(
         match pump.wait_event_timeout_ms(early as u32) {
             Some(event) => state.note(event, &mut commands),
             None => {
-                let over = waited.elapsed().as_secs_f64() * 1e3 - early as f64;
-                slack = over.clamp(0.0, MAX_SLACK_MS).max(slack * 0.99);
+                // A wait of 0 ms measures nothing.
+                if early > 0 {
+                    let over = waited.elapsed().as_secs_f64() * 1e3 - early as f64;
+                    slack = over.clamp(0.0, MAX_SLACK_MS).max(slack * 0.99);
+                }
                 while app.next_due(sdl3::timer::ticks() - start) > 0 {
                     if let Some(event) = pump.poll_event() {
                         state.note(event, &mut commands);
+                        break;
                     }
-                    std::thread::yield_now();
+                    std::thread::sleep(std::time::Duration::from_micros(50));
                 }
             }
         }
