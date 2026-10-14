@@ -441,6 +441,10 @@ fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
             continue;
         }
         let mut image = Framebuffer::new(frame.width.into(), frame.height.into());
+        if frame.shadow {
+            // A shadow frame only darkens what is behind it: show it on white.
+            image.pixels.fill(255);
+        }
         frame.draw(&palette, &mut image, 0, 0)?;
         let path = dir.join(&name);
         let file =

@@ -34,8 +34,12 @@ pub const MAX_DIMENSION: u16 = 4096;
 /// The most colours a palette keeps: a pixel indexes a palette with one byte.
 pub const MAX_COLORS: usize = 256;
 
-/// Opacity of the black pixels of a shadow frame when drawn: about one half.
-pub const SHADOW_ALPHA: u8 = 128;
+/// How strongly a shadow frame darkens what is behind it: three quarters of the destination
+/// stay. The ground shadow of an entity is drawn at this strength.
+pub const SHADOW_STRENGTH: f32 = 0.25;
+
+/// The palette entry that makes pixel value 0 transparent when it is entry 0: magenta, alpha 0.
+const MARKER: [u8; 4] = [255, 0, 255, 0];
 
 /// The smallest possible frame: its 10 byte header and no row.
 const MIN_FRAME_SIZE: usize = 10;
@@ -122,6 +126,13 @@ impl Palette {
         self.colors.is_empty()
     }
 
+    /// Whether pixel value 0 is transparent: only when entry 0 is the marker `ff 00 ff 00`. The
+    /// art never uses value 0 under the marker, apart from a few stray pixels that are plain
+    /// defects; palettes that start with another colour (terrain, interface) use 0 as a colour.
+    pub fn zero_is_transparent(&self) -> bool {
+        self.color(0) == Some(MARKER)
+    }
+
     /// The colour of a palette index, as R, G, B, A.
     pub fn color(&self, index: u8) -> Option<[u8; 4]> {
         self.colors.get(usize::from(index)).copied()
@@ -201,8 +212,11 @@ impl Frame {
 
     /// Draws the frame with its top left corner at (`x`, `y`) in the framebuffer, clipped to
     /// it. The offsets of the frame are not applied: the caller subtracts them from the anchor.
-    /// Palette colours with alpha below 255 are blended over what is there; the pixels of a
-    /// shadow frame are black with [`SHADOW_ALPHA`].
+    ///
+    /// Every stored pixel is written opaque with the colour of its palette entry, replacing what
+    /// was there; the fourth byte of a palette entry is ignored. The one exception is pixel
+    /// value 0 when [`Palette::zero_is_transparent`]: it is skipped. The pixels of a shadow
+    /// frame darken the destination at [`SHADOW_STRENGTH`] and never use the palette.
     ///
     /// Fails, before drawing anything, if the frame uses a palette index the palette lacks.
     pub fn draw(
@@ -212,7 +226,31 @@ impl Frame {
         x: i32,
         y: i32,
     ) -> Result<(), SpriteError> {
+        self.draw_at(palette, target, x, y, false)
+    }
+
+    /// Like [`Frame::draw`], reflected left to right: pixel (`c`, `r`) of the frame goes to
+    /// (`x - c`, `y + r`), so the frame covers the columns `x - (width - 1)` to `x`.
+    pub fn draw_mirrored(
+        &self,
+        palette: &Palette,
+        target: &mut Framebuffer,
+        x: i32,
+        y: i32,
+    ) -> Result<(), SpriteError> {
+        self.draw_at(palette, target, x, y, true)
+    }
+
+    fn draw_at(
+        &self,
+        palette: &Palette,
+        target: &mut Framebuffer,
+        x: i32,
+        y: i32,
+        mirror: bool,
+    ) -> Result<(), SpriteError> {
         self.check_palette(palette)?;
+        let skip_zero = palette.zero_is_transparent();
         let (width, height) = (i64::from(target.width), i64::from(target.height));
         // `parse` validated the rows, so the `else` and `unwrap_or_default` cases never happen.
         let mut data = self.rows.as_slice();
@@ -227,7 +265,8 @@ impl Frame {
                 let start = line_y as usize * target.width as usize * 4;
                 &mut target.pixels[start..start + target.width as usize * 4]
             });
-            let mut column = i64::from(x);
+            // The column of the frame where the next segment starts.
+            let mut column = 0i64;
             for _ in 0..segments {
                 let Some((&[skip, count], rest)) = data.split_first_chunk() else {
                     break;
@@ -241,17 +280,24 @@ impl Frame {
                 };
                 data = rest;
                 column += i64::from(skip);
-                // Only the part of the segment inside the framebuffer is drawn.
                 if let Some(line) = line.as_deref_mut() {
-                    for at in column.max(0)..(column + i64::from(count)).min(width) {
-                        let color = match self.shadow {
-                            true => [0, 0, 0, SHADOW_ALPHA],
-                            false => pixels
-                                .get((at - column) as usize)
-                                .and_then(|&p| palette.color(p))
-                                .unwrap_or_default(),
+                    for i in 0..i64::from(count) {
+                        let at = match mirror {
+                            true => i64::from(x) - (column + i),
+                            false => i64::from(x) + column + i,
                         };
-                        blend(&mut line[at as usize * 4..][..4], color);
+                        if !(0..width).contains(&at) {
+                            continue;
+                        }
+                        let pixel = &mut line[at as usize * 4..][..4];
+                        if self.shadow {
+                            darken(pixel, SHADOW_STRENGTH);
+                        } else if let Some(&value) = pixels.get(i as usize)
+                            && !(value == 0 && skip_zero)
+                            && let Some([r, g, b, _]) = palette.color(value)
+                        {
+                            pixel.copy_from_slice(&[r, g, b, 255]);
+                        }
                     }
                 }
                 column += i64::from(count);
@@ -272,21 +318,19 @@ impl Frame {
     }
 }
 
-/// Blends `color` over `pixel`, four bytes R, G, B, A.
-fn blend(pixel: &mut [u8], color: [u8; 4]) {
-    let alpha = u32::from(color[3]);
-    match alpha {
-        0 => {}
-        255 => pixel.copy_from_slice(&color),
-        _ => {
-            let behind = u32::from(pixel[3]) * (255 - alpha) / 255;
-            let total = alpha + behind;
-            for c in 0..3 {
-                let mixed = u32::from(color[c]) * alpha + u32::from(pixel[c]) * behind;
-                pixel[c] = (mixed / total) as u8;
-            }
-            pixel[3] = total as u8;
-        }
+/// Darkens the colour of `pixel` (R, G, B, then alpha, which stays) by `strength`: the share of
+/// the destination that is covered. At 0.25 three quarters stay, at 0.5 one half, computed as
+/// the original does (halve, then add half of that); other strengths keep `1 - strength`.
+fn darken(pixel: &mut [u8], strength: f32) {
+    for channel in &mut pixel[..3] {
+        *channel = if strength == 0.25 {
+            let half = *channel / 2;
+            half + half / 2
+        } else if strength == 0.5 {
+            *channel / 2
+        } else {
+            (f32::from(*channel) * (1.0 - strength)) as u8
+        };
     }
 }
 
@@ -521,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn shadow_frame_has_no_pixel_bytes_and_draws_translucent_black() {
+    fn shadow_frame_has_no_pixel_bytes_and_darkens_the_destination() {
         // Height 2 with bit 15 set, 6 wide. Row 0: skip 1 and cover 2, skip 1 and cover 1.
         // Row 1: cover 3. Only skip and count bytes: a reader that took `count` pixel bytes
         // after each segment would lose its place.
@@ -538,23 +582,60 @@ mod tests {
         assert_eq!(frame.max_index, None);
         assert!(!sprite.needs_palette());
 
+        let behind = [200, 100, 51, 255];
         let mut image = blank(6, 2);
+        for px in image.pixels.chunks_mut(4) {
+            px.copy_from_slice(&behind);
+        }
         frame.draw(&Palette::default(), &mut image, 0, 0).unwrap();
-        let shadow = [0, 0, 0, SHADOW_ALPHA];
+        // Three quarters stay: 200 -> 100 + 50, 100 -> 50 + 25, 51 -> 25 + 12. The alpha stays.
+        let shadow = [150, 75, 37, 255];
         for (x, y, expected) in [
-            (0, 0, [0; 4]),
+            (0, 0, behind),
             (1, 0, shadow),
             (2, 0, shadow),
-            (3, 0, [0; 4]),
+            (3, 0, behind),
             (4, 0, shadow),
-            (5, 0, [0; 4]),
+            (5, 0, behind),
             (0, 1, shadow),
             (1, 1, shadow),
             (2, 1, shadow),
-            (3, 1, [0; 4]),
+            (3, 1, behind),
         ] {
             assert_eq!(pixel(&image, x, y), expected, "pixel ({x}, {y})");
         }
+
+        // The palette plays no part: a palette of one colour changes nothing.
+        let mut again = blank(6, 2);
+        again.pixels.copy_from_slice(&{
+            let mut all = Vec::new();
+            (0..12).for_each(|_| all.extend(behind));
+            all
+        });
+        frame.draw(&palette(), &mut again, 0, 0).unwrap();
+        assert_eq!(again.pixels, image.pixels);
+
+        // Over nothing there is nothing to darken.
+        let mut empty = blank(6, 2);
+        frame.draw(&palette(), &mut empty, 0, 0).unwrap();
+        assert_eq!(empty.pixels, [0; 48]);
+    }
+
+    #[test]
+    fn darkening_strengths() {
+        let at = |strength, value| {
+            let mut pixel = [value, value, value, 77];
+            darken(&mut pixel, strength);
+            pixel
+        };
+        assert_eq!(at(0.25, 255), [190, 190, 190, 77], "127 + 63, alpha kept");
+        assert_eq!(at(0.25, 3), [1, 1, 1, 77], "1 + 0");
+        assert_eq!(at(0.25, 0), [0, 0, 0, 77]);
+        assert_eq!(at(0.5, 255), [127, 127, 127, 77]);
+        assert_eq!(at(0.5, 1), [0, 0, 0, 77]);
+        assert_eq!(at(0.75, 200), [50, 50, 50, 77]);
+        assert_eq!(at(0.0, 200), [200, 200, 200, 77]);
+        assert_eq!(at(1.0, 200), [0, 0, 0, 77]);
     }
 
     #[test]
@@ -635,27 +716,88 @@ mod tests {
     }
 
     #[test]
-    fn translucent_palette_colours_are_blended() {
-        let frame = Frame::parse(&frame_data(1, 1, &[1, 0, 1, 0])).unwrap();
-        // Index 0 is half transparent red here, over an opaque blue pixel.
-        let half = Palette {
-            colors: vec![[200, 0, 0, 128]],
+    fn palette_alpha_is_ignored() {
+        let frame = Frame::parse(&frame_data(1, 1, &[1, 0, 1, 1])).unwrap();
+        // Half transparent and fully transparent colours are written opaque, replacing the
+        // destination.
+        for alpha in [128, 0] {
+            let palette = Palette {
+                colors: vec![[1, 2, 3, 255], [200, 10, 20, alpha]],
+            };
+            let mut image = blank(1, 1);
+            image.pixels.copy_from_slice(&[0, 0, 100, 255]);
+            frame.draw(&palette, &mut image, 0, 0).unwrap();
+            assert_eq!(pixel(&image, 0, 0), [200, 10, 20, 255], "alpha {alpha}");
+            let mut image = blank(1, 1);
+            frame.draw(&palette, &mut image, 0, 0).unwrap();
+            assert_eq!(pixel(&image, 0, 0), [200, 10, 20, 255], "alpha {alpha}");
+        }
+    }
+
+    #[test]
+    fn value_zero_is_transparent_only_under_the_marker() {
+        // One row, three pixels: values 0, 1, 0.
+        let frame = Frame::parse(&frame_data(1, 3, &[1, 0, 3, 0, 1, 0])).unwrap();
+        let with_entry_0 = |entry: [u8; 4]| Palette {
+            colors: vec![entry, [9, 8, 7, 0]],
         };
-        let mut image = blank(1, 1);
-        image.pixels.copy_from_slice(&[0, 0, 100, 255]);
-        frame.draw(&half, &mut image, 0, 0).unwrap();
-        assert_eq!(pixel(&image, 0, 0), [100, 0, 49, 255]);
-        // Over a transparent pixel it keeps its colour and opacity.
-        let mut image = blank(1, 1);
-        frame.draw(&half, &mut image, 0, 0).unwrap();
-        assert_eq!(pixel(&image, 0, 0), [200, 0, 0, 128]);
-        // Fully transparent colours change nothing.
-        let none = Palette {
-            colors: vec![[1, 2, 3, 0]],
+        let draw = |palette: &Palette| {
+            let mut image = blank(3, 1);
+            image.pixels.fill(99);
+            frame.draw(palette, &mut image, 0, 0).unwrap();
+            image
         };
-        let mut image = blank(1, 1);
-        frame.draw(&none, &mut image, 0, 0).unwrap();
-        assert_eq!(pixel(&image, 0, 0), [0; 4]);
+
+        let marker = with_entry_0([255, 0, 255, 0]);
+        assert!(marker.zero_is_transparent());
+        let image = draw(&marker);
+        assert_eq!(pixel(&image, 0, 0), [99; 4]);
+        assert_eq!(pixel(&image, 1, 0), [9, 8, 7, 255]);
+        assert_eq!(pixel(&image, 2, 0), [99; 4]);
+
+        // Any other entry 0 is a colour, whatever its alpha: transparent black, opaque magenta,
+        // magenta with a different alpha, and no palette entry at all (never drawn).
+        for entry in [[0, 0, 0, 0], [255, 0, 255, 255], [255, 0, 254, 0]] {
+            let palette = with_entry_0(entry);
+            assert!(!palette.zero_is_transparent());
+            let image = draw(&palette);
+            let opaque = [entry[0], entry[1], entry[2], 255];
+            assert_eq!(pixel(&image, 0, 0), opaque, "entry {entry:?}");
+            assert_eq!(pixel(&image, 2, 0), opaque);
+        }
+        assert!(!Palette::default().zero_is_transparent());
+    }
+
+    #[test]
+    fn mirrored_drawing_reflects_the_columns_about_x() {
+        let frame = Frame::parse(&frame_data(2, 4, ROWS)).unwrap();
+        let mut image = blank(6, 2);
+        // Pixel (c, r) of the frame goes to (4 - c, r): row 0 has values 1 and 3 at c = 1, 2.
+        frame.draw_mirrored(&palette(), &mut image, 4, 0).unwrap();
+        assert_eq!(pixel(&image, 3, 0), PALETTE[1]);
+        assert_eq!(pixel(&image, 2, 0), PALETTE[3]);
+        assert_eq!(pixel(&image, 4, 0), [0; 4], "c = 0 is skipped");
+        // Row 1: value 2 at c = 0, value 0 at c = 2.
+        assert_eq!(pixel(&image, 4, 1), PALETTE[2]);
+        assert_eq!(pixel(&image, 2, 1), PALETTE[0]);
+        assert_eq!(pixel(&image, 5, 0), [0; 4]);
+
+        // Clipped on the left: only c = 0 of row 1 lands on column 0.
+        let mut image = blank(2, 2);
+        frame.draw_mirrored(&palette(), &mut image, 0, 0).unwrap();
+        assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
+        assert_eq!(image.pixels.iter().filter(|&&b| b != 0).count(), 2, "one pixel");
+        // Clipped on the right: c = 1 of row 0 lands on column 5, c = 2 on column 6.
+        let mut image = blank(6, 2);
+        frame.draw_mirrored(&palette(), &mut image, 6, 0).unwrap();
+        assert_eq!(pixel(&image, 5, 0), PALETTE[1]);
+        assert_eq!(pixel(&image, 5, 1), [0; 4]);
+        // Far outside nothing is drawn.
+        for x in [i32::MIN, -1, 6 + 4, i32::MAX] {
+            let mut image = blank(6, 2);
+            frame.draw_mirrored(&palette(), &mut image, x, 0).unwrap();
+            assert_eq!(image.pixels, [0; 48], "x {x}");
+        }
     }
 
     #[test]
