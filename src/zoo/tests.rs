@@ -472,6 +472,26 @@ fn reads_the_common_part_of_fixed_entities() {
 }
 
 #[test]
+fn keeps_the_condition_of_fences_from_version_55() {
+    for v in [48, 55, 106] {
+        let mut body = scenery(v, 3, "Fence");
+        if v >= 55 {
+            body.extend([7, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 5, 0, 0, 0, 6, 0, 0, 0]);
+        }
+        let z = parse(&file(v, 1, 1, &[], &[("fences", "zoowall", "f", body)]));
+        let fence = z.entities[0].common.as_ref().unwrap().fence;
+        match v {
+            55.. => {
+                let fence = fence.unwrap();
+                assert_eq!((fence.strength, fence.life as i32), (7, -1));
+                assert_eq!(fence.timers, [5, 6]);
+            }
+            _ => assert_eq!(fence, None),
+        }
+    }
+}
+
+#[test]
 fn reads_units_of_version_106() {
     // Hand-counted bytes before the movement block: the fields of the class, the unit block.
     let animal = unit(106, 387, 21);

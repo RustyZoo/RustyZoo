@@ -5,6 +5,7 @@ pub mod config;
 pub mod entity;
 pub mod ground;
 pub mod pe;
+pub mod render;
 pub mod sprite;
 pub mod strings;
 pub mod tga;
