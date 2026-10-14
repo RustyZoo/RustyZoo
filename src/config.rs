@@ -173,6 +173,61 @@ impl Config {
             .iter()
             .map(|(name, section)| (name.as_slice(), section))
     }
+
+    /// Gives the key the single value `value`, replacing its values. The section and the key
+    /// are found ignoring letter case (the way the ini file next to the executable is read) and
+    /// created, with this spelling, if missing. The value must fit on one line.
+    pub fn set(&mut self, section: &str, key: &str, value: &str) {
+        self.set_values(
+            section.as_bytes(),
+            key.as_bytes(),
+            vec![value.as_bytes().to_vec()],
+        );
+    }
+
+    fn set_values(&mut self, section: &[u8], key: &[u8], values: Vec<Vec<u8>>) {
+        let name = self
+            .sections
+            .keys()
+            .find(|name| name.eq_ignore_ascii_case(section))
+            .map_or(section, Vec::as_slice)
+            .to_vec();
+        let keys = &mut self.sections.entry(name).or_default().keys;
+        let name = keys
+            .keys()
+            .find(|name| name.eq_ignore_ascii_case(key))
+            .map_or(key, Vec::as_slice)
+            .to_vec();
+        keys.insert(name, values);
+    }
+
+    /// Puts every key of `over` on top of this file: it replaces the values of the same key of
+    /// the same section, names compared ignoring letter case, and the rest stays.
+    pub fn overlay(&mut self, over: &Config) {
+        for (section, keys) in over.sections() {
+            for (key, values) in &keys.keys {
+                self.set_values(section, key, values.clone());
+            }
+        }
+    }
+
+    /// The file written out, to be read back as the same sections, keys and values (comments
+    /// and the order of the items are lost, as in the listings).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for (name, section) in &self.sections {
+            out.extend([b"[", name.as_slice(), b"]\n"].concat());
+            for (key, values) in &section.keys {
+                if values.is_empty() {
+                    out.extend([key.as_slice(), b"\n"].concat());
+                }
+                for value in values {
+                    out.extend([key.as_slice(), b"=", value, b"\n"].concat());
+                }
+            }
+        }
+        out
+    }
 }
 
 impl Section {
@@ -659,6 +714,33 @@ mod tests {
         assert_eq!(
             (sections, keys, values, empty),
             (33_621, 202_459, 300_138, 3)
+        );
+    }
+
+    #[test]
+    fn an_overlay_replaces_keys_ignoring_case_and_keeps_the_rest() {
+        let mut game =
+            Config::parse(b"[User]\nFullScreen=0\nscreenwidth=800\n[UI]\nx=1\nx=2\n").unwrap();
+        game.overlay(
+            &Config::parse(b"[user]\nfullscreen=1\nnew=5\n[UI]\nx=3\n[more]\nk\n").unwrap(),
+        );
+        assert_eq!(
+            dump(&game.to_bytes()),
+            "UI: x(3); User: FullScreen(1), new(5), screenwidth(800); more: k()"
+        );
+    }
+
+    #[test]
+    fn set_creates_and_replaces_and_survives_a_round_trip() {
+        let mut config = Config::default();
+        config.set("user", "fullscreen", "1");
+        config.set("USER", "FULLSCREEN", "-7");
+        config.set("user", "huge", "99999999999999999999");
+        let back = Config::parse(&config.to_bytes()).unwrap();
+        assert_eq!(back, config);
+        assert_eq!(
+            dump(&config.to_bytes()),
+            "user: fullscreen(-7), huge(99999999999999999999)"
         );
     }
 }

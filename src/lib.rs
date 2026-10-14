@@ -14,6 +14,7 @@ pub mod sprite;
 pub mod strings;
 pub mod tga;
 pub mod timing;
+pub mod userdir;
 pub mod vfs;
 pub mod zoo;
 pub mod zoom;
