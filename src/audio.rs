@@ -4,16 +4,31 @@
 
 use std::error::Error;
 
-use rustyzoo::config::{Config, to_flag, to_int};
+use rustyzoo::config::{Config, to_int};
 use rustyzoo::vfs::Vfs;
 use sdl3::audio::{AudioDevice, AudioFormat, AudioSpec, AudioStreamOwner};
 use sdl3::iostream::IOStream;
 
-/// The gain for an attenuation in hundredths of a decibel (0 is full volume, -10000 is silent
-/// for all practical purposes): `10^(attenuation / 2000)`, the ratio of amplitudes. The one place
-/// that turns the game's attenuation numbers into a volume.
-pub fn gain(attenuation: i32) -> f32 {
-    10f32.powf(attenuation.clamp(-10_000, 0) as f32 / 2000.0)
+/// The most a sound may be attenuated for it to start (sound specification 4.2).
+const START_LIMIT: i32 = 6000;
+
+/// The gain for the sum `S = G + B + F + X` of a sound's attenuation terms, in hundredths of a
+/// decibel; positive is quieter: `10^(-S/2000)`. A negative sum is replaced by 1 (-0.01 dB): the
+/// terms never make a sound louder than full level. The one place that turns attenuation into a
+/// volume (sound specification 4.1).
+pub fn gain(sum: i32) -> f32 {
+    10f32.powf(-(sum.clamp(1, 10_000) as f32) / 2000.0)
+}
+
+/// The global term `G` for the `[UI] userAttenuation` setting `u`: the slider position
+/// `s = clamp(100 - u div 15, 0, 100)` gives `(100 - s) * 15`, or 5000 at 0 (specification 4.3).
+pub fn user_term(u: i32) -> i32 {
+    let slider = (100 - u / 15).clamp(0, 100);
+    if slider == 0 {
+        5000
+    } else {
+        (100 - slider) * 15
+    }
 }
 
 /// A decoded WAV file: samples as SDL gives them (8, 16, 32 bit integer or 32 bit float).
@@ -119,56 +134,59 @@ impl Audio {
         })
     }
 
-    /// Starts the sound at the volume of `attenuation` (see [`gain`]); with `looping` it starts
-    /// again when it ends, as long as [`Voice::update`] is called at least once a second. A
-    /// voice that is `paused` waits for [`Voice::resume`].
+    /// Starts the sound at the volume of the attenuation sum `sum` (see [`gain`]); `None` if the
+    /// sum is over 6000: such a sound does not start. With `looping` it starts again when it
+    /// ends, as long as [`Voice::update`] is called at least once a second. A voice that is
+    /// `paused` waits for [`Voice::resume`].
     pub fn play(
         &self,
         sound: Sound,
-        attenuation: i32,
+        sum: i32,
         looping: bool,
         paused: bool,
-    ) -> Result<Voice, Box<dyn Error>> {
+    ) -> Result<Option<Voice>, Box<dyn Error>> {
+        if sum > START_LIMIT {
+            return Ok(None);
+        }
         let stream = self.subsystem.new_playback_stream(&sound.spec(), None)?;
         self.device.bind_stream(&stream)?;
-        stream.set_gain(gain(attenuation))?;
+        stream.set_gain(gain(sum))?;
         if paused {
             stream.pause()?;
         }
         stream.put_data(&sound.data)?;
-        Ok(Voice {
+        Ok(Some(Voice {
             stream,
             sound,
             looping,
-        })
+        }))
     }
 
-    /// The menu music of `[UI] menuMusic`, unless `noMenuMusic` is set or it names nothing; its
-    /// volume is `menuMusicAttenuation` (0 when absent). Fails if the music cannot be read.
+    /// The menu music, played with `S = G + B` (`F` and `X` are 0): `G` from
+    /// `[UI] userAttenuation`, `B` from `menuMusicAttenuation` (0 when absent). The file is
+    /// `menuMusic`, `sounds/mainmenu.wav` when absent. `None` if `noMenuMusic` is exactly 1 or
+    /// the sum is over 6000. Fails if the music cannot be read; the game treats that as silence.
     pub fn menu_music(
         &self,
         vfs: &Vfs,
         looping: bool,
         paused: bool,
     ) -> Result<Option<(String, Voice)>, Box<dyn Error>> {
-        let Ok(ini) = Config::parse(vfs.ini()) else {
-            return Ok(None);
-        };
-        let Some(ui) = ini.section("UI") else {
-            return Ok(None);
-        };
-        let off = ui.get("noMenuMusic").and_then(to_flag).unwrap_or(false);
-        let Some(name) = ui.get("menuMusic").filter(|name| !name.is_empty()) else {
-            return Ok(None);
-        };
-        if off {
+        let ini = Config::parse(vfs.ini()).ok();
+        let ui = ini.as_ref().and_then(|ini| ini.section("UI"));
+        let get = |key: &str| ui.and_then(|ui| ui.get(key));
+        if get("noMenuMusic").and_then(to_int) == Some(1) {
             return Ok(None);
         }
-        let name = String::from_utf8_lossy(name).into_owned();
-        let attenuation = ui.get("menuMusicAttenuation").and_then(to_int).unwrap_or(0);
+        let name = get("menuMusic").map_or_else(
+            || "sounds/mainmenu.wav".to_string(),
+            |name| String::from_utf8_lossy(name).into_owned(),
+        );
+        let global = user_term(get("userAttenuation").and_then(to_int).unwrap_or(0));
+        let base = get("menuMusicAttenuation").and_then(to_int).unwrap_or(0);
         let sound = Sound::decode(&vfs.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
-        let voice = self.play(sound, attenuation, looping, paused)?;
-        Ok(Some((name, voice)))
+        let voice = self.play(sound, global.saturating_add(base), looping, paused)?;
+        Ok(voice.map(|voice| (name, voice)))
     }
 }
 
@@ -233,13 +251,22 @@ mod tests {
     }
 
     #[test]
-    fn attenuation_is_a_ratio_of_amplitudes() {
-        assert_eq!(gain(0), 1.0);
-        assert!((gain(-1000) - 0.316_227_77).abs() < 1e-6);
-        assert!((gain(-2000) - 0.1).abs() < 1e-6);
-        // Out of range values are held to the range.
-        assert_eq!(gain(500), 1.0);
-        assert_eq!(gain(i32::MIN), gain(-10_000));
+    fn positive_attenuation_is_quieter_and_the_sum_is_held_to_the_range() {
+        assert_eq!(gain(0), gain(1));
+        assert!((gain(-1000) - 0.999).abs() < 1e-3);
+        assert!((gain(1000) - 0.316_227_77).abs() < 1e-6);
+        assert!((gain(2000) - 0.1).abs() < 1e-6);
+        assert_eq!(gain(i32::MAX), gain(10_000));
+        assert_eq!(gain(i32::MIN), gain(1));
+    }
+
+    #[test]
+    fn the_user_term_is_the_requantised_slider() {
+        // Specification 4.3: 600 gives 600, 37 gives 30, 1500 and more give 5000.
+        let terms: Vec<i32> = [0, 600, 37, 1485, 1499, 1500, 99_999, -5, i32::MIN]
+            .map(user_term)
+            .to_vec();
+        assert_eq!(terms, [0, 600, 30, 1485, 1485, 5000, 5000, 0, 0]);
     }
 
     #[test]
