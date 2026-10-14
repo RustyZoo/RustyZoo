@@ -6,7 +6,8 @@
 //! height and baseline follow from the vertical metrics of Arial, and every advance is rounded
 //! to whole pixels per character, so a string's width is the sum of whole advances with no
 //! kerning. Strings are Windows-1252 bytes. Text is wrapped, aligned, clipped and drawn into a
-//! canvas as `DrawText` does it (`layout`, `draw`).
+//! canvas as `DrawText` does it (`layout`, `draw`); templates, numbers, money and dates are in
+//! `format`.
 //!
 //! The font files are embedded unmodified (see `fonts/README.md`), so the metrics and the
 //! pictures are the same on every system. Fonts are cached per (face, size) and glyphs per
@@ -205,6 +206,7 @@ pub fn to_cp1252(text: &str) -> Vec<u8> {
 }
 
 mod draw;
+pub mod format;
 mod layout;
 
 pub use draw::{Style, draw, fill_color, text_color};
