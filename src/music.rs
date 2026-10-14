@@ -29,6 +29,15 @@ pub fn user_term(u: i32) -> i32 {
     }
 }
 
+/// The global term `G` of the `[UI] userAttenuation` setting of the ini file (0 when absent).
+pub fn global_term(ini: &Config) -> i32 {
+    let u = ini
+        .section("UI")
+        .and_then(|ui| ui.get("userAttenuation"))
+        .and_then(to_int);
+    user_term(u.unwrap_or(0))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Playing,
@@ -64,7 +73,7 @@ impl Music {
                 || "sounds/mainmenu.wav".to_string(),
                 |name| String::from_utf8_lossy(name).into_owned(),
             ),
-            global: user_term(get("userAttenuation").and_then(to_int).unwrap_or(0)),
+            global: global_term(ini),
             base: get("menuMusicAttenuation").and_then(to_int).unwrap_or(0),
             fade: 0,
             state: State::Playing,
@@ -145,6 +154,17 @@ mod tests {
 
     fn music(ini: &str) -> Option<Music> {
         Music::from_config(&Config::parse(ini.as_bytes()).unwrap())
+    }
+
+    #[test]
+    fn the_global_term_comes_from_the_user_attenuation_of_the_ini_file() {
+        let term = |ini: &str| global_term(&Config::parse(ini.as_bytes()).unwrap());
+        assert_eq!(term(""), 0);
+        assert_eq!(term("[UI]\nuserAttenuation=600\n"), 600);
+        assert_eq!(term("[UI]\nuserAttenuation=37\n"), 30);
+        assert_eq!(term("[UI]\nuserAttenuation=-5\n"), 0);
+        assert_eq!(term("[UI]\nuserAttenuation=1500\n"), 5000);
+        assert_eq!(term("[UI]\nuserAttenuation=x\n"), 0);
     }
 
     #[test]

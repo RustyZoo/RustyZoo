@@ -5,15 +5,20 @@
 
 use rustyzoo::app::App;
 use rustyzoo::config::Config;
-use rustyzoo::music::Music;
+use rustyzoo::music::{Music, global_term};
 use rustyzoo::vfs::Vfs;
 
-use crate::audio::{Audio, Voice};
+use crate::audio::{Audio, Sound as Wave, Voice};
 
 pub struct Sound {
     /// The output device; kept open as long as the voice plays.
     audio: Option<Audio>,
     music: Option<Voice>,
+    /// The voice of the interface click: a voice that is dropped stops, so it is kept until it
+    /// has played.
+    click: Option<Voice>,
+    /// The attenuation sum of the click: `G` from `userAttenuation`, `B` and `F` being 0.
+    click_sum: i32,
     /// The output is silent because the window has no focus.
     quiet: Quiet,
 }
@@ -61,6 +66,8 @@ impl Sound {
         let sound = Sound {
             audio: audio.ok(),
             music,
+            click: None,
+            click_sum: global_term(ini),
             quiet: Quiet::default(),
         };
         (sound, menu)
@@ -73,6 +80,34 @@ impl Sound {
             && let Err(e) = audio.mute(mute)
         {
             eprintln!("rustyzoo: the sound cannot be muted: {e}");
+        }
+    }
+
+    /// Plays the sounds the interface asked for in the last pass (`sounds/<name>.wav`). The click
+    /// has one voice: a click while the last one plays continues it, at the volume of the new
+    /// start, and one that has played to its end starts again. A sound that cannot be played is a
+    /// warning.
+    pub fn clicks(&mut self, vfs: &Vfs, app: &App) {
+        let Some(audio) = &self.audio else { return };
+        for name in app.sounds() {
+            if let Some(voice) = &self.click
+                && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
+            {
+                if let Err(e) = voice.set_sum(self.click_sum) {
+                    eprintln!("rustyzoo: sounds/{name}.wav: {e}");
+                }
+                continue;
+            }
+            let file = format!("sounds/{name}.wav");
+            let played = vfs
+                .read(&file)
+                .map_err(Into::into)
+                .and_then(|bytes| Wave::decode(&bytes))
+                .and_then(|wave| audio.play(wave, self.click_sum, false, false));
+            match played {
+                Ok(voice) => self.click = voice,
+                Err(e) => eprintln!("rustyzoo: {file}: {e}"),
+            }
         }
     }
 

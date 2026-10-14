@@ -237,6 +237,7 @@ pub fn run(
             }
         }
         sound.fade(&app);
+        sound.clicks(vfs, &app);
         pass += 1;
         let timed = timing.as_ref().is_some_and(|t| t.done(now));
         if app.quit() || timed || flags.passes.is_some_and(|n| pass >= n) {

@@ -228,6 +228,10 @@ pub struct App<'a> {
     fired: Pass,
     /// Whether the last pass painted a frame.
     drew: bool,
+    /// What the interface did in the last pass (the lines of [`Interface::take_events`]) and the
+    /// sounds it asked for.
+    ui_events: Vec<String>,
+    ui_sounds: Vec<&'static str>,
     /// The camera when the last draw fired, before the interface moved it.
     drawn_at: Look,
     /// The menu music, until the game has none (`noMenuMusic`) or it is stopped.
@@ -266,6 +270,8 @@ impl<'a> App<'a> {
             applied: Vec::new(),
             fired: IDLE,
             drew: false,
+            ui_events: Vec::new(),
+            ui_sounds: Vec::new(),
             drawn_at,
             music: None,
             music_changed: false,
@@ -298,6 +304,7 @@ impl<'a> App<'a> {
     /// after it and the timers do not run (main loop 3.1), and neither does any later pass.
     pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
+        (self.ui_events, self.ui_sounds) = (Vec::new(), Vec::new());
         self.music_changed = false;
         for &command in commands {
             if self.quit {
@@ -308,6 +315,10 @@ impl<'a> App<'a> {
         }
         if self.quit {
             return None;
+        }
+        if let Some(ui) = &mut self.ui {
+            self.ui_events.extend(ui.take_events());
+            self.ui_sounds.extend(ui.take_sounds());
         }
         self.fired = self.timers.pass(now, 1.0);
         if self.fired.draw {
@@ -320,6 +331,8 @@ impl<'a> App<'a> {
             }
             if let Some(ui) = &mut self.ui {
                 ui.update(period);
+                self.ui_events.extend(ui.take_events());
+                self.ui_sounds.extend(ui.take_sounds());
             }
             if let Some(music) = &mut self.music {
                 self.music_changed = music.update(period);
@@ -369,13 +382,17 @@ impl<'a> App<'a> {
             Command::Fullscreen(on) => self.camera.set_fullscreen(&self.zoo, on),
             Command::Pause if self.map_keys() => self.paused = !self.paused,
             Command::Quit => self.quit = true,
-            // The map view's keys while it does not have them, and what reaches the widgets:
-            // the widgets take their input in the next issue.
+            Command::Mouse(mouse) => {
+                if let Some(ui) = &mut self.ui {
+                    ui.mouse(mouse);
+                }
+            }
+            // The map view's keys while it does not have them, and the keys and characters,
+            // which the widgets that take them (text fields, dialogs) read in later issues.
             Command::Scroll(..)
             | Command::Rotate(_)
             | Command::Zoom(_)
             | Command::Pause
-            | Command::Mouse(_)
             | Command::Key(..)
             | Command::Char(_) => {}
         }
@@ -433,6 +450,12 @@ impl<'a> App<'a> {
         self.quit
     }
 
+    /// The sounds the interface asked for in the last pass, by file name without the extension
+    /// (`uiclick`, `sounds/uiclick.wav`): the shell plays them.
+    pub fn sounds(&self) -> &[&'static str] {
+        &self.ui_sounds
+    }
+
     /// The timers that fired in the last pass.
     pub fn fired(&self) -> Pass {
         self.fired
@@ -444,7 +467,8 @@ impl<'a> App<'a> {
     }
 
     /// The lines of the last pass, each led by the pass index and the clock: one per command it
-    /// applied, in the text form of a script, then one per timer that fired, in the order draw,
+    /// applied, in the text form of a script, then one per thing the interface did (`ui hover 7111`,
+    /// `ui press ...`, `ui sound uiclick`, `ui select`, `ui show`, `ui hide`, `ui drag`), then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
     /// with, a step the new date. A pass that did nothing has no line.
@@ -454,6 +478,7 @@ impl<'a> App<'a> {
         let mut lines = Vec::new();
         let lead = format!("pass {pass} t={now}");
         lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
+        lines.extend(self.ui_events.iter().map(|e| format!("{lead} ui {e}")));
         if self.fired.draw {
             let hash = match self.drew {
                 true => format!("{:016x}", frame_hash(&self.frame)),

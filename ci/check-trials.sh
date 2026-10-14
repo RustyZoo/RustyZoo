@@ -147,6 +147,19 @@ for trial in base-trial expansion-trial; do
   check $trial 2 "rz render-ui $tmp/ui.png --size 0x600 >/dev/null 2>&1; echo \$?"
 done
 
+# The main menu hovered, pressed, dragged off and back and released: what the interface did, from
+# the log. The menu is shown over the map; the first button is at (512, 365) at 1024x768.
+menu_click() {
+  d=$(mktemp -d)
+  printf '1 mouse 512 365\n2 down\n3 mouse 5 5\n4 mouse 512 365\n5 up\n' >"$d/script"
+  rz run "$1" --headless --passes 8 --clock 20 --show 26 --script "$d/script" 2>/dev/null |
+    grep ' ui ' | cut -d' ' -f4- | tr '\n' ';'
+  echo
+  rm -rf "${d:?}"
+}
+check base-trial 'uihover7111;uisounduiclick;uipress7111;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/default.zoo"
+check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/scn19.zoo"
+
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
 check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"
