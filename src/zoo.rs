@@ -165,6 +165,19 @@ pub struct Zoo {
     /// `width * height` tiles, row by row: the tile in column x and row y is `y * width + x`.
     pub tiles: Vec<Tile>,
     pub entities: Vec<Entity>,
+    /// The camera the file stores.
+    pub view: View,
+}
+
+/// The view state of a file (zoo format 7.1), as stored: nothing is checked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct View {
+    pub zoom: i32,
+    pub rotation: i32,
+    /// The scroll position `(x, y)`.
+    pub scroll: (i32, i32),
+    /// The terraform brush size; only the low byte is used.
+    pub brush: u32,
 }
 
 impl Zoo {
@@ -356,7 +369,7 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
     }
 
     *section = "later sections";
-    after_entities(r)?;
+    let view = after_entities(r)?;
     Ok(Zoo {
         version: v,
         locale,
@@ -369,6 +382,7 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
         id_counter,
         tiles,
         entities,
+        view,
     })
 }
 
@@ -500,9 +514,14 @@ fn entity(r: &mut Reader) -> R<Entity> {
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.
-fn after_entities(r: &mut Reader) -> R<()> {
+fn after_entities(r: &mut Reader) -> R<View> {
     let v = r.v;
-    r.skip(20)?; // view
+    let view = View {
+        zoom: r.i32()?,
+        rotation: r.i32()?,
+        scroll: (r.i32()?, r.i32()?),
+        brush: r.u32()?,
+    };
 
     // Scenario: a size, then (from 51, unless the size is 0) a name and the goal states, one
     // `u32` each. The original skips the block by its size when it starts a scenario and reads
@@ -580,5 +599,5 @@ fn after_entities(r: &mut Reader) -> R<()> {
     if v >= 58 {
         r.skip(if v <= 66 { 12 } else { 8 })?;
     }
-    Ok(())
+    Ok(view)
 }
