@@ -452,7 +452,7 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
 }
 
 /// A palette file of the given colours (R, G, B), with the fourth byte 255.
-fn palette_file(colors: &[[u8; 3]]) -> Vec<u8> {
+pub(crate) fn palette_file(colors: &[[u8; 3]]) -> Vec<u8> {
     let mut out = (colors.len() as u32).to_le_bytes().to_vec();
     for [r, g, b] in colors {
         out.extend([*r, *g, *b, 255]);

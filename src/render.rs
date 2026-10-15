@@ -12,6 +12,7 @@
 //! placed in view space, then draws them all on a canvas that holds them.
 
 pub mod order;
+mod pick;
 mod tank;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -322,6 +323,8 @@ impl Placed {
 pub struct Staged {
     rotation: u8,
     placed: Vec<(Placed, [i64; 4])>,
+    /// For each picture of `placed`, the entity of the zoo it was placed for (picking).
+    hits: Vec<Option<pick::Hit>>,
     /// The box `[left, top, right, bottom)` of every tile.
     tile_bounds: [i64; 4],
     /// The box of every tile and every picture.
@@ -842,6 +845,8 @@ impl<'a> MapRenderer<'a> {
         // The objects the original keeps: those whose type it knows.
         let mut objects = Vec::new();
         let mut metas: Vec<Meta> = Vec::new();
+        // The entity each object stands for, by index in `objects`.
+        let mut owners: Vec<Option<pick::Hit>> = Vec::new();
         for (position, entity) in zoo.entities.iter().enumerate() {
             let Some(c) = &entity.common else {
                 summary.objects_skipped += 1;
@@ -871,6 +876,10 @@ impl<'a> MapRenderer<'a> {
                 late: draws_late(ty),
                 height: ty.height,
             });
+            owners.push(Some(pick::Hit {
+                id: c.id,
+                threshold: pick::threshold(ty),
+            }));
             metas.push(Meta {
                 ty,
                 colors: &c.colors,
@@ -898,6 +907,7 @@ impl<'a> MapRenderer<'a> {
                 late: draws_late(ty),
                 height: ty.height,
             });
+            owners.push(None);
             metas.push(Meta {
                 ty,
                 colors: &[],
@@ -972,7 +982,13 @@ impl<'a> MapRenderer<'a> {
         }
 
         let mut placed: Vec<Placed> = Vec::new();
+        let mut hits: Vec<Option<pick::Hit>> = Vec::new();
         for item in paint_order(&scene) {
+            // The pictures of a path, an edge object or any other object are the entity's own.
+            let owner = match item {
+                Item::Path(o) | Item::Edge(o) | Item::Object(o) => owners.get(o).copied().flatten(),
+                _ => None,
+            };
             match item {
                 Item::Terrain(t) => self.terrain(&scene, &marks, t, &mut summary, &mut placed),
                 Item::Object(o) if o >= first_ripple => {
@@ -986,14 +1002,16 @@ impl<'a> MapRenderer<'a> {
                 }
                 item => self.tank_item(&scene, &metas, &looks, item, &mut summary, &mut placed),
             }
+            hits.resize(placed.len(), owner);
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
 
         // The box of every tile and every picture.
-        let placed: Vec<(Placed, [i64; 4])> = placed
+        let (placed, hits): (Vec<_>, Vec<_>) = placed
             .into_iter()
-            .filter_map(|p| p.bounds().map(|b| (p, b)))
-            .collect();
+            .zip(hits)
+            .filter_map(|(p, hit)| p.bounds().map(|b| ((p, b), hit)))
+            .unzip();
         let bounds = placed
             .iter()
             .filter(|(p, _)| !p.grid)
@@ -1001,6 +1019,7 @@ impl<'a> MapRenderer<'a> {
         Ok(Staged {
             rotation,
             placed,
+            hits,
             tile_bounds,
             bounds,
             summary,

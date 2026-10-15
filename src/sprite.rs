@@ -271,6 +271,34 @@ impl Frame {
         })
     }
 
+    /// The palette index stored at column `col` of row `row` of the frame, or `None` where the
+    /// frame is transparent, outside it or a shadow frame (which has no indexes).
+    pub fn pixel_at(&self, col: i32, row: i32) -> Option<u8> {
+        let inside =
+            (0..i32::from(self.width)).contains(&col) && (0..i32::from(self.height)).contains(&row);
+        if self.shadow || !inside {
+            return None;
+        }
+        // The rows were checked by `parse`: each has its segments and their values.
+        let mut data = &self.rows[..];
+        for r in 0..=row {
+            let segments = data[0];
+            data = &data[1..];
+            let mut x = 0;
+            for _ in 0..segments {
+                let (skip, count) = (i32::from(data[0]), usize::from(data[1]));
+                let (values, rest) = data[2..].split_at(count);
+                data = rest;
+                x += skip;
+                if r == row && (x..x + count as i32).contains(&col) {
+                    return Some(values[(col - x) as usize]);
+                }
+                x += count as i32;
+            }
+        }
+        None
+    }
+
     /// Draws the frame with its top left corner at (`x`, `y`) in the framebuffer, clipped to
     /// it. The offsets of the frame are not applied: the caller subtracts them from the anchor.
     ///

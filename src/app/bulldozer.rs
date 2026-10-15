@@ -114,10 +114,15 @@ impl App<'_> {
             let rect = game.build.sweep_area(tile, pointer);
             let found: Vec<usize> = match rect {
                 Some((a, b)) => bulldozer::area(world, a, b),
-                None => {
-                    let (x, y, _) = game.camera.pick(&world.zoo, pointer);
-                    bulldozer::under(world, (x, y)).into_iter().collect()
-                }
+                // The last drawn entity with a pixel under the pointer (placing 7.1).
+                None => game
+                    .staged
+                    .pick(game.camera.view_point(pointer), |id| {
+                        world.find(id).is_some()
+                    })
+                    .and_then(|id| world.find(id))
+                    .into_iter()
+                    .collect(),
             };
             let mixed = rect.is_none() && found.iter().any(|&e| bulldozer::mixed_tanks(world, e));
             let at: Vec<usize> = found

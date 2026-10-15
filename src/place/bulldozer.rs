@@ -1,5 +1,6 @@
-//! The bulldozer (placing 7): which object is under the pointer, which ones a dragged rectangle
-//! takes, what each is refunded, what is asked before it goes, and the removal itself.
+//! The bulldozer (placing 7): which objects a dragged rectangle takes, what each is refunded,
+//! what is asked before it goes, and the removal itself. What is under the pointer is picked by
+//! pixels ([`crate::render::Staged::pick`]).
 //!
 //! Everything works on the world's lookups (the path of a tile, the holder of a quadrant, the
 //! edge slot of a tile) and never on where an entity is stored, so a fence is found wherever
@@ -15,8 +16,8 @@ use crate::render::order::Kind;
 use crate::world::World;
 use crate::zoo::{Entity, Fence};
 
-/// A point within this many world units of a tile side picks the fence on it. The original picks
-/// by the picture, which the engine does not draw per object.
+/// A point within this many world units of a tile side picks the fence on it (the gate tool; the
+/// bulldozer picks by the pixels of the pictures, [`crate::render::Staged::pick`]).
 const EDGE: i32 = 16;
 
 /// The type of an entity.
@@ -89,21 +90,6 @@ pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
         _ => 0.8,
     };
     cost(ty) * rate
-}
-
-/// The entity under the world point: the holder of the quarter tile there, else the fence on the
-/// side of the tile nearest to the point when it is within [`EDGE`] units of it (in the tile's
-/// own slot or in the one across the same line), else the path of the tile. Whether it can be
-/// removed is another matter ([`removable`]).
-pub fn under(world: &World, point: (i64, i64)) -> Option<usize> {
-    let near = |v: i64| v.clamp(-(1 << 20), 1 << 20) as i32;
-    let (x, y) = (near(point.0), near(point.1));
-    let t = world.tile_index(x.div_euclid(64), y.div_euclid(64))?;
-    let (lx, ly) = (x.rem_euclid(64), y.rem_euclid(64));
-    if let Some(held) = world.quadrant(t, (ly / 32 * 2 + lx / 32) as usize) {
-        return Some(held);
-    }
-    fence_near(world, t, lx, ly).or_else(|| world.path(t))
 }
 
 /// The fence on the side of tile `t` nearest to the point (`lx`, `ly`) of the tile when the point

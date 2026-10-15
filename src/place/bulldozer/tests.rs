@@ -199,25 +199,14 @@ fn only_paths_and_deletable_scenery_in_the_zoo_can_be_removed() {
 }
 
 #[test]
-fn the_object_under_the_point_is_the_quarter_holder_then_the_near_fence_then_the_path() {
-    let w = world(vec![
-        path(1, 1),
-        entity("objects", "tree", "", 64 + 16, 64 + 16, 0),
-        piece("f", 1, 1, 2),
-    ]);
-    let (path_at, tree, fence) = (0, 1, 2);
-    let tile = |lx: i64, ly: i64| (64 + lx, 64 + ly);
-    // The quarter at the top left holds the tree, whatever else is near.
-    assert_eq!(under(&w, tile(5, 5)), Some(tree));
-    // Near the east side: the fence; the middle of the tile: the path.
-    assert_eq!(under(&w, tile(60, 40)), Some(fence));
-    assert_eq!(under(&w, tile(40, 40)), Some(path_at));
-    // The tile across holds no piece of its own: the fence of the other tile's slot is found.
-    assert_eq!(under(&w, (2 * 64 + 2, 64 + 32)), Some(fence));
-    // Bare ground and points off the map pick nothing.
-    assert_eq!(under(&w, (5 * 64 + 40, 5 * 64 + 40)), None);
-    assert_eq!(under(&w, (-5, -5)), None);
-    assert_eq!(under(&w, (i64::MAX, i64::MIN)), None);
+fn the_near_fence_is_on_the_side_of_the_tile_nearest_to_the_point() {
+    let w = world(vec![path(1, 1), piece("f", 1, 1, 2)]);
+    let t = w.tile_index(1, 1).unwrap();
+    // Near the east side: the fence, in the tile's slot or in the one across.
+    assert_eq!(fence_near(&w, t, 60, 40), Some(1));
+    assert_eq!(fence_near(&w, w.tile_index(2, 1).unwrap(), 2, 32), Some(1));
+    // The middle of the tile is further than the reach of a side.
+    assert_eq!(fence_near(&w, t, 40, 40), None);
 }
 
 #[test]
