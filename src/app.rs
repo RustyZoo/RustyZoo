@@ -636,11 +636,21 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    /// Gives the game the cash and the accounts of its file (or those a run sets).
+    /// The rating check that ends every load (zoo status 16).
+    fn loaded_check(&mut self) {
+        if let Some(game) = &mut self.game {
+            let cat = self.renderer.catalogue();
+            self.sim.loaded(&game.world, cat, &mut game.money);
+        }
+    }
+
+    /// Gives the game the cash and the accounts of its file (or those a run sets); the load's
+    /// rating check is made again with them.
     pub fn set_money(&mut self, money: Money) {
         if let Some(game) = &mut self.game {
             game.money = money;
         }
+        self.loaded_check();
     }
 
     /// Puts the interface around the game. The window is the size it was resolved for.
@@ -1401,7 +1411,10 @@ impl<'a> App<'a> {
                 let opened = zoo
                     .and_then(|(zoo, money)| self.open_game(zoo, money).map_err(|e| e.to_string()));
                 match opened {
-                    Ok(()) => self.begin(&start),
+                    Ok(()) => {
+                        self.loaded_check();
+                        self.begin(&start)
+                    }
                     Err(why) => self.say(&why),
                 }
             }

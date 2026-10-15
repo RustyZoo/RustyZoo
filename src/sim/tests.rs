@@ -724,3 +724,16 @@ fn a_new_game_starts_the_timers_again_and_runs_the_set_up_check() {
         ([0; 3], 0.0)
     );
 }
+
+#[test]
+fn a_load_ends_with_a_rating_check_that_restarts_only_the_rating_timer() {
+    let mut run = game(0);
+    run.sim.status.rating = 34;
+    run.sim.status.timers = [3000, 7, 9];
+    run.money.cash = 5000.0;
+    run.sim.loaded(&run.world, &run.cat, &mut run.money);
+    // 12 + 12 for the empty zoo and 1 for 5000 of cash; the research counts 0 points.
+    assert_eq!(run.sim.status.rating, 25);
+    assert_eq!(run.sim.status.timers, [0, 7, 9]);
+    assert_eq!(run.money.total[crate::money::RATING], 25.0);
+}

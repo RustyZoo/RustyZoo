@@ -252,6 +252,14 @@ impl Sim {
         self.economy = Config::parse(file).ok();
     }
 
+    /// A zoo has just been loaded (Continue, Load, the command line, or the file of a new game
+    /// before its set-up): the load ends with a rating check with the stored cash and the entities
+    /// as loaded, research at 0 points, which restarts the rating timer (zoo status 16).
+    pub fn loaded(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
+        let sums = Sums::of(world, cat, money.cash, 0);
+        self.status.rating_check(sums, money, &mut self.lines);
+    }
+
     /// A new game (not a saved one) has just been set up: the timers and the donation counter
     /// start again and the rating check of the set-up runs, with no cash, the built-in settings and
     /// every research program counted as done (zoo status 6.4).

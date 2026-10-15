@@ -252,9 +252,9 @@ fn the_three_status_bars_follow_the_zoo_status_once_a_second_and_the_log_tells_e
             );
             now += 200;
         }
-        // No animal and no guest: 0 and 0; the rating is 0 until the first check, 4 s in, then
-        // 12 + 12 for the happiness parts and 1 for 5000 of zoo value.
-        assert_eq!(told, ["bars 0 0 0", "bars 0 0 25"]);
+        // No animal and no guest: 0 and 0; the load's rating check gives 12 + 12 for the
+        // happiness parts and 1 for 5000 of zoo value at once, and the check 4 s in changes nothing.
+        assert_eq!(told, ["bars 0 0 25"]);
         let ui = app.interface().unwrap();
         let i = ui.tree.find(1015).unwrap();
         let Kind::StatusImage(levels) = &ui.tree.elements[i].kind else {
