@@ -603,7 +603,7 @@ gate_move() { # gate_move <map> [yes]: with `yes` the square is a tank and its q
     grep ' world ungate \| world gate \| exhibit gate ' | cut -d' ' -f4- | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
-check base-trial "exhibit_gate_1_18,43_side_2;world_ungate_fences/zoobars/f_18,43_side_2_id_15653;world_gate_fences/zoobars/g_20,45_side_0_id_15649;exhibit_gate_1_20,45_side_0" "gate_move maps/default.zoo"
+check base-trial "exhibit_gate_1_18,43_side_2;world_ungate_fences/zoobars/f_18,43_side_2_id_15652;world_gate_fences/zoobars/g_20,45_side_0_id_15649;exhibit_gate_1_20,45_side_0" "gate_move maps/default.zoo"
 check expansion-trial "exhibit_gate_2_38,44_side_6;world_ungate_tankwall/tankwal2/f_38,44_side_6_id_53944;world_gate_tankwall/tankwal2/g_40,45_side_2_id_53937;exhibit_gate_2_40,45_side_2" "gate_move maps/scn19.zoo yes"
 
 # Undo (placing 8): the path drag of above, then Backspace takes the pieces back. Prints the removals
