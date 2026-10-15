@@ -110,7 +110,10 @@ impl Run {
         sim.set_seed(seed);
         sim.start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(sim.ai.status_period);
-        world.units.class = class;
+        world.units.class = Class {
+            reset_interval: sim.ai.animal_reset_interval,
+            ..class
+        };
         sim.load(&mut world, &cat);
         Run {
             cat,

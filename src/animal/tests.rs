@@ -21,10 +21,22 @@ fn animal() -> Animal {
     }
 }
 
+/// The checks on a fresh generator: the messages posted.
+fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env) -> Vec<i32> {
+    super::run(a, k, class, env, &mut Rng::default()).messages
+}
+
 /// Runs the checks with one counter at 0 so that it fires.
 fn fires(a: &mut Animal, counter: usize, k: &Keys, env: &Env) -> Vec<i32> {
     a.counters[counter] = 0;
     run(a, k, &Class::default(), env)
+}
+
+/// Whether `rng` has drawn exactly `n` numbers since it was new.
+fn drew(rng: &Rng, n: usize) -> bool {
+    let mut check = Rng::default();
+    (0..n).for_each(|_| _ = check.rand());
+    *rng == check
 }
 
 fn in_exhibit() -> Env {
@@ -32,6 +44,7 @@ fn in_exhibit() -> Env {
         species: 3,
         adults: 3,
         all_adults: 3,
+        unhappy: 0,
     };
     Env {
         exhibit: true,

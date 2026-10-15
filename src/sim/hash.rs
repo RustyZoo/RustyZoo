@@ -174,6 +174,10 @@ impl Fnv {
             self.i32(t.platform.0);
             self.i32(t.platform.1);
         }
+        self.len(x.amphibious.len());
+        for &n in &x.amphibious {
+            self.u32(n);
+        }
         self.rating(&x.rating);
     }
 
@@ -200,6 +204,7 @@ impl Fnv {
                 self.f32(v);
             }
             self.u8(u8::from(r.tank));
+            self.f32(r.other);
             self.u64(r.advice);
             self.u64(r.important);
         }
