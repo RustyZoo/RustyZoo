@@ -158,8 +158,8 @@ menu_click() {
   echo
   rm -rf "${d:?}"
 }
-check base-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239527428;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/default.zoo"
-check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239537628;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/scn19.zoo"
+check base-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239527428;uirelease7111inside;uiselect7111;uishow32;uihover50004;uihide7003;' "menu_click maps/default.zoo"
+check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239537628;uirelease7111inside;uiselect7111;uishow32;uihover50004;uihide7003;' "menu_click maps/scn19.zoo"
 
 # Start up to the main menu, headless, without a map: the picture drawn (resource number and
 # corner), the loading steps (also written to [UI] progresscalls of the user folder), Continue
