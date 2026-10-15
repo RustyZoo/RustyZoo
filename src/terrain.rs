@@ -1,6 +1,6 @@
 //! Shaping and painting the ground (terrain editing 3 to 8): the brush, the terrain types, the
 //! rules that say which tiles accept a type, the session that snapshots every tile it touches and
-//! the cost computed from the snapshot, accept and cancel. Painting is here; shaping is not yet.
+//! the cost computed from the snapshot, accept and cancel. Shaping steps are in [`shape`].
 //!
 //! Nothing here knows the interface or the clock: [`Tool`] works on a [`World`] and the cash.
 
@@ -12,6 +12,10 @@ use crate::timing::ini_value;
 use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{Entity, Tile};
+use crate::zoom::Zoom;
+use shape::Request;
+
+pub mod shape;
 
 /// The default price of one step of elevation (`[Map] elevationCost`).
 const ELEVATION_COST: f32 = 8.0;
@@ -279,9 +283,17 @@ pub struct Tool {
     centre: Option<(i32, i32)>,
     brush: Option<(i32, i32)>,
     session: Session,
+    /// The shaping mode: whether the ground is kept joined, and whether the brush is brought to a
+    /// height instead of being dragged.
+    contiguous: bool,
+    level: bool,
     pressed: bool,
     /// The window point of the last pointer message of the stroke.
     last: Option<(i32, i32)>,
+    /// Shaping: the window point the vertical drag is measured from, and the elevation the
+    /// level modes bring the brush to.
+    reference: (i32, i32),
+    target: i32,
     /// What painting the brush where it is would cost; 0 right after a paint.
     brush_cost: f32,
 }
@@ -298,8 +310,12 @@ impl Tool {
             centre: None,
             brush: None,
             session: Session::default(),
+            contiguous: true,
+            level: false,
             pressed: false,
             last: None,
+            reference: (0, 0),
+            target: 0,
             brush_cost: 0.0,
         }
     }
@@ -315,6 +331,16 @@ impl Tool {
 
     pub fn kind(&self) -> u8 {
         self.kind
+    }
+
+    /// The shaping mode: whether the ground is kept joined, and whether the brush is brought to a
+    /// height instead of being dragged.
+    pub fn shaping(&self) -> (bool, bool) {
+        (self.contiguous, self.level)
+    }
+
+    pub fn set_shaping(&mut self, contiguous: bool, level: bool) {
+        (self.contiguous, self.level) = (contiguous, level);
     }
 
     /// The types the paint list shows, in order.
@@ -487,7 +513,8 @@ impl Tool {
     }
 
     /// The left button went down on the map at the window point `at`, on tile `tile` (terrain
-    /// editing 5.6 and 6.3): the stroke begins and, painting, the brush paints at once.
+    /// editing 5.6 and 6.3): the stroke begins; painting, the brush paints at once; in a level
+    /// mode it takes the height of the tile and makes a step at once.
     pub fn press(
         &mut self,
         world: &mut World,
@@ -499,22 +526,33 @@ impl Tool {
         world.begin();
         self.pressed = true;
         self.last = Some(at);
+        self.reference = at;
         self.brush = None;
         self.place(world, habits, tile);
-        if self.mode == Some(Mode::Paint) && self.brush.is_some() {
+        if self.brush.is_none() {
+            return;
+        }
+        if self.mode == Some(Mode::Paint) {
             self.paint(world, habits, lines);
+        } else if self.level {
+            let under = tile.and_then(|(x, y)| world.zoo.tile(x, y));
+            self.target = under.map_or(0, |t| t.elevation);
+            self.shape(world, &[Request::Level(self.target)], lines);
         }
     }
 
     /// The pointer moved to the window point `at`, over the map; `tiles` gives the tile under a
-    /// window point. Button up, the brush follows; held, painting paints along the way: when the
-    /// pointer moved more than 16 pixels it is cut into 10 points, the new position first.
+    /// window point, `zoom` the view's. Button up, the brush follows; held, painting paints along
+    /// the way: when the pointer moved more than 16 pixels it is cut into 10 points, the new
+    /// position first; shaping, the brush follows by the rules of its mode and the vertical drag
+    /// makes steps.
     pub fn moved(
         &mut self,
         world: &mut World,
         habits: Habits,
         at: (i32, i32),
         tiles: Under,
+        zoom: Zoom,
         lines: &mut Vec<String>,
     ) {
         if !self.pressed {
@@ -522,8 +560,8 @@ impl Tool {
             return;
         }
         let last = self.last.replace(at).unwrap_or(at);
-        if self.mode != Some(Mode::Paint) {
-            return;
+        if self.mode == Some(Mode::Modify) {
+            return self.drag(world, habits, at, tiles, zoom, lines);
         }
         let far = (at.0 - last.0).abs() > 16 || (at.1 - last.1).abs() > 16;
         let points: Vec<(i32, i32)> = match far {
@@ -540,6 +578,92 @@ impl Tool {
             if self.place(world, habits, tiles(world, point)) {
                 self.paint(world, habits, lines);
             }
+        }
+    }
+
+    /// One update of a shaping stroke (terrain editing 5.6): the brush follows the pointer when
+    /// the mode says so, then the level modes make a step and the drag modes as many steps as
+    /// the pointer travelled since the reference point, up for raising and down for lowering.
+    fn drag(
+        &mut self,
+        world: &mut World,
+        habits: Habits,
+        at: (i32, i32),
+        tiles: Under,
+        zoom: Zoom,
+        lines: &mut Vec<String>,
+    ) {
+        let gap = |a: i32, b: i32| i64::from(a) - i64::from(b);
+        let (dx, dy) = (
+            gap(at.0, self.reference.0).abs(),
+            gap(at.1, self.reference.1).abs(),
+        );
+        let follows = match (self.level, self.contiguous) {
+            (true, _) => dx > 15 || dy > 7,
+            (false, true) => dx > 15,
+            (false, false) => false,
+        };
+        if follows {
+            self.reference.0 = at.0;
+            if !self.level && dy > 32 {
+                self.reference.1 = at.1;
+            }
+            self.place(world, habits, tiles(world, at));
+        }
+        if self.level {
+            return self.shape(world, &[Request::Level(self.target)], lines);
+        }
+        let lo = (self.size as i32 - 1) / 2;
+        let Some((x0, y0)) = self.brush else { return };
+        let Some(e) = world
+            .tile_index(x0 + lo, y0 + lo)
+            .map(|t| i64::from(world.zoo.tiles[t].elevation))
+        else {
+            return;
+        };
+        let unit: i64 = match zoom {
+            Zoom::Out => 8,
+            Zoom::Normal => 16,
+            Zoom::In => 32,
+        };
+        let limit = i64::from(shape::LIMIT);
+        let up = gap(self.reference.1, at.1);
+        let (d, request, room) = match up {
+            up if up >= unit && e < limit => (up, Request::Raise, limit - e),
+            up if -up >= unit && e > -limit => (-up, Request::Lower, e + limit),
+            _ => return,
+        };
+        let steps = (d / unit + i64::from(d % unit > unit / 2))
+            .min(room)
+            .min(2 * limit);
+        self.reference.1 = at.1;
+        self.shape(world, &vec![request; steps as usize], lines);
+    }
+
+    /// Makes the steps one after the other over the brush; the number of tiles that changed and
+    /// the cost of the session are told.
+    fn shape(&mut self, world: &mut World, steps: &[Request], lines: &mut Vec<String>) {
+        let before = self.cost(world);
+        let brush = self.tiles(world);
+        let width = world.zoo.width as usize;
+        let mut changed = std::collections::BTreeSet::new();
+        for &request in steps {
+            for (t, elevation, shape) in
+                shape::run(world, &self.types, &brush, self.contiguous, request)
+            {
+                let tile = world.zoo.tiles[t];
+                self.session.touch(t, tile);
+                let (x, y) = ((t % width) as i32, (t / width) as i32);
+                world.set_tile(x, y, elevation, shape, tile.terrain);
+                changed.insert(t);
+            }
+        }
+        if !changed.is_empty() {
+            lines.push(format!("shape {}", changed.len()));
+        }
+        let cost = self.cost(world);
+        if cost != before {
+            lines.push(format!("cost {}", whole(cost)));
         }
     }
 

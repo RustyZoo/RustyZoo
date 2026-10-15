@@ -10,7 +10,7 @@
 
 use crate::exhibit::Exhibits;
 use crate::render::corner_elevation;
-use crate::render::order::{Kind, Object, Scene};
+use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::zoo::{Entity, Tile, Zoo};
 
 /// How an entity takes its place on the map, from its type.
@@ -123,6 +123,23 @@ impl World {
         self.scene.edge_object(t, d).map(|o| self.owner[o])
     }
 
+    /// Whether an object holding a quarter of tile `t` has a footprint other than exactly 1 by 1
+    /// half tiles: the tile then keeps its shape when the ground is shaped.
+    pub fn sized(&self, t: usize) -> bool {
+        (0..4)
+            .filter_map(|q| self.quadrant(t, q))
+            .filter_map(|e| self.shapes[e])
+            .any(|s| s.footprint != (1, 1))
+    }
+
+    /// Whether the object holding the quarter of tile `t` at local (32..64, 32..64) has a footprint
+    /// above 2 half tiles in x or in y.
+    pub fn big(&self, t: usize) -> bool {
+        self.quadrant(t, 3)
+            .and_then(|e| self.shapes[e])
+            .is_some_and(|s| s.footprint.0 > 2 || s.footprint.1 > 2)
+    }
+
     /// Whether an animal, guest or staff member stands on tile `t`.
     pub fn unit_on(&self, t: usize) -> bool {
         let width = self.zoo.width as usize;
@@ -194,6 +211,9 @@ impl World {
         self.record(Action::Tile(t, old));
         let tile = &mut self.zoo.tiles[t];
         (tile.elevation, tile.shape, tile.terrain) = (elevation, shape, terrain);
+        if (old.elevation, old.shape) != (elevation, shape) {
+            self.reheight(t);
+        }
         self.edges_around(t);
         self.changed();
         true
@@ -216,7 +236,12 @@ impl World {
                     self.shapes.insert(at, shape);
                 }
                 Action::Tile(t, tile) => {
+                    let moved = (tile.elevation, tile.shape)
+                        != (self.zoo.tiles[t].elevation, self.zoo.tiles[t].shape);
                     self.zoo.tiles[t] = tile;
+                    if moved {
+                        self.reheight(t);
+                    }
                     self.edges_around(t);
                 }
             }
@@ -242,6 +267,25 @@ impl World {
     fn changed(&mut self) {
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
         self.dirty = true;
+    }
+
+    /// The objects standing on tile `t` take their height from the ground again (not the ones
+    /// that hold no place on the map, such as ambient animals).
+    fn reheight(&mut self, t: usize) {
+        let width = i64::from(self.zoo.width);
+        let tile = self.zoo.tiles[t];
+        for (entity, shape) in self.zoo.entities.iter_mut().zip(&self.shapes) {
+            let (Some(c), Some(shape)) = (entity.common.as_mut(), shape) else {
+                continue;
+            };
+            let (tx, ty) = (c.x.div_euclid(64), c.y.div_euclid(64));
+            if shape.kind != Kind::Overlay
+                && (0..width).contains(&i64::from(tx))
+                && i64::from(ty) * width + i64::from(tx) == t as i64
+            {
+                c.z = ground_height(&tile, c.x.rem_euclid(64), c.y.rem_euclid(64));
+            }
+        }
     }
 
     /// Writes the edge states of tile `t` and of the tiles beside it again.

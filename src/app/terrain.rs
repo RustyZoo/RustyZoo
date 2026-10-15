@@ -8,6 +8,7 @@ use crate::build::terrain::{self as panel, Press};
 use crate::entity::Catalogue;
 use crate::terrain::{Left, Mode, habit};
 use crate::zoo::Entity;
+use crate::zoom::Zoom;
 
 /// The string of the message that a session which the cash cannot cover is cancelled with.
 const SHORT: i32 = 3363;
@@ -108,6 +109,7 @@ impl App<'_> {
         let habits = |e: &Entity| habit(cat, e);
         let at = ui.pointer();
         let camera = &game.camera;
+        let zoom = Zoom::from_value(camera.zoom);
         let lines = &mut self.terrain_lines;
         let under = |world: &World, at| camera.tile_under(&world.zoo, at);
         match mouse {
@@ -119,7 +121,7 @@ impl App<'_> {
             Mouse::Move(..) => {
                 let before = game.terrain.tiles(&game.world);
                 game.terrain
-                    .moved(&mut game.world, &habits, at, &under, lines);
+                    .moved(&mut game.world, &habits, at, &under, zoom, lines);
                 let after = game.terrain.tiles(&game.world);
                 if before != after
                     && let Some(first) = after.first()
@@ -172,7 +174,11 @@ impl App<'_> {
                     .accept(&game.world, &habits, &mut game.money, lines);
             }
             Press::Cancel => game.terrain.cancel(&mut game.world, &habits, lines),
-            Press::Mode(id) => panel::mode_text(ui, id),
+            Press::Mode(id, contiguous, level) => {
+                panel::mode_text(ui, id);
+                game.terrain.set_shaping(contiguous, level);
+                lines.push(format!("mode {id}"));
+            }
             Press::Type(at) => {
                 let kind = game.terrain.listed().get(at).map(|t| t.kind);
                 if mode == Mode::Paint
