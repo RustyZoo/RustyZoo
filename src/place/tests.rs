@@ -79,11 +79,11 @@ fn ty(class: &'static str, name: &str, ini: &str, footprint: [i32; 3]) -> Entity
     }
 }
 
-/// 0 tree (1 x 1), 1 bench (placement 2 x 1 over a footprint of 1 x 1), 2 dirt path, 3 stone
+/// 0 tree (1 x 1), 11 iron fence, 12 elephant, 1 bench (placement 2 x 1 over a footprint of 1 x 1), 2 dirt path, 3 stone
 /// x
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
-    cat.types = vec![
+    let types = vec![
         ty(
             "objects",
             "tree",
@@ -145,7 +145,29 @@ fn catalogue() -> Catalogue {
             "[Characteristics/Integers]\ncLand=0\n",
             [1, 1, 1],
         ),
+        ty(
+            "fences",
+            "iron",
+            "[Characteristics/Integers]\ncPurchaseCost=125\ncLife=10\ncDecayedLife=4\ncStrength=300\n",
+            [1, 1, 1],
+        ),
+        ty("animals", "elephant", "", [6, 6, 1]),
+        ty(
+            "fences",
+            "buoyrope",
+            "[Characteristics/Integers]\ncPurchaseCost=50\ncSwims=1\ncLand=0\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "fences",
+            "chain",
+            "[Characteristics/Integers]\ncPurchaseCost=50\ncLand=0\n",
+            [1, 1, 1],
+        ),
     ];
+    for t in types {
+        cat.push(t);
+    }
     cat
 }
 
@@ -171,18 +193,19 @@ fn entity(class: &str, name: &str, x: i32, y: i32, rotation: u32) -> Entity {
 
 /// How the entities of these tests take their place.
 fn shape(e: &Entity) -> Option<Shape> {
-    let (kind, footprint, wall, gate) = match e.class.as_str() {
+    let (kind, footprint, fence, gate) = match e.class.as_str() {
         "objects" => (Kind::Fixed, (1, 1), false, false),
         "paths" => (Kind::Path, (2, 2), false, false),
         "fences" => (Kind::Edge, (1, 1), true, false),
         "gate" => (Kind::Fixed, (2, 2), false, true),
+        "animals" => (Kind::Unit, (1, 1), false, false),
         _ => return None,
     };
     Some(Shape {
         kind,
         footprint,
-        fence: wall,
-        wall,
+        fence,
+        wall: fence && !matches!(e.type_name.as_str(), "wire" | "iron"),
         gate,
     })
 }
@@ -218,7 +241,7 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
 
 /// The pending object of the type `ty` for the point (`x`, `y`) of the world, view unturned.
 fn at(w: &World, cat: &Catalogue, ty: usize, step: usize, x: i64, y: i64) -> Option<Pending> {
-    pending(w, cat, &[false, true], &|_| None, ty, step, 0, (x, y))
+    pending(w, cat, &[false, true], &|_| None, true, ty, step, 0, (x, y))
 }
 
 #[test]
@@ -632,7 +655,7 @@ fn a_valid_place_gets_the_object_and_takes_its_price_as_construction() {
 }
 
 #[test]
-fn the_cash_must_cover_the_price_and_only_scenery_is_placed_here() {
+fn the_cash_must_cover_the_price_of_what_is_placed() {
     let cat = catalogue();
     let mut w = world((0, 0), vec![], |_| {});
     let p = at(&w, &cat, 0, 0, 10, 10).unwrap();
@@ -666,7 +689,7 @@ fn the_cash_must_cover_the_price_and_only_scenery_is_placed_here() {
         Outcome::Placed(_)
     ));
     assert_eq!(broke.cash, -5.0);
-    // An invalid place gives its message, whatever the cash; a fence is not placed here.
+    // An invalid place gives its message, whatever the cash.
     let held = at(&w, &cat, 0, 0, 10, 10).unwrap();
     assert_eq!(
         place(
@@ -678,19 +701,6 @@ fn the_cash_must_cover_the_price_and_only_scenery_is_placed_here() {
             shape
         ),
         Outcome::Refused(Some(IN_THE_WAY))
-    );
-    let fence = at(&w, &cat, 4, 0, 3 * 64 + 32, 3 * 64 + 2).unwrap();
-    assert_eq!(fence.verdict, Verdict::Valid);
-    assert_eq!(
-        place(
-            &mut w,
-            &mut zoo_money(100.0),
-            &cat.types[4],
-            &fence,
-            &[false, true],
-            shape
-        ),
-        Outcome::Refused(None)
     );
     // A NaN price is never booked.
     let nan = Pending {
@@ -885,6 +895,7 @@ fn a_path_on_water_needs_dirt_to_be_painted_and_costs_the_paint_too() {
             &cat,
             &[false, true],
             &paintable,
+            true,
             2,
             0,
             0,
@@ -1013,4 +1024,304 @@ fn a_path_goes_under_objects_with_no_footprint_check_and_no_message() {
     // The trees stay, and the path is the tile's path.
     assert_eq!((w.zoo.entities.len(), money.cash), (3, 90.0));
     assert!(w.path(0).is_some() && w.quadrant(0, 0).is_some());
+}
+
+/// The piece of the fence drag from `start` along side `first`, the mouse at tile `cell` and the
+/// point (`lx`, `ly`) of it.
+fn run(
+    start: (i32, i32),
+    first: u32,
+    cell: (i64, i64),
+    local: (i64, i64),
+) -> Vec<((i32, i32), u32)> {
+    fence_run(start, first, (cell.0 * 64 + local.0, cell.1 * 64 + local.1))
+}
+
+#[test]
+fn a_fence_drag_goes_along_the_side_of_the_press_then_turns_as_the_table_says() {
+    // The worked examples of placing 10: side 0 of (10, 10), the mouse below and to the right.
+    let right = run((10, 10), 0, (14, 12), (54, 32));
+    let want = [
+        (10, 10, 0),
+        (11, 10, 0),
+        (12, 10, 0),
+        (13, 10, 0),
+        (14, 10, 0),
+    ]
+    .into_iter()
+    .chain([(14, 10, 2), (14, 11, 2), (14, 12, 2)]);
+    assert_eq!(right, want.map(|(x, y, s)| ((x, y), s)).collect::<Vec<_>>());
+    // Above the line the second leg lies on the far edge of the last column: a shift, no corner.
+    let above = run((10, 10), 0, (14, 9), (54, 24));
+    let want = [
+        (10, 10, 0),
+        (11, 10, 0),
+        (12, 10, 0),
+        (13, 10, 0),
+        (14, 10, 0),
+        (15, 9, 6),
+    ];
+    assert_eq!(above, want.map(|(x, y, s)| ((x, y), s)));
+    // The other three starting sides, turned.
+    let south = run((10, 10), 4, (14, 12), (54, 32));
+    assert_eq!(south.len(), 7);
+    assert_eq!(
+        (south[4], south[5], south[6]),
+        (((14, 10), 4), ((15, 11), 6), ((15, 12), 6))
+    );
+    let east = run((10, 10), 2, (12, 14), (32, 54));
+    assert_eq!(east.len(), 7);
+    assert_eq!(
+        (east[4], east[5], east[6]),
+        (((10, 14), 2), ((11, 15), 0), ((12, 15), 0))
+    );
+    let west = run((10, 10), 6, (7, 7), (52, 52));
+    assert_eq!(west.len(), 7);
+    assert_eq!(
+        (west[3], west[4], west[6]),
+        (((10, 7), 6), ((9, 6), 4), ((7, 6), 4))
+    );
+    // The mouse on the start tile: the piece alone, or a hook on the side the mouse is on.
+    assert_eq!(run((10, 10), 0, (10, 10), (60, 20)), [((10, 10), 0)]);
+    assert_eq!(
+        run((10, 10), 0, (10, 10), (60, 50)),
+        [((10, 10), 0), ((10, 10), 2)]
+    );
+    assert_eq!(
+        run((10, 10), 0, (10, 10), (10, 50)),
+        [((10, 10), 0), ((10, 10), 6)]
+    );
+    // A straight line along the side: no corner piece while the mouse is above the line.
+    let line = run((10, 10), 0, (13, 10), (40, 20));
+    assert_eq!(line.len(), 4);
+    assert!(line.iter().all(|&(_, s)| s == 0));
+    // A side that is not 0, 2, 4 or 6 is read modulo; a point far off the map stays finite.
+    assert_eq!(run((10, 10), 8, (10, 10), (60, 20)), [((10, 10), 0)]);
+    assert!(fence_run((0, 0), 2, (i64::MIN, i64::MAX)).len() < 40_000);
+    assert!(fence_run((0, 0), 6, (i64::MAX, i64::MIN)).len() < 40_000);
+}
+
+/// A point inside tile (`tx`, `ty`) that picks the side `s` of it.
+fn on_side(tx: i64, ty: i64, s: u32) -> (i64, i64) {
+    let (x, y) = [(32, 5), (59, 32), (32, 59), (5, 32)][s as usize / 2];
+    (tx * 64 + x, ty * 64 + y)
+}
+
+fn fence_at(
+    w: &World,
+    cat: &Catalogue,
+    smart: bool,
+    ty: usize,
+    tx: i64,
+    ty_: i64,
+    s: u32,
+) -> Pending {
+    let (x, y) = on_side(tx, ty_, s);
+    pending(w, cat, &[false, true], &|_| None, smart, ty, 0, 0, (x, y)).unwrap()
+}
+
+#[test]
+fn a_fence_stands_on_its_own_tile_s_slot_and_the_zoo_wall_cannot_be_replaced() {
+    let cat = catalogue();
+    // A zoo wall piece on the east side of tile (4, 3), as a loaded map holds it.
+    let w = world(
+        (0, 0),
+        vec![entity("fences", "", 4 * 64 + 63, 3 * 64 + 32, 2)],
+        |_| {},
+    );
+    assert!(w.wall(w.tile_index(4, 3).unwrap(), 2));
+    let on = |ty, tx, ty_, s| fence_at(&w, &cat, true, ty, tx, ty_, s);
+    let wall = on(11, 4, 3, 2);
+    assert_eq!(
+        (wall.verdict, wall.message, wall.amount()),
+        (Verdict::Invalid, None, 0)
+    );
+    // The same line is side 6 of the tile across: its own slot, free, at the full price.
+    let across = on(11, 5, 3, 6);
+    assert_eq!(
+        (across.verdict, across.facing, across.amount()),
+        (Verdict::Valid, 6, -125)
+    );
+    assert_eq!((across.x, across.y), (5 * 64, 3 * 64 + 32));
+    // Another side of the same tile too.
+    assert_eq!(on(11, 4, 3, 0).verdict, Verdict::Valid);
+}
+
+#[test]
+fn a_fence_that_only_swims_is_refused_on_dry_land_and_placed_on_water() {
+    let cat = catalogue();
+    let w = world((0, 0), vec![], |t| t[1].terrain = 1);
+    let on = |ty, tx| fence_at(&w, &cat, true, ty, tx, 0, 0);
+    let verdict = |p: Pending| (p.verdict, p.message, p.amount());
+    // The buoy rope fence (cLand 0, swims): grass says 10564 and costs nothing, water is fine.
+    assert_eq!(
+        verdict(on(13, 0)),
+        (Verdict::Invalid, Some(NOT_ON_WATER), 0)
+    );
+    assert_eq!(verdict(on(13, 1)), (Verdict::Valid, None, -50));
+    // A type with cLand 0 that does not swim, and the ordinary fence, have no water test.
+    assert_eq!(on(14, 0).verdict, Verdict::Valid);
+    assert_eq!(on(11, 0).verdict, Verdict::Valid);
+    assert_eq!(on(11, 1).verdict, Verdict::Valid);
+    // A piece the fence check refused gets no 10564 from this test.
+    let held = world((0, 0), vec![entity("fences", "", 63, 32, 2)], |_| {});
+    let p = fence_at(&held, &cat, true, 13, 0, 0, 2);
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, None));
+}
+
+#[test]
+fn a_fence_between_the_tiles_of_one_object_and_on_the_entrance_is_refused() {
+    let cat = catalogue();
+    // An object of 2 x 2 half tiles on the corner of tiles (1, 1), (2, 1), (1, 2) and (2, 2), and
+    // the entrance gate in the middle of tile (5, 5).
+    let w = world(
+        (0, 0),
+        vec![
+            entity("gate", "", 128, 128, 0),
+            entity("gate", "", 5 * 64 + 32, 5 * 64 + 32, 0),
+        ],
+        |_| {},
+    );
+    let on = |tx, ty, s| fence_at(&w, &cat, true, 11, tx, ty, s);
+    // Between (1, 2) and (2, 2) the object spans both tiles; so does it between (2, 1) and (2, 2).
+    assert_eq!(on(2, 2, 6).verdict, Verdict::Invalid);
+    assert_eq!(on(2, 2, 0).verdict, Verdict::Invalid);
+    assert_eq!(on(1, 2, 2).verdict, Verdict::Invalid);
+    // The outer sides of those tiles are free.
+    assert_eq!(on(2, 2, 2).verdict, Verdict::Valid);
+    assert_eq!(on(2, 2, 4).verdict, Verdict::Valid);
+    // Tile (1, 1) holds the last quarter of the first object: the entrance quadrant.
+    assert_eq!(on(1, 1, 0).verdict, Verdict::Invalid);
+    // The entrance gate stands in the middle of its tile: all four sides are refused.
+    for s in [0, 2, 4, 6] {
+        assert_eq!(on(5, 5, s).verdict, Verdict::Invalid, "side {s}");
+    }
+    // A tile beside it is not.
+    assert_eq!(on(6, 5, 6).verdict, Verdict::Valid);
+}
+
+#[test]
+fn the_smart_fences_test_keeps_fences_off_big_bodies_and_large_placement_rectangles() {
+    let cat = catalogue();
+    // A bench (placement 2 x 1 half tiles over a footprint of 1 x 1) in the last quarter of
+    // tile (3, 3), at the local point (48, 48), and an elephant (6 x 6) in tile (5, 5).
+    let w = world(
+        (0, 0),
+        vec![
+            entity("objects", "bench", 3 * 64 + 48, 3 * 64 + 48, 0),
+            entity("animals", "elephant", 5 * 64 + 32, 5 * 64 + 32, 0),
+        ],
+        |_| {},
+    );
+    let on = |smart, tx, ty, s| fence_at(&w, &cat, smart, 11, tx, ty, s).verdict;
+    // The fence position (3 * 64 + 32, 3 * 64 + 63) is 16 right and 15 below the bench: inside
+    // its rectangle of 32 by 16. With the setting off, or away from the rectangle, it is fine.
+    assert_eq!(on(true, 3, 3, 4), Verdict::Invalid);
+    assert_eq!(on(false, 3, 3, 4), Verdict::Valid);
+    // The side 0 of the tile below is 16 units from the bench in y: not strictly inside.
+    assert_eq!(on(true, 3, 4, 0), Verdict::Valid);
+    // Side 0 of its tile is 48 units above the bench, side 2 is 16 away in y: not strictly inside.
+    assert_eq!(on(true, 3, 3, 0), Verdict::Valid);
+    assert_eq!(on(true, 3, 3, 2), Verdict::Valid);
+    assert_eq!(on(true, 4, 3, 6), Verdict::Valid);
+    // The elephant covers its own tile and the ones next to it (6 / 2 >= 2 * 1), not two away.
+    for (tx, ty) in [(5, 5), (6, 5), (4, 6), (6, 6)] {
+        assert_eq!(on(true, tx, ty, 0), Verdict::Invalid, "tile {tx},{ty}");
+        assert_eq!(on(false, tx, ty, 0), Verdict::Valid, "tile {tx},{ty} off");
+    }
+    for (tx, ty) in [(7, 5), (5, 3), (2, 7)] {
+        assert_eq!(on(true, tx, ty, 0), Verdict::Valid, "tile {tx},{ty}");
+    }
+}
+
+#[test]
+fn the_smart_fences_setting_reads_the_ini_file_and_defaults_to_on() {
+    assert!(smart_fences(b""));
+    assert!(smart_fences(b"[UI]\nsmartFences=1\n"));
+    assert!(!smart_fences(b"[UI]\nsmartFences=0\n"));
+    assert!(!smart_fences(b"[ui]\nSMARTFENCES = 0\n"));
+    assert!(smart_fences(b"[UI]\nsmartFences=-3\n"));
+    assert!(smart_fences(b"[UI]\nsmartFences=lots\n"));
+    assert!(smart_fences(b"[UI]\nsmartFences=\n"));
+    assert!(smart_fences(b"[Other]\nsmartFences=0\n"));
+    assert!(smart_fences(b"\xff\x00\x01 not an ini"));
+}
+
+#[test]
+fn a_fence_on_a_held_slot_is_free_only_for_the_same_type_above_its_decayed_life() {
+    let cat = catalogue();
+    let old = |type_name: &str, life: Option<u32>| {
+        let mut e = entity("fences", type_name, 5 * 64 + 32, 5 * 64, 0);
+        e.common.as_mut().unwrap().fence = life.map(|life| Fence {
+            strength: 300,
+            life,
+            timers: [0; 2],
+            portal: false,
+        });
+        world((0, 0), vec![e], |_| {})
+    };
+    let price = |w: &World, ty| {
+        let p = fence_at(w, &cat, true, ty, 5, 5, 0);
+        (p.verdict, p.amount())
+    };
+    // Life 5 is above the decayed life 4: nothing to repair.
+    assert_eq!(price(&old("iron", Some(5)), 11), (Verdict::Overwrite, 0));
+    // At the decayed life, broken, or another type: the full price.
+    assert_eq!(price(&old("iron", Some(4)), 11), (Verdict::Overwrite, -125));
+    assert_eq!(price(&old("iron", Some(0)), 11), (Verdict::Overwrite, -125));
+    assert_eq!(price(&old("wire", Some(9)), 11), (Verdict::Overwrite, -125));
+    // A piece that stores no life (an older file) is healthy: the type's life, 10.
+    assert_eq!(price(&old("iron", None), 11), (Verdict::Overwrite, 0));
+    // The slot of a type without a life key: life 10, decayed life 0.
+    assert_eq!(price(&old("wire", Some(1)), 4), (Verdict::Overwrite, 0));
+    assert_eq!(price(&old("wire", Some(0)), 4), (Verdict::Overwrite, -40));
+}
+
+#[test]
+fn a_fence_is_placed_healthy_replaces_the_old_piece_and_is_paid_once() {
+    let cat = catalogue();
+    let mut w = world((0, 0), vec![], |_| {});
+    let mut money = zoo_money(300.0);
+    let p = fence_at(&w, &cat, true, 11, 3, 2, 2);
+    assert_eq!(
+        (p.x, p.y, p.facing, p.tile),
+        (3 * 64 + 63, 2 * 64 + 32, 2, (3, 2))
+    );
+    let go = |w: &mut World, money: &mut Money, p: &Pending| {
+        place(w, money, &cat.types[11], p, &[false, true], shape)
+    };
+    assert_eq!(go(&mut w, &mut money, &p), Outcome::Placed(101));
+    assert_eq!(money.cash, 175.0);
+    assert_eq!(money.monthly[CONSTRUCTION][0], 125.0);
+    let c = w.zoo.entities[0].common.as_ref().unwrap();
+    assert_eq!(
+        (c.rotation, c.fence.map(|f| (f.strength, f.life))),
+        (2, Some((300, 10)))
+    );
+    // The slot is held now; the same type above its decayed life replaces it for nothing, and
+    // the old piece is gone (the new one has the next id).
+    let again = fence_at(&w, &cat, true, 11, 3, 2, 2);
+    assert_eq!((again.verdict, again.amount()), (Verdict::Overwrite, 0));
+    assert_eq!(go(&mut w, &mut money, &again), Outcome::Placed(102));
+    assert_eq!((money.cash, w.zoo.entities.len()), (175.0, 1));
+    assert_eq!(w.zoo.entities[0].common.as_ref().unwrap().id, 102);
+    // A fence the cash cannot cover is refused with the message of insufficient funds.
+    let mut poor = zoo_money(100.0);
+    let other = fence_at(&w, &cat, true, 11, 3, 2, 0);
+    assert_eq!(
+        go(&mut w, &mut poor, &other),
+        Outcome::Refused(Some(NO_FUNDS))
+    );
+    // A piece that is not valid shows its message, none for the fence check.
+    let wall = world((0, 0), vec![entity("fences", "", 63, 32, 2)], |_| {});
+    let refused = fence_at(&wall, &cat, true, 11, 0, 0, 2);
+    let mut w2 = world((0, 0), vec![entity("fences", "", 63, 32, 2)], |_| {});
+    assert_eq!(go(&mut w2, &mut money, &refused), Outcome::Refused(None));
+    // Outside the zoo: the message of the zoo wall.
+    let w3 = world((1, 4), vec![entity("gate", "", 96, 288, 6)], |_| {});
+    let out = fence_at(&w3, &cat, true, 11, 0, 0, 0);
+    assert_eq!(
+        (out.verdict, out.message),
+        (Verdict::Invalid, Some(NOT_IN_THE_ZOO))
+    );
 }

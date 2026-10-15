@@ -1,16 +1,17 @@
 //! Placing and removing objects, paths and fences: so far the pending object, the type the player
 //! chose as it follows the mouse (placing 4 and 5), the placing of scenery (placing 6.1) and the
-//! laying of paths by dragging (placing 5.3 and 6.2).
+//! laying of paths and fences by dragging (placing 5.3, 6.2 and 6.3).
 //!
 //! [`pending`] snaps the world point under the mouse to where the type would stand, lifts it to
 //! the ground, turns it, and checks the place: the verdict decides the tint, the cost text and
 //! the message a click shows. The checks are the ones every kind of object shares (the tile is in
-//! the zoo, the quadrants of the footprint are free except for paths, a path or a fence replaces a piece), those of
-//! scenery (land or water, flat ground at one height, no fence inside a big footprint) and those
-//! of paths (flat or one raised side, dirt painted first on water); the rules of fences come with
-//! the placing of that kind. [`place`] adds a valid pending object to the world and takes its
-//! price. A path drag is a list of pending pieces, [`path_run`] says which tiles and [`afford`]
-//! which of them the cash covers.
+//! the zoo, the quadrants of the footprint are free except for paths, a path or a fence replaces
+//! a piece), those of scenery (land or water, flat ground at one height, no fence inside a big
+//! footprint), those of paths (flat or one raised side, dirt painted first on water) and those of
+//! fences (the zoo wall stays, nothing crosses the side, the smart fences test, not the entrance).
+//! [`place`] adds a valid pending object to the world and takes its price. A drag is a list of
+//! pending pieces, [`path_run`] and [`fence_run`] say where and [`afford`] which of them the cash
+//! covers.
 
 use crate::build::{cost, number};
 use crate::config::Config;
@@ -20,10 +21,11 @@ use crate::render::order::{Kind, ground_height};
 use crate::render::{Extra, Ghost};
 use crate::terrain::{self, Habits};
 use crate::text::format::{money, whole_units};
+use crate::timing::ini_whole;
 use crate::ui::layout::color;
 use crate::vfs::Vfs;
 use crate::world::{Shape, World};
-use crate::zoo::{Common, Entity};
+use crate::zoo::{Common, Entity, Fence};
 
 /// The message of a place outside the zoo wall (or off the map).
 pub const NOT_IN_THE_ZOO: i32 = 10311;
@@ -35,6 +37,11 @@ pub const NOT_ON_WATER: i32 = 10564;
 pub const NO_FUNDS: i32 = 10002;
 /// The message of a tank filter that is not next to a finished tank without a filter.
 pub const NO_TANK: i32 = 10517;
+
+/// The `cLife` of a fence type that has none.
+const LIFE: f32 = 10.0;
+/// The `cStrength` of a fence type that has none.
+const STRENGTH: f32 = 500.0;
 
 /// The biggest placement footprint side taken, in half tiles (the paint order drops a bigger one).
 const MAX_FOOTPRINT: i32 = 64;
@@ -267,6 +274,113 @@ pub fn path_run(start: (i32, i32), cell: (i32, i32), leg: &mut Option<Leg>) -> V
     run
 }
 
+/// The middle of each side of a tile, by map direction 0, 2, 4, 6 (placing 4.2).
+pub const MIDDLE: [(i32, i32); 4] = [(32, 0), (63, 32), (32, 63), (0, 32)];
+
+/// The pieces `(tile, side)` of the L a fence drag lays, the start piece first (placing 6.2): the
+/// first leg runs along the side `first` chosen at the press on the tile `start`, the second
+/// along the side the mouse's position `mouse` (a world point on the map) selects, with the shift
+/// and the corner piece of the table of 6.2. A point far off the map is brought near it, so the
+/// run stays finite.
+pub fn fence_run(start: (i32, i32), first: u32, mouse: (i64, i64)) -> Vec<((i32, i32), u32)> {
+    let first = first / 2 % 4 * 2;
+    let near = |v: i64| v.clamp(-(1 << 20), 1 << 20);
+    let (mx, my) = (near(mouse.0), near(mouse.1));
+    let (lx, ly) = (mx.rem_euclid(64), my.rem_euclid(64));
+    let cell = (mx.div_euclid(64), my.div_euclid(64));
+    let (px, py) = (
+        i64::from(start.0) * 64 + i64::from(MIDDLE[first as usize / 2].0),
+        i64::from(start.1) * 64 + i64::from(MIDDLE[first as usize / 2].1),
+    );
+    // The side of the second leg, and the tile the mouse is taken to be on (the table of 6.2).
+    let (a, b) = match first {
+        0 => (mx < px, my < py),
+        4 => (mx > px, my > py),
+        6 => (my < py, mx < px),
+        _ => (my > py, mx > px),
+    };
+    let (second, moved) = match (first, a, b) {
+        (0, true, true) => (2, (-1, 0)),
+        (0, true, false) => (6, (0, 0)),
+        (0, false, true) => (6, (1, 0)),
+        (0, false, false) => (2, (0, 0)),
+        (4, true, true) => (6, (1, 0)),
+        (4, true, false) => (2, (0, 0)),
+        (4, false, true) => (2, (-1, 0)),
+        (4, false, false) => (6, (0, 0)),
+        (6, true, true) => (4, (0, -1)),
+        (6, true, false) => (0, (0, 0)),
+        (6, false, true) => (0, (0, 1)),
+        (6, false, false) => (4, (0, 0)),
+        (_, true, true) => (0, (0, 1)),
+        (_, true, false) => (4, (0, 0)),
+        (_, false, true) => (4, (0, -1)),
+        (_, false, false) => (0, (0, 0)),
+    };
+    let (dx, dy) = (
+        cell.0 + moved.0 - i64::from(start.0),
+        cell.1 + moved.1 - i64::from(start.1),
+    );
+    let (sx, sy) = (dx.signum(), dy.signum());
+    let mut run = vec![(start, first)];
+    let mut at = (i64::from(start.0), i64::from(start.1));
+    // `n` pieces of `side`, each one tile on from the last.
+    fn walk(
+        run: &mut Vec<((i32, i32), u32)>,
+        at: &mut (i64, i64),
+        by: (i64, i64),
+        n: i64,
+        side: u32,
+    ) {
+        for _ in 0..n {
+            *at = (at.0 + by.0, at.1 + by.1);
+            run.push(((at.0 as i32, at.1 as i32), side));
+        }
+    }
+    if first.is_multiple_of(4) {
+        let shift = (second == 6 && dx > 0) || (second == 2 && dx < 0);
+        let corner = match first {
+            0 => sy > 0 || (dy == 0 && ly > 32),
+            _ => sy < 0 || (dy == 0 && ly < 32),
+        };
+        walk(
+            &mut run,
+            &mut at,
+            (sx, 0),
+            dx.abs() - i64::from(shift),
+            first,
+        );
+        if shift {
+            at.0 += sx;
+        }
+        if corner {
+            run.push(((at.0 as i32, at.1 as i32), second));
+        }
+        walk(&mut run, &mut at, (0, sy), dy.abs(), second);
+    } else {
+        let shift = (second == 4 && dy < 0) || (second == 0 && dy > 0);
+        let corner = match first {
+            2 => sx < 0 || (dx == 0 && lx < 32),
+            _ => sx > 0 || (dx == 0 && lx > 32),
+        };
+        walk(
+            &mut run,
+            &mut at,
+            (0, sy),
+            dy.abs() - i64::from(shift),
+            first,
+        );
+        if shift {
+            at.1 += sy;
+        }
+        if corner {
+            run.push(((at.0 as i32, at.1 as i32), second));
+        }
+        walk(&mut run, &mut at, (sx, 0), dx.abs(), second);
+    }
+    run
+}
+
 /// Whether a tile of this shape byte takes a path: flat, or with one side raised (placing 5.3).
 fn path_shape(shape: u8) -> bool {
     matches!(shape, 0x00 | 0x05 | 0x14 | 0x41 | 0x50)
@@ -285,6 +399,15 @@ pub fn dirt<'a>(
         let price = types.iter().find(|ty| ty.kind == kind)?.cost;
         terrain::accepts(world, habits, types, t, kind).then_some((kind, price))
     }
+}
+
+/// `[UI] smartFences` of the ini file, the test of fences against large objects (placing 6.3
+/// rule 5): on when missing, off for 0.
+pub fn smart_fences(ini: &[u8]) -> bool {
+    Config::parse(ini)
+        .ok()
+        .and_then(|c| ini_whole(&c, "UI", "smartFences"))
+        .is_none_or(|n| n != 0)
 }
 
 /// The text of the cost at the pointer: an amount in whole units without grouping, `($25)` for
@@ -319,7 +442,7 @@ pub fn snap(class: Class, (px, py): (i32, i32), fp: (i32, i32), facing: u32) -> 
     let (lx, ly) = (px.rem_euclid(64), py.rem_euclid(64));
     let (x, y) = match class {
         Class::Path => (32, 32),
-        Class::Fence => [(32, 0), (63, 32), (32, 63), (0, 32)][(facing / 2 % 4) as usize],
+        Class::Fence => MIDDLE[(facing / 2 % 4) as usize],
         Class::Fixed => {
             let axis = |local: i32, f: i32| match f {
                 1 => 32 * (local / 32) + 16,
@@ -367,13 +490,15 @@ fn is_of(entity: &crate::zoo::Entity, ty: &EntityType) -> bool {
 /// The pending object of the type `ty` (a position in the catalogue) with the rotation step
 /// `step` of its panel, for the world point `point` under the mouse, the view turned by `view`.
 /// `None` when the type is unknown or the point is off the map. `water` tells for each terrain
-/// type whether it is water, `dirt` what painting a tile with dirt would be (see [`dirt`]).
+/// type whether it is water, `dirt` what painting a tile with dirt would be (see [`dirt`]) and
+/// `smart` whether the smart fences test is on (see [`smart_fences`]).
 #[allow(clippy::too_many_arguments)]
 pub fn pending(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
     dirt: &dyn Fn(usize) -> Option<(u8, f32)>,
+    smart: bool,
     ty: usize,
     step: usize,
     view: u8,
@@ -411,17 +536,19 @@ pub fn pending(
         paint: None,
         blocking: Vec::new(),
     };
-    check(&mut pending, world, cat, water, dirt, class, fp);
+    check(&mut pending, world, cat, water, dirt, smart, class, fp);
     Some(pending)
 }
 
 /// The checks every object shares (placing 5.1, 5.2, 5.3): the first failure keeps its message.
+#[allow(clippy::too_many_arguments)]
 fn check(
     p: &mut Pending,
     world: &World,
     cat: &Catalogue,
     water: &[bool],
     dirt: &dyn Fn(usize) -> Option<(u8, f32)>,
+    smart: bool,
     class: Class,
     fp: (i32, i32),
 ) {
@@ -442,10 +569,7 @@ fn check(
         (Verdict::Overwrite, if same { 0.0 } else { cost(t) })
     };
     if class == Class::Fence {
-        if let Some(old) = world.edge(tile, p.facing as usize) {
-            (p.verdict, p.price) = same(old);
-        }
-        return;
+        return check_fence(p, world, cat, water, smart, tile);
     }
     if class == Class::Path
         && let Some(old) = world.path(tile)
@@ -556,6 +680,103 @@ fn check(
     }
 }
 
+/// The fence check (placing 6.3): the zoo wall stays, nothing crosses the side, the smart fences
+/// test and the entrance quadrant refuse a piece without a message, a fence that only swims is
+/// refused on dry land with 10564; the slot of a piece of the same type above its decayed life takes a
+/// free replacement, any other the full price.
+fn check_fence(
+    p: &mut Pending,
+    world: &World,
+    cat: &Catalogue,
+    water: &[bool],
+    smart: bool,
+    tile: usize,
+) {
+    let t = &cat.types[p.ty];
+    let d = p.facing as usize;
+    if world.wall(tile, d) || world.gate(tile) {
+        return fail(p, None);
+    }
+    // No object holds a quadrant of this tile and one of the tile across the side.
+    let held = |t: usize| (0..4).filter_map(move |q| world.quadrant(t, q));
+    if let Some(across) = world.neighbour(tile, d)
+        && held(tile).any(|h| held(across).any(|o| o == h))
+    {
+        return fail(p, None);
+    }
+    if smart && smarter(p, world, cat) {
+        return fail(p, None);
+    }
+    if let Some(old) = world.edge(tile, d).and_then(|o| world.zoo.entities.get(o)) {
+        let life = old
+            .common
+            .as_ref()
+            .and_then(|c| c.fence)
+            .map_or_else(|| number(t, "cLife").unwrap_or(LIFE), |f| f.life as f32);
+        let free = is_of(old, t) && life > number(t, "cDecayedLife").unwrap_or(0.0);
+        (p.verdict, p.price) = (Verdict::Overwrite, if free { 0.0 } else { cost(t) });
+    }
+    // A fence that only swims stands on water alone (the tank tiles are re#55): 10564.
+    let wet = water
+        .get(usize::from(world.zoo.tiles[tile].terrain))
+        .copied()
+        .unwrap_or(false);
+    if number(t, "cLand") == Some(0.0) && only_swims(t) && !wet {
+        fail(p, Some(NOT_ON_WATER));
+    }
+}
+
+/// Whether the smart fences test refuses the piece (placing 6.3 rule 5): within four tiles of its
+/// tile, a unit with a body over two half tiles that covers it, or the object holding the last
+/// quarter of a tile whose placement footprint differs from its footprint and whose rectangle
+/// holds the piece.
+fn smarter(p: &Pending, world: &World, cat: &Catalogue) -> bool {
+    let (tx, ty) = p.tile;
+    let near = |x: i32, y: i32| (x - tx).abs() <= 4 && (y - ty).abs() <= 4;
+    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+    let of = |e: &Entity| cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype));
+    let counted =
+        |x: i32, y: i32| near(x, y) && world.tile_index(x, y).is_some_and(|u| world.in_zoo(u));
+    let units = world.zoo.entities.iter().any(|e| {
+        let Some(c) = e
+            .common
+            .as_ref()
+            .filter(|_| Kind::of_class(&e.class) == Kind::Unit)
+        else {
+            return false;
+        };
+        let (ux, uy) = (c.x.div_euclid(64), c.y.div_euclid(64));
+        let [fx, fy, _] = of(e).map_or([0; 3], |t| t.footprint);
+        counted(ux, uy)
+            && (fx > 2 || fy > 2)
+            && fx / 2 >= 2 * (ux - tx).abs()
+            && fy / 2 >= 2 * (uy - ty).abs()
+    });
+    units
+        || (tx - 4..=tx + 4).any(|ux| {
+            (ty - 4..=ty + 4).any(|uy| {
+                let Some(u) = world.tile_index(ux, uy).filter(|_| counted(ux, uy)) else {
+                    return false;
+                };
+                let Some(e) = world.quadrant(u, 3).and_then(|o| world.zoo.entities.get(o)) else {
+                    return false;
+                };
+                let (Some(c), Some(t)) = (e.common.as_ref(), of(e)) else {
+                    return false;
+                };
+                let own = (t.footprint[0], t.footprint[1]);
+                let mut at = placement_footprint(t);
+                if c.rotation % 4 != 0 {
+                    at = (at.1, at.0);
+                }
+                (c.x.div_euclid(64), c.y.div_euclid(64)) == (ux, uy)
+                    && placement_footprint(t) != own
+                    && i64::from((p.x - c.x).abs()) < 16 * i64::from(at.0)
+                    && i64::from((p.y - c.y).abs()) < 16 * i64::from(at.1)
+            })
+        })
+}
+
 /// The entity a pending object of the type `ty` becomes when it is placed.
 pub fn entity(ty: &EntityType, p: &Pending) -> Entity {
     let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
@@ -572,7 +793,12 @@ pub fn entity(ty: &EntityType, p: &Pending) -> Entity {
             id: 0,
             name: String::new(),
             colors: Vec::new(),
-            fence: None,
+            fence: (Class::of(ty) == Class::Fence).then(|| Fence {
+                strength: number(ty, "cStrength").unwrap_or(STRENGTH) as u32,
+                life: number(ty, "cLife").unwrap_or(LIFE) as u32,
+                timers: [0; 2],
+                portal: false,
+            }),
             movement_mode: 0,
         }),
     }
@@ -591,9 +817,9 @@ pub enum Outcome {
 /// and gets the object, booked as construction; one the cash does not cover shows the message of
 /// insufficient funds, an invalid one its stored message, or else, when the type only lives in
 /// water and its own tile is not water, the water message (the second look of 5.1). Scenery,
-/// buildings and paths are placed here: a path on water paints its tile first, one on a path
-/// takes the old piece away (placing 5.3). `shape` tells how the new entity takes its place and
-/// `water` which terrain types are water.
+/// buildings, paths and fences are placed here: a path on water paints its tile first, one on a
+/// path takes the old piece away (placing 5.3), and so does a fence on a held slot (placing 6.3).
+/// `shape` tells how the new entity takes its place and `water` which terrain types are water.
 pub fn place(
     world: &mut World,
     money: &mut Money,
@@ -612,24 +838,26 @@ pub fn place(
         return Outcome::Refused(p.message.or(second));
     }
     let class = Class::of(ty);
-    if class == Class::Fence {
-        return Outcome::Refused(None);
-    }
     if !money.can_pay(p.price) {
         return Outcome::Refused(Some(NO_FUNDS));
     }
     let entity = entity(ty, p);
     let shape = shape(&entity);
-    if class == Class::Path {
-        let tile = world.tile_index(p.tile.0, p.tile.1);
-        if let (Some(kind), Some(t)) = (p.paint, tile) {
-            let at = world.zoo.tiles[t];
-            world.set_tile(p.tile.0, p.tile.1, at.elevation, at.shape, kind);
-        }
-        let old = tile.and_then(|t| world.path(t));
-        if let Some(id) = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id)) {
-            world.remove(id);
-        }
+    let tile = world.tile_index(p.tile.0, p.tile.1);
+    if class == Class::Path
+        && let (Some(kind), Some(t)) = (p.paint, tile)
+    {
+        let at = world.zoo.tiles[t];
+        world.set_tile(p.tile.0, p.tile.1, at.elevation, at.shape, kind);
+    }
+    // A path or a fence takes the place of the piece on its tile or its slot.
+    let old = match class {
+        Class::Path => tile.and_then(|t| world.path(t)),
+        Class::Fence => tile.and_then(|t| world.edge(t, p.facing as usize)),
+        Class::Fixed => None,
+    };
+    if let Some(id) = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id)) {
+        world.remove(id);
     }
     match world.add(entity, shape) {
         Some(id) => {

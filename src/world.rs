@@ -123,6 +123,18 @@ impl World {
         self.scene.edge_object(t, d).map(|o| self.owner[o])
     }
 
+    /// Whether the edge of tile `t` in map direction `d` holds a zoo wall piece in its own slot.
+    pub fn wall(&self, t: usize, d: usize) -> bool {
+        self.edge(t, d)
+            .is_some_and(|e| self.shapes[e].is_some_and(|s| s.wall))
+    }
+
+    /// Whether the quarter of tile `t` at local (32.., 32..) is held by the zoo entrance.
+    pub fn gate(&self, t: usize) -> bool {
+        self.quadrant(t, 3)
+            .is_some_and(|e| self.shapes[e].is_some_and(|s| s.gate))
+    }
+
     /// Whether an object holding a quarter of tile `t` has a footprint other than exactly 1 by 1
     /// half tiles: the tile then keeps its shape when the ground is shaped.
     pub fn sized(&self, t: usize) -> bool {

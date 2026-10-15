@@ -507,4 +507,18 @@ paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 22
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;a285a75fc25e42c1" "paint_text maps/default.zoo '$paint'"
 check expansion-trial "brush3,40,51;amount-270;tooltips3;f7fc54198ae0958d" "paint_text maps/scn19.zoo '$paint'"
 
+# A fence drag: the second item of the first row of the construction panel's fence tab, a press on
+# the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
+# leg and one to the far end of an L, the release and one more move. Prints the pieces placed (the
+# `world add` lines), the cash at the end (from 50000) and the hash of the last picture.
+fence_drag() { # fence_drag <map> <last move>
+  d=$(mktemp -d)
+  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n8 mouse 750 340\n9 down\n10 mouse 780 340\n11 mouse $2\n12 up\n13 mouse $2\n" >"$d/script"
+  rz run "$1" --headless --passes 16 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+    awk '/ world add /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
+  rm -rf "$d"
+}
+check base-trial "6,48920,62790f338040a757" "fence_drag maps/default.zoo '878 332'"
+check expansion-trial "6,49250,73fe4a3df4a5c57b" "fence_drag maps/scn19.zoo '878 332'"
+
 exit $failed

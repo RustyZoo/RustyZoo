@@ -30,7 +30,7 @@ const UNLISTED: [u8; 3] = [12, 16, 17];
 const TRAMPLED: u8 = 16;
 
 /// The colours of the highlights (map drawing 7).
-const SELECTION: [u8; 3] = [0x51, 0xC0, 0x70];
+pub(crate) const SELECTION: [u8; 3] = [0x51, 0xC0, 0x70];
 const INVALID: [u8; 3] = [0xEC, 0, 0];
 const TRAMPLED_COLOR: [u8; 3] = [0xFB, 0xC0, 0x0A];
 
