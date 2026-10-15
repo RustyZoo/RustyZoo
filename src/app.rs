@@ -304,6 +304,8 @@ struct Game {
     /// The new exhibits that wait for a name, the first one's dialog being open or not.
     naming: Vec<u32>,
     naming_open: bool,
+    /// The new tank whose objects the player is asked about (the question is open).
+    refused: Option<u32>,
     /// The pieces of the drag after the one that closed an exhibit, bought once it is named.
     rest: Vec<Pending>,
 }
@@ -403,6 +405,9 @@ enum Asked {
     Exit,
     /// A question of the bulldozer: any answer goes back to it.
     Sweep,
+    /// The objects a new tank does not allow: Yes sells and moves them, anything else undoes
+    /// the operation.
+    Tank,
 }
 
 /// The layout of the question boxes with a message, the main panel and the options panel, and the
@@ -515,6 +520,7 @@ impl<'a> App<'a> {
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
+        world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
         // outside 1 to 5 leaves the default.
@@ -555,6 +561,7 @@ impl<'a> App<'a> {
             sweep: None,
             naming: Vec::new(),
             naming_open: false,
+            refused: None,
             rest: Vec::new(),
         });
         if let Some(ui) = &mut self.ui {
@@ -1254,8 +1261,8 @@ impl<'a> App<'a> {
         let (id, name) = match kind {
             Asked::Leave => (ASK_LEAVE, "leave"),
             Asked::Exit => (ASK_EXIT, "exit"),
-            // The bulldozer asks its own questions.
-            Asked::Sweep => return,
+            // The bulldozer and the tanks ask their own questions.
+            Asked::Sweep | Asked::Tank => return,
         };
         let asked = self.ui.as_mut().is_some_and(|ui| {
             let text = to_cp1252(&ui.string(id));
@@ -1283,6 +1290,9 @@ impl<'a> App<'a> {
         if kind == Asked::Sweep {
             return self.sweep_answered(code);
         }
+        if kind == Asked::Tank {
+            return self.tank_answered(code);
+        }
         match code {
             6 => self.menu_events.push("game save unavailable".to_string()),
             7 => self.proceed(kind),
@@ -1292,7 +1302,7 @@ impl<'a> App<'a> {
 
     fn proceed(&mut self, kind: Asked) {
         match kind {
-            Asked::Sweep => {}
+            Asked::Sweep | Asked::Tank => {}
             Asked::Leave => self.stop_game(),
             Asked::Exit => {
                 self.menu_events.push("game exit".to_string());
@@ -1319,6 +1329,9 @@ impl<'a> App<'a> {
             self.asked = None;
             if let Some(game) = &mut self.game {
                 game.sweep = None;
+            }
+            if self.game.as_ref().is_some_and(|g| g.refused.is_some()) {
+                self.tank_no();
             }
             self.named();
         }

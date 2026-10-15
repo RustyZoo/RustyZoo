@@ -538,15 +538,19 @@ check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side
 # a name into the dialog the new exhibit asks for and answers it with Enter. Prints the `exhibit`
 # lines of the log (spaces as underscores, joined by semicolons): the new exhibit without a gate
 # while the dialog is open, its name, then its gate.
-exhibit_close() { # exhibit_close <map>
+exhibit_close() { # exhibit_close <map> [key]: the key is the answer to the question of a tank, Enter by default
   d=$(mktemp -d)
-  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n32 char L\n33 char i\n34 char o\n35 char n\n36 key enter\n" >"$d/script"
+  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n32 char L\n33 char i\n34 char o\n35 char n\n36 key ${2:-enter}\n" >"$d/script"
   rz run "$1" --headless --passes 41 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
-    grep ' exhibit ' | cut -d' ' -f5- | tr ' ' _ | paste -sd';' -
+    grep ' exhibit \| tool tank ' | cut -d' ' -f5- | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
 check base-trial 'new_1_"Exhibit_1"_tiles_6_gate_none;name_1_"Lion";gate_1_18,43_side_2' "exhibit_close maps/default.zoo"
-check expansion-trial 'new_2_"Tank_1"_tiles_9_gate_none;name_2_"Lion";gate_2_38,44_side_6' "exhibit_close maps/scn19.zoo"
+# The square of scn19 holds scenery and is made of tank walls: the closing piece makes a tank with its
+# values of tanks.cfg and asks about its objects (the keys of the name go to that question, Enter is Yes),
+# then the name dialog comes. With `n` the question is answered No: the last drag is undone.
+check expansion-trial 'tank_ask;tank_2_height_5_level_0_show_0_salt_1_purity_100_filled_1;tank_answer_yes;new_2_"Tank_1"_tiles_9_gate_none' "exhibit_close maps/scn19.zoo"
+check expansion-trial 'tank_ask;tank_2_height_5_level_0_show_0_salt_1_purity_100_filled_1;tank_answer_no;removed_2' "exhibit_close maps/scn19.zoo n"
 
 # The bulldozer: the path drag of above, Escape drops the path, the Delete key makes the bulldozer
 # the tool, and a press with a drag over the rectangle that holds the L removes everything the

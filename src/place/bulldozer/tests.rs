@@ -100,6 +100,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         tank: TankKind {
             wall: e.class == "tankwall",
             show: e.type_name == "show",
+            ..TankKind::NONE
         },
     })
 }

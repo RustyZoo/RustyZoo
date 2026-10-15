@@ -24,6 +24,7 @@ impl UiStrings for Texts {
             156 => "merge %s with %s?".into(),
             157 => "animals escape".into(),
             160 => "tank drained".into(),
+            10552 => "tank objects".into(),
             10571 => "no merge".into(),
             6208 => "Exhibit".into(),
             22100 => "$".into(),
@@ -73,6 +74,7 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
     }
 }
 
+/// 7 tree, 8 bench (a scenery object that does not live under water).
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
 /// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40). Every
 /// picture is a square around the anchor: 24 pixels, the tree's 16.
@@ -130,6 +132,7 @@ fn catalogue() -> Catalogue {
         &format!("{}[Animations]\nidle=dozer/small.ani\n", cost(40)),
         [1, 1, 1],
     ));
+    cat.push(ty("objects", b"bench", b"", &cost(50), [1, 1, 1]));
     cat
 }
 
@@ -219,6 +222,9 @@ impl Session<'_> {
                     "tool bulldoze",
                     "tool drop",
                     "tool message",
+                    "tool tank",
+                    "exhibit new",
+                    "exhibit tank",
                     "world remove",
                     "exhibit gate",
                     "money cash",
@@ -609,7 +615,7 @@ fn a_tank_asks_whether_to_drain_it_and_a_wall_between_unlike_tanks_says_why_it_s
         );
         s.pass(&[Command::Key(Key::N, false, false)]);
         // A show tank beside it: the line between them stays, the click says message 10571.
-        for side in [0, 2, 4, 6] {
+        for side in [6, 0, 2, 4] {
             s.fence(6, 21, 20, side);
         }
         let told = s.click(s.at(20, 20, 60, 32));
@@ -651,5 +657,58 @@ fn the_tree_in_front_of_a_building_is_picked_where_their_pictures_overlap() {
                 .any(|l| l.starts_with("world remove objects/tree/"))
         );
         assert_eq!(s.count(), 1);
+    });
+}
+
+/// The tank (20, 20) closed with walls but its last, the bench of tile (20, 20) in it; the
+/// game is told what happened to the exhibits, as after a placed piece.
+fn tank_with_a_bench(s: &mut Session) {
+    s.add(8, 20 * 64 + 16, 20 * 64 + 16, 0);
+    s.app.game.as_mut().unwrap().world.begin();
+    for side in [0, 2, 4, 6] {
+        s.fence(5, 20, 20, side);
+    }
+    s.app.exhibits_told();
+}
+
+#[test]
+fn objects_in_a_new_tank_are_asked_about_and_yes_sells_them_before_the_name() {
+    with_game("tank-yes", "[UI]\nconfirmSell=0\n", |s| {
+        tank_with_a_bench(s);
+        assert!(s.asking());
+        assert_eq!(
+            s.app.game.as_ref().unwrap().world.exhibits().list().len(),
+            1
+        );
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        assert_eq!(told[0], "tool tank answer yes");
+        assert!(
+            told.iter()
+                .any(|l| l.starts_with("world remove objects/bench"))
+        );
+        assert!(told.iter().any(|l| l.contains("exhibit new 1 \"Tank 1\"")));
+        assert!(!s.asking());
+        // The bench was sold for 80 percent of its price.
+        assert_eq!(s.cash(), 50_040.0);
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert!(world.refused(1).is_empty());
+        assert_eq!(world.exhibits().list().len(), 1);
+    });
+}
+
+#[test]
+fn no_undoes_what_made_the_tank_and_gives_its_money_back() {
+    with_game("tank-no", "[UI]\nconfirmSell=0\n", |s| {
+        tank_with_a_bench(s);
+        assert!(s.asking());
+        let told = s.pass(&[Command::Key(Key::N, false, false)]);
+        assert_eq!(told[0], "tool tank answer no");
+        assert!(!s.asking());
+        assert_eq!(s.count(), 1, "the bench stays, the four walls are gone");
+        // The four walls were not paid in this test; their price (100 each) comes back whole.
+        assert_eq!(s.cash(), 50_400.0);
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert!(world.exhibits().list().is_empty());
+        assert_eq!(world.exhibits().counter, 1);
     });
 }

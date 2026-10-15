@@ -29,13 +29,18 @@ pub enum Event {
     Merged { kept: u32, gone: u32 },
     /// An exhibit got a new gate.
     Gate(u32),
+    /// A new tank has objects it does not allow: the player is asked (string 10552) and the tank
+    /// is named after the answer.
+    Objects(u32),
+    /// A tank got its water values.
+    Tank(u32),
     /// The gate went where no keeper can pass, or none could be put: the message is about the
     /// exhibit (its name goes in the `%s`).
     Blocked { id: u32, message: i32 },
 }
 
 /// A pair of tiles of the boundary of an exhibit: one in it, one outside it, side by side.
-type Pair = (usize, usize);
+pub(super) type Pair = (usize, usize);
 
 /// What the walk round the boundary found.
 enum Walk {
@@ -219,7 +224,7 @@ impl World {
     }
 
     /// Turns the piece at `at` back into an ordinary fence of its type.
-    fn make_fence(&mut self, at: usize) {
+    pub(super) fn make_fence(&mut self, at: usize) {
         if self.is_door(at) {
             self.zoo.entities[at].subtype = "f".into();
             self.dirty = true;
@@ -227,7 +232,7 @@ impl World {
     }
 
     /// Turns the piece at `at` into the gate of its type, if the type has one; whether it is one.
-    fn make_door(&mut self, at: usize) -> bool {
+    pub(super) fn make_door(&mut self, at: usize) -> bool {
         let gated = self.shapes[at].is_some_and(|s| s.gated && !s.wall);
         if gated && !self.is_door(at) {
             self.zoo.entities[at].subtype = "g".into();
@@ -287,7 +292,11 @@ impl World {
             }
             winner.push(w);
         }
-        // Splits: an old exhibit held by several parts stays in one of them.
+        // Splits: an old exhibit held by several parts stays in one of them. The parts that leave
+        // it remember where they come from, and a tank that kept a part has its walls to bring
+        // to its side again.
+        let mut split_from: HashMap<usize, u32> = HashMap::new();
+        let mut split_kept: Vec<u32> = Vec::new();
         for e in old.list() {
             let held: Vec<usize> = (0..parts.len())
                 .filter(|&i| winner[i] == Some(e.id))
@@ -308,7 +317,9 @@ impl World {
                 .unwrap_or(held[0]);
             for &i in held.iter().filter(|&&i| i != keeper) {
                 winner[i] = None;
+                split_from.insert(i, e.id);
             }
+            split_kept.extend(e.tank.map(|_| e.id));
             self.events.push(Event::Split(e.id));
         }
         // The kind of each part: a tank (a show tank or not) or land.
@@ -321,12 +332,24 @@ impl World {
             .iter()
             .map(|p| self.tank_test(&p.tiles, &other, quiet))
             .collect();
+        // The morph: an exhibit whose kind no longer fits its walls is replaced by a new one of
+        // the other kind on the same tiles (3.9).
+        let mut morphed: HashMap<usize, u32> = HashMap::new();
+        for (i, w) in winner.iter_mut().enumerate() {
+            let tank = |id: u32| old.get(id).is_some_and(|e| e.tank.is_some());
+            if let Some(id) = w.filter(|&id| tank(id) != kinds[i].is_some()) {
+                morphed.insert(i, id);
+                *w = None;
+            }
+        }
         // The new list.
         let mut next = old.blank(self.zoo.tiles.len());
         let mut fresh = Vec::new();
+        let mut tanks = Vec::new();
+        let mut starts: HashMap<u32, Pair> = HashMap::new();
         let mut regate = Vec::new();
         let mut kept_ids = HashSet::new();
-        for ((part, w), kind) in parts.iter().zip(&winner).zip(&kinds) {
+        for (i, ((part, w), kind)) in parts.iter().zip(&winner).zip(&kinds).enumerate() {
             match w.and_then(|id| old.get(id)) {
                 Some(e) => {
                     kept_ids.insert(e.id);
@@ -342,7 +365,20 @@ impl World {
                     let name = format!("{word} {number}");
                     let id = next.add(part, name);
                     fresh.push(id);
-                    self.events.push(Event::New { id, ask: !quiet });
+                    match kind {
+                        // A tank has its ground, walls and objects to deal with before its name.
+                        Some(_) => {
+                            let from = split_from.get(&i).and_then(|&x| old.get(x));
+                            tanks.push((id, from.and_then(|e| e.tank)));
+                        }
+                        None => self.events.push(Event::New { id, ask: !quiet }),
+                    }
+                    if let Some(start) = morphed
+                        .get(&i)
+                        .and_then(|&x| self.morph_start(&old, x, part))
+                    {
+                        starts.insert(id, start);
+                    }
                 }
             }
         }
@@ -361,6 +397,15 @@ impl World {
         next.exterior(self);
         self.exhibits = next;
         self.retank(quiet);
+        for (id, inherited) in tanks {
+            self.make_tank(id, inherited, !quiet);
+        }
+        if !quiet && !split_kept.is_empty() {
+            for id in split_kept {
+                self.rewall(id);
+            }
+            self.retank(false);
+        }
         for &id in &regate {
             if let Some(e) = self.exhibits.get_mut(id) {
                 e.gate = None;
@@ -373,10 +418,14 @@ impl World {
             return;
         };
         for id in fresh {
-            let start = match self.exhibits.region(b) == Some(id) {
-                true => (b, a),
-                false => (a, b),
-            };
+            let start =
+                starts
+                    .get(&id)
+                    .copied()
+                    .unwrap_or(match self.exhibits.region(b) == Some(id) {
+                        true => (b, a),
+                        false => (a, b),
+                    });
             self.waiting.push((id, start, a));
         }
         // The gate of an exhibit went but its line is still closed: a new one on that line.
@@ -490,7 +539,7 @@ impl World {
     }
 
     /// The tank records of the zoo, which the picture reads, from the tank exhibits.
-    fn sync_tanks(&mut self) {
+    pub(super) fn sync_tanks(&mut self) {
         let width = self.zoo.width as usize;
         let at = |t: usize| ((t % width) as i32, (t / width) as i32);
         let tanks = self
@@ -539,15 +588,44 @@ impl World {
                     level: r.level,
                     salt: r.salt,
                     purity: r.purity,
+                    filled: r.level > 0,
                     platform: r.gate,
                 });
             }
         }
     }
 
-    /// Which of two exhibits that became one stays (exhibits and money 3.3).
+    /// The pair the gate of a new exhibit that replaces the old exhibit `x` starts from (3.9
+    /// morph): the inside tile of the old gate, or else the first pair of the boundary of the
+    /// part whose tile outside is in the zoo.
+    fn morph_start(&self, old: &Exhibits, x: u32, part: &Part) -> Option<Pair> {
+        let gate = old.get(x)?.gate.and_then(|g| self.slot_of(self.find(g)?));
+        if let Some((t, d)) = gate {
+            let n = self.neighbour(t, d)?;
+            return Some(match part.tiles.contains(&t) {
+                true => (t, n),
+                false => (n, t),
+            });
+        }
+        let mut tiles = part.tiles.clone();
+        tiles.sort_unstable();
+        tiles.into_iter().find_map(|t| {
+            [0, 2, 4, 6]
+                .into_iter()
+                .filter_map(|d| self.neighbour(t, d))
+                .find(|&n| !part.tiles.contains(&n) && self.in_zoo(n))
+                .map(|n| (t, n))
+        })
+    }
+
+    /// Which of two exhibits that became one stays (exhibits and money 3.3); a tank that joins a
+    /// land exhibit goes into it whatever the rest says.
     fn survivor(&self, old: &Exhibits, x: u32, y: u32) -> u32 {
         let (ex, ey) = (old.get(x), old.get(y));
+        let tank = |e: Option<&Exhibit>| e.is_some_and(|e| e.tank.is_some());
+        if tank(ex) != tank(ey) {
+            return if tank(ex) { y } else { x };
+        }
         if ex.is_some_and(|e| self.missing(e)) {
             return y;
         }
@@ -566,7 +644,7 @@ impl World {
     /// Whether going out of `p` through its gate, then out of the exhibit reached through its
     /// gate and so on, reaches `q` before the zoo grounds, an exhibit without a gate or one
     /// already visited.
-    fn opens_into(&self, old: &Exhibits, p: u32, q: u32) -> bool {
+    pub(super) fn opens_into(&self, old: &Exhibits, p: u32, q: u32) -> bool {
         let mut seen = vec![p];
         let mut at = p;
         loop {
@@ -607,14 +685,17 @@ impl World {
         }
     }
 
-    /// Whether keepers cannot stand on tile `t`: outside the zoo, or water.
-    fn dear(&self, t: usize) -> bool {
+    /// Whether keepers cannot stand on tile `t`: outside the zoo, or water or a tank, which the
+    /// marine specialist of a tank (`diver`) swims in.
+    fn dear(&self, t: usize, diver: bool) -> bool {
         !self.in_zoo(t)
-            || self
-                .water
-                .get(usize::from(self.zoo.tiles[t].terrain))
-                .copied()
-                .unwrap_or(false)
+            || !diver
+                && (self.tank_at(t).is_some()
+                    || self
+                        .water
+                        .get(usize::from(self.zoo.tiles[t].terrain))
+                        .copied()
+                        .unwrap_or(false))
     }
 
     /// The side of tile `from` towards tile `to`.
@@ -625,7 +706,7 @@ impl World {
     }
 
     /// The pieces on the line of a pair: the one on the slot of each tile.
-    fn line(&self, (i, o): Pair) -> [Option<usize>; 2] {
+    pub(super) fn line(&self, (i, o): Pair) -> [Option<usize>; 2] {
         [
             self.side_to(i, o).and_then(|d| self.edge(i, d)),
             self.side_to(o, i).and_then(|d| self.edge(o, d)),
@@ -633,7 +714,7 @@ impl World {
     }
 
     /// The code of a pair (exhibits and money 3.4).
-    fn code(&self, pair: Pair) -> u8 {
+    fn code(&self, pair: Pair, diver: bool) -> u8 {
         let pieces: Vec<usize> = self.line(pair).into_iter().flatten().collect();
         let code = if pieces
             .iter()
@@ -648,9 +729,12 @@ impl World {
         // Water, the outside of the zoo and objects count only while nothing else has.
         if code != 0 {
             code
-        } else if self.dear(pair.0) || self.dear(pair.1) {
+        } else if self.dear(pair.0, diver) || self.dear(pair.1, diver) {
             4
-        } else if self.quadrant(pair.0, 3).is_some() || self.quadrant(pair.1, 3).is_some() {
+        } else if self.quadrant(pair.0, 3).is_some()
+            || self.quadrant(pair.1, 3).is_some()
+            || (diver && (0..4).any(|q| self.quadrant(pair.0, q).is_some()))
+        {
             3
         } else {
             0
@@ -659,14 +743,14 @@ impl World {
 
     /// The tiles a keeper can walk to from the zoo entrance: not through an exhibit fence or a
     /// zoo wall, unless the piece is a gate or broken.
-    fn reach(&self) -> Vec<bool> {
+    fn reach(&self, diver: bool) -> Vec<bool> {
         let mut seen = vec![false; self.zoo.tiles.len()];
         let (ex, ey) = self.zoo.entrance;
         let start = i32::try_from(ex)
             .ok()
             .zip(i32::try_from(ey).ok())
             .and_then(|(x, y)| self.tile_index(x, y))
-            .filter(|&t| !self.dear(t));
+            .filter(|&t| !self.dear(t, diver));
         let open = |piece: Option<usize>| {
             piece.is_none_or(|p| {
                 self.is_door(p)
@@ -686,7 +770,7 @@ impl World {
                     continue;
                 };
                 if !seen[n]
-                    && !self.dear(n)
+                    && !self.dear(n, diver)
                     && open(self.edge(t, d))
                     && open(self.edge(n, (d + 4) % 8))
                 {
@@ -699,7 +783,7 @@ impl World {
     }
 
     /// The step of the walk round the boundary of exhibit `id` from a pair; `None` at a pinch.
-    fn step(&self, id: u32, (i, o): Pair) -> Option<Pair> {
+    pub(super) fn step(&self, id: u32, (i, o): Pair) -> Option<Pair> {
         let inside = |t: usize| self.exhibits.region(t) == Some(id);
         let d = self.side_to(o, i)?;
         let s = (d + 6) % 8;
@@ -731,7 +815,8 @@ impl World {
     /// Puts the gate of exhibit `id`, the walk starting at `start`; `placed` is the tile the
     /// player placed the piece on (exhibits and money 3.4).
     fn choose_gate(&mut self, id: u32, start: Pair, placed: usize) {
-        let reach = self.reach();
+        let diver = self.exhibits.get(id).is_some_and(|e| e.tank.is_some());
+        let reach = self.reach(diver);
         let good = |w: &World, pair: Pair| {
             reach[pair.1]
                 && w.exhibits.region(pair.1) == Some(GROUNDS)
@@ -739,7 +824,7 @@ impl World {
                     .iter()
                     .all(|&t| path_shape(w.zoo.tiles[t].shape))
         };
-        let reachable = |w: &World, pair: Pair| w.code(pair) == 0 && reach[pair.1];
+        let reachable = |w: &World, pair: Pair| w.code(pair, diver) == 0 && reach[pair.1];
         let mut seen = HashSet::new();
         let (mut last, mut zero, mut first_code) = (None, None, None);
         let mut cur = start;
@@ -756,7 +841,7 @@ impl World {
             }
             let here = self.in_zoo(cur.1);
             if here {
-                let code = self.code(cur);
+                let code = self.code(cur, diver);
                 if cur == start {
                     first_code = Some(code);
                 }

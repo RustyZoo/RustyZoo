@@ -198,3 +198,497 @@ fn the_tiles_of_a_tank_are_carried_by_any_tile_of_it() {
     assert_eq!(tiles, [t(2, 2), t(3, 2), t(2, 3), t(3, 3)]);
     assert!(world.carried(t(0, 0)).is_empty());
 }
+
+// ---- Making a tank
+
+use crate::exhibit::TankConfig;
+use crate::zoo::Tile;
+
+/// The shapes of `shape`, and: a `fish` (a unit that lives under water), a `dog` (one that does
+/// not), a `bench` (scenery that does not), a `toy` (scenery that lives under water), a `ball`
+/// (scenery for shows).
+fn tank_shape(e: &Entity) -> Option<Shape> {
+    let thing = |kind, tank| {
+        Some(Shape {
+            kind,
+            footprint: (1, 1),
+            fence: false,
+            wall: false,
+            gate: false,
+            gated: false,
+            tank,
+        })
+    };
+    let none = TankKind::NONE;
+    match e.class.as_str() {
+        "fish" => thing(
+            Kind::Unit,
+            TankKind {
+                underwater: true,
+                ..none
+            },
+        ),
+        "dog" => thing(Kind::Unit, none),
+        "guests" => thing(Kind::Unit, none),
+        "bench" => thing(Kind::Fixed, none),
+        "toy" => thing(
+            Kind::Fixed,
+            TankKind {
+                underwater: true,
+                ..none
+            },
+        ),
+        "ball" => thing(
+            Kind::Fixed,
+            TankKind {
+                surface: true,
+                shows: true,
+                ..none
+            },
+        ),
+        // A tank wall of the class the gate code knows.
+        "tankwall" => Some(Shape {
+            kind: Kind::Wall,
+            footprint: (1, 1),
+            fence: true,
+            wall: false,
+            gate: false,
+            gated: true,
+            tank: TankKind {
+                wall: true,
+                underwater: true,
+                ..none
+            },
+        }),
+        _ => shape(e),
+    }
+}
+
+/// The values a new tank gets: height 5 (9 for a show tank), ground lowered by 4 (8), salt water
+/// of purity 90, filled.
+const CONFIG: TankConfig = TankConfig {
+    sink: [4, 8],
+    height: [5, 9],
+    level: 0,
+    filled: true,
+    salt: true,
+    purity: 90,
+};
+
+/// A map of tiles with these elevations by tile (0 elsewhere), and the pieces, with the
+/// configuration set.
+fn tanks(pieces: &[Piece], things: &[(&str, i32, i32)], high: &[(usize, i32)]) -> World {
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(pieces.iter().map(|&(class, p)| wall(class, p)));
+    z.entities.extend(things.iter().map(|&(c, x, y)| {
+        let mut e = entity(c, 0, 0, 0);
+        let at = e.common.as_mut().unwrap();
+        (at.x, at.y) = (x, y);
+        e
+    }));
+    unique(&mut z);
+    for &(t, e) in high {
+        z.tiles[t] = Tile {
+            elevation: e,
+            ..z.tiles[t]
+        };
+    }
+    let mut world = World::new(z, tank_shape);
+    world.set_tank_config(CONFIG);
+    world
+}
+
+fn put_wall(world: &mut World, class: &str, p: (i32, i32, u32)) -> u32 {
+    let e = wall(class, p);
+    let id = world.add(e.clone(), tank_shape(&e)).unwrap();
+    for new in world.waiting() {
+        world.give_gate(new);
+    }
+    id
+}
+
+fn level(world: &World, x: usize, y: usize) -> (i32, u8) {
+    let t = world.zoo.tiles[y * SIZE as usize + x];
+    (t.elevation, t.shape)
+}
+
+#[test]
+fn a_new_tank_is_levelled_at_the_mean_less_the_sink_and_the_ground_comes_back_on_undo() {
+    // Tiles of (2..3, 2..3) at levels 2, 3, 4 and 3: the mean is 3, less 4 is -1, flat.
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let t = |x: usize, y: usize| y * SIZE as usize + x;
+    let mut world = tanks(
+        &pieces,
+        &[],
+        &[(t(2, 2), 2), (t(3, 2), 3), (t(2, 3), 4), (t(3, 3), 3)],
+    );
+    world.zoo.tiles[t(3, 3)].shape = 0x05;
+    world.begin();
+    world.take_events();
+    put_wall(&mut world, last.0, last.1);
+    for (x, y) in [(2, 2), (3, 2), (2, 3), (3, 3)] {
+        assert_eq!(level(&world, x, y), (-1, 0), "tile {x},{y}");
+    }
+    assert_eq!(level(&world, 4, 4), (0, 0), "the ground beside it stays");
+    // The numbers of tanks.cfg: height 5, nothing else yet filled, water of purity 90.
+    let tank = tank(&world, 2, 2).unwrap();
+    assert_eq!(
+        (tank.height, tank.level, tank.filled, tank.salt, tank.purity),
+        (5, 0, true, true, 90)
+    );
+    assert!(world.undo());
+    assert_eq!(level(&world, 2, 3), (4, 0));
+    assert_eq!(level(&world, 3, 3), (3, 0x05), "the shape is back too");
+    assert!(world.exhibits().list().is_empty());
+}
+
+#[test]
+fn a_show_tank_sinks_further_and_has_higher_walls() {
+    let mut pieces = ring("show", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    put_wall(&mut world, last.0, last.1);
+    assert_eq!(level(&world, 2, 2), (-8, 0));
+    assert_eq!(
+        tank(&world, 3, 3).map(|t| (t.show, t.height)),
+        Some((true, 9))
+    );
+}
+
+#[test]
+fn the_walls_stand_on_the_tanks_side_after_the_wall_step_and_go_back_on_undo() {
+    // The tank (2..3, 2..2) is closed by walls on the tiles outside its two long sides and ends.
+    let pieces = [
+        ("tank", (2, 1, 4)),
+        ("tank", (3, 1, 4)),
+        ("tank", (2, 3, 0)),
+        ("tank", (3, 3, 0)),
+        ("tank", (1, 2, 2)),
+        ("tank", (4, 2, 6)),
+    ];
+    let mut world = tanks(&pieces[..5], &[], &[]);
+    world.begin();
+    world.take_events();
+    let count = world.zoo.entities.len();
+    let last = pieces[5];
+    put_wall(&mut world, last.0, last.1);
+    assert_eq!(world.zoo.entities.len(), count + 1, "nothing is built");
+    let width = SIZE as usize;
+    let inside = [(2, 2), (3, 2)].map(|(x, y)| y * width + x);
+    for t in inside {
+        for d in [0, 2, 4, 6] {
+            let across = world.neighbour(t, d).unwrap();
+            if inside.contains(&across) {
+                continue;
+            }
+            assert!(world.edge(t, d).is_some(), "tile {t} side {d}");
+            assert!(world.edge(across, (d + 4) % 8).is_none());
+        }
+    }
+    assert_eq!(world.tank_at(inside[0]).map(|_| ()), Some(()));
+    assert!(world.undo());
+    let on = world.edge(2 * width + 1, 2);
+    assert!(on.is_some(), "the wall on the tile outside is back");
+    assert!(world.edge(2 * width + 2, 6).is_none());
+}
+
+#[test]
+fn a_wall_shared_with_another_tank_is_copied_so_that_each_has_its_own() {
+    // The tank (1, 2) is there; the tile (2, 2) beside it has two walls and its west line is
+    // closed by the first tank's wall.
+    let mut pieces = ring("tank", 1, 2, 1, 2);
+    pieces.extend([("tank", (2, 2, 0)), ("tank", (2, 2, 2))]);
+    let mut world = tanks(&pieces, &[], &[]);
+    assert_eq!(world.exhibits().list().len(), 1);
+    let count = world.zoo.entities.len();
+    world.begin();
+    world.take_events();
+    put_wall(&mut world, "tank", (2, 2, 4));
+    let width = SIZE as usize;
+    assert_eq!(world.exhibits().list().len(), 2);
+    assert_eq!(
+        world.zoo.entities.len(),
+        count + 2,
+        "the piece and the copy"
+    );
+    let (mine, theirs) = (world.edge(2 * width + 2, 6), world.edge(2 * width + 1, 2));
+    assert!(mine.is_some() && theirs.is_some() && mine != theirs);
+    let copy = &world.zoo.entities[mine.unwrap()];
+    assert_eq!((copy.class.as_str(), copy.subtype.as_str()), ("tank", "f"));
+    // Undone, the copy is gone.
+    assert!(world.undo());
+    assert_eq!(world.zoo.entities.len(), count);
+}
+
+#[test]
+fn what_a_tank_does_not_allow_is_found_and_the_player_is_asked_before_the_name() {
+    // A bench, a dog and a fish in the tank, a toy and a guest too: the bench and the dog go,
+    // the guest is told too (it stays), the fish and the toy are at home.
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let things = [
+        ("bench", 2 * 64 + 16, 2 * 64 + 16),
+        ("dog", 3 * 64 + 20, 2 * 64 + 20),
+        ("fish", 3 * 64 + 30, 3 * 64 + 30),
+        ("toy", 2 * 64 + 40, 3 * 64 + 40),
+        ("guests", 2 * 64 + 5, 3 * 64 + 5),
+        ("bench", 6 * 64 + 5, 6 * 64 + 5),
+    ];
+    let mut world = tanks(&pieces, &things, &[]);
+    world.begin();
+    world.take_events();
+    put_wall(&mut world, last.0, last.1);
+    let events = world.take_events();
+    assert!(events.contains(&Event::Objects(1)), "{events:?}");
+    assert!(!events.iter().any(|e| matches!(e, Event::New { .. })));
+    let class = |id: u32| world.zoo.entities[world.find(id).unwrap()].class.clone();
+    let mut refused: Vec<String> = world.refused(1).into_iter().map(class).collect();
+    refused.sort();
+    assert_eq!(refused, ["bench", "dog", "guests"]);
+    // After Yes the objects have been dealt with: the name comes.
+    world.accept_tank(1);
+    assert_eq!(world.take_events(), [Event::New { id: 1, ask: true }]);
+}
+
+#[test]
+fn a_show_tank_refuses_what_is_not_for_shows() {
+    let mut pieces = ring("show", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let things = [
+        ("toy", 2 * 64 + 40, 3 * 64 + 40),
+        ("ball", 3 * 64 + 40, 3 * 64 + 40),
+    ];
+    let mut world = tanks(&pieces, &things, &[]);
+    put_wall(&mut world, last.0, last.1);
+    let class = |id: u32| world.zoo.entities[world.find(id).unwrap()].class.clone();
+    let refused: Vec<String> = world.refused(1).into_iter().map(class).collect();
+    assert_eq!(
+        refused,
+        ["toy"],
+        "the ball is for shows, the walls are show walls"
+    );
+}
+
+#[test]
+fn a_tank_that_is_declined_is_undone_and_gives_its_number_back() {
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[("bench", 2 * 64 + 16, 2 * 64 + 16)], &[]);
+    let count = world.zoo.entities.len();
+    world.begin();
+    put_wall(&mut world, last.0, last.1);
+    let (placed, removed) = world.operation();
+    assert_eq!((placed.len(), removed.len()), (1, 0));
+    assert_eq!(world.exhibits().counter, 2);
+    world.decline_tank(1);
+    assert!(world.exhibits().list().is_empty());
+    assert_eq!(world.exhibits().counter, 1);
+    assert_eq!(world.zoo.entities.len(), count);
+    assert_eq!(level(&world, 2, 2), (0, 0));
+    assert!(world.waiting().is_empty());
+    assert!(
+        world.zoo.tanks.is_empty(),
+        "the picture's tank list follows"
+    );
+}
+
+#[test]
+fn units_that_have_to_leave_are_put_outside_the_tank() {
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[("dog", 3 * 64 + 20, 2 * 64 + 20)], &[]);
+    put_wall(&mut world, last.0, last.1);
+    let outside = world.outside(1).unwrap();
+    assert_eq!(world.tank_at(outside), None);
+    let dog = world.refused(1)[0];
+    world.move_unit(dog, outside);
+    assert!(world.refused(1).is_empty());
+}
+
+#[test]
+fn a_land_exhibit_closed_by_tank_walls_becomes_a_tank_and_back() {
+    // A square of plain fences with three tank walls; the fourth is swapped for a tank wall.
+    let mut pieces = ring("fences", 2, 2, 3, 3);
+    for p in pieces.iter_mut().skip(1) {
+        p.0 = "tank";
+    }
+    let mut world = tanks(&pieces, &[], &[]);
+    assert_eq!(names(&world), [(1, String::new(), 4)]);
+    assert!(tank(&world, 2, 2).is_none());
+    world.begin();
+    world.take_events();
+    let first = at(&world, 2, 2, 0);
+    let e = wall("tank", (2, 2, 0));
+    world.swap(first, e.clone(), tank_shape(&e)).unwrap();
+    for id in world.waiting() {
+        world.give_gate(id);
+    }
+    // The land exhibit is gone, a tank takes its tiles with a new number and its name.
+    assert_eq!(names(&world), [(2, "Tank 1".to_string(), 4)]);
+    assert!(tank(&world, 2, 2).is_some());
+    let events = world.take_events();
+    assert!(events.contains(&Event::Removed(1)), "{events:?}");
+    assert_eq!(level(&world, 2, 2).1, 0);
+    // The other way: a plain fence in place of a wall makes it land again.
+    let id = at(&world, 3, 3, 4);
+    let e = wall("fences", (3, 3, 4));
+    world.swap(id, e.clone(), tank_shape(&e)).unwrap();
+    for id in world.waiting() {
+        world.give_gate(id);
+    }
+    assert_eq!(names(&world), [(3, "Exhibit 2".to_string(), 4)]);
+    assert!(tank(&world, 2, 2).is_none());
+    assert!(world.zoo.tanks.is_empty());
+}
+
+#[test]
+fn a_tank_that_joins_a_land_exhibit_goes_into_it() {
+    // A tank (2, 2) and a land exhibit (3, 2) with one piece between them, on the tank's slot.
+    let mut pieces = ring("tank", 2, 2, 2, 2);
+    pieces.extend(
+        ring("fences", 3, 2, 3, 2)
+            .into_iter()
+            .filter(|&(_, p)| p.2 != 6),
+    );
+    let mut world = tanks(&pieces, &[], &[]);
+    assert_eq!(world.exhibits().list().len(), 2);
+    let line = at(&world, 2, 2, 2);
+    world.begin();
+    assert!(world.remove(line));
+    assert_eq!(world.exhibits().list().len(), 1);
+    assert!(
+        world.tank_at(2 * SIZE as usize + 2).is_none()
+            && world.tank_at(2 * SIZE as usize + 3).is_none(),
+        "the land exhibit is what is left: a tank is closed by tank walls only"
+    );
+}
+
+#[test]
+fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
+    // A tank (2..5, 2) with the water of the tank config changed after its making: the line
+    // between tiles 3 and 4 is closed by a wall that stands on the tile 3 only.
+    let mut pieces = ring("tank", 2, 2, 5, 2);
+    let mut world = tanks(&pieces[..], &[], &[]);
+    assert_eq!(sizes(&world), [4]);
+    let id = world.exhibits().list()[0].id;
+    // Give it some water of its own.
+    let level_before = level(&world, 2, 2);
+    pieces.clear();
+    world.begin();
+    world.take_events();
+    {
+        let e = world.exhibits().get(id).unwrap().clone();
+        assert!(e.tank.is_some());
+    }
+    put_wall(&mut world, "tank", (3, 2, 2));
+    assert_eq!(sizes(&world), [2, 2]);
+    let events = world.take_events();
+    assert!(events.contains(&Event::Split(id)), "{events:?}");
+    assert!(
+        events.contains(&Event::New { id: 2, ask: true }),
+        "{events:?}"
+    );
+    let names = names(&world);
+    assert_eq!(names[1].1, "Tank 1");
+    // Each side has a wall of its own on the line: the piece and a copy.
+    let width = SIZE as usize;
+    assert!(world.edge(2 * width + 3, 2).is_some());
+    assert!(world.edge(2 * width + 4, 6).is_some());
+    // The new part kept its level (no sink) and the two tanks are the same tank in every other way.
+    assert_eq!(level(&world, 5, 2), level_before);
+    let (a, b) = (tank(&world, 2, 2).unwrap(), tank(&world, 5, 2).unwrap());
+    assert_eq!(
+        (a.height, a.level, a.salt, a.purity),
+        (b.height, b.level, b.salt, b.purity)
+    );
+    assert_eq!(a.filled, b.filled);
+}
+
+// ---- tanks.cfg
+
+fn read(text: &str) -> TankConfig {
+    TankConfig::read(&crate::config::Config::parse(text.as_bytes()).unwrap())
+}
+
+#[test]
+fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
+    let shipped = "[cost]\nsaltWater = 1.5\n[tank]\ninitialSink = 4\ninitialHeight = 5\ninitialSinkShow = 8\n\
+        initialHeightShow = 9\ninitialWaterLevel = 0\ninitialFillState = 1\ninitialSalinity = 100\n\
+        initialWaterPurity = 100\n";
+    assert_eq!(
+        read(shipped),
+        TankConfig {
+            sink: [4, 8],
+            height: [5, 9],
+            level: 0,
+            filled: true,
+            salt: true,
+            purity: 100,
+        }
+    );
+    // Missing: what there is without a file, heights of 1 included; an empty file too.
+    let none = TankConfig::default();
+    assert_eq!(
+        (none.height, none.sink, none.filled),
+        ([1, 1], [0, 0], false)
+    );
+    assert_eq!(read(""), none);
+    assert_eq!(read("[tank]\n"), none);
+    // Zero, negative, huge, not a number, hex: cut or ignored, never a panic.
+    let odd = read(
+        "[tank]\ninitialHeight = 0\ninitialHeightShow = -3\ninitialSink = -99\ninitialSinkShow = 99999999999\n\
+        initialWaterLevel = abc\ninitialFillState = -1\ninitialSalinity = 0\ninitialWaterPurity = 0x7fffffff\n",
+    );
+    assert_eq!(odd.height, [0, 0]);
+    assert_eq!(odd.sink[0], -24);
+    assert!(
+        (-24..=24).contains(&odd.sink[1]),
+        "a number that wraps is still cut"
+    );
+    assert_eq!(
+        (odd.level, odd.filled, odd.salt, odd.purity),
+        (0, false, false, 100)
+    );
+}
+
+#[test]
+fn the_exhibit_whose_gate_moves_into_a_new_tank_gets_another_gate() {
+    // A land exhibit on tile (4, 2) with its gate on the line to tile (3, 2), a tank wall. Walls
+    // are put round (3, 2) until it is a tank: the gate moves to the tank's side, so the
+    // exhibit needs a new one, on one of its other sides.
+    let mut z = zoo(&[]);
+    let mut piece = |class: &str, subtype: &str, (x, y, d)| {
+        let mut e = entity(class, x, y, d);
+        e.subtype = subtype.into();
+        z.entities.push(e);
+    };
+    for d in [0, 2, 4] {
+        piece("fences", "f", (4, 2, d));
+    }
+    piece("tankwall", "g", (4, 2, 6));
+    piece("tankwall", "f", (3, 2, 0));
+    piece("tankwall", "f", (3, 2, 4));
+    unique(&mut z);
+    let gate = z.entities.iter().position(|e| e.subtype == "g").unwrap() as u32 + 1;
+    let mut world = World::new(z, tank_shape);
+    world.set_tank_config(CONFIG);
+    let exhibit = world.exhibits().list()[0].id;
+    world.set_gate(exhibit, gate);
+    world.begin();
+    world.take_events();
+    let e = wall("tankwall", (3, 2, 6));
+    world.add(e.clone(), tank_shape(&e)).unwrap();
+    // The tank has the gate piece on its own side of the line.
+    let width = SIZE as usize;
+    let line = world.edge(2 * width + 3, 2).unwrap();
+    assert_eq!(world.zoo.entities[line].common.as_ref().unwrap().id, gate);
+    assert!(world.tank_at(2 * width + 3).is_some());
+    // The exhibit has another gate and the old one is an ordinary wall.
+    let new = world.exhibits().get(exhibit).unwrap().gate.unwrap();
+    assert_ne!(new, gate);
+    assert!(world.take_events().contains(&Event::Gate(exhibit)));
+    assert_eq!(world.zoo.entities[world.find(gate).unwrap()].subtype, "f");
+    assert_eq!(world.zoo.entities[world.find(new).unwrap()].subtype, "g");
+}

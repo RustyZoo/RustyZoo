@@ -8,12 +8,13 @@
 //! `Common::id`, to keep one). The game's rules (what may be placed where, what it costs) are not
 //! here.
 
-use crate::exhibit::Exhibits;
+use crate::exhibit::{Exhibits, TankConfig};
 use crate::render::corner_elevation;
 use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::zoo::{Entity, Tile, Zoo};
 
 mod exhibit;
+mod tank;
 pub use exhibit::Event;
 
 /// How an entity takes its place on the map, from its type.
@@ -35,12 +36,30 @@ pub struct Shape {
 }
 
 /// What a type says about tanks (exhibits and money 3.9).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TankKind {
     /// A tank wall: the type's file has a `[TankFence]` section.
     pub wall: bool,
     /// A show wall: `cIsShowFence` is 1.
     pub show: bool,
+    /// `cUnderwater` is 1 (a tank wall always counts), `cSurface` is 1, `cShow` is 1 (a show wall
+    /// counts), `cIsTransient` is 1: what a tank allows inside it.
+    pub underwater: bool,
+    pub surface: bool,
+    pub shows: bool,
+    pub transient: bool,
+}
+
+impl TankKind {
+    /// A type that says nothing about tanks.
+    pub const NONE: TankKind = TankKind {
+        wall: false,
+        show: false,
+        underwater: false,
+        surface: false,
+        shows: false,
+        transient: false,
+    };
 }
 
 /// What an operation did, to undo it.
@@ -52,6 +71,8 @@ enum Action {
     Removed(usize, Entity, Option<Shape>),
     /// A tile had this state: its index.
     Tile(usize, Tile),
+    /// A fence piece stood here: its id, position `(x, y, z)` and rotation.
+    Moved(u32, (i32, i32, i32), u32),
 }
 
 pub struct World {
@@ -74,6 +95,8 @@ pub struct World {
     words: [String; 3],
     /// Which terrain types are water (the gate walk's keeper does not swim).
     water: Vec<bool>,
+    /// The numbers that make a new tank.
+    tank_config: TankConfig,
     undo: Vec<Action>,
     /// The next action starts a new undo list.
     fresh: bool,
@@ -93,6 +116,7 @@ impl World {
             waiting: Vec::new(),
             words: ["Exhibit".into(), "Tank".into(), "Show Tank".into()],
             water: Vec::new(),
+            tank_config: TankConfig::default(),
             zoo,
             shapes,
             scene,
@@ -339,8 +363,16 @@ impl World {
         let Some(t) = self.tile_index(tx, ty) else {
             return false;
         };
+        self.put_tile(t, elevation, shape, terrain, true);
+        true
+    }
+
+    /// Sets tile `t`; `record` puts it in the undo list.
+    fn put_tile(&mut self, t: usize, elevation: i32, shape: u8, terrain: u8, record: bool) {
         let old = self.zoo.tiles[t];
-        self.record(Action::Tile(t, old));
+        if record {
+            self.record(Action::Tile(t, old));
+        }
         let tile = &mut self.zoo.tiles[t];
         (tile.elevation, tile.shape, tile.terrain) = (elevation, shape, terrain);
         if (old.elevation, old.shape) != (elevation, shape) {
@@ -348,7 +380,6 @@ impl World {
         }
         self.edges_around(t);
         self.changed();
-        true
     }
 
     /// Takes back the operations of the last press, last first; whether there were any.
@@ -366,6 +397,14 @@ impl World {
                     let at = at.min(self.zoo.entities.len());
                     self.zoo.entities.insert(at, entity);
                     self.shapes.insert(at, shape);
+                }
+                Action::Moved(id, (x, y, z), rotation) => {
+                    let c = self
+                        .find(id)
+                        .and_then(|at| self.zoo.entities[at].common.as_mut());
+                    if let Some(c) = c {
+                        (c.x, c.y, c.z, c.rotation) = (x, y, z, rotation);
+                    }
                 }
                 Action::Tile(t, tile) => {
                     let moved = (tile.elevation, tile.shape)

@@ -562,13 +562,7 @@ impl<'a> MapRenderer<'a> {
                     .catalogue
                     .find(&entity.class, &bytes(&entity.type_name), b"g")
                     .is_some(),
-            tank: TankKind {
-                wall: ty
-                    .config
-                    .as_deref()
-                    .is_some_and(|c| c.section("TankFence").is_some()),
-                show: crate::build::number(ty, "cIsShowFence") == Some(1.0),
-            },
+            tank: tank_kind(ty),
         })
     }
 
@@ -1402,6 +1396,25 @@ fn member(ty: &EntityType, name: &str) -> bool {
         .as_deref()
         .and_then(|c| c.section("Member"))
         .is_some_and(|m| m.has(name))
+}
+
+/// What the type says about tanks: a tank wall (a `[TankFence]` section) and its show flag, and
+/// what a tank allows inside it (exhibits and money 3.9).
+fn tank_kind(ty: &EntityType) -> TankKind {
+    let flag = |key: &str| crate::build::number(ty, key) == Some(1.0);
+    let wall = ty
+        .config
+        .as_deref()
+        .is_some_and(|c| c.section("TankFence").is_some());
+    let show = flag("cIsShowFence");
+    TankKind {
+        wall,
+        show,
+        underwater: wall || flag("cUnderwater"),
+        surface: flag("cSurface"),
+        shows: show || flag("cShow"),
+        transient: flag("cIsTransient"),
+    }
 }
 
 /// Whether the type is a habitat fence: a fence or tank wall whose definition has a

@@ -5,7 +5,11 @@
 //! (exhibits and money 3.2, 3.4, 3.6).
 
 use super::*;
+use crate::build::cost;
 use crate::config::Config;
+use crate::money::{CONSTRUCTION, CONSTRUCTION_REFUND};
+use crate::place::bulldozer::{refund, type_of};
+use crate::render::order::Kind;
 use crate::text::from_cp1252;
 use crate::timing::ini_whole;
 use crate::world::Event;
@@ -14,6 +18,8 @@ use crate::world::Event;
 const NAME_DIALOG: i32 = 45300;
 const NAME_FIELD: i32 = 45308;
 const NAME_TEXT: i32 = 158;
+/// The question about the objects a new tank does not allow.
+const TANK_OBJECTS: i32 = 10552;
 /// The words of a default name, from this string on: exhibit, tank and show tank.
 pub(super) const WORD: i32 = 6208;
 /// The number of characters of a name field when the ini file has no `defaultEditCharLimit`.
@@ -64,6 +70,18 @@ impl App<'_> {
                     format!("merged {gone} into {kept} tiles {}", tiles(*kept))
                 }
                 Event::Gate(id) => format!("gate {id} {}", slot(*id)),
+                Event::Tank(id) => match world.tank(*id) {
+                    Some(t) => format!(
+                        "tank {id} height {} level {} show {} salt {} purity {} filled {}",
+                        t.height,
+                        t.level,
+                        u8::from(t.show),
+                        u8::from(t.salt),
+                        t.purity,
+                        u8::from(t.filled)
+                    ),
+                    None => continue,
+                },
                 _ => continue,
             };
             self.exhibit_lines.push(line);
@@ -72,18 +90,105 @@ impl App<'_> {
             match event {
                 Event::New { id, ask: true } => game.naming.push(id),
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
+                Event::Objects(id) => game.refused = Some(id),
                 _ => {}
             }
         }
-        // An exhibit that is being named is not in the list yet.
+        // An exhibit that is being named, or a tank that is being asked about, is not in the list yet.
         let count = (game.world.exhibits().list().iter())
-            .filter(|e| !game.naming.contains(&e.id))
+            .filter(|e| !game.naming.contains(&e.id) && game.refused != Some(e.id))
             .count();
         if let Some(ui) = &mut self.ui {
             game.build.set_exhibits(ui, count, &mut self.tool_lines);
         }
+        self.tank_ask();
         self.name_next();
         self.exhibit_message();
+    }
+
+    /// Asks about the objects of a new tank, if it has some and no question is open (3.9).
+    fn tank_ask(&mut self) {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
+        if game.refused.is_none() || self.asked.is_some() {
+            return;
+        }
+        let text = to_cp1252(&ui.string(TANK_OBJECTS));
+        if ui.ask(QUESTION, &text, Buttons::YES_NO) {
+            self.asked = Some(Asked::Tank);
+            self.tool_lines.push("tool tank ask".into());
+        } else {
+            // No dialog in this interface: the objects go.
+            self.tank_answered(6);
+        }
+    }
+
+    /// The question was answered: Yes sells the scenery, moves the animals and the staff out
+    /// and goes on to the name of the tank; anything else undoes the operation that made it.
+    pub(super) fn tank_answered(&mut self, code: i32) {
+        match code {
+            6 => self.tank_yes(),
+            _ => self.tank_no(),
+        }
+    }
+
+    fn tank_yes(&mut self) {
+        let Some(game) = &mut self.game else { return };
+        let Some(id) = game.refused.take() else {
+            return;
+        };
+        self.tool_lines.push("tool tank answer yes".into());
+        let world = &game.world;
+        let outside = world.outside(id);
+        // (id, a unit, a unit that moves): an animal or a staff member goes to the tile outside,
+        // a guest stays, the rest is sold.
+        let objects: Vec<(u32, bool, bool)> = (world.refused(id).into_iter())
+            .filter_map(|e| {
+                let at = world.find(e)?;
+                let unit = world.shape(at)?.kind == Kind::Unit;
+                Some((e, unit, unit && world.zoo.entities[at].class != "guests"))
+            })
+            .collect();
+        for (e, unit, moves) in objects {
+            match (unit, moves, outside) {
+                (true, true, Some(t)) => {
+                    if let Some(game) = &mut self.game {
+                        game.world.move_unit(e, t);
+                    }
+                }
+                (true, ..) => {}
+                _ => self.bulldoze_remove(e),
+            }
+        }
+        if let Some(game) = &mut self.game {
+            game.world.accept_tank(id);
+        }
+        self.exhibits_told();
+    }
+
+    /// The operation that made the tank is undone and what it cost comes back (placing 8): every
+    /// piece it placed gives its whole price back, every piece it removed takes its refund back.
+    pub(super) fn tank_no(&mut self) {
+        let Some(game) = &mut self.game else { return };
+        let Some(id) = game.refused.take() else {
+            return;
+        };
+        self.tool_lines.push("tool tank answer no".into());
+        let cat = self.renderer.catalogue();
+        let (placed, removed) = game.world.operation();
+        for e in &placed {
+            if let Some(ty) = type_of(cat, e) {
+                game.money.undo_charge(CONSTRUCTION, cost(ty));
+            }
+        }
+        for e in &removed {
+            game.money.undo_refund(CONSTRUCTION_REFUND, refund(cat, e));
+        }
+        game.world.decline_tank(id);
+        game.rest.clear();
+        self.exhibits_told();
+        self.aim(false);
     }
 
     /// Tells the messages about gates of exhibits that have no dialog.

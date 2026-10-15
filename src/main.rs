@@ -199,7 +199,18 @@ usage: rustyzoo [--data <dir>] <command>
                       `world gate CLASS/TYPE/g X,Y side S id N`, `exhibit gate ID X,Y side S`),
                       books the price as construction and clears the undo list; any other place
                       does nothing and says nothing, except that a gate the cash does not cover
-                      shows `tool message 10002`. The two
+                      shows `tool message 10002`. A fence that closes
+                      an area of tank walls only makes a tank (\"Tank N\" or \"Show Tank N\"): its
+                      ground is levelled flat, lowered by `initialSink` of tanks.cfg, its walls
+                      brought to its side of their lines (a copy where another tank stands),
+                      `exhibit tank ID height H level L show S salt T purity P filled F` tells its
+                      values; when something stands in it that a tank does not allow the game asks
+                      first (`tool tank ask`, string 10552; `key y` sells the scenery and puts the
+                      animals and staff outside, `tool tank answer yes`, then the name dialog; any
+                      other answer, `tool tank answer no`, undoes the drag and gives its money
+                      back). A land exhibit closed by tank walls only becomes a tank this way, and
+                      a tank that gets a wall of another kind a land exhibit, each a new exhibit
+                      with a new name. The two
                       terrain tabs of the construction panel (at 180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and

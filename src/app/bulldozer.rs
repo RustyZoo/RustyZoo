@@ -256,7 +256,15 @@ impl App<'_> {
                     }
                     return self.aim(false);
                 }
-                Next::Remove(id) => self.bulldoze_remove(id),
+                Next::Remove(id) => {
+                    self.bulldoze_remove(id);
+                    // A removal that makes a tank with objects in it asks about them: the rest
+                    // of the removal is dropped.
+                    if let Some(game) = self.game.as_mut().filter(|g| g.refused.is_some()) {
+                        game.sweep = None;
+                        return;
+                    }
+                }
                 Next::Skip => {}
                 Next::Ask(id, question, text) => {
                     let asked = self
@@ -282,7 +290,7 @@ impl App<'_> {
 
     /// Removes the entity with this id, books its refund and logs it (`world remove CLASS/TYPE/
     /// SUBTYPE X,Y [side S] id N refund R`), then tells what happened to the exhibits.
-    fn bulldoze_remove(&mut self, id: u32) {
+    pub(super) fn bulldoze_remove(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
         let removed = bulldozer::remove(&mut game.world, &mut game.money, cat, id);

@@ -57,6 +57,7 @@ const FENCE: Shape = Shape {
     tank: TankKind {
         wall: false,
         show: false,
+        ..TankKind::NONE
     },
 };
 
@@ -70,6 +71,7 @@ const NOTHING: Shape = Shape {
     tank: TankKind {
         wall: false,
         show: false,
+        ..TankKind::NONE
     },
 };
 
@@ -83,6 +85,7 @@ const GATE: Shape = Shape {
     tank: TankKind {
         wall: false,
         show: false,
+        ..TankKind::NONE
     },
 };
 
