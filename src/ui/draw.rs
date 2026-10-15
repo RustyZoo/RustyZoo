@@ -222,7 +222,7 @@ impl Painter {
             }
             Kind::ListBox(list) => {
                 let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
-                    painter.list(e, list, strings, canvas);
+                    painter.list(pictures, e, list, strings, canvas);
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
@@ -469,13 +469,26 @@ impl Painter {
 
     /// The rows of a list from its first shown one: the selected row in its colour on its fill and
     /// frame, the hovered one framed, disabled ones grayed.
-    fn list(&mut self, e: &Element, l: &ListBox, strings: &dyn Strings, canvas: &mut Framebuffer) {
+    fn list(
+        &mut self,
+        pictures: &Pictures,
+        e: &Element,
+        l: &ListBox,
+        strings: &dyn Strings,
+        canvas: &mut Framebuffer,
+    ) {
         let (w, h) = (canvas.width as i32, canvas.height as i32);
         canvas.fill(fill_color(e.look.back_color));
-        let row_height = self
-            .line_height(e, strings)
-            .saturating_add(l.spacing)
-            .max(1);
+        let line = self.line_height(e, strings);
+        let row_height = l.row_height(line);
+        // A row with a small icon keeps its text clear of the slot and, on one line, centred in it.
+        let (text_left, text_down) = match l.minicon_width > 0 {
+            true => (
+                e.x_border.saturating_add(l.minicon_width),
+                (row_height - line.saturating_add(l.spacing).max(1)) / 2,
+            ),
+            false => (e.x_border, 0),
+        };
         // Whole rows only, inside the borders.
         let mut y = e.y_border;
         let end = h.saturating_sub(e.y_border);
@@ -501,10 +514,31 @@ impl Painter {
                 (false, true) => l.select_color,
                 _ => e.look.fore_color,
             };
+            if let Some(icon) = row.icon
+                && let Some(cut) = self.cut(pictures, icon, 0, 0)
+            {
+                // An animation is anchored at the middle of the slot, an image at its corner.
+                let slot_w = l.minicon_width;
+                let slot_h = match l.minicon_height {
+                    0 => row_height,
+                    h => h,
+                };
+                let at = match cut.animation {
+                    true => (
+                        e.x_border + slot_w / 2 + cut.origin.0,
+                        y + slot_h / 2 + cut.origin.1,
+                    ),
+                    false => (e.x_border, y),
+                };
+                blit(canvas, &cut.pixels, at, None);
+            }
+            let right = w.saturating_sub(e.x_border);
+            // A text that wraps keeps to the top of its row, which two lines fill.
+            let wraps = self.text_width(e, strings, &row.text) > right.saturating_sub(text_left);
             let text_rect = Rect {
-                left: e.x_border,
-                top: y,
-                right: w.saturating_sub(e.x_border),
+                left: text_left,
+                top: y.saturating_add(if wraps { 0 } else { text_down }),
+                right,
                 bottom: rect.3,
             };
             self.text(e, strings, &row.text, canvas, text_rect, color, false);

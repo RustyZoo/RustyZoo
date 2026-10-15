@@ -21,7 +21,8 @@ Modules of the core:
 | `sprite` | Sprite files and palettes: decoding, drawing, PNG output |
 | `userdir` | The per-user folder: where it is, the settings written there, read over the game's `zoo.ini` |
 | `startup` | The start-up picture (a bitmap resource of the language and resource libraries), its progress bar, and the product version of the executable |
-| `menu` | The main menu: what is set when it appears (background of the expansion flags, Continue and its tooltip, version label), what Exit does, and the credits pages that replace one another on the interface clock |
+| `menu` | The main menu: what is set when it appears (background of the expansion flags, Continue and its tooltip, version label), what Exit does, the credits pages that replace one another on the interface clock, and the scenario and freeform screens (`menu/screens`: lists, pictures, starting cash) |
+| `lists` | The data of those screens: the scenarios of `scenar*.cfg` with results and locks, the freeform maps of `free*.cfg`, the starting cash and its difficulty |
 | `intro` | The intro movies: which ones play (`[UI] playMovie`, `playSecondMovie`, their volumes) and the player that gives the picture due at a clock reading |
 | `movie` | Intro movies: the AVI container, the Indeo 5 video decoded to RGBA pictures, the PCM audio (no window, no sound device) |
 

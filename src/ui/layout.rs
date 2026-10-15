@@ -282,6 +282,16 @@ pub struct ListBox {
     pub rows: Rows,
 }
 
+impl ListBox {
+    /// The height of a row: a line of the font and the spacing, or the small icon's slot if that
+    /// is taller.
+    pub fn row_height(&self, line: i32) -> i32 {
+        line.saturating_add(self.spacing)
+            .max(self.minicon_height)
+            .max(1)
+    }
+}
+
 /// The pictures and percentages of `UIStatusImage` and `UIImageSet`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Levels {
@@ -552,6 +562,17 @@ impl Tree {
                 self.elements[child].state &= !HIDDEN;
             }
         }
+    }
+
+    /// The picture the game's files have under `name` (an animation without its extension, or a
+    /// `.tga` image), loaded once. A failure is a warning, once per name, and `None`.
+    pub fn picture(&mut self, vfs: &Vfs, name: &str) -> Option<Picture> {
+        let before = self.warnings.len();
+        let picture = self.pictures.get(vfs, name.as_bytes(), &mut self.warnings);
+        for warning in &self.warnings[before..] {
+            eprintln!("rustyzoo: warning: {warning}");
+        }
+        picture
     }
 
     /// The element registered under `id`.

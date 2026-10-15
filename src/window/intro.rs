@@ -159,7 +159,7 @@ fn movies(
             while let Some((_, command)) = script.next_if(|&(at, _)| at <= this) {
                 say(format!("{lead} {command}"))?;
                 match command {
-                    Command::Quit => reaction = Reaction::Quit,
+                    Command::Quit | Command::Close => reaction = Reaction::Quit,
                     Command::Skip | Command::Key(..) | Command::Mouse(Mouse::Down)
                         if reaction == Reaction::Nothing =>
                     {

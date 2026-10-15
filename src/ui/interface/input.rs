@@ -42,6 +42,7 @@ impl Interface {
             Mouse::Move(x, y) => self.moved((x, y)),
             Mouse::Down => self.down(),
             Mouse::Up => self.up(),
+            Mouse::Double => self.double(),
             Mouse::Wheel(notches) => {
                 let at = self.input.pointer;
                 let target = self.input.capture.or_else(|| self.hit(at));
@@ -190,6 +191,31 @@ impl Interface {
             }
         }
         Some(t) == self.map_view
+    }
+
+    /// The second press of a double click: a list box with `handledoubleclicks` selects the row
+    /// as a press does and tells the game, the map view gets the press, nothing else acts.
+    fn double(&mut self) -> bool {
+        let at = self.input.pointer;
+        if self.input.capture.is_some() {
+            return false;
+        }
+        let Some(t) = self.hit(at) else {
+            return false;
+        };
+        let e = &self.tree.elements[t];
+        let acts = matches!(&e.kind, Kind::ListBox(l) if l.handle_double_clicks)
+            && e.state & (DISABLED | READ_ONLY) == 0;
+        if !acts {
+            return Some(t) == self.map_view;
+        }
+        self.down();
+        if let Kind::ListBox(l) = &self.tree.elements[t].kind {
+            let (id, row) = (self.id(t), l.rows.action_value());
+            self.event(format!("double {id} {row}"));
+            self.actions.push(super::Action::Double(id, row));
+        }
+        false
     }
 
     fn up(&mut self) -> bool {

@@ -136,6 +136,8 @@ pub struct Row {
     /// The number of the help string shown as tooltip while the row is hovered; 0 for none.
     pub help: i32,
     pub disabled: bool,
+    /// The small picture in front of the text, in the slot of `miniconwidth` by `miniconheight`.
+    pub icon: Option<super::layout::Picture>,
 }
 
 /// A key a list reads.

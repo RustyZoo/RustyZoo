@@ -8,8 +8,10 @@
 use super::{Action, Interface};
 use crate::app::Key;
 use crate::text::from_cp1252;
-use crate::ui::draw::element_text;
-use crate::ui::layout::{DIRTY, DISABLED, FOCUSED, Kind, READ_ONLY, SELECT_ON_KEYS, TAKES_FOCUS};
+use crate::ui::draw::{Strings, element_text};
+use crate::ui::layout::{
+    DIRTY, DISABLED, FOCUSED, HIDDEN, Kind, Picture, READ_ONLY, SELECT_ON_KEYS, TAKES_FOCUS,
+};
 use crate::ui::widgets::{Bar, Caret, EditKey, Edited, Limits, ListKey, Part, Row, edit};
 
 /// Rows a notch of the wheel scrolls (a notch is 120 units of the original's wheel).
@@ -54,6 +56,48 @@ impl Interface {
     pub fn text(&self, id: i32) -> Option<Vec<u8>> {
         let e = &self.tree.elements[self.tree.find(id)?];
         Some(element_text(e, &self.strings))
+    }
+
+    /// Shows `picture` in the picture element `id`, which takes its size; none hides the element.
+    /// `false` if there is no such element.
+    pub fn set_picture(&mut self, id: i32, picture: Option<Picture>) -> bool {
+        let Some(i) = self
+            .tree
+            .find(id)
+            .filter(|&i| matches!(self.tree.elements[i].kind, Kind::Image))
+        else {
+            return false;
+        };
+        let size = picture.map(|p| self.tree.pictures.size(p));
+        let e = &mut self.tree.elements[i];
+        match (picture, size) {
+            (Some(p), Some((w, h))) => {
+                let animated = matches!(p, Picture::Animation(_));
+                e.look.animation = if animated { vec![Some(p)] } else { vec![] };
+                e.look.normal = (!animated).then_some(p);
+                if let Some(placed) = &mut e.placed {
+                    (placed.dx, placed.dy) = (w, h);
+                }
+                e.state &= !HIDDEN;
+            }
+            _ => e.state |= HIDDEN,
+        }
+        self.dirty = true;
+        true
+    }
+
+    /// Hides or shows an element on its own; `false` if there is none.
+    pub fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.flag(i, HIDDEN, hidden);
+        true
+    }
+
+    /// The text resource of the game under this name (empty if there is none).
+    pub fn text_entry(&self, name: &[u8]) -> Vec<u8> {
+        Strings::text_entry(&self.strings, name)
     }
 
     /// Gives a list box its rows. The first row is shown and none is selected. `false` if the
@@ -137,7 +181,7 @@ impl Interface {
         })
     }
 
-    /// The height of a row of a list: a line of its font and the spacing.
+    /// The height of a row of a list: a line of its font and the spacing, or its small icon.
     fn row_height(&mut self, i: usize) -> i32 {
         let Interface {
             tree,
@@ -146,14 +190,11 @@ impl Interface {
             ..
         } = self;
         let e = &tree.elements[i];
-        let spacing = match &e.kind {
-            Kind::ListBox(l) => l.spacing,
-            _ => 0,
-        };
-        painter
-            .line_height(e, &*strings)
-            .saturating_add(spacing)
-            .max(1)
+        let line = painter.line_height(e, &*strings);
+        match &e.kind {
+            Kind::ListBox(l) => l.row_height(line),
+            _ => line.max(1),
+        }
     }
 
     /// How many whole rows of a list fit inside its borders, at least one.
@@ -505,6 +546,9 @@ impl Interface {
                 self.flag(i, DIRTY, true);
                 let id = self.id(i);
                 self.event(format!("unfocus {id}"));
+                if matches!(self.tree.elements[i].kind, Kind::EditableText(_)) {
+                    self.actions.push(Action::Edited(id));
+                }
             }
         }
         let Some(t) = to else { return false };

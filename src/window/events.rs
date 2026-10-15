@@ -33,6 +33,8 @@ pub fn maximised(flags: WindowFlags, fullscreen: bool) -> bool {
 pub enum Raw {
     Move(f32, f32),
     Down(f32, f32),
+    /// The second press of a double click.
+    Double(f32, f32),
     Up(f32, f32),
     Wheel(i32),
 }
@@ -64,10 +66,14 @@ impl State {
                 Event::MouseMotion { x, y, .. } => self.mouse.push(Raw::Move(x, y)),
                 Event::MouseButtonDown {
                     mouse_btn: MouseButton::Left,
+                    clicks,
                     x,
                     y,
                     ..
-                } => self.mouse.push(Raw::Down(x, y)),
+                } => self.mouse.push(match clicks {
+                    2 => Raw::Double(x, y),
+                    _ => Raw::Down(x, y),
+                }),
                 Event::MouseButtonUp {
                     mouse_btn: MouseButton::Left,
                     x,
@@ -88,7 +94,7 @@ impl State {
             | Event::Window {
                 win_event: WindowEvent::CloseRequested,
                 ..
-            } => commands.push(Command::Quit),
+            } => commands.push(Command::Close),
             // A resize changes where the picture goes: draw it again, even if the game paints
             // nothing.
             Event::Window {
@@ -115,11 +121,14 @@ impl State {
                     let (px, py) = place((x, y))?;
                     commands.push(Command::Mouse(Mouse::Move(px, py)));
                 }
-                Raw::Down(x, y) | Raw::Up(x, y) => {
+                Raw::Down(x, y) | Raw::Double(x, y) | Raw::Up(x, y) => {
                     let (px, py) = place((x, y))?;
                     commands.push(Command::Mouse(Mouse::Move(px, py)));
-                    let down = matches!(raw, Raw::Down(..));
-                    commands.push(Command::Mouse(if down { Mouse::Down } else { Mouse::Up }));
+                    commands.push(Command::Mouse(match raw {
+                        Raw::Down(..) => Mouse::Down,
+                        Raw::Double(..) => Mouse::Double,
+                        _ => Mouse::Up,
+                    }));
                 }
                 Raw::Wheel(n) => commands.push(Command::Mouse(Mouse::Wheel(n))),
             }
@@ -181,20 +190,21 @@ mod tests {
         }
         state.note(window(WindowEvent::CloseRequested), &mut commands);
         state.note(Event::Quit { timestamp: 0 }, &mut commands);
-        assert_eq!(commands, [Command::Quit, Command::Quit]);
+        assert_eq!(commands, [Command::Close, Command::Close]);
     }
 
     #[test]
     fn with_an_interface_the_mouse_the_keys_and_the_text_become_commands() {
-        let button = |mouse_btn, x, y| Event::MouseButtonDown {
+        let press = |mouse_btn, clicks, x, y| Event::MouseButtonDown {
             timestamp: 0,
             window_id: 1,
             which: 0,
             mouse_btn,
-            clicks: 1,
+            clicks,
             x,
             y,
         };
+        let button = |mouse_btn, x, y| press(mouse_btn, 1, x, y);
         let mut state = State::default();
         let mut commands = Vec::new();
         state.note(button(MouseButton::Left, 3.0, 4.0), &mut commands);
@@ -204,6 +214,7 @@ mod tests {
         );
         state.interface = true;
         state.note(button(MouseButton::Left, 3.0, 4.0), &mut commands);
+        state.note(press(MouseButton::Left, 2, 5.0, 6.0), &mut commands);
         state.note(button(MouseButton::Right, 9.0, 9.0), &mut commands);
         state.note(
             Event::MouseWheel {
@@ -241,6 +252,8 @@ mod tests {
             [
                 Command::Mouse(Mouse::Move(6, 8)),
                 Command::Mouse(Mouse::Down),
+                Command::Mouse(Mouse::Move(10, 12)),
+                Command::Mouse(Mouse::Double),
                 Command::Mouse(Mouse::Wheel(-1)),
             ]
         );

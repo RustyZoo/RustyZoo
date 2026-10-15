@@ -593,3 +593,53 @@ fn a_list_draws_whole_rows_only_inside_its_borders() {
     assert_eq!(at(&frame, 43, 4 + 15), [255, 0, 0]);
     assert_eq!(at(&frame, 43, 4 + 27), [0, 0, 255], "under it, the border");
 }
+
+#[test]
+fn a_list_with_a_small_icon_has_rows_as_tall_as_its_slot_and_draws_the_icon_in_it() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=48\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         selectbackcolor=255\nselectbackcolor=0\nselectbackcolor=0\nminiconwidth=6\nminiconheight=16\n\
+         [b]\ntype=UIImage\nid=3\nx=60\ny=40\nanimation=ui/b/b\n"
+    );
+    let mut tree = tree("minicon", &root, &animation("b"));
+    show_all(&mut tree);
+    let icon = tree.elements[2].look.animation[0];
+    assert!(matches!(icon, Some(Picture::Animation(_))));
+    tree.elements[2].state |= HIDDEN;
+    let row = |icon| Row {
+        text: b"H".to_vec(),
+        icon,
+        ..Row::default()
+    };
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = vec![row(icon), row(None), row(icon)];
+    list.rows.selected = Some(1);
+    assert_eq!(list.row_height(12), 16);
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    let frame = paint(&mut tree, &mut painter, &texts);
+    // Rows of 16 pixels, the second one selected: its fill is from y 20 to 35.
+    assert_eq!(at(&frame, 43, 19), [0, 0, 255]);
+    assert_eq!(at(&frame, 43, 20), [255, 0, 0]);
+    assert_eq!(at(&frame, 43, 35), [255, 0, 0]);
+    assert_eq!(at(&frame, 43, 36), [0, 0, 255]);
+    // The icon of the box 3 x 1 sits at the middle of the slot of each row that has one.
+    for y in [12, 12 + 32] {
+        assert_eq!(at(&frame, 6, y), [255, 0, 0], "row at {y}");
+        assert_eq!(at(&frame, 8, y), [255, 0, 0]);
+        assert_eq!(at(&frame, 9, y), [0, 0, 255], "past the icon");
+    }
+    assert_eq!(
+        at(&frame, 6, 12 + 16),
+        [255, 0, 0],
+        "no icon: the selection fill"
+    );
+    // Without a slot, rows keep the height of a line.
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        unreachable!();
+    };
+    (list.minicon_width, list.minicon_height) = (0, 0);
+    assert_eq!(list.row_height(12), 12);
+}

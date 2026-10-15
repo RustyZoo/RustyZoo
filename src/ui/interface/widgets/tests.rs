@@ -3,7 +3,7 @@ use crate::Framebuffer;
 use crate::app::Mouse;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
-use crate::ui::layout::{HIDDEN, Tree};
+use crate::ui::layout::{HIDDEN, Picture, Tree};
 use crate::vfs::Vfs;
 
 struct NoTexts;
@@ -526,7 +526,10 @@ fn enter_keeps_the_text_and_escape_puts_back_the_old_one_both_pass_the_key_to_th
     assert!(ui.key(Key::Enter, false));
     assert_eq!(ui.take_events(), ["unfocus 30", "key 10 enter"]);
     assert_eq!(text(&ui, 30), "old!");
-    assert_eq!(ui.take_actions(), [Action::Key(10, Key::Enter)]);
+    assert_eq!(
+        ui.take_actions(),
+        [Action::Edited(30), Action::Key(10, Key::Enter)]
+    );
     assert_eq!(state(&ui, 30) & FOCUSED, 0);
     ui.focus(30);
     ui.key(Key::End, false);
@@ -538,7 +541,10 @@ fn enter_keeps_the_text_and_escape_puts_back_the_old_one_both_pass_the_key_to_th
         ui.take_events(),
         ["text 30 old!", "unfocus 30", "key 10 escape"]
     );
-    assert_eq!(ui.take_actions(), [Action::Key(10, Key::Escape)]);
+    assert_eq!(
+        ui.take_actions(),
+        [Action::Edited(30), Action::Key(10, Key::Escape)]
+    );
     // Keys the field does not know go on unhandled.
     ui.focus(30);
     assert!(!ui.key(Key::Tab, false));
@@ -698,4 +704,115 @@ fn a_list_draws_whole_rows_inside_its_borders_and_finds_rows_under_them() {
     assert_eq!(press(&mut ui, 10, 4), ["focus 20", "row 20 0"]);
     release(&mut ui);
     assert_eq!(press(&mut ui, 10, 16), ["row 20 1"]);
+}
+
+#[test]
+fn a_double_click_acts_only_on_a_list_that_handles_it() {
+    let mut ui = interface("double");
+    ui.set_rows(20, rows(3));
+    let double = |ui: &mut Interface, x, y| {
+        at(ui, x, y);
+        ui.take_events();
+        ui.take_actions();
+        let belongs = ui.mouse(Mouse::Double);
+        (belongs, ui.take_events(), ui.take_actions())
+    };
+    // The list does not handle double clicks: nothing happens.
+    assert_eq!(double(&mut ui, 5, 17), (false, vec![], vec![]));
+    assert_eq!(ui.selected_row(20), None);
+    let list = ui.tree.find(20).unwrap();
+    let Kind::ListBox(l) = &mut ui.tree.elements[list].kind else {
+        panic!("not a list");
+    };
+    l.handle_double_clicks = true;
+    // It selects the row as a press does and tells the game, whatever the row it was.
+    let (belongs, events, actions) = double(&mut ui, 5, 17);
+    assert!(!belongs);
+    assert_eq!(events, ["focus 20", "row 20 1", "double 20 1"]);
+    assert_eq!(actions, [Action::Double(20, 1)]);
+    assert_eq!(ui.selected_row(20), Some(1));
+    ui.mouse(Mouse::Up);
+    // A click below the last row selects none: the action says -1.
+    ui.set_rows(20, rows(1));
+    assert_eq!(double(&mut ui, 5, 30).2, [Action::Double(20, -1)]);
+    ui.mouse(Mouse::Up);
+    // A read-only list and a field do nothing.
+    assert_eq!(double(&mut ui, 55, 50), (false, vec![], vec![]));
+    assert_eq!(double(&mut ui, 60, 5), (false, vec![], vec![]));
+    // Over the map view, the press is the map view's.
+    assert_eq!(double(&mut ui, 99, 79), (true, vec![], vec![]));
+    // Over the held button of a press the double click is ignored.
+    press(&mut ui, 5, 5);
+    assert!(!ui.mouse(Mouse::Double));
+    assert!(
+        ui.take_actions()
+            .iter()
+            .all(|a| *a != Action::Double(20, 0))
+    );
+}
+
+#[test]
+fn leaving_a_field_tells_the_game_whichever_way_it_goes() {
+    let mut ui = interface("edited");
+    ui.focus(30);
+    ui.take_actions();
+    // A click elsewhere that takes the focus away.
+    click(&mut ui, 5, 5);
+    assert_eq!(ui.take_actions(), [Action::Edited(30), Action::Row(20, -1)]);
+    ui.focus(30);
+    ui.take_actions();
+    ui.set_text(31, b"1");
+    click(&mut ui, 55, 25);
+    assert_eq!(ui.take_actions(), [Action::Edited(30)]);
+    // Focusing another field leaves the first.
+    assert!(ui.focus(30));
+    assert_eq!(ui.take_actions(), [Action::Edited(31)]);
+    // A list that loses the focus is not an edit.
+    ui.focus(20);
+    assert_eq!(ui.take_actions(), [Action::Edited(30)]);
+    ui.focus(30);
+    assert_eq!(ui.take_actions(), []);
+}
+
+#[test]
+fn a_picture_is_put_into_a_picture_element_which_takes_its_size_and_none_hides_it() {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n\
+        [b]\ntype=UIImage\nid=60\nx=3\ny=4\n\
+        [c]\ntype=UIText\nid=61\nx=0\ny=40\ndx=10\ndy=10\n";
+    let install = Install::new(
+        "widgets-picture",
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/red.tga", solid(5, 3, [255, 0, 0])),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = Tree::load(&vfs, "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    let red = tree.picture(&vfs, "ui/red.tga");
+    assert!(matches!(red, Some(Picture::Image(_))));
+    assert_eq!(tree.picture(&vfs, "ui/red.tga"), red, "loaded once");
+    assert_eq!(tree.picture(&vfs, "ui/gone.tga"), None);
+    assert_eq!(tree.picture(&vfs, ""), None);
+    let mut ui = Interface::new(tree, Box::new(NoTexts));
+    ui.show(1);
+    let image = ui.tree.find(60).unwrap();
+    assert_eq!(ui.tree.rect(image), (3, 4, 0, 0));
+    assert!(ui.set_picture(60, red));
+    assert_eq!(ui.tree.rect(image), (3, 4, 5, 3));
+    assert_eq!(state(&ui, 60) & HIDDEN, 0);
+    assert!(ui.set_picture(60, None));
+    assert_ne!(state(&ui, 60) & HIDDEN, 0);
+    assert!(ui.set_picture(60, red));
+    assert_eq!(state(&ui, 60) & HIDDEN, 0);
+    // Not a picture element, and no element at all.
+    assert!(!ui.set_picture(61, red) && !ui.set_picture(5, red));
+    // An element is hidden and shown on its own.
+    assert!(ui.set_hidden(61, true));
+    assert_ne!(state(&ui, 61) & HIDDEN, 0);
+    assert!(ui.set_hidden(61, false));
+    assert_eq!(state(&ui, 61) & HIDDEN, 0);
+    assert!(!ui.set_hidden(5, true));
+    assert_eq!(ui.text_entry(b"ANY"), Vec::<u8>::new());
 }

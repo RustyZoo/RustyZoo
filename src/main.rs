@@ -110,8 +110,9 @@ usage: rustyzoo [--data <dir>] <command>
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
                       per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
-                      in|out, fullscreen on|off, pause, space, quit, and for the interface mouse X Y,
-                      down, up, wheel N, key NAME [ctrl] [shift] with NAME enter, escape, tab,
+                      in|out, fullscreen on|off, pause, space, quit, close (the window was closed), and for the
+                      interface mouse X Y, down, up, double (the second press of a double click),
+                      wheel N, key NAME [ctrl] [shift] with NAME enter, escape, tab,
                       backspace, delete, left, right, up, down, home, end, pageup, pagedown, y
                       or n, and char C with C a byte or one character; # starts a comment).
                       The interface is drawn over the map, with the layouts given by --show
@@ -183,12 +184,25 @@ usage: rustyzoo [--data <dir>] <command>
                       Exit ending the run (closing the window too). A headless run prints the
                       lines `startup ...` after the size and, in its first pass, `menu ...` lines
                       (continue enabled|disabled, version) and `menu exit`; a log that has them
-                      replays. The first-run tutorial is not started (there are no scenarios yet)
-                      and a line says so. The credits button shows the credits, whose pages replace one another
+                      replays. The first-run tutorial is not started and a line says so. The credits button shows the credits, whose pages replace one another
                       every [credits] delay seconds (8) of interface time, in the order of the registry
                       files ui/credits/credit*.cfg (descending names, version above 0): a log line
                       `menu credits page N layout ID` for each, `menu credits end` after the last and
-                      `menu credits closed` when Exit closed them. Starting a game from the menu comes later.
+                      `menu credits closed` when Exit closed them. The button that loads a saved game is disabled until saved games
+                      come. The scenario and freeform buttons show their screens with the lists
+                      filled: `menu scenarios N`, one `menu scenario SECTION won|playable|locked
+                      NAMEID` per entry (ascending section names; won, playable and locked by
+                      `[scenario]` of the ini file), `menu scenario select SECTION STATE picture
+                      NAME story shown|hidden play enabled|disabled` when an entry is selected
+                      (its picture and story, or the locked ones; Play is on only for a playable
+                      one), `menu freeform N` with a `menu map FILE NAMEID` per map and `menu map
+                      select ...`, and `menu cash AMOUNT hard|middle|easy up on|off down
+                      on|off` for the starting cash ([UI] MSStartingCash, MSMinCash, MSMaxCash,
+                      MSCashIncrement; the spinners step by the increment and stop at the limits,
+                      a typed amount is read when the edit ends, and each change is written to
+                      MSStartingCash of the settings of the user folder). Play or a double click on
+                      an entry only logs `menu play scenario SECTION FILE` or `menu play freeform
+                      FILE cash AMOUNT` for now; starting a game from the menu comes later.
   dump-layout [--size WxH] [--expansions N]
                       load the interface tree as check-layouts does and resolve it for a window
                       of W by H pixels (1024x768 by default; each side from 1 to 16384), then
