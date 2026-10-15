@@ -282,16 +282,6 @@ pub struct ListBox {
     pub rows: Rows,
 }
 
-impl ListBox {
-    /// The height of a row: a line of the font and the spacing, or the small icon's slot if that
-    /// is taller.
-    pub fn row_height(&self, line: i32) -> i32 {
-        line.saturating_add(self.spacing)
-            .max(self.minicon_height)
-            .max(1)
-    }
-}
-
 /// The pictures and percentages of `UIStatusImage` and `UIImageSet`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Levels {

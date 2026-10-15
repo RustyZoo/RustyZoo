@@ -151,12 +151,12 @@ fn a_bar_follows_the_rows_of_its_list() {
         Kind::ScrollBar(s) => (s.bar.min, s.bar.max, s.bar.page, s.bar.position),
         _ => unreachable!(),
     };
-    assert_eq!(range(&ui), (0, 0, 2, 0), "no rows, nothing to scroll");
+    assert_eq!(range(&ui), (0, 0, 1, 0), "no rows, nothing to scroll");
     assert!(ui.set_rows(20, rows(10)));
     // Three rows show: seven are beyond; a page is the rows shown less one.
     assert_eq!(range(&ui), (0, 7, 2, 0));
     assert!(ui.set_rows(20, rows(2)));
-    assert_eq!(range(&ui), (0, 0, 2, 0));
+    assert_eq!(range(&ui), (0, 0, 1, 0), "both rows show");
     assert!(!ui.set_rows(21, rows(1)), "not a list");
     assert!(!ui.set_rows(999, rows(1)));
 }
@@ -815,4 +815,33 @@ fn a_picture_is_put_into_a_picture_element_which_takes_its_size_and_none_hides_i
     assert_eq!(state(&ui, 61) & HIDDEN, 0);
     assert!(!ui.set_hidden(5, true));
     assert_eq!(ui.text_entry(b"ANY"), Vec::<u8>::new());
+}
+
+#[test]
+fn texts_fields_lists_and_bars_are_hit_over_their_whole_rectangle_even_when_transparent() {
+    let mut ui = interface("whole");
+    ui.set_rows(20, rows(3));
+    ui.set_text(50, b"x");
+    for id in [20, 21, 30, 50, 7000] {
+        let i = ui.tree.find(id).unwrap();
+        ui.tree.elements[i].transparent = true;
+    }
+    // Painted once, so that the pictures and canvases of the pixel test exist.
+    ui.paint(&mut Framebuffer::new(100, 80), &mut |_, _| {});
+    // A point of the list that no glyph is at, and one of its bar between the arrows and the
+    // thumb, are the list's and the bar's.
+    let events = click(&mut ui, 38, 5);
+    assert!(events.contains(&"row 20 0".to_string()), "{events:?}");
+    let hit = |ui: &mut Interface, x, y| {
+        ui.mouse(Mouse::Move(x, y));
+        ui.take_events()
+    };
+    assert_eq!(
+        hit(&mut ui, 78, 70),
+        ["hover 50"],
+        "a text, where it draws nothing"
+    );
+    ui.set_rows(20, rows(10));
+    assert_eq!(hit(&mut ui, 44, 30), ["hover 21"], "the track of the bar");
+    assert_eq!(hit(&mut ui, 60, 5), ["hover 30"], "a field");
 }

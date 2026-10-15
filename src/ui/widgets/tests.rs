@@ -100,43 +100,78 @@ fn rows(n: usize) -> Rows {
     }
 }
 
+/// `n` rows of 12 pixels in a list that shows `visible` of them.
+fn fit(n: usize, visible: i32) -> Heights {
+    Heights {
+        rows: vec![12; n],
+        spacing: 0,
+        inner: 12 * visible,
+    }
+}
+
 #[test]
-fn a_list_scrolls_within_its_rows_and_finds_the_row_under_a_point() {
-    let mut r = rows(10);
-    assert_eq!(r.max_top(4), 6);
-    assert!(r.scroll_to(100, 4) && r.top == 6);
-    assert!(!r.scroll_to(i64::MAX, 4));
-    assert!(r.scroll_to(-3, 4) && r.top == 0);
-    assert_eq!(rows(3).max_top(4), 0, "everything fits");
-    r.top = 2;
-    assert_eq!(r.row_at(0, 12), Some(2));
-    assert_eq!(r.row_at(25, 12), Some(4));
-    assert_eq!(r.row_at(12 * 8, 12), None, "below the last row");
-    assert_eq!(r.row_at(-1, 12), None);
-    assert_eq!(r.row_at(5, 0), None);
-    assert_eq!(rows(0).row_at(0, 12), None);
+fn the_rows_that_fit_and_the_row_under_a_point() {
+    let h = fit(10, 4);
+    assert_eq!((h.fit_from(0), h.fit_from(8), h.max_top()), (4, 2, 6));
+    assert_eq!(fit(3, 4).max_top(), 0, "everything fits");
+    assert_eq!(fit(0, 4).max_top(), 0);
+    assert_eq!(h.fit_from(99), 1, "at least one");
+    assert_eq!(h.row_at(2, 0), Some(2));
+    assert_eq!(h.row_at(2, 25), Some(4));
+    assert_eq!(h.row_at(2, 12 * 8), None, "below the last row");
+    assert_eq!(h.row_at(2, -1), None);
+    assert_eq!(fit(0, 4).row_at(0, 0), None);
+    // Rows of other heights, with 2 pixels between two of them: 30 tall inside.
+    let h = Heights {
+        rows: vec![10, 20, 8, 8, 40],
+        spacing: 2,
+        inner: 30,
+    };
+    assert_eq!((h.fit_from(0), h.fit_from(1), h.fit_from(4)), (1, 2, 1));
+    assert_eq!(h.max_top(), 4, "the last row alone is taller than the list");
+    assert_eq!(h.row_at(0, 9), Some(0));
+    assert_eq!(h.row_at(0, 10), None, "between two rows");
+    assert_eq!(h.row_at(0, 12), Some(1));
+    assert_eq!(h.row_at(0, 33), None);
+    assert_eq!(h.row_at(0, 34), Some(2));
+    assert_eq!(h.row_at(1, 21), None);
+    assert_eq!(h.row_at(1, 22), Some(2));
+    let wide = Heights {
+        rows: vec![20, 20],
+        spacing: 0,
+        inner: 41,
+    };
+    assert_eq!((wide.fit_from(0), wide.max_top()), (2, 0));
+    let huge = Heights {
+        rows: vec![i32::MAX; 3],
+        spacing: i32::MAX,
+        inner: i32::MAX,
+    };
+    assert_eq!((huge.fit_from(0), huge.max_top()), (1, 2));
+    assert_eq!(huge.row_at(0, i32::MAX), None);
 }
 
 #[test]
 fn the_keys_move_the_selection_and_keep_it_in_view() {
     let mut r = rows(10);
+    let h = fit(10, 4);
     // Nothing selected: Down and Home start at the first row, Up and End at the last.
-    assert!(r.select_by_key(ListKey::Down, 4) && r.selected == Some(0));
+    assert!(r.select_by_key(ListKey::Down, &h) && r.selected == Some(0));
     r.selected = None;
-    assert!(r.select_by_key(ListKey::Up, 4) && r.selected == Some(9));
+    assert!(r.select_by_key(ListKey::Up, &h) && r.selected == Some(9));
     assert_eq!(r.top, 6, "scrolled to show it");
-    assert!(r.select_by_key(ListKey::Home, 4) && r.selected == Some(0) && r.top == 0);
-    assert!(!r.select_by_key(ListKey::Up, 4), "already first");
+    assert!(r.select_by_key(ListKey::Home, &h) && r.selected == Some(0) && r.top == 0);
+    assert!(!r.select_by_key(ListKey::Up, &h), "already first");
     // A page is the visible rows less one.
-    assert!(r.select_by_key(ListKey::PageDown, 4) && r.selected == Some(3));
-    assert!(r.select_by_key(ListKey::PageDown, 4) && r.selected == Some(6) && r.top == 3);
-    assert!(r.select_by_key(ListKey::PageUp, 4) && r.selected == Some(3));
-    assert!(r.select_by_key(ListKey::End, 4) && r.selected == Some(9));
-    assert!(!r.select_by_key(ListKey::Down, 4));
+    assert!(r.select_by_key(ListKey::PageDown, &h) && r.selected == Some(3));
+    assert!(r.select_by_key(ListKey::PageDown, &h) && r.selected == Some(6) && r.top == 3);
+    assert!(r.select_by_key(ListKey::PageUp, &h) && r.selected == Some(3));
+    assert!(r.select_by_key(ListKey::End, &h) && r.selected == Some(9));
+    assert!(!r.select_by_key(ListKey::Down, &h));
     // One visible row, no rows.
-    assert!(r.select_by_key(ListKey::PageUp, 1) && r.selected == Some(8));
-    assert!(!rows(0).select_by_key(ListKey::Down, 4));
-    assert!(!rows(0).select_by_key(ListKey::End, 0));
+    assert!(r.select_by_key(ListKey::PageUp, &fit(10, 1)) && r.selected == Some(8));
+    assert!(!rows(0).select_by_key(ListKey::Down, &h));
+    assert!(!rows(0).select_by_key(ListKey::End, &fit(0, 0)));
 }
 
 #[test]

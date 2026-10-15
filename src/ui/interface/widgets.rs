@@ -12,7 +12,7 @@ use crate::ui::draw::{Strings, element_text};
 use crate::ui::layout::{
     DIRTY, DISABLED, FOCUSED, HIDDEN, Kind, Picture, READ_ONLY, SELECT_ON_KEYS, TAKES_FOCUS,
 };
-use crate::ui::widgets::{Bar, Caret, EditKey, Edited, Limits, ListKey, Part, Row, edit};
+use crate::ui::widgets::{Bar, Caret, EditKey, Edited, Heights, Limits, ListKey, Part, Row, edit};
 
 /// Rows a notch of the wheel scrolls (a notch is 120 units of the original's wheel).
 const WHEEL_ROWS: i64 = 2;
@@ -124,7 +124,7 @@ impl Interface {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
-        let visible = self.visible_rows(i);
+        let fit = self.list_heights(i);
         let Kind::ListBox(list) = &mut self.tree.elements[i].kind else {
             return false;
         };
@@ -132,7 +132,7 @@ impl Interface {
             return false;
         }
         list.rows.selected = row;
-        list.rows.show_selection(visible);
+        list.rows.show_selection(&fit);
         self.flag(i, DIRTY, true);
         self.sync_owner(i);
         true
@@ -181,8 +181,8 @@ impl Interface {
         })
     }
 
-    /// The height of a row of a list: a line of its font and the spacing, or its small icon.
-    fn row_height(&mut self, i: usize) -> i32 {
+    /// The heights of the rows of list `i`, and what fits in it.
+    fn list_heights(&mut self, i: usize) -> Heights {
         let Interface {
             tree,
             painter,
@@ -190,27 +190,20 @@ impl Interface {
             ..
         } = self;
         let e = &tree.elements[i];
-        let line = painter.line_height(e, &*strings);
         match &e.kind {
-            Kind::ListBox(l) => l.row_height(line),
-            _ => line.max(1),
+            Kind::ListBox(l) => painter.row_heights(&tree.pictures, e, l, &*strings),
+            _ => Heights::default(),
         }
     }
 
-    /// How many whole rows of a list fit inside its borders, at least one.
-    fn visible_rows(&mut self, i: usize) -> usize {
-        let e = &self.tree.elements[i];
-        let height = e.placed.map_or(0, |p| p.dy);
-        let inner = height.saturating_sub(e.y_border.saturating_mul(2));
-        (inner / self.row_height(i)).max(1) as usize
-    }
-
-    /// How many lines or rows a scrolled owner holds and shows.
+    /// The largest first line or row of a scrolled owner, and how many it shows from the first
+    /// one it shows now.
     fn extent(&mut self, owner: usize) -> Option<(usize, usize)> {
         match &self.tree.elements[owner].kind {
             Kind::ListBox(l) => {
-                let total = l.rows.rows.len();
-                Some((total, self.visible_rows(owner)))
+                let top = l.rows.top;
+                let fit = self.list_heights(owner);
+                Some((fit.max_top(), fit.fit_from(top)))
             }
             Kind::Text(_) => {
                 let Interface {
@@ -220,7 +213,9 @@ impl Interface {
                     ..
                 } = self;
                 let e = &tree.elements[owner];
-                Some(painter.text_lines(e, &*strings, &element_text(e, &*strings)))
+                let (total, visible) =
+                    painter.text_lines(e, &*strings, &element_text(e, &*strings));
+                Some((total.saturating_sub(visible), visible))
             }
             _ => None,
         }
@@ -237,10 +232,9 @@ impl Interface {
     /// Brings the range and the position of the owner's bar in line with what the owner holds:
     /// from 0 to the lines or rows beyond the first screenful, a page being a screenful less one.
     pub(super) fn sync_owner(&mut self, owner: usize) {
-        let Some((total, visible)) = self.extent(owner) else {
+        let Some((max_top, visible)) = self.extent(owner) else {
             return;
         };
-        let max_top = total.saturating_sub(visible);
         let Some(top) = self.top_mut(owner) else {
             return;
         };
@@ -260,10 +254,10 @@ impl Interface {
     /// Scrolls the owner so that `top` is its first line or row, within what it holds. Tells the
     /// game's code where the bar is, or the owner if it has none, when that moved it.
     fn scroll_owner(&mut self, owner: usize, top: i64) {
-        let Some((total, visible)) = self.extent(owner) else {
+        let Some((max_top, _)) = self.extent(owner) else {
             return;
         };
-        let to = top.clamp(0, total.saturating_sub(visible) as i64) as usize;
+        let to = top.clamp(0, max_top as i64) as usize;
         let Some(first) = self.top_mut(owner) else {
             return;
         };
@@ -418,14 +412,14 @@ impl Interface {
 
     /// The row of list `i` under a point of the screen.
     fn list_row_at(&mut self, i: usize, (_, y): (i32, i32)) -> Option<usize> {
-        let row_height = self.row_height(i);
+        let fit = self.list_heights(i);
         let top = self
             .tree
             .screen(i)
             .1
             .saturating_add(self.tree.elements[i].y_border);
         match &self.tree.elements[i].kind {
-            Kind::ListBox(l) => l.rows.row_at(y.saturating_sub(top), row_height),
+            Kind::ListBox(l) => fit.row_at(l.rows.top, y.saturating_sub(top)),
             _ => None,
         }
     }
@@ -502,12 +496,12 @@ impl Interface {
             Key::End => ListKey::End,
             _ => return false,
         };
-        let visible = self.visible_rows(i);
+        let fit = self.list_heights(i);
         let Kind::ListBox(l) = &mut self.tree.elements[i].kind else {
             return false;
         };
         let (before, top) = (l.rows.selected, l.rows.top);
-        l.rows.select_by_key(key, visible);
+        l.rows.select_by_key(key, &fit);
         let (after, now) = (l.rows.selected, l.rows.top);
         self.flag(i, DIRTY, true);
         self.sync_owner(i);
@@ -769,10 +763,10 @@ impl Interface {
             Kind::ListBox(_) | Kind::Text(_) => self.bar_of(i).is_some(),
             _ => false,
         };
-        let Some((total, visible)) = self.extent(i).filter(|_| scrolls) else {
+        let Some((max_top, _)) = self.extent(i).filter(|_| scrolls) else {
             return;
         };
-        if total <= visible {
+        if max_top == 0 {
             return;
         }
         let top = self.top_mut(i).map_or(0, |t| *t as i64);

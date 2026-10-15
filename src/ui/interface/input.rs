@@ -97,8 +97,17 @@ impl Interface {
         if matches!(&e.kind, Kind::ScrollBar(s) if !s.bar.scrollable()) {
             return false;
         }
-        // A field is hit over its whole rectangle.
-        if !e.transparent || e.look.color_as_icon || matches!(e.kind, Kind::EditableText(_)) {
+        // Texts, fields, lists, scroll bars and the map view are hit over their whole rectangle;
+        // the pictures and buttons only where they draw.
+        let whole = matches!(
+            e.kind,
+            Kind::Text(_)
+                | Kind::EditableText(_)
+                | Kind::ListBox(_)
+                | Kind::ScrollBar(_)
+                | Kind::MapView
+        );
+        if !e.transparent || e.look.color_as_icon || whole {
             return true;
         }
         let text_button = matches!(e.kind, Kind::Button(_)) && !e.look.text_id.is_empty();
