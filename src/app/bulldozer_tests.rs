@@ -74,10 +74,10 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
     }
 }
 
-/// 7 tree, 8 bench (a scenery object that does not live under water).
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
-/// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40). Every
-/// picture is a square around the anchor: 24 pixels, the tree's 16.
+/// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40), 8 bench (50,
+/// a scenery object that does not live under water). Every picture is a square around the
+/// anchor: 24 pixels, the tree's 16.
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
