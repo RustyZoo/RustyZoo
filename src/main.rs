@@ -1359,7 +1359,9 @@ fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
     match (maps, bad) {
         (0, _) => Err(format!("check-rating: no map matches {}", pattern.escape_debug()).into()),
         (_, 0) => Ok(()),
-        _ => Err(format!("{bad} ratings are not 0 to 100 or areas cover more than 4 x 4 tiles").into()),
+        _ => Err(
+            format!("{bad} ratings are not 0 to 100 or areas cover more than 4 x 4 tiles").into(),
+        ),
     }
 }
 
