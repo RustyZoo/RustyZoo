@@ -1431,7 +1431,7 @@ fn a_drag_lays_an_l_of_paths_bought_in_order_with_the_cash_that_covers_them() {
     assert_eq!(app.sounds(), ["noplace"]);
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 10);
     // One undo takes back the pieces of the last drag, and only those.
-    assert!(app.game.as_mut().unwrap().world.undo());
+    assert!(!app.game.as_mut().unwrap().world.undo().is_empty());
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 6);
 }
 
@@ -1547,7 +1547,8 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
         .chain(["money cash 48500".to_string()])
         .collect();
     assert_eq!(lines(&app, 6, 100), adds);
-    // Over its own slots again the same pieces replace themselves for nothing (the old pieces go).
+    // Over its own slots again the same pieces replace themselves for nothing: the old pieces
+    // stay, with their ids, and take the type again.
     app.pass(
         120,
         &[
@@ -1559,13 +1560,8 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
     assert_eq!(cost(&app), Some(0));
     app.pass(140, &[Command::Mouse(Mouse::Up)]);
     let told = lines(&app, 8, 140);
-    assert_eq!(
-        told.len(),
-        12,
-        "a remove and an add for each piece, no cash line"
-    );
-    assert_eq!(told[0], "world remove fences/iron/ 20,20 side 0 id 1");
-    assert_eq!(told[1], "world add fences/iron/ 20,20 side 0 id 13");
+    assert_eq!(told.len(), 6, "a retype for each piece, no cash line");
+    assert_eq!(told[0], "world retype fences/iron/ 20,20 side 0 id 1");
     assert_eq!(app.money().unwrap().cash, 48_500.0);
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 12);
     // A hall of 2 x 2 tiles on the corner of tiles (19..20, 22..23): a drag along the east
@@ -1601,7 +1597,7 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
         .world
         .add(hall.0, hall.1)
         .unwrap();
-    assert_eq!(id, 19);
+    assert_eq!(id, 13);
     app.game.as_mut().unwrap().world.begin();
     app.pass(
         160,
@@ -1615,7 +1611,7 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
     app.pass(180, &[Command::Mouse(Mouse::Up)]);
     let adds: Vec<String> = [20, 21, 24, 25]
         .into_iter()
-        .zip(20..)
+        .zip(14..)
         .map(|(y, id)| format!("world add fences/iron/ 19,{y} side 2 id {id}"))
         .chain(["money cash 48000".to_string()])
         .collect();
@@ -1883,7 +1879,7 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
     assert_eq!(app.money().unwrap().cash, 50_000.0 - 5.0 * 125.0);
     // The undo list was cleared. The piece under the pointer has not changed: no pending gate
     // and no cost text, however the pointer moves over it (placing 6.4).
-    assert!(!app.game.as_mut().unwrap().world.undo());
+    assert!(app.game.as_mut().unwrap().world.undo().is_empty());
     for (n, d) in [(1, 0), (2, 1)].into_iter().enumerate() {
         app.pass(212 + n as u64, &[on(&app, north, d)]);
         assert!(told(&app, &["tool pending"]).is_empty());

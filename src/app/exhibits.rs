@@ -5,10 +5,7 @@
 //! (exhibits and money 3.2, 3.4, 3.6).
 
 use super::*;
-use crate::build::cost;
 use crate::config::Config;
-use crate::money::{CONSTRUCTION, CONSTRUCTION_REFUND};
-use crate::place::bulldozer::{refund, type_of};
 use crate::render::order::Kind;
 use crate::text::from_cp1252;
 use crate::timing::ini_whole;
@@ -175,20 +172,9 @@ impl App<'_> {
             return;
         };
         self.tool_lines.push("tool tank answer no".into());
-        let cat = self.renderer.catalogue();
-        let (placed, removed) = game.world.operation();
-        for e in &placed {
-            if let Some(ty) = type_of(cat, e) {
-                game.money.undo_charge(CONSTRUCTION, cost(ty));
-            }
-        }
-        for e in &removed {
-            game.money.undo_refund(CONSTRUCTION_REFUND, refund(cat, e));
-        }
-        game.world.decline_tank(id);
+        let done = game.world.decline_tank(id);
         game.rest.clear();
-        self.exhibits_told();
-        self.aim(false);
+        self.undone(done);
     }
 
     /// Tells the messages about gates of exhibits that have no dialog.

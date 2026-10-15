@@ -260,6 +260,11 @@ impl Session {
     pub fn clear(&mut self) {
         self.touched.clear();
     }
+
+    /// The first state of every touched tile.
+    fn tiles(&self) -> Vec<(usize, Tile)> {
+        self.touched.clone()
+    }
 }
 
 /// What leaving the tool did.
@@ -401,10 +406,11 @@ impl Tool {
     }
 
     /// Pays the session and starts a new one; the cost of the brush is worked out again. A
-    /// session that costs nothing is kept as it is (terrain editing 8.4).
+    /// session that costs nothing is kept as it is (terrain editing 8.4). The undo list becomes
+    /// the one action that takes the whole session back.
     pub fn accept(
         &mut self,
-        world: &World,
+        world: &mut World,
         habits: Habits,
         money: &mut Money,
         lines: &mut Vec<String>,
@@ -414,18 +420,20 @@ impl Tool {
             return false;
         }
         lines.push(format!("accept {}", whole(cost)));
+        world.accepted(self.session.tiles(), cost);
         self.session.clear();
         self.refresh(world, habits);
         true
     }
 
-    /// Takes the session back.
+    /// Takes the session back; the undo list is emptied (terrain editing 8.5).
     pub fn cancel(&mut self, world: &mut World, habits: Habits, lines: &mut Vec<String>) {
         if self.session.touched.is_empty() {
             return;
         }
         lines.push(format!("cancel {}", whole(self.cost(world))));
         self.session.restore(world, habits, &self.types);
+        world.clear_undo();
         self.refresh(world, habits);
     }
 

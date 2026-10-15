@@ -298,6 +298,8 @@ struct Game {
     pointed: Option<i64>,
     /// `[UI] confirmSell`, read when the game opens.
     confirm: bool,
+    /// The Undo button is enabled.
+    undoable: bool,
     /// What the bulldozer would remove now and the removal that is under way.
     dozer: bulldozer::Dozer,
     sweep: Option<bulldozer::Sweep>,
@@ -560,6 +562,7 @@ impl<'a> App<'a> {
             shown: None,
             pointed: None,
             confirm: place::confirm_sell(self.renderer.vfs().ini()),
+            undoable: false,
             dozer: bulldozer::Dozer::default(),
             sweep: None,
             naming: Vec::new(),
@@ -688,6 +691,7 @@ impl<'a> App<'a> {
                 game.money.month, game.money.year
             ));
         }
+        self.undo_button();
         self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.drew.then_some(&self.frame)
@@ -867,6 +871,12 @@ impl<'a> App<'a> {
                     ui.press_button(BULLDOZER);
                 }
             }
+            // The Backspace key presses the undo button (input 10).
+            (Command::Key(Key::Backspace, ..), Some(_)) if keys => {
+                if let Some(ui) = &mut self.ui {
+                    ui.press_button(undo::UNDO);
+                }
+            }
             // The keys and characters go to the focused field or list.
             (Command::Key(key, _, shift), _) => {
                 if let Some(ui) = &mut self.ui {
@@ -1011,9 +1021,10 @@ impl<'a> App<'a> {
     /// drag, or else the pending object, are bought in order. A valid place gets its object, which
     /// is paid and logged (`world add objects/foliage/doumpalm 12,40 id 14908 quadrants 1`, with
     /// the number of quadrants the object holds; a path on water
-    /// logs `world paint 12,40 3` first, one on another path `world remove paths/... 12,40 id 7`;
-    /// a fence is told with its side, `world add fences/... 12,40 side 2 id 8`, and the piece it
-    /// replaces `world remove fences/... 12,40 side 2 id 7`).
+    /// logs `world paint 12,40 3` first; a fence is told with its side, `world add fences/...
+    /// 12,40 side 2 id 8`; a piece that takes the place of another keeps its id when it is a path
+    /// or a fence of the same type, `world retype paths/... 12,40 id 7`, and otherwise logs the
+    /// old one first, `world remove fences/... 12,40 side 2 id 7`).
     /// One sound is asked for the release: the placement sound if anything was placed, else the
     /// refusal sound; a type that turns by itself turns once; the last message of a piece that
     /// could not be placed shows in the message line (`tool message 10311`), and one that gives no
@@ -1092,6 +1103,13 @@ impl<'a> App<'a> {
                     if let Some(kind) = p.paint {
                         self.world_lines.push(format!("paint {x},{y} {kind}"));
                     }
+                    // A piece that keeps its id only takes the new type.
+                    if old == Some(id) {
+                        self.world_lines
+                            .push(format!("retype {name} {tile} id {id}"));
+                        first = first.or(Some(p.ty));
+                        continue;
+                    }
                     if let Some(old) = old {
                         let line = format!("remove {name} {tile} id {old}");
                         self.world_lines.push(line);
@@ -1168,6 +1186,7 @@ impl<'a> App<'a> {
                     };
                     self.ask(kind);
                 }
+                undo::UNDO if self.game.is_some() => self.undo(),
                 _ if self.game.is_some() => self.build(Some(id)),
                 _ if self.game.is_none() => {
                     if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
@@ -1546,8 +1565,10 @@ impl<'a> App<'a> {
     /// then `tool down X,Y` or `tool up X,Y` for a press or release on the map view (the tile, or `none`),
     /// then `world stage` when an edit made the draw stage the map again,
     /// then `terrain enter paint|modify`, `terrain brush SIZE X,Y`, `terrain size N`, `terrain type N`,
-    /// `terrain paint N`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave`
-    /// and `terrain short` for what the terrain tool did,
+    /// `terrain paint N`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave`,
+    /// `terrain short` and `terrain undo N` (the price of the tiles an undo gave back) for what the
+    /// terrain tool did, and `tool undo N` with `world remove|add|retype|skip ... undo` for each
+    /// action an undo took back,
     /// then `money cash N` (whole units) when the cash changed, `money bar TEXT COLOUR` when the
     /// status bar was written, `money set N` and `money add N` when a start set or added cash and
     /// `money month M year Y` at a month change, `money cell ID RRGGBB TEXT` for each cell of the
@@ -1636,6 +1657,7 @@ mod bulldozer;
 mod exhibits;
 mod gates;
 mod terrain;
+mod undo;
 
 #[cfg(test)]
 mod tests;
@@ -1651,3 +1673,6 @@ mod bulldozer_tests;
 
 #[cfg(test)]
 mod money_tests;
+
+#[cfg(test)]
+mod undo_tests;

@@ -490,14 +490,14 @@ fn accept_pays_and_books_the_session_and_cancel_gives_the_tiles_back() {
     // Accept: the cost goes from the cash into the construction account, and a new session starts.
     tool.press(&mut world, &habits, (0, 0), Some((1, 1)), &mut lines);
     lines.clear();
-    assert!(tool.accept(&world, &habits, &mut money, &mut lines));
+    assert!(tool.accept(&mut world, &habits, &mut money, &mut lines));
     assert_eq!(lines, ["accept 120"]);
     assert_eq!(money.cash, 49_880.0);
     assert_eq!(money.total[CONSTRUCTION], 120.0);
     assert_eq!(tool.cost(&world), 0.0);
     assert_eq!(terrain_of(&world, 1, 1), SAND);
     // Nothing to accept now, and a cancel does not give back what was paid.
-    assert!(!tool.accept(&world, &habits, &mut money, &mut lines));
+    assert!(!tool.accept(&mut world, &habits, &mut money, &mut lines));
     tool.cancel(&mut world, &habits, &mut lines);
     assert_eq!(terrain_of(&world, 1, 1), SAND);
 }
@@ -1126,7 +1126,7 @@ fn objects_on_a_changed_tile_take_their_height_from_the_ground_and_undo_gives_it
     // A slope: the tree stands in the middle of the tile.
     drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
     assert_eq!(z(&world, 1), 32);
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     assert_eq!(z(&world, 1), 16);
 }
 

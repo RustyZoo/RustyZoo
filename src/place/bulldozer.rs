@@ -280,6 +280,7 @@ pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) ->
         removed.side = Some(d as u32);
     }
     world.remove(id);
+    world.priced(removed.refund);
     money.refund(CONSTRUCTION_REFUND, removed.refund);
     Some(removed)
 }

@@ -26,6 +26,7 @@ impl UiStrings for Texts {
             160 => "tank drained".into(),
             10552 => "tank objects".into(),
             10571 => "no merge".into(),
+            159 => "blocked: %s".into(),
             6208 => "Exhibit".into(),
             22100 => "$".into(),
             9001 => "Shop".into(),
@@ -41,6 +42,7 @@ impl UiStrings for Texts {
 const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
     [c]\ntype=UIButton\nid=1028\nx=300\ny=220\ndx=8\ndy=8\nstate=2048\ntransparent=0\n\
+    [e]\ntype=UIButton\nid=1075\nx=280\ny=220\ndx=8\ndy=8\nstate=2\ntransparent=0\n\
     [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n";
 const QUESTION: &str = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ntransparent=0\n\
@@ -76,9 +78,9 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
 
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
 /// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40), 8 bench (50,
-/// a scenery object that does not live under water). Every picture is a square around the
-/// anchor: 24 pixels, the tree's 16.
-fn catalogue() -> Catalogue {
+/// a scenery object that does not live under water), 9 stone path (20), 10 steel fence (150) and
+/// 11 its gate. Every picture is a square around the anchor: 24 pixels, the tree's 16.
+pub(super) fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
     cat.push(ty("paths", b"dirt", b"", &cost(10), [2, 2, 1]));
@@ -133,6 +135,11 @@ fn catalogue() -> Catalogue {
         [1, 1, 1],
     ));
     cat.push(ty("objects", b"bench", b"", &cost(50), [1, 1, 1]));
+    cat.push(ty("paths", b"stone", b"", &cost(20), [2, 2, 1]));
+    for subtype in [b"f", b"g"] {
+        let ini = format!("{}[HabitatFence]\n", cost(150));
+        cat.push(ty("fences", b"steel", subtype, &ini, [1, 1, 1]));
+    }
     cat
 }
 
@@ -176,12 +183,12 @@ fn install(name: &str, ini: &str) -> crate::sprite::tests::Install {
     cache_install_with(&format!("app-dozer-{name}"), frame_file(), &ui)
 }
 
-struct Session<'a> {
-    app: App<'a>,
+pub(super) struct Session<'a> {
+    pub(super) app: App<'a>,
     now: u64,
 }
 
-fn with_game(name: &str, ini: &str, body: impl FnOnce(&mut Session)) {
+pub(super) fn with_game(name: &str, ini: &str, body: impl FnOnce(&mut Session)) {
     let install = install(name, ini);
     let mut vfs = Vfs::open(&install.0).unwrap();
     vfs.overlay_ini(&Config::parse(ini.as_bytes()).unwrap())
@@ -200,6 +207,7 @@ fn with_game(name: &str, ini: &str, body: impl FnOnce(&mut Session)) {
     tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
     app.set_interface(Interface::new(tree, Box::new(Texts)));
     app.interface().unwrap().set_hidden(1028, false);
+    app.interface().unwrap().set_hidden(1075, false);
     let mut money = Money::default();
     money.set_cash(50_000.0);
     app.set_money(money);
@@ -209,8 +217,19 @@ fn with_game(name: &str, ini: &str, body: impl FnOnce(&mut Session)) {
 }
 
 impl Session<'_> {
+    /// One pass; every line, without its lead.
+    pub(super) fn log(&mut self, commands: &[Command]) -> Vec<String> {
+        self.now += 20;
+        self.app.pass(self.now, commands);
+        self.app
+            .log_lines(self.now / 20, self.now)
+            .into_iter()
+            .filter_map(|l| Some(l.split_once(" t=")?.1.split_once(' ')?.1.to_string()))
+            .collect()
+    }
+
     /// One pass; the lines this file looks at, without their lead.
-    fn pass(&mut self, commands: &[Command]) -> Vec<String> {
+    pub(super) fn pass(&mut self, commands: &[Command]) -> Vec<String> {
         self.now += 20;
         self.app.pass(self.now, commands);
         self.app
@@ -237,7 +256,7 @@ impl Session<'_> {
     }
 
     /// A window point inside tile (`tx`, `ty`), at the local point (`lx`, `ly`).
-    fn at(&self, tx: i32, ty: i32, lx: i32, ly: i32) -> Command {
+    pub(super) fn at(&self, tx: i32, ty: i32, lx: i32, ly: i32) -> Command {
         let c = self.app.camera().unwrap();
         let p = project(c.rotation, 64 * tx + lx, 64 * ty + ly, 0);
         Command::Mouse(Mouse::Move(p.0 - c.scroll.0, p.1 - c.scroll.1))
@@ -251,12 +270,23 @@ impl Session<'_> {
         Command::Mouse(Mouse::Move(p.0 + dx - c.scroll.0, p.1 + dy - c.scroll.1))
     }
 
-    fn click(&mut self, at: Command) -> Vec<String> {
+    pub(super) fn click(&mut self, at: Command) -> Vec<String> {
         self.pass(&[at, Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)])
     }
 
-    /// Adds an entity of the catalogue at a world position.
-    fn add(&mut self, ty: usize, x: i32, y: i32, rotation: u32) -> u32 {
+    /// The same, with every line of the pass.
+    pub(super) fn click_log(&mut self, at: Command) -> Vec<String> {
+        self.log(&[at, Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)])
+    }
+
+    /// An entity of the catalogue at a world position, and how it takes its place.
+    pub(super) fn entity(
+        &self,
+        ty: usize,
+        x: i32,
+        y: i32,
+        rotation: u32,
+    ) -> (Entity, Option<crate::world::Shape>) {
         let t = &self.app.renderer.catalogue().types[ty];
         let text = |b: &[u8]| b.iter().map(|&c| char::from(c)).collect::<String>();
         let fence = matches!(t.class, "fences").then_some(Fence {
@@ -283,6 +313,12 @@ impl Session<'_> {
             }),
         };
         let shape = self.app.renderer.shape(&entity);
+        (entity, shape)
+    }
+
+    /// Adds an entity of the catalogue at a world position.
+    pub(super) fn add(&mut self, ty: usize, x: i32, y: i32, rotation: u32) -> u32 {
+        let (entity, shape) = self.entity(ty, x, y, rotation);
         self.app
             .game
             .as_mut()
@@ -292,29 +328,29 @@ impl Session<'_> {
             .unwrap()
     }
 
-    fn fence(&mut self, ty: usize, tx: i32, ty_: i32, side: u32) -> u32 {
+    pub(super) fn fence(&mut self, ty: usize, tx: i32, ty_: i32, side: u32) -> u32 {
         let (x, y) = [(32, 0), (63, 32), (32, 63), (0, 32)][side as usize / 2];
         self.add(ty, tx * 64 + x, ty_ * 64 + y, side)
     }
 
-    fn cash(&self) -> f32 {
+    pub(super) fn cash(&self) -> f32 {
         self.app.money().unwrap().cash
     }
 
-    fn count(&self) -> usize {
+    pub(super) fn count(&self) -> usize {
         self.app.game.as_ref().unwrap().world.zoo.entities.len()
     }
 
-    fn cost(&self) -> Option<i64> {
+    pub(super) fn cost(&self) -> Option<i64> {
         self.app.game.as_ref().unwrap().cost()
     }
 
-    fn asking(&mut self) -> bool {
+    pub(super) fn asking(&mut self) -> bool {
         self.app.interface().unwrap().modal_open()
     }
 }
 
-const DELETE: Command = Command::Key(Key::Delete, false, false);
+pub(super) const DELETE: Command = Command::Key(Key::Delete, false, false);
 
 #[test]
 fn the_delete_key_and_the_button_make_the_bulldozer_the_tool_and_escape_drops_it() {
@@ -705,8 +741,8 @@ fn no_undoes_what_made_the_tank_and_gives_its_money_back() {
         assert_eq!(told[0], "tool tank answer no");
         assert!(!s.asking());
         assert_eq!(s.count(), 1, "the bench stays, the four walls are gone");
-        // The four walls were not paid in this test; their price (100 each) comes back whole.
-        assert_eq!(s.cash(), 50_400.0);
+        // The four walls were placed free by this test, so nothing comes back.
+        assert_eq!(s.cash(), 50_000.0);
         let world = &s.app.game.as_ref().unwrap().world;
         assert!(world.exhibits().list().is_empty());
         assert_eq!(world.exhibits().counter, 1);

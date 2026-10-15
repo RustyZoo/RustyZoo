@@ -149,7 +149,8 @@ usage: rustyzoo [--data <dir>] <command>
                       scenery or a building places it when the cash covers its cost (a path is
                       dragged: the pieces of an L from the press tile, the first leg along the axis
                       of the first tile entered, bought in order, `world paint X,Y 3` first on a
-                      water tile, `world remove ...` for a path it replaces; a fence is dragged
+                      water tile, `world retype ...` for a path or a fence of the same type it replaces, which keeps
+                      its id, and `world remove ...` then `world add ...` for a fence of another type; a fence is dragged
                       along the side of its tile the press is nearest to, `smartFences` of `[UI]`
                       keeps it off large objects; `world add CLASS/TYPE/SUBTYPE X,Y id N quadrants Q`
                       (a recolourable building stores the default colour of each group), `X,Y
@@ -203,7 +204,20 @@ usage: rustyzoo [--data <dir>] <command>
                       `world gate CLASS/TYPE/g X,Y side S id N`, `exhibit gate ID X,Y side S`),
                       books the price as construction and clears the undo list; any other place
                       does nothing and says nothing, except that a gate the cash does not cover
-                      shows `tool message 10002`. A fence that closes
+                      shows `tool message 10002`. The undo button (1075, grey
+                      until something can be undone) and the Backspace key take back the actions
+                      of the last press and release, the last first (`tool undo N`): a placed
+                      object goes with its full price back (`world remove CLASS/TYPE/SUBTYPE X,Y
+                      [side S] id N undo`), a removed one comes back with its rotation, life and
+                      state and its refund is taken back (`world add ... undo`), a piece laid on
+                      another gets its old type back (`world retype ... undo`), terrain tiles are
+                      restored and the price of an accepted session given back (`terrain undo
+                      N`), and an exhibit that a fence cut or opened gets its name and gate back
+                      (`exhibit ...` lines); no name is asked. A removed object that cannot be
+                      put back (`world blocked ...`) stops the undo with message 159 and keeps
+                      the rest of the list, except among several removed objects, when it is
+                      passed over (`world skip ... undo`). The first action of a press empties the
+                      list, a press that does nothing keeps it. A fence that closes
                       an area of tank walls only makes a tank (\"Tank N\" or \"Show Tank N\"): its
                       ground is levelled flat, lowered by `initialSink` of tanks.cfg and given the
                       floor `tankTerrain` (`tankTerrainShow` for a show tank), its walls

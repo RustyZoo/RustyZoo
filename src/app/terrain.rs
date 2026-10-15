@@ -39,7 +39,7 @@ impl Game {
     }
 
     /// The highlights of the tool, which the next draw stages when they changed.
-    fn terrain_marks(&mut self, cat: &Catalogue) {
+    pub(super) fn terrain_marks(&mut self, cat: &Catalogue) {
         self.marks = self.terrain.marks(&self.world, &|e: &Entity| habit(cat, e));
     }
 }
@@ -86,7 +86,7 @@ impl App<'_> {
     }
 
     /// Writes the panel again when what it shows changed.
-    fn terrain_refresh(&mut self) {
+    pub(super) fn terrain_refresh(&mut self) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
@@ -208,7 +208,7 @@ impl App<'_> {
             }
             Press::Accept => {
                 game.terrain
-                    .accept(&game.world, &habits, &mut game.money, lines);
+                    .accept(&mut game.world, &habits, &mut game.money, lines);
             }
             Press::Cancel => game.terrain.cancel(&mut game.world, &habits, lines),
             Press::Mode(id, contiguous, level) => {

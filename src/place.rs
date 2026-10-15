@@ -906,7 +906,7 @@ pub enum Outcome {
 /// insufficient funds, an invalid one its stored message, or else, when the type only lives in
 /// water and its own tile is not water, the water message (the second look of 5.1). Scenery,
 /// buildings, paths and fences are placed here: a path on water paints its tile first, one on a
-/// path takes the old piece away (placing 5.3), and so does a fence on a held slot (placing 6.3).
+/// path and a fence on a held slot take the old piece's place (placing 5.3, 6.3).
 /// `shape` tells how the new entity takes its place, `water` which terrain types are water and
 /// `colors` the colour choices a new building starts with.
 pub fn place(
@@ -936,30 +936,35 @@ pub fn place(
     let entity = entity(ty, p, colors);
     let shape = shape(&entity);
     let tile = world.tile_index(p.tile.0, p.tile.1);
+    // The painting of a path on water is its own action, with no price: only the path's own price comes
+    // back on undo (placing 5.3, 8).
+    let mut paint = 0.0;
     if class == Class::Path
         && let (Some(kind), Some(t)) = (p.paint, tile)
     {
         let at = world.zoo.tiles[t];
         world.set_tile(p.tile.0, p.tile.1, at.elevation, at.shape, kind);
+        paint = (p.price - cost(ty)).max(0.0);
     }
-    // A path or a fence takes the place of the piece on its tile or its slot.
+    // A path or a fence takes the place of the piece on its tile or its slot: the old piece stays
+    // in its place of the entity list and takes the new type (placing 5.3, 6.3).
     let old = match class {
         Class::Path => tile.and_then(|t| world.path(t)),
         Class::Fence => tile.and_then(|t| world.edge(t, p.facing as usize)),
         Class::Fixed => None,
     };
+    // A path on a path of the same type records nothing, so there is no price to tell.
+    let quiet = class == Class::Path && old.is_some_and(|o| world.same_type(o, &entity));
     let old = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id));
     let added = match (old, class) {
-        // A fence takes the place of the piece as one change: its exhibit stays closed.
-        (Some(id), Class::Fence) => world.swap(id, entity, shape),
-        (Some(id), _) => {
-            world.remove(id);
-            world.add(entity, shape)
-        }
-        (None, _) => world.add(entity, shape),
+        (Some(id), Class::Fence | Class::Path) => world.swap(id, entity, shape),
+        (_, _) => world.add(entity, shape),
     };
     match added {
         Some(id) => {
+            if !quiet {
+                world.priced(p.price - paint);
+            }
             money.charge(CONSTRUCTION, p.price);
             Outcome::Placed(id)
         }
