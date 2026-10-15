@@ -696,6 +696,8 @@ fn the_exhibit_whose_gate_moves_into_a_new_tank_gets_another_gate() {
     // The exhibit has another gate and the old one is an ordinary wall.
     let new = world.exhibits().get(exhibit).unwrap().gate.unwrap();
     assert_ne!(new, gate);
+    // It is on the first pair of the exhibit's boundary: the north side of its only tile.
+    assert_eq!(world.edge(2 * width + 4, 0), world.find(new));
     assert!(world.take_events().contains(&Event::Gate(exhibit)));
     assert_eq!(world.zoo.entities[world.find(gate).unwrap()].subtype, "f");
     assert_eq!(world.zoo.entities[world.find(new).unwrap()].subtype, "g");
@@ -983,4 +985,29 @@ fn a_wall_copied_by_the_wall_step_is_undone_as_a_placement_of_its_type() {
         .filter(|s| matches!(s, Step::Copied(spot, _) if spot.name == "tank//f"))
         .count();
     assert_eq!(copies, 1, "{:?}", done.steps);
+}
+
+#[test]
+fn a_morph_without_a_gate_starts_at_the_changed_line() {
+    // A land exhibit (2,2)-(3,3) with no gate, closed by tank walls but for the piece on tile
+    // (3,3) towards the east. A tank wall in its place makes it a tank, filled from (3,3) and
+    // with its gate walk started at the pair ((3,3), (4,3)), not at the first pair of the old
+    // boundary list on the top row.
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    pieces.retain(|&(_, p)| p != (3, 3, 2));
+    pieces.push(("fences", (3, 3, 2)));
+    let mut world = tanks(&pieces, &[], &[]);
+    assert!(world.exhibits().list()[0].gate.is_none());
+    world.begin();
+    let id = at(&world, 3, 3, 2);
+    let e = wall("tank", (3, 3, 2));
+    world.swap(id, e.clone(), tank_shape(&e)).unwrap();
+    for id in world.waiting() {
+        world.give_gate(id);
+    }
+    let t = |x: usize, y: usize| y * SIZE as usize + x;
+    let new = world.exhibits().list()[0].clone();
+    assert!(new.tank.is_some());
+    assert_eq!(new.order, [t(2, 2), t(3, 2), t(2, 3), t(3, 3)]);
+    assert_eq!(world.gate_slot(new.id), Some((t(3, 3), 2)));
 }

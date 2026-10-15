@@ -93,6 +93,30 @@ impl World {
         }
     }
 
+    /// While a zoo loads, the gate walk runs for an exhibit whose record stores no gate (3.8),
+    /// from the line its file closes last. Nothing is told about it.
+    pub(super) fn walk_loaded(&mut self) {
+        let records: Vec<(i32, i32)> = (self.zoo.habitat_tiles.iter())
+            .zip(&self.zoo.habitat_gates)
+            .filter(|(_, ((x, _), _))| *x < 0)
+            .map(|(&tile, _)| tile)
+            .collect();
+        for (x, y) in records {
+            let id = self
+                .tile_index(x, y)
+                .and_then(|t| self.exhibits.region(t))
+                .filter(|&r| r != GROUNDS && r != EXTERIOR);
+            let line = id
+                .and_then(|id| self.exhibits.get(id))
+                .and_then(|e| exhibit::closed_last(self, &e.order));
+            if let Some((id, (inside, across, placed))) = id.zip(line) {
+                let told = self.events.len();
+                self.choose_gate(id, (inside, across), placed);
+                self.events.truncate(told);
+            }
+        }
+    }
+
     /// The exhibit whose gate the fence piece at `at` could become with the gate tool (placing
     /// 6.4 items 1 to 3; item 4 is [`World::tank_holds_object`]): the piece is of an exhibit fence type that has a gate, the tile across
     /// is on the map and its slot on the line is empty, one tile of the line is in the zoo
@@ -357,16 +381,52 @@ impl World {
         let mut starts: HashMap<u32, Pair> = HashMap::new();
         let mut regate = Vec::new();
         let mut kept_ids = HashSet::new();
+        // The tiles beside the piece: the fill of a region that changed starts at the one it
+        // holds (3.1).
+        let beside: Vec<usize> = hint
+            .into_iter()
+            .flat_map(|(a, d)| [Some(a), self.neighbour(a, d)])
+            .flatten()
+            .collect();
         for (i, ((part, w), kind)) in parts.iter().zip(&winner).zip(&kinds).enumerate() {
+            let filled = |from: Option<usize>, was: Option<u32>| {
+                let start = from.or_else(|| {
+                    let held = |t: &usize| part.tiles.contains(t);
+                    let mine = |t: &usize| was.is_some() && old.region(*t) == was;
+                    let side = beside.iter().copied().filter(held);
+                    side.clone().find(mine).or(side.clone().next())
+                });
+                let start = start.or(part.tiles.iter().copied().min());
+                Part {
+                    tiles: start.map_or(Vec::new(), |s| exhibit::fill(self, s)),
+                    grounds: false,
+                }
+            };
             match w.and_then(|id| old.get(id)) {
                 Some(e) => {
                     kept_ids.insert(e.id);
+                    let same = e.order.len() == part.tiles.len()
+                        && part.tiles.iter().all(|&t| old.region(t) == Some(e.id));
+                    let part = match same {
+                        true => &Part {
+                            tiles: e.order.clone(),
+                            grounds: false,
+                        },
+                        false => &filled(None, Some(e.id)),
+                    };
                     next.keep(e.clone(), part);
                     if self.missing(e) {
                         regate.push(e.id);
                     }
                 }
                 None => {
+                    let merged = (olds[i].len() > 1)
+                        .then(|| morphed.get(&i).map(|&x| filled(None, Some(x)).tiles))
+                        .flatten();
+                    let start = morphed
+                        .get(&i)
+                        .and_then(|&x| self.morph_start(&old, x, part, &beside, merged.as_deref()));
+                    let part = &filled(start.map(|s| s.0), None);
                     let number = next.counter;
                     next.counter += u32::from(!quiet);
                     let word = &self.words[kind.map_or(0, |show| 1 + usize::from(show))];
@@ -381,10 +441,7 @@ impl World {
                         }
                         None => self.events.push(Event::New { id, ask: !quiet }),
                     }
-                    if let Some(start) = morphed
-                        .get(&i)
-                        .and_then(|&x| self.morph_start(&old, x, part))
-                    {
+                    if let Some(start) = start {
                         starts.insert(id, start);
                     }
                 }
@@ -403,6 +460,15 @@ impl World {
             });
         }
         next.exterior(self);
+        // A morph refills the region across its start pair from that tile (3.1).
+        for (&id, &(_, out)) in &starts {
+            if let Some(r) = next
+                .region(out)
+                .filter(|&r| r != GROUNDS && r != EXTERIOR && r != id)
+            {
+                next.reorder(r, exhibit::fill(self, out));
+            }
+        }
         // The tiles of the tanks that are gone, which keep their ground as sand (3.9).
         let gone: Vec<usize> = old
             .list()
@@ -475,11 +541,11 @@ impl World {
         self.exhibits.get(id)?.tank
     }
 
-    /// The tiles of exhibit `id`.
+    /// The tiles of exhibit `id`, in the original's order (3.1).
     pub fn tiles_of(&self, id: u32) -> Vec<usize> {
-        (0..self.zoo.tiles.len())
-            .filter(|&t| self.exhibits.region(t) == Some(id))
-            .collect()
+        self.exhibits
+            .get(id)
+            .map_or_else(Vec::new, |e| e.order.clone())
     }
 
     /// Whether the region `tiles` is a tank, and then whether it is a show tank (exhibits and
@@ -626,27 +692,48 @@ impl World {
         }
     }
 
-    /// The pair the gate of a new exhibit that replaces the old exhibit `x` starts from (3.9
-    /// morph): the inside tile of the old gate, or else the first pair of the boundary of the
-    /// part whose tile outside is in the zoo.
-    fn morph_start(&self, old: &Exhibits, x: u32, part: &Part) -> Option<Pair> {
+    /// The pair the gate walk and the fill of a new exhibit that replaces the old exhibit `x`
+    /// start from (3.9 morph): the old gate's inside tile and the tile across; without a gate the
+    /// old exhibit's tile on the changed line `beside` and the tile across, or after a merge the
+    /// first pair of the boundary list of the survivor's new tile list `merged`, stepped by the
+    /// gate walk while the tile outside is not in the zoo.
+    fn morph_start(
+        &self,
+        old: &Exhibits,
+        x: u32,
+        part: &Part,
+        beside: &[usize],
+        merged: Option<&[usize]>,
+    ) -> Option<Pair> {
         let gate = old.get(x)?.gate.and_then(|g| self.slot_of(self.find(g)?));
+        let held: HashSet<usize> = part.tiles.iter().copied().collect();
         if let Some((t, d)) = gate {
             let n = self.neighbour(t, d)?;
-            return Some(match part.tiles.contains(&t) {
+            return Some(match held.contains(&t) {
                 true => (t, n),
                 false => (n, t),
             });
         }
-        let mut tiles = part.tiles.clone();
-        tiles.sort_unstable();
-        tiles.into_iter().find_map(|t| {
-            [0, 2, 4, 6]
-                .into_iter()
-                .filter_map(|d| self.neighbour(t, d))
-                .find(|&n| !part.tiles.contains(&n) && self.in_zoo(n))
-                .map(|n| (t, n))
-        })
+        let inside = |t: usize| held.contains(&t);
+        let mut pair = match merged {
+            Some(order) => {
+                let (t, n) = *exhibit::boundary_of(self, order, &inside).first()?;
+                (t, n?)
+            }
+            None => {
+                let t = beside.iter().copied().find(|&t| old.region(t) == Some(x))?;
+                let n = beside.iter().copied().find(|&n| n != t)?;
+                (t, n)
+            }
+        };
+        let mut seen = HashSet::new();
+        while !self.in_zoo(pair.1) && seen.insert(pair) {
+            match self.step_in(&inside, pair) {
+                Some(next) => pair = next,
+                None => break,
+            }
+        }
+        Some(pair)
     }
 
     /// Which of two exhibits that became one stays (exhibits and money 3.3); a tank that joins a
@@ -730,7 +817,7 @@ impl World {
     }
 
     /// The side of tile `from` towards tile `to`.
-    fn side_to(&self, from: usize, to: usize) -> Option<usize> {
+    pub(super) fn side_to(&self, from: usize, to: usize) -> Option<usize> {
         (0..4)
             .map(|d| d * 2)
             .find(|&d| self.neighbour(from, d) == Some(to))
@@ -814,8 +901,12 @@ impl World {
     }
 
     /// The step of the walk round the boundary of exhibit `id` from a pair; `None` at a pinch.
-    pub(super) fn step(&self, id: u32, (i, o): Pair) -> Option<Pair> {
-        let inside = |t: usize| self.exhibits.region(t) == Some(id);
+    pub(super) fn step(&self, id: u32, pair: Pair) -> Option<Pair> {
+        self.step_in(&|t| self.exhibits.region(t) == Some(id), pair)
+    }
+
+    /// The same step for the exhibit whose tiles `inside` tells.
+    fn step_in(&self, inside: &dyn Fn(usize) -> bool, (i, o): Pair) -> Option<Pair> {
         let d = self.side_to(o, i)?;
         let s = (d + 6) % 8;
         let (i2, o2) = (self.neighbour(i, s), self.neighbour(o, s));
