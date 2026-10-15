@@ -50,12 +50,24 @@ const FENCE: Shape = Shape {
     kind: Kind::Edge,
     footprint: (1, 1),
     fence: true,
+    wall: true,
+    gate: false,
+};
+
+const NOTHING: Shape = Shape {
+    kind: Kind::Fixed,
+    footprint: (1, 1),
+    fence: false,
+    wall: false,
+    gate: false,
 };
 
 const GATE: Shape = Shape {
     kind: Kind::Fixed,
     footprint: (2, 2),
     fence: false,
+    wall: false,
+    gate: true,
 };
 
 /// The shape of the entities of these tests, by class.
@@ -63,19 +75,20 @@ fn shape(e: &Entity) -> Option<Shape> {
     match e.class.as_str() {
         "fences" => Some(FENCE),
         "gate" => Some(GATE),
+        // An exhibit fence that is not the zoo wall.
         "plain" => Some(Shape {
-            fence: false,
+            wall: false,
             ..FENCE
         }),
         "path" => Some(Shape {
             kind: Kind::Path,
             footprint: (2, 2),
-            fence: false,
+            ..NOTHING
         }),
         "tent" => Some(Shape {
             kind: Kind::Fixed,
             footprint: (4, 2),
-            fence: false,
+            ..NOTHING
         }),
         _ => None,
     }
@@ -118,18 +131,36 @@ fn the_fill_from_beyond_the_entrance_stops_at_the_wall() {
 fn an_opening_in_the_wall_lets_the_fill_through() {
     let world = walled(&[2]);
     assert_eq!(zoo_tiles(&world), [(1, 4)], "only the tile of the gate");
-    // A fence that is not a fence of exhibits does not stop it.
+    // Only the zoo wall stops it: a fence of an exhibit does not.
     let mut zoo = zoo(4, 1, (0, 0));
+    zoo.entities.push(entity("gate", 32, 32, 2));
     zoo.entities.push(entity("plain", 64 + 63, 32, 2));
-    assert!(zoo_tiles(&World::new(zoo, shape)).is_empty());
+    assert_eq!(zoo_tiles(&World::new(zoo, shape)), [(0, 0)]);
 }
 
 #[test]
-fn the_fill_needs_an_entrance_on_the_map() {
+fn no_fill_enters_a_gate_and_a_far_gate_stops_it_too() {
+    // The entrance gate faces east out of tile (0, 0): the fill starts on (1, 0). Another gate
+    // on tile (2, 0) is not entered, so the tiles behind it stay in the zoo.
+    let mut zoo = zoo(4, 1, (0, 0));
+    zoo.entities.push(entity("gate", 32, 32, 2));
+    zoo.entities.push(entity("gate", 2 * 64 + 32, 32, 2));
+    assert_eq!(zoo_tiles(&World::new(zoo, shape)), [(0, 0), (2, 0), (3, 0)]);
+}
+
+#[test]
+fn the_fill_needs_an_entrance_building_on_the_map() {
     let world = World::new(zoo(4, 4, (9, 9)), shape);
     assert_eq!(zoo_tiles(&world).len(), 16);
     let world = World::new(zoo(4, 4, (u32::MAX, 0)), shape);
     assert_eq!(zoo_tiles(&world).len(), 16);
+    // Nothing holds the quadrant of the entrance tile: nothing is marked.
+    let world = World::new(zoo(4, 4, (1, 1)), shape);
+    assert_eq!(zoo_tiles(&world).len(), 16);
+    // A building that faces off the map: nothing is marked either.
+    let mut zoo = zoo(4, 4, (0, 1));
+    zoo.entities.push(entity("gate", 32, 64 + 32, 6));
+    assert_eq!(zoo_tiles(&World::new(zoo, shape)).len(), 16);
 }
 
 #[test]
@@ -256,40 +287,58 @@ fn edge_states_follow_the_rule_for_slopes() {
     assert_eq!(world.zoo.tiles[0].edges >> 4 & 3, 1);
 }
 
-/// On the shipped maps the fill finds an exterior and keeps the entrance tile in the zoo.
+/// The `.zoo` members of the game or trial in `ZT_DATA_DIR`.
+fn shipped() -> (crate::vfs::Vfs, Vec<String>) {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let maps = vfs
+        .list(None)
+        .into_iter()
+        .filter(|m| m.to_ascii_lowercase().ends_with(".zoo"))
+        .collect();
+    (vfs, maps)
+}
+
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
-fn the_fill_finds_an_exterior_on_the_shipped_maps() {
+fn the_exterior_matches_the_original_on_the_shipped_maps() {
     use crate::entity::Catalogue;
     use crate::render::MapRenderer;
-    use crate::vfs::Vfs;
-    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
-    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let (vfs, _) = shipped();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let renderer = MapRenderer::new(&vfs, &catalogue);
-    let mut maps = 0;
-    for member in vfs.list(None) {
-        if !member.to_ascii_lowercase().ends_with(".zoo") {
-            continue;
-        }
-        let Ok(zoo) = Zoo::parse(&vfs.read(&member).unwrap()) else {
+    for (map, want) in [
+        ("lvalley", 14150),
+        ("svolcano", 3324),
+        ("tundra", 4014),
+        ("lunar", 8478),
+        ("lg_sandy", 9735),
+        ("crater", 14407),
+        ("default", 3075),
+    ] {
+        let zoo = Zoo::parse(&vfs.read(&format!("maps/{map}.zoo")).unwrap()).unwrap();
+        let tiles = zoo.tiles.len();
+        let world = World::new(zoo, |e| renderer.shape(e));
+        assert_eq!(
+            (0..tiles).filter(|&t| world.in_zoo(t)).count(),
+            want,
+            "{map}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn edge_states_match_the_shipped_maps() {
+    let (vfs, maps) = shipped();
+    assert!(!maps.is_empty());
+    for map in maps {
+        let Ok(zoo) = Zoo::parse(&vfs.read(&map).unwrap()) else {
             continue;
         };
-        let (entrance, size) = (zoo.entrance, (zoo.width, zoo.height));
-        let world = World::new(zoo, |e| renderer.shape(e));
-        let inside = (0..(size.0 * size.1) as usize)
-            .filter(|&t| world.in_zoo(t))
+        let wrong = (0..zoo.tiles.len())
+            .filter(|&t| edge_states(&zoo, t) != zoo.tiles[t].edges)
             .count();
-        let gate = world
-            .tile_index(entrance.0 as i32, entrance.1 as i32)
-            .unwrap();
-        // The entrance building is not crossed by the fill, so its tile stays in the zoo.
-        assert!(world.in_zoo(gate), "{member}");
-        assert!(
-            inside < (size.0 * size.1) as usize,
-            "{member}: some tiles are outside"
-        );
-        maps += 1;
+        assert_eq!(wrong, 0, "{map}");
     }
-    assert!(maps > 50);
 }

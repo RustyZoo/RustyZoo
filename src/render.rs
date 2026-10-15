@@ -514,6 +514,8 @@ impl<'a> MapRenderer<'a> {
             kind: Kind::of_class(&entity.class),
             footprint: (ty.footprint[0], ty.footprint[1]),
             fence: habitat_fence(ty),
+            wall: member(ty, "zoowall"),
+            gate: member(ty, "zoogate"),
         })
     }
 
@@ -1209,6 +1211,14 @@ struct Meta<'a> {
     mode: u32,
     /// A tank wall that is a portal.
     portal: bool,
+}
+
+/// Whether the `[Member]` list of the type holds this name.
+fn member(ty: &EntityType, name: &str) -> bool {
+    ty.config
+        .as_deref()
+        .and_then(|c| c.section("Member"))
+        .is_some_and(|m| m.has(name))
 }
 
 /// Whether the type is a habitat fence: a fence or tank wall whose definition has a

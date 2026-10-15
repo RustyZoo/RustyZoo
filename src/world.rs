@@ -20,6 +20,10 @@ pub struct Shape {
     pub footprint: (i32, i32),
     /// A fence or tank wall that closes exhibits (the type has a habitat or tank fence section).
     pub fence: bool,
+    /// A zoo wall (the `[Member]` list of the type holds `zoowall`): it stops the exterior fill.
+    pub wall: bool,
+    /// A zoo gate (the `[Member]` list holds `zoogate`): the exterior fill never enters it.
+    pub gate: bool,
 }
 
 /// What an operation did, to undo it.
@@ -199,9 +203,11 @@ impl World {
         }
     }
 
-    /// Marks the tiles outside the zoo wall: the program walks from the entrance tile in the
-    /// facing direction of the building that holds it until it leaves that building, and fills
-    /// from there through every edge that holds no fence of an exhibit (exhibits and money 3.1).
+    /// Marks the tiles outside the zoo wall (exhibits and money 3.1). The entrance tile's quadrant
+    /// 3 (local 32.., 32..) must hold the entrance building; the program walks from the entrance
+    /// in the building's facing direction while the tile reached holds it in that quadrant, and
+    /// fills from the first tile that does not. The fill never enters a tile whose quadrant 3
+    /// holds a zoo gate and never crosses a zoo wall.
     fn mark_exterior(&mut self) {
         let (ex, ey) = self.zoo.entrance;
         let Some(mut t) = i32::try_from(ex)
@@ -211,29 +217,21 @@ impl World {
         else {
             return;
         };
-        let held = |w: &World, t: usize, o: usize| {
-            (0..4).any(|q| w.scene.quadrant_object(t, q) == Some(o))
+        let Some(building) = self.scene.quadrant_object(t, 3) else {
+            return;
         };
-        // The tiles of the entrance building are not crossed: they join the exterior to the
-        // zoo, and the exterior is what lies outside the wall.
-        let mut gate = None;
-        if let Some(o) = (0..4).find_map(|q| self.scene.quadrant_object(t, q)) {
-            gate = Some(o);
-            let facing = self.scene.objects[o].facing as usize;
-            for _ in 0..self.scene.width + self.scene.height {
-                match self.scene.neighbour(t, facing) {
-                    Some(next) => t = next,
-                    None => return,
-                }
-                if !held(self, t, o) {
-                    break;
-                }
+        let facing = self.scene.objects[building].facing as usize;
+        while self.scene.quadrant_object(t, 3) == Some(building) {
+            match self.scene.neighbour(t, facing) {
+                Some(next) => t = next,
+                None => return,
             }
         }
-        let closes = |w: &World, t: usize, d: usize| {
+        let shape = |w: &World, o: usize| w.shapes[w.owner[o]];
+        let wall = |w: &World, t: usize, d: usize| {
             w.scene
                 .edge_object(t, d)
-                .is_some_and(|o| w.shapes[w.owner[o]].is_some_and(|s| s.fence))
+                .is_some_and(|o| shape(w, o).is_some_and(|s| s.wall))
         };
         let mut todo = vec![t];
         self.in_zoo[t] = false;
@@ -242,9 +240,11 @@ impl World {
                 let Some(n) = self.scene.neighbour(t, d) else {
                     continue;
                 };
-                let barred = gate.is_some_and(|o| held(self, n, o));
-                if self.in_zoo[n] && !barred && !closes(self, t, d) && !closes(self, n, (d + 4) % 8)
-                {
+                let gate = self
+                    .scene
+                    .quadrant_object(n, 3)
+                    .is_some_and(|o| shape(self, o).is_some_and(|s| s.gate));
+                if self.in_zoo[n] && !gate && !wall(self, t, d) && !wall(self, n, (d + 4) % 8) {
                     self.in_zoo[n] = false;
                     todo.push(n);
                 }
@@ -311,7 +311,9 @@ fn edge_states(zoo: &Zoo, t: usize) -> u8 {
                         (false, _) if n0 > t0 => 2,
                         _ => 3,
                     }
-                } else if t0 < n0 {
+                // The slopes differ: the edges 2 and 4 take the state 2 also when they meet at
+                // the first corner, as the tile later in row order sees them (3.5).
+                } else if t0 < n0 || (t0 == n0 && (d == 2 || d == 4)) {
                     2
                 } else {
                     3
