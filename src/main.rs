@@ -73,8 +73,9 @@ usage: rustyzoo [--data <dir>] <command>
   check-maps          read every .zoo file; list those that fail; exit 1 if one is corrupted
   check-exhibits <map>
                       find the exhibits of the maps matching <map> (a member, or a pattern with *
-                      as for ls) from their fences and compare their number with the habitat
-                      count the file stores; list the sizes; exit 1 if one differs or none matches
+                      as for ls) from their fences, compare their number with the habitat count
+                      the file stores and check that each stored first tile lies in a different
+                      exhibit; list the sizes; exit 1 if one differs or none matches
   render-ani <member.ani> <dir> [--anim NAME]
                       write frame 0 of an animation set as eight PNG files into <dir>, one per
                       screen direction, and print the anchor point; with --anim, the first
@@ -845,7 +846,7 @@ fn map_info(vfs: &Vfs, member: &str) -> Result<(), CliError> {
         "entrance: {},{}",
         zoo.entrance.0, zoo.entrance.1
     ));
-    report.line(format_args!("habitats: {}", zoo.habitat_count));
+    report.line(format_args!("habitats: {}", zoo.habitat_tiles.len()));
     report.line(format_args!("id counter: {}", zoo.id_counter));
     report.line(format_args!("tiles: {}", zoo.tiles.len()));
     let mut terrain = BTreeMap::new();
@@ -952,7 +953,8 @@ fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
 
 /// Finds the regions of the maps that match `pattern` (a member name, or a pattern with `*` as
 /// for `ls`) from their fences and compares the number of exhibits with the habitat count the file
-/// stores. A mismatch is listed and fails the command.
+/// stores, and checks that each stored first tile lies in a different exhibit. A mismatch is
+/// listed and fails the command.
 fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
     let catalogue = Catalogue::load(vfs)?;
     let renderer = MapRenderer::new(vfs, &catalogue);
@@ -980,11 +982,13 @@ fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
                 continue;
             }
         };
-        let stored = zoo.habitat_count;
+        let stored = zoo.habitat_tiles.len();
+        let tiles = zoo.habitat_tiles.clone();
         let world = World::new(zoo, |e| renderer.shape(e));
         let list = world.exhibits().list();
+        let distinct = world.exhibits().distinct(&world, &tiles);
         let sizes: Vec<String> = list.iter().map(|e| e.tiles.to_string()).collect();
-        let verdict = if list.len() == stored {
+        let verdict = if list.len() == stored && distinct == stored {
             agree += 1;
             "ok"
         } else {
@@ -992,7 +996,8 @@ fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
             "MISMATCH"
         };
         report.line(format_args!(
-            "{verdict} {name}: {} exhibits, {stored} stored; sizes [{}]",
+            "{verdict} {name}: {} exhibits, {stored} stored, {distinct} of {stored} stored first \
+             tiles in distinct exhibits; sizes [{}]",
             list.len(),
             sizes.join(" ")
         ));

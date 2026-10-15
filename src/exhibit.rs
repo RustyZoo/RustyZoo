@@ -27,7 +27,9 @@ pub struct Exhibits {
 
 impl Exhibits {
     /// Finds the regions of a world. The exhibits are numbered from 1 in the order of their first
-    /// tile.
+    /// tile. When the entrance tile is itself beyond the wall (an entrance with no building on its
+    /// tile starts the exterior fill there) the map has no zoo grounds and every region that is not
+    /// the exterior is an exhibit.
     pub fn new(world: &World) -> Exhibits {
         let tiles = world.zoo.tiles.len();
         let none = u32::MAX - 1;
@@ -72,6 +74,24 @@ impl Exhibits {
             }
         }
         Exhibits { region, list }
+    }
+
+    /// How many of the tiles `(x, y)` lie in an exhibit that no earlier one lies in: a tile off the
+    /// map, in the zoo grounds or in the exterior does not count, nor does a second one in the same
+    /// exhibit. Equal to the number of exhibits and of tiles when the tiles are the first tiles
+    /// the file stores for its habitats.
+    pub fn distinct(&self, world: &World, tiles: &[(i32, i32)]) -> usize {
+        let mut seen = std::collections::HashSet::new();
+        for &(x, y) in tiles {
+            if let Some(id) = world
+                .tile_index(x, y)
+                .and_then(|t| self.region(t))
+                .filter(|&id| id != GROUNDS && id != EXTERIOR)
+            {
+                seen.insert(id);
+            }
+        }
+        seen.len()
     }
 
     /// The region of tile `t`: [`GROUNDS`], [`EXTERIOR`] or the number of an exhibit (from 1).

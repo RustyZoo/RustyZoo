@@ -159,7 +159,9 @@ pub struct Zoo {
     pub height: u32,
     /// The tile of the zoo entrance.
     pub entrance: (u32, u32),
-    pub habitat_count: usize,
+    /// The first tile of every habitat (exhibit or tank), in file order; the rest of the record
+    /// is skipped.
+    pub habitat_tiles: Vec<(i32, i32)>,
     /// The tank exhibits, in file order.
     pub tanks: Vec<Tank>,
     /// The highest entity id handed out so far.
@@ -342,8 +344,11 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
     let entrance = (r.u32()?, r.u32()?);
     let habitat_count = r.count(HABITAT_MIN)?;
     let mut tanks = Vec::new();
+    let mut habitat_tiles = Vec::new();
     for _ in 0..habitat_count {
-        tanks.extend(habitat(r)?);
+        let (tile, tank) = habitat(r)?;
+        habitat_tiles.push(tile);
+        tanks.extend(tank);
     }
     if v >= 64 {
         r.skip(4)?;
@@ -390,7 +395,7 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
         width,
         height,
         entrance,
-        habitat_count,
+        habitat_tiles,
         tanks,
         id_counter,
         tiles,
@@ -402,7 +407,7 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
 /// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
 const HABITAT_MIN: usize = 76;
 
-fn habitat(r: &mut Reader) -> R<Option<Tank>> {
+fn habitat(r: &mut Reader) -> R<((i32, i32), Option<Tank>)> {
     let v = r.v;
     let tile = (r.i32()?, r.i32()?);
     r.string()?;
@@ -417,7 +422,7 @@ fn habitat(r: &mut Reader) -> R<Option<Tank>> {
         show_info(r)?;
     }
     if !is_tank {
-        return Ok(None);
+        return Ok((tile, None));
     }
     let (height, level) = (r.u32()?, r.u32()?);
     if v >= 88 {
@@ -429,14 +434,17 @@ fn habitat(r: &mut Reader) -> R<Option<Tank>> {
         r.skip(4)?;
         purity = r.u32()?;
     }
-    Ok(Some(Tank {
+    Ok((
         tile,
-        gate,
-        height,
-        level,
-        salt: salt != 0,
-        purity,
-    }))
+        Some(Tank {
+            tile,
+            gate,
+            height,
+            level,
+            salt: salt != 0,
+            purity,
+        }),
+    ))
 }
 
 fn show_info(r: &mut Reader) -> R<()> {

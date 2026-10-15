@@ -61,7 +61,7 @@ fn zoo(fences: &[(i32, i32, u32)]) -> Zoo {
         width: SIZE as u32,
         height: SIZE as u32,
         entrance: (SIZE as u32 - 1, SIZE as u32 - 1),
-        habitat_count: 0,
+        habitat_tiles: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; (SIZE * SIZE) as usize],
@@ -110,6 +110,35 @@ fn a_closed_square_is_an_exhibit() {
     assert_eq!(region(&world, 7, 7), GROUNDS, "the entrance");
     // One tile is an exhibit too.
     assert_eq!(sizes(&World::new(zoo(&square(0, 0, 0, 0)), shape)), [1]);
+}
+
+#[test]
+fn stored_first_tiles_are_matched_one_to_one_with_the_exhibits() {
+    let mut pieces = square(1, 1, 6, 6);
+    pieces.extend(square(3, 3, 4, 4));
+    let world = World::new(zoo(&pieces), shape);
+    let ex = world.exhibits();
+    assert_eq!(ex.distinct(&world, &[(1, 1), (3, 3)]), 2);
+    assert_eq!(
+        ex.distinct(&world, &[(1, 1), (2, 2)]),
+        1,
+        "the same exhibit twice"
+    );
+    assert_eq!(
+        ex.distinct(&world, &[(0, 0), (-1, 0), (9, 9)]),
+        0,
+        "grounds, off the map"
+    );
+}
+
+#[test]
+fn an_entrance_without_a_building_leaves_no_grounds() {
+    // The exterior fill starts on the entrance tile itself and the wall stops it.
+    let mut z = zoo(&square(2, 2, 4, 4));
+    z.entities.remove(0);
+    let world = World::new(z, shape);
+    assert_eq!(region(&world, 7, 7), EXTERIOR);
+    assert_eq!(sizes(&world), [9]);
 }
 
 #[test]

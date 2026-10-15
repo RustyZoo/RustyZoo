@@ -315,7 +315,7 @@ fn reads_the_header_by_version() {
 fn reads_map_size_entrance_counter_and_tiles() {
     let z = parse(&file(70, 4, 3, &[], &[]));
     assert_eq!((z.width, z.height, z.entrance), (4, 3, (11, 42)));
-    assert_eq!((z.habitat_count, z.id_counter), (0, 7777));
+    assert_eq!((z.habitat_tiles.len(), z.id_counter), (0, 7777));
     assert_eq!(z.tiles.len(), 12);
     // Tile 6 is column 2 of row 1: elevation 3, shape 4, terrain 6, edges 6.
     let t = z.tile(2, 1).unwrap();
@@ -339,7 +339,7 @@ fn skips_habitats_and_shows_of_every_version() {
     for v in VERSIONS {
         let z = parse(&file(v, 2, 2, &habitats, &[]));
         assert_eq!(
-            (z.habitat_count, z.id_counter, z.tiles.len()),
+            (z.habitat_tiles.len(), z.id_counter, z.tiles.len()),
             (4, 7777, 4),
             "version {v}"
         );
@@ -865,7 +865,7 @@ fn hostile_input_never_panics() {
 fn the_rich_files_parse() {
     for v in [38, 45, 60, 70, 84, 97, 101, 106] {
         let z = parse(&rich(v));
-        assert_eq!((z.width, z.habitat_count), (3, 2), "version {v}");
+        assert_eq!((z.width, z.habitat_tiles.len()), (3, 2), "version {v}");
         assert!(z.entities[0].common.is_some());
     }
 }
@@ -884,7 +884,7 @@ fn full_game_facts() {
         (70, 1033, 75, 75)
     );
     assert_eq!(
-        (map.entrance, map.habitat_count, map.id_counter),
+        (map.entrance, map.habitat_tiles.len(), map.id_counter),
         ((11, 42), 0, 14907)
     );
     assert_eq!((map.tiles.len(), map.entities.len()), (5625, 392));
@@ -908,7 +908,7 @@ fn full_game_facts() {
         (106, 0, 125, 125)
     );
     assert_eq!(
-        (save.entrance, save.habitat_count, save.id_counter),
+        (save.entrance, save.habitat_tiles.len(), save.id_counter),
         ((12, 73), 6, 166520)
     );
     assert_eq!((save.tiles.len(), save.entities.len()), (15625, 1683));
