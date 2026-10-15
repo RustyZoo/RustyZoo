@@ -263,6 +263,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             "movie ",
             "music ",
             "step ",
+            "terrain ",
             "tool ",
             "ui ",
             "world ",
@@ -731,7 +732,8 @@ mod tests {
                    pass 5 t=80 tool down 12,40\n\
                    pass 5 t=80 tool up none\n\
                    pass 5 t=80 world stage\n\
-                   pass 5 t=80 exhibit 2\n";
+                   pass 5 t=80 exhibit 2\n\
+                   pass 5 t=80 terrain paint 4\n";
         assert_eq!(
             replay(log).unwrap(),
             (

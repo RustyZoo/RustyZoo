@@ -123,6 +123,24 @@ impl World {
         self.scene.edge_object(t, d).map(|o| self.owner[o])
     }
 
+    /// Whether an animal, guest or staff member stands on tile `t`.
+    pub fn unit_on(&self, t: usize) -> bool {
+        let width = self.zoo.width as usize;
+        self.zoo
+            .entities
+            .iter()
+            .zip(&self.shapes)
+            .filter(|(_, s)| s.is_some_and(|s| s.kind == Kind::Unit))
+            .filter_map(|(e, _)| e.common.as_ref())
+            .any(|c| {
+                let (x, y) = (c.x.div_euclid(64), c.y.div_euclid(64));
+                usize::try_from(y)
+                    .ok()
+                    .zip(usize::try_from(x).ok())
+                    .is_some_and(|(y, x)| x < width && y * width + x == t)
+            })
+    }
+
     /// The position of the entity with this id.
     pub fn find(&self, id: u32) -> Option<usize> {
         self.zoo

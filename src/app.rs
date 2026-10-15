@@ -20,13 +20,15 @@ use std::str::FromStr;
 
 use crate::Framebuffer;
 use crate::build::Build;
+use crate::build::terrain::{MINUS, PLUS};
 use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
 use crate::place::{self, Pending, Tints, Verdict};
-use crate::render::{Extra, MapRenderer, RenderError, Staged, check_size};
+use crate::render::{Extra, MapRenderer, Mark, RenderError, Staged, check_size};
 use crate::status::{Finances, STATUS_BUTTON};
+use crate::terrain::Tool;
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
@@ -255,8 +257,10 @@ struct Game {
     camera: Camera,
     calendar: Calendar,
     paused: bool,
-    /// The tile grid is drawn (Ctrl+G).
+    /// The tile grid is drawn (Ctrl+G; the terrain tools force it on), and what the player chose
+    /// with Ctrl+G, which the grid goes back to when the tools are left (input 4.8).
     grid: bool,
+    choice: bool,
     /// The cash and the accounts, and what of them the log and the status bar showed last.
     money: Money,
     told: Option<i64>,
@@ -272,6 +276,11 @@ struct Game {
     tints: Tints,
     /// The transient items the staged picture was made with.
     extra: Extra,
+    /// The terrain tool, the highlights it asks the map to draw (they go to the staging with the
+    /// transient items) and what the terrain panel showed last.
+    terrain: Tool,
+    marks: Vec<Mark>,
+    shown: Option<terrain::Shown>,
 }
 
 pub struct App<'a> {
@@ -307,6 +316,8 @@ pub struct App<'a> {
     /// 12,40`, `world stage`).
     tool_lines: Vec<String>,
     world_lines: Vec<String>,
+    /// What the terrain tool did in the last pass.
+    terrain_lines: Vec<String>,
     /// What the cash and the accounts did and has not been logged yet, and what they did in the
     /// last pass.
     money_events: Vec<String>,
@@ -418,6 +429,7 @@ impl<'a> App<'a> {
             menu_lines: Vec::new(),
             tool_lines: Vec::new(),
             world_lines: Vec::new(),
+            terrain_lines: Vec::new(),
             money_events: Vec::new(),
             money_lines: Vec::new(),
             music: None,
@@ -452,6 +464,7 @@ impl<'a> App<'a> {
             calendar: Calendar::new(),
             paused: false,
             grid: false,
+            choice: false,
             money,
             told: None,
             bar: None,
@@ -461,6 +474,12 @@ impl<'a> App<'a> {
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
             extra: Extra::default(),
+            terrain: Tool::new(
+                crate::terrain::types(self.renderer.vfs()),
+                crate::terrain::elevation_cost(self.renderer.vfs().ini()),
+            ),
+            marks: Vec::new(),
+            shown: None,
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -511,6 +530,7 @@ impl<'a> App<'a> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         self.menu_lines.clear();
         (self.tool_lines, self.world_lines) = (Vec::new(), Vec::new());
+        self.terrain_lines = Vec::new();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
         (self.music_changed, self.music_restarted) = (false, false);
@@ -662,8 +682,8 @@ impl<'a> App<'a> {
             (Command::Pointer(at), _) => self.pointer = at,
             (Command::Quit, _) => self.quit = true,
             (Command::Mouse(mouse), game) => {
-                // A press or release that belongs to the map view reaches the current tool,
-                // which there is none of yet: it is logged with the tile it is on.
+                // A press or release that belongs to the map view is logged with the tile it is
+                // on, and the terrain tool, if it is the map view's tool, acts on the mouse.
                 let on_map = self.ui.as_mut().is_some_and(|ui| ui.mouse(mouse));
                 let phase = match mouse {
                     Mouse::Down | Mouse::Double => Some("down"),
@@ -688,6 +708,7 @@ impl<'a> App<'a> {
                 } else if on_map && mouse == Mouse::Up {
                     self.refuse();
                 }
+                self.terrain_mouse(mouse, on_map);
             }
             (Command::Scroll(x, y), Some(game)) if keys => {
                 game.camera.key_scroll(&game.world.zoo, (x, y));
@@ -696,13 +717,17 @@ impl<'a> App<'a> {
                 let before = game.camera.clone();
                 game.camera.rotate(&game.world.zoo, None, clockwise);
                 // Restage from the new side. If that fails the view stays as it was.
+                let extra = Extra {
+                    marks: game.marks.clone(),
+                    ..Extra::default()
+                };
                 match self
                     .renderer
-                    .stage(&game.world.zoo, game.camera.rotation, false)
+                    .stage_with(&game.world.zoo, game.camera.rotation, false, &extra)
                 {
                     Ok(staged) => {
                         game.staged = staged;
-                        game.extra = Extra::default();
+                        game.extra = extra;
                     }
                     Err(_) => game.camera = before,
                 }
@@ -710,7 +735,10 @@ impl<'a> App<'a> {
             (Command::Zoom(zoom_in), Some(game)) if keys => {
                 game.camera.zoom(&game.world.zoo, None, zoom_in);
             }
-            (Command::Grid, Some(game)) if keys => game.grid = !game.grid,
+            (Command::Grid, Some(game)) if keys => {
+                game.grid = !game.grid;
+                game.choice = game.grid;
+            }
             (Command::Fullscreen(on), Some(game)) => {
                 game.camera.set_fullscreen(&game.world.zoo, on)
             }
@@ -718,6 +746,12 @@ impl<'a> App<'a> {
             // it was, so it is left alone there.
             (Command::Pause, Some(game)) if shown && !modal => game.paused = !game.paused,
             (Command::Space, Some(game)) if keys => game.paused = !game.paused,
+            // The brush keys press the plus and minus buttons of the terrain panel (input 10).
+            (Command::Char(b'+' | b'-'), Some(_)) if keys => {
+                if let (Some(ui), Command::Char(key)) = (&mut self.ui, command) {
+                    ui.press_button(if key == b'+' { PLUS } else { MINUS });
+                }
+            }
             // The keys and characters go to the focused field or list.
             (Command::Key(key, _, shift), _) => {
                 if let Some(ui) = &mut self.ui {
@@ -857,7 +891,9 @@ impl<'a> App<'a> {
         game.build.sync(ui, vfs, cat, &mut self.tool_lines);
         if let Some(id) = selected {
             game.build.selected(ui, vfs, cat, id, &mut self.tool_lines);
+            self.terrain_pressed(id);
         }
+        self.terrain_sync();
         // Every change of the tool or the step tells a line.
         if self.tool_lines.len() != told {
             self.aim(false);
@@ -987,6 +1023,7 @@ impl<'a> App<'a> {
     fn cancel(&mut self, ask: bool) {
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
             if game.build.cancel(ui, &mut self.tool_lines) {
+                self.terrain_sync();
                 return self.aim(false);
             }
             // The main panel is part of the game screen: only the panels opened from it close.
@@ -1093,11 +1130,13 @@ impl<'a> App<'a> {
             self.aim(false);
         }
         let Some(game) = &mut self.game else { return };
-        // The pending object is a transient item: the picture is made again when it changed.
-        let want = game
+        // The pending object and the terrain highlights are transient items: the picture is made
+        // again when they changed.
+        let mut want = game
             .pending
             .as_ref()
             .map_or_else(Extra::default, |p| p.extra(&game.tints));
+        want.marks.clone_from(&game.marks);
         if !dirty && want == game.extra {
             return;
         }
@@ -1175,6 +1214,9 @@ impl<'a> App<'a> {
     /// (`menu continue enabled NAME`, `menu continue disabled`, `menu version V` when it appears, `menu exit`),
     /// then `tool down X,Y` or `tool up X,Y` for a press or release on the map view (the tile, or `none`),
     /// then `world stage` when an edit made the draw stage the map again,
+    /// then `terrain enter paint|modify`, `terrain brush SIZE X,Y`, `terrain size N`, `terrain type N`,
+    /// `terrain paint N`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave`
+    /// and `terrain short` for what the terrain tool did,
     /// then `money cash N` (whole units) when the cash changed, `money bar TEXT COLOUR` when the
     /// status bar was written, `money set N` and `money add N` when a start set or added cash and
     /// `money month M year Y` at a month change, `money cell ID RRGGBB TEXT` for each cell of the
@@ -1193,6 +1235,11 @@ impl<'a> App<'a> {
         lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
         lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
         lines.extend(self.world_lines.iter().map(|e| format!("{lead} world {e}")));
+        lines.extend(
+            self.terrain_lines
+                .iter()
+                .map(|e| format!("{lead} terrain {e}")),
+        );
         lines.extend(self.money_lines.iter().map(|e| format!("{lead} money {e}")));
         if self.fired.draw {
             let hash = match self.drew {
@@ -1249,11 +1296,16 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
     })
 }
 
+mod terrain;
+
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 mod start_tests;
+
+#[cfg(test)]
+mod terrain_tests;
 
 #[cfg(test)]
 mod money_tests;

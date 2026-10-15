@@ -154,6 +154,17 @@ impl Palette {
         }
     }
 
+    /// The palette with every colour replaced by `rgb`, the alpha bytes kept. The transparent
+    /// marker (see [`Palette::zero_is_transparent`]) is kept as it is.
+    pub fn solid(&self, rgb: [u8; 3]) -> Palette {
+        let keep = usize::from(self.zero_is_transparent());
+        let mut colors = self.colors.clone();
+        for c in colors.iter_mut().skip(keep) {
+            *c = [rgb[0], rgb[1], rgb[2], c[3]];
+        }
+        Palette { colors }
+    }
+
     /// The colour of a palette index, as R, G, B, A.
     pub fn color(&self, index: u8) -> Option<[u8; 4]> {
         self.colors.get(usize::from(index)).copied()

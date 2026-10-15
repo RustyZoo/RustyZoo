@@ -25,6 +25,7 @@
 //! list draws its rows from `top`, the selected one with its colours and the hovered one framed;
 //! a text field draws its selection in inverse colours and, focused, its caret; a scroll bar
 //! draws its track (tiled along it), arrows and thumb, each in the look of its state (normal, hovered, held).
+//! An image set draws the one of its pictures that the game's code chose.
 //! Status bars and the other widgets that later milestones fill draw nothing yet.
 
 use std::collections::HashMap;
@@ -182,7 +183,7 @@ impl Painter {
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
-            Kind::Image => {
+            Kind::Image | Kind::ImageSet(_) => {
                 self.picture(pictures, i, e, 0, screen, frame);
                 color_as_icon(frame, e, screen);
             }
@@ -887,9 +888,19 @@ fn button_set(state: u32) -> usize {
     }
 }
 
-/// The picture a widget shows and the set to draw: the first `animation` value, else `normal`;
+/// The picture a widget shows and the set to draw: the first `animation` value (an image set
+/// shows the one the game chose), else `normal`;
 /// a button without animation has an image per state.
 fn current(e: &Element, set: usize) -> Option<(Picture, usize)> {
+    if let Kind::ImageSet(levels) = &e.kind {
+        return e
+            .look
+            .animation
+            .get(levels.shown)
+            .copied()
+            .flatten()
+            .map(|p| (p, set));
+    }
     if let Some(first) = e.look.animation.first() {
         return first.map(|p| (p, set));
     }

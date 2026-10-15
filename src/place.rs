@@ -159,6 +159,7 @@ impl Pending {
                 tint,
             }),
             tinted: self.blocking.iter().map(|&e| (e, tints.invalid)).collect(),
+            marks: Vec::new(),
         }
     }
 }

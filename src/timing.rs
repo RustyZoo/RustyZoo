@@ -141,7 +141,7 @@ impl Timers {
 }
 
 /// The value of a key of a section of the ini file; section and key names ignore case.
-fn ini_value<'a>(ini: &'a Config, section: &str, key: &str) -> Option<&'a [u8]> {
+pub fn ini_value<'a>(ini: &'a Config, section: &str, key: &str) -> Option<&'a [u8]> {
     ini.sections()
         .filter(|(name, _)| name.eq_ignore_ascii_case(section.as_bytes()))
         .find_map(|(_, section)| {
