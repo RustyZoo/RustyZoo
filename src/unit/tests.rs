@@ -435,11 +435,13 @@ fn the_hash_covers_the_animals() {
         keeper_visited: _,
         mourning: _,
         thirsty: _,
+        rampaging: _,
+        rampage: _,
         zap: _,
         reset: _,
         ambient: _,
     } = Animal::default();
-    let changes: [fn(&mut Animal); 28] = [
+    let changes: [fn(&mut Animal); 30] = [
         |a| a.happiness = 1,
         |a| a.hunger = 1,
         |a| a.health = 1,
@@ -465,6 +467,8 @@ fn the_hash_covers_the_animals() {
         |a| a.keeper_visited = true,
         |a| a.mourning = true,
         |a| a.thirsty = true,
+        |a| a.rampaging = true,
+        |a| a.rampage = 1,
         |a| a.zap = 1,
         |a| a.reset = 1,
         |a| a.ambient = true,

@@ -1043,7 +1043,7 @@ fn reads_the_values_counters_and_flags_of_an_animal_record() {
     (10..21).for_each(|n| _ = w.u32(n));
     w.z(4).u32(77).u32(33).u8(1).z(2).u32(55).z(36).z(8);
     w.z(12).u8(1).u8(1).u32(88).u32(0);
-    w.z(9).u8(1).z(1 + 1 + 1 + 8 + 1);
+    w.z(9).u8(1).u8(1).z(1).u8(1).u32(5).u32(12).z(1);
     w.u8(0).z(4).z(4).u32(99).z(8);
     let before = 387 + "Female".len() + "x".len() - w.0.len();
     let mut body = w.0;
@@ -1072,6 +1072,7 @@ fn reads_the_values_counters_and_flags_of_an_animal_record() {
         [r.mourning, r.dying, r.crated, r.egg],
         [true, true, true, false]
     );
+    assert_eq!((r.thirsty, r.rampaging, r.rampage), (true, true, 12));
     // Other classes keep no record.
     let z = parse(&file(
         70,

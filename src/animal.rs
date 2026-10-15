@@ -219,8 +219,10 @@ keys! {
     drink: "cDrinkWaterChance" = 0,
     chase: "cChaseAnimalChance" = 0,
     other_angry: "cOtherAnimalAngryChange" = -30,
-    rampage_threshold: "cRampageThreshold" = 0,
+    rampage_threshold: "cRampageThreshold" = -100,
     rampage_chance: "cRampageChance" = 0,
+    rampage_min: "cRampageTimeMin" = 0,
+    rampage_max: "cRampageTimeMax" = 0,
     test_fence: "cTestFenceChance" = 0,
 }
 
@@ -283,6 +285,10 @@ pub struct Animal {
     pub mourning: bool,
     /// Raised by the bored check (9.2); the drink goal of a later issue lowers it.
     pub thirsty: bool,
+    /// The rampage flag and its counter (animals 11): they gate the rampage draws and the bored
+    /// check; nothing else follows from them before M7.
+    pub rampaging: bool,
+    pub rampage: i32,
     /// The zap counter (animals 4.1): it starts at 0 and fires when it was below 1.
     pub zap: i32,
     /// Status ticks until the creation runs again (`AnimalResetInterval`).
@@ -336,6 +342,9 @@ impl Animal {
         self.dying = r.dying;
         self.crated = r.crated;
         self.egg = r.egg;
+        self.thirsty = r.thirsty;
+        self.rampaging = r.rampaging;
+        self.rampage = r.rampage;
     }
 
     /// Applies the pending changes (animals 3.3).
@@ -465,7 +474,10 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
                 (_, true) => "f",
                 _ => "m",
             };
+            // The zap counter keeps running down across the reset.
+            let zap = a.zap;
             *a = Animal::create(k, class, subtype, rng);
+            a.zap = zap;
         }
     }
     if a.dying {
@@ -497,15 +509,30 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
     out
 }
 
-/// The escape check (animals 11): the rampage draws, then the counter. Nothing follows from
-/// either in M6: the escape, the rampage and their flags are M7's.
+/// The escape check (animals 11): the rampage, then the counter. Nothing follows from either in
+/// M6 but the flag and the counter of the rampage: the escape and the sets are M7's.
 fn escape(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
     if a.in_show {
         return;
     }
-    // A rampage chance of 0 draws nothing; the second draw is the rampage's length.
-    if a.happiness <= k.rampage_threshold && k.rampage_chance > 0 && rng.chance(k.rampage_chance) {
-        rng.rand();
+    if a.rampaging {
+        a.rampage = a.rampage.wrapping_add(1);
+        if a.happiness > k.rampage_threshold || a.rampage > k.rampage_max {
+            (a.rampaging, a.rampage) = (false, 0);
+        }
+    } else {
+        a.rampage = 0;
+        if k.rampage_chance >= 1
+            && k.rampage_min >= 1
+            && a.happiness <= k.rampage_threshold
+            && rng.chance(k.rampage_chance)
+        {
+            let len = k.rampage_max.wrapping_sub(k.rampage_min);
+            if len >= 0 {
+                a.rampaging = true;
+                a.rampage = len - rng.rand() as i32 % len.wrapping_add(1);
+            }
+        }
     }
     fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]);
 }
@@ -628,7 +655,7 @@ fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
     }
     a.unmark(STIMULATION);
     // A tired animal tries to sleep (part B).
-    if a.energy >= k.energy_threshold || a.at_minimum_health || a.occupied() {
+    if a.energy >= k.energy_threshold || a.at_minimum_health || a.occupied() || a.rampaging {
         return;
     }
     if a.hunger >= k.hunger_threshold {
@@ -655,9 +682,13 @@ fn other(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
     }
 }
 
-/// The zap check (animals 11): its counter fires when it was below 1, and the draw of a fence
-/// test is made when nothing occupies the animal and its chance is not 0. The test itself is M7's.
+/// The zap check (animals 11): nothing runs for an animal in a show; its counter fires when it
+/// was below 1, and the draw of a fence test is made when nothing occupies the animal and its
+/// chance is not 0. The test itself is M7's.
 fn zap(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
+    if a.in_show {
+        return;
+    }
     let old = a.zap;
     a.zap = old.wrapping_sub(1);
     if old < 1 {

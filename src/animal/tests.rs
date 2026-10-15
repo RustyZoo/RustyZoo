@@ -550,6 +550,9 @@ fn record() -> AnimalRecord {
         dying: false,
         crated: false,
         egg: false,
+        thirsty: false,
+        rampaging: false,
+        rampage: 0,
     }
 }
 
@@ -696,6 +699,8 @@ fn the_rampage_draws_are_made_at_or_below_the_threshold_and_not_in_a_show() {
     let k = Keys {
         rampage_threshold: -10,
         rampage_chance: 100,
+        rampage_min: 2,
+        rampage_max: 5,
         ..keys()
     };
     let class = Class::default();
@@ -707,18 +712,47 @@ fn the_rampage_draws_are_made_at_or_below_the_threshold_and_not_in_a_show() {
         };
         a.counters[ESCAPE] = 0;
         let (_, rng) = once(&mut a, k, &class, &in_exhibit());
-        (a.counters[ESCAPE], rng)
+        (a, rng)
     };
-    let (counter, rng) = go(-10, &k, false);
-    assert!(drew(&rng, 2) && counter == class.periods[ESCAPE] - 1);
+    let (a, rng) = go(-10, &k, false);
+    assert!(drew(&rng, 2) && a.counters[ESCAPE] == class.periods[ESCAPE] - 1);
+    assert!(a.rampaging && (0..=3).contains(&a.rampage));
     assert!(drew(&go(-9, &k, false).1, 0));
-    let none = Keys {
-        rampage_chance: 0,
+    // A missing chance or minimum time, or a minimum below 1, draws nothing at any happiness.
+    for k in [
+        Keys {
+            rampage_chance: 0,
+            ..k.clone()
+        },
+        Keys {
+            rampage_chance: -4,
+            ..k.clone()
+        },
+        Keys {
+            rampage_min: 0,
+            ..k.clone()
+        },
+        Keys {
+            rampage_min: -3,
+            ..k.clone()
+        },
+    ] {
+        let (a, rng) = go(-100, &k, false);
+        assert!(drew(&rng, 0) && !a.rampaging);
+    }
+    // The defaults draw nothing; so does a maximum below the minimum after the first draw.
+    assert!(drew(&go(-100, &keys(), false).1, 0));
+    let short = Keys {
+        rampage_max: 1,
         ..k.clone()
     };
-    assert!(drew(&go(-100, &none, false).1, 0));
-    let (counter, rng) = go(-100, &k, true);
-    assert!(drew(&rng, 0) && counter == 0, "the counter waits in a show");
+    let (a, rng) = go(-100, &short, false);
+    assert!(drew(&rng, 1) && !a.rampaging && a.rampage == 0);
+    let (a, rng) = go(-100, &k, true);
+    assert!(
+        drew(&rng, 0) && a.counters[ESCAPE] == 0,
+        "nothing runs in a show"
+    );
     // One draw against the percent, a second only on success.
     for seed in 0..40 {
         let k = Keys {
@@ -732,12 +766,135 @@ fn the_rampage_draws_are_made_at_or_below_the_threshold_and_not_in_a_show() {
             ..animal()
         };
         super::run(&mut a, &k, &class, &in_exhibit(), &mut rng);
-        assert!(drew_since(
-            &rng,
-            seed,
-            if first(seed) % 100 < 50 { 2 } else { 1 }
-        ));
+        let started = first(seed) % 100 < 50;
+        assert_eq!(a.rampaging, started);
+        assert!(drew_since(&rng, seed, if started { 2 } else { 1 }));
     }
+}
+
+#[test]
+fn a_rampage_draws_nothing_while_it_lasts() {
+    let k = Keys {
+        rampage_threshold: -10,
+        rampage_chance: 100,
+        rampage_min: 1,
+        rampage_max: 3,
+        ..keys()
+    };
+    let class = Class::default();
+    let (env, mut rng) = (in_exhibit(), Rng::default());
+    // A rampage of 0 to 2 more checks: the counter goes up by 1 at each check and the flag
+    // drops (counter 0) when it is above the maximum of 3.
+    let mut a = Animal {
+        happiness: -50,
+        rampaging: true,
+        rampage: 1,
+        ..animal()
+    };
+    let seen: Vec<(bool, i32)> = (0..4)
+        .map(|_| {
+            super::run(&mut a, &k, &class, &env, &mut rng);
+            (a.rampaging, a.rampage)
+        })
+        .collect();
+    assert_eq!(seen[..3], [(true, 2), (true, 3), (false, 0)]);
+    assert!(
+        drew(&rng, 2),
+        "no draw until the flag dropped, then the two that start it again"
+    );
+    assert!(a.rampaging);
+    // Happiness above the threshold ends it at the next check, still without a draw.
+    let mut rng = Rng::default();
+    let mut a = Animal {
+        happiness: -9,
+        rampaging: true,
+        rampage: 1,
+        ..animal()
+    };
+    super::run(&mut a, &k, &class, &env, &mut rng);
+    assert!(drew(&rng, 0) && !a.rampaging && a.rampage == 0);
+    // While it lasts the bored check returns before its draw.
+    let k = Keys { drink: 10, ..k };
+    let mut a = Animal {
+        happiness: -50,
+        rampaging: true,
+        rampage: 0,
+        ..animal()
+    };
+    a.counters[BORED] = 0;
+    let mut rng = Rng::default();
+    super::run(&mut a, &k, &class, &env, &mut rng);
+    assert!(drew(&rng, 0) && !a.thirsty && a.counters[BORED] == class.periods[BORED] - 1);
+}
+
+#[test]
+fn a_loaded_animal_keeps_its_thirst_and_its_rampage() {
+    let cat = zebras_with(
+        "cRampageChance=100\ncRampageTimeMin=1\ncRampageTimeMax=20\ncRampageThreshold=50",
+        "",
+    );
+    let mut world = pens();
+    for e in &mut world.zoo.entities {
+        if e.class == "animals" {
+            e.common.as_mut().unwrap().animal = Some(Box::new(AnimalRecord {
+                thirsty: true,
+                rampaging: true,
+                rampage: 12,
+                happiness: 20,
+                ..record()
+            }));
+        }
+    }
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let Part::Animal(a) = &world.units.get(500).unwrap().part else {
+        panic!("not an animal");
+    };
+    assert_eq!((a.thirsty, a.rampaging, a.rampage), (true, true, 12));
+    // Its first checks draw no rampage number: the generator ends where a pen of animals
+    // that never rampage leaves it.
+    let after = |cat: &Catalogue, saved: bool| {
+        let mut world = pens();
+        for e in &mut world.zoo.entities {
+            if e.class == "animals" {
+                e.common.as_mut().unwrap().animal = Some(Box::new(AnimalRecord {
+                    thirsty: saved,
+                    rampaging: saved,
+                    rampage: 12,
+                    happiness: 20,
+                    ..record()
+                }));
+            }
+        }
+        let mut sim = Sim::new(b"");
+        sim.set_seed(1);
+        sim.start_game(64, Clocks::default());
+        sim.load(&mut world, cat);
+        for _ in 0..40 {
+            sim.step_in(&mut world, cat, 67, |_, _, _| {});
+        }
+        sim.rng.clone()
+    };
+    assert_eq!(after(&cat, true), after(&zebras(), true));
+}
+
+#[test]
+fn a_reset_keeps_the_zap_counter() {
+    let (k, env) = (keys(), in_exhibit());
+    let class = Class {
+        reset_interval: 1,
+        ..Class::default()
+    };
+    let mut rng = Rng::default();
+    let mut a = Animal::create(&k, &class, "f", &mut rng);
+    a.zap = 3;
+    a.rampaging = true;
+    a.rampage = 4;
+    super::run(&mut a, &k, &class, &env, &mut rng);
+    assert_eq!(a.zap, 2, "the counter ran down across the reset");
+    assert!(!a.rampaging && a.rampage == 0 && a.reset == 1);
 }
 
 /// The first number a generator seeded with `seed` gives.
@@ -938,10 +1095,13 @@ fn the_zap_counter_fires_below_1_and_draws_only_for_an_animal_with_a_chance_and_
 
 #[test]
 fn the_checks_draw_in_the_original_order() {
-    // Rampage (2 draws), captivity (2), bored (1), zap (1, unless the bored check made it busy).
+    // Rampage (1 draw: the times are the wrong way round), captivity (2), bored (1), zap (1,
+    // unless the bored check made it busy).
     let k = Keys {
         rampage_threshold: 0,
         rampage_chance: 100,
+        rampage_min: 2,
+        rampage_max: 1,
         dirt_chance: 100,
         drink: 10,
         chase: 10,
@@ -968,13 +1128,13 @@ fn the_checks_draw_in_the_original_order() {
         rng.seed(seed);
         let out = super::run(&mut a, &k, &class, &env, &mut rng);
         assert!(out.trample);
-        // The bored check read the fifth number; a thirsty animal is busy and does not zap.
+        // The bored check read the fourth number; a thirsty animal is busy and does not zap.
         let mut check = Rng::default();
         check.seed(seed);
-        let fifth = (0..5).map(|_| check.rand()).last().unwrap() as i32;
-        assert_eq!(a.thirsty, fifth % 20 < 10, "seed {seed}");
+        let fourth = (0..4).map(|_| check.rand()).last().unwrap() as i32;
+        assert_eq!(a.thirsty, fourth % 20 < 10, "seed {seed}");
         assert!(
-            drew_since(&rng, seed, if a.thirsty { 5 } else { 6 }),
+            drew_since(&rng, seed, if a.thirsty { 4 } else { 5 }),
             "seed {seed}"
         );
     }
