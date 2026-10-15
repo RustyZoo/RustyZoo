@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::build::cost;
-use crate::money::{CONSTRUCTION, CONSTRUCTION_REFUND};
+use crate::money::{ANIMAL_PURCHASE, ANIMAL_REFUND, CONSTRUCTION, CONSTRUCTION_REFUND};
 use crate::place::bulldozer::type_of;
 use crate::text::format::whole_units;
 use crate::world::{Spot, Step, Undone};
@@ -59,7 +59,11 @@ impl App<'_> {
         for step in &done.steps {
             let line = match step {
                 Step::Removed(spot, price) => {
-                    game.money.undo_charge(CONSTRUCTION, *price);
+                    let category = match spot.name.starts_with("animals/") {
+                        true => ANIMAL_PURCHASE,
+                        false => CONSTRUCTION,
+                    };
+                    game.money.undo_charge(category, *price);
                     told("remove", spot, " undo")
                 }
                 Step::Copied(spot, entity) => {
@@ -72,7 +76,11 @@ impl App<'_> {
                     told("retype", spot, " undo")
                 }
                 Step::Back(spot, price) => {
-                    game.money.undo_refund(CONSTRUCTION_REFUND, *price);
+                    let category = match spot.name.starts_with("animals/") {
+                        true => ANIMAL_REFUND,
+                        false => CONSTRUCTION_REFUND,
+                    };
+                    game.money.undo_refund(category, *price);
                     told("add", spot, " undo")
                 }
                 Step::Skipped(spot) => told("skip", spot, " undo"),

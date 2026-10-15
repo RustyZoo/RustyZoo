@@ -15,6 +15,7 @@
 
 pub mod bulldozer;
 pub mod gate;
+pub mod unit;
 
 use crate::build::{cost, number};
 use crate::config::Config;
@@ -714,39 +715,12 @@ fn check(
             p.blocking.push(i);
         }
     }
-    // More than a quarter tile needs flat ground at one height (item 5).
-    let tile = |t: usize| world.zoo.tiles[t];
-    if (fp.0 > 1 || fp.1 > 1)
-        && let Some(&first) = tiles.first()
-        && tiles
-            .iter()
-            .any(|&t| tile(t).shape != 0 || tile(t).elevation != tile(first).elevation)
+    // More than a quarter tile needs flat ground at one height (item 5), more than a tile no
+    // fence and no cliff on the sides inside it (item 6).
+    if ((fp.0 > 1 || fp.1 > 1) && uneven(world, &tiles))
+        || ((fp.0 > 2 || fp.1 > 2) && fenced(world, x0, y0, fp))
     {
         fail(p, None);
-    }
-    // More than a tile holds no fence and no cliff on the sides inside it (item 6).
-    if fp.0 > 2 || fp.1 > 2 {
-        let (tx0, ty0) = (x0.div_euclid(64), y0.div_euclid(64));
-        let tx1 = (x0 + 32 * (fp.0 - 1)).div_euclid(64);
-        let ty1 = (y0 + 32 * (fp.1 - 1)).div_euclid(64);
-        for ty in ty0..=ty1 {
-            for tx in tx0..=tx1 {
-                for (d, dx, dy) in [(2, 1, 0), (4, 0, 1)] {
-                    let inside = tx + dx <= tx1 && ty + dy <= ty1;
-                    let both = world
-                        .tile_index(tx, ty)
-                        .zip(world.tile_index(tx + dx, ty + dy));
-                    if let (true, Some((a, b))) = (inside, both)
-                        && (world.edge(a, d).is_some()
-                            || world.edge(b, (d + 4) % 8).is_some()
-                            || world.cliff(a, d)
-                            || world.cliff(b, (d + 4) % 8))
-                    {
-                        fail(p, None);
-                    }
-                }
-            }
-        }
     }
     // A place refused for any reason collects every unit on its tiles, whether its rectangle meets
     // the object's or not (10555 unless a message was stored before).
@@ -758,6 +732,39 @@ fn check(
             }
         }
     }
+}
+
+/// Whether a tile of `tiles` is not flat or not at the height of the first (placing 5.2 item 5).
+fn uneven(world: &World, tiles: &[usize]) -> bool {
+    let tile = |t: usize| world.zoo.tiles[t];
+    tiles.first().is_some_and(|&first| {
+        tiles
+            .iter()
+            .any(|&t| tile(t).shape != 0 || tile(t).elevation != tile(first).elevation)
+    })
+}
+
+/// Whether a tile side inside the footprint of `fp` quarters whose first quarter is at
+/// `(x0, y0)` holds a fence or is a cliff (placing 5.2 item 6).
+fn fenced(world: &World, x0: i32, y0: i32, fp: (i32, i32)) -> bool {
+    let (tx0, ty0) = (x0.div_euclid(64), y0.div_euclid(64));
+    let tx1 = (x0 + 32 * (fp.0 - 1)).div_euclid(64);
+    let ty1 = (y0 + 32 * (fp.1 - 1)).div_euclid(64);
+    (ty0..=ty1).any(|ty| {
+        (tx0..=tx1).any(|tx| {
+            [(2, 1, 0), (4, 0, 1)].into_iter().any(|(d, dx, dy)| {
+                let inside = tx + dx <= tx1 && ty + dy <= ty1;
+                let both = world
+                    .tile_index(tx, ty)
+                    .zip(world.tile_index(tx + dx, ty + dy));
+                matches!((inside, both), (true, Some((a, b)))
+                    if world.edge(a, d).is_some()
+                        || world.edge(b, (d + 4) % 8).is_some()
+                        || world.cliff(a, d)
+                        || world.cliff(b, (d + 4) % 8))
+            })
+        })
+    })
 }
 
 /// The fence check (placing 6.3): the zoo wall stays, nothing crosses the side, the smart fences

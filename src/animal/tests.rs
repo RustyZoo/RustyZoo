@@ -450,6 +450,7 @@ fn pens() -> World {
         entities,
         view: View::default(),
         clocks: Clocks::default(),
+        names: Default::default(),
     };
     World::new(zoo, shape)
 }

@@ -92,6 +92,7 @@ pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
         ],
         entities: Vec::new(),
         view: View::default(),
+        names: Default::default(),
     };
     edit(&mut zoo);
     World::new(zoo, shape)

@@ -420,6 +420,7 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
     let zoo = Zoo {
         view: Default::default(),
         clocks: Default::default(),
+        names: Default::default(),
         version: 106,
         locale: 1033,
         expansion: 0,
@@ -485,6 +486,7 @@ pub(crate) fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
     Zoo {
         view: Default::default(),
         clocks: Default::default(),
+        names: Default::default(),
         version: 106,
         locale: 1033,
         expansion: 0,
@@ -856,6 +858,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
     let zoo = Zoo {
         view: Default::default(),
         clocks: Default::default(),
+        names: Default::default(),
         version: 106,
         locale: 1033,
         expansion: 0,
@@ -898,6 +901,7 @@ fn a_tile_the_cache_lacks_is_rendered_at_run_time() {
     let zoo = Zoo {
         view: Default::default(),
         clocks: Default::default(),
+        names: Default::default(),
         version: 106,
         locale: 1033,
         expansion: 0,
@@ -941,6 +945,7 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
     let zoo = Zoo {
         view: Default::default(),
         clocks: Default::default(),
+        names: Default::default(),
         version: 106,
         locale: 1033,
         expansion: 0,
@@ -1129,6 +1134,7 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
         let zoo = Zoo {
             view: Default::default(),
             clocks: Default::default(),
+            names: Default::default(),
             version: 106,
             locale: 1033,
             expansion: 0,

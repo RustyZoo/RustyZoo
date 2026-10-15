@@ -91,6 +91,7 @@ fn zoo(fences: &[(i32, i32, u32)]) -> Zoo {
         entities,
         view: View::default(),
         clocks: Default::default(),
+        names: Default::default(),
     }
 }
 
