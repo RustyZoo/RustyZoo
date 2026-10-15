@@ -135,7 +135,7 @@ impl Pending {
     pub fn amount(&self) -> i64 {
         match self.verdict {
             Verdict::Invalid => 0,
-            _ => -whole_units(f64::from(self.price)),
+            _ => whole_units(f64::from(self.price)).saturating_neg(),
         }
     }
 

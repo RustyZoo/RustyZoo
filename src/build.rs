@@ -268,6 +268,13 @@ impl Build {
         self.held
     }
 
+    /// Makes the type `ty` (a position in the catalogue) the tool, as a test needs it without
+    /// the panels.
+    #[cfg(test)]
+    pub fn hold(&mut self, ty: usize) {
+        self.held = Some(ty);
+    }
+
     /// The rotation step of the open panel, 0 to 3 (placing 4.4).
     pub fn step(&self) -> usize {
         self.open.map_or(0, |p| self.step[p])

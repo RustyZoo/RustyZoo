@@ -161,8 +161,8 @@ impl Palette {
 
     /// The palette a tinted entity is drawn with (sprite drawing 7.4, 9.1): every colour becomes
     /// the per-channel average, rounded down, of itself and the tint, on the original's 5-6-5
-    /// values (written back as blending does). The marker of entry 0 stays, so the pixels that were transparent
-    /// still are.
+    /// values, shown with the bits of the code repeated as its surface is. The marker of entry 0
+    /// stays, so the pixels that were transparent still are.
     pub fn tinted(&self, tint: [u8; 3]) -> Palette {
         let marker = self.zero_is_transparent();
         let colors = self
@@ -174,12 +174,13 @@ impl Palette {
                     return [r, g, b, a];
                 }
                 let mut out = [r, g, b];
+                // The channels drop 3, 2 and 3 low bits (`R >> 3`, `G >> 2`, `B >> 3`).
                 for (((c, t), max), shift) in
                     out.iter_mut().zip(tint).zip(CHANNEL_MAX).zip([3, 2, 3])
                 {
-                    // The tint's code drops the low bits (`R >> 3`), the palette's is 7.1's.
                     let (own, other) = (u16::from(*c) * max / 255, u16::from(t >> shift));
-                    *c = (((own + other) / 2 * 255).div_ceil(max)) as u8;
+                    let code = (own + other) / 2;
+                    *c = (code << shift | code >> (8 - 2 * shift)) as u8;
                 }
                 [out[0], out[1], out[2], a]
             })
@@ -1299,10 +1300,10 @@ pub(crate) mod tests {
         let tinted = plain.tinted([0, 225, 0]);
         assert!(tinted.zero_is_transparent());
         assert_eq!(tinted.color(0), plain.color(0));
-        // The tint's codes are 0, 56 and 0. Black: green (0 + 56) / 2 = 28, which is the smallest
-        // 8 bit value 114 again; white: red and blue 15, green 59.
-        assert_eq!(tinted.color(1), Some([0, 114, 0, 255]));
-        assert_eq!(tinted.color(2), Some([124, 239, 124, 255]));
+        // The tint's codes are 0, 56 and 0. Black: green (0 + 56) / 2 = 28, shown as 28 << 2 | 1;
+        // white: red and blue 15 (shown as 123), green 59 (shown as 239).
+        assert_eq!(tinted.color(1), Some([0, 113, 0, 255]));
+        assert_eq!(tinted.color(2), Some([123, 239, 123, 255]));
         assert_eq!(
             tinted.color(3).map(|c| c[3]),
             Some(9),

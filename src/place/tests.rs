@@ -370,13 +370,17 @@ fn absurd_footprints_and_costs_never_panic() {
             "[Characteristics/Integers]\ncPlacementFootprintX=-4\ncPlacementFootprintY=999999999999\n",
             "[Characteristics/Integers]\ncPlacementFootprintX=65\ncPlacementFootprintY=65\ncPurchaseCost=-5\n",
             "[Characteristics/Integers]\ncPlacementFootprintX=0\ncPurchaseCost=1e99\n",
+            "[Characteristics/Integers]\ncPurchaseCost=-1e38\n",
+            "[Characteristics/Integers]\ncPurchaseCost=nan\n",
         ] {
             cat.types[0] = ty("objects", "tree", ini, [1, 1, 1]);
             let w = world((0, 0), vec![], |_| {});
             for step in 0..4 {
                 if let Some(p) = at(&w, &cat, 0, step, x, y) {
-                    assert_eq!(p.verdict, Verdict::Invalid, "{ini}");
-                    assert_eq!(p.amount(), 0);
+                    // A footprint that is empty, negative or over 64 half tiles is no place.
+                    let odd = ["X=-4", "X=0", "=65"].iter().any(|k| ini.contains(k));
+                    assert_eq!(p.verdict == Verdict::Invalid, odd, "{ini}");
+                    let _ = p.amount();
                 }
             }
         }

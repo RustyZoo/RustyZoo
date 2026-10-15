@@ -140,7 +140,13 @@ usage: rustyzoo [--data <dir>] <command>
                       the left bar fill their item lists and log `tool panel construction|objects|none`,
                       `tool item TAB CLASS/TYPE/SUBTYPE name=NAME cost=COST` for the item chosen, `tool
                       rotate PANEL STEP` and `tool drop` (Escape or the right button drops the item,
-                      then closes the panel). The cash is told as `money cash N`
+                      then closes the panel); the item follows the pointer over the map, snapped
+                      and tinted by its place (green valid, orange replacing a piece, red not
+                      valid) with its cost 23 pixels right of the pointer, and each move logs
+                      `tool pending CLASS/TYPE/SUBTYPE X,Y q N valid|overwrite|invalid` (the tile and
+                      the quarter tile of the snapped point); releasing over a place that is not
+                      valid shows its message in the message line for 5 seconds (`tool message
+                      ID`). The cash is told as `money cash N`
                       (whole units) when it changes, with `money bar TEXT COLOUR` for the
                       status bar, `money set N` and `money add N` for a start, and `money
                       month M year Y` at a month change; the `$` character adds 10000 to the
