@@ -169,7 +169,10 @@ usage: rustyzoo [--data <dir>] <command>
                       side S` for the piece that became an exhibit's gate); a building that needs it asks
                       first unless `[UI] confirmSell` is 0, a fence piece whose line opens or
                       merges exhibits asks (`tool bulldoze ask Sell|Merge(X, Y)|Escape(X)`, answered
-                      by `key y` or `key n`, `tool bulldoze answer yes|no|cancel`).
+                      by `key y` or `key n`, `tool bulldoze answer yes|no|cancel`). A tank wall whose
+                      tile across is not in its tank and holds a tank wall on the same line has it
+                      tied: both are tinted and priced, and one click removes both, so the line
+                      between two tanks goes in one click and the tanks merge.
                       A fence that closes an area makes an
                       exhibit (a fence that cuts one makes a second one): `exhibit new ID \"NAME\"
                       tiles N gate none` opens the name dialog (layout 45300), which pauses the game
@@ -186,9 +189,10 @@ usage: rustyzoo [--data <dir>] <command>
                       tab, Escape, the right button, closing the panel or the last exhibit going):
                       over a fence piece of an exhibit the pending object is the gate of its type,
                       valid when one side of the piece's line is an exhibit and the other the
-                      grounds, the slot across is empty, the piece is not the exhibit's gate and
-                      the cash covers it, else red; a valid gate is green where a keeper passes
-                      (the crossing test gives code 0 and a cost below 10) and yellow (the
+                      grounds, the slot across is empty, the piece is not the exhibit's gate, no
+                      object stands on the tile of a tank (red, and no cost text) and the cash
+                      covers it, else red; a valid gate is green where a keeper passes
+                      (the crossing test, with the marine specialist in a tank, gives code 0 and a cost below 10) and yellow (the
                       highlight colour, logged as `highlight`) elsewhere, a click still placing
                       it; a gate costs nothing unless the piece is at or below its decayed life,
                       and the cost text shows its price (not as a charge). The gate is judged
@@ -201,8 +205,9 @@ usage: rustyzoo [--data <dir>] <command>
                       does nothing and says nothing, except that a gate the cash does not cover
                       shows `tool message 10002`. A fence that closes
                       an area of tank walls only makes a tank (\"Tank N\" or \"Show Tank N\"): its
-                      ground is levelled flat, lowered by `initialSink` of tanks.cfg, its walls
-                      brought to its side of their lines (a copy where another tank stands),
+                      ground is levelled flat, lowered by `initialSink` of tanks.cfg and given the
+                      floor `tankTerrain` (`tankTerrainShow` for a show tank), its walls
+                      brought to its side of their lines (a new piece where another tank stands),
                       `exhibit tank ID height H level L show S salt T purity P filled F` tells its
                       values; when something stands in it that a tank does not allow the game asks
                       first (`tool tank ask`, string 10552; `key y` sells the scenery and puts the
