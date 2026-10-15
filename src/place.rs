@@ -5,10 +5,10 @@
 //! [`pending`] snaps the world point under the mouse to where the type would stand, lifts it to
 //! the ground, turns it, and checks the place: the verdict decides the tint, the cost text and
 //! the message a click shows. The checks are the ones every kind of object shares (the tile is in
-//! the zoo, the quadrants of the footprint are free except for paths, a path or a fence replaces a piece), those of
-//! scenery (land or water, flat ground at one height, no fence inside a big footprint), those
-//! of paths (flat or one raised side, dirt painted first on water) and those of fences (the
-//! zoo wall stays, nothing crosses the side, the smart fences test, not the entrance).
+//! the zoo, the quadrants of the footprint are free except for paths, a path or a fence replaces
+//! a piece), those of scenery (land or water, flat ground at one height, no fence inside a big
+//! footprint), those of paths (flat or one raised side, dirt painted first on water) and those of
+//! fences (the zoo wall stays, nothing crosses the side, the smart fences test, not the entrance).
 //! [`place`] adds a valid pending object to the world and takes its price. A drag is a list of
 //! pending pieces, [`path_run`] and [`fence_run`] say where and [`afford`] which of them the cash
 //! covers.
@@ -801,9 +801,9 @@ pub enum Outcome {
 /// and gets the object, booked as construction; one the cash does not cover shows the message of
 /// insufficient funds, an invalid one its stored message, or else, when the type only lives in
 /// water and its own tile is not water, the water message (the second look of 5.1). Scenery,
-/// buildings, paths and fences are placed here: a path on water paints its tile first, one on a path
-/// takes the old piece away (placing 5.3), and so does a fence on a held slot (placing 6.3). `shape` tells how the new entity takes its place and
-/// `water` which terrain types are water.
+/// buildings, paths and fences are placed here: a path on water paints its tile first, one on a
+/// path takes the old piece away (placing 5.3), and so does a fence on a held slot (placing 6.3).
+/// `shape` tells how the new entity takes its place and `water` which terrain types are water.
 pub fn place(
     world: &mut World,
     money: &mut Money,
