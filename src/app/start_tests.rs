@@ -240,6 +240,27 @@ fn escape_asks_and_no_stops_the_game_for_the_menu_with_continue_checked_and_the_
 }
 
 #[test]
+fn exit_after_a_game_was_left_selects_and_exits_once() {
+    with_menu("exit-again", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let mut now = started(app);
+        for command in [key(Key::Escape), key(Key::N)] {
+            now += 66;
+            app.pass(now, &command);
+        }
+        assert!(app.camera().is_none() && shown(app, 26));
+        now += 66;
+        assert!(app.pass(now, &click(5, 5)).is_none());
+        let lines = app.log_lines(9, now);
+        let count = |text: &str| lines.iter().filter(|l| l.ends_with(text)).count();
+        assert_eq!(
+            (count("ui select 7116"), count("menu exit")),
+            (1, 1),
+            "{lines:?}"
+        );
+    });
+}
+
+#[test]
 fn closing_the_window_ends_the_menu_at_once_and_asks_in_a_game() {
     with_menu("close", "[user]\nlastfile=saved.zoo\n", |app, _| {
         app.pass(0, &[Command::Close]);
