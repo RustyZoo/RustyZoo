@@ -208,7 +208,7 @@ use crate::zoo::Tile;
 /// The shapes of `shape`, and: a `fish` (a unit that lives under water), a `dog` (one that does
 /// not), a `bench` (scenery that does not), a `toy` (scenery that lives under water), a `ball`
 /// (scenery for shows).
-fn tank_shape(e: &Entity) -> Option<Shape> {
+pub(super) fn tank_shape(e: &Entity) -> Option<Shape> {
     let thing = |kind, tank| {
         Some(Shape {
             kind,
@@ -574,12 +574,12 @@ fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
     // A tank (2..5, 2) with the water of the tank config changed after its making: the line
     // between tiles 3 and 4 is closed by a wall that stands on the tile 3 only.
     let mut pieces = ring("tank", 2, 2, 5, 2);
+    let last = pieces.pop().unwrap();
     let mut world = tanks(&pieces[..], &[], &[]);
+    put_wall(&mut world, last.0, last.1);
     assert_eq!(sizes(&world), [4]);
     let id = world.exhibits().list()[0].id;
-    // Give it some water of its own.
     let level_before = level(&world, 2, 2);
-    pieces.clear();
     world.begin();
     world.take_events();
     {
@@ -595,7 +595,7 @@ fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
         "{events:?}"
     );
     let names = names(&world);
-    assert_eq!(names[1].1, "Tank 1");
+    assert_eq!(names[1].1, "Tank 2");
     // Each side has a wall of its own on the line: the piece and a copy.
     let width = SIZE as usize;
     assert!(world.edge(2 * width + 3, 2).is_some());

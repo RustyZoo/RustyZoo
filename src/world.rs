@@ -881,9 +881,12 @@ impl World {
                 TankValue::Purity(v) => tank.purity = v,
                 TankValue::Salt(v) => tank.salt = v,
                 TankValue::Filled(v) => tank.filled = v,
-                TankValue::Height(v) => tank.height = v,
-                TankValue::Level(_) => {}
+                TankValue::Height(_) | TankValue::Level(_) => {}
             }
+        }
+        // The height goes through the wall height change: the water is cut to the new full level.
+        if let TankValue::Height(v) = value {
+            self.set_height(id, v);
         }
         self.events.push(Event::Tank(id));
         self.sync_tanks();

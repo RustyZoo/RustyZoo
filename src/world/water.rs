@@ -13,7 +13,7 @@ impl World {
     }
 
     /// The ids of the tank exhibits.
-    fn tank_ids(&self) -> Vec<u32> {
+    pub(super) fn tank_ids(&self) -> Vec<u32> {
         let tanks = self.exhibits.list().iter();
         tanks.filter(|e| e.tank.is_some()).map(|e| e.id).collect()
     }
@@ -128,6 +128,7 @@ impl World {
             true => self.fill(kept),
             false => {
                 self.drain(kept);
+                self.clear_refused(kept);
                 self.edit_tank(kept, |t, _| t.purity = reset);
             }
         }

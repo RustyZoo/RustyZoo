@@ -693,9 +693,13 @@ impl World {
         }
     }
 
-    /// The tank state of the exhibits a loaded zoo stores a tank record for.
+    /// The tank state of the exhibits a loaded zoo stores a tank record for (3.10 load): height
+    /// and level go through the wall height and level rules, then the tank is filled when it
+    /// holds water and drained when it does not (the file keeps no flag, so the level tells), and
+    /// goes on moving from there.
     pub(super) fn load_tanks(&mut self) {
         let records = self.zoo.tanks.clone();
+        let mut loaded = Vec::new();
         for r in records {
             let Some(id) = self
                 .tile_index(r.tile.0, r.tile.1)
@@ -706,15 +710,26 @@ impl World {
             if let Some(e) = self.exhibits.get_mut(id) {
                 e.tank = Some(Tank {
                     show: false,
-                    height: r.height,
-                    level: r.level,
+                    height: 0,
+                    level: 0,
                     salt: r.salt,
                     purity: r.purity,
-                    filled: r.level > 0,
+                    filled: false,
                     platform: r.gate,
                 });
+                loaded.push((id, r.height, r.level));
             }
         }
+        let told = self.events.len();
+        for (id, height, level) in loaded {
+            self.set_height(id, height);
+            self.edit_tank(id, |t, c| t.level = level.min(c.top(t.height)));
+            match level > 0 {
+                true => self.fill(id),
+                false => self.drain(id),
+            }
+        }
+        self.events.truncate(told);
     }
 
     /// The pair the gate walk and the fill of a new exhibit that replaces the old exhibit `x`

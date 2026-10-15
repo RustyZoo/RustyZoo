@@ -17,6 +17,13 @@ impl World {
     /// Sets the numbers that make a new tank.
     pub fn set_tank_config(&mut self, config: TankConfig) {
         self.tank_config = config;
+        // The tanks of a loaded map are cut to the highest wall and the full level of these numbers.
+        for id in self.tank_ids() {
+            self.edit_tank(id, |t, c| {
+                t.height = t.height.min(c.limit);
+                t.level = t.level.min(c.top(t.height));
+            });
+        }
     }
 
     /// Levels the tiles of exhibit `id` flat at the mean of their levels (rounded toward 0) less
@@ -219,25 +226,24 @@ impl World {
             purity: c.purity,
             ..*tank
         };
-        // The new part of a split tank has the water of the tank it was cut from, its level cut
-        // to the full level; it stays empty when something in it may not be in water.
-        *tank = match inherited {
-            Some(old) => Tank {
-                height: old.height,
-                level: old.level.min(c.top(old.height)),
-                filled: false,
-                salt: old.salt,
-                purity: old.purity,
-                ..*tank
-            },
-            None => new,
-        };
-        if inherited.map_or(c.filled, |old| old.filled) {
+        *tank = new;
+        // Both kinds start from the creation's values: filled when the file says so and nothing in
+        // the tank refuses it. A part cut off a tank then gets the water of that tank: its height
+        // (through the wall rules), salinity, purity and level cut to the full level, and it is
+        // drained when the tank was not filled (an animal in it refuses that).
+        if c.filled {
             self.fill(id);
         }
-        // A fill while the game is paused is instant; the part cut off keeps the level anyway.
         if let Some(old) = inherited {
-            self.edit_tank(id, |t, c| t.level = old.level.min(c.top(old.height)));
+            self.set_height(id, old.height);
+            self.edit_tank(id, |t, c| {
+                (t.salt, t.purity) = (old.salt, old.purity);
+                t.level = old.level.min(c.top(t.height));
+            });
+            if !old.filled {
+                self.drain(id);
+            }
+            self.edit_tank(id, |t, c| t.level = old.level.min(c.top(t.height)));
         }
         self.events.push(Event::Tank(id));
         self.sync_tanks();
@@ -318,6 +324,21 @@ impl World {
     /// staff member that has to leave is put.
     pub fn outside(&self, id: u32) -> Option<usize> {
         self.exhibits.boundary(self, id).first()?.1
+    }
+
+    /// Clears tank `id` of what its water does not allow, without a question (3.10 merge): a
+    /// unit that moves goes to the tile outside, a guest stays, anything else is removed.
+    pub(super) fn clear_refused(&mut self, id: u32) {
+        let outside = self.outside(id);
+        for e in self.unfit(id, false) {
+            let Some(at) = self.find(e) else { continue };
+            let unit = self.shapes[at].is_some_and(|s| s.kind == Kind::Unit);
+            match (unit, outside) {
+                (true, Some(t)) if self.zoo.entities[at].class != "guests" => self.move_unit(e, t),
+                (true, _) => {}
+                _ => _ = self.remove(e),
+            }
+        }
     }
 
     /// Puts the unit with this id in the middle of tile `t`.

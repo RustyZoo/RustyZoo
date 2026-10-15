@@ -276,11 +276,11 @@ impl MapRenderer<'_> {
         let Some(k) = scene.wall_tank(o) else {
             return;
         };
-        self.stack(scene, metas, o, scene.tanks[k].height, summary, out);
+        self.stack(scene, metas, o, scene.tanks[k].height, false, summary, out);
     }
 
-    /// Places the stack of pieces of the pending gate over a tank wall of `height` steps, and its
-    /// own platform on top (placing 6.4).
+    /// Places the ladder of the pending gate over a tank wall of `height` steps and its own
+    /// platform on top (placing 6.4); the wall pieces are the wall's own.
     pub(super) fn pending_wall(
         &mut self,
         scene: &Scene,
@@ -290,26 +290,30 @@ impl MapRenderer<'_> {
         out: &mut Vec<Placed>,
     ) {
         let height = metas[o].wall;
-        self.stack(scene, metas, o, height, summary, out);
+        self.stack(scene, metas, o, height, true, summary, out);
         if metas[o].ty.subtype.first() == Some(&b'g') {
             self.platform(scene, &metas[o], o, height, out);
         }
     }
 
-    /// Places the pieces of a wall of `height` steps, bottom to top.
+    /// Places the pieces of a wall of `height` steps, bottom to top; only its ladder with
+    /// `ladder_only`.
     fn stack(
         &mut self,
         scene: &Scene,
         metas: &[Meta],
         o: usize,
         height: i32,
+        ladder_only: bool,
         summary: &mut Summary,
         out: &mut Vec<Placed>,
     ) {
         let (obj, meta) = (scene.objects[o], &metas[o]);
         let e = ends(scene, metas, o);
         let mut pieces: Vec<(String, i32)> = Vec::new();
-        if height == 1 {
+        if ladder_only {
+            // The pending gate has no wall pieces of its own (placing 6.4).
+        } else if height == 1 {
             let name = if e == "lr" {
                 "idle".to_string()
             } else {
