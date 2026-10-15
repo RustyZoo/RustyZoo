@@ -69,6 +69,7 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Opti
         price,
         paint: None,
         blocking: Vec::new(),
+        wall: world.wall_height(at),
     };
     Some(Gate {
         pending,

@@ -313,6 +313,12 @@ struct Game {
 }
 
 impl Game {
+    /// The Pause key and the space bar.
+    fn pause(&mut self) {
+        self.paused = !self.paused;
+        self.world.set_paused(self.paused);
+    }
+
     /// What the cost text at the pointer shows: the drag's, else the pending object's, else, in
     /// the paint tab, minus what painting the brush costs while the pointer is over the map. A
     /// gate shows its price as it is, not as a charge (placing 4.5).
@@ -683,13 +689,19 @@ impl<'a> App<'a> {
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
-            && game.calendar.advance(step)
         {
-            game.money.month_change();
-            self.money_events.push(format!(
-                "month {} year {}",
-                game.money.month, game.money.year
-            ));
+            // The water of the tanks moves one step per simulation step (exhibits and money 3.10).
+            let moved = game.world.step_water();
+            if game.calendar.advance(step) {
+                game.money.month_change();
+                self.money_events.push(format!(
+                    "month {} year {}",
+                    game.money.month, game.money.year
+                ));
+            }
+            if moved {
+                self.exhibits_told();
+            }
         }
         self.undo_button();
         self.tell_money(now);
@@ -857,8 +869,8 @@ impl<'a> App<'a> {
             }
             // The Pause key works through a question too, but the question gives the flag back as
             // it was, so it is left alone there.
-            (Command::Pause, Some(game)) if shown && !modal => game.paused = !game.paused,
-            (Command::Space, Some(game)) if keys => game.paused = !game.paused,
+            (Command::Pause, Some(game)) if shown && !modal => game.pause(),
+            (Command::Space, Some(game)) if keys => game.pause(),
             // The brush keys press the plus and minus buttons of the terrain panel (input 10).
             (Command::Char(b'+' | b'-'), Some(_)) if keys => {
                 if let (Some(ui), Command::Char(key)) = (&mut self.ui, command) {

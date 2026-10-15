@@ -549,8 +549,18 @@ check base-trial 'new_1_"Exhibit_1"_tiles_6_gate_none;name_1_"Lion";gate_1_18,43
 # The square of scn19 holds scenery and is made of tank walls: the closing piece makes a tank with its
 # values of tanks.cfg and asks about its objects (the keys of the name go to that question, Enter is Yes),
 # then the name dialog comes. With `n` the question is answered No: the last drag is undone.
-check expansion-trial 'tank_ask;tank_2_height_5_level_0_show_0_salt_1_purity_100_filled_1;tank_answer_yes;new_2_"Tank_1"_tiles_9_gate_none' "exhibit_close maps/scn19.zoo"
-check expansion-trial 'tank_ask;tank_2_height_5_level_0_show_0_salt_1_purity_100_filled_1;tank_answer_no;removed_2' "exhibit_close maps/scn19.zoo n"
+check expansion-trial 'tank_ask;tank_2_height_5_level_0_show_0_salt_1_purity_100_filled_0;tank_answer_yes;tank_2_height_5_level_0_show_0_salt_1_purity_100_filled_1;new_2_"Tank_1"_tiles_9_gate_none' "exhibit_close maps/scn19.zoo"
+check expansion-trial 'tank_ask;tank_2_height_5_level_0_show_0_salt_1_purity_100_filled_0;tank_answer_no;removed_2' "exhibit_close maps/scn19.zoo n"
+# The water of a new tank (sm_aqua, nothing in the way): empty and filled while the name dialog is open,
+# then one elevation step per simulation step up to the height less one (waterOffset -1), 0 to 4.
+tank_water() { # tank_water <map>: the levels the log tells
+  d=$(mktemp -d)
+  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n32 key enter\n" >"$d/script"
+  rz run "$1" --headless --passes 80 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+    awk '/ exhibit tank /{printf "%s%s", n++ ? "," : "", $10} END{print ""}'
+  rm -rf "$d"
+}
+check expansion-trial '0,1,2,3,4' "tank_water maps/sm_aqua.zoo"
 
 # The bulldozer: the path drag of above, Escape drops the path, the Delete key makes the bulldozer
 # the tool, and a press with a drag over the rectangle that holds the L removes everything the

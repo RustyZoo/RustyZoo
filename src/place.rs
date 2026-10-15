@@ -180,6 +180,9 @@ pub struct Pending {
     pub paint: Option<u8>,
     /// The objects in the way (positions in `zoo.entities`), tinted red until the next move.
     pub blocking: Vec<usize>,
+    /// The wall height a pending gate over a tank wall is drawn with (placing 6.4); 0 for any
+    /// other object.
+    pub wall: u32,
 }
 
 impl Pending {
@@ -215,6 +218,7 @@ pub fn extra_of(pieces: &[Pending], tints: &Tints) -> Extra {
             z: p.z,
             facing: p.facing,
             tint,
+            wall: p.wall,
         });
         for &e in &p.blocking {
             if !extra.tinted.iter().any(|t| t.0 == e) {
@@ -561,6 +565,7 @@ pub fn pending(
         price: cost(t),
         paint: None,
         blocking: Vec::new(),
+        wall: 0,
     };
     check(&mut pending, world, cat, water, dirt, smart, class, fp);
     Some(pending)

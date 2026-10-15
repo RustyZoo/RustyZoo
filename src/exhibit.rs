@@ -64,6 +64,10 @@ pub struct TankConfig {
     /// The terrain types of the floor of a tank and of a show tank (`tankTerrain`,
     /// `tankTerrainShow`).
     pub terrain: [u8; 2],
+    /// `waterOffset`: the full water level is the wall height plus this (3.10).
+    pub offset: i32,
+    /// `maximumTankHeight`: the highest wall height.
+    pub limit: u32,
 }
 
 impl Default for TankConfig {
@@ -79,6 +83,8 @@ impl Default for TankConfig {
             salt: false,
             purity: 100,
             terrain: [0; 2],
+            offset: 0,
+            limit: 30,
         }
     }
 }
@@ -120,7 +126,14 @@ impl TankConfig {
         for (i, key) in ["tankTerrain", "tankTerrainShow"].into_iter().enumerate() {
             found.terrain[i] = number(key).map_or(found.terrain[i], |n| n.clamp(0, 255) as u8);
         }
+        found.offset = number("waterOffset").map_or(found.offset, |n| n.clamp(-255, 255));
+        found.limit = number("maximumTankHeight").map_or(found.limit, |n| n.clamp(0, 255) as u32);
         found
+    }
+
+    /// The level of a full tank of this wall height, `H + waterOffset` cut to 0 and 255 (3.10).
+    pub fn top(&self, height: u32) -> u32 {
+        (i64::from(height) + i64::from(self.offset)).clamp(0, 255) as u32
     }
 }
 

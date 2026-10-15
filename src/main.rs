@@ -196,7 +196,8 @@ usage: rustyzoo [--data <dir>] <command>
                       (the crossing test, with the marine specialist in a tank, gives code 0 and a cost below 10) and yellow (the
                       highlight colour, logged as `highlight`) elsewhere, a click still placing
                       it; a gate costs nothing unless the piece is at or below its decayed life,
-                      and the cost text shows its price (not as a charge). The gate is judged
+                      and the cost text shows its price (not as a charge). Over a tank wall it has the wall height
+                      of the tank, drawn as that stack with its ladder and its own platform. The gate is judged
                       when the piece under the pointer changes (after a click none is shown until
                       the pointer has been over another piece), and no tile is outlined. A saved
                       exhibit's gate is the piece its record names. A click on a valid piece turns it into the gate, healthy, and the exhibit's
@@ -223,7 +224,10 @@ usage: rustyzoo [--data <dir>] <command>
                       floor `tankTerrain` (`tankTerrainShow` for a show tank), its walls
                       brought to its side of their lines (a new piece where another tank stands),
                       `exhibit tank ID height H level L show S salt T purity P filled F` tells its
-                      values; when something stands in it that a tank does not allow the game asks
+                      values, again at each step of its water (the level rises one elevation step per simulation
+                      step up to the height plus `waterOffset` while the tank is filled, only
+                      while the game is not paused and no dialog is open, so after the name
+                      dialog; a tank made while paused is full at once); when something stands in it that a tank does not allow the game asks
                       first (`tool tank ask`, string 10552; `key y` sells the scenery and puts the
                       animals and staff outside, `tool tank answer yes`, then the name dialog; any
                       other answer, `tool tank answer no`, undoes the drag and gives its money

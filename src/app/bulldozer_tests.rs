@@ -859,3 +859,57 @@ fn a_no_on_the_second_removal_of_a_tied_wall_click_leaves_the_first_one_gone() {
         assert_eq!((s.count(), s.cash()), (7, cash + 80.0));
     });
 }
+
+/// The levels the lines `exhibit tank 1 ...` tell over `passes` passes.
+fn levels(s: &mut Session, passes: usize) -> Vec<u32> {
+    let mut found = Vec::new();
+    for _ in 0..passes {
+        for line in s.pass(&[]) {
+            let words: Vec<&str> = line.split(' ').collect();
+            if let Some(at) = words.iter().position(|w| *w == "level") {
+                found.push(words[at + 1].parse().unwrap());
+            }
+        }
+    }
+    found
+}
+
+/// Closes the tank (20, 20) with walls after giving the world the numbers of a shipped game.
+fn new_tank(s: &mut Session) {
+    let world = &mut s.app.game.as_mut().unwrap().world;
+    world.set_tank_config(crate::exhibit::TankConfig {
+        height: [5, 9],
+        offset: -1,
+        ..Default::default()
+    });
+    world.begin();
+    for side in [0, 2, 4, 6] {
+        s.fence(5, 20, 20, side);
+    }
+    s.app.exhibits_told();
+}
+
+#[test]
+fn the_water_of_a_new_tank_rises_one_step_per_simulation_step() {
+    with_game("tank-water", "", |s| {
+        new_tank(s);
+        let told = levels(s, 20);
+        // The tank is told at 0 and the steps that follow tell 1 to 4, once each.
+        assert_eq!(told.last(), Some(&4), "{told:?}");
+        assert!(told.windows(2).all(|w| w[1] == w[0] || w[1] == w[0] + 1));
+        assert_eq!(told.iter().filter(|&&l| l > 0).count(), 4);
+    });
+}
+
+#[test]
+fn the_water_waits_while_the_game_is_paused_and_a_tank_made_then_is_full_at_once() {
+    with_game("tank-water-paused", "", |s| {
+        s.pass(&[Command::Pause]);
+        assert!(s.app.paused());
+        new_tank(s);
+        let told = levels(s, 20);
+        assert!(told.is_empty(), "{told:?}");
+        let tank = s.app.game.as_ref().unwrap().world.tank(1).unwrap();
+        assert_eq!((tank.level, tank.filled), (4, true), "full at once");
+    });
+}

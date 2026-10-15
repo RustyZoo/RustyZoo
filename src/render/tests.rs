@@ -1539,6 +1539,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         mode,
         portal: false,
         tint: None,
+        wall: 0,
     };
     let (animal, guest) = (ty("animals"), ty("guests"));
     assert!(tank::casts_shadow(&meta(&animal, 3)));

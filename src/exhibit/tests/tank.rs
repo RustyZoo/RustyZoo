@@ -24,14 +24,14 @@ fn built(pieces: &[Piece]) -> World {
 }
 
 /// The pieces of `class` round the square of tiles `x0..=x1` by `y0..=y1`.
-fn ring(class: &'static str, x0: i32, y0: i32, x1: i32, y1: i32) -> Vec<Piece> {
+pub(super) fn ring(class: &'static str, x0: i32, y0: i32, x1: i32, y1: i32) -> Vec<Piece> {
     square(x0, y0, x1, y1)
         .into_iter()
         .map(|p| (class, p))
         .collect()
 }
 
-fn tank(world: &World, x: usize, y: usize) -> Option<Tank> {
+pub(super) fn tank(world: &World, x: usize, y: usize) -> Option<Tank> {
     let t = y * SIZE as usize + x;
     world.tank_at(t).and_then(|id| world.tank(id))
 }
@@ -208,7 +208,7 @@ use crate::zoo::Tile;
 /// The shapes of `shape`, and: a `fish` (a unit that lives under water), a `dog` (one that does
 /// not), a `bench` (scenery that does not), a `toy` (scenery that lives under water), a `ball`
 /// (scenery for shows).
-fn tank_shape(e: &Entity) -> Option<Shape> {
+pub(super) fn tank_shape(e: &Entity) -> Option<Shape> {
     let thing = |kind, tank| {
         Some(Shape {
             kind,
@@ -222,7 +222,7 @@ fn tank_shape(e: &Entity) -> Option<Shape> {
     };
     let none = TankKind::NONE;
     match e.class.as_str() {
-        "fish" => thing(
+        "fish" | "animals" => thing(
             Kind::Unit,
             TankKind {
                 underwater: true,
@@ -267,7 +267,7 @@ fn tank_shape(e: &Entity) -> Option<Shape> {
 
 /// The values a new tank gets: height 5 (9 for a show tank), ground lowered by 4 (8), salt water
 /// of purity 90, filled.
-const CONFIG: TankConfig = TankConfig {
+pub(super) const CONFIG: TankConfig = TankConfig {
     sink: [4, 8],
     height: [5, 9],
     level: 0,
@@ -275,11 +275,13 @@ const CONFIG: TankConfig = TankConfig {
     salt: true,
     purity: 90,
     terrain: [2, 17],
+    offset: -1,
+    limit: 20,
 };
 
 /// A map of tiles with these elevations by tile (0 elsewhere), and the pieces, with the
 /// configuration set.
-fn tanks(pieces: &[Piece], things: &[(&str, i32, i32)], high: &[(usize, i32)]) -> World {
+pub(super) fn tanks(pieces: &[Piece], things: &[(&str, i32, i32)], high: &[(usize, i32)]) -> World {
     let mut z = zoo(&[]);
     z.entities
         .extend(pieces.iter().map(|&(class, p)| wall(class, p)));
@@ -301,7 +303,7 @@ fn tanks(pieces: &[Piece], things: &[(&str, i32, i32)], high: &[(usize, i32)]) -
     world
 }
 
-fn put_wall(world: &mut World, class: &str, p: (i32, i32, u32)) -> u32 {
+pub(super) fn put_wall(world: &mut World, class: &str, p: (i32, i32, u32)) -> u32 {
     let e = wall(class, p);
     let id = world.add(e.clone(), tank_shape(&e)).unwrap();
     for new in world.waiting() {
@@ -310,7 +312,7 @@ fn put_wall(world: &mut World, class: &str, p: (i32, i32, u32)) -> u32 {
     id
 }
 
-fn level(world: &World, x: usize, y: usize) -> (i32, u8) {
+pub(super) fn level(world: &World, x: usize, y: usize) -> (i32, u8) {
     let t = world.zoo.tiles[y * SIZE as usize + x];
     (t.elevation, t.shape)
 }
@@ -572,12 +574,12 @@ fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
     // A tank (2..5, 2) with the water of the tank config changed after its making: the line
     // between tiles 3 and 4 is closed by a wall that stands on the tile 3 only.
     let mut pieces = ring("tank", 2, 2, 5, 2);
+    let last = pieces.pop().unwrap();
     let mut world = tanks(&pieces[..], &[], &[]);
+    put_wall(&mut world, last.0, last.1);
     assert_eq!(sizes(&world), [4]);
     let id = world.exhibits().list()[0].id;
-    // Give it some water of its own.
     let level_before = level(&world, 2, 2);
-    pieces.clear();
     world.begin();
     world.take_events();
     {
@@ -593,7 +595,7 @@ fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
         "{events:?}"
     );
     let names = names(&world);
-    assert_eq!(names[1].1, "Tank 1");
+    assert_eq!(names[1].1, "Tank 2");
     // Each side has a wall of its own on the line: the piece and a copy.
     let width = SIZE as usize;
     assert!(world.edge(2 * width + 3, 2).is_some());
@@ -609,6 +611,49 @@ fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
 }
 
 // ---- tanks.cfg
+
+#[test]
+fn the_water_offset_and_the_highest_wall_are_read_and_cut() {
+    let c = |text: &str| read(&format!("[tank]\n{text}"));
+    assert_eq!(
+        (c("").offset, c("").limit),
+        (0, 30),
+        "missing: the defaults"
+    );
+    assert_eq!(
+        (
+            c("waterOffset = -1\nmaximumTankHeight = 20").offset,
+            c("maximumTankHeight = 20").limit
+        ),
+        (-1, 20)
+    );
+    assert_eq!(c("waterOffset = 0").offset, 0);
+    assert_eq!(c("waterOffset = -99999").offset, -255);
+    assert!((-255..=255).contains(&c("waterOffset = 99999999999").offset));
+    assert_eq!(c("waterOffset = abc").offset, 0);
+    assert_eq!(
+        (
+            c("maximumTankHeight = 0").limit,
+            c("maximumTankHeight = -4").limit
+        ),
+        (0, 0)
+    );
+    assert_eq!(c("maximumTankHeight = 99999").limit, 255);
+    // The full level: the height plus the offset, never below 0.
+    let cfg = |offset| TankConfig {
+        offset,
+        ..TankConfig::default()
+    };
+    assert_eq!(
+        (
+            cfg(-1).top(5),
+            cfg(0).top(5),
+            cfg(-9).top(5),
+            cfg(255).top(255)
+        ),
+        (4, 5, 0, 255)
+    );
+}
 
 fn read(text: &str) -> TankConfig {
     TankConfig::read(&crate::config::Config::parse(text.as_bytes()).unwrap())
@@ -630,6 +675,8 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
             salt: true,
             purity: 100,
             terrain: [2, 17],
+            offset: 0,
+            limit: 30,
         }
     );
     // Missing: what there is without a file, heights of 1 included; an empty file too.

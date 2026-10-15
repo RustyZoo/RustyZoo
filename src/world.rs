@@ -15,6 +15,7 @@ use crate::zoo::{Entity, Tile, Zoo};
 
 mod exhibit;
 mod tank;
+mod water;
 pub use exhibit::Event;
 
 /// How an entity takes its place on the map, from its type.
@@ -198,6 +199,8 @@ pub struct World {
     /// The next action starts a new undo list.
     fresh: bool,
     dirty: bool,
+    /// The game is paused: a fill or drain of a tank is instant.
+    paused: bool,
 }
 
 impl World {
@@ -221,6 +224,7 @@ impl World {
             undo: Vec::new(),
             fresh: false,
             dirty: false,
+            paused: false,
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
@@ -877,9 +881,12 @@ impl World {
                 TankValue::Purity(v) => tank.purity = v,
                 TankValue::Salt(v) => tank.salt = v,
                 TankValue::Filled(v) => tank.filled = v,
-                TankValue::Height(v) => tank.height = v,
-                TankValue::Level(_) => {}
+                TankValue::Height(_) | TankValue::Level(_) => {}
             }
+        }
+        // The height goes through the wall height change: the water is cut to the new full level.
+        if let TankValue::Height(v) = value {
+            self.set_height(id, v);
         }
         self.events.push(Event::Tank(id));
         self.sync_tanks();

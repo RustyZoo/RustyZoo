@@ -55,7 +55,7 @@ impl App<'_> {
             None => "none".to_string(),
         };
         let tiles = |id: u32| world.exhibits().get(id).map_or(0, |e| e.tiles);
-        for event in &events {
+        for (i, event) in events.iter().enumerate() {
             let line = match event {
                 Event::New { id, .. } => {
                     let name = world.exhibits().get(*id).map_or("", |e| &e.name);
@@ -67,6 +67,8 @@ impl App<'_> {
                     format!("merged {gone} into {kept} tiles {}", tiles(*kept))
                 }
                 Event::Gate(id) => format!("gate {id} {}", slot(*id)),
+                // Only the last values of a tank in a batch are told.
+                Event::Tank(id) if events[i + 1..].contains(&Event::Tank(*id)) => continue,
                 Event::Tank(id) => match world.tank(*id) {
                     Some(t) => format!(
                         "tank {id} height {} level {} show {} salt {} purity {} filled {}",

@@ -17,6 +17,13 @@ impl World {
     /// Sets the numbers that make a new tank.
     pub fn set_tank_config(&mut self, config: TankConfig) {
         self.tank_config = config;
+        // The tanks of a loaded map are cut to the highest wall and the full level of these numbers.
+        for id in self.tank_ids() {
+            self.edit_tank(id, |t, c| {
+                t.height = t.height.min(c.limit);
+                t.level = t.level.min(c.top(t.height));
+            });
+        }
     }
 
     /// Levels the tiles of exhibit `id` flat at the mean of their levels (rounded toward 0) less
@@ -203,7 +210,8 @@ impl World {
     }
 
     /// The water values of a new tank `id` from `tanks.cfg` (3.9 creation step 3), its wall height
-    /// by the kind it turned out to be.
+    /// by the kind it turned out to be. A new tank starts at level 0 and is filled when the file
+    /// says so; the water rises with the simulation steps (3.10).
     fn fill_values(&mut self, id: u32, inherited: Option<Tank>) {
         let c = self.tank_config;
         let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) else {
@@ -213,23 +221,30 @@ impl World {
         let new = Tank {
             height: c.height[k],
             level: c.level,
-            filled: c.filled,
+            filled: false,
             salt: c.salt,
             purity: c.purity,
             ..*tank
         };
-        // The new part of a split tank has the water of the tank it was cut from.
-        *tank = match inherited {
-            Some(old) => Tank {
-                height: old.height,
-                level: old.level,
-                filled: old.filled,
-                salt: old.salt,
-                purity: old.purity,
-                ..*tank
-            },
-            None => new,
-        };
+        *tank = new;
+        // Both kinds start from the creation's values: filled when the file says so and nothing in
+        // the tank refuses it. A part cut off a tank then gets the water of that tank: its height
+        // (through the wall rules), salinity, purity and level cut to the full level, and it is
+        // drained when the tank was not filled (an animal in it refuses that).
+        if c.filled {
+            self.fill(id);
+        }
+        if let Some(old) = inherited {
+            self.set_height(id, old.height);
+            self.edit_tank(id, |t, c| {
+                (t.salt, t.purity) = (old.salt, old.purity);
+                t.level = old.level.min(c.top(t.height));
+            });
+            if !old.filled {
+                self.drain(id);
+            }
+            self.edit_tank(id, |t, c| t.level = old.level.min(c.top(t.height)));
+        }
         self.events.push(Event::Tank(id));
         self.sync_tanks();
     }
@@ -255,6 +270,10 @@ impl World {
         }
         self.fill_values(id, inherited);
         let asks = physical && inherited.is_none() && !self.refused(id).is_empty();
+        // Nothing to ask about: the tank is filled again, whatever the file says (3.10).
+        if physical && inherited.is_none() && !asks {
+            self.fill(id);
+        }
         let event = match asks {
             true => Event::Objects(id),
             false => Event::New { id, ask: physical },
@@ -271,7 +290,12 @@ impl World {
     /// home under water, a scenery object that neither lives under water nor on the surface,
     /// and in a show tank also anything that is not for shows; what is transient is left out.
     pub fn refused(&self, id: u32) -> Vec<u32> {
-        let show = self.tank(id).is_some_and(|t| t.show);
+        self.unfit(id, self.tank(id).is_some_and(|t| t.show))
+    }
+
+    /// The same without the rule of show tanks when `show` is false: what the water of tank `id`
+    /// does not allow (3.10).
+    pub(super) fn unfit(&self, id: u32, show: bool) -> Vec<u32> {
         let mut found: Vec<usize> = Vec::new();
         for t in self.tiles_of(id) {
             let units = self.scene.units_on(t).iter().map(|&o| self.owner[o]);
@@ -302,6 +326,21 @@ impl World {
         self.exhibits.boundary(self, id).first()?.1
     }
 
+    /// Clears tank `id` of what its water does not allow, without a question (3.10 merge): a
+    /// unit that moves goes to the tile outside, a guest stays, anything else is removed.
+    pub(super) fn clear_refused(&mut self, id: u32) {
+        let outside = self.outside(id);
+        for e in self.unfit(id, false) {
+            let Some(at) = self.find(e) else { continue };
+            let unit = self.shapes[at].is_some_and(|s| s.kind == Kind::Unit);
+            match (unit, outside) {
+                (true, Some(t)) if self.zoo.entities[at].class != "guests" => self.move_unit(e, t),
+                (true, _) => {}
+                _ => _ = self.remove(e),
+            }
+        }
+    }
+
     /// Puts the unit with this id in the middle of tile `t`.
     pub fn move_unit(&mut self, id: u32, t: usize) {
         let width = self.zoo.width as usize;
@@ -319,6 +358,7 @@ impl World {
     /// The player said Yes to the question about the objects of tank `id`, which have been
     /// dealt with: it goes on to its name.
     pub fn accept_tank(&mut self, id: u32) {
+        self.fill(id);
         self.events.push(Event::New { id, ask: true });
     }
 

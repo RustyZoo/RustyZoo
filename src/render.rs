@@ -158,6 +158,9 @@ pub struct Ghost {
     /// Direction 0 to 7.
     pub facing: u32,
     pub tint: [u8; 3],
+    /// The wall height of a pending gate over a tank wall, drawn as a stack; 0 for any other
+    /// object.
+    pub wall: u32,
 }
 
 /// A picture of the cache: a frame and its palette.
@@ -885,6 +888,7 @@ impl<'a> MapRenderer<'a> {
                     .iter()
                     .find(|(e, _)| *e == position)
                     .map(|(_, tint)| *tint),
+                wall: 0,
             });
         }
         for ghost in &extra.ghosts {
@@ -909,6 +913,7 @@ impl<'a> MapRenderer<'a> {
                 mode: 0,
                 portal: false,
                 tint: Some(ghost.tint),
+                wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
             });
         }
         let mut scene = Scene::new(width, height, rotation, &tiles, objects);
@@ -970,6 +975,7 @@ impl<'a> MapRenderer<'a> {
                         mode: 0,
                         portal: false,
                         tint: None,
+                        wall: 0,
                     });
                 }
             }
@@ -987,6 +993,9 @@ impl<'a> MapRenderer<'a> {
                 Item::Terrain(t) => self.terrain(&scene, &marks, t, &mut summary, &mut placed),
                 Item::Object(o) if o >= first_ripple => {
                     self.object(&scene, o, &metas[o], &mut Summary::default(), &mut placed)
+                }
+                Item::Object(o) if metas[o].wall > 0 && owners[o].is_none() => {
+                    self.pending_wall(&scene, &metas, o, &mut summary, &mut placed)
                 }
                 Item::Path(o) | Item::Object(o) => {
                     self.object(&scene, o, &metas[o], &mut summary, &mut placed)
@@ -1388,6 +1397,8 @@ struct Meta<'a> {
     portal: bool,
     /// The colour the object is drawn tinted with (sprite drawing 9.1).
     tint: Option<[u8; 3]>,
+    /// The wall height of a pending tank gate, 0 for anything else.
+    wall: i32,
 }
 
 /// Whether the `[Member]` list of the type holds this name.
