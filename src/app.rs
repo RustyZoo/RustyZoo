@@ -539,6 +539,7 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
+        world.units.set_ini(self.renderer.vfs().ini());
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
@@ -701,6 +702,10 @@ impl<'a> App<'a> {
             && !(game.paused || modal)
         {
             let report = self.sim.step(&mut game.world, step, |_, _, _| {});
+            game.world
+                .units
+                .finder
+                .tick(u64::from(self.sim.ai_clock().0));
             if report.month_end {
                 game.money.month_change();
                 self.money_events.push(format!(

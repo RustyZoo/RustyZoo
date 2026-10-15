@@ -334,6 +334,25 @@ impl Scene {
         &self.list[t]
     }
 
+    /// Puts the unit object `o` at a new point and facing; its tile list follows.
+    pub fn move_unit(&mut self, o: usize, (x, y, z): (i32, i32, i32), facing: u32) {
+        let (from, to) = (
+            self.tile_at(self.objects[o].x, self.objects[o].y),
+            self.tile_at(x, y),
+        );
+        let obj = &mut self.objects[o];
+        (obj.x, obj.y, obj.z, obj.facing) = (x, y, z, facing);
+        if obj.kind == Kind::Unit && from != to {
+            if let Some(f) = from {
+                self.list[f].retain(|&u| u != o);
+            }
+            self.placed[o] = to.is_some();
+            if let Some(t) = to {
+                self.list[t].push(o);
+            }
+        }
+    }
+
     /// Takes the quadrants of the footprint, all or none: it wants the `fx * fy` quadrants
     /// that contain the points `(x - 16 (fx - 1) + 32 i, y - 16 (fy - 1) + 32 j)`. Returns
     /// whether it got them.
