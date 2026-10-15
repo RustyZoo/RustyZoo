@@ -78,6 +78,7 @@ fn world() -> World {
         entities,
         view: View::default(),
         clocks: Default::default(),
+        names: Default::default(),
     };
     // Close the square with pieces on every side of its tiles.
     for (x, y, d) in [
