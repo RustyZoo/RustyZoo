@@ -5,7 +5,7 @@
 //! [`pending`] snaps the world point under the mouse to where the type would stand, lifts it to
 //! the ground, turns it, and checks the place: the verdict decides the tint, the cost text and
 //! the message a click shows. The checks are the ones every kind of object shares (the tile is in
-//! the zoo, the quadrants of the footprint are free, a path or a fence replaces a piece), those of
+//! the zoo, the quadrants of the footprint are free except for paths, a path or a fence replaces a piece), those of
 //! scenery (land or water, flat ground at one height, no fence inside a big footprint) and those
 //! of paths (flat or one raised side, dirt painted first on water); the rules of fences come with
 //! the placing of that kind. [`place`] adds a valid pending object to the world and takes its
@@ -214,8 +214,8 @@ pub fn run_amount(pieces: &[Pending]) -> i64 {
 }
 
 /// Walks the pieces of a drag in order, adding up the cost of the valid ones: a valid piece that
-/// would bring the sum above the cash is not valid (it will not be bought) and keeps the message
-/// of insufficient funds (placing 6.2 item 3).
+/// would bring the sum above the cash is not valid (it will not be bought) and stores no message
+/// (placing 6.2 items 3 and 4).
 pub fn afford(pieces: &mut [Pending], money: &Money) {
     let mut sum = 0.0;
     for p in pieces.iter_mut().filter(|p| p.verdict != Verdict::Invalid) {
@@ -223,7 +223,6 @@ pub fn afford(pieces: &mut [Pending], money: &Money) {
             sum += p.price;
         } else {
             p.verdict = Verdict::Invalid;
-            p.message = p.message.or(Some(NO_FUNDS));
         }
     }
 }
@@ -453,11 +452,32 @@ fn check(
     {
         (p.verdict, p.price) = same(old);
     }
+    if class == Class::Path {
+        // The only checks of a path (placing 5.3): flat or one side raised, and on water only
+        // where dirt could be painted first. No footprint, nothing in the way: it goes under
+        // objects.
+        if !path_shape(world.zoo.tiles[tile].shape) {
+            fail(p, None);
+        }
+        let wet = water
+            .get(usize::from(world.zoo.tiles[tile].terrain))
+            .copied()
+            .unwrap_or(false);
+        if wet {
+            match dirt(tile) {
+                Some((kind, paint)) => {
+                    p.paint = Some(kind);
+                    p.price += paint;
+                }
+                None => fail(p, None),
+            }
+        }
+        return;
+    }
     // The quadrants of the footprint (map drawing 9.3.1): all on the map, in the zoo and free.
     if !(1..=MAX_FOOTPRINT).contains(&fp.0) || !(1..=MAX_FOOTPRINT).contains(&fp.1) {
         return fail(p, None);
     }
-    let scenery = class == Class::Fixed;
     let wet = |at: usize| {
         water
             .get(usize::from(world.zoo.tiles[at].terrain))
@@ -480,34 +500,17 @@ fn check(
             }
         }
     }
-    if class == Class::Path {
-        // Flat or one side raised; on water only where dirt could be painted first (placing 5.3).
-        if !path_shape(world.zoo.tiles[tile].shape) {
+    // Land or water (placing 5.4, 5.2 item 2). A type that is not a land type stands on
+    // water only, which says so (10564) before anything else of the footprint; a type that
+    // only swims fails on land, one that does not swim in water, both without a message.
+    let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
+    let swims = flag("cSwims", false);
+    for &(at, _) in &quads {
+        if !flag("cLand", true) && !wet(at) {
+            fail(p, Some(NOT_ON_WATER));
+        }
+        if (only_swims(t) && !wet(at)) || (!only_swims(t) && !swims && wet(at)) {
             fail(p, None);
-        }
-        if wet(tile) {
-            match dirt(tile) {
-                Some((kind, paint)) => {
-                    p.paint = Some(kind);
-                    p.price += paint;
-                }
-                None => fail(p, None),
-            }
-        }
-    }
-    if scenery {
-        // Land or water (placing 5.4, 5.2 item 2). A type that is not a land type stands on
-        // water only, which says so (10564) before anything else of the footprint; a type that
-        // only swims fails on land, one that does not swim in water, both without a message.
-        let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
-        let swims = flag("cSwims", false);
-        for &(at, _) in &quads {
-            if !flag("cLand", true) && !wet(at) {
-                fail(p, Some(NOT_ON_WATER));
-            }
-            if (only_swims(t) && !wet(at)) || (!only_swims(t) && !swims && wet(at)) {
-                fail(p, None);
-            }
         }
     }
     for &(at, quadrant) in &quads {
@@ -519,9 +522,6 @@ fn check(
         }
     }
     let tiles: Vec<usize> = quads.iter().map(|&(at, _)| at).collect();
-    if !scenery {
-        return;
-    }
     // More than a quarter tile needs flat ground at one height (item 5).
     let tile = |t: usize| world.zoo.tiles[t];
     if (fp.0 > 1 || fp.1 > 1)

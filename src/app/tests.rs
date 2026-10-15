@@ -1231,7 +1231,7 @@ fn a_drag_lays_an_l_of_paths_bought_in_order_with_the_cash_that_covers_them() {
     assert_eq!(cost(&app), Some(0));
     // The first move along y, then over to (21, 22), gives five pieces (the pointer is captured
     // by the press, so it may leave the tiny window of this test); with 40 in hand
-    // only the first four are bought and the message of the funds shows.
+    // only the first four are bought and the pieces the cash cut show no message.
     app.pass(80, &[at(19, 20), Command::Mouse(Mouse::Down), at(19, 21)]);
     app.pass(100, &[at(21, 22)]);
     assert_eq!(cost(&app), Some(-40), "the cash covers four of the five");
@@ -1240,7 +1240,6 @@ fn a_drag_lays_an_l_of_paths_bought_in_order_with_the_cash_that_covers_them() {
         lines(&app, 6, 120),
         [
             "tool up 21,22",
-            "tool message 10002",
             "world add paths/dirt/ 19,20 id 7",
             "world add paths/dirt/ 19,21 id 8",
             "world add paths/dirt/ 19,22 id 9",

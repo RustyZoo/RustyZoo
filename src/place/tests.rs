@@ -968,7 +968,7 @@ fn the_pieces_the_cash_covers_are_valid_and_the_cost_is_their_sum() {
             Verdict::Invalid
         ]
     );
-    assert_eq!(run[3].message, Some(NO_FUNDS));
+    assert_eq!(run[3].message, None, "the cash walk stores no message");
     assert_eq!(run_amount(&run), -20);
     // The cash that covers the sum exactly changes nothing; a cheaper piece after a refused one
     // still fits.
@@ -987,4 +987,30 @@ fn the_pieces_the_cash_covers_are_valid_and_the_cost_is_their_sum() {
     // Every piece is drawn, the things in the way once.
     let tints = Tints::default();
     assert_eq!(extra_of(&run, &tints).ghosts.len(), 5);
+}
+
+#[test]
+fn a_path_goes_under_objects_with_no_footprint_check_and_no_message() {
+    let cat = catalogue();
+    let mut w = world(
+        (0, 0),
+        vec![
+            entity("objects", "tree", 16, 16, 0),
+            entity("objects", "tree", 48, 48, 0),
+        ],
+        |_| {},
+    );
+    let p = at(&w, &cat, 2, 0, 10, 10).unwrap();
+    assert_eq!(
+        (p.verdict, p.message, p.amount(), p.blocking.is_empty()),
+        (Verdict::Valid, None, -10, true)
+    );
+    let mut money = zoo_money(100.0);
+    assert!(matches!(
+        place(&mut w, &mut money, &cat.types[2], &p, &[false, true], shape),
+        Outcome::Placed(_)
+    ));
+    // The trees stay, and the path is the tile's path.
+    assert_eq!((w.zoo.entities.len(), money.cash), (3, 90.0));
+    assert!(w.path(0).is_some() && w.quadrant(0, 0).is_some());
 }
