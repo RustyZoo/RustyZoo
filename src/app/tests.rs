@@ -1450,3 +1450,129 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
         .collect();
     assert_eq!(lines(&app, 11, 180), adds);
 }
+
+/// A window with room for the four sides of a tile.
+const BIG: (u32, u32) = (128, 96);
+
+/// An exhibit fence with a gate of its own, as the catalogue of a install holds them.
+fn exhibit_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    for subtype in [b"f", b"g"] {
+        cat.push(crate::entity::EntityType {
+            class: "fences",
+            type_name: b"iron".to_vec(),
+            subtype: subtype.to_vec(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                Config::parse(
+                    b"[HabitatFence]\ncHeight=1\n[Characteristics/Integers]\ncPurchaseCost=125\n",
+                )
+                .unwrap(),
+            )),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+    }
+    cat
+}
+
+/// An interface of a map view and the hidden name dialog (45300) with its message, its field
+/// and its OK button.
+fn name_interface(name: &str) -> Interface {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+        [d]\ntype=UILayout\nlayout=ui/n.lyt\nstate=1\n";
+    let n = "[LayoutInfo]\nid=45300\nlayer=7\nx=300\ny=300\ndx=80\ndy=40\n\
+        [m]\ntype=UIText\nid=45306\nx=0\ny=0\ndx=80\ndy=10\n\
+        [f]\ntype=UIEditableText\nid=45308\nx=0\ny=12\ndx=80\ndy=10\n\
+        [o]\ntype=UIButton\nid=45312\nx=0\ny=24\ndx=8\ndy=8\ntarget=1\naction=5\ncolorasicon=1\n";
+    let install = crate::sprite::tests::Install::new(
+        &format!("app-name-{name}"),
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/n.lyt", n.as_bytes().to_vec()),
+        ],
+    );
+    let mut tree = crate::ui::layout::Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
+    assert_eq!(tree.failure, None);
+    tree.resolve(BIG.0 as i32, BIG.1 as i32, |_| 12);
+    Interface::new(tree, Box::new(NoTexts))
+}
+
+#[test]
+fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
+    let install = cache_install_with("app-exhibit", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = exhibit_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        BIG,
+    )
+    .unwrap();
+    let mut ui = name_interface("close");
+    ui.set_string(6208, "Pen".into());
+    app.set_interface(ui);
+    app.set_money(Money {
+        cash: 50_000.0,
+        ..Money::default()
+    });
+    app.pass(0, &[]);
+    app.game.as_mut().unwrap().build.hold(0);
+    let camera = app.camera().unwrap().clone();
+    let at = |lx: i32, ly: i32| {
+        let (x, y) = world_point(&camera, 64 * 20 + lx, 64 * 20 + ly);
+        Command::Mouse(Mouse::Move(x, y))
+    };
+    let exhibit_lines = |app: &App| -> Vec<String> {
+        let all = app.log_lines(0, 0);
+        all.iter()
+            .filter_map(|l| l.splitn(4, ' ').nth(3))
+            .filter(|l| l.starts_with("exhibit "))
+            .map(str::to_string)
+            .collect()
+    };
+    // One piece on each side of tile (20, 20): the fourth closes it.
+    let clicks = [(32, 12), (52, 32), (32, 52), (12, 32)];
+    for (n, (lx, ly)) in clicks.into_iter().enumerate() {
+        let pass = 20 * (n as u64 + 1);
+        app.pass(pass, &[at(lx, ly)]);
+        app.pass(pass + 5, &[Command::Mouse(Mouse::Down)]);
+        app.pass(pass + 10, &[Command::Mouse(Mouse::Up)]);
+        let told = exhibit_lines(&app);
+        match n {
+            3 => assert_eq!(told, ["exhibit new 1 \"Pen 1\" tiles 1 gate 20,20 side 6"]),
+            _ => assert!(told.is_empty()),
+        }
+    }
+    let game = app.game.as_ref().unwrap();
+    assert_eq!(game.world.exhibits().list().len(), 1);
+    let first = game.world.exhibits().get(1).unwrap();
+    assert_eq!((first.name.as_str(), first.tiles), ("Pen 1", 1));
+    assert!(app.paused(), "the name dialog is open");
+    let ui = app.interface().unwrap();
+    assert_eq!(ui.text(45308), Some(b"Pen 1".to_vec()));
+    // Typing replaces the selected default name; Enter answers.
+    let typed = [
+        Command::Char(b'L'),
+        Command::Char(b'i'),
+        Command::Key(Key::Enter, false, false),
+    ];
+    app.pass(200, &typed);
+    assert!(!app.paused());
+    assert_eq!(exhibit_lines(&app), ["exhibit name 1 \"Li\""]);
+    assert_eq!(
+        app.game
+            .as_ref()
+            .unwrap()
+            .world
+            .exhibits()
+            .get(1)
+            .unwrap()
+            .name,
+        "Li"
+    );
+}

@@ -153,6 +153,29 @@ impl Interface {
         true
     }
 
+    /// Enables or disables the element `id`, leaving the rest of its state; `false` if there is
+    /// no such element.
+    pub fn set_enabled(&mut self, id: i32, enabled: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.flag(i, DISABLED, !enabled);
+        true
+    }
+
+    /// Limits the text field `id` to `limit` characters (0: no limit); `false` if it is not a
+    /// field.
+    pub fn set_char_limit(&mut self, id: i32, limit: i32) -> bool {
+        let field = self.tree.find(id).map(|i| &mut self.tree.elements[i].kind);
+        match field {
+            Some(Kind::EditableText(f)) => {
+                f.char_limit = limit;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// The text resource of the game under this name (empty if there is none).
     pub fn text_entry(&self, name: &[u8]) -> Vec<u8> {
         Strings::text_entry(&self.strings, name)

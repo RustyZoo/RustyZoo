@@ -873,10 +873,17 @@ pub fn place(
         Class::Fence => tile.and_then(|t| world.edge(t, p.facing as usize)),
         Class::Fixed => None,
     };
-    if let Some(id) = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id)) {
-        world.remove(id);
-    }
-    match world.add(entity, shape) {
+    let old = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id));
+    let added = match (old, class) {
+        // A fence takes the place of the piece as one change: its exhibit stays closed.
+        (Some(id), Class::Fence) => world.replace(id, entity, shape),
+        (Some(id), _) => {
+            world.remove(id);
+            world.add(entity, shape)
+        }
+        (None, _) => world.add(entity, shape),
+    };
+    match added {
         Some(id) => {
             money.charge(CONSTRUCTION, p.price);
             Outcome::Placed(id)

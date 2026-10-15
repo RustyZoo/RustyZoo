@@ -296,6 +296,9 @@ struct Game {
     /// What the bulldozer would remove now and the removal that is under way.
     dozer: bulldozer::Dozer,
     sweep: Option<bulldozer::Sweep>,
+    /// The new exhibits that wait for a name, the first one's dialog being open or not.
+    naming: Vec<exhibits::Naming>,
+    naming_open: bool,
 }
 
 impl Game {
@@ -349,6 +352,9 @@ pub struct App<'a> {
     /// 12,40`, `world stage`).
     tool_lines: Vec<String>,
     world_lines: Vec<String>,
+    /// What the exhibits did in the last pass, and the messages about gates that wait to be shown.
+    exhibit_lines: Vec<String>,
+    exhibit_messages: Vec<(u32, i32)>,
     /// What the terrain tool did in the last pass.
     terrain_lines: Vec<String>,
     /// What the cash and the accounts did and has not been logged yet, and what they did in the
@@ -464,6 +470,8 @@ impl<'a> App<'a> {
             menu_lines: Vec::new(),
             tool_lines: Vec::new(),
             world_lines: Vec::new(),
+            exhibit_lines: Vec::new(),
+            exhibit_messages: Vec::new(),
             terrain_lines: Vec::new(),
             money_events: Vec::new(),
             money_lines: Vec::new(),
@@ -488,12 +496,15 @@ impl<'a> App<'a> {
             camera.set_fullscreen(&zoo, true);
         }
         let brush = (zoo.view.brush & 0xff) as usize;
-        let world = World::new(zoo, |e| self.renderer.shape(e));
+        let mut world = World::new(zoo, |e| self.renderer.shape(e));
         let staged = self.renderer.stage(&world.zoo, camera.rotation, false)?;
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
         let types = crate::terrain::types(self.renderer.vfs());
+        let water = place::water(&types);
+        world.set_water(water.clone());
+        let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
         // outside 1 to 5 leaves the default.
         let mut terrain = Tool::new(
@@ -513,12 +524,12 @@ impl<'a> App<'a> {
             told: None,
             bar: None,
             finances: Finances::default(),
-            build: Build::new(installed_expansions(self.renderer.vfs())),
+            build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
             pending: None,
             run: Vec::new(),
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
-            water: place::water(&types),
+            water,
             smart: place::smart_fences(self.renderer.vfs().ini()),
             extra: Extra::default(),
             terrain,
@@ -529,6 +540,8 @@ impl<'a> App<'a> {
             confirm: place::confirm_sell(self.renderer.vfs().ini()),
             dozer: bulldozer::Dozer::default(),
             sweep: None,
+            naming: Vec::new(),
+            naming_open: false,
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -579,6 +592,7 @@ impl<'a> App<'a> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         self.menu_lines.clear();
         (self.tool_lines, self.world_lines) = (Vec::new(), Vec::new());
+        self.exhibit_lines = Vec::new();
         self.terrain_lines = Vec::new();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
@@ -972,6 +986,10 @@ impl<'a> App<'a> {
         if pieces.is_empty() {
             return;
         }
+        let word = ui.string(exhibits::WORD);
+        if !word.is_empty() {
+            game.world.set_exhibit_word(word);
+        }
         let renderer = &self.renderer;
         let cat = renderer.catalogue();
         let (mut first, mut refused) = (None, None);
@@ -1030,6 +1048,7 @@ impl<'a> App<'a> {
             ui.message(&to_cp1252(&ui.string(id)));
             self.tool_lines.push(format!("tool message {id}"));
         }
+        self.exhibits_told();
         self.aim(false);
     }
 
@@ -1180,6 +1199,9 @@ impl<'a> App<'a> {
     /// do yet (saved games come later), so the question closes and the game goes on; No leaves;
     /// Cancel stays.
     fn answered(&mut self, code: i32) {
+        if self.game.as_ref().is_some_and(|g| g.naming_open) {
+            return self.named();
+        }
         let Some(kind) = self.asked.take() else {
             return;
         };
@@ -1223,6 +1245,7 @@ impl<'a> App<'a> {
             if let Some(game) = &mut self.game {
                 game.sweep = None;
             }
+            self.named();
         }
         self.ask(Asked::Exit);
     }
@@ -1453,6 +1476,11 @@ impl<'a> App<'a> {
         lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
         lines.extend(self.world_lines.iter().map(|e| format!("{lead} world {e}")));
         lines.extend(
+            self.exhibit_lines
+                .iter()
+                .map(|e| format!("{lead} exhibit {e}")),
+        );
+        lines.extend(
             self.terrain_lines
                 .iter()
                 .map(|e| format!("{lead} terrain {e}")),
@@ -1514,6 +1542,7 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
 }
 
 mod bulldozer;
+mod exhibits;
 mod terrain;
 
 #[cfg(test)]
