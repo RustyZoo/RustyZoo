@@ -232,6 +232,8 @@ pub fn run(
     let start = sdl3::timer::ticks();
     let mut shown = false;
     let mut pointer = None;
+    // The dummy driver has no pointer and reports one in the corner, which would scroll the view.
+    let has_pointer = video.current_video_driver() != "dummy";
     let mut wait = Wait::default();
     let mut seen = false;
     loop {
@@ -280,7 +282,8 @@ pub fn run(
         }
         // The edge scroll reads the cursor at its pass, not from motion events: a window
         // that is not active gets none, one that gets the focus back under the pointer does.
-        let at = (screen.canvas.window().has_input_focus()
+        let at = (has_pointer
+            && screen.canvas.window().has_input_focus()
             && screen.canvas.window().has_mouse_focus())
         .then(|| pump.mouse_state())
         .map(|m| screen.pointer((m.x(), m.y())))
