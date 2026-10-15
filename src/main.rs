@@ -105,7 +105,7 @@ usage: rustyzoo [--data <dir>] <command>
                       if a set fails
   run [<map>] --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
       [--png-every K] [--out DIR] [--show ID]... [--rows ID N]... [--text ID TEXT]...
-      [--ask ID BUTTONS]
+      [--ask ID BUTTONS] [--bare]
                       play a map (a .zoo member) without a window. N passes of the main loop
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
@@ -131,7 +131,9 @@ usage: rustyzoo [--data <dir>] <command>
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma
-                      separated, for a script to scroll, select, type in and answer. The window is
+                      separated, for a script to scroll, select, type in and answer. A game shows
+                      the map view and the main panel (layout 2); --bare (with a map) leaves the
+                      panel out, so that the frames are those of the map alone. The window is
                       1024x768 unless
                       --size says otherwise. Prints the size of the window, then, for each pass
                       in which something happens: a line per command applied, then one per
@@ -142,7 +144,7 @@ usage: rustyzoo [--data <dir>] <command>
                       in a pass whose index is a multiple of K is written to
                       DIR/frame-<pass>.png (DIR is by default the current folder)
   run [<map>] [--size WxH] [--passes N] [--script FILE] [--log FILE] [--timing MS] [--shot FILE]
-      [--show ID]... [--rows ID N]... [--text ID TEXT]... [--ask ID BUTTONS]
+      [--show ID]... [--rows ID N]... [--text ID TEXT]... [--ask ID BUTTONS] [--bare]
                       play a map (without one, start up to the main menu, see below) with a
                       game size of the ini file's screenwidth and
                       screenheight (cut to the display; --size overrides it, uncut), in a
@@ -151,7 +153,8 @@ usage: rustyzoo [--data <dir>] <command>
                       with the menu music; the ini file's fullscreen (not 0) starts it in full
                       screen, and every switch is written back to the settings of the user folder. The loop runs on the real clock, sleeps until the next timer
                       is due, blocks while the window is minimised or hidden, and shows a frame
-                      only when one was painted. Closing the window ends it. --passes ends it
+                      only when one was painted. Closing the window ends it (it asks first, in a game: see
+                      below). --passes ends it
                       after N passes, --script applies commands as above before the pass of
                       their index (fullscreen asks the window to switch), --log writes the
                       lines a headless run prints, so that
@@ -201,8 +204,23 @@ usage: rustyzoo [--data <dir>] <command>
                       MSCashIncrement; the spinners step by the increment and stop at the limits,
                       a typed amount is read when the edit ends, and each change is written to
                       MSStartingCash of the settings of the user folder). Play or a double click on
-                      an entry only logs `menu play scenario SECTION FILE` or `menu play freeform
-                      FILE cash AMOUNT` for now; starting a game from the menu comes later.
+                      an entry log `menu play scenario SECTION FILE` or `menu play freeform FILE
+                      cash AMOUNT` and open the map the file names (`[start] savegame`) as a
+                      saved game, as does Continue (`[user] lastfile`): the file is read as a
+                      plain path (absolute, or relative to the install folder), the menu layouts
+                      are hidden, the map view shows, the menu music starts to fade, and the
+                      first step of the simulation is the cap; scenarios and freeform maps empty
+                      `lastfile`. The lines are `menu game start LABEL FILE`; a file that cannot
+                      be loaded is a question box with its message (`menu message TEXT`) and the
+                      menu stays. In a game, Escape (with nothing to cancel; an open panel closes
+                      first), the window being closed (`close` in a script) and the Main Menu and
+                      Exit Game buttons of the options panel ask whether to save (`menu game ask
+                      leave|exit`, Yes No Cancel; Yes cannot save yet and changes nothing, `menu
+                      game save unavailable`): No stops the game and shows the menu again (`menu
+                      game stop`, Continue checked, the music from its start unless it plays at
+                      full level: `menu music restart`) or, for Exit, ends the run (`menu game
+                      exit`). `quit` in a script ends the run without a question. A run of a map
+                      has no menu to go back to: it ends instead.
   dump-layout [--size WxH] [--expansions N]
                       load the interface tree as check-layouts does and resolve it for a window
                       of W by H pixels (1024x768 by default; each side from 1 to 16384), then
@@ -741,17 +759,6 @@ fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
     }
 }
 
-/// Applies [`Zoo::check_types`] with the types of `catalogue`.
-fn check_types(zoo: Zoo, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
-    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-    zoo.check_types(|e| {
-        catalogue
-            .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
-            .is_some()
-    })?;
-    Ok(zoo)
-}
-
 /// How many entities `map-info` lists one by one.
 const MAP_INFO_ENTITIES: usize = 5;
 
@@ -894,7 +901,7 @@ fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
             .read(&member)
             .map_err(|e| ZooError::Corrupted(e.to_string()))
             .and_then(|bytes| Zoo::parse(&bytes))
-            .and_then(|zoo| check_types(zoo, &catalogue));
+            .and_then(|zoo| zoo.checked(&catalogue));
         match result {
             Ok(zoo) => {
                 ok += 1;
@@ -1344,8 +1351,9 @@ fn render_map(
         return Err(CliError::Usage);
     }
     let catalogue = Catalogue::load(vfs)?;
-    let zoo =
-        check_types(load_map(vfs, member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
+    let zoo = load_map(vfs, member)?
+        .checked(&catalogue)
+        .map_err(|e| format!("{member}: {e}"))?;
     let (image, summary) =
         MapRenderer::new(vfs, &catalogue).render_with(&zoo, rotation, options)?;
     let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;
@@ -1379,7 +1387,7 @@ fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
             .read(&member)
             .ok()
             .and_then(|bytes| Zoo::parse(&bytes).ok())
-            .and_then(|zoo| check_types(zoo, &catalogue).ok());
+            .and_then(|zoo| zoo.checked(&catalogue).ok());
         let Some(zoo) = zoo else {
             skipped += 1;
             report.line(format_args!("skipped {name}: cannot be loaded"));

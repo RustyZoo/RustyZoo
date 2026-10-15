@@ -27,10 +27,12 @@
 
 mod body;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::error::Error;
 use std::fmt;
+
+use crate::entity::Catalogue;
 
 /// The oldest version the original accepts.
 pub const MIN_VERSION: u32 = 38;
@@ -203,6 +205,17 @@ impl Zoo {
             ))),
             None => Ok(()),
         }
+    }
+
+    /// Applies [`Zoo::check_types`] with the types of `catalogue`.
+    pub fn checked(self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
+        let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+        self.check_types(|e| {
+            catalogue
+                .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
+                .is_some()
+        })?;
+        Ok(self)
     }
 
     /// Reads a file, refusing it the way the original does.

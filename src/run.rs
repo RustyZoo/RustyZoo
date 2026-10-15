@@ -22,7 +22,7 @@ use rustyzoo::ui::interface::Buttons;
 use rustyzoo::vfs::Vfs;
 
 use super::boot::boot;
-use super::{CliError, Report, check_types, load_map};
+use super::{CliError, Report, load_map};
 
 /// The most rows `--rows` makes.
 const MAX_ROWS: usize = 100_000;
@@ -54,6 +54,8 @@ struct Flags {
     show: Vec<i32>,
     /// `--rows` and `--text`: what to put into the interface at the start.
     fill: crate::layout::Fill,
+    /// `--bare`: the game shows the map view alone, without the main panel.
+    bare: bool,
 }
 
 fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
@@ -65,6 +67,10 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
         words = match (*word, rest) {
             ("--headless", rest) => {
                 flags.headless = true;
+                rest
+            }
+            ("--bare", rest) => {
+                flags.bare = true;
                 rest
             }
             ("--log", [file, rest @ ..]) => {
@@ -301,6 +307,10 @@ impl Iterator for Passes {
 /// Plays `member`, or, without one, starts up to the main menu.
 pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliError> {
     let flags = flags(words)?;
+    // Only a game that opens with the run has a main panel to leave out.
+    if flags.bare && member.is_none() {
+        return Err(CliError::Usage);
+    }
     let read = |file: &str| std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"));
     let (logged, size) = match &flags.replay {
         Some(file) => {
@@ -319,7 +329,8 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
     let loaded = match member {
         Some(member) => {
             let catalogue = Catalogue::load(vfs)?;
-            let zoo = check_types(load_map(vfs, member)?, &catalogue)
+            let zoo = load_map(vfs, member)?
+                .checked(&catalogue)
                 .map_err(|e| format!("{member}: {e}"))?;
             Some((catalogue, zoo))
         }
@@ -335,6 +346,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             shot: flags.shot.as_deref(),
             show: &flags.show,
             fill: &flags.fill,
+            bare: flags.bare,
         };
         return crate::window::run(vfs, loaded, &ini, window);
     }
@@ -378,6 +390,9 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             }
             // The game starts with the run: the menu music, which only the log tells of here,
             // fades.
+            if flags.bare {
+                app.bare();
+            }
             app.start_game(Music::from_config(&ini));
             app
         }
@@ -445,6 +460,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             }
             App::menu(
                 MapRenderer::new(vfs, &menu_catalogue),
+                Settings::from_config(&ini),
                 Timers::from_config(&ini),
                 size,
                 booted.interface,
@@ -580,6 +596,19 @@ mod tests {
         ] {
             assert!(matches!(rows(bad), Err(CliError::Usage)), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn bare_is_a_flag_of_both_kinds_of_run() {
+        let got = flags(&["--bare", "--headless", "--passes", "1", "--clock", "1"]);
+        assert!(got.unwrap_or_else(|_| panic!("refused")).bare);
+        assert!(
+            flags(&["--bare"])
+                .unwrap_or_else(|_| panic!("refused"))
+                .bare
+        );
+        assert!(!flags(&[]).unwrap_or_else(|_| panic!("refused")).bare);
+        assert!(flags(&["--bare", "x"]).is_err());
     }
 
     #[test]

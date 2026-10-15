@@ -14,6 +14,7 @@ impl UiStrings for Texts {
             7123 => "Go on with %s".into(),
             37123 => "Long: go on with %s".into(),
             7127 => "Nothing saved".into(),
+            318 => "Cannot open".into(),
             37127 => "Long: nothing saved".into(),
             _ => String::new(),
         }
@@ -408,4 +409,104 @@ fn the_page_list_comes_from_the_versioned_registry_files_in_descending_order() {
     assert_eq!(credit_pages(&vfs), (vec![40, 30, 31, 1, 2], 5));
     let empty = Install::new("menu-credit-none", &[]);
     assert_eq!(credit_pages(&Vfs::open(&empty.0).unwrap()), (vec![], 8));
+}
+
+#[test]
+fn continue_asks_for_the_last_file_and_tells_the_player_when_it_is_gone() {
+    let install = install("menu-continue-request");
+    let mut ui = interface(&install);
+    let vfs = files(&install);
+    let mut menu = menu("[user]\nlastfile=Old\\Saved.ZOO\n", &install, None, 0);
+    std::fs::create_dir(install.0.join("Old")).unwrap();
+    std::fs::copy(install.0.join("saved.zoo"), install.0.join("Old/saved.zoo")).unwrap();
+    assert_eq!(menu.take_request(), None);
+    let (log, exit) = menu.selected(&vfs, &mut ui, 7113);
+    assert_eq!(
+        (log, exit),
+        (vec!["continue Old/Saved.ZOO".to_string()], false)
+    );
+    assert_eq!(
+        menu.take_request(),
+        Some(Request::Open(Start {
+            path: "Old/Saved.ZOO".into(),
+            label: "continue".into(),
+            forget_last: false,
+            freeform: false,
+        }))
+    );
+    assert_eq!(menu.take_request(), None, "once");
+    // The file goes away after the button was shown.
+    std::fs::remove_file(install.0.join("Old/saved.zoo")).unwrap();
+    menu.selected(&vfs, &mut ui, 7113);
+    assert_eq!(
+        menu.take_request(),
+        Some(Request::Message("Cannot open".into()))
+    );
+    // No last file: nothing to ask. A directory is no file.
+    for last in ["", "dir.zoo", "Old", "../saved.zoo"] {
+        let mut menu = self::menu(&format!("[user]\nlastfile={last}\n"), &install, None, 0);
+        let (log, _) = menu.selected(&vfs, &mut ui, 7113);
+        match last {
+            "" => assert!(log.is_empty() && menu.take_request().is_none()),
+            _ => assert!(
+                matches!(menu.take_request(), Some(Request::Message(_))),
+                "{last}"
+            ),
+        }
+    }
+}
+
+#[test]
+fn a_file_is_loaded_as_a_saved_game_from_a_plain_path_or_refused_with_its_name() {
+    let install = install("menu-load");
+    let catalogue = crate::entity::Catalogue::default();
+    let menu = menu("", &install, None, 0);
+    std::fs::write(
+        install.0.join("map.zoo"),
+        crate::zoo::tests::file(106, 3, 2, &[], &[]),
+    )
+    .unwrap();
+    std::fs::create_dir(install.0.join("Maps")).unwrap();
+    std::fs::write(
+        install.0.join("Maps/Map.zoo"),
+        crate::zoo::tests::file(106, 2, 2, &[], &[]),
+    )
+    .unwrap();
+    let load = |path: &str| menu.load(path, &catalogue).map(|z| (z.width, z.height));
+    assert_eq!(load("map.zoo"), Ok((3, 2)));
+    assert_eq!(load("MAPS/map.ZOO"), Ok((2, 2)), "any letter case");
+    let absolute = install.0.join("map.zoo");
+    assert_eq!(load(absolute.to_str().unwrap()), Ok((3, 2)));
+    for (path, why) in [
+        ("saved.zoo", "saved.zoo: not a saved game"),
+        ("gone.zoo", "gone.zoo: no such file"),
+        ("dir.zoo", "dir.zoo: no such file"),
+        ("", ": no such file"),
+        ("../x.zoo", "../x.zoo: no such file"),
+    ] {
+        assert_eq!(load(path), Err(why.to_string()), "{path:?}");
+    }
+    std::fs::write(install.0.join("short.zoo"), b"TZFB").unwrap();
+    assert!(
+        load("short.zoo")
+            .unwrap_err()
+            .starts_with("short.zoo: corrupted")
+    );
+}
+
+#[test]
+fn a_game_that_starts_hides_the_menu_screens_and_scenarios_forget_the_last_file() {
+    let install = install("menu-hide");
+    let mut ui = interface(&install);
+    let mut menu = menu("[user]\nlastfile=saved.zoo\n", &install, None, 0);
+    menu.show(&mut ui);
+    ui.show(40);
+    menu.hide(&mut ui, false);
+    assert!(!shown(&ui, 26) && !shown(&ui, 40));
+    assert_eq!(written(&install), None);
+    menu.hide(&mut ui, true);
+    assert_eq!(written(&install).unwrap(), "[user]\nlastfile=\n");
+    // Shown again, Continue is off: the name was forgotten.
+    assert_eq!(menu.show(&mut ui), ["continue disabled"]);
+    assert!(shown(&ui, 26) && disabled(&ui, 7113));
 }

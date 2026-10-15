@@ -488,6 +488,11 @@ impl<'a> MapRenderer<'a> {
         self.vfs
     }
 
+    /// The entity types this renders with.
+    pub fn catalogue(&self) -> &'a Catalogue {
+        self.catalogue
+    }
+
     pub fn new(vfs: &'a Vfs, catalogue: &'a Catalogue) -> MapRenderer<'a> {
         let read = |member: &str| {
             vfs.read(member)

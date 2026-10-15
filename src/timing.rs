@@ -115,6 +115,12 @@ impl Timers {
         }
     }
 
+    /// Forgets when the simulation last ran: its next step is the cap, as after a load that took
+    /// longer than the cap (main loop 3.5).
+    pub fn forget_simulation(&mut self) {
+        self.last_simulation = None;
+    }
+
     /// Milliseconds from `now` to the earliest time at which a pass can fire a timer: 0 when
     /// one is due. A caller that sleeps this long runs the same firings as one that spins.
     pub fn next_due(&self, now: u64) -> u64 {
@@ -473,6 +479,19 @@ mod tests {
                 "gap {gap}"
             );
         }
+    }
+
+    #[test]
+    fn a_load_makes_the_next_step_the_cap() {
+        let mut t = Timers::new(66, 16, 200);
+        t.pass(0, 1.0);
+        t.pass(70, 1.0);
+        t.forget_simulation();
+        // Due at once, and as long as any gap: the cap, then ordinary steps again.
+        assert_eq!(t.next_due(71), 0);
+        assert_eq!(t.pass(71, 1.0).step, Some(200));
+        assert_eq!(t.pass(100, 1.0).step, None);
+        assert_eq!(t.pass(140, 1.0).step, Some(69));
     }
 
     #[test]

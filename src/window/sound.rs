@@ -148,6 +148,23 @@ impl Sound {
         }
     }
 
+    /// The menu music starts again from its beginning when the game asks: the voice that was
+    /// playing, if any, is replaced.
+    pub fn restart(&mut self, vfs: &Vfs, app: &App) {
+        if !app.music_restarted() {
+            return;
+        }
+        self.music = None;
+        if let (Some(audio), Some((model, _))) = (&self.audio, app.music()) {
+            self.music = audio
+                .menu_music(vfs, model, true, false)
+                .unwrap_or_else(|e| {
+                    eprintln!("rustyzoo: no menu music: {e}");
+                    None
+                });
+        }
+    }
+
     /// Prints the state of the music at the end of the run.
     pub fn summary(&self, app: &App) {
         match (&self.music, app.music()) {

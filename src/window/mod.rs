@@ -64,6 +64,8 @@ pub struct Flags<'a> {
     pub show: &'a [i32],
     /// `--rows` and `--text`: what to put into the interface at the start.
     pub fill: &'a crate::layout::Fill,
+    /// `--bare`: the game shows the map view alone.
+    pub bare: bool,
 }
 
 /// Makes the game full screen or windowed, after asking the window to do it if `ask`; the game is
@@ -185,6 +187,9 @@ pub fn run(
                 app.set_interface(ui);
             }
             // The game starts with the run: the menu music fades out.
+            if flags.bare {
+                app.bare();
+            }
             app.start_game(menu);
             app
         }
@@ -192,6 +197,7 @@ pub fn run(
             catalogue = booted.catalogue;
             App::menu(
                 MapRenderer::new(vfs, &catalogue),
+                Settings::from_config(ini),
                 timers,
                 size,
                 booted.interface,
@@ -306,6 +312,7 @@ pub fn run(
             }
         }
         sound.fade(&app);
+        sound.restart(vfs, &app);
         sound.clicks(vfs, &app);
         pass += 1;
         let timed = timing.as_ref().is_some_and(|t| t.done(now));

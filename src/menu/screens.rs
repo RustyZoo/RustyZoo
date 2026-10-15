@@ -2,7 +2,7 @@
 //! and text of the selected entry, the starting cash and the Play buttons (main menu 5 and 6).
 //! The screens themselves are shown by the buttons of the main menu; this fills them in.
 
-use super::{Menu, enable};
+use super::{Menu, Request, Start, enable};
 use crate::config::Config;
 use crate::lists::{Cash, Status};
 use crate::text::format::{Strings, money};
@@ -81,8 +81,8 @@ impl Menu {
         match id {
             SCENARIOS => self.open_scenarios(vfs, ui, &mut log),
             FREEFORM => self.open_freeform(vfs, ui, &mut log),
-            SCENARIO_PLAY => self.play_scenario(ui, &mut log),
-            MAP_PLAY => self.play_freeform(ui, &mut log),
+            SCENARIO_PLAY => self.play_scenario(vfs, ui, &mut log),
+            MAP_PLAY => self.play_freeform(vfs, ui, &mut log),
             CASH_UP | CASH_DOWN => {
                 match id {
                     CASH_UP => self.cash.up(),
@@ -105,8 +105,8 @@ impl Menu {
                 self.describe_scenario(vfs, ui, row(value), &mut log)
             }
             Action::Row(MAP_LIST, value) => self.describe_freeform(vfs, ui, row(value), &mut log),
-            Action::Double(SCENARIO_LIST, _) => self.play_scenario(ui, &mut log),
-            Action::Double(MAP_LIST, _) => self.play_freeform(ui, &mut log),
+            Action::Double(SCENARIO_LIST, _) => self.play_scenario(vfs, ui, &mut log),
+            Action::Double(MAP_LIST, _) => self.play_freeform(vfs, ui, &mut log),
             Action::Edited(CASH_FIELD) => {
                 let typed = ui.text(CASH_FIELD).unwrap_or_default();
                 self.cash.typed(&typed, &ui.string(SYMBOL));
@@ -197,13 +197,32 @@ impl Menu {
         ui.set_hidden(id, text.is_none());
     }
 
-    /// Play, or a double click on an entry, if Play is enabled: here the request is only logged.
-    fn play_scenario(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
-        if let Some(s) = self.scenario.map(|i| &self.scenarios[i])
-            && enabled(ui, SCENARIO_PLAY)
-        {
-            log.push(format!("play scenario {} {}", s.section, s.file));
+    /// Play, or a double click on an entry, if Play is enabled: the map named by `[start]
+    /// savegame` of the scenario file is opened (main menu 8.3).
+    fn play_scenario(&mut self, vfs: &Vfs, ui: &mut Interface, log: &mut Vec<String>) {
+        let Some(s) = self.scenario.map(|i| &self.scenarios[i]) else {
+            return;
+        };
+        if !enabled(ui, SCENARIO_PLAY) {
+            return;
         }
+        log.push(format!("play scenario {} {}", s.section, s.file));
+        let label = format!("scenario {}", s.section);
+        let file = s.file.clone();
+        self.open_from(vfs, &file, label, false);
+    }
+
+    /// Asks the game to open the map `[start] savegame` of the scenario file `file` names.
+    fn open_from(&mut self, vfs: &Vfs, file: &str, label: String, freeform: bool) {
+        self.request = Some(match desc(vfs, file, "start")("savegame") {
+            Some(path) => Request::Open(Start {
+                path,
+                label,
+                forget_last: true,
+                freeform,
+            }),
+            None => Request::Message(format!("{file}: no map to start")),
+        });
     }
 
     // ---- The freeform screen (6)
@@ -295,16 +314,22 @@ impl Menu {
         ));
     }
 
-    /// Play, or a double click on a map, if Play is enabled: here the request is only logged.
-    fn play_freeform(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
-        if let Some(m) = self.freeform.map(|i| &self.freeforms[i])
-            && enabled(ui, MAP_PLAY)
-        {
-            log.push(format!(
-                "play freeform {} cash {}",
-                m.file, self.cash.amount
-            ));
+    /// Play, or a double click on a map, if Play is enabled: the map named by `[start] savegame`
+    /// of its description file is opened, and the starting cash goes with it.
+    fn play_freeform(&mut self, vfs: &Vfs, ui: &mut Interface, log: &mut Vec<String>) {
+        let Some(m) = self.freeform.map(|i| &self.freeforms[i]) else {
+            return;
+        };
+        if !enabled(ui, MAP_PLAY) {
+            return;
         }
+        log.push(format!(
+            "play freeform {} cash {}",
+            m.file, self.cash.amount
+        ));
+        let label = format!("freeform cash {}", self.cash.amount);
+        let file = m.file.clone();
+        self.open_from(vfs, &file, label, true);
     }
 }
 

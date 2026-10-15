@@ -3,6 +3,7 @@
 use super::*;
 use crate::app::Mouse;
 use crate::lists::{freeform_list, scenario_list};
+use crate::menu::{Request, Start};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{DISABLED, HIDDEN, Picture, Tree};
@@ -92,7 +93,7 @@ fn fixture(name: &str, scn: bool, free: bool) -> (Install, Vfs, Interface) {
             (
                 "s/aa.scn",
                 b"[desc]\npicture=ui/pic1.tga\nstory=STORY_A\nlockedpicture=ui/lock.tga\n\
-                  lockedstory=STORY_LOCK\n"
+                  lockedstory=STORY_LOCK\n[start]\nsavegame=maps/a.zoo\n"
                     .to_vec(),
             ),
             (
@@ -111,7 +112,9 @@ fn fixture(name: &str, scn: bool, free: bool) -> (Install, Vfs, Interface) {
             ),
             (
                 "f/m1.scn",
-                b"[freeform]\nname=27001\ndescription=DESC_1\nicon=ui/pic1.tga\n".to_vec(),
+                b"[freeform]\nname=27001\ndescription=DESC_1\nicon=ui/pic1.tga\n\
+                  [start]\nsavegame=maps/m1.zoo\n"
+                    .to_vec(),
             ),
             ("f/m2.scn", b"[freeform]\nname=27002\n".to_vec()),
         ]);
@@ -251,6 +254,16 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
         menu.pressed(&vfs, &mut ui, 50008),
         ["play scenario aa s/aa.scn"]
     );
+    // It asks for the map its file names, and empties the last file when it starts.
+    assert_eq!(
+        menu.take_request(),
+        Some(Request::Open(Start {
+            path: "maps/a.zoo".into(),
+            label: "scenario aa".into(),
+            forget_last: true,
+            freeform: false,
+        }))
+    );
     // The third entry's file is missing: no picture, no story, but it can be played (it fails
     // when it starts).
     let actions = click_row(&mut ui, 50002, 2, true);
@@ -261,6 +274,10 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
     assert!(
         lines.contains(&"play scenario ac s/missing.scn".to_string()),
         "{lines:?}"
+    );
+    assert_eq!(
+        menu.take_request(),
+        Some(Request::Message("s/missing.scn: no map to start".into()))
     );
     // Back leaves the selection, and the screen shown again describes it.
     assert_eq!(menu.pressed(&vfs, &mut ui, 50009), ["back"]);
@@ -328,6 +345,25 @@ fn the_freeform_screen_lists_the_maps_and_shows_the_first_with_the_starting_cash
         menu.pressed(&vfs, &mut ui, 11513),
         ["play freeform f/m2.scn cash 75000"]
     );
+    assert_eq!(
+        menu.take_request(),
+        Some(Request::Message("f/m2.scn: no map to start".into()))
+    );
+    // The first map names its own, and the cash goes with the request.
+    ui.select_row(11504, Some(0));
+    menu.action(&vfs, &mut ui, Action::Row(11504, 0));
+    menu.pressed(&vfs, &mut ui, 11513);
+    assert_eq!(
+        menu.take_request(),
+        Some(Request::Open(Start {
+            path: "maps/m1.zoo".into(),
+            label: "freeform cash 75000".into(),
+            forget_last: true,
+            freeform: true,
+        }))
+    );
+    ui.select_row(11504, Some(1));
+    menu.action(&vfs, &mut ui, Action::Row(11504, 1));
     // A double click starts it too, and the selection comes back when the screen does.
     let mut lines = Vec::new();
     for action in click_row(&mut ui, 11504, 1, true) {
