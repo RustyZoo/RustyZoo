@@ -10,20 +10,28 @@
 //! [`update`] is one unit's turn in the original's order: events in; unless suspended, the move;
 //! the animation; unless suspended, the status timer (the needs and the checks once it passes the
 //! period) and then either the wait counted down or the behaviour and the goals; the events
-//! discarded. What the move, the animation frames, the needs, the checks, the behaviour and the
-//! goals do is the business of later issues: each is a method of [`Hooks`], empty until then.
+//! discarded. The move is [`movement`]. What the animation frames,
+//! the needs, the checks, the behaviour and the goals do is the business of later issues: each is
+//! a method of [`Hooks`], empty until then.
 //! A hook must not add or remove entities (a removal goes through [`Ctx::remove`], which only
 //! flags the unit for the next removal pass, as in the original).
 //!
-//! The log family `unit`: `unit add <id> <kind> <x>,<y>`, `unit remove <id>` and
-//! `unit status <id>` for each status tick.
+//! The log family `unit`: `unit add <id> <kind> <x>,<y>`, `unit remove <id>`,
+//! `unit status <id>` for each status tick, `unit tile <id> <x>,<y>` when a unit enters a tile,
+//! `unit enter <id> <exhibit>` when that is another exhibit, `unit face <id> <direction>` when its
+//! facing turns and `unit abort <id>` when its next tile step is refused.
 
 use std::collections::HashMap;
 
+use crate::config::Config;
+use crate::path::{self, Finder, Mover, Settings};
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::Entity;
 
+pub mod movement;
+#[cfg(test)]
+mod testing;
 #[cfg(test)]
 mod tests;
 
@@ -60,6 +68,17 @@ impl Kind {
             Kind::Keeper => "keeper",
             Kind::Worker => "worker",
             Kind::Guide => "guide",
+        }
+    }
+
+    /// The class that decides the costs of the path finder.
+    fn mover(self) -> path::Kind {
+        match self {
+            Kind::Animal => path::Kind::Animal,
+            Kind::Guest => path::Kind::Guest,
+            Kind::Keeper => path::Kind::Keeper,
+            Kind::Worker => path::Kind::Worker,
+            Kind::Guide => path::Kind::Guide,
         }
     }
 
@@ -115,6 +134,17 @@ pub struct Unit {
     pub anim_speed: u16,
     /// The point the unit goes to, in movement units; `None` for the original's invalid position.
     pub destination: Option<(i32, i32, i32)>,
+    /// The tiles to follow, from the one the unit stands on to its destination (movement 4.1).
+    pub path: Vec<usize>,
+    /// The direction of the last tile change, -1 for none (movement 2).
+    pub travel: i32,
+    /// The unit goes in or out of a building: the tile step test looks at the edge cost only.
+    pub through_building: bool,
+    /// The next tile step was refused: the goal has to give up (movement 4.7). The goals read
+    /// and clear it.
+    pub aborted: bool,
+    /// What the costs of the path finder read of the unit's type; its tile is set for each use.
+    pub mover: Mover,
     pub animation: Animation,
     /// Milliseconds since the last status tick, started at `id % period`.
     pub status_timer: i32,
@@ -144,6 +174,11 @@ impl Unit {
             speed: 0,
             anim_speed: 100,
             destination: None,
+            path: Vec::new(),
+            travel: -1,
+            through_building: false,
+            aborted: false,
+            mover: Mover::new(kind.mover(), None),
             animation: Animation::default(),
             status_timer: 0,
             wait: 0,
@@ -176,6 +211,8 @@ pub struct Units {
     index: HashMap<u32, usize>,
     /// The status period (`[AI] mStatusPeriod`) new units start their timers from.
     period: i32,
+    /// The path finder with its settings and its list of unreachable places.
+    pub finder: Finder,
     lines: Vec<String>,
 }
 
@@ -185,6 +222,7 @@ impl Default for Units {
             list: Vec::new(),
             index: HashMap::new(),
             period: 1000,
+            finder: Finder::default(),
             lines: Vec::new(),
         }
     }
@@ -218,6 +256,16 @@ impl Units {
         for unit in &mut self.list {
             unit.status_timer = first_timer(unit.id, period);
         }
+    }
+
+    /// Reads the settings of the path finder from the ini file.
+    pub fn set_ini(&mut self, ini: &[u8]) {
+        let config = Config::parse(ini).ok();
+        self.finder = Finder::new(
+            config
+                .as_ref()
+                .map_or_else(Settings::default, Settings::from_ini),
+        );
     }
 
     /// The `unit` log lines since the last call, without the family word.
@@ -281,6 +329,12 @@ impl Units {
                 h.word(v as u32);
             }
             h.word(u32::from(u.destination.is_some()));
+            h.word(u.path.len() as u32);
+            for &t in &u.path {
+                h.word(t as u32);
+            }
+            h.word(u.travel as u32);
+            h.word(u32::from(u.through_building) | u32::from(u.aborted) << 1);
             h.bytes(u.animation.name.as_bytes());
             h.word(u.animation.frame);
             h.word(u.animation.elapsed);
@@ -363,10 +417,19 @@ pub trait Hooks {
     fn goals(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
 }
 
-/// The hooks of the game: for now only the common part of the goal update.
+/// The hooks of the game: the move, and the common part of the goal update.
 pub struct Standard;
 
 impl Hooks for Standard {
+    fn movement(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        movement::step(unit, world, ctx.step, at);
+    }
+
+    fn behaviour(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize) {
+        // The move call of a behaviour set ends the walk here, after the move (movement 8.2).
+        movement::finish(unit, world, at);
+    }
+
     fn goals(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         // The kind's own goal work comes first, then this, then the current goal's update and
         // the sub-goals.

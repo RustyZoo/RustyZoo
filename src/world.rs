@@ -361,6 +361,33 @@ impl World {
         tiles
     }
 
+    /// The entities (positions in `zoo.entities`) of the units the map index holds on tile `t`.
+    pub fn units_on(&self, t: usize) -> impl Iterator<Item = usize> + '_ {
+        self.scene.units_on(t).iter().map(|&o| self.owner[o])
+    }
+
+    /// Puts the unit at position `at` of the entity list at a new point and facing, as the move of
+    /// a step does; the map index follows and the picture is due.
+    pub fn place_unit(&mut self, at: usize, point: (i32, i32, i32), rotation: u32) {
+        let Some(c) = self
+            .zoo
+            .entities
+            .get_mut(at)
+            .and_then(|e| e.common.as_mut())
+        else {
+            return;
+        };
+        if (c.x, c.y, c.z, c.rotation) == (point.0, point.1, point.2, rotation) {
+            return;
+        }
+        (c.x, c.y, c.z, c.rotation) = (point.0, point.1, point.2, rotation);
+        // The objects stand in the order of the entities.
+        if let Ok(o) = self.owner.binary_search(&at) {
+            self.scene.move_unit(o, point, rotation % 8);
+        }
+        self.dirty = true;
+    }
+
     /// Whether an animal, guest or staff member stands on tile `t`.
     pub fn unit_on(&self, t: usize) -> bool {
         let width = self.zoo.width as usize;

@@ -295,7 +295,9 @@ usage: rustyzoo [--data <dir>] <command>
                       seeds of the wall clock are not logged; replay a seeded log with the same --seed). The units of a
                       map (animals, guests and staff) log `unit add ID KIND X,Y` when a game opens or one is
                       placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
-                      simulated time. --rows ID N (repeatable) fills the list box ID
+                      simulated time, and `unit tile ID X,Y`, `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and
+                      `unit abort ID` when a unit walks (it enters a tile or another exhibit, turns, or is refused its next
+                      step). --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma

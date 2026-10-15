@@ -539,6 +539,7 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
+        world.units.set_ini(self.renderer.vfs().ini());
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
@@ -1610,8 +1611,9 @@ impl<'a> App<'a> {
     /// then what the managers did: `sim seed N` for each seeding of the generator in a test run
     /// (`--seed`; the wall clock's seeds differ at every run and are not logged), `sim step MS`
     /// for a step the game ran and `sim month M Y` when it acted on the month flag of the one
-    /// before, then `unit add ID KIND X,Y`, `unit remove ID` and `unit status ID` for the units
-    /// of the world. A pass that did nothing has no line.
+    /// before, then `unit add ID KIND X,Y`, `unit remove ID`, `unit status ID`, `unit tile ID X,Y`,
+    /// `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and `unit abort ID` for the units of the
+    /// world. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {

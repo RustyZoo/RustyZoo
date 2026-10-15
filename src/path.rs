@@ -35,7 +35,7 @@ pub enum Kind {
 }
 
 /// The unit that asks: its kind, its tile and the type values the costs read.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Mover {
     pub kind: Kind,
     /// The unit's own tile; none for the temporary keeper of the exhibits' tests.
@@ -118,6 +118,24 @@ impl Settings {
             clear_every: whole("ClearUnreachableFreq").map_or(d.clear_every, |v| v.max(0) as u64),
         }
     }
+}
+
+/// 4.2: whether a unit may take the tile step `(a, b, d)` from tile `a` to its neighbour `b` in
+/// direction `d`. With `building` (the unit goes in or out of a building) only the edge cost is
+/// looked at, not the terrain cost of `b`.
+pub fn allowed(
+    w: &World,
+    m: &Mover,
+    s: &Settings,
+    (a, b, d): (usize, usize, usize),
+    building: bool,
+) -> bool {
+    if !building {
+        return search::open(w, m, s, (a, b, d), None).is_some();
+    }
+    cost::clear(w, m, a, b, d, search::diagonal(m, s))
+        && w.tank_at(b).is_none()
+        && cost::edge(w, m, a, d) < MAX
 }
 
 /// What to do with the unit's destination tile after a request.
