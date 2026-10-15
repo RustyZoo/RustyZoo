@@ -361,6 +361,11 @@ impl World {
             .position(|e| e.common.as_ref().is_some_and(|c| c.id == id))
     }
 
+    /// The next press starts a new undo list: the first operation after it empties the old one.
+    pub fn begin(&mut self) {
+        self.fresh = true;
+    }
+
     /// Adds an entity with a fresh id and returns the id; `None` for one without a body. The
     /// price paid is told with [`World::priced`].
     pub fn add(&mut self, mut entity: Entity, shape: Option<Shape>) -> Option<u32> {
@@ -596,8 +601,10 @@ impl World {
                     }
                     let (entity, shape) = (self.zoo.entities.pop(), self.shapes.pop());
                     let at = at.min(self.zoo.entities.len());
-                    self.zoo.entities.insert(at, entity.expect("just pushed"));
-                    self.shapes.insert(at, shape.flatten());
+                    if let (Some(entity), Some(shape)) = (entity, shape) {
+                        self.zoo.entities.insert(at, entity);
+                        self.shapes.insert(at, shape);
+                    }
                     self.changed();
                     stale = true;
                     if self.is_door(at) {
@@ -776,11 +783,6 @@ impl World {
         if new.is_some() {
             self.events.push(Event::Gate(id));
         }
-    }
-
-    /// The next press starts a new undo list: the first operation after it empties the old one.
-    pub fn begin(&mut self) {
-        self.fresh = true;
     }
 
     /// Whether anything changed since the last call, and clears the mark: the picture is due.
