@@ -12,6 +12,8 @@ use crate::exhibit::Exhibits;
 use crate::render::corner_elevation;
 use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::zoo::{Entity, Tile, Zoo};
+
+mod exhibit;
 pub use exhibit::Event;
 
 /// How an entity takes its place on the map, from its type.
@@ -29,8 +31,6 @@ pub struct Shape {
     /// A fence type that has a gate of its own (a sibling type whose subtype is `g`).
     pub gated: bool,
 }
-
-mod exhibit;
 
 /// What an operation did, to undo it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,10 +56,11 @@ pub struct World {
     in_zoo: Vec<bool>,
     /// The regions the exhibit fences make, built again after a fence is placed or removed.
     exhibits: Exhibits,
-    /// What happened to the exhibits and nobody has taken yet, the word of the default names and
-    /// the water terrain types (see `exhibit.rs`).
+    /// What happened to the exhibits and nobody has taken yet.
     events: Vec<Event>,
+    /// The word before the number of a default exhibit name.
     word: String,
+    /// Which terrain types are water (the gate walk's keeper does not swim).
     water: Vec<bool>,
     undo: Vec<Action>,
     /// The next action starts a new undo list.

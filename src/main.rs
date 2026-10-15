@@ -167,7 +167,17 @@ usage: rustyzoo [--data <dir>] <command>
                       for the piece that became an exhibit's gate); a building that needs it asks
                       first unless `[UI] confirmSell` is 0, a fence piece whose line opens or
                       merges exhibits asks (`tool bulldoze ask Sell|Merge(X, Y)|Escape(X)`, answered
-                      by `key y` or `key n`, `tool bulldoze answer yes|no|cancel`). The two
+                      by `key y` or `key n`, `tool bulldoze answer yes|no|cancel`).
+                      A fence that closes an area makes an
+                      exhibit (a fence that cuts one makes a second one): `exhibit new ID \"NAME\"
+                      tiles N gate X,Y side S` (`gate none` if no piece could be its gate), `exhibit
+                      split ID tiles N` for the part that keeps its name and gate, `exhibit removed
+                      ID`, `exhibit merged ID into ID tiles N` and `exhibit gate ID X,Y side S`
+                      (a new gate after the gate piece went), with the name dialog (layout 45300)
+                      opened for each new exhibit, which pauses the game, and `exhibit name ID
+                      \"TEXT\"` when it is answered (message 11000 or 11001 follows when no keeper
+                      can reach the gate); the gate button of the fence tab is enabled while the
+                      zoo has an exhibit. The two
                       terrain tabs of the construction panel (at 180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and

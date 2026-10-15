@@ -164,3 +164,27 @@ impl App<'_> {
         self.name_next();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::name_limit;
+
+    #[test]
+    fn the_name_limit_is_the_ini_value_or_the_built_in_one() {
+        let limit = |text: &str| name_limit(text.as_bytes());
+        assert_eq!(limit(""), 17, "missing");
+        assert_eq!(limit("[UI]\ndefaultEditCharLimit=22\n"), 22);
+        assert_eq!(
+            limit("[ui]\nDEFAULTEDITCHARLIMIT = 30\n"),
+            30,
+            "case does not count"
+        );
+        assert_eq!(limit("[UI]\ndefaultEditCharLimit=0\n"), 17);
+        assert_eq!(limit("[UI]\ndefaultEditCharLimit=-4\n"), 17);
+        assert_eq!(limit("[UI]\ndefaultEditCharLimit=abc\n"), 17);
+        assert!(
+            limit("[UI]\ndefaultEditCharLimit=99999999999999\n") > 0,
+            "huge"
+        );
+    }
+}

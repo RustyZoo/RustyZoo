@@ -575,3 +575,26 @@ fn an_undo_makes_no_gate_asks_no_name_and_keeps_the_counter() {
     }
     assert_eq!(world.exhibits().get(3).unwrap().name, "Exhibit 2");
 }
+
+#[test]
+fn a_gate_is_not_put_where_the_keeper_would_have_to_swim() {
+    let mut pieces = square(2, 2, 4, 4);
+    let last = pieces.pop().unwrap();
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(pieces.iter().map(|&(x, y, d)| piece(x, y, d)));
+    unique(&mut z);
+    // The lake lies against the east side of the last piece: terrain type 1 is water.
+    z.tiles[4 * SIZE as usize + 5].terrain = 1;
+    let mut world = World::new(z, shape);
+    world.set_water(vec![false, true]);
+    world.take_events();
+    put(&mut world, last);
+    let (x, y, d) = gate(&world, 1).unwrap();
+    assert_ne!((x, y, d), (4, 4, 2), "not on the lake");
+    assert_eq!(
+        world.take_events().len(),
+        2,
+        "a good pair was found: no message"
+    );
+}

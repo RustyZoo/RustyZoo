@@ -151,15 +151,6 @@ impl Exhibits {
         }
     }
 
-    /// Forgets exhibit `id`: its tiles return to the zoo grounds.
-    pub fn remove(&mut self, id: u32) {
-        self.list.retain(|e| e.id != id);
-        self.region
-            .iter_mut()
-            .filter(|r| **r == id)
-            .for_each(|r| *r = GROUNDS);
-    }
-
     /// The exhibit numbered `id`.
     pub fn get(&self, id: u32) -> Option<&Exhibit> {
         self.list.iter().find(|e| e.id == id)
