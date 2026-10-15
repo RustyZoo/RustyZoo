@@ -663,29 +663,37 @@ fn check(
         }
     }
     let tiles: Vec<usize> = quads.iter().map(|&(at, _)| at).collect();
-    // Units on a tile of the footprint whose block meets the object's block are in the way too
-    // (item 4; recommended: a unit never lets an object through). A unit's block is its footprint
-    // centred on it.
-    let (half_x, half_y) = (16 * fp.0, 16 * fp.1);
-    for (i, e) in world.zoo.entities.iter().enumerate() {
-        let (Some(c), Some(shape)) = (e.common.as_ref(), world.shape(i)) else {
-            continue;
-        };
-        let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
-        if shape.kind != Kind::Unit
-            || e.class == "helicopter"
-            || !on.is_some_and(|t| tiles.contains(&t))
+    // Units on a tile of the footprint whose rectangle meets the object's are in the way (item 4);
+    // none is, for a walkable type. A unit's rectangle is its footprint centred on it, both axes
+    // the larger one at an odd rotation, the axes swapped at the other quarter turn. The helicopter
+    // lets the object through (it moves in the air); recommended: nobody else does.
+    let units: Vec<(usize, i32, i32, (i32, i32))> = world
+        .zoo
+        .entities
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| {
+            let (c, shape) = (e.common.as_ref()?, world.shape(i)?);
+            let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
+            let (fx, fy) = shape.footprint;
+            let rect = match c.rotation % 4 {
+                0 => (fx, fy),
+                _ if c.rotation % 2 != 0 => (fx.max(fy), fx.max(fy)),
+                _ => (fy, fx),
+            };
+            let unit = shape.kind == Kind::Unit && tiles.contains(&on);
+            unit.then_some((i, c.x, c.y, rect))
+        })
+        .collect();
+    let meets = |centre: i32, own: i32, other: i32, reach: i32| {
+        i64::from((centre - other).abs()) < i64::from(own) + i64::from(reach)
+    };
+    for &(i, x, y, (fx, fy)) in &units {
+        if !flag("walkable", false)
+            && world.zoo.entities[i].class != "helicopter"
+            && meets(p.x, 16 * fp.0, x, 16 * fx)
+            && meets(p.y, 16 * fp.1, y, 16 * fy)
         {
-            continue;
-        }
-        let (fx, fy) = match c.rotation % 4 {
-            0 => shape.footprint,
-            _ => (shape.footprint.1, shape.footprint.0),
-        };
-        let meets = |centre: i32, own: i32, other: i32, reach: i32| {
-            i64::from((centre - other).abs()) < i64::from(own) + i64::from(reach)
-        };
-        if meets(p.x, half_x, c.x, 16 * fx) && meets(p.y, half_y, c.y, 16 * fy) {
             fail(p, Some(IN_THE_WAY));
             p.blocking.push(i);
         }
@@ -721,6 +729,16 @@ fn check(
                         fail(p, None);
                     }
                 }
+            }
+        }
+    }
+    // A place refused for any reason collects every unit on its tiles, whether its rectangle meets
+    // the object's or not (10555 unless a message was stored before).
+    if p.verdict == Verdict::Invalid {
+        for &(i, ..) in &units {
+            if !p.blocking.contains(&i) {
+                fail(p, Some(IN_THE_WAY));
+                p.blocking.push(i);
             }
         }
     }

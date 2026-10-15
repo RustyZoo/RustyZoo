@@ -170,6 +170,12 @@ fn catalogue() -> Catalogue {
             "[Characteristics/Integers]\ncPurchaseCost=100\n",
             [2, 2, 1],
         ),
+        ty(
+            "building",
+            "bouncy",
+            "[Characteristics/Integers]\nwalkable=1\n",
+            [2, 2, 1],
+        ),
     ];
     for t in types {
         cat.push(t);
@@ -205,7 +211,8 @@ fn shape(e: &Entity) -> Option<Shape> {
         "paths" => (Kind::Path, (2, 2), false, false),
         "fences" => (Kind::Edge, (1, 1), true, false),
         "gate" => (Kind::Fixed, (2, 2), false, true),
-        "animals" => (Kind::Unit, (1, 1), false, false),
+        "animals" | "helicopter" => (Kind::Unit, (1, 1), false, false),
+        "gator" => (Kind::Unit, (3, 1), false, false),
         _ => return None,
     };
     Some(Shape {
@@ -1494,4 +1501,84 @@ fn a_building_holds_its_quadrants_takes_its_colours_and_its_price() {
     let hill = world((0, 0), vec![], |t| t[2 * 8 + 3].shape = 0x50);
     let p = at(&hill, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
     assert_eq!((p.verdict, p.message), (Verdict::Invalid, None));
+}
+
+#[test]
+fn a_walkable_type_ignores_units_but_a_refused_place_collects_every_unit_on_its_tiles() {
+    let cat = catalogue();
+    let bouncy = |w: &World| at(w, &cat, 16, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    let elephant = || entity("animals", "elephant", 3 * 64 + 20, 2 * 64 + 50, 0);
+    // The walkable type is placed over the unit it would otherwise meet.
+    let w = world((0, 0), vec![elephant()], |_| {});
+    let p = bouncy(&w);
+    assert_eq!(
+        (p.verdict, p.message, p.blocking.len()),
+        (Verdict::Valid, None, 0)
+    );
+    // Refused for another reason, it shows the unit like any other object.
+    let hill = world((0, 0), vec![elephant()], |t| t[2 * 8 + 3].shape = 0x50);
+    let p = bouncy(&hill);
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    assert_eq!(p.blocking, [0]);
+    // A quarter tile tree on water is refused without a message of its own; the unit in the far
+    // quadrant of its tile, whose rectangle does not meet the tree's, is collected all the same.
+    let wet = |t: &mut Vec<Tile>| t[2 * 8 + 3].terrain = 1;
+    let w = world((0, 0), vec![elephant()], wet);
+    let p = at(&w, &cat, 0, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    assert_eq!(p.blocking, [0]);
+    // A unit on another tile is not collected, and a valid place collects nothing.
+    let w = world(
+        (0, 0),
+        vec![entity("animals", "elephant", 4 * 64 + 20, 2 * 64 + 50, 0)],
+        wet,
+    );
+    let p = at(&w, &cat, 0, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    assert_eq!(
+        (p.verdict, p.message, p.blocking.len()),
+        (Verdict::Invalid, None, 0)
+    );
+}
+
+#[test]
+fn the_helicopter_lets_objects_through_but_is_collected_when_the_place_is_refused() {
+    let cat = catalogue();
+    let heli = || vec![entity("helicopter", "heli", 3 * 64 + 20, 2 * 64 + 50, 0)];
+    let kiosk = |w: &World| at(w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    let p = kiosk(&world((0, 0), heli(), |_| {}));
+    assert_eq!(
+        (p.verdict, p.message, p.blocking.len()),
+        (Verdict::Valid, None, 0)
+    );
+    let p = kiosk(&world((0, 0), heli(), |t| t[2 * 8 + 3].shape = 0x50));
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    assert_eq!(p.blocking, [0]);
+}
+
+#[test]
+fn a_units_rectangle_is_its_footprint_centred_with_the_larger_side_at_odd_rotations() {
+    let cat = catalogue();
+    // A 3 by 1 unit on the tile of a quarter tile tree, whose rectangle is x and y 0..32 of the
+    // tile; the unit's own is 96 by 32 at rotation 0, 32 by 96 at rotation 2 and 96 by 96 at an
+    // odd rotation, centred on (x, y).
+    let verdict = |x: i32, y: i32, rotation: u32| {
+        let gator = entity("gator", "gator", 3 * 64 + x, 2 * 64 + y, rotation);
+        let w = world((0, 0), vec![gator], |_| {});
+        at(&w, &cat, 0, 0, 3 * 64 + 10, 2 * 64 + 10)
+            .unwrap()
+            .verdict
+    };
+    let (valid, invalid) = (Verdict::Valid, Verdict::Invalid);
+    // Wide: it reaches the tree along x, not once turned a quarter.
+    assert_eq!([verdict(56, 16, 0), verdict(56, 16, 4)], [invalid; 2]);
+    assert_eq!([verdict(56, 16, 2), verdict(56, 16, 6)], [valid; 2]);
+    // Square at an odd rotation, whichever side it was long on.
+    assert_eq!([verdict(60, 50, 0), verdict(60, 50, 2)], [valid; 2]);
+    assert_eq!(
+        [verdict(60, 50, 1), verdict(60, 50, 3), verdict(60, 50, 7)],
+        [invalid; 3]
+    );
+    // Touching is not meeting: at y 48 the unit's near edge is y 32, the tree's far edge.
+    assert_eq!(verdict(63, 16, 0), invalid);
+    assert_eq!(verdict(63, 48, 0), valid);
 }

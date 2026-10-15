@@ -562,7 +562,13 @@ building_place() { # building_place <map>
 }
 check base-trial "building/building/vendfood,16,45,2;message10555;49950;b32cc0ef4b37f26a" "building_place maps/default.zoo"
 check expansion-trial "building/building/bounce,35,46,4;message10555;49900;880e02c0e296754e" "building_place maps/scn19.zoo"
-# Guests on the tiles of the footprint are in the way: the place is invalid and the click shows 10555.
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,33,42,3,invalid;message10555;3704484b597953c6" "pending_object maps/scn19.zoo '${open}7 mouse 400 380\n8 down\n9 up\n'"
+# A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
+walkable_place() { # walkable_place <map>
+  d=$(mktemp -d)
+  printf '1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n7 mouse 400 380\n8 down\n9 up\n' >"$d/script"
+  rz run "$1" --headless --passes 12 --clock 20 --script "$d/script" 2>/dev/null | awk '/ world add /{print $6 "," $7}'
+  rm -rf "$d"
+}
+check expansion-trial "building/building/bounce,33,42" "walkable_place maps/scn19.zoo"
 
 exit $failed
