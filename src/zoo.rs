@@ -9,8 +9,9 @@
 //! and entrance, the number of exhibits, the id counter, the tiles, and for every entity its
 //! class, type and subtype names and the part every body ends with (position, rotation, id and
 //! name). The sections after the entities (view, scenario, counters, finances, thoughts, events,
-//! research, awards, marketing, cheats and the tail) are not kept: they are read and dropped,
-//! only to refuse the files the original loader refuses. Bytes after the last section are
+//! research, awards, marketing, cheats and the tail) are not kept, except the view and, through
+//! [`Zoo::parse_money`], the cash and the accounts: they are read and dropped, only to refuse
+//! the files the original loader refuses. Bytes after the last section are
 //! ignored, as the original does. The habitat and show records are skipped the same way.
 //!
 //! From version 70 every entity record states the size of its body, so a record whose class or
@@ -33,6 +34,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::entity::Catalogue;
+use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
 
 /// The oldest version the original accepts.
 pub const MIN_VERSION: u32 = 38;
@@ -222,6 +224,11 @@ impl Zoo {
 
     /// Reads a file, refusing it the way the original does.
     pub fn parse(bytes: &[u8]) -> Result<Zoo, ZooError> {
+        Zoo::parse_money(bytes).map(|(zoo, _)| zoo)
+    }
+
+    /// Reads a file as [`Zoo::parse`] does and keeps the cash and the accounts it stores.
+    pub fn parse_money(bytes: &[u8]) -> Result<(Zoo, Money), ZooError> {
         if bytes.get(..4) != Some(b"TZFB") {
             return Err(ZooError::NotASavedGame);
         }
@@ -243,7 +250,9 @@ impl Zoo {
             v: version,
         };
         let mut section = "header";
-        read(&mut r, &mut section)
+        let mut money = Money::default();
+        read(&mut r, &mut section, &mut money)
+            .map(|zoo| (zoo, money))
             .map_err(|Bad(why)| ZooError::Corrupted(format!("{section}: {why}")))
     }
 }
@@ -283,6 +292,10 @@ impl<'a> Reader<'a> {
 
     fn u32(&mut self) -> R<u32> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+
+    fn f32(&mut self) -> R<f32> {
+        self.u32().map(f32::from_bits)
     }
 
     fn i32(&mut self) -> R<i32> {
@@ -333,7 +346,7 @@ fn latin1(bytes: &[u8]) -> String {
 }
 
 /// Reads the file after the magic and the version, noting in `section` where it is.
-fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
+fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo> {
     let v = r.v;
     let locale = if v >= 69 { r.u32()? } else { 0 };
     let locale = if locale == 0 { 1033 } else { locale };
@@ -387,7 +400,7 @@ fn read(r: &mut Reader, section: &mut &'static str) -> R<Zoo> {
     }
 
     *section = "later sections";
-    let view = after_entities(r)?;
+    let view = after_entities(r, money)?;
     Ok(Zoo {
         version: v,
         locale,
@@ -535,7 +548,7 @@ fn entity(r: &mut Reader) -> R<Entity> {
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.
-fn after_entities(r: &mut Reader) -> R<View> {
+fn after_entities(r: &mut Reader, money: &mut Money) -> R<View> {
     let v = r.v;
     let view = View {
         zoom: r.i32()?,
@@ -571,14 +584,40 @@ fn after_entities(r: &mut Reader) -> R<View> {
     }
 
     // Game and finances.
-    r.skip(4 + 12 + 1 + 16 + 4 + 8)?;
-    let (months, columns) = (u64::from(r.u32()?), u64::from(r.u32()?));
+    r.skip(4 + 12 + 1 + 16 + 4)?;
+    (money.month, money.year) = (r.u32()?.clamp(1, 12), r.u32()?.min(19));
+    let (rows, columns) = (u64::from(r.u32()?), u64::from(r.u32()?));
     let tables = ((12 + columns + 1) * 4)
-        .checked_mul(months)
+        .checked_mul(rows)
         .filter(|&n| n <= r.data.len() as u64);
-    r.skip(tables.ok_or_else(|| Bad("finance tables pass the end of the file".into()))? as usize)?;
+    tables.ok_or_else(|| Bad("finance tables pass the end of the file".into()))?;
+    // The rows past the 31 and the columns past the 20 that are kept are read and dropped.
+    let (rows, columns) = (rows as usize, columns as usize);
+    for m in 0..rows {
+        for column in 0..MONTHS {
+            let value = r.f32()?;
+            if m < CATEGORIES {
+                money.monthly[m][column] = value;
+            }
+        }
+    }
+    for y in 0..rows {
+        for column in 0..columns {
+            let value = r.f32()?;
+            if y < CATEGORIES && column < YEARS {
+                money.yearly[y][column] = value;
+            }
+        }
+    }
+    for c in 0..rows {
+        let value = r.f32()?;
+        if c < CATEGORIES {
+            money.total[c] = value;
+        }
+    }
     r.skip(if v >= 39 { 4 } else { 0 } + if v >= 71 { 8 } else { 0 })?;
-    r.skip(16 + 4)?; // calendar, cash
+    r.skip(16)?; // calendar
+    money.set_cash(r.f32()?);
     if v >= 73 {
         r.skip(4)?;
     }

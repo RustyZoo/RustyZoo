@@ -3,9 +3,9 @@
 //! The screens themselves are shown by the buttons of the main menu; this fills them in.
 
 use super::{Menu, Request, Start, enable};
-use crate::config::Config;
+use crate::config::{Config, to_int};
 use crate::lists::{Cash, Status};
-use crate::text::format::{Strings, money};
+use crate::money::{SYMBOL, StartCash, Symbol};
 use crate::text::to_cp1252;
 use crate::ui::interface::{Action, Interface};
 use crate::ui::widgets::Row;
@@ -40,20 +40,6 @@ const ICONS: [&str; 3] = [
 ];
 /// The line of an empty freeform list (a constant of the program).
 const NO_MAPS: &str = "No maps found.";
-/// The currency symbol.
-const SYMBOL: i32 = 22100;
-
-/// The string of the currency symbol for [`money`].
-struct Symbol(String);
-
-impl Strings for Symbol {
-    fn string(&self, id: u32) -> &str {
-        match id == SYMBOL as u32 {
-            true => &self.0,
-            false => "",
-        }
-    }
-}
 
 /// The text of a key of a section of a scenario file, if the file reads.
 fn desc(vfs: &Vfs, file: &str, section: &str) -> impl Fn(&str) -> Option<String> {
@@ -67,6 +53,13 @@ fn desc(vfs: &Vfs, file: &str, section: &str) -> impl Fn(&str) -> Option<String>
         let value = config.section(&section)?.get(key)?;
         Some(value.iter().map(|&b| crate::text::from_cp1252(b)).collect())
     }
+}
+
+/// Whether a start clears the accounts: `reset` above 0, else `resetdate` above 0 (both
+/// integers; 0 or less does nothing; exhibits and money 5.4).
+fn resets(start: &impl Fn(&str) -> Option<String>) -> bool {
+    let above_zero = |key: &str| start(key).and_then(|v| to_int(v.as_bytes())) > Some(0);
+    above_zero("reset") || above_zero("resetdate")
 }
 
 /// The row an action tells of, or none (-1 is none or a disabled row).
@@ -209,17 +202,36 @@ impl Menu {
         log.push(format!("play scenario {} {}", s.section, s.file));
         let label = format!("scenario {}", s.section);
         let file = s.file.clone();
-        self.open_from(vfs, &file, label, false);
+        self.open_from(vfs, &file, label, None);
     }
 
-    /// Asks the game to open the map `[start] savegame` of the scenario file `file` names.
-    fn open_from(&mut self, vfs: &Vfs, file: &str, label: String, freeform: bool) {
-        self.request = Some(match desc(vfs, file, "start")("savegame") {
+    /// Asks the game to open the map `[start] savegame` of the scenario file `file` names. A
+    /// freeform start (`freeform` is the starting cash of its screen) sets the cash to that
+    /// amount; a scenario applies its `setcash` then its `addcash` (main menu 8.3).
+    fn open_from(&mut self, vfs: &Vfs, file: &str, label: String, freeform: Option<i64>) {
+        let start = desc(vfs, file, "start");
+        let number = |key: &str| {
+            start(key)
+                .and_then(|v| to_int(v.as_bytes()))
+                .map(|n| n as f32)
+        };
+        self.request = Some(match start("savegame") {
             Some(path) => Request::Open(Start {
                 path,
                 label,
                 forget_last: true,
-                freeform,
+                freeform: freeform.is_some(),
+                cash: match freeform {
+                    Some(amount) => StartCash {
+                        set: Some(amount as f32),
+                        add: None,
+                    },
+                    None => StartCash {
+                        set: number("setcash"),
+                        add: number("addcash"),
+                    },
+                },
+                reset: resets(&start),
             }),
             None => Request::Message(format!("{file}: no map to start")),
         });
@@ -292,12 +304,8 @@ impl Menu {
     /// change is written to `[UI] MSStartingCash`.
     fn show_cash(&mut self, ui: &mut Interface, changed: bool, log: &mut Vec<String>) {
         let cash = self.cash;
-        let symbol = Symbol(ui.string(SYMBOL));
-        let symbol = match symbol.0.trim() {
-            "" => Symbol("$".into()),
-            _ => symbol,
-        };
-        ui.set_text(CASH_FIELD, &to_cp1252(&money(&symbol, cash.amount, true)));
+        let symbol = Symbol::new(ui.string(SYMBOL));
+        ui.set_text(CASH_FIELD, &to_cp1252(&symbol.text(cash.amount)));
         enable(ui, CASH_UP, cash.can_up());
         enable(ui, CASH_DOWN, cash.can_down());
         let difficulty = cash.difficulty();
@@ -329,7 +337,7 @@ impl Menu {
         ));
         let label = format!("freeform cash {}", self.cash.amount);
         let file = m.file.clone();
-        self.open_from(vfs, &file, label, true);
+        self.open_from(vfs, &file, label, Some(self.cash.amount));
     }
 }
 

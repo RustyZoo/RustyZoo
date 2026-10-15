@@ -20,9 +20,10 @@ use rustyzoo::sprite::write_png;
 use rustyzoo::timing::Timers;
 use rustyzoo::ui::interface::Buttons;
 use rustyzoo::vfs::Vfs;
+use rustyzoo::zoo::Zoo;
 
 use super::boot::boot;
-use super::{CliError, Report, load_map};
+use super::{CliError, Report};
 
 /// The most rows `--rows` makes.
 const MAX_ROWS: usize = 100_000;
@@ -56,8 +57,7 @@ struct Flags {
     fill: crate::layout::Fill,
     /// `--bare`: the game shows the map view alone, without the main panel.
     bare: bool,
-    /// `--cash`: the cash the game starts with; nothing reads it yet.
-    #[allow(dead_code)]
+    /// `--cash`: the cash the game starts with, instead of the one the map stores.
     cash: Option<f32>,
 }
 
@@ -259,6 +259,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             "exhibit ",
             "interface ",
             "menu ",
+            "money ",
             "movie ",
             "music ",
             "step ",
@@ -340,10 +341,13 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
     let loaded = match member {
         Some(member) => {
             let catalogue = Catalogue::load(vfs)?;
-            let zoo = load_map(vfs, member)?
-                .checked(&catalogue)
+            let (zoo, mut money) = Zoo::parse_money(&vfs.read(member)?)
+                .and_then(|(zoo, money)| Ok((zoo.checked(&catalogue)?, money)))
                 .map_err(|e| format!("{member}: {e}"))?;
-            Some((catalogue, zoo))
+            if let Some(cash) = flags.cash {
+                money.set_cash(cash);
+            }
+            Some((catalogue, zoo, money))
         }
         None => None,
     };
@@ -387,7 +391,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
     let mut report = Report::new();
     report.line(format_args!("size {}x{}", size.0, size.1));
     let mut app = match loaded {
-        Some((catalogue, zoo)) => {
+        Some((catalogue, zoo, money)) => {
             menu_catalogue = catalogue;
             let mut app = App::new(
                 MapRenderer::new(vfs, &menu_catalogue),
@@ -404,6 +408,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             if flags.bare {
                 app.bare();
             }
+            app.set_money(money);
             app.start_game(Music::from_config(&ini));
             app
         }

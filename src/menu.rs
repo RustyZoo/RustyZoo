@@ -11,6 +11,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Config, to_int};
 use crate::lists::{Cash, Freeform, Scenario};
+use crate::money::{Money, StartCash};
 use crate::music::Music;
 use crate::text::format::{Arg, Strings, expand};
 use crate::ui::interface::Interface;
@@ -86,7 +87,7 @@ pub fn credit_pages(vfs: &Vfs) -> (Vec<i32>, u32) {
 }
 
 /// A game to open, asked by a button (main menu 8).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Start {
     /// The file to load as a saved game: a path, absolute or relative to the install folder.
     pub path: String,
@@ -96,10 +97,13 @@ pub struct Start {
     pub forget_last: bool,
     /// Whether it is a freeform map (its start updates the music once more).
     pub freeform: bool,
+    /// The cash the game starts with, and whether its accounts are cleared first.
+    pub cash: StartCash,
+    pub reset: bool,
 }
 
 /// What a button asks of the game.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     Open(Start),
     /// Something to tell the player, in a question box.
@@ -294,6 +298,8 @@ impl Menu {
                 label: "continue".to_string(),
                 forget_last: false,
                 freeform: false,
+                cash: StartCash::default(),
+                reset: false,
             }),
             None => Request::Message(ui.string(CANNOT_OPEN)),
         });
@@ -302,11 +308,15 @@ impl Menu {
 
     /// Reads the file of `start` as a saved game: a plain file, not one of the game's resources;
     /// a refusal is a message that says which file and why.
-    pub fn load(&self, path: &str, catalogue: &crate::entity::Catalogue) -> Result<Zoo, String> {
+    pub fn load(
+        &self,
+        path: &str,
+        catalogue: &crate::entity::Catalogue,
+    ) -> Result<(Zoo, Money), String> {
         let file = find_file(&self.root, path).ok_or_else(|| format!("{path}: no such file"))?;
         let bytes = std::fs::read(&file).map_err(|e| format!("{path}: {e}"))?;
-        Zoo::parse(&bytes)
-            .and_then(|zoo| zoo.checked(catalogue))
+        Zoo::parse_money(&bytes)
+            .and_then(|(zoo, money)| Ok((zoo.checked(catalogue)?, money)))
             .map_err(|e| format!("{path}: {e}"))
     }
 

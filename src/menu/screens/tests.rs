@@ -4,6 +4,7 @@ use super::*;
 use crate::app::Mouse;
 use crate::lists::{freeform_list, scenario_list};
 use crate::menu::{Request, Start};
+use crate::money::StartCash;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{DISABLED, HIDDEN, Picture, Tree};
@@ -93,7 +94,7 @@ fn fixture(name: &str, scn: bool, free: bool) -> (Install, Vfs, Interface) {
             (
                 "s/aa.scn",
                 b"[desc]\npicture=ui/pic1.tga\nstory=STORY_A\nlockedpicture=ui/lock.tga\n\
-                  lockedstory=STORY_LOCK\n[start]\nsavegame=maps/a.zoo\n"
+                  lockedstory=STORY_LOCK\n[start]\nsavegame=maps/a.zoo\nsetcash=100000\naddcash=200.5\nreset=1\n"
                     .to_vec(),
             ),
             (
@@ -113,7 +114,7 @@ fn fixture(name: &str, scn: bool, free: bool) -> (Install, Vfs, Interface) {
             (
                 "f/m1.scn",
                 b"[freeform]\nname=27001\ndescription=DESC_1\nicon=ui/pic1.tga\n\
-                  [start]\nsavegame=maps/m1.zoo\n"
+                  [start]\nsavegame=maps/m1.zoo\nreset=1\nsetcash=1\n"
                     .to_vec(),
             ),
             ("f/m2.scn", b"[freeform]\nname=27002\n".to_vec()),
@@ -262,6 +263,11 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
             label: "scenario aa".into(),
             forget_last: true,
             freeform: false,
+            cash: StartCash {
+                set: Some(100_000.0),
+                add: Some(200.0),
+            },
+            reset: true,
         }))
     );
     // The third entry's file is missing: no picture, no story, but it can be played (it fails
@@ -360,6 +366,12 @@ fn the_freeform_screen_lists_the_maps_and_shows_the_first_with_the_starting_cash
             label: "freeform cash 75000".into(),
             forget_last: true,
             freeform: true,
+            // The cash of the screen, not the file's own `setcash`.
+            cash: StartCash {
+                set: Some(75_000.0),
+                add: None,
+            },
+            reset: true,
         }))
     );
     ui.select_row(11504, Some(1));
@@ -491,4 +503,51 @@ fn a_tree_without_the_screens_is_left_alone() {
         menu.pressed(&vfs, &mut ui, id);
     }
     menu.action(&vfs, &mut ui, Action::Edited(11510));
+}
+
+#[test]
+fn a_start_clears_the_accounts_when_reset_or_else_resetdate_is_above_zero() {
+    let reads = |keys: &'static [(&'static str, &'static str)]| {
+        let keys = keys.to_vec();
+        resets(&move |k: &str| {
+            keys.iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        })
+    };
+    assert!(reads(&[("reset", "1")]));
+    assert!(reads(&[("resetdate", "1")]));
+    assert!(reads(&[("reset", "0"), ("resetdate", "2")]));
+    assert!(reads(&[("reset", "0x10")]));
+    for none in [
+        &[][..],
+        &[("reset", "0")],
+        &[("reset", "-1"), ("resetdate", "0")],
+        &[("reset", "yes")],
+        &[("resetdate", "0x")],
+        &[("reset", ""), ("resetdate", "")],
+    ] {
+        assert!(!reads(none), "{none:?}");
+    }
+}
+
+#[test]
+fn setcash_and_addcash_are_read_as_integers() {
+    let install = Install::new(
+        "screens-integer-cash",
+        &[(
+            "s/c.scn",
+            b"[start]\nsavegame=m.zoo\nsetcash=0x100\naddcash=-1234.9\n".to_vec(),
+        )],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut menu = menu("", &install, &vfs);
+    menu.open_from(&vfs, "s/c.scn", "x".into(), None);
+    let Some(Request::Open(start)) = menu.take_request() else {
+        panic!("no request")
+    };
+    assert_eq!(
+        (start.cash.set, start.cash.add),
+        (Some(256.0), Some(-1234.0))
+    );
 }

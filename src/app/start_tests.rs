@@ -4,6 +4,7 @@ use super::*;
 use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::menu::{Menu, Start};
+use crate::money::Money;
 use crate::render::tests::{cache_install, frame_file};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
@@ -380,7 +381,7 @@ fn a_run_without_a_menu_leaves_by_ending() {
         // `run <map>`: a game and its interface, no menu behind it.
         let game = Zoo::parse(&map()).unwrap();
         app.menu = None;
-        app.open_game(game).unwrap();
+        app.open_game(game, Money::default()).unwrap();
         app.pass(0, &[]);
         app.pass(66, &key(Key::Escape));
         assert!(app.interface().unwrap().modal_open());
@@ -434,7 +435,8 @@ fn the_main_panel_shows_with_a_started_game_and_goes_with_it_and_escape_does_not
             app.menu = None;
             let ui = interface(files);
             app.set_interface(ui);
-            app.open_game(Zoo::parse(&map()).unwrap()).unwrap();
+            app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+                .unwrap();
             if bare {
                 app.bare();
             }
@@ -477,12 +479,15 @@ fn only_the_first_fade_waits_and_a_freeform_start_counts_one_update_of_the_wait(
     // would not move.
     with_menu("fade-freeform", "", |app, _| {
         app.pass(0, &[]);
-        app.open_game(Zoo::parse(&map()).unwrap()).unwrap();
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
         let start = Start {
             path: "saved.zoo".into(),
             label: "freeform".into(),
             forget_last: false,
             freeform: true,
+            cash: Default::default(),
+            reset: false,
         };
         app.begin(&start);
         let steps: Vec<u64> = (1..8)

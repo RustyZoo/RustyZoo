@@ -52,6 +52,16 @@ impl Interface {
         self.sync_owner(i);
     }
 
+    /// Gives an element the colour of its text; `false` if there is no such element.
+    pub fn set_fore_color(&mut self, id: i32, color: crate::ui::layout::Rgb) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.tree.elements[i].look.fore_color = color;
+        self.flag(i, DIRTY, true);
+        true
+    }
+
     /// The text of an element as it is shown now; `None` if there is no such element.
     pub fn text(&self, id: i32) -> Option<Vec<u8>> {
         let e = &self.tree.elements[self.tree.find(id)?];
