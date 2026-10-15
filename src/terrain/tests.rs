@@ -168,6 +168,7 @@ fn map(gate: Entity, entities: Vec<Entity>, wall: bool) -> World {
         tiles: vec![tile; 64],
         entities: vec![gate],
         view: View::default(),
+        clocks: Default::default(),
     };
     if wall {
         zoo.entities

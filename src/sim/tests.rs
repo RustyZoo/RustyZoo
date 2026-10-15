@@ -1,7 +1,7 @@
 //! The step driver, the generator and the event queue.
 
 use super::*;
-use crate::zoo::{Common, Entity, Tile, View, Zoo};
+use crate::zoo::{Clocks, Common, Entity, Tile, View, Zoo};
 
 fn world(entities: usize) -> World {
     let tile = Tile {
@@ -41,6 +41,7 @@ fn world(entities: usize) -> World {
         tiles: vec![tile; 16],
         entities: (1..=entities as u32).map(entity).collect(),
         view: View::default(),
+        clocks: Default::default(),
     };
     World::new(zoo, |_| None)
 }
@@ -48,7 +49,7 @@ fn world(entities: usize) -> World {
 fn sim(ini: &str) -> Sim {
     let mut sim = Sim::new(ini.as_bytes());
     sim.set_seed(1);
-    sim.start_game(16);
+    sim.start_game(16, Clocks::default());
     sim
 }
 
@@ -123,18 +124,18 @@ fn the_seconds_are_the_seed_plus_the_count() {
 #[test]
 fn a_test_run_seeds_at_the_three_moments() {
     let mut s = Sim::new(b"");
-    s.start_game(16);
+    s.start_game(16, Clocks::default());
     s.set_seed(100);
     assert_eq!(s.take_lines(), ["seed 100", "seed 101"]);
     // The same map size does not seed again; another one does.
-    s.start_game(16);
+    s.start_game(16, Clocks::default());
     assert!(s.take_lines().is_empty());
-    s.start_game(25);
+    s.start_game(25, Clocks::default());
     assert_eq!(s.take_lines(), ["seed 102"]);
     // Without a game, the seed alone is the first moment.
     let mut s = Sim::new(b"");
     s.set_seed(5);
-    s.start_game(16);
+    s.start_game(16, Clocks::default());
     assert_eq!(s.take_lines(), ["seed 5", "seed 6"]);
 }
 
@@ -197,6 +198,61 @@ fn the_ai_clock_keeps_whole_ticks_and_the_remainder() {
     assert_eq!(s.ai_clock(), (0, 201));
     run(&mut s, &mut w, 3, 0);
     assert_eq!(s.ai_clock(), (0, 201));
+}
+
+#[test]
+fn a_new_game_starts_from_the_clocks_of_its_map() {
+    let mut w = world(0);
+    let mut s = sim("");
+    let clocks = Clocks {
+        ai_rem: 704,
+        ai_ticks: 425,
+        world_rem: 702,
+        world_secs: 272,
+    };
+    s.start_game(16, clocks);
+    assert_eq!((s.ai_clock(), s.world_clock()), ((425, 704), (272, 702)));
+    // The first step goes on from there: 704 + 300 ms is one more tick, 702 + 300 one more second.
+    s.step(&mut w, 300, |_, _, _| {});
+    assert_eq!((s.ai_clock(), s.world_clock()), ((426, 4), (273, 2)));
+    // The total time and the calendar start again, the clocks of another map replace these.
+    assert_eq!(s.total_ms(), 300);
+    s.start_game(16, Clocks::default());
+    assert_eq!(
+        (s.ai_clock(), s.world_clock(), s.total_ms()),
+        ((0, 0), (0, 0), 0)
+    );
+}
+
+#[test]
+fn the_zoo_status_chance_draws_nothing_at_0() {
+    let state = |f: &dyn Fn(&mut Rng) -> bool| {
+        let mut r = Rng::default();
+        let answer = f(&mut r);
+        (answer, r.state())
+    };
+    let fresh = Rng::default().state();
+    assert_eq!(
+        state(&|r| r.status_chance(0)),
+        (false, fresh),
+        "nothing drawn"
+    );
+    let mut drawn = Rng::default();
+    drawn.rand();
+    // Any other percent draws once; 41 % 100 is 41.
+    assert_eq!(state(&|r| r.status_chance(42)), (true, drawn.state()));
+    assert_eq!(state(&|r| r.status_chance(41)), (false, drawn.state()));
+    assert_eq!(state(&|r| r.status_chance(100)), (true, drawn.state()));
+    assert_eq!(state(&|r| r.status_chance(i32::MAX)), (true, drawn.state()));
+    assert_eq!(
+        state(&|r| r.status_chance(-5)),
+        (false, drawn.state()),
+        "draws, no"
+    );
+    assert_eq!(
+        state(&|r| r.status_chance(i32::MIN)),
+        (false, drawn.state())
+    );
 }
 
 #[test]
@@ -354,7 +410,7 @@ fn two_runs_with_one_seed_print_the_same_lines() {
         let mut w = world(3);
         let mut s = Sim::new(b"");
         s.set_seed(seed);
-        s.start_game(16);
+        s.start_game(16, Clocks::default());
         run(&mut s, &mut w, 20, 1000);
         s.take_lines()
     };

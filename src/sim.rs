@@ -22,11 +22,11 @@ pub use rng::{Rng, Seconds};
 use crate::config::{self, Config};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::world::World;
+use crate::zoo::Clocks;
 
 /// The `[AI]` keys of the ini file that change the game, with the original's fallbacks
 /// (simulation 9.1). Those that belong to the path finder, the habitat manager or the goals are
-/// read here once and used by them. `popularityScaleFactor` and `maxDistToGoToShow` have no
-/// fallback of their own to give and are left to their users.
+/// read here once and used by them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ai {
     /// Milliseconds of an AI tick; the original crashes on 0, so 0 keeps 1000. A negative value
@@ -52,6 +52,8 @@ pub struct Ai {
     pub vector_increment: i32,
     pub heuristic: f32,
     pub estimate_func: i32,
+    pub popularity_scale_factor: f32,
+    pub max_dist_to_go_to_show: i32,
 }
 
 impl Ai {
@@ -95,6 +97,8 @@ impl Ai {
             vector_increment: whole("VectorIncrement", 20),
             heuristic: decimal("Heuristic", 1.0),
             estimate_func: whole("EstimateFunc", 1),
+            popularity_scale_factor: decimal("popularityScaleFactor", 15.0),
+            max_dist_to_go_to_show: whole("maxDistToGoToShow", 150),
         }
     }
 }
@@ -183,13 +187,15 @@ impl Sim {
         }
     }
 
-    /// A new game on a map of `tiles` tiles: the clocks and the queue start again, and the
-    /// generator is seeded again if the map has another number of tiles than the last one
-    /// (main loop 9.2, the second moment).
-    pub fn start_game(&mut self, tiles: usize) {
+    /// A new game on a map of `tiles` tiles that stores these clocks: the total time and the
+    /// calendar start again, the AI and world clocks start from the map's (simulation 4.3, 8.3),
+    /// the queue is empty, and the generator is seeded again if the map has another number of
+    /// tiles than the last one (main loop 9.2, the second moment).
+    pub fn start_game(&mut self, tiles: usize, clocks: Clocks) {
         self.calendar = Calendar::new();
-        (self.total, self.ai_rem, self.ai_ticks) = (0, 0, 0);
-        (self.world_secs, self.world_rem) = (0, 0);
+        self.total = 0;
+        (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
+        (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
         self.events.clear();
         if tiles != self.tiles {

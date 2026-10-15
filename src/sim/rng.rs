@@ -35,6 +35,13 @@ impl Rng {
         (self.rand() as i32) % 100 < percent
     }
 
+    /// The percent test of the zoo status (`chance(p)`, zoo status 4): nothing is drawn and the
+    /// answer is no when `percent` is 0; otherwise as [`Rng::chance`] (a negative percent draws
+    /// and answers no).
+    pub fn status_chance(&mut self, percent: i32) -> bool {
+        percent != 0 && self.chance(percent)
+    }
+
     /// `rand() % n`: one draw, a number from 0 to `n - 1`. The original divides by zero for an
     /// `n` of 0; here it gives 0 without a draw.
     pub fn pick(&mut self, n: u32) -> u32 {

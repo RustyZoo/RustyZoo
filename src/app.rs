@@ -534,7 +534,7 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
-        self.sim.start_game(world.zoo.tiles.len());
+        self.sim.start_game(world.zoo.tiles.len(), world.zoo.clocks);
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
