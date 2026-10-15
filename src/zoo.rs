@@ -9,8 +9,8 @@
 //! and entrance, the number of exhibits, the id counter, the tiles, and for every entity its
 //! class, type and subtype names and the part every body ends with (position, rotation, id and
 //! name). The sections after the entities (view, scenario, counters, finances, thoughts, events,
-//! research, awards, marketing, cheats and the tail) are not kept, except the view and, through
-//! [`Zoo::parse_money`], the cash and the accounts: they are read and dropped, only to refuse
+//! research, awards, marketing, cheats and the tail) are not kept, except the view, the clocks with
+//! the event queue and, through [`Zoo::parse_money`], the cash and the accounts: they are read and dropped, only to refuse
 //! the files the original loader refuses. Bytes after the last section are
 //! ignored, as the original does. The habitat and show records are skipped the same way.
 //!
@@ -180,9 +180,9 @@ pub struct Zoo {
     pub clocks: Clocks,
 }
 
-/// The clocks a map stores (simulation 4.3, 8.3): a new game on it starts from them. All 0 in a
-/// file too old to store them, and in a map made by hand.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// The clocks and the event queue a map stores (simulation 4.3, 8.3): a new game on it starts from
+/// them. All 0 and empty in a file too old to store them, and in a map made by hand.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Clocks {
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     pub ai_rem: u32,
@@ -190,6 +190,32 @@ pub struct Clocks {
     /// The world clock: the milliseconds left over and the whole seconds.
     pub world_rem: u32,
     pub world_secs: u32,
+    /// The two event buffers (from version 97).
+    pub queue: Queue,
+}
+
+/// One record of the event queue (simulation 5.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Event {
+    pub sender: u32,
+    /// The entity it is for, 0 for everyone.
+    pub target: u32,
+    pub data: u32,
+    pub extra: u16,
+    /// The event type, 0x2711 and up.
+    pub kind: u16,
+    /// Steps before delivery; 0 and 1 both mean the next step.
+    pub delay: u16,
+    pub sender_channel: u8,
+    pub channel: u8,
+}
+
+/// The two event buffers a file stores, in file order, and which one is the "next" buffer.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Queue {
+    pub first: Vec<Event>,
+    pub second: Vec<Event>,
+    pub next_is_first: bool,
 }
 
 /// The view state of a file (zoo format 7.1), as stored: nothing is checked.
@@ -305,6 +331,28 @@ impl<'a> Reader<'a> {
 
     fn u8(&mut self) -> R<u8> {
         Ok(self.take(1)?[0])
+    }
+
+    fn u16(&mut self) -> R<u16> {
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().unwrap()))
+    }
+
+    /// A count and that many event records.
+    fn events(&mut self) -> R<Vec<Event>> {
+        (0..self.count(20)?)
+            .map(|_| {
+                Ok(Event {
+                    sender: self.u32()?,
+                    target: self.u32()?,
+                    data: self.u32()?,
+                    extra: self.u16()?,
+                    kind: self.u16()?,
+                    delay: self.u16()?,
+                    sender_channel: self.u8()?,
+                    channel: self.u8()?,
+                })
+            })
+            .collect()
     }
 
     fn u32(&mut self) -> R<u32> {
@@ -652,9 +700,9 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks)> {
     // The AI clock: the milliseconds left over, then the whole AI ticks (7.6).
     (clocks.ai_rem, clocks.ai_ticks) = (r.u32()?, r.u32()?);
     if v >= 97 {
-        r.skip_list(20)?;
-        r.skip_list(20)?;
-        r.skip(1)?;
+        clocks.queue.first = r.events()?;
+        clocks.queue.second = r.events()?;
+        clocks.queue.next_is_first = r.u8()? != 0;
     }
     if v >= 40 {
         r.skip(4)?;

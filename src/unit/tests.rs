@@ -1,0 +1,401 @@
+//! The unit table and the per-entity update.
+
+use super::*;
+use crate::sim::Sim;
+use crate::zoo::{Clocks, Common, Tile, View, Zoo};
+
+fn entity(class: &str, id: u32, (x, y): (i32, i32)) -> Entity {
+    Entity {
+        class: class.into(),
+        type_name: String::new(),
+        subtype: String::new(),
+        body_size: None,
+        common: Some(Common {
+            x,
+            y,
+            z: 0,
+            rotation: 0,
+            id,
+            name: String::new(),
+            colors: Vec::new(),
+            fence: None,
+            movement_mode: 0,
+        }),
+    }
+}
+
+/// A 4 by 4 world, all of it inside the zoo, with these units (class, id) at the tile (1, 1).
+fn world(units: &[(&str, u32)]) -> World {
+    let tile = Tile {
+        elevation: 0,
+        shape: 0,
+        terrain: 0,
+        edges: 0,
+    };
+    let zoo = Zoo {
+        version: 0,
+        locale: 0,
+        expansion: 0,
+        width: 4,
+        height: 4,
+        entrance: (0, 0),
+        habitat_tiles: Vec::new(),
+        habitat_gates: Vec::new(),
+        tanks: Vec::new(),
+        id_counter: 1_000_000,
+        tiles: vec![tile; 16],
+        entities: (units.iter())
+            .map(|&(class, id)| entity(class, id, (96, 96)))
+            .collect(),
+        view: View::default(),
+        clocks: Clocks::default(),
+    };
+    World::new(zoo, |_| None)
+}
+
+fn sim() -> Sim {
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim
+}
+
+fn status_lines(world: &mut World) -> Vec<String> {
+    (world.units.take_lines().into_iter())
+        .filter(|l| l.starts_with("status "))
+        .collect()
+}
+
+#[test]
+fn the_table_holds_the_units_of_the_list_in_list_order() {
+    let mut w = world(&[
+        ("animals", 5),
+        ("objects", 6),
+        ("guests", 7),
+        ("keeper", 8),
+        ("maint", 9),
+        ("tour", 10),
+        ("fences", 11),
+        ("helicopter", 12),
+    ]);
+    let kinds: Vec<_> = w.units.iter().map(|u| (u.id, u.kind)).collect();
+    assert_eq!(
+        kinds,
+        [
+            (5, Kind::Animal),
+            (7, Kind::Guest),
+            (8, Kind::Keeper),
+            (9, Kind::Worker),
+            (10, Kind::Guide)
+        ]
+    );
+    assert_eq!(w.units.len(), 5);
+    assert_eq!(
+        w.units.take_lines(),
+        [
+            "add 5 animal 1,1",
+            "add 7 guest 1,1",
+            "add 8 keeper 1,1",
+            "add 9 worker 1,1",
+            "add 10 guide 1,1"
+        ]
+    );
+    assert!(w.units.get(6).is_none() && w.units.get(7).is_some());
+}
+
+#[test]
+fn a_unit_added_or_removed_enters_or_leaves_the_table_and_the_others_keep_their_state() {
+    let mut w = world(&[("animals", 1), ("guests", 2)]);
+    w.units.take_lines();
+    w.units.get_mut(2).unwrap().wait = 77;
+    let id = w.add(entity("animals", 0, (64, 64)), None).unwrap();
+    assert_eq!(w.units.take_lines(), [format!("add {id} animal 1,1")]);
+    assert_eq!(w.units.get(2).unwrap().wait, 77);
+    // The new unit's timer starts at its id modulo the period.
+    assert_eq!(w.units.get(id).unwrap().status_timer, (id % 1000) as i32);
+    assert!(w.remove(1));
+    assert_eq!(w.units.take_lines(), ["remove 1"]);
+    assert_eq!(w.units.len(), 2);
+    assert_eq!(w.units.get(2).unwrap().wait, 77);
+}
+
+#[test]
+fn the_period_starts_every_timer_at_id_modulo_it() {
+    let mut w = world(&[("animals", 113_954), ("guests", 121_718), ("keeper", 7)]);
+    let timers = |w: &World| w.units.iter().map(|u| u.status_timer).collect::<Vec<_>>();
+    assert_eq!(timers(&w), [954, 718, 7]);
+    w.units.set_period(500);
+    assert_eq!(timers(&w), [454, 218, 7]);
+    for period in [0, -5] {
+        w.units.set_period(period);
+        assert_eq!(timers(&w), [0, 0, 0], "period {period}");
+    }
+}
+
+#[test]
+fn each_unit_has_one_status_tick_per_period_spread_by_its_id() {
+    let mut w = world(&[("animals", 113_954), ("guests", 121_718), ("keeper", 7)]);
+    let mut s = sim();
+    w.units.take_lines();
+    let mut first = Vec::new();
+    let mut count = [0; 3];
+    for step in 1..=3000 {
+        s.step(&mut w, 67, |_, _, _| {});
+        for line in status_lines(&mut w) {
+            let id: u32 = line[7..].parse().unwrap();
+            let k = [113_954, 121_718, 7].iter().position(|&i| i == id).unwrap();
+            if count[k] == 0 {
+                first.push((id, step));
+            }
+            count[k] += 1;
+        }
+    }
+    // The worked example of the simulation spec: steps 1, 5 and 15, then 201 ticks in 201 s.
+    first.sort_by_key(|&(_, step)| step);
+    assert_eq!(first, [(113_954, 1), (121_718, 5), (7, 15)]);
+    assert_eq!(count, [201, 201, 201]);
+}
+
+#[derive(Default)]
+struct Recorder {
+    calls: Vec<&'static str>,
+    heard: Vec<usize>,
+}
+
+impl Hooks for Recorder {
+    fn movement(&mut self, u: &mut Unit, _: &mut World, _: &mut Ctx, _: usize) {
+        self.calls.push("move");
+        self.heard.push(u.events.len());
+    }
+    fn needs(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _: usize) {
+        self.calls.push("needs");
+    }
+    fn checks(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _: usize) {
+        self.calls.push("checks");
+    }
+    fn behaviour(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _: usize) {
+        self.calls.push("behaviour");
+    }
+    fn goals(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _: usize) {
+        self.calls.push("goals");
+    }
+}
+
+/// One turn of the unit at position `at` with these hooks and events.
+fn turn_at(w: &mut World, events: &Events, hooks: &mut Recorder, step: u32, at: usize) {
+    let (mut rng, mut removals) = (Rng::default(), Vec::new());
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events,
+        removals: &mut removals,
+        step,
+    };
+    update(hooks, w, &mut ctx, at);
+}
+
+fn turn_of(w: &mut World, events: &Events, hooks: &mut Recorder, step: u32) {
+    turn_at(w, events, hooks, step, 0);
+}
+
+fn event(target: u32, channel: u8) -> Event {
+    Event {
+        sender: 9,
+        target,
+        data: 0,
+        extra: 0,
+        kind: 0x2711,
+        delay: 0,
+        sender_channel: UNIT_CHANNEL,
+        channel,
+    }
+}
+
+#[test]
+fn a_turn_runs_in_the_originals_order() {
+    let mut w = world(&[("animals", 1)]);
+    let mut hooks = Recorder::default();
+    // A status tick on this very turn: the timer is already at the period.
+    w.units.get_mut(1).unwrap().status_timer = 1000;
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    assert_eq!(
+        hooks.calls,
+        ["move", "needs", "checks", "behaviour", "goals"]
+    );
+    // The remainder is kept: 1067 % 1000.
+    assert_eq!(w.units.get(1).unwrap().status_timer, 67);
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    assert_eq!(hooks.calls.len(), 5 + 3, "no status tick, the rest runs");
+}
+
+#[test]
+fn the_wait_stops_the_behaviour_and_the_goals_but_not_the_status_tick() {
+    let mut w = world(&[("animals", 1)]);
+    let mut hooks = Recorder::default();
+    let unit = w.units.get_mut(1).unwrap();
+    (unit.wait, unit.status_timer) = (100, 990);
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    assert_eq!(hooks.calls, ["move", "needs", "checks"]);
+    assert_eq!(w.units.get(1).unwrap().wait, 33);
+    hooks.calls.clear();
+    // The step on which the wait reaches 0 or below still skips them.
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    assert_eq!(hooks.calls, ["move"]);
+    assert_eq!(w.units.get(1).unwrap().wait, -34);
+    hooks.calls.clear();
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    assert_eq!(hooks.calls, ["move", "behaviour", "goals"]);
+    assert_eq!(w.units.get(1).unwrap().wait, -34, "never counted below 0");
+}
+
+#[test]
+fn a_carried_or_repositioning_unit_skips_the_move_the_status_and_the_goals() {
+    for flag in 0..2 {
+        let mut w = world(&[("animals", 1)]);
+        let mut hooks = Recorder::default();
+        let unit = w.units.get_mut(1).unwrap();
+        (unit.carried, unit.repositioning) = (flag == 0, flag == 1);
+        (unit.status_timer, unit.wait, unit.moving, unit.anim_speed) = (999, 500, true, 50);
+        let mut events = Events::default();
+        events.post(event(1, UNIT_CHANNEL));
+        events.age();
+        turn_of(&mut w, &events, &mut hooks, 67);
+        assert!(hooks.calls.is_empty(), "flag {flag}");
+        let unit = w.units.get(1).unwrap();
+        assert_eq!((unit.status_timer, unit.wait), (999, 500), "flag {flag}");
+        // The animation still runs, and the events were still read and discarded.
+        assert_eq!(unit.animation.elapsed, 33, "flag {flag}");
+        assert!(unit.events.is_empty());
+        assert!(status_lines(&mut w).is_empty());
+    }
+}
+
+#[test]
+fn the_animation_of_a_moving_unit_is_scaled_by_its_speed_percentage() {
+    let mut w = world(&[("animals", 1)]);
+    let mut hooks = Recorder::default();
+    let turns = |w: &mut World, hooks: &mut Recorder| {
+        turn_of(w, &Events::default(), hooks, 67);
+        w.units.get(1).unwrap().animation.elapsed
+    };
+    assert_eq!(turns(&mut w, &mut hooks), 67, "not moving: the step");
+    let unit = w.units.get_mut(1).unwrap();
+    (unit.moving, unit.anim_speed) = (true, 150);
+    assert_eq!(turns(&mut w, &mut hooks), 67 + 100);
+    w.units.get_mut(1).unwrap().anim_speed = 0;
+    assert_eq!(turns(&mut w, &mut hooks), 167);
+    // A huge percentage and a huge step wrap, not panic.
+    w.units.get_mut(1).unwrap().anim_speed = u16::MAX;
+    turn_of(&mut w, &Events::default(), &mut hooks, u32::MAX);
+}
+
+#[test]
+fn a_unit_hears_the_events_of_its_channel_for_the_length_of_its_turn() {
+    let mut w = world(&[("animals", 1), ("keeper", 2)]);
+    let mut events = Events::default();
+    for target in [0, 1, 2, 3] {
+        events.post(event(target, UNIT_CHANNEL));
+        events.post(event(target, KEEPER_CHANNEL));
+    }
+    events.age();
+    let mut heard = |at: usize| {
+        let mut hooks = Recorder::default();
+        turn_at(&mut w, &events, &mut hooks, 67, at);
+        hooks.heard
+    };
+    assert_eq!(
+        heard(0),
+        [2],
+        "the animal: for it and for all, channel 0x55"
+    );
+    assert_eq!(heard(1), [2], "the keeper: channel 0x4b");
+    assert!(w.units.iter().all(|u| u.events.is_empty()));
+    // The list grows: every matching event of the buffer is read.
+    let mut many = Events::default();
+    (0..250).for_each(|_| many.post(event(1, UNIT_CHANNEL)));
+    many.age();
+    let mut hooks = Recorder::default();
+    turn_of(&mut w, &many, &mut hooks, 67);
+    assert_eq!(hooks.heard, [250]);
+}
+
+#[test]
+fn an_entity_that_is_not_a_unit_or_not_in_the_list_is_left_alone() {
+    let mut w = world(&[("objects", 1)]);
+    let mut hooks = Recorder::default();
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    turn_at(&mut w, &Events::default(), &mut hooks, 67, 99);
+    assert!(hooks.calls.is_empty());
+}
+
+#[test]
+fn a_unit_off_the_zoo_is_removed_one_time_in_15_and_the_undo_list_forgets_it() {
+    let mut w = world(&[("animals", 1)]);
+    // One placed outside the map and one inside the zoo.
+    let out = w.add(entity("guests", 0, (-64, 10)), None).unwrap();
+    let inside = w.add(entity("guests", 0, (70, 70)), None).unwrap();
+    assert!(w.can_undo());
+    let mut s = sim();
+    let mut gone_at = None;
+    for step in 1..=300 {
+        s.step(&mut w, 67, |_, _, _| {});
+        if gone_at.is_none() && w.find(out).is_none() {
+            gone_at = Some(step);
+        }
+    }
+    // The flag is set in one step and the unit leaves in the next removal pass.
+    assert!(gone_at.is_some_and(|n| n < 200), "{gone_at:?}");
+    assert!(w.find(inside).is_some() && w.find(1).is_some());
+    // The undo list keeps the placement of the unit that stayed, and the destroyed one is not
+    // brought back nor removed again.
+    let undone = w.undo();
+    assert!(undone.blocked.is_none());
+    assert_eq!(undone.steps.len(), 1, "{:?}", undone.steps);
+    assert!(w.find(inside).is_none());
+}
+
+#[test]
+fn the_simulation_draws_once_per_unit_that_runs_its_goals() {
+    let mut w = world(&[("animals", 1), ("guests", 2), ("keeper", 3)]);
+    let (mut a, mut b) = (sim(), sim());
+    a.step(&mut w, 67, |_, _, _| {});
+    (0..3).for_each(|_| _ = b.rng.rand());
+    assert_eq!(a.rng.state(), b.rng.state());
+    // A waiting unit draws nothing.
+    w.units.get_mut(2).unwrap().wait = 1000;
+    a.step(&mut w, 67, |_, _, _| {});
+    (0..2).for_each(|_| _ = b.rng.rand());
+    assert_eq!(a.rng.state(), b.rng.state());
+}
+
+#[test]
+fn the_hash_covers_the_whole_table() {
+    let mut w = world(&[("animals", 1), ("guests", 2)]);
+    let base = w.units.hash();
+    assert_eq!(base, world(&[("animals", 1), ("guests", 2)]).units.hash());
+    let changes: [fn(&mut Unit); 11] = [
+        |u| u.speed = 3,
+        |u| u.moving = true,
+        |u| u.anim_speed = 99,
+        |u| u.destination = Some((1, 2, 3)),
+        |u| u.animation.name = "walk".into(),
+        |u| u.animation.frame = 1,
+        |u| u.animation.elapsed = 1,
+        |u| u.status_timer += 1,
+        |u| u.wait = 1,
+        |u| u.carried = true,
+        |u| u.events.push(event(1, 0)),
+    ];
+    for (i, change) in changes.iter().enumerate() {
+        let mut other = world(&[("animals", 1), ("guests", 2)]);
+        change(other.units.get_mut(2).unwrap());
+        assert_ne!(other.units.hash(), base, "change {i}");
+    }
+    w.units.get_mut(1).unwrap().repositioning = true;
+    assert_ne!(w.units.hash(), base);
+    // The period and the list are in it too.
+    let mut other = world(&[("animals", 1)]);
+    assert_ne!(other.units.hash(), base);
+    let before = other.units.hash();
+    other.units.set_period(10);
+    assert_ne!(other.units.hash(), before);
+}

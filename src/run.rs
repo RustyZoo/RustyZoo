@@ -276,6 +276,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             "terrain ",
             "tool ",
             "ui ",
+            "unit ",
             "world ",
         ]
         .iter()

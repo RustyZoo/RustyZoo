@@ -388,6 +388,7 @@ pub struct App<'a> {
     /// The managers of the simulation and the `sim` lines of the last pass.
     sim: Sim,
     sim_lines: Vec<String>,
+    unit_lines: Vec<String>,
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
@@ -508,6 +509,7 @@ impl<'a> App<'a> {
             money_lines: Vec::new(),
             sim,
             sim_lines: Vec::new(),
+            unit_lines: Vec::new(),
             music: None,
             music_changed: false,
             music_restarted: false,
@@ -534,7 +536,9 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
-        self.sim.start_game(world.zoo.tiles.len(), world.zoo.clocks);
+        self.sim
+            .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
+        world.units.set_period(self.sim.ai.status_period);
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
@@ -712,6 +716,8 @@ impl<'a> App<'a> {
         self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.sim_lines = self.sim.take_lines();
+        self.unit_lines =
+            (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.drew.then_some(&self.frame)
     }
 
@@ -1604,7 +1610,8 @@ impl<'a> App<'a> {
     /// then what the managers did: `sim seed N` for each seeding of the generator in a test run
     /// (`--seed`; the wall clock's seeds differ at every run and are not logged), `sim step MS`
     /// for a step the game ran and `sim month M Y` when it acted on the month flag of the one
-    /// before. A pass that did nothing has no line.
+    /// before, then `unit add ID KIND X,Y`, `unit remove ID` and `unit status ID` for the units
+    /// of the world. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
@@ -1655,6 +1662,7 @@ impl<'a> App<'a> {
             ));
         }
         lines.extend(self.sim_lines.iter().map(|e| format!("{lead} sim {e}")));
+        lines.extend(self.unit_lines.iter().map(|e| format!("{lead} unit {e}")));
         lines
     }
 }

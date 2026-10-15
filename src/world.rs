@@ -12,6 +12,7 @@ use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::path::Settings;
 use crate::render::corner_elevation;
 use crate::render::order::{Kind, Object, Scene, ground_height};
+use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
 mod exhibit;
@@ -178,6 +179,8 @@ impl Undone {
 
 pub struct World {
     pub zoo: Zoo,
+    /// The live state of the animals, guests and staff of `zoo.entities`; it follows the list.
+    pub units: Units,
     /// The shape of every entity of `zoo.entities`; `None` for one that has no body or no type.
     shapes: Vec<Option<Shape>>,
     scene: Scene,
@@ -224,6 +227,7 @@ impl World {
             tank_config: TankConfig::default(),
             finder: Settings::default(),
             zoo,
+            units: Units::default(),
             shapes,
             scene,
             owner,
@@ -238,6 +242,7 @@ impl World {
         world.load_tanks();
         world.retank(false);
         world.walk_loaded();
+        world.units.sync(&world.zoo.entities);
         world.dirty = false;
         world
     }
@@ -609,6 +614,18 @@ impl World {
         result
     }
 
+    /// Drops the actions of the undo list that concern the entity `id`, which the simulation
+    /// removed: an undo must neither bring it back nor remove it.
+    pub fn forget_undo(&mut self, id: u32) {
+        self.undo.retain(|a| match a {
+            Action::Placed { id: i, .. }
+            | Action::Copied { id: i }
+            | Action::Replaced { id: i, .. }
+            | Action::Moved { id: i, .. } => *i != id,
+            _ => true,
+        });
+    }
+
     /// Whether an undo would do anything: the Undo button is enabled.
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
@@ -953,6 +970,7 @@ impl World {
 
     fn changed(&mut self) {
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+        self.units.sync(&self.zoo.entities);
         self.dirty = true;
     }
 

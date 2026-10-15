@@ -1,23 +1,14 @@
 //! The event queue of the AI manager (simulation 5): events are posted into the next buffer, read
 //! from the current one, and the two are swapped when the AI manager ends.
 
+pub use crate::zoo::Event;
+use crate::zoo::Queue;
+
 /// The channel an entity posts on and units read.
 pub const UNIT_CHANNEL: u8 = 0x55;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Event {
-    pub sender: u32,
-    /// The entity it is for, 0 for everyone.
-    pub target: u32,
-    pub data: u32,
-    pub extra: u16,
-    /// The event type, 0x2711 and up.
-    pub kind: u16,
-    /// Steps before delivery; 0 and 1 both mean the next step.
-    pub delay: u16,
-    pub sender_channel: u8,
-    pub channel: u8,
-}
+/// The channel keepers read (the cues of shows).
+pub const KEEPER_CHANNEL: u8 = 0x4b;
 
 #[derive(Debug, Default)]
 pub struct Events {
@@ -49,6 +40,16 @@ impl Events {
             }
         }
         std::mem::swap(&mut self.current, &mut self.next);
+    }
+
+    /// The queue a map stores, for a new game (simulation 8.3): the buffer the file calls "next"
+    /// is the next one, the other is read at the first step.
+    pub fn restore(&mut self, queue: &Queue) {
+        let (next, current) = match queue.next_is_first {
+            true => (&queue.first, &queue.second),
+            false => (&queue.second, &queue.first),
+        };
+        (self.next, self.current) = (next.clone(), current.clone());
     }
 
     /// Forgets every event, for a new game.
