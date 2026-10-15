@@ -176,12 +176,18 @@ impl Config {
 
     /// Gives the key the single value `value`, replacing its values. The section and the key
     /// are found ignoring letter case (the way the ini file next to the executable is read) and
-    /// created, with this spelling, if missing. The value must fit on one line.
+    /// created, with this spelling, if missing. The value must fit on one line; an empty value
+    /// makes a key without value.
     pub fn set(&mut self, section: &str, key: &str, value: &str) {
         self.set_values(
             section.as_bytes(),
             key.as_bytes(),
-            vec![value.as_bytes().to_vec()],
+            // An empty value is a key without value, as the reader sees it.
+            if value.is_empty() {
+                vec![]
+            } else {
+                vec![value.as_bytes().to_vec()]
+            },
         );
     }
 
@@ -218,8 +224,9 @@ impl Config {
         for (name, section) in &self.sections {
             out.extend([b"[", name.as_slice(), b"]\n"].concat());
             for (key, values) in &section.keys {
+                // An empty value is written as `key=`, the way the ini writer of Windows does.
                 if values.is_empty() {
-                    out.extend([key.as_slice(), b"\n"].concat());
+                    out.extend([key.as_slice(), b"=\n"].concat());
                 }
                 for value in values {
                     out.extend([key.as_slice(), b"=", value, b"\n"].concat());
@@ -728,6 +735,22 @@ mod tests {
             dump(&game.to_bytes()),
             "UI: x(3); User: FullScreen(1), new(5), screenwidth(800); more: k()"
         );
+    }
+
+    #[test]
+    fn an_empty_value_is_written_as_key_equals_and_read_back_empty() {
+        let mut config = Config::parse(b"[user]\nlastfile\n").unwrap();
+        config.set("user", "fullscreen", "1");
+        config.set("user", "other", "");
+        assert_eq!(
+            config.to_bytes(),
+            b"[user]\nfullscreen=1\nlastfile=\nother=\n"
+        );
+        let back = Config::parse(&config.to_bytes()).unwrap();
+        assert_eq!(back, config);
+        let user = back.section("user").unwrap();
+        assert!(user.has("lastfile"));
+        assert_eq!(user.get("lastfile"), None);
     }
 
     #[test]
