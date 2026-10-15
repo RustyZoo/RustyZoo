@@ -42,19 +42,15 @@ fn units(w: &World, m: &Mover, t: usize) -> Vec<(u32, bool)> {
         .collect()
 }
 
-/// 6.6 item 5: whether another unit that does not let the animal through stands on tile `t`, the
-/// animal's own tile holds none, and it is not chasing the unit there.
+/// 6.6 item 5: whether another unit that does not let the animal through stands on tile `t` and
+/// the animal's own tile holds none. An animal chasing a unit that stands on `t` is never closed
+/// out of it, whoever else is there.
 fn crowded(w: &World, m: &Mover, t: usize) -> bool {
-    let stops = |t: usize| {
-        units(w, m, t)
-            .into_iter()
-            .filter(|u| !u.1)
-            .collect::<Vec<_>>()
-    };
-    let there = stops(t);
-    !there.is_empty()
-        && m.at.is_none_or(|s| stops(s).is_empty())
-        && there.iter().any(|&(id, _)| Some(id) != m.chasing)
+    let all = units(w, m, t);
+    let stops = |t: usize| units(w, m, t).iter().any(|u| !u.1);
+    all.iter().any(|u| !u.1)
+        && m.at.is_none_or(|s| !stops(s))
+        && !m.chasing.is_some_and(|c| all.iter().any(|u| u.0 == c))
 }
 
 /// Whether any of the edge slots of the tiles within `r - 1` tiles of `t` (a square; `t` itself
@@ -83,11 +79,12 @@ fn avoids(w: &World, m: &Mover, t: usize) -> bool {
         && same
 }
 
-/// 6.1: the tiles nobody but a swimmer or a diver uses.
+/// 6.1: the tiles nobody but a swimmer or a diver uses. A guest is closed out of the tiles
+/// outside the zoo only: its water and tank rules are its own (6.5).
 fn closed(w: &World, m: &Mover, t: usize) -> bool {
     let water = w.is_water(t) && !m.swims;
     let tank = w.tank_at(t).is_some() && !m.underwater;
-    !w.in_zoo(t) || water || tank
+    !w.in_zoo(t) || m.kind != Kind::Guest && (water || tank)
 }
 
 /// The terrain cost of tile `t` for the unit (6.1 to 6.6); `goal` is the tile the search under

@@ -194,7 +194,7 @@ pub struct Finder {
     unreachable: HashMap<usize, i8>,
     /// The AI tick at which the list is emptied next; the first update empties it.
     clear_at: u64,
-    /// The diagonal switch the last request left (8); none before the first request.
+    /// The diagonal switch the last search left (3.1 item 8); none before the first one.
     switch: Option<bool>,
 }
 
@@ -215,7 +215,7 @@ impl Finder {
         }
     }
 
-    /// The settings with the diagonal switch as the last request of any unit left it: the gate
+    /// The settings with the diagonal switch as the last search of any unit left it: the gate
     /// choice of the exhibits searches with these (pathfinding 8).
     pub fn last(&self) -> Settings {
         Settings {
@@ -257,7 +257,6 @@ impl Finder {
     /// the goal.
     pub fn request(&mut self, w: &World, m: &Mover, to: usize, partial: bool) -> Reply {
         let reply = |ok, path, dest| Reply { ok, path, dest };
-        self.switch = Some(search::diagonal(m, &self.settings));
         let size = w.zoo.tiles.len();
         let Some(from) = m.at.filter(|&s| s < size && to < size) else {
             return reply(false, None, Dest::Keep);
@@ -301,6 +300,8 @@ impl Finder {
         if terrain(w, m, to, None) >= MAX || !enter || !leave {
             return reply(false, None, Dest::Keep);
         }
+        // Only a request that gets to its search sets the diagonal switch (3.1 item 8).
+        self.switch = Some(search::diagonal(m, s));
         let found = search(w, m, s, from, to, partial);
         if found.reached {
             self.ease(to);

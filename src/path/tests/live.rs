@@ -49,6 +49,28 @@ fn a_crowded_tile_is_closed_to_an_animal() {
 }
 
 #[test]
+fn an_animal_chasing_a_unit_may_enter_its_crowded_tile() {
+    let w = world(|_, e| {
+        e.push(who("animals", "", (3, 2), 7));
+        e.push(who("guests", "", (3, 2), 11));
+        e.push(who("animals", "soft", (2, 3), 8));
+        e.push(who("guests", "", (2, 3), 12));
+    });
+    let chasing = |id| Mover {
+        chasing: Some(id),
+        ..animal((2, 2), 1)
+    };
+    let (east, south) = (t((3, 2)), t((2, 3)));
+    // Whoever else is there, the chased unit's tile is open to the chaser.
+    assert_eq!(terrain(&w, &chasing(7), east, None), 1);
+    assert_eq!(terrain(&w, &chasing(11), east, None), 1);
+    assert_eq!(terrain(&w, &chasing(99), east, None), MAX);
+    // The chased unit may be one that lets others through.
+    assert_eq!(terrain(&w, &chasing(8), south, None), 1);
+    assert_eq!(terrain(&w, &chasing(7), south, None), MAX);
+}
+
+#[test]
 fn an_animal_keeps_off_the_fences_it_avoids() {
     let w = world(|_, e| {
         for y in 4..=6 {
@@ -189,8 +211,6 @@ fn a_guest_in_and_out_of_water() {
     let mut w = world(|tiles, _| (3..=5).for_each(|x| tiles[t((x, 3))].terrain = 1));
     w.set_water(vec![false, true]);
     let guest = |at| Mover {
-        swims: true,
-        underwater: true,
         ..unit(Kind::Guest, at)
     };
     let dry = guest((2, 3));
@@ -268,6 +288,40 @@ fn a_tile_with_a_predator_costs_a_guest_at_least_16() {
         7,
         "not a predator for this guest"
     );
+}
+
+#[test]
+fn a_request_stopped_before_the_search_keeps_the_switch() {
+    let w = world(|_, _| {});
+    let mut finder = Finder::default();
+    finder.request(&w, &unit(Kind::Keeper, (1, 1)), t((4, 4)), false);
+    assert!(finder.last().diagonal);
+    let guest = unit(Kind::Guest, (1, 1));
+    finder.request(&w, &guest, t((1, 1)), false);
+    finder.request(&w, &guest, 10_000, false);
+    assert!(finder.last().diagonal, "same tile, off the map");
+    finder.request(&w, &guest, t((4, 4)), false);
+    assert!(!finder.last().diagonal, "a search sets it");
+}
+
+#[test]
+fn a_guest_ignores_its_type_flags_for_water_and_tanks() {
+    let mut w = world(|tiles, _| tiles[t((3, 3))].terrain = 1);
+    w.set_water(vec![false, true]);
+    // `swims` and `underwater` are false, as the unit code builds a guest.
+    let dry = unit(Kind::Guest, (2, 3));
+    assert!(!dry.swims && !dry.underwater);
+    assert_eq!(terrain(&w, &dry, t((3, 3)), None), MAX, "dry to water");
+    let recovering = Mover {
+        recovering: true,
+        ..dry.clone()
+    };
+    assert_eq!(terrain(&w, &recovering, t((3, 3)), None), 1);
+    let wet = unit(Kind::Guest, (3, 3));
+    assert_eq!(terrain(&w, &wet, t((4, 3)), None), 7);
+    // Only a tile outside the zoo is closed to a guest by 6.1.
+    let outside = world(|_, _| {});
+    assert_eq!(terrain(&outside, &dry, t((9, 9)), None), 7);
 }
 
 #[test]

@@ -50,8 +50,6 @@ fn mover(vfs: &Vfs, unit: &str, at: usize) -> Result<Mover, CliError> {
                     .and_then(|c| ini_whole(c, "Characteristics/Integers", key))
             };
             Mover {
-                swims: true,
-                underwater: true,
                 non_path_cost: whole("cNonPathCost").map_or(7, |v| v.max(0) as u32),
                 emergency_cost: whole("cNonPathCostEmergency").map_or(1, |v| v.max(0) as u32),
                 ..Mover::new(Kind::Guest, Some(at))
