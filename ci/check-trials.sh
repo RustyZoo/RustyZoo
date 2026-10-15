@@ -461,8 +461,8 @@ pending_object() { # pending_object <map> <script>
   rm -rf "$d"
 }
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
-check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;1bb9a5d28662f86d" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
-check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;babd8c1c37b749b1" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;722bc79a3210f437" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;86592e009b6e586e" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;4c6a99c6714f5254" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;81aff3b4125b24f3" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 exit $failed
