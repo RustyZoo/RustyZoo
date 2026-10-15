@@ -80,7 +80,7 @@ fn ty(class: &'static str, name: &str, ini: &str, footprint: [i32; 3]) -> Entity
 }
 
 /// 0 tree (1 x 1), 1 bench (placement 2 x 1 over a footprint of 1 x 1), 2 dirt path, 3 stone
-/// path, 4 fence, 5 restaurant (10 x 8).
+/// path, 4 fence, 5 restaurant (10 x 8), 6 tank filter.
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     cat.types = vec![
@@ -115,6 +115,12 @@ fn catalogue() -> Catalogue {
             [1, 1, 1],
         ),
         ty("building", "restaurant", "", [10, 8, 1]),
+        ty(
+            "filter",
+            "filter1",
+            "[Characteristics/Integers]\ncPurchaseCost=100\n",
+            [1, 1, 1],
+        ),
     ];
     cat
 }
@@ -320,6 +326,23 @@ fn a_tile_outside_the_zoo_wall_gives_the_wall_message() {
         let p = at(&w, &cat, ty, 0, 3 * 64 + 10, 3 * 64 + 10).unwrap();
         assert_eq!(p.message, Some(NOT_IN_THE_ZOO), "type {ty}");
     }
+}
+
+#[test]
+fn a_tank_filter_is_invalid_with_its_message_until_tanks_exist() {
+    let cat = catalogue();
+    let mut entities = vec![entity("gate", "", 96, 288, 6)];
+    entities.extend((0..8).map(|row| entity("fences", "", 4 * 64 + 63, row * 64 + 32, 2)));
+    let w = world((1, 4), entities, |_| {});
+    let inside = at(&w, &cat, 6, 0, 6 * 64 + 10, 3 * 64 + 10).unwrap();
+    assert_eq!(
+        (inside.verdict, inside.message),
+        (Verdict::Invalid, Some(NO_TANK))
+    );
+    assert_eq!(inside.amount(), 0);
+    // Outside the zoo wall the zoo check comes first.
+    let outside = at(&w, &cat, 6, 0, 3 * 64 + 10, 3 * 64 + 10).unwrap();
+    assert_eq!(outside.message, Some(NOT_IN_THE_ZOO));
 }
 
 #[test]

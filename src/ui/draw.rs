@@ -707,7 +707,7 @@ impl Painter {
         self.text(e, strings, text, frame, rect, color, true);
     }
 
-    /// A text over the frame whose left is `x` and whose line is centred on `y`, in the font and
+    /// A text over the frame whose left is `x` and whose line starts at the row `y`, in the font and
     /// the shadow of the element `e`, as the map view writes a cost next to the pointer.
     pub fn text_at(
         &mut self,
@@ -719,12 +719,11 @@ impl Painter {
         color: [u8; 3],
     ) {
         let font = self.font(e, strings);
-        let top = y.saturating_sub(font.line_height() / 2);
         let rect = Rect {
             left: x,
-            top,
+            top: y,
             right: x.saturating_add(font.width(text)),
-            bottom: top.saturating_add(font.line_height()),
+            bottom: y.saturating_add(font.line_height()),
         };
         let style = Style {
             color,

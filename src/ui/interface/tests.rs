@@ -176,6 +176,10 @@ fn the_pointer_text_is_written_right_of_the_pointer_in_the_map_view_colour() {
             .iter()
             .any(|p| p[0] > 200 && p[1] == 0 && p[2] == 0)
     );
+    // The top of the line is the pointer's row: nothing is drawn above it.
+    let top =
+        (0..48).find(|&y| (0..64).any(|x| frame.pixels[(y * 64 + x) * 4..][..3] != [0, 0, 0]));
+    assert!(top.is_some_and(|y| y >= 24), "{top:?}");
     // Without a map view, and a pointer far off the frame, nothing happens and nothing panics.
     interface("pointer-none", "[LayoutInfo]\nid=1\n").pointer_text(&mut frame, b"x", 23);
     ui.mouse(Mouse::Move(i32::MAX, i32::MIN));

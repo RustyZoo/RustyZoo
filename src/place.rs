@@ -23,6 +23,8 @@ use crate::world::World;
 pub const NOT_IN_THE_ZOO: i32 = 10311;
 /// The message of an object that cannot be placed because another one stands in the way.
 pub const IN_THE_WAY: i32 = 10555;
+/// The message of a tank filter that is not next to a finished tank without a filter.
+pub const NO_TANK: i32 = 10517;
 
 /// The biggest placement footprint side taken, in half tiles (the paint order drops a bigger one).
 const MAX_FOOTPRINT: i32 = 64;
@@ -285,6 +287,10 @@ fn check(p: &mut Pending, world: &World, cat: &Catalogue, class: Class, fp: (i32
     };
     if !world.in_zoo(tile) {
         return fail(p, Some(NOT_IN_THE_ZOO));
+    }
+    // A tank filter needs a finished tank next to it (placing 5.1); no tank exists yet, so none is valid.
+    if t.class == "filter" {
+        return fail(p, Some(NO_TANK));
     }
     let same = |old: usize| {
         let same = world.zoo.entities.get(old).is_some_and(|e| is_of(e, t));
