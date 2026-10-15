@@ -34,6 +34,8 @@ pub struct Shape {
     pub gated: bool,
     /// What the type says about tanks.
     pub tank: TankKind,
+    /// `walkable` and `walkableByTall` (pathfinding 4.3): units walk through the object.
+    pub walkable: (bool, bool),
 }
 
 /// What a type says about tanks (exhibits and money 3.9).

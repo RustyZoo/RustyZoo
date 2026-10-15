@@ -98,6 +98,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         wall: false,
         gate: false,
         gated: fence,
+        walkable: (false, false),
         tank: TankKind {
             wall: e.class == "tankwall",
             show: e.type_name == "show",

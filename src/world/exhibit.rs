@@ -8,6 +8,7 @@
 
 use super::World;
 use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part, Tank};
+use crate::path::{self, Mover};
 use crate::place::path_shape;
 use std::collections::{HashMap, HashSet};
 
@@ -62,7 +63,7 @@ impl World {
     }
 
     /// Whether the entity at `at` is the gate of an exhibit fence (its subtype starts with `g`).
-    pub(super) fn is_door(&self, at: usize) -> bool {
+    pub fn is_door(&self, at: usize) -> bool {
         let e = &self.zoo.entities[at];
         matches!(e.class.as_str(), "fences" | "tankwall") && e.subtype.starts_with('g')
     }
@@ -146,9 +147,8 @@ impl World {
 
     /// Whether a keeper passes where the fence piece at `at` could be the gate: the pair test of
     /// the piece's tile and the tile across gives code 0 and a cost below 10 (placing 6.4, exhibits
-    /// and money 3.4). The edge cost of the keeper is taken as 0 and its cost of a plain tile as 1
-    /// (the staff's pathfinding, issue 52), and the keeper is the marine specialist when the
-    /// piece's tile is in a tank, else the zookeeper.
+    /// and money 3.4), for the keeper of the path finder that is not relaxed (pathfinding 8): the
+    /// marine specialist when the piece's tile is in a tank, else the zookeeper.
     pub fn keeper_passes(&self, at: usize) -> bool {
         let Some((t, d)) = self.slot_of(at) else {
             return false;
@@ -157,13 +157,8 @@ impl World {
             return false;
         };
         let diver = self.tank_at(t).is_some();
-        let cost = |t: usize| match (self.dear(t, diver), self.path(t).is_some()) {
-            (true, _) => 20,
-            (_, true) => 1,
-            _ if !path_shape(self.zoo.tiles[t].shape) => 16,
-            _ => 1,
-        };
-        self.code((t, n), diver) == 0 && cost(t).max(cost(n)) < 10
+        let keeper = Mover::keeper(diver, false);
+        self.code((t, n), diver) == 0 && path::pair_cost(self, &keeper, t, n) < 10
     }
 
     /// Whether a quadrant of the tank tile of the fence piece at `at` holds an object: item 4 of
@@ -843,17 +838,17 @@ impl World {
         }
     }
 
-    /// Whether keepers cannot stand on tile `t`: outside the zoo, or water or a tank, which the
-    /// marine specialist of a tank (`diver`) swims in.
+    /// Whether the relaxed keeper of the gate choice cannot stand on tile `t` (pathfinding 8):
+    /// outside the zoo, on water or in a tank, which the marine specialist of a tank (`diver`)
+    /// swims in, or on a land tile whose four quarters objects hold.
     fn dear(&self, t: usize, diver: bool) -> bool {
-        !self.in_zoo(t)
-            || !diver
-                && (self.tank_at(t).is_some()
-                    || self
-                        .water
-                        .get(usize::from(self.zoo.tiles[t].terrain))
-                        .copied()
-                        .unwrap_or(false))
+        path::terrain(self, &Mover::keeper(diver, true), t, None) >= path::MAX
+    }
+
+    /// Whether tile `t` has a terrain type that is water.
+    pub fn is_water(&self, t: usize) -> bool {
+        let terrain = usize::from(self.zoo.tiles[t].terrain);
+        self.water.get(terrain).copied().unwrap_or(false)
     }
 
     /// The side of tile `from` towards tile `to`.

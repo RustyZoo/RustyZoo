@@ -241,6 +241,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         wall: fence && !matches!(e.type_name.as_str(), "wire" | "iron"),
         gate,
         gated: fence,
+        walkable: (false, false),
         tank: TankKind {
             wall: e.class == "tankwall",
             show: e.type_name == "show",

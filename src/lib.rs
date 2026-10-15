@@ -16,6 +16,7 @@ pub mod menu;
 pub mod money;
 pub mod movie;
 pub mod music;
+pub mod path;
 pub mod pe;
 pub mod place;
 pub mod render;
