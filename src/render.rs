@@ -554,6 +554,11 @@ impl<'a> MapRenderer<'a> {
             fence: habitat_fence(ty),
             wall: member(ty, "zoowall"),
             gate: member(ty, "zoogate"),
+            gated: matches!(entity.class.as_str(), "fences" | "tankwall")
+                && self
+                    .catalogue
+                    .find(&entity.class, &bytes(&entity.type_name), b"g")
+                    .is_some(),
         })
     }
 

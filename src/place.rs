@@ -388,7 +388,7 @@ pub fn fence_run(start: (i32, i32), first: u32, mouse: (i64, i64)) -> Vec<((i32,
 }
 
 /// Whether a tile of this shape byte takes a path: flat, or with one side raised (placing 5.3).
-fn path_shape(shape: u8) -> bool {
+pub(crate) fn path_shape(shape: u8) -> bool {
     matches!(shape, 0x00 | 0x05 | 0x14 | 0x41 | 0x50)
 }
 

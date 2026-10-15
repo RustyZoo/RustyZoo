@@ -12,6 +12,7 @@ use crate::exhibit::Exhibits;
 use crate::render::corner_elevation;
 use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::zoo::{Entity, Tile, Zoo};
+pub use exhibit::Event;
 
 /// How an entity takes its place on the map, from its type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +26,11 @@ pub struct Shape {
     pub wall: bool,
     /// A zoo gate (the `[Member]` list holds `zoogate`): the exterior fill never enters it.
     pub gate: bool,
+    /// A fence type that has a gate of its own (a sibling type whose subtype is `g`).
+    pub gated: bool,
 }
+
+mod exhibit;
 
 /// What an operation did, to undo it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +56,11 @@ pub struct World {
     in_zoo: Vec<bool>,
     /// The regions the exhibit fences make, built again after a fence is placed or removed.
     exhibits: Exhibits,
+    /// What happened to the exhibits and nobody has taken yet, the word of the default names and
+    /// the water terrain types (see `exhibit.rs`).
+    events: Vec<Event>,
+    word: String,
+    water: Vec<bool>,
     undo: Vec<Action>,
     /// The next action starts a new undo list.
     fresh: bool,
@@ -66,6 +76,9 @@ impl World {
         let mut world = World {
             in_zoo: vec![true; zoo.tiles.len()],
             exhibits: Exhibits::default(),
+            events: Vec::new(),
+            word: "Exhibit".into(),
+            water: Vec::new(),
             zoo,
             shapes,
             scene,
@@ -226,7 +239,8 @@ impl World {
         self.record(Action::Placed(id));
         self.changed();
         if shape.is_some_and(|s| s.fence) {
-            self.exhibits = Exhibits::new(self);
+            let slot = self.slot_of(self.zoo.entities.len() - 1);
+            self.settle(slot, false);
         }
         Some(id)
     }
@@ -236,33 +250,51 @@ impl World {
         let Some(at) = self.find(id) else {
             return false;
         };
+        let slot = self.slot_of(at);
         let entity = self.zoo.entities.remove(at);
         let shape = self.shapes.remove(at);
         self.record(Action::Removed(at, entity, shape));
         self.changed();
         if shape.is_some_and(|s| s.fence) {
-            self.exhibits = Exhibits::new(self);
+            self.settle(slot, false);
         }
         true
     }
 
-    /// Puts `entity` in the place of the one with this id (it keeps the id); whether there was
-    /// one.
-    pub fn replace(&mut self, id: u32, mut entity: Entity, shape: Option<Shape>) -> bool {
-        let Some(at) = self.find(id) else {
-            return false;
-        };
-        if let Some(c) = entity.common.as_mut() {
-            c.id = id;
+    /// Puts a new entity in place of the one with this id, as one change: an exhibit fence
+    /// replaced by another stays closed and keeps its exhibit, and a gate stays the gate when the
+    /// new type has one. Returns the id of the new entity.
+    pub fn replace(&mut self, id: u32, mut entity: Entity, shape: Option<Shape>) -> Option<u32> {
+        let at = self.find(id)?;
+        let slot = self.slot_of(at);
+        let was = self.shapes[at];
+        let door = self.is_door(at);
+        let new = self.zoo.id_counter.checked_add(1)?;
+        let common = entity.common.as_mut()?;
+        (self.zoo.id_counter, common.id) = (new, new);
+        let gate = door && shape.is_some_and(|s| s.gated && !s.wall);
+        if gate {
+            entity.subtype = "g".into();
         }
-        let old = std::mem::replace(&mut self.zoo.entities[at], entity);
-        let old_shape = std::mem::replace(&mut self.shapes[at], shape);
-        self.record(Action::Replaced(id, old, old_shape));
+        let old = self.zoo.entities.remove(at);
+        self.shapes.remove(at);
+        self.record(Action::Removed(at, old, was));
+        self.zoo.entities.push(entity);
+        self.shapes.push(shape);
+        self.record(Action::Placed(new));
+        for e in self
+            .exhibits
+            .list_mut()
+            .iter_mut()
+            .filter(|e| e.gate == Some(id))
+        {
+            e.gate = gate.then_some(new);
+        }
         self.changed();
-        if shape.is_some_and(|s| s.fence) || old_shape.is_some_and(|s| s.fence) {
-            self.exhibits = Exhibits::new(self);
+        if was.is_some_and(|s| s.fence) || shape.is_some_and(|s| s.fence) {
+            self.settle(slot, false);
         }
-        true
+        Some(new)
     }
 
     /// Sets the elevation, shape and terrain type of tile (`tx`, `ty`) and writes the edge states
@@ -318,7 +350,7 @@ impl World {
         }
         self.fresh = false;
         self.changed();
-        self.exhibits = Exhibits::new(self);
+        self.settle(None, true);
         !actions.is_empty()
     }
 

@@ -11,11 +11,24 @@ pub const GROUNDS: u32 = 0;
 /// The region of the tiles beyond the zoo wall.
 pub const EXTERIOR: u32 = u32::MAX;
 
-/// An exhibit: the first tile of its region (row by row) and its size.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An exhibit: its number (kept while it exists), name, gate and size.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exhibit {
+    pub id: u32,
+    /// The first tile of its region (row by row).
     pub first: usize,
     pub tiles: usize,
+    /// The name; empty for an exhibit found in a map, whose stored name is not read yet.
+    pub name: String,
+    /// The id of the fence piece that is its gate.
+    pub gate: Option<u32>,
+}
+
+/// A set of tiles joined without an exhibit fence.
+pub struct Part {
+    pub tiles: Vec<usize>,
+    /// The region holds the zoo entrance or a tile beyond the zoo wall.
+    pub grounds: bool,
 }
 
 /// The region of every tile and the exhibits.
@@ -23,6 +36,48 @@ pub struct Exhibit {
 pub struct Exhibits {
     region: Vec<u32>,
     list: Vec<Exhibit>,
+    /// The number the next new exhibit gets.
+    pub next: u32,
+    /// The number of the next default name (exhibits and money 3.6).
+    pub counter: u32,
+}
+
+/// The regions of a world, the one of the entrance first and then the others by their first tile.
+pub fn parts(world: &World) -> Vec<Part> {
+    let tiles = world.zoo.tiles.len();
+    let mut seen = vec![false; tiles];
+    let mut parts = Vec::new();
+    let (ex, ey) = world.zoo.entrance;
+    let entrance = i32::try_from(ex)
+        .ok()
+        .zip(i32::try_from(ey).ok())
+        .and_then(|(x, y)| world.tile_index(x, y));
+    for start in entrance.into_iter().chain(0..tiles) {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut members = vec![start];
+        let mut at = 0;
+        while let Some(&t) = members.get(at) {
+            at += 1;
+            for d in [0, 2, 4, 6] {
+                if let Some(n) = world.neighbour(t, d)
+                    && !seen[n]
+                    && !world.closed(t, d)
+                {
+                    seen[n] = true;
+                    members.push(n);
+                }
+            }
+        }
+        let grounds = Some(start) == entrance || members.iter().any(|&t| !world.in_zoo(t));
+        parts.push(Part {
+            tiles: members,
+            grounds,
+        });
+    }
+    parts
 }
 
 impl Exhibits {
@@ -31,50 +86,91 @@ impl Exhibits {
     /// grounds (the gate buildings join the exterior to the grounds), and the tiles beyond the
     /// wall are marked [`EXTERIOR`] in it.
     pub fn new(world: &World) -> Exhibits {
-        let tiles = world.zoo.tiles.len();
-        let none = u32::MAX - 1;
-        let mut region = vec![none; tiles];
-        let mut list = Vec::new();
-        let (ex, ey) = world.zoo.entrance;
-        let entrance = i32::try_from(ex)
-            .ok()
-            .zip(i32::try_from(ey).ok())
-            .and_then(|(x, y)| world.tile_index(x, y));
-        for start in entrance.into_iter().chain(0..tiles) {
-            if region[start] != none {
-                continue;
-            }
-            let id = list.len() as u32 + 1;
-            region[start] = id;
-            let mut members = vec![start];
-            let mut at = 0;
-            while let Some(&t) = members.get(at) {
-                at += 1;
-                for d in [0, 2, 4, 6] {
-                    if let Some(n) = world.neighbour(t, d)
-                        && region[n] == none
-                        && !world.closed(t, d)
-                    {
-                        region[n] = id;
-                        members.push(n);
-                    }
-                }
-            }
-            if Some(start) == entrance || members.iter().any(|&t| !world.in_zoo(t)) {
-                members.iter().for_each(|&t| region[t] = GROUNDS);
-            } else {
-                list.push(Exhibit {
-                    first: start,
-                    tiles: members.len(),
-                });
-            }
+        let mut found = Exhibits {
+            region: vec![GROUNDS; world.zoo.tiles.len()],
+            next: 1,
+            counter: 1,
+            ..Exhibits::default()
+        };
+        for part in parts(world).iter().filter(|p| !p.grounds) {
+            found.add(part, String::new());
         }
-        for (t, r) in region.iter_mut().enumerate() {
+        found.exterior(world);
+        found
+    }
+
+    /// An empty set for a map of `tiles` tiles, with this one's numbers.
+    pub fn blank(&self, tiles: usize) -> Exhibits {
+        Exhibits {
+            region: vec![GROUNDS; tiles],
+            list: Vec::new(),
+            next: self.next,
+            counter: self.counter,
+        }
+    }
+
+    /// Adds an exhibit that goes on, with the tiles it holds now.
+    pub fn keep(&mut self, exhibit: Exhibit, part: &Part) {
+        let id = exhibit.id;
+        self.list.push(exhibit);
+        self.assign(id, part);
+    }
+
+    /// Adds the part as a new exhibit with the next number and a name.
+    pub fn add(&mut self, part: &Part, name: String) -> u32 {
+        let id = self.next;
+        self.next += 1;
+        self.list.push(Exhibit {
+            id,
+            first: 0,
+            tiles: 0,
+            name,
+            gate: None,
+        });
+        self.assign(id, part);
+        id
+    }
+
+    /// The tiles of the part belong to exhibit `id`.
+    pub fn assign(&mut self, id: u32, part: &Part) {
+        for &t in &part.tiles {
+            self.region[t] = id;
+        }
+        if let Some(e) = self.list.iter_mut().find(|e| e.id == id) {
+            e.first = part.tiles.iter().copied().min().unwrap_or(0);
+            e.tiles = part.tiles.len();
+        }
+    }
+
+    /// Marks the tiles beyond the zoo wall.
+    pub fn exterior(&mut self, world: &World) {
+        for (t, r) in self.region.iter_mut().enumerate() {
             if !world.in_zoo(t) {
                 *r = EXTERIOR;
             }
         }
-        Exhibits { region, list }
+    }
+
+    /// Forgets exhibit `id`: its tiles return to the zoo grounds.
+    pub fn remove(&mut self, id: u32) {
+        self.list.retain(|e| e.id != id);
+        self.region
+            .iter_mut()
+            .filter(|r| **r == id)
+            .for_each(|r| *r = GROUNDS);
+    }
+
+    /// The exhibit numbered `id`.
+    pub fn get(&self, id: u32) -> Option<&Exhibit> {
+        self.list.iter().find(|e| e.id == id)
+    }
+
+    pub fn list_mut(&mut self) -> &mut [Exhibit] {
+        &mut self.list
+    }
+
+    pub fn get_mut(&mut self, id: u32) -> Option<&mut Exhibit> {
+        self.list.iter_mut().find(|e| e.id == id)
     }
 
     /// How many of the tiles `(x, y)` lie in an exhibit that no earlier one lies in: a tile off the
@@ -108,7 +204,7 @@ impl Exhibits {
         self.list.get(at).map(|e| e.first)
     }
 
-    /// The exhibits, the one numbered `n` at position `n - 1`.
+    /// The exhibits, in the order they were made.
     pub fn list(&self) -> &[Exhibit] {
         &self.list
     }

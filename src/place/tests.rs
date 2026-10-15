@@ -207,6 +207,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         fence,
         wall: fence && !matches!(e.type_name.as_str(), "wire" | "iron"),
         gate,
+        gated: fence,
     })
 }
 
