@@ -637,6 +637,38 @@ fn a_list_draws_whole_rows_only_inside_its_borders() {
 }
 
 #[test]
+fn a_row_with_a_colour_of_its_own_is_written_in_it() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=33\nbackcolor=0\nbackcolor=0\nbackcolor=255\n"
+    );
+    let mut tree = tree("rowcolor", &root, &[]);
+    show_all(&mut tree);
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = (0..2)
+        .map(|_| Row {
+            text: b"MM".to_vec(),
+            ..Row::default()
+        })
+        .collect();
+    list.rows.colors = vec![None, Some([212, 0, 0])];
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    let red = |top: u32| {
+        let mut n = 0;
+        for y in top..top + 12 {
+            for x in 4..44 {
+                n += usize::from(at(&frame, x, y) == rgb(text_color([212, 0, 0])));
+            }
+        }
+        n
+    };
+    assert_eq!(red(4), 0, "the first row has the list's colour");
+    assert!(red(16) > 0, "the second row is red");
+}
+
+#[test]
 fn a_list_with_a_small_icon_has_rows_as_tall_as_its_slot_and_draws_the_icon_in_it() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\

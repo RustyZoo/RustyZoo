@@ -136,30 +136,32 @@ fn the_three_money_forms() {
     assert_eq!(money(&g, 74878, false), "$74878");
     assert_eq!(money(&g, -1234, false), "($1234)");
     // With cents.
-    assert_eq!(money_cents(&g, 12.5), "$12.50");
-    assert_eq!(money_cents(&g, 0.0), "$0.00");
-    assert_eq!(money_cents(&g, 1234567.891), "$1,234,567.89");
-    assert_eq!(money_cents(&g, -1234.5), "($1,234.50)");
-    assert_eq!(money_cents(&g, 0.004), "$0.00");
+    assert_eq!(money_cents(&g, 12.5, true), "$12.50");
+    assert_eq!(money_cents(&g, 0.0, true), "$0.00");
+    assert_eq!(money_cents(&g, 1234567.891, true), "$1,234,567.89");
+    assert_eq!(money_cents(&g, -1234.5, true), "($1,234.50)");
+    assert_eq!(money_cents(&g, 0.004, true), "$0.00");
     // Ties round up, not to even; 17 digits decide, so 1.005 (1.0049999999999999) stays below.
-    assert_eq!(money_cents(&g, 1.125), "$1.13");
-    assert_eq!(money_cents(&g, 0.125), "$0.13");
-    assert_eq!(money_cents(&g, 2.5), "$2.50");
-    assert_eq!(money_cents(&g, 1.005), "$1.00");
+    assert_eq!(money_cents(&g, 1.125, true), "$1.13");
+    assert_eq!(money_cents(&g, 0.125, true), "$0.13");
+    assert_eq!(money_cents(&g, 2.5, true), "$2.50");
+    assert_eq!(money_cents(&g, 1.005, true), "$1.00");
     assert_eq!(
-        money_cents(&g, 0.995),
+        money_cents(&g, 0.995, true),
         "$1.00",
         "17 digits show 0.99500000000000000"
     );
-    assert_eq!(money_cents(&g, 0.999), "$1.00");
-    assert_eq!(money_cents(&g, 999.996), "$1,000.00");
-    assert_eq!(money_cents(&g, 0.005), "$0.01");
-    assert_eq!(money_cents(&g, -1.125), "($1.13)");
-    assert_eq!(money_cents(&g, 5e-324), "$0.00");
-    assert_eq!(money_cents(&g, -0.004), "$0.00");
-    assert_eq!(money_cents(&g, f64::NAN), "$0.00");
-    assert_eq!(money_cents(&g, f64::NEG_INFINITY), "$0.00");
-    assert!(money_cents(&g, 1e30).starts_with("$1,000,000,000,000,000"));
+    assert_eq!(money_cents(&g, 0.999, true), "$1.00");
+    assert_eq!(money_cents(&g, 999.996, true), "$1,000.00");
+    assert_eq!(money_cents(&g, 0.005, true), "$0.01");
+    assert_eq!(money_cents(&g, -1.125, true), "($1.13)");
+    assert_eq!(money_cents(&g, 5e-324, true), "$0.00");
+    assert_eq!(money_cents(&g, -0.004, true), "$0.00");
+    assert_eq!(money_cents(&g, f64::NAN, true), "$0.00");
+    assert_eq!(money_cents(&g, 1234567.891, false), "$1234567.89");
+    assert_eq!(money_cents(&g, -1234.5, false), "($1234.50)");
+    assert_eq!(money_cents(&g, f64::NEG_INFINITY, true), "$0.00");
+    assert!(money_cents(&g, 1e30, true).starts_with("$1,000,000,000,000,000"));
     assert_eq!(money(&g, i64::MIN, true), "($9,223,372,036,854,775,808)");
 }
 
@@ -171,7 +173,7 @@ fn the_symbol_comes_from_the_string_table() {
     }
     let euro = table(&[(22100, "€")]);
     assert_eq!(money(&euro, -5, true), "(€5)");
-    assert_eq!(money_cents(&euro, 5.0), "€5.00");
+    assert_eq!(money_cents(&euro, 5.0, true), "€5.00");
     assert_eq!(expand(&euro, "%m", &[Int(1000)]), "€1,000");
 }
 

@@ -457,6 +457,7 @@ fn pens() -> World {
         entrance: (SIZE as u32 - 1, SIZE as u32 - 1),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
         tanks: Vec::new(),
         id_counter: 10_000,
         tiles: (0..SIZE * SIZE).map(|t| tile(t % SIZE)).collect(),

@@ -651,6 +651,33 @@ undo_area() { # undo_area <map>
 check base-trial "3,49800" "undo_area maps/default.zoo"
 check expansion-trial "14,49920" "undo_area maps/scn19.zoo"
 
+# The exhibit panel (information panels 4 and 10): the square of above, named Lion, then Escape drops
+# the fence tool and a click on its gate opens the panel on it (the button down, the exhibit current).
+# Prints the `panel` lines (spaces as underscores, joined by semicolons): the exhibit, its date
+# of construction, upkeep and keeper, the popularity and donations and the number of animals.
+panel_gate() { # panel_gate <map>
+  d=$(mktemp -d)
+  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n32 char L\n33 char i\n34 char o\n35 char n\n36 key enter\n38 key escape\n40 mouse 608 296\n41 down\n42 up\n" >"$d/script"
+  rz run "$1" --headless --passes 46 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+    sed -n 's/^pass [0-9]* t=[0-9]* panel //p' | tr ' ' _ | paste -sd';' -
+  rm -rf "$d"
+}
+check base-trial 'exhibit_1_"Lion";status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;donations_stars_0_$0.00_$0.00_$0.00;animals_0_thoughts_0' "panel_gate maps/default.zoo"
+# The exhibit list button, the first row, the Animals tab and its first row open the recommendations
+# plaque of that animal: prints the animals of the exhibit, the lines in red (important) and the others,
+# as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
+panel_plaque() { # panel_plaque <map>
+  d=$(mktemp -d)
+  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
+  rz run "$1" --headless --passes 18 --clock 67 --script "$d/script" 2>/dev/null |
+    awk '/ panel animals /{a=$6} / panel line! /{i++} / panel line "/{o++} END{print a "," i+0 "," o+0}'
+  rm -rf "$d"
+}
+check base-trial "1,2,3" "panel_plaque maps/scn01.zoo"
+check expansion-trial "2,2,2" "panel_plaque maps/scn19.zoo"
+check expansion-trial "1,2,2" "panel_plaque maps/scn27.zoo"
+check expansion-trial "1,0,2" "panel_plaque maps/scn28b.zoo"
+
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
 sim_twice() { # sim_twice <map>

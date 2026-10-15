@@ -21,6 +21,7 @@ fn map(width: u32, height: u32, elevation: i32) -> Zoo {
         entrance: (0, 0),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
         tanks: Vec::new(),
         id_counter: 0,
         tiles: vec![tile; (width * height) as usize],
@@ -367,6 +368,23 @@ fn window_point(c: &Camera, zoo: &Zoo, tx: u32, ty: u32) -> (i32, i32) {
         (px - i64::from(c.scroll.0)) as i32,
         (py - i64::from(c.scroll.1)) as i32,
     )
+}
+
+#[test]
+fn centring_puts_the_middle_of_a_tile_at_the_centre_of_the_view() {
+    let hill = hill();
+    for (zoom, rotation) in [(0, 0), (2, 1), (-2, 3)] {
+        let mut c = camera(zoom, rotation, (0, 0), 1, BEACH);
+        c.centre_on(&hill, 3, 2);
+        assert_eq!(
+            window_point(&c, &hill, 3, 2),
+            (BEACH.0 / 2, BEACH.1 / 2),
+            "zoom {zoom} rotation {rotation}"
+        );
+    }
+    // A tile off the map is the height 0 and never panics.
+    let mut c = camera(0, 0, (0, 0), 1, BEACH);
+    c.centre_on(&hill, u32::MAX, u32::MAX);
 }
 
 #[test]

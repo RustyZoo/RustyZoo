@@ -162,6 +162,33 @@ fn a_bar_follows_the_rows_of_its_list() {
 }
 
 #[test]
+fn refilled_rows_keep_the_first_row_shown_as_far_as_they_reach_and_may_have_colours() {
+    let mut ui = interface("refill");
+    ui.set_rows(20, rows(10));
+    ui.select_row(20, Some(5));
+    ui.select_row(20, None);
+    let shown = top(&ui, 20);
+    assert!(ui.refill_rows(20, rows(10)));
+    assert_eq!(top(&ui, 20), shown, "the same rows");
+    assert_eq!(ui.selected_row(20), None);
+    ui.set_rows(20, rows(10));
+    ui.select_row(20, Some(9));
+    assert!(top(&ui, 20) > 0);
+    assert!(ui.refill_rows(20, rows(5)));
+    assert_eq!(
+        top(&ui, 20),
+        2,
+        "no further than the last page: three rows show"
+    );
+    assert!(ui.refill_rows(20, Vec::new()));
+    assert_eq!(top(&ui, 20), 0, "no rows");
+    assert!(!ui.refill_rows(21, rows(1)), "not a list");
+    assert!(ui.set_row_colors(20, vec![None, Some([1, 2, 3])]));
+    assert!(!ui.set_row_colors(21, Vec::new()), "not a list");
+    assert!(!ui.set_row_colors(999, Vec::new()));
+}
+
+#[test]
 fn the_arrows_step_by_one_and_repeat_while_held_on_the_same_part() {
     let mut ui = interface("arrows");
     let mut now = 0u64;

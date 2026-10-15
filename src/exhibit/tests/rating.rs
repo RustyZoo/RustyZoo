@@ -1,7 +1,7 @@
 //! The rating on synthetic exhibits: the worked examples of habitat rating 16 (a flat grass
 //! exhibit with two zebras, then one feature at a time), and the timers.
 
-use crate::exhibit::rating::{Input, Item, Likes, Record, Site, State, Water, bit, rate};
+use crate::exhibit::rating::{Input, Item, Likes, Record, Site, State, Water, bit, disliked, rate};
 
 fn zebra() -> Likes {
     let mut terrain = [0; 18];
@@ -364,4 +364,43 @@ fn the_other_animals_sum_adds_name_genus_and_family_of_each_type_of_another_name
         ("zebra", -230.0)
     );
     assert_eq!((records[1].key.as_str(), records[1].other), ("lion", 0.0));
+}
+
+#[test]
+fn the_scenery_a_species_dislikes_is_listed_once_per_type_and_by_how_much() {
+    let kind = |class: &str, name: &str, habitat: i32, id: i32| Item {
+        habitat,
+        name: id,
+        kind: format!("{class}/{name}"),
+        slots: 1,
+        ..Item::default()
+    };
+    let likes = Likes {
+        // Values: -15 for the habitat 9410, -5, -6, -5 and -1 for names 1 to 4.
+        objects: vec![(9400, 3), (9410, -15), (1, -5), (2, -6), (3, -5), (4, -1)],
+        ..Likes::default()
+    };
+    let mut site = Site {
+        tiles: 2,
+        paths: vec![(9414, 77), (9414, 78)],
+        ..Site::default()
+    };
+    site.items = vec![
+        kind("objects", "a/x", 9410, 5),
+        kind("objects", "b/x", 9999, 1),
+        kind("objects", "c/x", 9999, 2),
+        kind("building", "d/x", 9999, 3),
+        kind("objects", "other/poo", 9410, 6),
+        kind("objects", "other/dinopoo", 9410, 7),
+        kind("animals", "e/x", 9410, 8),
+        kind("objects", "f/x", 9999, 4),
+        kind("objects", "a/x", 9410, 5),
+    ];
+    // The first tile holds the first object twice (two slots); the others one each.
+    site.slots = vec![vec![0, 0, 1, 2, 3], vec![4, 5, 6, 7, 8]];
+    // Important: the first path, then objects worth less than -5 (-15 and -6); the dung and the
+    // animal are never listed. Others: -5 and -1, a second path adds nothing.
+    assert_eq!(disliked(&site, &likes, true), [77, 5, 2]);
+    assert_eq!(disliked(&site, &likes, false), [1, 3, 4]);
+    assert!(disliked(&Site::default(), &likes, true).is_empty());
 }

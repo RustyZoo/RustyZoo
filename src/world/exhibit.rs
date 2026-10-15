@@ -10,7 +10,11 @@ use super::World;
 use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part, Tank};
 use crate::path::{self, Mover};
 use crate::place::path_shape;
+use crate::timing::Date;
 use std::collections::{HashMap, HashSet};
+
+/// The language of the running game: US English.
+const LOCALE: u32 = 1033;
 
 /// The message that the exhibit is inaccessible to the staff.
 pub const INACCESSIBLE: i32 = 11000;
@@ -75,9 +79,12 @@ impl World {
     }
 
     /// Takes the gate of each exhibit from its record in the file (exhibits and money 3.8, zoo
-    /// format 4.1): the piece in the stored tile's edge slot of the stored side, if any.
+    /// format 4.1): the piece in the stored tile's edge slot of the stored side, if any. Its
+    /// statistics and creation date come with it, and its name when the file was written in the
+    /// language of the running game (zoo format 2 rule 5).
     pub(super) fn load_gates(&mut self) {
-        for (&tile, &((x, y), side)) in self.zoo.habitat_tiles.iter().zip(&self.zoo.habitat_gates) {
+        let records = self.zoo.habitat_tiles.iter().zip(&self.zoo.habitat_gates);
+        for ((&tile, &((x, y), side)), info) in records.zip(&self.zoo.habitat_info) {
             let piece = usize::try_from(side)
                 .ok()
                 .filter(|d| d % 2 == 0 && *d < 8)
@@ -88,8 +95,17 @@ impl World {
                 .tile_index(tile.0, tile.1)
                 .and_then(|t| self.exhibits.region(t))
                 .filter(|&r| r != GROUNDS && r != EXTERIOR);
+            let stat = |k: usize| f32::from_bits(info.stats[k]);
+            let (this, last, total) = (0, 1, 2);
             if let Some(e) = id.and_then(|id| self.exhibits.get_mut(id)) {
                 e.gate = piece;
+                if self.zoo.locale == LOCALE {
+                    e.name.clone_from(&info.name);
+                }
+                // Stored this month, last month, total; kept last month, this month, total.
+                e.stats.donations = [stat(last), stat(this), stat(total)];
+                e.stats.upkeep = [stat(3 + last), stat(3 + this), stat(3 + total)];
+                e.stats.created = Some(Date::from_file_time(info.created));
             }
         }
     }
@@ -205,6 +221,13 @@ impl World {
     pub fn rename(&mut self, id: u32, name: String) {
         if let Some(e) = self.exhibits.get_mut(id) {
             e.name = name;
+        }
+    }
+
+    /// Records that exhibit `id` was made on this date.
+    pub fn set_created(&mut self, id: u32, date: Date) {
+        if let Some(e) = self.exhibits.get_mut(id) {
+            e.stats.created = Some(date);
         }
     }
 

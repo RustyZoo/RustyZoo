@@ -33,7 +33,7 @@ fn name_limit(ini: &[u8]) -> i32 {
 }
 
 /// Whether a name holds a letter, digit or punctuation mark (exhibits and money 3.6).
-fn visible(bytes: &[u8]) -> bool {
+pub(super) fn visible(bytes: &[u8]) -> bool {
     bytes.iter().any(u8::is_ascii_graphic)
 }
 
@@ -87,7 +87,12 @@ impl App<'_> {
         }
         for event in events {
             match event {
-                Event::New { id, ask: true } => game.naming.push(id),
+                Event::New { id, ask } => {
+                    game.world.set_created(id, self.sim.calendar().date());
+                    if ask {
+                        game.naming.push(id);
+                    }
+                }
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
                 Event::Objects(id) => game.refused = Some(id),
                 _ => {}

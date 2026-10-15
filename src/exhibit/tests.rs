@@ -3,7 +3,7 @@
 use super::*;
 use crate::render::order::Kind;
 use crate::world::{Event, Shape, TankKind};
-use crate::zoo::{Common, Entity, Tile, View, Zoo};
+use crate::zoo::{Common, Entity, HabitatInfo, Tile, View, Zoo};
 
 const SIZE: i32 = 8;
 
@@ -85,6 +85,7 @@ fn zoo(fences: &[(i32, i32, u32)]) -> Zoo {
         entrance: (SIZE as u32 - 1, SIZE as u32 - 1),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; (SIZE * SIZE) as usize],
@@ -780,6 +781,56 @@ fn a_gate_where_the_keeper_cannot_pass_is_still_valid_but_not_clear() {
     assert!(!passes(&world, 4, 2, 2));
 }
 
+fn stored(name: &str, stats: [u32; 9], created: u64) -> HabitatInfo {
+    HabitatInfo {
+        name: name.into(),
+        stats,
+        created,
+    }
+}
+
+#[test]
+fn a_loaded_exhibit_keeps_its_stored_name_statistics_and_date() {
+    let load = |locale: u32, created: u64| {
+        let mut z = zoo(&[]);
+        z.locale = locale;
+        z.entities
+            .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+        z.habitat_tiles = vec![(3, 3)];
+        z.habitat_gates = vec![((-1, -1), -1)];
+        // Donations then upkeep, each this month, last month, total.
+        let mut stats = [0; 9];
+        for (k, v) in [12.5f32, 0.0, 12.5, 185.49, 1.0, 186.49].iter().enumerate() {
+            stats[k] = v.to_bits();
+        }
+        z.habitat_info = vec![stored("Lions", stats, created)];
+        unique(&mut z);
+        World::new(z, shape)
+    };
+    // 17 January 2001, and the "never" default 1 January 2000.
+    let day = 864_000_000_000u64;
+    let world = load(1033, (134_774 + 11_323 + 16) * day);
+    let e = world.exhibits().get(1).unwrap();
+    assert_eq!(e.name, "Lions");
+    assert_eq!(e.stats.donations, [0.0, 12.5, 12.5]);
+    assert_eq!(e.stats.upkeep, [1.0, 185.49, 186.49]);
+    let d = e.stats.created.unwrap();
+    assert_eq!((d.year, d.month, d.day, d.weekday), (2001, 1, 17, 2));
+    let d = load(1033, 125_911_584_000_000_000)
+        .exhibits()
+        .get(1)
+        .unwrap()
+        .stats
+        .created;
+    assert_eq!(d.map(|d| (d.year, d.month, d.day)), Some((2000, 1, 1)));
+    // A file of another language keeps the default name, the rest loads the same.
+    let world = load(1031, 0);
+    let e = world.exhibits().get(1).unwrap();
+    assert_eq!(e.name, "");
+    assert_eq!(e.stats.donations, [0.0, 12.5, 12.5]);
+    assert_eq!(e.stats.created.map(|d| d.year), Some(1601));
+}
+
 #[test]
 fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
     let load = |tile: (i32, i32), side: i32| {
@@ -788,6 +839,7 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
             .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
         z.habitat_tiles = vec![(3, 3)];
         z.habitat_gates = vec![(tile, side)];
+        z.habitat_info = vec![stored("Lions", [0; 9], 0)];
         unique(&mut z);
         World::new(z, shape)
     };

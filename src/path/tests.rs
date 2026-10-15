@@ -102,6 +102,7 @@ fn sized((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)
         entrance: (w as u32 - 1, h as u32 - 1),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         clocks: Default::default(),

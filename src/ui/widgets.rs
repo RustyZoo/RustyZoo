@@ -155,6 +155,9 @@ pub enum ListKey {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Rows {
     pub rows: Vec<Row>,
+    /// The colour of the text of a row that is neither selected nor disabled, where the game's
+    /// code gives it one instead of the list's own.
+    pub colors: Vec<Option<super::layout::Rgb>>,
     pub top: usize,
     pub selected: Option<usize>,
     pub hover: Option<usize>,

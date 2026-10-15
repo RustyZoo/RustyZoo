@@ -558,7 +558,13 @@ impl Painter {
             let color = match (row.disabled, selected) {
                 (true, _) => l.grayed_color,
                 (false, true) => l.select_color,
-                _ => e.look.fore_color,
+                _ => l
+                    .rows
+                    .colors
+                    .get(n)
+                    .copied()
+                    .flatten()
+                    .unwrap_or(e.look.fore_color),
             };
             if let Some(icon) = row.icon
                 && let Some(cut) = self.cut(pictures, icon, 0, 0)

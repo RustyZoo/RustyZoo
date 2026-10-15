@@ -130,6 +130,7 @@ fn world(mut entities: Vec<Entity>) -> World {
             entrance: (0, 0),
             habitat_tiles: Vec::new(),
             habitat_gates: Vec::new(),
+            habitat_info: Vec::new(),
             tanks: Vec::new(),
             id_counter: 1000,
             tiles: vec![flat; 64],

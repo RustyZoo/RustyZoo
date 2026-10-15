@@ -214,6 +214,15 @@ impl Camera {
         )
     }
 
+    /// Centres the view on the middle of tile `(tx, ty)` (10.1): no range check. A tile off the
+    /// map is the height 0.
+    pub fn centre_on(&mut self, map: &Zoo, tx: u32, ty: u32) {
+        let z = map.tile(tx, ty).map_or(0, |t| ground_height(t, 32, 32));
+        let (wx, wy) = (64 * i64::from(tx) + 32, 64 * i64::from(ty) + 32);
+        let (px, py) = project_zoomed(self.rotation, self.zoom, to_i32(wx), to_i32(wy), z);
+        self.scroll = self.scroll_for(px, py);
+    }
+
     /// A scroll by (0, 0) does nothing, not even the range check (6.1).
     fn scroll_by(&mut self, map: &Zoo, dx: i32, dy: i32) {
         if (dx, dy) == (0, 0) {
