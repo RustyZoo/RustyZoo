@@ -739,3 +739,47 @@ fn a_type_that_turns_by_itself_advances_the_pending_step_and_choosing_resets_it(
     }
     assert_eq!(build.step, [2, 0]);
 }
+
+#[test]
+fn a_press_with_a_path_as_the_tool_starts_a_drag_whose_first_leg_the_first_move_chooses() {
+    let mut cat = Catalogue::default();
+    let path = |class| crate::entity::EntityType {
+        class,
+        type_name: b"dirt".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [2, 2, 1],
+        height: 0,
+    };
+    cat.push(path("paths"));
+    cat.push(path("objects"));
+    let mut build = Build::new(0);
+    // Without the tool, or with a tool that is not a path, a press starts nothing.
+    build.press(&cat, Some((5, 5)));
+    assert!(!build.dragging());
+    build.hold(1);
+    build.press(&cat, Some((5, 5)));
+    assert!(!build.dragging());
+    assert!(build.run((7, 5)).is_empty());
+    // A press off the map starts nothing either.
+    build.hold(0);
+    build.press(&cat, None);
+    assert!(!build.dragging());
+    build.press(&cat, Some((u32::MAX, 5)));
+    assert!(!build.dragging());
+    // The first tile entered decides the leg, and it holds until the mouse is back on the start.
+    build.press(&cat, Some((5, 5)));
+    assert!(build.dragging());
+    assert_eq!(build.run((5, 5)), [(5, 5)]);
+    assert_eq!(build.run((6, 5)), [(5, 5), (6, 5)]);
+    assert_eq!(build.run((7, 6)), [(5, 5), (6, 5), (7, 5), (7, 6)]);
+    assert_eq!(build.run((6, 7)), [(5, 5), (6, 5), (6, 6), (6, 7)]);
+    assert_eq!(build.run((5, 5)), [(5, 5)]);
+    assert_eq!(build.run((6, 7)), [(5, 5), (5, 6), (5, 7), (6, 7)]);
+    // Releasing, or dropping the tool, ends it.
+    build.end_drag();
+    assert!(!build.dragging());
+    assert!(build.run((6, 7)).is_empty());
+}

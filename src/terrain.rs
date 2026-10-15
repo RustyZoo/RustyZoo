@@ -348,6 +348,11 @@ impl Tool {
         self.types.iter().filter(|t| t.listed).collect()
     }
 
+    /// Every type of the install, by number.
+    pub fn types(&self) -> &[Type] {
+        &self.types
+    }
+
     /// The type with this number.
     pub fn find(&self, kind: u8) -> Option<&Type> {
         self.types.iter().find(|t| t.kind == kind)

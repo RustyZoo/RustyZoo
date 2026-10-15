@@ -1671,3 +1671,24 @@ fn a_huge_zoom_factor_puts_no_tile_where_a_clamp_would() {
         .unwrap();
     assert!(lit(&image, (0, 0)).is_empty());
 }
+
+#[test]
+fn a_path_picture_follows_the_slope_or_the_neighbours_that_hold_a_path() {
+    // A flat tile: 100 plus a bit for each side with a path, the first side highest.
+    assert_eq!(path_key(0, 0, [false; 4]), 100);
+    assert_eq!(path_key(0, 0, [true, false, true, false]), 110);
+    assert_eq!(path_key(0, 0, [false, false, false, true]), 101);
+    assert_eq!(path_key(0, 3, [true; 4]), 115);
+    // A tile with one side raised keys its shape byte turned to the view, whatever the neighbours.
+    assert_eq!(path_key(0x05, 0, [true; 4]), 5);
+    assert_eq!(path_key(0x05, 1, [false; 4]), 0x41);
+    assert_eq!(path_key(0x14, 2, [false; 4]), 0x41);
+    assert_eq!(path_key(0x50, 4, [false; 4]), 0x50);
+    // The pictures are found by key, the isolated piece stands in for a missing one.
+    let codes = [Some(5), Some(100), None, Some(110)];
+    assert_eq!(shape_index(&codes, 110), 3);
+    assert_eq!(shape_index(&codes, 5), 0);
+    assert_eq!(shape_index(&codes, 107), 1);
+    assert_eq!(shape_index(&[Some(5)], 107), 0);
+    assert_eq!(shape_index(&[], 100), 0);
+}

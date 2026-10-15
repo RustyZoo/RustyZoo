@@ -28,13 +28,13 @@ use crate::music::Music;
 use crate::place::{self, Outcome, Pending, Tints};
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Staged, check_size};
 use crate::status::{Finances, STATUS_BUTTON};
-use crate::terrain::Tool;
+use crate::terrain::{Tool, habit};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
 use crate::ui::layout::installed_expansions;
 use crate::world::World;
-use crate::zoo::Zoo;
+use crate::zoo::{Entity, Zoo};
 
 /// A key the interface reads, by the name a script gives it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,6 +272,8 @@ struct Game {
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
     /// last move left it) is over the map view and a tool is chosen.
     pending: Option<Pending>,
+    /// The pieces of the path drag in progress, the start first (empty without a drag).
+    run: Vec<Pending>,
     hover: bool,
     tints: Tints,
     /// Which terrain types are water.
@@ -283,6 +285,16 @@ struct Game {
     terrain: Tool,
     marks: Vec<Mark>,
     shown: Option<terrain::Shown>,
+}
+
+impl Game {
+    /// What the cost text at the pointer shows: the drag's, else the pending object's.
+    fn cost(&self) -> Option<i64> {
+        match self.run.is_empty() {
+            true => self.pending.as_ref().map(Pending::amount),
+            false => Some(place::run_amount(&self.run)),
+        }
+    }
 }
 
 pub struct App<'a> {
@@ -474,6 +486,7 @@ impl<'a> App<'a> {
             finances: Finances::default(),
             build: Build::new(installed_expansions(self.renderer.vfs())),
             pending: None,
+            run: Vec::new(),
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
             water: place::water(&types),
@@ -702,6 +715,15 @@ impl<'a> App<'a> {
                 {
                     // The next operation starts a new undo list.
                     game.world.begin();
+                    if let Some(ui) = &self.ui {
+                        let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
+                        game.build.press(self.renderer.catalogue(), tile);
+                    }
+                }
+                // A release that does not end a press on the map ends a drag without buying.
+                if let (false, Mouse::Up, Some(game)) = (on_map, mouse, game.as_mut()) {
+                    game.build.end_drag();
+                    game.run.clear();
                 }
                 if let (true, Some(phase), Some(game), Some(ui)) =
                     (on_map, phase, game.as_mut(), &self.ui)
@@ -802,12 +824,28 @@ impl<'a> App<'a> {
         };
         let cat = self.renderer.catalogue();
         let before = game.pending.take();
+        let habits = |e: &Entity| habit(cat, e);
+        let dirt = place::dirt(&game.world, game.terrain.types(), &habits);
+        let (step, view) = (game.build.step(), game.camera.rotation);
+        let at =
+            |ty, point| place::pending(&game.world, cat, &game.water, &dirt, ty, step, view, point);
         game.pending = game.build.tool().filter(|_| game.hover).and_then(|ty| {
             let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
-            let step = game.build.step();
-            let view = game.camera.rotation;
-            place::pending(&game.world, cat, &game.water, ty, step, view, (x, y))
+            at(ty, (x, y))
         });
+        // A drag lays a piece on each tile of its L; the pieces stay while the pointer is away.
+        if let (Some(ty), Some(p), true) = (game.build.tool(), &game.pending, game.build.dragging())
+        {
+            let tiles = game.build.run(p.tile);
+            let mut run: Vec<Pending> = tiles
+                .iter()
+                .filter_map(|&(x, y)| at(ty, (i64::from(x) * 64 + 32, i64::from(y) * 64 + 32)))
+                .collect();
+            place::afford(&mut run, &game.money);
+            game.run = run;
+        } else if !game.build.dragging() {
+            game.run.clear();
+        }
         if let (true, Some(p)) = (log, &game.pending) {
             let ty = &cat.types[p.ty];
             self.tool_lines.push(format!(
@@ -827,49 +865,76 @@ impl<'a> App<'a> {
         }
     }
 
-    /// A release on the map (the view sees only one that ends a press on it) over a pending
-    /// object: a valid place gets the object, which is paid and logged (`world add
-    /// objects/foliage/doumpalm 12,40 id 14908`), asks for the placement sound and turns a type
-    /// that turns by itself, and a new pending object is made; one that cannot be placed asks for the
-    /// refusal sound and shows its message, if it has one, in the message line (`tool message
-    /// 10311`) (placing 6.1).
+    /// A release on the map (the view sees only one that ends a press on it): the pieces of a path
+    /// drag, or else the pending object, are bought in order. A valid place gets its object, which
+    /// is paid and logged (`world add objects/foliage/doumpalm 12,40 id 14908`; a path on water
+    /// logs `world paint 12,40 3` first, one on another path `world remove paths/... 12,40 id 7`).
+    /// One sound is asked for the release: the placement sound if anything was placed, else the
+    /// refusal sound; a type that turns by itself turns once; the last message of a piece that
+    /// could not be placed shows in the message line (`tool message 10311`); and a new pending
+    /// object is made (placing 6.1 and 6.2).
     fn release(&mut self) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
-        let Some(p) = game.pending.clone() else {
-            return;
+        let dragging = game.build.dragging();
+        game.build.end_drag();
+        let run = std::mem::take(&mut game.run);
+        let pieces = match dragging && !run.is_empty() {
+            true => run,
+            false => game.pending.clone().into_iter().collect(),
         };
+        if pieces.is_empty() {
+            return;
+        }
         let renderer = &self.renderer;
-        let ty = &renderer.catalogue().types[p.ty];
-        let water = &game.water;
-        match place::place(&mut game.world, &mut game.money, ty, &p, water, |e| {
-            renderer.shape(e)
-        }) {
-            Outcome::Placed(id) => {
-                self.world_lines.push(format!(
-                    "add {}/{}/{} {},{} id {id}",
-                    ty.class,
-                    String::from_utf8_lossy(&ty.type_name),
-                    String::from_utf8_lossy(&ty.subtype),
-                    p.tile.0,
-                    p.tile.1
-                ));
+        let cat = renderer.catalogue();
+        let (mut first, mut refused) = (None, None);
+        for p in &pieces {
+            let ty = &cat.types[p.ty];
+            let name = format!(
+                "{}/{}/{}",
+                ty.class,
+                String::from_utf8_lossy(&ty.type_name),
+                String::from_utf8_lossy(&ty.subtype)
+            );
+            let (x, y) = p.tile;
+            let old = game.world.tile_index(x, y).and_then(|t| game.world.path(t));
+            let old = old.and_then(|o| game.world.zoo.entities[o].common.as_ref().map(|c| c.id));
+            let water = &game.water;
+            let outcome = place::place(&mut game.world, &mut game.money, ty, p, water, |e| {
+                renderer.shape(e)
+            });
+            match outcome {
+                Outcome::Placed(id) => {
+                    if let Some(kind) = p.paint {
+                        self.world_lines.push(format!("paint {x},{y} {kind}"));
+                    }
+                    if let Some(old) = old.filter(|_| ty.class == "paths") {
+                        let line = format!("remove {name} {x},{y} id {old}");
+                        self.world_lines.push(line);
+                    }
+                    self.world_lines.push(format!("add {name} {x},{y} id {id}"));
+                    first = first.or(Some(p.ty));
+                }
+                Outcome::Refused(message) => refused = message.or(refused),
+            }
+        }
+        match first {
+            Some(ty) => {
                 self.ui_sounds.push("place");
-                if game.build.placed(ty) {
+                if game.build.placed(&cat.types[ty]) {
                     self.tool_lines
                         .push(format!("tool turn {}", game.build.step()));
                 }
-                self.aim(false);
             }
-            Outcome::Refused(message) => {
-                self.ui_sounds.push("noplace");
-                if let Some(id) = message {
-                    ui.message(&to_cp1252(&ui.string(id)));
-                    self.tool_lines.push(format!("tool message {id}"));
-                }
-            }
+            None => self.ui_sounds.push("noplace"),
         }
+        if let Some(id) = refused {
+            ui.message(&to_cp1252(&ui.string(id)));
+            self.tool_lines.push(format!("tool message {id}"));
+        }
+        self.aim(false);
     }
 
     /// The menu and the game act on what the player did since the last look: the answers to the
@@ -1151,8 +1216,8 @@ impl<'a> App<'a> {
                 }
             });
             // The cost of the pending object, next to the pointer (placing 4.5).
-            if let Some(pending) = self.game.as_ref().and_then(|g| g.pending.as_ref()) {
-                let text = place::cost_text(ui.string(SYMBOL), pending.amount());
+            if let Some(amount) = self.game.as_ref().and_then(Game::cost) {
+                let text = place::cost_text(ui.string(SYMBOL), amount);
                 ui.pointer_text(&mut self.frame, &to_cp1252(&text), COST_OFFSET);
             }
         }
@@ -1173,10 +1238,13 @@ impl<'a> App<'a> {
         let Some(game) = &mut self.game else { return };
         // The pending object and the terrain highlights are transient items: the picture is made
         // again when they changed.
-        let mut want = game
-            .pending
-            .as_ref()
-            .map_or_else(Extra::default, |p| p.extra(&game.tints));
+        let mut want = match game.run.is_empty() {
+            true => game
+                .pending
+                .as_ref()
+                .map_or_else(Extra::default, |p| p.extra(&game.tints)),
+            false => place::extra_of(&game.run, &game.tints),
+        };
         want.marks.clone_from(&game.marks);
         if !dirty && want == game.extra {
             return;
