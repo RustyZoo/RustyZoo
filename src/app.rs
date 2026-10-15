@@ -25,7 +25,7 @@ use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
-use crate::place::{self, Outcome, Pending, Tints};
+use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Staged, check_size};
 use crate::status::{Finances, STATUS_BUTTON};
 use crate::terrain::{Tool, habit};
@@ -272,12 +272,14 @@ struct Game {
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
     /// last move left it) is over the map view and a tool is chosen.
     pending: Option<Pending>,
-    /// The pieces of the path drag in progress, the start first (empty without a drag).
+    /// The pieces of the path or fence drag in progress, the start first (empty without a drag).
     run: Vec<Pending>,
     hover: bool,
     tints: Tints,
     /// Which terrain types are water.
     water: Vec<bool>,
+    /// The smart fences test is on (`[UI] smartFences`).
+    smart: bool,
     /// The transient items the staged picture was made with.
     extra: Extra,
     /// The terrain tool, the highlights it asks the map to draw (they go to the staging with the
@@ -505,6 +507,7 @@ impl<'a> App<'a> {
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
             water: place::water(&types),
+            smart: place::smart_fences(self.renderer.vfs().ini()),
             extra: Extra::default(),
             terrain,
             marks: Vec::new(),
@@ -731,7 +734,8 @@ impl<'a> App<'a> {
                     game.world.begin();
                     if let Some(ui) = &self.ui {
                         let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
-                        game.build.press(self.renderer.catalogue(), tile);
+                        let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
+                        game.build.press(self.renderer.catalogue(), tile, (x, y));
                     }
                 }
                 // A release that does not end a press on the map ends a drag without buying.
@@ -841,20 +845,30 @@ impl<'a> App<'a> {
         let habits = |e: &Entity| habit(cat, e);
         let dirt = place::dirt(&game.world, game.terrain.types(), &habits);
         let (step, view) = (game.build.step(), game.camera.rotation);
-        let at =
-            |ty, point| place::pending(&game.world, cat, &game.water, &dirt, ty, step, view, point);
-        game.pending = game.build.tool().filter(|_| game.hover).and_then(|ty| {
-            let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
-            at(ty, (x, y))
-        });
+        let at = |ty, point| {
+            place::pending(
+                &game.world,
+                cat,
+                &game.water,
+                &dirt,
+                game.smart,
+                ty,
+                step,
+                view,
+                point,
+            )
+        };
+        let point = game.camera.pick(&game.world.zoo, ui.pointer());
+        game.pending = game
+            .build
+            .tool()
+            .filter(|_| game.hover)
+            .and_then(|ty| at(ty, (point.0, point.1)));
         // A drag lays a piece on each tile of its L; the pieces stay while the pointer is away.
         if let (Some(ty), Some(p), true) = (game.build.tool(), &game.pending, game.build.dragging())
         {
-            let tiles = game.build.run(p.tile);
-            let mut run: Vec<Pending> = tiles
-                .iter()
-                .filter_map(|&(x, y)| at(ty, (i64::from(x) * 64 + 32, i64::from(y) * 64 + 32)))
-                .collect();
+            let points = game.build.run(p.tile, (point.0, point.1));
+            let mut run: Vec<Pending> = points.iter().filter_map(|&at_| at(ty, at_)).collect();
             place::afford(&mut run, &game.money);
             game.run = run;
         } else if !game.build.dragging() {
@@ -913,8 +927,19 @@ impl<'a> App<'a> {
                 String::from_utf8_lossy(&ty.subtype)
             );
             let (x, y) = p.tile;
-            let old = game.world.tile_index(x, y).and_then(|t| game.world.path(t));
+            let fence = Class::of(ty) == Class::Fence;
+            let at = game.world.tile_index(x, y);
+            let old = match ty.class {
+                "fences" | "tankwall" => at.and_then(|t| game.world.edge(t, p.facing as usize)),
+                "paths" => at.and_then(|t| game.world.path(t)),
+                _ => None,
+            };
             let old = old.and_then(|o| game.world.zoo.entities[o].common.as_ref().map(|c| c.id));
+            // A fence is told with its side.
+            let tile = match fence {
+                true => format!("{x},{y} side {}", p.facing),
+                false => format!("{x},{y}"),
+            };
             let water = &game.water;
             let outcome = place::place(&mut game.world, &mut game.money, ty, p, water, |e| {
                 renderer.shape(e)
@@ -924,11 +949,11 @@ impl<'a> App<'a> {
                     if let Some(kind) = p.paint {
                         self.world_lines.push(format!("paint {x},{y} {kind}"));
                     }
-                    if let Some(old) = old.filter(|_| ty.class == "paths") {
-                        let line = format!("remove {name} {x},{y} id {old}");
+                    if let Some(old) = old {
+                        let line = format!("remove {name} {tile} id {old}");
                         self.world_lines.push(line);
                     }
-                    self.world_lines.push(format!("add {name} {x},{y} id {id}"));
+                    self.world_lines.push(format!("add {name} {tile} id {id}"));
                     first = first.or(Some(p.ty));
                 }
                 Outcome::Refused(message) => refused = message.or(refused),

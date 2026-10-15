@@ -11,7 +11,7 @@ pub mod terrain;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
-use crate::place::{Class, Leg, path_run};
+use crate::place::{Class, Leg, MIDDLE, fence_run, path_run, side};
 use crate::terrain::Mode;
 use crate::text::format::whole_units;
 use crate::text::to_cp1252;
@@ -250,6 +250,14 @@ const PANELS: [Panel; 2] = [
     },
 ];
 
+/// A drag: the tile of the press, the mode of the first leg of a path and the side of a fence
+/// chosen at the press, which the whole run keeps.
+struct Drag {
+    start: (i32, i32),
+    leg: Option<Leg>,
+    side: Option<u32>,
+}
+
 /// What the player has done in the panels.
 pub struct Build {
     expansions: i32,
@@ -276,8 +284,8 @@ pub struct Build {
     /// The picture of each `cLocation` and `cHabitat` value: its animation, from `ui/infoimg.cfg`;
     /// read when first needed.
     infoimg: Option<HashMap<i32, String>>,
-    /// A path drag in progress: the tile of the press and the mode of the first leg (placing 6.2).
-    drag: Option<((i32, i32), Option<Leg>)>,
+    /// A path or fence drag in progress (placing 6.2).
+    drag: Option<Drag>,
 }
 
 impl Build {
@@ -299,25 +307,50 @@ impl Build {
         }
     }
 
-    /// The left button went down on `tile` of the map: with a path as the tool, the tile starts
-    /// a drag (placing 6.2 item 1).
-    pub fn press(&mut self, cat: &Catalogue, tile: Option<(u32, u32)>) {
-        let path = self.held.and_then(|ty| cat.types.get(ty)).map(Class::of) == Some(Class::Path);
+    /// The left button went down on `tile` of the map, at the world point `point`: with a path or
+    /// a fence as the tool, the tile starts a drag, and a fence keeps the side of the point
+    /// (placing 6.2 item 1).
+    pub fn press(&mut self, cat: &Catalogue, tile: Option<(u32, u32)>, point: (i64, i64)) {
+        let class = self.held.and_then(|ty| cat.types.get(ty)).map(Class::of);
         let tile = tile.and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)));
-        self.drag = tile.filter(|_| path).map(|t| (t, None));
+        let side = (class == Some(Class::Fence))
+            .then(|| side(point.0.rem_euclid(64) as i32, point.1.rem_euclid(64) as i32));
+        self.drag = tile
+            .filter(|_| matches!(class, Some(Class::Path | Class::Fence)))
+            .map(|start| Drag {
+                start,
+                leg: None,
+                side,
+            });
     }
 
-    /// Whether a path drag is in progress.
+    /// Whether a path or fence drag is in progress.
     pub fn dragging(&self) -> bool {
         self.drag.is_some()
     }
 
-    /// The tiles of the drag if the mouse is on tile `cell` now, the start first; none without a
-    /// drag.
-    pub fn run(&mut self, cell: (i32, i32)) -> Vec<(i32, i32)> {
-        match &mut self.drag {
-            Some((start, leg)) => path_run(*start, cell, leg),
-            None => Vec::new(),
+    /// The world points of the pieces of the drag if the mouse is at `point` (on tile `cell`)
+    /// now, the start first: the middle of each tile of a path, the middle of the side of each
+    /// piece of a fence; none without a drag.
+    pub fn run(&mut self, cell: (i32, i32), point: (i64, i64)) -> Vec<(i64, i64)> {
+        let Some(drag) = &mut self.drag else {
+            return Vec::new();
+        };
+        let tile = |(x, y): (i32, i32), (dx, dy): (i32, i32)| {
+            (
+                i64::from(x) * 64 + i64::from(dx),
+                i64::from(y) * 64 + i64::from(dy),
+            )
+        };
+        match drag.side {
+            Some(first) => fence_run(drag.start, first, point)
+                .into_iter()
+                .map(|(t, s)| tile(t, MIDDLE[s as usize / 2]))
+                .collect(),
+            None => path_run(drag.start, cell, &mut drag.leg)
+                .into_iter()
+                .map(|t| tile(t, (32, 32)))
+                .collect(),
         }
     }
 

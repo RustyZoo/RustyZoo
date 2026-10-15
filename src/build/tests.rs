@@ -775,32 +775,73 @@ fn a_press_with_a_path_as_the_tool_starts_a_drag_whose_first_leg_the_first_move_
     cat.push(path("paths"));
     cat.push(path("objects"));
     let mut build = Build::new(0);
+    let tiles = |build: &mut Build, cell| -> Vec<(i64, i64)> {
+        let points = build.run(cell, (0, 0));
+        points.iter().map(|&(x, y)| (x / 64, y / 64)).collect()
+    };
     // Without the tool, or with a tool that is not a path, a press starts nothing.
-    build.press(&cat, Some((5, 5)));
+    build.press(&cat, Some((5, 5)), (0, 0));
     assert!(!build.dragging());
     build.hold(1);
-    build.press(&cat, Some((5, 5)));
+    build.press(&cat, Some((5, 5)), (0, 0));
     assert!(!build.dragging());
-    assert!(build.run((7, 5)).is_empty());
+    assert!(build.run((7, 5), (0, 0)).is_empty());
     // A press off the map starts nothing either.
     build.hold(0);
-    build.press(&cat, None);
+    build.press(&cat, None, (0, 0));
     assert!(!build.dragging());
-    build.press(&cat, Some((u32::MAX, 5)));
+    build.press(&cat, Some((u32::MAX, 5)), (0, 0));
     assert!(!build.dragging());
     // The first tile entered decides the leg, and it holds until the mouse is back on the start.
-    build.press(&cat, Some((5, 5)));
+    build.press(&cat, Some((5, 5)), (0, 0));
     assert!(build.dragging());
-    assert_eq!(build.run((5, 5)), [(5, 5)]);
-    assert_eq!(build.run((6, 5)), [(5, 5), (6, 5)]);
-    assert_eq!(build.run((7, 6)), [(5, 5), (6, 5), (7, 5), (7, 6)]);
-    assert_eq!(build.run((6, 7)), [(5, 5), (6, 5), (6, 6), (6, 7)]);
-    assert_eq!(build.run((5, 5)), [(5, 5)]);
-    assert_eq!(build.run((6, 7)), [(5, 5), (5, 6), (5, 7), (6, 7)]);
+    assert_eq!(tiles(&mut build, (5, 5)), [(5, 5)]);
+    assert_eq!(tiles(&mut build, (6, 5)), [(5, 5), (6, 5)]);
+    assert_eq!(tiles(&mut build, (7, 6)), [(5, 5), (6, 5), (7, 5), (7, 6)]);
+    assert_eq!(tiles(&mut build, (6, 7)), [(5, 5), (6, 5), (6, 6), (6, 7)]);
+    assert_eq!(tiles(&mut build, (5, 5)), [(5, 5)]);
+    assert_eq!(tiles(&mut build, (6, 7)), [(5, 5), (5, 6), (5, 7), (6, 7)]);
     // Releasing, or dropping the tool, ends it.
     build.end_drag();
     assert!(!build.dragging());
-    assert!(build.run((6, 7)).is_empty());
+    assert!(build.run((6, 7), (0, 0)).is_empty());
+}
+
+#[test]
+fn a_press_with_a_fence_as_the_tool_keeps_the_side_of_the_press_for_the_whole_run() {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "fences",
+        type_name: b"wire".to_vec(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let mut build = Build::new(0);
+    build.hold(0);
+    // Pressed at (10, 40) of tile (5, 5): side 6, the west side. The run goes along y first.
+    build.press(&cat, Some((5, 5)), (5 * 64 + 10, 5 * 64 + 40));
+    assert!(build.dragging());
+    let (x, y) = (5 * 64, 5 * 64 + 32);
+    assert_eq!(build.run((5, 5), (x + 20, y)), [(x, y)]);
+    // Past the middle of the tile the run hooks round on the side the mouse is on.
+    assert_eq!(
+        build.run((5, 5), (x + 40, y)),
+        [(x, y), (5 * 64 + 32, 5 * 64 + 63)]
+    );
+    // The mouse two tiles down and one tile right: the pieces of the first leg are side 6 and
+    // the second leg lies on side 0 or 4 of the tiles it crosses.
+    let run = build.run((6, 7), (6 * 64 + 32, 7 * 64 + 32));
+    assert_eq!(run[..3], [(x, y), (x, y + 64), (x, y + 128)]);
+    assert!(run.len() > 3);
+    // A press off the map, or at an absurd point, never panics.
+    build.press(&cat, None, (i64::MIN, i64::MAX));
+    assert!(!build.dragging());
+    build.press(&cat, Some((5, 5)), (i64::MAX, i64::MIN));
+    assert!(build.dragging());
 }
 
 #[test]
