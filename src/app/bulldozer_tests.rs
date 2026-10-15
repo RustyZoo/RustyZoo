@@ -310,6 +310,7 @@ impl Session<'_> {
                 colors: Vec::new(),
                 fence,
                 movement_mode: 0,
+                animal: None,
             }),
         };
         let shape = self.app.renderer.shape(&entity);

@@ -1,7 +1,7 @@
 //! The bodies of entity records, by class. Only the common part is kept; every other field is
 //! read and dropped to reach the next record (or the end of the body).
 
-use super::{Common, Fence, R, Reader, bad};
+use super::{AnimalRecord, Common, Fence, R, Reader, bad};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -52,8 +52,11 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             common
         }
         b"animals" => {
-            animal(r)?;
-            zoo_unit(r, false)?
+            let record = animal(r)?;
+            Common {
+                animal: Some(Box::new(record)),
+                ..zoo_unit(r, false)?
+            }
         }
         b"guests" => {
             guest(r)?;
@@ -105,6 +108,7 @@ fn base(r: &mut Reader) -> R<Common> {
         colors,
         fence: None,
         movement_mode: 0,
+        animal: None,
     })
 }
 
@@ -155,27 +159,42 @@ fn building(r: &mut Reader) -> R<()> {
     Ok(())
 }
 
-fn animal(r: &mut Reader) -> R<()> {
+fn animal(r: &mut Reader) -> R<AnimalRecord> {
     let v = r.v;
-    r.skip(16 + 5 + 5 + 20)?;
+    let (happiness, hunger, health, energy) = (r.i32()?, r.i32()?, r.i32()?, r.i32()?);
+    let flags = r.take(5)?;
+    let (at_minimum_health, very_unhappy) = (flags[0] != 0, flags[3] != 0);
+    r.skip(5 + 20)?;
+    let female = !r.string()?.starts_with(b"M");
     r.string()?;
-    r.string()?;
-    r.skip(44)?;
+    // Hunger, health, energy, other, keeper, captivity, habitat, bored, social, reproduction,
+    // and one more.
+    let mut c = [None; 16];
+    for at in [0, 2, 3, 5, 6, 7, 8, 9, 10, 11] {
+        c[at] = Some(r.i32()?);
+    }
+    r.skip(4)?;
     if v <= 53 {
         r.skip(4)?;
     }
-    r.skip(8 + 4 + 3 + 4 + 6 + 12 + 16 + 2)?;
+    r.skip(4)?;
+    c[12] = Some(r.i32()?);
+    let dung = r.i32()?;
+    let keeper_visited = r.u8()? != 0;
+    r.skip(2)?;
+    c[4] = Some(r.i32()?);
+    r.skip(6 + 12 + 16 + 2)?;
     if v >= 41 {
         r.skip(8)?;
     }
+    let mut dying = false;
     if v >= 43 {
-        r.skip(13)?;
+        r.skip(12)?;
+        dying = r.u8()? != 0;
     }
-    if v >= 44 {
-        r.skip(1)?;
-    }
+    let mourning = v >= 44 && r.u8()? != 0;
     if v >= 46 {
-        r.skip(4)?;
+        c[14] = Some(r.i32()?);
     }
     // The escape flag counts only when it is exactly 1.
     if v >= 47 && r.u32()? == 1 {
@@ -184,8 +203,10 @@ fn animal(r: &mut Reader) -> R<()> {
             r.skip(4)?;
         }
     }
+    let mut crated = false;
     if v >= 52 {
-        r.skip(10)?;
+        r.skip(9)?;
+        crated = r.u8()? != 0;
     }
     if v >= 54 {
         r.skip(1)?;
@@ -202,16 +223,34 @@ fn animal(r: &mut Reader) -> R<()> {
     if v >= 78 {
         r.skip(1)?;
     }
+    let mut egg = false;
     if v >= 79 {
-        r.skip(5)?;
+        egg = r.u8()? != 0;
+        r.skip(4)?;
     }
     if v >= 87 {
-        r.skip(8)?;
+        r.skip(4)?;
+        c[1] = Some(r.i32()?);
     }
     if v >= 101 {
         r.skip(8)?;
     }
-    Ok(())
+    Ok(AnimalRecord {
+        happiness,
+        hunger,
+        health,
+        energy,
+        dung,
+        female,
+        counters: c,
+        at_minimum_health,
+        very_unhappy,
+        keeper_visited,
+        mourning,
+        dying,
+        crated,
+        egg,
+    })
 }
 
 fn guest(r: &mut Reader) -> R<()> {

@@ -97,6 +97,7 @@ impl Fnv {
             colors,
             fence,
             movement_mode,
+            animal: _,
         }) = &e.common
         {
             for v in [*x, *y, *z] {
@@ -272,6 +273,7 @@ pub fn state(sim: &Sim, world: &World, money: &Money) -> u64 {
     let mut h = Fnv::default();
     h.zoo(&world.zoo);
     h.u64(world.units.hash());
+    h.rating(&world.exhibits().grounds);
     h.len(world.exhibits().list().len());
     for x in world.exhibits().list() {
         h.exhibit(x);

@@ -1033,3 +1033,52 @@ fn full_game_facts() {
     // The only bodies not decoded are the 939 of size 0.
     assert_eq!((transient, skipped), (939, 939));
 }
+
+#[test]
+fn reads_the_values_counters_and_flags_of_an_animal_record() {
+    let mut w = W::default();
+    w.i32(38).i32(7).i32(250).i32(15);
+    w.u8(1).u8(0).u8(0).u8(1).u8(0).z(25);
+    w.str("Female").str("x");
+    (10..21).for_each(|n| _ = w.u32(n));
+    w.z(4).u32(77).u32(33).u8(1).z(2).u32(55).z(36).z(8);
+    w.z(12).u8(1).u8(1).u32(88).u32(0);
+    w.z(9).u8(1).z(1 + 1 + 1 + 8 + 1);
+    w.u8(0).z(4).z(4).u32(99).z(8);
+    let before = 387 + "Female".len() + "x".len() - w.0.len();
+    let mut body = w.0;
+    body.extend(unit(106, before, 21));
+    let z = parse(&file(106, 1, 1, &[], &[("animals", "a", "f", body)]));
+    let c = z.entities[0].common.as_ref().unwrap();
+    assert_eq!(c.id, 21);
+    let r = c.animal.as_ref().unwrap();
+    assert_eq!(
+        (r.happiness, r.hunger, r.health, r.energy),
+        (38, 7, 250, 15)
+    );
+    assert_eq!((r.dung, r.female), (33, true));
+    // Hunger, breath, health, energy, escape, other, keeper, captivity, habitat, bored, social,
+    // reproduction, message, shelter, water, murky water.
+    let counters = [
+        10, 99, 11, 12, 55, 13, 14, 15, 16, 17, 18, 19, 77, -1, 88, -1,
+    ];
+    let got = r.counters.map(|c| c.unwrap_or(-1));
+    assert_eq!(got, counters);
+    assert_eq!(
+        [r.at_minimum_health, r.very_unhappy, r.keeper_visited],
+        [true; 3]
+    );
+    assert_eq!(
+        [r.mourning, r.dying, r.crated, r.egg],
+        [true, true, true, false]
+    );
+    // Other classes keep no record.
+    let z = parse(&file(
+        70,
+        1,
+        1,
+        &[],
+        &[("objects", "tree", "oak", scenery(70, 1, "T"))],
+    ));
+    assert_eq!(z.entities[0].common.as_ref().unwrap().animal, None);
+}

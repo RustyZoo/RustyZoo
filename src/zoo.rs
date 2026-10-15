@@ -105,6 +105,29 @@ pub struct Common {
     pub fence: Option<Fence>,
     /// The movement mode of a unit (3: inside a tank); 0 for everything else.
     pub movement_mode: u32,
+    /// What an animal record stores of the animal's live state; `None` for everything else.
+    pub animal: Option<Box<AnimalRecord>>,
+}
+
+/// The values, counters and flags an animal record stores (animals 3.5). A counter the record
+/// does not hold (by the version) is `None`: it keeps what creation gave it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnimalRecord {
+    pub happiness: i32,
+    pub hunger: i32,
+    pub health: i32,
+    pub energy: i32,
+    pub dung: i32,
+    pub female: bool,
+    /// The counters of the checks in the order of the animal module's indices.
+    pub counters: [Option<i32>; 16],
+    pub at_minimum_health: bool,
+    pub very_unhappy: bool,
+    pub keeper_visited: bool,
+    pub mourning: bool,
+    pub dying: bool,
+    pub crated: bool,
+    pub egg: bool,
 }
 
 /// The four values a fence or tank wall record holds after its common part.

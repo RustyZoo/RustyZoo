@@ -20,6 +20,7 @@ fn entity(class: &str, id: u32, (x, y): (i32, i32)) -> Entity {
             colors: Vec::new(),
             fence: None,
             movement_mode: 0,
+            animal: None,
         }),
     }
 }
@@ -360,8 +361,8 @@ fn the_simulation_draws_once_per_unit_that_runs_its_goals() {
     let (mut a, mut b) = (sim(), sim());
     a.step(&mut w, 67, |_, _, _| {});
     // The animal (of no known subtype: a young one) draws its sex and its sixteen counters on
-    // its first turn.
-    (0..3 + 17).for_each(|_| _ = b.rng.rand());
+    // its first turn, and the zoo grounds' rating timer draws once (it starts dirty).
+    (0..3 + 17 + 1).for_each(|_| _ = b.rng.rand());
     assert_eq!(a.rng.state(), b.rng.state());
     // A waiting unit draws nothing.
     w.units.get_mut(2).unwrap().wait = 1000;
@@ -401,4 +402,73 @@ fn the_hash_covers_the_whole_table() {
     let before = other.units.hash();
     other.units.set_period(10);
     assert_ne!(other.units.hash(), before);
+}
+
+#[test]
+fn the_hash_covers_the_animals() {
+    let base = world(&[("animals", 1), ("guests", 2)]).units.hash();
+    // A new field of the animal breaks this line until it has a change below.
+    let Animal {
+        happiness: _,
+        hunger: _,
+        health: _,
+        energy: _,
+        dung: _,
+        happiness_change: _,
+        hunger_change: _,
+        health_change: _,
+        energy_change: _,
+        dung_change: _,
+        counters: _,
+        female: _,
+        advice: _,
+        important: _,
+        pressure: _,
+        crowd_direction: _,
+        egg: _,
+        crated: _,
+        dying: _,
+        in_show: _,
+        very_unhappy: _,
+        at_minimum_health: _,
+        keeper_visited: _,
+        mourning: _,
+    } = Animal::default();
+    let changes: [fn(&mut Animal); 24] = [
+        |a| a.happiness = 1,
+        |a| a.hunger = 1,
+        |a| a.health = 1,
+        |a| a.energy = 1,
+        |a| a.dung = 1,
+        |a| a.happiness_change = 1,
+        |a| a.hunger_change = 1,
+        |a| a.health_change = 1,
+        |a| a.energy_change = 1,
+        |a| a.dung_change = 1,
+        |a| a.counters[15] = 1,
+        |a| a.female = true,
+        |a| a.advice = 1,
+        |a| a.important = 1,
+        |a| a.pressure[2] = 1,
+        |a| a.crowd_direction = 3,
+        |a| a.egg = true,
+        |a| a.crated = true,
+        |a| a.dying = true,
+        |a| a.in_show = true,
+        |a| a.very_unhappy = true,
+        |a| a.at_minimum_health = true,
+        |a| a.keeper_visited = true,
+        |a| a.mourning = true,
+    ];
+    for (i, change) in changes.iter().enumerate() {
+        let mut other = world(&[("animals", 1), ("guests", 2)]);
+        let Part::Animal(a) = &mut other.units.get_mut(1).unwrap().part else {
+            panic!("not an animal");
+        };
+        change(a);
+        assert_ne!(other.units.hash(), base, "field {i}");
+    }
+    let mut other = world(&[("animals", 1), ("guests", 2)]);
+    other.units.get_mut(1).unwrap().started = true;
+    assert_ne!(other.units.hash(), base, "started");
 }

@@ -212,6 +212,12 @@ impl Sim {
         }
     }
 
+    /// Creates the animals of the map just loaded (animals 3.5), with the types of `cat` and the
+    /// class keys in `world.units.class`. The draws come before every draw of the first step.
+    pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
+        crate::animal::load(world, cat, &mut self.rng);
+    }
+
     pub fn calendar(&self) -> &Calendar {
         &self.calendar
     }
@@ -303,8 +309,11 @@ impl Sim {
             }
         }
         self.events.age();
-        // The world manager: the exhibits' timers and ratings, the water of the tanks, the world
-        // clock.
+        // The world manager: the zoo grounds' timers, then the exhibits' timers and ratings, the
+        // water of the tanks, the world clock.
+        let mut grounds = std::mem::take(&mut world.exhibits_mut().grounds);
+        grounds.update(step, &mut || self.rng.rand(), rating::Input::default);
+        world.exhibits_mut().grounds = grounds;
         for at in 0..world.exhibits().list().len() {
             let id = world.exhibits().list()[at].id;
             let mut state = std::mem::take(&mut world.exhibits_mut().list_mut()[at].rating);

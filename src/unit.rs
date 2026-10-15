@@ -23,11 +23,11 @@
 
 use std::collections::HashMap;
 
-use crate::config::Config;
-use crate::path::{self, Finder, Mover, Settings};
 pub use crate::animal::Animal;
 use crate::animal::Class;
+use crate::config::Config;
 use crate::entity::Catalogue;
+use crate::path::{self, Finder, Mover, Settings};
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::Entity;

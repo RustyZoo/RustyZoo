@@ -893,6 +893,7 @@ pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>) -> Entity {
                 portal: false,
             }),
             movement_mode: 0,
+            animal: None,
         }),
     }
 }

@@ -392,6 +392,7 @@ fn entity(class: &str, subtype: &str, (tx, ty): (i32, i32), rotation: u32, id: u
             colors: Vec::new(),
             fence: None,
             movement_mode: 0,
+            animal: None,
         }),
     }
 }
@@ -508,4 +509,68 @@ fn animals_in_a_good_and_a_bad_exhibit_go_up_and_down_and_two_runs_agree() {
     );
     let (again, other) = ten_minutes();
     assert!(log == again && world.units.hash() == other.units.hash());
+}
+
+/// The record of a loaded animal: the values of the example, a few counters, the rest not stored.
+fn record() -> AnimalRecord {
+    let mut counters = [None; COUNTERS];
+    counters[CAPTIVITY] = Some(6);
+    counters[HABITAT] = Some(15);
+    AnimalRecord {
+        happiness: 38,
+        hunger: 7,
+        health: 250,
+        energy: 15,
+        dung: 3,
+        female: true,
+        counters,
+        at_minimum_health: false,
+        very_unhappy: false,
+        keeper_visited: false,
+        mourning: false,
+        dying: false,
+        crated: false,
+        egg: false,
+    }
+}
+
+#[test]
+fn a_loaded_animal_keeps_its_record_and_draws_nothing_at_its_turn() {
+    let cat = zebras();
+    let start = |loaded: bool| {
+        let mut world = pens();
+        if loaded {
+            for e in &mut world.zoo.entities {
+                if e.class == "animals" {
+                    e.common.as_mut().unwrap().animal = Some(Box::new(record()));
+                }
+            }
+        }
+        let mut sim = Sim::new(b"");
+        sim.set_seed(1);
+        sim.start_game(64, Clocks::default());
+        (sim, world)
+    };
+    let (mut sim, mut world) = start(true);
+    let mut check = sim.rng.clone();
+    sim.load(&mut world, &cat);
+    // Four animals of a known sex: sixteen draws each, at the load, and they are started.
+    (0..64).for_each(|_| _ = check.rand());
+    assert_eq!(sim.rng, check);
+    let Part::Animal(a) = &world.units.get(510).unwrap().part else {
+        panic!("not an animal");
+    };
+    assert!(world.units.get(510).unwrap().started);
+    let drawn = a.counters[SOCIAL];
+    assert!((0..world.units.class.periods[SOCIAL]).contains(&drawn));
+    assert_eq!(
+        (a.happiness, a.hunger, a.energy, a.health, a.dung),
+        (38, 7, 15, 250, 3)
+    );
+    assert_eq!((a.counters[CAPTIVITY], a.counters[HABITAT]), (6, 15));
+    // The first step draws what it would draw without the animals' creation.
+    sim.step_in(&mut world, &cat, 67, |_, _, _| {});
+    let (mut other, mut fresh) = start(false);
+    other.step_in(&mut fresh, &cat, 67, |_, _, _| {});
+    assert_eq!(sim.rng, other.rng, "no draw at the first turn");
 }

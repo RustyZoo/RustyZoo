@@ -9,6 +9,9 @@
 //! it stands and the check periods ([`run`]); the hook reads the environment from the world and
 //! posts the messages.
 //!
+//! An animal of a loaded map is created by [`load`] before the first step, with the draws of a
+//! new one, and then takes what its record stores (animals 3.5); it draws nothing at its turn.
+//!
 //! Not here yet: trampled grass, the bored check and the thirst, the shelter check, the check of
 //! other animals, the ambient set, `AnimalResetInterval`, and the checks of part B, the swimmers
 //! and the escapes (their counters are drawn at creation and wait in [`Animal::counters`]).
@@ -24,7 +27,7 @@ use crate::sim::Rng;
 use crate::unit::{Ctx, Part, Unit};
 use crate::vfs::Vfs;
 use crate::world::World;
-use crate::zoo::Entity;
+use crate::zoo::{AnimalRecord, Entity};
 
 #[cfg(test)]
 mod tests;
@@ -261,6 +264,25 @@ impl Animal {
             crowd_direction: -1,
             ..Animal::default()
         }
+    }
+
+    /// Overwrites what the record of a loaded map stores (animals 3.5); the rest keeps the value
+    /// creation gave.
+    pub fn restore(&mut self, saved: &AnimalRecord) {
+        let r = saved;
+        (self.happiness, self.hunger, self.health, self.energy) =
+            (r.happiness, r.hunger, r.health, r.energy);
+        (self.dung, self.female) = (r.dung, r.female);
+        for (c, saved) in self.counters.iter_mut().zip(&r.counters) {
+            *c = saved.unwrap_or(*c);
+        }
+        self.at_minimum_health = r.at_minimum_health;
+        self.very_unhappy = r.very_unhappy;
+        self.keeper_visited = r.keeper_visited;
+        self.mourning = r.mourning;
+        self.dying = r.dying;
+        self.crated = r.crated;
+        self.egg = r.egg;
     }
 
     /// Applies the pending changes (animals 3.3).
@@ -526,7 +548,30 @@ fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
     }
 }
 
-/// The animal's first turn: its values start and its counters are drawn.
+/// Creates the animals of a loaded map as the loader does (animals 3.5): each gets its creation
+/// in file order, with its draws, and then the values its record stores. They are done before
+/// the first step, and their first turn draws nothing.
+pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng) {
+    for at in 0..world.zoo.entities.len() {
+        let entity = &world.zoo.entities[at];
+        let Some((id, saved)) = (entity.common.as_ref())
+            .and_then(|c| Some((c.id, c.animal.clone()?)))
+            .filter(|&(id, _)| world.find(id) == Some(at))
+        else {
+            continue;
+        };
+        let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
+        let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
+        animal.restore(&saved);
+        if let Some(unit) = world.units.get_mut(id) {
+            unit.part = Part::Animal(animal);
+            unit.started = true;
+        }
+    }
+}
+
+/// The first turn of an animal that was not on the map at its load (adopted, born): its values
+/// start and its counters are drawn.
 pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let Part::Animal(a) = &mut unit.part else {
         return;

@@ -546,6 +546,7 @@ impl<'a> App<'a> {
         let water = place::water(&types);
         world.set_water(water.clone());
         world.units.class = crate::animal::Class::load(self.renderer.vfs());
+        self.sim.load(&mut world, self.renderer.catalogue());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
