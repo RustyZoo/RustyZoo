@@ -265,7 +265,7 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
             freeform: false,
             cash: StartCash {
                 set: Some(100_000.0),
-                add: Some(200.5),
+                add: Some(200.0),
             },
             reset: true,
         }))
@@ -503,4 +503,51 @@ fn a_tree_without_the_screens_is_left_alone() {
         menu.pressed(&vfs, &mut ui, id);
     }
     menu.action(&vfs, &mut ui, Action::Edited(11510));
+}
+
+#[test]
+fn a_start_clears_the_accounts_when_reset_or_else_resetdate_is_above_zero() {
+    let reads = |keys: &'static [(&'static str, &'static str)]| {
+        let keys = keys.to_vec();
+        resets(&move |k: &str| {
+            keys.iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        })
+    };
+    assert!(reads(&[("reset", "1")]));
+    assert!(reads(&[("resetdate", "1")]));
+    assert!(reads(&[("reset", "0"), ("resetdate", "2")]));
+    assert!(reads(&[("reset", "0x10")]));
+    for none in [
+        &[][..],
+        &[("reset", "0")],
+        &[("reset", "-1"), ("resetdate", "0")],
+        &[("reset", "yes")],
+        &[("resetdate", "0x")],
+        &[("reset", ""), ("resetdate", "")],
+    ] {
+        assert!(!reads(none), "{none:?}");
+    }
+}
+
+#[test]
+fn setcash_and_addcash_are_read_as_integers() {
+    let install = Install::new(
+        "screens-integer-cash",
+        &[(
+            "s/c.scn",
+            b"[start]\nsavegame=m.zoo\nsetcash=0x100\naddcash=-1234.9\n".to_vec(),
+        )],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut menu = menu("", &install, &vfs);
+    menu.open_from(&vfs, "s/c.scn", "x".into(), None);
+    let Some(Request::Open(start)) = menu.take_request() else {
+        panic!("no request")
+    };
+    assert_eq!(
+        (start.cash.set, start.cash.add),
+        (Some(256.0), Some(-1234.0))
+    );
 }

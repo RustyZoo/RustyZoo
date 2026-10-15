@@ -3,7 +3,7 @@
 //! The screens themselves are shown by the buttons of the main menu; this fills them in.
 
 use super::{Menu, Request, Start, enable};
-use crate::config::{Config, to_flag, to_float};
+use crate::config::{Config, to_int};
 use crate::lists::{Cash, Status};
 use crate::money::{SYMBOL, StartCash, Symbol};
 use crate::text::to_cp1252;
@@ -53,6 +53,13 @@ fn desc(vfs: &Vfs, file: &str, section: &str) -> impl Fn(&str) -> Option<String>
         let value = config.section(&section)?.get(key)?;
         Some(value.iter().map(|&b| crate::text::from_cp1252(b)).collect())
     }
+}
+
+/// Whether a start clears the accounts: `reset` above 0, else `resetdate` above 0 (both
+/// integers; 0 or less does nothing; exhibits and money 5.4).
+fn resets(start: &impl Fn(&str) -> Option<String>) -> bool {
+    let above_zero = |key: &str| start(key).and_then(|v| to_int(v.as_bytes())) > Some(0);
+    above_zero("reset") || above_zero("resetdate")
 }
 
 /// The row an action tells of, or none (-1 is none or a disabled row).
@@ -203,7 +210,11 @@ impl Menu {
     /// amount; a scenario applies its `setcash` then its `addcash` (main menu 8.3).
     fn open_from(&mut self, vfs: &Vfs, file: &str, label: String, freeform: Option<i64>) {
         let start = desc(vfs, file, "start");
-        let number = |key: &str| start(key).map(|v| to_float(v.as_bytes()));
+        let number = |key: &str| {
+            start(key)
+                .and_then(|v| to_int(v.as_bytes()))
+                .map(|n| n as f32)
+        };
         self.request = Some(match start("savegame") {
             Some(path) => Request::Open(Start {
                 path,
@@ -220,7 +231,7 @@ impl Menu {
                         add: number("addcash"),
                     },
                 },
-                reset: start("reset").is_some_and(|v| to_flag(v.as_bytes()) == Some(true)),
+                reset: resets(&start),
             }),
             None => Request::Message(format!("{file}: no map to start")),
         });

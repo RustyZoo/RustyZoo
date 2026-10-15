@@ -218,3 +218,16 @@ fn the_status_bar_shows_whole_units_in_one_of_three_colours() {
         "a blank symbol reads as a dollar"
     );
 }
+
+#[test]
+fn spend_takes_the_cash_below_zero_and_books_like_a_charge() {
+    let mut m = money(10.0);
+    m.spend(28, 25.0);
+    assert_eq!(m.cash, -15.0);
+    assert_eq!(row(&m, 28), (25.0, 25.0, 25.0));
+    assert_eq!(row(&m, NET), (-25.0, -25.0, -25.0));
+    let before = m.clone();
+    m.spend(28, f32::NAN);
+    m.spend(CATEGORIES, 1.0);
+    assert_eq!(m, before);
+}

@@ -172,9 +172,18 @@ impl Money {
         if category >= CATEGORIES || !cost.is_finite() || !self.can_pay(cost) {
             return false;
         }
-        self.cash -= cost;
-        self.book(category, cost);
+        self.spend(category, cost);
         true
+    }
+
+    /// Takes `cost` from the cash and books it in `category` without the can-pay check: wages,
+    /// upkeep, animal food and medicine are taken even when the cash does not cover them and
+    /// can push it below 0 (4.3).
+    pub fn spend(&mut self, category: usize, cost: f32) {
+        if category < CATEGORIES && cost.is_finite() {
+            self.cash -= cost;
+            self.book(category, cost);
+        }
     }
 
     /// Adds `amount` to the cash and books it in `category` (a refund, a donation, any income).
