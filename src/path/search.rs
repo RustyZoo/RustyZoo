@@ -28,7 +28,8 @@ const EIGHT: [(i32, i32); 8] = [
 ];
 /// The length factor of a diagonal step: the decimal constant of the program's table (3.6), not
 /// the square root of 2.
-const DIAGONAL: f64 = 1.414_213_562_373;
+#[allow(clippy::approx_constant)]
+pub(super) const DIAGONAL: f64 = 1.414_213_562_373;
 const FOUR: [(i32, i32); 4] = [(-1, 0), (0, -1), (1, 0), (0, 1)];
 
 #[derive(Clone, Copy, PartialEq)]
@@ -365,7 +366,8 @@ mod tests {
         f.nodes[start].state = State::Closed;
         f.expand(start);
         let n = f.at[&at(6, 6)];
-        assert_eq!(f.nodes[n].g, 1.414_213_562_373 * 3.0);
+        assert_eq!(DIAGONAL.to_bits(), 0x3FF6_A09E_667F_3A21);
+        assert_eq!(f.nodes[n].g, DIAGONAL * 3.0);
         assert_ne!(f.nodes[n].g, std::f64::consts::SQRT_2 * 3.0);
     }
 }

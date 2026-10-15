@@ -123,7 +123,7 @@ fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
     let goal = path.last().copied().unwrap_or(0);
     let step = |p: &[usize]| {
         let d = search::direction(w, p[0], p[1]);
-        let length = [1.0, 1.414_213_562_373][d % 2];
+        let length = [1.0, search::DIAGONAL][d % 2];
         length * f64::from(cost::step(w, m, p[0], p[1], d, Some(goal)))
     };
     path.windows(2).map(step).sum()
