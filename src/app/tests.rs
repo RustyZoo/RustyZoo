@@ -1141,7 +1141,7 @@ fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
         &[Command::Mouse(Mouse::Move(x, y)), Command::Mouse(Mouse::Up)],
     );
     assert!(
-        lines(&app, 5, 100).is_empty(),
+        lines(&app, 6, 100).is_empty(),
         "the view never sees that release"
     );
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 2);
@@ -1263,4 +1263,182 @@ fn a_drag_lays_an_l_of_paths_bought_in_order_with_the_cash_that_covers_them() {
     // One undo takes back the pieces of the last drag, and only those.
     assert!(app.game.as_mut().unwrap().world.undo());
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 6);
+}
+
+/// The window point of the world point (`wx`, `wy`) on the flat test map.
+fn world_point(camera: &Camera, wx: i32, wy: i32) -> (i32, i32) {
+    let p = project(camera.rotation, wx, wy, 0);
+    let (px, py) = crate::camera::zoom_view(camera.zoom, p);
+    (
+        (px - i64::from(camera.scroll.0)) as i32,
+        (py - i64::from(camera.scroll.1)) as i32,
+    )
+}
+
+/// A catalogue of a fence that costs 125 and a hall of 2 x 2 tiles.
+fn fence_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    let ty = |class, name: &[u8], ini: &[u8], footprint| crate::entity::EntityType {
+        class,
+        type_name: name.to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(Config::parse(ini).unwrap())),
+        name_id: 0,
+        footprint,
+        height: 0,
+    };
+    cat.push(ty(
+        "fences",
+        b"iron",
+        b"[Characteristics/Integers]\ncPurchaseCost=125\n",
+        [1, 1, 1],
+    ));
+    cat.push(ty("objects", b"hall", b"", [4, 4, 1]));
+    cat
+}
+
+#[test]
+fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_slot() {
+    let install = cache_install_with("app-fence", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = fence_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    app.set_interface(interface("fence"));
+    app.set_money(Money {
+        cash: 50_000.0,
+        ..Money::default()
+    });
+    app.pass(0, &[]);
+    app.game.as_mut().unwrap().build.hold(0);
+    let camera = app.camera().unwrap().clone();
+    // A window point inside tile (`tx`, `ty`), at the local point (`lx`, `ly`).
+    let at = |tx: i32, ty: i32, lx: i32, ly: i32| {
+        let (x, y) = world_point(&camera, 64 * tx + lx, 64 * ty + ly);
+        Command::Mouse(Mouse::Move(x, y))
+    };
+    let lines = |app: &App, pass, now| -> Vec<String> {
+        let all = app.log_lines(pass, now);
+        let kept = all.iter().filter_map(|l| l.splitn(4, ' ').nth(3));
+        let wanted = |l: &&str| {
+            l.starts_with("world ") && !l.starts_with("world stage") || l.starts_with("money cash")
+        };
+        kept.filter(wanted).map(str::to_string).collect()
+    };
+    let cost = |app: &App| app.game.as_ref().unwrap().cost();
+    // Press near the upper side of tile (20, 20), drag along x to tile (25, 20): six pieces on
+    // side 0, "($750)", nothing bought before the release.
+    app.pass(
+        20,
+        &[
+            at(20, 20, 32, 12),
+            Command::Mouse(Mouse::Down),
+            at(21, 20, 32, 12),
+        ],
+    );
+    app.pass(40, &[at(25, 20, 32, 12)]);
+    assert_eq!(cost(&app), Some(-750));
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 0);
+    app.pass(60, &[Command::Mouse(Mouse::Up)]);
+    let adds: Vec<String> = (20..=25)
+        .map(|x| format!("world add fences/iron/ {x},20 side 0 id {}", x - 19))
+        .chain(["money cash 49250".to_string()])
+        .collect();
+    assert_eq!(lines(&app, 3, 60), adds);
+    assert_eq!(app.sounds(), ["place"]);
+    // The same line is side 4 of the tiles above: their own slots, charged in full.
+    app.pass(
+        80,
+        &[
+            at(20, 19, 20, 52),
+            Command::Mouse(Mouse::Down),
+            at(23, 19, 32, 52),
+        ],
+    );
+    app.pass(90, &[at(25, 19, 32, 52)]);
+    app.pass(100, &[Command::Mouse(Mouse::Up)]);
+    let adds: Vec<String> = (20..=25)
+        .map(|x| format!("world add fences/iron/ {x},19 side 4 id {}", x - 13))
+        .chain(["money cash 48500".to_string()])
+        .collect();
+    assert_eq!(lines(&app, 6, 100), adds);
+    // Over its own slots again the same pieces replace themselves for nothing (the old pieces go).
+    app.pass(
+        120,
+        &[
+            at(20, 20, 32, 12),
+            Command::Mouse(Mouse::Down),
+            at(25, 20, 32, 12),
+        ],
+    );
+    assert_eq!(cost(&app), Some(0));
+    app.pass(140, &[Command::Mouse(Mouse::Up)]);
+    let told = lines(&app, 8, 140);
+    assert_eq!(
+        told.len(),
+        12,
+        "a remove and an add for each piece, no cash line"
+    );
+    assert_eq!(told[0], "world remove fences/iron/ 20,20 side 0 id 1");
+    assert_eq!(told[1], "world add fences/iron/ 20,20 side 0 id 13");
+    assert_eq!(app.money().unwrap().cash, 48_500.0);
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 12);
+    // A hall of 2 x 2 tiles on the corner of tiles (19..20, 22..23): a drag along the east
+    // sides of column 19 adds nothing where the hall spans the tiles on both sides of the line.
+    let hall = {
+        let renderer = &app.renderer;
+        let mut e = crate::place::entity(
+            &renderer.catalogue().types[1],
+            &Pending {
+                ty: 1,
+                x: 20 * 64,
+                y: 23 * 64,
+                z: 0,
+                facing: 0,
+                tile: (20, 23),
+                quadrant: 0,
+                verdict: crate::place::Verdict::Valid,
+                message: None,
+                price: 0.0,
+                paint: None,
+                blocking: Vec::new(),
+            },
+        );
+        e.common.as_mut().unwrap().id = 0;
+        let shape = renderer.shape(&e);
+        (e, shape)
+    };
+    let id = app
+        .game
+        .as_mut()
+        .unwrap()
+        .world
+        .add(hall.0, hall.1)
+        .unwrap();
+    assert_eq!(id, 19);
+    app.game.as_mut().unwrap().world.begin();
+    app.pass(
+        160,
+        &[
+            at(19, 20, 52, 32),
+            Command::Mouse(Mouse::Down),
+            at(19, 21, 52, 32),
+        ],
+    );
+    app.pass(170, &[at(19, 25, 52, 32)]);
+    app.pass(180, &[Command::Mouse(Mouse::Up)]);
+    let adds: Vec<String> = [20, 21, 24, 25]
+        .into_iter()
+        .zip(20..)
+        .map(|(y, id)| format!("world add fences/iron/ 19,{y} side 2 id {id}"))
+        .chain(["money cash 48000".to_string()])
+        .collect();
+    assert_eq!(lines(&app, 11, 180), adds);
 }

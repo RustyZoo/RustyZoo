@@ -337,7 +337,7 @@ pub fn fence_run(start: (i32, i32), first: u32, mouse: (i64, i64)) -> Vec<((i32,
             run.push(((at.0 as i32, at.1 as i32), side));
         }
     }
-    if first % 4 == 0 {
+    if first.is_multiple_of(4) {
         let shift = (second == 6 && dx > 0) || (second == 2 && dx < 0);
         let corner = match first {
             0 => sy > 0 || (dy == 0 && ly > 32),

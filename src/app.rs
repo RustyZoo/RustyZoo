@@ -868,7 +868,7 @@ impl<'a> App<'a> {
         if let (Some(ty), Some(p), true) = (game.build.tool(), &game.pending, game.build.dragging())
         {
             let points = game.build.run(p.tile, (point.0, point.1));
-            let mut run: Vec<Pending> = points.iter().filter_map(|&at_| at(ty, at_)).collect();
+            let mut run: Vec<Pending> = points.iter().filter_map(|&p| at(ty, p)).collect();
             place::afford(&mut run, &game.money);
             game.run = run;
         } else if !game.build.dragging() {
@@ -896,7 +896,9 @@ impl<'a> App<'a> {
     /// A release on the map (the view sees only one that ends a press on it): the pieces of a path
     /// drag, or else the pending object, are bought in order. A valid place gets its object, which
     /// is paid and logged (`world add objects/foliage/doumpalm 12,40 id 14908`; a path on water
-    /// logs `world paint 12,40 3` first, one on another path `world remove paths/... 12,40 id 7`).
+    /// logs `world paint 12,40 3` first, one on another path `world remove paths/... 12,40 id 7`;
+    /// a fence is told with its side, `world add fences/... 12,40 side 2 id 8`, and the piece it
+    /// replaces `world remove fences/... 12,40 side 2 id 7`).
     /// One sound is asked for the release: the placement sound if anything was placed, else the
     /// refusal sound; a type that turns by itself turns once; the last message of a piece that
     /// could not be placed shows in the message line (`tool message 10311`); and a new pending
