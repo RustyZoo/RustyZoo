@@ -71,7 +71,7 @@ pub fn items(catalogue: &Catalogue, tag: &str, expansions: i32) -> Vec<usize> {
 
 /// A number of `[Characteristics/Integers]`; fences and tank walls read the section of their
 /// subtype after the plain one (entity types 7). Never infinite.
-fn number(ty: &EntityType, key: &str) -> Option<f32> {
+pub(crate) fn number(ty: &EntityType, key: &str) -> Option<f32> {
     let config = ty.config.as_deref()?;
     let read = |prefix: &[u8]| {
         config
@@ -266,6 +266,11 @@ impl Build {
     /// The type that is the tool: an index into the catalogue.
     pub fn tool(&self) -> Option<usize> {
         self.held
+    }
+
+    /// The rotation step of the open panel, 0 to 3 (placing 4.4).
+    pub fn step(&self) -> usize {
+        self.open.map_or(0, |p| self.step[p])
     }
 
     /// Notices that a panel was shown or hidden since the last call, and acts on it.

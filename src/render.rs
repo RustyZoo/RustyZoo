@@ -124,6 +124,29 @@ impl Summary {
     }
 }
 
+/// The transient items of the map view, given to the staging (placing 4.5).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Extra {
+    /// The pending object.
+    pub ghost: Option<Ghost>,
+    /// Entities of the zoo (positions in `zoo.entities`) drawn tinted, with their tint.
+    pub tinted: Vec<(usize, [u8; 3])>,
+}
+
+/// An object that is not on the map: the pending object. It is painted like the temporary
+/// entities of the tile under it (map drawing 9.5), tinted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ghost {
+    /// The type, a position in the catalogue.
+    pub ty: usize,
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    /// Direction 0 to 7.
+    pub facing: u32,
+    pub tint: [u8; 3],
+}
+
 /// A picture of the cache: a frame and its palette.
 type Flat = Rc<(Frame, Palette)>;
 
@@ -722,6 +745,18 @@ impl<'a> MapRenderer<'a> {
         rotation: u8,
         no_units: bool,
     ) -> Result<Staged, RenderError> {
+        self.stage_with(zoo, rotation, no_units, &Extra::default())
+    }
+
+    /// As [`MapRenderer::stage`], with the transient items of the map view: they are in the paint
+    /// order but not in the zoo.
+    pub fn stage_with(
+        &mut self,
+        zoo: &Zoo,
+        rotation: u8,
+        no_units: bool,
+        extra: &Extra,
+    ) -> Result<Staged, RenderError> {
         let rotation = rotation % 4;
         let (width, height) = (zoo.width as usize, zoo.height as usize);
         let mut summary = Summary {
@@ -755,7 +790,7 @@ impl<'a> MapRenderer<'a> {
         // The objects the original keeps: those whose type it knows.
         let mut objects = Vec::new();
         let mut metas: Vec<Meta> = Vec::new();
-        for entity in &zoo.entities {
+        for (position, entity) in zoo.entities.iter().enumerate() {
             let Some(c) = &entity.common else {
                 summary.objects_skipped += 1;
                 continue;
@@ -790,6 +825,33 @@ impl<'a> MapRenderer<'a> {
                 life: c.fence.map(|f| f.life as i32),
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
+                tint: extra
+                    .tinted
+                    .iter()
+                    .find(|(e, _)| *e == position)
+                    .map(|(_, tint)| *tint),
+            });
+        }
+        if let Some(ghost) = &extra.ghost
+            && let Some(ty) = self.catalogue.types.get(ghost.ty)
+        {
+            objects.push(Object {
+                kind: Kind::Overlay,
+                x: ghost.x,
+                y: ghost.y,
+                z: ghost.z.clamp(-4096, 4096),
+                facing: ghost.facing % 8,
+                footprint: (ty.footprint[0], ty.footprint[1]),
+                late: draws_late(ty),
+                height: ty.height,
+            });
+            metas.push(Meta {
+                ty,
+                colors: &[],
+                life: None,
+                mode: 0,
+                portal: false,
+                tint: Some(ghost.tint),
             });
         }
         let mut scene = Scene::new(width, height, rotation, &tiles, objects);
@@ -850,6 +912,7 @@ impl<'a> MapRenderer<'a> {
                         life: None,
                         mode: 0,
                         portal: false,
+                        tint: None,
                     });
                 }
             }
@@ -1177,8 +1240,9 @@ impl<'a> MapRenderer<'a> {
             summary.objects_missing += 1;
             return;
         };
+        // The pending piece of a path is an overlay that shows what a placed one would.
         let view = match obj.kind {
-            Kind::Path => View {
+            Kind::Path | Kind::Overlay if ty.class == "paths" => View {
                 file: path_view(scene, o, ty).min(anim.sprites.len().saturating_sub(1)),
                 mirror: false,
             },
@@ -1186,10 +1250,13 @@ impl<'a> MapRenderer<'a> {
         };
         let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z);
         summary.objects_drawn += 1;
-        let palette = anim
-            .sprites
-            .get(view.file)
-            .and_then(|sprite| self.recoloured(ty, sprite, meta.colors));
+        let palette = anim.sprites.get(view.file).and_then(|sprite| {
+            let own = self.recoloured(ty, sprite, meta.colors);
+            match meta.tint {
+                Some(tint) => Some(own.unwrap_or_else(|| sprite.1.clone()).tinted(tint)),
+                None => own,
+            }
+        });
         out.push(Placed {
             x,
             y,
@@ -1211,6 +1278,8 @@ struct Meta<'a> {
     mode: u32,
     /// A tank wall that is a portal.
     portal: bool,
+    /// The colour the object is drawn tinted with (sprite drawing 9.1).
+    tint: Option<[u8; 3]>,
 }
 
 /// Whether the `[Member]` list of the type holds this name.

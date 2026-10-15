@@ -946,7 +946,7 @@ impl Tree {
 }
 
 /// Three values of a repeated colour key; `None` if the key was written fewer than three times.
-fn color(s: &Section, key: &str) -> Option<Rgb> {
+pub(crate) fn color(s: &Section, key: &str) -> Option<Rgb> {
     match s.get_all(key) {
         [r, g, b, ..] => Some([r, g, b].map(|v| to_int(v).unwrap_or(0).clamp(0, 255) as u8)),
         _ => None,
