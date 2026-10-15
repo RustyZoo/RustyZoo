@@ -92,10 +92,11 @@ impl Walk<'_> {
     fn run(&mut self) -> bool {
         // 1 and 2: the pick of the class, unless it is where the unit stands.
         let pick = self.pick();
-        if let Some(to) = pick.filter(|&t| t != self.here || self.base(t) / 16 != self.level) {
-            if self.search(to, true) {
-                return true;
-            }
+        let far = |t: &usize| *t != self.here || self.base(*t) / 16 != self.level;
+        if let Some(to) = pick.filter(far)
+            && self.search(to, true)
+        {
+            return true;
         }
         // 3: the ring again, with the lenient tile test and without the path tile test.
         let (tx, ty) = self.xy(self.here);
@@ -112,11 +113,11 @@ impl Walk<'_> {
             }
         }
         // 4: a straight neighbour from a random one on, without wrapping round.
-        let near: Vec<Option<usize>> = (0..4)
-            .map(|i| self.world.neighbour(self.here, i * 2))
-            .collect();
-        for i in self.rng.pick(4) as usize..4 {
-            let Some(n) = near[i] else { continue };
+        let start = self.rng.pick(4) as usize;
+        for i in start..4 {
+            let Some(n) = self.world.neighbour(self.here, i * 2) else {
+                continue;
+            };
             let cost = path::step(self.world, &self.mover, self.here, n, i * 2, None);
             if self.fits(n, true) && cost < MAX && self.search(n, false) {
                 return true;

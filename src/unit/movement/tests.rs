@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::sim::Sim;
-use crate::unit::testing::{centre, entity, world};
+use crate::unit::testing::{centre, entity, world, world_with};
 use crate::zoo::Clocks;
 
 /// A 40 by 30 map with these entities.
@@ -347,4 +347,53 @@ fn a_unit_off_its_path_goes_back_to_it_and_an_edge_of_the_map_ends_the_move() {
     let u = w.units.get(1).unwrap();
     assert!(u.path.is_empty() && !u.moving);
     assert_eq!(position(&w, 1), centre((5, 5)));
+}
+
+#[test]
+fn a_unit_entering_an_exhibit_through_its_gate_tells_the_exhibit() {
+    let mut w = world_with((30, 30), |zoo| {
+        let e = &mut zoo.entities;
+        for x in 10..=12 {
+            for y in 10..=12 {
+                for (d, outside) in [(0, y == 10), (2, x == 12), (4, y == 12), (6, x == 10)] {
+                    if outside {
+                        e.push(entity(
+                            "fences",
+                            "exhibit",
+                            100 + e.len() as u32,
+                            centre((x, y)),
+                            d,
+                        ));
+                    }
+                }
+            }
+        }
+        let gate = e.iter_mut().find(|f| {
+            let c = f.common.as_ref().unwrap();
+            (c.x / 64, c.y / 64, c.rotation) == (11, 10, 0)
+        });
+        gate.unwrap().subtype = "g".into();
+        e.push(entity("keeper", "", 1, centre((11, 9)), 4));
+        zoo.habitat_tiles = vec![(10, 10)];
+        zoo.habitat_gates = vec![((11, 10), 0)];
+    });
+    let mut s = sim();
+    let exhibit = w.exhibits().region(w.tile_index(11, 11).unwrap()).unwrap();
+    let to = [(11, 9), (11, 10), (11, 11)];
+    let end = to.map(|(x, y)| w.tile_index(x, y).unwrap());
+    let u = w.units.get_mut(1).unwrap();
+    u.destination = Some((11 * 64 + 32, 11 * 64 + 32, 0));
+    assert!(start(u, end.to_vec(), 40, 100));
+    w.units.take_lines();
+    step_all(&mut w, &mut s, &[67; 60]);
+    let lines = w.units.take_lines();
+    let tiles: Vec<_> = lines.iter().filter(|l| l.starts_with("tile")).collect();
+    assert_eq!(tiles, ["tile 1 11,10", "tile 1 11,11"]);
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|l| l.starts_with("enter"))
+            .collect::<Vec<_>>(),
+        [&format!("enter 1 {exhibit}")]
+    );
 }

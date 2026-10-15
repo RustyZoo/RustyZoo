@@ -61,19 +61,13 @@ fn shape(e: &Entity) -> Option<Shape> {
 }
 
 /// A flat `w` by `h` map, all of it inside the zoo, with the entities `edit` makes.
-pub fn world((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
-    let mut tiles = vec![
-        Tile {
-            elevation: 0,
-            shape: 0,
-            terrain: 0,
-            edges: 0
-        };
-        (w * h) as usize
-    ];
-    let mut entities = Vec::new();
-    edit(&mut tiles, &mut entities);
-    let zoo = Zoo {
+pub fn world(size: (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
+    world_with(size, |zoo| edit(&mut zoo.tiles, &mut zoo.entities))
+}
+
+/// The same, with the whole zoo to edit.
+pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
+    let mut zoo = Zoo {
         version: 0,
         locale: 0,
         expansion: 0,
@@ -85,9 +79,18 @@ pub fn world((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Enti
         tanks: Vec::new(),
         id_counter: 1_000_000,
         clocks: Default::default(),
-        tiles,
-        entities,
+        tiles: vec![
+            Tile {
+                elevation: 0,
+                shape: 0,
+                terrain: 0,
+                edges: 0
+            };
+            (w * h) as usize
+        ],
+        entities: Vec::new(),
         view: View::default(),
     };
+    edit(&mut zoo);
     World::new(zoo, shape)
 }
