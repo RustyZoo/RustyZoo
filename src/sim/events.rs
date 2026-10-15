@@ -1,0 +1,59 @@
+//! The event queue of the AI manager (simulation 5): events are posted into the next buffer, read
+//! from the current one, and the two are swapped when the AI manager ends.
+
+/// The channel an entity posts on and units read.
+pub const UNIT_CHANNEL: u8 = 0x55;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Event {
+    pub sender: u32,
+    /// The entity it is for, 0 for everyone.
+    pub target: u32,
+    pub data: u32,
+    pub extra: u16,
+    /// The event type, 0x2711 and up.
+    pub kind: u16,
+    /// Steps before delivery; 0 and 1 both mean the next step.
+    pub delay: u16,
+    pub sender_channel: u8,
+    pub channel: u8,
+}
+
+#[derive(Debug, Default)]
+pub struct Events {
+    current: Vec<Event>,
+    next: Vec<Event>,
+}
+
+impl Events {
+    /// Posts an event: it goes to the end of the next buffer.
+    pub fn post(&mut self, event: Event) {
+        self.next.push(event);
+    }
+
+    /// The events a listener reads in this step, in buffer order: those for it or for everyone
+    /// on its channel whose delay is below 2. Reading does not consume them.
+    pub fn listen(&self, id: u32, channel: u8) -> impl Iterator<Item = &Event> {
+        self.current.iter().filter(move |e| {
+            (e.target == id || e.target == 0) && e.channel == channel && e.delay < 2
+        })
+    }
+
+    /// The end of the AI manager's update: the events still waiting go on after the ones posted
+    /// during the step, the rest are dropped, and the next buffer becomes the current one.
+    pub fn age(&mut self) {
+        for mut event in std::mem::take(&mut self.current) {
+            if event.delay > 1 {
+                event.delay -= 1;
+                self.next.push(event);
+            }
+        }
+        std::mem::swap(&mut self.current, &mut self.next);
+    }
+
+    /// Forgets every event, for a new game.
+    pub fn clear(&mut self) {
+        self.current.clear();
+        self.next.clear();
+    }
+}

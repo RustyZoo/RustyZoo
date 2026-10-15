@@ -133,6 +133,7 @@ fn world(mut entities: Vec<Entity>) -> World {
             tiles: vec![flat; 64],
             entities,
             view: View::default(),
+            clocks: Default::default(),
         },
         shape,
     )

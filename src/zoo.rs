@@ -176,6 +176,20 @@ pub struct Zoo {
     pub entities: Vec<Entity>,
     /// The camera the file stores.
     pub view: View,
+    /// The AI clock and the world clock the file stores.
+    pub clocks: Clocks,
+}
+
+/// The clocks a map stores (simulation 4.3, 8.3): a new game on it starts from them. All 0 in a
+/// file too old to store them, and in a map made by hand.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Clocks {
+    /// The AI clock: the milliseconds left over and the whole AI ticks.
+    pub ai_rem: u32,
+    pub ai_ticks: u32,
+    /// The world clock: the milliseconds left over and the whole seconds.
+    pub world_rem: u32,
+    pub world_secs: u32,
 }
 
 /// The view state of a file (zoo format 7.1), as stored: nothing is checked.
@@ -405,7 +419,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     }
 
     *section = "later sections";
-    let view = after_entities(r, money)?;
+    let (view, clocks) = after_entities(r, money)?;
     Ok(Zoo {
         version: v,
         locale,
@@ -420,6 +434,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         tiles,
         entities,
         view,
+        clocks,
     })
 }
 
@@ -558,7 +573,8 @@ fn entity(r: &mut Reader) -> R<Entity> {
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.
-fn after_entities(r: &mut Reader, money: &mut Money) -> R<View> {
+fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks)> {
+    let mut clocks = Clocks::default();
     let v = r.v;
     let view = View {
         zoom: r.i32()?,
@@ -633,7 +649,8 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<View> {
     }
 
     r.skip_list(20)?; // thoughts
-    r.skip(8)?; // events
+    // The AI clock: the milliseconds left over, then the whole AI ticks (7.6).
+    (clocks.ai_rem, clocks.ai_ticks) = (r.u32()?, r.u32()?);
     if v >= 97 {
         r.skip_list(20)?;
         r.skip_list(20)?;
@@ -667,7 +684,9 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<View> {
         r.skip_strings()?; // cheats
     }
     if v >= 58 {
-        r.skip(if v <= 66 { 12 } else { 8 })?;
+        // The world clock: the milliseconds left over, then the whole seconds (7.11).
+        (clocks.world_rem, clocks.world_secs) = (r.u32()?, r.u32()?);
+        r.skip(if v <= 66 { 4 } else { 0 })?;
     }
-    Ok(view)
+    Ok((view, clocks))
 }

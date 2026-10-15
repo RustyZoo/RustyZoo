@@ -283,7 +283,7 @@ fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
         app.pass(0, &[]);
         let view = app.camera().unwrap().scroll;
         let lines = app.log_lines(0, 0);
-        assert_eq!(lines.len(), 4);
+        assert_eq!(lines.len(), 5);
         // The cash comes first (a game without a stored cash has none).
         assert_eq!(lines[0], "pass 0 t=0 money cash 0");
         let (draw, hash) = lines[1].split_once(" view=").unwrap();
@@ -295,6 +295,7 @@ fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
         assert_eq!(lines[2], "pass 0 t=0 interface 66");
         // The cap of 200 ms is 24 minutes of game time.
         assert_eq!(lines[3], "pass 0 t=0 step 200 2001-01-01 00:24:00.000");
+        assert_eq!(lines[4], "pass 0 t=0 sim step 200");
         // A draw that paints nothing says so.
         app.pass(20, &[]);
         assert_eq!(app.log_lines(1, 20).len(), 1);
@@ -400,6 +401,40 @@ fn the_grid_command_toggles_the_grid_lines_in_the_frame() {
         let back = app.pass(80, &[Command::Grid]).unwrap().pixels.clone();
         assert_eq!(back, off);
     });
+}
+
+#[test]
+fn a_seeded_run_logs_the_seedings_and_each_step() {
+    let sim_lines = |name: &str| {
+        let mut lines = Vec::new();
+        with_app(name, |app, _| {
+            app.set_seed(1);
+            for (pass, now) in [(0, 0), (1, 70), (2, 140)] {
+                app.pass(now, &[]);
+                lines.extend(
+                    app.log_lines(pass, now)
+                        .into_iter()
+                        .filter(|l| l.contains(" sim ")),
+                );
+            }
+            // The pause stops the managers: no `sim step` line.
+            app.pass(210, &[Command::Pause]);
+            assert!(app.log_lines(3, 210).iter().all(|l| !l.contains(" sim ")));
+        });
+        lines
+    };
+    let lines = sim_lines("app-sim-a");
+    assert_eq!(
+        lines,
+        [
+            "pass 0 t=0 sim seed 1",
+            "pass 0 t=0 sim seed 2",
+            "pass 0 t=0 sim step 200",
+            "pass 1 t=70 sim step 70",
+            "pass 2 t=140 sim step 70",
+        ]
+    );
+    assert_eq!(lines, sim_lines("app-sim-b"));
 }
 
 #[test]

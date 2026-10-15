@@ -148,7 +148,7 @@ fn tail(w: &mut W, v: u32) {
         w.z(4);
     }
     w.u32(2).z(40); // thoughts
-    w.z(8);
+    w.u32(7).u32(8); // the AI clock: milliseconds left over, ticks
     if v >= 97 {
         w.u32(1).z(20).u32(0).z(1);
     }
@@ -170,7 +170,8 @@ fn tail(w: &mut W, v: u32) {
         w.u32(1).str("cheat");
     }
     if v >= 58 {
-        w.z(if v <= 66 { 12 } else { 8 });
+        w.u32(9).u32(10); // the world clock: milliseconds left over, seconds
+        w.z(if v <= 66 { 4 } else { 0 });
     }
 }
 
@@ -284,6 +285,21 @@ fn keeps_the_cash_and_the_accounts() {
             (77.0, 78.0, 0.0)
         );
         assert_eq!(money.monthly[2], [0.0; 12]);
+    }
+}
+
+#[test]
+fn reads_the_clocks_the_file_stores() {
+    for v in VERSIONS {
+        let zoo = parse(&file(v, 2, 2, &[], &[]));
+        let world = if v >= 58 { (9, 10) } else { (0, 0) };
+        let clocks = (zoo.clocks.ai_rem, zoo.clocks.ai_ticks);
+        assert_eq!(clocks, (7, 8), "version {v}");
+        assert_eq!(
+            (zoo.clocks.world_rem, zoo.clocks.world_secs),
+            world,
+            "version {v}"
+        );
     }
 }
 

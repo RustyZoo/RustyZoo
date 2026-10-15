@@ -125,7 +125,7 @@ usage: rustyzoo [--data <dir>] <command>
                       if a set fails
   run [<map>] --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
       [--png-every K] [--out DIR] [--show ID]... [--rows ID N]... [--text ID TEXT]...
-      [--ask ID BUTTONS] [--bare] [--cash N]
+      [--ask ID BUTTONS] [--bare] [--cash N] [--seed N]
                       play a map (a .zoo member) without a window. N passes of the main loop
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
@@ -272,7 +272,12 @@ usage: rustyzoo [--data <dir>] <command>
                       cell of its Finances table that changed, when the tab is shown and at
                       most every 10 s of clock while the window is shown (an older month's
                       column is blank before the accounts begin). --cash N is the cash a map starts with instead of
-                      the one it stores (any finite number). --rows ID N (repeatable) fills the list box ID
+                      the one it stores (any finite number). --seed N (0 to 4294967295) makes a test run: the game's
+                      random generator is seeded with N and N+1 at the start, and with N+2, N+3, ... each time a map of
+                      another size is set up or a month ends, instead of the wall clock; the lines `sim seed S`
+                      (only in a test run), `sim step MS` (each step the game runs) and `sim month M Y` (the step that acts on the
+                      month flag of the one before) tell it, so two runs with one seed print the same lines (the
+                      seeds of the wall clock are not logged; replay a seeded log with the same --seed). --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma

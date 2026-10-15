@@ -87,6 +87,7 @@ fn zoo(fences: &[(i32, i32, u32)]) -> Zoo {
         tiles: vec![tile; (SIZE * SIZE) as usize],
         entities,
         view: View::default(),
+        clocks: Default::default(),
     }
 }
 

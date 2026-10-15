@@ -26,6 +26,7 @@ fn map(width: u32, height: u32, elevation: i32) -> Zoo {
         tiles: vec![tile; (width * height) as usize],
         entities: Vec::new(),
         view: View::default(),
+        clocks: Default::default(),
     }
 }
 

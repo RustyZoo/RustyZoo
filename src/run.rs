@@ -59,6 +59,8 @@ struct Flags {
     bare: bool,
     /// `--cash`: the cash the game starts with, instead of the one the map stores.
     cash: Option<f32>,
+    /// `--seed`: a test run, the generator seeded from this number (main loop 12).
+    seed: Option<u32>,
 }
 
 fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
@@ -165,6 +167,13 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
                 flags.cash = Some(cash.ok_or("--cash: not a number the cash can hold")?);
                 rest
             }
+            ("--seed", [n, rest @ ..]) => {
+                flags.seed = Some(
+                    n.parse()
+                        .map_err(|_| "--seed: not a whole number from 0 to 4294967295")?,
+                );
+                rest
+            }
             ("--out", [dir, rest @ ..]) => {
                 flags.out = Some(dir.to_string());
                 rest
@@ -262,6 +271,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             "money ",
             "movie ",
             "music ",
+            "sim ",
             "step ",
             "terrain ",
             "tool ",
@@ -363,6 +373,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             show: &flags.show,
             fill: &flags.fill,
             bare: flags.bare,
+            seed: flags.seed,
         };
         return crate::window::run(vfs, loaded, &ini, window);
     }
@@ -408,6 +419,9 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             // fades.
             if flags.bare {
                 app.bare();
+            }
+            if let Some(seed) = flags.seed {
+                app.set_seed(seed);
             }
             app.set_money(money);
             app.start_game(Music::from_config(&ini));
@@ -626,6 +640,27 @@ mod tests {
         );
         assert!(!flags(&[]).unwrap_or_else(|_| panic!("refused")).bare);
         assert!(flags(&["--bare", "x"]).is_err());
+    }
+
+    #[test]
+    fn seed_is_a_whole_number_of_32_bits_and_the_flag_needs_one() {
+        let seed = |words: &[&str]| {
+            let mut all = vec!["--headless", "--passes", "1", "--clock", "1"];
+            all.extend(words);
+            flags(&all)
+        };
+        for (text, want) in [("0", 0), ("1", 1), ("4294967295", u32::MAX)] {
+            let got = seed(&["--seed", text]).unwrap_or_else(|_| panic!("{text}"));
+            assert_eq!(got.seed, Some(want), "{text}");
+        }
+        assert_eq!(seed(&[]).unwrap_or_else(|_| panic!()).seed, None);
+        for bad in ["-1", "4294967296", "", "x", "1.5"] {
+            assert!(
+                matches!(seed(&["--seed", bad]), Err(CliError::Failed(_))),
+                "{bad:?}"
+            );
+        }
+        assert!(matches!(seed(&["--seed"]), Err(CliError::Usage)));
     }
 
     #[test]

@@ -375,7 +375,7 @@ question_use() {
   d=$(mktemp -d)
   printf '%b\n' "$2" >"$d/script"
   rz run "$1" --headless --passes 8 --clock 100 --ask 45000 "$3" --script "$d/script" 2>/dev/null |
-    grep ' ui \(ask\|answer\)\| step ' | sed 's/^pass \([0-9]*\) t=[0-9]* \(ui \)\{0,1\}/\1 /' | sed 's/step [0-9]* [-0-9]* [:.0-9]*/step/' | tr '\n' ';'
+    grep ' ui \(ask\|answer\)\|^pass [0-9]* t=[0-9]* step ' | sed 's/^pass \([0-9]*\) t=[0-9]* \(ui \)\{0,1\}/\1 /' | sed 's/step [0-9]* [-0-9]* [:.0-9]*/step/' | tr '\n' ';'
   echo
   rm -rf "${d:?}"
 }

@@ -24,6 +24,7 @@ fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
         tiles: vec![tile; (width * height) as usize],
         entities: Vec::new(),
         view: View::default(),
+        clocks: Default::default(),
     }
 }
 
