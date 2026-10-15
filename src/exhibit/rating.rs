@@ -8,7 +8,7 @@
 //! description the rules work on. Land exhibits and tanks are rated; the neighbours of a tank
 //! (amphibious and show tanks) and the water type of a tank species are not.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::build::number;
 use crate::config::to_int;
@@ -159,6 +159,8 @@ impl Likes {
 pub struct Item {
     pub habitat: i32,
     pub name: i32,
+    /// Its type as `class/type/subtype`; empty for a type that is not found.
+    pub kind: String,
     /// The slots it covers in all (`S`).
     pub slots: i32,
     pub foliage: bool,
@@ -167,6 +169,19 @@ pub struct Item {
     pub stink: bool,
     /// The room of a shelter and of a toy, for a building that is one or the other.
     pub rooms: Option<(i32, i32)>,
+}
+
+impl Item {
+    /// Scenery in the sense of habitat rating 14: an object, building, food or filter type, but
+    /// not one of the two dung types.
+    fn scenery(&self) -> bool {
+        let class = self.kind.split('/').next();
+        matches!(class, Some("objects" | "building" | "food" | "filter"))
+            && !matches!(
+                self.kind.as_str(),
+                "objects/other/poo" | "objects/other/dinopoo"
+            )
+    }
 }
 
 /// A tank's water, for the depth and the water quality parts.
@@ -196,6 +211,33 @@ pub struct Site {
     /// The tiles that hold something that stinks.
     pub stinky: u32,
     pub water: Option<Water>,
+}
+
+/// The scenery of a site that the species dislikes (habitat rating 14), as name ids of its types
+/// in tile order, each type once: with `important` the path type first (all paths make one entry)
+/// and the objects worth less than -5 to the species, else those worth -5 to -1.
+pub fn disliked(site: &Site, likes: &Likes, important: bool) -> Vec<i32> {
+    let mut names: Vec<i32> = site
+        .paths
+        .first()
+        .filter(|_| important)
+        .map(|p| p.1)
+        .into_iter()
+        .collect();
+    let mut seen = HashSet::new();
+    for it in site
+        .slots
+        .iter()
+        .flatten()
+        .filter_map(|&s| site.items.get(s))
+    {
+        let v = likes.value(it.habitat) + likes.value(it.name);
+        let hit = if important { v < -5 } else { -6 < v && v < 0 };
+        if hit && it.scenery() && seen.insert(&it.kind) {
+            names.push(it.name);
+        }
+    }
+    names
 }
 
 /// An exhibit as the rules read it: its tiles, the animal types on them in list order and the
@@ -610,6 +652,10 @@ fn item(ty: Option<&EntityType>, slots: i32) -> Item {
             .and_then(|ty| number(ty, "cHabitat"))
             .map_or(NO_HABITAT, |v| v as i32),
         name: ty.map_or(0, |ty| ty.name_id),
+        kind: ty.map_or_else(String::new, |ty| {
+            let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+            format!("{}/{}/{}", ty.class, text(&ty.type_name), text(&ty.subtype))
+        }),
         slots: slots.max(1),
         foliage: int("cFoliage") == 1,
         rock: int("cRock") == 1,

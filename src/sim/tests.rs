@@ -40,6 +40,7 @@ fn world(entities: usize) -> World {
         entrance: (0, 0),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; 16],

@@ -14,6 +14,11 @@ fn middle(d: usize) -> (i32, i32) {
 }
 
 impl World {
+    /// The numbers that make a new tank.
+    pub fn tank_config(&self) -> &TankConfig {
+        &self.tank_config
+    }
+
     /// Sets the numbers that make a new tank.
     pub fn set_tank_config(&mut self, config: TankConfig) {
         self.tank_config = config;

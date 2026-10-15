@@ -203,6 +203,8 @@ const GAME_MS_PER_STEP_MS: u64 = 7200;
 const DAY_MS: u64 = 86_400_000;
 /// Days from 1970-01-01 to 2001-01-01.
 const DAYS_TO_2001: i64 = 11_323;
+/// Days from 1601-01-01 to 1970-01-01.
+const DAYS_1601_TO_1970: i64 = 134_774;
 
 /// A date and time of day of the proleptic Gregorian calendar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -252,10 +254,16 @@ impl Calendar {
     }
 
     pub fn date(&self) -> Date {
-        let days = (self.elapsed / DAY_MS) as i64;
-        let ms = (self.elapsed % DAY_MS) as u32;
+        let days = (self.elapsed / DAY_MS) as i64 + DAYS_TO_2001;
+        Date::from_days(days, (self.elapsed % DAY_MS) as u32)
+    }
+}
+
+impl Date {
+    /// The date `days` after 1 January 1970 and `ms` into the day.
+    fn from_days(days: i64, ms: u32) -> Date {
         // Civil date from a day count (days since 1970-01-01).
-        let z = days + DAYS_TO_2001 + 719_468;
+        let z = days + 719_468;
         let era = z.div_euclid(146_097);
         let doe = z.rem_euclid(146_097);
         let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
@@ -268,12 +276,21 @@ impl Calendar {
             year,
             month,
             day,
-            weekday: (days % 7) as u32,
+            weekday: (days + 3).rem_euclid(7) as u32,
             hour: ms / 3_600_000,
             minute: ms / 60_000 % 60,
             second: ms / 1000 % 60,
             millisecond: ms % 1000,
         }
+    }
+
+    /// The date of a file time: 100 ns steps since 1 January 1601 (zoo format 1).
+    pub fn from_file_time(t: u64) -> Date {
+        let ms = t / 10_000;
+        Date::from_days(
+            (ms / DAY_MS) as i64 - DAYS_1601_TO_1970,
+            (ms % DAY_MS) as u32,
+        )
     }
 }
 

@@ -12,9 +12,9 @@ use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::{self, Record};
 use crate::exhibit::viewing::{self, Wear};
-use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
 use crate::status::Words;
-use crate::text::format::{self, Arg, whole_units};
+use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
 use crate::ui::layout::{Picture, Rgb};
@@ -72,6 +72,10 @@ const FEMALE: i32 = 30000;
 /// (the string is the base plus this).
 const SALINITY: u32 = 11;
 const SHOW_TANK: i32 = 91;
+/// The line about a kind of scenery the species dislikes, and the first string of the names of
+/// object types.
+const DISLIKED: i32 = 90;
+const OBJECT_NAMES: i32 = 55000;
 
 /// The picture of the row of a land exhibit by its fence state, and that of a tank.
 const FENCES: [&str; 3] = [
@@ -79,11 +83,28 @@ const FENCES: [&str; 3] = [
     "fences/lsyfen/lsyfen",
     "fences/lsrfen/lsrfen",
 ];
-const TANK_ICON: &str = "ui/tanks/exbtank/exbtank";
+/// The pictures of a tank by water: clean, light, heavy; for a tank and for a show tank.
+const TANK_ICONS: [[&str; 3]; 2] = [
+    ["exbtank", "exbdirt1", "exbdirt2"],
+    ["shwtank", "shwdirt1", "shwdirt2"],
+];
 
 /// The picture of a popularity (0 to 100) in the image set of 11 stars by halves.
 pub fn stars(popularity: u32) -> usize {
     (popularity.min(100) * 10 / 100) as usize
+}
+
+/// The picture of a tank in the list (information panels 10.1): by its water purity, heavy up to
+/// 1 and light below `murky` (the tank water pictures' limits), and the show tank's own set.
+fn tank_icon(tank: &Tank, murky: i32) -> String {
+    let purity = i64::from(tank.purity);
+    let band = match purity {
+        ..=1 => 2,
+        p if p < i64::from(murky) => 1,
+        _ => 0,
+    };
+    let name = TANK_ICONS[usize::from(tank.show)][band];
+    format!("ui/tanks/{name}/{name}")
 }
 
 /// The keeper kind of an animal type by its `cKeeper` (information panels 2): 1 for the
@@ -96,35 +117,45 @@ pub fn keeper_kind(keeper: i32) -> usize {
     }
 }
 
-/// The lines of an animal's recommendations (habitat rating 7): the string number and whether
-/// the line is important. The important bits come first, then the others, each in the order of
-/// the bits; when nothing is set the exhibit is well suited. An animal in a show tank has its own
-/// line, and the salinity bit after it. The sentences about the scenery the species dislikes are
-/// not here yet.
-pub fn recommendations(record: Option<&Record>, female: bool, show_tank: bool) -> Vec<(i32, bool)> {
+/// A line of the recommendations: its string, whether it is important, and for a line about
+/// scenery the name id of the object type.
+pub type Line = (i32, bool, Option<i32>);
+
+/// The lines of an animal's recommendations (habitat rating 7): the important bits, the
+/// important scenery the species dislikes (`scenery[0]`, name ids), the other bits, the other
+/// scenery (`scenery[1]`); when nothing is added the exhibit is well suited. An animal in a show
+/// tank has its own line, and the salinity bit after it in red.
+pub fn recommendations(
+    record: Option<&Record>,
+    female: bool,
+    show_tank: bool,
+    scenery: [&[i32]; 2],
+) -> Vec<Line> {
     let base = RECOMMENDATION + if female { FEMALE } else { 0 };
-    let has = move |b: u32, important: bool| {
-        record.is_some_and(|r| r.has(b) && (r.important >> b & 1 == 1) == important)
-    };
     if show_tank {
         let salt = record.is_some_and(|r| r.has(SALINITY));
-        let line = (base + SHOW_TANK, false);
         return [
-            Some(line),
-            salt.then_some((base + 1 + SALINITY as i32, false)),
+            Some((base + SHOW_TANK, false, None)),
+            salt.then_some((base + 1 + SALINITY as i32, true, None)),
         ]
         .into_iter()
         .flatten()
         .collect();
     }
-    let bit = move |important: bool| {
-        (0..64)
-            .filter(move |&b| has(b, important))
-            .map(move |b| (base + 1 + b as i32, important))
+    let part = |important: bool| {
+        let bits = (0..64)
+            .filter(move |&b| {
+                record.is_some_and(|r| r.has(b) && (r.important >> b & 1 == 1) == important)
+            })
+            .map(move |b| (base + 1 + b as i32, important, None));
+        let about = scenery[usize::from(!important)]
+            .iter()
+            .map(move |&name| (base + DISLIKED, important, Some(name)));
+        bits.chain(about)
     };
-    let lines: Vec<(i32, bool)> = bit(true).chain(bit(false)).collect();
+    let lines: Vec<Line> = part(true).chain(part(false)).collect();
     match lines.is_empty() {
-        true => vec![(base, false)],
+        true => vec![(base, false, None)],
         false => lines,
     }
 }
@@ -260,7 +291,7 @@ impl Panel {
         vfs: &Vfs,
     ) -> Vec<String> {
         let words = Words::new(|id| ui.string(id as i32));
-        let money = |amount: f32| format::money(&words, whole_units(f64::from(amount)), true);
+        let money = |amount: f32| format::money_cents(&words, f64::from(amount), false);
         let wear = viewing::wear(world, viewing::decayed(cat));
         // The list of the exhibits: every one but the grounds, its fence state or tank.
         let exhibits: Vec<_> = (world.exhibits().list().iter())
@@ -270,12 +301,12 @@ impl Panel {
             .iter()
             .map(|e| {
                 let icon = match e.tank {
-                    Some(_) => TANK_ICON,
-                    None => FENCES[wear.get(&e.id).copied().unwrap_or(Wear::Sound) as usize],
+                    Some(t) => tank_icon(&t, world.tank_config().murky),
+                    None => FENCES[wear.get(&e.id).copied().unwrap_or(Wear::Sound) as usize].into(),
                 };
                 Row {
                     text: to_cp1252(&e.name),
-                    icon: ui.tree.picture(vfs, icon),
+                    icon: ui.tree.picture(vfs, &icon),
                     ..Row::default()
                 }
             })
@@ -386,17 +417,28 @@ impl Panel {
         });
         let input = exhibit.map(|id| rating::input(world, cat, id));
         let species = ty.map(|t| String::from_utf8_lossy(&t.type_name).into_owned());
-        let records = input.map(|i| rating::rate(&i)).unwrap_or_default();
+        let records = input.as_ref().map(rating::rate).unwrap_or_default();
         let record = records.iter().find(|r| Some(&r.key) == species.as_ref());
         let female = ty.is_some_and(|t| t.subtype.first() == Some(&b'f'));
         let show = exhibit
             .and_then(|id| world.exhibits().get(id))
             .is_some_and(|e| e.tank.is_some_and(|t| t.show));
-        let lines = recommendations(record, female, show);
+        let dislikes = |important| match (&input, ty) {
+            (Some(i), Some(t)) => rating::disliked(&i.site, &rating::Likes::of(t), important),
+            _ => Vec::new(),
+        };
+        let lines = recommendations(record, female, show, [&dislikes(true), &dislikes(false)]);
         let none = Words::new(|_| String::new());
-        let name = ty.map_or(String::new(), |t| ui.string(t.name_id));
+        let animal = entity
+            .common
+            .as_ref()
+            .map_or(String::new(), |c| c.name.clone());
         let texts: Vec<String> = (lines.iter())
-            .map(|&(id, _)| format::expand(&none, &ui.string(id), &[Arg::Text(&name)]))
+            .map(|&(id, _, object)| {
+                let object = object.map_or(String::new(), |n| ui.string(OBJECT_NAMES + n));
+                let args = [Arg::Text(&animal), Arg::Text(&object)];
+                format::expand(&none, &ui.string(id), &args)
+            })
             .collect();
         let rows: Vec<Row> = (texts.iter())
             .map(|t| Row {
@@ -404,10 +446,6 @@ impl Panel {
                 ..Row::default()
             })
             .collect();
-        let animal = entity
-            .common
-            .as_ref()
-            .map_or(String::new(), |c| c.name.clone());
         ui.set_text(PLAQUE_NAME, &to_cp1252(&animal));
         let title = ui.string(PLAQUE_TITLE + kind as i32);
         ui.set_text(PLAQUE_TITLE, &to_cp1252(&title));
@@ -418,15 +456,13 @@ impl Panel {
             PLAQUE_LIST,
             lines
                 .iter()
-                .map(|&(_, important)| important.then_some(RED))
+                .map(|&(_, important, _)| important.then_some(RED))
                 .collect(),
         );
         let mut told = vec![format!("plaque {animal:?}")];
-        told.extend(
-            lines.iter().zip(&texts).map(|(&(_, important), t)| {
-                format!("line{} {t:?}", if important { "!" } else { "" })
-            }),
-        );
+        told.extend(lines.iter().zip(&texts).map(|(&(_, important, _), t)| {
+            format!("line{} {t:?}", if important { "!" } else { "" })
+        }));
         match told == self.plaque_told {
             true => Vec::new(),
             false => {

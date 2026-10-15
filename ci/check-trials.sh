@@ -662,7 +662,7 @@ panel_gate() { # panel_gate <map>
     sed -n 's/^pass [0-9]* t=[0-9]* panel //p' | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
-check base-trial 'exhibit_1_"Lion";status_"Jan_1,_Year_1"_upkeep_$0_$0_$0_staff_No;donations_stars_0_$0_$0_$0;animals_0_thoughts_0' "panel_gate maps/default.zoo"
+check base-trial 'exhibit_1_"Lion";status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;donations_stars_0_$0.00_$0.00_$0.00;animals_0_thoughts_0' "panel_gate maps/default.zoo"
 # The exhibit list button, the first row, the Animals tab and its first row open the recommendations
 # plaque of that animal: prints the animals of the exhibit, the lines in red (important) and the others,
 # as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
@@ -675,6 +675,7 @@ panel_plaque() { # panel_plaque <map>
 }
 check base-trial "1,2,3" "panel_plaque maps/scn01.zoo"
 check expansion-trial "2,2,2" "panel_plaque maps/scn19.zoo"
+check expansion-trial "1,2,2" "panel_plaque maps/scn27.zoo"
 check expansion-trial "1,0,2" "panel_plaque maps/scn28b.zoo"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the

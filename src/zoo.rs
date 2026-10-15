@@ -190,11 +190,13 @@ pub struct Zoo {
     /// The tile of the zoo entrance.
     pub entrance: (u32, u32),
     /// The first tile of every habitat (exhibit or tank), in file order; the rest of the record
-    /// is skipped.
+    /// is in the fields below, tank fields aside.
     pub habitat_tiles: Vec<(i32, i32)>,
     /// The gate of every habitat as its record names it: the tile, (-1, -1) for none, and the
     /// side (map direction 0, 2, 4 or 6, -1 for none); in file order like `habitat_tiles`.
     pub habitat_gates: Vec<((i32, i32), i32)>,
+    /// The name, statistics and creation date every habitat stores, in file order.
+    pub habitat_info: Vec<HabitatInfo>,
     /// The tank exhibits, in file order.
     pub tanks: Vec<Tank>,
     /// The highest entity id handed out so far.
@@ -209,6 +211,15 @@ pub struct Zoo {
     /// How many units of each type name were named so far (zoo format 7.3), for the number in a
     /// default name.
     pub names: BTreeMap<String, u32>,
+}
+
+/// What a habitat record stores besides its place (zoo format 4.1): the name, the nine
+/// statistics as stored (habitat rating 13.3) and the creation date (a file time).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HabitatInfo {
+    pub name: String,
+    pub stats: [u32; 9],
+    pub created: u64,
 }
 
 /// The clocks and the event queue a map stores (simulation 4.3, 8.3): a new game on it starts from
@@ -455,10 +466,12 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let mut tanks = Vec::new();
     let mut habitat_tiles = Vec::new();
     let mut habitat_gates = Vec::new();
+    let mut habitat_info = Vec::new();
     for _ in 0..habitat_count {
-        let (tile, gate, tank) = habitat(r)?;
+        let (tile, gate, tank, info) = habitat(r)?;
         habitat_tiles.push(tile);
         habitat_gates.push(gate);
+        habitat_info.push(info);
         tanks.extend(tank);
     }
     if v >= 64 {
@@ -508,6 +521,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         entrance,
         habitat_tiles,
         habitat_gates,
+        habitat_info,
         tanks,
         id_counter,
         tiles,
@@ -521,15 +535,25 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
 /// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
 const HABITAT_MIN: usize = 76;
 
-type Habitat = ((i32, i32), ((i32, i32), i32), Option<Tank>);
+type Habitat = ((i32, i32), ((i32, i32), i32), Option<Tank>, HabitatInfo);
 
 fn habitat(r: &mut Reader) -> R<Habitat> {
     let v = r.v;
     let tile = (r.i32()?, r.i32()?);
-    r.string()?;
+    let name = latin1(r.string()?);
     let gate = (r.i32()?, r.i32()?);
     let side = r.i32()?;
-    r.skip(36 + 16)?;
+    let mut stats = [0; 9];
+    for s in &mut stats {
+        *s = r.u32()?;
+    }
+    let created = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
+    r.skip(8)?;
+    let info = HabitatInfo {
+        name,
+        stats,
+        created,
+    };
     if v >= 83 {
         r.skip(4)?;
     }
@@ -539,7 +563,7 @@ fn habitat(r: &mut Reader) -> R<Habitat> {
         show_info(r)?;
     }
     if !is_tank {
-        return Ok((tile, (gate, side), None));
+        return Ok((tile, (gate, side), None, info));
     }
     let (height, level) = (r.u32()?, r.u32()?);
     if v >= 88 {
@@ -562,6 +586,7 @@ fn habitat(r: &mut Reader) -> R<Habitat> {
             salt: salt != 0,
             purity,
         }),
+        info,
     ))
 }
 

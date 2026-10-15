@@ -26,7 +26,7 @@ pub struct Exhibit {
     pub tiles: usize,
     /// Its tiles in the original's order (exhibits and money 3.1), as the last fill left them.
     pub order: Vec<usize>,
-    /// The name; empty for an exhibit found in a map, whose stored name is not read yet.
+    /// The name; empty for an exhibit found in a map of another language (zoo format 2 rule 5).
     pub name: String,
     /// The id of the fence piece that is its gate.
     pub gate: Option<u32>,
@@ -46,13 +46,14 @@ pub struct Exhibit {
 /// guests' viewing the popularity and the donations, the month change the shift of the triples.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Stats {
-    /// The calendar date it was made; none for an exhibit found in a map, whose stored date is
-    /// not read yet.
+    /// The calendar date it was made.
     pub created: Option<Date>,
     /// 0 to 100.
     pub popularity: u32,
-    /// The donations and the upkeep: last month, this month, in total.
+    /// The donations: last month, this month, in total.
     pub donations: [f32; 3],
+    /// The exhibit's spending (the keepers' food and healing costs; the panel calls it upkeep),
+    /// in the same order.
     pub upkeep: [f32; 3],
 }
 
@@ -94,6 +95,8 @@ pub struct TankConfig {
     pub offset: i32,
     /// `maximumTankHeight`: the highest wall height.
     pub limit: u32,
+    /// `murkyWaterPurity`: the purity below which the water is not clean.
+    pub murky: i32,
 }
 
 impl Default for TankConfig {
@@ -111,6 +114,7 @@ impl Default for TankConfig {
             terrain: [0; 2],
             offset: 0,
             limit: 30,
+            murky: 60,
         }
     }
 }
@@ -154,6 +158,7 @@ impl TankConfig {
         }
         found.offset = number("waterOffset").map_or(found.offset, |n| n.clamp(-255, 255));
         found.limit = number("maximumTankHeight").map_or(found.limit, |n| n.clamp(0, 255) as u32);
+        found.murky = number("murkyWaterPurity").unwrap_or(found.murky);
         found
     }
 

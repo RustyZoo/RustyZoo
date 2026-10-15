@@ -42,6 +42,7 @@ fn world(units: &[(&str, u32)]) -> World {
         entrance: (0, 0),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
         tanks: Vec::new(),
         id_counter: 1_000_000,
         tiles: vec![tile; 16],

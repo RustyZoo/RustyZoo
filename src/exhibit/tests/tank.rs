@@ -279,6 +279,7 @@ pub(super) const CONFIG: TankConfig = TankConfig {
     terrain: [2, 17],
     offset: -1,
     limit: 20,
+    murky: 60,
 };
 
 /// A map of tiles with these elevations by tile (0 elsewhere), and the pieces, with the
@@ -679,8 +680,14 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
             terrain: [2, 17],
             offset: 0,
             limit: 30,
+            murky: 60,
         }
     );
+    // The limit of the clean water: any number, as the original takes it.
+    for (text, murky) in [("60", 60), ("0", 0), ("-5", -5), ("99999", 99999), ("", 60)] {
+        let cfg = format!("[tank]\nmurkyWaterPurity = {text}\n");
+        assert_eq!(read(&cfg).murky, murky, "{text:?}");
+    }
     // Missing: what there is without a file, heights of 1 included; an empty file too.
     let none = TankConfig::default();
     assert_eq!(

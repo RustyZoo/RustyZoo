@@ -197,12 +197,14 @@ fn cents(x: f64) -> (String, String) {
 
 /// An amount with cents, written with two decimals as the original's C library rounds them
 /// (see `cents`): `12.5` is "$12.50", `-1234.5` is "($1,234.50)", `1.125` is "$1.13". An amount
-/// that rounds to zero is "$0.00" whatever its sign, and one that is not a number is 0.
-pub fn money_cents(strings: &impl Strings, amount: f64) -> String {
+/// that rounds to zero is "$0.00" whatever its sign, and one that is not a number is 0. Without
+/// `grouping` the whole part has no separators: "$1234.50".
+pub fn money_cents(strings: &impl Strings, amount: f64, grouping: bool) -> String {
     let amount = if amount.is_finite() { amount } else { 0.0 };
     let (whole, cents) = cents(amount.abs());
     let negative = amount < 0.0 && (whole != "0" || cents != "00");
-    currency(strings, &format!("{}.{cents}", group(&whole)), negative)
+    let whole = if grouping { group(&whole) } else { whole };
+    currency(strings, &format!("{whole}.{cents}"), negative)
 }
 
 /// An amount held as a decimal number, rounded to whole units: to the nearest, halves to even.

@@ -72,6 +72,7 @@ fn world() -> World {
         entrance: (5, 5),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; 36],
@@ -95,6 +96,8 @@ fn world() -> World {
     }
     World::new(zoo, shape)
 }
+
+const NONE: [&[i32]; 2] = [&[], &[]];
 
 fn record(advice: &[(u32, bool)]) -> Record {
     let mut r = Record::default();
@@ -129,36 +132,39 @@ fn the_important_lines_come_first_and_a_female_reads_the_other_range() {
         (bit::terrain(2), true),
     ]);
     assert_eq!(
-        recommendations(Some(&r), false, false),
+        recommendations(Some(&r), false, false, NONE),
         [
-            (9900 + 1 + 25, true),
-            (9900 + 1 + 58, true),
-            (9900 + 1 + 17, false),
-            (9900 + 1 + 19, false)
+            (9900 + 1 + 25, true, None),
+            (9900 + 1 + 58, true, None),
+            (9900 + 1 + 17, false, None),
+            (9900 + 1 + 19, false, None)
         ]
     );
     assert_eq!(
-        recommendations(Some(&r), true, false)[0],
-        (39900 + 1 + 25, true)
+        recommendations(Some(&r), true, false, NONE)[0],
+        (39900 + 1 + 25, true, None)
     );
     let all = record(&(0..64).map(|b| (b, b % 2 == 0)).collect::<Vec<_>>());
-    let lines = recommendations(Some(&all), false, false);
+    let lines = recommendations(Some(&all), false, false, NONE);
     assert_eq!(lines.len(), 64);
     assert_eq!(
         lines[0],
-        (9901, true),
+        (9901, true, None),
         "the first important line is bit 0's"
     );
-    assert_eq!(lines[63], (9900 + 1 + 63, false));
+    assert_eq!(lines[63], (9900 + 1 + 63, false, None));
 }
 
 #[test]
 fn an_exhibit_with_nothing_to_say_is_well_suited() {
     assert_eq!(
-        recommendations(Some(&Record::default()), false, false),
-        [(9900, false)]
+        recommendations(Some(&Record::default()), false, false, NONE),
+        [(9900, false, None)]
     );
-    assert_eq!(recommendations(None, true, false), [(39900, false)]);
+    assert_eq!(
+        recommendations(None, true, false, NONE),
+        [(39900, false, None)]
+    );
 }
 
 #[test]
@@ -169,16 +175,22 @@ fn an_animal_in_a_show_tank_has_its_own_line_and_the_salinity_bit_after_it() {
         (bit::FEW_ROCKS, false),
     ]);
     assert_eq!(
-        recommendations(Some(&r), false, true),
-        [(9991, false), (9912, false)]
+        recommendations(Some(&r), false, true, NONE),
+        [(9991, false, None), (9912, true, None)]
     );
     assert_eq!(
-        recommendations(Some(&r), true, true),
-        [(39991, false), (39912, false)]
+        recommendations(Some(&r), true, true, NONE),
+        [(39991, false, None), (39912, true, None)]
     );
     let plain = record(&[(bit::STINK, true)]);
-    assert_eq!(recommendations(Some(&plain), false, true), [(9991, false)]);
-    assert_eq!(recommendations(None, false, true), [(9991, false)]);
+    assert_eq!(
+        recommendations(Some(&plain), false, true, NONE),
+        [(9991, false, None)]
+    );
+    assert_eq!(
+        recommendations(None, false, true, NONE),
+        [(9991, false, None)]
+    );
 }
 
 #[test]
@@ -286,4 +298,57 @@ fn an_animals_list_icon_is_the_first_of_its_subtype_default_or_plain_section() {
     let mut none = ty("", b"c");
     none.config = None;
     assert_eq!(list_icon(&none), None);
+}
+
+#[test]
+fn scenery_lines_follow_the_bits_of_their_importance_and_suppress_the_well_suited_line() {
+    let r = record(&[(bit::FEW_ROCKS, false), (bit::NEEDS_SHELTER, true)]);
+    assert_eq!(
+        recommendations(Some(&r), true, false, [&[7], &[8, 9]]),
+        [
+            (39900 + 1 + 58, true, None),
+            (39990, true, Some(7)),
+            (39900 + 1 + 19, false, None),
+            (39990, false, Some(8)),
+            (39990, false, Some(9)),
+        ]
+    );
+    assert_eq!(
+        recommendations(None, false, false, [&[], &[4]]),
+        [(9990, false, Some(4))]
+    );
+    // A show tank has no scenery lines.
+    assert_eq!(
+        recommendations(None, false, true, [&[7], &[4]]),
+        [(9991, false, None)]
+    );
+}
+
+#[test]
+fn a_tank_shows_the_picture_of_its_water_and_of_its_kind() {
+    let tank = |show: bool, purity: u32| Tank {
+        show,
+        height: 5,
+        level: 5,
+        salt: false,
+        purity,
+        filled: true,
+        platform: (-1, -1),
+    };
+    let icons = |show: bool, murky: i32| {
+        [100, 60, 59, 2, 1, 0, u32::MAX]
+            .map(|p| tank_icon(&tank(show, p), murky))
+            .map(|s| s.rsplit('/').next().unwrap().to_string())
+            .to_vec()
+    };
+    assert_eq!(
+        icons(false, 60),
+        [
+            "exbtank", "exbtank", "exbdirt1", "exbdirt1", "exbdirt2", "exbdirt2", "exbtank"
+        ]
+    );
+    assert_eq!(icons(true, 60)[2..5], ["shwdirt1", "shwdirt1", "shwdirt2"]);
+    // A limit of 0 or below keeps every purity above 1 clean; a huge one makes all but 0 and 1 light.
+    assert_eq!(icons(false, -3)[3], "exbtank");
+    assert_eq!(icons(false, i32::MAX)[0], "exbdirt1");
 }
