@@ -229,9 +229,10 @@ windowed_intro() {
 check expansion-trial 1,same 'windowed_intro | paste -sd, -'
 
 # The credits on the interface clock (a pass every 66 ms, the interface update's period): a click on
-# the credits button at y shows the first page at pass 3; with 8 s per page the second comes at pass
-# 124 and, after the last of the 16 pages, the credits end. A click on Exit (here at pass 131) closes them
-# at once. The base trial has no credits pages.
+# the credits button at y shows the first page at pass 3. The update of that pass sets the deadline
+# (8 s per page later) and the second page comes at the first update at or after it, pass 125; the
+# update after a page change sets the next deadline. After the last of the 16 pages the credits end.
+# A click on Exit (here at pass 131) closes them at once. The base trial has no credits pages.
 credits() { # credits <y of the button> <passes> <pass of the click on Exit>
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
@@ -240,8 +241,8 @@ credits() { # credits <y of the button> <passes> <pass of the click on Exit>
   rz run --headless --passes "$2" --clock 66 --script "$tmp/credits" 2>/dev/null |
     awk '/menu credits page/{n++; if(n==1)f=$2; if(n==2)p=$2} /menu credits (end|closed)/{e=$2"@"$NF} END{print n","f","p","e}'
 }
-check expansion-trial '16,3,124,1954@end' 'credits 559 2200 9999'
-check expansion-trial '2,3,124,131@closed' 'credits 559 300 131'
+check expansion-trial '16,3,125,1970@end' 'credits 559 2200 9999'
+check expansion-trial '2,3,125,131@closed' 'credits 559 300 131'
 check base-trial ',,,' 'credits 574 300 131'
 
 # The freeform map list filled with made-up rows: the track pages, an arrow steps, the wheel

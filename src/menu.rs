@@ -72,10 +72,11 @@ pub fn credit_pages(vfs: &Vfs) -> (Vec<i32>, u32) {
     (pages, u32::try_from(delay).unwrap_or(0))
 }
 
-/// The credits being shown: the page and the interface time it has been shown.
+/// The credits being shown: the page and the clock (ms) at which it changes, which the first
+/// interface update after the page appeared sets.
 struct Showing {
     page: usize,
-    elapsed: u64,
+    deadline: Option<u64>,
 }
 
 pub struct Menu {
@@ -224,7 +225,10 @@ impl Menu {
         }
         let id = self.pages[page];
         let shown = ui.show(id);
-        self.credits = Some(Showing { page, elapsed: 0 });
+        self.credits = Some(Showing {
+            page,
+            deadline: None,
+        });
         let empty = if shown { "" } else { " (no layout)" };
         format!("credits page {} layout {id}{empty}", page + 1)
     }
@@ -236,10 +240,11 @@ impl Menu {
         }
     }
 
-    /// An interface update `period` milliseconds after the last one: after each `delay` seconds
-    /// the next credits page replaces the one shown, and after the last one the credits hide
-    /// themselves. Credits that were closed (Exit hides the layout) are over.
-    pub fn update(&mut self, ui: &mut Interface, period: u32) -> Vec<String> {
+    /// An interface update at the clock `now` (ms): the first one after a page appeared sets its
+    /// deadline `delay` seconds later, and the first update at or after it replaces the page with
+    /// the next one; after the last one the credits hide themselves. Credits that were closed
+    /// (Exit hides the layout) are over.
+    pub fn update(&mut self, ui: &mut Interface, now: u64) -> Vec<String> {
         let Some(shown) = &mut self.credits else {
             return Vec::new();
         };
@@ -251,8 +256,10 @@ impl Menu {
             self.credits = None;
             return vec!["credits closed".to_string()];
         }
-        shown.elapsed += u64::from(period);
-        if shown.elapsed < u64::from(self.delay) * 1000 {
+        let deadline = *shown
+            .deadline
+            .get_or_insert(now.saturating_add(u64::from(self.delay) * 1000));
+        if now < deadline {
             return Vec::new();
         }
         let next = shown.page + 1;
