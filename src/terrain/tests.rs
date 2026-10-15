@@ -71,7 +71,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         wall: false,
         gate: false,
         gated: false,
-        tank: TankKind::default(),
+        tank: TankKind::NONE,
     };
     match e.class.as_str() {
         "paths" => Some(Shape {
@@ -90,6 +90,7 @@ fn shape(e: &Entity) -> Option<Shape> {
             tank: TankKind {
                 wall: true,
                 show: false,
+                ..TankKind::NONE
             },
             ..fixed
         }),

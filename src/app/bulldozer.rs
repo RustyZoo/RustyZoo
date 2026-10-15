@@ -25,6 +25,8 @@ const EXHIBIT: i32 = 6208;
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(super) struct Dozer {
     pub(super) at: Vec<usize>,
+    /// The object under the pointer (the first of `at` unless a tied wall goes before it).
+    head: Option<usize>,
     refund: f32,
     rect: Option<((i32, i32), (i32, i32))>,
     /// Whether the cost text is shown: over something removable, and in a drag from the start
@@ -34,12 +36,12 @@ pub(super) struct Dozer {
     mixed: bool,
 }
 
-/// A removal under way: the entities still to go (ids), the pairs of regions answered No, the
-/// question that is open, and what has gone so far.
+/// A removal under way: the entities still to go (ids), the pairs of regions asked about, the
+/// entity whose question is open, and what has gone so far.
 pub(super) struct Sweep {
     queue: VecDeque<u32>,
-    declined: Vec<(u32, u32)>,
-    asking: Option<(u32, Question)>,
+    asked: Vec<(u32, u32)>,
+    asking: Option<u32>,
     area: bool,
     removed: usize,
     refund: f32,
@@ -49,7 +51,7 @@ pub(super) struct Sweep {
 enum Next {
     /// Nothing is left.
     Done,
-    /// The front of the queue stays: it is gone, cannot be removed, or its pair was declined.
+    /// The front of the queue stays: it is gone, cannot be removed, or its pair was asked already.
     Skip,
     Remove(u32),
     Ask(u32, Question, String),
@@ -112,17 +114,22 @@ impl App<'_> {
                 .tile_under(&world.zoo, pointer)
                 .and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)));
             let rect = game.build.sweep_area(tile, pointer);
+            let mut head = None;
             let found: Vec<usize> = match rect {
                 Some((a, b)) => bulldozer::area(world, a, b),
-                // The last drawn entity with a pixel under the pointer (placing 7.1).
-                None => game
-                    .staged
-                    .pick(game.camera.view_point(pointer), bulldozer::WIDEN, |id| {
-                        world.find(id).is_some()
-                    })
-                    .and_then(|id| world.find(id))
-                    .into_iter()
-                    .collect(),
+                // The last drawn entity with a pixel under the pointer (placing 7.1), and the
+                // tied wall that goes with it.
+                None => {
+                    head = game
+                        .staged
+                        .pick(game.camera.view_point(pointer), bulldozer::WIDEN, |id| {
+                            world.find(id).is_some()
+                        })
+                        .and_then(|id| world.find(id));
+                    (head.into_iter())
+                        .flat_map(|e| bulldozer::with_tied(world, e))
+                        .collect()
+                }
             };
             let mixed = rect.is_none() && found.iter().any(|&e| bulldozer::mixed_tanks(world, e));
             let at: Vec<usize> = found
@@ -137,8 +144,10 @@ impl App<'_> {
                 Some(_) => before.shown || refund != 0.0,
                 None => !at.is_empty(),
             };
+            let head = head.filter(|e| at.contains(e)).or(at.first().copied());
             game.dozer = Dozer {
                 at,
+                head,
                 refund,
                 rect,
                 shown,
@@ -150,7 +159,7 @@ impl App<'_> {
         }
         let d = &game.dozer;
         let whole = whole_units(f64::from(d.refund));
-        let single = d.at.first().filter(|_| d.rect.is_none());
+        let single = d.head.as_ref().filter(|_| d.rect.is_none());
         let entity = single.map(|&e| &game.world.zoo.entities[e]);
         let ty = entity.and_then(|e| bulldozer::type_of(cat, e));
         ui.help_tip(ty.map_or(0, |t| t.name_id));
@@ -204,7 +213,7 @@ impl App<'_> {
             .collect();
         game.sweep = Some(Sweep {
             queue,
-            declined: Vec::new(),
+            asked: Vec::new(),
             asking: None,
             area: game.dozer.rect.is_some(),
             removed: 0,
@@ -232,7 +241,7 @@ impl App<'_> {
         else {
             return Next::Skip;
         };
-        match bulldozer::check(world, cat, at, game.confirm, &sweep.declined) {
+        match bulldozer::check(world, cat, at, game.confirm, &sweep.asked) {
             Check::Go => Next::Remove(id),
             Check::Keep => Next::Skip,
             Check::Ask(q) => Next::Ask(id, q, question_text(ui, cat, world, at, q)),
@@ -256,7 +265,15 @@ impl App<'_> {
                     }
                     return self.aim(false);
                 }
-                Next::Remove(id) => self.bulldoze_remove(id),
+                Next::Remove(id) => {
+                    self.bulldoze_remove(id);
+                    // A removal that makes a tank with objects in it asks about them: the rest
+                    // of the removal is dropped.
+                    if let Some(game) = self.game.as_mut().filter(|g| g.refused.is_some()) {
+                        game.sweep = None;
+                        return;
+                    }
+                }
                 Next::Skip => {}
                 Next::Ask(id, question, text) => {
                     let asked = self
@@ -265,7 +282,10 @@ impl App<'_> {
                         .is_some_and(|ui| ui.ask(QUESTION, &to_cp1252(&text), Buttons::YES_NO));
                     if asked {
                         if let Some(sweep) = self.game.as_mut().and_then(|g| g.sweep.as_mut()) {
-                            sweep.asking = Some((id, question));
+                            sweep.asking = Some(id);
+                            // The pair is stored when the question is reached, before the
+                            // answer: reaching it again in this click is a silent No.
+                            sweep.asked.extend(question.pair());
                         }
                         self.asked = Some(Asked::Sweep);
                         self.tool_lines
@@ -282,7 +302,7 @@ impl App<'_> {
 
     /// Removes the entity with this id, books its refund and logs it (`world remove CLASS/TYPE/
     /// SUBTYPE X,Y [side S] id N refund R`), then tells what happened to the exhibits.
-    fn bulldoze_remove(&mut self, id: u32) {
+    pub(super) fn bulldoze_remove(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
         let removed = bulldozer::remove(&mut game.world, &mut game.money, cat, id);
@@ -303,11 +323,12 @@ impl App<'_> {
         self.exhibits_told();
     }
 
-    /// The open question was answered: Yes removes the object, No keeps it (and keeps the other
-    /// pieces between the same two exhibits), anything else stops the removal.
+    /// The open question was answered: Yes removes the object, No keeps it (the other pieces
+    /// between the same two exhibits stay, their pair being stored already), anything else stops
+    /// the removal.
     pub(super) fn sweep_answered(&mut self, code: i32) {
         let Some(game) = &mut self.game else { return };
-        let Some((id, question)) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
+        let Some(id) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
             return;
         };
         self.tool_lines.push(format!(
@@ -320,13 +341,7 @@ impl App<'_> {
         ));
         match code {
             6 => self.bulldoze_remove(id),
-            7 => {
-                if let Some(pair) = question.pair()
-                    && let Some(sweep) = &mut game.sweep
-                {
-                    sweep.declined.push(pair);
-                }
-            }
+            7 => {}
             _ => {
                 game.sweep = None;
                 return self.aim(false);

@@ -51,6 +51,7 @@ fn catalogue() -> Catalogue {
     let tank = "[TankFence]\nx=1\n[Characteristics/Integers]\ncPurchaseCost=100\ncLife=10\n";
     cat.push(ty("tankwall", "glass", "f", tank, [1, 1, 1]));
     cat.push(ty("tankwall", "show", "f", tank, [1, 1, 1]));
+    cat.push(ty("tankwall", "glass", "g", tank, [1, 1, 1]));
     cat
 }
 
@@ -100,6 +101,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         tank: TankKind {
             wall: e.class == "tankwall",
             show: e.type_name == "show",
+            ..TankKind::NONE
         },
     })
 }
@@ -238,7 +240,7 @@ fn removing_a_piece_that_opens_an_exhibit_asks_and_a_closed_line_does_not() {
     // A piece of no exhibit: no question.
     let lone = world(vec![piece("f", 5, 5, 0)]);
     assert_eq!(check(&lone, &cat, 0, false, &[]), Check::Go);
-    // A declined pair is kept without a question.
+    // An asked pair is kept without a question.
     let pair = Question::Escape(1).pair().unwrap();
     assert_eq!(check(&w, &cat, top, false, &[pair]), Check::Keep);
 }
@@ -403,4 +405,127 @@ fn a_wall_between_a_show_tank_and_another_tank_cannot_be_removed() {
     v.extend(tank("glass", 4, 3, None));
     let w = world(v);
     assert!(removable(&w, &cat, w.edge(3 * 8 + 3, 2).unwrap()));
+}
+
+#[test]
+fn a_tank_wall_is_tied_to_the_tank_wall_across_and_goes_with_it_in_the_order_of_the_heights() {
+    // Two tanks side by side, each with the wall of its own tile on the line: each is tied to
+    // the other, and a click takes the piece first.
+    let mut v = tank("glass", 3, 3, None);
+    v.extend(tank("glass", 4, 3, None));
+    let w = world(v);
+    let (p, q) = (w.edge(3 * 8 + 3, 2).unwrap(), w.edge(3 * 8 + 4, 6).unwrap());
+    assert_eq!((tied(&w, p), tied(&w, q)), (Some(q), Some(p)));
+    assert_eq!(
+        (with_tied(&w, p), with_tied(&w, q)),
+        (vec![p, q], vec![q, p])
+    );
+    let outer = w.edge(3 * 8 + 3, 0).unwrap();
+    assert_eq!((tied(&w, outer), with_tied(&w, outer)), (None, vec![outer]));
+    // The drag over one tile takes the outer walls and its own, not the other tank's.
+    assert_eq!(area(&w, (3, 3), (3, 3)).len(), 4);
+
+    // A tank beside the grounds, whose wall across is a tank wall on the grounds' tile (it has
+    // no wall height): the tied wall goes first, and a drag collects it before the piece even
+    // when its tile is outside the rectangle.
+    let mut v = tank("glass", 3, 3, None);
+    v.push(wall("glass", 4, 3, 6));
+    let w = world(v);
+    let (p, q) = (w.edge(3 * 8 + 3, 2).unwrap(), w.edge(3 * 8 + 4, 6).unwrap());
+    assert_eq!((tied(&w, p), tied(&w, q)), (Some(q), None));
+    assert_eq!(with_tied(&w, p), [q, p]);
+    let found = area(&w, (3, 3), (3, 3));
+    let place = |e| found.iter().position(|&x| x == e).unwrap();
+    assert!(found.len() == 5 && place(q) + 1 == place(p), "{found:?}");
+    // A fence across that is no tank wall is nobody's tied wall, and neither is a piece of the
+    // same tank's other tile.
+    let mut v = tank("glass", 3, 3, None);
+    v.push(piece("f", 4, 3, 6));
+    let w = world(v);
+    assert_eq!(tied(&w, w.edge(3 * 8 + 3, 2).unwrap()), None);
+}
+
+#[test]
+fn the_wall_of_a_tank_asks_when_the_slot_across_is_empty_or_holds_a_tank_wall() {
+    let cat = catalogue();
+    let asks = Check::Ask(Question::Escape(1));
+    // Across empty: asked. Across a tank wall: asked, and the tank wall on the grounds' side
+    // is not (the tank's wall is still there).
+    let w = world(tank("glass", 3, 3, None));
+    assert_eq!(
+        check(&w, &cat, w.edge(3 * 8 + 3, 2).unwrap(), false, &[]),
+        asks
+    );
+    let mut v = tank("glass", 3, 3, None);
+    v.push(wall("glass", 4, 3, 6));
+    let w = world(v);
+    let (p, q) = (w.edge(3 * 8 + 3, 2).unwrap(), w.edge(3 * 8 + 4, 6).unwrap());
+    assert_eq!(check(&w, &cat, p, false, &[]), asks);
+    assert_eq!(check(&w, &cat, q, false, &[]), Check::Go);
+    // Another fence across: the land rule, closed, so no question.
+    let mut v = tank("glass", 3, 3, None);
+    v.push(piece("f", 4, 3, 6));
+    let w = world(v);
+    assert_eq!(
+        check(&w, &cat, w.edge(3 * 8 + 3, 2).unwrap(), false, &[]),
+        Check::Go
+    );
+}
+
+#[test]
+fn the_refusal_between_a_show_tank_and_another_tank_needs_a_tied_wall() {
+    let cat = catalogue();
+    let mut v = tank("glass", 3, 3, None);
+    v.extend(tank("show", 4, 3, Some(6)));
+    let w = world(v);
+    let p = w.edge(3 * 8 + 3, 2).unwrap();
+    assert!(w.tank_at(3 * 8 + 3).is_some() && w.tank_at(3 * 8 + 4).is_some());
+    assert_eq!(tied(&w, p), None);
+    assert!(!mixed_tanks(&w, p) && removable(&w, &cat, p));
+}
+
+#[test]
+fn gate_tank_hides_the_cost_and_refuses_when_an_object_stands_on_the_tank_tile() {
+    use crate::money::Money;
+    use crate::place::Verdict;
+    let cat = catalogue();
+    let money = Money {
+        cash: 1000.0,
+        ..Money::default()
+    };
+    let over = |w: &World| {
+        // The north piece of tile (3, 3).
+        let north = w.edge(w.tile_index(3, 3).unwrap(), 0).unwrap();
+        crate::place::gate::pending(w, &cat, &money, north).unwrap()
+    };
+    let tree = entity("objects", "tree", "", 3 * 64 + 10, 3 * 64 + 10, 0);
+    // A tank with nothing in it: a valid gate, green for the marine specialist.
+    let w = world(tank("glass", 3, 3, None));
+    let g = over(&w);
+    assert_eq!((g.pending.verdict, g.hidden), (Verdict::Valid, false));
+    // An object in a quadrant of the tile: not valid, no cost text, and a click does nothing.
+    let mut v = tank("glass", 3, 3, None);
+    v.push(tree.clone());
+    let mut w = world(v);
+    let g = over(&w);
+    assert_eq!(
+        (g.pending.verdict, g.hidden, g.pending.message),
+        (Verdict::Invalid, true, None)
+    );
+    let mut m = Money {
+        cash: 1000.0,
+        ..Money::default()
+    };
+    assert!(matches!(
+        crate::place::gate::place(&mut w, &mut m, &cat, &g),
+        crate::place::Outcome::Refused(None)
+    ));
+    assert_eq!(w.exhibits().get(1).unwrap().gate, None);
+    // The same tile of a land exhibit: the object is no reason, the gate is valid and shown
+    // (green: the zookeeper is stopped only by an object in quadrant 3, the tree is in 0).
+    let mut v = square(3, 3);
+    v.push(tree);
+    let w = world(v);
+    let g = over(&w);
+    assert_eq!((g.pending.verdict, g.hidden), (Verdict::Valid, false));
 }

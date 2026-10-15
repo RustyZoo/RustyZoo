@@ -26,8 +26,41 @@ pub fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
     cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
 }
 
-/// Whether the entity at position `e` is a tank wall on a line between a show tank and a tank
-/// that is not one: it stays (placing 7.1).
+/// The tied wall of the fence piece at position `e` (placing 7.1): the piece stands on a tile of
+/// a tank, the tile across is not in that tank, and the slot across on the same line holds a tank
+/// wall.
+pub fn tied(world: &World, e: usize) -> Option<usize> {
+    world.shape(e).filter(|s| s.fence)?;
+    let (t, d) = world.slot(e)?;
+    let n = world.neighbour(t, d)?;
+    let tank = world.tank_at(t)?;
+    let across = world
+        .edge(n, (d + 4) % 8)
+        .filter(|&q| world.shape(q).is_some_and(|s| s.tank.wall))?;
+    (world.tank_at(n) != Some(tank)).then_some(across)
+}
+
+/// Whether the tank wall at position `e` has a wall height: it stands on a tile of a tank
+/// (exhibits and money 4.7).
+fn has_height(world: &World, e: usize) -> bool {
+    world
+        .slot(e)
+        .is_some_and(|(t, _)| world.tank_at(t).is_some())
+}
+
+/// The entities a click on the fence piece at position `e` takes, in the order they go: the
+/// piece and its tied wall, the piece first when the tied wall has a wall height, else the tied
+/// wall first (placing 7.1).
+pub fn with_tied(world: &World, e: usize) -> Vec<usize> {
+    match tied(world, e) {
+        Some(q) if has_height(world, q) => vec![e, q],
+        Some(q) => vec![q, e],
+        None => vec![e],
+    }
+}
+
+/// Whether the entity at position `e` is a tank wall with a tied wall on a line between a show
+/// tank and a tank that is not one: it stays (placing 7.1).
 pub fn mixed_tanks(world: &World, e: usize) -> bool {
     let tank = |t: usize| world.tank_at(t).and_then(|id| world.tank(id));
     let Some((t, d)) = world
@@ -38,7 +71,8 @@ pub fn mixed_tanks(world: &World, e: usize) -> bool {
         return false;
     };
     let across = world.neighbour(t, d);
-    matches!((tank(t), across.and_then(tank)), (Some(a), Some(b)) if a.show != b.show)
+    tied(world, e).is_some()
+        && matches!((tank(t), across.and_then(tank)), (Some(a), Some(b)) if a.show != b.show)
 }
 
 /// Whether the bulldozer can remove the entity at position `e` (placing 7.1): its tile is in the
@@ -107,8 +141,12 @@ pub fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
                 .chain((0..4).map(|q| world.quadrant(t, q)))
                 .chain([0, 2, 4, 6].map(|d| world.edge(t, d)));
             for e in objects.flatten() {
-                if !found.contains(&e) {
-                    found.push(e);
+                // The tied wall that has no wall height is collected before the piece.
+                let tied = tied(world, e).filter(|&q| !has_height(world, q));
+                for e in tied.into_iter().chain([e]) {
+                    if !found.contains(&e) {
+                        found.push(e);
+                    }
                 }
             }
         }
@@ -129,7 +167,7 @@ pub enum Question {
 
 impl Question {
     /// The two regions of an exhibit question (the grounds are 0), smaller first: a pair that
-    /// was declined stays declined while others merge.
+    /// was asked stays asked (a silent No) while others merge.
     pub fn pair(self) -> Option<(u32, u32)> {
         let (a, b) = match self {
             Question::Sell => return None,
@@ -147,14 +185,15 @@ pub enum Check {
     Go,
     /// Ask first.
     Ask(Question),
-    /// Leave it: its exhibit question was answered No for these two regions already.
+    /// Leave it: these two regions were asked about already (a silent No).
     Keep,
 }
 
 /// The exhibit question of a piece of exhibit fence (placing 7.1): its tile and the tile across
 /// are in different regions and the slot across on the same line holds no exhibit fence, so
 /// removing it opens the line; on a line between two tanks it is the other way round: it asks
-/// only when the slot across holds a piece. Both regions exhibits is a merge; one of them the
+/// only when the slot across holds a piece. A tank wall of a tank asks when the slot across is
+/// empty or holds a tank wall (its tied wall). Both regions exhibits is a merge; one of them the
 /// zoo grounds an escape.
 fn exhibit_question(world: &World, e: usize) -> Option<Question> {
     if !world.shape(e)?.fence {
@@ -162,13 +201,19 @@ fn exhibit_question(world: &World, e: usize) -> Option<Question> {
     }
     let (t, d) = world.slot(e)?;
     let n = world.neighbour(t, d)?;
-    let closed_across = world
-        .edge(n, (d + 4) % 8)
-        .is_some_and(|o| world.shape(o).is_some_and(|s| s.fence));
+    let across = world.edge(n, (d + 4) % 8);
+    let closed_across = across.is_some_and(|o| world.shape(o).is_some_and(|s| s.fence));
+    let tank_across = across.is_some_and(|o| world.shape(o).is_some_and(|s| s.tank.wall));
     let (x, y) = (world.exhibits().region(t)?, world.exhibits().region(n)?);
     let zoo = |r: u32| r == GROUNDS || r == EXTERIOR;
     let tanks = world.tank_at(t).is_some() && world.tank_at(n).is_some();
-    if closed_across != tanks || x == y {
+    let wall = world.shape(e)?.tank.wall && world.tank_at(t).is_some();
+    let ask = match (tanks, wall) {
+        (true, _) => closed_across,
+        (false, true) => !closed_across || tank_across,
+        (false, false) => !closed_across,
+    };
+    if !ask || x == y {
         return None;
     }
     match (zoo(x), zoo(y)) {
@@ -180,17 +225,11 @@ fn exhibit_question(world: &World, e: usize) -> Option<Question> {
 }
 
 /// What to do with the entity at position `e` before removing it: the exhibit question comes
-/// first and replaces the sell one; `sell` is the switch `[UI] confirmSell`; `declined` the pairs
-/// of regions this press already answered No for.
-pub fn check(
-    world: &World,
-    cat: &Catalogue,
-    e: usize,
-    sell: bool,
-    declined: &[(u32, u32)],
-) -> Check {
+/// first and replaces the sell one; `sell` is the switch `[UI] confirmSell`; `asked` the pairs
+/// of regions this press asked about already.
+pub fn check(world: &World, cat: &Catalogue, e: usize, sell: bool, asked: &[(u32, u32)]) -> Check {
     if let Some(q) = exhibit_question(world, e) {
-        return match q.pair().is_some_and(|p| declined.contains(&p)) {
+        return match q.pair().is_some_and(|p| asked.contains(&p)) {
             true => Check::Keep,
             false => Check::Ask(q),
         };

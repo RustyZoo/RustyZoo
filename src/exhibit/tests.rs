@@ -43,6 +43,11 @@ fn shape(e: &Entity) -> Option<Shape> {
             tank: TankKind {
                 wall: tank,
                 show: e.class == "show",
+                underwater: tank,
+                shows: e.class == "show",
+                life: 10,
+                strength: 500,
+                ..TankKind::NONE
             },
         }),
         "gate" => Some(Shape {
@@ -52,7 +57,7 @@ fn shape(e: &Entity) -> Option<Shape> {
             wall: false,
             gate: true,
             gated: false,
-            tank: TankKind::default(),
+            tank: TankKind::NONE,
         }),
         _ => None,
     }

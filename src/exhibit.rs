@@ -4,6 +4,8 @@
 //! the zoo entrance is the zoo grounds, the tiles beyond the zoo wall are the exterior, and
 //! every other region is an exhibit, from one tile up. The map edge closes a region like a fence.
 
+use crate::config::{Config, to_int};
+use crate::vfs::Vfs;
 use crate::world::World;
 
 /// The region of the zoo grounds.
@@ -37,8 +39,87 @@ pub struct Tank {
     /// Salt water; the purity of the water.
     pub salt: bool,
     pub purity: u32,
+    /// The tank is filled (not drained): the flag of exhibits and money 4.7.
+    pub filled: bool,
     /// The tile the gate's platform is drawn on, (-1, -1) for none.
     pub platform: (i32, i32),
+}
+
+/// The numbers of `tanks.cfg` that make a new tank (exhibits and money 3.9 and 4.7); the first of
+/// a pair is for a tank, the second for a show tank.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TankConfig {
+    /// How far the ground of a new tank is lowered (`initialSink`, `initialSinkShow`).
+    pub sink: [i32; 2],
+    /// The wall height (`initialHeight`, `initialHeightShow`).
+    pub height: [u32; 2],
+    /// `initialWaterLevel`, `initialFillState` above 0, `initialSalinity` above 0 (salt) and
+    /// `initialWaterPurity`.
+    pub level: u32,
+    pub filled: bool,
+    pub salt: bool,
+    pub purity: u32,
+    /// The terrain types of the floor of a tank and of a show tank (`tankTerrain`,
+    /// `tankTerrainShow`).
+    pub terrain: [u8; 2],
+}
+
+impl Default for TankConfig {
+    /// What there is without a `tanks.cfg`: the heights of 1 the original has built in, the rest
+    /// empty, and both floors 0 (grass): the original gives `tankTerrain` and `tankTerrainShow` no
+    /// default.
+    fn default() -> TankConfig {
+        TankConfig {
+            sink: [0; 2],
+            height: [1; 2],
+            level: 0,
+            filled: false,
+            salt: false,
+            purity: 100,
+            terrain: [0; 2],
+        }
+    }
+}
+
+impl TankConfig {
+    /// The `tanks.cfg` of the game, or the default without one (or one that cannot be read).
+    pub fn load(vfs: &Vfs) -> TankConfig {
+        vfs.read("tanks.cfg")
+            .ok()
+            .and_then(|bytes| Config::parse(&bytes).ok())
+            .map_or_else(TankConfig::default, |c| TankConfig::read(&c))
+    }
+
+    /// Reads the `[tank]` section of a `tanks.cfg`; a key that is missing keeps the default, and
+    /// a number is cut to what a tank can hold (a height or level 0 to 255, a sink -24 to 24, a
+    /// purity 0 to 100, a terrain type 0 to 255).
+    pub fn read(config: &Config) -> TankConfig {
+        let tank = config.section("tank");
+        let number = |key: &str| tank.and_then(|s| s.get(key)).and_then(to_int);
+        let mut found = TankConfig::default();
+        let (mut sink, mut height) = (found.sink, found.height);
+        for (i, (s, h)) in [
+            ("initialSink", "initialHeight"),
+            ("initialSinkShow", "initialHeightShow"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            sink[i] = number(s).map_or(sink[i], |n| n.clamp(-24, 24));
+            height[i] = number(h).map_or(height[i], |n| n.clamp(0, 255) as u32);
+        }
+        found.sink = sink;
+        found.height = height;
+        found.level = number("initialWaterLevel").map_or(found.level, |n| n.clamp(0, 255) as u32);
+        found.filled = number("initialFillState").map_or(found.filled, |n| n > 0);
+        found.salt = number("initialSalinity").map_or(found.salt, |n| n > 0);
+        found.purity =
+            number("initialWaterPurity").map_or(found.purity, |n| n.clamp(0, 100) as u32);
+        for (i, key) in ["tankTerrain", "tankTerrainShow"].into_iter().enumerate() {
+            found.terrain[i] = number(key).map_or(found.terrain[i], |n| n.clamp(0, 255) as u8);
+        }
+        found
+    }
 }
 
 impl Default for Tank {
@@ -50,6 +131,7 @@ impl Default for Tank {
             level: 0,
             salt: true,
             purity: 100,
+            filled: false,
             platform: (-1, -1),
         }
     }
