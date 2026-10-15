@@ -392,7 +392,7 @@ pub fn rate(input: &Input) -> Vec<Record> {
             if !tank && k < TERRAINS - 1 && (more || less) {
                 rec.set(
                     bit::terrain(k) + u32::from(more),
-                    (share - wanted).abs() > 6.0,
+                    w >= 0 && (share - wanted).abs() > 6.0,
                 );
             }
         }

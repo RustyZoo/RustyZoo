@@ -97,6 +97,21 @@ fn flat_grass_with_two_zebras() {
 }
 
 #[test]
+fn a_disliked_terrain_is_too_much_but_never_important() {
+    // Terrain 8 is valued below 0: present on 20 of 25 tiles, it shows "too much" only.
+    let mut input = flat();
+    input.site.terrain = [5, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let r = only(&input);
+    let b = bit::terrain(8) + 1;
+    assert!(r.has(b));
+    assert_eq!(r.important >> b & 1, 0);
+    // The liked savannah grass missing from the same exhibit is important.
+    let b = bit::terrain(1);
+    assert!(r.has(b));
+    assert_eq!(r.important >> b & 1, 1);
+}
+
+#[test]
 fn one_feature_at_a_time() {
     let mut input = flat();
     let shown = |input: &Input| {
