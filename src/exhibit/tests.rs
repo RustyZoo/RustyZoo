@@ -243,7 +243,7 @@ fn a_fence_placed_or_removed_builds_the_regions_again() {
     world.begin();
     assert!(world.remove(id));
     assert!(sizes(&world).is_empty());
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     assert_eq!(sizes(&world), [6], "taking back the removal");
 }
 
@@ -586,11 +586,16 @@ fn an_undo_makes_no_gate_asks_no_name_and_keeps_the_counter() {
     world.begin();
     world.remove(other);
     world.take_events();
-    assert!(world.undo());
-    assert_eq!(world.take_events(), [Event::New { id: 2, ask: false }]);
+    assert!(!world.undo().is_empty());
+    // The exhibit is made again quietly; the recorded name and gate are given back after it.
+    assert_eq!(
+        world.take_events(),
+        [Event::New { id: 2, ask: false }, Event::Gate(2)]
+    );
     let e = world.exhibits().get(2).unwrap();
-    assert_eq!((e.gate, e.tiles), (None, 9), "no gate: it is restored");
-    assert!(!is_gate(&world, door));
+    assert_eq!((e.gate, e.tiles), (Some(door), 9), "its gate is restored");
+    assert_eq!(e.name, "Exhibit 1");
+    assert!(is_gate(&world, door));
     put(&mut world, (6, 6, 0));
     for p in square(0, 6, 0, 6) {
         put(&mut world, p);
@@ -738,7 +743,7 @@ fn moving_the_gate_turns_the_old_one_back_clears_the_undo_list_and_says_so() {
     let at_new = world.find(new).unwrap();
     let fence = world.zoo.entities[at_new].common.as_ref().unwrap().fence;
     assert_eq!(fence, None, "a piece with no wear data keeps none");
-    assert!(!world.undo(), "the undo list was cleared");
+    assert!(world.undo().is_empty(), "the undo list was cleared");
     // Unknown exhibit or piece: nothing changes.
     assert!(!world.move_gate(9, new, 7, 300));
     assert!(!world.move_gate(1, 999, 7, 300));
@@ -799,3 +804,56 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
 }
 
 mod tank;
+
+/// The name and the gate piece of the exhibit on tile (`x`, `y`).
+fn exhibit_at(world: &World, x: usize, y: usize) -> (String, Option<u32>) {
+    let e = world.exhibits().get(region(world, x, y)).unwrap();
+    (e.name.clone(), e.gate)
+}
+
+#[test]
+fn undoing_a_merge_gives_both_exhibits_their_names_and_gates_back() {
+    let mut world = pair(4);
+    let line = at(&world, 2, 2, 2);
+    let (west, east) = (at(&world, 1, 1, 0), at(&world, 4, 1, 0));
+    world.rename(1, "Lions".into());
+    world.rename(2, "Tigers".into());
+    world.set_gate(1, west);
+    world.set_gate(2, east);
+    world.begin();
+    world.remove(line);
+    assert_eq!(world.exhibits().list().len(), 1);
+    assert!(
+        !is_gate(&world, west),
+        "the exhibit that goes loses its gate"
+    );
+    assert!(!world.undo().is_empty());
+    assert_eq!(world.exhibits().list().len(), 2);
+    assert_eq!(exhibit_at(&world, 1, 1), ("Lions".into(), Some(west)));
+    assert_eq!(exhibit_at(&world, 4, 1), ("Tigers".into(), Some(east)));
+    assert!(is_gate(&world, west) && is_gate(&world, east));
+    assert!(!is_gate(&world, line), "the piece put back is a fence");
+}
+
+#[test]
+fn undoing_a_piece_that_cut_an_exhibit_gives_it_its_name_and_gate_back() {
+    let mut pieces = square(1, 1, 6, 2);
+    let last = pieces.pop().unwrap();
+    let mut world = loaded(&pieces);
+    put(&mut world, last);
+    world.rename(1, "Big".into());
+    put(&mut world, (3, 1, 2));
+    let gate_before = gate(&world, 1);
+    assert_eq!(gate_before, Some((6, 2, 2)));
+    world.begin();
+    put(&mut world, (3, 2, 2));
+    assert_eq!(world.exhibits().list().len(), 2);
+    assert!(!world.undo().is_empty());
+    let (name, gate_id) = exhibit_at(&world, 5, 1);
+    assert_eq!(name, "Big");
+    assert_eq!(world.exhibits().list().len(), 1);
+    assert_eq!(gate_id, Some(at(&world, 6, 2, 2)));
+    assert_eq!(region(&world, 1, 1), region(&world, 5, 1));
+    // The exhibit that was cut off is gone with its gate: its piece is a fence again.
+    assert!(!is_gate(&world, at(&world, 3, 2, 4)));
+}

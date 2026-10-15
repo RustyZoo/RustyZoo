@@ -8,7 +8,7 @@
 //! `Common::id`, to keep one). The game's rules (what may be placed where, what it costs) are not
 //! here.
 
-use crate::exhibit::{Exhibits, TankConfig};
+use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::render::corner_elevation;
 use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::zoo::{Entity, Tile, Zoo};
@@ -67,17 +67,89 @@ impl TankKind {
     };
 }
 
-/// What an operation did, to undo it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What an operation did, to undo it. The prices are what the action moved in the cash: an undo
+/// gives them back (placing 8).
+#[derive(Debug, Clone, PartialEq)]
 enum Action {
-    /// An entity was added: its id.
-    Placed(u32),
-    /// An entity was removed from this position.
-    Removed(usize, Entity, Option<Shape>),
-    /// A tile had this state: its index.
-    Tile(usize, Tile),
+    /// An entity was added: its id and the price paid for it.
+    Placed { id: u32, price: f32 },
+    /// An entity was removed from this position of the list, and the refund it gave.
+    Removed {
+        at: usize,
+        entity: Entity,
+        shape: Option<Shape>,
+        price: f32,
+    },
+    /// The entity `id` took the place of `old` in the list (a path of another type, a fence piece
+    /// laid on a held slot) at this price; `exhibit` is the exhibit that had `old` as its gate.
+    Replaced {
+        id: u32,
+        old: Entity,
+        shape: Option<Shape>,
+        exhibit: Option<u32>,
+        price: f32,
+    },
+    /// Tiles had this state (their index first), and the price of the change.
+    Tiles {
+        tiles: Vec<(usize, Tile)>,
+        price: f32,
+    },
     /// A fence piece stood here: its id, position `(x, y, z)` and rotation.
-    Moved(u32, (i32, i32, i32), u32),
+    Moved {
+        id: u32,
+        at: (i32, i32, i32),
+        rotation: u32,
+    },
+    /// The exhibit on this tile had this name and this gate (the tile and side of its piece)
+    /// before a fence cut it in two or opened it (placing 8, kind 11).
+    Exhibit {
+        tile: usize,
+        name: String,
+        gate: Option<(usize, usize)>,
+    },
+}
+
+/// Where an entity stands, as the log tells it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Spot {
+    /// `class/type/subtype`.
+    pub name: String,
+    pub tile: (i32, i32),
+    /// The side of a fence.
+    pub side: Option<u32>,
+    pub id: u32,
+}
+
+/// One action of the undo list that was taken back, with the price it moved.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Step {
+    /// A placed object went; its price comes back (the construction spending goes down).
+    Removed(Spot, f32),
+    /// A removed object came back; its refund is taken back.
+    Back(Spot, f32),
+    /// A piece got its old type back; the price of the change comes back.
+    Retyped(Spot, f32),
+    /// This many tiles got their old state back; the price of the change comes back.
+    Tiles(usize, f32),
+    /// A removed object that could not be put back stays sold with its refund (one of several).
+    Skipped(Spot),
+}
+
+/// What an undo did.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Undone {
+    /// The actions taken back, the last recorded first.
+    pub steps: Vec<Step>,
+    /// A removed object that cannot be put back because something stands in its place: the undo
+    /// stopped there and the rest of the list is kept.
+    pub blocked: Option<Entity>,
+}
+
+impl Undone {
+    /// Whether nothing was taken back.
+    pub fn is_empty(&self) -> bool {
+        self.steps.is_empty() && self.blocked.is_none()
+    }
 }
 
 pub struct World {
@@ -289,70 +361,105 @@ impl World {
             .position(|e| e.common.as_ref().is_some_and(|c| c.id == id))
     }
 
-    /// The next press starts a new undo list: the first operation after it empties the old one.
-    pub fn begin(&mut self) {
-        self.fresh = true;
-    }
-
-    /// Adds an entity with a fresh id and returns the id; `None` for one without a body.
+    /// Adds an entity with a fresh id and returns the id; `None` for one without a body. The
+    /// price paid is told with [`World::priced`].
     pub fn add(&mut self, mut entity: Entity, shape: Option<Shape>) -> Option<u32> {
         let common = entity.common.as_mut()?;
         let id = self.zoo.id_counter.checked_add(1)?;
         (self.zoo.id_counter, common.id) = (id, id);
         self.zoo.entities.push(entity);
         self.shapes.push(shape);
-        self.record(Action::Placed(id));
         self.changed();
+        let mut notes = Vec::new();
         if shape.is_some_and(|s| s.fence) {
             let slot = self.slot_of(self.zoo.entities.len() - 1);
+            let seen = self.events.len();
+            let before = self.keeping(slot);
             self.settle(slot, false);
+            // A piece that cut an exhibit in two records its name and gate, before the piece
+            // itself: the undo takes the piece away first (placing 8, kind 11).
+            let split = |id: u32| {
+                self.events[seen..]
+                    .iter()
+                    .any(|e| matches!(e, Event::Split(s) if *s == id))
+            };
+            notes = before
+                .into_iter()
+                .filter(|(id, _)| split(*id))
+                .map(|(_, note)| note)
+                .collect();
         }
+        notes.into_iter().for_each(|note| self.record(note));
+        self.record(Action::Placed { id, price: 0.0 });
         Some(id)
     }
 
-    /// Removes the entity with this id; whether there was one.
+    /// Removes the entity with this id; whether there was one. A fence piece that opens its line
+    /// records the exhibits it opens, with their names and gates, first.
     pub fn remove(&mut self, id: u32) -> bool {
         let Some(at) = self.find(id) else {
             return false;
         };
         let slot = self.slot_of(at);
+        let fence = self.shapes[at].is_some_and(|s| s.fence);
+        if fence {
+            self.note_opening(slot);
+        }
         let entity = self.zoo.entities.remove(at);
         let shape = self.shapes.remove(at);
-        self.record(Action::Removed(at, entity, shape));
+        self.record(Action::Removed {
+            at,
+            entity,
+            shape,
+            price: 0.0,
+        });
         self.changed();
-        if shape.is_some_and(|s| s.fence) {
+        if fence {
             self.settle(slot, false);
         }
         true
     }
 
-    /// Puts a new entity in place of the one with this id, as one change: an exhibit fence
-    /// replaced by another stays closed and keeps its exhibit, and a gate stays the gate when the
-    /// new type has one. Returns the id of the new entity.
+    /// Puts a new entity in place of the one with this id, as one change, in the same place of
+    /// the entity list. An entity of the same type, and a path of another type (placing 5.3,
+    /// 6.3), keeps the old one's id; a fence piece of another type gets a fresh id. An exhibit
+    /// fence replaced by another stays closed and keeps its exhibit, and a gate stays the gate
+    /// when the new type has one. Returns the id of the new entity.
     pub fn swap(&mut self, id: u32, mut entity: Entity, shape: Option<Shape>) -> Option<u32> {
         let at = self.find(id)?;
         let slot = self.slot_of(at);
         let was = self.shapes[at];
         let door = self.is_door(at);
-        let new = self.zoo.id_counter.checked_add(1)?;
+        let old = &self.zoo.entities[at];
+        let same = (&old.class, &old.type_name, &old.subtype)
+            == (&entity.class, &entity.type_name, &entity.subtype);
+        let keep = same || was.is_some_and(|s| s.kind == Kind::Path);
+        let new = match keep {
+            true => id,
+            false => self.zoo.id_counter.checked_add(1)?,
+        };
         let common = entity.common.as_mut()?;
-        (self.zoo.id_counter, common.id) = (new, new);
+        (self.zoo.id_counter, common.id) = (self.zoo.id_counter.max(new), new);
         let gate = door && shape.is_some_and(|s| s.gated && !s.wall);
         if gate {
             entity.subtype = "g".into();
         }
-        let old = self.zoo.entities.remove(at);
-        self.shapes.remove(at);
-        self.record(Action::Removed(at, old, was));
-        self.zoo.entities.push(entity);
-        self.shapes.push(shape);
-        self.record(Action::Placed(new));
-        for e in self
-            .exhibits
-            .list_mut()
-            .iter_mut()
-            .filter(|e| e.gate == Some(id))
-        {
+        if was.is_some_and(|s| s.fence) && !shape.is_some_and(|s| s.fence) {
+            self.note_opening(slot);
+        }
+        let exhibit = (self.exhibits.list().iter())
+            .find(|e| e.gate == Some(id))
+            .map(|e| e.id);
+        let old = std::mem::replace(&mut self.zoo.entities[at], entity);
+        self.shapes[at] = shape;
+        self.record(Action::Replaced {
+            id: new,
+            old,
+            shape: was,
+            exhibit,
+            price: 0.0,
+        });
+        if let Some(e) = exhibit.and_then(|x| self.exhibits.get_mut(x)) {
             e.gate = gate.then_some(new);
         }
         self.changed();
@@ -376,7 +483,10 @@ impl World {
     fn put_tile(&mut self, t: usize, elevation: i32, shape: u8, terrain: u8, record: bool) {
         let old = self.zoo.tiles[t];
         if record {
-            self.record(Action::Tile(t, old));
+            self.record(Action::Tiles {
+                tiles: vec![(t, old)],
+                price: 0.0,
+            });
         }
         let tile = &mut self.zoo.tiles[t];
         (tile.elevation, tile.shape, tile.terrain) = (elevation, shape, terrain);
@@ -387,45 +497,281 @@ impl World {
         self.changed();
     }
 
-    /// Takes back the operations of the last press, last first; whether there were any.
-    pub fn undo(&mut self) -> bool {
-        let actions = std::mem::take(&mut self.undo);
-        for action in actions.iter().rev() {
-            match action.clone() {
-                Action::Placed(id) => {
+    /// Tells the price of the action recorded last: what an undo gives back (a purchase) or takes
+    /// back (a refund). A call after an edit that records nothing changes nothing.
+    pub fn priced(&mut self, amount: f32) {
+        if let Some(
+            Action::Placed { price, .. }
+            | Action::Removed { price, .. }
+            | Action::Replaced { price, .. }
+            | Action::Tiles { price, .. },
+        ) = self.undo.last_mut()
+        {
+            *price = amount;
+        }
+    }
+
+    /// Whether an undo would do anything: the Undo button is enabled.
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    /// Forgets the undo list.
+    pub fn clear_undo(&mut self) {
+        self.undo.clear();
+    }
+
+    /// An accepted terrain session: the undo list holds only this one action, which puts the
+    /// tiles back as they were and gives the price back (terrain editing 8.4, 8.7).
+    pub fn accepted(&mut self, tiles: Vec<(usize, Tile)>, price: f32) {
+        self.undo.clear();
+        self.undo.push(Action::Tiles { tiles, price });
+    }
+
+    /// Takes back the operations of the last press, last first (placing 8): a placed object goes,
+    /// a removed one comes back in its place of the list, a piece laid on another gets its old
+    /// type back, tiles get their old state, an exhibit its name and gate. The exhibits change as
+    /// for a normal edit, quietly (no name is asked, no gate chosen, the counter stays).
+    ///
+    /// A removed object that cannot be put back is skipped when the list holds several; else the
+    /// undo stops there and the actions not undone yet stay in the list (`blocked`). What was
+    /// undone is told in `steps`, with the prices for the caller to move in the cash.
+    pub fn undo(&mut self) -> Undone {
+        let mut actions = std::mem::take(&mut self.undo);
+        let several = actions
+            .iter()
+            .filter(|a| matches!(a, Action::Removed { .. }))
+            .count()
+            > 1;
+        let mut done = Undone::default();
+        let (mut stale, mut doors) = (false, Vec::new());
+        while let Some(action) = actions.pop() {
+            match action {
+                Action::Placed { id, price } => {
                     if let Some(at) = self.find(id) {
+                        let spot = self.spot(at);
                         self.zoo.entities.remove(at);
                         self.shapes.remove(at);
+                        self.changed();
+                        stale = true;
+                        done.steps.push(Step::Removed(spot, price));
                     }
                 }
-                Action::Removed(at, entity, shape) => {
+                Action::Removed {
+                    at,
+                    entity,
+                    shape,
+                    price,
+                } => {
+                    // It must find its place with the others standing: it is tried last, then
+                    // moved to its old position in the list.
+                    self.zoo.entities.push(entity.clone());
+                    self.shapes.push(shape);
+                    self.changed();
+                    if !self.fits(self.zoo.entities.len() - 1) {
+                        self.zoo.entities.pop();
+                        self.shapes.pop();
+                        self.changed();
+                        if several {
+                            done.steps.push(Step::Skipped(self.spot_of(&entity)));
+                            continue;
+                        }
+                        done.blocked = Some(entity.clone());
+                        actions.push(Action::Removed {
+                            at,
+                            entity,
+                            shape,
+                            price,
+                        });
+                        break;
+                    }
+                    let (entity, shape) = (self.zoo.entities.pop(), self.shapes.pop());
                     let at = at.min(self.zoo.entities.len());
-                    self.zoo.entities.insert(at, entity);
-                    self.shapes.insert(at, shape);
+                    self.zoo.entities.insert(at, entity.expect("just pushed"));
+                    self.shapes.insert(at, shape.flatten());
+                    self.changed();
+                    stale = true;
+                    if self.is_door(at) {
+                        doors.extend(self.zoo.entities[at].common.as_ref().map(|c| c.id));
+                    }
+                    done.steps.push(Step::Back(self.spot(at), price));
                 }
-                Action::Moved(id, (x, y, z), rotation) => {
+                Action::Replaced {
+                    id,
+                    old,
+                    shape,
+                    exhibit,
+                    price,
+                } => {
+                    if let Some(at) = self.find(id) {
+                        let old_id = old.common.as_ref().map_or(id, |c| c.id);
+                        self.zoo.entities[at] = old;
+                        self.shapes[at] = shape;
+                        if let Some(e) = exhibit.and_then(|x| self.exhibits.get_mut(x)) {
+                            e.gate = Some(old_id);
+                        }
+                        self.changed();
+                        stale = true;
+                        done.steps.push(Step::Retyped(self.spot(at), price));
+                    }
+                }
+                Action::Moved { id, at, rotation } => {
                     let c = self
                         .find(id)
-                        .and_then(|at| self.zoo.entities[at].common.as_mut());
+                        .and_then(|i| self.zoo.entities[i].common.as_mut());
                     if let Some(c) = c {
-                        (c.x, c.y, c.z, c.rotation) = (x, y, z, rotation);
+                        (c.x, c.y, c.z, c.rotation) = (at.0, at.1, at.2, rotation);
+                        self.changed();
+                        stale = true;
                     }
                 }
-                Action::Tile(t, tile) => {
-                    let moved = (tile.elevation, tile.shape)
-                        != (self.zoo.tiles[t].elevation, self.zoo.tiles[t].shape);
-                    self.zoo.tiles[t] = tile;
-                    if moved {
-                        self.reheight(t);
+                Action::Tiles { tiles, price } => {
+                    for &(t, tile) in &tiles {
+                        let moved = (tile.elevation, tile.shape)
+                            != (self.zoo.tiles[t].elevation, self.zoo.tiles[t].shape);
+                        self.zoo.tiles[t] = tile;
+                        if moved {
+                            self.reheight(t);
+                        }
+                        self.edges_around(t);
                     }
-                    self.edges_around(t);
+                    self.changed();
+                    stale = true;
+                    done.steps.push(Step::Tiles(tiles.len(), price));
+                }
+                Action::Exhibit { tile, name, gate } => {
+                    if std::mem::take(&mut stale) {
+                        self.settle(None, true);
+                    }
+                    self.restore_exhibit(tile, name, gate);
                 }
             }
         }
+        if stale {
+            self.settle(None, true);
+        }
+        // A piece that was a gate and is not the gate of any exhibit now is a fence again.
+        for id in doors {
+            let Some(at) = self.find(id) else { continue };
+            if !self.exhibits.list().iter().any(|e| e.gate == Some(id)) {
+                self.make_fence(at);
+            }
+        }
+        self.undo = actions;
         self.fresh = false;
-        self.changed();
-        self.settle(None, true);
-        !actions.is_empty()
+        self.dirty = true;
+        done
+    }
+
+    /// Whether the entity at `at` found its place on the map (or has none to find).
+    fn fits(&self, at: usize) -> bool {
+        (self.owner.iter().position(|&e| e == at)).is_none_or(|o| self.scene.is_placed(o))
+    }
+
+    /// Where the entity at `at` stands.
+    fn spot(&self, at: usize) -> Spot {
+        let mut spot = self.spot_of(&self.zoo.entities[at]);
+        if let Some((t, d)) = self.slot(at) {
+            let width = self.zoo.width as usize;
+            spot.tile = ((t % width) as i32, (t / width) as i32);
+            spot.side = Some(d as u32);
+        }
+        spot
+    }
+
+    /// Where an entity stands by its own position (a fence by its side).
+    pub fn spot_of(&self, e: &Entity) -> Spot {
+        let c = e.common.as_ref();
+        let fence = matches!(e.class.as_str(), "fences" | "tankwall");
+        Spot {
+            name: format!("{}/{}/{}", e.class, e.type_name, e.subtype),
+            tile: c.map_or((0, 0), |c| (c.x.div_euclid(64), c.y.div_euclid(64))),
+            side: c.filter(|_| fence).map(|c| c.rotation % 8),
+            id: c.map_or(0, |c| c.id),
+        }
+    }
+
+    /// The exhibits on the two tiles of a slot, with the id of each: the action that gives one
+    /// back its name and gate (placing 8, kind 11).
+    fn keeping(&self, slot: Option<(usize, usize)>) -> Vec<(u32, Action)> {
+        let Some((a, d)) = slot else {
+            return Vec::new();
+        };
+        let mut found: Vec<(u32, Action)> = Vec::new();
+        for t in [Some(a), self.neighbour(a, d)].into_iter().flatten() {
+            let Some(e) = (self.exhibits.region(t)).and_then(|r| self.exhibits.get(r)) else {
+                continue;
+            };
+            if found.iter().all(|(id, _)| *id != e.id) {
+                found.push((
+                    e.id,
+                    Action::Exhibit {
+                        tile: t,
+                        name: e.name.clone(),
+                        gate: self.gate_slot(e.id),
+                    },
+                ));
+            }
+        }
+        found
+    }
+
+    /// Records the exhibits that the removal of the fence piece on this slot opens to another
+    /// region (the line is not held by a piece of the other tile too), before the removal.
+    fn note_opening(&mut self, slot: Option<(usize, usize)>) {
+        let Some((a, d)) = slot else { return };
+        let Some(b) = self.neighbour(a, d) else {
+            return;
+        };
+        let held = self
+            .edge(b, (d + 4) % 8)
+            .is_some_and(|o| self.shapes[o].is_some_and(|s| s.fence));
+        if held || self.exhibits.region(a) == self.exhibits.region(b) {
+            return;
+        }
+        for (_, note) in self.keeping(slot) {
+            self.record(note);
+        }
+    }
+
+    /// Gives the exhibit on tile `tile` its name, and its gate on the line of the recorded slot
+    /// (the piece there, on either tile's slot); the gate it had becomes a fence again.
+    fn restore_exhibit(&mut self, tile: usize, name: String, gate: Option<(usize, usize)>) {
+        let Some(id) = self
+            .exhibits
+            .region(tile)
+            .filter(|&r| r != GROUNDS && r != EXTERIOR)
+        else {
+            return;
+        };
+        let piece = gate.and_then(|(t, d)| {
+            let across = self.neighbour(t, d).and_then(|n| self.edge(n, (d + 4) % 8));
+            let at = self.edge(t, d).or(across)?;
+            self.shapes[at].is_some_and(|s| s.fence).then_some(at)
+        });
+        let current = self.exhibits.get(id).and_then(|e| e.gate);
+        let new = piece
+            .filter(|&at| self.make_door(at))
+            .and_then(|at| self.zoo.entities[at].common.as_ref().map(|c| c.id));
+        if let Some(old) = current
+            .filter(|&g| Some(g) != new)
+            .and_then(|g| self.find(g))
+        {
+            self.make_fence(old);
+        }
+        if let Some(e) = self.exhibits.get_mut(id) {
+            e.name = name;
+            e.gate = new;
+        }
+        self.dirty = true;
+        if new.is_some() {
+            self.events.push(Event::Gate(id));
+        }
+    }
+
+    /// The next press starts a new undo list: the first operation after it empties the old one.
+    pub fn begin(&mut self) {
+        self.fresh = true;
     }
 
     /// Whether anything changed since the last call, and clears the mark: the picture is due.

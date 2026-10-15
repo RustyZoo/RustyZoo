@@ -3,7 +3,7 @@
 //! answers when something has to go.
 
 use super::exhibit::Pair;
-use super::{Action, Event, World};
+use super::{Action, Event, Undone, World};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank, TankConfig};
 use crate::render::order::{Kind, ground_height};
 use crate::terrain::shape::LIMIT;
@@ -121,7 +121,11 @@ impl World {
         };
         let old = (c.id, (c.x, c.y, c.z), c.rotation);
         (c.x, c.y, c.z, c.rotation) = (x, y, z, d as u32);
-        self.record(Action::Moved(old.0, old.1, old.2));
+        self.record(Action::Moved {
+            id: old.0,
+            at: old.1,
+            rotation: old.2,
+        });
         self.changed();
     }
 
@@ -160,7 +164,7 @@ impl World {
         self.zoo.id_counter = id;
         self.zoo.entities.push(copy);
         self.shapes.push(self.shapes[wall]);
-        self.record(Action::Placed(id));
+        self.record(Action::Placed { id, price: 0.0 });
         self.changed();
         Some(id)
     }
@@ -331,25 +335,10 @@ impl World {
     }
 
     /// The player said No: the operation that made tank `id` is undone, its number given back.
-    pub fn decline_tank(&mut self, id: u32) {
+    pub fn decline_tank(&mut self, id: u32) -> Undone {
         self.waiting.retain(|w| w.0 != id);
-        self.undo();
+        let done = self.undo();
         self.exhibits.counter = self.exhibits.counter.saturating_sub(1).max(1);
-    }
-
-    /// The entities the last operation placed and removed, for its money to go back when it is
-    /// undone.
-    pub fn operation(&self) -> (Vec<crate::zoo::Entity>, Vec<crate::zoo::Entity>) {
-        let (mut placed, mut removed) = (Vec::new(), Vec::new());
-        for action in &self.undo {
-            match action {
-                Action::Placed(id) => {
-                    placed.extend(self.find(*id).map(|at| self.zoo.entities[at].clone()))
-                }
-                Action::Removed(_, entity, _) => removed.push(entity.clone()),
-                _ => {}
-            }
-        }
-        (placed, removed)
+        done
     }
 }

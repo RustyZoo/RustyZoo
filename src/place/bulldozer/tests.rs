@@ -304,7 +304,7 @@ fn removing_books_the_refund_and_the_gate_moves_to_the_piece_across() {
         w.exhibits().get(1).and_then(|e| e.gate),
         w.zoo.entities[across].common.as_ref().map(|c| c.id)
     );
-    assert!(w.undo());
+    assert!(!w.undo().is_empty());
     assert!(w.find(id).is_some());
     // An unknown id removes nothing and refunds nothing.
     assert!(remove(&mut w, &mut money, &cat, 9999).is_none());

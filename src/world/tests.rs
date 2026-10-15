@@ -241,24 +241,179 @@ fn undo_takes_back_the_last_press_and_a_new_press_forgets_the_old_one() {
     assert!(world.remove(first));
     assert!(world.set_tile(2, 2, 3, 0x05, 4));
     assert_eq!(a, Some(101));
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     // The id counter is not given back, everything else is.
     assert_eq!(world.zoo.entities, before.entities);
     assert_eq!(world.zoo.tiles, before.tiles);
     assert_eq!(world.edge(world.tile_index(4, 0).unwrap(), 2), Some(1));
-    assert!(!world.undo(), "once");
+    assert!(world.undo().is_empty(), "once");
     // The first operation after a new press empties the list; a press alone keeps it.
     world.add(entity("path", 32, 32, 0), shape(&entity("path", 0, 0, 0)));
     world.begin();
     world.begin();
     world.set_tile(0, 0, 1, 0, 0);
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     assert_eq!(world.zoo.tiles[0].elevation, 0);
     assert_eq!(
         world.path(0),
         world.find(102),
         "the path of the old press stays"
     );
+}
+
+/// An entity of a type, for the tests of replacing.
+fn typed(class: &str, name: &str, x: i32, y: i32, rotation: u32) -> Entity {
+    let mut e = entity(class, x, y, rotation);
+    e.type_name = name.into();
+    e
+}
+
+#[test]
+fn an_undo_hands_back_the_prices_the_actions_moved_last_first() {
+    let mut world = walled(&[]);
+    world.begin();
+    let path = world.add(entity("path", 32, 32, 0), shape(&entity("path", 0, 0, 0)));
+    world.priced(10.0);
+    let tent = world.add(
+        entity("tent", 6 * 64, 6 * 64 + 32, 0),
+        shape(&entity("tent", 0, 0, 0)),
+    );
+    world.priced(40.0);
+    assert!(world.remove(tent.unwrap()));
+    world.priced(32.0);
+    assert!(world.set_tile(2, 2, 3, 0x05, 4));
+    world.priced(6.0);
+    assert!(world.can_undo());
+    let done = world.undo();
+    assert_eq!(done.blocked, None);
+    let steps: Vec<String> = done
+        .steps
+        .iter()
+        .map(|s| match s {
+            Step::Tiles(n, p) => format!("tiles {n} {p}"),
+            Step::Back(spot, p) => format!("back {} {p}", spot.id),
+            Step::Removed(spot, p) => format!("removed {} {p}", spot.id),
+            other => format!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        steps,
+        [
+            "tiles 1 6",
+            "back 102 32",
+            "removed 102 40",
+            "removed 101 10"
+        ]
+    );
+    assert_eq!(path, Some(101));
+    assert!(!world.can_undo(), "the list is empty");
+    assert_eq!(world.zoo.entities.len(), 9, "the wall and the entrance");
+}
+
+#[test]
+fn a_piece_of_the_same_type_and_a_path_of_another_type_keep_their_id_and_place() {
+    let mut world = walled(&[]);
+    let path = |name: &str| typed("path", name, 32, 32, 0);
+    let a = world.add(path("dirt"), shape(&path("dirt"))).unwrap();
+    let other = world.add(entity("tent", 6 * 64, 6 * 64 + 32, 0), Some(NOTHING));
+    world.begin();
+    // A path of another type takes the new type in place: same id, same place in the list.
+    let at = world.find(a).unwrap();
+    assert_eq!(world.swap(a, path("stone"), shape(&path("stone"))), Some(a));
+    world.priced(20.0);
+    assert_eq!(world.find(a), Some(at));
+    assert_eq!(world.zoo.entities[at].type_name, "stone");
+    assert_eq!(world.zoo.id_counter, 102, "no id was used");
+    assert_eq!(world.path(0), Some(at));
+    let done = world.undo();
+    assert!(matches!(done.steps[..], [Step::Retyped(_, p)] if p == 20.0));
+    assert_eq!(world.zoo.entities[at].type_name, "dirt");
+    assert_eq!(world.find(other.unwrap()), Some(at + 1));
+    // A fence of the same type keeps its entity, made healthy; another type takes the old one's
+    // place of the list under a fresh id; the undo gives each its old state back.
+    let wall = |name: &str, life: u32| {
+        let mut e = typed("plain", name, 2 * 64 + 32, 64, 0);
+        e.common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
+            strength: 300,
+            life,
+            timers: [0; 2],
+            portal: false,
+        });
+        e
+    };
+    let f = world.add(wall("iron", 3), Some(shape(&wall("iron", 3)).unwrap()));
+    let f = f.unwrap();
+    world.begin();
+    let at = world.find(f).unwrap();
+    let new = world.swap(f, wall("iron", 10), shape(&wall("iron", 10)));
+    assert_eq!(new, Some(f));
+    let life = |w: &World, at: usize| {
+        w.zoo.entities[at]
+            .common
+            .as_ref()
+            .unwrap()
+            .fence
+            .unwrap()
+            .life
+    };
+    assert_eq!((world.find(f), life(&world, at)), (Some(at), 10));
+    assert!(!world.undo().is_empty());
+    assert_eq!((world.find(f), life(&world, at)), (Some(at), 3));
+    let new = world
+        .swap(f, wall("steel", 10), shape(&wall("steel", 10)))
+        .unwrap();
+    assert_ne!(new, f);
+    assert_eq!((world.find(new), world.find(f)), (Some(at), None));
+    assert_eq!(world.edge(world.tile_index(2, 1).unwrap(), 0), Some(at));
+    assert!(!world.undo().is_empty());
+    assert_eq!((world.find(f), world.find(new)), (Some(at), None));
+    assert_eq!(world.zoo.entities[at].type_name, "iron");
+}
+
+/// Puts an entity in the way, as something the undo list does not know.
+fn block(world: &mut World, e: Entity) {
+    let shape = shape(&e);
+    world.zoo.entities.push(e);
+    world.shapes.push(shape);
+    world.changed();
+}
+
+#[test]
+fn a_removed_object_that_cannot_be_put_back_stops_the_undo_or_is_passed_over() {
+    let tent = |tx: i32| entity("tent", tx * 64, 6 * 64 + 32, 0);
+    let mut world = walled(&[]);
+    let (a, b) = (
+        world.add(tent(2), Some(NOTHING)).unwrap(),
+        world.add(tent(5), Some(NOTHING)).unwrap(),
+    );
+    world.begin();
+    assert!(world.remove(a));
+    world.priced(5.0);
+    // One removed object that does not fit: the undo stops, the list is kept for a later try.
+    block(&mut world, tent(2));
+    let done = world.undo();
+    assert!(done.steps.is_empty());
+    assert_eq!(done.blocked.map(|e| e.class), Some("tent".to_string()));
+    assert!(world.can_undo());
+    assert_eq!(world.find(a), None);
+    // The obstacle goes: the next try puts it back.
+    let last = world.zoo.entities.len() - 1;
+    world.zoo.entities.remove(last);
+    world.shapes.remove(last);
+    world.changed();
+    let done = world.undo();
+    assert!(matches!(done.steps[..], [Step::Back(_, p)] if p == 5.0));
+    assert!(!world.can_undo());
+    // Two removed objects: the one that does not fit is passed over, the other comes back.
+    world.begin();
+    assert!(world.remove(a) && world.remove(b));
+    world.priced(7.0);
+    block(&mut world, tent(5));
+    let done = world.undo();
+    assert_eq!(done.blocked, None);
+    assert!(matches!(done.steps[..], [Step::Skipped(_), Step::Back(_, p)] if p == 0.0));
+    assert!(world.find(a).is_some() && world.find(b).is_none());
+    assert!(!world.can_undo(), "the list is emptied as usual");
 }
 
 #[test]

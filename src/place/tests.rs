@@ -699,7 +699,7 @@ fn a_valid_place_gets_the_object_and_takes_its_price_as_construction() {
     );
     assert_eq!((money.cash, w.zoo.entities.len()), (49_975.0, 1));
     // Undo takes it back with the full price.
-    assert!(w.undo());
+    assert!(!w.undo().is_empty());
     assert!(w.zoo.entities.is_empty());
 }
 
@@ -1014,7 +1014,7 @@ fn a_path_on_water_needs_dirt_to_be_painted_and_costs_the_paint_too() {
     assert_eq!(w.zoo.tiles[3].terrain, 3);
     assert!(w.path(3).is_some());
     // One undo gives the water back and takes the path away.
-    assert!(w.undo());
+    assert!(!w.undo().is_empty());
     assert_eq!((w.zoo.tiles[3].terrain, w.path(3)), (1, None));
 }
 
@@ -1421,12 +1421,13 @@ fn a_fence_is_placed_healthy_replaces_the_old_piece_and_is_paid_once() {
         (2, Some((300, 10)))
     );
     // The slot is held now; the same type above its decayed life replaces it for nothing, and
-    // the old piece is gone (the new one has the next id).
+    // the old piece stays (same id, same place in the entity list), healthy again.
     let again = fence_at(&w, &cat, true, 11, 3, 2, 2);
     assert_eq!((again.verdict, again.amount()), (Verdict::Overwrite, 0));
-    assert_eq!(go(&mut w, &mut money, &again), Outcome::Placed(102));
+    assert_eq!(go(&mut w, &mut money, &again), Outcome::Placed(101));
     assert_eq!((money.cash, w.zoo.entities.len()), (175.0, 1));
-    assert_eq!(w.zoo.entities[0].common.as_ref().unwrap().id, 102);
+    let c = w.zoo.entities[0].common.as_ref().unwrap();
+    assert_eq!((c.id, c.fence.map(|f| f.life)), (101, Some(10)));
     // A fence the cash cannot cover is refused with the message of insufficient funds.
     let mut poor = zoo_money(100.0);
     let other = fence_at(&w, &cat, true, 11, 3, 2, 0);
