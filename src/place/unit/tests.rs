@@ -85,6 +85,7 @@ fn entity_at(class: &str, name: &str, subtype: &str, x: i32, y: i32, rotation: u
             colors: Vec::new(),
             fence,
             movement_mode: 0,
+            animal: None,
         }),
     }
 }
