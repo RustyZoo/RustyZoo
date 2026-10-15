@@ -370,6 +370,23 @@ fn window_point(c: &Camera, zoo: &Zoo, tx: u32, ty: u32) -> (i32, i32) {
 }
 
 #[test]
+fn centring_puts_the_middle_of_a_tile_at_the_centre_of_the_view() {
+    let hill = hill();
+    for (zoom, rotation) in [(0, 0), (2, 1), (-2, 3)] {
+        let mut c = camera(zoom, rotation, (0, 0), 1, BEACH);
+        c.centre_on(&hill, 3, 2);
+        assert_eq!(
+            window_point(&c, &hill, 3, 2),
+            (BEACH.0 / 2, BEACH.1 / 2),
+            "zoom {zoom} rotation {rotation}"
+        );
+    }
+    // A tile off the map is the height 0 and never panics.
+    let mut c = camera(0, 0, (0, 0), 1, BEACH);
+    c.centre_on(&hill, u32::MAX, u32::MAX);
+}
+
+#[test]
 fn a_window_point_picks_the_tile_it_was_projected_from_at_every_rotation_and_zoom() {
     for zoo in [map(12, 12, 0), map(12, 12, 3), hill()] {
         for rotation in 0..4 {

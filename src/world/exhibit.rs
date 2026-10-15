@@ -10,6 +10,7 @@ use super::World;
 use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part, Tank};
 use crate::path::{self, Mover};
 use crate::place::path_shape;
+use crate::timing::Date;
 use std::collections::{HashMap, HashSet};
 
 /// The message that the exhibit is inaccessible to the staff.
@@ -205,6 +206,13 @@ impl World {
     pub fn rename(&mut self, id: u32, name: String) {
         if let Some(e) = self.exhibits.get_mut(id) {
             e.name = name;
+        }
+    }
+
+    /// Records that exhibit `id` was made on this date.
+    pub fn set_created(&mut self, id: u32, date: Date) {
+        if let Some(e) = self.exhibits.get_mut(id) {
+            e.stats.created = Some(date);
         }
     }
 

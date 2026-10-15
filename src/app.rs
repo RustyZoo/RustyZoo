@@ -25,6 +25,7 @@ use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
+use crate::panel::exhibit;
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Staged, check_size};
 use crate::sim::Sim;
@@ -310,6 +311,8 @@ struct Game {
     refused: Option<u32>,
     /// The pieces of the drag after the one that closed an exhibit, bought once it is named.
     rest: Vec<Pending>,
+    /// The exhibit panel and the recommendations plaque.
+    panel: crate::panel::exhibit::Panel,
 }
 
 impl Game {
@@ -379,6 +382,8 @@ pub struct App<'a> {
     /// What the exhibits did in the last pass, and the messages about gates that wait to be shown.
     exhibit_lines: Vec<String>,
     exhibit_messages: Vec<(u32, i32)>,
+    /// What the information panels did in the last pass.
+    panel_lines: Vec<String>,
     /// What the terrain tool did in the last pass.
     terrain_lines: Vec<String>,
     /// What the cash and the accounts did and has not been logged yet, and what they did in the
@@ -505,6 +510,7 @@ impl<'a> App<'a> {
             world_lines: Vec::new(),
             exhibit_lines: Vec::new(),
             exhibit_messages: Vec::new(),
+            panel_lines: Vec::new(),
             terrain_lines: Vec::new(),
             money_events: Vec::new(),
             money_lines: Vec::new(),
@@ -593,6 +599,7 @@ impl<'a> App<'a> {
             naming_open: false,
             refused: None,
             rest: Vec::new(),
+            panel: Default::default(),
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -644,6 +651,7 @@ impl<'a> App<'a> {
         self.menu_lines.clear();
         (self.tool_lines, self.world_lines) = (Vec::new(), Vec::new());
         self.exhibit_lines = Vec::new();
+        self.panel_lines = Vec::new();
         self.terrain_lines = Vec::new();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
@@ -726,6 +734,7 @@ impl<'a> App<'a> {
             }
         }
         self.undo_button();
+        self.panel_pass(now);
         self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.sim_lines = self.sim.take_lines();
@@ -1114,6 +1123,9 @@ impl<'a> App<'a> {
         if (game.build.tool().and_then(|t| cat.types.get(t))).is_some_and(place::unit::is_animal) {
             return self.adopt();
         }
+        if game.build.tool().is_none() && game.terrain.mode().is_none() {
+            return self.select();
+        }
         let dragging = game.build.dragging();
         game.build.end_drag();
         let run = std::mem::take(&mut game.run);
@@ -1247,6 +1259,11 @@ impl<'a> App<'a> {
                     }
                     self.requested();
                 }
+                Action::Row(exhibit::LIST, row) if self.game.is_some() => self.panel_row(row),
+                Action::Row(exhibit::ANIMALS, row) if self.game.is_some() => {
+                    self.panel_animal(row);
+                }
+                Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
                 _ => {}
             }
         }
@@ -1685,6 +1702,7 @@ impl<'a> App<'a> {
                 .iter()
                 .map(|e| format!("{lead} exhibit {e}")),
         );
+        lines.extend(self.panel_lines.iter().map(|e| format!("{lead} panel {e}")));
         lines.extend(
             self.terrain_lines
                 .iter()
@@ -1757,6 +1775,7 @@ mod adopt;
 mod bulldozer;
 mod exhibits;
 mod gates;
+mod panel;
 mod terrain;
 mod undo;
 

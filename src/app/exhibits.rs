@@ -33,7 +33,7 @@ fn name_limit(ini: &[u8]) -> i32 {
 }
 
 /// Whether a name holds a letter, digit or punctuation mark (exhibits and money 3.6).
-fn visible(bytes: &[u8]) -> bool {
+pub(super) fn visible(bytes: &[u8]) -> bool {
     bytes.iter().any(u8::is_ascii_graphic)
 }
 

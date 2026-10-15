@@ -184,18 +184,48 @@ impl Interface {
     /// Gives a list box its rows. The first row is shown and none is selected. `false` if the
     /// element is not a list box.
     pub fn set_rows(&mut self, id: i32, rows: Vec<Row>) -> bool {
+        self.put_rows(id, rows, false)
+    }
+
+    /// Like [`Interface::set_rows`], but the first row shown stays where it was, as far as the
+    /// new rows allow.
+    pub fn refill_rows(&mut self, id: i32, rows: Vec<Row>) -> bool {
+        self.put_rows(id, rows, true)
+    }
+
+    fn put_rows(&mut self, id: i32, rows: Vec<Row>, keep_top: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
         let Kind::ListBox(list) = &mut self.tree.elements[i].kind else {
             return false;
         };
+        let top = if keep_top {
+            list.rows.top.min(rows.len().saturating_sub(1))
+        } else {
+            0
+        };
         list.rows = crate::ui::widgets::Rows {
             rows,
+            top,
             ..Default::default()
         };
         self.flag(i, DIRTY, true);
         self.sync_owner(i);
+        true
+    }
+
+    /// Gives the rows of a list box the colours of their text (none: the list's own), the first
+    /// for the first row; `false` if the element is not a list box.
+    pub fn set_row_colors(&mut self, id: i32, colors: Vec<Option<crate::ui::layout::Rgb>>) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let Kind::ListBox(list) = &mut self.tree.elements[i].kind else {
+            return false;
+        };
+        list.rows.colors = colors;
+        self.flag(i, DIRTY, true);
         true
     }
 

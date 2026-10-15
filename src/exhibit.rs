@@ -5,6 +5,7 @@
 //! every other region is an exhibit, from one tile up. The map edge closes a region like a fence.
 
 use crate::config::{Config, to_int};
+use crate::timing::Date;
 use crate::vfs::Vfs;
 use crate::world::World;
 
@@ -37,6 +38,22 @@ pub struct Exhibit {
     pub amphibious: Vec<u32>,
     /// Its records, species list and timers (habitat rating).
     pub rating: rating::State,
+    /// What its panel shows besides the rating.
+    pub stats: Stats,
+}
+
+/// The statistics of an exhibit (habitat rating 13.2 and 13.3). The simulation writes them: the
+/// guests' viewing the popularity and the donations, the month change the shift of the triples.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Stats {
+    /// The calendar date it was made; none for an exhibit found in a map, whose stored date is
+    /// not read yet.
+    pub created: Option<Date>,
+    /// 0 to 100.
+    pub popularity: u32,
+    /// The donations and the upkeep: last month, this month, in total.
+    pub donations: [f32; 3],
+    pub upkeep: [f32; 3],
 }
 
 /// The state of a tank exhibit (exhibits and money 3.9, 4.7).
@@ -370,6 +387,7 @@ impl Exhibits {
             tank: None,
             amphibious: Vec::new(),
             rating: rating::State::new(),
+            stats: Stats::default(),
         });
         self.assign(id, part);
         id
