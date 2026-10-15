@@ -290,7 +290,7 @@ fn the_credits_pages_replace_one_another_on_the_interface_clock() {
     let install = install("menu-credits");
     let mut ui = interface(&install);
     let mut menu = menu("", &install, None, 0);
-    // Three pages of 1 s, the last one without a layout; the update is 400 ms.
+    // Three pages of 1 s, the last one without a layout; the update is every 400 ms.
     menu.set_credits(vec![250, 251, 999], 1);
     menu.show(&mut ui);
     assert!(menu.update(&mut ui, 400).is_empty(), "nothing is shown yet");
@@ -303,24 +303,28 @@ fn the_credits_pages_replace_one_another_on_the_interface_clock() {
         (vec!["credits page 1 layout 250".to_string()], false)
     );
     assert!(shown(&ui, 250) && !shown(&ui, 251), "the first page only");
-    // 400, 800 ms: the same page; 1200 ms: the second.
-    assert!(menu.update(&mut ui, 400).is_empty() && menu.update(&mut ui, 400).is_empty());
-    assert_eq!(menu.update(&mut ui, 400), ["credits page 2 layout 251"]);
+    // The first update (800) only sets the deadline, 1800; 1200 and 1600 are before it, 2000 is after.
+    for now in [800, 1200, 1600] {
+        assert!(menu.update(&mut ui, now).is_empty());
+    }
+    assert_eq!(menu.update(&mut ui, 2000), ["credits page 2 layout 251"]);
     assert!(!shown(&ui, 250) && shown(&ui, 251));
-    // A page that has no layout keeps its time and shows nothing.
-    for _ in 0..2 {
-        assert!(menu.update(&mut ui, 400).is_empty());
+    // The update that changed the page set the next deadline, 3000: an update at it changes.
+    for now in [2400, 2800] {
+        assert!(menu.update(&mut ui, now).is_empty());
     }
     assert_eq!(
-        menu.update(&mut ui, 400),
+        menu.update(&mut ui, 3000),
         ["credits page 3 layout 999 (no layout)"]
     );
     assert!(!shown(&ui, 250) && !shown(&ui, 251) && shown(&ui, 40));
-    // After the last page the credits hide themselves.
-    (0..2).for_each(|_| _ = menu.update(&mut ui, 400));
-    assert_eq!(menu.update(&mut ui, 400), ["credits end"]);
+    // After the last page, at its deadline (4000), the credits hide themselves.
+    for now in [3400, 3800] {
+        assert!(menu.update(&mut ui, now).is_empty());
+    }
+    assert_eq!(menu.update(&mut ui, 4000), ["credits end"]);
     assert!(!shown(&ui, 40));
-    assert!(menu.update(&mut ui, 400).is_empty());
+    assert!(menu.update(&mut ui, 5200).is_empty());
 }
 
 #[test]
@@ -339,8 +343,8 @@ fn exit_closes_the_credits_at_once_and_they_start_again_from_the_first_page() {
     ui.mouse(crate::app::Mouse::Down);
     ui.mouse(crate::app::Mouse::Up);
     assert!(!shown(&ui, 40));
-    assert_eq!(menu.update(&mut ui, 66), ["credits closed"]);
-    assert!(menu.update(&mut ui, 66).is_empty());
+    assert_eq!(menu.update(&mut ui, 132), ["credits closed"]);
+    assert!(menu.update(&mut ui, 198).is_empty());
     ui.show(40);
     assert_eq!(
         menu.selected(&mut ui, 7115).0,
@@ -350,11 +354,12 @@ fn exit_closes_the_credits_at_once_and_they_start_again_from_the_first_page() {
     let mut none = self::menu("", &install, None, 0);
     ui.show(40);
     assert!(none.selected(&mut ui, 7115).0.is_empty());
-    assert!(none.update(&mut ui, 66).is_empty());
-    // A delay of 0 changes the page at every update.
+    assert!(none.update(&mut ui, 264).is_empty());
+    // A delay of 0: the first update sets the deadline, the second changes the page.
     let mut quick = self::menu("", &install, None, 0);
     quick.set_credits(vec![250, 251], 0);
     quick.selected(&mut ui, 7115);
+    assert!(quick.update(&mut ui, 1).is_empty());
     assert_eq!(quick.update(&mut ui, 1), ["credits page 2 layout 251"]);
     assert_eq!(quick.update(&mut ui, 1), ["credits end"]);
 }

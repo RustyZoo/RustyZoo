@@ -415,7 +415,7 @@ impl<'a> App<'a> {
             if let Some(ui) = &mut self.ui {
                 ui.update(now);
                 if let Some(menu) = &mut self.menu {
-                    self.menu_events.extend(menu.update(ui, period));
+                    self.menu_events.extend(menu.update(ui, now));
                 }
                 self.ui_events.extend(ui.take_events());
                 self.ui_sounds.extend(ui.take_sounds());
