@@ -267,6 +267,8 @@ struct Game {
     money: Money,
     told: Option<i64>,
     bar: Option<(String, Tone)>,
+    /// The three bars of the status bar as last written.
+    bars: Option<[i32; 3]>,
     /// What the Finances table of the zoo status window holds.
     finances: Finances,
     /// The building panels and the tool they choose.
@@ -452,8 +454,11 @@ enum Asked {
 /// buttons of the options panel that leave the game.
 const QUESTION: i32 = 45000;
 const MAIN_PANEL: i32 = 2;
-/// The cash on the status bar.
+/// The cash on the status bar, and its bars of animal happiness, guest happiness and zoo rating.
 const STATUS_MONEY: i32 = 1016;
+const STATUS_ANIMALS: i32 = 1011;
+const STATUS_GUESTS: i32 = 1013;
+const STATUS_ZOO: i32 = 1015;
 const OPTIONS_PANEL: i32 = 5;
 const MAIN_MENU_BUTTON: i32 = 1503;
 const EXIT_BUTTON: i32 = 1504;
@@ -501,7 +506,11 @@ impl<'a> App<'a> {
         settings: Settings,
     ) -> Result<App<'a>, RenderError> {
         check_size(&[0, 0, i64::from(size.0), i64::from(size.1)])?;
-        let sim = Sim::new(renderer.vfs().ini());
+        let mut sim = Sim::new(renderer.vfs().ini());
+        match renderer.vfs().read("economy.cfg") {
+            Ok(economy) => sim.set_economy(&economy),
+            Err(why) => eprintln!("rustyzoo: warning: economy.cfg: {why}; built-in settings used"),
+        }
         Ok(App {
             renderer,
             game: None,
@@ -594,6 +603,7 @@ impl<'a> App<'a> {
             money,
             told: None,
             bar: None,
+            bars: None,
             finances: Finances::default(),
             build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
             pending: None,
@@ -740,15 +750,15 @@ impl<'a> App<'a> {
                 vfs: self.renderer.vfs(),
                 timings: &self.timings,
             };
-            let report = self.sim.step_with(
+            let report = self.sim.step_game(
                 &data,
                 self.renderer.catalogue(),
                 &mut game.world,
+                &mut game.money,
                 step,
                 |_, _, _| {},
             );
             if report.month_end {
-                game.money.month_change();
                 self.money_events.push(format!(
                     "month {} year {}",
                     game.money.month, game.money.year
@@ -757,6 +767,7 @@ impl<'a> App<'a> {
             if report.water_moved {
                 self.exhibits_told();
             }
+            self.status_told(report.bars);
         }
         self.undo_button();
         self.panel_pass(now);
@@ -774,6 +785,36 @@ impl<'a> App<'a> {
             .map(|(id, sound)| format!("sound {id} {sound}"));
         self.unit_lines.extend(sounds);
         self.drew.then_some(&self.frame)
+    }
+
+    /// Writes the three bars when they are due and when they changed, and shows the zoo status'
+    /// messages in the message line; a donation names its amount.
+    fn status_told(&mut self, bars: Option<[i32; 3]>) {
+        let messages = self.sim.take_messages();
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
+        if let Some(bars) = bars.filter(|b| game.bars != Some(*b)) {
+            game.bars = Some(bars);
+            for (id, value) in [STATUS_ANIMALS, STATUS_GUESTS, STATUS_ZOO]
+                .into_iter()
+                .zip(bars)
+            {
+                ui.set_status(id, value);
+            }
+            self.money_events
+                .push(format!("bars {} {} {}", bars[0], bars[1], bars[2]));
+        }
+        for (id, amount) in messages {
+            let text = ui.string(id as i32);
+            let text = match amount {
+                Some(units) => {
+                    text.replacen("%s", &Symbol::new(ui.string(SYMBOL)).text(units.into()), 1)
+                }
+                None => text,
+            };
+            ui.message(&to_cp1252(&text));
+        }
     }
 
     /// Takes the animals' log lines of the last pass and shows their messages, with the animal's
@@ -1381,6 +1422,11 @@ impl<'a> App<'a> {
             .push(format!("game start {} {}", start.label, start.path));
         if let Some(game) = &mut self.game {
             game.money.start(start.cash, start.reset);
+            if start.forget_last {
+                // A scenario or freeform map is a new game: the set-up rating check.
+                let cat = self.renderer.catalogue();
+                self.sim.new_game(&game.world, cat, &mut game.money);
+            }
             for (name, amount) in [("set", start.cash.set), ("add", start.cash.add)] {
                 if let Some(amount) = amount {
                     self.money_events.push(format!("{name} {amount}"));

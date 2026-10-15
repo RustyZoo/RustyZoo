@@ -17,6 +17,15 @@ pub const ANIMAL_REFUND: usize = 10;
 pub const KEEPER_WAGES: usize = 11;
 pub const GUIDE_WAGES: usize = 12;
 pub const MAINT_WAGES: usize = 13;
+/// The statistics of the zoo status (zoo status 13) and the endowment's counts and income.
+pub const ZOO_VALUE: usize = 15;
+pub const RATING: usize = 16;
+pub const ANIMAL_HAPPINESS: usize = 17;
+pub const GUEST_HAPPINESS: usize = 18;
+pub const ENDOWMENT: usize = 20;
+pub const MEMBERS: usize = 21;
+pub const MEMBERS_LEFT: usize = 23;
+pub const GUESTS: usize = 25;
 /// Income minus expenses.
 pub const NET: usize = 14;
 /// Admissions since the start, copied at each month change.
@@ -212,6 +221,23 @@ impl Money {
         if category < CATEGORIES && amount.is_finite() {
             self.cash -= amount;
             self.book(category, -amount);
+        }
+    }
+
+    /// Sets a statistic of the current month, the current year and the total.
+    pub fn set_statistic(&mut self, category: usize, value: f32) {
+        if category < CATEGORIES && value.is_finite() {
+            let (m, y) = (self.month_column(), self.year_column());
+            self.monthly[category][m] = value;
+            self.yearly[category][y] = value;
+            self.total[category] = value;
+        }
+    }
+
+    /// Adds to a count (a category that is neither income nor expense), booked in the three tables.
+    pub fn add_count(&mut self, category: usize, amount: f32) {
+        if category < CATEGORIES && kind(category) == Kind::Other && amount.is_finite() {
+            self.book(category, amount);
         }
     }
 

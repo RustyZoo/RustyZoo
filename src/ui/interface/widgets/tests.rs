@@ -888,6 +888,50 @@ fn an_image_set_draws_the_picture_the_game_chooses() {
 }
 
 #[test]
+fn a_status_bar_draws_its_level_picture_as_long_as_its_value() {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n\
+        [b]\ntype=UIStatusImage\nid=62\nx=2\ny=3\ndx=20\ndy=2\n\
+        image=ui/r.tga\nimage=ui/y.tga\nimage=ui/g.tga\ntransition=25\ntransition=50\n\
+        [c]\ntype=UIText\nid=61\nx=0\ny=40\ndx=10\ndy=10\n";
+    let install = Install::new(
+        "widgets-statusbar",
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/r.tga", solid(1, 2, [255, 0, 0])),
+            ("ui/y.tga", solid(1, 2, [255, 255, 0])),
+            ("ui/g.tga", solid(1, 2, [0, 255, 0])),
+        ],
+    );
+    let mut tree = Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    let mut ui = Interface::new(tree, Box::new(NoTexts));
+    ui.show(1);
+    // The colour of each of the 22 pixels from x = 1 on, and how many are not black.
+    let bar = |ui: &mut Interface, value| {
+        assert!(ui.set_status(62, value));
+        let mut frame = Framebuffer::new(100, 80);
+        ui.paint(&mut frame, &mut |_, _| {});
+        let at = |x: usize| frame.pixels[(3 * 100 + x) * 4..][..3].to_vec();
+        let lit = (1..24).filter(|&x| at(x) != [0, 0, 0]).count();
+        (lit, at(2))
+    };
+    let (red, yellow, green) = ([255, 0, 0], [255, 255, 0], [0, 255, 0]);
+    // 20 * value / 100 pixels from the left edge, at least one; red below 25, yellow below 50.
+    assert_eq!(bar(&mut ui, 0), (1, red.to_vec()));
+    assert_eq!(bar(&mut ui, 24), (4, red.to_vec()));
+    assert_eq!(bar(&mut ui, 25), (5, yellow.to_vec()));
+    assert_eq!(bar(&mut ui, 49), (9, yellow.to_vec()));
+    assert_eq!(bar(&mut ui, 50), (10, green.to_vec()));
+    // A value outside 0 to 100 is held to it.
+    assert_eq!(bar(&mut ui, 100), (20, green.to_vec()));
+    assert_eq!(bar(&mut ui, i32::MAX), (20, green.to_vec()));
+    assert_eq!(bar(&mut ui, i32::MIN), (1, red.to_vec()));
+    // Anything but a status bar refuses a value.
+    assert!(!ui.set_status(61, 5) && !ui.set_status(5, 5));
+}
+
+#[test]
 fn texts_fields_lists_and_bars_are_hit_over_their_whole_rectangle_even_when_transparent() {
     let mut ui = interface("whole");
     ui.set_rows(20, rows(3));

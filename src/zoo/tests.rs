@@ -123,7 +123,15 @@ fn tail(w: &mut W, v: u32) {
         w.u32(5).str("x"); // before 51 the block is the name alone
     }
     w.u32(2).str("a").u32(1).str("b").u32(2); // name counters
-    w.z(4 + 12 + 1 + 16 + 4);
+    // The zoo status: timers, month flag, rating and three more numbers, the donation counter.
+    w.z(4)
+        .u32(11)
+        .u32(12)
+        .u32(13)
+        .z(1)
+        .u32(14)
+        .z(12)
+        .u32(2.5f32.to_bits());
     w.u32(5).u32(3); // month and year of the accounts
     w.u32(2).u32(3); // two categories, three columns
     let float = |w: &mut W, f: f32| {
@@ -137,7 +145,7 @@ fn tail(w: &mut W, v: u32) {
     }
     (0..2).for_each(|r| float(w, 77.0 + r as f32));
     if v >= 39 {
-        w.z(4);
+        w.u32(22.5f32.to_bits()); // the adult admission price
     }
     if v >= 71 {
         w.z(8);
@@ -316,6 +324,23 @@ fn reads_the_clocks_the_file_stores() {
             );
             assert_eq!((e.delay, e.sender_channel, e.channel), (5, 0x55, 0x4b));
         }
+    }
+}
+
+#[test]
+fn reads_what_the_zoo_status_stores() {
+    for v in VERSIONS {
+        let status = parse(&file(v, 2, 2, &[], &[])).clocks.status;
+        assert_eq!(
+            (status.timers, status.rating, status.given),
+            ([11, 12, 13], 14, 2.5)
+        );
+        // A file without the price field has the price of old files.
+        assert_eq!(
+            status.price,
+            if v >= 39 { 22.5 } else { 49.0 },
+            "version {v}"
+        );
     }
 }
 

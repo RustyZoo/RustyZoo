@@ -2,6 +2,8 @@
 //! table of the current month and the three before it, written from the accounts into the texts
 //! of the layout.
 
+pub mod zoo;
+
 use crate::money::Money;
 use crate::text::format::{Strings, graph_month, integer, money, whole_units};
 use crate::text::to_cp1252;

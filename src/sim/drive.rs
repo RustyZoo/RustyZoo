@@ -3,7 +3,7 @@
 
 use super::{Sim, hash};
 use crate::animal::Class;
-use crate::behaviour::{Library, Timings};
+use crate::behaviour::{Library, NoData, Timings};
 use crate::entity::Catalogue;
 use crate::money::Money;
 use crate::vfs::Vfs;
@@ -101,16 +101,18 @@ pub struct Run {
 
 impl Run {
     /// Starts the game as the window's does, from a generator seeded with `seed` (a test run),
-    /// with the types `cat` and the keys `class` of the animals' class.
+    /// with the types `cat`, the keys `class` of the animals' class and the economy file. It is
+    /// a new game: the set-up rating check runs.
     pub fn new(
-        ini: &[u8],
+        (ini, economy): (&[u8], &[u8]),
         (cat, class): (Catalogue, Class),
         mut world: World,
-        money: Money,
+        mut money: Money,
         seed: u32,
     ) -> Run {
         let mut sim = Sim::new(ini);
         sim.set_seed(seed);
+        sim.set_economy(economy);
         sim.start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(sim.ai.status_period);
         world.units.class = Class {
@@ -118,6 +120,7 @@ impl Run {
             ..class
         };
         sim.load(&mut world, &cat);
+        sim.new_game(&world, &cat, &mut money);
         Run {
             cat,
             sim,
@@ -166,22 +169,19 @@ impl Run {
 
     /// [`Run::step`] whose units run their sets and animations, from the files of `vfs`.
     pub fn step_with(&mut self, ms: u32, vfs: Option<&Vfs>) -> Vec<String> {
-        let report = match vfs {
-            None => self
-                .sim
-                .step_in(&mut self.world, &self.cat, ms, |_, _, _| {}),
+        let money = &mut self.money;
+        let update = |_: &mut World, _, _| {};
+        match vfs {
+            None => (self.sim).step_game(&NoData, &self.cat, &mut self.world, money, ms, update),
             Some(vfs) => {
                 let data = Library {
                     catalogue: &self.cat,
                     vfs,
                     timings: &self.timings,
                 };
-                (self.sim).step_with(&data, &self.cat, &mut self.world, ms, |_, _, _| {})
+                (self.sim).step_game(&data, &self.cat, &mut self.world, money, ms, update)
             }
         };
-        if report.month_end {
-            self.money.month_change();
-        }
         let mut lines: Vec<String> = (self.sim.take_lines().into_iter())
             .map(|l| format!("sim {l}"))
             .collect();

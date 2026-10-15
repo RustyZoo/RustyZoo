@@ -178,7 +178,7 @@ pub struct Entity {
 }
 
 /// A loaded map or saved game, up to the entities.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Zoo {
     pub version: u32,
     /// The Windows language identifier the file was written with (a stored 0 reads as 1033).
@@ -222,10 +222,24 @@ pub struct HabitatInfo {
     pub created: u64,
 }
 
+/// What the zoo status keeps in a saved file (zoo status 16): its three timers in milliseconds, the
+/// rating, the donation counter and the adult admission price. The price of a file without the
+/// field is 49.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StatusRecord {
+    /// The rating, message and new guest timers.
+    pub timers: [u32; 3],
+    pub rating: u32,
+    pub given: f32,
+    pub price: f32,
+}
+
 /// The clocks and the event queue a map stores (simulation 4.3, 8.3): a new game on it starts from
 /// them. All 0 and empty in a file too old to store them, and in a map made by hand.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Clocks {
+    /// The zoo status' timers and counters.
+    pub status: StatusRecord,
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     pub ai_rem: u32,
     pub ai_ticks: u32,
@@ -715,8 +729,13 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
         names.insert(name, r.u32()?);
     }
 
-    // Game and finances.
-    r.skip(4 + 12 + 1 + 16 + 4)?;
+    // Game and finances: the zoo status' timers, rating and donation counter first.
+    r.skip(4)?;
+    clocks.status.timers = [r.u32()?, r.u32()?, r.u32()?];
+    r.skip(1)?;
+    clocks.status.rating = r.u32()?;
+    r.skip(12)?;
+    clocks.status.given = r.f32()?;
     (money.month, money.year) = (r.u32()?.clamp(1, 12), r.u32()?.min(19));
     let (rows, columns) = (u64::from(r.u32()?), u64::from(r.u32()?));
     let tables = ((12 + columns + 1) * 4)
@@ -747,7 +766,8 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
             money.total[c] = value;
         }
     }
-    r.skip(if v >= 39 { 4 } else { 0 } + if v >= 71 { 8 } else { 0 })?;
+    clocks.status.price = if v >= 39 { r.f32()? } else { 49.0 };
+    r.skip(if v >= 71 { 8 } else { 0 })?;
     r.skip(16)?; // calendar
     money.set_cash(r.f32()?);
     if v >= 73 {

@@ -31,8 +31,9 @@
 use std::collections::HashMap;
 
 use super::layout::{
-    DIRTY, DISABLED, Edit, Element, FOCUSED, HIDDEN, HIGHLIGHTED, Kind, ListBox, NEVER_SHOWN,
-    PRESSING, Picture, Pictures, RELEASING, SELECTED, STICKY, ScrollBar, TEMPLATE, TOGGLE, Tree,
+    DIRTY, DISABLED, Edit, Element, FOCUSED, HIDDEN, HIGHLIGHTED, Kind, Levels, ListBox,
+    NEVER_SHOWN, PRESSING, Picture, Pictures, RELEASING, SELECTED, STICKY, ScrollBar, TEMPLATE,
+    TOGGLE, Tree,
 };
 use super::widgets::{Heights, Lengths, Part, caret_for};
 use crate::Framebuffer;
@@ -247,6 +248,7 @@ impl Painter {
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
+            Kind::StatusImage(levels) => self.bar(pictures, levels, screen, frame),
             Kind::MapView => map(frame, screen),
             // The message line: its picture and the text, centred in the rectangle the borders
             // leave (ui layout 4.12).
@@ -311,6 +313,33 @@ impl Painter {
         };
         let key = (e.transparent && !cut.animation).then(|| top_left(&cut.pixels));
         blit(frame, &cut.pixels, (x, y), key);
+    }
+
+    /// A status bar (ui layout 4.9): the picture of its level, drawn side by side from the left
+    /// edge `max(width, height) * value / 100` times, at least once. The level is the first
+    /// picture whose transition is above the value, else the last.
+    fn bar(
+        &mut self,
+        pictures: &Pictures,
+        levels: &Levels,
+        (sx, sy, w, h): (i32, i32, i32, i32),
+        frame: &mut Framebuffer,
+    ) {
+        let value = levels.value.clamp(0, 100);
+        let length = (i64::from(w.max(h)) * i64::from(value) / 100).max(1);
+        let level = (levels.transitions.iter())
+            .position(|&t| t > value)
+            .unwrap_or(levels.images.len().saturating_sub(1));
+        let Some(Some(picture)) = levels.images.get(level) else {
+            return;
+        };
+        let Some(cut) = self.cut(pictures, *picture, 0, 0) else {
+            return;
+        };
+        let step = cut.pixels.width.max(1) as i32;
+        for k in 0..length as i32 {
+            blit(frame, &cut.pixels, (sx + k * step, sy), None);
+        }
     }
 
     /// The icon of a button, at its first frame, placed like the button's picture.
