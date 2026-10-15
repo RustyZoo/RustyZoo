@@ -11,9 +11,10 @@
 //! fences (the zoo wall stays, nothing crosses the side, the smart fences test, not the entrance).
 //! [`place`] adds a valid pending object to the world and takes its price. A drag is a list of
 //! pending pieces, [`path_run`] and [`fence_run`] say where and [`afford`] which of them the cash
-//! covers.
+//! covers. The gate tool is in [`gate`].
 
 pub mod bulldozer;
+pub mod gate;
 
 use crate::build::{cost, number};
 use crate::config::Config;

@@ -68,6 +68,66 @@ impl World {
         self.slot_of(self.find(gate)?)
     }
 
+    /// The exhibit whose gate the fence piece at `at` could become with the gate tool (placing
+    /// 6.4 items 1 to 3): the piece is of an exhibit fence type that has a gate, the tile across
+    /// is on the map and its slot on the line is empty, one tile of the line is in the zoo
+    /// grounds (the exterior is part of the original's grounds region) and the other in an
+    /// exhibit, and the piece is not already that exhibit's gate. The tank test (item 4) waits
+    /// for tank exhibits.
+    pub fn gate_for(&self, at: usize) -> Option<u32> {
+        self.shapes
+            .get(at)
+            .copied()
+            .flatten()
+            .filter(|s| s.fence && s.gated && !s.wall)?;
+        let (t, d) = self.slot_of(at)?;
+        let n = self.neighbour(t, d)?;
+        if self.edge(n, (d + 4) % 8).is_some() {
+            return None;
+        }
+        let grounds = |r: u32| r == GROUNDS || r == EXTERIOR;
+        let (a, b) = (self.exhibits.region(t)?, self.exhibits.region(n)?);
+        let exhibit = match (grounds(a), grounds(b)) {
+            (true, false) => b,
+            (false, true) => a,
+            _ => return None,
+        };
+        let id = self.zoo.entities[at].common.as_ref()?.id;
+        (self.exhibits.get(exhibit)?.gate != Some(id)).then_some(exhibit)
+    }
+
+    /// Moves the gate of exhibit `id` to the fence piece with id `piece` (placing 6.4): the old
+    /// gate becomes a fence piece again, the piece a gate made healthy (`life` and `strength` of
+    /// its new type), and the undo list is cleared. Whether the piece could become a gate.
+    pub fn move_gate(&mut self, id: u32, piece: u32, life: u32, strength: u32) -> bool {
+        let Some(at) = self.find(piece) else {
+            return false;
+        };
+        let Some(old) = self.exhibits.get(id).map(|e| e.gate) else {
+            return false;
+        };
+        if !self.make_door(at) {
+            return false;
+        }
+        if let Some(old) = old.and_then(|g| self.find(g)).filter(|&o| o != at) {
+            self.make_fence(old);
+        }
+        if let Some(f) = self.zoo.entities[at]
+            .common
+            .as_mut()
+            .and_then(|c| c.fence.as_mut())
+        {
+            (f.life, f.strength) = (life, strength);
+        }
+        if let Some(e) = self.exhibits.get_mut(id) {
+            e.gate = Some(piece);
+        }
+        self.undo.clear();
+        self.dirty = true;
+        self.events.push(Event::Gate(id));
+        true
+    }
+
     /// Gives exhibit `id` this name.
     pub fn rename(&mut self, id: u32, name: String) {
         if let Some(e) = self.exhibits.get_mut(id) {

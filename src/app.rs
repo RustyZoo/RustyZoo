@@ -272,6 +272,8 @@ struct Game {
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
     /// last move left it) is over the map view and a tool is chosen.
     pending: Option<Pending>,
+    /// The gate tool's pending gate (`pending` is its object), while it is over a fence piece.
+    gate: Option<place::gate::Gate>,
     /// The pieces of the path or fence drag in progress, the start first (empty without a drag).
     run: Vec<Pending>,
     hover: bool,
@@ -305,7 +307,8 @@ struct Game {
 
 impl Game {
     /// What the cost text at the pointer shows: the drag's, else the pending object's, else, in
-    /// the paint tab, minus what painting the brush costs while the pointer is over the map.
+    /// the paint tab, minus what painting the brush costs while the pointer is over the map. A
+    /// gate shows its price as it is, not as a charge (placing 4.5).
     fn cost(&self) -> Option<i64> {
         if self.build.bulldozing() {
             return self.dozer_amount();
@@ -314,7 +317,10 @@ impl Game {
             true => self
                 .pending
                 .as_ref()
-                .map(Pending::amount)
+                .map(|p| match self.gate {
+                    Some(_) => p.amount().saturating_neg(),
+                    None => p.amount(),
+                })
                 .or_else(|| self.terrain.pointer_amount().filter(|_| self.hover)),
             false => Some(place::run_amount(&self.run)),
         }
@@ -528,6 +534,7 @@ impl<'a> App<'a> {
             finances: Finances::default(),
             build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
             pending: None,
+            gate: None,
             run: Vec::new(),
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
@@ -914,13 +921,20 @@ impl<'a> App<'a> {
             .tool()
             .filter(|_| game.hover)
             .and_then(|ty| at(ty, (point.0, point.1)));
+        // The gate tool's pending gate sits on the fence piece under the pointer.
+        game.gate = place::gate::pending(&game.world, cat, &game.money, (point.0, point.1))
+            .filter(|_| game.build.gating() && game.hover);
+        if let Some(g) = &game.gate {
+            game.pending = Some(g.pending.clone());
+        }
         // A pending fence selects the tile under the pointer, before snapping; a fence drag in
         // progress does not draw it (placing 4.5, 6.2 items 1 and 2).
-        let fence = game
-            .build
-            .tool()
-            .and_then(|ty| cat.types.get(ty))
-            .is_some_and(|t| Class::of(t) == Class::Fence);
+        let fence = game.gate.is_some()
+            || game
+                .build
+                .tool()
+                .and_then(|ty| cat.types.get(ty))
+                .is_some_and(|t| Class::of(t) == Class::Fence);
         game.selection = (fence && game.hover && !game.build.dragging())
             .then(|| {
                 let (x, y) = (point.0.div_euclid(64), point.1.div_euclid(64));
@@ -980,6 +994,9 @@ impl<'a> App<'a> {
         };
         if game.build.bulldozing() {
             return self.bulldoze_release();
+        }
+        if game.build.gating() {
+            return self.gate_release();
         }
         let dragging = game.build.dragging();
         game.build.end_drag();
@@ -1582,6 +1599,7 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
 
 mod bulldozer;
 mod exhibits;
+mod gates;
 mod terrain;
 
 #[cfg(test)]

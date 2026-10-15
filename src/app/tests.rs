@@ -1653,6 +1653,7 @@ fn exhibit_catalogue() -> Catalogue {
 fn name_interface(name: &str) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+        [g]\ntype=UIButton\nid=3240\nx=118\ny=86\ndx=5\ndy=5\nstate=2048\n\
         [d]\ntype=UILayout\nlayout=ui/n.lyt\nstate=1\n";
     let n = "[LayoutInfo]\nid=45300\nlayer=7\nx=300\ny=300\ndx=80\ndy=40\n\
         [m]\ntype=UIText\nid=45306\nx=0\ny=0\ndx=80\ndy=10\n\
@@ -1754,4 +1755,138 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
             .name,
         "Li"
     );
+}
+
+#[test]
+fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece() {
+    let install = cache_install_with("app-gate", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = exhibit_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        BIG,
+    )
+    .unwrap();
+    app.set_interface(name_interface("gate"));
+    app.set_money(Money {
+        cash: 50_000.0,
+        ..Money::default()
+    });
+    app.pass(0, &[]);
+    app.game.as_mut().unwrap().build.hold(0);
+    let camera = app.camera().unwrap().clone();
+    let at = |tx: i32, ty: i32, lx: i32, ly: i32| {
+        let (x, y) = world_point(&camera, 64 * tx + lx, 64 * ty + ly);
+        Command::Mouse(Mouse::Move(x, y))
+    };
+    let told = |app: &App, prefixes: &[&str]| -> Vec<String> {
+        let all = app.log_lines(0, 0);
+        all.iter()
+            .filter_map(|l| l.splitn(4, ' ').nth(3))
+            .filter(|l| prefixes.iter().any(|p| l.starts_with(p)) && *l != "world stage")
+            .map(str::to_string)
+            .collect()
+    };
+    let click = |app: &mut App, n: u64, to: Command| {
+        app.pass(n, &[to]);
+        app.pass(n + 5, &[Command::Mouse(Mouse::Down)]);
+        app.pass(n + 10, &[Command::Mouse(Mouse::Up)]);
+    };
+    // A square on tile (20, 20), named at once (the gate goes on its last piece, side 6), and a
+    // fence of no exhibit on tile (25, 25).
+    for (n, (lx, ly)) in [(32, 12), (52, 32), (32, 52), (12, 32)]
+        .into_iter()
+        .enumerate()
+    {
+        click(&mut app, 20 * (n as u64 + 1), at(20, 20, lx, ly));
+    }
+    app.pass(120, &[Command::Key(Key::Enter, false, false)]);
+    click(&mut app, 140, at(25, 25, 32, 12));
+    let id_of = |app: &App, d: usize| {
+        let world = &app.game.as_ref().unwrap().world;
+        let e = world.edge(world.tile_index(20, 20).unwrap(), d).unwrap();
+        world.zoo.entities[e].common.as_ref().unwrap().id
+    };
+    let (north, east, west) = (id_of(&app, 0), id_of(&app, 2), id_of(&app, 6));
+    let world = &app.game.as_ref().unwrap().world;
+    assert_eq!(world.gate_slot(1), world.tile_index(20, 20).zip(Some(6)));
+    // The gate button: the tool is the gate and not the fence.
+    app.interface().unwrap().set_button(3240, true, true);
+    app.pass(190, &[]);
+    assert!(app.game.as_ref().unwrap().build.gating());
+    // Over the north piece: a valid gate, free, tinted valid, "$0".
+    app.pass(200, &[at(20, 20, 40, 4)]);
+    assert_eq!(
+        told(&app, &["tool pending"]),
+        ["tool pending fences/iron/g 20,20 q 1 valid"]
+    );
+    assert_eq!(app.game.as_ref().unwrap().cost(), Some(0));
+    app.pass(205, &[Command::Mouse(Mouse::Down)]);
+    app.pass(210, &[Command::Mouse(Mouse::Up)]);
+    assert_eq!(
+        told(&app, &["world", "exhibit"]),
+        [
+            format!("world ungate fences/iron/f 20,20 side 6 id {west}"),
+            format!("world gate fences/iron/g 20,20 side 0 id {north}"),
+            "exhibit gate 1 20,20 side 0".to_string()
+        ]
+    );
+    assert_eq!(app.money().unwrap().cash, 50_000.0 - 4.0 * 125.0);
+    // The undo list was cleared, and the gate is now the current gate: not valid again.
+    assert!(!app.game.as_mut().unwrap().world.undo());
+    app.pass(220, &[at(20, 20, 40, 4)]);
+    assert_eq!(
+        told(&app, &["tool pending"]),
+        ["tool pending fences/iron/g 20,20 q 1 invalid"]
+    );
+    click(&mut app, 230, at(20, 20, 40, 4));
+    assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
+    // The fence of no exhibit: nothing happens and nothing is shown.
+    click(&mut app, 260, at(25, 25, 32, 12));
+    assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
+    // A decayed piece costs the gate: shown as the price, refused without the cash.
+    {
+        let game = app.game.as_mut().unwrap();
+        let at = game.world.find(east).unwrap();
+        game.world.zoo.entities[at]
+            .common
+            .as_mut()
+            .unwrap()
+            .fence
+            .as_mut()
+            .unwrap()
+            .life = 0;
+    }
+    app.pass(300, &[at(20, 20, 60, 24)]);
+    assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
+    app.set_money(Money {
+        cash: 100.0,
+        ..Money::default()
+    });
+    click(&mut app, 310, at(20, 20, 60, 24));
+    assert_eq!(
+        told(&app, &["world", "tool message"]),
+        ["tool message 10002"]
+    );
+    assert_eq!(app.money().unwrap().cash, 100.0);
+    // With the cash, the piece is made healthy and the price booked.
+    app.set_money(Money {
+        cash: 1_000.0,
+        ..Money::default()
+    });
+    click(&mut app, 330, at(20, 20, 60, 24));
+    assert_eq!(
+        told(&app, &["world"]),
+        [
+            format!("world ungate fences/iron/f 20,20 side 0 id {north}"),
+            format!("world gate fences/iron/g 20,20 side 2 id {east}")
+        ]
+    );
+    assert_eq!(app.money().unwrap().cash, 875.0);
+    let game = app.game.as_ref().unwrap();
+    let piece = &game.world.zoo.entities[game.world.find(east).unwrap()];
+    assert_eq!(piece.common.as_ref().unwrap().fence.unwrap().life, 10);
 }

@@ -313,6 +313,8 @@ pub struct Build {
     sweep: Option<Sweep>,
     /// How many exhibits the zoo has: the gate button is enabled while there is one.
     exhibits: usize,
+    /// The gate button is selected: "place a gate" is the tool (placing 6.4).
+    gate: bool,
 }
 
 impl Build {
@@ -334,6 +336,7 @@ impl Build {
             bulldozer: false,
             sweep: None,
             exhibits: 0,
+            gate: false,
         }
     }
 
@@ -343,12 +346,61 @@ impl Build {
         self
     }
 
-    /// The zoo has `n` exhibits now: the gate button is enabled while there is one (placing 6.4).
-    pub fn set_exhibits(&mut self, ui: &mut Interface, n: usize) {
+    /// The zoo has `n` exhibits now: the gate button is enabled while there is one, and the gate
+    /// tool ends with the last one (placing 6.4).
+    pub fn set_exhibits(&mut self, ui: &mut Interface, n: usize, log: &mut Vec<String>) {
         self.exhibits = n;
+        if n == 0 {
+            self.stop_gate(ui, log);
+        }
         if let Some((gate, _)) = PANELS[0].gate {
             ui.set_enabled(gate, n > 0);
         }
+    }
+
+    /// Whether the gate tool is the tool.
+    pub fn gating(&self) -> bool {
+        self.gate
+    }
+
+    /// The gate tool ends: its button is released.
+    fn stop_gate(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
+        if std::mem::take(&mut self.gate) {
+            if let Some((gate, _)) = PANELS[0].gate {
+                ui.set_button(gate, false, true);
+            }
+            log.push("tool gate off".into());
+        }
+    }
+
+    /// The gate button was pressed or released: noticed from its state, the gate tool becomes
+    /// the tool, which clears the item of the panel and the bulldozer, and a second press ends
+    /// it (placing 6.4).
+    fn notice_gate(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
+        let Some((button, _)) = PANELS[0].gate else {
+            return;
+        };
+        let on = ui
+            .tree
+            .find(button)
+            .is_some_and(|i| ui.tree.elements[i].state & SELECTED != 0);
+        if on == self.gate {
+            return;
+        }
+        self.gate = on;
+        if !on {
+            return log.push("tool gate off".into());
+        }
+        self.drag = None;
+        self.stop_bulldozer(ui, log);
+        let held = self.held.take().is_some();
+        if let Some(p) = self.open {
+            if held {
+                ui.select_item(PANELS[p].list, None);
+            }
+            Self::no_item(ui, &PANELS[p]);
+        }
+        log.push("tool gate on".into());
     }
 
     /// Whether the bulldozer is the tool.
@@ -423,6 +475,7 @@ impl Build {
             return log.push("tool bulldozer off".into());
         }
         self.drag = None;
+        self.stop_gate(ui, log);
         if let Some(p) = self.open {
             if self.terrain.take().is_some() {
                 terrain::hide(ui);
@@ -551,6 +604,7 @@ impl Build {
     /// Notices that a panel was shown or hidden since the last call, and acts on it.
     pub fn sync(&mut self, ui: &mut Interface, vfs: &Vfs, cat: &Catalogue, log: &mut Vec<String>) {
         self.notice_bulldozer(ui, log);
+        self.notice_gate(ui, log);
         let shown = PANELS.iter().position(|p| {
             ui.tree
                 .find(p.layout)
@@ -578,6 +632,7 @@ impl Build {
         }
         ui.set_button(PANELS[p].bar, false, true);
         ui.touch();
+        self.stop_gate(ui, log);
         (self.open, self.held, self.terrain, self.drag) = (None, None, None, None);
         log.push("tool panel none".into());
     }
@@ -587,6 +642,11 @@ impl Build {
     pub fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
         if self.bulldozer {
             self.stop_bulldozer(ui, log);
+            log.push("tool drop".into());
+            return true;
+        }
+        if self.gate {
+            self.stop_gate(ui, log);
             log.push("tool drop".into());
             return true;
         }
@@ -657,6 +717,7 @@ impl Build {
     ) {
         let panel = &PANELS[p];
         self.remember_top(ui, p);
+        self.stop_gate(ui, log);
         let tab = Self::tab(ui, p);
         self.listed = tab;
         if panel.layout == CONSTRUCTION {
@@ -776,6 +837,7 @@ impl Build {
         };
         let ty = &cat.types[index];
         self.stop_bulldozer(ui, log);
+        self.stop_gate(ui, log);
         self.chosen[p][tab] = Some(index);
         self.held = Some(index);
         self.turn = self.step[p];

@@ -661,3 +661,74 @@ fn a_new_exhibit_has_no_gate_until_it_is_named() {
         (vec![], Some((4, 4, 2)))
     );
 }
+
+/// The exhibit the piece on side `d` of tile (`x`, `y`) could be the gate of.
+fn gate_for(world: &World, x: i32, y: i32, d: usize) -> Option<u32> {
+    let t = world.tile_index(x, y).unwrap();
+    world.gate_for(world.edge(t, d).unwrap())
+}
+
+#[test]
+fn a_gate_goes_on_a_piece_between_an_exhibit_and_the_grounds_with_the_slot_across_empty() {
+    // A square with its gate on the last piece (4, 4, side 2) and two pieces of no exhibit.
+    let mut pieces = square(2, 2, 4, 4);
+    let last = pieces.pop().unwrap();
+    pieces.extend([(3, 3, 2), (6, 6, 0), (0, 0, 0)]);
+    let mut world = loaded(&pieces);
+    put(&mut world, last);
+    world.take_events();
+    assert_eq!(gate(&world, 1), Some((4, 4, 2)));
+    // 1: a piece on the outer side of the line is valid, the gate itself is not (3), a piece with
+    // another one on the slot across is not, and neither is one on the edge of the map.
+    assert_eq!(gate_for(&world, 2, 2, 0), Some(1));
+    assert_eq!(gate_for(&world, 4, 4, 2), None, "already the gate");
+    assert_eq!(gate_for(&world, 0, 0, 0), None, "off the map across");
+    put(&mut world, (2, 1, 4));
+    assert_eq!(gate_for(&world, 2, 2, 0), None, "the slot across is held");
+    assert_eq!(gate_for(&world, 2, 1, 4), None, "from the other side too");
+    // 2: both tiles in the exhibit, or both on the grounds.
+    assert_eq!(gate_for(&world, 3, 3, 2), None, "inside the exhibit");
+    assert_eq!(gate_for(&world, 6, 6, 0), None, "no exhibit");
+    // 2: between two exhibits, on a line only one piece holds.
+    let both = loaded(&[
+        (0, 1, 0),
+        (1, 1, 0),
+        (0, 1, 4),
+        (1, 1, 4),
+        (0, 1, 6),
+        (1, 1, 2),
+        (2, 1, 0),
+        (2, 1, 4),
+        (2, 1, 2),
+    ]);
+    assert_eq!(both.exhibits().list().len(), 2);
+    assert_eq!(gate_for(&both, 1, 1, 2), None, "between two exhibits");
+    // A zoo wall piece never takes a gate.
+    let mut z = zoo(&[]);
+    z.entities.push(entity("fences", 1, 6, 0));
+    unique(&mut z);
+    assert_eq!(gate_for(&World::new(z, shape), 1, 6, 0), None, "a wall");
+}
+
+#[test]
+fn moving_the_gate_turns_the_old_one_back_clears_the_undo_list_and_says_so() {
+    let mut world = loaded(&square(2, 2, 4, 4));
+    world.take_events();
+    let (old, new) = (at(&world, 2, 2, 0), at(&world, 3, 2, 0));
+    world.set_gate(1, old);
+    assert!(is_gate(&world, old));
+    world.begin();
+    place(&mut world, (6, 6, 0));
+    assert!(world.move_gate(1, new, 7, 300));
+    assert_eq!(gate(&world, 1), Some((3, 2, 0)));
+    assert!(is_gate(&world, new) && !is_gate(&world, old));
+    assert_eq!(world.take_events(), [Event::Gate(1)]);
+    let at_new = world.find(new).unwrap();
+    let fence = world.zoo.entities[at_new].common.as_ref().unwrap().fence;
+    assert_eq!(fence, None, "a piece with no wear data keeps none");
+    assert!(!world.undo(), "the undo list was cleared");
+    // Unknown exhibit or piece: nothing changes.
+    assert!(!world.move_gate(9, new, 7, 300));
+    assert!(!world.move_gate(1, 999, 7, 300));
+    assert_eq!(gate(&world, 1), Some((3, 2, 0)));
+}
