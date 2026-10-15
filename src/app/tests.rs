@@ -283,7 +283,7 @@ fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
         app.pass(0, &[]);
         let view = app.camera().unwrap().scroll;
         let lines = app.log_lines(0, 0);
-        assert_eq!(lines.len(), 5);
+        assert_eq!(lines.len(), 7);
         // The cash comes first (a game without a stored cash has none).
         assert_eq!(lines[0], "pass 0 t=0 money cash 0");
         let (draw, hash) = lines[1].split_once(" view=").unwrap();
@@ -295,7 +295,13 @@ fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
         assert_eq!(lines[2], "pass 0 t=0 interface 66");
         // The cap of 200 ms is 24 minutes of game time.
         assert_eq!(lines[3], "pass 0 t=0 step 200 2001-01-01 00:24:00.000");
-        assert_eq!(lines[4], "pass 0 t=0 sim step 200");
+        // The two seedings of the start tell the seconds the wall clock gave.
+        assert!(
+            lines[4..6]
+                .iter()
+                .all(|l| l.starts_with("pass 0 t=0 sim seed "))
+        );
+        assert_eq!(lines[6], "pass 0 t=0 sim step 200");
         // A draw that paints nothing says so.
         app.pass(20, &[]);
         assert_eq!(app.log_lines(1, 20).len(), 1);
@@ -769,7 +775,8 @@ fn the_menu_has_no_game_and_paints_the_interface_alone() {
         assert_eq!(lines[0], "pass 0 t=0 menu continue disabled");
         assert!(lines[1].starts_with("pass 0 t=0 draw ") && !lines[1].contains("view="));
         assert_eq!(lines[2], "pass 0 t=0 interface 66");
-        assert_eq!(lines.len(), 3, "no step without a game: {lines:?}");
+        assert!(lines[3].starts_with("pass 0 t=0 sim seed "), "{lines:?}");
+        assert_eq!(lines.len(), 4, "no step without a game: {lines:?}");
         // The keys of the map view and a switch to full screen change nothing.
         let keys = [
             Command::Scroll(1, 0),

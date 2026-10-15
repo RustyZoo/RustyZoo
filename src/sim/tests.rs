@@ -127,6 +127,27 @@ fn the_seconds_are_the_seed_plus_the_count() {
 }
 
 #[test]
+fn a_replay_seeds_with_the_seconds_of_the_log_and_then_the_clock() {
+    let mut first = Sim::new(b"");
+    first.start_game(16, Clocks::default());
+    let told = first.take_lines();
+    let seeds: Vec<u32> = told
+        .iter()
+        .map(|l| l.strip_prefix("seed ").unwrap().parse().unwrap())
+        .collect();
+    assert_eq!(seeds.len(), 2);
+    let mut again = Sim::new(b"");
+    again.set_seeds(seeds.clone());
+    again.start_game(16, Clocks::default());
+    assert_eq!(again.take_lines(), told);
+    assert_eq!(again.rng.state(), first.rng.state());
+    // No seconds left: the clock again, and an empty list draws nothing wrong.
+    let mut none = Sim::new(b"");
+    none.set_seeds(Vec::new());
+    assert_eq!(none.take_lines().len(), 1);
+}
+
+#[test]
 fn a_test_run_seeds_at_the_three_moments() {
     let mut s = Sim::new(b"");
     s.start_game(16, Clocks::default());

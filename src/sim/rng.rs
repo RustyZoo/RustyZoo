@@ -1,5 +1,6 @@
 //! The game's random generator and the seconds it is seeded from (main loop 9).
 
+use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The `rand` of the C runtime the original links: one 32-bit state. The state is 1 when the
@@ -50,11 +51,13 @@ impl Rng {
 }
 
 /// Where the whole seconds that seed the generator come from (main loop 9.2, O5): the wall clock in
-/// play, `seed + n` in a test run, where n counts the seedings.
+/// play, `seed + n` in a test run, where n counts the seedings, and the seconds a log told in a
+/// replay (the wall clock again when they run out).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Seconds {
     Clock,
     Test { seed: u32, n: u32 },
+    Replay(VecDeque<u32>),
 }
 
 impl Seconds {
@@ -64,6 +67,7 @@ impl Seconds {
             Seconds::Clock => SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs() as u32),
+            Seconds::Replay(left) => left.pop_front().unwrap_or_else(|| Seconds::Clock.now()),
             Seconds::Test { seed, n } => {
                 let seconds = seed.wrapping_add(*n);
                 *n = n.wrapping_add(1);

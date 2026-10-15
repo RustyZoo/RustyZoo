@@ -227,10 +227,13 @@ pub fn script(text: &str) -> Result<Vec<(u64, Command)>, String> {
 /// One pass of a log: its index, its clock and the commands it applied.
 type Logged = (u64, u64, Vec<Command>);
 
-/// The size and the passes of a log, as [`App::log_header`] and [`App::log_lines`] print them. A
-/// pass is a run of lines with the same index and clock; the lines of the timers only say that
-/// the pass ran, and the commands are read back.
-fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
+/// The passes of a log and the seconds of the generator's seedings it tells.
+type Replay = (Vec<Logged>, Vec<u32>);
+
+/// The size, the passes and the seconds of the generator's seedings of a log, as [`App::log_header`]
+/// and [`App::log_lines`] print them. A pass is a run of lines with the same index and clock; the
+/// lines of the timers only say that the pass ran, and the commands are read back.
+fn replay(text: &str) -> Result<((u32, u32), Replay), String> {
     let mut lines = text
         .lines()
         .enumerate()
@@ -242,6 +245,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
         .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
         .ok_or("the log does not start with its size")?;
     let mut passes: Vec<Logged> = Vec::new();
+    let mut seeds = Vec::new();
     for (n, line) in lines {
         if line.starts_with("startup ") {
             continue;
@@ -263,6 +267,12 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             passes.push((key.0, key.1, Vec::new()));
         }
         let rest = rest.unwrap_or("");
+        if let Some(seed) = rest.strip_prefix("sim seed ") {
+            seeds.push(
+                seed.parse()
+                    .map_err(|_| at(format!("not a seed: {line:?}")))?,
+            );
+        }
         if ![
             "animal ",
             "draw ",
@@ -287,7 +297,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             last.2.push(rest.parse().map_err(at)?);
         }
     }
-    Ok((size, passes))
+    Ok((size, (passes, seeds)))
 }
 
 /// The passes of a headless run: those of a log, or one per step of the scripted clock with the
@@ -337,12 +347,13 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
         return Err(CliError::Usage);
     }
     let read = |file: &str| std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"));
-    let (logged, size) = match &flags.replay {
+    let (logged, size, seeds) = match &flags.replay {
         Some(file) => {
-            let (size, passes) = replay(&read(file)?).map_err(|e| format!("{file}: {e}"))?;
-            (Some(passes), Some(size))
+            let (size, (passes, seeds)) =
+                replay(&read(file)?).map_err(|e| format!("{file}: {e}"))?;
+            (Some(passes), Some(size), seeds)
         }
-        None => (None, flags.size),
+        None => (None, flags.size, Vec::new()),
     };
     let commands = match &flags.script {
         Some(file) => script(&read(file)?)?,
@@ -425,6 +436,9 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             if let Some(seed) = flags.seed {
                 app.set_seed(seed);
             }
+            if !seeds.is_empty() {
+                app.set_seeds(seeds);
+            }
             app.set_money(money);
             app.start_game(Music::from_config(&ini));
             app
@@ -491,7 +505,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             for line in booted.lines {
                 report.line(format_args!("startup {line}"));
             }
-            App::menu(
+            let mut app = App::menu(
                 MapRenderer::new(vfs, &menu_catalogue),
                 Settings::from_config(&ini),
                 Timers::from_config(&ini),
@@ -499,7 +513,11 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
                 booted.interface,
                 booted.menu,
                 Music::from_config(&ini),
-            )?
+            )?;
+            if !seeds.is_empty() {
+                app.set_seeds(seeds);
+            }
+            app
         }
     };
     for (pass, now, due) in passes {
@@ -761,6 +779,8 @@ mod tests {
         let log = "size 64x48\n\
                    pass 0 t=0 draw 0123456789abcdef view=1,2 rotation=0 zoom=0\n\
                    pass 0 t=0 step 200 2001-01-01 00:24:00.000\n\
+                   pass 0 t=0 sim seed 1700000000\n\
+                   pass 0 t=0 sim seed 4294967295\n\
                    pass 3 t=67 scroll -1 0\n\
                    pass 3 t=67 pointer none\n\
                    pass 3 t=67 interface 66\n\
@@ -775,12 +795,15 @@ mod tests {
             replay(log).unwrap(),
             (
                 (64, 48),
-                vec![
-                    (0, 0, vec![]),
-                    (3, 67, vec![Command::Scroll(-1, 0), Command::Pointer(None)]),
-                    (4, 70, vec![Command::Quit]),
-                    (5, 80, vec![]),
-                ]
+                (
+                    vec![
+                        (0, 0, vec![]),
+                        (3, 67, vec![Command::Scroll(-1, 0), Command::Pointer(None)]),
+                        (4, 70, vec![Command::Quit]),
+                        (5, 80, vec![]),
+                    ],
+                    vec![1_700_000_000, u32::MAX]
+                )
             )
         );
         for bad in [
@@ -790,6 +813,8 @@ mod tests {
             "size 64x48\npass 0 draw",
             "size 64x48\npass x t=0 pause",
             "size 64x48\npass 0 t=0 fly",
+            "size 64x48\npass 0 t=0 sim seed -1",
+            "size 64x48\npass 0 t=0 sim seed 4294967296",
         ] {
             assert!(replay(bad).is_err(), "{bad:?}");
         }

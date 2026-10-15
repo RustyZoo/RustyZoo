@@ -1596,6 +1596,12 @@ impl<'a> App<'a> {
         self.sim.set_seed(seed);
     }
 
+    /// Makes a replay: the seconds of the generator's seedings are `seeds`, the ones the log of the
+    /// session told. Call it before the first pass.
+    pub fn set_seeds(&mut self, seeds: Vec<u32>) {
+        self.sim.set_seeds(seeds);
+    }
+
     /// The calendar of the game; `None` in the menu.
     pub fn calendar(&self) -> Option<&Calendar> {
         self.game.as_ref().map(|_| self.sim.calendar())
@@ -1655,8 +1661,8 @@ impl<'a> App<'a> {
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
     /// with (none without a game), a step the new date (none without a game),
-    /// then what the managers did: `sim seed N` for each seeding of the generator in a test run
-    /// (`--seed`; the wall clock's seeds differ at every run and are not logged), `sim step MS`
+    /// then what the managers did: `sim seed N` for each seeding of the generator (the
+    /// wall clock's seconds, or `--seed`'s), which a replay uses again, `sim step MS`
     /// for a step the game ran and `sim month M Y` when it acted on the month flag of the one
     /// before, then `unit add ID KIND X,Y`, `unit remove ID`, `unit status ID`, `unit tile ID X,Y`,
     /// `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and `unit abort ID` for the units of the
