@@ -8,8 +8,9 @@ use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
 use std::collections::HashMap;
 
-/// The Finances layout, and the button the Z key presses to open the window.
-pub const FINANCES: i32 = 110;
+/// The zoo status window, its Finances layout, and the button the Z key presses to open it.
+const WINDOW: i32 = 14;
+const FINANCES: i32 = 110;
 pub const STATUS_BUTTON: i32 = 1014;
 
 /// The first string of the currency symbol and the month names (text 8.3 and 8.5).
@@ -25,6 +26,9 @@ const NET_INCOME: i32 = 3991;
 /// or more, the construction cell for a negative one (6.3).
 const INCOME_CELL: i32 = 3931;
 const EXPENSE_CELL: i32 = 3932;
+
+/// The clock time (ms) between two runs of the table's update while the window is shown.
+const GAP: u64 = 10_000;
 
 const ZOO_VALUE_CATEGORY: usize = 15;
 const NET: usize = crate::money::NET;
@@ -115,7 +119,8 @@ pub fn cells(accounts: &Money, words: &impl Strings) -> Vec<Cell> {
                 .iter()
                 .map(|&c| f64::from(accounts.monthly[c][month as usize - 1]))
                 .sum();
-            let units = whole_units(sum * sign);
+            let value = sum * sign;
+            let units = whole_units(value);
             cells.push(Cell {
                 id: CELLS + 15 * column + r as i32,
                 text: text(match r {
@@ -124,44 +129,61 @@ pub fn cells(accounts: &Money, words: &impl Strings) -> Vec<Cell> {
                 }),
                 colour: (r == TOTALS && shown).then_some(Colour {
                     column,
-                    negative: units < 0,
+                    negative: value < 0.0,
                 }),
             });
         }
     }
     let month = accounts.month.clamp(1, 12) as usize - 1;
-    for (id, units) in [
-        (TOTAL_CASH, whole_units(f64::from(accounts.cash))),
+    for (id, value) in [
+        (TOTAL_CASH, f64::from(accounts.cash)),
         (
             ZOO_VALUE,
-            whole_units(f64::from(accounts.monthly[ZOO_VALUE_CATEGORY][month])),
+            f64::from(accounts.monthly[ZOO_VALUE_CATEGORY][month]),
         ),
-        (NET_INCOME, whole_units(f64::from(accounts.total[NET]))),
+        (NET_INCOME, f64::from(accounts.total[NET])),
     ] {
         cells.push(Cell {
             id,
-            text: write(units),
+            text: write(whole_units(value)),
             colour: Some(Colour {
                 column: 0,
-                negative: units < 0,
+                negative: value < 0.0,
             }),
         });
     }
     cells
 }
 
-/// What the table holds in the interface, so that only a change is written.
+/// What the table holds in the interface (only a change is logged), when its update runs next,
+/// and whether the Finances layout was shown at the last look.
 #[derive(Default)]
 pub struct Finances {
     written: HashMap<i32, (String, [u8; 3])>,
+    due: u64,
+    shown: bool,
 }
 
 impl Finances {
-    /// Writes the table into the layout while it is shown, the cells that changed: the log
-    /// lines `cell ID RRGGBB TEXT`, one for each. The other tabs stay as they are.
-    pub fn refresh(&mut self, accounts: &Money, ui: &mut Interface) -> Vec<String> {
+    /// Writes the table when the Finances layout has just been shown, and while the window is
+    /// shown at the interface update (`updated`) at clock `now` ms when the update is due: the
+    /// first time at once, then `GAP` ms after each run, the due time kept while the window is
+    /// hidden (6.3). Returns the log lines `cell ID RRGGBB TEXT`, one for each cell that changed.
+    pub fn refresh(
+        &mut self,
+        accounts: &Money,
+        ui: &mut Interface,
+        now: u64,
+        updated: bool,
+    ) -> Vec<String> {
         let mut lines = Vec::new();
-        if !ui.shown(FINANCES) {
+        let opened = ui.shown(FINANCES) && !self.shown;
+        self.shown = ui.shown(FINANCES);
+        let run = updated && ui.shown(WINDOW) && now >= self.due;
+        if run {
+            self.due = now.saturating_add(GAP);
+        }
+        if !(opened || run) {
             return lines;
         }
         let words = Words::new(|id| ui.string(id as i32));

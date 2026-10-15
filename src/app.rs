@@ -553,14 +553,14 @@ impl<'a> App<'a> {
                 game.money.month, game.money.year
             ));
         }
-        self.tell_money();
+        self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.drew.then_some(&self.frame)
     }
 
     /// Tells what the cash did since it was last told: the amount in whole units for the log,
     /// and the status bar, which shows it with its colour at every change.
-    fn tell_money(&mut self) {
+    fn tell_money(&mut self, now: u64) {
         if let Some(game) = &mut self.game {
             let (units, tone) = game.money.bar();
             if game.told != Some(units) {
@@ -578,7 +578,8 @@ impl<'a> App<'a> {
                         .push(format!("bar {text} {}", tone.name()));
                     game.bar = shown;
                 }
-                let lines = game.finances.refresh(&game.money, ui);
+                let updated = self.fired.interface.is_some();
+                let lines = game.finances.refresh(&game.money, ui, now, updated);
                 self.money_events.extend(lines);
             }
         }
@@ -1028,7 +1029,7 @@ impl<'a> App<'a> {
     /// then `money cash N` (whole units) when the cash changed, `money bar TEXT COLOUR` when the
     /// status bar was written, `money set N` and `money add N` when a start set or added cash and
     /// `money month M year Y` at a month change, `money cell ID RRGGBB TEXT` for each cell of the
-    /// Finances table written while it is shown,
+    /// Finances table that changed when the table was written,
     /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew

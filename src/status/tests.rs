@@ -176,3 +176,37 @@ fn bad_accounts_do_not_panic() {
     (m.month, m.year) = (u32::MAX, 0);
     cells(&m, &Plain);
 }
+
+#[test]
+fn the_colour_follows_the_sign_of_the_unrounded_value() {
+    let mut m = Money {
+        cash: -0.4,
+        ..Money::default()
+    };
+    m.monthly[3][0] = 0.4; // construction: the sum is -0.4
+    m.total[NET] = 0.4;
+    let c = cells(&m, &Plain);
+    assert_eq!(text(&c, 3926), "$0");
+    assert_eq!(
+        colour(&c, 3926),
+        Some(Colour {
+            column: 0,
+            negative: true
+        })
+    );
+    assert_eq!(text(&c, 3932), "$0");
+    assert_eq!(text(&c, 3930 + 11), "$0");
+    assert_eq!(text(&c, 3991), "$0");
+    assert_eq!(
+        colour(&c, 3991),
+        Some(Colour {
+            column: 0,
+            negative: false
+        })
+    );
+    // Zero is an income colour.
+    assert_eq!(
+        colour(&cells(&Money::default(), &Plain), 3926).map(|c| c.negative),
+        Some(false)
+    );
+}

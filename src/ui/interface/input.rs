@@ -386,7 +386,8 @@ impl Interface {
 
     /// Showing a layout shows every sub-layout, the pages of its tab buttons among them: the
     /// radio sets inside it then deselect all members but the one the file selected (4.6), which
-    /// hides the pages of the others.
+    /// hides the pages of the others. A selected member that is disabled gives way to the next
+    /// enabled one of the set.
     fn settle_radio_sets(&mut self, layout: usize) {
         for i in 0..self.tree.elements.len() {
             let Kind::RadioSet(buttons) = &self.tree.elements[i].kind else {
@@ -394,12 +395,25 @@ impl Interface {
             };
             let inside = std::iter::successors(Some(i), |&e| self.tree.elements[e].parent)
                 .any(|e| e == layout);
-            let current = buttons
+            let members: Vec<usize> = buttons
                 .iter()
                 .filter_map(|&m| self.tree.find(m))
-                .find(|&m| self.is_button(m) && self.tree.elements[m].state & SELECTED != 0);
-            if let (true, Some(current)) = (inside, current) {
-                self.radio_select(current);
+                .filter(|&m| self.is_button(m))
+                .collect();
+            let selected = |this: &Self, m: usize| this.tree.elements[m].state & SELECTED != 0;
+            let Some(at) = members.iter().position(|&m| selected(self, m)) else {
+                continue;
+            };
+            let pick = (0..members.len())
+                .map(|k| members[(at + k) % members.len()])
+                .find(|&m| self.tree.elements[m].state & DISABLED == 0);
+            if let (true, Some(pick)) = (inside, pick) {
+                let moved = pick != members[at];
+                self.flag(pick, SELECTED, true);
+                self.radio_select(pick);
+                if moved {
+                    self.select(pick);
+                }
             }
         }
     }
