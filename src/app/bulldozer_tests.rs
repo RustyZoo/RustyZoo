@@ -758,3 +758,68 @@ fn one_click_on_the_line_between_two_tanks_takes_both_walls_and_merges_them() {
         assert_eq!(world.exhibits().list()[0].tiles, 2);
     });
 }
+
+#[test]
+fn a_no_on_the_line_between_two_tanks_keeps_both_walls_and_asks_once() {
+    with_game("tank-tied-no", "[UI]\nconfirmSell=0\n", |s| {
+        for (tile, side) in [
+            (20, 0),
+            (20, 2),
+            (20, 4),
+            (20, 6),
+            (21, 0),
+            (21, 2),
+            (21, 4),
+        ] {
+            s.fence(5, tile, 20, side);
+        }
+        s.pass(&[DELETE]);
+        let cash = s.cash();
+        let told = s.click(s.at(20, 20, 60, 32));
+        assert_eq!(told.last().unwrap(), "tool bulldoze ask Merge(1, 2)");
+        // The second removal of the click finds the pair and takes it as a No without a dialog.
+        let told = s.pass(&[Command::Key(Key::N, false, false)]);
+        assert_eq!(told[0], "tool bulldoze answer no");
+        assert!(!told.iter().any(|l| l.contains("ask")), "{told:?}");
+        assert!(!told.iter().any(|l| l.starts_with("world remove")));
+        assert!(!s.asking());
+        assert_eq!((s.count(), s.cash()), (8, cash));
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert_eq!(world.exhibits().list().len(), 2);
+    });
+}
+
+#[test]
+fn a_no_on_the_second_removal_of_a_tied_wall_click_leaves_the_first_one_gone() {
+    with_game("tank-tied-no-q", "[UI]\nconfirmSell=0\n", |s| {
+        // The tank of tile (20, 20), and a land exhibit on (21, 20) whose west wall Q is a tank
+        // wall: Q has no wall height, so it goes first, without a question.
+        for side in [0, 2, 4, 6] {
+            s.fence(5, 20, 20, side);
+        }
+        for side in [0, 2, 4] {
+            s.fence(1, 21, 20, side);
+        }
+        let q = s.fence(5, 21, 20, 6);
+        s.pass(&[DELETE]);
+        let cash = s.cash();
+        let told = s.click(s.at(20, 20, 60, 32));
+        assert!(
+            told.iter().any(|l| l.starts_with("world remove")),
+            "{told:?}"
+        );
+        assert!(
+            told.contains(&"tool bulldoze ask Merge(1, 2)".to_string()),
+            "{told:?}"
+        );
+        assert!(
+            s.app.game.as_ref().unwrap().world.find(q).is_none(),
+            "Q is gone"
+        );
+        let told = s.pass(&[Command::Key(Key::N, false, false)]);
+        assert_eq!(told[0], "tool bulldoze answer no");
+        assert!(!told.iter().any(|l| l.starts_with("world remove")));
+        assert!(!s.asking());
+        assert_eq!((s.count(), s.cash()), (7, cash + 80.0));
+    });
+}

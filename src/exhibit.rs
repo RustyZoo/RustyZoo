@@ -65,8 +65,9 @@ pub struct TankConfig {
 }
 
 impl Default for TankConfig {
-    /// What there is without a `tanks.cfg`: the heights of 1 the original has built in, and
-    /// (not known) the rest empty.
+    /// What there is without a `tanks.cfg`: the heights of 1 the original has built in, the rest
+    /// empty, and both floors 0 (grass): the original gives `tankTerrain` and `tankTerrainShow` no
+    /// default.
     fn default() -> TankConfig {
         TankConfig {
             sink: [0; 2],
@@ -75,7 +76,7 @@ impl Default for TankConfig {
             filled: false,
             salt: false,
             purity: 100,
-            terrain: [2, 17],
+            terrain: [0; 2],
         }
     }
 }

@@ -36,11 +36,11 @@ pub(super) struct Dozer {
     mixed: bool,
 }
 
-/// A removal under way: the entities still to go (ids), the pairs of regions answered No, the
+/// A removal under way: the entities still to go (ids), the pairs of regions asked about, the
 /// question that is open, and what has gone so far.
 pub(super) struct Sweep {
     queue: VecDeque<u32>,
-    declined: Vec<(u32, u32)>,
+    asked: Vec<(u32, u32)>,
     asking: Option<(u32, Question)>,
     area: bool,
     removed: usize,
@@ -51,7 +51,7 @@ pub(super) struct Sweep {
 enum Next {
     /// Nothing is left.
     Done,
-    /// The front of the queue stays: it is gone, cannot be removed, or its pair was declined.
+    /// The front of the queue stays: it is gone, cannot be removed, or its pair was asked already.
     Skip,
     Remove(u32),
     Ask(u32, Question, String),
@@ -213,7 +213,7 @@ impl App<'_> {
             .collect();
         game.sweep = Some(Sweep {
             queue,
-            declined: Vec::new(),
+            asked: Vec::new(),
             asking: None,
             area: game.dozer.rect.is_some(),
             removed: 0,
@@ -241,7 +241,7 @@ impl App<'_> {
         else {
             return Next::Skip;
         };
-        match bulldozer::check(world, cat, at, game.confirm, &sweep.declined) {
+        match bulldozer::check(world, cat, at, game.confirm, &sweep.asked) {
             Check::Go => Next::Remove(id),
             Check::Keep => Next::Skip,
             Check::Ask(q) => Next::Ask(id, q, question_text(ui, cat, world, at, q)),
@@ -283,6 +283,9 @@ impl App<'_> {
                     if asked {
                         if let Some(sweep) = self.game.as_mut().and_then(|g| g.sweep.as_mut()) {
                             sweep.asking = Some((id, question));
+                            // The pair is stored when the question is reached, before the
+                            // answer: reaching it again in this click is a silent No.
+                            sweep.asked.extend(question.pair());
                         }
                         self.asked = Some(Asked::Sweep);
                         self.tool_lines
@@ -320,8 +323,9 @@ impl App<'_> {
         self.exhibits_told();
     }
 
-    /// The open question was answered: Yes removes the object, No keeps it (and keeps the other
-    /// pieces between the same two exhibits), anything else stops the removal.
+    /// The open question was answered: Yes removes the object, No keeps it (the other pieces
+    /// between the same two exhibits stay, their pair being stored already), anything else stops
+    /// the removal.
     pub(super) fn sweep_answered(&mut self, code: i32) {
         let Some(game) = &mut self.game else { return };
         let Some((id, question)) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
@@ -337,13 +341,7 @@ impl App<'_> {
         ));
         match code {
             6 => self.bulldoze_remove(id),
-            7 => {
-                if let Some(pair) = question.pair()
-                    && let Some(sweep) = &mut game.sweep
-                {
-                    sweep.declined.push(pair);
-                }
-            }
+            7 => {}
             _ => {
                 game.sweep = None;
                 return self.aim(false);

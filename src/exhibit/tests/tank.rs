@@ -646,7 +646,8 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
         tankTerrain = -5\ntankTerrainShow = 999\n",
     );
     assert_eq!(odd.terrain, [0, 255], "cut to a byte");
-    assert_eq!(read("[tank]\ntankTerrain = 0\n").terrain, [0, 17]);
+    assert_eq!(read("[tank]\ntankTerrain = 5\n").terrain, [5, 0]);
+    assert_eq!(none.terrain, [0, 0], "no default: grass");
     assert_eq!(odd.height, [0, 0]);
     assert_eq!(odd.sink[0], -24);
     assert!(

@@ -240,7 +240,7 @@ fn removing_a_piece_that_opens_an_exhibit_asks_and_a_closed_line_does_not() {
     // A piece of no exhibit: no question.
     let lone = world(vec![piece("f", 5, 5, 0)]);
     assert_eq!(check(&lone, &cat, 0, false, &[]), Check::Go);
-    // A declined pair is kept without a question.
+    // An asked pair is kept without a question.
     let pair = Question::Escape(1).pair().unwrap();
     assert_eq!(check(&w, &cat, top, false, &[pair]), Check::Keep);
 }

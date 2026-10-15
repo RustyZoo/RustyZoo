@@ -167,7 +167,7 @@ pub enum Question {
 
 impl Question {
     /// The two regions of an exhibit question (the grounds are 0), smaller first: a pair that
-    /// was declined stays declined while others merge.
+    /// was asked stays asked (a silent No) while others merge.
     pub fn pair(self) -> Option<(u32, u32)> {
         let (a, b) = match self {
             Question::Sell => return None,
@@ -185,7 +185,7 @@ pub enum Check {
     Go,
     /// Ask first.
     Ask(Question),
-    /// Leave it: its exhibit question was answered No for these two regions already.
+    /// Leave it: these two regions were asked about already (a silent No).
     Keep,
 }
 
@@ -225,17 +225,11 @@ fn exhibit_question(world: &World, e: usize) -> Option<Question> {
 }
 
 /// What to do with the entity at position `e` before removing it: the exhibit question comes
-/// first and replaces the sell one; `sell` is the switch `[UI] confirmSell`; `declined` the pairs
-/// of regions this press already answered No for.
-pub fn check(
-    world: &World,
-    cat: &Catalogue,
-    e: usize,
-    sell: bool,
-    declined: &[(u32, u32)],
-) -> Check {
+/// first and replaces the sell one; `sell` is the switch `[UI] confirmSell`; `asked` the pairs
+/// of regions this press asked about already.
+pub fn check(world: &World, cat: &Catalogue, e: usize, sell: bool, asked: &[(u32, u32)]) -> Check {
     if let Some(q) = exhibit_question(world, e) {
-        return match q.pair().is_some_and(|p| declined.contains(&p)) {
+        return match q.pair().is_some_and(|p| asked.contains(&p)) {
             true => Check::Keep,
             false => Check::Ask(q),
         };
