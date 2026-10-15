@@ -28,6 +28,7 @@ use rustyzoo::app::{App, Command};
 use rustyzoo::camera::Settings;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
+use rustyzoo::money::Money;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::timing::Timers;
 use rustyzoo::userdir;
@@ -100,7 +101,7 @@ fn remember(on: bool) {
 /// Plays the map `loaded` (its types and the zoo), or, without one, starts up to the main menu.
 pub fn run(
     vfs: &Vfs,
-    loaded: Option<(Catalogue, Zoo)>,
+    loaded: Option<(Catalogue, Zoo, Money)>,
     ini: &Config,
     flags: Flags,
 ) -> Result<(), CliError> {
@@ -174,7 +175,7 @@ pub fn run(
         .map(|ms| Timing::new(ms, timers.draw_period(), timers.update_period()));
     let catalogue;
     let mut app = match (loaded, booted) {
-        (Some((owned, zoo)), _) => {
+        (Some((owned, zoo, money)), _) => {
             catalogue = owned;
             let mut app = App::new(
                 MapRenderer::new(vfs, &catalogue),
@@ -190,6 +191,7 @@ pub fn run(
             if flags.bare {
                 app.bare();
             }
+            app.set_money(money);
             app.start_game(menu);
             app
         }

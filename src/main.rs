@@ -136,8 +136,12 @@ usage: rustyzoo [--data <dir>] <command>
                       alone receives the mouse and pauses the game; a message over the map
                       view belongs to the map: a press or release on it prints `tool down X,Y` or `tool up X,Y`, the tile
                       under the pointer (`none` off the map), and the first draw after the
-                      world was edited prints `world stage`. --cash N is the cash the game
-                      starts with (any finite number; not used yet). --rows ID N (repeatable) fills the list box ID
+                      world was edited prints `world stage`. The cash is told as `money cash N`
+                      (whole units) when it changes, with `money bar TEXT COLOUR` for the
+                      status bar, `money set N` and `money add N` for a start, and `money
+                      month M year Y` at a month change; the `$` character adds 10000 to the
+                      cash as a donation. --cash N is the cash a map starts with instead of
+                      the one it stores (any finite number). --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma

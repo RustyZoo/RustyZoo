@@ -117,15 +117,27 @@ fn tail(w: &mut W, v: u32) {
         w.u32(5).str("x"); // before 51 the block is the name alone
     }
     w.u32(2).str("a").u32(1).str("b").u32(2); // name counters
-    w.z(4 + 12 + 1 + 16 + 4 + 8);
-    w.u32(2).u32(3).z(2 * (12 + 3 + 1) * 4); // two months, three columns
+    w.z(4 + 12 + 1 + 16 + 4);
+    w.u32(5).u32(3); // month and year of the accounts
+    w.u32(2).u32(3); // two categories, three columns
+    let float = |w: &mut W, f: f32| {
+        w.u32(f.to_bits());
+    };
+    for r in 0..2 {
+        (0..12).for_each(|c| float(w, 100.0 * r as f32 + c as f32));
+    }
+    for r in 0..2 {
+        (0..3).for_each(|c| float(w, 1000.0 + 10.0 * r as f32 + c as f32));
+    }
+    (0..2).for_each(|r| float(w, 77.0 + r as f32));
     if v >= 39 {
         w.z(4);
     }
     if v >= 71 {
         w.z(8);
     }
-    w.z(16 + 4);
+    w.z(16);
+    w.u32(1234.5f32.to_bits()); // cash
     if v >= 73 {
         w.z(4);
     }
@@ -250,6 +262,23 @@ pub(crate) fn file(
     }
     tail(&mut w, v);
     w.0
+}
+
+#[test]
+fn keeps_the_cash_and_the_accounts() {
+    for v in [39, 71, 106] {
+        let (_, money) = Zoo::parse_money(&file(v, 2, 2, &[], &[])).unwrap();
+        assert_eq!((money.cash, money.month, money.year), (1234.5, 5, 3), "{v}");
+        // The two rows that the file has are kept, the other categories are 0.
+        assert_eq!(money.monthly[1][4], 104.0);
+        assert_eq!(money.yearly[1][2], 1012.0);
+        assert_eq!(money.yearly[1][3], 0.0, "a column the file does not have");
+        assert_eq!(
+            (money.total[0], money.total[1], money.total[2]),
+            (77.0, 78.0, 0.0)
+        );
+        assert_eq!(money.monthly[2], [0.0; 12]);
+    }
 }
 
 fn parse(bytes: &[u8]) -> Zoo {

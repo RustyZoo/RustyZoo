@@ -432,6 +432,8 @@ fn continue_asks_for_the_last_file_and_tells_the_player_when_it_is_gone() {
             label: "continue".into(),
             forget_last: false,
             freeform: false,
+            cash: Default::default(),
+            reset: false,
         }))
     );
     assert_eq!(menu.take_request(), None, "once");
@@ -472,7 +474,10 @@ fn a_file_is_loaded_as_a_saved_game_from_a_plain_path_or_refused_with_its_name()
         crate::zoo::tests::file(106, 2, 2, &[], &[]),
     )
     .unwrap();
-    let load = |path: &str| menu.load(path, &catalogue).map(|z| (z.width, z.height));
+    let load = |path: &str| {
+        menu.load(path, &catalogue)
+            .map(|(z, _)| (z.width, z.height))
+    };
     assert_eq!(load("map.zoo"), Ok((3, 2)));
     assert_eq!(load("MAPS/map.ZOO"), Ok((2, 2)), "any letter case");
     let absolute = install.0.join("map.zoo");

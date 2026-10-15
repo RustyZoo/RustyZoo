@@ -21,6 +21,7 @@ use std::str::FromStr;
 use crate::Framebuffer;
 use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
+use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
 use crate::text::to_cp1252;
@@ -245,6 +246,10 @@ struct Game {
     paused: bool,
     /// The tile grid is drawn (Ctrl+G).
     grid: bool,
+    /// The cash and the accounts, and what of them the log and the status bar showed last.
+    money: Money,
+    told: Option<i64>,
+    bar: Option<(String, Tone)>,
 }
 
 pub struct App<'a> {
@@ -280,6 +285,10 @@ pub struct App<'a> {
     /// 12,40`, `world stage`).
     tool_lines: Vec<String>,
     world_lines: Vec<String>,
+    /// What the cash and the accounts did and has not been logged yet, and what they did in the
+    /// last pass.
+    money_events: Vec<String>,
+    money_lines: Vec<String>,
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
@@ -315,6 +324,8 @@ enum Asked {
 /// buttons of the options panel that leave the game.
 const QUESTION: i32 = 45000;
 const MAIN_PANEL: i32 = 2;
+/// The cash on the status bar.
+const STATUS_MONEY: i32 = 1016;
 const OPTIONS_PANEL: i32 = 5;
 const MAIN_MENU_BUTTON: i32 = 1503;
 const EXIT_BUTTON: i32 = 1504;
@@ -332,7 +343,7 @@ impl<'a> App<'a> {
         size: (u32, u32),
     ) -> Result<App<'a>, RenderError> {
         let mut app = App::empty(renderer, timers, size, settings)?;
-        app.open_game(zoo)?;
+        app.open_game(zoo, Money::default())?;
         Ok(app)
     }
 
@@ -385,6 +396,8 @@ impl<'a> App<'a> {
             menu_lines: Vec::new(),
             tool_lines: Vec::new(),
             world_lines: Vec::new(),
+            money_events: Vec::new(),
+            money_lines: Vec::new(),
             music: None,
             music_changed: false,
             music_restarted: false,
@@ -399,7 +412,7 @@ impl<'a> App<'a> {
     /// Opens a game on `zoo`: its stored camera, the first draw, and a simulation whose next step is
     /// the cap, as after the original's blocking load (main loop 3.5). A failure leaves the app
     /// as it was.
-    fn open_game(&mut self, zoo: Zoo) -> Result<(), RenderError> {
+    fn open_game(&mut self, zoo: Zoo, money: Money) -> Result<(), RenderError> {
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
@@ -417,8 +430,18 @@ impl<'a> App<'a> {
             calendar: Calendar::new(),
             paused: false,
             grid: false,
+            money,
+            told: None,
+            bar: None,
         });
         Ok(())
+    }
+
+    /// Gives the game the cash and the accounts of its file (or those a run sets).
+    pub fn set_money(&mut self, money: Money) {
+        if let Some(game) = &mut self.game {
+            game.money = money;
+        }
     }
 
     /// Puts the interface around the game. The window is the size it was resolved for.
@@ -515,11 +538,42 @@ impl<'a> App<'a> {
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
+            && game.calendar.advance(step)
         {
-            game.calendar.advance(step);
+            game.money.month_change();
+            self.money_events.push(format!(
+                "month {} year {}",
+                game.money.month, game.money.year
+            ));
         }
+        self.tell_money();
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.drew.then_some(&self.frame)
+    }
+
+    /// Tells what the cash did since it was last told: the amount in whole units for the log,
+    /// and the status bar, which shows it with its colour at every change.
+    fn tell_money(&mut self) {
+        if let Some(game) = &mut self.game {
+            let (units, tone) = game.money.bar();
+            if game.told != Some(units) {
+                game.told = Some(units);
+                self.money_events.push(format!("cash {units}"));
+            }
+            if let Some(ui) = &mut self.ui {
+                let text = Symbol::new(ui.string(SYMBOL)).text(units);
+                let shown = Some((text, tone));
+                if game.bar != shown {
+                    let (text, _) = shown.as_ref().expect("just made");
+                    ui.set_text(STATUS_MONEY, &to_cp1252(text));
+                    ui.set_fore_color(STATUS_MONEY, tone.rgb());
+                    self.money_events
+                        .push(format!("bar {text} {}", tone.name()));
+                    game.bar = shown;
+                }
+            }
+        }
+        self.money_lines = std::mem::take(&mut self.money_events);
     }
 
     /// The game starts with this menu music playing: it fades out from the first interface update
@@ -617,6 +671,10 @@ impl<'a> App<'a> {
                     ui.key(key, shift);
                 }
             }
+            // The `$` key donates (input 4.8).
+            (Command::Char(b'$'), Some(game)) if keys && !game.paused => {
+                game.money.refund(DONATIONS, DOLLAR_KEY);
+            }
             (Command::Char(byte), _) => {
                 if let Some(ui) = &mut self.ui {
                     ui.char(byte);
@@ -680,7 +738,9 @@ impl<'a> App<'a> {
             Some(Request::Open(start)) => {
                 let Some(menu) = &self.menu else { return };
                 let zoo = menu.load(&start.path, self.renderer.catalogue());
-                match zoo.and_then(|zoo| self.open_game(zoo).map_err(|e| e.to_string())) {
+                let opened = zoo
+                    .and_then(|(zoo, money)| self.open_game(zoo, money).map_err(|e| e.to_string()));
+                match opened {
                     Ok(()) => self.begin(&start),
                     Err(why) => self.say(&why),
                 }
@@ -700,6 +760,14 @@ impl<'a> App<'a> {
         }
         self.menu_events
             .push(format!("game start {} {}", start.label, start.path));
+        if let Some(game) = &mut self.game {
+            game.money.start(start.cash, start.reset);
+            for (name, amount) in [("set", start.cash.set), ("add", start.cash.add)] {
+                if let Some(amount) = amount {
+                    self.money_events.push(format!("{name} {amount}"));
+                }
+            }
+        }
         let music = self.music.take();
         self.start_game(music);
         if start.freeform
@@ -901,6 +969,11 @@ impl<'a> App<'a> {
         self.game.as_ref().map(|g| &g.calendar)
     }
 
+    /// The cash and the accounts of the game; `None` in the menu.
+    pub fn money(&self) -> Option<&Money> {
+        self.game.as_ref().map(|g| &g.money)
+    }
+
     pub fn paused(&self) -> bool {
         self.modal() || self.game.as_ref().is_some_and(|g| g.paused)
     }
@@ -937,6 +1010,9 @@ impl<'a> App<'a> {
     /// (`menu continue enabled NAME`, `menu continue disabled`, `menu version V` when it appears, `menu exit`),
     /// then `tool down X,Y` or `tool up X,Y` for a press or release on the map view (the tile, or `none`),
     /// then `world stage` when an edit made the draw stage the map again,
+    /// then `money cash N` (whole units) when the cash changed, `money bar TEXT COLOUR` when the
+    /// status bar was written, `money set N` and `money add N` when a start set or added cash and
+    /// `money month M year Y` at a month change,
     /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
@@ -951,6 +1027,7 @@ impl<'a> App<'a> {
         lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
         lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
         lines.extend(self.world_lines.iter().map(|e| format!("{lead} world {e}")));
+        lines.extend(self.money_lines.iter().map(|e| format!("{lead} money {e}")));
         if self.fired.draw {
             let hash = match self.drew {
                 true => format!("{:016x}", frame_hash(&self.frame)),
@@ -1011,3 +1088,6 @@ mod tests;
 
 #[cfg(test)]
 mod start_tests;
+
+#[cfg(test)]
+mod money_tests;
