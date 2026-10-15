@@ -217,6 +217,49 @@ freeform_screen() {
 check base-trial '1,75000:middle' 'freeform_screen'
 check expansion-trial '1,75000:middle' 'freeform_screen'
 
+# From the menu into a game and back: Continue (at y) opens `[user] lastfile` as a saved game,
+# Escape asks (leave), No shows the menu again (the music starts again), Continue once more, then
+# closing the window asks (exit) and No ends the run. The lines of the game, the steps of the
+# capped size (one after each start) and the restarts of the music, from the log.
+game_round() { # game_round <y of Continue> <last file>
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 %s\n2 down\n3 up\n10 key escape\n12 key n\n20 mouse 512 %s\n21 down\n22 up\n30 close\n32 key n\n' "$1" "$1" >"$tmp/round"
+  rz run --headless --passes 40 --clock 100 --script "$tmp/round" 2>/dev/null |
+    awk '/ menu game /{g=g (g?";":"") $6" "$7} / step 200 /{c++} / menu music restart/{m++} END{print g","c","m}'
+}
+check base-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'game_round 489 "maps\\default.zoo"'
+check expansion-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'game_round 474 "maps\\scn19.zoo"'
+# Play on a scenario and on a freeform map opens the map their file names, and empties the last
+# file (so Continue is off when the menu comes back): the start lines and the last file left.
+play_map() { # play_map <y of the menu button>
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' 'maps\\default.zoo' >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 %s\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n' "$1" >"$tmp/play"
+  rz run --headless --passes 10 --clock 100 --script "$tmp/play" 2>/dev/null | awk '/ menu game start /{print $7" "$8" "$NF}'
+  sed -n 's/^lastfile=//p' "$tmp/user/zoo.ini"
+}
+check base-trial 'scenarioaamaps/scn01a.zoo,' 'play_map 365 | paste -sd, -'
+check base-trial 'freeformcashmaps/default.zoo,' 'play_map 405 | paste -sd, -'
+check expansion-trial 'freeformcashmaps/sm_aqua.zoo,' 'play_map 405 | paste -sd, -'
+# A run of a map ends in the same state as a Continue: Escape asks, and No ends the run, there being
+# no menu to go back to.
+check base-trial 'askleave;exit' 'printf "3 key escape\n5 key n\n" > "$tmp/esc"; rz run maps/default.zoo --headless --passes 8 --clock 100 --script "$tmp/esc" 2>/dev/null | awk "/ menu game /{g=g (g?\";\":\"\") \$6\" \"\$7} END{print g}"'
+# The same in a window of the dummy video driver: the log replays headless to the same lines.
+windowed_game() { # windowed_game <y of Continue> <last file>
+  d=$(mktemp -d)
+  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
+  printf '3 mouse 512 %s\n5 down\n6 up\n12 key escape\n14 key n\n24 mouse 512 %s\n25 down\n26 up\n32 close\n34 key n\n' "$1" "$1" >"$d/script"
+  SDL_VIDEO_DRIVER=dummy rz run --size 1024x768 --passes 60 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  grep -c 'menu game start' "$d/log"
+  if rz run --headless --replay "$d/log" 2>/dev/null | cmp -s - "$d/log"; then echo same; else echo different; fi
+  rm -rf "${d:?}"
+}
+check base-trial 2,same 'windowed_game 489 "maps\\default.zoo" | paste -sd, -'
+check expansion-trial 2,same 'windowed_game 474 "maps\\scn19.zoo" | paste -sd, -'
+
 # The same in a window of the dummy video driver (the start-up picture is presented as the bar
 # moves): a click on Exit at y ends the run, and its log replays headless to the same lines.
 windowed_menu() {

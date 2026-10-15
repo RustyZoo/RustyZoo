@@ -20,11 +20,12 @@ use std::str::FromStr;
 
 use crate::Framebuffer;
 use crate::camera::{Camera, Settings};
-use crate::menu::Menu;
+use crate::menu::{Menu, Request};
 use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
+use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
-use crate::ui::interface::{Action, Interface};
+use crate::ui::interface::{Action, Buttons, Interface};
 use crate::zoo::Zoo;
 
 /// A key the interface reads, by the name a script gives it.
@@ -278,7 +279,33 @@ pub struct App<'a> {
     music: Option<Music>,
     /// Whether the interface update of the last pass changed the music's volume or stopped it.
     music_changed: bool,
+    /// Whether the last pass started the menu music again, from its beginning.
+    music_restarted: bool,
+    /// The scroll settings a game opens its camera with, and whether the window is full screen.
+    settings: Settings,
+    fullscreen: bool,
+    /// The question that is open and what it leads to.
+    asked: Option<Asked>,
 }
+
+/// What an open question leads to when it is answered No: stopping the game for the menu, or
+/// ending the program (main menu 9).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Asked {
+    Leave,
+    Exit,
+}
+
+/// The layout of the question boxes with a message, the main panel and the options panel, and the
+/// buttons of the options panel that leave the game.
+const QUESTION: i32 = 45000;
+const MAIN_PANEL: i32 = 2;
+const OPTIONS_PANEL: i32 = 5;
+const MAIN_MENU_BUTTON: i32 = 1503;
+const EXIT_BUTTON: i32 = 1504;
+/// The questions: save before starting a new zoo, before exiting.
+const ASK_LEAVE: i32 = 153;
+const ASK_EXIT: i32 = 151;
 
 impl<'a> App<'a> {
     /// A game on `zoo` seen through a window of `size` pixels, with the camera the map stores.
@@ -289,17 +316,8 @@ impl<'a> App<'a> {
         timers: Timers,
         size: (u32, u32),
     ) -> Result<App<'a>, RenderError> {
-        let mut app = App::empty(renderer, timers, size)?;
-        let camera = Camera::open(&zoo.view, (size.0 as i32, size.1 as i32), settings);
-        let staged = app.renderer.stage(&zoo, camera.rotation, false)?;
-        app.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation));
-        app.game = Some(Game {
-            zoo,
-            staged,
-            camera,
-            calendar: Calendar::new(),
-            paused: false,
-        });
+        let mut app = App::empty(renderer, timers, size, settings)?;
+        app.open_game(zoo)?;
         Ok(app)
     }
 
@@ -307,13 +325,14 @@ impl<'a> App<'a> {
     /// what is selected in `ui`, and the menu music (if any) playing at full level.
     pub fn menu(
         renderer: MapRenderer<'a>,
+        settings: Settings,
         timers: Timers,
         size: (u32, u32),
         mut ui: Interface,
         mut menu: Menu,
         music: Option<Music>,
     ) -> Result<App<'a>, RenderError> {
-        let mut app = App::empty(renderer, timers, size)?;
+        let mut app = App::empty(renderer, timers, size, settings)?;
         app.menu_events = menu.show(&mut ui);
         app.set_interface(ui);
         app.menu = Some(menu);
@@ -325,6 +344,7 @@ impl<'a> App<'a> {
         renderer: MapRenderer<'a>,
         timers: Timers,
         size: (u32, u32),
+        settings: Settings,
     ) -> Result<App<'a>, RenderError> {
         check_size(&[0, 0, i64::from(size.0), i64::from(size.1)])?;
         Ok(App {
@@ -350,7 +370,34 @@ impl<'a> App<'a> {
             menu_lines: Vec::new(),
             music: None,
             music_changed: false,
+            music_restarted: false,
+            settings,
+            fullscreen: false,
+            asked: None,
         })
+    }
+
+    /// Opens a game on `zoo`: its stored camera, the first draw, and a simulation whose next step is
+    /// the cap, as after the original's blocking load (main loop 3.5). A failure leaves the app
+    /// as it was.
+    fn open_game(&mut self, zoo: Zoo) -> Result<(), RenderError> {
+        let size = (self.frame.width as i32, self.frame.height as i32);
+        let mut camera = Camera::open(&zoo.view, size, self.settings);
+        if self.fullscreen {
+            camera.set_fullscreen(&zoo, true);
+        }
+        let staged = self.renderer.stage(&zoo, camera.rotation, false)?;
+        self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation));
+        self.painted = None;
+        self.timers.forget_simulation();
+        self.game = Some(Game {
+            zoo,
+            staged,
+            camera,
+            calendar: Calendar::new(),
+            paused: false,
+        });
+        Ok(())
     }
 
     /// Puts the interface around the game. The window is the size it was resolved for.
@@ -387,7 +434,7 @@ impl<'a> App<'a> {
         self.menu_lines.clear();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
-        self.music_changed = false;
+        (self.music_changed, self.music_restarted) = (false, false);
         if let Some(ui) = &mut self.ui {
             ui.set_time(now);
         }
@@ -406,7 +453,7 @@ impl<'a> App<'a> {
             self.ui_sounds.extend(ui.take_sounds());
             self.ui_actions.extend(ui.take_actions());
         }
-        self.menu_acts();
+        self.acts();
         if self.quit {
             self.menu_lines = std::mem::take(&mut self.menu_events);
             return None;
@@ -439,6 +486,7 @@ impl<'a> App<'a> {
             if let Some(music) = &mut self.music {
                 self.music_changed = music.update(period);
             }
+            self.acts();
         }
         let modal = self.modal();
         if let Some(game) = &mut self.game
@@ -471,12 +519,22 @@ impl<'a> App<'a> {
     }
 
     fn apply(&mut self, command: Command) {
+        match command {
+            Command::Close => return self.close(),
+            Command::Key(Key::Escape, ..)
+                if self.game.is_some() && self.ui.is_some() && self.map_keys() =>
+            {
+                return self.escape();
+            }
+            Command::Fullscreen(on) => self.fullscreen = on,
+            _ => {}
+        }
         let keys = self.map_keys();
         let shown = self.ui.as_ref().is_none_or(Interface::map_view_shown);
         let modal = self.modal();
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
-            (Command::Quit | Command::Close, _) => self.quit = true,
+            (Command::Quit, _) => self.quit = true,
             (Command::Mouse(mouse), _) => {
                 if let Some(ui) = &mut self.ui {
                     ui.mouse(mouse);
@@ -518,23 +576,199 @@ impl<'a> App<'a> {
         }
     }
 
-    /// The menu acts on what the player selected in the last pass.
-    fn menu_acts(&mut self) {
-        let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) else {
-            return;
-        };
-        let vfs = self.renderer.vfs();
-        for action in self.ui_actions[self.acted..].iter().copied() {
-            self.menu_events.extend(menu.action(vfs, ui, action));
-        }
+    /// The menu and the game act on what the player did since the last look: the answers to the
+    /// questions, the actions of the lists and the cash field, the buttons selected.
+    fn acts(&mut self) {
+        let Some(ui) = &mut self.ui else { return };
+        let selected = ui.take_selected();
+        let actions: Vec<Action> = self.ui_actions[self.acted..].to_vec();
         self.acted = self.ui_actions.len();
-        for id in ui.take_selected() {
-            let (lines, exit) = menu.selected(vfs, ui, id);
-            self.menu_events.extend(lines);
-            self.quit |= exit;
+        for action in actions {
+            match action {
+                Action::Answer(code) => self.answered(code),
+                action if self.game.is_none() => {
+                    if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
+                        let lines = menu.action(self.renderer.vfs(), ui, action);
+                        self.menu_events.extend(lines);
+                    }
+                    self.requested();
+                }
+                _ => {}
+            }
+        }
+        for id in selected {
+            match id {
+                MAIN_MENU_BUTTON | EXIT_BUTTON if self.game.is_some() => {
+                    let kind = if id == EXIT_BUTTON {
+                        Asked::Exit
+                    } else {
+                        Asked::Leave
+                    };
+                    self.ask(kind);
+                }
+                _ if self.game.is_none() => {
+                    if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
+                        let (lines, exit) = menu.selected(self.renderer.vfs(), ui, id);
+                        self.menu_events.extend(lines);
+                        self.quit |= exit;
+                    }
+                    self.requested();
+                }
+                _ => {}
+            }
         }
         // What the menu did to the lists and the fields may have made more to tell.
-        self.ui_events.extend(ui.take_events());
+        if let Some(ui) = &mut self.ui {
+            self.ui_events.extend(ui.take_events());
+        }
+    }
+
+    /// What the menu's last button asked of the game: open a file, or tell the player something.
+    fn requested(&mut self) {
+        match self.menu.as_mut().and_then(Menu::take_request) {
+            Some(Request::Open(start)) => {
+                let Some(menu) = &self.menu else { return };
+                let zoo = menu.load(&start.path, self.renderer.catalogue());
+                match zoo.and_then(|zoo| self.open_game(zoo).map_err(|e| e.to_string())) {
+                    Ok(()) => self.begin(start.forget_last, &start.label, &start.path),
+                    Err(why) => self.say(&why),
+                }
+            }
+            Some(Request::Message(text)) => self.say(&text),
+            None => {}
+        }
+    }
+
+    /// A game was opened from the menu: the menu layouts are hidden, so the map view shows, the
+    /// menu music starts to fade and the simulation runs from the next pass (main menu 8.1).
+    fn begin(&mut self, forget_last: bool, label: &str, path: &str) {
+        if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
+            menu.hide(ui, forget_last);
+        }
+        self.menu_events.push(format!("game start {label} {path}"));
+        let music = self.music.take();
+        self.start_game(music);
+    }
+
+    /// Tells the player something in a question box with an OK button.
+    fn say(&mut self, text: &str) {
+        self.menu_events.push(format!("message {text}"));
+        if let Some(ui) = &mut self.ui {
+            ui.ask(QUESTION, &to_cp1252(text), Buttons::OK);
+        }
+    }
+
+    /// Asks whether to save before leaving; without an interface to ask with, leaves.
+    fn ask(&mut self, kind: Asked) {
+        let (id, name) = match kind {
+            Asked::Leave => (ASK_LEAVE, "leave"),
+            Asked::Exit => (ASK_EXIT, "exit"),
+        };
+        let asked = self.ui.as_mut().is_some_and(|ui| {
+            let text = to_cp1252(&ui.string(id));
+            ui.ask(QUESTION, &text, Buttons::YES_NO_CANCEL)
+        });
+        match asked {
+            true => {
+                self.asked = Some(kind);
+                self.menu_events.push(format!("game ask {name}"));
+            }
+            false => self.proceed(kind),
+        }
+    }
+
+    /// The answer to the question that was asked: Yes would save first, which there is nothing to
+    /// do yet (saved games come later), so the question closes and the game goes on; No leaves;
+    /// Cancel stays.
+    fn answered(&mut self, code: i32) {
+        let Some(kind) = self.asked.take() else {
+            return;
+        };
+        match code {
+            6 => self.menu_events.push("game save unavailable".to_string()),
+            7 => self.proceed(kind),
+            _ => {}
+        }
+    }
+
+    fn proceed(&mut self, kind: Asked) {
+        match kind {
+            Asked::Leave => self.stop_game(),
+            Asked::Exit => {
+                self.menu_events.push("game exit".to_string());
+                self.quit = true;
+            }
+        }
+    }
+
+    /// The window is closed: from the menu the program ends at once; in a game it asks first. A
+    /// question that is open is answered Cancel before (input 4.7).
+    fn close(&mut self) {
+        if self.game.is_none() || self.ui.is_none() {
+            self.quit = true;
+            return;
+        }
+        if let Some(ui) = &mut self.ui
+            && ui.modal_open()
+        {
+            ui.answer(2);
+            // The answer is not for the new question: what else is waiting stays.
+            let waiting = ui.take_actions();
+            self.ui_actions
+                .extend(waiting.into_iter().filter(|a| *a != Action::Answer(2)));
+            self.asked = None;
+        }
+        self.ask(Asked::Exit);
+    }
+
+    /// Escape, with the map view having the keys: an open panel closes, else the question that
+    /// leads to the menu (input 4.6).
+    fn escape(&mut self) {
+        if let Some(ui) = &mut self.ui {
+            for id in [OPTIONS_PANEL, MAIN_PANEL] {
+                if let Some(i) = ui.tree.find(id)
+                    && ui.tree.elements[i].state & crate::ui::layout::HIDDEN == 0
+                {
+                    ui.tree.hide(i);
+                    ui.touch();
+                    return;
+                }
+            }
+        }
+        self.ask(Asked::Leave);
+    }
+
+    /// Stops the game and shows the main menu again: Continue is checked, and the music, if it is
+    /// not playing at full level, starts from its beginning (main menu 9.2). Without a menu to
+    /// go back to, the run ends.
+    fn stop_game(&mut self) {
+        let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) else {
+            self.menu_events.push("game exit".to_string());
+            self.quit = true;
+            return;
+        };
+        self.game = None;
+        (self.painted, self.drawn_at) = (None, None);
+        for id in [OPTIONS_PANEL, MAIN_PANEL] {
+            if let Some(i) = ui.tree.find(id) {
+                ui.tree.hide(i);
+            }
+        }
+        self.menu_events.push("game stop".to_string());
+        let shown = menu.show(ui);
+        self.menu_events.extend(shown);
+        if !self.music.as_ref().is_some_and(Music::playing) {
+            self.music = menu.music();
+            self.music_restarted = self.music.is_some();
+            if self.music_restarted {
+                self.menu_events.push("music restart".to_string());
+            }
+        }
+    }
+
+    /// Whether the last pass started the menu music again: the player plays it from the start.
+    pub fn music_restarted(&self) -> bool {
+        self.music_restarted
     }
 
     /// Paints the window of the view if it differs from the last frame: the camera moved or the
@@ -691,3 +925,6 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod start_tests;

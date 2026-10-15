@@ -495,6 +495,7 @@ fn with_menu(name: &str, body: impl FnOnce(&mut App)) {
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut app = App::menu(
         MapRenderer::new(&vfs, &catalogue),
+        Settings::default(),
         Timers::new(66, 16, 200),
         SIZE,
         ui,

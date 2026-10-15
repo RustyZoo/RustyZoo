@@ -192,6 +192,7 @@ pub fn run(
             catalogue = booted.catalogue;
             App::menu(
                 MapRenderer::new(vfs, &catalogue),
+                Settings::from_config(ini),
                 timers,
                 size,
                 booted.interface,
@@ -306,6 +307,7 @@ pub fn run(
             }
         }
         sound.fade(&app);
+        sound.restart(vfs, &app);
         sound.clicks(vfs, &app);
         pass += 1;
         let timed = timing.as_ref().is_some_and(|t| t.done(now));

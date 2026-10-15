@@ -91,6 +91,13 @@ impl Interface {
             .filter(|&i| matches!(self.tree.elements[i].kind, Kind::Text(_)))
     }
 
+    /// The layout under the pointer went away: no element is hovered and no tooltip is shown or
+    /// due, until the pointer moves again.
+    pub fn forget_pointer(&mut self) {
+        self.hover_to(None);
+        self.tooltip_for(None);
+    }
+
     /// The pointer is over `target` (or nothing): when that is another element or row than
     /// before, the tooltip is hidden and, if the new one has help, due after the delay.
     pub(super) fn tooltip_for(&mut self, target: Option<usize>) {

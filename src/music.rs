@@ -96,6 +96,11 @@ impl Music {
         gain(self.sum())
     }
 
+    /// Whether it plays at full level and is not fading.
+    pub fn playing(&self) -> bool {
+        self.state == State::Playing
+    }
+
     pub fn stopped(&self) -> bool {
         self.state == State::Stopped
     }
@@ -201,8 +206,9 @@ mod tests {
     fn the_fade_waits_five_updates_then_steps_until_it_stops() {
         let mut m = music("[UI]\nmenuMusicAttenuation=-1000\n").unwrap();
         // Nothing changes until a game starts.
-        assert!(!m.update(66) && m.sum() == -1000);
+        assert!(!m.update(66) && m.sum() == -1000 && m.playing());
         m.start_fade();
+        assert!(!m.playing());
         assert!((0..5).all(|_| !m.update(66)) && m.sum() == -1000);
         // F goes 33, 66, ..., 2970: 90 steps; the next update stops the music.
         for step in 1..=90 {

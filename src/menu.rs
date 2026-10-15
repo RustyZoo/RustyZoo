@@ -3,19 +3,21 @@
 //! credits) are layouts shown by the buttons' own actions; the scenario and freeform screens fill
 //! their lists and pictures when they are shown (`screens`).
 //!
-//! The credits are a layout of pages that replace one another on the interface clock. A game
-//! started from the menu comes with a later issue; here Exit ends the program and Play only logs
-//! the request.
+//! The credits are a layout of pages that replace one another on the interface clock. Exit ends
+//! the program; Continue, and Play on a scenario or a freeform map, ask the game to open a file
+//! ([`Request`]), which [`Menu::load`] reads and the app starts.
 
 use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Config, to_int};
 use crate::lists::{Cash, Freeform, Scenario};
+use crate::music::Music;
 use crate::text::format::{Arg, Strings, expand};
 use crate::ui::interface::Interface;
 use crate::ui::layout::{DISABLED, HIDDEN};
 use crate::userdir;
 use crate::vfs::Vfs;
+use crate::zoo::Zoo;
 
 mod screens;
 
@@ -23,6 +25,8 @@ mod screens;
 const LAYOUT: i32 = 26;
 const BACKGROUND: i32 = 7100;
 const CONTINUE: i32 = 7113;
+/// The string of the message when the file Continue names cannot be opened.
+const CANNOT_OPEN: i32 = 318;
 const LOAD: i32 = 7112;
 const ZOO_ITEMS: i32 = 7114;
 const EXIT: i32 = 7116;
@@ -30,6 +34,9 @@ const VERSION: i32 = 7119;
 const CREDITS: i32 = 7115;
 /// The layout of the credits.
 const CREDITS_LAYOUT: i32 = 40;
+/// The layouts of the scenario and freeform screens.
+const SCENARIO_LAYOUT: i32 = 32;
+const FREEFORM_LAYOUT: i32 = 39;
 /// Seconds a credits page stays when no registry file says.
 const CREDITS_DELAY: i32 = 8;
 /// The string of the version label and the tooltips of Continue.
@@ -78,6 +85,25 @@ pub fn credit_pages(vfs: &Vfs) -> (Vec<i32>, u32) {
     (pages, u32::try_from(delay).unwrap_or(0))
 }
 
+/// A game to open, asked by a button (main menu 8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Start {
+    /// The file to load as a saved game: a path, absolute or relative to the install folder.
+    pub path: String,
+    /// What the log calls it.
+    pub label: String,
+    /// Whether `[user] lastfile` is emptied when the game starts (scenarios and freeform maps).
+    pub forget_last: bool,
+}
+
+/// What a button asks of the game.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Request {
+    Open(Start),
+    /// Something to tell the player, in a question box.
+    Message(String),
+}
+
 /// The credits being shown: the page and the clock (ms) at which it changes. Showing the credits
 /// leaves it unset, and the first interface update after only sets it; an update that changes a
 /// page sets the deadline of the next one.
@@ -108,6 +134,8 @@ pub struct Menu {
     freeform: Option<usize>,
     /// The starting cash of the freeform screen.
     cash: Cash,
+    /// What the last button asked of the game, until [`Menu::take_request`].
+    request: Option<Request>,
 }
 
 impl Menu {
@@ -132,6 +160,7 @@ impl Menu {
             scenario: None,
             freeform: None,
             cash: Cash::from_settings(&Config::default()),
+            request: None,
         }
     }
 
@@ -199,7 +228,7 @@ impl Menu {
             .setting("user", "lastfile")
             .map(|v| String::from_utf8_lossy(v).trim().to_string())
             .unwrap_or_default();
-        let exists = !last.is_empty() && is_file(&self.root, &last.replace('\\', "/"));
+        let exists = !last.is_empty() && find_file(&self.root, &last.replace('\\', "/")).is_some();
         let long = self
             .setting("UI", "helpType")
             .and_then(to_int)
@@ -236,8 +265,67 @@ impl Menu {
         match id {
             EXIT => (vec!["exit".to_string()], true),
             CREDITS => (self.show_credits(ui), false),
+            CONTINUE => (self.continue_game(ui), false),
             _ => (self.pressed(vfs, ui, id), false),
         }
+    }
+
+    /// What the last button asked of the game, once.
+    pub fn take_request(&mut self) -> Option<Request> {
+        self.request.take()
+    }
+
+    /// Continue: the file `[user] lastfile` names is loaded as a saved game; if it cannot be
+    /// opened the player is told (main menu 7.2).
+    fn continue_game(&mut self, ui: &Interface) -> Vec<String> {
+        let last = self
+            .setting("user", "lastfile")
+            .map(|v| String::from_utf8_lossy(v).trim().to_string())
+            .unwrap_or_default();
+        if last.is_empty() {
+            return Vec::new();
+        }
+        let path = last.replace('\\', "/");
+        self.request = Some(match find_file(&self.root, &path) {
+            Some(_) => Request::Open(Start {
+                path: path.clone(),
+                label: "continue".to_string(),
+                forget_last: false,
+            }),
+            None => Request::Message(ui.string(CANNOT_OPEN)),
+        });
+        vec![format!("continue {path}")]
+    }
+
+    /// Reads the file of `start` as a saved game: a plain file, not one of the game's resources;
+    /// a refusal is a message that says which file and why.
+    pub fn load(&self, path: &str, catalogue: &crate::entity::Catalogue) -> Result<Zoo, String> {
+        let file = find_file(&self.root, path).ok_or_else(|| format!("{path}: no such file"))?;
+        let bytes = std::fs::read(&file).map_err(|e| format!("{path}: {e}"))?;
+        Zoo::parse(&bytes)
+            .and_then(|zoo| zoo.checked(catalogue))
+            .map_err(|e| format!("{path}: {e}"))
+    }
+
+    /// A game starts: the menu layouts are hidden (the map view under them is the game's), and
+    /// scenarios and freeform maps empty `lastfile`.
+    pub fn hide(&mut self, ui: &mut Interface, forget_last: bool) {
+        self.credits = None;
+        for id in [LAYOUT, SCENARIO_LAYOUT, FREEFORM_LAYOUT, CREDITS_LAYOUT] {
+            if let Some(i) = ui.tree.find(id) {
+                ui.tree.hide(i);
+            }
+        }
+        ui.forget_pointer();
+        ui.touch();
+        if forget_last {
+            self.write_back("user", "lastfile", "");
+        }
+    }
+
+    /// The menu music the settings ask for, started from its beginning.
+    pub fn music(&self) -> Option<Music> {
+        Music::from_config(&self.ini)
     }
 
     /// Shows page `page` of the credits and none of the others: the credits layout shows all its
@@ -301,9 +389,9 @@ impl Menu {
     }
 }
 
-/// Whether `path` (relative to `root`, or absolute) names a file, each part matched ignoring
-/// letter case as every file of the game is.
-fn is_file(root: &Path, path: &str) -> bool {
+/// The file `path` names (relative to `root`, or absolute), each part matched ignoring letter case
+/// as every file of the game is; `None` if there is none.
+fn find_file(root: &Path, path: &str) -> Option<PathBuf> {
     let mut found = PathBuf::new();
     for part in Path::new(path).components() {
         if found.as_os_str().is_empty()
@@ -319,19 +407,14 @@ fn is_file(root: &Path, path: &str) -> bool {
         found = if exact.exists() {
             exact
         } else {
-            let Ok(dir) = std::fs::read_dir(&found) else {
-                return false;
-            };
-            match dir
+            std::fs::read_dir(&found)
+                .ok()?
                 .flatten()
-                .find(|e| e.file_name().eq_ignore_ascii_case(name))
-            {
-                Some(entry) => entry.path(),
-                None => return false,
-            }
+                .find(|e| e.file_name().eq_ignore_ascii_case(name))?
+                .path()
         };
     }
-    found.is_file()
+    found.is_file().then_some(found)
 }
 
 /// Enables or disables the button `id`, which draws grey and takes no click while disabled.

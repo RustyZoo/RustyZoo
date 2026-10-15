@@ -210,7 +210,7 @@ fn unit(v: u32, before: usize, id: u32) -> Vec<u8> {
 }
 
 /// The file: sections up to the entities, each entity as `(class, type, subtype, body)`.
-fn file(
+pub(crate) fn file(
     v: u32,
     width: u32,
     height: u32,

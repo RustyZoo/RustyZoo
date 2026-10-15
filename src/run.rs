@@ -22,7 +22,7 @@ use rustyzoo::ui::interface::Buttons;
 use rustyzoo::vfs::Vfs;
 
 use super::boot::boot;
-use super::{CliError, Report, check_types, load_map};
+use super::{CliError, Report, load_map};
 
 /// The most rows `--rows` makes.
 const MAX_ROWS: usize = 100_000;
@@ -319,7 +319,8 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
     let loaded = match member {
         Some(member) => {
             let catalogue = Catalogue::load(vfs)?;
-            let zoo = check_types(load_map(vfs, member)?, &catalogue)
+            let zoo = load_map(vfs, member)?
+                .checked(&catalogue)
                 .map_err(|e| format!("{member}: {e}"))?;
             Some((catalogue, zoo))
         }
@@ -445,6 +446,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             }
             App::menu(
                 MapRenderer::new(vfs, &menu_catalogue),
+                Settings::from_config(&ini),
                 Timers::from_config(&ini),
                 size,
                 booted.interface,
