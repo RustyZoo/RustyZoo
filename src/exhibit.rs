@@ -27,13 +27,13 @@ pub struct Exhibits {
 
 impl Exhibits {
     /// Finds the regions of a world. The exhibits are numbered from 1 in the order of their first
-    /// tile. An entrance with no building on its tile has no exterior: the world marks none.
+    /// tile. A region that holds the entrance tile or a tile beyond the zoo wall is the zoo
+    /// grounds (the gate buildings join the exterior to the grounds), and the tiles beyond the
+    /// wall are marked [`EXTERIOR`] in it.
     pub fn new(world: &World) -> Exhibits {
         let tiles = world.zoo.tiles.len();
         let none = u32::MAX - 1;
-        let mut region: Vec<u32> = (0..tiles)
-            .map(|t| if world.in_zoo(t) { none } else { EXTERIOR })
-            .collect();
+        let mut region = vec![none; tiles];
         let mut list = Vec::new();
         let (ex, ey) = world.zoo.entrance;
         let entrance = i32::try_from(ex)
@@ -44,31 +44,34 @@ impl Exhibits {
             if region[start] != none {
                 continue;
             }
-            let id = if Some(start) == entrance {
-                GROUNDS
-            } else {
-                list.len() as u32 + 1
-            };
-            let mut size = 0;
+            let id = list.len() as u32 + 1;
             region[start] = id;
-            let mut todo = vec![start];
-            while let Some(t) = todo.pop() {
-                size += 1;
+            let mut members = vec![start];
+            let mut at = 0;
+            while let Some(&t) = members.get(at) {
+                at += 1;
                 for d in [0, 2, 4, 6] {
                     if let Some(n) = world.neighbour(t, d)
                         && region[n] == none
                         && !world.closed(t, d)
                     {
                         region[n] = id;
-                        todo.push(n);
+                        members.push(n);
                     }
                 }
             }
-            if id != GROUNDS {
+            if Some(start) == entrance || members.iter().any(|&t| !world.in_zoo(t)) {
+                members.iter().for_each(|&t| region[t] = GROUNDS);
+            } else {
                 list.push(Exhibit {
                     first: start,
-                    tiles: size,
+                    tiles: members.len(),
                 });
+            }
+        }
+        for (t, r) in region.iter_mut().enumerate() {
+            if !world.in_zoo(t) {
+                *r = EXTERIOR;
             }
         }
         Exhibits { region, list }
