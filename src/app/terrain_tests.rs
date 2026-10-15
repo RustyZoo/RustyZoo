@@ -20,6 +20,7 @@ impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
             3363 => "short".into(),
+            3365 => "Grass".into(),
             3367 => "Sand".into(),
             _ => String::new(),
         }
@@ -46,7 +47,9 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [b]\ntype=UILayout\nlayout=ui/c.lyt\n\
     [c]\ntype=UIButton\nid=1002\nx=110\ny=80\ndx=8\ndy=8\nstate=2048\naction=3\ntarget=8\n\
     transparent=0\n\
-    [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n";
+    [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n\
+    [e]\ntype=UIText\nid=7003\nlayer=10\nx=0\ny=0\ndx=1\ndy=1\ntimed=1\ntimerDuration=100\n\
+    transparent=0\nstate=1025\n";
 const QUESTION: &str = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ntransparent=0\n";
 /// The construction panel with one list tab and the two terrain tabs, and the terrain panel in it.
@@ -226,14 +229,22 @@ fn the_paint_tab_opens_the_panel_and_a_stroke_makes_a_priced_session() {
         // The brush follows the pointer over the map, and its tiles are marked.
         let at = s.tile(20, 20);
         assert!(at.0 > 45 && at.0 < 120 && at.1 < 80, "{at:?}");
-        assert_eq!(s.hover(at), ["terrain brush 2 20,20"]);
+        assert_eq!(
+            s.hover(at),
+            ["terrain brush 2 20,20", "terrain amount -120"]
+        );
         assert_eq!(s.game().marks.len(), 4);
         assert_eq!(s.text(3321), "$120");
         // A press paints the four tiles at once: the session costs 4 times 30.
         let lines = s.pass(&[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
         assert_eq!(
             lines,
-            ["world stage", "terrain paint 4", "terrain cost 120"]
+            [
+                "world stage",
+                "terrain paint 4",
+                "terrain cost 120",
+                "terrain amount 0"
+            ]
         );
         assert_eq!(s.text(3305), "$120");
         assert_eq!(s.text(3321), "$0", "nothing left to paint under the brush");
@@ -246,16 +257,91 @@ fn the_paint_tab_opens_the_panel_and_a_stroke_makes_a_priced_session() {
 }
 
 #[test]
+fn the_paint_tab_writes_the_brush_cost_next_to_the_pointer_and_the_help_of_the_type() {
+    with_game("pointer-text", |s| {
+        s.open_paint();
+        let at = s.tile(20, 20);
+        let amount = |s: &Session| s.game().cost();
+        assert_eq!(amount(s), None, "the pointer was not over the map yet");
+        // The cost of painting the brush where it is, as an amount spent.
+        s.hover(at);
+        assert_eq!(amount(s), Some(-120));
+        // The tooltip of the grass under the pointer shows after its delay, once per tile.
+        for _ in 0..4 {
+            s.pass(&[]);
+        }
+        assert_eq!(s.text(7003), "Grass");
+        // Right after a paint it is 0, and the sand under the pointer has its own help.
+        s.pass(&[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
+        assert_eq!(amount(s), Some(0));
+        let wait = |s: &mut Session| (0..8).for_each(|_| drop(s.pass(&[])));
+        // The tile beside it is grass; the tooltip shows after its delay and expires.
+        s.hover(s.tile(19, 20));
+        (0..4).for_each(|_| drop(s.pass(&[])));
+        assert_eq!(s.text(7003), "Grass");
+        assert!(s.app.interface().unwrap().shown(7003));
+        wait(s);
+        assert!(
+            !s.app.interface().unwrap().shown(7003),
+            "the tooltip expired"
+        );
+        // The painted tile: its type's help, once; a move inside the tile asks for nothing more.
+        s.hover(s.tile(20, 20));
+        (0..4).for_each(|_| drop(s.pass(&[])));
+        assert_eq!(s.text(7003), "Sand");
+        wait(s);
+        s.hover((s.tile(20, 20).0 + 2, s.tile(20, 20).1));
+        wait(s);
+        assert!(!s.app.interface().unwrap().shown(7003));
+        // A held button shows no help, and off the map nothing is written.
+        s.pass(&[Command::Mouse(Mouse::Down)]);
+        let other = s.tile(20, 19);
+        s.pass(&[Command::Mouse(Mouse::Move(other.0, other.1))]);
+        wait(s);
+        assert!(!s.app.interface().unwrap().shown(7003));
+        // Released on another tile than the one asked about (painted on the way): its help shows
+        // without a move.
+        s.pass(&[Command::Mouse(Mouse::Up)]);
+        (0..4).for_each(|_| drop(s.pass(&[])));
+        assert_eq!(s.text(7003), "Sand");
+        assert!(s.app.interface().unwrap().shown(7003));
+        wait(s);
+        // Off the map, over the panel and back on the same tile: nothing more to show.
+        s.hover((-5, -5));
+        assert_eq!(amount(s), None);
+        s.hover(other);
+        wait(s);
+        assert!(!s.app.interface().unwrap().shown(7003));
+    });
+}
+
+#[test]
+fn the_modify_tab_shows_no_amount_near_the_pointer() {
+    with_game("pointer-modify", |s| {
+        s.click((112, 82));
+        s.click((35, 21));
+        assert_eq!(s.game().terrain.mode(), Some(Mode::Modify));
+        s.hover(s.tile(20, 20));
+        assert_eq!(s.game().cost(), None);
+    });
+}
+
+#[test]
 fn cancel_gives_the_tiles_and_the_picture_back_and_accept_pays() {
     with_game("accept", |s| {
         s.open_paint();
         let at = s.tile(20, 20);
         s.hover(at);
+        // The tooltip of the tile comes and goes before the picture is taken.
+        (0..10).for_each(|_| drop(s.pass(&[])));
         let before = s.frame();
         s.pass(&[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
         let cancel = (11, 81);
         let lines = s.click(cancel);
-        assert_eq!(lines, ["world stage", "terrain cancel 120"]);
+        assert_eq!(
+            lines,
+            ["world stage", "terrain amount none", "terrain cancel 120"]
+        );
         assert_eq!(s.text(3305), "$0");
         assert_eq!(s.game().world.zoo.tiles[20 * 40 + 20].terrain, 0);
         s.hover(at);
@@ -263,7 +349,7 @@ fn cancel_gives_the_tiles_and_the_picture_back_and_accept_pays() {
         // Paint again and accept.
         s.pass(&[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
         let lines = s.click((3, 81));
-        assert_eq!(lines[0], "terrain accept 120");
+        assert_eq!(lines[1], "terrain accept 120");
         assert!(lines.contains(&"money cash 49880".to_string()), "{lines:?}");
         assert_eq!(s.game().money.cash, 49_880.0);
         assert_eq!(s.game().money.total[crate::money::CONSTRUCTION], 120.0);

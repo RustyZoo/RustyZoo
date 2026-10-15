@@ -140,6 +140,36 @@ fn the_tooltip_of_the_element_under_the_pointer_comes_after_the_delay_and_expire
 }
 
 #[test]
+fn a_help_string_asked_for_replaces_the_tooltip_shown_or_due() {
+    let mut ui = interface("help");
+    // Over the map view (no help of its own): the asked help comes after the delay.
+    ui.mouse(Mouse::Move(80, 70));
+    ui.help_tip(7);
+    ui.update(0);
+    ui.update(66);
+    assert!(tip_shown(&ui));
+    assert_eq!(ui.text(7003), Some(b"row seven".to_vec()));
+    // Another one hides the shown one at once; none, or one without a text, leaves nothing due.
+    ui.help_tip(5);
+    assert!(!tip_shown(&ui));
+    ui.help_tip(0);
+    ui.update(132);
+    ui.help_tip(99);
+    ui.help_tip(-3);
+    ui.update(200);
+    assert!(!tip_shown(&ui));
+    // The short text, even when the settings ask for the long help.
+    ui.set_settings(Settings {
+        long_help: true,
+        ..Settings::default()
+    });
+    ui.help_tip(5);
+    ui.update(300);
+    ui.update(400);
+    assert_eq!(ui.text(7003), Some(b"short five".to_vec()));
+}
+
+#[test]
 fn another_element_hides_the_tooltip_and_restarts_it_and_none_clears_it() {
     let mut ui = interface("change");
     ui.mouse(Mouse::Move(5, 5));

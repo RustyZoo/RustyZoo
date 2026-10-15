@@ -481,4 +481,18 @@ check base-trial "8,49800,b887bf6581517422" "path_drag maps/default.zoo '632 416
 check expansion-trial "8,49920,ba755d877d1ffa9f" "path_drag maps/scn19.zoo '632 384'"
 check expansion-trial "8,49920,fce3ddf58b2e6dc5" "path_drag maps/scn19.zoo '632 416'"
 
+# The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
+# over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
+# a new tile, with the help of its terrain type). Prints those, then the hash of the last picture.
+paint_text() { # paint_text <map> <script>
+  d=$(mktemp -d)
+  printf "$2" >"$d/script"
+  rz run "$1" --headless --passes 20 --clock 20 --script "$d/script" 2>/dev/null |
+    awk '/ terrain brush /{p=p ";brush" $6 "," $7} / terrain amount /{p=p ";amount" $6} / ui tooltip /{t++} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";tooltips" t+0 ";" h}'
+  rm -rf "$d"
+}
+paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
+check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;a285a75fc25e42c1" "paint_text maps/default.zoo '$paint'"
+check expansion-trial "brush2,41,52;amount-120;tooltips3;5f33fa21d9fd2e8f" "paint_text maps/scn19.zoo '$paint'"
+
 exit $failed

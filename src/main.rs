@@ -157,7 +157,9 @@ usage: rustyzoo [--data <dir>] <command>
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and
                       painting a type of the list with a press and a drag gives it to the tiles of
-                      the brush that accept it; in the modify tab a drag up or down raises or lowers
+                      the brush that accept it (the paint tab writes minus the cost of painting
+                      the brush, 0 after a paint, 23 pixels right of the pointer, and a tile the
+                      pointer reaches shows the help of its terrain type as a tooltip); in the modify tab a drag up or down raises or lowers
                       the brush one step per 16 pixels (8 and 32 at the other zooms), by the mode
                       (contiguous or not, drag or level to the tile first clicked); the session costs what the tiles touched cost
                       against their first state, shown in the panel; accept pays it (booked as
@@ -165,7 +167,7 @@ usage: rustyzoo [--data <dir>] <command>
                       tab, closing it, Escape) accepts it when the cash covers it and else cancels
                       it with a message. The tools switch the tile grid on while they act. The log
                       has `terrain enter paint|modify`, `terrain brush SIZE X,Y` (the top left tile),
-                      `terrain size N`, `terrain type N`, `terrain paint N` (tiles painted),
+                      `terrain size N`, `terrain type N`, `terrain paint N` (tiles painted), `terrain amount N|none` (the amount next to the pointer changed),
                       `terrain shape N` (tiles reshaped), `terrain mode ID`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave` and
                       `terrain short`. The cash is told as `money cash N`
                       (whole units) when it changes, with `money bar TEXT COLOUR` for the

@@ -25,6 +25,19 @@ pub(super) struct Shown {
 }
 
 impl Game {
+    /// Tells in the log when the amount next to the pointer changed: `terrain amount -120`, or
+    /// `terrain amount none` when none is written.
+    fn log_amount(&mut self, lines: &mut Vec<String>) {
+        let amount = self.cost();
+        if amount != self.pointed {
+            self.pointed = amount;
+            lines.push(format!(
+                "amount {}",
+                amount.map_or("none".to_string(), |a| a.to_string())
+            ));
+        }
+    }
+
     /// The highlights of the tool, which the next draw stages when they changed.
     fn terrain_marks(&mut self, cat: &Catalogue) {
         self.marks = self.terrain.marks(&self.world, &|e: &Entity| habit(cat, e));
@@ -99,10 +112,16 @@ impl App<'_> {
     /// The mouse on the map reaches the tool (terrain editing 5.6 and 6.3). `on_map` says the
     /// message belongs to the map view.
     pub(super) fn terrain_mouse(&mut self, mouse: Mouse, on_map: bool) {
-        let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
-        if game.terrain.mode().is_none() || !on_map {
+        if game.terrain.mode().is_none() {
+            return;
+        }
+        if !on_map {
+            // The amount next to the pointer goes away with the pointer.
+            ui.touch();
+            game.log_amount(&mut self.terrain_lines);
             return;
         }
         let cat = self.renderer.catalogue();
@@ -134,12 +153,30 @@ impl App<'_> {
                         first / width
                     ));
                 }
+                // The amount next to the pointer follows it.
+                ui.touch();
             }
             Mouse::Up => game.terrain.release(),
             _ => {}
         }
+        game.log_amount(lines);
         game.terrain_marks(cat);
         self.terrain_refresh();
+    }
+
+    /// Every frame, button up, the tile under the pointer is looked at: a new one shows the help of
+    /// its terrain type (terrain editing 7.3). A stroke released on another tile shows it too.
+    pub(super) fn terrain_help(&mut self) {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
+        if !game.hover {
+            return;
+        }
+        let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
+        if let Some(help) = game.terrain.help_at(&game.world, tile) {
+            ui.help_tip(help);
+        }
     }
 
     /// The button `id` of the interface was pressed: if it belongs to the terrain panel, it acts.
