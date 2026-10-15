@@ -76,10 +76,10 @@ impl Step<'_> {
         self.types.iter().any(|ty| ty.kind == kind && ty.water)
     }
 
-    /// A tile that keeps its shape and moves as a whole: water, or under an object that is
-    /// not a quarter tile (5.1).
+    /// A tile that keeps its shape and moves as a whole: water, a tile of a tank, or under an
+    /// object that is not a quarter tile (5.1).
     fn rigid(&self, t: usize) -> bool {
-        self.water(t) || self.world.sized(t)
+        self.water(t) || self.world.tank_at(t).is_some() || self.world.sized(t)
     }
 
     /// The tile `t` is changed by `action` toward `goal`; the corners that moved.

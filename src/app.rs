@@ -1029,10 +1029,8 @@ impl<'a> App<'a> {
         if pieces.is_empty() {
             return;
         }
-        let word = ui.string(exhibits::WORD);
-        if !word.is_empty() {
-            game.world.set_exhibit_word(word);
-        }
+        game.world
+            .set_exhibit_words([0, 1, 2].map(|k| ui.string(exhibits::WORD + k)));
         let renderer = &self.renderer;
         let cat = renderer.catalogue();
         let (mut first, mut refused) = (None, None);

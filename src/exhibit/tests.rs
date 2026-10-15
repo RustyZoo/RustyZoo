@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::render::order::Kind;
-use crate::world::{Event, Shape};
+use crate::world::{Event, Shape, TankKind};
 use crate::zoo::{Common, Entity, Tile, View, Zoo};
 
 const SIZE: i32 = 8;
@@ -28,17 +28,22 @@ fn entity(class: &str, tx: i32, ty: i32, rotation: u32) -> Entity {
 }
 
 fn shape(e: &Entity) -> Option<Shape> {
-    let fence = e.class == "fences";
+    let tank = matches!(e.class.as_str(), "tank" | "show");
+    let fence = e.class == "fences" || tank;
     // A piece with a subtype is an ordinary fence (`f`) or its gate (`g`); the others are walls.
-    let wall = fence && e.subtype.is_empty();
+    let wall = e.class == "fences" && e.subtype.is_empty();
     match e.class.as_str() {
-        "fences" | "plain" => Some(Shape {
+        "fences" | "plain" | "tank" | "show" => Some(Shape {
             kind: Kind::Edge,
             footprint: (1, 1),
             fence,
             wall,
             gate: false,
             gated: fence && !wall,
+            tank: TankKind {
+                wall: tank,
+                show: e.class == "show",
+            },
         }),
         "gate" => Some(Shape {
             kind: Kind::Fixed,
@@ -47,6 +52,7 @@ fn shape(e: &Entity) -> Option<Shape> {
             wall: false,
             gate: true,
             gated: false,
+            tank: TankKind::default(),
         }),
         _ => None,
     }
@@ -786,3 +792,5 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
         assert_eq!(load(tile, side).exhibits().get(1).unwrap().gate, None);
     }
 }
+
+mod tank;

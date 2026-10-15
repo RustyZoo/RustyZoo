@@ -22,6 +22,37 @@ pub struct Exhibit {
     pub name: String,
     /// The id of the fence piece that is its gate.
     pub gate: Option<u32>,
+    /// What a tank has besides: set when every wall of its boundary is a tank wall.
+    pub tank: Option<Tank>,
+}
+
+/// The state of a tank exhibit (exhibits and money 3.9, 4.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tank {
+    /// A show tank: its walls are show walls (the test is `World::retank`'s).
+    pub show: bool,
+    /// The wall height and the water level, in elevation steps above the tank floor.
+    pub height: u32,
+    pub level: u32,
+    /// Salt water; the purity of the water.
+    pub salt: bool,
+    pub purity: u32,
+    /// The tile the gate's platform is drawn on, (-1, -1) for none.
+    pub platform: (i32, i32),
+}
+
+impl Default for Tank {
+    /// A tank with no walls up, as a new tank is before its creation sets the water (3.9).
+    fn default() -> Tank {
+        Tank {
+            show: false,
+            height: 0,
+            level: 0,
+            salt: true,
+            purity: 100,
+            platform: (-1, -1),
+        }
+    }
 }
 
 /// A set of tiles joined without an exhibit fence.
@@ -126,6 +157,7 @@ impl Exhibits {
             tiles: 0,
             name,
             gate: None,
+            tank: None,
         });
         self.assign(id, part);
         id

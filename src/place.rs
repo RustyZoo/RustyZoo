@@ -656,10 +656,12 @@ fn check(
     let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
     let swims = flag("cSwims", false);
     for &(at, _) in &quads {
-        if !flag("cLand", true) && !wet(at) {
+        // The tiles of a tank count as water for the types that live in it (placing 5.4).
+        let tank = world.tank_at(at).is_some();
+        if !flag("cLand", true) && !wet(at) && !tank {
             fail(p, Some(NOT_ON_WATER));
         }
-        if (only_swims(t) && !wet(at)) || (!only_swims(t) && !swims && wet(at)) {
+        if (only_swims(t) && !wet(at) && !tank) || (!only_swims(t) && !swims && wet(at)) {
             fail(p, None);
         }
     }
@@ -770,6 +772,17 @@ fn check_fence(
     if world.wall(tile, d) || world.gate(tile) {
         return fail(p, None);
     }
+    // In a tank only a tank wall stands, a show wall in a show tank and the other in the others
+    // (placing 6.3 rule 3).
+    if let Some(tank) = world.tank_at(tile).and_then(|id| world.tank(id)) {
+        let wall = t
+            .config
+            .as_deref()
+            .is_some_and(|c| c.section("TankFence").is_some());
+        if !wall || (number(t, "cIsShowFence") == Some(1.0)) != tank.show {
+            return fail(p, None);
+        }
+    }
     // No object holds a quadrant of this tile and one of the tile across the side.
     let held = |t: usize| (0..4).filter_map(move |q| world.quadrant(t, q));
     if let Some(across) = world.neighbour(tile, d)
@@ -789,11 +802,12 @@ fn check_fence(
         let free = is_of(old, t) && life > number(t, "cDecayedLife").unwrap_or(0.0);
         (p.verdict, p.price) = (Verdict::Overwrite, if free { 0.0 } else { cost(t) });
     }
-    // A fence that only swims stands on water alone (the tank tiles are re#55): 10564.
-    let wet = water
-        .get(usize::from(world.zoo.tiles[tile].terrain))
-        .copied()
-        .unwrap_or(false);
+    // A fence that only swims stands on water or in a tank alone: 10564.
+    let wet = world.tank_at(tile).is_some()
+        || water
+            .get(usize::from(world.zoo.tiles[tile].terrain))
+            .copied()
+            .unwrap_or(false);
     if number(t, "cLand") == Some(0.0) && only_swims(t) && !wet {
         fail(p, Some(NOT_ON_WATER));
     }
@@ -905,11 +919,13 @@ pub fn place(
     shape: impl Fn(&Entity) -> Option<Shape>,
 ) -> Outcome {
     if p.verdict == Verdict::Invalid {
-        let wet = world
-            .tile_index(p.tile.0, p.tile.1)
-            .and_then(|t| water.get(usize::from(world.zoo.tiles[t].terrain)))
-            .copied()
-            .unwrap_or(false);
+        let wet = world.tile_index(p.tile.0, p.tile.1).is_some_and(|t| {
+            world.tank_at(t).is_some()
+                || water
+                    .get(usize::from(world.zoo.tiles[t].terrain))
+                    .copied()
+                    .unwrap_or(false)
+        });
         let second = (only_swims(ty) && !wet).then_some(NOT_ON_WATER);
         return Outcome::Refused(p.message.or(second));
     }

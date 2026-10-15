@@ -75,7 +75,8 @@ usage: rustyzoo [--data <dir>] <command>
                       find the exhibits of the maps matching <map> (a member, or a pattern with *
                       as for ls) from their fences, compare their number with the habitat count
                       the file stores and check that each stored first tile lies in a different
-                      exhibit; list the sizes; exit 1 if one differs or none matches
+                      exhibit; the same for the tanks (an exhibit closed by tank walls only); list
+                      the sizes; exit 1 if one differs or none matches
   render-ani <member.ani> <dir> [--anim NAME]
                       write frame 0 of an animation set as eight PNG files into <dir>, one per
                       screen direction, and print the anchor point; with --anim, the first
@@ -1041,8 +1042,8 @@ fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
 
 /// Finds the regions of the maps that match `pattern` (a member name, or a pattern with `*` as
 /// for `ls`) from their fences and compares the number of exhibits with the habitat count the file
-/// stores, and checks that each stored first tile lies in a different exhibit. A mismatch is
-/// listed and fails the command.
+/// stores, and checks that each stored first tile lies in a different exhibit; the same for the
+/// tanks. A mismatch is listed and fails the command.
 fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
     let catalogue = Catalogue::load(vfs)?;
     let renderer = MapRenderer::new(vfs, &catalogue);
@@ -1072,11 +1073,28 @@ fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
         };
         let stored = zoo.habitat_tiles.len();
         let tiles = zoo.habitat_tiles.clone();
+        let stored_tanks = zoo.tanks.clone();
         let world = World::new(zoo, |e| renderer.shape(e));
         let list = world.exhibits().list();
         let distinct = world.exhibits().distinct(&world, &tiles);
         let sizes: Vec<String> = list.iter().map(|e| e.tiles.to_string()).collect();
-        let verdict = if list.len() == stored && distinct == stored {
+        // The tanks found from the walls are the stored ones: as many, and each stored tank's
+        // first tile lies in one.
+        let tanks = list.iter().filter(|e| e.tank.is_some()).count();
+        let tank_tiles = stored_tanks
+            .iter()
+            .filter(|t| {
+                world
+                    .tile_index(t.tile.0, t.tile.1)
+                    .is_some_and(|i| world.tank_at(i).is_some())
+            })
+            .count();
+        let stored_tanks = stored_tanks.len();
+        let verdict = if list.len() == stored
+            && distinct == stored
+            && tanks == stored_tanks
+            && tank_tiles == stored_tanks
+        {
             agree += 1;
             "ok"
         } else {
@@ -1085,7 +1103,8 @@ fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
         };
         report.line(format_args!(
             "{verdict} {name}: {} exhibits, {stored} stored, {distinct} of {stored} stored first \
-             tiles in distinct exhibits; sizes [{}]",
+             tiles in distinct exhibits; {tanks} tanks, {stored_tanks} stored, {tank_tiles} of \
+             {stored_tanks} stored tank tiles in a tank; sizes [{}]",
             list.len(),
             sizes.join(" ")
         ));

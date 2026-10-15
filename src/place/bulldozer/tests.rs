@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::config::Config;
-use crate::world::Shape;
+use crate::world::{Shape, TankKind};
 use crate::zoo::{Common, Tile, View, Zoo};
 
 fn ty(
@@ -48,11 +48,14 @@ fn catalogue() -> Catalogue {
     cat.push(ty("fences", "iron", "f", fence, [1, 1, 1]));
     cat.push(ty("fences", "iron", "g", fence, [1, 1, 1]));
     cat.push(ty("animals", "lion", "", &cost(500), [2, 2, 1]));
+    let tank = "[TankFence]\nx=1\n[Characteristics/Integers]\ncPurchaseCost=100\ncLife=10\n";
+    cat.push(ty("tankwall", "glass", "f", tank, [1, 1, 1]));
+    cat.push(ty("tankwall", "show", "f", tank, [1, 1, 1]));
     cat
 }
 
 fn entity(class: &str, name: &str, subtype: &str, x: i32, y: i32, rotation: u32) -> Entity {
-    let fence = matches!(class, "fences").then_some(Fence {
+    let fence = matches!(class, "fences" | "tankwall").then_some(Fence {
         strength: 300,
         life: 10,
         timers: [0; 2],
@@ -83,6 +86,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "building" => (Kind::Fixed, (4, 4), false),
         "paths" => (Kind::Path, (2, 2), false),
         "fences" => (Kind::Edge, (1, 1), true),
+        "tankwall" => (Kind::Wall, (1, 1), true),
         "animals" => (Kind::Unit, (1, 1), false),
         _ => return None,
     };
@@ -93,6 +97,10 @@ fn shape(e: &Entity) -> Option<Shape> {
         wall: false,
         gate: false,
         gated: fence,
+        tank: TankKind {
+            wall: e.class == "tankwall",
+            show: e.type_name == "show",
+        },
     })
 }
 
@@ -354,4 +362,67 @@ fn a_fence_is_found_through_the_slot_of_the_world() {
         assert_eq!(w.edge(t, d), Some(e));
     }
     assert_eq!(w.slot(99), None);
+}
+
+/// The piece of a tank wall of type `name` on side `s` of tile (`tx`, `ty`).
+fn wall(name: &str, tx: i32, ty: i32, s: u32) -> Entity {
+    let (x, y) = [(32, 0), (63, 32), (32, 63), (0, 32)][s as usize / 2];
+    entity("tankwall", name, "f", tx * 64 + x, ty * 64 + y, s)
+}
+
+fn tank(name: &str, tx: i32, ty: i32, skip: Option<u32>) -> Vec<Entity> {
+    [0, 2, 4, 6]
+        .into_iter()
+        .filter(|&s| Some(s) != skip)
+        .map(|s| wall(name, tx, ty, s))
+        .collect()
+}
+
+#[test]
+fn removing_a_wall_that_opens_a_tank_asks_and_between_two_tanks_only_across_a_piece() {
+    let cat = catalogue();
+    let w = world(tank("glass", 3, 3, None));
+    assert!(w.exhibits().get(1).unwrap().tank.is_some());
+    assert_eq!(
+        check(&w, &cat, 0, false, &[]),
+        Check::Ask(Question::Escape(1))
+    );
+    // Two tanks side by side, one wall on the line (on the first tile's slot): no question; with a
+    // wall of the second tank on the line too it asks, whichever is taken.
+    let mut one = tank("glass", 3, 3, None);
+    one.extend(tank("glass", 4, 3, Some(6)));
+    let w = world(one.clone());
+    assert_eq!(w.exhibits().list().len(), 2);
+    let shared = w.edge(3 * 8 + 3, 2).unwrap();
+    assert_eq!(check(&w, &cat, shared, false, &[]), Check::Go);
+    one.push(wall("glass", 4, 3, 6));
+    let w = world(one);
+    let shared = w.edge(3 * 8 + 3, 2).unwrap();
+    assert_eq!(
+        check(&w, &cat, shared, false, &[]),
+        Check::Ask(Question::Merge(1, 2))
+    );
+}
+
+#[test]
+fn a_wall_between_a_show_tank_and_another_tank_cannot_be_removed() {
+    let cat = catalogue();
+    let mut v = tank("glass", 3, 3, None);
+    v.extend(tank("show", 4, 3, None));
+    let w = world(v);
+    let t = |x: i32| w.tank(w.tank_at(3 * 8 + x as usize).unwrap()).unwrap().show;
+    assert!(!t(3) && t(4));
+    // The line holds the wall of each tank; neither goes. The outer walls do.
+    for (tile, side) in [(3, 2), (4, 6)] {
+        let e = w.edge(3 * 8 + tile, side).unwrap();
+        assert!(mixed_tanks(&w, e));
+        assert!(!removable(&w, &cat, e));
+    }
+    let outer = w.edge(3 * 8 + 3, 0).unwrap();
+    assert!(!mixed_tanks(&w, outer) && removable(&w, &cat, outer));
+    // Two show tanks, or two normal ones: the wall goes.
+    let mut v = tank("glass", 3, 3, None);
+    v.extend(tank("glass", 4, 3, None));
+    let w = world(v);
+    assert!(removable(&w, &cat, w.edge(3 * 8 + 3, 2).unwrap()));
 }

@@ -1,7 +1,7 @@
 //! The pending object on synthetic maps.
 
 use super::*;
-use crate::world::Shape;
+use crate::world::{Shape, TankKind};
 use crate::zoo::{Common, Entity, Tile, View, Zoo};
 
 #[test]
@@ -176,6 +176,24 @@ fn catalogue() -> Catalogue {
             "[Characteristics/Integers]\nwalkable=1\n",
             [2, 2, 1],
         ),
+        ty(
+            "tankwall",
+            "glass",
+            "[TankFence]\nx=1\n[Characteristics/Integers]\ncPurchaseCost=100\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "tankwall",
+            "show",
+            "[TankFence]\nx=1\n[Characteristics/Integers]\ncPurchaseCost=150\ncIsShowFence=1\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "tankwall",
+            "swimglass",
+            "[TankFence]\nx=1\n[Characteristics/Integers]\ncPurchaseCost=100\ncSwims=1\ncLand=0\n",
+            [1, 1, 1],
+        ),
     ];
     for t in types {
         cat.push(t);
@@ -210,6 +228,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "building" => (Kind::Fixed, (2, 2), false, false),
         "paths" => (Kind::Path, (2, 2), false, false),
         "fences" => (Kind::Edge, (1, 1), true, false),
+        "tankwall" => (Kind::Wall, (1, 1), true, false),
         "gate" => (Kind::Fixed, (2, 2), false, true),
         "animals" | "helicopter" => (Kind::Unit, (1, 1), false, false),
         "gator" => (Kind::Unit, (3, 1), false, false),
@@ -222,6 +241,10 @@ fn shape(e: &Entity) -> Option<Shape> {
         wall: fence && !matches!(e.type_name.as_str(), "wire" | "iron"),
         gate,
         gated: fence,
+        tank: TankKind {
+            wall: e.class == "tankwall",
+            show: e.type_name == "show",
+        },
     })
 }
 
@@ -1582,4 +1605,74 @@ fn a_units_rectangle_is_its_footprint_centred_with_the_larger_side_at_odd_rotati
     // Touching is not meeting: at y 48 the unit's near edge is y 32, the tree's far edge.
     assert_eq!(verdict(63, 16, 0), invalid);
     assert_eq!(verdict(63, 48, 0), valid);
+}
+
+/// The walls of class `tankwall` and type `name` round the tiles `(2..=3, 2..=3)`.
+fn tank_walls(name: &str) -> Vec<Entity> {
+    let mut walls = Vec::new();
+    for t in 2..=3 {
+        walls.push(entity("tankwall", name, t * 64 + 32, 2 * 64 + 32, 0));
+        walls.push(entity("tankwall", name, t * 64 + 32, 3 * 64 + 32, 4));
+        walls.push(entity("tankwall", name, 2 * 64 + 32, t * 64 + 32, 6));
+        walls.push(entity("tankwall", name, 3 * 64 + 32, t * 64 + 32, 2));
+    }
+    walls
+}
+
+#[test]
+fn only_a_tank_wall_of_the_kind_of_the_tank_stands_in_a_tank() {
+    let cat = catalogue();
+    // Glass walls make a normal tank, show walls a show tank; the line between its two upper
+    // tiles is free.
+    for (name, own, other) in [("glass", 17, 18), ("show", 18, 17)] {
+        let w = world((7, 7), tank_walls(name), |_| {});
+        assert!(w.tank_at(2 * 8 + 2).is_some());
+        let inside = |ty| fence_at(&w, &cat, true, ty, 2, 2, 2);
+        assert_eq!(inside(own).verdict, Verdict::Valid, "{name}");
+        // The wall of the other kind and a fence that is no tank wall are refused, no message.
+        for ty in [other, 11, 4] {
+            let p = inside(ty);
+            assert_eq!(
+                (p.verdict, p.message),
+                (Verdict::Invalid, None),
+                "{name} {ty}"
+            );
+        }
+        // Outside the tank everything stands; across the tank's wall too.
+        for ty in [other, own, 11] {
+            assert_eq!(
+                fence_at(&w, &cat, true, ty, 5, 5, 2).verdict,
+                Verdict::Valid
+            );
+        }
+    }
+}
+
+#[test]
+fn a_fence_that_only_swims_is_accepted_on_a_tank_tile() {
+    let cat = catalogue();
+    let w = world((7, 7), tank_walls("glass"), |_| {});
+    // A tank wall that only swims (cLand 0, swims) stands on the grass under a tank, and on dry
+    // land says 10564.
+    let p = fence_at(&w, &cat, true, 19, 2, 2, 2);
+    assert_eq!((p.verdict, p.message), (Verdict::Valid, None));
+    let p = fence_at(&w, &cat, true, 19, 5, 5, 2);
+    assert_eq!(
+        (p.verdict, p.message),
+        (Verdict::Invalid, Some(NOT_ON_WATER))
+    );
+    // The buoy rope fence is no tank wall: not in a tank.
+    assert_eq!(
+        fence_at(&w, &cat, true, 13, 2, 2, 2).verdict,
+        Verdict::Invalid
+    );
+    // A buoy (cOnlySwims, a scenery object) is placed in the tank and refused on land; the
+    // water message of the second look does not count a tank tile as land.
+    let p = at(&w, &cat, 7, 0, 2 * 64 + 20, 2 * 64 + 20).unwrap();
+    assert_eq!((p.verdict, p.message), (Verdict::Valid, None));
+    let p = at(&w, &cat, 7, 0, 5 * 64 + 20, 5 * 64 + 20).unwrap();
+    assert_eq!(p.verdict, Verdict::Invalid);
+    // A raft (cLand 0) may stand in the tank without the water message.
+    let p = at(&w, &cat, 9, 0, 2 * 64 + 20, 2 * 64 + 20).unwrap();
+    assert_eq!((p.verdict, p.message), (Verdict::Valid, None));
 }

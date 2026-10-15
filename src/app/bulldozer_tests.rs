@@ -4,6 +4,7 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
+use crate::place::bulldozer::Question;
 use crate::render::order::project;
 use crate::render::tests::{cache_install_with, flat_map, frame_file, tile_with};
 use crate::ui::draw::Strings as UiStrings;
@@ -21,6 +22,8 @@ impl UiStrings for Texts {
             154 => "sell %s?\nRefund: ".into(),
             156 => "merge %s with %s?".into(),
             157 => "animals escape".into(),
+            160 => "tank drained".into(),
+            10571 => "no merge".into(),
             6208 => "Exhibit".into(),
             22100 => "$".into(),
             9001 => "Shop".into(),
@@ -65,7 +68,7 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
 }
 
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
-/// deletable), 4 the gate of the iron fence.
+/// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall.
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
@@ -96,6 +99,20 @@ fn catalogue() -> Catalogue {
         b"iron",
         b"g",
         &format!("{}[HabitatFence]\n", cost(125)),
+        [1, 1, 1],
+    ));
+    cat.push(ty(
+        "tankwall",
+        b"glass",
+        b"f",
+        &format!("{}[TankFence]\n", cost(100)),
+        [1, 1, 1],
+    ));
+    cat.push(ty(
+        "tankwall",
+        b"show",
+        b"f",
+        &format!("{}cIsShowFence=1\n[TankFence]\n", cost(100)),
         [1, 1, 1],
     ));
     cat
@@ -155,6 +172,7 @@ impl Session<'_> {
                 [
                     "tool bulldoze",
                     "tool drop",
+                    "tool message",
                     "world remove",
                     "exhibit gate",
                     "money cash",
@@ -512,5 +530,37 @@ fn escape_or_a_closed_window_stops_a_removal_that_is_asking() {
         s.pass(&[Command::Close]);
         assert!(s.app.game.as_ref().unwrap().sweep.is_none());
         assert_eq!((s.count(), s.cash()), (2, 50_000.0));
+    });
+}
+
+#[test]
+fn a_tank_asks_whether_to_drain_it_and_a_wall_between_unlike_tanks_says_why_it_stays() {
+    with_game("tank", "[UI]\nconfirmSell=0\n", |s| {
+        // Tile (20, 20) closed by tank walls is a tank: string 160 instead of 157.
+        for side in [0, 2, 4, 6] {
+            s.fence(5, 20, 20, side);
+        }
+        s.pass(&[DELETE]);
+        let told = s.click(s.at(20, 20, 32, 4));
+        assert_eq!(told.last().unwrap(), "tool bulldoze ask Escape(1)");
+        let game = s.app.game.as_ref().unwrap();
+        let ui = s.app.ui.as_ref().unwrap();
+        let cat = s.app.renderer.catalogue();
+        let at = game.world.edge(20 * 40 + 20, 0).unwrap();
+        let question = Question::Escape(1);
+        assert_eq!(
+            bulldozer::question_text(ui, cat, &game.world, at, question),
+            "tank drained"
+        );
+        s.pass(&[Command::Key(Key::N, false, false)]);
+        // A show tank beside it: the line between them stays, the click says message 10571.
+        for side in [0, 2, 4, 6] {
+            s.fence(6, 21, 20, side);
+        }
+        let told = s.click(s.at(20, 20, 60, 32));
+        assert!(told.contains(&"tool message 10571".to_string()), "{told:?}");
+        assert!(!told.iter().any(|l| l.contains("ask")), "{told:?}");
+        assert!(!s.asking());
+        assert_eq!(s.count(), 8);
     });
 }

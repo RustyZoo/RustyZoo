@@ -30,7 +30,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
 use crate::sprite::{Blend, Frame, Palette, Place, Sprite};
 use crate::vfs::Vfs;
-use crate::world::Shape;
+use crate::world::{Shape, TankKind};
 use crate::zoo::{Tile, Zoo};
 use crate::zoom::{Zoom, origin_offset, piece_anchor};
 use order::{Item, Kind, Object, Scene, TankSpec, map_direction, paint_order, project};
@@ -559,6 +559,13 @@ impl<'a> MapRenderer<'a> {
                     .catalogue
                     .find(&entity.class, &bytes(&entity.type_name), b"g")
                     .is_some(),
+            tank: TankKind {
+                wall: ty
+                    .config
+                    .as_deref()
+                    .is_some_and(|c| c.section("TankFence").is_some()),
+                show: crate::build::number(ty, "cIsShowFence") == Some(1.0),
+            },
         })
     }
 

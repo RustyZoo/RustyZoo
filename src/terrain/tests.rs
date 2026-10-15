@@ -3,7 +3,7 @@
 use super::*;
 use crate::render::order::Kind;
 use crate::sprite::tests::Install;
-use crate::world::Shape;
+use crate::world::{Shape, TankKind};
 use crate::zoo::{Common, View, Zoo};
 use crate::zoom::Zoom;
 
@@ -71,6 +71,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         wall: false,
         gate: false,
         gated: false,
+        tank: TankKind::default(),
     };
     match e.class.as_str() {
         "paths" => Some(Shape {
@@ -81,6 +82,15 @@ fn shape(e: &Entity) -> Option<Shape> {
             kind: Kind::Edge,
             fence: true,
             wall: true,
+            ..fixed
+        }),
+        "twall" => Some(Shape {
+            kind: Kind::Edge,
+            fence: true,
+            tank: TankKind {
+                wall: true,
+                show: false,
+            },
             ..fixed
         }),
         "gate" => Some(Shape {
@@ -1215,4 +1225,63 @@ fn water_beside_the_brush_moves_only_under_an_object_larger_than_a_tile_in_its_l
             "{class}"
         );
     }
+}
+
+/// The tank walls round the tiles `(x0..=x1, y0..=y1)`.
+fn tank(x0: i32, y0: i32, x1: i32, y1: i32) -> Vec<Entity> {
+    let mut walls = Vec::new();
+    for x in x0..=x1 {
+        walls.push(entity("twall", x * 64 + 32, y0 * 64 + 32, 0));
+        walls.push(entity("twall", x * 64 + 32, y1 * 64 + 32, 4));
+    }
+    for y in y0..=y1 {
+        walls.push(entity("twall", x0 * 64 + 32, y * 64 + 32, 6));
+        walls.push(entity("twall", x1 * 64 + 32, y * 64 + 32, 2));
+    }
+    walls
+}
+
+#[test]
+fn a_tile_of_a_tank_accepts_no_type() {
+    // The tank of (4..5, 3..4); water or land, nothing is painted in it, beside it everything is.
+    let mut world = world(tank(4, 3, 5, 4));
+    let types = table();
+    let accepts = |tx: usize, ty: usize, kind| accepts(&world, &habits, &types, ty * 8 + tx, kind);
+    for kind in [GRASS, SAND, FRESH, SALT] {
+        assert!(!accepts(4, 3, kind) && !accepts(5, 4, kind), "{kind}");
+    }
+    assert!(accepts(3, 3, SAND) && accepts(6, 4, FRESH));
+    // The rule is that of the tank, not of the tile's own state.
+    world.set_tile(4, 3, 0, 0, FRESH);
+    assert!(!tool().accepts(&world, &habits, 3 * 8 + 4));
+}
+
+#[test]
+fn the_tiles_of_a_tank_move_whole_and_all_together_in_a_step_that_is_not_contiguous() {
+    let mut world = world(tank(4, 3, 5, 4));
+    assert_eq!(world.carried(3 * 8 + 5), [28, 29, 36, 37]);
+    // The brush is one tile of the tank: the other three come along, and the cost is four tiles.
+    let mut tool = modify(1, false, false);
+    let lines = drag(&mut tool, &mut world, (4, 3), 16, Zoom::Normal);
+    assert_eq!(lines, ["shape 4", "cost 32"]);
+    assert_eq!(heights(&world, (4, 5), (3, 4)), [1, 1, 1, 1]);
+    assert_eq!(heights(&world, (3, 3), (3, 4)), [0, 0]);
+    // A brush beside the tank takes nothing of it.
+    let mut world = self::world(tank(4, 3, 5, 4));
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+    assert_eq!(heights(&world, (4, 5), (3, 4)), [0, 0, 0, 0]);
+}
+
+#[test]
+fn a_tank_beside_a_contiguous_step_is_not_pulled_out_of_shape() {
+    // The brush is the tile (3, 3); a ground tile beside it takes the slope, a tank tile moves
+    // whole.
+    let mut world = world(tank(4, 3, 5, 4));
+    let mut tool = modify(1, true, false);
+    drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+    drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+    let flat = |x: usize, y: usize| world.zoo.tiles[y * 8 + x].shape == 0;
+    assert!(flat(4, 3), "the tank tile keeps its shape");
+    assert!(!flat(3, 2), "the ground tile beside it slopes");
 }

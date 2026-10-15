@@ -7,7 +7,7 @@
 //! tiles beside the piece. What the player has to be told or asked comes out as [`Event`]s.
 
 use super::World;
-use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part};
+use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part, Tank};
 use crate::place::path_shape;
 use std::collections::{HashMap, HashSet};
 
@@ -176,9 +176,14 @@ impl World {
         }
     }
 
-    /// The word before the number of a default name (string 6208 of the language library).
-    pub fn set_exhibit_word(&mut self, word: String) {
-        self.word = word;
+    /// The words before the number of a default name: exhibit, tank and show tank (strings 6208
+    /// to 6210 of the language library); a missing one (empty) stays as it was.
+    pub fn set_exhibit_words(&mut self, words: [String; 3]) {
+        for (word, new) in self.words.iter_mut().zip(words) {
+            if !new.is_empty() {
+                *word = new;
+            }
+        }
     }
 
     /// Which terrain types are water, for the gate walk: a keeper does not swim.
@@ -306,12 +311,22 @@ impl World {
             }
             self.events.push(Event::Split(e.id));
         }
+        // The kind of each part: a tank (a show tank or not) or land.
+        let other = |t: usize| {
+            old.region(t)
+                .and_then(|r| old.get(r))
+                .is_some_and(|e| e.tank.is_some())
+        };
+        let kinds: Vec<Option<bool>> = parts
+            .iter()
+            .map(|p| self.tank_test(&p.tiles, &other, quiet))
+            .collect();
         // The new list.
         let mut next = old.blank(self.zoo.tiles.len());
         let mut fresh = Vec::new();
         let mut regate = Vec::new();
         let mut kept_ids = HashSet::new();
-        for (part, w) in parts.iter().zip(&winner) {
+        for ((part, w), kind) in parts.iter().zip(&winner).zip(&kinds) {
             match w.and_then(|id| old.get(id)) {
                 Some(e) => {
                     kept_ids.insert(e.id);
@@ -323,7 +338,8 @@ impl World {
                 None => {
                     let number = next.counter;
                     next.counter += u32::from(!quiet);
-                    let name = format!("{} {number}", self.word);
+                    let word = &self.words[kind.map_or(0, |show| 1 + usize::from(show))];
+                    let name = format!("{word} {number}");
                     let id = next.add(part, name);
                     fresh.push(id);
                     self.events.push(Event::New { id, ask: !quiet });
@@ -344,6 +360,7 @@ impl World {
         }
         next.exterior(self);
         self.exhibits = next;
+        self.retank(quiet);
         for &id in &regate {
             if let Some(e) = self.exhibits.get_mut(id) {
                 e.gate = None;
@@ -372,6 +389,158 @@ impl World {
                 {
                     self.regate(id, me, other);
                 }
+            }
+        }
+    }
+
+    /// The tank exhibit that tile `t` belongs to (its number).
+    pub fn tank_at(&self, t: usize) -> Option<u32> {
+        let id = self.exhibits.region(t)?;
+        self.exhibits.get(id)?.tank.map(|_| id)
+    }
+
+    /// The tank of exhibit `id`, if it is one.
+    pub fn tank(&self, id: u32) -> Option<Tank> {
+        self.exhibits.get(id)?.tank
+    }
+
+    /// The tiles of exhibit `id`.
+    pub fn tiles_of(&self, id: u32) -> Vec<usize> {
+        (0..self.zoo.tiles.len())
+            .filter(|&t| self.exhibits.region(t) == Some(id))
+            .collect()
+    }
+
+    /// Whether the region `tiles` is a tank, and then whether it is a show tank (exhibits and
+    /// money 3.9): every line of its boundary holds a tank wall, on the slot of the tile inside
+    /// or else on the slot across; `other` tells whether a tile belongs to another tank. A show
+    /// tank has a show wall on at least one line and every line passes: a piece on the inside
+    /// slot passes when it is a show wall or the line holds a second piece (not while `strict`,
+    /// an undo); a line with a piece across only, when that is a show wall or stands on a tile
+    /// of another tank.
+    fn tank_test(
+        &self,
+        tiles: &[usize],
+        other: &dyn Fn(usize) -> bool,
+        strict: bool,
+    ) -> Option<bool> {
+        let mut inside = vec![false; self.zoo.tiles.len()];
+        tiles.iter().for_each(|&t| inside[t] = true);
+        let kind = |p: usize| self.shapes[p].map(|s| s.tank);
+        let (mut lines, mut any, mut every) = (0, false, true);
+        for &t in tiles {
+            for d in [0, 2, 4, 6] {
+                let Some(n) = self.neighbour(t, d).filter(|&n| !inside[n]) else {
+                    continue;
+                };
+                let (mine, across) = (self.edge(t, d), self.edge(n, (d + 4) % 8));
+                let piece = kind(mine.or(across)?)?;
+                if !piece.wall {
+                    return None;
+                }
+                lines += 1;
+                any |= piece.show;
+                every &= match mine {
+                    Some(_) => piece.show || (!strict && across.is_some()),
+                    None => piece.show || other(n),
+                };
+            }
+        }
+        (lines > 0).then_some(any && every)
+    }
+
+    /// Decides again which exhibits are tanks and which of them show tanks. A land exhibit
+    /// closed by tank walls only becomes a tank and the other way round (the morph of 3.9 is
+    /// the game's business); the tank list of the zoo, which the picture reads, follows.
+    pub(super) fn retank(&mut self, strict: bool) {
+        let mut tiles: HashMap<u32, Vec<usize>> = HashMap::new();
+        for t in 0..self.zoo.tiles.len() {
+            if let Some(r) = self
+                .exhibits
+                .region(t)
+                .filter(|&r| r != GROUNDS && r != EXTERIOR)
+            {
+                tiles.entry(r).or_default().push(t);
+            }
+        }
+        let ids: Vec<u32> = self.exhibits.list().iter().map(|e| e.id).collect();
+        let tanks: Vec<(u32, bool)> = ids
+            .iter()
+            .filter_map(|&id| Some((id, self.tank_test(tiles.get(&id)?, &|_| false, strict)?)))
+            .collect();
+        for &id in &ids {
+            let found = tanks.iter().any(|t| t.0 == id);
+            if let Some(e) = self.exhibits.get_mut(id) {
+                match (found, e.tank) {
+                    (true, None) => e.tank = Some(Tank::default()),
+                    (false, _) => e.tank = None,
+                    _ => {}
+                }
+            }
+        }
+        // The show test of a piece across looks at the other tanks, which are known now.
+        for &(id, _) in &tanks {
+            let Some(mine) = tiles.get(&id) else { continue };
+            let show = self.tank_test(mine, &|t| self.tank_at(t).is_some(), strict);
+            if let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) {
+                tank.show = show == Some(true);
+            }
+        }
+        self.sync_tanks();
+    }
+
+    /// The tank records of the zoo, which the picture reads, from the tank exhibits.
+    fn sync_tanks(&mut self) {
+        let width = self.zoo.width as usize;
+        let at = |t: usize| ((t % width) as i32, (t / width) as i32);
+        let tanks = self
+            .exhibits
+            .list()
+            .iter()
+            .filter_map(|e| {
+                let k = e.tank?;
+                // The platform of the gate stands on the tank tile beside the gate.
+                let gate = self.gate_slot(e.id).map(|(t, d)| {
+                    match self.exhibits.region(t) == Some(e.id) {
+                        true => at(t),
+                        false => self.neighbour(t, d).map_or(k.platform, at),
+                    }
+                });
+                Some(crate::zoo::Tank {
+                    tile: at(e.first),
+                    gate: gate.unwrap_or(k.platform),
+                    height: k.height,
+                    level: k.level,
+                    salt: k.salt,
+                    purity: k.purity,
+                })
+            })
+            .collect();
+        if self.zoo.tanks != tanks {
+            self.zoo.tanks = tanks;
+            self.dirty = true;
+        }
+    }
+
+    /// The tank state of the exhibits a loaded zoo stores a tank record for.
+    pub(super) fn load_tanks(&mut self) {
+        let records = self.zoo.tanks.clone();
+        for r in records {
+            let Some(id) = self
+                .tile_index(r.tile.0, r.tile.1)
+                .and_then(|t| self.exhibits.region(t))
+            else {
+                continue;
+            };
+            if let Some(e) = self.exhibits.get_mut(id) {
+                e.tank = Some(Tank {
+                    show: false,
+                    height: r.height,
+                    level: r.level,
+                    salt: r.salt,
+                    purity: r.purity,
+                    platform: r.gate,
+                });
             }
         }
     }

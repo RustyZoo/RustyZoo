@@ -30,6 +30,17 @@ pub struct Shape {
     pub gate: bool,
     /// A fence type that has a gate of its own (a sibling type whose subtype is `g`).
     pub gated: bool,
+    /// What the type says about tanks.
+    pub tank: TankKind,
+}
+
+/// What a type says about tanks (exhibits and money 3.9).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TankKind {
+    /// A tank wall: the type's file has a `[TankFence]` section.
+    pub wall: bool,
+    /// A show wall: `cIsShowFence` is 1.
+    pub show: bool,
 }
 
 /// What an operation did, to undo it.
@@ -59,8 +70,8 @@ pub struct World {
     /// The new exhibits that wait for their gate while the player names them: the exhibit, the
     /// pair the walk starts at and the tile the piece was placed on.
     waiting: Vec<(u32, (usize, usize), usize)>,
-    /// The word before the number of a default exhibit name.
-    word: String,
+    /// The words before the number of a default exhibit name: exhibit, tank, show tank.
+    words: [String; 3],
     /// Which terrain types are water (the gate walk's keeper does not swim).
     water: Vec<bool>,
     undo: Vec<Action>,
@@ -80,7 +91,7 @@ impl World {
             exhibits: Exhibits::default(),
             events: Vec::new(),
             waiting: Vec::new(),
-            word: "Exhibit".into(),
+            words: ["Exhibit".into(), "Tank".into(), "Show Tank".into()],
             water: Vec::new(),
             zoo,
             shapes,
@@ -93,6 +104,9 @@ impl World {
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
         world.load_gates();
+        world.load_tanks();
+        world.retank(false);
+        world.dirty = false;
         world
     }
 
@@ -187,17 +201,21 @@ impl World {
 
     /// The tiles that a non-contiguous step on tile `t` takes along (terrain editing 5.5): the
     /// tiles under the object holding the quarter at local (0..32, 0..32) or, when that is empty,
-    /// under each unit of the tile, when it is bigger than one tile. (The tiles of a tank exhibit
-    /// come along too in the original; the world knows no tank yet.)
+    /// under each unit of the tile, when it is bigger than one tile; and, whatever the tile
+    /// held, every tile of the tank it belongs to.
     pub fn carried(&self, t: usize) -> Vec<usize> {
         let objects = match self.scene.quadrant_object(t, 0) {
             Some(o) => vec![o],
             None => self.scene.units_on(t).to_vec(),
         };
-        objects
+        let mut tiles: Vec<usize> = objects
             .into_iter()
             .flat_map(|o| self.scene.large_tiles(o))
-            .collect()
+            .collect();
+        if let Some(tank) = self.tank_at(t) {
+            tiles.extend(self.tiles_of(tank));
+        }
+        tiles
     }
 
     /// Whether an animal, guest or staff member stands on tile `t`.
