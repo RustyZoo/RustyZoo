@@ -340,13 +340,12 @@ impl Build {
         self.drag.is_some()
     }
 
-    /// The world points of the pieces of the drag if the mouse is at `point` (on tile `cell`)
-    /// now, the start first: the middle of each tile of a path, the middle of the side of each
-    /// piece of a fence; none without a drag. `cell` is the tile under the mouse and `z` the height of
-    /// the point. The run is computed
-    /// again only when the tile or the height step (`z / 16`) changes or the point is more than 16
-    /// world units from the last computation (in y, and in x for a fence; placing 6.2 item 2);
-    /// otherwise the last run stays and so does the last point.
+    /// The world points of the pieces of the drag if the mouse is at `point` (height `z`, on tile
+    /// `cell`) now, the start first: the middle of each tile of a path, the middle of the side of
+    /// each piece of a fence; none without a drag. The run is computed again only when the tile or
+    /// the height step (`z / 16`) changes or the point is more than 16 world units from the last
+    /// computation (in y, and in x for a fence; placing 6.2 item 2); otherwise the last run stays,
+    /// and so does the last point.
     pub fn run(&mut self, cell: (i32, i32), point: (i64, i64), z: i32) -> Vec<(i64, i64)> {
         let Some(drag) = &mut self.drag else {
             return Vec::new();
