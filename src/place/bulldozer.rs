@@ -243,15 +243,9 @@ pub fn check(world: &World, cat: &Catalogue, e: usize, sell: bool, asked: &[(u32
             false => Check::Ask(q),
         };
     }
-    let needs = world
-        .zoo
-        .entities
-        .get(e)
-        .and_then(|entity| type_of(cat, entity))
-        .is_some_and(|ty| unit::is_unit(ty) || number(ty, "cNeedsConfirm") == Some(1.0));
-    let fire = (world.zoo.entities.get(e))
-        .and_then(|entity| type_of(cat, entity))
-        .is_some_and(staff::is_staff);
+    let ty = (world.zoo.entities.get(e)).and_then(|entity| type_of(cat, entity));
+    let needs = ty.is_some_and(|ty| unit::is_unit(ty) || number(ty, "cNeedsConfirm") == Some(1.0));
+    let fire = ty.is_some_and(staff::is_staff);
     match (sell && needs, fire) {
         (true, true) => Check::Ask(Question::Fire),
         (true, false) => Check::Ask(Question::Sell),

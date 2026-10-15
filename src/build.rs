@@ -30,8 +30,8 @@ pub const CONSTRUCTION: i32 = 8;
 pub const OBJECTS: i32 = 4;
 pub const ADOPT: i32 = 3;
 pub const HIRE: i32 = 10;
-/// The Hire panel's title, and the texts of the duties and the monthly salary of the chosen staff
-/// type (unit placing 4.1).
+/// The Hire panel's title (string 3697) and the text of the duties of the chosen staff type
+/// (unit placing 4.1; its salary goes to the panel's cost text).
 const HIRE_TITLE: i32 = 3697;
 const HIRE_DUTIES: i32 = 3613;
 const PANEL_COUNT: usize = 4;
