@@ -1,9 +1,9 @@
 //! The path finder of the original (pathfinding): a search over tiles with the costs of the unit
 //! that asks, and the list of destinations found unreachable.
 //!
-//! The finder works on tiles on land. The depth search of a tank (3.8) and what needs the live
-//! units (other animals on a tile, the tasks that change a cost, the unit's facing in a random
-//! walk, food under a keeper) are not here yet: a unit table does not exist.
+//! The finder works on tiles on land. The depth search of a tank (3.8) is not here yet. What a
+//! cost reads of the live unit (its destination, facing, tasks and water states) is a field of
+//! [`Mover`] that the unit code sets; the other units on a tile come from the world's map index.
 
 use crate::config::Config;
 use crate::timing::ini_whole;
@@ -57,6 +57,28 @@ pub struct Mover {
     /// An animal in the exhibit's reachability test, and one in water mode (terrain mode 1).
     pub test: bool,
     pub water_mode: bool,
+    /// The unit's own id, to leave it out of the units on a tile.
+    pub id: Option<u32>,
+    /// `cAvoidEdges` of the animal's type: the radius, in tiles, of the fences it keeps off.
+    pub avoid_edges: u32,
+    /// The tile the unit is going to now (before a new request sets it).
+    pub dest: Option<usize>,
+    /// An animal going to or from a show tank (tasks 0x85 and 0x86).
+    pub show: bool,
+    /// The id of the unit an animal chases (task 0x74).
+    pub chasing: Option<u32>,
+    /// The facing of a unit in a random walk (`fRandomWalk`), else none.
+    pub turn: Option<usize>,
+    /// The unit goes in or out of a building: only the edge cost decides a step (4.2).
+    pub building: bool,
+    /// A guest travelling in water, one recovering from a fall into water, and one avoiding a
+    /// predator (task 0x75), with the `cNonPathCostEmergency` it then pays.
+    pub in_water: bool,
+    pub recovering: bool,
+    pub avoiding: bool,
+    pub emergency_cost: u32,
+    /// The ids of the units that are predators for this guest (M7 decides who they are).
+    pub predators: Vec<u32>,
 }
 
 impl Mover {
@@ -67,6 +89,7 @@ impl Mover {
             at,
             footprint: 1,
             non_path_cost: 7,
+            emergency_cost: 1,
             ..Mover::default()
         }
     }
@@ -121,8 +144,8 @@ impl Settings {
 }
 
 /// 4.2: whether a unit may take the tile step `(a, b, d)` from tile `a` to its neighbour `b` in
-/// direction `d`. With `building` (the unit goes in or out of a building) only the edge cost is
-/// looked at, not the terrain cost of `b`.
+/// direction `d`. With `building` (or the unit's own flag: it goes in or out of a building) only
+/// the edge cost is looked at, not the terrain cost of `b`.
 pub fn allowed(
     w: &World,
     m: &Mover,
@@ -130,12 +153,19 @@ pub fn allowed(
     (a, b, d): (usize, usize, usize),
     building: bool,
 ) -> bool {
-    if !building {
-        return search::open(w, m, s, (a, b, d), None).is_some();
-    }
-    cost::clear(w, m, a, b, d, search::diagonal(m, s))
-        && w.tank_at(b).is_none()
-        && cost::edge(w, m, a, d) < MAX
+    search::open(w, m, s, (a, b, d), None, building || m.building).is_some()
+}
+
+/// The move cost of a path (3.6): each step's cost times its length factor, with the last tile as
+/// the goal.
+pub fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
+    let goal = path.last().copied();
+    let step = |p: &[usize]| {
+        let d = search::direction(w, p[0], p[1]);
+        let length = [1.0, search::DIAGONAL][d % 2];
+        length * f64::from(cost::step(w, m, p[0], p[1], d, goal))
+    };
+    path.windows(2).map(step).fold(0.0, |a, b| a + b)
 }
 
 /// What to do with the unit's destination tile after a request.
@@ -164,6 +194,8 @@ pub struct Finder {
     unreachable: HashMap<usize, i8>,
     /// The AI tick at which the list is emptied next; the first update empties it.
     clear_at: u64,
+    /// The diagonal switch the last search left (3.1 item 8); none before the first one.
+    switch: Option<bool>,
 }
 
 impl Finder {
@@ -180,6 +212,15 @@ impl Finder {
         if now >= self.clear_at {
             self.unreachable.clear();
             self.clear_at = now.saturating_add(self.settings.clear_every);
+        }
+    }
+
+    /// The settings with the diagonal switch as the last search of any unit left it: the gate
+    /// choice of the exhibits searches with these (pathfinding 8).
+    pub fn last(&self) -> Settings {
+        Settings {
+            diagonal: self.switch.unwrap_or(self.settings.diagonal),
+            ..self.settings.clone()
         }
     }
 
@@ -239,18 +280,28 @@ impl Finder {
         let enter = (0..4).any(|d| {
             let a = w.neighbour(to, d * 2);
             a.is_some_and(|a| {
-                search::open(w, m, s, (a, to, search::direction(w, a, to)), None).is_some()
+                search::open(
+                    w,
+                    m,
+                    s,
+                    (a, to, search::direction(w, a, to)),
+                    None,
+                    m.building,
+                )
+                .is_some()
             })
         });
         let leave = (0..8)
             .step_by(if search::diagonal(m, s) { 1 } else { 2 })
             .any(|d| {
                 let n = w.neighbour(from, d);
-                n.is_some_and(|n| search::open(w, m, s, (from, n, d), None).is_some())
+                n.is_some_and(|n| search::open(w, m, s, (from, n, d), None, m.building).is_some())
             });
         if terrain(w, m, to, None) >= MAX || !enter || !leave {
             return reply(false, None, Dest::Keep);
         }
+        // Only a request that gets to its search sets the diagonal switch (3.1 item 8).
+        self.switch = Some(search::diagonal(m, s));
         let found = search(w, m, s, from, to, partial);
         if found.reached {
             self.ease(to);

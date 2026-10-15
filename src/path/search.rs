@@ -1,6 +1,6 @@
 //! The A* search over tiles with the original's open list (pathfinding 3.3 to 3.7).
 
-use super::cost::{clear, step};
+use super::cost::{clear, edge, step};
 use super::{Kind, MAX, Mover, Settings};
 use crate::world::World;
 use std::collections::HashMap;
@@ -72,16 +72,18 @@ pub fn diagonal(m: &Mover, s: &Settings) -> bool {
 }
 
 /// The step cost of going from `a` to its neighbour `b` in direction `d` when the step is allowed
-/// (4.2), else `None`.
+/// (4.2), else `None`. A unit at a building (`building`) is held to the edge cost alone.
 pub fn open(
     w: &World,
     m: &Mover,
     s: &Settings,
     (a, b, d): (usize, usize, usize),
     goal: Option<usize>,
+    building: bool,
 ) -> Option<u32> {
     let cost = step(w, m, a, b, d, goal);
-    (clear(w, m, a, b, d, diagonal(m, s)) && w.tank_at(b).is_none() && cost < MAX).then_some(cost)
+    let fits = if building { edge(w, m, a, d) } else { cost };
+    (clear(w, m, a, b, d, diagonal(m, s)) && w.tank_at(b).is_none() && fits < MAX).then_some(cost)
 }
 
 /// The direction from tile `a` to its neighbour `b`.
@@ -205,7 +207,14 @@ impl Search<'_> {
                 continue;
             };
             let d = STEP.iter().position(|&s| s == (dx, dy)).unwrap_or(0);
-            let Some(cost) = open(self.w, self.m, self.s, (from, to, d), Some(self.goal)) else {
+            let Some(cost) = open(
+                self.w,
+                self.m,
+                self.s,
+                (from, to, d),
+                Some(self.goal),
+                self.m.building,
+            ) else {
                 continue;
             };
             let Some(n) = self.node(to) else {

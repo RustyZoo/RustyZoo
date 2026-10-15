@@ -993,3 +993,24 @@ fn the_gate_choice_searches_from_the_entrance_with_the_node_cap() {
     assert!(!blocked(true, 13) && blocked(true, 12));
     assert!(!blocked(false, 16) && blocked(false, 15));
 }
+
+#[test]
+fn the_gate_choice_searches_with_the_switch_the_last_request_left() {
+    // After a guest's request the finder searches in four directions: 16 nodes, not 13.
+    let mut pieces = square(2, 2, 4, 4);
+    let last = pieces.pop().unwrap();
+    let mut world = loaded(&pieces);
+    world.set_finder(crate::path::Settings {
+        node_max: 13,
+        ..Default::default()
+    });
+    let mut finder = std::mem::take(&mut world.units.finder);
+    let guest = crate::path::Mover::new(crate::path::Kind::Guest, Some(0));
+    finder.request(&world, &guest, 1, false);
+    world.units.finder = finder;
+    put(&mut world, last);
+    assert!(world.take_events().contains(&Event::Blocked {
+        id: 1,
+        message: 11000,
+    }));
+}
