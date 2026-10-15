@@ -22,6 +22,7 @@ use rustyzoo::behaviour::{self, Survey};
 use rustyzoo::bitmap;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
+use rustyzoo::exhibit::rating;
 use rustyzoo::ground::{self, Key, Renderer};
 use rustyzoo::movie::Movie;
 use rustyzoo::music::Music;
@@ -89,6 +90,10 @@ usage: rustyzoo [--data <dir>] <command>
                       the file stores and check that each stored first tile lies in a different
                       exhibit; the same for the tanks (an exhibit closed by tank walls only); list
                       the sizes; exit 1 if one differs or none matches
+  check-rating <map>  rate the exhibits of the maps matching <map> for each species living in
+                      them (habitat rating): the shown suitability, the part scores, the
+                      recommendation bits (important ones marked !) and the attractiveness;
+                      exit 1 if none matches or a rating is not 0 to 100
   render-ani <member.ani> <dir> [--anim NAME]
                       write frame 0 of an animation set as eight PNG files into <dir>, one per
                       screen direction, and print the anchor point; with --anim, the first
@@ -474,6 +479,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["map-info", member] => map_info(&open_game(data_dir)?, member),
         ["check-maps"] => check_maps(&open_game(data_dir)?),
         ["check-exhibits", map] => check_exhibits(&open_game(data_dir)?, map),
+        ["check-rating", map] => check_rating(&open_game(data_dir)?, map),
         ["render-ani", member, dir] => {
             render_ani(&open_game(data_dir)?, member.to_string(), Path::new(dir))
         }
@@ -1233,6 +1239,85 @@ fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
         _ => {
             Err(format!("{mismatch} of {maps} maps differ from their stored habitat count").into())
         }
+    }
+}
+
+/// Rates every exhibit of the maps matching `pattern` for each species in it (habitat rating).
+fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
+    let catalogue = Catalogue::load(vfs)?;
+    let renderer = MapRenderer::new(vfs, &catalogue);
+    let mut report = Report::new();
+    let (mut maps, mut rated, mut bad) = (0, 0, 0);
+    for member in vfs.list(Some(pattern)) {
+        if !member.to_ascii_lowercase().ends_with(".zoo") {
+            continue;
+        }
+        let zoo = vfs
+            .read(&member)
+            .map_err(|e| ZooError::Corrupted(e.to_string()))
+            .and_then(|bytes| Zoo::parse(&bytes))
+            .and_then(|zoo| zoo.checked(&catalogue));
+        let Ok(zoo) = zoo else {
+            report.line(format_args!("skipped {}", member.escape_debug()));
+            continue;
+        };
+        maps += 1;
+        let world = World::new(zoo, |e| renderer.shape(e));
+        for exhibit in world.exhibits().list() {
+            let input = rating::input(&world, &catalogue, exhibit.id);
+            let mut state = rating::State::new();
+            state.compute(&input);
+            report.line(format_args!(
+                "{} exhibit {}{}: {} tiles, {} animals, attractiveness {}",
+                member.escape_debug(),
+                exhibit.id,
+                if exhibit.tank.is_some() {
+                    " (tank)"
+                } else {
+                    ""
+                },
+                exhibit.tiles,
+                input.animals.len(),
+                state.attractiveness,
+            ));
+            for r in &state.records {
+                rated += 1;
+                let bits: Vec<String> = (0..64)
+                    .filter(|&b| r.has(b))
+                    .map(|b| format!("{b}{}", if r.important >> b & 1 == 1 { "!" } else { "" }))
+                    .collect();
+                if r.shown() > 100 {
+                    bad += 1;
+                }
+                report.line(format_args!(
+                    "  {} x{}: shown {} (rating {:.2}) terrain {} objects {} foliage {} rocks {} \
+                     elevation {} shelters {} toys {} depth {} water {}; bits [{}]",
+                    r.key.escape_debug(),
+                    r.animals,
+                    r.shown(),
+                    r.rating(),
+                    r.terrain,
+                    r.objects,
+                    r.foliage,
+                    r.rocks,
+                    r.elevation,
+                    r.shelters,
+                    r.toys,
+                    r.depth,
+                    r.water,
+                    bits.join(" "),
+                ));
+            }
+        }
+    }
+    report.line(format_args!(
+        "{maps} maps, {rated} species rated, {bad} out of range"
+    ));
+    report.finish()?;
+    match (maps, bad) {
+        (0, _) => Err(format!("check-rating: no map matches {}", pattern.escape_debug()).into()),
+        (_, 0) => Ok(()),
+        _ => Err(format!("{bad} ratings are not 0 to 100").into()),
     }
 }
 

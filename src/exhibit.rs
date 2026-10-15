@@ -8,13 +8,15 @@ use crate::config::{Config, to_int};
 use crate::vfs::Vfs;
 use crate::world::World;
 
+pub mod rating;
+
 /// The region of the zoo grounds.
 pub const GROUNDS: u32 = 0;
 /// The region of the tiles beyond the zoo wall.
 pub const EXTERIOR: u32 = u32::MAX;
 
 /// An exhibit: its number (kept while it exists), name, gate and size.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Exhibit {
     pub id: u32,
     /// The first tile of its region (row by row).
@@ -28,6 +30,8 @@ pub struct Exhibit {
     pub gate: Option<u32>,
     /// What a tank has besides: set when every wall of its boundary is a tank wall.
     pub tank: Option<Tank>,
+    /// Its records, species list and timers (habitat rating).
+    pub rating: rating::State,
 }
 
 /// The state of a tank exhibit (exhibits and money 3.9, 4.7).
@@ -160,7 +164,7 @@ pub struct Part {
 }
 
 /// The region of every tile and the exhibits.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Exhibits {
     region: Vec<u32>,
     list: Vec<Exhibit>,
@@ -354,6 +358,7 @@ impl Exhibits {
             name,
             gate: None,
             tank: None,
+            rating: rating::State::new(),
         });
         self.assign(id, part);
         id
