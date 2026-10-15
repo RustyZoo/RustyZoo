@@ -10,7 +10,8 @@ use crate::app::Key;
 use crate::text::from_cp1252;
 use crate::ui::draw::{Strings, element_text};
 use crate::ui::layout::{
-    DIRTY, DISABLED, FOCUSED, HIDDEN, Kind, Picture, READ_ONLY, SELECT_ON_KEYS, TAKES_FOCUS,
+    DIRTY, DISABLED, FOCUSED, HIDDEN, Kind, Picture, READ_ONLY, SELECT_ON_KEYS, SELECTED,
+    TAKES_FOCUS,
 };
 use crate::ui::widgets::{Bar, Caret, EditKey, Edited, Heights, Limits, ListKey, Part, Row, edit};
 
@@ -105,6 +106,17 @@ impl Interface {
         true
     }
 
+    /// Selects or deselects the button `id` without running its actions, and enables or disables
+    /// it; `false` if there is no such element.
+    pub fn set_button(&mut self, id: i32, selected: bool, enabled: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.flag(i, SELECTED, selected);
+        self.flag(i, DISABLED, !enabled);
+        true
+    }
+
     /// The text resource of the game under this name (empty if there is none).
     pub fn text_entry(&self, name: &[u8]) -> Vec<u8> {
         Strings::text_entry(&self.strings, name)
@@ -175,6 +187,7 @@ impl Interface {
         let id = match &self.tree.elements[owner].kind {
             Kind::Text(t) => t.scroll_bar,
             Kind::ListBox(l) => l.scroll_bar,
+            Kind::ScrollingRegion(r) => r.scroll_bar,
             _ => return None,
         };
         self.tree
@@ -215,6 +228,7 @@ impl Interface {
                 let fit = self.list_heights(owner);
                 Some((fit.max_top(), fit.fit_from(top)))
             }
+            Kind::ScrollingRegion(_) => self.region_extent(owner),
             Kind::Text(_) => {
                 let Interface {
                     tree,
@@ -235,6 +249,7 @@ impl Interface {
         match &mut self.tree.elements[owner].kind {
             Kind::ListBox(l) => Some(&mut l.rows.top),
             Kind::Text(t) => Some(&mut t.top),
+            Kind::ScrollingRegion(r) => Some(&mut r.top),
             _ => None,
         }
     }
@@ -263,7 +278,7 @@ impl Interface {
 
     /// Scrolls the owner so that `top` is its first line or row, within what it holds. Tells the
     /// game's code where the bar is, or the owner if it has none, when that moved it.
-    fn scroll_owner(&mut self, owner: usize, top: i64) {
+    pub(super) fn scroll_owner(&mut self, owner: usize, top: i64) {
         let Some((max_top, _)) = self.extent(owner) else {
             return;
         };
@@ -274,6 +289,7 @@ impl Interface {
         if std::mem::replace(first, to) == to {
             return;
         }
+        self.place_region(owner);
         self.sync_owner(owner);
         self.flag(owner, DIRTY, true);
         let shown = self.bar_of(owner).unwrap_or(owner);
@@ -765,12 +781,14 @@ impl Interface {
         handled
     }
 
-    /// The wheel turns by `notches` over element `i` (positive: away from the player): a list or
-    /// a text with a bar scrolls two rows per notch, up for a positive number, when it holds more
-    /// than it shows (without a bar it does not scroll).
+    /// The wheel turns by `notches` over element `i` (positive: away from the player): a list, a
+    /// text or a scrolling region with a bar scrolls two rows per notch, up for a positive number,
+    /// when it holds more than it shows (without a bar it does not scroll).
     pub(super) fn wheel(&mut self, i: usize, notches: i32) {
+        // The wheel over a button of a scrolling region turns the region.
+        let i = self.region_of(i).unwrap_or(i);
         let scrolls = match &self.tree.elements[i].kind {
-            Kind::ListBox(_) | Kind::Text(_) => self.bar_of(i).is_some(),
+            Kind::ListBox(_) | Kind::Text(_) | Kind::ScrollingRegion(_) => self.bar_of(i).is_some(),
             _ => false,
         };
         let Some((max_top, _)) = self.extent(i).filter(|_| scrolls) else {

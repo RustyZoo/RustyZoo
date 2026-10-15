@@ -9,10 +9,12 @@
 
 mod dialog;
 mod input;
+mod region;
 mod tooltip;
 mod widgets;
 
 pub use dialog::Buttons;
+pub use region::MAX_ITEMS;
 use std::collections::HashMap;
 pub use tooltip::Settings;
 

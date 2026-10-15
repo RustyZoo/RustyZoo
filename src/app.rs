@@ -19,6 +19,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::Framebuffer;
+use crate::build::Build;
 use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
@@ -28,6 +29,7 @@ use crate::status::{Finances, STATUS_BUTTON};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
+use crate::ui::layout::installed_expansions;
 use crate::world::World;
 use crate::zoo::Zoo;
 
@@ -88,6 +90,8 @@ pub enum Mouse {
     Double,
     /// The wheel turned by this many notches (positive: away from the player).
     Wheel(i32),
+    /// The right button went up at the pointer.
+    Right,
 }
 
 /// What the player does (input 4). The text form is the script format of a headless run:
@@ -95,7 +99,7 @@ pub enum Mouse {
 /// `zoom out`, `grid` (toggle the tile grid), `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
 /// window is closed) for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
-/// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
+/// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
 /// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
 /// A window reads `fullscreen` in a script as a request to switch, and makes the command itself
@@ -152,6 +156,7 @@ impl fmt::Display for Command {
             Command::Mouse(Mouse::Down) => f.write_str("down"),
             Command::Mouse(Mouse::Up) => f.write_str("up"),
             Command::Mouse(Mouse::Double) => f.write_str("double"),
+            Command::Mouse(Mouse::Right) => f.write_str("right"),
             Command::Mouse(Mouse::Wheel(n)) => write!(f, "wheel {n}"),
             Command::Key(key, ctrl, shift) => {
                 write!(f, "key {}", key.name())?;
@@ -201,6 +206,7 @@ impl FromStr for Command {
             ["down"] => Command::Mouse(Mouse::Down),
             ["up"] => Command::Mouse(Mouse::Up),
             ["double"] => Command::Mouse(Mouse::Double),
+            ["right"] => Command::Mouse(Mouse::Right),
             ["wheel", n] => Command::Mouse(Mouse::Wheel(number(n)?)),
             ["key", name, mods @ ..] => {
                 let key = KEY_NAMES
@@ -253,6 +259,8 @@ struct Game {
     bar: Option<(String, Tone)>,
     /// What the Finances table of the zoo status window holds.
     finances: Finances,
+    /// The building panels and the tool they choose.
+    build: Build,
 }
 
 pub struct App<'a> {
@@ -437,7 +445,11 @@ impl<'a> App<'a> {
             told: None,
             bar: None,
             finances: Finances::default(),
+            build: Build::new(installed_expansions(self.renderer.vfs())),
         });
+        if let Some(ui) = &mut self.ui {
+            Build::first_tabs(ui);
+        }
         Ok(())
     }
 
@@ -623,7 +635,7 @@ impl<'a> App<'a> {
             Command::Key(Key::Escape, ..)
                 if self.game.is_some() && self.ui.is_some() && self.map_keys() =>
             {
-                return self.escape();
+                return self.cancel(true);
             }
             Command::Fullscreen(on) => self.fullscreen = on,
             _ => {}
@@ -643,6 +655,9 @@ impl<'a> App<'a> {
                     Mouse::Up => Some("up"),
                     _ => None,
                 };
+                if on_map && mouse == Mouse::Right {
+                    return self.cancel(false);
+                }
                 if let (true, Some(phase), Some(game), Some(ui)) = (on_map, phase, game, &self.ui) {
                     let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
                     let tile = tile.map_or("none".to_string(), |(x, y)| format!("{x},{y}"));
@@ -706,6 +721,7 @@ impl<'a> App<'a> {
     fn acts(&mut self) {
         let Some(ui) = &mut self.ui else { return };
         let selected = ui.take_selected();
+        self.build(None);
         let actions: Vec<Action> = self.ui_actions[self.acted..].to_vec();
         self.acted = self.ui_actions.len();
         for action in actions {
@@ -731,6 +747,7 @@ impl<'a> App<'a> {
                     };
                     self.ask(kind);
                 }
+                _ if self.game.is_some() => self.build(Some(id)),
                 _ if self.game.is_none() => {
                     if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
                         let (lines, exit) = menu.selected(self.renderer.vfs(), ui, id);
@@ -745,6 +762,19 @@ impl<'a> App<'a> {
         // What the menu did to the lists and the fields may have made more to tell.
         if let Some(ui) = &mut self.ui {
             self.ui_events.extend(ui.take_events());
+        }
+    }
+
+    /// The building panels notice what the player did to them: the panel shown or hidden, and
+    /// the button `selected`, if any.
+    fn build(&mut self, selected: Option<i32>) {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
+        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        game.build.sync(ui, vfs, cat, &mut self.tool_lines);
+        if let Some(id) = selected {
+            game.build.selected(ui, vfs, cat, id, &mut self.tool_lines);
         }
     }
 
@@ -864,10 +894,15 @@ impl<'a> App<'a> {
         self.ask(Asked::Exit);
     }
 
-    /// Escape, with the map view having the keys: the options panel, if open, closes, else the question that
-    /// leads to the menu (input 4.6).
-    fn escape(&mut self) {
-        if let Some(ui) = &mut self.ui {
+    /// Escape, with the map view having the keys, or the right button released over the map
+    /// (`ask` is false): the first of these that applies acts (input 4.6): the tool of the
+    /// building panels is dropped, then the open panels close, and only Escape then asks the
+    /// question that leads to the menu.
+    fn cancel(&mut self, ask: bool) {
+        if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
+            if game.build.cancel(ui, &mut self.tool_lines) {
+                return;
+            }
             // The main panel is part of the game screen: only the panels opened from it close.
             if let Some(i) = ui.tree.find(OPTIONS_PANEL)
                 && ui.tree.elements[i].state & crate::ui::layout::HIDDEN == 0
@@ -877,7 +912,9 @@ impl<'a> App<'a> {
                 return;
             }
         }
-        self.ask(Asked::Leave);
+        if ask {
+            self.ask(Asked::Leave);
+        }
     }
 
     /// Stops the game and shows the main menu again: Continue is checked, and the music, if it is
@@ -891,7 +928,12 @@ impl<'a> App<'a> {
         };
         self.game = None;
         (self.painted, self.drawn_at) = (None, None);
-        for id in [OPTIONS_PANEL, MAIN_PANEL] {
+        for id in [
+            OPTIONS_PANEL,
+            MAIN_PANEL,
+            crate::build::CONSTRUCTION,
+            crate::build::OBJECTS,
+        ] {
             if let Some(i) = ui.tree.find(id) {
                 ui.tree.hide(i);
             }

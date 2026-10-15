@@ -215,6 +215,8 @@ pub struct Look {
     pub back_color: Rgb,
     pub highlight_color: Rgb,
     pub icon_first: bool,
+    /// The picture the game's code put in a button, drawn over its own or under it (`iconfirst`).
+    pub icon: Option<Picture>,
     pub color_as_icon: bool,
     pub volatile: bool,
     pub update_while_paused: bool,
@@ -282,6 +284,23 @@ pub struct ListBox {
     pub rows: Rows,
 }
 
+/// A scrolling region: a grid of buttons made from a template, filled by the game's code (ui
+/// layout 4.10). The copies stand in the layout of the region and are anchored to it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Region {
+    pub template: i32,
+    pub radio_set: i32,
+    pub scroll_bar: i32,
+    /// The space between two buttons, across and down.
+    pub spacing: (i32, i32),
+    /// The first row shown.
+    pub top: usize,
+    /// The buttons made so far, which a refill reuses.
+    pub copies: Vec<usize>,
+    /// How many of them hold an item now.
+    pub items: usize,
+}
+
 /// The pictures and percentages of `UIStatusImage` and `UIImageSet`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Levels {
@@ -304,7 +323,7 @@ pub enum Kind {
     ListBox(ListBox),
     StatusImage(Levels),
     ImageSet(Levels),
-    ScrollingRegion,
+    ScrollingRegion(Region),
     Graph,
     MapView,
     MiniMap,
@@ -327,7 +346,7 @@ impl Kind {
             Kind::ListBox(_) => "UIListBox",
             Kind::StatusImage(_) => "UIStatusImage",
             Kind::ImageSet(_) => "UIImageSet",
-            Kind::ScrollingRegion => "UIScrollingRegion",
+            Kind::ScrollingRegion(_) => "UIScrollingRegion",
             Kind::Graph => "UIGraph",
             Kind::MapView => "ZTMapView",
             Kind::MiniMap => "ZTMiniMap",
@@ -570,6 +589,27 @@ impl Tree {
         self.ids.get(&id).copied()
     }
 
+    /// Adds a copy of element `template` under the new `id`, as the last child of the layout
+    /// `parent` and anchored to element `anchor`, and returns its index. The copy is not a
+    /// template any more and keeps the template's state and look.
+    pub fn add_copy(&mut self, template: usize, id: i32, parent: usize, anchor: usize) -> usize {
+        let mut copy = self.elements[template].clone();
+        copy.id = id;
+        copy.parent = Some(parent);
+        copy.children = Vec::new();
+        copy.state &= !TEMPLATE;
+        copy.anchor = self.elements[anchor].id;
+        copy.anchor2 = 0;
+        if let Some(placed) = &mut copy.placed {
+            placed.anchor = Some(anchor);
+        }
+        let index = self.elements.len();
+        self.elements.push(copy);
+        self.elements[parent].children.push(index);
+        self.ids.entry(id).or_insert(index);
+        index
+    }
+
     /// How many elements there are of each type.
     pub fn counts(&self) -> BTreeMap<&'static str, usize> {
         let mut counts = BTreeMap::new();
@@ -729,7 +769,17 @@ impl Tree {
                     _ => Kind::StatusImage(levels),
                 }
             }
-            b"UIScrollingRegion" => Kind::ScrollingRegion,
+            b"UIScrollingRegion" => Kind::ScrollingRegion(Region {
+                template: int("template"),
+                radio_set: int("radioset"),
+                scroll_bar: int("scrollbar"),
+                spacing: match ints("spacing")[..] {
+                    [across, down, ..] => (across, down),
+                    [across] => (across, 0),
+                    [] => (0, 0),
+                },
+                ..Region::default()
+            }),
             b"UIGraph" => Kind::Graph,
             b"ZTMapView" => Kind::MapView,
             b"ZTMiniMap" => Kind::MiniMap,
@@ -773,6 +823,7 @@ impl Tree {
             back_color: if button { [0; 3] } else { [255; 3] },
             highlight_color: [255, 255, 0],
             icon_first: false,
+            icon: None,
             color_as_icon: false,
             volatile: true,
             update_while_paused: true,
@@ -838,6 +889,7 @@ impl Tree {
                 back_color: color(s, "backcolor").unwrap_or(look.back_color),
                 highlight_color: color(s, "highlightcolor").unwrap_or(look.highlight_color),
                 icon_first: flag("iconfirst", false),
+                icon: None,
                 color_as_icon: flag("colorasicon", false),
                 volatile: flag("volatile", true),
                 update_while_paused: flag("updateWhilePaused", true),

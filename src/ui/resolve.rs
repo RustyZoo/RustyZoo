@@ -105,7 +105,7 @@ impl Tree {
         self.sort_layers();
     }
 
-    /// Puts every scroll bar named by a text or a list next to its owner (ui layout 4.7): as long
+    /// Puts every scroll bar named by a text, a list or a scrolling region next to its owner (ui layout 4.7): as long
     /// as the owner is high (`left`, `right`) or wide (`top`, `bottom`), against the side the
     /// owner names and centred on it. A coordinate that comes out negative becomes 0. The bar's
     /// own position is overwritten.
@@ -114,6 +114,7 @@ impl Tree {
             let (id, side) = match &self.elements[owner].kind {
                 Kind::Text(t) => (t.scroll_bar, t.scroll_bar_pos),
                 Kind::ListBox(l) => (l.scroll_bar, l.scroll_bar_pos),
+                Kind::ScrollingRegion(r) => (r.scroll_bar, Side::Right),
                 _ => continue,
             };
             let bar = self

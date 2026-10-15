@@ -200,6 +200,48 @@ fn an_animation_is_centred_and_a_button_picks_the_set_of_its_state() {
 }
 
 #[test]
+fn a_buttons_icon_is_drawn_over_its_picture_or_under_it_with_iconfirst() {
+    let button = |extra: &str| {
+        format!(
+            "[LayoutInfo]\nid=1\n{FULL}\
+             [a]\ntype=UIButton\nid=2\nx=10\ny=5\nanimation=ui/b/b\n{extra}\n"
+        )
+    };
+    for (extra, name, shows) in [
+        ("", "over", [0, 0, 255]),
+        ("iconfirst=1", "under", [255, 0, 0]),
+    ] {
+        let mut tree = tree(&format!("icon-{name}"), &button(extra), &animation("b"));
+        for e in &mut tree.elements {
+            e.state &= !HIDDEN;
+        }
+        // A 3 x 2 icon of blue, drawn at the button's corner, a row taller than the picture.
+        let blue = tga(&[&[[0, 0, 255]; 3], &[[0, 0, 255]; 3]]);
+        tree.pictures
+            .images
+            .push(crate::tga::Texture::parse(&blue).unwrap());
+        let mut painter = Painter::default();
+        let texts = Texts::default();
+        let frame = paint(&mut tree, &mut painter, &texts);
+        assert_eq!(at(&frame, 10, 5), [255, 0, 0], "no icon yet");
+        assert_eq!(at(&frame, 10, 6), [0, 0, 0]);
+        tree.elements[1].look.icon = Some(Picture::Image(tree.pictures.images.len() - 1));
+        let frame = paint(&mut tree, &mut painter, &texts);
+        assert_eq!(
+            (0..3).map(|x| at(&frame, 10 + x, 5)).collect::<Vec<_>>(),
+            [shows; 3],
+            "{name}"
+        );
+        assert_eq!(
+            at(&frame, 11, 6),
+            [0, 0, 255],
+            "the icon is taller than the picture"
+        );
+        assert_eq!(at(&frame, 13, 5), [0, 0, 0]);
+    }
+}
+
+#[test]
 fn a_button_text_takes_the_colour_of_its_state() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\

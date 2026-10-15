@@ -13,6 +13,9 @@
 //! * texts, lists and tiled pictures are drawn into a canvas of the element's size, filled with
 //!   `backcolor`, and the canvas is copied. A canvas is built again only when the element has the
 //!   dirty flag (which this clears) or its size changes;
+//! * a button's icon (a picture the game's code gave it, such as an item of a scrolling region)
+//!   is drawn at its first frame like the button's own picture, over it or, with `iconfirst`,
+//!   under it;
 //! * a button's text has no canvas: only its glyphs are drawn, over the frame, with the colour of
 //!   the state.
 //!
@@ -185,7 +188,13 @@ impl Painter {
             }
             Kind::Button(_) => {
                 let set = button_set(e.state);
+                if e.look.icon_first {
+                    self.icon(pictures, e, screen, frame);
+                }
                 self.picture(pictures, i, e, set, screen, frame);
+                if !e.look.icon_first {
+                    self.icon(pictures, e, screen, frame);
+                }
                 color_as_icon(frame, e, screen);
                 let text = element_text(e, strings);
                 if !text.is_empty() {
@@ -286,6 +295,25 @@ impl Painter {
         };
         let key = (e.transparent && !cut.animation).then(|| top_left(&cut.pixels));
         blit(frame, &cut.pixels, (x, y), key);
+    }
+
+    /// The icon of a button, at its first frame, placed like the button's picture.
+    fn icon(
+        &mut self,
+        pictures: &Pictures,
+        e: &Element,
+        (sx, sy, w, h): (i32, i32, i32, i32),
+        frame: &mut Framebuffer,
+    ) {
+        let Some(icon) = e.look.icon else { return };
+        let Some(cut) = self.cut(pictures, icon, 0, 0) else {
+            return;
+        };
+        let (x, y) = match cut.animation {
+            true => (sx + w / 2 + cut.origin.0, sy + h / 2 + cut.origin.1),
+            false => (sx, sy),
+        };
+        blit(frame, &cut.pixels, (x, y), None);
     }
 
     /// Whether the point (`x`, `y`) of the screen is on an opaque pixel of what the element shows:

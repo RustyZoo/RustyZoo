@@ -118,7 +118,7 @@ usage: rustyzoo [--data <dir>] <command>
                       commands of the script applied before their pass (one `<pass> <command>`
                       per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
                       in|out, grid (toggle the tile grid), fullscreen on|off, pause, space, quit, close (the window was closed), and for the
-                      interface mouse X Y, down, up, double (the second press of a double click),
+                      interface mouse X Y, down, up, double (the second press of a double click), right (the right button went up),
                       wheel N, key NAME [ctrl] [shift] with NAME enter, escape, tab,
                       backspace, delete, left, right, up, down, home, end, pageup, pagedown, y
                       or n, and char C with C a byte or one character; # starts a comment).
@@ -136,7 +136,11 @@ usage: rustyzoo [--data <dir>] <command>
                       alone receives the mouse and pauses the game; a message over the map
                       view belongs to the map: a press or release on it prints `tool down X,Y` or `tool up X,Y`, the tile
                       under the pointer (`none` off the map), and the first draw after the
-                      world was edited prints `world stage`. The cash is told as `money cash N`
+                      world was edited prints `world stage`; the construction and objects panels of
+                      the left bar fill their item lists and log `tool panel construction|objects|none`,
+                      `tool item TAB CLASS/TYPE/SUBTYPE name=NAME cost=COST` for the item chosen, `tool
+                      rotate PANEL STEP` and `tool drop` (Escape or the right button drops the item,
+                      then closes the panel). The cash is told as `money cash N`
                       (whole units) when it changes, with `money bar TEXT COLOUR` for the
                       status bar, `money set N` and `money add N` for a start, and `money
                       month M year Y` at a month change; the `$` character adds 10000 to the
