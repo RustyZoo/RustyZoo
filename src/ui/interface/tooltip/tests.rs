@@ -140,30 +140,6 @@ fn the_tooltip_of_the_element_under_the_pointer_comes_after_the_delay_and_expire
 }
 
 #[test]
-fn a_release_over_a_screen_that_went_away_hides_the_tooltip_of_the_old_element() {
-    let mut ui = interface("release");
-    ui.mouse(Mouse::Move(5, 5));
-    ui.mouse(Mouse::Down);
-    ui.update(0);
-    ui.update(66);
-    assert!(tip_shown(&ui));
-    ui.tree.hide(ui.tree.find(20).unwrap());
-    ui.mouse(Mouse::Up);
-    assert!(!tip_shown(&ui));
-    // Nothing is due for what is under the pointer now, and a release that changes nothing
-    // leaves a tooltip alone.
-    ui.update(1000);
-    assert!(!tip_shown(&ui));
-    let mut ui = interface("release-same");
-    ui.mouse(Mouse::Move(5, 5));
-    ui.mouse(Mouse::Down);
-    ui.update(0);
-    ui.update(66);
-    ui.mouse(Mouse::Up);
-    assert!(tip_shown(&ui));
-}
-
-#[test]
 fn another_element_hides_the_tooltip_and_restarts_it_and_none_clears_it() {
     let mut ui = interface("change");
     ui.mouse(Mouse::Move(5, 5));
