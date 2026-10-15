@@ -21,7 +21,7 @@ impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
             154 => "sell %s?\nRefund: ".into(),
-            155 => "fire %s?\nMonthly Salary: ".into(),
+            155 => "fire %s?\nsalary: ".into(),
             156 => "merge %s with %s?".into(),
             157 => "animals escape".into(),
             160 => "tank drained".into(),
@@ -524,10 +524,7 @@ fn a_staff_member_is_fired_after_a_question_that_names_the_salary_and_costs_noth
         let game = s.app.game.as_ref().unwrap();
         let (ui, cat) = (s.app.ui.as_ref().unwrap(), s.app.renderer.catalogue());
         let text = bulldozer::question_text(ui, cat, &game.world, 0, Question::Fire);
-        assert_eq!(
-            text, "fire Shop?\nMonthly Salary: $650",
-            "cut to whole units"
-        );
+        assert_eq!(text, "fire Shop?\nsalary: $650", "cut to whole units");
         let told = s.pass(&[Command::Key(Key::Y, false, false)]);
         let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
         assert!(removed.starts_with("world remove keeper/keeper/m 20,20 id"));

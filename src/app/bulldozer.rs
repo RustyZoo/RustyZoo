@@ -10,10 +10,10 @@ use crate::staff;
 use crate::text::format::{self, Arg, expand, whole_units};
 use std::collections::VecDeque;
 
-/// The strings of the questions: the sell question (it ends with "Refund: "), the fire question
-/// (it ends with "Monthly Salary: "), the merge of two
-/// exhibits, the escape of the animals of an exhibit, the same for a tank (drained, its animals
-/// boxed); and the default name of an exhibit.
+/// The strings of the questions: the sell question (it ends with the label of the refund), the
+/// fire question (it ends with the label of the monthly salary), the merge of two exhibits, the
+/// escape of the animals of an exhibit, the same for a tank (drained, its animals boxed); and the
+/// default name of an exhibit.
 const SELL: i32 = 154;
 const FIRE: i32 = 155;
 const MERGE: i32 = 156;
