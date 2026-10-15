@@ -750,8 +750,9 @@ mod tests {
             0,
         );
         assert_eq!(pixel(&image, 0, 0), [200; 4]);
-        assert_eq!(pixel(&image, 1, 0), [150, 150, 150, 200]);
-        assert_eq!(pixel(&image, 2, 0), [150, 150, 150, 200]);
+        // The codes 25, 50 and 25 keep three quarters: 18, 37 and 18.
+        assert_eq!(pixel(&image, 1, 0), [148, 150, 148, 200]);
+        assert_eq!(pixel(&image, 2, 0), [148, 150, 148, 200]);
     }
 
     #[test]

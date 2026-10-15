@@ -54,7 +54,7 @@ Modules of the core:
 | `intro` | The intro movies: which ones play (`[UI] playMovie`, `playSecondMovie`, their volumes) and the player that gives the picture due at a clock reading |
 | `movie` | Intro movies: the AVI container, the Indeo 5 video decoded to RGBA pictures, the PCM audio (no window, no sound device) |
 
-The core draws in software into an RGBA framebuffer (`Framebuffer`), as the original's software blitter does. The window only presents that framebuffer. Every result can therefore be checked without a screen: text output, PNG pictures, hashes.
+The core draws in software into an RGBA framebuffer (`Framebuffer`), as the original's software blitter does. The window only presents that framebuffer. Its pixels are the original's 16 bit screen: every colour drawn is reduced to 5-6-5 bits at once (`sprite::screen`) and kept as the 8 bit value the display shows (high bits repeated), and blends and shadows work on the codes behind it. There is no tint and no time-of-day setting. Every result can therefore be checked without a screen: text output, PNG pictures, hashes.
 
 ## Platform
 

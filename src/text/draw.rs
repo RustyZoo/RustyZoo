@@ -3,6 +3,7 @@
 use super::layout::{Justify, Rect, layout};
 use super::{Font, Glyph};
 use crate::Framebuffer;
+use crate::sprite::{SHIFT, screen, show};
 
 /// How a text looks.
 #[derive(Clone, Copy, Debug)]
@@ -15,28 +16,19 @@ pub struct Style {
 }
 
 /// The canvas colour for a layout colour, by the game's rule for fills: each channel goes to
-/// 5-6-5 as `R * 31 / 255`, `G * 63 / 255`, `B * 31 / 255` and comes back as 8 bits by
-/// `code * 255 / max`, all rounded down.
-pub fn fill_color(rgb: [u8; 3]) -> [u8; 4] {
-    let [r, g, b] = rgb.map(u32::from);
-    expand(r * 31 / 255, g * 63 / 255, b * 31 / 255)
+/// 5-6-5 as `R * 31 / 255`, `G * 63 / 255`, `B * 31 / 255` and is shown with its high bits
+/// repeated ([`crate::sprite::screen`]).
+pub fn fill_color([r, g, b]: [u8; 3]) -> [u8; 4] {
+    let [r, g, b] = screen([r, g, b]);
+    [r, g, b, 255]
 }
 
 /// The colour of text pixels for a layout colour: the low bits are dropped (`R >> 3`, `G >> 2`,
 /// `B >> 3`), as the system does when it converts a colour to the 16-bit surface. This differs
 /// from [`fill_color`] by one level in some channels.
 pub fn text_color(rgb: [u8; 3]) -> [u8; 4] {
-    let [r, g, b] = rgb.map(u32::from);
-    expand(r >> 3, g >> 2, b >> 3)
-}
-
-fn expand(r: u32, g: u32, b: u32) -> [u8; 4] {
-    [
-        (r * 255 / 31) as u8,
-        (g * 255 / 63) as u8,
-        (b * 255 / 31) as u8,
-        255,
-    ]
+    let [r, g, b] = [0, 1, 2].map(|c| show(c, u16::from(rgb[c] >> SHIFT[c])));
+    [r, g, b, 255]
 }
 
 /// Draws `text` in `rect` of `target`: wrapped, aligned line by line from the top of the
