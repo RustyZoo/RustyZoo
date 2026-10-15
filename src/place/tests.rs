@@ -244,6 +244,7 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
             height: 8,
             entrance,
             habitat_tiles: Vec::new(),
+            habitat_gates: Vec::new(),
             tanks: Vec::new(),
             id_counter: 100,
             tiles,

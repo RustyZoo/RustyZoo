@@ -20,6 +20,7 @@ fn map(width: u32, height: u32, elevation: i32) -> Zoo {
         height,
         entrance: (0, 0),
         habitat_tiles: Vec::new(),
+        habitat_gates: Vec::new(),
         tanks: Vec::new(),
         id_counter: 0,
         tiles: vec![tile; (width * height) as usize],

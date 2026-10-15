@@ -86,14 +86,20 @@ pub fn under(world: &World, point: (i64, i64)) -> Option<usize> {
     if let Some(held) = world.quadrant(t, (ly / 32 * 2 + lx / 32) as usize) {
         return Some(held);
     }
+    fence_near(world, t, lx, ly).or_else(|| world.path(t))
+}
+
+/// The fence on the side of tile `t` nearest to the point (`lx`, `ly`) of the tile when the point
+/// is within [`EDGE`] units of it, in the tile's own slot or in the one across the same line.
+pub fn fence_near(world: &World, t: usize, lx: i32, ly: i32) -> Option<usize> {
     let d = side(lx, ly) as usize;
     let distance = [ly, 0, 63 - lx, 0, 63 - ly, 0, lx][d];
-    let fence = |t: usize, d: usize| world.edge(t, d);
-    let across = world.neighbour(t, d).and_then(|n| fence(n, (d + 4) % 8));
+    let across = world
+        .neighbour(t, d)
+        .and_then(|n| world.edge(n, (d + 4) % 8));
     (distance <= EDGE)
-        .then(|| fence(t, d).or(across))
+        .then(|| world.edge(t, d).or(across))
         .flatten()
-        .or_else(|| world.path(t))
 }
 
 /// The entities a rectangle of tiles collects, each once (placing 7.1 area drag): for each tile

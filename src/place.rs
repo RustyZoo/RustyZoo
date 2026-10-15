@@ -11,9 +11,10 @@
 //! fences (the zoo wall stays, nothing crosses the side, the smart fences test, not the entrance).
 //! [`place`] adds a valid pending object to the world and takes its price. A drag is a list of
 //! pending pieces, [`path_run`] and [`fence_run`] say where and [`afford`] which of them the cash
-//! covers.
+//! covers. The gate tool is in [`gate`].
 
 pub mod bulldozer;
+pub mod gate;
 
 use crate::build::{cost, number};
 use crate::config::Config;
@@ -55,6 +56,8 @@ pub struct Tints {
     pub valid: [u8; 3],
     pub overwrite: [u8; 3],
     pub invalid: [u8; 3],
+    /// The tint of a gate that is valid but where no keeper is sure to pass (placing 6.4).
+    pub highlight: [u8; 3],
     /// The tint of what the bulldozer would remove.
     pub delete: [u8; 3],
 }
@@ -66,6 +69,7 @@ impl Default for Tints {
             valid: [0, 225, 0],
             overwrite: [225, 112, 0],
             invalid: [225, 0, 0],
+            highlight: [225, 225, 0],
             delete: [225, 0, 0],
         }
     }
@@ -87,6 +91,7 @@ impl Tints {
             valid: key("entityvalidcolor", shipped.valid),
             overwrite: key("entityoverwritecolor", shipped.overwrite),
             invalid: key("entityinvalidcolor", shipped.invalid),
+            highlight: key("entityhighlightcolor", shipped.highlight),
             delete: key("entitydeletecolor", shipped.delete),
         }
     }
@@ -135,6 +140,8 @@ pub enum Verdict {
     Valid,
     /// Valid, and it replaces a piece (a path on a path, a fence on a held slot).
     Overwrite,
+    /// A gate that is valid but shown in the highlight colour (placing 6.4).
+    Highlight,
     Invalid,
 }
 
@@ -143,6 +150,7 @@ impl Verdict {
         match self {
             Verdict::Valid => "valid",
             Verdict::Overwrite => "overwrite",
+            Verdict::Highlight => "highlight",
             Verdict::Invalid => "invalid",
         }
     }
@@ -197,6 +205,7 @@ pub fn extra_of(pieces: &[Pending], tints: &Tints) -> Extra {
         let tint = match p.verdict {
             Verdict::Valid => tints.valid,
             Verdict::Overwrite => tints.overwrite,
+            Verdict::Highlight => tints.highlight,
             Verdict::Invalid => tints.invalid,
         };
         extra.ghosts.push(Ghost {

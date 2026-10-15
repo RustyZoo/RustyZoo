@@ -92,6 +92,7 @@ impl World {
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
+        world.load_gates();
         world
     }
 

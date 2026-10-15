@@ -458,14 +458,72 @@ fn opening_the_construction_panel_fills_the_fences_and_chooses_the_first() {
     assert_eq!(state_of(&ui, 3258) & HIDDEN, HIDDEN);
     assert_eq!(state_of(&ui, 3240) & (HIDDEN | DISABLED), DISABLED);
     // The button is enabled while the zoo has an exhibit, and stays so when the tab is shown again.
-    build.set_exhibits(&mut ui, 1);
+    build.set_exhibits(&mut ui, 1, &mut log);
     assert_eq!(state_of(&ui, 3240) & (HIDDEN | DISABLED), 0);
-    build.set_exhibits(&mut ui, 0);
+    build.set_exhibits(&mut ui, 0, &mut log);
     assert_eq!(state_of(&ui, 3240) & (HIDDEN | DISABLED), DISABLED);
     // The same state again says nothing.
     log.clear();
     build.sync(&mut ui, &vfs, &cat, &mut log);
     assert!(log.is_empty());
+}
+
+#[test]
+fn the_gate_button_makes_the_gate_the_tool_until_an_item_a_tab_escape_or_the_last_exhibit() {
+    let (mut ui, vfs, _install) = interface("gate");
+    let cat = types();
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    ui.show(8);
+    ui.set_button(1002, true, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    build.set_exhibits(&mut ui, 1, &mut log);
+    assert_eq!(build.tool(), Some(2));
+    log.clear();
+    // Pressing the button clears the item and the list selection.
+    ui.set_button(3240, true, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(log, ["tool gate on"]);
+    assert!(build.gating());
+    assert_eq!(build.tool(), None);
+    let first = 1_000_000 + 3208 * 1000;
+    assert_eq!(state_of(&ui, first) & SELECTED, 0);
+    // A second press ends it; so does Escape, with the button released.
+    ui.set_button(3240, false, true);
+    log.clear();
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(
+        (log.clone(), build.gating()),
+        (vec!["tool gate off".into()], false)
+    );
+    ui.set_button(3240, true, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    log.clear();
+    assert!(build.cancel(&mut ui, &mut log));
+    assert_eq!(log, ["tool gate off", "tool drop"]);
+    assert_eq!(state_of(&ui, 3240) & SELECTED, 0);
+    assert_eq!(state_of(&ui, 8) & HIDDEN, 0, "the panel stays");
+    // Choosing an item ends it.
+    ui.set_button(3240, true, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    build.selected(&mut ui, &vfs, &cat, first, &mut log);
+    assert!(!build.gating());
+    assert_eq!(state_of(&ui, 3240) & SELECTED, 0);
+    assert_eq!(build.tool(), Some(2));
+    // The last exhibit going ends it and disables the button.
+    ui.set_button(3240, true, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    log.clear();
+    build.set_exhibits(&mut ui, 0, &mut log);
+    assert_eq!(log, ["tool gate off"]);
+    assert_eq!(state_of(&ui, 3240) & (SELECTED | DISABLED), DISABLED);
+    // Closing the panel ends it.
+    build.set_exhibits(&mut ui, 1, &mut log);
+    ui.set_button(3240, true, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    ui.tree.hide(ui.tree.find(8).unwrap());
+    log.clear();
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert!(!build.gating());
 }
 
 #[test]

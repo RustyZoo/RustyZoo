@@ -501,7 +501,8 @@ impl Catalogue {
             .map(|at| &self.types[at])
     }
 
-    fn position(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<usize> {
+    /// The position in `types` of the type of this class, name and subtype.
+    pub fn position(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<usize> {
         self.index
             .get(&(type_name.to_vec(), subtype.to_vec()))?
             .iter()

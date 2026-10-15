@@ -80,7 +80,7 @@ impl App<'_> {
             .filter(|e| !game.naming.contains(&e.id))
             .count();
         if let Some(ui) = &mut self.ui {
-            game.build.set_exhibits(ui, count);
+            game.build.set_exhibits(ui, count, &mut self.tool_lines);
         }
         self.name_next();
         self.exhibit_message();
