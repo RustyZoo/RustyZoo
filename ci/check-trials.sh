@@ -85,6 +85,8 @@ check base-trial 1412,2950,0,3459,0,0,1,966,3,1,4,259,5,185,20,1,1402,1,9 "rz ch
 check base-trial 1,3161,57 "rz strings | awk '/^LIB/{l++} /^TEXT/{t++} /^[0-9]/{s++} END{print l\",\"s\",\"t}'"
 check base-trial 5,3,0,2 "rz check-exhibits '*.zoo' | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check base-trial 3 "rz check-exhibits '*.zoo' | grep -c 'stored first tiles in distinct exhibits'"
+# 3 maps, 5 species rated in their exhibits, none out of range
+check base-trial 3,5,0 "rz check-rating '*.zoo' | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check base-trial 5,3,2,0,13750,1371 "rz check-maps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # Whole maps drawn in memory: maps drawn, skipped, failed; tiles drawn from the cache, rendered at
 # run time (the cache lacks them), undrawn; cliff pieces drawn, missing; objects drawn, with a
@@ -122,6 +124,7 @@ check expansion-trial 2119,6556,0,4065,0,4,1,852,3,1,4,764,5,493,20,9,2101,9,9 "
 check expansion-trial 3,3924,187 "rz strings | awk '/^LIB/{l++} /^TEXT/{t++} /^[0-9]/{s++} END{print l\",\"s\",\"t}'"
 check expansion-trial 5,5,0,0 "rz check-exhibits '*.zoo' | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 5 "rz check-exhibits '*.zoo' | grep -c 'stored first tiles in distinct exhibits'"
+check expansion-trial 5,5,0 "rz check-rating '*.zoo' | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 5,5,0,0,28125,4160 "rz check-maps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # The expansion trial ships no ground cache, so every tile is rendered at run time. It ships no
 # converted cliff pieces either (only their bitmaps), so they are converted in memory: all 2434
