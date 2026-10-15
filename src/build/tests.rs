@@ -971,7 +971,12 @@ fn a_bulldozer_press_is_a_drag_once_it_leaves_its_tile_or_16_pixels() {
     // On the press tile within 16 pixels it is a click.
     assert_eq!(build.sweep_area(Some((5, 5)), (116, 100)), None);
     assert_eq!(build.sweep_area(Some((5, 5)), (110, 110)), None);
-    // More than 16 pixels away on the same tile, or on another tile: a drag.
+    assert_eq!(build.sweep_area(Some((5, 5)), (112, 112)), None);
+    assert_eq!(build.sweep_area(Some((5, 5)), (116, 84)), None);
+    assert_eq!(build.sweep_area(Some((5, 5)), (84, 100)), None);
+    // More than 16 pixels away on one axis on the same tile, or on another tile: a drag.
+    assert!(build.sweep_area(Some((5, 5)), (100, 117)).is_some());
+    assert!(build.sweep_area(Some((5, 5)), (83, 100)).is_some());
     assert_eq!(
         build.sweep_area(Some((5, 5)), (117, 100)),
         Some(((5, 5), (5, 5)))

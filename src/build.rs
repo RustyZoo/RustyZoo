@@ -352,7 +352,8 @@ impl Build {
 
     /// The rectangle of tiles (the press tile and the one under the pointer, both included) while
     /// the press is an area drag: the pointer left the press tile or is more than 16 pixels from
-    /// the press point; back on the press tile within 16 pixels it is a click again. A pointer
+    /// the press point on an axis; back on the press tile within 16 pixels on both it is a click
+    /// again. A pointer
     /// off the map keeps the last tile it was on. `None` without a press or in a click.
     pub fn sweep_area(
         &mut self,
@@ -365,7 +366,7 @@ impl Build {
             i64::from(pixel.0) - i64::from(sweep.pixel.0),
             i64::from(pixel.1) - i64::from(sweep.pixel.1),
         );
-        let far = dx * dx + dy * dy > SWEEP_PIXELS * SWEEP_PIXELS;
+        let far = dx.abs() > SWEEP_PIXELS || dy.abs() > SWEEP_PIXELS;
         (sweep.last != sweep.start || far).then_some((sweep.start, sweep.last))
     }
 

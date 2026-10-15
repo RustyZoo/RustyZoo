@@ -338,17 +338,23 @@ fn an_area_drag_removes_what_the_rectangle_covers_and_sums_the_refunds() {
         assert!(told.contains(&"tool bulldoze removed 7 refund 56".to_string()));
         assert!(told.contains(&"money cash 50056".to_string()));
         assert_eq!((s.count(), s.cash()), (0, 50_056.0));
-        // A drag that covers nothing shows 0 and removes nothing; a press on bare ground keeps
+        // A drag started over nothing removable shows no cost text until its rectangle has
+        // collected something; from then on the sum, 0 included. A release over nothing keeps
         // everything.
+        s.add(0, 22 * 64 + 32, 22 * 64 + 32, 0);
         s.pass(&[
             s.at(20, 22, 32, 32),
             Command::Mouse(Mouse::Down),
             s.at(21, 22, 32, 32),
         ]);
+        assert_eq!(s.cost(), None);
+        s.pass(&[s.at(22, 22, 32, 32)]);
+        assert_eq!(s.cost(), Some(8));
+        s.pass(&[s.at(21, 22, 32, 32)]);
         assert_eq!(s.cost(), Some(0));
         let told = s.pass(&[Command::Mouse(Mouse::Up)]);
         assert!(told.iter().all(|l| l.starts_with("tool bulldoze")));
-        assert_eq!(s.cash(), 50_056.0);
+        assert_eq!((s.cash(), s.count()), (50_056.0, 1));
     });
 }
 

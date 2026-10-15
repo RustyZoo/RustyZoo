@@ -23,6 +23,9 @@ pub(super) struct Dozer {
     pub(super) at: Vec<usize>,
     refund: f32,
     rect: Option<((i32, i32), (i32, i32))>,
+    /// Whether the cost text is shown: over something removable, and in a drag from the start
+    /// of the drag (if shown then) or from the first sum that is not 0.
+    shown: bool,
 }
 
 /// A removal under way: the entities still to go (ids), the pairs of regions answered No, the
@@ -57,10 +60,10 @@ impl format::Strings for Plain {
 
 impl Game {
     /// The amount next to the pointer while the bulldozer is the tool: what it would refund, or
-    /// nothing over anything it cannot remove (a drag shows its sum even when 0).
+    /// nothing over anything it cannot remove (a drag shows its sum, even 0, once it is shown).
     pub(super) fn dozer_amount(&self) -> Option<i64> {
         let d = &self.dozer;
-        (!d.at.is_empty() || d.rect.is_some()).then(|| whole_units(f64::from(d.refund)))
+        d.shown.then(|| whole_units(f64::from(d.refund)))
     }
 
     /// The transient items of the bulldozer: what it would remove, tinted, and the outline of
@@ -118,7 +121,16 @@ impl App<'_> {
                 .iter()
                 .map(|&e| bulldozer::refund(cat, &world.zoo.entities[e]))
                 .sum();
-            game.dozer = Dozer { at, refund, rect };
+            let shown = match rect {
+                Some(_) => before.shown || refund != 0.0,
+                None => !at.is_empty(),
+            };
+            game.dozer = Dozer {
+                at,
+                refund,
+                rect,
+                shown,
+            };
         }
         if before == game.dozer {
             return;
