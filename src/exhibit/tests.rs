@@ -964,3 +964,28 @@ fn a_loaded_exhibit_lists_its_stored_tile_first() {
     assert!(stored > 0);
     assert_eq!(first, stored);
 }
+
+#[test]
+fn the_gate_choice_searches_from_the_entrance_with_the_node_cap() {
+    // The pair at the last piece is reached from the entrance (7, 7) by a search of the finder:
+    // with eight directions it needs 13 nodes, with four directions 16 (pathfinding 8).
+    let blocked = |diagonal, node_max| {
+        let mut pieces = square(2, 2, 4, 4);
+        let last = pieces.pop().unwrap();
+        let mut world = loaded(&pieces);
+        let finder = crate::path::Settings {
+            diagonal,
+            node_max,
+            ..Default::default()
+        };
+        world.set_finder(finder);
+        put(&mut world, last);
+        world.take_events().contains(&Event::Blocked {
+            id: 1,
+            message: 11000,
+        })
+    };
+    assert!(!blocked(true, 500) && !blocked(false, 500));
+    assert!(!blocked(true, 13) && blocked(true, 12));
+    assert!(!blocked(false, 16) && blocked(false, 15));
+}

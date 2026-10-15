@@ -202,6 +202,13 @@ impl Finder {
         let Some(from) = m.at.filter(|&s| s < size && to < size) else {
             return reply(false, None, Dest::Keep);
         };
+        // The threshold keeps the width of the first map that asked (O5); the distance itself is
+        // measured on the current map.
+        let threshold = *self.width.get_or_insert(w.zoo.width as i32) as usize;
+        let width = (w.zoo.width as usize).max(1);
+        let near = |t: usize| (t % width, t / width);
+        let ((fx, fy), (tx, ty)) = (near(from), near(to));
+        let far = fx.abs_diff(tx) + fy.abs_diff(ty);
         if self.unreachable.get(&to).is_some_and(|&c| c < 0) {
             self.ease(to);
             return reply(false, None, Dest::Keep);
@@ -209,41 +216,37 @@ impl Finder {
         if from == to {
             return reply(true, Some(vec![from]), Dest::Set(to));
         }
+        // Items 5 to 7 see no goal tile (3.1).
         let s = &self.settings;
         let enter = (0..4).any(|d| {
             let a = w.neighbour(to, d * 2);
             a.is_some_and(|a| {
-                search::open(w, m, s, (a, to, search::direction(w, a, to)), to).is_some()
+                search::open(w, m, s, (a, to, search::direction(w, a, to)), None).is_some()
             })
         });
         let leave = (0..8)
             .step_by(if search::diagonal(m, s) { 1 } else { 2 })
             .any(|d| {
                 let n = w.neighbour(from, d);
-                n.is_some_and(|n| search::open(w, m, s, (from, n, d), to).is_some())
+                n.is_some_and(|n| search::open(w, m, s, (from, n, d), None).is_some())
             });
-        if terrain(w, m, to, Some(to)) >= MAX || !enter || !leave {
+        if terrain(w, m, to, None) >= MAX || !enter || !leave {
             return reply(false, None, Dest::Keep);
         }
         let found = search(w, m, s, from, to, partial);
-        // The distance threshold is the width of the first map that asked (O5).
-        let width = *self.width.get_or_insert(w.zoo.width as i32) as usize;
-        let near = |t: usize| (t % width, t / width);
-        let ((fx, fy), (tx, ty)) = (near(from), near(to));
-        let far = fx.abs_diff(tx) + fy.abs_diff(ty);
         if found.reached {
             self.ease(to);
             return reply(true, Some(found.path), Dest::Set(to));
         }
         match found.path.last().copied() {
             None => {
-                if far <= width {
+                if far <= threshold {
                     self.record(to);
                 }
                 reply(false, Some(found.path), Dest::Clear)
             }
             Some(end) => {
-                if far <= width / 2 {
+                if far <= threshold / 2 {
                     self.record(to);
                 }
                 reply(true, Some(found.path), Dest::Set(end))

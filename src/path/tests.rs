@@ -62,6 +62,11 @@ fn shape(e: &Entity) -> Option<Shape> {
 
 /// An open `N` by `N` map with the entrance off its south-east corner, then `edit`.
 pub(super) fn world(edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
+    sized((N, N), edit)
+}
+
+/// The same for a map of `w` by `h` tiles.
+fn sized((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
     let mut tiles = vec![
         Tile {
             elevation: 0,
@@ -69,17 +74,17 @@ pub(super) fn world(edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> Worl
             terrain: 0,
             edges: 0
         };
-        (N * N) as usize
+        (w * h) as usize
     ];
-    let mut entities = vec![entity("gate", "", "", (N - 1, N - 1), 2)];
+    let mut entities = vec![entity("gate", "", "", (w - 1, h - 1), 2)];
     edit(&mut tiles, &mut entities);
     let zoo = Zoo {
         version: 0,
         locale: 0,
         expansion: 0,
-        width: N as u32,
-        height: N as u32,
-        entrance: (N as u32 - 1, N as u32 - 1),
+        width: w as u32,
+        height: h as u32,
+        entrance: (w as u32 - 1, h as u32 - 1),
         habitat_tiles: Vec::new(),
         habitat_gates: Vec::new(),
         tanks: Vec::new(),
@@ -110,7 +115,7 @@ fn path(w: &World, m: &Mover, to: (i32, i32)) -> Vec<(i32, i32)> {
 /// The step cost between two neighbouring tiles.
 fn cost(w: &World, m: &Mover, a: (i32, i32), b: (i32, i32)) -> u32 {
     let d = search::direction(w, t(a), t(b));
-    cost::step(w, m, t(a), t(b), d, t(b))
+    cost::step(w, m, t(a), t(b), d, Some(t(b)))
 }
 
 /// The move cost of a path: each step's cost times its length factor.
@@ -118,8 +123,8 @@ fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
     let goal = path.last().copied().unwrap_or(0);
     let step = |p: &[usize]| {
         let d = search::direction(w, p[0], p[1]);
-        let length = [1.0, std::f64::consts::SQRT_2][d % 2];
-        length * f64::from(cost::step(w, m, p[0], p[1], d, goal))
+        let length = [1.0, 1.414_213_562_373][d % 2];
+        length * f64::from(cost::step(w, m, p[0], p[1], d, Some(goal)))
     };
     path.windows(2).map(step).sum()
 }
@@ -390,4 +395,54 @@ fn settings_come_from_the_ai_section_of_the_ini_file() {
     assert_eq!(read("[AI]\nMinUnreachableCount=300").min_unreachable, 44);
     assert!(!read("[AI]\nAllowDiagonalMoves=2").diagonal);
     assert_eq!(read("[AI]\nNodeMax=").node_max, 500);
+}
+
+#[test]
+fn the_request_checks_a_guest_without_a_goal_tile() {
+    // Two path tiles apart on grass: with a goal tile the guest on a path would see the grass at
+    // 20 in the leavable check and fail with nothing recorded; with none it sees 7, searches and
+    // fails, which is recorded.
+    let w = world(|_, e| paths(e, &[(1, 1), (5, 1)]));
+    let mut finder = Finder::default();
+    let to = t((5, 1));
+    let r = finder.request(&w, &unit(Kind::Guest, (1, 1)), to, false);
+    assert_eq!(
+        (r.ok, r.dest, finder.failures(to)),
+        (false, Dest::Clear, Some(1))
+    );
+}
+
+#[test]
+fn the_distance_threshold_keeps_the_first_width_and_measures_on_the_map() {
+    // An exhibit closed with fences around the tile at the centre of a 3 by 3 block.
+    let closed = |e: &mut Vec<Entity>, (cx, cy): (i32, i32)| {
+        for i in -1..=1 {
+            for (x, y, side) in [
+                (cx + i, cy - 1, 0),
+                (cx + i, cy + 1, 4),
+                (cx - 1, cy + i, 6),
+                (cx + 1, cy + i, 2),
+            ] {
+                e.push(entity("fences", "", "f", (x, y), side));
+            }
+        }
+    };
+    let mut finder = Finder::default();
+    // The first request has the same tile on both ends and a map 10 wide: that is the threshold.
+    let first = world(|_, _| {});
+    assert!(
+        finder
+            .request(&first, &unit(Kind::Keeper, (2, 2)), t((2, 2)), false)
+            .ok
+    );
+    let w = sized((20, 5), |_, e| {
+        closed(e, (13, 2));
+        closed(e, (5, 2));
+    });
+    let m = Mover::new(Kind::Keeper, Some(41));
+    // 12 tiles away on this map (the old row length would have said 3), above the threshold 10.
+    assert!(!finder.request(&w, &m, 2 * 20 + 13, false).ok);
+    assert_eq!(finder.failures(2 * 20 + 13), None);
+    assert!(!finder.request(&w, &m, 2 * 20 + 5, false).ok);
+    assert_eq!(finder.failures(2 * 20 + 5), Some(1));
 }

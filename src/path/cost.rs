@@ -202,8 +202,9 @@ fn clear_one(w: &World, m: &Mover, a: usize, b: usize, d: usize) -> bool {
     qa.iter().filter(|q| q.1).count() < 2 || d % 2 == 1 || !blocked(&qa, &out[d / 2])
 }
 
-/// The step cost `P(a, b)` (4.1) for two neighbouring tiles in direction `d`.
-pub fn step(w: &World, m: &Mover, a: usize, b: usize, d: usize, goal: usize) -> u32 {
-    let cost = edge(w, m, a, d) + terrain(w, m, b, Some(goal));
+/// The step cost `P(a, b)` (4.1) for two neighbouring tiles in direction `d`; `goal` is the tile
+/// of the search under way, none outside a search.
+pub fn step(w: &World, m: &Mover, a: usize, b: usize, d: usize, goal: Option<usize>) -> u32 {
+    let cost = edge(w, m, a, d) + terrain(w, m, b, goal);
     if cost > MAX { MAX } else { cost }
 }

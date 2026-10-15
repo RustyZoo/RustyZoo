@@ -26,6 +26,9 @@ const EIGHT: [(i32, i32); 8] = [
     (1, 0),
     (1, 1),
 ];
+/// The length factor of a diagonal step: the decimal constant of the program's table (3.6), not
+/// the square root of 2.
+const DIAGONAL: f64 = 1.414_213_562_373;
 const FOUR: [(i32, i32); 4] = [(-1, 0), (0, -1), (1, 0), (0, 1)];
 
 #[derive(Clone, Copy, PartialEq)]
@@ -74,7 +77,7 @@ pub fn open(
     m: &Mover,
     s: &Settings,
     (a, b, d): (usize, usize, usize),
-    goal: usize,
+    goal: Option<usize>,
 ) -> Option<u32> {
     let cost = step(w, m, a, b, d, goal);
     (clear(w, m, a, b, d, diagonal(m, s)) && w.tank_at(b).is_none() && cost < MAX).then_some(cost)
@@ -100,7 +103,7 @@ impl Search<'_> {
             0 => (dx * dx + dy * dy) * k,
             1 => (dx.abs() + dy.abs()) * k,
             2 => dx.abs().max(dy.abs()) * k,
-            _ => f64::from(((dx * dx + dy * dy) as f32).sqrt() * k as f32),
+            _ => (dx * dx + dy * dy).sqrt() * k,
         }
     }
 
@@ -201,17 +204,13 @@ impl Search<'_> {
                 continue;
             };
             let d = STEP.iter().position(|&s| s == (dx, dy)).unwrap_or(0);
-            let Some(cost) = open(self.w, self.m, self.s, (from, to, d), self.goal) else {
+            let Some(cost) = open(self.w, self.m, self.s, (from, to, d), Some(self.goal)) else {
                 continue;
             };
             let Some(n) = self.node(to) else {
                 continue;
             };
-            let length = if d.is_multiple_of(2) {
-                1.0
-            } else {
-                std::f64::consts::SQRT_2
-            };
+            let length = if d.is_multiple_of(2) { 1.0 } else { DIAGONAL };
             let g = self.nodes[c].g + length * f64::from(cost);
             if self.nodes[n].state == State::New || g < self.nodes[n].g {
                 let node = &mut self.nodes[n];
@@ -338,5 +337,35 @@ mod tests {
         let f = |i: usize| lowered.iter().find(|l| l.0 == i).map_or(fs[i], |l| l.1);
         assert_eq!(popped.len(), 200);
         assert!(popped.windows(2).all(|p| f(p[0]) <= f(p[1])));
+    }
+
+    #[test]
+    fn the_search_uses_the_original_length_factors_and_a_double_estimate() {
+        let w = crate::path::tests::world(|_, _| {});
+        let at = |x: usize, y: usize| y * 10 + x;
+        let m = Mover::new(Kind::Keeper, Some(at(5, 5)));
+        let s = Settings {
+            estimate: 3,
+            ..Settings::default()
+        };
+        let mut f = Search {
+            w: &w,
+            m: &m,
+            s: &s,
+            goal: at(0, 0),
+            nodes: Vec::new(),
+            at: HashMap::new(),
+            heap: Vec::new(),
+            capped: false,
+        };
+        // The square root of 2 times `MinCost`, in double precision.
+        assert_eq!(f.estimate(at(1, 1)), 2f64.sqrt() * 2.0);
+        // A diagonal step of step cost 3 (edge 1, open ground 2) adds the table's constant times 3.
+        let start = f.node(at(5, 5)).unwrap();
+        f.nodes[start].state = State::Closed;
+        f.expand(start);
+        let n = f.at[&at(6, 6)];
+        assert_eq!(f.nodes[n].g, 1.414_213_562_373 * 3.0);
+        assert_ne!(f.nodes[n].g, std::f64::consts::SQRT_2 * 3.0);
     }
 }
