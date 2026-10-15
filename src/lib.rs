@@ -2,6 +2,7 @@
 
 pub mod anim;
 pub mod app;
+pub mod behaviour;
 pub mod bitmap;
 pub mod build;
 pub mod camera;

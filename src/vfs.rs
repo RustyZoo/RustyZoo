@@ -313,6 +313,23 @@ impl Vfs {
         error(damaged.unwrap_or_else(|| format!("no such member: {name}")))
     }
 
+    /// The content of every copy of the name that can be read, in search order: the first one is
+    /// what [`read`](Vfs::read) serves, the others are shadowed by it. For surveys of the data,
+    /// not for loading it. A copy with a damaged content is left out.
+    pub fn read_copies(&self, name: &str) -> Result<Vec<Vec<u8>>, VfsError> {
+        let normalised = normalise(name);
+        let mut copies = Vec::new();
+        for source in &self.sources {
+            match source.read(&normalised) {
+                Ok(Some(data)) => copies.push(data),
+                Ok(None) | Err(Failure::Damaged(_)) => {}
+                Err(Failure::Stop(reason)) => return error(reason),
+                Err(Failure::System(reason)) => return Err(VfsError(reason, true)),
+            }
+        }
+        Ok(copies)
+    }
+
     /// Every copy of the name, in search order: the first one is what [`read`](Vfs::read) serves
     /// (unless it fails), the others are shadowed by it. Empty if no source has the name or the
     /// name is too long or empty for `read` to look it up.
@@ -1432,6 +1449,17 @@ mod tests {
         assert_eq!(copies[0].path, Path::new("UPDATES/new.ztd"));
         assert_eq!(copies[1].path, Path::new("root-b.ztd"));
         assert!(copies.iter().all(|copy| copy.in_archive));
+    }
+
+    #[test]
+    fn read_copies_returns_every_copy_in_search_order() {
+        let dir = sample("copies");
+        let vfs = Vfs::open(&dir.0).unwrap();
+        let copies = vfs.read_copies("ANIMALS\\LION.AI").unwrap();
+        assert_eq!(copies.len(), 2);
+        assert_eq!(copies[0], vfs.read("animals/lion.ai").unwrap());
+        assert!(vfs.read_copies("animals/tiger.ai").unwrap().is_empty());
+        assert!(vfs.read_copies("").unwrap().is_empty());
     }
 
     #[cfg(unix)]
