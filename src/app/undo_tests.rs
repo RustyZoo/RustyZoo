@@ -384,3 +384,41 @@ fn among_several_removed_objects_the_one_that_cannot_come_back_is_passed_over_si
         assert_eq!((s.count(), s.cash(), enabled(s)), (2, 50_008.0, false));
     });
 }
+
+/// Clicks the four tank walls (catalogue entry 5, 100 each) round tile (20, 20).
+fn four_tank_walls(s: &mut Session) {
+    s.app.game.as_mut().unwrap().build.hold(5);
+    for (lx, ly) in [(32, 4), (60, 32), (32, 60), (4, 32)] {
+        s.click_log(s.at(20, 20, lx, ly));
+    }
+}
+
+#[test]
+fn a_declined_tank_takes_back_the_last_wall_and_its_price() {
+    with_game("tank-no", "[UI]\nconfirmSell=0\n", |s| {
+        s.add(8, 20 * 64 + 16, 20 * 64 + 16, 0);
+        four_tank_walls(s);
+        assert!(s.asking());
+        assert_eq!(s.cash(), 49_600.0);
+        let told = s.pass(&[Command::Key(Key::N, false, false)]);
+        assert_eq!(told[0], "tool tank answer no");
+        assert_eq!(s.cash(), 49_700.0, "the last wall is paid back");
+        let w = world(s);
+        assert!(w.exhibits().list().is_empty());
+        assert_eq!(w.exhibits().counter, 1);
+        assert_eq!(w.zoo.entities.len(), 4, "the bench and three walls");
+    });
+}
+
+#[test]
+fn the_wall_that_made_a_tank_is_undone_with_its_price() {
+    with_game("tank-undo", "", |s| {
+        four_tank_walls(s);
+        assert_eq!(s.cash(), 49_600.0);
+        assert_eq!(world(s).exhibits().list().len(), 1);
+        let told = s.log(&[BACKSPACE]);
+        assert!(told.contains(&"money cash 49700".to_string()), "{told:?}");
+        assert!(world(s).exhibits().list().is_empty());
+        assert_eq!(world(s).zoo.entities.len(), 3);
+    });
+}

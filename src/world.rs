@@ -381,22 +381,27 @@ impl World {
             let seen = self.events.len();
             let before = self.keeping(slot);
             self.settle(slot, false);
-            // A piece that cut an exhibit in two records its name and gate, before the piece
-            // itself: the undo takes the piece away first (placing 8, kind 11).
-            let split = |id: u32| {
-                self.events[seen..]
-                    .iter()
-                    .any(|e| matches!(e, Event::Split(s) if *s == id))
-            };
-            notes = before
-                .into_iter()
-                .filter(|(id, _)| split(*id))
-                .map(|(_, note)| note)
-                .collect();
+            notes = self.changed_by(before, seen);
         }
         notes.into_iter().for_each(|note| self.record(note));
         self.record(Action::Placed { id, price: 0.0 });
         Some(id)
+    }
+
+    /// The exhibits that a fence piece cut in two or replaced by one of the other kind (a split
+    /// or a morph: the events since `seen` tell it), with their names and gates as they were
+    /// `before`: the actions that give them back, to record before the piece itself, so that the
+    /// undo takes the piece away first (placing 8, kind 11).
+    fn changed_by(&self, before: Vec<(u32, Action)>, seen: usize) -> Vec<Action> {
+        let hit = |id: u32| {
+            self.events[seen..]
+                .iter()
+                .any(|e| matches!(e, Event::Split(s) | Event::Removed(s) if *s == id))
+        };
+        (before.into_iter())
+            .filter(|(id, _)| hit(*id))
+            .map(|(_, note)| note)
+            .collect()
     }
 
     /// Removes the entity with this id; whether there was one. A fence piece that opens its line
@@ -412,16 +417,16 @@ impl World {
         }
         let entity = self.zoo.entities.remove(at);
         let shape = self.shapes.remove(at);
+        self.changed();
+        if fence {
+            self.settle(slot, false);
+        }
         self.record(Action::Removed {
             at,
             entity,
             shape,
             price: 0.0,
         });
-        self.changed();
-        if fence {
-            self.settle(slot, false);
-        }
         true
     }
 
@@ -455,15 +460,33 @@ impl World {
         if gate {
             entity.subtype = "g".into();
         }
-        if was.is_some_and(|s| s.fence) && !shape.is_some_and(|s| s.fence) {
+        let fence = (was.is_some_and(|s| s.fence), shape.is_some_and(|s| s.fence));
+        if fence == (true, false) {
             self.note_opening(slot, true);
         }
+        let before = self
+            .keeping(slot)
+            .into_iter()
+            .filter(|_| fence == (true, true));
+        let before: Vec<_> = before.collect();
+        let seen = self.events.len();
         let exhibit = (self.exhibits.list().iter())
             .find(|e| e.gate == Some(id))
             .map(|e| e.id);
         let old = std::mem::replace(&mut self.zoo.entities[at], entity);
         self.shapes[at] = shape;
-        // A path laid on a path of the same type records nothing (placing 8).
+        if let Some(e) = exhibit.and_then(|x| self.exhibits.get_mut(x)) {
+            e.gate = gate.then_some(new);
+        }
+        self.changed();
+        if fence.0 || fence.1 {
+            self.settle(slot, false);
+        }
+        // A fence replaced by one of another kind (a morph) records the exhibits it changes
+        // (kind 11); a path laid on a path of the same type records nothing (placing 8).
+        self.changed_by(before, seen)
+            .into_iter()
+            .for_each(|note| self.record(note));
         if !(same && path) {
             self.record(Action::Replaced {
                 id: new,
@@ -472,13 +495,6 @@ impl World {
                 exhibit,
                 price: 0.0,
             });
-        }
-        if let Some(e) = exhibit.and_then(|x| self.exhibits.get_mut(x)) {
-            e.gate = gate.then_some(new);
-        }
-        self.changed();
-        if was.is_some_and(|s| s.fence) || shape.is_some_and(|s| s.fence) {
-            self.settle(slot, false);
         }
         Some(new)
     }
@@ -491,6 +507,27 @@ impl World {
         };
         self.put_tile(t, elevation, shape, terrain, true);
         true
+    }
+
+    /// The last two actions, when both are tiles with no price, become one: the levelling and the
+    /// floor of a tank are one terrain action (placing 8, kind 3). A tile in both keeps its
+    /// first state.
+    pub(super) fn join_tiles(&mut self) {
+        let free = |a: &Action| matches!(a, Action::Tiles { price, .. } if *price == 0.0);
+        let n = self.undo.len();
+        if n < 2 || !free(&self.undo[n - 1]) || !free(&self.undo[n - 2]) {
+            return;
+        }
+        let Some(Action::Tiles { tiles, .. }) = self.undo.pop() else {
+            return;
+        };
+        if let Some(Action::Tiles { tiles: first, .. }) = self.undo.last_mut() {
+            for tile in tiles {
+                if first.iter().all(|f| f.0 != tile.0) {
+                    first.push(tile);
+                }
+            }
+        }
     }
 
     /// Sets tile `t`; `record` puts it in the undo list.

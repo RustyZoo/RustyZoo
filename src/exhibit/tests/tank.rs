@@ -744,7 +744,10 @@ fn tank_floor_is_sand_or_gunite_by_the_show_state_and_sand_again_when_the_tank_g
     assert!(world.exhibits().list().is_empty());
     assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 2));
     assert_eq!(level(&world, 2, 2), (-8, 0));
-    assert!(!world.undo().is_empty(), "the gunite is back with the walls");
+    assert!(
+        !world.undo().is_empty(),
+        "the gunite is back with the walls"
+    );
     assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 17));
     // A saved zoo keeps the ground it has.
     let world = built(&ring("show", 2, 2, 3, 3));
@@ -857,4 +860,57 @@ fn gate_tank_refuses_a_tile_with_an_object_and_the_marine_specialist_swims_to_it
     world.zoo.tiles[t(3, 2)].terrain = 1;
     assert!(!world.tank_holds_object(piece(&world, 2, 2, 0)));
     assert!(!world.keeper_passes(piece(&world, 3, 2, 0)));
+}
+
+#[test]
+fn a_new_tank_is_undone_as_one_terrain_step_without_a_price_and_its_wall_moves_back() {
+    // The ring of a tank is closed by the last wall; the levelling and the floor are one terrain
+    // action, and the undo hands back no price for them (placing 8, kind 3).
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    world.begin();
+    let id = put_wall(&mut world, last.0, last.1);
+    world.priced(100.0);
+    let done = world.undo();
+    let kinds: Vec<_> = done
+        .steps
+        .iter()
+        .map(|s| match s {
+            Step::Removed(spot, price) => (spot.id == id, *price as i32),
+            Step::Tiles(n, price) => (*n == 4, *price as i32 + 1),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(kinds, [(true, 100), (true, 1)]);
+    assert!(world.exhibits().list().is_empty());
+    assert_eq!(floor(&world, 2, 2), 0);
+    assert_eq!(level(&world, 3, 3), (0, 0));
+}
+
+#[test]
+fn a_land_exhibit_that_becomes_a_tank_gets_its_name_and_gate_back_on_undo() {
+    // The morph records the name and gate of the exhibit it replaces (placing 8, kind 11).
+    let mut pieces = ring("fences", 2, 2, 3, 3);
+    for p in pieces.iter_mut().skip(1) {
+        p.0 = "tank";
+    }
+    let mut world = tanks(&pieces, &[], &[]);
+    let gate = at(&world, 3, 3, 4);
+    world.rename(1, "Lions".into());
+    world.set_gate(1, gate);
+    world.begin();
+    let first = at(&world, 2, 2, 0);
+    let e = wall("tank", (2, 2, 0));
+    world.swap(first, e.clone(), tank_shape(&e)).unwrap();
+    for id in world.waiting() {
+        world.give_gate(id);
+    }
+    assert!(tank(&world, 2, 2).is_some());
+    assert!(!world.undo().is_empty());
+    let region = region(&world, 2, 2);
+    let back = world.exhibits().get(region).unwrap();
+    assert!(back.tank.is_none());
+    assert_eq!((back.name.as_str(), back.gate), ("Lions", Some(gate)));
+    assert!(world.zoo.tanks.is_empty());
 }
