@@ -10,8 +10,9 @@
 //! [`update`] is one unit's turn in the original's order: events in; unless suspended, the move;
 //! the animation; unless suspended, the status timer (the needs and the checks once it passes the
 //! period) and then either the wait counted down or the behaviour and the goals; the events
-//! discarded. The move is [`movement`] and the random walk [`walk`]. What the animation frames, the needs, the checks, the behaviour and the
-//! goals do is the business of later issues: each is a method of [`Hooks`], empty until then.
+//! discarded. The move is [`movement`] and the random walk [`walk`]. What the animation frames,
+//! the needs, the checks, the behaviour and the goals do is the business of later issues: each is
+//! a method of [`Hooks`], empty until then.
 //! A hook must not add or remove entities (a removal goes through [`Ctx::remove`], which only
 //! flags the unit for the next removal pass, as in the original).
 //!
@@ -28,7 +29,6 @@ use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::Entity;
 
-#[cfg(test)]
 pub mod movement;
 #[cfg(test)]
 mod testing;

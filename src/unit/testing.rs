@@ -53,6 +53,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "fences" => Some(thing(Class::Edge, (1, 1), true)),
         "paths" => Some(thing(Class::Path, (2, 2), false)),
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
+        "animals" if e.type_name == "big" => Some(thing(Class::Unit, (3, 2), false)),
         "animals" | "guests" | "keeper" | "maint" | "tour" => {
             Some(thing(Class::Unit, (1, 1), false))
         }
