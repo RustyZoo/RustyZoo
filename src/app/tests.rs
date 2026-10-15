@@ -1123,7 +1123,7 @@ fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
         lines(&app, 2, 40),
         ["tool down 20,19", "tool up 20,19", "tool message 10555"]
     );
-    assert!(app.sounds().is_empty());
+    assert_eq!(app.sounds(), ["noplace"]);
     // Another tile is placed; with 10 left the third is too expensive.
     app.pass(60, &click(19, 19));
     assert_eq!(app.money().unwrap().cash, 10.0);
@@ -1132,6 +1132,7 @@ fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
         lines(&app, 4, 80),
         ["tool down 19,20", "tool up 19,20", "tool message 10002"]
     );
+    assert_eq!(app.sounds(), ["noplace"]);
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 2);
     // A release that did not start on the map places nothing and tells nothing.
     let (x, y) = tile_point(&camera, 19, 20);

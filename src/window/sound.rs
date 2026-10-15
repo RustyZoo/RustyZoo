@@ -10,6 +10,7 @@ use rustyzoo::music::{Music, global_term};
 use rustyzoo::vfs::Vfs;
 
 use sdl3::audio::AudioFormat;
+use std::collections::HashMap;
 
 use crate::audio::{Audio, Sound as Wave, Voice};
 
@@ -17,9 +18,9 @@ pub struct Sound {
     /// The output device; kept open as long as the voice plays.
     audio: Option<Audio>,
     music: Option<Voice>,
-    /// The voice of the interface click: a voice that is dropped stops, so it is kept until it
-    /// has played.
-    click: Option<Voice>,
+    /// The voice of each interface sound, by name: a voice that is dropped stops, so it is kept
+    /// until it has played.
+    clicks: HashMap<&'static str, Voice>,
     /// The attenuation sum of the click: `G` from `userAttenuation`, `B` and `F` being 0.
     click_sum: i32,
     /// The output is silent because the window has no focus.
@@ -55,7 +56,7 @@ impl Sound {
         Sound {
             audio: audio.ok(),
             music: None,
-            click: None,
+            clicks: HashMap::new(),
             click_sum: global_term(ini),
             quiet: Quiet::default(),
         }
@@ -104,14 +105,14 @@ impl Sound {
         }
     }
 
-    /// Plays the sounds the interface asked for in the last pass (`sounds/<name>.wav`). The click
-    /// has one voice: a click while the last one plays continues it, at the volume of the new
-    /// start, and one that has played to its end starts again. A sound that cannot be played is a
+    /// Plays the sounds the interface asked for in the last pass (`sounds/<name>.wav`). Each
+    /// sound has one voice: a sound asked for while its last one plays continues it, at the
+    /// volume of the new start, and one that has played to its end starts again. A sound that cannot be played is a
     /// warning.
     pub fn clicks(&mut self, vfs: &Vfs, app: &App) {
         let Some(audio) = &self.audio else { return };
         for name in app.sounds() {
-            if let Some(voice) = &self.click
+            if let Some(voice) = self.clicks.get(name)
                 && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
             {
                 if let Err(e) = voice.set_sum(self.click_sum) {
@@ -126,7 +127,10 @@ impl Sound {
                 .and_then(|bytes| Wave::decode(&bytes))
                 .and_then(|wave| audio.play(wave, self.click_sum, false, false));
             match played {
-                Ok(voice) => self.click = voice,
+                Ok(Some(voice)) => {
+                    self.clicks.insert(name, voice);
+                }
+                Ok(None) => {}
                 Err(e) => eprintln!("rustyzoo: {file}: {e}"),
             }
         }

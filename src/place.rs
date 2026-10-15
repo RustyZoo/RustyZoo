@@ -248,6 +248,14 @@ fn placement_footprint(ty: &EntityType) -> (i32, i32) {
     )
 }
 
+/// Whether the type only lives in water: `cOnlySwims` 1, or `cSwims` 1 with neither `cUnderwater`
+/// nor `cLand` 1 (placing 5.2).
+fn only_swims(ty: &EntityType) -> bool {
+    let flag = |key: &str, default: bool| number(ty, key).map_or(default, |n| n == 1.0);
+    flag("cOnlySwims", false)
+        || (flag("cSwims", false) && !flag("cLand", true) && !flag("cUnderwater", false))
+}
+
 /// Whether the entity is of the type.
 fn is_of(entity: &crate::zoo::Entity, ty: &EntityType) -> bool {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
@@ -345,49 +353,52 @@ fn check(
         return fail(p, None);
     }
     let scenery = class == Class::Fixed;
-    // Land or water (placing 5.2 item 2, 5.4): a type that is not a land type or only swims
-    // needs water; one that does not swim cannot stand in it.
-    let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
-    let land = flag("cLand", true);
-    let swims = flag("cSwims", false);
-    let only_water = flag("cOnlySwims", false) || (swims && !land && !flag("cUnderwater", false));
-    let needs_water = only_water || !land;
+    let wet = |at: usize| {
+        water
+            .get(usize::from(world.zoo.tiles[at].terrain))
+            .copied()
+            .unwrap_or(false)
+    };
     let (x0, y0) = (p.x - 16 * (fp.0 - 1), p.y - 16 * (fp.1 - 1));
-    let mut tiles = Vec::new();
+    // The quadrants on the map and in the zoo; the others fail without a message (only the
+    // object's own tile has one, above).
+    let mut quads = Vec::new();
     for j in 0..fp.1 {
         for i in 0..fp.0 {
             let qx = (x0 + 32 * i).div_euclid(32);
             let qy = (y0 + 32 * j).div_euclid(32);
-            let Some(at) = world.tile_index(qx.div_euclid(2), qy.div_euclid(2)) else {
-                fail(p, Some(NOT_IN_THE_ZOO));
-                continue;
-            };
-            if !world.in_zoo(at) {
-                fail(p, Some(NOT_IN_THE_ZOO));
-                continue;
-            }
-            tiles.push(at);
-            if scenery {
-                let wet = water
-                    .get(usize::from(world.zoo.tiles[at].terrain))
-                    .copied()
-                    .unwrap_or(false);
-                if !wet && needs_water {
-                    fail(p, Some(NOT_ON_WATER));
-                } else if wet && !(swims || needs_water) {
-                    fail(p, None);
+            match world.tile_index(qx.div_euclid(2), qy.div_euclid(2)) {
+                Some(at) if world.in_zoo(at) => {
+                    quads.push((at, (qy.rem_euclid(2) * 2 + qx.rem_euclid(2)) as usize));
                 }
-            }
-            if let Some(held) =
-                world.quadrant(at, (qy.rem_euclid(2) * 2 + qx.rem_euclid(2)) as usize)
-            {
-                fail(p, Some(IN_THE_WAY));
-                if !p.blocking.contains(&held) {
-                    p.blocking.push(held);
-                }
+                _ => fail(p, None),
             }
         }
     }
+    if scenery {
+        // Land or water (placing 5.4, 5.2 item 2). A type that is not a land type stands on
+        // water only, which says so (10564) before anything else of the footprint; a type that
+        // only swims fails on land, one that does not swim in water, both without a message.
+        let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
+        let swims = flag("cSwims", false);
+        for &(at, _) in &quads {
+            if !flag("cLand", true) && !wet(at) {
+                fail(p, Some(NOT_ON_WATER));
+            }
+            if (only_swims(t) && !wet(at)) || (!only_swims(t) && !swims && wet(at)) {
+                fail(p, None);
+            }
+        }
+    }
+    for &(at, quadrant) in &quads {
+        if let Some(held) = world.quadrant(at, quadrant) {
+            fail(p, Some(IN_THE_WAY));
+            if !p.blocking.contains(&held) {
+                p.blocking.push(held);
+            }
+        }
+    }
+    let tiles: Vec<usize> = quads.iter().map(|&(at, _)| at).collect();
     if !scenery {
         return;
     }
@@ -458,17 +469,26 @@ pub enum Outcome {
 
 /// Releases the button over the pending object (placing 6.1): a valid place is paid with the cash
 /// and gets the object, booked as construction; one the cash does not cover shows the message of
-/// insufficient funds, an invalid one its stored message. Only objects that hold quadrants are
-/// placed here. `shape` tells how the new entity takes its place.
+/// insufficient funds, an invalid one its stored message, or else, when the type only lives in
+/// water and its own tile is not water, the water message (the second look of 5.1). Only objects
+/// that hold quadrants are placed here. `shape` tells how the new entity takes its place and
+/// `water` which terrain types are water.
 pub fn place(
     world: &mut World,
     money: &mut Money,
     ty: &EntityType,
     p: &Pending,
+    water: &[bool],
     shape: impl Fn(&Entity) -> Option<Shape>,
 ) -> Outcome {
     if p.verdict == Verdict::Invalid {
-        return Outcome::Refused(p.message);
+        let wet = world
+            .tile_index(p.tile.0, p.tile.1)
+            .and_then(|t| water.get(usize::from(world.zoo.tiles[t].terrain)))
+            .copied()
+            .unwrap_or(false);
+        let second = (only_swims(ty) && !wet).then_some(NOT_ON_WATER);
+        return Outcome::Refused(p.message.or(second));
     }
     if Class::of(ty) != Class::Fixed {
         return Outcome::Refused(None);

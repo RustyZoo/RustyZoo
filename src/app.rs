@@ -830,8 +830,9 @@ impl<'a> App<'a> {
     /// A release on the map (the view sees only one that ends a press on it) over a pending
     /// object: a valid place gets the object, which is paid and logged (`world add
     /// objects/foliage/doumpalm 12,40 id 14908`), asks for the placement sound and turns a type
-    /// that turns by itself, and a new pending object is made; one that cannot be placed shows
-    /// its message in the message line (`tool message 10311`) (placing 6.1).
+    /// that turns by itself, and a new pending object is made; one that cannot be placed asks for the
+    /// refusal sound and shows its message, if it has one, in the message line (`tool message
+    /// 10311`) (placing 6.1).
     fn release(&mut self) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
@@ -841,7 +842,8 @@ impl<'a> App<'a> {
         };
         let renderer = &self.renderer;
         let ty = &renderer.catalogue().types[p.ty];
-        match place::place(&mut game.world, &mut game.money, ty, &p, |e| {
+        let water = &game.water;
+        match place::place(&mut game.world, &mut game.money, ty, &p, water, |e| {
             renderer.shape(e)
         }) {
             Outcome::Placed(id) => {
@@ -860,11 +862,13 @@ impl<'a> App<'a> {
                 }
                 self.aim(false);
             }
-            Outcome::Refused(Some(id)) => {
-                ui.message(&to_cp1252(&ui.string(id)));
-                self.tool_lines.push(format!("tool message {id}"));
+            Outcome::Refused(message) => {
+                self.ui_sounds.push("noplace");
+                if let Some(id) = message {
+                    ui.message(&to_cp1252(&ui.string(id)));
+                    self.tool_lines.push(format!("tool message {id}"));
+                }
             }
-            Outcome::Refused(None) => {}
         }
     }
 
@@ -1225,7 +1229,7 @@ impl<'a> App<'a> {
     }
 
     /// The sounds the interface and the placing of objects asked for in the last pass, by file
-    /// name without the extension (`uiclick`, `place`, `sounds/uiclick.wav`): the shell plays them.
+    /// name without the extension (`uiclick`, `place`, `noplace`, `sounds/uiclick.wav`): the shell plays them.
     pub fn sounds(&self) -> &[&'static str] {
         &self.ui_sounds
     }
