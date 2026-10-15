@@ -180,7 +180,20 @@ usage: rustyzoo [--data <dir>] <command>
                       N` is the part that keeps its name and gate, `exhibit removed ID` and `exhibit
                       merged ID into ID tiles N` the others, and `exhibit gate ID X,Y side S` also
                       tells a new gate after the gate piece went; the gate button of the fence tab
-                      is enabled while the zoo has an exhibit that is named. The two
+                      is enabled while the zoo has an exhibit that is named. Pressing it makes
+                      the gate the tool (`tool gate on`, off again by the same press, an item, another
+                      tab, Escape, the right button, closing the panel or the last exhibit going):
+                      over a fence piece of an exhibit the pending object is the gate of its type,
+                      green when one side of the piece's line is an exhibit and the other the
+                      grounds, the slot across is empty, the piece is not the exhibit's gate and
+                      the cash covers it, else red; a gate costs nothing unless the piece is at or
+                      below its decayed life, and the cost text shows its price (not as a charge).
+                      A click on a valid piece turns it into the gate, healthy, and the exhibit's
+                      old gate back into a fence (`world ungate CLASS/TYPE/f X,Y side S id N`,
+                      `world gate CLASS/TYPE/g X,Y side S id N`, `exhibit gate ID X,Y side S`),
+                      books the price as construction and clears the undo list; any other place
+                      does nothing and says nothing, except that a gate the cash does not cover
+                      shows `tool message 10002`. The two
                       terrain tabs of the construction panel (at 180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and
