@@ -80,7 +80,7 @@ fn ty(class: &'static str, name: &str, ini: &str, footprint: [i32; 3]) -> Entity
 }
 
 /// 0 tree (1 x 1), 1 bench (placement 2 x 1 over a footprint of 1 x 1), 2 dirt path, 3 stone
-/// path, 4 fence, 5 restaurant (10 x 8), 6 tank filter.
+/// x
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     cat.types = vec![
@@ -119,6 +119,30 @@ fn catalogue() -> Catalogue {
             "filter",
             "filter1",
             "[Characteristics/Integers]\ncPurchaseCost=100\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "objects",
+            "buoy",
+            "[Characteristics/Integers]\ncSwims=1\ncOnlySwims=1\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "objects",
+            "duck",
+            "[Characteristics/Integers]\ncSwims=1\ncLand=1\ncAutoRotate=1\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "objects",
+            "raft",
+            "[Characteristics/Integers]\ncLand=0\ncSwims=1\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "objects",
+            "stage",
+            "[Characteristics/Integers]\ncLand=0\n",
             [1, 1, 1],
         ),
     ];
@@ -194,7 +218,7 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
 
 /// The pending object of the type `ty` for the point (`x`, `y`) of the world, view unturned.
 fn at(w: &World, cat: &Catalogue, ty: usize, step: usize, x: i64, y: i64) -> Option<Pending> {
-    pending(w, cat, ty, step, 0, (x, y))
+    pending(w, cat, &[false, true], ty, step, 0, (x, y))
 }
 
 #[test]
@@ -280,16 +304,13 @@ fn a_big_footprint_needs_every_quadrant_and_keeps_the_first_message() {
     assert_eq!((p.x, p.y), (3 * 64 + 32, 4 * 64));
     assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
     // Away from the tree and inside the map it is valid; near the edge a quadrant is off the
-    // map, which is the zoo message, and an object cannot hold the same entity twice in the list.
+    // map, which fails without a message (only the object's own tile has the zoo message).
     assert_eq!(
         at(&w, &cat, 5, 0, 3 * 64, 4 * 64 - 2 * 64).unwrap().verdict,
         Verdict::Valid
     );
     let edge = at(&w, &cat, 5, 0, 5, 5).unwrap();
-    assert_eq!(
-        (edge.verdict, edge.message),
-        (Verdict::Invalid, Some(NOT_IN_THE_ZOO))
-    );
+    assert_eq!((edge.verdict, edge.message), (Verdict::Invalid, None));
     // Turned by a step it takes 8 x 10 half tiles: tile 3 of the mouse leaves the tree out, tile
     // 4 puts it inside.
     assert_eq!(
@@ -447,5 +468,313 @@ fn the_tints_come_from_the_map_view_of_the_layout_and_default_to_the_shipped_one
     assert_eq!(
         Tints::load(&crate::vfs::Vfs::open(&empty.0).unwrap()),
         shipped
+    );
+}
+
+#[test]
+fn more_than_a_quarter_tile_needs_flat_ground_at_one_height() {
+    let cat = catalogue();
+    let w = world((0, 0), vec![], |t| {
+        // Tile (1, 0) slopes, tile (2, 0) is flat one step higher.
+        t[1].shape = 0x50;
+        t[2].elevation = 1;
+    });
+    // A tree stands on a slope; a bench (2 x 1) does not, and a slope gives no message.
+    assert_eq!(
+        at(&w, &cat, 0, 0, 64 + 10, 10).unwrap().verdict,
+        Verdict::Valid
+    );
+    let bench = at(&w, &cat, 1, 0, 64 + 10, 10).unwrap();
+    assert_eq!((bench.verdict, bench.message), (Verdict::Invalid, None));
+    assert!(bench.blocking.is_empty());
+    // Flat ground is fine, and so is a flat tile raised as a whole.
+    assert_eq!(
+        at(&w, &cat, 1, 0, 3 * 64 + 10, 10).unwrap().verdict,
+        Verdict::Valid
+    );
+    assert_eq!(
+        at(&w, &cat, 1, 0, 2 * 64 + 10, 10).unwrap().verdict,
+        Verdict::Valid
+    );
+    // The restaurant spans tiles 1 to 5 by 0 to 3 here: the slope and the step are inside.
+    let building = at(&w, &cat, 5, 0, 3 * 64, 2 * 64).unwrap();
+    assert_eq!(
+        (building.verdict, building.message),
+        (Verdict::Invalid, None)
+    );
+    let row = at(&w, &cat, 5, 0, 3 * 64, 6 * 64).unwrap();
+    assert_eq!(row.verdict, Verdict::Valid);
+}
+
+#[test]
+fn a_footprint_over_a_tile_holds_no_fence_inside() {
+    let cat = catalogue();
+    // The restaurant at the mouse in tile (3, 4) covers tiles 1 to 5 by 2 to 5.
+    let fence = |tx: i32, ty: i32, side: u32| {
+        let (x, y) = [(32, 0), (63, 32), (32, 63), (0, 32)][side as usize / 2];
+        entity("fences", "", tx * 64 + x, ty * 64 + y, side)
+    };
+    let check = |fences: Vec<Entity>| {
+        let w = world((0, 0), fences, |_| {});
+        let p = at(&w, &cat, 5, 0, 3 * 64, 4 * 64).unwrap();
+        (p.verdict, p.message)
+    };
+    let invalid = (Verdict::Invalid, None);
+    assert_eq!(check(vec![]), (Verdict::Valid, None));
+    assert_eq!(check(vec![fence(3, 3, 2)]), invalid, "east side of (3, 3)");
+    assert_eq!(
+        check(vec![fence(4, 3, 6)]),
+        invalid,
+        "its west side from the other tile"
+    );
+    assert_eq!(check(vec![fence(2, 4, 4)]), invalid, "a south side");
+    // On the border of the footprint a fence is not inside.
+    assert_eq!(
+        check(vec![
+            fence(1, 2, 0),
+            fence(5, 3, 2),
+            fence(5, 5, 4),
+            fence(1, 3, 6)
+        ])
+        .0,
+        Verdict::Valid
+    );
+    // A footprint of one tile or less has no inside.
+    let w = world((0, 0), vec![fence(3, 3, 2)], |_| {});
+    assert_eq!(
+        at(&w, &cat, 1, 0, 3 * 64 + 10, 3 * 64 + 10)
+            .unwrap()
+            .verdict,
+        Verdict::Valid
+    );
+}
+
+#[test]
+fn land_and_water_decide_what_stands_where() {
+    let cat = catalogue();
+    let w = world((0, 0), vec![], |t| t[1].terrain = 1);
+    let land = |ty| at(&w, &cat, ty, 0, 10, 10).unwrap();
+    let wet = |ty| at(&w, &cat, ty, 0, 64 + 10, 10).unwrap();
+    let verdict = |p: Pending| (p.verdict, p.message);
+    // A tree cannot stand in water, no message; a duck that swims can.
+    assert_eq!(verdict(land(0)), (Verdict::Valid, None));
+    assert_eq!(verdict(wet(0)), (Verdict::Invalid, None));
+    assert_eq!(verdict(wet(8)), (Verdict::Valid, None));
+    assert_eq!(verdict(land(8)), (Verdict::Valid, None));
+    // A buoy only swims: it fails on land without a message of its own. A raft is not a land
+    // type: on land it says so, in water it is fine.
+    assert_eq!(verdict(land(7)), (Verdict::Invalid, None));
+    assert_eq!(verdict(wet(7)), (Verdict::Valid, None));
+    assert_eq!(verdict(land(9)), (Verdict::Invalid, Some(NOT_ON_WATER)));
+    assert_eq!(verdict(wet(9)), (Verdict::Valid, None));
+    // A stage is not a land type and does not swim: land says so, water refuses it silently.
+    assert_eq!(verdict(land(10)), (Verdict::Invalid, Some(NOT_ON_WATER)));
+    assert_eq!(verdict(wet(10)), (Verdict::Invalid, None));
+    // The water message of a type that is not a land type comes before the one in the way.
+    let held = world((0, 0), vec![entity("objects", "tree", 16, 16, 0)], |_| {});
+    assert_eq!(
+        at(&held, &cat, 9, 0, 5, 5).unwrap().message,
+        Some(NOT_ON_WATER)
+    );
+    // A buoy over a tree on land gives the one in the way.
+    let p = at(&held, &cat, 7, 0, 5, 5).unwrap();
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    // A terrain type the list does not know is land.
+    let odd = world((0, 0), vec![], |t| t[0].terrain = 200);
+    assert_eq!(at(&odd, &cat, 0, 0, 5, 5).unwrap().verdict, Verdict::Valid);
+}
+
+fn zoo_money(cash: f32) -> Money {
+    Money {
+        cash,
+        ..Money::default()
+    }
+}
+
+#[test]
+fn a_valid_place_gets_the_object_and_takes_its_price_as_construction() {
+    let cat = catalogue();
+    let mut w = world((0, 0), vec![], |_| {});
+    let mut money = zoo_money(50_000.0);
+    let p = at(&w, &cat, 0, 0, 3 * 64 + 40, 2 * 64 + 10).unwrap();
+    let outcome = place(&mut w, &mut money, &cat.types[0], &p, &[false, true], shape);
+    assert_eq!(outcome, Outcome::Placed(101));
+    assert_eq!(money.cash, 49_975.0);
+    assert_eq!(money.monthly[CONSTRUCTION][0], 25.0);
+    let e = w.zoo.entities.last().unwrap();
+    assert_eq!(
+        (e.class.as_str(), e.type_name.as_str()),
+        ("objects", "tree")
+    );
+    let c = e.common.as_ref().unwrap();
+    assert_eq!(
+        (c.x, c.y, c.z, c.rotation, c.id),
+        (p.x, p.y, 0, p.facing, 101)
+    );
+    assert!(w.take_dirty());
+    // The quarter tile is held now: the same place is in the way, nothing is charged.
+    let again = at(&w, &cat, 0, 0, 3 * 64 + 40, 2 * 64 + 10).unwrap();
+    assert_eq!(
+        place(
+            &mut w,
+            &mut money,
+            &cat.types[0],
+            &again,
+            &[false, true],
+            shape
+        ),
+        Outcome::Refused(Some(IN_THE_WAY))
+    );
+    assert_eq!((money.cash, w.zoo.entities.len()), (49_975.0, 1));
+    // Undo takes it back with the full price.
+    assert!(w.undo());
+    assert!(w.zoo.entities.is_empty());
+}
+
+#[test]
+fn the_cash_must_cover_the_price_and_only_scenery_is_placed_here() {
+    let cat = catalogue();
+    let mut w = world((0, 0), vec![], |_| {});
+    let p = at(&w, &cat, 0, 0, 10, 10).unwrap();
+    // 24 is not enough for 25; exactly 25 is, and a free object is placed with no cash at all.
+    let mut poor = zoo_money(24.0);
+    assert_eq!(
+        place(&mut w, &mut poor, &cat.types[0], &p, &[false, true], shape),
+        Outcome::Refused(Some(NO_FUNDS))
+    );
+    assert_eq!((poor.cash, w.zoo.entities.len()), (24.0, 0));
+    let mut exact = zoo_money(25.0);
+    assert!(matches!(
+        place(&mut w, &mut exact, &cat.types[0], &p, &[false, true], shape),
+        Outcome::Placed(_)
+    ));
+    assert_eq!(exact.cash, 0.0);
+    let free = Pending {
+        price: 0.0,
+        ..at(&w, &cat, 0, 0, 40, 40).unwrap()
+    };
+    let mut broke = zoo_money(-5.0);
+    assert!(matches!(
+        place(
+            &mut w,
+            &mut broke,
+            &cat.types[0],
+            &free,
+            &[false, true],
+            shape
+        ),
+        Outcome::Placed(_)
+    ));
+    assert_eq!(broke.cash, -5.0);
+    // An invalid place gives its message, whatever the cash; a path is not placed here.
+    let held = at(&w, &cat, 0, 0, 10, 10).unwrap();
+    assert_eq!(
+        place(
+            &mut w,
+            &mut exact,
+            &cat.types[0],
+            &held,
+            &[false, true],
+            shape
+        ),
+        Outcome::Refused(Some(IN_THE_WAY))
+    );
+    let path = at(&w, &cat, 2, 0, 3 * 64, 3 * 64).unwrap();
+    assert_eq!(
+        place(
+            &mut w,
+            &mut exact,
+            &cat.types[2],
+            &path,
+            &[false, true],
+            shape
+        ),
+        Outcome::Refused(None)
+    );
+    // A NaN price is never booked.
+    let nan = Pending {
+        price: f32::NAN,
+        ..at(&w, &cat, 0, 0, 3 * 64, 3 * 64).unwrap()
+    };
+    let mut money = zoo_money(100.0);
+    place(
+        &mut w,
+        &mut money,
+        &cat.types[0],
+        &nan,
+        &[false, true],
+        shape,
+    );
+    assert_eq!(money.cash, 100.0);
+}
+
+#[test]
+fn the_water_of_the_terrain_types_is_listed_by_type_number() {
+    let kind = |kind, water| terrain::Type {
+        kind,
+        cost: 0.0,
+        water,
+        icon: String::new(),
+        help: 0,
+        listed: true,
+    };
+    assert!(water(&[]).is_empty());
+    assert_eq!(
+        water(&[kind(0, false), kind(3, true)]),
+        [false, false, false, true]
+    );
+    assert_eq!(water(&[kind(255, true)]).len(), 256);
+}
+
+#[test]
+fn a_quadrant_outside_the_zoo_wall_fails_without_a_message() {
+    let cat = catalogue();
+    let mut entities = vec![entity("gate", "", 96, 288, 6)];
+    entities.extend((0..8).map(|row| entity("fences", "", 4 * 64 + 63, row * 64 + 32, 2)));
+    let w = world((1, 4), entities, |_| {});
+    // The restaurant centred on tile (5, 3) takes tiles 3 to 7: its own tile is inside, two of
+    // its columns are outside the wall.
+    let p = at(&w, &cat, 5, 0, 5 * 64 + 10, 3 * 64).unwrap();
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, None));
+    // The same on its own tile outside the wall gives the wall message.
+    let p = at(&w, &cat, 5, 0, 3 * 64 + 10, 3 * 64).unwrap();
+    assert_eq!(p.message, Some(NOT_IN_THE_ZOO));
+}
+
+#[test]
+fn a_release_over_a_water_only_type_on_land_shows_the_water_message_last() {
+    let cat = catalogue();
+    let water = [false, true];
+    let mut w = world(
+        (0, 0),
+        vec![entity("objects", "tree", 64 + 16, 16, 0)],
+        |t| t[3].terrain = 1,
+    );
+    let mut money = zoo_money(100.0);
+    let mut release = |w: &mut World, x: i64, y: i64| {
+        let p = at(w, &cat, 7, 0, x, y).unwrap();
+        place(w, &mut money, &cat.types[7], &p, &water, shape)
+    };
+    // On land the check stores nothing, the second look gives the water message.
+    assert_eq!(
+        release(&mut w, 10, 10),
+        Outcome::Refused(Some(NOT_ON_WATER))
+    );
+    // Over a tree the message of the check stays.
+    assert_eq!(
+        release(&mut w, 64 + 5, 5),
+        Outcome::Refused(Some(IN_THE_WAY))
+    );
+    // On water it is placed.
+    assert!(matches!(
+        release(&mut w, 3 * 64 + 10, 10),
+        Outcome::Placed(_)
+    ));
+    // A type that is not only-water on land has no second look: a bench on a slope has none.
+    let mut slope = world((0, 0), vec![], |t| t[0].shape = 0x50);
+    let p = at(&slope, &cat, 1, 0, 10, 10).unwrap();
+    assert_eq!(
+        place(&mut slope, &mut money, &cat.types[1], &p, &water, shape),
+        Outcome::Refused(None)
     );
 }

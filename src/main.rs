@@ -144,10 +144,13 @@ usage: rustyzoo [--data <dir>] <command>
                       and tinted by its place (green valid, orange replacing a piece, red not
                       valid) with its cost 23 pixels right of the pointer, and each move logs
                       `tool pending CLASS/TYPE/SUBTYPE X,Y q N valid|overwrite|invalid` (the tile and
-                      the quarter tile of the snapped point); releasing over a place that is not
-                      valid shows its message in the message line for 5 seconds (`tool message
-                      ID`). The two terrain tabs of the construction panel (at
-                      180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
+                      the quarter tile of the snapped point); releasing over a valid place of
+                      scenery or a building places it when the cash covers its cost (`world add
+                      CLASS/TYPE/SUBTYPE X,Y id N`, `tool turn STEP` for a type that turns by
+                      itself, the placement sound), one that is not valid or too dear asks for the
+                      refusal sound and shows its message, if it has one, in the message line for
+                      5 seconds (`tool message ID`). The two
+                      terrain tabs of the construction panel (at 180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and
                       painting a type of the list with a press and a drag gives it to the tiles of

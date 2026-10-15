@@ -960,18 +960,19 @@ fn escape_and_the_right_button_close_a_building_panel_before_the_menu_question()
 /// A catalogue of one type, a tree (scenery of one quadrant) that costs 25 and has no picture.
 fn tree_catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
-    cat.types = vec![crate::entity::EntityType {
+    cat.push(crate::entity::EntityType {
         class: "objects",
         type_name: b"tree".to_vec(),
         subtype: Vec::new(),
         file: None,
         config: Some(std::sync::Arc::new(
-            Config::parse(b"[Characteristics/Integers]\ncPurchaseCost=25\n").unwrap(),
+            Config::parse(b"[Characteristics/Integers]\ncPurchaseCost=25\ncAutoRotate=1\n")
+                .unwrap(),
         )),
         name_id: 0,
         footprint: [1, 1, 1],
         height: 0,
-    }];
+    });
     cat
 }
 
@@ -1045,4 +1046,103 @@ fn the_pending_object_follows_the_pointer_with_its_cost_and_is_staged_when_it_ch
     app.pass(120, &[Command::Rotate(true)]);
     let view = app.camera().unwrap().rotation;
     assert_eq!((view, facing(&app)), (1, Some(2)));
+}
+
+#[test]
+fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
+    let install = cache_install_with("app-place", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = tree_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    app.set_interface(interface("place"));
+    app.set_money(Money {
+        cash: 60.0,
+        ..Money::default()
+    });
+    app.pass(0, &[]);
+    app.game.as_mut().unwrap().build.hold(0);
+    let camera = app.camera().unwrap().clone();
+    let click = |tx: i32, ty: i32| {
+        let (x, y) = tile_point(&camera, tx, ty);
+        [
+            Command::Mouse(Mouse::Move(x, y)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ]
+    };
+    // The tool, world and money lines of a pass without their lead, the picture's and the
+    // pointer's aside.
+    let lines = |app: &App, pass, now| -> Vec<String> {
+        let skip = ["tool pending", "world stage", "money bar"];
+        let all = app.log_lines(pass, now);
+        let kept = all.iter().filter_map(|l| l.splitn(4, ' ').nth(3));
+        let wanted = |l: &&str| {
+            ["tool ", "world ", "money "]
+                .iter()
+                .any(|k| l.starts_with(k))
+        };
+        let kept = kept
+            .filter(wanted)
+            .filter(|l| !skip.iter().any(|k| l.starts_with(k)));
+        kept.map(str::to_string).collect()
+    };
+    let facing = |app: &App| {
+        app.game
+            .as_ref()
+            .unwrap()
+            .pending
+            .as_ref()
+            .map(|p| p.facing)
+    };
+    assert_eq!(facing(&app), None);
+    // The click places a tree, charges 25, asks for the placement sound and turns the next one.
+    app.pass(20, &click(20, 19));
+    assert_eq!(facing(&app), Some(self::place::facing(1, 0)));
+    assert_eq!(
+        lines(&app, 1, 20),
+        [
+            "tool down 20,19",
+            "tool up 20,19",
+            "tool turn 1",
+            "world add objects/tree/ 20,19 id 1",
+            "money cash 35"
+        ]
+    );
+    assert_eq!(app.sounds(), ["place"]);
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 1);
+    // The same quarter tile is in the way now: nothing is placed or charged, the message shows.
+    app.pass(40, &click(20, 19));
+    assert_eq!(
+        lines(&app, 2, 40),
+        ["tool down 20,19", "tool up 20,19", "tool message 10555"]
+    );
+    assert_eq!(app.sounds(), ["noplace"]);
+    // Another tile is placed; with 10 left the third is too expensive.
+    app.pass(60, &click(19, 19));
+    assert_eq!(app.money().unwrap().cash, 10.0);
+    app.pass(80, &click(19, 20));
+    assert_eq!(
+        lines(&app, 4, 80),
+        ["tool down 19,20", "tool up 19,20", "tool message 10002"]
+    );
+    assert_eq!(app.sounds(), ["noplace"]);
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 2);
+    // A release that did not start on the map places nothing and tells nothing.
+    let (x, y) = tile_point(&camera, 19, 20);
+    app.pass(
+        100,
+        &[Command::Mouse(Mouse::Move(x, y)), Command::Mouse(Mouse::Up)],
+    );
+    assert!(
+        lines(&app, 5, 100).is_empty(),
+        "the view never sees that release"
+    );
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 2);
 }

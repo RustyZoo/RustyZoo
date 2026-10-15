@@ -486,6 +486,14 @@ impl Catalogue {
         Ok(catalogue)
     }
 
+    /// Adds a type that a test made, findable by its names.
+    #[cfg(test)]
+    pub fn push(&mut self, ty: EntityType) {
+        let key = (ty.type_name.clone(), ty.subtype.clone());
+        self.index.entry(key).or_default().push(self.types.len());
+        self.types.push(ty);
+    }
+
     /// The first type, in creation order, of class `class` (or of a class below it, so that
     /// `staff` finds a keeper) with exactly these names.
     pub fn find(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<&EntityType> {
