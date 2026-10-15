@@ -25,6 +25,8 @@ const EXHIBIT: i32 = 6208;
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(super) struct Dozer {
     pub(super) at: Vec<usize>,
+    /// The object under the pointer (the first of `at` unless a tied wall goes before it).
+    head: Option<usize>,
     refund: f32,
     rect: Option<((i32, i32), (i32, i32))>,
     /// Whether the cost text is shown: over something removable, and in a drag from the start
@@ -112,17 +114,22 @@ impl App<'_> {
                 .tile_under(&world.zoo, pointer)
                 .and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)));
             let rect = game.build.sweep_area(tile, pointer);
+            let mut head = None;
             let found: Vec<usize> = match rect {
                 Some((a, b)) => bulldozer::area(world, a, b),
-                // The last drawn entity with a pixel under the pointer (placing 7.1).
-                None => game
-                    .staged
-                    .pick(game.camera.view_point(pointer), bulldozer::WIDEN, |id| {
-                        world.find(id).is_some()
-                    })
-                    .and_then(|id| world.find(id))
-                    .into_iter()
-                    .collect(),
+                // The last drawn entity with a pixel under the pointer (placing 7.1), and the
+                // tied wall that goes with it.
+                None => {
+                    head = game
+                        .staged
+                        .pick(game.camera.view_point(pointer), bulldozer::WIDEN, |id| {
+                            world.find(id).is_some()
+                        })
+                        .and_then(|id| world.find(id));
+                    (head.into_iter())
+                        .flat_map(|e| bulldozer::with_tied(world, e))
+                        .collect()
+                }
             };
             let mixed = rect.is_none() && found.iter().any(|&e| bulldozer::mixed_tanks(world, e));
             let at: Vec<usize> = found
@@ -137,8 +144,10 @@ impl App<'_> {
                 Some(_) => before.shown || refund != 0.0,
                 None => !at.is_empty(),
             };
+            let head = head.filter(|e| at.contains(e)).or(at.first().copied());
             game.dozer = Dozer {
                 at,
+                head,
                 refund,
                 rect,
                 shown,
@@ -150,7 +159,7 @@ impl App<'_> {
         }
         let d = &game.dozer;
         let whole = whole_units(f64::from(d.refund));
-        let single = d.at.first().filter(|_| d.rect.is_none());
+        let single = d.head.as_ref().filter(|_| d.rect.is_none());
         let entity = single.map(|&e| &game.world.zoo.entities[e]);
         let ty = entity.and_then(|e| bulldozer::type_of(cat, e));
         ui.help_tip(ty.map_or(0, |t| t.name_id));
