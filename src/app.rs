@@ -388,6 +388,7 @@ pub struct App<'a> {
     /// The managers of the simulation and the `sim` lines of the last pass.
     sim: Sim,
     sim_lines: Vec<String>,
+    unit_lines: Vec<String>,
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
@@ -508,6 +509,7 @@ impl<'a> App<'a> {
             money_lines: Vec::new(),
             sim,
             sim_lines: Vec::new(),
+            unit_lines: Vec::new(),
             music: None,
             music_changed: false,
             music_restarted: false,
@@ -534,7 +536,9 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
-        self.sim.start_game(world.zoo.tiles.len(), world.zoo.clocks);
+        self.sim
+            .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
+        world.units.set_period(self.sim.ai.status_period);
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
@@ -712,6 +716,8 @@ impl<'a> App<'a> {
         self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.sim_lines = self.sim.take_lines();
+        self.unit_lines =
+            (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.drew.then_some(&self.frame)
     }
 
@@ -1655,6 +1661,7 @@ impl<'a> App<'a> {
             ));
         }
         lines.extend(self.sim_lines.iter().map(|e| format!("{lead} sim {e}")));
+        lines.extend(self.unit_lines.iter().map(|e| format!("{lead} unit {e}")));
         lines
     }
 }

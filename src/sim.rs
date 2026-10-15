@@ -2,11 +2,12 @@
 //! order, the clocks they keep, the removal pass, the loop over the entities and the event queue,
 //! and the game's one random generator.
 //!
-//! What a unit does with its step is not here: [`Sim::step`] hands each entity to the caller's
-//! `update`, in list order. Missing so far: the zoo status checks of the game manager, the task
-//! pool, the shows and the exhibits' own update (the AI and world managers' first calls), the
-//! water ripples, the ambient creatures, and the scenario, research and marketing managers,
-//! which are empty until M7.
+//! What a unit does with its step is the [`unit`] module's: [`Sim::step`] runs [`unit::update`]
+//! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
+//! of entity that have no live state yet). Missing so far: the zoo status checks of the game
+//! manager, the task pool, the shows and the exhibits' own update (the AI and world managers'
+//! first calls), the water ripples, the ambient creatures, and the scenario, research and
+//! marketing managers, which are empty until M7.
 //!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
 //! step and `sim month M Y` when a step acts on the month flag of the one before.
@@ -16,11 +17,12 @@ mod rng;
 #[cfg(test)]
 mod tests;
 
-pub use events::{Event, Events, UNIT_CHANNEL};
+pub use events::{Event, Events, KEEPER_CHANNEL, UNIT_CHANNEL};
 pub use rng::{Rng, Seconds};
 
 use crate::config::{self, Config};
 use crate::timing::{Calendar, ini_value, ini_whole};
+use crate::unit;
 use crate::world::World;
 use crate::zoo::Clocks;
 
@@ -197,7 +199,7 @@ impl Sim {
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
-        self.events.clear();
+        self.events.restore(&clocks.queue);
         if tiles != self.tiles {
             self.tiles = tiles;
             self.reseed();
@@ -233,9 +235,9 @@ impl Sim {
     }
 
     /// One step of `step` milliseconds: the managers in the original's order. `update` is called
-    /// for each entity of the list, by position, in list order, with the step (the AI manager's
-    /// loop; the count is taken after the removal pass, so an entity added by `update` waits
-    /// for the next step).
+    /// for each entity of the list, by position, in list order, with the step, after the unit's
+    /// own turn ([`unit::update`]). This is the AI manager's loop: the count is taken after the
+    /// removal pass, so an entity added by `update` waits for the next step.
     pub fn step(
         &mut self,
         world: &mut World,
@@ -271,6 +273,13 @@ impl Sim {
         for at in 0..count {
             // Read again at each index, as the original does.
             if at < world.zoo.entities.len() {
+                let mut ctx = unit::Ctx {
+                    rng: &mut self.rng,
+                    events: &self.events,
+                    removals: &mut self.removals,
+                    step,
+                };
+                unit::update(&mut unit::Standard, world, &mut ctx, at);
                 update(world, at, step);
             }
         }

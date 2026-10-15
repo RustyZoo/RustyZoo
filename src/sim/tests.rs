@@ -209,6 +209,7 @@ fn a_new_game_starts_from_the_clocks_of_its_map() {
         ai_ticks: 425,
         world_rem: 702,
         world_secs: 272,
+        ..Clocks::default()
     };
     s.start_game(16, clocks);
     assert_eq!((s.ai_clock(), s.world_clock()), ((425, 704), (272, 702)));
@@ -281,6 +282,47 @@ fn the_unreachable_list_is_cleared_every_freq_ticks() {
         let mut s = sim(&format!("[AI]\nClearUnreachableFreq={freq}\n"));
         run(&mut s, &mut w, 40, 67);
     }
+}
+
+#[test]
+fn a_new_game_starts_with_the_event_queue_of_its_map() {
+    let ev = |target, data| crate::zoo::Event {
+        data,
+        ..event(target, 0, UNIT_CHANNEL)
+    };
+    for next_is_first in [true, false] {
+        let queue = crate::zoo::Queue {
+            first: vec![ev(5, 1)],
+            second: vec![ev(5, 2), ev(0, 3)],
+            next_is_first,
+        };
+        let mut s = sim("");
+        s.start_game(
+            16,
+            Clocks {
+                queue,
+                ..Clocks::default()
+            },
+        );
+        // The buffer that is not "next" is read at the first step; the "next" one after it.
+        let heard = |s: &Sim| {
+            s.events
+                .listen(5, UNIT_CHANNEL)
+                .map(|e| e.data)
+                .collect::<Vec<_>>()
+        };
+        let (now, later) = match next_is_first {
+            true => (vec![2, 3], vec![1]),
+            false => (vec![1], vec![2, 3]),
+        };
+        assert_eq!(heard(&s), now);
+        s.events.age();
+        assert_eq!(heard(&s), later);
+    }
+    // Another game replaces them.
+    let mut s = sim("");
+    s.start_game(16, Clocks::default());
+    assert!(s.events.listen(5, UNIT_CHANNEL).next().is_none());
 }
 
 #[test]

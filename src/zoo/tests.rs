@@ -150,7 +150,11 @@ fn tail(w: &mut W, v: u32) {
     w.u32(2).z(40); // thoughts
     w.u32(7).u32(8); // the AI clock: milliseconds left over, ticks
     if v >= 97 {
-        w.u32(1).z(20).u32(0).z(1);
+        // One event in the first buffer, none in the second, and the first is the next one.
+        w.u32(1).u32(1).u32(2).u32(3);
+        w.0.extend([4, 0, 0x11, 0x27, 5, 0, 0x55, 0x4b]);
+        w.u32(0);
+        w.0.push(1);
     }
     if v >= 40 {
         w.z(4);
@@ -300,6 +304,18 @@ fn reads_the_clocks_the_file_stores() {
             world,
             "version {v}"
         );
+        // Both event buffers and which one is next are stored from version 97.
+        let queue = &zoo.clocks.queue;
+        assert_eq!(queue.first.len(), usize::from(v >= 97), "version {v}");
+        assert!(queue.second.is_empty());
+        assert_eq!(queue.next_is_first, v >= 97, "version {v}");
+        if let Some(e) = queue.first.first() {
+            assert_eq!(
+                (e.sender, e.target, e.data, e.extra, e.kind),
+                (1, 2, 3, 4, 0x2711)
+            );
+            assert_eq!((e.delay, e.sender_channel, e.channel), (5, 0x55, 0x4b));
+        }
     }
 }
 

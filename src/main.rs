@@ -282,7 +282,10 @@ usage: rustyzoo [--data <dir>] <command>
                       another size is set up or a month ends, instead of the wall clock; the lines `sim seed S`
                       (only in a test run), `sim step MS` (each step the game runs) and `sim month M Y` (the step that acts on the
                       month flag of the one before) tell it, so two runs with one seed print the same lines (the
-                      seeds of the wall clock are not logged; replay a seeded log with the same --seed). --rows ID N (repeatable) fills the list box ID
+                      seeds of the wall clock are not logged; replay a seeded log with the same --seed). The units of a
+                      map (animals, guests and staff) log `unit add ID KIND X,Y` when a game opens or one is
+                      placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
+                      simulated time. --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma
