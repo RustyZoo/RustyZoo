@@ -1111,7 +1111,7 @@ fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
             "tool down 20,19",
             "tool up 20,19",
             "tool turn 1",
-            "world add objects/tree 20,19 id 1",
+            "world add objects/tree/ 20,19 id 1",
             "money cash 35"
         ]
     );

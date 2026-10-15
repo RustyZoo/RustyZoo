@@ -827,10 +827,10 @@ impl<'a> App<'a> {
     }
 
     /// A release on the map (the view sees only one that ends a press on it) over a pending
-    /// object: a valid place gets the object, which is paid and logged (`world add objects/tree
-    /// 12,40 id 14908`), asks for the placement sound and turns a type that turns by itself, and
-    /// a new pending object is made; one that cannot be placed shows its message in the message
-    /// line (`tool message 10311`) (placing 6.1).
+    /// object: a valid place gets the object, which is paid and logged (`world add
+    /// objects/foliage/doumpalm 12,40 id 14908`), asks for the placement sound and turns a type
+    /// that turns by itself, and a new pending object is made; one that cannot be placed shows
+    /// its message in the message line (`tool message 10311`) (placing 6.1).
     fn release(&mut self) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
@@ -845,9 +845,10 @@ impl<'a> App<'a> {
         }) {
             Outcome::Placed(id) => {
                 self.world_lines.push(format!(
-                    "add {}/{} {},{} id {id}",
+                    "add {}/{}/{} {},{} id {id}",
                     ty.class,
                     String::from_utf8_lossy(&ty.type_name),
+                    String::from_utf8_lossy(&ty.subtype),
                     p.tile.0,
                     p.tile.1
                 ));
