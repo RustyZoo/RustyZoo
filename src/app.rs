@@ -25,7 +25,7 @@ use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
-use crate::place::{self, Pending, Tints, Verdict};
+use crate::place::{self, Outcome, Pending, Tints};
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Staged, check_size};
 use crate::status::{Finances, STATUS_BUTTON};
 use crate::terrain::Tool;
@@ -274,6 +274,8 @@ struct Game {
     pending: Option<Pending>,
     hover: bool,
     tints: Tints,
+    /// Which terrain types are water.
+    water: Vec<bool>,
     /// The transient items the staged picture was made with.
     extra: Extra,
     /// The terrain tool, the highlights it asks the map to draw (they go to the staging with the
@@ -473,6 +475,7 @@ impl<'a> App<'a> {
             pending: None,
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
+            water: place::water(self.renderer.vfs()),
             extra: Extra::default(),
             terrain: Tool::new(
                 crate::terrain::types(self.renderer.vfs()),
@@ -693,6 +696,12 @@ impl<'a> App<'a> {
                 if on_map && mouse == Mouse::Right {
                     return self.cancel(false);
                 }
+                if let (true, Mouse::Down | Mouse::Double, Some(game)) =
+                    (on_map, mouse, game.as_mut())
+                {
+                    // The next operation starts a new undo list.
+                    game.world.begin();
+                }
                 if let (true, Some(phase), Some(game), Some(ui)) =
                     (on_map, phase, game.as_mut(), &self.ui)
                 {
@@ -706,7 +715,7 @@ impl<'a> App<'a> {
                     }
                     self.aim(true);
                 } else if on_map && mouse == Mouse::Up {
-                    self.refuse();
+                    self.release();
                 }
                 self.terrain_mouse(mouse, on_map);
             }
@@ -795,7 +804,8 @@ impl<'a> App<'a> {
         game.pending = game.build.tool().filter(|_| game.hover).and_then(|ty| {
             let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
             let step = game.build.step();
-            place::pending(&game.world, cat, ty, step, game.camera.rotation, (x, y))
+            let view = game.camera.rotation;
+            place::pending(&game.world, cat, &game.water, ty, step, view, (x, y))
         });
         if let (true, Some(p)) = (log, &game.pending) {
             let ty = &cat.types[p.ty];
@@ -816,18 +826,43 @@ impl<'a> App<'a> {
         }
     }
 
-    /// A release on the map with a pending object that is not valid shows the message its place
-    /// stored in the message line (placing 6.1).
-    fn refuse(&mut self) {
-        let (Some(game), Some(ui)) = (&self.game, &mut self.ui) else {
+    /// A release on the map (the view sees only one that ends a press on it) over a pending
+    /// object: a valid place gets the object, which is paid and logged (`world add objects/tree
+    /// 12,40 id 14908`), asks for the placement sound and turns a type that turns by itself, and
+    /// a new pending object is made; one that cannot be placed shows its message in the message
+    /// line (`tool message 10311`) (placing 6.1).
+    fn release(&mut self) {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
-        if let Some(p) = &game.pending
-            && p.verdict == Verdict::Invalid
-            && let Some(id) = p.message
-        {
-            ui.message(&to_cp1252(&ui.string(id)));
-            self.tool_lines.push(format!("tool message {id}"));
+        let Some(p) = game.pending.clone() else {
+            return;
+        };
+        let renderer = &self.renderer;
+        let ty = &renderer.catalogue().types[p.ty];
+        match place::place(&mut game.world, &mut game.money, ty, &p, |e| {
+            renderer.shape(e)
+        }) {
+            Outcome::Placed(id) => {
+                self.world_lines.push(format!(
+                    "add {}/{} {},{} id {id}",
+                    ty.class,
+                    String::from_utf8_lossy(&ty.type_name),
+                    p.tile.0,
+                    p.tile.1
+                ));
+                self.ui_sounds.push("place");
+                if game.build.placed(ty) {
+                    self.tool_lines
+                        .push(format!("tool turn {}", game.build.step()));
+                }
+                self.aim(false);
+            }
+            Outcome::Refused(Some(id)) => {
+                ui.message(&to_cp1252(&ui.string(id)));
+                self.tool_lines.push(format!("tool message {id}"));
+            }
+            Outcome::Refused(None) => {}
         }
     }
 

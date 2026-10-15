@@ -236,6 +236,9 @@ pub struct Build {
     held: Option<usize>,
     /// The rotation step of each panel (placing 4.4).
     step: [usize; 2],
+    /// The rotation step of the pending object: its panel's step, until a placement of a type
+    /// that turns by itself advances it.
+    turn: usize,
     /// The tab (a position in `tabs`) that `list` was built for.
     listed: Option<usize>,
     /// The first row each tab's list showed last, by panel and tab (placing 3.4).
@@ -255,6 +258,7 @@ impl Build {
             chosen: [[None; 4]; 2],
             held: None,
             step: [0; 2],
+            turn: 0,
             listed: None,
             tops: [[0; 4]; 2],
             terrain: None,
@@ -282,9 +286,19 @@ impl Build {
         self.held = Some(ty);
     }
 
-    /// The rotation step of the open panel, 0 to 3 (placing 4.4).
+    /// The rotation step of the pending object, 0 to 3 (placing 4.4).
     pub fn step(&self) -> usize {
-        self.open.map_or(0, |p| self.step[p])
+        self.turn
+    }
+
+    /// An object of the type was placed: a type with `cAutoRotate` turns by one step, so that a
+    /// row of trees does not look cloned (placing 4.4). Whether it did.
+    pub fn placed(&mut self, ty: &EntityType) -> bool {
+        let turns = number(ty, "cAutoRotate") == Some(1.0);
+        if turns {
+            self.turn = (self.turn + 1) % 4;
+        }
+        turns
     }
 
     /// The mode of the terrain tab that is the tool, if one is.
@@ -474,6 +488,7 @@ impl Build {
         let ty = &cat.types[index];
         self.chosen[p][tab] = Some(index);
         self.held = Some(index);
+        self.turn = self.step[p];
         ui.select_item(panel.list, Some(at));
         let name = ui.string(ty.name_id);
         let price = Symbol::new(ui.string(SYMBOL)).text(whole_units(f64::from(cost(ty))));

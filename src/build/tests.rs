@@ -712,3 +712,30 @@ fn a_panel_reopens_on_the_tab_it_was_closed_on_and_on_the_first_after_a_load() {
     assert_eq!(Build::tab(&ui, 0), Some(0));
     assert_eq!(text(&ui, 3261), "Fences");
 }
+
+#[test]
+fn a_type_that_turns_by_itself_advances_the_pending_step_and_choosing_resets_it() {
+    let turns = ty(
+        "objects",
+        "tree",
+        "",
+        "[Characteristics/Integers]\ncAutoRotate=1\n",
+    );
+    let fixed = ty(
+        "objects",
+        "bench",
+        "",
+        "[Characteristics/Integers]\ncAutoRotate=0\n",
+    );
+    let mut build = Build::new(3);
+    build.step[0] = 2;
+    build.turn = 2;
+    assert!(!build.placed(&fixed));
+    assert_eq!(build.step(), 2);
+    // Three placements wrap round past 3; the panel's own step stays.
+    for want in [3, 0, 1] {
+        assert!(build.placed(&turns));
+        assert_eq!(build.step(), want);
+    }
+    assert_eq!(build.step, [2, 0]);
+}

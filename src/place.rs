@@ -1,28 +1,34 @@
 //! Placing and removing objects, paths and fences: so far the pending object, the type the player
-//! chose as it follows the mouse (placing 4 and 5).
+//! chose as it follows the mouse (placing 4 and 5), and the placing of scenery (placing 6.1).
 //!
 //! [`pending`] snaps the world point under the mouse to where the type would stand, lifts it to
 //! the ground, turns it, and checks the place: the verdict decides the tint, the cost text and
-//! the message a click shows. The checks here are the ones every kind of object shares (the tile
-//! is in the zoo, the quadrants of the footprint are free, a path or a fence replaces a piece);
-//! the rules of one kind (a slope, water, a cliff inside a footprint, the fence rules) come with
-//! the placing of that kind.
+//! the message a click shows. The checks are the ones every kind of object shares (the tile is in
+//! the zoo, the quadrants of the footprint are free, a path or a fence replaces a piece) and
+//! those of scenery (land or water, flat ground at one height, no fence inside a big footprint);
+//! the rules of paths and fences come with the placing of that kind. [`place`] adds a valid
+//! pending object to the world and takes its price.
 
 use crate::build::{cost, number};
-use crate::config::Config;
+use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
-use crate::money::Symbol;
+use crate::money::{CONSTRUCTION, Money, Symbol};
 use crate::render::order::{Kind, ground_height};
 use crate::render::{Extra, Ghost};
 use crate::text::format::{money, whole_units};
 use crate::ui::layout::color;
 use crate::vfs::Vfs;
-use crate::world::World;
+use crate::world::{Shape, World};
+use crate::zoo::{Common, Entity};
 
 /// The message of a place outside the zoo wall (or off the map).
 pub const NOT_IN_THE_ZOO: i32 = 10311;
 /// The message of an object that cannot be placed because another one stands in the way.
 pub const IN_THE_WAY: i32 = 10555;
+/// The message of an object that is not a land object on a land tile.
+pub const NOT_ON_WATER: i32 = 10564;
+/// The message of a purchase the cash does not cover.
+pub const NO_FUNDS: i32 = 10002;
 /// The message of a tank filter that is not next to a finished tank without a filter.
 pub const NO_TANK: i32 = 10517;
 
@@ -67,6 +73,41 @@ impl Tints {
             invalid: key("entityinvalidcolor", shipped.invalid),
         }
     }
+}
+
+/// Which terrain types are water (`water` above 0 in `terrain/tilete*.cfg`, map drawing 4.1),
+/// by type number. A type that two sections define keeps the later one.
+pub fn water(vfs: &Vfs) -> Vec<bool> {
+    let mut members: Vec<String> = vfs
+        .list(None)
+        .into_iter()
+        .filter(|m| {
+            let m = m.to_ascii_lowercase();
+            m.starts_with("terrain/tilete") && m.ends_with(".cfg")
+        })
+        .collect();
+    members.sort();
+    let mut wet = Vec::new();
+    for member in members {
+        let Some(config) = vfs.read(&member).ok().and_then(|b| Config::parse(&b).ok()) else {
+            continue;
+        };
+        for (_, section) in config.sections() {
+            let Some(kind) = section
+                .get("type")
+                .and_then(to_int)
+                .and_then(|k| usize::try_from(k).ok())
+                .filter(|&k| k < 256)
+            else {
+                continue;
+            };
+            if wet.len() <= kind {
+                wet.resize(kind + 1, false);
+            }
+            wet[kind] = section.get("water").and_then(to_int).unwrap_or(0) > 0;
+        }
+    }
+    wet
 }
 
 /// How a type is placed: by the way its class takes its place on the map.
@@ -235,10 +276,12 @@ fn is_of(entity: &crate::zoo::Entity, ty: &EntityType) -> bool {
 
 /// The pending object of the type `ty` (a position in the catalogue) with the rotation step
 /// `step` of its panel, for the world point `point` under the mouse, the view turned by `view`.
-/// `None` when the type is unknown or the point is off the map.
+/// `None` when the type is unknown or the point is off the map. `water` tells for each terrain
+/// type whether it is water.
 pub fn pending(
     world: &World,
     cat: &Catalogue,
+    water: &[bool],
     ty: usize,
     step: usize,
     view: u8,
@@ -275,12 +318,19 @@ pub fn pending(
         price: cost(t),
         blocking: Vec::new(),
     };
-    check(&mut pending, world, cat, class, fp);
+    check(&mut pending, world, cat, water, class, fp);
     Some(pending)
 }
 
 /// The checks every object shares (placing 5.1, 5.2, 5.3): the first failure keeps its message.
-fn check(p: &mut Pending, world: &World, cat: &Catalogue, class: Class, fp: (i32, i32)) {
+fn check(
+    p: &mut Pending,
+    world: &World,
+    cat: &Catalogue,
+    water: &[bool],
+    class: Class,
+    fp: (i32, i32),
+) {
     let t = &cat.types[p.ty];
     let (tx, ty) = p.tile;
     let Some(tile) = world.tile_index(tx, ty) else {
@@ -312,17 +362,41 @@ fn check(p: &mut Pending, world: &World, cat: &Catalogue, class: Class, fp: (i32
     if !(1..=MAX_FOOTPRINT).contains(&fp.0) || !(1..=MAX_FOOTPRINT).contains(&fp.1) {
         return fail(p, None);
     }
+    let scenery = class == Class::Fixed;
+    // Land or water (placing 5.2 item 2, 5.4): a type that is not a land type or only swims
+    // needs water; one that does not swim cannot stand in it.
+    let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
+    let land = flag("cLand", true);
+    let swims = flag("cSwims", false);
+    let only_water = flag("cOnlySwims", false) || (swims && !land && !flag("cUnderwater", false));
+    let needs_water = only_water || !land;
+    let (x0, y0) = (p.x - 16 * (fp.0 - 1), p.y - 16 * (fp.1 - 1));
+    let mut tiles = Vec::new();
     for j in 0..fp.1 {
         for i in 0..fp.0 {
-            let qx = (p.x - 16 * (fp.0 - 1) + 32 * i).div_euclid(32);
-            let qy = (p.y - 16 * (fp.1 - 1) + 32 * j).div_euclid(32);
+            let qx = (x0 + 32 * i).div_euclid(32);
+            let qy = (y0 + 32 * j).div_euclid(32);
             let Some(at) = world.tile_index(qx.div_euclid(2), qy.div_euclid(2)) else {
                 fail(p, Some(NOT_IN_THE_ZOO));
                 continue;
             };
             if !world.in_zoo(at) {
                 fail(p, Some(NOT_IN_THE_ZOO));
-            } else if let Some(held) =
+                continue;
+            }
+            tiles.push(at);
+            if scenery {
+                let wet = water
+                    .get(usize::from(world.zoo.tiles[at].terrain))
+                    .copied()
+                    .unwrap_or(false);
+                if !wet && needs_water {
+                    fail(p, Some(NOT_ON_WATER));
+                } else if wet && !(swims || needs_water) {
+                    fail(p, None);
+                }
+            }
+            if let Some(held) =
                 world.quadrant(at, (qy.rem_euclid(2) * 2 + qx.rem_euclid(2)) as usize)
             {
                 fail(p, Some(IN_THE_WAY));
@@ -331,6 +405,103 @@ fn check(p: &mut Pending, world: &World, cat: &Catalogue, class: Class, fp: (i32
                 }
             }
         }
+    }
+    if !scenery {
+        return;
+    }
+    // More than a quarter tile needs flat ground at one height (item 5).
+    let tile = |t: usize| world.zoo.tiles[t];
+    if (fp.0 > 1 || fp.1 > 1)
+        && let Some(&first) = tiles.first()
+        && tiles
+            .iter()
+            .any(|&t| tile(t).shape != 0 || tile(t).elevation != tile(first).elevation)
+    {
+        fail(p, None);
+    }
+    // More than a tile holds no fence on the sides inside it (item 6; a cliff there cannot be,
+    // the tiles being flat at one height).
+    if fp.0 > 2 || fp.1 > 2 {
+        let (tx0, ty0) = (x0.div_euclid(64), y0.div_euclid(64));
+        let tx1 = (x0 + 32 * (fp.0 - 1)).div_euclid(64);
+        let ty1 = (y0 + 32 * (fp.1 - 1)).div_euclid(64);
+        for ty in ty0..=ty1 {
+            for tx in tx0..=tx1 {
+                for (d, dx, dy) in [(2, 1, 0), (4, 0, 1)] {
+                    let inside = tx + dx <= tx1 && ty + dy <= ty1;
+                    let both = world
+                        .tile_index(tx, ty)
+                        .zip(world.tile_index(tx + dx, ty + dy));
+                    if let (true, Some((a, b))) = (inside, both)
+                        && (world.edge(a, d).is_some() || world.edge(b, (d + 4) % 8).is_some())
+                    {
+                        fail(p, None);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The entity a pending object of the type `ty` becomes when it is placed.
+pub fn entity(ty: &EntityType, p: &Pending) -> Entity {
+    let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
+    Entity {
+        class: ty.class.into(),
+        type_name: text(&ty.type_name),
+        subtype: text(&ty.subtype),
+        body_size: None,
+        common: Some(Common {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            rotation: p.facing,
+            id: 0,
+            name: String::new(),
+            colors: Vec::new(),
+            fence: None,
+            movement_mode: 0,
+        }),
+    }
+}
+
+/// What a release over a place came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The object was placed, with this id.
+    Placed(u32),
+    /// Nothing was placed; the message to show, if the place or the cash gave one.
+    Refused(Option<i32>),
+}
+
+/// Releases the button over the pending object (placing 6.1): a valid place is paid with the cash
+/// and gets the object, booked as construction; one the cash does not cover shows the message of
+/// insufficient funds, an invalid one its stored message. Only objects that hold quadrants are
+/// placed here. `shape` tells how the new entity takes its place.
+pub fn place(
+    world: &mut World,
+    money: &mut Money,
+    ty: &EntityType,
+    p: &Pending,
+    shape: impl Fn(&Entity) -> Option<Shape>,
+) -> Outcome {
+    if p.verdict == Verdict::Invalid {
+        return Outcome::Refused(p.message);
+    }
+    if Class::of(ty) != Class::Fixed {
+        return Outcome::Refused(None);
+    }
+    if !money.can_pay(p.price) {
+        return Outcome::Refused(Some(NO_FUNDS));
+    }
+    let entity = entity(ty, p);
+    let shape = shape(&entity);
+    match world.add(entity, shape) {
+        Some(id) => {
+            money.charge(CONSTRUCTION, p.price);
+            Outcome::Placed(id)
+        }
+        None => Outcome::Refused(None),
     }
 }
 
