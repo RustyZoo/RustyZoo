@@ -3,7 +3,8 @@ use std::collections::HashMap;
 
 use super::*;
 use crate::sprite::tests::{Install, sized, sprite_file};
-use crate::text::text_color;
+use crate::text::{fill_color, text_color};
+use crate::ui::widgets::{Caret, Row};
 use crate::vfs::Vfs;
 
 /// A TGA image from rows of RGB pixels, top row first.
@@ -406,4 +407,189 @@ fn a_still_picture_never_advances() {
     assert!(!painter.animate(&tree, 0, false));
     assert!(!painter.animate(&tree, 10_000, false));
     assert!(!painter.animate(&Tree::default(), 20_000, false));
+}
+
+/// Shows every element and redraws the canvas of the given one.
+fn show_all(tree: &mut Tree) {
+    for e in &mut tree.elements {
+        e.state &= !HIDDEN;
+    }
+}
+
+#[test]
+fn a_list_draws_its_rows_from_the_first_shown_with_the_selection_and_the_hover() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=36\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         selectbackcolor=255\nselectbackcolor=0\nselectbackcolor=0\n\
+         highlightbordercolor=0\nhighlightbordercolor=255\nhighlightbordercolor=0\n"
+    );
+    let mut tree = tree("list", &root, &[]);
+    show_all(&mut tree);
+    let row = |text: &str| Row {
+        text: text.as_bytes().to_vec(),
+        ..Row::default()
+    };
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = vec![row("a"), row("b"), row("c"), row("d")];
+    list.rows.selected = Some(1);
+    list.rows.hover = Some(2);
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    let frame = paint(&mut tree, &mut painter, &texts);
+    // Rows of 12 pixels (the font's line): the selected one is filled, the hovered one framed.
+    assert_eq!(at(&frame, 4, 4), [0, 0, 255], "the background");
+    assert_eq!(
+        at(&frame, 43, 16),
+        [255, 0, 0],
+        "the selected row's fill, its right end"
+    );
+    assert_eq!(at(&frame, 43, 27), [255, 0, 0], "to its last pixel row");
+    assert_eq!(
+        at(&frame, 4, 28),
+        [0, 255, 0],
+        "the hovered row's frame, its top left"
+    );
+    assert_eq!(at(&frame, 43, 39), [0, 255, 0], "its bottom right");
+    assert_eq!(at(&frame, 43, 33), [0, 255, 0]);
+    assert_eq!(at(&frame, 20, 34), [0, 0, 255], "inside the frame");
+    // Scrolled by one row: the selected row is first.
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        unreachable!();
+    };
+    list.rows.top = 1;
+    tree.elements[1].state |= DIRTY;
+    let frame = paint(&mut tree, &mut painter, &texts);
+    assert_eq!(at(&frame, 43, 4), [255, 0, 0]);
+    assert_eq!(
+        at(&frame, 4, 16),
+        [0, 255, 0],
+        "the hovered row moved up too"
+    );
+}
+
+#[test]
+fn a_scroll_bar_draws_its_arrows_and_a_thumb_that_slides_with_the_position() {
+    let (r, g, b) = ([255, 0, 0], [0, 255, 0], [0, 0, 255]);
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIScrollBar\nid=2\nx=4\ny=2\ndx=6\ndy=36\nupArrow=ui/u.tga\ndownArrow=ui/d.tga\n\
+         thumb=ui/t.tga\nbackcolor=10\nbackcolor=10\nbackcolor=10\n"
+    );
+    let pictures = [
+        ("ui/u.tga".to_string(), tga(&[&[r; 6][..]; 4])),
+        ("ui/d.tga".to_string(), tga(&[&[g; 6][..]; 4])),
+        ("ui/t.tga".to_string(), tga(&[&[b; 6][..]; 4])),
+    ];
+    let mut tree = tree("bar", &root, &pictures);
+    show_all(&mut tree);
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    // The thumb at the top of its travel (36 less three pieces of 4: 24 pixels): just under the
+    // up arrow.
+    let frame = paint(&mut tree, &mut painter, &texts);
+    assert_eq!((at(&frame, 4, 2), at(&frame, 9, 5)), (r, r));
+    assert_eq!((at(&frame, 4, 6), at(&frame, 9, 9)), (b, b));
+    assert_eq!(
+        at(&frame, 4, 10),
+        rgb(fill_color([10, 10, 10])),
+        "the track"
+    );
+    assert_eq!((at(&frame, 4, 34), at(&frame, 9, 37)), (g, g));
+    // At the end of the range the thumb is just over the down arrow.
+    let Kind::ScrollBar(s) = &mut tree.elements[1].kind else {
+        panic!("not a bar");
+    };
+    s.bar.set_range(0, 10, 3);
+    s.bar.position = 10;
+    tree.elements[1].state |= DIRTY;
+    let frame = paint(&mut tree, &mut painter, &texts);
+    assert_eq!(at(&frame, 4, 6), rgb(fill_color([10, 10, 10])));
+    assert_eq!((at(&frame, 4, 30), at(&frame, 9, 33)), (b, b));
+    assert_eq!(at(&frame, 4, 34), g);
+}
+
+#[test]
+fn a_focused_field_shows_a_caret_or_its_selection_in_inverse_colours() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIEditableText\nid=2\nx=4\ny=4\ndx=40\ndy=14\nbackcolor=0\nbackcolor=0\nbackcolor=0\n\
+         forecolor=200\nforecolor=200\nforecolor=200\ntransparent=0\n"
+    );
+    let mut tree = tree("field", &root, &[]);
+    show_all(&mut tree);
+    tree.elements[1].text = Some(b"HIH".to_vec());
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    let width = |painter: &mut Painter, n: usize| {
+        let font = crate::text::Font::request("Arial", "8");
+        let _ = painter;
+        font.width(&b"HIH"[..n])
+    };
+    let white = rgb(text_color([200, 200, 200]));
+    let fill = rgb(fill_color([200, 200, 200]));
+    // Not focused: the text and no caret.
+    let frame = paint(&mut tree, &mut painter, &texts);
+    assert_eq!(at(&frame, 4, 4), [0, 0, 0]);
+    assert!(count(&frame, white) > 10);
+    assert_eq!(count(&frame, fill), 0);
+    // Focused, nothing selected: a caret one pixel wide after the second letter, the height of
+    // a line.
+    tree.elements[1].state |= FOCUSED | DIRTY;
+    let Kind::EditableText(f) = &mut tree.elements[1].kind else {
+        panic!("not a field");
+    };
+    f.caret = Caret { at: 2, anchor: 2 };
+    let frame = paint(&mut tree, &mut painter, &texts);
+    let x = 4 + width(&mut painter, 2) as u32;
+    assert_eq!((at(&frame, x, 4), at(&frame, x, 15)), (fill, fill));
+    assert_eq!(at(&frame, x, 16), [0, 0, 0]);
+    assert_eq!(count(&frame, fill), 12);
+    // The middle letter selected: its rectangle in the text colour, the letter in the background.
+    let Kind::EditableText(f) = &mut tree.elements[1].kind else {
+        unreachable!();
+    };
+    f.caret = Caret { at: 2, anchor: 1 };
+    tree.elements[1].state |= DIRTY;
+    let frame = paint(&mut tree, &mut painter, &texts);
+    let (x0, x1) = (width(&mut painter, 1) as u32, width(&mut painter, 2) as u32);
+    assert_eq!(at(&frame, 4 + x0, 4), fill);
+    assert_eq!(at(&frame, 4 + x1 - 1, 15), fill);
+    assert_eq!(at(&frame, 4 + x1, 4), [0, 0, 0]);
+}
+
+#[test]
+fn a_list_draws_whole_rows_only_inside_its_borders() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=33\nborder=3\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         selectbackcolor=255\nselectbackcolor=0\nselectbackcolor=0\n"
+    );
+    let mut tree = tree("listfit", &root, &[]);
+    show_all(&mut tree);
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = (0..4)
+        .map(|_| Row {
+            text: b"a".to_vec(),
+            ..Row::default()
+        })
+        .collect();
+    // The third row would reach the bottom border (33 - 3 = 30 pixels hold two rows of 12).
+    list.rows.selected = Some(2);
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert_eq!(
+        count(&frame, [255, 0, 0]),
+        0,
+        "the selected row is not drawn"
+    );
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        unreachable!();
+    };
+    list.rows.selected = Some(1);
+    tree.elements[1].state |= DIRTY;
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    // The second row: 3 + 12 to 3 + 24 pixels down, from the left of the list.
+    assert_eq!(at(&frame, 43, 4 + 15), [255, 0, 0]);
+    assert_eq!(at(&frame, 43, 4 + 27), [0, 0, 255], "under it, the border");
 }

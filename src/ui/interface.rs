@@ -8,12 +8,29 @@
 //! [`dirty`](Interface::dirty); a paint clears that.
 
 mod input;
+mod widgets;
 
 use std::collections::HashMap;
 
 use super::draw::{Painter, Rect4, Strings};
 use super::layout::{DIRTY, FOCUSED, HIDDEN, Kind, TIMED, Tree};
 use crate::Framebuffer;
+use crate::app::Key;
+
+/// What the interface tells the game's code besides the buttons selected (those are in
+/// [`Interface::take_selected`]): the list, bar and field actions the player's input ran, in
+/// order, to be taken with [`Interface::take_actions`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    /// The select action of a list box: its id and the row selected, -1 for none or a disabled
+    /// one.
+    Row(i32, i32),
+    /// A scroll bar (a text or a list without one) moved: its id and its position.
+    Scroll(i32, i32),
+    /// A key a text field passed on to its layout (Enter or Escape ended the edit): the layout's
+    /// id.
+    Key(i32, Key),
+}
 
 /// The game's strings, with the texts the game code has put in place of some of them (a version
 /// label, a tooltip with a file name in it).
@@ -50,6 +67,7 @@ pub struct Interface {
     sounds: Vec<&'static str>,
     /// The buttons whose action ran (see [`Interface::take_selected`]).
     selected: Vec<i32>,
+    actions: Vec<Action>,
 }
 
 impl Interface {
@@ -62,7 +80,7 @@ impl Interface {
         if let Some(map_view) = map_view {
             tree.elements[map_view].state &= !HIDDEN;
         }
-        Interface {
+        let mut ui = Interface {
             tree,
             painter: Painter::default(),
             strings: Texts {
@@ -75,7 +93,10 @@ impl Interface {
             events: Vec::new(),
             sounds: Vec::new(),
             selected: Vec::new(),
-        }
+            actions: Vec::new(),
+        };
+        ui.sync_owners();
+        ui
     }
 
     /// Shows the layout `id` (see [`Tree::show`]); `false` if there is none.
@@ -97,8 +118,41 @@ impl Interface {
     /// Whether the map view is on the screen and no other element holds the keyboard focus: the
     /// keys of the map view act only then.
     pub fn map_view_has_the_keys(&self) -> bool {
-        let shown = self.map_view.is_some_and(|i| self.visible(i));
-        shown && self.tree.elements.iter().all(|e| e.state & FOCUSED == 0)
+        self.map_view_shown() && self.tree.elements.iter().all(|e| e.state & FOCUSED == 0)
+    }
+
+    /// Whether the map view is on the screen.
+    pub fn map_view_shown(&self) -> bool {
+        self.map_view.is_some_and(|i| self.visible(i))
+    }
+
+    fn id(&self, i: usize) -> i32 {
+        self.tree.elements[i].id
+    }
+
+    fn event(&mut self, line: String) {
+        self.events.push(line);
+        self.dirty = true;
+    }
+
+    /// Sets or clears state flags of an element; a change makes the interface dirty.
+    fn flag(&mut self, i: usize, flag: u32, on: bool) {
+        let state = &mut self.tree.elements[i].state;
+        let was = *state;
+        match on {
+            true => *state |= flag,
+            false => *state &= !flag,
+        }
+        if *state != was {
+            self.dirty = true;
+        }
+    }
+
+    /// Brings every scroll bar in line with its owner.
+    fn sync_owners(&mut self) {
+        for i in 0..self.tree.elements.len() {
+            self.sync_owner(i);
+        }
     }
 
     /// Whether the element and its layouts are all shown.
@@ -152,6 +206,11 @@ impl Interface {
     /// `sound uiclick`, `show 32`, ...), without the `ui ` the log puts before them.
     pub fn take_events(&mut self) -> Vec<String> {
         std::mem::take(&mut self.events)
+    }
+
+    /// The actions the input ran since the last call, for the game's code.
+    pub fn take_actions(&mut self) -> Vec<Action> {
+        std::mem::take(&mut self.actions)
     }
 
     /// The sounds the interface asked for since the last call, by file name without the

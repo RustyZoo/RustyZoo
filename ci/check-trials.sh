@@ -244,6 +244,34 @@ check expansion-trial '16,3,124,1954@end' 'credits 559 2200 9999'
 check expansion-trial '2,3,124,131@closed' 'credits 559 300 131'
 check base-trial ',,,' 'credits 574 300 131'
 
+# The freeform map list filled with made-up rows: the track pages, an arrow steps, the wheel
+# scrolls two rows, a row is selected, a key moves the selection (the list runs its select action
+# on keys). Positions and rows, from the log.
+list_use() {
+  d=$(mktemp -d)
+  printf '1 mouse 474 600\n2 down\n3 up\n4 mouse 474 400\n5 down\n6 up\n7 mouse 474 140\n8 down\n9 up\n10 mouse 132 146\n11 wheel 1\n12 down\n13 up\n14 key down\n' >"$d/script"
+  rz run "$1" --headless --passes 16 --clock 100 --show 39 --rows 11504 40 --script "$d/script" 2>/dev/null |
+    grep ' ui \(scroll\|row\|select\|focus\)' | cut -d' ' -f5- | tr '\n' ';'
+  echo
+  rm -rf "${d:?}"
+}
+list='scroll115059;scroll115058;scroll115056;focus11504;row115047;select115047;row115048;select115048;'
+check base-trial "$list" "list_use maps/default.zoo"
+check expansion-trial "$list" "list_use maps/scn19.zoo"
+
+# A text field typed into: the click that focuses it selects its text, which the first digit
+# replaces; a letter in a digits-only field is refused, Left moves the caret to the start where the
+# next digit goes, Enter ends the edit.
+field_use() {
+  d=$(mktemp -d)
+  printf '2 mouse 418 652\n3 down\n4 up\n5 char 55\n6 char 120\n7 key left\n8 key left shift\n9 char 57\n10 key enter\n' >"$d/script"
+  rz run "$1" --headless --passes 12 --clock 100 --show 39 --text 11510 1234 --script "$d/script" 2>/dev/null |
+    grep ' ui \(focus\|text\|unfocus\|key\)' | cut -d' ' -f5- | tr '\n' ';'
+  echo
+  rm -rf "${d:?}"
+}
+check expansion-trial 'focus11510;text115107;text1151097;unfocus11510;key39enter;' "field_use maps/scn19.zoo"
+
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
 check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"

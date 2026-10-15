@@ -13,7 +13,7 @@ use rustyzoo::userdir;
 use rustyzoo::vfs::Vfs;
 
 use crate::CliError;
-use crate::layout::load_interface;
+use crate::layout::{Fill, load_interface};
 
 /// What the start-up made: the types, the interface and the menu, and the lines that tell how it
 /// went (the log opens with them).
@@ -56,7 +56,7 @@ pub fn boot(
     step(&mut screen);
     let catalogue = Catalogue::load_with(vfs, &mut || step(&mut screen))?;
     step(&mut screen);
-    let interface = load_interface(vfs, size, show)?.ok_or("no interface")?;
+    let interface = load_interface(vfs, size, show, &Fill::default())?.ok_or("no interface")?;
     let layouts = interface
         .tree
         .elements

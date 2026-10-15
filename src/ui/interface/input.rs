@@ -4,21 +4,13 @@
 //! A message whose hit is the map view belongs to the map view: [`Interface::mouse`] says so.
 
 use super::Interface;
+use super::widgets::{REPEAT, REPEAT_FIRST};
 use crate::app::Mouse;
 use crate::ui::layout::{
-    DISABLED, FOCUSED, HIDDEN, HIGHLIGHTED, Kind, NEVER_SHOWN, PRESSING, RELEASING, SELECTED,
-    STICKY, TEMPLATE, TOGGLE,
+    DISABLED, HIDDEN, HIGHLIGHTED, Kind, NEVER_SHOWN, NOT_HIT, PRESSING, READ_ONLY, RELEASING,
+    SELECTED, STICKY, TEMPLATE, TOGGLE,
 };
-
-/// The state flag of an element that hit testing never returns (the tooltip).
-const NOT_HIT: u32 = 32;
-/// The state flag of an element that takes the keyboard focus when clicked.
-const TAKES_FOCUS: u32 = 32768;
-/// The state flags of a list box that takes no mouse input.
-const READ_ONLY: u32 = 262_144;
-/// Milliseconds until a held repeating button fires again, and the first wait.
-const REPEAT: u64 = 30;
-const REPEAT_FIRST: u64 = 500;
+use crate::ui::widgets::Part;
 
 /// The layout being dragged and where the pointer was when it last moved it.
 struct Drag {
@@ -28,15 +20,19 @@ struct Drag {
 
 #[derive(Default)]
 pub(super) struct Input {
-    pointer: (i32, i32),
+    pub(super) pointer: (i32, i32),
     hover: Option<usize>,
     /// The element that gets every mouse message while the left button is held.
     capture: Option<usize>,
     drag: Option<Drag>,
     /// Milliseconds of interface updates so far.
-    clock: u64,
+    pub(super) clock: u64,
     /// A repeating button held, and when it fires next.
     repeat: Option<(usize, u64)>,
+    /// A scroll bar part held, and when it steps next.
+    pub(super) bar_repeat: Option<(usize, Part, u64)>,
+    /// Where in its thumb a press on a scroll bar's thumb was.
+    pub(super) grab: i32,
 }
 
 impl Interface {
@@ -46,32 +42,14 @@ impl Interface {
             Mouse::Move(x, y) => self.moved((x, y)),
             Mouse::Down => self.down(),
             Mouse::Up => self.up(),
-            Mouse::Wheel(_) => {
+            Mouse::Wheel(notches) => {
                 let at = self.input.pointer;
                 let target = self.input.capture.or_else(|| self.hit(at));
+                if let Some(t) = target {
+                    self.wheel(t, notches);
+                }
                 target.is_some() && target == self.map_view
             }
-        }
-    }
-
-    fn id(&self, i: usize) -> i32 {
-        self.tree.elements[i].id
-    }
-
-    fn event(&mut self, line: String) {
-        self.events.push(line);
-        self.dirty = true;
-    }
-
-    fn flag(&mut self, i: usize, flag: u32, on: bool) {
-        let state = &mut self.tree.elements[i].state;
-        let was = *state;
-        match on {
-            true => *state |= flag,
-            false => *state &= !flag,
-        }
-        if *state != was {
-            self.dirty = true;
         }
     }
 
@@ -113,7 +91,12 @@ impl Interface {
         {
             return false;
         }
-        if !e.transparent || e.look.color_as_icon {
+        // A bar with nothing to scroll is not there.
+        if matches!(&e.kind, Kind::ScrollBar(s) if !s.bar.scrollable()) {
+            return false;
+        }
+        // A field is hit over its whole rectangle.
+        if !e.transparent || e.look.color_as_icon || matches!(e.kind, Kind::EditableText(_)) {
             return true;
         }
         let text_button = matches!(e.kind, Kind::Button(_)) && !e.look.text_id.is_empty();
@@ -134,14 +117,19 @@ impl Interface {
             return false;
         }
         if let Some(held) = self.input.capture {
-            if self.is_button(held) {
-                self.button_moved(held, at);
+            match self.tree.elements[held].kind {
+                Kind::Button(_) => self.button_moved(held, at),
+                Kind::ScrollBar(_) => self.bar_dragged(held, at),
+                Kind::ListBox(_) => self.list_dragged(held, at),
+                Kind::EditableText(_) => self.field_dragged(held, at),
+                _ => {}
             }
             return Some(held) == self.map_view;
         }
         let target = self.hit(at);
         let shown = target.filter(|t| Some(*t) != self.map_view);
         self.hover_to(shown);
+        self.widget_hover(shown, at);
         target.is_some() && target == self.map_view
     }
 
@@ -151,6 +139,7 @@ impl Interface {
         }
         if let Some(old) = self.input.hover {
             self.flag(old, HIGHLIGHTED, false);
+            self.widget_unhover(old);
         }
         if let Some(new) = target {
             self.flag(new, HIGHLIGHTED, true);
@@ -169,15 +158,10 @@ impl Interface {
         let Some(t) = self.hit(at) else {
             return false;
         };
+        // One that reaches a control gives the focus to a field or a list that takes it and
+        // takes it from any other.
+        let gained = self.set_focus(Some(t).filter(|&t| self.takes_focus(t)));
         let state = self.tree.elements[t].state;
-        // One that reaches a control gives the focus to a field that takes it and takes it from
-        // any other.
-        for i in 0..self.tree.elements.len() {
-            self.flag(i, FOCUSED, false);
-        }
-        if state & TAKES_FOCUS != 0 {
-            self.flag(t, FOCUSED, true);
-        }
         if matches!(self.tree.elements[t].kind, Kind::Layout) {
             // A click on the picture that stands for a layout drags the layout.
             self.tree.bring_to_front(t);
@@ -194,6 +178,14 @@ impl Interface {
             }
         } else {
             self.input.capture = Some(t);
+            if state & (DISABLED | READ_ONLY) == 0 {
+                match self.tree.elements[t].kind {
+                    Kind::ScrollBar(_) => self.bar_down(t, at),
+                    Kind::ListBox(_) => self.list_down(t, at),
+                    Kind::EditableText(_) => self.field_down(t, at, gained),
+                    _ => {}
+                }
+            }
         }
         Some(t) == self.map_view
     }
@@ -202,18 +194,21 @@ impl Interface {
         let at = self.input.pointer;
         let held = self.input.capture.take();
         self.input.drag = None;
-        if let Some(b) = held.filter(|&b| self.is_button(b)) {
-            self.release(b, at);
-        }
         if let Some(h) = held {
             let id = self.id(h);
-            if matches!(self.tree.elements[h].kind, Kind::Layout) {
-                self.event(format!("release {id}"));
+            let usable = self.tree.elements[h].state & (DISABLED | READ_ONLY) == 0;
+            match self.tree.elements[h].kind {
+                Kind::Button(_) => self.release(h, at),
+                Kind::Layout => self.event(format!("release {id}")),
+                Kind::ScrollBar(_) if usable => self.bar_up(h),
+                Kind::ListBox(_) if usable => self.list_up(h),
+                _ => {}
             }
         }
         // With no capture, the element under the pointer is the hover element.
         let target = self.hit(at).filter(|t| Some(*t) != self.map_view);
         self.hover_to(target);
+        self.widget_hover(target, at);
         held.is_some() && held == self.map_view
     }
 
@@ -351,6 +346,11 @@ impl Interface {
     /// A repeating button held fires every 30 ms after 500 ms while the pointer is on it.
     pub(super) fn repeat(&mut self, period: u32) {
         self.input.clock += u64::from(period);
+        self.button_repeat();
+        self.bar_repeat();
+    }
+
+    fn button_repeat(&mut self) {
         let Some((b, due)) = self.input.repeat else {
             return;
         };
@@ -475,7 +475,7 @@ impl Interface {
     }
 }
 
-fn inside((x, y, w, h): (i32, i32, i32, i32), (px, py): (i32, i32)) -> bool {
+pub(super) fn inside((x, y, w, h): (i32, i32, i32, i32), (px, py): (i32, i32)) -> bool {
     let (px, py) = (i64::from(px), i64::from(py));
     (i64::from(x)..i64::from(x) + i64::from(w)).contains(&px)
         && (i64::from(y)..i64::from(y) + i64::from(h)).contains(&py)

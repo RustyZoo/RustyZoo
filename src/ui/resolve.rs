@@ -12,7 +12,8 @@
 //! The screen position of an element ([`Tree::screen`]) is computed when it is asked for, through
 //! its anchors and layouts, so a moved layout carries its children along.
 
-use super::layout::{Dim, Kind, Picture, Pos, Tree};
+use super::layout::{Dim, Kind, Picture, Pos, Side, Tree};
+use super::widgets::Lengths;
 
 /// The numbers an element's words resolve to. Positions are relative to the reference (the
 /// anchor, else the layout, else the window); a negative one counts from its far edge.
@@ -100,7 +101,54 @@ impl Tree {
                 strict = false;
             }
         }
+        self.place_scroll_bars();
         self.sort_layers();
+    }
+
+    /// Puts every scroll bar named by a text or a list next to its owner (ui layout 4.7): as long
+    /// as the owner is high (`left`, `right`) or wide (`top`, `bottom`), against the side the
+    /// owner names and centred on it. A coordinate that comes out negative becomes 0. The bar's
+    /// own position is overwritten.
+    fn place_scroll_bars(&mut self) {
+        for owner in 0..self.elements.len() {
+            let (id, side) = match &self.elements[owner].kind {
+                Kind::Text(t) => (t.scroll_bar, t.scroll_bar_pos),
+                Kind::ListBox(l) => (l.scroll_bar, l.scroll_bar_pos),
+                _ => continue,
+            };
+            let bar = self
+                .find(id)
+                .filter(|&b| matches!(self.elements[b].kind, Kind::ScrollBar(_)));
+            let (Some(bar), Some(o), Some(b)) = (
+                bar,
+                self.elements[owner].placed,
+                bar.and_then(|b| self.elements[b].placed),
+            ) else {
+                continue;
+            };
+            let (ox, oy) = (
+                i64::from(self.screen(owner).0),
+                i64::from(self.screen(owner).1),
+            );
+            let (ow, oh) = (i64::from(o.dx), i64::from(o.dy));
+            let (mut w, mut h) = (i64::from(b.dx), i64::from(b.dy));
+            match side {
+                Side::Left | Side::Right => h = oh,
+                Side::Top | Side::Bottom => w = ow,
+            }
+            let (x, y) = match side {
+                Side::Right => (ox + ow, oy + (oh - h) / 2),
+                Side::Left => (ox - w, oy + (oh - h) / 2),
+                Side::Top => (ox + (ow - w) / 2, oy - h),
+                Side::Bottom => (ox + (ow - w) / 2, oy + oh),
+            };
+            self.elements[bar].placed = Some(Placed {
+                dx: clamp(w),
+                dy: clamp(h),
+                ..b
+            });
+            self.set_screen_position(bar, (clamp(x.max(0)), clamp(y.max(0))));
+        }
     }
 
     /// Resolves element `i` if its layout and anchors are, and tells whether it did. Without
@@ -212,6 +260,31 @@ impl Tree {
         };
         self.elements[i].placed = Some(placed);
         true
+    }
+
+    /// The lengths along a scroll bar (its own, its arrows' and its thumb's, from their
+    /// pictures) and whether it is vertical: a bar wider than high is horizontal. Zero lengths
+    /// for anything else.
+    pub fn bar_lengths(&self, i: usize) -> (Lengths, bool) {
+        let e = &self.elements[i];
+        let Kind::ScrollBar(s) = &e.kind else {
+            return (Lengths::default(), true);
+        };
+        let (w, h) = e.placed.map_or((0, 0), |p| (p.dx, p.dy));
+        let vertical = w <= h;
+        let along = |picture: Option<Picture>| {
+            picture.map_or(0, |p| {
+                let (pw, ph) = self.pictures.size(p);
+                if vertical { ph } else { pw }
+            })
+        };
+        let lengths = Lengths {
+            bar: if vertical { h } else { w },
+            up: along(s.up_arrow),
+            down: along(s.down_arrow),
+            thumb: along(s.thumb),
+        };
+        (lengths, vertical)
     }
 
     /// The box of the animation an element shows (its first `animation` value), else 0.

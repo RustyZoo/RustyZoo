@@ -18,15 +18,19 @@
 //!
 //! Colours are reduced to the 16-bit frame of the original: fills and pictures by the rule of
 //! [`fill_color`], text by the rule of [`text_color`]. The map view calls a hook with its
-//! rectangle, which draws the map there. Scroll bars, status bars and
-//! the other widgets that later milestones fill draw nothing yet.
+//! rectangle, which draws the map there. A text scrolled by its bar starts at its line `top`; a
+//! list draws its rows from `top`, the selected one with its colours and the hovered one framed;
+//! a text field draws its selection in inverse colours and, focused, its caret; a scroll bar
+//! draws its track (tiled along it), arrows and thumb, each in the look of its state (normal, hovered, held).
+//! Status bars and the other widgets that later milestones fill draw nothing yet.
 
 use std::collections::HashMap;
 
 use super::layout::{
-    DIRTY, DISABLED, Element, HIDDEN, HIGHLIGHTED, Kind, NEVER_SHOWN, PRESSING, Picture, Pictures,
-    RELEASING, SELECTED, STICKY, TEMPLATE, TOGGLE, Tree,
+    DIRTY, DISABLED, Edit, Element, FOCUSED, HIDDEN, HIGHLIGHTED, Kind, ListBox, NEVER_SHOWN,
+    PRESSING, Picture, Pictures, RELEASING, SELECTED, STICKY, ScrollBar, TEMPLATE, TOGGLE, Tree,
 };
+use super::widgets::{Lengths, Part, caret_for};
 use crate::Framebuffer;
 use crate::anim::View;
 use crate::strings::StringTables;
@@ -168,7 +172,7 @@ impl Painter {
         match &e.kind {
             Kind::Image if e.dynamic_width || e.dynamic_height => {
                 let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
-                    painter.tile(pictures, e, canvas);
+                    painter.tile(pictures, e, e.dynamic_width, canvas);
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
@@ -189,7 +193,15 @@ impl Painter {
                 let border = t.show_border && w >= 3 && h >= 3;
                 let text = element_text(e, strings);
                 let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
-                    painter.text_widget(pictures, e, strings, &text, border, canvas);
+                    painter.background(pictures, e, border, canvas);
+                    let rect = Rect::inset(w, h, e.x_border, e.y_border);
+                    let up = (t.top as i64 * i64::from(painter.line_height(e, strings)))
+                        .min(i64::from(i32::MAX)) as i32;
+                    let rect = Rect {
+                        top: rect.top.saturating_sub(up),
+                        ..rect
+                    };
+                    painter.text(e, strings, &text, canvas, rect, e.look.fore_color, false);
                 });
                 copy_canvas(
                     frame,
@@ -199,16 +211,26 @@ impl Painter {
                     if border { (1, 1) } else { (0, 0) },
                 );
             }
-            Kind::EditableText(_) => {
+            Kind::EditableText(edit) => {
                 let text = element_text(e, strings);
+                let focused = e.state & FOCUSED != 0;
                 let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
-                    painter.text_widget(pictures, e, strings, &text, false, canvas);
+                    painter.background(pictures, e, false, canvas);
+                    painter.field(e, edit, focused, strings, &text, canvas);
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
-            Kind::ListBox(_) => {
-                let canvas = self.canvas(i, (w, h), dirty, |_, canvas| {
-                    canvas.fill(fill_color(e.look.back_color));
+            Kind::ListBox(list) => {
+                let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
+                    painter.list(e, list, strings, canvas);
+                });
+                copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
+            }
+            // A bar with nothing to scroll is not shown.
+            Kind::ScrollBar(bar) if bar.bar.scrollable() => {
+                let lengths = tree.bar_lengths(i);
+                let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
+                    painter.scroll_bar(pictures, e, bar, lengths, canvas);
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
@@ -273,7 +295,7 @@ impl Painter {
         let (w, h) = e.placed.map_or((0, 0), |p| (p.dx, p.dy));
         let canvas = matches!(
             e.kind,
-            Kind::Text(_) | Kind::EditableText(_) | Kind::ListBox(_)
+            Kind::Text(_) | Kind::EditableText(_) | Kind::ListBox(_) | Kind::ScrollBar(_)
         ) || (matches!(e.kind, Kind::Image) && (e.dynamic_width || e.dynamic_height));
         if canvas {
             let (made, pixels) = self.canvases.get(&i)?;
@@ -320,8 +342,8 @@ impl Painter {
     }
 
     /// A tiled picture: the canvas filled with `backcolor` and the picture repeated along the
-    /// width (or, without `dynamicwidth`, the height), the last copy cut at the edge.
-    fn tile(&mut self, pictures: &Pictures, e: &Element, canvas: &mut Framebuffer) {
+    /// width (`by_width`) or the height, the last copy cut at the edge.
+    fn tile(&mut self, pictures: &Pictures, e: &Element, by_width: bool, canvas: &mut Framebuffer) {
         canvas.fill(fill_color(e.look.back_color));
         let Some((picture, set)) = current(e, 0) else {
             return;
@@ -331,7 +353,6 @@ impl Painter {
             return;
         };
         let (cw, ch) = (cut.pixels.width as i32, cut.pixels.height as i32);
-        let by_width = e.dynamic_width;
         let step = if by_width { cw } else { ch };
         if step <= 0 {
             return;
@@ -354,13 +375,12 @@ impl Painter {
         }
     }
 
-    /// The canvas of a `UIText`: background, frame, picture, text.
-    fn text_widget(
+    /// The canvas of a text, a list or a bar before its content: the background, the frame, the
+    /// picture under it.
+    fn background(
         &mut self,
         pictures: &Pictures,
         e: &Element,
-        strings: &dyn Strings,
-        text: &[u8],
         border: bool,
         canvas: &mut Framebuffer,
     ) {
@@ -385,8 +405,163 @@ impl Painter {
             };
             blit(canvas, &cut.pixels, (x, y), None);
         }
+    }
+
+    /// The text of a field on one line, without shadow: the bytes before the selection and after
+    /// it in the text colour, the selected ones in the background colour on a rectangle of the
+    /// text colour; a focused field with nothing selected shows its caret as a line one pixel
+    /// wide. The start of the line is that of the whole text, as `justify` says.
+    fn field(
+        &mut self,
+        e: &Element,
+        edit: &Edit,
+        focused: bool,
+        strings: &dyn Strings,
+        text: &[u8],
+        canvas: &mut Framebuffer,
+    ) {
+        let (w, h) = (canvas.width as i32, canvas.height as i32);
         let rect = Rect::inset(w, h, e.x_border, e.y_border);
-        self.text(e, strings, text, canvas, rect, e.look.fore_color, false);
+        let font = self.font(e, strings);
+        let line = font.line_height();
+        let start = justify(e).start(&rect, font.width(text));
+        let (from, to) = match focused {
+            true => edit.caret.range(text.len()),
+            false => (0, 0),
+        };
+        let x_of = |font: &text::Font, n: usize| start.saturating_add(font.width(&text[..n]));
+        let (x0, x1) = (x_of(font, from), x_of(font, to));
+        if to > from {
+            fill_rect(
+                canvas,
+                (x0, rect.top, x1, rect.top.saturating_add(line)),
+                fill_color(e.look.fore_color),
+            );
+        }
+        let runs = [
+            (0, from, e.look.fore_color),
+            (from, to, e.look.back_color),
+            (to, text.len(), e.look.fore_color),
+        ];
+        for (a, b, color) in runs {
+            let left = x_of(font, a);
+            let run = Rect {
+                left,
+                right: left.saturating_add(MAX_SIDE * 16),
+                ..rect
+            };
+            let style = Style {
+                color,
+                justify: text::Justify::Left,
+                shadow: false,
+            };
+            text::draw(canvas, font, run, &text[a..b], &style);
+        }
+        if focused && from == to {
+            let at = x_of(font, edit.caret.at.min(text.len()));
+            fill_rect(
+                canvas,
+                (at, rect.top, at + 1, rect.top.saturating_add(line)),
+                fill_color(e.look.fore_color),
+            );
+        }
+    }
+
+    /// The rows of a list from its first shown one: the selected row in its colour on its fill and
+    /// frame, the hovered one framed, disabled ones grayed.
+    fn list(&mut self, e: &Element, l: &ListBox, strings: &dyn Strings, canvas: &mut Framebuffer) {
+        let (w, h) = (canvas.width as i32, canvas.height as i32);
+        canvas.fill(fill_color(e.look.back_color));
+        let row_height = self
+            .line_height(e, strings)
+            .saturating_add(l.spacing)
+            .max(1);
+        // Whole rows only, inside the borders.
+        let mut y = e.y_border;
+        let end = h.saturating_sub(e.y_border);
+        for (n, row) in l.rows.rows.iter().enumerate().skip(l.rows.top) {
+            if y.saturating_add(row_height) > end {
+                break;
+            }
+            let rect = (0, y, w, y.saturating_add(row_height));
+            let selected = l.highlight_selection && l.rows.selected == Some(n);
+            if selected && let Some(fill) = l.select_back_color {
+                fill_rect(canvas, rect, fill_color(fill));
+            }
+            if l.rows.hover == Some(n)
+                && let Some(color) = l.highlight_border_color
+            {
+                frame_rect(canvas, rect, fill_color(color));
+            }
+            if selected && let Some(color) = l.select_border_color {
+                frame_rect(canvas, rect, fill_color(color));
+            }
+            let color = match (row.disabled, selected) {
+                (true, _) => l.grayed_color,
+                (false, true) => l.select_color,
+                _ => e.look.fore_color,
+            };
+            let text_rect = Rect {
+                left: e.x_border,
+                top: y,
+                right: w.saturating_sub(e.x_border),
+                bottom: rect.3,
+            };
+            self.text(e, strings, &row.text, canvas, text_rect, color, false);
+            y = rect.3;
+        }
+    }
+
+    /// A scroll bar: its track, then the two arrows and the thumb, each in the set of its look
+    /// (0 normal, 1 under the pointer, 2 held), the animation's box centred on its part.
+    fn scroll_bar(
+        &mut self,
+        pictures: &Pictures,
+        e: &Element,
+        s: &ScrollBar,
+        lengths: (Lengths, bool),
+        canvas: &mut Framebuffer,
+    ) {
+        let (l, vertical) = lengths;
+        // The track is tiled along the bar.
+        self.tile(pictures, e, !vertical, canvas);
+        let (cw, ch) = (canvas.width as i32, canvas.height as i32);
+        let parts = [
+            (Part::Up, s.up_arrow, 0, l.up),
+            (
+                Part::Down,
+                s.down_arrow,
+                l.bar.saturating_sub(l.down),
+                l.down,
+            ),
+            (
+                Part::Thumb,
+                s.thumb,
+                s.bar.dragged.unwrap_or_else(|| s.bar.thumb_start(&l)),
+                l.thumb,
+            ),
+        ];
+        for (part, picture, start, length) in parts {
+            let set = if s.bar.held == Some(part) {
+                2
+            } else {
+                usize::from(s.bar.hover == Some(part))
+            };
+            let Some(cut) = picture.and_then(|p| self.cut(pictures, p, set, 0)) else {
+                continue;
+            };
+            let (pw, ph) = (cut.pixels.width as i32, cut.pixels.height as i32);
+            // The part's centre, for an animation; its top left corner, for an image.
+            let (centre, corner) = match vertical {
+                true => ((cw / 2, start + length / 2), ((cw - pw) / 2, start)),
+                false => ((start + length / 2, ch / 2), (start, (ch - ph) / 2)),
+            };
+            let at = match cut.animation {
+                true => (centre.0 + cut.origin.0, centre.1 + cut.origin.1),
+                false => corner,
+            };
+            blit(canvas, &cut.pixels, at, None);
+        }
     }
 
     /// A button's text drawn over the frame: the colour follows the state; the rectangle loses the
@@ -415,6 +590,52 @@ impl Painter {
         self.text(e, strings, text, frame, rect, color, true);
     }
 
+    /// The font an element names with its `font` and `fontsize` strings: Arial 8 without them.
+    fn font(&mut self, e: &Element, strings: &dyn Strings) -> &mut text::Font {
+        let (face, size) = match e.look.font {
+            Some((face, size)) => (strings.string(face), strings.string(size)),
+            None => ("Arial".to_string(), "8".to_string()),
+        };
+        self.fonts.get(&face, &size)
+    }
+
+    /// The width of a text on one line in the element's font.
+    pub fn text_width(&mut self, e: &Element, strings: &dyn Strings, text: &[u8]) -> i32 {
+        self.font(e, strings).width(text)
+    }
+
+    /// The height of a line of the element's font.
+    pub fn line_height(&mut self, e: &Element, strings: &dyn Strings) -> i32 {
+        self.font(e, strings).line_height()
+    }
+
+    /// How many lines a text takes in a `UIText` of the element's size, and how many of them fit
+    /// in its height (at least one).
+    pub fn text_lines(
+        &mut self,
+        e: &Element,
+        strings: &dyn Strings,
+        text: &[u8],
+    ) -> (usize, usize) {
+        let Some(placed) = e.placed else {
+            return (0, 1);
+        };
+        let font = self.font(e, strings);
+        let inner = Rect::inset(placed.dx, placed.dy, e.x_border, e.y_border);
+        let total = text::layout(font, text, inner.width()).len();
+        let room = inner.bottom.saturating_sub(inner.top) / font.line_height().max(1);
+        (total, room.max(1) as usize)
+    }
+
+    /// The caret position for a click at distance `x` from the left of a text field.
+    pub fn caret_at(&mut self, e: &Element, strings: &dyn Strings, text: &[u8], x: i32) -> usize {
+        let Some(placed) = e.placed else { return 0 };
+        let rect = Rect::inset(placed.dx, placed.dy, e.x_border, e.y_border);
+        let font = self.font(e, strings);
+        let start = justify(e).start(&rect, font.width(text));
+        caret_for(text, |b| font.advance(b), x.saturating_sub(start))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn text(
         &mut self,
@@ -426,11 +647,7 @@ impl Painter {
         color: [u8; 3],
         centre_line: bool,
     ) {
-        let (face, size) = match e.look.font {
-            Some((face, size)) => (strings.string(face), strings.string(size)),
-            None => ("Arial".to_string(), "8".to_string()),
-        };
-        let font = self.fonts.get(&face, &size);
+        let font = self.font(e, strings);
         let rect = if centre_line {
             rect.centred_line(font)
         } else {
@@ -438,19 +655,27 @@ impl Painter {
         };
         let style = Style {
             color,
-            justify: match e.look.justify {
-                super::layout::Justify::Left => text::Justify::Left,
-                super::layout::Justify::Center => text::Justify::Center,
-                super::layout::Justify::Right => text::Justify::Right,
-            },
+            justify: justify(e),
             shadow: e.look.shadow_text,
         };
         text::draw(canvas, font, rect, text, &style);
     }
 }
 
-/// The text of an element: its `TEXT` entry, else its first string, as Windows-1252 bytes.
-fn element_text(e: &Element, strings: &dyn Strings) -> Vec<u8> {
+fn justify(e: &Element) -> text::Justify {
+    match e.look.justify {
+        super::layout::Justify::Left => text::Justify::Left,
+        super::layout::Justify::Center => text::Justify::Center,
+        super::layout::Justify::Right => text::Justify::Right,
+    }
+}
+
+/// The text of an element: the one the program gave it, else its `TEXT` entry, else its first
+/// string, as Windows-1252 bytes.
+pub fn element_text(e: &Element, strings: &dyn Strings) -> Vec<u8> {
+    if let Some(text) = &e.text {
+        return text.clone();
+    }
     if !e.look.text_name.is_empty() {
         return strings.text_entry(&e.look.text_name);
     }
@@ -603,6 +828,14 @@ fn blit(dst: &mut Framebuffer, src: &Framebuffer, at: (i32, i32), key: Option<[u
             dst.pixels[to..to + 4].copy_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
         }
     }
+}
+
+/// Draws a one-pixel frame just inside the rectangle (left, top, right, bottom), clipped.
+fn frame_rect(dst: &mut Framebuffer, (l, t, r, b): (i32, i32, i32, i32), color: [u8; 4]) {
+    fill_rect(dst, (l, t, r, t + 1), color);
+    fill_rect(dst, (l, b - 1, r, b), color);
+    fill_rect(dst, (l, t, l + 1, b), color);
+    fill_rect(dst, (r - 1, t, r, b), color);
 }
 
 /// Fills the rectangle (left, top, right, bottom), clipped.

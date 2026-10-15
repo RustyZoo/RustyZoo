@@ -446,12 +446,17 @@ fn the_keys_of_the_map_view_wait_while_a_field_has_the_focus_or_the_map_is_not_s
         app.interface().unwrap().tree.elements[field].state |= crate::ui::layout::FOCUSED;
         app.pass(
             40,
-            &[Command::Scroll(1, 0), Command::Pause, Command::Zoom(true)],
+            &[Command::Scroll(1, 0), Command::Space, Command::Zoom(true)],
         );
         assert_eq!(app.camera().unwrap().scroll, moved);
+        assert!(!app.paused(), "the space bar waits for the focus");
+        // The Pause key is an application key: it pauses whatever has the focus.
+        app.pass(50, &[Command::Pause]);
+        assert!(app.paused());
+        app.pass(55, &[Command::Pause]);
         assert!(!app.paused());
         app.interface().unwrap().tree.elements[field].state &= !crate::ui::layout::FOCUSED;
-        app.pass(60, &[Command::Pause]);
+        app.pass(60, &[Command::Space]);
         assert!(app.paused());
     });
 }

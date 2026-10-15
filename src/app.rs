@@ -24,7 +24,7 @@ use crate::menu::Menu;
 use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
 use crate::timing::{Calendar, Pass, Timers};
-use crate::ui::interface::Interface;
+use crate::ui::interface::{Action, Interface};
 use crate::zoo::Zoo;
 
 /// A key the interface reads, by the name a script gives it.
@@ -66,7 +66,7 @@ const KEY_NAMES: [(&str, Key); 15] = [
 ];
 
 impl Key {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         KEY_NAMES.iter().find(|k| k.1 == self).map_or("", |k| k.0)
     }
 }
@@ -85,7 +85,7 @@ pub enum Mouse {
 
 /// What the player does (input 4). The text form is the script format of a headless run:
 /// `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`, `zoom in`,
-/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `quit` for the map view, `skip` (any key
+/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
 /// interface `mouse X Y`, `down`, `up`, `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
 /// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n) and
@@ -105,8 +105,11 @@ pub enum Command {
     Zoom(bool),
     /// The window is full screen (true) or windowed (false) now.
     Fullscreen(bool),
-    /// Toggle the pause.
+    /// The Pause key: toggles the pause while the map view is shown, whatever has the focus.
     Pause,
+    /// The space bar: presses the pause button, so it toggles the pause only while the map view
+    /// is shown and no element has the keyboard focus (a field types the space).
+    Space,
     /// Close the game.
     Quit,
     Mouse(Mouse),
@@ -128,6 +131,7 @@ impl fmt::Display for Command {
             Command::Zoom(zoom_in) => write!(f, "zoom {}", if zoom_in { "in" } else { "out" }),
             Command::Fullscreen(on) => write!(f, "fullscreen {}", if on { "on" } else { "off" }),
             Command::Pause => f.write_str("pause"),
+            Command::Space => f.write_str("space"),
             Command::Quit => f.write_str("quit"),
             Command::Mouse(Mouse::Move(x, y)) => write!(f, "mouse {x} {y}"),
             Command::Mouse(Mouse::Down) => f.write_str("down"),
@@ -172,6 +176,7 @@ impl FromStr for Command {
             ["fullscreen", "on"] => Command::Fullscreen(true),
             ["fullscreen", "off"] => Command::Fullscreen(false),
             ["pause"] => Command::Pause,
+            ["space"] => Command::Space,
             ["quit"] => Command::Quit,
             ["skip"] => Command::Skip,
             ["mouse", x, y] => Command::Mouse(Mouse::Move(number(x)?, number(y)?)),
@@ -247,6 +252,7 @@ pub struct App<'a> {
     /// sounds it asked for.
     ui_events: Vec<String>,
     ui_sounds: Vec<&'static str>,
+    ui_actions: Vec<Action>,
     /// The camera when the last draw fired, before the interface moved it; `None` without a game.
     drawn_at: Option<Look>,
     /// The main menu, while the player is in it.
@@ -323,6 +329,7 @@ impl<'a> App<'a> {
             drew: false,
             ui_events: Vec::new(),
             ui_sounds: Vec::new(),
+            ui_actions: Vec::new(),
             drawn_at: None,
             menu: None,
             menu_events: Vec::new(),
@@ -359,7 +366,7 @@ impl<'a> App<'a> {
     pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         self.menu_lines.clear();
-        (self.ui_events, self.ui_sounds) = (Vec::new(), Vec::new());
+        (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.music_changed = false;
         for &command in commands {
             if self.quit {
@@ -374,6 +381,7 @@ impl<'a> App<'a> {
         if let Some(ui) = &mut self.ui {
             self.ui_events.extend(ui.take_events());
             self.ui_sounds.extend(ui.take_sounds());
+            self.ui_actions.extend(ui.take_actions());
         }
         self.menu_acts();
         if self.quit {
@@ -403,6 +411,7 @@ impl<'a> App<'a> {
                 }
                 self.ui_events.extend(ui.take_events());
                 self.ui_sounds.extend(ui.take_sounds());
+                self.ui_actions.extend(ui.take_actions());
             }
             if let Some(music) = &mut self.music {
                 self.music_changed = music.update(period);
@@ -439,6 +448,7 @@ impl<'a> App<'a> {
 
     fn apply(&mut self, command: Command) {
         let keys = self.map_keys();
+        let shown = self.ui.as_ref().is_none_or(Interface::map_view_shown);
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
             (Command::Quit, _) => self.quit = true,
@@ -463,10 +473,20 @@ impl<'a> App<'a> {
                 game.camera.zoom(&game.zoo, None, zoom_in);
             }
             (Command::Fullscreen(on), Some(game)) => game.camera.set_fullscreen(&game.zoo, on),
-            (Command::Pause, Some(game)) if keys => game.paused = !game.paused,
-            // The map view's keys while it does not have them or there is no game, and the keys
-            // and characters, which the widgets that take them (text fields, dialogs) read in
-            // later issues.
+            (Command::Pause, Some(game)) if shown => game.paused = !game.paused,
+            (Command::Space, Some(game)) if keys => game.paused = !game.paused,
+            // The keys and characters go to the focused field or list.
+            (Command::Key(key, _, shift), _) => {
+                if let Some(ui) = &mut self.ui {
+                    ui.key(key, shift);
+                }
+            }
+            (Command::Char(byte), _) => {
+                if let Some(ui) = &mut self.ui {
+                    ui.char(byte);
+                }
+            }
+            // The map view's keys while it does not have them or there is no game.
             _ => {}
         }
     }
@@ -547,6 +567,11 @@ impl<'a> App<'a> {
     /// (`uiclick`, `sounds/uiclick.wav`): the shell plays them.
     pub fn sounds(&self) -> &[&'static str] {
         &self.ui_sounds
+    }
+
+    /// The actions the interface ran in the last pass, for the game's code.
+    pub fn ui_actions(&self) -> &[Action] {
+        &self.ui_actions
     }
 
     /// The timers that fired in the last pass.
