@@ -137,15 +137,15 @@ impl Summary {
 /// The transient items of the map view, given to the staging (placing 4.5).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Extra {
-    /// The pending object.
-    pub ghost: Option<Ghost>,
+    /// The pending objects: one, or a piece for each tile of a drag.
+    pub ghosts: Vec<Ghost>,
     /// Entities of the zoo (positions in `zoo.entities`) drawn tinted, with their tint.
     pub tinted: Vec<(usize, [u8; 3])>,
     /// The highlights of the terrain tool.
     pub marks: Vec<Mark>,
 }
 
-/// An object that is not on the map: the pending object. It is painted like the temporary
+/// An object that is not on the map: a pending object. It is painted like the temporary
 /// entities of the tile under it (map drawing 9.5), tinted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ghost {
@@ -854,9 +854,10 @@ impl<'a> MapRenderer<'a> {
                     .map(|(_, tint)| *tint),
             });
         }
-        if let Some(ghost) = &extra.ghost
-            && let Some(ty) = self.catalogue.types.get(ghost.ty)
-        {
+        for ghost in &extra.ghosts {
+            let Some(ty) = self.catalogue.types.get(ghost.ty) else {
+                continue;
+            };
             objects.push(Object {
                 kind: Kind::Overlay,
                 x: ghost.x,
@@ -1394,39 +1395,43 @@ fn origin(tile: &Tile, tx: i32, ty: i32, r: u8) -> (i32, i32) {
     (px + dx, py + dy)
 }
 
+/// The key of the picture of a path piece (placing 6.5): the tile's shape byte turned to the view
+/// when the tile is sloped, else 100 plus a bit for each of the four sides, in view order, whose
+/// neighbour holds a path.
+fn path_key(shape: u8, rotation: u8, near: [bool; 4]) -> i32 {
+    match i32::from(shape.rotate_right(2 * u32::from(rotation))) {
+        0 => 100 + near.iter().fold(0, |key, &n| 2 * key + i32::from(n)),
+        100 => 255,
+        s => s,
+    }
+}
+
 /// The index of the picture of a path piece (entity types 9.3, sprite drawing 3.6).
 fn path_view(scene: &Scene, o: usize, ty: &EntityType) -> usize {
     let obj = &scene.objects[o];
     let Some(t) = scene.tile_at(obj.x, obj.y) else {
         return 0;
     };
-    let shape = i32::from(
-        scene.tiles[t]
-            .shape
-            .rotate_right(2 * u32::from(scene.rotation)),
-    );
-    let code = match shape {
-        0 => {
-            let near = |e: usize| {
-                let d = map_direction(scene.rotation, e * 2);
-                i32::from(
-                    scene
-                        .neighbour(t, d)
-                        .and_then(|n| scene.path_of(n))
-                        .is_some(),
-                )
-            };
-            100 + 8 * near(0) + 4 * near(1) + 2 * near(2) + near(3)
-        }
-        100 => 255,
-        s => s,
-    };
+    let near = [0, 1, 2, 3].map(|e| {
+        let d = map_direction(scene.rotation, e * 2);
+        scene
+            .neighbour(t, d)
+            .and_then(|n| scene.path_of(n))
+            .is_some()
+    });
+    let code = path_key(scene.tiles[t].shape, scene.rotation, near);
     let codes: Vec<Option<i32>> = ty
         .config
         .as_deref()
         .and_then(|c| c.section("Shapes"))
         .map(|s| s.get_all("shape").iter().map(|v| to_int(v)).collect())
         .unwrap_or_default();
-    let find = |code: i32| codes.iter().position(|&c| c == Some(code));
-    find(code).or_else(|| find(100)).unwrap_or(0)
+    shape_index(&codes, code)
+}
+
+/// The position of the picture with this key among the `shape` keys of a path type; the isolated
+/// piece (100) for a key it lacks, the first picture for a type without it (placing 6.5).
+fn shape_index(codes: &[Option<i32>], key: i32) -> usize {
+    let find = |key: i32| codes.iter().position(|&c| c == Some(key));
+    find(key).or_else(|| find(100)).unwrap_or(0)
 }

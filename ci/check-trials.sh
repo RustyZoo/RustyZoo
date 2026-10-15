@@ -465,4 +465,20 @@ check base-trial "building/building/vendfood,16,45,1,valid;building/building/ven
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;51ce4c3bced74499" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
 check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;0c7135331e4f6b72" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
+# A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
+# end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
+# lines), the cash at the end (from 50000) and the hash of the last picture, which shows the pieces
+# joined. The mirrored drag (the first move along the other axis) lays the mirrored L.
+path_drag() { # path_drag <map> <first move>
+  d=$(mktemp -d)
+  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse $2\n11 mouse 824 384\n12 up\n13 mouse 824 384\n" >"$d/script"
+  rz run "$1" --headless --passes 16 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+    awk '/ world add /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
+  rm -rf "$d"
+}
+check base-trial "8,49800,a6bfc8a9d0e96291" "path_drag maps/default.zoo '632 384'"
+check base-trial "8,49800,b887bf6581517422" "path_drag maps/default.zoo '632 416'"
+check expansion-trial "8,49920,ba755d877d1ffa9f" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,fce3ddf58b2e6dc5" "path_drag maps/scn19.zoo '632 416'"
+
 exit $failed

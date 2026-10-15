@@ -1146,3 +1146,121 @@ fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
     );
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 2);
 }
+
+/// A catalogue of one type, a path that costs 10 and has no picture.
+fn path_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "paths",
+        type_name: b"dirt".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            Config::parse(b"[Characteristics/Integers]\ncPurchaseCost=10\n").unwrap(),
+        )),
+        name_id: 0,
+        footprint: [2, 2, 1],
+        height: 0,
+    });
+    cat
+}
+
+#[test]
+fn a_drag_lays_an_l_of_paths_bought_in_order_with_the_cash_that_covers_them() {
+    let install = cache_install_with("app-drag", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = path_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    app.set_interface(interface("drag"));
+    app.set_money(Money {
+        cash: 100.0,
+        ..Money::default()
+    });
+    app.pass(0, &[]);
+    app.game.as_mut().unwrap().build.hold(0);
+    let camera = app.camera().unwrap().clone();
+    let at = |tx: i32, ty: i32| {
+        let (x, y) = tile_point(&camera, tx, ty);
+        Command::Mouse(Mouse::Move(x, y))
+    };
+    let lines = |app: &App, pass, now| -> Vec<String> {
+        let skip = ["tool pending", "world stage", "money bar"];
+        let all = app.log_lines(pass, now);
+        let kept = all.iter().filter_map(|l| l.splitn(4, ' ').nth(3));
+        let wanted = |l: &&str| {
+            ["tool ", "world ", "money "]
+                .iter()
+                .any(|k| l.starts_with(k))
+        };
+        let kept = kept
+            .filter(wanted)
+            .filter(|l| !skip.iter().any(|k| l.starts_with(k)));
+        kept.map(str::to_string).collect()
+    };
+    let cost = |app: &App| app.game.as_ref().unwrap().cost();
+    // Press on (20, 19), move along x first, then to (23, 21): the L has six pieces and the cost
+    // text shows their sum. Nothing is bought before the release.
+    app.pass(20, &[at(20, 19), Command::Mouse(Mouse::Down), at(21, 19)]);
+    assert_eq!(cost(&app), Some(-20));
+    app.pass(40, &[at(23, 21)]);
+    assert_eq!(cost(&app), Some(-60));
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 0);
+    app.pass(60, &[Command::Mouse(Mouse::Up)]);
+    assert_eq!(
+        lines(&app, 3, 60),
+        [
+            "tool up 23,21",
+            "world add paths/dirt/ 20,19 id 1",
+            "world add paths/dirt/ 21,19 id 2",
+            "world add paths/dirt/ 22,19 id 3",
+            "world add paths/dirt/ 23,19 id 4",
+            "world add paths/dirt/ 23,20 id 5",
+            "world add paths/dirt/ 23,21 id 6",
+            "money cash 40"
+        ]
+    );
+    assert_eq!(app.sounds(), ["place"]);
+    // The drag is over: a pending piece follows the pointer again, on the last tile (orange).
+    assert_eq!(cost(&app), Some(0));
+    // The first move along y, then over to (21, 22), gives five pieces (the pointer is captured
+    // by the press, so it may leave the tiny window of this test); with 40 in hand
+    // only the first four are bought and the pieces the cash cut show no message.
+    app.pass(80, &[at(19, 20), Command::Mouse(Mouse::Down), at(19, 21)]);
+    app.pass(100, &[at(21, 22)]);
+    assert_eq!(cost(&app), Some(-40), "the cash covers four of the five");
+    app.pass(120, &[Command::Mouse(Mouse::Up)]);
+    assert_eq!(
+        lines(&app, 6, 120),
+        [
+            "tool up 21,22",
+            "world add paths/dirt/ 19,20 id 7",
+            "world add paths/dirt/ 19,21 id 8",
+            "world add paths/dirt/ 19,22 id 9",
+            "world add paths/dirt/ 20,22 id 10",
+            "money cash 0"
+        ]
+    );
+    let game = app.game.as_ref().unwrap();
+    assert_eq!(game.world.zoo.entities.len(), 10);
+    // A single press and release is one piece; with no cash at all nothing is bought.
+    app.pass(
+        140,
+        &[
+            at(19, 19),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ],
+    );
+    assert_eq!(app.sounds(), ["noplace"]);
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 10);
+    // One undo takes back the pieces of the last drag, and only those.
+    assert!(app.game.as_mut().unwrap().world.undo());
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 6);
+}

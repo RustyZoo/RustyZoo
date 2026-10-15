@@ -11,6 +11,7 @@ pub mod terrain;
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
+use crate::place::{Class, Leg, path_run};
 use crate::terrain::Mode;
 use crate::text::format::whole_units;
 use crate::text::to_cp1252;
@@ -246,6 +247,8 @@ pub struct Build {
     /// The mode of the terrain tab that is selected while the construction panel is open: that
     /// tab is the map view's tool.
     terrain: Option<Mode>,
+    /// A path drag in progress: the tile of the press and the mode of the first leg (placing 6.2).
+    drag: Option<((i32, i32), Option<Leg>)>,
 }
 
 impl Build {
@@ -262,7 +265,35 @@ impl Build {
             listed: None,
             tops: [[0; 4]; 2],
             terrain: None,
+            drag: None,
         }
+    }
+
+    /// The left button went down on `tile` of the map: with a path as the tool, the tile starts
+    /// a drag (placing 6.2 item 1).
+    pub fn press(&mut self, cat: &Catalogue, tile: Option<(u32, u32)>) {
+        let path = self.held.and_then(|ty| cat.types.get(ty)).map(Class::of) == Some(Class::Path);
+        let tile = tile.and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)));
+        self.drag = tile.filter(|_| path).map(|t| (t, None));
+    }
+
+    /// Whether a path drag is in progress.
+    pub fn dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// The tiles of the drag if the mouse is on tile `cell` now, the start first; none without a
+    /// drag.
+    pub fn run(&mut self, cell: (i32, i32)) -> Vec<(i32, i32)> {
+        match &mut self.drag {
+            Some((start, leg)) => path_run(*start, cell, leg),
+            None => Vec::new(),
+        }
+    }
+
+    /// The drag is over: released, or dropped with the tool.
+    pub fn end_drag(&mut self) {
+        self.drag = None;
     }
 
     /// A game was opened: both panels reopen on their first tab (placing 3.5).
@@ -335,7 +366,7 @@ impl Build {
         }
         ui.set_button(PANELS[p].bar, false, true);
         ui.touch();
-        (self.open, self.held, self.terrain) = (None, None, None);
+        (self.open, self.held, self.terrain, self.drag) = (None, None, None, None);
         log.push("tool panel none".into());
     }
 
@@ -343,6 +374,7 @@ impl Build {
     /// closes the panel (input 4.6 steps 7 and 10). Whether it did something.
     pub fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
         let Some(p) = self.open else { return false };
+        self.drag = None;
         if self.terrain.take().is_some() {
             terrain::hide(ui);
             log.push("tool drop".into());

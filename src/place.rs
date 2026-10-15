@@ -1,13 +1,16 @@
 //! Placing and removing objects, paths and fences: so far the pending object, the type the player
-//! chose as it follows the mouse (placing 4 and 5), and the placing of scenery (placing 6.1).
+//! chose as it follows the mouse (placing 4 and 5), the placing of scenery (placing 6.1) and the
+//! laying of paths by dragging (placing 5.3 and 6.2).
 //!
 //! [`pending`] snaps the world point under the mouse to where the type would stand, lifts it to
 //! the ground, turns it, and checks the place: the verdict decides the tint, the cost text and
 //! the message a click shows. The checks are the ones every kind of object shares (the tile is in
-//! the zoo, the quadrants of the footprint are free, a path or a fence replaces a piece) and
-//! those of scenery (land or water, flat ground at one height, no fence inside a big footprint);
-//! the rules of paths and fences come with the placing of that kind. [`place`] adds a valid
-//! pending object to the world and takes its price.
+//! the zoo, the quadrants of the footprint are free except for paths, a path or a fence replaces a piece), those of
+//! scenery (land or water, flat ground at one height, no fence inside a big footprint) and those
+//! of paths (flat or one raised side, dirt painted first on water); the rules of fences come with
+//! the placing of that kind. [`place`] adds a valid pending object to the world and takes its
+//! price. A path drag is a list of pending pieces, [`path_run`] says which tiles and [`afford`]
+//! which of them the cash covers.
 
 use crate::build::{cost, number};
 use crate::config::Config;
@@ -15,7 +18,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::money::{CONSTRUCTION, Money, Symbol};
 use crate::render::order::{Kind, ground_height};
 use crate::render::{Extra, Ghost};
-use crate::terrain;
+use crate::terrain::{self, Habits};
 use crate::text::format::{money, whole_units};
 use crate::ui::layout::color;
 use crate::vfs::Vfs;
@@ -149,8 +152,11 @@ pub struct Pending {
     pub verdict: Verdict,
     /// The message the first failed check stores, shown when the player clicks.
     pub message: Option<i32>,
-    /// What the pending object costs, 0 for the replacement of a piece of the same type.
+    /// What the pending object costs, 0 for the replacement of a piece of the same type; for a
+    /// path on water it includes the painting of the tile.
     pub price: f32,
+    /// The terrain type a path on water paints the tile with before it is laid.
+    pub paint: Option<u8>,
     /// The objects in the way (positions in `zoo.entities`), tinted red until the next move.
     pub blocking: Vec<usize>,
 }
@@ -167,23 +173,117 @@ impl Pending {
     /// The transient items the staging draws for it: the object itself, tinted by the verdict,
     /// and the objects in its way tinted red.
     pub fn extra(&self, tints: &Tints) -> Extra {
-        let tint = match self.verdict {
+        extra_of(std::slice::from_ref(self), tints)
+    }
+}
+
+/// The transient items of a list of pending pieces (a drag is one piece per tile).
+pub fn extra_of(pieces: &[Pending], tints: &Tints) -> Extra {
+    let mut extra = Extra::default();
+    for p in pieces {
+        let tint = match p.verdict {
             Verdict::Valid => tints.valid,
             Verdict::Overwrite => tints.overwrite,
             Verdict::Invalid => tints.invalid,
         };
-        Extra {
-            ghost: Some(Ghost {
-                ty: self.ty,
-                x: self.x,
-                y: self.y,
-                z: self.z,
-                facing: self.facing,
-                tint,
-            }),
-            tinted: self.blocking.iter().map(|&e| (e, tints.invalid)).collect(),
-            marks: Vec::new(),
+        extra.ghosts.push(Ghost {
+            ty: p.ty,
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            facing: p.facing,
+            tint,
+        });
+        for &e in &p.blocking {
+            if !extra.tinted.iter().any(|t| t.0 == e) {
+                extra.tinted.push((e, tints.invalid));
+            }
         }
+    }
+    extra
+}
+
+/// The cost text of a drag: minus the sum of the pieces that will be bought (placing 4.5).
+pub fn run_amount(pieces: &[Pending]) -> i64 {
+    let sum: f32 = pieces
+        .iter()
+        .filter(|p| p.verdict != Verdict::Invalid)
+        .map(|p| p.price)
+        .sum();
+    whole_units(f64::from(sum)).saturating_neg()
+}
+
+/// Walks the pieces of a drag in order, adding up the cost of the valid ones: a valid piece that
+/// would bring the sum above the cash is not valid (it will not be bought) and stores no message
+/// (placing 6.2 items 3 and 4).
+pub fn afford(pieces: &mut [Pending], money: &Money) {
+    let mut sum = 0.0;
+    for p in pieces.iter_mut().filter(|p| p.verdict != Verdict::Invalid) {
+        if money.can_pay(sum + p.price) {
+            sum += p.price;
+        } else {
+            p.verdict = Verdict::Invalid;
+        }
+    }
+}
+
+/// Which way the first leg of a path drag runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Leg {
+    X,
+    Y,
+}
+
+/// The tiles of the L a path drag lays from the start tile to the tile under the mouse, the start
+/// first (placing 6.2). `leg` is the leg mode of the drag: it is cleared while the mouse is on the
+/// start tile and chosen by the first other tile the mouse enters, x when the move is longer along
+/// x, else y.
+pub fn path_run(start: (i32, i32), cell: (i32, i32), leg: &mut Option<Leg>) -> Vec<(i32, i32)> {
+    let (dx, dy) = (cell.0 - start.0, cell.1 - start.1);
+    if (dx, dy) == (0, 0) {
+        *leg = None;
+        return vec![start];
+    }
+    let first = *leg.get_or_insert(if dx.abs() > dy.abs() { Leg::X } else { Leg::Y });
+    let mut run = vec![start];
+    let mut at = start;
+    let mut walk = |by: (i32, i32), n: i32| {
+        for _ in 0..n {
+            at = (at.0 + by.0, at.1 + by.1);
+            run.push(at);
+        }
+    };
+    let (sx, sy) = (dx.signum(), dy.signum());
+    match first {
+        Leg::X => {
+            walk((sx, 0), dx.abs());
+            walk((0, sy), dy.abs());
+        }
+        Leg::Y => {
+            walk((0, sy), dy.abs());
+            walk((sx, 0), dx.abs());
+        }
+    }
+    run
+}
+
+/// Whether a tile of this shape byte takes a path: flat, or with one side raised (placing 5.3).
+fn path_shape(shape: u8) -> bool {
+    matches!(shape, 0x00 | 0x05 | 0x14 | 0x41 | 0x50)
+}
+
+/// What painting a tile with dirt would be, for the path check on water: the terrain type and the
+/// price, or `None` where the terrain tool would refuse (placing 5.3; dirt is type 3, or type 0
+/// when fewer than 4 types are loaded).
+pub fn dirt<'a>(
+    world: &'a World,
+    types: &'a [terrain::Type],
+    habits: Habits<'a>,
+) -> impl Fn(usize) -> Option<(u8, f32)> + 'a {
+    let kind = if types.len() < 4 { 0 } else { 3 };
+    move |t| {
+        let price = types.iter().find(|ty| ty.kind == kind)?.cost;
+        terrain::accepts(world, habits, types, t, kind).then_some((kind, price))
     }
 }
 
@@ -267,11 +367,13 @@ fn is_of(entity: &crate::zoo::Entity, ty: &EntityType) -> bool {
 /// The pending object of the type `ty` (a position in the catalogue) with the rotation step
 /// `step` of its panel, for the world point `point` under the mouse, the view turned by `view`.
 /// `None` when the type is unknown or the point is off the map. `water` tells for each terrain
-/// type whether it is water.
+/// type whether it is water, `dirt` what painting a tile with dirt would be (see [`dirt`]).
+#[allow(clippy::too_many_arguments)]
 pub fn pending(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
+    dirt: &dyn Fn(usize) -> Option<(u8, f32)>,
     ty: usize,
     step: usize,
     view: u8,
@@ -306,9 +408,10 @@ pub fn pending(
         verdict: Verdict::Valid,
         message: None,
         price: cost(t),
+        paint: None,
         blocking: Vec::new(),
     };
-    check(&mut pending, world, cat, water, class, fp);
+    check(&mut pending, world, cat, water, dirt, class, fp);
     Some(pending)
 }
 
@@ -318,6 +421,7 @@ fn check(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
+    dirt: &dyn Fn(usize) -> Option<(u8, f32)>,
     class: Class,
     fp: (i32, i32),
 ) {
@@ -348,11 +452,32 @@ fn check(
     {
         (p.verdict, p.price) = same(old);
     }
+    if class == Class::Path {
+        // The only checks of a path (placing 5.3): flat or one side raised, and on water only
+        // where dirt could be painted first. No footprint, nothing in the way: it goes under
+        // objects.
+        if !path_shape(world.zoo.tiles[tile].shape) {
+            fail(p, None);
+        }
+        let wet = water
+            .get(usize::from(world.zoo.tiles[tile].terrain))
+            .copied()
+            .unwrap_or(false);
+        if wet {
+            match dirt(tile) {
+                Some((kind, paint)) => {
+                    p.paint = Some(kind);
+                    p.price += paint;
+                }
+                None => fail(p, None),
+            }
+        }
+        return;
+    }
     // The quadrants of the footprint (map drawing 9.3.1): all on the map, in the zoo and free.
     if !(1..=MAX_FOOTPRINT).contains(&fp.0) || !(1..=MAX_FOOTPRINT).contains(&fp.1) {
         return fail(p, None);
     }
-    let scenery = class == Class::Fixed;
     let wet = |at: usize| {
         water
             .get(usize::from(world.zoo.tiles[at].terrain))
@@ -375,19 +500,17 @@ fn check(
             }
         }
     }
-    if scenery {
-        // Land or water (placing 5.4, 5.2 item 2). A type that is not a land type stands on
-        // water only, which says so (10564) before anything else of the footprint; a type that
-        // only swims fails on land, one that does not swim in water, both without a message.
-        let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
-        let swims = flag("cSwims", false);
-        for &(at, _) in &quads {
-            if !flag("cLand", true) && !wet(at) {
-                fail(p, Some(NOT_ON_WATER));
-            }
-            if (only_swims(t) && !wet(at)) || (!only_swims(t) && !swims && wet(at)) {
-                fail(p, None);
-            }
+    // Land or water (placing 5.4, 5.2 item 2). A type that is not a land type stands on
+    // water only, which says so (10564) before anything else of the footprint; a type that
+    // only swims fails on land, one that does not swim in water, both without a message.
+    let flag = |key: &str, default: bool| number(t, key).map_or(default, |n| n == 1.0);
+    let swims = flag("cSwims", false);
+    for &(at, _) in &quads {
+        if !flag("cLand", true) && !wet(at) {
+            fail(p, Some(NOT_ON_WATER));
+        }
+        if (only_swims(t) && !wet(at)) || (!only_swims(t) && !swims && wet(at)) {
+            fail(p, None);
         }
     }
     for &(at, quadrant) in &quads {
@@ -399,9 +522,6 @@ fn check(
         }
     }
     let tiles: Vec<usize> = quads.iter().map(|&(at, _)| at).collect();
-    if !scenery {
-        return;
-    }
     // More than a quarter tile needs flat ground at one height (item 5).
     let tile = |t: usize| world.zoo.tiles[t];
     if (fp.0 > 1 || fp.1 > 1)
@@ -470,8 +590,9 @@ pub enum Outcome {
 /// Releases the button over the pending object (placing 6.1): a valid place is paid with the cash
 /// and gets the object, booked as construction; one the cash does not cover shows the message of
 /// insufficient funds, an invalid one its stored message, or else, when the type only lives in
-/// water and its own tile is not water, the water message (the second look of 5.1). Only objects
-/// that hold quadrants are placed here. `shape` tells how the new entity takes its place and
+/// water and its own tile is not water, the water message (the second look of 5.1). Scenery,
+/// buildings and paths are placed here: a path on water paints its tile first, one on a path
+/// takes the old piece away (placing 5.3). `shape` tells how the new entity takes its place and
 /// `water` which terrain types are water.
 pub fn place(
     world: &mut World,
@@ -490,7 +611,8 @@ pub fn place(
         let second = (only_swims(ty) && !wet).then_some(NOT_ON_WATER);
         return Outcome::Refused(p.message.or(second));
     }
-    if Class::of(ty) != Class::Fixed {
+    let class = Class::of(ty);
+    if class == Class::Fence {
         return Outcome::Refused(None);
     }
     if !money.can_pay(p.price) {
@@ -498,6 +620,17 @@ pub fn place(
     }
     let entity = entity(ty, p);
     let shape = shape(&entity);
+    if class == Class::Path {
+        let tile = world.tile_index(p.tile.0, p.tile.1);
+        if let (Some(kind), Some(t)) = (p.paint, tile) {
+            let at = world.zoo.tiles[t];
+            world.set_tile(p.tile.0, p.tile.1, at.elevation, at.shape, kind);
+        }
+        let old = tile.and_then(|t| world.path(t));
+        if let Some(id) = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id)) {
+            world.remove(id);
+        }
+    }
     match world.add(entity, shape) {
         Some(id) => {
             money.charge(CONSTRUCTION, p.price);

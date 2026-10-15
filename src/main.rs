@@ -145,7 +145,10 @@ usage: rustyzoo [--data <dir>] <command>
                       valid) with its cost 23 pixels right of the pointer, and each move logs
                       `tool pending CLASS/TYPE/SUBTYPE X,Y q N valid|overwrite|invalid` (the tile and
                       the quarter tile of the snapped point); releasing over a valid place of
-                      scenery or a building places it when the cash covers its cost (`world add
+                      scenery or a building places it when the cash covers its cost (a path is
+                      dragged: the pieces of an L from the press tile, the first leg along the axis
+                      of the first tile entered, bought in order, `world paint X,Y 3` first on a
+                      water tile, `world remove ...` for a path it replaces; `world add
                       CLASS/TYPE/SUBTYPE X,Y id N`, `tool turn STEP` for a type that turns by
                       itself, the placement sound), one that is not valid or too dear asks for the
                       refusal sound and shows its message, if it has one, in the message line for

@@ -218,7 +218,7 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
 
 /// The pending object of the type `ty` for the point (`x`, `y`) of the world, view unturned.
 fn at(w: &World, cat: &Catalogue, ty: usize, step: usize, x: i64, y: i64) -> Option<Pending> {
-    pending(w, cat, &[false, true], ty, step, 0, (x, y))
+    pending(w, cat, &[false, true], &|_| None, ty, step, 0, (x, y))
 }
 
 #[test]
@@ -397,7 +397,7 @@ fn a_path_on_a_path_and_a_fence_on_a_held_slot_replace_a_piece() {
     );
     // The tint follows the verdict and the objects in the way turn red.
     let tints = Tints::default();
-    let colour = |p: &Pending| p.extra(&tints).ghost.unwrap().tint;
+    let colour = |p: &Pending| p.extra(&tints).ghosts[0].tint;
     assert_eq!(colour(&free), tints.valid);
     assert_eq!(colour(&same), tints.overwrite);
     let tree = world((0, 0), vec![entity("objects", "tree", 16, 16, 0)], |_| {});
@@ -666,7 +666,7 @@ fn the_cash_must_cover_the_price_and_only_scenery_is_placed_here() {
         Outcome::Placed(_)
     ));
     assert_eq!(broke.cash, -5.0);
-    // An invalid place gives its message, whatever the cash; a path is not placed here.
+    // An invalid place gives its message, whatever the cash; a fence is not placed here.
     let held = at(&w, &cat, 0, 0, 10, 10).unwrap();
     assert_eq!(
         place(
@@ -679,13 +679,14 @@ fn the_cash_must_cover_the_price_and_only_scenery_is_placed_here() {
         ),
         Outcome::Refused(Some(IN_THE_WAY))
     );
-    let path = at(&w, &cat, 2, 0, 3 * 64, 3 * 64).unwrap();
+    let fence = at(&w, &cat, 4, 0, 3 * 64 + 32, 3 * 64 + 2).unwrap();
+    assert_eq!(fence.verdict, Verdict::Valid);
     assert_eq!(
         place(
             &mut w,
-            &mut exact,
-            &cat.types[2],
-            &path,
+            &mut zoo_money(100.0),
+            &cat.types[4],
+            &fence,
             &[false, true],
             shape
         ),
@@ -777,4 +778,239 @@ fn a_release_over_a_water_only_type_on_land_shows_the_water_message_last() {
         place(&mut slope, &mut money, &cat.types[1], &p, &water, shape),
         Outcome::Refused(None)
     );
+}
+
+#[test]
+fn the_first_tile_the_mouse_enters_decides_the_first_leg_of_a_path_drag() {
+    // Placing 10: from (10, 10) the first move along x, then to (14, 13): x first, 8 pieces.
+    let start = (10, 10);
+    let mut leg = None;
+    assert_eq!(path_run(start, start, &mut leg), [start]);
+    assert_eq!(leg, None);
+    assert_eq!(path_run(start, (11, 10), &mut leg), [(10, 10), (11, 10)]);
+    assert_eq!(leg, Some(Leg::X));
+    let l = path_run(start, (14, 13), &mut leg);
+    assert_eq!(
+        l,
+        [
+            (10, 10),
+            (11, 10),
+            (12, 10),
+            (13, 10),
+            (14, 10),
+            (14, 11),
+            (14, 12),
+            (14, 13)
+        ]
+    );
+    // Back on the start the mode is cleared; entering along y gives the mirrored L.
+    path_run(start, start, &mut leg);
+    assert_eq!(leg, None);
+    path_run(start, (10, 11), &mut leg);
+    let mirrored = path_run(start, (14, 13), &mut leg);
+    assert_eq!(leg, Some(Leg::Y));
+    assert_eq!(mirrored.len(), 8);
+    let swapped: Vec<_> = l.iter().map(|&(x, y)| (y, x)).collect();
+    assert_eq!(
+        mirrored,
+        [
+            (10, 10),
+            (10, 11),
+            (10, 12),
+            (10, 13),
+            (11, 13),
+            (12, 13),
+            (13, 13),
+            (14, 13)
+        ]
+    );
+    assert_eq!(swapped[1], (10, 11), "x and y exchanged, around the start");
+    // A diagonal step gives y first; negative directions walk backwards; a straight line is one leg.
+    let mut leg = None;
+    assert_eq!(
+        path_run(start, (9, 9), &mut leg),
+        [(10, 10), (10, 9), (9, 9)]
+    );
+    assert_eq!(leg, Some(Leg::Y));
+    let mut leg = None;
+    assert_eq!(
+        path_run(start, (7, 10), &mut leg),
+        [(10, 10), (9, 10), (8, 10), (7, 10)]
+    );
+    // The negative corner of the map and huge distances do not panic.
+    let mut leg = None;
+    path_run((0, 0), (-3, 2), &mut leg);
+    path_run((0, 0), (0, 5000), &mut leg);
+}
+
+#[test]
+fn a_path_takes_a_flat_tile_or_one_raised_side_only() {
+    let cat = catalogue();
+    for (shape, valid) in [
+        (0x00, true),
+        (0x05, true),
+        (0x14, true),
+        (0x41, true),
+        (0x50, true),
+        // A corner alone, a saddle, a steep shape and the other raised sides.
+        (0x01, false),
+        (0x04, false),
+        (0x11, false),
+        (0x55, false),
+        (0x0f, false),
+        (0xff, false),
+    ] {
+        let w = world((0, 0), vec![], |t| t[0].shape = shape);
+        let p = at(&w, &cat, 2, 0, 10, 10).unwrap();
+        assert_eq!(p.verdict != Verdict::Invalid, valid, "shape {shape:#x}");
+        assert_eq!(p.message, None);
+    }
+}
+
+/// The dirt of these tests: painting a water tile costs 5 and is possible on tile 3 only.
+fn paintable(t: usize) -> Option<(u8, f32)> {
+    (t == 3).then_some((3, 5.0))
+}
+
+#[test]
+fn a_path_on_water_needs_dirt_to_be_painted_and_costs_the_paint_too() {
+    let cat = catalogue();
+    let mut w = world((0, 0), vec![], |t| {
+        t[3].terrain = 1;
+        t[4].terrain = 1;
+    });
+    let on = |w: &World, tile: i64| {
+        pending(
+            w,
+            &cat,
+            &[false, true],
+            &paintable,
+            2,
+            0,
+            0,
+            (tile * 64 + 8, 8),
+        )
+        .unwrap()
+    };
+    let p = on(&w, 3);
+    assert_eq!(
+        (p.verdict, p.paint, p.price, p.message),
+        (Verdict::Valid, Some(3), 15.0, None)
+    );
+    // A tile the terrain tool would refuse is not valid, and says nothing.
+    let refused = on(&w, 4);
+    assert_eq!(
+        (refused.verdict, refused.paint, refused.message),
+        (Verdict::Invalid, None, None)
+    );
+    // Land is just the path.
+    let land = on(&w, 1);
+    assert_eq!(
+        (land.verdict, land.paint, land.price),
+        (Verdict::Valid, None, 10.0)
+    );
+    // Placing paints the tile first, then lays the path and takes both prices.
+    let mut money = zoo_money(100.0);
+    assert!(matches!(
+        place(&mut w, &mut money, &cat.types[2], &p, &[false, true], shape),
+        Outcome::Placed(_)
+    ));
+    assert_eq!(money.cash, 85.0);
+    assert_eq!(w.zoo.tiles[3].terrain, 3);
+    assert!(w.path(3).is_some());
+    // One undo gives the water back and takes the path away.
+    assert!(w.undo());
+    assert_eq!((w.zoo.tiles[3].terrain, w.path(3)), (1, None));
+}
+
+#[test]
+fn a_path_on_a_path_replaces_it_and_pays_only_for_another_type() {
+    let cat = catalogue();
+    let mut w = world((0, 0), vec![entity("paths", "dirt", 32, 32, 0)], |_| {});
+    let mut money = zoo_money(100.0);
+    let go = |w: &mut World, money: &mut Money, ty: usize| {
+        let p = at(w, &cat, ty, 0, 10, 10).unwrap();
+        place(w, money, &cat.types[ty], &p, &[false, true], shape)
+    };
+    // The same type: valid, free, and still one piece.
+    assert!(matches!(go(&mut w, &mut money, 2), Outcome::Placed(_)));
+    assert_eq!((money.cash, w.zoo.entities.len()), (100.0, 1));
+    // Another type: the full price, and the old piece is gone.
+    assert!(matches!(go(&mut w, &mut money, 3), Outcome::Placed(_)));
+    assert_eq!((money.cash, w.zoo.entities.len()), (80.0, 1));
+    assert_eq!(w.zoo.entities[0].type_name, "stone");
+}
+
+#[test]
+fn the_pieces_the_cash_covers_are_valid_and_the_cost_is_their_sum() {
+    let cat = catalogue();
+    let entities = vec![entity("paths", "dirt", 3 * 64 + 32, 32, 0)];
+    let w = world((0, 0), entities, |t| t[5].shape = 0x01);
+    let piece = |ty: usize, tile: i64| at(&w, &cat, ty, 0, tile * 64 + 8, 8).unwrap();
+    // 10, 10, a free replacement, 10, and a piece that is not valid anyway.
+    let mut run = vec![
+        piece(2, 0),
+        piece(2, 1),
+        piece(2, 3),
+        piece(2, 4),
+        piece(2, 5),
+    ];
+    assert_eq!(run_amount(&run), -30);
+    afford(&mut run, &zoo_money(25.0));
+    let verdicts: Vec<_> = run.iter().map(|p| p.verdict).collect();
+    assert_eq!(
+        verdicts,
+        [
+            Verdict::Valid,
+            Verdict::Valid,
+            Verdict::Overwrite,
+            Verdict::Invalid,
+            Verdict::Invalid
+        ]
+    );
+    assert_eq!(run[3].message, None, "the cash walk stores no message");
+    assert_eq!(run_amount(&run), -20);
+    // The cash that covers the sum exactly changes nothing; a cheaper piece after a refused one
+    // still fits.
+    let mut exact = vec![piece(2, 0), piece(3, 1), piece(2, 2)];
+    let mut covered = exact.clone();
+    afford(&mut covered, &zoo_money(40.0));
+    assert!(covered.iter().all(|p| p.verdict == Verdict::Valid));
+    afford(&mut exact, &zoo_money(25.0));
+    assert_eq!(exact[1].verdict, Verdict::Invalid);
+    assert_eq!(exact[2].verdict, Verdict::Valid);
+    assert_eq!(run_amount(&exact), -20);
+    // No cash at all buys nothing; no pieces cost nothing.
+    afford(&mut exact, &zoo_money(-1.0));
+    assert_eq!(run_amount(&exact), 0);
+    assert_eq!(run_amount(&[]), 0);
+    // Every piece is drawn, the things in the way once.
+    let tints = Tints::default();
+    assert_eq!(extra_of(&run, &tints).ghosts.len(), 5);
+}
+
+#[test]
+fn a_path_goes_under_objects_with_no_footprint_check_and_no_message() {
+    let cat = catalogue();
+    let mut w = world(
+        (0, 0),
+        vec![
+            entity("objects", "tree", 16, 16, 0),
+            entity("objects", "tree", 48, 48, 0),
+        ],
+        |_| {},
+    );
+    let p = at(&w, &cat, 2, 0, 10, 10).unwrap();
+    assert_eq!(
+        (p.verdict, p.message, p.amount(), p.blocking.is_empty()),
+        (Verdict::Valid, None, -10, true)
+    );
+    let mut money = zoo_money(100.0);
+    assert!(matches!(
+        place(&mut w, &mut money, &cat.types[2], &p, &[false, true], shape),
+        Outcome::Placed(_)
+    ));
+    // The trees stay, and the path is the tile's path.
+    assert_eq!((w.zoo.entities.len(), money.cash), (3, 90.0));
+    assert!(w.path(0).is_some() && w.quadrant(0, 0).is_some());
 }
