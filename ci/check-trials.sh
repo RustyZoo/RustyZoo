@@ -449,4 +449,20 @@ for width in "--width 0" "--width -4" "--width 99999999999" ""; do
 done
 check base-trial 2 "rz draw-text $tmp/t.png --width wide x >/dev/null 2>&1; echo \$?"
 
+# The pending object: the Objects panel opens with its first item chosen, the pointer moves over the
+# map (the log tells the type, the tile, the quadrant and the verdict) and the picture shows the
+# tinted object with its cost text; on the base trial a release outside the zoo wall then shows the
+# wall message. Prints the pending lines and messages, then the hash of the last picture.
+pending_object() { # pending_object <map> <script>
+  d=$(mktemp -d)
+  printf "$2" >"$d/script"
+  rz run "$1" --headless --passes 12 --clock 20 --script "$d/script" 2>/dev/null |
+    awk '/ tool pending /{p=p ";" $6 "," $7 "," $9 "," $10} / tool message /{p=p ";message" $6} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";" h}'
+  rm -rf "$d"
+}
+open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;1bb9a5d28662f86d" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;babd8c1c37b749b1" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;722bc79a3210f437" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+
 exit $failed
