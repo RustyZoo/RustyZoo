@@ -36,8 +36,8 @@ pub(super) struct Dozer {
     mixed: bool,
 }
 
-/// question that is open (the entity it is about), and what has gone so far.
-/// question that is open, and what has gone so far.
+/// A removal under way: the entities still to go (ids), the pairs of regions asked about, the
+/// entity whose question is open, and what has gone so far.
 pub(super) struct Sweep {
     queue: VecDeque<u32>,
     asked: Vec<(u32, u32)>,
