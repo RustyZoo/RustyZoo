@@ -373,7 +373,7 @@ fn the_brush_size_buttons_and_keys_stay_between_1_and_5_and_are_kept() {
 }
 
 #[test]
-fn the_modify_tab_shows_the_brush_and_the_modes_but_paints_nothing_yet() {
+fn a_click_in_the_modify_tab_paints_nothing_and_shapes_nothing() {
     with_game("modify", |s| {
         s.click((112, 82));
         assert_eq!(s.click((35, 21)), ["terrain enter modify"]);
@@ -385,5 +385,76 @@ fn the_modify_tab_shows_the_brush_and_the_modes_but_paints_nothing_yet() {
         // From the modify tab to the paint tab: the first is left, the second entered.
         let lines = s.click((35, 13));
         assert_eq!(lines, ["terrain leave", "terrain enter paint"]);
+    });
+}
+
+impl Session<'_> {
+    /// A stroke on the middle of tile (`tx`, `ty`) as it was before the ground changed, that
+    /// moves the pointer up by each of `ups` pixels from where it pressed, in turn.
+    fn stroke(&mut self, (tx, ty): (i32, i32), ups: &[i32]) -> Vec<String> {
+        let at = self.tile(tx, ty);
+        self.hover(at);
+        let mut commands = vec![Command::Mouse(Mouse::Down)];
+        commands.extend(
+            ups.iter()
+                .map(|up| Command::Mouse(Mouse::Move(at.0, at.1 - up))),
+        );
+        commands.push(Command::Mouse(Mouse::Up));
+        self.pass(&commands)
+    }
+}
+
+#[test]
+fn dragging_up_and_down_shapes_the_ground_with_the_cost_of_the_session() {
+    with_game("shape", |s| {
+        s.click((112, 82));
+        s.click((35, 21));
+        assert_eq!(s.game().terrain.mode(), Some(Mode::Modify));
+        s.hover(s.tile(20, 20));
+        let flat = s.frame();
+        // Contiguous (the first mode): one raise of the 2 by 2 brush.
+        let lines = s.stroke((20, 20), &[16]);
+        assert_eq!(
+            lines,
+            ["world stage", "terrain shape 16", "terrain cost 128"]
+        );
+        assert_eq!(s.text(3305), "$128");
+        let raised = s.frame();
+        assert_ne!(raised, flat);
+        // Cancel gives the ground and the picture back.
+        let lines = s.click((11, 81));
+        assert_eq!(lines, ["world stage", "terrain cancel 128"]);
+        assert_eq!(s.text(3305), "$0");
+        assert_eq!(s.frame(), flat);
+        // The same stroke again is the same picture; two raises in a stroke cost 384.
+        s.stroke((20, 20), &[16]);
+        assert_eq!(s.frame(), raised);
+        s.click((11, 81));
+        let lines = s.stroke((20, 20), &[32]);
+        assert_eq!(lines[1..], ["terrain shape 32", "terrain cost 384"]);
+        s.click((11, 81));
+        // A raise then a lower, in one stroke, costs nothing.
+        let lines = s.stroke((20, 20), &[16, 0]);
+        assert_eq!(
+            lines[1..],
+            [
+                "terrain shape 16",
+                "terrain cost 128",
+                "terrain shape 16",
+                "terrain cost 0"
+            ]
+        );
+        assert_eq!(s.frame(), flat);
+        // Not contiguous: the second mode button, and a raise of the brush alone.
+        assert_eq!(s.click((11, 19)), ["terrain mode 3316"]);
+        assert_eq!(s.game().terrain.shaping(), (false, false));
+        let lines = s.stroke((20, 20), &[16]);
+        assert_eq!(lines[1..], ["terrain shape 4", "terrain cost 32"]);
+        assert_ne!(s.frame(), raised);
+        assert_eq!(s.game().world.zoo.tiles[20 * 40 + 20].elevation, 1);
+        // Accepting pays 32.
+        let lines = s.click((3, 81));
+        assert_eq!(lines[0], "terrain accept 32");
+        assert_eq!(s.game().money.cash, 50_000.0 - 32.0);
     });
 }

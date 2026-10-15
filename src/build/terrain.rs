@@ -36,8 +36,8 @@ pub enum Press {
     Minus,
     Accept,
     Cancel,
-    /// A mode button of the modify tab.
-    Mode(i32),
+    /// A mode button of the modify tab, and whether it keeps the ground joined and levels.
+    Mode(i32, bool, bool),
     /// Item `n` of the list of terrain types.
     Type(usize),
 }
@@ -49,7 +49,10 @@ pub fn pressed(ui: &Interface, id: i32) -> Option<Press> {
         MINUS => Press::Minus,
         ACCEPT => Press::Accept,
         CANCEL => Press::Cancel,
-        id if MODES.contains(&id) => Press::Mode(id),
+        id if MODES.contains(&id) => {
+            let n = MODES.iter().position(|&m| m == id)?;
+            Press::Mode(id, n % 2 == 0, n >= 2)
+        }
         id => Press::Type(ui.item_of(LIST, id)?),
     })
 }
@@ -109,10 +112,12 @@ pub fn show(ui: &mut Interface, vfs: &Vfs, tool: &Tool, mode: Mode) {
         ui.select_item(LIST, at);
     } else {
         ui.set_items(LIST, &[]);
+        let (contiguous, level) = tool.shaping();
+        let chosen = usize::from(!contiguous) + 2 * usize::from(level);
         for (n, id) in MODES.into_iter().enumerate() {
-            ui.set_button(id, n == 0, true);
+            ui.set_button(id, n == chosen, true);
         }
-        ui.set_text(MODE_TEXT, &to_cp1252(&ui.string(MODES[0])));
+        ui.set_text(MODE_TEXT, &to_cp1252(&ui.string(MODES[chosen])));
     }
 }
 
