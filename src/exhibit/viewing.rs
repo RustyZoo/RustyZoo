@@ -33,9 +33,9 @@ const SPAN: i32 = 3;
 /// How far a viewing tile looks along a direction for its exhibit, and how far it sees (squared).
 const LOOK: i32 = 3;
 const RANGE: i32 = 100;
-/// A tank is murky for the see-through walls when its purity is at most this. The original's
-/// constant is not known; this is the murky threshold of the animals' files.
-const MURKY: u32 = 60;
+/// A tank is murky for the see-through walls when its purity is at most this (a fixed value of
+/// the program).
+const MURKY: u32 = 1;
 
 /// The exhibit and its surroundings as the grouping reads them. Tiles are indices of the map,
 /// row by row; the vectors hold one entry per map tile.
@@ -159,7 +159,7 @@ pub fn areas(plan: &Plan) -> Vec<Area> {
 /// What the line of sight needs of one entity's type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Body {
-    /// `cHeight`, in elevation steps (an assumption: the unit is not specified).
+    /// `cHeight`, in elevation steps.
     pub height: i32,
     /// `cBlocksLOS`, default 1.
     pub blocks: bool,
@@ -189,17 +189,16 @@ pub fn bodies(catalogue: &Catalogue) -> impl Fn(&Entity) -> Body + '_ {
     }
 }
 
-/// The map as the line of sight reads it: heights in half elevation steps (a doubled `z`), so a
-/// level of 2 is one step. A tile has the elevation of its four quarters' corners, the top of
-/// the scenery that blocks the sight in each quarter and of the fence on each of its sides 0, 2,
-/// 4, 6 (`i32::MIN` for none).
+/// The map as the line of sight reads it (10.4). Elevations are in steps; the line itself is in
+/// half steps. A tile has its base elevation, for each of its four quadrants the top of the
+/// scenery that blocks the sight (the elevation of the corner the original reads plus the
+/// scenery's `cHeight`) and for each side 0, 2, 4, 6 the top of the fence that blocks (its
+/// tile's elevation plus its height); `i32::MIN` for none.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Ground {
     pub width: usize,
     pub height: usize,
-    /// The elevation of the reference corner of each tile.
     pub base: Vec<i32>,
-    pub corner: Vec<[i32; 4]>,
     pub scenery: Vec<[i32; 4]>,
     pub fence: Vec<[i32; 4]>,
 }
@@ -212,7 +211,6 @@ impl Ground {
             width,
             height,
             base: vec![0; n],
-            corner: vec![[0; 4]; n],
             scenery: vec![[i32::MIN; 4]; n],
             fence: vec![[i32::MIN; 4]; n],
         }
@@ -221,88 +219,113 @@ impl Ground {
     /// Reads the ground of a world; `body` tells what blocks of each entity.
     pub fn of(world: &World, body: impl Fn(&Entity) -> Body) -> Ground {
         let mut ground = Ground::new(world.zoo.width as usize, world.zoo.height as usize);
-        let murky = |t: usize| {
-            let tank = world.tank_at(t).and_then(|id| world.tank(id));
-            tank.is_some_and(|tank| tank.purity <= MURKY)
-        };
         for (t, tile) in world.zoo.tiles.iter().enumerate() {
             ground.base[t] = tile.elevation;
-            for (q, corner) in [7, 1, 5, 3].into_iter().enumerate() {
-                let height = corner_elevation(tile, corner);
-                ground.corner[t][q] = 2 * height;
+            // The corner read for each quadrant, the last two the diagonally opposite ones.
+            for (q, corner) in [7, 5, 1, 3].into_iter().enumerate() {
                 if let Some(e) = world.quadrant(t, q) {
                     let b = body(&world.zoo.entities[e]);
                     if b.blocks {
-                        ground.scenery[t][q] = 2 * (height + b.height);
+                        ground.scenery[t][q] = corner_elevation(tile, corner) + b.height;
                     }
                 }
             }
+            let tank = world.tank_at(t).and_then(|id| world.tank(id));
             for d in [0, 2, 4, 6] {
                 let Some(e) = world.edge(t, d) else { continue };
                 let b = body(&world.zoo.entities[e]);
                 let wall = world.shape(e).is_some_and(|s| s.tank.wall);
-                let across = world.neighbour(t, d);
-                let clear = b.see_through && !(wall && (murky(t) || across.is_some_and(murky)));
-                if !clear {
-                    ground.fence[t][d / 2] = 2 * (tile.elevation + b.height);
+                let murky = tank.is_some_and(|tank| tank.purity <= MURKY);
+                if b.see_through && !(wall && murky) {
+                    continue;
                 }
+                let own = tank.map_or(0, |tank| tank.height as i32);
+                let h = if wall && own != 0 { own } else { b.height };
+                ground.fence[t][d / 2] = tile.elevation + h;
             }
         }
         ground
     }
 
-    /// Whether a fence stands between tile `from` and its neighbour `to`, higher than level `z`.
-    fn fenced(&self, from: usize, to: usize, z: i32) -> bool {
-        let (a, b) = (from as i32, to as i32);
-        let d = match b - a {
-            -1 => 3,
-            1 => 1,
-            n if n < 0 => 0,
-            _ => 2,
+    /// Whether a fence stands on the edge between the adjacent tiles `a` and `b` (the slot of
+    /// either) with its top above the eye `eye`, in steps.
+    fn closed(&self, a: usize, b: usize, eye: i32) -> bool {
+        let side = if a / self.width == b / self.width {
+            if b > a { 1 } else { 3 }
+        } else if b > a {
+            2
+        } else {
+            0
         };
-        self.fence[from][d].max(self.fence[to][(d + 2) % 4]) > z
+        self.fence[a][side].max(self.fence[b][(side + 2) % 4]) > eye
     }
 
-    /// Whether tile `from` sees tile `to` (10.4): a line walked in half tile steps from one tile
-    /// to the other, one elevation step above the base of each. The ground and the scenery of the
-    /// two end tiles do not block it; a fence on the way does at each change of tile.
+    /// Whether the line passes between the tiles `prev` and `t` of one step (10.4): in one
+    /// column or row it is blocked by a fence on the edge, across a corner only when both routes
+    /// round the corner are closed.
+    fn cut(&self, t: usize, prev: usize, eye: i32) -> bool {
+        let w = self.width;
+        if t % w == prev % w || t / w == prev / w {
+            return self.closed(prev, t, eye);
+        }
+        let a = (prev / w) * w + t % w;
+        let b = (t / w) * w + prev % w;
+        let route = |m: usize| self.closed(prev, m, eye) || self.closed(m, t, eye);
+        route(a) && route(b)
+    }
+
+    /// Whether tile `from` sees tile `to`: the integer walk of rule 10.4 from an eye one step
+    /// above the base of `from` to one above the base of `to`, every point tested against the
+    /// ground (the base elevation of its tile), the scenery of its quadrant and, at each change
+    /// of tile, the fences between the tiles (against the eye of `from`).
     pub fn sees(&self, from: usize, to: usize) -> bool {
+        let w = self.width;
         let at = |t: usize| {
-            (
-                (2 * (t % self.width)) as i32,
-                (2 * (t / self.width)) as i32,
+            [
+                (2 * (t % w)) as i32,
+                (2 * (t / w)) as i32,
                 2 * self.base[t] + 2,
-            )
+            ]
         };
         let (a, b) = (at(from), at(to));
-        let (dx, dy, dz) = (b.0 - a.0, b.1 - a.1, b.2 - a.2);
-        let n = dx.abs().max(dy.abs()).max(dz.abs());
-        let along = |s: i32, d: i32, i: i32| s + (2 * d * i + n).div_euclid(2 * n);
-        let mut last = from;
-        for i in 1..=n {
-            let (x, y, z) = (along(a.0, dx, i), along(a.1, dy, i), along(a.2, dz, i));
-            let t = (y >> 1) as usize * self.width + (x >> 1) as usize;
-            if t != last {
-                // A step across a corner crosses the x edge, then the y edge.
-                let (tx, ty) = (t % self.width, t / self.width);
-                let (lx, ly) = (last % self.width, last / self.width);
-                let mid = ly * self.width + tx;
-                let cuts = if tx != lx && ty != ly {
-                    self.fenced(last, mid, z) || self.fenced(mid, t, z)
-                } else {
-                    self.fenced(last, t, z)
-                };
-                if cuts {
-                    return false;
-                }
-                last = t;
-            }
-            let q = ((y & 1) * 2 + (x & 1)) as usize;
-            if t != from && t != to && self.corner[t][q].max(self.scenery[t][q]) > z {
+        let s: [i32; 3] = std::array::from_fn(|i| (b[i] - a[i]).signum());
+        let n: [i32; 3] = std::array::from_fn(|i| 2 * (b[i] - a[i]).abs());
+        let major = if n[0] >= n[1].max(n[2]) {
+            0
+        } else if n[1] >= n[0].max(n[2]) {
+            1
+        } else {
+            2
+        };
+        let mut err: [i32; 3] = std::array::from_fn(|i| n[i] - (n[major] >> 1));
+        let (mut p, mut prev) = (a, None);
+        let eye = self.base[from] + 1;
+        loop {
+            // With z major the tile is taken half a tile on along a growing axis.
+            let shift = |i: usize| i32::from(major == 2 && a[i] < b[i]);
+            let t = (((p[1] + shift(1)) >> 1) as usize) * w + ((p[0] + shift(0)) >> 1) as usize;
+            let q = ((p[1] & 1) * 2 + (p[0] & 1)) as usize;
+            if p[2] < 2 * self.base[t]
+                || p[2] < self.scenery[t][q]
+                || prev.is_some_and(|prev| prev != t && self.cut(t, prev, eye))
+            {
                 return false;
             }
+            if p[major] == b[major] {
+                return true;
+            }
+            for i in (0..3).filter(|&i| i != major) {
+                if err[i] >= 0 {
+                    p[i] += s[i];
+                    err[i] -= n[major];
+                }
+            }
+            p[major] += s[major];
+            for i in (0..3).filter(|&i| i != major) {
+                err[i] += n[i];
+            }
+            prev = Some(t);
         }
-        true
     }
 }
 
@@ -328,8 +351,8 @@ impl Area {
     /// The pressure of `guests` standing on the area on an animal on tile `animal` (10.6): a
     /// tile of the area is drawn, the guests thin out by 10 % for each tile of distance, and the
     /// total, y and x parts are returned, to be added to the animal's own. The direction from
-    /// the animal to the tile is taken from the signs of the offsets (an animal on the tile
-    /// counts as direction 0).
+    /// the animal to the tile is taken from the signs of the offsets (an animal on the tile has
+    /// none: both parts lose).
     pub fn pressure(
         &self,
         width: usize,
@@ -347,7 +370,7 @@ impl Area {
         );
         let mut p = f64::from(guests);
         for _ in 0..f64::from(dx * dx + dy * dy).sqrt().round() as i32 {
-            p = (0.9 * p).round();
+            p = (0.9 * p).round_ties_even();
         }
         if guests > 0 && p == 0.0 {
             p = 1.0;
@@ -356,7 +379,7 @@ impl Area {
         let dir = STEP
             .iter()
             .position(|&s| s == (dx.signum(), dy.signum()))
-            .unwrap_or(0);
+            .unwrap_or(8);
         let sign = |up: bool| if up { p } else { -p };
         [
             p,
@@ -380,7 +403,7 @@ pub enum Wear {
 
 /// The state of every exhibit of a world. A habitat fence or tank wall counts when its life is
 /// at most `decayed(entity)`, the `cDecayedLife` of its type (`None` for a type without a
-/// number); it is broken when its life is below 1. The state goes to the exhibit that owns the
+/// number); it is broken when its life is below 1, unless it is a tank wall or a zoo wall. The state goes to the exhibit that owns the
 /// fence's tile and to the one across, when the slot of the opposite side there is empty; the
 /// grounds are left out.
 pub fn wear(world: &World, decayed: impl Fn(&Entity) -> Option<i32>) -> HashMap<u32, Wear> {
@@ -403,7 +426,9 @@ pub fn wear(world: &World, decayed: impl Fn(&Entity) -> Option<i32>) -> HashMap<
         let Some((t, d)) = world.slot(e).filter(|_| life <= i64::from(limit)) else {
             continue;
         };
-        let hurt = if life < 1 {
+        // Tank walls and zoo walls never break, whatever their life.
+        let sturdy = world.shape(e).is_some_and(|s| s.tank.wall || s.wall);
+        let hurt = if life < 1 && !sturdy {
             Wear::Broken
         } else {
             Wear::Decayed
