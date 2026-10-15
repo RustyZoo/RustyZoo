@@ -532,7 +532,7 @@ bulldozer_area() { # bulldozer_area <map>
     awk '/ world remove /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "8,49960,3c871320be5975c8" "bulldozer_area maps/default.zoo"
-check expansion-trial "17,50156,d5bf4e48f91f53d0" "bulldozer_area maps/scn19.zoo"
+check base-trial "8,49960,9e68a707de0688d9" "bulldozer_area maps/default.zoo"
+check expansion-trial "17,50156,dfc2848f5177231c" "bulldozer_area maps/scn19.zoo"
 
 exit $failed

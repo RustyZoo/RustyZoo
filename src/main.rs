@@ -154,7 +154,7 @@ usage: rustyzoo [--data <dir>] <command>
                       side S id N` for a fence, `tool turn STEP` for a type that turns by
                       itself, the placement sound), one that is not valid or too dear asks for the
                       refusal sound and shows its message, if it has one, in the message line for
-                      5 seconds (`tool message ID`). The Clear Objects button of the main panel
+                      5 seconds (`tool message ID`). The bulldozer button (1028) of the main panel
                       and the Delete key make the bulldozer the tool (`tool bulldozer on`, off
                       again by the same, Escape or the right button): the object under the pointer
                       is tinted red with its refund next to the pointer (`tool bulldoze CLASS/TYPE/

@@ -27,7 +27,7 @@ const EXPANSIONS: [(&str, i32); 2] = [("dinosaur", 1), ("aqua", 2)];
 pub const CONSTRUCTION: i32 = 8;
 pub const OBJECTS: i32 = 4;
 const ALL: i32 = 22900;
-/// The Clear Objects button of the left bar, the bulldozer.
+/// The bulldozer button of the left bar.
 pub const BULLDOZER: i32 = 1028;
 /// A bulldozer press becomes an area drag when the pointer moves more than this many pixels.
 const SWEEP_PIXELS: i64 = 16;
@@ -308,7 +308,7 @@ pub struct Build {
     infoimg: Option<HashMap<i32, String>>,
     /// A path or fence drag in progress (placing 6.2).
     drag: Option<Drag>,
-    /// The bulldozer is the tool (the Clear Objects button is selected), and the press it holds.
+    /// The bulldozer is the tool (the bulldozer button is selected), and the press it holds.
     bulldozer: bool,
     sweep: Option<Sweep>,
 }
@@ -388,7 +388,7 @@ impl Build {
         self.sweep = None;
     }
 
-    /// The Clear Objects button was pressed or released: noticed from its state, the bulldozer
+    /// The bulldozer button was pressed or released: noticed from its state, the bulldozer
     /// becomes the tool, which clears the item (and the terrain tab) of the open panel, and a
     /// second press ends it (placing 7.1).
     fn notice_bulldozer(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
