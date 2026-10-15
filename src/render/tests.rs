@@ -496,6 +496,11 @@ pub(crate) fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
 
 /// An install whose terrain cache holds `frame` for the one grass tile.
 pub(crate) fn cache_install(name: &str, frame: Vec<u8>) -> Install {
+    cache_install_with(name, frame, &[])
+}
+
+/// As [`cache_install`], with more members.
+pub(crate) fn cache_install_with(name: &str, frame: Vec<u8>, extra: &[(&str, Vec<u8>)]) -> Install {
     let mut palette = 2u32.to_le_bytes().to_vec();
     palette.extend([0, 0, 0, 255, 200, 100, 50, 255]);
     let mut members = vec![
@@ -508,11 +513,26 @@ pub(crate) fn cache_install(name: &str, frame: Vec<u8>) -> Install {
     for variation in 0..9 {
         members.push((format!("ztats/0000{variation:02x}.lle"), frame.clone()));
     }
-    let members: Vec<(&str, Vec<u8>)> = members
+    let mut members: Vec<(&str, Vec<u8>)> = members
         .iter()
         .map(|(n, c)| (n.as_str(), c.clone()))
         .collect();
+    members.extend(extra.iter().cloned());
     Install::new(name, &members)
+}
+
+/// The members that give every shape of the one-tile map a grid line: a red pixel above the
+/// ground picture's first pixel.
+pub(crate) fn grid_members() -> Vec<(&'static str, Vec<u8>)> {
+    use crate::bitmap::tests::{RED, WHITE, bmp24};
+    let line = bmp24(&[vec![WHITE, RED], vec![WHITE, WHITE]], false);
+    vec![
+        (
+            "tile.cfg",
+            b"[0]\nnorthgrid=grid.bmp\neastgrid=grid.bmp\n".to_vec(),
+        ),
+        ("grid.bmp", line),
+    ]
 }
 
 #[test]
@@ -557,7 +577,7 @@ fn check_windows(
 ) {
     for &(x, y, w, h) in windows {
         let mut canvas = Framebuffer::new(w, h);
-        staged.draw(&mut canvas, x, y, 0);
+        staged.draw(&mut canvas, x, y, 0, false);
         let mut want = Framebuffer::new(w, h);
         want.fill([0, 0, 0, 255]);
         for row in 0..h as i64 {
@@ -932,6 +952,45 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
     assert!(without.1 > 0 && without.0 == 0, "{without:?}");
     let with = cliffs(&[config, ("fringe/f.bmp", bitmap)]);
     assert_eq!(with, (without.1, 0));
+}
+
+#[test]
+fn the_grid_lines_of_every_tile_are_drawn_only_with_the_grid_on() {
+    let install = cache_install_with("render-grid", frame_file(), &grid_members());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[]);
+    for zoom in [-2, 0, 2] {
+        let draw = |grid| {
+            let options = Options {
+                grid,
+                zoom,
+                ..Options::default()
+            };
+            let (image, _) = MapRenderer::new(&vfs, &catalogue)
+                .render_with(&zoo, 0, &options)
+                .unwrap();
+            image
+        };
+        let (off, on) = (draw(false), draw(true));
+        assert_eq!(
+            (off.width, off.height),
+            (on.width, on.height),
+            "zoom {zoom}"
+        );
+        let red = |image: &Framebuffer| {
+            image
+                .pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|p| p[..3] == [255, 0, 0])
+                .count()
+        };
+        assert_eq!(red(&off), 0, "zoom {zoom}");
+        // A one-pixel line is thinned away when zoomed out (map drawing 8).
+        assert_eq!(red(&on) > 0, zoom >= 0, "zoom {zoom}");
+    }
 }
 
 #[test]
@@ -1415,6 +1474,7 @@ fn on_real_maps_any_window_of_one_staging_is_a_window_of_the_whole_map() {
                     origin.0 + w / 2 - 512,
                     origin.1 + h / 2 - 384,
                     0,
+                    false,
                 );
             }
             eprintln!(

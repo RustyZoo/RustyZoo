@@ -6,7 +6,9 @@ use crate::entity::Catalogue;
 use crate::menu::Menu;
 use crate::render::Options;
 use crate::render::order::project;
-use crate::render::tests::{cache_install, flat_map, frame_file, tile_with};
+use crate::render::tests::{
+    cache_install, cache_install_with, flat_map, frame_file, grid_members, tile_with,
+};
 use crate::sprite::tests::Install;
 use crate::ui::interface::Interface;
 use crate::vfs::Vfs;
@@ -39,7 +41,16 @@ fn reference(renderer: &mut MapRenderer, camera: &Camera) -> Framebuffer {
 
 /// Runs `body` with an app (periods 66 and 16, cap 200) and a second renderer of the same game.
 fn with_app(name: &str, body: impl FnOnce(&mut App, &mut MapRenderer)) {
-    let install = cache_install(name, frame_file());
+    with_grid_app(name, &[], body)
+}
+
+/// As [`with_app`], with more members in the install.
+fn with_grid_app(
+    name: &str,
+    extra: &[(&str, Vec<u8>)],
+    body: impl FnOnce(&mut App, &mut MapRenderer),
+) {
+    let install = cache_install_with(name, frame_file(), extra);
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut app = App::new(
@@ -189,6 +200,36 @@ fn a_draw_paints_only_when_the_camera_moved_and_commands_act_in_their_own_pass()
 }
 
 #[test]
+fn the_grid_command_toggles_the_grid_lines_in_the_frame() {
+    with_grid_app("app-grid", &grid_members(), |app, other| {
+        let off = app.pass(0, &[]).unwrap().pixels.clone();
+        let grid_reference = |renderer: &mut MapRenderer, camera: &Camera| {
+            let options = Options {
+                window: Some((camera.scroll.0, camera.scroll.1, SIZE.0, SIZE.1)),
+                zoom: camera.zoom,
+                grid: true,
+                ..Options::default()
+            };
+            renderer.render_with(&map(), 0, &options).unwrap().0
+        };
+        let on = app.pass(20, &[Command::Grid]).unwrap().pixels.clone();
+        assert_ne!(on, off);
+        assert_eq!(on, grid_reference(other, app.camera().unwrap()).pixels);
+        assert!(app.log_lines(1, 20)[0].ends_with("20 grid"));
+        // Scrolling keeps the grid; a second toggle gives the first frame back.
+        let moved = app
+            .pass(40, &[Command::Scroll(1, 0)])
+            .unwrap()
+            .pixels
+            .clone();
+        assert_eq!(moved, grid_reference(other, app.camera().unwrap()).pixels);
+        app.pass(60, &[Command::Scroll(-1, 0)]);
+        let back = app.pass(80, &[Command::Grid]).unwrap().pixels.clone();
+        assert_eq!(back, off);
+    });
+}
+
+#[test]
 fn the_pause_stops_the_calendar_but_not_the_timers() {
     with_app("app-pause", |app, _| {
         let date = |app: &App| {
@@ -246,6 +287,7 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Rotate(false),
         Command::Zoom(true),
         Command::Zoom(false),
+        Command::Grid,
         Command::Fullscreen(true),
         Command::Fullscreen(false),
         Command::Pause,
