@@ -10,6 +10,7 @@ const FEMALE: usize = 1;
 const DINO: usize = 2;
 const ORCA: usize = 3;
 const BARE: usize = 4;
+const BIG: usize = 5;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     EntityType {
@@ -41,6 +42,13 @@ fn catalogue() -> Catalogue {
         "mule",
         "[Characteristics/Integers]\ncUseNumbersInName=0\n",
     ));
+    let mut big = ty(
+        "m",
+        "stego",
+        "[Characteristics/Integers]\ncPurchaseCost=1\n",
+    );
+    big.footprint = [2, 8, 1];
+    cat.push(big);
     cat
 }
 
@@ -86,16 +94,18 @@ fn shape(e: &Entity) -> Option<Shape> {
         "animals" => (Kind::Unit, false),
         "fences" => (Kind::Edge, true),
         "tankwall" => (Kind::Wall, true),
+        "objects" => (Kind::Fixed, false),
         _ => return None,
     };
     Some(Shape {
         kind,
-        footprint: (1, 1),
+        footprint: if kind == Kind::Fixed { (2, 2) } else { (1, 1) },
         fence,
         wall: false,
         gate: false,
         gated: fence,
-        walkable: (false, false),
+        // A rock: walkable by tall units only.
+        walkable: (false, kind == Kind::Fixed),
         tank: TankKind {
             wall: e.class == "tankwall",
             ..TankKind::NONE
@@ -324,7 +334,7 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
 fn the_counter_is_per_type_name_shared_by_both_sexes_and_kept_with_the_zoo() {
     let cat = catalogue();
     let mut w = world(vec![]);
-    w.zoo.names.insert("Test Zebra".into(), 4);
+    w.zoo.names.insert("zebra".into(), 4);
     assert_eq!(
         name(&mut w, &cat.types[ZEBRA], "Test Zebra"),
         "Test Zebra 5"
@@ -334,12 +344,13 @@ fn the_counter_is_per_type_name_shared_by_both_sexes_and_kept_with_the_zoo() {
         "Test Zebra 6"
     );
     assert_eq!(name(&mut w, &cat.types[ORCA], "Orca"), "Orca 1");
-    assert_eq!(w.zoo.names["Test Zebra"], 6);
+    assert_eq!(w.zoo.names["zebra"], 6);
+    assert_eq!(w.zoo.names["orca"], 1);
     // A type that does not number its names keeps the plain one.
     assert_eq!(name(&mut w, &cat.types[BARE], "Mule"), "Mule");
     assert!(!w.zoo.names.contains_key("Mule"));
-    w.zoo.names.insert("Full".into(), u32::MAX);
-    name(&mut w, &cat.types[ZEBRA], "Full");
+    w.zoo.names.insert("zebra".into(), u32::MAX);
+    name(&mut w, &cat.types[ZEBRA], "Test Zebra");
 }
 
 #[test]
@@ -359,4 +370,56 @@ fn the_crate_goes_to_the_best_free_tile_of_the_grounds_three_or_more_tiles_away(
             .collect(),
     );
     assert_eq!(crate_spot(&tiny, 0), None);
+}
+
+#[test]
+fn only_walkable_lets_a_tile_through_not_walkable_by_tall() {
+    let mut pieces = square("fences", 2, 2);
+    pieces.push(entity_at(
+        "objects",
+        "rock",
+        "m",
+        2 * 64 + 32,
+        2 * 64 + 32,
+        0,
+    ));
+    let w = world(pieces);
+    let over = at(&w, ZEBRA, (2, 2));
+    assert_eq!(
+        (over.verdict, over.message),
+        (Verdict::Invalid, Some(super::super::IN_THE_WAY))
+    );
+    assert_eq!(over.blocking, [4]);
+}
+
+#[test]
+fn a_large_animal_runs_the_footprint_check_and_needs_room_inside_the_fences() {
+    let w = world(square("fences", 2, 2));
+    let big = at(&w, BIG, (2, 2));
+    assert_eq!(big.verdict, Verdict::Invalid, "its body crosses the fences");
+    // Inside a pen of 4 x 4 tiles it fits, and a rock under its body is in the way.
+    let pen = || -> Vec<Entity> {
+        (1..=4)
+            .flat_map(|i| {
+                [
+                    entity_at("fences", "iron", "f", i * 64 + 32, 64, 0),
+                    entity_at("fences", "iron", "f", 5 * 64 - 1, i * 64 + 32, 2),
+                    entity_at("fences", "iron", "f", i * 64 + 32, 5 * 64 - 1, 4),
+                    entity_at("fences", "iron", "f", 64, i * 64 + 32, 6),
+                ]
+            })
+            .collect()
+    };
+    let w = world(pen());
+    let cat = catalogue();
+    let point = (2 * 64 + 32, 2 * 64 + 32);
+    let free = pending(&w, &cat, &[false, true], BIG, 0, point, false).unwrap();
+    assert_eq!((free.verdict, free.message), (Verdict::Valid, None));
+    let mut pieces = pen();
+    let first = pieces.len();
+    pieces.push(entity_at("objects", "rock", "m", free.x, free.y, 0));
+    let w = world(pieces);
+    let held = pending(&w, &cat, &[false, true], BIG, 0, point, false).unwrap();
+    assert_eq!(held.verdict, Verdict::Invalid);
+    assert!(held.blocking.contains(&first));
 }

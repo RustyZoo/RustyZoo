@@ -7,7 +7,8 @@
 //! Staff are hired by their own panel.
 
 use super::{
-    NO_FUNDS, NOT_IN_THE_ZOO, Outcome, Pending, Verdict, entity, facing, fail, path_shape, snap,
+    NO_FUNDS, NOT_IN_THE_ZOO, Outcome, Pending, Verdict, entity, facing, fail, fenced, path_shape,
+    snap, uneven,
 };
 use crate::build::{cost, number, plain};
 use crate::entity::{Catalogue, EntityType};
@@ -111,17 +112,16 @@ fn footprint(t: &EntityType, dir: u32) -> (i32, i32) {
     }
 }
 
-/// The units on tile `tile`: their position in the list, position and the half sides of their
-/// blocking rectangle (placing 5.2).
-fn units_on(world: &World, tile: usize) -> Vec<(usize, i32, i32, (i32, i32))> {
+/// The units on the tiles `tiles`: their position in the list, position and the half sides of
+/// their blocking rectangle (placing 5.2).
+fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))> {
     let mut found = Vec::new();
     for (i, e) in world.zoo.entities.iter().enumerate() {
         let (Some(c), Some(shape)) = (e.common.as_ref(), world.shape(i)) else {
             continue;
         };
-        if shape.kind != Kind::Unit
-            || world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)) != Some(tile)
-        {
+        let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+        if shape.kind != Kind::Unit || !on.is_some_and(|on| tiles.contains(&on)) {
             continue;
         }
         let (fx, fy) = shape.footprint;
@@ -135,11 +135,10 @@ fn units_on(world: &World, tile: usize) -> Vec<(usize, i32, i32, (i32, i32))> {
     found
 }
 
-/// Whether the object holding quadrant `q` of the tile lets an animal through.
+/// Whether the object holding a quarter lets a unit through: only `walkable` counts, whatever
+/// the unit (unit placing 6.1).
 fn lets_through(world: &World, object: usize) -> bool {
-    world
-        .shape(object)
-        .is_some_and(|s: Shape| s.walkable.0 || s.walkable.1)
+    world.shape(object).is_some_and(|s: Shape| s.walkable.0)
 }
 
 /// The checks of 6.1 for an animal that is not crated, in order.
@@ -153,7 +152,25 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
     let flag = |key: &str| number(t, key) == Some(1.0);
     let (swims, under) = (flag("cSwims"), flag("cUnderwater"));
     let (fx, fy) = footprint(t, p.facing);
-    let units = units_on(world, tile);
+    // A large animal runs the footprint check of placing 5.2 (items 1, 3 to 6): its quarters.
+    let large = fx > 2 || fy > 2;
+    let (x0, y0) = (p.x - 16 * (fx - 1), p.y - 16 * (fy - 1));
+    let mut quads = Vec::new();
+    for (i, j) in (0..fx).flat_map(|i| (0..fy).map(move |j| (i, j))) {
+        let (qx, qy) = ((x0 + 32 * i).div_euclid(32), (y0 + 32 * j).div_euclid(32));
+        match world.tile_index(qx.div_euclid(2), qy.div_euclid(2)) {
+            Some(at) if world.in_zoo(at) => {
+                quads.push((at, (qy.rem_euclid(2) * 2 + qx.rem_euclid(2)) as usize));
+            }
+            _ => fail(p, None),
+        }
+    }
+    let mut tiles = vec![tile];
+    if large {
+        tiles = quads.iter().map(|&(at, _)| at).collect();
+        tiles.dedup();
+    }
+    let units = units_on(world, &tiles);
     // A passable tile, and no other unit's rectangle over the animal's own.
     let passable = (0..4).any(|q| {
         world
@@ -186,27 +203,16 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
             }),
         );
     }
-    // A large animal needs the quarters of its footprint free (and no message of its own).
-    if fx > 2 || fy > 2 {
-        let (x0, y0) = (p.x - 16 * (fx - 1), p.y - 16 * (fy - 1));
-        for (i, j) in (0..fx).flat_map(|i| (0..fy).map(move |j| (i, j))) {
-            let (qx, qy) = ((x0 + 32 * i).div_euclid(32), (y0 + 32 * j).div_euclid(32));
-            let at = world
-                .tile_index(qx.div_euclid(2), qy.div_euclid(2))
-                .filter(|&at| world.in_zoo(at));
-            match at
-                .map(|at| world.quadrant(at, (qy.rem_euclid(2) * 2 + qx.rem_euclid(2)) as usize))
-            {
-                Some(Some(held)) if !lets_through(world, held) => {
-                    fail(p, None);
-                    if !p.blocking.contains(&held) {
-                        p.blocking.push(held);
-                    }
-                }
-                Some(_) => {}
-                None => fail(p, None),
-            }
-        }
+    // A large animal holds no quarter, stands flat at one height and crosses no fence or cliff.
+    let held: Vec<usize> = match large {
+        true => quads
+            .iter()
+            .filter_map(|&(at, q)| world.quadrant(at, q))
+            .collect(),
+        false => Vec::new(),
+    };
+    if large && (!held.is_empty() || uneven(world, &tiles) || fenced(world, x0, y0, (fx, fy))) {
+        fail(p, None);
     }
     // It stands in an exhibit.
     let region = world.exhibits().region(tile);
@@ -223,8 +229,8 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
     }
     // What is in the way: the objects holding the tile's quarters and every unit on it.
     if p.verdict == Verdict::Invalid {
-        let held = (0..4).filter_map(|q| world.quadrant(tile, q));
-        for i in held.chain(units.iter().map(|u| u.0)) {
+        let around = (0..4).filter_map(|q| world.quadrant(tile, q));
+        for i in around.chain(held).chain(units.iter().map(|u| u.0)) {
             fail(p, Some(super::IN_THE_WAY));
             if !p.blocking.contains(&i) {
                 p.blocking.push(i);
@@ -270,13 +276,14 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
 }
 
 /// The default name of a new animal of the type, `text` being the type's name: with
-/// `cUseNumbersInName` (the default) a space and the next number of the counter of that name,
-/// started at 1 (unit placing 7.2).
+/// `cUseNumbersInName` (the default) a space and the next number of the counter of the type name
+/// (`giraffe`, not the text), started at 1 (unit placing 7.2).
 pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
     if plain(ty, "cUseNumbersInName").is_some_and(|n| n != 1.0) {
         return text.into();
     }
-    let counter = world.zoo.names.entry(text.into()).or_insert(0);
+    let key = String::from_utf8_lossy(&ty.type_name).into_owned();
+    let counter = world.zoo.names.entry(key).or_insert(0);
     *counter = counter.saturating_add(1);
     format!("{text} {counter}")
 }
