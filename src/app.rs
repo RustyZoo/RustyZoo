@@ -739,6 +739,9 @@ impl<'a> App<'a> {
                         let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
                         let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
                         game.build.press(self.renderer.catalogue(), tile, (x, y));
+                        if game.build.dragging() {
+                            game.selection = None;
+                        }
                     }
                 }
                 // A release that does not end a press on the map ends a drag without buying.
@@ -867,14 +870,14 @@ impl<'a> App<'a> {
             .tool()
             .filter(|_| game.hover)
             .and_then(|ty| at(ty, (point.0, point.1)));
-        // A pending fence selects the tile under the pointer, before snapping, also during a drag
-        // (placing 4.5).
+        // A pending fence selects the tile under the pointer, before snapping; a fence drag in
+        // progress does not draw it (placing 4.5, 6.2 items 1 and 2).
         let fence = game
             .build
             .tool()
             .and_then(|ty| cat.types.get(ty))
             .is_some_and(|t| Class::of(t) == Class::Fence);
-        game.selection = (fence && game.hover)
+        game.selection = (fence && game.hover && !game.build.dragging())
             .then(|| {
                 let (x, y) = (point.0.div_euclid(64), point.1.div_euclid(64));
                 let tile = game

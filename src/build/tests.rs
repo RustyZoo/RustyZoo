@@ -919,7 +919,9 @@ fn the_picture_table_reads_numbers_and_ignores_the_rest() {
     assert_eq!(table.len(), 3, "a bare label has no picture");
     let nothing = Install::new("table-none", &[("zoo.txt", vec![])]);
     assert!(infoimg(&Vfs::open(&nothing.0).unwrap()).is_empty());
+}
 
+#[test]
 fn a_fence_run_is_computed_again_only_past_the_tile_the_height_step_or_17_world_units() {
     let mut cat = Catalogue::default();
     cat.push(crate::entity::EntityType {
