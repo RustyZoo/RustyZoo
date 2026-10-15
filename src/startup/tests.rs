@@ -28,6 +28,23 @@ fn the_picture_is_chosen_by_the_expansion_flags() {
 }
 
 #[test]
+fn grey_is_cut_to_five_bits_and_green_made_six() {
+    // The values the original's screen copy shows (main menu 3.3 item 7).
+    for (grey, shown) in [
+        (100, [99, 97, 99]),
+        (128, [132, 134, 132]),
+        (254, [255, 255, 255]),
+    ] {
+        let mut dib = 40u32.to_le_bytes().to_vec();
+        dib.extend([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 24, 0]);
+        dib.extend([0; 24]);
+        dib.extend([grey, grey, grey, 0]);
+        let p = decode(&dib).unwrap().pixels;
+        assert_eq!(p[..3], shown, "grey {grey}");
+    }
+}
+
+#[test]
 fn a_bitmap_resource_becomes_a_picture_with_5_6_5_colours() {
     // 2 x 2, 24 bits, bottom row first, rows padded to 8 bytes (blue, green, red).
     let mut dib = 40u32.to_le_bytes().to_vec();
@@ -39,7 +56,7 @@ fn a_bitmap_resource_becomes_a_picture_with_5_6_5_colours() {
     dib.extend([50, 100, 200, 255, 255, 255, 0, 0]);
     let picture = decode(&dib).unwrap();
     assert_eq!((picture.width, picture.height), (2, 2));
-    assert_eq!(picture.pixels[..4], [197, 97, 49, 255], "top left");
+    assert_eq!(picture.pixels[..4], [206, 97, 49, 255], "top left");
     assert_eq!(picture.pixels[4..8], [255, 255, 255, 255]);
     assert_eq!(picture.pixels[8..12], [255, 0, 0, 255], "bottom left");
     for bad in [&dib[..3], &dib[..50], &[][..], &[0; 40][..]] {
