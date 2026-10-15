@@ -81,6 +81,9 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      # No simulation code walks a hash map (the order differs at every run).
+      - if: runner.os == 'Linux'
+        run: ci/check-hash-iteration.sh
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
@@ -149,8 +152,9 @@ jobs:
           [ "$status" = 0 ] || exit "$status"
           ci/check-trials.sh ${{ matrix.path }} "$trials"
 
-      # The state hash of 1000 simulation steps of every map of the trials, kept as a job output
-      # (nothing is uploaded) for the job `simhash`.
+      # The state hash of 1000 simulation steps of every map of the trials, with steps of 67 ms and
+      # of 1000 ms (two month changes), kept as a job output (nothing is uploaded) for the job
+      # `simhash`.
       - name: State hash of the simulation
         id: simhash
         run: |
@@ -214,8 +218,9 @@ jobs:
           path: ${{ matrix.path }}
           if-no-files-found: error
 
-  # The simulation is deterministic: the state hash of every map of the trials after 1000 steps is the
-  # same on the three systems. A system without trial data is skipped with a warning.
+  # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
+  # and long) is the same on the three systems, and no map fails to run. A system without trial data
+  # is skipped with a warning.
   simhash:
     name: simulation hash
     needs: build
@@ -236,6 +241,12 @@ jobs:
               exit 1
             }
           done
+          case "$LINUX$WINDOWS$MACOS" in
+            *=failed*)
+              echo "a map did not run"
+              exit 1
+              ;;
+          esac
           if [ "$seen" -lt 3 ]; then
             echo "::warning title=Simulation hash::Only $seen of 3 systems had trial data, so the hashes were not all compared."
           fi

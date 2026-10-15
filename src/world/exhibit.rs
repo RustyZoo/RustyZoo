@@ -373,7 +373,7 @@ impl World {
         let mut next = old.blank(self.zoo.tiles.len());
         let mut fresh = Vec::new();
         let mut tanks = Vec::new();
-        let mut starts: HashMap<u32, Pair> = HashMap::new();
+        let mut starts: Vec<(u32, Pair)> = Vec::new();
         let mut regate = Vec::new();
         let mut kept_ids = HashSet::new();
         // The tiles beside the piece: the fill of a region that changed starts at the one it
@@ -437,7 +437,7 @@ impl World {
                         None => self.events.push(Event::New { id, ask: !quiet }),
                     }
                     if let Some(start) = start {
-                        starts.insert(id, start);
+                        starts.push((id, start));
                     }
                 }
             }
@@ -456,7 +456,7 @@ impl World {
         }
         next.exterior(self);
         // A morph refills the region across its start pair from that tile (3.1).
-        for (&id, &(_, out)) in &starts {
+        for &(id, (_, out)) in &starts {
             if let Some(r) = next
                 .region(out)
                 .filter(|&r| r != GROUNDS && r != EXTERIOR && r != id)
@@ -504,14 +504,13 @@ impl World {
             return;
         };
         for id in fresh {
-            let start =
-                starts
-                    .get(&id)
-                    .copied()
-                    .unwrap_or(match self.exhibits.region(b) == Some(id) {
-                        true => (b, a),
-                        false => (a, b),
-                    });
+            let start = starts.iter().find(|s| s.0 == id).map_or_else(
+                || match self.exhibits.region(b) == Some(id) {
+                    true => (b, a),
+                    false => (a, b),
+                },
+                |s| s.1,
+            );
             self.waiting.push((id, start, a));
         }
         // The gate of an exhibit went but its line is still closed: a new one on that line.
@@ -611,20 +610,20 @@ impl World {
     /// the game's business); the tank list of the zoo, which the picture reads, follows. The
     /// tanks that are new or changed their show state are returned.
     pub(super) fn retank(&mut self, strict: bool) -> Vec<u32> {
-        let mut tiles: HashMap<u32, Vec<usize>> = HashMap::new();
+        let mut by_region: HashMap<u32, Vec<usize>> = HashMap::new();
         for t in 0..self.zoo.tiles.len() {
             if let Some(r) = self
                 .exhibits
                 .region(t)
                 .filter(|&r| r != GROUNDS && r != EXTERIOR)
             {
-                tiles.entry(r).or_default().push(t);
+                by_region.entry(r).or_default().push(t);
             }
         }
         let ids: Vec<u32> = self.exhibits.list().iter().map(|e| e.id).collect();
         let tanks: Vec<(u32, bool)> = ids
             .iter()
-            .filter_map(|&id| Some((id, self.tank_test(tiles.get(&id)?, &|_| false, strict)?)))
+            .filter_map(|&id| Some((id, self.tank_test(by_region.get(&id)?, &|_| false, strict)?)))
             .collect();
         let mut changed = Vec::new();
         for &id in &ids {
@@ -642,7 +641,9 @@ impl World {
         }
         // The show test of a piece across looks at the other tanks, which are known now.
         for &(id, _) in &tanks {
-            let Some(mine) = tiles.get(&id) else { continue };
+            let Some(mine) = by_region.get(&id) else {
+                continue;
+            };
             let show = self.tank_test(mine, &|t| self.tank_at(t).is_some(), strict);
             if let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) {
                 if tank.show != (show == Some(true)) && !changed.contains(&id) {
@@ -741,15 +742,15 @@ impl World {
         merged: Option<&[usize]>,
     ) -> Option<Pair> {
         let gate = old.get(x)?.gate.and_then(|g| self.slot_of(self.find(g)?));
-        let held: HashSet<usize> = part.tiles.iter().copied().collect();
+        let own: HashSet<usize> = part.tiles.iter().copied().collect();
         if let Some((t, d)) = gate {
             let n = self.neighbour(t, d)?;
-            return Some(match held.contains(&t) {
+            return Some(match own.contains(&t) {
                 true => (t, n),
                 false => (n, t),
             });
         }
-        let inside = |t: usize| held.contains(&t);
+        let inside = |t: usize| own.contains(&t);
         let mut pair = match merged {
             Some(order) => {
                 let (t, n) = *exhibit::boundary_of(self, order, &inside).first()?;

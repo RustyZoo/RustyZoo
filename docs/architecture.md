@@ -96,12 +96,12 @@ Not implemented yet unless said otherwise.
 
 ## Determinism
 
-`rustyzoo sim <map> --ticks N` steps a map without an interface, window or frame and prints one hash of the state (`sim::hash::state`: the tiles, entities, units, exhibits, money, calendar, clocks, event queue and generator). The hash is FNV-1a over fixed-width fields, little-endian: whole numbers at their own width, a decimal value by the bits of its `f32`, a string or a list after its length as a `u32`. CI runs it on every map of both trials on Linux, Windows and macOS and the job `simhash` fails if the three differ. A new part of the simulation state goes into the hash in the same change, and a test shows that changing it changes the hash. The rules that keep it equal:
+`rustyzoo sim <map> --ticks N` steps a map without an interface, window or frame and prints one hash of the state (`sim::hash::state`: the tiles, entities, units, exhibits, money, calendar, clocks, event queue and generator). The hash is FNV-1a over fixed-width fields, little-endian: whole numbers at their own width, a decimal value by the bits of its `f32`, a string or a list after its length as a `u32`. CI runs it on every map of both trials on Linux, Windows and macOS, with steps of 67 ms and of 1000 ms (the long run crosses two month changes), and the job `simhash` fails if the three differ or a map does not run. A new part of the simulation state goes into the hash in the same change, and a test shows that changing it changes the hash. The rules that keep it equal:
 
 - Whole numbers of the original's widths (`i32`, `u32`, `u16`, `u8`); wrapping arithmetic where the original wraps, never an overflow that panics in debug and wraps in release.
 - `f32` for money and the other decimal values, as the original, with the operations written in the original's order; no `f64` where the original has a single, no fused multiply-add.
 - No transcendental float function (`sin`, `cos`, `tan`, `exp`, `ln`, `powf` and the like) in the simulation: their results differ between libraries. Square root, add, subtract, multiply, divide and comparisons are exact.
-- No iteration over a `HashMap` or `HashSet` (the order differs at every run): a map is only looked up, and anything walked is a `Vec` in a fixed order.
+- No iteration over a `HashMap` or `HashSet` (the order differs at every run): a map is only looked up, and anything walked is a `Vec` in a fixed order (`ci/check-hash-iteration.sh` fails on a walk over a hash map in the simulation modules it lists; a walk whose order does not matter carries `// order-free: <why>`).
 - The generator is the only source of chance (`sim::Rng`), seeded from the seed of the run, never from the clock or the address of anything; the time is the sum of the steps.
 - Nothing in the step reads the wall clock, the environment, a file or the draw.
 
