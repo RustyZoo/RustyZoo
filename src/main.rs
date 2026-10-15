@@ -105,6 +105,7 @@ usage: rustyzoo [--data <dir>] <command>
                       if a set fails
   run [<map>] --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
       [--png-every K] [--out DIR] [--show ID]... [--rows ID N]... [--text ID TEXT]...
+      [--ask ID BUTTONS]
                       play a map (a .zoo member) without a window. N passes of the main loop
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
@@ -121,11 +122,16 @@ usage: rustyzoo [--data <dir>] <command>
                       bars, list boxes, text fields) and a line `ui ...` tells what they did
                       (hover, sound, press, release, select, deselect, show, hide, drag, scroll
                       ID POSITION, row ID ROW, select ID ROW for a list, focus, unfocus, text
-                      ID TEXT, beep ID for a refused character, key LAYOUT KEY); the keys and characters go to the focused
-                      field or list; a message over the map view belongs to the map.
-                      --rows ID N (repeatable) fills the list box ID with N made-up rows (at
-                      most 100000) and --text ID TEXT gives an element a text, for a script to scroll, select
-                      and type in. The window is 1024x768 unless
+                      ID TEXT, beep ID for a refused character, key LAYOUT KEY, tooltip X Y W H when a tooltip shows, ask and
+                      answer CODE for a question); the keys and characters go to the focused
+                      field or list, and then to an open question (Enter, Escape, y, n), which
+                      alone receives the mouse and pauses the game; a message over the map
+                      view belongs to the map. --rows ID N (repeatable) fills the list box ID
+                      with N made-up rows (at most 100000), --text ID TEXT gives an element a
+                      text and --ask ID BUTTONS opens the question layout ID (45000 is
+                      confirm.lyt) with some of the buttons yes, no, ok, cancel, comma
+                      separated, for a script to scroll, select, type in and answer. The window is
+                      1024x768 unless
                       --size says otherwise. Prints the size of the window, then, for each pass
                       in which something happens: a line per command applied, then one per
                       timer that fires, draw (the hash of the frame painted, or - if none, and
@@ -135,7 +141,7 @@ usage: rustyzoo [--data <dir>] <command>
                       in a pass whose index is a multiple of K is written to
                       DIR/frame-<pass>.png (DIR is by default the current folder)
   run [<map>] [--size WxH] [--passes N] [--script FILE] [--log FILE] [--timing MS] [--shot FILE]
-      [--show ID]... [--rows ID N]... [--text ID TEXT]...
+      [--show ID]... [--rows ID N]... [--text ID TEXT]... [--ask ID BUTTONS]
                       play a map (without one, start up to the main menu, see below) with a
                       game size of the ini file's screenwidth and
                       screenheight (cut to the display; --size overrides it, uncut), in a

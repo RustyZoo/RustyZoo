@@ -65,18 +65,41 @@ fn a_timed_element_hides_itself_after_its_duration() {
     assert!(!ui.dirty());
     ui.show(1);
     ui.tree.elements[2].state &= !HIDDEN;
-    ui.update(33); // starts the count
-    ui.update(33);
-    ui.update(33);
-    ui.update(33);
+    // The update that starts the count has used up 1 ms of it.
+    ui.update(1033);
+    assert_eq!(ui.tree.elements[2].countdown, Some(99));
+    ui.update(1066);
+    ui.update(1099);
     assert_eq!(
         ui.tree.elements[2].state & HIDDEN,
         0,
-        "100 ms have not passed"
+        "66 ms have not passed"
     );
-    assert!(ui.tree.elements[2].countdown.is_some());
+    assert_eq!(ui.tree.elements[2].countdown, Some(33));
     ui.paint(&mut Framebuffer::new(64, 48), &mut |_, _| {});
-    ui.update(33);
+    ui.take_events();
+    ui.update(1132);
     assert_eq!(ui.tree.elements[2].state & HIDDEN, HIDDEN);
     assert!(ui.dirty());
+    assert_eq!(ui.take_events(), ["hide 3"]);
+}
+
+#[test]
+fn the_update_works_at_most_every_33_ms_and_counts_the_real_time_between_two_runs() {
+    let mut ui = interface("gap", ROOT);
+    ui.show(1);
+    ui.tree.elements[2].state &= !HIDDEN;
+    ui.update(500); // starts the count
+    // Less than 33 ms after the last run: nothing, and that time is not lost.
+    ui.update(520);
+    ui.update(532);
+    assert_eq!(ui.tree.elements[2].countdown, Some(99));
+    ui.update(533);
+    assert_eq!(ui.tree.elements[2].countdown, Some(66));
+    // A long gap counts whole: the count is real time, not a number of updates.
+    ui.update(5000);
+    assert_eq!(ui.tree.elements[2].state & HIDDEN, HIDDEN);
+    // A clock that goes back is no update.
+    ui.update(10);
+    ui.update(u64::MAX);
 }

@@ -368,15 +368,19 @@ fn interface(name: &str) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
         [b]\ntype=UILayout\nlayout=ui/a.lyt\nstate=1\n\
+        [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n\
         [c]\ntype=UIEditableText\nid=4\nx=50\ny=40\ndx=4\ndy=4\n";
     let a = "[LayoutInfo]\nid=10\nlayer=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [x]\ntype=UIText\nid=11\nx=2\ny=2\ndx=40\ndy=20\ntransparent=0\n\
         backcolor=255\nbackcolor=0\nbackcolor=0\n";
+    let q = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
+        [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ncolorasicon=1\n";
     let install = crate::sprite::tests::Install::new(
         &format!("app-ui-{name}"),
         &[
             ("ui/root.lyt", root.as_bytes().to_vec()),
             ("ui/a.lyt", a.as_bytes().to_vec()),
+            ("ui/q.lyt", q.as_bytes().to_vec()),
         ],
     );
     let mut tree = crate::ui::layout::Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
@@ -596,5 +600,73 @@ fn a_visible_animation_that_changes_its_frame_paints_and_a_still_interface_does_
         // Paused: this element stands still, so nothing is painted again.
         app.pass(1440, &[Command::Pause]);
         assert!((1441..2000).step_by(16).all(|t| app.pass(t, &[]).is_none()));
+    });
+}
+
+#[test]
+fn an_open_question_forces_the_pause_and_the_game_gets_its_flag_back_when_it_closes() {
+    with_app("app-ui-modal", |app, _| {
+        app.set_interface(interface("modal"));
+        app.pass(0, &[]);
+        let before = app.calendar().unwrap().date();
+        let moved = app.camera().unwrap().scroll;
+        assert!(
+            app.interface()
+                .unwrap()
+                .ask(45000, b"?", crate::ui::interface::Buttons::YES_NO)
+        );
+        assert!(app.paused());
+        // The simulation stands still, a Pause key changes nothing that outlasts the question,
+        // and the keys of the map view do not act.
+        app.pass(
+            70,
+            &[
+                Command::Pause,
+                Command::Space,
+                Command::Scroll(1, 0),
+                Command::Zoom(true),
+            ],
+        );
+        assert_eq!(app.calendar().unwrap().date(), before);
+        assert_eq!(app.camera().unwrap().scroll, moved);
+        assert!(
+            app.log_lines(1, 70)
+                .iter()
+                .any(|l| l.contains(" step ") && l.ends_with(" paused"))
+        );
+        // A click on the button answers; the game runs again.
+        let b = app.interface().unwrap().tree.find(45010).unwrap();
+        let (x, y, _, _) = app.interface().unwrap().tree.rect(b);
+        app.pass(
+            140,
+            &[
+                Command::Mouse(Mouse::Move(x + 1, y + 1)),
+                Command::Mouse(Mouse::Down),
+                Command::Mouse(Mouse::Up),
+            ],
+        );
+        assert_eq!(
+            app.ui_actions().last(),
+            Some(&crate::ui::interface::Action::Answer(6))
+        );
+        assert!(!app.paused());
+        app.pass(210, &[]);
+        assert_ne!(app.calendar().unwrap().date(), before);
+    });
+}
+
+#[test]
+fn a_game_paused_before_a_question_stays_paused_after_it() {
+    with_app("app-ui-modal-paused", |app, _| {
+        app.set_interface(interface("modalpaused"));
+        app.pass(0, &[]);
+        app.pass(20, &[Command::Pause]);
+        assert!(app.paused());
+        app.interface()
+            .unwrap()
+            .ask(45000, b"", crate::ui::interface::Buttons::OK);
+        app.pass(40, &[Command::Pause]);
+        app.interface().unwrap().answer(1);
+        assert!(app.paused(), "the question gave the flag back as it was");
     });
 }

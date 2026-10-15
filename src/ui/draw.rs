@@ -627,6 +627,20 @@ impl Painter {
         (total, room.max(1) as usize)
     }
 
+    /// The size of a tooltip of `text` in the element's font, borders included, at most
+    /// `max_width` wide before it wraps (text 5.5).
+    pub fn tooltip_size(
+        &mut self,
+        e: &Element,
+        strings: &dyn Strings,
+        text: &[u8],
+        max_width: i32,
+    ) -> (i32, i32) {
+        let aligned = !matches!(e.look.justify, super::layout::Justify::Left);
+        let font = self.font(e, strings);
+        text::tooltip_size(font, text, aligned, max_width, e.x_border, e.y_border)
+    }
+
     /// The caret position for a click at distance `x` from the left of a text field.
     pub fn caret_at(&mut self, e: &Element, strings: &dyn Strings, text: &[u8], x: i32) -> usize {
         let Some(placed) = e.placed else { return 0 };

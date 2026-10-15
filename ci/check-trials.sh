@@ -157,8 +157,8 @@ menu_click() {
   echo
   rm -rf "${d:?}"
 }
-check base-trial 'uihover7111;uisounduiclick;uipress7111;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/default.zoo"
-check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/scn19.zoo"
+check base-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239527428;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/default.zoo"
+check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239537628;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/scn19.zoo"
 
 # Start up to the main menu, headless, without a map: the picture drawn (resource number and
 # corner), the loading steps (also written to [UI] progresscalls of the user folder), Continue
@@ -271,6 +271,34 @@ field_use() {
   rm -rf "${d:?}"
 }
 check expansion-trial 'focus11510;text115107;text1151097;unfocus11510;key39enter;' "field_use maps/scn19.zoo"
+
+# The tooltip of the first main menu button: shown 30 pixels under the pointer after the update,
+# gone after its 3 seconds. The size follows the text of the install.
+tooltip_use() {
+  d=$(mktemp -d)
+  printf '1 mouse 512 365\n5 mouse 513 366\n' >"$d/script"
+  rz run "$1" --headless --passes 40 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
+    grep ' ui \(tooltip\|hide\)' | sed 's/^pass \([0-9]*\) .* ui /\1 /' | tr '\n' ';'
+  echo
+  rm -rf "${d:?}"
+}
+question_use() {
+  d=$(mktemp -d)
+  printf '%b\n' "$2" >"$d/script"
+  rz run "$1" --headless --passes 8 --clock 100 --ask 45000 "$3" --script "$d/script" 2>/dev/null |
+    grep ' ui \(ask\|answer\)\| step ' | sed 's/^pass \([0-9]*\) t=[0-9]* \(ui \)\{0,1\}/\1 /' | sed 's/step [0-9]* [-0-9]* [:.0-9]*/step/' | tr '\n' ';'
+  echo
+  rm -rf "${d:?}"
+}
+check base-trial '1tooltip51239527428;31hide7003;' "tooltip_use maps/default.zoo"
+check expansion-trial '1tooltip51239537628;31hide7003;' "tooltip_use maps/scn19.zoo"
+
+# A question opened over the map: the game stands still until it is answered, by a click on a
+# button, by a key, and not by a click outside it.
+check base-trial '0ask45000;0steppaused;1steppaused;2steppaused;3steppaused;4answer6;4step;5step;6step;7step;' "question_use maps/default.zoo '2 mouse 395 417\n3 down\n4 up' yes,no,cancel"
+check base-trial '0ask45000;0steppaused;1steppaused;2steppaused;3answer7;3step;4step;5step;6step;7step;' "question_use maps/default.zoo '3 key escape' yes,no"
+check base-trial '0ask45000;0steppaused;1steppaused;2steppaused;3answer1;3step;4step;5step;6step;7step;' "question_use maps/default.zoo '3 key enter' ok,cancel"
+check base-trial '0ask45000;0steppaused;1steppaused;2steppaused;3steppaused;4steppaused;5answer6;5step;6step;7step;' "question_use maps/default.zoo '2 mouse 5 5\n3 down\n4 up\n5 key y' yes,no"
 
 # Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
 # interface updates and steps of a ten second run with a pass at every millisecond.
