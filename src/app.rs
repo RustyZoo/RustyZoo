@@ -447,6 +447,9 @@ impl<'a> App<'a> {
             finances: Finances::default(),
             build: Build::new(installed_expansions(self.renderer.vfs())),
         });
+        if let Some(ui) = &mut self.ui {
+            Build::first_tabs(ui);
+        }
         Ok(())
     }
 

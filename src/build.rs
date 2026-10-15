@@ -254,6 +254,15 @@ impl Build {
         }
     }
 
+    /// A game was opened: both panels reopen on their first tab (placing 3.5).
+    pub fn first_tabs(ui: &mut Interface) {
+        for panel in &PANELS {
+            for (n, &tab) in panel.tabs.iter().chain(panel.other_tabs).enumerate() {
+                ui.set_button(tab, n == 0, true);
+            }
+        }
+    }
+
     /// The type that is the tool: an index into the catalogue.
     pub fn tool(&self) -> Option<usize> {
         self.held

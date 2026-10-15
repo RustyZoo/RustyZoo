@@ -690,3 +690,25 @@ fn a_tab_keeps_the_rows_it_showed_even_without_the_chosen_item() {
     build.sync(&mut ui, &vfs, &cat, &mut log);
     assert_eq!((ui.top(3208), build.tool()), (1, Some(4)));
 }
+
+#[test]
+fn a_panel_reopens_on_the_tab_it_was_closed_on_and_on_the_first_after_a_load() {
+    let (mut ui, vfs, _install) = interface("reopen");
+    let cat = types();
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    ui.show(8);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    tab(&mut ui, &mut build, (&vfs, &cat), 3056, &mut log);
+    assert!(build.cancel(&mut ui, &mut log) && build.cancel(&mut ui, &mut log));
+    ui.show(8);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(Build::tab(&ui, 0), Some(1), "the paths tab");
+    assert_eq!(text(&ui, 3261), "Paths");
+    assert!(build.cancel(&mut ui, &mut log) && build.cancel(&mut ui, &mut log));
+    Build::first_tabs(&mut ui);
+    let mut build = Build::new(3);
+    ui.show(8);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(Build::tab(&ui, 0), Some(0));
+    assert_eq!(text(&ui, 3261), "Fences");
+}
