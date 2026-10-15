@@ -247,6 +247,37 @@ fn bulldozing_the_piece_that_closed_an_exhibit_is_undone_with_its_name_and_gate(
 }
 
 #[test]
+fn the_gate_of_a_line_that_another_piece_keeps_closed_goes_back_to_its_piece() {
+    with_game("held", "[UI]\nconfirmSell=0\n", |s| {
+        let pieces: Vec<u32> = [0, 2, 4, 6].map(|d| s.fence(1, 20, 20, d)).to_vec();
+        // A second piece on the north line, from the other tile.
+        let twin = s.fence(1, 20, 19, 4);
+        s.app.exhibits_told();
+        let game = s.app.game.as_mut().unwrap();
+        game.world.rename(1, "Lions".into());
+        game.world.set_gate(1, pieces[0]);
+        s.pass(&[DELETE]);
+        s.click(s.at(20, 20, 32, 4));
+        let w = world(s);
+        assert_eq!(w.exhibits().list().len(), 1, "the line stays closed");
+        assert_eq!(
+            w.exhibits().get(1).unwrap().gate,
+            Some(twin),
+            "the other piece is the gate"
+        );
+        s.log(&[BACKSPACE]);
+        let w = world(s);
+        assert_eq!(w.exhibits().get(1).unwrap().gate, Some(pieces[0]));
+        let at = w.find(twin).unwrap();
+        assert_eq!(
+            w.zoo.entities[at].subtype, "f",
+            "the other piece is a fence again"
+        );
+        assert_eq!(w.exhibits().get(1).unwrap().name, "Lions");
+    });
+}
+
+#[test]
 fn closing_an_exhibit_is_undone_with_the_exhibit_and_a_new_press_forgets_the_old_one() {
     with_game("close", "", |s| {
         s.app.game.as_mut().unwrap().build.hold(1);

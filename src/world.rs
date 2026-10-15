@@ -408,7 +408,7 @@ impl World {
         let slot = self.slot_of(at);
         let fence = self.shapes[at].is_some_and(|s| s.fence);
         if fence {
-            self.note_opening(slot);
+            self.note_opening(slot, false);
         }
         let entity = self.zoo.entities.remove(at);
         let shape = self.shapes.remove(at);
@@ -425,6 +425,13 @@ impl World {
         true
     }
 
+    /// Whether `entity` has the type of the one at `at` in the list.
+    pub fn same_type(&self, at: usize, entity: &Entity) -> bool {
+        let old = &self.zoo.entities[at];
+        (&old.class, &old.type_name, &old.subtype)
+            == (&entity.class, &entity.type_name, &entity.subtype)
+    }
+
     /// Puts a new entity in place of the one with this id, as one change, in the same place of
     /// the entity list. An entity of the same type, and a path of another type (placing 5.3,
     /// 6.3), keeps the old one's id; a fence piece of another type gets a fresh id. An exhibit
@@ -435,10 +442,9 @@ impl World {
         let slot = self.slot_of(at);
         let was = self.shapes[at];
         let door = self.is_door(at);
-        let old = &self.zoo.entities[at];
-        let same = (&old.class, &old.type_name, &old.subtype)
-            == (&entity.class, &entity.type_name, &entity.subtype);
-        let keep = same || was.is_some_and(|s| s.kind == Kind::Path);
+        let same = self.same_type(at, &entity);
+        let path = was.is_some_and(|s| s.kind == Kind::Path);
+        let keep = same || path;
         let new = match keep {
             true => id,
             false => self.zoo.id_counter.checked_add(1)?,
@@ -450,20 +456,23 @@ impl World {
             entity.subtype = "g".into();
         }
         if was.is_some_and(|s| s.fence) && !shape.is_some_and(|s| s.fence) {
-            self.note_opening(slot);
+            self.note_opening(slot, true);
         }
         let exhibit = (self.exhibits.list().iter())
             .find(|e| e.gate == Some(id))
             .map(|e| e.id);
         let old = std::mem::replace(&mut self.zoo.entities[at], entity);
         self.shapes[at] = shape;
-        self.record(Action::Replaced {
-            id: new,
-            old,
-            shape: was,
-            exhibit,
-            price: 0.0,
-        });
+        // A path laid on a path of the same type records nothing (placing 8).
+        if !(same && path) {
+            self.record(Action::Replaced {
+                id: new,
+                old,
+                shape: was,
+                exhibit,
+                price: 0.0,
+            });
+        }
         if let Some(e) = exhibit.and_then(|x| self.exhibits.get_mut(x)) {
             e.gate = gate.then_some(new);
         }
@@ -732,9 +741,11 @@ impl World {
         found
     }
 
-    /// Records the exhibits that the removal of the fence piece on this slot opens to another
-    /// region (the line is not held by a piece of the other tile too), before the removal.
-    fn note_opening(&mut self, slot: Option<(usize, usize)>) {
+    /// Records the exhibits on the two sides of the fence piece on this slot, with their names and
+    /// gates, before it goes, when its two tiles are in different regions. A removal records
+    /// whether the line stays closed or opens; a replacement (`replaced`) only when no piece of
+    /// the other tile holds the line too (placing 8, kind 11).
+    fn note_opening(&mut self, slot: Option<(usize, usize)>, replaced: bool) {
         let Some((a, d)) = slot else { return };
         let Some(b) = self.neighbour(a, d) else {
             return;
@@ -742,7 +753,7 @@ impl World {
         let held = self
             .edge(b, (d + 4) % 8)
             .is_some_and(|o| self.shapes[o].is_some_and(|s| s.fence));
-        if held || self.exhibits.region(a) == self.exhibits.region(b) {
+        if (replaced && held) || self.exhibits.region(a) == self.exhibits.region(b) {
             return;
         }
         for (_, note) in self.keeping(slot) {

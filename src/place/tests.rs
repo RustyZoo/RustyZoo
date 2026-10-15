@@ -1013,8 +1013,8 @@ fn a_path_on_water_needs_dirt_to_be_painted_and_costs_the_paint_too() {
     assert_eq!(money.cash, 85.0);
     assert_eq!(w.zoo.tiles[3].terrain, 3);
     assert!(w.path(3).is_some());
-    // One undo gives the water back and takes the path away, and hands back both prices: the
-    // path's in the removal, the paint's with the tile.
+    // One undo gives the water back and takes the path away, and hands back the path's price
+    // only: the painting stays spent.
     let done = w.undo();
     assert_eq!((w.zoo.tiles[3].terrain, w.path(3)), (1, None));
     let prices: Vec<f32> = done
@@ -1025,7 +1025,7 @@ fn a_path_on_water_needs_dirt_to_be_painted_and_costs_the_paint_too() {
             other => panic!("{other:?}"),
         })
         .collect();
-    assert_eq!(prices, [10.0, 5.0]);
+    assert_eq!(prices, [10.0, 0.0]);
 }
 
 #[test]
@@ -1048,6 +1048,7 @@ fn a_path_on_a_path_replaces_it_and_pays_only_for_another_type() {
     // The same type: valid, free, and still one piece.
     assert!(matches!(go(&mut w, &mut money, 2), Outcome::Placed(_)));
     assert_eq!((money.cash, w.zoo.entities.len()), (100.0, 1));
+    assert!(!w.can_undo(), "the same type records nothing");
     // Another type: the full price, and the old piece stays (its id, its place) with the new
     // type; the undo gives the old type and the price back.
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
