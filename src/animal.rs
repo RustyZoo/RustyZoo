@@ -637,7 +637,7 @@ fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
     let alone = env.census.species <= 1;
     let (drink, play) = (k.drink, if alone { 0 } else { k.chase });
     let total = drink.wrapping_add(play);
-    if total > 0 && rng.rand() as i32 % total + 1 <= drink {
+    if total > 0 && rng.rand() as i32 % total < drink {
         a.thirsty |= !env.wet;
     }
 }

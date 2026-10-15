@@ -661,7 +661,8 @@ fn captivity_draws_twice_below_the_threshold_and_tramples_only_bare_grass() {
     // The first draw is compared with the class chance, the second with the species'.
     for seed in 0..40 {
         let (mut rng, mut check) = (Rng::default(), Rng::default());
-        (rng.seed(seed), check.seed(seed));
+        rng.seed(seed);
+        check.seed(seed);
         let (d1, d2) = (check.rand() % 100, check.rand() % 100);
         let class = Class {
             dirt_chance_chance: 40,
@@ -971,7 +972,7 @@ fn the_checks_draw_in_the_original_order() {
         let mut check = Rng::default();
         check.seed(seed);
         let fifth = (0..5).map(|_| check.rand()).last().unwrap() as i32;
-        assert_eq!(a.thirsty, fifth % 20 + 1 <= 10, "seed {seed}");
+        assert_eq!(a.thirsty, fifth % 20 < 10, "seed {seed}");
         assert!(
             drew_since(&rng, seed, if a.thirsty { 5 } else { 6 }),
             "seed {seed}"
