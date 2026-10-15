@@ -34,11 +34,15 @@ fn shape(e: &Entity) -> Option<Shape> {
             kind: Kind::Edge,
             footprint: (1, 1),
             fence,
+            wall: fence,
+            gate: false,
         }),
         "gate" => Some(Shape {
             kind: Kind::Fixed,
             footprint: (2, 2),
             fence: false,
+            wall: false,
+            gate: true,
         }),
         _ => None,
     }
@@ -132,12 +136,11 @@ fn stored_first_tiles_are_matched_one_to_one_with_the_exhibits() {
 }
 
 #[test]
-fn an_entrance_without_a_building_leaves_no_grounds() {
-    // The exterior fill starts on the entrance tile itself and the wall stops it.
+fn an_entrance_without_a_building_has_no_exterior() {
     let mut z = zoo(&square(2, 2, 4, 4));
     z.entities.remove(0);
     let world = World::new(z, shape);
-    assert_eq!(region(&world, 7, 7), EXTERIOR);
+    assert_eq!(region(&world, 7, 7), GROUNDS);
     assert_eq!(sizes(&world), [9]);
 }
 

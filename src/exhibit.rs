@@ -27,9 +27,7 @@ pub struct Exhibits {
 
 impl Exhibits {
     /// Finds the regions of a world. The exhibits are numbered from 1 in the order of their first
-    /// tile. When the entrance tile is itself beyond the wall (an entrance with no building on its
-    /// tile starts the exterior fill there) the map has no zoo grounds and every region that is not
-    /// the exterior is an exhibit.
+    /// tile. An entrance with no building on its tile has no exterior: the world marks none.
     pub fn new(world: &World) -> Exhibits {
         let tiles = world.zoo.tiles.len();
         let none = u32::MAX - 1;
