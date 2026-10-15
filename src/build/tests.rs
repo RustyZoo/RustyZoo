@@ -618,7 +618,7 @@ fn the_objects_panel_opens_through_the_radio_set_and_the_other_closes() {
         assert_eq!(build.tool(), Some(5), "the item stays chosen");
     }
     // The other panel's step is its own.
-    assert_eq!(build.step, [0, 1]);
+    assert_eq!(build.step, [0, 1, 0]);
 }
 
 #[test]
@@ -819,7 +819,7 @@ fn a_type_that_turns_by_itself_advances_the_pending_step_and_choosing_resets_it(
         assert!(build.placed(&turns));
         assert_eq!(build.step(), want);
     }
-    assert_eq!(build.step, [2, 0]);
+    assert_eq!(build.step, [2, 0, 0]);
 }
 
 #[test]

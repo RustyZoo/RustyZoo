@@ -140,20 +140,27 @@ impl App<'_> {
         self.tool_lines.push("tool tank answer yes".into());
         let world = &game.world;
         let outside = world.outside(id);
-        // (id, a unit, a unit that moves): an animal or a staff member goes to the tile outside,
-        // a guest stays, the rest is sold.
-        let objects: Vec<(u32, bool, bool)> = (world.refused(id).into_iter())
+        // (id, a unit, a unit that moves, an animal): a staff member goes to the tile outside, an
+        // animal to the crate's tile searched from there (sold when there is none), a guest
+        // stays, the rest is sold.
+        let objects: Vec<(u32, bool, bool, bool)> = (world.refused(id).into_iter())
             .filter_map(|e| {
                 let at = world.find(e)?;
                 let unit = world.shape(at)?.kind == Kind::Unit;
-                Some((e, unit, unit && world.zoo.entities[at].class != "guests"))
+                let class = world.zoo.entities[at].class.as_str();
+                Some((e, unit, unit && class != "guests", class == "animals"))
             })
             .collect();
-        for (e, unit, moves) in objects {
+        for (e, unit, moves, animal) in objects {
             match (unit, moves, outside) {
                 (true, true, Some(t)) => {
-                    if let Some(game) = &mut self.game {
-                        game.world.move_unit(e, t);
+                    let Some(game) = &mut self.game else { continue };
+                    match animal {
+                        false => game.world.move_unit(e, t),
+                        true => match place::unit::crate_spot(&game.world, t) {
+                            Some(spot) => game.world.move_unit(e, spot),
+                            None => self.bulldoze_remove(e),
+                        },
                     }
                 }
                 (true, ..) => {}

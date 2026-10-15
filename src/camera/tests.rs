@@ -27,6 +27,7 @@ fn map(width: u32, height: u32, elevation: i32) -> Zoo {
         entities: Vec::new(),
         view: View::default(),
         clocks: Default::default(),
+        names: Default::default(),
     }
 }
 

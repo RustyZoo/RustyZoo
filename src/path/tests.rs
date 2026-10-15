@@ -91,6 +91,7 @@ fn sized((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)
         tanks: Vec::new(),
         id_counter: 100,
         clocks: Default::default(),
+        names: Default::default(),
         tiles,
         entities,
         view: View::default(),

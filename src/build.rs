@@ -11,6 +11,7 @@ pub mod terrain;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
+use crate::place::unit::price;
 use crate::place::{Class, Leg, MIDDLE, fence_run, path_run, side};
 use crate::terrain::Mode;
 use crate::text::format::whole_units;
@@ -26,6 +27,11 @@ const EXPANSIONS: [(&str, i32); 2] = [("dinosaur", 1), ("aqua", 2)];
 /// The string of "All" (the expansion selector, which stays there).
 pub const CONSTRUCTION: i32 = 8;
 pub const OBJECTS: i32 = 4;
+pub const ADOPT: i32 = 3;
+/// The string of the Animals tab's sub-title while the expansion selector is on All.
+const CREATURES: i32 = 2025;
+/// The preferred object's picture and its border on the Adopt panel.
+const PREFERRED: (i32, i32) = (2060, 2070);
 const ALL: i32 = 22900;
 /// The bulldozer button of the left bar.
 pub const BULLDOZER: i32 = 1028;
@@ -69,7 +75,17 @@ fn available(ty: &EntityType) -> bool {
 /// order of the tab: the filtered types in catalogue order, then a stable sort by [`order`]
 /// (placing 3.4).
 pub fn items(catalogue: &Catalogue, tag: &str, expansions: i32) -> Vec<usize> {
-    let shown = |ty: &EntityType| available(ty) && listed(ty, tag, expansions);
+    items_of(catalogue, tag, expansions, |_| true)
+}
+
+/// [`items`] keeping the types that satisfy `keep`.
+fn items_of(
+    catalogue: &Catalogue,
+    tag: &str,
+    expansions: i32,
+    keep: impl Fn(&EntityType) -> bool,
+) -> Vec<usize> {
+    let shown = |ty: &EntityType| available(ty) && listed(ty, tag, expansions) && keep(ty);
     let mut list: Vec<usize> = (0..catalogue.types.len())
         .filter(|&i| shown(&catalogue.types[i]))
         .collect();
@@ -79,7 +95,8 @@ pub fn items(catalogue: &Catalogue, tag: &str, expansions: i32) -> Vec<usize> {
 }
 
 /// A number of `[Characteristics/Integers]`; fences and tank walls read the section of their
-/// subtype after the plain one (entity types 7). Never infinite.
+/// subtype after the plain one (entity types 7), and a unit the section of its subtype, then of
+/// the default subtype, or the plain one when there is none (entity types 6.2). Never infinite.
 pub(crate) fn number(ty: &EntityType, key: &str) -> Option<f32> {
     let config = ty.config.as_deref()?;
     let read = |prefix: &[u8]| {
@@ -90,8 +107,39 @@ pub(crate) fn number(ty: &EntityType, key: &str) -> Option<f32> {
             .filter(|v| v.is_finite())
     };
     let own = [&ty.subtype[..], b"/"].concat();
-    let own = matches!(ty.class, "fences" | "tankwall").then(|| read(&own));
-    own.flatten().or_else(|| read(b""))
+    match ty.class {
+        "fences" | "tankwall" => read(&own).or_else(|| read(b"")),
+        "animals" | "keeper" | "tour" | "maint" => {
+            let default = config
+                .section("Global")
+                .and_then(|g| g.get("DefaultSubtype"));
+            let default = default.filter(|d| !d.is_empty());
+            read(&own).or_else(|| read(&default.map_or(vec![], |d| [d, b"/"].concat())))
+        }
+        _ => read(b""),
+    }
+}
+
+/// A number of the plain `[Characteristics/Integers]`, whatever the subtype (`cExpansionID`,
+/// `cShow`, `cUseNumbersInName`; entity types 6.1).
+pub(crate) fn plain(ty: &EntityType, key: &str) -> Option<f32> {
+    let section = ty.config.as_deref()?.section("Characteristics/Integers")?;
+    Some(to_float(section.get(key)?)).filter(|v| v.is_finite())
+}
+
+/// A text of the `[Characteristics/Strings]` of a unit: the section of its subtype, then of the
+/// default subtype.
+fn unit_text(ty: &EntityType, key: &str) -> Option<String> {
+    let config = ty.config.as_deref()?;
+    let default = config
+        .section("Global")
+        .and_then(|g| g.get("DefaultSubtype"));
+    let prefixes = [ty.subtype.clone(), default.unwrap_or_default().to_vec()];
+    prefixes.iter().find_map(|prefix| {
+        let name = [prefix, &b"/Characteristics/Strings"[..]].concat();
+        let value = config.section(name)?.get(key)?;
+        Some(String::from_utf8_lossy(value.trim_ascii()).into_owned())
+    })
 }
 
 /// `cPurchaseCost` of a type.
@@ -100,22 +148,33 @@ pub fn cost(ty: &EntityType) -> f32 {
 }
 
 /// The sort key of a type in the list of the purchase list `tag`, smallest first (placing 3.4).
-fn order(ty: &EntityType, tag: &str) -> [f32; 4] {
+fn order(ty: &EntityType, tag: &str) -> [f32; 5] {
     let has = |name: &str| {
         ty.config
             .as_deref()
             .is_some_and(|c| c.section(name).is_some())
     };
     match tag {
-        "fence" if !matches!(ty.class, "fences" | "tankwall") => [0.0; 4],
+        "fence" if !matches!(ty.class, "fences" | "tankwall") => [0.0; 5],
         "fence" if has("TankFence") => [
             1.0 + f32::from(number(ty, "cIsShowFence").unwrap_or(0.0) != 0.0),
             cost(ty),
             0.0,
             0.0,
+            0.0,
         ],
-        "fence" if has("HabitatFence") => [3.0, -number(ty, "cHeight").unwrap_or(0.0), 0.0, 0.0],
-        "fence" => [4.0, 0.0, 0.0, 0.0],
+        "fence" if has("HabitatFence") => {
+            [3.0, -number(ty, "cHeight").unwrap_or(0.0), 0.0, 0.0, 0.0]
+        }
+        "fence" => [4.0, 0.0, 0.0, 0.0, 0.0],
+        "animals" => [
+            "cHabitat",
+            "cLocation",
+            "cFamily",
+            "cGenus",
+            "cPurchaseCost",
+        ]
+        .map(|key| number(ty, key).unwrap_or(0.0)),
         "foliage" | "rocks" => {
             let habitat = number(ty, "cHabitat").unwrap_or(NO_HABITAT);
             let last = habitat == NO_HABITAT || habitat == BAD_HABITAT;
@@ -124,9 +183,10 @@ fn order(ty: &EntityType, tag: &str) -> [f32; 4] {
                 habitat,
                 number(ty, "cLocation").unwrap_or(NO_HABITAT),
                 cost(ty),
+                0.0,
             ]
         }
-        _ => [cost(ty), 0.0, 0.0, 0.0],
+        _ => [cost(ty), 0.0, 0.0, 0.0, 0.0],
     }
 }
 
@@ -136,8 +196,8 @@ fn icons(ty: &EntityType) -> Vec<String> {
     let Some(config) = ty.config.as_deref() else {
         return Vec::new();
     };
-    let subtype =
-        matches!(ty.class, "fences" | "tankwall").then(|| [&ty.subtype[..], b"/Icon"].concat());
+    let subtype = matches!(ty.class, "fences" | "tankwall" | "animals")
+        .then(|| [&ty.subtype[..], b"/Icon"].concat());
     let default = config
         .section("Global")
         .and_then(|g| g.get("DefaultSubtype"))
@@ -215,9 +275,12 @@ struct Panel {
     details: [i32; 3],
     /// The gate button and the tab (a position in `tabs`) that shows it.
     gate: Option<(i32, usize)>,
+    /// The sex buttons (male, female) and the "no items to display" text; none, 0 without them.
+    sexes: &'static [i32],
+    empty: i32,
 }
 
-const PANELS: [Panel; 2] = [
+const PANELS: [Panel; 3] = [
     Panel {
         name: "construction",
         layout: CONSTRUCTION,
@@ -234,6 +297,8 @@ const PANELS: [Panel; 2] = [
         pictures: [3283, 3281, 3280],
         details: [3284, 3296, 3299],
         gate: Some((3240, 0)),
+        sexes: &[],
+        empty: 0,
     },
     Panel {
         name: "objects",
@@ -251,6 +316,28 @@ const PANELS: [Panel; 2] = [
         pictures: [0; 3],
         details: [0; 3],
         gate: None,
+        sexes: &[],
+        empty: 0,
+    },
+    Panel {
+        name: "adopt",
+        layout: ADOPT,
+        bar: 1000,
+        title: 2023,
+        expansion: 2005,
+        list: 2019,
+        rotate: [2054, 2055],
+        name_text: 2043,
+        cost_text: 2014,
+        tabs: &[2075, 3255, 3254, 2076],
+        other_tabs: &[],
+        // The Young button and the shelter capacity (not drawn yet).
+        hidden: &[2051, 2090, 2091],
+        pictures: [2045, 2047, 2046],
+        details: [2082, 0, 0],
+        gate: None,
+        sexes: &[2000, 2001],
+        empty: 2009,
     },
 ];
 
@@ -288,18 +375,18 @@ pub struct Build {
     /// The types of the open tab, in the order of its list.
     list: Vec<usize>,
     /// The item each tab remembers (a type), by panel and tab.
-    chosen: [[Option<usize>; 4]; 2],
+    chosen: [[Option<usize>; 4]; 3],
     /// The type that is the tool, if one is.
     held: Option<usize>,
     /// The rotation step of each panel (placing 4.4).
-    step: [usize; 2],
+    step: [usize; 3],
     /// The rotation step of the pending object: its panel's step, until a placement of a type
     /// that turns by itself advances it.
     turn: usize,
     /// The tab (a position in `tabs`) that `list` was built for.
     listed: Option<usize>,
     /// The first row each tab's list showed last, by panel and tab (placing 3.4).
-    tops: [[usize; 4]; 2],
+    tops: [[usize; 4]; 3],
     /// The mode of the terrain tab that is selected while the construction panel is open: that
     /// tab is the map view's tool.
     terrain: Option<Mode>,
@@ -315,6 +402,8 @@ pub struct Build {
     exhibits: usize,
     /// The gate button is selected: "place a gate" is the tool (placing 6.4).
     gate: bool,
+    /// The game's month is October (the half price of the Dinosaur Digs animals).
+    october: bool,
 }
 
 impl Build {
@@ -324,12 +413,12 @@ impl Build {
             expansions,
             open: None,
             list: Vec::new(),
-            chosen: [[None; 4]; 2],
+            chosen: [[None; 4]; 3],
             held: None,
-            step: [0; 2],
+            step: [0; 3],
             turn: 0,
             listed: None,
-            tops: [[0; 4]; 2],
+            tops: [[0; 4]; 3],
             terrain: None,
             infoimg: None,
             drag: None,
@@ -337,7 +426,18 @@ impl Build {
             sweep: None,
             exhibits: 0,
             gate: false,
+            october: false,
         }
+    }
+
+    /// The month of the game's date, 1 to 12.
+    pub fn set_month(&mut self, month: u32) {
+        self.october = month == 10;
+    }
+
+    /// Whether the game's month is October.
+    pub fn october(&self) -> bool {
+        self.october
     }
 
     /// The zoo has `n` exhibits at the start of a game.
@@ -566,6 +666,9 @@ impl Build {
             for (n, &tab) in panel.tabs.iter().chain(panel.other_tabs).enumerate() {
                 ui.set_button(tab, n == 0, true);
             }
+            for (n, &sex) in panel.sexes.iter().enumerate() {
+                ui.set_button(sex, n == 0, true);
+            }
         }
     }
 
@@ -678,7 +781,7 @@ impl Build {
     ) {
         let Some(p) = self.open else { return };
         let panel = &PANELS[p];
-        if panel.tabs.contains(&id) || panel.other_tabs.contains(&id) {
+        if panel.tabs.contains(&id) || panel.other_tabs.contains(&id) || panel.sexes.contains(&id) {
             self.fill(ui, vfs, cat, p, log);
         } else if let Some(turn) = panel.rotate.iter().position(|&r| r == id) {
             self.step[p] = (self.step[p] + if turn == 0 { 3 } else { 1 }) % 4;
@@ -694,6 +797,15 @@ impl Build {
         if let Some(t) = self.listed {
             self.tops[p][t] = ui.top(PANELS[p].list);
         }
+    }
+
+    /// Whether the Female button is selected.
+    fn female(ui: &Interface) -> bool {
+        PANELS[2].sexes.get(1).is_some_and(|&id| {
+            ui.tree
+                .find(id)
+                .is_some_and(|i| ui.tree.elements[i].state & SELECTED != 0)
+        })
     }
 
     /// The position in `tabs` of the tab that is selected.
@@ -747,10 +859,21 @@ impl Build {
         }
         ui.set_text(panel.title, &to_cp1252(&ui.string(title)));
         ui.set_text(panel.expansion, &to_cp1252(&ui.string(ALL)));
+        if panel.layout == ADOPT && tag == "animals" {
+            ui.set_text(panel.title, &to_cp1252(&ui.string(CREATURES)));
+        }
         self.list = match tab {
+            // The Animals tab lists each species once, as the sex of the sex buttons.
+            Some(_) if panel.layout == ADOPT && tag == "animals" => {
+                let sex = [b"m", b"f"][usize::from(Self::female(ui))];
+                items_of(cat, &tag, self.expansions, |ty| ty.subtype == sex)
+            }
             Some(_) => items(cat, &tag, self.expansions),
             None => Vec::new(),
         };
+        if panel.empty != 0 {
+            ui.set_hidden(panel.empty, !self.list.is_empty());
+        }
         let step = self.step[p];
         let pictures: Vec<Option<Picture>> = self
             .list
@@ -768,7 +891,14 @@ impl Build {
         }
         let want = tab
             .and_then(|t| self.chosen[p][t])
-            .and_then(|ty| self.list.iter().position(|&l| l == ty))
+            .and_then(|ty| {
+                // The species stays when it is listed again as the other sex.
+                let same = |l: &usize| {
+                    let (a, b) = (&cat.types[*l], &cat.types[ty]);
+                    *l == ty || (a.class == b.class && a.type_name == b.type_name)
+                };
+                self.list.iter().position(same)
+            })
             .or((!self.list.is_empty()).then_some(0));
         match want {
             Some(at) => self.choose(ui, vfs, cat, p, at, log),
@@ -787,11 +917,15 @@ impl Build {
         for id in [panel.name_text, panel.cost_text] {
             ui.set_text(id, b"");
         }
-        let shown = panel
-            .rotate
-            .into_iter()
+        let shown = (panel.rotate.into_iter())
             .chain(panel.details)
-            .chain(panel.pictures);
+            .chain(panel.pictures)
+            .chain(
+                (panel.layout == ADOPT)
+                    .then_some([PREFERRED.0, PREFERRED.1])
+                    .into_iter()
+                    .flatten(),
+            );
         for id in shown.filter(|&id| id != 0) {
             ui.set_hidden(id, true);
         }
@@ -807,7 +941,9 @@ impl Build {
         let table = self.infoimg.get_or_insert_with(|| infoimg(vfs));
         let value = |key| number(ty, key).unwrap_or(NO_HABITAT) as i32;
         let (loc, hab) = (value("cLocation"), value("cHabitat"));
-        let shown = hab != NO_HABITAT as i32 && hab != BAD_HABITAT as i32;
+        // Every animal shows both pictures (unit placing 3.3).
+        let shown =
+            ty.class == "animals" || (hab != NO_HABITAT as i32 && hab != BAD_HABITAT as i32);
         for (id, v) in [(location, loc), (habitat, hab)] {
             let name = table.get(&v).filter(|_| shown);
             let picture = name.and_then(|n| ui.tree.picture(vfs, n));
@@ -817,6 +953,19 @@ impl Build {
             }
         }
         ui.set_hidden(border, !shown);
+        if panel.layout == ADOPT {
+            // The preferred object of an animal: its icon, with the id as tooltip (unit placing 3.3).
+            let icon = unit_text(ty, "cPrefIcon").and_then(|n| ui.tree.picture(vfs, &n));
+            let (picture, frame) = PREFERRED;
+            for id in [picture, frame] {
+                ui.set_hidden(id, icon.is_none());
+            }
+            ui.set_picture(picture, icon);
+            if let Some(i) = ui.tree.find(picture) {
+                let id = number(ty, "cPrefIconID").unwrap_or(0.0) as i32;
+                ui.tree.elements[i].help_id = vec![id];
+            }
+        }
     }
 
     /// Item `at` of the list is chosen: it is the tool, its tab remembers it, its name and cost
@@ -843,7 +992,8 @@ impl Build {
         self.turn = self.step[p];
         ui.select_item(panel.list, Some(at));
         let name = ui.string(ty.name_id);
-        let price = Symbol::new(ui.string(SYMBOL)).text(whole_units(f64::from(cost(ty))));
+        let price =
+            Symbol::new(ui.string(SYMBOL)).text(whole_units(f64::from(price(ty, self.october))));
         ui.set_text(panel.name_text, &to_cp1252(&name));
         ui.set_text(panel.cost_text, &to_cp1252(&price));
         for id in panel.rotate {

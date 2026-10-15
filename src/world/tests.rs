@@ -25,6 +25,7 @@ fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
         entities: Vec::new(),
         view: View::default(),
         clocks: Default::default(),
+        names: Default::default(),
     }
 }
 

@@ -277,6 +277,7 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
             entities,
             view: View::default(),
             clocks: Default::default(),
+            names: Default::default(),
         },
         shape,
     )

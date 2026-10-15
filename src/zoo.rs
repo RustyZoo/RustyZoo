@@ -30,6 +30,7 @@ mod body;
 #[cfg(test)]
 pub(crate) mod tests;
 
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
 
@@ -201,6 +202,9 @@ pub struct Zoo {
     pub view: View,
     /// The AI clock and the world clock the file stores.
     pub clocks: Clocks,
+    /// How many units of each type name were named so far (zoo format 7.3), for the number in a
+    /// default name.
+    pub names: BTreeMap<String, u32>,
 }
 
 /// The clocks and the event queue a map stores (simulation 4.3, 8.3): a new game on it starts from
@@ -490,7 +494,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     }
 
     *section = "later sections";
-    let (view, clocks) = after_entities(r, money)?;
+    let (view, clocks, names) = after_entities(r, money)?;
     Ok(Zoo {
         version: v,
         locale,
@@ -506,6 +510,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         entities,
         view,
         clocks,
+        names,
     })
 }
 
@@ -644,7 +649,7 @@ fn entity(r: &mut Reader) -> R<Entity> {
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.
-fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks)> {
+fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMap<String, u32>)> {
     let mut clocks = Clocks::default();
     let v = r.v;
     let view = View {
@@ -675,9 +680,10 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks)> {
     }
 
     // Name counters: type name and number.
+    let mut names = BTreeMap::new();
     for _ in 0..r.count(8)? {
-        r.string()?;
-        r.skip(4)?;
+        let name = latin1(r.string()?);
+        names.insert(name, r.u32()?);
     }
 
     // Game and finances.
@@ -759,5 +765,5 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks)> {
         (clocks.world_rem, clocks.world_secs) = (r.u32()?, r.u32()?);
         r.skip(if v <= 66 { 4 } else { 0 })?;
     }
-    Ok((view, clocks))
+    Ok((view, clocks, names))
 }

@@ -7,11 +7,11 @@
 //! the world keeps it. An object is named by its position in `zoo.entities` while the world
 //! stands still and by its id when something is asked in between.
 
-use super::LIFE;
+use super::{LIFE, unit};
 use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::money::{CONSTRUCTION_REFUND, Money};
+use crate::money::{ANIMAL_REFUND, CONSTRUCTION_REFUND, Money};
 use crate::render::order::Kind;
 use crate::world::World;
 use crate::zoo::{Entity, Fence};
@@ -99,7 +99,9 @@ pub fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
             Kind::Edge | Kind::Wall | Kind::Fixed => {
                 number(ty, "cDeletable").is_none_or(|n| n == 1.0)
             }
-            Kind::Unit | Kind::Overlay => false,
+            // An animal is sold (the animal panel's sell button, until its panel exists).
+            Kind::Unit => unit::is_animal(ty),
+            Kind::Overlay => false,
         }
 }
 
@@ -121,6 +123,7 @@ pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
                 _ => 0.8,
             }
         }
+        _ if unit::is_animal(ty) => return unit::new_sell_price(ty),
         _ => 0.8,
     };
     cost(ty) * rate
@@ -239,7 +242,7 @@ pub fn check(world: &World, cat: &Catalogue, e: usize, sell: bool, asked: &[(u32
         .entities
         .get(e)
         .and_then(|entity| type_of(cat, entity))
-        .is_some_and(|ty| number(ty, "cNeedsConfirm") == Some(1.0));
+        .is_some_and(|ty| unit::is_animal(ty) || number(ty, "cNeedsConfirm") == Some(1.0));
     match sell && needs {
         true => Check::Ask(Question::Sell),
         false => Check::Go,
@@ -279,9 +282,15 @@ pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) ->
         removed.tile = ((t % width) as i32, (t / width) as i32);
         removed.side = Some(d as u32);
     }
+    let animal = type_of(cat, &world.zoo.entities[at]).is_some_and(unit::is_animal);
     world.remove(id);
     world.priced(removed.refund);
-    money.refund(CONSTRUCTION_REFUND, removed.refund);
+    let category = if animal {
+        ANIMAL_REFUND
+    } else {
+        CONSTRUCTION_REFUND
+    };
+    money.refund(category, removed.refund);
     Some(removed)
 }
 

@@ -136,6 +136,7 @@ fn world(mut entities: Vec<Entity>) -> World {
             entities,
             view: View::default(),
             clocks: Default::default(),
+            names: Default::default(),
         },
         shape,
     )

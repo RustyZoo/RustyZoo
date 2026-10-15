@@ -50,6 +50,7 @@ fn world(units: &[(&str, u32)]) -> World {
             .collect(),
         view: View::default(),
         clocks: Clocks::default(),
+        names: Default::default(),
     };
     World::new(zoo, |_| None)
 }

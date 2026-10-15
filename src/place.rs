@@ -15,6 +15,7 @@
 
 pub mod bulldozer;
 pub mod gate;
+pub mod unit;
 
 use crate::build::{cost, number};
 use crate::config::Config;

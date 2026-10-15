@@ -46,6 +46,7 @@ fn world(entities: usize) -> World {
         entities: (1..=entities as u32).map(entity).collect(),
         view: View::default(),
         clocks: Default::default(),
+        names: Default::default(),
     };
     World::new(zoo, |_| None)
 }
