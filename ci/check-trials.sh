@@ -493,6 +493,6 @@ paint_text() { # paint_text <map> <script>
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;a285a75fc25e42c1" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush2,41,52;amount-120;tooltips3;5f33fa21d9fd2e8f" "paint_text maps/scn19.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;f7fc54198ae0958d" "paint_text maps/scn19.zoo '$paint'"
 
 exit $failed

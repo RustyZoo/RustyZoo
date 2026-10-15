@@ -104,6 +104,11 @@ fn shape(e: &Entity) -> Option<Shape> {
             kind: Kind::Unit,
             ..fixed
         }),
+        "elephant" => Some(Shape {
+            kind: Kind::Unit,
+            footprint: (4, 4),
+            ..fixed
+        }),
         _ => None,
     }
 }
@@ -787,6 +792,127 @@ fn a_raise_that_is_not_contiguous_leaves_cliffs_and_costs_the_brush_only() {
         at(3, 3).edges >> 6 & 3 >= 2,
         "the brush has a cliff on its north side"
     );
+}
+
+/// The elevations of the tiles of rows `y0` to `y1` and columns `x0` to `x1`, row by row.
+fn heights(world: &World, (x0, x1): (usize, usize), (y0, y1): (usize, usize)) -> Vec<i32> {
+    (y0..=y1)
+        .flat_map(|y| (x0..=x1).map(move |x| (x, y)))
+        .map(|(x, y)| world.zoo.tiles[y * 8 + x].elevation)
+        .collect()
+}
+
+#[test]
+fn a_non_contiguous_step_carries_the_other_tiles_of_a_large_object_along() {
+    // A hall of 2 by 2 tiles on (3..4, 3..4); the brush is its first tile.
+    let mut world = world(vec![entity("hall", 4 * 64, 4 * 64, 0)]);
+    assert_eq!(world.carried(3 * 8 + 3), [27, 28, 35, 36]);
+    let mut tool = modify(1, false, false);
+    let lines = drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+    assert_eq!(
+        lines,
+        ["shape 4", "cost 32"],
+        "the cost is that of four tiles"
+    );
+    assert_eq!(
+        heights(&world, (2, 5), (2, 5)),
+        [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0]
+    );
+    // The ring of the brush and the bounding rectangle of the hall, grown by one tile, are in the
+    // snapshot: 16 tiles, 4 of them changed.
+    assert_eq!(tool.session.touched.len(), 16);
+    // Cancel gives everything back.
+    tool.cancel(&mut world, &habits, &mut Vec::new());
+    assert!(
+        world
+            .zoo
+            .tiles
+            .iter()
+            .all(|t| t.elevation == 0 && t.shape == 0)
+    );
+}
+
+#[test]
+fn the_tiles_carried_are_those_of_the_points_of_the_footprint_not_its_quadrants() {
+    // A hall of 2 by 2 tiles centred on the tile centre (288, 288): the points (224, 224),
+    // (288, 224), (224, 288) and (288, 288) are on the tiles 3 and 4 in both directions, while its
+    // quadrants reach the tiles 3 to 5.
+    let mut world = world(vec![entity("hall", 4 * 64 + 32, 4 * 64 + 32, 0)]);
+    assert_eq!(world.carried(4 * 8 + 4), [27, 28, 35, 36]);
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (4, 4), 16, Zoom::Normal);
+    assert_eq!(heights(&world, (3, 5), (3, 5)), [1, 1, 0, 1, 1, 0, 0, 0, 0]);
+    // A unit near the corner of the map: points less than 64 left of or above it count in column
+    // or row 0, the others are off the map.
+    let world = self::world(vec![entity("elephant", 16, 16, 0)]);
+    assert_eq!(world.carried(0), [0]);
+    let world = self::world(vec![entity("elephant", 16 + 64, 16, 0)]);
+    assert_eq!(world.carried(1), [0, 1]);
+}
+
+#[test]
+fn a_brush_half_on_a_building_takes_the_rest_of_it_along() {
+    // The brush covers (2..3, 3..4): the hall's other column, (4, 3) and (4, 4), is carried.
+    let mut world = world(vec![entity("hall", 4 * 64, 4 * 64, 0)]);
+    let mut tool = modify(2, false, false);
+    let lines = drag(&mut tool, &mut world, (2, 3), 16, Zoom::Normal);
+    assert_eq!(lines, ["shape 6", "cost 48"]);
+    assert_eq!(
+        heights(&world, (1, 5), (2, 5)),
+        [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+    );
+}
+
+#[test]
+fn a_carried_tile_moves_only_when_it_stands_as_low_as_the_brush_and_inside_the_zoo() {
+    let mut world = world(vec![entity("hall", 4 * 64, 4 * 64, 0)]);
+    // The tile (4, 4) is higher than the goal of the raise: it stays.
+    world.set_tile(4, 4, 2, 0, GRASS);
+    world.begin();
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+    assert_eq!(heights(&world, (3, 4), (3, 4)), [1, 1, 1, 2]);
+    // A lower: the hall tiles that are not above the goal stay, the others come down.
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (4, 4), -16, Zoom::Normal);
+    assert_eq!(heights(&world, (3, 4), (3, 4)), [1, 1, 1, 1]);
+    // Outside the zoo nothing is carried: the hall stands on the wall's east side too.
+    let mut world = walled(vec![entity("hall", 5 * 64, 4 * 64, 0)]);
+    assert!(world.in_zoo(3 * 8 + 5) && !world.in_zoo(3 * 8 + 4));
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (5, 3), 16, Zoom::Normal);
+    assert_eq!(heights(&world, (4, 5), (3, 4)), [0, 1, 0, 1]);
+}
+
+#[test]
+fn a_large_unit_is_carried_only_from_a_tile_whose_first_quarter_is_empty() {
+    // An elephant of 2 by 2 tiles stands on (4, 4): its tiles are (3..4, 3..4).
+    let unit = entity("elephant", 4 * 64, 4 * 64, 0);
+    let mut world = world(vec![unit.clone()]);
+    assert_eq!(world.carried(4 * 8 + 4), [27, 28, 35, 36]);
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (4, 4), 16, Zoom::Normal);
+    assert_eq!(heights(&world, (3, 4), (3, 4)), [1, 1, 1, 1]);
+    // A small object in the first quarter of the tile is the one looked at: it takes nothing.
+    let mut world = self::world(vec![unit, entity("tree", 4 * 64 + 16, 4 * 64 + 16, 0)]);
+    assert!(world.carried(4 * 8 + 4).is_empty());
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (4, 4), 16, Zoom::Normal);
+    assert_eq!(heights(&world, (3, 4), (3, 4)), [0, 0, 0, 1]);
+}
+
+#[test]
+fn a_contiguous_step_and_small_objects_carry_nothing() {
+    let mut world = world(vec![entity("hall", 4 * 64, 4 * 64, 0)]);
+    let mut tool = modify(1, true, false);
+    drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+    // The spreading of 5.4 moves them as a whole, the ring is not snapshotted unchanged.
+    assert_eq!(heights(&world, (3, 4), (3, 4)), [1, 1, 1, 1]);
+    let mut world = self::world(vec![entity("bench", 3 * 64 + 32, 3 * 64 + 32, 0)]);
+    assert!(world.carried(3 * 8 + 3).is_empty());
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+    assert_eq!(tool.session.touched.len(), 9, "the ring of the brush alone");
 }
 
 #[test]

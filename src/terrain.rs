@@ -676,10 +676,17 @@ impl Tool {
         let brush = self.tiles(world);
         let width = world.zoo.width as usize;
         let mut changed = std::collections::BTreeSet::new();
+        let mut ringed = false;
         for &request in steps {
-            for (t, elevation, shape) in
-                shape::run(world, &self.types, &brush, self.contiguous, request)
-            {
+            let moves = shape::run(world, &self.types, &brush, self.contiguous, request);
+            // A non-contiguous step snapshots the tiles around what it moves, unchanged.
+            if !self.contiguous && !moves.is_empty() && !ringed {
+                ringed = true;
+                for t in shape::ring(world, &brush) {
+                    self.session.touch(t, world.zoo.tiles[t]);
+                }
+            }
+            for (t, elevation, shape) in moves {
                 let tile = world.zoo.tiles[t];
                 self.session.touch(t, tile);
                 let (x, y) = ((t % width) as i32, (t / width) as i32);

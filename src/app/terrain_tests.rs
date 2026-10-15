@@ -31,14 +31,16 @@ impl UiStrings for Texts {
     }
 }
 
-/// A flat map of 40 by 40 tiles of grass whose camera looks at the middle of it.
-fn map() -> Zoo {
+/// A flat map of 40 by 40 tiles of grass whose camera looks at the middle of it and whose view
+/// state stores the brush size `brush`.
+fn map_with_brush(brush: u32) -> Zoo {
     let (px, py) = project(0, 1280, 1280, 0);
     let mut zoo = tile_with(&[]);
     zoo.width = 40;
     zoo.height = 40;
     zoo.tiles = flat_map(40, 40);
     zoo.view.scroll = (px - SIZE.0 as i32 / 2, py - SIZE.1 as i32 / 2);
+    zoo.view.brush = brush;
     zoo
 }
 
@@ -119,12 +121,17 @@ fn install(name: &str) -> Install {
 
 /// Runs `body` on a game with the terrain panel and 50000 in cash.
 fn with_game(name: &str, body: impl FnOnce(&mut Session)) {
+    with_view(name, 0, body)
+}
+
+/// The same, on a map whose view state stores this brush size.
+fn with_view(name: &str, brush: u32, body: impl FnOnce(&mut Session)) {
     let install = install(name);
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut app = App::new(
         MapRenderer::new(&vfs, &catalogue),
-        map(),
+        map_with_brush(brush),
         Settings::default(),
         Timers::new(66, 16, 200),
         SIZE,
@@ -313,6 +320,16 @@ fn the_paint_tab_writes_the_brush_cost_next_to_the_pointer_and_the_help_of_the_t
         wait(s);
         assert!(!s.app.interface().unwrap().shown(7003));
     });
+}
+
+#[test]
+fn the_brush_starts_at_the_size_the_map_stores_and_at_2_when_that_is_not_a_size() {
+    // Only the low byte counts; 0, 6 and more are no size.
+    for (stored, size) in [(3, 3), (1, 1), (5, 5), (0x103, 3), (0, 2), (6, 2), (255, 2)] {
+        with_view(&format!("brush-{stored}"), stored, |s| {
+            assert_eq!(s.game().terrain.size(), size, "stored {stored}");
+        });
+    }
 }
 
 #[test]
