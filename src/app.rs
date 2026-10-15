@@ -19,8 +19,8 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::Framebuffer;
-use crate::build::Build;
 use crate::build::terrain::{MINUS, PLUS};
+use crate::build::{BULLDOZER, Build};
 use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
@@ -291,12 +291,20 @@ struct Game {
     shown: Option<terrain::Shown>,
     /// The amount next to the pointer the log told last.
     pointed: Option<i64>,
+    /// `[UI] confirmSell`, read when the game opens.
+    confirm: bool,
+    /// What the bulldozer would remove now and the removal that is under way.
+    dozer: bulldozer::Dozer,
+    sweep: Option<bulldozer::Sweep>,
 }
 
 impl Game {
     /// What the cost text at the pointer shows: the drag's, else the pending object's, else, in
     /// the paint tab, minus what painting the brush costs while the pointer is over the map.
     fn cost(&self) -> Option<i64> {
+        if self.build.bulldozing() {
+            return self.dozer_amount();
+        }
         match self.run.is_empty() {
             true => self
                 .pending
@@ -376,6 +384,8 @@ pub struct App<'a> {
 enum Asked {
     Leave,
     Exit,
+    /// A question of the bulldozer: any answer goes back to it.
+    Sweep,
 }
 
 /// The layout of the question boxes with a message, the main panel and the options panel, and the
@@ -516,6 +526,9 @@ impl<'a> App<'a> {
             selection: None,
             shown: None,
             pointed: None,
+            confirm: place::confirm_sell(self.renderer.vfs().ini()),
+            dozer: bulldozer::Dozer::default(),
+            sweep: None,
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -739,6 +752,7 @@ impl<'a> App<'a> {
                         let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
                         let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
                         game.build.press(self.renderer.catalogue(), tile, (x, y));
+                        game.build.sweep_press(tile, ui.pointer());
                         if game.build.dragging() {
                             game.selection = None;
                         }
@@ -747,6 +761,7 @@ impl<'a> App<'a> {
                 // A release that does not end a press on the map ends a drag without buying.
                 if let (false, Mouse::Up, Some(game)) = (on_map, mouse, game.as_mut()) {
                     game.build.end_drag();
+                    game.build.end_sweep();
                     game.run.clear();
                 }
                 if let (true, Some(phase), Some(game), Some(ui)) =
@@ -808,6 +823,12 @@ impl<'a> App<'a> {
                     ui.press_button(if key == b'+' { PLUS } else { MINUS });
                 }
             }
+            // The Delete key presses the clear button, the bulldozer (input 10).
+            (Command::Key(Key::Delete, ..), Some(_)) if keys => {
+                if let Some(ui) = &mut self.ui {
+                    ui.press_button(BULLDOZER);
+                }
+            }
             // The keys and characters go to the focused field or list.
             (Command::Key(key, _, shift), _) => {
                 if let Some(ui) = &mut self.ui {
@@ -843,6 +864,12 @@ impl<'a> App<'a> {
     /// X,Y q N valid`, the tile under the snapped point, the quadrant of the point in it and the
     /// verdict (`valid`, `overwrite` or `invalid`).
     fn aim(&mut self, log: bool) {
+        self.aim_pending(log);
+        self.dozer_aim();
+    }
+
+    /// The pending object part of [`App::aim`].
+    fn aim_pending(&mut self, log: bool) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
@@ -932,6 +959,9 @@ impl<'a> App<'a> {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
+        if game.build.bulldozing() {
+            return self.bulldoze_release();
+        }
         let dragging = game.build.dragging();
         game.build.end_drag();
         let run = std::mem::take(&mut game.run);
@@ -1130,6 +1160,8 @@ impl<'a> App<'a> {
         let (id, name) = match kind {
             Asked::Leave => (ASK_LEAVE, "leave"),
             Asked::Exit => (ASK_EXIT, "exit"),
+            // The bulldozer asks its own questions.
+            Asked::Sweep => return,
         };
         let asked = self.ui.as_mut().is_some_and(|ui| {
             let text = to_cp1252(&ui.string(id));
@@ -1151,6 +1183,9 @@ impl<'a> App<'a> {
         let Some(kind) = self.asked.take() else {
             return;
         };
+        if kind == Asked::Sweep {
+            return self.sweep_answered(code);
+        }
         match code {
             6 => self.menu_events.push("game save unavailable".to_string()),
             7 => self.proceed(kind),
@@ -1160,6 +1195,7 @@ impl<'a> App<'a> {
 
     fn proceed(&mut self, kind: Asked) {
         match kind {
+            Asked::Sweep => {}
             Asked::Leave => self.stop_game(),
             Asked::Exit => {
                 self.menu_events.push("game exit".to_string());
@@ -1184,6 +1220,9 @@ impl<'a> App<'a> {
             self.ui_actions
                 .extend(waiting.into_iter().filter(|a| *a != Action::Answer(2)));
             self.asked = None;
+            if let Some(game) = &mut self.game {
+                game.sweep = None;
+            }
         }
         self.ask(Asked::Exit);
     }
@@ -1314,6 +1353,7 @@ impl<'a> App<'a> {
         };
         want.marks.clone_from(&game.marks);
         want.marks.extend(game.selection);
+        game.dozer_extra(&mut want);
         if !dirty && want == game.extra {
             return;
         }
@@ -1473,6 +1513,7 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
     })
 }
 
+mod bulldozer;
 mod terrain;
 
 #[cfg(test)]
@@ -1483,6 +1524,9 @@ mod start_tests;
 
 #[cfg(test)]
 mod terrain_tests;
+
+#[cfg(test)]
+mod bulldozer_tests;
 
 #[cfg(test)]
 mod money_tests;

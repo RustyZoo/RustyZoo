@@ -36,6 +36,8 @@ enum Action {
     Removed(usize, Entity, Option<Shape>),
     /// A tile had this state: its index.
     Tile(usize, Tile),
+    /// The entity with this id was replaced in place; what it was.
+    Replaced(u32, Entity, Option<Shape>),
 }
 
 pub struct World {
@@ -185,6 +187,22 @@ impl World {
             })
     }
 
+    /// How the entity at position `e` of `zoo.entities` takes its place.
+    pub fn shape(&self, e: usize) -> Option<Shape> {
+        self.shapes.get(e).copied().flatten()
+    }
+
+    /// The edge slot a fence or tank wall holds: its tile and the map direction (0, 2, 4 or 6).
+    /// Every question about where a piece stands goes through here and the slot lookup
+    /// ([`World::edge`]), not through the piece's own position.
+    pub fn slot(&self, e: usize) -> Option<(usize, usize)> {
+        let o = self.owner.iter().position(|&owner| owner == e)?;
+        let obj = &self.scene.objects[o];
+        let t = self.scene.tile_at(obj.x, obj.y)?;
+        let d = obj.facing as usize;
+        (self.scene.edge_object(t, d) == Some(o)).then_some((t, d))
+    }
+
     /// The position of the entity with this id.
     pub fn find(&self, id: u32) -> Option<usize> {
         self.zoo
@@ -228,6 +246,25 @@ impl World {
         true
     }
 
+    /// Puts `entity` in the place of the one with this id (it keeps the id); whether there was
+    /// one.
+    pub fn replace(&mut self, id: u32, mut entity: Entity, shape: Option<Shape>) -> bool {
+        let Some(at) = self.find(id) else {
+            return false;
+        };
+        if let Some(c) = entity.common.as_mut() {
+            c.id = id;
+        }
+        let old = std::mem::replace(&mut self.zoo.entities[at], entity);
+        let old_shape = std::mem::replace(&mut self.shapes[at], shape);
+        self.record(Action::Replaced(id, old, old_shape));
+        self.changed();
+        if shape.is_some_and(|s| s.fence) || old_shape.is_some_and(|s| s.fence) {
+            self.exhibits = Exhibits::new(self);
+        }
+        true
+    }
+
     /// Sets the elevation, shape and terrain type of tile (`tx`, `ty`) and writes the edge states
     /// of it and of its four neighbours again (map drawing 3.5); whether the tile is on the map.
     pub fn set_tile(&mut self, tx: i32, ty: i32, elevation: i32, shape: u8, terrain: u8) -> bool {
@@ -261,6 +298,12 @@ impl World {
                     let at = at.min(self.zoo.entities.len());
                     self.zoo.entities.insert(at, entity);
                     self.shapes.insert(at, shape);
+                }
+                Action::Replaced(id, entity, shape) => {
+                    if let Some(at) = self.find(id) {
+                        self.zoo.entities[at] = entity;
+                        self.shapes[at] = shape;
+                    }
                 }
                 Action::Tile(t, tile) => {
                     let moved = (tile.elevation, tile.shape)

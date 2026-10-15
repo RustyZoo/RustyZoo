@@ -1235,6 +1235,20 @@ fn the_smart_fences_test_keeps_fences_off_big_bodies_and_large_placement_rectang
 }
 
 #[test]
+fn the_confirm_sell_setting_reads_the_ini_file_and_defaults_to_on() {
+    assert!(confirm_sell(b""));
+    assert!(confirm_sell(b"[UI]\nconfirmSell=1\n"));
+    assert!(!confirm_sell(b"[UI]\nconfirmSell=0\n"));
+    assert!(!confirm_sell(b"[ui]\nCONFIRMSELL = 0\n"));
+    assert!(confirm_sell(b"[UI]\nconfirmSell=-3\n"));
+    assert!(confirm_sell(b"[UI]\nconfirmSell=2147483647\n"));
+    assert!(confirm_sell(b"[UI]\nconfirmSell=yes\n"));
+    assert!(confirm_sell(b"[UI]\nconfirmSell=\n"));
+    assert!(confirm_sell(b"[Other]\nconfirmSell=0\n"));
+    assert!(confirm_sell(b"\xff\x00\x01 not an ini"));
+}
+
+#[test]
 fn the_smart_fences_setting_reads_the_ini_file_and_defaults_to_on() {
     assert!(smart_fences(b""));
     assert!(smart_fences(b"[UI]\nsmartFences=1\n"));

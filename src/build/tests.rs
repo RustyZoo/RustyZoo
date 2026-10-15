@@ -955,3 +955,36 @@ fn a_fence_run_is_computed_again_only_past_the_tile_the_height_step_or_17_world_
     build.press(&cat, Some((5, 5)), (5 * 64 + 32, 5 * 64 + 1));
     assert_eq!(build.run((7, 5), (x, y + 8), 0).len(), 4);
 }
+
+#[test]
+fn a_bulldozer_press_is_a_drag_once_it_leaves_its_tile_or_16_pixels() {
+    let mut build = Build::new(0);
+    // Without the tool a press holds nothing.
+    build.sweep_press(Some((5, 5)), (100, 100));
+    assert!(!build.sweeping());
+    build.bulldozer = true;
+    // Off the map: no press.
+    build.sweep_press(None, (100, 100));
+    assert!(!build.sweeping());
+    build.sweep_press(Some((5, 5)), (100, 100));
+    assert!(build.sweeping());
+    // On the press tile within 16 pixels it is a click.
+    assert_eq!(build.sweep_area(Some((5, 5)), (116, 100)), None);
+    assert_eq!(build.sweep_area(Some((5, 5)), (110, 110)), None);
+    // More than 16 pixels away on the same tile, or on another tile: a drag.
+    assert_eq!(
+        build.sweep_area(Some((5, 5)), (117, 100)),
+        Some(((5, 5), (5, 5)))
+    );
+    assert_eq!(
+        build.sweep_area(Some((7, 4)), (101, 100)),
+        Some(((5, 5), (7, 4)))
+    );
+    // Off the map the last tile stays; back on the press tile it is a click again.
+    assert_eq!(build.sweep_area(None, (101, 100)), Some(((5, 5), (7, 4))));
+    assert_eq!(build.sweep_area(Some((5, 5)), (101, 100)), None);
+    // Extreme points do not overflow.
+    build.sweep_area(Some((5, 5)), (i32::MAX, i32::MIN));
+    build.end_sweep();
+    assert_eq!(build.sweep_area(Some((5, 5)), (0, 0)), None);
+}

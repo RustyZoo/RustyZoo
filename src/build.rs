@@ -27,6 +27,10 @@ const EXPANSIONS: [(&str, i32); 2] = [("dinosaur", 1), ("aqua", 2)];
 pub const CONSTRUCTION: i32 = 8;
 pub const OBJECTS: i32 = 4;
 const ALL: i32 = 22900;
+/// The Clear Objects button of the left bar, the bulldozer.
+pub const BULLDOZER: i32 = 1028;
+/// A bulldozer press becomes an area drag when the pointer moves more than this many pixels.
+const SWEEP_PIXELS: i64 = 16;
 /// The `cHabitat` and `cLocation` of a type that has none, and the habitat of one that has no good one.
 const NO_HABITAT: f32 = 9410.0;
 const BAD_HABITAT: f32 = 9414.0;
@@ -260,6 +264,14 @@ struct Drag {
     last: Option<Last>,
 }
 
+/// A bulldozer press: the tile and the window point it went down at, and the last tile the
+/// pointer was on.
+struct Sweep {
+    start: (i32, i32),
+    pixel: (i32, i32),
+    last: (i32, i32),
+}
+
 /// What the last computation of a run kept (placing 6.2 item 2).
 struct Last {
     point: (i64, i64),
@@ -296,6 +308,9 @@ pub struct Build {
     infoimg: Option<HashMap<i32, String>>,
     /// A path or fence drag in progress (placing 6.2).
     drag: Option<Drag>,
+    /// The bulldozer is the tool (the Clear Objects button is selected), and the press it holds.
+    bulldozer: bool,
+    sweep: Option<Sweep>,
 }
 
 impl Build {
@@ -314,7 +329,92 @@ impl Build {
             terrain: None,
             infoimg: None,
             drag: None,
+            bulldozer: false,
+            sweep: None,
         }
+    }
+
+    /// Whether the bulldozer is the tool.
+    pub fn bulldozing(&self) -> bool {
+        self.bulldozer
+    }
+
+    /// The left button went down on the map with the bulldozer as the tool, at the window point
+    /// `pixel`, on `tile` (none off the map).
+    pub fn sweep_press(&mut self, tile: Option<(u32, u32)>, pixel: (i32, i32)) {
+        let tile = tile.and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)));
+        self.sweep = tile.filter(|_| self.bulldozer).map(|start| Sweep {
+            start,
+            pixel,
+            last: start,
+        });
+    }
+
+    /// The rectangle of tiles (the press tile and the one under the pointer, both included) while
+    /// the press is an area drag: the pointer left the press tile or is more than 16 pixels from
+    /// the press point; back on the press tile within 16 pixels it is a click again. A pointer
+    /// off the map keeps the last tile it was on. `None` without a press or in a click.
+    pub fn sweep_area(
+        &mut self,
+        tile: Option<(i32, i32)>,
+        pixel: (i32, i32),
+    ) -> Option<((i32, i32), (i32, i32))> {
+        let sweep = self.sweep.as_mut()?;
+        sweep.last = tile.unwrap_or(sweep.last);
+        let (dx, dy) = (
+            i64::from(pixel.0) - i64::from(sweep.pixel.0),
+            i64::from(pixel.1) - i64::from(sweep.pixel.1),
+        );
+        let far = dx * dx + dy * dy > SWEEP_PIXELS * SWEEP_PIXELS;
+        (sweep.last != sweep.start || far).then_some((sweep.start, sweep.last))
+    }
+
+    /// Whether a bulldozer press is held.
+    pub fn sweeping(&self) -> bool {
+        self.sweep.is_some()
+    }
+
+    /// The bulldozer press is over: released, or dropped with the tool.
+    pub fn end_sweep(&mut self) {
+        self.sweep = None;
+    }
+
+    /// The bulldozer stops being the tool: its button is released and a held press dropped.
+    fn stop_bulldozer(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
+        if std::mem::take(&mut self.bulldozer) {
+            ui.set_button(BULLDOZER, false, true);
+            log.push("tool bulldozer off".into());
+        }
+        self.sweep = None;
+    }
+
+    /// The Clear Objects button was pressed or released: noticed from its state, the bulldozer
+    /// becomes the tool, which clears the item (and the terrain tab) of the open panel, and a
+    /// second press ends it (placing 7.1).
+    fn notice_bulldozer(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
+        let on = ui
+            .tree
+            .find(BULLDOZER)
+            .is_some_and(|i| ui.tree.elements[i].state & SELECTED != 0);
+        if on == self.bulldozer {
+            return;
+        }
+        self.bulldozer = on;
+        self.sweep = None;
+        if !on {
+            return log.push("tool bulldozer off".into());
+        }
+        self.drag = None;
+        if let Some(p) = self.open {
+            if self.terrain.take().is_some() {
+                terrain::hide(ui);
+            }
+            if self.held.take().is_some() {
+                ui.select_item(PANELS[p].list, None);
+            }
+            Self::no_item(ui, &PANELS[p]);
+        }
+        log.push("tool bulldozer on".into());
     }
 
     /// The left button went down on `tile` of the map, at the world point `point`: with a path or
@@ -432,6 +532,7 @@ impl Build {
 
     /// Notices that a panel was shown or hidden since the last call, and acts on it.
     pub fn sync(&mut self, ui: &mut Interface, vfs: &Vfs, cat: &Catalogue, log: &mut Vec<String>) {
+        self.notice_bulldozer(ui, log);
         let shown = PANELS.iter().position(|p| {
             ui.tree
                 .find(p.layout)
@@ -466,6 +567,11 @@ impl Build {
     /// Escape or the right button drops the tool and clears the list selection; the next one
     /// closes the panel (input 4.6 steps 7 and 10). Whether it did something.
     pub fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
+        if self.bulldozer {
+            self.stop_bulldozer(ui, log);
+            log.push("tool drop".into());
+            return true;
+        }
         let Some(p) = self.open else { return false };
         self.drag = None;
         if self.terrain.take().is_some() {
@@ -537,6 +643,9 @@ impl Build {
         self.listed = tab;
         if panel.layout == CONSTRUCTION {
             self.terrain = terrain::tab(ui, tab.is_some());
+            if self.terrain.is_some() {
+                self.stop_bulldozer(ui, log);
+            }
         }
         let button = tab.and_then(|t| ui.tree.find(panel.tabs[t]));
         let (tag, title) = button.map_or((String::new(), 0), |i| {
@@ -586,15 +695,26 @@ impl Build {
             Some(at) => self.choose(ui, vfs, cat, p, at, log),
             None => {
                 self.held = None;
-                for id in [panel.name_text, panel.cost_text] {
-                    ui.set_text(id, b"");
-                }
-                ui.set_hidden(panel.rotate[0], true);
-                ui.set_hidden(panel.rotate[1], true);
+                Self::no_item(ui, panel);
             }
         }
         if let Some(t) = tab {
             ui.set_top(panel.list, self.tops[p][t]);
+        }
+    }
+
+    /// The panel shows no item: no name, cost, rotate buttons, era, fence descriptor or pictures.
+    fn no_item(ui: &mut Interface, panel: &Panel) {
+        for id in [panel.name_text, panel.cost_text] {
+            ui.set_text(id, b"");
+        }
+        let shown = panel
+            .rotate
+            .into_iter()
+            .chain(panel.details)
+            .chain(panel.pictures);
+        for id in shown.filter(|&id| id != 0) {
+            ui.set_hidden(id, true);
         }
     }
 
@@ -637,6 +757,7 @@ impl Build {
             return;
         };
         let ty = &cat.types[index];
+        self.stop_bulldozer(ui, log);
         self.chosen[p][tab] = Some(index);
         self.held = Some(index);
         self.turn = self.step[p];

@@ -154,7 +154,20 @@ usage: rustyzoo [--data <dir>] <command>
                       side S id N` for a fence, `tool turn STEP` for a type that turns by
                       itself, the placement sound), one that is not valid or too dear asks for the
                       refusal sound and shows its message, if it has one, in the message line for
-                      5 seconds (`tool message ID`). The two
+                      5 seconds (`tool message ID`). The Clear Objects button of the main panel
+                      and the Delete key make the bulldozer the tool (`tool bulldozer on`, off
+                      again by the same, Escape or the right button): the object under the pointer
+                      is tinted red with its refund next to the pointer (`tool bulldoze CLASS/TYPE/
+                      SUBTYPE id N refund R name=NAME`, `tool bulldoze none`), a press and a drag
+                      outline the rectangle of tiles and tint every object in it (`tool bulldoze
+                      area X,Y X,Y objects N refund R`), and the release removes them, 80% of the
+                      cost back (a fence 40% when decayed, nothing when broken), booked as a
+                      construction refund (`world remove CLASS/TYPE/SUBTYPE X,Y [side S] id N
+                      refund R`, `tool bulldoze removed N refund R` after a drag, `world gate id N`
+                      for the piece that became an exhibit's gate); a building that needs it asks
+                      first unless `[UI] confirmSell` is 0, a fence piece whose line opens or
+                      merges exhibits asks (`tool bulldoze ask Sell|Merge(X, Y)|Escape(X)`, answered
+                      by `key y` or `key n`, `tool bulldoze answer yes|no|cancel`). The two
                       terrain tabs of the construction panel (at 180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and
