@@ -7,6 +7,7 @@ use crate::Framebuffer;
 use crate::bitmap;
 use crate::config::{Config, to_int};
 use crate::pe::{self, ResKey};
+use crate::sprite::show;
 use crate::strings::library_names;
 use crate::text::fill_color;
 use crate::vfs::{MAX_MEMBER_SIZE, find_ignoring_case};
@@ -38,7 +39,9 @@ fn find_resource(install: &Path, kind: u32, number: u32) -> Option<Vec<u8>> {
         })
 }
 
-/// The start-up picture, its colours reduced to 5-6-5; `None` if no library has it or it is not
+/// The start-up picture as the original's screen copy shows it: each channel cut to 5 bits
+/// (`c >> 3`), green made a 6 bit code `(g5 << 1) | (g5 >> 4)`, then the codes shown with their
+/// high bits repeated (main menu 3.3 item 7); `None` if no library has it or it is not
 /// a bitmap of 8 or 24 bits.
 pub fn picture(install: &Path, expansions: i32) -> Option<Framebuffer> {
     decode(&find_resource(
@@ -65,7 +68,8 @@ fn decode(dib: &[u8]) -> Option<Framebuffer> {
     let (w, h, pixels) = bitmap::read(&file).ok()?;
     let mut frame = Framebuffer::new(w as u32, h as u32);
     for (to, from) in frame.pixels.as_chunks_mut::<4>().0.iter_mut().zip(pixels) {
-        *to = [from[0], from[1], from[2], 255];
+        let [r, g, b] = from.map(|c| u16::from(c >> 3));
+        *to = [show(0, r), show(1, g << 1 | g >> 4), show(2, b), 255];
     }
     Some(frame)
 }

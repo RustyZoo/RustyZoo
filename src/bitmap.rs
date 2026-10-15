@@ -13,8 +13,8 @@ use crate::config::Config;
 use crate::sprite::{Frame, MAX_COLORS, MAX_DIMENSION, Palette};
 use crate::vfs::Vfs;
 
-/// A bitmap reduced to 5-6-5 colours: `(width, height)` and the RGB pixels, top row first.
-pub(crate) type Reduced = (usize, usize, Vec<[u8; 3]>);
+/// A bitmap: `(width, height)` and the RGB pixels, top row first.
+pub(crate) type Pixels = (usize, usize, Vec<[u8; 3]>);
 
 fn le(data: &[u8], at: usize, len: usize) -> Result<u32, String> {
     let bytes = data.get(at..at + len).ok_or("truncated bitmap")?;
@@ -29,8 +29,8 @@ fn reduce(r: u8, g: u8, b: u8) -> [u8; 3] {
     [to(r, 31), to(g, 63), to(b, 31)]
 }
 
-/// Reads an uncompressed 24-bit or 8-bit Windows bitmap and reduces its colours.
-pub(crate) fn read(data: &[u8]) -> Result<Reduced, String> {
+/// Reads an uncompressed 24-bit or 8-bit Windows bitmap; the colours are as stored.
+pub(crate) fn read(data: &[u8]) -> Result<Pixels, String> {
     if data.get(..2) != Some(b"BM") {
         return Err("not a bitmap".into());
     }
@@ -59,10 +59,10 @@ pub(crate) fn read(data: &[u8]) -> Result<Reduced, String> {
         let row = &rows[(if height > 0 { h - 1 - y } else { y }) * stride..];
         for x in 0..w {
             pixels.push(match bits {
-                24 => reduce(row[x * 3 + 2], row[x * 3 + 1], row[x * 3]),
+                24 => [row[x * 3 + 2], row[x * 3 + 1], row[x * 3]],
                 _ => {
                     let entry = &data[table.0 + usize::from(row[x]) * 4..];
-                    reduce(entry[2], entry[1], entry[0])
+                    [entry[2], entry[1], entry[0]]
                 }
             });
         }
@@ -83,7 +83,10 @@ fn palette_order(color: &[u8; 3]) -> u32 {
 /// [`MAX_DIMENSION`], has more than [`MAX_COLORS`] distinct reduced colours or has a row of more
 /// than 255 segments.
 pub fn convert(bitmap: &[u8]) -> Result<(Frame, Palette), String> {
-    let (w, h, pixels) = read(bitmap)?;
+    let (w, h, mut pixels) = read(bitmap)?;
+    for p in &mut pixels {
+        *p = reduce(p[0], p[1], p[2]);
+    }
     let key = pixels[0];
     let mut colors: Vec<[u8; 3]> = pixels.clone();
     colors.sort_by_key(palette_order);
