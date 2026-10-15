@@ -244,29 +244,28 @@ pub fn pending(
     let t = cat.types.get(ty)?;
     let class = Class::of(t);
     let point = (i32::try_from(point.0).ok()?, i32::try_from(point.1).ok()?);
-    let tile = world.tile_index(point.0.div_euclid(64), point.1.div_euclid(64))?;
-    let (tx, ty_) = (point.0.div_euclid(64), point.1.div_euclid(64));
-    let facing = match class {
+    let (tile_x, tile_y) = (point.0.div_euclid(64), point.1.div_euclid(64));
+    let tile = world.tile_index(tile_x, tile_y)?;
+    let dir = match class {
         Class::Fixed => facing(step, view),
         Class::Path => 0,
         Class::Fence => side(point.0.rem_euclid(64), point.1.rem_euclid(64)),
     };
     let own = placement_footprint(t);
     // The footprint is along the object's own axes; it turns with the facing.
-    let fp = match class == Class::Fixed && facing % 4 != 0 {
+    let fp = match class == Class::Fixed && dir % 4 != 0 {
         true => (own.1, own.0),
         false => own,
     };
-    let (x, y) = snap(class, point, fp, facing);
-    let (lx, ly) = (x - 64 * tx, y - 64 * ty_);
-    let z = ground_height(&world.zoo.tiles[tile], lx, ly);
+    let (x, y) = snap(class, point, fp, dir);
+    let (lx, ly) = (x - 64 * tile_x, y - 64 * tile_y);
     let mut pending = Pending {
         ty,
         x,
         y,
-        z,
-        facing,
-        tile: (tx, ty_),
+        z: ground_height(&world.zoo.tiles[tile], lx, ly),
+        facing: dir,
+        tile: (tile_x, tile_y),
         quadrant: (ly / 32 * 2 + lx / 32).clamp(0, 3) as usize,
         verdict: Verdict::Valid,
         message: None,
