@@ -301,9 +301,9 @@ impl Frame {
     /// it. The offsets of the frame are not applied: the caller subtracts them from the anchor.
     ///
     /// Every stored pixel is written opaque with the colour of its palette entry as the 16 bit
-    /// screen shows it ([`screen`]), replacing what was there; the fourth byte of a palette entry is ignored. The one exception is pixel
-    /// value 0 when [`Palette::zero_is_transparent`]: it is skipped. The pixels of a shadow
-    /// frame darken the destination at [`SHADOW_STRENGTH`] and never use the palette.
+    /// screen shows it ([`screen`]), replacing what was there; the fourth byte of a palette entry
+    /// is ignored. The one exception is pixel value 0 when [`Palette::zero_is_transparent`]: it
+    /// is skipped. The pixels of a shadow frame darken the destination at [`SHADOW_STRENGTH`] and never use the palette.
     ///
     /// Never fails. A value the palette lacks is drawn black; an empty palette (its file is
     /// missing) draws no ordinary frame at all.
