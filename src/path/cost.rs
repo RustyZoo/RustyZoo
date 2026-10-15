@@ -31,6 +31,58 @@ fn quarters(w: &World, m: &Mover, t: usize) -> [(bool, bool); 4] {
     })
 }
 
+/// The units on tile `t` other than `m`: their ids, and whether they let it through (an animal
+/// walks through others of a type with `walkable` 1).
+fn units(w: &World, m: &Mover, t: usize) -> Vec<(u32, bool)> {
+    let id = |e: usize| w.zoo.entities[e].common.as_ref().map(|c| c.id);
+    let walk = |e: usize| w.shape(e).is_some_and(|s| s.walkable.0);
+    (w.units_on(t))
+        .filter_map(|e| id(e).map(|id| (id, walk(e))))
+        .filter(|&(id, _)| Some(id) != m.id)
+        .collect()
+}
+
+/// 6.6 item 5: whether another unit that does not let the animal through stands on tile `t`, the
+/// animal's own tile holds none, and it is not chasing the unit there.
+fn crowded(w: &World, m: &Mover, t: usize) -> bool {
+    let stops = |t: usize| {
+        units(w, m, t)
+            .into_iter()
+            .filter(|u| !u.1)
+            .collect::<Vec<_>>()
+    };
+    let there = stops(t);
+    !there.is_empty()
+        && m.at.is_none_or(|s| stops(s).is_empty())
+        && there.iter().any(|&(id, _)| Some(id) != m.chasing)
+}
+
+/// Whether any of the edge slots of the tiles within `r - 1` tiles of `t` (a square; `t` itself
+/// for `r` 1) holds a piece.
+fn near_edge(w: &World, t: usize, r: u32) -> bool {
+    let width = w.zoo.width as i32;
+    let r = r.min(w.zoo.width.max(w.zoo.height)) as i32;
+    let (x, y) = (t as i32 % width, t as i32 / width);
+    (1 - r..r)
+        .flat_map(|dy| (1 - r..r).map(move |dx| (dx, dy)))
+        .filter_map(|(dx, dy)| w.tile_index(x + dx, y + dy))
+        .any(|n| (0..4).any(|d| w.edge(n, d * 2).is_some()))
+}
+
+/// 6.6 item 4: whether the animal keeps off tile `t` for the fences near it.
+fn avoids(w: &World, m: &Mover, t: usize) -> bool {
+    let tank = |t: usize| w.tank_at(t).is_some();
+    let same = m
+        .dest
+        .is_none_or(|d| m.at.is_some_and(|s| tank(d) == tank(s)));
+    m.avoid_edges > 0
+        && !m.test
+        && !m.show
+        && near_edge(w, t, m.avoid_edges)
+        && m.at.is_some_and(|s| !near_edge(w, s, m.avoid_edges))
+        && same
+}
+
 /// 6.1: the tiles nobody but a swimmer or a diver uses.
 fn closed(w: &World, m: &Mover, t: usize) -> bool {
     let water = w.is_water(t) && !m.swims;
@@ -49,10 +101,14 @@ pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
     }
     let (path, steep, tank) = (on_path(w, t), steep(w, t), w.tank_at(t).is_some());
     let blocked = quarters(w, m, t).iter().all(|q| q.1);
+    // The food a keeper put down: scenery of the food class in quarter 0.
+    let food = w
+        .quadrant(t, SLOT[0])
+        .is_some_and(|e| w.zoo.entities[e].class == "food");
     let at_path = m.at.is_some_and(|s| on_path(w, s));
     match m.kind {
-        Kind::Keeper if !tank && blocked => MAX,
-        Kind::Keeper => match (steep, path || tank) {
+        Kind::Keeper if !tank && blocked && !food => MAX,
+        Kind::Keeper => match (steep || food, path || tank) {
             (true, _) => [16, 1][usize::from(m.relaxed)],
             (_, false) => [2, 1][usize::from(m.relaxed)],
             _ => 1,
@@ -66,18 +122,27 @@ pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
             _ => MAX,
         },
         Kind::Guest => {
+            let wet = |t: usize| w.is_water(t);
+            let hurt = m.recovering || m.avoiding;
+            if wet(t) && !m.at.is_some_and(wet) && !hurt
+                || m.in_water && !wet(t) && !m.building && !m.recovering
+            {
+                return MAX;
+            }
             let on_tank = m.at.is_some_and(|s| w.tank_at(s).is_some());
             let both = goal.is_some_and(|g| on_path(w, g)) && at_path;
-            let base = match (path, both && !m.leaving) {
+            let base = match (path, both && !m.leaving && !m.avoiding) {
                 (true, _) => 1,
                 (_, true) => MAX,
-                _ if on_tank || w.is_water(t) => 1,
+                _ if on_tank || wet(t) => 1,
+                _ if m.avoiding => m.emergency_cost,
                 _ => m.non_path_cost,
             };
-            if steep { base.max(16) } else { base }
+            let afraid = units(w, m, t).iter().any(|u| m.predators.contains(&u.0));
+            if steep || afraid { base.max(16) } else { base }
         }
-        // 6.6 without the rules that need the other units, the shows and the avoided edges.
         Kind::Animal if m.only_underwater && !tank => MAX,
+        Kind::Animal if avoids(w, m, t) || crowded(w, m, t) => MAX,
         Kind::Animal
             if steep
                 && m.footprint >= 4
@@ -85,6 +150,7 @@ pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
         {
             MAX
         }
+        Kind::Animal if m.show => 1,
         Kind::Animal if m.water_mode && !(w.is_water(t) || tank) => 17,
         Kind::Animal if !m.water_mode && w.is_water(t) => 17,
         Kind::Animal => [1, 16][usize::from(steep && !m.climbs || path)],
@@ -126,10 +192,19 @@ fn straight(w: &World, m: &Mover, t: usize, d: usize) -> u32 {
     }
     let low = |p: &usize| w.shape(*p).is_some_and(|s| !s.fence && !s.wall);
     let marked = |p: &usize| w.shape(*p).is_some_and(|s| !s.tank.wall) && !low(p);
+    // A random walk turns only from the unit's own tile: a quarter turn costs 2, a turn back 4.
+    let turn = match m.turn.filter(|_| m.at == Some(t)) {
+        Some(f) => match (d + 8 - f % 8) % 8 {
+            2 | 6 => 2,
+            3..=5 => 4,
+            _ => 1,
+        },
+        None => 1,
+    };
     match m.kind {
         Kind::Animal if pieces.iter().any(marked) => 8,
-        Kind::Keeper | Kind::Worker if pieces.iter().any(low) => 16,
-        _ => 1,
+        Kind::Keeper | Kind::Worker if pieces.iter().any(low) => turn + 15,
+        _ => turn,
     }
 }
 
@@ -149,6 +224,15 @@ fn passes(w: &World, m: &Mover, t: usize, n: usize, pieces: &[usize]) -> bool {
         let wall = w.shape(p).is_some_and(|s| s.tank.wall);
         w.is_door(p) && (!flat || !wall || tank.is_none_or(|k| k.height == 0))
     };
+    // The gate of a show tank on this line.
+    let show_gate = |p: usize| {
+        let show = |t: usize| {
+            w.tank_at(t)
+                .and_then(|id| w.tank(id))
+                .is_some_and(|k| k.show)
+        };
+        w.is_door(p) && (show(t) || show(n))
+    };
     let grounds = |t: usize| {
         w.exhibits()
             .region(t)
@@ -160,7 +244,7 @@ fn passes(w: &World, m: &Mover, t: usize, n: usize, pieces: &[usize]) -> bool {
         Kind::Keeper | Kind::Worker => every(&|p| broken(p) || low(p) || gate(p, true)),
         Kind::Guest => every(&|p| gate(p, false)) && !(grounds(t) && !grounds(n)),
         Kind::Guide => every(&|p| broken(p) || gate(p, false)),
-        Kind::Animal => every(&|p| low(p) || broken(p)),
+        Kind::Animal => every(&|p| low(p) || broken(p) || m.show && show_gate(p)),
     }
 }
 

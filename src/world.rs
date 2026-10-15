@@ -9,7 +9,7 @@
 //! here.
 
 use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
-use crate::path::Settings;
+use crate::path::{Finder, Settings};
 use crate::render::corner_elevation;
 use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::unit::Units;
@@ -201,8 +201,6 @@ pub struct World {
     water: Vec<bool>,
     /// The numbers that make a new tank.
     tank_config: TankConfig,
-    /// The settings of the path finder, with its diagonal switch as the last request left it.
-    finder: Settings,
     undo: Vec<Action>,
     /// The next action starts a new undo list.
     fresh: bool,
@@ -225,7 +223,6 @@ impl World {
             words: ["Exhibit".into(), "Tank".into(), "Show Tank".into()],
             water: Vec::new(),
             tank_config: TankConfig::default(),
-            finder: Settings::default(),
             zoo,
             units: Units::default(),
             shapes,
@@ -247,10 +244,10 @@ impl World {
         world
     }
 
-    /// Sets the settings of the path finder the gate choice searches with: the step driver gives
-    /// them again with the diagonal switch each request leaves.
+    /// Sets the settings of the path finder (the `[AI]` keys): the units and the gate choice
+    /// search with them, the gate choice with the diagonal switch the last request left.
     pub fn set_finder(&mut self, settings: Settings) {
-        self.finder = settings;
+        self.units.finder = Finder::new(settings);
     }
 
     /// The regions of the map (exhibits and money 3.1).

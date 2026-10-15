@@ -55,7 +55,21 @@ fn shape(e: &Entity) -> Option<Shape> {
         ("fences", "low") => Some(thing(Class::Edge, (1, 1), false, false)),
         ("fences", _) => Some(thing(Class::Edge, (1, 1), true, false)),
         ("paths", _) => Some(thing(Class::Path, (2, 2), false, false)),
-        ("bush", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        ("bush", _) | ("food", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        // Show walls of a tank (`show`) and the others; units that let others through (`soft`).
+        ("tankwall", kind) => Some(Shape {
+            kind: Class::Wall,
+            tank: TankKind {
+                wall: true,
+                show: kind == "show",
+                ..TankKind::NONE
+            },
+            ..thing(Class::Wall, (1, 1), true, false)
+        }),
+        ("animals" | "guests", kind) => Some(Shape {
+            walkable: (kind == "soft", kind == "soft"),
+            ..thing(Class::Unit, (1, 1), false, false)
+        }),
         ("gate", _) => Some(thing(Class::Fixed, (2, 2), false, true)),
         _ => None,
     }
@@ -98,6 +112,8 @@ fn sized((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)
     };
     World::new(zoo, shape)
 }
+
+mod live;
 
 fn t((x, y): (i32, i32)) -> usize {
     (y * N + x) as usize

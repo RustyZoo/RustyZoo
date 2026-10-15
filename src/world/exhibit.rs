@@ -908,7 +908,7 @@ impl World {
                 path::search(
                     self,
                     &Mover::keeper(diver, true),
-                    &self.finder,
+                    &self.units.finder.last(),
                     from,
                     out,
                     false,
