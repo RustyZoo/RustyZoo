@@ -246,6 +246,11 @@ impl Calendar {
         month_end
     }
 
+    /// The game milliseconds since the start and the month flag, for the state hash.
+    pub fn state(&self) -> (u64, bool) {
+        (self.elapsed, self.month_changed)
+    }
+
     pub fn date(&self) -> Date {
         let days = (self.elapsed / DAY_MS) as i64;
         let ms = (self.elapsed % DAY_MS) as u32;

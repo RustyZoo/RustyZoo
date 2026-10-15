@@ -52,6 +52,11 @@ impl Events {
         (self.next, self.current) = (next.clone(), current.clone());
     }
 
+    /// The two buffers, the one read in this step and the next one, for the state hash.
+    pub fn buffers(&self) -> [&[Event]; 2] {
+        [&self.current, &self.next]
+    }
+
     /// Forgets every event, for a new game.
     pub fn clear(&mut self) {
         self.current.clear();

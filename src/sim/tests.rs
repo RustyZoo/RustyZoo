@@ -1,7 +1,9 @@
 //! The step driver, the generator and the event queue.
 
 use super::*;
+use crate::money::Money;
 use crate::zoo::{Clocks, Common, Entity, Tile, View, Zoo};
+use drive::Run;
 
 fn world(entities: usize) -> World {
     let tile = Tile {
@@ -459,4 +461,119 @@ fn two_runs_with_one_seed_print_the_same_lines() {
     assert_eq!(lines(1), lines(1));
     assert_eq!(lines(1)[..2], ["seed 1", "seed 2"]);
     assert_ne!(lines(1), lines(2));
+}
+
+fn game(entities: usize) -> Run {
+    Run::new(b"", world(entities), Money::default(), 1)
+}
+
+#[test]
+fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
+    // The published test vectors of 64-bit FNV-1a.
+    let of = |bytes: &[u8]| {
+        let mut h = hash::Fnv::default();
+        h.put(bytes);
+        h.finish()
+    };
+    assert_eq!(of(b""), 0xcbf2_9ce4_8422_2325);
+    assert_eq!(of(b"a"), 0xaf63_dc4c_8601_ec8c);
+    assert_eq!(of(b"foobar"), 0x8594_4171_f739_67e8);
+
+    let base = game(3).hash();
+    assert_eq!(game(3).hash(), base, "the same state, the same hash");
+    for what in [
+        "tile",
+        "terrain",
+        "entity",
+        "name",
+        "unit",
+        "cash",
+        "generator",
+        "clock",
+    ] {
+        let mut run = game(3);
+        match what {
+            "tile" => assert!(run.world.set_tile(1, 1, 1, 0, 0)),
+            "terrain" => assert!(run.world.set_tile(1, 1, 0, 0, 1)),
+            "entity" => run.world.zoo.entities[1].common.as_mut().unwrap().x += 1,
+            "name" => run.world.zoo.entities[2].common.as_mut().unwrap().name = "a".into(),
+            "unit" => run.world.units.set_period(500),
+            "cash" => run.money.cash += 0.01,
+            "generator" => drop(run.sim.rng.rand()),
+            _ => run.sim.ai_rem += 1,
+        }
+        assert_ne!(run.hash(), base, "{what}");
+    }
+    // Fixed-width fields: a name does not run into the next field.
+    let mut a = game(2);
+    a.world.zoo.entities[0].type_name = "ab".into();
+    let mut b = game(2);
+    b.world.zoo.entities[0].class = "animalsab".into();
+    assert_ne!(a.hash(), b.hash());
+}
+
+#[test]
+fn a_run_gives_the_same_hash_twice_and_another_with_another_seed() {
+    let hash = |seed| {
+        let mut run = Run::new(b"", world(3), Money::default(), seed);
+        (0..400).for_each(|_| drop(run.step(1000)));
+        (run.hash(), run.money.month)
+    };
+    assert_eq!(hash(1), hash(1));
+    assert_ne!(hash(1).0, hash(2).0);
+    assert_eq!(
+        hash(1).1,
+        2,
+        "the first month ended and the accounts moved on"
+    );
+}
+
+#[test]
+fn a_script_applies_its_commands_to_the_run() {
+    let commands = drive::parse("# one\n\n3 cash -5.5\n0 tile 1 2 3 0 1\n3 remove 2\n").unwrap();
+    let steps: Vec<u64> = commands.iter().map(|c| c.0).collect();
+    assert_eq!(steps, [0, 3, 3], "sorted by step, the order of a step kept");
+    let mut run = game(3);
+    let t = run.world.tile_index(1, 2).unwrap();
+    for (_, c) in &commands {
+        assert!(run.apply(*c));
+    }
+    assert_eq!(run.world.zoo.tiles[t].elevation, 3);
+    assert_eq!(run.money.cash, -5.5);
+    run.step(67);
+    assert_eq!(run.world.zoo.entities.len(), 2, "removed by the next pass");
+    assert!(
+        !run.apply(drive::Command::Tile(99, 0, 0, 0, 0)),
+        "off the map"
+    );
+    assert!(!run.apply(drive::Command::Fill(7)), "no tank");
+}
+
+#[test]
+fn a_bad_script_is_an_error() {
+    for bad in [
+        "x remove 1",
+        "-1 remove 1",
+        "1",
+        "1 jump 1",
+        "1 remove",
+        "1 remove -1",
+        "1 remove 4294967296",
+        "1 cash nan",
+        "1 cash inf",
+        "1 cash",
+        "1 tile 0 0 256 0 0",
+        "1 tile 0 0 -1 0 0",
+        "1 tile 0 0 0 256 0",
+        "1 tile 0 0 0 0 256",
+        "1 tile 0 99999999999 0 0 0",
+        "1 tile 0 0 0 0",
+        "1 fill 1 2",
+    ] {
+        assert!(drive::parse(bad).is_err(), "{bad}");
+    }
+    assert!(
+        drive::parse("0 tile -3 4 255 255 255").is_ok(),
+        "off the map is a warning"
+    );
 }
