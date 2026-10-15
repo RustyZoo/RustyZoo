@@ -199,28 +199,6 @@ fn only_paths_and_deletable_scenery_in_the_zoo_can_be_removed() {
 }
 
 #[test]
-fn the_object_under_the_point_is_the_quarter_holder_then_the_near_fence_then_the_path() {
-    let w = world(vec![
-        path(1, 1),
-        entity("objects", "tree", "", 64 + 16, 64 + 16, 0),
-        piece("f", 1, 1, 2),
-    ]);
-    let (path_at, tree, fence) = (0, 1, 2);
-    let tile = |lx: i64, ly: i64| (64 + lx, 64 + ly);
-    // The quarter at the top left holds the tree, whatever else is near.
-    assert_eq!(under(&w, tile(5, 5)), Some(tree));
-    // Near the east side: the fence; the middle of the tile: the path.
-    assert_eq!(under(&w, tile(60, 40)), Some(fence));
-    assert_eq!(under(&w, tile(40, 40)), Some(path_at));
-    // The tile across holds no piece of its own: the fence of the other tile's slot is found.
-    assert_eq!(under(&w, (2 * 64 + 2, 64 + 32)), Some(fence));
-    // Bare ground and points off the map pick nothing.
-    assert_eq!(under(&w, (5 * 64 + 40, 5 * 64 + 40)), None);
-    assert_eq!(under(&w, (-5, -5)), None);
-    assert_eq!(under(&w, (i64::MAX, i64::MIN)), None);
-}
-
-#[test]
 fn an_area_collects_each_object_once_by_the_tiles_it_covers() {
     let mut pieces: Vec<Entity> = (1..=7).map(|x| path(x % 8, 2)).collect();
     pieces.push(entity("building", "shop", "", 3 * 64, 4 * 64, 0));

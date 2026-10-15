@@ -145,21 +145,26 @@ impl Camera {
         map.tile(x, y).map(|_| (x, y))
     }
 
+    /// The view-space point at normal zoom of a window point: the scroll plus the point, with
+    /// the zoom undone (map drawing 2.5, step 1; camera 5). Saturating.
+    pub fn view_point(&self, (x, y): (i32, i32)) -> (i64, i64) {
+        let px = i64::from(self.scroll.0) + i64::from(x);
+        let py = i64::from(self.scroll.1) + i64::from(y);
+        let z = i64::from(self.zoom);
+        match self.zoom {
+            ..=-2 => (px.saturating_mul(-z), py.saturating_mul(-z)),
+            2.. => (px / z, py / z),
+            _ => (px, py),
+        }
+    }
+
     /// The world point on the ground under a window point (map drawing 2.5): the trial heights
     /// from +192 down to -192 in steps of 4 are undone through the projection, and the one whose
     /// height is nearest to the ground at the point it gives wins.
-    pub fn pick(&self, map: &Zoo, (x, y): (i32, i32)) -> (i64, i64, i32) {
-        let mut px = i64::from(self.scroll.0) + i64::from(x);
-        let mut py = i64::from(self.scroll.1) + i64::from(y);
-        let z = i64::from(self.zoom);
-        match self.zoom {
-            // Saturating, then bounded, so that the arithmetic below cannot overflow.
-            ..=-2 => (px, py) = (px.saturating_mul(-z), py.saturating_mul(-z)),
-            2.. => (px, py) = (px / z, py / z),
-            _ => {}
-        }
+    pub fn pick(&self, map: &Zoo, at: (i32, i32)) -> (i64, i64, i32) {
         let bound = 1 << 40;
-        (px, py) = (px.clamp(-bound, bound), py.clamp(-bound, bound));
+        let (px, py) = self.view_point(at);
+        let (px, py) = (px.clamp(-bound, bound), py.clamp(-bound, bound));
         let (c, s) = [(1, 0), (0, -1), (-1, 0), (0, 1)][usize::from(self.rotation)];
         let at = |h: i64| {
             let (f1, f2) = (px - 2 * (py + h), px + 2 * (py + h));

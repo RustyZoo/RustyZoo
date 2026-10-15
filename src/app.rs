@@ -928,13 +928,23 @@ impl<'a> App<'a> {
         // The gate tool's pending gate sits on the fence piece under the pointer.
         // It is judged when the piece changes, so a gate just placed shows nothing until the
         // pointer has been over another piece.
-        let over = place::gate::over(&game.world, (point.0, point.1))
+        // It is the entity the pixel pick finds, widened as the bulldozer's (placing 6.4).
+        let hovered = game
+            .staged
+            .pick(
+                game.camera.view_point(ui.pointer()),
+                place::bulldozer::WIDEN,
+                |id| game.world.find(id).is_some(),
+            )
+            .and_then(|id| game.world.find(id));
+        let over = hovered
+            .and_then(|at| place::gate::over(&game.world, at))
             .filter(|_| game.build.gating() && game.hover);
         if over != game.gate_over || over.is_none() {
             game.gate_over = over;
-            game.gate = over.and_then(|_| {
-                place::gate::pending(&game.world, cat, &game.money, (point.0, point.1))
-            });
+            game.gate = hovered
+                .filter(|_| over.is_some())
+                .and_then(|at| place::gate::pending(&game.world, cat, &game.money, at));
         }
         if let Some(g) = &game.gate {
             game.pending = Some(g.pending.clone());

@@ -6,7 +6,8 @@ use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::place::bulldozer::Question;
 use crate::render::order::project;
-use crate::render::tests::{cache_install_with, flat_map, frame_file, tile_with};
+use crate::render::tests::{cache_install_with, flat_map, frame_file, palette_file, tile_with};
+use crate::sprite::tests::{sized, sprite_file};
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::Tree;
 use crate::vfs::Vfs;
@@ -55,6 +56,11 @@ fn map() -> Zoo {
 }
 
 fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3]) -> EntityType {
+    // A type without pictures of its own is the square of `obj.ani`.
+    let ini = match ini.contains("[Animations]") {
+        true => ini.to_string(),
+        false => format!("{ini}[Animations]\nidle=dozer/obj.ani\n"),
+    };
     EntityType {
         class,
         type_name: name.to_vec(),
@@ -68,7 +74,8 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
 }
 
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
-/// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall.
+/// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40). Every
+/// picture is a square around the anchor: 24 pixels, the tree's 16.
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
@@ -115,11 +122,50 @@ fn catalogue() -> Catalogue {
         &format!("{}cIsShowFence=1\n[TankFence]\n", cost(100)),
         [1, 1, 1],
     ));
+    // 7: a tree (40), a square of 16 pixels.
+    cat.push(ty(
+        "objects",
+        b"tree",
+        b"",
+        &format!("{}[Animations]\nidle=dozer/small.ani\n", cost(40)),
+        [1, 1, 1],
+    ));
     cat
 }
 
 fn install(name: &str, ini: &str) -> crate::sprite::tests::Install {
+    // Every object is a square of 24 pixels around its anchor.
+    let mut frame = Vec::new();
+    for field in [24u16, 24, 12, 12, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    for _ in 0..24 {
+        frame.extend([1, 0, 24]);
+        frame.extend([1; 24]);
+    }
+    let mut small = Vec::new();
+    for field in [16u16, 16, 8, 8, 0] {
+        small.extend(field.to_le_bytes());
+    }
+    for _ in 0..16 {
+        small.extend([1, 0, 16]);
+        small.extend([1; 16]);
+    }
     let ui = [
+        (
+            "dozer/small.ani",
+            b"[animation]\ndir0=dozer\ndir1=small\nanimation=N\n".to_vec(),
+        ),
+        ("dozer/small/N", sprite_file(None, 1, &[sized(&small)])),
+        (
+            "dozer/obj.ani",
+            b"[animation]\ndir0=dozer\ndir1=spr\nanimation=N\n".to_vec(),
+        ),
+        ("dozer/spr/N", sprite_file(None, 1, &[sized(&frame)])),
+        (
+            "animals/Lion/lion.pal",
+            palette_file(&[[255, 0, 255], [1, 2, 3]]),
+        ),
         ("ui/root.lyt", ROOT.as_bytes().to_vec()),
         ("ui/q.lyt", QUESTION.as_bytes().to_vec()),
         ("zoo.ini", ini.as_bytes().to_vec()),
@@ -189,6 +235,14 @@ impl Session<'_> {
         let c = self.app.camera().unwrap();
         let p = project(c.rotation, 64 * tx + lx, 64 * ty + ly, 0);
         Command::Mouse(Mouse::Move(p.0 - c.scroll.0, p.1 - c.scroll.1))
+    }
+
+    /// A window point `(dx, dy)` view pixels from the anchor of the world position (`x`, `y`) on
+    /// the ground.
+    fn near(&self, x: i32, y: i32, (dx, dy): (i32, i32)) -> Command {
+        let c = self.app.camera().unwrap();
+        let p = project(c.rotation, x, y, 0);
+        Command::Mouse(Mouse::Move(p.0 + dx - c.scroll.0, p.1 + dy - c.scroll.1))
     }
 
     fn click(&mut self, at: Command) -> Vec<String> {
@@ -491,7 +545,8 @@ fn bulldozing_a_gate_keeps_the_exhibit_and_its_name_and_gives_the_line_a_new_gat
         );
         let world = &mut s.app.game.as_mut().unwrap().world;
         world.rename(1, "Lions".into());
-        world.set_gate(1, pieces[3]);
+        world.set_gate(1, other);
+        // The two pieces of the line are drawn on top of each other and the later one is picked.
         // The bulldozer takes the gate: the other piece of the line is the gate now.
         s.pass(&[DELETE]);
         s.pass(&[s.at(20, 20, 12, 32)]);
@@ -501,14 +556,14 @@ fn bulldozing_a_gate_keeps_the_exhibit_and_its_name_and_gives_the_line_a_new_gat
             "{told:?}"
         );
         assert!(
-            told.contains(&"exhibit gate 1 19,20 side 2".to_string()),
+            told.contains(&"exhibit gate 1 20,20 side 6".to_string()),
             "{told:?}"
         );
         let world = &s.app.game.as_ref().unwrap().world;
         assert_eq!(world.exhibits().list().len(), 1);
         let exhibit = world.exhibits().get(1).unwrap();
         assert_eq!(exhibit.name, "Lions");
-        assert_eq!(exhibit.gate, Some(other));
+        assert_eq!(exhibit.gate, Some(pieces[3]));
     });
 }
 
@@ -562,5 +617,39 @@ fn a_tank_asks_whether_to_drain_it_and_a_wall_between_unlike_tanks_says_why_it_s
         assert!(!told.iter().any(|l| l.contains("ask")), "{told:?}");
         assert!(!s.asking());
         assert_eq!(s.count(), 8);
+    });
+}
+
+#[test]
+fn the_tree_in_front_of_a_building_is_picked_where_their_pictures_overlap() {
+    with_game("front", "", |s| {
+        let (x, y) = (20 * 64 + 32, 20 * 64 + 32);
+        let shop = s.add(2, x, y, 0);
+        // The tree stands on the next tile, 16 pixels right and 12 lower in the view, and is
+        // drawn after the shop: its 16 pixels overlap the lower right of the shop's 24.
+        let tree = s.add(7, x - 8, y + 40, 0);
+        s.pass(&[DELETE]);
+        let name = |id: u32, refund: u32| {
+            let class = if id == shop {
+                "building/shop/"
+            } else {
+                "objects/tree/"
+            };
+            format!("tool bulldoze {class} id {id} refund {refund} name=Shop")
+        };
+        // Where both have a pixel the tree, drawn last, wins.
+        assert_eq!(s.pass(&[s.near(x, y, (12, 8))]), [name(tree, 32)]);
+        // Beside the overlap each has pixels of its own.
+        assert_eq!(s.pass(&[s.near(x, y, (0, 8))]), [name(shop, 280)]);
+        assert_eq!(s.pass(&[s.near(x, y, (16, 16))]), [name(tree, 32)]);
+        // Outside both pictures there is nothing.
+        assert_eq!(s.pass(&[s.near(x, y, (20, -8))]), ["tool bulldoze none"]);
+        // The click removes the one picked, without a question for a tree.
+        let told = s.click(s.near(x, y, (12, 8)));
+        assert!(
+            told.iter()
+                .any(|l| l.starts_with("world remove objects/tree/"))
+        );
+        assert_eq!(s.count(), 1);
     });
 }
