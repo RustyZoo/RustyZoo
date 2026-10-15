@@ -1,6 +1,7 @@
 //! The step driver, the generator and the event queue.
 
 use super::*;
+use crate::animal::Class;
 use crate::money::Money;
 use crate::zoo::{Clocks, Common, Entity, Tile, View, Zoo};
 use drive::Run;
@@ -27,6 +28,7 @@ fn world(entities: usize) -> World {
             colors: Vec::new(),
             fence: None,
             movement_mode: 0,
+            animal: None,
         }),
     };
     let zoo = Zoo {
@@ -463,8 +465,12 @@ fn two_runs_with_one_seed_print_the_same_lines() {
     assert_ne!(lines(1), lines(2));
 }
 
+fn own() -> (Catalogue, Class) {
+    (Catalogue::default(), Class::default())
+}
+
 fn game(entities: usize) -> Run {
-    Run::new(b"", world(entities), Money::default(), 1)
+    Run::new(b"", own(), world(entities), Money::default(), 1)
 }
 
 #[test]
@@ -490,6 +496,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "cash",
         "generator",
         "clock",
+        "grounds",
     ] {
         let mut run = game(3);
         match what {
@@ -500,6 +507,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "unit" => run.world.units.set_period(500),
             "cash" => run.money.cash += 0.01,
             "generator" => drop(run.sim.rng.rand()),
+            "grounds" => run.world.exhibits_mut().grounds.rating_ms = 1,
             _ => run.sim.ai_rem += 1,
         }
         assert_ne!(run.hash(), base, "{what}");
@@ -515,7 +523,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
 #[test]
 fn a_run_gives_the_same_hash_twice_and_another_with_another_seed() {
     let hash = |seed| {
-        let mut run = Run::new(b"", world(3), Money::default(), seed);
+        let mut run = Run::new(b"", own(), world(3), Money::default(), seed);
         (0..400).for_each(|_| drop(run.step(1000)));
         (run.hash(), run.money.month)
     };
@@ -576,4 +584,31 @@ fn a_bad_script_is_an_error() {
         drive::parse("0 tile -3 4 255 255 255").is_ok(),
         "off the map is a warning"
     );
+}
+
+#[test]
+fn the_grounds_update_before_the_exhibits() {
+    let mut w = world(0);
+    let part = crate::exhibit::Part {
+        tiles: vec![5],
+        grounds: false,
+    };
+    let id = w.exhibits_mut().add(&part, String::new());
+    let mut s = sim("");
+    let mut check = s.rng.clone();
+    s.step(&mut w, 1000, |_, _, _| {});
+    // Both start dirty: each restarts its rating timer with one draw, the grounds' first.
+    let draws = [check.rand() % 200, check.rand() % 200];
+    assert_eq!(w.exhibits().grounds.rating_ms, draws[0]);
+    assert_eq!(w.exhibits().get(id).unwrap().rating.rating_ms, draws[1]);
+    assert_eq!(s.rng.state(), check.state());
+    // At the eighth second both timers of each pass their limits: two draws each, again the
+    // grounds' first (the species timer, then the rating timer).
+    (0..7).for_each(|_| _ = s.step(&mut w, 1000, |_, _, _| {}));
+    let draws = [(); 4].map(|()| check.rand() % 200);
+    assert_eq!(w.exhibits().grounds.species_ms, draws[0]);
+    assert_eq!(w.exhibits().grounds.rating_ms, draws[1]);
+    assert_eq!(w.exhibits().get(id).unwrap().rating.species_ms, draws[2]);
+    assert_eq!(w.exhibits().get(id).unwrap().rating.rating_ms, draws[3]);
+    assert_eq!(s.rng.state(), check.state());
 }

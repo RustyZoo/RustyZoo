@@ -5,8 +5,7 @@
 //! What a unit does with its step is the [`unit`] module's: [`Sim::step`] runs [`unit::update`]
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). Missing so far: the zoo status checks of the game
-//! manager, the task pool, the shows and the exhibits' own update (the AI and world managers'
-//! first calls), the water ripples, the ambient creatures, and the scenario, research and
+//! manager, the task pool, the shows, the water ripples, the ambient creatures, and the scenario, research and
 //! marketing managers, which are empty until M7.
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
@@ -26,6 +25,8 @@ pub use events::{Event, Events, KEEPER_CHANNEL, UNIT_CHANNEL};
 pub use rng::{Rng, Seconds};
 
 use crate::config::{self, Config};
+use crate::entity::Catalogue;
+use crate::exhibit::rating;
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
 use crate::world::World;
@@ -211,6 +212,12 @@ impl Sim {
         }
     }
 
+    /// Creates the animals of the map just loaded (animals 3.5), with the types of `cat` and the
+    /// class keys in `world.units.class`. The draws come before every draw of the first step.
+    pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
+        crate::animal::load(world, cat, &mut self.rng);
+    }
+
     pub fn calendar(&self) -> &Calendar {
         &self.calendar
     }
@@ -246,6 +253,18 @@ impl Sim {
     pub fn step(
         &mut self,
         world: &mut World,
+        step: u32,
+        update: impl FnMut(&mut World, usize, u32),
+    ) -> Report {
+        self.step_in(world, &Catalogue::default(), step, update)
+    }
+
+    /// [`Sim::step`] in a game whose types are `cat`: the units read their species' keys from
+    /// it and the exhibits are rated for the species they hold.
+    pub fn step_in(
+        &mut self,
+        world: &mut World,
+        cat: &Catalogue,
         step: u32,
         mut update: impl FnMut(&mut World, usize, u32),
     ) -> Report {
@@ -283,13 +302,25 @@ impl Sim {
                     events: &self.events,
                     removals: &mut self.removals,
                     step,
+                    cat,
                 };
                 unit::update(&mut unit::Standard, world, &mut ctx, at);
                 update(world, at, step);
             }
         }
         self.events.age();
-        // The world manager: the water of the tanks, the world clock.
+        // The world manager: the zoo grounds' timers, then the exhibits' timers and ratings, the
+        // water of the tanks, the world clock.
+        let mut grounds = std::mem::take(&mut world.exhibits_mut().grounds);
+        grounds.update(step, &mut || self.rng.rand(), rating::Input::default);
+        world.exhibits_mut().grounds = grounds;
+        for at in 0..world.exhibits().list().len() {
+            let id = world.exhibits().list()[at].id;
+            let mut state = std::mem::take(&mut world.exhibits_mut().list_mut()[at].rating);
+            let rand = &mut || self.rng.rand();
+            state.update(step, rand, || rating::input(world, cat, id));
+            world.exhibits_mut().list_mut()[at].rating = state;
+        }
         let water_moved = world.step_water();
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;

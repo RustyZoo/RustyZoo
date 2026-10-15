@@ -173,6 +173,9 @@ pub struct Exhibits {
     pub next: u32,
     /// The number of the next default name (exhibits and money 3.6).
     pub counter: u32,
+    /// The zoo grounds' own timers and record (habitat rating 4): the update is the exhibits',
+    /// and its recomputation only clears the record.
+    pub grounds: rating::State,
 }
 
 /// The tiles of the region of `start` in the original's order (exhibits and money 3.1): a stack of
@@ -313,6 +316,7 @@ impl Exhibits {
             region: vec![GROUNDS; world.zoo.tiles.len()],
             next: 1,
             counter: 1,
+            grounds: rating::State::new(),
             ..Exhibits::default()
         };
         // A loaded exhibit is filled from its tile on the line the file closes last (3.8).
@@ -337,6 +341,7 @@ impl Exhibits {
             list: Vec::new(),
             next: self.next,
             counter: self.counter,
+            grounds: self.grounds.clone(),
         }
     }
 

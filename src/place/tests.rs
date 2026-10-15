@@ -217,6 +217,7 @@ fn entity(class: &str, name: &str, x: i32, y: i32, rotation: u32) -> Entity {
             colors: Vec::new(),
             fence: None,
             movement_mode: 0,
+            animal: None,
         }),
     }
 }

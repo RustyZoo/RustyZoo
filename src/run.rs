@@ -264,6 +264,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
         }
         let rest = rest.unwrap_or("");
         if ![
+            "animal ",
             "draw ",
             "exhibit ",
             "interface ",

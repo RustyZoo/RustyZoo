@@ -166,6 +166,7 @@ impl World {
                     portal: false,
                 }),
                 movement_mode: 0,
+                animal: None,
             }),
         };
         self.zoo.id_counter = id;

@@ -1,6 +1,7 @@
 //! `rustyzoo sim`: runs a map for a number of fixed steps without an interface and prints the log
 //! of the steps or the hash of the state (the same on every system).
 
+use rustyzoo::animal::Class;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::exhibit::TankConfig;
 use rustyzoo::place;
@@ -92,7 +93,13 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     let mut world = World::new(zoo, |e| renderer.shape(e));
     world.set_water(place::water(&terrain::types(vfs)));
     world.set_tank_config(TankConfig::load(vfs));
-    let mut run = Run::new(vfs.ini(), world, money, flags.seed);
+    let mut run = Run::new(
+        vfs.ini(),
+        (catalogue, Class::load(vfs)),
+        world,
+        money,
+        flags.seed,
+    );
     let mut report = Report::new();
     let mut commands = commands.into_iter().peekable();
     for step in 0..flags.ticks {

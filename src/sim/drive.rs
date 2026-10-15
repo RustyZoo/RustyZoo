@@ -2,6 +2,8 @@
 //! fixed length, the commands of a script applied before the step they name, and the state hash.
 
 use super::{Sim, hash};
+use crate::animal::Class;
+use crate::entity::Catalogue;
 use crate::money::Money;
 use crate::world::World;
 
@@ -87,19 +89,35 @@ pub fn parse(text: &str) -> Result<Vec<(u64, Command)>, String> {
 
 /// A game being run: the managers, the world and the cash.
 pub struct Run {
+    /// The types of the game.
+    pub cat: Catalogue,
     pub sim: Sim,
     pub world: World,
     pub money: Money,
 }
 
 impl Run {
-    /// Starts the game as the window's does, from a generator seeded with `seed` (a test run).
-    pub fn new(ini: &[u8], mut world: World, money: Money, seed: u32) -> Run {
+    /// Starts the game as the window's does, from a generator seeded with `seed` (a test run),
+    /// with the types `cat` and the keys `class` of the animals' class.
+    pub fn new(
+        ini: &[u8],
+        (cat, class): (Catalogue, Class),
+        mut world: World,
+        money: Money,
+        seed: u32,
+    ) -> Run {
         let mut sim = Sim::new(ini);
         sim.set_seed(seed);
         sim.start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(sim.ai.status_period);
-        Run { sim, world, money }
+        world.units.class = class;
+        sim.load(&mut world, &cat);
+        Run {
+            cat,
+            sim,
+            world,
+            money,
+        }
     }
 
     /// Applies a command; whether it did anything (a tile off the map, a tank that is none, do
@@ -133,9 +151,11 @@ impl Run {
         }
     }
 
-    /// One step of `ms` milliseconds; the `sim` and `unit` log lines it made.
+    /// One step of `ms` milliseconds; the `sim`, `unit` and `animal` log lines it made.
     pub fn step(&mut self, ms: u32) -> Vec<String> {
-        let report = self.sim.step(&mut self.world, ms, |_, _, _| {});
+        let report = self
+            .sim
+            .step_in(&mut self.world, &self.cat, ms, |_, _, _| {});
         if report.month_end {
             self.money.month_change();
         }
@@ -143,6 +163,9 @@ impl Run {
             .map(|l| format!("sim {l}"))
             .collect();
         lines.extend((self.world.units.take_lines().into_iter()).map(|l| format!("unit {l}")));
+        lines.extend(
+            (self.world.units.take_animal_lines().into_iter()).map(|l| format!("animal {l}")),
+        );
         lines
     }
 
