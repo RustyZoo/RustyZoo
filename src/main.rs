@@ -290,9 +290,9 @@ usage: rustyzoo [--data <dir>] <command>
                       the one it stores (any finite number). --seed N (0 to 4294967295) makes a test run: the game's
                       random generator is seeded with N and N+1 at the start, and with N+2, N+3, ... each time a map of
                       another size is set up or a month ends, instead of the wall clock; the lines `sim seed S`
-                      (only in a test run), `sim step MS` (each step the game runs) and `sim month M Y` (the step that acts on the
-                      month flag of the one before) tell it, so two runs with one seed print the same lines (the
-                      seeds of the wall clock are not logged; replay a seeded log with the same --seed). The units of a
+                      (each seeding, also from the wall clock), `sim step MS` (each step the game runs) and `sim month M Y` (the step that acts on the
+                      month flag of the one before) tell it, so two runs with one seed print the same lines (a
+                      replay of a log seeds the generator with the seconds the log tells). The units of a
                       map (animals, guests and staff) log `unit add ID KIND X,Y` when a game opens or one is
                       placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
                       simulated time, and `unit tile ID X,Y`, `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and

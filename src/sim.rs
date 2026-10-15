@@ -177,17 +177,25 @@ impl Sim {
     fn reseed(&mut self) {
         let seconds = self.seconds.now();
         self.rng.seed(seconds);
-        // The wall clock's seconds differ at every run: a log that told them could not be replayed.
-        if matches!(self.seconds, Seconds::Test { .. }) {
-            self.lines.push(format!("seed {seconds}"));
-        }
+        // The log tells the seconds, so that a replay seeds the same.
+        self.lines.push(format!("seed {seconds}"));
+    }
+
+    /// Makes a replay: the seconds of the seedings are `seeds` in order (those a log told), and
+    /// the seedings that already happened are made again with them.
+    pub fn set_seeds(&mut self, seeds: Vec<u32>) {
+        self.restart(Seconds::Replay(seeds.into()));
     }
 
     /// Makes a test run: the seconds are `seed + n` from now on, and the seedings that already
     /// happened (the start of the program, and the map when a game is open) are made again with
     /// them, so that the order is the same as when the seed is known from the start.
     pub fn set_seed(&mut self, seed: u32) {
-        self.seconds = Seconds::Test { seed, n: 0 };
+        self.restart(Seconds::Test { seed, n: 0 });
+    }
+
+    fn restart(&mut self, seconds: Seconds) {
+        self.seconds = seconds;
         self.lines.retain(|l| !l.starts_with("seed "));
         self.reseed();
         if self.tiles != 0 {

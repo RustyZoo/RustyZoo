@@ -246,7 +246,7 @@ impl Fnv {
             self.u32(v);
         }
         match sim.seconds {
-            Seconds::Clock => self.u8(0),
+            Seconds::Clock | Seconds::Replay(_) => self.u8(0),
             Seconds::Test { seed, n } => {
                 self.u8(1);
                 self.u32(seed);
