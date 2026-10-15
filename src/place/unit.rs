@@ -22,7 +22,7 @@ use crate::zoo::Entity;
 pub const IN_AN_EXHIBIT: i32 = 10108;
 /// An underwater animal needs a tank with water in it.
 pub const NEEDS_WATER: i32 = 10554;
-/// A tank is deeper than the water: "This object must be placed in a deeper tank."
+/// The animal needs a deeper tank than this one.
 const DEEPER: i32 = 10560;
 /// Only show types stand in a show tank.
 const NOT_FOR_SHOWS: i32 = 10561;

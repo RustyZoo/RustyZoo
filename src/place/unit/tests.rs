@@ -260,7 +260,7 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
     money.set_cash(1000.0);
     let zebra = &cat.types[ZEBRA];
     let p = at(&w, ZEBRA, (2, 2));
-    let placed = place(&mut w, &mut money, zebra, "Plains Zebra", &p, shape);
+    let placed = place(&mut w, &mut money, zebra, "Test Zebra", &p, shape);
     let Outcome::Placed(id) = placed else {
         panic!("{placed:?}")
     };
@@ -274,7 +274,7 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
             .name
             .clone()
     };
-    assert_eq!(name(&w, id), "Plains Zebra 1");
+    assert_eq!(name(&w, id), "Test Zebra 1");
     assert_eq!(w.units.len(), 1, "it joined the unit table");
     // The cash does not cover a second one; the grounds refuse with their message.
     let p = at(&w, FEMALE, (2, 2));
@@ -283,7 +283,7 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
             &mut w,
             &mut money,
             &cat.types[FEMALE],
-            "Plains Zebra",
+            "Test Zebra",
             &p,
             shape
         ),
@@ -295,7 +295,7 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
             &mut w,
             &mut money,
             &cat.types[FEMALE],
-            "Plains Zebra",
+            "Test Zebra",
             &p,
             shape
         ),
@@ -307,7 +307,7 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
             &mut w,
             &mut money,
             &cat.types[FEMALE],
-            "Plains Zebra",
+            "Test Zebra",
             &p,
             shape
         ),
@@ -324,17 +324,17 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
 fn the_counter_is_per_type_name_shared_by_both_sexes_and_kept_with_the_zoo() {
     let cat = catalogue();
     let mut w = world(vec![]);
-    w.zoo.names.insert("Plains Zebra".into(), 4);
+    w.zoo.names.insert("Test Zebra".into(), 4);
     assert_eq!(
-        name(&mut w, &cat.types[ZEBRA], "Plains Zebra"),
-        "Plains Zebra 5"
+        name(&mut w, &cat.types[ZEBRA], "Test Zebra"),
+        "Test Zebra 5"
     );
     assert_eq!(
-        name(&mut w, &cat.types[FEMALE], "Plains Zebra"),
-        "Plains Zebra 6"
+        name(&mut w, &cat.types[FEMALE], "Test Zebra"),
+        "Test Zebra 6"
     );
     assert_eq!(name(&mut w, &cat.types[ORCA], "Orca"), "Orca 1");
-    assert_eq!(w.zoo.names["Plains Zebra"], 6);
+    assert_eq!(w.zoo.names["Test Zebra"], 6);
     // A type that does not number its names keeps the plain one.
     assert_eq!(name(&mut w, &cat.types[BARE], "Mule"), "Mule");
     assert!(!w.zoo.names.contains_key("Mule"));

@@ -402,7 +402,7 @@ pub struct Build {
     exhibits: usize,
     /// The gate button is selected: "place a gate" is the tool (placing 6.4).
     gate: bool,
-    /// The game's month is October (the half price of the Dinosaur Digs animals).
+    /// The game's month is October (the half price of the dinosaur expansion's animals).
     october: bool,
 }
 
