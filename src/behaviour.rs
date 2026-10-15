@@ -249,18 +249,37 @@ fn split_call(text: &[u8]) -> (Option<&[u8]>, Vec<String>) {
         .copied()
         .filter(|&b| b != b' ' && b != b'"')
         .collect();
-    let mut args: Vec<String> = Vec::new();
-    if !rest.is_empty() {
-        args = rest
-            .split(|&b| b == b',')
-            .map(|a| String::from_utf8_lossy(a).into_owned())
-            .collect();
-        // A trailing comma adds nothing.
-        if rest.ends_with(b",") {
-            args.pop();
-        }
+    // Every token is appended before the end is tested: `f()` has one empty argument. A trailing
+    // comma adds nothing.
+    let mut args: Vec<String> = rest
+        .split(|&b| b == b',')
+        .map(|a| String::from_utf8_lossy(a).into_owned())
+        .collect();
+    if rest.ends_with(b",") {
+        args.pop();
     }
     (name, args)
+}
+
+/// A number of a call argument, read like C `atol`: white space, a sign, decimal digits up to
+/// the first other character, 0 if there are none. The `0x` rule of the configuration reader
+/// does not apply: `0x64` is 0.
+fn atol(text: &str) -> i32 {
+    let text = text.trim_ascii_start();
+    let (negative, digits) = match text.as_bytes().split_first() {
+        Some((b'-', rest)) => (true, rest),
+        Some((b'+', rest)) => (false, rest),
+        _ => (false, text.as_bytes()),
+    };
+    let number = digits
+        .iter()
+        .map_while(|&b| char::from(b).to_digit(10))
+        .fold(0i32, |n, d| n.wrapping_mul(10).wrapping_add(d as i32));
+    if negative {
+        number.wrapping_neg()
+    } else {
+        number
+    }
 }
 
 fn number(text: &str) -> Number {
@@ -269,7 +288,7 @@ fn number(text: &str) -> Number {
         | "cRunRandomlyTime1" | "cRunRandomlyTime2" | "cRunRandomlyTime3" | "cInformGuestTime" => {
             Number::Characteristic(text.to_string())
         }
-        _ => Number::Int(to_int(text.as_bytes()).unwrap_or(0)),
+        _ => Number::Int(atol(text)),
     }
 }
 
@@ -345,7 +364,7 @@ fn build(name: &str, args: &[String]) -> Result<Op, &'static str> {
             )?;
             let rows: Vec<(String, i32)> = args
                 .chunks(2)
-                .map(|p| (p[0].clone(), to_int(p[1].as_bytes()).unwrap_or(0)))
+                .map(|p| (p[0].clone(), atol(&p[1])))
                 .collect();
             let sum: i64 = rows.iter().map(|r| i64::from(r.1)).sum();
             want(sum == 100, "the weights do not add up to 100")?;

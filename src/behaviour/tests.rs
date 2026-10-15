@@ -26,7 +26,8 @@ fn a_call_is_split_as_the_original_does() {
         split("fPlay(stand)"),
         (Some("fPlay".into()), strings(&["stand"]))
     );
-    assert_eq!(split("fDie()"), (Some("fDie".into()), strings(&[])));
+    // `f()` has one empty argument, `f(` none.
+    assert_eq!(split("fDie()"), (Some("fDie".into()), strings(&[""])));
     assert_eq!(
         split("fMove(prey, 0, \"run\" ,66)"),
         (Some("fMove".into()), strings(&["prey", "0", "run", "66"]))
@@ -174,13 +175,33 @@ fn arguments_are_parsed_per_operation() {
 }
 
 #[test]
+fn numbers_of_calls_are_read_like_atol() {
+    for (text, value) in [
+        ("0x64", 0),
+        ("-5x", -5),
+        (" +7", 7),
+        ("run", 0),
+        ("", 0),
+        ("12ab", 12),
+    ] {
+        assert_eq!(atol(text), value, "{text:?}");
+    }
+    assert_eq!(number("0x10"), Number::Int(0));
+    // The weights 0x64 are 0: the sum is not 100.
+    let (call, defect) = call("fPlaySetProb(bB,0x64)");
+    assert_eq!((call.op, defect.is_some()), (Op::Fail, true));
+    assert_eq!(
+        op("fPlaySetProb(bA,60,bB,40)"),
+        Op::PlaySetProb(vec![("bA".into(), 60), ("bB".into(), 40)])
+    );
+}
+
+#[test]
 fn bad_arguments_make_the_call_fail_with_a_reason() {
     for text in [
-        "fPlay()",
         "fPlay(lie_idle",
         "fPlayTime(stand)",
         "fPlayTime(a,1,2)",
-        "fSetBase()",
         "fPlayWithBase(a)",
         "fPlaySet(a,b)",
         "fPlaySetTerrain(a)",
