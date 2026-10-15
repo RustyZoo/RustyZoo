@@ -3,6 +3,7 @@
 //! object that cannot be put back is told in a message box.
 
 use super::*;
+use crate::build::cost;
 use crate::money::{CONSTRUCTION, CONSTRUCTION_REFUND};
 use crate::place::bulldozer::type_of;
 use crate::text::format::whole_units;
@@ -59,6 +60,11 @@ impl App<'_> {
             let line = match step {
                 Step::Removed(spot, price) => {
                     game.money.undo_charge(CONSTRUCTION, *price);
+                    told("remove", spot, " undo")
+                }
+                Step::Copied(spot, entity) => {
+                    let price = type_of(cat, entity).map_or(0.0, cost);
+                    game.money.undo_charge(CONSTRUCTION, price);
                     told("remove", spot, " undo")
                 }
                 Step::Retyped(spot, price) => {

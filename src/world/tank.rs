@@ -168,7 +168,7 @@ impl World {
         self.zoo.id_counter = id;
         self.zoo.entities.push(copy);
         self.shapes.push(self.shapes[wall]);
-        self.record(Action::Placed { id, price: 0.0 });
+        self.record(Action::Copied { id });
         self.changed();
         Some(id)
     }

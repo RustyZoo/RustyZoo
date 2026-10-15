@@ -914,3 +914,73 @@ fn a_land_exhibit_that_becomes_a_tank_gets_its_name_and_gate_back_on_undo() {
     assert_eq!((back.name.as_str(), back.gate), ("Lions", Some(gate)));
     assert!(world.zoo.tanks.is_empty());
 }
+
+#[test]
+fn removing_a_wall_of_a_tank_records_its_values_and_the_undo_gives_them_back() {
+    // A loaded tank of height 9, purity 80, fresh and drained: the wall put back by the undo makes
+    // a tank again with the values of a new one, then the recorded ones are set (placing 8).
+    let mut z = zoo(&[]);
+    z.entities.extend(
+        ring("tank", 2, 2, 3, 3)
+            .into_iter()
+            .map(|(c, p)| wall(c, p)),
+    );
+    unique(&mut z);
+    z.tanks = vec![crate::zoo::Tank {
+        tile: (2, 2),
+        gate: (3, 3),
+        height: 9,
+        level: 0,
+        salt: false,
+        purity: 80,
+    }];
+    let mut world = World::new(z, tank_shape);
+    world.set_tank_config(CONFIG);
+    let before = tank(&world, 2, 2).unwrap();
+    let side = at(&world, 2, 2, 0);
+    world.begin();
+    world.remove(side);
+    assert!(tank(&world, 2, 2).is_none());
+    assert!(!world.undo().is_empty());
+    let after = tank(&world, 2, 2).unwrap();
+    assert_eq!(
+        (after.height, after.purity, after.salt, after.filled),
+        (before.height, before.purity, before.salt, before.filled)
+    );
+    assert_eq!(after.height, 9, "not the height of a new tank");
+}
+
+#[test]
+fn a_wall_that_is_not_the_wall_of_a_tank_records_no_tank_value() {
+    // A plain fence of a land exhibit: the undo of its removal sets no tank value.
+    let mut world = tanks(&ring("fences", 2, 2, 3, 3), &[], &[]);
+    let side = at(&world, 2, 2, 0);
+    world.begin();
+    world.remove(side);
+    let done = world.undo();
+    assert!(
+        done.steps
+            .iter()
+            .all(|s| matches!(s, Step::Back(..) | Step::Tiles(..)))
+    );
+}
+
+#[test]
+fn a_wall_copied_by_the_wall_step_is_undone_as_a_placement_of_its_type() {
+    let pieces = [("tank", (2, 2, 0)), ("tank", (2, 2, 2))];
+    let mut pieces = ring("tank", 1, 2, 1, 2)
+        .into_iter()
+        .chain(pieces)
+        .collect::<Vec<_>>();
+    pieces.shrink_to_fit();
+    let mut world = tanks(&pieces, &[], &[]);
+    world.begin();
+    put_wall(&mut world, "tank", (2, 2, 4));
+    let done = world.undo();
+    let copies = done
+        .steps
+        .iter()
+        .filter(|s| matches!(s, Step::Copied(spot, _) if spot.name == "tank//f"))
+        .count();
+    assert_eq!(copies, 1, "{:?}", done.steps);
+}

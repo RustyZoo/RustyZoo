@@ -67,12 +67,29 @@ impl TankKind {
     };
 }
 
+/// A value of a tank that the removal of one of its walls records.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TankValue {
+    Purity(u32),
+    Salt(bool),
+    Filled(bool),
+    Height(u32),
+    /// The elevation of the tank's ground.
+    Level(i32),
+}
+
 /// What an operation did, to undo it. The prices are what the action moved in the cash: an undo
 /// gives them back (placing 8).
 #[derive(Debug, Clone, PartialEq)]
 enum Action {
     /// An entity was added: its id and the price paid for it.
     Placed { id: u32, price: f32 },
+    /// A wall the wall step built for nothing: recorded as a placement, so the undo gives back
+    /// the full price of its type (placing 8, kind 1).
+    Copied { id: u32 },
+    /// A value of the tank on this tile before one of its walls was removed (placing 8, kinds 4
+    /// to 8).
+    Tank { tile: usize, value: TankValue },
     /// An entity was removed from this position of the list, and the refund it gave.
     Removed {
         at: usize,
@@ -125,6 +142,9 @@ pub struct Spot {
 pub enum Step {
     /// A placed object went; its price comes back (the construction spending goes down).
     Removed(Spot, f32),
+    /// A wall the wall step built went: the full price of its type comes back, the entity tells
+    /// the type.
+    Copied(Spot, Entity),
     /// A removed object came back; its refund is taken back.
     Back(Spot, f32),
     /// A piece got its old type back; the price of the change comes back.
@@ -413,6 +433,7 @@ impl World {
         let slot = self.slot_of(at);
         let fence = self.shapes[at].is_some_and(|s| s.fence);
         if fence {
+            self.note_tank(at);
             self.note_opening(slot, false);
         }
         let entity = self.zoo.entities.remove(at);
@@ -617,6 +638,22 @@ impl World {
                         done.steps.push(Step::Removed(spot, price));
                     }
                 }
+                Action::Copied { id } => {
+                    if let Some(at) = self.find(id) {
+                        let spot = self.spot(at);
+                        let entity = self.zoo.entities.remove(at);
+                        self.shapes.remove(at);
+                        self.changed();
+                        stale = true;
+                        done.steps.push(Step::Copied(spot, entity));
+                    }
+                }
+                Action::Tank { tile, value } => {
+                    if std::mem::take(&mut stale) {
+                        self.settle(None, true);
+                    }
+                    self.restore_tank(tile, value);
+                }
                 Action::Removed {
                     at,
                     entity,
@@ -796,6 +833,55 @@ impl World {
         for (_, note) in self.keeping(slot) {
             self.record(note);
         }
+    }
+
+    /// Records the values of the tank whose own wall at position `at` is about to go: the purity,
+    /// salinity, filled flag, wall height and base level, in this order (placing 8, kinds 4 to 8).
+    fn note_tank(&mut self, at: usize) {
+        let Some((t, _)) = self.slot_of(at) else {
+            return;
+        };
+        if !self.shapes[at].is_some_and(|s| s.tank.wall) {
+            return;
+        }
+        let Some(id) = self.tank_at(t) else { return };
+        let (Some(tank), Some(&first)) = (self.tank(id), self.tiles_of(id).first()) else {
+            return;
+        };
+        let level = self.zoo.tiles[first].elevation;
+        for value in [
+            TankValue::Purity(tank.purity),
+            TankValue::Salt(tank.salt),
+            TankValue::Filled(tank.filled),
+            TankValue::Height(tank.height),
+            TankValue::Level(level),
+        ] {
+            self.record(Action::Tank { tile: t, value });
+        }
+    }
+
+    /// Sets a value of the tank now on tile `tile`; none there, nothing happens.
+    fn restore_tank(&mut self, tile: usize, value: TankValue) {
+        let Some(id) = self.tank_at(tile) else { return };
+        if let TankValue::Level(level) = value {
+            for t in self.tiles_of(id) {
+                let at = self.zoo.tiles[t];
+                if at.elevation != level {
+                    self.put_tile(t, level, at.shape, at.terrain, false);
+                }
+            }
+        }
+        if let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) {
+            match value {
+                TankValue::Purity(v) => tank.purity = v,
+                TankValue::Salt(v) => tank.salt = v,
+                TankValue::Filled(v) => tank.filled = v,
+                TankValue::Height(v) => tank.height = v,
+                TankValue::Level(_) => {}
+            }
+        }
+        self.events.push(Event::Tank(id));
+        self.sync_tanks();
     }
 
     /// Gives the exhibit on tile `tile` its name, and its gate on the line of the recorded slot
