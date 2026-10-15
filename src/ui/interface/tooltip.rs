@@ -155,17 +155,22 @@ impl Interface {
     }
 
     /// The text of a help string number: the long help (the number plus 30000) when the settings
-    /// ask for it, and then no text if that string is empty, else the short one. Empty for 0 or
+    /// ask for it, and when that string is empty, the short one (ui layout 7.7). Empty for 0 or
     /// less.
     fn help_text(&self, help: i32) -> Vec<u8> {
         if help <= 0 {
             return Vec::new();
         }
-        let help = match self.settings.long_help {
-            true => help.saturating_add(LONG_HELP),
-            false => help,
+        let long = match self.settings.long_help {
+            true => self.strings.string(help.saturating_add(LONG_HELP)),
+            false => String::new(),
         };
-        crate::text::to_cp1252(&self.strings.string(help))
+        let text = if long.is_empty() {
+            self.strings.string(help)
+        } else {
+            long
+        };
+        crate::text::to_cp1252(&text)
     }
 
     /// Runs the delay on an interface update `elapsed` milliseconds after the last one; at its
