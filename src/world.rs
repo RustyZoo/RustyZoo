@@ -245,7 +245,7 @@ impl World {
     }
 
     /// Sets the settings of the path finder (the `[AI]` keys): the units and the gate choice
-    /// search with them, the gate choice with the diagonal switch the last request left.
+    /// search with them, the gate choice with the diagonal switch the last search left.
     pub fn set_finder(&mut self, settings: Settings) {
         self.units.finder = Finder::new(settings);
     }
