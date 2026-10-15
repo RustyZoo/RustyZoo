@@ -16,7 +16,7 @@
 //!
 //! Not here yet: the shelter check, the checks of part B, the swimmers and the effects of the
 //! escape, rampage and zap checks (M7: only their counters and draws run). The ambient choice is
-//! left as a request ([`Animal::ambient`]) for the behaviour runner.
+//! taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
 //! after each update of the values, `animal message <string> <id>` for a message posted and

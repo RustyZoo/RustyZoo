@@ -313,3 +313,94 @@ fn full_game_survey() {
     assert_eq!((found.unknown, found.defects), (276, 33));
     assert_eq!(found.counts["fPlay"], 25538);
 }
+
+#[test]
+fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
+    use crate::sprite::tests::{Install, sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let definition = b"[Animations]\nidle = idle\nwalk = walk\nbroken = nofile\n\
+        [BehaviorSet\\bZooRoutine]\nf = fGuestRoutine()\n\
+        [AmbientAnims]\na = -100\na = 100\nb = bZooRoutine\n\
+        [Characteristics/Integers]\ncInformGuestTime = 7\n\
+        [Sounds]\ngrunt = afrbuf1\ngrunt = 1500\nyell = Sounds/Yell.wav\nnoise = x.WAV\n"
+        .to_vec();
+    let ani =
+        |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n").into_bytes();
+    let install = Install::new(
+        "library",
+        &[
+            ("guests.cfg", b"[guests]\nman = man.ai\n".to_vec()),
+            ("man.ai", definition),
+            ("guests/man/idle/idle.ani", ani("idle")),
+            ("guests/man/walk/walk.ani", ani("walk")),
+            ("guests/man/broken/broken.ani", ani("broken")),
+            (
+                "a/idle/N",
+                sprite_file(None, 2, &[sized(&frame), sized(&frame)]),
+            ),
+            ("a/walk/N", sprite_file(None, 1, &[sized(&frame)])),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = crate::entity::Catalogue::load(&vfs).unwrap();
+    let timings = Timings::default();
+    let library = Library {
+        catalogue: &catalogue,
+        vfs: &vfs,
+        timings: &timings,
+    };
+    let guest = |type_name: &str| crate::zoo::Entity {
+        class: "guests".into(),
+        type_name: type_name.into(),
+        subtype: String::new(),
+        body_size: None,
+        common: None,
+    };
+    let man = guest("man");
+    assert_eq!(library.set(&man, "bZooRoutine").map(<[Call]>::len), Some(1));
+    assert!(library.set(&man, "bNone").is_none());
+    assert_eq!(library.ambient(&man).len(), 1);
+    // The frames and the delay come from the first sprite file; a name the type lacks, and an
+    // animation whose files are missing, have none, and asking again gives the same answer.
+    for _ in 0..2 {
+        assert_eq!(
+            library.timing(&man, "idle"),
+            Some(Timing {
+                count: 2,
+                delay: 125
+            })
+        );
+        assert_eq!(
+            library.timing(&man, "walk"),
+            Some(Timing {
+                count: 1,
+                delay: 125
+            })
+        );
+        assert_eq!(library.timing(&man, "run"), None);
+        assert_eq!(library.timing(&man, "broken"), None);
+    }
+    assert_eq!(library.number(&man, &Number::Int(-4)), -4);
+    assert_eq!(
+        library.number(&man, &Number::Characteristic("cInformGuestTime".into())),
+        7
+    );
+    assert_eq!(
+        library.number(&man, &Number::Characteristic("cWalkRandomlyTime1".into())),
+        0
+    );
+    // A short name is a file of the type's folder; a value with `.wav` is the path as written.
+    let sound = |key| library.sound(&man, key);
+    assert_eq!(sound("grunt").as_deref(), Some("guests/man/afrbuf1.wav"));
+    assert_eq!(sound("yell").as_deref(), Some("sounds/yell.wav"));
+    assert_eq!(sound("noise").as_deref(), Some("guests/man/x.wav.wav"));
+    assert_eq!(library.sound(&man, "roar"), None);
+    // A unit of a type the catalogue lacks has nothing.
+    let other = guest("woman");
+    assert!(library.set(&other, "bZooRoutine").is_none() && library.ambient(&other).is_empty());
+    assert_eq!(library.timing(&other, "idle"), None);
+}

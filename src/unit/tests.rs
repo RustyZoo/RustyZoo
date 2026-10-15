@@ -1,6 +1,7 @@
 //! The unit table and the per-entity update.
 
 use super::*;
+use crate::behaviour::{Data, NoData};
 use crate::sim::Sim;
 use crate::zoo::{Clocks, Common, Tile, View, Zoo};
 
@@ -163,12 +164,17 @@ fn each_unit_has_one_status_tick_per_period_spread_by_its_id() {
 struct Recorder {
     calls: Vec<&'static str>,
     heard: Vec<usize>,
+    /// The milliseconds the animation was asked to advance by.
+    advances: Vec<u32>,
 }
 
 impl Hooks for Recorder {
     fn movement(&mut self, u: &mut Unit, _: &mut World, _: &mut Ctx, _: usize) {
         self.calls.push("move");
         self.heard.push(u.events.len());
+    }
+    fn animate(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _: usize, ms: u32) {
+        self.advances.push(ms);
     }
     fn needs(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _: usize) {
         self.calls.push("needs");
@@ -267,7 +273,7 @@ fn a_carried_or_repositioning_unit_skips_the_move_the_status_and_the_goals() {
         let unit = w.units.get(1).unwrap();
         assert_eq!((unit.status_timer, unit.wait), (999, 500), "flag {flag}");
         // The animation still runs, and the events were still read and discarded.
-        assert_eq!(unit.animation.elapsed, 33, "flag {flag}");
+        assert_eq!(hooks.advances, [33], "flag {flag}");
         assert!(unit.events.is_empty());
         assert!(status_lines(&mut w).is_empty());
     }
@@ -279,7 +285,7 @@ fn the_animation_of_a_moving_unit_is_scaled_by_its_speed_percentage() {
     let mut hooks = Recorder::default();
     let turns = |w: &mut World, hooks: &mut Recorder| {
         turn_of(w, &Events::default(), hooks, 67);
-        w.units.get(1).unwrap().animation.elapsed
+        hooks.advances.iter().sum::<u32>()
     };
     assert_eq!(turns(&mut w, &mut hooks), 67, "not moving: the step");
     let unit = w.units.get_mut(1).unwrap();
@@ -503,4 +509,94 @@ fn the_hash_of_the_units_follows_the_counters_of_a_staff_member() {
     };
     staff.chase = 1;
     assert_ne!(w.units.hash(), work);
+}
+
+/// A type with one ambient set, `fPlayWithSound(a, purr)` then `fPlay(b)`, for every unit; `a`
+/// has three frames of 100 ms and `b` one.
+struct Script(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Row>);
+
+impl Script {
+    fn new() -> Script {
+        let calls = ["fPlayWithSound(a,purr)", "fPlay(b)"];
+        let row = |set: &str| crate::behaviour::Row {
+            lo: -100,
+            hi: 100,
+            set: set.into(),
+        };
+        Script(
+            (calls.iter())
+                .map(|c| crate::behaviour::parse_call(c.as_bytes()).unwrap().0)
+                .collect(),
+            vec![row("bAmbient")],
+        )
+    }
+}
+
+impl Data for Script {
+    fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
+        (name == "bAmbient").then_some(self.0.as_slice())
+    }
+    fn ambient(&self, _: &Entity) -> &[crate::behaviour::Row] {
+        &self.1
+    }
+    fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        let count = match name {
+            "a" => 3,
+            "b" => 1,
+            _ => return None,
+        };
+        Some(crate::behaviour::Timing { count, delay: 100 })
+    }
+    fn number(&self, unit: &Entity, number: &crate::behaviour::Number) -> i32 {
+        NoData.number(unit, number)
+    }
+    fn sound(&self, _: &Entity, key: &str) -> Option<String> {
+        Some(format!("{key}.wav"))
+    }
+}
+
+#[test]
+fn a_unit_runs_its_set_after_the_animation_and_tells_the_log_and_the_app() {
+    let mut w = world(&[("animals", 1), ("guests", 2), ("keeper", 3)]);
+    let (mut s, data) = (sim(), Script::new());
+    w.units.get_mut(3).unwrap().carried = true;
+    w.units.take_lines();
+    let mut frames = Vec::new();
+    for _ in 0..5 {
+        s.step_with(&data, &Catalogue::default(), &mut w, 100, |_, _, _| {});
+        let a = &w.units.get(1).unwrap().animation;
+        frames.push((a.name.clone(), a.shown()));
+    }
+    let want = |n: &str, f| (n.to_string(), f);
+    assert_eq!(
+        frames,
+        [
+            want("idle", 0),
+            want("a", 0),
+            want("a", 1),
+            want("a", 2),
+            want("b", 0)
+        ]
+    );
+    let lines: Vec<_> = (w.units.take_lines().into_iter())
+        .filter(|l| l.starts_with("set 1 ") || l.starts_with("anim 1 "))
+        .collect();
+    assert_eq!(
+        lines,
+        ["anim 1 idle", "set 1 bAmbient", "anim 1 a", "anim 1 b"]
+    );
+    // The sound of the call is asked once for each unit that runs the set; the unit that is
+    // carried runs no set but its animation shows the base.
+    let mut sounds = w.units.take_sounds();
+    sounds.sort();
+    assert_eq!(sounds, [(1, "purr.wav".into()), (2, "purr.wav".into())]);
+    let carried = w.units.get(3).unwrap();
+    assert_eq!(
+        (carried.runner.top(), carried.animation.name.as_str()),
+        (None, "idle")
+    );
+    // The state hash follows the frame.
+    let before = w.units.hash();
+    s.step_with(&data, &Catalogue::default(), &mut w, 100, |_, _, _| {});
+    assert_ne!(w.units.hash(), before);
 }

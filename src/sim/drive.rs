@@ -3,8 +3,10 @@
 
 use super::{Sim, hash};
 use crate::animal::Class;
+use crate::behaviour::{Library, Timings};
 use crate::entity::Catalogue;
 use crate::money::Money;
+use crate::vfs::Vfs;
 use crate::world::World;
 
 /// A command a script gives at a step. Each is one the player's tools would give the world, as
@@ -94,6 +96,7 @@ pub struct Run {
     pub sim: Sim,
     pub world: World,
     pub money: Money,
+    timings: Timings,
 }
 
 impl Run {
@@ -120,6 +123,7 @@ impl Run {
             sim,
             world,
             money,
+            timings: Timings::default(),
         }
     }
 
@@ -154,11 +158,27 @@ impl Run {
         }
     }
 
-    /// One step of `ms` milliseconds; the `sim`, `unit` and `animal` log lines it made.
+    /// One step of `ms` milliseconds; the `sim`, `unit` and `animal` log lines it made. The units
+    /// run no behaviour set.
     pub fn step(&mut self, ms: u32) -> Vec<String> {
-        let report = self
-            .sim
-            .step_in(&mut self.world, &self.cat, ms, |_, _, _| {});
+        self.step_with(ms, None)
+    }
+
+    /// [`Run::step`] whose units run their sets and animations, from the files of `vfs`.
+    pub fn step_with(&mut self, ms: u32, vfs: Option<&Vfs>) -> Vec<String> {
+        let report = match vfs {
+            None => self
+                .sim
+                .step_in(&mut self.world, &self.cat, ms, |_, _, _| {}),
+            Some(vfs) => {
+                let data = Library {
+                    catalogue: &self.cat,
+                    vfs,
+                    timings: &self.timings,
+                };
+                (self.sim).step_with(&data, &self.cat, &mut self.world, ms, |_, _, _| {})
+            }
+        };
         if report.month_end {
             self.money.month_change();
         }
@@ -166,6 +186,10 @@ impl Run {
             .map(|l| format!("sim {l}"))
             .collect();
         lines.extend((self.world.units.take_lines().into_iter()).map(|l| format!("unit {l}")));
+        lines.extend(
+            (self.world.units.take_sounds().into_iter())
+                .map(|(id, s)| format!("unit sound {id} {s}")),
+        );
         lines.extend(
             (self.world.units.take_animal_lines().into_iter()).map(|l| format!("animal {l}")),
         );

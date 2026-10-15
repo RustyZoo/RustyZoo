@@ -19,6 +19,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::Framebuffer;
+use crate::behaviour::{Library, Timings};
 use crate::build::terrain::{MINUS, PLUS};
 use crate::build::{BULLDOZER, Build};
 use crate::camera::{Camera, Settings};
@@ -27,7 +28,7 @@ use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
 use crate::panel::exhibit;
 use crate::place::{self, Class, Outcome, Pending, Tints};
-use crate::render::{Extra, MapRenderer, Mark, RenderError, Staged, check_size};
+use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::sim::Sim;
 use crate::status::{Finances, STATUS_BUTTON};
 use crate::terrain::{Tool, habit};
@@ -316,6 +317,18 @@ struct Game {
 }
 
 impl Game {
+    /// The animation and frame each unit holds, for the picture.
+    fn shown(&self) -> Vec<Shown> {
+        (self.world.units.iter())
+            .filter(|u| !u.animation.name.is_empty())
+            .map(|u| Shown {
+                id: u.id,
+                animation: u.animation.name.clone(),
+                frame: u.animation.shown(),
+            })
+            .collect()
+    }
+
     /// The Pause key and the space bar.
     fn pause(&mut self) {
         self.paused = !self.paused;
@@ -395,6 +408,10 @@ pub struct App<'a> {
     sim_lines: Vec<String>,
     unit_lines: Vec<String>,
     animal_lines: Vec<String>,
+    /// The sounds the units' animations began in the last pass, with the unit's id.
+    unit_sounds: Vec<(u32, String)>,
+    /// The frames and delays of the animations the units played.
+    timings: Timings,
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
@@ -518,6 +535,8 @@ impl<'a> App<'a> {
             sim_lines: Vec::new(),
             unit_lines: Vec::new(),
             animal_lines: Vec::new(),
+            unit_sounds: Vec::new(),
+            timings: Timings::default(),
             music: None,
             music_changed: false,
             music_restarted: false,
@@ -716,9 +735,15 @@ impl<'a> App<'a> {
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
         {
-            let report = self.sim.step_in(
-                &mut game.world,
+            let data = Library {
+                catalogue: self.renderer.catalogue(),
+                vfs: self.renderer.vfs(),
+                timings: &self.timings,
+            };
+            let report = self.sim.step_with(
+                &data,
                 self.renderer.catalogue(),
+                &mut game.world,
                 step,
                 |_, _, _| {},
             );
@@ -741,6 +766,13 @@ impl<'a> App<'a> {
         self.unit_lines =
             (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.animal_told();
+        self.unit_sounds =
+            (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_sounds());
+        let sounds = self
+            .unit_sounds
+            .iter()
+            .map(|(id, sound)| format!("sound {id} {sound}"));
+        self.unit_lines.extend(sounds);
         self.drew.then_some(&self.frame)
     }
 
@@ -898,6 +930,7 @@ impl<'a> App<'a> {
                 // Restage from the new side. If that fails the view stays as it was.
                 let extra = Extra {
                     marks: game.marks.clone(),
+                    shown: game.shown(),
                     ..Extra::default()
                 };
                 match self
@@ -1578,6 +1611,7 @@ impl<'a> App<'a> {
             false => place::extra_of(&game.run, &game.tints),
         };
         want.marks.clone_from(&game.marks);
+        want.shown = game.shown();
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         if !dirty && want == game.extra {
@@ -1615,12 +1649,22 @@ impl<'a> App<'a> {
     /// seedings are `seed + n` (main loop 12). Call it before the first pass.
     pub fn set_seed(&mut self, seed: u32) {
         self.sim.set_seed(seed);
+        self.load_units();
     }
 
     /// Makes a replay: the seconds of the generator's seedings are `seeds`, the ones the log of the
     /// session told. Call it before the first pass.
     pub fn set_seeds(&mut self, seeds: Vec<u32>) {
         self.sim.set_seeds(seeds);
+        self.load_units();
+    }
+
+    /// The animals of an open game are created again, so that their draws follow the new seeding
+    /// as they do when the seed is known from the start.
+    fn load_units(&mut self) {
+        if let Some(game) = &mut self.game {
+            self.sim.load(&mut game.world, self.renderer.catalogue());
+        }
     }
 
     /// The calendar of the game; `None` in the menu.
@@ -1640,6 +1684,12 @@ impl<'a> App<'a> {
     /// Whether the player asked to close the game.
     pub fn quit(&self) -> bool {
         self.quit
+    }
+
+    /// The sounds the units' animations began in the last pass: the unit's id and the sound its
+    /// definition names for the call (a name of its `[Sounds]` section).
+    pub fn unit_sounds(&self) -> &[(u32, String)] {
+        &self.unit_sounds
     }
 
     /// The sounds the interface and the placing of objects asked for in the last pass, by file

@@ -133,6 +133,27 @@ impl EntityType {
         }
     }
 
+    /// The member a `[Sounds]` value names (behaviours 5.2): a value with `.wav` is the path as
+    /// written; any other is `<value>.wav` in `<class folder>/<type name>/` for an animal or a
+    /// guest and in the animation root of the other classes.
+    pub fn sound_member(&self, value: &[u8]) -> String {
+        let member = if value.windows(4).any(|w| w == b".wav") {
+            value.to_vec()
+        } else {
+            let root = match self.class {
+                "animals" | "guests" => {
+                    [self.class.as_bytes(), b"/", &self.type_name, b"/"].concat()
+                }
+                _ => self
+                    .config
+                    .as_deref()
+                    .map_or_else(Vec::new, |c| animation_root(self, c)),
+            };
+            [&root[..], value, b".wav"].concat()
+        };
+        normalise(&lossy(&member))
+    }
+
     /// The animations of the type, by name in ascending byte order; empty if it has no
     /// animation section.
     pub fn animations(&self) -> Vec<Animation> {

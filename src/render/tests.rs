@@ -745,6 +745,72 @@ fn no_units_leaves_out_animals_guests_staff_and_ambient_animals() {
     assert_eq!(drawn(true), (1, 0));
 }
 
+#[test]
+fn a_unit_is_drawn_with_the_animation_and_frame_it_holds() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani =
+        |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n").into_bytes();
+    let install = Install::new(
+        "render-shown",
+        &[
+            ("guests.cfg", b"[guests]\nman = man.ai\n".to_vec()),
+            (
+                "man.ai",
+                b"[Animations]\nidle = idle\nwalk = walk\n".to_vec(),
+            ),
+            ("guests/man/idle/idle.ani", ani("idle")),
+            ("guests/man/walk/walk.ani", ani("walk")),
+            ("a/idle/N", sprite_file(None, 1, &[sized(&frame)])),
+            (
+                "a/walk/N",
+                sprite_file(None, 3, &[sized(&frame), sized(&frame), sized(&frame)]),
+            ),
+            (
+                "animals/Lion/lion.pal",
+                palette_file(&[[255, 0, 255], [1, 2, 3]]),
+            ),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[("guests", "man", "")]);
+    // The member and the frame of the picture of the guest, whose id is 1.
+    let drawn = |shown: Option<(&str, u32)>| {
+        let extra = Extra {
+            shown: (shown.into_iter())
+                .map(|(animation, frame)| Shown {
+                    id: 1,
+                    animation: animation.into(),
+                    frame,
+                })
+                .collect(),
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        let pics: Vec<_> = (staged.placed.iter())
+            .filter_map(|(p, _)| match &p.pic {
+                Pic::Anim(anim, _, _, frame) => Some((anim.set.files[0].clone(), *frame)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pics.len(), 1);
+        pics[0].clone()
+    };
+    let at = |file: &str, frame| (file.to_string(), frame);
+    assert_eq!(drawn(None), at("a/idle/N", 0));
+    assert_eq!(drawn(Some(("walk", 2))), at("a/walk/N", 2));
+    // A frame the picture lacks is the last one; an animation the type lacks is the idle one.
+    assert_eq!(drawn(Some(("walk", 99))), at("a/walk/N", 2));
+    assert_eq!(drawn(Some(("run", 1))), at("a/idle/N", 0));
+}
+
 /// A small deterministic pseudo-random sequence.
 fn random(seed: &mut u64) -> u64 {
     *seed = seed
@@ -1564,6 +1630,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         portal: false,
         tint: None,
         wall: 0,
+        shown: None,
     };
     let (animal, guest) = (ty("animals"), ty("guests"));
     assert!(tank::casts_shadow(&meta(&animal, 3)));

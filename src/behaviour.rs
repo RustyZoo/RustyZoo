@@ -12,7 +12,7 @@
 //!   for the arguments;
 //! * any other name is a [`BehaviourError`] that names the section and the call.
 //!
-//! Nothing here runs a set: the runner is another module.
+//! The runner of the sets is in [`run`], and the data of the shipped game for it in [`library`].
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -20,6 +20,11 @@ use std::fmt;
 
 use crate::config::{Config, to_int};
 use crate::vfs::Vfs;
+
+mod library;
+mod run;
+pub use library::{Library, Timings};
+pub use run::{Animation, Data, Env, NoData, Note, Runner, Timing};
 
 /// How many of [`NAMES`] the program knows.
 pub const KNOWN: usize = 53;

@@ -201,6 +201,31 @@ last() {
 check base-trial 'enableddefault.zoo,maps\default.zoo' 'last "maps\\default.zoo" | tr -d " \n" | sed "s/maps/,maps/"'
 check base-trial 'disabled,' 'last "maps\\gone.zoo" | paste -sd, -'
 
+# A seeded run of a map for 160 passes of 67 ms (about 11 s of simulated time), twice: the two logs
+# are the same, the units log the sets they start and an animal plays an animation other than the
+# idle one (`unit set`, `unit anim`), and the frame hash changes at (nearly) every draw while the
+# camera stands still.
+animating() {
+  d=$(mktemp -d)
+  for run in a b; do
+    rz run "$1" --headless --bare --passes 160 --clock 67 --seed 1 >"$d/$run" 2>/dev/null
+  done
+  if cmp -s "$d/a" "$d/b"; then printf same,; else printf different,; fi
+  if grep ' unit set ' "$d/a" | grep -qv ' bZooRoutine$' && grep ' unit anim ' "$d/a" | grep -qv ' idle$'; then printf animated,; else printf still,; fi
+  awk '/ draw /{h[$5]} END{print (length(h) >= 100 ? "changing" : "steady")}' "$d/a"
+  rm -rf "${d:?}"
+}
+check base-trial same,animated,changing 'animating maps/scn01a.zoo'
+# The sim command runs the sets too.
+check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 2>/dev/null | grep -q " unit set " && echo yes'
+# A play call queues behind the playing sequence, the base loop included: the lion shows its first two
+# animations other than the idle one at passes 14 and 28 (the lion 27646, happiness 90, chooses
+# bHappy; the lion 27645, happiness 75, chooses bFriendly); a sound named without .wav is a file of the
+# type's folder.
+check base-trial 14,28 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
+check base-trial bFriendly,14 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit set 27645 / && s == \"\" {s=\$NF} / unit anim 27645 / && \$NF != \"idle\" && a == \"\" {a=\$2} END {print s \",\" a}"'
+check base-trial animals/lion/cat_sgr.wav 'rz run maps/scn01a.zoo --headless --bare --passes 1500 --clock 67 --seed 3 2>/dev/null | grep " unit sound " | awk "{print \$NF}" | sort -u'
+
 # The scenario screen from the menu button at y: the number of entries, the state of each, and the
 # first entry selected (its state and whether Play is on). A click on the icon of the first row and a
 # double click ask to play it: the scenario file the request names. (A transparent list is hit
@@ -480,14 +505,14 @@ check base-trial 2 "rz draw-text $tmp/t.png --width wide x >/dev/null 2>&1; echo
 pending_object() { # pending_object <map> <script>
   d=$(mktemp -d)
   printf "$2" >"$d/script"
-  rz run "$1" --headless --passes 12 --clock 20 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 12 --clock 20 --seed 1 --script "$d/script" 2>/dev/null |
     awk '/ tool pending /{p=p ";" $6 "," $7 "," $9 "," $10} / tool message /{p=p ";message" $6} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";" h}'
   rm -rf "$d"
 }
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;472ce5f65f66dbad" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;ae399769d77d007b" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;b1916bbd8f0fc099" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;601383746263361c" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
@@ -496,14 +521,14 @@ check expansion-trial "building/building/bounce,35,46,3,valid;building/building/
 path_drag() { # path_drag <map> <first move>
   d=$(mktemp -d)
   printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse $2\n11 mouse 824 384\n12 up\n13 mouse 824 384\n" >"$d/script"
-  rz run "$1" --headless --passes 16 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 16 --clock 20 --seed 1 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
 check base-trial "8,49800,f308c3ffc18e1241" "path_drag maps/default.zoo '632 384'"
 check base-trial "8,49800,326acd2d42ae51b3" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49920,03b1949f556d6d05" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49920,a900193c0060809e" "path_drag maps/scn19.zoo '632 416'"
+check expansion-trial "8,49920,1b47e002c593a307" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,0e4c06ade71cadd9" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -511,13 +536,13 @@ check expansion-trial "8,49920,a900193c0060809e" "path_drag maps/scn19.zoo '632 
 paint_text() { # paint_text <map> <script>
   d=$(mktemp -d)
   printf "$2" >"$d/script"
-  rz run "$1" --headless --passes 20 --clock 20 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 20 --clock 20 --seed 1 --script "$d/script" 2>/dev/null |
     awk '/ terrain brush /{p=p ";brush" $6 "," $7} / terrain amount /{p=p ";amount" $6} / ui tooltip /{t++} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";tooltips" t+0 ";" h}'
   rm -rf "$d"
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;949319026b7e7d26" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;76d15db066a6a5e9" "paint_text maps/scn19.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;02b2f9d8315a57d5" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -526,12 +551,12 @@ check expansion-trial "brush3,40,51;amount-270;tooltips3;76d15db066a6a5e9" "pain
 fence_drag() { # fence_drag <map> <last move>
   d=$(mktemp -d)
   printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n8 mouse 750 340\n9 down\n10 mouse 780 340\n11 mouse $2\n12 up\n13 mouse $2\n" >"$d/script"
-  rz run "$1" --headless --passes 16 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 16 --clock 20 --seed 1 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
 check base-trial "6,48920,ea55ccfee722f8f9" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial "6,49250,06e99d80eb4c98f0" "fence_drag maps/scn19.zoo '878 332'"
+check expansion-trial "6,49250,c986be000608e442" "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -581,12 +606,12 @@ check expansion-trial '0,1,2,3,4' "tank_water maps/sm_aqua.zoo"
 bulldozer_area() { # bulldozer_area <map>
   d=$(mktemp -d)
   printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 key escape\n14 key delete\n15 mouse 600 400\n16 down\n17 mouse 700 380\n18 mouse 824 384\n19 up\n20 mouse 640 380\n" >"$d/script"
-  rz run "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 24 --clock 20 --seed 1 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world remove .* refund /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
 check base-trial "8,49960,0c0c657cc2a0f1d4" "bulldozer_area maps/default.zoo"
-check expansion-trial "16,50156,15b27b1e47629a1b" "bulldozer_area maps/scn19.zoo"
+check expansion-trial "16,50156,cb6bc226faccb94d" "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
@@ -595,12 +620,12 @@ check expansion-trial "16,50156,15b27b1e47629a1b" "bulldozer_area maps/scn19.zoo
 building_place() { # building_place <map>
   d=$(mktemp -d)
   printf '1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n6 down\n7 up\n9 down\n10 up\n11 mouse 700 420\n' >"$d/script"
-  rz run "$1" --headless --passes 14 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 14 --clock 20 --seed 1 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world add /{p=p ";" $6 "," $7 "," $11} / tool message /{p=p ";message" $6} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";" c ";" h}'
   rm -rf "$d"
 }
 check base-trial "building/building/vendfood,16,45,2;message10555;49950;7de7382b2136dc53" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49900;7a0a36b0d57153e1" "building_place maps/scn19.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;cb4c1f2ffa44919d" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)
@@ -630,11 +655,11 @@ check expansion-trial "exhibit_gate_2_38,44_side_6;world_ungate_tankwall/tankwal
 
 # Undo (placing 8): the path drag of above, then Backspace takes the pieces back. Prints the removals
 # the undo logged, the cash at the end (from 50000) and whether the last picture is the one before
-# the drag. A bulldozer area drag over some of the pieces then Backspace puts them back: the adds the
+# the drag (the game is paused, so that the units stand still). A bulldozer area drag over some of the pieces then Backspace puts them back: the adds the
 # undo logged and the cash.
 undo_path() { # undo_path <map>
   d=$(mktemp -d)
-  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 mouse 185 100\n20 key backspace\n" >"$d/script"
+  printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 mouse 185 100\n20 key backspace\n" >"$d/script"
   rz run "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world remove .* undo$/{n++} / money cash /{c=$6} / draw [0-9a-f]/{if ($2 == 6) a=$5; b=$5} END{print n "," c "," (a == b ? "same" : "different")}'
   rm -rf "$d"

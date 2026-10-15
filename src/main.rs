@@ -133,7 +133,8 @@ usage: rustyzoo [--data <dir>] <command>
                       run a map (a .zoo member) for N steps of MS milliseconds (default 67)
                       without an interface, with the generator seeded from S (default 1), and
                       print the hash of the whole state, the same on every system (--hash, the
-                      default), or the log lines of each step (--log). The script has one
+                      default), or the log lines of each step (--log; the units run their behaviour sets as in
+                      `run`). The script has one
                       `<step> <command>` per line, applied before that step (the first is 0):
                       remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N
   check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
@@ -318,7 +319,15 @@ usage: rustyzoo [--data <dir>] <command>
                       `unit abort ID` when a unit walks (it enters a tile or another exhibit, turns, or is refused its next
                       step). An animal adds `animal status ID HAPPINESS HUNGER ENERGY HEALTH` (the
                       values after the update of that tick) and `animal message STRING ID` for a message it
-                      posts and `animal trample ID X,Y` for a tile it tramples. --rows ID N (repeatable) fills the list box ID
+                      posts and `animal trample ID X,Y` for a tile it tramples. Each unit runs a behaviour set
+                      after its move and animation: an animal
+                      chooses the set of the ambient row for its happiness, a guest or
+                      staff member `bZooRoutine`; `unit set ID NAME` tells a set
+                      that starts, `unit anim ID NAME` the animation the unit shows when it changes (the idle
+                      one between two sequences) and `unit sound ID NAME` a sound a play call begins (the file
+                      its definition's [Sounds] names); the map shows the animation and frame each unit holds.
+                      The move calls, the faces and the effects on other entities are done at once with no
+                      effect until their issues, and a guest's or staff member's routine never ends. --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma

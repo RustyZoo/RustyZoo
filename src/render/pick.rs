@@ -77,15 +77,20 @@ impl Staged {
                 (b[0]..b[2]).contains(&start) && (b[1]..b[3]).contains(&point.1)
             })
             .find(|(placed, _, hit)| {
-                let (Pic::Anim(anim, view, _) | Pic::Blended(anim, view, _)) = &placed.pic else {
-                    return false;
+                let (anim, view, shown) = match &placed.pic {
+                    Pic::Anim(anim, view, _, frame) => (anim, view, *frame),
+                    Pic::Blended(anim, view, _) => (anim, view, 0),
+                    _ => return false,
                 };
                 let Some(loaded) = anim.sprites.get(view.file) else {
                     return false;
                 };
                 let sprite = &loaded.0;
-                let frames: Vec<&Frame> =
-                    sprite.extra.iter().chain(sprite.frames.first()).collect();
+                let frames: Vec<&Frame> = sprite
+                    .extra
+                    .iter()
+                    .chain(sprite.frames.get(shown))
+                    .collect();
                 let anchor = (i64::from(placed.x), i64::from(placed.y));
                 let w = hit.threshold.saturating_add(extra);
                 hits(&frames, view.mirror, anchor, w, point) && wanted(hit.id)
