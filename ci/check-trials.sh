@@ -648,4 +648,14 @@ undo_area() { # undo_area <map>
 check base-trial "3,49800" "undo_area maps/default.zoo"
 check expansion-trial "14,49920" "undo_area maps/scn19.zoo"
 
+# The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
+# hashes of the three systems).
+sim_twice() { # sim_twice <map>
+  a=$(rz sim "$1" --ticks 1000 --hash)
+  b=$(rz sim "$1" --ticks 1000 --hash)
+  if [ -n "$a" ] && [ "$a" = "$b" ]; then echo same; else echo different; fi
+}
+check base-trial same "sim_twice maps/default.zoo"
+check expansion-trial same "sim_twice maps/sm_aqua.zoo"
+
 exit $failed

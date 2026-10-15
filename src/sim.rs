@@ -9,10 +9,15 @@
 //! first calls), the water ripples, the ambient creatures, and the scenario, research and
 //! marketing managers, which are empty until M7.
 //!
+//! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
+//! the commands such a run applies at a step.
+//!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
 //! step and `sim month M Y` when a step acts on the month flag of the one before.
 
+pub mod drive;
 mod events;
+pub mod hash;
 mod rng;
 #[cfg(test)]
 mod tests;

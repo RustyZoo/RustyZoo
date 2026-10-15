@@ -4,6 +4,7 @@ mod input;
 mod layout;
 mod probe;
 mod run;
+mod simcmd;
 mod textcmd;
 mod window;
 
@@ -119,6 +120,13 @@ usage: rustyzoo [--data <dir>] <command>
                       draw every .zoo file in memory and print the same summary per map and
                       for all of them; a file that cannot be read is skipped; exit 1 only if
                       a map cannot be drawn
+  sim <map> --ticks N [--dt MS] [--seed S] [--script FILE] [--hash|--log]
+                      run a map (a .zoo member) for N steps of MS milliseconds (default 67)
+                      without an interface, with the generator seeded from S (default 1), and
+                      print the hash of the whole state, the same on every system (--hash, the
+                      default), or the log lines of each step (--log). The script has one
+                      `<step> <command>` per line, applied before that step (the first is 0):
+                      remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N
   check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
                       pieces) as the engine does when their copies in ztst/ are missing, and
                       compare each with its shipped copy; exit 1 if one differs or fails
@@ -514,6 +522,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             run::run(&open_game(data_dir)?, None, flags)
         }
         ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, Some(member), flags),
+        ["sim", member, flags @ ..] => simcmd::sim(&open_game(data_dir)?, member, flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(
             &open_game(data_dir)?,

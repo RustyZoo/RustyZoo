@@ -17,17 +17,26 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
+            system: linux
             artifact: rustyzoo-linux-x86_64
             path: target/release/rustyzoo
           - os: windows-2025
+            system: windows
             artifact: rustyzoo-windows-x86_64
             path: target/release/rustyzoo.exe
           - os: macos-15
+            system: macos
             artifact: rustyzoo-macos-universal
             path: target/universal/rustyzoo
     defaults:
       run:
         shell: bash
+    # The state hashes of the simulation, one output per system: a leg sets only its own, and the
+    # job `simhash` compares them.
+    outputs:
+      linux: ${{ steps.simhash.outputs.linux }}
+      windows: ${{ steps.simhash.outputs.windows }}
+      macos: ${{ steps.simhash.outputs.macos }}
     # No display, GPU or sound card on the runners: the same headless SDL settings on every OS.
     # The dummy video driver and the software renderer need no OpenGL, which the offscreen
     # video driver could not initialize on macOS.
@@ -140,6 +149,23 @@ jobs:
           [ "$status" = 0 ] || exit "$status"
           ci/check-trials.sh ${{ matrix.path }} "$trials"
 
+      # The state hash of 1000 simulation steps of every map of the trials, kept as a job output
+      # (nothing is uploaded) for the job `simhash`.
+      - name: State hash of the simulation
+        id: simhash
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          if [ ! -d "$trials/base-trial" ] || [ ! -d "$trials/expansion-trial" ]; then
+            echo "::warning title=Simulation hash skipped::No trial data on this runner."
+            exit 0
+          fi
+          hashes=$(ci/sim-hash.sh ${{ matrix.path }} "$trials")
+          echo "$hashes"
+          if echo "$hashes" | grep -q '=failed$'; then
+            echo "::warning title=Simulation hash::A map did not run."
+          fi
+          echo "${{ matrix.system }}=$(echo "$hashes" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
       # Information, never a failure on a value: the intervals of the draw, interface and step
       # timers on the real clock of the runner (the dummy video driver shows no window).
       - name: Timing summary of a ten second windowed run
@@ -188,11 +214,37 @@ jobs:
           path: ${{ matrix.path }}
           if-no-files-found: error
 
-  # The single required status check: fails unless every build leg succeeded.
+  # The simulation is deterministic: the state hash of every map of the trials after 1000 steps is the
+  # same on the three systems. A system without trial data is skipped with a warning.
+  simhash:
+    name: simulation hash
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      LINUX: ${{ needs.build.outputs.linux }}
+      WINDOWS: ${{ needs.build.outputs.windows }}
+      MACOS: ${{ needs.build.outputs.macos }}
+    steps:
+      - run: |
+          printf 'linux:   %s\nwindows: %s\nmacos:   %s\n' "$LINUX" "$WINDOWS" "$MACOS"
+          seen=0
+          for hashes in "$LINUX" "$WINDOWS" "$MACOS"; do
+            [ -n "$hashes" ] || continue
+            seen=$((seen + 1))
+            [ "$hashes" = "${first:=$hashes}" ] || {
+              echo "the state hash of the simulation differs between systems"
+              exit 1
+            }
+          done
+          if [ "$seen" -lt 3 ]; then
+            echo "::warning title=Simulation hash::Only $seen of 3 systems had trial data, so the hashes were not all compared."
+          fi
+
+  # The single required status check: fails unless every build leg and the hash comparison succeeded.
   ci:
     name: ci
-    needs: build
+    needs: [build, simhash]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     steps:
-      - run: test "${{ needs.build.result }}" = success
+      - run: test "${{ needs.build.result }}" = success && test "${{ needs.simhash.result }}" = success
