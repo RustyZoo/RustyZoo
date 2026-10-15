@@ -964,13 +964,15 @@ impl<'a> App<'a> {
 
     /// A release on the map (the view sees only one that ends a press on it): the pieces of a path
     /// drag, or else the pending object, are bought in order. A valid place gets its object, which
-    /// is paid and logged (`world add objects/foliage/doumpalm 12,40 id 14908`; a path on water
+    /// is paid and logged (`world add objects/foliage/doumpalm 12,40 id 14908 quadrants 1`, with
+    /// the number of quadrants the object holds; a path on water
     /// logs `world paint 12,40 3` first, one on another path `world remove paths/... 12,40 id 7`;
     /// a fence is told with its side, `world add fences/... 12,40 side 2 id 8`, and the piece it
     /// replaces `world remove fences/... 12,40 side 2 id 7`).
     /// One sound is asked for the release: the placement sound if anything was placed, else the
     /// refusal sound; a type that turns by itself turns once; the last message of a piece that
-    /// could not be placed shows in the message line (`tool message 10311`); and a new pending
+    /// could not be placed shows in the message line (`tool message 10311`), and one that gives no
+    /// message when nothing at all was placed logs `tool refused`; and a new pending
     /// object is made (placing 6.1 and 6.2).
     fn release(&mut self) {
         let Some(game) = &mut self.game else {
@@ -1029,9 +1031,16 @@ impl<'a> App<'a> {
                 false => format!("{x},{y}"),
             };
             let water = &game.water;
-            let outcome = place::place(&mut game.world, &mut game.money, ty, p, water, |e| {
-                renderer.shape(e)
-            });
+            let colors = renderer.default_colors(ty);
+            let outcome = place::place(
+                &mut game.world,
+                &mut game.money,
+                ty,
+                p,
+                water,
+                colors,
+                |e| renderer.shape(e),
+            );
             match outcome {
                 Outcome::Placed(id) => {
                     if let Some(kind) = p.paint {
@@ -1041,7 +1050,14 @@ impl<'a> App<'a> {
                         let line = format!("remove {name} {tile} id {old}");
                         self.world_lines.push(line);
                     }
-                    self.world_lines.push(format!("add {name} {tile} id {id}"));
+                    // An object that takes quadrants says how many it holds.
+                    let held = match Class::of(ty) == Class::Fixed {
+                        true => game.world.find(id).map(|e| game.world.held(e)),
+                        false => None,
+                    };
+                    let held = held.map_or(String::new(), |n| format!(" quadrants {n}"));
+                    let line = format!("add {name} {tile} id {id}{held}");
+                    self.world_lines.push(line);
                     first = first.or(Some(p.ty));
                     if !game.world.waiting().is_empty() {
                         game.rest = pieces[n + 1..].to_vec();
@@ -1062,9 +1078,14 @@ impl<'a> App<'a> {
             }
             None => self.ui_sounds.push("noplace"),
         }
-        if let Some(id) = refused {
-            ui.message(&to_cp1252(&ui.string(id)));
-            self.tool_lines.push(format!("tool message {id}"));
+        match refused {
+            Some(id) => {
+                ui.message(&to_cp1252(&ui.string(id)));
+                self.tool_lines.push(format!("tool message {id}"));
+            }
+            // A refusal without a message (ground that is not flat, a quadrant off the zoo).
+            None if first.is_none() => self.tool_lines.push("tool refused".into()),
+            None => {}
         }
         self.exhibits_told();
         self.aim(false);

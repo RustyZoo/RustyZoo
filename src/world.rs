@@ -136,9 +136,23 @@ impl World {
         self.scene.quadrant_object(t, q).map(|o| self.owner[o])
     }
 
+    /// How many quadrants the entity at position `e` of `zoo.entities` holds.
+    pub fn held(&self, e: usize) -> usize {
+        (0..self.zoo.tiles.len())
+            .flat_map(|t| (0..4).map(move |q| (t, q)))
+            .filter(|&(t, q)| self.quadrant(t, q) == Some(e))
+            .count()
+    }
+
     /// The fence on the edge of tile `t` in map direction `d` (0, 2, 4 or 6).
     pub fn edge(&self, t: usize, d: usize) -> Option<usize> {
         self.scene.edge_object(t, d).map(|o| self.owner[o])
+    }
+
+    /// Whether the ground has a step on the edge of tile `t` in map direction `d` (edge state 2
+    /// or 3).
+    pub fn cliff(&self, t: usize, d: usize) -> bool {
+        (self.zoo.tiles[t].edges >> (2 * (3 - d / 2))) & 3 >= 2
     }
 
     /// Whether the edge of tile `t` in map direction `d` holds a zoo wall piece in its own slot.
