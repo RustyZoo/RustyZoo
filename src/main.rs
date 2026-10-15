@@ -1,5 +1,6 @@
 mod audio;
 mod boot;
+mod findcmd;
 mod input;
 mod layout;
 mod probe;
@@ -97,6 +98,12 @@ usage: rustyzoo [--data <dir>] <command>
                       also the viewing areas of each exhibit (tiles, size, tiles seen) and its
                       fence deterioration; exit 1 if none matches, a rating is not 0 to 100 or
                       an area covers more than 4 columns or rows
+  find-path <map> <x,y> <x,y> --unit <keeper|guest|animal>
+                      the path the finder gives a unit of that kind from the first tile to the
+                      second of a map (a .zoo member), as the game asks for it (a partial path
+                      accepted): a line with the state (found, partial or no path), the number
+                      of tiles and the move cost, then one x,y line per tile; the [AI] settings
+                      are those of the ini file
   render-ani <member.ani> <dir> [--anim NAME]
                       write frame 0 of an animation set as eight PNG files into <dir>, one per
                       screen direction, and print the anchor point; with --anim, the first
@@ -528,6 +535,9 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             run::run(&open_game(data_dir)?, None, flags)
         }
         ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, Some(member), flags),
+        ["find-path", member, flags @ ..] => {
+            findcmd::find_path(&open_game(data_dir)?, member, flags)
+        }
         ["sim", member, flags @ ..] => simcmd::sim(&open_game(data_dir)?, member, flags),
         ["check-render"] => check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => check_render(

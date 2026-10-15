@@ -156,6 +156,18 @@ pub fn allowed(
     search::open(w, m, s, (a, b, d), None, building || m.building).is_some()
 }
 
+/// The move cost of a path (3.6): each step's cost times its length factor, with the last tile as
+/// the goal.
+pub fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
+    let goal = path.last().copied();
+    let step = |p: &[usize]| {
+        let d = search::direction(w, p[0], p[1]);
+        let length = [1.0, search::DIAGONAL][d % 2];
+        length * f64::from(cost::step(w, m, p[0], p[1], d, goal))
+    };
+    path.windows(2).map(step).fold(0.0, |a, b| a + b)
+}
+
 /// What to do with the unit's destination tile after a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dest {

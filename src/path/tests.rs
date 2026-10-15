@@ -137,17 +137,6 @@ fn cost(w: &World, m: &Mover, a: (i32, i32), b: (i32, i32)) -> u32 {
     cost::step(w, m, t(a), t(b), d, Some(t(b)))
 }
 
-/// The move cost of a path: each step's cost times its length factor.
-fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
-    let goal = path.last().copied().unwrap_or(0);
-    let step = |p: &[usize]| {
-        let d = search::direction(w, p[0], p[1]);
-        let length = [1.0, search::DIAGONAL][d % 2];
-        length * f64::from(cost::step(w, m, p[0], p[1], d, Some(goal)))
-    };
-    path.windows(2).map(step).sum()
-}
-
 fn unit(kind: Kind, at: (i32, i32)) -> Mover {
     Mover::new(kind, Some(t(at)))
 }
