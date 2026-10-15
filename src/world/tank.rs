@@ -35,7 +35,9 @@ impl World {
             let tile = self.zoo.tiles[t];
             if (tile.elevation, tile.shape) != (level, 0) {
                 self.put_tile(t, level, 0, tile.terrain, record);
-                record.then(|| self.join_tiles());
+                if record {
+                    self.join_tiles();
+                }
             }
         }
     }
