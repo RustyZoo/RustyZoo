@@ -252,18 +252,15 @@ impl Sim {
         self.economy = Config::parse(file).ok();
     }
 
-    /// A new game (not a saved one) has just been set up: the timers and the donation counter start
-    /// again and the rating check of the set-up runs, with
-    /// no cash, the built-in settings and every research program counted as done (zoo status 6.4).
+    /// A new game (not a saved one) has just been set up: the timers and the donation counter
+    /// start again and the rating check of the set-up runs, with no cash, the built-in settings and
+    /// every research program counted as done (zoo status 6.4).
     pub fn new_game(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
         self.status.timers = [0; 3];
         self.status.given = 0.0;
         let set = std::mem::replace(&mut self.status.settings, Settings::builtin());
         let sums = Sums::of(world, cat, 0.0, 100);
-        let escape = (self.ai.escaped_animal_change, self.ai.escaped_animal_time);
-        let log = &mut self.lines;
-        self.status
-            .rating_check(sums, money, (0, false), escape, log);
+        self.status.rating_check(sums, money, &mut self.lines);
         self.status.settings = set;
     }
 
@@ -429,12 +426,7 @@ impl Sim {
         let due = self.status.due(step, month_end);
         if due.rating {
             let sums = Sums::of(world, cat, money.cash, 0);
-            let now = self.calendar.state().0 as i64;
-            let escape = (self.ai.escaped_animal_change, self.ai.escaped_animal_time);
-            // No animal is loose before M7.
-            let log = &mut self.lines;
-            self.status
-                .rating_check(sums, money, (now, false), escape, log);
+            self.status.rating_check(sums, money, &mut self.lines);
         }
         if due.message {
             let (say, log) = (&mut self.messages, &mut self.lines);
@@ -449,7 +441,8 @@ impl Sim {
             let date = self.calendar.date();
             self.lines
                 .push(format!("month {} {}", date.month, date.year));
-            self.status.finance_check(&mut self.rng, money);
+            // The endowment goes before the accounts move on, the wages and the upkeep after.
+            money.month_change();
         }
         let (say, log) = (&mut self.messages, &mut self.lines);
         self.status.donation(&mut self.rng, money, say, log);

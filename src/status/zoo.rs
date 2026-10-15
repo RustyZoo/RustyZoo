@@ -1,12 +1,13 @@
 //! The zoo status of the game manager (zoo status): the settings of the economy file, the sums, the
-//! zoo rating, the advice messages, the month-end finance check, the donation when the cash is
-//! low, the adult admission price and the three bars of the status bar.
+//! zoo rating, the advice messages, the donation when the cash is low, the adult admission price
+//! the file stores (its limits come with the window that sets it) and the three bars of the status
+//! bar.
 //!
 //! [`Status`] keeps the three timers, the last sums and the rating; the [`crate::sim::Sim`] step
 //! calls its checks in the original's order. Missing so far: guests (their state is the guest
 //! issue's, so their counts stay 0), research (its share is 0), the new guest check, the
-//! escapes, wages and building upkeep (the staff and building issues), the scenario's own
-//! economy file.
+//! escape penalty, the endowment, wages and building upkeep of the month-end check, the
+//! scenario's own economy file.
 //!
 //! The log lines: `rating N` at each rating check, `message ID` for each advice message and
 //! `donation AMOUNT` for each donation.
@@ -41,8 +42,6 @@ const MANY_GUESTS: i32 = 10;
 /// The cash below which the money messages and the donation start (the original compares whole
 /// units for the messages, a decimal for the donation).
 const LOW_CASH: i32 = 1000;
-const GAME_HOUR_MS: i64 = 3_600_000;
-const GAME_DAY_MS: i64 = 24 * GAME_HOUR_MS;
 /// The status bar is rewritten when its counter passes this many milliseconds.
 const BAR_PERIOD: u32 = 1001;
 
@@ -64,11 +63,6 @@ pub struct Settings {
     pub donation_low: i32,
     pub donation_high: i32,
     pub donation_chance: i32,
-    pub membership_join_factor: i32,
-    pub endowment_low: i32,
-    pub endowment_high: i32,
-    pub price_min: f32,
-    pub price_max: f32,
 }
 
 /// The keys of [`Settings::percent`].
@@ -98,17 +92,11 @@ impl Settings {
             donation_low: 10_000,
             donation_high: 20_000,
             donation_chance: 0,
-            membership_join_factor: 10,
-            endowment_low: 10_000,
-            endowment_high: 20_000,
-            price_min: 0.0,
-            price_max: 100.0,
         }
     }
 
     /// Reads an economy file over the settings: a key that is missing leaves its value, names
-    /// ignore case, numbers are read as the game's files are. The two prices are swapped when
-    /// the maximum is below the minimum.
+    /// ignore case, numbers are read as the game's files are.
     pub fn apply(&mut self, file: &Config) {
         let int = |section: &str, key: &str, value: &mut i32| {
             if let Some(n) = ini_value(file, section, key).and_then(to_int) {
@@ -142,14 +130,6 @@ impl Settings {
         int(c, "cDonationLow", &mut self.donation_low);
         int(c, "cDonationHigh", &mut self.donation_high);
         int(c, "cDonationChance", &mut self.donation_chance);
-        int(c, "cMembershipJoinFactor", &mut self.membership_join_factor);
-        int(c, "cEndowmentGiftLow", &mut self.endowment_low);
-        int(c, "cEndowmentGiftHigh", &mut self.endowment_high);
-        decimal("cMinAdultAdmissionPrice", &mut self.price_min);
-        decimal("cMaxAdultAdmissionPrice", &mut self.price_max);
-        if self.price_max < self.price_min {
-            std::mem::swap(&mut self.price_min, &mut self.price_max);
-        }
     }
 }
 
@@ -281,8 +261,6 @@ pub struct Status {
     /// How many times the cash fell low enough for a donation.
     pub given: f32,
     pub price: f32,
-    /// The game time of the last animal escape, in milliseconds; a year before the game began.
-    pub escape_ms: i64,
 }
 
 impl Default for Status {
@@ -295,7 +273,6 @@ impl Default for Status {
             rating: 0,
             given: 0.0,
             price: 49.0,
-            escape_ms: -366 * GAME_DAY_MS,
         }
     }
 }
@@ -319,23 +296,13 @@ impl Status {
             timers: record.timers,
             rating: record.rating as i32,
             given: record.given,
+            price: record.price,
             ..Status::default()
         };
         if let Some(file) = economy {
             status.settings.apply(file);
         }
-        status.price = status.limit(record.price);
         status
-    }
-
-    /// The price held between the limits (11).
-    pub fn limit(&self, price: f32) -> f32 {
-        let (min, max) = (self.settings.price_min, self.settings.price_max);
-        if price.min(max) <= min {
-            min
-        } else {
-            price.min(max)
-        }
     }
 
     /// Adds a step to the timers and says which checks are due (4): the rating check also when
@@ -356,8 +323,8 @@ impl Status {
         }
     }
 
-    /// The rating of the sums (6.1), less the escape `penalty` when it is above 0.
-    pub fn compute(&self, sums: &Sums, penalty: i64) -> i32 {
+    /// The rating of the sums (6.1).
+    pub fn compute(&self, sums: &Sums) -> i32 {
         let s = &self.settings;
         let mut r = 0i64;
         if sums.animals > 0 {
@@ -372,29 +339,12 @@ impl Status {
         r += i64::from(sums.research) * 5 / 100;
         let e = (sums.esthetics * 10.0).clamp(0.0, 100.0);
         r += i64::from((e * 0.1f32) as i32);
-        if penalty > 0 {
-            r -= penalty;
-        }
         r.clamp(0, 100) as i32
     }
 
     /// The rating check (6): the sums again, the rating, the statistics, the timer back to 0.
-    /// `now` is the game time in milliseconds, `loose` whether an animal is loose, `escape` the
-    /// ini's change and time of the escape penalty.
-    pub fn rating_check(
-        &mut self,
-        sums: Sums,
-        money: &mut Money,
-        (now, loose): (i64, bool),
-        escape: (i32, i32),
-        log: &mut Vec<String>,
-    ) {
-        if loose {
-            self.escape_ms = now;
-        }
-        let days = (now - self.escape_ms) / GAME_DAY_MS;
-        let penalty = i64::from(escape.0) - i64::from(escape.1) * days;
-        self.rating = self.compute(&sums, penalty);
+    pub fn rating_check(&mut self, sums: Sums, money: &mut Money, log: &mut Vec<String>) {
+        self.rating = self.compute(&sums);
         for (category, value) in [
             (money::ZOO_VALUE, sums.zoo_value as f32),
             (money::RATING, self.rating as f32),
@@ -436,25 +386,6 @@ impl Status {
             say.push((id, None));
             log.push(format!("message {id}"));
         }
-    }
-
-    /// The finance check (9) from the endowment on, the generator having been seeded again: each
-    /// member may leave, the rest pay the gift, then the accounts move to the next month.
-    pub fn finance_check(&mut self, rng: &mut Rng, money: &mut Money) {
-        let members = money.total[money::MEMBERS] as i32;
-        if members > 0 {
-            let factor = self.settings.membership_join_factor;
-            let left = (0..members)
-                .filter(|_| self.rating < (rng.rand() % 101) as i32 - factor)
-                .count() as i32;
-            money.add_count(money::MEMBERS, -(left as f32));
-            money.add_count(money::MEMBERS_LEFT, left as f32);
-            let (low, high) = (self.settings.endowment_low, self.settings.endowment_high);
-            let draw = (rng.rand() % 101) as f32;
-            let gift = low as f32 + draw * (high - low).max(0) as f32 * 0.01;
-            money.refund(money::ENDOWMENT, gift * (members - left) as f32);
-        }
-        money.month_change();
     }
 
     /// The donation (10): at every step with the cash below 1000 and the chance, the next of

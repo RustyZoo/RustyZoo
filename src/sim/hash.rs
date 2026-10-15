@@ -263,7 +263,6 @@ impl Fnv {
             self.i32(v);
         }
         self.u64(s.sums.zoo_value as u64);
-        self.u64(s.escape_ms as u64);
         for v in [s.sums.esthetics, s.given, s.price] {
             self.f32(v);
         }

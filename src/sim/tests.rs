@@ -529,7 +529,6 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "sums",
         "given",
         "price",
-        "escape",
     ] {
         let mut run = game(3);
         match what {
@@ -548,7 +547,6 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "sums" => run.sim.status.sums.sick += 1,
             "given" => run.sim.status.given += 1.0,
             "price" => run.sim.status.price += 0.25,
-            "escape" => run.sim.status.escape_ms += 1,
             _ => run.sim.ai_rem += 1,
         }
         assert_ne!(run.hash(), base, "{what}");
@@ -691,37 +689,21 @@ fn the_grounds_update_before_the_exhibits() {
 }
 
 #[test]
-fn the_month_end_finance_check_reseeds_after_the_other_checks_and_moves_the_accounts() {
-    let mut w = world(0);
-    let mut s = sim("");
-    let mut money = Money::default();
-    money.add_count(crate::money::MEMBERS, 2.0);
-    let mut month_end = None;
-    for i in 0..400 {
-        let report = s.step_game(
+fn the_month_end_rating_check_belongs_to_the_old_month_and_the_accounts_then_move_on() {
+    let (mut w, mut s, mut money) = (world(0), sim(""), Money::default());
+    let mut step = || {
+        s.step_game(
             &mut w,
             &Catalogue::default(),
             &mut money,
             1000,
             |_, _, _| {},
-        );
-        if report.month_end {
-            month_end = Some(i);
-        }
-    }
-    // The step acted on the month: the accounts are on February, and the endowment booked its
-    // leavers and its gift into January after the generator was seeded again.
-    assert_eq!((month_end, money.month), (Some(372), 2));
-    let (stay, left) = (money.total[crate::money::MEMBERS], money.total[23]);
-    assert_eq!(stay + left, 2.0);
-    assert_eq!(money.monthly[crate::money::ENDOWMENT][0] > 0.0, stay > 0.0);
-    assert_eq!(money.monthly[crate::money::ENDOWMENT][1], 0.0);
-    // The rating is a statistic of January, not February.
-    assert_eq!(money.monthly[crate::money::RATING][0], 24.0);
-    // The check's lines are told in the step's order.
-    let lines = s.take_lines();
-    let at = lines.iter().position(|l| l == "month 2 2001").unwrap();
-    assert_eq!(&lines[at - 3..at], ["step 1000", "rating 24", "seed 3"]);
+        )
+    };
+    let ended = (0..373).filter(|_| step().month_end).count();
+    assert_eq!((ended, money.month), (1, 2));
+    // The forced check wrote 24 (12 and 12 for the empty zoo) into January, not February.
+    assert_eq!(money.monthly[crate::money::RATING][..2], [24.0, 0.0]);
 }
 
 #[test]
