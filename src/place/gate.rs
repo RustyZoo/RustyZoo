@@ -1,5 +1,6 @@
 //! The gate tool (placing 6.4): over a fence piece of an exhibit the pending object is the gate
 //! of that fence type at the piece's place, and a click moves the exhibit's gate there.
+//! Valid places are green where a keeper passes and in the highlight colour elsewhere.
 
 use super::bulldozer::{fence_near, type_of};
 use super::{LIFE, NO_FUNDS, Outcome, Pending, STRENGTH, Verdict};
@@ -17,16 +18,28 @@ pub struct Gate {
     pub exhibit: u32,
 }
 
-/// The pending gate for the world point under the pointer, or none when no fence piece of an
-/// exhibit fence type with a gate is there. The place is valid when [`World::gate_for`] finds an
-/// exhibit and the cash covers the price (placing 6.4 items 1 to 3 and 5): nothing for a piece
-/// above the decayed life of its type, else the price of the gate type. An invalid place keeps
-/// no message, except for the cash, which shows 10002.
-pub fn pending(world: &World, cat: &Catalogue, money: &Money, point: (i64, i64)) -> Option<Gate> {
+/// The id of the fence piece under the world point, the hovered entity of the gate tool.
+pub fn over(world: &World, point: (i64, i64)) -> Option<u32> {
+    let at = fence_at(world, point)?;
+    Some(world.zoo.entities[at].common.as_ref()?.id)
+}
+
+/// The position in the entity list of the fence piece near the world point.
+fn fence_at(world: &World, point: (i64, i64)) -> Option<usize> {
     let near = |v: i64| v.clamp(-(1 << 20), 1 << 20) as i32;
     let (x, y) = (near(point.0), near(point.1));
     let t = world.tile_index(x.div_euclid(64), y.div_euclid(64))?;
-    let at = fence_near(world, t, x.rem_euclid(64), y.rem_euclid(64))?;
+    fence_near(world, t, x.rem_euclid(64), y.rem_euclid(64))
+}
+
+/// The pending gate for the world point under the pointer, or none when no fence piece of an
+/// exhibit fence type with a gate is there. The place is valid when [`World::gate_for`] finds an
+/// exhibit and the cash covers the price (placing 6.4 items 1 to 3 and 5): nothing for a piece
+/// above the decayed life of its type, else the price of the gate type, and tinted by
+/// [`World::keeper_passes`]. An invalid place keeps no message, except for the cash, which shows
+/// 10002.
+pub fn pending(world: &World, cat: &Catalogue, money: &Money, point: (i64, i64)) -> Option<Gate> {
+    let at = fence_at(world, point)?;
     let piece = &world.zoo.entities[at];
     let (tile, facing) = world.slot(at)?;
     let c = piece.common.as_ref()?;
@@ -51,9 +64,10 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, point: (i64, i64))
         facing: facing as u32,
         tile: ((tile % width) as i32, (tile / width) as i32),
         quadrant: (ly / 32 * 2 + lx / 32).clamp(0, 3) as usize,
-        verdict: match exhibit.is_some() && afford {
-            true => Verdict::Valid,
-            false => Verdict::Invalid,
+        verdict: match (exhibit.is_some() && afford, world.keeper_passes(at)) {
+            (true, true) => Verdict::Valid,
+            (true, false) => Verdict::Highlight,
+            _ => Verdict::Invalid,
         },
         message: (exhibit.is_some() && !afford).then_some(NO_FUNDS),
         price,
@@ -72,8 +86,12 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, point: (i64, i64))
 /// shows the message of the place if it has one.
 pub fn place(world: &mut World, money: &mut Money, cat: &Catalogue, gate: &Gate) -> Outcome {
     let p = &gate.pending;
-    if p.verdict == Verdict::Invalid || !money.can_pay(p.price) {
+    if p.verdict == Verdict::Invalid {
         return Outcome::Refused(p.message);
+    }
+    // The cash is tested again at the click.
+    if !money.can_pay(p.price) {
+        return Outcome::Refused(Some(NO_FUNDS));
     }
     let ty = &cat.types[p.ty];
     let life = number(ty, "cLife").unwrap_or(LIFE) as u32;

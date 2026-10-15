@@ -151,6 +151,7 @@ fn map(gate: Entity, entities: Vec<Entity>, wall: bool) -> World {
         height: 8,
         entrance: if wall { (1, 4) } else { (7, 7) },
         habitat_tiles: Vec::new(),
+        habitat_gates: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; 64],

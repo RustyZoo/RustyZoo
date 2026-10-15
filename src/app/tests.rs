@@ -1835,8 +1835,20 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
         ]
     );
     assert_eq!(app.money().unwrap().cash, 50_000.0 - 4.0 * 125.0);
-    // The undo list was cleared, and the gate is now the current gate: not valid again.
+    // The undo list was cleared. The piece under the pointer has not changed: no pending gate
+    // and no cost text, however the pointer moves over it (placing 6.4).
     assert!(!app.game.as_mut().unwrap().world.undo());
+    for (n, (lx, ly)) in [(42, 4), (44, 5)].into_iter().enumerate() {
+        app.pass(212 + n as u64, &[at(20, 20, lx, ly)]);
+        assert!(told(&app, &["tool pending"]).is_empty());
+        assert_eq!(app.game.as_ref().unwrap().cost(), None);
+    }
+    // Over another piece and back: the gate is now the current gate, not valid again.
+    app.pass(216, &[at(20, 20, 4, 32)]);
+    assert_eq!(
+        told(&app, &["tool pending"]),
+        ["tool pending fences/iron/g 20,20 q 2 valid"]
+    );
     app.pass(220, &[at(20, 20, 40, 4)]);
     assert_eq!(
         told(&app, &["tool pending"]),

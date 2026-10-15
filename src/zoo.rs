@@ -164,6 +164,9 @@ pub struct Zoo {
     /// The first tile of every habitat (exhibit or tank), in file order; the rest of the record
     /// is skipped.
     pub habitat_tiles: Vec<(i32, i32)>,
+    /// The gate of every habitat as its record names it: the tile, (-1, -1) for none, and the
+    /// side (map direction 0, 2, 4 or 6, -1 for none); in file order like `habitat_tiles`.
+    pub habitat_gates: Vec<((i32, i32), i32)>,
     /// The tank exhibits, in file order.
     pub tanks: Vec<Tank>,
     /// The highest entity id handed out so far.
@@ -358,9 +361,11 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let habitat_count = r.count(HABITAT_MIN)?;
     let mut tanks = Vec::new();
     let mut habitat_tiles = Vec::new();
+    let mut habitat_gates = Vec::new();
     for _ in 0..habitat_count {
-        let (tile, tank) = habitat(r)?;
+        let (tile, gate, tank) = habitat(r)?;
         habitat_tiles.push(tile);
+        habitat_gates.push(gate);
         tanks.extend(tank);
     }
     if v >= 64 {
@@ -409,6 +414,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         height,
         entrance,
         habitat_tiles,
+        habitat_gates,
         tanks,
         id_counter,
         tiles,
@@ -420,12 +426,15 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
 /// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
 const HABITAT_MIN: usize = 76;
 
-fn habitat(r: &mut Reader) -> R<((i32, i32), Option<Tank>)> {
+type Habitat = ((i32, i32), ((i32, i32), i32), Option<Tank>);
+
+fn habitat(r: &mut Reader) -> R<Habitat> {
     let v = r.v;
     let tile = (r.i32()?, r.i32()?);
     r.string()?;
     let gate = (r.i32()?, r.i32()?);
-    r.skip(4 + 36 + 16)?;
+    let side = r.i32()?;
+    r.skip(36 + 16)?;
     if v >= 83 {
         r.skip(4)?;
     }
@@ -435,7 +444,7 @@ fn habitat(r: &mut Reader) -> R<((i32, i32), Option<Tank>)> {
         show_info(r)?;
     }
     if !is_tank {
-        return Ok((tile, None));
+        return Ok((tile, (gate, side), None));
     }
     let (height, level) = (r.u32()?, r.u32()?);
     if v >= 88 {
@@ -449,6 +458,7 @@ fn habitat(r: &mut Reader) -> R<((i32, i32), Option<Tank>)> {
     }
     Ok((
         tile,
+        (gate, side),
         Some(Tank {
             tile,
             gate,

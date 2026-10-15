@@ -274,6 +274,9 @@ struct Game {
     pending: Option<Pending>,
     /// The gate tool's pending gate (`pending` is its object), while it is over a fence piece.
     gate: Option<place::gate::Gate>,
+    /// The fence piece the gate tool last judged under the pointer (placing 6.4: the pending gate
+    /// is made again only when the piece under the pointer changes).
+    gate_over: Option<u32>,
     /// The pieces of the path or fence drag in progress, the start first (empty without a drag).
     run: Vec<Pending>,
     hover: bool,
@@ -535,6 +538,7 @@ impl<'a> App<'a> {
             build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
             pending: None,
             gate: None,
+            gate_over: None,
             run: Vec::new(),
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
@@ -886,7 +890,7 @@ impl<'a> App<'a> {
     /// Works out the pending object from the tool, the panel's rotation step and the pointer, and
     /// has the next draw show it. With `log`, a move over the map tells it: `tool pending TYPE
     /// X,Y q N valid`, the tile under the snapped point, the quadrant of the point in it and the
-    /// verdict (`valid`, `overwrite` or `invalid`).
+    /// verdict (`valid`, `overwrite`, `highlight` or `invalid`).
     fn aim(&mut self, log: bool) {
         self.aim_pending(log);
         self.dozer_aim();
@@ -922,19 +926,26 @@ impl<'a> App<'a> {
             .filter(|_| game.hover)
             .and_then(|ty| at(ty, (point.0, point.1)));
         // The gate tool's pending gate sits on the fence piece under the pointer.
-        game.gate = place::gate::pending(&game.world, cat, &game.money, (point.0, point.1))
+        // It is judged when the piece changes, so a gate just placed shows nothing until the
+        // pointer has been over another piece.
+        let over = place::gate::over(&game.world, (point.0, point.1))
             .filter(|_| game.build.gating() && game.hover);
+        if over != game.gate_over || over.is_none() {
+            game.gate_over = over;
+            game.gate = over.and_then(|_| {
+                place::gate::pending(&game.world, cat, &game.money, (point.0, point.1))
+            });
+        }
         if let Some(g) = &game.gate {
             game.pending = Some(g.pending.clone());
         }
         // A pending fence selects the tile under the pointer, before snapping; a fence drag in
         // progress does not draw it (placing 4.5, 6.2 items 1 and 2).
-        let fence = game.gate.is_some()
-            || game
-                .build
-                .tool()
-                .and_then(|ty| cat.types.get(ty))
-                .is_some_and(|t| Class::of(t) == Class::Fence);
+        let fence = game
+            .build
+            .tool()
+            .and_then(|ty| cat.types.get(ty))
+            .is_some_and(|t| Class::of(t) == Class::Fence);
         game.selection = (fence && game.hover && !game.build.dragging())
             .then(|| {
                 let (x, y) = (point.0.div_euclid(64), point.1.div_euclid(64));

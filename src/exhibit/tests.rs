@@ -70,6 +70,7 @@ fn zoo(fences: &[(i32, i32, u32)]) -> Zoo {
         height: SIZE as u32,
         entrance: (SIZE as u32 - 1, SIZE as u32 - 1),
         habitat_tiles: Vec::new(),
+        habitat_gates: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; (SIZE * SIZE) as usize],
@@ -731,4 +732,57 @@ fn moving_the_gate_turns_the_old_one_back_clears_the_undo_list_and_says_so() {
     assert!(!world.move_gate(9, new, 7, 300));
     assert!(!world.move_gate(1, 999, 7, 300));
     assert_eq!(gate(&world, 1), Some((3, 2, 0)));
+}
+
+fn passes(world: &World, x: i32, y: i32, d: usize) -> bool {
+    let t = world.tile_index(x, y).unwrap();
+    world.keeper_passes(world.edge(t, d).unwrap())
+}
+
+#[test]
+fn a_gate_where_the_keeper_cannot_pass_is_still_valid_but_not_clear() {
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+    unique(&mut z);
+    z.tiles[SIZE as usize + 2].terrain = 1;
+    z.tiles[2 * SIZE as usize + 5].shape = 0x0f;
+    let mut world = World::new(z, shape);
+    world.set_water(vec![false, true]);
+    // Plain grass on both sides: clear.
+    assert_eq!(gate_for(&world, 3, 2, 0), Some(1));
+    assert!(passes(&world, 3, 2, 0));
+    // Water on the tile across (code 4), and a tile of no path shape (cost 16): not clear.
+    assert_eq!(gate_for(&world, 2, 2, 0), Some(1));
+    assert!(!passes(&world, 2, 2, 0));
+    assert_eq!(gate_for(&world, 4, 2, 2), Some(1));
+    assert!(!passes(&world, 4, 2, 2));
+}
+
+#[test]
+fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
+    let load = |tile: (i32, i32), side: i32| {
+        let mut z = zoo(&[]);
+        z.entities
+            .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+        z.habitat_tiles = vec![(3, 3)];
+        z.habitat_gates = vec![(tile, side)];
+        unique(&mut z);
+        World::new(z, shape)
+    };
+    let world = load((3, 2), 0);
+    assert_eq!(gate(&world, 1), Some((3, 2, 0)));
+    // Moving the gate sends the stored one back to a fence.
+    let mut world = world;
+    let (old, new) = (at(&world, 3, 2, 0), at(&world, 2, 2, 0));
+    assert!(world.move_gate(1, new, 10, 500));
+    assert_eq!(world.exhibits().get(1).unwrap().gate, Some(new));
+    assert_ne!(old, new);
+    // None, a side that is not one, a tile off the map and an empty slot leave no gate.
+    for (tile, side) in [((-1, -1), -1), ((3, 2), 3), ((3, 2), 8), ((3, 2), -2)] {
+        assert_eq!(load(tile, side).exhibits().get(1).unwrap().gate, None);
+    }
+    for (tile, side) in [((80, 2), 0), ((3, 3), 0), ((i32::MAX, i32::MIN), 2)] {
+        assert_eq!(load(tile, side).exhibits().get(1).unwrap().gate, None);
+    }
 }

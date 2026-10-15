@@ -45,7 +45,13 @@ fn header(w: &mut W, v: u32, locale: u32) {
 
 /// One habitat with a name, optionally a tank and a show.
 fn habitat(w: &mut W, v: u32, tank: bool, show: bool) {
-    w.i32(13).i32(45).str("ex").i32(-1).i32(-1).z(4 + 36 + 16);
+    w.i32(13)
+        .i32(45)
+        .str("ex")
+        .i32(-1)
+        .i32(-1)
+        .i32(6)
+        .z(36 + 16);
     if v >= 83 {
         w.z(4);
     }
@@ -372,6 +378,7 @@ fn skips_habitats_and_shows_of_every_version() {
             (4, 7777, 4),
             "version {v}"
         );
+        assert_eq!(z.habitat_gates, vec![((-1, -1), 6); 4], "version {v}");
         // The tank fields: height 9 and level 6; salt water of purity 100 before version 100.
         let tanks: Vec<_> = z.tanks.iter().map(|t| (t.height, t.level)).collect();
         assert_eq!(tanks, if v >= 85 { vec![(9, 6); 2] } else { vec![] });

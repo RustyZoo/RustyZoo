@@ -44,6 +44,7 @@ impl App<'_> {
                     self.world_lines.push(format!("gate {line}"));
                 }
                 self.ui_sounds.push("place");
+                game.gate = None;
             }
             Outcome::Refused(Some(id)) => {
                 self.ui_sounds.push("noplace");

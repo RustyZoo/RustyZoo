@@ -143,7 +143,7 @@ usage: rustyzoo [--data <dir>] <command>
                       then closes the panel); the item follows the pointer over the map, snapped
                       and tinted by its place (green valid, orange replacing a piece, red not
                       valid) with its cost 23 pixels right of the pointer, and each move logs
-                      `tool pending CLASS/TYPE/SUBTYPE X,Y q N valid|overwrite|invalid` (the tile and
+                      `tool pending CLASS/TYPE/SUBTYPE X,Y q N valid|overwrite|highlight|invalid` (the tile and
                       the quarter tile of the snapped point); releasing over a valid place of
                       scenery or a building places it when the cash covers its cost (a path is
                       dragged: the pieces of an L from the press tile, the first leg along the axis
@@ -184,11 +184,16 @@ usage: rustyzoo [--data <dir>] <command>
                       the gate the tool (`tool gate on`, off again by the same press, an item, another
                       tab, Escape, the right button, closing the panel or the last exhibit going):
                       over a fence piece of an exhibit the pending object is the gate of its type,
-                      green when one side of the piece's line is an exhibit and the other the
+                      valid when one side of the piece's line is an exhibit and the other the
                       grounds, the slot across is empty, the piece is not the exhibit's gate and
-                      the cash covers it, else red; a gate costs nothing unless the piece is at or
-                      below its decayed life, and the cost text shows its price (not as a charge).
-                      A click on a valid piece turns it into the gate, healthy, and the exhibit's
+                      the cash covers it, else red; a valid gate is green where a keeper passes
+                      (the crossing test gives code 0 and a cost below 10) and yellow (the
+                      highlight colour, logged as `highlight`) elsewhere, a click still placing
+                      it; a gate costs nothing unless the piece is at or below its decayed life,
+                      and the cost text shows its price (not as a charge). The gate is judged
+                      when the piece under the pointer changes (after a click none is shown until
+                      the pointer has been over another piece), and no tile is outlined. A saved
+                      exhibit's gate is the piece its record names. A click on a valid piece turns it into the gate, healthy, and the exhibit's
                       old gate back into a fence (`world ungate CLASS/TYPE/f X,Y side S id N`,
                       `world gate CLASS/TYPE/g X,Y side S id N`, `exhibit gate ID X,Y side S`),
                       books the price as construction and clears the undo list; any other place
