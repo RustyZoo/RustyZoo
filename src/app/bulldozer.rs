@@ -117,7 +117,7 @@ impl App<'_> {
                 // The last drawn entity with a pixel under the pointer (placing 7.1).
                 None => game
                     .staged
-                    .pick(game.camera.view_point(pointer), |id| {
+                    .pick(game.camera.view_point(pointer), bulldozer::WIDEN, |id| {
                         world.find(id).is_some()
                     })
                     .and_then(|id| world.find(id))

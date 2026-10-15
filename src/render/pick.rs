@@ -1,6 +1,6 @@
 //! Picking the entity under a point of the view (placing 7.1, sprite drawing 3.3 and 5.4): the
 //! map is picked as it is drawn. The last entity in paint order that has a drawn pixel of its
-//! frame under the point wins, widened by the `cHitThreshold` of its type.
+//! frame under the point wins, the row searched over a width from the `cHitThreshold` of its type.
 
 use super::*;
 
@@ -22,56 +22,59 @@ pub(super) fn threshold(ty: &EntityType) -> i32 {
 }
 
 /// Whether the point falls on one of the `frames` (the current frame and its background frame),
-/// drawn with the anchor `anchor` at normal zoom, mirrored or not. The row under the point is
-/// searched over `threshold` pixels (at least one) from `threshold / 2` left of the point for a
-/// drawn pixel; a negative threshold takes any point inside the box of a frame. A palette whose
-/// entry 0 is transparent leaves the pixels of value 0 out, as the drawing does.
+/// drawn with the anchor `anchor` at normal zoom, mirrored or not (placing 7.1, the pick). With
+/// the width `w` the search starts at `point - trunc(w / 2)`, which must lie inside the frame; a
+/// negative `w` then hits at once, else a stored pixel of the row from the column left of the
+/// start to `w - 1` columns right of it (frame columns, so a mirrored picture is searched the
+/// other way) is a hit, whatever its palette index.
 pub(crate) fn hits(
     frames: &[&Frame],
-    palette: &Palette,
     mirror: bool,
     anchor: (i64, i64),
-    threshold: i32,
+    w: i32,
     point: (i64, i64),
 ) -> bool {
-    let (from, count) = match threshold {
-        ..0 => (point.0, 1),
-        t => (point.0 - i64::from(t / 2), i64::from(t.max(1))),
-    };
+    let start = point.0.saturating_sub(i64::from(w) / 2);
     frames.iter().any(|frame| {
-        let row = point.1 - anchor.1 + i64::from(frame.y_offset);
-        let xo = i64::from(frame.x_offset);
-        // The columns of the frame the searched pixels fall on, cut to the frame: a huge
-        // threshold costs no more than the width.
-        let (first, last) = match mirror {
-            false => (from - anchor.0 + xo, from + count - 1 - anchor.0 + xo),
-            true => (anchor.0 + xo - (from + count - 1), anchor.0 + xo - from),
-        };
-        let (first, last) = (first.max(0), last.min(i64::from(frame.width) - 1));
-        let Ok(row) = i32::try_from(row) else {
-            return false;
-        };
-        match threshold < 0 {
-            true => first <= last && (0..i32::from(frame.height)).contains(&row),
-            false => (first..=last).any(|col| {
-                frame
-                    .pixel_at(col as i32, row)
-                    .is_some_and(|v| v != 0 || !palette.zero_is_transparent())
-            }),
+        let dx = start.saturating_sub(anchor.0);
+        let col = match mirror {
+            false => dx,
+            true => dx.saturating_neg(),
         }
+        .saturating_add(i64::from(frame.x_offset));
+        let row = point
+            .1
+            .saturating_sub(anchor.1)
+            .saturating_add(i64::from(frame.y_offset));
+        let (width, height) = (i64::from(frame.width), i64::from(frame.height));
+        if !(0..width).contains(&col) || !(0..height).contains(&row) {
+            return false;
+        }
+        // The columns cut to the frame: a huge width costs no more than the frame's.
+        let last = col.saturating_add(i64::from(w) - 1).min(width - 1);
+        w < 0 || (col - 1..=last).any(|c| frame.pixel_at(c as i32, row as i32).is_some())
     })
 }
 
 impl Staged {
     /// The id of the entity under `point`, a point of the view space at normal zoom (the
-    /// camera's `view_point`): the last one drawn that is hit and that `wanted` accepts. Only
-    /// entities of the zoo that were drawn can be hit.
-    pub fn pick(&self, point: (i64, i64), mut wanted: impl FnMut(u32) -> bool) -> Option<u32> {
+    /// camera's `view_point`): the last one drawn that is hit and that `wanted` accepts. The
+    /// width of the search is the `cHitThreshold` of the type plus `extra` (5 for the bulldozer
+    /// and the gate tool, 0 for the selection). Only entities of the zoo that were drawn can be
+    /// hit.
+    pub fn pick(
+        &self,
+        point: (i64, i64),
+        extra: i32,
+        mut wanted: impl FnMut(u32) -> bool,
+    ) -> Option<u32> {
         let it = self.placed.iter().zip(&self.hits).rev();
         it.filter_map(|((placed, b), hit)| Some((placed, b, (*hit)?)))
             .filter(|(_, b, hit)| {
-                let reach = i64::from(hit.threshold.max(0));
-                (b[0] - reach..b[2] + reach).contains(&point.0) && (b[1]..b[3]).contains(&point.1)
+                let start = point
+                    .0
+                    .saturating_sub(i64::from(hit.threshold.saturating_add(extra)) / 2);
+                (b[0]..b[2]).contains(&start) && (b[1]..b[3]).contains(&point.1)
             })
             .find(|(placed, _, hit)| {
                 let (Pic::Anim(anim, view, _) | Pic::Blended(anim, view, _)) = &placed.pic else {
@@ -80,12 +83,12 @@ impl Staged {
                 let Some(loaded) = anim.sprites.get(view.file) else {
                     return false;
                 };
-                let (sprite, palette) = (&loaded.0, &loaded.1);
+                let sprite = &loaded.0;
                 let frames: Vec<&Frame> =
                     sprite.extra.iter().chain(sprite.frames.first()).collect();
                 let anchor = (i64::from(placed.x), i64::from(placed.y));
-                let t = hit.threshold;
-                hits(&frames, palette, view.mirror, anchor, t, point) && wanted(hit.id)
+                let w = hit.threshold.saturating_add(extra);
+                hits(&frames, view.mirror, anchor, w, point) && wanted(hit.id)
             })
             .map(|(_, _, hit)| hit.id)
     }
@@ -106,91 +109,120 @@ mod tests {
         Frame::parse(&data).unwrap()
     }
 
-    fn palette(first: [u8; 3]) -> Palette {
-        let mut bytes = 1u32.to_le_bytes().to_vec();
-        bytes.extend([first[0], first[1], first[2], 255]);
-        Palette::parse(&bytes).unwrap()
-    }
-
     /// Whether a point hits the frame placed with its anchor at (100, 50).
-    fn hit(f: &Frame, mirror: bool, threshold: i32, point: (i64, i64)) -> bool {
-        hits(
-            &[f],
-            &palette([1, 2, 3]),
-            mirror,
-            (100, 50),
-            threshold,
-            point,
-        )
+    fn hit(f: &Frame, mirror: bool, w: i32, point: (i64, i64)) -> bool {
+        hits(&[f], mirror, (100, 50), w, point)
     }
 
     #[test]
-    fn a_point_hits_a_drawn_pixel_of_the_frame_and_nothing_else() {
+    fn a_point_hits_a_stored_pixel_of_the_frame_and_nothing_else() {
         let f = frame(0, 0, 1);
-        assert!(hit(&f, false, 0, (101, 50)));
+        // With w 0 the one column searched is the one left of the point.
         assert!(hit(&f, false, 0, (102, 50)));
-        assert!(hit(&f, false, 0, (103, 51)));
-        // A transparent pixel, the other row's pixel and points outside the frame miss.
-        assert!(!hit(&f, false, 0, (100, 50)));
-        assert!(!hit(&f, false, 0, (101, 51)));
+        assert!(hit(&f, false, 0, (103, 50)));
+        // The start must lie in the frame: the last column is only found from the column left of
+        // it.
         assert!(!hit(&f, false, 0, (104, 51)));
-        assert!(!hit(&f, false, 0, (101, 49)));
-        assert!(!hit(&f, false, 0, (101, 52)));
+        assert!(hit(&f, false, 1, (103, 51)));
+        // A gap, the other row's pixel and points outside the frame miss.
+        assert!(!hit(&f, false, 0, (101, 50)));
+        assert!(!hit(&f, false, 0, (100, 50)));
+        assert!(!hit(&f, false, 0, (102, 51)));
+        assert!(!hit(&f, false, 0, (105, 51)));
+        assert!(!hit(&f, false, 0, (102, 49)));
+        assert!(!hit(&f, false, 0, (102, 52)));
         // The offsets move the frame: the anchor is 2 columns and 1 row into it.
         let f = frame(2, 1, 1);
-        assert!(hit(&f, false, 0, (99, 49)));
-        assert!(hit(&f, false, 0, (101, 50)));
-        assert!(!hit(&f, false, 0, (100, 50)));
+        assert!(hit(&f, false, 0, (100, 49)));
+        assert!(hit(&f, false, 1, (101, 50)));
+        assert!(!hit(&f, false, 1, (100, 50)));
+    }
+
+    #[test]
+    fn any_stored_pixel_counts_whatever_its_palette_index() {
+        let f = frame(0, 0, 0);
+        assert!(hit(&f, false, 1, (103, 51)));
     }
 
     #[test]
     fn a_mirrored_frame_is_tested_where_it_is_drawn() {
         let f = frame(0, 0, 1);
-        assert!(hit(&f, true, 0, (99, 50)));
+        // Column k is drawn at 100 - k, and w 0 looks at the column left of the start.
         assert!(hit(&f, true, 0, (98, 50)));
-        assert!(hit(&f, true, 0, (97, 51)));
+        assert!(hit(&f, true, 0, (97, 50)));
+        assert!(!hit(&f, true, 0, (96, 51)));
+        assert!(!hit(&f, true, 0, (100, 50)));
         assert!(!hit(&f, true, 0, (101, 50)));
         // With an offset the frame reaches from `X + offset - (width - 1)` to `X + offset`.
         let f = frame(2, 0, 1);
-        assert!(hit(&f, true, 0, (101, 50)));
-        assert!(!hit(&f, true, 0, (103, 50)));
+        assert!(hit(&f, true, 0, (100, 50)));
+        assert!(!hit(&f, true, 0, (102, 50)));
     }
 
     #[test]
-    fn the_threshold_searches_the_row_from_half_of_it_left_of_the_point() {
+    fn the_search_starts_in_the_frame_one_column_left_of_the_start_and_runs_w_columns() {
         let f = frame(0, 0, 1);
-        // The pixel to the right is at 101: 0 and 1 look at the point alone.
-        for t in [0, 1] {
-            assert!(!hit(&f, false, t, (100, 50)), "{t}");
-        }
-        // 2 looks at 99 and 100, 3 at 99 to 101, 4 at 98 to 101.
-        assert!(!hit(&f, false, 2, (100, 50)));
-        assert!(hit(&f, false, 3, (100, 50)));
-        assert!(hit(&f, false, 4, (100, 50)));
-        assert!(!hit(&f, false, 4, (99, 50)));
-        // It reaches to the left too: from 3 left of the point for 6 pixels, 102 to 107.
-        assert!(hit(&f, false, 6, (105, 50)));
-        assert!(!hit(&f, false, 6, (106, 50)));
+        // w 5 starts 2 left of the point: only the points 102 to 105 start in the frame.
+        assert!(hit(&f, false, 5, (102, 50)));
+        assert!(hit(&f, false, 5, (105, 50)));
+        assert!(!hit(&f, false, 5, (101, 50)));
+        assert!(!hit(&f, false, 5, (106, 50)));
+        assert!(hit(&f, false, 5, (102, 51)));
+        // w 1 starts at the point and also looks at the column left of it.
+        assert!(!hit(&f, false, 1, (100, 50)));
+        assert!(hit(&f, false, 1, (101, 50)));
+        assert!(hit(&f, false, 1, (103, 50)));
+        assert!(!hit(&f, false, 1, (103, 52)));
+        // w 4 starts 2 left too, w 3 one left: the start 100 is the point 102 or 101.
+        assert!(hit(&f, false, 4, (102, 50)));
+        assert!(hit(&f, false, 3, (101, 50)));
         // Only the row of the point is searched.
-        assert!(!hit(&f, false, 8, (100, 52)));
-        // A huge threshold neither hangs nor overflows, and reaches the whole row.
-        assert!(!hit(&f, false, 1000, (100, 49)));
-        assert!(hit(&f, false, i32::MAX, (100, 50)));
-        assert!(!hit(&f, true, i32::MAX, (i64::MAX / 2, 50)));
-        assert!(!hit(&f, false, i32::MAX, (i64::MIN / 2, 50)));
+        assert!(!hit(&f, false, 8, (104, 52)));
+        // A mirrored frame is searched the other way: the start 99 is column 1 and the search
+        // runs over columns 0 to 4, the pixel of row 51 (column 3) included.
+        assert!(hit(&f, true, 5, (101, 51)));
+        assert!(hit(&f, true, 5, (99, 50)));
+        assert!(!hit(&f, true, 5, (103, 50)));
+        assert!(!hit(&f, true, 5, (98, 50)));
     }
 
     #[test]
-    fn a_negative_threshold_takes_any_point_in_the_box_of_the_frame() {
+    fn a_huge_or_extreme_value_neither_hangs_nor_overflows() {
         let f = frame(0, 0, 1);
-        for t in [-1, -9, i32::MIN] {
-            assert!(hit(&f, false, t, (100, 50)), "{t}");
-            assert!(hit(&f, false, t, (103, 50)));
-            assert!(hit(&f, false, t, (100, 51)));
-            assert!(!hit(&f, false, t, (104, 50)));
-            assert!(!hit(&f, false, t, (99, 50)));
-            assert!(!hit(&f, false, t, (100, 52)));
-            assert!(!hit(&f, false, t, (100, 49)));
+        assert!(hit(
+            &f,
+            false,
+            i32::MAX,
+            (100 + i64::from(i32::MAX / 2), 50)
+        ));
+        assert!(!hit(&f, false, i32::MAX, (100, 50)));
+        for point in [
+            (i64::MAX, 50),
+            (i64::MIN, 50),
+            (100, i64::MAX),
+            (100, i64::MIN),
+        ] {
+            for w in [i32::MIN, -1, 0, 5, i32::MAX] {
+                for mirror in [false, true] {
+                    assert!(!hit(&f, mirror, w, point));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_negative_width_hits_any_start_point_inside_the_frame() {
+        let f = frame(0, 0, 1);
+        for w in [-1, -9, i32::MIN] {
+            // The start is the point minus trunc(w / 2).
+            let at = |x: i64| (x + i64::from(w / 2), 50);
+            assert!(hit(&f, false, w, at(100)), "{w}");
+            assert!(hit(&f, false, w, at(103)));
+            assert!(hit(&f, false, w, (at(100).0, 51)));
+            assert!(!hit(&f, false, w, at(104)));
+            assert!(!hit(&f, false, w, at(99)));
+            assert!(!hit(&f, false, w, (at(100).0, 52)));
+            assert!(!hit(&f, false, w, (at(100).0, 49)));
         }
         // Mirrored the box is on the other side of the anchor.
         assert!(hit(&f, true, -1, (97, 50)));
@@ -198,43 +230,12 @@ mod tests {
     }
 
     #[test]
-    fn the_value_zero_is_transparent_only_under_the_marker_colour() {
-        let f = frame(0, 0, 0);
-        assert!(!hits(
-            &[&f],
-            &palette([255, 0, 255]),
-            false,
-            (100, 50),
-            0,
-            (103, 51)
-        ));
-        assert!(hits(
-            &[&f],
-            &palette([1, 2, 3]),
-            false,
-            (100, 50),
-            0,
-            (103, 51)
-        ));
-        // The box test does not look at pixels.
-        assert!(hits(
-            &[&f],
-            &palette([255, 0, 255]),
-            false,
-            (100, 50),
-            -1,
-            (103, 51)
-        ));
-    }
-
-    #[test]
     fn the_background_frame_counts_with_the_current_one() {
         let (current, background) = (frame(0, 0, 1), frame(0, -8i16 as u16, 1));
         let both = [&background, &current];
-        let p = palette([1, 2, 3]);
-        assert!(hits(&both, &p, false, (100, 50), 0, (101, 50)));
-        assert!(hits(&both, &p, false, (100, 50), 0, (101, 58)));
-        assert!(!hits(&both, &p, false, (100, 50), 0, (101, 51)));
+        assert!(hits(&both, false, (100, 50), 0, (102, 50)));
+        assert!(hits(&both, false, (100, 50), 0, (102, 58)));
+        assert!(!hits(&both, false, (100, 50), 0, (102, 51)));
     }
 
     #[test]

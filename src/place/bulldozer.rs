@@ -7,7 +7,7 @@
 //! the world keeps it. An object is named by its position in `zoo.entities` while the world
 //! stands still and by its id when something is asked in between.
 
-use super::{LIFE, side};
+use super::LIFE;
 use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
@@ -16,9 +16,9 @@ use crate::render::order::Kind;
 use crate::world::World;
 use crate::zoo::{Entity, Fence};
 
-/// A point within this many world units of a tile side picks the fence on it (the gate tool; the
-/// bulldozer picks by the pixels of the pictures, [`crate::render::Staged::pick`]).
-const EDGE: i32 = 16;
+/// What the bulldozer and the gate tool add to the width of the pixel pick, which is
+/// [`crate::render::Staged::pick`] (placing 7.1); the selection adds nothing.
+pub const WIDEN: i32 = 5;
 
 /// The type of an entity.
 pub fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
@@ -90,19 +90,6 @@ pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
         _ => 0.8,
     };
     cost(ty) * rate
-}
-
-/// The fence on the side of tile `t` nearest to the point (`lx`, `ly`) of the tile when the point
-/// is within [`EDGE`] units of it, in the tile's own slot or in the one across the same line.
-pub fn fence_near(world: &World, t: usize, lx: i32, ly: i32) -> Option<usize> {
-    let d = side(lx, ly) as usize;
-    let distance = [ly, 0, 63 - lx, 0, 63 - ly, 0, lx][d];
-    let across = world
-        .neighbour(t, d)
-        .and_then(|n| world.edge(n, (d + 4) % 8));
-    (distance <= EDGE)
-        .then(|| world.edge(t, d).or(across))
-        .flatten()
 }
 
 /// The entities a rectangle of tiles collects, each once (placing 7.1 area drag): for each tile

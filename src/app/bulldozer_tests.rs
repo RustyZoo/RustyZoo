@@ -638,14 +638,14 @@ fn the_tree_in_front_of_a_building_is_picked_where_their_pictures_overlap() {
             format!("tool bulldoze {class} id {id} refund {refund} name=Shop")
         };
         // Where both have a pixel the tree, drawn last, wins.
-        assert_eq!(s.pass(&[s.near(x, y, (10, 8))]), [name(tree, 32)]);
+        assert_eq!(s.pass(&[s.near(x, y, (12, 8))]), [name(tree, 32)]);
         // Beside the overlap each has pixels of its own.
         assert_eq!(s.pass(&[s.near(x, y, (0, 8))]), [name(shop, 280)]);
         assert_eq!(s.pass(&[s.near(x, y, (16, 16))]), [name(tree, 32)]);
         // Outside both pictures there is nothing.
         assert_eq!(s.pass(&[s.near(x, y, (20, -8))]), ["tool bulldoze none"]);
         // The click removes the one picked, without a question for a tree.
-        let told = s.click(s.near(x, y, (10, 8)));
+        let told = s.click(s.near(x, y, (12, 8)));
         assert!(
             told.iter()
                 .any(|l| l.starts_with("world remove objects/tree/"))

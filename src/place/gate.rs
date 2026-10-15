@@ -2,7 +2,7 @@
 //! of that fence type at the piece's place, and a click moves the exhibit's gate there.
 //! Valid places are green where a keeper passes and in the highlight colour elsewhere.
 
-use super::bulldozer::{fence_near, type_of};
+use super::bulldozer::type_of;
 use super::{LIFE, NO_FUNDS, Outcome, Pending, STRENGTH, Verdict};
 use crate::build::{cost, number};
 use crate::entity::Catalogue;
@@ -18,28 +18,20 @@ pub struct Gate {
     pub exhibit: u32,
 }
 
-/// The id of the fence piece under the world point, the hovered entity of the gate tool.
-pub fn over(world: &World, point: (i64, i64)) -> Option<u32> {
-    let at = fence_at(world, point)?;
+/// The id of the entity at position `at` when it is a fence piece, the hovered entity of the
+/// gate tool (the entity the pixel pick finds, placing 6.4).
+pub fn over(world: &World, at: usize) -> Option<u32> {
+    world.slot(at)?;
     Some(world.zoo.entities[at].common.as_ref()?.id)
 }
 
-/// The position in the entity list of the fence piece near the world point.
-fn fence_at(world: &World, point: (i64, i64)) -> Option<usize> {
-    let near = |v: i64| v.clamp(-(1 << 20), 1 << 20) as i32;
-    let (x, y) = (near(point.0), near(point.1));
-    let t = world.tile_index(x.div_euclid(64), y.div_euclid(64))?;
-    fence_near(world, t, x.rem_euclid(64), y.rem_euclid(64))
-}
-
-/// The pending gate for the world point under the pointer, or none when no fence piece of an
-/// exhibit fence type with a gate is there. The place is valid when [`World::gate_for`] finds an
+/// The pending gate for the entity at position `at`, or none when it is no fence piece of an
+/// exhibit fence type with a gate. The place is valid when [`World::gate_for`] finds an
 /// exhibit and the cash covers the price (placing 6.4 items 1 to 3 and 5): nothing for a piece
 /// above the decayed life of its type, else the price of the gate type, and tinted by
 /// [`World::keeper_passes`]. An invalid place keeps no message, except for the cash, which shows
 /// 10002.
-pub fn pending(world: &World, cat: &Catalogue, money: &Money, point: (i64, i64)) -> Option<Gate> {
-    let at = fence_at(world, point)?;
+pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Option<Gate> {
     let piece = &world.zoo.entities[at];
     let (tile, facing) = world.slot(at)?;
     let c = piece.common.as_ref()?;

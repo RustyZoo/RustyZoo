@@ -199,17 +199,6 @@ fn only_paths_and_deletable_scenery_in_the_zoo_can_be_removed() {
 }
 
 #[test]
-fn the_near_fence_is_on_the_side_of_the_tile_nearest_to_the_point() {
-    let w = world(vec![path(1, 1), piece("f", 1, 1, 2)]);
-    let t = w.tile_index(1, 1).unwrap();
-    // Near the east side: the fence, in the tile's slot or in the one across.
-    assert_eq!(fence_near(&w, t, 60, 40), Some(1));
-    assert_eq!(fence_near(&w, w.tile_index(2, 1).unwrap(), 2, 32), Some(1));
-    // The middle of the tile is further than the reach of a side.
-    assert_eq!(fence_near(&w, t, 40, 40), None);
-}
-
-#[test]
 fn an_area_collects_each_object_once_by_the_tiles_it_covers() {
     let mut pieces: Vec<Entity> = (1..=7).map(|x| path(x % 8, 2)).collect();
     pieces.push(entity("building", "shop", "", 3 * 64, 4 * 64, 0));
