@@ -298,6 +298,7 @@ impl MapRenderer<'_> {
 
     /// Places the pieces of a wall of `height` steps, bottom to top; only its ladder with
     /// `ladder_only`.
+    #[allow(clippy::too_many_arguments)]
     fn stack(
         &mut self,
         scene: &Scene,
