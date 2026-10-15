@@ -406,3 +406,37 @@ fn a_unit_of_more_than_four_cells_has_the_small_margin() {
     ]);
     assert_eq!((margin(&w, 0), margin(&w, 1)), (20, 5));
 }
+
+#[test]
+fn only_the_value_one_of_the_ini_allows_diagonal_moves() {
+    for (ini, want) in [
+        ("", true),
+        ("[AI]\nAllowDiagonalMoves=1\n", true),
+        ("[AI]\nallowdiagonalmoves=0\n", false),
+        ("[AI]\nAllowDiagonalMoves=-3\n", false),
+        ("[AI]\nAllowDiagonalMoves=2\n", false),
+        ("[AI]\nAllowDiagonalMoves=99999999999\n", false),
+        ("[AI]\nAllowDiagonalMoves=x\n", true),
+    ] {
+        let mut w = map(vec![]);
+        w.units.set_ini(ini.as_bytes());
+        assert_eq!(w.units.finder.settings.diagonal, want, "{ini:?}");
+    }
+}
+
+#[test]
+fn a_fast_guest_does_not_move_on_a_cornering_step_but_a_keeper_does() {
+    // Speed 400 at 67 ms is 26 per step, over the limit of 24 (issue 302).
+    for (class, kind, moved) in [("guests", "g", false), ("keeper", "k", true)] {
+        let mut w = map(vec![entity(class, kind, 1, (5 * 64 + 40, 9 * 64 + 10), 0)]);
+        let mut s = sim();
+        send(&mut w, 1, &[(5, 9), (6, 9)], 400);
+        w.units.get_mut(1).unwrap().travel = 0;
+        step_all(&mut w, &mut s, &[67]);
+        assert_eq!(
+            position(&w, 1) != (5 * 64 + 40, 9 * 64 + 10),
+            moved,
+            "{class}"
+        );
+    }
+}
