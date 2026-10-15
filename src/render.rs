@@ -1414,6 +1414,8 @@ fn tank_kind(ty: &EntityType) -> TankKind {
         surface: flag("cSurface"),
         shows: show || flag("cShow"),
         transient: flag("cIsTransient"),
+        life: crate::build::number(ty, "cLife").unwrap_or(crate::place::LIFE) as u32,
+        strength: crate::build::number(ty, "cStrength").unwrap_or(crate::place::STRENGTH) as u32,
     }
 }
 

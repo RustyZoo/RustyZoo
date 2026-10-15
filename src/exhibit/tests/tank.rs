@@ -273,6 +273,7 @@ const CONFIG: TankConfig = TankConfig {
     filled: true,
     salt: true,
     purity: 90,
+    terrain: [2, 17],
 };
 
 /// A map of tiles with these elevations by tile (0 elsewhere), and the pieces, with the
@@ -626,6 +627,7 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
             filled: true,
             salt: true,
             purity: 100,
+            terrain: [2, 17],
         }
     );
     // Missing: what there is without a file, heights of 1 included; an empty file too.

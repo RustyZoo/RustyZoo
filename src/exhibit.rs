@@ -59,6 +59,9 @@ pub struct TankConfig {
     pub filled: bool,
     pub salt: bool,
     pub purity: u32,
+    /// The terrain types of the floor of a tank and of a show tank (`tankTerrain`,
+    /// `tankTerrainShow`).
+    pub terrain: [u8; 2],
 }
 
 impl Default for TankConfig {
@@ -72,6 +75,7 @@ impl Default for TankConfig {
             filled: false,
             salt: false,
             purity: 100,
+            terrain: [2, 17],
         }
     }
 }
@@ -87,7 +91,7 @@ impl TankConfig {
 
     /// Reads the `[tank]` section of a `tanks.cfg`; a key that is missing keeps the default, and
     /// a number is cut to what a tank can hold (a height or level 0 to 255, a sink -24 to 24, a
-    /// purity 0 to 100).
+    /// purity 0 to 100, a terrain type 0 to 255).
     pub fn read(config: &Config) -> TankConfig {
         let tank = config.section("tank");
         let number = |key: &str| tank.and_then(|s| s.get(key)).and_then(to_int);
@@ -110,6 +114,9 @@ impl TankConfig {
         found.salt = number("initialSalinity").map_or(found.salt, |n| n > 0);
         found.purity =
             number("initialWaterPurity").map_or(found.purity, |n| n.clamp(0, 100) as u32);
+        for (i, key) in ["tankTerrain", "tankTerrainShow"].into_iter().enumerate() {
+            found.terrain[i] = number(key).map_or(found.terrain[i], |n| n.clamp(0, 255) as u8);
+        }
         found
     }
 }

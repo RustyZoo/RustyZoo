@@ -7,6 +7,7 @@ use super::{Action, Event, World};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank, TankConfig};
 use crate::render::order::{Kind, ground_height};
 use crate::terrain::shape::LIMIT;
+use crate::zoo::{Common, Entity, Fence};
 use std::collections::HashSet;
 
 /// The offset of the middle of side `d` (0, 2, 4, 6) inside its tile, where a fence piece stands.
@@ -34,6 +35,32 @@ impl World {
             let tile = self.zoo.tiles[t];
             if (tile.elevation, tile.shape) != (level, 0) {
                 self.put_tile(t, level, 0, tile.terrain, record);
+            }
+        }
+    }
+
+    /// Paints the tiles with the terrain type of a show tank or of a tank, free and recorded for
+    /// undo; a tile that has the type is left.
+    pub(super) fn paint(&mut self, tiles: &[usize], show: bool) {
+        let terrain = self.tank_config.terrain[usize::from(show)];
+        for &t in tiles {
+            let tile = self.zoo.tiles[t];
+            if tile.terrain != terrain {
+                self.put_tile(t, tile.elevation, tile.shape, terrain, true);
+            }
+        }
+    }
+
+    /// The floors of these tanks after their show state was decided (3.9 "The floor").
+    pub(super) fn floors(&mut self, ids: &[u32]) {
+        let mut done = Vec::new();
+        for &id in ids {
+            if done.contains(&id) {
+                continue;
+            }
+            done.push(id);
+            if let Some(tank) = self.tank(id) {
+                self.paint(&self.tiles_of(id), tank.show);
             }
         }
     }
@@ -98,18 +125,38 @@ impl World {
         self.changed();
     }
 
-    /// Builds a plain copy of the wall at position `wall` on side `d` of tile `t`, free, and
+    /// Builds a new piece of the type of the wall at position `wall` on side `d` of tile `t`, as a
+    /// bought piece is (healthy, a plain fence, nothing of the wall's state kept), free, and
     /// returns its id.
     fn copy_wall(&mut self, wall: usize, t: usize, d: usize) -> Option<u32> {
         let id = self.zoo.id_counter.checked_add(1)?;
-        let mut copy = self.zoo.entities[wall].clone();
-        copy.subtype = "f".into();
-        let common = copy.common.as_mut()?;
+        let old = &self.zoo.entities[wall];
+        let kind = self.shapes[wall]?.tank;
         let width = self.zoo.width as usize;
         let (x, y) = middle(d);
-        (common.x, common.y) = ((t % width) as i32 * 64 + x, (t / width) as i32 * 64 + y);
-        common.z = ground_height(&self.zoo.tiles[t], x, y);
-        (common.rotation, common.id) = (d as u32, id);
+        let (x, y) = ((t % width) as i32 * 64 + x, (t / width) as i32 * 64 + y);
+        let copy = Entity {
+            class: old.class.clone(),
+            type_name: old.type_name.clone(),
+            subtype: "f".into(),
+            body_size: None,
+            common: Some(Common {
+                x,
+                y,
+                z: ground_height(&self.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64)),
+                rotation: d as u32,
+                id,
+                name: String::new(),
+                colors: Vec::new(),
+                fence: Some(Fence {
+                    strength: kind.strength,
+                    life: kind.life,
+                    timers: [0; 2],
+                    portal: false,
+                }),
+                movement_mode: 0,
+            }),
+        };
         self.zoo.id_counter = id;
         self.zoo.entities.push(copy);
         self.shapes.push(self.shapes[wall]);
@@ -205,7 +252,9 @@ impl World {
                 }
             }
             self.wall_step(id);
-            self.retank(false);
+            let mut changed = self.retank(false);
+            changed.push(id);
+            self.floors(&changed);
         }
         self.fill_values(id, inherited);
         let asks = physical && inherited.is_none() && !self.refused(id).is_empty();

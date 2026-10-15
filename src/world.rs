@@ -48,6 +48,9 @@ pub struct TankKind {
     pub surface: bool,
     pub shows: bool,
     pub transient: bool,
+    /// `cLife` and `cStrength`: what a new piece of the type starts with.
+    pub life: u32,
+    pub strength: u32,
 }
 
 impl TankKind {
@@ -59,6 +62,8 @@ impl TankKind {
         surface: false,
         shows: false,
         transient: false,
+        life: 0,
+        strength: 0,
     };
 }
 

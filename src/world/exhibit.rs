@@ -403,16 +403,30 @@ impl World {
             });
         }
         next.exterior(self);
+        // The tiles of the tanks that are gone, which keep their ground as sand (3.9).
+        let gone: Vec<usize> = old
+            .list()
+            .iter()
+            .filter(|e| e.tank.is_some() && !kept_ids.contains(&e.id) && !quiet)
+            .flat_map(|e| (0..self.zoo.tiles.len()).filter(|&t| old.region(t) == Some(e.id)))
+            .collect();
         self.exhibits = next;
-        self.retank(quiet);
+        let mut changed = self.retank(quiet);
+        if !quiet {
+            self.paint(&gone, false);
+            changed.extend(lost.iter().map(|l| l.1).chain(split_kept.iter().copied()));
+            self.floors(&changed);
+        }
         for (id, inherited) in tanks {
             self.make_tank(id, inherited, !quiet);
         }
         if !quiet && !split_kept.is_empty() {
-            for id in split_kept {
+            for &id in &split_kept {
                 self.rewall(id);
             }
-            self.retank(false);
+            let mut changed = self.retank(false);
+            changed.extend(split_kept);
+            self.floors(&changed);
         }
         for &id in &regate {
             if let Some(e) = self.exhibits.get_mut(id) {
@@ -508,8 +522,9 @@ impl World {
 
     /// Decides again which exhibits are tanks and which of them show tanks. A land exhibit
     /// closed by tank walls only becomes a tank and the other way round (the morph of 3.9 is
-    /// the game's business); the tank list of the zoo, which the picture reads, follows.
-    pub(super) fn retank(&mut self, strict: bool) {
+    /// the game's business); the tank list of the zoo, which the picture reads, follows. The
+    /// tanks that are new or changed their show state are returned.
+    pub(super) fn retank(&mut self, strict: bool) -> Vec<u32> {
         let mut tiles: HashMap<u32, Vec<usize>> = HashMap::new();
         for t in 0..self.zoo.tiles.len() {
             if let Some(r) = self
@@ -525,11 +540,15 @@ impl World {
             .iter()
             .filter_map(|&id| Some((id, self.tank_test(tiles.get(&id)?, &|_| false, strict)?)))
             .collect();
+        let mut changed = Vec::new();
         for &id in &ids {
             let found = tanks.iter().any(|t| t.0 == id);
             if let Some(e) = self.exhibits.get_mut(id) {
                 match (found, e.tank) {
-                    (true, None) => e.tank = Some(Tank::default()),
+                    (true, None) => {
+                        e.tank = Some(Tank::default());
+                        changed.push(id);
+                    }
                     (false, _) => e.tank = None,
                     _ => {}
                 }
@@ -540,10 +559,14 @@ impl World {
             let Some(mine) = tiles.get(&id) else { continue };
             let show = self.tank_test(mine, &|t| self.tank_at(t).is_some(), strict);
             if let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) {
+                if tank.show != (show == Some(true)) && !changed.contains(&id) {
+                    changed.push(id);
+                }
                 tank.show = show == Some(true);
             }
         }
         self.sync_tanks();
+        changed
     }
 
     /// The tank records of the zoo, which the picture reads, from the tank exhibits.

@@ -42,9 +42,9 @@ pub const NO_FUNDS: i32 = 10002;
 pub const NO_TANK: i32 = 10517;
 
 /// The `cLife` of a fence type that has none.
-const LIFE: f32 = 10.0;
+pub(crate) const LIFE: f32 = 10.0;
 /// The `cStrength` of a fence type that has none.
-const STRENGTH: f32 = 500.0;
+pub(crate) const STRENGTH: f32 = 500.0;
 
 /// The biggest placement footprint side taken, in half tiles (the paint order drops a bigger one).
 const MAX_FOOTPRINT: i32 = 64;
