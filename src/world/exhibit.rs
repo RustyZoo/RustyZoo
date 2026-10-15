@@ -11,9 +11,9 @@ use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part};
 use crate::place::path_shape;
 use std::collections::{HashMap, HashSet};
 
-/// The message "%s is inaccessible to zoo staff."
+/// The message that the exhibit is inaccessible to the staff.
 pub const INACCESSIBLE: i32 = 11000;
-/// The message "The entrance to %s is blocked and is not accessible to zoo staff."
+/// The message that the entrance of the exhibit is blocked.
 pub const BLOCKED: i32 = 11001;
 
 /// What happened to the exhibits, for the game to log, to ask the name and to tell the player.
