@@ -243,9 +243,12 @@ impl Interface {
             }
         }
         // With no capture, the element under the pointer is the hover element.
-        let target = self.hit(at).filter(|t| Some(*t) != self.map_view);
+        // The release may have hidden the screen under the pointer: the tooltip follows it.
+        let hit = self.hit(at);
+        let target = hit.filter(|t| Some(*t) != self.map_view);
         self.hover_to(target);
         self.widget_hover(target, at);
+        self.tooltip_for(hit);
         held.is_some() && held == self.map_view
     }
 
