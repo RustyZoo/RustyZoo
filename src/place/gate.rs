@@ -16,6 +16,8 @@ pub struct Gate {
     pub pending: Pending,
     pub piece: u32,
     pub exhibit: u32,
+    /// The cost text is hidden: a quadrant of the tank tile holds an object (placing 6.4 item 4).
+    pub hidden: bool,
 }
 
 /// The id of the entity at position `at` when it is a fence piece, the hovered entity of the
@@ -27,10 +29,10 @@ pub fn over(world: &World, at: usize) -> Option<u32> {
 
 /// The pending gate for the entity at position `at`, or none when it is no fence piece of an
 /// exhibit fence type with a gate. The place is valid when [`World::gate_for`] finds an
-/// exhibit and the cash covers the price (placing 6.4 items 1 to 3 and 5): nothing for a piece
-/// above the decayed life of its type, else the price of the gate type, and tinted by
-/// [`World::keeper_passes`]. An invalid place keeps no message, except for the cash, which shows
-/// 10002.
+/// exhibit, no object stands on the tile of a tank and the cash covers the price (placing 6.4):
+/// nothing for a piece above the decayed life of its type, else the price of the gate type, and
+/// tinted by [`World::keeper_passes`]. An invalid place keeps no message, except for the cash,
+/// which shows 10002; an object on a tank tile also hides the cost text.
 pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Option<Gate> {
     let piece = &world.zoo.entities[at];
     let (tile, facing) = world.slot(at)?;
@@ -45,6 +47,8 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Opti
         false => cost(&cat.types[ty]),
     };
     let exhibit = world.gate_for(at);
+    let hidden = exhibit.is_some() && world.tank_holds_object(at);
+    let exhibit = exhibit.filter(|_| !hidden);
     let afford = money.can_pay(price);
     let width = world.zoo.width as usize;
     let (lx, ly) = (c.x - 64 * c.x.div_euclid(64), c.y - 64 * c.y.div_euclid(64));
@@ -70,6 +74,7 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Opti
         pending,
         piece: c.id,
         exhibit: exhibit.unwrap_or(0),
+        hidden,
     })
 }
 

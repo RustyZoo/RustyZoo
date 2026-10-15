@@ -318,6 +318,9 @@ impl Game {
         if self.build.bulldozing() {
             return self.dozer_amount();
         }
+        if self.gate.as_ref().is_some_and(|g| g.hidden) {
+            return None;
+        }
         match self.run.is_empty() {
             true => self
                 .pending

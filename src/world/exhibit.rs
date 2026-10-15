@@ -94,11 +94,10 @@ impl World {
     }
 
     /// The exhibit whose gate the fence piece at `at` could become with the gate tool (placing
-    /// 6.4 items 1 to 3): the piece is of an exhibit fence type that has a gate, the tile across
+    /// 6.4 items 1 to 3; item 4 is [`World::tank_holds_object`]): the piece is of an exhibit fence type that has a gate, the tile across
     /// is on the map and its slot on the line is empty, one tile of the line is in the zoo
     /// grounds (the exterior is part of the original's grounds region) and the other in an
-    /// exhibit, and the piece is not already that exhibit's gate. The tank test (item 4) waits
-    /// for tank exhibits.
+    /// exhibit, and the piece is not already that exhibit's gate.
     pub fn gate_for(&self, at: usize) -> Option<u32> {
         self.shapes
             .get(at)
@@ -124,8 +123,8 @@ impl World {
     /// Whether a keeper passes where the fence piece at `at` could be the gate: the pair test of
     /// the piece's tile and the tile across gives code 0 and a cost below 10 (placing 6.4, exhibits
     /// and money 3.4). The edge cost of the keeper is taken as 0 and its cost of a plain tile as 1
-    /// (the staff's pathfinding, issue 52), and the keeper is always the zookeeper (the marine
-    /// specialist of a tank waits for tanks).
+    /// (the staff's pathfinding, issue 52), and the keeper is the marine specialist when the
+    /// piece's tile is in a tank, else the zookeeper.
     pub fn keeper_passes(&self, at: usize) -> bool {
         let Some((t, d)) = self.slot_of(at) else {
             return false;
@@ -133,13 +132,22 @@ impl World {
         let Some(n) = self.neighbour(t, d) else {
             return false;
         };
-        let cost = |t: usize| match (self.dear(t), self.path(t).is_some()) {
+        let diver = self.tank_at(t).is_some();
+        let cost = |t: usize| match (self.dear(t, diver), self.path(t).is_some()) {
             (true, _) => 20,
             (_, true) => 1,
             _ if !path_shape(self.zoo.tiles[t].shape) => 16,
             _ => 1,
         };
-        self.code((t, n)) == 0 && cost(t).max(cost(n)) < 10
+        self.code((t, n), diver) == 0 && cost(t).max(cost(n)) < 10
+    }
+
+    /// Whether a quadrant of the tank tile of the fence piece at `at` holds an object: item 4 of
+    /// the gate tool's validity (placing 6.4), which refuses the gate and hides its cost text.
+    pub fn tank_holds_object(&self, at: usize) -> bool {
+        self.slot_of(at).is_some_and(|(t, _)| {
+            self.tank_at(t).is_some() && (0..4).any(|q| self.quadrant(t, q).is_some())
+        })
     }
 
     /// Moves the gate of exhibit `id` to the fence piece with id `piece` (placing 6.4): the old
