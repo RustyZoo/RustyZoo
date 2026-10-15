@@ -36,12 +36,12 @@ pub(super) struct Dozer {
     mixed: bool,
 }
 
-/// A removal under way: the entities still to go (ids), the pairs of regions asked about, the
+/// question that is open (the entity it is about), and what has gone so far.
 /// question that is open, and what has gone so far.
 pub(super) struct Sweep {
     queue: VecDeque<u32>,
     asked: Vec<(u32, u32)>,
-    asking: Option<(u32, Question)>,
+    asking: Option<u32>,
     area: bool,
     removed: usize,
     refund: f32,
@@ -282,7 +282,7 @@ impl App<'_> {
                         .is_some_and(|ui| ui.ask(QUESTION, &to_cp1252(&text), Buttons::YES_NO));
                     if asked {
                         if let Some(sweep) = self.game.as_mut().and_then(|g| g.sweep.as_mut()) {
-                            sweep.asking = Some((id, question));
+                            sweep.asking = Some(id);
                             // The pair is stored when the question is reached, before the
                             // answer: reaching it again in this click is a silent No.
                             sweep.asked.extend(question.pair());
@@ -328,7 +328,7 @@ impl App<'_> {
     /// the removal.
     pub(super) fn sweep_answered(&mut self, code: i32) {
         let Some(game) = &mut self.game else { return };
-        let Some((id, question)) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
+        let Some(id) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
             return;
         };
         self.tool_lines.push(format!(

@@ -495,7 +495,8 @@ fn gate_tank_hides_the_cost_and_refuses_when_an_object_stands_on_the_tank_tile()
     };
     let over = |w: &World| {
         // The north piece of tile (3, 3).
-        crate::place::gate::pending(w, &cat, &money, (3 * 64 + 32, 3 * 64 + 3)).unwrap()
+        let north = w.edge(w.tile_index(3, 3).unwrap(), 0).unwrap();
+        crate::place::gate::pending(w, &cat, &money, north).unwrap()
     };
     let tree = entity("objects", "tree", "", 3 * 64 + 10, 3 * 64 + 10, 0);
     // A tank with nothing in it: a valid gate, green for the marine specialist.
