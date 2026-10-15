@@ -521,4 +521,18 @@ fence_drag() { # fence_drag <map> <last move>
 check base-trial "6,48920,62790f338040a757" "fence_drag maps/default.zoo '878 332'"
 check expansion-trial "6,49250,73fe4a3df4a5c57b" "fence_drag maps/scn19.zoo '878 332'"
 
+# The bulldozer: the path drag of above, Escape drops the path, the Delete key makes the bulldozer
+# the tool, and a press with a drag over the rectangle that holds the L removes everything the
+# rectangle covers (each piece refunded 80% of its cost). Prints the removals (the `world remove`
+# lines), the cash at the end (from 50000) and the hash of the last picture.
+bulldozer_area() { # bulldozer_area <map>
+  d=$(mktemp -d)
+  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 key escape\n14 key delete\n15 mouse 600 400\n16 down\n17 mouse 700 380\n18 mouse 824 384\n19 up\n20 mouse 640 380\n" >"$d/script"
+  rz run "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+    awk '/ world remove /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
+  rm -rf "$d"
+}
+check base-trial "8,49960,9e68a707de0688d9" "bulldozer_area maps/default.zoo"
+check expansion-trial "17,50156,dfc2848f5177231c" "bulldozer_area maps/scn19.zoo"
+
 exit $failed

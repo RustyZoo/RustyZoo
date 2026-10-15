@@ -13,6 +13,8 @@
 //! pending pieces, [`path_run`] and [`fence_run`] say where and [`afford`] which of them the cash
 //! covers.
 
+pub mod bulldozer;
+
 use crate::build::{cost, number};
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
@@ -53,6 +55,8 @@ pub struct Tints {
     pub valid: [u8; 3],
     pub overwrite: [u8; 3],
     pub invalid: [u8; 3],
+    /// The tint of what the bulldozer would remove.
+    pub delete: [u8; 3],
 }
 
 impl Default for Tints {
@@ -62,6 +66,7 @@ impl Default for Tints {
             valid: [0, 225, 0],
             overwrite: [225, 112, 0],
             invalid: [225, 0, 0],
+            delete: [225, 0, 0],
         }
     }
 }
@@ -82,6 +87,7 @@ impl Tints {
             valid: key("entityvalidcolor", shipped.valid),
             overwrite: key("entityoverwritecolor", shipped.overwrite),
             invalid: key("entityinvalidcolor", shipped.invalid),
+            delete: key("entitydeletecolor", shipped.delete),
         }
     }
 }
@@ -401,13 +407,24 @@ pub fn dirt<'a>(
     }
 }
 
-/// `[UI] smartFences` of the ini file, the test of fences against large objects (placing 6.3
-/// rule 5): on when missing, off for 0.
-pub fn smart_fences(ini: &[u8]) -> bool {
+/// A switch of the `[UI]` section of the ini file: on when missing or not a number, off for 0.
+fn ui_switch(ini: &[u8], key: &str) -> bool {
     Config::parse(ini)
         .ok()
-        .and_then(|c| ini_whole(&c, "UI", "smartFences"))
+        .and_then(|c| ini_whole(&c, "UI", key))
         .is_none_or(|n| n != 0)
+}
+
+/// `[UI] smartFences` of the ini file, the test of fences against large objects (placing 6.3
+/// rule 5).
+pub fn smart_fences(ini: &[u8]) -> bool {
+    ui_switch(ini, "smartFences")
+}
+
+/// `[UI] confirmSell` of the ini file, the question before a type that needs one is removed
+/// (placing 7.1).
+pub fn confirm_sell(ini: &[u8]) -> bool {
+    ui_switch(ini, "confirmSell")
 }
 
 /// The text of the cost at the pointer: an amount in whole units without grouping, `($25)` for
