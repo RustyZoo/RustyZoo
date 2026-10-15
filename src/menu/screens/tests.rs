@@ -261,6 +261,7 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
             path: "maps/a.zoo".into(),
             label: "scenario aa".into(),
             forget_last: true,
+            freeform: false,
         }))
     );
     // The third entry's file is missing: no picture, no story, but it can be played (it fails
@@ -358,6 +359,7 @@ fn the_freeform_screen_lists_the_maps_and_shows_the_first_with_the_starting_cash
             path: "maps/m1.zoo".into(),
             label: "freeform cash 75000".into(),
             forget_last: true,
+            freeform: true,
         }))
     );
     ui.select_row(11504, Some(1));

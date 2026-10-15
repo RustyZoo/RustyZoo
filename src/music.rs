@@ -7,6 +7,8 @@ use crate::config::{Config, to_int};
 pub const START_LIMIT: i32 = 6000;
 /// The most the fade term `F` may reach before the music is stopped.
 const FADE_END: i32 = 3000;
+/// A step of this many milliseconds or more does not advance the fade.
+const LONG_STEP: u32 = 2000;
 /// Interface updates that do nothing at the first fade of a session.
 const FIRST_DELAY: u32 = 5;
 
@@ -106,10 +108,13 @@ impl Music {
     }
 
     /// A game starts: the fade begins if the music plays and does not fade already. The first
-    /// fade waits five interface updates (specification 6.3).
-    pub fn start_fade(&mut self) {
+    /// fade of a session (`first`) waits five interface updates (specification 6.3).
+    pub fn start_fade(&mut self, first: bool) {
         if self.state == State::Playing {
-            self.state = State::Waiting(FIRST_DELAY);
+            self.state = match first {
+                true => State::Waiting(FIRST_DELAY),
+                false => State::Fading,
+            };
         }
     }
 
@@ -128,7 +133,11 @@ impl Music {
                 false
             }
             State::Fading => {
-                // The period is below 1000 ms: the ini rate is at least 1 per second.
+                // A step of 2000 ms or more does not advance the fade. (The period of the
+                // interface update is below 1000 ms: the ini rate is at least 1 per second.)
+                if period >= LONG_STEP {
+                    return false;
+                }
                 self.fade += (period / 2) as i32;
                 if self.fade > FADE_END {
                     self.state = State::Stopped;
@@ -207,7 +216,7 @@ mod tests {
         let mut m = music("[UI]\nmenuMusicAttenuation=-1000\n").unwrap();
         // Nothing changes until a game starts.
         assert!(!m.update(66) && m.sum() == -1000 && m.playing());
-        m.start_fade();
+        m.start_fade(true);
         assert!(!m.playing());
         assert!((0..5).all(|_| !m.update(66)) && m.sum() == -1000);
         // F goes 33, 66, ..., 2970: 90 steps; the next update stops the music.
@@ -219,19 +228,37 @@ mod tests {
         assert!(m.update(66) && m.stopped());
         assert_eq!(m.log_line(), "music stopped");
         // A second start does not bring it back; later updates change nothing.
-        m.start_fade();
+        m.start_fade(true);
         assert!(!m.update(66) && m.stopped());
+    }
+
+    #[test]
+    fn only_the_first_fade_of_a_session_waits_and_a_long_step_does_not_advance_it() {
+        // A later fade steps from its first update.
+        let mut m = music("").unwrap();
+        m.start_fade(false);
+        assert!(m.update(66) && m.sum() == 33);
+        // A step of 2000 ms counts as an update of the wait, and moves nothing once it is over.
+        let mut m = music("").unwrap();
+        m.start_fade(true);
+        assert!(!m.update(2000));
+        assert!((0..4).all(|_| !m.update(66)) && m.sum() == 0);
+        assert!(m.update(66) && m.sum() == 33);
+        assert!(!m.update(2000) && !m.update(u32::MAX) && m.sum() == 33);
+        let mut m = music("").unwrap();
+        m.start_fade(false);
+        assert!(!m.update(2000) && m.sum() == 0);
     }
 
     #[test]
     fn a_fade_in_progress_is_not_started_again() {
         let mut m = music("").unwrap();
-        m.start_fade();
+        m.start_fade(true);
         for _ in 0..7 {
             m.update(66);
         }
         let fade = m.sum();
-        m.start_fade();
+        m.start_fade(false);
         assert!(m.update(66) && m.sum() == fade + 33);
     }
 

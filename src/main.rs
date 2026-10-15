@@ -105,7 +105,7 @@ usage: rustyzoo [--data <dir>] <command>
                       if a set fails
   run [<map>] --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
       [--png-every K] [--out DIR] [--show ID]... [--rows ID N]... [--text ID TEXT]...
-      [--ask ID BUTTONS]
+      [--ask ID BUTTONS] [--bare]
                       play a map (a .zoo member) without a window. N passes of the main loop
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
@@ -131,7 +131,9 @@ usage: rustyzoo [--data <dir>] <command>
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma
-                      separated, for a script to scroll, select, type in and answer. The window is
+                      separated, for a script to scroll, select, type in and answer. A game shows
+                      the map view and the main panel (layout 2); --bare (with a map) leaves the
+                      panel out, so that the frames are those of the map alone. The window is
                       1024x768 unless
                       --size says otherwise. Prints the size of the window, then, for each pass
                       in which something happens: a line per command applied, then one per
@@ -142,7 +144,7 @@ usage: rustyzoo [--data <dir>] <command>
                       in a pass whose index is a multiple of K is written to
                       DIR/frame-<pass>.png (DIR is by default the current folder)
   run [<map>] [--size WxH] [--passes N] [--script FILE] [--log FILE] [--timing MS] [--shot FILE]
-      [--show ID]... [--rows ID N]... [--text ID TEXT]... [--ask ID BUTTONS]
+      [--show ID]... [--rows ID N]... [--text ID TEXT]... [--ask ID BUTTONS] [--bare]
                       play a map (without one, start up to the main menu, see below) with a
                       game size of the ini file's screenwidth and
                       screenheight (cut to the display; --size overrides it, uncut), in a

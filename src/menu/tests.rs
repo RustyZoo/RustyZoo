@@ -431,6 +431,7 @@ fn continue_asks_for_the_last_file_and_tells_the_player_when_it_is_gone() {
             path: "Old/Saved.ZOO".into(),
             label: "continue".into(),
             forget_last: false,
+            freeform: false,
         }))
     );
     assert_eq!(menu.take_request(), None, "once");

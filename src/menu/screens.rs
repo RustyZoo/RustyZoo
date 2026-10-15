@@ -209,16 +209,17 @@ impl Menu {
         log.push(format!("play scenario {} {}", s.section, s.file));
         let label = format!("scenario {}", s.section);
         let file = s.file.clone();
-        self.open_from(vfs, &file, label);
+        self.open_from(vfs, &file, label, false);
     }
 
     /// Asks the game to open the map `[start] savegame` of the scenario file `file` names.
-    fn open_from(&mut self, vfs: &Vfs, file: &str, label: String) {
+    fn open_from(&mut self, vfs: &Vfs, file: &str, label: String, freeform: bool) {
         self.request = Some(match desc(vfs, file, "start")("savegame") {
             Some(path) => Request::Open(Start {
                 path,
                 label,
                 forget_last: true,
+                freeform,
             }),
             None => Request::Message(format!("{file}: no map to start")),
         });
@@ -328,7 +329,7 @@ impl Menu {
         ));
         let label = format!("freeform cash {}", self.cash.amount);
         let file = m.file.clone();
-        self.open_from(vfs, &file, label);
+        self.open_from(vfs, &file, label, true);
     }
 }
 

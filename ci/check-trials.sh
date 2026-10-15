@@ -16,13 +16,14 @@ export RUSTYZOO_USER_DIR=$tmp/user # never the real user folder
 
 rz() { "$bin" --data "$dir/$trial" "$@"; }
 
-# Plays a map headless with scrolls, a rotation and the zoom in and out (-2, 0 and 2) and compares
+# Plays a map headless (--bare: the map view alone, without the main panel that a game shows) with
+# scrolls, a rotation and the zoom in and out (-2, 0 and 2) and compares
 # every painted frame with the window `render-map --view` draws for the camera the log names, at
 # its zoom, byte for byte (as PNG files).
 same_frames() {
   d=$(mktemp -d)
   printf '1 scroll 1 1\n2 rotate cw\n3 scroll -1 0\n4 zoom in\n5 scroll 1 0\n6 zoom out\n7 zoom out\n8 scroll 0 1\n' >"$d/script"
-  rz run "$1" --headless --passes 9 --clock 20 --script "$d/script" --png-every 1 --out "$d" |
+  rz run "$1" --headless --bare --passes 9 --clock 20 --script "$d/script" --png-every 1 --out "$d" |
     sed -n 's/^pass \([0-9]*\) .* draw [0-9a-f]\{16\} view=\(-*[0-9]*\),\(-*[0-9]*\) rotation=\([0-3]\) zoom=\(-*[0-9]*\).*/\1 \2 \3 \4 \5/p' |
     while read -r pass x y rotation zoom; do
       rz render-map "$1" "$d/ref.png" --rotation "$rotation" --zoom "$zoom" --view "$x" "$y" 1024 768 >/dev/null || { echo failed; continue; }
@@ -229,6 +230,9 @@ game_round() { # game_round <y of Continue> <last file>
   rz run --headless --passes 40 --clock 100 --script "$tmp/round" 2>/dev/null |
     awk '/ menu game /{g=g (g?";":"") $6" "$7} / step 200 /{c++} / menu music restart/{m++} END{print g","c","m}'
 }
+# --bare is for a run of a map.
+check base-trial 2 'rz run --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
+check base-trial 0 'rz run maps/default.zoo --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
 check base-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'game_round 489 "maps\\default.zoo"'
 check expansion-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'game_round 474 "maps\\scn19.zoo"'
 # Play on a scenario and on a freeform map opens the map their file names, and empties the last

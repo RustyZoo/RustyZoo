@@ -3,7 +3,7 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::Catalogue;
-use crate::menu::Menu;
+use crate::menu::{Menu, Start};
 use crate::render::tests::{cache_install, frame_file};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
@@ -39,7 +39,8 @@ fn interface(install: &Install) -> Interface {
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
         [b]\ntype=UILayout\nlayout=ui/menu.lyt\n\
         [c]\ntype=UILayout\nlayout=ui/q.lyt\n\
-        [d]\ntype=UILayout\nlayout=ui/options.lyt\n";
+        [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
+        [e]\ntype=UILayout\nlayout=ui/panel.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
         "[LayoutInfo]\nid=26\nlayer=2\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
@@ -67,6 +68,12 @@ fn interface(install: &Install) -> Interface {
             ("ui/menu.lyt", menu.into_bytes()),
             ("ui/q.lyt", q.into_bytes()),
             ("ui/options.lyt", options.into_bytes()),
+            (
+                "ui/panel.lyt",
+                b"[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=40\ndx=64\ndy=8\nstate=1\n\
+                  [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n"
+                    .to_vec(),
+            ),
         ],
     );
     let mut tree = Tree::load(&Vfs::open(&made.0).unwrap(), "ui/root.lyt", 0);
@@ -378,4 +385,94 @@ fn a_game_without_an_interface_has_no_question_to_ask() {
     assert!(!app.quit() && app.camera().is_some(), "Escape asks nothing");
     app.pass(66, &[Command::Close]);
     assert!(app.quit(), "closing ends it");
+}
+
+#[test]
+fn the_main_panel_shows_with_a_started_game_and_goes_with_it_and_escape_does_not_close_it() {
+    with_menu("panel2", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let mut now = started(app);
+        assert!(shown(app, 2) && !shown(app, 26));
+        // Escape asks: the main panel is not a panel it closes.
+        now += 66;
+        app.pass(now, &key(Key::Escape));
+        assert_eq!(said(app, 2, now), ["menu game ask leave"]);
+        assert!(shown(app, 2));
+        now += 66;
+        app.pass(now, &key(Key::N));
+        assert!(
+            !shown(app, 2) && shown(app, 26),
+            "the menu is back and the panel gone"
+        );
+        now += 66;
+        app.pass(now, &CONTINUE);
+        assert!(shown(app, 2));
+    });
+    // `run <map>`: the same state, unless the panel is left out.
+    for (bare, panel) in [(false, true), (true, false)] {
+        with_menu(&format!("panel-run-{bare}"), "", |app, files| {
+            app.menu = None;
+            let ui = interface(files);
+            app.set_interface(ui);
+            app.open_game(Zoo::parse(&map()).unwrap()).unwrap();
+            if bare {
+                app.bare();
+            }
+            app.start_game(None);
+            assert_eq!(shown(app, 2), panel);
+        });
+    }
+}
+
+#[test]
+fn only_the_first_fade_waits_and_a_freeform_start_counts_one_update_of_the_wait() {
+    with_menu("fade", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let fade_pass = |app: &App, pass: u64, now: u64| {
+            app.log_lines(pass, now)
+                .iter()
+                .any(|l| l.contains(" music fade "))
+        };
+        // The first start at pass 1: the five updates wait (passes 1 to 5), the fade steps from 6.
+        app.pass(0, &[]);
+        let mut now = 66;
+        app.pass(now, &CONTINUE);
+        let first: Vec<u64> = (2..10)
+            .filter(|&p| {
+                now = 66 * p;
+                app.pass(now, &[]);
+                fade_pass(app, p, now)
+            })
+            .collect();
+        assert_eq!(first, [6, 7, 8, 9]);
+        // Back to the menu and started again: the fade steps from the first update on.
+        now += 66;
+        app.pass(now, &key(Key::Escape));
+        now += 66;
+        app.pass(now, &key(Key::N));
+        now += 66;
+        app.pass(now, &CONTINUE);
+        assert!(fade_pass(app, 13, now), "from the start's own update");
+    });
+    // A freeform start updates the music once with 2000 ms: one wait gone, and a later fade
+    // would not move.
+    with_menu("fade-freeform", "", |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap()).unwrap();
+        let start = Start {
+            path: "saved.zoo".into(),
+            label: "freeform".into(),
+            forget_last: false,
+            freeform: true,
+        };
+        app.begin(&start);
+        let steps: Vec<u64> = (1..8)
+            .filter(|&p| {
+                app.pass(66 * p, &[]);
+                app.log_lines(p, 66 * p)
+                    .iter()
+                    .any(|l| l.contains(" music fade "))
+            })
+            .collect();
+        // Waiting 5, minus the 2000 ms update: updates at passes 1 to 3 wait, 4 begins, 5 steps.
+        assert_eq!(steps, [5, 6, 7]);
+    });
 }

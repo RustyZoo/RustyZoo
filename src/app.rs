@@ -20,7 +20,7 @@ use std::str::FromStr;
 
 use crate::Framebuffer;
 use crate::camera::{Camera, Settings};
-use crate::menu::{Menu, Request};
+use crate::menu::{Menu, Request, Start};
 use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
 use crate::text::to_cp1252;
@@ -286,6 +286,10 @@ pub struct App<'a> {
     fullscreen: bool,
     /// The question that is open and what it leads to.
     asked: Option<Asked>,
+    /// Whether a fade of the menu music has begun in this run (only the first one waits), and
+    /// whether a game opens without the main panel.
+    faded: bool,
+    bare: bool,
 }
 
 /// What an open question leads to when it is answered No: stopping the game for the menu, or
@@ -374,6 +378,8 @@ impl<'a> App<'a> {
             settings,
             fullscreen: false,
             asked: None,
+            faded: false,
+            bare: false,
         })
     }
 
@@ -500,12 +506,24 @@ impl<'a> App<'a> {
     }
 
     /// The game starts with this menu music playing: it fades out from the first interface update
-    /// (sound specification 6.3). The caller plays it and follows [`App::music`].
+    /// (sound specification 6.3); the main panel shows with the map view. The caller plays the
+    /// music and follows [`App::music`].
     pub fn start_game(&mut self, mut music: Option<Music>) {
         if let Some(music) = &mut music {
-            music.start_fade();
+            music.start_fade(!self.faded);
         }
+        self.faded = true;
         self.music = music;
+        if let Some(ui) = &mut self.ui
+            && !self.bare
+        {
+            ui.show(MAIN_PANEL);
+        }
+    }
+
+    /// The games of this app show the map view alone, without the main panel.
+    pub fn bare(&mut self) {
+        self.bare = true;
     }
 
     /// The menu music and whether the last pass changed its volume or stopped it.
@@ -630,7 +648,7 @@ impl<'a> App<'a> {
                 let Some(menu) = &self.menu else { return };
                 let zoo = menu.load(&start.path, self.renderer.catalogue());
                 match zoo.and_then(|zoo| self.open_game(zoo).map_err(|e| e.to_string())) {
-                    Ok(()) => self.begin(start.forget_last, &start.label, &start.path),
+                    Ok(()) => self.begin(&start),
                     Err(why) => self.say(&why),
                 }
             }
@@ -639,15 +657,23 @@ impl<'a> App<'a> {
         }
     }
 
-    /// A game was opened from the menu: the menu layouts are hidden, so the map view shows, the
-    /// menu music starts to fade and the simulation runs from the next pass (main menu 8.1).
-    fn begin(&mut self, forget_last: bool, label: &str, path: &str) {
+    /// A game was opened from the menu: the menu layouts are hidden, the main panel and the map
+    /// view show, the menu music starts to fade and the simulation runs from the next pass (main
+    /// menu 8.1). A freeform start also updates the music once with 2000 ms, which counts as one of
+    /// the updates the first fade waits and moves no later one (8.3).
+    fn begin(&mut self, start: &Start) {
         if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
-            menu.hide(ui, forget_last);
+            menu.hide(ui, start.forget_last);
         }
-        self.menu_events.push(format!("game start {label} {path}"));
+        self.menu_events
+            .push(format!("game start {} {}", start.label, start.path));
         let music = self.music.take();
         self.start_game(music);
+        if start.freeform
+            && let Some(music) = &mut self.music
+        {
+            music.update(2000);
+        }
     }
 
     /// Tells the player something in a question box with an OK button.
@@ -721,18 +747,17 @@ impl<'a> App<'a> {
         self.ask(Asked::Exit);
     }
 
-    /// Escape, with the map view having the keys: an open panel closes, else the question that
+    /// Escape, with the map view having the keys: the options panel, if open, closes, else the question that
     /// leads to the menu (input 4.6).
     fn escape(&mut self) {
         if let Some(ui) = &mut self.ui {
-            for id in [OPTIONS_PANEL, MAIN_PANEL] {
-                if let Some(i) = ui.tree.find(id)
-                    && ui.tree.elements[i].state & crate::ui::layout::HIDDEN == 0
-                {
-                    ui.tree.hide(i);
-                    ui.touch();
-                    return;
-                }
+            // The main panel is part of the game screen: only the panels opened from it close.
+            if let Some(i) = ui.tree.find(OPTIONS_PANEL)
+                && ui.tree.elements[i].state & crate::ui::layout::HIDDEN == 0
+            {
+                ui.tree.hide(i);
+                ui.touch();
+                return;
             }
         }
         self.ask(Asked::Leave);

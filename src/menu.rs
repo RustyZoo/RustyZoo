@@ -94,6 +94,8 @@ pub struct Start {
     pub label: String,
     /// Whether `[user] lastfile` is emptied when the game starts (scenarios and freeform maps).
     pub forget_last: bool,
+    /// Whether it is a freeform map (its start updates the music once more).
+    pub freeform: bool,
 }
 
 /// What a button asks of the game.
@@ -291,6 +293,7 @@ impl Menu {
                 path: path.clone(),
                 label: "continue".to_string(),
                 forget_last: false,
+                freeform: false,
             }),
             None => Request::Message(ui.string(CANNOT_OPEN)),
         });
