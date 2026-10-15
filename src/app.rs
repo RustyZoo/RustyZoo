@@ -473,12 +473,20 @@ impl<'a> App<'a> {
         if self.fullscreen {
             camera.set_fullscreen(&zoo, true);
         }
+        let brush = (zoo.view.brush & 0xff) as usize;
         let world = World::new(zoo, |e| self.renderer.shape(e));
         let staged = self.renderer.stage(&world.zoo, camera.rotation, false)?;
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
         let types = crate::terrain::types(self.renderer.vfs());
+        // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
+        // outside 1 to 5 leaves the default.
+        let mut terrain = Tool::new(
+            types.clone(),
+            crate::terrain::elevation_cost(self.renderer.vfs().ini()),
+        );
+        terrain.set_size(brush);
         self.game = Some(Game {
             world,
             staged,
@@ -498,10 +506,7 @@ impl<'a> App<'a> {
             tints: Tints::load(self.renderer.vfs()),
             water: place::water(&types),
             extra: Extra::default(),
-            terrain: Tool::new(
-                types,
-                crate::terrain::elevation_cost(self.renderer.vfs().ini()),
-            ),
+            terrain,
             marks: Vec::new(),
             shown: None,
             pointed: None,

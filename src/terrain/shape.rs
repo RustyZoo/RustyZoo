@@ -167,18 +167,14 @@ impl Step<'_> {
     }
 }
 
-/// The tiles that objects larger than one tile standing on the tiles of `brush` (inside the zoo)
-/// cover.
+/// The tiles that a non-contiguous step on the `brush` tiles (on the map, inside the zoo or not)
+/// takes along: the tiles under larger objects (see [`World::carried`]).
 fn under(world: &World, brush: &[usize]) -> BTreeSet<usize> {
-    brush
-        .iter()
-        .filter(|&&t| world.in_zoo(t))
-        .flat_map(|&t| world.carried(t))
-        .collect()
+    brush.iter().flat_map(|&t| world.carried(t)).collect()
 }
 
-/// The tiles outside the brush that those objects take along in a non-contiguous step, inside the
-/// zoo, in index order (terrain editing 5.5).
+/// The tiles outside the brush that a non-contiguous step takes along, inside the zoo, in index
+/// order (terrain editing 5.5).
 pub fn carried(world: &World, brush: &[usize]) -> Vec<usize> {
     let mut tiles = under(world, brush);
     tiles.retain(|t| !brush.contains(t) && world.in_zoo(*t));
@@ -186,8 +182,8 @@ pub fn carried(world: &World, brush: &[usize]) -> Vec<usize> {
 }
 
 /// The tiles a non-contiguous step adds to the snapshot unchanged, so that they are drawn again:
-/// the ring of one tile around the brush and the rectangle that bounds the tiles of `carried`'s
-/// objects, grown by one tile (terrain editing 5.5), clipped to the map, in index order.
+/// the ring of one tile around the brush and the rectangle that bounds the tiles taken along,
+/// grown by one tile (terrain editing 5.5), clipped to the map, in index order.
 pub fn ring(world: &World, brush: &[usize]) -> Vec<usize> {
     let width = world.zoo.width as usize;
     let mut rings = BTreeSet::new();
@@ -209,7 +205,7 @@ pub fn ring(world: &World, brush: &[usize]) -> Vec<usize> {
             }
         }
     };
-    grow(&mut brush.iter().copied().filter(|&t| world.in_zoo(t)));
+    grow(&mut brush.iter().copied());
     grow(&mut under(world, brush).into_iter());
     rings.into_iter().collect()
 }
@@ -224,6 +220,7 @@ pub fn run(
     contiguous: bool,
     request: Request,
 ) -> Vec<(usize, i32, u8)> {
+    let on_map = brush;
     let brush: Vec<usize> = brush.iter().copied().filter(|&t| world.in_zoo(t)).collect();
     let mut step = Step {
         world,
@@ -260,7 +257,7 @@ pub fn run(
     if contiguous {
         step.spread(queue, if action == Action::Raise { 1 } else { -1 });
     } else {
-        for t in carried(world, &brush) {
+        for t in carried(world, on_map) {
             step.tile(t, action, goal);
         }
     }

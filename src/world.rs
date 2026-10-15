@@ -140,9 +140,10 @@ impl World {
             .is_some_and(|s| s.footprint.0 > 2 || s.footprint.1 > 2)
     }
 
-    /// The tiles under the objects bigger than one tile that stand on tile `t` (terrain editing
-    /// 5.5): the object holding the quarter at local (0..32, 0..32) or, when that is empty, each
-    /// unit of the tile, when its footprint is above 2 half tiles in x or in y.
+    /// The tiles that a non-contiguous step on tile `t` takes along (terrain editing 5.5): the
+    /// tiles under the object holding the quarter at local (0..32, 0..32) or, when that is empty,
+    /// under each unit of the tile, when it is bigger than one tile. (The tiles of a tank exhibit
+    /// come along too in the original; the world knows no tank yet.)
     pub fn carried(&self, t: usize) -> Vec<usize> {
         let objects = match self.scene.quadrant_object(t, 0) {
             Some(o) => vec![o],

@@ -303,46 +303,26 @@ impl Scene {
         };
     }
 
-    /// The quadrants (`cx`, `cy`, in units of 32) that contain the points `(x - 16 (fx - 1) + 32 i,
-    /// y - 16 (fy - 1) + 32 j)` of the footprint, with the footprint turned by the facing; `None`
-    /// for a footprint outside 1 to the biggest side.
-    fn cells(obj: &Object) -> Option<(Vec<(i64, i64)>, bool)> {
-        let (fx, fy) = obj.footprint;
-        // The footprint is given along the object's own axes; it turns with the facing.
-        let (fx, fy) = if !obj.facing.is_multiple_of(4) {
-            (fy, fx)
-        } else {
-            (fx, fy)
-        };
-        if !(1..=MAX_FOOTPRINT).contains(&fx) || !(1..=MAX_FOOTPRINT).contains(&fy) {
-            return None;
-        }
-        let mut cells = Vec::with_capacity((fx * fy) as usize);
-        for j in 0..fy {
-            for i in 0..fx {
-                let px = i64::from(obj.x) - 16 * i64::from(fx - 1) + 32 * i64::from(i);
-                let py = i64::from(obj.y) - 16 * i64::from(fy - 1) + 32 * i64::from(j);
-                cells.push((px.div_euclid(32), py.div_euclid(32)));
-            }
-        }
-        Some((cells, fx > 2 || fy > 2))
-    }
-
     /// The tiles under an object bigger than one tile in x or in y (a footprint above 2 half
-    /// tiles after the turn), in index order; none for another object. Points off the map are left
-    /// out.
+    /// tiles after the turn), in index order; none for another object (terrain editing 5.5). They
+    /// are the tiles that contain the points `(x - 16 fx + 64 a, y - 16 fy + 64 b)` for `0 <= a <
+    /// ceil(fx / 2)` and `0 <= b < ceil(fy / 2)`, a point's tile being its coordinates divided by
+    /// 64 and cut towards zero; points off the map are left out. Not the quadrants of the object.
     pub fn large_tiles(&self, o: usize) -> Vec<usize> {
-        let Some((cells, true)) = Scene::cells(&self.objects[o]) else {
-            return Vec::new();
+        let obj = &self.objects[o];
+        let (fx, fy) = match obj.facing.is_multiple_of(4) {
+            true => obj.footprint,
+            false => (obj.footprint.1, obj.footprint.0),
         };
-        let mut tiles: Vec<usize> = cells
-            .into_iter()
-            .filter_map(|(cx, cy)| {
-                i32::try_from(cx >> 1)
-                    .ok()
-                    .zip(i32::try_from(cy >> 1).ok())
-                    .and_then(|(tx, ty)| self.index(tx, ty))
-            })
+        if fx <= 2 && fy <= 2 {
+            return Vec::new();
+        }
+        let at = |v: i32, f: i32, k: i32| {
+            i32::try_from((i64::from(v) - 16 * i64::from(f) + 64 * i64::from(k)) / 64).ok()
+        };
+        let mut tiles: Vec<usize> = (0..(fy + 1) / 2)
+            .flat_map(|b| (0..(fx + 1) / 2).map(move |a| (a, b)))
+            .filter_map(|(a, b)| self.index(at(obj.x, fx, a)?, at(obj.y, fy, b)?))
             .collect();
         tiles.sort_unstable();
         tiles.dedup();
@@ -358,29 +338,43 @@ impl Scene {
     /// that contain the points `(x - 16 (fx - 1) + 32 i, y - 16 (fy - 1) + 32 j)`. Returns
     /// whether it got them.
     fn place_fixed(&mut self, o: usize) -> bool {
-        let Some((cells, large)) = Scene::cells(&self.objects[o]) else {
-            return false;
+        let obj = self.objects[o];
+        let (fx, fy) = obj.footprint;
+        // The footprint is given along the object's own axes; it turns with the facing.
+        let (fx, fy) = if !obj.facing.is_multiple_of(4) {
+            (fy, fx)
+        } else {
+            (fx, fy)
         };
-        let mut wanted = Vec::with_capacity(cells.len());
-        for (cx, cy) in cells {
-            let tile = i32::try_from(cx >> 1)
-                .ok()
-                .zip(i32::try_from(cy >> 1).ok())
-                .and_then(|(tx, ty)| self.index(tx, ty));
-            match tile {
-                Some(tile) if self.quad[tile][((cy & 1) * 2 + (cx & 1)) as usize].is_none() => {
-                    wanted.push((tile, ((cy & 1) * 2 + (cx & 1)) as usize))
+        if !(1..=MAX_FOOTPRINT).contains(&fx) || !(1..=MAX_FOOTPRINT).contains(&fy) {
+            return false;
+        }
+        let mut wanted = Vec::with_capacity((fx * fy) as usize);
+        for j in 0..fy {
+            for i in 0..fx {
+                let px = i64::from(obj.x) - 16 * i64::from(fx - 1) + 32 * i64::from(i);
+                let py = i64::from(obj.y) - 16 * i64::from(fy - 1) + 32 * i64::from(j);
+                let (cx, cy) = (px.div_euclid(32), py.div_euclid(32));
+                let tile = i32::try_from(cx >> 1)
+                    .ok()
+                    .zip(i32::try_from(cy >> 1).ok())
+                    .and_then(|(tx, ty)| self.index(tx, ty));
+                match tile {
+                    Some(tile) if self.quad[tile][((cy & 1) * 2 + (cx & 1)) as usize].is_none() => {
+                        wanted.push((tile, ((cy & 1) * 2 + (cx & 1)) as usize))
+                    }
+                    _ => return false,
                 }
-                _ => return false,
             }
         }
+        let large = fx > 2 || fy > 2;
         for &(tile, q) in &wanted {
             self.quad[tile][q] = Some(o);
             if q == 3 && large {
                 self.big[tile] = Some(o);
             }
         }
-        self.covers[o] = wanted.len() as u32;
+        self.covers[o] = (fx * fy) as u32;
         true
     }
 

@@ -833,6 +833,24 @@ fn a_non_contiguous_step_carries_the_other_tiles_of_a_large_object_along() {
 }
 
 #[test]
+fn the_tiles_carried_are_those_of_the_points_of_the_footprint_not_its_quadrants() {
+    // A hall of 2 by 2 tiles centred on the tile centre (288, 288): the points (224, 224),
+    // (288, 224), (224, 288) and (288, 288) are on the tiles 3 and 4 in both directions, while its
+    // quadrants reach the tiles 3 to 5.
+    let mut world = world(vec![entity("hall", 4 * 64 + 32, 4 * 64 + 32, 0)]);
+    assert_eq!(world.carried(4 * 8 + 4), [27, 28, 35, 36]);
+    let mut tool = modify(1, false, false);
+    drag(&mut tool, &mut world, (4, 4), 16, Zoom::Normal);
+    assert_eq!(heights(&world, (3, 5), (3, 5)), [1, 1, 0, 1, 1, 0, 0, 0, 0]);
+    // A unit near the corner of the map: points less than 64 left of or above it count in column
+    // or row 0, the others are off the map.
+    let world = self::world(vec![entity("elephant", 16, 16, 0)]);
+    assert_eq!(world.carried(0), [0]);
+    let world = self::world(vec![entity("elephant", 16 + 64, 16, 0)]);
+    assert_eq!(world.carried(1), [0, 1]);
+}
+
+#[test]
 fn a_brush_half_on_a_building_takes_the_rest_of_it_along() {
     // The brush covers (2..3, 3..4): the hall's other column, (4, 3) and (4, 4), is carried.
     let mut world = world(vec![entity("hall", 4 * 64, 4 * 64, 0)]);
