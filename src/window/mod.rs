@@ -220,7 +220,7 @@ pub fn run(
         state.note(event, &mut commands);
     }
     state.mouse.clear();
-    commands.retain(|c| matches!(c, Command::Quit | Command::Fullscreen(_)));
+    commands.retain(|c| matches!(c, Command::Quit | Command::Close | Command::Fullscreen(_)));
     let start = sdl3::timer::ticks();
     let mut shown = false;
     let mut pointer = None;
@@ -237,7 +237,9 @@ pub fn run(
         // does). The music runs on silently, the output being muted with the focus, and is heard
         // where it has got to at the restore.
         if asleep(screen.canvas.window().window_flags().into())
-            && !commands.contains(&Command::Quit)
+            && !commands
+                .iter()
+                .any(|c| matches!(c, Command::Quit | Command::Close))
         {
             state.note(pump.wait_event(), &mut commands);
             continue;

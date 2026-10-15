@@ -483,6 +483,11 @@ pub struct MapRenderer<'a> {
 }
 
 impl<'a> MapRenderer<'a> {
+    /// The files of the game this renders from.
+    pub fn vfs(&self) -> &'a Vfs {
+        self.vfs
+    }
+
     pub fn new(vfs: &'a Vfs, catalogue: &'a Catalogue) -> MapRenderer<'a> {
         let read = |member: &str| {
             vfs.read(member)

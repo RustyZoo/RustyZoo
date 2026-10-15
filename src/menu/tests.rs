@@ -73,6 +73,10 @@ fn interface(install: &Install) -> Interface {
     Interface::new(tree, Box::new(Texts))
 }
 
+fn files(install: &Install) -> Vfs {
+    Vfs::open(&install.0).unwrap()
+}
+
 fn disabled(ui: &Interface, id: i32) -> bool {
     ui.tree.elements[ui.tree.find(id).unwrap()].state & DISABLED != 0
 }
@@ -258,11 +262,15 @@ fn exit_ends_the_program_and_other_buttons_do_not() {
     let mut ui = interface(&install);
     let mut menu = menu("", &install, None, 0);
     assert_eq!(
-        menu.selected(&mut ui, 7116),
+        menu.selected(&files(&install), &mut ui, 7116),
         (vec!["exit".to_string()], true)
     );
-    for id in [7110, 7111, 7112, 7113, 7114, 7115, 0, -1, i32::MAX] {
-        assert_eq!(menu.selected(&mut ui, id), (vec![], false), "{id}");
+    for id in [7112, 7113, 7114, 0, -1, i32::MAX] {
+        assert_eq!(
+            menu.selected(&files(&install), &mut ui, id),
+            (vec![], false),
+            "{id}"
+        );
     }
 }
 
@@ -297,7 +305,7 @@ fn the_credits_pages_replace_one_another_on_the_interface_clock() {
     // The credits button shows the layout, and with it all its pages.
     ui.show(40);
     assert!(shown(&ui, 250) && shown(&ui, 251));
-    let (log, exit) = menu.selected(&mut ui, 7115);
+    let (log, exit) = menu.selected(&files(&install), &mut ui, 7115);
     assert_eq!(
         (log, exit),
         (vec!["credits page 1 layout 250".to_string()], false)
@@ -334,7 +342,7 @@ fn exit_closes_the_credits_at_once_and_they_start_again_from_the_first_page() {
     let mut menu = menu("", &install, None, 0);
     menu.set_credits(vec![250, 251], 8);
     ui.show(40);
-    menu.selected(&mut ui, 7115);
+    menu.selected(&files(&install), &mut ui, 7115);
     menu.update(&mut ui, 66);
     // The Exit button hides the layout; the next update sees it.
     let exit = ui.tree.find(12111).unwrap();
@@ -347,18 +355,18 @@ fn exit_closes_the_credits_at_once_and_they_start_again_from_the_first_page() {
     assert!(menu.update(&mut ui, 198).is_empty());
     ui.show(40);
     assert_eq!(
-        menu.selected(&mut ui, 7115).0,
+        menu.selected(&files(&install), &mut ui, 7115).0,
         ["credits page 1 layout 250"]
     );
     // No pages at all: the button changes nothing here.
     let mut none = self::menu("", &install, None, 0);
     ui.show(40);
-    assert!(none.selected(&mut ui, 7115).0.is_empty());
+    assert!(none.selected(&files(&install), &mut ui, 7115).0.is_empty());
     assert!(none.update(&mut ui, 264).is_empty());
     // A delay of 0: the first update sets the deadline, the second changes the page.
     let mut quick = self::menu("", &install, None, 0);
     quick.set_credits(vec![250, 251], 0);
-    quick.selected(&mut ui, 7115);
+    quick.selected(&files(&install), &mut ui, 7115);
     assert!(quick.update(&mut ui, 1).is_empty());
     assert_eq!(quick.update(&mut ui, 1), ["credits page 2 layout 251"]);
     assert_eq!(quick.update(&mut ui, 1), ["credits end"]);

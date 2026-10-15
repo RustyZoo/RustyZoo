@@ -8,6 +8,7 @@ pub mod config;
 pub mod entity;
 pub mod ground;
 pub mod intro;
+pub mod lists;
 pub mod menu;
 pub mod movie;
 pub mod music;

@@ -5,6 +5,7 @@
 use rustyzoo::Framebuffer;
 use rustyzoo::config::{Config, to_int};
 use rustyzoo::entity::Catalogue;
+use rustyzoo::lists::{freeform_list, scenario_list};
 use rustyzoo::menu::{self, Menu};
 use rustyzoo::startup::{self, Startup};
 use rustyzoo::ui::interface::Interface;
@@ -89,7 +90,7 @@ pub fn boot(
         || (flag("startedDinoTutorial") == 0 && expansions & 1 != 0)
         || (flag("startedAquaTutorial") == 0 && expansions & 2 != 0)
     {
-        lines.push("first-run tutorial not started (there are no scenarios yet)".to_string());
+        lines.push("first-run tutorial not started".to_string());
     }
     let mut menu = Menu::new(
         ini.clone(),
@@ -100,6 +101,7 @@ pub fn boot(
     );
     let (pages, delay) = menu::credit_pages(vfs);
     menu.set_credits(pages, delay);
+    menu.set_lists(scenario_list(vfs, expansions), freeform_list(vfs));
     Ok(Booted {
         catalogue,
         interface,

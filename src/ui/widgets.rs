@@ -136,6 +136,8 @@ pub struct Row {
     /// The number of the help string shown as tooltip while the row is hovered; 0 for none.
     pub help: i32,
     pub disabled: bool,
+    /// The small picture in front of the text, in the slot of `miniconwidth` by `miniconheight`.
+    pub icon: Option<super::layout::Picture>,
 }
 
 /// A key a list reads.
@@ -158,48 +160,81 @@ pub struct Rows {
     pub hover: Option<usize>,
 }
 
-impl Rows {
-    /// The largest `top` when `visible` rows fit: 0 when all of them do.
-    pub fn max_top(&self, visible: usize) -> usize {
-        self.rows.len().saturating_sub(visible)
+/// The heights of the rows of a list, the space between two rows and the height inside the
+/// borders: how many whole rows are shown from a first one, and which row is at a distance.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Heights {
+    pub rows: Vec<i32>,
+    pub spacing: i32,
+    pub inner: i32,
+}
+
+impl Heights {
+    /// How many whole rows fit from `top` on, at least one.
+    pub fn fit_from(&self, top: usize) -> usize {
+        self.fit(self.rows.get(top..).unwrap_or_default().iter())
     }
 
-    /// Moves the first shown row to `top`, kept between 0 and [`Rows::max_top`]; whether it moved.
-    pub fn scroll_to(&mut self, top: i64, visible: usize) -> bool {
-        let to = top.clamp(0, self.max_top(visible) as i64) as usize;
-        std::mem::replace(&mut self.top, to) != to
+    /// The first row of the last screenful: the largest `top` there is.
+    pub fn max_top(&self) -> usize {
+        let last = self.fit(self.rows.iter().rev());
+        self.rows.len().saturating_sub(last)
     }
 
-    /// The row at distance `y` below the top of the list, rows `row_height` high; `None` below
-    /// the last row and above the first.
-    pub fn row_at(&self, y: i32, row_height: i32) -> Option<usize> {
-        if y < 0 || row_height <= 0 {
+    fn fit<'a>(&self, rows: impl Iterator<Item = &'a i32>) -> usize {
+        let (mut used, mut n) = (0i64, 0usize);
+        for &h in rows {
+            let next = used + i64::from(h) + if n > 0 { i64::from(self.spacing) } else { 0 };
+            if next > i64::from(self.inner) {
+                break;
+            }
+            (used, n) = (next, n + 1);
+        }
+        n.max(1)
+    }
+
+    /// The row at distance `y` below the top of the list when `top` is the first one shown; `None`
+    /// above the first, between two rows and below the last.
+    pub fn row_at(&self, top: usize, y: i32) -> Option<usize> {
+        let mut y = i64::from(y);
+        if y < 0 {
             return None;
         }
-        let row = self.top.checked_add((y / row_height) as usize)?;
-        (row < self.rows.len()).then_some(row)
+        for (n, &h) in self.rows.iter().enumerate().skip(top) {
+            if y < i64::from(h) {
+                return Some(n);
+            }
+            y -= i64::from(h) + i64::from(self.spacing);
+            if y < 0 {
+                return None;
+            }
+        }
+        None
     }
+}
 
-    /// Scrolls the least that shows the selected row among `visible`.
-    pub fn show_selection(&mut self, visible: usize) {
+impl Rows {
+    /// Scrolls the least that shows the selected row.
+    pub fn show_selection(&mut self, fit: &Heights) {
         if let Some(row) = self.selected {
             if row < self.top {
                 self.top = row;
-            } else if row >= self.top.saturating_add(visible.max(1)) {
-                self.top = row + 1 - visible.max(1);
             }
-            self.top = self.top.min(self.max_top(visible));
+            while row >= self.top.saturating_add(fit.fit_from(self.top)) {
+                self.top += 1;
+            }
+            self.top = self.top.min(fit.max_top());
         }
     }
 
-    /// Moves the selection by a key: one row, or a page of `visible - 1`, or to an end. With
-    /// nothing selected, Down and the page keys down start at the first row, Up and End at the
-    /// last. Returns whether the selection changed.
-    pub fn select_by_key(&mut self, key: ListKey, visible: usize) -> bool {
+    /// Moves the selection by a key: one row, or a page of the rows shown less one, or to an end.
+    /// With nothing selected, Down and the page keys down start at the first row, Up and End at
+    /// the last. Returns whether the selection changed.
+    pub fn select_by_key(&mut self, key: ListKey, fit: &Heights) -> bool {
         let Some(last) = self.rows.len().checked_sub(1) else {
             return false;
         };
-        let page = visible.saturating_sub(1).max(1);
+        let page = fit.fit_from(self.top).saturating_sub(1).max(1);
         let to = match (key, self.selected) {
             (ListKey::Home, _) | (ListKey::Down | ListKey::PageDown, None) => 0,
             (ListKey::End, _) | (ListKey::Up | ListKey::PageUp, None) => last,
@@ -210,7 +245,7 @@ impl Rows {
         };
         let changed = self.selected != Some(to);
         self.selected = Some(to);
-        self.show_selection(visible);
+        self.show_selection(fit);
         changed
     }
 

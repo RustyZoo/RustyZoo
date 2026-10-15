@@ -157,8 +157,8 @@ menu_click() {
   echo
   rm -rf "${d:?}"
 }
-check base-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239527428;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/default.zoo"
-check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239537628;uirelease7111inside;uiselect7111;uishow32;uihover50000;' "menu_click maps/scn19.zoo"
+check base-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239527428;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/default.zoo"
+check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239537628;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/scn19.zoo"
 
 # Start up to the main menu, headless, without a map: the picture drawn (resource number and
 # corner), the loading steps (also written to [UI] progresscalls of the user folder), Continue
@@ -173,8 +173,8 @@ startup() {
     awk '/^startup picture/{p=$3"@"$5} /^startup steps/{s=$3} /menu continue/{c=$6} /menu version/{v=$6} / draw [0-9a-f]{16}/{if(!h)h=$5} /menu exit/{e=$2} END{print p","s","c","v","h",exit@"e}'
   sed -n 's/^progresscalls=//p' "$tmp/user/zoo.ini"
 }
-check base-trial '502@112,84,131,disabled,10.10.00.0004,fac80cf107ea09f5,exit@3,131' 'startup 620 | paste -sd, -'
-check expansion-trial '505@112,84,253,disabled,12.05.00.0004,4e1b08d50e0b52e7,exit@3,253' 'startup 600 | paste -sd, -'
+check base-trial '502@112,84,131,disabled,10.10.00.0004,9a3908741a2d9360,exit@3,131' 'startup 620 | paste -sd, -'
+check expansion-trial '505@112,84,253,disabled,12.05.00.0004,ff102389167e9a25,exit@3,253' 'startup 600 | paste -sd, -'
 # Continue is enabled by a last file that exists (named in the tooltip); a name that is gone
 # disables it and is written back empty; the settings of the game itself are never written.
 last() {
@@ -186,6 +186,36 @@ last() {
 }
 check base-trial 'enableddefault.zoo,maps\default.zoo' 'last "maps\\default.zoo" | tr -d " \n" | sed "s/maps/,maps/"'
 check base-trial 'disabled,' 'last "maps\\gone.zoo" | paste -sd, -'
+
+# The scenario screen from the menu button at y: the number of entries, the state of each, and the
+# first entry selected (its state and whether Play is on). A click on the icon of the first row and a
+# double click ask to play it: the scenario file the request names. (A transparent list is hit
+# only where it draws something.)
+scenario_screen() { # scenario_screen <script after the click on the button>
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 365\n2 down\n3 up\n%b\n' "$1" >"$tmp/scn"
+  rz run --headless --passes 12 --clock 100 --script "$tmp/scn" 2>/dev/null |
+    awk '/ menu scenarios /{n=$6} / menu scenario [a-z][a-z] /{s=s","$7} / menu scenario select /{if(!p)p=$8":"$NF} / menu play scenario /{y=$NF} END{print n s","p","y}'
+}
+check base-trial '2,playable,playable,playable:enabled,' 'scenario_screen ""'
+check base-trial '2,playable,playable,playable:enabled,scenario/scn01a/scn01a.scn' 'scenario_screen "4 mouse 146 438\n5 down\n6 up\n7 double\n8 up"'
+check expansion-trial '4,playable,playable,playable,playable,playable:enabled,' 'scenario_screen ""'
+
+# The freeform screen from its menu button: the number of maps, then the starting cash and its
+# difficulty. (The spinners of the full game are not in the trials' layout; the unit tests cover
+# them.)
+freeform_screen() {
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 405\n2 down\n3 up\n' >"$tmp/free"
+  rz run --headless --passes 5 --clock 100 --script "$tmp/free" 2>/dev/null |
+    awk '/ menu freeform /{n=$NF} / menu cash /{c=$6":"$7} END{print n","c}'
+}
+check base-trial '1,75000:middle' 'freeform_screen'
+check expansion-trial '1,75000:middle' 'freeform_screen'
 
 # The same in a window of the dummy video driver (the start-up picture is presented as the bar
 # moves): a click on Exit at y ends the run, and its log replays headless to the same lines.

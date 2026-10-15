@@ -1,23 +1,29 @@
 //! The main menu (layout 26): what is set when it appears and what its buttons do that the
 //! layout does not already say (main menu 4). The screens it opens (scenarios, freeform maps,
-//! credits) are layouts shown by the buttons' own actions.
+//! credits) are layouts shown by the buttons' own actions; the scenario and freeform screens fill
+//! their lists and pictures when they are shown (`screens`).
 //!
 //! The credits are a layout of pages that replace one another on the interface clock. A game
-//! started from the menu comes with a later issue; here Exit ends the program.
+//! started from the menu comes with a later issue; here Exit ends the program and Play only logs
+//! the request.
 
 use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Config, to_int};
+use crate::lists::{Cash, Freeform, Scenario};
 use crate::text::format::{Arg, Strings, expand};
 use crate::ui::interface::Interface;
 use crate::ui::layout::{DISABLED, HIDDEN};
 use crate::userdir;
 use crate::vfs::Vfs;
 
+mod screens;
+
 /// The layout of the main menu and the elements the code touches.
 const LAYOUT: i32 = 26;
 const BACKGROUND: i32 = 7100;
 const CONTINUE: i32 = 7113;
+const LOAD: i32 = 7112;
 const ZOO_ITEMS: i32 = 7114;
 const EXIT: i32 = 7116;
 const VERSION: i32 = 7119;
@@ -94,6 +100,14 @@ pub struct Menu {
     pages: Vec<i32>,
     delay: u32,
     credits: Option<Showing>,
+    /// The scenario and freeform lists, built at start-up, and the entry selected in each (an
+    /// index; the freeform list shows a line of its own when it is empty).
+    scenarios: Vec<Scenario>,
+    freeforms: Vec<Freeform>,
+    scenario: Option<usize>,
+    freeform: Option<usize>,
+    /// The starting cash of the freeform screen.
+    cash: Cash,
 }
 
 impl Menu {
@@ -113,7 +127,17 @@ impl Menu {
             pages: Vec::new(),
             delay: CREDITS_DELAY as u32,
             credits: None,
+            scenarios: Vec::new(),
+            freeforms: Vec::new(),
+            scenario: None,
+            freeform: None,
+            cash: Cash::from_settings(&Config::default()),
         }
+    }
+
+    /// The lists of the scenario and freeform screens, see [`crate::lists`].
+    pub fn set_lists(&mut self, scenarios: Vec<Scenario>, freeforms: Vec<Freeform>) {
+        (self.scenarios, self.freeforms) = (scenarios, freeforms);
     }
 
     /// The credits pages, see [`credit_pages`].
@@ -125,11 +149,11 @@ impl Menu {
         self.ini.section(section)?.get(key)
     }
 
-    /// Writes `key` of `[user]` back, to the memory of the menu and to the settings of the user.
-    fn write_back(&mut self, key: &str, value: &str) {
-        self.ini.set("user", key, value);
+    /// Writes `key` of `section` back, to the memory of the menu and to the settings of the user.
+    fn write_back(&mut self, section: &str, key: &str, value: &str) {
+        self.ini.set(section, key, value);
         if let Some(dir) = &self.user
-            && let Err(e) = userdir::save(dir, "user", key, value)
+            && let Err(e) = userdir::save(dir, section, key, value)
         {
             eprintln!("rustyzoo: warning: {e}");
         }
@@ -149,8 +173,9 @@ impl Menu {
             }
         }
         self.check_continue(ui, &mut log);
-        // Zoo Items needs the original's download service.
+        // Zoo Items needs the original's download service, Load needs the saved games.
         enable(ui, ZOO_ITEMS, false);
+        enable(ui, LOAD, false);
         if let Some(version) = &self.version
             && let Some(i) = ui.tree.find(VERSION)
         {
@@ -200,18 +225,18 @@ impl Menu {
             log.push(format!("continue enabled {name}"));
         } else {
             if !last.is_empty() {
-                self.write_back("lastfile", "");
+                self.write_back("user", "lastfile", "");
             }
             log.push("continue disabled".to_string());
         }
     }
 
     /// The button `id` was selected: the lines for the log and whether the program ends.
-    pub fn selected(&mut self, ui: &mut Interface, id: i32) -> (Vec<String>, bool) {
+    pub fn selected(&mut self, vfs: &Vfs, ui: &mut Interface, id: i32) -> (Vec<String>, bool) {
         match id {
             EXIT => (vec!["exit".to_string()], true),
             CREDITS => (self.show_credits(ui), false),
-            _ => (Vec::new(), false),
+            _ => (self.pressed(vfs, ui, id), false),
         }
     }
 

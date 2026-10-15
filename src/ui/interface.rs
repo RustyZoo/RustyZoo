@@ -36,6 +36,10 @@ pub enum Action {
     Key(i32, Key),
     /// The open question was answered: 1 OK, 2 Cancel, 6 Yes, 7 No.
     Answer(i32),
+    /// A list box with `handledoubleclicks` was double clicked: its id and the row selected.
+    Double(i32, i32),
+    /// A text field lost the keyboard focus (its edit ended): its id.
+    Edited(i32),
 }
 
 /// The game's strings, with the texts the game code has put in place of some of them (a version

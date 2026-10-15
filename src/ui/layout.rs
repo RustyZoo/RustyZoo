@@ -554,6 +554,17 @@ impl Tree {
         }
     }
 
+    /// The picture the game's files have under `name` (an animation without its extension, or a
+    /// `.tga` image), loaded once. A failure is a warning, once per name, and `None`.
+    pub fn picture(&mut self, vfs: &Vfs, name: &str) -> Option<Picture> {
+        let before = self.warnings.len();
+        let picture = self.pictures.get(vfs, name.as_bytes(), &mut self.warnings);
+        for warning in &self.warnings[before..] {
+            eprintln!("rustyzoo: warning: {warning}");
+        }
+        picture
+    }
+
     /// The element registered under `id`.
     pub fn find(&self, id: i32) -> Option<usize> {
         self.ids.get(&id).copied()

@@ -79,15 +79,19 @@ pub enum Mouse {
     /// The left button went down or up at the pointer.
     Down,
     Up,
+    /// The left button went down for the second time of a double click, which the system
+    /// reports instead of a second `Down`.
+    Double,
     /// The wheel turned by this many notches (positive: away from the player).
     Wheel(i32),
 }
 
 /// What the player does (input 4). The text form is the script format of a headless run:
 /// `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`, `zoom in`,
-/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` for the map view, `skip` (any key
+/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
+/// window is closed) for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
-/// interface `mouse X Y`, `down`, `up`, `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
+/// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
 /// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
 /// A window reads `fullscreen` in a script as a request to switch, and makes the command itself
@@ -110,8 +114,11 @@ pub enum Command {
     /// The space bar: presses the pause button, so it toggles the pause only while the map view
     /// is shown and no element has the keyboard focus (a field types the space).
     Space,
-    /// Close the game.
+    /// End the run at once.
     Quit,
+    /// The player closed the window: the program ends at once from the menu, and asks first in a
+    /// game (main menu 9.3).
+    Close,
     Mouse(Mouse),
     /// A key of the interface, with Ctrl and Shift held or not.
     Key(Key, bool, bool),
@@ -133,9 +140,11 @@ impl fmt::Display for Command {
             Command::Pause => f.write_str("pause"),
             Command::Space => f.write_str("space"),
             Command::Quit => f.write_str("quit"),
+            Command::Close => f.write_str("close"),
             Command::Mouse(Mouse::Move(x, y)) => write!(f, "mouse {x} {y}"),
             Command::Mouse(Mouse::Down) => f.write_str("down"),
             Command::Mouse(Mouse::Up) => f.write_str("up"),
+            Command::Mouse(Mouse::Double) => f.write_str("double"),
             Command::Mouse(Mouse::Wheel(n)) => write!(f, "wheel {n}"),
             Command::Key(key, ctrl, shift) => {
                 write!(f, "key {}", key.name())?;
@@ -178,10 +187,12 @@ impl FromStr for Command {
             ["pause"] => Command::Pause,
             ["space"] => Command::Space,
             ["quit"] => Command::Quit,
+            ["close"] => Command::Close,
             ["skip"] => Command::Skip,
             ["mouse", x, y] => Command::Mouse(Mouse::Move(number(x)?, number(y)?)),
             ["down"] => Command::Mouse(Mouse::Down),
             ["up"] => Command::Mouse(Mouse::Up),
+            ["double"] => Command::Mouse(Mouse::Double),
             ["wheel", n] => Command::Mouse(Mouse::Wheel(number(n)?)),
             ["key", name, mods @ ..] => {
                 let key = KEY_NAMES
@@ -253,6 +264,8 @@ pub struct App<'a> {
     ui_events: Vec<String>,
     ui_sounds: Vec<&'static str>,
     ui_actions: Vec<Action>,
+    /// How many of the actions the menu has read.
+    acted: usize,
     /// The camera when the last draw fired, before the interface moved it; `None` without a game.
     drawn_at: Option<Look>,
     /// The main menu, while the player is in it.
@@ -330,6 +343,7 @@ impl<'a> App<'a> {
             ui_events: Vec::new(),
             ui_sounds: Vec::new(),
             ui_actions: Vec::new(),
+            acted: 0,
             drawn_at: None,
             menu: None,
             menu_events: Vec::new(),
@@ -372,6 +386,7 @@ impl<'a> App<'a> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         self.menu_lines.clear();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
+        self.acted = 0;
         self.music_changed = false;
         if let Some(ui) = &mut self.ui {
             ui.set_time(now);
@@ -461,7 +476,7 @@ impl<'a> App<'a> {
         let modal = self.modal();
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
-            (Command::Quit, _) => self.quit = true,
+            (Command::Quit | Command::Close, _) => self.quit = true,
             (Command::Mouse(mouse), _) => {
                 if let Some(ui) = &mut self.ui {
                     ui.mouse(mouse);
@@ -508,11 +523,18 @@ impl<'a> App<'a> {
         let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) else {
             return;
         };
+        let vfs = self.renderer.vfs();
+        for action in self.ui_actions[self.acted..].iter().copied() {
+            self.menu_events.extend(menu.action(vfs, ui, action));
+        }
+        self.acted = self.ui_actions.len();
         for id in ui.take_selected() {
-            let (lines, exit) = menu.selected(ui, id);
+            let (lines, exit) = menu.selected(vfs, ui, id);
             self.menu_events.extend(lines);
             self.quit |= exit;
         }
+        // What the menu did to the lists and the fields may have made more to tell.
+        self.ui_events.extend(ui.take_events());
     }
 
     /// Paints the window of the view if it differs from the last frame: the camera moved or the

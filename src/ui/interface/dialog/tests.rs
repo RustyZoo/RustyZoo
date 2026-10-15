@@ -241,7 +241,11 @@ fn a_field_of_the_question_reads_the_keys_first_and_enter_ends_the_edit_and_answ
     );
     assert_eq!(
         ui.take_actions(),
-        [Action::Key(200, Key::Enter), Action::Answer(1)]
+        [
+            Action::Edited(208),
+            Action::Key(200, Key::Enter),
+            Action::Answer(1)
+        ]
     );
     assert!(!ui.modal_open());
     // Escape puts the old text back and answers Cancel.

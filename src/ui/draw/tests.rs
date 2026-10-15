@@ -593,3 +593,103 @@ fn a_list_draws_whole_rows_only_inside_its_borders() {
     assert_eq!(at(&frame, 43, 4 + 15), [255, 0, 0]);
     assert_eq!(at(&frame, 43, 4 + 27), [0, 0, 255], "under it, the border");
 }
+
+#[test]
+fn a_list_with_a_small_icon_has_rows_as_tall_as_its_slot_and_draws_the_icon_in_it() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=48\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         selectbackcolor=255\nselectbackcolor=0\nselectbackcolor=0\nminiconwidth=6\nminiconheight=16\n\
+         [b]\ntype=UIImage\nid=3\nx=60\ny=40\nanimation=ui/b/b\n"
+    );
+    let mut tree = tree("minicon", &root, &animation("b"));
+    show_all(&mut tree);
+    let icon = tree.elements[2].look.animation[0];
+    assert!(matches!(icon, Some(Picture::Animation(_))));
+    tree.elements[2].state |= HIDDEN;
+    let row = |icon| Row {
+        text: b"H".to_vec(),
+        icon,
+        ..Row::default()
+    };
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = vec![row(icon), row(None), row(icon)];
+    list.rows.selected = Some(1);
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    let frame = paint(&mut tree, &mut painter, &texts);
+    let Kind::ListBox(list) = &tree.elements[1].kind else {
+        unreachable!();
+    };
+    let heights = painter.row_heights(&tree.pictures, &tree.elements[1], list, &texts);
+    assert_eq!((heights.rows.clone(), heights.inner), (vec![16; 3], 48));
+    // Rows of 16 pixels, the second one selected: its fill is from y 20 to 35.
+    assert_eq!(at(&frame, 43, 19), [0, 0, 255]);
+    assert_eq!(at(&frame, 43, 20), [255, 0, 0]);
+    assert_eq!(at(&frame, 43, 35), [255, 0, 0]);
+    assert_eq!(at(&frame, 43, 36), [0, 0, 255]);
+    // The icon of the box 3 x 1 is half its width from the left of the list, the middle of the
+    // slot down, in each row that has one.
+    for y in [12, 12 + 32] {
+        assert_eq!(at(&frame, 4, y), [255, 0, 0], "row at {y}");
+        assert_eq!(at(&frame, 6, y), [255, 0, 0]);
+        assert_eq!(at(&frame, 7, y), [0, 0, 255], "past the icon");
+        assert_eq!(at(&frame, 3, y), [0, 0, 0], "outside the list");
+    }
+}
+
+#[test]
+fn the_selected_row_of_a_transparent_list_is_filled_even_in_the_colour_of_the_background() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=36\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         selectbackcolor=0\nselectbackcolor=0\nselectbackcolor=255\ntransparent=1\n"
+    );
+    let mut tree = tree("transparent-select", &root, &[]);
+    show_all(&mut tree);
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = vec![Row::default(), Row::default()];
+    list.rows.selected = Some(0);
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    // Under the list there is the black of the frame: the background is skipped, the fill not.
+    assert_eq!(at(&frame, 43, 4), [0, 0, 255], "the selected row");
+    assert_eq!(
+        at(&frame, 43, 30),
+        [0, 0, 0],
+        "the others show what is behind"
+    );
+}
+
+#[test]
+fn a_row_is_as_tall_as_its_wrapped_text_or_its_icon_and_spacing_goes_between_rows() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=0\ny=0\ndx=30\ndy=60\nspacing=3\nborder=0\nminiconwidth=4\n"
+    );
+    let mut tree = tree("heights", &root, &[]);
+    show_all(&mut tree);
+    let mut painter = Painter::default();
+    let texts = Texts::default();
+    let line = painter.line_height(&tree.elements[1], &texts);
+    let row = |text: &str| Row {
+        text: text.as_bytes().to_vec(),
+        ..Row::default()
+    };
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = vec![row("a"), row("H H H H H H H H"), row("")];
+    let Kind::ListBox(list) = &tree.elements[1].kind else {
+        unreachable!();
+    };
+    let h = painter.row_heights(&tree.pictures, &tree.elements[1], list, &texts);
+    assert_eq!(h.rows[0], line);
+    assert!(
+        h.rows[1] >= 2 * line && h.rows[1] % line == 0,
+        "wraps: {h:?}"
+    );
+    assert_eq!((h.rows[2], h.spacing, h.inner), (line, 3, 60));
+}

@@ -407,7 +407,10 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
                     for command in &due {
                         report.line(format_args!("{lead} {command}"));
                     }
-                    if due.contains(&Command::Quit) {
+                    if due
+                        .iter()
+                        .any(|c| matches!(c, Command::Quit | Command::Close))
+                    {
                         return report.finish();
                     }
                     if due.iter().any(|c| {
