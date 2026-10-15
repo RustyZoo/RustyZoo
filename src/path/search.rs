@@ -282,3 +282,61 @@ pub fn search(
     }
     Found { path, reached }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The nodes of these estimates pushed in order, the `lowered` ones given a smaller `f` and the
+    /// list rebuilt, then popped: the order of the nodes.
+    fn order(fs: &[f64], lowered: &[(usize, f64)]) -> Vec<usize> {
+        let w = crate::path::tests::world(|_, _| {});
+        let (m, s) = (Mover::default(), Settings::default());
+        let (at, nodes) = (HashMap::new(), Vec::new());
+        let mut f = Search {
+            w: &w,
+            m: &m,
+            s: &s,
+            goal: 0,
+            nodes,
+            at,
+            heap: Vec::new(),
+            capped: false,
+        };
+        for (tile, &h) in fs.iter().enumerate() {
+            f.nodes.push(Node {
+                tile,
+                g: 0.0,
+                h,
+                f: h,
+                parent: None,
+                state: State::New,
+            });
+            f.push(tile);
+        }
+        for &(i, h) in lowered {
+            f.nodes[i].f = h;
+        }
+        if !lowered.is_empty() {
+            f.rebuild();
+        }
+        std::iter::from_fn(|| f.pop()).collect()
+    }
+
+    #[test]
+    fn the_open_list_pops_by_f_and_takes_the_right_child_on_equal_f() {
+        assert_eq!(order(&[1.0; 4], &[]), [0, 2, 1, 3]);
+        let mut x = 7u32;
+        let fs: Vec<f64> = (0..200)
+            .map(|_| {
+                x = x.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                f64::from((x >> 16) % 40)
+            })
+            .collect();
+        let lowered = [(3, -5.0), (50, -4.0), (199, -9.0), (100, 0.5)];
+        let popped = order(&fs, &lowered);
+        let f = |i: usize| lowered.iter().find(|l| l.0 == i).map_or(fs[i], |l| l.1);
+        assert_eq!(popped.len(), 200);
+        assert!(popped.windows(2).all(|p| f(p[0]) <= f(p[1])));
+    }
+}

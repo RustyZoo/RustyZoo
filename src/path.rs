@@ -15,7 +15,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-pub use cost::{edge, terrain};
+pub use cost::terrain;
 pub use search::search;
 
 /// The cost of a closed step: 20 or more is closed.
@@ -250,22 +250,6 @@ impl Finder {
             }
         }
     }
-}
-
-/// The move cost of a path: the sum of its steps, each its step cost times its length factor.
-pub fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
-    let goal = path.last().copied().unwrap_or(0);
-    path.windows(2)
-        .map(|p| {
-            let d = search::direction(w, p[0], p[1]);
-            let length = if d.is_multiple_of(2) {
-                1.0
-            } else {
-                std::f64::consts::SQRT_2
-            };
-            length * f64::from(cost::step(w, m, p[0], p[1], d, goal))
-        })
-        .fold(0.0, |total, step| total + step)
 }
 
 /// The cost of the pair of tiles `(a, b)` of an exhibit's boundary for a keeper with the line's

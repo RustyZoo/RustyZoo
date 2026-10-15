@@ -61,7 +61,7 @@ fn shape(e: &Entity) -> Option<Shape> {
 }
 
 /// An open `N` by `N` map with the entrance off its south-east corner, then `edit`.
-fn world(edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
+pub(super) fn world(edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
     let mut tiles = vec![
         Tile {
             elevation: 0,
@@ -113,6 +113,17 @@ fn cost(w: &World, m: &Mover, a: (i32, i32), b: (i32, i32)) -> u32 {
     cost::step(w, m, t(a), t(b), d, t(b))
 }
 
+/// The move cost of a path: each step's cost times its length factor.
+fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
+    let goal = path.last().copied().unwrap_or(0);
+    let step = |p: &[usize]| {
+        let d = search::direction(w, p[0], p[1]);
+        let length = [1.0, std::f64::consts::SQRT_2][d % 2];
+        length * f64::from(cost::step(w, m, p[0], p[1], d, goal))
+    };
+    path.windows(2).map(step).sum()
+}
+
 fn unit(kind: Kind, at: (i32, i32)) -> Mover {
     Mover::new(kind, Some(t(at)))
 }
@@ -161,7 +172,7 @@ fn step_costs_by_unit_kind() {
 fn a_path_corner_costs_the_worst_edge_and_13() {
     let w = world(|_, e| paths(e, &[(5, 5), (6, 5), (6, 4)]));
     let m = unit(Kind::Keeper, (5, 5));
-    assert_eq!(edge(&w, &m, t((5, 5)), 1), 14);
+    assert_eq!(cost::edge(&w, &m, t((5, 5)), 1), 14);
     assert_eq!(cost(&w, &m, (5, 5), (6, 4)), 15);
     assert_eq!(path(&w, &m, (6, 4)), [(5, 5), (6, 5), (6, 4)]);
 }
