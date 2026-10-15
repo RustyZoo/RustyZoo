@@ -50,6 +50,7 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [c]\ntype=UIButton\nid=1002\nx=110\ny=80\ndx=8\ndy=8\nstate=2048\naction=3\ntarget=8\n\
     transparent=0\n\
     [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n\
+    [u]\ntype=UIButton\nid=1075\nx=100\ny=80\ndx=8\ndy=8\nstate=2\ntransparent=0\n\
     [e]\ntype=UIText\nid=7003\nlayer=10\nx=0\ny=0\ndx=1\ndy=1\ntimed=1\ntimerDuration=100\n\
     transparent=0\nstate=1025\n";
 const QUESTION: &str = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
@@ -142,6 +143,7 @@ fn with_view(name: &str, brush: u32, body: impl FnOnce(&mut Session)) {
     tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
     app.set_interface(Interface::new(tree, Box::new(Texts)));
     app.interface().unwrap().set_hidden(1002, false);
+    app.interface().unwrap().set_hidden(1075, false);
     let mut money = Money::default();
     money.set_cash(50_000.0);
     app.set_money(money);
@@ -559,5 +561,53 @@ fn dragging_up_and_down_shapes_the_ground_with_the_cost_of_the_session() {
         let lines = s.click((3, 81));
         assert_eq!(lines[0], "terrain accept 32");
         assert_eq!(s.game().money.cash, 50_000.0 - 32.0);
+    });
+}
+
+#[test]
+fn undo_takes_back_an_accepted_session_with_its_cost_and_a_stroke_before_it_is_accepted() {
+    with_game("undo", |s| {
+        let backspace = Command::Key(Key::Backspace, false, false);
+        s.click((112, 82));
+        s.click((35, 21));
+        s.hover(s.tile(20, 20));
+        let flat = s.frame();
+        // A stroke, accepted: the undo button holds the whole session and its cost.
+        s.stroke((20, 20), &[16]);
+        let raised = s.frame();
+        let lines = s.click((3, 81));
+        assert_eq!(lines[0], "terrain accept 128");
+        assert_eq!(s.game().money.cash, 50_000.0 - 128.0);
+        let lines = s.pass(&[backspace]);
+        assert!(lines.contains(&"terrain undo 128".to_string()), "{lines:?}");
+        assert!(lines.contains(&"money cash 50000".to_string()), "{lines:?}");
+        assert_eq!(s.game().money.total[crate::money::CONSTRUCTION], 0.0);
+        assert_eq!(s.frame(), flat, "the picture of before the operation");
+        assert_ne!(raised, flat);
+        // Once: the list is empty.
+        assert!(
+            s.pass(&[backspace])
+                .iter()
+                .all(|l| !l.starts_with("terrain undo"))
+        );
+        // A stroke that is not accepted: the undo gives the tiles back and the session costs
+        // nothing again; nothing was paid.
+        s.stroke((20, 20), &[16]);
+        assert_eq!(s.text(3305), "$128");
+        let lines = s.pass(&[backspace]);
+        assert!(lines.contains(&"terrain undo 0".to_string()), "{lines:?}");
+        assert_eq!(s.text(3305), "$0");
+        assert_eq!(s.game().money.cash, 50_000.0 - 0.0);
+        assert_eq!(s.frame(), flat);
+        // Painting is a stroke too.
+        s.click((11, 19));
+        s.click((35, 13));
+        s.click((14, 28));
+        s.hover(s.tile(20, 20));
+        s.pass(&[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
+        assert_eq!(s.game().world.zoo.tiles[20 * 40 + 20].terrain, 2);
+        s.pass(&[backspace]);
+        assert_eq!(s.game().world.zoo.tiles[20 * 40 + 20].terrain, 0);
+        assert_eq!(s.text(3305), "$0");
     });
 }

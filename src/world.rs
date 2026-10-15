@@ -511,6 +511,15 @@ impl World {
         }
     }
 
+    /// Runs an edit that the undo list does not record, for a test that needs something in the way.
+    #[cfg(test)]
+    pub fn unrecorded<T>(&mut self, edit: impl FnOnce(&mut World) -> T) -> T {
+        let (undo, fresh) = (std::mem::take(&mut self.undo), self.fresh);
+        let result = edit(self);
+        (self.undo, self.fresh) = (undo, fresh);
+        result
+    }
+
     /// Whether an undo would do anything: the Undo button is enabled.
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
