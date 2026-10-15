@@ -293,7 +293,19 @@ usage: rustyzoo [--data <dir>] <command>
                       which opens or closes its window; `money cell ID RRGGBB TEXT` tells each
                       cell of its Finances table that changed, when the tab is shown and at
                       most every 10 s of clock while the window is shown (an older month's
-                      column is blank before the accounts begin). --cash N is the cash a map starts with instead of
+                      column is blank before the accounts begin). A release on the map with no tool picks the
+                      topmost entity under the pointer, and the gate of an exhibit opens the exhibit panel on it
+                      (the exhibit list button, 1050, shows the panel with no exhibit; a click on a row of
+                      its list makes that exhibit the current one and centres the view on its gate; the name
+                      field renames it; its tabs show the construction date, upkeep and keeper, the popularity
+                      and donations, the animals and the thoughts); a click on a row of the Animals tab shows
+                      the recommendations plaque of that animal (in the original the animal panel's button
+                      does). `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
+                      donations stars N A B C`, `panel animals N thoughts N` (or `panel exhibit none`) tell
+                      what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
+                      recommendation (`panel line!` for an important one, written in red) what the plaque shows,
+                      each time something changed: when it opens, at once when its list is clicked or a name is
+                      set, and every 10 s of clock while it is shown, not while the game is paused. --cash N is the cash a map starts with instead of
                       the one it stores (any finite number). --seed N (0 to 4294967295) makes a test run: the game's
                       random generator is seeded with N and N+1 at the start, and with N+2, N+3, ... each time a map of
                       another size is set up or a month ends, instead of the wall clock; the lines `sim seed S`

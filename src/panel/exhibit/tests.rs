@@ -127,7 +127,7 @@ fn the_important_lines_come_first_and_a_female_reads_the_other_range() {
         (bit::terrain(2), true),
     ]);
     assert_eq!(
-        recommendations(Some(&r), false),
+        recommendations(Some(&r), false, false),
         [
             (9900 + 1 + 25, true),
             (9900 + 1 + 58, true),
@@ -135,9 +135,12 @@ fn the_important_lines_come_first_and_a_female_reads_the_other_range() {
             (9900 + 1 + 19, false)
         ]
     );
-    assert_eq!(recommendations(Some(&r), true)[0], (39900 + 1 + 25, true));
+    assert_eq!(
+        recommendations(Some(&r), true, false)[0],
+        (39900 + 1 + 25, true)
+    );
     let all = record(&(0..64).map(|b| (b, b % 2 == 0)).collect::<Vec<_>>());
-    let lines = recommendations(Some(&all), false);
+    let lines = recommendations(Some(&all), false, false);
     assert_eq!(lines.len(), 64);
     assert_eq!(
         lines[0],
@@ -150,10 +153,30 @@ fn the_important_lines_come_first_and_a_female_reads_the_other_range() {
 #[test]
 fn an_exhibit_with_nothing_to_say_is_well_suited() {
     assert_eq!(
-        recommendations(Some(&Record::default()), false),
+        recommendations(Some(&Record::default()), false, false),
         [(9900, false)]
     );
-    assert_eq!(recommendations(None, true), [(39900, false)]);
+    assert_eq!(recommendations(None, true, false), [(39900, false)]);
+}
+
+#[test]
+fn an_animal_in_a_show_tank_has_its_own_line_and_the_salinity_bit_after_it() {
+    let r = record(&[
+        (bit::STINK, true),
+        (SALINITY, true),
+        (bit::FEW_ROCKS, false),
+    ]);
+    assert_eq!(
+        recommendations(Some(&r), false, true),
+        [(9991, false), (9912, false)]
+    );
+    assert_eq!(
+        recommendations(Some(&r), true, true),
+        [(39991, false), (39912, false)]
+    );
+    let plain = record(&[(bit::STINK, true)]);
+    assert_eq!(recommendations(Some(&plain), false, true), [(9991, false)]);
+    assert_eq!(recommendations(None, false, true), [(9991, false)]);
 }
 
 #[test]

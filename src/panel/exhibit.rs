@@ -5,7 +5,7 @@
 //! button (13.5).
 //!
 //! [`Panel`] holds what the player chose (the current exhibit, the animal of the plaque) and
-//! the refresh clock; [`Panel::refresh`] writes the layout from the world and returns the
+//! the refresh clocks; [`Panel::refresh`] writes the layout from the world and returns the
 //! `panel` log lines of what changed. The rating is computed from the world at each refresh.
 
 use crate::build::number;
@@ -22,34 +22,35 @@ use crate::ui::widgets::Row;
 use crate::vfs::Vfs;
 use crate::world::World;
 
-/// The layout of the panel, the Exhibit List button that shows it and the close button.
+// The layout of the panel, the exhibit list button that shows it, the name field and the list of
+// the exhibits.
 pub const LAYOUT: i32 = 30;
 pub const BUTTON: i32 = 1050;
-/// The name field and the list of the exhibits.
 pub const NAME: i32 = 4304;
 pub const LIST: i32 = 4305;
-/// The list of the animals (its tab) and the tab buttons: status and tank modification.
+// The list of the animals, the thoughts and the tabs that can be selected without a click: status
+// and tank modification, each with its sub-layout.
 pub const ANIMALS: i32 = 4326;
+const THOUGHTS: i32 = 4330;
 const STATUS_TAB: i32 = 4310;
 const TANK_TAB: i32 = 4365;
-const TANK_LAYOUT: i32 = 704;
 const STATUS_LAYOUT: i32 = 700;
-const THOUGHTS: i32 = 4330;
-/// The status tab: the date, the upkeep (last month, this month, total) and the keeper.
+const TANK_LAYOUT: i32 = 704;
+// The status tab: the date, the upkeep (last month, this month, total) and the keeper, whose
+// text is the string 4360 when assigned ("Yes") and the next one when not ("No").
 const DATE: i32 = 4349;
 const UPKEEP: [i32; 3] = [4325, 4323, 4347];
 const KEEPER: i32 = 4364;
-/// The donations tab: the stars and the donations (last month, this month, total).
+const YES: i32 = 4360;
+// The donations tab: the stars and the donations (last month, this month, total).
 const STARS: i32 = 4315;
 const DONATIONS: [i32; 3] = [4319, 4317, 4321];
-/// The texts of the keeper row, "Yes" and "No".
-const YES: i32 = 4360;
 /// The string of the date of an exhibit.
 const DATE_PATTERN: i32 = 22014;
 /// The interface clock time between two refreshes of the panel and of the plaque (ms).
 pub const PERIOD: u64 = 10_000;
 
-/// The recommendations plaque: its layout, the name, the list, the background and the title.
+// The recommendations plaque: its layout, the name, the list, the background and the title.
 pub const PLAQUE: i32 = 28;
 const PLAQUE_NAME: i32 = 26001;
 const PLAQUE_LIST: i32 = 26002;
@@ -64,9 +65,13 @@ const BACKS: [&str; 3] = [
     "ui/trnrinfo/tinfobk/tinfobk",
 ];
 /// The string of a recommendation is this plus one plus its bit; a female animal's are 30000
-/// further. The same sentence says an exhibit is well suited when no bit is set.
+/// further. This string itself says an exhibit is well suited when no bit is set.
 const RECOMMENDATION: i32 = 9900;
 const FEMALE: i32 = 30000;
+/// The bit of the water that does not suit the species and the line of an animal in a show tank
+/// (the string is the base plus this).
+const SALINITY: u32 = 11;
+const SHOW_TANK: i32 = 91;
 
 /// The picture of the row of a land exhibit by its fence state, and that of a tank.
 const FENCES: [&str; 3] = [
@@ -93,15 +98,28 @@ pub fn keeper_kind(keeper: i32) -> usize {
 
 /// The lines of an animal's recommendations (habitat rating 7): the string number and whether
 /// the line is important. The important bits come first, then the others, each in the order of
-/// the bits; when nothing is set the exhibit is well suited. The sentences about the scenery
-/// the species dislikes are not here yet.
-pub fn recommendations(record: Option<&Record>, female: bool) -> Vec<(i32, bool)> {
+/// the bits; when nothing is set the exhibit is well suited. An animal in a show tank has its own
+/// line, and the salinity bit after it. The sentences about the scenery the species dislikes are
+/// not here yet.
+pub fn recommendations(record: Option<&Record>, female: bool, show_tank: bool) -> Vec<(i32, bool)> {
     let base = RECOMMENDATION + if female { FEMALE } else { 0 };
+    let has = move |b: u32, important: bool| {
+        record.is_some_and(|r| r.has(b) && (r.important >> b & 1 == 1) == important)
+    };
+    if show_tank {
+        let salt = record.is_some_and(|r| r.has(SALINITY));
+        let line = (base + SHOW_TANK, false);
+        return [
+            Some(line),
+            salt.then_some((base + 1 + SALINITY as i32, false)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+    }
     let bit = move |important: bool| {
         (0..64)
-            .filter(move |&b| {
-                record.is_some_and(|r| r.has(b) && (r.important >> b & 1 == 1) == important)
-            })
+            .filter(move |&b| has(b, important))
             .map(move |b| (base + 1 + b as i32, important))
     };
     let lines: Vec<(i32, bool)> = bit(true).chain(bit(false)).collect();
@@ -153,11 +171,6 @@ fn list_icon(ty: &EntityType) -> Option<String> {
         .filter_map(|name| config.section(name))
         .find_map(|section| section.get_all("Icon").first().map(|v| v.to_vec()))
         .map(|v| String::from_utf8_lossy(&v).into_owned())
-}
-
-/// The text of a string as the bytes of a field.
-fn bytes(ui: &Interface, id: i32) -> Vec<u8> {
-    to_cp1252(&ui.string(id))
 }
 
 /// The refresh clock of a panel (5.1): the due time and a refresh that is asked for.
@@ -353,9 +366,9 @@ impl Panel {
         }
     }
 
-    /// Writes the plaque for the animal `self.plaque`, if the layout is shown: its name, the
+    /// Writes the plaque for the animal `self.plaque`, if it is still in the world: its name, the
     /// background and title of its keeper kind, and the recommendations of its species in the
-    /// exhibit it stands in. Returns the log lines.
+    /// exhibit it stands in, rated from the world now. Returns the log lines of what changed.
     pub fn refresh_plaque(
         &mut self,
         ui: &mut Interface,
@@ -376,7 +389,10 @@ impl Panel {
         let records = input.map(|i| rating::rate(&i)).unwrap_or_default();
         let record = records.iter().find(|r| Some(&r.key) == species.as_ref());
         let female = ty.is_some_and(|t| t.subtype.first() == Some(&b'f'));
-        let lines = recommendations(record, female);
+        let show = exhibit
+            .and_then(|id| world.exhibits().get(id))
+            .is_some_and(|e| e.tank.is_some_and(|t| t.show));
+        let lines = recommendations(record, female, show);
         let none = Words::new(|_| String::new());
         let name = ty.map_or(String::new(), |t| ui.string(t.name_id));
         let texts: Vec<String> = (lines.iter())
@@ -393,8 +409,8 @@ impl Panel {
             .as_ref()
             .map_or(String::new(), |c| c.name.clone());
         ui.set_text(PLAQUE_NAME, &to_cp1252(&animal));
-        let title = bytes(ui, PLAQUE_TITLE + kind as i32);
-        ui.set_text(PLAQUE_TITLE, &title);
+        let title = ui.string(PLAQUE_TITLE + kind as i32);
+        ui.set_text(PLAQUE_TITLE, &to_cp1252(&title));
         let back: Option<Picture> = ui.tree.picture(vfs, BACKS[kind]);
         ui.set_picture(PLAQUE_BACK, back);
         ui.refill_rows(PLAQUE_LIST, rows);

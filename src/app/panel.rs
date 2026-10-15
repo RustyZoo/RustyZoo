@@ -1,5 +1,5 @@
 //! The exhibit panel in the game: what opens it (the gate of an exhibit under the pointer, the
-//! Exhibit List button), what its list and fields do, and its refresh on the interface clock
+//! exhibit list button), what its list and fields do, and its refresh on the interface clock
 //! (information panels 4, 5, 10).
 
 use super::*;
@@ -30,10 +30,14 @@ impl App<'_> {
         }
     }
 
-    /// Shows the exhibit panel, with the Exhibit List button down, on exhibit `id`.
+    /// Shows the exhibit panel, with the exhibit list button down, on exhibit `id`.
     fn open_exhibit(&mut self, id: u32) {
         let Some(ui) = &mut self.ui else { return };
-        if !ui.shown(LAYOUT) && !ui.press_button(BUTTON) {
+        if !ui.shown(LAYOUT) {
+            ui.press_button(BUTTON);
+        }
+        // Without the main panel (or a button that was down already) the layout is shown directly.
+        if !ui.shown(LAYOUT) {
             ui.show(LAYOUT);
         }
         self.panel_sync();

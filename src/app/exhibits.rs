@@ -87,7 +87,12 @@ impl App<'_> {
         }
         for event in events {
             match event {
-                Event::New { id, ask: true } => game.naming.push(id),
+                Event::New { id, ask } => {
+                    game.world.set_created(id, self.sim.calendar().date());
+                    if ask {
+                        game.naming.push(id);
+                    }
+                }
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
                 Event::Objects(id) => game.refused = Some(id),
                 _ => {}

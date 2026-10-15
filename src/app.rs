@@ -1668,6 +1668,9 @@ impl<'a> App<'a> {
     /// (`menu continue enabled NAME`, `menu continue disabled`, `menu version V` when it appears, `menu exit`),
     /// then `tool down X,Y` or `tool up X,Y` for a press or release on the map view (the tile, or `none`),
     /// then `world stage` when an edit made the draw stage the map again,
+    /// then `panel exhibit ...`, `panel status ...`, `panel donations ...`, `panel animals ...`,
+    /// `panel plaque ...` and `panel line ...` for what the exhibit panel and the recommendations
+    /// plaque show, when it changed (see the usage of `run`),
     /// then `terrain enter paint|modify`, `terrain brush SIZE X,Y`, `terrain size N`, `terrain type N`,
     /// `terrain paint N`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave`,
     /// `terrain short` and `terrain undo N` (the price of the tiles an undo gave back) for what the
