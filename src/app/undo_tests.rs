@@ -1,4 +1,4 @@
-//! The Undo Last Action button and the Backspace key through the pass (placing 8), on the made-up
+//! The undo button and the Backspace key through the pass (placing 8), on the made-up
 //! map and left bar of the bulldozer tests.
 
 use super::bulldozer_tests::{DELETE, Session, with_game};
@@ -294,7 +294,7 @@ fn a_removed_object_that_cannot_be_put_back_stops_the_undo_with_a_message() {
         );
         assert!(
             told.iter()
-                .any(|l| l.starts_with("menu message Failed to replace Shop")),
+                .any(|l| l.starts_with("menu message blocked: Shop")),
             "{told:?}"
         );
         assert!(s.asking(), "the dialog");

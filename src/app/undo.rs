@@ -1,4 +1,4 @@
-//! The Undo Last Action button and the Backspace key (placing 8): the last press and release's
+//! The undo button and the Backspace key (placing 8): the last press and release's
 //! operations are taken back by the world, the cash and the accounts follow, and a removed
 //! object that cannot be put back is told in a message box.
 
@@ -8,8 +8,8 @@ use crate::place::bulldozer::type_of;
 use crate::text::format::whole_units;
 use crate::world::{Spot, Step, Undone};
 
-/// The button of the game screen, grey until something can be undone, and the string "Failed to
-/// replace %s because of blocking object(s). Wait awhile and try again."
+/// The button of the game screen, grey until something can be undone, and the string that tells
+/// an object could not be put back (the object's name goes in its `%s`).
 pub(super) const UNDO: i32 = 1075;
 const BLOCKED: i32 = 159;
 

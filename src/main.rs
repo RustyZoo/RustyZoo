@@ -204,7 +204,7 @@ usage: rustyzoo [--data <dir>] <command>
                       `world gate CLASS/TYPE/g X,Y side S id N`, `exhibit gate ID X,Y side S`),
                       books the price as construction and clears the undo list; any other place
                       does nothing and says nothing, except that a gate the cash does not cover
-                      shows `tool message 10002`. The Undo Last Action button (1075, grey
+                      shows `tool message 10002`. The undo button (1075, grey
                       until something can be undone) and the Backspace key take back the actions
                       of the last press and release, the last first (`tool undo N`): a placed
                       object goes with its full price back (`world remove CLASS/TYPE/SUBTYPE X,Y

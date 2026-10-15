@@ -26,7 +26,7 @@ impl UiStrings for Texts {
             160 => "tank drained".into(),
             10552 => "tank objects".into(),
             10571 => "no merge".into(),
-            159 => "Failed to replace %s because of blocking object(s).".into(),
+            159 => "blocked: %s".into(),
             6208 => "Exhibit".into(),
             22100 => "$".into(),
             9001 => "Shop".into(),
