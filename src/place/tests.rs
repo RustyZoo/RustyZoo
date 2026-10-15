@@ -164,6 +164,18 @@ fn catalogue() -> Catalogue {
             "[Characteristics/Integers]\ncPurchaseCost=50\ncLand=0\n",
             [1, 1, 1],
         ),
+        ty(
+            "building",
+            "kiosk",
+            "[Characteristics/Integers]\ncPurchaseCost=100\n",
+            [2, 2, 1],
+        ),
+        ty(
+            "building",
+            "bouncy",
+            "[Characteristics/Integers]\nwalkable=1\n",
+            [2, 2, 1],
+        ),
     ];
     for t in types {
         cat.push(t);
@@ -195,10 +207,12 @@ fn entity(class: &str, name: &str, x: i32, y: i32, rotation: u32) -> Entity {
 fn shape(e: &Entity) -> Option<Shape> {
     let (kind, footprint, fence, gate) = match e.class.as_str() {
         "objects" => (Kind::Fixed, (1, 1), false, false),
+        "building" => (Kind::Fixed, (2, 2), false, false),
         "paths" => (Kind::Path, (2, 2), false, false),
         "fences" => (Kind::Edge, (1, 1), true, false),
         "gate" => (Kind::Fixed, (2, 2), false, true),
-        "animals" => (Kind::Unit, (1, 1), false, false),
+        "animals" | "helicopter" => (Kind::Unit, (1, 1), false, false),
+        "gator" => (Kind::Unit, (3, 1), false, false),
         _ => return None,
     };
     Some(Shape {
@@ -621,7 +635,15 @@ fn a_valid_place_gets_the_object_and_takes_its_price_as_construction() {
     let mut w = world((0, 0), vec![], |_| {});
     let mut money = zoo_money(50_000.0);
     let p = at(&w, &cat, 0, 0, 3 * 64 + 40, 2 * 64 + 10).unwrap();
-    let outcome = place(&mut w, &mut money, &cat.types[0], &p, &[false, true], shape);
+    let outcome = place(
+        &mut w,
+        &mut money,
+        &cat.types[0],
+        &p,
+        &[false, true],
+        Vec::new(),
+        shape,
+    );
     assert_eq!(outcome, Outcome::Placed(101));
     assert_eq!(money.cash, 49_975.0);
     assert_eq!(money.monthly[CONSTRUCTION][0], 25.0);
@@ -645,6 +667,7 @@ fn a_valid_place_gets_the_object_and_takes_its_price_as_construction() {
             &cat.types[0],
             &again,
             &[false, true],
+            Vec::new(),
             shape
         ),
         Outcome::Refused(Some(IN_THE_WAY))
@@ -663,13 +686,29 @@ fn the_cash_must_cover_the_price_of_what_is_placed() {
     // 24 is not enough for 25; exactly 25 is, and a free object is placed with no cash at all.
     let mut poor = zoo_money(24.0);
     assert_eq!(
-        place(&mut w, &mut poor, &cat.types[0], &p, &[false, true], shape),
+        place(
+            &mut w,
+            &mut poor,
+            &cat.types[0],
+            &p,
+            &[false, true],
+            Vec::new(),
+            shape
+        ),
         Outcome::Refused(Some(NO_FUNDS))
     );
     assert_eq!((poor.cash, w.zoo.entities.len()), (24.0, 0));
     let mut exact = zoo_money(25.0);
     assert!(matches!(
-        place(&mut w, &mut exact, &cat.types[0], &p, &[false, true], shape),
+        place(
+            &mut w,
+            &mut exact,
+            &cat.types[0],
+            &p,
+            &[false, true],
+            Vec::new(),
+            shape
+        ),
         Outcome::Placed(_)
     ));
     assert_eq!(exact.cash, 0.0);
@@ -685,6 +724,7 @@ fn the_cash_must_cover_the_price_of_what_is_placed() {
             &cat.types[0],
             &free,
             &[false, true],
+            Vec::new(),
             shape
         ),
         Outcome::Placed(_)
@@ -699,6 +739,7 @@ fn the_cash_must_cover_the_price_of_what_is_placed() {
             &cat.types[0],
             &held,
             &[false, true],
+            Vec::new(),
             shape
         ),
         Outcome::Refused(Some(IN_THE_WAY))
@@ -715,6 +756,7 @@ fn the_cash_must_cover_the_price_of_what_is_placed() {
         &cat.types[0],
         &nan,
         &[false, true],
+        Vec::new(),
         shape,
     );
     assert_eq!(money.cash, 100.0);
@@ -765,7 +807,7 @@ fn a_release_over_a_water_only_type_on_land_shows_the_water_message_last() {
     let mut money = zoo_money(100.0);
     let mut release = |w: &mut World, x: i64, y: i64| {
         let p = at(w, &cat, 7, 0, x, y).unwrap();
-        place(w, &mut money, &cat.types[7], &p, &water, shape)
+        place(w, &mut money, &cat.types[7], &p, &water, Vec::new(), shape)
     };
     // On land the check stores nothing, the second look gives the water message.
     assert_eq!(
@@ -786,7 +828,15 @@ fn a_release_over_a_water_only_type_on_land_shows_the_water_message_last() {
     let mut slope = world((0, 0), vec![], |t| t[0].shape = 0x50);
     let p = at(&slope, &cat, 1, 0, 10, 10).unwrap();
     assert_eq!(
-        place(&mut slope, &mut money, &cat.types[1], &p, &water, shape),
+        place(
+            &mut slope,
+            &mut money,
+            &cat.types[1],
+            &p,
+            &water,
+            Vec::new(),
+            shape
+        ),
         Outcome::Refused(None)
     );
 }
@@ -924,7 +974,15 @@ fn a_path_on_water_needs_dirt_to_be_painted_and_costs_the_paint_too() {
     // Placing paints the tile first, then lays the path and takes both prices.
     let mut money = zoo_money(100.0);
     assert!(matches!(
-        place(&mut w, &mut money, &cat.types[2], &p, &[false, true], shape),
+        place(
+            &mut w,
+            &mut money,
+            &cat.types[2],
+            &p,
+            &[false, true],
+            Vec::new(),
+            shape
+        ),
         Outcome::Placed(_)
     ));
     assert_eq!(money.cash, 85.0);
@@ -942,7 +1000,15 @@ fn a_path_on_a_path_replaces_it_and_pays_only_for_another_type() {
     let mut money = zoo_money(100.0);
     let go = |w: &mut World, money: &mut Money, ty: usize| {
         let p = at(w, &cat, ty, 0, 10, 10).unwrap();
-        place(w, money, &cat.types[ty], &p, &[false, true], shape)
+        place(
+            w,
+            money,
+            &cat.types[ty],
+            &p,
+            &[false, true],
+            Vec::new(),
+            shape,
+        )
     };
     // The same type: valid, free, and still one piece.
     assert!(matches!(go(&mut w, &mut money, 2), Outcome::Placed(_)));
@@ -1019,7 +1085,15 @@ fn a_path_goes_under_objects_with_no_footprint_check_and_no_message() {
     );
     let mut money = zoo_money(100.0);
     assert!(matches!(
-        place(&mut w, &mut money, &cat.types[2], &p, &[false, true], shape),
+        place(
+            &mut w,
+            &mut money,
+            &cat.types[2],
+            &p,
+            &[false, true],
+            Vec::new(),
+            shape
+        ),
         Outcome::Placed(_)
     ));
     // The trees stay, and the path is the tile's path.
@@ -1303,7 +1377,15 @@ fn a_fence_is_placed_healthy_replaces_the_old_piece_and_is_paid_once() {
         (3 * 64 + 63, 2 * 64 + 32, 2, (3, 2))
     );
     let go = |w: &mut World, money: &mut Money, p: &Pending| {
-        place(w, money, &cat.types[11], p, &[false, true], shape)
+        place(
+            w,
+            money,
+            &cat.types[11],
+            p,
+            &[false, true],
+            Vec::new(),
+            shape,
+        )
     };
     assert_eq!(go(&mut w, &mut money, &p), Outcome::Placed(101));
     assert_eq!(money.cash, 175.0);
@@ -1339,4 +1421,164 @@ fn a_fence_is_placed_healthy_replaces_the_old_piece_and_is_paid_once() {
         (out.verdict, out.message),
         (Verdict::Invalid, Some(NOT_IN_THE_ZOO))
     );
+}
+
+#[test]
+fn a_unit_on_a_tile_of_the_footprint_whose_block_meets_it_is_in_the_way() {
+    let cat = catalogue();
+    let elephant = |x: i32, y: i32| entity("animals", "elephant", x, y, 0);
+    let kiosk = |w: &World| at(w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    // The kiosk holds the four quadrants of tile (3, 2); its block is the tile.
+    let w = world((0, 0), vec![elephant(3 * 64 + 20, 2 * 64 + 50)], |_| {});
+    let p = kiosk(&w);
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    assert_eq!(p.blocking, [0]);
+    // The unit is highlighted with the objects: the staging tints it like them.
+    let tints = Tints::default();
+    assert_eq!(p.extra(&tints).tinted, [(0, tints.invalid)]);
+    // A unit on a neighbouring tile is not on a tile of the footprint, so it is not in the way,
+    // and neither is one that is gone (an entity of another class that has a shape).
+    let w = world((0, 0), vec![elephant(4 * 64 + 20, 2 * 64 + 50)], |_| {});
+    assert_eq!(kiosk(&w).verdict, Verdict::Valid);
+    // A quarter tile tree is blocked by a unit in its own quadrant only.
+    let w = world((0, 0), vec![elephant(3 * 64 + 50, 2 * 64 + 20)], |_| {});
+    let tree = |x: i64, y: i64| at(&w, &cat, 0, 0, 3 * 64 + x, 2 * 64 + y).unwrap();
+    assert_eq!(tree(40, 10).verdict, Verdict::Invalid);
+    // The elephant's 1 x 1 footprint is a quarter tile around it: the far quadrant stays free.
+    assert_eq!(tree(10, 50).verdict, Verdict::Valid);
+}
+
+#[test]
+fn a_cliff_on_a_side_inside_the_footprint_refuses_the_place() {
+    let cat = catalogue();
+    // The restaurant at the mouse in tile (3, 4) covers tiles 1 to 5 by 2 to 5. Edge state 2 on
+    // the east side of tile (3, 3): the states are stored for the directions 6, 4, 2, 0 from the
+    // low bits up.
+    let check = |tile: usize, bits: u8| {
+        let w = world((0, 0), vec![], |t| t[tile].edges = bits);
+        let p = at(&w, &cat, 5, 0, 3 * 64, 4 * 64).unwrap();
+        (p.verdict, p.message)
+    };
+    let invalid = (Verdict::Invalid, None);
+    assert_eq!(check(3 * 8 + 3, 2 << 4), invalid, "east of (3, 3)");
+    assert_eq!(check(3 * 8 + 4, 3), invalid, "its west side: state 3");
+    assert_eq!(
+        check(3 * 8 + 3, 1 << 4).0,
+        Verdict::Valid,
+        "state 1 is joined"
+    );
+    // A cliff on the border of the footprint is not inside: the east side of tile (5, 3).
+    assert_eq!(check(3 * 8 + 5, 2 << 4).0, Verdict::Valid);
+}
+
+#[test]
+fn a_building_holds_its_quadrants_takes_its_colours_and_its_price() {
+    let cat = catalogue();
+    let mut w = world((0, 0), vec![], |_| {});
+    let mut money = zoo_money(50_000.0);
+    let p = at(&w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    assert_eq!((p.x, p.y), (3 * 64 + 32, 2 * 64 + 32));
+    assert_eq!((p.verdict, p.amount()), (Verdict::Valid, -100));
+    let outcome = place(
+        &mut w,
+        &mut money,
+        &cat.types[15],
+        &p,
+        &[false, true],
+        vec![3, 0],
+        shape,
+    );
+    assert_eq!(outcome, Outcome::Placed(101));
+    assert_eq!(money.cash, 49_900.0);
+    let e = w.zoo.entities.last().unwrap();
+    assert_eq!(e.common.as_ref().unwrap().colors, [3, 0]);
+    let held = |q: usize| w.quadrant(2 * 8 + 3, q);
+    assert_eq!([held(0), held(1), held(2), held(3)], [Some(0); 4]);
+    // The same click again finds the four quadrants held.
+    let again = at(&w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    assert_eq!((again.verdict, again.blocking), (Verdict::Invalid, vec![0]));
+    // A hill under it, or water on a land building, refuses the place.
+    let hill = world((0, 0), vec![], |t| t[2 * 8 + 3].shape = 0x50);
+    let p = at(&hill, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, None));
+}
+
+#[test]
+fn a_walkable_type_ignores_units_but_a_refused_place_collects_every_unit_on_its_tiles() {
+    let cat = catalogue();
+    let bouncy = |w: &World| at(w, &cat, 16, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    let elephant = || entity("animals", "elephant", 3 * 64 + 20, 2 * 64 + 50, 0);
+    // The walkable type is placed over the unit it would otherwise meet.
+    let w = world((0, 0), vec![elephant()], |_| {});
+    let p = bouncy(&w);
+    assert_eq!(
+        (p.verdict, p.message, p.blocking.len()),
+        (Verdict::Valid, None, 0)
+    );
+    // Refused for another reason, it shows the unit like any other object.
+    let hill = world((0, 0), vec![elephant()], |t| t[2 * 8 + 3].shape = 0x50);
+    let p = bouncy(&hill);
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    assert_eq!(p.blocking, [0]);
+    // A quarter tile tree on water is refused without a message of its own; the unit in the far
+    // quadrant of its tile, whose rectangle does not meet the tree's, is collected all the same.
+    let wet = |t: &mut Vec<Tile>| t[2 * 8 + 3].terrain = 1;
+    let w = world((0, 0), vec![elephant()], wet);
+    let p = at(&w, &cat, 0, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    assert_eq!(p.blocking, [0]);
+    // A unit on another tile is not collected, and a valid place collects nothing.
+    let w = world(
+        (0, 0),
+        vec![entity("animals", "elephant", 4 * 64 + 20, 2 * 64 + 50, 0)],
+        wet,
+    );
+    let p = at(&w, &cat, 0, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    assert_eq!(
+        (p.verdict, p.message, p.blocking.len()),
+        (Verdict::Invalid, None, 0)
+    );
+}
+
+#[test]
+fn the_helicopter_lets_objects_through_but_is_collected_when_the_place_is_refused() {
+    let cat = catalogue();
+    let heli = || vec![entity("helicopter", "heli", 3 * 64 + 20, 2 * 64 + 50, 0)];
+    let kiosk = |w: &World| at(w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
+    let p = kiosk(&world((0, 0), heli(), |_| {}));
+    assert_eq!(
+        (p.verdict, p.message, p.blocking.len()),
+        (Verdict::Valid, None, 0)
+    );
+    let p = kiosk(&world((0, 0), heli(), |t| t[2 * 8 + 3].shape = 0x50));
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
+    assert_eq!(p.blocking, [0]);
+}
+
+#[test]
+fn a_units_rectangle_is_its_footprint_centred_with_the_larger_side_at_odd_rotations() {
+    let cat = catalogue();
+    // A 3 by 1 unit on the tile of a quarter tile tree, whose rectangle is x and y 0..32 of the
+    // tile; the unit's own is 96 by 32 at rotation 0, 32 by 96 at rotation 2 and 96 by 96 at an
+    // odd rotation, centred on (x, y).
+    let verdict = |x: i32, y: i32, rotation: u32| {
+        let gator = entity("gator", "gator", 3 * 64 + x, 2 * 64 + y, rotation);
+        let w = world((0, 0), vec![gator], |_| {});
+        at(&w, &cat, 0, 0, 3 * 64 + 10, 2 * 64 + 10)
+            .unwrap()
+            .verdict
+    };
+    let (valid, invalid) = (Verdict::Valid, Verdict::Invalid);
+    // Wide: it reaches the tree along x, not once turned a quarter.
+    assert_eq!([verdict(56, 16, 0), verdict(56, 16, 4)], [invalid; 2]);
+    assert_eq!([verdict(56, 16, 2), verdict(56, 16, 6)], [valid; 2]);
+    // Square at an odd rotation, whichever side it was long on.
+    assert_eq!([verdict(60, 50, 0), verdict(60, 50, 2)], [valid; 2]);
+    assert_eq!(
+        [verdict(60, 50, 1), verdict(60, 50, 3), verdict(60, 50, 7)],
+        [invalid; 3]
+    );
+    // Touching is not meeting: at y 48 the unit's near edge is y 32, the tree's far edge.
+    assert_eq!(verdict(63, 16, 0), invalid);
+    assert_eq!(verdict(63, 48, 0), valid);
 }

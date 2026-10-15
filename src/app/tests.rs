@@ -13,6 +13,176 @@ use crate::sprite::tests::Install;
 use crate::ui::interface::Interface;
 use crate::vfs::Vfs;
 
+/// A catalogue of a kiosk of 1 tile that costs 100, a hall of 2 x 2 tiles that costs 200 and a
+/// fence; the kiosk is a recolourable building whose group gives it a default.
+fn building_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    let ty = |class, name: &[u8], ini: &[u8], footprint| crate::entity::EntityType {
+        class,
+        type_name: name.to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(Config::parse(ini).unwrap())),
+        name_id: 0,
+        footprint,
+        height: 0,
+    };
+    cat.push(ty(
+        "building",
+        b"kiosk",
+        b"[Characteristics/Integers]\ncPurchaseCost=100\ncIsColorReplaced=1\n\
+          [colorrep]\ncolor=cr_color\nreplace=cr_part1\ndefaultpal=pals/blue.pal\n\
+          [cr_color]\nncolors=2\n",
+        [2, 2, 1],
+    ));
+    cat.push(ty(
+        "building",
+        b"hall",
+        b"[Characteristics/Integers]\ncPurchaseCost=200\n",
+        [4, 4, 1],
+    ));
+    cat.push(ty("fences", b"iron", b"", [1, 1, 1]));
+    cat
+}
+
+#[test]
+fn a_building_is_placed_on_flat_ground_and_refused_on_a_hill_or_across_a_fence() {
+    let install = cache_install_with(
+        "app-building",
+        frame_file(),
+        &[(
+            "building.ai",
+            b"[cr_part1]\nncolors=2\npal=pals/red.pal\npal=pals/blue.pal\n".to_vec(),
+        )],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = building_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    app.set_interface(interface("building"));
+    app.set_money(Money {
+        cash: 450.0,
+        ..Money::default()
+    });
+    app.pass(0, &[]);
+    // The view is set to look at the tile before each click (the window is tiny).
+    let click = |app: &mut App, tx: i32, ty: i32| {
+        let game = app.game.as_mut().unwrap();
+        let centre = project(game.camera.rotation, 64 * tx + 32, 64 * ty + 32, 0);
+        let (px, py) = crate::camera::zoom_view(game.camera.zoom, centre);
+        game.camera.scroll = (px as i32 - SIZE.0 as i32 / 2, py as i32 - SIZE.1 as i32 / 2);
+        let (x, y) = tile_point(&game.camera, tx, ty);
+        [
+            Command::Mouse(Mouse::Move(x, y)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ]
+    };
+    let lines = |app: &App, pass, now| -> Vec<String> {
+        let all = app.log_lines(pass, now);
+        let kept = all.iter().filter_map(|l| l.splitn(4, ' ').nth(3));
+        let wanted = |l: &&str| {
+            ["tool down", "tool up", "tool refused", "tool message"]
+                .iter()
+                .any(|k| l.starts_with(k))
+                || l.starts_with("world ") && !l.starts_with("world stage")
+                || l.starts_with("money cash")
+        };
+        kept.filter(wanted).map(str::to_string).collect()
+    };
+    // The kiosk on flat ground: the add with the four quadrants it holds, the charge, and the
+    // colour choice of the group's default (the second variant) stored with it.
+    app.game.as_mut().unwrap().build.hold(0);
+    let go = click(&mut app, 20, 19);
+    app.pass(20, &go);
+    assert_eq!(
+        lines(&app, 1, 20),
+        [
+            "tool down 20,19",
+            "tool up 20,19",
+            "world add building/kiosk/ 20,19 id 1 quadrants 4",
+            "money cash 350"
+        ]
+    );
+    let game = app.game.as_ref().unwrap();
+    assert_eq!(
+        game.world.zoo.entities[0].common.as_ref().unwrap().colors,
+        [1]
+    );
+    // The same click finds the quadrants held: the message of something in the way.
+    let go = click(&mut app, 20, 19);
+    app.pass(40, &go);
+    assert_eq!(
+        lines(&app, 2, 40),
+        ["tool down 20,19", "tool up 20,19", "tool message 10555"]
+    );
+    // On a hill nothing is added or charged and the refusal is logged.
+    app.game
+        .as_mut()
+        .unwrap()
+        .world
+        .set_tile(22, 19, 0, 0x50, 0);
+    let go = click(&mut app, 22, 19);
+    app.pass(60, &go);
+    assert_eq!(
+        lines(&app, 3, 60),
+        ["tool down 22,19", "tool up 22,19", "tool refused"]
+    );
+    assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 1);
+    // A hall of 2 x 2 tiles over the east side of tile (29, 30) is refused by the fence inside.
+    let fence = {
+        let renderer = &app.renderer;
+        let at = Pending {
+            ty: 2,
+            x: 29 * 64 + 63,
+            y: 30 * 64 + 32,
+            z: 0,
+            facing: 2,
+            tile: (29, 30),
+            quadrant: 0,
+            verdict: crate::place::Verdict::Valid,
+            message: None,
+            price: 0.0,
+            paint: None,
+            blocking: Vec::new(),
+        };
+        let e = crate::place::entity(&renderer.catalogue().types[2], &at, Vec::new());
+        let shape = renderer.shape(&e);
+        (e, shape)
+    };
+    app.game
+        .as_mut()
+        .unwrap()
+        .world
+        .add(fence.0, fence.1)
+        .unwrap();
+    app.game.as_mut().unwrap().build.hold(1);
+    let go = click(&mut app, 30, 30);
+    app.pass(80, &go);
+    assert_eq!(
+        lines(&app, 4, 80),
+        ["tool down 30,30", "tool up 30,30", "tool refused"]
+    );
+    // Three tiles away from it the hall is placed.
+    let go = click(&mut app, 34, 30);
+    app.pass(100, &go);
+    assert_eq!(
+        lines(&app, 5, 100),
+        [
+            "tool down 34,30",
+            "tool up 34,30",
+            "world add building/hall/ 34,30 id 3 quadrants 16",
+            "money cash 150"
+        ]
+    );
+}
+
 const SIZE: (u32, u32) = (64, 48);
 
 /// A flat map of 40 by 40 tiles whose camera looks at the middle of it.
@@ -1111,7 +1281,7 @@ fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
             "tool down 20,19",
             "tool up 20,19",
             "tool turn 1",
-            "world add objects/tree/ 20,19 id 1",
+            "world add objects/tree/ 20,19 id 1 quadrants 1",
             "money cash 35"
         ]
     );
@@ -1418,6 +1588,7 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
                 paint: None,
                 blocking: Vec::new(),
             },
+            Vec::new(),
         );
         e.common.as_mut().unwrap().id = 0;
         let shape = renderer.shape(&e);

@@ -25,7 +25,7 @@ use crate::Framebuffer;
 use crate::anim::{AnimSet, Animation, View};
 use crate::bitmap;
 use crate::camera::zoom_view;
-use crate::config::{Config, to_int};
+use crate::config::{Config, Section, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
 use crate::sprite::{Blend, Frame, Palette, Place, Sprite};
@@ -562,6 +562,30 @@ impl<'a> MapRenderer<'a> {
         })
     }
 
+    /// The colour choices a new building of the type starts with, one byte per colour group (sprite
+    /// drawing 8.1): the position of the `defaultpal` of each group among its variants. Empty for a
+    /// type that is not recoloured.
+    pub fn default_colors(&self, ty: &EntityType) -> Vec<u8> {
+        let Some(config) = ty.config.as_deref() else {
+            return Vec::new();
+        };
+        let flag = config
+            .section("Characteristics/Integers")
+            .and_then(|s| s.get("cIsColorReplaced"))
+            .and_then(to_int);
+        let Some(replaced) = config
+            .section("colorrep")
+            .filter(|_| ty.class == "building" && flag.is_some_and(|n| n != 0))
+        else {
+            return Vec::new();
+        };
+        let defaults = replaced.get_all("defaultpal");
+        let named = replaced.get_all("replace").iter().enumerate();
+        named
+            .map(|(g, name)| default_choice(self.groups.section(name), defaults.get(g)))
+            .collect()
+    }
+
     pub fn new(vfs: &'a Vfs, catalogue: &'a Catalogue) -> MapRenderer<'a> {
         let read = |member: &str| {
             vfs.read(member)
@@ -696,10 +720,7 @@ impl<'a> MapRenderer<'a> {
         let fixed = config.section(replaced.get("color")?)?;
         let mut start = usize::try_from(to_int(fixed.get("ncolors")?)?).ok()?;
         let mut palette = sprite.1.clone();
-        let same = |a: &[u8], b: &[u8]| {
-            crate::vfs::normalise(&String::from_utf8_lossy(a))
-                == crate::vfs::normalise(&String::from_utf8_lossy(b))
-        };
+        let same = same_member;
         // The fixed colours belong to the palette `fullpal` names, not to any other.
         if let (Some(full), Some(colors)) = (fixed.get("fullpal"), fixed.get("colorpal"))
             && same(sprite.0.palette.as_bytes(), full)
@@ -714,10 +735,7 @@ impl<'a> MapRenderer<'a> {
             let variants = group.get_all("pal");
             let chosen = match stored.get(g) {
                 Some(&choice) => usize::from(choice),
-                None => defaults
-                    .get(g)
-                    .and_then(|d| variants.iter().position(|v| same(v, d)))
-                    .unwrap_or(0),
+                None => usize::from(default_choice(Some(group), defaults.get(g))),
             };
             if let Some(colors) = variants.get(chosen).and_then(|v| self.palette(v)) {
                 palette.overwrite(start, colors, 1, usize::MAX);
@@ -1319,6 +1337,22 @@ impl<'a> MapRenderer<'a> {
             pic: Pic::Anim(anim, view, palette),
         });
     }
+}
+
+/// Whether two palette file names are the same member.
+fn same_member(a: &[u8], b: &[u8]) -> bool {
+    crate::vfs::normalise(&String::from_utf8_lossy(a))
+        == crate::vfs::normalise(&String::from_utf8_lossy(b))
+}
+
+/// The position of `default` among the `pal` variants of a colour group, 0 when it is not there
+/// (sprite drawing 8.1).
+fn default_choice(group: Option<&Section>, default: Option<&Vec<u8>>) -> u8 {
+    group
+        .zip(default)
+        .and_then(|(group, d)| group.get_all("pal").iter().position(|v| same_member(v, d)))
+        .and_then(|n| u8::try_from(n).ok())
+        .unwrap_or(0)
 }
 
 /// The type and the condition of an object.

@@ -549,4 +549,26 @@ bulldozer_area() { # bulldozer_area <map>
 check base-trial "8,49960,9e68a707de0688d9" "bulldozer_area maps/default.zoo"
 check expansion-trial "17,50156,dfc2848f5177231c" "bulldozer_area maps/scn19.zoo"
 
+# A building: the Objects panel opens with its first item chosen, a click on the map places it (the
+# log tells the add with the quadrants it holds and the cash) and a second click on the same place
+# finds them held (message 10555). Prints the adds, the messages, the cash at the end (from 50000)
+# and the hash of the last picture.
+building_place() { # building_place <map>
+  d=$(mktemp -d)
+  printf '1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n6 down\n7 up\n9 down\n10 up\n11 mouse 700 420\n' >"$d/script"
+  rz run "$1" --headless --passes 14 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+    awk '/ world add /{p=p ";" $6 "," $7 "," $11} / tool message /{p=p ";message" $6} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";" c ";" h}'
+  rm -rf "$d"
+}
+check base-trial "building/building/vendfood,16,45,2;message10555;49950;b32cc0ef4b37f26a" "building_place maps/default.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;880e02c0e296754e" "building_place maps/scn19.zoo"
+# A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
+walkable_place() { # walkable_place <map>
+  d=$(mktemp -d)
+  printf '1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n7 mouse 400 380\n8 down\n9 up\n' >"$d/script"
+  rz run "$1" --headless --passes 12 --clock 20 --script "$d/script" 2>/dev/null | awk '/ world add /{print $6 "," $7}'
+  rm -rf "$d"
+}
+check expansion-trial "building/building/bounce,33,42" "walkable_place maps/scn19.zoo"
+
 exit $failed

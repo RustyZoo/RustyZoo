@@ -663,6 +663,41 @@ fn check(
         }
     }
     let tiles: Vec<usize> = quads.iter().map(|&(at, _)| at).collect();
+    // Units on a tile of the footprint whose rectangle meets the object's are in the way (item 4);
+    // none is, for a walkable type. A unit's rectangle is its footprint centred on it, both axes
+    // the larger one at an odd rotation, the axes swapped at the other quarter turn. The helicopter
+    // lets the object through (it moves in the air); recommended: nobody else does.
+    let units: Vec<(usize, i32, i32, (i32, i32))> = world
+        .zoo
+        .entities
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| {
+            let (c, shape) = (e.common.as_ref()?, world.shape(i)?);
+            let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
+            let (fx, fy) = shape.footprint;
+            let rect = match c.rotation % 4 {
+                0 => (fx, fy),
+                _ if c.rotation % 2 != 0 => (fx.max(fy), fx.max(fy)),
+                _ => (fy, fx),
+            };
+            let unit = shape.kind == Kind::Unit && tiles.contains(&on);
+            unit.then_some((i, c.x, c.y, rect))
+        })
+        .collect();
+    let meets = |centre: i32, own: i32, other: i32, reach: i32| {
+        i64::from((centre - other).abs()) < i64::from(own) + i64::from(reach)
+    };
+    for &(i, x, y, (fx, fy)) in &units {
+        if !flag("walkable", false)
+            && world.zoo.entities[i].class != "helicopter"
+            && meets(p.x, 16 * fp.0, x, 16 * fx)
+            && meets(p.y, 16 * fp.1, y, 16 * fy)
+        {
+            fail(p, Some(IN_THE_WAY));
+            p.blocking.push(i);
+        }
+    }
     // More than a quarter tile needs flat ground at one height (item 5).
     let tile = |t: usize| world.zoo.tiles[t];
     if (fp.0 > 1 || fp.1 > 1)
@@ -673,8 +708,7 @@ fn check(
     {
         fail(p, None);
     }
-    // More than a tile holds no fence on the sides inside it (item 6; a cliff there cannot be,
-    // the tiles being flat at one height).
+    // More than a tile holds no fence and no cliff on the sides inside it (item 6).
     if fp.0 > 2 || fp.1 > 2 {
         let (tx0, ty0) = (x0.div_euclid(64), y0.div_euclid(64));
         let tx1 = (x0 + 32 * (fp.0 - 1)).div_euclid(64);
@@ -687,11 +721,24 @@ fn check(
                         .tile_index(tx, ty)
                         .zip(world.tile_index(tx + dx, ty + dy));
                     if let (true, Some((a, b))) = (inside, both)
-                        && (world.edge(a, d).is_some() || world.edge(b, (d + 4) % 8).is_some())
+                        && (world.edge(a, d).is_some()
+                            || world.edge(b, (d + 4) % 8).is_some()
+                            || world.cliff(a, d)
+                            || world.cliff(b, (d + 4) % 8))
                     {
                         fail(p, None);
                     }
                 }
+            }
+        }
+    }
+    // A place refused for any reason collects every unit on its tiles, whether its rectangle meets
+    // the object's or not (10555 unless a message was stored before).
+    if p.verdict == Verdict::Invalid {
+        for &(i, ..) in &units {
+            if !p.blocking.contains(&i) {
+                fail(p, Some(IN_THE_WAY));
+                p.blocking.push(i);
             }
         }
     }
@@ -794,8 +841,9 @@ fn smarter(p: &Pending, world: &World, cat: &Catalogue) -> bool {
         })
 }
 
-/// The entity a pending object of the type `ty` becomes when it is placed.
-pub fn entity(ty: &EntityType, p: &Pending) -> Entity {
+/// The entity a pending object of the type `ty` becomes when it is placed; `colors` are the colour
+/// choices a new building starts with (see `MapRenderer::default_colors`).
+pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>) -> Entity {
     let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
     Entity {
         class: ty.class.into(),
@@ -809,7 +857,7 @@ pub fn entity(ty: &EntityType, p: &Pending) -> Entity {
             rotation: p.facing,
             id: 0,
             name: String::new(),
-            colors: Vec::new(),
+            colors,
             fence: (Class::of(ty) == Class::Fence).then(|| Fence {
                 strength: number(ty, "cStrength").unwrap_or(STRENGTH) as u32,
                 life: number(ty, "cLife").unwrap_or(LIFE) as u32,
@@ -836,13 +884,15 @@ pub enum Outcome {
 /// water and its own tile is not water, the water message (the second look of 5.1). Scenery,
 /// buildings, paths and fences are placed here: a path on water paints its tile first, one on a
 /// path takes the old piece away (placing 5.3), and so does a fence on a held slot (placing 6.3).
-/// `shape` tells how the new entity takes its place and `water` which terrain types are water.
+/// `shape` tells how the new entity takes its place, `water` which terrain types are water and
+/// `colors` the colour choices a new building starts with.
 pub fn place(
     world: &mut World,
     money: &mut Money,
     ty: &EntityType,
     p: &Pending,
     water: &[bool],
+    colors: Vec<u8>,
     shape: impl Fn(&Entity) -> Option<Shape>,
 ) -> Outcome {
     if p.verdict == Verdict::Invalid {
@@ -858,7 +908,7 @@ pub fn place(
     if !money.can_pay(p.price) {
         return Outcome::Refused(Some(NO_FUNDS));
     }
-    let entity = entity(ty, p);
+    let entity = entity(ty, p, colors);
     let shape = shape(&entity);
     let tile = world.tile_index(p.tile.0, p.tile.1);
     if class == Class::Path

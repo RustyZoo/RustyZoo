@@ -1180,6 +1180,44 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
     assert_eq!(other, [[1, 1, 1], [100, 0, 0], [101, 0, 0]]);
 }
 
+#[test]
+fn a_new_building_starts_with_the_default_variant_of_each_colour_group() {
+    let shed = |flag: &str, defaults: &str| {
+        format!(
+            "[Characteristics/Integers]\ncIsColorReplaced = {flag}\n\
+             [colorrep]\ncolor = cr_color\nreplace = cr_part1\nreplace = cr_part2\n{defaults}\
+             [cr_color]\nncolors = 2\n"
+        )
+        .into_bytes()
+    };
+    let groups = b"[cr_part1]\nncolors = 2\npal = pals/red.pal\npal = pals/blue.pal\n\
+                   [cr_part2]\nncolors = 2\npal = pals/one.pal\npal = pals/two.pal\n"
+        .to_vec();
+    let choices = |name: &str, flag: &str, defaults: &str| {
+        let install = Install::new(
+            name,
+            &[
+                ("bldg.cfg", b"[building]\nshed = shed.ai\n".to_vec()),
+                ("shed.ai", shed(flag, defaults)),
+                ("building.ai", groups.clone()),
+            ],
+        );
+        let vfs = Vfs::open(&install.0).unwrap();
+        let catalogue = Catalogue::load(&vfs).unwrap();
+        let ty = catalogue.types.iter().find(|t| t.subtype == b"shed");
+        MapRenderer::new(&vfs, &catalogue).default_colors(ty.expect("the type exists"))
+    };
+    let both = "defaultpal = PALS\\Blue.pal\ndefaultpal = pals/two.pal\n";
+    assert_eq!(choices("colours-both", "1", both), [1, 1]);
+    // A default that is not among the variants, or none at all, is the first variant.
+    let odd = "defaultpal = pals/blue.pal\ndefaultpal = pals/none.pal\n";
+    assert_eq!(choices("colours-odd", "1", odd), [1, 0]);
+    assert_eq!(choices("colours-none", "1", ""), [0, 0]);
+    // A type that is not recoloured has nothing to store.
+    assert!(choices("colours-off", "0", both).is_empty());
+    assert!(choices("colours-missing", "x", both).is_empty());
+}
+
 /// A 4 by 4 map with a tank on the middle four tiles, `height` and `level` steps, a wall on every
 /// outer edge of it (objects 0 to 7) and then the `extra` objects.
 fn tank_scene(r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
