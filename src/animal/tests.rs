@@ -1278,3 +1278,56 @@ fn an_incompatible_species_in_the_exhibit_sets_bit_10_and_lowers_the_happiness()
     // The lion takes the habitat change of a species that likes no other: no bit.
     assert_eq!(advice(&world, 501) >> INCOMPATIBLE & 1, 0);
 }
+
+#[test]
+fn zero_negative_and_huge_values_of_the_new_keys_never_panic() {
+    let env = Env {
+        grass: true,
+        ..in_exhibit()
+    };
+    for v in [0, -1, i32::MIN, i32::MAX] {
+        let k = Keys {
+            energy_threshold: v,
+            hunger_threshold: v,
+            drink: v,
+            chase: v,
+            other_angry: v,
+            rampage_threshold: v,
+            rampage_chance: v,
+            test_fence: v,
+            dirt_chance: v,
+            ..keys()
+        };
+        let class = Class {
+            zap: v,
+            ui_threshold: v,
+            dirt_chance_chance: v,
+            reset_interval: v,
+            ..Class::default()
+        };
+        let mut rng = Rng::default();
+        let mut a = Animal::create(&k, &class, "f", &mut rng);
+        a.happiness = -100;
+        for _ in 0..100 {
+            a.counters = [0; COUNTERS];
+            super::run(&mut a, &k, &class, &env, &mut rng);
+            a.update(&k);
+        }
+    }
+    // A sum of two chances that wraps is negative: no draw. A negative drink chance draws.
+    let go = |drink, chase| {
+        let k = Keys {
+            drink,
+            chase,
+            ..keys()
+        };
+        let mut a = animal();
+        a.counters[BORED] = 0;
+        let mut rng = Rng::default();
+        super::run(&mut a, &k, &Class::default(), &in_exhibit(), &mut rng);
+        (a.thirsty, drew(&rng, 1))
+    };
+    assert_eq!(go(i32::MAX, i32::MAX), (false, false));
+    assert_eq!(go(i32::MAX, 0), (true, true));
+    assert_eq!(go(-5, 10), (false, true));
+}
