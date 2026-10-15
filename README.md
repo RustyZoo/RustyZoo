@@ -56,6 +56,7 @@ rustyzoo --data "/path/to/Zoo Tycoon" which animals/lion.ai   # which file or ar
 rustyzoo movie-info mslogo.avi --dump 100 out/    # size, frames, frame rate and audio of an intro movie (a game member or a file), decode every frame, write every 100th as a PNG into out/
 rustyzoo map-info maps/default.zoo                # version, size, terrain and entities of a map or saved game
 rustyzoo check-maps                               # read every .zoo file; exit 1 if one is corrupted
+rustyzoo check-exhibits '*.zoo'                   # the exhibits each map's fences make, against the habitat count and first tiles it stores; exit 1 if one differs
 rustyzoo render-ani objects/aviary/idle/idle.ani out/   # frame 0 of an animation set, one PNG per screen direction, into out/
 rustyzoo render-ani animals/lion/f out/ --anim walk     # the same for animals/lion/f/walk/walk.ani
 rustyzoo check-anis                               # load every animation set and its sprite files; a defective palette is a warning; exit 1 if one fails

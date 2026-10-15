@@ -256,6 +256,7 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
         let rest = rest.unwrap_or("");
         if ![
             "draw ",
+            "exhibit ",
             "interface ",
             "menu ",
             "movie ",
@@ -724,7 +725,8 @@ mod tests {
                    pass 4 t=70 quit\n\
                    pass 5 t=80 tool down 12,40\n\
                    pass 5 t=80 tool up none\n\
-                   pass 5 t=80 world stage\n";
+                   pass 5 t=80 world stage\n\
+                   pass 5 t=80 exhibit 2\n";
         assert_eq!(
             replay(log).unwrap(),
             (

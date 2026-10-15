@@ -17,7 +17,7 @@ fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
         width,
         height,
         entrance,
-        habitat_count: 0,
+        habitat_tiles: Vec::new(),
         tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; (width * height) as usize],
