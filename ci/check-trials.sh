@@ -395,9 +395,21 @@ check expansion-trial 9same "same_frames maps/scn19.zoo"
 # pass that did something are read back, at the size of the window. The clock here is irregular.
 check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate cw\n5 pointer 0 0\n9 pause\n11 quit\n" >"$f"; rz run maps/default.zoo --headless --passes 12 --clock 23 --size 640x480 --script "$f" >"$g"; rz run maps/default.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$f" "$g"'
 
+# The dummy video driver has no pointer: a scripted pointer inside the map, away from the edge
+# bands, leaves the view where the map stores it for every pass. Prints the distinct views drawn.
+windowed_view() {
+  d=$(mktemp -d)
+  printf '1 pointer 500 400\n' >"$d/script"
+  SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 8 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  sed -n 's/.* draw [0-9a-f]\{16\} view=\([-0-9]*,[-0-9]*\) .*/\1/p' "$d/log" | sort -u | paste -sd' ' -
+  rm -rf "${d:?}"
+}
+
 # The game size of the ini file (800x600 in both trials) at factor 1, on the dummy video driver.
 check base-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/default.zoo"
 check expansion-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/scn19.zoo"
+# Its view stays at the one the map stores (the pointer of the dummy driver is not read).
+check base-trial 1376,48 "windowed_view maps/default.zoo"
 # Full screen on and off, and the zoom rule of an 800 pixel wide full screen.
 check base-trial on,off,zoom=2,same "fullscreen maps/default.zoo"
 check expansion-trial on,off,zoom=2,same "fullscreen maps/scn19.zoo"
