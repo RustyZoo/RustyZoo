@@ -810,6 +810,7 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
 
 mod rating;
 mod tank;
+mod viewing;
 mod water;
 
 /// The name and the gate piece of the exhibit on tile (`x`, `y`).

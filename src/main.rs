@@ -23,7 +23,7 @@ use rustyzoo::behaviour::{self, Survey};
 use rustyzoo::bitmap;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
-use rustyzoo::exhibit::rating;
+use rustyzoo::exhibit::{rating, viewing};
 use rustyzoo::ground::{self, Key, Renderer};
 use rustyzoo::movie::Movie;
 use rustyzoo::music::Music;
@@ -94,7 +94,9 @@ usage: rustyzoo [--data <dir>] <command>
   check-rating <map>  rate the exhibits of the maps matching <map> for each species living in
                       them (habitat rating): the shown suitability, the part scores, the
                       recommendation bits (important ones marked !) and the attractiveness;
-                      exit 1 if none matches or a rating is not 0 to 100
+                      also the viewing areas of each exhibit (tiles, size, tiles seen) and its
+                      fence deterioration; exit 1 if none matches, a rating is not 0 to 100 or
+                      an area covers more than 4 columns or rows
   render-ani <member.ani> <dir> [--anim NAME]
                       write frame 0 of an animation set as eight PNG files into <dir>, one per
                       screen direction, and print the anchor point; with --anim, the first
@@ -1275,6 +1277,8 @@ fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
         };
         maps += 1;
         let world = World::new(zoo, |e| renderer.shape(e));
+        let ground = viewing::Ground::of(&world, viewing::bodies(&catalogue));
+        let wear = viewing::wear(&world, viewing::decayed(&catalogue));
         for exhibit in world.exhibits().list() {
             let input = rating::input(&world, &catalogue, exhibit.id);
             let mut state = rating::State::new();
@@ -1292,6 +1296,32 @@ fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
                 input.animals.len(),
                 state.attractiveness,
             ));
+            let plan = viewing::Plan::of(&world, exhibit.id);
+            let mut areas = viewing::areas(&plan);
+            report.line(format_args!(
+                "  {} viewing areas, deterioration {:?}",
+                areas.len(),
+                wear.get(&exhibit.id).copied().unwrap_or_default(),
+            ));
+            for (n, area) in areas.iter_mut().enumerate() {
+                area.observe(&plan, &ground);
+                let (xs, ys): (Vec<_>, Vec<_>) = (area.tiles.iter())
+                    .map(|&t| (t % plan.width, t / plan.width))
+                    .unzip();
+                let span =
+                    |v: &[usize]| v.iter().max().unwrap_or(&0) - v.iter().min().unwrap_or(&0) + 1;
+                // An area covers at most 4 columns and 4 rows.
+                bad += usize::from(span(&xs) > 4 || span(&ys) > 4);
+                report.line(format_args!(
+                    "    area {n}: {} tiles from ({}, {}), {} columns x {} rows, sees {} tiles",
+                    area.tiles.len(),
+                    xs[0],
+                    ys[0],
+                    span(&xs),
+                    span(&ys),
+                    area.seen.len(),
+                ));
+            }
             for r in &state.records {
                 rated += 1;
                 let bits: Vec<String> = (0..64)
@@ -1329,7 +1359,7 @@ fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
     match (maps, bad) {
         (0, _) => Err(format!("check-rating: no map matches {}", pattern.escape_debug()).into()),
         (_, 0) => Ok(()),
-        _ => Err(format!("{bad} ratings are not 0 to 100").into()),
+        _ => Err(format!("{bad} ratings are not 0 to 100 or areas cover more than 4 x 4 tiles").into()),
     }
 }
 
