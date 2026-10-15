@@ -19,12 +19,13 @@
 //! the number of entries, the total size of the definition files kept and the number of
 //! warnings have a limit.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt;
 use std::iter;
 use std::sync::Arc;
 
+use crate::behaviour::{Behaviours, Call, Row};
 use crate::config::{Config, Section, to_int};
 use crate::vfs::{Vfs, normalise};
 
@@ -176,6 +177,8 @@ pub struct Catalogue {
     index: HashMap<(Vec<u8>, Vec<u8>), Vec<usize>>,
     /// Every definition file asked for so far, by normalised name, with the outcome.
     files: HashMap<String, Definition>,
+    /// The behaviour sets and ambient tables of the definition files that have some.
+    behaviours: BTreeMap<String, Behaviours>,
     /// The bytes of the definition files loaded.
     loaded_bytes: usize,
     /// The entries taken.
@@ -501,6 +504,39 @@ impl Catalogue {
             .map(|at| &self.types[at])
     }
 
+    /// The behaviour sets and ambient tables of the definition file of `ty`, if it has any.
+    pub fn behaviours(&self, ty: &EntityType) -> Option<&Behaviours> {
+        self.behaviours.get(ty.file.as_deref()?)
+    }
+
+    /// The definition files that have behaviour sets or ambient tables, by name.
+    pub fn behaviour_files(&self) -> impl Iterator<Item = (&str, &Behaviours)> {
+        self.behaviours.iter().map(|(file, b)| (file.as_str(), b))
+    }
+
+    /// The set `name` that a unit of type `ty` starts (specification 3.1): an animal tries its
+    /// subtype, then the default subtype, then the plain section; a guest does the same with its
+    /// type name, except `bWalk` and `bZooRoutine`, which are plain; every other class is plain.
+    pub fn behaviour_set(&self, ty: &EntityType, name: &[u8]) -> Option<&[Call]> {
+        let all = self.behaviours(ty)?;
+        let default = default_subtype(ty.config.as_deref()?);
+        let own = if ty.class == "guests" {
+            &ty.type_name
+        } else {
+            &ty.subtype
+        };
+        match ty.class {
+            "guests" if name == b"bWalk" || name == b"bZooRoutine" => all.find(&[b""], name),
+            "animals" | "guests" => all.find(&[own, default, b""], name),
+            _ => all.find(&[b""], name),
+        }
+    }
+
+    /// The rows of an ambient table of `ty` (an index of [`crate::behaviour::TABLES`]).
+    pub fn ambient(&self, ty: &EntityType, table: usize) -> &[Row] {
+        self.behaviours(ty).map_or(&[], |all| &all.tables[table])
+    }
+
     /// The position in `types` of the type of this class, name and subtype.
     pub fn position(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<usize> {
         self.index
@@ -564,6 +600,15 @@ impl Catalogue {
                 Ok((config, _)) if config.is_empty() => Definition::NoSection,
                 Ok((config, len)) => {
                     self.loaded_bytes += len;
+                    let found = Behaviours::parse(&config).map_err(|e| {
+                        // The line is a courtesy: the file is read again to find it.
+                        let line = vfs.read(file).ok().and_then(|bytes| e.line(&bytes));
+                        let at = line.map_or_else(String::new, |line| format!(" line {line}"));
+                        EntityError(format!("{}{at}: {e}", show(file.as_bytes())))
+                    })?;
+                    if found.sets().next().is_some() || found.tables.iter().any(|t| !t.is_empty()) {
+                        self.behaviours.insert(file.to_string(), found);
+                    }
                     Definition::Config(Arc::new(config))
                 }
                 Err(why) => Definition::Failed(why),
@@ -1241,6 +1286,94 @@ mod tests {
             get(&c, "animals", "yak", "m").config.as_ref().unwrap(),
             get(&c, "animals", "yak", "y").config.as_ref().unwrap()
         ));
+    }
+
+    #[test]
+    fn behaviour_sets_are_looked_up_by_class() {
+        let c = catalogue(
+            "behaviours",
+            &[
+                (
+                    "animals.cfg",
+                    "[animals]\nyak = y.ai\n[yak/subtypes]\nm\nf\n",
+                ),
+                ("guests.cfg", "[guests]\nman = g.ai\n"),
+                (
+                    "staff.cfg",
+                    "[staff]\nkeeper = k.ai\n[keeper/subtypes]\nf\n",
+                ),
+                (
+                    "y.ai",
+                    "[Global]\nDefaultSubtype = f\n[m\\BehaviorSet\\bA]\nf = fHalt()\n\
+                     [f\\BehaviorSet\\bA]\nf = fDie()\n[BehaviorSet\\bA]\nf = fHatch()\n\
+                     [f\\BehaviorSet\\bB]\nf = fDie()\n[AmbientAnims]\na = -100\na = 100\nb = bA\n",
+                ),
+                (
+                    "g.ai",
+                    "[BehaviorSet\\bWalk]\nf = fWalk(0,0)\n[man\\BehaviorSet\\bWalk]\nf = fHalt()\n\
+                     [man\\BehaviorSet\\bGawk]\nf = fHalt()\n[BehaviorSet\\bGawk]\nf = fDie()\n",
+                ),
+                (
+                    "k.ai",
+                    "[f\\BehaviorSet\\bX]\nf = fDie()\n[BehaviorSet\\bX]\nf = fHalt()\n",
+                ),
+            ],
+        );
+        let first = |class, kind, sub, name: &str| {
+            let ty = get(&c, class, kind, sub);
+            c.behaviour_set(ty, name.as_bytes())
+                .map(|calls| calls[0].name)
+        };
+        // An animal: its subtype, then the default subtype, then the plain section.
+        assert_eq!(first("animals", "yak", "m", "bA"), Some("fHalt"));
+        assert_eq!(first("animals", "yak", "f", "bA"), Some("fDie"));
+        assert_eq!(first("animals", "yak", "m", "bB"), Some("fDie"));
+        assert_eq!(first("animals", "yak", "f", "bC"), None);
+        // A guest: its type name, but bWalk is the plain one. Staff: the plain one only.
+        assert_eq!(first("guests", "man", "", "bWalk"), Some("fWalk"));
+        assert_eq!(first("guests", "man", "", "bGawk"), Some("fHalt"));
+        assert_eq!(first("keeper", "keeper", "f", "bX"), Some("fHalt"));
+        let yak = get(&c, "animals", "yak", "m");
+        assert_eq!(c.ambient(yak, 0).len(), 1);
+        assert!(c.ambient(yak, 1).is_empty());
+        assert_eq!(c.behaviour_files().count(), 3);
+        // The file is parsed once however many types name it.
+        assert!(std::ptr::eq(
+            c.behaviours(yak).unwrap(),
+            c.behaviours(get(&c, "animals", "yak", "f")).unwrap()
+        ));
+    }
+
+    #[test]
+    fn an_unknown_operation_fails_the_load_with_the_file_and_line() {
+        let install = Install::new(
+            "bad-call",
+            &[
+                ("animals.cfg", "[animals]\nyak = y.ai\n"),
+                (
+                    "y.ai",
+                    "[Global]\n\n[BehaviorSet\\bA]\nf = fHalt()\nf = fWait(3)\n",
+                ),
+            ],
+        );
+        let error = install.load().unwrap_err().to_string();
+        assert_eq!(
+            error,
+            "y.ai line 5: section [BehaviorSet\\bA], call 2: unknown operation in fWait(3)"
+        );
+        // The names of the data that fail when run, and bad arguments, load with a warning.
+        let good = catalogue(
+            "bad-arguments",
+            &[
+                ("animals.cfg", "[animals]\nyak = y.ai\n"),
+                (
+                    "y.ai",
+                    "[BehaviorSet\\bA]\nf = fFollow(keeper)\nf = fPlayTime(stand)\n",
+                ),
+            ],
+        );
+        let yak = get(&good, "animals", "yak", "");
+        assert_eq!(good.behaviours(yak).unwrap().warnings.len(), 1);
     }
 
     #[test]

@@ -50,6 +50,8 @@ rustyzoo --data "/path/to/Zoo Tycoon" dump-strings lang0.dll --text LION_GENERAL
 rustyzoo --data "/path/to/Zoo Tycoon" strings   # the texts as the game resolves them, with the library that supplies each
 rustyzoo --data "/path/to/Zoo Tycoon" check-config   # read all configuration files (.ai, .cfg, .lyt, ...), report what is empty or ignored
 rustyzoo --data "/path/to/Zoo Tycoon" types   # the entity types (class, type, subtype, name id, footprint, base animation), then counts per class
+rustyzoo --data "/path/to/Zoo Tycoon" check-behaviours   # calls per operation name of the behaviour sets of every definition file, and the ambient tables; exit 1 on an unknown operation
+rustyzoo --data "/path/to/Zoo Tycoon" check-behaviours --type lion   # the ambient rows and the calls of one type, as parsed
 rustyzoo dump-sprite animals/lion/f/walk/E out/   # one PNG per frame of a sprite file, into out/
 rustyzoo check-sprites                            # decode every sprite file; a defective palette is a warning; exit 1 if one fails
 rustyzoo --data "/path/to/Zoo Tycoon" which animals/lion.ai   # which file or archive supplies it, and the copies it hides

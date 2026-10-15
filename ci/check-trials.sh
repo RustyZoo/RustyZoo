@@ -97,6 +97,9 @@ check expansion-trial 2404x1204,4800x2401,9604x4806 "for z in -2 0 2; do rz rend
 # Root bitmaps (grid lines, highlight, cliff pieces) converted in memory and compared with the
 # shipped copies: bitmaps, identical, differing, without a shipped copy, failed.
 check base-trial 41,41,0,0,0 "rz check-bitmaps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+# Behaviour sets: files with sets or tables, sets, calls, ambient tables, calls of unknown names, calls with
+# defective arguments (the numbers of the specification's survey).
+check base-trial 8,377,1285,9,5,1 "rz check-behaviours 2>/dev/null | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # Entity types: the total, then per class (food, paths, fences, buildings, animals, guests, scenery,
 # staff, ambient, rubble, tank walls, filters), and the types whose base animation member is missing.
 check base-trial 51,6,1,6,17,4,2,13,2,0,0,0,0 "rz types | tail -1 | grep -o '[0-9]*' | paste -sd, -"
@@ -124,6 +127,9 @@ check expansion-trial 5,5,0,0,28125,4160 "rz check-maps | tail -1 | grep -o '[0-
 # converted cliff pieces either (only their bitmaps), so they are converted in memory: all 2434
 # are drawn.
 check expansion-trial 5,0,0,0,28125,0,2434,0,3421,290,449 "rz check-render | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+# Behaviour sets: files with sets or tables, sets, calls, ambient tables, calls of unknown names, calls with
+# defective arguments (the numbers of the specification's survey).
+check expansion-trial 13,987,2728,25,5,1 "rz check-behaviours 2>/dev/null | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 150,14,8,17,26,8,2,47,6,0,7,14,1 "rz types | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # The expansion trial ships none of the 41 copies: all convert.
 check expansion-trial 41,0,0,41,0 "rz check-bitmaps | tail -1 | grep -o '[0-9]*' | paste -sd, -"

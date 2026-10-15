@@ -77,14 +77,14 @@ Everything read from a file is untrusted: malformed data gives an error, never a
 
 ## Commands
 
-`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `dump-sprite`, `check-sprites`, `movie-info`, `check-layouts`, `dump-layout`, `text-width`, `draw-text` and `window-smoke`; see the README. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
+`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `check-behaviours`, `dump-sprite`, `check-sprites`, `movie-info`, `check-layouts`, `dump-layout`, `text-width`, `draw-text` and `window-smoke`; see the README. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
 
 ## Design choices
 
 Not implemented yet unless said otherwise.
 
 - **Entities.** No class hierarchy: one `Kind` enum (animal, guest, staff, scenery, building, ...) and flat properties read as the original reads them. Code branches on `Kind` only.
-- **Behaviour scripts.** The scripts of the data are parsed at load time into an enum of operations and run by a state machine per unit. An unknown operation is a load error that names it.
+- **Behaviour scripts.** The scripts of the data are parsed at load time into an enum of operations and run by a state machine per unit. `behaviour` parses them when a definition file loads (the catalogue keeps them per file). The 53 operations of the program and the three misspelt names of the shipped data (`fFollow`, `fPlayWith`, `fPlayWithSoud`) parse; the three names and every call with defective arguments become a call that fails when run, as in the original, with a warning for the arguments. Any other unknown name is a load error that names the file, the section and the line.
 - **Simulation.** Like the original: a variable step (elapsed milliseconds times the speed factor, capped by `MaxSimTick`) and three independent timers (drawing, interface, simulation). A test mode with a fixed seed and fixed steps gives the same state hash on the three systems.
 - **Text** (from M4). Liberation Sans, which has the metrics of Arial, rendered with `fontdue` (no hinting, no SIMD, so the glyphs are the same on every system). The two font files are embedded unmodified with their licence in `fonts/`. A font is asked for by a face string and a size string as the layout files give them and cached per (face, size); glyphs are cached per font and character. Text is laid out and drawn into a canvas (`Framebuffer`) that the caller has filled with the background colour: smoothed edges blend towards the pixel underneath, so they blend towards the element's own background, as in the original. `text::format` writes the game's templates (`%s %d %m %r`, positional forms), integers, money and dates with fixed US English conventions, from the strings of the string table.
 - **Beyond the original.** Improvements such as interface scaling come after parity.

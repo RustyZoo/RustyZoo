@@ -18,6 +18,7 @@ use std::process::ExitCode;
 
 use rustyzoo::Framebuffer;
 use rustyzoo::anim::{self, AnimSet, Animation};
+use rustyzoo::behaviour::{self, Survey};
 use rustyzoo::bitmap;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
@@ -56,6 +57,17 @@ usage: rustyzoo [--data <dir>] <command>
                       tiles), the .ani member of the base animation and whether it exists;
                       then counts per class; warnings go to standard error; exit 1 only if the system
                       fails to read a file
+  check-behaviours [--type NAME]
+                      read the behaviour sets and ambient tables of every .ai, .uca, .ucb and
+                      .ucs file, every copy of it (also those another archive hides), and
+                      count the calls per operation name (name, tab, count; the most used
+                      first), then one line: files with sets or tables, sets, calls, ambient
+                      tables, the calls of a name the program does not know but the data
+                      holds (they fail when run) and the calls whose arguments make them fail
+                      (listed as warnings on standard error). A call of any other name is an
+                      error that names the file, the section and the line: exit 1. With
+                      --type, print the ambient rows and the calls, as parsed, of the first
+                      entity type with that type name, from the loaded catalogue, instead
   check-config        read every configuration file of the game, report empty files and ignored text
   dump-sprite <member> <dir>
                       write the frames of a sprite file as PNG files into <dir>, and print them
@@ -444,6 +456,8 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["strings"] => merged_strings(&game_folder(data_dir)?),
         ["types"] => types(&open_game(data_dir)?),
         ["check-config"] => check_config(&open_game(data_dir)?),
+        ["check-behaviours"] => check_behaviours(&open_game(data_dir)?, None),
+        ["check-behaviours", "--type", name] => check_behaviours(&open_game(data_dir)?, Some(name)),
         ["dump-sprite", member, dir] => dump_sprite(&open_game(data_dir)?, member, Path::new(dir)),
         ["check-sprites"] => check_sprites(&open_game(data_dir)?),
         ["which", member] => which(open_game(data_dir)?, member),
@@ -752,6 +766,67 @@ fn types(vfs: &Vfs) -> Result<(), CliError> {
         "{} types: {}",
         catalogue.types.len(),
         counts.join(", ")
+    ));
+    report.finish()
+}
+
+fn check_behaviours(vfs: &Vfs, type_name: Option<&str>) -> Result<(), CliError> {
+    let mut report = Report::new();
+    if let Some(wanted) = type_name {
+        let catalogue = Catalogue::load(vfs)?;
+        for warning in &catalogue.warnings {
+            let _ = writeln!(io::stderr(), "rustyzoo: warning: {warning}");
+        }
+        let ty = catalogue
+            .types
+            .iter()
+            .find(|ty| ty.type_name == wanted.as_bytes())
+            .ok_or_else(|| format!("check-behaviours: no type named {}", wanted.escape_debug()))?;
+        let Some(found) = catalogue.behaviours(ty) else {
+            report.line(format_args!("no behaviour set or ambient table"));
+            return report.finish();
+        };
+        for warning in &found.warnings {
+            let _ = writeln!(io::stderr(), "rustyzoo: warning: {warning}");
+        }
+        for (table, name) in found.tables.iter().zip(behaviour::TABLES) {
+            for row in table {
+                report.line(format_args!("{name}\t{}\t{}\t{}", row.lo, row.hi, row.set));
+            }
+        }
+        for (section, calls) in found.sets() {
+            for (i, call) in calls.iter().enumerate() {
+                report.line(format_args!(
+                    "{}\t{}\t{}\t{:?}",
+                    escape(&String::from_utf8_lossy(section)),
+                    i + 1,
+                    call.name,
+                    call.op
+                ));
+            }
+        }
+        return report.finish();
+    }
+    let survey = behaviour::survey(vfs)?;
+    for warning in &survey.warnings {
+        let _ = writeln!(io::stderr(), "rustyzoo: warning: {warning}");
+    }
+    let mut counts: Vec<_> = survey.counts.iter().collect();
+    counts.sort_by_key(|&(name, count)| (std::cmp::Reverse(count), name));
+    for (name, count) in counts {
+        report.line(format_args!("{name}\t{count}"));
+    }
+    let Survey {
+        files,
+        sets,
+        calls,
+        tables,
+        unknown,
+        defects,
+        ..
+    } = survey;
+    report.line(format_args!(
+        "{files} files, {sets} sets, {calls} calls, {tables} tables; {unknown} calls of unknown names, {defects} calls with defective arguments"
     ));
     report.finish()
 }
