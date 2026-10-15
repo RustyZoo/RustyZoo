@@ -309,13 +309,13 @@ fn a_unit_hears_the_events_of_its_channel_for_the_length_of_its_turn() {
     );
     assert_eq!(heard(1), [2], "the keeper: channel 0x4b");
     assert!(w.units.iter().all(|u| u.events.is_empty()));
-    // The list holds 100 places.
+    // The list grows: every matching event of the buffer is read.
     let mut many = Events::default();
     (0..250).for_each(|_| many.post(event(1, UNIT_CHANNEL)));
     many.age();
     let mut hooks = Recorder::default();
     turn_of(&mut w, &many, &mut hooks, 67);
-    assert_eq!(hooks.heard, [100]);
+    assert_eq!(hooks.heard, [250]);
 }
 
 #[test]

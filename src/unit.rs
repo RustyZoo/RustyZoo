@@ -27,9 +27,6 @@ use crate::zoo::Entity;
 #[cfg(test)]
 mod tests;
 
-/// The most events a unit keeps from one step: the size of the original's list.
-const EVENT_LIST: usize = 100;
-
 /// What a unit is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Kind {
@@ -417,7 +414,6 @@ fn turn(hooks: &mut impl Hooks, unit: &mut Unit, world: &mut World, ctx: &mut Ct
     unit.events = ctx
         .events
         .listen(unit.id, unit.kind.channel())
-        .take(EVENT_LIST)
         .cloned()
         .collect();
     if !unit.suspended() {
