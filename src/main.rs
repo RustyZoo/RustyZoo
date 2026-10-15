@@ -140,7 +140,11 @@ usage: rustyzoo [--data <dir>] <command>
                       (whole units) when it changes, with `money bar TEXT COLOUR` for the
                       status bar, `money set N` and `money add N` for a start, and `money
                       month M year Y` at a month change; the `$` character adds 10000 to the
-                      cash as a donation. --cash N is the cash a map starts with instead of
+                      cash as a donation; the Z character presses the zoo status button (1014),
+                      which opens or closes its window; `money cell ID RRGGBB TEXT` tells each
+                      cell of its Finances table that changed, when the tab is shown and at
+                      most every 10 s of clock while the window is shown (an older month's
+                      column is blank before the accounts begin). --cash N is the cash a map starts with instead of
                       the one it stores (any finite number). --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is

@@ -20,6 +20,7 @@ pub mod place;
 pub mod render;
 pub mod sprite;
 pub mod startup;
+pub mod status;
 pub mod strings;
 pub mod terrain;
 pub mod text;

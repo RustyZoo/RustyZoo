@@ -24,6 +24,7 @@ use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
 use crate::render::{MapRenderer, RenderError, Staged, check_size};
+use crate::status::{Finances, STATUS_BUTTON};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
@@ -250,6 +251,8 @@ struct Game {
     money: Money,
     told: Option<i64>,
     bar: Option<(String, Tone)>,
+    /// What the Finances table of the zoo status window holds.
+    finances: Finances,
 }
 
 pub struct App<'a> {
@@ -433,6 +436,7 @@ impl<'a> App<'a> {
             money,
             told: None,
             bar: None,
+            finances: Finances::default(),
         });
         Ok(())
     }
@@ -449,6 +453,9 @@ impl<'a> App<'a> {
         self.map = Framebuffer::new(self.frame.width, self.frame.height);
         self.painted = None;
         self.ui = Some(ui);
+        if let Some(game) = &mut self.game {
+            game.finances = Finances::default();
+        }
     }
 
     /// The interface, if the game has one.
@@ -546,14 +553,14 @@ impl<'a> App<'a> {
                 game.money.month, game.money.year
             ));
         }
-        self.tell_money();
+        self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.drew.then_some(&self.frame)
     }
 
     /// Tells what the cash did since it was last told: the amount in whole units for the log,
     /// and the status bar, which shows it with its colour at every change.
-    fn tell_money(&mut self) {
+    fn tell_money(&mut self, now: u64) {
         if let Some(game) = &mut self.game {
             let (units, tone) = game.money.bar();
             if game.told != Some(units) {
@@ -571,6 +578,9 @@ impl<'a> App<'a> {
                         .push(format!("bar {text} {}", tone.name()));
                     game.bar = shown;
                 }
+                let updated = self.fired.interface.is_some();
+                let lines = game.finances.refresh(&game.money, ui, now, updated);
+                self.money_events.extend(lines);
             }
         }
         self.money_lines = std::mem::take(&mut self.money_events);
@@ -669,6 +679,12 @@ impl<'a> App<'a> {
             (Command::Key(key, _, shift), _) => {
                 if let Some(ui) = &mut self.ui {
                     ui.key(key, shift);
+                }
+            }
+            // The Z key presses the button of the zoo status window (input 10).
+            (Command::Char(b'z' | b'Z'), Some(_)) if keys => {
+                if let Some(ui) = &mut self.ui {
+                    ui.press_button(STATUS_BUTTON);
                 }
             }
             // The `$` key donates (input 4.8).
@@ -1012,7 +1028,8 @@ impl<'a> App<'a> {
     /// then `world stage` when an edit made the draw stage the map again,
     /// then `money cash N` (whole units) when the cash changed, `money bar TEXT COLOUR` when the
     /// status bar was written, `money set N` and `money add N` when a start set or added cash and
-    /// `money month M year Y` at a month change,
+    /// `money month M year Y` at a month change, `money cell ID RRGGBB TEXT` for each cell of the
+    /// Finances table that changed when the table was written,
     /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew

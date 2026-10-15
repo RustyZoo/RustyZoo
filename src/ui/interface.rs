@@ -152,6 +152,11 @@ impl Interface {
         self.map_view.is_some_and(|i| self.visible(i))
     }
 
+    /// Whether the element `id` and its layouts are all shown; `false` if there is no such element.
+    pub fn shown(&self, id: i32) -> bool {
+        self.tree.find(id).is_some_and(|i| self.visible(i))
+    }
+
     fn id(&self, i: usize) -> i32 {
         self.tree.elements[i].id
     }
