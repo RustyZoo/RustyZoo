@@ -158,6 +158,35 @@ impl Palette {
     pub fn color(&self, index: u8) -> Option<[u8; 4]> {
         self.colors.get(usize::from(index)).copied()
     }
+
+    /// The palette a tinted entity is drawn with (sprite drawing 7.4, 9.1): every colour becomes
+    /// the per-channel average, rounded down, of itself and the tint, on the original's 5-6-5
+    /// values, shown with the bits of the code repeated as its surface is. The marker of entry 0
+    /// stays, so the pixels that were transparent still are.
+    pub fn tinted(&self, tint: [u8; 3]) -> Palette {
+        let marker = self.zero_is_transparent();
+        let colors = self
+            .colors
+            .iter()
+            .enumerate()
+            .map(|(at, &[r, g, b, a])| {
+                if marker && at == 0 {
+                    return [r, g, b, a];
+                }
+                let mut out = [r, g, b];
+                // The channels drop 3, 2 and 3 low bits (`R >> 3`, `G >> 2`, `B >> 3`).
+                for (((c, t), max), shift) in
+                    out.iter_mut().zip(tint).zip(CHANNEL_MAX).zip([3, 2, 3])
+                {
+                    let (own, other) = (u16::from(*c) * max / 255, u16::from(t >> shift));
+                    let code = (own + other) / 2;
+                    *c = (code << shift | code >> (8 - 2 * shift)) as u8;
+                }
+                [out[0], out[1], out[2], a]
+            })
+            .collect();
+        Palette { colors }
+    }
 }
 
 /// One decoded frame: its geometry and its validated, still run-length coded rows.
@@ -1256,6 +1285,36 @@ pub(crate) mod tests {
             target.overwrite(start, &source, skip, usize::MAX);
             assert_eq!(target, palette());
         }
+    }
+
+    #[test]
+    fn a_tint_averages_each_channel_on_5_6_5_values_and_keeps_the_marker() {
+        let plain = Palette {
+            colors: vec![
+                [255, 0, 255, 0],
+                [0, 0, 0, 255],
+                [255, 255, 255, 255],
+                [8, 100, 200, 9],
+            ],
+        };
+        let tinted = plain.tinted([0, 225, 0]);
+        assert!(tinted.zero_is_transparent());
+        assert_eq!(tinted.color(0), plain.color(0));
+        // The tint's codes are 0, 56 and 0. Black: green (0 + 56) / 2 = 28, shown as 28 << 2 | 1;
+        // white: red and blue 15 (shown as 123), green 59 (shown as 239).
+        assert_eq!(tinted.color(1), Some([0, 113, 0, 255]));
+        assert_eq!(tinted.color(2), Some([123, 239, 123, 255]));
+        assert_eq!(
+            tinted.color(3).map(|c| c[3]),
+            Some(9),
+            "the fourth byte stays"
+        );
+        // Under a palette without the marker entry 0 is a colour like the others.
+        let opaque = Palette {
+            colors: vec![[255, 255, 255, 255]],
+        };
+        assert_ne!(opaque.tinted([0, 0, 0]).color(0), opaque.color(0));
+        assert_eq!(Palette::default().tinted([1, 2, 3]), Palette::default());
     }
 
     #[test]

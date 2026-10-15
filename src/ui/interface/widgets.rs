@@ -41,6 +41,24 @@ impl Interface {
         true
     }
 
+    /// Shows `text` in the message line (`ZTMessageQueue`) for the `timerDuration` the element
+    /// has: a text already there is replaced and the count starts again. `false` if the tree has
+    /// no message line.
+    pub fn message(&mut self, text: &[u8]) -> bool {
+        let Some(i) = self
+            .tree
+            .elements
+            .iter()
+            .position(|e| matches!(e.kind, Kind::MessageQueue))
+        else {
+            return false;
+        };
+        self.put_text(i, text);
+        self.tree.elements[i].countdown = None;
+        self.flag(i, HIDDEN, false);
+        true
+    }
+
     pub(super) fn put_text(&mut self, i: usize, text: &[u8]) {
         let e = &mut self.tree.elements[i];
         e.text = Some(text.to_vec());

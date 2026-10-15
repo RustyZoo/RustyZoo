@@ -209,6 +209,17 @@ impl Interface {
         self.dirty = false;
     }
 
+    /// Writes `text` (Windows-1252) over `frame` at `dx` pixels right of the pointer, in the map
+    /// view's font and `forecolor`. Call it after [`Interface::paint`].
+    pub fn pointer_text(&mut self, frame: &mut Framebuffer, text: &[u8], dx: i32) {
+        let Some(i) = self.map_view else { return };
+        let e = &self.tree.elements[i];
+        let (x, y) = self.input.pointer;
+        let at = (x.saturating_add(dx), y);
+        self.painter
+            .text_at(e, &self.strings, frame, at, text, e.look.fore_color);
+    }
+
     /// The text of string `id` as the elements show it.
     pub fn string(&self, id: i32) -> String {
         self.strings.string(id)

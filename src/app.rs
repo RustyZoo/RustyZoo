@@ -24,7 +24,8 @@ use crate::camera::{Camera, Settings};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
-use crate::render::{MapRenderer, RenderError, Staged, check_size};
+use crate::place::{self, Pending, Tints, Verdict};
+use crate::render::{Extra, MapRenderer, RenderError, Staged, check_size};
 use crate::status::{Finances, STATUS_BUTTON};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
@@ -241,6 +242,9 @@ const IDLE: Pass = Pass {
     step: None,
 };
 
+/// How far right of the pointer the cost of the pending object is written, in pixels.
+const COST_OFFSET: i32 = 23;
+
 /// What the camera and the grid looked like when a frame was painted: the frame changes with nothing else.
 type Look = ((i32, i32), i32, u8, bool);
 
@@ -261,6 +265,13 @@ struct Game {
     finances: Finances,
     /// The building panels and the tool they choose.
     build: Build,
+    /// The pending object: the tool at the place under the pointer, while the pointer (as the
+    /// last move left it) is over the map view and a tool is chosen.
+    pending: Option<Pending>,
+    hover: bool,
+    tints: Tints,
+    /// The transient items the staged picture was made with.
+    extra: Extra,
 }
 
 pub struct App<'a> {
@@ -446,6 +457,10 @@ impl<'a> App<'a> {
             bar: None,
             finances: Finances::default(),
             build: Build::new(installed_expansions(self.renderer.vfs())),
+            pending: None,
+            hover: false,
+            tints: Tints::load(self.renderer.vfs()),
+            extra: Extra::default(),
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -658,10 +673,20 @@ impl<'a> App<'a> {
                 if on_map && mouse == Mouse::Right {
                     return self.cancel(false);
                 }
-                if let (true, Some(phase), Some(game), Some(ui)) = (on_map, phase, game, &self.ui) {
+                if let (true, Some(phase), Some(game), Some(ui)) =
+                    (on_map, phase, game.as_mut(), &self.ui)
+                {
                     let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
                     let tile = tile.map_or("none".to_string(), |(x, y)| format!("{x},{y}"));
                     self.tool_lines.push(format!("tool {phase} {tile}"));
+                }
+                if let Mouse::Move(..) = mouse {
+                    if let Some(game) = game.as_mut() {
+                        game.hover = on_map;
+                    }
+                    self.aim(true);
+                } else if on_map && mouse == Mouse::Up {
+                    self.refuse();
                 }
             }
             (Command::Scroll(x, y), Some(game)) if keys => {
@@ -675,7 +700,10 @@ impl<'a> App<'a> {
                     .renderer
                     .stage(&game.world.zoo, game.camera.rotation, false)
                 {
-                    Ok(staged) => game.staged = staged,
+                    Ok(staged) => {
+                        game.staged = staged;
+                        game.extra = Extra::default();
+                    }
                     Err(_) => game.camera = before,
                 }
             }
@@ -713,6 +741,59 @@ impl<'a> App<'a> {
             }
             // The map view's keys while it does not have them or there is no game.
             _ => {}
+        }
+        // The view turned or zoomed under the pointer: the pending object is another one.
+        if matches!(command, Command::Rotate(_) | Command::Zoom(_)) {
+            self.aim(false);
+        }
+    }
+
+    /// Works out the pending object from the tool, the panel's rotation step and the pointer, and
+    /// has the next draw show it. With `log`, a move over the map tells it: `tool pending TYPE
+    /// X,Y q N valid`, the tile under the snapped point, the quadrant of the point in it and the
+    /// verdict (`valid`, `overwrite` or `invalid`).
+    fn aim(&mut self, log: bool) {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
+        let cat = self.renderer.catalogue();
+        let before = game.pending.take();
+        game.pending = game.build.tool().filter(|_| game.hover).and_then(|ty| {
+            let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
+            let step = game.build.step();
+            place::pending(&game.world, cat, ty, step, game.camera.rotation, (x, y))
+        });
+        if let (true, Some(p)) = (log, &game.pending) {
+            let ty = &cat.types[p.ty];
+            self.tool_lines.push(format!(
+                "tool pending {}/{}/{} {},{} q {} {}",
+                ty.class,
+                String::from_utf8_lossy(&ty.type_name),
+                String::from_utf8_lossy(&ty.subtype),
+                p.tile.0,
+                p.tile.1,
+                p.quadrant,
+                p.verdict.word(),
+            ));
+        }
+        // The cost text follows the pointer: the frame is painted again.
+        if before.is_some() || game.pending.is_some() {
+            ui.touch();
+        }
+    }
+
+    /// A release on the map with a pending object that is not valid shows the message its place
+    /// stored in the message line (placing 6.1).
+    fn refuse(&mut self) {
+        let (Some(game), Some(ui)) = (&self.game, &mut self.ui) else {
+            return;
+        };
+        if let Some(p) = &game.pending
+            && p.verdict == Verdict::Invalid
+            && let Some(id) = p.message
+        {
+            ui.message(&to_cp1252(&ui.string(id)));
+            self.tool_lines.push(format!("tool message {id}"));
         }
     }
 
@@ -772,9 +853,14 @@ impl<'a> App<'a> {
             return;
         };
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        let told = self.tool_lines.len();
         game.build.sync(ui, vfs, cat, &mut self.tool_lines);
         if let Some(id) = selected {
             game.build.selected(ui, vfs, cat, id, &mut self.tool_lines);
+        }
+        // Every change of the tool or the step tells a line.
+        if self.tool_lines.len() != told {
+            self.aim(false);
         }
     }
 
@@ -901,7 +987,7 @@ impl<'a> App<'a> {
     fn cancel(&mut self, ask: bool) {
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
             if game.build.cancel(ui, &mut self.tool_lines) {
-                return;
+                return self.aim(false);
             }
             // The main panel is part of the game screen: only the panels opened from it close.
             if let Some(i) = ui.tree.find(OPTIONS_PANEL)
@@ -986,6 +1072,11 @@ impl<'a> App<'a> {
                     copy_rect(frame, map, rect);
                 }
             });
+            // The cost of the pending object, next to the pointer (placing 4.5).
+            if let Some(pending) = self.game.as_ref().and_then(|g| g.pending.as_ref()) {
+                let text = place::cost_text(ui.string(SYMBOL), pending.amount());
+                ui.pointer_text(&mut self.frame, &to_cp1252(&text), COST_OFFSET);
+            }
         }
         true
     }
@@ -993,21 +1084,37 @@ impl<'a> App<'a> {
     /// Stages the map again when an edit changed the world since the last draw: the picture is
     /// the final state at once. A map that cannot be staged keeps the old picture.
     fn restage(&mut self) {
+        let dirty = match &mut self.game {
+            Some(game) => game.world.take_dirty(),
+            None => return,
+        };
+        // An edit may change what the place under the pointer is worth.
+        if dirty {
+            self.aim(false);
+        }
         let Some(game) = &mut self.game else { return };
-        if !game.world.take_dirty() {
+        // The pending object is a transient item: the picture is made again when it changed.
+        let want = game
+            .pending
+            .as_ref()
+            .map_or_else(Extra::default, |p| p.extra(&game.tints));
+        if !dirty && want == game.extra {
             return;
         }
         match self
             .renderer
-            .stage(&game.world.zoo, game.camera.rotation, false)
+            .stage_with(&game.world.zoo, game.camera.rotation, false, &want)
         {
             Ok(staged) => {
                 game.staged = staged;
                 self.painted = None;
-                self.world_lines.push("stage".to_string());
+                if dirty {
+                    self.world_lines.push("stage".to_string());
+                }
             }
             Err(why) => self.world_lines.push(format!("stage failed: {why}")),
         }
+        game.extra = want;
     }
 
     /// The camera as it looks now; `None` without a game.

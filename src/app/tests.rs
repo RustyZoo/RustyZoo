@@ -417,6 +417,7 @@ impl crate::ui::draw::Strings for NoTexts {
 fn interface(name: &str) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+        forecolor=255\nforecolor=218\nforecolor=90\n\
         [b]\ntype=UILayout\nlayout=ui/a.lyt\nstate=1\n\
         [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n\
         [c]\ntype=UIEditableText\nid=4\nx=50\ny=40\ndx=4\ndy=4\n";
@@ -954,4 +955,94 @@ fn escape_and_the_right_button_close_a_building_panel_before_the_menu_question()
         step(app, &escape);
         assert!(app.interface().unwrap().modal_open());
     });
+}
+
+/// A catalogue of one type, a tree (scenery of one quadrant) that costs 25 and has no picture.
+fn tree_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    cat.types = vec![crate::entity::EntityType {
+        class: "objects",
+        type_name: b"tree".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            Config::parse(b"[Characteristics/Integers]\ncPurchaseCost=25\n").unwrap(),
+        )),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    }];
+    cat
+}
+
+#[test]
+fn the_pending_object_follows_the_pointer_with_its_cost_and_is_staged_when_it_changes() {
+    let install = cache_install_with("app-pending", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = tree_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    app.set_interface(interface("pending"));
+    app.pass(0, &[]);
+    let tool = |app: &App, pass, now| -> Vec<String> {
+        let lines = app.log_lines(pass, now);
+        lines.into_iter().filter(|l| l.contains(" tool ")).collect()
+    };
+    // Without a tool nothing follows the pointer.
+    let camera = app.camera().unwrap().clone();
+    let (x, y) = tile_point(&camera, 20, 19);
+    let at = |dx: i32| Command::Mouse(Mouse::Move(x + dx, y));
+    let hash = |app: &App| frame_hash(&app.frame);
+    app.pass(20, &[at(0)]);
+    let plain = hash(&app);
+    assert!(tool(&app, 1, 20).is_empty());
+    // With one, every move over the map tells the tile, the quadrant and the verdict, and the
+    // picture is drawn again with the cost written 23 pixels right of the pointer.
+    app.game.as_mut().unwrap().build.hold(0);
+    app.pass(40, &[at(1)]);
+    let first = hash(&app);
+    assert_eq!(
+        tool(&app, 2, 40),
+        ["pass 2 t=40 tool pending objects/tree/ 20,19 q 2 valid"]
+    );
+    assert_ne!(first, plain, "the cost text is in the frame");
+    let width = app.frame.width as usize;
+    let yellow = |px: &[u8]| px[0] > 200 && px[1] > 150 && px[2] < 140;
+    let columns: Vec<usize> = (0..width)
+        .filter(|&c| {
+            (0..app.frame.height as usize).any(|r| yellow(&app.frame.pixels[(r * width + c) * 4..]))
+        })
+        .collect();
+    assert!(
+        columns.first().is_some_and(|&c| c as i32 >= x + 1 + 23),
+        "{columns:?} for a pointer at {x}"
+    );
+    // The same quarter tile again: the log tells it again, the picture follows the pointer.
+    app.pass(60, &[at(2)]);
+    assert_eq!(tool(&app, 3, 60).len(), 1);
+    assert_ne!(hash(&app), first);
+    // Off the map the pending object goes with its text.
+    app.pass(80, &[Command::Mouse(Mouse::Move(-5, -5))]);
+    assert!(tool(&app, 4, 80).is_empty());
+    assert_eq!(hash(&app), plain);
+    // It keeps its facing on screen when the view turns: on the map it turns the other way.
+    app.pass(100, &[at(1)]);
+    let facing = |app: &App| {
+        app.game
+            .as_ref()
+            .unwrap()
+            .pending
+            .as_ref()
+            .map(|p| p.facing)
+    };
+    assert_eq!(facing(&app), Some(4));
+    app.pass(120, &[Command::Rotate(true)]);
+    let view = app.camera().unwrap().rotation;
+    assert_eq!((view, facing(&app)), (1, Some(2)));
 }

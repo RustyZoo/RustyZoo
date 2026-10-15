@@ -247,6 +247,21 @@ impl Painter {
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
             Kind::MapView => map(frame, screen),
+            // The message line: its picture and the text, centred in the rectangle the borders
+            // leave (ui layout 4.12).
+            Kind::MessageQueue => {
+                self.picture(pictures, i, e, 0, screen, frame);
+                let text = element_text(e, strings);
+                let rect = Rect {
+                    left: sx.saturating_add(e.x_border),
+                    top: sy.saturating_add(e.y_border),
+                    right: sx.saturating_add(w).saturating_sub(e.x_border),
+                    bottom: sy.saturating_add(h).saturating_sub(e.y_border),
+                };
+                if !text.is_empty() {
+                    self.text(e, strings, &text, frame, rect, e.look.fore_color, false);
+                }
+            }
             _ => {}
         }
         tree.elements[i].state &= !DIRTY;
@@ -690,6 +705,32 @@ impl Painter {
             bottom: sy + h,
         };
         self.text(e, strings, text, frame, rect, color, true);
+    }
+
+    /// A text over the frame whose left is `x` and whose line starts at the row `y`, in the font and
+    /// the shadow of the element `e`, as the map view writes a cost next to the pointer.
+    pub fn text_at(
+        &mut self,
+        e: &Element,
+        strings: &dyn Strings,
+        frame: &mut Framebuffer,
+        (x, y): (i32, i32),
+        text: &[u8],
+        color: [u8; 3],
+    ) {
+        let font = self.font(e, strings);
+        let rect = Rect {
+            left: x,
+            top: y,
+            right: x.saturating_add(font.width(text)),
+            bottom: y.saturating_add(font.line_height()),
+        };
+        let style = Style {
+            color,
+            justify: text::Justify::Left,
+            shadow: e.look.shadow_text,
+        };
+        text::draw(frame, font, rect, text, &style);
     }
 
     /// The font an element names with its `font` and `fontsize` strings: Arial 8 without them.
