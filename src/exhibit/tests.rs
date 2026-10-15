@@ -806,6 +806,7 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
 }
 
 mod tank;
+mod water;
 
 /// The name and the gate piece of the exhibit on tile (`x`, `y`).
 fn exhibit_at(world: &World, x: usize, y: usize) -> (String, Option<u32>) {

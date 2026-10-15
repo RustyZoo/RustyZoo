@@ -151,6 +151,7 @@ fn a_building_is_placed_on_flat_ground_and_refused_on_a_hill_or_across_a_fence()
             price: 0.0,
             paint: None,
             blocking: Vec::new(),
+            wall: 0,
         };
         let e = crate::place::entity(&renderer.catalogue().types[2], &at, Vec::new());
         let shape = renderer.shape(&e);
@@ -1583,6 +1584,7 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
                 price: 0.0,
                 paint: None,
                 blocking: Vec::new(),
+                wall: 0,
             },
             Vec::new(),
         );

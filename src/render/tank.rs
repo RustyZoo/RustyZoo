@@ -212,29 +212,49 @@ impl MapRenderer<'_> {
                     if ty.class != "tankwall" || ty.subtype.first() != Some(&b'g') {
                         continue;
                     }
-                    let obj = &scene.objects[w];
-                    let member = ty.animations().into_iter().find(|a| a.name == "platform");
-                    if let Some(anim) = member
-                        .and_then(|a| a.member)
-                        .and_then(|m| self.animation(&m))
-                    {
-                        let (x, y) = project(r, obj.x, obj.y, obj.z + 16 * scene.tanks[k].height);
-                        let view = anim.view_of(obj.facing as u8, r);
-                        let palette = anim
-                            .sprites
-                            .get(view.file)
-                            .and_then(|sprite| self.recoloured(ty, sprite, metas[w].colors));
-                        out.push(Placed {
-                            x,
-                            y,
-                            piece: None,
-                            grid: false,
-                            pic: Pic::Anim(anim, view, palette),
-                        });
-                    }
+                    self.platform(scene, &metas[w], w, scene.tanks[k].height, out);
                 }
             }
             Item::Terrain(_) | Item::Path(_) | Item::Object(_) => {}
+        }
+    }
+
+    /// Places the platform of the gate `o` at the top of a stack of `height` steps.
+    fn platform(
+        &mut self,
+        scene: &Scene,
+        meta: &Meta,
+        o: usize,
+        height: i32,
+        out: &mut Vec<Placed>,
+    ) {
+        let (obj, ty) = (scene.objects[o], meta.ty);
+        let member = ty.animations().into_iter().find(|a| a.name == "platform");
+        let anim = member
+            .and_then(|a| a.member)
+            .and_then(|m| self.animation(&m));
+        if let Some(anim) = anim {
+            let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z + 16 * height);
+            let view = anim.view_of(obj.facing as u8, scene.rotation);
+            let palette = self.stack_palette(&anim, &view, meta);
+            out.push(Placed {
+                x,
+                y,
+                piece: None,
+                grid: false,
+                pic: Pic::Anim(anim, view, palette),
+            });
+        }
+    }
+
+    /// The palette a piece of a wall stack is drawn with: its colours, and the tint of a pending
+    /// gate.
+    fn stack_palette(&mut self, anim: &Animation, view: &View, meta: &Meta) -> Option<Palette> {
+        let sprite = anim.sprites.get(view.file)?;
+        let own = self.recoloured(meta.ty, sprite, meta.colors);
+        match meta.tint.filter(|_| meta.wall > 0) {
+            Some(tint) => Some(own.unwrap_or_else(|| sprite.1.clone()).tinted(tint)),
+            None => own,
         }
     }
 
@@ -256,8 +276,37 @@ impl MapRenderer<'_> {
         let Some(k) = scene.wall_tank(o) else {
             return;
         };
+        self.stack(scene, metas, o, scene.tanks[k].height, summary, out);
+    }
+
+    /// Places the stack of pieces of the pending gate over a tank wall of `height` steps, and its
+    /// own platform on top (placing 6.4).
+    pub(super) fn pending_wall(
+        &mut self,
+        scene: &Scene,
+        metas: &[Meta],
+        o: usize,
+        summary: &mut Summary,
+        out: &mut Vec<Placed>,
+    ) {
+        let height = metas[o].wall;
+        self.stack(scene, metas, o, height, summary, out);
+        if metas[o].ty.subtype.first() == Some(&b'g') {
+            self.platform(scene, &metas[o], o, height, out);
+        }
+    }
+
+    /// Places the pieces of a wall of `height` steps, bottom to top.
+    fn stack(
+        &mut self,
+        scene: &Scene,
+        metas: &[Meta],
+        o: usize,
+        height: i32,
+        summary: &mut Summary,
+        out: &mut Vec<Placed>,
+    ) {
         let (obj, meta) = (scene.objects[o], &metas[o]);
-        let height = scene.tanks[k].height;
         let e = ends(scene, metas, o);
         let mut pieces: Vec<(String, i32)> = Vec::new();
         if height == 1 {
@@ -292,10 +341,7 @@ impl MapRenderer<'_> {
             if let Some(anim) = member.and_then(|m| self.animation(m)) {
                 let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z + 16 * step);
                 let view = anim.view_of(obj.facing as u8, scene.rotation);
-                let palette = anim
-                    .sprites
-                    .get(view.file)
-                    .and_then(|sprite| self.recoloured(meta.ty, sprite, meta.colors));
+                let palette = self.stack_palette(&anim, &view, meta);
                 out.push(Placed {
                     x,
                     y,

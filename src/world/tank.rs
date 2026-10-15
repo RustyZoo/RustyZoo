@@ -203,7 +203,8 @@ impl World {
     }
 
     /// The water values of a new tank `id` from `tanks.cfg` (3.9 creation step 3), its wall height
-    /// by the kind it turned out to be.
+    /// by the kind it turned out to be. A new tank starts at level 0 and is filled when the file
+    /// says so; the water rises with the simulation steps (3.10).
     fn fill_values(&mut self, id: u32, inherited: Option<Tank>) {
         let c = self.tank_config;
         let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) else {
@@ -213,23 +214,31 @@ impl World {
         let new = Tank {
             height: c.height[k],
             level: c.level,
-            filled: c.filled,
+            filled: false,
             salt: c.salt,
             purity: c.purity,
             ..*tank
         };
-        // The new part of a split tank has the water of the tank it was cut from.
+        // The new part of a split tank has the water of the tank it was cut from, its level cut
+        // to the full level; it stays empty when something in it may not be in water.
         *tank = match inherited {
             Some(old) => Tank {
                 height: old.height,
-                level: old.level,
-                filled: old.filled,
+                level: old.level.min(c.top(old.height)),
+                filled: false,
                 salt: old.salt,
                 purity: old.purity,
                 ..*tank
             },
             None => new,
         };
+        if inherited.map_or(c.filled, |old| old.filled) {
+            self.fill(id);
+        }
+        // A fill while the game is paused is instant; the part cut off keeps the level anyway.
+        if let Some(old) = inherited {
+            self.edit_tank(id, |t, c| t.level = old.level.min(c.top(old.height)));
+        }
         self.events.push(Event::Tank(id));
         self.sync_tanks();
     }
@@ -255,6 +264,10 @@ impl World {
         }
         self.fill_values(id, inherited);
         let asks = physical && inherited.is_none() && !self.refused(id).is_empty();
+        // Nothing to ask about: the tank is filled again, whatever the file says (3.10).
+        if physical && inherited.is_none() && !asks {
+            self.fill(id);
+        }
         let event = match asks {
             true => Event::Objects(id),
             false => Event::New { id, ask: physical },
@@ -271,7 +284,12 @@ impl World {
     /// home under water, a scenery object that neither lives under water nor on the surface,
     /// and in a show tank also anything that is not for shows; what is transient is left out.
     pub fn refused(&self, id: u32) -> Vec<u32> {
-        let show = self.tank(id).is_some_and(|t| t.show);
+        self.unfit(id, self.tank(id).is_some_and(|t| t.show))
+    }
+
+    /// The same without the rule of show tanks when `show` is false: what the water of tank `id`
+    /// does not allow (3.10).
+    pub(super) fn unfit(&self, id: u32, show: bool) -> Vec<u32> {
         let mut found: Vec<usize> = Vec::new();
         for t in self.tiles_of(id) {
             let units = self.scene.units_on(t).iter().map(|&o| self.owner[o]);
@@ -319,6 +337,7 @@ impl World {
     /// The player said Yes to the question about the objects of tank `id`, which have been
     /// dealt with: it goes on to its name.
     pub fn accept_tank(&mut self, id: u32) {
+        self.fill(id);
         self.events.push(Event::New { id, ask: true });
     }
 

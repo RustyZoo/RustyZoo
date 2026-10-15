@@ -499,6 +499,9 @@ impl World {
                 e.gate = None;
             }
         }
+        if !quiet {
+            self.merge_tanks(&old, &lost);
+        }
         let Some((a, d)) = hint.filter(|_| !quiet) else {
             return;
         };
@@ -527,6 +530,28 @@ impl World {
                     self.regate(id, me, other);
                 }
             }
+        }
+    }
+
+    /// The water of the tanks that merged (3.10): `lost` pairs each exhibit that went with the one
+    /// that took it; a merged tank without a gate keeps its own values.
+    fn merge_tanks(&mut self, old: &Exhibits, lost: &[(u32, u32)]) {
+        let mut now: HashMap<u32, (Tank, usize)> = HashMap::new();
+        for &(gone, kept) in lost {
+            let value = |now: &HashMap<u32, (Tank, usize)>, id: u32| {
+                let tank = |e: &Exhibit| e.tank.map(|t| (t, e.tiles));
+                now.get(&id).copied().or_else(|| old.get(id).and_then(tank))
+            };
+            let (Some(a), Some(b)) = (value(&now, kept), value(&now, gone)) else {
+                continue;
+            };
+            let gate = self.exhibits.get(kept).is_some_and(|e| e.gate.is_some());
+            if gate {
+                self.merge_water(kept, a, b);
+            }
+            let tiles = a.1 + b.1;
+            let merged = self.exhibits.get(kept).and_then(|e| e.tank);
+            now.extend(merged.map(|t| (kept, (t, tiles))));
         }
     }
 
