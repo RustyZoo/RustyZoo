@@ -265,7 +265,7 @@ impl World {
     /// Puts a new entity in place of the one with this id, as one change: an exhibit fence
     /// replaced by another stays closed and keeps its exhibit, and a gate stays the gate when the
     /// new type has one. Returns the id of the new entity.
-    pub fn replace(&mut self, id: u32, mut entity: Entity, shape: Option<Shape>) -> Option<u32> {
+    pub fn swap(&mut self, id: u32, mut entity: Entity, shape: Option<Shape>) -> Option<u32> {
         let at = self.find(id)?;
         let slot = self.slot_of(at);
         let was = self.shapes[at];

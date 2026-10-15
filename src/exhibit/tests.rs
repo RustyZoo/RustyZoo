@@ -466,10 +466,10 @@ fn a_replaced_piece_keeps_the_exhibit_and_its_gate() {
     world.take_events();
     let plain = at(&world, 2, 2, 0);
     let new = world
-        .replace(plain, piece(2, 2, 0), shape(&piece(0, 0, 0)))
+        .swap(plain, piece(2, 2, 0), shape(&piece(0, 0, 0)))
         .unwrap();
     let new_gate = world
-        .replace(door, piece(4, 4, 2), shape(&piece(0, 0, 0)))
+        .swap(door, piece(4, 4, 2), shape(&piece(0, 0, 0)))
         .unwrap();
     assert!(world.take_events().is_empty());
     assert_eq!(names(&world), [(1, "Exhibit 1".into(), 9)]);

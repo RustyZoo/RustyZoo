@@ -876,7 +876,7 @@ pub fn place(
     let old = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id));
     let added = match (old, class) {
         // A fence takes the place of the piece as one change: its exhibit stays closed.
-        (Some(id), Class::Fence) => world.replace(id, entity, shape),
+        (Some(id), Class::Fence) => world.swap(id, entity, shape),
         (Some(id), _) => {
             world.remove(id);
             world.add(entity, shape)
