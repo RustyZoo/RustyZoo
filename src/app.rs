@@ -285,13 +285,20 @@ struct Game {
     terrain: Tool,
     marks: Vec<Mark>,
     shown: Option<terrain::Shown>,
+    /// The amount next to the pointer the log told last.
+    pointed: Option<i64>,
 }
 
 impl Game {
-    /// What the cost text at the pointer shows: the drag's, else the pending object's.
+    /// What the cost text at the pointer shows: the drag's, else the pending object's, else, in
+    /// the paint tab, minus what painting the brush costs while the pointer is over the map.
     fn cost(&self) -> Option<i64> {
         match self.run.is_empty() {
-            true => self.pending.as_ref().map(Pending::amount),
+            true => self
+                .pending
+                .as_ref()
+                .map(Pending::amount)
+                .or_else(|| self.terrain.pointer_amount().filter(|_| self.hover)),
             false => Some(place::run_amount(&self.run)),
         }
     }
@@ -497,6 +504,7 @@ impl<'a> App<'a> {
             ),
             marks: Vec::new(),
             shown: None,
+            pointed: None,
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -577,6 +585,7 @@ impl<'a> App<'a> {
         self.fired = self.timers.pass(now, 1.0);
         if self.fired.draw {
             self.drawn_at = self.look();
+            self.terrain_help();
             self.restage();
             // The animations advance at the drawn frame (ui layout 5.3).
             let paused = self.paused();
@@ -1215,7 +1224,8 @@ impl<'a> App<'a> {
                     copy_rect(frame, map, rect);
                 }
             });
-            // The cost of the pending object, next to the pointer (placing 4.5).
+            // The cost of the pending object or of the brush, next to the pointer (placing 4.5,
+            // terrain editing 7.3).
             if let Some(amount) = self.game.as_ref().and_then(Game::cost) {
                 let text = place::cost_text(ui.string(SYMBOL), amount);
                 ui.pointer_text(&mut self.frame, &to_cp1252(&text), COST_OFFSET);

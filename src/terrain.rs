@@ -296,6 +296,8 @@ pub struct Tool {
     target: i32,
     /// What painting the brush where it is would cost; 0 right after a paint.
     brush_cost: f32,
+    /// The tile whose help the paint tab last asked to show.
+    helped: Option<Cell>,
 }
 
 impl Tool {
@@ -317,6 +319,7 @@ impl Tool {
             reference: (0, 0),
             target: 0,
             brush_cost: 0.0,
+            helped: None,
         }
     }
 
@@ -502,6 +505,27 @@ impl Tool {
     /// accepts it.
     pub fn brush_cost(&self) -> f32 {
         self.brush_cost
+    }
+
+    /// The amount written next to the pointer in the paint tab: minus what painting the brush
+    /// where it is costs, 0 when nothing would be painted (terrain editing 7.3).
+    pub fn pointer_amount(&self) -> Option<i64> {
+        (self.mode == Some(Mode::Paint)).then(|| whole(self.brush_cost).saturating_neg())
+    }
+
+    /// The help string to show for the tile under the pointer: in the paint tab, button up, when
+    /// the tile is not the one asked about last (which is never forgotten), that of its terrain
+    /// type (terrain editing 7.3). `None` for no change, a tile off the map (it changes nothing) or
+    /// a type without help.
+    pub fn help_at(&mut self, world: &World, tile: Option<Cell>) -> Option<i32> {
+        let tile = tile.filter(|_| self.mode == Some(Mode::Paint) && !self.pressed)?;
+        if self.helped == Some(tile) {
+            return None;
+        }
+        self.helped = Some(tile);
+        let (x, y) = tile;
+        let help = self.find(world.zoo.tile(x, y)?.terrain)?.help;
+        (help > 0).then_some(help)
     }
 
     fn price_of_brush(&self, world: &World, habits: Habits) -> f32 {

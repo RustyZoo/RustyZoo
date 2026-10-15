@@ -387,6 +387,50 @@ fn a_tile_painted_twice_costs_the_last_type_only_and_painted_back_nothing() {
 }
 
 #[test]
+fn the_pointer_shows_minus_the_brush_cost_in_the_paint_tab_and_the_help_of_a_new_tile() {
+    let mut world = world(vec![]);
+    let mut types = table();
+    types[0].help = 3365;
+    types[1].help = 3367;
+    let (mut tool, mut lines) = (Tool::new(types, 8.0), Vec::new());
+    assert_eq!(tool.pointer_amount(), None, "no tab");
+    assert_eq!(tool.help_at(&world, Some((1, 1))), None, "no tab");
+    tool.enter(Mode::Modify);
+    assert_eq!(
+        (tool.pointer_amount(), tool.help_at(&world, Some((1, 1)))),
+        (None, None)
+    );
+    tool.enter(Mode::Paint);
+    assert!(tool.set_kind(SAND));
+    assert_eq!(tool.pointer_amount(), Some(0), "no brush yet");
+    tool.place(&world, &habits, Some((1, 1)));
+    assert_eq!(tool.pointer_amount(), Some(-120));
+    // A tile once, the help of its type; a tile off the map or with a type without help: none.
+    assert_eq!(tool.help_at(&world, Some((1, 1))), Some(3365));
+    assert_eq!(tool.help_at(&world, Some((1, 1))), None);
+    assert_eq!(tool.help_at(&world, None), None);
+    assert_eq!(
+        tool.help_at(&world, Some((1, 1))),
+        None,
+        "a tile off the map does not make the last one forgotten"
+    );
+    assert_eq!(tool.help_at(&world, Some((2, 1))), Some(3365));
+    world.set_tile(3, 1, 0, 0, DIRT);
+    assert_eq!(tool.help_at(&world, Some((3, 1))), None, "no help string");
+    // A held button asks for nothing; a paint makes the amount 0.
+    assert_eq!(tool.help_at(&world, Some((4, 1))), Some(3365));
+    tool.press(&mut world, &habits, (0, 0), Some((1, 1)), &mut lines);
+    assert_eq!(tool.help_at(&world, Some((5, 1))), None, "button down");
+    assert_eq!(tool.pointer_amount(), Some(0));
+    tool.release();
+    assert_eq!(
+        tool.help_at(&world, Some((5, 1))),
+        Some(3365),
+        "released on another tile"
+    );
+}
+
+#[test]
 fn the_cost_counts_the_largest_corner_change_of_each_touched_tile_and_the_type() {
     let mut world = world(vec![]);
     let types = table();

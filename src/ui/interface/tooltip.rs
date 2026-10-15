@@ -112,12 +112,7 @@ impl Interface {
             return;
         }
         self.tip.key = key;
-        self.tip.left = None;
-        if let Some(i) = self.tooltip_element()
-            && self.tree.elements[i].state & HIDDEN == 0
-        {
-            self.hide_element(i);
-        }
+        self.hide_tip();
         let Some((t, row)) = key else { return };
         let e = &self.tree.elements[t];
         // A list gives the help of its hovered row, and none below the last row.
@@ -126,6 +121,33 @@ impl Interface {
             _ => e.help_id.first().copied().unwrap_or(0),
         };
         let text = self.help_text(help);
+        self.arm(text);
+    }
+
+    /// The pointer reached something that is not an element (a tile of the map): the tooltip shown
+    /// or due goes away and, if string `help` has a text, it is due after the delay. The string
+    /// is shown as it is: the game asks for the short text whatever `helpType` says.
+    pub fn help_tip(&mut self, help: i32) {
+        self.hide_tip();
+        let text = match help {
+            1.. => crate::text::to_cp1252(&self.strings.string(help)),
+            _ => Vec::new(),
+        };
+        self.arm(text);
+    }
+
+    /// Hides the tooltip shown, and forgets the one due.
+    fn hide_tip(&mut self) {
+        self.tip.left = None;
+        if let Some(i) = self.tooltip_element()
+            && self.tree.elements[i].state & HIDDEN == 0
+        {
+            self.hide_element(i);
+        }
+    }
+
+    /// Makes the tooltip with `text` due after the delay, when there is a text.
+    fn arm(&mut self, text: Vec<u8>) {
         if !text.is_empty() {
             self.tip.left = Some(i64::from(self.settings.tooltip_delay));
             self.tip.text = text;
