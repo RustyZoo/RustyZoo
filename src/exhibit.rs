@@ -9,6 +9,7 @@ use crate::vfs::Vfs;
 use crate::world::World;
 
 pub mod rating;
+pub mod viewing;
 
 /// The region of the zoo grounds.
 pub const GROUNDS: u32 = 0;
