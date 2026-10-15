@@ -667,3 +667,21 @@ fn the_cash_must_cover_the_price_and_only_scenery_is_placed_here() {
     place(&mut w, &mut money, &cat.types[0], &nan, shape);
     assert_eq!(money.cash, 100.0);
 }
+
+#[test]
+fn the_water_of_the_terrain_types_is_listed_by_type_number() {
+    let kind = |kind, water| terrain::Type {
+        kind,
+        cost: 0.0,
+        water,
+        icon: String::new(),
+        help: 0,
+        listed: true,
+    };
+    assert!(water(&[]).is_empty());
+    assert_eq!(
+        water(&[kind(0, false), kind(3, true)]),
+        [false, false, false, true]
+    );
+    assert_eq!(water(&[kind(255, true)]).len(), 256);
+}

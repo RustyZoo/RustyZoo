@@ -10,11 +10,12 @@
 //! pending object to the world and takes its price.
 
 use crate::build::{cost, number};
-use crate::config::{Config, to_int};
+use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{CONSTRUCTION, Money, Symbol};
 use crate::render::order::{Kind, ground_height};
 use crate::render::{Extra, Ghost};
+use crate::terrain;
 use crate::text::format::{money, whole_units};
 use crate::ui::layout::color;
 use crate::vfs::Vfs;
@@ -75,37 +76,18 @@ impl Tints {
     }
 }
 
-/// Which terrain types are water (`water` above 0 in `terrain/tilete*.cfg`, map drawing 4.1),
-/// by type number. A type that two sections define keeps the later one.
-pub fn water(vfs: &Vfs) -> Vec<bool> {
-    let mut members: Vec<String> = vfs
-        .list(None)
-        .into_iter()
-        .filter(|m| {
-            let m = m.to_ascii_lowercase();
-            m.starts_with("terrain/tilete") && m.ends_with(".cfg")
-        })
-        .collect();
-    members.sort();
-    let mut wet = Vec::new();
-    for member in members {
-        let Some(config) = vfs.read(&member).ok().and_then(|b| Config::parse(&b).ok()) else {
-            continue;
-        };
-        for (_, section) in config.sections() {
-            let Some(kind) = section
-                .get("type")
-                .and_then(to_int)
-                .and_then(|k| usize::try_from(k).ok())
-                .filter(|&k| k < 256)
-            else {
-                continue;
-            };
-            if wet.len() <= kind {
-                wet.resize(kind + 1, false);
-            }
-            wet[kind] = section.get("water").and_then(to_int).unwrap_or(0) > 0;
-        }
+/// Which terrain types are water, by type number.
+pub fn water(types: &[terrain::Type]) -> Vec<bool> {
+    let mut wet = vec![
+        false;
+        types
+            .iter()
+            .map(|t| usize::from(t.kind) + 1)
+            .max()
+            .unwrap_or(0)
+    ];
+    for t in types {
+        wet[usize::from(t.kind)] = t.water;
     }
     wet
 }

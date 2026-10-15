@@ -459,6 +459,7 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
+        let types = crate::terrain::types(self.renderer.vfs());
         self.game = Some(Game {
             world,
             staged,
@@ -475,10 +476,10 @@ impl<'a> App<'a> {
             pending: None,
             hover: false,
             tints: Tints::load(self.renderer.vfs()),
-            water: place::water(self.renderer.vfs()),
+            water: place::water(&types),
             extra: Extra::default(),
             terrain: Tool::new(
-                crate::terrain::types(self.renderer.vfs()),
+                types,
                 crate::terrain::elevation_cost(self.renderer.vfs().ini()),
             ),
             marks: Vec::new(),
@@ -1223,8 +1224,8 @@ impl<'a> App<'a> {
         self.quit
     }
 
-    /// The sounds the interface asked for in the last pass, by file name without the extension
-    /// (`uiclick`, `sounds/uiclick.wav`): the shell plays them.
+    /// The sounds the interface and the placing of objects asked for in the last pass, by file
+    /// name without the extension (`uiclick`, `place`, `sounds/uiclick.wav`): the shell plays them.
     pub fn sounds(&self) -> &[&'static str] {
         &self.ui_sounds
     }

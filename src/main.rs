@@ -148,8 +148,8 @@ usage: rustyzoo [--data <dir>] <command>
                       scenery or a building places it when the cash covers its cost (`world add
                       CLASS/TYPE/SUBTYPE X,Y id N`, `tool turn STEP` for a type that turns by
                       itself, the placement sound), one that is not valid or too dear shows its
-                      message in the message line for 5 seconds (`tool message ID`). The two terrain tabs of the construction panel (at
-                      180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
+                      message in the message line for 5 seconds (`tool message ID`). The two
+                      terrain tabs of the construction panel (at 180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and
                       painting a type of the list with a press and a drag gives it to the tiles of
