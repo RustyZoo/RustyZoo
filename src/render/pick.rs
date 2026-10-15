@@ -40,24 +40,25 @@ pub(crate) fn hits(
     };
     frames.iter().any(|frame| {
         let row = point.1 - anchor.1 + i64::from(frame.y_offset);
-        (from..from + count).any(|x| {
-            let col = match mirror {
-                false => x - anchor.0 + i64::from(frame.x_offset),
-                true => anchor.0 + i64::from(frame.x_offset) - x,
-            };
-            let (Ok(col), Ok(row)) = (i32::try_from(col), i32::try_from(row)) else {
-                return false;
-            };
-            match threshold < 0 {
-                true => {
-                    (0..i32::from(frame.width)).contains(&col)
-                        && (0..i32::from(frame.height)).contains(&row)
-                }
-                false => frame
-                    .pixel_at(col, row)
-                    .is_some_and(|v| v != 0 || !palette.zero_is_transparent()),
-            }
-        })
+        let xo = i64::from(frame.x_offset);
+        // The columns of the frame the searched pixels fall on, cut to the frame: a huge
+        // threshold costs no more than the width.
+        let (first, last) = match mirror {
+            false => (from - anchor.0 + xo, from + count - 1 - anchor.0 + xo),
+            true => (anchor.0 + xo - (from + count - 1), anchor.0 + xo - from),
+        };
+        let (first, last) = (first.max(0), last.min(i64::from(frame.width) - 1));
+        let Ok(row) = i32::try_from(row) else {
+            return false;
+        };
+        match threshold < 0 {
+            true => first <= last && (0..i32::from(frame.height)).contains(&row),
+            false => (first..=last).any(|col| {
+                frame
+                    .pixel_at(col as i32, row)
+                    .is_some_and(|v| v != 0 || !palette.zero_is_transparent())
+            }),
+        }
     })
 }
 
@@ -172,8 +173,11 @@ mod tests {
         assert!(!hit(&f, false, 6, (106, 50)));
         // Only the row of the point is searched.
         assert!(!hit(&f, false, 8, (100, 52)));
-        // A huge threshold does not hang or overflow.
+        // A huge threshold neither hangs nor overflows, and reaches the whole row.
         assert!(!hit(&f, false, 1000, (100, 49)));
+        assert!(hit(&f, false, i32::MAX, (100, 50)));
+        assert!(!hit(&f, true, i32::MAX, (i64::MAX / 2, 50)));
+        assert!(!hit(&f, false, i32::MAX, (i64::MIN / 2, 50)));
     }
 
     #[test]
@@ -231,5 +235,31 @@ mod tests {
         assert!(hits(&both, &p, false, (100, 50), 0, (101, 50)));
         assert!(hits(&both, &p, false, (100, 50), 0, (101, 58)));
         assert!(!hits(&both, &p, false, (100, 50), 0, (101, 51)));
+    }
+
+    #[test]
+    fn the_threshold_of_a_type_is_read_from_its_plain_integers_and_is_0_when_missing() {
+        let ty = |ini: &str| EntityType {
+            class: "objects",
+            type_name: b"tree".to_vec(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                crate::config::Config::parse(ini.as_bytes()).unwrap(),
+            )),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        };
+        let read = |ini: &str| threshold(&ty(ini));
+        let section = "[Characteristics/Integers]\n";
+        assert_eq!(read(&format!("{section}cHitThreshold=-1\n")), -1);
+        assert_eq!(read(&format!("{section}cHitThreshold = 12\n")), 12);
+        assert_eq!(read(&format!("{section}cHitThreshold=lots\n")), 0);
+        assert_eq!(read(&format!("{section}cPurchaseCost=5\n")), 0);
+        assert_eq!(read("[Other]\ncHitThreshold=5\n"), 0);
+        let mut bare = ty("");
+        bare.config = None;
+        assert_eq!(threshold(&bare), 0);
     }
 }
