@@ -256,6 +256,16 @@ struct Drag {
     start: (i32, i32),
     leg: Option<Leg>,
     side: Option<u32>,
+    /// The last computation: the world point, its tile and height step, and the pieces it gave.
+    last: Option<Last>,
+}
+
+/// What the last computation of a run kept (placing 6.2 item 2).
+struct Last {
+    point: (i64, i64),
+    tile: (i64, i64),
+    step: i32,
+    points: Vec<(i64, i64)>,
 }
 
 /// What the player has done in the panels.
@@ -321,6 +331,7 @@ impl Build {
                 start,
                 leg: None,
                 side,
+                last: None,
             });
     }
 
@@ -331,27 +342,47 @@ impl Build {
 
     /// The world points of the pieces of the drag if the mouse is at `point` (on tile `cell`)
     /// now, the start first: the middle of each tile of a path, the middle of the side of each
-    /// piece of a fence; none without a drag.
-    pub fn run(&mut self, cell: (i32, i32), point: (i64, i64)) -> Vec<(i64, i64)> {
+    /// piece of a fence; none without a drag. `cell` is the tile under the mouse and `z` the height of
+    /// the point. The run is computed
+    /// again only when the tile or the height step (`z / 16`) changes or the point is more than 16
+    /// world units from the last computation (in y, and in x for a fence; placing 6.2 item 2);
+    /// otherwise the last run stays and so does the last point.
+    pub fn run(&mut self, cell: (i32, i32), point: (i64, i64), z: i32) -> Vec<(i64, i64)> {
         let Some(drag) = &mut self.drag else {
             return Vec::new();
         };
-        let tile = |(x, y): (i32, i32), (dx, dy): (i32, i32)| {
+        let tile = (i64::from(cell.0), i64::from(cell.1));
+        if let Some(last) = &drag.last
+            && last.tile == tile
+            && last.step == z / 16
+            && last.point.1.abs_diff(point.1) <= 16
+            && (drag.side.is_none() || last.point.0.abs_diff(point.0) <= 16)
+        {
+            return last.points.clone();
+        }
+        let at = |(x, y): (i32, i32), (dx, dy): (i32, i32)| {
             (
                 i64::from(x) * 64 + i64::from(dx),
                 i64::from(y) * 64 + i64::from(dy),
             )
         };
-        match drag.side {
+        let points: Vec<(i64, i64)> = match drag.side {
             Some(first) => fence_run(drag.start, first, point)
                 .into_iter()
-                .map(|(t, s)| tile(t, MIDDLE[s as usize / 2]))
+                .map(|(t, s)| at(t, MIDDLE[s as usize / 2]))
                 .collect(),
             None => path_run(drag.start, cell, &mut drag.leg)
                 .into_iter()
-                .map(|t| tile(t, (32, 32)))
+                .map(|t| at(t, (32, 32)))
                 .collect(),
-        }
+        };
+        drag.last = Some(Last {
+            point,
+            tile,
+            step: z / 16,
+            points: points.clone(),
+        });
+        points
     }
 
     /// The drag is over: released, or dropped with the tool.

@@ -286,6 +286,8 @@ struct Game {
     /// transient items) and what the terrain panel showed last.
     terrain: Tool,
     marks: Vec<Mark>,
+    /// The tile a pending fence selects.
+    selection: Option<Mark>,
     shown: Option<terrain::Shown>,
     /// The amount next to the pointer the log told last.
     pointed: Option<i64>,
@@ -511,6 +513,7 @@ impl<'a> App<'a> {
             extra: Extra::default(),
             terrain,
             marks: Vec::new(),
+            selection: None,
             shown: None,
             pointed: None,
         });
@@ -864,10 +867,29 @@ impl<'a> App<'a> {
             .tool()
             .filter(|_| game.hover)
             .and_then(|ty| at(ty, (point.0, point.1)));
+        // A pending fence selects the tile under the pointer, before snapping, also during a drag
+        // (placing 4.5).
+        let fence = game
+            .build
+            .tool()
+            .and_then(|ty| cat.types.get(ty))
+            .is_some_and(|t| Class::of(t) == Class::Fence);
+        game.selection = (fence && game.hover)
+            .then(|| {
+                let (x, y) = (point.0.div_euclid(64), point.1.div_euclid(64));
+                let tile = game
+                    .world
+                    .tile_index(i32::try_from(x).ok()?, i32::try_from(y).ok()?)?;
+                Some(Mark {
+                    tile,
+                    color: crate::terrain::SELECTION,
+                })
+            })
+            .flatten();
         // A drag lays a piece on each tile of its L; the pieces stay while the pointer is away.
         if let (Some(ty), Some(p), true) = (game.build.tool(), &game.pending, game.build.dragging())
         {
-            let points = game.build.run(p.tile, (point.0, point.1));
+            let points = game.build.run(p.tile, (point.0, point.1), point.2);
             let mut run: Vec<Pending> = points.iter().filter_map(|&p| at(ty, p)).collect();
             place::afford(&mut run, &game.money);
             game.run = run;
@@ -1288,6 +1310,7 @@ impl<'a> App<'a> {
             false => place::extra_of(&game.run, &game.tints),
         };
         want.marks.clone_from(&game.marks);
+        want.marks.extend(game.selection);
         if !dirty && want == game.extra {
             return;
         }

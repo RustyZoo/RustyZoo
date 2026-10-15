@@ -569,7 +569,7 @@ fn check(
         (Verdict::Overwrite, if same { 0.0 } else { cost(t) })
     };
     if class == Class::Fence {
-        return check_fence(p, world, cat, smart, tile);
+        return check_fence(p, world, cat, water, smart, tile);
     }
     if class == Class::Path
         && let Some(old) = world.path(tile)
@@ -681,9 +681,17 @@ fn check(
 }
 
 /// The fence check (placing 6.3): the zoo wall stays, nothing crosses the side, the smart fences
-/// test and the entrance quadrant refuse a piece without a message; the slot of a piece of the
-/// same type above its decayed life takes a free replacement, any other the full price.
-fn check_fence(p: &mut Pending, world: &World, cat: &Catalogue, smart: bool, tile: usize) {
+/// test and the entrance quadrant refuse a piece without a message, a fence that only swims is
+/// refused on dry land with 10564; the slot of a piece of the same type above its decayed life takes a
+/// free replacement, any other the full price.
+fn check_fence(
+    p: &mut Pending,
+    world: &World,
+    cat: &Catalogue,
+    water: &[bool],
+    smart: bool,
+    tile: usize,
+) {
     let t = &cat.types[p.ty];
     let d = p.facing as usize;
     if world.wall(tile, d) || world.gate(tile) {
@@ -707,6 +715,14 @@ fn check_fence(p: &mut Pending, world: &World, cat: &Catalogue, smart: bool, til
             .map_or_else(|| number(t, "cLife").unwrap_or(LIFE), |f| f.life as f32);
         let free = is_of(old, t) && life > number(t, "cDecayedLife").unwrap_or(0.0);
         (p.verdict, p.price) = (Verdict::Overwrite, if free { 0.0 } else { cost(t) });
+    }
+    // A fence that only swims stands on water alone (the tank tiles are re#55): 10564.
+    let wet = water
+        .get(usize::from(world.zoo.tiles[tile].terrain))
+        .copied()
+        .unwrap_or(false);
+    if number(t, "cLand") == Some(0.0) && only_swims(t) && !wet {
+        fail(p, Some(NOT_ON_WATER));
     }
 }
 

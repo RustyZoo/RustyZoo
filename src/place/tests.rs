@@ -152,6 +152,18 @@ fn catalogue() -> Catalogue {
             [1, 1, 1],
         ),
         ty("animals", "elephant", "", [6, 6, 1]),
+        ty(
+            "fences",
+            "buoyrope",
+            "[Characteristics/Integers]\ncPurchaseCost=50\ncSwims=1\ncLand=0\n",
+            [1, 1, 1],
+        ),
+        ty(
+            "fences",
+            "chain",
+            "[Characteristics/Integers]\ncPurchaseCost=50\ncLand=0\n",
+            [1, 1, 1],
+        ),
     ];
     for t in types {
         cat.push(t);
@@ -1133,6 +1145,28 @@ fn a_fence_stands_on_its_own_tile_s_slot_and_the_zoo_wall_cannot_be_replaced() {
     assert_eq!((across.x, across.y), (5 * 64, 3 * 64 + 32));
     // Another side of the same tile too.
     assert_eq!(on(11, 4, 3, 0).verdict, Verdict::Valid);
+}
+
+#[test]
+fn a_fence_that_only_swims_is_refused_on_dry_land_and_placed_on_water() {
+    let cat = catalogue();
+    let w = world((0, 0), vec![], |t| t[1].terrain = 1);
+    let on = |ty, tx| fence_at(&w, &cat, true, ty, tx, 0, 0);
+    let verdict = |p: Pending| (p.verdict, p.message, p.amount());
+    // The buoy rope fence (cLand 0, swims): grass says 10564 and costs nothing, water is fine.
+    assert_eq!(
+        verdict(on(13, 0)),
+        (Verdict::Invalid, Some(NOT_ON_WATER), 0)
+    );
+    assert_eq!(verdict(on(13, 1)), (Verdict::Valid, None, -50));
+    // A type with cLand 0 that does not swim, and the ordinary fence, have no water test.
+    assert_eq!(on(14, 0).verdict, Verdict::Valid);
+    assert_eq!(on(11, 0).verdict, Verdict::Valid);
+    assert_eq!(on(11, 1).verdict, Verdict::Valid);
+    // A piece the fence check refused gets no 10564 from this test.
+    let held = world((0, 0), vec![entity("fences", "", 63, 32, 2)], |_| {});
+    let p = fence_at(&held, &cat, true, 13, 0, 0, 2);
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, None));
 }
 
 #[test]

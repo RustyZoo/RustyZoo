@@ -518,7 +518,7 @@ fence_drag() { # fence_drag <map> <last move>
     awk '/ world add /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "6,48920,cb947a509bf5c947" "fence_drag maps/default.zoo '878 332'"
+check base-trial "6,48920,62790f338040a757" "fence_drag maps/default.zoo '878 332'"
 check expansion-trial "6,49250,73fe4a3df4a5c57b" "fence_drag maps/scn19.zoo '878 332'"
 
 exit $failed

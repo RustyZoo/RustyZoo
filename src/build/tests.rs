@@ -776,7 +776,7 @@ fn a_press_with_a_path_as_the_tool_starts_a_drag_whose_first_leg_the_first_move_
     cat.push(path("objects"));
     let mut build = Build::new(0);
     let tiles = |build: &mut Build, cell| -> Vec<(i64, i64)> {
-        let points = build.run(cell, (0, 0));
+        let points = build.run(cell, (0, 0), 0);
         points.iter().map(|&(x, y)| (x / 64, y / 64)).collect()
     };
     // Without the tool, or with a tool that is not a path, a press starts nothing.
@@ -785,7 +785,7 @@ fn a_press_with_a_path_as_the_tool_starts_a_drag_whose_first_leg_the_first_move_
     build.hold(1);
     build.press(&cat, Some((5, 5)), (0, 0));
     assert!(!build.dragging());
-    assert!(build.run((7, 5), (0, 0)).is_empty());
+    assert!(build.run((7, 5), (0, 0), 0).is_empty());
     // A press off the map starts nothing either.
     build.hold(0);
     build.press(&cat, None, (0, 0));
@@ -804,7 +804,7 @@ fn a_press_with_a_path_as_the_tool_starts_a_drag_whose_first_leg_the_first_move_
     // Releasing, or dropping the tool, ends it.
     build.end_drag();
     assert!(!build.dragging());
-    assert!(build.run((6, 7), (0, 0)).is_empty());
+    assert!(build.run((6, 7), (0, 0), 0).is_empty());
 }
 
 #[test]
@@ -826,15 +826,15 @@ fn a_press_with_a_fence_as_the_tool_keeps_the_side_of_the_press_for_the_whole_ru
     build.press(&cat, Some((5, 5)), (5 * 64 + 10, 5 * 64 + 40));
     assert!(build.dragging());
     let (x, y) = (5 * 64, 5 * 64 + 32);
-    assert_eq!(build.run((5, 5), (x + 20, y)), [(x, y)]);
+    assert_eq!(build.run((5, 5), (x + 20, y), 0), [(x, y)]);
     // Past the middle of the tile the run hooks round on the side the mouse is on.
     assert_eq!(
-        build.run((5, 5), (x + 40, y)),
+        build.run((5, 5), (x + 40, y), 0),
         [(x, y), (5 * 64 + 32, 5 * 64 + 63)]
     );
     // The mouse two tiles down and one tile right: the pieces of the first leg are side 6 and
     // the second leg lies on side 0 or 4 of the tiles it crosses.
-    let run = build.run((6, 7), (6 * 64 + 32, 7 * 64 + 32));
+    let run = build.run((6, 7), (6 * 64 + 32, 7 * 64 + 32), 0);
     assert_eq!(run[..3], [(x, y), (x, y + 64), (x, y + 128)]);
     assert!(run.len() > 3);
     // A press off the map, or at an absurd point, never panics.
@@ -919,4 +919,37 @@ fn the_picture_table_reads_numbers_and_ignores_the_rest() {
     assert_eq!(table.len(), 3, "a bare label has no picture");
     let nothing = Install::new("table-none", &[("zoo.txt", vec![])]);
     assert!(infoimg(&Vfs::open(&nothing.0).unwrap()).is_empty());
+
+fn a_fence_run_is_computed_again_only_past_the_tile_the_height_step_or_17_world_units() {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "fences",
+        type_name: b"wire".to_vec(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let mut build = Build::new(0);
+    build.hold(0);
+    // Side 0 of tile (5, 5); the mouse two tiles along x, in the upper half: no hook piece.
+    build.press(&cat, Some((5, 5)), (5 * 64 + 32, 5 * 64 + 1));
+    let (x, y) = (7 * 64 + 40, 5 * 64 + 26);
+    let first = build.run((7, 5), (x, y), 0);
+    assert_eq!(first.len(), 3);
+    // Eight units down in the same tile, now in the lower half: the old run stays.
+    assert_eq!(build.run((7, 5), (x, y + 8), 0), first);
+    // Small moves add up from the last computation: 17 units from it, the hook comes.
+    assert_eq!(build.run((7, 5), (x, y + 16), 0), first);
+    assert_eq!(build.run((7, 5), (x + 16, y + 16), 0), first);
+    assert_eq!(build.run((7, 5), (x, y + 17), 0).len(), 4);
+    // Another tile, or another height step, computes again.
+    assert_eq!(build.run((7, 5), (x, y), 0).len(), 3);
+    assert_eq!(build.run((7, 5), (x, y + 8), 16).len(), 4);
+    assert_eq!(build.run((7, 5), (x + 17, y), 16).len(), 3);
+    // A new press forgets the last computation.
+    build.press(&cat, Some((5, 5)), (5 * 64 + 32, 5 * 64 + 1));
+    assert_eq!(build.run((7, 5), (x, y + 8), 0).len(), 4);
 }

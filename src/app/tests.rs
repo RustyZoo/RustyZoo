@@ -1346,6 +1346,12 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
     app.pass(40, &[at(25, 20, 32, 12)]);
     assert_eq!(cost(&app), Some(-750));
     assert_eq!(app.game.as_ref().unwrap().world.zoo.entities.len(), 0);
+    // The pending fence selects the tile under the pointer, also in the drag.
+    let game = app.game.as_ref().unwrap();
+    assert_eq!(
+        game.selection.map(|m| m.tile),
+        game.world.tile_index(25, 20)
+    );
     app.pass(60, &[Command::Mouse(Mouse::Up)]);
     let adds: Vec<String> = (20..=25)
         .map(|x| format!("world add fences/iron/ {x},20 side 0 id {}", x - 19))
