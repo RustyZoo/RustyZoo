@@ -1161,7 +1161,7 @@ fn hand(class: &'static str, name: &str, sub: &str, members: &str, id: i32) -> E
 }
 
 #[test]
-fn the_hire_panel_lists_the_staff_of_the_sex_drawn_in_catalogue_order_with_salary_and_duties() {
+fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_duties() {
     let (mut ui, vfs, _install) = interface("hire");
     let cat = catalogue(vec![
         hand("keeper", "keeper", "m", "staff", 101),
@@ -1171,13 +1171,16 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_in_catalogue_order_with_salar
         hand("keeper", "scient", "m", "staff\ndinosaur", 103),
         hand("keeper", "scient", "f", "staff\ndinosaur", 103),
         scenery("objects", "shelter", "hut", "shelters", 50, 104),
+        hand("tour", "tour", "m", "staff", 105),
+        hand("tour", "tour", "f", "staff", 105),
     ]);
     let (mut build, mut log) = (Build::new(0), vec![]);
     build.set_hire(true);
     assert!(ui.show(10));
     build.sync(&mut ui, &vfs, &cat, &mut log);
-    // The men in the order of the catalogue (no sort by cost); the scientist needs the expansion.
-    assert_eq!(build.list, [0, 2]);
+    // The men sorted by kind, the keeper class, the tour guide, then the maintenance worker; the
+    // scientist needs the expansion.
+    assert_eq!(build.list, [0, 7, 2]);
     assert_eq!(log[0], "tool panel hire");
     assert_eq!(
         log[1],
@@ -1198,9 +1201,12 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_in_catalogue_order_with_salar
     log.clear();
     build.set_hire(false);
     build.rehire(&mut ui, &vfs, &cat, &mut log);
-    assert_eq!((build.list.clone(), build.tool()), (vec![1, 3], Some(1)));
-    // With the expansion the scientist is listed after the others.
-    assert_eq!(items_of(&cat, "staff", 1, |t| t.subtype == b"m"), [0, 2, 4]);
+    assert_eq!((build.list.clone(), build.tool()), (vec![1, 8, 3], Some(1)));
+    // With the expansion the scientist is listed with the zookeeper, before the tour guide.
+    assert_eq!(
+        items_of(&cat, "staff", 1, |t| t.subtype == b"m"),
+        [0, 4, 7, 2]
+    );
     // Nothing of the kind: the empty text shows and no item is chosen.
     let none = catalogue(vec![]);
     build.rehire(&mut ui, &vfs, &none, &mut log);

@@ -164,8 +164,18 @@ fn order(ty: &EntityType, tag: &str) -> [f32; 5] {
             .is_some_and(|c| c.section(name).is_some())
     };
     match tag {
-        // The staff list is in catalogue order (unit placing 4.2).
-        "staff" => [0.0; 5],
+        // The staff list is sorted by kind, the catalogue order kept within one (unit placing 4.2).
+        "staff" => [
+            match ty.class {
+                "keeper" => 0.0,
+                "tour" => 1.0,
+                _ => 2.0,
+            },
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        ],
         "fence" if !matches!(ty.class, "fences" | "tankwall") => [0.0; 5],
         "fence" if has("TankFence") => [
             1.0 + f32::from(number(ty, "cIsShowFence").unwrap_or(0.0) != 0.0),

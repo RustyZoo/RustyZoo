@@ -548,7 +548,29 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
 }
 
 #[test]
-fn the_sex_of_the_next_hire_is_bit_16_of_the_state_and_follows_the_seed() {
+fn the_sex_of_the_first_hire_is_drawn_at_start_up_after_the_first_seeding_only() {
+    // Bit 16 of the state after one draw from the seed: seed 2 gives a man, seed 3 a woman.
+    let first = |seed: u32| {
+        let mut rng = Rng::default();
+        rng.seed(seed);
+        rng.rand();
+        (rng.state() >> 16) & 1 == 1
+    };
+    let sexes: Vec<_> = [2, 3].map(first).to_vec();
+    assert_eq!(sexes, [true, false]);
+    for seed in [2, 3] {
+        let mut s = Sim::new(b"");
+        s.set_seed(seed);
+        assert_eq!(s.hire_male, first(seed), "{seed}");
+        // Opening a game seeds the generator again and draws no sex.
+        let before = s.hire_male;
+        s.start_game(16, Clocks::default());
+        assert_eq!(s.hire_male, before);
+        let mut map = Rng::default();
+        map.seed(seed + 1);
+        assert_eq!(s.rng, map, "the map's seeding is the generator's state");
+    }
+    // A hire draws one more, bit 16 of the state set.
     let mut s = sim("");
     let mut check = s.rng.clone();
     s.draw_hire();
@@ -556,30 +578,9 @@ fn the_sex_of_the_next_hire_is_bit_16_of_the_state_and_follows_the_seed() {
     assert_eq!(s.hire_male, (check.state() >> 16) & 1 == 1);
     assert_eq!(s.hire_male, number & 1 == 1);
     assert_eq!(s.rng, check, "one draw");
-    // The same seed draws the same sex when the game is loaded, and the seeds give both.
-    let drawn = |seed| {
-        let mut run = Run::new(b"", own(), world(3), Money::default(), seed);
-        let first = run.sim.hire_male;
-        run.sim.draw_hire();
-        (first, run.sim.hire_male)
-    };
-    assert_eq!(drawn(7), drawn(7));
-    // A seed given after the game was opened draws the sex again, as when it was given before.
-    let mut opened = sim("");
-    opened.set_seed(9);
-    let mut before = Sim::new(b"");
-    before.set_seed(9);
-    before.start_game(16, Clocks::default());
-    before.draw_hire();
-    assert_eq!(
-        (opened.hire_male, &opened.rng),
-        (before.hire_male, &before.rng)
-    );
-    let all: Vec<_> = (0..40).map(drawn).collect();
-    assert!(
-        all.iter().any(|d| d.0) && all.iter().any(|d| !d.0),
-        "{all:?}"
-    );
+    // The seeds give both sexes.
+    let all: Vec<_> = (0..40).map(first).collect();
+    assert!(all.iter().any(|&d| d) && all.iter().any(|&d| !d), "{all:?}");
 }
 
 #[test]

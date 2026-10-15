@@ -161,7 +161,8 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
         return fail(p, Some(NOT_IN_THE_ZOO));
     };
     let flag = |key: &str| number(t, key) == Some(1.0);
-    let (swims, under) = (flag("cSwims"), flag("cUnderwater"));
+    // The messages about water read `cOnlyUnderwater`, whatever the class (unit placing 6.1).
+    let (swims, only) = (flag("cSwims"), flag("cOnlyUnderwater"));
     let (fx, fy) = footprint(t, p.facing);
     // A large animal runs the footprint check of placing 5.2 (items 1, 3 to 6): its quarters.
     let large = fx > 2 || fy > 2;
@@ -205,11 +206,7 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
         .copied()
         .unwrap_or(false);
     if wet && !swims {
-        let message = if under {
-            NEEDS_WATER
-        } else {
-            NOT_ON_WATER_UNIT
-        };
+        let message = if only { NEEDS_WATER } else { NOT_ON_WATER_UNIT };
         fail(p, (!staff).then_some(message));
     }
     // A large animal holds no quarter, stands flat at one height and crosses no fence or cliff.
@@ -226,14 +223,14 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
     // It stands in an exhibit.
     let region = world.exhibits().region(tile);
     if !staff && region.is_none_or(|r| r == GROUNDS) {
-        fail(p, Some(if under { NEEDS_WATER } else { IN_AN_EXHIBIT }));
+        fail(p, Some(if only { NEEDS_WATER } else { IN_AN_EXHIBIT }));
     }
     let tank = world.tank_at(tile);
     if let Some(id) = tank {
         if let Some(message) = tank_message(world, id, tile, t) {
             fail(p, Some(message));
         }
-    } else if under && !staff {
+    } else if only {
         fail(p, Some(NEEDS_WATER));
     }
     // What is in the way: the objects holding the tile's quarters and every unit on it.

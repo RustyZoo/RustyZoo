@@ -15,6 +15,8 @@ const BIG: usize = 5;
 const KEEPER: usize = 6;
 const MAINT: usize = 7;
 const GUIDE: usize = 8;
+const HIPPO: usize = 9;
+const MARINE: usize = 10;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     EntityType {
@@ -43,7 +45,9 @@ fn catalogue() -> Catalogue {
     let dino = "[Global]\nDefaultSubtype=m\n[Characteristics/Integers]\ncExpansionID=1\n\
                 [m/Characteristics/Integers]\ncPurchaseCost=1000\n";
     let orca = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=9\n\
-                cSwims=1\ncUnderwater=1\n";
+                cSwims=1\ncUnderwater=1\ncOnlyUnderwater=1\n";
+    let hippo = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=9\n\
+                 cSwims=1\ncUnderwater=1\n";
     let mut cat = Catalogue::default();
     cat.push(ty("m", "zebra", zebra));
     cat.push(ty("f", "zebra", zebra));
@@ -64,6 +68,11 @@ fn catalogue() -> Catalogue {
     cat.push(staff("keeper", "keeper", 800));
     cat.push(staff("maint", "maint", 300));
     cat.push(staff("tour", "tour", 500));
+    cat.push(ty("m", "hippo", hippo));
+    cat.push(EntityType {
+        class: "keeper",
+        ..ty("m", "marine", hippo)
+    });
     cat
 }
 
@@ -234,6 +243,9 @@ fn an_animal_is_valid_in_an_exhibit_and_refused_on_the_grounds() {
     // An underwater species asks for a tank wherever it is.
     assert_eq!(at(&w, ORCA, (4, 4)).message, Some(NEEDS_WATER));
     assert_eq!(at(&w, ORCA, (2, 2)).message, Some(NEEDS_WATER));
+    // An amphibious animal (`cUnderwater` only) is a land animal here: the exhibit message.
+    assert_eq!(at(&w, HIPPO, (4, 4)).message, Some(IN_AN_EXHIBIT));
+    assert_eq!(at(&w, HIPPO, (2, 2)).message, None);
     // Water is refused unless the animal swims (and then for being outside a tank).
     assert_eq!(at(&w, ZEBRA, (5, 5)).message, Some(10569));
     assert_eq!(at(&w, ORCA, (5, 5)).message, Some(NEEDS_WATER));
@@ -463,6 +475,9 @@ fn a_staff_member_stands_anywhere_a_unit_can_but_in_water_and_gives_no_message()
         );
     }
     assert_eq!(at(&w, MAINT, (4, 3)).price, 300.0);
+    // A marine specialist (`cUnderwater` 1, no `cOnlyUnderwater`) is valid on land.
+    let p = at(&w, MARINE, (4, 3));
+    assert_eq!((p.verdict, p.message), (Verdict::Valid, None));
     // Water is refused without a word, and another unit gets in the way.
     let wet = at(&w, GUIDE, (5, 5));
     assert_eq!((wet.verdict, wet.message), (Verdict::Invalid, None));
