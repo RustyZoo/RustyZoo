@@ -1503,7 +1503,12 @@ fn check_ground(vfs: &Vfs) -> Result<(), CliError> {
         };
         let mut one = GroundStats::new();
         one.pictures = 1;
-        let (a, b) = (cached.on_canvas(), rendered.on_canvas());
+        // The cached picture is drawn, so it is as the screen shows it; so is the rendered one.
+        let (a, mut b) = (cached.on_canvas(), rendered.on_canvas());
+        for pixel in b.pixels.as_chunks_mut::<4>().0 {
+            let [r, g, bl] = rustyzoo::sprite::screen([pixel[0], pixel[1], pixel[2]]);
+            pixel[..3].copy_from_slice(&[r, g, bl]);
+        }
         for (a, b) in a
             .pixels
             .as_chunks::<4>()

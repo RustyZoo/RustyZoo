@@ -29,7 +29,7 @@ use crate::camera::zoom_view;
 use crate::config::{Config, Section, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
-use crate::sprite::{Blend, Frame, Palette, Place, Sprite};
+use crate::sprite::{Blend, Frame, Palette, Place, Sprite, screen};
 use crate::vfs::Vfs;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Tile, Zoo};
@@ -430,12 +430,12 @@ fn blend(
                     let at = (ty as usize * target.width as usize + tx as usize) * 4;
                     let back = &mut target.pixels[at..at + 4];
                     let alpha = u32::from(pixel[3]);
-                    for c in 0..3 {
-                        back[c] = ((u32::from(pixel[c]) * alpha
-                            + u32::from(back[c]) * (255 - alpha))
-                            / 255) as u8;
-                    }
-                    back[3] = 255;
+                    let mixed = [0, 1, 2].map(|c| {
+                        ((u32::from(pixel[c]) * alpha + u32::from(back[c]) * (255 - alpha)) / 255)
+                            as u8
+                    });
+                    let [r, g, b] = screen(mixed);
+                    back.copy_from_slice(&[r, g, b, 255]);
                 }
             }
         }

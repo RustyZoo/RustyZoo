@@ -1020,7 +1020,7 @@ fn fill_rect(dst: &mut Framebuffer, (l, t, r, b): (i32, i32, i32, i32), color: [
 }
 
 /// Cuts a picture for drawing: an image reduced to 5-6-5; a frame of an animation's set drawn once
-/// on a transparent picture of its box, the pixels it drew reduced.
+/// on a transparent picture of its box (drawing reduces the pixels).
 fn make_cut(pictures: &Pictures, picture: Picture, set: usize, frame: usize) -> Option<Cut> {
     match picture {
         Picture::Image(m) => {
@@ -1057,11 +1057,6 @@ fn make_cut(pictures: &Pictures, picture: Picture, set: usize, frame: usize) -> 
                 mirror: false,
             };
             animation.draw(view, frame, &mut pixels, -s.x0, -s.y0);
-            for pixel in pixels.pixels.as_chunks_mut::<4>().0 {
-                if pixel[3] != 0 {
-                    *pixel = fill_color([pixel[0], pixel[1], pixel[2]]);
-                }
-            }
             Some(Cut {
                 pixels,
                 origin: (s.x0, s.y0),

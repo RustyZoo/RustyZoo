@@ -1,6 +1,6 @@
 use super::order::{Glass, Item, Kind, Object, Scene, TankSpec, paint_order, project, sort_key};
 use super::*;
-use crate::sprite::tests::Install;
+use crate::sprite::{screen, tests::Install};
 use crate::zoo::Tile;
 
 pub(crate) fn flat() -> Tile {
@@ -447,8 +447,9 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
     // top left at (32, 0) of the view, which is (32, 32) here.
     assert_eq!((image.width, image.height), (128, 65));
     let at = |x: usize, y: usize| image.pixels[(y * 128 + x) * 4..][..4].to_vec();
-    assert_eq!(at(32, 32), [200, 100, 50, 255]);
-    assert_eq!(at(33, 32), [200, 100, 50, 255]);
+    let [r, g, b] = screen([200, 100, 50]);
+    assert_eq!(at(32, 32), [r, g, b, 255]);
+    assert_eq!(at(33, 32), [r, g, b, 255]);
     assert_eq!(at(0, 0), [0, 0, 0, 255]);
 }
 
@@ -556,7 +557,8 @@ fn a_window_of_the_view_is_drawn_from_its_top_left_view_space_point() {
     };
     let (image, summary) = draw((31, -1, 4, 3)).unwrap();
     assert_eq!((image.width, image.height), (4, 3));
-    let (black, ground) = ([0, 0, 0, 255], [200, 100, 50, 255]);
+    let [r, g, b] = screen([200, 100, 50]);
+    let (black, ground) = ([0, 0, 0, 255], [r, g, b, 255]);
     let rows: Vec<&[[u8; 4]]> = image.pixels.as_chunks::<4>().0.chunks(4).collect();
     assert_eq!(rows[0], [black; 4]);
     assert_eq!(rows[1], [black, ground, ground, black]);
@@ -1052,21 +1054,21 @@ fn a_marked_tile_gets_its_highlight_in_the_colour_of_the_mark_and_frees_the_grid
     };
     let mark = |tile| Mark {
         tile,
-        color: [1, 2, 3],
+        color: [64, 32, 96],
     };
-    let (none, _, lines) = count(&[], [1, 2, 3]);
+    let (none, _, lines) = count(&[], screen([64, 32, 96]));
     assert_eq!(none, 0, "nothing is marked");
-    let (marked, blue, _) = count(&[mark(0)], [1, 2, 3]);
+    let (marked, blue, _) = count(&[mark(0)], screen([64, 32, 96]));
     assert_eq!(
         (marked, blue),
         (1, 0),
         "one pixel, in the colour of the mark"
     );
     // The second tile is marked: the first one, behind it, draws one grid line less.
-    let (_, _, fewer) = count(&[mark(1)], [1, 2, 3]);
+    let (_, _, fewer) = count(&[mark(1)], screen([64, 32, 96]));
     assert!(fewer < lines, "{fewer} against {lines}");
     // A mark on a tile that is not on the map is ignored.
-    assert_eq!(count(&[mark(7)], [1, 2, 3]), (0, 0, lines));
+    assert_eq!(count(&[mark(7)], screen([64, 32, 96])), (0, 0, lines));
 }
 
 #[test]
@@ -1104,16 +1106,16 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
             ("a/b/N", sprite.clone()),
             (
                 "animals/Lion/lion.pal",
-                palette_file(&[MARKER, [1, 1, 1], [2, 2, 2], [3, 3, 3]]),
+                palette_file(&[MARKER, [16; 3], [32; 3], [48; 3]]),
             ),
-            ("color.pal", palette_file(&[MARKER, [9, 9, 9]])),
+            ("color.pal", palette_file(&[MARKER, [80; 3]])),
             (
                 "pals/red.pal",
-                palette_file(&[MARKER, [100, 0, 0], [101, 0, 0]]),
+                palette_file(&[MARKER, [96, 0, 0], [112, 0, 0]]),
             ),
             (
                 "pals/blue.pal",
-                palette_file(&[MARKER, [0, 0, 200], [0, 0, 201]]),
+                palette_file(&[MARKER, [0, 0, 192], [0, 0, 208]]),
             ),
         ]
     };
@@ -1171,25 +1173,26 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
     // another separator.
     let full = "Animals\\LION\\lion.pal";
     // Nothing stored: the default variant, which the definition names the same way.
-    let blue = [[9, 9, 9], [0, 0, 200], [0, 0, 201]];
-    let red = [[9, 9, 9], [100, 0, 0], [101, 0, 0]];
+    // The screen shows the colours reduced to 5-6-5.
+    let blue = [[80; 3], [0, 0, 192], [0, 0, 208]].map(screen);
+    let red = [[80; 3], [96, 0, 0], [112, 0, 0]].map(screen);
     assert_eq!(draw("recolour-default", "1", full, &[]), blue);
     assert_eq!(draw("recolour-first", "1", full, &[0]), red);
     assert_eq!(draw("recolour-second", "1", full, &[1, 7]), blue);
     // A choice beyond the variants, or a type that does not ask for it, keeps the plain palette.
-    let plain = [[2, 2, 2], [3, 3, 3]];
+    let plain = [[32; 3], [48; 3]].map(screen);
     assert_eq!(
         draw("recolour-beyond", "1", full, &[5]),
-        [[9, 9, 9], plain[0], plain[1]]
+        [blue[0], plain[0], plain[1]]
     );
     assert_eq!(
         draw("recolour-off", "0", full, &[0]),
-        [[1, 1, 1], plain[0], plain[1]]
+        [screen([16; 3]), plain[0], plain[1]]
     );
     // A sprite whose palette is not the `fullpal` one keeps its own fixed colours; only the
     // group takes the variant.
     let other = draw("recolour-other", "1", "objects/other/other.pal", &[0]);
-    assert_eq!(other, [[1, 1, 1], [100, 0, 0], [101, 0, 0]]);
+    assert_eq!(other, [screen([16; 3]), red[1], red[2]]);
 }
 
 #[test]

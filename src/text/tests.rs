@@ -545,10 +545,10 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     // Bilevel (ppem 15) and smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "7852eb4c467911b5"
+        "c9302e6696190246"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
-        "8781839f00b53064"
+        "cd5069739d569e52"
     );
 }

@@ -171,8 +171,8 @@ impl Palette {
     }
 
     /// The palette a tinted entity is drawn with (sprite drawing 7.4, 9.1): every colour becomes
-    /// the per-channel average, rounded down, of itself and the tint, on the original's 5-6-5
-    /// values, shown with the bits of the code repeated as its surface is. The marker of entry 0
+    /// a value that drawing reduces to the per-channel average, rounded down, of its own code and
+    /// the code of the tint (`R >> 3`, `G >> 2`, `B >> 3`). The marker of entry 0
     /// stays, so the pixels that were transparent still are.
     pub fn tinted(&self, tint: [u8; 3]) -> Palette {
         let marker = self.zero_is_transparent();
@@ -185,13 +185,11 @@ impl Palette {
                     return [r, g, b, a];
                 }
                 let mut out = [r, g, b];
-                // The channels drop 3, 2 and 3 low bits (`R >> 3`, `G >> 2`, `B >> 3`).
-                for (((c, t), max), shift) in
-                    out.iter_mut().zip(tint).zip(CHANNEL_MAX).zip([3, 2, 3])
-                {
-                    let (own, other) = (u16::from(*c) * max / 255, u16::from(t >> shift));
-                    let code = (own + other) / 2;
-                    *c = (code << shift | code >> (8 - 2 * shift)) as u8;
+                for (c, value) in out.iter_mut().enumerate() {
+                    let max = 255 >> SHIFT[c];
+                    let average = (code(c, *value) + u16::from(tint[c] >> SHIFT[c])) / 2;
+                    // The smallest 8 bit value with that code: drawing reduces it to the code.
+                    *value = (average * 255).div_ceil(max) as u8;
                 }
                 [out[0], out[1], out[2], a]
             })
@@ -302,8 +300,8 @@ impl Frame {
     /// Draws the frame with its top left corner at (`x`, `y`) in the framebuffer, clipped to
     /// it. The offsets of the frame are not applied: the caller subtracts them from the anchor.
     ///
-    /// Every stored pixel is written opaque with the colour of its palette entry, replacing what
-    /// was there; the fourth byte of a palette entry is ignored. The one exception is pixel
+    /// Every stored pixel is written opaque with the colour of its palette entry as the 16 bit
+    /// screen shows it ([`screen`]), replacing what was there; the fourth byte of a palette entry is ignored. The one exception is pixel
     /// value 0 when [`Palette::zero_is_transparent`]: it is skipped. The pixels of a shadow
     /// frame darken the destination at [`SHADOW_STRENGTH`] and never use the palette.
     ///
@@ -334,7 +332,7 @@ impl Frame {
     }
 
     /// Like [`Frame::draw`] or [`Frame::draw_mirrored`], but blended with what is behind. Each
-    /// channel of a normal frame becomes `floor((dst + src) / 2)` at strength 0.5 and
+    /// channel code of a normal frame becomes `floor((dst + src) / 2)` at strength 0.5 and
     /// `floor((floor((dst + src) / 2) + dst) / 2)` at 0.25 (sprite drawing 7.5); a shadow frame
     /// darkens as in [`Frame::draw`] but at the strength given.
     pub fn draw_blended(
@@ -411,17 +409,17 @@ impl Frame {
                 });
                 rest = self.draw_row(data, line, width, &place, |pixel, value| {
                     if self.shadow {
-                        match blend {
-                            None => darken(pixel, SHADOW_STRENGTH),
-                            Some(blend) => darken_565(pixel, blend.strength),
-                        }
+                        darken(pixel, blend.map_or(SHADOW_STRENGTH, |b| b.strength));
                     } else if let Some(value) = value
                         && !palette.is_empty()
                         && !(value == 0 && skip_zero)
                     {
                         let [r, g, b, _] = palette.color(value).unwrap_or(MISSING_COLOR);
                         match blend {
-                            None => pixel.copy_from_slice(&[r, g, b, 255]),
+                            None => {
+                                let [r, g, b] = screen([r, g, b]);
+                                pixel.copy_from_slice(&[r, g, b, 255]);
+                            }
                             Some(blend) => mix(pixel, [r, g, b], blend),
                         }
                     }
@@ -536,53 +534,63 @@ impl Place {
     }
 }
 
-/// Darkens the colour of `pixel` (R, G, B, then alpha, which stays) by `strength`: the share of
-/// the destination that is covered. At 0.25 three quarters stay (`floor(3c / 4)`), at 0.5 one
-/// half (`floor(c / 2)`), as the original computes them; other strengths keep `1 - strength`.
-fn darken(pixel: &mut [u8], strength: f32) {
-    for channel in &mut pixel[..3] {
-        *channel = if strength == 0.25 {
-            (u16::from(*channel) * 3 / 4) as u8
-        } else if strength == 0.5 {
-            *channel / 2
-        } else {
-            (f32::from(*channel) * (1.0 - strength)) as u8
-        };
-    }
+/// The low bits each channel drops on the original's 5-6-5 surface: red 8 bits to 5, green 8 to
+/// 6, blue 8 to 5. The codes run to `255 >> SHIFT`: 31, 63 and 31.
+pub(crate) const SHIFT: [u32; 3] = [3, 2, 3];
+
+/// The 5-6-5 code of the 8 bit channel `c` (0 red, 1 green, 2 blue): `value * max / 255`, rounded
+/// down (sprite drawing 7.1). Not `value >> shift`: 254 gives 30.
+pub(crate) fn code(c: usize, value: u8) -> u16 {
+    u16::from(value) * (255 >> SHIFT[c]) / 255
 }
 
-/// The most each channel can hold on the original's 5-6-5 surface.
-const CHANNEL_MAX: [u16; 3] = [31, 63, 31];
+/// What the display shows for a code: its high bits repeated (map drawing 7.2).
+pub(crate) fn show(c: usize, code: u16) -> u8 {
+    let s = SHIFT[c];
+    (code << s | code >> (8 - 2 * s)) as u8
+}
 
-/// Blends the colour `src` into `pixel` (R, G, B, then alpha, which stays) on the original's
-/// 5-6-5 values: a channel is cut to its code (7.1), blended there, and written back as the
-/// smallest 8 bit value that has that code again.
+/// A colour as the 16 bit screen shows it: reduced to codes, then shown (map drawing 7.2).
+/// Colours that were reduced before (palettes) come out one code lower; that is the original's.
+pub fn screen(rgb: [u8; 3]) -> [u8; 3] {
+    [0, 1, 2].map(|c| show(c, code(c, rgb[c])))
+}
+
+/// The code of a channel of a frame pixel, which always holds a shown value.
+fn shown_code(c: usize, value: u8) -> u16 {
+    u16::from(value >> SHIFT[c])
+}
+
+/// Blends the colour `src` into `pixel` (R, G, B, then alpha, which stays) on the codes of the
+/// frame: the colour is reduced, blended with the code behind it and shown again.
 fn mix(pixel: &mut [u8], src: [u8; 3], blend: Blend) {
-    for ((channel, &src), max) in pixel.iter_mut().zip(&src).zip(CHANNEL_MAX) {
-        let dst = u16::from(*channel) * max / 255;
-        let src = u16::from(src) * u16::from(!blend.black) * max / 255;
+    for (c, channel) in pixel[..3].iter_mut().enumerate() {
+        let dst = shown_code(c, *channel);
+        let src = code(c, src[c]) * u16::from(!blend.black);
         let half = (dst + src) / 2;
-        let code = if blend.strength == 0.25 {
+        let out = if blend.strength == 0.25 {
             (half + dst) / 2
         } else {
             half
         };
-        *channel = (code * 255).div_ceil(max) as u8;
+        *channel = show(c, out);
     }
 }
 
-/// Darkens `pixel` like [`darken`], on 5-6-5 values like [`mix`].
-fn darken_565(pixel: &mut [u8], strength: f32) {
-    for (channel, max) in pixel.iter_mut().zip(CHANNEL_MAX) {
-        let dst = u16::from(*channel) * max / 255;
-        let code = if strength == 0.25 {
+/// Darkens the codes of `pixel` (R, G, B, then alpha, which stays) by `strength`, the share of
+/// the destination that is covered. At 0.25 three quarters stay (`floor(3c / 4)`), at 0.5 one
+/// half (`floor(c / 2)`), as the original computes them; other strengths keep `1 - strength`.
+fn darken(pixel: &mut [u8], strength: f32) {
+    for (c, channel) in pixel[..3].iter_mut().enumerate() {
+        let dst = shown_code(c, *channel);
+        let out = if strength == 0.25 {
             dst * 3 / 4
         } else if strength == 0.5 {
             dst / 2
         } else {
             (f32::from(dst) * (1.0 - strength)) as u16
         };
-        *channel = (code * 255).div_ceil(max) as u8;
+        *channel = show(c, out);
     }
 }
 
@@ -772,6 +780,12 @@ pub(crate) mod tests {
         }
     }
 
+    /// A palette colour as drawing writes it: reduced to 5-6-5 and shown.
+    fn shown([r, g, b, a]: [u8; 4]) -> [u8; 4] {
+        let [r, g, b] = screen([r, g, b]);
+        [r, g, b, a]
+    }
+
     fn blank(width: u32, height: u32) -> Framebuffer {
         Framebuffer::new(width, height)
     }
@@ -845,14 +859,14 @@ pub(crate) mod tests {
         assert_eq!(frame.max_index, None);
         assert!(!sprite.needs_palette());
 
-        let behind = [200, 100, 51, 255];
+        let behind = shown([200, 100, 51, 255]);
         let mut image = blank(6, 2);
         for px in image.pixels.chunks_mut(4) {
             px.copy_from_slice(&behind);
         }
         frame.draw(&Palette::default(), &mut image, 0, 0);
-        // Three quarters stay, rounded down: 200 -> 150, 100 -> 75, 51 -> 38. The alpha stays.
-        let shadow = [150, 75, 38, 255];
+        // Three quarters of the codes stay, rounded down: 24 -> 18, 24 -> 18, 6 -> 4. The alpha stays.
+        let shadow = [show(0, 18), show(1, 18), show(2, 4), 255];
         for (x, y, expected) in [
             (0, 0, behind),
             (1, 0, shadow),
@@ -884,11 +898,11 @@ pub(crate) mod tests {
         assert_eq!(empty.pixels, [0; 48]);
     }
 
-    /// A 4 by 2 picture of the grey 100.
+    /// A 4 by 2 picture of the grey 100 as the screen shows it: (99, 97, 99), the codes 12, 24, 12.
     fn grey() -> Framebuffer {
         let mut image = blank(4, 2);
         for p in image.pixels.as_chunks_mut::<4>().0 {
-            *p = [100, 100, 100, 255];
+            *p = [99, 97, 99, 255];
         }
         image
     }
@@ -897,18 +911,19 @@ pub(crate) mod tests {
     fn blending_works_on_5_6_5_values() {
         // Red 100 is the code 12, green 100 the code 24; the source red 20 has the code 2.
         let mix = |src: [u8; 3], strength, black| {
-            let mut pixel = [100, 100, 100, 77];
+            let mut pixel = [99, 97, 99, 77];
             super::mix(&mut pixel, src, Blend { strength, black });
             pixel
         };
-        // Half: (12 + 2) / 2 = 7, written as the smallest value with that code, 58.
-        assert_eq!(mix([20, 0, 0], 0.5, false), [58, 49, 50, 77]);
+        // Half: (12 + 2) / 2 = 7, shown with its high bits repeated, 57.
+        assert_eq!(mix([20, 0, 0], 0.5, false), [57, 48, 49, 77]);
         // A quarter of the sprite: ((12 + 2) / 2 + 12) / 2 = 9.
-        assert_eq!(mix([20, 0, 0], 0.25, false), [75, 73, 75, 77]);
-        assert_eq!(mix([20, 0, 0], 0.5, true), [50, 49, 50, 77]);
+        assert_eq!(mix([20, 0, 0], 0.25, false), [74, 73, 74, 77]);
+        assert_eq!(mix([20, 0, 0], 0.5, true), [49, 48, 49, 77]);
         // The code of a colour mixed with itself is kept.
         for v in 0..=255u8 {
-            let mut pixel = [v, v, v, 0];
+            let [r, g, b] = screen([v, v, v]);
+            let mut pixel = [r, g, b, 0];
             super::mix(
                 &mut pixel,
                 [v, v, v],
@@ -917,8 +932,7 @@ pub(crate) mod tests {
                     black: false,
                 },
             );
-            assert_eq!(pixel[0] as u16 * 31 / 255, v as u16 * 31 / 255, "value {v}");
-            assert_eq!(pixel[1] as u16 * 63 / 255, v as u16 * 63 / 255, "value {v}");
+            assert_eq!(pixel[..3], [r, g, b], "value {v}");
         }
         // Through a frame: the pixel with index 2 is green 30, the code 7: (24 + 7) / 2 = 15.
         let frame = Frame::parse(&frame_data(2, 4, ROWS)).unwrap();
@@ -928,38 +942,67 @@ pub(crate) mod tests {
             black: false,
         };
         frame.draw_blended(&palette(), &mut image, (0, 0), false, half);
-        assert_eq!(pixel(&image, 0, 1), [50, 61, 50, 255]);
-        assert_eq!(pixel(&image, 0, 0), [100, 100, 100, 255], "skipped");
+        assert_eq!(pixel(&image, 0, 1), [49, 60, 49, 255]);
+        assert_eq!(pixel(&image, 0, 0), [99, 97, 99, 255], "skipped");
         // A shadow frame (two pixels in the first row) halves the code.
         let shadow = Frame::parse(&frame_data(0x8002, 4, &[1, 0, 2, 0, 0])).unwrap();
         let mut image = grey();
         shadow.draw_blended(&palette(), &mut image, (0, 0), false, half);
-        assert_eq!(pixel(&image, 1, 0), [50, 49, 50, 255]);
-        assert_eq!(pixel(&image, 2, 0), [100, 100, 100, 255]);
+        assert_eq!(pixel(&image, 1, 0), [49, 48, 49, 255]);
+        assert_eq!(pixel(&image, 2, 0), [99, 97, 99, 255]);
+    }
+
+    #[test]
+    fn the_screen_reduces_to_codes_and_repeats_the_high_bits() {
+        // Colours that were reduced before come out one code lower (map drawing 7.2).
+        for (stored, shown) in [
+            ([106, 76, 65], [99, 73, 57]),
+            ([156, 113, 90], [148, 109, 82]),
+            ([82, 56, 41], [74, 52, 33]),
+            ([210, 168, 113], [206, 166, 107]),
+        ] {
+            assert_eq!(screen(stored), shown);
+        }
+        assert_eq!(screen([0, 0, 0]), [0, 0, 0]);
+        assert_eq!(screen([255, 255, 255]), [255, 255, 255]);
+        assert_eq!(
+            screen([254, 254, 254]),
+            [247, 251, 247],
+            "254 gives the code 30, not 31"
+        );
+        for (c, shift) in SHIFT.into_iter().enumerate() {
+            assert_eq!(u16::from(show(c, code(c, 255)) >> shift), code(c, 255));
+        }
     }
 
     #[test]
     fn darkening_strengths() {
-        let at = |strength, value| {
-            let mut pixel = [value, value, value, 77];
+        // A pixel of the codes (c, c, c), as the screen shows it: red and blue stop at 31.
+        let at = |strength, code: u16| {
+            let mut pixel = [show(0, code), show(1, code), show(2, code), 77];
             darken(&mut pixel, strength);
             pixel
         };
-        assert_eq!(
-            at(0.25, 255),
-            [191, 191, 191, 77],
-            "floor(765 / 4), alpha kept"
-        );
-        assert_eq!(at(0.25, 3), [2, 2, 2, 77], "floor(9 / 4)");
-        for c in 0..=255u16 {
-            assert_eq!(at(0.25, c as u8)[0], (c * 3 / 4) as u8, "channel {c}");
+        for c in 0..=31u16 {
+            let (q, h) = (at(0.25, c), at(0.5, c));
+            assert_eq!(
+                q,
+                [
+                    show(0, c * 3 / 4),
+                    show(1, c * 3 / 4),
+                    show(2, c * 3 / 4),
+                    77
+                ]
+            );
+            assert_eq!(h[0], show(0, c / 2), "half of {c}");
         }
+        assert_eq!(at(0.25, 31)[0], show(0, 23), "floor(93 / 4), alpha kept");
+        assert_eq!(at(0.25, 3)[0], show(0, 2), "floor(9 / 4)");
         assert_eq!(at(0.25, 0), [0, 0, 0, 77]);
-        assert_eq!(at(0.5, 255), [127, 127, 127, 77]);
-        assert_eq!(at(0.5, 1), [0, 0, 0, 77]);
-        assert_eq!(at(0.75, 200), [50, 50, 50, 77]);
-        assert_eq!(at(0.0, 200), [200, 200, 200, 77]);
-        assert_eq!(at(1.0, 200), [0, 0, 0, 77]);
+        assert_eq!(at(0.5, 1)[0], 0);
+        assert_eq!(at(0.75, 24)[0], show(0, 6));
+        assert_eq!(at(0.0, 24)[0], show(0, 24));
+        assert_eq!(at(1.0, 24), [0, 0, 0, 77]);
     }
 
     #[test]
@@ -995,12 +1038,12 @@ pub(crate) mod tests {
         image.pixels.fill(99);
         frame.draw(&palette(), &mut image, 0, 0);
         assert_eq!(pixel(&image, 0, 0), [99; 4], "skipped");
-        assert_eq!(pixel(&image, 1, 0), PALETTE[1]);
-        assert_eq!(pixel(&image, 2, 0), PALETTE[3]);
+        assert_eq!(pixel(&image, 1, 0), shown(PALETTE[1]));
+        assert_eq!(pixel(&image, 2, 0), shown(PALETTE[3]));
         assert_eq!(pixel(&image, 3, 0), [99; 4], "the row stops short");
-        assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
+        assert_eq!(pixel(&image, 0, 1), shown(PALETTE[2]));
         assert_eq!(pixel(&image, 1, 1), [99; 4]);
-        assert_eq!(pixel(&image, 2, 1), PALETTE[0]);
+        assert_eq!(pixel(&image, 2, 1), shown(PALETTE[0]));
     }
 
     #[test]
@@ -1010,7 +1053,7 @@ pub(crate) mod tests {
         // The frame's pixel (1, 1) lands on (0, 0); its row 0 is off the framebuffer.
         frame.draw(&palette(), &mut image, -1, -1);
         assert_eq!(pixel(&image, 0, 0), [0; 4], "frame pixel (1,1) is skipped");
-        assert_eq!(pixel(&image, 1, 0), PALETTE[0], "frame pixel (2,1)");
+        assert_eq!(pixel(&image, 1, 0), shown(PALETTE[0]), "frame pixel (2,1)");
         assert_eq!(pixel(&image, 0, 1), [0; 4]);
 
         let mut image = blank(2, 2);
@@ -1018,7 +1061,7 @@ pub(crate) mod tests {
         frame.draw(&palette(), &mut image, 0, 1);
         assert_eq!(
             pixel(&image, 1, 1),
-            PALETTE[1],
+            shown(PALETTE[1]),
             "row 0 of the frame on row 1"
         );
         assert_eq!(&image.pixels[..8], [0; 8], "row 0 untouched");
@@ -1051,10 +1094,18 @@ pub(crate) mod tests {
             let mut image = blank(1, 1);
             image.pixels.copy_from_slice(&[0, 0, 100, 255]);
             frame.draw(&palette, &mut image, 0, 0);
-            assert_eq!(pixel(&image, 0, 0), [200, 10, 20, 255], "alpha {alpha}");
+            assert_eq!(
+                pixel(&image, 0, 0),
+                shown([200, 10, 20, 255]),
+                "alpha {alpha}"
+            );
             let mut image = blank(1, 1);
             frame.draw(&palette, &mut image, 0, 0);
-            assert_eq!(pixel(&image, 0, 0), [200, 10, 20, 255], "alpha {alpha}");
+            assert_eq!(
+                pixel(&image, 0, 0),
+                shown([200, 10, 20, 255]),
+                "alpha {alpha}"
+            );
         }
     }
 
@@ -1076,7 +1127,7 @@ pub(crate) mod tests {
         assert!(marker.zero_is_transparent());
         let image = draw(&marker);
         assert_eq!(pixel(&image, 0, 0), [99; 4]);
-        assert_eq!(pixel(&image, 1, 0), [9, 8, 7, 255]);
+        assert_eq!(pixel(&image, 1, 0), shown([9, 8, 7, 255]));
         assert_eq!(pixel(&image, 2, 0), [99; 4]);
 
         // The fourth byte of entry 0 plays no part: opaque magenta is the marker too.
@@ -1097,7 +1148,7 @@ pub(crate) mod tests {
             let palette = with_entry_0(entry);
             assert!(!palette.zero_is_transparent());
             let image = draw(&palette);
-            let opaque = [entry[0], entry[1], entry[2], 255];
+            let opaque = shown([entry[0], entry[1], entry[2], 255]);
             assert_eq!(pixel(&image, 0, 0), opaque, "entry {entry:?}");
             assert_eq!(pixel(&image, 2, 0), opaque);
         }
@@ -1110,18 +1161,18 @@ pub(crate) mod tests {
         let mut image = blank(6, 2);
         // Pixel (c, r) of the frame goes to (4 - c, r): row 0 has values 1 and 3 at c = 1, 2.
         frame.draw_mirrored(&palette(), &mut image, 4, 0);
-        assert_eq!(pixel(&image, 3, 0), PALETTE[1]);
-        assert_eq!(pixel(&image, 2, 0), PALETTE[3]);
+        assert_eq!(pixel(&image, 3, 0), shown(PALETTE[1]));
+        assert_eq!(pixel(&image, 2, 0), shown(PALETTE[3]));
         assert_eq!(pixel(&image, 4, 0), [0; 4], "c = 0 is skipped");
         // Row 1: value 2 at c = 0, value 0 at c = 2.
-        assert_eq!(pixel(&image, 4, 1), PALETTE[2]);
-        assert_eq!(pixel(&image, 2, 1), PALETTE[0]);
+        assert_eq!(pixel(&image, 4, 1), shown(PALETTE[2]));
+        assert_eq!(pixel(&image, 2, 1), shown(PALETTE[0]));
         assert_eq!(pixel(&image, 5, 0), [0; 4]);
 
         // Clipped on the left: only c = 0 of row 1 lands on column 0.
         let mut image = blank(2, 2);
         frame.draw_mirrored(&palette(), &mut image, 0, 0);
-        assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
+        assert_eq!(pixel(&image, 0, 1), shown(PALETTE[2]));
         assert_eq!(
             image.pixels.iter().filter(|&&b| b != 0).count(),
             2,
@@ -1130,7 +1181,7 @@ pub(crate) mod tests {
         // Clipped on the right: c = 1 of row 0 lands on column 5, c = 2 on column 6.
         let mut image = blank(6, 2);
         frame.draw_mirrored(&palette(), &mut image, 6, 0);
-        assert_eq!(pixel(&image, 5, 0), PALETTE[1]);
+        assert_eq!(pixel(&image, 5, 0), shown(PALETTE[1]));
         assert_eq!(pixel(&image, 5, 1), [0; 4]);
         // Far outside nothing is drawn.
         for x in [i32::MIN, -1, 6 + 4, i32::MAX] {
@@ -1149,9 +1200,9 @@ pub(crate) mod tests {
         // Value 3 is beyond the palette: opaque black, never an error. The others are as usual.
         let mut image = blank(4, 2);
         frame.draw(&small, &mut image, 0, 0);
-        assert_eq!(pixel(&image, 1, 0), PALETTE[1]);
+        assert_eq!(pixel(&image, 1, 0), shown(PALETTE[1]));
         assert_eq!(pixel(&image, 2, 0), [0, 0, 0, 255]);
-        assert_eq!(pixel(&image, 0, 1), PALETTE[2]);
+        assert_eq!(pixel(&image, 0, 1), shown(PALETTE[2]));
         // No palette at all: nothing is drawn.
         let mut image = blank(4, 2);
         frame.draw(&Palette::default(), &mut image, 0, 0);
@@ -1341,8 +1392,10 @@ pub(crate) mod tests {
         assert_eq!(tinted.color(0), plain.color(0));
         // The tint's codes are 0, 56 and 0. Black: green (0 + 56) / 2 = 28, shown as 28 << 2 | 1;
         // white: red and blue 15 (shown as 123), green 59 (shown as 239).
-        assert_eq!(tinted.color(1), Some([0, 113, 0, 255]));
-        assert_eq!(tinted.color(2), Some([123, 239, 123, 255]));
+        // They are stored so that drawing reduces them to those codes.
+        let drawn = |at| tinted.color(at).map(shown);
+        assert_eq!(drawn(1), Some([0, 113, 0, 255]));
+        assert_eq!(drawn(2), Some([123, 239, 123, 255]));
         assert_eq!(
             tinted.color(3).map(|c| c[3]),
             Some(9),
@@ -1543,7 +1596,7 @@ mod zoom_tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    /// Where each written pixel of a 40 by 40 framebuffer is, with its red channel.
+    /// Where each written pixel of a 40 by 40 framebuffer is, with its palette index.
     type Drawn = BTreeMap<(i64, i64), u8>;
 
     /// An opaque `width` by `height` frame whose pixel (c, r) has the palette index
@@ -1562,10 +1615,19 @@ mod zoom_tests {
         Frame::parse(&data).unwrap()
     }
 
-    /// The colour of index `i` is `[i, 0, 0, 255]`.
+    /// The colour of index `i` has the red code `i % 32` and the green code `i / 32`.
     fn ramp() -> Palette {
         Palette {
-            colors: (0..=255).map(|i| [i, 0, 0, 255]).collect(),
+            colors: (0..=255u16)
+                .map(|i| {
+                    [
+                        (i % 32 * 255).div_ceil(31) as u8,
+                        (i / 32 * 255).div_ceil(63) as u8,
+                        0,
+                        255,
+                    ]
+                })
+                .collect(),
         }
     }
 
@@ -1573,7 +1635,10 @@ mod zoom_tests {
         let mut out = Drawn::new();
         for (i, p) in image.pixels.as_chunks::<4>().0.iter().enumerate() {
             if p[3] != 0 {
-                out.insert(((i % 40) as i64, (i / 40) as i64), p[0]);
+                out.insert(
+                    ((i % 40) as i64, (i / 40) as i64),
+                    (p[0] >> 3) + 32 * (p[1] >> 2),
+                );
             }
         }
         out
@@ -1838,10 +1903,10 @@ mod zoom_tests {
         let shadow = Frame::parse(&data).unwrap();
         let grey = || {
             let mut image = Framebuffer::new(8, 8);
-            image.pixels.fill(100);
+            image.pixels.fill(99); // code 12
             image
         };
-        let dark = (100u16 * 3 / 4) as u8;
+        let dark = show(0, 12 * 3 / 4);
         let mut image = grey();
         shadow.draw_zoomed(&ramp(), &mut image, (2, 2), false, None, Zoom::In);
         let darkened: Vec<(usize, usize)> = (0..64)
@@ -1874,7 +1939,7 @@ mod zoom_tests {
         }
         assert_eq!(
             image.pixels[(2 * 8 + 5) * 4],
-            100,
+            99,
             "nothing beside the block"
         );
     }
