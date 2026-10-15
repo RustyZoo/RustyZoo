@@ -1565,8 +1565,10 @@ impl<'a> App<'a> {
     /// then `tool down X,Y` or `tool up X,Y` for a press or release on the map view (the tile, or `none`),
     /// then `world stage` when an edit made the draw stage the map again,
     /// then `terrain enter paint|modify`, `terrain brush SIZE X,Y`, `terrain size N`, `terrain type N`,
-    /// `terrain paint N`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave`
-    /// and `terrain short` for what the terrain tool did,
+    /// `terrain paint N`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave`,
+    /// `terrain short` and `terrain undo N` (the price of the tiles an undo gave back) for what the
+    /// terrain tool did, and `tool undo N` with `world remove|add|retype|skip ... undo` for each
+    /// action an undo took back,
     /// then `money cash N` (whole units) when the cash changed, `money bar TEXT COLOUR` when the
     /// status bar was written, `money set N` and `money add N` when a start set or added cash and
     /// `money month M year Y` at a month change, `money cell ID RRGGBB TEXT` for each cell of the
