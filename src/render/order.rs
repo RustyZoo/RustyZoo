@@ -37,6 +37,22 @@ pub enum Kind {
     Overlay,
 }
 
+impl Kind {
+    /// The way the objects of a class take their place.
+    pub fn of_class(class: &str) -> Kind {
+        match class {
+            "paths" => Kind::Path,
+            "fences" => Kind::Edge,
+            "tankwall" => Kind::Wall,
+            "ambient" => Kind::Overlay,
+            "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
+                Kind::Unit
+            }
+            _ => Kind::Fixed,
+        }
+    }
+}
+
 /// One object of the map.
 #[derive(Debug, Clone, Copy)]
 pub struct Object {
@@ -351,6 +367,11 @@ impl Scene {
     /// The path piece of a tile.
     pub fn path_of(&self, t: usize) -> Option<usize> {
         self.path[t]
+    }
+
+    /// The object that holds quadrant `q` (`qy * 2 + qx`) of tile `t`.
+    pub fn quadrant_object(&self, t: usize, q: usize) -> Option<usize> {
+        self.quad[t][q]
     }
 
     /// Adds a transient entity on tile `t` of a tank (map drawing 9.7.4); returns its index.

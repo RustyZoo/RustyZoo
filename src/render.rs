@@ -30,6 +30,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
 use crate::sprite::{Blend, Frame, Palette, Place, Sprite};
 use crate::vfs::Vfs;
+use crate::world::Shape;
 use crate::zoo::{Tile, Zoo};
 use crate::zoom::{Zoom, origin_offset, piece_anchor};
 use order::{Item, Kind, Object, Scene, TankSpec, map_direction, paint_order, project};
@@ -417,7 +418,7 @@ fn corner_at(x: i32, y: i32) -> usize {
 }
 
 /// The elevation of the corner of a tile, in steps.
-fn corner_elevation(tile: &crate::zoo::Tile, corner: usize) -> i32 {
+pub(crate) fn corner_elevation(tile: &crate::zoo::Tile, corner: usize) -> i32 {
     let field = |c: usize| {
         let shift = match c {
             7 => 0,
@@ -499,6 +500,21 @@ impl<'a> MapRenderer<'a> {
     /// The entity types this renders with.
     pub fn catalogue(&self) -> &'a Catalogue {
         self.catalogue
+    }
+
+    /// How an entity takes its place on the map, if its type is known.
+    pub fn shape(&self, entity: &crate::zoo::Entity) -> Option<Shape> {
+        let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+        let ty = self.catalogue.find(
+            &entity.class,
+            &bytes(&entity.type_name),
+            &bytes(&entity.subtype),
+        )?;
+        Some(Shape {
+            kind: Kind::of_class(&entity.class),
+            footprint: (ty.footprint[0], ty.footprint[1]),
+            fence: habitat_fence(ty),
+        })
     }
 
     pub fn new(vfs: &'a Vfs, catalogue: &'a Catalogue) -> MapRenderer<'a> {
@@ -742,16 +758,7 @@ impl<'a> MapRenderer<'a> {
                 summary.objects_skipped += 1;
                 continue;
             };
-            let kind = match entity.class.as_str() {
-                "paths" => Kind::Path,
-                "fences" => Kind::Edge,
-                "tankwall" => Kind::Wall,
-                "ambient" => Kind::Overlay,
-                "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
-                    Kind::Unit
-                }
-                _ => Kind::Fixed,
-            };
+            let kind = Kind::of_class(&entity.class);
             if no_units && matches!(kind, Kind::Unit | Kind::Overlay) {
                 continue;
             }

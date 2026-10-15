@@ -106,7 +106,7 @@ usage: rustyzoo [--data <dir>] <command>
                       if a set fails
   run [<map>] --headless (--passes N --clock MS [--script FILE] [--size WxH] | --replay LOG)
       [--png-every K] [--out DIR] [--show ID]... [--rows ID N]... [--text ID TEXT]...
-      [--ask ID BUTTONS] [--bare]
+      [--ask ID BUTTONS] [--bare] [--cash N]
                       play a map (a .zoo member) without a window. N passes of the main loop
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
@@ -128,7 +128,10 @@ usage: rustyzoo [--data <dir>] <command>
                       answer CODE for a question); the keys and characters go to the focused
                       field or list, and then to an open question (Enter, Escape, y, n), which
                       alone receives the mouse and pauses the game; a message over the map
-                      view belongs to the map. --rows ID N (repeatable) fills the list box ID
+                      view belongs to the map: a press or release on it prints `tool down X,Y` or `tool up X,Y`, the tile
+                      under the pointer (`none` off the map), and the first draw after the
+                      world was edited prints `world stage`. --cash N is the cash the game
+                      starts with (any finite number; not used yet). --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma
@@ -322,6 +325,8 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         }
         ["map-info", member] => map_info(&open_game(data_dir)?, member),
         ["check-maps"] => check_maps(&open_game(data_dir)?),
+        // Taken by the exhibits track; not in the usage text until it works.
+        ["check-exhibits", _map] => Err("check-exhibits: not implemented yet".into()),
         ["render-ani", member, dir] => {
             render_ani(&open_game(data_dir)?, member.to_string(), Path::new(dir))
         }

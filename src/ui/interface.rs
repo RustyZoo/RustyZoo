@@ -253,6 +253,11 @@ impl Interface {
         }
     }
 
+    /// Where the pointer is, in window pixels, as the last `mouse X Y` put it.
+    pub fn pointer(&self) -> (i32, i32) {
+        self.input.pointer
+    }
+
     /// Tells the interface the clock (ms) at which the input that follows happens: a held button
     /// repeats from the time it was pressed.
     pub fn set_time(&mut self, now: u64) {
