@@ -397,3 +397,12 @@ fn a_unit_entering_an_exhibit_through_its_gate_tells_the_exhibit() {
         [&format!("enter 1 {exhibit}")]
     );
 }
+
+#[test]
+fn a_unit_of_more_than_four_cells_has_the_small_margin() {
+    let w = map(vec![
+        entity("animals", "", 1, centre((5, 5)), 0),
+        entity("animals", "big", 2, centre((8, 5)), 0),
+    ]);
+    assert_eq!((margin(&w, 0), margin(&w, 1)), (20, 5));
+}
