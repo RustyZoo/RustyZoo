@@ -90,9 +90,10 @@ fn point(camera: &Camera, wx: i32, wy: i32) -> Command {
     Command::Mouse(Mouse::Move(x as i32, y as i32))
 }
 
-#[test]
-fn an_animal_is_adopted_into_the_pen_named_booked_and_refused_on_the_grounds() {
-    let install: Install = cache_install("app-adopt", frame_file());
+/// Runs `test` on a game with the pen map, the fences, a zebra (2) and a zookeeper (3) in the
+/// catalogue, 2000 in cash, and the clock stopped.
+fn with_app(name: &str, test: impl FnOnce(&mut App)) {
+    let install: Install = cache_install(name, frame_file());
     let vfs = Vfs::open(&install.0).unwrap();
     let mut catalogue = Catalogue::default();
     for sub in [b"f", b"g"] {
@@ -109,6 +110,19 @@ fn an_animal_is_adopted_into_the_pen_named_booked_and_refused_on_the_grounds() {
         });
     }
     catalogue.push(animal("m", 800));
+    let ini = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=800\n";
+    for sub in ["m", "f"] {
+        catalogue.push(EntityType {
+            class: "keeper",
+            type_name: b"keeper".to_vec(),
+            subtype: sub.into(),
+            file: None,
+            config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
+            name_id: 5500,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+    }
     let mut app = App::new(
         MapRenderer::new(&vfs, &catalogue),
         map(),
@@ -127,52 +141,113 @@ fn an_animal_is_adopted_into_the_pen_named_booked_and_refused_on_the_grounds() {
         ..Money::default()
     });
     app.pass(0, &[]);
-    app.game.as_mut().unwrap().build.hold(2);
-    let camera = app.camera().unwrap().clone();
-    let at = |lx: i32, ly: i32| point(&camera, 20 * 64 + lx, 20 * 64 + ly);
-    let said = |app: &App, pass: u64| -> Vec<String> {
-        let lead = format!("pass {pass} t={pass} ");
-        app.log_lines(pass, pass)
-            .iter()
-            .filter_map(|l| l.strip_prefix(&lead))
-            .filter(|l| {
-                l.starts_with("world ")
-                    || l.starts_with("tool message")
-                    || l.starts_with("tool refused")
-            })
-            .map(String::from)
-            .collect()
-    };
-    let click = |app: &mut App, pass: u64, to: Command| {
-        app.pass(pass, &[to]);
-        app.pass(pass + 1, &[Command::Mouse(Mouse::Down)]);
-        app.pass(pass + 2, &[Command::Mouse(Mouse::Up)]);
-        said(app, pass + 2)
-    };
-    // Two animals in the pen, one in the first quarter of the tile and one in the last.
-    let first = click(&mut app, 10, at(10, 10));
-    assert_eq!(
-        first,
-        ["world add animals/zebra/m 20,20 id 101 name=text5004 1"]
-    );
-    let second = click(&mut app, 20, at(50, 50));
-    assert_eq!(
-        second,
-        ["world add animals/zebra/m 20,20 id 102 name=text5004 2"]
-    );
-    let game = app.game.as_ref().unwrap();
-    assert_eq!(
-        (
-            game.money.cash,
-            game.money.total[ANIMAL_PURCHASE],
-            game.world.units.len()
-        ),
-        (400.0, 1600.0, 2)
-    );
-    // A third does not fit the cash (10002), and the grounds refuse it (10108).
-    assert_eq!(click(&mut app, 30, at(50, 10)), ["tool message 10002"]);
-    let grounds = point(&camera, 19 * 64 + 32, 20 * 64 + 32);
-    let told = click(&mut app, 40, grounds);
-    assert_eq!(told, ["tool message 10108"]);
-    assert_eq!(app.money().unwrap().cash, 400.0);
+    test(&mut app);
+}
+
+/// The log lines of the pass `pass` that are about the world, the tool or the money.
+fn said(app: &App, pass: u64) -> Vec<String> {
+    let lead = format!("pass {pass} t={pass} ");
+    app.log_lines(pass, pass)
+        .iter()
+        .filter_map(|l| l.strip_prefix(&lead))
+        .filter(|l| {
+            ["world ", "tool message", "tool refused", "money book"]
+                .iter()
+                .any(|w| l.starts_with(w))
+        })
+        .map(String::from)
+        .collect()
+}
+
+fn click(app: &mut App, pass: u64, to: Command) -> Vec<String> {
+    app.pass(pass, &[to]);
+    app.pass(pass + 1, &[Command::Mouse(Mouse::Down)]);
+    app.pass(pass + 2, &[Command::Mouse(Mouse::Up)]);
+    said(app, pass + 2)
+}
+
+#[test]
+fn an_animal_is_adopted_into_the_pen_named_booked_and_refused_on_the_grounds() {
+    with_app("app-adopt", |app| {
+        app.game.as_mut().unwrap().build.hold(2);
+        let camera = app.camera().unwrap().clone();
+        let at = |lx: i32, ly: i32| point(&camera, 20 * 64 + lx, 20 * 64 + ly);
+        // Two animals in the pen, one in the first quarter of the tile and one in the last.
+        let first = click(app, 10, at(10, 10));
+        assert_eq!(
+            first,
+            [
+                "world add animals/zebra/m 20,20 id 101 name=text5004 1",
+                "money book 2 800"
+            ]
+        );
+        let second = click(app, 20, at(50, 50));
+        assert_eq!(
+            second,
+            [
+                "world add animals/zebra/m 20,20 id 102 name=text5004 2",
+                "money book 2 800"
+            ]
+        );
+        let game = app.game.as_ref().unwrap();
+        assert_eq!(
+            (
+                game.money.cash,
+                game.money.total[ANIMAL_PURCHASE],
+                game.world.units.len()
+            ),
+            (400.0, 1600.0, 2)
+        );
+        // A third does not fit the cash (10002), and the grounds refuse it (10108).
+        assert_eq!(click(app, 30, at(50, 10)), ["tool message 10002"]);
+        let grounds = point(&camera, 19 * 64 + 32, 20 * 64 + 32);
+        assert_eq!(click(app, 40, grounds), ["tool message 10108"]);
+        assert_eq!(app.money().unwrap().cash, 400.0);
+    });
+}
+
+#[test]
+fn a_staff_member_is_hired_anywhere_booked_in_the_wages_and_the_next_sex_is_drawn() {
+    with_app("app-hire", |app| {
+        // The clock stands still, so the only draw is the hire's.
+        app.game.as_mut().unwrap().paused = true;
+        app.game.as_mut().unwrap().build.hold(3);
+        let camera = app.camera().unwrap().clone();
+        let grounds = point(&camera, 19 * 64 + 32, 20 * 64 + 32);
+        let mut generator = app.sim.rng.clone();
+        let told = click(app, 10, grounds);
+        assert_eq!(
+            told,
+            [
+                "world add keeper/keeper/m 19,20 id 101 name=text5500 1",
+                "money book 11 800"
+            ]
+        );
+        let game = app.game.as_ref().unwrap();
+        assert_eq!(
+            (
+                game.money.cash,
+                game.money.monthly[11][0],
+                game.world.can_undo()
+            ),
+            (1200.0, 800.0, false)
+        );
+        // One draw of the simulation's generator gave the sex of the next hire.
+        generator.rand();
+        assert_eq!(app.sim.rng, generator);
+        assert_eq!(app.sim.hire_male, (generator.state() >> 16) & 1 == 1);
+        // A second hire, then the cash is short: a refusal draws nothing.
+        let elsewhere = point(&camera, 20 * 64 + 32, 20 * 64 + 32);
+        assert_eq!(click(app, 20, elsewhere).len(), 2);
+        let state = app.sim.rng.clone();
+        assert_eq!(
+            click(app, 30, point(&camera, 18 * 64 + 32, 20 * 64 + 32)),
+            ["tool message 10002"]
+        );
+        assert_eq!(app.sim.rng, state);
+        let names: Vec<_> = (app.game.as_ref().unwrap().world.zoo.entities.iter())
+            .filter_map(|e| e.common.as_ref().map(|c| c.name.clone()))
+            .collect();
+        assert_eq!(&names[4..], ["text5500 1", "text5500 2"]);
+    });
 }

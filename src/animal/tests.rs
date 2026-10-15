@@ -577,8 +577,9 @@ fn a_loaded_animal_keeps_its_record_and_draws_nothing_at_its_turn() {
     let (mut sim, mut world) = start(true);
     let mut check = sim.rng.clone();
     sim.load(&mut world, &cat);
-    // Four animals of a known sex: sixteen draws each, at the load, and they are started.
-    (0..64).for_each(|_| _ = check.rand());
+    // Four animals of a known sex: sixteen draws each, at the load, and they are started; then
+    // the sex of the first hire.
+    (0..64 + 1).for_each(|_| _ = check.rand());
     assert_eq!(sim.rng, check);
     let Part::Animal(a) = &world.units.get(510).unwrap().part else {
         panic!("not an animal");
@@ -594,6 +595,7 @@ fn a_loaded_animal_keeps_its_record_and_draws_nothing_at_its_turn() {
     // The first step draws what it would draw without the animals' creation.
     sim.step_in(&mut world, &cat, 67, |_, _, _| {});
     let (mut other, mut fresh) = start(false);
+    other.draw_hire();
     other.step_in(&mut fresh, &cat, 67, |_, _, _| {});
     assert_eq!(sim.rng, other.rng, "no draw at the first turn");
 }

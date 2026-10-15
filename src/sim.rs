@@ -147,6 +147,9 @@ pub struct Sim {
     /// The entities that asked to be removed, by id.
     removals: Vec<u32>,
     lines: Vec<String>,
+    /// The sex of the staff the Hire panel lists: drawn when the game screen is built and after
+    /// every hire (unit placing 4.3).
+    pub hire_male: bool,
 }
 
 impl Sim {
@@ -168,6 +171,7 @@ impl Sim {
             world_rem: 0,
             removals: Vec::new(),
             lines: Vec::new(),
+            hire_male: false,
         };
         sim.reseed();
         sim
@@ -200,7 +204,14 @@ impl Sim {
         self.reseed();
         if self.tiles != 0 {
             self.reseed();
+            self.draw_hire();
         }
+    }
+
+    /// Draws the sex of the next hire from the generator: bit 16 of the state set is male (unit
+    /// placing 4.3), the lowest bit of the number.
+    pub fn draw_hire(&mut self) {
+        self.hire_male = self.rng.rand() & 1 == 1;
     }
 
     /// A new game on a map of `tiles` tiles that stores these clocks: the total time and the
@@ -221,9 +232,11 @@ impl Sim {
     }
 
     /// Creates the animals of the map just loaded (animals 3.5), with the types of `cat` and the
-    /// class keys in `world.units.class`. The draws come before every draw of the first step.
+    /// class keys in `world.units.class`, and draws the sex of the first hire (the game screen is
+    /// built). The draws come before every draw of the first step.
     pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
         crate::animal::load(world, cat, &mut self.rng);
+        self.draw_hire();
     }
 
     pub fn calendar(&self) -> &Calendar {

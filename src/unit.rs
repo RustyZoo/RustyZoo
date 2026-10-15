@@ -34,7 +34,7 @@ use crate::zoo::Entity;
 
 pub mod movement;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 
@@ -100,7 +100,11 @@ pub struct Guest {}
 
 /// The part of the state of a staff member: its exhibits and job (staff issues).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Staff {}
+pub struct Staff {
+    /// The counters drawn when the first turn starts the state (staff 4.2): -1 for a key of 0.
+    pub work: i32,
+    pub chase: i32,
+}
 
 /// The kind-specific part of a unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -169,7 +173,7 @@ impl Unit {
             part: match kind {
                 Kind::Animal => Part::Animal(Animal::default()),
                 Kind::Guest => Part::Guest(Guest {}),
-                _ => Part::Staff(Staff {}),
+                _ => Part::Staff(Staff::default()),
             },
             moving: false,
             speed: 0,
@@ -372,8 +376,13 @@ impl Units {
             h.word(
                 u32::from(u.carried) | u32::from(u.repositioning) << 1 | u32::from(u.started) << 2,
             );
-            if let Part::Animal(a) = &u.part {
-                h.bytes(format!("{a:?}").as_bytes());
+            match &u.part {
+                Part::Animal(a) => h.bytes(format!("{a:?}").as_bytes()),
+                Part::Staff(s) => {
+                    h.word(s.work as u32);
+                    h.word(s.chase as u32);
+                }
+                Part::Guest(_) => {}
             }
             h.word(u.events.len() as u32);
             for e in &u.events {
@@ -470,6 +479,7 @@ impl Hooks for Standard {
 
     fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::start(unit, world, ctx, at);
+        crate::staff::start(unit, world, ctx, at);
     }
     fn needs(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::needs(unit, world, ctx, at);

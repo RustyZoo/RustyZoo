@@ -11,8 +11,9 @@ pub mod terrain;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
-use crate::place::unit::price;
+use crate::place::unit::{is_unit, price};
 use crate::place::{Class, Leg, MIDDLE, fence_run, path_run, side};
+use crate::staff;
 use crate::terrain::Mode;
 use crate::text::format::whole_units;
 use crate::text::to_cp1252;
@@ -28,6 +29,14 @@ const EXPANSIONS: [(&str, i32); 2] = [("dinosaur", 1), ("aqua", 2)];
 pub const CONSTRUCTION: i32 = 8;
 pub const OBJECTS: i32 = 4;
 pub const ADOPT: i32 = 3;
+pub const HIRE: i32 = 10;
+/// The Hire panel's title, and the texts of the duties and the monthly salary of the chosen staff
+/// type (unit placing 4.1).
+const HIRE_TITLE: i32 = 3697;
+const HIRE_DUTIES: i32 = 3613;
+const PANEL_COUNT: usize = 4;
+/// The position of the Hire panel in [`PANELS`].
+const HIRE_PANEL: usize = 3;
 /// The string of the Animals tab's sub-title while the expansion selector is on All.
 const CREATURES: i32 = 2025;
 /// The preferred object's picture and its border on the Adopt panel.
@@ -155,6 +164,8 @@ fn order(ty: &EntityType, tag: &str) -> [f32; 5] {
             .is_some_and(|c| c.section(name).is_some())
     };
     match tag {
+        // The staff list is in catalogue order (unit placing 4.2).
+        "staff" => [0.0; 5],
         "fence" if !matches!(ty.class, "fences" | "tankwall") => [0.0; 5],
         "fence" if has("TankFence") => [
             1.0 + f32::from(number(ty, "cIsShowFence").unwrap_or(0.0) != 0.0),
@@ -196,7 +207,7 @@ fn icons(ty: &EntityType) -> Vec<String> {
     let Some(config) = ty.config.as_deref() else {
         return Vec::new();
     };
-    let subtype = matches!(ty.class, "fences" | "tankwall" | "animals")
+    let subtype = (matches!(ty.class, "fences" | "tankwall") || is_unit(ty))
         .then(|| [&ty.subtype[..], b"/Icon"].concat());
     let default = config
         .section("Global")
@@ -280,7 +291,7 @@ struct Panel {
     empty: i32,
 }
 
-const PANELS: [Panel; 3] = [
+const PANELS: [Panel; PANEL_COUNT] = [
     Panel {
         name: "construction",
         layout: CONSTRUCTION,
@@ -339,6 +350,25 @@ const PANELS: [Panel; 3] = [
         sexes: &[2000, 2001],
         empty: 2009,
     },
+    Panel {
+        name: "hire",
+        layout: HIRE,
+        bar: 1005,
+        title: HIRE_TITLE,
+        expansion: 3601,
+        list: 3602,
+        rotate: [3676, 3677],
+        name_text: 3620,
+        cost_text: 3611,
+        tabs: &[],
+        other_tabs: &[],
+        hidden: &[],
+        pictures: [0; 3],
+        details: [0; 3],
+        gate: None,
+        sexes: &[],
+        empty: 3609,
+    },
 ];
 
 /// A drag: the tile of the press, the mode of the first leg of a path and the side of a fence
@@ -375,18 +405,18 @@ pub struct Build {
     /// The types of the open tab, in the order of its list.
     list: Vec<usize>,
     /// The item each tab remembers (a type), by panel and tab.
-    chosen: [[Option<usize>; 4]; 3],
+    chosen: [[Option<usize>; 4]; PANEL_COUNT],
     /// The type that is the tool, if one is.
     held: Option<usize>,
     /// The rotation step of each panel (placing 4.4).
-    step: [usize; 3],
+    step: [usize; PANEL_COUNT],
     /// The rotation step of the pending object: its panel's step, until a placement of a type
     /// that turns by itself advances it.
     turn: usize,
     /// The tab (a position in `tabs`) that `list` was built for.
     listed: Option<usize>,
     /// The first row each tab's list showed last, by panel and tab (placing 3.4).
-    tops: [[usize; 4]; 3],
+    tops: [[usize; 4]; PANEL_COUNT],
     /// The mode of the terrain tab that is selected while the construction panel is open: that
     /// tab is the map view's tool.
     terrain: Option<Mode>,
@@ -404,6 +434,8 @@ pub struct Build {
     gate: bool,
     /// The game's month is October (the half price of the dinosaur expansion's animals).
     october: bool,
+    /// The Hire panel lists the male staff (unit placing 4.3).
+    hire_male: bool,
 }
 
 impl Build {
@@ -413,12 +445,12 @@ impl Build {
             expansions,
             open: None,
             list: Vec::new(),
-            chosen: [[None; 4]; 3],
+            chosen: [[None; 4]; PANEL_COUNT],
             held: None,
-            step: [0; 3],
+            step: [0; PANEL_COUNT],
             turn: 0,
             listed: None,
-            tops: [[0; 4]; 3],
+            tops: [[0; 4]; PANEL_COUNT],
             terrain: None,
             infoimg: None,
             drag: None,
@@ -427,6 +459,25 @@ impl Build {
             exhibits: 0,
             gate: false,
             october: false,
+            hire_male: false,
+        }
+    }
+
+    /// The sex of the staff the Hire panel lists.
+    pub fn set_hire(&mut self, male: bool) {
+        self.hire_male = male;
+    }
+
+    /// A staff member was hired: the list of the open Hire panel is made again for the new sex.
+    pub fn rehire(
+        &mut self,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        cat: &Catalogue,
+        log: &mut Vec<String>,
+    ) {
+        if self.open == Some(HIRE_PANEL) {
+            self.fill(ui, vfs, cat, HIRE_PANEL, log);
         }
     }
 
@@ -810,6 +861,9 @@ impl Build {
 
     /// The position in `tabs` of the tab that is selected.
     fn tab(ui: &Interface, p: usize) -> Option<usize> {
+        if PANELS[p].tabs.is_empty() {
+            return Some(0);
+        }
         PANELS[p].tabs.iter().position(|&t| {
             ui.tree
                 .find(t)
@@ -838,14 +892,18 @@ impl Build {
                 self.stop_bulldozer(ui, log);
             }
         }
-        let button = tab.and_then(|t| ui.tree.find(panel.tabs[t]));
-        let (tag, title) = button.map_or((String::new(), 0), |i| {
-            let e = &ui.tree.elements[i];
-            (
-                String::from_utf8_lossy(&e.string_data).into_owned(),
-                e.help_id.first().copied().unwrap_or(0),
-            )
-        });
+        let button = tab.and_then(|t| ui.tree.find(*panel.tabs.get(t)?));
+        let (tag, title) = match button {
+            Some(i) => {
+                let e = &ui.tree.elements[i];
+                (
+                    String::from_utf8_lossy(&e.string_data).into_owned(),
+                    e.help_id.first().copied().unwrap_or(0),
+                )
+            }
+            None if panel.layout == HIRE => ("staff".into(), HIRE_TITLE),
+            None => (String::new(), 0),
+        };
         if tab.is_some() {
             for &id in panel.hidden.iter().chain(
                 panel
@@ -862,14 +920,22 @@ impl Build {
         if panel.layout == ADOPT && tag == "animals" {
             ui.set_text(panel.title, &to_cp1252(&ui.string(CREATURES)));
         }
-        self.list = match tab {
-            // The Animals tab lists each species once, as the sex of the sex buttons.
-            Some(_) if panel.layout == ADOPT && tag == "animals" => {
-                let sex = [b"m", b"f"][usize::from(Self::female(ui))];
-                items_of(cat, &tag, self.expansions, |ty| ty.subtype == sex)
+        // The Animals tab lists each species once, as the sex of the sex buttons, and the Hire
+        // panel the staff of the sex drawn.
+        let male = match (panel.layout, tag.as_str()) {
+            (HIRE, _) => Some(self.hire_male),
+            (ADOPT, "animals") => Some(!Self::female(ui)),
+            _ => None,
+        };
+        self.list = match (tab, male) {
+            (None, _) => Vec::new(),
+            (Some(_), Some(male)) => {
+                let sex = [&b"f"[..], b"m"][usize::from(male)];
+                items_of(cat, &tag, self.expansions, |ty| {
+                    is_unit(ty) && ty.subtype == sex
+                })
             }
-            Some(_) => items(cat, &tag, self.expansions),
-            None => Vec::new(),
+            (Some(_), None) => items(cat, &tag, self.expansions),
         };
         if panel.empty != 0 {
             ui.set_hidden(panel.empty, !self.list.is_empty());
@@ -895,7 +961,7 @@ impl Build {
                 // The species stays when it is listed again as the other sex.
                 let same = |l: &usize| {
                     let (a, b) = (&cat.types[*l], &cat.types[ty]);
-                    a.class == "animals" && a.class == b.class && a.type_name == b.type_name
+                    is_unit(a) && a.class == b.class && a.type_name == b.type_name
                 };
                 let list = &self.list;
                 (list.iter().position(|&l| l == ty)).or_else(|| list.iter().position(same))
@@ -917,6 +983,9 @@ impl Build {
     fn no_item(ui: &mut Interface, panel: &Panel) {
         for id in [panel.name_text, panel.cost_text] {
             ui.set_text(id, b"");
+        }
+        if panel.layout == HIRE {
+            ui.set_text(HIRE_DUTIES, b"");
         }
         let shown = (panel.rotate.into_iter())
             .chain(panel.details)
@@ -993,8 +1062,17 @@ impl Build {
         self.turn = self.step[p];
         ui.select_item(panel.list, Some(at));
         let name = ui.string(ty.name_id);
-        let price =
-            Symbol::new(ui.string(SYMBOL)).text(whole_units(f64::from(price(ty, self.october))));
+        // The Hire panel shows the monthly salary and the duties instead of the price.
+        let hire = panel.layout == HIRE;
+        let shown = if hire {
+            staff::monthly(ty)
+        } else {
+            price(ty, self.october)
+        };
+        let price = Symbol::new(ui.string(SYMBOL)).text(whole_units(f64::from(shown)));
+        if hire {
+            ui.set_text(HIRE_DUTIES, &to_cp1252(&ui.string(staff::duties(ty))));
+        }
         ui.set_text(panel.name_text, &to_cp1252(&name));
         ui.set_text(panel.cost_text, &to_cp1252(&price));
         for id in panel.rotate {
@@ -1028,11 +1106,11 @@ impl Build {
             ui.set_hidden(value, false);
         }
         self.show_pictures(ui, vfs, panel, ty);
-        let tag = ui
-            .tree
-            .find(panel.tabs[tab])
-            .map(|i| String::from_utf8_lossy(&ui.tree.elements[i].string_data).into_owned())
-            .unwrap_or_default();
+        let tag = match panel.tabs.get(tab).and_then(|&t| ui.tree.find(t)) {
+            Some(i) => String::from_utf8_lossy(&ui.tree.elements[i].string_data).into_owned(),
+            None if hire => "staff".into(),
+            None => String::new(),
+        };
         log.push(format!(
             "tool item {tag} {}/{}/{} name={name} cost={price}",
             ty.class,

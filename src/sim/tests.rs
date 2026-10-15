@@ -520,6 +520,8 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "generator",
         "clock",
         "grounds",
+        "hire",
+        "names",
     ] {
         let mut run = game(3);
         match what {
@@ -531,6 +533,8 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "cash" => run.money.cash += 0.01,
             "generator" => drop(run.sim.rng.rand()),
             "grounds" => run.world.exhibits_mut().grounds.rating_ms = 1,
+            "hire" => run.sim.hire_male = !run.sim.hire_male,
+            "names" => drop(run.world.zoo.names.insert("keeper".into(), 1)),
             _ => run.sim.ai_rem += 1,
         }
         assert_ne!(run.hash(), base, "{what}");
@@ -541,6 +545,41 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     let mut b = game(2);
     b.world.zoo.entities[0].class = "animalsab".into();
     assert_ne!(a.hash(), b.hash());
+}
+
+#[test]
+fn the_sex_of_the_next_hire_is_bit_16_of_the_state_and_follows_the_seed() {
+    let mut s = sim("");
+    let mut check = s.rng.clone();
+    s.draw_hire();
+    let number = check.rand();
+    assert_eq!(s.hire_male, (check.state() >> 16) & 1 == 1);
+    assert_eq!(s.hire_male, number & 1 == 1);
+    assert_eq!(s.rng, check, "one draw");
+    // The same seed draws the same sex when the game is loaded, and the seeds give both.
+    let drawn = |seed| {
+        let mut run = Run::new(b"", own(), world(3), Money::default(), seed);
+        let first = run.sim.hire_male;
+        run.sim.draw_hire();
+        (first, run.sim.hire_male)
+    };
+    assert_eq!(drawn(7), drawn(7));
+    // A seed given after the game was opened draws the sex again, as when it was given before.
+    let mut opened = sim("");
+    opened.set_seed(9);
+    let mut before = Sim::new(b"");
+    before.set_seed(9);
+    before.start_game(16, Clocks::default());
+    before.draw_hire();
+    assert_eq!(
+        (opened.hire_male, &opened.rng),
+        (before.hire_male, &before.rng)
+    );
+    let all: Vec<_> = (0..40).map(drawn).collect();
+    assert!(
+        all.iter().any(|d| d.0) && all.iter().any(|d| !d.0),
+        "{all:?}"
+    );
 }
 
 #[test]

@@ -13,6 +13,10 @@ pub const ADMISSIONS: usize = 4;
 pub const DONATIONS: usize = 8;
 pub const CONSTRUCTION_REFUND: usize = 9;
 pub const ANIMAL_REFUND: usize = 10;
+/// The wage categories: what hiring a staff member of the class books, and its monthly wage.
+pub const KEEPER_WAGES: usize = 11;
+pub const GUIDE_WAGES: usize = 12;
+pub const MAINT_WAGES: usize = 13;
 /// Income minus expenses.
 pub const NET: usize = 14;
 /// Admissions since the start, copied at each month change.

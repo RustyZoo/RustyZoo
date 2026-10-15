@@ -24,6 +24,7 @@ pub mod place;
 pub mod render;
 pub mod sim;
 pub mod sprite;
+pub mod staff;
 pub mod startup;
 pub mod status;
 pub mod strings;
