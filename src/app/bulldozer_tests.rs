@@ -741,8 +741,8 @@ fn no_undoes_what_made_the_tank_and_gives_its_money_back() {
         assert_eq!(told[0], "tool tank answer no");
         assert!(!s.asking());
         assert_eq!(s.count(), 1, "the bench stays, the four walls are gone");
-        // The four walls were not paid in this test; their price (100 each) comes back whole.
-        assert_eq!(s.cash(), 50_400.0);
+        // The four walls were placed free by this test, so nothing comes back.
+        assert_eq!(s.cash(), 50_000.0);
         let world = &s.app.game.as_ref().unwrap().world;
         assert!(world.exhibits().list().is_empty());
         assert_eq!(world.exhibits().counter, 1);

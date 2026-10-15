@@ -155,7 +155,7 @@ fn a_path_of_another_type_and_a_fence_of_the_same_type_are_replaced_in_place_and
         assert!(told.contains(&"money cash 50000".to_string()));
         assert_eq!(life(s), 0, "the old life and strength come back");
         // A path of another type keeps the object and its place in the list.
-        s.app.game.as_mut().unwrap().build.hold(7);
+        s.app.game.as_mut().unwrap().build.hold(9);
         let told = s.click_log(s.at(20, 20, 32, 32));
         assert!(
             told.contains(&format!("world retype paths/stone/ 20,20 id {dirt}")),
@@ -176,7 +176,7 @@ fn a_path_of_another_type_and_a_fence_of_the_same_type_are_replaced_in_place_and
 fn a_fence_of_another_type_takes_the_place_of_a_gate_as_a_gate_and_the_undo_gives_the_gate_back() {
     with_game("gate", "", |s| {
         // A tile closed by steel fences; the west piece is its gate.
-        let pieces: Vec<u32> = [0, 2, 4, 6].map(|d| s.fence(8, 20, 20, d)).to_vec();
+        let pieces: Vec<u32> = [0, 2, 4, 6].map(|d| s.fence(10, 20, 20, d)).to_vec();
         s.app.exhibits_told();
         let game = s.app.game.as_mut().unwrap();
         game.world.set_gate(1, pieces[3]);

@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::exhibit::Tank;
+use crate::world::Step;
 
 type Piece = (&'static str, (i32, i32, u32));
 
@@ -339,7 +340,7 @@ fn a_new_tank_is_levelled_at_the_mean_less_the_sink_and_the_ground_comes_back_on
         (tank.height, tank.level, tank.filled, tank.salt, tank.purity),
         (5, 0, true, true, 90)
     );
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     assert_eq!(level(&world, 2, 3), (4, 0));
     assert_eq!(level(&world, 3, 3), (3, 0x05), "the shape is back too");
     assert!(world.exhibits().list().is_empty());
@@ -389,7 +390,7 @@ fn the_walls_stand_on_the_tanks_side_after_the_wall_step_and_go_back_on_undo() {
         }
     }
     assert_eq!(world.tank_at(inside[0]).map(|_| ()), Some(()));
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     let on = world.edge(2 * width + 1, 2);
     assert!(on.is_some(), "the wall on the tile outside is back");
     assert!(world.edge(2 * width + 2, 6).is_none());
@@ -419,7 +420,7 @@ fn a_wall_shared_with_another_tank_is_copied_so_that_each_has_its_own() {
     let copy = &world.zoo.entities[mine.unwrap()];
     assert_eq!((copy.class.as_str(), copy.subtype.as_str()), ("tank", "f"));
     // Undone, the copy is gone.
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     assert_eq!(world.zoo.entities.len(), count);
 }
 
@@ -480,10 +481,10 @@ fn a_tank_that_is_declined_is_undone_and_gives_its_number_back() {
     let count = world.zoo.entities.len();
     world.begin();
     put_wall(&mut world, last.0, last.1);
-    let (placed, removed) = world.operation();
-    assert_eq!((placed.len(), removed.len()), (1, 0));
     assert_eq!(world.exhibits().counter, 2);
-    world.decline_tank(1);
+    let done = world.decline_tank(1);
+    let wall = done.steps.iter().find(|s| matches!(s, Step::Removed(..)));
+    assert!(matches!(wall, Some(Step::Removed(_, price)) if *price == 0.0));
     assert!(world.exhibits().list().is_empty());
     assert_eq!(world.exhibits().counter, 1);
     assert_eq!(world.zoo.entities.len(), count);
@@ -726,7 +727,7 @@ fn tank_floor_is_sand_or_gunite_by_the_show_state_and_sand_again_when_the_tank_g
         (-4, 0),
         "the ground is levelled all the same"
     );
-    assert!(world.undo());
+    assert!(!world.undo().is_empty());
     assert_eq!(floor(&world, 3, 3), 5, "the old type is back");
     assert_eq!(floor(&world, 2, 2), 0);
     // A show tank gets the gunite, the type of tanks.cfg.
@@ -743,7 +744,7 @@ fn tank_floor_is_sand_or_gunite_by_the_show_state_and_sand_again_when_the_tank_g
     assert!(world.exhibits().list().is_empty());
     assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 2));
     assert_eq!(level(&world, 2, 2), (-8, 0));
-    assert!(world.undo(), "the gunite is back with the walls");
+    assert!(!world.undo().is_empty(), "the gunite is back with the walls");
     assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 17));
     // A saved zoo keeps the ground it has.
     let world = built(&ring("show", 2, 2, 3, 3));
