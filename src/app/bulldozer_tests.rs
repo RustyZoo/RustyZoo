@@ -712,3 +712,49 @@ fn no_undoes_what_made_the_tank_and_gives_its_money_back() {
         assert_eq!(world.exhibits().counter, 1);
     });
 }
+
+#[test]
+fn one_click_on_the_line_between_two_tanks_takes_both_walls_and_merges_them() {
+    with_game("tank-tied", "[UI]\nconfirmSell=0\n", |s| {
+        // The second tank leans on the wall of the first: the wall step builds its own.
+        for (tile, side) in [
+            (20, 0),
+            (20, 2),
+            (20, 4),
+            (20, 6),
+            (21, 0),
+            (21, 2),
+            (21, 4),
+        ] {
+            s.fence(5, tile, 20, side);
+        }
+        assert_eq!(
+            s.app.game.as_ref().unwrap().world.exhibits().list().len(),
+            2
+        );
+        assert_eq!(s.count(), 8, "a copy of the wall of the first tank");
+        s.pass(&[DELETE]);
+        // The hover shows both refunds.
+        s.pass(&[s.at(20, 20, 60, 32)]);
+        assert_eq!(s.cost(), Some(160));
+        // The first removal keeps the line closed and asks to merge, the second goes without.
+        let cash = s.cash();
+        let told = s.click(s.at(20, 20, 60, 32));
+        assert_eq!(told.last().unwrap(), "tool bulldoze ask Merge(1, 2)");
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told
+            .iter()
+            .filter(|l| l.starts_with("world remove"))
+            .count();
+        assert_eq!((removed, s.cash()), (2, cash + 160.0), "{told:?}");
+        assert!(!s.asking());
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert_eq!(
+            world.exhibits().list().len(),
+            1,
+            "{:?}",
+            world.exhibits().list()
+        );
+        assert_eq!(world.exhibits().list()[0].tiles, 2);
+    });
+}

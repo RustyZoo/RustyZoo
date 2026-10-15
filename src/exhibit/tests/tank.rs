@@ -617,7 +617,8 @@ fn read(text: &str) -> TankConfig {
 fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
     let shipped = "[cost]\nsaltWater = 1.5\n[tank]\ninitialSink = 4\ninitialHeight = 5\ninitialSinkShow = 8\n\
         initialHeightShow = 9\ninitialWaterLevel = 0\ninitialFillState = 1\ninitialSalinity = 100\n\
-        initialWaterPurity = 100\n";
+        initialWaterPurity = 100\n\
+        tankTerrain = 2\ntankTerrainShow = 17\n";
     assert_eq!(
         read(shipped),
         TankConfig {
@@ -641,8 +642,11 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
     // Zero, negative, huge, not a number, hex: cut or ignored, never a panic.
     let odd = read(
         "[tank]\ninitialHeight = 0\ninitialHeightShow = -3\ninitialSink = -99\ninitialSinkShow = 99999999999\n\
-        initialWaterLevel = abc\ninitialFillState = -1\ninitialSalinity = 0\ninitialWaterPurity = 0x7fffffff\n",
+        initialWaterLevel = abc\ninitialFillState = -1\ninitialSalinity = 0\ninitialWaterPurity = 0x7fffffff\n\
+        tankTerrain = -5\ntankTerrainShow = 999\n",
     );
+    assert_eq!(odd.terrain, [0, 255], "cut to a byte");
+    assert_eq!(read("[tank]\ntankTerrain = 0\n").terrain, [0, 17]);
     assert_eq!(odd.height, [0, 0]);
     assert_eq!(odd.sink[0], -24);
     assert!(
@@ -693,4 +697,162 @@ fn the_exhibit_whose_gate_moves_into_a_new_tank_gets_another_gate() {
     assert!(world.take_events().contains(&Event::Gate(exhibit)));
     assert_eq!(world.zoo.entities[world.find(gate).unwrap()].subtype, "f");
     assert_eq!(world.zoo.entities[world.find(new).unwrap()].subtype, "g");
+}
+
+// ---- The floor and the second wall
+
+fn floor(world: &World, x: usize, y: usize) -> u8 {
+    world.zoo.tiles[y * SIZE as usize + x].terrain
+}
+
+const TILES: [(usize, usize); 4] = [(2, 2), (3, 2), (2, 3), (3, 3)];
+
+#[test]
+fn tank_floor_is_sand_or_gunite_by_the_show_state_and_sand_again_when_the_tank_goes() {
+    // A tank closed by the player: sand under it whatever the ground was, and the ground beside
+    // it stays. The paint is in the undo list.
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    world.zoo.tiles[3 * SIZE as usize + 3].terrain = 5;
+    world.zoo.tiles[4 * SIZE as usize + 4].terrain = 5;
+    world.begin();
+    put_wall(&mut world, last.0, last.1);
+    assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 2));
+    assert_eq!(floor(&world, 4, 4), 5);
+    assert_eq!(
+        level(&world, 2, 2),
+        (-4, 0),
+        "the ground is levelled all the same"
+    );
+    assert!(world.undo());
+    assert_eq!(floor(&world, 3, 3), 5, "the old type is back");
+    assert_eq!(floor(&world, 2, 2), 0);
+    // A show tank gets the gunite, the type of tanks.cfg.
+    let mut pieces = ring("show", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    put_wall(&mut world, last.0, last.1);
+    assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 17));
+    // Opened, it is no tank: sand, also where it was gunite, and the ground stays where it is.
+    let at = world.edge(2 * SIZE as usize + 2, 0).unwrap();
+    let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+    world.begin();
+    world.remove(id);
+    assert!(world.exhibits().list().is_empty());
+    assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 2));
+    assert_eq!(level(&world, 2, 2), (-8, 0));
+    assert!(world.undo(), "the gunite is back with the walls");
+    assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 17));
+    // A saved zoo keeps the ground it has.
+    let world = built(&ring("show", 2, 2, 3, 3));
+    assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 0));
+}
+
+#[test]
+fn tank_floor_follows_a_wall_change_that_makes_a_tank_a_show_tank() {
+    // A loaded tank keeps its ground. The walls are swapped for show walls one by one: the last
+    // one makes it a show tank and paints it.
+    let mut world = tanks(&ring("tank", 2, 2, 3, 3), &[], &[]);
+    assert!(TILES.iter().all(|&(x, y)| floor(&world, x, y) == 0));
+    let ids: Vec<u32> = ring("tank", 2, 2, 3, 3)
+        .iter()
+        .map(|&(_, (x, y, d))| {
+            let t = y as usize * SIZE as usize + x as usize;
+            let e = world.edge(t, d as usize).unwrap();
+            world.zoo.entities[e].common.as_ref().unwrap().id
+        })
+        .collect();
+    for (n, id) in ids.iter().enumerate() {
+        let mut new = wall("show", (0, 0, 0));
+        let at = world.find(*id).unwrap();
+        new.common = world.zoo.entities[at].common.clone();
+        let shape = shape(&new);
+        world.swap(*id, new, shape).unwrap();
+        let want = if n + 1 == ids.len() { 17 } else { 0 };
+        assert!(
+            TILES.iter().all(|&(x, y)| floor(&world, x, y) == want),
+            "swap {n}"
+        );
+    }
+    assert_eq!(tank(&world, 2, 2).map(|t| t.show), Some(true));
+}
+
+#[test]
+fn wall_copy_new_is_a_healthy_plain_piece_of_the_type_with_nothing_of_the_wall_kept() {
+    // The tank (1, 2) has a worn wall, a gate with a name and colours, on the line the second
+    // tank (2, 2) leans on.
+    let mut pieces = ring("tank", 1, 2, 1, 2);
+    pieces.extend([("tank", (2, 2, 0)), ("tank", (2, 2, 2))]);
+    let mut world = tanks(&pieces, &[], &[]);
+    let old = world.edge(2 * SIZE as usize + 1, 2).unwrap();
+    {
+        let e = &mut world.zoo.entities[old];
+        e.subtype = "g".into();
+        let c = e.common.as_mut().unwrap();
+        c.name = "worn".into();
+        c.colors = vec![3, 1];
+        c.fence = Some(crate::zoo::Fence {
+            strength: 9,
+            life: 0,
+            timers: [5, 6],
+            portal: true,
+        });
+    }
+    world.begin();
+    put_wall(&mut world, "tank", (2, 2, 4));
+    let copy = world.edge(2 * SIZE as usize + 2, 6).unwrap();
+    assert_ne!(copy, old);
+    let (e, c) = (
+        &world.zoo.entities[copy],
+        world.zoo.entities[copy].common.as_ref().unwrap(),
+    );
+    assert_eq!(
+        (e.class.as_str(), e.type_name.as_str(), e.subtype.as_str()),
+        ("tank", "", "f")
+    );
+    assert_eq!(
+        (c.name.as_str(), c.colors.len(), c.movement_mode),
+        ("", 0, 0)
+    );
+    assert_eq!(
+        c.fence,
+        Some(crate::zoo::Fence {
+            strength: 500,
+            life: 10,
+            timers: [0; 2],
+            portal: false
+        })
+    );
+    assert_eq!(e.body_size, None);
+    // The wall it copies is as it was.
+    let worn = world.zoo.entities[old].common.as_ref().unwrap();
+    assert_eq!((worn.name.as_str(), worn.fence.unwrap().life), ("worn", 0));
+}
+
+#[test]
+fn gate_tank_refuses_a_tile_with_an_object_and_the_marine_specialist_swims_to_it() {
+    let t = |x: usize, y: usize| y * SIZE as usize + x;
+    let gate_at = |w: &World, x: usize, y: usize, d: usize| w.gate_for(w.edge(t(x, y), d).unwrap());
+    // A tank (2..3, 2..3) with a bench in a quadrant of tile (2, 2) and water under tile (3, 2).
+    let things = [("bench", 2 * 64 + 16, 2 * 64 + 16)];
+    let mut world = tanks(&ring("tank", 2, 2, 3, 3), &things, &[]);
+    world.set_water(vec![false, true]);
+    world.zoo.tiles[t(3, 2)].terrain = 1;
+    let piece = |w: &World, x: usize, y: usize, d: usize| w.edge(t(x, y), d).unwrap();
+    // Item 4: an object in a quadrant of the tank tile; the gate is judged, and refused.
+    assert_eq!(gate_at(&world, 2, 2, 0), Some(1));
+    assert!(world.tank_holds_object(piece(&world, 2, 2, 0)));
+    assert!(world.tank_holds_object(piece(&world, 2, 2, 6)));
+    assert!(!world.tank_holds_object(piece(&world, 3, 2, 0)));
+    assert!(!world.keeper_passes(piece(&world, 2, 2, 0)), "code 3");
+    // Water on the tank tile does not stop the marine specialist, a land keeper would not cross.
+    assert!(world.keeper_passes(piece(&world, 3, 2, 0)));
+    // The same piece of a land exhibit: water stops the zookeeper, and an object on the tile
+    // is no reason to refuse.
+    let mut world = tanks(&ring("fences", 2, 2, 3, 3), &things, &[]);
+    world.set_water(vec![false, true]);
+    world.zoo.tiles[t(3, 2)].terrain = 1;
+    assert!(!world.tank_holds_object(piece(&world, 2, 2, 0)));
+    assert!(!world.keeper_passes(piece(&world, 3, 2, 0)));
 }

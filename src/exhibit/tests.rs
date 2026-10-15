@@ -45,6 +45,8 @@ fn shape(e: &Entity) -> Option<Shape> {
                 show: e.class == "show",
                 underwater: tank,
                 shows: e.class == "show",
+                life: 10,
+                strength: 500,
                 ..TankKind::NONE
             },
         }),
