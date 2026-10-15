@@ -992,7 +992,7 @@ impl<'a> App<'a> {
     /// Buys the pieces in order (`release`); `resumed` when they are what a closing piece left
     /// of the drag, whose sound and turn were done. A piece that makes an exhibit stops the
     /// buying: its name is asked first, the rest of the pieces come after the answer.
-    pub(super) fn buy(&mut self, pieces: Vec<Pending>, resumed: bool) {
+    fn buy(&mut self, pieces: Vec<Pending>, resumed: bool) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
