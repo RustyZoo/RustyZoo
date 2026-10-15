@@ -994,6 +994,72 @@ fn the_grid_lines_of_every_tile_are_drawn_only_with_the_grid_on() {
 }
 
 #[test]
+fn a_marked_tile_gets_its_highlight_in_the_colour_of_the_mark_and_frees_the_grid_behind_it() {
+    use crate::bitmap::tests::{WHITE, bmp24};
+    const BLUE: [u8; 3] = [0, 0, 255];
+    let mut members = grid_members();
+    members[0].1 = b"[0]\nnorthgrid=grid.bmp\neastgrid=grid.bmp\nhighlight=hl.bmp\n".to_vec();
+    members.push((
+        "hl.bmp",
+        bmp24(&[vec![WHITE, BLUE], vec![WHITE, WHITE]], false),
+    ));
+    let install = cache_install_with("render-marks", frame_file(), &members);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo {
+        width: 2,
+        height: 1,
+        tiles: flat_map(2, 1),
+        ..tile_with(&[])
+    };
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let mut count = |marks: &[Mark], colour: [u8; 3]| {
+        let staged = renderer
+            .stage_with(
+                &zoo,
+                0,
+                false,
+                &Extra {
+                    marks: marks.to_vec(),
+                    ..Extra::default()
+                },
+            )
+            .unwrap();
+        let (w, h) = staged.size().unwrap();
+        let mut canvas = Framebuffer::new(w, h);
+        let (x, y) = staged.origin();
+        staged.draw(&mut canvas, x, y, 0, true);
+        let n = |c: [u8; 3]| {
+            canvas
+                .pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|p| p[..3] == c)
+                .count()
+        };
+        (n(colour), n(BLUE), n([255, 0, 0]))
+    };
+    let mark = |tile| Mark {
+        tile,
+        color: [1, 2, 3],
+    };
+    let (none, _, lines) = count(&[], [1, 2, 3]);
+    assert_eq!(none, 0, "nothing is marked");
+    let (marked, blue, _) = count(&[mark(0)], [1, 2, 3]);
+    assert_eq!(
+        (marked, blue),
+        (1, 0),
+        "one pixel, in the colour of the mark"
+    );
+    // The second tile is marked: the first one, behind it, draws one grid line less.
+    let (_, _, fewer) = count(&[mark(1)], [1, 2, 3]);
+    assert!(fewer < lines, "{fewer} against {lines}");
+    // A mark on a tile that is not on the map is ignored.
+    assert_eq!(count(&[mark(7)], [1, 2, 3]), (0, 0, lines));
+}
+
+#[test]
 fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
     use crate::sprite::tests::{sized, sprite_file};
     const MARKER: [u8; 3] = [255, 0, 255];

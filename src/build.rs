@@ -6,9 +6,12 @@
 //! button, the left bar, Escape, the right button). The item chosen is the tool: the type the
 //! map view will place. Every change tells one `tool ...` line.
 
+pub mod terrain;
+
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
+use crate::terrain::Mode;
 use crate::text::format::whole_units;
 use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
@@ -237,6 +240,9 @@ pub struct Build {
     listed: Option<usize>,
     /// The first row each tab's list showed last, by panel and tab (placing 3.4).
     tops: [[usize; 4]; 2],
+    /// The mode of the terrain tab that is selected while the construction panel is open: that
+    /// tab is the map view's tool.
+    terrain: Option<Mode>,
 }
 
 impl Build {
@@ -251,6 +257,7 @@ impl Build {
             step: [0; 2],
             listed: None,
             tops: [[0; 4]; 2],
+            terrain: None,
         }
     }
 
@@ -278,6 +285,11 @@ impl Build {
     /// The rotation step of the open panel, 0 to 3 (placing 4.4).
     pub fn step(&self) -> usize {
         self.open.map_or(0, |p| self.step[p])
+    }
+
+    /// The mode of the terrain tab that is the tool, if one is.
+    pub fn terrain_mode(&self) -> Option<Mode> {
+        self.terrain
     }
 
     /// Notices that a panel was shown or hidden since the last call, and acts on it.
@@ -309,7 +321,7 @@ impl Build {
         }
         ui.set_button(PANELS[p].bar, false, true);
         ui.touch();
-        (self.open, self.held) = (None, None);
+        (self.open, self.held, self.terrain) = (None, None, None);
         log.push("tool panel none".into());
     }
 
@@ -317,6 +329,11 @@ impl Build {
     /// closes the panel (input 4.6 steps 7 and 10). Whether it did something.
     pub fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
         let Some(p) = self.open else { return false };
+        if self.terrain.take().is_some() {
+            terrain::hide(ui);
+            log.push("tool drop".into());
+            return true;
+        }
         match self.held.take() {
             Some(_) => {
                 ui.select_item(PANELS[p].list, None);
@@ -379,6 +396,9 @@ impl Build {
         self.remember_top(ui, p);
         let tab = Self::tab(ui, p);
         self.listed = tab;
+        if panel.layout == CONSTRUCTION {
+            self.terrain = terrain::tab(ui, tab.is_some());
+        }
         let button = tab.and_then(|t| ui.tree.find(panel.tabs[t]));
         let (tag, title) = button.map_or((String::new(), 0), |i| {
             let e = &ui.tree.elements[i];

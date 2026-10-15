@@ -818,6 +818,49 @@ fn a_picture_is_put_into_a_picture_element_which_takes_its_size_and_none_hides_i
 }
 
 #[test]
+fn an_image_set_draws_the_picture_the_game_chooses() {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n\
+        [b]\ntype=UIImageSet\nid=62\nx=2\ny=3\ndx=5\ndy=3\ntransparent=0\n\
+        [c]\ntype=UIText\nid=61\nx=0\ny=40\ndx=10\ndy=10\n";
+    let install = Install::new(
+        "widgets-imageset",
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/red.tga", solid(5, 3, [255, 0, 0])),
+            ("ui/blue.tga", solid(5, 3, [0, 0, 255])),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = Tree::load(&vfs, "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    // The pictures of the set are animations in the game's files; any picture does here.
+    let pictures = [
+        tree.picture(&vfs, "ui/red.tga"),
+        tree.picture(&vfs, "ui/blue.tga"),
+    ];
+    let set = tree.find(62).unwrap();
+    tree.elements[set].look.animation = pictures.to_vec();
+    let mut ui = Interface::new(tree, Box::new(NoTexts));
+    ui.show(1);
+    let pixel = |ui: &mut Interface| {
+        let mut frame = Framebuffer::new(100, 80);
+        ui.paint(&mut frame, &mut |_, _| {});
+        let at = (3 * 100 + 2) * 4;
+        frame.pixels[at..at + 3].to_vec()
+    };
+    assert_eq!(pixel(&mut ui), [255, 0, 0], "the first picture");
+    assert!(ui.set_image(62, 1));
+    assert_eq!(pixel(&mut ui), [0, 0, 255]);
+    assert!(ui.set_image(62, 0));
+    assert_eq!(pixel(&mut ui), [255, 0, 0]);
+    // A picture that does not exist, an element that is not an image set, and none at all.
+    assert!(!ui.set_image(62, 2) && !ui.set_image(62, usize::MAX));
+    assert!(!ui.set_image(61, 0) && !ui.set_image(5, 0));
+    assert_eq!(pixel(&mut ui), [255, 0, 0]);
+}
+
+#[test]
 fn texts_fields_lists_and_bars_are_hit_over_their_whole_rectangle_even_when_transparent() {
     let mut ui = interface("whole");
     ui.set_rows(20, rows(3));

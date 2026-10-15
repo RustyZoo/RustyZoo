@@ -66,6 +66,16 @@ pub struct Options {
     pub grid: bool,
 }
 
+/// The north grid, east grid and highlight sprites of a shape.
+type Sprites = (Option<String>, Option<String>, Option<String>);
+
+/// A tile drawn with the highlight sprite of this colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Mark {
+    pub tile: usize,
+    pub color: [u8; 3],
+}
+
 /// What a picture of a map contains.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Summary {
@@ -131,6 +141,8 @@ pub struct Extra {
     pub ghost: Option<Ghost>,
     /// Entities of the zoo (positions in `zoo.entities`) drawn tinted, with their tint.
     pub tinted: Vec<(usize, [u8; 3])>,
+    /// The highlights of the terrain tool.
+    pub marks: Vec<Mark>,
 }
 
 /// An object that is not on the map: the pending object. It is painted like the temporary
@@ -152,6 +164,8 @@ type Flat = Rc<(Frame, Palette)>;
 
 enum Pic {
     Flat(Flat),
+    /// A picture drawn with one colour in place of its palette: the highlight of a tile.
+    Mark(Flat, Palette),
     /// A ground picture rendered at run time; its pixels have an alpha.
     Rendered(Rc<Picture>),
     /// An animation seen from a view, with the palette to draw it with in place of its own.
@@ -197,7 +211,7 @@ impl Placed {
             return Some([left, top, left + w, top + h]);
         }
         let frames: Vec<(&Frame, bool)> = match &self.pic {
-            Pic::Flat(flat) => vec![(&flat.0, false)],
+            Pic::Flat(flat) | Pic::Mark(flat, _) => vec![(&flat.0, false)],
             Pic::Rendered(_) => return None,
             Pic::Anim(anim, view, _) | Pic::Blended(anim, view, _) => {
                 let sprite = &anim.sprites.get(view.file)?.0;
@@ -290,6 +304,7 @@ impl Placed {
         );
         match &self.pic {
             Pic::Flat(flat) => flat.0.draw_zoomed(&flat.1, target, at, false, None, level),
+            Pic::Mark(flat, palette) => flat.0.draw_zoomed(palette, target, at, false, None, level),
             Pic::Rendered(picture) => blend(&picture.image, target, at, picture, level),
             Pic::Anim(anim, view, palette) => {
                 anim.draw_zoomed(*view, target, at, palette.as_ref(), None, level)
@@ -497,8 +512,8 @@ pub struct MapRenderer<'a> {
     blend: Vec<bool>,
     /// The cliff pieces 1 to 15, as the names of their root bitmaps.
     fringe: HashMap<u32, String>,
-    /// For each shape (decimal), the north and east grid sprites.
-    grid: HashMap<u32, (Option<String>, Option<String>)>,
+    /// For each shape (decimal), the north and east grid sprites and the highlight.
+    grid: HashMap<u32, Sprites>,
     flats: HashMap<String, Option<Flat>>,
     /// The renderer of ground pictures the cache lacks; `None` if the data cannot make any.
     ground: Option<ground::Renderer>,
@@ -563,7 +578,10 @@ impl<'a> MapRenderer<'a> {
         for (name, section) in read("tile.cfg").sections() {
             if let Some(shape) = to_int(name).and_then(|n| u32::try_from(n).ok()) {
                 let sprite = |key: &str| section.get(key).map(bitmap::member_name);
-                grid.insert(shape, (sprite("northgrid"), sprite("eastgrid")));
+                grid.insert(
+                    shape,
+                    (sprite("northgrid"), sprite("eastgrid"), sprite("highlight")),
+                );
             }
         }
         // The original reads the very murky limit and then overwrites it with the extremely murky
@@ -749,7 +767,9 @@ impl<'a> MapRenderer<'a> {
     }
 
     /// As [`MapRenderer::stage`], with the transient items of the map view: they are in the paint
-    /// order but not in the zoo.
+    /// order but not in the zoo. The marks of `extra` give a tile (an index into the tiles) the
+    /// highlight sprite in their colour, after its ground and grid lines (map drawing 7); a tile
+    /// that has a mark takes the grid lines off the two tiles behind it.
     pub fn stage_with(
         &mut self,
         zoo: &Zoo,
@@ -757,6 +777,8 @@ impl<'a> MapRenderer<'a> {
         no_units: bool,
         extra: &Extra,
     ) -> Result<Staged, RenderError> {
+        let marks: HashMap<usize, [u8; 3]> =
+            extra.marks.iter().map(|m| (m.tile, m.color)).collect();
         let rotation = rotation % 4;
         let (width, height) = (zoo.width as usize, zoo.height as usize);
         let mut summary = Summary {
@@ -921,7 +943,7 @@ impl<'a> MapRenderer<'a> {
         let mut placed: Vec<Placed> = Vec::new();
         for item in paint_order(&scene) {
             match item {
-                Item::Terrain(t) => self.terrain(&scene, t, &mut summary, &mut placed),
+                Item::Terrain(t) => self.terrain(&scene, &marks, t, &mut summary, &mut placed),
                 Item::Object(o) if o >= first_ripple => {
                     self.object(&scene, o, &metas[o], &mut Summary::default(), &mut placed)
                 }
@@ -1038,7 +1060,14 @@ impl<'a> MapRenderer<'a> {
     }
 
     /// Places the pictures of one tile: cliffs, ground and grid lines.
-    fn terrain(&mut self, scene: &Scene, t: usize, summary: &mut Summary, out: &mut Vec<Placed>) {
+    fn terrain(
+        &mut self,
+        scene: &Scene,
+        marks: &HashMap<usize, [u8; 3]>,
+        t: usize,
+        summary: &mut Summary,
+        out: &mut Vec<Placed>,
+    ) {
         let r = scene.rotation;
         let tile = scene.tiles[t];
         let (tx, ty) = ((t % scene.width) as i32, (t / scene.width) as i32);
@@ -1136,13 +1165,19 @@ impl<'a> MapRenderer<'a> {
             None => summary.ground_missing += 1,
         }
         // The grid lines a cliff forces are always drawn; the others only with the grid on.
-        let (north, east) = self
+        let (north, east, highlight) = self
             .grid
             .get(&u32::from(shape))
             .cloned()
             .unwrap_or_default();
-        for (forced, name) in [(forced[0], north), (forced[1], east)] {
-            if let Some(name) = name
+        for (e, (forced, name)) in [(forced[0], north), (forced[1], east)]
+            .into_iter()
+            .enumerate()
+        {
+            let behind = scene
+                .neighbour(t, map_direction(r, e * 2))
+                .is_some_and(|n| marks.contains_key(&n));
+            if let Some(name) = name.filter(|_| !behind)
                 && let Some(flat) = self.piece(&name)
             {
                 out.push(Placed {
@@ -1153,6 +1188,19 @@ impl<'a> MapRenderer<'a> {
                     pic: Pic::Flat(flat),
                 });
             }
+        }
+        if let Some(color) = marks.get(&t)
+            && let Some(name) = highlight
+            && let Some(flat) = self.piece(&name)
+        {
+            let palette = flat.1.solid(*color);
+            out.push(Placed {
+                x: ox + 32,
+                y: oy + 32,
+                piece: Some(piece_at((32, 32))),
+                grid: false,
+                pic: Pic::Mark(flat, palette),
+            });
         }
     }
 

@@ -146,7 +146,20 @@ usage: rustyzoo [--data <dir>] <command>
                       `tool pending CLASS/TYPE/SUBTYPE X,Y q N valid|overwrite|invalid` (the tile and
                       the quarter tile of the snapped point); releasing over a place that is not
                       valid shows its message in the message line for 5 seconds (`tool message
-                      ID`). The cash is told as `money cash N`
+                      ID`). The two terrain tabs of the construction panel (at
+                      180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
+                      open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
+                      minus buttons or the `+` and `-` keys) follows the pointer over the map, and
+                      painting a type of the list with a press and a drag gives it to the tiles of
+                      the brush that accept it; the session costs what the tiles touched cost
+                      against their first state, shown in the panel; accept pays it (booked as
+                      construction), cancel puts the tiles back, and leaving the panel (another
+                      tab, closing it, Escape) accepts it when the cash covers it and else cancels
+                      it with a message. The tools switch the tile grid on while they act. The log
+                      has `terrain enter paint|modify`, `terrain brush SIZE X,Y` (the top left tile),
+                      `terrain size N`, `terrain type N`, `terrain paint N` (tiles painted),
+                      `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave` and
+                      `terrain short`. The cash is told as `money cash N`
                       (whole units) when it changes, with `money bar TEXT COLOUR` for the
                       status bar, `money set N` and `money add N` for a start, and `money
                       month M year Y` at a month change; the `$` character adds 10000 to the

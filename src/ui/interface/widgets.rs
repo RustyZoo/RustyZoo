@@ -115,6 +115,24 @@ impl Interface {
         true
     }
 
+    /// Makes the image set `id` show its picture number `n` (an `animation` of the layout);
+    /// `false` if there is no such element or it has no such picture.
+    pub fn set_image(&mut self, id: i32, n: usize) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let e = &mut self.tree.elements[i];
+        let Kind::ImageSet(levels) = &mut e.kind else {
+            return false;
+        };
+        if n >= e.look.animation.len() {
+            return false;
+        }
+        levels.shown = n;
+        self.flag(i, DIRTY, true);
+        true
+    }
+
     /// Hides or shows an element on its own; `false` if there is none.
     pub fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
         let Some(i) = self.tree.find(id) else {

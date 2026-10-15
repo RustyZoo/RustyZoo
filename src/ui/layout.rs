@@ -306,6 +306,8 @@ pub struct Region {
 pub struct Levels {
     pub images: Vec<Option<Picture>>,
     pub transitions: Vec<i32>,
+    /// The `animation` an image set shows (the game's code chooses it).
+    pub shown: usize,
 }
 
 /// The type of an element with the keys of that type. The types that later milestones fill are
@@ -763,6 +765,7 @@ impl Tree {
                         .map(|v| self.pictures.get(vfs, v, &mut self.warnings))
                         .collect(),
                     transitions: ints("transition"),
+                    shown: 0,
                 };
                 match name {
                     b"UIImageSet" => Kind::ImageSet(levels),
