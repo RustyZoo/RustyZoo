@@ -123,15 +123,21 @@ impl World {
         self.scene.edge_object(t, d).map(|o| self.owner[o])
     }
 
-    /// The largest side, in half tiles, of the footprint of an object that holds a quarter of
-    /// tile `t`; 0 when there is none.
-    pub fn footprint(&self, t: usize) -> i32 {
+    /// Whether an object holding a quarter of tile `t` has a footprint other than exactly 1 by 1
+    /// half tiles: the tile then keeps its shape when the ground is shaped.
+    pub fn sized(&self, t: usize) -> bool {
         (0..4)
             .filter_map(|q| self.quadrant(t, q))
             .filter_map(|e| self.shapes[e])
-            .map(|s| s.footprint.0.max(s.footprint.1))
-            .max()
-            .unwrap_or(0)
+            .any(|s| s.footprint != (1, 1))
+    }
+
+    /// Whether the object holding the quarter of tile `t` at local (32..64, 32..64) has a footprint
+    /// above 2 half tiles in x or in y.
+    pub fn big(&self, t: usize) -> bool {
+        self.quadrant(t, 3)
+            .and_then(|e| self.shapes[e])
+            .is_some_and(|s| s.footprint.0 > 2 || s.footprint.1 > 2)
     }
 
     /// Whether an animal, guest or staff member stands on tile `t`.

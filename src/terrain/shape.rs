@@ -76,10 +76,10 @@ impl Step<'_> {
         self.types.iter().any(|ty| ty.kind == kind && ty.water)
     }
 
-    /// A tile that keeps its shape and moves as a whole: water, or under an object larger than
-    /// one tile (5.1).
+    /// A tile that keeps its shape and moves as a whole: water, or under an object that is
+    /// not a quarter tile (5.1).
     fn rigid(&self, t: usize) -> bool {
-        self.water(t) || self.world.footprint(t) > 2
+        self.water(t) || self.world.sized(t)
     }
 
     /// The tile `t` is changed by `action` toward `goal`; the corners that moved.
@@ -132,7 +132,7 @@ impl Step<'_> {
                 // Water is not moved, unless a large object stands on it (5.1).
                 if self.brush.contains(&b)
                     || !self.world.in_zoo(b)
-                    || (self.water(b) && self.world.footprint(b) <= 4)
+                    || (self.water(b) && !self.world.big(b))
                 {
                     continue;
                 }

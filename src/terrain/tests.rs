@@ -88,6 +88,14 @@ fn shape(e: &Entity) -> Option<Shape> {
             ..fixed
         }),
         "tree" | "buoy" | "pond" => Some(fixed),
+        "bench" => Some(Shape {
+            footprint: (2, 1),
+            ..fixed
+        }),
+        "bed" => Some(Shape {
+            footprint: (2, 2),
+            ..fixed
+        }),
         "hall" => Some(Shape {
             footprint: (4, 4),
             ..fixed
@@ -862,7 +870,7 @@ fn water_and_large_objects_move_as_a_whole_and_the_outside_of_the_zoo_does_not_m
     // A building of two tiles by two is rigid: the tile under it keeps its slope while the
     // flat ground beside it comes up to the goal.
     let mut world = self::world(vec![entity("hall", 4 * 64, 4 * 64, 0)]);
-    assert_eq!(world.footprint(3 * 8 + 3), 4);
+    assert!(world.sized(3 * 8 + 3) && world.big(3 * 8 + 3));
     world.set_tile(4, 4, 0, 0x01, GRASS);
     for (x, y) in [(5, 4), (4, 5), (5, 5)] {
         world.set_tile(x, y, -1, 0, GRASS);
@@ -897,7 +905,7 @@ fn the_ground_around_a_rigid_building_is_not_pulled_out_of_shape() {
     let mut tool = modify(2, true, false);
     drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
     // The hall holds the tiles (4..5, 2..3): the brush at (3..4, 3..4) has the tile (4, 3) in it.
-    assert!(world.footprint(3 * 8 + 4) > 2);
+    assert!(world.sized(3 * 8 + 4));
     assert_eq!(world.zoo.tiles[3 * 8 + 2].elevation, 0, "the water stays");
 }
 
@@ -997,5 +1005,42 @@ fn absurd_pointers_and_elevations_change_nothing_and_never_panic() {
             tool.release();
             assert!(tool.cost(&world) >= 0.0);
         }
+    }
+}
+
+#[test]
+fn any_object_that_is_not_a_quarter_tile_makes_its_tile_rigid() {
+    // A bench (2 by 1 half tiles) on the tile beside the brush moves whole instead of taking the
+    // slope; a quarter-tile object does not.
+    for (class, rigid) in [("bench", true), ("bed", true), ("tree", false)] {
+        let mut world = world(vec![entity(class, 2 * 64 + 32, 3 * 64 + 32, 0)]);
+        assert_eq!(world.sized(3 * 8 + 2), rigid, "{class}");
+        let mut tool = modify(2, true, false);
+        drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+        drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+        let tile = world.zoo.tiles[3 * 8 + 2];
+        assert_eq!(tile.shape == 0, rigid, "{class}: {tile:?}");
+    }
+}
+
+#[test]
+fn water_beside_the_brush_moves_only_under_an_object_larger_than_a_tile_in_its_last_quarter() {
+    // The hall (2 by 2 tiles) is centred on the corner of the tiles (2..3, 3..4); the bed holds
+    // the water tile alone and is not larger than a tile.
+    for (class, (x, y), moved) in [
+        ("hall", (3 * 64, 4 * 64), true),
+        ("bed", (2 * 64 + 32, 3 * 64 + 32), false),
+    ] {
+        let mut world = world(vec![entity(class, x, y, 0)]);
+        world.set_tile(2, 3, 0, 0, FRESH);
+        world.begin();
+        assert_eq!(world.big(3 * 8 + 2), moved, "{class}");
+        let mut tool = modify(1, true, false);
+        drag(&mut tool, &mut world, (3, 3), 16, Zoom::Normal);
+        assert_eq!(
+            world.zoo.tiles[3 * 8 + 2].elevation,
+            i32::from(moved),
+            "{class}"
+        );
     }
 }
