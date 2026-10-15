@@ -1752,6 +1752,9 @@ mod terrain;
 mod undo;
 
 #[cfg(test)]
+mod adopt_tests;
+
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]

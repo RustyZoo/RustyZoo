@@ -164,8 +164,8 @@ usage: rustyzoo [--data <dir>] <command>
                       alone receives the mouse and pauses the game; a message over the map
                       view belongs to the map: a press or release on it prints `tool down X,Y` or `tool up X,Y`, the tile
                       under the pointer (`none` off the map), and the first draw after the
-                      world was edited prints `world stage`; the construction and objects panels of
-                      the left bar fill their item lists and log `tool panel construction|objects|none`,
+                      world was edited prints `world stage`; the construction, objects and Adopt panels of
+                      the left bar fill their item lists and log `tool panel construction|objects|adopt|none`,
                       `tool item TAB CLASS/TYPE/SUBTYPE name=NAME cost=COST` for the item chosen, `tool
                       rotate PANEL STEP` and `tool drop` (Escape or the right button drops the item,
                       then closes the panel); the item follows the pointer over the map, snapped
@@ -181,7 +181,7 @@ usage: rustyzoo [--data <dir>] <command>
                       along the side of its tile the press is nearest to, `smartFences` of `[UI]`
                       keeps it off large objects; `world add CLASS/TYPE/SUBTYPE X,Y id N quadrants Q`
                       (a recolourable building stores the default colour of each group), `X,Y
-                      side S id N` for a fence, `tool turn STEP` for a type that turns by
+                      side S id N` for a fence, `id N name=NAME` for an animal of the Adopt panel (the bulldozer sells one), `tool turn STEP` for a type that turns by
                       itself, the placement sound), one that is not valid or too dear asks for the
                       refusal sound and shows its message, if it has one, in the message line for
                       5 seconds (`tool message ID`; `tool refused` when it has none). The bulldozer button (1028) of the main panel

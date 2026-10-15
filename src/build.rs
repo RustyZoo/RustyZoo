@@ -895,9 +895,10 @@ impl Build {
                 // The species stays when it is listed again as the other sex.
                 let same = |l: &usize| {
                     let (a, b) = (&cat.types[*l], &cat.types[ty]);
-                    *l == ty || (a.class == b.class && a.type_name == b.type_name)
+                    a.class == "animals" && a.class == b.class && a.type_name == b.type_name
                 };
-                self.list.iter().position(same)
+                let list = &self.list;
+                (list.iter().position(|&l| l == ty)).or_else(|| list.iter().position(same))
             })
             .or((!self.list.is_empty()).then_some(0));
         match want {

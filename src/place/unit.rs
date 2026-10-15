@@ -329,7 +329,6 @@ pub fn crate_spot(world: &World, start: usize) -> Option<usize> {
                 let Some(t) = world.tile_index(sx + dx, sy + dy) else {
                     continue;
                 };
-                let held: Vec<bool> = (0..4).map(|q| world.quadrant(t, q).is_some()).collect();
                 if !world.in_zoo(t)
                     || world.exhibits().region(t) != Some(GROUNDS)
                     || world.is_water(t)
@@ -341,7 +340,7 @@ pub fn crate_spot(world: &World, start: usize) -> Option<usize> {
                 let score = u32::from(
                     (0..4).any(|q| world.quadrant(t, q).is_none_or(|o| lets_through(world, o))),
                 ) + u32::from(world.zoo.tiles[t].shape == 0)
-                    + u32::from(!held.contains(&true));
+                    + u32::from((0..4).all(|q| world.quadrant(t, q).is_none()));
                 if score == 3 {
                     return Some(t);
                 }

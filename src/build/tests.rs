@@ -257,6 +257,7 @@ impl Strings for Texts {
             12 => "Paths".into(),
             13 => "Foliage".into(),
             14 => "Buildings".into(),
+            2025 => "Creatures".into(),
             3297 => "none".into(),
             3298 => "exhibit".into(),
             3299 => "show".into(),
@@ -274,7 +275,8 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n\
     [b]\ntype=UILayout\nlayout=ui/c.lyt\n[c]\ntype=UILayout\nlayout=ui/o.lyt\n\
     [d]\ntype=UIButton\nid=1002\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=8\n\
-    [e]\ntype=UIButton\nid=1001\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=4\n";
+    [e]\ntype=UIButton\nid=1001\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=4\n\
+    [f]\ntype=UILayout\nlayout=ui/a.lyt\n";
 
 /// One panel: the layout `id`, title, expansion button, list (with its radio set, template and
 /// bar from `list` + 1 to + 3), the tabs, the rotate buttons, the name and the cost.
@@ -356,10 +358,24 @@ fn interface(name: &str) -> (Interface, Vfs, Install) {
          [rr]\ntype=UIButton\nid=3055\ndx=5\ndy=5\nstate=1\n\
          [n]\ntype=UIText\nid=3058\ndx=50\ndy=10\n[k]\ntype=UIText\nid=3016\ndx=50\ndy=10\n",
     );
+    let adopt = panel(
+        3,
+        2023,
+        2005,
+        2019,
+        &[(2075, "animals", 14), (3255, "shelters", 14)],
+        "[m]\ntype=UIButton\nid=2000\ndx=5\ndy=5\nstate=4096\nstate=8\n\
+         [fe]\ntype=UIButton\nid=2001\ndx=5\ndy=5\nstate=4096\n\
+         [sx]\ntype=UIRadioSet\nid=2040\nbutton=2000\nbutton=2001\n\
+         [n]\ntype=UIText\nid=2043\ndx=50\ndy=10\n[k]\ntype=UIText\nid=2014\ndx=50\ndy=10\n\
+         [e]\ntype=UIText\nid=2082\ndx=50\ndy=10\n[em]\ntype=UIText\nid=2009\ndx=50\ndy=10\n\
+         [li]\ntype=UIImage\nid=2045\n[hi]\ntype=UIImage\nid=2047\n[hb]\ntype=UIImage\nid=2046\n",
+    );
     let install = Install::new(
         &format!("build-{name}"),
         &[
             ("ui/root.lyt", ROOT.as_bytes().to_vec()),
+            ("ui/a.lyt", adopt.into_bytes()),
             ("ui/c.lyt", construction.into_bytes()),
             ("ui/o.lyt", objects.into_bytes()),
             (
@@ -1055,4 +1071,66 @@ fn a_bulldozer_press_is_a_drag_once_it_leaves_its_tile_or_16_pixels() {
     build.sweep_area(Some((5, 5)), (i32::MAX, i32::MIN));
     build.end_sweep();
     assert_eq!(build.sweep_area(Some((5, 5)), (0, 0)), None);
+}
+
+/// An animal type of the Adopt panel: the keys are in the section of its default subtype `m`.
+fn animal(name: &str, sub: &str, keys: &str, id: i32) -> EntityType {
+    let ini = format!(
+        "[Global]\nDefaultSubtype=m\n[Member]\nanimals\n[m/Characteristics/Integers]\n{keys}"
+    );
+    EntityType {
+        name_id: id,
+        ..ty("animals", name, sub, &ini)
+    }
+}
+
+#[test]
+fn the_adopt_panel_lists_each_species_once_as_the_sex_chosen_in_the_order_of_the_data() {
+    let (mut ui, vfs, _install) = interface("adopt");
+    let keys = |habitat: u32, family: u32, cost: u32| {
+        format!(
+            "cHabitat={habitat}\ncLocation=9600\ncFamily={family}\ncGenus=1\ncPurchaseCost={cost}\n"
+        )
+    };
+    let cat = catalogue(vec![
+        animal("zebra", "m", &keys(9400, 5204, 800), 101),
+        animal("zebra", "f", &keys(9400, 5204, 800), 101),
+        animal("lion", "m", &keys(9400, 5200, 700), 102),
+        animal("lion", "f", &keys(9400, 5200, 700), 102),
+        animal("camel", "m", &keys(9300, 5300, 90), 103),
+        animal("zebra", "y", &keys(9400, 5204, 800), 101),
+        scenery("objects", "shelter", "hut", "shelters", 50, 104),
+    ]);
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    build.set_month(10);
+    assert!(build.october());
+    assert!(ui.show(3));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    // Males, by habitat then family: the camel, the lion, the zebra; the camel is chosen.
+    assert_eq!(build.list, [4, 2, 0]);
+    assert_eq!(log[0], "tool panel adopt");
+    assert_eq!(
+        log[1],
+        "tool item animals animals/camel/m name=Name103 cost=$90"
+    );
+    assert_eq!(
+        (text(&ui, 2023), text(&ui, 2005)),
+        ("Creatures".into(), "All".into())
+    );
+    // The zebra's button, then the Female button: the same species, as a female.
+    log.clear();
+    build.selected(&mut ui, &vfs, &cat, 1_000_000 + 2019 * 1000 + 2, &mut log);
+    assert_eq!(build.tool(), Some(0));
+    ui.set_button(2000, false, true);
+    ui.set_button(2001, true, true);
+    build.selected(&mut ui, &vfs, &cat, 2001, &mut log);
+    assert_eq!(build.list, [3, 1]);
+    assert_eq!(build.tool(), Some(1), "the zebra stays");
+    assert_eq!(text(&ui, 2043), "Name101");
+    // A tab of other types lists them whatever their subtype.
+    ui.set_button(2075, false, true);
+    ui.set_button(3255, true, true);
+    build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
+    assert_eq!(build.list, [6]);
+    assert_eq!(state_of(&ui, 2009) & HIDDEN, HIDDEN);
 }

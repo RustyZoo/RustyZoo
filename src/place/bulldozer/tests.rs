@@ -190,7 +190,7 @@ fn the_refund_is_80_percent_and_a_fence_gets_less_as_it_decays() {
 }
 
 #[test]
-fn only_paths_and_deletable_scenery_in_the_zoo_can_be_removed() {
+fn only_paths_deletable_scenery_and_animals_in_the_zoo_can_be_removed() {
     let cat = catalogue();
     let w = world(vec![
         path(1, 1),
@@ -200,7 +200,8 @@ fn only_paths_and_deletable_scenery_in_the_zoo_can_be_removed() {
         piece("f", 5, 5, 2),
     ]);
     let can: Vec<bool> = (0..5).map(|e| removable(&w, &cat, e)).collect();
-    assert_eq!(can, [true, true, false, false, true]);
+    // An animal is sold; the other units never are.
+    assert_eq!(can, [true, true, false, true, true]);
     assert!(!removable(&w, &cat, 99));
 }
 
