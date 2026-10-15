@@ -303,6 +303,27 @@ impl Interface {
 
     fn release(&mut self, b: usize, at: (i32, i32)) {
         let inside = self.widget_hit(b, at);
+        self.released(b, inside);
+    }
+
+    /// A hotkey presses the button `id`, then releases it inside: its action runs. Nothing
+    /// happens if the button is not on the screen or is disabled; `false` then.
+    pub fn press_button(&mut self, id: i32) -> bool {
+        let Some(b) = self
+            .tree
+            .find(id)
+            .filter(|&b| self.is_button(b) && self.visible(b))
+            .filter(|&b| self.tree.elements[b].state & (DISABLED | READ_ONLY) == 0)
+        else {
+            return false;
+        };
+        self.press(b);
+        self.input.capture = None;
+        self.released(b, true);
+        true
+    }
+
+    fn released(&mut self, b: usize, inside: bool) {
         let id = self.id(b);
         self.event(format!(
             "release {id} {}",
@@ -361,6 +382,26 @@ impl Interface {
             }
         }
         members
+    }
+
+    /// Showing a layout shows every sub-layout, the pages of its tab buttons among them: the
+    /// radio sets inside it then deselect all members but the one the file selected (4.6), which
+    /// hides the pages of the others.
+    fn settle_radio_sets(&mut self, layout: usize) {
+        for i in 0..self.tree.elements.len() {
+            let Kind::RadioSet(buttons) = &self.tree.elements[i].kind else {
+                continue;
+            };
+            let inside = std::iter::successors(Some(i), |&e| self.tree.elements[e].parent)
+                .any(|e| e == layout);
+            let current = buttons
+                .iter()
+                .filter_map(|&m| self.tree.find(m))
+                .find(|&m| self.is_button(m) && self.tree.elements[m].state & SELECTED != 0);
+            if let (true, Some(current)) = (inside, current) {
+                self.radio_select(current);
+            }
+        }
     }
 
     /// A member released as selected: every other member is deselected, its deselect action run
@@ -450,6 +491,7 @@ impl Interface {
         match self.tree.elements[i].kind {
             Kind::Layout => {
                 self.tree.show(id);
+                self.settle_radio_sets(i);
                 if self.draggable(i) {
                     self.tree.bring_to_front(i);
                 }

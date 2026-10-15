@@ -53,6 +53,58 @@ fn interface(name: &str) -> Interface {
     Interface::new(tree, Box::new(Texts))
 }
 
+/// The map view, the status bar and the zoo status window with a Finances tab of 60 cells: the
+/// button that opens it is element 1014 and the tab of the table is 4154, at (55, 42).
+fn status_interface(name: &str) -> Interface {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+        [b]\ntype=UILayout\nlayout=ui/bar.lyt\n\
+        [c]\ntype=UILayout\nlayout=ui/status.lyt\n";
+    let bar = "[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=0\ndx=40\ndy=10\n\
+        [m]\ntype=UIText\nid=1016\nx=0\ny=0\ndx=40\ndy=10\n\
+        [z]\ntype=UIButton\nid=1014\nx=0\ny=0\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=14\n";
+    let status = "[LayoutInfo]\nid=14\nlayer=5\nx=0\ny=0\ndx=64\ndy=48\nstate=1\n\
+        [r]\ntype=UIRadioSet\nid=4103\nbutton=4104\nbutton=4154\n\
+        [i]\ntype=UIButton\nid=4104\nx=50\ny=30\ndx=10\ndy=5\nlayer=1\nstate=8\nstate=4096\naction=3\ntarget=800\n\
+        [p]\ntype=UILayout\nlayout=ui/info.lyt\nstate=1\n\
+        [f]\ntype=UIButton\nid=4154\nx=50\ny=40\ndx=10\ndy=5\nlayer=1\ntransparent=0\nstate=4096\naction=3\ntarget=110\n\
+        [t]\ntype=UILayout\nlayout=ui/finances.lyt\nstate=1\n";
+    let mut finances = "[LayoutInfo]\nid=110\nx=0\ny=0\ndx=64\ndy=48\nstate=1\n".to_string();
+    for id in (3920..=3924)
+        .chain(3926..=3929)
+        .chain(3930..3990)
+        .chain([3991])
+    {
+        // The admissions income and construction cells give the colours of the totals.
+        let colour = match (id - 3930) % 15 {
+            1 => "forecolor=83\nforecolor=219\nforecolor=83\n",
+            2 => "forecolor=186\nforecolor=69\nforecolor=33\n",
+            _ => "forecolor=237\nforecolor=228\nforecolor=173\n",
+        };
+        finances += &format!("[e{id}]\ntype=UIText\nid={id}\nx=0\ny=0\ndx=9\ndy=9\n{colour}");
+    }
+    let files = Install::new(
+        &format!("app-status-ui-{name}"),
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/bar.lyt", bar.as_bytes().to_vec()),
+            ("ui/status.lyt", status.as_bytes().to_vec()),
+            (
+                "ui/info.lyt",
+                b"[LayoutInfo]\nid=800\nx=0\ny=0\ndx=9\ndy=9\nstate=1\n".to_vec(),
+            ),
+            ("ui/finances.lyt", finances.into_bytes()),
+        ],
+    );
+    let mut tree = Tree::load(&Vfs::open(&files.0).unwrap(), "ui/root.lyt", 0);
+    assert_eq!(tree.failure, None);
+    tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
+    let mut ui = Interface::new(tree, Box::new(Texts));
+    // The game shows its main panel, with the button of the window.
+    assert!(ui.show(2));
+    ui
+}
+
 /// Runs `body` on a game with a status bar.
 fn with_game(name: &str, body: impl FnOnce(&mut App)) {
     let install = cache_install(&format!("app-money-{name}"), frame_file());
@@ -242,5 +294,117 @@ fn a_freeform_start_sets_the_cash_and_a_scenario_start_sets_then_adds_without_bo
         app.begin(&start(StartCash::default(), false));
         app.pass(60, &[]);
         assert_eq!(said(app, 3, 60)[0], "cash 7");
+    });
+}
+
+/// The log lines about the table in a pass: `cell ID RRGGBB TEXT`.
+fn cells(app: &App, pass: u64, now: u64) -> Vec<String> {
+    said(app, pass, now)
+        .into_iter()
+        .filter_map(|l| l.strip_prefix("cell ").map(String::from))
+        .collect()
+}
+
+#[test]
+fn the_z_key_opens_the_zoo_status_window_and_its_finances_table_follows_the_accounts() {
+    with_game("table", |app| {
+        app.set_interface(status_interface("table"));
+        let mut money = with_cash(50_000.0);
+        money.charge(CONSTRUCTION, 40.0);
+        app.set_money(money);
+        // Hidden: the table is not written.
+        app.pass(0, &[]);
+        assert!(cells(app, 0, 0).is_empty());
+        assert!(!app.interface().unwrap().shown(110));
+        // Z presses the button: the window opens on its first tab, the table is not shown.
+        app.pass(20, &[Command::Char(b'z')]);
+        assert!(app.interface().unwrap().shown(14));
+        assert!(cells(app, 1, 20).is_empty());
+        // The Finances tab shows it, all four months of it.
+        let tab = [
+            Command::Mouse(Mouse::Move(55, 42)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ];
+        app.pass(30, &tab);
+        assert!(app.interface().unwrap().shown(110));
+        let lines = cells(app, 2, 30);
+        assert!(
+            lines.contains(&"3920 edf0ad Jan".to_string())
+                || lines.iter().any(|l| l.starts_with("3920 "))
+        );
+        // The total is a loss: the colour is the construction cell's.
+        assert!(
+            lines.contains(&"3941 ba4521 ($40)".to_string()),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&"3926 53db53 $49,960".to_string()),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&"3991 ba4521 ($40)".to_string()),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&"3932 ba4521 ($40)".to_string()),
+            "{lines:?}"
+        );
+        assert_eq!(app.interface().unwrap().text(3921).unwrap(), b"");
+        // Nothing changed, nothing is written.
+        app.pass(40, &[]);
+        assert!(cells(app, 3, 40).is_empty());
+        // A donation changes the current column and the amounts only.
+        app.pass(60, &[Command::Char(b'$')]);
+        let lines = cells(app, 4, 60);
+        assert!(
+            lines.contains(&"3938 ede4ad $10,000".to_string()),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&"3941 53db53 $9,960".to_string()),
+            "{lines:?}"
+        );
+        assert!(lines.iter().all(|l| !l.starts_with("3921")), "{lines:?}");
+        // Another character does nothing, and Z again closes the window.
+        app.pass(80, &[Command::Char(b'x')]);
+        assert!(app.interface().unwrap().shown(110));
+        app.pass(100, &[Command::Char(b'Z')]);
+        assert!(!app.interface().unwrap().shown(14));
+        // No button, a hidden panel, or a text that is no button: nothing to press.
+        let ui = app.interface().unwrap();
+        assert!(!ui.press_button(99_999) && !ui.press_button(1016));
+        ui.tree.hide(ui.tree.find(2).unwrap());
+        assert!(!ui.press_button(1014));
+    });
+}
+
+#[test]
+fn a_month_change_rewrites_the_four_columns_while_the_window_is_open() {
+    with_game("table-month", |app| {
+        app.set_interface(status_interface("table-month"));
+        let mut money = with_cash(1000.0);
+        money.charge(CONSTRUCTION, 10.0);
+        app.set_money(money);
+        let tab = [
+            Command::Char(b'z'),
+            Command::Mouse(Mouse::Move(55, 42)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ];
+        app.pass(0, &tab);
+        assert_eq!(app.interface().unwrap().text(3920).unwrap(), b"Jan");
+        let mut now = 0;
+        for _ in 0..1870 {
+            now += 200;
+            app.pass(now, &[]);
+        }
+        let ui = app.interface().unwrap();
+        assert_eq!(ui.text(3920).unwrap(), b"Feb");
+        // January moved to the column of the previous month, February is the current one.
+        assert_eq!(ui.text(3923).unwrap(), b"Jan");
+        assert_eq!(ui.text(3921).unwrap(), b"");
+        assert_eq!(ui.text(3932).unwrap(), b"$0");
+        assert_eq!(ui.text(3932 + 15 * 3).unwrap(), b"($10)");
     });
 }
