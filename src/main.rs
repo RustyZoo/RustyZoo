@@ -31,6 +31,7 @@ use rustyzoo::strings::StringTables;
 use rustyzoo::timing::Timers;
 use rustyzoo::userdir;
 use rustyzoo::vfs::{self, Vfs};
+use rustyzoo::world::World;
 use rustyzoo::zoo::{Zoo, ZooError};
 use sdl3::audio::AudioSpec;
 use sdl3::pixels::PixelFormat;
@@ -70,6 +71,10 @@ usage: rustyzoo [--data <dir>] <command>
                       <dir>/frame-<number>.png
   map-info <member>   print the version, size, tiles and entities of a map or saved game (a .zoo)
   check-maps          read every .zoo file; list those that fail; exit 1 if one is corrupted
+  check-exhibits <map>
+                      find the exhibits of the maps matching <map> (a member, or a pattern with *
+                      as for ls) from their fences and compare their number with the habitat
+                      count the file stores; list the sizes; exit 1 if one differs or none matches
   render-ani <member.ani> <dir> [--anim NAME]
                       write frame 0 of an animation set as eight PNG files into <dir>, one per
                       screen direction, and print the anchor point; with --anim, the first
@@ -325,8 +330,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
         }
         ["map-info", member] => map_info(&open_game(data_dir)?, member),
         ["check-maps"] => check_maps(&open_game(data_dir)?),
-        // Taken by the exhibits track; not in the usage text until it works.
-        ["check-exhibits", _map] => Err("check-exhibits: not implemented yet".into()),
+        ["check-exhibits", map] => check_exhibits(&open_game(data_dir)?, map),
         ["render-ani", member, dir] => {
             render_ani(&open_game(data_dir)?, member.to_string(), Path::new(dir))
         }
@@ -943,6 +947,66 @@ fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
     match corrupted {
         0 => Ok(()),
         _ => Err(format!("{corrupted} of {files} map files are corrupted").into()),
+    }
+}
+
+/// Finds the regions of the maps that match `pattern` (a member name, or a pattern with `*` as
+/// for `ls`) from their fences and compares the number of exhibits with the habitat count the file
+/// stores. A mismatch is listed and fails the command.
+fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
+    let catalogue = Catalogue::load(vfs)?;
+    let renderer = MapRenderer::new(vfs, &catalogue);
+    let mut report = Report::new();
+    let (mut maps, mut agree, mut mismatch, mut skipped) = (0, 0, 0, 0);
+    for member in vfs.list(Some(pattern)) {
+        if !member.to_ascii_lowercase().ends_with(".zoo") {
+            continue;
+        }
+        maps += 1;
+        let name = member.escape_debug();
+        let zoo = vfs
+            .read(&member)
+            .map_err(|e| ZooError::Corrupted(e.to_string()))
+            .and_then(|bytes| Zoo::parse(&bytes))
+            .and_then(|zoo| zoo.checked(&catalogue));
+        let zoo = match zoo {
+            Ok(zoo) => zoo,
+            Err(err) => {
+                skipped += 1;
+                report.line(format_args!(
+                    "skipped {name}: {}",
+                    err.to_string().escape_debug()
+                ));
+                continue;
+            }
+        };
+        let stored = zoo.habitat_count;
+        let world = World::new(zoo, |e| renderer.shape(e));
+        let list = world.exhibits().list();
+        let sizes: Vec<String> = list.iter().map(|e| e.tiles.to_string()).collect();
+        let verdict = if list.len() == stored {
+            agree += 1;
+            "ok"
+        } else {
+            mismatch += 1;
+            "MISMATCH"
+        };
+        report.line(format_args!(
+            "{verdict} {name}: {} exhibits, {stored} stored; sizes [{}]",
+            list.len(),
+            sizes.join(" ")
+        ));
+    }
+    report.line(format_args!(
+        "{maps} maps, {agree} agree, {mismatch} differ, {skipped} skipped"
+    ));
+    report.finish()?;
+    match (maps, mismatch) {
+        (0, _) => Err(format!("check-exhibits: no map matches {}", pattern.escape_debug()).into()),
+        (_, 0) => Ok(()),
+        _ => {
+            Err(format!("{mismatch} of {maps} maps differ from their stored habitat count").into())
+        }
     }
 }
 

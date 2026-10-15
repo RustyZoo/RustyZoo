@@ -8,6 +8,7 @@
 //! `Common::id`, to keep one). The game's rules (what may be placed where, what it costs) are not
 //! here.
 
+use crate::exhibit::Exhibits;
 use crate::render::corner_elevation;
 use crate::render::order::{Kind, Object, Scene};
 use crate::zoo::{Entity, Tile, Zoo};
@@ -46,6 +47,8 @@ pub struct World {
     owner: Vec<usize>,
     /// Per tile, whether it is inside the zoo wall.
     in_zoo: Vec<bool>,
+    /// The regions the exhibit fences make, built again after a fence is placed or removed.
+    exhibits: Exhibits,
     undo: Vec<Action>,
     /// The next action starts a new undo list.
     fresh: bool,
@@ -60,6 +63,7 @@ impl World {
         let (scene, owner) = index(&zoo, &shapes);
         let mut world = World {
             in_zoo: vec![true; zoo.tiles.len()],
+            exhibits: Exhibits::default(),
             zoo,
             shapes,
             scene,
@@ -69,7 +73,29 @@ impl World {
             dirty: false,
         };
         world.mark_exterior();
+        world.exhibits = Exhibits::new(&world);
         world
+    }
+
+    /// The regions of the map (exhibits and money 3.1).
+    pub fn exhibits(&self) -> &Exhibits {
+        &self.exhibits
+    }
+
+    /// The tile across the edge of tile `t` in map direction `d` (0, 2, 4 or 6).
+    pub fn neighbour(&self, t: usize, d: usize) -> Option<usize> {
+        self.scene.neighbour(t, d)
+    }
+
+    /// Whether the edge of tile `t` in map direction `d` holds a fence of an exhibit, in its own
+    /// slot or in the slot the neighbour has on the same line.
+    pub fn closed(&self, t: usize, d: usize) -> bool {
+        let fence = |t: usize, d: usize| {
+            self.scene
+                .edge_object(t, d)
+                .is_some_and(|o| self.shapes[self.owner[o]].is_some_and(|s| s.fence))
+        };
+        fence(t, d) || self.neighbour(t, d).is_some_and(|n| fence(n, (d + 4) % 8))
     }
 
     /// The index of tile (`tx`, `ty`), if it is on the map.
@@ -119,6 +145,9 @@ impl World {
         self.shapes.push(shape);
         self.record(Action::Placed(id));
         self.changed();
+        if shape.is_some_and(|s| s.fence) {
+            self.exhibits = Exhibits::new(self);
+        }
         Some(id)
     }
 
@@ -131,6 +160,9 @@ impl World {
         let shape = self.shapes.remove(at);
         self.record(Action::Removed(at, entity, shape));
         self.changed();
+        if shape.is_some_and(|s| s.fence) {
+            self.exhibits = Exhibits::new(self);
+        }
         true
     }
 
@@ -173,6 +205,7 @@ impl World {
         }
         self.fresh = false;
         self.changed();
+        self.exhibits = Exhibits::new(self);
         !actions.is_empty()
     }
 
