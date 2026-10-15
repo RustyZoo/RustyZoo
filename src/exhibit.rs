@@ -20,6 +20,8 @@ pub struct Exhibit {
     /// The first tile of its region (row by row).
     pub first: usize,
     pub tiles: usize,
+    /// Its tiles in the original's order (exhibits and money 3.1), as the last fill left them.
+    pub order: Vec<usize>,
     /// The name; empty for an exhibit found in a map, whose stored name is not read yet.
     pub name: String,
     /// The id of the fence piece that is its gate.
@@ -155,6 +157,96 @@ pub struct Exhibits {
     pub counter: u32,
 }
 
+/// The tiles of the region of `start` in the original's order (exhibits and money 3.1): a stack of
+/// seed tiles, each popped tile that is not in yet puts in its row run (the tile, then the tiles
+/// to its west, then those to its east), and pushes the tiles above and below the run from west
+/// to east. The list is the reverse of the order the tiles were put in.
+pub fn fill(world: &World, start: usize) -> Vec<usize> {
+    let mut put = vec![false; world.zoo.tiles.len()];
+    let mut list = Vec::new();
+    let mut seeds = vec![start];
+    while let Some(t) = seeds.pop() {
+        if std::mem::replace(&mut put[t], true) {
+            continue;
+        }
+        list.push(t);
+        let mut ends = [t; 2];
+        for (end, d) in ends.iter_mut().zip([6, 2]) {
+            while !world.closed(*end, d)
+                && let Some(n) = world.neighbour(*end, d)
+            {
+                if !std::mem::replace(&mut put[n], true) {
+                    list.push(n);
+                }
+                *end = n;
+            }
+        }
+        let mut at = ends[0];
+        loop {
+            for d in [0, 4] {
+                if let Some(n) = world.neighbour(at, d)
+                    && !put[n]
+                    && !world.closed(at, d)
+                {
+                    seeds.push(n);
+                }
+            }
+            match world.neighbour(at, 2) {
+                Some(n) if at != ends[1] => at = n,
+                _ => break,
+            }
+        }
+    }
+    list.reverse();
+    list
+}
+
+/// The line of the boundary of the region `tiles` that the file closes last (exhibits and money
+/// 3.8): a line is closed by the earlier in the file of the exhibit fence pieces on its two slots.
+/// The tile inside, the tile across and the tile of the closing piece.
+pub fn closed_last(world: &World, tiles: &[usize]) -> Option<(usize, usize, usize)> {
+    let inside: std::collections::HashSet<usize> = tiles.iter().copied().collect();
+    let mut last: Option<(usize, (usize, usize, usize))> = None;
+    for &t in tiles {
+        for d in [0, 2, 4, 6] {
+            let Some(n) = world.neighbour(t, d).filter(|n| !inside.contains(n)) else {
+                continue;
+            };
+            let pieces = [(t, world.edge(t, d)), (n, world.edge(n, (d + 4) % 8))];
+            let closing = (pieces.into_iter())
+                .filter_map(|(tile, p)| p.map(|p| (p, tile)))
+                .filter(|&(p, _)| world.shape(p).is_some_and(|s| s.fence))
+                .min();
+            if let Some((p, tile)) = closing
+                && last.is_none_or(|(l, _)| p > l)
+            {
+                last = Some((p, (t, n, tile)));
+            }
+        }
+    }
+    last.map(|l| l.1)
+}
+
+/// The boundary pairs of the tile list `order` (3.1): for each tile, for the sides 0, 2, 4, 6, the
+/// pair (tile, neighbour) when `inside` says the neighbour is not in the exhibit; no neighbour at
+/// the map edge.
+pub fn boundary_of(
+    world: &World,
+    order: &[usize],
+    inside: &dyn Fn(usize) -> bool,
+) -> Vec<(usize, Option<usize>)> {
+    let mut pairs = Vec::new();
+    for &t in order {
+        for d in [0, 2, 4, 6] {
+            let n = world.neighbour(t, d);
+            if n.is_none_or(|n| !inside(n)) {
+                pairs.push((t, n));
+            }
+        }
+    }
+    pairs
+}
+
 /// The regions of a world, the one of the entrance first and then the others by their first tile.
 pub fn parts(world: &World) -> Vec<Part> {
     let tiles = world.zoo.tiles.len();
@@ -205,8 +297,16 @@ impl Exhibits {
             counter: 1,
             ..Exhibits::default()
         };
-        for part in parts(world).iter().filter(|p| !p.grounds) {
-            found.add(part, String::new());
+        // A loaded exhibit is filled from its tile on the line the file closes last (3.8).
+        for part in parts(world).into_iter().filter(|p| !p.grounds) {
+            let start =
+                closed_last(world, &part.tiles)
+                    .map(|l| l.0)
+                    .or(part.tiles.iter().copied().min());
+            let size = part.tiles.len();
+            let tiles = start.map_or(part.tiles, |s| fill(world, s));
+            debug_assert_eq!(tiles.len(), size, "the fill finds the region");
+            found.add(&Part { tiles, ..part }, String::new());
         }
         found.exterior(world);
         found
@@ -237,6 +337,7 @@ impl Exhibits {
             id,
             first: 0,
             tiles: 0,
+            order: Vec::new(),
             name,
             gate: None,
             tank: None,
@@ -253,6 +354,7 @@ impl Exhibits {
         if let Some(e) = self.list.iter_mut().find(|e| e.id == id) {
             e.first = part.tiles.iter().copied().min().unwrap_or(0);
             e.tiles = part.tiles.len();
+            e.order.clone_from(&part.tiles);
         }
     }
 
@@ -299,6 +401,20 @@ impl Exhibits {
     /// The region of tile `t`: [`GROUNDS`], [`EXTERIOR`] or the number of an exhibit (from 1).
     pub fn region(&self, t: usize) -> Option<u32> {
         self.region.get(t).copied()
+    }
+
+    /// The boundary of exhibit `id` in the original's order (3.1): for each tile of its list, for
+    /// the sides 0, 2, 4, 6, the pair (tile, neighbour outside it); no neighbour at the map edge.
+    pub fn boundary(&self, world: &World, id: u32) -> Vec<(usize, Option<usize>)> {
+        let tiles = self.get(id).map_or(&[][..], |e| &e.order);
+        boundary_of(world, tiles, &|n| self.region(n) == Some(id))
+    }
+
+    /// Gives exhibit `id` a new tile list: the same tiles, filled again.
+    pub fn reorder(&mut self, id: u32, order: Vec<usize>) {
+        if let Some(e) = self.get_mut(id) {
+            e.order = order;
+        }
     }
 
     /// The exhibits, in the order they were made.

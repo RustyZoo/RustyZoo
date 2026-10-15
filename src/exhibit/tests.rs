@@ -794,8 +794,10 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
     assert!(world.move_gate(1, new, 10, 500));
     assert_eq!(world.exhibits().get(1).unwrap().gate, Some(new));
     assert_ne!(old, new);
-    // None, a side that is not one, a tile off the map and an empty slot leave no gate.
-    for (tile, side) in [((-1, -1), -1), ((3, 2), 3), ((3, 2), 8), ((3, 2), -2)] {
+    // A record with no gate (x negative) gets the gate walk from the line the file closes last.
+    assert_eq!(gate(&load((-1, -1), -1), 1), Some((4, 4, 2)));
+    // A side that is not one, a tile off the map and an empty slot leave no gate.
+    for (tile, side) in [((3, 2), 3), ((3, 2), 8), ((3, 2), -2)] {
         assert_eq!(load(tile, side).exhibits().get(1).unwrap().gate, None);
     }
     for (tile, side) in [((80, 2), 0), ((3, 3), 0), ((i32::MAX, i32::MIN), 2)] {
@@ -856,4 +858,105 @@ fn undoing_a_piece_that_cut_an_exhibit_gives_it_its_name_and_gate_back() {
     assert_eq!(region(&world, 1, 1), region(&world, 5, 1));
     // The exhibit that was cut off is gone with its gate: its piece is a fence again.
     assert!(!is_gate(&world, at(&world, 3, 2, 4)));
+}
+
+// ---- The order of the tiles and of the boundary (exhibits and money 3.1)
+
+/// The pieces that close the tiles `tiles`: one on each side whose neighbour is not in the set.
+fn outline(tiles: &[(i32, i32)]) -> Vec<(i32, i32, u32)> {
+    let mut pieces = Vec::new();
+    for &(x, y) in tiles {
+        for (d, (dx, dy)) in [(0, (0, -1)), (2, (1, 0)), (4, (0, 1)), (6, (-1, 0))] {
+            if !tiles.contains(&(x + dx, y + dy)) {
+                pieces.push((x, y, d));
+            }
+        }
+    }
+    pieces
+}
+
+#[test]
+fn an_l_shaped_exhibit_lists_its_tiles_and_boundary_in_the_original_order() {
+    // Tiles (2,2), (2,3), (2,4) and (3,4), the file closing its line on (2,2) last: filled from
+    // there, put in that order, listed in reverse; the boundary is read from the list, sides
+    // 0, 2, 4, 6.
+    let world = loaded(&outline(&[(3, 4), (2, 4), (2, 3), (2, 2)]));
+    let t = |x: usize, y: usize| y * SIZE as usize + x;
+    let list = world.exhibits().get(1).unwrap();
+    assert_eq!(list.order, [t(3, 4), t(2, 4), t(2, 3), t(2, 2)]);
+    let side = |a: (usize, usize), b: (usize, usize)| (t(a.0, a.1), Some(t(b.0, b.1)));
+    assert_eq!(
+        world.exhibits().boundary(&world, 1),
+        [
+            side((3, 4), (3, 3)),
+            side((3, 4), (4, 4)),
+            side((3, 4), (3, 5)),
+            side((2, 4), (2, 5)),
+            side((2, 4), (1, 4)),
+            side((2, 3), (3, 3)),
+            side((2, 3), (1, 3)),
+            side((2, 2), (2, 1)),
+            side((2, 2), (3, 2)),
+            side((2, 2), (1, 2)),
+        ]
+    );
+    assert_eq!(world.outside(1), Some(t(3, 3)));
+}
+
+#[test]
+fn a_new_exhibit_is_filled_from_the_tile_beside_the_piece() {
+    // The square (2,2)-(3,3) closed by its last piece on tile (3,3): filled from there, not from
+    // its first tile, so its first boundary pair is on the top row.
+    let mut pieces = square(2, 2, 3, 3);
+    let last = pieces.iter().position(|&p| p == (3, 3, 2)).unwrap();
+    pieces.remove(last);
+    let mut world = loaded(&pieces);
+    place(&mut world, (3, 3, 2));
+    let t = |x: usize, y: usize| y * SIZE as usize + x;
+    let order = &world.exhibits().get(1).unwrap().order;
+    assert_eq!(order, &[t(2, 2), t(3, 2), t(2, 3), t(3, 3)]);
+    assert_eq!(world.outside(1), Some(t(2, 1)));
+}
+
+#[test]
+fn a_loaded_exhibit_is_filled_from_the_line_the_file_closes_last() {
+    // The same L with its last piece on (3,4): the fill starts there and the list is the other way.
+    let world = loaded(&outline(&[(2, 2), (2, 3), (2, 4), (3, 4)]));
+    let t = |x: usize, y: usize| y * SIZE as usize + x;
+    let list = &world.exhibits().get(1).unwrap().order;
+    assert_eq!(list, &[t(2, 2), t(2, 3), t(2, 4), t(3, 4)]);
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn a_loaded_exhibit_lists_its_stored_tile_first() {
+    use crate::entity::Catalogue;
+    use crate::render::MapRenderer;
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let renderer = MapRenderer::new(&vfs, &catalogue);
+    let (mut stored, mut first) = (0, 0);
+    for map in vfs.list(None) {
+        if !map.to_ascii_lowercase().ends_with(".zoo") {
+            continue;
+        }
+        let Ok(zoo) = Zoo::parse(&vfs.read(&map).unwrap()).and_then(|z| z.checked(&catalogue))
+        else {
+            continue;
+        };
+        let tiles = zoo.habitat_tiles.clone();
+        let world = World::new(zoo, |e| renderer.shape(e));
+        for (x, y) in tiles {
+            let t = world.tile_index(x, y).unwrap();
+            let e = world
+                .exhibits()
+                .get(world.exhibits().region(t).unwrap())
+                .unwrap();
+            stored += 1;
+            first += usize::from(e.order.first() == Some(&t));
+        }
+    }
+    assert!(stored > 0);
+    assert_eq!(first, stored);
 }

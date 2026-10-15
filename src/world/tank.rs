@@ -2,13 +2,11 @@
 //! side, the water values, the objects a tank refuses, the split of a tank and what the player
 //! answers when something has to go.
 
-use super::exhibit::Pair;
 use super::{Action, Event, Undone, World};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank, TankConfig};
 use crate::render::order::{Kind, ground_height};
 use crate::terrain::shape::LIMIT;
 use crate::zoo::{Common, Entity, Fence};
-use std::collections::HashSet;
 
 /// The offset of the middle of side `d` (0, 2, 4, 6) inside its tile, where a fence piece stands.
 fn middle(d: usize) -> (i32, i32) {
@@ -75,32 +73,30 @@ impl World {
     /// tanks side by side end with one wall each. The gates that moved in are replaced.
     fn wall_step(&mut self, id: u32) {
         let mut moved = Vec::new();
-        for t in self.tiles_of(id) {
-            for d in [0, 2, 4, 6] {
-                let Some(n) = self.neighbour(t, d) else {
-                    continue;
-                };
-                if self.exhibits.region(n) == Some(id) || self.edge(t, d).is_some() {
-                    continue;
-                }
-                let Some(wall) = self
-                    .edge(n, (d + 4) % 8)
-                    .filter(|&w| self.shapes[w].is_some_and(|s| s.tank.wall))
-                else {
-                    continue;
-                };
-                let piece = match self.tank_at(n).is_some() {
-                    true => self.copy_wall(wall, t, d),
-                    false => {
-                        self.move_wall(wall, t, d);
-                        self.zoo.entities[wall].common.as_ref().map(|c| c.id)
-                    }
-                };
-                moved.push((piece, t, d, n));
+        for (t, n) in self.exhibits.boundary(self, id) {
+            let Some((n, d)) = n.zip(n.and_then(|n| self.side_to(t, n))) else {
+                continue;
+            };
+            if self.edge(t, d).is_some() {
+                continue;
             }
+            let Some(wall) = self
+                .edge(n, (d + 4) % 8)
+                .filter(|&w| self.shapes[w].is_some_and(|s| s.tank.wall))
+            else {
+                continue;
+            };
+            let piece = match self.tank_at(n).is_some() {
+                true => self.copy_wall(wall, t, d),
+                false => {
+                    self.move_wall(wall, t, d);
+                    self.zoo.entities[wall].common.as_ref().map(|c| c.id)
+                }
+            };
+            moved.push((piece, n));
         }
         // The exhibit whose gate was moved in has none that its keepers can use.
-        for (piece, t, _, n) in moved {
+        for (piece, n) in moved {
             let Some(region) = self
                 .exhibits
                 .region(n)
@@ -109,7 +105,7 @@ impl World {
                 continue;
             };
             if piece.is_some() && self.exhibits.get(region).is_some_and(|e| e.gate == piece) {
-                self.replace_gate(region, (n, t));
+                self.replace_gate(region);
             }
         }
     }
@@ -174,16 +170,15 @@ impl World {
     }
 
     /// Gives exhibit `e` a new gate after its old one moved to a tank (3.9): the first pair of its
-    /// boundary, from `start`, whose tile outside is in the zoo and not in a tank nor in an
-    /// exhibit that opens into `e`, and whose line holds one piece that is not a zoo wall. Without
-    /// such a pair the old record stays.
-    fn replace_gate(&mut self, e: u32, start: Pair) {
-        let (mut seen, mut cur) = (HashSet::new(), start);
-        while seen.insert(cur) {
-            let (_, out) = cur;
-            let region = self.exhibits.region(out);
-            let line: Vec<usize> = self.line(cur).into_iter().flatten().collect();
-            let free = region.is_some_and(|r| !self.opens_into(&self.exhibits, r, e));
+    /// boundary, in its boundary order, whose tile outside is in the zoo and not in a tank nor in
+    /// an exhibit that opens into `e`, and whose line holds one piece that is not a zoo wall.
+    /// Without such a pair the old record stays.
+    fn replace_gate(&mut self, e: u32) {
+        for (i, out) in self.exhibits.boundary(self, e) {
+            let Some(out) = out else { continue };
+            let line: Vec<usize> = self.line((i, out)).into_iter().flatten().collect();
+            let free =
+                (self.exhibits.region(out)).is_some_and(|r| !self.opens_into(&self.exhibits, r, e));
             if self.in_zoo(out)
                 && self.tank_at(out).is_none()
                 && free
@@ -191,9 +186,7 @@ impl World {
                 && self.shapes[piece].is_some_and(|s| s.fence && !s.wall)
                 && self.make_door(piece)
             {
-                if let Some(old) = self
-                    .exhibits
-                    .get(e)
+                if let Some(old) = (self.exhibits.get(e))
                     .and_then(|x| x.gate)
                     .and_then(|g| self.find(g))
                 {
@@ -205,10 +198,6 @@ impl World {
                 }
                 self.events.push(Event::Gate(e));
                 return;
-            }
-            match self.step(e, cur) {
-                Some(next) => cur = next,
-                None => return,
             }
         }
     }
@@ -310,12 +299,7 @@ impl World {
     /// The tile outside the first pair of the boundary of exhibit `id`, where an animal or a
     /// staff member that has to leave is put.
     pub fn outside(&self, id: u32) -> Option<usize> {
-        self.tiles_of(id).into_iter().find_map(|t| {
-            [0, 2, 4, 6]
-                .into_iter()
-                .filter_map(|d| self.neighbour(t, d))
-                .find(|&n| self.exhibits.region(n) != Some(id))
-        })
+        self.exhibits.boundary(self, id).first()?.1
     }
 
     /// Puts the unit with this id in the middle of tile `t`.

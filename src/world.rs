@@ -227,6 +227,7 @@ impl World {
         world.load_gates();
         world.load_tanks();
         world.retank(false);
+        world.walk_loaded();
         world.dirty = false;
         world
     }
