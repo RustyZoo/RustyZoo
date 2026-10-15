@@ -10,10 +10,14 @@ use crate::text::format::{self, Arg, expand, whole_units};
 use std::collections::VecDeque;
 
 /// The strings of the questions: the sell question (it ends with "Refund: "), the merge of two
-/// exhibits, the escape of the animals of an exhibit; and the default name of an exhibit.
+/// exhibits, the escape of the animals of an exhibit, the same for a tank (drained, its animals
+/// boxed); and the default name of an exhibit.
 const SELL: i32 = 154;
 const MERGE: i32 = 156;
 const ESCAPE: i32 = 157;
+const DRAIN: i32 = 160;
+/// The message of a click on a tank wall between a show tank and another tank.
+const NOT_MERGED: i32 = 10571;
 const EXHIBIT: i32 = 6208;
 
 /// What the bulldozer would remove now: the entities (positions in `zoo.entities`, valid while
@@ -26,6 +30,8 @@ pub(super) struct Dozer {
     /// Whether the cost text is shown: over something removable, and in a drag from the start
     /// of the drag (if shown then) or from the first sum that is not 0.
     shown: bool,
+    /// The pointer is over a tank wall that stays (placing 7.1): a click says why.
+    mixed: bool,
 }
 
 /// A removal under way: the entities still to go (ids), the pairs of regions answered No, the
@@ -113,6 +119,7 @@ impl App<'_> {
                     bulldozer::under(world, (x, y)).into_iter().collect()
                 }
             };
+            let mixed = rect.is_none() && found.iter().any(|&e| bulldozer::mixed_tanks(world, e));
             let at: Vec<usize> = found
                 .into_iter()
                 .filter(|&e| bulldozer::removable(world, cat, e))
@@ -130,6 +137,7 @@ impl App<'_> {
                 refund,
                 rect,
                 shown,
+                mixed,
             };
         }
         if before == game.dozer {
@@ -169,6 +177,12 @@ impl App<'_> {
     pub(super) fn bulldoze_release(&mut self) {
         let Some(game) = &mut self.game else { return };
         game.build.end_sweep();
+        if game.dozer.mixed {
+            if let Some(ui) = &mut self.ui {
+                ui.message(&to_cp1252(&ui.string(NOT_MERGED)));
+            }
+            self.tool_lines.push(format!("tool message {NOT_MERGED}"));
+        }
         let queue: VecDeque<u32> = game
             .dozer
             .at
@@ -322,7 +336,7 @@ impl App<'_> {
 
 /// The text of a question (placing 7.1). An exhibit is named by its name; one without (found in a
 /// map) by the word and its number.
-fn question_text(
+pub(super) fn question_text(
     ui: &Interface,
     cat: &Catalogue,
     world: &World,
@@ -353,6 +367,9 @@ fn question_text(
             &template(MERGE),
             &[Arg::Text(&exhibit(x)), Arg::Text(&exhibit(y))],
         ),
-        Question::Escape(_) => template(ESCAPE),
+        Question::Escape(x) => {
+            let tank = world.exhibits().get(x).is_some_and(|e| e.tank.is_some());
+            template(if tank { DRAIN } else { ESCAPE })
+        }
     }
 }

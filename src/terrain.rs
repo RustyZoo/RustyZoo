@@ -783,15 +783,15 @@ fn whole(amount: f32) -> i64 {
 }
 
 /// Whether tile `t` accepts the terrain type `kind` (terrain editing 6.2): it is inside the zoo,
-/// it does not have the type, and a change between land and water has its conditions: no path and
-/// no animal, guest or staff member on the tile; water into land: no object in the four quarter
+/// it is not a tile of a tank, it does not have the type, and a change between land and water
+/// has its conditions: no path and no animal, guest or staff member on the tile; water into land: no object in the four quarter
 /// slots or on the four sides lives in water alone; land into water: the tile is flat and every
 /// object in the quarter slots swims (a fence on a side never stops water).
 pub fn accepts(world: &World, habits: Habits, types: &[Type], t: usize, kind: u8) -> bool {
     let Some(tile) = world.zoo.tiles.get(t) else {
         return false;
     };
-    if !world.in_zoo(t) || tile.terrain == kind {
+    if !world.in_zoo(t) || world.tank_at(t).is_some() || tile.terrain == kind {
         return false;
     }
     let water = |kind: u8| types.iter().any(|ty| ty.kind == kind && ty.water);

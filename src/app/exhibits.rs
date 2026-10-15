@@ -14,7 +14,7 @@ use crate::world::Event;
 const NAME_DIALOG: i32 = 45300;
 const NAME_FIELD: i32 = 45308;
 const NAME_TEXT: i32 = 158;
-/// The word of a default name (string 6208 is "Exhibit").
+/// The words of a default name, from this string on: exhibit, tank and show tank.
 pub(super) const WORD: i32 = 6208;
 /// The number of characters of a name field when the ini file has no `defaultEditCharLimit`.
 const NAME_LIMIT: i32 = 17;

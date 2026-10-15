@@ -546,7 +546,7 @@ exhibit_close() { # exhibit_close <map>
   rm -rf "$d"
 }
 check base-trial 'new_1_"Exhibit_1"_tiles_6_gate_none;name_1_"Lion";gate_1_18,43_side_2' "exhibit_close maps/default.zoo"
-check expansion-trial 'new_2_"Exhibit_1"_tiles_9_gate_none;name_2_"Lion";gate_2_38,44_side_6' "exhibit_close maps/scn19.zoo"
+check expansion-trial 'new_2_"Tank_1"_tiles_9_gate_none;name_2_"Lion";gate_2_38,44_side_6' "exhibit_close maps/scn19.zoo"
 
 # The bulldozer: the path drag of above, Escape drops the path, the Delete key makes the bulldozer
 # the tool, and a press with a drag over the rectangle that holds the L removes everything the

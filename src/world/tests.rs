@@ -54,6 +54,10 @@ const FENCE: Shape = Shape {
     wall: true,
     gate: false,
     gated: false,
+    tank: TankKind {
+        wall: false,
+        show: false,
+    },
 };
 
 const NOTHING: Shape = Shape {
@@ -63,6 +67,10 @@ const NOTHING: Shape = Shape {
     wall: false,
     gate: false,
     gated: false,
+    tank: TankKind {
+        wall: false,
+        show: false,
+    },
 };
 
 const GATE: Shape = Shape {
@@ -72,6 +80,10 @@ const GATE: Shape = Shape {
     wall: false,
     gate: true,
     gated: false,
+    tank: TankKind {
+        wall: false,
+        show: false,
+    },
 };
 
 /// The shape of the entities of these tests, by class.

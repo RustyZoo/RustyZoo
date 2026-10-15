@@ -25,9 +25,25 @@ pub fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
     cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
 }
 
+/// Whether the entity at position `e` is a tank wall on a line between a show tank and a tank
+/// that is not one: it stays (placing 7.1).
+pub fn mixed_tanks(world: &World, e: usize) -> bool {
+    let tank = |t: usize| world.tank_at(t).and_then(|id| world.tank(id));
+    let Some((t, d)) = world
+        .shape(e)
+        .filter(|s| s.tank.wall)
+        .and_then(|_| world.slot(e))
+    else {
+        return false;
+    };
+    let across = world.neighbour(t, d);
+    matches!((tank(t), across.and_then(tank)), (Some(a), Some(b)) if a.show != b.show)
+}
+
 /// Whether the bulldozer can remove the entity at position `e` (placing 7.1): its tile is in the
 /// zoo and it is a path or one of the scenery classes whose type is deletable (`cDeletable` 1,
-/// which is the default). Animals, guests and staff never are.
+/// which is the default); a tank wall between two tanks only when both are show tanks or
+/// neither. Animals, guests and staff never are.
 pub fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
     let (Some(entity), Some(shape)) = (world.zoo.entities.get(e), world.shape(e)) else {
         return false;
@@ -42,6 +58,7 @@ pub fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
     };
     let in_zoo = tile.is_some_and(|t| world.in_zoo(t));
     in_zoo
+        && !mixed_tanks(world, e)
         && match shape.kind {
             Kind::Path => true,
             Kind::Edge | Kind::Wall | Kind::Fixed => {
@@ -163,8 +180,9 @@ pub enum Check {
 
 /// The exhibit question of a piece of exhibit fence (placing 7.1): its tile and the tile across
 /// are in different regions and the slot across on the same line holds no exhibit fence, so
-/// removing it opens the line. Both regions exhibits is a merge; one of them the zoo grounds an
-/// escape.
+/// removing it opens the line; on a line between two tanks it is the other way round: it asks
+/// only when the slot across holds a piece. Both regions exhibits is a merge; one of them the
+/// zoo grounds an escape.
 fn exhibit_question(world: &World, e: usize) -> Option<Question> {
     if !world.shape(e)?.fence {
         return None;
@@ -176,7 +194,8 @@ fn exhibit_question(world: &World, e: usize) -> Option<Question> {
         .is_some_and(|o| world.shape(o).is_some_and(|s| s.fence));
     let (x, y) = (world.exhibits().region(t)?, world.exhibits().region(n)?);
     let zoo = |r: u32| r == GROUNDS || r == EXTERIOR;
-    if closed_across || x == y {
+    let tanks = world.tank_at(t).is_some() && world.tank_at(n).is_some();
+    if closed_across != tanks || x == y {
         return None;
     }
     match (zoo(x), zoo(y)) {
