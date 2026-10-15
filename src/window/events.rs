@@ -36,6 +36,8 @@ pub enum Raw {
     /// The second press of a double click.
     Double(f32, f32),
     Up(f32, f32),
+    /// The right button went up.
+    Right(f32, f32),
     Wheel(i32),
 }
 
@@ -49,7 +51,7 @@ pub struct State {
     /// The game has an interface: the mouse, the keys it reads and the typed characters become
     /// commands.
     pub interface: bool,
-    /// The mouse messages of the left button, the pointer and the wheel, in order.
+    /// The mouse messages of the left button, the right button's release, the pointer and the wheel, in order.
     pub mouse: Vec<Raw>,
 }
 
@@ -80,6 +82,12 @@ impl State {
                     y,
                     ..
                 } => self.mouse.push(Raw::Up(x, y)),
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Right,
+                    x,
+                    y,
+                    ..
+                } => self.mouse.push(Raw::Right(x, y)),
                 Event::MouseWheel { integer_y, .. } if integer_y != 0 => {
                     self.mouse.push(Raw::Wheel(integer_y))
                 }
@@ -121,12 +129,13 @@ impl State {
                     let (px, py) = place((x, y))?;
                     commands.push(Command::Mouse(Mouse::Move(px, py)));
                 }
-                Raw::Down(x, y) | Raw::Double(x, y) | Raw::Up(x, y) => {
+                Raw::Down(x, y) | Raw::Double(x, y) | Raw::Up(x, y) | Raw::Right(x, y) => {
                     let (px, py) = place((x, y))?;
                     commands.push(Command::Mouse(Mouse::Move(px, py)));
                     commands.push(Command::Mouse(match raw {
                         Raw::Down(..) => Mouse::Down,
                         Raw::Double(..) => Mouse::Double,
+                        Raw::Right(..) => Mouse::Right,
                         _ => Mouse::Up,
                     }));
                 }
@@ -215,7 +224,20 @@ mod tests {
         state.interface = true;
         state.note(button(MouseButton::Left, 3.0, 4.0), &mut commands);
         state.note(press(MouseButton::Left, 2, 5.0, 6.0), &mut commands);
+        // The right button does nothing when it goes down, and tells where it went up.
         state.note(button(MouseButton::Right, 9.0, 9.0), &mut commands);
+        state.note(
+            Event::MouseButtonUp {
+                timestamp: 0,
+                window_id: 1,
+                which: 0,
+                mouse_btn: MouseButton::Right,
+                clicks: 1,
+                x: 7.0,
+                y: 8.0,
+            },
+            &mut commands,
+        );
         state.note(
             Event::MouseWheel {
                 timestamp: 0,
@@ -254,6 +276,8 @@ mod tests {
                 Command::Mouse(Mouse::Down),
                 Command::Mouse(Mouse::Move(10, 12)),
                 Command::Mouse(Mouse::Double),
+                Command::Mouse(Mouse::Move(14, 16)),
+                Command::Mouse(Mouse::Right),
                 Command::Mouse(Mouse::Wheel(-1)),
             ]
         );

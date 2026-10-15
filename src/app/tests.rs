@@ -299,6 +299,7 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Mouse(Mouse::Down),
         Command::Mouse(Mouse::Up),
         Command::Mouse(Mouse::Double),
+        Command::Mouse(Mouse::Right),
         Command::Mouse(Mouse::Wheel(-2)),
         Command::Key(Key::PageDown, false, false),
         Command::Key(Key::Enter, true, false),
@@ -319,6 +320,7 @@ fn commands_have_a_text_form_that_reads_back() {
         "zoom",
         "fullscreen",
         "fullscreen 1",
+        "right 1",
         "stop",
         "mouse 1",
         "mouse x 1",
@@ -885,4 +887,71 @@ fn frame_hash_of(pixels: &[u8]) -> u64 {
         height: SIZE.1,
         pixels: pixels.to_vec(),
     })
+}
+
+/// An interface of the map view over the window, a toggle button (1002, at 50, 40) that shows
+/// the construction panel (layout 8, hidden), and nothing else.
+fn panel_interface(name: &str) -> Interface {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+        [b]\ntype=UILayout\nlayout=ui/b.lyt\n\
+        [c]\ntype=UIButton\nid=1002\nx=50\ny=40\ndx=8\ndy=8\nstate=2048\n\
+        action=3\ntarget=8\ncolorasicon=1\n\
+        [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n";
+    let panel = "[LayoutInfo]\nid=8\nx=0\ny=0\ndx=20\ndy=20\nstate=1\n";
+    let q = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
+    let install = crate::sprite::tests::Install::new(
+        &format!("app-{name}"),
+        &[
+            ("ui/root.lyt", root.as_bytes().to_vec()),
+            ("ui/b.lyt", panel.as_bytes().to_vec()),
+            ("ui/q.lyt", q.as_bytes().to_vec()),
+        ],
+    );
+    let mut tree = crate::ui::layout::Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
+    assert_eq!(tree.failure, None);
+    tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
+    Interface::new(tree, Box::new(NoTexts))
+}
+
+#[test]
+fn escape_and_the_right_button_close_a_building_panel_before_the_menu_question() {
+    with_app("app-panels", |app, _| {
+        app.set_interface(panel_interface("panels"));
+        app.interface().unwrap().set_hidden(1002, false);
+        let click = [
+            Command::Mouse(Mouse::Move(52, 42)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ];
+        let tool = |app: &App, pass, now| -> Vec<String> {
+            let lines = app.log_lines(pass, now);
+            lines.into_iter().filter(|l| l.contains(" tool ")).collect()
+        };
+        let mut now = 0;
+        let mut step = |app: &mut App, commands: &[Command]| {
+            now += 20;
+            app.pass(now, commands);
+            tool(app, 1, now)
+        };
+        // The left bar button shows the panel: the app notices.
+        assert_eq!(step(app, &click), ["pass 1 t=20 tool panel construction"]);
+        assert!(!app.interface().unwrap().modal_open());
+        // Escape closes it and does not ask; the button is released.
+        let escape = [Command::Key(Key::Escape, false, false)];
+        assert_eq!(step(app, &escape), ["pass 1 t=40 tool panel none"]);
+        assert!(!app.interface().unwrap().modal_open());
+        // The right button released over the map does the same.
+        step(app, &click);
+        let right = [
+            Command::Mouse(Mouse::Move(5, 5)),
+            Command::Mouse(Mouse::Right),
+        ];
+        assert_eq!(step(app, &right), ["pass 1 t=80 tool panel none"]);
+        // With nothing open the right button does nothing, Escape asks.
+        assert!(step(app, &right).is_empty());
+        assert!(!app.interface().unwrap().modal_open());
+        step(app, &escape);
+        assert!(app.interface().unwrap().modal_open());
+    });
 }

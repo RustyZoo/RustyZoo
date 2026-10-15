@@ -43,6 +43,10 @@ impl Interface {
             Mouse::Down => self.down(),
             Mouse::Up => self.up(),
             Mouse::Double => self.double(),
+            Mouse::Right => {
+                let target = self.input.capture.or_else(|| self.hit(self.input.pointer));
+                target.is_some() && target == self.map_view
+            }
             Mouse::Wheel(notches) => {
                 let at = self.input.pointer;
                 let target = self.input.capture.or_else(|| self.hit(at));
