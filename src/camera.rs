@@ -134,8 +134,23 @@ impl Camera {
 
     /// The world point on the ground under the centre of the view (5), including its quirks.
     pub fn centre_point(&self, map: &Zoo) -> (i64, i64, i32) {
-        let mut px = i64::from(self.scroll.0) + i64::from(self.size.0 / 2);
-        let mut py = i64::from(self.scroll.1) + i64::from(self.size.1 / 2);
+        self.pick(map, (self.size.0 / 2, self.size.1 / 2))
+    }
+
+    /// The tile under a window point, if it is on the map.
+    pub fn tile_under(&self, map: &Zoo, at: (i32, i32)) -> Option<(u32, u32)> {
+        let (wx, wy, _) = self.pick(map, at);
+        let tile = |w: i64| u32::try_from(w.div_euclid(64)).ok();
+        let (x, y) = (tile(wx)?, tile(wy)?);
+        map.tile(x, y).map(|_| (x, y))
+    }
+
+    /// The world point on the ground under a window point (map drawing 2.5): the trial heights
+    /// from +192 down to -192 in steps of 4 are undone through the projection, and the one whose
+    /// height is nearest to the ground at the point it gives wins.
+    pub fn pick(&self, map: &Zoo, (x, y): (i32, i32)) -> (i64, i64, i32) {
+        let mut px = i64::from(self.scroll.0) + i64::from(x);
+        let mut py = i64::from(self.scroll.1) + i64::from(y);
         let z = i64::from(self.zoom);
         match self.zoom {
             // Saturating, then bounded, so that the arithmetic below cannot overflow.

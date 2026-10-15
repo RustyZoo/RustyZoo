@@ -23,6 +23,8 @@ Modules of the core:
 | `startup` | The start-up picture (a bitmap resource of the language and resource libraries), its progress bar, and the product version of the executable |
 | `menu` | The main menu: what is set when it appears (background of the expansion flags, Continue and its tooltip, version label), what Exit does, the credits pages that replace one another on the interface clock, the scenario and freeform screens (`menu/screens`: lists, pictures, starting cash), and the files that Continue and Play ask the game to open |
 | `lists` | The data of those screens: the scenarios of `scenar*.cfg` with results and locks, the freeform maps of `free*.cfg`, the starting cash and its difficulty |
+| `world` | The map as the tools change it: the zoo with the "in the zoo" flag of every tile (a fill from beyond the entrance, stopped by the zoo wall and never entering a gate), an index of the path, quadrants and edge slots of every tile rebuilt from the entities after each edit, the edit primitives (add and remove an entity, set a tile with the edge states of it and its neighbours written again), the undo list of the last press and a dirty mark that makes the next draw stage the map again. The camera picks a tile and world point from a window point |
+| `build`, `money`, `terrain`, `place`, `exhibit` | Empty so far: the building tools of milestone 5 (panels and the current tool, cash and accounts, shaping and painting, placing objects, exhibits) |
 | `intro` | The intro movies: which ones play (`[UI] playMovie`, `playSecondMovie`, their volumes) and the player that gives the picture due at a clock reading |
 | `movie` | Intro movies: the AVI container, the Indeo 5 video decoded to RGBA pictures, the PCM audio (no window, no sound device) |
 

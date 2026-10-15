@@ -31,7 +31,7 @@ const MAX_ROWS: usize = 100_000;
 const DEFAULT_SIZE: (u32, u32) = (1024, 768);
 
 /// The words after `run <map>`.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq)]
 struct Flags {
     headless: bool,
     /// Where a windowed run writes its log.
@@ -56,6 +56,9 @@ struct Flags {
     fill: crate::layout::Fill,
     /// `--bare`: the game shows the map view alone, without the main panel.
     bare: bool,
+    /// `--cash`: the cash the game starts with; nothing reads it yet.
+    #[allow(dead_code)]
+    cash: Option<f32>,
 }
 
 fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
@@ -157,6 +160,11 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
                 flags.fill.ask = Some((id, shown));
                 rest
             }
+            ("--cash", [n, rest @ ..]) => {
+                let cash = n.parse::<f32>().ok().filter(|c| c.is_finite());
+                flags.cash = Some(cash.ok_or("--cash: not a number the cash can hold")?);
+                rest
+            }
             ("--out", [dir, rest @ ..]) => {
                 flags.out = Some(dir.to_string());
                 rest
@@ -253,7 +261,9 @@ fn replay(text: &str) -> Result<((u32, u32), Vec<Logged>), String> {
             "movie ",
             "music ",
             "step ",
+            "tool ",
             "ui ",
+            "world ",
         ]
         .iter()
         .any(|k| rest.starts_with(k))
@@ -612,6 +622,33 @@ mod tests {
     }
 
     #[test]
+    fn cash_is_any_finite_number_and_the_flag_needs_one() {
+        let cash = |words: &[&str]| {
+            let mut all = vec!["--headless", "--passes", "1", "--clock", "1"];
+            all.extend(words);
+            flags(&all)
+        };
+        for (text, want) in [
+            ("0", 0.0),
+            ("-250.5", -250.5),
+            ("100000", 100_000.0),
+            ("3e38", 3e38),
+        ] {
+            let got = cash(&["--cash", text]).unwrap_or_else(|_| panic!("{text}"));
+            assert_eq!(got.cash, Some(want), "{text}");
+        }
+        assert_eq!(cash(&[]).unwrap_or_else(|_| panic!()).cash, None);
+        for bad in ["1e39", "-1e39", "inf", "nan", "", "x", "1,5"] {
+            assert!(
+                matches!(cash(&["--cash", bad]), Err(CliError::Failed(_))),
+                "{bad:?}"
+            );
+        }
+        assert!(matches!(cash(&["--cash"]), Err(CliError::Usage)));
+        assert!(flags(&["--cash", "5"]).is_ok(), "a window takes it too");
+    }
+
+    #[test]
     fn a_window_takes_its_own_flags() {
         let got = flags(&[
             "--size", "64x48", "--log", "l", "--passes", "3", "--script", "s",
@@ -684,7 +721,10 @@ mod tests {
                    pass 3 t=67 pointer none\n\
                    pass 3 t=67 interface 66\n\
                    pass 3 t=67 music fade 33 sum -967 gain 0.999\n\
-                   pass 4 t=70 quit\n";
+                   pass 4 t=70 quit\n\
+                   pass 5 t=80 tool down 12,40\n\
+                   pass 5 t=80 tool up none\n\
+                   pass 5 t=80 world stage\n";
         assert_eq!(
             replay(log).unwrap(),
             (
@@ -693,6 +733,7 @@ mod tests {
                     (0, 0, vec![]),
                     (3, 67, vec![Command::Scroll(-1, 0), Command::Pointer(None)]),
                     (4, 70, vec![Command::Quit]),
+                    (5, 80, vec![]),
                 ]
             )
         );

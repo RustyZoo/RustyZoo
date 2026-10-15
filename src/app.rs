@@ -26,6 +26,7 @@ use crate::render::{MapRenderer, RenderError, Staged, check_size};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
+use crate::world::World;
 use crate::zoo::Zoo;
 
 /// A key the interface reads, by the name a script gives it.
@@ -237,7 +238,7 @@ type Look = ((i32, i32), i32, u8, bool);
 
 /// A zoo being played.
 struct Game {
-    zoo: Zoo,
+    world: World,
     staged: Staged,
     camera: Camera,
     calendar: Calendar,
@@ -275,6 +276,10 @@ pub struct App<'a> {
     acted: usize,
     /// The camera when the last draw fired, before the interface moved it; `None` without a game.
     drawn_at: Option<Look>,
+    /// What the map view's tool and the world did in the last pass, one line each (`tool down
+    /// 12,40`, `world stage`).
+    tool_lines: Vec<String>,
+    world_lines: Vec<String>,
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
@@ -378,6 +383,8 @@ impl<'a> App<'a> {
             menu: None,
             menu_events: Vec::new(),
             menu_lines: Vec::new(),
+            tool_lines: Vec::new(),
+            world_lines: Vec::new(),
             music: None,
             music_changed: false,
             music_restarted: false,
@@ -398,12 +405,13 @@ impl<'a> App<'a> {
         if self.fullscreen {
             camera.set_fullscreen(&zoo, true);
         }
-        let staged = self.renderer.stage(&zoo, camera.rotation, false)?;
+        let world = World::new(zoo, |e| self.renderer.shape(e));
+        let staged = self.renderer.stage(&world.zoo, camera.rotation, false)?;
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
         self.game = Some(Game {
-            zoo,
+            world,
             staged,
             camera,
             calendar: Calendar::new(),
@@ -445,6 +453,7 @@ impl<'a> App<'a> {
     pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         self.menu_lines.clear();
+        (self.tool_lines, self.world_lines) = (Vec::new(), Vec::new());
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
         (self.music_changed, self.music_restarted) = (false, false);
@@ -474,6 +483,7 @@ impl<'a> App<'a> {
         self.fired = self.timers.pass(now, 1.0);
         if self.fired.draw {
             self.drawn_at = self.look();
+            self.restage();
             // The animations advance at the drawn frame (ui layout 5.3).
             let paused = self.paused();
             if let Some(ui) = &mut self.ui {
@@ -485,7 +495,7 @@ impl<'a> App<'a> {
             if self.map_keys()
                 && let Some(game) = &mut self.game
             {
-                game.camera.edge_scroll(&game.zoo, now, self.pointer);
+                game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
             }
             if let Some(ui) = &mut self.ui {
                 ui.update(now);
@@ -560,28 +570,43 @@ impl<'a> App<'a> {
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
             (Command::Quit, _) => self.quit = true,
-            (Command::Mouse(mouse), _) => {
-                if let Some(ui) = &mut self.ui {
-                    ui.mouse(mouse);
+            (Command::Mouse(mouse), game) => {
+                // A press or release that belongs to the map view reaches the current tool,
+                // which there is none of yet: it is logged with the tile it is on.
+                let on_map = self.ui.as_mut().is_some_and(|ui| ui.mouse(mouse));
+                let phase = match mouse {
+                    Mouse::Down | Mouse::Double => Some("down"),
+                    Mouse::Up => Some("up"),
+                    _ => None,
+                };
+                if let (true, Some(phase), Some(game), Some(ui)) = (on_map, phase, game, &self.ui) {
+                    let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
+                    let tile = tile.map_or("none".to_string(), |(x, y)| format!("{x},{y}"));
+                    self.tool_lines.push(format!("tool {phase} {tile}"));
                 }
             }
             (Command::Scroll(x, y), Some(game)) if keys => {
-                game.camera.key_scroll(&game.zoo, (x, y));
+                game.camera.key_scroll(&game.world.zoo, (x, y));
             }
             (Command::Rotate(clockwise), Some(game)) if keys => {
                 let before = game.camera.clone();
-                game.camera.rotate(&game.zoo, None, clockwise);
+                game.camera.rotate(&game.world.zoo, None, clockwise);
                 // Restage from the new side. If that fails the view stays as it was.
-                match self.renderer.stage(&game.zoo, game.camera.rotation, false) {
+                match self
+                    .renderer
+                    .stage(&game.world.zoo, game.camera.rotation, false)
+                {
                     Ok(staged) => game.staged = staged,
                     Err(_) => game.camera = before,
                 }
             }
             (Command::Zoom(zoom_in), Some(game)) if keys => {
-                game.camera.zoom(&game.zoo, None, zoom_in);
+                game.camera.zoom(&game.world.zoo, None, zoom_in);
             }
             (Command::Grid, Some(game)) if keys => game.grid = !game.grid,
-            (Command::Fullscreen(on), Some(game)) => game.camera.set_fullscreen(&game.zoo, on),
+            (Command::Fullscreen(on), Some(game)) => {
+                game.camera.set_fullscreen(&game.world.zoo, on)
+            }
             // The Pause key works through a question too, but the question gives the flag back as
             // it was, so it is left alone there.
             (Command::Pause, Some(game)) if shown && !modal => game.paused = !game.paused,
@@ -839,6 +864,26 @@ impl<'a> App<'a> {
         true
     }
 
+    /// Stages the map again when an edit changed the world since the last draw: the picture is
+    /// the final state at once. A map that cannot be staged keeps the old picture.
+    fn restage(&mut self) {
+        let Some(game) = &mut self.game else { return };
+        if !game.world.take_dirty() {
+            return;
+        }
+        match self
+            .renderer
+            .stage(&game.world.zoo, game.camera.rotation, false)
+        {
+            Ok(staged) => {
+                game.staged = staged;
+                self.painted = None;
+                self.world_lines.push("stage".to_string());
+            }
+            Err(why) => self.world_lines.push(format!("stage failed: {why}")),
+        }
+    }
+
     /// The camera as it looks now; `None` without a game.
     fn look(&self) -> Option<Look> {
         self.game
@@ -890,6 +935,8 @@ impl<'a> App<'a> {
     /// applied, in the text form of a script, then one per thing the interface did (`ui hover 7111`,
     /// `ui press ...`, `ui sound uiclick`, `ui select`, `ui show`, `ui hide`, `ui drag`), then one per thing the main menu did
     /// (`menu continue enabled NAME`, `menu continue disabled`, `menu version V` when it appears, `menu exit`),
+    /// then `tool down X,Y` or `tool up X,Y` for a press or release on the map view (the tile, or `none`),
+    /// then `world stage` when an edit made the draw stage the map again,
     /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
@@ -902,6 +949,8 @@ impl<'a> App<'a> {
         lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
         lines.extend(self.ui_events.iter().map(|e| format!("{lead} ui {e}")));
         lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
+        lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
+        lines.extend(self.world_lines.iter().map(|e| format!("{lead} world {e}")));
         if self.fired.draw {
             let hash = match self.drew {
                 true => format!("{:016x}", frame_hash(&self.frame)),

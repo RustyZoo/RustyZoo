@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::config::Config;
+use crate::render::order::ground_height;
 use crate::zoo::Tile;
 
 fn map(width: u32, height: u32, elevation: i32) -> Zoo {
@@ -339,4 +340,76 @@ fn full_screen_at_800_wide_does_not_zoom_in() {
     c.set_fullscreen(&beach, true);
     c.zoom(&beach, None, false);
     assert_eq!(c.zoom, -2);
+}
+
+/// A 12 by 12 map with a hill of two plateau tiles (one and two steps) on flat ground.
+fn hill() -> Zoo {
+    let mut zoo = map(12, 12, 0);
+    zoo.tiles[5 * 12 + 5].elevation = 1;
+    zoo.tiles[5 * 12 + 6].elevation = 2;
+    zoo
+}
+
+/// The window point of the middle of a tile, at the ground height there.
+fn window_point(c: &Camera, zoo: &Zoo, tx: u32, ty: u32) -> (i32, i32) {
+    let z = ground_height(zoo.tile(tx, ty).unwrap(), 32, 32);
+    let (px, py) = project_zoomed(
+        c.rotation,
+        c.zoom,
+        64 * tx as i32 + 32,
+        64 * ty as i32 + 32,
+        z,
+    );
+    (
+        (px - i64::from(c.scroll.0)) as i32,
+        (py - i64::from(c.scroll.1)) as i32,
+    )
+}
+
+#[test]
+fn a_window_point_picks_the_tile_it_was_projected_from_at_every_rotation_and_zoom() {
+    for zoo in [map(12, 12, 0), map(12, 12, 3), hill()] {
+        for rotation in 0..4 {
+            for zoom in [-2, 0, 2] {
+                let c = camera(zoom, rotation, (-300, -200), 1, BEACH);
+                // A hill hides what is behind it: only the tiles in the open and the plateaus
+                // themselves are asked for.
+                for (tx, ty) in [(0, 0), (11, 0), (0, 11), (11, 11), (3, 8), (8, 3), (6, 5)] {
+                    let at = window_point(&c, &zoo, tx, ty);
+                    assert_eq!(
+                        c.tile_under(&zoo, at),
+                        Some((tx, ty)),
+                        "tile {tx},{ty} rotation {rotation} zoom {zoom}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn the_picked_height_is_the_ground_and_the_centre_is_the_pick_of_the_middle() {
+    let zoo = hill();
+    let c = camera(0, 0, (-300, -200), 1, BEACH);
+    let at = window_point(&c, &zoo, 6, 5);
+    assert_eq!(c.pick(&zoo, at).2, 32, "two steps");
+    assert_eq!(
+        c.pick(&zoo, (BEACH.0 / 2, BEACH.1 / 2)),
+        c.centre_point(&zoo)
+    );
+}
+
+#[test]
+fn a_point_off_the_map_picks_no_tile() {
+    let zoo = map(12, 12, 0);
+    let c = camera(0, 0, (-300, -200), 1, BEACH);
+    for at in [
+        (-5000, 0),
+        (0, -5000),
+        (i32::MIN, i32::MIN),
+        (i32::MAX, i32::MAX),
+        (0, i32::MAX),
+    ] {
+        assert_eq!(c.tile_under(&zoo, at), None, "{at:?}");
+    }
 }

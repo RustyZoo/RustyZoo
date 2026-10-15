@@ -719,3 +719,168 @@ fn a_game_paused_before_a_question_stays_paused_after_it() {
         assert!(app.paused(), "the question gave the flag back as it was");
     });
 }
+
+/// The window point of the middle of tile (`tx`, `ty`) of the flat test map.
+fn tile_point(camera: &Camera, tx: i32, ty: i32) -> (i32, i32) {
+    let p = project(camera.rotation, 64 * tx + 32, 64 * ty + 32, 0);
+    let (px, py) = crate::camera::zoom_view(camera.zoom, p);
+    (
+        (px - i64::from(camera.scroll.0)) as i32,
+        (py - i64::from(camera.scroll.1)) as i32,
+    )
+}
+
+#[test]
+fn a_press_and_a_release_on_the_map_view_are_logged_with_the_tile_at_every_rotation_and_zoom() {
+    with_app("app-tool", |app, _| {
+        app.set_interface(interface("tool"));
+        app.pass(0, &[]);
+        let (mut now, mut tried) = (20, 0);
+        for zoom in [
+            Command::Zoom(false),
+            Command::Zoom(true),
+            Command::Zoom(true),
+        ] {
+            app.pass(now, &[zoom]);
+            now += 20;
+            for _ in 0..4 {
+                let camera = app.camera().unwrap().clone();
+                // The tiles around the middle whose middle is well inside the window.
+                for (tx, ty) in (16..25).flat_map(|x| (16..25).map(move |y| (x, y))) {
+                    let (x, y) = tile_point(&camera, tx, ty);
+                    if !(4..SIZE.0 as i32 - 4).contains(&x) || !(4..SIZE.1 as i32 - 4).contains(&y)
+                    {
+                        continue;
+                    }
+                    let commands = [
+                        Command::Mouse(Mouse::Move(x, y)),
+                        Command::Mouse(Mouse::Down),
+                        Command::Mouse(Mouse::Up),
+                    ];
+                    app.pass(now, &commands);
+                    let lines = app.log_lines(now / 20, now);
+                    let lead = format!("pass {} t={now}", now / 20);
+                    assert!(
+                        lines.contains(&format!("{lead} tool down {tx},{ty}"))
+                            && lines.contains(&format!("{lead} tool up {tx},{ty}")),
+                        "rotation {} zoom {}: {lines:?}",
+                        camera.rotation,
+                        camera.zoom
+                    );
+                    (now, tried) = (now + 20, tried + 1);
+                }
+                app.pass(now, &[Command::Rotate(true)]);
+                now += 20;
+            }
+        }
+        assert!(tried >= 12, "{tried}");
+    });
+}
+
+#[test]
+fn a_press_off_the_map_or_on_the_interface_logs_the_tile_or_nothing() {
+    with_app("app-tool-off", |app, _| {
+        app.set_interface(interface("tool-off"));
+        app.pass(0, &[]);
+        // Far from the map: a press on the map view, on no tile.
+        app.pass(20, &[Command::Zoom(false), Command::Zoom(false)]);
+        app.pass(
+            40,
+            &[
+                Command::Mouse(Mouse::Move(0, 0)),
+                Command::Mouse(Mouse::Down),
+            ],
+        );
+        let lines = app.log_lines(2, 40);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("pass 2 t=40 tool down ")),
+            "{lines:?}"
+        );
+        // The wheel and a move are not tool messages.
+        app.pass(
+            60,
+            &[
+                Command::Mouse(Mouse::Wheel(1)),
+                Command::Mouse(Mouse::Move(3, 3)),
+            ],
+        );
+        assert!(app.log_lines(3, 60).iter().all(|l| !l.contains(" tool ")));
+        // The shown layout covers the pointer: the press is its, not the map's.
+        assert!(app.interface().unwrap().show(10));
+        app.pass(
+            80,
+            &[
+                Command::Mouse(Mouse::Up),
+                Command::Mouse(Mouse::Move(5, 5)),
+                Command::Mouse(Mouse::Down),
+            ],
+        );
+        assert!(
+            app.log_lines(4, 80)
+                .iter()
+                .all(|l| !l.contains(" tool down"))
+        );
+    });
+}
+
+#[test]
+fn an_edit_stages_the_map_again_once_at_the_next_draw() {
+    with_app("app-restage", |app, other| {
+        let first = app.pass(0, &[]).unwrap().pixels.clone();
+        assert!(
+            app.pass(20, &[]).is_none(),
+            "nothing changed, nothing is staged"
+        );
+        assert!(app.log_lines(1, 20).iter().all(|l| !l.contains(" world ")));
+        let world = &mut app.game.as_mut().unwrap().world;
+        for (x, y) in [(19, 19), (19, 20), (20, 19), (20, 20)] {
+            assert!(world.set_tile(x, y, 1, 0, 0));
+        }
+        let frame = app.pass(40, &[]).unwrap().pixels.clone();
+        assert_ne!(
+            frame_hash_of(&frame),
+            frame_hash_of(&first),
+            "the raised tile shows"
+        );
+        let lines = app.log_lines(2, 40);
+        assert_eq!(lines[0], "pass 2 t=40 world stage");
+        assert!(lines[1].starts_with("pass 2 t=40 draw "), "{lines:?}");
+        // The same picture as a map that had the edit from the start.
+        let mut zoo = map();
+        for i in [19 * 40 + 19, 20 * 40 + 19, 19 * 40 + 20, 20 * 40 + 20] {
+            zoo.tiles[i].elevation = 1;
+        }
+        let want = other
+            .render_with(
+                &zoo,
+                0,
+                &Options {
+                    window: Some((
+                        app.camera().unwrap().scroll.0,
+                        app.camera().unwrap().scroll.1,
+                        SIZE.0,
+                        SIZE.1,
+                    )),
+                    ..Options::default()
+                },
+            )
+            .unwrap()
+            .0;
+        assert_eq!(frame_hash_of(&frame), frame_hash_of(&want.pixels));
+        assert!(app.pass(60, &[]).is_none());
+        assert!(
+            app.log_lines(3, 60).iter().all(|l| !l.contains(" world ")),
+            "only once"
+        );
+    });
+}
+
+fn frame_hash_of(pixels: &[u8]) -> u64 {
+    frame_hash(&Framebuffer {
+        width: SIZE.0,
+        height: SIZE.1,
+        pixels: pixels.to_vec(),
+    })
+}
