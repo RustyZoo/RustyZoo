@@ -8,7 +8,7 @@
 
 pub mod terrain;
 
-use crate::config::{to_float, to_int};
+use crate::config::{Config, to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
 use crate::place::{Class, Leg, path_run};
@@ -19,6 +19,7 @@ use crate::ui::interface::Interface;
 use crate::ui::layout::{HIDDEN, Picture, SELECTED};
 use crate::vfs::Vfs;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 /// The expansions a type can be a member of, with their bit in [`crate::ui::layout::installed_expansions`].
 const EXPANSIONS: [(&str, i32); 2] = [("dinosaur", 1), ("aqua", 2)];
@@ -159,6 +160,26 @@ fn icon_at(names: &[String], step: usize) -> Option<&String> {
     names.get(step).or(names.first())
 }
 
+/// The animation of each value of `[Images]` in `ui/infoimg.cfg` (a missing file or a key that is
+/// not a number gives nothing for it).
+fn infoimg(vfs: &Vfs) -> HashMap<i32, String> {
+    let config = vfs.read("ui/infoimg.cfg").ok();
+    let config = config.and_then(|b| Config::parse(&b).ok());
+    let Some(section) = config.as_ref().and_then(|c| c.section("Images")) else {
+        eprintln!(
+            "rustyzoo: warning: no [Images] in ui/infoimg.cfg: no location and habitat pictures"
+        );
+        return HashMap::new();
+    };
+    section
+        .keys()
+        .filter_map(|key| {
+            let name = section.get(key)?.trim_ascii();
+            Some((to_int(key)?, String::from_utf8_lossy(name).into_owned()))
+        })
+        .collect()
+}
+
 /// Whether the rotate buttons show for the type: scenery and buildings turn, paths and fences
 /// follow the tile and its side, filters do not.
 fn rotates(ty: &EntityType) -> bool {
@@ -180,8 +201,11 @@ struct Panel {
     tabs: &'static [i32],
     other_tabs: &'static [i32],
     /// Elements that showing the layout brings back and that this milestone leaves hidden: the
-    /// terrain panel inside it, the location and habitat pictures.
+    /// terrain panel inside it.
     hidden: &'static [i32],
+    /// The location picture, the habitat picture and its border; none on a panel without them
+    /// (placing 3.5).
+    pictures: [i32; 3],
     /// The era text, the fence descriptor's label and value: shown for the chosen item when it has
     /// them (placing 3.5).
     details: [i32; 3],
@@ -202,7 +226,8 @@ const PANELS: [Panel; 2] = [
         cost_text: 3207,
         tabs: &[3251, 3056, 3252, 3256],
         other_tabs: &[3362, 3361],
-        hidden: &[7, 3283, 3281, 3280],
+        hidden: &[7],
+        pictures: [3283, 3281, 3280],
         details: [3284, 3296, 3299],
         gate: Some((3240, 0)),
     },
@@ -219,6 +244,7 @@ const PANELS: [Panel; 2] = [
         tabs: &[3050, 3053],
         other_tabs: &[],
         hidden: &[],
+        pictures: [0; 3],
         details: [0; 3],
         gate: None,
     },
@@ -247,6 +273,9 @@ pub struct Build {
     /// The mode of the terrain tab that is selected while the construction panel is open: that
     /// tab is the map view's tool.
     terrain: Option<Mode>,
+    /// The picture of each `cLocation` and `cHabitat` value: its animation, from `ui/infoimg.cfg`;
+    /// read when first needed.
+    infoimg: Option<HashMap<i32, String>>,
     /// A path drag in progress: the tile of the press and the mode of the first leg (placing 6.2).
     drag: Option<((i32, i32), Option<Leg>)>,
 }
@@ -265,6 +294,7 @@ impl Build {
             listed: None,
             tops: [[0; 4]; 2],
             terrain: None,
+            infoimg: None,
             drag: None,
         }
     }
@@ -408,7 +438,7 @@ impl Build {
             log.push(format!("tool rotate {} {}", panel.name, self.step[p]));
             self.fill(ui, vfs, cat, p, log);
         } else if let Some(at) = ui.item_of(panel.list, id) {
-            self.choose(ui, cat, p, at, log);
+            self.choose(ui, vfs, cat, p, at, log);
         }
     }
 
@@ -454,11 +484,13 @@ impl Build {
             )
         });
         if tab.is_some() {
-            for &id in panel
-                .hidden
-                .iter()
-                .chain(panel.details.iter().filter(|&&d| d != 0))
-            {
+            for &id in panel.hidden.iter().chain(
+                panel
+                    .details
+                    .iter()
+                    .chain(&panel.pictures)
+                    .filter(|&&d| d != 0),
+            ) {
                 ui.set_hidden(id, true);
             }
         }
@@ -488,7 +520,7 @@ impl Build {
             .and_then(|ty| self.list.iter().position(|&l| l == ty))
             .or((!self.list.is_empty()).then_some(0));
         match want {
-            Some(at) => self.choose(ui, cat, p, at, log),
+            Some(at) => self.choose(ui, vfs, cat, p, at, log),
             None => {
                 self.held = None;
                 for id in [panel.name_text, panel.cost_text] {
@@ -503,11 +535,35 @@ impl Build {
         }
     }
 
+    /// The location and habitat pictures of the chosen type, with their values as tooltips; all
+    /// three are hidden for a type with no good habitat (placing 3.5).
+    fn show_pictures(&mut self, ui: &mut Interface, vfs: &Vfs, panel: &Panel, ty: &EntityType) {
+        let [location, habitat, border] = panel.pictures;
+        if location == 0 {
+            return;
+        }
+        let table = self.infoimg.get_or_insert_with(|| infoimg(vfs));
+        let value = |key| number(ty, key).unwrap_or(NO_HABITAT) as i32;
+        let (loc, hab) = (value("cLocation"), value("cHabitat"));
+        let shown = hab != NO_HABITAT as i32 && hab != BAD_HABITAT as i32;
+        for (id, v) in [(location, loc), (habitat, hab)] {
+            let name = table.get(&v).filter(|_| shown);
+            let picture = name.and_then(|n| ui.tree.picture(vfs, n));
+            ui.set_picture(id, picture);
+            if let Some(i) = ui.tree.find(id) {
+                ui.tree.elements[i].help_id = vec![v];
+            }
+        }
+        ui.set_hidden(border, !shown);
+    }
+
     /// Item `at` of the list is chosen: it is the tool, its tab remembers it, its name and cost
-    /// show, and the rotate buttons show if it turns.
+    /// show, the rotate buttons show if it turns, and so do its location and habitat pictures
+    /// if it has a habitat.
     fn choose(
         &mut self,
         ui: &mut Interface,
+        vfs: &Vfs,
         cat: &Catalogue,
         p: usize,
         at: usize,
@@ -556,6 +612,7 @@ impl Build {
             ui.set_hidden(label, false);
             ui.set_hidden(value, false);
         }
+        self.show_pictures(ui, vfs, panel, ty);
         let tag = ui
             .tree
             .find(panel.tabs[tab])

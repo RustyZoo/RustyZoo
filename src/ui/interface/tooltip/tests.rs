@@ -219,7 +219,7 @@ fn a_tooltip_that_is_over_by_the_time_the_pointer_moves_on_never_shows() {
 }
 
 #[test]
-fn the_long_help_is_the_number_plus_30000_and_no_tooltip_if_that_string_is_empty() {
+fn the_long_help_is_the_number_plus_30000_and_the_short_text_if_that_string_is_empty() {
     let mut ui = interface("long");
     ui.set_settings(Settings {
         long_help: true,
@@ -232,11 +232,15 @@ fn the_long_help_is_the_number_plus_30000_and_no_tooltip_if_that_string_is_empty
     // The width limit is the long one: 400, so this fits in a line.
     ui.mouse(Mouse::Move(15, 5));
     ui.update(132);
-    assert!(
-        !tip_shown(&ui),
-        "no long text: no tooltip, not the short one"
-    );
-    assert_eq!(ui.text(7003), Some(b"long help five".to_vec()));
+    assert!(tip_shown(&ui), "no long text: the short one");
+    assert_eq!(ui.text(7003), Some(b"short six".to_vec()));
+    // Neither text: no tooltip.
+    let i = ui.tree.find(21).unwrap();
+    ui.tree.elements[i].help_id = vec![99];
+    ui.mouse(Mouse::Move(50, 50));
+    ui.mouse(Mouse::Move(15, 5));
+    ui.update(500);
+    assert!(!tip_shown(&ui), "neither text");
 }
 
 #[test]

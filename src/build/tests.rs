@@ -314,6 +314,16 @@ fn panel(
     text
 }
 
+/// A TGA image of one colour.
+fn tga(w: u16, h: u16) -> Vec<u8> {
+    let mut out = vec![0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    out.extend(w.to_le_bytes());
+    out.extend(h.to_le_bytes());
+    out.extend([24, 0x20]);
+    out.extend(vec![200; usize::from(w) * usize::from(h) * 3]);
+    out
+}
+
 fn interface(name: &str) -> (Interface, Vfs, Install) {
     let construction = panel(
         8,
@@ -332,6 +342,8 @@ fn interface(name: &str) -> (Interface, Vfs, Install) {
          [e]\ntype=UIText\nid=3284\ndx=50\ndy=10\n\
          [fl]\ntype=UIText\nid=3296\ndx=50\ndy=10\n[fv]\ntype=UIText\nid=3299\ndx=50\ndy=10\n\
          [g]\ntype=UIButton\nid=3240\ndx=5\ndy=5\nstate=2048\n\
+         [li]\ntype=UIImage\nid=3283\n[hi]\ntype=UIImage\nid=3281\n\
+         [hb]\ntype=UIImage\nid=3280\n\
          [z]\ntype=UIButton\nid=3362\ndx=5\ndy=5\nstate=4096\n",
     );
     let objects = panel(
@@ -350,6 +362,13 @@ fn interface(name: &str) -> (Interface, Vfs, Install) {
             ("ui/root.lyt", ROOT.as_bytes().to_vec()),
             ("ui/c.lyt", construction.into_bytes()),
             ("ui/o.lyt", objects.into_bytes()),
+            (
+                "ui/infoimg.cfg",
+                b"[Images]\n; c\n9400 =  ui/h.tga \nlabel\n9600=ui/l.tga\n9601=ui/gone.tga\n"
+                    .to_vec(),
+            ),
+            ("ui/h.tga", tga(4, 2)),
+            ("ui/l.tga", tga(5, 3)),
         ],
     );
     let vfs = Vfs::open(&install.0).unwrap();
@@ -782,4 +801,81 @@ fn a_press_with_a_path_as_the_tool_starts_a_drag_whose_first_leg_the_first_move_
     build.end_drag();
     assert!(!build.dragging());
     assert!(build.run((6, 7)).is_empty());
+}
+
+#[test]
+fn the_location_and_habitat_pictures_follow_the_chosen_item() {
+    let (mut ui, vfs, _install) = interface("pictures");
+    let item = |habitat: i32, location: i32| {
+        let ini = format!(
+            "[Member]\nfoliage\n[Characteristics/Integers]\ncHabitat={habitat}\ncLocation={location}\n"
+        );
+        EntityType {
+            name_id: 105,
+            ..ty("objects", "foliage", "t", &ini)
+        }
+    };
+    let cat = catalogue(vec![
+        item(9400, 9600),
+        item(9410, 9600),
+        item(9414, 9600),
+        item(9400, 9999),
+        item(9400, 9601),
+        item(9400, 0),
+        ty("objects", "foliage", "none", "[Member]\nfoliage\n"),
+    ]);
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    ui.show(8);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    tab(&mut ui, &mut build, (&vfs, &cat), 3252, &mut log);
+    // The list puts the types with a habitat first, by habitat and then location; the hidden
+    // habitats 9410 and 9414 come last.
+    let shown = |ui: &Interface, id| state_of(ui, id) & HIDDEN == 0;
+    let rect = |ui: &Interface, id| ui.tree.rect(ui.tree.find(id).unwrap());
+    let help = |ui: &Interface, id| ui.tree.elements[ui.tree.find(id).unwrap()].help_id.clone();
+    let mut seen = vec![];
+    for at in 0..build.list.len() {
+        build.selected(
+            &mut ui,
+            &vfs,
+            &cat,
+            1_000_000 + 3208 * 1000 + at as i32,
+            &mut log,
+        );
+        let ty = &cat.types[build.tool().unwrap()];
+        seen.push((
+            number(ty, "cLocation"),
+            shown(&ui, 3283),
+            shown(&ui, 3281),
+            shown(&ui, 3280),
+        ));
+    }
+    assert_eq!(
+        seen,
+        [
+            (Some(0.0), false, true, true), // a value without a picture is blank
+            (Some(9600.0), true, true, true),
+            (Some(9601.0), false, true, true),
+            (Some(9999.0), false, true, true),
+            (None, false, false, false),
+            (Some(9600.0), false, false, false),
+            (Some(9600.0), false, false, false),
+        ]
+    );
+    // The first item with both pictures: their size, and their values as tooltips.
+    build.selected(&mut ui, &vfs, &cat, 1_000_000 + 3208 * 1000 + 1, &mut log);
+    assert_eq!((rect(&ui, 3283).2, rect(&ui, 3283).3), (5, 3));
+    assert_eq!((rect(&ui, 3281).2, rect(&ui, 3281).3), (4, 2));
+    assert_eq!((help(&ui, 3283), help(&ui, 3281)), (vec![9600], vec![9400]));
+}
+
+#[test]
+fn the_picture_table_reads_numbers_and_ignores_the_rest() {
+    let (_ui, vfs, _install) = interface("table");
+    let table = infoimg(&vfs);
+    assert_eq!(table.get(&9400).map(String::as_str), Some("ui/h.tga"));
+    assert_eq!(table.get(&9600).map(String::as_str), Some("ui/l.tga"));
+    assert_eq!(table.len(), 3, "a bare label has no picture");
+    let nothing = Install::new("table-none", &[("zoo.txt", vec![])]);
+    assert!(infoimg(&Vfs::open(&nothing.0).unwrap()).is_empty());
 }
