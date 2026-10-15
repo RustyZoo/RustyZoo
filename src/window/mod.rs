@@ -67,6 +67,8 @@ pub struct Flags<'a> {
     pub fill: &'a crate::layout::Fill,
     /// `--bare`: the game shows the map view alone.
     pub bare: bool,
+    /// `--seed`: a test run, the generator seeded from this number.
+    pub seed: Option<u32>,
 }
 
 /// Makes the game full screen or windowed, after asking the window to do it if `ask`; the game is
@@ -190,6 +192,9 @@ pub fn run(
             // The game starts with the run: the menu music fades out.
             if flags.bare {
                 app.bare();
+            }
+            if let Some(seed) = flags.seed {
+                app.set_seed(seed);
             }
             app.set_money(money);
             app.start_game(menu);

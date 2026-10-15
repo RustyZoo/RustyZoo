@@ -19,6 +19,7 @@ pub mod music;
 pub mod pe;
 pub mod place;
 pub mod render;
+pub mod sim;
 pub mod sprite;
 pub mod startup;
 pub mod status;

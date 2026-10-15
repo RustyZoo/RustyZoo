@@ -588,8 +588,8 @@ impl World {
         }
     }
 
-    /// Runs an edit that the undo list does not record, for a test that needs something in the way.
-    #[cfg(test)]
+    /// Runs an edit that the undo list does not record: the simulation's own removals, and a test
+    /// that needs something in the way.
     pub fn unrecorded<T>(&mut self, edit: impl FnOnce(&mut World) -> T) -> T {
         let (undo, fresh) = (std::mem::take(&mut self.undo), self.fresh);
         let result = edit(self);

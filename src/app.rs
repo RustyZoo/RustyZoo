@@ -1,5 +1,5 @@
 //! The game state of the map view and its pass: the map, the staged picture, the camera, the
-//! timers, the calendar and the pause flag, driven by [`Command`]s. Before a game is started (the
+//! timers, the simulation and the pause flag, driven by [`Command`]s. Before a game is started (the
 //! main menu) there is no map: the pass runs the timers and the interface, and the menu acts on
 //! what the player selects. No window and no input
 //! events: a shell turns what the player does into commands and presents the frames that
@@ -7,7 +7,7 @@
 //!
 //! One pass applies the commands first (in the original they arrive between two passes, main
 //! loop 3.1), then runs the timers in their order: the draw, the interface (the camera's edge
-//! scroll), the simulation (only the calendar, so far; the pause stops it, main loop 3.3).
+//! scroll), the simulation (the managers of [`Sim`]; the pause stops it, main loop 3.3).
 //!
 //! With an [`Interface`] the tree is painted over the map: the map view element draws the staged
 //! map into its rectangle, and a due draw paints when the camera moved or the interface changed
@@ -27,6 +27,7 @@ use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::Music;
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Staged, check_size};
+use crate::sim::Sim;
 use crate::status::{Finances, STATUS_BUTTON};
 use crate::terrain::{Tool, habit};
 use crate::text::to_cp1252;
@@ -255,7 +256,6 @@ struct Game {
     world: World,
     staged: Staged,
     camera: Camera,
-    calendar: Calendar,
     paused: bool,
     /// The tile grid is drawn (Ctrl+G; the terrain tools force it on), and what the player chose
     /// with Ctrl+G, which the grid goes back to when the tools are left (input 4.8).
@@ -385,6 +385,9 @@ pub struct App<'a> {
     /// last pass.
     money_events: Vec<String>,
     money_lines: Vec<String>,
+    /// The managers of the simulation and the `sim` lines of the last pass.
+    sim: Sim,
+    sim_lines: Vec<String>,
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
@@ -474,6 +477,7 @@ impl<'a> App<'a> {
         settings: Settings,
     ) -> Result<App<'a>, RenderError> {
         check_size(&[0, 0, i64::from(size.0), i64::from(size.1)])?;
+        let sim = Sim::new(renderer.vfs().ini());
         Ok(App {
             renderer,
             game: None,
@@ -502,6 +506,8 @@ impl<'a> App<'a> {
             terrain_lines: Vec::new(),
             money_events: Vec::new(),
             money_lines: Vec::new(),
+            sim,
+            sim_lines: Vec::new(),
             music: None,
             music_changed: false,
             music_restarted: false,
@@ -528,6 +534,7 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
+        self.sim.start_game(world.zoo.tiles.len());
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
@@ -544,7 +551,6 @@ impl<'a> App<'a> {
             world,
             staged,
             camera,
-            calendar: Calendar::new(),
             paused: false,
             grid: false,
             choice: false,
@@ -690,22 +696,22 @@ impl<'a> App<'a> {
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
         {
-            // The water of the tanks moves one step per simulation step (exhibits and money 3.10).
-            let moved = game.world.step_water();
-            if game.calendar.advance(step) {
+            let report = self.sim.step(&mut game.world, step, |_, _, _| {});
+            if report.month_end {
                 game.money.month_change();
                 self.money_events.push(format!(
                     "month {} year {}",
                     game.money.month, game.money.year
                 ));
             }
-            if moved {
+            if report.water_moved {
                 self.exhibits_told();
             }
         }
         self.undo_button();
         self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
+        self.sim_lines = self.sim.take_lines();
         self.drew.then_some(&self.frame)
     }
 
@@ -1530,9 +1536,15 @@ impl<'a> App<'a> {
         self.game.as_ref().map(|g| &g.camera)
     }
 
+    /// Makes this a test run: the generator is seeded from `seed` and the seconds of its later
+    /// seedings are `seed + n` (main loop 12). Call it before the first pass.
+    pub fn set_seed(&mut self, seed: u32) {
+        self.sim.set_seed(seed);
+    }
+
     /// The calendar of the game; `None` in the menu.
     pub fn calendar(&self) -> Option<&Calendar> {
-        self.game.as_ref().map(|g| &g.calendar)
+        self.game.as_ref().map(|_| self.sim.calendar())
     }
 
     /// The cash and the accounts of the game; `None` in the menu.
@@ -1588,7 +1600,11 @@ impl<'a> App<'a> {
     /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
-    /// with (none without a game), a step the new date (none without a game). A pass that did nothing has no line.
+    /// with (none without a game), a step the new date (none without a game),
+    /// then what the managers did: `sim seed N` for each seeding of the generator in a test run
+    /// (`--seed`; the wall clock's seeds differ at every run and are not logged), `sim step MS`
+    /// for a step the game ran and `sim month M Y` when it acted on the month flag of the one
+    /// before. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
@@ -1629,15 +1645,16 @@ impl<'a> App<'a> {
             }
         }
         if let Some(step) = self.fired.step
-            && let Some(game) = &self.game
+            && self.game.is_some()
         {
-            let d = game.calendar.date();
+            let d = self.sim.calendar().date();
             let paused = if self.paused() { " paused" } else { "" };
             lines.push(format!(
                 "{lead} step {step} {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}{paused}",
                 d.year, d.month, d.day, d.hour, d.minute, d.second, d.millisecond
             ));
         }
+        lines.extend(self.sim_lines.iter().map(|e| format!("{lead} sim {e}")));
         lines
     }
 }

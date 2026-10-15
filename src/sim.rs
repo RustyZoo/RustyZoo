@@ -1,0 +1,284 @@
+//! The simulation step of the original (simulation 3 and 4, main loop 6): six managers in a fixed
+//! order, the clocks they keep, the removal pass, the loop over the entities and the event queue,
+//! and the game's one random generator.
+//!
+//! What a unit does with its step is not here: [`Sim::step`] hands each entity to the caller's
+//! `update`, in list order. Missing so far: the zoo status checks of the game manager, the task
+//! pool, the shows and the exhibits' own update (the AI and world managers' first calls), the
+//! water ripples, the ambient creatures, and the scenario, research and marketing managers,
+//! which are empty until M7.
+//!
+//! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
+//! step and `sim month M Y` when a step acts on the month flag of the one before.
+
+mod events;
+mod rng;
+#[cfg(test)]
+mod tests;
+
+pub use events::{Event, Events, UNIT_CHANNEL};
+pub use rng::{Rng, Seconds};
+
+use crate::config::{self, Config};
+use crate::timing::{Calendar, ini_value, ini_whole};
+use crate::world::World;
+
+/// The `[AI]` keys of the ini file that change the game, with the original's fallbacks
+/// (simulation 9.1). Those that belong to the path finder, the habitat manager or the goals are
+/// read here once and used by them. `popularityScaleFactor` and `maxDistToGoToShow` have no
+/// fallback of their own to give and are left to their users.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ai {
+    /// Milliseconds of an AI tick; the original crashes on 0, so 0 keeps 1000. A negative value
+    /// reads as the huge unsigned number the original divides by.
+    pub ai_tick: u32,
+    pub status_period: i32,
+    pub clear_unreachable_freq: i32,
+    pub min_unreachable_count: u8,
+    pub variable_unit_speeds: i32,
+    pub allow_diagonal_moves: bool,
+    pub animal_reset_interval: i32,
+    pub guest_reset_interval: i32,
+    pub animated_water: bool,
+    pub max_guests: i32,
+    pub escaped_animal_change: i32,
+    pub escaped_animal_time: i32,
+    pub exhibit_service_interval: i32,
+    pub use_attraction_attractiveness: i32,
+    pub map_size: i32,
+    pub min_cost: i32,
+    pub node_max: i32,
+    pub cost_max: i32,
+    pub vector_increment: i32,
+    pub heuristic: f32,
+    pub estimate_func: i32,
+}
+
+impl Ai {
+    /// The keys of the `[AI]` section; a missing or unreadable one keeps its fallback.
+    pub fn from_ini(ini: &[u8]) -> Ai {
+        let config = Config::parse(ini).ok();
+        let whole = |key: &str, fallback: i32| {
+            config
+                .as_ref()
+                .and_then(|c| ini_whole(c, "AI", key))
+                .unwrap_or(fallback)
+        };
+        let decimal = |key: &str, fallback: f32| {
+            config
+                .as_ref()
+                .and_then(|c| ini_value(c, "AI", key))
+                .map_or(fallback, config::to_float)
+        };
+        Ai {
+            ai_tick: match whole("mAITick", 1000) {
+                0 => 1000,
+                n => n as u32,
+            },
+            status_period: whole("mStatusPeriod", 1000),
+            clear_unreachable_freq: whole("ClearUnreachableFreq", 5),
+            min_unreachable_count: whole("MinUnreachableCount", 5) as u8,
+            variable_unit_speeds: whole("VariableUnitSpeeds", 1),
+            allow_diagonal_moves: whole("AllowDiagonalMoves", 1) == 1,
+            animal_reset_interval: whole("AnimalResetInterval", 0).max(0),
+            guest_reset_interval: whole("GuestResetInterval", 0).max(0),
+            animated_water: whole("animatedwater", 1) != 0,
+            max_guests: whole("maxGuests", 1000),
+            escaped_animal_change: whole("cEscapedAnimalChange", 50),
+            escaped_animal_time: whole("cEscapedAnimalTime", 2),
+            exhibit_service_interval: whole("exhibitServiceInterval", 90),
+            use_attraction_attractiveness: whole("useAttractionAttractiveness", 0),
+            map_size: whole("MapSize", 20),
+            min_cost: whole("MinCost", 2),
+            node_max: whole("NodeMax", 500),
+            cost_max: whole("CostMax", 300),
+            vector_increment: whole("VectorIncrement", 20),
+            heuristic: decimal("Heuristic", 1.0),
+            estimate_func: whole("EstimateFunc", 1),
+        }
+    }
+}
+
+/// What a step did that the caller acts on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Report {
+    /// The previous step changed the month: this step runs the month-end work (the finance
+    /// check), after the generator was seeded again.
+    pub month_end: bool,
+    /// The AI clock passed the time to empty the list of unreachable places.
+    pub clear_unreachable: bool,
+    /// The water of a tank moved.
+    pub water_moved: bool,
+}
+
+/// The managers' state: the clocks, the generator and the event queue of one program run.
+#[derive(Debug)]
+pub struct Sim {
+    pub ai: Ai,
+    pub rng: Rng,
+    pub events: Events,
+    seconds: Seconds,
+    /// The tile count of the last map set up, which decides whether a new one seeds again.
+    tiles: usize,
+    calendar: Calendar,
+    /// Simulated time since the zoo began, in milliseconds.
+    total: u32,
+    /// The AI clock: the milliseconds left over and the whole AI ticks.
+    ai_rem: u32,
+    ai_ticks: u32,
+    /// The AI tick at which the unreachable list is next emptied; a value of the session, not
+    /// of the zoo (simulation 4.3).
+    next_clear: u32,
+    /// The world clock: whole seconds and the milliseconds left over.
+    world_secs: u32,
+    world_rem: u32,
+    /// The entities that asked to be removed, by id.
+    removals: Vec<u32>,
+    lines: Vec<String>,
+}
+
+impl Sim {
+    /// The managers at the start of the program: the `[AI]` keys read once, the generator
+    /// seeded from the wall clock (the first seeding of main loop 9.2).
+    pub fn new(ini: &[u8]) -> Sim {
+        let mut sim = Sim {
+            ai: Ai::from_ini(ini),
+            rng: Rng::default(),
+            events: Events::default(),
+            seconds: Seconds::Clock,
+            tiles: 0,
+            calendar: Calendar::new(),
+            total: 0,
+            ai_rem: 0,
+            ai_ticks: 0,
+            next_clear: 0,
+            world_secs: 0,
+            world_rem: 0,
+            removals: Vec::new(),
+            lines: Vec::new(),
+        };
+        sim.reseed();
+        sim
+    }
+
+    /// Seeds the generator again from the seconds source.
+    fn reseed(&mut self) {
+        let seconds = self.seconds.now();
+        self.rng.seed(seconds);
+        // The wall clock's seconds differ at every run: a log that told them could not be replayed.
+        if matches!(self.seconds, Seconds::Test { .. }) {
+            self.lines.push(format!("seed {seconds}"));
+        }
+    }
+
+    /// Makes a test run: the seconds are `seed + n` from now on, and the seedings that already
+    /// happened (the start of the program, and the map when a game is open) are made again with
+    /// them, so that the order is the same as when the seed is known from the start.
+    pub fn set_seed(&mut self, seed: u32) {
+        self.seconds = Seconds::Test { seed, n: 0 };
+        self.lines.retain(|l| !l.starts_with("seed "));
+        self.reseed();
+        if self.tiles != 0 {
+            self.reseed();
+        }
+    }
+
+    /// A new game on a map of `tiles` tiles: the clocks and the queue start again, and the
+    /// generator is seeded again if the map has another number of tiles than the last one
+    /// (main loop 9.2, the second moment).
+    pub fn start_game(&mut self, tiles: usize) {
+        self.calendar = Calendar::new();
+        (self.total, self.ai_rem, self.ai_ticks) = (0, 0, 0);
+        (self.world_secs, self.world_rem) = (0, 0);
+        self.removals.clear();
+        self.events.clear();
+        if tiles != self.tiles {
+            self.tiles = tiles;
+            self.reseed();
+        }
+    }
+
+    pub fn calendar(&self) -> &Calendar {
+        &self.calendar
+    }
+
+    pub fn total_ms(&self) -> u32 {
+        self.total
+    }
+
+    /// The AI clock: whole AI ticks and the milliseconds left over.
+    pub fn ai_clock(&self) -> (u32, u32) {
+        (self.ai_ticks, self.ai_rem)
+    }
+
+    /// The world clock: whole seconds and the milliseconds left over.
+    pub fn world_clock(&self) -> (u32, u32) {
+        (self.world_secs, self.world_rem)
+    }
+
+    /// Asks for an entity to be removed at the next step's removal pass.
+    pub fn remove(&mut self, id: u32) {
+        self.removals.push(id);
+    }
+
+    /// The `sim` log lines since the last call, without the family word.
+    pub fn take_lines(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.lines)
+    }
+
+    /// One step of `step` milliseconds: the managers in the original's order. `update` is called
+    /// for each entity of the list, by position, in list order, with the step (the AI manager's
+    /// loop; the count is taken after the removal pass, so an entity added by `update` waits
+    /// for the next step).
+    pub fn step(
+        &mut self,
+        world: &mut World,
+        step: u32,
+        mut update: impl FnMut(&mut World, usize, u32),
+    ) -> Report {
+        self.lines.push(format!("step {step}"));
+        // The game manager: the time, the calendar, whose month flag of the step before is acted
+        // on here. The generator is seeded again at the start of the month-end check.
+        self.total = self.total.wrapping_add(step);
+        let month_end = self.calendar.advance(step);
+        if month_end {
+            self.reseed();
+            let date = self.calendar.date();
+            self.lines
+                .push(format!("month {} {}", date.month, date.year));
+        }
+        // The AI manager: the clock in whole ticks with the remainder kept, the removal pass,
+        // the entities, the event queue.
+        let total = self.ai_rem.wrapping_add(step);
+        self.ai_rem = total % self.ai.ai_tick;
+        self.ai_ticks = self.ai_ticks.wrapping_add(total / self.ai.ai_tick);
+        let clear_unreachable = self.ai_ticks >= self.next_clear;
+        if clear_unreachable {
+            self.next_clear = self
+                .ai_ticks
+                .wrapping_add(self.ai.clear_unreachable_freq as u32);
+        }
+        for id in std::mem::take(&mut self.removals) {
+            world.unrecorded(|w| w.remove(id));
+        }
+        let count = world.zoo.entities.len();
+        for at in 0..count {
+            // Read again at each index, as the original does.
+            if at < world.zoo.entities.len() {
+                update(world, at, step);
+            }
+        }
+        self.events.age();
+        // The world manager: the water of the tanks, the world clock.
+        let water_moved = world.step_water();
+        let total = self.world_rem.wrapping_add(step);
+        self.world_rem = total % 1000;
+        self.world_secs = self.world_secs.wrapping_add(total / 1000);
+        // The scenario, research and marketing managers have nothing to do before M7.
+        Report {
+            month_end,
+            clear_unreachable,
+            water_moved,
+        }
+    }
+}
