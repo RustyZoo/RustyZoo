@@ -303,11 +303,10 @@ impl Scene {
         };
     }
 
-    /// Takes the quadrants of the footprint, all or none: it wants the `fx * fy` quadrants
-    /// that contain the points `(x - 16 (fx - 1) + 32 i, y - 16 (fy - 1) + 32 j)`. Returns
-    /// whether it got them.
-    fn place_fixed(&mut self, o: usize) -> bool {
-        let obj = self.objects[o];
+    /// The quadrants (`cx`, `cy`, in units of 32) that contain the points `(x - 16 (fx - 1) + 32 i,
+    /// y - 16 (fy - 1) + 32 j)` of the footprint, with the footprint turned by the facing; `None`
+    /// for a footprint outside 1 to the biggest side.
+    fn cells(obj: &Object) -> Option<(Vec<(i64, i64)>, bool)> {
         let (fx, fy) = obj.footprint;
         // The footprint is given along the object's own axes; it turns with the facing.
         let (fx, fy) = if !obj.facing.is_multiple_of(4) {
@@ -316,34 +315,72 @@ impl Scene {
             (fx, fy)
         };
         if !(1..=MAX_FOOTPRINT).contains(&fx) || !(1..=MAX_FOOTPRINT).contains(&fy) {
-            return false;
+            return None;
         }
-        let mut wanted = Vec::with_capacity((fx * fy) as usize);
+        let mut cells = Vec::with_capacity((fx * fy) as usize);
         for j in 0..fy {
             for i in 0..fx {
                 let px = i64::from(obj.x) - 16 * i64::from(fx - 1) + 32 * i64::from(i);
                 let py = i64::from(obj.y) - 16 * i64::from(fy - 1) + 32 * i64::from(j);
-                let (cx, cy) = (px.div_euclid(32), py.div_euclid(32));
-                let tile = i32::try_from(cx >> 1)
-                    .ok()
-                    .zip(i32::try_from(cy >> 1).ok())
-                    .and_then(|(tx, ty)| self.index(tx, ty));
-                match tile {
-                    Some(tile) if self.quad[tile][((cy & 1) * 2 + (cx & 1)) as usize].is_none() => {
-                        wanted.push((tile, ((cy & 1) * 2 + (cx & 1)) as usize))
-                    }
-                    _ => return false,
-                }
+                cells.push((px.div_euclid(32), py.div_euclid(32)));
             }
         }
-        let large = fx > 2 || fy > 2;
+        Some((cells, fx > 2 || fy > 2))
+    }
+
+    /// The tiles under an object bigger than one tile in x or in y (a footprint above 2 half
+    /// tiles after the turn), in index order; none for another object. Points off the map are left
+    /// out.
+    pub fn large_tiles(&self, o: usize) -> Vec<usize> {
+        let Some((cells, true)) = Scene::cells(&self.objects[o]) else {
+            return Vec::new();
+        };
+        let mut tiles: Vec<usize> = cells
+            .into_iter()
+            .filter_map(|(cx, cy)| {
+                i32::try_from(cx >> 1)
+                    .ok()
+                    .zip(i32::try_from(cy >> 1).ok())
+                    .and_then(|(tx, ty)| self.index(tx, ty))
+            })
+            .collect();
+        tiles.sort_unstable();
+        tiles.dedup();
+        tiles
+    }
+
+    /// The units standing on tile `t`.
+    pub fn units_on(&self, t: usize) -> &[usize] {
+        &self.list[t]
+    }
+
+    /// Takes the quadrants of the footprint, all or none: it wants the `fx * fy` quadrants
+    /// that contain the points `(x - 16 (fx - 1) + 32 i, y - 16 (fy - 1) + 32 j)`. Returns
+    /// whether it got them.
+    fn place_fixed(&mut self, o: usize) -> bool {
+        let Some((cells, large)) = Scene::cells(&self.objects[o]) else {
+            return false;
+        };
+        let mut wanted = Vec::with_capacity(cells.len());
+        for (cx, cy) in cells {
+            let tile = i32::try_from(cx >> 1)
+                .ok()
+                .zip(i32::try_from(cy >> 1).ok())
+                .and_then(|(tx, ty)| self.index(tx, ty));
+            match tile {
+                Some(tile) if self.quad[tile][((cy & 1) * 2 + (cx & 1)) as usize].is_none() => {
+                    wanted.push((tile, ((cy & 1) * 2 + (cx & 1)) as usize))
+                }
+                _ => return false,
+            }
+        }
         for &(tile, q) in &wanted {
             self.quad[tile][q] = Some(o);
             if q == 3 && large {
                 self.big[tile] = Some(o);
             }
         }
-        self.covers[o] = (fx * fy) as u32;
+        self.covers[o] = wanted.len() as u32;
         true
     }
 

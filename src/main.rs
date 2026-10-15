@@ -161,7 +161,8 @@ usage: rustyzoo [--data <dir>] <command>
                       the brush, 0 after a paint, 23 pixels right of the pointer, and a tile the
                       pointer reaches shows the help of its terrain type as a tooltip); in the modify tab a drag up or down raises or lowers
                       the brush one step per 16 pixels (8 and 32 at the other zooms), by the mode
-                      (contiguous or not, drag or level to the tile first clicked); the session costs what the tiles touched cost
+                      (contiguous or not, drag or level to the tile first clicked; a step that does not keep the ground
+                      joined takes the other tiles of an object larger than a tile that stands on the brush along); the session costs what the tiles touched cost
                       against their first state, shown in the panel; accept pays it (booked as
                       construction), cancel puts the tiles back, and leaving the panel (another
                       tab, closing it, Escape) accepts it when the cash covers it and else cancels

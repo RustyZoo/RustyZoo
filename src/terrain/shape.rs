@@ -8,7 +8,7 @@ use super::Type;
 use crate::render::corner_elevation;
 use crate::world::World;
 use crate::zoo::Tile;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// The corners stay between these elevations.
 pub const LIMIT: i32 = 12;
@@ -167,6 +167,53 @@ impl Step<'_> {
     }
 }
 
+/// The tiles that objects larger than one tile standing on the tiles of `brush` (inside the zoo)
+/// cover.
+fn under(world: &World, brush: &[usize]) -> BTreeSet<usize> {
+    brush
+        .iter()
+        .filter(|&&t| world.in_zoo(t))
+        .flat_map(|&t| world.carried(t))
+        .collect()
+}
+
+/// The tiles outside the brush that those objects take along in a non-contiguous step, inside the
+/// zoo, in index order (terrain editing 5.5).
+pub fn carried(world: &World, brush: &[usize]) -> Vec<usize> {
+    let mut tiles = under(world, brush);
+    tiles.retain(|t| !brush.contains(t) && world.in_zoo(*t));
+    tiles.into_iter().collect()
+}
+
+/// The tiles a non-contiguous step adds to the snapshot unchanged, so that they are drawn again:
+/// the ring of one tile around the brush and the rectangle that bounds the tiles of `carried`'s
+/// objects, grown by one tile (terrain editing 5.5), clipped to the map, in index order.
+pub fn ring(world: &World, brush: &[usize]) -> Vec<usize> {
+    let width = world.zoo.width as usize;
+    let mut rings = BTreeSet::new();
+    let mut grow = |tiles: &mut dyn Iterator<Item = usize>| {
+        let cells: Vec<(i32, i32)> = tiles
+            .map(|t| ((t % width) as i32, (t / width) as i32))
+            .collect();
+        let (Some(x0), Some(x1), Some(y0), Some(y1)) = (
+            cells.iter().map(|c| c.0).min(),
+            cells.iter().map(|c| c.0).max(),
+            cells.iter().map(|c| c.1).min(),
+            cells.iter().map(|c| c.1).max(),
+        ) else {
+            return;
+        };
+        for y in y0 - 1..=y1 + 1 {
+            for x in x0 - 1..=x1 + 1 {
+                rings.extend(world.tile_index(x, y));
+            }
+        }
+    };
+    grow(&mut brush.iter().copied().filter(|&t| world.in_zoo(t)));
+    grow(&mut under(world, brush).into_iter());
+    rings.into_iter().collect()
+}
+
 /// One step of `request` over the `brush` tiles, in rows (terrain editing 5.2). The tiles that
 /// changed, in index order, with their new elevation and shape byte; none when the step does
 /// nothing. Only tiles inside the zoo change.
@@ -212,6 +259,10 @@ pub fn run(
     }
     if contiguous {
         step.spread(queue, if action == Action::Raise { 1 } else { -1 });
+    } else {
+        for t in carried(world, &brush) {
+            step.tile(t, action, goal);
+        }
     }
     step.now
         .iter()
