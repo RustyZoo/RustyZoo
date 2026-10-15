@@ -147,6 +147,9 @@ pub struct Sim {
     /// The entities that asked to be removed, by id.
     removals: Vec<u32>,
     lines: Vec<String>,
+    /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
+    /// first seeding, and after every hire (unit placing 4.3).
+    pub hire_male: bool,
 }
 
 impl Sim {
@@ -168,8 +171,10 @@ impl Sim {
             world_rem: 0,
             removals: Vec::new(),
             lines: Vec::new(),
+            hire_male: false,
         };
         sim.reseed();
+        sim.draw_hire();
         sim
     }
 
@@ -198,9 +203,16 @@ impl Sim {
         self.seconds = seconds;
         self.lines.retain(|l| !l.starts_with("seed "));
         self.reseed();
+        self.draw_hire();
         if self.tiles != 0 {
             self.reseed();
         }
+    }
+
+    /// Draws the sex of the next hire from the generator: bit 16 of the state set is male (unit
+    /// placing 4.3), the lowest bit of the number.
+    pub fn draw_hire(&mut self) {
+        self.hire_male = self.rng.rand() & 1 == 1;
     }
 
     /// A new game on a map of `tiles` tiles that stores these clocks: the total time and the

@@ -120,6 +120,11 @@ impl Fnv {
     }
 
     fn zoo(&mut self, zoo: &Zoo) {
+        self.len(zoo.names.len());
+        for (name, n) in &zoo.names {
+            self.text(name);
+            self.u32(*n);
+        }
         self.len(zoo.tiles.len());
         for t in &zoo.tiles {
             self.i32(t.elevation);
@@ -250,6 +255,7 @@ impl Fnv {
         ] {
             self.u32(v);
         }
+        self.u8(u8::from(sim.hire_male));
         match sim.seconds {
             Seconds::Clock | Seconds::Replay(_) => self.u8(0),
             Seconds::Test { seed, n } => {

@@ -21,6 +21,7 @@ impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
             154 => "sell %s?\nRefund: ".into(),
+            155 => "fire %s?\nsalary: ".into(),
             156 => "merge %s with %s?".into(),
             157 => "animals escape".into(),
             160 => "tank drained".into(),
@@ -79,7 +80,7 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
 /// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40), 8 bench (50,
 /// a scenery object that does not live under water), 9 stone path (20), 10 steel fence (150) and
-/// 11 its gate. Every picture is a square around the anchor: 24 pixels, the tree's 16.
+/// 11 its gate, 12 a zookeeper (800, its monthly cost 650.5). Every picture is a square around the anchor: 24 pixels, the tree's 16.
 pub(super) fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
@@ -140,6 +141,8 @@ pub(super) fn catalogue() -> Catalogue {
         let ini = format!("{}[HabitatFence]\n", cost(150));
         cat.push(ty("fences", b"steel", subtype, &ini, [1, 1, 1]));
     }
+    let keeper = "[m/Characteristics/Integers]\ncPurchaseCost=800\ncMonthlyCost=650.5\n";
+    cat.push(ty("keeper", b"keeper", b"m", keeper, [1, 1, 1]));
     cat
 }
 
@@ -506,6 +509,27 @@ fn a_building_asks_before_it_is_sold_and_the_answer_decides() {
         assert!(removed.ends_with("refund 280"));
         assert!(told.contains(&"money cash 50280".to_string()));
         assert_eq!(s.count(), 0);
+    });
+}
+
+#[test]
+fn a_staff_member_is_fired_after_a_question_that_names_the_salary_and_costs_nothing() {
+    with_game("fire", "", |s| {
+        s.add(12, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[DELETE]);
+        let over = s.at(20, 20, 32, 32);
+        s.pass(&[over]);
+        assert_eq!(s.cost(), Some(0));
+        assert_eq!(s.click(over), ["tool bulldoze ask Fire"]);
+        let game = s.app.game.as_ref().unwrap();
+        let (ui, cat) = (s.app.ui.as_ref().unwrap(), s.app.renderer.catalogue());
+        let text = bulldozer::question_text(ui, cat, &game.world, 0, Question::Fire);
+        assert_eq!(text, "fire Shop?\nsalary: $650", "cut to whole units");
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
+        assert!(removed.starts_with("world remove keeper/keeper/m 20,20 id"));
+        assert!(removed.ends_with("refund 0"), "{removed}");
+        assert_eq!((s.count(), s.cash()), (0, 50_000.0));
     });
 }
 

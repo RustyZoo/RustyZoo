@@ -6,13 +6,16 @@
 use super::*;
 use crate::entity::Catalogue;
 use crate::place::bulldozer::{self, Check, Question};
+use crate::staff;
 use crate::text::format::{self, Arg, expand, whole_units};
 use std::collections::VecDeque;
 
-/// The strings of the questions: the sell question (it ends with "Refund: "), the merge of two
-/// exhibits, the escape of the animals of an exhibit, the same for a tank (drained, its animals
-/// boxed); and the default name of an exhibit.
+/// The strings of the questions: the sell question (it ends with the label of the refund), the
+/// fire question (it ends with the label of the monthly salary), the merge of two exhibits, the
+/// escape of the animals of an exhibit, the same for a tank (drained, its animals boxed); and the
+/// default name of an exhibit.
 const SELL: i32 = 154;
+const FIRE: i32 = 155;
 const MERGE: i32 = 156;
 const ESCAPE: i32 = 157;
 const DRAIN: i32 = 160;
@@ -369,17 +372,20 @@ pub(super) fn question_text(
         _ => format!("{} {n}", ui.string(EXHIBIT)),
     };
     match question {
-        Question::Sell => {
+        Question::Sell | Question::Fire => {
             let entity = world.zoo.entities.get(at);
-            let name = entity
-                .and_then(|e| bulldozer::type_of(cat, e))
-                .map_or(String::new(), |t| ui.string(t.name_id));
-            let refund = entity.map_or(0.0, |e| bulldozer::refund(cat, e));
-            let text = expand(&Plain, &template(SELL), &[Arg::Text(&name)]);
-            // The dialog shows the refund cut to whole units; the cash gets the exact amount.
+            let ty = entity.and_then(|e| bulldozer::type_of(cat, e));
+            let name = ty.map_or(String::new(), |t| ui.string(t.name_id));
+            // The refund of a sale, or the monthly salary of the staff member fired; the dialog
+            // shows it cut to whole units, the cash gets the exact amount.
+            let (id, amount) = match question {
+                Question::Fire => (FIRE, ty.map_or(0.0, staff::monthly)),
+                _ => (SELL, entity.map_or(0.0, |e| bulldozer::refund(cat, e))),
+            };
+            let text = expand(&Plain, &template(id), &[Arg::Text(&name)]);
             format!(
                 "{text}{}",
-                Symbol::new(ui.string(SYMBOL)).text(refund as i64)
+                Symbol::new(ui.string(SYMBOL)).text(amount as i64)
             )
         }
         Question::Merge(x, y) => expand(

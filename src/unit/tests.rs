@@ -363,8 +363,9 @@ fn the_simulation_draws_once_per_unit_that_runs_its_goals() {
     let (mut a, mut b) = (sim(), sim());
     a.step(&mut w, 67, |_, _, _| {});
     // The animal (of no known subtype: a young one) draws its sex and its sixteen counters on
-    // its first turn, and the zoo grounds' rating timer draws once (it starts dirty).
-    (0..3 + 17 + 1).for_each(|_| _ = b.rng.rand());
+    // its first turn, the keeper its two counters, and the zoo grounds' rating timer draws once
+    // (it starts dirty).
+    (0..3 + 17 + 2 + 1).for_each(|_| _ = b.rng.rand());
     assert_eq!(a.rng.state(), b.rng.state());
     // A waiting unit draws nothing.
     w.units.get_mut(2).unwrap().wait = 1000;
@@ -485,4 +486,21 @@ fn the_hash_covers_the_animals() {
     let mut other = world(&[("animals", 1), ("guests", 2)]);
     other.units.get_mut(1).unwrap().started = true;
     assert_ne!(other.units.hash(), base, "started");
+}
+
+#[test]
+fn the_hash_of_the_units_follows_the_counters_of_a_staff_member() {
+    let mut w = world(&[("keeper", 1)]);
+    let before = w.units.hash();
+    let Part::Staff(staff) = &mut w.units.get_mut(1).unwrap().part else {
+        panic!("not staff");
+    };
+    staff.work = 3;
+    let work = w.units.hash();
+    assert_ne!(work, before);
+    let Part::Staff(staff) = &mut w.units.get_mut(1).unwrap().part else {
+        panic!("not staff");
+    };
+    staff.chase = 1;
+    assert_ne!(w.units.hash(), work);
 }

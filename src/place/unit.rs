@@ -1,10 +1,12 @@
-//! Placing animals (unit placing 5 to 7, 9.3 and 10.2): the pending animal and the checks of its
-//! tile, the purchase, the name from a counter per type name, the crate's tile and the sell price.
+//! Placing animals and staff (unit placing 5 to 7, 9.3 and 10.2): the pending unit and the checks
+//! of its tile, the purchase, the name from a counter per type name, the crate's tile and the
+//! sell price.
 //!
-//! The pending animal is a [`Pending`] like an object's, snapped as a 1 x 1 object and facing a
+//! The pending unit is a [`Pending`] like an object's, snapped as a 1 x 1 object and facing a
 //! fixed screen direction. [`pending`] runs the checks of 6.1 in order, the first failure keeping
-//! its message. The tank point (5.1) is not done: a tank tile is never valid, and says why.
-//! Staff are hired by their own panel.
+//! its message; a staff member's (6.3) are those of an animal without the ones that are about an
+//! exhibit, the water message, the slope and the size. The tank point (5.1) is not done: a tank
+//! tile is never valid, and says why.
 
 use super::{
     NO_FUNDS, NOT_IN_THE_ZOO, Outcome, Pending, Verdict, entity, facing, fail, fenced, path_shape,
@@ -16,6 +18,7 @@ use crate::exhibit::GROUNDS;
 use crate::money::{ANIMAL_PURCHASE, Money};
 use crate::place::Class;
 use crate::render::order::{Kind, ground_height};
+use crate::staff;
 use crate::world::{Shape, World};
 use crate::zoo::Entity;
 
@@ -31,6 +34,8 @@ const NOT_FOR_SHOWS: i32 = 10561;
 const LADDER: i32 = 10562;
 /// An animal that does not swim in tanks.
 const NOT_IN_TANKS: i32 = 10553;
+/// A staff member that does not swim in tanks.
+const NOT_FOR_STAFF: i32 = 10563;
 /// An animal that cannot swim stands on land.
 const NOT_ON_WATER_UNIT: i32 = 10569;
 /// The crate search goes this far, in tiles of Manhattan distance (unit placing 9.3).
@@ -39,6 +44,11 @@ const CRATE_RANGE: i32 = 50;
 /// Whether the type is placed as an animal by the Adopt panel.
 pub fn is_animal(ty: &EntityType) -> bool {
     ty.class == "animals"
+}
+
+/// Whether the type is placed as a unit by the Adopt or the Hire panel.
+pub fn is_unit(ty: &EntityType) -> bool {
+    is_animal(ty) || staff::is_staff(ty)
 }
 
 /// What the type costs to place now: `cPurchaseCost`, halved in October for an animal of Dinosaur
@@ -141,8 +151,9 @@ fn lets_through(world: &World, object: usize) -> bool {
     world.shape(object).is_some_and(|s: Shape| s.walkable.0)
 }
 
-/// The checks of 6.1 for an animal that is not crated, in order.
+/// The checks of 6.1 for an animal that is not crated, or of 6.3 for a staff member, in order.
 fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
+    let staff = staff::is_staff(t);
     let Some(tile) = world
         .tile_index(p.tile.0, p.tile.1)
         .filter(|&tile| world.in_zoo(tile))
@@ -150,7 +161,8 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
         return fail(p, Some(NOT_IN_THE_ZOO));
     };
     let flag = |key: &str| number(t, key) == Some(1.0);
-    let (swims, under) = (flag("cSwims"), flag("cUnderwater"));
+    // The messages about water read `cOnlyUnderwater`, whatever the class (unit placing 6.1).
+    let (swims, only) = (flag("cSwims"), flag("cOnlyUnderwater"));
     let (fx, fy) = footprint(t, p.facing);
     // A large animal runs the footprint check of placing 5.2 (items 1, 3 to 6): its quarters.
     let large = fx > 2 || fy > 2;
@@ -186,7 +198,7 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
         fail(p, None);
     }
     // Flat, or raised along one side only, unless the animal is small.
-    if fx * fy >= 4 && !path_shape(world.zoo.tiles[tile].shape) {
+    if !staff && fx * fy >= 4 && !path_shape(world.zoo.tiles[tile].shape) {
         fail(p, None);
     }
     let wet = water
@@ -194,14 +206,8 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
         .copied()
         .unwrap_or(false);
     if wet && !swims {
-        fail(
-            p,
-            Some(if under {
-                NEEDS_WATER
-            } else {
-                NOT_ON_WATER_UNIT
-            }),
-        );
+        let message = if only { NEEDS_WATER } else { NOT_ON_WATER_UNIT };
+        fail(p, (!staff).then_some(message));
     }
     // A large animal holds no quarter, stands flat at one height and crosses no fence or cliff.
     let held: Vec<usize> = match large {
@@ -216,15 +222,15 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
     }
     // It stands in an exhibit.
     let region = world.exhibits().region(tile);
-    if region.is_none_or(|r| r == GROUNDS) {
-        fail(p, Some(if under { NEEDS_WATER } else { IN_AN_EXHIBIT }));
+    if !staff && region.is_none_or(|r| r == GROUNDS) {
+        fail(p, Some(if only { NEEDS_WATER } else { IN_AN_EXHIBIT }));
     }
     let tank = world.tank_at(tile);
     if let Some(id) = tank {
         if let Some(message) = tank_message(world, id, tile, t) {
             fail(p, Some(message));
         }
-    } else if under {
+    } else if only {
         fail(p, Some(NEEDS_WATER));
     }
     // What is in the way: the objects holding the tile's quarters and every unit on it.
@@ -248,7 +254,7 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
 fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i32> {
     let tank = world.tank(id)?;
     let flag = |key: &str| number(t, key) == Some(1.0);
-    let under = flag("cUnderwater");
+    let (under, staff) = (flag("cUnderwater"), staff::is_staff(t));
     let inside = world
         .gate_slot(id)
         .and_then(|(g, side)| match world.tank_at(g) == Some(id) {
@@ -257,17 +263,18 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
         });
     let depth = number(t, "cDepth").unwrap_or(0.0);
     let mut message = None;
-    if inside == Some(tile) {
+    // Only a keeper stands at the ladder; the filled tank and the depth are an animal's.
+    if inside == Some(tile) && t.class != "keeper" {
         message = Some(LADDER);
     }
-    if under && (!tank.filled || tank.level < 1) {
+    if under && !staff && (!tank.filled || tank.level < 1) {
         message = Some(NEEDS_WATER);
     }
     if depth > tank.level as f32 {
         message = Some(DEEPER);
     }
     if !under {
-        message = Some(NOT_IN_TANKS);
+        message = Some(if staff { NOT_FOR_STAFF } else { NOT_IN_TANKS });
     }
     if tank.show && plain(t, "cShow") != Some(1.0) {
         message = Some(NOT_FOR_SHOWS);
@@ -275,7 +282,7 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
     message
 }
 
-/// The default name of a new animal of the type, `text` being the type's name: with
+/// The default name of a new unit of the type, `text` being the type's name: with
 /// `cUseNumbersInName` (the default) a space and the next number of the counter of the type name
 /// (`giraffe`, not the text), started at 1 (unit placing 7.2).
 pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
@@ -288,10 +295,16 @@ pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
     format!("{text} {counter}")
 }
 
-/// Releases the button over a pending animal (unit placing 7.1): a valid place is paid with the
-/// cash, booked as animal purchase, and gets the animal named `text` (the type's name, numbered
+/// The category a unit's purchase is booked in: animal purchase, or the wages of the staff's class.
+pub fn category(ty: &EntityType) -> usize {
+    staff::wages(ty).unwrap_or(ANIMAL_PURCHASE)
+}
+
+/// Releases the button over a pending unit (unit placing 7.1): a valid place is paid with the
+/// cash, booked in its [`category`], and gets the unit named `text` (the type's name, numbered
 /// by [`name`]); a place that is not valid shows its stored message, a cash that does not cover
-/// the cost the message of insufficient funds. The undo list records the placement.
+/// the cost the message of insufficient funds. The undo list records the placement of an animal;
+/// hiring a staff member empties it.
 pub fn place(
     world: &mut World,
     money: &mut Money,
@@ -306,15 +319,18 @@ pub fn place(
     if !money.can_pay(p.price) {
         return Outcome::Refused(Some(NO_FUNDS));
     }
-    let mut animal = entity(ty, p, Vec::new());
-    if let Some(common) = animal.common.as_mut() {
+    let mut unit = entity(ty, p, Vec::new());
+    if let Some(common) = unit.common.as_mut() {
         common.name = name(world, ty, text);
     }
-    let shape = shape(&animal);
-    match world.add(animal, shape) {
+    let shape = shape(&unit);
+    match world.add(unit, shape) {
         Some(id) => {
             world.priced(p.price);
-            money.charge(ANIMAL_PURCHASE, p.price);
+            if staff::is_staff(ty) {
+                world.clear_undo();
+            }
+            money.charge(category(ty), p.price);
             Outcome::Placed(id)
         }
         None => Outcome::Refused(None),

@@ -258,6 +258,7 @@ impl Strings for Texts {
             13 => "Foliage".into(),
             14 => "Buildings".into(),
             2025 => "Creatures".into(),
+            3614 => "Cares".into(),
             3297 => "none".into(),
             3298 => "exhibit".into(),
             3299 => "show".into(),
@@ -276,7 +277,7 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [b]\ntype=UILayout\nlayout=ui/c.lyt\n[c]\ntype=UILayout\nlayout=ui/o.lyt\n\
     [d]\ntype=UIButton\nid=1002\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=8\n\
     [e]\ntype=UIButton\nid=1001\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=4\n\
-    [f]\ntype=UILayout\nlayout=ui/a.lyt\n";
+    [f]\ntype=UILayout\nlayout=ui/a.lyt\n[h]\ntype=UILayout\nlayout=ui/p.lyt\n";
 
 /// One panel: the layout `id`, title, expansion button, list (with its radio set, template and
 /// bar from `list` + 1 to + 3), the tabs, the rotate buttons, the name and the cost.
@@ -371,11 +372,23 @@ fn interface(name: &str) -> (Interface, Vfs, Install) {
          [e]\ntype=UIText\nid=2082\ndx=50\ndy=10\n[em]\ntype=UIText\nid=2009\ndx=50\ndy=10\n\
          [li]\ntype=UIImage\nid=2045\n[hi]\ntype=UIImage\nid=2047\n[hb]\ntype=UIImage\nid=2046\n",
     );
+    let hire = panel(
+        10,
+        3697,
+        3601,
+        3602,
+        &[],
+        "[rl]\ntype=UIButton\nid=3676\ndx=5\ndy=5\nstate=1\n\
+         [rr]\ntype=UIButton\nid=3677\ndx=5\ndy=5\nstate=1\n\
+         [n]\ntype=UIText\nid=3620\ndx=50\ndy=10\n[k]\ntype=UIText\nid=3611\ndx=50\ndy=10\n\
+         [d]\ntype=UIText\nid=3613\ndx=50\ndy=10\n[em]\ntype=UIText\nid=3609\ndx=50\ndy=10\n",
+    );
     let install = Install::new(
         &format!("build-{name}"),
         &[
             ("ui/root.lyt", ROOT.as_bytes().to_vec()),
             ("ui/a.lyt", adopt.into_bytes()),
+            ("ui/p.lyt", hire.into_bytes()),
             ("ui/c.lyt", construction.into_bytes()),
             ("ui/o.lyt", objects.into_bytes()),
             (
@@ -634,7 +647,7 @@ fn the_objects_panel_opens_through_the_radio_set_and_the_other_closes() {
         assert_eq!(build.tool(), Some(5), "the item stays chosen");
     }
     // The other panel's step is its own.
-    assert_eq!(build.step, [0, 1, 0]);
+    assert_eq!(build.step, [0, 1, 0, 0]);
 }
 
 #[test]
@@ -835,7 +848,7 @@ fn a_type_that_turns_by_itself_advances_the_pending_step_and_choosing_resets_it(
         assert!(build.placed(&turns));
         assert_eq!(build.step(), want);
     }
-    assert_eq!(build.step, [2, 0, 0]);
+    assert_eq!(build.step, [2, 0, 0, 0]);
 }
 
 #[test]
@@ -1133,4 +1146,70 @@ fn the_adopt_panel_lists_each_species_once_as_the_sex_chosen_in_the_order_of_the
     build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
     assert_eq!(build.list, [6]);
     assert_eq!(state_of(&ui, 2009) & HIDDEN, HIDDEN);
+}
+
+/// A staff type of the Hire panel: the keys are in the section of its subtype.
+fn hand(class: &'static str, name: &str, sub: &str, members: &str, id: i32) -> EntityType {
+    let ini = format!(
+        "[Member]\n{members}\n[{sub}/Characteristics/Integers]\ncPurchaseCost=800\n\
+         cMonthlyCost=650.4\ncDutiesTextID=3614\n"
+    );
+    EntityType {
+        name_id: id,
+        ..ty(class, name, sub, &ini)
+    }
+}
+
+#[test]
+fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_duties() {
+    let (mut ui, vfs, _install) = interface("hire");
+    let cat = catalogue(vec![
+        hand("keeper", "keeper", "m", "staff", 101),
+        hand("keeper", "keeper", "f", "staff", 101),
+        hand("maint", "maint", "m", "staff", 102),
+        hand("maint", "maint", "f", "staff", 102),
+        hand("keeper", "scient", "m", "staff\ndinosaur", 103),
+        hand("keeper", "scient", "f", "staff\ndinosaur", 103),
+        scenery("objects", "shelter", "hut", "shelters", 50, 104),
+        hand("tour", "tour", "m", "staff", 105),
+        hand("tour", "tour", "f", "staff", 105),
+    ]);
+    let (mut build, mut log) = (Build::new(0), vec![]);
+    build.set_hire(true);
+    assert!(ui.show(10));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    // The men sorted by kind, the keeper class, the tour guide, then the maintenance worker; the
+    // scientist needs the expansion.
+    assert_eq!(build.list, [0, 7, 2]);
+    assert_eq!(log[0], "tool panel hire");
+    assert_eq!(
+        log[1],
+        "tool item staff keeper/keeper/m name=Name101 cost=$650"
+    );
+    assert_eq!(
+        (
+            text(&ui, 3697),
+            text(&ui, 3620),
+            text(&ui, 3611),
+            text(&ui, 3613)
+        ),
+        ("".into(), "Name101".into(), "$650".into(), "Cares".into())
+    );
+    assert_eq!(state_of(&ui, 3676) & HIDDEN, HIDDEN, "staff do not turn");
+    assert_eq!(state_of(&ui, 3609) & HIDDEN, HIDDEN);
+    // A hire draws a woman: the list is made again and the same kind of staff stays chosen.
+    log.clear();
+    build.set_hire(false);
+    build.rehire(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!((build.list.clone(), build.tool()), (vec![1, 8, 3], Some(1)));
+    // With the expansion the scientist is listed with the zookeeper, before the tour guide.
+    assert_eq!(
+        items_of(&cat, "staff", 1, |t| t.subtype == b"m"),
+        [0, 4, 7, 2]
+    );
+    // Nothing of the kind: the empty text shows and no item is chosen.
+    let none = catalogue(vec![]);
+    build.rehire(&mut ui, &vfs, &none, &mut log);
+    assert_eq!((build.tool(), state_of(&ui, 3609) & HIDDEN), (None, 0));
+    assert_eq!(text(&ui, 3620), "");
 }

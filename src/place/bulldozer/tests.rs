@@ -52,6 +52,8 @@ fn catalogue() -> Catalogue {
     cat.push(ty("tankwall", "glass", "f", tank, [1, 1, 1]));
     cat.push(ty("tankwall", "show", "f", tank, [1, 1, 1]));
     cat.push(ty("tankwall", "glass", "g", tank, [1, 1, 1]));
+    let keeper = "[m/Characteristics/Integers]\ncPurchaseCost=800\ncMonthlyCost=650.5\n";
+    cat.push(ty("keeper", "keeper", "m", keeper, [1, 1, 1]));
     cat
 }
 
@@ -89,7 +91,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "paths" => (Kind::Path, (2, 2), false),
         "fences" => (Kind::Edge, (1, 1), true),
         "tankwall" => (Kind::Wall, (1, 1), true),
-        "animals" => (Kind::Unit, (1, 1), false),
+        "animals" | "keeper" => (Kind::Unit, (1, 1), false),
         _ => return None,
     };
     Some(Shape {
@@ -534,4 +536,35 @@ fn gate_tank_hides_the_cost_and_refuses_when_an_object_stands_on_the_tank_tile()
     let w = world(v);
     let g = over(&w);
     assert_eq!((g.pending.verdict, g.hidden), (Verdict::Valid, false));
+}
+
+#[test]
+fn a_staff_member_is_fired_after_a_question_and_nothing_is_refunded() {
+    let cat = catalogue();
+    let mut w = world(vec![entity(
+        "keeper",
+        "keeper",
+        "m",
+        4 * 64 + 5,
+        4 * 64 + 5,
+        0,
+    )]);
+    let mut money = Money {
+        cash: 1000.0,
+        ..Money::default()
+    };
+    assert!(removable(&w, &cat, 0));
+    assert_eq!(refund(&cat, &w.zoo.entities[0]), 0.0);
+    assert_eq!(check(&w, &cat, 0, true, &[]), Check::Ask(Question::Fire));
+    assert_eq!(Question::Fire.pair(), None);
+    assert_eq!(check(&w, &cat, 0, false, &[]), Check::Go);
+    let id = w.zoo.entities[0].common.as_ref().unwrap().id;
+    let removed = remove(&mut w, &mut money, &cat, id).unwrap();
+    assert_eq!(
+        (removed.refund, removed.name.as_str()),
+        (0.0, "keeper/keeper/m")
+    );
+    assert_eq!(money.cash, 1000.0);
+    assert_eq!(money.total, Money::default().total, "nothing was booked");
+    assert!(w.zoo.entities.is_empty());
 }

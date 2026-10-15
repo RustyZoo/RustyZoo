@@ -995,7 +995,7 @@ impl<'a> App<'a> {
         let (step, view) = (game.build.step(), game.camera.rotation);
         let october = game.build.october();
         let at = |ty, point: (i64, i64)| {
-            if cat.types.get(ty).is_some_and(place::unit::is_animal) {
+            if cat.types.get(ty).is_some_and(place::unit::is_unit) {
                 return place::unit::pending(
                     &game.world,
                     cat,
@@ -1120,7 +1120,7 @@ impl<'a> App<'a> {
             return self.gate_release();
         }
         let cat = self.renderer.catalogue();
-        if (game.build.tool().and_then(|t| cat.types.get(t))).is_some_and(place::unit::is_animal) {
+        if (game.build.tool().and_then(|t| cat.types.get(t))).is_some_and(place::unit::is_unit) {
             return self.adopt();
         }
         if game.build.tool().is_none() && game.terrain.mode().is_none() {
@@ -1305,6 +1305,7 @@ impl<'a> App<'a> {
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         let told = self.tool_lines.len();
         game.build.set_month(self.sim.calendar().date().month);
+        game.build.set_hire(self.sim.hire_male);
         game.build.sync(ui, vfs, cat, &mut self.tool_lines);
         if let Some(id) = selected {
             game.build.selected(ui, vfs, cat, id, &mut self.tool_lines);

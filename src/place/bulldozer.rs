@@ -13,6 +13,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::money::{ANIMAL_REFUND, CONSTRUCTION_REFUND, Money};
 use crate::render::order::Kind;
+use crate::staff;
 use crate::world::World;
 use crate::zoo::{Entity, Fence};
 
@@ -99,8 +100,9 @@ pub fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
             Kind::Edge | Kind::Wall | Kind::Fixed => {
                 number(ty, "cDeletable").is_none_or(|n| n == 1.0)
             }
-            // An animal is sold (the animal panel's sell button, until its panel exists).
-            Kind::Unit => unit::is_animal(ty),
+            // An animal is sold and a staff member fired (the unit's panel buttons, until the
+            // panels exist).
+            Kind::Unit => unit::is_unit(ty),
             Kind::Overlay => false,
         }
 }
@@ -124,6 +126,8 @@ pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
             }
         }
         _ if unit::is_animal(ty) => return unit::new_sell_price(ty),
+        // Firing refunds nothing (unit placing 10.2).
+        _ if staff::is_staff(ty) => return 0.0,
         _ => 0.8,
     };
     cost(ty) * rate
@@ -162,6 +166,8 @@ pub fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
 pub enum Question {
     /// "Are you sure you want to sell ...?" (string 154): a type that needs confirming.
     Sell,
+    /// "Are you sure you want to fire ...?" (string 155): a staff member.
+    Fire,
     /// The removal joins two exhibits (string 156): their numbers.
     Merge(u32, u32),
     /// The removal opens an exhibit to the zoo grounds (string 157): its number.
@@ -173,7 +179,7 @@ impl Question {
     /// was asked stays asked (a silent No) while others merge.
     pub fn pair(self) -> Option<(u32, u32)> {
         let (a, b) = match self {
-            Question::Sell => return None,
+            Question::Sell | Question::Fire => return None,
             Question::Merge(x, y) => (x, y),
             Question::Escape(x) => (GROUNDS, x),
         };
@@ -237,15 +243,13 @@ pub fn check(world: &World, cat: &Catalogue, e: usize, sell: bool, asked: &[(u32
             false => Check::Ask(q),
         };
     }
-    let needs = world
-        .zoo
-        .entities
-        .get(e)
-        .and_then(|entity| type_of(cat, entity))
-        .is_some_and(|ty| unit::is_animal(ty) || number(ty, "cNeedsConfirm") == Some(1.0));
-    match sell && needs {
-        true => Check::Ask(Question::Sell),
-        false => Check::Go,
+    let ty = (world.zoo.entities.get(e)).and_then(|entity| type_of(cat, entity));
+    let needs = ty.is_some_and(|ty| unit::is_unit(ty) || number(ty, "cNeedsConfirm") == Some(1.0));
+    let fire = ty.is_some_and(staff::is_staff);
+    match (sell && needs, fire) {
+        (true, true) => Check::Ask(Question::Fire),
+        (true, false) => Check::Ask(Question::Sell),
+        (false, _) => Check::Go,
     }
 }
 
@@ -282,7 +286,9 @@ pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) ->
         removed.tile = ((t % width) as i32, (t / width) as i32);
         removed.side = Some(d as u32);
     }
-    let animal = type_of(cat, &world.zoo.entities[at]).is_some_and(unit::is_animal);
+    let (animal, staff) = type_of(cat, &world.zoo.entities[at]).map_or((false, false), |ty| {
+        (unit::is_animal(ty), staff::is_staff(ty))
+    });
     world.remove(id);
     world.priced(removed.refund);
     let category = if animal {
@@ -290,7 +296,9 @@ pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) ->
     } else {
         CONSTRUCTION_REFUND
     };
-    money.refund(category, removed.refund);
+    if !staff {
+        money.refund(category, removed.refund);
+    }
     Some(removed)
 }
 

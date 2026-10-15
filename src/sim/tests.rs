@@ -520,6 +520,8 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "generator",
         "clock",
         "grounds",
+        "hire",
+        "names",
     ] {
         let mut run = game(3);
         match what {
@@ -531,6 +533,8 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "cash" => run.money.cash += 0.01,
             "generator" => drop(run.sim.rng.rand()),
             "grounds" => run.world.exhibits_mut().grounds.rating_ms = 1,
+            "hire" => run.sim.hire_male = !run.sim.hire_male,
+            "names" => drop(run.world.zoo.names.insert("keeper".into(), 1)),
             _ => run.sim.ai_rem += 1,
         }
         assert_ne!(run.hash(), base, "{what}");
@@ -541,6 +545,42 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     let mut b = game(2);
     b.world.zoo.entities[0].class = "animalsab".into();
     assert_ne!(a.hash(), b.hash());
+}
+
+#[test]
+fn the_sex_of_the_first_hire_is_drawn_at_start_up_after_the_first_seeding_only() {
+    // Bit 16 of the state after one draw from the seed: seed 2 gives a man, seed 3 a woman.
+    let first = |seed: u32| {
+        let mut rng = Rng::default();
+        rng.seed(seed);
+        rng.rand();
+        (rng.state() >> 16) & 1 == 1
+    };
+    let sexes: Vec<_> = [2, 3].map(first).to_vec();
+    assert_eq!(sexes, [true, false]);
+    for seed in [2, 3] {
+        let mut s = Sim::new(b"");
+        s.set_seed(seed);
+        assert_eq!(s.hire_male, first(seed), "{seed}");
+        // Opening a game seeds the generator again and draws no sex.
+        let before = s.hire_male;
+        s.start_game(16, Clocks::default());
+        assert_eq!(s.hire_male, before);
+        let mut map = Rng::default();
+        map.seed(seed + 1);
+        assert_eq!(s.rng, map, "the map's seeding is the generator's state");
+    }
+    // A hire draws one more, bit 16 of the state set.
+    let mut s = sim("");
+    let mut check = s.rng.clone();
+    s.draw_hire();
+    let number = check.rand();
+    assert_eq!(s.hire_male, (check.state() >> 16) & 1 == 1);
+    assert_eq!(s.hire_male, number & 1 == 1);
+    assert_eq!(s.rng, check, "one draw");
+    // The seeds give both sexes.
+    let all: Vec<_> = (0..40).map(first).collect();
+    assert!(all.iter().any(|&d| d) && all.iter().any(|&d| !d), "{all:?}");
 }
 
 #[test]

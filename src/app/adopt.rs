@@ -1,14 +1,17 @@
-//! Adopting animals (unit placing 7.1): the release over a pending animal buys it. The rules are
-//! in [`crate::place::unit`], the panel in [`crate::build`].
+//! Adopting animals and hiring staff (unit placing 7.1): the release over a pending unit buys it.
+//! The rules are in [`crate::place::unit`], the panels in [`crate::build`].
 
 use super::*;
+use crate::staff;
 
 impl App<'_> {
-    /// A release on the map with an animal as the tool: a valid place gets the animal, paid and
-    /// booked as animal purchase, and logs `world add animals/TYPE/SUBTYPE X,Y id N name=NAME`;
-    /// the placement sound plays, and a new pending animal of the same item follows the mouse.
-    /// A place that is not valid, or too dear, plays the refusal sound and shows its message
-    /// (`tool message N`, or `tool refused` without one).
+    /// A release on the map with an animal or a staff member as the tool: a valid place gets the
+    /// unit, paid and booked as animal purchase or in the wages of its class, and logs `world add
+    /// CLASS/TYPE/SUBTYPE X,Y id N name=NAME` and `money book CATEGORY PRICE`; the placement
+    /// sound plays, and a new pending unit of the same item follows the mouse. A hire draws the
+    /// sex of the next one and makes the list again. A place that is not valid, or too dear,
+    /// plays the refusal sound and shows its message (`tool message N`, or `tool refused`
+    /// without one).
     pub(super) fn adopt(&mut self) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
@@ -39,6 +42,14 @@ impl App<'_> {
                     p.tile.1,
                 ));
                 self.ui_sounds.push("place");
+                self.money_events
+                    .push(format!("book {} {}", place::unit::category(ty), p.price));
+                if staff::is_staff(ty) {
+                    self.sim.draw_hire();
+                    game.build.set_hire(self.sim.hire_male);
+                    let (vfs, cat) = (renderer.vfs(), renderer.catalogue());
+                    game.build.rehire(ui, vfs, cat, &mut self.tool_lines);
+                }
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");

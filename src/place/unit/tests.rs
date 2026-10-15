@@ -1,4 +1,5 @@
-//! The pending animal, its purchase, names, sell price and crate on synthetic maps.
+//! The pending animal or staff member, its purchase, names, sell price and crate on synthetic
+//! maps.
 
 use super::*;
 use crate::config::Config;
@@ -11,6 +12,11 @@ const DINO: usize = 2;
 const ORCA: usize = 3;
 const BARE: usize = 4;
 const BIG: usize = 5;
+const KEEPER: usize = 6;
+const MAINT: usize = 7;
+const GUIDE: usize = 8;
+const HIPPO: usize = 9;
+const MARINE: usize = 10;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     EntityType {
@@ -25,13 +31,23 @@ fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     }
 }
 
+fn staff(class: &'static str, name: &str, cost: u32) -> EntityType {
+    let ini = format!("[m/Characteristics/Integers]\ncPurchaseCost={cost}\n");
+    EntityType {
+        class,
+        ..ty("m", name, &ini)
+    }
+}
+
 fn catalogue() -> Catalogue {
     let zebra = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=800\n\
                  cInitialHappiness=75\ncMaxHits=120\n";
     let dino = "[Global]\nDefaultSubtype=m\n[Characteristics/Integers]\ncExpansionID=1\n\
                 [m/Characteristics/Integers]\ncPurchaseCost=1000\n";
     let orca = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=9\n\
-                cSwims=1\ncUnderwater=1\n";
+                cSwims=1\ncUnderwater=1\ncOnlyUnderwater=1\n";
+    let hippo = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=9\n\
+                 cSwims=1\ncUnderwater=1\n";
     let mut cat = Catalogue::default();
     cat.push(ty("m", "zebra", zebra));
     cat.push(ty("f", "zebra", zebra));
@@ -49,6 +65,14 @@ fn catalogue() -> Catalogue {
     );
     big.footprint = [2, 8, 1];
     cat.push(big);
+    cat.push(staff("keeper", "keeper", 800));
+    cat.push(staff("maint", "maint", 300));
+    cat.push(staff("tour", "tour", 500));
+    cat.push(ty("m", "hippo", hippo));
+    cat.push(EntityType {
+        class: "keeper",
+        ..ty("m", "marine", hippo)
+    });
     cat
 }
 
@@ -92,7 +116,7 @@ fn entity_at(class: &str, name: &str, subtype: &str, x: i32, y: i32, rotation: u
 
 fn shape(e: &Entity) -> Option<Shape> {
     let (kind, fence) = match e.class.as_str() {
-        "animals" => (Kind::Unit, false),
+        "animals" | "keeper" | "maint" | "tour" => (Kind::Unit, false),
         "fences" => (Kind::Edge, true),
         "tankwall" => (Kind::Wall, true),
         "objects" => (Kind::Fixed, false),
@@ -219,6 +243,9 @@ fn an_animal_is_valid_in_an_exhibit_and_refused_on_the_grounds() {
     // An underwater species asks for a tank wherever it is.
     assert_eq!(at(&w, ORCA, (4, 4)).message, Some(NEEDS_WATER));
     assert_eq!(at(&w, ORCA, (2, 2)).message, Some(NEEDS_WATER));
+    // An amphibious animal (`cUnderwater` only) is a land animal here: the exhibit message.
+    assert_eq!(at(&w, HIPPO, (4, 4)).message, Some(IN_AN_EXHIBIT));
+    assert_eq!(at(&w, HIPPO, (2, 2)).message, None);
     // Water is refused unless the animal swims (and then for being outside a tank).
     assert_eq!(at(&w, ZEBRA, (5, 5)).message, Some(10569));
     assert_eq!(at(&w, ORCA, (5, 5)).message, Some(NEEDS_WATER));
@@ -424,4 +451,76 @@ fn a_large_animal_runs_the_footprint_check_and_needs_room_inside_the_fences() {
     let held = pending(&w, &cat, &[false, true], BIG, 0, point, false).unwrap();
     assert_eq!(held.verdict, Verdict::Invalid);
     assert!(held.blocking.contains(&first));
+}
+
+#[test]
+fn a_staff_member_stands_anywhere_a_unit_can_but_in_water_and_gives_no_message() {
+    let mut pieces = square("fences", 2, 2);
+    pieces.push(entity_at(
+        "keeper",
+        "keeper",
+        "m",
+        4 * 64 + 32,
+        4 * 64 + 32,
+        0,
+    ));
+    let w = world(pieces);
+    // The grounds and an exhibit are both fine, and the price is `cPurchaseCost`.
+    for tile in [(4, 3), (2, 2)] {
+        let p = at(&w, KEEPER, tile);
+        assert_eq!(
+            (p.verdict, p.message, p.price),
+            (Verdict::Valid, None, 800.0),
+            "{tile:?}"
+        );
+    }
+    assert_eq!(at(&w, MAINT, (4, 3)).price, 300.0);
+    // A marine specialist (`cUnderwater` 1, no `cOnlyUnderwater`) is valid on land.
+    let p = at(&w, MARINE, (4, 3));
+    assert_eq!((p.verdict, p.message), (Verdict::Valid, None));
+    // Water is refused without a word, and another unit gets in the way.
+    let wet = at(&w, GUIDE, (5, 5));
+    assert_eq!((wet.verdict, wet.message), (Verdict::Invalid, None));
+    let over = at(&w, GUIDE, (4, 4));
+    assert_eq!(
+        (over.verdict, over.message),
+        (Verdict::Invalid, Some(super::super::IN_THE_WAY))
+    );
+    // A staff member that does not swim is refused in a tank, with the staff message.
+    let tank = world(square("tankwall", 2, 2));
+    let p = at(&tank, KEEPER, (2, 2));
+    assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(10563)));
+}
+
+#[test]
+fn hiring_books_the_wages_of_the_class_names_the_member_and_empties_the_undo_list() {
+    let cat = catalogue();
+    let mut w = world(square("fences", 2, 2));
+    let mut money = Money::default();
+    money.set_cash(1700.0);
+    let mut hire = |w: &mut World, ty: usize, tile| {
+        let p = at(w, ty, tile);
+        place(w, &mut money, &cat.types[ty], "Staff", &p, shape)
+    };
+    assert!(matches!(hire(&mut w, KEEPER, (4, 3)), Outcome::Placed(_)));
+    assert!(matches!(hire(&mut w, GUIDE, (3, 3)), Outcome::Placed(_)));
+    assert!(matches!(hire(&mut w, MAINT, (6, 6)), Outcome::Placed(_)));
+    // 100 are left: a keeper is too dear.
+    let dear = hire(&mut w, KEEPER, (3, 4));
+    assert_eq!(dear, Outcome::Refused(Some(NO_FUNDS)));
+    assert_eq!(money.bar().0, 1700 - 800 - 500 - 300);
+    for (category, amount) in [(11, 800.0), (12, 500.0), (13, 300.0), (2, 0.0)] {
+        assert_eq!(money.monthly[category][0], amount, "{category}");
+    }
+    let names: Vec<_> = (w.zoo.entities.iter())
+        .filter_map(|e| e.common.as_ref())
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(
+        &names[4..],
+        ["Staff 1", "Staff 1", "Staff 1"],
+        "one counter per type name"
+    );
+    assert_eq!(w.units.len(), 3);
+    assert!(!w.can_undo(), "hiring clears the undo list");
 }
