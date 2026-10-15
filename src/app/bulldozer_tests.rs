@@ -65,7 +65,7 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
 }
 
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
-/// deletable), 4 hedge (a fence that is no exhibit fence).
+/// deletable), 4 the gate of the iron fence.
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
@@ -89,6 +89,13 @@ fn catalogue() -> Catalogue {
         b"wall",
         b"f",
         &format!("{}cDeletable=0\n", cost(125)),
+        [1, 1, 1],
+    ));
+    cat.push(ty(
+        "fences",
+        b"iron",
+        b"g",
+        &format!("{}[HabitatFence]\n", cost(125)),
         [1, 1, 1],
     ));
     cat
@@ -149,7 +156,7 @@ impl Session<'_> {
                     "tool bulldoze",
                     "tool drop",
                     "world remove",
-                    "world gate",
+                    "exhibit gate",
                     "money cash",
                 ]
                 .iter()
@@ -450,6 +457,40 @@ fn the_exhibit_question_comes_once_per_pair_of_regions_and_a_no_keeps_the_pieces
                 .list()
                 .is_empty()
         );
+    });
+}
+
+#[test]
+fn bulldozing_a_gate_keeps_the_exhibit_and_its_name_and_gives_the_line_a_new_gate() {
+    with_game("gate", "[UI]\nconfirmSell=0\n", |s| {
+        // Tile (20, 20) closed, with a second piece on the line of its west side.
+        let pieces: Vec<u32> = [0, 2, 4, 6].map(|side| s.fence(1, 20, 20, side)).to_vec();
+        let other = s.fence(1, 19, 20, 2);
+        s.app.exhibits_told();
+        assert_eq!(
+            s.app.game.as_ref().unwrap().world.exhibits().list().len(),
+            1
+        );
+        let world = &mut s.app.game.as_mut().unwrap().world;
+        world.rename(1, "Lions".into());
+        world.set_gate(1, pieces[3]);
+        // The bulldozer takes the gate: the other piece of the line is the gate now.
+        s.pass(&[DELETE]);
+        s.pass(&[s.at(20, 20, 12, 32)]);
+        let told = s.click(s.at(20, 20, 12, 32));
+        assert!(
+            told.iter().any(|l| l.starts_with("world remove")),
+            "{told:?}"
+        );
+        assert!(
+            told.contains(&"exhibit gate 1 19,20 side 2".to_string()),
+            "{told:?}"
+        );
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert_eq!(world.exhibits().list().len(), 1);
+        let exhibit = world.exhibits().get(1).unwrap();
+        assert_eq!(exhibit.name, "Lions");
+        assert_eq!(exhibit.gate, Some(other));
     });
 }
 

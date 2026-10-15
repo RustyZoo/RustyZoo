@@ -163,11 +163,23 @@ usage: rustyzoo [--data <dir>] <command>
                       area X,Y X,Y objects N refund R`), and the release removes them, 80% of the
                       cost back (a fence 40% when decayed, nothing when broken), booked as a
                       construction refund (`world remove CLASS/TYPE/SUBTYPE X,Y [side S] id N
-                      refund R`, `tool bulldoze removed N refund R` after a drag, `world gate id N`
-                      for the piece that became an exhibit's gate); a building that needs it asks
+                      refund R`, `tool bulldoze removed N refund R` after a drag, `exhibit gate ID X,Y
+                      side S` for the piece that became an exhibit's gate); a building that needs it asks
                       first unless `[UI] confirmSell` is 0, a fence piece whose line opens or
                       merges exhibits asks (`tool bulldoze ask Sell|Merge(X, Y)|Escape(X)`, answered
-                      by `key y` or `key n`, `tool bulldoze answer yes|no|cancel`). The two
+                      by `key y` or `key n`, `tool bulldoze answer yes|no|cancel`).
+                      A fence that closes an area makes an
+                      exhibit (a fence that cuts one makes a second one): `exhibit new ID \"NAME\"
+                      tiles N gate none` opens the name dialog (layout 45300), which pauses the game
+                      and holds the rest of the drag, the new exhibit having no gate yet and the gate
+                      button staying disabled; `exhibit name ID \"TEXT\"` follows the answer when
+                      the text has a letter, digit or punctuation mark (else the default name
+                      stays), then `exhibit gate ID X,Y side S` (`tool message 11000` or `11001`
+                      when no keeper can reach it) and the rest of the drag. `exhibit split ID tiles
+                      N` is the part that keeps its name and gate, `exhibit removed ID` and `exhibit
+                      merged ID into ID tiles N` the others, and `exhibit gate ID X,Y side S` also
+                      tells a new gate after the gate piece went; the gate button of the fence tab
+                      is enabled while the zoo has an exhibit that is named. The two
                       terrain tabs of the construction panel (at 180,195 for the paint tab and 180,228 for the modify tab of a 1024x768 window)
                       open the terrain panel: the brush (a square of 1 to 5 tiles, the plus and
                       minus buttons or the `+` and `-` keys) follows the pointer over the map, and

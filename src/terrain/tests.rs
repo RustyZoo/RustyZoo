@@ -70,6 +70,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         fence: false,
         wall: false,
         gate: false,
+        gated: false,
     };
     match e.class.as_str() {
         "paths" => Some(Shape {

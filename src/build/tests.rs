@@ -454,8 +454,13 @@ fn opening_the_construction_panel_fills_the_fences_and_chooses_the_first() {
         ("Fences".into(), "All".into())
     );
     assert_eq!(build.tool(), Some(2));
-    // Fences do not rotate; the gate button shows on this tab and no exhibit enables it.
+    // Fences do not rotate; the gate button shows on this tab, disabled without an exhibit.
     assert_eq!(state_of(&ui, 3258) & HIDDEN, HIDDEN);
+    assert_eq!(state_of(&ui, 3240) & (HIDDEN | DISABLED), DISABLED);
+    // The button is enabled while the zoo has an exhibit, and stays so when the tab is shown again.
+    build.set_exhibits(&mut ui, 1);
+    assert_eq!(state_of(&ui, 3240) & (HIDDEN | DISABLED), 0);
+    build.set_exhibits(&mut ui, 0);
     assert_eq!(state_of(&ui, 3240) & (HIDDEN | DISABLED), DISABLED);
     // The same state again says nothing.
     log.clear();

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::config::Config;
+use crate::world::Shape;
 use crate::zoo::{Common, Tile, View, Zoo};
 
 fn ty(
@@ -91,6 +92,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         fence,
         wall: false,
         gate: false,
+        gated: fence,
     })
 }
 
@@ -250,7 +252,7 @@ fn removing_a_piece_that_opens_an_exhibit_asks_and_a_closed_line_does_not() {
     let lone = world(vec![piece("f", 5, 5, 0)]);
     assert_eq!(check(&lone, &cat, 0, false, &[]), Check::Go);
     // A declined pair is kept without a question.
-    let pair = Question::Escape(1).pair(&w).unwrap();
+    let pair = Question::Escape(1).pair().unwrap();
     assert_eq!(check(&w, &cat, top, false, &[pair]), Check::Keep);
 }
 
@@ -267,10 +269,9 @@ fn removing_the_line_between_two_exhibits_asks_to_merge_them() {
         check(&w, &cat, 0, true, &[]),
         Check::Ask(Question::Merge(1, 2))
     );
-    // The exhibit pair is named by first tiles, the same through a rebuild.
-    let (a, b) = Question::Merge(1, 2).pair(&w).unwrap();
-    assert!(a < b && b < usize::MAX);
-    assert_eq!(Question::Sell.pair(&w), None);
+    assert_eq!(Question::Merge(2, 1).pair(), Some((1, 2)));
+    assert_eq!(Question::Escape(2).pair(), Some((0, 2)));
+    assert_eq!(Question::Sell.pair(), None);
 }
 
 #[test]
@@ -299,24 +300,25 @@ fn removing_books_the_refund_and_the_gate_moves_to_the_piece_across() {
     v.push(piece("f", 3, 2, 4));
     let mut w = world(v);
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
-    let removed = remove(&mut w, &mut money, &cat, id, shape).unwrap();
+    w.set_gate(1, id);
+    let removed = remove(&mut w, &mut money, &cat, id).unwrap();
     assert_eq!(removed.refund, 100.0);
     assert_eq!(removed.name, "fences/iron/g");
     assert_eq!((removed.tile, removed.side), ((3, 3), Some(0)));
     assert_eq!(money.cash, 1100.0);
     let across = w.edge(w.tile_index(3, 2).unwrap(), 4).unwrap();
     assert_eq!(w.zoo.entities[across].subtype, "g");
+    // The exhibit is still closed and keeps its id; undo puts the piece back (the gate it gave
+    // away is the undo issue's).
+    assert_eq!(w.exhibits().list().len(), 1);
     assert_eq!(
-        removed.gate,
+        w.exhibits().get(1).and_then(|e| e.gate),
         w.zoo.entities[across].common.as_ref().map(|c| c.id)
     );
-    // The exhibit is still closed; undo puts back the old piece and the old gate.
-    assert_eq!(w.exhibits().list().len(), 1);
     assert!(w.undo());
-    let across = w.edge(w.tile_index(3, 2).unwrap(), 4).unwrap();
-    assert_eq!(w.zoo.entities[across].subtype, "f");
+    assert!(w.find(id).is_some());
     // An unknown id removes nothing and refunds nothing.
-    assert!(remove(&mut w, &mut money, &cat, 9999, shape).is_none());
+    assert!(remove(&mut w, &mut money, &cat, 9999).is_none());
     assert_eq!(money.cash, 1100.0);
 }
 
@@ -329,15 +331,15 @@ fn removing_the_gate_of_an_open_line_or_a_plain_piece_makes_no_gate() {
     v[0] = piece("g", 3, 3, 0);
     let mut w = world(v);
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
-    let removed = remove(&mut w, &mut money, &cat, id, shape).unwrap();
-    assert_eq!(removed.gate, None);
+    let removed = remove(&mut w, &mut money, &cat, id).unwrap();
+    assert_eq!(removed.id, id);
     assert!(w.exhibits().list().is_empty());
     // A plain piece with one across: the piece across stays a fence.
     let mut v = square(3, 3);
     v.push(piece("f", 3, 2, 4));
     let mut w = world(v);
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
-    remove(&mut w, &mut money, &cat, id, shape).unwrap();
+    remove(&mut w, &mut money, &cat, id).unwrap();
     let across = at(&w, "fences", "iron");
     assert!(w.zoo.entities.iter().skip(across).all(|e| e.subtype == "f"));
 }

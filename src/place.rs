@@ -388,7 +388,7 @@ pub fn fence_run(start: (i32, i32), first: u32, mouse: (i64, i64)) -> Vec<((i32,
 }
 
 /// Whether a tile of this shape byte takes a path: flat, or with one side raised (placing 5.3).
-fn path_shape(shape: u8) -> bool {
+pub(crate) fn path_shape(shape: u8) -> bool {
     matches!(shape, 0x00 | 0x05 | 0x14 | 0x41 | 0x50)
 }
 
@@ -873,10 +873,17 @@ pub fn place(
         Class::Fence => tile.and_then(|t| world.edge(t, p.facing as usize)),
         Class::Fixed => None,
     };
-    if let Some(id) = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id)) {
-        world.remove(id);
-    }
-    match world.add(entity, shape) {
+    let old = old.and_then(|o| world.zoo.entities[o].common.as_ref().map(|c| c.id));
+    let added = match (old, class) {
+        // A fence takes the place of the piece as one change: its exhibit stays closed.
+        (Some(id), Class::Fence) => world.swap(id, entity, shape),
+        (Some(id), _) => {
+            world.remove(id);
+            world.add(entity, shape)
+        }
+        (None, _) => world.add(entity, shape),
+    };
+    match added {
         Some(id) => {
             money.charge(CONSTRUCTION, p.price);
             Outcome::Placed(id)

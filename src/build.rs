@@ -213,7 +213,7 @@ struct Panel {
     /// The era text, the fence descriptor's label and value: shown for the chosen item when it has
     /// them (placing 3.5).
     details: [i32; 3],
-    /// The tab (a position in `tabs`) that shows the gate button, which no exhibit enables yet.
+    /// The gate button and the tab (a position in `tabs`) that shows it.
     gate: Option<(i32, usize)>,
 }
 
@@ -311,6 +311,8 @@ pub struct Build {
     /// The bulldozer is the tool (the bulldozer button is selected), and the press it holds.
     bulldozer: bool,
     sweep: Option<Sweep>,
+    /// How many exhibits the zoo has: the gate button is enabled while there is one.
+    exhibits: usize,
 }
 
 impl Build {
@@ -331,6 +333,21 @@ impl Build {
             drag: None,
             bulldozer: false,
             sweep: None,
+            exhibits: 0,
+        }
+    }
+
+    /// The zoo has `n` exhibits at the start of a game.
+    pub fn with_exhibits(mut self, n: usize) -> Build {
+        self.exhibits = n;
+        self
+    }
+
+    /// The zoo has `n` exhibits now: the gate button is enabled while there is one (placing 6.4).
+    pub fn set_exhibits(&mut self, ui: &mut Interface, n: usize) {
+        self.exhibits = n;
+        if let Some((gate, _)) = PANELS[0].gate {
+            ui.set_enabled(gate, n > 0);
         }
     }
 
@@ -686,7 +703,7 @@ impl Build {
         ui.set_items(panel.list, &pictures);
         if let Some((gate, on)) = panel.gate {
             ui.set_hidden(gate, tab != Some(on));
-            ui.set_button(gate, false, false);
+            ui.set_button(gate, false, self.exhibits > 0);
         }
         let want = tab
             .and_then(|t| self.chosen[p][t])
