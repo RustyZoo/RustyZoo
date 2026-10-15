@@ -61,6 +61,8 @@ pub struct Options {
     /// The zoom value of the view (-2, 0 or 2; map drawing 2.4): the picture and the window are
     /// in the view space of that zoom.
     pub zoom: i32,
+    /// Draw the grid lines of every tile (the grid switched on).
+    pub grid: bool,
 }
 
 /// What a picture of a map contains.
@@ -148,6 +150,8 @@ struct Placed {
     y: i32,
     /// Set for the pieces of a tile, which have their own anchors at the other zooms.
     piece: Option<Piece>,
+    /// Set for a grid line that only a switched-on grid draws; it never counts in the bounds.
+    grid: bool,
     pic: Pic,
 }
 
@@ -313,24 +317,28 @@ impl Staged {
         };
         let [l, t, r, b] = self.tile_bounds.map(scale);
         let tiles = [l - 2, t - 2, r + 2, b + 2];
-        self.placed.iter().fold(tiles, |all, (placed, b)| {
-            let anchor = placed.anchor(self.rotation, zoom, level);
-            union(all, placed.zoomed_box(b, anchor, level))
-        })
+        self.placed
+            .iter()
+            .filter(|(p, _)| !p.grid)
+            .fold(tiles, |all, (placed, b)| {
+                let anchor = placed.anchor(self.rotation, zoom, level);
+                union(all, placed.zoomed_box(b, anchor, level))
+            })
     }
 
     /// Draws the window of the size of `target` whose top left pixel is the point (`view_x`,
     /// `view_y`) of the view space at the zoom value `zoom` (-2, 0 or 2; map drawing 2.4): black,
-    /// then every picture whose box meets the window, in paint order. The anchors are the camera's
+    /// then every picture whose box meets the window, in paint order, the grid lines of the tiles
+    /// only when `grid` is set (those a cliff forces are always drawn). The anchors are the camera's
     /// view positions at the zoom, the tile pieces' those of map drawing 8, and the blitter has
     /// the variant of the zoom level.
-    pub fn draw(&self, target: &mut Framebuffer, view_x: i32, view_y: i32, zoom: i32) {
+    pub fn draw(&self, target: &mut Framebuffer, view_x: i32, view_y: i32, zoom: i32, grid: bool) {
         target.fill([0, 0, 0, 255]);
         let level = Zoom::from_value(zoom);
         let (left, top) = (i64::from(view_x), i64::from(view_y));
         let right = left + i64::from(target.width);
         let bottom = top + i64::from(target.height);
-        for (placed, b) in &self.placed {
+        for (placed, b) in self.placed.iter().filter(|(p, _)| grid || !p.grid) {
             let anchor = placed.anchor(self.rotation, zoom, level);
             let b = placed.zoomed_box(b, anchor, level);
             if b[0] < right && b[2] > left && b[1] < bottom && b[3] > top {
@@ -683,7 +691,7 @@ impl<'a> MapRenderer<'a> {
         };
         check_size(&[0, 0, i64::from(w), i64::from(h)])?;
         let mut canvas = Framebuffer::new(w, h);
-        staged.draw(&mut canvas, x, y, options.zoom);
+        staged.draw(&mut canvas, x, y, options.zoom, options.grid);
         Ok((canvas, staged.summary))
     }
 
@@ -863,6 +871,7 @@ impl<'a> MapRenderer<'a> {
             .collect();
         let bounds = placed
             .iter()
+            .filter(|(p, _)| !p.grid)
             .fold(tile_bounds, |all, (_, b)| union(all, *b));
         Ok(Staged {
             rotation,
@@ -956,7 +965,7 @@ impl<'a> MapRenderer<'a> {
         self.rendered[&member].clone().map(Pic::Rendered)
     }
 
-    /// Places the pictures of one tile: cliffs, ground and forced grid lines.
+    /// Places the pictures of one tile: cliffs, ground and grid lines.
     fn terrain(&mut self, scene: &Scene, t: usize, summary: &mut Summary, out: &mut Vec<Placed>) {
         let r = scene.rotation;
         let tile = scene.tiles[t];
@@ -1030,6 +1039,7 @@ impl<'a> MapRenderer<'a> {
                             x: ox + x,
                             y: oy + y,
                             piece: Some(piece_at((x, y))),
+                            grid: false,
                             pic: Pic::Flat(flat),
                         });
                     }
@@ -1047,25 +1057,27 @@ impl<'a> MapRenderer<'a> {
                     x: ox + 32,
                     y: oy + 32,
                     piece: Some(piece_at((32, 32))),
+                    grid: false,
                     pic,
                 });
             }
             None => summary.ground_missing += 1,
         }
-        // Only the grid lines a cliff forces appear on a plain picture.
+        // The grid lines a cliff forces are always drawn; the others only with the grid on.
         let (north, east) = self
             .grid
             .get(&u32::from(shape))
             .cloned()
             .unwrap_or_default();
-        for (on, name) in [(forced[0], north), (forced[1], east)] {
-            if let (true, Some(name)) = (on, name)
+        for (forced, name) in [(forced[0], north), (forced[1], east)] {
+            if let Some(name) = name
                 && let Some(flat) = self.piece(&name)
             {
                 out.push(Placed {
                     x: ox + 32,
                     y: oy + 32,
                     piece: Some(piece_at((32, 32))),
+                    grid: !forced,
                     pic: Pic::Flat(flat),
                 });
             }
@@ -1173,6 +1185,7 @@ impl<'a> MapRenderer<'a> {
             x,
             y,
             piece: None,
+            grid: false,
             pic: Pic::Anim(anim, view, palette),
         });
     }

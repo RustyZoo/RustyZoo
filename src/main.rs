@@ -80,7 +80,7 @@ usage: rustyzoo [--data <dir>] <command>
   render-ground <key> <out.png>
                       render one ground picture to a PNG file; the key is written as in the
                       cache, for example ztats/000003 or ztatb/00/00000000/00000001/0003
-  render-map <map> <out.png> [--rotation N] [--zoom Z] [--view X Y W H] [--no-units]
+  render-map <map> <out.png> [--rotation N] [--zoom Z] [--view X Y W H] [--no-units] [--grid]
                       draw a whole map (a .zoo member) into a PNG, seen from rotation N (0 to
                       3, default 0) at zoom Z (-2 zoomed out, 0 normal, 2 zoomed in), and
                       print what was drawn: the tiles whose ground picture is in the game's
@@ -89,7 +89,8 @@ usage: rustyzoo [--data <dir>] <command>
                       window of W by H pixels whose top left pixel is the view-space point
                       (X, Y) of that zoom, black where the map has nothing (the summary still
                       counts the whole map); with --no-units, leave out animals, guests, staff
-                      and ambient animals, which then are not counted either
+                      and ambient animals, which then are not counted either; with --grid,
+                      draw the grid lines of every tile
   check-render [--rotation N]
                       draw every .zoo file in memory and print the same summary per map and
                       for all of them; a file that cannot be read is skipped; exit 1 only if
@@ -110,7 +111,7 @@ usage: rustyzoo [--data <dir>] <command>
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
                       per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
-                      in|out, fullscreen on|off, pause, space, quit, close (the window was closed), and for the
+                      in|out, grid (toggle the tile grid), fullscreen on|off, pause, space, quit, close (the window was closed), and for the
                       interface mouse X Y, down, up, double (the second press of a double click),
                       wheel N, key NAME [ctrl] [shift] with NAME enter, escape, tab,
                       backspace, delete, left, right, up, down, home, end, pageup, pagedown, y
@@ -1329,6 +1330,10 @@ fn render_flags(mut flags: &[&str]) -> Result<(u8, Options), CliError> {
                 options.no_units = true;
                 rest
             }
+            ("--grid", rest) => {
+                options.grid = true;
+                rest
+            }
             ("--zoom", [z, rest @ ..]) => {
                 options.zoom = number(z)?;
                 rest
@@ -1619,6 +1624,10 @@ mod tests {
         };
         assert_eq!(ok(&[]), Some((0, None, false, 0)));
         assert_eq!(ok(&["--zoom", "-2"]), Some((0, None, false, -2)));
+        let grid = |flags: &[&str]| render_flags(flags).map(|(_, o)| o.grid).ok();
+        assert_eq!(grid(&[]), Some(false));
+        assert_eq!(grid(&["--grid", "--zoom", "2"]), Some(true));
+        assert_eq!(grid(&["--grid", "1"]), None);
         assert_eq!(
             ok(&[
                 "--no-units",

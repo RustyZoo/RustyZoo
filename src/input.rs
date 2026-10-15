@@ -91,6 +91,7 @@ fn key_command(key: Scancode, keymod: Mod) -> Option<Command> {
         (Scancode::Right, true) => Command::Rotate(true),
         (Scancode::Up, true) => Command::Zoom(true),
         (Scancode::Down, true) => Command::Zoom(false),
+        (Scancode::G, true) => Command::Grid,
         (Scancode::Left, false) => Command::Scroll(-1, 0),
         (Scancode::Right, false) => Command::Scroll(1, 0),
         (Scancode::Up, false) => Command::Scroll(0, -1),
@@ -180,6 +181,14 @@ mod tests {
         assert_eq!(press(Scancode::Right, ctrl), Some(Command::Rotate(true)));
         assert_eq!(press(Scancode::Up, ctrl), Some(Command::Zoom(true)));
         assert_eq!(press(Scancode::Down, ctrl), Some(Command::Zoom(false)));
+    }
+
+    #[test]
+    fn ctrl_g_toggles_the_grid() {
+        assert_eq!(press(Scancode::G, Mod::LCTRLMOD), Some(Command::Grid));
+        assert_eq!(press(Scancode::G, Mod::RCTRLMOD), Some(Command::Grid));
+        assert_eq!(press(Scancode::G, Mod::NOMOD), None);
+        assert_eq!(press(Scancode::G, Mod::LCTRLMOD | Mod::LALTMOD), None);
     }
 
     #[test]

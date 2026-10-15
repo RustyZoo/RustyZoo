@@ -89,7 +89,7 @@ pub enum Mouse {
 
 /// What the player does (input 4). The text form is the script format of a headless run:
 /// `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`, `zoom in`,
-/// `zoom out`, `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
+/// `zoom out`, `grid` (toggle the tile grid), `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
 /// window is closed) for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
 /// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
@@ -108,6 +108,8 @@ pub enum Command {
     Rotate(bool),
     /// Zoom in or out.
     Zoom(bool),
+    /// Ctrl+G: switch the tile grid on or off.
+    Grid,
     /// The window is full screen (true) or windowed (false) now.
     Fullscreen(bool),
     /// The Pause key: toggles the pause while the map view is shown, whatever has the focus.
@@ -137,6 +139,7 @@ impl fmt::Display for Command {
             Command::Pointer(None) => f.write_str("pointer none"),
             Command::Rotate(cw) => write!(f, "rotate {}", if cw { "cw" } else { "ccw" }),
             Command::Zoom(zoom_in) => write!(f, "zoom {}", if zoom_in { "in" } else { "out" }),
+            Command::Grid => f.write_str("grid"),
             Command::Fullscreen(on) => write!(f, "fullscreen {}", if on { "on" } else { "off" }),
             Command::Pause => f.write_str("pause"),
             Command::Space => f.write_str("space"),
@@ -183,6 +186,7 @@ impl FromStr for Command {
             ["rotate", "ccw"] => Command::Rotate(false),
             ["zoom", "in"] => Command::Zoom(true),
             ["zoom", "out"] => Command::Zoom(false),
+            ["grid"] => Command::Grid,
             ["fullscreen", "on"] => Command::Fullscreen(true),
             ["fullscreen", "off"] => Command::Fullscreen(false),
             ["pause"] => Command::Pause,
@@ -228,8 +232,8 @@ const IDLE: Pass = Pass {
     step: None,
 };
 
-/// What the camera looked like when a frame was painted: the frame changes with nothing else.
-type Look = ((i32, i32), i32, u8);
+/// What the camera and the grid looked like when a frame was painted: the frame changes with nothing else.
+type Look = ((i32, i32), i32, u8, bool);
 
 /// A zoo being played.
 struct Game {
@@ -238,6 +242,8 @@ struct Game {
     camera: Camera,
     calendar: Calendar,
     paused: bool,
+    /// The tile grid is drawn (Ctrl+G).
+    grid: bool,
 }
 
 pub struct App<'a> {
@@ -393,7 +399,7 @@ impl<'a> App<'a> {
             camera.set_fullscreen(&zoo, true);
         }
         let staged = self.renderer.stage(&zoo, camera.rotation, false)?;
-        self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation));
+        self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
         self.game = Some(Game {
@@ -402,6 +408,7 @@ impl<'a> App<'a> {
             camera,
             calendar: Calendar::new(),
             paused: false,
+            grid: false,
         });
         Ok(())
     }
@@ -573,6 +580,7 @@ impl<'a> App<'a> {
             (Command::Zoom(zoom_in), Some(game)) if keys => {
                 game.camera.zoom(&game.zoo, None, zoom_in);
             }
+            (Command::Grid, Some(game)) if keys => game.grid = !game.grid,
             (Command::Fullscreen(on), Some(game)) => game.camera.set_fullscreen(&game.zoo, on),
             // The Pause key works through a question too, but the question gives the flag back as
             // it was, so it is left alone there.
@@ -815,6 +823,7 @@ impl<'a> App<'a> {
                 game.camera.scroll.0,
                 game.camera.scroll.1,
                 game.camera.zoom,
+                game.grid,
             );
             self.painted = look;
         }
@@ -834,7 +843,7 @@ impl<'a> App<'a> {
     fn look(&self) -> Option<Look> {
         self.game
             .as_ref()
-            .map(|g| (g.camera.scroll, g.camera.zoom, g.camera.rotation))
+            .map(|g| (g.camera.scroll, g.camera.zoom, g.camera.rotation, g.grid))
     }
 
     /// The camera of the game; `None` in the menu.
@@ -899,7 +908,7 @@ impl<'a> App<'a> {
                 false => "-".into(),
             };
             lines.push(match self.drawn_at {
-                Some(((x, y), zoom, rotation)) => {
+                Some(((x, y), zoom, rotation, _)) => {
                     format!("{lead} draw {hash} view={x},{y} rotation={rotation} zoom={zoom}")
                 }
                 None => format!("{lead} draw {hash}"),
