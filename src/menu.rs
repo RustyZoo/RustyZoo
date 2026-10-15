@@ -72,8 +72,9 @@ pub fn credit_pages(vfs: &Vfs) -> (Vec<i32>, u32) {
     (pages, u32::try_from(delay).unwrap_or(0))
 }
 
-/// The credits being shown: the page and the clock (ms) at which it changes, which the first
-/// interface update after the page appeared sets.
+/// The credits being shown: the page and the clock (ms) at which it changes. Showing the credits
+/// leaves it unset, and the first interface update after only sets it; an update that changes a
+/// page sets the deadline of the next one.
 struct Showing {
     page: usize,
     deadline: Option<u64>,
@@ -217,7 +218,7 @@ impl Menu {
     /// Shows page `page` of the credits and none of the others: the credits layout shows all its
     /// pages, one over the other. A page with no layout (an expansion that is not there) shows
     /// nothing and keeps its time.
-    fn show_page(&mut self, ui: &mut Interface, page: usize) -> String {
+    fn show_page(&mut self, ui: &mut Interface, page: usize, deadline: Option<u64>) -> String {
         for &id in &self.pages {
             if let Some(i) = ui.tree.find(id) {
                 ui.tree.elements[i].state |= HIDDEN;
@@ -225,10 +226,7 @@ impl Menu {
         }
         let id = self.pages[page];
         let shown = ui.show(id);
-        self.credits = Some(Showing {
-            page,
-            deadline: None,
-        });
+        self.credits = Some(Showing { page, deadline });
         let empty = if shown { "" } else { " (no layout)" };
         format!("credits page {} layout {id}{empty}", page + 1)
     }
@@ -236,14 +234,15 @@ impl Menu {
     fn show_credits(&mut self, ui: &mut Interface) -> Vec<String> {
         match self.pages.is_empty() {
             true => Vec::new(),
-            false => vec![self.show_page(ui, 0)],
+            false => vec![self.show_page(ui, 0, None)],
         }
     }
 
-    /// An interface update at the clock `now` (ms): the first one after a page appeared sets its
-    /// deadline `delay` seconds later, and the first update at or after it replaces the page with
-    /// the next one; after the last one the credits hide themselves. Credits that were closed
-    /// (Exit hides the layout) are over.
+    /// An interface update at the clock `now` (ms): the first one after the credits were shown
+    /// only sets the deadline, `delay` seconds later. The first update at or after the deadline
+    /// replaces the page with the next one and sets the deadline of that one in the same update;
+    /// after the last one the credits hide themselves. Credits that were closed (Exit hides the
+    /// layout) are over.
     pub fn update(&mut self, ui: &mut Interface, now: u64) -> Vec<String> {
         let Some(shown) = &mut self.credits else {
             return Vec::new();
@@ -256,15 +255,17 @@ impl Menu {
             self.credits = None;
             return vec!["credits closed".to_string()];
         }
-        let deadline = *shown
-            .deadline
-            .get_or_insert(now.saturating_add(u64::from(self.delay) * 1000));
+        let delay = u64::from(self.delay) * 1000;
+        let Some(deadline) = shown.deadline else {
+            shown.deadline = Some(now.saturating_add(delay));
+            return Vec::new();
+        };
         if now < deadline {
             return Vec::new();
         }
         let next = shown.page + 1;
         if next < self.pages.len() {
-            return vec![self.show_page(ui, next)];
+            return vec![self.show_page(ui, next, Some(now.saturating_add(delay)))];
         }
         self.credits = None;
         if let Some(i) = ui.tree.find(CREDITS_LAYOUT) {

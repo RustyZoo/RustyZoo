@@ -303,26 +303,26 @@ fn the_credits_pages_replace_one_another_on_the_interface_clock() {
         (vec!["credits page 1 layout 250".to_string()], false)
     );
     assert!(shown(&ui, 250) && !shown(&ui, 251), "the first page only");
-    // The first update (800) sets the deadline, 1800; 1200 and 1600 are before it, 2000 is after.
+    // The first update (800) only sets the deadline, 1800; 1200 and 1600 are before it, 2000 is after.
     for now in [800, 1200, 1600] {
         assert!(menu.update(&mut ui, now).is_empty());
     }
     assert_eq!(menu.update(&mut ui, 2000), ["credits page 2 layout 251"]);
     assert!(!shown(&ui, 250) && shown(&ui, 251));
-    // The next deadline is set by the next update (2400): 3400. An update exactly at it changes.
-    for now in [2400, 2800, 3200] {
+    // The update that changed the page set the next deadline, 3000: an update at it changes.
+    for now in [2400, 2800] {
         assert!(menu.update(&mut ui, now).is_empty());
     }
     assert_eq!(
-        menu.update(&mut ui, 3400),
+        menu.update(&mut ui, 3000),
         ["credits page 3 layout 999 (no layout)"]
     );
     assert!(!shown(&ui, 250) && !shown(&ui, 251) && shown(&ui, 40));
-    // After the last page the credits hide themselves.
-    for now in [3800, 4200, 4600] {
+    // After the last page, at its deadline (4000), the credits hide themselves.
+    for now in [3400, 3800] {
         assert!(menu.update(&mut ui, now).is_empty());
     }
-    assert_eq!(menu.update(&mut ui, 4800), ["credits end"]);
+    assert_eq!(menu.update(&mut ui, 4000), ["credits end"]);
     assert!(!shown(&ui, 40));
     assert!(menu.update(&mut ui, 5200).is_empty());
 }
@@ -355,10 +355,11 @@ fn exit_closes_the_credits_at_once_and_they_start_again_from_the_first_page() {
     ui.show(40);
     assert!(none.selected(&mut ui, 7115).0.is_empty());
     assert!(none.update(&mut ui, 264).is_empty());
-    // A delay of 0: the update that sets the deadline changes the page.
+    // A delay of 0: the first update sets the deadline, the second changes the page.
     let mut quick = self::menu("", &install, None, 0);
     quick.set_credits(vec![250, 251], 0);
     quick.selected(&mut ui, 7115);
+    assert!(quick.update(&mut ui, 1).is_empty());
     assert_eq!(quick.update(&mut ui, 1), ["credits page 2 layout 251"]);
     assert_eq!(quick.update(&mut ui, 1), ["credits end"]);
 }
