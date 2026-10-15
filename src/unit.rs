@@ -28,6 +28,7 @@ use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::Entity;
 
+#[cfg(test)]
 pub mod movement;
 #[cfg(test)]
 mod testing;
