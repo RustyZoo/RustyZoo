@@ -65,16 +65,22 @@ pub struct Likes {
     /// `cDepthMin`, `cDepthMax`.
     pub depth: (i32, i32),
     pub attractiveness: i32,
+    /// `cNameID`, `cGenus` and `cFamily`, and `cCompatibleAnimals`: pairs of such an id and a
+    /// value.
+    pub ids: [i32; 3],
+    pub compatible: Vec<(i32, i32)>,
+}
+
+/// The value of an id in a list of pairs: the last pair that names it, 0 when none does.
+fn lookup(pairs: &[(i32, i32)], id: i32) -> i64 {
+    (pairs.iter().rev())
+        .find(|p| p.0 == id)
+        .map_or(0, |p| i64::from(p.1))
 }
 
 impl Likes {
-    /// The value of an id: the last pair that names it, 0 when none does.
     fn value(&self, id: i32) -> i64 {
-        self.objects
-            .iter()
-            .rev()
-            .find(|p| p.0 == id)
-            .map_or(0, |p| i64::from(p.1))
+        lookup(&self.objects, id)
     }
 
     /// The likes of an animal type. An integer is looked up in the sections of the subtype, of
@@ -142,6 +148,8 @@ impl Likes {
             toys: int("cNeedToys", 0) == 1,
             depth: (int("cDepthMin", 0), int("cDepthMax", 0)),
             attractiveness: int("cAttractiveness", 1),
+            ids: [ty.name_id, int("cGenus", 0), int("cFamily", 0)],
+            compatible: pairs("cCompatibleAnimals"),
         }
     }
 }
@@ -216,6 +224,8 @@ pub struct Record {
     pub water: f32,
     pub salinity: f32,
     pub tank: bool,
+    /// What the other species of the exhibit mean to this one (5.5.7); not part of the rating.
+    pub other: f32,
     pub advice: u64,
     pub important: u64,
 }
@@ -290,6 +300,16 @@ pub fn rate(input: &Input) -> Vec<Record> {
         if let Some(&r) = of.get(a) {
             records[r].animals += 1;
         }
+    }
+    // The other animals (5.5.7): the types of another name id, by name id, genus and family.
+    for (rec, &i) in records.iter_mut().zip(&first) {
+        let l = &input.species[i];
+        let sum: i64 = (input.species.iter())
+            .filter(|o| o.ids[0] != l.ids[0])
+            .flat_map(|o| o.ids)
+            .map(|id| lookup(&l.compatible, id))
+            .sum();
+        rec.other = sum as f32;
     }
     let n = site.tiles.max(1) as f32;
     let value = |l: &Likes, it: &Item| l.value(it.habitat) + l.value(it.name);

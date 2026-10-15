@@ -31,6 +31,10 @@ pub struct Exhibit {
     pub gate: Option<u32>,
     /// What a tank has besides: set when every wall of its boundary is a tank wall.
     pub tank: Option<Tank>,
+    /// The exhibits it is linked to as amphibious neighbours, in the order they became so
+    /// (tank fauna 12); the company checks count their animals and tiles with its own. Nothing
+    /// makes the links yet.
+    pub amphibious: Vec<u32>,
     /// Its records, species list and timers (habitat rating).
     pub rating: rating::State,
 }
@@ -364,6 +368,7 @@ impl Exhibits {
             name,
             gate: None,
             tank: None,
+            amphibious: Vec::new(),
             rating: rating::State::new(),
         });
         self.assign(id, part);

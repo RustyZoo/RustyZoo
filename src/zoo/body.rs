@@ -208,17 +208,15 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
         r.skip(9)?;
         crated = r.u8()? != 0;
     }
-    if v >= 54 {
-        r.skip(1)?;
-    }
+    let thirsty = v >= 54 && r.u8()? != 0;
     if v == 57 || v >= 61 {
         r.skip(1)?;
     }
-    if v >= 76 {
-        r.skip(1)?;
-    }
+    let rampaging = v >= 76 && r.u8()? != 0;
+    let mut rampage = 0;
     if v >= 77 {
-        r.skip(8)?;
+        r.skip(4)?;
+        rampage = r.i32()?;
     }
     if v >= 78 {
         r.skip(1)?;
@@ -250,6 +248,9 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
         dying,
         crated,
         egg,
+        thirsty,
+        rampaging,
+        rampage,
     })
 }
 

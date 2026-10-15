@@ -545,7 +545,10 @@ impl<'a> App<'a> {
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
-        world.units.class = crate::animal::Class::load(self.renderer.vfs());
+        world.units.class = crate::animal::Class {
+            reset_interval: self.sim.ai.animal_reset_interval,
+            ..crate::animal::Class::load(self.renderer.vfs())
+        };
         self.sim.load(&mut world, self.renderer.catalogue());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         let exhibits = world.exhibits().list().len();

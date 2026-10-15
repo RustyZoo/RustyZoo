@@ -333,3 +333,35 @@ fn the_likes_of_the_plains_zebra_in_the_full_game() {
     );
     assert_eq!((adult.attractiveness, young.attractiveness), (5, 15));
 }
+
+#[test]
+fn the_other_animals_sum_adds_name_genus_and_family_of_each_type_of_another_name() {
+    let me = Likes {
+        ids: [5004, 5104, 5204],
+        compatible: vec![(1, -100), (2, -10), (3, 5), (9, 7), (2, -20)],
+        ..zebra()
+    };
+    let lion = |subtype: &str| Likes {
+        key: "lion".into(),
+        subtype: subtype.into(),
+        ids: [1, 2, 3],
+        ..Likes::default()
+    };
+    // The other subtype of the zebra is skipped; the lion's two subtypes count twice, and the
+    // last pair for an id wins.
+    let kin = Likes {
+        subtype: "f".into(),
+        ..me.clone()
+    };
+    let input = Input {
+        species: vec![me, kin, lion("m"), lion("f")],
+        animals: vec![0, 2],
+        ..flat()
+    };
+    let records = rate(&input);
+    assert_eq!(
+        (records[0].key.as_str(), records[0].other),
+        ("zebra", -230.0)
+    );
+    assert_eq!((records[1].key.as_str(), records[1].other), ("lion", 0.0));
+}

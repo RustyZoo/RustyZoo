@@ -129,6 +129,10 @@ pub struct AnimalRecord {
     pub dying: bool,
     pub crated: bool,
     pub egg: bool,
+    pub thirsty: bool,
+    /// The rampage flag and counter (animals 11).
+    pub rampaging: bool,
+    pub rampage: i32,
 }
 
 /// The four values a fence or tank wall record holds after its common part.
