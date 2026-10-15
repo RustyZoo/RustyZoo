@@ -566,6 +566,10 @@ impl<'a> MapRenderer<'a> {
                     .find(&entity.class, &bytes(&entity.type_name), b"g")
                     .is_some(),
             tank: tank_kind(ty),
+            walkable: (
+                crate::build::number(ty, "walkable") == Some(1.0),
+                crate::build::number(ty, "walkableByTall") == Some(1.0),
+            ),
         })
     }
 

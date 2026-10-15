@@ -71,6 +71,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         wall: false,
         gate: false,
         gated: false,
+        walkable: (false, false),
         tank: TankKind::NONE,
     };
     match e.class.as_str() {
@@ -87,6 +88,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "twall" => Some(Shape {
             kind: Kind::Edge,
             fence: true,
+            walkable: (false, false),
             tank: TankKind {
                 wall: true,
                 show: false,

@@ -8,6 +8,7 @@
 
 use super::World;
 use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part, Tank};
+use crate::path::{self, Mover};
 use crate::place::path_shape;
 use std::collections::{HashMap, HashSet};
 
@@ -62,7 +63,7 @@ impl World {
     }
 
     /// Whether the entity at `at` is the gate of an exhibit fence (its subtype starts with `g`).
-    pub(super) fn is_door(&self, at: usize) -> bool {
+    pub fn is_door(&self, at: usize) -> bool {
         let e = &self.zoo.entities[at];
         matches!(e.class.as_str(), "fences" | "tankwall") && e.subtype.starts_with('g')
     }
@@ -146,9 +147,8 @@ impl World {
 
     /// Whether a keeper passes where the fence piece at `at` could be the gate: the pair test of
     /// the piece's tile and the tile across gives code 0 and a cost below 10 (placing 6.4, exhibits
-    /// and money 3.4). The edge cost of the keeper is taken as 0 and its cost of a plain tile as 1
-    /// (the staff's pathfinding, issue 52), and the keeper is the marine specialist when the
-    /// piece's tile is in a tank, else the zookeeper.
+    /// and money 3.4), for the keeper of the path finder that is not relaxed (pathfinding 8): the
+    /// marine specialist when the piece's tile is in a tank, else the zookeeper.
     pub fn keeper_passes(&self, at: usize) -> bool {
         let Some((t, d)) = self.slot_of(at) else {
             return false;
@@ -157,13 +157,8 @@ impl World {
             return false;
         };
         let diver = self.tank_at(t).is_some();
-        let cost = |t: usize| match (self.dear(t, diver), self.path(t).is_some()) {
-            (true, _) => 20,
-            (_, true) => 1,
-            _ if !path_shape(self.zoo.tiles[t].shape) => 16,
-            _ => 1,
-        };
-        self.code((t, n), diver) == 0 && cost(t).max(cost(n)) < 10
+        let keeper = Mover::keeper(diver, false);
+        self.code((t, n), diver) == 0 && path::pair_cost(self, &keeper, t, n) < 10
     }
 
     /// Whether a quadrant of the tank tile of the fence piece at `at` holds an object: item 4 of
@@ -843,17 +838,17 @@ impl World {
         }
     }
 
-    /// Whether keepers cannot stand on tile `t`: outside the zoo, or water or a tank, which the
-    /// marine specialist of a tank (`diver`) swims in.
+    /// Whether the relaxed keeper of the gate choice cannot stand on tile `t` (pathfinding 8):
+    /// outside the zoo, on water or in a tank, which the marine specialist of a tank (`diver`)
+    /// swims in, or on a land tile whose four quarters objects hold.
     fn dear(&self, t: usize, diver: bool) -> bool {
-        !self.in_zoo(t)
-            || !diver
-                && (self.tank_at(t).is_some()
-                    || self
-                        .water
-                        .get(usize::from(self.zoo.tiles[t].terrain))
-                        .copied()
-                        .unwrap_or(false))
+        path::terrain(self, &Mover::keeper(diver, true), t, None) >= path::MAX
+    }
+
+    /// Whether tile `t` has a terrain type that is water.
+    pub fn is_water(&self, t: usize) -> bool {
+        let terrain = usize::from(self.zoo.tiles[t].terrain);
+        self.water.get(terrain).copied().unwrap_or(false)
     }
 
     /// The side of tile `from` towards tile `to`.
@@ -899,45 +894,26 @@ impl World {
         }
     }
 
-    /// The tiles a keeper can walk to from the zoo entrance: not through an exhibit fence or a
-    /// zoo wall, unless the piece is a gate or broken.
-    fn reach(&self, diver: bool) -> Vec<bool> {
-        let mut seen = vec![false; self.zoo.tiles.len()];
+    /// Whether the search of the path finder, from the zoo entrance to tile `out` with the relaxed
+    /// temporary keeper and no partial path, finds it (pathfinding 8): no request, no unreachable
+    /// list, and the node cap applies.
+    fn reaches(&self, diver: bool, out: usize) -> bool {
         let (ex, ey) = self.zoo.entrance;
-        let start = i32::try_from(ex)
+        i32::try_from(ex)
             .ok()
             .zip(i32::try_from(ey).ok())
             .and_then(|(x, y)| self.tile_index(x, y))
-            .filter(|&t| !self.dear(t, diver));
-        let open = |piece: Option<usize>| {
-            piece.is_none_or(|p| {
-                self.is_door(p)
-                    || self.zoo.entities[p]
-                        .common
-                        .as_ref()
-                        .and_then(|c| c.fence.as_ref())
-                        .is_some_and(|f| f.life < 1)
-                    || self.shapes[p].is_some_and(|s| !s.fence && !s.wall)
+            .is_some_and(|from| {
+                path::search(
+                    self,
+                    &Mover::keeper(diver, true),
+                    &self.finder,
+                    from,
+                    out,
+                    false,
+                )
+                .reached
             })
-        };
-        let mut todo: Vec<usize> = start.into_iter().collect();
-        todo.iter().for_each(|&t| seen[t] = true);
-        while let Some(t) = todo.pop() {
-            for d in [0, 2, 4, 6] {
-                let Some(n) = self.neighbour(t, d) else {
-                    continue;
-                };
-                if !seen[n]
-                    && !self.dear(n, diver)
-                    && open(self.edge(t, d))
-                    && open(self.edge(n, (d + 4) % 8))
-                {
-                    seen[n] = true;
-                    todo.push(n);
-                }
-            }
-        }
-        seen
     }
 
     /// The step of the walk round the boundary of exhibit `id` from a pair; `None` at a pinch.
@@ -978,15 +954,15 @@ impl World {
     /// player placed the piece on (exhibits and money 3.4).
     fn choose_gate(&mut self, id: u32, start: Pair, placed: usize) {
         let diver = self.exhibits.get(id).is_some_and(|e| e.tank.is_some());
-        let reach = self.reach(diver);
         let good = |w: &World, pair: Pair| {
-            reach[pair.1]
-                && w.exhibits.region(pair.1) == Some(GROUNDS)
+            w.exhibits.region(pair.1) == Some(GROUNDS)
                 && [pair.0, pair.1]
                     .iter()
                     .all(|&t| path_shape(w.zoo.tiles[t].shape))
+                && w.reaches(diver, pair.1)
         };
-        let reachable = |w: &World, pair: Pair| w.code(pair, diver) == 0 && reach[pair.1];
+        let reachable =
+            |w: &World, pair: Pair| w.code(pair, diver) == 0 && w.reaches(diver, pair.1);
         let mut seen = HashSet::new();
         let (mut last, mut zero, mut first_code) = (None, None, None);
         let mut cur = start;
