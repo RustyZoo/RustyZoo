@@ -521,6 +521,19 @@ fence_drag() { # fence_drag <map> <last move>
 check base-trial "6,48920,62790f338040a757" "fence_drag maps/default.zoo '878 332'"
 check expansion-trial "6,49250,7abfe7d5a0d04a22" "fence_drag maps/scn19.zoo '878 332'"
 
+# The drag of the original's reference pictures of placing a fence, here on the trial (its fence
+# list and scroll differ from the full game's, which the reference pictures show): a press, three
+# moves along the legs of an L, the release and one more move. Prints the pieces placed with their
+# tiles and sides (the `world add` lines), the cash at the end and the hash of the last picture.
+reference_drag() { # reference_drag <map>
+  d=$(mktemp -d)
+  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n8 mouse 760 330\n9 down\n10 mouse 792 346\n11 mouse 824 362\n12 mouse 888 362\n13 mouse 920 346\n14 up\n15 mouse 920 346\n" >"$d/script"
+  rz run "$1" --headless --passes 17 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+    awk '/ world add /{printf "%s,%s,%s;", $7, $8, $9} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print c "," h}'
+  rm -rf "$d"
+}
+check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side,2;23,47,side,2;23,48,side,2;48740,ee422fa4374f312f" "reference_drag maps/default.zoo"
+
 # Closes a square of fences with four drags (the first item of the fence list, one side each), types
 # a name into the dialog the new exhibit asks for and answers it with Enter. Prints the `exhibit`
 # lines of the log (spaces as underscores, joined by semicolons): the new exhibit without a gate
