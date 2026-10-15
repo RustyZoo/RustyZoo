@@ -10,7 +10,7 @@
 //! [`update`] is one unit's turn in the original's order: events in; unless suspended, the move;
 //! the animation; unless suspended, the status timer (the needs and the checks once it passes the
 //! period) and then either the wait counted down or the behaviour and the goals; the events
-//! discarded. The move is [`movement`] and the random walk [`walk`]. What the animation frames,
+//! discarded. The move is [`movement`]. What the animation frames,
 //! the needs, the checks, the behaviour and the goals do is the business of later issues: each is
 //! a method of [`Hooks`], empty until then.
 //! A hook must not add or remove entities (a removal goes through [`Ctx::remove`], which only
@@ -34,7 +34,6 @@ pub mod movement;
 mod testing;
 #[cfg(test)]
 mod tests;
-pub mod walk;
 
 /// What a unit is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -212,10 +211,8 @@ pub struct Units {
     index: HashMap<u32, usize>,
     /// The status period (`[AI] mStatusPeriod`) new units start their timers from.
     period: i32,
-    /// The path finder with its list of unreachable places, which the random walk asks.
+    /// The path finder with its settings and its list of unreachable places.
     pub finder: Finder,
-    /// The `[AI]` settings of the random walk.
-    ring: walk::Ring,
     lines: Vec<String>,
 }
 
@@ -226,7 +223,6 @@ impl Default for Units {
             index: HashMap::new(),
             period: 1000,
             finder: Finder::default(),
-            ring: walk::Ring::default(),
             lines: Vec::new(),
         }
     }
@@ -262,7 +258,7 @@ impl Units {
         }
     }
 
-    /// Reads the settings of the path finder and of the random walk from the ini file.
+    /// Reads the settings of the path finder from the ini file.
     pub fn set_ini(&mut self, ini: &[u8]) {
         let config = Config::parse(ini).ok();
         self.finder = Finder::new(
@@ -270,9 +266,6 @@ impl Units {
                 .as_ref()
                 .map_or_else(Settings::default, Settings::from_ini),
         );
-        self.ring = config
-            .as_ref()
-            .map_or_else(walk::Ring::default, walk::Ring::from_ini);
     }
 
     /// The `unit` log lines since the last call, without the family word.

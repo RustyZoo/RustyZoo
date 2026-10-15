@@ -15,7 +15,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-pub use cost::{step, terrain};
+pub use cost::terrain;
 pub use search::search;
 
 /// The cost of a closed step: 20 or more is closed.

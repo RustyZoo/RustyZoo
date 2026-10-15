@@ -702,10 +702,6 @@ impl<'a> App<'a> {
             && !(game.paused || modal)
         {
             let report = self.sim.step(&mut game.world, step, |_, _, _| {});
-            game.world
-                .units
-                .finder
-                .tick(u64::from(self.sim.ai_clock().0));
             if report.month_end {
                 game.money.month_change();
                 self.money_events.push(format!(
