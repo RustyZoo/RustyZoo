@@ -189,6 +189,7 @@ fn turn_at(w: &mut World, events: &Events, hooks: &mut Recorder, step: u32, at: 
         events,
         removals: &mut removals,
         step,
+        cat: &crate::entity::Catalogue::default(),
     };
     update(hooks, w, &mut ctx, at);
 }
@@ -358,7 +359,9 @@ fn the_simulation_draws_once_per_unit_that_runs_its_goals() {
     let mut w = world(&[("animals", 1), ("guests", 2), ("keeper", 3)]);
     let (mut a, mut b) = (sim(), sim());
     a.step(&mut w, 67, |_, _, _| {});
-    (0..3).for_each(|_| _ = b.rng.rand());
+    // The animal (of no known subtype: a young one) draws its sex and its sixteen counters on
+    // its first turn.
+    (0..3 + 17).for_each(|_| _ = b.rng.rand());
     assert_eq!(a.rng.state(), b.rng.state());
     // A waiting unit draws nothing.
     w.units.get_mut(2).unwrap().wait = 1000;

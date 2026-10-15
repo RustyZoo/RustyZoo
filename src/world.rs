@@ -258,6 +258,11 @@ impl World {
         &self.exhibits
     }
 
+    /// The regions again, to change an exhibit's own state (its rating).
+    pub fn exhibits_mut(&mut self) -> &mut Exhibits {
+        &mut self.exhibits
+    }
+
     /// The tile across the edge of tile `t` in map direction `d` (0, 2, 4 or 6).
     pub fn neighbour(&self, t: usize, d: usize) -> Option<usize> {
         self.scene.neighbour(t, d)

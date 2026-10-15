@@ -297,7 +297,9 @@ usage: rustyzoo [--data <dir>] <command>
                       placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
                       simulated time, and `unit tile ID X,Y`, `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and
                       `unit abort ID` when a unit walks (it enters a tile or another exhibit, turns, or is refused its next
-                      step). --rows ID N (repeatable) fills the list box ID
+                      step). An animal adds `animal status ID HAPPINESS HUNGER ENERGY HEALTH` (the
+                      values after the update of that tick) and `animal message STRING ID` for a message it
+                      posts. --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma

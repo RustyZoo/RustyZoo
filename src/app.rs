@@ -389,6 +389,7 @@ pub struct App<'a> {
     sim: Sim,
     sim_lines: Vec<String>,
     unit_lines: Vec<String>,
+    animal_lines: Vec<String>,
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
@@ -510,6 +511,7 @@ impl<'a> App<'a> {
             sim,
             sim_lines: Vec::new(),
             unit_lines: Vec::new(),
+            animal_lines: Vec::new(),
             music: None,
             music_changed: false,
             music_restarted: false,
@@ -543,6 +545,7 @@ impl<'a> App<'a> {
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
+        world.units.class = crate::animal::Class::load(self.renderer.vfs());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
@@ -701,7 +704,12 @@ impl<'a> App<'a> {
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
         {
-            let report = self.sim.step(&mut game.world, step, |_, _, _| {});
+            let report = self.sim.step_in(
+                &mut game.world,
+                self.renderer.catalogue(),
+                step,
+                |_, _, _| {},
+            );
             if report.month_end {
                 game.money.month_change();
                 self.money_events.push(format!(
@@ -719,7 +727,27 @@ impl<'a> App<'a> {
         self.sim_lines = self.sim.take_lines();
         self.unit_lines =
             (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
+        self.animal_told();
         self.drew.then_some(&self.frame)
+    }
+
+    /// Takes the animals' log lines of the last pass and shows their messages, with the animal's
+    /// name in them, in the message line.
+    fn animal_told(&mut self) {
+        let Some(game) = &mut self.game else {
+            self.animal_lines.clear();
+            return;
+        };
+        self.animal_lines = game.world.units.take_animal_lines();
+        for (message, id) in game.world.units.take_messages() {
+            let name = (game.world.find(id))
+                .and_then(|at| game.world.zoo.entities[at].common.as_ref())
+                .map_or("", |c| &c.name);
+            if let Some(ui) = &mut self.ui {
+                let text = ui.string(message).replacen("%s", name, 1);
+                ui.message(&to_cp1252(&text));
+            }
+        }
     }
 
     /// Tells what the cash did since it was last told: the amount in whole units for the log,
@@ -1665,6 +1693,11 @@ impl<'a> App<'a> {
         }
         lines.extend(self.sim_lines.iter().map(|e| format!("{lead} sim {e}")));
         lines.extend(self.unit_lines.iter().map(|e| format!("{lead} unit {e}")));
+        lines.extend(
+            self.animal_lines
+                .iter()
+                .map(|e| format!("{lead} animal {e}")),
+        );
         lines
     }
 }

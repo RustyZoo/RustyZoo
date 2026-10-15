@@ -25,6 +25,9 @@ use std::collections::HashMap;
 
 use crate::config::Config;
 use crate::path::{self, Finder, Mover, Settings};
+pub use crate::animal::Animal;
+use crate::animal::Class;
+use crate::entity::Catalogue;
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::Entity;
@@ -91,10 +94,6 @@ impl Kind {
     }
 }
 
-/// The part of the state of an animal: its status variables and counters (animals issues).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Animal {}
-
 /// The part of the state of a guest: its needs, items and lists (guest issues).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Guest {}
@@ -156,6 +155,8 @@ pub struct Unit {
     pub carried: bool,
     /// The program is moving the unit by code (it is never set while a step runs).
     pub repositioning: bool,
+    /// The unit has had its first turn, in which the kinds start their state.
+    pub started: bool,
 }
 
 impl Unit {
@@ -166,7 +167,7 @@ impl Unit {
             id,
             kind,
             part: match kind {
-                Kind::Animal => Part::Animal(Animal {}),
+                Kind::Animal => Part::Animal(Animal::default()),
                 Kind::Guest => Part::Guest(Guest {}),
                 _ => Part::Staff(Staff {}),
             },
@@ -185,6 +186,7 @@ impl Unit {
             events: Vec::new(),
             carried: false,
             repositioning: false,
+            started: false,
         }
     }
 
@@ -213,7 +215,12 @@ pub struct Units {
     period: i32,
     /// The path finder with its settings and its list of unreachable places.
     pub finder: Finder,
+    /// The keys of `animals.ai` that every animal reads.
+    pub class: Class,
     lines: Vec<String>,
+    animal_lines: Vec<String>,
+    /// The messages posted and not shown yet: the string number and the unit it is about.
+    messages: Vec<(i32, u32)>,
 }
 
 impl Default for Units {
@@ -223,7 +230,10 @@ impl Default for Units {
             index: HashMap::new(),
             period: 1000,
             finder: Finder::default(),
+            class: Class::default(),
             lines: Vec::new(),
+            animal_lines: Vec::new(),
+            messages: Vec::new(),
         }
     }
 }
@@ -271,6 +281,25 @@ impl Units {
     /// The `unit` log lines since the last call, without the family word.
     pub fn take_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.lines)
+    }
+
+    /// The `animal` log lines since the last call, without the family word.
+    pub fn take_animal_lines(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.animal_lines)
+    }
+
+    /// The messages posted since the last call, as (string number, unit id); the string holds a
+    /// `%s` for the unit's name.
+    pub fn take_messages(&mut self) -> Vec<(i32, u32)> {
+        std::mem::take(&mut self.messages)
+    }
+
+    pub(crate) fn tell(&mut self, line: String) {
+        self.animal_lines.push(line);
+    }
+
+    pub(crate) fn post(&mut self, message: i32, id: u32) {
+        self.messages.push((message, id));
     }
 
     /// Makes the table follow the entity list: units that stand in it keep their state, new ones
@@ -340,7 +369,12 @@ impl Units {
             h.word(u.animation.elapsed);
             h.word(u.status_timer as u32);
             h.word(u.wait as u32);
-            h.word(u32::from(u.carried) | u32::from(u.repositioning) << 1);
+            h.word(
+                u32::from(u.carried) | u32::from(u.repositioning) << 1 | u32::from(u.started) << 2,
+            );
+            if let Part::Animal(a) = &u.part {
+                h.bytes(format!("{a:?}").as_bytes());
+            }
             h.word(u.events.len() as u32);
             for e in &u.events {
                 for v in [e.sender, e.target, e.data] {
@@ -391,6 +425,8 @@ pub struct Ctx<'a> {
     pub removals: &'a mut Vec<u32>,
     /// The step in milliseconds.
     pub step: u32,
+    /// The types of the game.
+    pub cat: &'a Catalogue,
 }
 
 impl Ctx<'_> {
@@ -405,6 +441,8 @@ impl Ctx<'_> {
 /// The work of a unit's turn that later issues fill. Each gets the unit (taken out of the table
 /// for the turn), the world, the managers' context and the unit's position in the entity list.
 pub trait Hooks {
+    /// The unit's first turn, before anything else (simulation 8.2: the creation of its state).
+    fn start(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The move by the step (movement 3); not run while suspended.
     fn movement(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The status variables (the needs); at a status tick, not run while suspended.
@@ -430,6 +468,15 @@ impl Hooks for Standard {
         movement::finish(unit, world, at);
     }
 
+    fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        crate::animal::start(unit, world, ctx, at);
+    }
+    fn needs(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        crate::animal::needs(unit, world, ctx, at);
+    }
+    fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        crate::animal::checks(unit, world, ctx, at);
+    }
     fn goals(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         // The kind's own goal work comes first, then this, then the current goal's update and
         // the sub-goals.
@@ -474,6 +521,10 @@ pub fn update(hooks: &mut impl Hooks, world: &mut World, ctx: &mut Ctx, at: usiz
 
 fn turn(hooks: &mut impl Hooks, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let step = ctx.step;
+    if !unit.started {
+        unit.started = true;
+        hooks.start(unit, world, ctx, at);
+    }
     unit.events = ctx
         .events
         .listen(unit.id, unit.kind.channel())
