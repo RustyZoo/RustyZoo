@@ -1544,7 +1544,7 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
         app.pass(pass + 10, &[Command::Mouse(Mouse::Up)]);
         let told = exhibit_lines(&app);
         match n {
-            3 => assert_eq!(told, ["exhibit new 1 \"Pen 1\" tiles 1 gate 20,20 side 6"]),
+            3 => assert_eq!(told, ["exhibit new 1 \"Pen 1\" tiles 1 gate none"]),
             _ => assert!(told.is_empty()),
         }
     }
@@ -1553,6 +1553,11 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
     let first = game.world.exhibits().get(1).unwrap();
     assert_eq!((first.name.as_str(), first.tiles), ("Pen 1", 1));
     assert!(app.paused(), "the name dialog is open");
+    assert_eq!(
+        game.world.gate_slot(1),
+        None,
+        "the gate comes after the name"
+    );
     let ui = app.interface().unwrap();
     assert_eq!(ui.text(45308), Some(b"Pen 1".to_vec()));
     // Typing replaces the selected default name; Enter answers.
@@ -1563,7 +1568,10 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
     ];
     app.pass(200, &typed);
     assert!(!app.paused());
-    assert_eq!(exhibit_lines(&app), ["exhibit name 1 \"Li\""]);
+    assert_eq!(
+        exhibit_lines(&app),
+        ["exhibit name 1 \"Li\"", "exhibit gate 1 20,20 side 6"]
+    );
     assert_eq!(
         app.game
             .as_ref()

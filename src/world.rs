@@ -41,8 +41,6 @@ enum Action {
     Removed(usize, Entity, Option<Shape>),
     /// A tile had this state: its index.
     Tile(usize, Tile),
-    /// The entity with this id was replaced in place; what it was.
-    Replaced(u32, Entity, Option<Shape>),
 }
 
 pub struct World {
@@ -58,6 +56,9 @@ pub struct World {
     exhibits: Exhibits,
     /// What happened to the exhibits and nobody has taken yet.
     events: Vec<Event>,
+    /// The new exhibits that wait for their gate while the player names them: the exhibit, the
+    /// pair the walk starts at and the tile the piece was placed on.
+    waiting: Vec<(u32, (usize, usize), usize)>,
     /// The word before the number of a default exhibit name.
     word: String,
     /// Which terrain types are water (the gate walk's keeper does not swim).
@@ -78,6 +79,7 @@ impl World {
             in_zoo: vec![true; zoo.tiles.len()],
             exhibits: Exhibits::default(),
             events: Vec::new(),
+            waiting: Vec::new(),
             word: "Exhibit".into(),
             water: Vec::new(),
             zoo,
@@ -331,12 +333,6 @@ impl World {
                     let at = at.min(self.zoo.entities.len());
                     self.zoo.entities.insert(at, entity);
                     self.shapes.insert(at, shape);
-                }
-                Action::Replaced(id, entity, shape) => {
-                    if let Some(at) = self.find(id) {
-                        self.zoo.entities[at] = entity;
-                        self.shapes[at] = shape;
-                    }
                 }
                 Action::Tile(t, tile) => {
                     let moved = (tile.elevation, tile.shape)

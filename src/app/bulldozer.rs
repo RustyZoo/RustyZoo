@@ -32,7 +32,7 @@ pub(super) struct Dozer {
 /// question that is open, and what has gone so far.
 pub(super) struct Sweep {
     queue: VecDeque<u32>,
-    declined: Vec<(usize, usize)>,
+    declined: Vec<(u32, u32)>,
     asking: Option<(u32, Question)>,
     area: bool,
     removed: usize,
@@ -262,14 +262,11 @@ impl App<'_> {
     }
 
     /// Removes the entity with this id, books its refund and logs it (`world remove CLASS/TYPE/
-    /// SUBTYPE X,Y [side S] id N refund R`, and `world gate id N` for the piece that became the
-    /// exhibit's gate).
+    /// SUBTYPE X,Y [side S] id N refund R`), then tells what happened to the exhibits.
     fn bulldoze_remove(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
-        let (renderer, cat) = (&self.renderer, self.renderer.catalogue());
-        let removed = bulldozer::remove(&mut game.world, &mut game.money, cat, id, |e| {
-            renderer.shape(e)
-        });
+        let cat = self.renderer.catalogue();
+        let removed = bulldozer::remove(&mut game.world, &mut game.money, cat, id);
         let Some(r) = removed else { return };
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));
         self.world_lines.push(format!(
@@ -280,13 +277,11 @@ impl App<'_> {
             r.id,
             whole_units(f64::from(r.refund))
         ));
-        if let Some(gate) = r.gate {
-            self.world_lines.push(format!("gate id {gate}"));
-        }
         if let Some(sweep) = &mut game.sweep {
             sweep.removed += 1;
             sweep.refund += r.refund;
         }
+        self.exhibits_told();
     }
 
     /// The open question was answered: Yes removes the object, No keeps it (and keeps the other
@@ -307,7 +302,7 @@ impl App<'_> {
         match code {
             6 => self.bulldoze_remove(id),
             7 => {
-                if let Some(pair) = question.pair(&game.world)
+                if let Some(pair) = question.pair()
                     && let Some(sweep) = &mut game.sweep
                 {
                     sweep.declined.push(pair);
@@ -325,8 +320,8 @@ impl App<'_> {
     }
 }
 
-/// The text of a question (placing 7.1). An exhibit has no name of its own yet: its default
-/// name is the word and its number.
+/// The text of a question (placing 7.1). An exhibit is named by its name; one without (found in a
+/// map) by the word and its number.
 fn question_text(
     ui: &Interface,
     cat: &Catalogue,
@@ -335,7 +330,10 @@ fn question_text(
     question: Question,
 ) -> String {
     let template = |id| ui.string(id);
-    let exhibit = |n: u32| format!("{} {n}", ui.string(EXHIBIT));
+    let exhibit = |n: u32| match world.exhibits().get(n) {
+        Some(e) if !e.name.is_empty() => e.name.clone(),
+        _ => format!("{} {n}", ui.string(EXHIBIT)),
+    };
     match question {
         Question::Sell => {
             let entity = world.zoo.entities.get(at);

@@ -297,8 +297,10 @@ struct Game {
     dozer: bulldozer::Dozer,
     sweep: Option<bulldozer::Sweep>,
     /// The new exhibits that wait for a name, the first one's dialog being open or not.
-    naming: Vec<exhibits::Naming>,
+    naming: Vec<u32>,
     naming_open: bool,
+    /// The pieces of the drag after the one that closed an exhibit, bought once it is named.
+    rest: Vec<Pending>,
 }
 
 impl Game {
@@ -542,6 +544,7 @@ impl<'a> App<'a> {
             sweep: None,
             naming: Vec::new(),
             naming_open: false,
+            rest: Vec::new(),
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -970,7 +973,7 @@ impl<'a> App<'a> {
     /// could not be placed shows in the message line (`tool message 10311`); and a new pending
     /// object is made (placing 6.1 and 6.2).
     fn release(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+        let Some(game) = &mut self.game else {
             return;
         };
         if game.build.bulldozing() {
@@ -983,6 +986,16 @@ impl<'a> App<'a> {
             true => run,
             false => game.pending.clone().into_iter().collect(),
         };
+        self.buy(pieces, false);
+    }
+
+    /// Buys the pieces in order (`release`); `resumed` when they are what a closing piece left
+    /// of the drag, whose sound and turn were done. A piece that makes an exhibit stops the
+    /// buying: its name is asked first, the rest of the pieces come after the answer.
+    pub(super) fn buy(&mut self, pieces: Vec<Pending>, resumed: bool) {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
         if pieces.is_empty() {
             return;
         }
@@ -993,7 +1006,7 @@ impl<'a> App<'a> {
         let renderer = &self.renderer;
         let cat = renderer.catalogue();
         let (mut first, mut refused) = (None, None);
-        for p in &pieces {
+        for (n, p) in pieces.iter().enumerate() {
             let ty = &cat.types[p.ty];
             let name = format!(
                 "{}/{}/{}",
@@ -1030,11 +1043,16 @@ impl<'a> App<'a> {
                     }
                     self.world_lines.push(format!("add {name} {tile} id {id}"));
                     first = first.or(Some(p.ty));
+                    if !game.world.waiting().is_empty() {
+                        game.rest = pieces[n + 1..].to_vec();
+                        break;
+                    }
                 }
                 Outcome::Refused(message) => refused = message.or(refused),
             }
         }
         match first {
+            _ if resumed => {}
             Some(ty) => {
                 self.ui_sounds.push("place");
                 if game.build.placed(&cat.types[ty]) {

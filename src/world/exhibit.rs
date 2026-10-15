@@ -93,6 +93,20 @@ impl World {
         self.exhibits.get_mut(id).unwrap().gate = Some(piece);
     }
 
+    /// The new exhibits that wait for their gate: the name dialog is open for them (exhibits and
+    /// money 3.6).
+    pub fn waiting(&self) -> Vec<u32> {
+        self.waiting.iter().map(|w| w.0).collect()
+    }
+
+    /// The new exhibit `id` was named: its gate is chosen now (exhibits and money 3.2, 3.4).
+    pub fn give_gate(&mut self, id: u32) {
+        if let Some(i) = self.waiting.iter().position(|w| w.0 == id) {
+            let (id, start, placed) = self.waiting.remove(i);
+            self.choose_gate(id, start, placed);
+        }
+    }
+
     /// What happened to the exhibits since the last call.
     pub fn take_events(&mut self) -> Vec<Event> {
         std::mem::take(&mut self.events)
@@ -245,7 +259,7 @@ impl World {
                 true => (b, a),
                 false => (a, b),
             };
-            self.choose_gate(id, start, a);
+            self.waiting.push((id, start, a));
         }
         // The gate of an exhibit went but its line is still closed: a new one on that line.
         if self.closed(a, d) {
@@ -305,11 +319,13 @@ impl World {
     /// Exhibit `id` lost its gate on the line between its tile `me` and `other`.
     fn regate(&mut self, id: u32, me: usize, other: usize) {
         if self.exhibits.region(other) == Some(GROUNDS) {
-            let piece = (0..4)
-                .map(|d| d * 2)
-                .find(|&d| self.neighbour(other, d) == Some(me))
-                .and_then(|d| self.edge(other, d));
-            if let Some(at) = piece.filter(|&p| self.make_door(p)) {
+            // The piece left on the line is the gate, whichever of the two slots it is on.
+            let slot =
+                |from: usize, to: usize| self.side_to(from, to).and_then(|d| self.edge(from, d));
+            let piece = slot(other, me).or(slot(me, other));
+            if let Some(at) =
+                piece.filter(|&p| self.shapes[p].is_some_and(|s| s.fence) && self.make_door(p))
+            {
                 let gate = self.zoo.entities[at].common.as_ref().map(|c| c.id);
                 if let Some(e) = self.exhibits.get_mut(id) {
                     e.gate = gate;
@@ -349,17 +365,21 @@ impl World {
     /// The code of a pair (exhibits and money 3.4).
     fn code(&self, pair: Pair) -> u8 {
         let pieces: Vec<usize> = self.line(pair).into_iter().flatten().collect();
-        if pieces
+        let code = if pieces
             .iter()
             .any(|&p| self.shapes[p].is_some_and(|s| s.wall))
-            || self.dear(pair.0)
-            || self.dear(pair.1)
         {
             4
         } else if pieces.iter().any(|&p| self.is_door(p)) {
             2
-        } else if pieces.len() == 2 {
-            1
+        } else {
+            u8::from(pieces.len() == 2)
+        };
+        // Water, the outside of the zoo and objects count only while nothing else has.
+        if code != 0 {
+            code
+        } else if self.dear(pair.0) || self.dear(pair.1) {
+            4
         } else if self.quadrant(pair.0, 3).is_some() || self.quadrant(pair.1, 3).is_some() {
             3
         } else {

@@ -260,7 +260,17 @@ fn unique(z: &mut Zoo) {
     }
 }
 
+/// Places a piece; a new exhibit is named at once (default name), which gives it its gate.
 fn put(world: &mut World, (x, y, d): (i32, i32, u32)) -> u32 {
+    let id = place(world, (x, y, d));
+    for new in world.waiting() {
+        world.give_gate(new);
+    }
+    id
+}
+
+/// Places a piece; a new exhibit waits for its name and has no gate yet.
+fn place(world: &mut World, (x, y, d): (i32, i32, u32)) -> u32 {
     world.add(piece(x, y, d), shape(&piece(0, 0, 0))).unwrap()
 }
 
@@ -596,5 +606,58 @@ fn a_gate_is_not_put_where_the_keeper_would_have_to_swim() {
         world.take_events().len(),
         2,
         "a good pair was found: no message"
+    );
+}
+
+#[test]
+fn a_gate_removed_from_the_grounds_slot_of_a_closed_line_moves_to_the_other_piece() {
+    let mut pieces = square(1, 1, 2, 2);
+    pieces.push((3, 1, 6));
+    let mut world = loaded(&pieces);
+    let door = at(&world, 3, 1, 6);
+    world.set_gate(1, door);
+    world.remove(door);
+    assert_eq!(world.take_events(), [Event::Gate(1)]);
+    assert_eq!(gate(&world, 1), Some((2, 1, 2)));
+}
+
+#[test]
+fn two_pieces_on_a_wet_line_are_code_1_so_the_start_pair_is_blocked_not_inaccessible() {
+    let mut pieces = square(3, 3, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(pieces.iter().map(|&(x, y, d)| piece(x, y, d)));
+    z.entities.push(entity("plain", 4, 3, 6));
+    unique(&mut z);
+    z.tiles[3 * SIZE as usize + 3].terrain = 1;
+    let mut world = World::new(z, shape);
+    world.set_water(vec![false, true]);
+    world.take_events();
+    put(&mut world, last);
+    let events = world.take_events();
+    assert!(
+        events.contains(&Event::Blocked {
+            id: 1,
+            message: 11001
+        }),
+        "{events:?}"
+    );
+}
+
+#[test]
+fn a_new_exhibit_has_no_gate_until_it_is_named() {
+    let mut pieces = square(2, 2, 4, 4);
+    let last = pieces.pop().unwrap();
+    let mut world = loaded(&pieces);
+    let id = place(&mut world, last);
+    assert_eq!(world.take_events(), [Event::New { id: 1, ask: true }]);
+    assert_eq!((world.waiting(), gate(&world, 1)), (vec![1], None));
+    assert!(!is_gate(&world, id));
+    world.give_gate(1);
+    assert_eq!(world.take_events(), [Event::Gate(1)]);
+    assert_eq!(
+        (world.waiting(), gate(&world, 1)),
+        (vec![], Some((4, 4, 2)))
     );
 }

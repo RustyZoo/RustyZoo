@@ -12,7 +12,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::money::{CONSTRUCTION_REFUND, Money};
 use crate::render::order::Kind;
-use crate::world::{Shape, World};
+use crate::world::World;
 use crate::zoo::{Entity, Fence};
 
 /// A point within this many world units of a tile side picks the fence on it. The original picks
@@ -132,14 +132,13 @@ pub enum Question {
 }
 
 impl Question {
-    /// The two regions of an exhibit question, named by their first tiles (the grounds by
-    /// `usize::MAX`), smaller first: a pair that was declined stays declined while others merge.
-    pub fn pair(self, world: &World) -> Option<(usize, usize)> {
-        let key = |r: u32| world.exhibits().first(r).unwrap_or(usize::MAX);
+    /// The two regions of an exhibit question (the grounds are 0), smaller first: a pair that
+    /// was declined stays declined while others merge.
+    pub fn pair(self) -> Option<(u32, u32)> {
         let (a, b) = match self {
             Question::Sell => return None,
-            Question::Merge(x, y) => (key(x), key(y)),
-            Question::Escape(x) => (key(x), usize::MAX),
+            Question::Merge(x, y) => (x, y),
+            Question::Escape(x) => (GROUNDS, x),
         };
         Some((a.min(b), a.max(b)))
     }
@@ -190,10 +189,10 @@ pub fn check(
     cat: &Catalogue,
     e: usize,
     sell: bool,
-    declined: &[(usize, usize)],
+    declined: &[(u32, u32)],
 ) -> Check {
     if let Some(q) = exhibit_question(world, e) {
-        return match q.pair(world).is_some_and(|p| declined.contains(&p)) {
+        return match q.pair().is_some_and(|p| declined.contains(&p)) {
             true => Check::Keep,
             false => Check::Ask(q),
         };
@@ -220,34 +219,22 @@ pub struct Removed {
     /// The side of a fence.
     pub side: Option<u32>,
     pub refund: f32,
-    /// The piece across that became the exhibit's gate (id), after a gate was removed.
-    pub gate: Option<u32>,
 }
 
 /// Removes the entity with this id and books its refund as a construction refund (placing 7.2).
-/// A gate removed from a line that stays closed by the piece on the other tile's slot gives the
-/// exhibit a new gate there when the other side is the zoo grounds (exhibits and money 3.3; a
-/// line between two exhibits chooses its gate by the walk of 3.4, which the exhibits do not
-/// have yet). `shape` tells how the new gate takes its place. `None` if there is no such entity.
-pub fn remove(
-    world: &mut World,
-    money: &mut Money,
-    cat: &Catalogue,
-    id: u32,
-    shape: impl Fn(&Entity) -> Option<Shape>,
-) -> Option<Removed> {
+/// The world gives an exhibit whose gate goes a new one and tells the exhibits what happened
+/// (exhibits and money 3.3). `None` if there is no such entity.
+pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) -> Option<Removed> {
     let at = world.find(id)?;
     let entity = &world.zoo.entities[at];
     let c = entity.common.as_ref()?;
     let fence = matches!(Kind::of_class(&entity.class), Kind::Edge | Kind::Wall);
-    let gate = fence && entity.subtype.starts_with('g') && world.shape(at).is_some_and(|s| s.fence);
     let mut removed = Removed {
         id,
         name: format!("{}/{}/{}", entity.class, entity.type_name, entity.subtype),
         tile: (c.x.div_euclid(64), c.y.div_euclid(64)),
         side: fence.then_some(c.rotation % 8),
         refund: refund(cat, entity),
-        gate: None,
     };
     let slot = world.slot(at);
     if let Some((t, d)) = slot {
@@ -257,41 +244,7 @@ pub fn remove(
     }
     world.remove(id);
     money.refund(CONSTRUCTION_REFUND, removed.refund);
-    if let (true, Some((t, d))) = (gate, slot) {
-        removed.gate = new_gate(world, cat, t, d, shape);
-    }
     Some(removed)
-}
-
-/// The piece on the slot across the line `(t, d)` becomes a gate of its type, healthy, when the
-/// two tiles are an exhibit and the zoo grounds; its id.
-fn new_gate(
-    world: &mut World,
-    cat: &Catalogue,
-    t: usize,
-    d: usize,
-    shape: impl Fn(&Entity) -> Option<Shape>,
-) -> Option<u32> {
-    let n = world.neighbour(t, d)?;
-    let o = world.edge(n, (d + 4) % 8)?;
-    let (x, y) = (world.exhibits().region(t)?, world.exhibits().region(n)?);
-    let zoo = |r: u32| r == GROUNDS || r == EXTERIOR;
-    let piece = world.zoo.entities.get(o)?;
-    if !world.shape(o)?.fence || piece.subtype.starts_with('g') || zoo(x) == zoo(y) {
-        return None;
-    }
-    let mut gate = piece.clone();
-    gate.subtype = "g".into();
-    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-    let ty = cat.find(&gate.class, &bytes(&gate.type_name), b"g")?;
-    let common = gate.common.as_mut()?;
-    let id = common.id;
-    if let Some(f) = common.fence.as_mut() {
-        f.strength = number(ty, "cStrength").unwrap_or(500.0) as u32;
-        f.life = number(ty, "cLife").unwrap_or(LIFE) as u32;
-    }
-    let shape = shape(&gate);
-    world.replace(id, gate, shape).then_some(id)
 }
 
 #[cfg(test)]

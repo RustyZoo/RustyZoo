@@ -187,14 +187,6 @@ impl Exhibits {
         self.region.get(t).copied()
     }
 
-    /// The first tile of the exhibit numbered `region` (from 1); `None` for the zoo grounds, the
-    /// exterior or a number that is none. It names a region across rebuilds: an exhibit that
-    /// nothing joined keeps it while the numbers shift.
-    pub fn first(&self, region: u32) -> Option<usize> {
-        let at = usize::try_from(region.checked_sub(1)?).ok()?;
-        self.list.get(at).map(|e| e.first)
-    }
-
     /// The exhibits, in the order they were made.
     pub fn list(&self) -> &[Exhibit] {
         &self.list
