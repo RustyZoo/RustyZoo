@@ -792,10 +792,22 @@ impl Tree {
                         _ => None,
                     },
                 ),
+                // Only the first value is used when loading; the others are alternatives the
+                // program may pick later (the main menu's background), and one that is not in the
+                // game's files (the update screen's second picture) is no warning.
                 values => (
                     values
                         .iter()
-                        .map(|v| self.pictures.get(vfs, v, &mut self.warnings))
+                        .enumerate()
+                        .map(|(n, v)| {
+                            let mut unheard = Vec::new();
+                            let warnings = if n == 0 {
+                                &mut self.warnings
+                            } else {
+                                &mut unheard
+                            };
+                            self.pictures.get(vfs, v, warnings)
+                        })
                         .collect(),
                     None,
                 ),

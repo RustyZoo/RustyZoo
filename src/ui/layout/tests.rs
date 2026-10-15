@@ -193,6 +193,22 @@ fn a_file_that_cannot_be_read_is_an_empty_layout() {
 }
 
 #[test]
+fn only_the_first_picture_of_a_list_warns_when_missing() {
+    let tree = load(
+        "alternatives",
+        &[(
+            "ui/root.lyt",
+            "[LayoutInfo]\nid=1\n[a]\ntype=UIImage\nid=2\nanimation=ui/gone0\n\
+             animation=ui/gone1\nanimation=ui/gone2\n",
+        )],
+        0,
+    );
+    assert_eq!(tree.warnings.len(), 1, "{:?}", tree.warnings);
+    assert!(tree.warnings[0].contains("gone0"), "{:?}", tree.warnings);
+    assert_eq!(tree.elements[1].look.animation, [None, None, None]);
+}
+
+#[test]
 fn the_root_and_the_layout_info_section() {
     // The root starts shown, and `state=1` keeps it hidden; the name of [LayoutInfo] ignores case.
     let tree = load(
@@ -252,7 +268,8 @@ fn pictures_load_once_and_a_missing_one_is_a_warning() {
     );
     assert_eq!(looks[3], (vec![None], None));
     assert_eq!(looks[4], (vec![], image));
-    assert_eq!(tree.warnings.len(), 2, "{:?}", tree.warnings);
+    // Only `gone`, the first value of its element, warns; `gone.tga` is an alternative.
+    assert_eq!(tree.warnings.len(), 1, "{:?}", tree.warnings);
 }
 
 #[test]

@@ -553,7 +553,9 @@ fn a_click_on_exit_ends_the_game_and_a_click_on_another_button_does_not() {
         assert!(app.quit());
         let lines = app.log_lines(3, 60);
         assert_eq!(lines.last().unwrap(), "pass 3 t=60 menu exit");
-        assert!(lines.contains(&"pass 3 t=60 ui select 7116".to_string()));
+        // One click, one selection and one exit.
+        let count = |text: &str| lines.iter().filter(|l| l.ends_with(text)).count();
+        assert_eq!((count("ui select 7116"), count("menu exit")), (1, 1));
         assert!(app.pass(80, &[]).is_none() && app.log_lines(4, 80).is_empty());
     });
     with_menu("close", |app| {
