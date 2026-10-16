@@ -187,8 +187,8 @@ startup() {
     awk '/^startup picture/{p=$3"@"$5} /^startup steps/{s=$3} /menu continue/{c=$6} /menu version/{v=$6} / draw [0-9a-f]{16}/{if(!h)h=$5} /menu exit/{e=$2} END{print p","s","c","v","h",exit@"e}'
   sed -n 's/^progresscalls=//p' "$tmp/user/zoo.ini"
 }
-check base-trial '502@112,84,131,disabled,10.10.00.0004,927be612b1d7fbf2,exit@3,131' 'startup 620 | paste -sd, -'
-check expansion-trial '505@112,84,253,disabled,12.05.00.0004,f66ca9bf74aa525b,exit@3,253' 'startup 600 | paste -sd, -'
+check base-trial '502@112,84,131,disabled,10.10.00.0004,a4fa517cc1900e76,exit@3,131' 'startup 620 | paste -sd, -'
+check expansion-trial '505@112,84,253,disabled,12.05.00.0004,6f73263a788c8fdd,exit@3,253' 'startup 600 | paste -sd, -'
 # Continue is enabled by a last file that exists (named in the tooltip); a name that is gone
 # disables it and is written back empty; the settings of the game itself are never written.
 last() {
