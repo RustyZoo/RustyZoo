@@ -5,7 +5,7 @@
 //! the maintenance worker are staff; the helicopter comes with the scenarios.
 
 use crate::build::{cost, number};
-use crate::entity::EntityType;
+use crate::entity::{Catalogue, EntityType};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
 use crate::place::bulldozer::type_of;
 use crate::unit::{Ctx, Part, Unit};
@@ -53,8 +53,17 @@ fn counter(ty: Option<&EntityType>, key: &str, fallback: f32, ctx: &mut Ctx) -> 
     }
 }
 
+/// The duty kinds the game allows a maintenance worker (staff 8.1, O6): the trash cans, the litter
+/// and dung and the fences, and the tank filters when the Marine Mania data is installed (a
+/// marine specialist is in the catalogue).
+pub fn duty_kinds(cat: &Catalogue) -> usize {
+    let marine = (cat.types.iter()).any(|t| t.class == "keeper" && t.type_name == b"trainer");
+    3 + usize::from(marine)
+}
+
 /// The first turn of a staff member: the work counter and then the chase counter, one draw each
-/// (staff 4.2). The values are kept; nothing reads them yet.
+/// (staff 4.2), and the duty switches of a worker, every allowed kind on. The counters are kept;
+/// nothing reads them yet.
 pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     if !matches!(unit.part, Part::Staff(_)) {
         return;
@@ -62,8 +71,14 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let ty = type_of(ctx.cat, &world.zoo.entities[at]);
     let work = counter(ty, "cWorkCheck", 5.0, ctx);
     let chase = counter(ty, "cChaseCheck", 2.0, ctx);
-    unit.part = Part::Staff(crate::unit::Staff { work, chase });
+    let kinds = duty_kinds(ctx.cat);
+    if let Part::Staff(s) = &mut unit.part {
+        (s.work, s.chase) = (work, chase);
+        s.duties = [0, 1, 2, 3].map(|k| k < kinds);
+    }
 }
+
+pub mod assign;
 
 #[cfg(test)]
 mod tests;

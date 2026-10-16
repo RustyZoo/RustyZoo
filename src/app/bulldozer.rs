@@ -225,6 +225,21 @@ impl App<'_> {
         self.sweep_step();
     }
 
+    /// The fire button of the staff panel: the staff member with this id is the one entity of a
+    /// removal, which asks its question like the bulldozer's (unit placing 10.1).
+    pub(super) fn fire(&mut self, id: u32) {
+        let Some(game) = &mut self.game else { return };
+        game.sweep = Some(Sweep {
+            queue: VecDeque::from([id]),
+            asked: Vec::new(),
+            asking: None,
+            area: false,
+            removed: 0,
+            refund: 0.0,
+        });
+        self.sweep_step();
+    }
+
     /// What the removal does next: the front of the queue, looked at.
     fn sweep_next(&mut self) -> Next {
         let (Some(game), Some(ui)) = (&self.game, &self.ui) else {

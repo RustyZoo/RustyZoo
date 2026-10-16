@@ -10,10 +10,9 @@ use crate::text::from_cp1252;
 use crate::unit::Part;
 
 impl App<'_> {
-    /// A release on the map with no tool: the topmost entity under the pointer is selected
-    /// (information panels 4.1). An animal opens the animal panel, the gate of an exhibit the
-    /// exhibit panel on that exhibit; anything else, or nothing, clears the selection. Other
-    /// entities open no panel yet.
+    /// A release on the map with no tool and no unit under the pointer (those are
+    /// [`App::pick_or_select`]'s, and [`App::units_sync`] shows their panels): the gate of an
+    /// exhibit opens the exhibit panel on that exhibit.
     pub(super) fn select(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
             return;
@@ -23,32 +22,19 @@ impl App<'_> {
         let hit = (game.staged)
             .pick(point, 0, |id| world.find(id).is_some())
             .and_then(|id| world.find(id));
-        let id_of = |at: usize| world.zoo.entities[at].common.as_ref().map(|c| c.id);
-        let animal = hit
-            .filter(|&at| world.zoo.entities[at].class == "animals")
-            .and_then(id_of)
-            .filter(|&id| {
-                (world.units.get(id))
-                    .is_some_and(|u| matches!(&u.part, Part::Animal(a) if !a.dying))
-            });
         let gate = hit.filter(|&at| world.is_door(at)).and_then(|at| {
-            let id = id_of(at)?;
+            let id = world.zoo.entities[at].common.as_ref()?.id;
             (world.exhibits().list().iter())
                 .find(|e| e.gate == Some(id))
                 .map(|e| e.id)
         });
-        match (animal, gate) {
-            (Some(id), _) => self.open_animal(id),
-            (None, Some(gate)) => {
-                self.close_animal();
-                self.open_exhibit(gate);
-            }
-            (None, None) => self.close_animal(),
+        if let Some(gate) = gate {
+            self.open_exhibit(gate);
         }
     }
 
     /// Shows the exhibit panel, with the exhibit list button down, on exhibit `id`.
-    fn open_exhibit(&mut self, id: u32) {
+    pub(super) fn open_exhibit(&mut self, id: u32) {
         let Some(ui) = &mut self.ui else { return };
         if !ui.shown(LAYOUT) {
             ui.press_button(BUTTON);
@@ -131,6 +117,7 @@ impl App<'_> {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
+        game.selected = Some(id);
         game.animal.select(id);
         game.selected = Some(id);
         ui.show(animal::LAYOUT);
@@ -145,7 +132,7 @@ impl App<'_> {
     }
 
     /// Hides the animal panel: the next look clears the selection.
-    fn close_animal(&mut self) {
+    pub(super) fn close_animal(&mut self) {
         if let Some(ui) = &mut self.ui {
             ui.set_hidden(animal::LAYOUT, true);
         }
@@ -192,26 +179,26 @@ impl App<'_> {
         game.panel.animal = game.animal.selected;
     }
 
-    /// Whether the view follows the selected animal: the panel's follow button is down.
+    /// The unit the view follows: the selected animal or staff member whose panel's follow button
+    /// is down.
+    fn followed(&self) -> Option<u32> {
+        let (game, ui) = (self.game.as_ref()?, self.ui.as_ref()?);
+        let animal = game.animal.selected.filter(|_| ui.is_down(animal::FOLLOW));
+        animal.or(game.staff.selected.filter(|_| ui.is_down(staff::FOLLOW)))
+    }
+
+    /// Whether the view follows a unit.
     pub(super) fn following(&self) -> bool {
-        let selected = self
-            .game
-            .as_ref()
-            .is_some_and(|g| g.animal.selected.is_some());
-        selected
-            && self
-                .ui
-                .as_ref()
-                .is_some_and(|ui| ui.is_down(animal::FOLLOW))
+        self.followed().is_some()
     }
 
     /// At the interface pass of a following view, the animal is at the centre (camera 10.3).
     pub(super) fn follow(&mut self) {
-        let following = self.following();
-        let Some(game) = self.game.as_mut().filter(|_| following) else {
+        let followed = self.followed();
+        let Some(game) = self.game.as_mut().filter(|_| followed.is_some()) else {
             return;
         };
-        let at = game.animal.selected.and_then(|id| game.world.find(id));
+        let at = followed.and_then(|id| game.world.find(id));
         if let Some(c) = at.and_then(|at| game.world.zoo.entities[at].common.as_ref()) {
             game.camera.centre_on_point((c.x, c.y, c.z));
         }
@@ -271,7 +258,9 @@ impl App<'_> {
     /// game is paused, and at once when something forced it. Writes the `panel` lines.
     pub(super) fn panel_pass(&mut self, now: u64) {
         self.panel_sync();
+        self.units_sync();
         self.animal_sync();
+        self.staff_sync();
         let ticking = self.fired.interface.is_some() && !self.paused() && !self.modal();
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
@@ -285,6 +274,11 @@ impl App<'_> {
             let when = self.sim.calendar().state().0;
             self.panel_lines
                 .extend(game.animal.refresh(ui, &game.world, cat, vfs, when));
+        }
+        if ui.shown(staff::LAYOUT) && game.staff.clock.due(now, ticking, staff::PERIOD) {
+            let placing = game.pending.is_some() || game.carry.is_some();
+            self.panel_lines
+                .extend(game.staff.refresh(ui, &game.world, cat, vfs, placing));
         }
         if game.panel.plaque.is_some() && game.panel.plaque_clock.due(now, ticking, exhibit::PERIOD)
         {

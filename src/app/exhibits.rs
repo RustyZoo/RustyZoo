@@ -103,6 +103,9 @@ impl App<'_> {
                             .heal(self.renderer.catalogue(), gate, &mut || rng.rand());
                     }
                 }
+                Event::Removed(id) | Event::Merged { gone: id, .. } => {
+                    crate::staff::assign::clear_habitat(&mut game.world, id);
+                }
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
                 Event::Objects(id) => game.refused = Some(id),
                 _ => {}

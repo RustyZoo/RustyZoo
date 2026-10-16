@@ -26,7 +26,7 @@ use crate::camera::{Camera, Settings, zoom_view};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
-use crate::panel::{animal, exhibit};
+use crate::panel::{animal, exhibit, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
@@ -338,6 +338,8 @@ struct Game {
     panel: crate::panel::exhibit::Panel,
     /// The animal panel and the animal selected.
     animal: crate::panel::animal::Panel,
+    /// The staff panel and the staff member selected.
+    staff: crate::panel::staff::Panel,
     /// The unit the player selected, and the one it carries (unit placing 8).
     selected: Option<u32>,
     carry: Option<place::unit::Carry>,
@@ -672,6 +674,7 @@ impl<'a> App<'a> {
             rest: Vec::new(),
             panel: Default::default(),
             animal: Default::default(),
+            staff: Default::default(),
             selected: None,
             carry: None,
         });
@@ -1161,6 +1164,7 @@ impl<'a> App<'a> {
     fn aim(&mut self, log: bool) {
         self.aim_pending(log);
         self.dozer_aim();
+        self.assign_aim();
     }
 
     /// The pending object part of [`App::aim`].
@@ -1301,6 +1305,9 @@ impl<'a> App<'a> {
     /// message when nothing at all was placed logs `tool refused`; and a new pending
     /// object is made (placing 6.1 and 6.2).
     fn release(&mut self) {
+        if let Some(id) = self.assigning() {
+            return self.assign_release(id);
+        }
         let Some(game) = &mut self.game else {
             return;
         };
@@ -1468,6 +1475,9 @@ impl<'a> App<'a> {
                 }
                 Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
                 Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),
+                Action::Row(staff::LIST, row) if self.game.is_some() => self.staff_row(row),
+                Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
+                Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
                 _ => {}
             }
         }
@@ -1483,6 +1493,16 @@ impl<'a> App<'a> {
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
+                staff::FIRE if self.game.is_some() => self.staff_fire(),
+                staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
+                staff::REMOVE | staff::REMOVE_ALL if self.game.is_some() => {
+                    self.staff_remove(id == staff::REMOVE_ALL);
+                }
+                t if staff::TABS.contains(&t) && self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.staff.clock.force = true;
+                    }
+                }
                 t if animal::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.animal.clock.force = true;
@@ -1684,6 +1704,9 @@ impl<'a> App<'a> {
         if self.game.as_ref().is_some_and(|g| g.carry.is_some()) {
             return self.put_back();
         }
+        if self.end_assign() {
+            return;
+        }
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
             if game.build.cancel(ui, &mut self.tool_lines) {
                 self.terrain_sync();
@@ -1812,6 +1835,7 @@ impl<'a> App<'a> {
         want.selected = game.selected.or(game.animal.selected);
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
+        want.marks.extend(game.assign_marks());
         if !dirty && want == game.extra {
             return;
         }
@@ -2033,6 +2057,7 @@ mod carry;
 mod exhibits;
 mod gates;
 mod panel;
+mod staff_panel;
 mod terrain;
 mod undo;
 

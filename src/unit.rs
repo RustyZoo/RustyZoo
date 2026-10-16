@@ -111,6 +111,11 @@ pub struct Staff {
     /// The counters drawn when the first turn starts the state (staff 4.2): -1 for a key of 0.
     pub work: i32,
     pub chase: i32,
+    /// The exhibits it is assigned to, the newest first, none twice (staff 6).
+    pub assigned: Vec<u32>,
+    /// A maintenance worker's duty switches, by duty kind (staff 8.1): the kinds the game allows
+    /// start on.
+    pub duties: [bool; 4],
 }
 
 /// The kind-specific part of a unit.
@@ -486,6 +491,9 @@ impl Units {
                 Part::Staff(s) => {
                     h.word(s.work as u32);
                     h.word(s.chase as u32);
+                    h.word(s.assigned.len() as u32);
+                    s.assigned.iter().for_each(|&e| h.word(e));
+                    h.word(s.duties.iter().fold(0, |m, &on| m << 1 | u32::from(on)));
                 }
                 Part::Guest(g) => h.bytes(format!("{g:?}").as_bytes()),
             }
