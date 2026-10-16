@@ -25,19 +25,23 @@ impl Cx<'_, '_> {
     /// 11.8 decide: with no target, a piece of the species' food in the exhibit under the animal
     /// (the home exhibit is not kept yet), chosen by up to three draws (the nearest, else the
     /// piece with the least left, else a random one); then the walk to it with `bFindKeeperFood`.
-    /// With no piece or no way there the task is cleared. The flag that started it goes down.
+    /// With no piece or no way there the task is cleared. The flag that started it goes down. With
+    /// no exhibit under the animal nothing happens at all.
     pub(super) fn keeper_food_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
         }
+        let here = self.tile();
+        let (world, cat) = (&*self.world, self.ctx.cat);
+        // With no exhibit under the animal the decide does nothing: no draw, no flag, no clear.
+        let Some(x) = here.and_then(|t| food::exhibit_of(world, t)) else {
+            return;
+        };
         if let Part::Animal(a) = &mut self.unit.part {
             a.wants_food = false;
         }
-        let here = self.tile();
-        let (world, cat) = (&*self.world, self.ctx.cat);
         let k = crate::animal::keys(world, cat, self.at);
-        let x = here.and_then(|t| food::exhibit_of(world, t));
-        let regions = x.map(|x| food::near(world, x, &k)).unwrap_or_default();
+        let regions = food::near(world, x, &k);
         let groups: Vec<_> = (regions.iter())
             .map(|&r| food::pieces(world, cat, &[r], k.food_kind))
             .collect();

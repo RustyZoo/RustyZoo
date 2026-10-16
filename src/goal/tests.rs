@@ -743,11 +743,17 @@ fn a_hungry_animal_takes_the_keeper_food_task_unless_it_has_it_or_is_in_the_buil
         let log = run(&mut w, &mut s, 1);
         let took = log.iter().any(|l| l.contains("goal 1 keeperfood"));
         assert_eq!(took, takes, "task {task}");
-        // With no exhibit and so no food the goal's decide clears the task and lowers the flag; in
-        // the building chain the goal is not the keeper food one and the flag stays up.
+        // With no exhibit the decide does nothing: the task and the flag stay; in the building chain
+        // the goal is not the keeper food one and the flag stays up too.
+        let u = w.units.get(1).unwrap();
+        assert_eq!(
+            u.goal.record.task == KEEPER_FOOD,
+            task != 104,
+            "task {task}"
+        );
         let Part::Animal(a) = &w.units.get(1).unwrap().part else {
             panic!("not an animal");
         };
-        assert_eq!(a.wants_food, task == 104, "task {task}");
+        assert!(a.wants_food, "task {task}");
     }
 }
