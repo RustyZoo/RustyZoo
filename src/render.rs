@@ -148,6 +148,8 @@ pub struct Extra {
     pub shown: Vec<Shown>,
     /// Entities (ids) that are in the zoo but not drawn: the unit the player carries.
     pub hidden: Vec<u32>,
+    /// The unit (id) that carries the selection marker (sprite drawing 9.2).
+    pub selected: Option<u32>,
 }
 
 /// The animation and frame a unit of the zoo holds.
@@ -1020,6 +1022,7 @@ impl<'a> MapRenderer<'a> {
         let mut placed: Vec<Placed> = Vec::new();
         let mut hits: Vec<Option<pick::Hit>> = Vec::new();
         for item in paint_order(&scene) {
+            let before = placed.len();
             // The pictures of a path, an edge object or any other object are the entity's own.
             let owner = match item {
                 Item::Path(o) | Item::Edge(o) | Item::Object(o) => owners.get(o).copied().flatten(),
@@ -1042,6 +1045,14 @@ impl<'a> MapRenderer<'a> {
                 item => self.tank_item(&scene, &metas, &looks, item, &mut summary, &mut placed),
             }
             hits.resize(placed.len(), owner);
+            if let (Item::Object(o), Some(hit)) = (item, owner)
+                && Some(hit.id) == extra.selected
+                && placed.len() > before
+                && scene.objects[o].kind == Kind::Unit
+                && self.marker(metas[o].ty, &mut placed)
+            {
+                hits.push(None);
+            }
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
 
@@ -1365,6 +1376,51 @@ impl<'a> MapRenderer<'a> {
             .find_map(|w| animations.iter().position(|a| a.name == w));
         let found = at.map(|i| animations.swap_remove(i));
         found.or_else(|| ty.base_animation()).and_then(|a| a.member)
+    }
+
+    /// Places the selection marker after the picture of the unit that was placed last (sprite
+    /// drawing 9.2): `selsmall` for a footprint of at most 1 x 1 half tiles, `selmed` for at most
+    /// 4 in each direction, else `sellarge`. Its anchor is the unit's, up and left by a quarter of
+    /// the x offset of the unit's frame, and by its y offset, 5 and half the type's height. The
+    /// marker has one frame, so it needs no clock. Returns whether it was placed.
+    fn marker(&mut self, ty: &EntityType, out: &mut Vec<Placed>) -> bool {
+        let Some(Placed {
+            x,
+            y,
+            pic: Pic::Anim(anim, view, _, at),
+            ..
+        }) = out.last()
+        else {
+            return false;
+        };
+        let Some(frame) = shown_frames(anim, view, *at).and_then(|f| f.last().map(|f| f.0)) else {
+            return false;
+        };
+        let (x, y) = (
+            x - i32::from(frame.x_offset) / 4,
+            y - (i32::from(frame.y_offset) + 5 + ty.height / 2),
+        );
+        let [fx, fy, _] = ty.footprint;
+        let name = match fx.max(fy) {
+            ..=1 => "selsmall",
+            2..=4 => "selmed",
+            _ => "sellarge",
+        };
+        let Some(anim) = self.animation(&format!("ui/select/{name}/{name}.ani")) else {
+            return false;
+        };
+        let view = View {
+            file: 0,
+            mirror: false,
+        };
+        out.push(Placed {
+            x,
+            y,
+            piece: None,
+            grid: false,
+            pic: Pic::Anim(anim, view, None, 0),
+        });
+        true
     }
 
     /// Places the picture of one object.

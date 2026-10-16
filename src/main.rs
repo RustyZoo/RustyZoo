@@ -193,7 +193,7 @@ usage: rustyzoo [--data <dir>] <command>
                       itself, the placement sound), one that is not valid or too dear asks for the
                       refusal sound and shows its message, if it has one, in the message line for
                       5 seconds (`tool message ID`; `tool refused` when it has none). With no tool, a click on a unit
-                      selects it (`tool select ID`) and a click on the selected one picks it up (`world carry ID`):
+                      selects it (`tool select ID`; an arrow marks it on the map) and a click on the selected one picks it up (`world carry ID`):
                       it follows the pointer at $0 with the checks of a new unit, a release on a valid place
                       puts it down (`world drop ID X,Y`, `home N` for an animal in an exhibit), Escape, the
                       right button or choosing an item puts it back (`world putback ID X,Y`). The bulldozer button (1028) of the main panel

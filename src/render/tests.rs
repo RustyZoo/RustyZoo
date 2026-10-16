@@ -813,6 +813,90 @@ fn a_unit_is_drawn_with_the_animation_and_frame_it_holds() {
     assert_eq!(drawn(Some(("run", 1))), at("a/idle/N", 0));
 }
 
+#[test]
+fn the_selected_unit_gets_a_marker_by_its_footprint_after_its_picture() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 4, 8, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let sprite = sprite_file(None, 1, &[sized(&frame)]);
+    let ani = |dirs: &str| format!("[animation]\n{dirs}animation = N\n").into_bytes();
+    let ai = |keys: &str| format!("[Animations]\nidle = idle\n[Characteristics/Integers]\n{keys}");
+    let mut members: Vec<(String, Vec<u8>)> = vec![
+        (
+            "guests.cfg".into(),
+            b"[guests]\nsmall = small.ai\nmid = mid.ai\nbig = big.ai\n".to_vec(),
+        ),
+        ("small.ai".into(), ai("cHeight = 6\n").into_bytes()),
+        (
+            "mid.ai".into(),
+            ai("cFootprintX = 2\ncFootprintY = 4\n").into_bytes(),
+        ),
+        ("big.ai".into(), ai("cFootprintX = 5\n").into_bytes()),
+        ("a/idle/N".into(), sprite.clone()),
+        (
+            "animals/Lion/lion.pal".into(),
+            palette_file(&[[255, 0, 255], [1, 2, 3]]),
+        ),
+    ];
+    for name in ["small", "mid", "big"] {
+        let dirs = format!("dir0 = guests\ndir1 = {name}\ndir2 = idle\n");
+        members.push((format!("guests/{name}/idle/idle.ani"), ani(&dirs)));
+    }
+    for name in ["selsmall", "selmed", "sellarge"] {
+        let dirs = format!("dir0 = ui\ndir1 = select\ndir2 = {name}\n");
+        members.push((format!("ui/select/{name}/{name}.ani"), ani(&dirs)));
+        members.push((format!("ui/select/{name}/N"), sprite.clone()));
+    }
+    // The files of the guests animations are `guests/<name>/idle/N`.
+    for name in ["small", "mid", "big"] {
+        members.push((format!("guests/{name}/idle/N"), sprite.clone()));
+    }
+    let members: Vec<_> = members
+        .iter()
+        .map(|(n, d)| (n.as_str(), d.clone()))
+        .collect();
+    let install = Install::new("render-marker", &members);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    // The anchors and files of the pictures of a zoo with one guest, whose id is 1, when
+    // `selected` carries the marker, and the entities the pictures pick.
+    let drawn = |ty: &str, selected: Option<u32>| {
+        let extra = Extra {
+            selected,
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&tile_with(&[("guests", ty, "")]), 0, false, &extra)
+            .unwrap();
+        let pics: Vec<_> = (staged.placed.iter())
+            .filter_map(|(p, _)| match &p.pic {
+                Pic::Anim(anim, ..) => Some((anim.set.files[0].clone(), p.x, p.y)),
+                _ => None,
+            })
+            .collect();
+        let picked: Vec<_> = staged.hits.iter().flatten().map(|h| h.id).collect();
+        (pics, picked.len())
+    };
+    let (alone, picks) = drawn("small", None);
+    assert_eq!(alone.len(), 1);
+    let (unit, x, y) = alone[0].clone();
+    // Nothing selected, or another unit: no marker.
+    assert_eq!(drawn("small", Some(2)).0, alone);
+    // The offsets of the frame are (8, 4) and the height of the type 6: up 4 + 5 + 3.
+    let (pics, marked) = drawn("small", Some(1));
+    assert_eq!(
+        pics,
+        [(unit, x, y), ("ui/select/selsmall/N".into(), x - 2, y - 12)]
+    );
+    // The marker is not a picture of the unit: a pick cannot land on it.
+    assert_eq!(marked, picks);
+    assert_eq!(drawn("mid", Some(1)).0[1].0, "ui/select/selmed/N");
+    assert_eq!(drawn("big", Some(1)).0[1].0, "ui/select/sellarge/N");
+}
+
 /// A small deterministic pseudo-random sequence.
 fn random(seed: &mut u64) -> u64 {
     *seed = seed
