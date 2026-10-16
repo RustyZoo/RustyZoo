@@ -37,6 +37,7 @@ pub fn put(
         movement_mode: 0,
         food,
         animal: None,
+        guest: None,
     };
     let entity = Entity {
         class: names.0.into(),

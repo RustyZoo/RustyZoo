@@ -331,3 +331,19 @@ fn a_merge_that_ends_drained_removes_what_the_water_would_refuse_without_a_quest
     );
     assert!(world.find(id).is_none(), "the bench is gone, nobody asked");
 }
+
+#[test]
+fn dung_in_a_tank_lowers_the_purity_to_0_and_no_further_and_tells_the_picture() {
+    let mut world = new_tank("tank", &[]);
+    let purity = |w: &World| tank(w, 2, 2).unwrap().purity;
+    let start = purity(&world);
+    world.take_events();
+    world.pollute(1, 1);
+    assert_eq!(purity(&world), start - 1);
+    assert!(!world.take_events().is_empty());
+    world.pollute(1, u32::MAX);
+    world.pollute(1, 0);
+    assert_eq!(purity(&world), 0);
+    // Not a tank: nothing.
+    world.pollute(99, 5);
+}

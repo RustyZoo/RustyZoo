@@ -177,6 +177,13 @@ pub fn ambient_sleep(
     at: usize,
     data: &dyn Data,
 ) {
+    let idle = !unit.runner.running() && unit.runner.queued().is_none();
+    let Part::Animal(a) = &unit.part else {
+        return;
+    };
+    if !idle || a.egg || a.dying || a.crated {
+        return;
+    }
     let k = super::keys(world, ctx.cat, at);
     let sets = sets(unit, world, data, at);
     let tile = (world.zoo.entities[at].common.as_ref())
@@ -185,8 +192,7 @@ pub fn ambient_sleep(
     let Part::Animal(a) = &mut unit.part else {
         return;
     };
-    let idle = !unit.runner.running() && unit.runner.queued().is_none();
-    if !idle || a.energy < k.energy_threshold || a.egg || a.dying || a.crated {
+    if a.energy < k.energy_threshold {
         return;
     }
     let class = world.units.class.clone();

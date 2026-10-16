@@ -20,7 +20,7 @@
 //! Sleep, health, old age and the dung meter are [`life`]; the dung pile and the keeper's heal are
 //! [`dirt`].
 //!
-//! Not here yet: the shelter check, breeding and eggs, the water check and the swimmers and the
+//! Not here yet: the use of shelters, breeding and eggs, the water check and the swimmers and the
 //! effects of the escape, rampage and zap checks (M7: only their counters and draws run). The
 //! ambient choice is taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
@@ -278,6 +278,7 @@ keys! {
     sick_random: "cSickRandomChance" = 10,
     sick_time: "cSickTime" = 5,
     time_death: "cTimeDeath" = 5001,
+    building_use: "cBuildingUseChance" = 0,
 }
 
 impl Keys {
@@ -620,6 +621,7 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
     fire(&mut a.counters[KEEPER], class.periods[KEEPER]);
     habitat(a, k, class, env, &mut out.messages);
     bored(a, k, class, env, rng, &mut out);
+    shelter(a, k, class, rng);
     other(a, k, class, env);
     zap(a, k, class, env, rng);
     if fire(&mut a.counters[MESSAGE], class.periods[MESSAGE]) && a.happiness < -60 {
@@ -793,6 +795,14 @@ fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out:
     let total = drink.wrapping_add(play);
     if total > 0 && rng.rand() as i32 % total < drink {
         a.thirsty |= !env.wet;
+    }
+}
+
+/// The shelter check (animals 6): the draw that decides whether the animal looks for a shelter.
+/// The search and the use of a shelter are a later issue's.
+fn shelter(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
+    if fire(&mut a.counters[SHELTER], class.periods[SHELTER]) && k.building_use > 0 {
+        rng.chance(k.building_use);
     }
 }
 

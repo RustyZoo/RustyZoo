@@ -8,6 +8,8 @@ use crate::sim::Sim;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Clocks, Common, Tile, View, Zoo};
 
+mod life;
+
 fn keys() -> Keys {
     Keys::read(&|_, fallback| fallback, &Class::default())
 }
@@ -1451,8 +1453,16 @@ fn an_incompatible_species_in_the_exhibit_sets_bit_10_and_lowers_the_happiness()
 
 #[test]
 fn zero_negative_and_huge_values_of_the_new_keys_never_panic() {
+    let sets = crate::animal::life::Sets {
+        has_sleep: true,
+        has_sick: true,
+        has_die: true,
+        ..crate::animal::life::Sets::default()
+    };
     let env = Env {
         grass: true,
+        sick_near: 3,
+        sets,
         ..in_exhibit()
     };
     for v in [0, -1, i32::MIN, i32::MAX] {
@@ -1466,9 +1476,22 @@ fn zero_negative_and_huge_values_of_the_new_keys_never_panic() {
             rampage_chance: v,
             test_fence: v,
             dirt_chance: v,
+            energy_increment: v,
+            dirty_increment: v,
+            dirty_threshold: v,
+            pct_hits: v,
+            sick_change: v,
+            other_sick_change: v,
+            sick_chance: v,
+            sick_random: v,
+            sick_time: v,
+            time_death: v,
+            death_chance: v,
+            building_use: v,
             ..keys()
         };
         let class = Class {
+            death_chance: v,
             zap: v,
             ui_threshold: v,
             dirt_chance_chance: v,

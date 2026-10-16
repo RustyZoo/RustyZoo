@@ -28,9 +28,9 @@ impl Cx<'_, '_> {
     }
 
     /// 11.9 decide: with no target, the nearest water tile of the exhibit under the animal that is
-    /// not salt (the first in the exhibit's tile order on a tie), reached by the nearest path;
-    /// then the walk with `bFindOtherFood`. With none, or no way there, the goal resets. The
-    /// thirst goes down either way.
+    /// not salt (the first in the exhibit's tile order on a tie), and the land tile beside it
+    /// that is nearest to the animal; then the walk there with `bFindOtherFood`. With none, or no
+    /// way there, the goal resets. The thirst goes down either way.
     pub(super) fn drink_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
@@ -40,13 +40,18 @@ impl Cx<'_, '_> {
         let at = |t: usize| ((t % width) as i64, (t / width) as i64);
         let (hx, hy) = here.map_or((0, 0), at);
         let distance = |t: usize| (at(t).0 - hx).pow(2) + (at(t).1 - hy).pow(2);
-        // The salt water of a tank is terrain 10.
-        let water = here.and_then(|t| food::exhibit_of(world, t)).and_then(|x| {
+        // The salt water of a tank is terrain 10. A land animal cannot walk into the water: it
+        // goes to the shore tile of the exhibit nearest to it.
+        let shore = here.and_then(|t| food::exhibit_of(world, t)).and_then(|x| {
             let tiles = world.tiles_of(x).into_iter();
             let fresh = tiles.filter(|&t| world.is_water(t) && world.zoo.tiles[t].terrain != 10);
-            fresh.min_by_key(|&t| distance(t))
+            let water = fresh.min_by_key(|&t| distance(t))?;
+            let sides = (0..4).filter_map(|d| world.neighbour(water, d * 2));
+            let land =
+                sides.filter(|&n| !world.is_water(n) && food::exhibit_of(world, n) == Some(x));
+            land.min_by_key(|&n| distance(n))
         });
-        let walking = water.is_some_and(|w| self.path_to(w, true))
+        let walking = shore.is_some_and(|t| self.path_to(t, false))
             && self.walk_set("bFindOtherFood", false, false);
         if let Part::Animal(a) = &mut self.unit.part {
             a.thirsty = false;
