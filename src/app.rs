@@ -261,6 +261,9 @@ type Look = ((i32, i32), i32, u8, bool);
 pub struct UnitSound {
     pub id: u32,
     pub file: String,
+    /// The voice of the type and key, and the base term of the sound (sound 4.4, 9.1).
+    pub voice: String,
+    pub base: i32,
     pub at: (i64, i64),
     pub distance: i32,
     pub pan: i32,
@@ -824,14 +827,16 @@ impl<'a> App<'a> {
         let sounds = game.world.units.take_sounds();
         let world = &game.world;
         (sounds.into_iter())
-            .filter_map(|(id, file)| {
+            .filter_map(|(id, heard)| {
                 let c = world.zoo.entities[world.find(id)?].common.as_ref()?;
                 let view = project(camera.rotation, c.x, c.y, c.z);
                 let at = zoom_view(camera.zoom, view);
                 let (distance, pan) = positional(at, listener);
                 Some(UnitSound {
                     id,
-                    file,
+                    file: heard.file,
+                    voice: heard.voice,
+                    base: heard.base,
                     at,
                     distance,
                     pan,

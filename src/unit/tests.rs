@@ -1,7 +1,7 @@
 //! The unit table and the per-entity update.
 
 use super::*;
-use crate::behaviour::{Data, NoData};
+use crate::behaviour::{Data, Heard, NoData};
 use crate::sim::Sim;
 use crate::zoo::{Clocks, Common, Tile, View, Zoo};
 
@@ -550,8 +550,12 @@ impl Data for Script {
     fn number(&self, unit: &Entity, number: &crate::behaviour::Number) -> i32 {
         NoData.number(unit, number)
     }
-    fn sound(&self, _: &Entity, key: &str) -> Option<String> {
-        Some(format!("{key}.wav"))
+    fn sound(&self, _: &Entity, key: &str) -> Option<Heard> {
+        Some(Heard {
+            file: format!("{key}.wav"),
+            base: 0,
+            voice: key.into(),
+        })
     }
 }
 
@@ -589,7 +593,11 @@ fn a_unit_runs_its_set_after_the_animation_and_tells_the_log_and_the_app() {
     // carried runs no set but its animation shows the base.
     let mut sounds = w.units.take_sounds();
     sounds.sort();
-    assert_eq!(sounds, [(1, "purr.wav".into()), (2, "purr.wav".into())]);
+    let files: Vec<_> = sounds
+        .iter()
+        .map(|(id, h)| (*id, h.file.as_str()))
+        .collect();
+    assert_eq!(files, [(1, "purr.wav"), (2, "purr.wav")]);
     let carried = w.units.get(3).unwrap();
     assert_eq!(
         (carried.runner.top(), carried.animation.name.as_str()),

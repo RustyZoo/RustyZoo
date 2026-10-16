@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use super::{Call, Data, Number, Row, Timing};
+use super::{Call, Data, Heard, Number, Row, Timing};
 use crate::anim::AnimSet;
 use crate::entity::Catalogue;
 use crate::sprite::Sprite;
@@ -89,9 +89,20 @@ impl Data for Library<'_> {
         }
     }
 
-    fn sound(&self, unit: &Entity, key: &str) -> Option<String> {
+    fn sound(&self, unit: &Entity, key: &str) -> Option<Heard> {
         let ty = &self.catalogue.types[self.at(unit)?];
-        let value = ty.config.as_deref()?.section("Sounds")?.get(key)?;
-        Some(ty.sound_member(value))
+        let values = ty.config.as_deref()?.section("Sounds")?.get_all(key);
+        let base = values
+            .get(1)
+            .map_or(0, |v| crate::config::to_int(v).unwrap_or(0));
+        Some(Heard {
+            file: ty.sound_member(values.first()?),
+            base,
+            voice: format!(
+                "{}/{}/{key}",
+                ty.class,
+                String::from_utf8_lossy(&ty.type_name)
+            ),
+        })
     }
 }

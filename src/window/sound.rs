@@ -21,8 +21,9 @@ pub struct Sound {
     /// The voice of each interface sound, by name: a voice that is dropped stops, so it is kept
     /// until it has played.
     clicks: HashMap<&'static str, Voice>,
-    /// The voice of each sound the units' animations began, by file: the sound groups are shared
-    /// (sound 9.1), so two units that start one file while it plays give one voice.
+    /// The voice of each sound the units' animations began, by type and key: each key of
+    /// each type has one sound object (sound 9.1), so two units that call it while it plays give
+    /// one voice.
     units: HashMap<String, Voice>,
     /// The attenuation sum of the click: `G` from `userAttenuation`, `B` and `F` being 0.
     click_sum: i32,
@@ -141,7 +142,7 @@ impl Sound {
     }
 
     /// Plays the sounds the units' animations began in the last pass as positional one-shots:
-    /// `S = G + X` with the distance term of the unit's place, the pan of it, and not started over
+    /// `S = G + B + X` with the base term of the key, the distance term of the unit's place, the pan of it, and not started over
     /// 6,000 (sound 4.2, 5). A file that is playing continues with the new volume (9.1). Returns
     /// a line for each, `sound unit ID FILE at X,Y sum S pan P` and what became of it:
     /// `started`, `continued`, `too far` or `failed` (a file that cannot be read or decoded is
@@ -152,8 +153,8 @@ impl Sound {
         };
         let mut lines = Vec::new();
         for s in app.unit_sounds() {
-            let sum = self.click_sum.saturating_add(s.distance);
-            let what = if let Some(voice) = self.units.get(&s.file)
+            let sum = (self.click_sum.saturating_add(s.base)).saturating_add(s.distance);
+            let what = if let Some(voice) = self.units.get(&s.voice)
                 && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
             {
                 voice.set_sum(sum).map_or("failed", |()| "continued")
@@ -165,7 +166,7 @@ impl Sound {
                     .and_then(|wave| audio.play(wave.panned(s.pan), sum, false, false));
                 match played {
                     Ok(Some(voice)) => {
-                        self.units.insert(s.file.clone(), voice);
+                        self.units.insert(s.voice.clone(), voice);
                         "started"
                     }
                     Ok(None) => "too far",

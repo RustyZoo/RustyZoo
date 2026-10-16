@@ -41,7 +41,7 @@ pub trait Data {
     /// The value of a number of a call (behaviours 5.8).
     fn number(&self, unit: &Entity, number: &Number) -> i32;
     /// The sound the unit's `[Sounds]` section names with this key.
-    fn sound(&self, unit: &Entity, key: &str) -> Option<String>;
+    fn sound(&self, unit: &Entity, key: &str) -> Option<Heard>;
 }
 
 /// No data: no set, no animation.
@@ -63,9 +63,19 @@ impl Data for NoData {
             Number::Characteristic(_) => 0,
         }
     }
-    fn sound(&self, _: &Entity, _: &str) -> Option<String> {
+    fn sound(&self, _: &Entity, _: &str) -> Option<Heard> {
         None
     }
+}
+
+/// A sound of a `[Sounds]` key: the member of the file (behaviours 5.2), the base term `B` (the
+/// second value of the key, sound 4.4) and the name of its voice: each key of each type has one
+/// (sound 9.1).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Heard {
+    pub file: String,
+    pub base: i32,
+    pub voice: String,
 }
 
 /// What happened that the log and the app are told.

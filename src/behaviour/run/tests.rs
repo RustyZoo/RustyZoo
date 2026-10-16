@@ -28,8 +28,12 @@ impl Data for Fake {
     fn number(&self, unit: &Entity, number: &Number) -> i32 {
         NoData.number(unit, number)
     }
-    fn sound(&self, _: &Entity, key: &str) -> Option<String> {
-        self.sounds.get(key).cloned()
+    fn sound(&self, _: &Entity, key: &str) -> Option<Heard> {
+        self.sounds.get(key).map(|file| Heard {
+            file: file.clone(),
+            base: 0,
+            voice: key.into(),
+        })
     }
 }
 
