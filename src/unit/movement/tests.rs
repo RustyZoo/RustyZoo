@@ -539,12 +539,35 @@ fn a_move_call_without_a_path_walks_at_random_and_an_idle_guest_starts_one() {
 }
 
 #[test]
+fn the_end_of_a_walk_keeps_the_move_animation_but_a_path_of_one_entry_returns_to_idle() {
+    let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+    let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
+    let u = w.units.get_mut(1).unwrap();
+    u.path = vec![tile(5, 5), tile(6, 5)];
+    u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
+    walker.start(&mut w, 1);
+    let mut step = |w: &mut World| s.step_with(&walker, &Default::default(), w, 67, |_, _, _| {});
+    for _ in 0..200 {
+        step(&mut w);
+    }
+    let u = w.units.get(1).unwrap();
+    assert!(!u.walking && !u.moving && u.path.is_empty());
+    assert_eq!(u.animation.name, "walk");
+    // Already in its last tile: the call stops the unit at once and it shows the idle animation.
+    w.units.get_mut(1).unwrap().path = vec![tile(6, 5)];
+    walker.start(&mut w, 1);
+    step(&mut w);
+    assert_eq!(w.units.get(1).unwrap().animation.name, "idle");
+}
+
+#[test]
 fn a_swimmer_entering_water_picks_the_animation_speed_of_the_water() {
     let mut w = world((40, 30), |tiles, e| {
         tiles[tile(6, 5)].terrain = 1;
         e.push(entity("animals", "", 1, (5 * 64 + 60, 5 * 64 + 32), 2));
     });
     w.set_water(vec![false, true]);
+    crate::goal::quiet(&mut w);
     let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
     let u = w.units.get_mut(1).unwrap();
     u.path = vec![tile(5, 5), tile(6, 5), tile(7, 5)];
@@ -555,8 +578,43 @@ fn a_swimmer_entering_water_picks_the_animation_speed_of_the_water() {
         w.units.get(1).unwrap().anim_speed
     };
     assert_eq!(run(&mut w, 3), 50, "on land");
+    assert_eq!(w.units.get(1).unwrap().animation.name, "walk");
     assert_eq!(run(&mut w, 4), 80, "in the water");
+    assert_eq!(w.units.get(1).unwrap().animation.name, "swim");
     assert!(!w.units.get(1).unwrap().flip);
+}
+
+#[test]
+fn a_swimmer_starting_a_walk_in_the_water_swims_at_once_and_a_started_unit_reads_its_type() {
+    let mut w = world((40, 30), |tiles, e| {
+        tiles[tile(5, 5)].terrain = 1;
+        tiles[tile(6, 5)].terrain = 1;
+        e.push(entity("animals", "", 1, centre((5, 5)), 2));
+        e.push(entity("guests", "", 2, centre((5, 5)), 2));
+    });
+    w.set_water(vec![false, true]);
+    crate::goal::quiet(&mut w);
+    let walker = Walker::new("fMove(0,0,run,12,30)");
+    for id in [1, 2] {
+        let u = w.units.get_mut(id).unwrap();
+        // An animal loaded with the map has had its first turn already.
+        u.started = id == 1;
+        u.path = vec![tile(5, 5), tile(6, 5)];
+        u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
+        walker.start(&mut w, id);
+    }
+    sim().step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    let name = |id| w.units.get(id).unwrap().animation.name.clone();
+    // The animal's own name is replaced on water, its own speed is kept; the guest keeps both
+    // (a guest does not swim).
+    assert_eq!(
+        (name(1), w.units.get(1).unwrap().anim_speed),
+        ("swim".into(), 30)
+    );
+    assert_eq!(
+        (name(2), w.units.get(2).unwrap().anim_speed),
+        ("run".into(), 30)
+    );
 }
 
 #[test]

@@ -511,6 +511,9 @@ fn the_hash_covers_the_animals() {
     let mut other = world(&[("animals", 1), ("guests", 2)]);
     other.units.get_mut(1).unwrap().started = true;
     assert_ne!(other.units.hash(), base, "started");
+    other.units.get_mut(1).unwrap().started = false;
+    other.units.get_mut(1).unwrap().typed = true;
+    assert_ne!(other.units.hash(), base, "typed");
 }
 
 #[test]

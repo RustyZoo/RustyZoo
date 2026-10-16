@@ -100,8 +100,8 @@ pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
     World::new(zoo, shape)
 }
 
-/// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`
-/// and `run`, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
+/// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`,
+/// `run` and `swim`, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
 pub struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
 
 impl Walker {
@@ -142,7 +142,7 @@ impl crate::behaviour::Data for Walker {
         &[]
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
-        ["idle", "walk", "trot", "run"]
+        ["idle", "walk", "trot", "run", "swim"]
             .contains(&name)
             .then_some(crate::behaviour::Timing {
                 count: 1,

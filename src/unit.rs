@@ -171,6 +171,8 @@ pub struct Unit {
     pub repositioning: bool,
     /// The unit has had its first turn, in which the kinds start their state.
     pub started: bool,
+    /// The unit has read the characteristics of its type (the costs of the path finder).
+    pub typed: bool,
 }
 
 impl Unit {
@@ -207,6 +209,7 @@ impl Unit {
             carried: false,
             repositioning: false,
             started: false,
+            typed: false,
         }
     }
 
@@ -418,7 +421,10 @@ impl Units {
             h.word(u.status_timer as u32);
             h.word(u.wait as u32);
             h.word(
-                u32::from(u.carried) | u32::from(u.repositioning) << 1 | u32::from(u.started) << 2,
+                u32::from(u.carried)
+                    | u32::from(u.repositioning) << 1
+                    | u32::from(u.started) << 2
+                    | u32::from(u.typed) << 3,
             );
             match &u.part {
                 Part::Animal(a) => h.bytes(format!("{a:?}").as_bytes()),
@@ -494,6 +500,8 @@ impl Ctx<'_> {
 /// The work of a unit's turn that later issues fill. Each gets the unit (taken out of the table
 /// for the turn), the world, the managers' context and the unit's position in the entity list.
 pub trait Hooks {
+    /// The unit's first turn, before `start`, for every unit: the characteristics of its type.
+    fn typed(&mut self, _: &mut Unit, _: &mut World, _at: usize) {}
     /// The unit's first turn, before anything else (simulation 8.2: the creation of its state).
     fn start(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The move by the step (movement 3); not run while suspended.
@@ -580,8 +588,10 @@ impl Hooks for Standard<'_> {
         self.tell(unit, world, at);
     }
 
-    fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+    fn typed(&mut self, unit: &mut Unit, world: &mut World, at: usize) {
         movement::read_type(unit, self.data, &world.zoo.entities[at]);
+    }
+    fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::start(unit, world, ctx, at);
         crate::staff::start(unit, world, ctx, at);
     }
@@ -641,6 +651,11 @@ pub fn update(hooks: &mut impl Hooks, world: &mut World, ctx: &mut Ctx, at: usiz
 
 fn turn(hooks: &mut impl Hooks, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let step = ctx.step;
+    // An animal loaded with the map is started already, but reads its type like the others.
+    if !unit.typed {
+        unit.typed = true;
+        hooks.typed(unit, world, at);
+    }
     if !unit.started {
         unit.started = true;
         hooks.start(unit, world, ctx, at);

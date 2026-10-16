@@ -10,10 +10,10 @@
 //! between land and water pick its move animation again.
 //!
 //! Not here yet: the escape of an animal (6.3), the repeat time and the reverse of a move call,
-//! the water names of the move animation, the units in a tank (the 3D move), the index block of
+//! the tank modes of the move animation, the units in a tank (the 3D move), the index block of
 //! a unit larger than a tile (the map index holds the unit on one tile).
 
-use super::{Kind, Unit};
+use super::{Kind, Part, Unit};
 use crate::behaviour::{Data, Flow, Gait, Number};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path;
@@ -184,12 +184,24 @@ fn animate(
 ) -> bool {
     let (walk, _, speed) = unit.band.names();
     let entity = &world.zoo.entities[at];
-    let name = own.map_or(walk, |o| o.0);
+    let water = here(world, at).is_some_and(|t| world.is_water(t));
+    // A swimmer on water shows `swim` in every band; a call's own name is replaced for an animal
+    // only (7.3).
+    let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
+    let swims = unit.mover.swims && !egg && water;
+    let name = match own {
+        Some((name, _)) if !(swims && unit.kind == Kind::Animal) => name,
+        _ if swims => "swim",
+        _ => walk,
+    };
     if data.timing(entity, name).is_none() {
         return false;
     }
-    let wet = here(world, at).is_some_and(|t| world.is_water(t) || world.tank_at(t).is_some());
-    let key = format!("{speed}{}", if wet { "Water" } else { "" });
+    let tank = entity
+        .common
+        .as_ref()
+        .is_some_and(|c| matches!(c.movement_mode, 3 | 4));
+    let key = format!("{speed}{}", if water || tank { "Water" } else { "" });
     // The data tells a type without the key from one that says 0 by neither: the default is 100.
     let table = match data.number(entity, &Number::Characteristic(key)) {
         0 => 100,
@@ -234,7 +246,6 @@ pub fn call(
             return Flow::Running;
         }
         stop(unit);
-        idle(unit, world, data, at);
         return Flow::Done;
     }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one

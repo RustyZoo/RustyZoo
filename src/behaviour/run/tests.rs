@@ -254,6 +254,24 @@ fn a_routine_call_is_done_for_its_own_class_and_the_keepers_fails_for_others() {
 }
 
 #[test]
+fn a_routine_call_shows_the_idle_animation_after_a_walk() {
+    let mut rig = Rig::new(&[("bAmbient", &["fGuestRoutine()"])]);
+    rig.unit.class = "guests".into();
+    rig.data.timings.insert(
+        "walk".into(),
+        Timing {
+            count: 2,
+            delay: 100,
+        },
+    );
+    let data = &rig.data;
+    rig.anim.set_base("walk", &|n| data.timing(&rig.unit, n));
+    assert_eq!(rig.anim.name, "walk");
+    assert_eq!(rig.tick(100).0, "idle");
+    assert_eq!(rig.tick(100).0, "idle");
+}
+
+#[test]
 fn a_move_call_waits_for_the_units_answer_and_the_set_goes_on_when_it_is_done() {
     let resume = |rig: &mut Rig| {
         let mut env = Env {

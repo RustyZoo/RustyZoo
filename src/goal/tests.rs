@@ -337,6 +337,23 @@ fn a_wander_starts_once_and_is_done_when_the_unit_arrives() {
 }
 
 #[test]
+fn a_refused_step_makes_the_goal_give_up_and_clears_the_flag() {
+    let mut w = map("guests");
+    crate::goal::quiet(&mut w);
+    let mut s = sim();
+    let u = w.units.get_mut(1).unwrap();
+    u.goal.record.target.tile = Some(tile(8, 5));
+    u.path = vec![tile(5, 5), tile(6, 5)];
+    run(&mut w, &mut s, 1);
+    assert!(unit(&w).goal.record.target.is_set() || !unit(&w).path.is_empty());
+    w.units.get_mut(1).unwrap().aborted = true;
+    run(&mut w, &mut s, 1);
+    let u = unit(&w);
+    assert!(!u.aborted && u.path.is_empty() && !u.goal.record.target.is_set());
+    assert_eq!(u.goal.record.task, GAWK, "the task stays");
+}
+
+#[test]
 fn a_unit_with_no_place_to_go_keeps_trying_and_walks_nowhere() {
     let mut w = world((1, 1), |_, e| {
         e.push(entity("animals", "", 1, centre((0, 0)), 0))
