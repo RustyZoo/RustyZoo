@@ -285,7 +285,7 @@ fn ink(canvas: &Framebuffer, bg: [u8; 4]) -> Vec<(i32, i32)> {
 #[test]
 fn the_shadow_is_a_black_copy_left_and_down() {
     for (size, d) in [("11", 1), ("12", 1), ("14", 2)] {
-        let mut font = Font::request("Arial Bold", size);
+        let mut font = Font::request("Arial", size);
         let white = [255, 255, 255];
         let bg = fill_color(white);
         let rect = Rect {
@@ -485,6 +485,14 @@ fn colours(canvas: &Framebuffer, bg: [u8; 4]) -> Vec<[u8; 4]> {
 }
 
 #[test]
+fn bold_glyph_pixels_are_heavier_than_the_coverage() {
+    use super::draw::heavier;
+    assert_eq!((heavier(0), heavier(255)), (0, 255));
+    assert_eq!(heavier(64), 128);
+    assert!((1..250).all(|c| heavier(c) > c));
+}
+
+#[test]
 fn glyphs_are_bilevel_at_the_middle_sizes_and_smoothed_elsewhere() {
     let style = Style {
         color: [255, 186, 16],
@@ -492,14 +500,17 @@ fn glyphs_are_bilevel_at_the_middle_sizes_and_smoothed_elsewhere() {
         shadow: false,
     };
     let bg = fill_color([68, 36, 20]);
-    for (size, ppem, smooth) in [
-        ("6", 8, true),
-        ("7", 9, false),
-        ("12", 16, false),
-        ("14", 19, true),
-        ("8", 11, false),
+    for (face, size, ppem, smooth) in [
+        ("Arial", "6", 8, true),
+        ("Arial", "7", 9, false),
+        ("Arial", "12", 16, false),
+        ("Arial", "14", 19, true),
+        ("Arial", "8", 11, false),
+        // Bold text is smoothed at every size.
+        ("Arial Bold", "9", 12, true),
+        ("Arial Bold", "11", 15, true),
     ] {
-        let mut font = Font::request("Arial", size);
+        let mut font = Font::request(face, size);
         assert_eq!(font.ppem(), ppem);
         let mut c = canvas(60, 30, [68, 36, 20]);
         draw(
@@ -542,10 +553,10 @@ fn sample(face: &str, size: &str, justify: Justify) -> u64 {
 
 #[test]
 fn drawn_pictures_have_the_same_hash_on_every_system() {
-    // Bilevel (ppem 15) and smoothed (ppem 19). The values are pinned by CI on three systems.
+    // Bold smoothed and heavier (ppem 15), regular smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "c9302e6696190246"
+        "e2215573cd28a200"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
