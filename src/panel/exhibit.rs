@@ -36,6 +36,14 @@ const STATUS_TAB: i32 = 4310;
 const TANK_TAB: i32 = 4365;
 const STATUS_LAYOUT: i32 = 700;
 const TANK_LAYOUT: i32 = 704;
+/// Each tab button and the sub-layout it shows: status, donations, animals, thoughts, tank.
+const TABS: [(i32, i32); 5] = [
+    (STATUS_TAB, STATUS_LAYOUT),
+    (4313, 703),
+    (4311, 701),
+    (4312, 702),
+    (TANK_TAB, TANK_LAYOUT),
+];
 // The status tab: the date, the upkeep (last month, this month, total) and the keeper, whose
 // text is the string 4360 when assigned ("Yes") and the next one when not ("No").
 const DATE: i32 = 4349;
@@ -237,6 +245,8 @@ pub struct Panel {
     pub shown: bool,
     /// The exhibit shown, and the exhibit of each row of the list.
     pub current: Option<u32>,
+    /// The exhibit the tab layouts were last set for (10.7).
+    laid: Option<u32>,
     listed: Vec<u32>,
     /// The id of the entity of each row of the animal list.
     animals: Vec<u32>,
@@ -256,6 +266,7 @@ impl Panel {
     pub fn opened(&mut self) {
         self.shown = true;
         self.current = None;
+        self.laid = None;
         self.clock.force = true;
     }
 
@@ -263,6 +274,7 @@ impl Panel {
     pub fn closed(&mut self) {
         self.shown = false;
         self.current = None;
+        self.laid = None;
         self.animals.clear();
         self.told.clear();
     }
@@ -328,9 +340,21 @@ impl Panel {
         if !tank && ui.shown(TANK_LAYOUT) {
             ui.set_button(STATUS_TAB, true, true);
             ui.set_hidden(TANK_LAYOUT, true);
-            ui.set_hidden(STATUS_LAYOUT, false);
+            ui.show(STATUS_LAYOUT);
         }
         ui.set_button(TANK_TAB, tank && ui.shown(TANK_LAYOUT), tank);
+        // An exhibit that becomes current shows the selected tab's layout and hides the others
+        // (10.7); with no exhibit the status layout is hidden.
+        let now = current.map(|c| c.id);
+        if now.is_some() && now != self.laid {
+            for (tab, layout) in TABS {
+                match ui.is_down(tab) {
+                    true => ui.show(layout),
+                    false => ui.set_hidden(layout, true),
+                };
+            }
+        }
+        self.laid = now;
         if current.is_none() {
             ui.set_hidden(STATUS_LAYOUT, true);
         }
