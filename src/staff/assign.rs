@@ -96,10 +96,10 @@ pub fn assign(world: &mut World, cat: &Catalogue, id: u32, exhibit: u32) -> Outc
     if let Some(m) = message {
         return Outcome::Refused(m);
     }
-    if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
-        if !s.assigned.contains(&exhibit) {
-            s.assigned.push(exhibit);
-        }
+    if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part)
+        && !s.assigned.contains(&exhibit)
+    {
+        s.assigned.push(exhibit);
     }
     Outcome::Assigned
 }
