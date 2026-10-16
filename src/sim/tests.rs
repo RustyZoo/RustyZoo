@@ -693,8 +693,9 @@ fn the_month_end_rating_check_belongs_to_the_old_month_and_the_accounts_then_mov
     let (mut w, mut s, mut money) = (world(0), sim(""), Money::default());
     let mut step = || {
         s.step_game(
-            &mut w,
+            &NoData,
             &Catalogue::default(),
+            &mut w,
             &mut money,
             1000,
             |_, _, _| {},
