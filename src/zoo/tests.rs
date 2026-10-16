@@ -594,7 +594,7 @@ fn keeps_the_food_units_of_scenery() {
             ("paths", "path", 1000, 0),
         ] {
             let mut body = scenery(v, 7, "Meat");
-            body[..4].copy_from_slice(&(units as i32).to_le_bytes());
+            body[..4].copy_from_slice(&units.to_le_bytes());
             let z = parse(&file(v, 1, 1, &[], &[(class, "t", sub, body)]));
             let c = z.entities[0].common.as_ref().unwrap();
             assert_eq!((c.food, c.id), (kept, 7), "{class} {sub} at {v}");
