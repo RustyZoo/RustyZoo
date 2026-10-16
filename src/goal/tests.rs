@@ -468,7 +468,8 @@ fn a_halted_animal_runs_no_goal_update_and_draws_nothing() {
                 .collect::<Vec<_>>(),
             ["goal 1 none 0 - -"]
         );
-        assert_eq!(unit(&w).goal.record.task, NONE);
+        // A dying animal is removed by its first status tick, with no death set to wait for.
+        assert!(halt == 0 || unit(&w).goal.record.task == NONE);
     }
 }
 

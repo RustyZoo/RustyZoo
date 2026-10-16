@@ -17,6 +17,7 @@ fn animal() -> Animal {
     Animal {
         counters: [1000; COUNTERS],
         crowd_direction: -1,
+        life: 5000,
         ..Animal::default()
     }
 }
@@ -45,6 +46,7 @@ fn in_exhibit() -> Env {
         adults: 3,
         all_adults: 3,
         unhappy: 0,
+        sick: 0,
     };
     Env {
         exhibit: true,
@@ -472,7 +474,8 @@ fn pens() -> World {
 }
 
 fn zebras() -> Catalogue {
-    zebras_with("", "")
+    // Neither starving nor falling ill: the pens are about the happiness.
+    zebras_with("cHungryHealthChange=0\ncSickRandomChance=0", "")
 }
 
 /// The zebras with more keys (a key written twice keeps its first value) and more sections.
@@ -1179,11 +1182,14 @@ fn the_reset_interval_runs_the_creation_again_when_it_ends() {
     };
     let mut rng = Rng::default();
     super::run(&mut a, &k, &class, &young, &mut rng);
-    assert!(drew(&rng, 17));
+    // The new counters may fire at once and draw for their checks.
+    assert!((17..20).any(|n| drew(&rng, n)));
     // 0 never resets, and a huge interval does not either; 1 resets at every tick.
     for (interval, resets) in [(0, 0), (i32::MAX, 0), (1, 5)] {
+        // Checks that fire draw too: their periods are long.
         let class = Class {
             reset_interval: interval,
+            periods: [30_000; COUNTERS],
             ..Class::default()
         };
         let mut rng = Rng::default();
@@ -1379,7 +1385,8 @@ fn the_census_counts_species_and_unhappy_animals_in_the_exhibit_and_adults_aroun
             species: 2,
             adults: 2,
             all_adults: 2,
-            unhappy: 1
+            unhappy: 1,
+            sick: 0
         }
     );
     let both = census(&world, ids[0], &ids, "zebra");

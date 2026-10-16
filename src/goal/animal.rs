@@ -1,24 +1,80 @@
-//! The goals of animals: the ladder's need rungs and the keeper food goal (goals 10.1, 11.8).
-//!
-//! Drinking is a later issue's.
+//! The goals of animals: the ladder's need rungs, the keeper food goal and the drink goal (goals
+//! 10.1, 11.8, 11.9).
 
 use super::{BUILDING, Cx, NONE};
 use crate::animal::food;
 use crate::unit::Part;
 
-/// Task 0x72, keeper food.
+/// Task 0x72, keeper food, and 0x7a, drink water.
 pub const KEEPER_FOOD: u8 = 114;
+pub const DRINK: u8 = 122;
 
 impl Cx<'_, '_> {
     /// 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
-    /// has it or is in the building chain. (The drinking flag that also blocks it is a later
-    /// issue's.)
+    /// has it, is in the building chain or is drinking; point 8 does the same for a thirsty one
+    /// and the drink task.
     pub(super) fn animal_ladder(&mut self, task: u8) {
         let Part::Animal(a) = &self.unit.part else {
             return;
         };
-        if a.wants_food && task != KEEPER_FOOD && !BUILDING.contains(&task) {
+        if a.drinking || BUILDING.contains(&task) {
+            return;
+        }
+        if a.wants_food && task != KEEPER_FOOD {
             self.set_task(KEEPER_FOOD, 1, 0, None);
+        } else if a.thirsty && task != DRINK {
+            self.set_task(DRINK, 1, 0, None);
+        }
+    }
+
+    /// 11.9 decide: with no target, the nearest water tile of the exhibit under the animal that is
+    /// not salt (the first in the exhibit's tile order on a tie), reached by the nearest path;
+    /// then the walk with `bFindOtherFood`. With none, or no way there, the goal resets. The
+    /// thirst goes down either way.
+    pub(super) fn drink_decide(&mut self) {
+        if self.record().target.tile.is_some() {
+            return;
+        }
+        let (world, here) = (&*self.world, self.tile());
+        let width = world.zoo.width as usize;
+        let at = |t: usize| ((t % width) as i64, (t / width) as i64);
+        let (hx, hy) = here.map_or((0, 0), at);
+        let distance = |t: usize| (at(t).0 - hx).pow(2) + (at(t).1 - hy).pow(2);
+        // The salt water of a tank is terrain 10.
+        let water = here.and_then(|t| food::exhibit_of(world, t)).and_then(|x| {
+            let tiles = world.tiles_of(x).into_iter();
+            let fresh = tiles.filter(|&t| world.is_water(t) && world.zoo.tiles[t].terrain != 10);
+            fresh.min_by_key(|&t| distance(t))
+        });
+        let walking = water.is_some_and(|w| self.path_to(w, true))
+            && self.walk_set("bFindOtherFood", false, false);
+        if let Part::Animal(a) = &mut self.unit.part {
+            a.thirsty = false;
+        }
+        if !walking {
+            self.reset();
+        }
+    }
+
+    /// 11.9 complete: at the water an animal that is not drinking starts `bEat` and another after
+    /// it; once the set has ended the goal resets.
+    pub(super) fn drink_complete(&mut self) {
+        let Part::Animal(a) = &self.unit.part else {
+            return;
+        };
+        let drinking = a.drinking;
+        let wet = self.tile().is_some_and(|t| self.world.is_water(t));
+        let eating = self.unit.runner.top() == Some("bEat") && self.unit.runner.running();
+        if drinking && eating {
+            return;
+        }
+        if !drinking && !wet && self.start_set("bEat", false) {
+            self.unit.runner.request("bEat");
+        } else {
+            self.reset();
+        }
+        if let Part::Animal(a) = &mut self.unit.part {
+            a.drinking = !drinking && !wet && self.unit.goal.record.task == DRINK;
         }
     }
 

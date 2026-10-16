@@ -17,13 +17,18 @@
 //! Hunger, the food entity and the eating are [`food`]: the hunger check and `fEat` run among the
 //! checks, their effects on the food and on the goal are applied after them.
 //!
-//! Not here yet: the shelter check, the other checks of part B, the swimmers and the effects of the
-//! escape, rampage and zap checks (M7: only their counters and draws run). The ambient choice is
-//! taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
+//! Sleep, health, old age and the dung meter are [`life`]; the dung pile and the keeper's heal are
+//! [`dirt`].
+//!
+//! Not here yet: the shelter check, breeding and eggs, the water check and the swimmers and the
+//! effects of the escape, rampage and zap checks (M7: only their counters and draws run). The
+//! ambient choice is taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
-//! after each update of the values, `animal message <string> <id>` for a message posted and
-//! `animal trample <id> <x>,<y>` for a tile trampled.
+//! after each update of the values, `animal message <string> <id>` for a message posted,
+//! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
+//! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down and
+//! `animal heal <id>`.
 
 use crate::behaviour::Data;
 use crate::config::{Config, to_int};
@@ -36,17 +41,27 @@ use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{AnimalRecord, Entity};
 
+pub mod dirt;
 pub mod food;
+pub mod life;
 #[cfg(test)]
 mod tests;
 
 use food::Meal;
+use life::Sets;
 
 /// The messages "not happy" and "dislikes its exhibit": string numbers whose text holds the name.
 pub const NOT_HAPPY: i32 = 10028;
 pub const DISLIKES_EXHIBIT: i32 = 10031;
 /// "Can't find any food".
 pub const NO_FOOD: i32 = 10030;
+/// "Taken away due to poor treatment", "very sick" and "has died of old age".
+pub const TAKEN_AWAY: i32 = 10010;
+pub const VERY_SICK: i32 = 10029;
+pub const DIED: i32 = 10242;
+/// "Is ill" and "has caught an illness from another animal".
+pub const ILL: i32 = 15000;
+pub const CAUGHT_ILL: i32 = 15001;
 
 /// The counters of the checks, in the order the creation draws them (animals 3.2).
 pub const HUNGER: usize = 0;
@@ -70,6 +85,9 @@ const COUNTERS: usize = 16;
 /// The recommendation bits this part owns (animals 8).
 /// The bit of "hungry" (9901): no food for it.
 const HUNGRY: u32 = 0;
+/// The bits of "sick" (9902) and "other animals are sick" (9903).
+const SICK: u32 = 1;
+const SICK_NEAR: u32 = 2;
 const ANGRY: u32 = 3;
 const FEW: u32 = 4;
 const MANY: u32 = 5;
@@ -119,6 +137,8 @@ pub struct Class {
     pub trample: u8,
     /// `AnimalResetInterval` of the ini file (0 for never); the hosts set it.
     pub reset_interval: i32,
+    /// `cDeathChance`, the fallback of the species key (animals-needs 10.2).
+    pub death_chance: i32,
 }
 
 impl Default for Class {
@@ -168,6 +188,7 @@ impl Class {
             dirt_chance: int("cDirtChance", 10),
             trample: TRAMPLED,
             reset_interval: 0,
+            death_chance: int("cDeathChance", 99),
         }
     }
 }
@@ -180,8 +201,9 @@ macro_rules! keys {
             $(pub $field: i32,)*
             /// `cKeeperArrivesChange`, which falls back to the class file's.
             pub keeper_arrives: i32,
-            /// `cDirtChance`, which falls back to the class file's.
+            /// `cDirtChance` and `cDeathChance`, which fall back to the class file's.
             pub dirt_chance: i32,
+            pub death_chance: i32,
             /// `cUnderwater` 1 and `cOnlyUnderwater` 0.
             pub amphibious: bool,
         }
@@ -197,6 +219,7 @@ macro_rules! keys {
                         false => int("cKeeperArrivesChange", class.keeper_arrives),
                     },
                     dirt_chance: int("cDirtChance", class.dirt_chance),
+                    death_chance: int("cDeathChance", class.death_chance),
                     amphibious,
                 }
             }
@@ -241,6 +264,20 @@ keys! {
     food_kind: "cKeeperFoodType" = 0,
     bite: "cKeeperFoodUnitsEaten" = 20,
     food_value: "cFoodUnitValue" = 1,
+    energy_increment: "cEnergyIncrement" = 15,
+    dirty_increment: "cDirtyIncrement" = 15,
+    dirty_threshold: "cDirtyThreshold" = 70,
+    small_dung: "cSmallZoodoo" = 0,
+    giant_dung: "cGiantZoodoo" = 0,
+    dino_dung: "cDinoZoodoo" = 0,
+    poo_impact: "cPooWaterImpact" = 1,
+    pct_hits: "cPctHits" = 20,
+    sick_change: "cSickChange" = -20,
+    other_sick_change: "cOtherAnimalSickChange" = -10,
+    sick_chance: "cSickChance" = 10,
+    sick_random: "cSickRandomChance" = 10,
+    sick_time: "cSickTime" = 5,
+    time_death: "cTimeDeath" = 5001,
 }
 
 impl Keys {
@@ -303,13 +340,20 @@ pub struct Animal {
     /// Raised by a keeper starting its duties in the exhibit, and by the death of an animal.
     pub keeper_visited: bool,
     pub mourning: bool,
-    /// Raised by the bored check (9.2); the drink goal of a later issue lowers it.
+    /// Raised by the bored check (9.2); the drink goal lowers it.
     pub thirsty: bool,
     /// Hungry for keeper food (the ladder starts the keeper food goal), eating, and "hungry and
     /// no food": the first hungry check that finds no food only notes it (animals-needs 4.3).
     pub wants_food: bool,
     pub eating: bool,
     pub no_food: bool,
+    /// Asleep (the sleep check, animals-needs 6) and drinking at the water (the drink goal).
+    pub sleeping: bool,
+    pub drinking: bool,
+    /// Status ticks left before old age rolls death, and the health checks in a row at health 0
+    /// with full hunger (animals-needs 9, 10.1).
+    pub life: i32,
+    pub starving: i32,
     /// The food entity it goes to and eats from; 0 for none.
     pub food: u32,
     /// The rampage flag and its counter (animals 11): they gate the rampage draws and the bored
@@ -349,6 +393,7 @@ impl Animal {
             health: k.max_hits,
             counters,
             female,
+            life: k.time_death.wrapping_sub(1),
             reset: class.reset_interval,
             crowd_direction: -1,
             ..Animal::default()
@@ -418,7 +463,7 @@ impl Animal {
 
     /// Whether it is doing something (9.3). The set and the task are the environment's.
     fn occupied(&self, env: &Env) -> bool {
-        self.thirsty || self.in_show || self.wants_food || self.dying || env.busy
+        self.thirsty || self.in_show || self.wants_food || self.dying || self.drinking || env.busy
     }
 
     /// Clears the bits, then sets "needs a suitable exhibit" when `set`.
@@ -451,6 +496,8 @@ pub struct Census {
     pub all_adults: u32,
     /// The other animals of its exhibit that are very unhappy.
     pub unhappy: u32,
+    /// The sick animals of its exhibit and its amphibious neighbours.
+    pub sick: u32,
 }
 
 /// Where the animal stands and what the checks read of it.
@@ -486,6 +533,12 @@ pub struct Env {
     pub food_total: i32,
     /// What eating reads of the food it aims at and of its type.
     pub meal: Meal,
+    /// What the sleep, health and death checks read of its sets.
+    pub sets: Sets,
+    /// The other sick animals of its exhibit and its amphibious neighbours (animals-needs 9).
+    pub sick_near: u32,
+    /// A keeper is at work in its exhibit.
+    pub keeper_working: bool,
 }
 
 /// What a tick of checks asks of the world besides the animal's own state.
@@ -497,6 +550,16 @@ pub struct Out {
     pub trample: bool,
     /// What the eating of this tick asks of the world.
     pub meal: Meal,
+    /// The sets to start, in order.
+    pub sets: Vec<&'static str>,
+    /// A dung pile is due (the meter was at its threshold).
+    pub dung: bool,
+    /// The animal is taken away or removed without a death set, and the animals of its exhibit
+    /// mourn.
+    pub remove: bool,
+    pub mourn: bool,
+    /// The changes of state for the log, one word each.
+    pub log: Vec<&'static str>,
 }
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
@@ -507,6 +570,9 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
         ..Out::default()
     };
     if a.crated || a.egg {
+        if a.egg && !a.crated {
+            life::health(a, k, class, env, rng, &mut out);
+        }
         a.exhibit_bit(a.crated || env.grounds);
         return out;
     }
@@ -525,7 +591,10 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
             a.zap = zap;
         }
     }
+    life::aging(a, k, class, env, rng, &mut out);
     if a.dying {
+        // Removed unless its death set still runs.
+        out.remove |= !(env.sets.dying_now || out.sets.contains(&"bDie"));
         return out;
     }
     // The keeper's visit and the mourning, at most once each.
@@ -544,11 +613,13 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
         food::eat(a, k, &mut out.meal);
     }
     food::hunger(a, k, class, env, &mut out);
+    life::health(a, k, class, env, rng, &mut out);
+    life::sleep(a, k, class, env, &mut out);
     captivity(a, k, class, env, rng, &mut out);
     social(a, k, class, env);
     fire(&mut a.counters[KEEPER], class.periods[KEEPER]);
     habitat(a, k, class, env, &mut out.messages);
-    bored(a, k, class, env, rng);
+    bored(a, k, class, env, rng, &mut out);
     other(a, k, class, env);
     zap(a, k, class, env, rng);
     if fire(&mut a.counters[MESSAGE], class.periods[MESSAGE]) && a.happiness < -60 {
@@ -702,13 +773,16 @@ fn habitat(a: &mut Animal, k: &Keys, class: &Class, env: &Env, messages: &mut Ve
 
 /// The bored check (animals 5.5): a fed, rested animal with company may get thirsty. The
 /// predator and playmate searches and the chase are M7's and find nothing.
-fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
+fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
     if a.egg || a.in_show || !fire(&mut a.counters[BORED], class.periods[BORED]) {
         return;
     }
     a.unmark(STIMULATION);
-    // A tired animal tries to sleep (part B).
-    if a.energy >= k.energy_threshold || a.at_minimum_health || a.occupied(env) || a.rampaging {
+    // A tired animal tries to sleep.
+    if a.energy >= k.energy_threshold {
+        return life::sleep(a, k, class, env, out);
+    }
+    if a.at_minimum_health || a.occupied(env) || a.rampaging {
         return;
     }
     if a.hunger >= k.hunger_threshold {
@@ -788,15 +862,16 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
         }
         let adult = matches!(e.subtype.as_str(), "m" | "f");
         let same = e.type_name == key;
+        let state = world.units.get(com.id).and_then(|u| match &u.part {
+            Part::Animal(a) => Some(a),
+            _ => None,
+        });
+        c.sick += u32::from(state.is_some_and(|a| a.at_minimum_health));
         c.adults += u32::from(same && adult);
         c.all_adults += u32::from(adult);
         if region == x {
             c.species += u32::from(same);
-            let unhappy = world
-                .units
-                .get(com.id)
-                .is_some_and(|u| matches!(&u.part, Part::Animal(a) if a.very_unhappy));
-            c.unhappy += u32::from(unhappy);
+            c.unhappy += u32::from(state.is_some_and(|a| a.very_unhappy));
         }
     }
     c
@@ -863,6 +938,7 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     let task = unit.goal.record.task;
     let meal = food::meal(unit, world, data, at);
+    let sets = life::sets(unit, world, data, at);
     let busy = matches!(
         unit.runner.top(),
         Some("bSick" | "bSleep" | "bEat" | "bTestFence")
@@ -900,6 +976,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         busy,
         food_task: matches!(task, 114 | 115),
         meal,
+        sets,
         ..Env::default()
     };
     if let Some(x) = x {
@@ -913,6 +990,12 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             .map(|e| e.tiles)
             .sum();
         env.census = census(world, x, &near, &key);
+        env.sick_near = env
+            .census
+            .sick
+            .saturating_sub(u32::from(a.at_minimum_health));
+        env.keeper_working =
+            a.at_minimum_health && a.hunger >= 100 && life::keeper_at_work(world, x);
         let regions = food::near(world, x, &k);
         let pieces = food::pieces(world, ctx.cat, &regions, k.food_kind);
         env.food_total = pieces.iter().map(|p| p.left).fold(0, i32::saturating_add);
@@ -924,6 +1007,10 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     }
     let mut out = run(a, &k, &class, &env, ctx.rng);
     let meal = std::mem::take(&mut out.meal);
+    let id = unit.id;
+    for word in &out.log {
+        world.units.tell(format!("{word} {id}"));
+    }
     if let Some(t) = tile.filter(|_| out.trample) {
         let tile = world.zoo.tiles[t];
         let painted =
@@ -940,6 +1027,24 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     for m in out.messages {
         world.units.post(m, unit.id);
         world.units.tell(format!("message {m} {}", unit.id));
+    }
+    for set in &out.sets {
+        let env = crate::behaviour::Env {
+            data,
+            unit: &world.zoo.entities[at],
+            rng: &mut *ctx.rng,
+        };
+        let (anim, runner) = (&mut unit.animation, &mut unit.runner);
+        runner.start(anim, &env, set, true, false, true);
+    }
+    if out.dung {
+        dirt::put_down(unit, world, ctx, at, &k);
+    }
+    if out.remove {
+        ctx.remove(world, id);
+    }
+    if let (true, Some(x)) = (out.mourn, x) {
+        dirt::mourn(world, x);
     }
     food::apply(unit, world, ctx, at, data, meal);
 }

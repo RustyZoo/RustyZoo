@@ -10,7 +10,7 @@
 //! A move call is the unit's business (movement 8.2): the runner stops at it and hands it out
 //! ([`Runner::take_move`]), and the answer ([`Runner::answer`]) lets the set go on in the same
 //! step ([`Runner::resume`]). Until the animal issues land, the other calls that belong to them
-//! (the faces, the effects on other entities, `fDie`, ...) are done at once with no effect; a
+//! (the effects on other entities, ...) are done at once with no effect; a
 //! routine call is done when the play state is ready and the unit's goals (which run every step)
 //! do the rest; a nested terrain or tank set is the land one.
 
@@ -330,6 +330,8 @@ pub struct Runner {
     moving: Option<(Gait, Target)>,
     /// A `fFaceTowardFood` call ran, for the unit to turn.
     face: bool,
+    /// An `fDie` call ran, for the animal to be removed.
+    die: bool,
 }
 
 /// The answer to a move call (movement 8.2).
@@ -352,6 +354,7 @@ impl Default for Runner {
             place: Place::Land,
             moving: None,
             face: false,
+            die: false,
         }
     }
 }
@@ -375,6 +378,16 @@ impl Runner {
     /// Whether a face-the-food call ran since the last time, once.
     pub fn take_face(&mut self) -> bool {
         std::mem::take(&mut self.face)
+    }
+
+    /// Whether an `fDie` call ran since the last time, once.
+    pub fn take_die(&mut self) -> bool {
+        std::mem::take(&mut self.die)
+    }
+
+    /// The set asked to follow the current one, if any.
+    pub fn queued(&self) -> Option<&str> {
+        self.pending.as_deref()
     }
 
     /// Forgets the set asked to follow the current one (animals-needs 5.4).
@@ -629,6 +642,11 @@ impl Runner {
             }
             Op::FaceFood => {
                 self.face = true;
+                self.chain[k].done = true;
+                return true;
+            }
+            Op::Die => {
+                self.die = true;
                 self.chain[k].done = true;
                 return true;
             }
