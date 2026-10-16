@@ -105,7 +105,8 @@ fn items_of(
 
 /// A number of `[Characteristics/Integers]`; fences and tank walls read the section of their
 /// subtype after the plain one (entity types 7), and a unit the section of its subtype, then of
-/// the default subtype, or the plain one when there is none (entity types 6.2). Never infinite.
+/// the default subtype, or the plain one when there is none (entity types 6.2); a guest the one of
+/// its default subtype (`man`), whose pass is the only one of the unit level. Never infinite.
 pub(crate) fn number(ty: &EntityType, key: &str) -> Option<f32> {
     let config = ty.config.as_deref()?;
     let read = |prefix: &[u8]| {
@@ -124,6 +125,15 @@ pub(crate) fn number(ty: &EntityType, key: &str) -> Option<f32> {
                 .and_then(|g| g.get("DefaultSubtype"));
             let default = default.filter(|d| !d.is_empty());
             read(&own).or_else(|| read(&default.map_or(vec![], |d| [d, b"/"].concat())))
+        }
+        "guests" => {
+            let default = config
+                .section("Global")
+                .and_then(|g| g.get("DefaultSubtype"));
+            let default = default.filter(|d| !d.is_empty());
+            default
+                .and_then(|d| read(&[d, b"/"].concat()))
+                .or_else(|| read(b""))
         }
         _ => read(b""),
     }

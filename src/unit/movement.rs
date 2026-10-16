@@ -4,14 +4,21 @@
 //!
 //! Kept as the original has it: the remainder of the distance is lost at every step (engine issue
 //! 301) and a long diagonal step of a unit that may not go diagonally does not move it (issue 302).
-//! Not here yet: the reactions to a gate and to water on entering a tile, the move animation of
-//! a speed band (they need the unit's type and the behaviour calls), the units in a tank (the 3D
-//! move), the index block of a unit larger than a tile (the map index holds the unit on one tile).
+//! The move call of a behaviour set (8.2) starts a walk with the rate, the animation and the
+//! animation speed of its speed band, and ends it. Entering a tile opens the gate ahead of a unit
+//! that is not an animal and closes the gate behind it (6.2), and has a swimmer that changes
+//! between land and water pick its move animation again.
+//!
+//! Not here yet: the escape of an animal (6.3), the repeat time and the reverse of a move call,
+//! the water names of the move animation, the units in a tank (the 3D move), the index block of
+//! a unit larger than a tile (the map index holds the unit on one tile).
 
 use super::{Kind, Unit};
+use crate::behaviour::{Data, Flow, Gait, Number};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path;
 use crate::render::order::ground_height;
+use crate::sim::Rng;
 use crate::world::World;
 
 #[cfg(test)]
@@ -45,20 +52,38 @@ pub fn guest_speed(rate: u32, offset: u32, energy: i32, variable: bool) -> u32 {
     s.max(0) as u32
 }
 
-/// Starts a walk along `path` at `speed` (8.2, first run): a path of fewer than two tiles is a
-/// unit already in its last tile, which stops at once. Returns whether the unit goes.
-pub fn start(unit: &mut Unit, path: Vec<usize>, speed: u32, anim_speed: u16) -> bool {
-    if path.len() < 2 {
-        stop(unit);
-        return false;
-    }
-    (unit.path, unit.speed, unit.anim_speed, unit.moving) = (path, speed, anim_speed, true);
-    true
+/// The three speed bands of a move call (7.1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Band {
+    #[default]
+    Slow,
+    Medium,
+    Fast,
 }
 
-/// Stops the walk: speed 0, no path, not moving.
+impl Band {
+    /// The band of a call; a call with its own animation falls back to the slow one (7.3).
+    fn of(gait: &Gait) -> Band {
+        match gait {
+            Gait::Medium => Band::Medium,
+            Gait::Fast => Band::Fast,
+            _ => Band::Slow,
+        }
+    }
+
+    /// The move animation of the band and the keys of its rate and of its animation speed.
+    fn names(self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            Band::Slow => ("walk", "cSlowRate", "cSlowAnimSpeed"),
+            Band::Medium => ("trot", "cMediumRate", "cMediumAnimSpeed"),
+            Band::Fast => ("run", "cFastRate", "cFastAnimSpeed"),
+        }
+    }
+}
+
+/// Stops the walk: speed 0, no path, not moving, no call walking.
 pub fn stop(unit: &mut Unit) {
-    (unit.speed, unit.moving) = (0, false);
+    (unit.speed, unit.moving, unit.walking) = (0, false, false);
     unit.path.clear();
 }
 
@@ -134,19 +159,128 @@ pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
     snap(world, at);
 }
 
-/// The end of the move call (8.2 step 3), which runs after the move in the same step: a walk
-/// ends when the path is empty or the unit stands in its destination tile.
-pub fn finish(unit: &mut Unit, world: &World, at: usize) {
-    if !unit.moving {
-        return;
-    }
-    let here = point(world, at).and_then(|(x, y, _)| tile_of(world, (x, y)));
+/// The end of a walk (8.2 step 3): the path is empty, or the unit stands in its destination tile.
+fn ended(unit: &Unit, world: &World, at: usize) -> bool {
     let target = unit
         .destination
         .and_then(|(x, y, _)| tile_of(world, (x, y)));
-    if unit.path.is_empty() || here.is_some() && here == target {
-        stop(unit);
+    unit.path.is_empty() || here(world, at).is_some() && here(world, at) == target
+}
+
+/// The tile of the unit at position `at` of the entity list.
+fn here(world: &World, at: usize) -> Option<usize> {
+    point(world, at).and_then(|(x, y, _)| tile_of(world, (x, y)))
+}
+
+/// Shows the move animation of the unit's band, or `own` (the name and the percentage a call
+/// gives), and sets the animation speed, the one of the water on water (7.3). False when the type
+/// has no animation of that name.
+fn animate(
+    unit: &mut Unit,
+    world: &World,
+    data: &dyn Data,
+    at: usize,
+    own: Option<(&str, i32)>,
+) -> bool {
+    let (walk, _, speed) = unit.band.names();
+    let entity = &world.zoo.entities[at];
+    let name = own.map_or(walk, |o| o.0);
+    if data.timing(entity, name).is_none() {
+        return false;
     }
+    let wet = here(world, at).is_some_and(|t| world.is_water(t) || world.tank_at(t).is_some());
+    let key = format!("{speed}{}", if wet { "Water" } else { "" });
+    // The data tells a type without the key from one that says 0 by neither: the default is 100.
+    let table = match data.number(entity, &Number::Characteristic(key)) {
+        0 => 100,
+        p => p,
+    };
+    // Kept in 16 bits.
+    unit.anim_speed = own.map_or(table, |o| o.1) as u16;
+    unit.animation.set_base(name, &|n| data.timing(entity, n));
+    true
+}
+
+/// Picks the move animation again after a swimmer changed between land and water (6.2).
+pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+    if std::mem::take(&mut unit.flip) && unit.walking {
+        animate(unit, world, data, at, None);
+    }
+}
+
+/// The unit shows its idle animation again (8.2 step 1 and 3).
+fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+    let entity = &world.zoo.entities[at];
+    unit.animation.set_base("idle", &|n| data.timing(entity, n));
+}
+
+/// The move call `gait` of the unit's set, run once per step (8.2).
+pub fn call(
+    unit: &mut Unit,
+    world: &mut World,
+    data: &dyn Data,
+    rng: &mut Rng,
+    at: usize,
+    gait: &Gait,
+) -> Flow {
+    if unit.walking {
+        // 2 and 3: the unit moves from the next step's move on; the call ends with the walk.
+        unit.moving = true;
+        if unit.aborted {
+            stop(unit);
+            return Flow::Failed;
+        }
+        if !ended(unit, world, at) {
+            return Flow::Running;
+        }
+        stop(unit);
+        idle(unit, world, data, at);
+        return Flow::Done;
+    }
+    // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
+    // with none, or standing in it, walks at random.
+    if unit.path.is_empty() {
+        let wants = (unit.destination)
+            .and_then(|(x, y, _)| tile_of(world, (x, y)))
+            .is_some_and(|d| Some(d) != here(world, at));
+        if wants {
+            return Flow::Running;
+        }
+        unit.aborted = false;
+        if !super::walk::random_walk(unit, world, rng, at) {
+            return Flow::Failed;
+        }
+    }
+    if unit.path.len() < 2 {
+        stop(unit);
+        idle(unit, world, data, at);
+        return Flow::Done;
+    }
+    unit.band = Band::of(gait);
+    let entity = &world.zoo.entities[at];
+    let (rate, own) = match gait {
+        Gait::Own {
+            anim,
+            speed,
+            percent,
+            ..
+        } => (
+            data.number(entity, speed),
+            Some((anim.as_str(), data.number(entity, percent))),
+        ),
+        _ => {
+            let key = Number::Characteristic(unit.band.names().1.into());
+            (data.number(entity, &key), None)
+        }
+    };
+    if !animate(unit, world, data, at, own) {
+        stop(unit);
+        return Flow::Failed;
+    }
+    // A guest's own pace (7.2) needs its offset and energy, which the guest issues bring.
+    unit.speed = rate.max(0) as u32;
+    unit.walking = true;
+    Flow::Running
 }
 
 fn point(world: &World, at: usize) -> Option<(i32, i32, i32)> {
@@ -189,10 +323,23 @@ fn allowed(unit: &Unit, world: &World, at: usize, here: usize, next: usize) -> b
     )
 }
 
+/// What the costs of the path finder read of the unit's type (the characteristics of 7.1 and of
+/// the pathfinding specification).
+pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) {
+    let flag = |key: &str| data.number(entity, &Number::Characteristic(key.into())) == 1;
+    let m = &mut unit.mover;
+    (m.swims, m.underwater, m.only_underwater) =
+        (flag("cSwims"), flag("cUnderwater"), flag("cOnlyUnderwater"));
+    (m.tall, m.climbs) = (flag("cTall"), flag("cClimbsCliffs"));
+    m.avoid_edges = data
+        .number(entity, &Number::Characteristic("cAvoidEdges".into()))
+        .max(0) as u32;
+}
+
 /// The unit as the costs of the path finder see it, standing on tile `here`.
 pub(super) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path::Mover {
     let mut m = unit.mover.clone();
-    m.at = Some(here);
+    (m.at, m.id) = (Some(here), Some(unit.id));
     m.footprint = world
         .shape(at)
         .map_or(1, |s| (s.footprint.0 * s.footprint.1).clamp(1, 4) as u32);
@@ -271,8 +418,8 @@ fn progress(unit: &mut Unit, world: &mut World, mut distance: u32, at: usize) ->
     arrived
 }
 
-/// 4.5: the unit crossed from tile `old` into tile `new`: its travel direction, the old tile off
-/// the path, and the exhibit it entered, if it is another one.
+/// 4.5 and 6.2: the unit crossed from tile `old` into tile `new`: its travel direction, the old
+/// tile off the path, the exhibit it entered, the swimmer's change of animation and the gates.
 fn enter(unit: &mut Unit, world: &mut World, old: usize, new: usize) {
     unit.travel = direction(world, old, new);
     if unit.path.first() == Some(&old) {
@@ -287,4 +434,32 @@ fn enter(unit: &mut Unit, world: &mut World, old: usize, new: usize) {
     if let Some(r) = after.filter(|&r| r != GROUNDS && r != EXTERIOR && after != before) {
         world.units.lines.push(format!("enter {} {r}", unit.id));
     }
+    unit.flip |= unit.mover.swims && world.is_water(old) != world.is_water(new);
+    // The gate on the way is opened (not by an animal), the one just crossed is closed.
+    let next = unit.path.iter().find(|&&t| t != new);
+    let ahead = next.and_then(|&n| gate(world, new, direction(world, new, n)));
+    if let Some(g) = ahead.filter(|_| unit.kind != Kind::Animal) {
+        world.units.lines.push(format!("gate {} open {g}", unit.id));
+        unit.gate = Some(g);
+    }
+    if let Some(g) = gate(world, new, (unit.travel + 4) % 8) {
+        world
+            .units
+            .lines
+            .push(format!("gate {} close {g}", unit.id));
+        if unit.gate == Some(g) {
+            unit.gate = None;
+        }
+    }
+}
+
+/// The id of the gate on the edge of tile `t` in direction `d`, on either side of the edge.
+fn gate(world: &World, t: usize, d: i32) -> Option<u32> {
+    let d = usize::try_from(d).ok().filter(|d| d % 2 == 0)?;
+    let across = world
+        .neighbour(t, d)
+        .and_then(|n| world.edge(n, (d + 4) % 8));
+    let piece = world.edge(t, d).or(across)?;
+    let id = world.zoo.entities[piece].common.as_ref()?.id;
+    world.is_door(piece).then_some(id)
 }

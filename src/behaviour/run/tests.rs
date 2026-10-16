@@ -221,7 +221,6 @@ fn a_call_that_cannot_run_ends_its_set() {
 #[test]
 fn the_calls_of_the_other_issues_are_done_at_once_or_never() {
     for (call, finishes) in [
-        ("fWalk(0,0)", true),
         ("fDie()", true),
         ("fPlaySpecial(x)", true),
         ("fKeepControl()", false),
@@ -252,6 +251,38 @@ fn a_routine_call_is_done_for_its_own_class_and_the_keepers_fails_for_others() {
         assert_eq!(rig.tick(100).0 == "d", done, "{class} {call}");
         assert_eq!(rig.runner.running(), running, "{class} {call}");
     }
+}
+
+#[test]
+fn a_move_call_waits_for_the_units_answer_and_the_set_goes_on_when_it_is_done() {
+    let resume = |rig: &mut Rig| {
+        let mut env = Env {
+            data: &rig.data,
+            unit: &rig.unit,
+            rng: &mut rig.rng,
+        };
+        rig.runner.resume(&mut rig.anim, &mut env);
+    };
+    let mut rig = Rig::new(&[("bAmbient", &["fRun(0,0)", "fPlay(d)"])]);
+    for _ in 0..3 {
+        rig.tick(100);
+        assert_eq!(rig.runner.take_move(), Some(Gait::Fast));
+        assert_eq!(rig.runner.take_move(), None, "taken once");
+    }
+    // Still running: the next call waits. Done: it starts in the same step.
+    rig.runner.answer(Flow::Running);
+    resume(&mut rig);
+    assert!(rig.anim.queue.is_empty());
+    rig.runner.answer(Flow::Done);
+    resume(&mut rig);
+    assert_eq!(rig.anim.queue.len(), 1, "fPlay(d) queued");
+    // A failed call ends the set.
+    let mut rig = Rig::new(&[("bAmbient", &["fWalk(0,0)", "fPlay(d)"])]);
+    rig.tick(100);
+    rig.runner.take_move();
+    rig.runner.answer(Flow::Failed);
+    resume(&mut rig);
+    assert!(!rig.runner.running());
 }
 
 #[test]

@@ -10,8 +10,8 @@
 //! [`update`] is one unit's turn in the original's order: events in; unless suspended, the move;
 //! the animation; unless suspended, the status timer (the needs and the checks once it passes the
 //! period) and then either the wait counted down or the behaviour and the goals; the events
-//! discarded. The move is [`movement`]. What the needs, the checks and the goals do is the
-//! business of later issues: each is a method of [`Hooks`], empty until then. The animation and the
+//! discarded. The move is [`movement`] and the random walk [`walk`]. What the needs, the checks and the
+//! goals do is the business of later issues: each is a method of [`Hooks`], empty until then. The animation and the
 //! behaviour are [`Standard`]'s: the frames of the unit's animation and the set it runs come from
 //! the data ([`crate::behaviour`]).
 //!
@@ -21,14 +21,15 @@
 //! The log family `unit`: `unit add <id> <kind> <x>,<y>`, `unit remove <id>`,
 //! `unit status <id>` for each status tick, `unit tile <id> <x>,<y>` when a unit enters a tile,
 //! `unit enter <id> <exhibit>` when that is another exhibit, `unit face <id> <direction>` when its
-//! facing turns, `unit abort <id>` when its next tile step is refused, `unit set <id> <name>` when
+//! facing turns, `unit abort <id>` when its next tile step is refused, `unit gate <id> open|close
+//! <gate>` when it opens the gate ahead or closes the one behind, `unit set <id> <name>` when
 //! a unit starts a set and `unit anim <id> <name>` when the animation it shows changes.
 
 use std::collections::HashMap;
 
 pub use crate::animal::Animal;
 use crate::animal::Class;
-use crate::behaviour::{Animation, Data, Env, Heard, Note, Runner};
+use crate::behaviour::{Animation, Data, Env, Flow, Heard, Note, Runner};
 use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::goal::Goals;
@@ -42,6 +43,7 @@ pub mod movement;
 pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
+pub mod walk;
 
 /// What a unit is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -136,6 +138,14 @@ pub struct Unit {
     pub path: Vec<usize>,
     /// The direction of the last tile change, -1 for none (movement 2).
     pub travel: i32,
+    /// A move call has started the walk (movement 8.2: the call's started flag).
+    pub walking: bool,
+    /// The speed band of the move call, for picking the move animation again.
+    pub band: movement::Band,
+    /// A swimmer changed between land and water: the move animation is picked again.
+    pub flip: bool,
+    /// The gate the unit opened and has not left behind (movement 6.2).
+    pub gate: Option<u32>,
     /// The unit goes in or out of a building: the tile step test looks at the edge cost only.
     pub through_building: bool,
     /// The next tile step was refused: the goal has to give up (movement 4.7). The goals read
@@ -181,6 +191,10 @@ impl Unit {
             destination: None,
             path: Vec::new(),
             travel: -1,
+            walking: false,
+            band: movement::Band::default(),
+            flip: false,
+            gate: None,
             through_building: false,
             aborted: false,
             mover: Mover::new(kind.mover(), None),
@@ -225,6 +239,8 @@ pub struct Units {
     pub finder: Finder,
     /// The keys of `animals.ai` that every animal reads.
     pub class: Class,
+    /// The `[AI]` settings of the ring of a random walk.
+    pub ring: walk::Ring,
     lines: Vec<String>,
     animal_lines: Vec<String>,
     /// The messages posted and not shown yet: the string number and the unit it is about.
@@ -244,6 +260,7 @@ impl Default for Units {
             ai_ticks: 0,
             finder: Finder::default(),
             class: Class::default(),
+            ring: walk::Ring::default(),
             lines: Vec::new(),
             animal_lines: Vec::new(),
             messages: Vec::new(),
@@ -283,7 +300,7 @@ impl Units {
         }
     }
 
-    /// Reads the settings of the path finder from the ini file.
+    /// Reads the settings of the path finder and of the random walk from the ini file.
     pub fn set_ini(&mut self, ini: &[u8]) {
         let config = Config::parse(ini).ok();
         self.finder = Finder::new(
@@ -291,6 +308,7 @@ impl Units {
                 .as_ref()
                 .map_or_else(Settings::default, Settings::from_ini),
         );
+        self.ring = (config.as_ref()).map_or_else(walk::Ring::default, walk::Ring::from_ini);
     }
 
     /// The `unit` log lines since the last call, without the family word.
@@ -373,6 +391,11 @@ impl Units {
     pub fn hash(&self) -> u64 {
         let mut h = Fnv(0xcbf2_9ce4_8422_2325);
         h.word(self.period as u32);
+        h.bytes(format!("{:?}", self.ring).as_bytes());
+        for v in self.finder.state() {
+            h.word(v as u32);
+            h.word((v >> 32) as u32);
+        }
         for u in &self.list {
             h.word(u.id);
             h.word(u.kind as u32);
@@ -388,6 +411,8 @@ impl Units {
                 h.word(t as u32);
             }
             h.word(u.travel as u32);
+            h.word(u32::from(u.walking) | u32::from(u.flip) << 1 | (u.band as u32) << 2);
+            h.word(u.gate.map_or(0, |g| g.wrapping_add(1)));
             h.word(u32::from(u.through_building) | u32::from(u.aborted) << 1);
             h.bytes(format!("{:?}{:?}{:?}", u.animation, u.runner, u.goal).as_bytes());
             h.word(u.status_timer as u32);
@@ -513,6 +538,7 @@ impl Standard<'_> {
 impl Hooks for Standard<'_> {
     fn movement(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         movement::step(unit, world, ctx.step, at);
+        movement::reanimate(unit, world, self.data, at);
     }
 
     fn animate(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize, ms: u32) {
@@ -523,8 +549,6 @@ impl Hooks for Standard<'_> {
     }
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-        // The move call of a behaviour set ends the walk here, after the move (movement 8.2).
-        movement::finish(unit, world, at);
         let key = ambient_key(unit);
         let mut env = Env {
             data: self.data,
@@ -532,10 +556,32 @@ impl Hooks for Standard<'_> {
             rng: ctx.rng,
         };
         unit.runner.step(&mut unit.animation, &mut env, key);
+        // A move call is the unit's to run (movement 8.2); when it is done the set goes on in
+        // the same step.
+        let mut moved = false;
+        while let Some(gait) = unit.runner.take_move() {
+            moved = true;
+            let flow = movement::call(unit, world, self.data, ctx.rng, at, &gait);
+            if flow == Flow::Running {
+                break;
+            }
+            unit.runner.answer(flow);
+            let mut env = Env {
+                data: self.data,
+                unit: &world.zoo.entities[at],
+                rng: ctx.rng,
+            };
+            unit.runner.resume(&mut unit.animation, &mut env);
+        }
+        // Another set took the place of the move call: the walk ends.
+        if unit.walking && !moved {
+            movement::stop(unit);
+        }
         self.tell(unit, world, at);
     }
 
     fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        movement::read_type(unit, self.data, &world.zoo.entities[at]);
         crate::animal::start(unit, world, ctx, at);
         crate::staff::start(unit, world, ctx, at);
     }

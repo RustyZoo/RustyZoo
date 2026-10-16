@@ -17,7 +17,7 @@
 
 use crate::behaviour::{Data, Env};
 use crate::path::Dest;
-use crate::unit::{Ctx, Kind, Part, Unit};
+use crate::unit::{Ctx, Kind, Part, Unit, walk};
 use crate::world::World;
 use crate::zoo::Entity;
 
@@ -275,6 +275,10 @@ pub fn update(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     };
     if !cx.ladder() {
         return;
+    }
+    // Movement 4.7: a refused step makes the goal give up; the flag is cleared.
+    if std::mem::take(&mut cx.unit.aborted) {
+        cx.abort();
     }
     cx.common();
     cx.run_goal();
@@ -547,7 +551,7 @@ impl Cx<'_, '_> {
             return;
         }
         self.unit.path.clear();
-        if !self.random_walk() {
+        if !walk::random_walk(self.unit, self.world, self.ctx.rng, self.at) {
             return;
         }
         if !job && self.unit.kind == Kind::Animal {
@@ -558,21 +562,6 @@ impl Cx<'_, '_> {
         } else {
             self.start_walk(false, job, true);
         }
-    }
-
-    /// PLACEHOLDER until the random walk of issue 338 lands (it replaces this function whole).
-    /// The random destination of the movement spec, 10.2, as its neighbour fallback (step 4)
-    /// without the tile test: a straight neighbour from a random one on, the first that has a
-    /// path.
-    fn random_walk(&mut self) -> bool {
-        let Some(here) = self.tile() else {
-            return false;
-        };
-        let start = self.ctx.rng.pick(4) as usize;
-        (start..4).any(|i| {
-            let n = self.world.neighbour(here, i * 2);
-            n.is_some_and(|n| self.path_to(n, false))
-        })
     }
 
     /// Asks the finder for a path to tile `to`; on success the unit holds the path and its

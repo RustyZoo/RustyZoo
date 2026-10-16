@@ -1889,8 +1889,8 @@ impl<'a> App<'a> {
     /// wall clock's seconds, or `--seed`'s), which a replay uses again, `sim step MS`
     /// for a step the game ran and `sim month M Y` when it acted on the month flag of the one
     /// before, then `unit add ID KIND X,Y`, `unit remove ID`, `unit status ID`, `unit tile ID X,Y`,
-    /// `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and `unit abort ID` for the units of the
-    /// world. A pass that did nothing has no line.
+    /// `unit enter ID EXHIBIT`, `unit face ID DIRECTION`, `unit abort ID` and
+    /// `unit gate ID open|close GATE` for the units of the world. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {

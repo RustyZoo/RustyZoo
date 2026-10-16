@@ -7,14 +7,16 @@
 //! its parent's current call, and a failed call ends the whole chain. What a set needs of the
 //! data comes through [`Data`].
 //!
-//! Until the move and animal issues land, the calls that belong to them (moves, the faces,
-//! the effects on other entities, `fDie`, ...) are done at once with no effect; a routine call
-//! is done when the play state is ready and the unit's goals (which run every step) do the rest;
-//! a nested terrain or tank set is the land one.
+//! A move call is the unit's business (movement 8.2): the runner stops at it and hands it out
+//! ([`Runner::take_move`]), and the answer ([`Runner::answer`]) lets the set go on in the same
+//! step ([`Runner::resume`]). Until the animal issues land, the other calls that belong to them
+//! (the faces, the effects on other entities, `fDie`, ...) are done at once with no effect; a
+//! routine call is done when the play state is ready and the unit's goals (which run every step)
+//! do the rest; a nested terrain or tank set is the land one.
 
 use std::collections::VecDeque;
 
-use super::{Call, Number, Op, Play, Routine, Row};
+use super::{Call, Gait, Number, Op, Play, Routine, Row};
 use crate::sim::Rng;
 use crate::zoo::Entity;
 
@@ -258,7 +260,7 @@ impl Animation {
     }
 
     /// Clears the player and shows `name` from its first frame as the base (`fSetBase`).
-    fn set_base(&mut self, name: &str, timing: &dyn Fn(&str) -> Option<Timing>) {
+    pub fn set_base(&mut self, name: &str, timing: &dyn Fn(&str) -> Option<Timing>) {
         self.reset();
         self.base = name.to_string();
         self.finish(timing);
@@ -302,6 +304,17 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
+    /// The move call the last execution stopped at, for the unit to run.
+    moving: Option<Gait>,
+}
+
+/// The answer to a move call (movement 8.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Flow {
+    /// The call goes on in the next step.
+    Running,
+    Done,
+    Failed,
 }
 
 impl Default for Runner {
@@ -312,6 +325,7 @@ impl Default for Runner {
             interruptible: true,
             ready: true,
             playing: false,
+            moving: None,
         }
     }
 }
@@ -325,6 +339,30 @@ impl Runner {
     /// The name of the top set, if the unit has started one.
     pub fn top(&self) -> Option<&str> {
         self.chain.first().map(|l| l.name.as_str())
+    }
+
+    /// The move call the set reached, once.
+    pub fn take_move(&mut self) -> Option<Gait> {
+        self.moving.take()
+    }
+
+    /// The unit's answer to the move call: it is done, or fails the set.
+    pub fn answer(&mut self, flow: Flow) {
+        let Some(level) = self.chain.last_mut() else {
+            return;
+        };
+        match flow {
+            Flow::Running => {}
+            Flow::Done => level.done = true,
+            Flow::Failed => level.loaded = false,
+        }
+    }
+
+    /// Goes on with the set after an answer, without choosing a new one.
+    pub fn resume(&mut self, anim: &mut Animation, env: &mut Env) {
+        if self.running() {
+            self.execute(0, anim, env);
+        }
     }
 
     /// Asks for a set to start when the running one ends (behaviours 4.2).
@@ -525,10 +563,19 @@ impl Runner {
                 if env.unit.class != own {
                     return *routine != Routine::Keeper;
                 }
+                // It shows the idle animation (goals 6.3), once: a finished walk keeps its
+                // move animation (movement 8.2).
+                if self.ready && anim.base != "idle" && found(&"idle".to_string()) {
+                    anim.set_base("idle", &timing);
+                }
                 self.chain[k].done = self.ready;
                 return true;
             }
             Op::KeepControl | Op::Spray | Op::FaceDirection | Op::TargetBuilding => {
+                return true;
+            }
+            Op::Move { gait, .. } => {
+                self.moving = Some(gait.clone());
                 return true;
             }
             Op::Fail => return false,

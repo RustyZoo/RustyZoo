@@ -388,7 +388,7 @@ fn the_hash_covers_the_whole_table() {
     let mut w = world(&[("animals", 1), ("guests", 2)]);
     let base = w.units.hash();
     assert_eq!(base, world(&[("animals", 1), ("guests", 2)]).units.hash());
-    let changes: [fn(&mut Unit); 11] = [
+    let changes: [fn(&mut Unit); 15] = [
         |u| u.speed = 3,
         |u| u.moving = true,
         |u| u.anim_speed = 99,
@@ -400,6 +400,10 @@ fn the_hash_covers_the_whole_table() {
         |u| u.wait = 1,
         |u| u.carried = true,
         |u| u.events.push(event(1, 0)),
+        |u| u.walking = true,
+        |u| u.band = movement::Band::Fast,
+        |u| u.flip = true,
+        |u| u.gate = Some(7),
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut other = world(&[("animals", 1), ("guests", 2)]);
@@ -413,6 +417,14 @@ fn the_hash_covers_the_whole_table() {
     assert_ne!(other.units.hash(), base);
     let before = other.units.hash();
     other.units.set_period(10);
+    assert_ne!(other.units.hash(), before);
+    // So is the ring of the random walk.
+    let before = other.units.hash();
+    other.units.set_ini(b"[AI]\nBaseX=3\n");
+    assert_ne!(other.units.hash(), before);
+    // And the state of the path finder.
+    let before = other.units.hash();
+    other.units.finder.tick(7);
     assert_ne!(other.units.hash(), before);
 }
 
