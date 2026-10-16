@@ -178,6 +178,7 @@ pub fn animals_in(world: &World, id: u32) -> Vec<usize> {
     (world.zoo.entities.iter().enumerate())
         .filter(|(_, e)| e.class == "animals")
         .filter(|(_, e)| e.common.as_ref().and_then(on) == Some(id))
+        .filter(|(_, e)| !e.common.as_ref().is_some_and(|c| world.is_carried(c.id)))
         .map(|(at, _)| at)
         .collect()
 }

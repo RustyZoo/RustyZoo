@@ -192,6 +192,17 @@ fn world_with(mut entities: Vec<Entity>, edit: impl FnOnce(&mut Zoo)) -> World {
     World::new(zoo, shape)
 }
 
+/// The pointer over the ground point `p` (with its height) seen from `view` at normal zoom: its
+/// own row is the row of the point.
+fn aim(view: u8, p: (i64, i64, i32)) -> Aim {
+    let to = |n: i64| i32::try_from(n).unwrap_or(i32::MAX);
+    Aim {
+        point: (p.0, p.1),
+        row: i64::from(project(view, to(p.0), to(p.1), p.2).1),
+        zoom: 0,
+    }
+}
+
 /// The pending animal of the type for the middle of tile (`tx`, `ty`), October or not.
 fn at(w: &World, ty: usize, (tx, tyy): (i64, i64)) -> Pending {
     let point = (tx * 64 + 32, tyy * 64 + 32);
@@ -201,7 +212,7 @@ fn at(w: &World, ty: usize, (tx, tyy): (i64, i64)) -> Pending {
         &[false, true],
         ty,
         0,
-        (point.0, point.1, 0),
+        aim(0, (point.0, point.1, 0)),
         false,
     )
     .unwrap()
@@ -270,15 +281,31 @@ fn an_animal_is_valid_in_an_exhibit_and_refused_on_the_grounds() {
     // Off the map and an unknown type give nothing.
     let cat = catalogue();
     assert_eq!(
-        pending(&w, &cat, &[false, true], ZEBRA, 0, (-1, 5, 0), false),
+        pending(
+            &w,
+            &cat,
+            &[false, true],
+            ZEBRA,
+            0,
+            aim(0, (-1, 5, 0)),
+            false
+        ),
         None
     );
     assert_eq!(
-        pending(&w, &cat, &[false, true], 99, 0, (5, 5, 0), false),
+        pending(&w, &cat, &[false, true], 99, 0, aim(0, (5, 5, 0)), false),
         None
     );
     assert_eq!(
-        pending(&w, &cat, &[false, true], ZEBRA, 0, (i64::MAX, 5, 0), false),
+        pending(
+            &w,
+            &cat,
+            &[false, true],
+            ZEBRA,
+            0,
+            aim(0, (i64::MAX, 5, 0)),
+            false
+        ),
         None
     );
 }
@@ -466,7 +493,7 @@ fn a_large_animal_runs_the_footprint_check_and_needs_room_inside_the_fences() {
         &[false, true],
         BIG,
         0,
-        (point.0, point.1, 0),
+        aim(0, (point.0, point.1, 0)),
         false,
     )
     .unwrap();
@@ -481,7 +508,7 @@ fn a_large_animal_runs_the_footprint_check_and_needs_room_inside_the_fences() {
         &[false, true],
         BIG,
         0,
-        (point.0, point.1, 0),
+        aim(0, (point.0, point.1, 0)),
         false,
     )
     .unwrap();
@@ -564,8 +591,13 @@ fn hiring_books_the_wages_of_the_class_names_the_member_and_empties_the_undo_lis
 /// A tank of the tiles (2, 2) and (3, 2) with a gate on the top side of the first, water to
 /// `level`, filled.
 fn tank_world(level: u32) -> World {
+    tank_world_with(level, Vec::new())
+}
+
+/// The same with more entities in the world.
+fn tank_world_with(level: u32, more: Vec<Entity>) -> World {
     let wall = |x: i32, y: i32, d: u32| entity_at("tankwall", "iron", "f", x, y, d);
-    let mut pieces = Vec::new();
+    let mut pieces = more;
     for tx in [2, 3] {
         pieces.push(wall(tx * 64 + 32, 2 * 64, 0));
         pieces.push(wall(tx * 64 + 32, 3 * 64 - 1, 4));
@@ -613,7 +645,7 @@ fn behind_the_tank(level: i64) -> (i64, i64, i32) {
 fn the_tank_point_lifts_a_swimmer_to_the_water_under_the_pointer() {
     let (cat, wet) = (catalogue(), [false, true]);
     let w = tank_world(3);
-    let over = |ty, point| pending(&w, &cat, &wet, ty, 0, point, false).unwrap();
+    let over = |ty, point| pending(&w, &cat, &wet, ty, 0, aim(0, point), false).unwrap();
     // The ground point is three tiles away, the surface is where the pointer is.
     let p = over(HIPPO, behind_the_tank(3));
     assert_eq!(
@@ -636,13 +668,104 @@ fn the_tank_point_lifts_a_swimmer_to_the_water_under_the_pointer() {
     assert_eq!((g.tile, g.message), ((3, 2), Some(NOT_IN_TANKS)));
     // A level that no tank has, or a point at the end of the map, give nothing odd and no panic.
     let deep = tank_world(u32::MAX);
-    assert!(pending(&deep, &cat, &wet, HIPPO, 0, behind_the_tank(3), false).is_some());
+    assert!(
+        pending(
+            &deep,
+            &cat,
+            &wet,
+            HIPPO,
+            0,
+            aim(0, behind_the_tank(3)),
+            false
+        )
+        .is_some()
+    );
     for far in [(i64::from(i32::MAX), 0, i32::MAX), (-9, -9, i32::MIN)] {
-        assert!(pending(&w, &cat, &wet, GUEST, 0, far, false).is_none_or(|p| p.tile.0 >= -1));
+        assert!(
+            pending(&w, &cat, &wet, GUEST, 0, aim(0, far), false).is_none_or(|p| p.tile.0 >= -1)
+        );
     }
     // Viewed from the other side the steps go the other way.
-    let turned = pending(&w, &cat, &wet, HIPPO, 2, (224 - 96, 160 + 96, 0), false).unwrap();
+    let turned = pending(
+        &w,
+        &cat,
+        &wet,
+        HIPPO,
+        2,
+        aim(2, (224 - 96, 160 + 96, 0)),
+        false,
+    )
+    .unwrap();
     assert_eq!((turned.tile, turned.verdict), ((3, 2), Verdict::Valid));
+}
+
+#[test]
+fn the_tank_point_keeps_the_step_whose_floor_is_level_steps_below_the_pointer() {
+    let (cat, wet) = (catalogue(), [false, true]);
+    let w = tank_world(3);
+    // The floor of step 3 is 48 rows below the ground point, which is the pointer's row.
+    let flat = aim(0, behind_the_tank(3));
+    let tile = |row: i64, zoom: i32| {
+        let aim = Aim { row, zoom, ..flat };
+        pending(&w, &cat, &wet, HIPPO, 0, aim, false).unwrap().tile
+    };
+    // A pointer up to 15 rows above the ground point still keeps the step (the pick can stop up to
+    // 4 height units off the ground).
+    for up in [0, 12, 15] {
+        assert_eq!(tile(flat.row - up, 0), (3, 2), "{up} rows above");
+    }
+    // The band is one-sided: a row below the surface, or a whole step above it, gives 2 or 4.
+    for off in [1, -16, 64] {
+        assert_ne!(tile(flat.row + off, 0), (3, 2), "{off} rows");
+    }
+    // The zoom scales the rows and the step alike.
+    assert_eq!(tile(flat.row * 2, 2), (3, 2));
+    assert_eq!(tile(flat.row / 2, -2), (3, 2));
+    for zoom in [i32::MIN, i32::MAX, -1, 1] {
+        tile(flat.row, zoom);
+    }
+}
+
+#[test]
+fn a_unit_in_the_way_in_a_tank_gets_10555() {
+    let guest = entity_at("guests", "guest", "m", 3 * 64 + 32, 2 * 64 + 32, 0);
+    let w = tank_world_with(3, vec![guest]);
+    // A guest over a tank tile where another unit's rectangle meets its own: the unit is in the
+    // way and highlighted, not the tank refusal.
+    let tank = Aim {
+        zoom: 0,
+        ..aim(0, behind_the_tank(3))
+    };
+    let (cat, wet) = (catalogue(), [false, true]);
+    let p = pending(&w, &cat, &wet, GUEST, 0, tank, false).unwrap();
+    assert_eq!(
+        (p.tile, p.verdict, p.message, p.blocking.len()),
+        ((3, 2), Verdict::Invalid, Some(super::super::IN_THE_WAY), 1)
+    );
+}
+
+#[test]
+fn a_carried_animal_counts_in_no_exhibit() {
+    let cat = catalogue();
+    let mut pieces = square("fences", 2, 2);
+    pieces.push(animal("m", (2, 2)));
+    let mut w = world(pieces);
+    let id = w.zoo.entities.last().unwrap().common.as_ref().unwrap().id;
+    let exhibit = w.exhibits().region(2 * 8 + 2).unwrap();
+    let counted = |w: &World| {
+        (
+            crate::exhibit::rating::input(w, &cat, exhibit)
+                .animals
+                .len(),
+            crate::panel::exhibit::animals_in(w, exhibit).len(),
+        )
+    };
+    assert_eq!(counted(&w), (1, 1));
+    pick_up(&mut w, &cat, id, 0).unwrap();
+    assert_eq!(counted(&w), (0, 0));
+    let (x, y) = (2 * 64 + 32, 2 * 64 + 32);
+    assert!(put_down(&mut w, &cat.types[ZEBRA], id, (x, y, 0), 0));
+    assert_eq!(counted(&w), (1, 1));
 }
 
 #[test]
@@ -716,14 +839,14 @@ fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
         facing: u32::MAX,
         ..carry.clone()
     };
-    assert!(carried(&w, &cat, &wet, &wild, 3, own).is_some());
-    let free = carried(&w, &cat, &wet, &carry, 1, own).unwrap();
+    assert!(carried(&w, &cat, &wet, &wild, 3, aim(3, own)).is_some());
+    let free = carried(&w, &cat, &wet, &carry, 1, aim(1, own)).unwrap();
     assert_eq!(
         (free.facing, free.price, free.verdict),
         (0, 0.0, Verdict::Valid)
     );
     // Over the tank it lands at the surface in tank mode 3; the tank is marked for a new rating.
-    let p = carried(&w, &cat, &wet, &carry, 0, behind_the_tank(3)).unwrap();
+    let p = carried(&w, &cat, &wet, &carry, 0, aim(0, behind_the_tank(3))).unwrap();
     assert_eq!((p.tile, p.verdict), ((3, 2), Verdict::Valid));
     let tank = w.tank_at(tank_tile).unwrap();
     w.exhibits_mut().get_mut(tank).unwrap().rating.dirty = false;

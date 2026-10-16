@@ -1138,18 +1138,14 @@ impl<'a> App<'a> {
         let (step, view) = (game.build.step(), game.camera.rotation);
         let october = game.build.october();
         let point = game.camera.pick(&game.world.zoo, ui.pointer());
-        let floor = point.2;
+        let aim = place::unit::Aim {
+            point: (point.0, point.1),
+            row: i64::from(game.camera.scroll.1) + i64::from(ui.pointer().1),
+            zoom: game.camera.zoom,
+        };
         let at = |ty, point: (i64, i64)| {
             if cat.types.get(ty).is_some_and(place::unit::is_unit) {
-                return place::unit::pending(
-                    &game.world,
-                    cat,
-                    &game.water,
-                    ty,
-                    view,
-                    (point.0, point.1, floor),
-                    october,
-                );
+                return place::unit::pending(&game.world, cat, &game.water, ty, view, aim, october);
             }
             place::pending(
                 &game.world,
@@ -1179,7 +1175,7 @@ impl<'a> App<'a> {
         }
         if let Some(carry) = game.carry.as_ref().filter(|_| game.hover) {
             let water = &game.water;
-            game.pending = place::unit::carried(&game.world, cat, water, carry, view, point);
+            game.pending = place::unit::carried(&game.world, cat, water, carry, view, aim);
         }
         // The gate tool's pending gate sits on the fence piece under the pointer.
         // It is judged when the piece changes, so a gate just placed shows nothing until the

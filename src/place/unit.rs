@@ -18,6 +18,7 @@ use super::{
 };
 use crate::behaviour::{Animation, Runner};
 use crate::build::{cost, number, plain};
+use crate::camera::zoom_view;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::GROUNDS;
 use crate::money::{ANIMAL_PURCHASE, Money};
@@ -83,20 +84,30 @@ pub fn new_sell_price(ty: &EntityType) -> f32 {
     sell_price(cost(ty), happiness, max_hits, max_hits, false)
 }
 
-/// The pending animal of the type `ty` for the ground point `point` under the mouse (with its
-/// height), the view turned by `view`; `None` when the type is unknown or the point is off the
-/// map. `water` tells for each terrain type whether it is water.
+/// Where the pointer is: the ground point under it, its own screen row and the zoom, which the
+/// tank point reads (5.1).
+#[derive(Debug, Clone, Copy)]
+pub struct Aim {
+    pub point: (i64, i64),
+    /// The row of the pointer in the view's pixels at the current zoom.
+    pub row: i64,
+    pub zoom: i32,
+}
+
+/// The pending animal of the type `ty` for the pointer `aim`, the view turned by `view`; `None`
+/// when the type is unknown or the point is off the map. `water` tells for each terrain type
+/// whether it is water.
 pub fn pending(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
     ty: usize,
     view: u8,
-    point: (i64, i64, i32),
+    aim: Aim,
     october: bool,
 ) -> Option<Pending> {
     let price = price(cat.types.get(ty)?, october);
-    pending_of(world, cat, water, ty, facing(0, view), view, point, price)
+    pending_of(world, cat, water, ty, facing(0, view), view, aim, price)
 }
 
 /// The pending unit of the one the player carries (8.3): its own facing turned with the view, so
@@ -107,11 +118,11 @@ pub fn carried(
     water: &[bool],
     carry: &Carry,
     view: u8,
-    point: (i64, i64, i32),
+    aim: Aim,
 ) -> Option<Pending> {
     let turn = 2 * (i32::from(carry.view) - i32::from(view));
     let dir = (i64::from(carry.facing) + i64::from(turn)).rem_euclid(8) as u32;
-    pending_of(world, cat, water, carry.ty, dir, view, point, 0.0)
+    pending_of(world, cat, water, carry.ty, dir, view, aim, 0.0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -122,19 +133,20 @@ fn pending_of(
     ty: usize,
     dir: u32,
     view: u8,
-    point: (i64, i64, i32),
+    aim: Aim,
     price: f32,
 ) -> Option<Pending> {
     let t = cat.types.get(ty)?;
     let ground = (
-        i32::try_from(point.0).ok()?,
-        i32::try_from(point.1).ok()?,
-        point.2,
+        i32::try_from(aim.point.0).ok()?,
+        i32::try_from(aim.point.1).ok()?,
     );
     // A guest or an underwater species is put over the tank under the pointer, if any (5.1).
     let swimmer = t.class == "guests" || number(t, "cUnderwater") == Some(1.0);
-    let lifted = swimmer.then(|| tank_point(world, view, ground)).flatten();
-    let point = lifted.unwrap_or((ground.0, ground.1));
+    let lifted = swimmer
+        .then(|| tank_point(world, view, ground, aim.row, aim.zoom))
+        .flatten();
+    let point = lifted.unwrap_or(ground);
     let (tile_x, tile_y) = (point.0.div_euclid(64), point.1.div_euclid(64));
     let tile = world.tile_index(tile_x, tile_y)?;
     let (x, y) = snap(Class::Fixed, point, (1, 1), dir);
@@ -166,13 +178,24 @@ fn water_height(level: u32) -> i32 {
 }
 
 /// The tank point (unit placing 5.1): from the ground point under the pointer, step toward the
-/// viewer by 32 world units on each axis, 48 times, and keep the last point over a tank whose
-/// water surface is drawn at the pointer's row. A step toward the viewer moves the point 16 rows
-/// down the screen, as a level of water lifts the surface by 16, so the surface of a tank of level
-/// `L` is met at the `L`-th step. The row is met within half a step.
-fn tank_point(world: &World, view: u8, ground: (i32, i32, i32)) -> Option<(i32, i32)> {
+/// viewer by 32 world units on each axis, 48 times (the start is step 0), and keep the last point
+/// over a tank whose floor, projected at the tile's elevation, lies below the pointer's row by
+/// exactly the water level in steps: `(floor row - pointer row) / step`, truncated toward zero.
+/// So the pointer is at the water surface or less than one step above it. A step is 16 rows at
+/// normal zoom, `16 * zoom` above it and `16 / -zoom` below.
+fn tank_point(
+    world: &World,
+    view: u8,
+    ground: (i32, i32),
+    row: i64,
+    zoom: i32,
+) -> Option<(i32, i32)> {
     let (a, b) = [(0, 1), (1, 0), (0, -1), (-1, 0)][usize::from(view % 4)];
-    let row = project(view, ground.0, ground.1, ground.2).1;
+    let step = match zoom {
+        ..=-2 => (16 / i64::from(zoom).abs()).max(1),
+        2.. => 16 * i64::from(zoom),
+        _ => 16,
+    };
     let mut found = None;
     for k in 0..TANK_STEPS {
         let x = ground.0.saturating_add(32 * k * (a - b));
@@ -183,9 +206,9 @@ fn tank_point(world: &World, view: u8, ground: (i32, i32, i32)) -> Option<(i32, 
         let Some(tank) = world.tank_at(t).and_then(|id| world.tank(id)) else {
             continue;
         };
-        let floor = ground_height(&world.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64));
-        let surface = floor.saturating_add(water_height(tank.level));
-        if (project(view, x, y, surface).1 - row).abs() < 8 {
+        let floor = world.zoo.tiles[t].elevation.saturating_mul(16);
+        let floor_row = zoom_view(zoom, project(view, x, y, floor)).1;
+        if (floor_row - row) / step == i64::from(tank.level) {
             found = Some((x, y));
         }
     }
@@ -214,7 +237,7 @@ fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))
             continue;
         }
         // The unit the player carries is off the map (8.2).
-        if world.units.get(c.id).is_some_and(|u| u.carried) {
+        if world.is_carried(c.id) {
             continue;
         }
         let (fx, fy) = shape.footprint;
@@ -314,7 +337,9 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
     }
     let tank = world.tank_at(tile);
     if let Some(id) = tank {
-        if let Some(message) = tank_message(world, id, tile, t) {
+        // The tank check runs on a place that is still valid (6.1 step 3).
+        let message = tank_message(world, id, tile, t).filter(|_| p.verdict == Verdict::Valid);
+        if let Some(message) = message {
             fail(p, Some(message));
         }
     } else if only {

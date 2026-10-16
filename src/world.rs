@@ -411,6 +411,12 @@ impl World {
         }
     }
 
+    /// Whether the unit `id` is held by the player: it is off the map, in no exhibit (unit placing
+    /// 8.2), whatever position it stores.
+    pub fn is_carried(&self, id: u32) -> bool {
+        self.units.get(id).is_some_and(|u| u.carried)
+    }
+
     /// Whether an animal, guest or staff member stands on tile `t`.
     pub fn unit_on(&self, t: usize) -> bool {
         let width = self.zoo.width as usize;
@@ -420,7 +426,7 @@ impl World {
             .zip(&self.shapes)
             .filter(|(_, s)| s.is_some_and(|s| s.kind == Kind::Unit))
             .filter_map(|(e, _)| e.common.as_ref())
-            .filter(|c| !self.units.get(c.id).is_some_and(|u| u.carried))
+            .filter(|c| !self.is_carried(c.id))
             .any(|c| {
                 let (x, y) = (c.x.div_euclid(64), c.y.div_euclid(64));
                 usize::try_from(y)
