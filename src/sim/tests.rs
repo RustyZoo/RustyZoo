@@ -709,13 +709,25 @@ fn a_bad_script_is_an_error() {
         "1 tile 0 99999999999 0 0 0",
         "1 tile 0 0 0 0",
         "1 fill 1 2",
+        "1 food 1,1",
+        "1 food 1 herbchow",
+        "1 food a,b herbchow",
+        "1 food 1,1 herbchow -1",
+        "1 food 1,1 herbchow 99999999999",
+        "1 food 1,1 herbchow 5 6",
     ] {
         assert!(drive::parse(bad).is_err(), "{bad}");
     }
-    assert!(
-        drive::parse("0 tile -3 4 255 255 255").is_ok(),
-        "off the map is a warning"
-    );
+    for good in [
+        "0 tile -3 4 255 255 255",
+        "0 food -3,4 herbchow",
+        "0 food 1,1 herbchow 0",
+    ] {
+        assert!(
+            drive::parse(good).is_ok(),
+            "{good}: off the map is a warning"
+        );
+    }
 }
 
 #[test]

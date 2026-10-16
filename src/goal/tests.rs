@@ -724,3 +724,30 @@ fn the_walk_start_restarts_the_set_forced_and_fails_without_its_calls() {
         assert!(!cx.record().target.is_set() && !cx.unit.path.is_empty());
     });
 }
+
+#[test]
+fn a_hungry_animal_takes_the_keeper_food_task_unless_it_has_it_or_is_in_the_building_chain() {
+    for (task, takes) in [
+        (NONE, true),
+        (RANDOM, true),
+        (KEEPER_FOOD, false),
+        (104, false),
+    ] {
+        let (mut w, mut s) = (map("animals"), sim());
+        let u = w.units.get_mut(1).unwrap();
+        (u.goal.record.task, u.started) = (task, true);
+        let Part::Animal(a) = &mut u.part else {
+            panic!("not an animal");
+        };
+        a.wants_food = true;
+        let log = run(&mut w, &mut s, 1);
+        let took = log.iter().any(|l| l.contains("goal 1 keeperfood"));
+        assert_eq!(took, takes, "task {task}");
+        // With no exhibit and so no food the goal's decide clears the task and lowers the flag; in
+        // the building chain the goal is not the keeper food one and the flag stays up.
+        let Part::Animal(a) = &w.units.get(1).unwrap().part else {
+            panic!("not an animal");
+        };
+        assert_eq!(a.wants_food, task == 104, "task {task}");
+    }
+}

@@ -353,7 +353,7 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) 
 }
 
 /// The unit as the costs of the path finder see it, standing on tile `here`.
-pub(super) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path::Mover {
+pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path::Mover {
     let mut m = unit.mover.clone();
     (m.at, m.id) = (Some(here), Some(unit.id));
     m.footprint = world

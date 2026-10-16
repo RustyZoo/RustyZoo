@@ -414,12 +414,19 @@ impl World {
     /// Sets the units left of the food entity at position `at`: its exhibit is rated again and the
     /// picture is due (animals-needs 5.1).
     pub fn set_food(&mut self, at: usize, left: i32) {
-        let Some(c) = self.zoo.entities.get_mut(at).and_then(|e| e.common.as_mut()) else {
+        let Some(c) = self
+            .zoo
+            .entities
+            .get_mut(at)
+            .and_then(|e| e.common.as_mut())
+        else {
             return;
         };
         c.food = left;
         let (x, y) = (c.x.div_euclid(64), c.y.div_euclid(64));
-        self.tile_index(x, y).into_iter().for_each(|t| self.mark_rating(t));
+        self.tile_index(x, y)
+            .into_iter()
+            .for_each(|t| self.mark_rating(t));
         self.dirty = true;
     }
 

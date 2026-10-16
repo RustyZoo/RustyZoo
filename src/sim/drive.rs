@@ -6,8 +6,8 @@ use crate::animal::Class;
 use crate::behaviour::{Library, NoData, Timings};
 use crate::entity::Catalogue;
 use crate::money::Money;
-use crate::vfs::Vfs;
 use crate::render::order::Kind;
+use crate::vfs::Vfs;
 use crate::world::{Shape, TankKind, World};
 use crate::zoo::{Common, Entity};
 
@@ -24,9 +24,9 @@ pub enum Command {
     Drain(u32),
     /// `cash N`: adds to the cash (a negative number takes from it).
     Cash(f32),
-    /// `food X,Y TYPE`: a full pile of food of the type (`herbchow`) on a tile, as a keeper puts
-    /// it down.
-    Food(i32, i32, String),
+    /// `food X,Y TYPE [UNITS]`: a pile of food of the type (`herbchow`) on a tile, as a keeper puts
+    /// it down: full, or with this many units.
+    Food(i32, i32, String, Option<i32>),
 }
 
 /// The highest elevation a script sets.
@@ -52,11 +52,15 @@ impl std::str::FromStr for Command {
                 let cash = words[1].parse::<f32>().ok().filter(|c| c.is_finite());
                 Command::Cash(cash.ok_or_else(|| format!("bad cash: {text:?}"))?)
             }
-            Some("food") if words.len() == 3 => {
+            Some("food") if (3..=4).contains(&words.len()) => {
                 let at = words[1].split_once(',');
                 let at = at.and_then(|(x, y)| Some((x.parse().ok()?, y.parse().ok()?)));
                 let (x, y) = at.ok_or_else(|| format!("bad tile: {text:?}"))?;
-                Command::Food(x, y, words[2].into())
+                let units = words.get(3).map(|w| {
+                    (w.parse().ok().filter(|&n| n >= 0))
+                        .ok_or_else(|| format!("bad units: {text:?}"))
+                });
+                Command::Food(x, y, words[2].into(), units.transpose()?)
             }
             Some("tile") if words.len() == 6 => {
                 let part = |i: usize, max: i64| {
@@ -169,13 +173,13 @@ impl Run {
                 self.money.add_cash(amount);
                 true
             }
-            Command::Food(x, y, ref name) => self.put_food(x, y, name),
+            Command::Food(x, y, ref name, units) => self.put_food(x, y, name, units),
         }
     }
 
-    /// A full pile of food of the type `name` in the middle of tile `(x, y)`; whether there is
-    /// such a tile and such a type.
-    fn put_food(&mut self, x: i32, y: i32, name: &str) -> bool {
+    /// A pile of food of the type `name` in the middle of tile `(x, y)`, full unless `units` says
+    /// otherwise; whether there is such a tile and such a type.
+    fn put_food(&mut self, x: i32, y: i32, name: &str, units: Option<i32>) -> bool {
         let Some(tile) = self.world.tile_index(x, y) else {
             return false;
         };
@@ -193,7 +197,7 @@ impl Run {
             colors: Vec::new(),
             fence: None,
             movement_mode: 0,
-            food: full,
+            food: units.unwrap_or(full),
             animal: None,
         };
         let entity = Entity {

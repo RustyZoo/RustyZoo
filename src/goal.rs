@@ -582,8 +582,7 @@ impl Cx<'_, '_> {
         let Some(here) = self.tile() else {
             return false;
         };
-        let mut mover = self.unit.mover.clone();
-        mover.at = Some(here);
+        let mover = crate::unit::movement::mover(self.unit, self.world, self.at, here);
         let mut finder = std::mem::take(&mut self.world.units.finder);
         let reply = finder.request(self.world, &mover, to, partial);
         self.world.units.finder = finder;

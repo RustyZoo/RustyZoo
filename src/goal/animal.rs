@@ -43,23 +43,13 @@ impl Cx<'_, '_> {
         let at = |t: usize| ((t % width) as i64, (t / width) as i64);
         let (hx, hy) = here.map_or((0, 0), at);
         let distance = |tile: usize| (at(tile).0 - hx).pow(2) + (at(tile).1 - hy).pow(2);
-        let rng = &mut *self.ctx.rng;
-        let chosen = if pieces.is_empty() {
-            None
-        } else if rng.rand() & 3 == 0 {
-            pieces.get(rng.pick(pieces.len() as u32) as usize)
-        } else if rng.rand() & 3 == 0 {
-            pieces.iter().min_by_key(|p| p.left)
-        } else {
-            pieces.iter().min_by_key(|p| distance(p.tile))
-        };
-        let id = chosen.and_then(|p| world.zoo.entities[p.at].common.as_ref().map(|c| (c.id, p.tile)));
-        let walking = id.is_some_and(|(_, tile)| self.path_to(tile, false))
+        let chosen = food::choose(&pieces, distance, self.ctx.rng);
+        let walking = chosen.is_some_and(|p| self.path_to(p.tile, false))
             && self.walk_set("bFindKeeperFood", false, false);
-        match (id, walking) {
-            (Some((id, _)), true) => {
+        match chosen {
+            Some(p) if walking => {
                 if let Part::Animal(a) = &mut self.unit.part {
-                    a.food = id;
+                    a.food = p.id;
                 }
             }
             _ => self.set_task(NONE, 0, 0, None),

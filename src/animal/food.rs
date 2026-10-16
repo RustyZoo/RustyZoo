@@ -16,6 +16,7 @@ use crate::build::number;
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::goal::Cx;
+use crate::sim::Rng;
 use crate::unit::{Ctx, Part, Unit};
 use crate::world::World;
 use crate::zoo::Entity;
@@ -35,12 +36,16 @@ pub fn fullness(left: i32, max: i32) -> usize {
 
 /// The full amount of a food type (`cMaxFoodUnits`, 0 when absent).
 pub fn max_units(cat: &Catalogue, e: &Entity) -> i32 {
-    find(cat, e).and_then(|t| number(t, "cMaxFoodUnits")).unwrap_or(0.0) as i32
+    find(cat, e)
+        .and_then(|t| number(t, "cMaxFoodUnits"))
+        .unwrap_or(0.0) as i32
 }
 
 /// The kind of food a type holds or an animal eats (`cKeeperFoodType`).
 fn kind(cat: &Catalogue, e: &Entity) -> i32 {
-    find(cat, e).and_then(|t| number(t, "cKeeperFoodType")).unwrap_or(0.0) as i32
+    find(cat, e)
+        .and_then(|t| number(t, "cKeeperFoodType"))
+        .unwrap_or(0.0) as i32
 }
 
 /// What eating reads of the world and asks of it.
@@ -135,9 +140,10 @@ pub fn near(world: &World, x: u32, k: &Keys) -> Vec<u32> {
     std::iter::once(x).chain(neighbours).collect()
 }
 
-/// A piece of food: its place in the entity list, the tile it was found on and its units.
+/// A piece of food: its id, its place in the entity list, the tile it was found on and its units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Piece {
+    pub id: u32,
     pub at: usize,
     pub tile: usize,
     pub left: i32,
@@ -154,8 +160,13 @@ pub fn pieces(world: &World, cat: &Catalogue, regions: &[u32], wanted: i32) -> V
             if entity.class != "food" || found.iter().any(|p| p.at == e) {
                 continue;
             }
-            if let Some(c) = entity.common.as_ref().filter(|_| kind(cat, entity) == wanted) {
+            if let Some(c) = entity
+                .common
+                .as_ref()
+                .filter(|_| kind(cat, entity) == wanted)
+            {
                 found.push(Piece {
+                    id: c.id,
                     at: e,
                     tile,
                     left: c.food,
@@ -166,6 +177,22 @@ pub fn pieces(world: &World, cat: &Catalogue, regions: &[u32], wanted: i32) -> V
     found
 }
 
+/// 11.8: the piece the keeper food goal goes to: with a chance of 1 in 4 (`rand & 3 == 0`) a
+/// random one, else with a chance of 1 in 4 the one with the least left, else the nearest by
+/// `distance` of its tile. The first of equals wins. Nothing is drawn when there is no piece.
+pub fn choose(pieces: &[Piece], distance: impl Fn(usize) -> i64, rng: &mut Rng) -> Option<Piece> {
+    if pieces.is_empty() {
+        return None;
+    }
+    if rng.rand() & 3 == 0 {
+        return pieces.get(rng.pick(pieces.len() as u32) as usize).copied();
+    }
+    if rng.rand() & 3 == 0 {
+        return pieces.iter().min_by_key(|p| p.left).copied();
+    }
+    pieces.iter().min_by_key(|p| distance(p.tile)).copied()
+}
+
 /// What eating reads of the animal at position `at`: the food it aims at and its place.
 pub fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
     let entity = &world.zoo.entities[at];
@@ -173,11 +200,13 @@ pub fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
         return Meal::default();
     };
     let food = world.find(a.food).map(|i| &world.zoo.entities[i]);
-    let tile = entity.common.as_ref().and_then(|c| {
-        world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
-    });
+    let tile = entity
+        .common
+        .as_ref()
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
     Meal {
-        left: (food.filter(|f| f.class == "food")).map_or(0, |f| f.common.as_ref().map_or(0, |c| c.food)),
+        left: (food.filter(|f| f.class == "food"))
+            .map_or(0, |f| f.common.as_ref().map_or(0, |c| c.food)),
         wet: tile.is_some_and(|t| world.is_water(t)),
         in_set: unit.runner.top() == Some("bEat"),
         has_set: data.set(entity, "bEat").is_some(),
@@ -186,14 +215,22 @@ pub fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
 }
 
 /// Does what a meal asked: `bEat` started or queued, the goal reset, the food's units taken.
-pub fn apply(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data, m: Meal) {
+pub fn apply(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    m: Meal,
+) {
     if m.start {
         let env = Sets {
             data,
             unit: &world.zoo.entities[at],
             rng: &mut *ctx.rng,
         };
-        unit.runner.start(&mut unit.animation, &env, "bEat", true, false, true);
+        unit.runner
+            .start(&mut unit.animation, &env, "bEat", true, false, true);
     }
     if m.queue {
         unit.runner.request("bEat");
@@ -222,7 +259,12 @@ pub fn apply(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data:
     if m.left <= 0 {
         ctx.remove(world, id);
     }
-    let line = format!("eat {} {id} {} {}", unit.id, m.left, STATES[fullness(m.left, max)]);
+    let line = format!(
+        "eat {} {id} {} {}",
+        unit.id,
+        m.left,
+        STATES[fullness(m.left, max)]
+    );
     world.units.tell(line);
 }
 
@@ -239,15 +281,24 @@ pub fn feed(cx: &mut Cx) {
 /// The direction of the eight that is nearest to the offset `(dx, dy)` in tiles, as the
 /// original's arc tangent gives it, by the signs and the slope (22.5 degrees is a slope of
 /// 0.41421356). Both 0 gives none.
-fn nearest_direction(dx: i32, dy: i32) -> Option<u32> {
-    let (ax, ay) = (i64::from(dx.abs()), i64::from(dy.abs()));
+pub(super) fn nearest_direction(dx: i32, dy: i32) -> Option<u32> {
+    let (ax, ay) = (i64::from(dx).abs(), i64::from(dy).abs());
     let side = |long: i64, short: i64| short * 100_000_000 < long * 41_421_356;
     let step = match () {
         _ if side(ax, ay) => (dx.signum(), 0),
         _ if side(ay, ax) => (0, dy.signum()),
         _ => (dx.signum(), dy.signum()),
     };
-    let all = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
+    let all = [
+        (0, -1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+        (0, 1),
+        (-1, 1),
+        (-1, 0),
+        (-1, -1),
+    ];
     all.iter().position(|&d| d == step).map(|d| d as u32)
 }
 
@@ -256,8 +307,14 @@ pub fn face(unit: &Unit, world: &mut World, at: usize) {
     let Part::Animal(a) = &unit.part else {
         return;
     };
-    let tile = |e: &Entity| e.common.as_ref().map(|c| (c.x.div_euclid(64), c.y.div_euclid(64)));
-    let food = world.find(a.food).and_then(|i| tile(&world.zoo.entities[i]));
+    let tile = |e: &Entity| {
+        e.common
+            .as_ref()
+            .map(|c| (c.x.div_euclid(64), c.y.div_euclid(64)))
+    };
+    let food = world
+        .find(a.food)
+        .and_then(|i| tile(&world.zoo.entities[i]));
     let me = &world.zoo.entities[at];
     let (Some(food), Some(c), Some(here)) = (food, me.common.as_ref(), tile(me)) else {
         return;

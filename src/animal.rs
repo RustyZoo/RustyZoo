@@ -25,8 +25,8 @@
 //! after each update of the values, `animal message <string> <id>` for a message posted and
 //! `animal trample <id> <x>,<y>` for a tile trampled.
 
-use crate::config::{Config, to_int};
 use crate::behaviour::Data;
+use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::Record;
 use crate::exhibit::{EXTERIOR, GROUNDS, rating};
@@ -860,7 +860,10 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     let busy = matches!(
         unit.runner.top(),
         Some("bSick" | "bSleep" | "bEat" | "bTestFence")
-    ) || matches!(task, 102..=106 | 114 | 115 | 122 | 124 | 128 | 129 | 133 | 134);
+    ) || matches!(
+        task,
+        102..=106 | 114 | 115 | 122 | 124 | 128 | 129 | 133 | 134
+    );
     let Part::Animal(a) = &mut unit.part else {
         return;
     };

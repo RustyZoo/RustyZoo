@@ -1493,3 +1493,415 @@ fn zero_negative_and_huge_values_of_the_new_keys_never_panic() {
     assert_eq!(go(i32::MAX, 0), (true, true));
     assert_eq!(go(-5, 10), (false, true));
 }
+
+// Hunger and eating (animals-needs 4, 5).
+
+/// The zebra of animals-needs 16.1.
+fn hungry_zebra() -> Keys {
+    let int = |key: &str, fallback: i32| match key {
+        "cHungerIncrement" => 3,
+        "cHungerThreshold" => 50,
+        "cNoFoodChange" => -50,
+        "cHungryHealthChange" => 10,
+        "cKeeperFoodUnitsEaten" => 5,
+        "cMaxHits" => 120,
+        _ => fallback,
+    };
+    Keys::read(&int, &Class::default())
+}
+
+/// One status tick of a hunger check: the pending changes first, then the checks.
+fn hunger_check(a: &mut Animal, k: &Keys, env: &Env) -> Out {
+    a.update(k);
+    a.counters[HUNGER] = 0;
+    super::run(a, k, &Class::default(), env, &mut Rng::default())
+}
+
+#[test]
+fn a_zebra_without_food_notes_it_once_then_complains_and_pays_at_the_maximum() {
+    let (k, env) = (hungry_zebra(), Env::default());
+    let mut a = Animal {
+        health: 120,
+        ..animal()
+    };
+    let mut messages = Vec::new();
+    for n in 1..=36 {
+        let out = hunger_check(&mut a, &k, &env);
+        messages.push(out.messages.contains(&NO_FOOD));
+        // Hunger 3 (n - 1) is tested before the check's own rise.
+        assert_eq!(a.hunger, (3 * (n - 1)).min(100), "check {n}");
+        let paid = (a.happiness_change, a.health_change);
+        match n {
+            18 => assert!(
+                a.no_food && !messages[17],
+                "the first hungry check only notes it"
+            ),
+            19..=34 => assert_eq!(paid, (0, 0), "check {n}: no penalty before 100"),
+            35 | 36 => assert_eq!(paid, (-50, -10), "check {n}"),
+            _ => assert!(!a.no_food && messages[n as usize - 1..].iter().all(|m| !m)),
+        }
+    }
+    assert_eq!(
+        messages.iter().filter(|&&m| m).count(),
+        18,
+        "checks 19 to 36"
+    );
+}
+
+#[test]
+fn a_hungry_animal_that_finds_food_wants_it_and_forgets_its_thirst() {
+    let k = hungry_zebra();
+    let env = Env {
+        food_total: 1,
+        ..Env::default()
+    };
+    let mut a = Animal {
+        hunger: 50,
+        thirsty: true,
+        ..animal()
+    };
+    let out = hunger_check(&mut a, &k, &env);
+    assert!(a.wants_food && !a.thirsty && !a.no_food && out.messages.is_empty());
+    // Not hungry enough, or already on its way, or on the keeper food task: nothing.
+    for (hunger, wants, task) in [(49, false, false), (50, true, false), (50, false, true)] {
+        let mut a = Animal {
+            hunger,
+            wants_food: wants,
+            ..animal()
+        };
+        let env = Env {
+            food_total: 1,
+            food_task: task,
+            ..Env::default()
+        };
+        hunger_check(&mut a, &k, &env);
+        assert_eq!((a.wants_food, a.no_food), (wants, false), "{hunger} {task}");
+    }
+    // Food with nothing left in total is no food.
+    let mut a = Animal {
+        hunger: 60,
+        ..animal()
+    };
+    hunger_check(&mut a, &k, &Env::default());
+    assert!(!a.wants_food && a.no_food);
+}
+
+#[test]
+fn eating_takes_a_bite_per_tick_and_two_on_a_hunger_check_tick() {
+    let k = hungry_zebra();
+    let meal = Meal {
+        left: 60,
+        in_set: true,
+        has_set: true,
+        ..Meal::default()
+    };
+    let env = Env {
+        meal,
+        ..Env::default()
+    };
+    // The tick's bite: the pending hunger is the bite's worth.
+    let mut a = Animal {
+        hunger: 60,
+        eating: true,
+        ..animal()
+    };
+    let out = super::run(&mut a, &k, &Class::default(), &env, &mut Rng::default());
+    assert_eq!((out.meal.left, a.hunger_change), (55, -5));
+    // On a hunger check tick the food loses two bites, and the hunger change is set once: the
+    // increment is gone (original bug, issue 316).
+    let mut a = Animal {
+        hunger: 60,
+        eating: true,
+        ..animal()
+    };
+    let out = hunger_check(&mut a, &k, &env);
+    assert_eq!(
+        (out.meal.left, out.meal.bites, a.hunger_change),
+        (50, 10, -5)
+    );
+    assert!(out.meal.queue && !out.meal.start && !out.meal.stop);
+    // At hunger 0 the animal stops, and the date is kept.
+    let mut a = Animal {
+        eating: true,
+        wants_food: true,
+        ..animal()
+    };
+    let at = Env {
+        now: 777,
+        ..env.clone()
+    };
+    let out = super::run(&mut a, &k, &Class::default(), &at, &mut Rng::default());
+    assert!(!a.eating && out.meal.stop && a.fed == 777 && out.meal.bites == 0);
+}
+
+#[test]
+fn eating_starts_the_eat_set_and_stops_on_no_food_water_or_a_bite_of_zero() {
+    let k = hungry_zebra();
+    let case = |m: Meal| {
+        let (mut a, mut m) = (animal(), m);
+        food::eat(&mut a, &k, &mut m);
+        (a, m)
+    };
+    let meal = Meal {
+        left: 3,
+        has_set: true,
+        ..Meal::default()
+    };
+    // The first bite starts the set; the bite is what is left.
+    let (a, m) = case(meal.clone());
+    assert!(a.eating && m.start && !m.queue && (m.left, m.bites) == (0, 3));
+    assert_eq!(a.hunger_change, -3);
+    // A type without the set eats nothing and does not stop.
+    let (a, m) = case(Meal {
+        has_set: false,
+        ..meal.clone()
+    });
+    assert!(!a.eating && !m.stop && m.bites == 0);
+    // No food, a negative count, or water: stop.
+    for bad in [(0, false), (-9, false), (3, true)] {
+        let (a, m) = case(Meal {
+            left: bad.0,
+            wet: bad.1,
+            ..meal.clone()
+        });
+        assert!(!a.eating && m.stop && m.bites == 0 && !a.no_food);
+    }
+    // A bite of 0 or below eats nothing; the worth of a huge food is capped.
+    let with = |key: &'static str, v: i32| {
+        Keys::read(&|k, f| if k == key { v } else { f }, &Class::default())
+    };
+    for bite in [0, -5] {
+        let (mut a, mut m) = (animal(), meal.clone());
+        food::eat(&mut a, &with("cKeeperFoodUnitsEaten", bite), &mut m);
+        assert!(m.stop && m.bites == 0);
+    }
+    let (mut a, mut m) = (
+        animal(),
+        Meal {
+            left: i32::MAX,
+            ..meal
+        },
+    );
+    food::eat(&mut a, &with("cFoodUnitValue", i32::MAX), &mut m);
+    assert_eq!((m.bites, a.hunger_change), (20, -i32::MAX));
+}
+
+#[test]
+fn a_pile_shows_empty_half_or_full_by_thirds_of_its_full_amount() {
+    use food::fullness;
+    // 16.2: 39 of 60 is half, below 20 is empty; a full amount of 0 counts as 1.
+    let at = |left| fullness(left, 60);
+    assert_eq!([at(61), at(41), at(40), at(39), at(21)], [2, 2, 1, 1, 1]);
+    assert_eq!([at(20), at(19), at(0), at(-5)], [1, 0, 0, 0]);
+    assert_eq!([fullness(0, 0), fullness(1, 0), fullness(1, -4)], [0, 2, 2]);
+    assert_eq!(fullness(i32::MAX, 1), 2);
+}
+
+#[test]
+fn the_facing_towards_food_is_the_nearest_of_the_eight_directions() {
+    // The original's arc tangent with its shortened constants.
+    let formula = |dx: i32, dy: i32| {
+        let a = f64::from(dy).atan2(f64::from(dx));
+        let i = ((a + 3.1415926535) * 0.15915494309644432 * 8.0 + 0.5) as u32;
+        (i + 6) % 8
+    };
+    assert_eq!(food::nearest_direction(0, 0), None);
+    for dx in -9..=9 {
+        for dy in -9..=9 {
+            if (dx, dy) != (0, 0) {
+                assert_eq!(
+                    food::nearest_direction(dx, dy),
+                    Some(formula(dx, dy)),
+                    "{dx} {dy}"
+                );
+            }
+        }
+    }
+    assert_eq!(food::nearest_direction(i32::MIN, i32::MAX), Some(5));
+}
+
+/// Sets for the walk to the food and the meal.
+struct Eats(std::collections::HashMap<&'static str, Vec<crate::behaviour::Call>>);
+
+impl Eats {
+    fn new() -> Eats {
+        let call = |c: &str| crate::behaviour::parse_call(c.as_bytes()).unwrap().0;
+        let sets = [
+            ("bFindKeeperFood", vec!["fWalk(0,0)", "fPlaySet(bEat)"]),
+            ("bEat", vec!["fFaceTowardFood()", "fPlay(stand)"]),
+        ];
+        let sets = sets.map(|(name, calls)| (name, calls.into_iter().map(call).collect()));
+        Eats(sets.into_iter().collect())
+    }
+}
+
+impl crate::behaviour::Data for Eats {
+    fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
+        self.0.get(name).map(Vec::as_slice)
+    }
+    fn ambient(&self, _: &Entity) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        ["idle", "walk", "stand"]
+            .contains(&name)
+            .then_some(crate::behaviour::Timing {
+                count: 1,
+                delay: 100,
+            })
+    }
+    fn number(&self, _: &Entity, number: &crate::behaviour::Number) -> i32 {
+        crate::unit::testing::rates(number)
+    }
+    fn sound(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+}
+
+/// The zebras that hunger slowly, and a food type of 100 units.
+fn feeding() -> Catalogue {
+    let mut cat = zebras_with("cHungerIncrement=1\ncHungerThreshold=50", "");
+    cat.push(EntityType {
+        class: "food",
+        type_name: b"food".to_vec(),
+        subtype: b"herbchow".to_vec(),
+        file: None,
+        config: Some(Arc::new(config(
+            "[Characteristics/Integers]\ncMaxFoodUnits=100\n",
+        ))),
+        name_id: 2,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    cat
+}
+
+/// One step of 67 ms with the sets of `data`: the `unit` and `animal` log lines.
+fn step_log(run: &mut crate::sim::drive::Run, data: &dyn crate::behaviour::Data) -> Vec<String> {
+    let step = run.sim.step_game(
+        data,
+        &run.cat,
+        &mut run.world,
+        &mut run.money,
+        67,
+        |_, _, _| {},
+    );
+    drop(step);
+    let units = run
+        .world
+        .units
+        .take_lines()
+        .into_iter()
+        .map(|l| format!("unit {l}"));
+    let animals = run
+        .world
+        .units
+        .take_animal_lines()
+        .into_iter()
+        .map(|l| format!("animal {l}"));
+    units.chain(animals).collect()
+}
+
+#[test]
+fn a_hungry_zebra_walks_to_the_food_a_script_puts_down_eats_it_and_the_pile_goes() {
+    use crate::sim::drive::{Command, Run};
+    let mut run = Run::new(
+        (b"", b""),
+        (feeding(), Class::default()),
+        pens(),
+        Default::default(),
+        1,
+    );
+    let data = Eats::new();
+    let mut log = step_log(&mut run, &data);
+    // The zebra 500 is hungry; the pile of 45 units lies on the other side of its pen.
+    let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+        panic!("not an animal");
+    };
+    (a.hunger, a.counters[HUNGER]) = (60, 0);
+    assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+    assert!(
+        !run.apply(&Command::Food(3, 2, "nothing".into(), None)),
+        "no such type"
+    );
+    assert!(
+        !run.apply(&Command::Food(-1, 2, "herbchow".into(), None)),
+        "off the map"
+    );
+    let pile = run
+        .world
+        .zoo
+        .entities
+        .last()
+        .unwrap()
+        .common
+        .as_ref()
+        .unwrap()
+        .id;
+    for _ in 0..40 * 15 {
+        log.extend(step_log(&mut run, &data));
+    }
+    let lines = |what: &str| -> Vec<&str> {
+        (log.iter().map(String::as_str))
+            .filter(|l| l.contains(what))
+            .collect()
+    };
+    let walk = lines("unit goal 500 keeperfood");
+    assert_eq!(walk.len(), 1, "{walk:?}");
+    assert_eq!(lines("unit set 500 bFindKeeperFood").len(), 1);
+    // A short set is queued again after each bite until the food is gone.
+    assert!(!lines("unit set 500 bEat").is_empty());
+    let eats: Vec<_> = lines("animal eat 500")
+        .into_iter()
+        .map(|l| l.rsplitn(3, ' ').collect::<Vec<_>>())
+        .collect();
+    let left: Vec<_> = eats.iter().map(|e| e[1]).collect();
+    let state: Vec<_> = eats.iter().map(|e| e[0]).collect();
+    assert_eq!(left, ["25", "5", "0"], "bites of 20, 20 and what is left");
+    assert_eq!(state, ["empty"; 3]);
+    // The pile goes at the next removal pass, and the zebra stops: its goal is reset.
+    assert!(run.world.find(pile).is_none());
+    assert_eq!(lines("unit goal 500 none").len(), 1);
+    let Part::Animal(a) = &run.world.units.get(500).unwrap().part else {
+        panic!("not an animal");
+    };
+    assert!(!a.eating && !a.wants_food && a.hunger < 60);
+    // The other zebra was never hungry.
+    assert!(lines("animal eat 501").is_empty());
+}
+
+#[test]
+fn the_keeper_food_goal_draws_two_numbers_and_picks_by_them() {
+    use food::{Piece, choose};
+    let piece = |id, left, tile| Piece {
+        id,
+        at: id as usize,
+        tile,
+        left,
+    };
+    // Distances 9, 25 and 1; units left 50, 10 and 30.
+    let pieces = [piece(0, 50, 3), piece(1, 10, 5), piece(2, 30, 1)];
+    let distance = |tile: usize| (tile * tile) as i64;
+    assert_eq!(choose(&[], distance, &mut Rng::default()), None);
+    let mut seen = [false; 3];
+    for seed in 0..60 {
+        let (mut rng, mut check) = (Rng::default(), Rng::default());
+        (rng.seed(seed), check.seed(seed));
+        // The first draw picks a random piece with the second; else the second tests the least.
+        let (kind, expected) = match check.rand() & 3 {
+            0 => (0, pieces[check.rand() as usize % 3].id),
+            _ if check.rand() & 3 == 0 => (1, 1),
+            _ => (2, 2),
+        };
+        assert_eq!(
+            choose(&pieces, distance, &mut rng).map(|p| p.id),
+            Some(expected)
+        );
+        let mut reference = Rng::default();
+        reference.seed(seed);
+        (0..2).for_each(|_| _ = reference.rand());
+        assert_eq!(rng, reference, "seed {seed}");
+        seen[kind] = true;
+    }
+    assert_eq!(seen, [true; 3], "every way of choosing came up");
+}
