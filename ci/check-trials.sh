@@ -228,7 +228,7 @@ check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tm
 # file of the type's folder.
 check base-trial 28 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
 check base-trial bFriendly,14 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit set 27645 / && s == \"\" {s=\$NF} / unit anim 27645 / && \$NF != \"idle\" && a == \"\" {a=\$2} END {print s \",\" a}"'
-check base-trial animals/lion/cat_sgr.wav 'rz run maps/scn01a.zoo --headless --bare --passes 1500 --clock 67 --seed 3 2>/dev/null | grep " unit sound " | awk "{print \$NF}" | sort -u'
+check base-trial animals/lion/cat_sgr.wav 'rz run maps/scn01a.zoo --headless --bare --passes 1500 --clock 67 --seed 3 2>/dev/null | grep " unit sound " | awk "\$NF ~ /^animals/ {print \$NF}" | sort -u'
 
 # The scenario screen from the menu button at y: the number of entries, the state of each, and the
 # first entry selected (its state and whether Play is on). A click on the icon of the first row and a
