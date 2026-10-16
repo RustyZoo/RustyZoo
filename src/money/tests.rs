@@ -61,6 +61,22 @@ fn income_adds_to_the_net_line_and_a_count_does_not_touch_it() {
 }
 
 #[test]
+fn a_count_adds_one_to_its_category_in_the_three_tables_and_not_to_the_net_or_the_cash() {
+    let mut m = money(5.0);
+    m.month = 2;
+    for category in [ADMISSIONS, GUESTS_CREATED] {
+        m.count(category);
+        m.count(category);
+        assert_eq!(row(&m, category), (2.0, 2.0, 2.0));
+    }
+    m.count(CATEGORIES);
+    m.count(usize::MAX);
+    assert_eq!((m.cash, m.total[NET]), (5.0, 0.0));
+    m.refund(ADMISSIONS_INCOME, 7.5);
+    assert_eq!((m.cash, row(&m, NET).2), (12.5, 7.5));
+}
+
+#[test]
 fn an_action_is_allowed_when_it_costs_nothing_or_at_most_the_cash() {
     let mut m = money(100.0);
     for (cost, allowed) in [

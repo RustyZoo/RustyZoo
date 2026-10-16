@@ -142,14 +142,21 @@ impl Timers {
 
 /// The value of a key of a section of the ini file; section and key names ignore case.
 pub fn ini_value<'a>(ini: &'a Config, section: &str, key: &str) -> Option<&'a [u8]> {
+    ini_values(ini, section, key).first().map(Vec::as_slice)
+}
+
+/// All values of a key of a section of the ini file, in file order; section and key names ignore
+/// case. Empty if the key is missing.
+pub fn ini_values<'a>(ini: &'a Config, section: &str, key: &str) -> &'a [Vec<u8>] {
     ini.sections()
         .filter(|(name, _)| name.eq_ignore_ascii_case(section.as_bytes()))
         .find_map(|(_, section)| {
             let k = section
                 .keys()
                 .find(|k| k.eq_ignore_ascii_case(key.as_bytes()))?;
-            section.get(k)
+            Some(section.get_all(k)).filter(|v| !v.is_empty())
         })
+        .unwrap_or(&[])
 }
 
 /// A whole-number setting of `[user]` (`screenwidth`, ...), read like the loop settings.
@@ -301,6 +308,25 @@ mod tests {
     fn periods(ini: &str) -> (u32, u32, u32) {
         let t = Timers::from_config(&Config::parse(ini.as_bytes()).unwrap());
         (t.update_period(), t.draw_period(), t.cap())
+    }
+
+    #[test]
+    fn ini_values_ignore_case_and_come_in_file_order() {
+        let ini = Config::parse(b"[Some]\nKey = a\nKey = b\nEmpty\n[SOME]\nother = c\n").unwrap();
+        let all = |s: &str, k: &str| ini_values(&ini, s, k).to_vec();
+        assert_eq!(all("some", "KEY"), [b"a".to_vec(), b"b".to_vec()]);
+        assert_eq!(ini_value(&ini, "SOME", "Key"), Some(&b"a"[..]));
+        for (s, k) in [
+            ("some", "nokey"),
+            ("nosuch", "key"),
+            ("some", "empty"),
+            ("", ""),
+        ] {
+            assert!(
+                all(s, k).is_empty() && ini_value(&ini, s, k).is_none(),
+                "{s} {k}"
+            );
+        }
     }
 
     #[test]

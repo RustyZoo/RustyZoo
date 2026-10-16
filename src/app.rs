@@ -431,6 +431,7 @@ pub struct App<'a> {
     sim_lines: Vec<String>,
     unit_lines: Vec<String>,
     animal_lines: Vec<String>,
+    guest_lines: Vec<String>,
     /// The sounds the units' animations began in the last pass.
     unit_sounds: Vec<UnitSound>,
     /// The frames and delays of the animations the units played.
@@ -471,6 +472,8 @@ enum Asked {
     Tank,
 }
 
+/// The string that starts the default name of a guest.
+const GUEST_NAME: i32 = 9507;
 /// The layout of the question boxes with a message, the main panel and the options panel, and the
 /// buttons of the options panel that leave the game.
 const QUESTION: i32 = 45000;
@@ -565,6 +568,7 @@ impl<'a> App<'a> {
             sim_lines: Vec::new(),
             unit_lines: Vec::new(),
             animal_lines: Vec::new(),
+            guest_lines: Vec::new(),
             unit_sounds: Vec::new(),
             timings: Timings::default(),
             music: None,
@@ -597,6 +601,9 @@ impl<'a> App<'a> {
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
         world.units.set_ini(self.renderer.vfs().ini());
+        if let Some(ui) = &self.ui {
+            world.units.guest_name = ui.string(GUEST_NAME);
+        }
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
         world.set_water(water.clone());
@@ -890,9 +897,11 @@ impl<'a> App<'a> {
     fn animal_told(&mut self) {
         let Some(game) = &mut self.game else {
             self.animal_lines.clear();
+            self.guest_lines.clear();
             return;
         };
         self.animal_lines = game.world.units.take_animal_lines();
+        self.guest_lines = game.world.units.take_guest_lines();
         for (message, id) in game.world.units.take_messages() {
             let name = (game.world.find(id))
                 .and_then(|at| game.world.zoo.entities[at].common.as_ref())
@@ -1948,6 +1957,7 @@ impl<'a> App<'a> {
                 .iter()
                 .map(|e| format!("{lead} animal {e}")),
         );
+        lines.extend(self.guest_lines.iter().map(|e| format!("{lead} guest {e}")));
         lines
     }
 }

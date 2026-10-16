@@ -10,6 +10,8 @@ pub const CATEGORIES: usize = 31;
 pub const ANIMAL_PURCHASE: usize = 2;
 pub const CONSTRUCTION: usize = 3;
 pub const ADMISSIONS: usize = 4;
+/// What the guests pay at the entrance.
+pub const ADMISSIONS_INCOME: usize = 5;
 pub const DONATIONS: usize = 8;
 pub const CONSTRUCTION_REFUND: usize = 9;
 pub const ANIMAL_REFUND: usize = 10;
@@ -23,6 +25,8 @@ pub const RATING: usize = 16;
 pub const ANIMAL_HAPPINESS: usize = 17;
 pub const GUEST_HAPPINESS: usize = 18;
 pub const GUESTS: usize = 25;
+/// The count of guests created.
+pub const GUESTS_CREATED: usize = 26;
 /// Income minus expenses.
 pub const NET: usize = 14;
 /// Admissions since the start, copied at each month change.
@@ -218,6 +222,14 @@ impl Money {
         if category < CATEGORIES && amount.is_finite() {
             self.cash -= amount;
             self.book(category, -amount);
+        }
+    }
+
+    /// Counts one in a count category (admissions, guests created or gone, members), in the
+    /// current month, the current year and the total.
+    pub fn count(&mut self, category: usize) {
+        if category < CATEGORIES {
+            self.book(category, 1.0);
         }
     }
 

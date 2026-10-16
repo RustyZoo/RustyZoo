@@ -336,7 +336,7 @@ usage: rustyzoo [--data <dir>] <command>
                       by the original's name, `-` for none) and `unit job ID JOB` when its job does; an idle unit wanders
                       (task `random`), and a guest stands between two walks. An animal adds `animal status ID HAPPINESS HUNGER ENERGY HEALTH` (the
                       values after the update of that tick) and `animal message STRING ID` for a message it
-                      posts and `animal trample ID X,Y` for a tile it tramples. Each unit runs a behaviour set
+                      posts and `animal trample ID X,Y` for a tile it tramples. The new guest check lets a guest in at the zoo entrance and logs `guest add ID adult|child` (the admission is booked). Each unit runs a behaviour set
                       after its move and animation: an animal
                       chooses the set of the ambient row for its happiness, a guest or
                       staff member `bZooRoutine`; `unit set ID NAME` tells a set

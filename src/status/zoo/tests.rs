@@ -291,6 +291,10 @@ fn the_sums_count_the_animals_the_value_and_the_esthetics_of_pieces() {
         };
         (a.happiness, a.at_minimum_health) = (happiness, sick);
     }
+    let Some(Part::Guest(g)) = world.units.get_mut(4).map(|u| &mut u.part) else {
+        panic!("no guest");
+    };
+    g.values[crate::guest::HAPPINESS] = -40;
     let sums = Sums::of(&world, &cat, 250.7, 0);
     // The cash and each cost are cut to whole units: 250 + 100 + 100 + 40.
     assert_eq!(
@@ -302,7 +306,12 @@ fn the_sums_count_the_animals_the_value_and_the_esthetics_of_pieces() {
         ),
         (490, 2, 1, 90)
     );
-    assert_eq!((sums.guests, sums.species, sums.esthetics), (0, 0, 9.0));
+    // The guest counts with its happiness, and not for the value of the zoo.
+    assert_eq!(
+        (sums.guests, sums.guest_happiness, sums.guest_average()),
+        (1, -40, -40)
+    );
+    assert_eq!((sums.species, sums.esthetics), (0, 9.0));
     // A decayed piece (life 2 is at its limit) loses 11 for each of the four guest types, a
     // broken one 45 more.
     let esthetics = |world: &mut World, life| {
