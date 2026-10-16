@@ -1,12 +1,13 @@
 //! The goal record, the objects, the ladder and the wander on synthetic maps.
 
 use super::*;
-use crate::behaviour::NoData;
+use crate::behaviour::{Call, Data, Env, NoData, Note, Number, Row, Timing, parse_call};
 use crate::entity::Catalogue;
 use crate::sim::{Events, Rng, Sim};
 use crate::unit::movement;
 use crate::unit::testing::{centre, entity, world};
 use crate::zoo::Clocks;
+use std::collections::HashMap;
 
 /// A 10 by 10 map with one unit of this class and id 1 at tile (5, 5).
 fn map(class: &str) -> World {
@@ -40,11 +41,57 @@ fn walk(w: &mut World) {
     }
 }
 
+/// A unit type made of text: the sets as lists of calls.
+struct Sets(HashMap<String, Vec<Call>>);
+
+impl Sets {
+    fn new(sets: &[(&str, &[&str])]) -> Sets {
+        let call = |c: &&str| parse_call(c.as_bytes()).unwrap().0;
+        let list = sets
+            .iter()
+            .map(|(n, c)| (n.to_string(), c.iter().map(call).collect()));
+        Sets(list.collect())
+    }
+
+    /// The sets of a unit that walks: `bWalk` ends at once, `bHold` never does.
+    fn walking() -> Sets {
+        Sets::new(&[
+            ("bWalk", &["fWalk(0,0)"]),
+            ("bHold", &["fKeepControl()", "fKeepControl()"]),
+        ])
+    }
+}
+
+impl Data for Sets {
+    fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
+        self.0.get(name).map(Vec::as_slice)
+    }
+    fn ambient(&self, _: &crate::zoo::Entity) -> &[Row] {
+        &[]
+    }
+    fn timing(&self, _: &crate::zoo::Entity, name: &str) -> Option<Timing> {
+        (name == "a").then_some(Timing {
+            count: 2,
+            delay: 100,
+        })
+    }
+    fn number(&self, unit: &crate::zoo::Entity, number: &Number) -> i32 {
+        NoData.number(unit, number)
+    }
+    fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<String> {
+        None
+    }
+}
+
 /// Steps the whole game `n` times and returns the `unit` lines.
 fn run(w: &mut World, s: &mut Sim, n: usize) -> Vec<String> {
+    run_with(w, s, &NoData, n)
+}
+
+fn run_with(w: &mut World, s: &mut Sim, data: &dyn Data, n: usize) -> Vec<String> {
     let mut log = Vec::new();
     for _ in 0..n {
-        s.step(w, 67, |_, _, _| {});
+        s.step_with(data, &Catalogue::default(), w, 67, |_, _, _| {});
         walk(w);
         log.extend(w.units.take_lines());
     }
@@ -53,6 +100,10 @@ fn run(w: &mut World, s: &mut Sim, n: usize) -> Vec<String> {
 
 /// Runs `f` on a goal update context of unit 1, whose state is put back.
 fn with_cx<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> R {
+    with_data(w, rng, &NoData, f)
+}
+
+fn with_data<R>(w: &mut World, rng: &mut Rng, data: &dyn Data, f: impl FnOnce(&mut Cx) -> R) -> R {
     let mut u = unit(w).clone();
     let (events, mut removals) = (Events::default(), Vec::new());
     let mut ctx = Ctx {
@@ -67,7 +118,7 @@ fn with_cx<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> R {
         world: w,
         ctx: &mut ctx,
         at: 0,
-        data: &NoData,
+        data,
     };
     let r = f(&mut cx);
     *w.units.get_mut(1).unwrap() = u;
@@ -236,7 +287,6 @@ fn an_idle_animal_wanders_to_a_tile_and_then_picks_another_walk() {
         ]
     );
     assert!(goals.len() > 6, "{goals:?}");
-    assert!(log.contains(&"set 1 bWalk".to_string()));
     let steps = log.iter().filter(|l| l.starts_with("tile 1 ")).count();
     assert!(steps >= 3, "it walked: {steps} tiles");
     assert!(unit(&w).goal.record.task <= RANDOM);
@@ -295,19 +345,21 @@ fn a_unit_with_no_way_to_go_keeps_trying_and_holds_nothing() {
 }
 
 #[test]
-fn going_to_an_unreachable_tile_or_without_leave_to_move_fails_and_leaves_no_path() {
+fn going_to_an_unreachable_tile_or_without_leave_to_move_fails_and_leaves_no_target() {
     let mut w = map("animals");
     let mut rng = Rng::default();
-    with_cx(&mut w, &mut rng, |cx| {
-        assert!(!cx.go_to(1000, false, false), "off the map");
+    with_data(&mut w, &mut rng, &Sets::walking(), |cx| {
+        assert!(!cx.go_to(1000, false, false, true), "off the map");
         assert!(cx.unit.path.is_empty() && cx.unit.destination.is_none());
-        assert!(cx.go_to(tile(7, 5), false, false));
+        assert!(cx.go_to(tile(7, 5), false, false, true));
         assert_eq!(cx.unit.path.last(), Some(&tile(7, 5)));
         assert_eq!(cx.record().target.tile, Some(tile(7, 5)));
-        // Carried: the walk set does not start and the path is dropped.
+        // Carried: the walk set does not start; the path and the destination stay as asked.
+        cx.record().target.clear();
         cx.unit.carried = true;
-        assert!(!cx.go_to(tile(6, 5), false, false));
-        assert!(cx.unit.path.is_empty());
+        assert!(!cx.go_to(tile(6, 5), false, false, true));
+        assert_eq!(cx.unit.path.last(), Some(&tile(6, 5)));
+        assert!(cx.unit.destination.is_some() && !cx.record().target.is_set());
     });
 }
 
@@ -317,14 +369,15 @@ fn a_synthetic_goal_runs_a_go_to_job_and_then_a_go_to_task_to_their_ends() {
     let mut s = sim();
     let mut rng = Rng::default();
     let (job_at, task_at) = (tile(6, 5), tile(8, 5));
+    let data = Sets::walking();
     w.units.take_lines();
-    with_cx(&mut w, &mut rng, |cx| {
+    with_data(&mut w, &mut rng, &data, |cx| {
         cx.set_task(HABITAT, 0, 0, Some(task_at));
         cx.set_job(16, 0, None);
-        assert!(cx.go_to(job_at, false, true), "the job walks first");
+        assert!(cx.go_to(job_at, false, true, false), "the job walks first");
     });
     assert_eq!(unit(&w).goal.record.job_target.tile, Some(job_at));
-    let log = run(&mut w, &mut s, 200);
+    let log = run_with(&mut w, &mut s, &data, 200);
     let u = unit(&w);
     assert!(
         u.goal.record.job_done && !u.goal.record.job_target.is_set(),
@@ -335,26 +388,51 @@ fn a_synthetic_goal_runs_a_go_to_job_and_then_a_go_to_task_to_their_ends() {
         "the task waits for its own walk"
     );
     assert_eq!(u.goal.record.target.tile, Some(task_at));
-    with_cx(&mut w, &mut rng, |cx| {
-        assert!(cx.go_to(task_at, false, false))
+    with_data(&mut w, &mut rng, &data, |cx| {
+        assert!(cx.go_to(task_at, false, false, false))
     });
-    let log = run(&mut w, &mut s, 400);
+    let log = run_with(&mut w, &mut s, &data, 400);
     assert_eq!(unit(&w).goal.record.task, GAWK, "{log:?}");
     assert!(log.contains(&"goal 1 gawk 0 - -".to_string()));
     assert!(!unit(&w).moving);
 }
 
 #[test]
-fn the_ladder_stops_the_goals_of_a_halted_animal_and_it_does_not_wander() {
+fn a_halted_animal_runs_no_goal_update_and_draws_nothing() {
     for halt in 0..3 {
         let mut w = map("animals");
         let mut s = sim();
         run(&mut w, &mut s, 3);
         assert_eq!(unit(&w).goal.record.task, RANDOM);
-        let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part else {
+        let u = w.units.get_mut(1).unwrap();
+        u.goal.object = Some(Goal::Base);
+        u.goal.stale = false;
+        let Part::Animal(a) = &mut u.part else {
             panic!()
         };
         [&mut a.dying, &mut a.crated, &mut a.egg][halt].clone_from(&true);
+        // One update: the record is cleared and stamped again, nothing else runs.
+        w.units.ai_ticks = 9;
+        let mut rng = Rng::default();
+        let before = rng.state();
+        let mut u = unit(&w).clone();
+        let (events, mut removals) = (Events::default(), Vec::new());
+        let mut ctx = Ctx {
+            rng: &mut rng,
+            events: &events,
+            removals: &mut removals,
+            step: 67,
+            cat: &Catalogue::default(),
+        };
+        update(&mut u, &mut w, &mut ctx, 0, &NoData);
+        assert_eq!(rng.state(), before, "no draw");
+        assert_eq!((u.goal.record.task, u.goal.record.start), (NONE, 9));
+        assert!(
+            u.goal.stale && u.goal.object == Some(Goal::Base),
+            "no object update"
+        );
+        *w.units.get_mut(1).unwrap() = u;
+        // At every update while the state is up, and no wander in between.
         let log = run(&mut w, &mut s, 100);
         assert_eq!(
             log.iter()
@@ -370,9 +448,6 @@ fn the_ladder_stops_the_goals_of_a_halted_animal_and_it_does_not_wander() {
 fn a_goal_update_draws_one_number_and_a_guest_standing_draws_one_more() {
     let draws = |class: &str, wandered: bool| {
         let mut w = map(class);
-        if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
-            a.crated = true;
-        }
         w.units.get_mut(1).unwrap().goal.wandered = wandered;
         let mut rng = Rng::default();
         let mut at = rng.clone();
@@ -404,10 +479,11 @@ fn a_goal_update_draws_one_number_and_a_guest_standing_draws_one_more() {
 fn a_guest_walks_once_then_stands_until_its_flag_comes_down_and_walks_again() {
     let mut w = map("guests");
     let mut s = sim();
+    let data = Sets::walking();
     let mut standing = 0;
     let mut walks = 0;
     for _ in 0..600 {
-        let log = run(&mut w, &mut s, 1);
+        let log = run_with(&mut w, &mut s, &data, 1);
         walks += log.iter().filter(|l| *l == "goal 1 random 1 - -").count();
         let u = unit(&w);
         if u.goal.wandered {
@@ -498,4 +574,125 @@ fn the_hash_covers_the_goals() {
     assert_ne!(h(&w), b);
     w.units.get_mut(1).unwrap().goal.sub_stale = true;
     assert_ne!(h(&w), b);
+}
+
+#[test]
+fn an_animals_wander_takes_a_destination_and_a_target_and_starts_no_set() {
+    let data = Sets::walking();
+    let mut w = world((10, 10), |_, e| {
+        e.push(entity("animals", "", 1, centre((5, 5)), 0));
+        e.push(entity("guests", "", 2, centre((2, 2)), 0));
+    });
+    let mut s = sim();
+    let log = run_with(&mut w, &mut s, &data, 3);
+    assert!(!log.contains(&"set 1 bWalk".to_string()), "{log:?}");
+    assert!(log.contains(&"set 2 bWalk".to_string()), "{log:?}");
+    let animal = unit(&w);
+    assert!(animal.runner.top().is_none(), "no set");
+    assert!(animal.goal.record.target.tile.is_some() && animal.destination.is_some());
+    assert_eq!(animal.goal.record.target.pos, animal.destination);
+}
+
+#[test]
+fn the_wander_is_done_on_the_target_tile_with_fewer_than_two_calls_left() {
+    let data = Sets::new(&[
+        ("bOne", &["fKeepControl()"]),
+        ("bTwo", &["fKeepControl()", "fKeepControl()"]),
+    ]);
+    // (set, done): no set counts 0; the path is not what counts.
+    for (set, done) in [(None, true), (Some("bOne"), true), (Some("bTwo"), false)] {
+        let mut w = map("animals");
+        let mut rng = Rng::default();
+        with_data(&mut w, &mut rng, &data, |cx| {
+            cx.set_task(RANDOM, 1, 0, Some(tile(5, 5)));
+            cx.unit.path = vec![tile(5, 5), tile(6, 5), tile(7, 5), tile(8, 5)];
+            if let Some(set) = set {
+                assert!(cx.start_set(set, false));
+            }
+            cx.check_done();
+            assert_eq!(cx.record().done, done, "{set:?}");
+            assert!(!cx.record().target.is_set(), "the target is cleared");
+            if !done {
+                // The task stays and the decide of the same update draws a new place.
+                cx.unit.path.clear();
+                cx.base();
+                assert_eq!(cx.record().task, RANDOM);
+                assert!(cx.record().target.is_set() && !cx.record().done);
+            }
+        });
+    }
+    // Not on the target tile: nothing happens, whatever the set.
+    let mut w = map("animals");
+    let mut rng = Rng::default();
+    with_data(&mut w, &mut rng, &data, |cx| {
+        cx.set_task(RANDOM, 1, 0, Some(tile(6, 5)));
+        cx.check_done();
+        assert!(!cx.record().done && cx.record().target.tile == Some(tile(6, 5)));
+    });
+}
+
+#[test]
+fn the_walk_start_restarts_the_set_forced_and_fails_without_its_calls() {
+    let data = Sets::new(&[("bWalk", &["fKeepControl()"]), ("bPlay", &["fPlay(a)"])]);
+    let mut w = map("animals");
+    let mut rng = Rng::default();
+    with_data(&mut w, &mut rng, &data, |cx| {
+        assert!(cx.path_to(tile(7, 5), false));
+        // A running bWalk starts again, and the sequence that plays goes on.
+        assert!(cx.start_set("bPlay", false));
+        let timing = |n: &str| data.timing(&cx.world.zoo.entities[0], n);
+        {
+            let mut rng = Rng::default();
+            let mut env = Env {
+                data: &data,
+                unit: &cx.world.zoo.entities[0],
+                rng: &mut rng,
+            };
+            cx.unit.runner.step(&mut cx.unit.animation, &mut env, 0);
+        }
+        cx.unit.animation.advance(0, &timing);
+        assert!(!cx.unit.animation.on_base());
+        cx.unit.animation.notes.clear();
+        assert!(cx.start_walk(false, false, false));
+        assert!(cx.start_walk(false, false, false));
+        assert_eq!(
+            cx.unit.animation.notes,
+            [Note::Set("bWalk".into()), Note::Set("bWalk".into())]
+        );
+        assert!(!cx.unit.animation.on_base(), "the sequence is kept");
+        assert_eq!(cx.record().target.tile, Some(tile(7, 5)));
+        // A set that cannot be interrupted refuses a walk that is not forced.
+        {
+            let mut rng = Rng::default();
+            let env = Env {
+                data: &data,
+                unit: &cx.world.zoo.entities[0],
+                rng: &mut rng,
+            };
+            let (anim, runner) = (&mut cx.unit.animation, &mut cx.unit.runner);
+            assert!(runner.start(anim, &env, "bWalk", false, false, true));
+        }
+        cx.record().target.clear();
+        assert!(!cx.start_walk(false, false, false));
+        assert!(!cx.record().target.is_set() && !cx.unit.path.is_empty());
+        assert!(cx.start_walk(false, false, true), "forced");
+        // The flying mode uses bFly, which the type lacks: the start fails, nothing is set and
+        // the path and the destination stay.
+        cx.record().target.clear();
+        cx.world.zoo.entities[0]
+            .common
+            .as_mut()
+            .unwrap()
+            .movement_mode = 1;
+        assert!(!cx.start_walk(false, false, true));
+        assert!(!cx.record().target.is_set());
+        assert!(!cx.unit.path.is_empty() && cx.unit.destination.is_some());
+    });
+    // No calls for the name: the start fails.
+    let mut w = map("animals");
+    with_data(&mut w, &mut rng, &Sets::new(&[]), |cx| {
+        assert!(cx.path_to(tile(7, 5), false));
+        assert!(!cx.start_walk(false, false, true));
+        assert!(!cx.record().target.is_set() && !cx.unit.path.is_empty());
+    });
 }

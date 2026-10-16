@@ -273,7 +273,9 @@ pub fn update(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         at,
         data,
     };
-    cx.ladder();
+    if !cx.ladder() {
+        return;
+    }
     cx.common();
     cx.run_goal();
     cx.run_sub();
@@ -349,19 +351,15 @@ impl Cx<'_, '_> {
         self.record().job_target.clear();
     }
 
-    /// A dying, crated or egg animal does nothing (10.1 point 1).
+    /// A dying, crated or egg animal runs no goal update (10.1 point 1).
     fn halted(&self) -> bool {
         matches!(&self.unit.part, Part::Animal(a) if a.dying || a.crated || a.egg)
     }
 
     /// 7.3: whether an idle unit wanders: it is not in the building chain and not chased (M7).
-    /// A guest also needs its wandered flag down; a halted animal stays where it is.
+    /// A guest also needs its wandered flag down.
     fn keeps_moving(&self) -> bool {
-        let free = match self.unit.kind {
-            Kind::Animal => !self.halted(),
-            Kind::Guest => !self.unit.goal.wandered,
-            _ => true,
-        };
+        let free = self.unit.kind != Kind::Guest || !self.unit.goal.wandered;
         free && !BUILDING.contains(&self.unit.goal.record.task)
     }
 
@@ -403,16 +401,21 @@ impl Cx<'_, '_> {
     }
 
     /// 10: the checks of the unit's kind that may replace the task. At most one fires; those
-    /// of the per-kind issues come in front of these.
-    fn ladder(&mut self) {
+    /// of the per-kind issues come in front of these. False ends the goal update there.
+    fn ladder(&mut self) -> bool {
         let r = &self.unit.goal.record;
         let (task, done) = (r.task, r.done);
         match self.unit.kind {
-            // 10.1 point 1: the goals of a halted animal are stopped.
-            Kind::Animal if self.halted() && task != NONE => self.set_task(NONE, 0, 0, None),
+            // 10.1 point 1: a halted animal's record is cleared at every update (the start is
+            // stamped again, the object marked stale) and nothing else runs, not even the draw.
+            Kind::Animal if self.halted() => {
+                self.set_task(NONE, 0, 0, None);
+                return false;
+            }
             Kind::Guest => self.guest_ladder(task, done),
             _ => {}
         }
+        true
     }
 
     /// 10.2 point 8: the task goes on. Point 10: the guest stands while its wandered flag is up,
@@ -507,12 +510,18 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 7.2: the unit reached its target, which is cleared; a wander with fewer than two points
-    /// of path left is done.
+    /// The calls the unit's top set has left (behaviours 4.1).
+    fn calls_left(&self) -> usize {
+        let entity = &self.world.zoo.entities[self.at];
+        self.unit.runner.calls_left(self.data, entity)
+    }
+
+    /// 7.2: the unit reached its target, which is cleared; a wander is done when the top set has
+    /// fewer than two calls left. With more the task stays and the decide draws a new place.
     fn check_done(&mut self) {
         if self.reached(false) {
             self.record().target.clear();
-            if self.unit.path.len() < 2 && self.record().task == RANDOM {
+            if self.calls_left() < 2 && self.record().task == RANDOM {
                 self.record().done = true;
                 self.unit.goal.wants_to_decide = false;
             }
@@ -527,7 +536,9 @@ impl Cx<'_, '_> {
     }
 
     /// 7.2: unless it is walking, the unit empties its path, asks for a random destination
-    /// and walks there. The target is the job's for the base sub-goal.
+    /// and walks there, forced. The target is the job's for the base sub-goal. An animal's
+    /// wander starts no set: its ambient sets walk it to the destination, which becomes its
+    /// target.
     fn wander(&mut self, job: bool) {
         let r = &self.unit.goal.record;
         if (if job { &r.job_target } else { &r.target }).tile.is_some()
@@ -536,14 +547,23 @@ impl Cx<'_, '_> {
             return;
         }
         self.unit.path.clear();
-        if self.random_walk() {
-            self.start_walk(false, job);
+        if !self.random_walk() {
+            return;
+        }
+        if !job && self.unit.kind == Kind::Animal {
+            if let Some(dest) = self.unit.destination {
+                let world = &*self.world;
+                self.unit.goal.record.target.set_pos(world, Some(dest));
+            }
+        } else {
+            self.start_walk(false, job, true);
         }
     }
 
-    /// The random destination of the movement spec, 10.2. Until the random walk of issue 338
-    /// lands this is its neighbour fallback (step 4), without the tile test: a straight
-    /// neighbour from a random one on, the first that has a path.
+    /// PLACEHOLDER until the random walk of issue 338 lands (it replaces this function whole).
+    /// The random destination of the movement spec, 10.2, as its neighbour fallback (step 4)
+    /// without the tile test: a straight neighbour from a random one on, the first that has a
+    /// path.
     fn random_walk(&mut self) -> bool {
         let Some(here) = self.tile() else {
             return false;
@@ -586,20 +606,19 @@ impl Cx<'_, '_> {
         reply.ok
     }
 
-    /// 8.1 `goToDest`: starts the walk set towards the destination the unit holds. It fails
-    /// when the unit may not move, has no destination or the set does not start; then the
-    /// path is dropped. On success the target becomes the destination.
-    pub fn start_walk(&mut self, run: bool, job: bool) -> bool {
+    /// 8.1 `goToDest`: starts the walk set towards the destination the unit holds, `force` as
+    /// the goal says. It fails when the unit may not move, has no destination or the set does
+    /// not start (refused, or the type has no calls for it); then nothing changes. On success
+    /// the target becomes the destination.
+    pub fn start_walk(&mut self, run: bool, job: bool, force: bool) -> bool {
         let set = match (self.mode(), run) {
             (1, _) => "bFly",
             (_, true) => "bRun",
             _ => "bWalk",
         };
         let started =
-            !self.unit.suspended() && self.unit.destination.is_some() && self.start_set(set);
+            !self.unit.suspended() && self.unit.destination.is_some() && self.start_set(set, force);
         if !started {
-            self.unit.path.clear();
-            self.unit.destination = None;
             return false;
         }
         let (world, dest) = (&*self.world, self.unit.destination);
@@ -613,12 +632,9 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// Starts the set `name` unless the top one is running under that name (behaviours 4.2). The
-    /// sequence playing goes on: the move call of the set puts the walk animation behind it.
-    pub fn start_set(&mut self, name: &str) -> bool {
-        if self.unit.runner.running() && self.unit.runner.top() == Some(name) {
-            return true;
-        }
+    /// The plain start of a set (behaviours 4.2): a running `name` starts again. Interruptible;
+    /// the sequence playing goes on, the move call of the set puts the walk animation behind it.
+    pub fn start_set(&mut self, name: &str, force: bool) -> bool {
         let entity: &Entity = &self.world.zoo.entities[self.at];
         let env = Env {
             data: self.data,
@@ -626,11 +642,11 @@ impl Cx<'_, '_> {
             rng: &mut *self.ctx.rng,
         };
         let (anim, runner) = (&mut self.unit.animation, &mut self.unit.runner);
-        runner.start(anim, &env, name, true, false, true)
+        runner.start(anim, &env, name, true, force, true)
     }
 
     /// 8.1: a path to `to`, then the walk.
-    pub fn go_to(&mut self, to: usize, run: bool, job: bool) -> bool {
-        self.path_to(to, false) && self.start_walk(run, job)
+    pub fn go_to(&mut self, to: usize, run: bool, job: bool, force: bool) -> bool {
+        self.path_to(to, false) && self.start_walk(run, job, force)
     }
 }
