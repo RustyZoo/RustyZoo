@@ -73,7 +73,7 @@ impl App<'_> {
             return;
         }
         let ty = &self.renderer.catalogue().types[carry.ty];
-        let done = place::unit::put_down(&mut game.world, ty, carry.id, (p.x, p.y, p.z), p.facing);
+        let done = place::unit::put_down(&mut game.world, carry.id, (p.x, p.y, p.z), p.facing);
         game.carry = None;
         if done {
             game.selected = Some(carry.id);
@@ -92,7 +92,7 @@ impl App<'_> {
             return;
         };
         let ty = &self.renderer.catalogue().types[carry.ty];
-        if place::unit::put_down(&mut game.world, ty, carry.id, carry.from, carry.facing) {
+        if place::unit::put_down(&mut game.world, carry.id, carry.from, carry.facing) {
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);

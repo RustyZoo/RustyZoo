@@ -583,6 +583,12 @@ impl World {
         self.exhibits.get(id)?.tank
     }
 
+    /// The floor level of tank `id`: the level of the first tile of its list (tank fauna 2).
+    pub fn floor(&self, id: u32) -> Option<i32> {
+        let first = *self.exhibits.get(id)?.order.first()?;
+        Some(self.zoo.tiles[first].elevation)
+    }
+
     /// The tiles of exhibit `id`, in the original's order (3.1).
     pub fn tiles_of(&self, id: u32) -> Vec<usize> {
         self.exhibits

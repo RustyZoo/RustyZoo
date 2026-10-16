@@ -6,7 +6,7 @@ use crate::zoo::{Common, Entity, Fence, Tile, View, Zoo};
 
 /// An entity standing at the point `(x, y)`.
 pub fn entity(class: &str, kind: &str, id: u32, (x, y): (i32, i32), rotation: u32) -> Entity {
-    let fence = (class == "fences").then_some(Fence {
+    let fence = matches!(class, "fences" | "tankwall").then_some(Fence {
         strength: 5,
         life: 5,
         timers: [0; 2],
@@ -55,6 +55,13 @@ fn shape(e: &Entity) -> Option<Shape> {
         "fences" => Some(thing(Class::Edge, (1, 1), true)),
         "paths" => Some(thing(Class::Path, (2, 2), false)),
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
+        "tankwall" => Some(Shape {
+            tank: TankKind {
+                wall: true,
+                ..TankKind::NONE
+            },
+            ..thing(Class::Wall, (1, 1), true)
+        }),
         "animals" if e.type_name == "big" => Some(thing(Class::Unit, (3, 2), false)),
         "animals" | "guests" | "keeper" | "maint" | "tour" => {
             Some(thing(Class::Unit, (1, 1), false))
@@ -101,7 +108,7 @@ pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
 }
 
 /// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`,
-/// `run` and `swim`, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
+/// `run`, `swim` and the tank animations, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
 pub struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
 
 impl Walker {
@@ -138,16 +145,18 @@ impl crate::behaviour::Data for Walker {
             _ => None,
         }
     }
-    fn ambient(&self, _: &Entity) -> &[crate::behaviour::Row] {
+    fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
         &[]
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
-        ["idle", "walk", "trot", "run", "swim"]
-            .contains(&name)
-            .then_some(crate::behaviour::Timing {
-                count: 1,
-                delay: 100,
-            })
+        [
+            "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise",
+        ]
+        .contains(&name)
+        .then_some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
     }
     fn number(&self, _: &Entity, number: &crate::behaviour::Number) -> i32 {
         rates(number)
@@ -155,6 +164,50 @@ impl crate::behaviour::Data for Walker {
     fn sound(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Heard> {
         None
     }
+}
+
+/// A 12 by 8 map with a tank of 4 by 3 tiles from (2, 2): the floor at level 0, the walls
+/// `height` high and the water at `level`; its first tile is (2, 2). The animals are the given
+/// ids at a tile and a height.
+pub fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -> World {
+    let wall = |(x, y): (i32, i32), d: u32| {
+        let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
+        entity(
+            "tankwall",
+            "iron",
+            1000 + x as u32 * 10 + y as u32 + d,
+            (x * 64 + side.0, y * 64 + side.1),
+            d,
+        )
+    };
+    let mut walls = Vec::new();
+    for t in 0..4 {
+        walls.push(wall((2 + t, 2), 0));
+        walls.push(wall((2 + t, 4), 4));
+    }
+    for t in 0..3 {
+        walls.push(wall((2, 2 + t), 6));
+        walls.push(wall((5, 2 + t), 2));
+    }
+    let mut w = world_with((12, 8), |z| {
+        z.entities.extend(walls);
+        for &(id, tile, height) in animals {
+            let mut fish = entity("animals", "fish", id, centre(tile), 0);
+            fish.common.as_mut().unwrap().z = height;
+            z.entities.push(fish);
+        }
+        z.habitat_tiles = vec![(2, 2)];
+        z.habitat_gates = vec![((2, 2), 0)];
+        z.habitat_info = vec![crate::zoo::HabitatInfo {
+            name: String::new(),
+            stats: [0; 9],
+            created: 0,
+        }];
+    });
+    let id = w.tank_at(2 * 12 + 2).unwrap();
+    let tank = w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap();
+    (tank.height, tank.level, tank.filled) = (height, level, true);
+    w
 }
 
 /// The numbers of a walking type: the rates 20, 46 and 76, the animation speeds 50 (slow) and 80

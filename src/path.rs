@@ -1,7 +1,8 @@
 //! The path finder of the original (pathfinding): a search over tiles with the costs of the unit
 //! that asks, and the list of destinations found unreachable.
 //!
-//! The finder works on tiles on land. The depth search of a tank (3.8) is not here yet. What a
+//! The search is over tiles, or over (tile, level) when the unit is in a tank or either end is a
+//! tank tile (the depth search, 3.8 and tank fauna 7). What a
 //! cost reads of the live unit (its destination, facing, tasks and water states) is a field of
 //! [`Mover`] that the unit code sets; the other units on a tile come from the world's map index.
 
@@ -16,6 +17,7 @@ mod search;
 mod tests;
 
 pub use cost::{step, terrain};
+use search::open_deep;
 pub use search::search;
 
 /// The cost of a closed step: 20 or more is closed.
@@ -59,6 +61,15 @@ pub struct Mover {
     pub water_mode: bool,
     /// The unit's own id, to leave it out of the units on a tile.
     pub id: Option<u32>,
+    /// The unit is in a tank (move kind 3), `cSurface` and `cDepth` of its type, and the levels
+    /// the depth search starts and ends at (the unit's level and the destination's).
+    pub deep: bool,
+    pub surface: bool,
+    pub depth: i32,
+    pub levels: (i32, i32),
+    /// The direction and the vertical direction the start node of a depth search is entered with:
+    /// the unit's facing and its vertical move (3.6).
+    pub start: (usize, i32),
     /// `cAvoidEdges` of the animal's type: the radius, in tiles, of the fences it keeps off.
     pub avoid_edges: u32,
     /// The tile the unit is going to now (before a new request sets it).
@@ -156,6 +167,17 @@ pub fn allowed(
     search::open(w, m, s, (a, b, d), None, building || m.building).is_some()
 }
 
+/// 4.2 in a depth search: the same for the step from level `za` of `a` to level `zb` of `b`.
+pub fn allowed_deep(
+    w: &World,
+    m: &Mover,
+    s: &Settings,
+    ((a, za), (b, zb), d): ((usize, i32), (usize, i32), usize),
+    building: bool,
+) -> bool {
+    open_deep(w, m, s, ((a, za), (b, zb), d), None, building || m.building).is_some()
+}
+
 /// The move cost of a path (3.6): each step's cost times its length factor, with the last tile as
 /// the goal.
 pub fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
@@ -180,8 +202,10 @@ pub enum Dest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reply {
     pub ok: bool,
-    /// The unit's new path, when the request made one.
+    /// The unit's new path, when the request made one, and the level of each of its tiles when
+    /// the search was in depth (else empty).
     pub path: Option<Vec<usize>>,
+    pub levels: Vec<i32>,
     pub dest: Dest,
 }
 
@@ -267,7 +291,12 @@ impl Finder {
     /// A unit asks for a path to tile `to` (3.1). `partial` accepts a path to the node nearest
     /// the goal.
     pub fn request(&mut self, w: &World, m: &Mover, to: usize, partial: bool) -> Reply {
-        let reply = |ok, path, dest| Reply { ok, path, dest };
+        let reply = |ok, path, dest| Reply {
+            ok,
+            path,
+            levels: Vec::new(),
+            dest,
+        };
         let size = w.zoo.tiles.len();
         let Some(from) = m.at.filter(|&s| s < size && to < size) else {
             return reply(false, None, Dest::Keep);
@@ -283,30 +312,45 @@ impl Finder {
             self.ease(to);
             return reply(false, None, Dest::Keep);
         }
-        if from == to {
-            return reply(true, Some(vec![from]), Dest::Set(to));
+        // The search is in depth for a unit in a tank or an end in one (3.1 item 2).
+        let deep = m.deep || w.tank_at(from).is_some() || w.tank_at(to).is_some();
+        let (z0, z1) = m.levels;
+        if from == to && (!deep || z0 == z1) {
+            let levels = if deep { vec![z0] } else { Vec::new() };
+            return Reply {
+                levels,
+                ..reply(true, Some(vec![from]), Dest::Set(to))
+            };
         }
-        // Items 5 to 7 see no goal tile (3.1).
+        // Items 5 to 7 see no goal tile (3.1); in depth each neighbour is tried at the levels
+        // -1, 0 and +1.
         let s = &self.settings;
+        let around = if deep { -1..=1 } else { 0..=0 };
+        let ok = |(a, za): (usize, i32), (b, zb): (usize, i32), d: usize| {
+            match deep {
+                true => open_deep(w, m, s, ((a, za), (b, zb), d), None, m.building),
+                false => search::open(w, m, s, (a, b, d), None, m.building),
+            }
+            .is_some()
+        };
         let enter = (0..4).any(|d| {
             let a = w.neighbour(to, d * 2);
             a.is_some_and(|a| {
-                search::open(
-                    w,
-                    m,
-                    s,
-                    (a, to, search::direction(w, a, to)),
-                    None,
-                    m.building,
-                )
-                .is_some()
+                let d = search::direction(w, a, to);
+                around
+                    .clone()
+                    .any(|dz| ok((a, z1.saturating_add(dz)), (to, z1), d))
             })
         });
         let leave = (0..8)
             .step_by(if search::diagonal(m, s) { 1 } else { 2 })
             .any(|d| {
                 let n = w.neighbour(from, d);
-                n.is_some_and(|n| search::open(w, m, s, (from, n, d), None, m.building).is_some())
+                n.is_some_and(|n| {
+                    around
+                        .clone()
+                        .any(|dz| ok((from, z0), (n, z0.saturating_add(dz)), d))
+                })
             });
         if terrain(w, m, to, None) >= MAX || !enter || !leave {
             return reply(false, None, Dest::Keep);
@@ -316,7 +360,10 @@ impl Finder {
         let found = search(w, m, s, from, to, partial);
         if found.reached {
             self.ease(to);
-            return reply(true, Some(found.path), Dest::Set(to));
+            return Reply {
+                levels: found.levels,
+                ..reply(true, Some(found.path), Dest::Set(to))
+            };
         }
         match found.path.last().copied() {
             None => {
@@ -329,7 +376,10 @@ impl Finder {
                 if far <= threshold / 2 {
                     self.record(to);
                 }
-                reply(true, Some(found.path), Dest::Set(end))
+                Reply {
+                    levels: found.levels,
+                    ..reply(true, Some(found.path), Dest::Set(end))
+                }
             }
         }
     }

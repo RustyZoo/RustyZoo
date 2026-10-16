@@ -64,8 +64,9 @@ pub enum Number {
     Characteristic(String),
 }
 
-/// The 3D target of a move: only swimmers and flyers use it. Any other first argument (`0`,
-/// `keeperfood`, `otherfood`, `mother`, `prey`, `keeper`) is not interpreted by the call.
+/// The 3D target of a move: only swimmers and flyers use it. `0` keeps the target the unit has
+/// ([`Target::Keep`]); any other first argument (`keeperfood`, `otherfood`, `mother`, `prey`,
+/// `keeper`) is no name ([`Target::None`]) and is not interpreted by the call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Target {
     None,
@@ -76,6 +77,8 @@ pub enum Target {
     Floor,
     Climb,
     Fly,
+    /// The first argument `0`: the call leaves the recorded target as it is.
+    Keep,
 }
 
 /// The animation, speed and animation speed of a move.
@@ -171,6 +174,17 @@ pub struct Row {
     pub lo: i32,
     pub hi: i32,
     pub set: String,
+}
+
+/// Where a unit is for the choice of its ambient table and of the set a nesting call plays (tank
+/// fauna 9.4); the number is the table's place in [`TABLES`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Place {
+    #[default]
+    Land,
+    Water,
+    Under,
+    Surface,
 }
 
 /// The four ambient tables of a type file, in this order.
@@ -306,6 +320,7 @@ fn target(text: &str) -> Target {
         "floor" => Target::Floor,
         "climb" => Target::Climb,
         "fly" => Target::Fly,
+        "0" => Target::Keep,
         _ => Target::None,
     }
 }

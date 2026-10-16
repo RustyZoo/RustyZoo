@@ -74,6 +74,15 @@ pub struct Tank {
     pub platform: (i32, i32),
 }
 
+impl Tank {
+    /// The wall height and the water level in levels, cut to 1000 so that a sum with a floor or a
+    /// product with 16 never overflows (a file can store any number).
+    pub fn steps(&self) -> (i32, i32) {
+        let cut = |v: u32| v.min(1000) as i32;
+        (cut(self.height), cut(self.level))
+    }
+}
+
 /// The numbers of `tanks.cfg` that make a new tank (exhibits and money 3.9 and 4.7); the first of
 /// a pair is for a tank, the second for a show tank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

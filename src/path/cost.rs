@@ -176,13 +176,31 @@ pub fn edge(w: &World, m: &Mover, t: usize, d: usize) -> u32 {
     worst + if corner { 13 } else { 0 }
 }
 
+/// Whether the ground closes the edge between `t` and its neighbour `n` in direction `d` (5.4,
+/// tank fauna 7.2): at a tank the walls decide, else the edge state and the climbers' rule.
+fn stepped(w: &World, m: &Mover, t: usize, n: usize, d: usize) -> bool {
+    let elevation = |t: usize| w.zoo.tiles[t].elevation;
+    // The top of the walls of tank `id`, and whether the two corners of `land` towards `to` are
+    // level with it.
+    let top = |id: u32| w.floor(id).zip(w.tank(id)).map(|(f, k)| f + k.steps().0);
+    let level = |land: usize, to: usize, id: u32| {
+        [(to + 1) % 8, (to + 7) % 8]
+            .iter()
+            .all(|&c| top(id) == Some(crate::render::corner_elevation(&w.zoo.tiles[land], c)))
+    };
+    match (w.tank_at(t), w.tank_at(n)) {
+        (None, None) => w.cliff(t, d) && !(m.climbs && (elevation(t) - elevation(n)).abs() <= 1),
+        (Some(a), Some(b)) => a != b && top(a) != top(b),
+        (Some(id), None) => !level(n, (d + 4) % 8, id),
+        (None, Some(id)) => !level(t, d, id),
+    }
+}
+
 fn straight(w: &World, m: &Mover, t: usize, d: usize) -> u32 {
     let Some(n) = w.neighbour(t, d) else {
         return MAX;
     };
-    let elevation = |t: usize| w.zoo.tiles[t].elevation;
-    let climbs = m.climbs && (elevation(t) - elevation(n)).abs() <= 1;
-    let step = matches!(m.kind, Kind::Guest | Kind::Animal) && w.cliff(t, d) && !climbs;
+    let step = matches!(m.kind, Kind::Guest | Kind::Animal) && stepped(w, m, t, n, d);
     let pieces: Vec<usize> = [w.edge(t, d), w.edge(n, (d + 4) % 8)]
         .into_iter()
         .flatten()

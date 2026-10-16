@@ -19,7 +19,7 @@ impl Data for Fake {
             .filter(|c| !c.is_empty())
             .map(Vec::as_slice)
     }
-    fn ambient(&self, _: &Entity) -> &[Row] {
+    fn ambient(&self, _: &Entity, _: usize) -> &[Row] {
         &self.rows
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<Timing> {
@@ -313,7 +313,7 @@ fn a_move_call_waits_for_the_units_answer_and_the_set_goes_on_when_it_is_done() 
     let mut rig = Rig::new(&[("bAmbient", &["fRun(0,0)", "fPlay(d)"])]);
     for _ in 0..3 {
         rig.tick(100);
-        assert_eq!(rig.runner.take_move(), Some(Gait::Fast));
+        assert_eq!(rig.runner.take_move(), Some((Gait::Fast, Target::Keep)));
         assert_eq!(rig.runner.take_move(), None, "taken once");
     }
     // Still running: the next call waits. Done: it starts in the same step.
