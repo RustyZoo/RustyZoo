@@ -267,6 +267,9 @@ pub struct Animal {
     /// The counters of the checks, indexed by [`HUNGER`] and the other names.
     pub counters: [i32; COUNTERS],
     pub female: bool,
+    /// The game milliseconds of the calendar when it last ate and last slept (animals 13.2).
+    pub fed: u64,
+    pub slept: u64,
     /// The recommendation bits shown and the ones among them that are important.
     pub advice: u64,
     pub important: u64,
@@ -747,7 +750,7 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
 }
 
 /// The keys of the animal at position `at` of the entity list.
-fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
+pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
     let class = &world.units.class;
     match find(cat, &world.zoo.entities[at]) {
         Some(ty) => Keys::of(ty, class),
@@ -786,6 +789,7 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let k = keys(world, ctx.cat, at);
     let subtype = world.zoo.entities[at].subtype.clone();
     *a = Animal::create(&k, &world.units.class, &subtype, ctx.rng);
+    (a.fed, a.slept) = (world.units.now, world.units.now);
 }
 
 /// The update of the values at a status tick (animals 3.3).

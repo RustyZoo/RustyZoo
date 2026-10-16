@@ -299,9 +299,16 @@ usage: rustyzoo [--data <dir>] <command>
                       (the exhibit list button, 1050, shows the panel with no exhibit; a click on a row of
                       its list makes that exhibit the current one and centres the view on its gate; the name
                       field renames it; its tabs show the construction date, upkeep and keeper, the popularity
-                      and donations, the animals and the thoughts); a click on a row of the Animals tab shows
-                      the recommendations plaque of that animal (in the original the animal panel's button
-                      does). `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
+                      and donations, the animals and the thoughts); a click on an animal (or on a row of the
+                      Animals tab, which also centres the view on it) opens the animal panel: the name field,
+                      the four bars of happiness, hunger, health and the suitability of its exhibit (green,
+                      yellow or red as its habitat check judges it), the sex and when it last ate and slept,
+                      refreshed every 5 s of clock while shown and not while the game is paused; its
+                      recommendations button shows the plaque of that animal, its exhibit button the
+                      exhibit panel on its exhibit, its follow button keeps the view on it, and a click
+                      anywhere else on the map closes it (the sell and pick-up buttons do nothing yet). `panel animal ID
+                      \"NAME\" happiness H hunger N health L suitability S fed WORDS slept WORDS` tells what it
+                      shows, when it opens and when a value changes, and `panel animal none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
                       donations stars N A B C`, `panel animals N thoughts N` (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
                       recommendation (`panel line!` for an important one, written in red) what the plaque shows,

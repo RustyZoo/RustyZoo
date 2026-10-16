@@ -366,6 +366,7 @@ impl Sim {
         self.total = self.total.wrapping_add(step);
         let month_end = self.calendar.advance(step);
         let bars = self.zoo_status(world, cat, money, step, month_end);
+        world.units.now = self.calendar.state().0;
         // The AI manager: the clock in whole ticks with the remainder kept, the removal pass,
         // the entities, the event queue.
         let total = self.ai_rem.wrapping_add(step);

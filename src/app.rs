@@ -26,7 +26,7 @@ use crate::camera::{Camera, Settings, zoom_view};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
-use crate::panel::exhibit;
+use crate::panel::{animal, exhibit};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
@@ -332,6 +332,8 @@ struct Game {
     rest: Vec<Pending>,
     /// The exhibit panel and the recommendations plaque.
     panel: crate::panel::exhibit::Panel,
+    /// The animal panel and the animal selected.
+    animal: crate::panel::animal::Panel,
 }
 
 impl Game {
@@ -645,6 +647,7 @@ impl<'a> App<'a> {
             refused: None,
             rest: Vec::new(),
             panel: Default::default(),
+            animal: Default::default(),
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -747,7 +750,9 @@ impl<'a> App<'a> {
             self.drew = self.paint();
         }
         if let Some(period) = self.fired.interface {
+            self.follow();
             if self.map_keys()
+                && !self.following()
                 && let Some(game) = &mut self.game
             {
                 game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
@@ -965,6 +970,7 @@ impl<'a> App<'a> {
             _ => {}
         }
         let keys = self.map_keys();
+        let following = self.following();
         let shown = self.ui.as_ref().is_none_or(Interface::map_view_shown);
         let modal = self.modal();
         match (command, &mut self.game) {
@@ -1020,7 +1026,7 @@ impl<'a> App<'a> {
                 }
                 self.terrain_mouse(mouse, on_map);
             }
-            (Command::Scroll(x, y), Some(game)) if keys => {
+            (Command::Scroll(x, y), Some(game)) if keys && !following => {
                 game.camera.key_scroll(&game.world.zoo, (x, y));
             }
             (Command::Rotate(clockwise), Some(game)) if keys => {
@@ -1396,6 +1402,7 @@ impl<'a> App<'a> {
                     self.panel_animal(row);
                 }
                 Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
+                Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),
                 _ => {}
             }
         }
@@ -1410,6 +1417,12 @@ impl<'a> App<'a> {
                     self.ask(kind);
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
+                animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
+                t if animal::TABS.contains(&t) && self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.animal.clock.force = true;
+                    }
+                }
                 _ if self.game.is_some() => self.build(Some(id)),
                 _ if self.game.is_none() => {
                     if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {

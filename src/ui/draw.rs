@@ -25,8 +25,9 @@
 //! list draws its rows from `top`, the selected one with its colours and the hovered one framed;
 //! a text field draws its selection in inverse colours and, focused, its caret; a scroll bar
 //! draws its track (tiled along it), arrows and thumb, each in the look of its state (normal, hovered, held).
-//! An image set draws the one of its pictures that the game's code chose.
-//! Status bars and the other widgets that later milestones fill draw nothing yet.
+//! An image set draws the one of its pictures that the game's code chose; a status bar draws the
+//! picture of its level over the part of its width that its value fills.
+//! The other widgets that later milestones fill draw nothing yet.
 
 use std::collections::HashMap;
 
@@ -327,9 +328,11 @@ impl Painter {
     ) {
         let value = levels.value.clamp(0, 100);
         let length = (i64::from(w.max(h)) * i64::from(value) / 100).max(1);
-        let level = (levels.transitions.iter())
-            .position(|&t| t > value)
-            .unwrap_or(levels.images.len().saturating_sub(1));
+        let level = levels.level.unwrap_or_else(|| {
+            (levels.transitions.iter())
+                .position(|&t| t > value)
+                .unwrap_or(levels.images.len().saturating_sub(1))
+        });
         let Some(Some(picture)) = levels.images.get(level) else {
             return;
         };

@@ -223,6 +223,13 @@ impl Camera {
         self.scroll = self.scroll_for(px, py);
     }
 
+    /// Centres the view on the world point `(x, y, z)`, with no range check: the view follows an
+    /// entity (10.3).
+    pub fn centre_on_point(&mut self, (x, y, z): (i32, i32, i32)) {
+        let (px, py) = project_zoomed(self.rotation, self.zoom, x, y, z);
+        self.scroll = self.scroll_for(px, py);
+    }
+
     /// A scroll by (0, 0) does nothing, not even the range check (6.1).
     fn scroll_by(&mut self, map: &Zoo, dx: i32, dy: i32) {
         if (dx, dy) == (0, 0) {

@@ -929,6 +929,15 @@ fn a_status_bar_draws_its_level_picture_as_long_as_its_value() {
     assert_eq!(bar(&mut ui, i32::MIN), (1, red.to_vec()));
     // Anything but a status bar refuses a value.
     assert!(!ui.set_status(61, 5) && !ui.set_status(5, 5));
+    // A level chosen by the game's code wins over the value's, and none gives the value's back;
+    // a level past the last picture draws nothing.
+    assert!(ui.set_level(62, Some(1)));
+    assert_eq!(bar(&mut ui, 10), (2, yellow.to_vec()));
+    assert!(ui.set_level(62, Some(usize::MAX)));
+    assert_eq!(bar(&mut ui, 10).0, 0);
+    assert!(ui.set_level(62, None));
+    assert_eq!(bar(&mut ui, 10), (2, red.to_vec()));
+    assert!(!ui.set_level(61, Some(0)) && !ui.set_level(5, None));
 }
 
 #[test]
