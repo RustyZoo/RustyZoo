@@ -254,6 +254,7 @@ pub fn arrive(
             name: format!("{label} {}", world.zoo.names[COUNTER]),
             colors: Vec::new(),
             fence: None,
+            food: 0,
             movement_mode: 0,
             animal: None,
         }),
