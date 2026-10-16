@@ -18,7 +18,9 @@ use crate::zoo::{Entity, Tile, Zoo};
 mod exhibit;
 mod tank;
 mod water;
+mod wear;
 pub use exhibit::Event;
+pub use wear::Decay;
 
 /// How an entity takes its place on the map, from its type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -201,6 +203,8 @@ pub struct World {
     water: Vec<bool>,
     /// The numbers that make a new tank.
     tank_config: TankConfig,
+    /// The bounds of the interval a fence piece made healthy draws.
+    decay: Decay,
     undo: Vec<Action>,
     /// The next action starts a new undo list.
     fresh: bool,
@@ -223,6 +227,7 @@ impl World {
             words: ["Exhibit".into(), "Tank".into(), "Show Tank".into()],
             water: Vec::new(),
             tank_config: TankConfig::default(),
+            decay: Decay::default(),
             zoo,
             units: Units::default(),
             shapes,

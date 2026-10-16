@@ -1973,11 +1973,25 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
         ["tool message 10002"]
     );
     assert_eq!(app.money().unwrap().cash, 100.0);
+    // The cash short when the pointer reaches the piece: the price is shown, the gate is not
+    // valid, and a click does nothing and says nothing (10002 needs a place valid on arrival).
+    app.pass(312, &[on(&app, west, (0, 0))]);
+    app.pass(314, &[on(&app, east, (0, 0))]);
+    assert_eq!(
+        told(&app, &["tool pending"]),
+        ["tool pending fences/iron/g 20,20 q 3 invalid"]
+    );
+    assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
+    click(&mut app, 316, to);
+    assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
+    assert_eq!(app.money().unwrap().cash, 100.0);
     // With the cash, the piece is made healthy and the price booked.
     app.set_money(Money {
         cash: 1_000.0,
         ..Money::default()
     });
+    app.pass(322, &[on(&app, west, (0, 0))]);
+    app.pass(324, &[on(&app, east, (0, 0))]);
     click(&mut app, 330, to);
     assert_eq!(
         told(&app, &["world"]),
@@ -1989,5 +2003,8 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
     assert_eq!(app.money().unwrap().cash, 875.0);
     let game = app.game.as_ref().unwrap();
     let piece = &game.world.zoo.entities[game.world.find(east).unwrap()];
-    assert_eq!(piece.common.as_ref().unwrap().fence.unwrap().life, 10);
+    let fence = piece.common.as_ref().unwrap().fence.unwrap();
+    assert_eq!(fence.life, 10);
+    // And it drew a wear interval, which the countdown starts at.
+    assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
 }

@@ -9,7 +9,7 @@ use rustyzoo::render::MapRenderer;
 use rustyzoo::sim::drive::{self, Run};
 use rustyzoo::terrain;
 use rustyzoo::vfs::Vfs;
-use rustyzoo::world::World;
+use rustyzoo::world::{Decay, World};
 use rustyzoo::zoo::Zoo;
 
 use crate::{CliError, Report};
@@ -93,6 +93,7 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     let mut world = World::new(zoo, |e| renderer.shape(e));
     world.set_water(place::water(&terrain::types(vfs)));
     world.set_tank_config(TankConfig::load(vfs));
+    world.set_decay(Decay::load(vfs));
     let economy = vfs.read("economy.cfg").unwrap_or_else(|e| {
         eprintln!("rustyzoo: warning: economy.cfg: {e}; the built-in economy settings are used");
         Vec::new()

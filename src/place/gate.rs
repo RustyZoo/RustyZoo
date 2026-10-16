@@ -20,6 +20,17 @@ pub struct Gate {
     pub hidden: bool,
 }
 
+impl Gate {
+    /// What the cost text shows (placing 6.4): the price as it is, also when only the cash falls
+    /// short (the gate is red), and 0 when the piece is not a place for the gate of an exhibit.
+    pub fn amount(&self) -> i64 {
+        match self.exhibit {
+            0 => 0,
+            _ => crate::text::format::whole_units(f64::from(self.pending.price)),
+        }
+    }
+}
+
 /// The id of the entity at position `at` when it is a fence piece, the hovered entity of the
 /// gate tool (the entity the pixel pick finds, placing 6.4).
 pub fn over(world: &World, at: usize) -> Option<u32> {
@@ -31,8 +42,8 @@ pub fn over(world: &World, at: usize) -> Option<u32> {
 /// exhibit fence type with a gate. The place is valid when [`World::gate_for`] finds an
 /// exhibit, no object stands on the tile of a tank and the cash covers the price (placing 6.4):
 /// nothing for a piece above the decayed life of its type, else the price of the gate type, and
-/// tinted by [`World::keeper_passes`]. An invalid place keeps no message, except for the cash,
-/// which shows 10002; an object on a tank tile also hides the cost text.
+/// tinted by [`World::keeper_passes`]. An invalid place keeps no message, the cash short on arrival
+/// included (red, the price shown, a click does nothing); an object on a tank tile hides the cost text.
 pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Option<Gate> {
     let piece = &world.zoo.entities[at];
     let (tile, facing) = world.slot(at)?;
@@ -65,7 +76,7 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Opti
             (true, false) => Verdict::Highlight,
             _ => Verdict::Invalid,
         },
-        message: (exhibit.is_some() && !afford).then_some(NO_FUNDS),
+        message: None,
         price,
         paint: None,
         blocking: Vec::new(),
@@ -80,8 +91,9 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Opti
 }
 
 /// The click on the pending gate (placing 6.4): a valid place moves the exhibit's gate to the
-/// piece, made healthy, and books the price as construction; any other place does nothing, and
-/// shows the message of the place if it has one.
+/// piece, made healthy, and books the price as construction; any other place does nothing. The
+/// cash is tested again at the click: if it fell short since the pointer reached the piece, the
+/// message of insufficient funds (10002) shows.
 pub fn place(world: &mut World, money: &mut Money, cat: &Catalogue, gate: &Gate) -> Outcome {
     let p = &gate.pending;
     if p.verdict == Verdict::Invalid {

@@ -7,8 +7,9 @@ impl App<'_> {
     /// A release on the map with the gate tool: the pending gate, if the last move left one, is
     /// bought. A move of the gate is told by `world gate fences/iron/g 13,43 side 2 id 8` and,
     /// when the exhibit had a gate, `world ungate fences/iron/f 13,41 side 6 id 3` first, then
-    /// by the `exhibit gate` line; a place that is not valid does nothing, but one the cash does
-    /// not cover shows 10002 in the message line (`tool message 10002`).
+    /// by the `exhibit gate` line; a place that is not valid does nothing, and so does one the cash did
+    /// not cover when the pointer reached it; one the cash no longer covers at the click shows 10002
+    /// in the message line (`tool message 10002`).
     pub(super) fn gate_release(&mut self) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
@@ -36,7 +37,12 @@ impl App<'_> {
             .filter(|&g| g != gate.piece);
         let cat = self.renderer.catalogue();
         match place::gate::place(world, &mut game.money, cat, &gate) {
-            Outcome::Placed(_) => {
+            Outcome::Placed(piece) => {
+                // The gate and the old gate, a fence piece again, are made healthy.
+                for id in old.into_iter().chain([piece]) {
+                    let rng = &mut self.sim.rng;
+                    world.heal(cat, id, &mut || rng.rand());
+                }
                 if let Some(line) = old.and_then(|id| named(world, id)) {
                     self.world_lines.push(format!("ungate {line}"));
                 }

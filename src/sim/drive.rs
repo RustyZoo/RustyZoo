@@ -139,7 +139,7 @@ impl Run {
             ..class
         };
         sim.load(&mut world, &cat);
-        sim.new_game(&world, &cat, &mut money);
+        sim.new_game(&mut world, &cat, &mut money);
         Run {
             cat,
             sim,
