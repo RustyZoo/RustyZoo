@@ -254,6 +254,32 @@ fn a_routine_call_is_done_for_its_own_class_and_the_keepers_fails_for_others() {
 }
 
 #[test]
+fn a_new_base_waits_for_the_loop_in_progress_and_a_cut_ends_it() {
+    let rig = Rig::new(&[]);
+    let timing = |n: &str| rig.data.timing(&rig.unit, n);
+    let mut anim = Animation::default();
+    anim.advance(0, &timing);
+    assert_eq!(anim.name, "idle");
+    // The new base shows when the loop of idle (100 ms) ends.
+    anim.base_to("a");
+    anim.advance(50, &timing);
+    assert_eq!(anim.name, "idle");
+    anim.advance(50, &timing);
+    assert_eq!(anim.name, "a");
+    // A cut shows the base at the next advance, whatever is playing.
+    anim.base_to("b");
+    anim.cut();
+    anim.advance(1, &timing);
+    assert_eq!(anim.name, "b");
+    // With the base showing and nothing queued the cut stays, and takes the next queued sequence.
+    anim.cut();
+    anim.advance(10, &timing);
+    anim.queue(vec![Entry::new("c", false)]);
+    anim.advance(10, &timing);
+    assert_eq!(anim.name, "c");
+}
+
+#[test]
 fn a_routine_call_shows_the_idle_animation_after_a_walk() {
     let mut rig = Rig::new(&[("bAmbient", &["fGuestRoutine()"])]);
     rig.unit.class = "guests".into();
@@ -267,6 +293,9 @@ fn a_routine_call_shows_the_idle_animation_after_a_walk() {
     let data = &rig.data;
     rig.anim.set_base("walk", &|n| data.timing(&rig.unit, n));
     assert_eq!(rig.anim.name, "walk");
+    // The idle base shows when the walk's stop has left its cut, one step on.
+    rig.anim.cut();
+    assert_eq!(rig.tick(100).0, "walk");
     assert_eq!(rig.tick(100).0, "idle");
     assert_eq!(rig.tick(100).0, "idle");
 }
@@ -434,7 +463,7 @@ fn set_base_lasts_until_the_next_play() {
     // `fSetBase` cuts the sequence and shows the new base at once, from its first frame.
     anim.set_base("b", &timing);
     assert_eq!(
-        (anim.name.as_str(), anim.shown(), anim.on_base()),
+        (anim.name.as_str(), anim.shown(), anim.shows_base()),
         ("b", 0, true)
     );
     for _ in 0..10 {
@@ -546,7 +575,8 @@ fn sets_start_by_name_and_a_set_that_cannot_be_interrupted_refuses() {
         rig.runner
             .start(&mut rig.anim, &env, "bSick", true, true, false)
     );
-    assert!(rig.anim.on_base());
+    rig.tick(100);
+    assert!(rig.anim.shows_base());
 }
 
 #[test]
@@ -569,7 +599,7 @@ fn an_animation_a_sequence_names_but_the_type_lacks_ends_it() {
     assert_eq!(anim.name, "a");
     anim.advance(200, &timing);
     // The unknown entry ends the whole sequence, not just itself.
-    assert!(anim.on_base() && anim.name == "idle");
+    assert!(anim.shows_base() && anim.name == "idle");
 }
 
 #[test]
@@ -591,5 +621,5 @@ fn a_huge_time_is_cut_and_a_huge_step_skips_whole_animations() {
     anim.advance(450, &timing);
     assert_eq!((anim.entry, anim.frame, anim.elapsed), (2, 0, 50));
     anim.advance(u32::MAX, &timing);
-    assert!(anim.on_base());
+    assert!(anim.shows_base());
 }

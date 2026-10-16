@@ -85,6 +85,7 @@ impl Band {
 pub fn stop(unit: &mut Unit) {
     (unit.speed, unit.moving, unit.walking) = (0, false, false);
     unit.path.clear();
+    unit.animation.cut();
 }
 
 /// The tile of a point, if it is on the map.
@@ -209,7 +210,7 @@ fn animate(
     };
     // Kept in 16 bits.
     unit.anim_speed = own.map_or(table, |o| o.1) as u16;
-    unit.animation.set_base(name, &|n| data.timing(entity, n));
+    unit.animation.base_to(name);
     true
 }
 
@@ -217,6 +218,7 @@ fn animate(
 pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     if std::mem::take(&mut unit.flip) && unit.walking {
         animate(unit, world, data, at, None);
+        unit.animation.cut();
     }
 }
 
@@ -224,7 +226,10 @@ pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
 /// animation, step 3).
 fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     let entity = &world.zoo.entities[at];
-    unit.animation.set_base("idle", &|n| data.timing(entity, n));
+    if data.timing(entity, "idle").is_some() {
+        unit.animation.base_to("idle");
+    }
+    unit.animation.cut();
 }
 
 /// The move call `gait` of the unit's set, run once per step (8.2).
@@ -237,13 +242,12 @@ pub fn call(
     gait: &Gait,
 ) -> Flow {
     if unit.walking {
-        // 2 and 3: the unit moves from the next step's move on; the call ends with the walk.
-        unit.moving = true;
-        if unit.aborted {
-            stop(unit);
-            return Flow::Failed;
+        // 2: the unit moves from the next step's move on, once the player shows the move
+        // animation. 3: the call ends with the walk, an aborted one included (4.7).
+        if !unit.moving && unit.animation.shows_base() {
+            unit.moving = true;
         }
-        if !ended(unit, world, at) {
+        if !unit.aborted && !ended(unit, world, at) {
             return Flow::Running;
         }
         stop(unit);

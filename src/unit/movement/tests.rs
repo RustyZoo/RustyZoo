@@ -478,6 +478,8 @@ fn a_move_call_takes_the_rate_the_animation_and_the_animation_speed_of_its_band(
     ] {
         let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
         let (mut s, walker) = (sim(), Walker::new(call));
+        // The unit shows its idle animation before the walk starts.
+        s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
         let u = w.units.get_mut(1).unwrap();
         u.path = vec![tile(5, 5), tile(6, 5), tile(9, 5)];
         u.destination = Some((9 * 64 + 32, 5 * 64 + 32, 0));
@@ -487,10 +489,11 @@ fn a_move_call_takes_the_rate_the_animation_and_the_animation_speed_of_its_band(
             let u = w.units.get(1).unwrap();
             (u.speed, u.animation.name.clone(), u.anim_speed, u.moving)
         };
-        // The call starts the walk; the unit moves from the step after the next one on.
-        assert_eq!(at(&mut w), (rate, anim.into(), speed, false), "{call}");
+        // The call starts the walk and the cut of the forced start shows the move animation in
+        // the step after; the unit moves from the step after that.
+        assert_eq!(at(&mut w), (rate, "idle".into(), speed, false), "{call}");
         assert_eq!(position(&w, 1), centre((5, 5)));
-        assert!(at(&mut w).3);
+        assert_eq!(at(&mut w), (rate, anim.into(), speed, true), "{call}");
         assert_eq!(position(&w, 1), centre((5, 5)));
         at(&mut w);
         assert_eq!(position(&w, 1) != centre((5, 5)), rate > 0);
@@ -515,7 +518,7 @@ fn a_move_call_without_a_path_walks_at_random_and_an_idle_guest_starts_one() {
     let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
     // The guest stands in a routine that never ends and is sent out by its goals; the
     // animal's set has the move call itself, with no path and no destination.
-    walker.start_set(&mut w, 1, "bZoo");
+    walker.start_set(&mut w, 1, "bZoo", false);
     walker.start(&mut w, 2);
     // Each unit walks and stands still when its walk ends: the guest in its destination tile
     // (the animal has no exhibit, and a partial path may end short of it).
@@ -557,7 +560,36 @@ fn the_end_of_a_walk_keeps_the_move_animation_but_a_path_of_one_entry_returns_to
     w.units.get_mut(1).unwrap().path = vec![tile(6, 5)];
     walker.start(&mut w, 1);
     step(&mut w);
+    step(&mut w);
     assert_eq!(w.units.get(1).unwrap().animation.name, "idle");
+}
+
+#[test]
+fn an_aborted_walk_ends_its_move_call_as_done() {
+    let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+    let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
+    s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    let u = w.units.get_mut(1).unwrap();
+    u.path = vec![tile(5, 5), tile(6, 5), tile(9, 5)];
+    u.destination = Some((9 * 64 + 32, 5 * 64 + 32, 0));
+    walker.start(&mut w, 1);
+    for _ in 0..3 {
+        s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    }
+    let mut u = w.units.get(1).unwrap().clone();
+    assert!(u.walking && u.moving);
+    u.aborted = true;
+    let at = w.find(1).unwrap();
+    let flow = call(
+        &mut u,
+        &mut w,
+        &walker,
+        &mut Rng::default(),
+        at,
+        &Gait::Slow,
+    );
+    assert_eq!(flow, Flow::Done);
+    assert!(!u.walking && !u.moving && u.path.is_empty());
 }
 
 #[test]
@@ -595,15 +627,19 @@ fn a_swimmer_starting_a_walk_in_the_water_swims_at_once_and_a_started_unit_reads
     w.set_water(vec![false, true]);
     crate::goal::quiet(&mut w);
     let walker = Walker::new("fMove(0,0,run,12,30)");
+    // An animal loaded with the map has had its first turn already.
+    w.units.get_mut(1).unwrap().started = true;
+    let mut s = sim();
+    s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
     for id in [1, 2] {
         let u = w.units.get_mut(id).unwrap();
-        // An animal loaded with the map has had its first turn already.
-        u.started = id == 1;
         u.path = vec![tile(5, 5), tile(6, 5)];
         u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
         walker.start(&mut w, id);
     }
-    sim().step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    for _ in 0..2 {
+        s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    }
     let name = |id| w.units.get(id).unwrap().animation.name.clone();
     // The animal's own name is replaced on water, its own speed is kept; the guest keeps both
     // (a guest does not swim).

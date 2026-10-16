@@ -303,7 +303,8 @@ fn a_wander_starts_once_and_is_done_when_the_unit_arrives() {
     let mut w = map("animals");
     let mut s = sim();
     let data = Sets::strolling();
-    run_with(&mut w, &mut s, &data, 2);
+    // The ambient set starts at once; the unit moves once its idle loop has ended.
+    run_with(&mut w, &mut s, &data, 4);
     let u = unit(&w);
     assert_eq!(u.goal.record.task, RANDOM);
     let to = u.destination.unwrap();
@@ -678,7 +679,7 @@ fn the_walk_start_restarts_the_set_forced_and_fails_without_its_calls() {
             cx.unit.runner.step(&mut cx.unit.animation, &mut env, 0);
         }
         cx.unit.animation.advance(0, &timing);
-        assert!(!cx.unit.animation.on_base());
+        assert!(!cx.unit.animation.shows_base());
         cx.unit.animation.notes.clear();
         assert!(cx.start_walk(false, false, false));
         assert!(cx.start_walk(false, false, false));
@@ -686,7 +687,7 @@ fn the_walk_start_restarts_the_set_forced_and_fails_without_its_calls() {
             cx.unit.animation.notes,
             [Note::Set("bWalk".into()), Note::Set("bWalk".into())]
         );
-        assert!(!cx.unit.animation.on_base(), "the sequence is kept");
+        assert!(!cx.unit.animation.shows_base(), "the sequence is kept");
         assert_eq!(cx.record().target.tile, Some(tile(7, 5)));
         // A set that cannot be interrupted refuses a walk that is not forced.
         {

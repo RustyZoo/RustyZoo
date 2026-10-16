@@ -123,6 +123,9 @@ pub struct Animation {
     /// The frames of the animation shown; 0 if it has none.
     count: u32,
     base: String,
+    /// The cut (sprite drawing 6.2): at the next advance it ends the sequence playing, or the loop
+    /// of another animation than the base, and is cleared; it stays while the base shows.
+    cut: bool,
     /// The sequence being played; empty while the base animation shows.
     seq: Vec<Entry>,
     /// The unit's stop-at-end flag: whatever sequence is current holds its last frame when it
@@ -146,6 +149,7 @@ impl Default for Animation {
             reverse: false,
             count: 0,
             base: "idle".to_string(),
+            cut: false,
             seq: Vec::new(),
             stop: false,
             stopped: false,
@@ -168,13 +172,25 @@ impl Animation {
     }
 
     /// Whether the base animation shows, nothing else playing.
-    pub fn on_base(&self) -> bool {
-        self.seq.is_empty()
+    pub fn shows_base(&self) -> bool {
+        self.seq.is_empty() && self.name == self.base
     }
 
-    /// The animation of the current entry.
+    /// Makes `name` the base, without a cut and without clearing the player: what plays goes on
+    /// to its end, the loop of the old base included (movement 8.2 step 1).
+    pub fn base_to(&mut self, name: &str) {
+        self.base = name.to_string();
+    }
+
+    /// Sets the cut (sprite drawing 6.2): a forced set start, the stop of a walk, the resets of
+    /// the move and idle animations.
+    pub fn cut(&mut self) {
+        self.cut = true;
+    }
+
+    /// The animation of the current entry; with no sequence, the loop that was installed.
     fn current(&self) -> &str {
-        self.seq.get(self.entry).map_or(&self.base, |e| &e.name)
+        self.seq.get(self.entry).map_or(&self.name, |e| &e.name)
     }
 
     /// Shows the current entry from its first frame: a new name is noted, its sound waits for the
@@ -206,11 +222,15 @@ impl Animation {
         if self.stopped {
             return;
         }
+        if self.cut && (!self.queue.is_empty() || !self.shows_base()) {
+            self.cut = false;
+            self.finish(timing);
+        }
         let Some(mut now) = timing(&self.name).filter(|_| self.name == self.current()) else {
             self.finish(timing);
             return;
         };
-        if self.on_base() && now.count == 1 && self.queue.is_empty() {
+        if self.shows_base() && now.count == 1 && self.queue.is_empty() {
             return;
         }
         if dt != 0 {
@@ -401,6 +421,9 @@ impl Runner {
         if !keep {
             anim.reset();
         }
+        if force {
+            anim.cut();
+        }
         anim.notes.push(Note::Set(name.to_string()));
         self.chain[0].loaded
     }
@@ -563,10 +586,10 @@ impl Runner {
                 if env.unit.class != own {
                     return *routine != Routine::Keeper;
                 }
-                // It shows the idle animation (goals 6.3), once: a finished walk keeps its
-                // move animation (movement 8.2).
-                if self.ready && anim.base != "idle" && found(&"idle".to_string()) {
-                    anim.set_base("idle", &timing);
+                // It makes idle the base at every run (goals 6.3), like the move call makes its
+                // animation: a finished walk keeps its move animation until the cut shows it.
+                if found(&"idle".to_string()) {
+                    anim.base_to("idle");
                 }
                 self.chain[k].done = self.ready;
                 return true;

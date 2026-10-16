@@ -110,13 +110,13 @@ impl Walker {
         Walker(vec![parse(call)], vec![parse("fKeepControl()")])
     }
 
-    /// Starts the set `bWalk` on unit `id`, as a goal does.
+    /// Starts the set `bWalk` on unit `id`, forced, as the goals of a guest or staff member do.
     pub fn start(&self, w: &mut World, id: u32) {
-        self.start_set(w, id, "bWalk");
+        self.start_set(w, id, "bWalk", true);
     }
 
     /// Starts the set `name` (`bWalk`, or `bZoo`, which does nothing for ever).
-    pub fn start_set(&self, w: &mut World, id: u32, name: &str) {
+    pub fn start_set(&self, w: &mut World, id: u32, name: &str, force: bool) {
         let at = w.find(id).unwrap();
         let mut rng = crate::sim::Rng::default();
         let env = crate::behaviour::Env {
@@ -126,7 +126,7 @@ impl Walker {
         };
         let unit = w.units.get_mut(id).unwrap();
         unit.runner
-            .start(&mut unit.animation, &env, name, true, false, false);
+            .start(&mut unit.animation, &env, name, true, force, true);
     }
 }
 
