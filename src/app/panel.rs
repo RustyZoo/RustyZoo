@@ -192,7 +192,7 @@ impl App<'_> {
         self.followed().is_some()
     }
 
-    /// At the interface pass of a following view, the animal is at the centre (camera 10.3).
+    /// At the interface pass of a following view, the unit is at the centre (camera 10.3).
     pub(super) fn follow(&mut self) {
         let followed = self.followed();
         let Some(game) = self.game.as_mut().filter(|_| followed.is_some()) else {

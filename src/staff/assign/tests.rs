@@ -206,7 +206,7 @@ fn a_click_puts_the_exhibit_first_once_and_a_refusal_changes_nothing_and_says_wh
         refused(&mut w, SCIENTIST, empty),
         Outcome::Refused(Some(10329))
     );
-    // Marine specialist: 10328 for any land exhibit (only an empty tank gets 10329).
+    // The marine keeper: 10328 for any land exhibit (only an empty tank gets 10329).
     assert_eq!(
         refused(&mut w, MARINE, zebra),
         Outcome::Refused(Some(10328))

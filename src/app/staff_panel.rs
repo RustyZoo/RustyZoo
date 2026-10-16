@@ -302,7 +302,7 @@ impl App<'_> {
         if let (Some(Part::Staff(s)), Ok(k)) = (worker.map(|u| &mut u.part), usize::try_from(row))
             && k < kinds
         {
-            s.duties[k] = !s.duties[k];
+            s.off[k] = !s.off[k];
             game.staff.clock.force = true;
         }
         // A second click on the row would deselect it and say -1: no row stays selected.

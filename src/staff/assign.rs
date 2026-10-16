@@ -4,13 +4,13 @@
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::panel::exhibit::animals_exhibit;
+use crate::panel::exhibit::animals_in;
 use crate::place::bulldozer::type_of;
 use crate::unit::{Kind, Part};
 use crate::world::World;
 
-/// The messages of an exhibit that is too small, and of one with nothing for the keeper's kind,
-/// by the keeper's type: land animals, dinosaurs, tank animals, and none of them.
+/// The message of an exhibit that is too small, the one of an empty exhibit, and the message of a
+/// refusal by the keeper's type id: the zookeeper's, the scientist's and the marine specialist's.
 const SMALL: i32 = 10323;
 const EMPTY: i32 = 10329;
 const ZOOKEEPER: (i32, i32) = (9500, 10320);
@@ -32,15 +32,15 @@ fn keeper(ty: &EntityType) -> bool {
     ty.class == "keeper"
 }
 
-/// The animals of the exhibit that the keeper of this type looks after: those whose species names
-/// his type id in `cKeeper` (9500 by default). A carried animal is in no exhibit.
+/// Whether an animal of the exhibit is of the keeper's kind: its species names his type id in
+/// `cKeeper` (9500 by default). A carried animal is in no exhibit.
 fn has_his_animals(world: &World, cat: &Catalogue, exhibit: u32, keeper: &EntityType) -> bool {
-    (world.zoo.entities.iter().enumerate()).any(|(at, e)| {
-        let own = e.class == "animals"
-            && e.common.as_ref().is_some_and(|c| !world.is_carried(c.id))
-            && animals_exhibit(world, at) == Some(exhibit);
-        own && type_of(cat, e)
-            .is_none_or(|t| number(t, "cKeeper").map_or(9500, |v| v as i32) == keeper.name_id)
+    animals_in(world, exhibit).into_iter().any(|at| {
+        let ty = type_of(cat, &world.zoo.entities[at]);
+        let kind = ty
+            .and_then(|t| number(t, "cKeeper"))
+            .map_or(9500, |v| v as i32);
+        kind == keeper.name_id
     })
 }
 

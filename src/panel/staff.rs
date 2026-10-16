@@ -67,7 +67,7 @@ const EXITING: i32 = 10306;
 const EGGS: i32 = 10321;
 const CLEANING_TANK: i32 = 10327;
 const CLEANING_POO: i32 = 10514;
-/// The scientist's type id, which says "Cleaning poo".
+/// The scientist's type id, which has a text of its own for raking.
 const SCIENTIST: i32 = 9551;
 /// The worker's texts by job, and when it has none the text of the wander.
 const WORKER_JOBS: [(u8, i32); 10] = [
@@ -247,13 +247,13 @@ impl Panel {
                 let rows = (0..kinds)
                     .map(|k| Row {
                         text: to_cp1252(&ui.string(DUTY_STRING + k as i32)),
-                        icon: ui.tree.picture(vfs, CHECKS[usize::from(staff.duties[k])]),
+                        icon: ui.tree.picture(vfs, CHECKS[usize::from(!staff.off[k])]),
                         ..Row::default()
                     })
                     .collect();
                 ui.refill_rows(DUTIES, rows);
                 let on: String = (0..kinds)
-                    .map(|k| if staff.duties[k] { '1' } else { '0' })
+                    .map(|k| if staff.off[k] { '0' } else { '1' })
                     .collect();
                 format!("duties {on}")
             }

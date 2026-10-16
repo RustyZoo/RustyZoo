@@ -314,7 +314,19 @@ usage: rustyzoo [--data <dir>] <command>
                       exhibit panel on its exhibit, its follow button keeps the view on it, and a click
                       anywhere else on the map closes it (the sell and pick-up buttons do nothing yet). `panel animal ID
                       \"NAME\" happiness H hunger N health L suitability S fed WORDS slept WORDS` tells what it
-                      shows, when it opens and when a value changes, and `panel animal none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
+                      shows, when it opens and when a value changes, and `panel animal none` when it closes. A click on a
+                      staff member (a second click picks it up) opens the staff panel: the name field, the monthly
+                      salary, the text of its job, and a second tab with the exhibits assigned to a keeper or tour
+                      guide or the duty switches of a maintenance worker, refreshed every second of clock while
+                      shown and not while the game is paused; its fire button asks as the bulldozer does, its
+                      pick-up button picks it up, and its assign button (the second tab) starts the assign mode:
+                      the exhibit under the pointer is tinted green when the keeper may serve it and red when
+                      not, a click assigns it (or shows why not) and goes first in the list, a row of the list
+                      centres the view on that exhibit's gate and opens the exhibit panel, the clear buttons
+                      remove one or all, and Escape or the right button end the mode. `panel staff ID \"NAME\"
+                      salary S duty \"TEXT\" exhibits [NAMES]` (`duties 1111` for a worker) and `panel staff none`
+                      tell what it shows; `tool assign over N good|bad|none`, `tool assign ID N` and
+                      `tool unassign ID row R|all` tell the assign mode. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
                       donations stars N A B C`, `panel animals N thoughts N` (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
                       recommendation (`panel line!` for an important one, written in red) what the plaque shows,
