@@ -276,6 +276,10 @@ const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\
     cLeaveChanceDone=100\ncGawkTime=10\ncGawkTime=15\ncGawkTime=25\ncGawkTime=35\ncGawkTime=45\n";
 
 fn types() -> Catalogue {
+    types_with(MAN)
+}
+
+fn types_with(man: &str) -> Catalogue {
     let ty = |class, name: &str, text: &str, name_id| crate::entity::EntityType {
         class,
         type_name: name.as_bytes().to_vec(),
@@ -289,7 +293,7 @@ fn types() -> Catalogue {
         height: 0,
     };
     let mut cat = Catalogue::default();
-    cat.push(ty("guests", "man", MAN, 9503));
+    cat.push(ty("guests", "man", man, 9503));
     cat.push(ty("animals", "zebra", "", 5));
     cat
 }
@@ -338,10 +342,14 @@ fn visit(happiness: i32) -> World {
 
 /// Runs `n` steps of 67 ms in a game of `types()`; the `unit` and `guest` lines.
 fn visit_run(w: &mut World, n: usize) -> Vec<String> {
-    let (mut s, mut money, cat) = (sim(), Money::default(), types());
+    visit_run_in(&types(), w, n)
+}
+
+fn visit_run_in(cat: &Catalogue, w: &mut World, n: usize) -> Vec<String> {
+    let (mut s, mut money) = (sim(), Money::default());
     let mut log = Vec::new();
     for _ in 0..n {
-        s.step_game(&walks(), &cat, w, &mut money, 67, |_, _, _| {});
+        s.step_game(&walks(), cat, w, &mut money, 67, |_, _, _| {});
         log.extend(w.units.take_lines());
         log.extend((w.units.take_guest_lines().into_iter()).map(|l| format!("guest {l}")));
     }
@@ -385,30 +393,55 @@ fn a_guest_goes_to_the_exhibit_it_has_not_seen_views_it_and_leaves_when_all_is_s
     assert!(stats.viewing > 0 && stats.donations[2] > 0.0, "{stats:?}");
 }
 
+/// The seconds of play between the start of viewing and the end of the goal.
+fn lasted(cat: &Catalogue, happiness: i32) -> i32 {
+    let mut w = visit(happiness);
+    let log = visit_run_in(cat, &mut w, 1500);
+    let from = log
+        .iter()
+        .position(|l| l.starts_with("guest view 1 1"))
+        .unwrap();
+    let to = from
+        + log[from..]
+            .iter()
+            .position(|l| l.starts_with("goal 1 none"))
+            .unwrap();
+    log[from..to]
+        .iter()
+        .filter(|l| l.starts_with("guest status 1 "))
+        .count() as i32
+}
+
 #[test]
 fn viewing_lasts_by_the_average_happiness_of_the_exhibit() {
-    // 25 to 30 seconds for an average of 50 (guests visit 5.3), 15 to 20 for -20.
+    // 25 to 30 seconds for an average of 50 (guests visit 5.3), 15 to 20 for -20; the status
+    // lines counted are one or two fewer than the ticks.
     for (happiness, seconds) in [(50, 25..=30), (-20, 15..=20), (90, 45..=50), (-90, 10..=10)] {
-        let mut w = visit(happiness);
-        let log = visit_run(&mut w, 1500);
-        let from = log
-            .iter()
-            .position(|l| l.starts_with("guest view 1 1"))
-            .unwrap();
-        let to = from
-            + log[from..]
-                .iter()
-                .position(|l| l.starts_with("goal 1 none"))
-                .unwrap();
-        let lasted = log[from..to]
-            .iter()
-            .filter(|l| l.starts_with("guest status 1 "))
-            .count();
+        let n = lasted(&types(), happiness);
         assert!(
-            lasted as i32 >= *seconds.start() && lasted as i32 <= seconds.end() + 1,
-            "{happiness}: {lasted}"
+            n >= *seconds.start() - 1 && n <= seconds.end() + 1,
+            "{happiness}: {n}"
         );
     }
+    // Without the key the time is 10 to 13 seconds; a negative time and a huge one are kept in
+    // range (the goal is over at once, or lasts for ever).
+    let plain =
+        "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\ncLeaveChanceDone=100\n";
+    let n = lasted(&types_with(plain), 50);
+    assert!((9..=14).contains(&n), "{n}");
+    let negative =
+        format!("{plain}cGawkTime=-9\ncGawkTime=-9\ncGawkTime=-9\ncGawkTime=-9\ncGawkTime=-9\n");
+    assert!(lasted(&types_with(&negative), 50) <= 6);
+    let huge = format!(
+        "{plain}cGawkTime=2000000000\ncGawkTime=2000000000\ncGawkTime=2000000000\ncGawkTime=2000000000\ncGawkTime=2000000000\ncGawkAttrTime=2000000000\n"
+    );
+    let mut w = visit(50);
+    let log = visit_run_in(&types_with(&huge), &mut w, 1500);
+    assert!(log.iter().any(|l| l.starts_with("guest view 1 1")));
+    assert!(
+        !log.iter().any(|l| l.starts_with("goal 1 none")),
+        "still viewing"
+    );
 }
 
 #[test]

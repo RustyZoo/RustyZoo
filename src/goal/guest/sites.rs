@@ -138,7 +138,7 @@ impl Cx<'_, '_> {
             _ => None,
         };
         let base = match band.and_then(|(i, n)| Some((*k.gawk.get(i)?, n))) {
-            Some((time, n)) => time + rng.pick(n) as i32,
+            Some((time, n)) => time.saturating_add(rng.pick(n) as i32),
             None => fallback,
         };
         let attractiveness = view::attractiveness(self.world, self.ctx.cat, s.exhibit);
@@ -146,7 +146,7 @@ impl Cx<'_, '_> {
             .iter()
             .take_while(|&&limit| attractiveness >= limit)
             .count();
-        let seconds = base + k.gawk_attr.get(more).copied().unwrap_or(0);
+        let seconds = base.saturating_add(k.gawk_attr.get(more).copied().unwrap_or(0));
         self.record().duration = seconds.max(0) as u32;
         let (id, now) = (self.unit.id, self.world.units.now);
         let Part::Guest(g) = &mut self.unit.part else {
