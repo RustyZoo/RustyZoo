@@ -93,6 +93,16 @@ impl App<'_> {
                         game.naming.push(id);
                     }
                 }
+                // The piece made the gate, here or by the game, is made healthy; the old gate,
+                // a fence piece again, keeps its values (placing 7.4 "Who draws").
+                Event::Gate(id) => {
+                    let gate = game.world.exhibits().get(id).and_then(|e| e.gate);
+                    let rng = &mut self.sim.rng;
+                    if let Some(gate) = gate {
+                        game.world
+                            .heal(self.renderer.catalogue(), gate, &mut || rng.rand());
+                    }
+                }
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
                 Event::Objects(id) => game.refused = Some(id),
                 _ => {}

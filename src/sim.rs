@@ -413,9 +413,12 @@ impl Sim {
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
                 update(world, at, step);
+                // A fence piece wears at its own place in the list.
+                for event in world.wear(cat, at, step, &mut self.lines) {
+                    self.events.post(event);
+                }
             }
         }
-        world.wear(cat, step, &mut self.lines);
         self.events.age();
         for _ in 0..std::mem::take(&mut world.units.guests_gone) {
             money.count(money::GUESTS_GONE);

@@ -237,3 +237,45 @@ fn the_bounds_are_read_from_the_class_file_with_the_defaults_for_what_is_missing
         Decay { min: 0, max: 0 }
     );
 }
+
+/// The events on the task channel that the last step posted, as `(type, sender, data)`.
+fn posted(run: &Run) -> Vec<(u16, u32, u32)> {
+    run.sim
+        .events
+        .listen(1, 0x4d)
+        .map(|e| {
+            assert_eq!(
+                (e.target, e.extra, e.delay, e.sender_channel),
+                (0, 0, 1, 0x45)
+            );
+            (e.kind, e.sender, e.data)
+        })
+        .collect()
+}
+
+#[test]
+fn a_worn_piece_posts_its_events_with_the_worker_tile() {
+    // The piece stands on tile (1, 1) of a 4 by 4 map, which is the tile 5.
+    let mut run = run(types(WEARING), world("f"), 1);
+    // Nothing is posted before the countdown ends; at the decayed life (2) the piece says so.
+    run.step(1000);
+    assert!(posted(&run).is_empty());
+    run.step(3);
+    assert_eq!(posted(&run), [(10033, 7, 5)]);
+    // The next life is 1: nothing. The break (life 0) posts 10034, and a broken piece is quiet.
+    run.step(1003);
+    assert!(posted(&run).is_empty());
+    run.step(1003);
+    assert_eq!(posted(&run), [(10034, 7, 5)]);
+    run.step(100_000);
+    assert!(posted(&run).is_empty());
+    // An electrified type is "broken" at its decayed life already.
+    let keys = format!("{WEARING}\ncIsElectrified=1");
+    let mut run = run_with("f", &keys);
+    run.step(1003);
+    assert_eq!(posted(&run), [(10034, 7, 5)]);
+    // With no decayed life, the break posts 10034 and then 10033; a type of life 1 breaks at once.
+    let mut run = run_with("f", "cStrength=300\ncLife=1\ncDecayDelta=100");
+    run.step(1003);
+    assert_eq!(posted(&run), [(10034, 7, 5), (10033, 7, 5)]);
+}

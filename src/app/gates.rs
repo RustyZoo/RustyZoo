@@ -37,12 +37,7 @@ impl App<'_> {
             .filter(|&g| g != gate.piece);
         let cat = self.renderer.catalogue();
         match place::gate::place(world, &mut game.money, cat, &gate) {
-            Outcome::Placed(piece) => {
-                // The gate and the old gate, a fence piece again, are made healthy.
-                for id in old.into_iter().chain([piece]) {
-                    let rng = &mut self.sim.rng;
-                    world.heal(cat, id, &mut || rng.rand());
-                }
+            Outcome::Placed(_) => {
                 if let Some(line) = old.and_then(|id| named(world, id)) {
                     self.world_lines.push(format!("ungate {line}"));
                 }

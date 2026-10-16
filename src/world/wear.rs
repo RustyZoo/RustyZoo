@@ -8,9 +8,18 @@ use super::World;
 use crate::build::number;
 use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
+use crate::exhibit::GROUNDS;
 use crate::place::bulldozer::type_of;
 use crate::place::{LIFE, STRENGTH};
 use crate::vfs::Vfs;
+use crate::zoo::Event;
+
+/// The events a worn piece posts (placing 7.4): decayed, and broken (an urgent task).
+const DECAYED: u16 = 10033;
+const BROKEN: u16 = 10034;
+/// The channel the task pool listens on, and the plain entity post's own channel.
+const TASK_CHANNEL: u8 = 0x4d;
+const PIECE_CHANNEL: u8 = 0x45;
 
 /// The bounds of a wear interval in milliseconds (`[Decay]` of `fences/fence.ai`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,47 +109,96 @@ impl World {
         Some(interval)
     }
 
-    /// One step of `ms` milliseconds of wear (placing 7.4): each piece that wears loses `ms` from
-    /// its countdown; at 0 or below it loses one life and `cDecayDelta` strength (not below 1),
-    /// restarts the countdown at its interval and, when its life is below 1, breaks: life and
-    /// strength 0. A line tells each wearing piece. The events 10033 and 10034, the break sound
-    /// and the exhibits' escape check wait for the staff and animal milestones.
-    pub fn wear(&mut self, cat: &Catalogue, ms: u32, lines: &mut Vec<String>) {
-        for at in 0..self.zoo.entities.len() {
-            let Some(ty) = self.wearing(cat, at) else {
-                continue;
-            };
-            let decayed = number(ty, "cDecayedLife").unwrap_or(0.0) as i64;
-            let delta = number(ty, "cDecayDelta").unwrap_or(8.0) as u32;
-            let Some(c) = self.zoo.entities[at].common.as_mut() else {
-                continue;
-            };
-            let id = c.id;
-            let Some(f) = c.fence.as_mut() else { continue };
-            // A broken piece does not wear, and a life of 500 cannot deteriorate.
-            if f.life == 0 || f.life == 500 {
-                continue;
-            }
-            if f.timers[1] > ms {
-                f.timers[1] -= ms;
-                continue;
-            }
-            f.timers[1] = f.timers[0];
-            f.life -= 1;
-            f.strength = f.strength.saturating_sub(delta).max(1);
-            let state = match (f.life, i64::from(f.life) == decayed) {
-                (0, _) => {
-                    f.strength = 0;
-                    " broken"
-                }
-                (_, true) => " decayed",
-                _ => "",
-            };
-            lines.push(format!(
-                "fence {id} life {} strength {}{state}",
-                f.life, f.strength
-            ));
-            self.dirty = true;
+    /// One step of `ms` milliseconds of wear of the piece at `at` (placing 7.4), run at its place in
+    /// the entity loop: a piece that wears loses `ms` from its countdown; at 0 or below it loses
+    /// one life and `cDecayDelta` strength (not below 1), restarts the countdown at its interval
+    /// and, when its life is below 1, breaks: life and strength 0. A line tells the piece when it
+    /// wears; the events 10033 and 10034 it posts are returned. The break sound and the exhibits'
+    /// escape check wait for the animal milestone.
+    pub fn wear(
+        &mut self,
+        cat: &Catalogue,
+        at: usize,
+        ms: u32,
+        lines: &mut Vec<String>,
+    ) -> Vec<Event> {
+        let Some(ty) = self.wearing(cat, at) else {
+            return Vec::new();
+        };
+        let decayed = number(ty, "cDecayedLife").unwrap_or(0.0) as i64;
+        let delta = number(ty, "cDecayDelta").unwrap_or(8.0) as u32;
+        let electrified = number(ty, "cIsElectrified").unwrap_or(0.0) != 0.0;
+        let Some(c) = self.zoo.entities[at].common.as_mut() else {
+            return Vec::new();
+        };
+        let id = c.id;
+        let Some(f) = c.fence.as_mut() else {
+            return Vec::new();
+        };
+        // A broken piece does not wear.
+        if f.life == 0 {
+            return Vec::new();
         }
+        if f.timers[1] > ms {
+            f.timers[1] -= ms;
+            return Vec::new();
+        }
+        f.timers[1] = f.timers[0];
+        f.life -= 1;
+        f.strength = f.strength.saturating_sub(delta).max(1);
+        let mut kinds = Vec::new();
+        let mut state = "";
+        // The piece's own life is below 1, never 500: it can deteriorate.
+        if f.life == 0 {
+            f.strength = 0;
+            kinds.push(BROKEN);
+            state = " broken";
+        }
+        if i64::from(f.life) == decayed {
+            kinds.push(if electrified { BROKEN } else { DECAYED });
+            state = if f.life == 0 { state } else { " decayed" };
+        }
+        lines.push(format!(
+            "fence {id} life {} strength {}{state}",
+            f.life, f.strength
+        ));
+        self.dirty = true;
+        let tile = self.worker_tile(at);
+        kinds
+            .into_iter()
+            .map(|kind| Event {
+                sender: id,
+                target: 0,
+                data: tile,
+                extra: 0,
+                kind,
+                delay: 1,
+                sender_channel: PIECE_CHANNEL,
+                channel: TASK_CHANNEL,
+            })
+            .collect()
+    }
+
+    /// Whether tile `t` is open (placing 7.4 item 4): one of its four quadrants is empty or holds
+    /// a `walkable` object.
+    fn open(&self, t: usize) -> bool {
+        (0..4).any(|q| {
+            self.quadrant(t, q)
+                .is_none_or(|e| self.shape(e).is_some_and(|s| s.walkable.0))
+        })
+    }
+
+    /// The tile a worker stands on to mend the piece at `at` (placing 7.4 "The events"): its tile or
+    /// the one across, the open one on the zoo grounds first.
+    fn worker_tile(&self, at: usize) -> u32 {
+        let Some((t, d)) = self.slot(at) else {
+            return 0;
+        };
+        let n = self.neighbour(t, d);
+        let grounds = |t: usize| self.exhibits.region(t) == Some(GROUNDS);
+        let tiles = [Some(t), n];
+        let pick = |f: &dyn Fn(usize) -> bool| tiles.into_iter().flatten().find(|&t| f(t));
+        let found = pick(&|t| grounds(t) && self.open(t)).or_else(|| pick(&|t| self.open(t)));
+        found.unwrap_or(t) as u32
     }
 }
