@@ -379,15 +379,36 @@ impl World {
         else {
             return;
         };
-        if (c.x, c.y, c.z, c.rotation) == (point.0, point.1, point.2, rotation) {
+        // The objects stand in the order of the entities.
+        let object = self.owner.binary_search(&at).ok();
+        let on_map = object.is_none_or(|o| self.scene.is_placed(o));
+        if (c.x, c.y, c.z, c.rotation) == (point.0, point.1, point.2, rotation) && on_map {
             return;
         }
         (c.x, c.y, c.z, c.rotation) = (point.0, point.1, point.2, rotation);
-        // The objects stand in the order of the entities.
-        if let Ok(o) = self.owner.binary_search(&at) {
+        if let Some(o) = object {
             self.scene.move_unit(o, point, rotation % 8);
         }
         self.dirty = true;
+    }
+
+    /// Takes the unit at position `at` of the entity list off the map, as the pick-up does (unit
+    /// placing 8.2): it stays in the list, stands on no tile and is not drawn, until
+    /// [`World::place_unit`] puts it down.
+    pub fn lift_unit(&mut self, at: usize) {
+        if let Ok(o) = self.owner.binary_search(&at) {
+            self.scene.lift_unit(o);
+            self.dirty = true;
+        }
+    }
+
+    /// Marks the exhibit that tile `t` belongs to for a new rating (a unit left it or came into
+    /// it); the zoo grounds have none.
+    pub fn mark_rating(&mut self, t: usize) {
+        let region = self.exhibits.region(t).filter(|&r| r != GROUNDS);
+        if let Some(e) = region.and_then(|r| self.exhibits.get_mut(r)) {
+            e.rating.dirty = true;
+        }
     }
 
     /// Whether an animal, guest or staff member stands on tile `t`.
@@ -399,6 +420,7 @@ impl World {
             .zip(&self.shapes)
             .filter(|(_, s)| s.is_some_and(|s| s.kind == Kind::Unit))
             .filter_map(|(e, _)| e.common.as_ref())
+            .filter(|c| !self.units.get(c.id).is_some_and(|u| u.carried))
             .any(|c| {
                 let (x, y) = (c.x.div_euclid(64), c.y.div_euclid(64));
                 usize::try_from(y)

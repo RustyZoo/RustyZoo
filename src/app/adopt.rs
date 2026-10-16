@@ -53,13 +53,7 @@ impl App<'_> {
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");
-                match message {
-                    Some(id) => {
-                        ui.message(&to_cp1252(&ui.string(id)));
-                        self.tool_lines.push(format!("tool message {id}"));
-                    }
-                    None => self.tool_lines.push("tool refused".into()),
-                }
+                super::carry::refusal(ui, &mut self.tool_lines, message);
             }
         }
         self.aim(false);

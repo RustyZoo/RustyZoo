@@ -334,6 +334,9 @@ struct Game {
     panel: crate::panel::exhibit::Panel,
     /// The animal panel and the animal selected.
     animal: crate::panel::animal::Panel,
+    /// The unit the player selected, and the one it carries (unit placing 8).
+    selected: Option<u32>,
+    carry: Option<place::unit::Carry>,
 }
 
 impl Game {
@@ -648,6 +651,8 @@ impl<'a> App<'a> {
             rest: Vec::new(),
             panel: Default::default(),
             animal: Default::default(),
+            selected: None,
+            carry: None,
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -1132,6 +1137,8 @@ impl<'a> App<'a> {
         let dirt = place::dirt(&game.world, game.terrain.types(), &habits);
         let (step, view) = (game.build.step(), game.camera.rotation);
         let october = game.build.october();
+        let point = game.camera.pick(&game.world.zoo, ui.pointer());
+        let floor = point.2;
         let at = |ty, point: (i64, i64)| {
             if cat.types.get(ty).is_some_and(place::unit::is_unit) {
                 return place::unit::pending(
@@ -1140,7 +1147,7 @@ impl<'a> App<'a> {
                     &game.water,
                     ty,
                     view,
-                    point,
+                    (point.0, point.1, floor),
                     october,
                 );
             }
@@ -1156,12 +1163,16 @@ impl<'a> App<'a> {
                 point,
             )
         };
-        let point = game.camera.pick(&game.world.zoo, ui.pointer());
         game.pending = game
             .build
             .tool()
             .filter(|_| game.hover)
             .and_then(|ty| at(ty, (point.0, point.1)));
+        // The unit the player carries follows the pointer with the same checks (8.3).
+        if let Some(carry) = game.carry.as_ref().filter(|_| game.hover) {
+            let water = &game.water;
+            game.pending = place::unit::carried(&game.world, cat, water, carry, view, point);
+        }
         // The gate tool's pending gate sits on the fence piece under the pointer.
         // It is judged when the piece changes, so a gate just placed shows nothing until the
         // pointer has been over another piece.
@@ -1257,12 +1268,18 @@ impl<'a> App<'a> {
         if game.build.gating() {
             return self.gate_release();
         }
+        if game.carry.is_some() {
+            return self.drop_carried();
+        }
         let cat = self.renderer.catalogue();
         if (game.build.tool().and_then(|t| cat.types.get(t))).is_some_and(place::unit::is_unit) {
             return self.adopt();
         }
         if game.build.tool().is_none() && game.terrain.mode().is_none() {
-            return self.select();
+            return match self.pick_or_select() {
+                true => (),
+                false => self.select(),
+            };
         }
         let dragging = game.build.dragging();
         game.build.end_drag();
@@ -1457,8 +1474,13 @@ impl<'a> App<'a> {
             self.terrain_pressed(id);
         }
         self.terrain_sync();
-        // Every change of the tool or the step tells a line.
+        // Every change of the tool or the step tells a line. Choosing an item ends a move (8.6).
         if self.tool_lines.len() != told {
+            let b = self.game.as_ref().map(|g| &g.build);
+            let tool = b.is_some_and(|b| b.tool().is_some() || b.bulldozing() || b.gating());
+            if tool && self.game.as_ref().is_some_and(|g| g.carry.is_some()) {
+                return self.put_back();
+            }
             self.aim(false);
         }
     }
@@ -1611,6 +1633,9 @@ impl<'a> App<'a> {
     /// building panels is dropped, then the open panels close, and only Escape then asks the
     /// question that leads to the menu.
     fn cancel(&mut self, ask: bool) {
+        if self.game.as_ref().is_some_and(|g| g.carry.is_some()) {
+            return self.put_back();
+        }
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
             if game.build.cancel(ui, &mut self.tool_lines) {
                 self.terrain_sync();
@@ -1732,6 +1757,7 @@ impl<'a> App<'a> {
         };
         want.marks.clone_from(&game.marks);
         want.shown = game.shown();
+        want.hidden.extend(game.carry.as_ref().map(|c| c.id));
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         if !dirty && want == game.extra {
@@ -1947,6 +1973,7 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
 
 mod adopt;
 mod bulldozer;
+mod carry;
 mod exhibits;
 mod gates;
 mod panel;

@@ -186,7 +186,16 @@ fn world(mut entities: Vec<Entity>) -> World {
 /// The pending animal of the type for the middle of tile (`tx`, `ty`), October or not.
 fn at(w: &World, ty: usize, (tx, tyy): (i64, i64)) -> Pending {
     let point = (tx * 64 + 32, tyy * 64 + 32);
-    pending(w, &catalogue(), &[false, true], ty, 0, point, false).unwrap()
+    pending(
+        w,
+        &catalogue(),
+        &[false, true],
+        ty,
+        0,
+        (point.0, point.1, 0),
+        false,
+    )
+    .unwrap()
 }
 
 #[test]
@@ -252,15 +261,15 @@ fn an_animal_is_valid_in_an_exhibit_and_refused_on_the_grounds() {
     // Off the map and an unknown type give nothing.
     let cat = catalogue();
     assert_eq!(
-        pending(&w, &cat, &[false, true], ZEBRA, 0, (-1, 5), false),
+        pending(&w, &cat, &[false, true], ZEBRA, 0, (-1, 5, 0), false),
         None
     );
     assert_eq!(
-        pending(&w, &cat, &[false, true], 99, 0, (5, 5), false),
+        pending(&w, &cat, &[false, true], 99, 0, (5, 5, 0), false),
         None
     );
     assert_eq!(
-        pending(&w, &cat, &[false, true], ZEBRA, 0, (i64::MAX, 5), false),
+        pending(&w, &cat, &[false, true], ZEBRA, 0, (i64::MAX, 5, 0), false),
         None
     );
 }
@@ -442,13 +451,31 @@ fn a_large_animal_runs_the_footprint_check_and_needs_room_inside_the_fences() {
     let w = world(pen());
     let cat = catalogue();
     let point = (2 * 64 + 32, 2 * 64 + 32);
-    let free = pending(&w, &cat, &[false, true], BIG, 0, point, false).unwrap();
+    let free = pending(
+        &w,
+        &cat,
+        &[false, true],
+        BIG,
+        0,
+        (point.0, point.1, 0),
+        false,
+    )
+    .unwrap();
     assert_eq!((free.verdict, free.message), (Verdict::Valid, None));
     let mut pieces = pen();
     let first = pieces.len();
     pieces.push(entity_at("objects", "rock", "m", free.x, free.y, 0));
     let w = world(pieces);
-    let held = pending(&w, &cat, &[false, true], BIG, 0, point, false).unwrap();
+    let held = pending(
+        &w,
+        &cat,
+        &[false, true],
+        BIG,
+        0,
+        (point.0, point.1, 0),
+        false,
+    )
+    .unwrap();
     assert_eq!(held.verdict, Verdict::Invalid);
     assert!(held.blocking.contains(&first));
 }
