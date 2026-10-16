@@ -49,7 +49,7 @@ impl Ring {
 
 /// 10.2: the unit at position `at` of the entity list looks for a place to walk to and a path
 /// to it. True when a search succeeded; the unit then holds the path and its destination, and a
-/// move call starts the walk ([`movement::start`]). A unit that has a path does nothing.
+/// move call starts the walk ([`movement::call`]). A unit that has a path does nothing.
 pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize) -> bool {
     if !unit.path.is_empty() {
         return false;

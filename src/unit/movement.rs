@@ -220,7 +220,8 @@ pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     }
 }
 
-/// The unit shows its idle animation again (8.2 step 1 and 3).
+/// The unit shows its idle animation again (8.2 step 1; the normal end of a walk keeps the move
+/// animation, step 3).
 fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     let entity = &world.zoo.entities[at];
     unit.animation.set_base("idle", &|n| data.timing(entity, n));

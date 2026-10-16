@@ -513,7 +513,7 @@ fn a_move_call_without_a_path_walks_at_random_and_an_idle_guest_starts_one() {
         e.push(entity("animals", "", 2, centre((20, 10)), 2));
     });
     let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
-    // The guest stands in a routine that never ends and is sent out by the idle choice; the
+    // The guest stands in a routine that never ends and is sent out by its goals; the
     // animal's set has the move call itself, with no path and no destination.
     walker.start_set(&mut w, 1, "bZoo");
     walker.start(&mut w, 2);

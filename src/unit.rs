@@ -10,10 +10,10 @@
 //! [`update`] is one unit's turn in the original's order: events in; unless suspended, the move;
 //! the animation; unless suspended, the status timer (the needs and the checks once it passes the
 //! period) and then either the wait counted down or the behaviour and the goals; the events
-//! discarded. The move is [`movement`] and the random walk [`walk`]. What the needs, the checks and the
-//! goals do is the business of later issues: each is a method of [`Hooks`], empty until then. The animation and the
-//! behaviour are [`Standard`]'s: the frames of the unit's animation and the set it runs come from
-//! the data ([`crate::behaviour`]).
+//! discarded. The move is [`movement`] and the random walk [`walk`]. What the needs, the checks
+//! and the goals do is the business of later issues: each is a method of [`Hooks`], empty until
+//! then. The animation and the behaviour are [`Standard`]'s: the frames of the unit's animation
+//! and the set it runs come from the data ([`crate::behaviour`]).
 //!
 //! A hook must not add or remove entities (a removal goes through [`Ctx::remove`], which only
 //! flags the unit for the next removal pass, as in the original).
