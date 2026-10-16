@@ -473,8 +473,9 @@ pub struct Env {
     pub wet: bool,
     /// The game milliseconds of the calendar, for the date of its last meal.
     pub now: u64,
-    /// Its set or its task occupies it (9.3), and its task is the keeper or the other food task.
+    /// Its set or its task occupies it (9.3).
     pub busy: bool,
+    /// Its task is the keeper food or the other food task.
     pub food_task: bool,
     /// The food of its species' kind in its exhibit, in units (hunger check 4.1).
     pub food_total: i32,

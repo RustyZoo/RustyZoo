@@ -149,7 +149,7 @@ pub struct Piece {
     pub left: i32,
 }
 
-/// The pieces of food of `kind` in the exhibits `regions`, in the tile order of the exhibit and
+/// The pieces of food of the kind `wanted` in the exhibits `regions`, in the tile order of the exhibit and
 /// the slot order of the tile (habitat rating 5.1).
 pub fn pieces(world: &World, cat: &Catalogue, regions: &[u32], wanted: i32) -> Vec<Piece> {
     let mut found: Vec<Piece> = Vec::new();

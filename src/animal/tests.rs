@@ -1562,7 +1562,7 @@ fn a_hungry_animal_that_finds_food_wants_it_and_forgets_its_thirst() {
     };
     let out = hunger_check(&mut a, &k, &env);
     assert!(a.wants_food && !a.thirsty && !a.no_food && out.messages.is_empty());
-    // Not hungry enough, or already on its way, or on the keeper food task: nothing.
+    // Not hungry enough, already on its way, or on the keeper food task: nothing.
     for (hunger, wants, task) in [(49, false, false), (50, true, false), (50, false, true)] {
         let mut a = Animal {
             hunger,
@@ -1575,7 +1575,7 @@ fn a_hungry_animal_that_finds_food_wants_it_and_forgets_its_thirst() {
             ..Env::default()
         };
         hunger_check(&mut a, &k, &env);
-        assert_eq!((a.wants_food, a.no_food), (wants, false), "{hunger} {task}");
+        assert_eq!((a.wants_food, a.no_food), (wants, false));
     }
     // Food with nothing left in total is no food.
     let mut a = Animal {
@@ -1700,6 +1700,7 @@ fn a_pile_shows_empty_half_or_full_by_thirds_of_its_full_amount() {
 #[test]
 fn the_facing_towards_food_is_the_nearest_of_the_eight_directions() {
     // The original's arc tangent with its shortened constants.
+    #[allow(clippy::approx_constant)] // the program's own, shorter constant
     let formula = |dx: i32, dy: i32| {
         let a = f64::from(dy).atan2(f64::from(dx));
         let i = ((a + 3.1415926535) * 0.15915494309644432 * 8.0 + 0.5) as u32;
@@ -1778,7 +1779,7 @@ fn feeding() -> Catalogue {
 
 /// One step of 67 ms with the sets of `data`: the `unit` and `animal` log lines.
 fn step_log(run: &mut crate::sim::drive::Run, data: &dyn crate::behaviour::Data) -> Vec<String> {
-    let step = run.sim.step_game(
+    run.sim.step_game(
         data,
         &run.cat,
         &mut run.world,
@@ -1786,7 +1787,6 @@ fn step_log(run: &mut crate::sim::drive::Run, data: &dyn crate::behaviour::Data)
         67,
         |_, _, _| {},
     );
-    drop(step);
     let units = run
         .world
         .units
@@ -1886,7 +1886,8 @@ fn the_keeper_food_goal_draws_two_numbers_and_picks_by_them() {
     let mut seen = [false; 3];
     for seed in 0..60 {
         let (mut rng, mut check) = (Rng::default(), Rng::default());
-        (rng.seed(seed), check.seed(seed));
+        rng.seed(seed);
+        check.seed(seed);
         // The first draw picks a random piece with the second; else the second tests the least.
         let (kind, expected) = match check.rand() & 3 {
             0 => (0, pieces[check.rand() as usize % 3].id),
