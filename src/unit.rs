@@ -596,6 +596,9 @@ impl Hooks for Standard<'_> {
         if unit.walking && !moved {
             movement::stop(unit);
         }
+        if unit.runner.take_face() {
+            crate::animal::food::face(unit, world, at);
+        }
         self.tell(unit, world, at);
     }
 
@@ -610,7 +613,7 @@ impl Hooks for Standard<'_> {
         crate::animal::needs(unit, world, ctx, at);
     }
     fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-        crate::animal::checks(unit, world, ctx, at);
+        crate::animal::checks(unit, world, ctx, at, self.data);
         // The checks end with the ambient choice, with the happiness of that moment.
         let asked = match &mut unit.part {
             Part::Animal(a) => std::mem::take(&mut a.ambient),

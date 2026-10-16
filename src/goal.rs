@@ -21,8 +21,11 @@ use crate::unit::{Ctx, Kind, Part, Unit, walk};
 use crate::world::World;
 use crate::zoo::Entity;
 
+mod animal;
 #[cfg(test)]
 mod tests;
+
+pub use animal::KEEPER_FOOD;
 
 pub const NONE: u8 = 0;
 /// The wander.
@@ -148,6 +151,8 @@ pub enum Goal {
     Base,
     /// 0x65 of a guest: walk to the viewing tile of an exhibit (11.2).
     Habitat,
+    /// 0x72 of an animal: walk to a piece of keeper food and eat it (11.8).
+    KeeperFood,
 }
 
 impl Goal {
@@ -157,6 +162,7 @@ impl Goal {
         match (task, kind) {
             (..=99, _) | (135.., _) => Some(Goal::Base),
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
+            (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             _ => None,
         }
     }
@@ -165,6 +171,7 @@ impl Goal {
         match self {
             Goal::Base => RANDOM,
             Goal::Habitat => HABITAT,
+            Goal::KeeperFood => KEEPER_FOOD,
         }
     }
 
@@ -194,20 +201,24 @@ impl Goal {
     }
 
     fn check_done(self, cx: &mut Cx) {
-        if self == Goal::Habitat && cx.reached(false) {
+        if self != Goal::Base && cx.reached(false) {
             cx.record().done = true;
         }
     }
 
     fn decide(self, cx: &mut Cx) {
-        if self == Goal::Habitat && cx.record().target.tile.is_none() {
-            cx.set_task(NONE, 0, 0, None);
+        match self {
+            Goal::Habitat if cx.record().target.tile.is_none() => cx.set_task(NONE, 0, 0, None),
+            Goal::KeeperFood => cx.keeper_food_decide(),
+            _ => {}
         }
     }
 
     fn complete(self, cx: &mut Cx) {
-        if self == Goal::Habitat {
-            cx.set_task(GAWK, 0, 0, None);
+        match self {
+            Goal::Habitat => cx.set_task(GAWK, 0, 0, None),
+            Goal::KeeperFood => cx.keeper_food_complete(),
+            Goal::Base => {}
         }
     }
 }
@@ -416,6 +427,7 @@ impl Cx<'_, '_> {
                 self.set_task(NONE, 0, 0, None);
                 return false;
             }
+            Kind::Animal => self.animal_ladder(task),
             Kind::Guest => self.guest_ladder(task, done),
             _ => {}
         }
@@ -605,6 +617,11 @@ impl Cx<'_, '_> {
             (_, true) => "bRun",
             _ => "bWalk",
         };
+        self.walk_set(set, job, force)
+    }
+
+    /// The same with the walk set the goal names (`bFindKeeperFood`).
+    pub fn walk_set(&mut self, set: &str, job: bool, force: bool) -> bool {
         let started =
             !self.unit.suspended() && self.unit.destination.is_some() && self.start_set(set, force);
         if !started {

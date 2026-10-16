@@ -911,6 +911,7 @@ impl<'a> MapRenderer<'a> {
                 life: c.fence.map(|f| f.life as i32),
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
+                food: c.food,
                 tint: extra
                     .tinted
                     .iter()
@@ -943,6 +944,7 @@ impl<'a> MapRenderer<'a> {
                 life: None,
                 mode: 0,
                 portal: false,
+                food: 0,
                 tint: Some(ghost.tint),
                 wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
                 shown: None,
@@ -1006,6 +1008,7 @@ impl<'a> MapRenderer<'a> {
                         life: None,
                         mode: 0,
                         portal: false,
+                        food: 0,
                         tint: None,
                         wall: 0,
                         shown: None,
@@ -1341,6 +1344,11 @@ impl<'a> MapRenderer<'a> {
             "animals" | "guests" | "keeper" | "maint" | "tour" => {
                 meta.shown.map_or("idle", |(name, _)| name).to_string()
             }
+            // Food shows `empty`, `half` or `full` by its units left (animals-needs 5.1).
+            "food" => {
+                let max = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;
+                crate::animal::food::STATES[crate::animal::food::fullness(meta.food, max)].into()
+            }
             _ => String::new(),
         };
         // Without the swimming pictures an animal in a tank shows its rest picture.
@@ -1436,6 +1444,8 @@ struct Meta<'a> {
     mode: u32,
     /// A tank wall that is a portal.
     portal: bool,
+    /// The units left of a food entity.
+    food: i32,
     /// The colour the object is drawn tinted with (sprite drawing 9.1).
     tint: Option<[u8; 3]>,
     /// The wall height of a pending tank gate, 0 for anything else.

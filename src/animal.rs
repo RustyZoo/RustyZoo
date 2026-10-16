@@ -14,7 +14,10 @@
 //! An animal of a loaded map is created by [`load`] before the first step, with the draws of a
 //! new one, and then takes what its record stores (animals 3.5); it draws nothing at its turn.
 //!
-//! Not here yet: the shelter check, the checks of part B, the swimmers and the effects of the
+//! Hunger, the food entity and the eating are [`food`]: the hunger check and `fEat` run among the
+//! checks, their effects on the food and on the goal are applied after them.
+//!
+//! Not here yet: the shelter check, the other checks of part B, the swimmers and the effects of the
 //! escape, rampage and zap checks (M7: only their counters and draws run). The ambient choice is
 //! taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
@@ -23,6 +26,7 @@
 //! `animal trample <id> <x>,<y>` for a tile trampled.
 
 use crate::config::{Config, to_int};
+use crate::behaviour::Data;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::Record;
 use crate::exhibit::{EXTERIOR, GROUNDS, rating};
@@ -32,12 +36,17 @@ use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{AnimalRecord, Entity};
 
+pub mod food;
 #[cfg(test)]
 mod tests;
+
+use food::Meal;
 
 /// The messages "not happy" and "dislikes its exhibit": string numbers whose text holds the name.
 pub const NOT_HAPPY: i32 = 10028;
 pub const DISLIKES_EXHIBIT: i32 = 10031;
+/// "Can't find any food".
+pub const NO_FOOD: i32 = 10030;
 
 /// The counters of the checks, in the order the creation draws them (animals 3.2).
 pub const HUNGER: usize = 0;
@@ -224,6 +233,12 @@ keys! {
     rampage_min: "cRampageTimeMin" = 0,
     rampage_max: "cRampageTimeMax" = 0,
     test_fence: "cTestFenceChance" = 0,
+    hunger_increment: "cHungerIncrement" = 10,
+    hungry_health: "cHungryHealthChange" = 5,
+    no_food_change: "cNoFoodChange" = -20,
+    food_kind: "cKeeperFoodType" = 0,
+    bite: "cKeeperFoodUnitsEaten" = 20,
+    food_value: "cFoodUnitValue" = 1,
 }
 
 impl Keys {
@@ -288,6 +303,13 @@ pub struct Animal {
     pub mourning: bool,
     /// Raised by the bored check (9.2); the drink goal of a later issue lowers it.
     pub thirsty: bool,
+    /// Hungry for keeper food (the ladder starts the keeper food goal), eating, and "hungry and
+    /// no food": the first hungry check that finds no food only notes it (animals-needs 4.3).
+    pub wants_food: bool,
+    pub eating: bool,
+    pub no_food: bool,
+    /// The food entity it goes to and eats from; 0 for none.
+    pub food: u32,
     /// The rampage flag and its counter (animals 11): they gate the rampage draws and the bored
     /// check; nothing else follows from them before M7.
     pub rampaging: bool,
@@ -389,9 +411,9 @@ impl Animal {
         self.important &= !(1 << bit);
     }
 
-    /// Whether it is doing something (9.3): in M6 it is thirsty or in a show.
-    fn occupied(&self) -> bool {
-        self.thirsty || self.in_show
+    /// Whether it is doing something (9.3). The set and the task are the environment's.
+    fn occupied(&self, env: &Env) -> bool {
+        self.thirsty || self.in_show || self.wants_food || self.dying || env.busy
     }
 
     /// Clears the bits, then sets "needs a suitable exhibit" when `set`.
@@ -449,6 +471,15 @@ pub struct Env {
     pub grass: bool,
     /// The tile holds water or the exhibit is a tank: it does not look for a drink here.
     pub wet: bool,
+    /// The game milliseconds of the calendar, for the date of its last meal.
+    pub now: u64,
+    /// Its set or its task occupies it (9.3), and its task is the keeper or the other food task.
+    pub busy: bool,
+    pub food_task: bool,
+    /// The food of its species' kind in its exhibit, in units (hunger check 4.1).
+    pub food_total: i32,
+    /// What eating reads of the food it aims at and of its type.
+    pub meal: Meal,
 }
 
 /// What a tick of checks asks of the world besides the animal's own state.
@@ -458,12 +489,17 @@ pub struct Out {
     pub messages: Vec<i32>,
     /// The tile under the animal is painted as trampled ground.
     pub trample: bool,
+    /// What the eating of this tick asks of the world.
+    pub meal: Meal,
 }
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
 /// generator, drawn from in that order.
 pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) -> Out {
-    let mut out = Out::default();
+    let mut out = Out {
+        meal: env.meal.clone(),
+        ..Out::default()
+    };
     if a.crated || a.egg {
         a.exhibit_bit(a.crated || env.grounds);
         return out;
@@ -493,14 +529,22 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
     if std::mem::take(&mut a.mourning) {
         a.change(class.death_change);
     }
+    if a.eating && a.hunger <= 0 {
+        a.stop_eating(false, &mut out.meal);
+        a.fed = env.now;
+    }
     escape(a, k, class, rng);
+    if a.eating {
+        food::eat(a, k, &mut out.meal);
+    }
+    food::hunger(a, k, class, env, &mut out);
     captivity(a, k, class, env, rng, &mut out);
     social(a, k, class, env);
     fire(&mut a.counters[KEEPER], class.periods[KEEPER]);
     habitat(a, k, class, env, &mut out.messages);
     bored(a, k, class, env, rng);
     other(a, k, class, env);
-    zap(a, k, class, rng);
+    zap(a, k, class, env, rng);
     if fire(&mut a.counters[MESSAGE], class.periods[MESSAGE]) && a.happiness < -60 {
         out.messages.push(NOT_HAPPY);
     }
@@ -658,7 +702,7 @@ fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
     }
     a.unmark(STIMULATION);
     // A tired animal tries to sleep (part B).
-    if a.energy >= k.energy_threshold || a.at_minimum_health || a.occupied() || a.rampaging {
+    if a.energy >= k.energy_threshold || a.at_minimum_health || a.occupied(env) || a.rampaging {
         return;
     }
     if a.hunger >= k.hunger_threshold {
@@ -688,7 +732,7 @@ fn other(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
 /// The zap check (animals 11): nothing runs for an animal in a show; its counter fires when it
 /// was below 1, and the draw of a fence test is made when nothing occupies the animal and its
 /// chance is not 0. The test itself is M7's.
-fn zap(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
+fn zap(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
     if a.in_show {
         return;
     }
@@ -696,7 +740,7 @@ fn zap(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
     a.zap = old.wrapping_sub(1);
     if old < 1 {
         a.zap = class.zap.wrapping_sub(1);
-        if !a.occupied() && k.test_fence != 0 {
+        if !a.occupied(env) && k.test_fence != 0 {
             rng.chance(k.test_fence);
         }
     }
@@ -810,7 +854,13 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 }
 
 /// The conditional checks of a status tick (animals 4.2).
-pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    let task = unit.goal.record.task;
+    let meal = food::meal(unit, world, data, at);
+    let busy = matches!(
+        unit.runner.top(),
+        Some("bSick" | "bSleep" | "bEat" | "bTestFence")
+    ) || matches!(task, 102..=106 | 114 | 115 | 122 | 124 | 128 | 129 | 133 | 134);
     let Part::Animal(a) = &mut unit.part else {
         return;
     };
@@ -837,6 +887,10 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
                 && (0..4).all(|q| world.quadrant(t, q).is_none())
         }),
         wet: tile.is_some_and(|t| world.is_water(t)),
+        now: world.units.now,
+        busy,
+        food_task: matches!(task, 114 | 115),
+        meal,
         ..Env::default()
     };
     if let Some(x) = x {
@@ -850,13 +904,17 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
             .map(|e| e.tiles)
             .sum();
         env.census = census(world, x, &near, &key);
+        let regions = food::near(world, x, &k);
+        let pieces = food::pieces(world, ctx.cat, &regions, k.food_kind);
+        env.food_total = pieces.iter().map(|p| p.left).fold(0, i32::saturating_add);
         if let Some(r) = record(world, ctx.cat, x, &key) {
             env.species = r.animals as i32;
             env.rating = r.shown() as i32;
             env.other = r.other.round() as i32;
         }
     }
-    let out = run(a, &k, &class, &env, ctx.rng);
+    let mut out = run(a, &k, &class, &env, ctx.rng);
+    let meal = std::mem::take(&mut out.meal);
     if let Some(t) = tile.filter(|_| out.trample) {
         let tile = world.zoo.tiles[t];
         let painted =
@@ -874,4 +932,5 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         world.units.post(m, unit.id);
         world.units.tell(format!("message {m} {}", unit.id));
     }
+    food::apply(unit, world, ctx, at, data, meal);
 }

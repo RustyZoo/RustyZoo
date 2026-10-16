@@ -676,17 +676,17 @@ fn a_script_applies_its_commands_to_the_run() {
     let mut run = game(3);
     let t = run.world.tile_index(1, 2).unwrap();
     for (_, c) in &commands {
-        assert!(run.apply(*c));
+        assert!(run.apply(c));
     }
     assert_eq!(run.world.zoo.tiles[t].elevation, 3);
     assert_eq!(run.money.cash, -5.5);
     run.step(67);
     assert_eq!(run.world.zoo.entities.len(), 2, "removed by the next pass");
     assert!(
-        !run.apply(drive::Command::Tile(99, 0, 0, 0, 0)),
+        !run.apply(&drive::Command::Tile(99, 0, 0, 0, 0)),
         "off the map"
     );
-    assert!(!run.apply(drive::Command::Fill(7)), "no tank");
+    assert!(!run.apply(&drive::Command::Fill(7)), "no tank");
 }
 
 #[test]

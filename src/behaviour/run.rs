@@ -326,6 +326,8 @@ pub struct Runner {
     playing: bool,
     /// The move call the last execution stopped at, for the unit to run.
     moving: Option<Gait>,
+    /// A `fFaceTowardFood` call ran, for the unit to turn.
+    face: bool,
 }
 
 /// The answer to a move call (movement 8.2).
@@ -346,6 +348,7 @@ impl Default for Runner {
             ready: true,
             playing: false,
             moving: None,
+            face: false,
         }
     }
 }
@@ -364,6 +367,16 @@ impl Runner {
     /// The move call the set reached, once.
     pub fn take_move(&mut self) -> Option<Gait> {
         self.moving.take()
+    }
+
+    /// Whether a face-the-food call ran since the last time, once.
+    pub fn take_face(&mut self) -> bool {
+        std::mem::take(&mut self.face)
+    }
+
+    /// Forgets the set asked to follow the current one (animals-needs 5.4).
+    pub fn forget(&mut self) {
+        self.pending = None;
     }
 
     /// The unit's answer to the move call: it is done, or fails the set.
@@ -595,6 +608,11 @@ impl Runner {
                 return true;
             }
             Op::KeepControl | Op::Spray | Op::FaceDirection | Op::TargetBuilding => {
+                return true;
+            }
+            Op::FaceFood => {
+                self.face = true;
+                self.chain[k].done = true;
                 return true;
             }
             Op::Move { gait, .. } => {

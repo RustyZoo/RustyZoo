@@ -108,7 +108,7 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     let mut commands = commands.into_iter().peekable();
     for step in 0..flags.ticks {
         while let Some((_, command)) = commands.next_if(|(at, _)| *at == step) {
-            if !run.apply(command) {
+            if !run.apply(&command) {
                 eprintln!("rustyzoo: warning: step {step}: {command:?} changed nothing");
             }
         }
