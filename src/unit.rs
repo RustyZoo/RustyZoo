@@ -28,7 +28,7 @@ use std::collections::HashMap;
 
 pub use crate::animal::Animal;
 use crate::animal::Class;
-use crate::behaviour::{Animation, Data, Env, Note, Runner};
+use crate::behaviour::{Animation, Data, Env, Heard, Note, Runner};
 use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::path::{self, Finder, Mover, Settings};
@@ -224,7 +224,7 @@ pub struct Units {
     /// The messages posted and not shown yet: the string number and the unit it is about.
     messages: Vec<(i32, u32)>,
     /// The sounds the units' animations began, with the unit's id, for the app.
-    sounds: Vec<(u32, String)>,
+    sounds: Vec<(u32, Heard)>,
 }
 
 impl Default for Units {
@@ -300,7 +300,7 @@ impl Units {
     }
 
     /// The sounds asked for since the last call: the unit and the sound its `[Sounds]` names.
-    pub fn take_sounds(&mut self) -> Vec<(u32, String)> {
+    pub fn take_sounds(&mut self) -> Vec<(u32, Heard)> {
         std::mem::take(&mut self.sounds)
     }
 

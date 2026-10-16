@@ -24,7 +24,7 @@ use crate::vfs::Vfs;
 mod library;
 mod run;
 pub use library::{Library, Timings};
-pub use run::{Animation, Data, Env, NoData, Note, Runner, Timing};
+pub use run::{Animation, Data, Env, Heard, NoData, Note, Runner, Timing};
 
 /// How many of [`NAMES`] the program knows.
 pub const KNOWN: usize = 53;

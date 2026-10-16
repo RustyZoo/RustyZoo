@@ -188,7 +188,7 @@ impl Run {
         lines.extend((self.world.units.take_lines().into_iter()).map(|l| format!("unit {l}")));
         lines.extend(
             (self.world.units.take_sounds().into_iter())
-                .map(|(id, s)| format!("unit sound {id} {s}")),
+                .map(|(id, s)| format!("unit sound {id} {}", s.file)),
         );
         lines.extend(
             (self.world.units.take_animal_lines().into_iter()).map(|l| format!("animal {l}")),

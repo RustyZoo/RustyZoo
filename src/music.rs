@@ -20,6 +20,18 @@ pub fn gain(sum: i32) -> f32 {
     10f32.powf(-(sum.clamp(1, 10_000) as f32) / 2000.0)
 }
 
+/// The distance term `X` and the pan of a sound at the view-space point `sound` heard from the
+/// view-space point `listener` (the centre of the map view): `X = min(trunc(2.75 * d), 10000)`
+/// and `pan = clamp(6 * dx, -10000, 10000)` (sound specification 5). A positive pan quietens the
+/// left channel.
+pub fn positional(sound: (i64, i64), listener: (i64, i64)) -> (i32, i32) {
+    let dx = sound.0.saturating_sub(listener.0);
+    let dy = sound.1.saturating_sub(listener.1);
+    let d = ((dx as f64).powi(2) + (dy as f64).powi(2)).sqrt();
+    let distance = (2.75 * d).min(10_000.0) as i32;
+    (distance, dx.saturating_mul(6).clamp(-10_000, 10_000) as i32)
+}
+
 /// The global term `G` for the `[UI] userAttenuation` setting `u`: the slider position
 /// `s = clamp(100 - u div 15, 0, 100)` gives `(100 - s) * 15`, or 5000 at 0 (specification 4.3).
 pub fn user_term(u: i32) -> i32 {
@@ -179,6 +191,17 @@ mod tests {
         assert_eq!(term("[UI]\nuserAttenuation=-5\n"), 0);
         assert_eq!(term("[UI]\nuserAttenuation=1500\n"), 5000);
         assert_eq!(term("[UI]\nuserAttenuation=x\n"), 0);
+    }
+
+    #[test]
+    fn a_positional_sound_is_attenuated_and_panned_by_its_place() {
+        assert_eq!(positional((1300, 900), (1012, 784)), (853, 1728));
+        assert_eq!(positional((5, 5), (5, 5)), (0, 0));
+        assert_eq!(positional((0, 0), (0, 600)), (1650, 0));
+        assert_eq!(positional((-300, 0), (0, 0)), (825, -1800));
+        assert_eq!(positional((9000, 0), (0, 0)), (10_000, 10_000));
+        assert_eq!(positional((i64::MAX, i64::MIN), (0, 0)), (10_000, 10_000));
+        assert_eq!(positional((i64::MIN, 0), (i64::MAX, 0)), (10_000, -10_000));
     }
 
     #[test]

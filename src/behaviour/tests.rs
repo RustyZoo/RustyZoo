@@ -394,10 +394,16 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
         0
     );
     // A short name is a file of the type's folder; a value with `.wav` is the path as written.
-    let sound = |key| library.sound(&man, key);
-    assert_eq!(sound("grunt").as_deref(), Some("guests/man/afrbuf1.wav"));
-    assert_eq!(sound("yell").as_deref(), Some("sounds/yell.wav"));
-    assert_eq!(sound("noise").as_deref(), Some("guests/man/x.wav.wav"));
+    // The second value of the key is the base term, 0 when absent; each key has its own voice.
+    let sound = |key| library.sound(&man, key).map(|h| (h.file, h.base, h.voice));
+    let heard =
+        |file: &str, base, key: &str| Some((file.into(), base, format!("guests/man/{key}")));
+    assert_eq!(
+        sound("grunt"),
+        heard("guests/man/afrbuf1.wav", 1500, "grunt")
+    );
+    assert_eq!(sound("yell"), heard("sounds/yell.wav", 0, "yell"));
+    assert_eq!(sound("noise"), heard("guests/man/x.wav.wav", 0, "noise"));
     assert_eq!(library.sound(&man, "roar"), None);
     // A unit of a type the catalogue lacks has nothing.
     let other = guest("woman");
