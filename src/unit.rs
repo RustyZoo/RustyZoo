@@ -292,9 +292,9 @@ pub struct Units {
     pub members_joined: u32,
     /// The viewing areas of the exhibits, built again after the map changed.
     pub views: crate::guest::view::Views,
-    /// What guests donated during the step, which the step books; `cDonationFactor`, set by the
-    /// step from the economy file.
+    /// What guests donated during the step, which the step books.
     pub donated: Vec<f32>,
+    /// `cDonationFactor`, set by the step from the economy file.
     pub donation_factor: f32,
 }
 

@@ -110,13 +110,15 @@ fn refresh(world: &mut World, cat: &Catalogue) {
     world.units.views = views;
 }
 
-/// The tiles from which guests look at exhibit `id`, in the order of its areas (3.7).
+/// The tiles from which guests look at exhibit `id`, in the order of its areas: those of the areas
+/// that see a tile, which look into the exhibit in some direction (goals 11.1).
 pub fn viewing_tiles(world: &mut World, cat: &Catalogue, id: u32) -> Vec<usize> {
     refresh(world, cat);
     let areas = world.units.views.areas.iter().find(|(x, _)| *x == id);
     let tiles = areas
         .into_iter()
         .flat_map(|(_, areas)| areas)
+        .filter(|a| !a.seen.is_empty())
         .flat_map(|a| a.tiles.iter().zip(&a.looks));
     tiles
         .filter(|(_, looks)| **looks != 0)
@@ -287,7 +289,8 @@ pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, ti
     // The calendar's milliseconds (it runs 7,200 times faster than the play) in units of 100 ns.
     let t = (world.units.now.saturating_sub(g.viewed_at)).saturating_mul(10_000);
     let factor = f64::from(world.units.donation_factor);
-    let d = (t as f64 * factor * f64::from(s.average) * 0.01).min(10.0) as f32;
+    let raw = t as f64 * factor * f64::from(s.average) * 0.01;
+    let d = if raw.is_nan() { 0.0 } else { raw.min(10.0) } as f32;
     let give = s.animals > 0 && s.sick == 0 && s.crowd < 50 && d > 0.0;
     let Some(x) = world.exhibits_mut().get_mut(s.exhibit) else {
         return;

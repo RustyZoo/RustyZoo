@@ -904,13 +904,7 @@ fn a_guest_put_down_has_lost_its_wish_to_leave() {
     };
     g.leave = true;
     pick_up(&mut w, &cat, id, 0).unwrap();
-    assert!(put_down(
-        &mut w,
-        &cat.types[GUEST],
-        id,
-        (4 * 64, 4 * 64, 0),
-        0
-    ));
+    assert!(put_down(&mut w, id, (4 * 64, 4 * 64, 0), 0));
     let Some(crate::unit::Part::Guest(g)) = w.units.get(id).map(|u| &u.part) else {
         panic!("a guest");
     };

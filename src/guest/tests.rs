@@ -468,3 +468,34 @@ fn the_leave_command_raises_the_flag_of_a_guest_and_the_hash_follows() {
     };
     assert_eq!(flagged(&a), 1);
 }
+
+#[test]
+fn the_keys_of_the_checks_and_of_viewing_come_from_the_type_with_the_programs_fallbacks() {
+    let text = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\ncHungerIncrement=4\n\
+        cLeaveChanceDone=60\ncAngryAnimalChange1=-10\ncGawkTime=10\ncGawkTime=15\ncGawkTime=bad\n\
+        cGawkAttrTime=0\n[woman/Characteristics/Integers]\ncHungerThreshold=-3\n";
+    let k = Keys::of(&kind("guests", "woman", text, 9504));
+    assert_eq!(
+        k.needs[0],
+        [4, -3, -20],
+        "the type, the default type, the program"
+    );
+    assert_eq!((k.leave, k.view.angry), ([10, 15, 20, 60], [-10, -10, -15]));
+    assert_eq!(
+        (k.gawk, k.gawk_attr),
+        (vec![10, 15, 0], vec![0]),
+        "a bad number reads as 0"
+    );
+    assert_eq!(
+        (k.trash, k.souvenir, k.reactions),
+        (-10, [60, 90], [10, 0, 0])
+    );
+    // No file: the program's values and no times.
+    let mut bare = man();
+    bare.config = None;
+    let k = Keys::of(&bare);
+    assert_eq!(
+        (k.needs[3], k.view.crowd, k.gawk.len()),
+        ([5, 70, -30], (70, -10), 0)
+    );
+}

@@ -11,7 +11,7 @@ use super::*;
 use crate::behaviour::Data;
 use crate::goal::{Cx, LEAVE};
 use crate::sim::Rng;
-use crate::unit::{Ctx, Part, Unit};
+use crate::unit::{Ctx, Kind, Part, Unit};
 
 /// The countdowns that are not needs, in the order of [`PERIODS`].
 const LEAVE_CHECK: usize = 3;
@@ -62,7 +62,10 @@ pub fn update(g: &mut Guest, max_energy: i32) {
 
 /// The status values at a status tick.
 pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-    let Some(k) = keys(world, ctx.cat, at) else {
+    let Some(k) = (unit.kind == Kind::Guest)
+        .then(|| keys(world, ctx.cat, at))
+        .flatten()
+    else {
         return;
     };
     let Part::Guest(g) = &mut unit.part else {
@@ -143,7 +146,10 @@ pub fn run(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -
 
 /// The checks of a status tick (guests 6.1).
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
-    let Some(k) = keys(world, ctx.cat, at) else {
+    let Some(k) = (unit.kind == Kind::Guest)
+        .then(|| keys(world, ctx.cat, at))
+        .flatten()
+    else {
         return;
     };
     let Part::Guest(g) = &mut unit.part else {

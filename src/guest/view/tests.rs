@@ -244,6 +244,19 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
         sick.exhibits().get(1).unwrap().stats.viewing > 0,
         "the time still counts"
     );
+    // A factor of 0, a negative one and one that is not a number give nothing, a huge one 10.
+    for (factor, expected) in [
+        (0.0, vec![]),
+        (-1.0, vec![]),
+        (f32::NAN, vec![]),
+        (f32::INFINITY, vec![10.0]),
+    ] {
+        let mut w = pen(&[40]);
+        (w.units.donation_factor, w.units.now) = (factor, 201_601_000);
+        g.va = lookup(&mut w, &cat, Some(55), &mut rng);
+        leave_area(&mut g, 1, &mut w, &cat, Some(55));
+        assert_eq!(w.units.donated, expected, "{factor}");
+    }
     // Negative happiness gives nothing, and a guest with no area changes nothing.
     let mut sad = pen(&[-50]);
     (sad.units.donation_factor, sad.units.now) = (4.1108e-13, 201_601_000);
