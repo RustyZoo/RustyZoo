@@ -82,8 +82,9 @@ impl App<'_> {
         }
     }
 
-    /// A row of the exhibit list was selected (10.1): that exhibit is current and the view
-    /// centres on its gate tile; no row makes none current.
+    /// A row of the exhibit list was selected (10.1): that exhibit is current, the view centres
+    /// on its gate tile and the gate is selected, which deselects an animal and hides its panel;
+    /// no row makes none current.
     pub(super) fn panel_row(&mut self, row: i32) {
         let Some(game) = &mut self.game else { return };
         let id = usize::try_from(row)
@@ -99,6 +100,7 @@ impl App<'_> {
             if let Some(ui) = &mut self.ui {
                 ui.touch();
             }
+            self.close_animal();
         }
     }
 

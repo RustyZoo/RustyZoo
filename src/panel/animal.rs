@@ -65,12 +65,24 @@ pub struct Bars {
 }
 
 /// The bars of an animal with the suitability `rating` of its exhibit (animals 13.1). The colour
-/// follows the habitat check: very unhappy first, then unhappy (never for an egg or a carried
-/// animal), else green. An egg shows happiness, hunger and suitability full.
+/// is picked by the transitions of the habitat check (very unhappy first, then unhappy, never for an
+/// egg or a carried animal) against the value shown. An egg shows happiness, hunger and
+/// suitability full.
 pub fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
     let full = |v: i32| if a.egg { 100 } else { v };
     let very = i64::from(rating) * 100 < i64::from(k.pct_habitat) * i64::from(k.habitat_preference);
     let unhappy = !a.egg && !carried && rating < k.habitat_preference;
+    // The picture is the first transition above the value shown (0 red, 1 yellow, 2 green), so an
+    // egg, which shows 100, is green for any rating below 99.
+    let r = i64::from(rating);
+    let t = if very {
+        (r + 1, r + 2)
+    } else if unhappy {
+        (r - 1, r + 1)
+    } else {
+        (r - 2, r - 1)
+    };
+    let shown = if a.egg { 100 } else { i64::from(rating) }.clamp(0, 100);
     Bars {
         values: [
             full(percent(a.happiness, -100, 100)),
@@ -78,13 +90,7 @@ pub fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
             percent(a.health, 0, k.max_hits),
             full(rating),
         ],
-        level: if very {
-            0
-        } else if unhappy {
-            1
-        } else {
-            2
-        },
+        level: usize::from(t.0 <= shown) + usize::from(t.1 <= shown),
     }
 }
 

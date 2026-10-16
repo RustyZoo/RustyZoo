@@ -80,15 +80,28 @@ fn the_suitability_colour_follows_the_habitat_check() {
     assert_eq!(level(&animal(), 5, false), 1);
     assert_eq!(level(&animal(), 49, false), 1);
     assert_eq!(level(&animal(), 50, false), 2);
-    // An egg or a carried animal is never unhappy, but it can still be very unhappy.
+    // A carried animal is never unhappy, but it can still be very unhappy.
     let egg = Animal {
         egg: true,
         ..animal()
     };
     assert_eq!(level(&egg, 20, false), 2);
     assert_eq!(level(&animal(), 20, true), 2);
-    assert_eq!(level(&egg, 0, false), 0);
     assert_eq!(level(&animal(), 0, true), 0);
+}
+
+#[test]
+fn an_egg_very_unhappy_shows_a_green_suitability_bar() {
+    let egg = Animal {
+        egg: true,
+        ..animal()
+    };
+    let level = |rating| bars(&egg, &keys(), rating, false).level;
+    // The egg shows 100, so the transitions (r + 1, r + 2) of a very unhappy egg stay above it.
+    assert_eq!(level(0), 2);
+    assert_eq!(level(4), 2);
+    assert_eq!(level(-5), 2);
+    assert_eq!(level(i32::MIN), 2);
 }
 
 #[test]
