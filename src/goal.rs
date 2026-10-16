@@ -34,6 +34,15 @@ pub const NONE: u8 = 0;
 pub const RANDOM: u8 = 1;
 pub const HABITAT: u8 = 101;
 pub const GAWK: u8 = 112;
+/// The tasks the costs of the path finder look at (pathfinding 6.5, 6.6): chasing, avoiding a
+/// predator, returning to a show building, recovering from a fall into water and the animal's
+/// trips to and from a show tank.
+pub const CHASE: u8 = 116;
+pub const AVOID: u8 = 117;
+pub const RETURN_TO_BUILDING: u8 = 130;
+pub const RECOVER: u8 = 131;
+pub const GO_TO_SHOW: u8 = 133;
+pub const RETURN_FROM_SHOW: u8 = 134;
 /// The tasks of the building chain, 0x66 to 0x6a.
 const BUILDING: std::ops::RangeInclusive<u8> = 102..=106;
 /// The names of the tasks 100 to 134, by the number less 100.

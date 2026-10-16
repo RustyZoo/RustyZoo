@@ -219,3 +219,23 @@ fn the_ring_settings_come_from_the_ini_file_with_their_limits() {
     w.units.set_ini(b"");
     assert_eq!(w.units.ring, Ring::default());
 }
+
+#[test]
+fn a_random_walk_charges_the_turn_off_the_facing_of_the_unit() {
+    // A keeper on open ground facing east (2): straight on 1, a quarter turn 2, a turn back 4,
+    // each plus the 2 of open ground; outside a random walk every step is 1 plus 2.
+    let w = world((12, 12), |_, e| {
+        e.push(entity("keeper", "", 1, centre((5, 5)), 2))
+    });
+    let (at, here) = (w.find(1).unwrap(), 5 * 12 + 5);
+    let unit = w.units.get(1).unwrap();
+    let cost =
+        |m: &Mover, d: usize| path::step(&w, m, here, w.neighbour(here, d).unwrap(), d, None);
+    let walking = walker(unit, &w, at, here, 2);
+    assert_eq!([2, 0, 6, 4].map(|d| cost(&walking, d)), [3, 4, 6, 4]);
+    let plain = movement::mover(unit, &w, at, here);
+    assert_eq!([2, 0, 6, 4].map(|d| cost(&plain, d)), [3, 3, 3, 3]);
+    // A facing out of the 0 to 7 range wraps (here to 7, a diagonal one).
+    let wrapped = walker(unit, &w, at, here, u32::MAX);
+    assert_eq!([0, 2, 4, 6].map(|d| cost(&wrapped, d)), [3, 6, 6, 3]);
+}
