@@ -17,6 +17,7 @@ const MAINT: usize = 7;
 const GUIDE: usize = 8;
 const HIPPO: usize = 9;
 const MARINE: usize = 10;
+const GUEST: usize = 11;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     EntityType {
@@ -73,6 +74,10 @@ fn catalogue() -> Catalogue {
         class: "keeper",
         ..ty("m", "marine", hippo)
     });
+    cat.push(EntityType {
+        class: "guests",
+        ..ty("m", "guest", "")
+    });
     cat
 }
 
@@ -116,7 +121,7 @@ fn entity_at(class: &str, name: &str, subtype: &str, x: i32, y: i32, rotation: u
 
 fn shape(e: &Entity) -> Option<Shape> {
     let (kind, fence) = match e.class.as_str() {
-        "animals" | "keeper" | "maint" | "tour" => (Kind::Unit, false),
+        "animals" | "keeper" | "maint" | "tour" | "guests" => (Kind::Unit, false),
         "fences" => (Kind::Edge, true),
         "tankwall" => (Kind::Wall, true),
         "objects" => (Kind::Fixed, false),
@@ -148,7 +153,12 @@ fn square(class: &str, tx: i32, ty: i32) -> Vec<Entity> {
 }
 
 /// An 8 by 8 map of flat tiles, tile (5, 5) of water.
-fn world(mut entities: Vec<Entity>) -> World {
+fn world(entities: Vec<Entity>) -> World {
+    world_with(entities, |_| ())
+}
+
+/// The same, the zoo edited before the world is made.
+fn world_with(mut entities: Vec<Entity>, edit: impl FnOnce(&mut Zoo)) -> World {
     for (i, e) in entities.iter_mut().enumerate() {
         e.common.as_mut().unwrap().id = i as u32 + 1;
     }
@@ -160,27 +170,26 @@ fn world(mut entities: Vec<Entity>) -> World {
     };
     let mut tiles = vec![flat; 64];
     tiles[5 * 8 + 5].terrain = 1;
-    World::new(
-        Zoo {
-            version: 0,
-            locale: 0,
-            expansion: 0,
-            width: 8,
-            height: 8,
-            entrance: (0, 0),
-            habitat_tiles: Vec::new(),
-            habitat_gates: Vec::new(),
-            habitat_info: Vec::new(),
-            tanks: Vec::new(),
-            id_counter: 1000,
-            tiles,
-            entities,
-            view: View::default(),
-            clocks: Default::default(),
-            names: Default::default(),
-        },
-        shape,
-    )
+    let mut zoo = Zoo {
+        version: 0,
+        locale: 0,
+        expansion: 0,
+        width: 8,
+        height: 8,
+        entrance: (0, 0),
+        habitat_tiles: Vec::new(),
+        habitat_gates: Vec::new(),
+        habitat_info: Vec::new(),
+        tanks: Vec::new(),
+        id_counter: 1000,
+        tiles,
+        entities,
+        view: View::default(),
+        clocks: Default::default(),
+        names: Default::default(),
+    };
+    edit(&mut zoo);
+    World::new(zoo, shape)
 }
 
 /// The pending animal of the type for the middle of tile (`tx`, `ty`), October or not.
@@ -550,4 +559,197 @@ fn hiring_books_the_wages_of_the_class_names_the_member_and_empties_the_undo_lis
     );
     assert_eq!(w.units.len(), 3);
     assert!(!w.can_undo(), "hiring clears the undo list");
+}
+
+/// A tank of the tiles (2, 2) and (3, 2) with a gate on the top side of the first, water to
+/// `level`, filled.
+fn tank_world(level: u32) -> World {
+    let wall = |x: i32, y: i32, d: u32| entity_at("tankwall", "iron", "f", x, y, d);
+    let mut pieces = Vec::new();
+    for tx in [2, 3] {
+        pieces.push(wall(tx * 64 + 32, 2 * 64, 0));
+        pieces.push(wall(tx * 64 + 32, 3 * 64 - 1, 4));
+    }
+    pieces.push(wall(2 * 64, 2 * 64 + 32, 6));
+    pieces.push(wall(4 * 64 - 1, 2 * 64 + 32, 2));
+    let mut w = world_with(pieces, |z| {
+        z.habitat_tiles = vec![(2, 2)];
+        z.habitat_gates = vec![((2, 2), 0)];
+        z.habitat_info = vec![crate::zoo::HabitatInfo {
+            name: String::new(),
+            stats: [0; 9],
+            created: 0,
+        }];
+    });
+    let id = w.tank_at(2 * 8 + 2).unwrap();
+    let tank = w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap();
+    (tank.level, tank.filled) = (level, true);
+    w
+}
+
+#[test]
+fn the_first_row_of_the_tank_check_that_applies_gives_the_message() {
+    // Any unit but a keeper on the tile inside the gate: the ladder row comes before 10563.
+    let w = tank_world(3);
+    assert_eq!(w.gate_slot(1).map(|(t, _)| t), Some(2 * 8 + 2));
+    assert_eq!(at(&w, MAINT, (2, 2)).message, Some(LADDER));
+    assert_eq!(at(&w, GUEST, (2, 2)).message, Some(LADDER));
+    // A keeper may stand there, and then the next row applies; the marine specialist swims.
+    assert_eq!(at(&w, KEEPER, (2, 2)).message, Some(NOT_FOR_STAFF));
+    assert_eq!(at(&w, MARINE, (2, 2)).message, None);
+    // Elsewhere in the tank: a land guest, an underwater animal in a dry tank.
+    assert_eq!(at(&w, GUEST, (3, 2)).message, Some(NOT_IN_TANKS));
+    assert_eq!(at(&tank_world(0), ORCA, (3, 2)).message, Some(NEEDS_WATER));
+}
+
+/// The ground point under the pointer for the middle of tile (3, 2) seen from view 0 with the
+/// water at `level`: 32 world units further away from the viewer for each level (unit placing
+/// 5.1).
+fn behind_the_tank(level: i64) -> (i64, i64, i32) {
+    (224 + 32 * level, 160 - 32 * level, 0)
+}
+
+#[test]
+fn the_tank_point_lifts_a_swimmer_to_the_water_under_the_pointer() {
+    let (cat, wet) = (catalogue(), [false, true]);
+    let w = tank_world(3);
+    let over = |ty, point| pending(&w, &cat, &wet, ty, 0, point, false).unwrap();
+    // The ground point is three tiles away, the surface is where the pointer is.
+    let p = over(HIPPO, behind_the_tank(3));
+    assert_eq!(
+        (p.tile, p.verdict, p.message),
+        ((3, 2), Verdict::Valid, None)
+    );
+    assert_eq!(p.z, 48, "three levels of 16");
+    // A land animal there stays on the ground, outside every exhibit.
+    let z = over(ZEBRA, behind_the_tank(3));
+    assert_eq!((z.tile, z.message), ((5, 1), Some(IN_AN_EXHIBIT)));
+    // The row of another depth does not meet the tank, and the point itself is the floor.
+    assert_eq!(over(HIPPO, behind_the_tank(1)).tile, (4, 2));
+    let floor = over(HIPPO, (224, 160, 0));
+    assert_eq!(
+        (floor.tile, floor.z, floor.verdict),
+        ((3, 2), 0, Verdict::Invalid)
+    );
+    // A guest is lifted too, and told that it does not swim in tanks.
+    let g = over(GUEST, behind_the_tank(3));
+    assert_eq!((g.tile, g.message), ((3, 2), Some(NOT_IN_TANKS)));
+    // Viewed from the other side the steps go the other way.
+    let turned = pending(&w, &cat, &wet, HIPPO, 2, (224 - 96, 160 + 96, 0), false).unwrap();
+    assert_eq!((turned.tile, turned.verdict), ((3, 2), Verdict::Valid));
+}
+
+#[test]
+fn a_guest_stands_on_any_empty_flat_tile_even_water_and_never_in_the_way() {
+    let mut pieces = square("fences", 2, 2);
+    pieces.push(entity_at(
+        "objects",
+        "rock",
+        "m",
+        4 * 64 + 16,
+        4 * 64 + 16,
+        0,
+    ));
+    pieces.push(animal("m", (3, 3)));
+    let mut w = world(pieces);
+    w.zoo.tiles[1].shape = 0x11;
+    let guest = |w: &World, tile| at(w, GUEST, tile);
+    for tile in [(0, 3), (2, 2), (5, 5)] {
+        assert_eq!(guest(&w, tile).verdict, Verdict::Valid, "{tile:?}");
+    }
+    // A quarter held by an object and a unit on the tile are in the way; a steep tile refuses
+    // quietly.
+    for tile in [(4, 4), (3, 3)] {
+        let p = guest(&w, tile);
+        assert_eq!(
+            (p.verdict, p.message),
+            (Verdict::Invalid, Some(super::super::IN_THE_WAY))
+        );
+    }
+    assert_eq!(guest(&w, (1, 0)).message, None);
+    assert_eq!(guest(&w, (1, 0)).verdict, Verdict::Invalid);
+}
+
+#[test]
+fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
+    let cat = catalogue();
+    let mut w = tank_world(3);
+    let mut diver = entity_at("keeper", "marine", "m", 6 * 64 + 20, 6 * 64 + 20, 2);
+    diver.common.as_mut().unwrap().movement_mode = 3;
+    let id = w
+        .add(diver, shape(&entity_at("keeper", "marine", "m", 0, 0, 0)))
+        .unwrap();
+    let wet = [false, true];
+    let (tile, tank_tile) = (6 * 8 + 6, 2 * 8 + 3);
+    assert_eq!(w.units_on(tile).count(), 1);
+    let carry = pick_up(&mut w, &cat, id, 0).unwrap();
+    assert_eq!(
+        (carry.ty, carry.from, carry.facing, carry.view),
+        (MARINE, (6 * 64 + 20, 6 * 64 + 20, 0), 2, 0)
+    );
+    // It is off the map, suspended, stopped, dry, and cannot be picked up twice.
+    assert_eq!((w.units_on(tile).count(), w.unit_on(tile)), (0, false));
+    let unit = w.units.get(id).unwrap();
+    assert!(unit.carried && unit.suspended() && !unit.moving);
+    let mode = |w: &World| {
+        w.zoo
+            .entities
+            .last()
+            .unwrap()
+            .common
+            .as_ref()
+            .unwrap()
+            .movement_mode
+    };
+    assert_eq!(mode(&w), 0);
+    assert_eq!(pick_up(&mut w, &cat, id, 0), None);
+    assert_eq!(pick_up(&mut w, &cat, 99, 0), None);
+    // It keeps its screen facing when the view turns, costs nothing and does not block itself.
+    let own = (6 * 64 + 20, 6 * 64 + 20, 0);
+    let free = carried(&w, &cat, &wet, &carry, 1, own).unwrap();
+    assert_eq!(
+        (free.facing, free.price, free.verdict),
+        (0, 0.0, Verdict::Valid)
+    );
+    // Over the tank it lands at the surface in tank mode 3; the tank is marked for a new rating.
+    let p = carried(&w, &cat, &wet, &carry, 0, behind_the_tank(3)).unwrap();
+    assert_eq!((p.tile, p.verdict), ((3, 2), Verdict::Valid));
+    let tank = w.tank_at(tank_tile).unwrap();
+    w.exhibits_mut().get_mut(tank).unwrap().rating.dirty = false;
+    assert!(put_down(
+        &mut w,
+        &cat.types[MARINE],
+        id,
+        (p.x, p.y, p.z),
+        p.facing
+    ));
+    let c = w.zoo.entities.last().unwrap().common.as_ref().unwrap();
+    assert_eq!(
+        (c.x, c.y, c.z, c.rotation, c.movement_mode),
+        (p.x, p.y, 48, 2, 3)
+    );
+    assert_eq!(w.units_on(tank_tile).count(), 1);
+    assert!(!w.units.get(id).unwrap().carried);
+    assert!(w.exhibits().get(tank).unwrap().rating.dirty);
+    // Not carried, or gone: nothing to put down.
+    assert!(!put_down(
+        &mut w,
+        &cat.types[MARINE],
+        id,
+        (p.x, p.y, p.z),
+        0
+    ));
+    assert!(!put_down(
+        &mut w,
+        &cat.types[MARINE],
+        99,
+        (p.x, p.y, p.z),
+        0
+    ));
+    // A type that is not moveable is not picked up.
+    let mut still = catalogue();
+    still.types[MARINE].config = Some(std::sync::Arc::new(
+        Config::parse(b"[m/Characteristics/Integers]\ncMoveable=0\n").unwrap(),
+    ));
+    assert_eq!(pick_up(&mut w, &still, id, 0), None);
 }

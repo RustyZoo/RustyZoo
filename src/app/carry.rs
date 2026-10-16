@@ -41,7 +41,7 @@ impl App<'_> {
         };
         if game.selected != Some(id) {
             game.selected = Some(id);
-            self.tool_lines.push(format!("select {id}"));
+            self.tool_lines.push(format!("tool select {id}"));
             self.ui_sounds.push("place");
             return true;
         }

@@ -1984,6 +1984,9 @@ mod undo;
 mod adopt_tests;
 
 #[cfg(test)]
+mod carry_tests;
+
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]
