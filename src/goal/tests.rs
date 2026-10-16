@@ -1,7 +1,7 @@
 //! The goal record, the objects, the ladder and the wander on synthetic maps.
 
 use super::*;
-use crate::behaviour::{Call, Data, Env, NoData, Note, Number, Row, Timing, parse_call};
+use crate::behaviour::{Call, Data, Env, Heard, NoData, Note, Number, Row, Timing, parse_call};
 use crate::entity::Catalogue;
 use crate::sim::{Events, Rng, Sim};
 use crate::unit::movement;
@@ -78,7 +78,7 @@ impl Data for Sets {
     fn number(&self, unit: &crate::zoo::Entity, number: &Number) -> i32 {
         NoData.number(unit, number)
     }
-    fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<String> {
+    fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<Heard> {
         None
     }
 }
