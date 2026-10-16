@@ -24,6 +24,7 @@ mod tests;
 pub use events::{Event, Events, KEEPER_CHANNEL, UNIT_CHANNEL};
 pub use rng::{Rng, Seconds};
 
+use crate::behaviour::{Data, NoData};
 use crate::config::{self, Config};
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
@@ -286,6 +287,18 @@ impl Sim {
         world: &mut World,
         cat: &Catalogue,
         step: u32,
+        update: impl FnMut(&mut World, usize, u32),
+    ) -> Report {
+        self.step_with(&NoData, cat, world, step, update)
+    }
+
+    /// As [`Sim::step_in`], with the data the units' sets and animations read.
+    pub fn step_with(
+        &mut self,
+        data: &dyn Data,
+        cat: &Catalogue,
+        world: &mut World,
+        step: u32,
         mut update: impl FnMut(&mut World, usize, u32),
     ) -> Report {
         self.lines.push(format!("step {step}"));
@@ -324,7 +337,7 @@ impl Sim {
                     step,
                     cat,
                 };
-                unit::update(&mut unit::Standard, world, &mut ctx, at);
+                unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
                 update(world, at, step);
             }
         }

@@ -10,21 +10,25 @@
 //! [`update`] is one unit's turn in the original's order: events in; unless suspended, the move;
 //! the animation; unless suspended, the status timer (the needs and the checks once it passes the
 //! period) and then either the wait counted down or the behaviour and the goals; the events
-//! discarded. The move is [`movement`]. What the animation frames,
-//! the needs, the checks, the behaviour and the goals do is the business of later issues: each is
-//! a method of [`Hooks`], empty until then.
+//! discarded. The move is [`movement`]. What the needs, the checks and the goals do is the
+//! business of later issues: each is a method of [`Hooks`], empty until then. The animation and the
+//! behaviour are [`Standard`]'s: the frames of the unit's animation and the set it runs come from
+//! the data ([`crate::behaviour`]).
+//!
 //! A hook must not add or remove entities (a removal goes through [`Ctx::remove`], which only
 //! flags the unit for the next removal pass, as in the original).
 //!
 //! The log family `unit`: `unit add <id> <kind> <x>,<y>`, `unit remove <id>`,
 //! `unit status <id>` for each status tick, `unit tile <id> <x>,<y>` when a unit enters a tile,
 //! `unit enter <id> <exhibit>` when that is another exhibit, `unit face <id> <direction>` when its
-//! facing turns and `unit abort <id>` when its next tile step is refused.
+//! facing turns, `unit abort <id>` when its next tile step is refused, `unit set <id> <name>` when
+//! a unit starts a set and `unit anim <id> <name>` when the animation it shows changes.
 
 use std::collections::HashMap;
 
 pub use crate::animal::Animal;
 use crate::animal::Class;
+use crate::behaviour::{Animation, Data, Env, Note, Runner};
 use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::path::{self, Finder, Mover, Settings};
@@ -114,16 +118,6 @@ pub enum Part {
     Staff(Staff),
 }
 
-/// The animation a unit shows: the behaviour calls set the name and restart it; the frame comes
-/// from the elapsed time and the animation's own frame times (animation issue).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Animation {
-    pub name: String,
-    pub frame: u32,
-    /// Milliseconds the animation has run.
-    pub elapsed: u32,
-}
-
 /// The live state of one unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unit {
@@ -148,7 +142,10 @@ pub struct Unit {
     pub aborted: bool,
     /// What the costs of the path finder read of the unit's type; its tile is set for each use.
     pub mover: Mover,
+    /// The animation the unit holds.
     pub animation: Animation,
+    /// The set the unit runs, which plays animations.
+    pub runner: Runner,
     /// Milliseconds since the last status tick, started at `id % period`.
     pub status_timer: i32,
     /// While above 0 the unit runs no behaviour and no goal.
@@ -185,6 +182,7 @@ impl Unit {
             aborted: false,
             mover: Mover::new(kind.mover(), None),
             animation: Animation::default(),
+            runner: Runner::default(),
             status_timer: 0,
             wait: 0,
             events: Vec::new(),
@@ -225,6 +223,8 @@ pub struct Units {
     animal_lines: Vec<String>,
     /// The messages posted and not shown yet: the string number and the unit it is about.
     messages: Vec<(i32, u32)>,
+    /// The sounds the units' animations began, with the unit's id, for the app.
+    sounds: Vec<(u32, String)>,
 }
 
 impl Default for Units {
@@ -238,6 +238,7 @@ impl Default for Units {
             lines: Vec::new(),
             animal_lines: Vec::new(),
             messages: Vec::new(),
+            sounds: Vec::new(),
         }
     }
 }
@@ -296,6 +297,11 @@ impl Units {
     /// `%s` for the unit's name.
     pub fn take_messages(&mut self) -> Vec<(i32, u32)> {
         std::mem::take(&mut self.messages)
+    }
+
+    /// The sounds asked for since the last call: the unit and the sound its `[Sounds]` names.
+    pub fn take_sounds(&mut self) -> Vec<(u32, String)> {
+        std::mem::take(&mut self.sounds)
     }
 
     pub(crate) fn tell(&mut self, line: String) {
@@ -368,9 +374,7 @@ impl Units {
             }
             h.word(u.travel as u32);
             h.word(u32::from(u.through_building) | u32::from(u.aborted) << 1);
-            h.bytes(u.animation.name.as_bytes());
-            h.word(u.animation.frame);
-            h.word(u.animation.elapsed);
+            h.bytes(format!("{:?}{:?}", u.animation, u.runner).as_bytes());
             h.word(u.status_timer as u32);
             h.word(u.wait as u32);
             h.word(
@@ -458,23 +462,60 @@ pub trait Hooks {
     fn needs(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The conditional checks; at a status tick, right after the needs.
     fn checks(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
+    /// The animation, advanced by `advance` milliseconds (sprite drawing 6.2); it runs even when
+    /// the unit is suspended.
+    fn animate(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize, _advance: u32) {}
     /// The behaviour set (behaviours 4.6); not run while suspended or waiting.
     fn behaviour(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The goals (simulation 6.6); not run while suspended or waiting.
     fn goals(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
 }
 
-/// The hooks of the game: the move, and the common part of the goal update.
-pub struct Standard;
+/// The hooks of the game: the move, the animation and the behaviour set from the data, the
+/// animals' status work and the common part of the goal update.
+pub struct Standard<'a> {
+    pub data: &'a dyn Data,
+}
 
-impl Hooks for Standard {
+impl Standard<'_> {
+    /// Tells the log and the app what the unit's animation and runner noted.
+    fn tell(&self, unit: &mut Unit, world: &mut World, at: usize) {
+        for note in std::mem::take(&mut unit.animation.notes) {
+            match note {
+                Note::Set(name) => world.units.lines.push(format!("set {} {name}", unit.id)),
+                Note::Anim(name) => world.units.lines.push(format!("anim {} {name}", unit.id)),
+                Note::Sound(key) => {
+                    let sound = self.data.sound(&world.zoo.entities[at], &key);
+                    world.units.sounds.extend(sound.map(|s| (unit.id, s)));
+                }
+            }
+        }
+    }
+}
+
+impl Hooks for Standard<'_> {
     fn movement(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         movement::step(unit, world, ctx.step, at);
     }
 
-    fn behaviour(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize) {
+    fn animate(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize, ms: u32) {
+        let entity = &world.zoo.entities[at];
+        unit.animation
+            .advance(ms, &|name| self.data.timing(entity, name));
+        self.tell(unit, world, at);
+    }
+
+    fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         // The move call of a behaviour set ends the walk here, after the move (movement 8.2).
         movement::finish(unit, world, at);
+        let key = ambient_key(unit);
+        let mut env = Env {
+            data: self.data,
+            unit: &world.zoo.entities[at],
+            rng: ctx.rng,
+        };
+        unit.runner.step(&mut unit.animation, &mut env, key);
+        self.tell(unit, world, at);
     }
 
     fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
@@ -486,11 +527,35 @@ impl Hooks for Standard {
     }
     fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::checks(unit, world, ctx, at);
+        // The checks end with the ambient choice, with the happiness of that moment.
+        let asked = match &mut unit.part {
+            Part::Animal(a) => std::mem::take(&mut a.ambient),
+            _ => false,
+        };
+        if asked {
+            let key = ambient_key(unit);
+            let mut env = Env {
+                data: self.data,
+                unit: &world.zoo.entities[at],
+                rng: ctx.rng,
+            };
+            unit.runner.ambient(&mut unit.animation, &mut env, key);
+            self.tell(unit, world, at);
+        }
     }
     fn goals(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         // The kind's own goal work comes first, then this, then the current goal's update and
         // the sub-goals.
         off_zoo(unit, world, ctx, at);
+    }
+}
+
+/// The key a unit's ambient row is chosen by: an animal's happiness, 0 for the others (behaviours
+/// 6.2).
+fn ambient_key(unit: &Unit) -> i32 {
+    match &unit.part {
+        Part::Animal(a) => a.happiness,
+        _ => 0,
     }
 }
 
@@ -548,7 +613,7 @@ fn turn(hooks: &mut impl Hooks, unit: &mut Unit, world: &mut World, ctx: &mut Ct
         true => step.wrapping_mul(unit.anim_speed.into()) / 100,
         false => step,
     };
-    unit.animation.elapsed = unit.animation.elapsed.wrapping_add(advance);
+    hooks.animate(unit, world, ctx, at, advance);
     if !unit.suspended() {
         let period = world.units.period;
         unit.status_timer = unit.status_timer.wrapping_add(step as i32);

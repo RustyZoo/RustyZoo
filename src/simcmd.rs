@@ -108,7 +108,7 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
                 eprintln!("rustyzoo: warning: step {step}: {command:?} changed nothing");
             }
         }
-        let lines = run.step(flags.dt);
+        let lines = run.step_with(flags.dt, Some(vfs));
         if flags.log {
             for line in lines {
                 report.line(format_args!("step {step} {line}"));

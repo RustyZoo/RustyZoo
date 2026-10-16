@@ -144,6 +144,18 @@ pub struct Extra {
     pub tinted: Vec<(usize, [u8; 3])>,
     /// The highlights of the terrain tool.
     pub marks: Vec<Mark>,
+    /// The animation and frame the units hold; a unit that is not here shows its idle animation.
+    pub shown: Vec<Shown>,
+}
+
+/// The animation and frame a unit of the zoo holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shown {
+    /// The id of the entity.
+    pub id: u32,
+    pub animation: String,
+    /// The frame to draw.
+    pub frame: u32,
 }
 
 /// An object that is not on the map: a pending object. It is painted like the temporary
@@ -172,8 +184,9 @@ enum Pic {
     Mark(Flat, Palette),
     /// A ground picture rendered at run time; its pixels have an alpha.
     Rendered(Rc<Picture>),
-    /// An animation seen from a view, with the palette to draw it with in place of its own.
-    Anim(Rc<Animation>, View, Option<Palette>),
+    /// A frame of an animation seen from a view, with the palette to draw it with in place of
+    /// its own.
+    Anim(Rc<Animation>, View, Option<Palette>, usize),
     /// An animation drawn blended with what is behind it.
     Blended(Rc<Animation>, View, Blend),
 }
@@ -184,6 +197,18 @@ enum Pic {
 struct Piece {
     corner: (i32, i32),
     offset: (i32, i32),
+}
+
+/// The frames of a view drawn for frame `frame`: its background frame, then the frame itself, and
+/// whether they are mirrored.
+fn shown_frames<'a>(
+    anim: &'a Animation,
+    view: &View,
+    frame: usize,
+) -> Option<Vec<(&'a Frame, bool)>> {
+    let sprite = &anim.sprites.get(view.file)?.0;
+    let frames = sprite.extra.iter().chain(sprite.frames.get(frame));
+    Some(frames.map(|frame| (frame, view.mirror)).collect())
 }
 
 /// A picture placed in view space: `(x, y)` is its anchor at normal zoom.
@@ -217,15 +242,8 @@ impl Placed {
         let frames: Vec<(&Frame, bool)> = match &self.pic {
             Pic::Flat(flat) | Pic::Mark(flat, _) => vec![(&flat.0, false)],
             Pic::Rendered(_) => return None,
-            Pic::Anim(anim, view, _) | Pic::Blended(anim, view, _) => {
-                let sprite = &anim.sprites.get(view.file)?.0;
-                sprite
-                    .extra
-                    .iter()
-                    .chain(sprite.frames.first())
-                    .map(|frame| (frame, view.mirror))
-                    .collect()
-            }
+            Pic::Anim(anim, view, _, frame) => shown_frames(anim, view, *frame)?,
+            Pic::Blended(anim, view, _) => shown_frames(anim, view, 0)?,
         };
         frames
             .into_iter()
@@ -310,11 +328,11 @@ impl Placed {
             Pic::Flat(flat) => flat.0.draw_zoomed(&flat.1, target, at, false, None, level),
             Pic::Mark(flat, palette) => flat.0.draw_zoomed(palette, target, at, false, None, level),
             Pic::Rendered(picture) => blend(&picture.image, target, at, picture, level),
-            Pic::Anim(anim, view, palette) => {
-                anim.draw_zoomed(*view, target, at, palette.as_ref(), None, level)
+            Pic::Anim(anim, view, palette, frame) => {
+                anim.draw_zoomed(*view, *frame, target, at, palette.as_ref(), None, level)
             }
             Pic::Blended(anim, view, blend) => {
-                anim.draw_zoomed(*view, target, at, None, Some(*blend), level)
+                anim.draw_zoomed(*view, 0, target, at, None, Some(*blend), level)
             }
         }
     }
@@ -813,6 +831,7 @@ impl<'a> MapRenderer<'a> {
     ) -> Result<Staged, RenderError> {
         let marks: HashMap<usize, [u8; 3]> =
             extra.marks.iter().map(|m| (m.tile, m.color)).collect();
+        let shown: HashMap<u32, &Shown> = extra.shown.iter().map(|s| (s.id, s)).collect();
         let rotation = rotation % 4;
         let (width, height) = (zoo.width as usize, zoo.height as usize);
         let mut summary = Summary {
@@ -893,6 +912,9 @@ impl<'a> MapRenderer<'a> {
                     .find(|(e, _)| *e == position)
                     .map(|(_, tint)| *tint),
                 wall: 0,
+                shown: shown
+                    .get(&c.id)
+                    .map(|s| (s.animation.as_str(), s.frame as usize)),
             });
         }
         for ghost in &extra.ghosts {
@@ -918,6 +940,7 @@ impl<'a> MapRenderer<'a> {
                 portal: false,
                 tint: Some(ghost.tint),
                 wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
+                shown: None,
             });
         }
         let mut scene = Scene::new(width, height, rotation, &tiles, objects);
@@ -980,6 +1003,7 @@ impl<'a> MapRenderer<'a> {
                         portal: false,
                         tint: None,
                         wall: 0,
+                        shown: None,
                     });
                 }
             }
@@ -1309,7 +1333,9 @@ impl<'a> MapRenderer<'a> {
                     None => "idle".to_string(),
                 }
             }
-            "animals" | "guests" | "keeper" | "maint" | "tour" => "idle".to_string(),
+            "animals" | "guests" | "keeper" | "maint" | "tour" => {
+                meta.shown.map_or("idle", |(name, _)| name).to_string()
+            }
             _ => String::new(),
         };
         // Without the swimming pictures an animal in a tank shows its rest picture.
@@ -1317,7 +1343,7 @@ impl<'a> MapRenderer<'a> {
         let mut animations = ty.animations();
         let at = [wanted.as_str(), "idle"]
             .into_iter()
-            .take(if tank { 2 } else { 1 })
+            .take(if tank || meta.shown.is_some() { 2 } else { 1 })
             .filter(|w| !w.is_empty())
             .find_map(|w| animations.iter().position(|a| a.name == w));
         let found = at.map(|i| animations.swap_remove(i));
@@ -1355,6 +1381,12 @@ impl<'a> MapRenderer<'a> {
         };
         let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z);
         summary.objects_drawn += 1;
+        // A unit's frame, as far as the picture of its view has them.
+        let last = anim
+            .sprites
+            .get(view.file)
+            .map_or(0, |s| s.0.frames.len().saturating_sub(1));
+        let frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
         let palette = anim.sprites.get(view.file).and_then(|sprite| {
             let own = self.recoloured(ty, sprite, meta.colors);
             match meta.tint {
@@ -1367,7 +1399,7 @@ impl<'a> MapRenderer<'a> {
             y,
             piece: None,
             grid: false,
-            pic: Pic::Anim(anim, view, palette),
+            pic: Pic::Anim(anim, view, palette, frame),
         });
     }
 }
@@ -1403,6 +1435,8 @@ struct Meta<'a> {
     tint: Option<[u8; 3]>,
     /// The wall height of a pending tank gate, 0 for anything else.
     wall: i32,
+    /// The animation and frame a unit holds.
+    shown: Option<(&'a str, usize)>,
 }
 
 /// Whether the `[Member]` list of the type holds this name.

@@ -259,18 +259,20 @@ impl Animation {
         self.draw_inner(view, frame, target, at, None, Some(blend), Zoom::Normal);
     }
 
-    /// As [`Animation::draw_with`] or [`Animation::draw_blended`] at a zoom, frame 0, `at` being
-    /// the anchor already at the zoom ([`crate::sprite::Frame::draw_zoomed`]).
+    /// As [`Animation::draw_with`] or [`Animation::draw_blended`] at a zoom, `at` being the
+    /// anchor already at the zoom ([`crate::sprite::Frame::draw_zoomed`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_zoomed(
         &self,
         view: View,
+        frame: usize,
         target: &mut Framebuffer,
         at: (i32, i32),
         palette: Option<&Palette>,
         blend: Option<Blend>,
         zoom: Zoom,
     ) {
-        self.draw_inner(view, 0, target, at, palette, blend, zoom);
+        self.draw_inner(view, frame, target, at, palette, blend, zoom);
     }
 
     #[allow(clippy::too_many_arguments)]

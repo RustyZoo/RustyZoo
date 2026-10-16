@@ -242,7 +242,7 @@ impl MapRenderer<'_> {
                 y,
                 piece: None,
                 grid: false,
-                pic: Pic::Anim(anim, view, palette),
+                pic: Pic::Anim(anim, view, palette, 0),
             });
         }
     }
@@ -352,7 +352,7 @@ impl MapRenderer<'_> {
                     y,
                     piece: None,
                     grid: false,
-                    pic: Pic::Anim(anim, view, palette),
+                    pic: Pic::Anim(anim, view, palette, 0),
                 });
             }
         }
@@ -403,7 +403,7 @@ impl MapRenderer<'_> {
             y,
             piece: None,
             grid: false,
-            pic: Pic::Anim(under, view, palette),
+            pic: Pic::Anim(under, view, palette, 0),
         });
     }
 
