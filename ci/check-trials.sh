@@ -725,10 +725,11 @@ panel_tab() { # panel_tab <map>
   printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1005 645\n9 down\n10 up\n12 mouse 1005 614\n13 down\n14 up\n16 mouse 500 300\n' >"$d/b"
   for s in a b; do
     rz run "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass 23 .* draw [0-9a-f]/{print $5}'
-  done | uniq | wc -l | sed 's/^1$/same/;s/^2$/different/'
+  done | sort -u | awk 'END{print NR == 1 ? "same" : "different"}'
   rm -rf "$d"
 }
 check base-trial "same" "panel_tab maps/scn01.zoo"
+check expansion-trial "same" "panel_tab maps/scn19.zoo"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
