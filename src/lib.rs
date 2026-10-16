@@ -17,6 +17,7 @@ pub mod intro;
 pub mod lists;
 pub mod menu;
 pub mod money;
+pub mod month;
 pub mod movie;
 pub mod music;
 pub mod panel;

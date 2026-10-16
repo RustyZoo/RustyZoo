@@ -7,8 +7,8 @@
 //! calls its checks in the original's order. The new guest check decides whether a guest arrives
 //! (the chance table of the rating and the admission price); the guest module makes it. Missing
 //! so far: the guests' needs (their counts of hungry, thirsty and the like stay 0), research (its
-//! share is 0), the escape penalty, the endowment payments, wages and building upkeep of the
-//! month-end check, the scenario's own economy file, the admission price window (the price is
+//! share is 0), the escape penalty, the endowment payments of the month-end check (its wages and
+//! building upkeep are [`crate::month`]'s), the scenario's own economy file, the admission price window (the price is
 //! the map's).
 //!
 //! The log lines: `rating N` at each rating check, `message ID` for each advice message and
