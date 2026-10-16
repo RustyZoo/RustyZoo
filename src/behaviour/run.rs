@@ -7,14 +7,14 @@
 //! its parent's current call, and a failed call ends the whole chain. What a set needs of the
 //! data comes through [`Data`].
 //!
-//! Until the move, goal and animal issues land, the calls that belong to them (moves, the faces,
-//! the effects on other entities, `fDie`, ...) are done at once with no effect, and the
-//! routines of guests and staff never finish, as the specification allows (5.6); a nested
-//! terrain or tank set is the land one.
+//! Until the move and animal issues land, the calls that belong to them (moves, the faces,
+//! the effects on other entities, `fDie`, ...) are done at once with no effect; a routine call
+//! is done when the play state is ready and the unit's goals (which run every step) do the rest;
+//! a nested terrain or tank set is the land one.
 
 use std::collections::VecDeque;
 
-use super::{Call, Number, Op, Play, Row};
+use super::{Call, Number, Op, Play, Routine, Row};
 use crate::sim::Rng;
 use crate::zoo::Entity;
 
@@ -332,9 +332,19 @@ impl Runner {
         self.pending = Some(name.to_string());
     }
 
+    /// The calls the top set has left, the current one included: none when no set runs, and a
+    /// nested set is not counted (behaviours 4.1).
+    pub fn calls_left(&self, data: &dyn Data, unit: &Entity) -> usize {
+        let Some(top) = self.chain.first().filter(|l| l.running && l.loaded) else {
+            return 0;
+        };
+        let calls = data.set(unit, &top.name).map_or(0, <[Call]>::len);
+        calls.saturating_sub(top.call)
+    }
+
     /// Starts the set `name` as the top set. A running set that is not interruptible refuses
     /// unless `force`. Unless `keep`, the animation drops what it plays and has queued
-    /// (behaviours 4.2). Returns whether it started.
+    /// (behaviours 4.2). Returns whether it started and the type has calls for it.
     pub fn start(
         &mut self,
         anim: &mut Animation,
@@ -354,7 +364,7 @@ impl Runner {
             anim.reset();
         }
         anim.notes.push(Note::Set(name.to_string()));
-        true
+        self.chain[0].loaded
     }
 
     fn nest(&mut self, env: &Env, name: &str) {
@@ -502,11 +512,23 @@ impl Runner {
             Op::PlaySetTerrain { land: name, .. } | Op::PlaySetTank { land: name, .. } => {
                 return self.nest_call(env, name);
             }
-            Op::Routine(_)
-            | Op::KeepControl
-            | Op::Spray
-            | Op::FaceDirection
-            | Op::TargetBuilding => {
+            Op::Routine(routine) => {
+                // The goals run every step anyway (goals 6.3): the call is done when the play
+                // state is ready. A call for another class of unit does nothing; the keeper's
+                // fails (behaviours 5.5).
+                let own = match routine {
+                    Routine::Keeper => "keeper",
+                    Routine::Guest => "guests",
+                    Routine::Guide => "tour",
+                    Routine::Maint => "maint",
+                };
+                if env.unit.class != own {
+                    return *routine != Routine::Keeper;
+                }
+                self.chain[k].done = self.ready;
+                return true;
+            }
+            Op::KeepControl | Op::Spray | Op::FaceDirection | Op::TargetBuilding => {
                 return true;
             }
             Op::Fail => return false,

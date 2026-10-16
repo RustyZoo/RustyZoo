@@ -54,7 +54,9 @@ fn world(units: &[(&str, u32)]) -> World {
         clocks: Clocks::default(),
         names: Default::default(),
     };
-    World::new(zoo, |_| None)
+    let mut w = World::new(zoo, |_| None);
+    crate::goal::quiet(&mut w);
+    w
 }
 
 fn sim() -> Sim {

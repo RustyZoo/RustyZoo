@@ -10,6 +10,7 @@ pub mod camera;
 pub mod config;
 pub mod entity;
 pub mod exhibit;
+pub mod goal;
 pub mod ground;
 pub mod intro;
 pub mod lists;
