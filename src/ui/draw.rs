@@ -747,7 +747,7 @@ impl Painter {
     }
 
     /// A text over the frame whose left is `x` and whose line starts at the row `y`, in the font and
-    /// the shadow of the element `e`, as the map view writes a cost next to the pointer.
+    /// the shadow of the element `e` (or none), as the map view writes a cost next to the pointer.
     pub fn text_at(
         &mut self,
         e: &Element,
@@ -755,7 +755,7 @@ impl Painter {
         frame: &mut Framebuffer,
         (x, y): (i32, i32),
         text: &[u8],
-        color: [u8; 3],
+        (color, shadow): ([u8; 3], bool),
     ) {
         let font = self.font(e, strings);
         let rect = Rect {
@@ -767,7 +767,7 @@ impl Painter {
         let style = Style {
             color,
             justify: text::Justify::Left,
-            shadow: e.look.shadow_text,
+            shadow,
         };
         text::draw(frame, font, rect, text, &style);
     }
