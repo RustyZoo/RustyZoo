@@ -223,10 +223,9 @@ pub fn sites(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<u32>) {
 pub fn attractiveness(world: &mut World, cat: &Catalogue, id: u32) -> i32 {
     if world.exhibits().get(id).is_some_and(|x| x.rating.dirty) {
         let input = crate::exhibit::rating::input(world, cat, id);
-        world
-            .exhibits_mut()
-            .get_mut(id)
-            .map(|x| x.rating.compute(&input));
+        if let Some(x) = world.exhibits_mut().get_mut(id) {
+            x.rating.compute(&input);
+        }
     }
     world
         .exhibits()

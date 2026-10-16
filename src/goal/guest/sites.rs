@@ -45,7 +45,7 @@ impl Cx<'_, '_> {
         let (n, unseen) = view::sites(self.world, self.ctx.cat, g);
         let favourite = g.favourite;
         if g.seen_count as usize >= n {
-            (g.seen.clear(), g.seen_count = 0);
+            g.forget();
             movement::stop(self.unit);
             self.record().target.clear();
             self.check_leave_zoo();
@@ -115,7 +115,7 @@ impl Cx<'_, '_> {
             return false;
         };
         if view::seen(self.world, g, s.exhibit) {
-            (g.seen.clear(), g.seen_count = 0);
+            g.forget();
             return false;
         }
         let Some(x) = self.world.exhibits().get(s.exhibit) else {

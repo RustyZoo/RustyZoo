@@ -303,7 +303,7 @@ pub struct Goals {
     /// Raised by the guest's ladder to let an idle unit wander again (7.1).
     pub wants_to_decide: bool,
     /// A guest made a random walk and stands until a draw or its status tick lets it walk again
-    /// (7.3); the status tick that lowers it is the guest issue's.
+    /// (7.3); the status tick lowers it (`guest::checks`).
     pub wandered: bool,
 }
 

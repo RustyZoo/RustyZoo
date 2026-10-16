@@ -462,3 +462,23 @@ fn an_exhibit_scores_by_attractiveness_the_favourite_species_and_a_far_tile() {
         );
     }
 }
+
+#[test]
+fn the_site_goal_of_a_guest_that_has_seen_the_sites_of_the_zoo_forgets_them_and_may_leave() {
+    let mut w = visit(50);
+    let first = w.exhibits().list()[0].first;
+    let u = w.units.get_mut(1).unwrap();
+    u.goal.record.task = crate::goal::SITE;
+    if let Part::Guest(g) = &mut u.part {
+        (g.seen, g.seen_count) = (vec![first], 5);
+    }
+    let log = visit_run(&mut w, 1);
+    let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert_eq!(
+        (g.seen_count, g.seen.len(), g.leave),
+        (0, 0, true),
+        "{log:?}"
+    );
+}

@@ -234,6 +234,12 @@ pub struct Guest {
 }
 
 impl Guest {
+    /// The guest forgets the sites it has seen (guests visit 3.6).
+    pub fn forget(&mut self) {
+        self.seen.clear();
+        self.seen_count = 0;
+    }
+
     /// A new guest of type `ty` with its keys `k` (guests 5.2, 13.2): the draws are four colours,
     /// the random start stat, female and child, one per check, the favourite among `favourites`
     /// and the speed offset. `reset` is `[AI] GuestResetInterval`.
