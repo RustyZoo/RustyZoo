@@ -5,8 +5,8 @@
 //! What a unit does with its step is the [`unit`] module's: [`Sim::step`] runs [`unit::update`]
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
-//! [`crate::status::zoo`] module's. Missing so far: the new guest check,
-//! the task pool, the shows, the water ripples, the ambient creatures, and the scenario, research and
+//! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
+//! so far: the task pool, the shows, the water ripples, the ambient creatures, and the scenario, research and
 //! marketing managers, which are empty until M7.
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
@@ -30,6 +30,7 @@ use crate::behaviour::{Data, NoData};
 use crate::config::{self, Config};
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
+use crate::guest;
 use crate::money::Money;
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
@@ -428,7 +429,7 @@ impl Sim {
     /// bars. The generator is seeded again inside the finance check, after the other checks.
     fn zoo_status(
         &mut self,
-        world: &World,
+        world: &mut World,
         cat: &Catalogue,
         money: &mut Money,
         step: u32,
@@ -444,8 +445,21 @@ impl Sim {
             self.status.message_check(money.cash, say, log);
         }
         if due.new_guest {
-            // The new guest check creates the guests (guest arrival); its timer restarts all the same.
-            self.status.timers[2] = 0;
+            let occupied = guest::occupied(world, cat);
+            if let Some(advice) = self.status.new_guest_check(occupied, &mut self.rng) {
+                let s = &self.status;
+                let arrival = guest::Arrival {
+                    price: s.price,
+                    multiple: s.settings.admission_multiple,
+                    guests: s.sums.guests,
+                    max_guests: self.ai.max_guests,
+                    date: self.calendar.date(),
+                    reset: self.ai.guest_reset_interval,
+                };
+                if guest::arrive(world, cat, &mut self.rng, money, &arrival) && advice {
+                    self.status.advise(&mut self.messages, &mut self.lines);
+                }
+            }
         }
         if month_end {
             self.reseed();

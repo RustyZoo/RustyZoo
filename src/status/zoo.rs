@@ -4,10 +4,12 @@
 //! bar.
 //!
 //! [`Status`] keeps the three timers, the last sums and the rating; the [`crate::sim::Sim`] step
-//! calls its checks in the original's order. Missing so far: guests (their state is the guest
-//! issue's, so their counts stay 0), research (its share is 0), the new guest check, the
-//! escape penalty, the endowment, wages and building upkeep of the month-end check, the
-//! scenario's own economy file.
+//! calls its checks in the original's order. The new guest check decides whether a guest arrives
+//! (the chance table of the rating and the admission price); the guest module makes it. Missing
+//! so far: the guests' needs (their counts of hungry, thirsty and the like stay 0), research (its
+//! share is 0), the escape penalty, the endowment payments, wages and building upkeep of the
+//! month-end check, the scenario's own economy file, the admission price window (the price is
+//! the map's).
 //!
 //! The log lines: `rating N` at each rating check, `message ID` for each advice message and
 //! `donation AMOUNT` for each donation.
@@ -16,9 +18,10 @@ use crate::build::{cost, number};
 use crate::config::{Config, to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating;
+use crate::guest;
 use crate::money::{self, Money};
 use crate::sim::Rng;
-use crate::timing::ini_value;
+use crate::timing::{ini_value, ini_values};
 use crate::unit::Part;
 use crate::world::World;
 use crate::zoo::{Entity, StatusRecord};
@@ -63,6 +66,12 @@ pub struct Settings {
     pub donation_low: i32,
     pub donation_high: i32,
     pub donation_chance: i32,
+    /// The four limits of the adult admission price that make the columns of the arrival table.
+    pub limits: [f32; 4],
+    /// The chances in percent of the arrival table: very low, low, medium, high, very high.
+    pub create_chance: [i32; 5],
+    /// What a guest pays, times the price (half for a child).
+    pub admission_multiple: f32,
 }
 
 /// The keys of [`Settings::percent`].
@@ -75,6 +84,15 @@ const PERCENT_KEYS: [&str; 8] = [
     "cPctSouvenir",
     "cPctTired",
     "cPctTrash",
+];
+
+/// The keys of [`Settings::create_chance`].
+const CHANCE_KEYS: [&str; 5] = [
+    "cCreateGuestChanceVeryLow",
+    "cCreateGuestChanceLow",
+    "cCreateGuestChanceMed",
+    "cCreateGuestChanceHigh",
+    "cCreateGuestChanceVeryHigh",
 ];
 
 impl Settings {
@@ -92,6 +110,9 @@ impl Settings {
             donation_low: 10_000,
             donation_high: 20_000,
             donation_chance: 0,
+            limits: [50.0, 20.0, 10.0, 5.0],
+            create_chance: [1; 5],
+            admission_multiple: 1.0,
         }
     }
 
@@ -130,6 +151,16 @@ impl Settings {
         int(c, "cDonationLow", &mut self.donation_low);
         int(c, "cDonationHigh", &mut self.donation_high);
         int(c, "cDonationChance", &mut self.donation_chance);
+        // The five values of the price limits replace the built-in ones only together; the fifth
+        // is never read.
+        let limits = ini_values(file, "characteristics", "cAdultAdmission");
+        if let [a, b, c, d, _] = limits {
+            self.limits = [a, b, c, d].map(|v| to_float(v));
+        }
+        for (key, value) in CHANCE_KEYS.iter().zip(&mut self.create_chance) {
+            int(c, key, value);
+        }
+        decimal("cAdmissionMultiple", &mut self.admission_multiple);
     }
 }
 
@@ -171,7 +202,7 @@ fn bonus(ty: &EntityType) -> [f32; 4] {
 
 impl Sums {
     /// The sums over the entities of `world` with `cash` in hand and `research` percent of the
-    /// research done. The animals' state is read from the units; the guests' is not there yet.
+    /// research done. The state of animals and guests is read from the units.
     pub fn of(world: &World, catalogue: &Catalogue, cash: f32, research: i32) -> Sums {
         let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
         let mut sums = Sums {
@@ -181,6 +212,17 @@ impl Sums {
         };
         let mut esthetic = 0.0f32;
         for (at, e) in world.zoo.entities.iter().enumerate() {
+            if let Some(Part::Guest(g)) = (e.common.as_ref())
+                .filter(|_| e.class == "guests")
+                .and_then(|c| world.units.get(c.id))
+                .map(|u| &u.part)
+            {
+                sums.guests += 1;
+                sums.guest_happiness = sums
+                    .guest_happiness
+                    .wrapping_add(g.values[guest::HAPPINESS]);
+                continue;
+            }
             let animal = e.class == "animals";
             if !animal && !OBJECTS.contains(&e.class.as_str()) {
                 continue;
@@ -261,6 +303,8 @@ pub struct Status {
     /// How many times the cash fell low enough for a donation.
     pub given: f32,
     pub price: f32,
+    /// The price column of the last new guest check, 0 to 4 (built in 2).
+    pub column: i32,
 }
 
 impl Default for Status {
@@ -273,6 +317,7 @@ impl Default for Status {
             rating: 0,
             given: 0.0,
             price: 49.0,
+            column: 2,
         }
     }
 }
@@ -385,6 +430,50 @@ impl Status {
         for (_, id) in table.into_iter().filter(|(on, _)| *on) {
             say.push((id, None));
             log.push(format!("message {id}"));
+        }
+    }
+
+    /// The new guest check (guests 3.1) with `occupied` true when an exhibit holds an animal (no
+    /// animal is ever loose before M7): the price column is kept, the chance of the rating and
+    /// the column decides with one draw (none when the chance is 0). Says whether a guest is to
+    /// be created and whether the creation posts the advice about the fee.
+    pub fn new_guest_check(&mut self, occupied: bool, rng: &mut Rng) -> Option<bool> {
+        self.timers[2] = 0;
+        if !occupied {
+            return None;
+        }
+        let (price, limits) = (self.price, self.settings.limits);
+        let column = limits.iter().position(|&l| price > l).unwrap_or(4);
+        self.column = column as i32;
+        // The chances are very low to very high at 1 to 5 here, 0 is none; a cell may add the
+        // advice.
+        #[rustfmt::skip]
+        const TABLE: [[(usize, bool); 5]; 4] = [
+            [(1, false), (3, false), (4, false), (4, true), (5, true)],
+            [(0, false), (2, false), (3, false), (4, false), (5, true)],
+            [(0, false), (1, false), (3, false), (3, false), (4, true)],
+            [(0, false), (0, false), (1, false), (2, false), (3, false)],
+        ];
+        let row = match self.rating {
+            81.. => 0,
+            60..=80 => 1,
+            30..=59 => 2,
+            _ => 3,
+        };
+        let (cell, advice) = TABLE[row][column];
+        let chance = match cell {
+            0 => 0,
+            n => self.settings.create_chance[n - 1],
+        };
+        rng.status_chance(chance).then_some(advice)
+    }
+
+    /// The advice about the entrance fee (message 10017) after a guest was created, posted when
+    /// the last sums counted more than ten guests.
+    pub fn advise(&self, say: &mut Vec<Say>, log: &mut Vec<String>) {
+        if self.sums.guests > MANY_GUESTS {
+            say.push((10017, None));
+            log.push("message 10017".into());
         }
     }
 

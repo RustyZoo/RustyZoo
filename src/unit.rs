@@ -33,6 +33,7 @@ use crate::behaviour::{Animation, Data, Env, Flow, Heard, Note, Runner};
 use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::goal::Goals;
+pub use crate::guest::Guest;
 use crate::path::{self, Finder, Mover, Settings};
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
@@ -100,10 +101,6 @@ impl Kind {
         }
     }
 }
-
-/// The part of the state of a guest: its needs, items and lists (guest issues).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Guest {}
 
 /// The part of the state of a staff member: its exhibits and job (staff issues).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -184,7 +181,7 @@ impl Unit {
             kind,
             part: match kind {
                 Kind::Animal => Part::Animal(Animal::default()),
-                Kind::Guest => Part::Guest(Guest {}),
+                Kind::Guest => Part::Guest(Guest::default()),
                 _ => Part::Staff(Staff::default()),
             },
             moving: false,
@@ -246,12 +243,15 @@ pub struct Units {
     pub ring: walk::Ring,
     lines: Vec<String>,
     animal_lines: Vec<String>,
+    guest_lines: Vec<String>,
     /// The messages posted and not shown yet: the string number and the unit it is about.
     messages: Vec<(i32, u32)>,
     /// The sounds the units' animations began, with the unit's id, for the app.
     sounds: Vec<(u32, Heard)>,
     /// The game milliseconds the calendar has run: the date a new animal is fed and rested.
     pub now: u64,
+    /// The word before the number in a guest's name (string 9507).
+    pub guest_name: String,
 }
 
 impl Default for Units {
@@ -269,6 +269,8 @@ impl Default for Units {
             messages: Vec::new(),
             sounds: Vec::new(),
             now: 0,
+            guest_name: "Guest".into(),
+            guest_lines: Vec::new(),
         }
     }
 }
@@ -324,6 +326,11 @@ impl Units {
         std::mem::take(&mut self.animal_lines)
     }
 
+    /// The `guest` log lines since the last call, without the family word.
+    pub fn take_guest_lines(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.guest_lines)
+    }
+
     /// The messages posted since the last call, as (string number, unit id); the string holds a
     /// `%s` for the unit's name.
     pub fn take_messages(&mut self) -> Vec<(i32, u32)> {
@@ -338,6 +345,10 @@ impl Units {
     /// Adds a line to the `unit` log.
     pub(crate) fn note(&mut self, line: String) {
         self.lines.push(line);
+    }
+
+    pub(crate) fn guest_note(&mut self, line: String) {
+        self.guest_lines.push(line);
     }
 
     pub(crate) fn tell(&mut self, line: String) {
@@ -432,7 +443,7 @@ impl Units {
                     h.word(s.work as u32);
                     h.word(s.chase as u32);
                 }
-                Part::Guest(_) => {}
+                Part::Guest(g) => h.bytes(format!("{g:?}").as_bytes()),
             }
             h.word(u.events.len() as u32);
             for e in &u.events {

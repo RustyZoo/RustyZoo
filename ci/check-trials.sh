@@ -638,12 +638,13 @@ check expansion-trial "building/building/bounce,33,42" "walkable_place maps/scn1
 # The gate tool: the square of above, then the gate button and a click on a piece, picked by the
 # pixels of its picture, moves the gate there. Prints the `world ungate`, `world gate` and `exhibit gate` lines
 # after the name (spaces as underscores, joined by semicolons): the old gate turns back into a
-# fence, the piece becomes the gate and the exhibit follows.
+# fence, the piece becomes the gate and the exhibit follows (paused, so that no guest arriving
+# meanwhile takes an entity number).
 gate_move() { # gate_move <map> [yes]: with `yes` the square is a tank and its question is answered first
   d=$(mktemp -d)
   s=0
   if [ -n "${2:-}" ]; then s=1; fi
-  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n" >"$d/script"
+  printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n" >"$d/script"
   if [ $s = 1 ]; then printf "32 key enter\n" >>"$d/script"; fi
   printf "$((32 + s)) char L\n$((33 + s)) char i\n$((34 + s)) char o\n$((35 + s)) char n\n$((36 + s)) key enter\n$((38 + s)) mouse 110 282\n$((39 + s)) down\n$((40 + s)) up\n$((42 + s)) mouse 727 308\n$((43 + s)) down\n$((44 + s)) up\n" >>"$d/script"
   rz run "$1" --headless --passes $((48 + s)) --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
@@ -656,7 +657,7 @@ check expansion-trial "exhibit_gate_2_38,44_side_6;world_ungate_tankwall/tankwal
 # Undo (placing 8): the path drag of above, then Backspace takes the pieces back. Prints the removals
 # the undo logged, the cash at the end (from 50000) and whether the last picture is the one before
 # the drag (the game is paused, so that the units stand still). A bulldozer area drag over some of the pieces then Backspace puts them back: the adds the
-# undo logged and the cash.
+# undo logged and the cash (the area drag is paused too, so that no guest pays the admission meanwhile).
 undo_path() { # undo_path <map>
   d=$(mktemp -d)
   printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 mouse 185 100\n20 key backspace\n" >"$d/script"
@@ -668,7 +669,7 @@ check base-trial "8,50000,same" "undo_path maps/default.zoo"
 check expansion-trial "7,50000,same" "undo_path maps/scn19.zoo"
 undo_area() { # undo_area <map>
   d=$(mktemp -d)
-  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 key delete\n14 mouse 580 380\n15 down\n16 mouse 700 360\n17 mouse 800 400\n18 up\n19 key backspace\n" >"$d/script"
+  printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 key delete\n14 mouse 580 380\n15 down\n16 mouse 700 360\n17 mouse 800 400\n18 up\n19 key backspace\n" >"$d/script"
   rz run "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world add .* undo$/{n++} / money cash /{c=$6} END{print n "," c}'
   rm -rf "$d"

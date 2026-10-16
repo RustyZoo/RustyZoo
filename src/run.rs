@@ -277,6 +277,7 @@ fn replay(text: &str) -> Result<((u32, u32), Replay), String> {
             "animal ",
             "draw ",
             "exhibit ",
+            "guest ",
             "interface ",
             "menu ",
             "money ",

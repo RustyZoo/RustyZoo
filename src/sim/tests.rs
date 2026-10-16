@@ -541,6 +541,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "sums",
         "given",
         "price",
+        "column",
         "carried",
         "tank mode",
         "food",
@@ -563,6 +564,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "sums" => run.sim.status.sums.sick += 1,
             "given" => run.sim.status.given += 1.0,
             "price" => run.sim.status.price += 0.25,
+            "column" => run.sim.status.column += 1,
             "carried" => run.world.units.get_mut(1).unwrap().carried = true,
             "food" => run.world.zoo.entities[0].common.as_mut().unwrap().food = 1,
             "tank mode" => {
@@ -576,6 +578,36 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         }
         assert_ne!(run.hash(), base, "{what}");
     }
+    // Every field of a guest.
+    let guest = |change: &dyn Fn(&mut crate::guest::Guest)| {
+        let mut run = game(3);
+        let mut g = crate::guest::Guest::default();
+        change(&mut g);
+        run.world.units.get_mut(1).unwrap().part = crate::unit::Part::Guest(g);
+        run.hash()
+    };
+    let base = guest(&|_| {});
+    let date = crate::timing::Calendar::new().date();
+    let changes: [&dyn Fn(&mut crate::guest::Guest); 12] = [
+        &|g| g.values[3] = 1,
+        &|g| g.values[0] = 1,
+        &|g| g.pending[4] = 1,
+        &|g| g.countdowns[10] = 1,
+        &|g| g.saw_animal = 1,
+        &|g| g.reset = 1,
+        &|g| g.favourite = Some(0),
+        &|g| g.female = true,
+        &|g| g.child = true,
+        &|g| g.arrived = Some(date),
+        &|g| g.speed_offset = 1,
+        &|g| g.sick = true,
+    ];
+    let hashes: Vec<u64> = changes.iter().map(|c| guest(c)).collect();
+    assert!(hashes.iter().all(|&h| h != base), "{hashes:?}");
+    let mut sorted = hashes.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(sorted.len(), hashes.len(), "each field has its own place");
     // Fixed-width fields: a name does not run into the next field.
     let mut a = game(2);
     a.world.zoo.entities[0].type_name = "ab".into();

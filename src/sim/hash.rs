@@ -268,6 +268,7 @@ impl Fnv {
         for v in [s.sums.esthetics, s.given, s.price] {
             self.f32(v);
         }
+        self.i32(s.column);
     }
 
     fn sim(&mut self, sim: &Sim) {

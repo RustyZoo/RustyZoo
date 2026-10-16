@@ -12,6 +12,7 @@ pub mod entity;
 pub mod exhibit;
 pub mod goal;
 pub mod ground;
+pub mod guest;
 pub mod intro;
 pub mod lists;
 pub mod menu;

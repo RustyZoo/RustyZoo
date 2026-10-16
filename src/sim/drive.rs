@@ -161,7 +161,7 @@ impl Run {
         }
     }
 
-    /// One step of `ms` milliseconds; the `sim`, `unit` and `animal` log lines it made. The units
+    /// One step of `ms` milliseconds; the `sim`, `unit`, `animal` and `guest` log lines it made. The units
     /// run no behaviour set.
     pub fn step(&mut self, ms: u32) -> Vec<String> {
         self.step_with(ms, None)
@@ -192,6 +192,9 @@ impl Run {
         );
         lines.extend(
             (self.world.units.take_animal_lines().into_iter()).map(|l| format!("animal {l}")),
+        );
+        lines.extend(
+            (self.world.units.take_guest_lines().into_iter()).map(|l| format!("guest {l}")),
         );
         lines
     }
