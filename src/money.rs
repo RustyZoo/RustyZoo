@@ -19,6 +19,8 @@ pub const ANIMAL_REFUND: usize = 10;
 pub const KEEPER_WAGES: usize = 11;
 pub const GUIDE_WAGES: usize = 12;
 pub const MAINT_WAGES: usize = 13;
+/// The monthly upkeep of the guest buildings.
+pub const BUILDING_UPKEEP: usize = 28;
 /// The statistics of the zoo status (zoo status 13).
 pub const ZOO_VALUE: usize = 15;
 pub const RATING: usize = 16;

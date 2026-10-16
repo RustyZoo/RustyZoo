@@ -14,7 +14,8 @@
 //!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
 //! step, `sim month M Y` when a step acts on the month flag of the one before, and the zoo
-//! status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`.
+//! status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`, and at a month end the
+//! `sim wages ID AMOUNT` of each staff member and `sim upkeep AMOUNT` of the buildings ([`crate::month`]).
 
 pub mod drive;
 mod events;
@@ -493,8 +494,10 @@ impl Sim {
             let date = self.calendar.date();
             self.lines
                 .push(format!("month {} {}", date.month, date.year));
-            // The endowment goes before the accounts move on, the wages and the upkeep after.
+            // The endowment goes before the accounts move on, the wages and the upkeep after, in
+            // the new month's column.
             money.month_change();
+            crate::month::charge(world, cat, money, &mut self.lines);
         }
         let (say, log) = (&mut self.messages, &mut self.lines);
         self.status.donation(&mut self.rng, money, say, log);

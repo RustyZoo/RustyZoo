@@ -27,6 +27,12 @@ pub fn wages(ty: &EntityType) -> Option<usize> {
     }
 }
 
+/// The category the type's monthly wage is booked in (staff 5.2): the keeper class and the
+/// helicopter in keeper wages, then the guide and the worker; `None` for a type of no staff class.
+pub fn monthly_wages(ty: &EntityType) -> Option<usize> {
+    wages(ty).or((ty.class == "helicopter").then_some(KEEPER_WAGES))
+}
+
 /// The monthly cost of the type: `cMonthlyCost`, which is `cPurchaseCost` when the file has none
 /// (staff 3).
 pub fn monthly(ty: &EntityType) -> f32 {
