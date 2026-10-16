@@ -586,7 +586,7 @@ fn keeps_the_food_units_of_scenery() {
     // Kept as stored (signed) for the class `food` and the dung subtypes; zeroed for the rest.
     for v in [48, 106] {
         for (class, sub, units, kept) in [
-            ("food", "meat", 1000, 1000),
+            ("food", "meat", 1000i32, 1000),
             ("food", "meat", -7, -7),
             ("objects", "poo", 2, 2),
             ("objects", "dinopoo", 1, 1),
