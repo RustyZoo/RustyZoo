@@ -75,6 +75,8 @@ pub struct Settings {
     /// A guest that leaves above this happiness joins the endowment with this chance in percent.
     pub join_happiness: i32,
     pub join_chance: i32,
+    /// What a guest donates per unit of viewing time (guests visit 7).
+    pub donation_factor: f32,
 }
 
 /// The keys of [`Settings::percent`].
@@ -118,6 +120,7 @@ impl Settings {
             admission_multiple: 1.0,
             join_happiness: 80,
             join_chance: 50,
+            donation_factor: 2.8e-13,
         }
     }
 
@@ -168,6 +171,7 @@ impl Settings {
         decimal("cAdmissionMultiple", &mut self.admission_multiple);
         int(c, "cMembershipJoinHappiness", &mut self.join_happiness);
         int(c, "cMembershipJoinChance", &mut self.join_chance);
+        decimal("cDonationFactor", &mut self.donation_factor);
     }
 }
 

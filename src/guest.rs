@@ -5,12 +5,21 @@
 //! the check countdowns it starts with ([`Guest::create`], every draw in the original's order),
 //! the place at the centre of the entrance tile, the name and the admission booked (a child pays
 //! half). The way out is the leave goal ([`crate::goal`]): a guest whose `leave` flag is up walks
-//! to the entrance and is removed there. Missing so far: the needs and checks that use the values
-//! and countdowns (they are what raises the flag), the Halloween colours, and the entrance tiles
-//! other than the zoo entrance of the map.
+//! to the entrance and is removed there.
 //!
-//! The log family `guest`: `guest add <id> <adult|child>` for each guest made and
-//! `guest leave <id>` for each one that left and was removed.
+//! At each status tick [`checks::needs`] applies the pending changes and [`checks::checks`] runs
+//! the checks of guests 6 in the original's order: the needs grow, the trash check costs
+//! happiness, the leave check raises the flag of an unhappy guest, the viewing check
+//! ([`view`]) changes happiness by the animals in sight. The site choice, the walk to a viewing
+//! area and viewing are the goals' ([`crate::goal`]); what a guest sees from an area is [`view`].
+//! Missing so far (other issues): the buildings that satisfy a need, so the seek parts find none
+//! and the attractions are none; the thoughts, the surroundings and the litter; gawk scenery; the
+//! Halloween colours; the entrance tiles other than the zoo entrance of the map.
+//!
+//! The log family `guest`: `guest add <id> <adult|child>` for each guest made, `guest status <id>
+//! <happiness> <hunger> <thirst> <bathroom> <energy>` after each update of the values, `guest
+//! view <id> <exhibit>` when a guest starts viewing an exhibit, `guest donate <id> <exhibit>
+//! <amount>` for a donation and `guest leave <id>` for each one that left and was removed.
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
@@ -22,8 +31,12 @@ use crate::unit::Part;
 use crate::world::{Shape, TankKind, World};
 use crate::zoo::{Common, Entity};
 
+pub mod checks;
 #[cfg(test)]
 mod tests;
+pub mod view;
+
+pub use checks::{checks, needs};
 
 /// The status values of a guest, in the order of [`Guest::values`].
 pub const HAPPINESS: usize = 0;
@@ -42,6 +55,15 @@ const PERIODS: [(&str, i32); 11] = [
     ("cBuySouvenirCheck", 20), ("cEnergyCheck", 10), ("cChaseCheck", 2), ("cTrashCheck", 20),
     ("cLikeAnimalsCheck", 10), ("cViewingAreaCheck", 10), ("cEnvironmentEffectCheck", 10),
 ];
+/// The keys of the four needs in the order of [`Guest::values`] from hunger: increment, threshold
+/// and the happiness change at the top, with the program's value for a missing key.
+#[rustfmt::skip]
+const NEEDS: [[(&str, i32); 3]; 4] = [
+    [("cHungerIncrement", 5), ("cHungerThreshold", 70), ("cAngryFoodChange", -20)],
+    [("cThirstIncrement", 10), ("cThirstThreshold", 60), ("cAngryThirstChange", -20)],
+    [("cEnergyIncrement", 10), ("cEnergyThreshold", 90), ("cAngryEnergyChange", -10)],
+    [("cBathroomIncrement", 5), ("cBathroomThreshold", 70), ("cAngryBathroomChange", -30)],
+];
 /// The category of the entity type that makes the name's counter, shared by all four types.
 const COUNTER: &str = "guests";
 
@@ -56,6 +78,32 @@ pub struct Keys {
     /// `cRandomStatNth` and the start ranges of hunger, thirst, energy and bathroom.
     pub random_nth: i32,
     pub random: [(i32, i32); 4],
+    /// Hunger, thirst, energy and bathroom: increment, threshold and the change at the top.
+    pub needs: [[i32; 3]; 4],
+    /// `cLeaveChanceLow`, `Med`, `High` and `Done`, and `cAngryTrashChange`.
+    pub leave: [i32; 4],
+    pub trash: i32,
+    /// `cBuySouvenirChanceMed` and `High`.
+    pub souvenir: [i32; 2],
+    pub view: View,
+    /// `cMimicChance`, `cTestFenceChance`, `cTapWallChance`.
+    pub reactions: [i32; 3],
+    /// `cGawkTime` (five) and `cGawkAttrTime` (six): seconds of viewing by happiness, then more
+    /// by attractiveness.
+    pub gawk: Vec<i32>,
+    pub gawk_attr: Vec<i32>,
+}
+
+/// The changes of the viewing check (guests visit 6.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct View {
+    pub sick: i32,
+    /// `cHappyAnimalChange1`, `2`; `cAngryAnimalChange1` to `3`.
+    pub happy: [i32; 2],
+    pub angry: [i32; 3],
+    /// Threshold and change of the variety of species, and of the crowding.
+    pub species: (i32, i32),
+    pub crowd: (i32, i32),
 }
 
 impl Keys {
@@ -78,6 +126,21 @@ impl Keys {
             });
             found.unwrap_or(fallback)
         };
+        let list = |key: &str| {
+            let found = config.and_then(|config| {
+                [&ty.type_name[..], default, b""]
+                    .into_iter()
+                    .find_map(|prefix| {
+                        let name = match prefix.is_empty() {
+                            true => b"Characteristics/Integers".to_vec(),
+                            false => [prefix, b"/Characteristics/Integers"].concat(),
+                        };
+                        let all = config.section(name)?.get_all(key);
+                        (!all.is_empty()).then(|| all.iter().filter_map(|v| to_int(v)).collect())
+                    })
+            });
+            found.unwrap_or_default()
+        };
         let range = |stat: &str| {
             (
                 int(&format!("cRandom{stat}Min"), 0),
@@ -91,6 +154,45 @@ impl Keys {
             saw_animal_reset: int("cSawAnimalReset", 20),
             random_nth: int("cRandomStatNth", 0),
             random: ["Hunger", "Thirst", "Energy", "Bathroom"].map(range),
+            needs: NEEDS.map(|row| row.map(|(key, fallback)| int(key, fallback))),
+            leave: [
+                int("cLeaveChanceLow", 10),
+                int("cLeaveChanceMed", 15),
+                int("cLeaveChanceHigh", 20),
+                int("cLeaveChanceDone", 5),
+            ],
+            trash: int("cAngryTrashChange", -10),
+            souvenir: [
+                int("cBuySouvenirChanceMed", 60),
+                int("cBuySouvenirChanceHigh", 90),
+            ],
+            view: View {
+                sick: int("cSickAnimalChange", -10),
+                happy: [
+                    int("cHappyAnimalChange1", 10),
+                    int("cHappyAnimalChange2", 5),
+                ],
+                angry: [
+                    int("cAngryAnimalChange1", -5),
+                    int("cAngryAnimalChange2", -10),
+                    int("cAngryAnimalChange3", -15),
+                ],
+                species: (
+                    int("cDifferentSpeciesThreshold", 4),
+                    int("cDifferentSpeciesChange", 10),
+                ),
+                crowd: (
+                    int("cCrowdedViewingThreshold", 70),
+                    int("cCrowdedViewingChange", -10),
+                ),
+            },
+            reactions: [
+                int("cMimicChance", 10),
+                int("cTestFenceChance", 0),
+                int("cTapWallChance", 0),
+            ],
+            gawk: list("cGawkTime"),
+            gawk_attr: list("cGawkAttrTime"),
         }
     }
 }
@@ -119,6 +221,16 @@ pub struct Guest {
     pub sick: bool,
     /// The guest decided to leave: the ladder then gives it the leave goal.
     pub leave: bool,
+    /// The tiles of the last 10 sites seen, oldest first, and how many sites it has seen since the
+    /// list was emptied (guests visit 3.5).
+    pub seen: Vec<usize>,
+    pub seen_count: u32,
+    /// The species (name ids) it saw while viewing, the last 5, oldest first.
+    pub recent: Vec<i32>,
+    /// The direction in which it looks for its viewing area (guests visit 4.2).
+    pub va: Option<u8>,
+    /// The calendar time viewing began, in milliseconds.
+    pub viewed_at: u64,
 }
 
 impl Guest {
@@ -175,6 +287,14 @@ impl Guest {
             ..Guest::default()
         }
     }
+}
+
+/// The keys of the guest at position `at` of the entity list; none when its type is unknown.
+pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Option<Keys> {
+    let e = world.zoo.entities.get(at)?;
+    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+    let ty = cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))?;
+    Some(Keys::of(ty))
 }
 
 /// What a creation needs besides the world.

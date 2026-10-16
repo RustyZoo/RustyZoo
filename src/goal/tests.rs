@@ -174,7 +174,9 @@ fn the_factory_builds_the_base_goal_outside_the_table_and_nothing_for_tasks_not_
         None,
         "a keeper's, later"
     );
-    assert_eq!(Goal::build(GAWK, Kind::Guest), None);
+    assert_eq!(Goal::build(GAWK, Kind::Guest), Some(Goal::Gawk));
+    assert_eq!(Goal::build(SITE, Kind::Guest), Some(Goal::Site));
+    assert_eq!(Goal::build(134, Kind::Guest), None, "returnfromshow, later");
 }
 
 #[test]
@@ -266,15 +268,12 @@ fn a_task_change_replaces_the_object_at_the_next_update() {
     );
     s.step(&mut w, 67, |_, _, _| {});
     assert_eq!(unit(&w).goal.object, Some(Goal::Habitat));
-    // Habitat, already in the viewing tile: done, complete, and the next task has no object.
+    // Habitat, already in the viewing tile: done, complete, and the next task is gawk, whose
+    // object finds no viewing area: its init fails and the record is cleared.
     assert_eq!(unit(&w).goal.record.task, GAWK);
     s.step(&mut w, 67, |_, _, _| {});
     assert_eq!(unit(&w).goal.object, None);
-    assert_eq!(
-        unit(&w).goal.record.task,
-        GAWK,
-        "nothing builds it yet: it stays"
-    );
+    assert_eq!(unit(&w).goal.record.task, NONE);
 }
 
 #[test]
@@ -354,7 +353,7 @@ fn a_refused_step_makes_the_goal_give_up_and_clears_the_flag() {
     run(&mut w, &mut s, 1);
     let u = unit(&w);
     assert!(!u.aborted && u.path.is_empty() && !u.goal.record.target.is_set());
-    assert_eq!(u.goal.record.task, GAWK, "the task stays");
+    assert_eq!(u.goal.record.task, 134, "the task stays");
 }
 
 #[test]
@@ -423,9 +422,8 @@ fn a_synthetic_goal_runs_a_go_to_job_and_then_a_go_to_task_to_their_ends() {
         assert!(cx.go_to(task_at, false, false, false))
     });
     let log = run_with(&mut w, &mut s, &data, 400);
-    assert_eq!(unit(&w).goal.record.task, GAWK, "{log:?}");
+    assert!(log.contains(&"tile 1 8,5".to_string()), "{log:?}");
     assert!(log.contains(&"goal 1 gawk 0 - -".to_string()));
-    assert!(!unit(&w).moving);
 }
 
 #[test]

@@ -209,6 +209,9 @@ pub struct World {
     /// The next action starts a new undo list.
     fresh: bool,
     dirty: bool,
+    /// How many times the map changed; what is derived from it (the viewing areas) is built again
+    /// when this moved.
+    pub edits: u64,
     /// The game is paused: a fill or drain of a tank is instant.
     paused: bool,
 }
@@ -236,6 +239,7 @@ impl World {
             undo: Vec::new(),
             fresh: false,
             dirty: false,
+            edits: 0,
             paused: false,
         };
         world.mark_exterior();
@@ -1053,6 +1057,7 @@ impl World {
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
         self.units.sync(&self.zoo.entities);
         self.dirty = true;
+        self.edits += 1;
     }
 
     /// The objects standing on tile `t` take their height from the ground again (not the ones

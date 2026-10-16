@@ -190,6 +190,7 @@ impl Fnv {
         self.rating(&x.rating);
         let s = &x.stats;
         self.u32(s.popularity);
+        self.u64(s.viewing);
         for v in s.donations.into_iter().chain(s.upkeep) {
             self.f32(v);
         }
