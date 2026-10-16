@@ -693,7 +693,7 @@ check base-trial 'exhibit_1_"Lion";status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.
 # lines in red (important) and the others, as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
 panel_plaque() { # panel_plaque <map>
   d=$(mktemp -d)
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n15 mouse 992 256\n16 down\n17 up\n' >"$d/script"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n15 mouse 992 256\n16 down\n17 up\n' >"$d/script"
   rz run "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel animals /{a=$6} / panel line! /{i++} / panel line "/{o++} END{print a "," i+0 "," o+0}'
   rm -rf "$d"
@@ -708,7 +708,7 @@ check expansion-trial "1,0,2" "panel_plaque maps/scn28b.zoo"
 # and its time rows.
 panel_animal() { # panel_animal <map>
   d=$(mktemp -d)
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
   rz run "$1" --headless --passes 18 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel animal [0-9]/{sub(/^.* panel animal /, ""); gsub(/ /, "_"); print}'
   rm -rf "$d"
@@ -718,13 +718,15 @@ check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_s
 
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
-# is moved off the tabs, so no tooltip shows). Prints same or different.
+# is moved off the tabs, so no tooltip shows). The game is paused, so that the units walking in
+# the map part of the frame do not differ between the two runs, and a frame is drawn only when
+# something changed: the last one drawn of each run is compared. Prints same or different.
 panel_tab() { # panel_tab <map>
   d=$(mktemp -d)
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n12 mouse 500 300\n' >"$d/a"
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1005 645\n9 down\n10 up\n12 mouse 1005 614\n13 down\n14 up\n16 mouse 500 300\n' >"$d/b"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n12 mouse 500 300\n' >"$d/a"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1005 645\n9 down\n10 up\n12 mouse 1005 614\n13 down\n14 up\n16 mouse 500 300\n' >"$d/b"
   for s in a b; do
-    rz run "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass 23 .* draw [0-9a-f]/{print $5}'
+    rz run "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass [0-9]+ .* draw [0-9a-f]/{h=$5} END{print h}'
   done | sort -u | awk 'END{ if (NR == 1) print "same"; else print "different" }'
   rm -rf "$d"
 }
