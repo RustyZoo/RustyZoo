@@ -135,7 +135,7 @@ struct Texts;
 impl Strings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            3104 => "Happiness: %d".into(),
+            3104 => "Mood %d".into(),
             3116 | 3119 => "Recently".into(),
             3117 | 3120 => "A while".into(),
             _ => String::new(),
@@ -213,11 +213,7 @@ fn a_refresh_writes_the_bars_the_time_rows_and_the_buttons_and_tells_what_change
         told,
         "animal 1 \"\" happiness 99 hunger 30 health 50 suitability 0 fed Recently slept Recently"
     );
-    assert_eq!(
-        ui.string(3104),
-        "Happiness: 99",
-        "the tooltip holds the value"
-    );
+    assert_eq!(ui.string(3104), "Mood 99", "the tooltip holds the value");
     assert_eq!(ui.text(3177).unwrap(), b"Recently");
     assert_eq!(flags(&ui, 3176) & HIDDEN, 0);
     assert_eq!(flags(&ui, 3111) & DISABLED, 0);
