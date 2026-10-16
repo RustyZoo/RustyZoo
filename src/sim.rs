@@ -31,7 +31,7 @@ use crate::config::{self, Config};
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::guest;
-use crate::money::Money;
+use crate::money::{self, Money};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -384,6 +384,8 @@ impl Sim {
             world.unrecorded(|w| w.remove(id));
         }
         world.units.ai_ticks = self.ai_ticks;
+        let settings = &self.status.settings;
+        world.units.guest_join = (settings.join_happiness, settings.join_chance);
         let count = world.zoo.entities.len();
         for at in 0..count {
             // Read again at each index, as the original does.
@@ -400,6 +402,13 @@ impl Sim {
             }
         }
         self.events.age();
+        for _ in 0..std::mem::take(&mut world.units.guests_gone) {
+            money.count(money::GUESTS_GONE);
+        }
+        for _ in 0..std::mem::take(&mut world.units.members_joined) {
+            money.count(money::MEMBERS);
+            money.count(money::MEMBERS_JOINED);
+        }
         // The world manager: the zoo grounds' timers, then the exhibits' timers and ratings, the
         // water of the tanks, the world clock.
         let mut grounds = std::mem::take(&mut world.exhibits_mut().grounds);

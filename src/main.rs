@@ -136,7 +136,7 @@ usage: rustyzoo [--data <dir>] <command>
                       default), or the log lines of each step (--log; the units run their behaviour sets as in
                       `run`). The script has one
                       `<step> <command>` per line, applied before that step (the first is 0):
-                      remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N
+                      remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N, leave ID
   check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
                       pieces) as the engine does when their copies in ztst/ are missing, and
                       compare each with its shipped copy; exit 1 if one differs or fails
@@ -336,7 +336,7 @@ usage: rustyzoo [--data <dir>] <command>
                       by the original's name, `-` for none) and `unit job ID JOB` when its job does; an idle unit wanders
                       (task `random`), and a guest stands between two walks. An animal adds `animal status ID HAPPINESS HUNGER ENERGY HEALTH` (the
                       values after the update of that tick) and `animal message STRING ID` for a message it
-                      posts and `animal trample ID X,Y` for a tile it tramples. The new guest check lets a guest in at the zoo entrance and logs `guest add ID adult|child` (the admission is booked). Each unit runs a behaviour set
+                      posts and `animal trample ID X,Y` for a tile it tramples. The new guest check lets a guest in at the zoo entrance and logs `guest add ID adult|child` (the admission is booked); a guest told to leave walks to the entrance and is removed there (`guest leave ID`). Each unit runs a behaviour set
                       after its move and animation: an animal
                       chooses the set of the ambient row for its happiness, a guest or
                       staff member `bZooRoutine`; `unit set ID NAME` tells a set

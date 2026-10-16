@@ -22,10 +22,12 @@ use crate::world::World;
 use crate::zoo::Entity;
 
 mod animal;
+mod guest;
 #[cfg(test)]
 mod tests;
 
 pub use animal::KEEPER_FOOD;
+pub use guest::LEAVE;
 
 pub const NONE: u8 = 0;
 /// The wander.
@@ -153,6 +155,8 @@ pub enum Goal {
     Habitat,
     /// 0x72 of an animal: walk to a piece of keeper food and eat it (11.8).
     KeeperFood,
+    /// 0x71 of a guest: walk to the zoo entrance and go (11.6).
+    Leave,
 }
 
 impl Goal {
@@ -163,6 +167,7 @@ impl Goal {
             (..=99, _) | (135.., _) => Some(Goal::Base),
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
+            (LEAVE, Kind::Guest) => Some(Goal::Leave),
             _ => None,
         }
     }
@@ -172,6 +177,7 @@ impl Goal {
             Goal::Base => RANDOM,
             Goal::Habitat => HABITAT,
             Goal::KeeperFood => KEEPER_FOOD,
+            Goal::Leave => LEAVE,
         }
     }
 
@@ -201,6 +207,9 @@ impl Goal {
     }
 
     fn check_done(self, cx: &mut Cx) {
+        if self == Goal::Leave {
+            return cx.leave_check_done();
+        }
         if self != Goal::Base && cx.reached(false) {
             cx.record().done = true;
         }
@@ -210,6 +219,7 @@ impl Goal {
         match self {
             Goal::Habitat if cx.record().target.tile.is_none() => cx.set_task(NONE, 0, 0, None),
             Goal::KeeperFood => cx.keeper_food_decide(),
+            Goal::Leave => cx.leave_decide(),
             _ => {}
         }
     }
@@ -218,6 +228,7 @@ impl Goal {
         match self {
             Goal::Habitat => cx.set_task(GAWK, 0, 0, None),
             Goal::KeeperFood => cx.keeper_food_complete(),
+            Goal::Leave => cx.leave_complete(),
             Goal::Base => {}
         }
     }
@@ -435,8 +446,12 @@ impl Cx<'_, '_> {
     }
 
     /// 10.2 point 8: the task goes on. Point 10: the guest stands while its wandered flag is up,
-    /// else it picks again (the sites and the leaving are the guest issue's).
+    /// else it picks again (the sites, and the checks that raise the leave flag, are the guest
+    /// issues'). Point 2 comes first: a guest that is to leave takes the leave task.
     fn guest_ladder(&mut self, task: u8, done: bool) {
+        if self.leave_ladder() {
+            return;
+        }
         if task != NONE && task != 100 && !done {
             return;
         }

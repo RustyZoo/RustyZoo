@@ -2,8 +2,9 @@
 
 use super::*;
 use crate::config::Config;
-use crate::sim::drive::Run;
+use crate::sim::drive::{Command, Run};
 use crate::status::zoo::{Settings, Status};
+use crate::unit::Kind;
 use crate::unit::testing::{centre, entity, world_with};
 use crate::zoo::StatusRecord;
 use std::sync::Arc;
@@ -428,4 +429,42 @@ fn without_a_guest_type_or_an_entrance_tile_nothing_is_made_and_nothing_is_drawn
     // One creation: the type, 21 or 22 for the guest, the tile.
     let n = make(&types(), (7, 7)).1;
     assert!((1 + 20 + 1..=1 + 22 + 1).contains(&n), "{n}");
+}
+
+/// Runs the guest game until the first guest is in, and tells it to leave if `leave`.
+fn leaver(leave: bool) -> Run {
+    let mut run = game("", true);
+    run.sim.status.settings.create_chance = [100; 5];
+    (run.sim.status.rating, run.sim.status.price) = (85, 9.0);
+    let mut log = Vec::new();
+    while added(&log).is_empty() {
+        log.extend(run.step(67));
+    }
+    let id = (run.world.units.iter())
+        .find(|u| u.kind == Kind::Guest)
+        .unwrap()
+        .id;
+    assert!(run.apply(&Command::Leave(id)));
+    if !leave {
+        let Some(Part::Guest(g)) = run.world.units.get_mut(id).map(|u| &mut u.part) else {
+            panic!("no guest");
+        };
+        g.leave = false;
+    }
+    assert!(!run.apply(&Command::Leave(id + 100)), "no such guest");
+    assert!(!run.apply(&Command::Leave(500)), "the zebra is no guest");
+    run
+}
+
+#[test]
+fn the_leave_command_raises_the_flag_of_a_guest_and_the_hash_follows() {
+    let (a, b) = (leaver(true), leaver(true));
+    assert_eq!(a.hash(), b.hash(), "two runs agree");
+    assert_ne!(a.hash(), leaver(false).hash());
+    let flagged = |run: &Run| {
+        (run.world.units.iter())
+            .filter(|u| matches!(&u.part, Part::Guest(g) if g.leave))
+            .count()
+    };
+    assert_eq!(flagged(&a), 1);
 }

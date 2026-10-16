@@ -7,6 +7,7 @@ use crate::behaviour::{Library, NoData, Timings};
 use crate::entity::Catalogue;
 use crate::money::Money;
 use crate::render::order::Kind;
+use crate::unit::Part;
 use crate::vfs::Vfs;
 use crate::world::{Shape, TankKind, World};
 use crate::zoo::{Common, Entity};
@@ -27,6 +28,8 @@ pub enum Command {
     /// `food X,Y TYPE [UNITS]`: a pile of food of the type (`herbchow`) on a tile, as a keeper puts
     /// it down: full, or with this many units.
     Food(i32, i32, String, Option<i32>),
+    /// `leave ID`: the guest decides to leave the zoo (the flag its checks raise).
+    Leave(u32),
 }
 
 /// The highest elevation a script sets.
@@ -48,6 +51,7 @@ impl std::str::FromStr for Command {
             Some("remove") if words.len() == 2 => Command::Remove(id(1)?),
             Some("fill") if words.len() == 2 => Command::Fill(id(1)?),
             Some("drain") if words.len() == 2 => Command::Drain(id(1)?),
+            Some("leave") if words.len() == 2 => Command::Leave(id(1)?),
             Some("cash") if words.len() == 2 => {
                 let cash = words[1].parse::<f32>().ok().filter(|c| c.is_finite());
                 Command::Cash(cash.ok_or_else(|| format!("bad cash: {text:?}"))?)
@@ -169,6 +173,13 @@ impl Run {
                 }
                 tank
             }
+            Command::Leave(id) => match self.world.units.get_mut(id).map(|u| &mut u.part) {
+                Some(Part::Guest(g)) => {
+                    g.leave = true;
+                    true
+                }
+                _ => false,
+            },
             Command::Cash(amount) => {
                 self.money.add_cash(amount);
                 true

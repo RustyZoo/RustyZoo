@@ -608,6 +608,17 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted.len(), hashes.len(), "each field has its own place");
+    // The leave flag of a guest.
+    let leave = |on: bool| {
+        let mut run = game(3);
+        let g = crate::guest::Guest {
+            leave: on,
+            ..Default::default()
+        };
+        run.world.units.get_mut(1).unwrap().part = crate::unit::Part::Guest(g);
+        run.hash()
+    };
+    assert_ne!(leave(true), leave(false));
     // Fixed-width fields: a name does not run into the next field.
     let mut a = game(2);
     a.world.zoo.entities[0].type_name = "ab".into();
@@ -715,6 +726,10 @@ fn a_bad_script_is_an_error() {
         "1 food 1,1 herbchow -1",
         "1 food 1,1 herbchow 99999999999",
         "1 food 1,1 herbchow 5 6",
+        "1 leave",
+        "1 leave -1",
+        "1 leave 4294967296",
+        "1 leave 1 2",
     ] {
         assert!(drive::parse(bad).is_err(), "{bad}");
     }
