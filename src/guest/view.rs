@@ -34,10 +34,10 @@ pub struct Beast {
 #[derive(Debug, PartialEq)]
 pub struct Sight {
     pub exhibit: u32,
-    /// The animals of the exhibit, and those in view with their species in order and how many
-    /// are sick.
+    /// How many animals the exhibit holds, and how many stand on the tiles the area sees.
     pub total: u32,
     pub animals: usize,
+    /// The species in view (name ids, in order) and how many animals in view are sick.
     pub species: Vec<i32>,
     pub sick: usize,
     /// The crowding of the area: ten times the guests per tile, rounded.
