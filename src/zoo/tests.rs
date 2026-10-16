@@ -582,6 +582,37 @@ fn reads_the_common_part_of_fixed_entities() {
 }
 
 #[test]
+fn keeps_the_food_units_of_scenery() {
+    for v in [48, 106] {
+        for (class, ty, units) in [
+            ("food", "food", 1000u32),
+            ("objects", "tree", 0),
+            ("paths", "paths", u32::MAX),
+        ] {
+            let mut body = scenery(v, 7, "Meat");
+            body[..4].copy_from_slice(&units.to_le_bytes());
+            let z = parse(&file(v, 1, 1, &[], &[(class, ty, "x", body)]));
+            let c = z.entities[0].common.as_ref().unwrap();
+            assert_eq!((c.food, c.id), (units, 7), "{class} at {v}");
+        }
+    }
+    // Everything that is not scenery holds none.
+    let z = parse(&file(
+        106,
+        1,
+        1,
+        &[],
+        &[("ambient", "ambient", "bird", {
+            let mut w = W::default();
+            w.z(8);
+            base(&mut w, 106, 0, 10, "Bird");
+            w.0
+        })],
+    ));
+    assert_eq!(z.entities[0].common.as_ref().unwrap().food, 0);
+}
+
+#[test]
 fn keeps_the_condition_of_fences_from_version_55() {
     for v in [48, 55, 106] {
         let mut body = scenery(v, 3, "Fence");

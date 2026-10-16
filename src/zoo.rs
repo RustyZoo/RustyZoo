@@ -106,6 +106,8 @@ pub struct Common {
     pub fence: Option<Fence>,
     /// The movement mode of a unit (3: inside a tank); 0 for everything else.
     pub movement_mode: u32,
+    /// The food units left of a scenery entity (zoo format 6.6); 0 for everything else.
+    pub food: u32,
     /// What an animal record stores of the animal's live state; `None` for everything else.
     pub animal: Option<Box<AnimalRecord>>,
 }

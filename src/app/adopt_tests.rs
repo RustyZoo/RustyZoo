@@ -70,6 +70,7 @@ fn map() -> Zoo {
                     portal: false,
                 }),
                 movement_mode: 0,
+                food: 0,
                 animal: None,
             }),
         });

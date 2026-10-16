@@ -72,8 +72,8 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
 
 /// The food counter, then the common part.
 fn scenery(r: &mut Reader) -> R<Common> {
-    r.skip(4)?;
-    base(r)
+    let food = r.u32()?;
+    Ok(Common { food, ..base(r)? })
 }
 
 /// The common part of every body.
@@ -108,6 +108,7 @@ fn base(r: &mut Reader) -> R<Common> {
         colors,
         fence: None,
         movement_mode: 0,
+        food: 0,
         animal: None,
     })
 }

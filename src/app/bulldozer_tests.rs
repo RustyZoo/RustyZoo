@@ -313,6 +313,7 @@ impl Session<'_> {
                 colors: Vec::new(),
                 fence,
                 movement_mode: 0,
+                food: 0,
                 animal: None,
             }),
         };

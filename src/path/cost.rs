@@ -98,10 +98,13 @@ pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
     }
     let (path, steep, tank) = (on_path(w, t), steep(w, t), w.tank_at(t).is_some());
     let blocked = quarters(w, m, t).iter().all(|q| q.1);
-    // The food a keeper put down: scenery of the food class in quarter 0.
-    let food = w
-        .quadrant(t, SLOT[0])
-        .is_some_and(|e| w.zoo.entities[e].class == "food");
+    // The food a keeper put down: scenery in quarter 0 with food units left.
+    let food = w.quadrant(t, SLOT[0]).is_some_and(|e| {
+        w.zoo.entities[e]
+            .common
+            .as_ref()
+            .is_some_and(|c| c.food > 0)
+    });
     let at_path = m.at.is_some_and(|s| on_path(w, s));
     match m.kind {
         Kind::Keeper if !tank && blocked && !food => MAX,
