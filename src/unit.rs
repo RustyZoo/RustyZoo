@@ -111,7 +111,7 @@ pub struct Staff {
     /// The counters drawn when the first turn starts the state (staff 4.2): -1 for a key of 0.
     pub work: i32,
     pub chase: i32,
-    /// The exhibits it is assigned to, the newest first, none twice (staff 6).
+    /// The exhibits it is assigned to, the oldest first, none twice (staff 6).
     pub assigned: Vec<u32>,
     /// The duty kinds of a maintenance worker that the player switched off (staff 8.1): each kind
     /// the game allows starts on.

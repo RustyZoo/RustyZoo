@@ -57,6 +57,7 @@ fn flat() -> Input {
         site,
         species: vec![zebra()],
         animals: vec![0, 0],
+        keeper: None,
     }
 }
 

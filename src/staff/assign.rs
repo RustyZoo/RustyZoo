@@ -3,10 +3,9 @@
 
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
-use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::panel::exhibit::animals_in;
 use crate::place::bulldozer::type_of;
-use crate::unit::{Kind, Part};
+use crate::unit::Part;
 use crate::world::World;
 
 /// The message of an exhibit that is too small, the one of an empty exhibit, and the message of a
@@ -20,7 +19,7 @@ const MARINE: (i32, i32) = (9552, 10328);
 /// What a click of the assign mode did.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// The exhibit is in the list now (it was, or it is the newest).
+    /// The exhibit is in the list now (it was, or it is the last).
     Assigned,
     /// Nothing changed; the message to show, if the type has one.
     Refused(Option<i32>),
@@ -80,8 +79,7 @@ fn refusal(world: &World, cat: &Catalogue, exhibit: u32, who: &EntityType) -> Op
 }
 
 /// A click of the assign mode on exhibit `exhibit` for the staff member `id` (staff 6 point 1).
-/// Result 0 puts the exhibit first in the list (an exhibit that is in it moves to the front: no
-/// duplicates); the other results change nothing and give their message.
+/// Result 0 appends the exhibit to the list (one that is in it keeps its place: no duplicates); the other results change nothing and give their message.
 pub fn assign(world: &mut World, cat: &Catalogue, id: u32, exhibit: u32) -> Outcome {
     let Some(at) = world.find(id) else {
         return Outcome::Refused(None);
@@ -99,10 +97,10 @@ pub fn assign(world: &mut World, cat: &Catalogue, id: u32, exhibit: u32) -> Outc
         return Outcome::Refused(m);
     }
     if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
-        s.assigned.retain(|&e| e != exhibit);
-        s.assigned.insert(0, exhibit);
+        if !s.assigned.contains(&exhibit) {
+            s.assigned.push(exhibit);
+        }
     }
-    sync(world);
     Outcome::Assigned
 }
 
@@ -118,7 +116,6 @@ pub fn unassign(world: &mut World, id: u32, row: Option<usize>) {
             None => s.assigned.clear(),
         }
     }
-    sync(world);
 }
 
 /// `clearStaffHabitat`: the exhibit that is gone leaves the list of every staff member (staff 6
@@ -128,26 +125,6 @@ pub fn clear_habitat(world: &mut World, exhibit: u32) {
     for id in ids {
         if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
             s.assigned.retain(|&e| e != exhibit);
-        }
-    }
-    sync(world);
-}
-
-/// Sets the keeper-assigned flag of each exhibit from the lists (habitat rating 11.2): the first
-/// staff member that holds it. The original sets it at the next rating of the exhibit; here it
-/// follows at once.
-pub fn sync(world: &mut World) {
-    let held: Vec<(u32, u32)> = (world.units.iter())
-        .filter(|u| matches!(u.kind, Kind::Keeper | Kind::Guide))
-        .filter_map(|u| match &u.part {
-            Part::Staff(s) => Some((u.id, s.assigned.clone())),
-            _ => None,
-        })
-        .flat_map(|(id, list)| list.into_iter().map(move |e| (e, id)))
-        .collect();
-    for x in world.exhibits_mut().list_mut() {
-        if x.id != GROUNDS && x.id != EXTERIOR {
-            x.rating.keeper = held.iter().find(|&&(e, _)| e == x.id).map(|&(_, id)| id);
         }
     }
 }

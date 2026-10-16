@@ -321,7 +321,7 @@ usage: rustyzoo [--data <dir>] <command>
                       shown and not while the game is paused; its fire button asks as the bulldozer does, its
                       pick-up button picks it up, and its assign button (the second tab) starts the assign mode:
                       the exhibit under the pointer is tinted green when the keeper may serve it and red when
-                      not, a click assigns it (or shows why not) and goes first in the list, a row of the list
+                      not, a click assigns it (or shows why not) and appends it to the list, a row of the list
                       centres the view on that exhibit's gate and opens the exhibit panel, the clear buttons
                       remove one or all, and Escape or the right button end the mode. `panel staff ID \"NAME\"
                       salary S duty \"TEXT\" exhibits [NAMES]` (`duties 1111` for a worker) and `panel staff none`

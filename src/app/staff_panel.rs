@@ -213,7 +213,7 @@ impl App<'_> {
     }
 
     /// A release on the map in the assign mode (staff 6 point 1): the exhibit under the pointer
-    /// goes first in the list, or the player is told why not. The mode stays on.
+    /// is appended to the list, or the player is told why not. The mode stays on.
     pub(super) fn assign_release(&mut self, id: u32) {
         let Some((exhibit, _)) = self.exhibit_under(id) else {
             return;

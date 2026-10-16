@@ -741,7 +741,8 @@ check expansion-trial "same" "panel_tab maps/scn19.zoo"
 # The staff panel (information panels 9, staff 6): the exhibit list centres the view on the first
 # exhibit and closes, a hired zookeeper (seed 3 draws the sex the trials have) is clicked, the assign
 # button is pressed and a click on the exhibit assigns it (green under the pointer, none over the
-# grounds); the exhibit panel then says a keeper is assigned. Prints the `panel` and `tool assign` lines
+# grounds); the exhibit panel still says no keeper is assigned (the flag follows at the exhibit's
+# next rating, which a paused game does not reach). Prints the `panel` and `tool assign` lines
 # (spaces as underscores, ids left out, joined by semicolons).
 staff_assign() { # staff_assign <map>
   d=$(mktemp -d)
@@ -751,7 +752,7 @@ staff_assign() { # staff_assign <map>
     sed -e 's/panel staff [0-9]* /panel staff /' -e 's/tool assign [0-9]* /tool assign /' | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
-check base-trial 'panel_status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;panel_staff_"Zookeeper_1"_salary_$0_duty_""_exhibits_[];tool_assign_over_1_good;tool_assign_1;panel_staff_"Zookeeper_1"_salary_$0_duty_""_exhibits_["Exhibit_1"];tool_assign_over_none;panel_status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_Yes' "staff_assign maps/scn01.zoo"
+check base-trial 'panel_status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;panel_staff_"Zookeeper_1"_salary_$0_duty_""_exhibits_[];tool_assign_over_1_good;tool_assign_1;panel_staff_"Zookeeper_1"_salary_$0_duty_""_exhibits_["Exhibit_1"];tool_assign_over_none;panel_status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No' "staff_assign maps/scn01.zoo"
 
 # A maintenance worker is hired, clicked and its duties tab opened (the expansion data has the four
 # duty kinds, the base data three): a click on the second row switches that kind off.

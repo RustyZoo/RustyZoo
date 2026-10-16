@@ -178,15 +178,15 @@ fn a_keeper_may_serve_an_exhibit_with_animals_of_his_kind_that_has_two_tiles() {
 }
 
 #[test]
-fn a_click_puts_the_exhibit_first_once_and_a_refusal_changes_nothing_and_says_why() {
+fn a_click_appends_the_exhibit_once_and_a_refusal_changes_nothing_and_says_why() {
     let (mut w, [zebra, small, empty, dino]) = world();
     let cat = catalogue();
     assert_eq!(assign(&mut w, &cat, KEEPER, zebra), Outcome::Assigned);
     assert_eq!(assign(&mut w, &cat, GUIDE, small), Outcome::Assigned);
     assert_eq!(assign(&mut w, &cat, GUIDE, zebra), Outcome::Assigned);
-    assert_eq!(list(&w, GUIDE), [zebra, small], "the newest first");
+    assert_eq!(list(&w, GUIDE), [small, zebra], "the oldest first");
     assert_eq!(assign(&mut w, &cat, GUIDE, small), Outcome::Assigned);
-    assert_eq!(list(&w, GUIDE), [small, zebra], "no duplicate");
+    assert_eq!(list(&w, GUIDE), [small, zebra], "no duplicate, no move");
     let refused = |w: &mut World, who, x| assign(w, &cat, who, x);
     assert_eq!(
         refused(&mut w, KEEPER, small),
@@ -222,29 +222,35 @@ fn a_click_puts_the_exhibit_first_once_and_a_refusal_changes_nothing_and_says_wh
 }
 
 #[test]
-fn removing_one_or_all_and_a_vanished_exhibit_empty_the_lists_and_the_flag_follows() {
+fn removing_one_or_all_and_a_vanished_exhibit_empty_the_lists() {
     let (mut w, [zebra, _, _, dino]) = world();
     let cat = catalogue();
     assign(&mut w, &cat, KEEPER, zebra);
     assign(&mut w, &cat, GUIDE, zebra);
     assign(&mut w, &cat, GUIDE, dino);
-    let flag = |w: &World, x| w.exhibits().get(x).unwrap().rating.keeper;
-    assert_eq!(
-        (flag(&w, zebra), flag(&w, dino)),
-        (Some(KEEPER), Some(GUIDE))
-    );
-    // Row 0 of the guide's list is the newest, the dinosaur exhibit; a row past the end does
-    // nothing.
+    // Row 1 of the guide's list is the dinosaur exhibit; a row past the end does nothing.
     unassign(&mut w, GUIDE, Some(9));
-    unassign(&mut w, GUIDE, Some(0));
+    unassign(&mut w, GUIDE, Some(1));
     assert_eq!(list(&w, GUIDE), [zebra]);
-    assert_eq!(flag(&w, dino), None);
     unassign(&mut w, KEEPER, None);
-    assert_eq!((list(&w, KEEPER), flag(&w, zebra)), (vec![], Some(GUIDE)));
+    assert_eq!(list(&w, KEEPER), Vec::<u32>::new());
     clear_habitat(&mut w, zebra);
-    assert_eq!((list(&w, GUIDE), flag(&w, zebra)), (vec![], None));
+    assert_eq!(list(&w, GUIDE), Vec::<u32>::new());
     // An id that is no unit or no staff changes nothing.
     unassign(&mut w, 999, None);
     unassign(&mut w, 50, None);
     clear_habitat(&mut w, 999);
+}
+
+#[test]
+fn the_keeper_assigned_flag_is_read_from_the_lists_of_the_keeper_class_only() {
+    let (mut w, [zebra, _, _, dino]) = world();
+    let cat = catalogue();
+    let flag = |w: &World, x| crate::exhibit::rating::input(w, &cat, x).keeper;
+    assign(&mut w, &cat, GUIDE, zebra);
+    assign(&mut w, &cat, KEEPER, zebra);
+    assign(&mut w, &cat, GUIDE, dino);
+    assert_eq!((flag(&w, zebra), flag(&w, dino)), (Some(KEEPER), None));
+    unassign(&mut w, KEEPER, None);
+    assert_eq!(flag(&w, zebra), None);
 }
