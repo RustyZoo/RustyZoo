@@ -634,6 +634,12 @@ fn the_tank_point_lifts_a_swimmer_to_the_water_under_the_pointer() {
     // A guest is lifted too, and told that it does not swim in tanks.
     let g = over(GUEST, behind_the_tank(3));
     assert_eq!((g.tile, g.message), ((3, 2), Some(NOT_IN_TANKS)));
+    // A level that no tank has, or a point at the end of the map, give nothing odd and no panic.
+    let deep = tank_world(u32::MAX);
+    assert!(pending(&deep, &cat, &wet, HIPPO, 0, behind_the_tank(3), false).is_some());
+    for far in [(i64::from(i32::MAX), 0, i32::MAX), (-9, -9, i32::MIN)] {
+        assert!(pending(&w, &cat, &wet, GUEST, 0, far, false).is_none_or(|p| p.tile.0 >= -1));
+    }
     // Viewed from the other side the steps go the other way.
     let turned = pending(&w, &cat, &wet, HIPPO, 2, (224 - 96, 160 + 96, 0), false).unwrap();
     assert_eq!((turned.tile, turned.verdict), ((3, 2), Verdict::Valid));
@@ -706,6 +712,11 @@ fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
     assert_eq!(pick_up(&mut w, &cat, 99, 0), None);
     // It keeps its screen facing when the view turns, costs nothing and does not block itself.
     let own = (6 * 64 + 20, 6 * 64 + 20, 0);
+    let wild = Carry {
+        facing: u32::MAX,
+        ..carry.clone()
+    };
+    assert!(carried(&w, &cat, &wet, &wild, 3, own).is_some());
     let free = carried(&w, &cat, &wet, &carry, 1, own).unwrap();
     assert_eq!(
         (free.facing, free.price, free.verdict),

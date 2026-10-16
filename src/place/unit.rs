@@ -110,7 +110,7 @@ pub fn carried(
     point: (i64, i64, i32),
 ) -> Option<Pending> {
     let turn = 2 * (i32::from(carry.view) - i32::from(view));
-    let dir = (carry.facing as i32 + turn).rem_euclid(8) as u32;
+    let dir = (i64::from(carry.facing) + i64::from(turn)).rem_euclid(8) as u32;
     pending_of(world, cat, water, carry.ty, dir, view, point, 0.0)
 }
 
@@ -144,7 +144,8 @@ fn pending_of(
         ty,
         x,
         y,
-        z: ground_height(&world.zoo.tiles[tile], lx, ly) + level.map_or(0, |l| 16 * l.level as i32),
+        z: ground_height(&world.zoo.tiles[tile], lx, ly)
+            .saturating_add(level.map_or(0, |l| water_height(l.level))),
         facing: dir,
         tile: (tile_x, tile_y),
         quadrant: (ly / 32 * 2 + lx / 32).clamp(0, 3) as usize,
@@ -157,6 +158,11 @@ fn pending_of(
     };
     check(&mut p, world, t, water, lifted.is_some());
     Some(p)
+}
+
+/// The height of the water surface over the floor of a tank at `level`: 16 per level.
+fn water_height(level: u32) -> i32 {
+    i32::try_from(level).unwrap_or(i32::MAX).saturating_mul(16)
 }
 
 /// The tank point (unit placing 5.1): from the ground point under the pointer, step toward the
@@ -178,7 +184,7 @@ fn tank_point(world: &World, view: u8, ground: (i32, i32, i32)) -> Option<(i32, 
             continue;
         };
         let floor = ground_height(&world.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64));
-        let surface = floor.saturating_add(16 * tank.level as i32);
+        let surface = floor.saturating_add(water_height(tank.level));
         if (project(view, x, y, surface).1 - row).abs() < 8 {
             found = Some((x, y));
         }

@@ -1169,6 +1169,14 @@ impl<'a> App<'a> {
             .filter(|_| game.hover)
             .and_then(|ty| at(ty, (point.0, point.1)));
         // The unit the player carries follows the pointer with the same checks (8.3).
+        // (A unit that was taken from the zoo meanwhile, by an undo, is no longer carried.)
+        if game
+            .carry
+            .as_ref()
+            .is_some_and(|c| game.world.find(c.id).is_none())
+        {
+            game.carry = None;
+        }
         if let Some(carry) = game.carry.as_ref().filter(|_| game.hover) {
             let water = &game.water;
             game.pending = place::unit::carried(&game.world, cat, water, carry, view, point);
