@@ -275,6 +275,7 @@ fn replay(text: &str) -> Result<((u32, u32), Replay), String> {
         }
         if ![
             "animal ",
+            "dev ",
             "draw ",
             "exhibit ",
             "guest ",
@@ -791,7 +792,8 @@ mod tests {
                    pass 5 t=80 tool up none\n\
                    pass 5 t=80 world stage\n\
                    pass 5 t=80 exhibit 2\n\
-                   pass 5 t=80 terrain paint 4\n";
+                   pass 5 t=80 terrain paint 4\n\
+                   pass 5 t=80 dev speed 1.1\n";
         assert_eq!(
             replay(log).unwrap(),
             (

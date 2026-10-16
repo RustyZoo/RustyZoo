@@ -153,7 +153,7 @@ usage: rustyzoo [--data <dir>] <command>
                       with a scripted clock that advances MS milliseconds per pass, the
                       commands of the script applied before their pass (one `<pass> <command>`
                       per line: scroll DX DY, pointer X Y, pointer none, rotate cw|ccw, zoom
-                      in|out, grid (toggle the tile grid), fullscreen on|off, pause, space, quit, close (the window was closed), and for the
+                      in|out, grid (toggle the tile grid), devmode (Ctrl+D), fullscreen on|off, pause, space, quit, close (the window was closed), and for the
                       interface mouse X Y, down, up, double (the second press of a double click), right (the right button went up),
                       wheel N, key NAME [ctrl] [shift] with NAME enter, escape, tab,
                       backspace, delete, left, right, up, down, home, end, pageup, pagedown, y

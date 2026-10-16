@@ -92,6 +92,7 @@ fn key_command(key: Scancode, keymod: Mod) -> Option<Command> {
         (Scancode::Up, true) => Command::Zoom(true),
         (Scancode::Down, true) => Command::Zoom(false),
         (Scancode::G, true) => Command::Grid,
+        (Scancode::D, true) => Command::DevMode,
         (Scancode::Left, false) => Command::Scroll(-1, 0),
         (Scancode::Right, false) => Command::Scroll(1, 0),
         (Scancode::Up, false) => Command::Scroll(0, -1),
@@ -181,6 +182,12 @@ mod tests {
         assert_eq!(press(Scancode::Right, ctrl), Some(Command::Rotate(true)));
         assert_eq!(press(Scancode::Up, ctrl), Some(Command::Zoom(true)));
         assert_eq!(press(Scancode::Down, ctrl), Some(Command::Zoom(false)));
+    }
+
+    #[test]
+    fn ctrl_d_switches_the_developer_mode() {
+        assert_eq!(press(Scancode::D, Mod::LCTRLMOD), Some(Command::DevMode));
+        assert_eq!(press(Scancode::D, Mod::NOMOD), None);
     }
 
     #[test]

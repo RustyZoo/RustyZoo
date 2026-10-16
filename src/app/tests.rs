@@ -502,6 +502,7 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Zoom(true),
         Command::Zoom(false),
         Command::Grid,
+        Command::DevMode,
         Command::Fullscreen(true),
         Command::Fullscreen(false),
         Command::Pause,
@@ -2052,4 +2053,76 @@ fn gate_tool_run() -> Seen {
         chosen_gate,
         old_gate,
     }
+}
+
+/// The `dev` lines and the step of a pass.
+fn dev_and_step(app: &App, pass: u64, now: u64) -> (Vec<String>, Option<u32>) {
+    let dev = app.log_lines(pass, now).into_iter();
+    let dev = dev.filter(|l| l.contains(" dev ")).collect();
+    (dev, app.fired().step)
+}
+
+#[test]
+fn the_speed_keys_work_in_developer_mode_only_and_only_with_the_ini_key() {
+    let (dot, comma, slash) = (
+        Command::Char(b'.'),
+        Command::Char(b','),
+        Command::Char(b'/'),
+    );
+    // Without the ini key nothing changes: the steps stay those of speed 1.0.
+    with_app("app-speed-off", |app, _| {
+        app.pass(0, &[]);
+        app.pass(70, &[Command::DevMode, dot, dot]);
+        assert_eq!(dev_and_step(app, 1, 70), (vec![], Some(70)));
+        app.pass(140, &[]);
+        assert_eq!(app.fired().step, Some(70));
+    });
+    with_app("app-speed-on", |app, _| {
+        app.timers.speed = crate::timing::Speed::new(true);
+        app.pass(0, &[]);
+        // The keys do nothing before the mode is on.
+        app.pass(70, &[dot, comma, slash]);
+        assert_eq!(dev_and_step(app, 1, 70), (vec![], Some(70)));
+        // Two `.`: 1.2000000000000002, as the original gives; the step of 70 ms is 84 ms.
+        app.pass(140, &[Command::DevMode, dot, dot]);
+        assert_eq!(
+            dev_and_step(app, 2, 140),
+            (
+                vec![
+                    "pass 2 t=140 dev on".into(),
+                    "pass 2 t=140 dev speed 1.1".into(),
+                    "pass 2 t=140 dev speed 1.2000000000000002".into()
+                ],
+                Some(84)
+            )
+        );
+        // `/` sets 1.0 again; the keys are not passed on while the mode is on.
+        app.pass(210, &[slash]);
+        assert_eq!(
+            dev_and_step(app, 3, 210),
+            (vec!["pass 3 t=210 dev speed 1".into()], Some(70))
+        );
+        // Downward the tenths stop at 0.10000000000000014: a step of 70 ms is 7 ms.
+        app.pass(280, &[comma; 20]);
+        assert_eq!(app.timers.speed.factor(), 0.10000000000000014);
+        app.pass(350, &[]);
+        assert_eq!(app.fired().step, Some(7));
+        // Ctrl+D again: the mode is off, the speed stays, the keys do nothing.
+        app.pass(420, &[Command::DevMode, dot]);
+        assert_eq!(dev_and_step(app, 6, 420).0, ["pass 6 t=420 dev off"]);
+        assert_eq!(app.timers.speed.factor(), 0.10000000000000014);
+    });
+}
+
+#[test]
+fn developer_mode_draws_its_name_over_the_map() {
+    with_app("app-speed-text", |app, _| {
+        app.timers.speed = crate::timing::Speed::new(true);
+        app.set_interface(interface("speed"));
+        let plain = app.pass(0, &[]).unwrap().pixels.clone();
+        let on = app.pass(20, &[Command::DevMode]).unwrap().pixels.clone();
+        assert_ne!(on, plain);
+        let off = app.pass(40, &[Command::DevMode]).unwrap().pixels.clone();
+        assert_eq!(off, plain);
+    });
 }

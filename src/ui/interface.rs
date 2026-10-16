@@ -225,6 +225,15 @@ impl Interface {
             .text_at(e, &self.strings, frame, at, text, e.look.fore_color);
     }
 
+    /// Writes `text` (Windows-1252) at the top left of `frame`, in the map view's font and
+    /// `forecolor` (the debug text of ui layout 5.1). Call it after [`Interface::paint`].
+    pub fn corner_text(&mut self, frame: &mut Framebuffer, text: &[u8]) {
+        let Some(i) = self.map_view else { return };
+        let e = &self.tree.elements[i];
+        self.painter
+            .text_at(e, &self.strings, frame, (4, 4), text, e.look.fore_color);
+    }
+
     /// The text of string `id` as the elements show it.
     pub fn string(&self, id: i32) -> String {
         self.strings.string(id)
