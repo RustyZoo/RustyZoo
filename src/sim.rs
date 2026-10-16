@@ -22,6 +22,8 @@ pub mod hash;
 mod rng;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wear_tests;
 
 pub use events::{Event, Events, KEEPER_CHANNEL, UNIT_CHANNEL};
 pub use rng::{Rng, Seconds};
@@ -261,10 +263,22 @@ impl Sim {
         self.status.rating_check(sums, money, &mut self.lines);
     }
 
-    /// A new game (not a saved one) has just been set up: the timers and the donation counter
-    /// start again and the rating check of the set-up runs, with no cash, the built-in settings and
-    /// every research program counted as done (zoo status 6.4).
-    pub fn new_game(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
+    /// A new game (not a saved one) has just been set up: every fence piece is made healthy and
+    /// draws its wear interval (placing 7.4), the timers and the donation counter start again and
+    /// the rating check of the set-up runs, with no cash, the built-in settings and every research
+    /// program counted as done (zoo status 6.4).
+    pub fn new_game(&mut self, world: &mut World, cat: &Catalogue, money: &mut Money) {
+        for at in 0..world.zoo.entities.len() {
+            let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
+                continue;
+            };
+            let Some(interval) = world.heal(cat, id, &mut || self.rng.rand()) else {
+                continue;
+            };
+            if world.wears(cat, at) {
+                self.lines.push(format!("fence {id} healthy {interval}"));
+            }
+        }
         self.status.timers = [0; 3];
         self.status.given = 0.0;
         let set = std::mem::replace(&mut self.status.settings, Settings::builtin());
@@ -399,6 +413,10 @@ impl Sim {
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
                 update(world, at, step);
+                // A fence piece wears at its own place in the list.
+                for event in world.wear(cat, at, step, &mut self.lines) {
+                    self.events.post(event);
+                }
             }
         }
         self.events.age();

@@ -231,7 +231,7 @@ usage: rustyzoo [--data <dir>] <command>
                       valid when one side of the piece's line is an exhibit and the other the
                       grounds, the slot across is empty, the piece is not the exhibit's gate, no
                       object stands on the tile of a tank (red, and no cost text) and the cash
-                      covers it, else red; a valid gate is green where a keeper passes
+                      covers it, else red (the price shown); a valid gate is green where a keeper passes
                       (the crossing test, with the marine specialist in a tank, gives code 0 and a cost below 10) and yellow (the
                       highlight colour, logged as `highlight`) elsewhere, a click still placing
                       it; a gate costs nothing unless the piece is at or below its decayed life,
@@ -243,8 +243,9 @@ usage: rustyzoo [--data <dir>] <command>
                       old gate back into a fence (`world ungate CLASS/TYPE/f X,Y side S id N`,
                       `world gate CLASS/TYPE/g X,Y side S id N`, `exhibit gate ID X,Y side S`),
                       books the price as construction and clears the undo list; any other place
-                      does nothing and says nothing, except that a gate the cash does not cover
-                      shows `tool message 10002`. The undo button (1075, grey
+                      does nothing and says nothing (a gate the cash did not cover when the pointer
+                      reached the piece shows its price, red, and a click does nothing), except that
+                      a gate the cash no longer covers at the click shows `tool message 10002`. The undo button (1075, grey
                       until something can be undone) and the Backspace key take back the actions
                       of the last press and release, the last first (`tool undo N`): a placed
                       object goes with its full price back (`world remove CLASS/TYPE/SUBTYPE X,Y

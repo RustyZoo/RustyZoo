@@ -372,8 +372,8 @@ impl Game {
             true => self
                 .pending
                 .as_ref()
-                .map(|p| match self.gate {
-                    Some(_) => p.amount().saturating_neg(),
+                .map(|p| match &self.gate {
+                    Some(g) => g.amount(),
                     None => p.amount(),
                 })
                 .or_else(|| self.terrain.pointer_amount().filter(|_| self.hover)),
@@ -613,6 +613,7 @@ impl<'a> App<'a> {
         };
         self.sim.load(&mut world, self.renderer.catalogue());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
+        world.set_decay(crate::world::Decay::load(self.renderer.vfs()));
         let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
         // outside 1 to 5 leaves the default.
@@ -1354,6 +1355,12 @@ impl<'a> App<'a> {
             );
             match outcome {
                 Outcome::Placed(id) => {
+                    // A new or replaced fence piece is healthy and draws its wear interval.
+                    if fence {
+                        let rng = &mut self.sim.rng;
+                        game.world
+                            .heal(renderer.catalogue(), id, &mut || rng.rand());
+                    }
                     if let Some(kind) = p.paint {
                         self.world_lines.push(format!("paint {x},{y} {kind}"));
                     }
@@ -1534,7 +1541,7 @@ impl<'a> App<'a> {
             if start.forget_last {
                 // A scenario or freeform map is a new game: the set-up rating check.
                 let cat = self.renderer.catalogue();
-                self.sim.new_game(&game.world, cat, &mut game.money);
+                self.sim.new_game(&mut game.world, cat, &mut game.money);
             }
             for (name, amount) in [("set", start.cash.set), ("add", start.cash.add)] {
                 if let Some(amount) = amount {

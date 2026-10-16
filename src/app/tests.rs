@@ -1678,7 +1678,8 @@ fn exhibit_catalogue(ani: &str) -> Catalogue {
             config: Some(std::sync::Arc::new(
                 Config::parse(
                     format!(
-                        "[HabitatFence]\ncHeight=1\n[Characteristics/Integers]\ncPurchaseCost=125\n{}",
+                        "[HabitatFence]\ncHeight=1\n[Characteristics/Integers]\ncPurchaseCost=125\n{}{}",
+                        if subtype == b"g" { "cLife=7\n" } else { "" },
                         if ani.is_empty() { String::new() } else { format!("[Animations]\nidle={ani}\n") }
                     )
                     .as_bytes(),
@@ -1802,8 +1803,36 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
     );
 }
 
+/// What the gate tool run saw of the wear: the fence values of the gate the game chose, and of the
+/// old gate before and after the player moved the gate.
+struct Seen {
+    chosen_gate: crate::zoo::Fence,
+    old_gate: (crate::zoo::Fence, crate::zoo::Fence),
+}
+
 #[test]
 fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece() {
+    gate_tool_run();
+}
+
+#[test]
+fn the_old_gate_keeps_its_wear() {
+    // It keeps the values it got as the gate (life 7 of the gate type, not 10 of the fence type),
+    // the interval and the countdown included.
+    let (before, after) = gate_tool_run().old_gate;
+    assert_eq!(before.life, 7);
+    assert_eq!(before, after);
+}
+
+#[test]
+fn a_gate_chosen_by_the_game_is_made_healthy() {
+    // The last piece of the square was placed as a fence (life 10) and became the gate (life 7).
+    let fence = gate_tool_run().chosen_gate;
+    assert_eq!(fence.life, 7);
+    assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
+}
+
+fn gate_tool_run() -> Seen {
     // Every fence piece is a square of 12 pixels around its anchor, which the gate tool picks.
     let mut square = Vec::new();
     for field in [12u16, 12, 6, 6, 0] {
@@ -1859,6 +1888,15 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
         app.pass(n + 5, &[Command::Mouse(Mouse::Down)]);
         app.pass(n + 10, &[Command::Mouse(Mouse::Up)]);
     };
+    let fence_of = |app: &App, id: u32| {
+        let world = &app.game.as_ref().unwrap().world;
+        world.zoo.entities[world.find(id).unwrap()]
+            .common
+            .as_ref()
+            .unwrap()
+            .fence
+            .unwrap()
+    };
     // A square on tile (20, 20), named at once (the gate goes on its last piece, side 6), and a
     // fence of no exhibit on tile (21, 21).
     for (n, (lx, ly)) in [(32, 12), (52, 32), (32, 52), (12, 32)]
@@ -1897,6 +1935,7 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
         let (x, y) = world_point(&camera, c.x, c.y);
         Command::Mouse(Mouse::Move(x + d.0, y + d.1))
     };
+    let chosen_gate = fence_of(&app, west);
     let world = &app.game.as_ref().unwrap().world;
     assert_eq!(world.gate_slot(1), world.tile_index(20, 20).zip(Some(6)));
     // The gate button: the tool is the gate and not the fence.
@@ -1973,12 +2012,28 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
         ["tool message 10002"]
     );
     assert_eq!(app.money().unwrap().cash, 100.0);
+    // The cash short when the pointer reaches the piece: the price is shown, the gate is not
+    // valid, and a click does nothing and says nothing (10002 needs a place valid on arrival).
+    app.pass(312, &[on(&app, west, (0, 0))]);
+    app.pass(314, &[on(&app, east, (0, 0))]);
+    assert_eq!(
+        told(&app, &["tool pending"]),
+        ["tool pending fences/iron/g 20,20 q 3 invalid"]
+    );
+    assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
+    click(&mut app, 316, to);
+    assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
+    assert_eq!(app.money().unwrap().cash, 100.0);
     // With the cash, the piece is made healthy and the price booked.
     app.set_money(Money {
         cash: 1_000.0,
         ..Money::default()
     });
+    app.pass(322, &[on(&app, west, (0, 0))]);
+    app.pass(324, &[on(&app, east, (0, 0))]);
+    let old_before = fence_of(&app, north);
     click(&mut app, 330, to);
+    let old_gate = (old_before, fence_of(&app, north));
     assert_eq!(
         told(&app, &["world"]),
         [
@@ -1989,5 +2044,12 @@ fn the_gate_tool_moves_the_gate_of_a_closed_square_and_charges_a_decayed_piece()
     assert_eq!(app.money().unwrap().cash, 875.0);
     let game = app.game.as_ref().unwrap();
     let piece = &game.world.zoo.entities[game.world.find(east).unwrap()];
-    assert_eq!(piece.common.as_ref().unwrap().fence.unwrap().life, 10);
+    let fence = piece.common.as_ref().unwrap().fence.unwrap();
+    assert_eq!(fence.life, 7);
+    // And it drew a wear interval, which the countdown starts at.
+    assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
+    Seen {
+        chosen_gate,
+        old_gate,
+    }
 }
