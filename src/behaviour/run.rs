@@ -468,14 +468,14 @@ impl Runner {
     }
 
     /// The unit's behaviour hook (behaviours 4.6): a pending set starts, else an ambient one is
-    /// chosen by `key`; then the top set executes.
-    pub fn step(&mut self, anim: &mut Animation, env: &mut Env, key: i32) {
+    /// chosen by `key` (none: no choice this time); then the top set executes.
+    pub fn step(&mut self, anim: &mut Animation, env: &mut Env, key: Option<i32>) {
         if !self.running() {
             match self.pending.take() {
                 Some(name) => {
                     self.start(anim, env, &name, true, false, true);
                 }
-                None => self.choose(anim, env, key),
+                None => key.map_or((), |key| self.choose(anim, env, key)),
             }
         }
         if self.running() {

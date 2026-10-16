@@ -59,19 +59,23 @@ fn a_tired_animal_sleeps_and_a_rested_one_wakes() {
         (a.energy_change, a.sleeping, out.sets),
         (0, true, vec!["bSleep"])
     );
-    // A type without the set only tires; so does the water.
-    for env in [
-        sleepy(false, false),
-        Env {
-            wet: true,
-            ..sleepy(true, false)
-        },
+    // The water only tires; a type without the set, or with it already current, gets nothing.
+    for (env, change) in [
+        (sleepy(false, false), 0),
+        (sleepy(true, true), 0),
+        (
+            Env {
+                wet: true,
+                ..sleepy(true, false)
+            },
+            15,
+        ),
     ] {
         let mut a = tired();
         let out = fire_one(&mut a, ENERGY, &k, &env);
         assert_eq!(
             (a.energy_change, a.sleeping, out.sets.len()),
-            (15, false, 0)
+            (change, false, 0)
         );
     }
     // Asleep it checks at every call and stays while the set runs, then wakes with 0.
@@ -176,7 +180,7 @@ fn low_health_starts_the_sick_set_and_costs_happiness() {
     };
     for (env, set, change) in [
         (env(true, false), vec!["bSick"], -20),
-        (env(true, true), vec![], -20),
+        (env(true, true), vec![], 0),
         (env(false, false), vec![], 0),
     ] {
         let mut a = Animal {
@@ -192,6 +196,65 @@ fn low_health_starts_the_sick_set_and_costs_happiness() {
     };
     fire_one(&mut a, HEALTH, &k, &in_exhibit());
     assert_eq!((a.happiness_change, a.advice), (0, 0));
+}
+
+#[test]
+fn the_sick_reason_bits_are_always_important() {
+    let k = keys();
+    let sick = Env {
+        sets: Sets {
+            has_sick: true,
+            ..Sets::default()
+        },
+        sick_near: 1,
+        ..in_exhibit()
+    };
+    let mut a = Animal {
+        health: 100,
+        ..animal()
+    };
+    fire_one(&mut a, HEALTH, &k, &sick);
+    assert_eq!(a.advice & 0b110, 0b110);
+    assert_eq!(a.important & 0b110, 0b110);
+    // A sick set already current counts as not started: no unhappiness and no "sick" bit.
+    let mut a = Animal {
+        health: 100,
+        ..animal()
+    };
+    let current = Env {
+        sets: Sets {
+            sick_now: true,
+            ..sick.sets
+        },
+        ..sick
+    };
+    fire_one(&mut a, HEALTH, &k, &current);
+    assert_eq!((a.advice & 0b110, a.important & 0b110), (0b100, 0b100));
+}
+
+#[test]
+fn the_sleep_counter_restarts_at_every_call_while_asleep() {
+    let k = keys();
+    let period = Class::default().periods[ENERGY];
+    let mut a = Animal {
+        sleeping: true,
+        energy: k.energy_threshold,
+        ..animal()
+    };
+    a.counters[ENERGY] = 5;
+    go(&mut a, &k, &sleepy(true, true), &mut Rng::default());
+    assert_eq!(a.counters[ENERGY], period - 1);
+    // Awake it counts down.
+    let mut b = Animal {
+        energy: 1,
+        ..animal()
+    };
+    b.counters[ENERGY] = 5;
+    go(&mut b, &k, &sleepy(true, false), &mut Rng::default());
+    assert_eq!(b.counters[ENERGY], 4);
+    // Waking, it starts a full period.
+    go(&mut a, &k, &sleepy(true, false), &mut Rng::default());
+    assert_eq!((a.sleeping, a.counters[ENERGY]), (false, period - 1));
 }
 
 #[test]
@@ -307,7 +370,7 @@ fn old_age_counts_the_life_down_and_rolls_death_once_it_is_spent() {
 }
 
 /// The sets of the animals of these tests.
-struct Life(std::collections::HashMap<&'static str, Vec<Call>>);
+struct Life(std::collections::HashMap<&'static str, Vec<Call>>, Vec<Row>);
 
 impl Life {
     fn new() -> Life {
@@ -316,8 +379,23 @@ impl Life {
             ("bDie", vec![call("fDie()")]),
             ("bFindOtherFood", vec![call("fWalk(0,0)")]),
             ("bEat", vec![call("fPlay(eat)")]),
+            ("bIdle", vec![call("fPlay(idle)")]),
         ];
-        Life(sets.into_iter().collect())
+        Life(sets.into_iter().collect(), Vec::new())
+    }
+
+    /// The same with a set of the given calls added.
+    fn with(mut self, name: &'static str, call: &str) -> Life {
+        let call = parse_call(call.as_bytes()).unwrap().0;
+        self.0.insert(name, vec![call]);
+        self
+    }
+
+    /// The same with an ambient row for every happiness that starts `bIdle`.
+    fn idling(mut self) -> Life {
+        let (lo, hi, set) = (i32::MIN, i32::MAX, "bIdle".to_string());
+        self.1.push(Row { lo, hi, set });
+        self
     }
 }
 
@@ -325,8 +403,8 @@ impl Data for Life {
     fn set(&self, _: &Entity, name: &str) -> Option<&[Call]> {
         self.0.get(name).map(Vec::as_slice)
     }
-    fn ambient(&self, _: &Entity) -> &[Row] {
-        &[]
+    fn ambient(&self, _: &Entity, _: usize) -> &[Row] {
+        &self.1
     }
     fn timing(&self, _: &Entity, _: &str) -> Option<Timing> {
         Some(Timing {
@@ -370,13 +448,24 @@ fn lived(world: &mut World, cat: &Catalogue, ms: u32) -> Vec<String> {
 
 /// The same, with `prepare` run on the world after the first step, when the animals have started.
 fn lived_with(world: &mut World, cat: &Catalogue, ms: u32, prepare: fn(&mut World)) -> Vec<String> {
+    lived_data(world, cat, &Life::new(), ms, prepare)
+}
+
+/// The same with other sets.
+fn lived_data(
+    world: &mut World,
+    cat: &Catalogue,
+    data: &Life,
+    ms: u32,
+    prepare: fn(&mut World),
+) -> Vec<String> {
     let mut sim = Sim::new(b"");
     sim.set_seed(1);
     sim.start_game(64, Clocks::default());
     sim.load(world, cat);
     let mut log = Vec::new();
     for n in 0..ms / 67 {
-        sim.step_with(&Life::new(), cat, world, 67, |_, _, _| {});
+        sim.step_with(data, cat, world, 67, |_, _, _| {});
         log.extend(world.units.take_animal_lines());
         log.extend(world.units.take_lines());
         if n == 0 {
@@ -521,4 +610,66 @@ fn zero_negative_and_huge_keys_never_stop_a_run() {
         let mut world = pens();
         lived(&mut world, &dirty(&keys), 90_000);
     }
+}
+
+#[test]
+fn a_tired_idle_animal_chooses_no_ambient_row() {
+    let cat = zebras_with("cEnergyThreshold=50\ncEnergyIncrement=0", "");
+    let tire = |w: &mut World| {
+        let Part::Animal(a) = &mut w.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        a.energy = 50;
+    };
+    let rows = |log: &[String]| log.iter().filter(|l| *l == "set 500 bIdle").count();
+    // Tired (from the second step on), without a sleep set: the sleep check takes the choice and
+    // starts nothing.
+    let mut world = pens();
+    let log = lived_data(&mut world, &cat, &Life::new().idling(), 3000, tire);
+    assert!(rows(&log) <= 1);
+    assert!(!log.iter().any(|l| l == "set 500 bSleep"));
+    // Rested, it chooses its row as ever.
+    let mut world = pens();
+    let log = lived_data(&mut world, &cat, &Life::new().idling(), 3000, |_| {});
+    assert!(rows(&log) > 5);
+    // Tired with the sleep set, it sleeps.
+    let mut world = pens();
+    let data = Life::new().idling().with("bSleep", "fPlay(sleep)");
+    let log = lived_data(&mut world, &cat, &data, 3000, tire);
+    assert!(log.iter().any(|l| l == "set 500 bSleep"));
+}
+
+#[test]
+fn the_drink_goal_tries_the_shore_tiles_in_order() {
+    let cat = zebras_with("cDrinkWaterChance=0", "");
+    // Water at (2, 3) and (3, 3) of the first pen. The nearest water to the animal at (1, 2) is
+    // (2, 3); its shore tiles are (2, 2) and (1, 3), both at distance 1 from the animal, then
+    // (3, 3), which is water (no step into it for a land animal), and (2, 4), behind a fence.
+    let width = usize::try_from(SIZE).unwrap();
+    let mut world = pens();
+    for x in [2, 3] {
+        world.zoo.tiles[3 * width + x].terrain = 3;
+    }
+    world.set_water(vec![false, false, false, true]);
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let mut destination = None;
+    for n in 0..300 {
+        sim.step_with(&Life::new(), &cat, &mut world, 67, |_, _, _| {});
+        let log = world.units.take_lines();
+        if n == 0 {
+            let Part::Animal(a) = &mut world.units.get_mut(500).unwrap().part else {
+                panic!("not an animal");
+            };
+            a.thirsty = true;
+        }
+        if log.iter().any(|l| l == "set 500 bFindOtherFood") {
+            destination = world.units.get(500).unwrap().destination;
+            break;
+        }
+    }
+    // The later direction comes first on a tie: the west tile (1, 3), not the north one (2, 2).
+    assert_eq!(destination, Some((64 + 32, 3 * 64 + 32, 0)));
 }

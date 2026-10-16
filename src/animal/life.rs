@@ -36,24 +36,27 @@ impl Animal {
     }
 }
 
-/// The sleep check (6): tiredness rises, a tired animal starts `bSleep`, a rested one wakes. It
-/// counts its counter down at every call and acts when it fires, or at every call while asleep.
+/// The sleep check (6): tiredness rises, a tired animal starts `bSleep`, a rested one wakes. While
+/// awake it counts its counter down at every call and acts when it fires; while asleep it acts at
+/// every call and restarts the counter each time.
 pub fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mut Out) {
-    let fired = fire(&mut a.counters[super::ENERGY], class.periods[super::ENERGY]);
-    if !(fired || a.sleeping) {
+    let period = class.periods[super::ENERGY];
+    if a.sleeping {
+        a.counters[super::ENERGY] = period.wrapping_sub(1);
+    } else if !fire(&mut a.counters[super::ENERGY], period) {
         return;
     }
     let sets = &env.sets;
     let mut asleep = sets.sleep_now || out.sets.contains(&"bSleep");
-    // An animal in the water or a tank cannot start to sleep: it only tires.
     if !a.sleeping {
-        let start = !env.wet && a.energy >= k.energy_threshold && !asleep && sets.has_sleep;
-        if start {
+        // An animal in the water or a tank cannot act here: it only tires, like a rested one. A
+        // tired one whose set does not start gets nothing.
+        if env.wet || a.energy < k.energy_threshold {
+            a.energy_change = a.energy_change.saturating_add(k.energy_increment);
+        } else if !asleep && sets.has_sleep {
             (a.sleeping, asleep) = (true, true);
             out.sets.push("bSleep");
             out.log.push("sleep");
-        } else {
-            a.energy_change = a.energy_change.saturating_add(k.energy_increment);
         }
     }
     if a.sleeping && !asleep {
@@ -84,24 +87,24 @@ pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng,
     } else if !env.keeper_working {
         removed = true;
     }
-    // Low health: the set, and the unhappiness (without a set to start: not at all).
+    // Low health: the set, and the unhappiness (without a set that starts: not at all).
     let low = i64::from(a.health) * 100 <= i64::from(k.pct_hits) * i64::from(k.max_hits);
     let mut unwell = low;
     if low && !env.wet && !a.egg {
-        match (env.sets.sick_now, env.sets.has_sick) {
-            (false, true) => out.sets.push("bSick"),
-            (false, false) => unwell = false,
-            _ => {}
+        if !env.sets.sick_now && env.sets.has_sick {
+            out.sets.push("bSick");
+        } else {
+            unwell = false;
         }
     }
     if unwell {
         a.change(k.sick_change);
-        a.mark(SICK, false);
+        a.mark(SICK, true);
     }
     if !a.egg {
         if env.sick_near > 0 {
             a.change(k.other_sick_change);
-            a.mark(SICK_NEAR, false);
+            a.mark(SICK_NEAR, true);
             if !a.at_minimum_health && rng.chance(k.sick_chance) && rng.chance(4) {
                 a.fall_ill();
                 out.messages.push(CAUGHT_ILL);
@@ -168,21 +171,22 @@ pub fn keeper_at_work(world: &World, x: u32) -> bool {
     })
 }
 
-/// The ambient choice of an idle, tired animal runs the sleep check instead (behaviours 6.4 point
-/// 1): called where a set would be chosen, when none runs and none is queued.
+/// The ambient choice of an idle, tired animal that can act here runs the sleep check instead
+/// (behaviours 6.4 point 1): called where a set would be chosen. It returns whether it took the
+/// choice, in which case no row is chosen even if `bSleep` did not start.
 pub fn ambient_sleep(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
     at: usize,
     data: &dyn Data,
-) {
+) -> bool {
     let idle = !unit.runner.running() && unit.runner.queued().is_none();
     let Part::Animal(a) = &unit.part else {
-        return;
+        return false;
     };
     if !idle || a.egg || a.dying || a.crated {
-        return;
+        return false;
     }
     let k = super::keys(world, ctx.cat, at);
     let sets = sets(unit, world, data, at);
@@ -190,10 +194,10 @@ pub fn ambient_sleep(
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
     let wet = tile.is_some_and(|t| world.is_water(t) || world.tank_at(t).is_some());
     let Part::Animal(a) = &mut unit.part else {
-        return;
+        return false;
     };
-    if a.energy < k.energy_threshold {
-        return;
+    if wet || a.energy < k.energy_threshold {
+        return false;
     }
     let class = world.units.class.clone();
     let (mut out, now) = (Out::default(), world.units.now);
@@ -217,4 +221,5 @@ pub fn ambient_sleep(
     out.log
         .iter()
         .for_each(|w| world.units.tell(format!("{w} {id}")));
+    true
 }

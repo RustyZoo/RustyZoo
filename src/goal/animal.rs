@@ -28,31 +28,57 @@ impl Cx<'_, '_> {
     }
 
     /// 11.9 decide: with no target, the nearest water tile of the exhibit under the animal that is
-    /// not salt (the first in the exhibit's tile order on a tie), and the land tile beside it
-    /// that is nearest to the animal; then the walk there with `bFindOtherFood`. With none, or no
-    /// way there, the goal resets. The thirst goes down either way.
+    /// not salt (the first in the exhibit's tile order on a tie); the animal then goes to one of
+    /// the four straight neighbours of it, nearest to the animal first and the later direction
+    /// first on a tie, each valid when the step from the water to it is allowed for the animal
+    /// (pathfinding 4.2); the first with a path wins, with `bFindOtherFood`. With none the goal
+    /// resets. The thirst goes down either way.
     pub(super) fn drink_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
         }
         let (world, here) = (&*self.world, self.tile());
         let width = world.zoo.width as usize;
-        let at = |t: usize| ((t % width) as i64, (t / width) as i64);
-        let (hx, hy) = here.map_or((0, 0), at);
-        let distance = |t: usize| (at(t).0 - hx).pow(2) + (at(t).1 - hy).pow(2);
-        // The salt water of a tank is terrain 10. A land animal cannot walk into the water: it
-        // goes to the shore tile of the exhibit nearest to it.
-        let shore = here.and_then(|t| food::exhibit_of(world, t)).and_then(|x| {
+        let at = |t: usize| {
+            (
+                (t % width) as i64,
+                (t / width) as i64,
+                world.zoo.tiles[t].elevation as i64,
+            )
+        };
+        let (hx, hy, hz) = here.map_or((0, 0, 0), at);
+        let distance = |t: usize| {
+            let (x, y, z) = at(t);
+            (x - hx).pow(2) + (y - hy).pow(2) + (z - hz).pow(2)
+        };
+        // The salt water of a tank is terrain 10.
+        let water = here.and_then(|t| food::exhibit_of(world, t)).and_then(|x| {
             let tiles = world.tiles_of(x).into_iter();
             let fresh = tiles.filter(|&t| world.is_water(t) && world.zoo.tiles[t].terrain != 10);
-            let water = fresh.min_by_key(|&t| distance(t))?;
-            let sides = (0..4).filter_map(|d| world.neighbour(water, d * 2));
-            let land =
-                sides.filter(|&n| !world.is_water(n) && food::exhibit_of(world, n) == Some(x));
-            land.min_by_key(|&n| distance(n))
+            fresh.min_by_key(|&t| distance(t))
         });
-        let walking = shore.is_some_and(|t| self.path_to(t, false))
-            && self.walk_set("bFindOtherFood", false, false);
+        let mut walking = false;
+        if let Some(w) = water {
+            let mut shore: Vec<(usize, usize)> = [6, 4, 2, 0]
+                .into_iter()
+                .filter_map(|d| Some((world.neighbour(w, d)?, d)))
+                .collect();
+            shore.sort_by_key(|&(t, _)| distance(t));
+            let mover = crate::unit::movement::mover(self.unit, self.world, self.at, w);
+            let settings = &self.world.units.finder.settings;
+            let valid = |&(t, d): &(usize, usize)| {
+                crate::path::allowed(
+                    self.world,
+                    &mover,
+                    settings,
+                    (w, t, d),
+                    self.unit.through_building,
+                )
+            };
+            let shore: Vec<usize> = shore.iter().filter(|c| valid(c)).map(|&(t, _)| t).collect();
+            walking = shore.into_iter().any(|t| self.path_to(t, false))
+                && self.walk_set("bFindOtherFood", false, false);
+        }
         if let Part::Animal(a) = &mut self.unit.part {
             a.thirsty = false;
         }
