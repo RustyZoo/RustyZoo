@@ -19,7 +19,8 @@
 //! flags the unit for the next removal pass, as in the original).
 //!
 //! The log family `unit`: `unit add <id> <kind> <x>,<y>`, `unit remove <id>`,
-//! `unit status <id>` for each status tick, `unit tile <id> <x>,<y>` when a unit enters a tile,
+//! `unit status <id>` for each status tick, `unit tile <id> <x>,<y>` when a unit enters a tile
+//! (and `unit depth <id> <z>`, its height in movement units, when it does in a tank),
 //! `unit enter <id> <exhibit>` when that is another exhibit, `unit face <id> <direction>` when its
 //! facing turns, `unit abort <id>` when its next tile step is refused, `unit gate <id> open|close
 //! <gate>` when it opens the gate ahead or closes the one behind, `unit set <id> <name>` when
@@ -29,7 +30,7 @@ use std::collections::HashMap;
 
 pub use crate::animal::Animal;
 use crate::animal::Class;
-use crate::behaviour::{Animation, Data, Env, Flow, Heard, Note, Runner};
+use crate::behaviour::{Animation, Data, Env, Flow, Heard, Note, Runner, Target};
 use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::goal::Goals;
@@ -40,6 +41,7 @@ use crate::world::World;
 use crate::zoo::Entity;
 
 pub mod movement;
+pub mod swim;
 #[cfg(test)]
 pub(crate) mod testing;
 #[cfg(test)]
@@ -133,6 +135,15 @@ pub struct Unit {
     pub destination: Option<(i32, i32, i32)>,
     /// The tiles to follow, from the one the unit stands on to its destination (movement 4.1).
     pub path: Vec<usize>,
+    /// The level of each tile of `path` when a depth search found it, else empty (tank fauna 7).
+    pub levels: Vec<i32>,
+    /// The tank mode: 0 dry, 1 ladder, 2 platform, 3 at the surface, 4 under water (tank fauna 4).
+    pub tank: u8,
+    /// The direction of the vertical move, -1 down, 0 level, +1 up, and the segment of the 3D move.
+    pub vertical: i32,
+    pub segment: Option<swim::Segment>,
+    /// The 3D target the last move call named (tank fauna 6.2).
+    pub target: Target,
     /// The direction of the last tile change, -1 for none (movement 2).
     pub travel: i32,
     /// A move call has started the walk (movement 8.2: the call's started flag).
@@ -189,6 +200,11 @@ impl Unit {
             anim_speed: 100,
             destination: None,
             path: Vec::new(),
+            levels: Vec::new(),
+            tank: 0,
+            vertical: 0,
+            segment: None,
+            target: Target::None,
             travel: -1,
             walking: false,
             band: movement::Band::default(),
@@ -207,6 +223,14 @@ impl Unit {
             repositioning: false,
             started: false,
             typed: false,
+        }
+    }
+
+    /// The unit leaves the first tile of its path (and its level).
+    pub fn pop_node(&mut self) {
+        self.path.remove(0);
+        if self.levels.len() > self.path.len() {
+            self.levels.remove(0);
         }
     }
 
@@ -433,6 +457,13 @@ impl Units {
             for &t in &u.path {
                 h.word(t as u32);
             }
+            h.word(u.levels.len() as u32);
+            for &l in &u.levels {
+                h.word(l as u32);
+            }
+            h.word(u32::from(u.tank) | (u.target as u32) << 8);
+            h.word(u.vertical as u32);
+            h.bytes(format!("{:?}", u.segment).as_bytes());
             h.word(u.travel as u32);
             h.word(u32::from(u.walking) | u32::from(u.flip) << 1 | (u.band as u32) << 2);
             h.word(u.gate.map_or(0, |g| g.wrapping_add(1)));
@@ -578,6 +609,7 @@ impl Hooks for Standard<'_> {
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         let key = ambient_key(unit);
+        unit.runner.place = swim::place(unit, world, at);
         let mut env = Env {
             data: self.data,
             unit: &world.zoo.entities[at],
@@ -587,9 +619,9 @@ impl Hooks for Standard<'_> {
         // A move call is the unit's to run (movement 8.2); when it is done the set goes on in
         // the same step.
         let mut moved = false;
-        while let Some(gait) = unit.runner.take_move() {
+        while let Some(go) = unit.runner.take_move() {
             moved = true;
-            let flow = movement::call(unit, world, self.data, ctx.rng, at, &gait);
+            let flow = movement::call(unit, world, self.data, ctx.rng, at, &go);
             if flow == Flow::Running {
                 break;
             }
@@ -616,6 +648,7 @@ impl Hooks for Standard<'_> {
     }
     fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::start(unit, world, ctx, at);
+        swim::add_to_map(unit, world, at);
         crate::staff::start(unit, world, ctx, at);
     }
     fn needs(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
@@ -630,12 +663,14 @@ impl Hooks for Standard<'_> {
         };
         if asked {
             let key = ambient_key(unit);
+            unit.runner.place = swim::place(unit, world, at);
             let mut env = Env {
                 data: self.data,
                 unit: &world.zoo.entities[at],
                 rng: ctx.rng,
             };
             unit.runner.ambient(&mut unit.animation, &mut env, key);
+            swim::add_to_map(unit, world, at);
             self.tell(unit, world, at);
         }
     }

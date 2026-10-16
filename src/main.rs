@@ -332,7 +332,8 @@ usage: rustyzoo [--data <dir>] <command>
                       placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
                       simulated time, and `unit tile ID X,Y`, `unit enter ID EXHIBIT`, `unit face ID DIRECTION`,
                       `unit abort ID` and `unit gate ID open|close GATE` when a unit walks (it enters a tile or another
-                      exhibit, turns, is refused its next step, or opens the gate ahead of it or closes the one behind it). A unit's goals log `unit goal ID TASK MODE TARGET TILE` when its task changes (the task
+                      exhibit, turns, is refused its next step, or opens the gate ahead of it or closes the one behind it);
+                      a unit entering a tank tile adds `unit depth ID Z`, its height in movement units (16 to a level). A unit's goals log `unit goal ID TASK MODE TARGET TILE` when its task changes (the task
                       by the original's name, `-` for none) and `unit job ID JOB` when its job does; an idle unit wanders
                       (task `random`), and a guest stands between two walks. An animal adds `animal status ID HAPPINESS HUNGER ENERGY HEALTH` (the
                       values after the update of that tick) and `animal message STRING ID` for a message it

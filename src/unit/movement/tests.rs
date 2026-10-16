@@ -586,10 +586,45 @@ fn an_aborted_walk_ends_its_move_call_as_done() {
         &walker,
         &mut Rng::default(),
         at,
-        &Gait::Slow,
+        &(Gait::Slow, Target::None),
     );
     assert_eq!(flow, Flow::Done);
     assert!(!u.walking && !u.moving && u.path.is_empty());
+}
+
+#[test]
+fn a_target_0_keeps_the_3d_target() {
+    let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+    let mut u = w.units.get(1).unwrap().clone();
+    u.goal.record.task = crate::goal::RANDOM;
+    let at = w.find(1).unwrap();
+    let (mut rng, walker) = (Rng::default(), Walker::new("fWalk(0,0)"));
+    let mut run = |u: &mut Unit, w: &mut World, target| {
+        u.walking = false;
+        u.path = vec![tile(5, 5), tile(6, 5)];
+        u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
+        call(u, w, &walker, &mut rng, at, &(Gait::Slow, target));
+    };
+    let held = |u: &mut Unit| u.goal.record.target.id = 7;
+    u.target = Target::Dive;
+    held(&mut u);
+    // `0` and the name it has change nothing.
+    run(&mut u, &mut w, Target::Keep);
+    run(&mut u, &mut w, Target::Dive);
+    assert_eq!(u.target, Target::Dive);
+    assert!(u.goal.record.target.is_set());
+    // Another name clears the destination and is recorded, also one that is no name.
+    run(&mut u, &mut w, Target::Surface);
+    assert_eq!(u.target, Target::Surface);
+    assert!(!u.goal.record.target.is_set());
+    held(&mut u);
+    run(&mut u, &mut w, Target::None);
+    assert_eq!(u.target, Target::None);
+    assert!(!u.goal.record.target.is_set());
+    // Only while the goal is the plain wander.
+    u.goal.record.task = crate::goal::NONE;
+    run(&mut u, &mut w, Target::Rise);
+    assert_eq!(u.target, Target::None);
 }
 
 #[test]

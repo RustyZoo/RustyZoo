@@ -55,9 +55,9 @@ impl Data for Library<'_> {
         self.catalogue.behaviour_set(ty, name.as_bytes())
     }
 
-    fn ambient(&self, unit: &Entity) -> &[Row] {
+    fn ambient(&self, unit: &Entity, table: usize) -> &[Row] {
         match self.at(unit) {
-            Some(at) => self.catalogue.ambient(&self.catalogue.types[at], 0),
+            Some(at) => self.catalogue.ambient(&self.catalogue.types[at], table),
             None => &[],
         }
     }

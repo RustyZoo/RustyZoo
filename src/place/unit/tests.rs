@@ -765,7 +765,7 @@ fn a_carried_animal_counts_in_no_exhibit() {
     pick_up(&mut w, &cat, id, 0).unwrap();
     assert_eq!(counted(&w), (0, 0));
     let (x, y) = (2 * 64 + 32, 2 * 64 + 32);
-    assert!(put_down(&mut w, &cat.types[ZEBRA], id, (x, y, 0), 0));
+    assert!(put_down(&mut w, id, (x, y, 0), 0));
     assert_eq!(counted(&w), (1, 1));
 }
 
@@ -851,13 +851,7 @@ fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
     assert_eq!((p.tile, p.verdict), ((3, 2), Verdict::Valid));
     let tank = w.tank_at(tank_tile).unwrap();
     w.exhibits_mut().get_mut(tank).unwrap().rating.dirty = false;
-    assert!(put_down(
-        &mut w,
-        &cat.types[MARINE],
-        id,
-        (p.x, p.y, p.z),
-        p.facing
-    ));
+    assert!(put_down(&mut w, id, (p.x, p.y, p.z), p.facing));
     let c = w.zoo.entities.last().unwrap().common.as_ref().unwrap();
     assert_eq!(
         (c.x, c.y, c.z, c.rotation, c.movement_mode),
@@ -867,20 +861,8 @@ fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
     assert!(!w.units.get(id).unwrap().carried);
     assert!(w.exhibits().get(tank).unwrap().rating.dirty);
     // Not carried, or gone: nothing to put down.
-    assert!(!put_down(
-        &mut w,
-        &cat.types[MARINE],
-        id,
-        (p.x, p.y, p.z),
-        0
-    ));
-    assert!(!put_down(
-        &mut w,
-        &cat.types[MARINE],
-        99,
-        (p.x, p.y, p.z),
-        0
-    ));
+    assert!(!put_down(&mut w, id, (p.x, p.y, p.z), 0));
+    assert!(!put_down(&mut w, 99, (p.x, p.y, p.z), 0));
     // A type that is not moveable is not picked up.
     let mut still = catalogue();
     still.types[MARINE].config = Some(std::sync::Arc::new(

@@ -362,7 +362,7 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
 }
 
 /// The tile inside the gate of tank `id`, where its ladder and platform are.
-fn gate_inside(world: &World, id: u32) -> Option<usize> {
+pub(crate) fn gate_inside(world: &World, id: u32) -> Option<usize> {
     let (g, side) = world.gate_slot(id)?;
     match world.tank_at(g) == Some(id) {
         true => Some(g),
@@ -529,6 +529,7 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     }
     world.zoo.entities[at].common.as_mut()?.movement_mode = 0;
     let unit = world.units.get_mut(id)?;
+    unit.tank = 0;
     unit.carried = true;
     unit.moving = false;
     unit.destination = None;
@@ -541,30 +542,12 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     Some(carry)
 }
 
-/// The tank mode a unit has where it is put down on `tile` (tank fauna 4): at the surface of a
-/// tank with water in it (3), under water for a species that lives only there (4), else dry; the
-/// tile inside the gate is dry. Its height is the pending unit's.
-fn tank_mode(world: &World, tile: usize, ty: &EntityType) -> u32 {
-    let tank = world.tank_at(tile);
-    match tank.and_then(|id| world.tank(id)) {
-        Some(t) if t.level >= 1 && tank.and_then(|id| gate_inside(world, id)) != Some(tile) => 3,
-        _ if number(ty, "cOnlyUnderwater") == Some(1.0) => 4,
-        _ => 0,
-    }
-}
-
 /// Puts the carried unit `id` down at `point` facing `facing` (unit placing 8.4 and 8.6; the
-/// caller has judged the place): it is added to the map again, takes the tank mode of its tile,
-/// is no longer carried, and the exhibit of the tile is marked for a new rating. Its home is the
+/// caller has judged the place): it is added to the map again, takes the tank mode and the terrain
+/// mode of its tile (tank fauna 4, 5), is no longer carried, and the exhibit of the tile is marked for a new rating. Its home is the
 /// exhibit it stands in; the goals then start anew at its next update. `false` when the unit is
 /// gone or not carried.
-pub fn put_down(
-    world: &mut World,
-    ty: &EntityType,
-    id: u32,
-    point: (i32, i32, i32),
-    facing: u32,
-) -> bool {
+pub fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facing: u32) -> bool {
     let (Some(at), true) = (
         world.find(id),
         world.units.get(id).is_some_and(|u| u.carried),
@@ -575,13 +558,10 @@ pub fn put_down(
         return false;
     };
     world.place_unit(at, point, facing);
-    let mode = tank_mode(world, tile, ty);
-    if let Some(c) = world.zoo.entities[at].common.as_mut() {
-        c.movement_mode = mode;
-    }
     if let Some(unit) = world.units.get_mut(id) {
         unit.carried = false;
     }
+    crate::unit::swim::put(world, id);
     world.mark_rating(tile);
     true
 }

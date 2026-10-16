@@ -2,10 +2,11 @@
 //! class, the searches and the fallbacks, with the draws in the original's order.
 //!
 //! Kept as the original has it: with no suitable tile on the ring, the corner of the ring is the
-//! destination (engine issue 304). Not here yet: the water and tank modes of an animal, the
+//! destination (engine issue 304). An animal in the tank mode picks a tile of its tank not behind
+//! it and a level for it (tank fauna 6). Not here yet: the water mode of an animal, the
 //! exhibits a staff member is assigned to, the escape of an animal.
 
-use super::{Kind, Unit, movement};
+use super::{Kind, Part, Unit, movement, swim};
 use crate::config::Config;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path::{self, Dest, Finder, MAX, Mover};
@@ -57,7 +58,7 @@ pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize)
     let Some(c) = world.zoo.entities.get(at).and_then(|e| e.common.as_ref()) else {
         return false;
     };
-    let (x, y, z) = (c.x, c.y, c.z);
+    let (x, y, z, facing) = (c.x, c.y, c.z, c.rotation);
     let Some(here) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
         return false;
     };
@@ -72,6 +73,8 @@ pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize)
         mover,
         here,
         level: z.div_euclid(16),
+        facing,
+        goal: None,
     };
     let ok = walk.run();
     world.units.finder = finder;
@@ -86,18 +89,24 @@ struct Walk<'a> {
     mover: Mover,
     here: usize,
     level: i32,
+    facing: u32,
+    /// The level of a destination in a tank (tank fauna 6.2).
+    goal: Option<i32>,
 }
 
 impl Walk<'_> {
     fn run(&mut self) -> bool {
         // 1 and 2: the pick of the class, unless it is where the unit stands.
         let pick = self.pick();
-        let far = |t: &usize| *t != self.here || self.base(*t) / 16 != self.level;
+        let far =
+            |t: &usize| *t != self.here || self.goal.unwrap_or(self.base(*t) / 16) != self.level;
         if let Some(to) = pick.filter(far)
             && self.search(to, true)
         {
             return true;
         }
+        // The level belongs to the picked destination only.
+        self.goal = None;
         // 3: the ring again, with the lenient tile test and without the path tile test.
         let (tx, ty) = self.xy(self.here);
         let (rx, ry) = self.ring();
@@ -108,6 +117,7 @@ impl Walk<'_> {
             .collect();
         if !kept.is_empty() {
             let to = kept[self.rng.pick(kept.len() as u32) as usize];
+            self.give_level(to);
             if self.search(to, false) {
                 return true;
             }
@@ -119,17 +129,28 @@ impl Walk<'_> {
                 continue;
             };
             let cost = path::step(self.world, &self.mover, self.here, n, i * 2, None);
-            if self.fits(n, true) && cost < MAX && self.search(n, false) {
+            if self.fits(n, true) && cost < MAX && {
+                self.give_level(n);
+                self.search(n, false)
+            } {
                 return true;
             }
         }
         // 5: from here to here, which succeeds with the path of the tile.
+        self.goal = None;
         self.search(self.here, false)
     }
 
     fn xy(&self, t: usize) -> (i32, i32) {
         let width = self.world.zoo.width as usize;
         ((t % width) as i32, (t / width) as i32)
+    }
+
+    /// The level a destination in tile `t` gets (tank fauna 6.2): the fallbacks draw it too.
+    fn give_level(&mut self, t: usize) {
+        self.goal = Some(swim::level_of(
+            self.unit, self.world, self.rng, t, self.level,
+        ));
     }
 
     /// The base height of a tile, where a destination in it is.
@@ -139,16 +160,18 @@ impl Walk<'_> {
 
     /// A search to tile `to`; a successful one gives the unit its path and destination.
     fn search(&mut self, to: usize, partial: bool) -> bool {
+        self.mover.levels.1 = self.goal.unwrap_or(self.mover.levels.0);
         let reply = self.finder.request(self.world, &self.mover, to, partial);
         if let Some(path) = reply.path {
-            self.unit.path = path;
+            (self.unit.path, self.unit.levels) = (path, reply.levels.clone());
         }
         self.unit.destination = match reply.dest {
             Dest::Keep => self.unit.destination,
             Dest::Clear => None,
             Dest::Set(t) => {
                 let (x, y) = self.xy(t);
-                Some((64 * x + 32, 64 * y + 32, self.base(t)))
+                let z = reply.levels.last().map_or(self.base(t), |l| 16 * l);
+                Some((64 * x + 32, 64 * y + 32, z))
             }
         };
         reply.ok
@@ -158,8 +181,10 @@ impl Walk<'_> {
     fn pick(&mut self) -> Option<usize> {
         let region = self.world.exhibits().region(self.here);
         let exhibit = region.filter(|&r| r != GROUNDS && r != EXTERIOR);
+        let tank_mode = matches!(&self.unit.part, Part::Animal(a) if a.terrain == 2);
         match (self.unit.kind, exhibit) {
             (Kind::Animal, None) => None,
+            (Kind::Animal, Some(id)) if tank_mode => self.tank_tile(id),
             (Kind::Animal, Some(id)) => {
                 // The exhibit's tiles, then those of its amphibious neighbours: no other test.
                 let around =
@@ -173,6 +198,44 @@ impl Walk<'_> {
             (_, Some(id)) => self.gate_neighbour(id),
             _ => self.stroll(),
         }
+    }
+
+    /// 6.1, the tank mode: a tile of the animal's tank that costs it less than 20 and is not
+    /// behind it (its own tile is kept), else any tile of the tank, one draw either way; for an
+    /// animal on land a tank tile of its amphibious neighbours. The tile's level comes with it. No
+    /// tile gives the land mode.
+    fn tank_tile(&mut self, id: u32) -> Option<usize> {
+        let tiles: Vec<usize> = match self.world.tank(id) {
+            Some(_) => self.world.tiles_of(id),
+            None => {
+                let around =
+                    (self.world.exhibits().get(id)).map_or(Vec::new(), |e| e.amphibious.clone());
+                (around.into_iter().flat_map(|n| self.world.tiles_of(n)))
+                    .filter(|&t| self.world.tank_at(t).is_some())
+                    .collect()
+            }
+        };
+        let behind = (self.facing + 4) % 8;
+        let ahead = |s: &Self, t: usize| {
+            let d = movement::direction(s.world, s.here, t);
+            d < 0 || ![0, 1, 7].contains(&(d as u32 + 8 - behind).rem_euclid(8))
+        };
+        let near =
+            |s: &Self, t: usize| path::terrain(s.world, &s.mover, t, None) < MAX && ahead(s, t);
+        let open: Vec<usize> = match self.world.tank(id) {
+            Some(_) => tiles.iter().copied().filter(|&t| near(self, t)).collect(),
+            None => Vec::new(),
+        };
+        let from = if open.is_empty() { &tiles } else { &open };
+        if from.is_empty() {
+            swim::set_terrain(self.unit, 0);
+            return None;
+        }
+        let tile = from[self.rng.pick(from.len() as u32) as usize];
+        self.goal = Some(swim::level_of(
+            self.unit, self.world, self.rng, tile, self.level,
+        ));
+        Some(tile)
     }
 
     /// The tile outside the gate of exhibit `id`, or one of the tiles around it that the unit
@@ -266,11 +329,20 @@ impl Walk<'_> {
             }
             Kind::Guide => w.in_zoo(t) && (w.path(t).is_some() || off_path) && self.room(t),
             Kind::Animal => {
+                // The terrain mode: the tank mode takes tank tiles, the others neither water nor
+                // tank (the water mode's own tiles are a later issue).
+                let mode = match &self.unit.part {
+                    Part::Animal(a) => a.terrain,
+                    _ => 0,
+                };
+                let ground = match mode {
+                    2 => w.tank_at(t).is_some(),
+                    _ => !w.is_water(t) && w.tank_at(t).is_none(),
+                };
                 region == here
                     && w.in_zoo(t)
                     && (w.path(t).is_none() || lenient)
-                    && !w.is_water(t)
-                    && w.tank_at(t).is_none()
+                    && ground
                     && self.room(t)
                     && (0..4).all(|q| w.quadrant(t, q).is_none())
             }

@@ -602,11 +602,13 @@ impl Cx<'_, '_> {
         let reply = finder.request(self.world, &mover, to, partial);
         self.world.units.finder = finder;
         if let Some(path) = reply.path {
-            self.unit.path = path;
+            (self.unit.path, self.unit.levels) = (path, reply.levels.clone());
         }
         let width = self.world.zoo.width as usize;
         let centre = |t: usize| {
-            let z = self.world.zoo.tiles.get(t).map_or(0, |t| t.elevation * 16);
+            let z = (reply.levels.last().map(|l| l * 16))
+                .or_else(|| self.world.zoo.tiles.get(t).map(|t| t.elevation * 16))
+                .unwrap_or(0);
             Some((
                 (t % width) as i32 * 64 + 32,
                 (t / width) as i32 * 64 + 32,

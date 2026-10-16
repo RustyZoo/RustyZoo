@@ -67,7 +67,7 @@ impl Data for Sets {
         self.0.get(name).map(Vec::as_slice)
     }
     /// An animal walks through its ambient table.
-    fn ambient(&self, unit: &crate::zoo::Entity) -> &[Row] {
+    fn ambient(&self, unit: &crate::zoo::Entity, _: usize) -> &[Row] {
         if unit.class == "animals" {
             &self.1
         } else {

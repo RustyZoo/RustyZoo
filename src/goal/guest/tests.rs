@@ -54,7 +54,7 @@ impl Data for Walks {
     fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
         (name == "bWalk").then_some(&self.0[..])
     }
-    fn ambient(&self, _: &crate::zoo::Entity) -> &[Row] {
+    fn ambient(&self, _: &crate::zoo::Entity, _: usize) -> &[Row] {
         &[]
     }
     fn timing(&self, _: &crate::zoo::Entity, name: &str) -> Option<Timing> {

@@ -1772,7 +1772,7 @@ impl crate::behaviour::Data for Eats {
     fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
         self.0.get(name).map(Vec::as_slice)
     }
-    fn ambient(&self, _: &Entity) -> &[crate::behaviour::Row] {
+    fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
         &[]
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {

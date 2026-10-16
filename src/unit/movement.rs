@@ -9,12 +9,14 @@
 //! that is not an animal and closes the gate behind it (6.2), and has a swimmer that changes
 //! between land and water pick its move animation again.
 //!
+//! A unit in a tank (move kind 3) moves by [`swim`]'s 3D move instead, and the tank position check
+//! runs after every move step.
+//!
 //! Not here yet: the escape of an animal (6.3), the repeat time and the reverse of a move call,
-//! the tank modes of the move animation, the units in a tank (the 3D move), the index block of
-//! a unit larger than a tile (the map index holds the unit on one tile).
+//! the index block of a unit larger than a tile (the map index holds the unit on one tile).
 
-use super::{Kind, Part, Unit};
-use crate::behaviour::{Data, Flow, Gait, Number};
+use super::{Kind, Part, Unit, swim};
+use crate::behaviour::{Data, Flow, Gait, Number, Target};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path;
 use crate::render::order::ground_height;
@@ -25,7 +27,7 @@ use crate::world::World;
 mod tests;
 
 /// The eight directions as steps of a tile (movement 2).
-const DIR: [(i32, i32); 8] = [
+pub(super) const DIR: [(i32, i32); 8] = [
     (0, -1),
     (1, -1),
     (1, 0),
@@ -84,6 +86,7 @@ impl Band {
 /// Stops the walk: speed 0, no path, not moving, no call walking.
 pub fn stop(unit: &mut Unit) {
     (unit.speed, unit.moving, unit.walking) = (0, false, false);
+    (unit.segment, unit.vertical) = (None, 0);
     unit.path.clear();
     unit.animation.cut();
 }
@@ -94,7 +97,7 @@ fn tile_of(world: &World, (x, y): (i32, i32)) -> Option<usize> {
 }
 
 /// The direction from tile `a` to tile `b` by the signs of the differences, -1 for the same tile.
-fn direction(world: &World, a: usize, b: usize) -> i32 {
+pub(super) fn direction(world: &World, a: usize, b: usize) -> i32 {
     let width = world.zoo.width as usize;
     let d = |a: usize, b: usize| (b as i32 - a as i32).signum();
     let step = (d(a % width, b % width), d(a / width, b / width));
@@ -150,12 +153,28 @@ fn displacement(dir: i32, distance: i32, diagonals: bool, m: i32) -> (i32, i32) 
 /// The move of one step of `ms` milliseconds for the unit at position `at` of the entity list
 /// (3), then the check of its height (5).
 pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
+    let before = here(world, at);
     if unit.moving && unit.speed > 0 {
         // The remainder of the division is lost (issue 301).
         let distance = (unit.speed.wrapping_mul(ms) / 1000).max(1);
-        if progress(unit, world, distance, at) {
+        let in_tank = world.zoo.entities[at]
+            .common
+            .as_ref()
+            .is_some_and(|c| c.movement_mode == 3);
+        let done = match in_tank {
+            true => swim::progress(unit, world, distance, at),
+            false => progress(unit, world, distance, at),
+        };
+        if done {
             unit.through_building = false;
         }
+    }
+    swim::check(unit, world, at);
+    // The depth is told after the check has put a swimmer on the surface.
+    let now = here(world, at);
+    if now != before && now.is_some_and(|t| world.tank_at(t).is_some()) {
+        let z = point(world, at).map_or(0, |p| p.2);
+        world.units.lines.push(format!("depth {} {z}", unit.id));
     }
     snap(world, at);
 }
@@ -165,7 +184,17 @@ fn ended(unit: &Unit, world: &World, at: usize) -> bool {
     let target = unit
         .destination
         .and_then(|(x, y, _)| tile_of(world, (x, y)));
-    unit.path.is_empty() || here(world, at).is_some() && here(world, at) == target
+    // In a tank the unit has arrived at the destination's level too (goals 8.2).
+    let cell = |(x, y, z): (i32, i32, i32)| (x.div_euclid(64), y.div_euclid(64), z.div_euclid(16));
+    let swimming = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .is_some_and(|c| c.movement_mode == 3);
+    let arrived = match (swimming, point(world, at), unit.destination) {
+        (true, Some(p), Some(d)) => cell(p) == cell(d),
+        _ => here(world, at).is_some() && here(world, at) == target,
+    };
+    unit.path.is_empty() || arrived
 }
 
 /// The tile of the unit at position `at` of the entity list.
@@ -190,19 +219,19 @@ fn animate(
     // only (7.3).
     let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
     let swims = unit.mover.swims && !egg && water;
-    let name = match own {
-        Some((name, _)) if !(swims && unit.kind == Kind::Animal) => name,
-        _ if swims => "swim",
+    let forced = swim::move_name(unit).or(swims.then_some("swim"));
+    let name = match (own, forced) {
+        (Some((name, _)), f) if f.is_none() || unit.kind != Kind::Animal => name,
+        (_, Some(name)) => name,
         _ => walk,
     };
     if data.timing(entity, name).is_none() {
         return false;
     }
-    let tank = entity
-        .common
-        .as_ref()
-        .is_some_and(|c| matches!(c.movement_mode, 3 | 4));
-    let key = format!("{speed}{}", if water || tank { "Water" } else { "" });
+    let key = format!(
+        "{speed}{}",
+        if water || unit.tank > 2 { "Water" } else { "" }
+    );
     // The data tells a type without the key from one that says 0 by neither: the default is 100.
     let table = match data.number(entity, &Number::Characteristic(key)) {
         0 => 100,
@@ -214,11 +243,17 @@ fn animate(
     true
 }
 
-/// Picks the move animation again after a swimmer changed between land and water (6.2).
+/// Picks the move animation again after a swimmer changed between land and water (6.2), or the
+/// idle one when the unit stands (tank fauna 4).
 pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
-    if std::mem::take(&mut unit.flip) && unit.walking {
+    if !std::mem::take(&mut unit.flip) {
+        return;
+    }
+    if unit.walking {
         animate(unit, world, data, at, None);
         unit.animation.cut();
+    } else if !unit.moving {
+        idle(unit, world, data, at);
     }
 }
 
@@ -226,8 +261,9 @@ pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
 /// animation, step 3).
 fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     let entity = &world.zoo.entities[at];
-    if data.timing(entity, "idle").is_some() {
-        unit.animation.base_to("idle");
+    let name = swim::idle_name(unit);
+    if data.timing(entity, name).is_some() {
+        unit.animation.base_to(name);
     }
     unit.animation.cut();
 }
@@ -239,7 +275,7 @@ pub fn call(
     data: &dyn Data,
     rng: &mut Rng,
     at: usize,
-    gait: &Gait,
+    (gait, target): &(Gait, Target),
 ) -> Flow {
     if unit.walking {
         // 2: the unit moves from the next step's move on, once the player shows the move
@@ -252,6 +288,16 @@ pub fn call(
         }
         stop(unit);
         return Flow::Done;
+    }
+    // The 3D target is recorded while the unit's goal is the plain wander: `0` and the name it
+    // has leave it alone, any other first argument clears the goal's destination and is recorded
+    // (behaviours 5.4, tank fauna 6.2).
+    if unit.goal.record.task == crate::goal::RANDOM
+        && !matches!(*target, Target::Keep)
+        && *target != unit.target
+    {
+        unit.goal.record.target.clear();
+        unit.target = *target;
     }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.
@@ -339,6 +385,17 @@ fn allowed(unit: &Unit, world: &World, at: usize, here: usize, next: usize) -> b
     )
 }
 
+/// Tells the finder whether the unit at position `at` of the entity list is in a tank and at which
+/// level the depth search starts (and ends, until a destination says otherwise); the start node is
+/// entered with the unit's facing and its `vertical` direction (pathfinding 3.6).
+pub fn aim(m: &mut path::Mover, world: &World, at: usize, vertical: i32) {
+    let c = world.zoo.entities.get(at).and_then(|e| e.common.as_ref());
+    m.deep = c.is_some_and(|c| c.movement_mode == 3);
+    m.start = (c.map_or(0, |c| c.rotation as usize), vertical);
+    let level = c.map_or(0, |c| c.z.div_euclid(16));
+    m.levels = (level, level);
+}
+
 /// What the costs of the path finder read of the unit's type (the characteristics of 7.1 and of
 /// the pathfinding specification).
 pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) {
@@ -347,6 +404,8 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) 
     (m.swims, m.underwater, m.only_underwater) =
         (flag("cSwims"), flag("cUnderwater"), flag("cOnlyUnderwater"));
     (m.tall, m.climbs) = (flag("cTall"), flag("cClimbsCliffs"));
+    m.surface = flag("cSurface");
+    m.depth = data.number(entity, &Number::Characteristic("cDepth".into()));
     m.avoid_edges = data
         .number(entity, &Number::Characteristic("cAvoidEdges".into()))
         .max(0) as u32;
@@ -356,10 +415,30 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) 
 pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path::Mover {
     let mut m = unit.mover.clone();
     (m.at, m.id) = (Some(here), Some(unit.id));
+    aim(&mut m, world, at, unit.vertical);
     m.footprint = world
         .shape(at)
         .map_or(1, |s| (s.footprint.0 * s.footprint.1).clamp(1, 4) as u32);
     m
+}
+
+/// Whether the step of a unit in a tank from level `za` of tile `a` to level `zb` of tile `b` in
+/// direction `d` is still allowed (tank fauna 8.2).
+pub(super) fn allowed_deep(
+    unit: &Unit,
+    world: &World,
+    at: usize,
+    ((a, za), (b, zb)): ((usize, i32), (usize, i32)),
+    d: usize,
+) -> bool {
+    let mover = mover(unit, world, at, a);
+    path::allowed_deep(
+        world,
+        &mover,
+        &world.units.finder.settings,
+        ((a, za), (b, zb), d),
+        unit.through_building,
+    )
 }
 
 /// 4.2: one step of the walk along the path by `distance`; true when the move is done.
@@ -438,10 +517,10 @@ fn progress(unit: &mut Unit, world: &mut World, mut distance: u32, at: usize) ->
 
 /// 4.5 and 6.2: the unit crossed from tile `old` into tile `new`: its travel direction, the old
 /// tile off the path, the exhibit it entered, the swimmer's change of animation and the gates.
-fn enter(unit: &mut Unit, world: &mut World, old: usize, new: usize) {
+pub(super) fn enter(unit: &mut Unit, world: &mut World, old: usize, new: usize) {
     unit.travel = direction(world, old, new);
     if unit.path.first() == Some(&old) {
-        unit.path.remove(0);
+        unit.pop_node();
     }
     let width = world.zoo.width as usize;
     world

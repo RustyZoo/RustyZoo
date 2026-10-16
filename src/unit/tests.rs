@@ -388,7 +388,7 @@ fn the_hash_covers_the_whole_table() {
     let mut w = world(&[("animals", 1), ("guests", 2)]);
     let base = w.units.hash();
     assert_eq!(base, world(&[("animals", 1), ("guests", 2)]).units.hash());
-    let changes: [fn(&mut Unit); 15] = [
+    let changes: [fn(&mut Unit); 20] = [
         |u| u.speed = 3,
         |u| u.moving = true,
         |u| u.anim_speed = 99,
@@ -404,6 +404,11 @@ fn the_hash_covers_the_whole_table() {
         |u| u.band = movement::Band::Fast,
         |u| u.flip = true,
         |u| u.gate = Some(7),
+        |u| u.levels.push(2),
+        |u| u.tank = 4,
+        |u| u.vertical = -1,
+        |u| u.target = crate::behaviour::Target::Dive,
+        |u| u.segment = Some(swim::Segment::default()),
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut other = world(&[("animals", 1), ("guests", 2)]);
@@ -469,8 +474,9 @@ fn the_hash_covers_the_animals() {
         eating: _,
         no_food: _,
         food: _,
+        terrain: _,
     } = Animal::default();
-    let changes: [fn(&mut Animal); 36] = [
+    let changes: [fn(&mut Animal); 37] = [
         |a| a.happiness = 1,
         |a| a.hunger = 1,
         |a| a.health = 1,
@@ -507,6 +513,7 @@ fn the_hash_covers_the_animals() {
         |a| a.eating = true,
         |a| a.no_food = true,
         |a| a.food = 1,
+        |a| a.terrain = 2,
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut other = world(&[("animals", 1), ("guests", 2)]);
@@ -566,7 +573,7 @@ impl Data for Script {
     fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
         (name == "bAmbient").then_some(self.0.as_slice())
     }
-    fn ambient(&self, _: &Entity) -> &[crate::behaviour::Row] {
+    fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
         &self.1
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {

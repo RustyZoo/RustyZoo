@@ -163,7 +163,7 @@ fn arguments_are_parsed_per_operation() {
     );
     assert_eq!(
         op("fMoveReverse(0,0,run,66,50)"),
-        mv(own(None, 50), true, Target::None, 0)
+        mv(own(None, 50), true, Target::Keep, 0)
     );
     assert_eq!(
         op("fMoveWithSound(level,0,run,66,snd)"),
@@ -364,7 +364,7 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
     let man = guest("man");
     assert_eq!(library.set(&man, "bZooRoutine").map(<[Call]>::len), Some(1));
     assert!(library.set(&man, "bNone").is_none());
-    assert_eq!(library.ambient(&man).len(), 1);
+    assert_eq!(library.ambient(&man, 0).len(), 1);
     // The frames and the delay come from the first sprite file; a name the type lacks, and an
     // animation whose files are missing, have none, and asking again gives the same answer.
     for _ in 0..2 {
@@ -411,6 +411,6 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
     assert_eq!(library.sound(&man, "roar"), None);
     // A unit of a type the catalogue lacks has nothing.
     let other = guest("woman");
-    assert!(library.set(&other, "bZooRoutine").is_none() && library.ambient(&other).is_empty());
+    assert!(library.set(&other, "bZooRoutine").is_none() && library.ambient(&other, 0).is_empty());
     assert_eq!(library.timing(&other, "idle"), None);
 }

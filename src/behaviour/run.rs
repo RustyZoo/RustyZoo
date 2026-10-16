@@ -16,7 +16,7 @@
 
 use std::collections::VecDeque;
 
-use super::{Call, Gait, Number, Op, Play, Routine, Row};
+use super::{Call, Gait, Number, Op, Place, Play, Routine, Row, Target};
 use crate::sim::Rng;
 use crate::zoo::Entity;
 
@@ -36,8 +36,8 @@ pub struct Timing {
 pub trait Data {
     /// The set `name` the unit starts: its calls, if it has any (behaviours 3.1).
     fn set(&self, unit: &Entity, name: &str) -> Option<&[Call]>;
-    /// The rows of the unit's ambient table.
-    fn ambient(&self, unit: &Entity) -> &[Row];
+    /// The rows of the unit's ambient table number `table` of [`super::TABLES`].
+    fn ambient(&self, unit: &Entity, table: usize) -> &[Row];
     /// The frames and delay of one of the unit's animations; `None` if it has none of that name.
     fn timing(&self, unit: &Entity, animation: &str) -> Option<Timing>;
     /// The value of a number of a call (behaviours 5.8).
@@ -53,7 +53,7 @@ impl Data for NoData {
     fn set(&self, _: &Entity, _: &str) -> Option<&[Call]> {
         None
     }
-    fn ambient(&self, _: &Entity) -> &[Row] {
+    fn ambient(&self, _: &Entity, _: usize) -> &[Row] {
         &[]
     }
     fn timing(&self, _: &Entity, _: &str) -> Option<Timing> {
@@ -324,8 +324,10 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
+    /// Where the unit is: set by the unit before each run (the table and the nesting calls).
+    pub place: Place,
     /// The move call the last execution stopped at, for the unit to run.
-    moving: Option<Gait>,
+    moving: Option<(Gait, Target)>,
     /// A `fFaceTowardFood` call ran, for the unit to turn.
     face: bool,
 }
@@ -347,6 +349,7 @@ impl Default for Runner {
             interruptible: true,
             ready: true,
             playing: false,
+            place: Place::Land,
             moving: None,
             face: false,
         }
@@ -365,7 +368,7 @@ impl Runner {
     }
 
     /// The move call the set reached, once.
-    pub fn take_move(&mut self) -> Option<Gait> {
+    pub fn take_move(&mut self) -> Option<(Gait, Target)> {
         self.moving.take()
     }
 
@@ -476,7 +479,7 @@ impl Runner {
 
     /// The first row of the ambient table that holds `key` starts (behaviours 6.1).
     fn choose(&mut self, anim: &mut Animation, env: &Env, key: i32) {
-        let rows = env.data.ambient(env.unit);
+        let rows = env.data.ambient(env.unit, self.place as usize);
         if let Some(row) = rows.iter().find(|r| r.lo <= key && key <= r.hi) {
             self.start(anim, env, &row.set, true, false, true);
         }
@@ -583,7 +586,21 @@ impl Runner {
                 }
                 return false;
             }
-            Op::PlaySetTerrain { land: name, .. } | Op::PlaySetTank { land: name, .. } => {
+            Op::PlaySetTerrain { land, water, tank } => {
+                let name = match (self.place, tank) {
+                    (Place::Under, Some((_, under))) => under,
+                    (Place::Surface, Some((surface, _))) => surface,
+                    (Place::Water, _) => water,
+                    _ => land,
+                };
+                return self.nest_call(env, name);
+            }
+            Op::PlaySetTank { land, tank } => {
+                let name = if self.place == Place::Under {
+                    tank
+                } else {
+                    land
+                };
                 return self.nest_call(env, name);
             }
             Op::Routine(routine) => {
@@ -615,8 +632,8 @@ impl Runner {
                 self.chain[k].done = true;
                 return true;
             }
-            Op::Move { gait, .. } => {
-                self.moving = Some(gait.clone());
+            Op::Move { gait, target, .. } => {
+                self.moving = Some((gait.clone(), *target));
                 return true;
             }
             Op::Fail => return false,

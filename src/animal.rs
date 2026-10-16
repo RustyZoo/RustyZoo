@@ -323,6 +323,9 @@ pub struct Animal {
     /// The end of the checks asks for the ambient choice (behaviours 6.4): the behaviour runner
     /// takes the request and starts the set its table gives for the happiness.
     pub ambient: bool,
+    /// The terrain mode: 0 land, 1 water, 2 tank (tank fauna 5); it decides where the animal looks
+    /// for a destination.
+    pub terrain: u8,
 }
 
 impl Animal {
