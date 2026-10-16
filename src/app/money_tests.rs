@@ -8,7 +8,7 @@ use crate::money::{CONSTRUCTION, NET, StartCash};
 use crate::render::tests::{cache_install, flat_map, frame_file, tile_with};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
-use crate::ui::layout::Tree;
+use crate::ui::layout::{Kind, Tree};
 use crate::vfs::Vfs;
 
 const SIZE: (u32, u32) = (64, 48);
@@ -39,7 +39,10 @@ fn interface(name: &str) -> Interface {
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
         [b]\ntype=UILayout\nlayout=ui/bar.lyt\n";
     let bar = "[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=0\ndx=40\ndy=10\n\
-        [m]\ntype=UIText\nid=1016\nx=0\ny=0\ndx=40\ndy=10\nforecolor=255\nforecolor=212\nforecolor=60\n";
+        [m]\ntype=UIText\nid=1016\nx=0\ny=0\ndx=40\ndy=10\nforecolor=255\nforecolor=212\nforecolor=60\n\
+        [u]\ntype=UIStatusImage\nid=1011\nx=0\ny=0\ndx=10\ndy=2\n\
+        [v]\ntype=UIStatusImage\nid=1013\nx=0\ny=0\ndx=10\ndy=2\n\
+        [w]\ntype=UIStatusImage\nid=1015\nx=0\ny=0\ndx=10\ndy=2\n";
     let files = Install::new(
         &format!("app-money-ui-{name}"),
         &[
@@ -232,6 +235,32 @@ fn the_month_change_clears_the_new_column_one_step_after_the_calendar_enters_the
         assert_eq!(m.monthly[CONSTRUCTION][..2], [10.0, 0.0]);
         assert_eq!(m.total[CONSTRUCTION], 10.0);
         assert_eq!(m.cash, 990.0, "the cash is not touched");
+    });
+}
+
+#[test]
+fn the_three_status_bars_follow_the_zoo_status_once_a_second_and_the_log_tells_each_change() {
+    with_game("bars", |app| {
+        app.set_money(with_cash(5000.0));
+        let (mut now, mut told) = (0, Vec::new());
+        for pass in 0..60 {
+            app.pass(now, &[]);
+            told.extend(
+                said(app, pass, now)
+                    .into_iter()
+                    .filter(|l| l.starts_with("bars")),
+            );
+            now += 200;
+        }
+        // No animal and no guest: 0 and 0; the load's rating check gives 12 + 12 for the
+        // happiness parts and 1 for 5000 of zoo value at once, and the check 4 s in changes nothing.
+        assert_eq!(told, ["bars 0 0 25"]);
+        let ui = app.interface().unwrap();
+        let i = ui.tree.find(1015).unwrap();
+        let Kind::StatusImage(levels) = &ui.tree.elements[i].kind else {
+            panic!("not a bar");
+        };
+        assert_eq!(levels.value, 25);
     });
 }
 

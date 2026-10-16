@@ -312,7 +312,11 @@ usage: rustyzoo [--data <dir>] <command>
                       another size is set up or a month ends, instead of the wall clock; the lines `sim seed S`
                       (each seeding, also from the wall clock), `sim step MS` (each step the game runs) and `sim month M Y` (the step that acts on the
                       month flag of the one before) tell it, so two runs with one seed print the same lines (a
-                      replay of a log seeds the generator with the seconds the log tells). The units of a
+                      replay of a log seeds the generator with the seconds the log tells). The zoo status
+                      logs `sim rating N` at each rating check (after the set-up check of a new game, the first
+                      periodic one comes 4 s later), `sim message ID` for each advice message and `sim donation
+                      AMOUNT`; the three bars of the status bar are written once a second and `money bars A G Z`
+                      (animal happiness, guest happiness, rating) tells a change. The units of a
                       map (animals, guests and staff) log `unit add ID KIND X,Y` when a game opens or one is
                       placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
                       simulated time, and `unit tile ID X,Y`, `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and

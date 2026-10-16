@@ -231,3 +231,19 @@ fn spend_takes_the_cash_below_zero_and_books_like_a_charge() {
     m.spend(CATEGORIES, 1.0);
     assert_eq!(m, before);
 }
+
+#[test]
+fn a_statistic_is_set_not_added_and_leaves_the_cash_and_the_net_line() {
+    let mut m = money(10.0);
+    m.month = 2;
+    m.set_statistic(RATING, 40.0);
+    m.set_statistic(RATING, 37.0);
+    assert_eq!(row(&m, RATING), (37.0, 37.0, 37.0));
+    // A bad category and a value that is no number change nothing.
+    m.set_statistic(CATEGORIES, 5.0);
+    m.set_statistic(RATING, f32::NAN);
+    assert_eq!(
+        (row(&m, RATING).2, m.cash, row(&m, NET).2),
+        (37.0, 10.0, 0.0)
+    );
+}

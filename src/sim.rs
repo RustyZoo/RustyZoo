@@ -4,15 +4,17 @@
 //!
 //! What a unit does with its step is the [`unit`] module's: [`Sim::step`] runs [`unit::update`]
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
-//! of entity that have no live state yet). Missing so far: the zoo status checks of the game
-//! manager, the task pool, the shows, the water ripples, the ambient creatures, and the scenario, research and
+//! of entity that have no live state yet). The zoo status checks of the game manager are the
+//! [`crate::status::zoo`] module's. Missing so far: the new guest check,
+//! the task pool, the shows, the water ripples, the ambient creatures, and the scenario, research and
 //! marketing managers, which are empty until M7.
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
 //! the commands such a run applies at a step.
 //!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
-//! step and `sim month M Y` when a step acts on the month flag of the one before.
+//! step, `sim month M Y` when a step acts on the month flag of the one before, and the zoo
+//! status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`.
 
 pub mod drive;
 mod events;
@@ -28,6 +30,8 @@ use crate::behaviour::{Data, NoData};
 use crate::config::{self, Config};
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
+use crate::money::Money;
+use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
 use crate::world::World;
@@ -122,6 +126,8 @@ pub struct Report {
     pub clear_unreachable: bool,
     /// The water of a tank moved.
     pub water_moved: bool,
+    /// The bars of the status bar are to be written: animal happiness, guest happiness, rating.
+    pub bars: Option<[i32; 3]>,
 }
 
 /// The managers' state: the clocks, the generator and the event queue of one program run.
@@ -130,6 +136,10 @@ pub struct Sim {
     pub ai: Ai,
     pub rng: Rng,
     pub events: Events,
+    /// The zoo status of the game manager, and the economy file it starts from.
+    pub status: Status,
+    economy: Option<Config>,
+    messages: Vec<Say>,
     seconds: Seconds,
     /// The tile count of the last map set up, which decides whether a new one seeds again.
     tiles: usize,
@@ -161,6 +171,9 @@ impl Sim {
             ai: Ai::from_ini(ini),
             rng: Rng::default(),
             events: Events::default(),
+            status: Status::default(),
+            economy: None,
+            messages: Vec::new(),
             seconds: Seconds::Clock,
             tiles: 0,
             calendar: Calendar::new(),
@@ -221,6 +234,7 @@ impl Sim {
     /// the queue is empty, and the generator is seeded again if the map has another number of
     /// tiles than the last one (main loop 9.2, the second moment).
     pub fn start_game(&mut self, tiles: usize, clocks: Clocks) {
+        self.status = Status::start(&clocks.status, self.economy.as_ref());
         self.calendar = Calendar::new();
         self.total = 0;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
@@ -231,6 +245,31 @@ impl Sim {
             self.tiles = tiles;
             self.reseed();
         }
+    }
+
+    /// Gives the economy file that every later game's zoo status starts from.
+    pub fn set_economy(&mut self, file: &[u8]) {
+        self.economy = Config::parse(file).ok();
+    }
+
+    /// A zoo has just been loaded (Continue, Load, the command line, or the file of a new game
+    /// before its set-up): the load ends with a rating check with the stored cash and the entities
+    /// as loaded, research at 0 points, which restarts the rating timer (zoo status 16).
+    pub fn loaded(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
+        let sums = Sums::of(world, cat, money.cash, 0);
+        self.status.rating_check(sums, money, &mut self.lines);
+    }
+
+    /// A new game (not a saved one) has just been set up: the timers and the donation counter
+    /// start again and the rating check of the set-up runs, with no cash, the built-in settings and
+    /// every research program counted as done (zoo status 6.4).
+    pub fn new_game(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
+        self.status.timers = [0; 3];
+        self.status.given = 0.0;
+        let set = std::mem::replace(&mut self.status.settings, Settings::builtin());
+        let sums = Sums::of(world, cat, 0.0, 100);
+        self.status.rating_check(sums, money, &mut self.lines);
+        self.status.settings = set;
     }
 
     /// Creates the animals of the map just loaded (animals 3.5), with the types of `cat` and the
@@ -262,6 +301,12 @@ impl Sim {
         self.removals.push(id);
     }
 
+    /// The advice and donation messages since the last call, as text numbers and the amount of a
+    /// donation.
+    pub fn take_messages(&mut self) -> Vec<Say> {
+        std::mem::take(&mut self.messages)
+    }
+
     /// The `sim` log lines since the last call, without the family word.
     pub fn take_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.lines)
@@ -280,8 +325,8 @@ impl Sim {
         self.step_in(world, &Catalogue::default(), step, update)
     }
 
-    /// [`Sim::step`] in a game whose types are `cat`: the units read their species' keys from
-    /// it and the exhibits are rated for the species they hold.
+    /// [`Sim::step`] in a game whose types are `cat`, with accounts nobody reads: the units read
+    /// their species' keys from it and the exhibits are rated for the species they hold.
     pub fn step_in(
         &mut self,
         world: &mut World,
@@ -299,19 +344,28 @@ impl Sim {
         cat: &Catalogue,
         world: &mut World,
         step: u32,
+        update: impl FnMut(&mut World, usize, u32),
+    ) -> Report {
+        self.step_game(data, cat, world, &mut Money::default(), step, update)
+    }
+
+    /// [`Sim::step_with`] in a game whose cash and accounts are `money`: the zoo status checks
+    /// read and book into them.
+    pub fn step_game(
+        &mut self,
+        data: &dyn Data,
+        cat: &Catalogue,
+        world: &mut World,
+        money: &mut Money,
+        step: u32,
         mut update: impl FnMut(&mut World, usize, u32),
     ) -> Report {
         self.lines.push(format!("step {step}"));
         // The game manager: the time, the calendar, whose month flag of the step before is acted
-        // on here. The generator is seeded again at the start of the month-end check.
+        // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);
         let month_end = self.calendar.advance(step);
-        if month_end {
-            self.reseed();
-            let date = self.calendar.date();
-            self.lines
-                .push(format!("month {} {}", date.month, date.year));
-        }
+        let bars = self.zoo_status(world, cat, money, step, month_end);
         // The AI manager: the clock in whole ticks with the remainder kept, the removal pass,
         // the entities, the event queue.
         let total = self.ai_rem.wrapping_add(step);
@@ -363,6 +417,43 @@ impl Sim {
             month_end,
             clear_unreachable,
             water_moved,
+            bars,
         }
+    }
+
+    /// The zoo status of a step: the due checks in the original's order, the donation and the
+    /// bars. The generator is seeded again inside the finance check, after the other checks.
+    fn zoo_status(
+        &mut self,
+        world: &World,
+        cat: &Catalogue,
+        money: &mut Money,
+        step: u32,
+        month_end: bool,
+    ) -> Option<[i32; 3]> {
+        let due = self.status.due(step, month_end);
+        if due.rating {
+            let sums = Sums::of(world, cat, money.cash, 0);
+            self.status.rating_check(sums, money, &mut self.lines);
+        }
+        if due.message {
+            let (say, log) = (&mut self.messages, &mut self.lines);
+            self.status.message_check(money.cash, say, log);
+        }
+        if due.new_guest {
+            // The new guest check creates the guests (guest arrival); its timer restarts all the same.
+            self.status.timers[2] = 0;
+        }
+        if month_end {
+            self.reseed();
+            let date = self.calendar.date();
+            self.lines
+                .push(format!("month {} {}", date.month, date.year));
+            // The endowment goes before the accounts move on, the wages and the upkeep after.
+            money.month_change();
+        }
+        let (say, log) = (&mut self.messages, &mut self.lines);
+        self.status.donation(&mut self.rng, money, say, log);
+        self.status.bars(step)
     }
 }

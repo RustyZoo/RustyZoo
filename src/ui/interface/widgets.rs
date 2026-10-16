@@ -133,6 +133,20 @@ impl Interface {
         true
     }
 
+    /// Gives the status bar `id` its value, 0 to 100 (a value outside is held to it when drawn);
+    /// `false` if there is no such bar.
+    pub fn set_status(&mut self, id: i32, value: i32) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let Kind::StatusImage(levels) = &mut self.tree.elements[i].kind else {
+            return false;
+        };
+        levels.value = value;
+        self.flag(i, DIRTY, true);
+        true
+    }
+
     /// Hides or shows an element on its own; `false` if there is none.
     pub fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
         let Some(i) = self.tree.find(id) else {

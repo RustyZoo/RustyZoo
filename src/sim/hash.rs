@@ -6,6 +6,7 @@
 use super::{Seconds, Sim};
 use crate::exhibit::{Exhibit, rating};
 use crate::money::Money;
+use crate::status::zoo::Status;
 use crate::world::World;
 use crate::zoo::{Common, Entity, Event, Zoo};
 
@@ -239,6 +240,34 @@ impl Fnv {
         }
     }
 
+    fn status(&mut self, s: &Status) {
+        for v in s.timers.into_iter().chain([s.bar_ms]) {
+            self.u32(v);
+        }
+        for v in [
+            s.sums.animals,
+            s.sums.sick,
+            s.sums.animal_happiness,
+            s.sums.guests,
+            s.sums.guest_happiness,
+            s.sums.hungry,
+            s.sums.thirsty,
+            s.sums.restroom,
+            s.sums.tired,
+            s.sums.gift,
+            s.sums.litter,
+            s.sums.species,
+            s.sums.research,
+            s.rating,
+        ] {
+            self.i32(v);
+        }
+        self.u64(s.sums.zoo_value as u64);
+        for v in [s.sums.esthetics, s.given, s.price] {
+            self.f32(v);
+        }
+    }
+
     fn sim(&mut self, sim: &Sim) {
         let (elapsed, month_changed) = sim.calendar.state();
         self.u64(elapsed);
@@ -256,6 +285,7 @@ impl Fnv {
             self.u32(v);
         }
         self.u8(u8::from(sim.hire_male));
+        self.status(&sim.status);
         match sim.seconds {
             Seconds::Clock | Seconds::Replay(_) => self.u8(0),
             Seconds::Test { seed, n } => {

@@ -368,11 +368,13 @@ fn the_month_flag_is_acted_on_one_step_late() {
     // The step at 372 s changes the month (index 371), the next one acts on it.
     assert_eq!(s.calendar().date().month, 2);
     assert_eq!(month_end, [(372, 2)]);
-    // The generator was seeded again at that step, and the month told.
+    // The generator was seeded again at that step, after the rating check the month flag forces,
+    // and the month told.
     let lines = s.take_lines();
     let at = lines.iter().position(|l| l == "month 2 2001").unwrap();
     assert_eq!(lines[at - 1], "seed 3");
-    assert_eq!(lines[at - 2], "step 1000");
+    assert!(lines[at - 2].starts_with("rating "), "{:?}", lines[at - 2]);
+    assert_eq!(lines[at - 3], "step 1000");
     assert_eq!(lines.iter().filter(|l| l.starts_with("seed ")).count(), 3);
 }
 
@@ -493,7 +495,7 @@ fn own() -> (Catalogue, Class) {
 }
 
 fn game(entities: usize) -> Run {
-    Run::new(b"", own(), world(entities), Money::default(), 1)
+    Run::new((b"", b""), own(), world(entities), Money::default(), 1)
 }
 
 #[test]
@@ -522,6 +524,11 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "grounds",
         "hire",
         "names",
+        "timer",
+        "rating",
+        "sums",
+        "given",
+        "price",
     ] {
         let mut run = game(3);
         match what {
@@ -535,6 +542,11 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "grounds" => run.world.exhibits_mut().grounds.rating_ms = 1,
             "hire" => run.sim.hire_male = !run.sim.hire_male,
             "names" => drop(run.world.zoo.names.insert("keeper".into(), 1)),
+            "timer" => run.sim.status.timers[2] += 1,
+            "rating" => run.sim.status.rating += 1,
+            "sums" => run.sim.status.sums.sick += 1,
+            "given" => run.sim.status.given += 1.0,
+            "price" => run.sim.status.price += 0.25,
             _ => run.sim.ai_rem += 1,
         }
         assert_ne!(run.hash(), base, "{what}");
@@ -586,7 +598,7 @@ fn the_sex_of_the_first_hire_is_drawn_at_start_up_after_the_first_seeding_only()
 #[test]
 fn a_run_gives_the_same_hash_twice_and_another_with_another_seed() {
     let hash = |seed| {
-        let mut run = Run::new(b"", own(), world(3), Money::default(), seed);
+        let mut run = Run::new((b"", b""), own(), world(3), Money::default(), seed);
         (0..400).for_each(|_| drop(run.step(1000)));
         (run.hash(), run.money.month)
     };
@@ -674,4 +686,55 @@ fn the_grounds_update_before_the_exhibits() {
     assert_eq!(w.exhibits().get(id).unwrap().rating.species_ms, draws[2]);
     assert_eq!(w.exhibits().get(id).unwrap().rating.rating_ms, draws[3]);
     assert_eq!(s.rng.state(), check.state());
+}
+
+#[test]
+fn the_month_end_rating_check_belongs_to_the_old_month_and_the_accounts_then_move_on() {
+    let (mut w, mut s, mut money) = (world(0), sim(""), Money::default());
+    let mut step = || {
+        s.step_game(
+            &NoData,
+            &Catalogue::default(),
+            &mut w,
+            &mut money,
+            1000,
+            |_, _, _| {},
+        )
+    };
+    let ended = (0..373).filter(|_| step().month_end).count();
+    assert_eq!((ended, money.month), (1, 2));
+    // The forced check wrote 24 (12 and 12 for the empty zoo) into January, not February.
+    assert_eq!(money.monthly[crate::money::RATING][..2], [24.0, 0.0]);
+}
+
+#[test]
+fn a_new_game_starts_the_timers_again_and_runs_the_set_up_check() {
+    let mut run = game(0);
+    let first = run.sim.take_lines();
+    // The set-up check ran with the built-in settings, no cash and the research done.
+    assert_eq!(first.last().unwrap(), "rating 29");
+    assert_eq!(run.sim.status.rating, 29);
+    let mut again = game(0);
+    again.sim.status.timers = [9, 9, 9];
+    again.sim.status.given = 2.0;
+    again
+        .sim
+        .new_game(&again.world, &again.cat, &mut again.money);
+    assert_eq!(
+        (again.sim.status.timers, again.sim.status.given),
+        ([0; 3], 0.0)
+    );
+}
+
+#[test]
+fn a_load_ends_with_a_rating_check_that_restarts_only_the_rating_timer() {
+    let mut run = game(0);
+    run.sim.status.rating = 34;
+    run.sim.status.timers = [3000, 7, 9];
+    run.money.cash = 5000.0;
+    run.sim.loaded(&run.world, &run.cat, &mut run.money);
+    // 12 + 12 for the empty zoo and 1 for 5000 of cash; the research counts 0 points.
+    assert_eq!(run.sim.status.rating, 25);
+    assert_eq!(run.sim.status.timers, [0, 7, 9]);
+    assert_eq!(run.money.total[crate::money::RATING], 25.0);
 }

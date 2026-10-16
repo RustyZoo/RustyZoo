@@ -93,8 +93,12 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     let mut world = World::new(zoo, |e| renderer.shape(e));
     world.set_water(place::water(&terrain::types(vfs)));
     world.set_tank_config(TankConfig::load(vfs));
+    let economy = vfs.read("economy.cfg").unwrap_or_else(|e| {
+        eprintln!("rustyzoo: warning: economy.cfg: {e}; the built-in economy settings are used");
+        Vec::new()
+    });
     let mut run = Run::new(
-        vfs.ini(),
+        (vfs.ini(), &economy),
         (catalogue, Class::load(vfs)),
         world,
         money,
