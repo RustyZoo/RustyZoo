@@ -15,7 +15,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-pub use cost::terrain;
+pub use cost::{step, terrain};
 pub use search::search;
 
 /// The cost of a closed step: 20 or more is closed.
@@ -213,6 +213,17 @@ impl Finder {
             self.unreachable.clear();
             self.clear_at = now.saturating_add(self.settings.clear_every);
         }
+    }
+
+    /// The clearing time, the width, the switch and the unreachable list in tile order, as words
+    /// for the hash of a run.
+    pub fn state(&self) -> Vec<u64> {
+        let mut list: Vec<_> = self.unreachable.iter().collect();
+        list.sort();
+        let head = [self.clear_at, self.width.map_or(0, |w| w as u64 + 1)];
+        let switch = self.switch.map_or(2, u64::from);
+        let list = list.into_iter().flat_map(|(&t, &c)| [t as u64, c as u64]);
+        head.into_iter().chain([switch]).chain(list).collect()
     }
 
     /// The settings with the diagonal switch as the last search of any unit left it: the gate

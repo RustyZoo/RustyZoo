@@ -7,14 +7,16 @@
 //! its parent's current call, and a failed call ends the whole chain. What a set needs of the
 //! data comes through [`Data`].
 //!
-//! Until the move and animal issues land, the calls that belong to them (moves, the faces,
-//! the effects on other entities, `fDie`, ...) are done at once with no effect; a routine call
-//! is done when the play state is ready and the unit's goals (which run every step) do the rest;
-//! a nested terrain or tank set is the land one.
+//! A move call is the unit's business (movement 8.2): the runner stops at it and hands it out
+//! ([`Runner::take_move`]), and the answer ([`Runner::answer`]) lets the set go on in the same
+//! step ([`Runner::resume`]). Until the animal issues land, the other calls that belong to them
+//! (the faces, the effects on other entities, `fDie`, ...) are done at once with no effect; a
+//! routine call is done when the play state is ready and the unit's goals (which run every step)
+//! do the rest; a nested terrain or tank set is the land one.
 
 use std::collections::VecDeque;
 
-use super::{Call, Number, Op, Play, Routine, Row};
+use super::{Call, Gait, Number, Op, Play, Routine, Row};
 use crate::sim::Rng;
 use crate::zoo::Entity;
 
@@ -121,6 +123,9 @@ pub struct Animation {
     /// The frames of the animation shown; 0 if it has none.
     count: u32,
     base: String,
+    /// The cut (sprite drawing 6.2): at the next advance it ends the sequence playing, or the loop
+    /// of another animation than the base, and is cleared; it stays while the base shows.
+    cut: bool,
     /// The sequence being played; empty while the base animation shows.
     seq: Vec<Entry>,
     /// The unit's stop-at-end flag: whatever sequence is current holds its last frame when it
@@ -144,6 +149,7 @@ impl Default for Animation {
             reverse: false,
             count: 0,
             base: "idle".to_string(),
+            cut: false,
             seq: Vec::new(),
             stop: false,
             stopped: false,
@@ -166,13 +172,25 @@ impl Animation {
     }
 
     /// Whether the base animation shows, nothing else playing.
-    pub fn on_base(&self) -> bool {
-        self.seq.is_empty()
+    pub fn shows_base(&self) -> bool {
+        self.seq.is_empty() && self.name == self.base
     }
 
-    /// The animation of the current entry.
+    /// Makes `name` the base, without a cut and without clearing the player: what plays goes on
+    /// to its end, the loop of the old base included (movement 8.2 step 1).
+    pub fn base_to(&mut self, name: &str) {
+        self.base = name.to_string();
+    }
+
+    /// Sets the cut (sprite drawing 6.2): a forced set start, the stop of a walk, the resets of
+    /// the move and idle animations.
+    pub fn cut(&mut self) {
+        self.cut = true;
+    }
+
+    /// The animation of the current entry; with no sequence, the loop that was installed.
     fn current(&self) -> &str {
-        self.seq.get(self.entry).map_or(&self.base, |e| &e.name)
+        self.seq.get(self.entry).map_or(&self.name, |e| &e.name)
     }
 
     /// Shows the current entry from its first frame: a new name is noted, its sound waits for the
@@ -204,11 +222,15 @@ impl Animation {
         if self.stopped {
             return;
         }
+        if self.cut && (!self.queue.is_empty() || !self.shows_base()) {
+            self.cut = false;
+            self.finish(timing);
+        }
         let Some(mut now) = timing(&self.name).filter(|_| self.name == self.current()) else {
             self.finish(timing);
             return;
         };
-        if self.on_base() && now.count == 1 && self.queue.is_empty() {
+        if self.shows_base() && now.count == 1 && self.queue.is_empty() {
             return;
         }
         if dt != 0 {
@@ -258,7 +280,7 @@ impl Animation {
     }
 
     /// Clears the player and shows `name` from its first frame as the base (`fSetBase`).
-    fn set_base(&mut self, name: &str, timing: &dyn Fn(&str) -> Option<Timing>) {
+    pub fn set_base(&mut self, name: &str, timing: &dyn Fn(&str) -> Option<Timing>) {
         self.reset();
         self.base = name.to_string();
         self.finish(timing);
@@ -302,6 +324,17 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
+    /// The move call the last execution stopped at, for the unit to run.
+    moving: Option<Gait>,
+}
+
+/// The answer to a move call (movement 8.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Flow {
+    /// The call goes on in the next step.
+    Running,
+    Done,
+    Failed,
 }
 
 impl Default for Runner {
@@ -312,6 +345,7 @@ impl Default for Runner {
             interruptible: true,
             ready: true,
             playing: false,
+            moving: None,
         }
     }
 }
@@ -325,6 +359,30 @@ impl Runner {
     /// The name of the top set, if the unit has started one.
     pub fn top(&self) -> Option<&str> {
         self.chain.first().map(|l| l.name.as_str())
+    }
+
+    /// The move call the set reached, once.
+    pub fn take_move(&mut self) -> Option<Gait> {
+        self.moving.take()
+    }
+
+    /// The unit's answer to the move call: it is done, or fails the set.
+    pub fn answer(&mut self, flow: Flow) {
+        let Some(level) = self.chain.last_mut() else {
+            return;
+        };
+        match flow {
+            Flow::Running => {}
+            Flow::Done => level.done = true,
+            Flow::Failed => level.loaded = false,
+        }
+    }
+
+    /// Goes on with the set after an answer, without choosing a new one.
+    pub fn resume(&mut self, anim: &mut Animation, env: &mut Env) {
+        if self.running() {
+            self.execute(0, anim, env);
+        }
     }
 
     /// Asks for a set to start when the running one ends (behaviours 4.2).
@@ -362,6 +420,9 @@ impl Runner {
         self.nest(env, name);
         if !keep {
             anim.reset();
+        }
+        if force {
+            anim.cut();
         }
         anim.notes.push(Note::Set(name.to_string()));
         self.chain[0].loaded
@@ -525,10 +586,19 @@ impl Runner {
                 if env.unit.class != own {
                     return *routine != Routine::Keeper;
                 }
+                // It makes idle the base at every run (goals 6.3), like the move call makes its
+                // animation: a finished walk keeps its move animation until the cut shows it.
+                if found(&"idle".to_string()) {
+                    anim.base_to("idle");
+                }
                 self.chain[k].done = self.ready;
                 return true;
             }
             Op::KeepControl | Op::Spray | Op::FaceDirection | Op::TargetBuilding => {
+                return true;
+            }
+            Op::Move { gait, .. } => {
+                self.moving = Some(gait.clone());
                 return true;
             }
             Op::Fail => return false,

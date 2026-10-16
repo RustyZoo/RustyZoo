@@ -313,6 +313,16 @@ fn the_unreachable_list_is_cleared_every_freq_ticks() {
 }
 
 #[test]
+fn the_path_finder_is_ticked_with_the_ai_clock() {
+    let mut w = world(0);
+    let mut s = sim("");
+    run(&mut s, &mut w, 1, 67);
+    assert_eq!(w.units.finder.state()[0], 5, "tick 0 is due at once");
+    run(&mut s, &mut w, 80, 67);
+    assert_eq!((s.ai_clock().0, w.units.finder.state()[0]), (5, 10));
+}
+
+#[test]
 fn a_new_game_starts_with_the_event_queue_of_its_map() {
     let ev = |target, data| crate::zoo::Event {
         data,

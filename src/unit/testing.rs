@@ -99,3 +99,77 @@ pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
     edit(&mut zoo);
     World::new(zoo, shape)
 }
+
+/// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`,
+/// `run` and `swim`, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
+pub struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
+
+impl Walker {
+    pub fn new(call: &str) -> Walker {
+        let parse = |c: &str| crate::behaviour::parse_call(c.as_bytes()).unwrap().0;
+        Walker(vec![parse(call)], vec![parse("fKeepControl()")])
+    }
+
+    /// Starts the set `bWalk` on unit `id`, forced, as the goals of a guest or staff member do.
+    pub fn start(&self, w: &mut World, id: u32) {
+        self.start_set(w, id, "bWalk", true);
+    }
+
+    /// Starts the set `name` (`bWalk`, or `bZoo`, which does nothing for ever).
+    pub fn start_set(&self, w: &mut World, id: u32, name: &str, force: bool) {
+        let at = w.find(id).unwrap();
+        let mut rng = crate::sim::Rng::default();
+        let env = crate::behaviour::Env {
+            data: self,
+            unit: &w.zoo.entities[at],
+            rng: &mut rng,
+        };
+        let unit = w.units.get_mut(id).unwrap();
+        unit.runner
+            .start(&mut unit.animation, &env, name, true, force, true);
+    }
+}
+
+impl crate::behaviour::Data for Walker {
+    fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
+        match name {
+            "bWalk" => Some(&self.0),
+            "bZoo" => Some(&self.1),
+            _ => None,
+        }
+    }
+    fn ambient(&self, _: &Entity) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        ["idle", "walk", "trot", "run", "swim"]
+            .contains(&name)
+            .then_some(crate::behaviour::Timing {
+                count: 1,
+                delay: 100,
+            })
+    }
+    fn number(&self, _: &Entity, number: &crate::behaviour::Number) -> i32 {
+        rates(number)
+    }
+    fn sound(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+}
+
+/// The numbers of a walking type: the rates 20, 46 and 76, the animation speeds 50 (slow) and 80
+/// (slow, in water), and a swimmer.
+pub fn rates(number: &crate::behaviour::Number) -> i32 {
+    match number {
+        crate::behaviour::Number::Int(n) => *n,
+        crate::behaviour::Number::Characteristic(key) => match key.as_str() {
+            "cSlowRate" => 20,
+            "cMediumRate" => 46,
+            "cFastRate" => 76,
+            "cSlowAnimSpeed" => 50,
+            "cSlowAnimSpeedWater" => 80,
+            "cSwims" => 1,
+            _ => 0,
+        },
+    }
+}

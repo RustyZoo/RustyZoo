@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::sim::Sim;
-use crate::unit::testing::{centre, entity, world, world_with};
+use crate::unit::testing::{Walker, centre, entity, world, world_with};
 use crate::zoo::Clocks;
 
 /// A 40 by 30 map with these entities. The units are quiet: their goals leave the paths and the
@@ -29,6 +29,18 @@ fn position(w: &World, id: u32) -> (i32, i32) {
     (c.x, c.y)
 }
 
+/// Starts a walk along `path` at `speed`, as a move call does; a path of fewer than two tiles is a
+/// unit already in its last tile, which stops at once.
+fn start(unit: &mut Unit, path: Vec<usize>, speed: u32, anim_speed: u16) -> bool {
+    if path.len() < 2 {
+        stop(unit);
+        return false;
+    }
+    (unit.path, unit.speed, unit.anim_speed) = (path, speed, anim_speed);
+    (unit.moving, unit.walking) = (true, true);
+    true
+}
+
 /// Sends unit `id` along `path` (tiles) at `speed`, to the last tile.
 fn send(w: &mut World, id: u32, path: &[(usize, usize)], speed: u32) {
     let end = path.last().unwrap();
@@ -36,11 +48,18 @@ fn send(w: &mut World, id: u32, path: &[(usize, usize)], speed: u32) {
     unit.destination = Some((64 * end.0 as i32 + 32, 64 * end.1 as i32 + 32, 0));
     let tiles = path.iter().map(|&(x, y)| tile(x, y)).collect();
     assert!(start(unit, tiles, speed, 100));
+    Walker::new("fWalk(0,0)").start(w, id);
 }
 
 fn step_all(w: &mut World, s: &mut Sim, steps: &[u32]) {
     for &ms in steps {
-        s.step(w, ms, |_, _, _| {});
+        s.step_with(
+            &Walker::new("fWalk(0,0)"),
+            &Default::default(),
+            w,
+            ms,
+            |_, _, _| {},
+        );
     }
 }
 
@@ -116,7 +135,7 @@ fn a_guest_crosses_a_tile_and_stops_in_the_destination_tile() {
     assert_eq!(tiles(&mut w), ["tile 1 17,15"]);
     let u = w.units.get(1).unwrap();
     assert!(!u.moving && u.speed == 0 && u.path.is_empty());
-    // It stays where it stopped.
+    // It stays where it stopped: the set is over.
     step_all(&mut w, &mut s, &[67; 3]);
     assert_eq!(position(&w, 1), (1088, 1000));
 }
@@ -259,8 +278,9 @@ fn a_path_of_one_tile_does_not_go_and_the_last_tile_is_not_left() {
     // With one entry and another destination tile it does not move this step.
     let mut s = sim();
     let u = w.units.get_mut(1).unwrap();
-    (u.path, u.moving, u.speed, u.travel) = (vec![tile(5, 5)], true, 40, 2);
+    (u.path, u.moving, u.walking, u.speed, u.travel) = (vec![tile(5, 5)], true, true, 40, 2);
     u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
+    Walker::new("fWalk(0,0)").start(&mut w, 1);
     step_all(&mut w, &mut s, &[67]);
     assert_eq!(position(&w, 1), (5 * 64 + 63, 5 * 64 + 32));
     assert!(w.units.get(1).unwrap().moving);
@@ -284,7 +304,8 @@ fn a_refused_tile_step_aborts_the_goal_and_the_unit_stays() {
     send(&mut w, 1, &[(5, 5), (6, 5), (7, 5)], 40);
     w.units.take_lines();
     step_all(&mut w, &mut s, &[67; 4]);
-    assert!(w.units.get(1).unwrap().aborted);
+    // The goal gives up and clears the flag in the step of the refusal (4.7).
+    assert!(!w.units.get(1).unwrap().aborted);
     assert_eq!(position(&w, 1), centre((5, 5)));
     assert_eq!(guest, 0);
     // Told once.
@@ -296,11 +317,16 @@ fn a_refused_tile_step_aborts_the_goal_and_the_unit_stays() {
             .count(),
         1
     );
+    // The move call fails and the walk is over.
+    let u = w.units.get(1).unwrap();
+    assert!(!u.walking && !u.moving && u.path.is_empty());
     // A unit going through a building looks at the edge cost only, which the fence makes 20 too.
+    send(&mut w, 1, &[(5, 5), (6, 5), (7, 5)], 40);
     let u = w.units.get_mut(1).unwrap();
     (u.aborted, u.through_building) = (false, true);
+    w.units.take_lines();
     step_all(&mut w, &mut s, &[67]);
-    assert!(w.units.get(1).unwrap().aborted);
+    assert!((w.units.take_lines().iter()).any(|l| l.starts_with("abort")));
     assert!(!w.units.get(1).unwrap().through_building, "the move ended");
 }
 
@@ -353,21 +379,17 @@ fn a_unit_off_its_path_goes_back_to_it_and_an_edge_of_the_map_ends_the_move() {
     assert_eq!(position(&w, 1), centre((5, 5)));
 }
 
-#[test]
-fn a_unit_entering_an_exhibit_through_its_gate_tells_the_exhibit() {
-    let mut w = world_with((30, 30), |zoo| {
+/// An exhibit of 3 by 3 tiles from (10, 10) with its gate on the north side of (11, 10), and
+/// the keeper at tile (11, 9) outside it or (11, 11) inside.
+fn gated(inside: bool) -> World {
+    world_with((30, 30), |zoo| {
         let e = &mut zoo.entities;
         for x in 10..=12 {
             for y in 10..=12 {
                 for (d, outside) in [(0, y == 10), (2, x == 12), (4, y == 12), (6, x == 10)] {
                     if outside {
-                        e.push(entity(
-                            "fences",
-                            "exhibit",
-                            100 + e.len() as u32,
-                            centre((x, y)),
-                            d,
-                        ));
+                        let id = 100 + e.len() as u32;
+                        e.push(entity("fences", "exhibit", id, centre((x, y)), d));
                     }
                 }
             }
@@ -377,21 +399,41 @@ fn a_unit_entering_an_exhibit_through_its_gate_tells_the_exhibit() {
             (c.x / 64, c.y / 64, c.rotation) == (11, 10, 0)
         });
         gate.unwrap().subtype = "g".into();
-        e.push(entity("keeper", "", 1, centre((11, 9)), 4));
+        let at = centre((11, [9, 11][usize::from(inside)]));
+        e.push(entity("keeper", "", 1, at, 4));
         zoo.habitat_tiles = vec![(10, 10)];
         zoo.habitat_gates = vec![((11, 10), 0)];
-    });
+        zoo.habitat_info = vec![crate::zoo::HabitatInfo {
+            name: String::new(),
+            stats: [0; 9],
+            created: 0,
+        }];
+    })
+}
+
+/// Walks unit 1 of `w` through the gate, from (11, 9) to (11, 11) or back, and returns the log.
+fn through_the_gate(mut w: World, inside: bool) -> Vec<String> {
     crate::goal::quiet(&mut w);
     let mut s = sim();
-    let exhibit = w.exhibits().region(w.tile_index(11, 11).unwrap()).unwrap();
-    let to = [(11, 9), (11, 10), (11, 11)];
+    let mut to = [(11, 9), (11, 10), (11, 11)];
+    if inside {
+        to.reverse();
+    }
     let end = to.map(|(x, y)| w.tile_index(x, y).unwrap());
     let u = w.units.get_mut(1).unwrap();
-    u.destination = Some((11 * 64 + 32, 11 * 64 + 32, 0));
+    u.destination = Some((to[2].0 * 64 + 32, to[2].1 * 64 + 32, 0));
     assert!(start(u, end.to_vec(), 40, 100));
+    Walker::new("fWalk(0,0)").start(&mut w, 1);
     w.units.take_lines();
     step_all(&mut w, &mut s, &[67; 60]);
-    let lines = w.units.take_lines();
+    w.units.take_lines()
+}
+
+#[test]
+fn a_unit_entering_an_exhibit_through_its_gate_tells_the_exhibit() {
+    let w = gated(false);
+    let exhibit = w.exhibits().region(w.tile_index(11, 11).unwrap()).unwrap();
+    let lines = through_the_gate(w, false);
     let tiles: Vec<_> = lines.iter().filter(|l| l.starts_with("tile")).collect();
     assert_eq!(tiles, ["tile 1 11,10", "tile 1 11,11"]);
     assert_eq!(
@@ -400,6 +442,214 @@ fn a_unit_entering_an_exhibit_through_its_gate_tells_the_exhibit() {
             .filter(|l| l.starts_with("enter"))
             .collect::<Vec<_>>(),
         [&format!("enter 1 {exhibit}")]
+    );
+}
+
+#[test]
+fn a_keeper_opens_the_gate_ahead_and_closes_it_behind_but_an_animal_does_not_open() {
+    // Out of the exhibit: ahead on entering (11, 10), behind on entering (11, 9).
+    let lines = through_the_gate(gated(true), true);
+    let tail: Vec<_> = lines.iter().filter(|l| l.starts_with("gate")).collect();
+    assert_eq!(tail.len(), 2);
+    assert!(tail[0].starts_with("gate 1 open ") && tail[1].starts_with("gate 1 close "));
+    assert_eq!(tail[0][12..], tail[1][13..], "the same gate");
+    // An animal does not open it (the pathfinder keeps it from crossing: the entry is made by hand).
+    for (kind, opens) in [(Kind::Keeper, true), (Kind::Animal, false)] {
+        let mut w = gated(true);
+        let t = |x, y| w.tile_index(x, y).unwrap();
+        let (old, new, next) = (t(11, 11), t(11, 10), t(11, 9));
+        let mut unit = Unit::new(1, kind);
+        unit.path = vec![new, next];
+        enter(&mut unit, &mut w, old, new);
+        let lines = w.units.take_lines();
+        assert_eq!(lines.iter().any(|l| l.starts_with("gate 1 open ")), opens);
+        assert_eq!(unit.gate.is_some(), opens);
+    }
+}
+
+#[test]
+fn a_move_call_takes_the_rate_the_animation_and_the_animation_speed_of_its_band() {
+    for (call, rate, anim, speed) in [
+        ("fWalk(0,0)", 20, "walk", 50),
+        ("fTrot(0,0)", 46, "trot", 100),
+        ("fMoveFast(0,0)", 76, "run", 100),
+        ("fMove(0,0,run,12,30)", 12, "run", 30),
+        ("fMove(0,0,run,-5,70000)", 0, "run", 4464),
+    ] {
+        let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+        let (mut s, walker) = (sim(), Walker::new(call));
+        // The unit shows its idle animation before the walk starts.
+        s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+        let u = w.units.get_mut(1).unwrap();
+        u.path = vec![tile(5, 5), tile(6, 5), tile(9, 5)];
+        u.destination = Some((9 * 64 + 32, 5 * 64 + 32, 0));
+        walker.start(&mut w, 1);
+        let mut at = |w: &mut World| {
+            s.step_with(&walker, &Default::default(), w, 67, |_, _, _| {});
+            let u = w.units.get(1).unwrap();
+            (u.speed, u.animation.name.clone(), u.anim_speed, u.moving)
+        };
+        // The call starts the walk and the cut of the forced start shows the move animation in
+        // the step after; the unit moves from the step after that.
+        assert_eq!(at(&mut w), (rate, "idle".into(), speed, false), "{call}");
+        assert_eq!(position(&w, 1), centre((5, 5)));
+        assert_eq!(at(&mut w), (rate, anim.into(), speed, true), "{call}");
+        assert_eq!(position(&w, 1), centre((5, 5)));
+        at(&mut w);
+        assert_eq!(position(&w, 1) != centre((5, 5)), rate > 0);
+    }
+    // A type without the animation fails the call, which ends the set.
+    let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+    let (mut s, walker) = (sim(), Walker::new("fMove(0,0,zz,12)"));
+    w.units.get_mut(1).unwrap().path = vec![tile(5, 5), tile(6, 5)];
+    walker.start(&mut w, 1);
+    s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    let u = w.units.get(1).unwrap();
+    assert!(!u.walking && u.speed == 0 && !u.runner.running());
+}
+
+#[test]
+fn a_move_call_without_a_path_walks_at_random_and_an_idle_guest_starts_one() {
+    let mut w = world((40, 30), |_, e| {
+        (0..40).for_each(|x| e.push(entity("paths", "", 0, centre((x, 20)), 0)));
+        e.push(entity("guests", "", 1, centre((20, 20)), 2));
+        e.push(entity("animals", "", 2, centre((20, 10)), 2));
+    });
+    let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
+    // The guest stands in a routine that never ends and is sent out by its goals; the
+    // animal's set has the move call itself, with no path and no destination.
+    walker.start_set(&mut w, 1, "bZoo", false);
+    walker.start(&mut w, 2);
+    // Each unit walks and stands still when its walk ends: the guest in its destination tile
+    // (the animal has no exhibit, and a partial path may end short of it).
+    let mut arrived = [false; 2];
+    for _ in 0..3000 {
+        s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+        for (i, id) in [1, 2].into_iter().enumerate() {
+            let u = w.units.get(id).unwrap();
+            let Some((x, y, _)) = u.destination else {
+                continue;
+            };
+            let here = position(&w, id);
+            let over = !u.walking && !u.moving && u.path.is_empty() && !u.runner.running();
+            let there = (here.0 / 64, here.1 / 64) == (x / 64, y / 64);
+            if over && (there || id == 2) && (x, y) != centre((20, 20)) {
+                arrived[i] = true;
+            }
+        }
+    }
+    assert_eq!(arrived, [true, true]);
+}
+
+#[test]
+fn the_end_of_a_walk_keeps_the_move_animation_but_a_path_of_one_entry_returns_to_idle() {
+    let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+    let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
+    let u = w.units.get_mut(1).unwrap();
+    u.path = vec![tile(5, 5), tile(6, 5)];
+    u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
+    walker.start(&mut w, 1);
+    let mut step = |w: &mut World| s.step_with(&walker, &Default::default(), w, 67, |_, _, _| {});
+    for _ in 0..200 {
+        step(&mut w);
+    }
+    let u = w.units.get(1).unwrap();
+    assert!(!u.walking && !u.moving && u.path.is_empty());
+    assert_eq!(u.animation.name, "walk");
+    // Already in its last tile: the call stops the unit at once and it shows the idle animation.
+    w.units.get_mut(1).unwrap().path = vec![tile(6, 5)];
+    walker.start(&mut w, 1);
+    step(&mut w);
+    step(&mut w);
+    assert_eq!(w.units.get(1).unwrap().animation.name, "idle");
+}
+
+#[test]
+fn an_aborted_walk_ends_its_move_call_as_done() {
+    let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+    let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
+    s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    let u = w.units.get_mut(1).unwrap();
+    u.path = vec![tile(5, 5), tile(6, 5), tile(9, 5)];
+    u.destination = Some((9 * 64 + 32, 5 * 64 + 32, 0));
+    walker.start(&mut w, 1);
+    for _ in 0..3 {
+        s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    }
+    let mut u = w.units.get(1).unwrap().clone();
+    assert!(u.walking && u.moving);
+    u.aborted = true;
+    let at = w.find(1).unwrap();
+    let flow = call(
+        &mut u,
+        &mut w,
+        &walker,
+        &mut Rng::default(),
+        at,
+        &Gait::Slow,
+    );
+    assert_eq!(flow, Flow::Done);
+    assert!(!u.walking && !u.moving && u.path.is_empty());
+}
+
+#[test]
+fn a_swimmer_entering_water_picks_the_animation_speed_of_the_water() {
+    let mut w = world((40, 30), |tiles, e| {
+        tiles[tile(6, 5)].terrain = 1;
+        e.push(entity("animals", "", 1, (5 * 64 + 60, 5 * 64 + 32), 2));
+    });
+    w.set_water(vec![false, true]);
+    crate::goal::quiet(&mut w);
+    let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
+    let u = w.units.get_mut(1).unwrap();
+    u.path = vec![tile(5, 5), tile(6, 5), tile(7, 5)];
+    u.destination = Some((7 * 64 + 32, 5 * 64 + 32, 0));
+    walker.start(&mut w, 1);
+    let mut run = |w: &mut World, n| {
+        (0..n).for_each(|_| _ = s.step_with(&walker, &Default::default(), w, 67, |_, _, _| {}));
+        w.units.get(1).unwrap().anim_speed
+    };
+    assert_eq!(run(&mut w, 3), 50, "on land");
+    assert_eq!(w.units.get(1).unwrap().animation.name, "walk");
+    assert_eq!(run(&mut w, 4), 80, "in the water");
+    assert_eq!(w.units.get(1).unwrap().animation.name, "swim");
+    assert!(!w.units.get(1).unwrap().flip);
+}
+
+#[test]
+fn a_swimmer_starting_a_walk_in_the_water_swims_at_once_and_a_started_unit_reads_its_type() {
+    let mut w = world((40, 30), |tiles, e| {
+        tiles[tile(5, 5)].terrain = 1;
+        tiles[tile(6, 5)].terrain = 1;
+        e.push(entity("animals", "", 1, centre((5, 5)), 2));
+        e.push(entity("guests", "", 2, centre((5, 5)), 2));
+    });
+    w.set_water(vec![false, true]);
+    crate::goal::quiet(&mut w);
+    let walker = Walker::new("fMove(0,0,run,12,30)");
+    // An animal loaded with the map has had its first turn already.
+    w.units.get_mut(1).unwrap().started = true;
+    let mut s = sim();
+    s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    for id in [1, 2] {
+        let u = w.units.get_mut(id).unwrap();
+        u.path = vec![tile(5, 5), tile(6, 5)];
+        u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
+        walker.start(&mut w, id);
+    }
+    for _ in 0..2 {
+        s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    }
+    let name = |id| w.units.get(id).unwrap().animation.name.clone();
+    // The animal's own name is replaced on water, its own speed is kept; the guest keeps both
+    // (a guest does not swim).
+    assert_eq!(
+        (name(1), w.units.get(1).unwrap().anim_speed),
+        ("swim".into(), 30)
+    );
+    assert_eq!(
+        (name(2), w.units.get(2).unwrap().anim_speed),
+        ("run".into(), 30)
     );
 }
 

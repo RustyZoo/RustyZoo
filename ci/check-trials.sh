@@ -17,12 +17,12 @@ export RUSTYZOO_USER_DIR=$tmp/user # never the real user folder
 rz() { "$bin" --data "$dir/$trial" "$@"; }
 
 # Plays a map headless (--bare: the map view alone, without the main panel that a game shows) with
-# scrolls, a rotation and the zoom in and out (-2, 0 and 2) and compares
-# every painted frame with the window `render-map --view` draws for the camera the log names, at
-# its zoom, byte for byte (as PNG files).
+# scrolls, a rotation and the zoom in and out (-2, 0 and 2), the game paused so that the units
+# stand still, and compares every painted frame with the window `render-map --view` draws for the
+# camera the log names, at its zoom, byte for byte (as PNG files).
 same_frames() {
   d=$(mktemp -d)
-  printf '1 scroll 1 1\n2 rotate cw\n3 scroll -1 0\n4 zoom in\n5 scroll 1 0\n6 zoom out\n7 zoom out\n8 scroll 0 1\n' >"$d/script"
+  printf '0 pause\n1 scroll 1 1\n2 rotate cw\n3 scroll -1 0\n4 zoom in\n5 scroll 1 0\n6 zoom out\n7 zoom out\n8 scroll 0 1\n' >"$d/script"
   rz run "$1" --headless --bare --passes 9 --clock 20 --script "$d/script" --png-every 1 --out "$d" |
     sed -n 's/^pass \([0-9]*\) .* draw [0-9a-f]\{16\} view=\(-*[0-9]*\),\(-*[0-9]*\) rotation=\([0-3]\) zoom=\(-*[0-9]*\).*/\1 \2 \3 \4 \5/p' |
     while read -r pass x y rotation zoom; do
@@ -512,7 +512,7 @@ pending_object() { # pending_object <map> <script>
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;786ff998af8b4619" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;f740425ef3e4d597" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;aa11351f0500e708" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;cc5b1043563c65cb" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
@@ -527,8 +527,8 @@ path_drag() { # path_drag <map> <first move>
 }
 check base-trial "8,49800,feb19aaee7b3532d" "path_drag maps/default.zoo '632 384'"
 check base-trial "8,49800,053d414c5f0c57cf" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49920,b140ecbadd10a67b" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49920,f535b3e2b2f7e58d" "path_drag maps/scn19.zoo '632 416'"
+check expansion-trial "8,49920,5a4f7ed0037a10a3" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,7a742048626d5146" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -542,7 +542,7 @@ paint_text() { # paint_text <map> <script>
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;d0e7a01a869332da" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;65c23f0c23c72d59" "paint_text maps/scn19.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;cd98e2f057e43a69" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -556,7 +556,7 @@ fence_drag() { # fence_drag <map> <last move>
   rm -rf "$d"
 }
 check base-trial "6,48920,d4a40ef519f12d25" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial "6,49250,be30a3bc54ce6eae" "fence_drag maps/scn19.zoo '878 332'"
+check expansion-trial "6,49250,9abb1b1e7e00d989" "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -611,7 +611,7 @@ bulldozer_area() { # bulldozer_area <map>
   rm -rf "$d"
 }
 check base-trial "8,49960,fe2e28f264886678" "bulldozer_area maps/default.zoo"
-check expansion-trial "16,50156,820b984a40e9cd91" "bulldozer_area maps/scn19.zoo"
+check expansion-trial "16,50156,ede9c585f8cbbe60" "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
@@ -625,7 +625,7 @@ building_place() { # building_place <map>
   rm -rf "$d"
 }
 check base-trial "building/building/vendfood,16,45,2;message10555;49950;7ca21f46ab611def" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49900;1a4c5bb7c7ab6121" "building_place maps/scn19.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;8ed93c90d659e989" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)
@@ -693,7 +693,7 @@ check base-trial 'exhibit_1_"Lion";status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.
 # lines in red (important) and the others, as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
 panel_plaque() { # panel_plaque <map>
   d=$(mktemp -d)
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n15 mouse 992 256\n16 down\n17 up\n' >"$d/script"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n15 mouse 992 256\n16 down\n17 up\n' >"$d/script"
   rz run "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel animals /{a=$6} / panel line! /{i++} / panel line "/{o++} END{print a "," i+0 "," o+0}'
   rm -rf "$d"
@@ -708,7 +708,7 @@ check expansion-trial "1,0,2" "panel_plaque maps/scn28b.zoo"
 # and its time rows.
 panel_animal() { # panel_animal <map>
   d=$(mktemp -d)
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
   rz run "$1" --headless --passes 18 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel animal [0-9]/{sub(/^.* panel animal /, ""); gsub(/ /, "_"); print}'
   rm -rf "$d"
@@ -718,13 +718,15 @@ check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_s
 
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
-# is moved off the tabs, so no tooltip shows). Prints same or different.
+# is moved off the tabs, so no tooltip shows). The game is paused, so that the units walking in
+# the map part of the frame do not differ between the two runs, and a frame is drawn only when
+# something changed: the last one drawn of each run is compared. Prints same or different.
 panel_tab() { # panel_tab <map>
   d=$(mktemp -d)
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n12 mouse 500 300\n' >"$d/a"
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1005 645\n9 down\n10 up\n12 mouse 1005 614\n13 down\n14 up\n16 mouse 500 300\n' >"$d/b"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n12 mouse 500 300\n' >"$d/a"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1005 645\n9 down\n10 up\n12 mouse 1005 614\n13 down\n14 up\n16 mouse 500 300\n' >"$d/b"
   for s in a b; do
-    rz run "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass 23 .* draw [0-9a-f]/{print $5}'
+    rz run "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass [0-9]+ .* draw [0-9a-f]/{h=$5} END{print h}'
   done | sort -u | awk 'END{ if (NR == 1) print "same"; else print "different" }'
   rm -rf "$d"
 }

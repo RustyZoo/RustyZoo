@@ -326,6 +326,7 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
         [BehaviorSet\\bZooRoutine]\nf = fGuestRoutine()\n\
         [AmbientAnims]\na = -100\na = 100\nb = bZooRoutine\n\
         [Characteristics/Integers]\ncInformGuestTime = 7\n\
+        [Global]\nDefaultSubtype = man\n[man/Characteristics/Integers]\ncSlowRate = 33\n\
         [Sounds]\ngrunt = afrbuf1\ngrunt = 1500\nyell = Sounds/Yell.wav\nnoise = x.WAV\n"
         .to_vec();
     let ani =
@@ -393,6 +394,9 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
         library.number(&man, &Number::Characteristic("cWalkRandomlyTime1".into())),
         0
     );
+    // A guest's rate is the default subtype's.
+    let rate = Number::Characteristic("cSlowRate".into());
+    assert_eq!(library.number(&man, &rate), 33);
     // A short name is a file of the type's folder; a value with `.wav` is the path as written.
     // The second value of the key is the base term, 0 when absent; each key has its own voice.
     let sound = |key| library.sound(&man, key).map(|h| (h.file, h.base, h.voice));
