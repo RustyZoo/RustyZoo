@@ -638,12 +638,13 @@ check expansion-trial "building/building/bounce,33,42" "walkable_place maps/scn1
 # The gate tool: the square of above, then the gate button and a click on a piece, picked by the
 # pixels of its picture, moves the gate there. Prints the `world ungate`, `world gate` and `exhibit gate` lines
 # after the name (spaces as underscores, joined by semicolons): the old gate turns back into a
-# fence, the piece becomes the gate and the exhibit follows.
+# fence, the piece becomes the gate and the exhibit follows (paused, so that no guest arriving
+# meanwhile takes an entity number).
 gate_move() { # gate_move <map> [yes]: with `yes` the square is a tank and its question is answered first
   d=$(mktemp -d)
   s=0
   if [ -n "${2:-}" ]; then s=1; fi
-  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n" >"$d/script"
+  printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n" >"$d/script"
   if [ $s = 1 ]; then printf "32 key enter\n" >>"$d/script"; fi
   printf "$((32 + s)) char L\n$((33 + s)) char i\n$((34 + s)) char o\n$((35 + s)) char n\n$((36 + s)) key enter\n$((38 + s)) mouse 110 282\n$((39 + s)) down\n$((40 + s)) up\n$((42 + s)) mouse 727 308\n$((43 + s)) down\n$((44 + s)) up\n" >>"$d/script"
   rz run "$1" --headless --passes $((48 + s)) --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
