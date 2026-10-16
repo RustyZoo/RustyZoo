@@ -1393,7 +1393,7 @@ fn a_new_food_entity_starts_at_the_max_food_units_of_its_type() {
         food(units("[Characteristics/Integers]\ncMaxFoodUnits=1000\n")),
         1000
     );
-    // No key (the tank foods), zero, negative: nothing left.
+    // A type without the key is no food: nothing left. A negative value is kept and never counts.
     assert_eq!(food(units("")), 0);
     assert_eq!(
         food(units("[Characteristics/Integers]\ncMaxFoodUnits=0\n")),
@@ -1401,13 +1401,13 @@ fn a_new_food_entity_starts_at_the_max_food_units_of_its_type() {
     );
     assert_eq!(
         food(units("[Characteristics/Integers]\ncMaxFoodUnits=-5\n")),
-        0
+        -5
     );
     assert_eq!(
         food(units(
             "[Characteristics/Integers]\ncMaxFoodUnits=99999999999\n"
         )),
-        u32::MAX
+        i32::MAX
     );
 }
 

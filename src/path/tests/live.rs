@@ -185,7 +185,7 @@ fn a_keeper_pays_16_for_a_tile_with_food() {
 #[test]
 fn a_keepers_food_tile_stops_counting_when_the_units_reach_0() {
     let tile = (2, 3);
-    let units = |food: u32| {
+    let units = |food: i32| {
         let mut e = entity_at("food", "", "", (tile.0 * 64 + 16, tile.1 * 64 + 16), 0);
         e.common.as_mut().unwrap().food = food;
         world(|_, es| es.push(e))

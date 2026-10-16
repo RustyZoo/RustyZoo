@@ -118,7 +118,7 @@ impl Fnv {
                 self.u8(u8::from(f.portal));
             }
             self.u32(*movement_mode);
-            self.u32(*food);
+            self.i32(*food);
         }
     }
 

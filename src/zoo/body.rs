@@ -72,7 +72,7 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
 
 /// The food counter, then the common part.
 fn scenery(r: &mut Reader) -> R<Common> {
-    let food = r.u32()?;
+    let food = r.i32()?;
     Ok(Common { food, ..base(r)? })
 }
 

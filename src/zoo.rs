@@ -106,8 +106,9 @@ pub struct Common {
     pub fence: Option<Fence>,
     /// The movement mode of a unit (3: inside a tank); 0 for everything else.
     pub movement_mode: u32,
-    /// The food units left of a scenery entity (zoo format 6.6); 0 for everything else.
-    pub food: u32,
+    /// The food units left of a scenery entity, a signed counter (zoo format 6.6): kept as stored
+    /// for the class `food` and the subtypes `poo` and `dinopoo`, 0 for everything else.
+    pub food: i32,
     /// What an animal record stores of the animal's live state; `None` for everything else.
     pub animal: Option<Box<AnimalRecord>>,
 }
@@ -684,6 +685,14 @@ fn entity(r: &mut Reader) -> R<Entity> {
             None => return bad("unknown class in a file without body sizes"),
         }
     };
+    let mut common: Option<Common> = common;
+    if class != b"food"
+        && !["poo", "dinopoo"]
+            .iter()
+            .any(|s| subtype.eq_ignore_ascii_case(s))
+    {
+        common.iter_mut().for_each(|c| c.food = 0);
+    }
     Ok(Entity {
         class: latin1(class),
         type_name,

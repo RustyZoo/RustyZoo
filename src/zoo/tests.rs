@@ -583,17 +583,21 @@ fn reads_the_common_part_of_fixed_entities() {
 
 #[test]
 fn keeps_the_food_units_of_scenery() {
+    // Kept as stored (signed) for the class `food` and the dung subtypes; zeroed for the rest.
     for v in [48, 106] {
-        for (class, ty, units) in [
-            ("food", "food", 1000u32),
-            ("objects", "tree", 0),
-            ("paths", "paths", u32::MAX),
+        for (class, sub, units, kept) in [
+            ("food", "meat", 1000, 1000),
+            ("food", "meat", -7, -7),
+            ("objects", "poo", 2, 2),
+            ("objects", "dinopoo", 1, 1),
+            ("objects", "tree", 5, 0),
+            ("paths", "path", 1000, 0),
         ] {
             let mut body = scenery(v, 7, "Meat");
-            body[..4].copy_from_slice(&units.to_le_bytes());
-            let z = parse(&file(v, 1, 1, &[], &[(class, ty, "x", body)]));
+            body[..4].copy_from_slice(&(units as i32).to_le_bytes());
+            let z = parse(&file(v, 1, 1, &[], &[(class, "t", sub, body)]));
             let c = z.entities[0].common.as_ref().unwrap();
-            assert_eq!((c.food, c.id), (units, 7), "{class} at {v}");
+            assert_eq!((c.food, c.id), (kept, 7), "{class} {sub} at {v}");
         }
     }
     // Everything that is not scenery holds none.
