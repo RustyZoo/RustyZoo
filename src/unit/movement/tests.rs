@@ -892,7 +892,7 @@ fn a_guest_leaving_crosses_the_grass_between_two_ends_of_a_path_it_would_walk_ro
         .collect();
     e.push(entity("guests", "", 1, centre((10, 10)), 0));
     let mut w = map(e);
-    let mut walk = |w: &mut World, task| {
+    let walk = |w: &mut World, task| {
         set_task(w, 1, task, 0);
         let m = mover_of(w, 1);
         let reply = path::Finder::default().request(w, &m, tile(12, 10), false);
