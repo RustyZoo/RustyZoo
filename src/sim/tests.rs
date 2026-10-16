@@ -530,6 +530,8 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "sums",
         "given",
         "price",
+        "carried",
+        "tank mode",
     ] {
         let mut run = game(3);
         match what {
@@ -549,6 +551,14 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "sums" => run.sim.status.sums.sick += 1,
             "given" => run.sim.status.given += 1.0,
             "price" => run.sim.status.price += 0.25,
+            "carried" => run.world.units.get_mut(1).unwrap().carried = true,
+            "tank mode" => {
+                run.world.zoo.entities[0]
+                    .common
+                    .as_mut()
+                    .unwrap()
+                    .movement_mode = 3
+            }
             _ => run.sim.ai_rem += 1,
         }
         assert_ne!(run.hash(), base, "{what}");

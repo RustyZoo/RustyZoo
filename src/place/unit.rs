@@ -5,19 +5,25 @@
 //! The pending unit is a [`Pending`] like an object's, snapped as a 1 x 1 object and facing a
 //! fixed screen direction. [`pending`] runs the checks of 6.1 in order, the first failure keeping
 //! its message; a staff member's (6.3) are those of an animal without the ones that are about an
-//! exhibit, the water message, the slope and the size. The tank point (5.1) is not done: a tank
-//! tile is never valid, and says why.
+//! exhibit, the water message, the slope and the size; a guest's (6.4) are its own. The tank point
+//! (5.1) lifts a guest or an underwater species over a tank under the pointer to the water, where
+//! the tank tile is judged by 6.5 and the first row that applies gives the message.
+//!
+//! Picking a unit up and putting it down is [`pick_up`], [`put_down`] and [`carried`], the pending
+//! unit of the one the player holds (8.2 to 8.6): the same checks, the cost 0.
 
 use super::{
     NO_FUNDS, NOT_IN_THE_ZOO, Outcome, Pending, Verdict, entity, facing, fail, fenced, path_shape,
     snap, uneven,
 };
+use crate::behaviour::{Animation, Runner};
 use crate::build::{cost, number, plain};
+use crate::camera::zoom_view;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::GROUNDS;
 use crate::money::{ANIMAL_PURCHASE, Money};
 use crate::place::Class;
-use crate::render::order::{Kind, ground_height};
+use crate::render::order::{Kind, ground_height, project};
 use crate::staff;
 use crate::world::{Shape, World};
 use crate::zoo::Entity;
@@ -38,6 +44,9 @@ const NOT_IN_TANKS: i32 = 10553;
 const NOT_FOR_STAFF: i32 = 10563;
 /// An animal that cannot swim stands on land.
 const NOT_ON_WATER_UNIT: i32 = 10569;
+/// The tank point looks this many steps toward the viewer (unit placing 5.1: 48, plus a setting of
+/// the map view that is 0).
+const TANK_STEPS: i32 = 48;
 /// The crate search goes this far, in tiles of Manhattan distance (unit placing 9.3).
 const CRATE_RANGE: i32 = 50;
 
@@ -75,42 +84,135 @@ pub fn new_sell_price(ty: &EntityType) -> f32 {
     sell_price(cost(ty), happiness, max_hits, max_hits, false)
 }
 
-/// The pending animal of the type `ty` for the world point `point` under the mouse, the view
-/// turned by `view`; `None` when the type is unknown or the point is off the map. `water` tells
-/// for each terrain type whether it is water.
+/// Where the pointer is: the ground point under it, its own screen row and the zoom, which the
+/// tank point reads (5.1).
+#[derive(Debug, Clone, Copy)]
+pub struct Aim {
+    pub point: (i64, i64),
+    /// The row of the pointer in the view's pixels at the current zoom.
+    pub row: i64,
+    pub zoom: i32,
+}
+
+/// The pending animal of the type `ty` for the pointer `aim`, the view turned by `view`; `None`
+/// when the type is unknown or the point is off the map. `water` tells for each terrain type
+/// whether it is water.
 pub fn pending(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
     ty: usize,
     view: u8,
-    point: (i64, i64),
+    aim: Aim,
     october: bool,
 ) -> Option<Pending> {
+    let price = price(cat.types.get(ty)?, october);
+    pending_of(world, cat, water, ty, facing(0, view), view, aim, price)
+}
+
+/// The pending unit of the one the player carries (8.3): its own facing turned with the view, so
+/// that it keeps its screen facing, and no cost.
+pub fn carried(
+    world: &World,
+    cat: &Catalogue,
+    water: &[bool],
+    carry: &Carry,
+    view: u8,
+    aim: Aim,
+) -> Option<Pending> {
+    let turn = 2 * (i32::from(carry.view) - i32::from(view));
+    let dir = (i64::from(carry.facing) + i64::from(turn)).rem_euclid(8) as u32;
+    pending_of(world, cat, water, carry.ty, dir, view, aim, 0.0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pending_of(
+    world: &World,
+    cat: &Catalogue,
+    water: &[bool],
+    ty: usize,
+    dir: u32,
+    view: u8,
+    aim: Aim,
+    price: f32,
+) -> Option<Pending> {
     let t = cat.types.get(ty)?;
-    let point = (i32::try_from(point.0).ok()?, i32::try_from(point.1).ok()?);
+    let ground = (
+        i32::try_from(aim.point.0).ok()?,
+        i32::try_from(aim.point.1).ok()?,
+    );
+    // A guest or an underwater species is put over the tank under the pointer, if any (5.1).
+    let swimmer = t.class == "guests" || number(t, "cUnderwater") == Some(1.0);
+    let lifted = swimmer
+        .then(|| tank_point(world, view, ground, aim.row, aim.zoom))
+        .flatten();
+    let point = lifted.unwrap_or(ground);
     let (tile_x, tile_y) = (point.0.div_euclid(64), point.1.div_euclid(64));
     let tile = world.tile_index(tile_x, tile_y)?;
-    let dir = facing(0, view);
     let (x, y) = snap(Class::Fixed, point, (1, 1), dir);
     let (lx, ly) = (x - 64 * tile_x, y - 64 * tile_y);
+    let level = lifted.and_then(|_| world.tank_at(tile).and_then(|id| world.tank(id)));
     let mut p = Pending {
         ty,
         x,
         y,
-        z: ground_height(&world.zoo.tiles[tile], lx, ly),
+        z: ground_height(&world.zoo.tiles[tile], lx, ly)
+            .saturating_add(level.map_or(0, |l| water_height(l.level))),
         facing: dir,
         tile: (tile_x, tile_y),
         quadrant: (ly / 32 * 2 + lx / 32).clamp(0, 3) as usize,
         verdict: Verdict::Valid,
         message: None,
-        price: price(t, october),
+        price,
         paint: None,
         blocking: Vec::new(),
         wall: 0,
     };
-    check(&mut p, world, t, water);
+    check(&mut p, world, t, water, lifted.is_some());
     Some(p)
+}
+
+/// The height of the water surface over the floor of a tank at `level`: 16 per level.
+fn water_height(level: u32) -> i32 {
+    i32::try_from(level).unwrap_or(i32::MAX).saturating_mul(16)
+}
+
+/// The tank point (unit placing 5.1): from the ground point under the pointer, step toward the
+/// viewer by 32 world units on each axis, 48 times (the start is step 0), and keep the last point
+/// over a tank whose floor, projected at the tile's elevation, lies below the pointer's row by
+/// exactly the water level in steps: `(floor row - pointer row) / step`, truncated toward zero.
+/// So the pointer is at the water surface or less than one step above it. A step is 16 rows at
+/// normal zoom, `16 * zoom` above it and `16 / -zoom` below.
+fn tank_point(
+    world: &World,
+    view: u8,
+    ground: (i32, i32),
+    row: i64,
+    zoom: i32,
+) -> Option<(i32, i32)> {
+    let (a, b) = [(0, 1), (1, 0), (0, -1), (-1, 0)][usize::from(view % 4)];
+    let step = match zoom {
+        ..=-2 => (16 / i64::from(zoom).abs()).max(1),
+        2.. => 16 * i64::from(zoom),
+        _ => 16,
+    };
+    let mut found = None;
+    for k in 0..TANK_STEPS {
+        let x = ground.0.saturating_add(32 * k * (a - b));
+        let y = ground.1.saturating_add(32 * k * (a + b));
+        let Some(t) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
+            continue;
+        };
+        let Some(tank) = world.tank_at(t).and_then(|id| world.tank(id)) else {
+            continue;
+        };
+        let floor = world.zoo.tiles[t].elevation.saturating_mul(16);
+        let floor_row = zoom_view(zoom, project(view, x, y, floor)).1;
+        if (floor_row - row) / step == i64::from(tank.level) {
+            found = Some((x, y));
+        }
+    }
+    found
 }
 
 /// The footprint of the type in quarters, along the axes of the map for the facing.
@@ -134,6 +236,10 @@ fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))
         if shape.kind != Kind::Unit || !on.is_some_and(|on| tiles.contains(&on)) {
             continue;
         }
+        // The unit the player carries is off the map (8.2).
+        if world.is_carried(c.id) {
+            continue;
+        }
         let (fx, fy) = shape.footprint;
         let rect = match c.rotation % 4 {
             0 => (fx, fy),
@@ -151,9 +257,11 @@ fn lets_through(world: &World, object: usize) -> bool {
     world.shape(object).is_some_and(|s: Shape| s.walkable.0)
 }
 
-/// The checks of 6.1 for an animal that is not crated, or of 6.3 for a staff member, in order.
-fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
+/// The checks of 6.1 for an animal that is not crated, of 6.3 for a staff member or of 6.4 for a
+/// guest, in order. `tanked`: the tank point found a tank, so the unit is in tank mode.
+fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked: bool) {
     let staff = staff::is_staff(t);
+    let guest = t.class == "guests";
     let Some(tile) = world
         .tile_index(p.tile.0, p.tile.1)
         .filter(|&tile| world.in_zoo(tile))
@@ -194,18 +302,20 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
         i64::from((p.x - x).abs()) < i64::from(hx) + i64::from(ox)
             && i64::from((p.y - y).abs()) < i64::from(hy) + i64::from(oy)
     };
-    if !passable || units.iter().any(overlaps) {
+    // A guest wants all four quarters empty, even of walkable objects (6.4).
+    let empty = (0..4).all(|q| world.quadrant(tile, q).is_none());
+    if !(passable || tanked) || (guest && !empty) || units.iter().any(overlaps) {
         fail(p, None);
     }
-    // Flat, or raised along one side only, unless the animal is small.
-    if !staff && fx * fy >= 4 && !path_shape(world.zoo.tiles[tile].shape) {
+    // Flat, or raised along one side only: always for a guest, for an animal unless it is small.
+    if (guest || !staff && fx * fy >= 4) && !path_shape(world.zoo.tiles[tile].shape) {
         fail(p, None);
     }
     let wet = water
         .get(usize::from(world.zoo.tiles[tile].terrain))
         .copied()
         .unwrap_or(false);
-    if wet && !swims {
+    if wet && !swims && !guest {
         let message = if only { NEEDS_WATER } else { NOT_ON_WATER_UNIT };
         fail(p, (!staff).then_some(message));
     }
@@ -222,12 +332,14 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
     }
     // It stands in an exhibit.
     let region = world.exhibits().region(tile);
-    if !staff && region.is_none_or(|r| r == GROUNDS) {
+    if !staff && !guest && region.is_none_or(|r| r == GROUNDS) {
         fail(p, Some(if only { NEEDS_WATER } else { IN_AN_EXHIBIT }));
     }
     let tank = world.tank_at(tile);
     if let Some(id) = tank {
-        if let Some(message) = tank_message(world, id, tile, t) {
+        // The tank check runs on a place that is still valid (6.1 step 3).
+        let message = tank_message(world, id, tile, t).filter(|_| p.verdict == Verdict::Valid);
+        if let Some(message) = message {
             fail(p, Some(message));
         }
     } else if only {
@@ -244,42 +356,45 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool]) {
         }
     }
     // Without the tank point a tank tile is never valid.
-    if tank.is_some() {
+    if tank.is_some() && !tanked {
         fail(p, None);
     }
 }
 
-/// The message of the tank check of 6.5 for an animal on `tile` of tank `id`: the last row that
-/// applies.
+/// The tile inside the gate of tank `id`, where its ladder and platform are.
+fn gate_inside(world: &World, id: u32) -> Option<usize> {
+    let (g, side) = world.gate_slot(id)?;
+    match world.tank_at(g) == Some(id) {
+        true => Some(g),
+        false => world.neighbour(g, side),
+    }
+}
+
+/// The message of the tank check of 6.5 for a unit on `tile` of tank `id`: the first row of the
+/// table that applies, in the table's order.
 fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i32> {
     let tank = world.tank(id)?;
-    let flag = |key: &str| number(t, key) == Some(1.0);
-    let (under, staff) = (flag("cUnderwater"), staff::is_staff(t));
-    let inside = world
-        .gate_slot(id)
-        .and_then(|(g, side)| match world.tank_at(g) == Some(id) {
-            true => Some(g),
-            false => world.neighbour(g, side),
-        });
+    let under = number(t, "cUnderwater") == Some(1.0);
     let depth = number(t, "cDepth").unwrap_or(0.0);
-    let mut message = None;
-    // Only a keeper stands at the ladder; the filled tank and the depth are an animal's.
-    if inside == Some(tile) && t.class != "keeper" {
-        message = Some(LADDER);
+    // Only a keeper stands at the ladder.
+    if gate_inside(world, id) == Some(tile) && t.class != "keeper" {
+        return Some(LADDER);
     }
-    if under && !staff && (!tank.filled || tank.level < 1) {
-        message = Some(NEEDS_WATER);
+    // The filled tank and the depth are an animal's.
+    if is_animal(t) && under && (!tank.filled || tank.level < 1) {
+        return Some(NEEDS_WATER);
     }
-    if depth > tank.level as f32 {
-        message = Some(DEEPER);
+    if is_animal(t) && depth > tank.level as f32 {
+        return Some(DEEPER);
     }
     if !under {
-        message = Some(if staff { NOT_FOR_STAFF } else { NOT_IN_TANKS });
+        return Some(if staff::is_staff(t) {
+            NOT_FOR_STAFF
+        } else {
+            NOT_IN_TANKS
+        });
     }
-    if tank.show && plain(t, "cShow") != Some(1.0) {
-        message = Some(NOT_FOR_SHOWS);
-    }
-    message
+    (tank.show && plain(t, "cShow") != Some(1.0)).then_some(NOT_FOR_SHOWS)
 }
 
 /// The default name of a new unit of the type, `text` being the type's name: with
@@ -374,6 +489,101 @@ pub fn crate_spot(world: &World, start: usize) -> Option<usize> {
         }
     }
     best.map(|(_, t)| t)
+}
+
+/// A unit the player holds (unit placing 8.2): which one, its type, and where it stood, which way
+/// it faced and how the view was turned, for the facing it keeps and for cancelling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Carry {
+    pub id: u32,
+    /// The type, a position in the catalogue.
+    pub ty: usize,
+    pub from: (i32, i32, i32),
+    pub facing: u32,
+    pub view: u8,
+}
+
+/// Picks the unit `id` up (unit placing 8.2): it is taken off the map, stops everything (its move,
+/// its behaviour set and its animation, the goals being the goal issues') and is marked carried,
+/// so its update is suspended; the exhibit it left is marked for a new rating. `None` when `id` is
+/// no unit, is carried already, or its type is not moveable (`cMoveable` 0).
+pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<Carry> {
+    let at = world.find(id)?;
+    let e = &world.zoo.entities[at];
+    let c = e.common.as_ref()?;
+    let ty = cat.position(&e.class, e.type_name.as_bytes(), e.subtype.as_bytes())?;
+    if number(&cat.types[ty], "cMoveable") == Some(0.0) || world.units.get(id)?.carried {
+        return None;
+    }
+    let carry = Carry {
+        id,
+        ty,
+        from: (c.x, c.y, c.z),
+        facing: c.rotation,
+        view,
+    };
+    let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+    world.lift_unit(at);
+    if let Some(t) = tile {
+        world.mark_rating(t);
+    }
+    world.zoo.entities[at].common.as_mut()?.movement_mode = 0;
+    let unit = world.units.get_mut(id)?;
+    unit.carried = true;
+    unit.moving = false;
+    unit.destination = None;
+    unit.path.clear();
+    unit.travel = -1;
+    (unit.through_building, unit.aborted) = (false, false);
+    unit.runner = Runner::default();
+    unit.animation = Animation::default();
+    unit.events.clear();
+    Some(carry)
+}
+
+/// The tank mode a unit has where it is put down on `tile` (tank fauna 4): at the surface of a
+/// tank with water in it (3), under water for a species that lives only there (4), else dry; the
+/// tile inside the gate is dry. Its height is the pending unit's.
+fn tank_mode(world: &World, tile: usize, ty: &EntityType) -> u32 {
+    let tank = world.tank_at(tile);
+    match tank.and_then(|id| world.tank(id)) {
+        Some(t) if t.level >= 1 && tank.and_then(|id| gate_inside(world, id)) != Some(tile) => 3,
+        _ if number(ty, "cOnlyUnderwater") == Some(1.0) => 4,
+        _ => 0,
+    }
+}
+
+/// Puts the carried unit `id` down at `point` facing `facing` (unit placing 8.4 and 8.6; the
+/// caller has judged the place): it is added to the map again, takes the tank mode of its tile,
+/// is no longer carried, and the exhibit of the tile is marked for a new rating. Its home is the
+/// exhibit it stands in; the goals then start anew at its next update. `false` when the unit is
+/// gone or not carried.
+pub fn put_down(
+    world: &mut World,
+    ty: &EntityType,
+    id: u32,
+    point: (i32, i32, i32),
+    facing: u32,
+) -> bool {
+    let (Some(at), true) = (
+        world.find(id),
+        world.units.get(id).is_some_and(|u| u.carried),
+    ) else {
+        return false;
+    };
+    let Some(tile) = world.tile_index(point.0.div_euclid(64), point.1.div_euclid(64)) else {
+        return false;
+    };
+    world.place_unit(at, point, facing);
+    let mode = tank_mode(world, tile, ty);
+    if let Some(c) = world.zoo.entities[at].common.as_mut() {
+        c.movement_mode = mode;
+    }
+    if let Some(unit) = world.units.get_mut(id) {
+        unit.carried = false;
+    }
+    world.mark_rating(tile);
+    true
 }
 
 #[cfg(test)]

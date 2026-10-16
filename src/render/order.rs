@@ -342,7 +342,7 @@ impl Scene {
         );
         let obj = &mut self.objects[o];
         (obj.x, obj.y, obj.z, obj.facing) = (x, y, z, facing);
-        if obj.kind == Kind::Unit && from != to {
+        if obj.kind == Kind::Unit && (from != to || !self.placed[o]) {
             if let Some(f) = from {
                 self.list[f].retain(|&u| u != o);
             }
@@ -351,6 +351,15 @@ impl Scene {
                 self.list[t].push(o);
             }
         }
+    }
+
+    /// Takes unit object `o` off the map: it is on no tile list and is not painted, until
+    /// [`Scene::move_unit`] puts it down.
+    pub fn lift_unit(&mut self, o: usize) {
+        if let Some(t) = self.tile_at(self.objects[o].x, self.objects[o].y) {
+            self.list[t].retain(|&u| u != o);
+        }
+        self.placed[o] = false;
     }
 
     /// Takes the quadrants of the footprint, all or none: it wants the `fx * fy` quadrants

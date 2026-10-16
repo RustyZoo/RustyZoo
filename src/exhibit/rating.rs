@@ -737,6 +737,10 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
         let (Some(c), "animals") = (&entity.common, entity.class.as_str()) else {
             continue;
         };
+        // A carried animal has left the tiles' lists, so it counts in no exhibit (8.2).
+        if world.is_carried(c.id) {
+            continue;
+        }
         let (x, y) = (i64::from(c.x.div_euclid(64)), i64::from(c.y.div_euclid(64)));
         let t = (y >= 0 && x >= 0 && x < width).then(|| (y * width + x) as usize);
         if let Some((t, ty)) = t.filter(|&t| inside.get(t) == Some(&true)).zip(kind(e)) {

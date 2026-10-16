@@ -192,7 +192,11 @@ usage: rustyzoo [--data <dir>] <command>
                       side S id N` for a fence, `id N name=NAME` for an animal of the Adopt panel (the bulldozer sells one) or a staff member of the Hire panel (the bulldozer fires one, after a question that names the salary, and refunds nothing; `money book CATEGORY PRICE` tells where the price went), `tool turn STEP` for a type that turns by
                       itself, the placement sound), one that is not valid or too dear asks for the
                       refusal sound and shows its message, if it has one, in the message line for
-                      5 seconds (`tool message ID`; `tool refused` when it has none). The bulldozer button (1028) of the main panel
+                      5 seconds (`tool message ID`; `tool refused` when it has none). With no tool, a click on a unit
+                      selects it (`tool select ID`) and a click on the selected one picks it up (`world carry ID`):
+                      it follows the pointer at $0 with the checks of a new unit, a release on a valid place
+                      puts it down (`world drop ID X,Y`, `home N` for an animal in an exhibit), Escape, the
+                      right button or choosing an item puts it back (`world putback ID X,Y`). The bulldozer button (1028) of the main panel
                       and the Delete key make the bulldozer the tool (`tool bulldozer on`, off
                       again by the same, Escape or the right button): the object under the pointer
                       is tinted red with its refund next to the pointer (`tool bulldoze CLASS/TYPE/

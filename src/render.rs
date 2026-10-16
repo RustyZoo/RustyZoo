@@ -146,6 +146,8 @@ pub struct Extra {
     pub marks: Vec<Mark>,
     /// The animation and frame the units hold; a unit that is not here shows its idle animation.
     pub shown: Vec<Shown>,
+    /// Entities (ids) that are in the zoo but not drawn: the unit the player carries.
+    pub hidden: Vec<u32>,
 }
 
 /// The animation and frame a unit of the zoo holds.
@@ -874,6 +876,9 @@ impl<'a> MapRenderer<'a> {
             };
             let kind = Kind::of_class(&entity.class);
             if no_units && matches!(kind, Kind::Unit | Kind::Overlay) {
+                continue;
+            }
+            if extra.hidden.contains(&c.id) {
                 continue;
             }
             let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();

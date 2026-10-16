@@ -726,6 +726,9 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
         let Some(com) = e.common.as_ref().filter(|_| e.class == "animals") else {
             continue;
         };
+        if world.is_carried(com.id) {
+            continue;
+        }
         let tile = world.tile_index(com.x.div_euclid(64), com.y.div_euclid(64));
         let Some(region) = tile.and_then(|t| world.exhibits().region(t)) else {
             continue;
