@@ -321,7 +321,9 @@ usage: rustyzoo [--data <dir>] <command>
                       placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
                       simulated time, and `unit tile ID X,Y`, `unit enter ID EXHIBIT`, `unit face ID DIRECTION` and
                       `unit abort ID` when a unit walks (it enters a tile or another exhibit, turns, or is refused its next
-                      step). An animal adds `animal status ID HAPPINESS HUNGER ENERGY HEALTH` (the
+                      step). A unit's goals log `unit goal ID TASK MODE TARGET TILE` when its task changes (the task
+                      by the original's name, `-` for none) and `unit job ID JOB` when its job does; an idle unit wanders
+                      (task `random`), and a guest stands between two walks. An animal adds `animal status ID HAPPINESS HUNGER ENERGY HEALTH` (the
                       values after the update of that tick) and `animal message STRING ID` for a message it
                       posts and `animal trample ID X,Y` for a tile it tramples. Each unit runs a behaviour set
                       after its move and animation: an animal
@@ -332,7 +334,7 @@ usage: rustyzoo [--data <dir>] <command>
                       its definition's [Sounds] names; a window plays it as a positional one-shot at the unit and prints
                       `pass N t=MS sound unit ID FILE at X,Y sum S pan P` with `started`, `continued`, `too far` or `failed`); the map shows the animation and frame each unit holds.
                       The move calls, the faces and the effects on other entities are done at once with no
-                      effect until their issues, and a guest's or staff member's routine never ends. --rows ID N (repeatable) fills the list box ID
+                      effect until their issues, and a routine call is done when the unit's play state is ready (the goals run every step anyway). --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a
                       text and --ask ID BUTTONS opens the question layout ID (45000 is
                       confirm.lyt) with some of the buttons yes, no, ok, cancel, comma

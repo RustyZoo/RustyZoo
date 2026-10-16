@@ -5,9 +5,12 @@ use crate::sim::Sim;
 use crate::unit::testing::{centre, entity, world, world_with};
 use crate::zoo::Clocks;
 
-/// A 40 by 30 map with these entities.
+/// A 40 by 30 map with these entities. The units are quiet: their goals leave the paths and the
+/// moves of the tests alone.
 fn map(entities: Vec<crate::zoo::Entity>) -> World {
-    world((40, 30), |_, e| e.extend(entities))
+    let mut w = world((40, 30), |_, e| e.extend(entities));
+    crate::goal::quiet(&mut w);
+    w
 }
 
 fn sim() -> Sim {
@@ -310,6 +313,7 @@ fn a_walker_stands_on_the_ground_and_a_carried_unit_does_not_move() {
         e.push(entity("animals", "", 1, (5 * 64 + 40, 5 * 64 + 32), 2));
         e.push(entity("animals", "", 2, (5 * 64 + 40, 8 * 64 + 32), 2));
     });
+    crate::goal::quiet(&mut w);
     let mut s = sim();
     // The first step puts a unit that stands too low on the ground (16 per elevation step).
     step_all(&mut w, &mut s, &[67]);
@@ -377,6 +381,7 @@ fn a_unit_entering_an_exhibit_through_its_gate_tells_the_exhibit() {
         zoo.habitat_tiles = vec![(10, 10)];
         zoo.habitat_gates = vec![((11, 10), 0)];
     });
+    crate::goal::quiet(&mut w);
     let mut s = sim();
     let exhibit = w.exhibits().region(w.tile_index(11, 11).unwrap()).unwrap();
     let to = [(11, 9), (11, 10), (11, 11)];

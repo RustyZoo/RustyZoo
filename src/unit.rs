@@ -31,6 +31,7 @@ use crate::animal::Class;
 use crate::behaviour::{Animation, Data, Env, Heard, Note, Runner};
 use crate::config::Config;
 use crate::entity::Catalogue;
+use crate::goal::Goals;
 use crate::path::{self, Finder, Mover, Settings};
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
@@ -146,6 +147,8 @@ pub struct Unit {
     pub animation: Animation,
     /// The set the unit runs, which plays animations.
     pub runner: Runner,
+    /// The goal record and the objects built from it (goals).
+    pub goal: Goals,
     /// Milliseconds since the last status tick, started at `id % period`.
     pub status_timer: i32,
     /// While above 0 the unit runs no behaviour and no goal.
@@ -183,6 +186,7 @@ impl Unit {
             mover: Mover::new(kind.mover(), None),
             animation: Animation::default(),
             runner: Runner::default(),
+            goal: Goals::default(),
             status_timer: 0,
             wait: 0,
             events: Vec::new(),
@@ -215,6 +219,8 @@ pub struct Units {
     index: HashMap<u32, usize>,
     /// The status period (`[AI] mStatusPeriod`) new units start their timers from.
     period: i32,
+    /// The AI clock in whole ticks, which the goals stamp their start with; set by the step.
+    pub ai_ticks: u32,
     /// The path finder with its settings and its list of unreachable places.
     pub finder: Finder,
     /// The keys of `animals.ai` that every animal reads.
@@ -233,6 +239,7 @@ impl Default for Units {
             list: Vec::new(),
             index: HashMap::new(),
             period: 1000,
+            ai_ticks: 0,
             finder: Finder::default(),
             class: Class::default(),
             lines: Vec::new(),
@@ -302,6 +309,11 @@ impl Units {
     /// The sounds asked for since the last call: the unit and the sound its `[Sounds]` names.
     pub fn take_sounds(&mut self) -> Vec<(u32, Heard)> {
         std::mem::take(&mut self.sounds)
+    }
+
+    /// Adds a line to the `unit` log.
+    pub(crate) fn note(&mut self, line: String) {
+        self.lines.push(line);
     }
 
     pub(crate) fn tell(&mut self, line: String) {
@@ -374,7 +386,7 @@ impl Units {
             }
             h.word(u.travel as u32);
             h.word(u32::from(u.through_building) | u32::from(u.aborted) << 1);
-            h.bytes(format!("{:?}{:?}", u.animation, u.runner).as_bytes());
+            h.bytes(format!("{:?}{:?}{:?}", u.animation, u.runner, u.goal).as_bytes());
             h.word(u.status_timer as u32);
             h.word(u.wait as u32);
             h.word(
@@ -472,7 +484,7 @@ pub trait Hooks {
 }
 
 /// The hooks of the game: the move, the animation and the behaviour set from the data, the
-/// animals' status work and the common part of the goal update.
+/// animals' status work and the goals.
 pub struct Standard<'a> {
     pub data: &'a dyn Data,
 }
@@ -482,6 +494,8 @@ impl Standard<'_> {
     fn tell(&self, unit: &mut Unit, world: &mut World, at: usize) {
         for note in std::mem::take(&mut unit.animation.notes) {
             match note {
+                // The routine set ends in the step it starts and starts again in the next one.
+                Note::Set(name) if name == "bZooRoutine" => {}
                 Note::Set(name) => world.units.lines.push(format!("set {} {name}", unit.id)),
                 Note::Anim(name) => world.units.lines.push(format!("anim {} {name}", unit.id)),
                 Note::Sound(key) => {
@@ -544,9 +558,8 @@ impl Hooks for Standard<'_> {
         }
     }
     fn goals(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-        // The kind's own goal work comes first, then this, then the current goal's update and
-        // the sub-goals.
-        off_zoo(unit, world, ctx, at);
+        crate::goal::update(unit, world, ctx, at, self.data);
+        self.tell(unit, world, at);
     }
 }
 
@@ -556,23 +569,6 @@ fn ambient_key(unit: &Unit) -> i32 {
     match &unit.part {
         Part::Animal(a) => a.happiness,
         _ => 0,
-    }
-}
-
-/// The common part of every unit's goal update (simulation 6.6): one draw, and one time in 15 a
-/// unit that stands outside the zoo is removed. (The unit standing on the footprint of a building
-/// is sent out of it by the building issue.)
-fn off_zoo(unit: &Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-    if ctx.rng.pick(15) != 0 {
-        return;
-    }
-    let inside = world.zoo.entities[at]
-        .common
-        .as_ref()
-        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
-        .is_some_and(|t| world.in_zoo(t));
-    if !inside {
-        ctx.remove(world, unit.id);
     }
 }
 

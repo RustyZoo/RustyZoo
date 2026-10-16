@@ -7,14 +7,14 @@
 //! its parent's current call, and a failed call ends the whole chain. What a set needs of the
 //! data comes through [`Data`].
 //!
-//! Until the move, goal and animal issues land, the calls that belong to them (moves, the faces,
-//! the effects on other entities, `fDie`, ...) are done at once with no effect, and the
-//! routines of guests and staff never finish, as the specification allows (5.6); a nested
-//! terrain or tank set is the land one.
+//! Until the move and animal issues land, the calls that belong to them (moves, the faces,
+//! the effects on other entities, `fDie`, ...) are done at once with no effect; a routine call
+//! is done when the play state is ready and the unit's goals (which run every step) do the rest;
+//! a nested terrain or tank set is the land one.
 
 use std::collections::VecDeque;
 
-use super::{Call, Number, Op, Play, Row};
+use super::{Call, Number, Op, Play, Routine, Row};
 use crate::sim::Rng;
 use crate::zoo::Entity;
 
@@ -502,11 +502,23 @@ impl Runner {
             Op::PlaySetTerrain { land: name, .. } | Op::PlaySetTank { land: name, .. } => {
                 return self.nest_call(env, name);
             }
-            Op::Routine(_)
-            | Op::KeepControl
-            | Op::Spray
-            | Op::FaceDirection
-            | Op::TargetBuilding => {
+            Op::Routine(routine) => {
+                // The goals run every step anyway (goals 6.3): the call is done when the play
+                // state is ready. A call for another class of unit does nothing; the keeper's
+                // fails (behaviours 5.5).
+                let own = match routine {
+                    Routine::Keeper => "keeper",
+                    Routine::Guest => "guests",
+                    Routine::Guide => "tour",
+                    Routine::Maint => "maint",
+                };
+                if env.unit.class != own {
+                    return *routine != Routine::Keeper;
+                }
+                self.chain[k].done = self.ready;
+                return true;
+            }
+            Op::KeepControl | Op::Spray | Op::FaceDirection | Op::TargetBuilding => {
                 return true;
             }
             Op::Fail => return false,

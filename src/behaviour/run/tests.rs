@@ -235,6 +235,26 @@ fn the_calls_of_the_other_issues_are_done_at_once_or_never() {
 }
 
 #[test]
+fn a_routine_call_is_done_for_its_own_class_and_the_keepers_fails_for_others() {
+    // (class, call, done, still running): the other classes' calls do nothing and stay.
+    for (class, call, done, running) in [
+        ("guests", "fGuestRoutine()", true, false),
+        ("keeper", "fKeeperRoutine()", true, false),
+        ("tour", "fGuideRoutine()", true, false),
+        ("maint", "fMaintRoutine()", true, false),
+        ("animals", "fGuestRoutine()", false, true),
+        ("guests", "fMaintRoutine()", false, true),
+        ("guests", "fKeeperRoutine()", false, false),
+    ] {
+        let mut rig = Rig::new(&[("bAmbient", &[call, "fPlay(d)"])]);
+        rig.unit.class = class.into();
+        rig.tick(100);
+        assert_eq!(rig.tick(100).0 == "d", done, "{class} {call}");
+        assert_eq!(rig.runner.running(), running, "{class} {call}");
+    }
+}
+
+#[test]
 fn a_weighted_set_is_drawn_as_the_original_draws_it() {
     let sets = [
         ("bAmbient", &["fPlaySetProb(bX,20,bY,50,bZ,30)"][..]),

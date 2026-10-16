@@ -380,6 +380,7 @@ impl Sim {
         for id in std::mem::take(&mut self.removals) {
             world.unrecorded(|w| w.remove(id));
         }
+        world.units.ai_ticks = self.ai_ticks;
         let count = world.zoo.entities.len();
         for at in 0..count {
             // Read again at each index, as the original does.
