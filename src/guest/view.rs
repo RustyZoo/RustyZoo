@@ -284,12 +284,8 @@ pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, ti
     let Some(s) = sight else {
         return;
     };
-    // The calendar runs 7,200 seconds for each simulated second; the unit is 100 ns.
-    let t = world
-        .units
-        .now
-        .saturating_sub(g.viewed_at)
-        .saturating_mul(72_000_000);
+    // The calendar's milliseconds (it runs 7,200 times faster than the play) in units of 100 ns.
+    let t = (world.units.now.saturating_sub(g.viewed_at)).saturating_mul(10_000);
     let factor = f64::from(world.units.donation_factor);
     let d = (t as f64 * factor * f64::from(s.average) * 0.01).min(10.0) as f32;
     let give = s.animals > 0 && s.sick == 0 && s.crowd < 50 && d > 0.0;

@@ -210,7 +210,7 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
         ..Guest::default()
     };
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
-    w.units.now = 29_000;
+    w.units.now = 201_601_000;
     leave_area(&mut g, 1, &mut w, &cat, Some(55));
     // 28 s of play are 201,600 calendar seconds; the average happiness is 50.
     let x = w.exhibits().get(1).unwrap();
@@ -227,7 +227,7 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
     // A long view is capped at 10; a sick animal in view, or a view of nothing, gives none.
     w.units.donated.clear();
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
-    w.units.now = u64::MAX / 100_000_000;
+    w.units.now = u64::MAX / 1000;
     leave_area(&mut g, 1, &mut w, &cat, Some(55));
     assert_eq!(w.units.donated, [10.0]);
     let mut sick = pen(&[40, 60]);
@@ -236,7 +236,7 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
         ..Animal::default()
     });
     sick.units.donation_factor = 4.1108e-13;
-    sick.units.now = 29_000;
+    sick.units.now = 201_601_000;
     g.va = lookup(&mut sick, &cat, Some(55), &mut rng);
     leave_area(&mut g, 1, &mut sick, &cat, Some(55));
     assert!(sick.units.donated.is_empty());
@@ -246,7 +246,7 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
     );
     // Negative happiness gives nothing, and a guest with no area changes nothing.
     let mut sad = pen(&[-50]);
-    (sad.units.donation_factor, sad.units.now) = (4.1108e-13, 29_000);
+    (sad.units.donation_factor, sad.units.now) = (4.1108e-13, 201_601_000);
     g.va = lookup(&mut sad, &cat, Some(55), &mut rng);
     leave_area(&mut g, 1, &mut sad, &cat, Some(55));
     assert!(sad.units.donated.is_empty());

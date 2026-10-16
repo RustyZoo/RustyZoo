@@ -886,3 +886,33 @@ fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
     ));
     assert_eq!(pick_up(&mut w, &still, id, 0), None);
 }
+
+#[test]
+fn a_guest_put_down_has_lost_its_wish_to_leave() {
+    let cat = catalogue();
+    let mut w = world(vec![entity_at(
+        "guests",
+        "guest",
+        "m",
+        3 * 64 + 32,
+        3 * 64 + 32,
+        0,
+    )]);
+    let id = w.zoo.entities[0].common.as_ref().unwrap().id;
+    let Some(crate::unit::Part::Guest(g)) = w.units.get_mut(id).map(|u| &mut u.part) else {
+        panic!("a guest");
+    };
+    g.leave = true;
+    pick_up(&mut w, &cat, id, 0).unwrap();
+    assert!(put_down(
+        &mut w,
+        &cat.types[GUEST],
+        id,
+        (4 * 64, 4 * 64, 0),
+        0
+    ));
+    let Some(crate::unit::Part::Guest(g)) = w.units.get(id).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert!(!g.leave);
+}

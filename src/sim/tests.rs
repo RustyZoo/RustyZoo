@@ -589,7 +589,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     };
     let base = guest(&|_| {});
     let date = crate::timing::Calendar::new().date();
-    let changes: [&dyn Fn(&mut crate::guest::Guest); 12] = [
+    let changes: [&dyn Fn(&mut crate::guest::Guest); 17] = [
         &|g| g.values[3] = 1,
         &|g| g.values[0] = 1,
         &|g| g.pending[4] = 1,
@@ -602,6 +602,11 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         &|g| g.arrived = Some(date),
         &|g| g.speed_offset = 1,
         &|g| g.sick = true,
+        &|g| g.seen = vec![3],
+        &|g| g.seen_count = 1,
+        &|g| g.recent = vec![5003],
+        &|g| g.va = Some(0),
+        &|g| g.viewed_at = 1,
     ];
     let hashes: Vec<u64> = changes.iter().map(|c| guest(c)).collect();
     assert!(hashes.iter().all(|&h| h != base), "{hashes:?}");
@@ -838,4 +843,32 @@ fn a_load_ends_with_a_rating_check_that_restarts_only_the_rating_timer() {
     assert_eq!(run.sim.status.rating, 25);
     assert_eq!(run.sim.status.timers, [0, 7, 9]);
     assert_eq!(run.money.total[crate::money::RATING], 25.0);
+}
+
+#[test]
+fn the_hash_follows_the_statistics_of_an_exhibit() {
+    let hash = |change: &dyn Fn(&mut crate::exhibit::Stats)| {
+        let mut w = world(0);
+        let part = crate::exhibit::Part {
+            tiles: vec![5],
+            grounds: false,
+        };
+        let id = w.exhibits_mut().add(&part, String::new());
+        change(&mut w.exhibits_mut().get_mut(id).unwrap().stats);
+        let run = Run::new((b"", b""), own(), w, Money::default(), 1);
+        run.hash()
+    };
+    let base = hash(&|_| {});
+    let changes: [&dyn Fn(&mut crate::exhibit::Stats); 5] = [
+        &|s| s.popularity = 1,
+        &|s| s.viewing = 1,
+        &|s| s.donations[1] = 1.0,
+        &|s| s.donations[2] = 1.0,
+        &|s| s.upkeep[0] = 1.0,
+    ];
+    let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
+    assert!(hashes.iter().all(|&h| h != base));
+    hashes.sort_unstable();
+    hashes.dedup();
+    assert_eq!(hashes.len(), changes.len());
 }

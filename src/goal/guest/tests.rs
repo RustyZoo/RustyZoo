@@ -47,12 +47,16 @@ fn sim() -> Sim {
     sim
 }
 
-/// A guest type whose set `bWalk` ends at once.
-struct Walks(Vec<Call>);
+/// A guest type whose set `bWalk` ends at once and whose set `bGawk` never does.
+struct Walks(Vec<Call>, Vec<Call>);
 
 impl Data for Walks {
     fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
-        (name == "bWalk").then_some(&self.0[..])
+        match name {
+            "bWalk" => Some(&self.0[..]),
+            "bGawk" => Some(&self.1[..]),
+            _ => None,
+        }
     }
     fn ambient(&self, _: &crate::zoo::Entity, _: usize) -> &[Row] {
         &[]
@@ -73,7 +77,8 @@ impl Data for Walks {
 }
 
 fn walks() -> Walks {
-    Walks(vec![parse_call(b"fWalk(0,0)").unwrap().0])
+    let call = |text: &[u8]| parse_call(text).unwrap().0;
+    Walks(vec![call(b"fWalk(0,0)")], vec![call(b"fKeepControl()")])
 }
 
 /// Runs `n` steps with the cash `money`; the `unit` and `guest` lines.
@@ -264,4 +269,196 @@ fn without_an_entrance_the_guest_walks_at_random_and_keeps_its_flag() {
     assert!(log.contains(&"set 1 bWalk".to_string()), "{log:?}");
     assert!(flag(&w), "the walk is no walk to the entrance");
     assert!(!log.contains(&"guest leave 1".to_string()));
+}
+
+/// The keys of a guest that matter here, with a certain leave once everything is seen.
+const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\n\
+    cLeaveChanceDone=100\ncGawkTime=10\ncGawkTime=15\ncGawkTime=25\ncGawkTime=35\ncGawkTime=45\n";
+
+fn types() -> Catalogue {
+    let ty = |class, name: &str, text: &str, name_id| crate::entity::EntityType {
+        class,
+        type_name: name.as_bytes().to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(text.as_bytes()).unwrap(),
+        )),
+        name_id,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = Catalogue::default();
+    cat.push(ty("guests", "man", MAN, 9503));
+    cat.push(ty("animals", "zebra", "", 5));
+    cat
+}
+
+/// A zebra pen round (2, 5) with a path beside it along x = 5 and guest 1 at (8, 2), whose
+/// countdowns are far from firing.
+fn visit(happiness: i32) -> World {
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entrance = (9, 5);
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((8, 2)), 0));
+        for i in 0..3 {
+            for (at, d) in [
+                ((1 + i, 4), 0),
+                ((1 + i, 6), 4),
+                ((1, 4 + i), 6),
+                ((3, 4 + i), 2),
+            ] {
+                let id = 100 + zoo.entities.len() as u32;
+                zoo.entities.push(entity("fences", "", id, centre(at), d));
+            }
+            zoo.entities.push(entity(
+                "paths",
+                "stone",
+                200 + i as u32,
+                centre((5, 4 + i)),
+                0,
+            ));
+        }
+        zoo.entities
+            .push(entity("animals", "zebra", 10, centre((2, 5)), 0));
+    });
+    let animal = crate::animal::Animal {
+        happiness,
+        ..Default::default()
+    };
+    let zebra = w.units.get_mut(10).unwrap();
+    (zebra.part, zebra.started, zebra.repositioning) = (Part::Animal(animal), true, true);
+    w.units.get_mut(1).unwrap().part = Part::Guest(Guest {
+        countdowns: [1000; 11],
+        saw_animal: 1000,
+        ..Guest::default()
+    });
+    w
+}
+
+/// Runs `n` steps of 67 ms in a game of `types()`; the `unit` and `guest` lines.
+fn visit_run(w: &mut World, n: usize) -> Vec<String> {
+    let (mut s, mut money, cat) = (sim(), Money::default(), types());
+    let mut log = Vec::new();
+    for _ in 0..n {
+        s.step_game(&walks(), &cat, w, &mut money, 67, |_, _, _| {});
+        log.extend(w.units.take_lines());
+        log.extend((w.units.take_guest_lines().into_iter()).map(|l| format!("guest {l}")));
+    }
+    log
+}
+
+#[test]
+fn a_guest_goes_to_the_exhibit_it_has_not_seen_views_it_and_leaves_when_all_is_seen() {
+    let mut w = visit(50);
+    let log = visit_run(&mut w, 4000);
+    let at = |text: &str| log.iter().position(|l| l.starts_with(text));
+    let order: Vec<_> = [
+        "goal 1 site 4",
+        "goal 1 habitat 0",
+        "goal 1 gawk 0",
+        "guest view 1 1",
+        "guest donate 1 1",
+        "goal 1 leave 1",
+        "guest leave 1",
+    ]
+    .iter()
+    .map(|t| at(t))
+    .collect();
+    assert!(
+        order.iter().all(Option::is_some) && order.is_sorted(),
+        "{order:?} {log:?}"
+    );
+    // It walked to a tile of the path, and viewed once.
+    let walked = log.iter().filter(|l| l.starts_with("tile 1 5,")).count();
+    assert!(walked >= 1, "{log:?}");
+    // The first guest only: the new guest check lets others in.
+    assert_eq!(
+        log.iter()
+            .filter(|l| l.starts_with("guest view 1 "))
+            .count(),
+        1
+    );
+    assert!(w.units.get(1).is_none(), "removed at the entrance");
+    // The exhibit got the time and the donation.
+    let stats = &w.exhibits().list()[0].stats;
+    assert!(stats.viewing > 0 && stats.donations[2] > 0.0, "{stats:?}");
+}
+
+#[test]
+fn viewing_lasts_by_the_average_happiness_of_the_exhibit() {
+    // 25 to 30 seconds for an average of 50 (guests visit 5.3), 15 to 20 for -20.
+    for (happiness, seconds) in [(50, 25..=30), (-20, 15..=20), (90, 45..=50), (-90, 10..=10)] {
+        let mut w = visit(happiness);
+        let log = visit_run(&mut w, 1500);
+        let from = log
+            .iter()
+            .position(|l| l.starts_with("guest view 1 1"))
+            .unwrap();
+        let to = from
+            + log[from..]
+                .iter()
+                .position(|l| l.starts_with("goal 1 none"))
+                .unwrap();
+        let lasted = log[from..to]
+            .iter()
+            .filter(|l| l.starts_with("guest status 1 "))
+            .count();
+        assert!(
+            lasted as i32 >= *seconds.start() && lasted as i32 <= seconds.end() + 1,
+            "{happiness}: {lasted}"
+        );
+    }
+}
+
+#[test]
+fn a_guest_in_an_exhibit_gets_the_exit_task_before_anything_else() {
+    let mut w = map(true);
+    let (mut s, mut money) = (sim(), Money::default());
+    // It wants to leave, but the exit task comes first (ladder point 1 before point 2).
+    let log = run(&mut w, &mut s, &mut money, 3);
+    assert!(
+        log.contains(&"goal 1 exittank 0 - -".to_string()),
+        "{log:?}"
+    );
+    assert!(!log.iter().any(|l| l.contains("leave 1")), "{log:?}");
+    assert!(flag(&w), "the wish to leave stays");
+}
+
+#[test]
+fn a_guest_that_has_seen_everything_forgets_the_count_and_may_decide_to_leave() {
+    let mut w = visit(50);
+    let first = w.exhibits().list()[0].first;
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.seen, g.seen_count) = (vec![first], 3);
+    }
+    let log = visit_run(&mut w, 3);
+    assert!(log.contains(&"goal 1 leave 1 - -".to_string()), "{log:?}");
+    let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert_eq!(
+        (g.seen_count, g.seen.len()),
+        (0, 1),
+        "the count goes, the list stays"
+    );
+    assert!(!log.iter().any(|l| l.starts_with("goal 1 site")));
+}
+
+#[test]
+fn an_exhibit_scores_by_attractiveness_the_favourite_species_and_a_far_tile() {
+    // attractiveness + 500 for the favourite - (1000 - d) / 10 + 100, d at most 990.
+    for (attractiveness, loved, d, score) in [
+        (5, false, 0, 5),
+        (5, false, 9, 6),
+        (5, false, 990, 104),
+        (5, true, 4000, 604),
+    ] {
+        let d = d.min(990);
+        assert_eq!(
+            super::sites::site_score(attractiveness, loved, d),
+            score,
+            "{attractiveness} {loved} {d}"
+        );
+    }
 }

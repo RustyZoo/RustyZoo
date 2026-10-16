@@ -8,6 +8,13 @@ use crate::unit::{Part, movement};
 const APES: [i32; 2] = [5003, 5021];
 const DINOSAURS: [i32; 6] = [5085, 5097, 5098, 5099, 5326, 5327];
 
+/// The score of an exhibit (goals 11.1): its attractiveness, 500 more when it holds the favourite
+/// species, less a tenth of what is left of 1000 after the squared distance `d` (at most 990),
+/// plus 100: the far exhibit wins.
+pub(super) fn site_score(attractiveness: i32, loved: bool, d: i64) -> i64 {
+    i64::from(attractiveness) + 500 * i64::from(loved) - (1000 - d) / 10 + 100
+}
+
 impl Cx<'_, '_> {
     /// Ladder point 10.2 and 10.3: a guest with an exhibit to see takes the site task, mode 4;
     /// with none the seen count goes and `checkLeaveZoo` may send it away. Whether the ladder
@@ -66,9 +73,8 @@ impl Cx<'_, '_> {
             let loved = beasts
                 .iter()
                 .any(|b| b.exhibit == x && Some(b.name) == favourite);
-            let score = i64::from(view::attractiveness(self.world, self.ctx.cat, x))
-                + 500 * i64::from(loved);
-            let score = score - (1000 - d) / 10 + 100;
+            let a = view::attractiveness(self.world, self.ctx.cat, x);
+            let score = site_score(a, loved, d);
             if score > -1 && best.is_none_or(|(s, _)| score > s) {
                 best = Some((score, x));
             }

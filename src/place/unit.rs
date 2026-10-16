@@ -562,6 +562,10 @@ pub fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facing: u32)
     world.place_unit(at, point, facing);
     if let Some(unit) = world.units.get_mut(id) {
         unit.carried = false;
+        // A guest put down has lost its wish to leave (guests 8).
+        if let crate::unit::Part::Guest(g) = &mut unit.part {
+            g.leave = false;
+        }
     }
     crate::unit::swim::put(world, id);
     world.mark_rating(tile);
