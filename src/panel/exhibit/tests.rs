@@ -353,3 +353,80 @@ fn a_tank_shows_the_picture_of_its_water_and_of_its_kind() {
     assert_eq!(icons(false, -3)[3], "exbtank");
     assert_eq!(icons(false, i32::MAX)[0], "exbdirt1");
 }
+
+struct NoWords;
+
+impl crate::ui::draw::Strings for NoWords {
+    fn string(&self, _: i32) -> String {
+        String::new()
+    }
+
+    fn text_entry(&self, _: &[u8]) -> Vec<u8> {
+        vec![]
+    }
+}
+
+#[test]
+fn an_exhibit_that_becomes_current_shows_the_selected_tabs_layout() {
+    use crate::sprite::tests::Install;
+    use crate::ui::layout::Tree;
+    let tab = |id: i32| format!("[t{id}]\ntype=UIButton\nid={id}\nx=0\ny=0\ndx=4\ndy=4\n");
+    let sub = |id: i32| format!("[s{id}]\ntype=UILayout\nlayout=ui/t{id}.lyt\n");
+    let panel = [4310, 4313, 4311, 4312, 4365].map(tab).concat()
+        + &[700, 703, 701, 702, 704].map(sub).concat();
+    let mut files = vec![
+        ("ui/root.lyt", b"[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n".to_vec()),
+        ("ui/p.lyt", format!("[LayoutInfo]\nid=30\nx=0\ny=0\ndx=40\ndy=40\n{panel}").into_bytes()),
+    ];
+    let names = [700, 703, 701, 702, 704].map(|id| format!("ui/t{id}.lyt"));
+    // A sub-layout's contents start hidden, as the shipped ones do: showing it shows them.
+    let bodies = [700, 703, 701, 702, 704].map(|id| {
+        format!("[LayoutInfo]\nid={id}\nx=0\ny=0\ndx=10\ndy=10\n[x]\ntype=UIText\nid={}\nx=0\ny=0\ndx=4\ndy=4\nstate=1\n", id + 9000)
+    });
+    files.extend(
+        names
+            .iter()
+            .zip(&bodies)
+            .map(|(n, b)| (n.as_str(), b.clone().into_bytes())),
+    );
+    let install = Install::new("exhibit-tab-layout", &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = Tree::load(&vfs, "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    let mut ui = Interface::new(tree, Box::new(NoWords));
+    ui.show(LAYOUT);
+    let (w, cat) = (world(), Catalogue::default());
+    let id = w
+        .exhibits()
+        .list()
+        .iter()
+        .find(|e| e.id != GROUNDS)
+        .unwrap()
+        .id;
+    let shown =
+        |ui: &Interface| [700, 703, 701, 702, 704].map(|l| ui.shown(l) && ui.shown(l + 9000));
+    let mut p = Panel::default();
+    ui.set_button(STATUS_TAB, true, true);
+    // The panel opens with no exhibit: the status layout is hidden.
+    p.opened();
+    p.refresh(&mut ui, &w, &cat, &vfs);
+    assert!(!ui.shown(STATUS_LAYOUT));
+    // A row click makes an exhibit current: the status layout shows, with no tab click.
+    p.current = Some(id);
+    p.refresh(&mut ui, &w, &cat, &vfs);
+    assert_eq!(shown(&ui), [true, false, false, false, false]);
+    // The donations tab, remembered while no exhibit is current, is the one shown next.
+    ui.set_button(STATUS_TAB, false, true);
+    ui.set_button(4313, true, true);
+    p.refresh(&mut ui, &w, &cat, &vfs);
+    assert_eq!(
+        shown(&ui),
+        [true, false, false, false, false],
+        "the same exhibit: unchanged"
+    );
+    p.current = None;
+    p.refresh(&mut ui, &w, &cat, &vfs);
+    p.current = Some(id);
+    p.refresh(&mut ui, &w, &cat, &vfs);
+    assert_eq!(shown(&ui), [false, true, false, false, false]);
+}

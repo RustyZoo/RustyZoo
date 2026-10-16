@@ -716,6 +716,20 @@ panel_animal() { # panel_animal <map>
 check base-trial '35179_"Giraffe_2"_happiness_69_hunger_93_health_100_suitability_89_fed_Recently_slept_Recently' "panel_animal maps/scn01.zoo"
 check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_Recently_slept_Recently' "panel_animal maps/scn19.zoo"
 
+# The exhibit list button and a row click show the status tab's layout with no tab click: the
+# frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
+# is moved off the tabs, so no tooltip shows). Prints same or different.
+panel_tab() { # panel_tab <map>
+  d=$(mktemp -d)
+  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n12 mouse 500 300\n' >"$d/a"
+  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1005 645\n9 down\n10 up\n12 mouse 1005 614\n13 down\n14 up\n16 mouse 500 300\n' >"$d/b"
+  for s in a b; do
+    rz run "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass 23 .* draw [0-9a-f]/{print $5}'
+  done | uniq | wc -l | sed 's/^1$/same/;s/^2$/different/'
+  rm -rf "$d"
+}
+check base-trial "same" "panel_tab maps/scn01.zoo"
+
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
 sim_twice() { # sim_twice <map>
