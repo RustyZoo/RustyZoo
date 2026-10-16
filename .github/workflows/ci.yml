@@ -84,6 +84,10 @@ jobs:
       # No simulation code walks a hash map (the order differs at every run).
       - if: runner.os == 'Linux'
         run: ci/check-hash-iteration.sh
+
+      # The two documents merge as a union, so a row or bullet can end up twice.
+      - if: runner.os == 'Linux'
+        run: ci/check-doc-rows.sh
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
