@@ -218,6 +218,9 @@ animating() {
 check base-trial same,animated,changing 'animating maps/scn01a.zoo'
 # The sim command runs the sets too.
 check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 2>/dev/null | grep -q " unit set " && echo yes'
+# A hungry lion (27645) goes to the pile of 50 units that the script puts down, takes bites of 20, 20 and
+# what is left, and the pile goes.
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # A play call queues behind the playing sequence, the base loop included: the lion shows its first two
 # animations other than the idle one at passes 14 and 28 (the lion 27646, happiness 90, chooses
 # bHappy; the lion 27645, happiness 75, chooses bFriendly); a sound named without .wav is a file of the

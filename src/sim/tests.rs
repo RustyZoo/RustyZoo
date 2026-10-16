@@ -676,17 +676,17 @@ fn a_script_applies_its_commands_to_the_run() {
     let mut run = game(3);
     let t = run.world.tile_index(1, 2).unwrap();
     for (_, c) in &commands {
-        assert!(run.apply(*c));
+        assert!(run.apply(c));
     }
     assert_eq!(run.world.zoo.tiles[t].elevation, 3);
     assert_eq!(run.money.cash, -5.5);
     run.step(67);
     assert_eq!(run.world.zoo.entities.len(), 2, "removed by the next pass");
     assert!(
-        !run.apply(drive::Command::Tile(99, 0, 0, 0, 0)),
+        !run.apply(&drive::Command::Tile(99, 0, 0, 0, 0)),
         "off the map"
     );
-    assert!(!run.apply(drive::Command::Fill(7)), "no tank");
+    assert!(!run.apply(&drive::Command::Fill(7)), "no tank");
 }
 
 #[test]
@@ -709,13 +709,25 @@ fn a_bad_script_is_an_error() {
         "1 tile 0 99999999999 0 0 0",
         "1 tile 0 0 0 0",
         "1 fill 1 2",
+        "1 food 1,1",
+        "1 food 1 herbchow",
+        "1 food a,b herbchow",
+        "1 food 1,1 herbchow -1",
+        "1 food 1,1 herbchow 99999999999",
+        "1 food 1,1 herbchow 5 6",
     ] {
         assert!(drive::parse(bad).is_err(), "{bad}");
     }
-    assert!(
-        drive::parse("0 tile -3 4 255 255 255").is_ok(),
-        "off the map is a warning"
-    );
+    for good in [
+        "0 tile -3 4 255 255 255",
+        "0 food -3,4 herbchow",
+        "0 food 1,1 herbchow 0",
+    ] {
+        assert!(
+            drive::parse(good).is_ok(),
+            "{good}: off the map is a warning"
+        );
+    }
 }
 
 #[test]

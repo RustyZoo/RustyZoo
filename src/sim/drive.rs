@@ -6,12 +6,14 @@ use crate::animal::Class;
 use crate::behaviour::{Library, NoData, Timings};
 use crate::entity::Catalogue;
 use crate::money::Money;
+use crate::render::order::Kind;
 use crate::vfs::Vfs;
-use crate::world::World;
+use crate::world::{Shape, TankKind, World};
+use crate::zoo::{Common, Entity};
 
 /// A command a script gives at a step. Each is one the player's tools would give the world, as
 /// far as a run without an interface can.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// `remove ID`: the entity goes at the next step's removal pass.
     Remove(u32),
@@ -22,6 +24,9 @@ pub enum Command {
     Drain(u32),
     /// `cash N`: adds to the cash (a negative number takes from it).
     Cash(f32),
+    /// `food X,Y TYPE [UNITS]`: a pile of food of the type (`herbchow`) on a tile, as a keeper puts
+    /// it down: full, or with this many units.
+    Food(i32, i32, String, Option<i32>),
 }
 
 /// The highest elevation a script sets.
@@ -46,6 +51,16 @@ impl std::str::FromStr for Command {
             Some("cash") if words.len() == 2 => {
                 let cash = words[1].parse::<f32>().ok().filter(|c| c.is_finite());
                 Command::Cash(cash.ok_or_else(|| format!("bad cash: {text:?}"))?)
+            }
+            Some("food") if (3..=4).contains(&words.len()) => {
+                let at = words[1].split_once(',');
+                let at = at.and_then(|(x, y)| Some((x.parse().ok()?, y.parse().ok()?)));
+                let (x, y) = at.ok_or_else(|| format!("bad tile: {text:?}"))?;
+                let units = words.get(3).map(|w| {
+                    (w.parse().ok().filter(|&n| n >= 0))
+                        .ok_or_else(|| format!("bad units: {text:?}"))
+                });
+                Command::Food(x, y, words[2].into(), units.transpose()?)
             }
             Some("tile") if words.len() == 6 => {
                 let part = |i: usize, max: i64| {
@@ -132,8 +147,8 @@ impl Run {
 
     /// Applies a command; whether it did anything (a tile off the map, a tank that is none, do
     /// not).
-    pub fn apply(&mut self, command: Command) -> bool {
-        match command {
+    pub fn apply(&mut self, command: &Command) -> bool {
+        match *command {
             Command::Remove(id) => {
                 let known = self.world.find(id).is_some();
                 self.sim.remove(id);
@@ -148,7 +163,7 @@ impl Run {
                     .exhibits()
                     .get(id)
                     .is_some_and(|x| x.tank.is_some());
-                match command {
+                match *command {
                     Command::Fill(id) => self.world.fill(id),
                     _ => self.world.drain(id),
                 }
@@ -158,7 +173,51 @@ impl Run {
                 self.money.add_cash(amount);
                 true
             }
+            Command::Food(x, y, ref name, units) => self.put_food(x, y, name, units),
         }
+    }
+
+    /// A pile of food of the type `name` in the middle of tile `(x, y)`, full unless `units` says
+    /// otherwise; whether there is such a tile and such a type.
+    fn put_food(&mut self, x: i32, y: i32, name: &str, units: Option<i32>) -> bool {
+        let Some(tile) = self.world.tile_index(x, y) else {
+            return false;
+        };
+        let Some(ty) = (self.cat).find("food", b"food", name.as_bytes()) else {
+            return false;
+        };
+        let full = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;
+        let common = Common {
+            x: x * 64 + 32,
+            y: y * 64 + 32,
+            z: self.world.zoo.tiles[tile].elevation * 16,
+            rotation: 0,
+            id: 0,
+            name: String::new(),
+            colors: Vec::new(),
+            fence: None,
+            movement_mode: 0,
+            food: units.unwrap_or(full),
+            animal: None,
+        };
+        let entity = Entity {
+            class: "food".into(),
+            type_name: "food".into(),
+            subtype: name.into(),
+            body_size: None,
+            common: Some(common),
+        };
+        let shape = Shape {
+            kind: Kind::Fixed,
+            footprint: (ty.footprint[0], ty.footprint[1]),
+            fence: false,
+            wall: false,
+            gate: false,
+            gated: false,
+            tank: TankKind::NONE,
+            walkable: (false, false),
+        };
+        self.world.add(entity, Some(shape)).is_some()
     }
 
     /// One step of `ms` milliseconds; the `sim`, `unit`, `animal` and `guest` log lines it made. The units

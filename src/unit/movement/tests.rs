@@ -695,3 +695,22 @@ fn a_fast_guest_does_not_move_on_a_cornering_step_but_a_keeper_does() {
         );
     }
 }
+
+#[test]
+fn a_corner_cut_before_the_destination_walks_back_into_it() {
+    // 13.7: an animal at sub-tile (40, 10) of A, aiming at the tile diagonally behind it; the cut
+    // leaves it on a tile off its path, and the way back into the tile it aims at is allowed.
+    let mut w = map(vec![entity(
+        "animals",
+        "",
+        1,
+        (19 * 64 + 40, 20 * 64 + 10),
+        5,
+    )]);
+    let mut s = sim();
+    send(&mut w, 1, &[(19, 20), (18, 21)], 20);
+    step_all(&mut w, &mut s, &[67; 120]);
+    let (x, y) = position(&w, 1);
+    assert_eq!((x.div_euclid(64), y.div_euclid(64)), (18, 21));
+    assert!(w.units.get(1).unwrap().path.is_empty());
+}

@@ -1631,6 +1631,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         life: None,
         mode,
         portal: false,
+        food: 0,
         tint: None,
         wall: 0,
         shown: None,
