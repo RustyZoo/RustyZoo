@@ -613,7 +613,8 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// Starts the set `name` unless the top one is running under that name (behaviours 4.2).
+    /// Starts the set `name` unless the top one is running under that name (behaviours 4.2). The
+    /// sequence playing goes on: the move call of the set puts the walk animation behind it.
     pub fn start_set(&mut self, name: &str) -> bool {
         if self.unit.runner.running() && self.unit.runner.top() == Some(name) {
             return true;
@@ -625,7 +626,7 @@ impl Cx<'_, '_> {
             rng: &mut *self.ctx.rng,
         };
         let (anim, runner) = (&mut self.unit.animation, &mut self.unit.runner);
-        runner.start(anim, &env, name, true, false, false)
+        runner.start(anim, &env, name, true, false, true)
     }
 
     /// 8.1: a path to `to`, then the walk.
