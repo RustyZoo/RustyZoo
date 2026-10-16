@@ -22,12 +22,13 @@ use crate::Framebuffer;
 use crate::behaviour::{Library, Timings};
 use crate::build::terrain::{MINUS, PLUS};
 use crate::build::{BULLDOZER, Build};
-use crate::camera::{Camera, Settings};
+use crate::camera::{Camera, Settings, zoom_view};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
-use crate::music::Music;
+use crate::music::{Music, positional};
 use crate::panel::exhibit;
 use crate::place::{self, Class, Outcome, Pending, Tints};
+use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::sim::Sim;
 use crate::status::{Finances, STATUS_BUTTON};
@@ -253,6 +254,18 @@ const COST_OFFSET: i32 = 23;
 /// What the camera and the grid looked like when a frame was painted: the frame changes with nothing else.
 type Look = ((i32, i32), i32, u8, bool);
 
+/// A sound a unit's animation began: the member of the file (behaviours 5.2), the place of the
+/// unit in the view space, and the distance term and the pan of that place from the centre of the
+/// map view (sound 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitSound {
+    pub id: u32,
+    pub file: String,
+    pub at: (i64, i64),
+    pub distance: i32,
+    pub pan: i32,
+}
+
 /// A zoo being played.
 struct Game {
     world: World,
@@ -410,8 +423,8 @@ pub struct App<'a> {
     sim_lines: Vec<String>,
     unit_lines: Vec<String>,
     animal_lines: Vec<String>,
-    /// The sounds the units' animations began in the last pass, with the unit's id.
-    unit_sounds: Vec<(u32, String)>,
+    /// The sounds the units' animations began in the last pass.
+    unit_sounds: Vec<UnitSound>,
     /// The frames and delays of the animations the units played.
     timings: Timings,
     /// The main menu, while the player is in it.
@@ -787,14 +800,44 @@ impl<'a> App<'a> {
         self.unit_lines =
             (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.animal_told();
-        self.unit_sounds =
-            (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_sounds());
+        self.unit_sounds = self.unit_sounds_placed();
         let sounds = self
             .unit_sounds
             .iter()
-            .map(|(id, sound)| format!("sound {id} {sound}"));
+            .map(|s| format!("sound {} {}", s.id, s.file));
         self.unit_lines.extend(sounds);
         self.drew.then_some(&self.frame)
+    }
+
+    /// Takes the sounds the units' animations began and places each one: at the unit's position
+    /// in the view space of the camera, heard from the centre of the map view (sound 5).
+    fn unit_sounds_placed(&mut self) -> Vec<UnitSound> {
+        let Some(game) = &mut self.game else {
+            return Vec::new();
+        };
+        let camera = &game.camera;
+        let (w, h) = (i64::from(camera.size.0), i64::from(camera.size.1));
+        let listener = (
+            i64::from(camera.scroll.0) + w / 2,
+            i64::from(camera.scroll.1) + h / 2,
+        );
+        let sounds = game.world.units.take_sounds();
+        let world = &game.world;
+        (sounds.into_iter())
+            .filter_map(|(id, file)| {
+                let c = world.zoo.entities[world.find(id)?].common.as_ref()?;
+                let view = project(camera.rotation, c.x, c.y, c.z);
+                let at = zoom_view(camera.zoom, view);
+                let (distance, pan) = positional(at, listener);
+                Some(UnitSound {
+                    id,
+                    file,
+                    at,
+                    distance,
+                    pan,
+                })
+            })
+            .collect()
     }
 
     /// Writes the three bars when they are due and when they changed, and shows the zoo status'
@@ -1745,9 +1788,9 @@ impl<'a> App<'a> {
         self.quit
     }
 
-    /// The sounds the units' animations began in the last pass: the unit's id and the sound its
-    /// definition names for the call (a name of its `[Sounds]` section).
-    pub fn unit_sounds(&self) -> &[(u32, String)] {
+    /// The sounds the units' animations began in the last pass, each placed in the view: the
+    /// shell plays them as positional one-shots.
+    pub fn unit_sounds(&self) -> &[UnitSound] {
         &self.unit_sounds
     }
 

@@ -82,6 +82,50 @@ impl Sound {
         format!("{:?} {} Hz {} ch", self.format, self.freq, self.channels)
     }
 
+    /// The sound with the pan of a positional start (sound specification 3): a positive `pan`
+    /// lowers the left channel by that many hundredths of a decibel, a negative one the right
+    /// channel. The samples become stereo 16 bit; a pan of 0 and a format that is not 8 or 16 bit
+    /// mono or stereo leave the sound as it is.
+    pub fn panned(self, pan: i32) -> Sound {
+        let samples: Vec<i16> = match (self.format, self.channels) {
+            _ if pan == 0 => return self,
+            (AudioFormat::U8, 1 | 2) => (self.data.iter())
+                .map(|&b| (i16::from(b) - 128) << 8)
+                .collect(),
+            (AudioFormat::S16LE, 1 | 2) => (self.data.as_chunks::<2>().0.iter())
+                .map(|&c| i16::from_le_bytes(c))
+                .collect(),
+            _ => return self,
+        };
+        let (left, right) = (
+            if pan > 0 { gain(pan) } else { 1.0 },
+            if pan < 0 {
+                gain(pan.saturating_neg())
+            } else {
+                1.0
+            },
+        );
+        let frames: Vec<[i16; 2]> = match self.channels {
+            1 => samples.iter().map(|&s| [s, s]).collect(),
+            _ => samples.as_chunks::<2>().0.to_vec(),
+        };
+        let data = (frames.iter())
+            .flat_map(|[l, r]| {
+                let (l, r) = (
+                    (f32::from(*l) * left) as i16,
+                    (f32::from(*r) * right) as i16,
+                );
+                [l.to_le_bytes(), r.to_le_bytes()].concat()
+            })
+            .collect();
+        Sound {
+            channels: 2,
+            format: AudioFormat::S16LE,
+            data,
+            ..self
+        }
+    }
+
     fn spec(&self) -> AudioSpec {
         AudioSpec::new(
             Some(self.freq),
@@ -256,6 +300,27 @@ mod tests {
         let sound = Sound::decode(&wav(1, 2, 22050, 16, &[0; 400])).unwrap();
         assert_eq!(sound.describe(), "S16LE 22050 Hz 2 ch");
         assert_eq!(sound.data.len(), 400);
+    }
+
+    #[test]
+    fn a_pan_lowers_one_channel() {
+        let mono = Sound::decode(&wav(1, 1, 22050, 16, &[0, 0x40, 0, 0xc0])).unwrap();
+        // 20 dB less on the left: a tenth of the amplitude.
+        let left = mono.clone().panned(2000);
+        assert_eq!((left.channels, left.data.len()), (2, 8));
+        let at = |s: &Sound, i: usize| i16::from_le_bytes([s.data[2 * i], s.data[2 * i + 1]]);
+        assert_eq!((at(&left, 0), at(&left, 1)), (1638, 16384));
+        assert_eq!((at(&left, 2), at(&left, 3)), (-1638, -16384));
+        let right = mono.clone().panned(-2000);
+        assert_eq!((at(&right, 0), at(&right, 1)), (16384, 1638));
+        assert_eq!(mono.clone().panned(0).data, mono.data);
+        // 8 bit and stereo sounds are converted, a huge pan is silence, not a panic.
+        let eight = Sound::decode(&wav(1, 2, 22050, 8, &[255, 128])).unwrap();
+        let p = eight.panned(i32::MIN);
+        assert_eq!((p.channels, p.data.len()), (2, 4));
+        assert_eq!((at(&p, 0), at(&p, 1)), (127 << 8, 0));
+        let empty = Sound::decode(&wav(1, 1, 22050, 16, &[])).map(|s| s.panned(5));
+        assert!(empty.is_err() || empty.is_ok_and(|s| s.data.is_empty()));
     }
 
     #[test]

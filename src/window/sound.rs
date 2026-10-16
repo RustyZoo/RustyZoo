@@ -21,6 +21,9 @@ pub struct Sound {
     /// The voice of each interface sound, by name: a voice that is dropped stops, so it is kept
     /// until it has played.
     clicks: HashMap<&'static str, Voice>,
+    /// The voice of each sound the units' animations began, by file: the sound groups are shared
+    /// (sound 9.1), so two units that start one file while it plays give one voice.
+    units: HashMap<String, Voice>,
     /// The attenuation sum of the click: `G` from `userAttenuation`, `B` and `F` being 0.
     click_sum: i32,
     /// The output is silent because the window has no focus.
@@ -57,6 +60,7 @@ impl Sound {
             audio: audio.ok(),
             music: None,
             clicks: HashMap::new(),
+            units: HashMap::new(),
             click_sum: global_term(ini),
             quiet: Quiet::default(),
         }
@@ -134,6 +138,49 @@ impl Sound {
                 Err(e) => eprintln!("rustyzoo: {file}: {e}"),
             }
         }
+    }
+
+    /// Plays the sounds the units' animations began in the last pass as positional one-shots:
+    /// `S = G + X` with the distance term of the unit's place, the pan of it, and not started over
+    /// 6,000 (sound 4.2, 5). A file that is playing continues with the new volume (9.1). Returns
+    /// a line for each, `sound unit ID FILE at X,Y sum S pan P` and what became of it:
+    /// `started`, `continued`, `too far` or `failed` (a file that cannot be read or decoded is
+    /// silence and a warning).
+    pub fn units(&mut self, vfs: &Vfs, app: &App) -> Vec<String> {
+        let Some(audio) = &self.audio else {
+            return Vec::new();
+        };
+        let mut lines = Vec::new();
+        for s in app.unit_sounds() {
+            let sum = self.click_sum.saturating_add(s.distance);
+            let what = if let Some(voice) = self.units.get(&s.file)
+                && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
+            {
+                voice.set_sum(sum).map_or("failed", |()| "continued")
+            } else {
+                let played = vfs
+                    .read(&s.file)
+                    .map_err(Into::into)
+                    .and_then(|bytes| Wave::decode(&bytes))
+                    .and_then(|wave| audio.play(wave.panned(s.pan), sum, false, false));
+                match played {
+                    Ok(Some(voice)) => {
+                        self.units.insert(s.file.clone(), voice);
+                        "started"
+                    }
+                    Ok(None) => "too far",
+                    Err(e) => {
+                        eprintln!("rustyzoo: {}: {e}", s.file);
+                        "failed"
+                    }
+                }
+            };
+            lines.push(format!(
+                "sound unit {} {} at {},{} sum {sum} pan {} {what}",
+                s.id, s.file, s.at.0, s.at.1, s.pan
+            ));
+        }
+        lines
     }
 
     /// The fade of the menu music: the volume follows the model, which ends by stopping it.

@@ -329,7 +329,8 @@ usage: rustyzoo [--data <dir>] <command>
                       staff member `bZooRoutine`; `unit set ID NAME` tells a set
                       that starts, `unit anim ID NAME` the animation the unit shows when it changes (the idle
                       one between two sequences) and `unit sound ID NAME` a sound a play call begins (the file
-                      its definition's [Sounds] names); the map shows the animation and frame each unit holds.
+                      its definition's [Sounds] names; a window plays it as a positional one-shot at the unit and prints
+                      `pass N t=MS sound unit ID FILE at X,Y sum S pan P` with `started`, `continued`, `too far` or `failed`); the map shows the animation and frame each unit holds.
                       The move calls, the faces and the effects on other entities are done at once with no
                       effect until their issues, and a guest's or staff member's routine never ends. --rows ID N (repeatable) fills the list box ID
                       with N made-up rows (at most 100000), --text ID TEXT gives an element a

@@ -316,6 +316,10 @@ pub fn run(
                 return Err(sdl3::get_error().into());
             }
         }
+        // Printed, not logged: the log is replayed headless, where nothing is heard.
+        for line in sound.units(vfs, &app) {
+            println!("pass {pass} t={now} {line}");
+        }
         if let Some(log) = &mut log {
             for line in app.log_lines(pass, now) {
                 writeln!(log, "{line}")?;
