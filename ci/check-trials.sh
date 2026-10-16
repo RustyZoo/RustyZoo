@@ -656,7 +656,7 @@ check expansion-trial "exhibit_gate_2_38,44_side_6;world_ungate_tankwall/tankwal
 # Undo (placing 8): the path drag of above, then Backspace takes the pieces back. Prints the removals
 # the undo logged, the cash at the end (from 50000) and whether the last picture is the one before
 # the drag (the game is paused, so that the units stand still). A bulldozer area drag over some of the pieces then Backspace puts them back: the adds the
-# undo logged and the cash.
+# undo logged and the cash (the area drag is paused too, so that no guest pays the admission meanwhile).
 undo_path() { # undo_path <map>
   d=$(mktemp -d)
   printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 mouse 185 100\n20 key backspace\n" >"$d/script"
@@ -668,7 +668,7 @@ check base-trial "8,50000,same" "undo_path maps/default.zoo"
 check expansion-trial "7,50000,same" "undo_path maps/scn19.zoo"
 undo_area() { # undo_area <map>
   d=$(mktemp -d)
-  printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 key delete\n14 mouse 580 380\n15 down\n16 mouse 700 360\n17 mouse 800 400\n18 up\n19 key backspace\n" >"$d/script"
+  printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 key delete\n14 mouse 580 380\n15 down\n16 mouse 700 360\n17 mouse 800 400\n18 up\n19 key backspace\n" >"$d/script"
   rz run "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world add .* undo$/{n++} / money cash /{c=$6} END{print n "," c}'
   rm -rf "$d"
