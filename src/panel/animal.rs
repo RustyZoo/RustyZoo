@@ -74,7 +74,7 @@ pub fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
     Bars {
         values: [
             full(percent(a.happiness, -100, 100)),
-            full(100 - percent(a.hunger, 0, 100)),
+            full(100i32.saturating_sub(percent(a.hunger, 0, 100))),
             percent(a.health, 0, k.max_hits),
             full(rating),
         ],

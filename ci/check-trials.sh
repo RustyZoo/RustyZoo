@@ -688,13 +688,13 @@ panel_gate() { # panel_gate <map>
   rm -rf "$d"
 }
 check base-trial 'exhibit_1_"Lion";status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;donations_stars_0_$0.00_$0.00_$0.00;animals_0_thoughts_0' "panel_gate maps/default.zoo"
-# The exhibit list button, the first row, the Animals tab and its first row open the recommendations
-# plaque of that animal: prints the animals of the exhibit, the lines in red (important) and the others,
-# as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
+# The exhibit list button, the first row, the Animals tab and its first row open the animal panel,
+# and its recommendations button the plaque of that animal: prints the animals of the exhibit, the
+# lines in red (important) and the others, as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
 panel_plaque() { # panel_plaque <map>
   d=$(mktemp -d)
-  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
-  rz run "$1" --headless --passes 18 --clock 67 --script "$d/script" 2>/dev/null |
+  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n15 mouse 992 256\n16 down\n17 up\n' >"$d/script"
+  rz run "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel animals /{a=$6} / panel line! /{i++} / panel line "/{o++} END{print a "," i+0 "," o+0}'
   rm -rf "$d"
 }
@@ -702,6 +702,19 @@ check base-trial "1,2,3" "panel_plaque maps/scn01.zoo"
 check expansion-trial "2,2,2" "panel_plaque maps/scn19.zoo"
 check expansion-trial "1,2,2" "panel_plaque maps/scn27.zoo"
 check expansion-trial "1,0,2" "panel_plaque maps/scn28b.zoo"
+
+# The animal panel of the first animal of the first exhibit (the Animals tab's first row): its
+# bars, with the suitability the `check-rating` line of its species shows (89 for scn01's giraffe),
+# and its time rows.
+panel_animal() { # panel_animal <map>
+  d=$(mktemp -d)
+  printf '1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
+  rz run "$1" --headless --passes 18 --clock 67 --script "$d/script" 2>/dev/null |
+    awk '/ panel animal [0-9]/{sub(/^.* panel animal /, ""); gsub(/ /, "_"); print}'
+  rm -rf "$d"
+}
+check base-trial '35179_"Giraffe_2"_happiness_69_hunger_93_health_100_suitability_89_fed_Recently_slept_Recently' "panel_animal maps/scn01.zoo"
+check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_Recently_slept_Recently' "panel_animal maps/scn19.zoo"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).

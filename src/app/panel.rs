@@ -1,6 +1,7 @@
-//! The exhibit panel in the game: what opens it (the gate of an exhibit under the pointer, the
-//! exhibit list button), what its list and fields do, and its refresh on the interface clock
-//! (information panels 4, 5, 10).
+//! The information panels in the game: what opens the exhibit panel (the gate of an exhibit under
+//! the pointer, the exhibit list button) and the animal panel (an animal under the pointer, a row
+//! of the exhibit panel's animal list), what their lists, fields and buttons do, and their
+//! refresh on the interface clock (information panels 4, 5, 6, 10).
 
 use super::*;
 use crate::panel::animal;
