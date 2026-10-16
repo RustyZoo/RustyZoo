@@ -504,9 +504,12 @@ fn glyphs_are_bilevel_at_the_middle_sizes_and_smoothed_elsewhere() {
         ("Arial", "6", 8, true),
         ("Arial", "7", 9, false),
         ("Arial", "12", 16, false),
+        ("Arial", "13", 17, false),
         ("Arial", "14", 19, true),
         ("Arial", "8", 11, false),
-        // Bold text is smoothed at every size.
+        // Bold is bilevel at 9 and 10 pixels per em only.
+        ("Arial Bold", "7", 9, false),
+        ("Arial Bold", "8", 11, true),
         ("Arial Bold", "9", 12, true),
         ("Arial Bold", "11", 15, true),
     ] {

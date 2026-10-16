@@ -66,11 +66,10 @@ fn pass(
         bottom: rect.bottom.min(target.height as i32),
     };
     let (line_height, ascent) = (font.line_height(), font.ascent());
-    // Bold text is smoothed at every size; only regular text between 9 and 16 pixels is bilevel.
-    let (bold, bilevel) = (
-        font.is_bold(),
-        !font.is_bold() && (9..=16).contains(&font.ppem()),
-    );
+    // Which sizes are bilevel follows the weight, as the original's fonts do: bold at 9 and 10
+    // pixels per em, regular at 9 to 17; everything else is smoothed.
+    let bold = font.is_bold();
+    let bilevel = (9..=if bold { 10 } else { 17 }).contains(&font.ppem());
     for (i, line) in layout(font, text, rect.width()).iter().enumerate() {
         let top = rect
             .top
