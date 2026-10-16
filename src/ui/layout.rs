@@ -306,8 +306,7 @@ pub struct Region {
 pub struct Levels {
     pub images: Vec<Option<Picture>>,
     pub transitions: Vec<i32>,
-    /// The `animation` an image set shows, or the picture a status bar shows (the game's code
-    /// chooses it).
+    /// The `animation` an image set shows (the game's code chooses it).
     pub shown: usize,
     /// The value, 0 to 100, a status bar shows.
     pub value: i32,

@@ -308,7 +308,7 @@ usage: rustyzoo [--data <dir>] <command>
                       exhibit panel on its exhibit, its follow button keeps the view on it, and a click
                       anywhere else on the map closes it (the sell and pick-up buttons do nothing yet). `panel animal ID
                       \"NAME\" happiness H hunger N health L suitability S fed WORDS slept WORDS` tells what it
-                      shows, when it opens and when a value changes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
+                      shows, when it opens and when a value changes, and `panel animal none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
                       donations stars N A B C`, `panel animals N thoughts N` (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
                       recommendation (`panel line!` for an important one, written in red) what the plaque shows,

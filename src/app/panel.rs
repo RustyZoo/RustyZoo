@@ -140,10 +140,9 @@ impl App<'_> {
         }
     }
 
-    /// Clears the selected animal: its panel and the plaque go.
+    /// Hides the animal panel: the next look clears the selection.
     fn close_animal(&mut self) {
-        if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
-            game.animal.deselect();
+        if let Some(ui) = &mut self.ui {
             ui.set_hidden(animal::LAYOUT, true);
         }
     }
@@ -162,6 +161,9 @@ impl App<'_> {
                     .is_some_and(|u| matches!(&u.part, Part::Animal(a) if !a.dying))
         });
         if gone || !ui.shown(animal::LAYOUT) {
+            if game.animal.selected.is_some() {
+                self.panel_lines.push("animal none".into());
+            }
             game.animal.deselect();
             ui.set_hidden(animal::LAYOUT, true);
         }

@@ -189,7 +189,6 @@ impl Painter {
                 self.picture(pictures, i, e, 0, screen, frame);
                 color_as_icon(frame, e, screen);
             }
-            Kind::StatusImage(levels) => self.bar(pictures, levels, screen, frame),
             Kind::Button(_) => {
                 let set = button_set(e.state);
                 if e.look.icon_first {
