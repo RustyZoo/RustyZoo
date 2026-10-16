@@ -166,9 +166,11 @@ fn a_random_walk_pays_for_turning_on_its_own_tile() {
 #[test]
 fn a_keeper_pays_16_for_a_tile_with_food() {
     let w = world(|_, e| {
-        e.extend(
-            [(2, 2), (2, 3)].map(|p| entity_at("food", "", "", (p.0 * 64 + 16, p.1 * 64 + 16), 0)),
-        );
+        e.extend([(2, 2), (2, 3)].map(|p| {
+            let mut e = entity_at("food", "", "", (p.0 * 64 + 16, p.1 * 64 + 16), 0);
+            e.common.as_mut().unwrap().food = 1000;
+            e
+        }));
         for q in [(48, 16), (16, 48), (48, 48)] {
             e.push(entity_at("bush", "", "", (2 * 64 + q.0, 2 * 64 + q.1), 0));
         }
@@ -178,6 +180,23 @@ fn a_keeper_pays_16_for_a_tile_with_food() {
     assert_eq!(terrain(&w, &m, t((2, 2)), None), 16, "food in a full tile");
     let relaxed = Mover { relaxed: true, ..m };
     assert_eq!(terrain(&w, &relaxed, t((2, 3)), None), 1);
+}
+
+#[test]
+fn a_keepers_food_tile_stops_counting_when_the_units_reach_0() {
+    let tile = (2, 3);
+    let units = |food: i32| {
+        let mut e = entity_at("food", "", "", (tile.0 * 64 + 16, tile.1 * 64 + 16), 0);
+        e.common.as_mut().unwrap().food = food;
+        world(|_, es| es.push(e))
+    };
+    let m = unit(Kind::Keeper, (1, 1));
+    let cost = |food| terrain(&units(food), &m, t(tile), None);
+    assert_eq!(
+        (cost(1000), cost(1), cost(0)),
+        (16, 16, 2),
+        "eaten down to 0"
+    );
 }
 
 #[test]

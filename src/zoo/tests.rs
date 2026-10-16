@@ -582,6 +582,41 @@ fn reads_the_common_part_of_fixed_entities() {
 }
 
 #[test]
+fn keeps_the_food_units_of_scenery() {
+    // Kept as stored (signed) for the class `food` and the dung subtypes; zeroed for the rest.
+    for v in [48, 106] {
+        for (class, sub, units, kept) in [
+            ("food", "meat", 1000i32, 1000),
+            ("food", "meat", -7, -7),
+            ("objects", "poo", 2, 2),
+            ("objects", "dinopoo", 1, 1),
+            ("objects", "tree", 5, 0),
+            ("paths", "path", 1000, 0),
+        ] {
+            let mut body = scenery(v, 7, "Meat");
+            body[..4].copy_from_slice(&units.to_le_bytes());
+            let z = parse(&file(v, 1, 1, &[], &[(class, "t", sub, body)]));
+            let c = z.entities[0].common.as_ref().unwrap();
+            assert_eq!((c.food, c.id), (kept, 7), "{class} {sub} at {v}");
+        }
+    }
+    // Everything that is not scenery holds none.
+    let z = parse(&file(
+        106,
+        1,
+        1,
+        &[],
+        &[("ambient", "ambient", "bird", {
+            let mut w = W::default();
+            w.z(8);
+            base(&mut w, 106, 0, 10, "Bird");
+            w.0
+        })],
+    ));
+    assert_eq!(z.entities[0].common.as_ref().unwrap().food, 0);
+}
+
+#[test]
 fn keeps_the_condition_of_fences_from_version_55() {
     for v in [48, 55, 106] {
         let mut body = scenery(v, 3, "Fence");

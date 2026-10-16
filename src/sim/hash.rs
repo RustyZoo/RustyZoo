@@ -98,6 +98,7 @@ impl Fnv {
             colors,
             fence,
             movement_mode,
+            food,
             animal: _,
         }) = &e.common
         {
@@ -117,6 +118,7 @@ impl Fnv {
                 self.u8(u8::from(f.portal));
             }
             self.u32(*movement_mode);
+            self.i32(*food);
         }
     }
 

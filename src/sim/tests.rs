@@ -28,6 +28,7 @@ fn world(entities: usize) -> World {
             colors: Vec::new(),
             fence: None,
             movement_mode: 0,
+            food: 0,
             animal: None,
         }),
     };
@@ -532,6 +533,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "price",
         "carried",
         "tank mode",
+        "food",
     ] {
         let mut run = game(3);
         match what {
@@ -552,6 +554,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "given" => run.sim.status.given += 1.0,
             "price" => run.sim.status.price += 0.25,
             "carried" => run.world.units.get_mut(1).unwrap().carried = true,
+            "food" => run.world.zoo.entities[0].common.as_mut().unwrap().food = 1,
             "tank mode" => {
                 run.world.zoo.entities[0]
                     .common

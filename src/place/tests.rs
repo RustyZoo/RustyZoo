@@ -217,6 +217,7 @@ fn entity(class: &str, name: &str, x: i32, y: i32, rotation: u32) -> Entity {
             colors: Vec::new(),
             fence: None,
             movement_mode: 0,
+            food: 0,
             animal: None,
         }),
     }
@@ -1380,6 +1381,34 @@ fn the_smart_fences_setting_reads_the_ini_file_and_defaults_to_on() {
     assert!(smart_fences(b"[UI]\nsmartFences=\n"));
     assert!(smart_fences(b"[Other]\nsmartFences=0\n"));
     assert!(smart_fences(b"\xff\x00\x01 not an ini"));
+}
+
+#[test]
+fn a_new_food_entity_starts_at_the_max_food_units_of_its_type() {
+    let (w, cat) = (world((0, 0), vec![], |_| {}), catalogue());
+    let p = at(&w, &cat, 0, 0, 40, 40).unwrap();
+    let units = |ini: &str| super::entity(&ty("food", "chow", ini, [1, 1, 1]), &p, Vec::new());
+    let food = |e: Entity| e.common.unwrap().food;
+    assert_eq!(
+        food(units("[Characteristics/Integers]\ncMaxFoodUnits=1000\n")),
+        1000
+    );
+    // A type without the key is no food: nothing left. A negative value is kept and never counts.
+    assert_eq!(food(units("")), 0);
+    assert_eq!(
+        food(units("[Characteristics/Integers]\ncMaxFoodUnits=0\n")),
+        0
+    );
+    assert_eq!(
+        food(units("[Characteristics/Integers]\ncMaxFoodUnits=-5\n")),
+        -5
+    );
+    assert_eq!(
+        food(units(
+            "[Characteristics/Integers]\ncMaxFoodUnits=99999999999\n"
+        )),
+        i32::MAX
+    );
 }
 
 #[test]
