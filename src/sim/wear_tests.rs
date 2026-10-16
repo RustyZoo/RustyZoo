@@ -197,3 +197,43 @@ fn a_huge_step_wears_one_life_and_no_step_at_all_wears_nothing() {
     r.step(0);
     assert_eq!(fence(&r).life, 3);
 }
+
+#[test]
+fn the_bounds_are_read_from_the_class_file_with_the_defaults_for_what_is_missing() {
+    let load = |name: &str, text: Option<&str>| {
+        let dir = std::env::temp_dir().join(format!("rz-decay-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(dir.join("fences")).unwrap();
+        std::fs::write(dir.join("zoo.ini"), "").unwrap();
+        if let Some(text) = text {
+            std::fs::write(dir.join("fences/fence.ai"), text).unwrap();
+        }
+        let vfs = crate::vfs::Vfs::open(&dir).unwrap();
+        let decay = Decay::load(&vfs);
+        std::fs::remove_dir_all(&dir).unwrap();
+        decay
+    };
+    let default = Decay::default();
+    assert_eq!(load("none", None), default);
+    assert_eq!(
+        load(
+            "keys",
+            Some("[Decay]\r\nminDecayTime = 5\r\nmaxDecayTime=90\r\n")
+        ),
+        Decay { min: 5, max: 90 }
+    );
+    // A missing key keeps its default; a negative one reads as 0.
+    assert_eq!(
+        load("half", Some("[Decay]\nmaxDecayTime = 70\n")),
+        Decay {
+            min: default.min,
+            max: 70
+        }
+    );
+    assert_eq!(
+        load(
+            "neg",
+            Some("[Decay]\nminDecayTime = -4\nmaxDecayTime = x\n")
+        ),
+        Decay { min: 0, max: 0 }
+    );
+}

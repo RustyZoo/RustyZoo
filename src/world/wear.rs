@@ -1,8 +1,8 @@
 //! Fence wear (placing 7.4): every fence piece carries a strength, a life, an interval and a
 //! countdown. A piece made healthy draws its interval from the game's generator; on every step
 //! the countdown of a piece that wears loses the step, and at 0 the piece loses one life and
-//! some strength, becoming decayed and then broken. Tank walls and the zoo wall only decay in
-//! the original's data and do not take part here.
+//! some strength, becoming decayed and then broken. Tank walls, the zoo wall and gates never
+//! wear with time.
 
 use super::World;
 use crate::build::number;
