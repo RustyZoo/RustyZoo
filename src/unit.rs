@@ -231,6 +231,8 @@ pub struct Units {
     messages: Vec<(i32, u32)>,
     /// The sounds the units' animations began, with the unit's id, for the app.
     sounds: Vec<(u32, Heard)>,
+    /// The game milliseconds the calendar has run: the date a new animal is fed and rested.
+    pub now: u64,
 }
 
 impl Default for Units {
@@ -246,6 +248,7 @@ impl Default for Units {
             animal_lines: Vec::new(),
             messages: Vec::new(),
             sounds: Vec::new(),
+            now: 0,
         }
     }
 }

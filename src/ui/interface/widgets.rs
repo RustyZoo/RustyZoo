@@ -147,6 +147,47 @@ impl Interface {
         true
     }
 
+    /// Makes the status bar `id` show its picture number `level` whatever its value says (none
+    /// gives the picture of the value back); `false` if there is no such bar.
+    pub fn set_level(&mut self, id: i32, level: Option<usize>) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let Kind::StatusImage(levels) = &mut self.tree.elements[i].kind else {
+            return false;
+        };
+        levels.level = level;
+        self.flag(i, DIRTY, true);
+        true
+    }
+
+    /// Gives the button `id` this icon (none removes it); `false` if there is no such element.
+    pub fn set_icon(&mut self, id: i32, icon: Option<Picture>) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.tree.elements[i].look.icon = icon;
+        self.dirty = true;
+        true
+    }
+
+    /// Moves the element `id` to its alternative position or back; `false` if there is none.
+    pub fn set_alt(&mut self, id: i32, alt: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        if self.tree.elements[i].alt != alt {
+            self.tree.elements[i].alt = alt;
+            self.dirty = true;
+        }
+        true
+    }
+
+    /// Whether the button `id` is down (selected).
+    pub fn is_down(&self, id: i32) -> bool {
+        (self.tree.find(id)).is_some_and(|i| self.tree.elements[i].state & SELECTED != 0)
+    }
+
     /// Hides or shows an element on its own; `false` if there is none.
     pub fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
         let Some(i) = self.tree.find(id) else {

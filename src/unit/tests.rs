@@ -450,8 +450,10 @@ fn the_hash_covers_the_animals() {
         zap: _,
         reset: _,
         ambient: _,
+        fed: _,
+        slept: _,
     } = Animal::default();
-    let changes: [fn(&mut Animal); 30] = [
+    let changes: [fn(&mut Animal); 32] = [
         |a| a.happiness = 1,
         |a| a.hunger = 1,
         |a| a.health = 1,
@@ -482,6 +484,8 @@ fn the_hash_covers_the_animals() {
         |a| a.zap = 1,
         |a| a.reset = 1,
         |a| a.ambient = true,
+        |a| a.fed = 1,
+        |a| a.slept = 1,
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut other = world(&[("animals", 1), ("guests", 2)]);

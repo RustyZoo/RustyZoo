@@ -392,7 +392,7 @@ impl Interface {
     /// radio sets inside it then deselect all members but the one the file selected (4.6), which
     /// hides the pages of the others. A selected member that is disabled gives way to the next
     /// enabled one of the set.
-    fn settle_radio_sets(&mut self, layout: usize) {
+    pub(super) fn settle_radio_sets(&mut self, layout: usize) {
         for i in 0..self.tree.elements.len() {
             let Kind::RadioSet(buttons) = &self.tree.elements[i].kind else {
                 continue;

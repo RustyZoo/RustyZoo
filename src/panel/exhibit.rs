@@ -161,7 +161,7 @@ pub fn recommendations(
 }
 
 /// The type of the entity at position `at` of the entity list.
-fn type_at<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
+pub(super) fn type_at<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
     crate::place::bulldozer::type_of(cat, world.zoo.entities.get(at)?)
 }
 
@@ -185,7 +185,7 @@ pub fn animals_in(world: &World, id: u32) -> Vec<usize> {
 /// The first icon of an animal type (entity types 9.4): the first value of the key `Icon` in the
 /// first of the sections `[<subtype>/Icon]`, `[<default subtype>/Icon]` and `[Icon]` that has one.
 /// It is the picture of its row in a list.
-fn list_icon(ty: &EntityType) -> Option<String> {
+pub(super) fn list_icon(ty: &EntityType) -> Option<String> {
     let config = ty.config.as_deref()?;
     let default = config
         .section("Global")
@@ -214,16 +214,16 @@ pub struct Clock {
 impl Clock {
     /// Whether to refresh at clock time `now`: when asked for, or at the due time while
     /// `ticking` (the interface update runs and the game is not paused). A refresh that was
-    /// asked for sets the due time to the period itself, as a call with the clock at 0 does, so
+    /// asked for sets the due time to `period` itself, as a call with the clock at 0 does, so
     /// the next ordinary call refreshes again.
-    pub fn due(&mut self, now: u64, ticking: bool) -> bool {
+    pub fn due(&mut self, now: u64, ticking: bool, period: u64) -> bool {
         if self.force {
-            (self.force, self.due) = (false, PERIOD);
+            (self.force, self.due) = (false, period);
             return true;
         }
         let run = ticking && self.due <= now;
         if run {
-            self.due = now.saturating_add(PERIOD);
+            self.due = now.saturating_add(period);
         }
         run
     }
@@ -241,6 +241,8 @@ pub struct Panel {
     animals: Vec<u32>,
     /// The animal whose recommendations the plaque shows, by entity id.
     pub plaque: Option<u32>,
+    /// The selected animal, whose row of the animal list is selected.
+    pub animal: Option<u32>,
     pub clock: Clock,
     pub plaque_clock: Clock,
     /// What the last refresh of the panel and of the plaque told.
@@ -375,7 +377,7 @@ impl Panel {
         }
         let count = ids.len();
         ui.refill_rows(ANIMALS, rows);
-        let shown = self.plaque.and_then(|p| ids.iter().position(|&a| a == p));
+        let shown = self.animal.and_then(|p| ids.iter().position(|&a| a == p));
         ui.select_row(ANIMALS, shown);
         ui.refill_rows(THOUGHTS, Vec::new());
         self.animals = ids;

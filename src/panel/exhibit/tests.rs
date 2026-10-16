@@ -196,25 +196,25 @@ fn an_animal_in_a_show_tank_has_its_own_line_and_the_salinity_bit_after_it() {
 #[test]
 fn a_forced_refresh_is_at_once_and_the_next_call_refreshes_again() {
     let mut c = Clock::default();
-    assert!(c.due(500, true), "the first call: due 0 has passed");
-    assert!(!c.due(501, true));
-    assert!(!c.due(PERIOD + 499, true));
-    assert!(c.due(PERIOD + 500, true));
+    assert!(c.due(500, true, PERIOD), "the first call: due 0 has passed");
+    assert!(!c.due(501, true, PERIOD));
+    assert!(!c.due(PERIOD + 499, true, PERIOD));
+    assert!(c.due(PERIOD + 500, true, PERIOD));
     c.force = true;
-    assert!(c.due(PERIOD + 501, false), "forced, paused or not");
+    assert!(c.due(PERIOD + 501, false, PERIOD), "forced, paused or not");
     assert!(
-        c.due(PERIOD + 502, true),
+        c.due(PERIOD + 502, true, PERIOD),
         "the quirk: the due time is the period itself"
     );
-    assert!(!c.due(PERIOD + 503, true));
+    assert!(!c.due(PERIOD + 503, true, PERIOD));
 }
 
 #[test]
 fn nothing_refreshes_by_the_clock_while_not_ticking_and_a_huge_time_does_not_overflow() {
     let mut c = Clock::default();
-    assert!(!c.due(u64::MAX, false), "paused");
-    assert!(c.due(u64::MAX, true));
-    c.due(u64::MAX, true); // the due time saturates
+    assert!(!c.due(u64::MAX, false, PERIOD), "paused");
+    assert!(c.due(u64::MAX, true, PERIOD));
+    c.due(u64::MAX, true, PERIOD); // the due time saturates
 }
 
 #[test]

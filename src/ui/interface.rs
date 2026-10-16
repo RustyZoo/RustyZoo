@@ -125,10 +125,15 @@ impl Interface {
         ui
     }
 
-    /// Shows the layout `id` (see [`Tree::show`]); `false` if there is none.
+    /// Shows the layout `id` (see [`Tree::show`]) with the tab each of its radio sets had selected;
+    /// `false` if there is none.
     pub fn show(&mut self, id: i32) -> bool {
         self.dirty = true;
-        self.tree.show(id)
+        let shown = self.tree.show(id);
+        if let Some(i) = self.tree.find(id).filter(|_| shown) {
+            self.settle_radio_sets(i);
+        }
+        shown
     }
 
     /// Whether something changed since the last [`paint`](Interface::paint).
