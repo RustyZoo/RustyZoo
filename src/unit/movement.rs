@@ -411,8 +411,10 @@ fn progress(unit: &mut Unit, world: &mut World, mut distance: u32, at: usize) ->
     let (dx, dy) = displacement(dir, distance as i32, diagonals, m);
     let (nx, ny) = (x + dx, y + dy);
     let entered = tile_of(world, (nx, ny));
-    // The unit does not leave its last tile.
-    if entered != Some(here) && (unit.path.len() == 1 || entered.is_none()) {
+    // The unit does not leave its last tile, unless it may go diagonally and the tile it enters is
+    // the one it aims at: the way back from a corner cut (4.2, 13.7).
+    let back = diagonals && !arrived && here != first && entered == Some(first);
+    if entered != Some(here) && ((unit.path.len() == 1 && !back) || entered.is_none()) {
         unit.path.clear();
         return true;
     }

@@ -23,8 +23,8 @@ impl Cx<'_, '_> {
     }
 
     /// 11.8 decide: with no target, a piece of the species' food in the exhibit under the animal
-    /// (the home exhibit is not kept yet), chosen by two draws of `rand & 3` (a random piece, the
-    /// piece with the least left, else the nearest); then the walk to it with `bFindKeeperFood`.
+    /// (the home exhibit is not kept yet), chosen by up to three draws (the nearest, else the
+    /// piece with the least left, else a random one); then the walk to it with `bFindKeeperFood`.
     /// With no piece or no way there the task is cleared. The flag that started it goes down.
     pub(super) fn keeper_food_decide(&mut self) {
         if self.record().target.tile.is_some() {
@@ -38,12 +38,14 @@ impl Cx<'_, '_> {
         let k = crate::animal::keys(world, cat, self.at);
         let x = here.and_then(|t| food::exhibit_of(world, t));
         let regions = x.map(|x| food::near(world, x, &k)).unwrap_or_default();
-        let pieces = food::pieces(world, cat, &regions, k.food_kind);
+        let groups: Vec<_> = (regions.iter())
+            .map(|&r| food::pieces(world, cat, &[r], k.food_kind))
+            .collect();
         let width = world.zoo.width as usize;
         let at = |t: usize| ((t % width) as i64, (t / width) as i64);
         let (hx, hy) = here.map_or((0, 0), at);
         let distance = |tile: usize| (at(tile).0 - hx).pow(2) + (at(tile).1 - hy).pow(2);
-        let chosen = food::choose(&pieces, distance, self.ctx.rng);
+        let chosen = food::choose(&groups, distance, self.ctx.rng);
         let walking = chosen.is_some_and(|p| self.path_to(p.tile, false))
             && self.walk_set("bFindKeeperFood", false, false);
         match chosen {

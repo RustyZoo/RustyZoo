@@ -88,8 +88,13 @@ pub fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
         (m.start, m.in_set) = (true, true);
     }
     (a.no_food, a.eating) = (false, true);
+    a.unmark(super::HUNGRY);
     m.left -= bite;
     m.bites += bite;
+    // The bite that empties the pile stops the eater at once (5.1).
+    if m.left <= 0 {
+        a.stop_eating(false, m);
+    }
     a.hunger_change = k.food_value.saturating_mul(bite).saturating_neg();
     m.queue = m.left > 0;
 }
@@ -104,7 +109,7 @@ pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &m
     if a.eating {
         eat(a, k, &mut out.meal);
     } else if a.hunger >= k.hunger_threshold && !(a.wants_food || env.food_task || a.rampaging) {
-        match env.food_total >= 1 {
+        match env.food_total - out.meal.bites >= 1 {
             true if !a.in_show => (a.wants_food, a.thirsty) = (true, false),
             true => {}
             false => no_food(a, k, out),
@@ -116,8 +121,12 @@ pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &m
 fn no_food(a: &mut Animal, k: &Keys, out: &mut Out) {
     if !a.no_food {
         (a.no_food, a.eating) = (true, false);
-    } else if !a.in_show {
-        out.messages.push(NO_FOOD);
+    } else {
+        // Whatever the show state; only the message is for an animal out of a show.
+        a.mark(super::HUNGRY, true);
+        if !a.in_show {
+            out.messages.push(NO_FOOD);
+        }
         if a.hunger >= 100 {
             a.change(k.no_food_change);
             a.health_change = a.health_change.saturating_sub(k.hungry_health);
@@ -177,20 +186,30 @@ pub fn pieces(world: &World, cat: &Catalogue, regions: &[u32], wanted: i32) -> V
     found
 }
 
-/// 11.8: the piece the keeper food goal goes to: with a chance of 1 in 4 (`rand & 3 == 0`) a
-/// random one, else with a chance of 1 in 4 the one with the least left, else the nearest by
-/// `distance` of its tile. The first of equals wins. Nothing is drawn when there is no piece.
-pub fn choose(pieces: &[Piece], distance: impl Fn(usize) -> i64, rng: &mut Rng) -> Option<Piece> {
-    if pieces.is_empty() {
-        return None;
+/// 11.8: the piece the keeper food goal goes to. `groups` holds the pieces of each exhibit, the
+/// home exhibit first; the neighbours are searched only when the home exhibit has none. The
+/// draws come first, whether or not there is a piece: a first `rand & 3` not 0 gives the nearest
+/// by `distance` of its tile; a first 0 and a second `rand & 3` not 0 the one with the least left;
+/// two 0s a random one of the first exhibit with a piece, by a third draw `rand % n` made only for
+/// `n >= 1`. The first of equals wins.
+pub fn choose(
+    groups: &[Vec<Piece>],
+    distance: impl Fn(usize) -> i64,
+    rng: &mut Rng,
+) -> Option<Piece> {
+    let first = rng.rand() & 3;
+    let second = if first == 0 { rng.rand() & 3 } else { 1 };
+    let home = groups.first().is_some_and(|g| !g.is_empty());
+    let searched = if home { &groups[..1] } else { groups };
+    let all = searched.iter().flatten();
+    if first != 0 {
+        return all.min_by_key(|p| distance(p.tile)).copied();
     }
-    if rng.rand() & 3 == 0 {
-        return pieces.get(rng.pick(pieces.len() as u32) as usize).copied();
+    if second != 0 {
+        return all.min_by_key(|p| p.left).copied();
     }
-    if rng.rand() & 3 == 0 {
-        return pieces.iter().min_by_key(|p| p.left).copied();
-    }
-    pieces.iter().min_by_key(|p| distance(p.tile)).copied()
+    let group = searched.iter().find(|g| !g.is_empty())?;
+    group.get(rng.pick(group.len() as u32) as usize).copied()
 }
 
 /// What eating reads of the animal at position `at`: the food it aims at and its place.
@@ -211,6 +230,42 @@ pub fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
         in_set: unit.runner.top() == Some("bEat"),
         has_set: data.set(entity, "bEat").is_some(),
         ..Meal::default()
+    }
+}
+
+/// The end of `stopEating` for the unit at `at`: the queued set is forgotten, the goal reset.
+fn halt(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    unit.runner.forget();
+    let mut cx = Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    };
+    cx.reset();
+    cx.unit.goal.wants_to_decide = true;
+}
+
+/// A pile was emptied: every other animal that aims at it stops eating and resets its goal in the
+/// same bite (5.1).
+fn stop_others(world: &mut World, ctx: &mut Ctx, data: &dyn Data, food: u32, eater: u32) {
+    let aiming: Vec<u32> = (world.units.iter())
+        .filter(|u| u.id != eater && matches!(&u.part, Part::Animal(a) if a.food == food))
+        .map(|u| u.id)
+        .collect();
+    for id in aiming {
+        let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
+            continue;
+        };
+        let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
+        if let Part::Animal(a) = &mut unit.part {
+            a.stop_eating(false, &mut Meal::default());
+        }
+        halt(&mut unit, world, ctx, at, data);
+        if let Some(slot) = world.units.get_mut(id) {
+            *slot = unit;
+        }
     }
 }
 
@@ -236,16 +291,7 @@ pub fn apply(
         unit.runner.request("bEat");
     }
     if m.stop {
-        unit.runner.forget();
-        let mut cx = Cx {
-            unit,
-            world,
-            ctx,
-            at,
-            data,
-        };
-        cx.reset();
-        cx.unit.goal.wants_to_decide = true;
+        halt(unit, world, ctx, at, data);
     }
     let Part::Animal(a) = &unit.part else {
         return;
@@ -258,6 +304,7 @@ pub fn apply(
     world.set_food(i, m.left);
     if m.left <= 0 {
         ctx.remove(world, id);
+        stop_others(world, ctx, data, id, unit.id);
     }
     let line = format!(
         "eat {} {id} {} {}",

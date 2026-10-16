@@ -68,6 +68,8 @@ pub const MURKY: usize = 15;
 const COUNTERS: usize = 16;
 
 /// The recommendation bits this part owns (animals 8).
+/// The bit of "hungry" (9901): no food for it.
+const HUNGRY: u32 = 0;
 const ANGRY: u32 = 3;
 const FEW: u32 = 4;
 const MANY: u32 = 5;

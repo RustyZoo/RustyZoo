@@ -1531,6 +1531,11 @@ fn a_zebra_without_food_notes_it_once_then_complains_and_pays_at_the_maximum() {
         // Hunger 3 (n - 1) is tested before the check's own rise.
         assert_eq!(a.hunger, (3 * (n - 1)).min(100), "check {n}");
         let paid = (a.happiness_change, a.health_change);
+        // From the second check the "hungry" bit is shown and important.
+        assert_eq!(
+            (a.advice & 1, a.important & 1),
+            (u64::from(n > 18), u64::from(n > 18))
+        );
         match n {
             18 => assert!(
                 a.no_food && !messages[17],
@@ -1546,6 +1551,22 @@ fn a_zebra_without_food_notes_it_once_then_complains_and_pays_at_the_maximum() {
         18,
         "checks 19 to 36"
     );
+}
+
+#[test]
+fn a_zebra_in_a_show_without_food_is_not_told_but_pays_and_shows_the_bit() {
+    let (k, env) = (hungry_zebra(), Env::default());
+    let mut a = Animal {
+        health: 120,
+        hunger: 100,
+        in_show: true,
+        no_food: true,
+        ..animal()
+    };
+    let out = hunger_check(&mut a, &k, &env);
+    assert!(out.messages.is_empty());
+    assert_eq!((a.happiness_change, a.health_change), (-50, -10));
+    assert_eq!((a.advice & 1, a.important & 1), (1, 1));
 }
 
 #[test]
@@ -1649,8 +1670,19 @@ fn eating_starts_the_eat_set_and_stops_on_no_food_water_or_a_bite_of_zero() {
     };
     // The first bite starts the set; the bite is what is left.
     let (a, m) = case(meal.clone());
-    assert!(a.eating && m.start && !m.queue && (m.left, m.bites) == (0, 3));
+    assert!(!a.eating && m.start && m.stop && !m.queue && (m.left, m.bites) == (0, 3));
     assert_eq!(a.hunger_change, -3);
+    // A bite that leaves some keeps the eater eating, and clears the hungry bit.
+    let (mut a, mut m) = (
+        animal(),
+        Meal {
+            left: 8,
+            ..meal.clone()
+        },
+    );
+    a.mark(0, true);
+    food::eat(&mut a, &k, &mut m);
+    assert!(a.eating && m.queue && !m.stop && (m.left, a.advice & 1) == (3, 0));
     // A type without the set eats nothing and does not stop.
     let (a, m) = case(Meal {
         has_set: false,
@@ -1871,7 +1903,47 @@ fn a_hungry_zebra_walks_to_the_food_a_script_puts_down_eats_it_and_the_pile_goes
 }
 
 #[test]
-fn the_keeper_food_goal_draws_two_numbers_and_picks_by_them() {
+fn the_bite_that_empties_a_pile_stops_every_animal_that_aims_at_it_at_once() {
+    use crate::sim::drive::{Command, Run};
+    let mut run = Run::new(
+        (b"", b""),
+        (feeding(), Class::default()),
+        pens(),
+        Default::default(),
+        1,
+    );
+    let data = Eats::new();
+    step_log(&mut run, &data);
+    for id in [500, 501] {
+        let Part::Animal(a) = &mut run.world.units.get_mut(id).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.hunger, a.counters[HUNGER]) = (60, 0);
+    }
+    assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+    let mut last = Vec::new();
+    for _ in 0..40 * 15 {
+        let step = step_log(&mut run, &data);
+        if step.iter().any(|l| l.ends_with(" 0 empty")) {
+            last = step;
+            break;
+        }
+    }
+    // In the step of the bite, both animals reset their goal and are no longer eating.
+    for id in [500, 501] {
+        assert!(
+            (last.iter()).any(|l| l.starts_with(&format!("unit goal {id} none "))),
+            "{id}: {last:?}"
+        );
+        let Part::Animal(a) = &run.world.units.get(id).unwrap().part else {
+            panic!("not an animal");
+        };
+        assert!(!a.eating);
+    }
+}
+
+#[test]
+fn the_keeper_food_goal_draws_before_looking_and_picks_by_them() {
     use food::{Piece, choose};
     let piece = |id, left, tile| Piece {
         id,
@@ -1879,30 +1951,45 @@ fn the_keeper_food_goal_draws_two_numbers_and_picks_by_them() {
         tile,
         left,
     };
-    // Distances 9, 25 and 1; units left 50, 10 and 30.
-    let pieces = [piece(0, 50, 3), piece(1, 10, 5), piece(2, 30, 1)];
+    // Distances 9, 25 and 1; units left 50, 10 and 30. A neighbour holds piece 3.
+    let home = vec![piece(0, 50, 3), piece(1, 10, 5), piece(2, 30, 1)];
+    let groups = [home.clone(), vec![piece(3, 1, 0)]];
     let distance = |tile: usize| (tile * tile) as i64;
-    assert_eq!(choose(&[], distance, &mut Rng::default()), None);
     let mut seen = [false; 3];
-    for seed in 0..60 {
+    for seed in 0..120 {
         let (mut rng, mut check) = (Rng::default(), Rng::default());
         rng.seed(seed);
         check.seed(seed);
-        // The first draw picks a random piece with the second; else the second tests the least.
-        let (kind, expected) = match check.rand() & 3 {
-            0 => (0, pieces[check.rand() as usize % 3].id),
-            _ if check.rand() & 3 == 0 => (1, 1),
-            _ => (2, 2),
+        // A first draw not 0: the nearest, one draw. A first 0 and a second not 0: the least left.
+        // Two 0s: a random one by a third draw.
+        let (kind, expected, draws) = match check.rand() & 3 {
+            0 if check.rand() & 3 != 0 => (1, 1, 2),
+            0 => (2, home[check.rand() as usize % 3].id, 3),
+            _ => (0, 2, 1),
         };
         assert_eq!(
-            choose(&pieces, distance, &mut rng).map(|p| p.id),
+            choose(&groups, distance, &mut rng).map(|p| p.id),
             Some(expected)
         );
         let mut reference = Rng::default();
         reference.seed(seed);
-        (0..2).for_each(|_| _ = reference.rand());
+        (0..draws).for_each(|_| _ = reference.rand());
         assert_eq!(rng, reference, "seed {seed}");
         seen[kind] = true;
+        // With no piece the first two draws are made, and a third only with a piece to pick.
+        let mut empty = Rng::default();
+        empty.seed(seed);
+        assert_eq!(choose(&[vec![]], distance, &mut empty), None);
+        let mut reference = Rng::default();
+        reference.seed(seed);
+        (0..draws.min(2)).for_each(|_| _ = reference.rand());
+        assert_eq!(empty, reference, "empty, seed {seed}");
+        // The neighbour is searched when the home exhibit has none.
+        let mut near = Rng::default();
+        near.seed(seed);
+        let only = [vec![], vec![piece(3, 1, 0)]];
+        assert_eq!(choose(&only, distance, &mut near).map(|p| p.id), Some(3));
     }
     assert_eq!(seen, [true; 3], "every way of choosing came up");
+    assert_eq!(choose(&[], distance, &mut Rng::default()), None);
 }
