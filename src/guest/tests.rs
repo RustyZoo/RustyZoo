@@ -190,14 +190,14 @@ fn the_type_name_sets_sex_and_age_and_new_year_makes_a_guest_sick() {
 }
 
 #[test]
-fn the_favourite_is_drawn_among_the_animal_types_that_are_not_special_by_name_id() {
+fn the_favourite_is_drawn_among_the_species_that_are_not_special() {
     let mut cat = Catalogue::default();
     for (name, id, special) in [("a", 30, 0), ("b", 10, 1), ("c", 20, 0), ("d", 20, 0)] {
         let text = format!("[Characteristics/Integers]\ncIsSpecialAnimal={special}\n");
         cat.push(kind("animals", name, &text, id));
     }
     cat.push(kind("guests", "man", GUESTS, 3));
-    assert_eq!(favourites(&cat), [20, 20, 30]);
+    assert_eq!(favourites(&cat), [20, 30]);
     assert!(favourites(&Catalogue::default()).is_empty());
 }
 

@@ -194,16 +194,17 @@ pub fn occupied(world: &World, cat: &Catalogue) -> bool {
         .any(|x| !rating::input(world, cat, x.id).animals.is_empty())
 }
 
-/// The name ids of the animal types that are not special animals, in order.
+/// The name ids of the species that are not special animals, in order, one per name id: the
+/// subtypes of a species share it and the last one loaded decides (guests 5.2 step 9).
 fn favourites(cat: &Catalogue) -> Vec<i32> {
-    let mut list: Vec<i32> = (cat.types.iter())
-        .filter(|t| {
-            t.class == "animals" && crate::build::number(t, "cIsSpecialAnimal") != Some(1.0)
-        })
-        .map(|t| t.name_id)
-        .collect();
-    list.sort_unstable();
-    list
+    let mut species = std::collections::BTreeMap::new();
+    for t in cat.types.iter().filter(|t| t.class == "animals") {
+        species.insert(
+            t.name_id,
+            crate::build::number(t, "cIsSpecialAnimal") != Some(1.0),
+        );
+    }
+    (species.into_iter()).filter(|s| s.1).map(|s| s.0).collect()
 }
 
 /// Creates a guest at the zoo entrance (guests 3.2), the draws in the original's order, and books
