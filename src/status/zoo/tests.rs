@@ -53,6 +53,32 @@ fn the_built_in_settings_then_the_files_key_by_key() {
 }
 
 #[test]
+fn the_economy_file_gives_the_happiness_and_chance_of_joining_the_endowment() {
+    let join = |file: &str| {
+        let mut s = Settings::builtin();
+        s.apply(&config(file));
+        (s.join_happiness, s.join_chance)
+    };
+    assert_eq!(join(""), (80, 50), "missing keys keep the built-in values");
+    assert_eq!(
+        join("[CHARACTERISTICS]\ncmembershipjoinchance=15\n"),
+        (80, 15)
+    );
+    assert_eq!(
+        join("[characteristics]\ncMembershipJoinHappiness=-5\ncMembershipJoinChance=0\n"),
+        (-5, 0)
+    );
+    assert_eq!(
+        join("[characteristics]\ncMembershipJoinHappiness=99999999\ncMembershipJoinChance=-3\n"),
+        (99_999_999, -3)
+    );
+    assert_eq!(
+        join("[characteristics]\ncMembershipJoinChance=x\n"),
+        (80, 0)
+    );
+}
+
+#[test]
 fn the_rating_adds_seven_parts_as_the_specification_works_it_out() {
     let s = status("[characteristics]\ncSpeciesAvailable=20");
     // 17.2: healthy 13, species 3, animals 20, guests 17, value 4, research 1, esthetics 1.

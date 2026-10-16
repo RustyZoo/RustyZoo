@@ -252,6 +252,12 @@ pub struct Units {
     pub now: u64,
     /// The word before the number in a guest's name (string 9507).
     pub guest_name: String,
+    /// The happiness above which, and the chance in percent with which, a guest that leaves joins
+    /// the endowment; set by the step from the economy file.
+    pub guest_join: (i32, i32),
+    /// The guests that left and the members that joined during the step, which the step books.
+    pub guests_gone: u32,
+    pub members_joined: u32,
 }
 
 impl Default for Units {
@@ -270,6 +276,9 @@ impl Default for Units {
             sounds: Vec::new(),
             now: 0,
             guest_name: "Guest".into(),
+            guest_join: (80, 50),
+            guests_gone: 0,
+            members_joined: 0,
             guest_lines: Vec::new(),
         }
     }

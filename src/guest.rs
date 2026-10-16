@@ -4,11 +4,13 @@
 //! whether a guest arrives; [`arrive`] makes it: the type with equal chance, the status values and
 //! the check countdowns it starts with ([`Guest::create`], every draw in the original's order),
 //! the place at the centre of the entrance tile, the name and the admission booked (a child pays
-//! half). Missing so far: the needs and checks that use the values and countdowns, the way out
-//! (the leave goal), the Halloween colours, and the entrance tiles other than the zoo entrance
-//! of the map.
+//! half). The way out is the leave goal ([`crate::goal`]): a guest whose `leave` flag is up walks
+//! to the entrance and is removed there. Missing so far: the needs and checks that use the values
+//! and countdowns (they are what raises the flag), the Halloween colours, and the entrance tiles
+//! other than the zoo entrance of the map.
 //!
-//! The log family `guest`: `guest add <id> <adult|child>` for each guest made.
+//! The log family `guest`: `guest add <id> <adult|child>` for each guest made and
+//! `guest leave <id>` for each one that left and was removed.
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
@@ -115,6 +117,8 @@ pub struct Guest {
     pub speed_offset: u32,
     /// Feeling sick: a guest created on 1 January is.
     pub sick: bool,
+    /// The guest decided to leave: the ladder then gives it the leave goal.
+    pub leave: bool,
 }
 
 impl Guest {

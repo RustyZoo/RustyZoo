@@ -25,8 +25,11 @@ pub const RATING: usize = 16;
 pub const ANIMAL_HAPPINESS: usize = 17;
 pub const GUEST_HAPPINESS: usize = 18;
 pub const GUESTS: usize = 25;
-/// The count of guests created.
+/// The counts of guests created and gone, and of the endowment members (net and joined).
 pub const GUESTS_CREATED: usize = 26;
+pub const GUESTS_GONE: usize = 27;
+pub const MEMBERS: usize = 21;
+pub const MEMBERS_JOINED: usize = 22;
 /// Income minus expenses.
 pub const NET: usize = 14;
 /// Admissions since the start, copied at each month change.

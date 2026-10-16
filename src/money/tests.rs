@@ -64,7 +64,13 @@ fn income_adds_to_the_net_line_and_a_count_does_not_touch_it() {
 fn a_count_adds_one_to_its_category_in_the_three_tables_and_not_to_the_net_or_the_cash() {
     let mut m = money(5.0);
     m.month = 2;
-    for category in [ADMISSIONS, GUESTS_CREATED] {
+    for category in [
+        ADMISSIONS,
+        GUESTS_CREATED,
+        GUESTS_GONE,
+        MEMBERS,
+        MEMBERS_JOINED,
+    ] {
         m.count(category);
         m.count(category);
         assert_eq!(row(&m, category), (2.0, 2.0, 2.0));

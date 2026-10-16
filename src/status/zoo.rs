@@ -72,6 +72,9 @@ pub struct Settings {
     pub create_chance: [i32; 5],
     /// What a guest pays, times the price (half for a child).
     pub admission_multiple: f32,
+    /// A guest that leaves above this happiness joins the endowment with this chance in percent.
+    pub join_happiness: i32,
+    pub join_chance: i32,
 }
 
 /// The keys of [`Settings::percent`].
@@ -113,6 +116,8 @@ impl Settings {
             limits: [50.0, 20.0, 10.0, 5.0],
             create_chance: [1; 5],
             admission_multiple: 1.0,
+            join_happiness: 80,
+            join_chance: 50,
         }
     }
 
@@ -161,6 +166,8 @@ impl Settings {
             int(c, key, value);
         }
         decimal("cAdmissionMultiple", &mut self.admission_multiple);
+        int(c, "cMembershipJoinHappiness", &mut self.join_happiness);
+        int(c, "cMembershipJoinChance", &mut self.join_chance);
     }
 }
 
