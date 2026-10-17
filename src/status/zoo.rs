@@ -36,7 +36,7 @@ const OBJECTS: [&str; 8] = [
     "objects", "building", "fences", "tankwall", "paths", "food", "rubble", "filter",
 ];
 /// The guest type ids whose esthetic bonus is summed: man, woman, boy, girl.
-const GUESTS: [i32; 4] = [9503, 9504, 9505, 9506];
+pub(crate) const GUESTS: [i32; 4] = [9503, 9504, 9505, 9506];
 /// What a broken fence and a decayed one take off the bonus of a guest type.
 const BROKEN: f32 = 45.0;
 const DECAYED: f32 = 11.0;
@@ -206,7 +206,7 @@ pub struct Sums {
 
 /// The bonus of the type for the four guest types: its `[EstheticBonus]` list holds a guest id,
 /// then a bonus, and so on; an id it lacks gives 0.
-fn bonus(ty: &EntityType) -> [f32; 4] {
+pub(crate) fn bonus(ty: &EntityType) -> [f32; 4] {
     let list: Vec<i32> = (ty.config.as_deref())
         .and_then(|c| c.section("EstheticBonus"))
         .map(|s| s.get_all("v").iter().filter_map(|v| to_int(v)).collect())

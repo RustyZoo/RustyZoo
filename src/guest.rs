@@ -14,14 +14,19 @@
 //! area and viewing are the goals' ([`crate::goal`]); what a guest sees from an area is [`view`].
 //! The seek parts of the need checks send a guest to a building that satisfies the need
 //! ([`crate::goal`], [`crate::building`]); the items it buys are held in [`Guest::items`].
-//! Missing so far (other issues): the thoughts, the surroundings and the litter; gawk scenery; the
-//! Halloween colours; the entrance tiles other than the zoo entrance of the map.
+//! The surroundings check ([`mega`], guests 6.11) reads the megatile under the guest: a beautiful
+//! area pleases, a crowd annoys, a smell makes it sick. The thoughts ([`thought`]) a guest thinks
+//! at its checks are kept newest first for the panels. Litter ([`litter`]) is dropped on the ground
+//! when no trash can will take it.
+//! Missing so far (other issues): the viewing thoughts; gawk scenery; the Halloween colours; the
+//! entrance tiles other than the zoo entrance of the map.
 //!
 //! The log family `guest`: `guest add <id> <adult|child>` for each guest made, `guest status <id>
 //! <happiness> <hunger> <thirst> <bathroom> <energy>` after each update of the values, `guest
 //! view <id> <exhibit>` when a guest starts viewing an exhibit, `guest donate <id> <exhibit>
-//! <amount>` for a donation and `guest leave <id>` for each one that left and was removed. The
-//! buildings a guest uses log the family `building` ([`crate::building`]).
+//! <amount>` for a donation, `guest thought <id> <text id>` for each thought, `guest litter <id>
+//! <x>,<y>` for a piece of litter dropped on a tile and `guest leave <id>` for each one that left
+//! and was removed. The buildings a guest uses log the family `building` ([`crate::building`]).
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
@@ -34,8 +39,11 @@ use crate::world::{Shape, TankKind, World};
 use crate::zoo::{Common, Entity};
 
 pub mod checks;
+pub mod litter;
+pub mod mega;
 #[cfg(test)]
 mod tests;
+pub mod thought;
 pub mod view;
 
 pub use checks::{checks, needs};
@@ -97,6 +105,11 @@ pub struct Keys {
     /// `cSearchRadius` (tiles), and `cPriceHappy1Change` and `cPriceAngry1Change`.
     pub search_radius: i32,
     pub price: [i32; 2],
+    /// The type's name id, which picks its esthetic bonus (guests 6.11).
+    pub name_id: i32,
+    /// The surroundings check: `cObjectEstheticThreshold`, `cHappyEstheticChange`,
+    /// `cStinkThreshold`, `cSickChange` and `cSickChance`.
+    pub env: [i32; 5],
 }
 
 /// The changes of the viewing check (guests visit 6.2).
@@ -200,6 +213,14 @@ impl Keys {
             gawk_attr: list("cGawkAttrTime"),
             search_radius: int("cSearchRadius", 11),
             price: [int("cPriceHappy1Change", 5), int("cPriceAngry1Change", -5)],
+            name_id: ty.name_id,
+            env: [
+                int("cObjectEstheticThreshold", 60),
+                int("cHappyEstheticChange", 10),
+                int("cStinkThreshold", 2),
+                int("cSickChange", -20),
+                int("cSickChance", 20),
+            ],
         }
     }
 }
@@ -252,6 +273,8 @@ pub struct Guest {
     /// The tour guide it follows, 0 for none, and whether it heard the guide's talk (tour guide 10).
     pub guide: u32,
     pub listening: bool,
+    /// The last drop of litter failed (guests 10).
+    pub littered: bool,
 }
 
 impl Guest {

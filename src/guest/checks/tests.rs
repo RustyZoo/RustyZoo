@@ -177,3 +177,54 @@ fn a_tired_guest_seeks_a_bench_and_the_viewing_countdown_is_reported() {
     assert!(out.view && g.countdowns[9] == k.periods[9] - 1);
     assert_eq!(g.saw_animal, k.saw_animal_reset - 1);
 }
+
+#[test]
+fn the_trash_check_spares_a_guest_on_its_way_to_a_can_and_sends_one_with_litter_to_seek() {
+    let (mut g, k) = guest();
+    (g.countdowns[7], g.need) = (0, Some("trash"));
+    let out = run(&mut g, &k, false, false, &mut Rng::default());
+    assert_eq!((g.pending[HAPPINESS], out.trash), (0, false));
+    // With litter and no target it pays and seeks; with a target or eating standing it only pays.
+    g.need = None;
+    g.items[4] = Some(6310);
+    for (building, stand, seeks) in [(0, false, true), (4, false, false), (0, true, false)] {
+        (g.countdowns[7], g.pending[HAPPINESS], g.building, g.stand) = (0, 0, building, stand);
+        let out = run(&mut g, &k, false, false, &mut Rng::default());
+        assert_eq!((g.pending[HAPPINESS], out.trash), (-10, seeks));
+    }
+    // A wandering guest seeks without paying; one without litter never seeks.
+    (g.countdowns[7], g.pending[HAPPINESS], g.building, g.stand) = (5, 0, 0, false);
+    let out = run(&mut g, &k, true, false, &mut Rng::default());
+    assert_eq!((g.pending[HAPPINESS], out.trash), (0, true));
+    g.items[4] = None;
+    assert!(!run(&mut g, &k, true, false, &mut Rng::default()).trash);
+}
+
+#[test]
+fn a_guest_that_decides_to_leave_thinks_the_thought_of_its_band() {
+    let (mut g, k) = guest();
+    let k = Keys {
+        leave: [100; 4],
+        ..k
+    };
+    for (happiness, thought) in [(-30, 10087), (-50, 10088), (-90, 10089)] {
+        (g.values[HAPPINESS], g.countdowns[3]) = (happiness, 0);
+        let out = run(&mut g, &k, false, false, &mut Rng::default());
+        assert_eq!(out.thoughts, [thought]);
+    }
+    (g.values[HAPPINESS], g.countdowns[3]) = (0, 0);
+    assert!(
+        run(&mut g, &k, false, false, &mut Rng::default())
+            .thoughts
+            .is_empty()
+    );
+}
+
+#[test]
+fn the_surroundings_check_comes_up_with_its_countdown() {
+    let (mut g, k) = guest();
+    g.countdowns[10] = 0;
+    assert!(run(&mut g, &k, false, false, &mut Rng::default()).surround);
+    assert!(!run(&mut g, &k, false, false, &mut Rng::default()).surround);
+    assert_eq!(g.countdowns[10], 8);
+}

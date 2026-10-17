@@ -3,8 +3,9 @@
 //!
 //! [`run`] is the checks on the guest's own state and the generator; [`checks`] is the hook that
 //! reads the world for it: after the need checks it runs their seek parts, which look for a
-//! building that satisfies the need ([`Cx::seek`]), then the trash and gift checks and the
-//! gift's seek, and runs the viewing check ([`super::view`]) when its countdown comes up.
+//! building that satisfies the need ([`Cx::seek`]), then the trash check and the seek for a trash
+//! can ([`Cx::seek_trash`]), the gift check and the gift's seek, and runs the viewing check
+//! ([`super::view`]) and the surroundings check ([`super::mega`]) when their countdowns come up.
 
 use super::*;
 use crate::behaviour::Data;
@@ -29,6 +30,9 @@ const NEED_CHECKS: [(usize, usize, usize); 4] = [
     (ENERGY, 2, 5),
 ];
 
+/// The thoughts of leaving unhappy, by band of happiness (guests 6.3).
+const LEAVING: i32 = 10087;
+
 /// The needs of the seek parts, in the order of the checks: bathroom, hunger, thirst, energy and
 /// the wish for a gift.
 pub const SEEKS: [&str; 5] = ["bathroom", "food", "drink", "energy", "gift"];
@@ -42,6 +46,12 @@ pub struct Out {
     pub seek: [bool; SEEKS.len()],
     /// The viewing check is due.
     pub view: bool,
+    /// The trash check's seek part is due: the guest holds litter and sets no other target.
+    pub trash: bool,
+    /// The surroundings check is due.
+    pub surround: bool,
+    /// The thoughts the checks gave, in order (the unhappy leave check).
+    pub thoughts: Vec<i32>,
 }
 
 /// The countdown rule (6.1): it goes down by one; the check fires when it was 0 and restarts at
@@ -91,6 +101,7 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 /// nothing.
 pub fn run(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -> Out {
     let mut out = needs_part(g, k, wandered, skip, rng);
+    trash(g, k, (wandered, skip), &mut out);
     rest(g, k, (wandered, skip), rng, &mut out);
     out
 }
@@ -122,6 +133,7 @@ fn needs_part(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng
             && rng.chance(k.leave[b])
         {
             g.leave = true;
+            out.thoughts.push(LEAVING + b as i32);
         }
         // 6.4 to 6.7.
         for (i, (v, n, c)) in NEED_CHECKS.into_iter().enumerate() {
@@ -150,14 +162,22 @@ fn needs_part(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng
     out
 }
 
-/// The checks after the need checks: trash and gift (6.8, 6.9), the viewing countdown and the
-/// last two.
+/// The trash check (6.8): every guest pays for it, unless it is on its way to a trash can; one
+/// that holds litter and has no target is to look for a can.
+fn trash(g: &mut Guest, k: &Keys, (wandered, skip): (bool, bool), out: &mut Out) {
+    if skip {
+        return;
+    }
+    let fired = !wandered && tick(&mut g.countdowns[TRASH], k.periods[TRASH]);
+    if fired && g.need != Some("trash") {
+        g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(k.trash);
+    }
+    out.trash = (fired || wandered) && g.items[4].is_some() && g.building == 0 && !g.stand;
+}
+
+/// The gift check (6.9), the viewing and surroundings countdowns, and the unused one.
 fn rest(g: &mut Guest, k: &Keys, (wandered, skip): (bool, bool), rng: &mut Rng, out: &mut Out) {
     if !skip {
-        // 6.8.
-        if !wandered && tick(&mut g.countdowns[TRASH], k.periods[TRASH]) {
-            g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(k.trash);
-        }
         // 6.9: the draw of the wish for a gift.
         if wandered || tick(&mut g.countdowns[GIFT], k.periods[GIFT]) {
             g.gift = match g.values[HAPPINESS] {
@@ -170,20 +190,25 @@ fn rest(g: &mut Guest, k: &Keys, (wandered, skip): (bool, bool), rng: &mut Rng, 
     }
     // Step 4 of 6.1 clears the wandered flag; then the viewing and surroundings checks.
     out.view = tick(&mut g.countdowns[VIEWING], k.periods[VIEWING]);
-    tick(&mut g.countdowns[SURROUNDINGS], k.periods[SURROUNDINGS]);
+    out.surround = tick(&mut g.countdowns[SURROUNDINGS], k.periods[SURROUNDINGS]);
     tick(&mut g.countdowns[LIKE], k.periods[LIKE]);
 }
 
-/// The seek parts of `range` of [`SEEKS`] that are due, for the guest `g` that stands in `unit`.
-fn seeks(cx: &mut Cx, g: Guest, range: std::ops::Range<usize>, out: &Out) -> Guest {
+/// Runs `seek` on the context with the guest `g` standing in its unit, and takes it back.
+fn with(cx: &mut Cx, g: Guest, seek: impl FnOnce(&mut Cx)) -> Guest {
     cx.unit.part = Part::Guest(g);
-    range
-        .filter(|&i| out.seek[i])
-        .for_each(|i| cx.seek(SEEKS[i]));
+    seek(cx);
     match &mut cx.unit.part {
         Part::Guest(g) => std::mem::take(g),
         _ => Guest::default(),
     }
+}
+
+/// The seek parts of `range` of [`SEEKS`] that are due, for the guest `g` that stands in `unit`.
+fn seeks(cx: &mut Cx, g: Guest, range: std::ops::Range<usize>, out: &Out) -> Guest {
+    with(cx, g, |cx| {
+        (range.filter(|&i| out.seek[i])).for_each(|i| cx.seek(SEEKS[i]));
+    })
 }
 
 /// The checks of a status tick (guests 6.1).
@@ -217,12 +242,29 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         at,
         data,
     };
+    for text in std::mem::take(&mut out.thoughts) {
+        cx.think(text, None);
+    }
     g = seeks(&mut cx, g, 0..ENERGY_SEEK + 1, &out);
+    trash(&mut g, &k, (wandered, skip), &mut out);
+    g = with(&mut cx, g, |cx| {
+        if out.trash {
+            cx.seek_trash();
+        }
+    });
     rest(&mut g, &k, (wandered, skip), cx.ctx.rng, &mut out);
     g = seeks(&mut cx, g, ENERGY_SEEK + 1..SEEKS.len(), &out);
     cx.unit.goal.wandered = false;
     if out.view {
         view::check(&mut g, &k, cx.world, cx.ctx.cat, cx.ctx.rng, tile);
+    }
+    // 6.11: the megatile under the guest.
+    let width = cx.world.zoo.width as usize;
+    let cell = tile.and_then(|t| cx.world.units.mega.at(width, t)).copied();
+    if let Some(cell) = cell.filter(|_| out.surround) {
+        for text in mega::check(&mut g, &k, &cell) {
+            cx.think(text, None);
+        }
     }
     cx.unit.part = Part::Guest(g);
 }

@@ -502,3 +502,113 @@ fn the_keys_of_the_checks_and_of_viewing_come_from_the_type_with_the_programs_fa
         ([5, 70, -30], (70, -10), 0)
     );
 }
+
+#[test]
+fn the_thought_list_keeps_a_thousand_newest_first_and_forgets_the_gone() {
+    use thought::Thoughts;
+    let mut list = Thoughts::default();
+    assert!(list.is_empty());
+    for i in 0..1100 {
+        list.add(1 + (i % 2), i as i32, (i % 3 == 0).then_some(9));
+    }
+    assert_eq!(list.len(), thought::KEPT);
+    // Newest first, five at most for a guest.
+    let mine: Vec<i32> = list.of(1).iter().map(|t| t.text).collect();
+    assert_eq!(mine, [1098, 1096, 1094, 1092, 1090]);
+    assert!(list.of(7).is_empty());
+    // A guest that is gone takes its thoughts, an object that is gone the thoughts about it.
+    list.forget(2);
+    assert!(list.of(2).is_empty() && !list.of(1).is_empty());
+    list.forget(9);
+    assert!(list.of(1).iter().all(|t| t.object != Some(9)));
+}
+
+#[test]
+fn the_surroundings_check_pleases_annoys_and_sickens() {
+    let k = Keys::of(&man());
+    let cell = |guests, esthetic, stink| mega::Cell {
+        guests,
+        esthetic: [esthetic, 0.0, 0.0, 0.0],
+        stink,
+    };
+    let mut g = Guest::default();
+    // Beauty counts for the guest's own type, from the threshold up (shipped: 200, +5).
+    let man = Keys {
+        env: [200, 5, 2, -40, 20],
+        ..k.clone()
+    };
+    assert!(mega::check(&mut g, &man, &cell(0, 199.0, 0.0)).is_empty());
+    assert_eq!(mega::check(&mut g, &man, &cell(0, 200.0, 0.0)), [10103]);
+    assert_eq!(g.pending[HAPPINESS], 5);
+    let woman = Keys {
+        name_id: 9504,
+        ..man.clone()
+    };
+    assert!(mega::check(&mut g, &woman, &cell(0, 500.0, 0.0)).is_empty());
+    // A crowd: 10 times the guests over 25 tiles against the threshold (75: 188 guests).
+    let crowd = Keys {
+        view: View {
+            crowd: (75, -3),
+            ..man.view.clone()
+        },
+        ..man.clone()
+    };
+    g.pending = [0; 5];
+    assert!(mega::check(&mut g, &crowd, &cell(187, 0.0, 0.0)).is_empty());
+    assert_eq!(mega::check(&mut g, &crowd, &cell(188, 0.0, 0.0)), [10104]);
+    assert_eq!(g.pending[HAPPINESS], -3);
+    // A smell makes a guest sick once and the clean air cures it.
+    g.pending = [0; 5];
+    assert_eq!(mega::check(&mut g, &man, &cell(0, 0.0, 2.0)), [10241]);
+    assert!(g.sick && g.pending[HAPPINESS] == -40);
+    assert!(mega::check(&mut g, &man, &cell(0, 0.0, 3.0)).is_empty());
+    assert_eq!(g.pending[HAPPINESS], -40, "sick only once");
+    assert!(mega::check(&mut g, &man, &cell(0, 0.0, 1.5)).is_empty() && !g.sick);
+}
+
+/// A map of 10 by 10 tiles with a guest on tile (2, 2) and a 2 by 2 building of a type with an
+/// esthetic bonus of 400 for men and a smell of 2 on tile (6, 1).
+fn smelly() -> (World, Catalogue) {
+    let mut cat = Catalogue::default();
+    cat.push(kind(
+        "building",
+        "dump",
+        "[Characteristics/Integers]\ncStink=2\n[EstheticBonus]\nv=9503\nv=400\n",
+        0,
+    ));
+    let w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 2)), 0));
+        zoo.entities
+            .push(entity("building", "dump", 2, centre((6, 1)), 0));
+    });
+    (w, cat)
+}
+
+#[test]
+fn the_megatiles_count_guests_and_spread_an_objects_values_once_every_seven_and_a_half_seconds() {
+    let (mut w, cat) = smelly();
+    let width = 10;
+    let at = |w: &World, tx: usize, ty: usize| *w.units.mega.at(width, ty * width + tx).unwrap();
+    mega::update(&mut w, &cat, 67);
+    // The building holds the four quadrants of its tile, a fourth of its values in each.
+    assert_eq!(at(&w, 2, 2).guests, 1);
+    let dump = at(&w, 6, 1);
+    assert_eq!(
+        (dump.guests, dump.esthetic, dump.stink),
+        (0, [400.0, 0.0, 0.0, 0.0], 2.0)
+    );
+    assert_eq!(at(&w, 6, 1), at(&w, 9, 4), "the same megatile");
+    assert_eq!(at(&w, 2, 7), mega::Cell::default());
+    // The guest walks to the building's megatile: seen after 7.5 s only.
+    let (x, y) = centre((7, 3));
+    w.place_unit(0, (x, y, 0), 0);
+    mega::update(&mut w, &cat, 7000);
+    assert_eq!((at(&w, 2, 2).guests, at(&w, 7, 3).guests), (1, 0));
+    mega::update(&mut w, &cat, 499);
+    assert_eq!((at(&w, 2, 2).guests, at(&w, 7, 3).guests), (1, 0));
+    mega::update(&mut w, &cat, 1);
+    assert_eq!((at(&w, 2, 2).guests, at(&w, 7, 3).guests), (0, 1));
+    // A tile off the map has none.
+    assert!(w.units.mega.at(width, 100).is_none());
+}

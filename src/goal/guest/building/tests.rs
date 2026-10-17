@@ -24,6 +24,9 @@ const TABLE: &str = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=2\n\
     cUserStaysOutside=0\ncUserUsesExit=1\n[Satisfies]\nbuilding\neat\n[slots]\nname=slot\n\
     [slot]\nslotpos=-16\nslotpos=16\nentrpos=-16\nentrpos=48\nexitpos=-16\nexitpos=48\n\
     capacity=1\nfacing=7\n";
+const CAN: &str = "[Characteristics/Integers]\ncCapacity=1000\ncUserStaysOutside=1\n\
+    cUsedThought=10215\n[Removes]\ntrash\n[Satisfies]\nbuilding\ntrash\n[slots]\nname=slot\n\
+    [slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=1000\n";
 const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\n\
     cPriceHappy1Change=5\ncPriceAngry1Change=-5\n";
 
@@ -48,12 +51,25 @@ fn types() -> Catalogue {
     cat.push(ty("building", "stand", STAND));
     cat.push(ty("building", "restroom", RESTROOM));
     cat.push(ty("building", "table", TABLE));
+    cat.push(ty("building", "can", CAN));
+    let trash = EntityType {
+        subtype: b"trash".to_vec(),
+        ..ty("objects", "other", "")
+    };
+    cat.push(trash);
+    let litter = Item {
+        id: LITTER,
+        now: true,
+        ..Default::default()
+    };
+    cat.items.insert("trash".into(), litter);
     let item = Item {
         id: 6303,
         record: [50, 50, -75, 15, 0, 0],
         now: false,
         litter: true,
         remove: true,
+        thought: 10659,
     };
     cat.items.insert("hotdog".into(), item);
     cat
@@ -203,6 +219,13 @@ fn an_expensive_stand_turns_the_guest_away_and_a_cheap_one_makes_it_happy() {
             c => assert_eq!(happiness, c, "{price}"),
         }
         assert_eq!(log.iter().any(|l| l.starts_with("use")), buys);
+        // The price is also a thought: 10073 too high, 10072 really low.
+        let want = match change {
+            -5 => Some(10073),
+            5 => Some(10072),
+            _ => None,
+        };
+        assert!(want.is_none_or(|t| thoughts(&w).contains(&t)), "{price}");
     }
 }
 
@@ -391,4 +414,218 @@ fn a_removed_building_loses_its_state_and_a_removed_guest_its_place_among_the_us
     // Unit 5 is no unit of the table.
     assert!(w.remove(1));
     assert!(w.units.buildings[&7].users.is_empty());
+}
+
+/// Guest 1 at (2, 6), who holds litter, and a trash can 11 at (5, 6), whose entrance is on row 7.
+fn littered(can: bool) -> World {
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 6)), 0));
+        if can {
+            zoo.entities
+                .push(entity("building", "can", 11, centre((5, 6)), 4));
+        }
+    });
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.items[4], g.countdowns, g.saw_animal) = (Some(LITTER), [1000; 11], 1000);
+    }
+    w
+}
+
+fn give_litter(w: &mut World) {
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        g.items[4] = Some(LITTER);
+    }
+}
+
+/// The pieces of litter on the ground.
+fn pieces(w: &World) -> usize {
+    (w.zoo.entities.iter())
+        .filter(|e| (e.class.as_str(), e.subtype.as_str()) == ("objects", "trash"))
+        .count()
+}
+
+fn thoughts(w: &World) -> Vec<i32> {
+    w.units.thoughts.of(1).iter().map(|t| t.text).collect()
+}
+
+#[test]
+fn a_guest_with_litter_walks_to_a_trash_can_and_the_can_counts_the_piece() {
+    let (cat, mut w, mut money) = (types(), littered(true), Money::default());
+    assert!(with_cx(&cat, &mut w, |cx| {
+        cx.seek_trash();
+        cx.record().task == GO && cx.guest().unwrap().building == 11
+    }));
+    assert_eq!(guest(&w).need, Some("trash"));
+    let log = run(&mut game(), &cat, &mut w, &mut money, 800, "use");
+    assert_eq!(log, ["use 11 1"]);
+    assert_eq!(w.units.buildings[&11].fill, 1);
+    assert!(guest(&w).items[4].is_none() && pieces(&w) == 0);
+    // Newest first: the can's thought, then the guest's own about its litter.
+    assert_eq!(thoughts(&w), [10215, 10237]);
+}
+
+#[test]
+fn a_guest_with_litter_and_no_can_drops_it_where_it_stands_and_calls_a_worker() {
+    let (cat, mut w) = (types(), littered(false));
+    with_cx(&cat, &mut w, |cx| cx.seek_trash());
+    assert_eq!(pieces(&w), 1);
+    let g = guest(&w);
+    assert!(g.items[4].is_none() && !g.littered);
+    assert!(w.units.get(1).unwrap().goal.wandered);
+    let e = &w.units.posts[..];
+    assert_eq!(
+        (e.len(), e[0].kind, e[0].channel, e[0].data, e[0].sender),
+        (1, 10031, 0x4d, 6 * 10 + 2, 1)
+    );
+    assert_eq!(
+        w.units.take_guest_lines(),
+        ["thought 1 10237", "litter 1 2,6"]
+    );
+    // Where it stands, in the quarter its position falls in: that quarter is taken now, so a
+    // second piece fails and the guest keeps it.
+    give_litter(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.seek_trash());
+    assert_eq!(pieces(&w), 1);
+    assert!(guest(&w).items[4].is_some() && guest(&w).littered);
+}
+
+#[test]
+fn a_full_can_sends_the_litter_to_the_ground_and_the_thirteenth_piece_calls_a_worker() {
+    let (cat, mut w) = (types(), littered(true));
+    let fill = |w: &mut World, n| w.units.buildings.entry(11).or_default().fill = n;
+    // 12 pieces: the guest's makes 13 and posts event 10030 with the can's tile.
+    fill(&mut w, 12);
+    with_cx(&cat, &mut w, |cx| cx.bin_litter(11, true));
+    assert_eq!(w.units.buildings[&11].fill, 13);
+    let e = &w.units.posts[..];
+    assert_eq!(
+        (e.len(), e[0].kind, e[0].data, e[0].sender),
+        (1, 10030, 65, 11)
+    );
+    assert!(guest(&w).items[4].is_none());
+    // 24 pieces take one more; above that the can is full.
+    for (before, after, ground) in [(24, 25, 0), (25, 25, 1)] {
+        fill(&mut w, before);
+        give_litter(&mut w);
+        with_cx(&cat, &mut w, |cx| cx.bin_litter(11, true));
+        assert_eq!((w.units.buildings[&11].fill, pieces(&w)), (after, ground));
+    }
+    // A building that removes nothing takes nothing.
+    give_litter(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.bin_litter(11, false));
+    assert!(guest(&w).items[4].is_some());
+}
+
+#[test]
+fn a_guest_thinks_what_it_wants_and_what_it_finds_or_misses() {
+    let (cat, mut w) = (types(), zoo());
+    hungry(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    assert_eq!(thoughts(&w), [10079]);
+    // No bench: it wants rest, finds none, and the goal is reset with the wandered flag up.
+    with_cx(&cat, &mut w, |cx| {
+        cx.clear_target();
+        cx.seek("energy");
+    });
+    assert_eq!(thoughts(&w), [10093, 10092, 10079]);
+    assert!(w.units.get(1).unwrap().goal.wandered);
+    // A stand that has no room is too crowded, a thought about the building.
+    let mut w = zoo();
+    w.units.buildings.insert(
+        7,
+        Live {
+            users: vec![(2, 0, 0), (3, 0, 0)],
+            ..Default::default()
+        },
+    );
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    let seen = w.units.thoughts.of(1);
+    assert_eq!((seen[0].text, seen[0].object), (10243, Some(7)));
+    // Nothing satisfies the gift need: wanting and not finding.
+    with_cx(&cat, &mut w, |cx| cx.seek("gift"));
+    assert_eq!(thoughts(&w)[..2], [10091, 10090]);
+}
+
+#[test]
+fn the_second_trash_search_draws_among_every_can_in_reach() {
+    // Can 11 at 2 tiles holds 24 pieces and is the nearest; can 12 at 5 tiles has room. The first
+    // search takes 11 (one tie draw); the second draws among both, and its draw is odd.
+    let (cat, mut w) = (types(), littered(true));
+    let at = w.find(11).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().x = centre((4, 6)).0;
+    w.zoo
+        .entities
+        .push(entity("building", "can", 12, centre((7, 6)), 4));
+    w.units.buildings.entry(11).or_default().fill = 24;
+    with_cx(&cat, &mut w, |cx| cx.seek_trash());
+    assert_eq!(guest(&w).building, 12);
+    assert!(guest(&w).items[4].is_some() && pieces(&w) == 0);
+}
+
+#[test]
+fn a_dropped_piece_of_litter_faces_a_drawn_direction() {
+    let (cat, mut w) = (types(), littered(false));
+    let (mut rng, mut seen) = (Rng::default(), Rng::default());
+    let facing = seen.rand() & 7;
+    assert_eq!(
+        crate::guest::litter::drop(&mut w, &cat, 0, 1, &mut rng),
+        Some(true)
+    );
+    let piece = w.zoo.entities.iter().find(|e| e.subtype == "trash");
+    assert_eq!(piece.unwrap().common.as_ref().unwrap().rotation, facing);
+    assert_eq!(rng, seen);
+    // In an exhibit nothing happens: no draw, no piece, and the flag keeps its value.
+    let mut pen = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 6)), 0));
+        for i in 0..3 {
+            for (at, d) in [
+                ((1 + i, 5), 0),
+                ((1 + i, 7), 4),
+                ((1, 5 + i), 6),
+                ((3, 5 + i), 2),
+            ] {
+                let id = 100 + zoo.entities.len() as u32;
+                zoo.entities.push(entity("fences", "", id, centre(at), d));
+            }
+        }
+    });
+    assert_eq!(pen.exhibits().list().len(), 1);
+    let before = rng.clone();
+    assert_eq!(
+        crate::guest::litter::drop(&mut pen, &cat, 0, 1, &mut rng),
+        None
+    );
+    assert!(rng == before && pieces(&pen) == 0);
+}
+
+#[test]
+fn a_price_thought_is_about_the_building() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    hungry(&mut w);
+    let live = crate::building::Live {
+        price: 4.0,
+        ..Default::default()
+    };
+    w.units.buildings.insert(7, live);
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    run(&mut game(), &cat, &mut w, &mut money, 600, "buy");
+    let about = |t: &&crate::guest::thought::Thought| t.text == 10073;
+    let found = w.units.thoughts.of(1).into_iter().find(about);
+    assert_eq!(found.map(|t| t.object), Some(Some(7)));
+}
+
+#[test]
+fn a_removed_building_takes_the_thoughts_about_it() {
+    let mut w = zoo();
+    w.units.think(1, 10243, Some(7));
+    w.units.think(1, 10243, Some(8));
+    w.units.think(1, 10237, None);
+    assert!(w.remove(7));
+    let all = w.units.thoughts.of(1);
+    assert_eq!(
+        all.iter().map(|t| t.object).collect::<Vec<_>>(),
+        [None, Some(8)]
+    );
 }

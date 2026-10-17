@@ -5,9 +5,11 @@
 //! task, which picks one and sends it to a tile it can look at it from ([`sites`]), where it
 //! views the animals. The leave flag is raised by the unhappy-leave check
 //! ([`crate::guest::checks`]) and by `checkLeaveZoo`, which the ladder runs when nothing is left to
-//! see. The log lines are those of the `guest` family of [`crate::guest`].
+//! see. A guest that feels sick (the surroundings check, or the first of January) gets the sick
+//! task by chance and is sick on the spot ([`Cx::sick_ladder`]). The log lines are those of the
+//! `guest` family of [`crate::guest`].
 
-use super::Cx;
+use super::{Cx, SICK};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Part;
 
@@ -24,6 +26,11 @@ const DROWN: u8 = 132;
 const IN_BUILDING: std::ops::RangeInclusive<u8> = 104..=106;
 
 impl Cx<'_, '_> {
+    /// The guest thinks `text`, about the entity `object` if there is one.
+    pub(crate) fn think(&mut self, text: i32, object: Option<u32>) {
+        self.world.units.think(self.unit.id, text, object);
+    }
+
     /// Ladder point 2: a guest that decided to leave and is not leaving, avoiding or exiting, not
     /// using a building, not on water and not in an exhibit or a tank gets the leave task, mode
     /// 1. Whether it did (no other rung runs then). Nobody is afraid before M7.
@@ -46,8 +53,8 @@ impl Cx<'_, '_> {
     }
 
     /// Ladder point 1: a guest standing in an exhibit or a tank (put there, or fallen in) gets the
-    /// exit task, mode 0, unless it has it already or is drowning or avoiding (the thought is the
-    /// thoughts issue's). Whether it did.
+    /// exit task, mode 0, and thinks 10568, unless it has the task already or is drowning or
+    /// avoiding. Whether it did.
     pub(super) fn exit_ladder(&mut self) -> bool {
         let task = self.record().task;
         let inside = self.tile().and_then(|t| self.world.exhibits().region(t));
@@ -56,8 +63,45 @@ impl Cx<'_, '_> {
         {
             return false;
         }
+        self.think(10568, None);
         self.set_task(EXIT, 0, 0, None);
         true
+    }
+
+    /// Ladder point 4 (goals 10.2, guests 8): a guest that feels sick and is not in the sick, exit
+    /// or leave task or using a building draws against its sick chance once and, below it, gets
+    /// the sick task, mode 4, with its own id as target. The flag stays up, so the draw comes
+    /// again at the next update until the surroundings check lowers it. Whether it took the task.
+    pub(super) fn sick_ladder(&mut self) -> bool {
+        let task = self.record().task;
+        let sick = matches!(&self.unit.part, Part::Guest(g) if g.sick);
+        let busy = [SICK, EXIT, LEAVE].contains(&task) || IN_BUILDING.contains(&task);
+        if !sick || busy {
+            return false;
+        }
+        let Some(k) = crate::guest::keys(self.world, self.ctx.cat, self.at) else {
+            return false;
+        };
+        if !self.ctx.rng.chance(k.env[4]) {
+            return false;
+        }
+        let id = self.unit.id;
+        self.set_task(SICK, 4, id, None);
+        true
+    }
+
+    /// 0x79 init (goals 11.10): the guest starts being sick and thinks 10285; it always succeeds.
+    pub(super) fn sick_init(&mut self) -> bool {
+        if self.start_set("bSick", false) {
+            self.think(10285, None);
+        }
+        true
+    }
+
+    /// 0x79 complete: the goal is cleared and the wandered flag goes up (guests 8).
+    pub(super) fn sick_done(&mut self) {
+        self.reset();
+        self.unit.goal.wandered = true;
     }
 
     /// Ladder point 5: a guest whose eat-standing flag is up and that is not eating standing
@@ -90,6 +134,7 @@ impl Cx<'_, '_> {
         if let Part::Guest(g) = &mut self.unit.part {
             g.leave = true;
         }
+        self.think(10238, None);
         true
     }
 

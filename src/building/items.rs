@@ -15,6 +15,8 @@ pub struct Item {
     pub now: bool,
     pub litter: bool,
     pub remove: bool,
+    /// `consumedThoughtID`, 0 for none.
+    pub thought: i32,
 }
 
 /// The litter item's name id.
@@ -40,6 +42,7 @@ impl Item {
             now: int("consumenow") == 1,
             litter: int("trashwhenconsumed") == 1,
             remove: int("removewhenconsumed") == 1,
+            thought: int("consumedThoughtID"),
         })
     }
 }
