@@ -285,6 +285,7 @@ fn replay(text: &str) -> Result<((u32, u32), Replay), String> {
             "movie ",
             "music ",
             "sim ",
+            "staff ",
             "step ",
             "terrain ",
             "tool ",
@@ -793,6 +794,7 @@ mod tests {
                    pass 5 t=80 world stage\n\
                    pass 5 t=80 exhibit 2\n\
                    pass 5 t=80 terrain paint 4\n\
+                   pass 5 t=80 staff job 1 PutFood\n\
                    pass 5 t=80 dev speed 1.1\n";
         assert_eq!(
             replay(log).unwrap(),
