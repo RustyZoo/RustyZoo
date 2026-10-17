@@ -795,7 +795,8 @@ fn set_task(w: &mut World, id: u32, task: u8, target: u32) {
 #[test]
 fn the_mover_follows_the_task_of_the_unit() {
     use crate::goal::{
-        AVOID, CHASE, GO_TO_SHOW, LEAVE, RECOVER, RETURN_FROM_SHOW, RETURN_TO_BUILDING,
+        AVOID, CHASE, ENTER_BUILDING, GO_TO_SHOW, LEAVE, RECOVER, RETURN_FROM_SHOW,
+        RETURN_TO_BUILDING,
     };
     let mut w = map(vec![
         entity("guests", "", 1, centre((3, 3)), 0),
@@ -809,6 +810,7 @@ fn the_mover_follows_the_task_of_the_unit() {
         (LEAVE, [true, false, false, false]),
         (AVOID, [false, true, false, false]),
         (RECOVER, [false, false, true, true]),
+        (ENTER_BUILDING, [false, false, true, false]),
         (RETURN_TO_BUILDING, [false, false, false, true]),
         (CHASE, [false; 4]),
         (u8::MAX, [false; 4]),
