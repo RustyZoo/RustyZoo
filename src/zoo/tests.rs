@@ -645,7 +645,15 @@ fn reads_units_of_version_106() {
     for v in [36, 52, 60, 70, 80] {
         guest.i32(v);
     }
-    guest.0.extend(unit(106, 310 - 20, 22));
+    // Then 29 bytes, the ten countdowns of the block, the 20 bytes of the lists and the chase
+    // countdown, which comes after them.
+    guest.z(29);
+    for c in [1, 2, 3, 4, 5, 6, 8, 9, 10, 11] {
+        guest.i32(c);
+    }
+    guest.z(20);
+    guest.i32(7);
+    guest.0.extend(unit(106, 310 - 20 - 29 - 40 - 20 - 4, 22));
     let guest = guest.0;
     // Own fields of each staff class, the common staff block (16 bytes), the unit block (161).
     let staff = |own: usize, id| unit(106, own + 16 + 161, id);
@@ -664,7 +672,9 @@ fn reads_units_of_version_106() {
         assert_eq!((c.id, c.rotation, &*c.name), (id, 6, "unit"), "{}", e.class);
     }
     let guest = z.entities[1].common.as_ref().unwrap();
-    assert_eq!(guest.guest.as_deref(), Some(&[36, 52, 60, 70, 80]));
+    let record = guest.guest.as_deref().unwrap();
+    assert_eq!(record.values, [36, 52, 60, 70, 80]);
+    assert_eq!(record.countdowns, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     assert_eq!(z.entities[0].common.as_ref().unwrap().guest, None);
 }
 

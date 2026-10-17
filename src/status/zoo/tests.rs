@@ -379,6 +379,8 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
     // stored guests in the set-up check (6.4). At its first check the original has removed them
     // (the scenario resets) and has its research complete (5 points); the engine has neither
     // yet, and the two differences cancel (guests 17 against 12, research 0 against 5).
+    // The stored guests keep their check countdowns, so the trash check cuts the happiness of
+    // about one guest in five in these 4 s, not of all at once.
     let table = [
         ("dinosmal", 45, 42),
         ("deathmtn", 42, 37),

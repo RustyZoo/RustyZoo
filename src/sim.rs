@@ -300,9 +300,9 @@ impl Sim {
     /// class keys in `world.units.class`. The draws come before every draw of the first step.
     pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
         crate::animal::load(world, cat, &mut self.rng);
-        // The guests the map stores keep their five status values (guests 4).
+        // The guests the map stores keep their five status values and their countdowns (guests 4).
         for e in &world.zoo.entities {
-            let Some((id, values)) = e
+            let Some((id, record)) = e
                 .common
                 .as_ref()
                 .and_then(|c| Some((c.id, *c.guest.as_deref()?)))
@@ -310,7 +310,8 @@ impl Sim {
                 continue;
             };
             if let Some(unit::Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) {
-                g.values = values;
+                g.values = record.values;
+                g.countdowns = record.countdowns;
             }
         }
     }

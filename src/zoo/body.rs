@@ -1,7 +1,7 @@
 //! The bodies of entity records, by class. Only the common part is kept; every other field is
 //! read and dropped to reach the next record (or the end of the body).
 
-use super::{AnimalRecord, Common, Fence, R, Reader, bad};
+use super::{AnimalRecord, Common, Fence, GuestRecord, R, Reader, bad};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -59,9 +59,9 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             }
         }
         b"guests" => {
-            let values = guest(r)?;
+            let record = guest(r)?;
             Common {
-                guest: Some(Box::new(values)),
+                guest: Some(Box::new(record)),
                 ..zoo_unit(r, true)?
             }
         }
@@ -259,8 +259,9 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
     })
 }
 
-/// The guest fields: the five status values come first and the rest is skipped.
-fn guest(r: &mut Reader) -> R<[i32; 5]> {
+/// The guest fields: the five status values come first, the eleven check countdowns are spread
+/// over the record (the chase one after the lists, the others in a block), the rest is skipped.
+fn guest(r: &mut Reader) -> R<GuestRecord> {
     let v = r.v;
     let values = [r.i32()?, r.i32()?, r.i32()?, r.i32()?, r.i32()?];
     r.skip(1 + 20)?;
@@ -271,7 +272,11 @@ fn guest(r: &mut Reader) -> R<[i32; 5]> {
     if v <= 64 {
         r.skip(6)?;
     }
-    r.skip(40)?;
+    // Hunger, thirst, bathroom, leave, gift, energy, then trash, like, viewing, surroundings.
+    let mut block = [0; 10];
+    for c in &mut block {
+        *c = r.i32()?;
+    }
     r.skip_list(4)?;
     r.skip_list(4)?;
     if v <= 93 {
@@ -282,7 +287,8 @@ fn guest(r: &mut Reader) -> R<[i32; 5]> {
         r.string()?;
     }
     r.skip_list(8)?;
-    r.skip(4 + 6 + 2 + 12 + 2 + 8)?;
+    let chase = r.i32()?;
+    r.skip(6 + 2 + 12 + 2 + 8)?;
     if v >= 42 {
         r.skip(2)?;
     }
@@ -295,7 +301,11 @@ fn guest(r: &mut Reader) -> R<[i32; 5]> {
     if v >= 65 {
         r.skip(4)?;
     }
-    Ok(values)
+    let [a, b, c, d, e, f, g, h, i, j] = block;
+    Ok(GuestRecord {
+        values,
+        countdowns: [a, b, c, d, e, f, chase, g, h, i, j],
+    })
 }
 
 fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
