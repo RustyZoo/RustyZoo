@@ -198,6 +198,8 @@ pub struct Catalogue {
     index: HashMap<(Vec<u8>, Vec<u8>), Vec<usize>>,
     /// Every definition file asked for so far, by normalised name, with the outcome.
     files: HashMap<String, Definition>,
+    /// The item types guests buy, by lower-case name.
+    pub items: BTreeMap<String, crate::building::items::Item>,
     /// The behaviour sets and ambient tables of the definition files that have some.
     behaviours: BTreeMap<String, Behaviours>,
     /// The bytes of the definition files loaded.
@@ -501,6 +503,9 @@ impl Catalogue {
                 }
             }
         }
+        let (items, warnings) = crate::building::items::load(vfs);
+        catalogue.items = items;
+        warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {
             let more = catalogue.suppressed;
             catalogue
@@ -908,6 +913,34 @@ mod tests {
     /// The catalogue of an installation with these members.
     fn catalogue(name: &str, members: &[(&str, &str)]) -> Catalogue {
         Install::new(name, members).load().unwrap()
+    }
+
+    #[test]
+    fn the_item_types_come_from_the_registries_and_a_missing_file_is_a_warning() {
+        let c = catalogue(
+            "items",
+            &[
+                (
+                    "items.cfg",
+                    "[items]\nHotDog = items/hotdog.cfg\ngone = items/gone.cfg\nnone=\n",
+                ),
+                (
+                    "items/hotdog.cfg",
+                    "[characteristics]\nnameID=6303\nhungerdelta=-75\nadulthappydelta=50\n\
+                     consumenow=1\ntrashwhenconsumed=2\n",
+                ),
+            ],
+        );
+        let item = c.items["hotdog"];
+        assert_eq!((item.id, item.record[0], item.record[2]), (6303, 50, -75));
+        // A flag is on only for 1.
+        assert!(item.now && !item.litter && !item.remove);
+        assert_eq!(c.items.len(), 1);
+        assert!(
+            c.warnings.iter().any(|w| w.contains("gone.cfg")),
+            "{:?}",
+            c.warnings
+        );
     }
 
     /// `class/type/subtype` of every type, in creation order.

@@ -16,6 +16,8 @@ pub const ADMISSIONS: usize = 4;
 /// What the guests pay at the entrance.
 pub const ADMISSIONS_INCOME: usize = 5;
 pub const DONATIONS: usize = 8;
+/// What guests pay at the guest buildings.
+pub const CONCESSIONS: usize = 6;
 pub const CONSTRUCTION_REFUND: usize = 9;
 pub const ANIMAL_REFUND: usize = 10;
 /// The wage categories: what hiring a staff member of the class books, and its monthly wage.

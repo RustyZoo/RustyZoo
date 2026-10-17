@@ -40,20 +40,21 @@ fn map(pen: bool) -> World {
     w
 }
 
-fn sim() -> Sim {
+pub(super) fn sim() -> Sim {
     let mut sim = Sim::new(b"");
     sim.set_seed(1);
     sim.start_game(100, Clocks::default());
     sim
 }
 
-/// A guest type whose set `bWalk` ends at once and whose set `bGawk` never does.
-struct Walks(Vec<Call>, Vec<Call>);
+/// A guest type whose sets `bWalk` and `bEatStanding` end at once and whose set `bGawk` never
+/// does.
+pub(super) struct Walks(Vec<Call>, Vec<Call>);
 
 impl Data for Walks {
     fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
         match name {
-            "bWalk" => Some(&self.0[..]),
+            "bWalk" | "bEatStanding" => Some(&self.0[..]),
             "bGawk" => Some(&self.1[..]),
             _ => None,
         }
@@ -76,7 +77,7 @@ impl Data for Walks {
     }
 }
 
-fn walks() -> Walks {
+pub(super) fn walks() -> Walks {
     let call = |text: &[u8]| parse_call(text).unwrap().0;
     Walks(vec![call(b"fWalk(0,0)")], vec![call(b"fKeepControl()")])
 }

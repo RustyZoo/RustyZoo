@@ -6,6 +6,7 @@ pub mod app;
 pub mod behaviour;
 pub mod bitmap;
 pub mod build;
+pub mod building;
 pub mod camera;
 pub mod config;
 pub mod entity;

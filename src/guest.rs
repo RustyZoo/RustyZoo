@@ -12,14 +12,16 @@
 //! happiness, the leave check raises the flag of an unhappy guest, the viewing check
 //! ([`view`]) changes happiness by the animals in sight. The site choice, the walk to a viewing
 //! area and viewing are the goals' ([`crate::goal`]); what a guest sees from an area is [`view`].
-//! Missing so far (other issues): the buildings that satisfy a need, so the seek parts find none
-//! and the attractions are none; the thoughts, the surroundings and the litter; gawk scenery; the
+//! The seek parts of the need checks send a guest to a building that satisfies the need
+//! ([`crate::goal`], [`crate::building`]); the items it buys are held in [`Guest::items`].
+//! Missing so far (other issues): the thoughts, the surroundings and the litter; gawk scenery; the
 //! Halloween colours; the entrance tiles other than the zoo entrance of the map.
 //!
 //! The log family `guest`: `guest add <id> <adult|child>` for each guest made, `guest status <id>
 //! <happiness> <hunger> <thirst> <bathroom> <energy>` after each update of the values, `guest
 //! view <id> <exhibit>` when a guest starts viewing an exhibit, `guest donate <id> <exhibit>
-//! <amount>` for a donation and `guest leave <id>` for each one that left and was removed.
+//! <amount>` for a donation and `guest leave <id>` for each one that left and was removed. The
+//! buildings a guest uses log the family `building` ([`crate::building`]).
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
@@ -92,6 +94,9 @@ pub struct Keys {
     /// by attractiveness.
     pub gawk: Vec<i32>,
     pub gawk_attr: Vec<i32>,
+    /// `cSearchRadius` (tiles), and `cPriceHappy1Change` and `cPriceAngry1Change`.
+    pub search_radius: i32,
+    pub price: [i32; 2],
 }
 
 /// The changes of the viewing check (guests visit 6.2).
@@ -193,6 +198,8 @@ impl Keys {
             ],
             gawk: list("cGawkTime"),
             gawk_attr: list("cGawkAttrTime"),
+            search_radius: int("cSearchRadius", 11),
+            price: [int("cPriceHappy1Change", 5), int("cPriceAngry1Change", -5)],
         }
     }
 }
@@ -231,6 +238,17 @@ pub struct Guest {
     pub va: Option<u8>,
     /// The calendar time viewing began, in milliseconds.
     pub viewed_at: u64,
+    /// The items held: food, drink, fun gift, gift and litter, each an item name id (guests 9.2).
+    pub items: [Option<i32>; crate::building::items::SLOTS],
+    /// The need being served and the building target (guests 7.3): the building's id, 0 for none,
+    /// and the slot and entrance it was chosen with.
+    pub need: Option<&'static str>,
+    pub building: u32,
+    pub slot: usize,
+    pub entrance: crate::building::Point,
+    /// The eat-standing flag, and the wish for a gift (guests 6.9, 8).
+    pub stand: bool,
+    pub gift: bool,
 }
 
 impl Guest {

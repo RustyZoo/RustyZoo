@@ -43,6 +43,14 @@ pub const GAWK: u8 = 112;
 /// chasing, avoiding a predator, returning to a show building, recovering from a fall into water
 /// and the animal's trips to and from a show tank.
 pub const ENTER_BUILDING: u8 = 104;
+/// The other tasks of the building chain and of eating (goals 11.3, 11.4).
+pub const GO_BUILDING: u8 = 102;
+pub const ENTRANCE: u8 = 103;
+pub const EXIT_BUILDING: u8 = 105;
+pub const USE: u8 = 106;
+pub const EAT: u8 = 107;
+pub const EAT_STANDING: u8 = 108;
+pub const EATING_STANDING: u8 = 109;
 pub const CHASE: u8 = 116;
 pub const AVOID: u8 = 117;
 pub const RETURN_TO_BUILDING: u8 = 130;
@@ -182,6 +190,17 @@ pub enum Goal {
     Site,
     /// 0x70 of a guest: view the animals from the viewing area (11.5).
     Gawk,
+    /// 0x66 to 0x6a of a guest: the building chain (11.3), walking to the building, to its
+    /// entrance and into its slot, using it and leaving.
+    Go,
+    Entrance,
+    Enter,
+    Exit,
+    Use,
+    /// 0x6b to 0x6d of a guest: find a place to eat, eat standing, the meal (11.4).
+    Eat,
+    EatStand,
+    Eating,
 }
 
 impl Goal {
@@ -198,6 +217,14 @@ impl Goal {
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
             (SITE, Kind::Guest) => Some(Goal::Site),
             (GAWK, Kind::Guest) => Some(Goal::Gawk),
+            (GO_BUILDING, Kind::Guest) => Some(Goal::Go),
+            (ENTRANCE, Kind::Guest) => Some(Goal::Entrance),
+            (ENTER_BUILDING, Kind::Guest) => Some(Goal::Enter),
+            (EXIT_BUILDING, Kind::Guest) => Some(Goal::Exit),
+            (USE, Kind::Guest) => Some(Goal::Use),
+            (EAT, Kind::Guest) => Some(Goal::Eat),
+            (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
+            (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
             _ => None,
         }
     }
@@ -212,6 +239,14 @@ impl Goal {
             Goal::DrinkWater => DRINK,
             Goal::Site => SITE,
             Goal::Gawk => GAWK,
+            Goal::Go => GO_BUILDING,
+            Goal::Entrance => ENTRANCE,
+            Goal::Enter => ENTER_BUILDING,
+            Goal::Exit => EXIT_BUILDING,
+            Goal::Use => USE,
+            Goal::Eat => EAT,
+            Goal::EatStand => EAT_STANDING,
+            Goal::Eating => EATING_STANDING,
         }
     }
 
@@ -223,6 +258,7 @@ impl Goal {
                 cx.duties_init();
                 true
             }
+            Goal::Eating => cx.eating_init(),
             _ => true,
         }
     }
@@ -253,6 +289,13 @@ impl Goal {
             Goal::Gawk => return cx.gawk_check_done(),
             Goal::Exhibit => return cx.exhibit_check_done(),
             Goal::Duties => return cx.duties_check_done(),
+            Goal::Enter => return cx.enter_check_done(),
+            Goal::Use => return cx.use_check_done(),
+            Goal::Exit => return cx.exit_check_done(),
+            Goal::Eat => return cx.eat_check_done(),
+            Goal::Eating => {
+                return cx.record().done = cx.unit.runner.top() != Some("bEatStanding");
+            }
             _ => {}
         }
         if self != Goal::Base && cx.reached(false) {
@@ -270,6 +313,9 @@ impl Goal {
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Site => cx.site_decide(),
             Goal::Gawk => cx.gawk_decide(),
+            Goal::Exit => cx.exit_decide(),
+            Goal::Go if cx.record().target.tile.is_none() => cx.reset(),
+            Goal::EatStand if cx.record().target.tile.is_none() => cx.wander(false),
             _ => {}
         }
     }
@@ -283,6 +329,14 @@ impl Goal {
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
             Goal::Gawk => cx.gawk_complete(),
+            Goal::Go => cx.building_arrived(),
+            Goal::Entrance => cx.entrance_arrived(),
+            Goal::Enter => cx.enter_arrived(),
+            Goal::Use => cx.use_done(),
+            Goal::Exit => cx.exit_done(),
+            Goal::Eat => cx.eat_done(),
+            Goal::EatStand => cx.set_task(EATING_STANDING, 1, 0, None),
+            Goal::Eating => cx.reset(),
             Goal::Base | Goal::Site => {}
         }
     }
@@ -445,6 +499,11 @@ impl Cx<'_, '_> {
         self.set_task(NONE, 0, 0, None);
         self.unit.path.clear();
         self.unit.goal.wants_to_decide = false;
+        // A guest's building target goes with it, and so does the eat-standing flag (guests 8).
+        self.clear_target();
+        if let Part::Guest(g) = &mut self.unit.part {
+            g.stand = false;
+        }
     }
 
     /// 12.3: empties the path and invalidates the targets; the task stays.
@@ -528,10 +587,17 @@ impl Cx<'_, '_> {
     /// Point 1 (a guest in an exhibit or a tank leaves it) and point 2 (a guest that is to leave
     /// takes the leave task) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
-        if self.exit_ladder() || self.leave_ladder() {
+        if self.exit_ladder() || self.leave_ladder() || self.stand_ladder(task) {
             return;
         }
         if task != NONE && task != SITE && !done {
+            return;
+        }
+        // Point 9: a guest that holds food looks for a place to eat it.
+        let food = matches!(&self.unit.part, Part::Guest(g) if g.items[0].is_some());
+        if food && task != ENTRANCE && !(104..=106).contains(&task) {
+            self.reset();
+            self.set_task(EAT, 4, 0, None);
             return;
         }
         if self.unit.goal.wandered {

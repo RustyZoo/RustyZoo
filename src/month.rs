@@ -40,7 +40,7 @@ fn upkeep(ty: &EntityType) -> f32 {
 /// The wages and then the upkeep of the month that ended, booked in the month that begins. One
 /// booking per staff member in list order, one for all the buildings, even when it is 0. The log
 /// gets `wages ID AMOUNT` for each member and `upkeep AMOUNT`.
-pub fn charge(world: &World, cat: &Catalogue, money: &mut Money, log: &mut Vec<String>) {
+pub fn charge(world: &mut World, cat: &Catalogue, money: &mut Money, log: &mut Vec<String>) {
     let mut total = 0.0_f32;
     for e in &world.zoo.entities {
         let Some(ty) = type_of(cat, e) else { continue };
@@ -52,7 +52,16 @@ pub fn charge(world: &World, cat: &Catalogue, money: &mut Money, log: &mut Vec<S
                 e.common.as_ref().map_or(0, |c| c.id)
             ));
         } else if is_guest_building(ty) {
-            total += upkeep(ty);
+            let u = upkeep(ty);
+            total += u;
+            // Each building rolls its monthly figures in the same loop (guest buildings 9).
+            if let Some(live) = e
+                .common
+                .as_ref()
+                .and_then(|c| world.units.buildings.get_mut(&c.id))
+            {
+                live.roll(u);
+            }
         }
     }
     money.spend(BUILDING_UPKEEP, total);

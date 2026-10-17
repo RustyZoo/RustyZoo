@@ -424,6 +424,7 @@ impl Sim {
         let settings = &self.status.settings;
         world.units.guest_join = (settings.join_happiness, settings.join_chance);
         world.units.donation_factor = settings.donation_factor;
+        world.units.prices = settings.prices;
         let count = world.zoo.entities.len();
         for at in 0..count {
             // Read again at each index, as the original does.
@@ -450,6 +451,9 @@ impl Sim {
         }
         for d in std::mem::take(&mut world.units.donated) {
             money.refund(money::DONATIONS, d);
+        }
+        for d in std::mem::take(&mut world.units.concessions) {
+            money.refund(money::CONCESSIONS, d);
         }
         for _ in 0..std::mem::take(&mut world.units.guests_gone) {
             money.count(money::GUESTS_GONE);

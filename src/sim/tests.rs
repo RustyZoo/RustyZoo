@@ -589,7 +589,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     };
     let base = guest(&|_| {});
     let date = crate::timing::Calendar::new().date();
-    let changes: [&dyn Fn(&mut crate::guest::Guest); 17] = [
+    let changes: [&dyn Fn(&mut crate::guest::Guest); 24] = [
         &|g| g.values[3] = 1,
         &|g| g.values[0] = 1,
         &|g| g.pending[4] = 1,
@@ -607,6 +607,13 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         &|g| g.recent = vec![5003],
         &|g| g.va = Some(0),
         &|g| g.viewed_at = 1,
+        &|g| g.items[0] = Some(6303),
+        &|g| g.need = Some("food"),
+        &|g| g.building = 7,
+        &|g| g.slot = 1,
+        &|g| g.entrance = (1, 2),
+        &|g| g.stand = true,
+        &|g| g.gift = true,
     ];
     let hashes: Vec<u64> = changes.iter().map(|c| guest(c)).collect();
     assert!(hashes.iter().all(|&h| h != base), "{hashes:?}");
@@ -631,6 +638,36 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     let mut b = game(2);
     b.world.zoo.entities[0].class = "animalsab".into();
     assert_ne!(a.hash(), b.hash());
+}
+
+#[test]
+fn the_hash_follows_the_live_state_of_a_building_and_a_hidden_user() {
+    use crate::building::Live;
+    let hash = |change: &dyn Fn(&mut Live)| {
+        let mut run = game(3);
+        let live = run.world.units.buildings.entry(7).or_default();
+        change(live);
+        run.hash()
+    };
+    let base = game(3).hash();
+    let changes: [&dyn Fn(&mut Live); 8] = [
+        &|l| l.users.push((1, 0, 5)),
+        &|l| l.users.push((1, 1, 5)),
+        &|l| l.users.push((1, 0, 6)),
+        &|l| l.price = 2.0,
+        &|l| l.guests[0] = 1,
+        &|l| l.guests[2] = 1,
+        &|l| l.income[1] = 1.0,
+        &|l| l.upkeep = 1.0,
+    ];
+    let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
+    assert!(hashes.iter().all(|&h| h != base));
+    hashes.sort_unstable();
+    hashes.dedup();
+    assert_eq!(hashes.len(), changes.len());
+    let mut run = game(3);
+    run.world.units.get_mut(1).unwrap().hidden = true;
+    assert_ne!(run.hash(), base);
 }
 
 #[test]

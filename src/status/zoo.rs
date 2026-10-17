@@ -77,6 +77,8 @@ pub struct Settings {
     pub join_chance: i32,
     /// What a guest donates per unit of viewing time (guests visit 7).
     pub donation_factor: f32,
+    /// The prices of buildings (guest buildings 13).
+    pub prices: crate::building::Prices,
 }
 
 /// The keys of [`Settings::percent`].
@@ -121,6 +123,7 @@ impl Settings {
             join_happiness: 80,
             join_chance: 50,
             donation_factor: 2.8e-13,
+            prices: Default::default(),
         }
     }
 
@@ -172,6 +175,9 @@ impl Settings {
         int(c, "cMembershipJoinHappiness", &mut self.join_happiness);
         int(c, "cMembershipJoinChance", &mut self.join_chance);
         decimal("cDonationFactor", &mut self.donation_factor);
+        decimal("cItemExpensive", &mut self.prices.expensive);
+        decimal("cItemCheap", &mut self.prices.cheap);
+        decimal("cBuildingUseCostDefault", &mut self.prices.default);
     }
 }
 
