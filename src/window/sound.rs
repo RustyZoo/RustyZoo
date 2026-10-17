@@ -4,7 +4,7 @@
 //! device or music file is silence, as in the game; a music that fails stops for good.
 
 use rustyzoo::app::App;
-use rustyzoo::config::Config;
+use rustyzoo::config::{Config, to_int};
 use rustyzoo::intro::{Intro, attenuation};
 use rustyzoo::music::{Music, global_term};
 use rustyzoo::vfs::Vfs;
@@ -29,6 +29,8 @@ pub struct Sound {
     click_sum: i32,
     /// The output is silent because the window has no focus.
     quiet: Quiet,
+    /// The game is paused: the voices that were playing at its start are muted (sound 10).
+    paused: bool,
 }
 
 /// Whether the output is silenced for lack of the focus. The voices are not touched: they run
@@ -47,6 +49,12 @@ impl Quiet {
     }
 }
 
+/// `[advanced] use8BitSound` is 1: the 8-bit set is played (sound 2.3). Read once, at start-up.
+fn use_8_bit(ini: &Config) -> bool {
+    let flag = (ini.section("advanced")).and_then(|s| s.get("use8BitSound"));
+    flag.and_then(to_int) == Some(1)
+}
+
 impl Sound {
     /// Opens the default output device; a failure is a warning and silence.
     pub fn open(sdl: &sdl3::Sdl, ini: &Config) -> Sound {
@@ -57,13 +65,37 @@ impl Sound {
         if let Err(e) = &audio {
             eprintln!("rustyzoo: no sound: {e}");
         }
+        let mut audio = audio.ok();
+        if let Some(audio) = &mut audio {
+            audio.eight_bit = use_8_bit(ini);
+        }
         Sound {
-            audio: audio.ok(),
+            audio,
             music: None,
             clicks: HashMap::new(),
             units: HashMap::new(),
             click_sum: global_term(ini),
             quiet: Quiet::default(),
+            paused: false,
+        }
+    }
+
+    /// Mutes the voices that are playing when the game becomes paused or a dialog opens, and
+    /// gives them their volume back when it ends (sound 10.2). Sounds that start meanwhile are
+    /// not muted. A dialog that closes over a pause does not mute twice: the original's bug
+    /// (10.3) is not reproduced.
+    pub fn pause(&mut self, paused: bool) {
+        if self.paused == paused {
+            return;
+        }
+        self.paused = paused;
+        let voices = (self.music.iter())
+            .chain(self.clicks.values())
+            .chain(self.units.values());
+        for voice in voices {
+            if let Err(e) = voice.mute(paused) {
+                eprintln!("rustyzoo: a sound cannot be muted: {e}");
+            }
         }
     }
 
@@ -126,24 +158,22 @@ impl Sound {
                 continue;
             }
             let file = format!("sounds/{name}.wav");
-            let played = vfs
-                .read(&file)
-                .map_err(Into::into)
-                .and_then(|bytes| Wave::decode(&bytes))
+            let played = audio
+                .load(vfs, &file)
                 .and_then(|wave| audio.play(wave, self.click_sum, false, false));
             match played {
                 Ok(Some(voice)) => {
                     self.clicks.insert(name, voice);
                 }
                 Ok(None) => {}
-                Err(e) => eprintln!("rustyzoo: {file}: {e}"),
+                Err(e) => eprintln!("rustyzoo: {e}"),
             }
         }
     }
 
     /// Plays the sounds the units' animations began in the last pass as positional one-shots:
     /// `S = G + B + X` with the base term of the key, the distance term of the unit's place, the pan of it, and not started over
-    /// 6,000 (sound 4.2, 5). A file that is playing continues with the new volume (9.1). Returns
+    /// 6,000 (sound 4.2, 5). A file that is playing continues with the new volume and pan (9.1). Returns
     /// a line for each, `sound unit ID FILE at X,Y sum S pan P` and what became of it:
     /// `started`, `continued`, `too far` or `failed` (a file that cannot be read or decoded is
     /// silence and a warning).
@@ -157,13 +187,12 @@ impl Sound {
             let what = if let Some(voice) = self.units.get(&s.voice)
                 && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
             {
-                voice.set_sum(sum).map_or("failed", |()| "continued")
+                (voice.set_sum_x(sum, s.distance))
+                    .and_then(|()| voice.set_pan(s.pan))
+                    .map_or("failed", |()| "continued")
             } else {
-                let played = vfs
-                    .read(&s.file)
-                    .map_err(Into::into)
-                    .and_then(|bytes| Wave::decode(&bytes))
-                    .and_then(|wave| audio.play(wave.panned(s.pan), sum, false, false));
+                let played = (audio.load(vfs, &s.file))
+                    .and_then(|wave| audio.play_at(wave, s.pan, sum, s.distance));
                 match played {
                     Ok(Some(voice)) => {
                         self.units.insert(s.voice.clone(), voice);
@@ -171,7 +200,7 @@ impl Sound {
                     }
                     Ok(None) => "too far",
                     Err(e) => {
-                        eprintln!("rustyzoo: {}: {e}", s.file);
+                        eprintln!("rustyzoo: {e}");
                         "failed"
                     }
                 }
@@ -238,6 +267,24 @@ impl Sound {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_8_bit_set_is_asked_for_by_a_one() {
+        let ini = |text: &str| use_8_bit(&Config::parse(text.as_bytes()).unwrap());
+        assert!(ini("[advanced]\nuse8BitSound=1\n"));
+        assert!(ini("[advanced]\nuse8BitSound = 1\n"));
+        for off in [
+            "",
+            "[advanced]\n",
+            "[advanced]\nuse8BitSound=0\n",
+            "[advanced]\nuse8BitSound=-1\n",
+            "[advanced]\nuse8BitSound=99999999999\n",
+            "[advanced]\nuse8BitSound=x\n",
+            "[ui]\nuse8BitSound=1\n",
+        ] {
+            assert!(!ini(off), "{off:?}");
+        }
+    }
 
     #[test]
     fn the_output_follows_the_focus_once_per_change() {
