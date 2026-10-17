@@ -6,7 +6,7 @@
 use rustyzoo::app::App;
 use rustyzoo::config::{Config, to_int};
 use rustyzoo::intro::{Intro, attenuation};
-use rustyzoo::music::{Music, global_term};
+use rustyzoo::music::{Music, START_LIMIT, global_term};
 use rustyzoo::vfs::Vfs;
 
 use sdl3::audio::AudioFormat;
@@ -49,10 +49,10 @@ impl Quiet {
     }
 }
 
-/// `[advanced] use8BitSound` is 1: the 8-bit set is played (sound 2.3). Read once, at start-up.
+/// `[advanced] use8BitSound` is a number other than 0: the 8-bit set is played (sound 2.3). Read once, at start-up.
 fn use_8_bit(ini: &Config) -> bool {
     let flag = (ini.section("advanced")).and_then(|s| s.get("use8BitSound"));
-    flag.and_then(to_int) == Some(1)
+    flag.and_then(to_int).is_some_and(|n| n != 0)
 }
 
 impl Sound {
@@ -187,9 +187,14 @@ impl Sound {
             let what = if let Some(voice) = self.units.get(&s.voice)
                 && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
             {
-                (voice.set_sum_x(sum, s.distance))
-                    .and_then(|()| voice.set_pan(s.pan))
-                    .map_or("failed", |()| "continued")
+                // Too far: the playing voice stays as it is (sound 4.2).
+                if sum > START_LIMIT {
+                    "too far"
+                } else {
+                    (voice.set_sum_x(sum, s.distance))
+                        .and_then(|()| voice.set_pan(s.pan))
+                        .map_or("failed", |()| "continued")
+                }
             } else {
                 let played = (audio.load(vfs, &s.file))
                     .and_then(|wave| audio.play_at(wave, s.pan, sum, s.distance));
@@ -269,16 +274,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_8_bit_set_is_asked_for_by_a_one() {
+    fn the_8_bit_set_is_asked_for_by_a_number_other_than_0() {
         let ini = |text: &str| use_8_bit(&Config::parse(text.as_bytes()).unwrap());
         assert!(ini("[advanced]\nuse8BitSound=1\n"));
         assert!(ini("[advanced]\nuse8BitSound = 1\n"));
+        for on in ["2", "-1", "1;", "0x10", "99999999999"] {
+            assert!(ini(&format!("[advanced]\nuse8BitSound={on}\n")), "{on}");
+        }
         for off in [
             "",
             "[advanced]\n",
             "[advanced]\nuse8BitSound=0\n",
-            "[advanced]\nuse8BitSound=-1\n",
-            "[advanced]\nuse8BitSound=99999999999\n",
+            "[advanced]\nuse8BitSound=\n",
             "[advanced]\nuse8BitSound=x\n",
             "[ui]\nuse8BitSound=1\n",
         ] {
