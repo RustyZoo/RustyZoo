@@ -105,16 +105,22 @@ pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &m
         return;
     }
     a.hunger_change = a.hunger_change.saturating_add(k.hunger_increment);
-    // The test sees the hunger before this check's rise. Sleeping is a later issue's flag.
+    // The test sees the hunger before this check's rise.
     if a.eating {
         eat(a, k, &mut out.meal);
-    } else if a.hunger >= k.hunger_threshold && !(a.wants_food || env.food_task || a.rampaging) {
+    } else if !a.sleeping
+        && a.hunger >= k.hunger_threshold
+        && !(a.wants_food || env.food_task || a.rampaging)
+    {
         match env.food_total - out.meal.bites >= 1 {
             true if !a.in_show => (a.wants_food, a.thirsty) = (true, false),
             true => {}
             false => no_food(a, k, out),
         }
     }
+    // The dung meter is tested before its own rise, like the hunger (8.1, 18.2).
+    out.dung = a.dung >= k.dirty_threshold;
+    a.dung_change = a.dung_change.saturating_add(k.dirty_increment);
 }
 
 /// 4.3: no food for a hungry animal.

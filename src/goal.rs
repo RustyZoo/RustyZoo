@@ -26,7 +26,7 @@ mod guest;
 #[cfg(test)]
 mod tests;
 
-pub use animal::KEEPER_FOOD;
+pub use animal::{DRINK, KEEPER_FOOD};
 pub use guest::LEAVE;
 
 pub const NONE: u8 = 0;
@@ -157,6 +157,8 @@ pub enum Goal {
     KeeperFood,
     /// 0x71 of a guest: walk to the zoo entrance and go (11.6).
     Leave,
+    /// 0x7a of an animal: walk to the water and drink (11.9).
+    DrinkWater,
 }
 
 impl Goal {
@@ -168,6 +170,7 @@ impl Goal {
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
+            (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
             _ => None,
         }
     }
@@ -178,6 +181,7 @@ impl Goal {
             Goal::Habitat => HABITAT,
             Goal::KeeperFood => KEEPER_FOOD,
             Goal::Leave => LEAVE,
+            Goal::DrinkWater => DRINK,
         }
     }
 
@@ -220,6 +224,7 @@ impl Goal {
             Goal::Habitat if cx.record().target.tile.is_none() => cx.set_task(NONE, 0, 0, None),
             Goal::KeeperFood => cx.keeper_food_decide(),
             Goal::Leave => cx.leave_decide(),
+            Goal::DrinkWater => cx.drink_decide(),
             _ => {}
         }
     }
@@ -229,6 +234,7 @@ impl Goal {
             Goal::Habitat => cx.set_task(GAWK, 0, 0, None),
             Goal::KeeperFood => cx.keeper_food_complete(),
             Goal::Leave => cx.leave_complete(),
+            Goal::DrinkWater => cx.drink_complete(),
             Goal::Base => {}
         }
     }

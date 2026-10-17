@@ -8,6 +8,8 @@ use crate::sim::Sim;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Clocks, Common, Tile, View, Zoo};
 
+mod life;
+
 fn keys() -> Keys {
     Keys::read(&|_, fallback| fallback, &Class::default())
 }
@@ -17,6 +19,7 @@ fn animal() -> Animal {
     Animal {
         counters: [1000; COUNTERS],
         crowd_direction: -1,
+        life: 5000,
         ..Animal::default()
     }
 }
@@ -45,6 +48,7 @@ fn in_exhibit() -> Env {
         adults: 3,
         all_adults: 3,
         unhappy: 0,
+        sick: 0,
     };
     Env {
         exhibit: true,
@@ -472,7 +476,8 @@ fn pens() -> World {
 }
 
 fn zebras() -> Catalogue {
-    zebras_with("", "")
+    // Neither starving nor falling ill: the pens are about the happiness.
+    zebras_with("cHungryHealthChange=0\ncSickRandomChance=0", "")
 }
 
 /// The zebras with more keys (a key written twice keeps its first value) and more sections.
@@ -1179,11 +1184,14 @@ fn the_reset_interval_runs_the_creation_again_when_it_ends() {
     };
     let mut rng = Rng::default();
     super::run(&mut a, &k, &class, &young, &mut rng);
-    assert!(drew(&rng, 17));
+    // The new counters may fire at once and draw for their checks.
+    assert!((17..20).any(|n| drew(&rng, n)));
     // 0 never resets, and a huge interval does not either; 1 resets at every tick.
     for (interval, resets) in [(0, 0), (i32::MAX, 0), (1, 5)] {
+        // Checks that fire draw too: their periods are long.
         let class = Class {
             reset_interval: interval,
+            periods: [30_000; COUNTERS],
             ..Class::default()
         };
         let mut rng = Rng::default();
@@ -1379,7 +1387,8 @@ fn the_census_counts_species_and_unhappy_animals_in_the_exhibit_and_adults_aroun
             species: 2,
             adults: 2,
             all_adults: 2,
-            unhappy: 1
+            unhappy: 1,
+            sick: 0
         }
     );
     let both = census(&world, ids[0], &ids, "zebra");
@@ -1444,8 +1453,16 @@ fn an_incompatible_species_in_the_exhibit_sets_bit_10_and_lowers_the_happiness()
 
 #[test]
 fn zero_negative_and_huge_values_of_the_new_keys_never_panic() {
+    let sets = crate::animal::life::Sets {
+        has_sleep: true,
+        has_sick: true,
+        has_die: true,
+        ..crate::animal::life::Sets::default()
+    };
     let env = Env {
         grass: true,
+        sick_near: 3,
+        sets,
         ..in_exhibit()
     };
     for v in [0, -1, i32::MIN, i32::MAX] {
@@ -1459,9 +1476,22 @@ fn zero_negative_and_huge_values_of_the_new_keys_never_panic() {
             rampage_chance: v,
             test_fence: v,
             dirt_chance: v,
+            energy_increment: v,
+            dirty_increment: v,
+            dirty_threshold: v,
+            pct_hits: v,
+            sick_change: v,
+            other_sick_change: v,
+            sick_chance: v,
+            sick_random: v,
+            sick_time: v,
+            time_death: v,
+            death_chance: v,
+            building_use: v,
             ..keys()
         };
         let class = Class {
+            death_chance: v,
             zap: v,
             ui_threshold: v,
             dirt_chance_chance: v,

@@ -45,6 +45,9 @@ impl Sets {
     /// The same, and an animal's ambient table starts `bWalk`.
     fn strolling() -> Sets {
         let mut sets = Sets::walking();
+        // A tired animal chooses no row (behaviours 6.4): this sleep goes on walking.
+        sets.0
+            .insert("bSleep".into(), vec![parse_call(b"fWalk(0,0)").unwrap().0]);
         sets.1.push(Row {
             lo: i32::MIN,
             hi: i32::MAX,
@@ -468,7 +471,8 @@ fn a_halted_animal_runs_no_goal_update_and_draws_nothing() {
                 .collect::<Vec<_>>(),
             ["goal 1 none 0 - -"]
         );
-        assert_eq!(unit(&w).goal.record.task, NONE);
+        // A dying animal is removed by its first status tick, with no death set to wait for.
+        assert!(halt == 0 || unit(&w).goal.record.task == NONE);
     }
 }
 
@@ -676,7 +680,9 @@ fn the_walk_start_restarts_the_set_forced_and_fails_without_its_calls() {
                 unit: &cx.world.zoo.entities[0],
                 rng: &mut rng,
             };
-            cx.unit.runner.step(&mut cx.unit.animation, &mut env, 0);
+            cx.unit
+                .runner
+                .step(&mut cx.unit.animation, &mut env, Some(0));
         }
         cx.unit.animation.advance(0, &timing);
         assert!(!cx.unit.animation.shows_base());

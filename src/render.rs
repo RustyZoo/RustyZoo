@@ -1344,6 +1344,10 @@ impl<'a> MapRenderer<'a> {
             "animals" | "guests" | "keeper" | "maint" | "tour" => {
                 meta.shown.map_or("idle", |(name, _)| name).to_string()
             }
+            // A dung pile shows `idle`, `small` or `giant` by its size (animals-needs 8.2).
+            "objects" if ty.type_name == b"other" && ty.subtype.ends_with(b"poo") => {
+                ["idle", "small", "giant"][meta.food.clamp(0, 2) as usize].into()
+            }
             // Food shows `empty`, `half` or `full` by its units left (animals-needs 5.1).
             "food" => {
                 let max = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;

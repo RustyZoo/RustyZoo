@@ -6,11 +6,9 @@ use crate::animal::Class;
 use crate::behaviour::{Library, NoData, Timings};
 use crate::entity::Catalogue;
 use crate::money::Money;
-use crate::render::order::Kind;
 use crate::unit::Part;
 use crate::vfs::Vfs;
-use crate::world::{Shape, TankKind, World};
-use crate::zoo::{Common, Entity};
+use crate::world::World;
 
 /// A command a script gives at a step. Each is one the player's tools would give the world, as
 /// far as a run without an interface can.
@@ -30,6 +28,9 @@ pub enum Command {
     Food(i32, i32, String, Option<i32>),
     /// `leave ID`: the guest decides to leave the zoo (the flag its checks raise).
     Leave(u32),
+    /// `heal ID`: the animal is healed as a keeper's heal does (animals-needs 9.7), without the
+    /// keeper and without the booking.
+    Heal(u32),
 }
 
 /// The highest elevation a script sets.
@@ -49,6 +50,7 @@ impl std::str::FromStr for Command {
         let id = |i: usize| u32::try_from(n(i)?).map_err(|_| format!("bad id: {text:?}"));
         let command = match words.first().copied() {
             Some("remove") if words.len() == 2 => Command::Remove(id(1)?),
+            Some("heal") if words.len() == 2 => Command::Heal(id(1)?),
             Some("fill") if words.len() == 2 => Command::Fill(id(1)?),
             Some("drain") if words.len() == 2 => Command::Drain(id(1)?),
             Some("leave") if words.len() == 2 => Command::Leave(id(1)?),
@@ -185,51 +187,35 @@ impl Run {
                 true
             }
             Command::Food(x, y, ref name, units) => self.put_food(x, y, name, units),
+            Command::Heal(id) => self.heal(id),
         }
     }
 
     /// A pile of food of the type `name` in the middle of tile `(x, y)`, full unless `units` says
     /// otherwise; whether there is such a tile and such a type.
     fn put_food(&mut self, x: i32, y: i32, name: &str, units: Option<i32>) -> bool {
-        let Some(tile) = self.world.tile_index(x, y) else {
-            return false;
-        };
         let Some(ty) = (self.cat).find("food", b"food", name.as_bytes()) else {
             return false;
         };
         let full = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;
-        let common = Common {
-            x: x * 64 + 32,
-            y: y * 64 + 32,
-            z: self.world.zoo.tiles[tile].elevation * 16,
-            rotation: 0,
-            id: 0,
-            name: String::new(),
-            colors: Vec::new(),
-            fence: None,
-            movement_mode: 0,
-            food: units.unwrap_or(full),
-            animal: None,
-            guest: None,
+        let names = ("food", "food", name);
+        let units = units.unwrap_or(full);
+        crate::animal::dirt::put(&mut self.world, ty, names, (x, y), 0, units)
+    }
+
+    /// Heals the animal `id`; whether there is one.
+    fn heal(&mut self, id: u32) -> bool {
+        let Some(at) = self.world.find(id) else {
+            return false;
         };
-        let entity = Entity {
-            class: "food".into(),
-            type_name: "food".into(),
-            subtype: name.into(),
-            body_size: None,
-            common: Some(common),
+        let k = crate::animal::keys(&self.world, &self.cat, at);
+        let unit = self.world.units.get_mut(id);
+        let Some(Part::Animal(a)) = unit.map(|u| &mut u.part) else {
+            return false;
         };
-        let shape = Shape {
-            kind: Kind::Fixed,
-            footprint: (ty.footprint[0], ty.footprint[1]),
-            fence: false,
-            wall: false,
-            gate: false,
-            gated: false,
-            tank: TankKind::NONE,
-            walkable: (false, false),
-        };
-        self.world.add(entity, Some(shape)).is_some()
+        a.heal(&k);
+        self.world.units.tell(format!("heal {id}"));
+        true
     }
 
     /// One step of `ms` milliseconds; the `sim`, `unit`, `animal` and `guest` log lines it made. The units

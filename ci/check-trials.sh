@@ -221,11 +221,12 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # A hungry lion (27645) goes to the pile of 50 units that the script puts down, takes bites of 20, 20 and
 # what is left, and the pile goes.
 check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
-# A play call queues behind the playing sequence, the base loop included: the lion shows its first two
-# animations other than the idle one at passes 14 and 28 (the lion 27646, happiness 90, chooses
-# bHappy; the lion 27645, happiness 75, chooses bFriendly); a sound named without .wav is a file of the
-# type's folder.
-check base-trial 14,28 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
+# A play call queues behind the playing sequence, the base loop included: the lion shows its first
+# animation other than the idle one at pass 14 (the lion 27645, happiness 75, chooses bFriendly; the lion
+# 27646 is tired, so its ambient choice runs the sleep check instead of a row, behaviours 6.4: it starts
+# bSleep at pass 25 and shows its first other animation at pass 28); a sound named without .wav is a
+# file of the type's folder.
+check base-trial 28 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
 check base-trial bFriendly,14 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit set 27645 / && s == \"\" {s=\$NF} / unit anim 27645 / && \$NF != \"idle\" && a == \"\" {a=\$2} END {print s \",\" a}"'
 check base-trial animals/lion/cat_sgr.wav 'rz run maps/scn01a.zoo --headless --bare --passes 1500 --clock 67 --seed 3 2>/dev/null | grep " unit sound " | awk "{print \$NF}" | sort -u'
 

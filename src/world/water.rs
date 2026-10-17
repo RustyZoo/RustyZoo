@@ -36,6 +36,14 @@ impl World {
         }
     }
 
+    /// An animal's dung lowers the purity of the water of tank `id` (animals-needs 8.1).
+    pub fn pollute(&mut self, id: u32, by: u32) {
+        self.edit_tank(id, |t, _| t.purity = t.purity.saturating_sub(by));
+        if let Some(e) = self.exhibits.get_mut(id) {
+            e.rating.dirty = true;
+        }
+    }
+
     /// One simulation step of the water of every tank (3.10): one elevation step up while filled
     /// and below the full level, one down while not filled and above 0.
     /// Whether a level moved.

@@ -699,6 +699,19 @@ fn a_script_applies_its_commands_to_the_run() {
         "off the map"
     );
     assert!(!run.apply(&drive::Command::Fill(7)), "no tank");
+    // A heal restores an animal's health; there is no animal 9.
+    let sick = |run: &mut drive::Run| {
+        let crate::unit::Part::Animal(a) = &mut run.world.units.get_mut(1).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.health, a.at_minimum_health) = (0, true);
+    };
+    sick(&mut run);
+    assert!(run.apply(&"heal 1".parse().unwrap()) && !run.apply(&drive::Command::Heal(9)));
+    let crate::unit::Part::Animal(a) = &run.world.units.get(1).unwrap().part else {
+        panic!("not an animal");
+    };
+    assert_eq!((a.health, a.at_minimum_health), (500, false));
 }
 
 #[test]
@@ -721,6 +734,9 @@ fn a_bad_script_is_an_error() {
         "1 tile 0 99999999999 0 0 0",
         "1 tile 0 0 0 0",
         "1 fill 1 2",
+        "1 heal",
+        "1 heal -1",
+        "1 heal 1 2",
         "1 food 1,1",
         "1 food 1 herbchow",
         "1 food a,b herbchow",

@@ -92,7 +92,7 @@ impl Rig {
             unit: &self.unit,
             rng: &mut self.rng,
         };
-        self.runner.step(&mut self.anim, &mut env, 0);
+        self.runner.step(&mut self.anim, &mut env, Some(0));
         (self.anim.name.clone(), self.anim.shown())
     }
 

@@ -613,7 +613,9 @@ impl Hooks for Standard<'_> {
     }
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-        let key = ambient_key(unit);
+        let took = unit.kind == Kind::Animal
+            && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
+        let key = (!took).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
         let mut env = Env {
             data: self.data,
@@ -645,6 +647,9 @@ impl Hooks for Standard<'_> {
         if unit.runner.take_face() {
             crate::animal::food::face(unit, world, at);
         }
+        if unit.runner.take_die() {
+            crate::animal::dirt::die(unit, world, ctx, at);
+        }
         self.tell(unit, world, at);
     }
 
@@ -667,14 +672,16 @@ impl Hooks for Standard<'_> {
             _ => false,
         };
         if asked {
-            let key = ambient_key(unit);
-            unit.runner.place = swim::place(unit, world, at);
-            let mut env = Env {
-                data: self.data,
-                unit: &world.zoo.entities[at],
-                rng: ctx.rng,
-            };
-            unit.runner.ambient(&mut unit.animation, &mut env, key);
+            if !crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data) {
+                let key = ambient_key(unit);
+                unit.runner.place = swim::place(unit, world, at);
+                let mut env = Env {
+                    data: self.data,
+                    unit: &world.zoo.entities[at],
+                    rng: ctx.rng,
+                };
+                unit.runner.ambient(&mut unit.animation, &mut env, key);
+            }
             swim::add_to_map(unit, world, at);
             self.tell(unit, world, at);
         }
