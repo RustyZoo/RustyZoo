@@ -469,3 +469,43 @@ fn a_search_that_fails_is_asked_again_relaxed_and_a_partial_path_brings_him_near
     );
     assert!(!g.w.units.get(KEEPER).unwrap().mover.relaxed);
 }
+
+#[test]
+fn the_sickly_percentage_is_cut_to_0_and_100_and_a_food_need_of_0_sends_no_food() {
+    let mut g = Game::new(&[PEN_A]);
+    let pen = g.exhibit((4, 3));
+    // Health 450 of 500 is 90 percent: sick while the percentage is at most 10 (the default).
+    zebra(&mut g.w, ZEBRA_A).health = 450;
+    let sick = |g: &mut Game, keys: &str| {
+        let mut cat = Catalogue::default();
+        cat.push(ty("keeper", "keeper", "m", 9500, keys));
+        let who = cat.find("keeper", b"keeper", b"m").unwrap();
+        let mine = service::animals(&g.w, &g.cat, pen, who);
+        mine.iter().map(|a| a.sick).collect::<Vec<_>>()
+    };
+    assert_eq!(sick(&mut g, ""), [true], "10 percent");
+    assert_eq!(sick(&mut g, "cSicklyAnimalPct=9"), [true]);
+    assert_eq!(sick(&mut g, "cSicklyAnimalPct=11"), [false]);
+    assert_eq!(
+        sick(&mut g, "cSicklyAnimalPct=100"),
+        [false],
+        "only health 0"
+    );
+    assert_eq!(sick(&mut g, "cSicklyAnimalPct=0"), [true]);
+    assert_eq!(sick(&mut g, "cSicklyAnimalPct=-40"), [true], "cut to 0");
+    assert_eq!(
+        sick(&mut g, "cSicklyAnimalPct=99999999999"),
+        [false],
+        "cut to 100"
+    );
+    // The animals of a species that needs no food get none.
+    let mut cat = Catalogue::default();
+    for t in [
+        ty("keeper", "keeper", "m", 9500, ""),
+        ty("animals", "zebra", "f", 1, "cNeededFood=0"),
+    ] {
+        cat.push(t);
+    }
+    let who = cat.find("keeper", b"keeper", b"m").unwrap();
+    assert_eq!(service::food_needed(&g.w, &cat, pen, who, 0), 0);
+}
