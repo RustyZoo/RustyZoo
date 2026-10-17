@@ -72,10 +72,17 @@ impl<'c> Cx<'_, 'c> {
             .map_or_else(String::new, |e| e.name.clone())
     }
 
-    /// Message `m` with the keeper's name and `other` (staff 10).
+    /// The message 11004 with the keeper's name and the name of what he cannot reach (staff 10).
     fn trouble(&mut self, other: String) {
         let names = vec![self.name_of(self.unit.id), other];
         self.world.units.post_named(TROUBLE, self.unit.id, names);
+    }
+
+    /// Whether the unit is a keeper on his way to an exhibit or at his duties: the goals whose
+    /// target tile is the keeper's (a wander writes the field without the setter, movement 6.2).
+    pub(super) fn keeper_goal(&self) -> bool {
+        let task = self.unit.goal.record.task;
+        self.unit.kind == crate::unit::Kind::Keeper && matches!(task, HABITAT | DUTIES)
     }
 
     /// The keeper no longer comes to the exhibit of his target tile: its count of keepers on their
@@ -180,10 +187,9 @@ impl<'c> Cx<'_, 'c> {
             _ => Vec::new(),
         };
         let lost = self.lost().0;
-        let chosen = self.who().and_then(|w| {
-            service::choose(self.world, cat, w, &assigned, here, &lost).map(|x| (w, x))
-        });
-        let Some((_, x)) = chosen else {
+        let chosen =
+            (self.who()).and_then(|w| service::choose(self.world, cat, w, &assigned, here, &lost));
+        let Some(x) = chosen else {
             return self.set_task(RANDOM, 1, 0, None);
         };
         let gate = service::gate_tiles(self.world, x);

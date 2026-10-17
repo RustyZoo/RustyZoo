@@ -416,8 +416,12 @@ fn a_keeper_leaving_lowers_the_count_of_the_exhibit_he_was_going_to() {
             .tile
             .is_some()
     );
+    // He remembers a gate he opened; giving up closes it.
+    g.w.units.get_mut(KEEPER).unwrap().gate = Some(109);
     crate::staff::leaves(&mut g.w, KEEPER);
     assert_eq!(g.w.exhibits().get(pen).unwrap().rating.coming, 0);
+    assert!(g.w.units.get(KEEPER).unwrap().gate.is_none());
+    assert!(g.w.units.gate_frames().any(|(id, _)| id == 109));
     crate::staff::leaves(&mut g.w, KEEPER);
     assert_eq!(
         g.w.exhibits().get(pen).unwrap().rating.coming,

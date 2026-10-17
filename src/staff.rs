@@ -1,11 +1,13 @@
 //! Staff (staff 3 to 5): the types the Hire panel lists, what hiring books and where, the monthly
-//! cost, and the two numbers a new staff member draws when its first turn starts its state.
+//! cost, and the two numbers a new staff member draws when its first turn starts its state; a
+//! keeper's status tick and what leaving does to the exhibit he was going to.
 //!
 //! The keeper class (the zookeeper, the scientist and the marine specialist), the tour guide and
 //! the maintenance worker are staff; the helicopter comes with the scenarios.
 
 use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
+use crate::goal::{DUTIES, HABITAT};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
 use crate::place::bulldozer::type_of;
 use crate::unit::{Ctx, Kind, Part, Unit};
@@ -93,11 +95,19 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 /// The keeper `id` stops going to the exhibit of his target tile, which is lowered by one, and
 /// closes the gate he remembers (movement 6.2): he is picked up or removed. Only a keeper does.
 pub fn leaves(world: &mut World, id: u32) {
-    let Some(keeper) = world.units.get_mut(id).filter(|u| u.kind == Kind::Keeper) else {
+    let at_goal = |u: &&mut Unit| matches!(u.goal.record.task, HABITAT | DUTIES);
+    let Some(keeper) = (world.units.get_mut(id).filter(|u| u.kind == Kind::Keeper)).filter(at_goal)
+    else {
+        world.units.release_gate_of(id);
         return;
     };
-    let tile = keeper.goal.record.target.tile;
+    let (tile, job) = (keeper.goal.record.target.tile, keeper.goal.record.job);
+    let held = keeper.goal.record.job_target.id;
     keeper.goal.record.target.clear();
+    // The animal he was to heal waits no more.
+    if let (3 | 4, Some(a)) = (job, world.units.get_mut(held)) {
+        a.wait = 0;
+    }
     let exhibit = tile.and_then(|t| crate::animal::food::exhibit_of(world, t));
     if let Some(x) = exhibit.and_then(|e| world.exhibits_mut().get_mut(e)) {
         x.rating.coming = x.rating.coming.saturating_sub(1);

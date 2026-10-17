@@ -439,7 +439,7 @@ impl Cx<'_, '_> {
 
     /// 12.1: clears the record, empties the path, lowers the flags.
     pub fn reset(&mut self) {
-        if self.unit.kind == Kind::Keeper {
+        if self.keeper_goal() {
             self.keeper_reset();
         }
         self.set_task(NONE, 0, 0, None);
@@ -449,7 +449,7 @@ impl Cx<'_, '_> {
 
     /// 12.3: empties the path and invalidates the targets; the task stays.
     pub fn abort(&mut self) {
-        if self.unit.kind == Kind::Keeper {
+        if self.keeper_goal() {
             self.keeper_target(None);
         }
         self.unit.path.clear();
