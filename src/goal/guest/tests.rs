@@ -131,6 +131,16 @@ fn a_guest_on_the_entrance_starts_its_walk_like_any_other_and_leaves() {
 
 /// Runs `f` on the goal update context of guest 1.
 fn with_cx<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> R {
+    with_cx_in(&Catalogue::default(), &NoData, w, rng, f)
+}
+
+fn with_cx_in<R>(
+    cat: &Catalogue,
+    data: &dyn Data,
+    w: &mut World,
+    rng: &mut Rng,
+    f: impl FnOnce(&mut Cx) -> R,
+) -> R {
     let mut u: Unit = w.units.get(1).unwrap().clone();
     let (events, mut removals) = (Events::default(), Vec::new());
     let mut ctx = Ctx {
@@ -138,14 +148,14 @@ fn with_cx<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> R {
         events: &events,
         removals: &mut removals,
         step: 67,
-        cat: &Catalogue::default(),
+        cat,
     };
     let mut cx = Cx {
         unit: &mut u,
         world: w,
         ctx: &mut ctx,
         at: 0,
-        data: &NoData,
+        data,
     };
     let r = f(&mut cx);
     *w.units.get_mut(1).unwrap() = u;
@@ -514,4 +524,38 @@ fn the_site_goal_of_a_guest_that_has_seen_the_sites_of_the_zoo_forgets_them_and_
         (0, 0, true),
         "{log:?}"
     );
+}
+
+#[test]
+fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
+    let (cat, walks) = (types(), walks());
+    let mut w = visit(50);
+    let (x, y) = centre((5, 5));
+    w.place_unit(0, (x, y, 0), 0);
+    let order = w.exhibits().list()[0].order.clone();
+    let (mut rng, mut by_hand) = (Rng::default(), Rng::default());
+    by_hand.rand();
+    let drawn = order[by_hand.pick(order.len() as u32) as usize];
+    let started = with_cx_in(&cat, &walks, &mut w, &mut rng, |cx| cx.gawk_init());
+    assert!(started);
+    // The lookup draw, then the draw of the tile; the set has no target.
+    assert_eq!(rng.state(), {
+        let mut r = Rng::default();
+        r.rand();
+        r.pick(order.len() as u32);
+        // The duration of the gawk (5.3) follows.
+        r.rand();
+        r.rand();
+        r.state()
+    });
+    let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert_eq!(g.seen, vec![drawn]);
+    let (va, rotation) = (
+        g.va.unwrap(),
+        w.zoo.entities[0].common.as_ref().unwrap().rotation,
+    );
+    assert_ne!(va, 0, "the guest started facing 0");
+    assert_eq!(rotation, u32::from(va));
 }

@@ -1,6 +1,7 @@
 //! The site goal (100) and viewing (0x70) of a guest (goals 11.1, 11.5; guests visit 3, 5).
 
 use super::super::{Cx, HABITAT, SITE};
+use crate::exhibit::GROUNDS;
 use crate::guest::view;
 use crate::unit::{Part, movement};
 
@@ -60,11 +61,9 @@ impl Cx<'_, '_> {
         let beasts = view::beasts(self.world, self.ctx.cat);
         let mut best: Option<(i64, u32)> = None;
         for &x in &unseen {
-            let tiles = view::viewing_tiles(self.world, self.ctx.cat, x);
-            if tiles.is_empty() {
+            let Some(t) = view::viewing_tile(self.world, self.ctx.cat, x, self.ctx.rng) else {
                 continue;
-            }
-            let t = tiles[self.ctx.rng.pick(tiles.len() as u32) as usize];
+            };
             let (dx, dy) = (
                 (t % width) as i64 - (here % width) as i64,
                 (t / width) as i64 - (here / width) as i64,
@@ -82,8 +81,11 @@ impl Cx<'_, '_> {
         let Some((_, winner)) = best else {
             return;
         };
-        let tiles = view::viewing_tiles(self.world, self.ctx.cat, winner);
-        let to = tiles[self.ctx.rng.pick(tiles.len() as u32) as usize];
+        let to = view::viewing_tile(self.world, self.ctx.cat, winner, self.ctx.rng);
+        // A tile off the zoo grounds ends it: the draws are made, the task stays.
+        let Some(to) = to.filter(|&t| self.world.exhibits().region(t) == Some(GROUNDS)) else {
+            return;
+        };
         if self.path_to(to, false) && self.start_walk(false, false, false) {
             self.set_task(HABITAT, 0, 0, Some(to));
         }
@@ -111,6 +113,16 @@ impl Cx<'_, '_> {
         if self.unit.runner.top() == Some("bGawk") {
             return true;
         }
+        // The guest faces the direction of its area, also when viewing then fails.
+        if let Some(c) = found
+            .zip(self.world.zoo.entities[self.at].common.as_ref())
+            .filter(|(k, c)| u32::from(*k) != c.rotation)
+        {
+            let (point, facing) = ((c.1.x, c.1.y, c.1.z), u32::from(c.0));
+            self.world.place_unit(self.at, point, facing);
+            let id = self.unit.id;
+            self.world.units.note(format!("face {id} {facing}"));
+        }
         let Part::Guest(g) = &mut self.unit.part else {
             return false;
         };
@@ -121,10 +133,12 @@ impl Cx<'_, '_> {
         let Some(x) = self.world.exhibits().get(s.exhibit) else {
             return false;
         };
-        let (first, size) = (x.first, x.order.len());
-        // The tile the set aims at is drawn; the guest's sets do not face it.
-        self.ctx.rng.pick(size as u32);
-        if size == 0 || !self.start_set("bGawk", false) {
+        let order = x.order.clone();
+        // A random tile of the exhibit: the seen list gets it, the set gets no target.
+        let Some(&drawn) = order.get(self.ctx.rng.pick(order.len() as u32) as usize) else {
+            return false;
+        };
+        if !self.start_set("bGawk", false) {
             return false;
         }
         let rng = &mut *self.ctx.rng;
@@ -153,7 +167,7 @@ impl Cx<'_, '_> {
             return false;
         };
         g.viewed_at = now;
-        view::see(g, first);
+        view::see(g, drawn);
         let drop = (g.recent.len() + s.species.len().min(5)).saturating_sub(5);
         g.recent.drain(..drop);
         g.recent.extend(s.species.iter().take(5));

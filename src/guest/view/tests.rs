@@ -115,17 +115,17 @@ fn a_guest_on_a_path_beside_a_pen_finds_its_area_and_sees_the_animals() {
     assert_eq!(drew(&Rng::default(), &rng), 2);
     // Inside the pen a guest has no area, and a tile of the exhibit is not a viewing tile.
     assert!(sight(&mut w, &cat, 5 * 10 + 2, dir).is_none());
-    let tiles = viewing_tiles(&mut w, &cat, 1);
+    let areas = viewing_areas(&mut w, &cat, 1);
     assert!(
-        !tiles.is_empty() && tiles.iter().all(|t| t % 10 == 5 || t % 10 == 4),
-        "{tiles:?}"
+        !areas.is_empty() && areas.concat().iter().all(|t| t % 10 == 5 || t % 10 == 4),
+        "{areas:?}"
     );
     // The areas are built again when the map changes.
     let stamp = w.units.views.edits;
     assert_eq!(stamp, Some(w.edits));
     assert!(w.set_tile(8, 8, 1, 0, 0));
     assert_ne!(w.units.views.edits, Some(w.edits));
-    viewing_tiles(&mut w, &cat, 1);
+    viewing_areas(&mut w, &cat, 1);
     assert_eq!(w.units.views.edits, Some(w.edits));
 }
 
@@ -286,4 +286,22 @@ fn the_seen_list_keeps_ten_and_the_unseen_exhibits_are_those_with_animals_not_se
     );
     // An empty exhibit is no site.
     assert_eq!(sites(&pen(&[]), &cat, &Guest::default()), (0, vec![]));
+}
+
+#[test]
+fn the_site_draws_an_area_then_one_of_its_tiles() {
+    let (mut w, cat) = (pen(&[40]), catalogue());
+    let areas = viewing_areas(&mut w, &cat, 1);
+    assert!(!areas.is_empty());
+    let (mut rng, mut by_hand) = (Rng::default(), Rng::default());
+    let tile = viewing_tile(&mut w, &cat, 1, &mut rng).expect("a tile");
+    // One draw for the area, one for a tile of that area's own list.
+    let area = &areas[by_hand.pick(areas.len() as u32) as usize];
+    assert_eq!(tile, area[by_hand.pick(area.len() as u32) as usize]);
+    assert_eq!(rng, by_hand);
+    assert_eq!(drew(&Rng::default(), &rng), 2);
+    // An exhibit that is none, or sees no tile, is skipped with no draw.
+    let mut rng = Rng::default();
+    assert_eq!(viewing_tile(&mut w, &cat, 99, &mut rng), None);
+    assert_eq!(rng, Rng::default());
 }

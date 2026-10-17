@@ -110,20 +110,23 @@ fn refresh(world: &mut World, cat: &Catalogue) {
     world.units.views = views;
 }
 
-/// The tiles from which guests look at exhibit `id`, in the order of its areas: those of the areas
-/// that see a tile, which look into the exhibit in some direction (goals 11.1).
-pub fn viewing_tiles(world: &mut World, cat: &Catalogue, id: u32) -> Vec<usize> {
+/// The tile lists of the areas of exhibit `id`, in the order of its areas, of those that see a
+/// tile (goals 11.1).
+pub fn viewing_areas(world: &mut World, cat: &Catalogue, id: u32) -> Vec<Vec<usize>> {
     refresh(world, cat);
     let areas = world.units.views.areas.iter().find(|(x, _)| *x == id);
-    let tiles = areas
-        .into_iter()
-        .flat_map(|(_, areas)| areas)
-        .filter(|a| !a.seen.is_empty())
-        .flat_map(|a| a.tiles.iter().zip(&a.looks));
-    tiles
-        .filter(|(_, looks)| **looks != 0)
-        .map(|(t, _)| *t)
+    let kept = areas.into_iter().flat_map(|(_, areas)| areas);
+    kept.filter(|a| !a.seen.is_empty())
+        .map(|a| a.tiles.clone())
         .collect()
+}
+
+/// A random viewing tile of exhibit `id` (goals 11.1): one draw picks one of the areas that see a
+/// tile, a second one a tile of that area's own list. None, and no draw, when no area sees a tile.
+pub fn viewing_tile(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> Option<usize> {
+    let areas = viewing_areas(world, cat, id);
+    let tiles = areas.get(rng.pick(areas.len() as u32) as usize)?;
+    tiles.get(rng.pick(tiles.len() as u32) as usize).copied()
 }
 
 /// 4.1: one draw gives the direction to start from; the first of the eight that holds an area
