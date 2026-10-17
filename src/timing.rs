@@ -31,8 +31,62 @@ pub struct Pass {
     pub step: Option<u32>,
 }
 
+/// The speed factor of the simulation and the developer mode that unlocks its keys (main loop 5.2).
+#[derive(Debug, Clone, Copy)]
+pub struct Speed {
+    /// `[advanced] devModeEnabled` is not 0: Ctrl+D may switch the developer mode on.
+    enabled: bool,
+    developer: bool,
+    factor: f64,
+}
+
+impl Speed {
+    /// Speed 1.0, developer mode off.
+    pub fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            developer: false,
+            factor: 1.0,
+        }
+    }
+
+    pub fn factor(&self) -> f64 {
+        self.factor
+    }
+
+    pub fn developer(&self) -> bool {
+        self.developer
+    }
+
+    /// Ctrl+D: switches the developer mode, if the ini allows it. Whether it changed.
+    pub fn toggle(&mut self) -> bool {
+        self.developer ^= self.enabled;
+        self.enabled
+    }
+
+    /// A character key: `.` adds 0.1, `,` subtracts 0.1 and `/` sets 1.0, in developer mode.
+    /// The tenths are plain double arithmetic (1.2000000000000002 after two `.`). The original
+    /// stops `,` only when the factor is not above 0.1 and so reaches 1.4e-16; here `,` never
+    /// goes below 0.1 (main loop O7). Whether the key was one of these and acted.
+    pub fn key(&mut self, byte: u8) -> bool {
+        if !self.developer {
+            return false;
+        }
+        match byte {
+            b'.' => self.factor += 0.1,
+            b',' if self.factor - 0.1 >= 0.1 - 1e-9 => self.factor -= 0.1,
+            b',' => {}
+            b'/' => self.factor = 1.0,
+            _ => return false,
+        }
+        true
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Timers {
+    /// The speed factor `pass` is called with.
+    pub speed: Speed,
     update_period: u32,
     draw_period: u32,
     cap: u32,
@@ -46,6 +100,7 @@ impl Timers {
     /// Periods and cap in milliseconds. The cap is unsigned: `u32::MAX` means no cap.
     pub fn new(update_period: u32, draw_period: u32, cap: u32) -> Self {
         Self {
+            speed: Speed::new(false),
             update_period,
             draw_period,
             cap,
@@ -64,11 +119,14 @@ impl Timers {
             .and_then(whole)
             .filter(|&n| n != 0)
             .map_or(DEFAULT_MAX_SIM_TICK, |n| n as u32);
-        Self::new(
+        let mut timers = Self::new(
             period("UpdateRate", FALLBACK_UPDATE_PERIOD),
             period("DrawRate", FALLBACK_DRAW_PERIOD),
             cap,
-        )
+        );
+        timers.speed =
+            Speed::new(ini_whole(ini, "advanced", "devModeEnabled").is_some_and(|n| n != 0));
+        timers
     }
 
     pub fn update_period(&self) -> u32 {
@@ -327,6 +385,59 @@ mod tests {
                 "{s} {k}"
             );
         }
+    }
+
+    #[test]
+    fn the_ini_key_enables_the_developer_mode() {
+        let enabled = |ini: &str| {
+            let mut t = Timers::from_config(&Config::parse(ini.as_bytes()).unwrap());
+            t.speed.toggle();
+            t.speed.developer()
+        };
+        for (ini, want) in [
+            ("[advanced]\ndevModeEnabled=1\n", true),
+            ("[ADVANCED]\ndevmodeenabled=7\n", true),
+            ("[advanced]\ndevModeEnabled=-1\n", true),
+            ("[advanced]\ndevModeEnabled=99999999999\n", true),
+            ("[advanced]\ndevModeEnabled=0\n", false),
+            ("[advanced]\ndevModeEnabled=x\n", false),
+            ("[advanced]\ndevModeEnabled=\n", false),
+            ("[advanced]\nother=1\n", false),
+            ("[user]\ndevModeEnabled=1\n", false),
+            ("", false),
+        ] {
+            assert_eq!(enabled(ini), want, "{ini:?}");
+        }
+    }
+
+    #[test]
+    fn the_speed_keys_step_by_tenths_and_stop_at_a_tenth() {
+        let mut off = Speed::new(false);
+        assert!(!off.toggle() && !off.developer() && !off.key(b'.'));
+        assert_eq!(off.factor(), 1.0);
+        let mut s = Speed::new(true);
+        assert!(!s.key(b'.'), "not before the mode is on");
+        assert!(s.toggle() && s.developer());
+        assert!(!s.key(b'x') && !s.key(0));
+        s.key(b'.');
+        s.key(b'.');
+        assert_eq!(s.factor(), 1.2000000000000002);
+        s.key(b'/');
+        assert_eq!(s.factor(), 1.0);
+        let down: Vec<f64> = (0..11)
+            .map(|_| {
+                s.key(b',');
+                s.factor()
+            })
+            .collect();
+        assert_eq!(down[2], 0.7000000000000001);
+        assert_eq!(down[8], 0.10000000000000014, "the lowest ordinary value");
+        assert_eq!(down[10], down[8], "never below a tenth");
+        for _ in 0..1000 {
+            s.key(b'.');
+        }
+        assert!(s.factor() > 100.0, "no upper limit");
+        assert!(s.toggle() && !s.developer());
     }
 
     #[test]

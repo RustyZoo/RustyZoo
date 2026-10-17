@@ -103,7 +103,7 @@ pub enum Mouse {
 
 /// What the player does (input 4). The text form is the script format of a headless run:
 /// `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`, `zoom in`,
-/// `zoom out`, `grid` (toggle the tile grid), `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
+/// `zoom out`, `grid` (toggle the tile grid), `devmode` (Ctrl+D), `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
 /// window is closed) for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
 /// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
@@ -124,6 +124,8 @@ pub enum Command {
     Zoom(bool),
     /// Ctrl+G: switch the tile grid on or off.
     Grid,
+    /// Ctrl+D: switch the developer mode on or off, if the ini allows it (main loop 5.2).
+    DevMode,
     /// The window is full screen (true) or windowed (false) now.
     Fullscreen(bool),
     /// The Pause key: toggles the pause while the map view is shown, whatever has the focus.
@@ -154,6 +156,7 @@ impl fmt::Display for Command {
             Command::Rotate(cw) => write!(f, "rotate {}", if cw { "cw" } else { "ccw" }),
             Command::Zoom(zoom_in) => write!(f, "zoom {}", if zoom_in { "in" } else { "out" }),
             Command::Grid => f.write_str("grid"),
+            Command::DevMode => f.write_str("devmode"),
             Command::Fullscreen(on) => write!(f, "fullscreen {}", if on { "on" } else { "off" }),
             Command::Pause => f.write_str("pause"),
             Command::Space => f.write_str("space"),
@@ -202,6 +205,7 @@ impl FromStr for Command {
             ["zoom", "in"] => Command::Zoom(true),
             ["zoom", "out"] => Command::Zoom(false),
             ["grid"] => Command::Grid,
+            ["devmode"] => Command::DevMode,
             ["fullscreen", "on"] => Command::Fullscreen(true),
             ["fullscreen", "off"] => Command::Fullscreen(false),
             ["pause"] => Command::Pause,
@@ -434,6 +438,8 @@ pub struct App<'a> {
     /// The managers of the simulation and the `sim` lines of the last pass.
     sim: Sim,
     sim_lines: Vec<String>,
+    /// The developer mode and speed changes of the last pass (`dev on`, `dev speed 1.1`).
+    dev_lines: Vec<String>,
     unit_lines: Vec<String>,
     animal_lines: Vec<String>,
     guest_lines: Vec<String>,
@@ -571,6 +577,7 @@ impl<'a> App<'a> {
             money_lines: Vec::new(),
             sim,
             sim_lines: Vec::new(),
+            dev_lines: Vec::new(),
             unit_lines: Vec::new(),
             animal_lines: Vec::new(),
             guest_lines: Vec::new(),
@@ -730,6 +737,7 @@ impl<'a> App<'a> {
         self.exhibit_lines = Vec::new();
         self.panel_lines = Vec::new();
         self.terrain_lines = Vec::new();
+        self.dev_lines = Vec::new();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
         (self.music_changed, self.music_restarted) = (false, false);
@@ -756,7 +764,7 @@ impl<'a> App<'a> {
             self.menu_lines = std::mem::take(&mut self.menu_events);
             return None;
         }
-        self.fired = self.timers.pass(now, 1.0);
+        self.fired = self.timers.pass(now, self.timers.speed.factor());
         if self.fired.draw {
             self.drawn_at = self.look();
             self.terrain_help();
@@ -1076,6 +1084,20 @@ impl<'a> App<'a> {
             (Command::Grid, Some(game)) if keys => {
                 game.grid = !game.grid;
                 game.choice = game.grid;
+            }
+            (Command::DevMode, Some(_)) if keys => {
+                if self.timers.speed.toggle() {
+                    let on = self.timers.speed.developer();
+                    self.dev_lines.push(if on { "on" } else { "off" }.into());
+                    self.painted = None;
+                }
+            }
+            // The speed keys go before the interface's characters (input 3.2, main loop 5.2).
+            (Command::Char(byte @ (b'.' | b',' | b'/')), Some(_))
+                if keys && self.timers.speed.key(byte) =>
+            {
+                self.dev_lines
+                    .push(format!("speed {}", self.timers.speed.factor()));
             }
             (Command::Fullscreen(on), Some(game)) => {
                 game.camera.set_fullscreen(&game.world.zoo, on)
@@ -1756,6 +1778,9 @@ impl<'a> App<'a> {
                 let text = place::cost_text(ui.string(SYMBOL), amount);
                 ui.pointer_text(&mut self.frame, &to_cp1252(&text), COST_OFFSET);
             }
+            if self.timers.speed.developer() {
+                ui.corner_text(&mut self.frame, b"developer mode");
+            }
         }
         true
     }
@@ -1903,6 +1928,8 @@ impl<'a> App<'a> {
     /// status bar was written, `money set N` and `money add N` when a start set or added cash and
     /// `money month M year Y` at a month change, `money cell ID RRGGBB TEXT` for each cell of the
     /// Finances table that changed when the table was written,
+    /// then `dev on` or `dev off` when Ctrl+D switched the developer mode and `dev speed F` for each
+    /// speed key it acted on (the factor as the shortest decimal that reads back),
     /// then one per timer that fired, in the order draw,
     /// interface (then the music, if the update changed its volume or stopped it), step. A draw
     /// tells the hash of the frame it painted (`-` if it painted none) and the camera it drew
@@ -1935,6 +1962,7 @@ impl<'a> App<'a> {
                 .map(|e| format!("{lead} terrain {e}")),
         );
         lines.extend(self.money_lines.iter().map(|e| format!("{lead} money {e}")));
+        lines.extend(self.dev_lines.iter().map(|e| format!("{lead} dev {e}")));
         if self.fired.draw {
             let hash = match self.drew {
                 true => format!("{:016x}", frame_hash(&self.frame)),

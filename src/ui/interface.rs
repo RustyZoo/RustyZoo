@@ -221,8 +221,24 @@ impl Interface {
         let e = &self.tree.elements[i];
         let (x, y) = self.input.pointer;
         let at = (x.saturating_add(dx), y);
+        self.painter.text_at(
+            e,
+            &self.strings,
+            frame,
+            at,
+            text,
+            (e.look.fore_color, e.look.shadow_text),
+        );
+    }
+
+    /// Writes `text` (Windows-1252) in white without shadow, 35 pixels from the left edge of
+    /// `frame` and at its top, in the map view's font (the debug text of main loop 5.2). Call it
+    /// after [`Interface::paint`].
+    pub fn corner_text(&mut self, frame: &mut Framebuffer, text: &[u8]) {
+        let Some(i) = self.map_view else { return };
+        let e = &self.tree.elements[i];
         self.painter
-            .text_at(e, &self.strings, frame, at, text, e.look.fore_color);
+            .text_at(e, &self.strings, frame, (35, 0), text, ([255; 3], false));
     }
 
     /// The text of string `id` as the elements show it.
