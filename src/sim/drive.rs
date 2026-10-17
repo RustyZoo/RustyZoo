@@ -210,6 +210,7 @@ impl Run {
             movement_mode: 0,
             food: units.unwrap_or(full),
             animal: None,
+            guest: None,
         };
         let entity = Entity {
             class: "food".into(),

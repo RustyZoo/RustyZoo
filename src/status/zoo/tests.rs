@@ -320,7 +320,7 @@ fn the_sums_count_the_animals_the_value_and_the_esthetics_of_pieces() {
     let Some(Part::Guest(g)) = world.units.get_mut(4).map(|u| &mut u.part) else {
         panic!("no guest");
     };
-    g.values[crate::guest::HAPPINESS] = -40;
+    g.values = [-40, 51, 50, 0, 100];
     let sums = Sums::of(&world, &cat, 250.7, 0);
     // The cash and each cost are cut to whole units: 250 + 100 + 100 + 40.
     assert_eq!(
@@ -336,6 +336,21 @@ fn the_sums_count_the_animals_the_value_and_the_esthetics_of_pieces() {
     assert_eq!(
         (sums.guests, sums.guest_happiness, sums.guest_average()),
         (1, -40, -40)
+    );
+    // A need counts when strictly above the limit, 50 without a guest type; the gift and litter
+    // counts wait for the items.
+    let needs = |s: &Sums| (s.hungry, s.thirsty, s.restroom, s.tired, s.gift, s.litter);
+    assert_eq!(needs(&sums), (1, 0, 1, 0, 0, 0));
+    // The guest file's own limit replaces it.
+    let mut typed = Catalogue::default();
+    typed.push(kind(
+        "guests",
+        "g",
+        "[Characteristics/Integers]\ncUIThreshold=99\n",
+    ));
+    assert_eq!(
+        needs(&Sums::of(&world, &typed, 250.7, 0)),
+        (0, 0, 1, 0, 0, 0)
     );
     assert_eq!((sums.species, sums.esthetics), (0, 9.0));
     // A decayed piece (life 2 is at its limit) loses 11 for each of the four guest types, a
@@ -360,8 +375,10 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     let economy = vfs.read("economy.cfg").unwrap();
-    // Zoo status 17.5: the set-up check and the first one, 4 s later; `med_kids` keeps its
-    // research complete in the original (5 more points), which comes with M7.
+    // Zoo status 17.5: the set-up check and the first one, 4 s later. `med_kids` counts its 51
+    // stored guests in the set-up check (6.4). At its first check the original has removed them
+    // (the scenario resets) and has its research complete (5 points); the engine has neither
+    // yet, and the two differences cancel (guests 17 against 12, research 0 against 5).
     let table = [
         ("dinosmal", 45, 42),
         ("deathmtn", 42, 37),
@@ -373,7 +390,7 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
         ("lg_resrt", 47, 42),
         ("beach", 49, 44),
         ("tundra", 42, 37),
-        ("med_kids", 76, 73),
+        ("med_kids", 81, 78),
     ];
     for (map, setup, first) in table {
         let catalogue = Catalogue::load(&vfs).unwrap();

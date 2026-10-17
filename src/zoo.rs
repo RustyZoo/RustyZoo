@@ -111,6 +111,9 @@ pub struct Common {
     pub food: i32,
     /// What an animal record stores of the animal's live state; `None` for everything else.
     pub animal: Option<Box<AnimalRecord>>,
+    /// What a guest record stores of the guest's five status values (happiness, hunger, thirst,
+    /// energy, bathroom); `None` for everything else.
+    pub guest: Option<Box<[i32; 5]>>,
 }
 
 /// The values, counters and flags an animal record stores (animals 3.5). A counter the record

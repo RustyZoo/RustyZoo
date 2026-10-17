@@ -56,6 +56,7 @@ fn entity(class: &str, x: i32, y: i32, rotation: u32) -> Entity {
             movement_mode: 0,
             food: 0,
             animal: None,
+            guest: None,
         }),
     }
 }

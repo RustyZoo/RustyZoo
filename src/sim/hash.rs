@@ -100,6 +100,7 @@ impl Fnv {
             movement_mode,
             food,
             animal: _,
+            guest: _,
         }) = &e.common
         {
             for v in [*x, *y, *z] {

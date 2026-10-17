@@ -6,7 +6,7 @@
 //! [`Status`] keeps the three timers, the last sums and the rating; the [`crate::sim::Sim`] step
 //! calls its checks in the original's order. The new guest check decides whether a guest arrives
 //! (the chance table of the rating and the admission price); the guest module makes it. Missing
-//! so far: the guests' needs (their counts of hungry, thirsty and the like stay 0), research (its
+//! so far: the guests' gift and litter flags (their counts stay 0), research (its
 //! share is 0), the escape penalty, the endowment payments of the month-end check (its wages and
 //! building upkeep are [`crate::month`]'s), the scenario's own economy file, the admission price window (the price is
 //! the map's).
@@ -207,6 +207,25 @@ fn bonus(ty: &EntityType) -> [f32; 4] {
     })
 }
 
+/// The limit above which a guest need counts (`cUIThreshold`, a class key of the guest file;
+/// 50 built in).
+fn ui_threshold(catalogue: &Catalogue, guest: &Entity) -> i32 {
+    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+    (catalogue.find(
+        &guest.class,
+        &bytes(&guest.type_name),
+        &bytes(&guest.subtype),
+    ))
+    .and_then(|ty| {
+        ty.config
+            .as_deref()?
+            .section("Characteristics/Integers")?
+            .get("cUIThreshold")
+    })
+    .and_then(to_int)
+    .unwrap_or(50)
+}
+
 impl Sums {
     /// The sums over the entities of `world` with `cash` in hand and `research` percent of the
     /// research done. The state of animals and guests is read from the units.
@@ -218,6 +237,7 @@ impl Sums {
             ..Sums::default()
         };
         let mut esthetic = 0.0f32;
+        let mut threshold = None;
         for (at, e) in world.zoo.entities.iter().enumerate() {
             if let Some(Part::Guest(g)) = (e.common.as_ref())
                 .filter(|_| e.class == "guests")
@@ -228,6 +248,15 @@ impl Sums {
                 sums.guest_happiness = sums
                     .guest_happiness
                     .wrapping_add(g.values[guest::HAPPINESS]);
+                let limit = *threshold.get_or_insert_with(|| ui_threshold(catalogue, e));
+                for (count, need) in [
+                    (&mut sums.hungry, guest::HUNGER),
+                    (&mut sums.thirsty, guest::THIRST),
+                    (&mut sums.restroom, guest::BATHROOM),
+                    (&mut sums.tired, guest::ENERGY),
+                ] {
+                    *count += i32::from(g.values[need] > limit);
+                }
                 continue;
             }
             let animal = e.class == "animals";

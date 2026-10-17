@@ -30,6 +30,7 @@ fn world(entities: usize) -> World {
             movement_mode: 0,
             food: 0,
             animal: None,
+            guest: None,
         }),
     };
     let zoo = Zoo {

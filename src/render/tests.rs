@@ -483,6 +483,7 @@ pub(crate) fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
             movement_mode: 0,
             food: 0,
             animal: None,
+            guest: None,
         }),
     };
     Zoo {
@@ -923,6 +924,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
             movement_mode: 0,
             food: 0,
             animal: None,
+            guest: None,
         }),
     };
     let zoo = Zoo {
@@ -1237,6 +1239,7 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
                     movement_mode: 0,
                     food: 0,
                     animal: None,
+                    guest: None,
                 }),
             }],
         };

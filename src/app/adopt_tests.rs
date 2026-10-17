@@ -72,6 +72,7 @@ fn map() -> Zoo {
                 movement_mode: 0,
                 food: 0,
                 animal: None,
+                guest: None,
             }),
         });
     }

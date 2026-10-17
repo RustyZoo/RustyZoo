@@ -315,6 +315,7 @@ impl Session<'_> {
                 movement_mode: 0,
                 food: 0,
                 animal: None,
+                guest: None,
             }),
         };
         let shape = self.app.renderer.shape(&entity);

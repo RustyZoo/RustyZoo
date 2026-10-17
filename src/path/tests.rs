@@ -35,6 +35,7 @@ fn entity_at(class: &str, kind: &str, subtype: &str, (x, y): (i32, i32), rotatio
             movement_mode: 0,
             food: 0,
             animal: None,
+            guest: None,
         }),
     }
 }

@@ -640,7 +640,13 @@ fn keeps_the_condition_of_fences_from_version_55() {
 fn reads_units_of_version_106() {
     // Hand-counted bytes before the movement block: the fields of the class, the unit block.
     let animal = unit(106, 387, 21);
-    let guest = unit(106, 310, 22);
+    // The five status values lead the guest's own fields.
+    let mut guest = W::default();
+    for v in [36, 52, 60, 70, 80] {
+        guest.i32(v);
+    }
+    guest.0.extend(unit(106, 310 - 20, 22));
+    let guest = guest.0;
     // Own fields of each staff class, the common staff block (16 bytes), the unit block (161).
     let staff = |own: usize, id| unit(106, own + 16 + 161, id);
     let ents = [
@@ -657,6 +663,9 @@ fn reads_units_of_version_106() {
         let c = e.common.as_ref().unwrap_or_else(|| panic!("{}", e.class));
         assert_eq!((c.id, c.rotation, &*c.name), (id, 6, "unit"), "{}", e.class);
     }
+    let guest = z.entities[1].common.as_ref().unwrap();
+    assert_eq!(guest.guest.as_deref(), Some(&[36, 52, 60, 70, 80]));
+    assert_eq!(z.entities[0].common.as_ref().unwrap().guest, None);
 }
 
 #[test]
