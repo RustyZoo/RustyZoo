@@ -813,6 +813,121 @@ fn a_unit_is_drawn_with_the_animation_and_frame_it_holds() {
     assert_eq!(drawn(Some(("run", 1))), at("a/idle/N", 0));
 }
 
+/// An install with three guest types (`small`, `mid`, `big` by footprint, `small` with the height
+/// 10) whose pictures are one frame of height 1 with the offsets (8, 4) and the three marker
+/// pictures of one frame of height `marker` with its offsets at its middle.
+fn marker_install(name: &str, marker: u16) -> Install {
+    use crate::sprite::tests::{sized, sprite_file};
+    let one_frame = |height: u16, (y, x): (u16, u16)| {
+        let mut frame = Vec::new();
+        for field in [height, 1, y, x, 0] {
+            frame.extend(field.to_le_bytes());
+        }
+        // Each row covers its one pixel.
+        frame.extend([1, 0, 1, 1].repeat(usize::from(height)));
+        sprite_file(None, 1, &[sized(&frame)])
+    };
+    let (unit, selection) = (
+        one_frame(1, (4, 8)),
+        one_frame(marker, (marker / 2, marker / 2)),
+    );
+    let ani = |dirs: &str| format!("[animation]\n{dirs}animation = N\n").into_bytes();
+    let ai = |keys: &str| format!("[Animations]\nidle = idle\n[Characteristics/Integers]\n{keys}");
+    let mut members: Vec<(String, Vec<u8>)> = vec![
+        (
+            "guests.cfg".into(),
+            b"[guests]\nsmall = small.ai\nmid = mid.ai\nbig = big.ai\n".to_vec(),
+        ),
+        ("small.ai".into(), ai("cHeight = 10\n").into_bytes()),
+        (
+            "mid.ai".into(),
+            ai("cFootprintX = 2\ncFootprintY = 4\n").into_bytes(),
+        ),
+        ("big.ai".into(), ai("cFootprintX = 5\n").into_bytes()),
+        (
+            "animals/Lion/lion.pal".into(),
+            palette_file(&[[255, 0, 255], [1, 2, 3]]),
+        ),
+    ];
+    for name in ["small", "mid", "big"] {
+        let dirs = format!("dir0 = guests\ndir1 = {name}\ndir2 = idle\n");
+        members.push((format!("guests/{name}/idle/idle.ani"), ani(&dirs)));
+        members.push((format!("guests/{name}/idle/N"), unit.clone()));
+    }
+    for name in ["selsmall", "selmed", "sellarge"] {
+        let dirs = format!("dir0 = ui\ndir1 = select\ndir2 = {name}\n");
+        members.push((format!("ui/select/{name}/{name}.ani"), ani(&dirs)));
+        members.push((format!("ui/select/{name}/N"), selection.clone()));
+    }
+    let members: Vec<_> = members
+        .iter()
+        .map(|(n, d)| (n.as_str(), d.clone()))
+        .collect();
+    Install::new(name, &members)
+}
+
+/// The sprite members and anchors of the pictures of a zoo with one guest of type `ty`, whose id
+/// is 1, when `selected` carries the marker, and the number of pictures that pick an entity.
+fn marker_pics(
+    install: &Install,
+    ty: &str,
+    selected: Option<u32>,
+) -> (Vec<(String, i32, i32)>, usize) {
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let extra = Extra {
+        selected,
+        ..Extra::default()
+    };
+    let staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&tile_with(&[("guests", ty, "")]), 0, false, &extra)
+        .unwrap();
+    let pics = (staged.placed.iter())
+        .filter_map(|(p, _)| match &p.pic {
+            Pic::Anim(anim, ..) => Some((anim.set.files[0].clone(), p.x, p.y)),
+            _ => None,
+        })
+        .collect();
+    (pics, staged.hits.iter().flatten().count())
+}
+
+#[test]
+fn the_selected_unit_gets_a_marker_by_its_footprint_after_its_picture() {
+    let install = marker_install("render-marker", 1);
+    let (alone, picks) = marker_pics(&install, "small", None);
+    assert_eq!(alone.len(), 1);
+    let (unit, x, y) = alone[0].clone();
+    // Nothing selected, or another unit: no marker.
+    assert_eq!(marker_pics(&install, "small", Some(2)).0, alone);
+    // The unit frame's offsets are (8, 4): left 2, up 4 + 5 + half the marker's height (0).
+    let (pics, marked) = marker_pics(&install, "small", Some(1));
+    assert_eq!(
+        pics,
+        [(unit, x, y), ("ui/select/selsmall/N".into(), x - 2, y - 9)]
+    );
+    // The marker is not a picture of the unit: a pick cannot land on it.
+    assert_eq!(marked, picks);
+    assert_eq!(
+        marker_pics(&install, "mid", Some(1)).0[1].0,
+        "ui/select/selmed/N"
+    );
+    assert_eq!(
+        marker_pics(&install, "big", Some(1)).0[1].0,
+        "ui/select/sellarge/N"
+    );
+}
+
+#[test]
+fn the_marker_height_is_its_own_frame_height() {
+    // The marker is 6 high and the type 10 (half 5): the shift is 4 + 5 + 3, and the marker's
+    // bottom edge (anchor - offset + height, its offset being 3) ends 5 above the unit's frame.
+    let install = marker_install("render-marker-height", 6);
+    let pics = marker_pics(&install, "small", Some(1)).0;
+    let (unit, marker) = (&pics[0], &pics[1]);
+    assert_eq!(marker.2, unit.2 - 12);
+    assert_eq!(marker.2 - 3 + 6, unit.2 - 4 - 5);
+}
+
 /// A small deterministic pseudo-random sequence.
 fn random(seed: &mut u64) -> u64 {
     *seed = seed

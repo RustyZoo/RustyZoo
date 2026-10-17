@@ -56,7 +56,11 @@ fn a_unit_is_selected_picked_up_refused_where_another_stands_and_put_down() {
         );
         // The first click selects, the second picks the unit up: it is off the map and stopped.
         assert_eq!(told(s.click_log(here)), [format!("tool select {a}")]);
+        // The staged picture carries the marker over the selected unit, and not any more over
+        // the one that is picked up.
+        assert_eq!(s.app.game.as_ref().unwrap().extra.selected, Some(a));
         assert_eq!(told(s.click_log(here)), [format!("world carry {a}")]);
+        assert_eq!(s.app.game.as_ref().unwrap().extra.selected, None);
         let game = s.app.game.as_ref().unwrap();
         assert_eq!(
             (game.carry.as_ref().map(|c| c.id), game.selected),
@@ -92,5 +96,24 @@ fn a_unit_is_selected_picked_up_refused_where_another_stands_and_put_down() {
             Vec::<String>::new()
         );
         assert_eq!(s.app.game.as_ref().unwrap().selected, None);
+    });
+}
+
+#[test]
+fn the_marker_follows_the_animal_chosen_in_the_list_after_a_click() {
+    with_game("marker-list", "", |s| {
+        let (a, b) = (
+            s.add(12, 21 * 64 + 32, 20 * 64 + 32, 0),
+            s.add(12, 19 * 64 + 32, 20 * 64 + 32, 0),
+        );
+        s.pass(&[]);
+        let here = s.at(21, 20, 32, 32);
+        s.click_log(here);
+        let marked = |s: &Session| s.app.game.as_ref().unwrap().extra.selected;
+        assert_eq!(marked(s), Some(a));
+        // Choosing another unit in the animal list makes it the one selected.
+        s.app.open_animal(b);
+        s.pass(&[]);
+        assert_eq!(marked(s), Some(b));
     });
 }
