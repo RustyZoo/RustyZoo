@@ -40,6 +40,17 @@ impl Thoughts {
         self.0.retain(|t| t.thinker != id && t.object != Some(id));
     }
 
+    /// 8.5: a scenery object or building that is gone takes the thoughts about it: only the
+    /// thoughts about an object `exists` answers for stay.
+    pub fn keep_objects(&mut self, exists: impl Fn(u32) -> bool) {
+        self.0.retain(|t| t.object.is_none_or(&exists));
+    }
+
+    /// Whether any thought is about an entity.
+    pub fn has_objects(&self) -> bool {
+        self.0.iter().any(|t| t.object.is_some())
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }

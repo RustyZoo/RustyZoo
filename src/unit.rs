@@ -530,6 +530,13 @@ impl Units {
                 self.thoughts.forget(id);
             }
         }
+        // A thought about a scenery object or a building that is gone goes with it.
+        if self.thoughts.has_objects() {
+            let ids: std::collections::HashSet<u32> = (entities.iter())
+                .filter_map(|e| e.common.as_ref().map(|c| c.id))
+                .collect();
+            self.thoughts.keep_objects(|o| ids.contains(&o));
+        }
         // A removed unit is no user of a building.
         for live in self.buildings.values_mut() {
             live.users.retain(|u| self.index.contains_key(&u.0));

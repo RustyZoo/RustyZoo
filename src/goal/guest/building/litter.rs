@@ -2,6 +2,7 @@
 //! litter on the ground when none will take it, and the can taking the litter at the entrance.
 
 use super::super::super::Cx;
+use crate::building;
 use crate::building::items::LITTER;
 use crate::guest::litter::{self, CAN_FILLING};
 
@@ -16,6 +17,38 @@ impl Cx<'_, '_> {
     fn fill_of(&self, id: u32) -> Option<u32> {
         self.building(id)?;
         Some(self.world.units.buildings.get(&id).map_or(0, |l| l.fill))
+    }
+
+    /// Guests 10 point 2: one trash can drawn among every can of the guest's area with an open
+    /// slot within `radius` tiles (whole tiles, no price scaling), in list order; none, no draw.
+    fn in_reach(&mut self, radius: i64) -> Option<u32> {
+        let here = self.tile()?;
+        let width = self.world.zoo.width as usize;
+        let area = self.world.exhibits().region(here);
+        let prices = self.world.units.prices;
+        let mut kept = Vec::new();
+        for e in &self.world.zoo.entities {
+            let (Some(kind), Some(c)) = (
+                building::kind_of(self.ctx.cat, e, prices.default),
+                e.common.as_ref(),
+            ) else {
+                continue;
+            };
+            let Some(t) = self.tile_at((c.x, c.y)).filter(|_| kind.satisfies("trash")) else {
+                continue;
+            };
+            let live = self.world.units.buildings.get(&c.id);
+            let dx = (t % width) as i64 - (here % width) as i64;
+            let dy = (t / width) as i64 - (here / width) as i64;
+            if self.world.exhibits().region(t) == area
+                && building::has_open_slot(self.world, e, &kind, live)
+                && dx * dx + dy * dy <= radius * radius
+            {
+                kept.push(c.id);
+            }
+        }
+        let n = kept.len() as u32;
+        (n > 0).then(|| kept[self.ctx.rng.pick(n) as usize])
     }
 
     /// Guests 10: the seek part of the trash check for a guest that holds litter. It looks for a
@@ -38,9 +71,9 @@ impl Cx<'_, '_> {
             return;
         }
         let failed = self.guest().is_some_and(|g| g.littered);
-        match self.nearest("trash", radius, false) {
-            Ok(b) if failed && self.fill_of(b).is_some_and(|f| f < FULL + 1) => {}
-            Ok(b) if !failed && self.head_for(b, "trash") => {}
+        match self.in_reach(radius) {
+            Some(b) if failed && self.fill_of(b).is_some_and(|f| f < FULL + 1) => {}
+            Some(b) if !failed && self.head_for(b, "trash") => {}
             _ => {
                 self.drop_litter();
                 self.reset();
@@ -49,9 +82,13 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Guests 10 point 3: the litter is put down on the guest's tile. The failure is remembered.
+    /// Guests 10 point 3: the litter is put down on the guest's tile. The failure is remembered;
+    /// a tile that takes no litter changes nothing.
     fn drop_litter(&mut self) {
-        let dropped = litter::drop(self.world, self.ctx.cat, self.at, self.unit.id);
+        let (cat, at, id) = (self.ctx.cat, self.at, self.unit.id);
+        let Some(dropped) = litter::drop(self.world, cat, at, id, self.ctx.rng) else {
+            return;
+        };
         if let Some(g) = self.guest() {
             g.littered = !dropped;
             if dropped {

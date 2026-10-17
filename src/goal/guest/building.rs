@@ -252,7 +252,7 @@ impl Cx<'_, '_> {
             return self.reset();
         };
         if kind.commerce && self.mood(id, &kind) == Mood::Angry {
-            self.react(Mood::Angry);
+            self.react(Mood::Angry, id);
             return self.reset();
         }
         let Some((slot, _)) = self.open_slot(id) else {
@@ -354,8 +354,8 @@ impl Cx<'_, '_> {
             return;
         };
         match self.mood(id, kind) {
-            Mood::Angry => return self.react(Mood::Angry),
-            mood => self.react(mood),
+            Mood::Angry => return self.react(Mood::Angry, id),
+            mood => self.react(mood, id),
         }
         self.world
             .units
@@ -379,8 +379,9 @@ impl Cx<'_, '_> {
         self.world.units.prices.mood(price, kind.price)
     }
 
-    /// The price reaction (guests 9.4): the happiness changes by the class key.
-    fn react(&mut self, mood: Mood) {
+    /// The price reaction (guests 9.4): the happiness changes by the class key, and the thought is
+    /// about the building.
+    fn react(&mut self, mood: Mood, building: u32) {
         let Some(k) = crate::guest::keys(self.world, self.ctx.cat, self.at) else {
             return;
         };
@@ -390,8 +391,8 @@ impl Cx<'_, '_> {
             Mood::Fair => 0,
         };
         match mood {
-            Mood::Happy => self.think(CHEAP, None),
-            Mood::Angry => self.think(EXPENSIVE, None),
+            Mood::Happy => self.think(CHEAP, Some(building)),
+            Mood::Angry => self.think(EXPENSIVE, Some(building)),
             Mood::Fair => {}
         }
         if let Some(g) = self.guest() {
@@ -526,7 +527,7 @@ impl Cx<'_, '_> {
         if kind.commerce {
             if kind.sells.is_empty() {
                 let mood = self.mood(id, &kind);
-                self.react(mood);
+                self.react(mood, id);
             }
             let Some(live) = self.world.units.buildings.get_mut(&id) else {
                 return;
