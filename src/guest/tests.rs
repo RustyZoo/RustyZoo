@@ -51,10 +51,13 @@ fn types() -> Catalogue {
     ] {
         cat.push(kind("guests", name, GUESTS, id));
     }
+    // The zebra neither starves nor falls ill: it is the occupied exhibit for the arrivals, and
+    // its life must not depend on the draws the guests make.
     cat.push(kind(
         "animals",
         "zebra",
-        "[Characteristics/Integers]\ncInitialHappiness=0\n",
+        "[Characteristics/Integers]\ncInitialHappiness=0\ncHungryHealthChange=0\n\
+         cSickRandomChance=0\n",
         5,
     ));
     cat
