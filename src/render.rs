@@ -1381,8 +1381,9 @@ impl<'a> MapRenderer<'a> {
     /// Places the selection marker after the picture of the unit that was placed last (sprite
     /// drawing 9.2): `selsmall` for a footprint of at most 1 x 1 half tiles, `selmed` for at most
     /// 4 in each direction, else `sellarge`. Its anchor is the unit's, up and left by a quarter of
-    /// the x offset of the unit's frame, and by its y offset, 5 and half the type's height. The
-    /// marker has one frame, so it needs no clock. Returns whether it was placed.
+    /// the x offset of the unit's frame, and by its y offset, 5 and half the height of the marker's
+    /// own frame (the type's height plays no part). The marker has one frame, so it
+    /// needs no clock. Returns whether it was placed.
     fn marker(&mut self, ty: &EntityType, out: &mut Vec<Placed>) -> bool {
         let Some(Placed {
             x,
@@ -1396,10 +1397,7 @@ impl<'a> MapRenderer<'a> {
         let Some(frame) = shown_frames(anim, view, *at).and_then(|f| f.last().map(|f| f.0)) else {
             return false;
         };
-        let (x, y) = (
-            x - i32::from(frame.x_offset) / 4,
-            y - (i32::from(frame.y_offset) + 5 + ty.height / 2),
-        );
+        let (x, y, xo, yo) = (*x, *y, i32::from(frame.x_offset), i32::from(frame.y_offset));
         let [fx, fy, _] = ty.footprint;
         let name = match fx.max(fy) {
             ..=1 => "selsmall",
@@ -1413,9 +1411,15 @@ impl<'a> MapRenderer<'a> {
             file: 0,
             mirror: false,
         };
+        // Up by the unit frame's y offset, 5 and half the marker's own frame height.
+        let half = anim.sprites[0]
+            .0
+            .frames
+            .first()
+            .map_or(0, |f| i32::from(f.height) / 2);
         out.push(Placed {
-            x,
-            y,
+            x: x - xo / 4,
+            y: y - (yo + 5 + half),
             piece: None,
             grid: false,
             pic: Pic::Anim(anim, view, None, 0),

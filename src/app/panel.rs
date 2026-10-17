@@ -127,11 +127,12 @@ impl App<'_> {
     /// Selects the animal with entity id `id` and shows its panel, filled at once (4.1, 4.3). The
     /// exhibit panel, when shown, follows it (4.5); a recommendations plaque that is open follows
     /// it too.
-    fn open_animal(&mut self, id: u32) {
+    pub(super) fn open_animal(&mut self, id: u32) {
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
         game.animal.select(id);
+        game.selected = Some(id);
         ui.show(animal::LAYOUT);
         if ui.shown(LAYOUT) {
             game.panel.current =
