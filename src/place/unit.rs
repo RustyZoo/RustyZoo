@@ -528,6 +528,8 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
         world.mark_rating(t);
     }
     world.zoo.entities[at].common.as_mut()?.movement_mode = 0;
+    // A keeper told the exhibit he is no longer coming: he closes the gate he remembers.
+    world.units.release_gate_of(id);
     let unit = world.units.get_mut(id)?;
     unit.tank = 0;
     unit.carried = true;

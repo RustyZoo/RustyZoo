@@ -802,6 +802,21 @@ fn a_guest_stands_on_any_empty_flat_tile_even_water_and_never_in_the_way() {
 }
 
 #[test]
+fn a_picked_up_keeper_closes_the_gate_it_remembers() {
+    let cat = catalogue();
+    let mut w = tank_world(3);
+    let keeper = entity_at("keeper", "marine", "m", 6 * 64 + 20, 6 * 64 + 20, 2);
+    let id = w.add(keeper.clone(), shape(&keeper)).unwrap();
+    w.units.get_mut(id).unwrap().gate = Some(7);
+    pick_up(&mut w, &cat, id, 0).unwrap();
+    assert_eq!(
+        w.units.gate_frames().map(|(g, _)| g).collect::<Vec<_>>(),
+        [7]
+    );
+    assert_eq!(w.units.get(id).unwrap().gate, None);
+}
+
+#[test]
 fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
     let cat = catalogue();
     let mut w = tank_world(3);
