@@ -201,7 +201,11 @@ fn a_huge_step_wears_one_life_and_no_step_at_all_wears_nothing() {
 #[test]
 fn the_bounds_are_read_from_the_class_file_with_the_defaults_for_what_is_missing() {
     let load = |name: &str, text: Option<&str>| {
-        let dir = std::env::temp_dir().join(format!("rz-decay-{}-{name}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("rz-decay-{}-{}-{name}", std::process::id(), {
+                static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+                N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            }));
         std::fs::create_dir_all(dir.join("fences")).unwrap();
         std::fs::write(dir.join("zoo.ini"), "").unwrap();
         if let Some(text) = text {

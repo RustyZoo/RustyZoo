@@ -1447,8 +1447,15 @@ pub(crate) mod tests {
 
     impl Install {
         pub(crate) fn new(name: &str, members: &[(&str, Vec<u8>)]) -> Install {
-            let dir =
-                std::env::temp_dir().join(format!("rustyzoo-sprite-{}-{name}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!(
+                "rustyzoo-sprite-{}-{}-{name}",
+                std::process::id(),
+                {
+                    static N: std::sync::atomic::AtomicUsize =
+                        std::sync::atomic::AtomicUsize::new(0);
+                    N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                }
+            ));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
