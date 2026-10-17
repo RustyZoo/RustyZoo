@@ -57,6 +57,16 @@ pub struct Stats {
     pub upkeep: [f32; 3],
 }
 
+impl Stats {
+    /// The month ends (habitat rating 13.3): this month's figures become last month's and this
+    /// month starts from 0; the totals keep running.
+    pub fn enter_new_month(&mut self) {
+        for t in [&mut self.donations, &mut self.upkeep] {
+            *t = [t[1], 0.0, t[2]];
+        }
+    }
+}
+
 /// The state of a tank exhibit (exhibits and money 3.9, 4.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tank {
@@ -435,6 +445,13 @@ impl Exhibits {
 
     pub fn list_mut(&mut self) -> &mut [Exhibit] {
         &mut self.list
+    }
+
+    /// The month ends: every exhibit shifts its monthly figures.
+    pub fn enter_new_month(&mut self) {
+        for e in &mut self.list {
+            e.stats.enter_new_month();
+        }
     }
 
     pub fn get_mut(&mut self, id: u32) -> Option<&mut Exhibit> {

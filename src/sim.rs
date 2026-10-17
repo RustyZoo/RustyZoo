@@ -497,6 +497,7 @@ impl Sim {
             // The endowment goes before the accounts move on, the wages and the upkeep after, in
             // the new month's column.
             money.month_change();
+            world.exhibits_mut().enter_new_month();
             crate::month::charge(world, cat, money, &mut self.lines);
         }
         let (say, log) = (&mut self.messages, &mut self.lines);
