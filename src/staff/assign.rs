@@ -1,9 +1,9 @@
 //! Assigning exhibits to staff (staff 6): may a keeper serve an exhibit, what the assign mode
 //! says and does on a click, and what an exhibit that goes does to the lists.
 
+use super::service;
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
-use crate::panel::exhibit::animals_in;
 use crate::place::bulldozer::type_of;
 use crate::unit::Part;
 use crate::world::World;
@@ -31,32 +31,41 @@ fn keeper(ty: &EntityType) -> bool {
     ty.class == "keeper"
 }
 
-/// Whether an animal of the exhibit is of the keeper's kind: its species names his type id in
-/// `cKeeper` (9500 by default). A carried animal is in no exhibit.
-fn has_his_animals(world: &World, cat: &Catalogue, exhibit: u32, keeper: &EntityType) -> bool {
-    animals_in(world, exhibit).into_iter().any(|at| {
-        let ty = type_of(cat, &world.zoo.entities[at]);
-        let kind = ty
-            .and_then(|t| number(t, "cKeeper"))
-            .map_or(9500, |v| v as i32);
-        kind == keeper.name_id
-    })
-}
-
-/// `blockService(exhibit, keeper, kindOnly 1, checkKind 1)` (habitat rating 11.1): 0 when the
-/// keeper has a reason to go to the exhibit, 1 when it has fewer than 2 tiles, 2 when it is of
-/// another kind or has nothing for him. A unit that is not a keeper is always 0. The dung of the
-/// keeper's type on a tile (step 5) is not looked at: nothing puts dung down yet.
-pub fn block_service(world: &World, cat: &Catalogue, exhibit: u32, who: &EntityType) -> u8 {
+/// `blockService(exhibit, keeper, kindOnly, checkKind)` (habitat rating 11.1): 0 when the keeper
+/// has a reason to go to the exhibit, 1 when it has fewer than 2 tiles, 2 when it is of another
+/// kind or has nothing for him. A unit that is not a keeper is always 0. `check_kind` adds the
+/// tank or land test and the steps 6 and 7; `kind_only` leaves out the purity of a tank. The
+/// egg flag of step 4 comes with the eggs.
+pub fn block_service(
+    world: &World,
+    cat: &Catalogue,
+    exhibit: u32,
+    who: &EntityType,
+    (kind_only, check_kind): (bool, bool),
+) -> u8 {
     let Some(x) = world.exhibits().get(exhibit).filter(|_| keeper(who)) else {
         return 0;
     };
     let marine = number(who, "cUnderwater") == Some(1.0);
-    match (x.tiles < 2, x.tank.is_some() == marine) {
-        (true, _) => 1,
-        (_, false) => 2,
-        _ if has_his_animals(world, cat, exhibit, who) => 0,
-        _ if x.tank.is_some_and(|t| t.show) && who.name_id == MARINE.0 => 0,
+    if x.tiles < 2 {
+        return 1;
+    }
+    if check_kind && x.tank.is_some() != marine {
+        return 2;
+    }
+    let mine = |x| !service::animals(world, cat, x, who).is_empty();
+    let threshold = number(who, "cCleanTankThreshold").map_or(100, |v| v as i64);
+    let amphibious = x.amphibious.iter().any(|&n| {
+        let near = service::animals(world, cat, n, who);
+        near.iter().any(|a| a.amphibious)
+    });
+    let murky = x.tank.is_some_and(|t| i64::from(t.purity) < threshold);
+    let show = x.tank.is_some_and(|t| t.show) && who.name_id == MARINE.0;
+    match () {
+        _ if mine(exhibit) => 0,
+        _ if !service::dung(world, cat, exhibit, who).is_empty() => 0,
+        _ if check_kind && ((murky && !kind_only) || amphibious) => 0,
+        _ if show => 0,
         _ => 2,
     }
 }
@@ -87,7 +96,7 @@ pub fn assign(world: &mut World, cat: &Catalogue, id: u32, exhibit: u32) -> Outc
     let Some(who) = type_of(cat, &world.zoo.entities[at]) else {
         return Outcome::Refused(None);
     };
-    let code = block_service(world, cat, exhibit, who);
+    let code = block_service(world, cat, exhibit, who, (true, true));
     let message = match code {
         0 => None,
         1 => Some(Some(SMALL)),

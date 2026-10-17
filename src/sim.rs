@@ -445,6 +445,9 @@ impl Sim {
             }
         }
         self.events.age();
+        for (category, cost) in std::mem::take(&mut world.units.spent) {
+            money.spend(category, cost);
+        }
         for d in std::mem::take(&mut world.units.donated) {
             money.refund(money::DONATIONS, d);
         }

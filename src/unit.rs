@@ -37,6 +37,7 @@ use crate::goal::Goals;
 pub use crate::guest::Guest;
 use crate::path::{self, Finder, Mover, Settings};
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
+use crate::timing::ini_whole;
 use crate::world::World;
 use crate::zoo::Entity;
 
@@ -116,6 +117,14 @@ pub struct Staff {
     /// The duty kinds of a maintenance worker that the player switched off (staff 8.1): each kind
     /// the game allows starts on.
     pub off: [bool; 4],
+    /// The tiles and the animals a keeper failed to reach; its searches skip them (staff 4.3).
+    pub lost_tiles: Vec<usize>,
+    pub lost_animals: Vec<u32>,
+    /// A keeper's own target tile, apart from the goal record's (staff 7.4): the exhibit counters
+    /// and the claimed tiles follow it.
+    pub target: Option<usize>,
+    /// The `cKeeperFoodType` of the animal a keeper feeds (staff 7.6).
+    pub food_kind: i32,
 }
 
 /// The kind-specific part of a unit.
@@ -271,11 +280,18 @@ pub struct Units {
     pub class: Class,
     /// The `[AI]` settings of the ring of a random walk.
     pub ring: walk::Ring,
+    /// `[AI] exhibitServiceInterval`, in AI ticks (staff 7.2): read as the unsigned number the
+    /// original compares with, so a negative value is never reached.
+    pub service_interval: u32,
+    /// What the keepers spent during the step, as (category, cost), which the step books.
+    pub spent: Vec<(usize, f32)>,
     lines: Vec<String>,
     animal_lines: Vec<String>,
     guest_lines: Vec<String>,
-    /// The messages posted and not shown yet: the string number and the unit it is about.
-    messages: Vec<(i32, u32)>,
+    /// The messages posted and not shown yet: the string number, the unit it is about and the
+    /// names for its `%s` (the unit's own name when there are none).
+    messages: Vec<(i32, u32, Vec<String>)>,
+    staff_lines: Vec<String>,
     /// The sounds the units' animations began, with the unit's id, for the app.
     sounds: Vec<(u32, Heard)>,
     /// The gates that are open or playing their animation (movement 6.2).
@@ -308,9 +324,12 @@ impl Default for Units {
             finder: Finder::default(),
             class: Class::default(),
             ring: walk::Ring::default(),
+            service_interval: 90,
+            spent: Vec::new(),
             lines: Vec::new(),
             animal_lines: Vec::new(),
             messages: Vec::new(),
+            staff_lines: Vec::new(),
             sounds: Vec::new(),
             gates: gate::Gates::new(),
             now: 0,
@@ -365,6 +384,10 @@ impl Units {
                 .map_or_else(Settings::default, Settings::from_ini),
         );
         self.ring = (config.as_ref()).map_or_else(walk::Ring::default, walk::Ring::from_ini);
+        let interval = config
+            .as_ref()
+            .and_then(|c| ini_whole(c, "AI", "exhibitServiceInterval"));
+        self.service_interval = interval.map_or(90, |v| v as u32);
     }
 
     /// The `unit` log lines since the last call, without the family word.
@@ -382,10 +405,15 @@ impl Units {
         std::mem::take(&mut self.guest_lines)
     }
 
-    /// The messages posted since the last call, as (string number, unit id); the string holds a
-    /// `%s` for the unit's name.
-    pub fn take_messages(&mut self) -> Vec<(i32, u32)> {
+    /// The messages posted since the last call, as (string number, unit id, names); the string
+    /// holds a `%s` for each name, for the unit's name when there are none.
+    pub fn take_messages(&mut self) -> Vec<(i32, u32, Vec<String>)> {
         std::mem::take(&mut self.messages)
+    }
+
+    /// The `staff` log lines since the last call, without the family word.
+    pub fn take_staff_lines(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.staff_lines)
     }
 
     /// The sounds asked for since the last call: the unit and the sound its `[Sounds]` names.
@@ -398,6 +426,10 @@ impl Units {
         self.lines.push(line);
     }
 
+    pub(crate) fn staff_note(&mut self, line: String) {
+        self.staff_lines.push(line);
+    }
+
     pub(crate) fn guest_note(&mut self, line: String) {
         self.guest_lines.push(line);
     }
@@ -407,7 +439,12 @@ impl Units {
     }
 
     pub(crate) fn post(&mut self, message: i32, id: u32) {
-        self.messages.push((message, id));
+        self.messages.push((message, id, Vec::new()));
+    }
+
+    /// A message whose `%s` take these names.
+    pub(crate) fn post_named(&mut self, message: i32, id: u32, names: Vec<String>) {
+        self.messages.push((message, id, names));
     }
 
     /// Makes the table follow the entity list: units that stand in it keep their state, new ones
@@ -457,6 +494,7 @@ impl Units {
         let mut h = Fnv(0xcbf2_9ce4_8422_2325);
         h.word(self.period as u32);
         h.bytes(format!("{:?}", self.ring).as_bytes());
+        h.word(self.service_interval);
         for v in self.finder.state() {
             h.word(v as u32);
             h.word((v >> 32) as u32);
@@ -503,6 +541,12 @@ impl Units {
                     h.word(s.assigned.len() as u32);
                     s.assigned.iter().for_each(|&e| h.word(e));
                     h.word(s.off.iter().fold(0, |m, &off| m << 1 | u32::from(off)));
+                    h.word(s.lost_tiles.len() as u32);
+                    s.lost_tiles.iter().for_each(|&t| h.word(t as u32));
+                    h.word(s.lost_animals.len() as u32);
+                    s.lost_animals.iter().for_each(|&a| h.word(a));
+                    h.word(s.food_kind as u32);
+                    h.word(s.target.map_or(u32::MAX, |t| t as u32));
                 }
                 Part::Guest(g) => h.bytes(format!("{g:?}").as_bytes()),
             }
@@ -565,7 +609,7 @@ impl Ctx<'_> {
     /// at once (an undo must neither bring back nor remove a destroyed entity).
     pub fn remove(&mut self, world: &mut World, id: u32) {
         world.forget_undo(id);
-        world.units.release_gate_of(id);
+        crate::staff::leaves(world, id);
         self.removals.push(id);
     }
 }
@@ -685,6 +729,7 @@ impl Hooks for Standard<'_> {
     fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::checks(unit, world, ctx, at, self.data);
         crate::guest::checks(unit, world, ctx, at, self.data);
+        crate::staff::checks(unit, world, ctx, at);
         // The checks end with the ambient choice, with the happiness of that moment.
         let asked = match &mut unit.part {
             Part::Animal(a) => std::mem::take(&mut a.ambient),

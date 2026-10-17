@@ -7,6 +7,9 @@ use crate::text::format::{Strings, money, whole_units};
 
 /// The categories of the accounts, by number.
 pub const CATEGORIES: usize = 31;
+/// What the keepers spend on animal food and on healing.
+pub const ANIMAL_FOOD: usize = 0;
+pub const ANIMAL_HEALTH: usize = 1;
 pub const ANIMAL_PURCHASE: usize = 2;
 pub const CONSTRUCTION: usize = 3;
 pub const ADMISSIONS: usize = 4;

@@ -4,7 +4,8 @@
 //! Kept as the original has it: with no suitable tile on the ring, the corner of the ring is the
 //! destination (engine issue 304). An animal in the tank mode picks a tile of its tank not behind
 //! it and a level for it (tank fauna 6). Not here yet: the water mode of an animal, the
-//! exhibits a staff member is assigned to, the escape of an animal.
+//! exhibits a worker or a guide is assigned to, the exhibits a keeper without assignments may
+//! serve, the escape of an animal.
 
 use super::{Kind, Part, Unit, movement, swim};
 use crate::config::Config;
@@ -208,6 +209,7 @@ impl Walk<'_> {
                 (!dry.is_empty()).then(|| dry[self.rng.pick(dry.len() as u32) as usize])
             }
             (_, Some(id)) => self.gate_neighbour(id),
+            (Kind::Keeper, None) => self.assigned_gate().or_else(|| self.stroll()),
             _ => self.stroll(),
         }
     }
@@ -278,6 +280,24 @@ impl Walk<'_> {
             true => gate,
             false => around[self.rng.pick(around.len() as u32) as usize],
         })
+    }
+
+    /// A keeper on the grounds with exhibits assigned: the outside of the gate of one of them, drawn
+    /// at random, unless he stands there (then the ring serves). Without assignments the
+    /// exhibits that give 0 in `blockService` come in with the catalogue (staff 7.10).
+    fn assigned_gate(&mut self) -> Option<usize> {
+        let Part::Staff(s) = &self.unit.part else {
+            return None;
+        };
+        let gates: Vec<usize> = (s.assigned.iter())
+            .filter_map(|&x| crate::staff::service::gate_tiles(self.world, x))
+            .map(|(_, outside)| outside)
+            .collect();
+        if gates.is_empty() {
+            return None;
+        }
+        let gate = gates[self.rng.pick(gates.len() as u32) as usize];
+        Some(gate).filter(|&t| t != self.here)
     }
 
     /// The `rx` and `ry` of the ring: two draws.

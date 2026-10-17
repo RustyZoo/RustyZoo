@@ -872,3 +872,52 @@ fn the_hash_follows_the_statistics_of_an_exhibit() {
     hashes.dedup();
     assert_eq!(hashes.len(), changes.len());
 }
+
+#[test]
+fn the_hash_follows_what_a_keeper_and_his_exhibit_keep() {
+    let hash = |change: &dyn Fn(&mut Run)| {
+        let mut w = world(0);
+        let shape = crate::world::Shape {
+            kind: crate::render::order::Kind::Unit,
+            footprint: (1, 1),
+            fence: false,
+            wall: false,
+            gate: false,
+            gated: false,
+            tank: crate::world::TankKind::NONE,
+            walkable: (false, false),
+        };
+        let keeper = crate::unit::testing::entity("keeper", "", 7, (32, 32), 0);
+        w.add(keeper, Some(shape)).unwrap();
+        let part = crate::exhibit::Part {
+            tiles: vec![5],
+            grounds: false,
+        };
+        w.exhibits_mut().add(&part, String::new());
+        let mut run = Run::new((b"", b""), own(), w, Money::default(), 1);
+        change(&mut run);
+        run.hash()
+    };
+    fn staff(run: &mut Run) -> &mut crate::unit::Staff {
+        let unit = run.world.units.iter().map(|u| u.id).next().unwrap();
+        match &mut run.world.units.get_mut(unit).unwrap().part {
+            crate::unit::Part::Staff(s) => s,
+            _ => panic!("not staff"),
+        }
+    }
+    let base = hash(&|_| {});
+    let changes: [&dyn Fn(&mut Run); 7] = [
+        &|r| staff(r).lost_tiles.push(3),
+        &|r| staff(r).lost_animals.push(3),
+        &|r| staff(r).food_kind = 1,
+        &|r| staff(r).assigned.push(1),
+        &|r| r.world.exhibits_mut().list_mut()[0].rating.coming = 1,
+        &|r| r.world.exhibits_mut().list_mut()[0].rating.serviced = 1,
+        &|r| r.world.units.service_interval = 7,
+    ];
+    let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
+    assert!(hashes.iter().all(|&h| h != base));
+    hashes.sort_unstable();
+    hashes.dedup();
+    assert_eq!(hashes.len(), changes.len());
+}

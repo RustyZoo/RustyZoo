@@ -235,6 +235,7 @@ impl Fnv {
         self.i32(s.attractiveness);
         self.option(s.keeper);
         self.u64(s.serviced);
+        self.u32(s.coming);
     }
 
     fn money(&mut self, m: &Money) {

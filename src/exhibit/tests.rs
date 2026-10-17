@@ -788,11 +788,12 @@ fn stored(name: &str, stats: [u32; 9], created: u64) -> HabitatInfo {
         name: name.into(),
         stats,
         created,
+        serviced: 0,
     }
 }
 
 #[test]
-fn a_loaded_exhibit_keeps_its_stored_name_statistics_and_date() {
+fn a_loaded_exhibit_keeps_its_stored_name_statistics_date_and_service_time() {
     let load = |locale: u32, created: u64| {
         let mut z = zoo(&[]);
         z.locale = locale;
@@ -805,7 +806,10 @@ fn a_loaded_exhibit_keeps_its_stored_name_statistics_and_date() {
         for (k, v) in [12.5f32, 0.0, 12.5, 185.49, 1.0, 186.49].iter().enumerate() {
             stats[k] = v.to_bits();
         }
-        z.habitat_info = vec![stored("Lions", stats, created)];
+        z.habitat_info = vec![HabitatInfo {
+            serviced: 4321,
+            ..stored("Lions", stats, created)
+        }];
         unique(&mut z);
         World::new(z, shape)
     };
@@ -814,6 +818,7 @@ fn a_loaded_exhibit_keeps_its_stored_name_statistics_and_date() {
     let world = load(1033, (134_774 + 11_323 + 16) * day);
     let e = world.exhibits().get(1).unwrap();
     assert_eq!(e.name, "Lions");
+    assert_eq!(e.rating.serviced, 4321, "the time last serviced");
     assert_eq!(e.stats.donations, [0.0, 12.5, 12.5]);
     assert_eq!(e.stats.upkeep, [1.0, 185.49, 186.49]);
     let d = e.stats.created.unwrap();

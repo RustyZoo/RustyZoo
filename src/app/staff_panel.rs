@@ -182,7 +182,7 @@ impl App<'_> {
         let cat = self.renderer.catalogue();
         let at = game.world.find(id)?;
         let who = crate::place::bulldozer::type_of(cat, &game.world.zoo.entities[at])?;
-        let good = assign::block_service(&game.world, cat, exhibit, who) == 0;
+        let good = assign::block_service(&game.world, cat, exhibit, who, (true, true)) == 0;
         Some((exhibit, good))
     }
 

@@ -23,6 +23,7 @@ use crate::zoo::Entity;
 
 mod animal;
 mod guest;
+mod staff;
 #[cfg(test)]
 mod tests;
 
@@ -35,6 +36,8 @@ pub const RANDOM: u8 = 1;
 /// A guest picks what to see next.
 pub const SITE: u8 = 100;
 pub const HABITAT: u8 = 101;
+/// The duties of a keeper (staff 7.5).
+pub const DUTIES: u8 = 110;
 pub const GAWK: u8 = 112;
 /// The tasks the costs of the path finder look at (pathfinding 6.5, 6.6): entering a building,
 /// chasing, avoiding a predator, returning to a show building, recovering from a fall into water
@@ -165,6 +168,10 @@ pub enum Goal {
     Base,
     /// 0x65 of a guest: walk to the viewing tile of an exhibit (11.2).
     Habitat,
+    /// 0x65 of a keeper: walk to the exhibit that needs him (staff 7.4); 0x6e, his duties there
+    /// (staff 7.5).
+    Exhibit,
+    Duties,
     /// 0x72 of an animal: walk to a piece of keeper food and eat it (11.8).
     KeeperFood,
     /// 0x71 of a guest: walk to the zoo entrance and go (11.6).
@@ -184,6 +191,8 @@ impl Goal {
         match (task, kind) {
             (..=99, _) | (135.., _) => Some(Goal::Base),
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
+            (HABITAT, Kind::Keeper) => Some(Goal::Exhibit),
+            (DUTIES, Kind::Keeper) => Some(Goal::Duties),
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
@@ -196,7 +205,8 @@ impl Goal {
     fn task(self) -> u8 {
         match self {
             Goal::Base => RANDOM,
-            Goal::Habitat => HABITAT,
+            Goal::Habitat | Goal::Exhibit => HABITAT,
+            Goal::Duties => DUTIES,
             Goal::KeeperFood => KEEPER_FOOD,
             Goal::Leave => LEAVE,
             Goal::DrinkWater => DRINK,
@@ -207,7 +217,14 @@ impl Goal {
 
     /// Called once when the object is built; false clears the record.
     fn init(self, cx: &mut Cx) -> bool {
-        self != Goal::Gawk || cx.gawk_init()
+        match self {
+            Goal::Gawk => cx.gawk_init(),
+            Goal::Duties => {
+                cx.duties_init();
+                true
+            }
+            _ => true,
+        }
     }
 
     /// Called when a stale object is removed.
@@ -234,6 +251,8 @@ impl Goal {
         match self {
             Goal::Leave => return cx.leave_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
+            Goal::Exhibit => return cx.exhibit_check_done(),
+            Goal::Duties => return cx.duties_check_done(),
             _ => {}
         }
         if self != Goal::Base && cx.reached(false) {
@@ -245,6 +264,8 @@ impl Goal {
         match self {
             Goal::Habitat if cx.record().target.tile.is_none() => cx.set_task(NONE, 0, 0, None),
             Goal::KeeperFood => cx.keeper_food_decide(),
+            Goal::Exhibit => cx.exhibit_decide(),
+            Goal::Duties => cx.duties_decide(),
             Goal::Leave => cx.leave_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Site => cx.site_decide(),
@@ -257,6 +278,8 @@ impl Goal {
         match self {
             Goal::Habitat => cx.set_task(GAWK, 0, 0, None),
             Goal::KeeperFood => cx.keeper_food_complete(),
+            Goal::Exhibit => cx.exhibit_complete(),
+            Goal::Duties => cx.duties_complete(),
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
             Goal::Gawk => cx.gawk_complete(),
@@ -265,19 +288,37 @@ impl Goal {
     }
 }
 
-/// The sub-goal object of a job. Only the base one so far (9.2): every job gets it.
+/// The sub-goal object of a job: the keeper's jobs 1 to 6 (staff 7.6 to 7.8), the base one (9.2)
+/// for every other job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sub {
     Base,
+    Keeper(u8),
 }
 
 impl Sub {
-    fn build(_: u8) -> Option<Sub> {
-        Some(Sub::Base)
+    fn build(job: u8, kind: Kind) -> Option<Sub> {
+        match (kind, job) {
+            (Kind::Keeper, 1..=6) => Some(Sub::Keeper(job)),
+            _ => Some(Sub::Base),
+        }
     }
 
-    /// 9.2.
+    /// 9.1 for a keeper's job: check done, then decide or complete while the job is the current one.
     fn update(self, cx: &mut Cx) {
+        if let Sub::Keeper(job) = self {
+            if !cx.record().job_done {
+                cx.job_check_done(job);
+            }
+            if cx.record().job != job {
+                cx.unit.goal.sub_stale = true;
+            } else if !cx.record().job_done {
+                cx.job_decide(job);
+            } else {
+                cx.job_complete(job);
+            }
+            return;
+        }
         if cx.record().job == 0 || cx.record().job_done {
             return;
         }
@@ -357,10 +398,6 @@ impl Cx<'_, '_> {
     /// 3.2: sets the task. The object is marked stale, the job cleared.
     pub fn set_task(&mut self, task: u8, mode: u8, id: u32, tile: Option<usize>) {
         let (now, unit) = (self.now(), self.unit.id);
-        // A keeper whose target tile changes gives up the exhibit it was going to.
-        if self.unit.goal.record.target.tile != tile {
-            self.world.units.release_gate(self.unit);
-        }
         let world = &mut *self.world;
         let goal = &mut self.unit.goal;
         let r = &mut goal.record;
@@ -392,14 +429,19 @@ impl Cx<'_, '_> {
         r.job_target.set_tile(world, tile);
         goal.sub_stale = true;
         if changed {
-            world
-                .units
-                .note(format!("job {} {}", self.unit.id, job_name(job)));
+            let line = format!("job {} {}", self.unit.id, job_name(job));
+            match self.unit.kind {
+                Kind::Keeper | Kind::Worker | Kind::Guide => world.units.staff_note(line),
+                _ => world.units.note(line),
+            }
         }
     }
 
     /// 12.1: clears the record, empties the path, lowers the flags.
     pub fn reset(&mut self) {
+        if self.unit.kind == Kind::Keeper {
+            self.keeper_reset();
+        }
         self.set_task(NONE, 0, 0, None);
         self.unit.path.clear();
         self.unit.goal.wants_to_decide = false;
@@ -475,6 +517,7 @@ impl Cx<'_, '_> {
             }
             Kind::Animal => self.animal_ladder(task),
             Kind::Guest => self.guest_ladder(task, done),
+            Kind::Keeper => self.keeper_ladder(task, done),
             _ => {}
         }
         true
@@ -536,7 +579,13 @@ impl Cx<'_, '_> {
         }
         if self.unit.goal.sub.is_none() {
             let job = self.record().job;
-            self.unit.goal.sub = Sub::build(job);
+            self.unit.goal.sub = Sub::build(job, self.unit.kind);
+            if let Some(Sub::Keeper(job)) = self.unit.goal.sub
+                && !self.job_init(job)
+            {
+                self.unit.goal.sub = None;
+                self.set_job(0, 0, None);
+            }
         }
         if let Some(sub) = self.unit.goal.sub {
             sub.update(self);
