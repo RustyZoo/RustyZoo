@@ -283,3 +283,60 @@ fn a_worn_piece_posts_its_events_with_the_worker_tile() {
     run.step(1003);
     assert_eq!(posted(&run), [(10034, 7, 5), (10033, 7, 5)]);
 }
+
+/// The kinds of the events a loaded world with the piece at `life` posts, and their data.
+fn loaded(keys: &str, life: Option<u32>) -> Vec<(u16, u32)> {
+    let mut w = world("f");
+    let c = w.zoo.entities[0].common.as_mut().unwrap();
+    c.fence = life.map(|life| crate::zoo::Fence {
+        strength: 300,
+        life,
+        timers: [5, 5],
+        portal: false,
+    });
+    w.loaded_events(&types(keys))
+        .iter()
+        .map(|e| {
+            let sent = (e.sender, e.target, e.channel, e.sender_channel, e.delay);
+            assert_eq!(sent, (7, 0, 0x4d, 0x45, 1));
+            (e.kind, e.data)
+        })
+        .collect()
+}
+
+#[test]
+fn a_loaded_piece_posts_broken_or_decayed_with_its_worker_tile() {
+    // Broken (life 0), decayed (at the decayed life), and sound pieces; the tile is the piece's own.
+    assert_eq!(loaded(WEARING, Some(0)), [(10034, 5)]);
+    assert_eq!(loaded(WEARING, Some(2)), [(10033, 5)]);
+    assert_eq!(loaded(WEARING, Some(1)), [(10033, 5)]);
+    assert_eq!(loaded(WEARING, Some(3)), []);
+    assert_eq!(loaded(WEARING, Some(u32::MAX)), []);
+    // An electrified piece posts the urgent kind, once, and a piece with no wear data none.
+    let live = format!("{WEARING}\ncIsElectrified=1");
+    assert_eq!(loaded(&live, Some(2)), [(10034, 5)]);
+    assert_eq!(loaded(&live, Some(0)), [(10034, 5)]);
+    assert_eq!(loaded(WEARING, None), []);
+    // The default decayed life is 0: only a broken piece posts.
+    assert_eq!(loaded("cStrength=300", Some(1)), []);
+    assert_eq!(loaded("cStrength=300", Some(0)), [(10034, 5)]);
+}
+
+#[test]
+fn the_events_of_a_loaded_zoo_wait_for_the_next_step_after_the_stored_ones() {
+    let cat = types(WEARING);
+    let mut run = run(types(WEARING), world("f"), 1);
+    run.world.zoo.entities[0]
+        .common
+        .as_mut()
+        .unwrap()
+        .fence
+        .as_mut()
+        .unwrap()
+        .life = 0;
+    let before = run.sim.events.buffers()[1].len();
+    run.sim.fences_loaded(&run.world, &cat);
+    let next = run.sim.events.buffers()[1];
+    assert_eq!(next.len(), before + 1);
+    assert_eq!(next.last().map(|e| e.kind), Some(10034));
+}

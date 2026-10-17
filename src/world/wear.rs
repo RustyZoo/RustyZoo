@@ -166,17 +166,31 @@ impl World {
         let tile = self.worker_tile(at);
         kinds
             .into_iter()
-            .map(|kind| Event {
-                sender: id,
-                target: 0,
-                data: tile,
-                extra: 0,
-                kind,
-                delay: 1,
-                sender_channel: PIECE_CHANNEL,
-                channel: TASK_CHANNEL,
-            })
+            .map(|kind| piece_event(id, kind, tile))
             .collect()
+    }
+
+    /// The events a zoo just loaded posts for its fence pieces (placing 7.4 "The events"), in
+    /// entity list order: a piece with life below 1 is broken again (10034), else one at or below
+    /// the `cDecayedLife` of its type is decayed (10033, 10034 when electrified).
+    pub fn loaded_events(&self, cat: &Catalogue) -> Vec<Event> {
+        let mut events = Vec::new();
+        for (at, e) in self.zoo.entities.iter().enumerate() {
+            let Some((c, f)) = e.common.as_ref().and_then(|c| Some((c, c.fence?))) else {
+                continue;
+            };
+            let ty = type_of(cat, e);
+            let key = |name| ty.and_then(|t| number(t, name)).unwrap_or(0.0);
+            let kind = if f.life == 0 {
+                BROKEN
+            } else if i64::from(f.life) <= key("cDecayedLife") as i64 {
+                [DECAYED, BROKEN][usize::from(key("cIsElectrified") != 0.0)]
+            } else {
+                continue;
+            };
+            events.push(piece_event(c.id, kind, self.worker_tile(at)));
+        }
+        events
     }
 
     /// Whether tile `t` is open (placing 7.4 item 4): one of its four quadrants is empty or holds
@@ -200,5 +214,19 @@ impl World {
         let pick = |f: &dyn Fn(usize) -> bool| tiles.into_iter().flatten().find(|&t| f(t));
         let found = pick(&|t| grounds(t) && self.open(t)).or_else(|| pick(&|t| self.open(t)));
         found.unwrap_or(t) as u32
+    }
+}
+
+/// The plain entity post of a piece to the task pool, with the worker tile as data.
+fn piece_event(id: u32, kind: u16, tile: u32) -> Event {
+    Event {
+        sender: id,
+        target: 0,
+        data: tile,
+        extra: 0,
+        kind,
+        delay: 1,
+        sender_channel: PIECE_CHANNEL,
+        channel: TASK_CHANNEL,
     }
 }

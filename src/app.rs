@@ -612,6 +612,7 @@ impl<'a> App<'a> {
             ..crate::animal::Class::load(self.renderer.vfs())
         };
         self.sim.load(&mut world, self.renderer.catalogue());
+        self.sim.fences_loaded(&world, self.renderer.catalogue());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         world.set_decay(crate::world::Decay::load(self.renderer.vfs()));
         let exhibits = world.exhibits().list().len();
