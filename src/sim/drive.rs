@@ -253,6 +253,9 @@ impl Run {
         lines.extend(
             (self.world.units.take_guest_lines().into_iter()).map(|l| format!("guest {l}")),
         );
+        lines.extend(
+            (self.world.units.take_staff_lines().into_iter()).map(|l| format!("staff {l}")),
+        );
         lines
     }
 

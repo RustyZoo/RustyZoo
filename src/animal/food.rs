@@ -334,7 +334,7 @@ pub fn feed(cx: &mut Cx) {
 /// The direction of the eight that is nearest to the offset `(dx, dy)` in tiles, as the
 /// original's arc tangent gives it, by the signs and the slope (22.5 degrees is a slope of
 /// 0.41421356). Both 0 gives none.
-pub(super) fn nearest_direction(dx: i32, dy: i32) -> Option<u32> {
+pub(crate) fn nearest_direction(dx: i32, dy: i32) -> Option<u32> {
     let (ax, ay) = (i64::from(dx).abs(), i64::from(dy).abs());
     let side = |long: i64, short: i64| short * 100_000_000 < long * 41_421_356;
     let step = match () {

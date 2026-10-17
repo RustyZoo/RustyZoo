@@ -95,3 +95,26 @@ fn a_new_staff_member_draws_its_work_and_chase_counters_at_its_first_turn() {
     assert_eq!(staff.work, rng.pick(7) as i32);
     assert_eq!(staff.chase, rng.pick(i32::MAX as u32) as i32);
 }
+
+#[test]
+fn the_service_interval_is_an_unsigned_whole_number_and_90_without_one() {
+    let read = |ini: &str| {
+        let mut units = crate::unit::Units::default();
+        units.set_ini(ini.as_bytes());
+        units.service_interval
+    };
+    assert_eq!(read(""), 90);
+    assert_eq!(read("[AI]\nexhibitServiceInterval=0\n"), 0);
+    assert_eq!(
+        read("[AI]\nEXHIBITSERVICEINTERVAL = 25\n"),
+        25,
+        "any case, white space"
+    );
+    assert_eq!(
+        read("[AI]\nexhibitServiceInterval=-1\n"),
+        u32::MAX,
+        "compared unsigned"
+    );
+    assert_eq!(read("[AI]\nexhibitServiceInterval=x\n"), 90);
+    read("[AI]\nexhibitServiceInterval=99999999999999999999\n");
+}

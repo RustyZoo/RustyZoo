@@ -445,6 +445,7 @@ pub struct App<'a> {
     unit_lines: Vec<String>,
     animal_lines: Vec<String>,
     guest_lines: Vec<String>,
+    staff_lines: Vec<String>,
     /// The sounds the units' animations began in the last pass.
     unit_sounds: Vec<UnitSound>,
     /// The frames and delays of the animations the units played.
@@ -583,6 +584,7 @@ impl<'a> App<'a> {
             unit_lines: Vec::new(),
             animal_lines: Vec::new(),
             guest_lines: Vec::new(),
+            staff_lines: Vec::new(),
             unit_sounds: Vec::new(),
             timings: Timings::default(),
             music: None,
@@ -916,16 +918,23 @@ impl<'a> App<'a> {
         let Some(game) = &mut self.game else {
             self.animal_lines.clear();
             self.guest_lines.clear();
+            self.staff_lines.clear();
             return;
         };
         self.animal_lines = game.world.units.take_animal_lines();
         self.guest_lines = game.world.units.take_guest_lines();
-        for (message, id) in game.world.units.take_messages() {
-            let name = (game.world.find(id))
+        self.staff_lines = game.world.units.take_staff_lines();
+        for (message, id, names) in game.world.units.take_messages() {
+            let own = (game.world.find(id))
                 .and_then(|at| game.world.zoo.entities[at].common.as_ref())
                 .map_or("", |c| &c.name);
             if let Some(ui) = &mut self.ui {
-                let text = ui.string(message).replacen("%s", name, 1);
+                let names = if names.is_empty() {
+                    vec![own.into()]
+                } else {
+                    names
+                };
+                let text = (names.iter()).fold(ui.string(message), |t, n| t.replacen("%s", n, 1));
                 ui.message(&to_cp1252(&text));
             }
         }
@@ -2024,6 +2033,7 @@ impl<'a> App<'a> {
                 .map(|e| format!("{lead} animal {e}")),
         );
         lines.extend(self.guest_lines.iter().map(|e| format!("{lead} guest {e}")));
+        lines.extend(self.staff_lines.iter().map(|e| format!("{lead} staff {e}")));
         lines
     }
 }

@@ -8,7 +8,7 @@ use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
 use crate::place::bulldozer::type_of;
-use crate::unit::{Ctx, Part, Unit};
+use crate::unit::{Ctx, Kind, Part, Unit};
 use crate::world::World;
 
 /// Whether the type is a staff member the player hires.
@@ -75,7 +75,38 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     }
 }
 
+/// A keeper's status tick (staff 4.2): the assigned exhibits with fewer than 2 tiles go.
+pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+    let Part::Staff(s) = &unit.part else {
+        return;
+    };
+    let who = type_of(ctx.cat, &world.zoo.entities[at]);
+    let small = |x: &u32| {
+        who.is_some_and(|w| assign::block_service(world, ctx.cat, *x, w, (false, false)) == 1)
+    };
+    let kept: Vec<u32> = s.assigned.iter().copied().filter(|x| !small(x)).collect();
+    if let (true, Part::Staff(s)) = (unit.kind == Kind::Keeper, &mut unit.part) {
+        s.assigned = kept;
+    }
+}
+
+/// The keeper `id` stops going to the exhibit of his target tile, which is lowered by one, and
+/// closes the gate he remembers (movement 6.2): he is picked up or removed. Only a keeper does.
+pub fn leaves(world: &mut World, id: u32) {
+    let Some(keeper) = world.units.get_mut(id).filter(|u| u.kind == Kind::Keeper) else {
+        return;
+    };
+    let tile = keeper.goal.record.target.tile;
+    keeper.goal.record.target.clear();
+    let exhibit = tile.and_then(|t| crate::animal::food::exhibit_of(world, t));
+    if let Some(x) = exhibit.and_then(|e| world.exhibits_mut().get_mut(e)) {
+        x.rating.coming = x.rating.coming.saturating_sub(1);
+    }
+    world.units.release_gate_of(id);
+}
+
 pub mod assign;
+pub mod service;
 
 #[cfg(test)]
 mod tests;

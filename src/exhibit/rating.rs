@@ -574,8 +574,11 @@ pub struct State {
     pub attractiveness: i32,
     /// The entity id of the keeper assigned to the exhibit.
     pub keeper: Option<u32>,
-    /// The time the exhibit was last serviced, in the game manager's units.
+    /// The AI clock, in ticks, when a keeper last finished his duties in the exhibit (staff 7.2);
+    /// 0 for never.
     pub serviced: u64,
+    /// The keepers on their way to the exhibit (staff 2).
+    pub coming: u32,
 }
 
 impl State {

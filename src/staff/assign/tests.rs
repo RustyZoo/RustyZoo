@@ -63,7 +63,9 @@ fn catalogue() -> Catalogue {
     for t in [
         ty("animals", "zebra", 1, ""),
         ty("animals", "dino", 2, "cKeeper=9551"),
-        ty("keeper", "keeper", 9500, ""),
+        ty("keeper", "keeper", 9500, "cDirt=6062\ncDirt=6093"),
+        ty("objects", "other", 6062, ""),
+        ty("animals", "frog", 3, "cUnderwater=1"),
         ty("keeper", "scient", 9551, ""),
         ty("keeper", "trainer", 9552, "cUnderwater=1"),
         ty("maint", "maint", 9501, ""),
@@ -147,7 +149,13 @@ const GUIDE: u32 = 5;
 
 fn code(w: &World, cat: &Catalogue, who: u32, exhibit: u32) -> u8 {
     let at = w.find(who).unwrap();
-    block_service(w, cat, exhibit, type_of(cat, &w.zoo.entities[at]).unwrap())
+    block_service(
+        w,
+        cat,
+        exhibit,
+        type_of(cat, &w.zoo.entities[at]).unwrap(),
+        (true, true),
+    )
 }
 
 fn list(w: &World, who: u32) -> Vec<u32> {
@@ -254,4 +262,97 @@ fn the_keeper_assigned_flag_is_read_from_the_lists_of_the_keeper_class_only() {
     assert_eq!((flag(&w, zebra), flag(&w, dino)), (Some(KEEPER), None));
     unassign(&mut w, KEEPER, None);
     assert_eq!(flag(&w, zebra), None);
+}
+
+fn fixed() -> Shape {
+    Shape {
+        kind: Class::Fixed,
+        footprint: (1, 1),
+        fence: false,
+        wall: false,
+        gate: false,
+        gated: false,
+        walkable: (false, false),
+        tank: TankKind::NONE,
+    }
+}
+
+#[test]
+fn his_dung_in_a_centre_slot_and_an_amphibious_neighbour_are_reasons_to_go() {
+    let (mut w, [_, small, empty, _]) = world();
+    let cat = catalogue();
+    let code = |w: &World, flags| {
+        let at = w.find(KEEPER).unwrap();
+        let ty = type_of(&cat, &w.zoo.entities[at]).unwrap();
+        block_service(w, &cat, empty, ty, flags)
+    };
+    assert_eq!(code(&w, (true, true)), 2);
+    // Dung off the centre of a tile is not in the centre slot; at the centre it is.
+    let mut pile = entity("objects", "other", (1, 4), 0, 300);
+    pile.common.as_mut().unwrap().x -= 24;
+    let off = w.add(pile, Some(fixed())).unwrap();
+    assert_eq!(code(&w, (true, true)), 2, "not the centre slot");
+    let centre = w.add(entity("objects", "other", (2, 4), 0, 301), Some(fixed()));
+    assert_eq!(code(&w, (true, true)), 0);
+    let scientist = type_of(&cat, &w.zoo.entities[w.find(SCIENTIST).unwrap()]).unwrap();
+    assert_eq!(
+        block_service(&w, &cat, empty, scientist, (true, true)),
+        2,
+        "not his dung"
+    );
+    // An amphibious animal in a neighbour counts whatever `kindOnly` says, with `checkKind` only.
+    w.remove(off);
+    w.remove(centre.unwrap());
+    w.exhibits_mut().get_mut(empty).unwrap().amphibious = vec![small];
+    w.add(entity("animals", "zebra", (4, 1), 0, 302), None);
+    assert_eq!(code(&w, (true, true)), 2, "a zebra is no amphibious animal");
+    w.add(entity("animals", "frog", (4, 1), 0, 303), None);
+    assert_eq!(
+        [(true, true), (false, true), (true, false)].map(|f| code(&w, f)),
+        [0, 0, 2]
+    );
+}
+
+#[test]
+fn the_purity_of_a_tank_counts_without_kind_only() {
+    let mut w = crate::unit::testing::tank_world(2, 1, &[]);
+    let cat = catalogue();
+    let mut marine = entity("keeper", "trainer", (0, 0), 0, 9);
+    marine.subtype = "f".into();
+    let marine = w.add(marine, None).unwrap();
+    let tank = w.tank_at(2 * 12 + 2).unwrap();
+    let code = |w: &World, flags| {
+        let ty = type_of(&cat, &w.zoo.entities[w.find(marine).unwrap()]).unwrap();
+        block_service(w, &cat, tank, ty, flags)
+    };
+    // Clean water: nothing to do. Murky water: a reason, but not for the assign mode.
+    assert_eq!(code(&w, (false, true)), 2);
+    w.exhibits_mut()
+        .get_mut(tank)
+        .unwrap()
+        .tank
+        .as_mut()
+        .unwrap()
+        .purity = 99;
+    assert_eq!(
+        [(false, true), (true, true), (false, false)].map(|f| code(&w, f)),
+        [0, 2, 2]
+    );
+}
+
+#[test]
+fn a_status_tick_drops_the_assigned_exhibits_that_are_too_small() {
+    let (mut w, [zebra, small, ..]) = world();
+    let cat = catalogue();
+    for x in [small, zebra] {
+        let Some(Part::Staff(s)) = w.units.get_mut(KEEPER).map(|u| &mut u.part) else {
+            panic!("no keeper");
+        };
+        s.assigned.push(x);
+    }
+    let mut sim = crate::sim::Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.step_in(&mut w, &cat, 1100, |_, _, _| {});
+    assert_eq!(list(&w, KEEPER), [zebra]);
 }
