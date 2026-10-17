@@ -326,6 +326,10 @@ impl Cx<'_, '_> {
     /// 3.2: sets the task. The object is marked stale, the job cleared.
     pub fn set_task(&mut self, task: u8, mode: u8, id: u32, tile: Option<usize>) {
         let (now, unit) = (self.now(), self.unit.id);
+        // A keeper whose target tile changes gives up the exhibit it was going to.
+        if self.unit.goal.record.target.tile != tile {
+            self.world.units.release_gate(self.unit);
+        }
         let world = &mut *self.world;
         let goal = &mut self.unit.goal;
         let r = &mut goal.record;

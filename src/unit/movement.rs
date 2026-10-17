@@ -7,7 +7,8 @@
 //! The move call of a behaviour set (8.2) starts a walk with the rate, the animation and the
 //! animation speed of its speed band, and ends it. Entering a tile opens the gate ahead of a unit
 //! that is not an animal and closes the gate behind it (6.2), and has a swimmer that changes
-//! between land and water pick its move animation again.
+//! between land and water pick its move animation again. The gate plays its animation and sound
+//! ([`super::gate`]).
 //!
 //! A unit in a tank (move kind 3) moves by [`swim`]'s 3D move instead, and the tank position check
 //! runs after every move step.
@@ -532,11 +533,12 @@ pub(super) fn enter(unit: &mut Unit, world: &mut World, old: usize, new: usize) 
         world.units.lines.push(format!("enter {} {r}", unit.id));
     }
     unit.flip |= unit.mover.swims && world.is_water(old) != world.is_water(new);
-    // The gate on the way is opened (not by an animal), the one just crossed is closed.
-    let next = unit.path.iter().find(|&&t| t != new);
-    let ahead = next.and_then(|&n| gate(world, new, direction(world, new, n)));
+    // The gate on the way (towards the path's second entry) is opened (not by an animal), the
+    // one just crossed is closed.
+    let ahead = (unit.path.get(1)).and_then(|&n| gate(world, new, direction(world, new, n)));
     if let Some(g) = ahead.filter(|_| unit.kind != Kind::Animal) {
         world.units.lines.push(format!("gate {} open {g}", unit.id));
+        world.units.open_gate(g);
         unit.gate = Some(g);
     }
     if let Some(g) = gate(world, new, (unit.travel + 4) % 8) {
@@ -544,15 +546,18 @@ pub(super) fn enter(unit: &mut Unit, world: &mut World, old: usize, new: usize) 
             .units
             .lines
             .push(format!("gate {} close {g}", unit.id));
+        world.units.close_gate(g);
         if unit.gate == Some(g) {
             unit.gate = None;
         }
     }
 }
 
-/// The id of the gate on the edge of tile `t` in direction `d`, on either side of the edge.
+/// The id of the gate on the edge of tile `t` in direction `d`, on either side of the edge. A
+/// diagonal `d` looks at the edge slot `d / 2` of the tile, then at slot `(d + 4) % 8 / 2` of the
+/// neighbour in that direction (movement 6.2).
 fn gate(world: &World, t: usize, d: i32) -> Option<u32> {
-    let d = usize::try_from(d).ok().filter(|d| d % 2 == 0)?;
+    let d = usize::try_from(d).ok().filter(|&d| d < 8)?;
     let across = world
         .neighbour(t, d)
         .and_then(|n| world.edge(n, (d + 4) % 8));
