@@ -11,6 +11,7 @@ use super::Cx;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Part;
 
+mod building;
 mod sites;
 
 /// The leave task.
@@ -57,6 +58,23 @@ impl Cx<'_, '_> {
         }
         self.set_task(EXIT, 0, 0, None);
         true
+    }
+
+    /// Ladder point 5: a guest whose eat-standing flag is up and that is not eating standing
+    /// resets its goal and, holding an item, eats it standing. Whether it took a task.
+    pub(super) fn stand_ladder(&mut self, task: u8) -> bool {
+        let Part::Guest(g) = &self.unit.part else {
+            return false;
+        };
+        if !g.stand || [super::EAT_STANDING, super::EATING_STANDING].contains(&task) {
+            return false;
+        }
+        let item = g.items.iter().any(Option::is_some);
+        self.reset();
+        item && {
+            self.set_task(super::EAT_STANDING, 1, 0, None);
+            true
+        }
     }
 
     /// Ladder point 10.3 and `checkLeaveZoo` (guests 11.1): a guest that is neither leaving nor

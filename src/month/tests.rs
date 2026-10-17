@@ -45,13 +45,13 @@ fn catalogue() -> Catalogue {
 }
 
 fn month(kinds: &[(&'static str, &str)]) -> (Money, Vec<String>) {
-    let w = world((4, 4), |_, entities| {
+    let mut w = world((4, 4), |_, entities| {
         for (i, (class, name)) in kinds.iter().enumerate() {
             entities.push(entity(class, name, i as u32 + 1, centre((1, 1)), 0));
         }
     });
     let (mut money, mut log) = (Money::default(), Vec::new());
-    charge(&w, &catalogue(), &mut money, &mut log);
+    charge(&mut w, &catalogue(), &mut money, &mut log);
     (money, log)
 }
 
@@ -98,6 +98,30 @@ fn only_the_guest_buildings_pay_upkeep_in_one_booking() {
         none.cash, 0.0,
         "an empty zoo pays nothing, the booking is still made"
     );
+}
+
+#[test]
+fn each_building_rolls_its_monthly_figures_and_adds_its_upkeep() {
+    let mut w = world((4, 4), |_, entities| {
+        entities.push(entity("building", "shop", 7, centre((1, 1)), 0));
+        entities.push(entity("building", "compost", 8, centre((2, 1)), 0));
+    });
+    let live = |income| crate::building::Live {
+        guests: [2, 5, 7],
+        income: [income, 1.0, 1.0 + income],
+        upkeep: 10.0,
+        ..Default::default()
+    };
+    w.units.buildings.insert(7, live(6.0));
+    w.units.buildings.insert(8, live(6.0));
+    charge(&mut w, &catalogue(), &mut Money::default(), &mut Vec::new());
+    let shop = &w.units.buildings[&7];
+    assert_eq!(
+        (shop.guests, shop.income, shop.upkeep),
+        ([0, 2, 7], [0.0, 6.0, 7.0], 60.0)
+    );
+    // The compost is no guest building: it keeps its figures.
+    assert_eq!(w.units.buildings[&8].guests[0], 2);
 }
 
 #[test]

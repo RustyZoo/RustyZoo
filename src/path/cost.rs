@@ -266,6 +266,18 @@ fn passes(w: &World, m: &Mover, t: usize, n: usize, pieces: &[usize]) -> bool {
     }
 }
 
+/// 4.3 point 1: whether quarter 3 of tile `t` holds a building other than the unit's building
+/// target. A unit without a target meets none.
+pub fn other_building(w: &World, m: &Mover, t: usize) -> bool {
+    let Some(target) = m.target_building else {
+        return false;
+    };
+    w.quadrant(t, SLOT[3]).is_some_and(|e| {
+        let e = &w.zoo.entities[e];
+        e.class == "building" && e.common.as_ref().is_some_and(|c| c.id != target)
+    })
+}
+
 /// 4.3: whether the step from `a` to `b` in direction `d` clears the objects.
 pub fn clear(w: &World, m: &Mover, a: usize, b: usize, d: usize, diagonal: bool) -> bool {
     if d % 2 == 1 && diagonal {

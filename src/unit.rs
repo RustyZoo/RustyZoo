@@ -190,6 +190,8 @@ pub struct Unit {
     pub events: Vec<Event>,
     /// The player holds the unit.
     pub carried: bool,
+    /// The unit is inside a building that hides its users: off the map, it does not move.
+    pub hidden: bool,
     /// The program is moving the unit by code (it is never set while a step runs).
     pub repositioning: bool,
     /// The unit has had its first turn, in which the kinds start their state.
@@ -235,6 +237,7 @@ impl Unit {
             wait: 0,
             events: Vec::new(),
             carried: false,
+            hidden: false,
             repositioning: false,
             started: false,
             typed: false,
@@ -312,6 +315,12 @@ pub struct Units {
     pub donated: Vec<f32>,
     /// `cDonationFactor`, set by the step from the economy file.
     pub donation_factor: f32,
+    /// The live state of the guest buildings and the prices of the economy file (guest buildings).
+    pub buildings: crate::building::Table,
+    pub prices: crate::building::Prices,
+    /// What guests paid buildings during the step, which the step books as concessions.
+    pub concessions: Vec<f32>,
+    building_lines: Vec<String>,
 }
 
 impl Default for Units {
@@ -340,6 +349,10 @@ impl Default for Units {
             views: Default::default(),
             donated: Vec::new(),
             donation_factor: 2.8e-13,
+            buildings: Default::default(),
+            prices: Default::default(),
+            concessions: Vec::new(),
+            building_lines: Vec::new(),
             guest_lines: Vec::new(),
         }
     }
@@ -405,6 +418,11 @@ impl Units {
         std::mem::take(&mut self.guest_lines)
     }
 
+    /// The `building` log lines since the last call, without the family word.
+    pub fn take_building_lines(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.building_lines)
+    }
+
     /// The messages posted since the last call, as (string number, unit id, names); the string
     /// holds a `%s` for each name, for the unit's name when there are none.
     pub fn take_messages(&mut self) -> Vec<(i32, u32, Vec<String>)> {
@@ -428,6 +446,10 @@ impl Units {
 
     pub(crate) fn staff_note(&mut self, line: String) {
         self.staff_lines.push(line);
+    }
+
+    pub(crate) fn building_note(&mut self, line: String) {
+        self.building_lines.push(line);
     }
 
     pub(crate) fn guest_note(&mut self, line: String) {
@@ -486,6 +508,17 @@ impl Units {
                 self.lines.push(format!("remove {id}"));
             }
         }
+        // A removed unit is no user of a building.
+        for live in self.buildings.values_mut() {
+            live.users.retain(|u| self.index.contains_key(&u.0));
+        }
+        if !self.buildings.is_empty() {
+            let ids: std::collections::HashSet<u32> = (entities.iter())
+                .filter(|e| e.class == "building")
+                .filter_map(|e| e.common.as_ref().map(|c| c.id))
+                .collect();
+            self.buildings.retain(|id, _| ids.contains(id));
+        }
     }
 
     /// A hash of the whole table (FNV-1a over the fields, in list order) for the state hash of a
@@ -499,6 +532,7 @@ impl Units {
             h.word(v as u32);
             h.word((v >> 32) as u32);
         }
+        h.bytes(format!("{:?}", self.buildings).as_bytes());
         for u in &self.list {
             h.word(u.id);
             h.word(u.kind as u32);
@@ -531,7 +565,8 @@ impl Units {
                 u32::from(u.carried)
                     | u32::from(u.repositioning) << 1
                     | u32::from(u.started) << 2
-                    | u32::from(u.typed) << 3,
+                    | u32::from(u.typed) << 3
+                    | u32::from(u.hidden) << 4,
             );
             match &u.part {
                 Part::Animal(a) => h.bytes(format!("{a:?}").as_bytes()),

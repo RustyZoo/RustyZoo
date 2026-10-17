@@ -57,7 +57,9 @@ fn shape(e: &Entity) -> Option<Shape> {
         ("fences", "low") => Some(thing(Class::Edge, (1, 1), false, false)),
         ("fences", _) => Some(thing(Class::Edge, (1, 1), true, false)),
         ("paths", _) => Some(thing(Class::Path, (2, 2), false, false)),
-        ("bush", _) | ("food", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        ("bush", _) | ("food", _) | ("building", _) => {
+            Some(thing(Class::Fixed, (1, 1), false, false))
+        }
         // Show walls of a tank (`show`) and the others; units that let others through (`soft`).
         ("tankwall", kind) => Some(Shape {
             kind: Class::Wall,
@@ -238,6 +240,40 @@ fn the_path_goes_round_a_fence_through_its_gate() {
     let p = path(&w, &unit(Kind::Keeper, (2, 2)), (8, 2));
     assert_eq!(p.last(), Some(&(8, 2)));
     assert!(p.windows(2).any(|s| s[0] == (4, 6) && s[1] == (5, 6)));
+}
+
+#[test]
+fn the_building_flag_passes_every_quarter_but_those_of_another_building() {
+    // Buildings 7 and 8 hold the southern quarters of (5,5) and (7,5).
+    let w = world(|_, e| {
+        for (id, tx) in [(7, 5), (8, 7)] {
+            for x in [16, 48] {
+                let mut b = entity_at("building", "", "", (tx * 64 + x, 5 * 64 + 48), 0);
+                b.common.as_mut().unwrap().id = id;
+                e.push(b);
+            }
+        }
+    });
+    let open = |m: &Mover, from, to, flag| {
+        let s = Settings::default();
+        search::open(&w, m, &s, (t(from), t(to), 0), None, flag).is_some()
+    };
+    let target = Mover {
+        target_building: Some(7),
+        ..unit(Kind::Guest, (5, 6))
+    };
+    assert!(
+        !open(&target, (5, 6), (5, 5), false),
+        "closed without the flag"
+    );
+    assert!(
+        open(&target, (5, 6), (5, 5), true),
+        "the target's own quarters"
+    );
+    assert!(!open(&target, (7, 6), (7, 5), false));
+    assert!(!open(&target, (7, 6), (7, 5), true), "another building's");
+    // Without a building target the flag passes every quarter.
+    assert!(open(&unit(Kind::Guest, (7, 6)), (7, 6), (7, 5), true));
 }
 
 #[test]

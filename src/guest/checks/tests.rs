@@ -139,7 +139,7 @@ fn a_wandering_guest_skips_the_countdowns_and_a_guest_on_water_the_checks() {
     );
     assert_eq!(g.countdowns[7], 100, "the trash countdown stays too");
     assert_eq!(drew(&before, &rng), 1);
-    assert!(!out.reset);
+    assert!(!out.seek[ENERGY_SEEK]);
     // On water, in a tank or leaving: no check at all, not even the countdowns; the chase, the
     // saw-animal and the viewing countdowns go on.
     let (mut g, k) = guest();
@@ -156,20 +156,20 @@ fn a_wandering_guest_skips_the_countdowns_and_a_guest_on_water_the_checks() {
 }
 
 #[test]
-fn a_tired_guest_finds_no_bench_and_the_viewing_countdown_is_reported() {
+fn a_tired_guest_seeks_a_bench_and_the_viewing_countdown_is_reported() {
     let (mut g, k) = guest();
     g.values[ENERGY] = 89;
     g.countdowns[5] = 0;
     assert!(
-        !run(&mut g, &k, false, false, &mut Rng::default()).reset,
+        !run(&mut g, &k, false, false, &mut Rng::default()).seek[ENERGY_SEEK],
         "below the threshold"
     );
     g.values[ENERGY] = 90;
     g.countdowns[5] = 0;
-    assert!(run(&mut g, &k, false, false, &mut Rng::default()).reset);
+    assert!(run(&mut g, &k, false, false, &mut Rng::default()).seek[ENERGY_SEEK]);
     // Not when the check does not fire, but always when the wandered flag is up.
-    assert!(!run(&mut g, &k, false, false, &mut Rng::default()).reset);
-    assert!(run(&mut g, &k, true, false, &mut Rng::default()).reset);
+    assert!(!run(&mut g, &k, false, false, &mut Rng::default()).seek[ENERGY_SEEK]);
+    assert!(run(&mut g, &k, true, false, &mut Rng::default()).seek[ENERGY_SEEK]);
     // The saw-animal countdown restarts after 0, the viewing one is due after its period.
     g.saw_animal = 0;
     g.countdowns[9] = 0;

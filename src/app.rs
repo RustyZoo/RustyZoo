@@ -446,6 +446,7 @@ pub struct App<'a> {
     animal_lines: Vec<String>,
     guest_lines: Vec<String>,
     staff_lines: Vec<String>,
+    building_lines: Vec<String>,
     /// The sounds the units' animations began in the last pass.
     unit_sounds: Vec<UnitSound>,
     /// The frames and delays of the animations the units played.
@@ -585,6 +586,7 @@ impl<'a> App<'a> {
             animal_lines: Vec::new(),
             guest_lines: Vec::new(),
             staff_lines: Vec::new(),
+            building_lines: Vec::new(),
             unit_sounds: Vec::new(),
             timings: Timings::default(),
             music: None,
@@ -919,11 +921,13 @@ impl<'a> App<'a> {
             self.animal_lines.clear();
             self.guest_lines.clear();
             self.staff_lines.clear();
+            self.building_lines.clear();
             return;
         };
         self.animal_lines = game.world.units.take_animal_lines();
         self.guest_lines = game.world.units.take_guest_lines();
         self.staff_lines = game.world.units.take_staff_lines();
+        self.building_lines = game.world.units.take_building_lines();
         for (message, id, names) in game.world.units.take_messages() {
             let own = (game.world.find(id))
                 .and_then(|at| game.world.zoo.entities[at].common.as_ref())
@@ -2034,6 +2038,7 @@ impl<'a> App<'a> {
         );
         lines.extend(self.guest_lines.iter().map(|e| format!("{lead} guest {e}")));
         lines.extend(self.staff_lines.iter().map(|e| format!("{lead} staff {e}")));
+        lines.extend((self.building_lines.iter()).map(|e| format!("{lead} building {e}")));
         lines
     }
 }

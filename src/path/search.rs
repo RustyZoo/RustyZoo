@@ -1,7 +1,7 @@
 //! The A* search over tiles with the original's open list (pathfinding 3.3 to 3.8), over (tile,
 //! level) nodes in a tank.
 
-use super::cost::{clear, edge, step};
+use super::cost::{clear, edge, other_building, step};
 use super::{Kind, MAX, Mover, Settings};
 use crate::render::corner_elevation;
 use crate::world::World;
@@ -86,7 +86,8 @@ pub fn diagonal(m: &Mover, s: &Settings) -> bool {
 }
 
 /// The step cost of going from `a` to its neighbour `b` in direction `d` when the step is allowed
-/// (4.2), else `None`. A unit at a building (`building`) is held to the edge cost alone.
+/// (4.2), else `None`. A unit at a building (`building`) is held to the edge cost alone and passes
+/// every quarter but those of another building (4.3 point 1).
 pub fn open(
     w: &World,
     m: &Mover,
@@ -97,7 +98,10 @@ pub fn open(
 ) -> Option<u32> {
     let cost = step(w, m, a, b, d, goal);
     let fits = if building { edge(w, m, a, d) } else { cost };
-    (clear(w, m, a, b, d, diagonal(m, s)) && w.tank_at(b).is_none() && fits < MAX).then_some(cost)
+    (w.tank_at(b).is_none()
+        && fits < MAX
+        && (building && !other_building(w, m, b) || clear(w, m, a, b, d, diagonal(m, s))))
+    .then_some(cost)
 }
 
 /// 4.2 in a depth search: the step cost from level `za` of `a` to level `zb` of `b` when the unit's

@@ -256,6 +256,9 @@ impl Run {
         lines.extend(
             (self.world.units.take_staff_lines().into_iter()).map(|l| format!("staff {l}")),
         );
+        lines.extend(
+            (self.world.units.take_building_lines().into_iter()).map(|l| format!("building {l}")),
+        );
         lines
     }
 

@@ -56,6 +56,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "fences" => Some(thing(Class::Edge, (1, 1), true)),
         "paths" => Some(thing(Class::Path, (2, 2), false)),
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
+        "building" => Some(thing(Class::Fixed, (2, 2), false)),
         "tankwall" => Some(Shape {
             tank: TankKind {
                 wall: true,

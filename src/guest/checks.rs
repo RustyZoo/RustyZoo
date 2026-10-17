@@ -2,10 +2,9 @@
 //! 6.12) with their countdowns.
 //!
 //! [`run`] is the checks on the guest's own state and the generator; [`checks`] is the hook that
-//! reads the world for it, resets the goal when a tired guest finds no bench, and runs the
-//! viewing check ([`super::view`]) when its countdown comes up. The seek parts of the need checks
-//! look for a building that satisfies the need: until the buildings exist they find none, which
-//! costs no draw, so only the energy check, which resets the goal then, does anything.
+//! reads the world for it: after the need checks it runs their seek parts, which look for a
+//! building that satisfies the need ([`Cx::seek`]), then the trash and gift checks and the
+//! gift's seek, and runs the viewing check ([`super::view`]) when its countdown comes up.
 
 use super::*;
 use crate::behaviour::Data;
@@ -30,11 +29,17 @@ const NEED_CHECKS: [(usize, usize, usize); 4] = [
     (ENERGY, 2, 5),
 ];
 
+/// The needs of the seek parts, in the order of the checks: bathroom, hunger, thirst, energy and
+/// the wish for a gift.
+pub const SEEKS: [&str; 5] = ["bathroom", "food", "drink", "energy", "gift"];
+/// The index of the energy check in [`SEEKS`].
+pub const ENERGY_SEEK: usize = 3;
+
 /// What the checks of a tick ask of the caller.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Out {
-    /// The tired guest found no bench: its goal is reset.
-    pub reset: bool,
+    /// The seek parts that are due, by [`SEEKS`].
+    pub seek: [bool; SEEKS.len()],
     /// The viewing check is due.
     pub view: bool,
 }
@@ -85,6 +90,13 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 /// `skip` is set while the guest is on water, in a tank or leaving, when checks 6.3 to 6.9 do
 /// nothing.
 pub fn run(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -> Out {
+    let mut out = needs_part(g, k, wandered, skip, rng);
+    rest(g, k, (wandered, skip), rng, &mut out);
+    out
+}
+
+/// The checks up to the need checks (6.3 to 6.7), whose seek parts are due in the result.
+fn needs_part(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -> Out {
     let mut out = Out::default();
     g.saw_animal = match g.saw_animal {
         0 => k.saw_animal_reset.wrapping_sub(1),
@@ -112,36 +124,66 @@ pub fn run(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -
             g.leave = true;
         }
         // 6.4 to 6.7.
-        for (v, n, c) in NEED_CHECKS {
+        for (i, (v, n, c)) in NEED_CHECKS.into_iter().enumerate() {
             let fired = !wandered && tick(&mut g.countdowns[c], k.periods[c]);
             let [increment, threshold, angry] = k.needs[n];
             let top = if v == ENERGY { k.max_energy } else { 100 };
-            if fired {
+            // The need being served does not grow (6.4 to 6.7; the meal at a bench serves hunger).
+            let served = g.need == Some(SEEKS[i]) || (v == HUNGER && g.need == Some("eat"));
+            if fired && !served {
                 g.pending[v] = g.pending[v].saturating_add(increment);
                 if g.values[v] >= top {
                     g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(angry);
                 }
             }
-            out.reset |= (fired || wandered) && v == ENERGY && g.values[v] >= threshold;
+            let held = match v {
+                HUNGER => g.items[0].is_some(),
+                THIRST => g.items[1].is_some(),
+                _ => false,
+            };
+            out.seek[i] = (fired || wandered)
+                && !held
+                && (v == ENERGY || !g.stand)
+                && g.values[v] >= threshold;
         }
+    }
+    out
+}
+
+/// The checks after the need checks: trash and gift (6.8, 6.9), the viewing countdown and the
+/// last two.
+fn rest(g: &mut Guest, k: &Keys, (wandered, skip): (bool, bool), rng: &mut Rng, out: &mut Out) {
+    if !skip {
         // 6.8.
         if !wandered && tick(&mut g.countdowns[TRASH], k.periods[TRASH]) {
             g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(k.trash);
         }
-        // 6.9: the draw of the wish for a gift, which no gift shop answers yet.
+        // 6.9: the draw of the wish for a gift.
         if wandered || tick(&mut g.countdowns[GIFT], k.periods[GIFT]) {
-            match g.values[HAPPINESS] {
-                71..=100 => _ = rng.chance(k.souvenir[1]),
-                31..=70 => _ = rng.chance(k.souvenir[0]),
-                _ => {}
-            }
+            g.gift = match g.values[HAPPINESS] {
+                71..=100 => rng.chance(k.souvenir[1]),
+                31..=70 => rng.chance(k.souvenir[0]),
+                _ => false,
+            };
+            out.seek[4] = g.gift && g.items[3].is_none() && !g.stand;
         }
     }
     // Step 4 of 6.1 clears the wandered flag; then the viewing and surroundings checks.
     out.view = tick(&mut g.countdowns[VIEWING], k.periods[VIEWING]);
     tick(&mut g.countdowns[SURROUNDINGS], k.periods[SURROUNDINGS]);
     tick(&mut g.countdowns[LIKE], k.periods[LIKE]);
-    out
+}
+
+/// The seek parts of `range` of [`SEEKS`] that are due, for the guest `g` that stands in `unit`.
+fn seeks(cx: &mut Cx, g: Guest, range: std::ops::Range<usize>, out: &Out) -> Guest {
+    cx.unit.part = Part::Guest(g);
+    range
+        .filter(|&i| out.seek[i])
+        .for_each(|i| cx.seek(SEEKS[i]));
+    match &mut cx.unit.part {
+        Part::Guest(g) => std::mem::take(g),
+        _ => Guest::default(),
+    }
 }
 
 /// The checks of a status tick (guests 6.1).
@@ -165,22 +207,24 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.is_water(t) || x.is_some_and(|x| x.tank.is_some())
     });
     let skip = wet || unit.goal.record.task == LEAVE;
-    let out = run(&mut g, &k, unit.goal.wandered, skip, ctx.rng);
-    unit.goal.wandered = false;
-    if out.reset {
-        let mut cx = Cx {
-            unit: &mut *unit,
-            world: &mut *world,
-            ctx: &mut *ctx,
-            at,
-            data,
-        };
-        cx.reset();
-    }
+    let wandered = unit.goal.wandered;
+    let mut out = needs_part(&mut g, &k, wandered, skip, ctx.rng);
+    // The seek parts look at the guest as it stands, in the order of the checks.
+    let mut cx = Cx {
+        unit: &mut *unit,
+        world: &mut *world,
+        ctx: &mut *ctx,
+        at,
+        data,
+    };
+    g = seeks(&mut cx, g, 0..ENERGY_SEEK + 1, &out);
+    rest(&mut g, &k, (wandered, skip), cx.ctx.rng, &mut out);
+    g = seeks(&mut cx, g, ENERGY_SEEK + 1..SEEKS.len(), &out);
+    cx.unit.goal.wandered = false;
     if out.view {
-        view::check(&mut g, &k, world, ctx.cat, ctx.rng, tile);
+        view::check(&mut g, &k, cx.world, cx.ctx.cat, cx.ctx.rng, tile);
     }
-    unit.part = Part::Guest(g);
+    cx.unit.part = Part::Guest(g);
 }
 
 #[cfg(test)]

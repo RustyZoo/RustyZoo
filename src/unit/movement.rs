@@ -155,6 +155,12 @@ fn displacement(dir: i32, distance: i32, diagonals: bool, m: i32) -> (i32, i32) 
 /// (3), then the check of its height (5).
 pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
     let before = here(world, at);
+    // A hidden user walking out of its building is moved but stays off the map (guest buildings
+    // 6.6); one that stays inside is not touched.
+    let off_map = unit.hidden && unit.moving && unit.speed > 0;
+    if unit.hidden && !off_map {
+        return;
+    }
     if unit.moving && unit.speed > 0 {
         // The remainder of the division is lost (issue 301).
         let distance = (unit.speed.wrapping_mul(ms) / 1000).max(1);
@@ -178,6 +184,9 @@ pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
         world.units.lines.push(format!("depth {} {z}", unit.id));
     }
     snap(world, at);
+    if off_map {
+        world.lift_unit(at);
+    }
 }
 
 /// The end of a walk (8.2 step 3): the path is empty, or the unit stands in its destination tile.
@@ -452,6 +461,10 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
         .destination
         .and_then(|(x, y, _)| tile_of(world, (x, y)));
     m.building |= unit.through_building;
+    m.target_building = match &unit.part {
+        Part::Guest(g) if g.building != 0 && world.find(g.building).is_some() => Some(g.building),
+        _ => None,
+    };
     let record = &unit.goal.record;
     task(&mut m, record.task, record.target.id);
     m.water_mode = matches!(&unit.part, Part::Animal(a) if a.terrain == 1);
