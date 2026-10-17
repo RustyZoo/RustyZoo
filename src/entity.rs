@@ -866,8 +866,15 @@ mod tests {
 
     impl Install {
         fn new(name: &str, members: &[(&str, &str)]) -> Install {
-            let path =
-                std::env::temp_dir().join(format!("rustyzoo-entity-{}-{name}", std::process::id()));
+            let path = std::env::temp_dir().join(format!(
+                "rustyzoo-entity-{}-{}-{name}",
+                std::process::id(),
+                {
+                    static N: std::sync::atomic::AtomicUsize =
+                        std::sync::atomic::AtomicUsize::new(0);
+                    N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                }
+            ));
             let _ = std::fs::remove_dir_all(&path);
             std::fs::create_dir_all(&path).unwrap();
             std::fs::write(path.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
