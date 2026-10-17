@@ -5,7 +5,9 @@
 //! task, which picks one and sends it to a tile it can look at it from ([`sites`]), where it
 //! views the animals. The leave flag is raised by the unhappy-leave check
 //! ([`crate::guest::checks`]) and by `checkLeaveZoo`, which the ladder runs when nothing is left to
-//! see. The log lines are those of the `guest` family of [`crate::guest`].
+//! see. A guest that feels sick (the surroundings check, or the first of January) gets the sick
+//! task by chance and is sick on the spot ([`Cx::sick_ladder`]). The log lines are those of the
+//! `guest` family of [`crate::guest`].
 
 use super::{Cx, SICK};
 use crate::exhibit::{EXTERIOR, GROUNDS};
@@ -74,10 +76,13 @@ impl Cx<'_, '_> {
         let task = self.record().task;
         let sick = matches!(&self.unit.part, Part::Guest(g) if g.sick);
         let busy = [SICK, EXIT, LEAVE].contains(&task) || IN_BUILDING.contains(&task);
+        if !sick || busy {
+            return false;
+        }
         let Some(k) = crate::guest::keys(self.world, self.ctx.cat, self.at) else {
             return false;
         };
-        if !sick || busy || !self.ctx.rng.chance(k.env[4]) {
+        if !self.ctx.rng.chance(k.env[4]) {
             return false;
         }
         let id = self.unit.id;

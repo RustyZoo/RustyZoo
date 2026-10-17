@@ -432,6 +432,12 @@ fn littered(can: bool) -> World {
     w
 }
 
+fn give_litter(w: &mut World) {
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        g.items[4] = Some(LITTER);
+    }
+}
+
 /// The pieces of litter on the ground.
 fn pieces(w: &World) -> usize {
     (w.zoo.entities.iter())
@@ -478,9 +484,7 @@ fn a_guest_with_litter_and_no_can_drops_it_where_it_stands_and_calls_a_worker() 
     );
     // Where it stands, in the quarter its position falls in: that quarter is taken now, so a
     // second piece fails and the guest keeps it.
-    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
-        g.items[4] = Some(LITTER);
-    }
+    give_litter(&mut w);
     with_cx(&cat, &mut w, |cx| cx.seek_trash());
     assert_eq!(pieces(&w), 1);
     assert!(guest(&w).items[4].is_some() && guest(&w).littered);
@@ -503,18 +507,12 @@ fn a_full_can_sends_the_litter_to_the_ground_and_the_thirteenth_piece_calls_a_wo
     // 24 pieces take one more; above that the can is full.
     for (before, after, ground) in [(24, 25, 0), (25, 25, 1)] {
         fill(&mut w, before);
-        w.units.get_mut(1).map(|u| match &mut u.part {
-            Part::Guest(g) => g.items[4] = Some(LITTER),
-            _ => {}
-        });
+        give_litter(&mut w);
         with_cx(&cat, &mut w, |cx| cx.bin_litter(11, true));
         assert_eq!((w.units.buildings[&11].fill, pieces(&w)), (after, ground));
     }
     // A building that removes nothing takes nothing.
-    w.units.get_mut(1).map(|u| match &mut u.part {
-        Part::Guest(g) => g.items[4] = Some(LITTER),
-        _ => {}
-    });
+    give_litter(&mut w);
     with_cx(&cat, &mut w, |cx| cx.bin_litter(11, false));
     assert!(guest(&w).items[4].is_some());
 }

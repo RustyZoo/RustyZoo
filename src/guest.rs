@@ -24,9 +24,9 @@
 //! The log family `guest`: `guest add <id> <adult|child>` for each guest made, `guest status <id>
 //! <happiness> <hunger> <thirst> <bathroom> <energy>` after each update of the values, `guest
 //! view <id> <exhibit>` when a guest starts viewing an exhibit, `guest donate <id> <exhibit>
-//! <amount>` for a donation, `guest thought <id> <text id>` for each thought and `guest leave <id>`
-//! for each one that left and was removed. The
-//! buildings a guest uses log the family `building` ([`crate::building`]).
+//! <amount>` for a donation, `guest thought <id> <text id>` for each thought, `guest litter <id>
+//! <x>,<y>` for a piece of litter dropped on a tile and `guest leave <id>` for each one that left
+//! and was removed. The buildings a guest uses log the family `building` ([`crate::building`]).
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};

@@ -3,8 +3,9 @@
 //!
 //! [`run`] is the checks on the guest's own state and the generator; [`checks`] is the hook that
 //! reads the world for it: after the need checks it runs their seek parts, which look for a
-//! building that satisfies the need ([`Cx::seek`]), then the trash and gift checks and the
-//! gift's seek, and runs the viewing check ([`super::view`]) when its countdown comes up.
+//! building that satisfies the need ([`Cx::seek`]), then the trash check and the seek for a trash
+//! can ([`Cx::seek_trash`]), the gift check and the gift's seek, and runs the viewing check
+//! ([`super::view`]) and the surroundings check ([`super::mega`]) when their countdowns come up.
 
 use super::*;
 use crate::behaviour::Data;
