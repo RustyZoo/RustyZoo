@@ -42,7 +42,7 @@ fn animal(id: u32, tile: (i32, i32)) -> Entity {
 }
 
 /// A 22 by 12 map: the pens of `pens`, a zebra in each and the zookeeper on the grounds at (1, 9).
-fn zoo(pens: &[(i32, i32, i32, i32, i32)]) -> World {
+fn zoo(pens: &[(i32, i32, i32, i32, i32)], extra: &[Entity]) -> World {
     world_with((22, 12), |z| {
         for (n, &pen) in pens.iter().enumerate() {
             fences(&mut z.entities, pen);
@@ -53,8 +53,10 @@ fn zoo(pens: &[(i32, i32, i32, i32, i32)]) -> World {
                 name: format!("Pen {n}"),
                 stats: [0; 9],
                 created: 0,
+                serviced: 0,
             });
         }
+        z.entities.extend(extra.iter().cloned());
         let mut keeper = entity("keeper", "keeper", KEEPER, centre((1, 9)), 2);
         keeper.subtype = "m".into();
         z.entities.push(keeper);
@@ -181,10 +183,18 @@ struct Game {
 
 impl Game {
     fn new(pens: &[(i32, i32, i32, i32, i32)]) -> Game {
+        Game::with(pens, &[], b"")
+    }
+
+    /// The pens, more pieces on the map and the ini text the first step already runs on.
+    fn with(pens: &[(i32, i32, i32, i32, i32)], extra: &[Entity], ini: &[u8]) -> Game {
         let mut sim = Sim::new(b"");
         sim.set_seed(1);
         sim.start_game(22 * 12, Clocks::default());
-        let (w, cat, data) = (zoo(pens), catalogue(), sets());
+        let (mut w, cat, data) = (zoo(pens, extra), catalogue(), sets());
+        if !ini.is_empty() {
+            w.units.set_ini(ini);
+        }
         let mut g = Game {
             w,
             sim,
@@ -406,16 +416,7 @@ fn a_keeper_leaving_lowers_the_count_of_the_exhibit_he_was_going_to() {
         1,
         "on his way"
     );
-    assert!(
-        g.w.units
-            .get(KEEPER)
-            .unwrap()
-            .goal
-            .record
-            .target
-            .tile
-            .is_some()
-    );
+    assert!(own(&g).is_some());
     // He remembers a gate he opened; giving up closes it.
     g.w.units.get_mut(KEEPER).unwrap().gate = Some(109);
     crate::staff::leaves(&mut g.w, KEEPER);
@@ -450,9 +451,8 @@ fn an_assigned_keeper_strolls_to_the_outside_of_the_gate_of_his_exhibit() {
 
 #[test]
 fn a_search_that_fails_is_asked_again_relaxed_and_a_partial_path_brings_him_nearer_each_time() {
-    let mut g = Game::new(&[PEN_B]);
     // Far from the gate for a search that gives up after a few nodes.
-    g.w.units.set_ini(b"[AI]\nNodeMax=15\n");
+    let mut g = Game::with(&[PEN_B], &[], b"[AI]\nNodeMax=15\n");
     let pen = g.exhibit((13, 3));
     g.run(3);
     let keeper = g.w.units.get(KEEPER).unwrap();
@@ -508,4 +508,83 @@ fn the_sickly_percentage_is_cut_to_0_and_100_and_a_food_need_of_0_sends_no_food(
     }
     let who = cat.find("keeper", b"keeper", b"m").unwrap();
     assert_eq!(service::food_needed(&g.w, &cat, pen, who, 0), 0);
+}
+
+/// A plain fence piece across the gate of `PEN_A`: on the north side of the outside gate tile.
+fn across() -> Entity {
+    entity("fences", "exhibit", 900, centre((5, 6)), 0)
+}
+
+fn own(g: &Game) -> Option<usize> {
+    match &g.w.units.get(KEEPER).unwrap().part {
+        Part::Staff(s) => s.target,
+        _ => None,
+    }
+}
+
+#[test]
+fn a_fenced_off_gate_posts_11001_and_a_short_path_raises_no_count() {
+    let mut g = Game::with(&[PEN_A], &[across()], b"");
+    let pen = g.exhibit((4, 3));
+    g.run(1500);
+    let name = g.w.exhibits().get(pen).unwrap().name.clone();
+    assert!(g.said.contains(&(11001, vec![name])), "{:?}", g.said);
+    assert!(g.said.iter().all(|m| m.0 != 11004), "{:?}", g.said);
+    assert_eq!(g.w.exhibits().get(pen).unwrap().rating.coming, 0);
+    assert!(g.lines(&["unit enter 1"]).is_empty());
+    // A walk that stops short of an open entrance raises no count and says nothing.
+    let mut g = Game::with(&[PEN_B], &[], b"[AI]\nNodeMax=15\n");
+    let pen = g.exhibit((13, 3));
+    g.run(3);
+    let keeper = g.w.units.get(KEEPER).unwrap();
+    assert!(keeper.walking || !keeper.path.is_empty());
+    assert_eq!(g.w.exhibits().get(pen).unwrap().rating.coming, 0);
+    assert!(g.said.is_empty(), "{:?}", g.said);
+}
+
+#[test]
+fn the_entrance_is_blocked_by_a_fence_across_the_gate_or_an_object_in_a_gate_tile() {
+    let blocked = |g: &Game| {
+        let pen = g.exhibit((4, 3));
+        let gate = service::gate_tiles(&g.w, pen).unwrap();
+        let at = g.w.find(KEEPER).unwrap();
+        let mover = movement::mover(g.w.units.get(KEEPER).unwrap(), &g.w, at, 9 * 22 + 1);
+        service::entrance_blocked(&g.w, &mover, gate)
+    };
+    assert!(!blocked(&Game::new(&[PEN_A])), "as built");
+    assert!(
+        blocked(&Game::with(&[PEN_A], &[across()], b"")),
+        "a fence across the gate"
+    );
+    for tile in [(5, 6), (5, 5)] {
+        let mut g = Game::new(&[PEN_A]);
+        assert!(g.put("poo", tile, 0));
+        assert!(blocked(&g), "an object in the gate tile {tile:?}");
+    }
+}
+
+#[test]
+fn the_keepers_own_target_tile_is_claimed_on_his_way_and_kept_into_his_duties() {
+    let mut g = Game::new(&[PEN_A]);
+    zebra(&mut g.w, ZEBRA_A).hunger = 100;
+    let task = |g: &Game| g.w.units.get(KEEPER).unwrap().goal.record.task;
+    let mut go = None;
+    while task(&g) != HABITAT || own(&g).is_none() {
+        g.run(1);
+        assert!(g.log.len() < 100, "he sets out");
+    }
+    go = go.or(own(&g));
+    assert!(service::claimed(&g.w).contains(&go.unwrap()), "on his way");
+    while task(&g) != DUTIES {
+        g.run(1);
+        assert!(g.log.len() < 1000, "he arrives");
+    }
+    assert_eq!(own(&g), go, "kept into his duties");
+    assert!(service::claimed(&g.w).contains(&go.unwrap()));
+    while g.w.units.get(KEEPER).unwrap().goal.record.job == 0 {
+        g.run(1);
+        assert!(g.log.len() < 1000, "his first job");
+    }
+    assert_ne!(own(&g), go, "the first job sets another");
+    assert!(own(&g).is_some());
 }

@@ -1,7 +1,8 @@
 //! The goals of a keeper (staff 7): going to the exhibit that needs him (task 0x65), his duties
 //! there (0x6e) and the jobs of the duties, feeding, healing and raking (1 to 6). The exhibit
-//! counters, the claimed and unreachable places and the gate he opened follow his target tile
-//! ([`Cx::keeper_target`]). Land exhibits only.
+//! counters, the claimed and unreachable places and the gate he opened follow his own target tile
+//! ([`Cx::keeper_target`]), which is not the goal record's target tile (staff 7.4). Land exhibits
+//! only.
 
 use super::{Cx, DUTIES, HABITAT, NONE, RANDOM};
 use crate::animal::{self, dirt, food};
@@ -78,21 +79,18 @@ impl<'c> Cx<'_, 'c> {
         self.world.units.post_named(TROUBLE, self.unit.id, names);
     }
 
-    /// Whether the unit is a keeper on his way to an exhibit or at his duties: the goals whose
-    /// target tile is the keeper's (a wander writes the field without the setter, movement 6.2).
-    pub(super) fn keeper_goal(&self) -> bool {
-        let task = self.unit.goal.record.task;
-        self.unit.kind == crate::unit::Kind::Keeper && matches!(task, HABITAT | DUTIES)
+    /// The keeper's own target tile (staff 7.4 "The two target tiles").
+    fn own(&self) -> Option<usize> {
+        match &self.unit.part {
+            Part::Staff(s) => s.target,
+            _ => None,
+        }
     }
 
-    /// The keeper no longer comes to the exhibit of his target tile: its count of keepers on their
-    /// way goes down (not below 0) and he closes the gate he remembers (movement 6.2).
-    pub(super) fn target_left(&mut self) {
-        let exhibit = self
-            .record()
-            .target
-            .tile
-            .and_then(|t| food::exhibit_of(self.world, t));
+    /// The keeper no longer comes to the exhibit of his own target tile: its count of keepers on
+    /// their way goes down (not below 0) and he closes the gate he remembers (movement 6.2).
+    fn target_left(&mut self) {
+        let exhibit = self.own().and_then(|t| food::exhibit_of(self.world, t));
         if let Some(x) = exhibit.and_then(|x| self.world.exhibits_mut().get_mut(x)) {
             x.rating.coming = x.rating.coming.saturating_sub(1);
         }
@@ -102,9 +100,11 @@ impl<'c> Cx<'_, 'c> {
     /// The keeper's own setter of his target tile (staff 7.4): another tile than the one he has
     /// first gives up the old one.
     pub(super) fn keeper_target(&mut self, tile: Option<usize>) {
-        if self.record().target.tile != tile {
+        if self.own() != tile {
             self.target_left();
-            self.unit.goal.record.target.set_tile(self.world, tile);
+            if let Some(s) = self.staff() {
+                s.target = tile;
+            }
         }
     }
 
@@ -134,13 +134,10 @@ impl<'c> Cx<'_, 'c> {
     pub(super) fn keeper_ladder(&mut self, task: u8, done: bool) {
         let here = self.exhibit();
         if task == NONE || (done && here.is_none()) {
-            return self.set_task(HABITAT, 4, 0, None);
+            self.set_task(HABITAT, 4, 0, None);
+            return self.keeper_target(None);
         }
-        let target = self
-            .record()
-            .target
-            .tile
-            .and_then(|t| food::exhibit_of(self.world, t));
+        let target = self.own().and_then(|t| food::exhibit_of(self.world, t));
         let alone = here.is_some_and(|x| service::present(self.world, x) < 2);
         if done && alone && here == target {
             self.set_task(DUTIES, 0, 0, None);
@@ -151,12 +148,7 @@ impl<'c> Cx<'_, 'c> {
 
     /// 7.4 check done: the exhibit must still want him; on arrival he must be in it.
     pub(super) fn exhibit_check_done(&mut self) {
-        let Some(x) = self
-            .record()
-            .target
-            .tile
-            .and_then(|t| food::exhibit_of(self.world, t))
-        else {
+        let Some(x) = self.own().and_then(|t| food::exhibit_of(self.world, t)) else {
             return;
         };
         let (cat, who) = (self.ctx.cat, self.who());
@@ -195,34 +187,37 @@ impl<'c> Cx<'_, 'c> {
         let gate = service::gate_tiles(self.world, x);
         let mover = movement::mover(self.unit, self.world, self.at, self.tile().unwrap_or(0));
         let walk = gate.map(|(inside, _)| self.gate_side(x, inside, &mover));
-        // A path, else one more in the relaxed mode that may stop short (pathfinding 6.2).
+        // A path, else one more in the relaxed mode that may stop short (pathfinding 6.2): a
+        // path that ends anywhere but in the exhibit is a short one.
         self.unit.path.clear();
         let mut ok = walk.is_some_and(|to| self.path_to(to, false));
+        let mut short = false;
         if let (false, Some(to)) = (ok, walk) {
             self.unit.mover.relaxed = true;
             ok = self.path_to(to, true);
             self.unit.mover.relaxed = false;
-            let end = self
-                .unit
-                .path
-                .last()
-                .and_then(|&t| food::exhibit_of(self.world, t));
-            ok &= end.is_none_or(|e| e == x);
+            let end = self.unit.path.last();
+            short = end.and_then(|&t| food::exhibit_of(self.world, t)) != Some(x);
         }
-        ok = ok && !self.unit.suspended() && self.start_set("bWalk", false);
-        if !ok {
+        let started = ok && self.start_walk(false, false, false);
+        if !started {
             self.unit.path.clear();
-            return self.exhibit_failed(x, gate);
+            return self.exhibit_failed(x, gate, false);
         }
         let tiles = self.world.tiles_of(x);
         let tile = tiles[self.ctx.rng.pick(tiles.len() as u32) as usize];
         self.keeper_target(Some(tile));
-        if let Some(e) = self.world.exhibits_mut().get_mut(x) {
-            e.rating.coming += 1;
-        }
         self.world
             .units
             .staff_note(format!("go {} {x}", self.unit.id));
+        match short {
+            true => self.exhibit_failed(x, gate, true),
+            false => {
+                if let Some(e) = self.world.exhibits_mut().get_mut(x) {
+                    e.rating.coming += 1;
+                }
+            }
+        }
     }
 
     /// One of the eight tiles round the gate's inside tile that is in the exhibit and open to the
@@ -243,19 +238,20 @@ impl<'c> Cx<'_, 'c> {
         }
     }
 
-    /// 7.4 failure: the entrance is blocked or the way is not found; the exhibit hears he is not
-    /// coming and he wanders.
-    fn exhibit_failed(&mut self, x: u32, gate: Option<(usize, usize)>) {
-        let here = self.tile().unwrap_or(0);
-        let mover = movement::mover(self.unit, self.world, self.at, here);
-        let blocked = gate.is_none_or(|(i, o)| path::pair_cost(self.world, &mover, i, o) >= 19);
+    /// 7.4 failure: a blocked entrance is told (11001) and so is a way not found (11004, with no
+    /// walk started); a short walk to an open entrance goes on without a word. Otherwise the
+    /// exhibit hears he is not coming and he wanders.
+    fn exhibit_failed(&mut self, x: u32, gate: Option<(usize, usize)>, walking: bool) {
+        let mover = movement::mover(self.unit, self.world, self.at, self.tile().unwrap_or(0));
+        let blocked = gate.is_none_or(|g| service::entrance_blocked(self.world, &mover, g));
         let name = self.exhibit_name(x);
-        if blocked {
-            self.world
-                .units
-                .post_named(BLOCKED, self.unit.id, vec![name]);
-        } else {
-            self.trouble(name);
+        match (blocked, walking) {
+            (true, _) => {
+                let id = self.unit.id;
+                self.world.units.post_named(BLOCKED, id, vec![name]);
+            }
+            (_, false) => self.trouble(name),
+            _ => return,
         }
         self.target_left();
         self.set_task(RANDOM, 1, 0, None);

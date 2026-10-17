@@ -613,6 +613,7 @@ fn tank_world_with(level: u32, more: Vec<Entity>) -> World {
             name: String::new(),
             stats: [0; 9],
             created: 0,
+            serviced: 0,
         }];
     });
     let id = w.tank_at(2 * 8 + 2).unwrap();

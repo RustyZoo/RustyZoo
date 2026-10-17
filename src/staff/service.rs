@@ -10,6 +10,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::GROUNDS;
 use crate::goal::DUTIES;
 use crate::panel::exhibit::animals_in;
+use crate::path::{self, Mover};
 use crate::place::bulldozer::type_of;
 use crate::unit::{Kind, Part};
 use crate::world::World;
@@ -161,12 +162,13 @@ pub fn present(world: &World, x: u32) -> usize {
     world.units.iter().filter(working).filter(at).count()
 }
 
-/// The tiles some keeper at work has as its target (staff 4.3: the claimed tiles).
+/// The own target tiles of the keepers (staff 4.3: the claimed tiles), on their way or at work.
 pub fn claimed(world: &World) -> Vec<usize> {
-    (world.units.iter())
-        .filter(|u| u.kind == Kind::Keeper && u.goal.record.task == DUTIES)
-        .filter_map(|u| u.goal.record.target.tile)
-        .collect()
+    let own = |u: &crate::unit::Unit| match &u.part {
+        Part::Staff(s) if u.kind == Kind::Keeper => s.target,
+        _ => None,
+    };
+    world.units.iter().filter_map(own).collect()
 }
 
 /// Whether exhibit `x` needs the keeper (7.2), now being the AI clock. Nothing for a tank.
@@ -244,4 +246,24 @@ pub fn gate_tiles(world: &World, x: u32) -> Option<(usize, usize)> {
         true => (tile, across),
         false => (across, tile),
     })
+}
+
+/// The entrance test of a failed way to an exhibit with the gate tiles `(inside, outside)` (staff
+/// 7.4): a fence piece on both sides of the gate edge, or the larger crossing cost of the keeper
+/// 19 or more, or an object in the centre slot of either tile.
+pub fn entrance_blocked(world: &World, keeper: &Mover, (inside, outside): (usize, usize)) -> bool {
+    let d = (0..8).find(|&d| world.neighbour(inside, d) == Some(outside));
+    let fenced = d.is_some_and(|d| {
+        world.edge(inside, d).is_some() && world.edge(outside, (d + 4) % 8).is_some()
+    });
+    let cost = |a, b| match (0..8).find(|&d| world.neighbour(a, d) == Some(b)) {
+        Some(d) => path::step(world, keeper, a, b, d, None),
+        None => path::MAX,
+    };
+    let crossing = cost(inside, outside).max(cost(outside, inside));
+    fenced
+        || crossing >= 19
+        || [inside, outside]
+            .iter()
+            .any(|&t| world.quadrant(t, 3).is_some())
 }

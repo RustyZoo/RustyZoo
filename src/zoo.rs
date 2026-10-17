@@ -233,6 +233,8 @@ pub struct HabitatInfo {
     pub name: String,
     pub stats: [u32; 9],
     pub created: u64,
+    /// The AI tick a keeper last serviced the exhibit (`unknown_ec`, from version 83; 0 for never).
+    pub serviced: u32,
 }
 
 /// What the zoo status keeps in a saved file (zoo status 16): its three timers in milliseconds, the
@@ -576,14 +578,13 @@ fn habitat(r: &mut Reader) -> R<Habitat> {
     }
     let created = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
     r.skip(8)?;
+    let serviced = if v >= 83 { r.u32()? } else { 0 };
     let info = HabitatInfo {
         name,
         stats,
         created,
+        serviced,
     };
-    if v >= 83 {
-        r.skip(4)?;
-    }
     let is_tank = v >= 85 && r.u8()? != 0;
     let has_show = v >= 90 && r.u8()? != 0;
     if has_show {

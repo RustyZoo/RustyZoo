@@ -7,7 +7,6 @@
 
 use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
-use crate::goal::{DUTIES, HABITAT};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
 use crate::place::bulldozer::type_of;
 use crate::unit::{Ctx, Kind, Part, Unit};
@@ -92,18 +91,18 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     }
 }
 
-/// The keeper `id` stops going to the exhibit of his target tile, which is lowered by one, and
+/// The keeper `id` stops going to the exhibit of his own target tile, which is lowered by one, and
 /// closes the gate he remembers (movement 6.2): he is picked up or removed. Only a keeper does.
 pub fn leaves(world: &mut World, id: u32) {
-    let at_goal = |u: &&mut Unit| matches!(u.goal.record.task, HABITAT | DUTIES);
-    let Some(keeper) = (world.units.get_mut(id).filter(|u| u.kind == Kind::Keeper)).filter(at_goal)
-    else {
+    let Some(keeper) = world.units.get_mut(id).filter(|u| u.kind == Kind::Keeper) else {
         world.units.release_gate_of(id);
         return;
     };
-    let (tile, job) = (keeper.goal.record.target.tile, keeper.goal.record.job);
-    let held = keeper.goal.record.job_target.id;
-    keeper.goal.record.target.clear();
+    let (job, held) = (keeper.goal.record.job, keeper.goal.record.job_target.id);
+    let tile = match &mut keeper.part {
+        Part::Staff(s) => s.target.take(),
+        _ => None,
+    };
     // The animal he was to heal waits no more.
     if let (3 | 4, Some(a)) = (job, world.units.get_mut(held)) {
         a.wait = 0;

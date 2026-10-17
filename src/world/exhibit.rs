@@ -80,7 +80,7 @@ impl World {
 
     /// Takes the gate of each exhibit from its record in the file (exhibits and money 3.8, zoo
     /// format 4.1): the piece in the stored tile's edge slot of the stored side, if any. Its
-    /// statistics and creation date come with it, and its name when the file was written in the
+    /// statistics, creation date and time last serviced come with it, and its name when the file was written in the
     /// language of the running game (zoo format 2 rule 5).
     pub(super) fn load_gates(&mut self) {
         let records = self.zoo.habitat_tiles.iter().zip(&self.zoo.habitat_gates);
@@ -106,6 +106,7 @@ impl World {
                 e.stats.donations = [stat(last), stat(this), stat(total)];
                 e.stats.upkeep = [stat(3 + last), stat(3 + this), stat(3 + total)];
                 e.stats.created = Some(Date::from_file_time(info.created));
+                e.rating.serviced = u64::from(info.serviced);
             }
         }
     }
