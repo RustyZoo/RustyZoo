@@ -331,6 +331,9 @@ pub struct Runner {
     playing: bool,
     /// Where the unit is: set by the unit before each run (the table and the nesting calls).
     pub place: Place,
+    /// The guide's task is the talk and not done: its routine does not make idle the base
+    /// (behaviours 5.5). Set by the unit before each run.
+    pub talking: bool,
     /// The move call the last execution stopped at, for the unit to run.
     moving: Option<(Gait, Target)>,
     /// A `fFaceTowardFood` call ran, for the unit to turn.
@@ -357,6 +360,7 @@ impl Default for Runner {
             ready: true,
             playing: false,
             place: Place::Land,
+            talking: false,
             moving: None,
             face: false,
             die: false,
@@ -636,7 +640,7 @@ impl Runner {
                 }
                 // It makes idle the base at every run (goals 6.3), like the move call makes its
                 // animation: a finished walk keeps its move animation until the cut shows it.
-                if found(&"idle".to_string()) {
+                if !(*routine == Routine::Guide && self.talking) && found(&"idle".to_string()) {
                     anim.base_to("idle");
                 }
                 self.chain[k].done = self.ready;

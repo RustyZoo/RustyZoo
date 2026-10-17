@@ -723,6 +723,9 @@ impl Hooks for Standard<'_> {
             && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
         let key = (!took).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
+        let record = &unit.goal.record;
+        unit.runner.talking =
+            unit.kind == Kind::Guide && record.task == crate::goal::TALK && !record.done;
         let mut env = Env {
             data: self.data,
             unit: &world.zoo.entities[at],
