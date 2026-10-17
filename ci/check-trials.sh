@@ -738,6 +738,33 @@ panel_tab() { # panel_tab <map>
 check base-trial "same" "panel_tab maps/scn01.zoo"
 check expansion-trial "same" "panel_tab maps/scn19.zoo"
 
+# The staff panel (information panels 9, staff 6): the exhibit list centres the view on the first
+# exhibit and closes, a hired zookeeper (seed 3 draws the sex the trials have) is clicked, the assign
+# button is pressed and a click on the exhibit assigns it (green under the pointer, none over the
+# grounds); the exhibit panel still says no keeper is assigned (the flag follows at the exhibit's
+# next rating, which a paused game does not reach). Prints the `panel` and `tool assign` lines
+# (spaces as underscores, ids left out, joined by semicolons).
+staff_assign() { # staff_assign <map>
+  d=$(mktemp -d)
+  printf '1 pause\n2 mouse 965 750\n3 down\n4 up\n5 mouse 900 455\n6 down\n7 up\n8 mouse 1008 411\n9 down\n10 up\n11 mouse 28 176\n12 down\n13 up\n14 mouse 300 480\n15 down\n16 up\n17 right\n18 mouse 303 466\n19 down\n20 up\n21 mouse 993 583\n22 down\n23 up\n24 mouse 500 250\n25 mouse 505 255\n26 down\n27 up\n28 mouse 400 600\n29 down\n30 up\n32 mouse 965 750\n33 down\n34 up\n35 mouse 900 455\n36 down\n37 up\n' >"$d/script"
+  rz run "$1" --headless --seed 3 --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
+    grep ' panel staff \| tool assign \| panel status ' | cut -d' ' -f4- |
+    sed -e 's/panel staff [0-9]* /panel staff /' -e 's/tool assign [0-9]* /tool assign /' | tr ' ' _ | paste -sd';' -
+  rm -rf "$d"
+}
+check base-trial 'panel_status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;panel_staff_"Zookeeper_1"_salary_$0_duty_""_exhibits_[];tool_assign_over_1_good;tool_assign_1;panel_staff_"Zookeeper_1"_salary_$0_duty_""_exhibits_["Exhibit_1"];tool_assign_over_none;panel_status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No' "staff_assign maps/scn01.zoo"
+
+# A maintenance worker is hired, clicked and its duties tab opened (the expansion data has the four
+# duty kinds, the base data three): a click on the second row switches that kind off.
+staff_duties() { # staff_duties <map>
+  d=$(mktemp -d)
+  printf '1 pause\n2 mouse 28 176\n3 down\n4 up\n5 mouse 80 172\n6 down\n7 up\n8 mouse 600 300\n9 down\n10 up\n11 right\n12 mouse 607 288\n13 down\n14 up\n16 mouse 1005 664\n17 down\n18 up\n24 mouse 880 650\n25 down\n26 up\n' >"$d/script"
+  rz run "$1" --headless --seed 3 --passes 30 --clock 67 --script "$d/script" 2>/dev/null |
+    sed -n 's/^.* panel staff [0-9]* .* duties /duties_/p' | paste -sd';' -
+  rm -rf "$d"
+}
+check expansion-trial "duties_1111;duties_1011" "staff_duties maps/scn19.zoo"
+
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
 sim_twice() { # sim_twice <map>

@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use crate::build::number;
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
+use crate::unit::{Kind, Part};
 use crate::world::World;
 
 /// The terrain types a species rates.
@@ -247,6 +248,8 @@ pub struct Input {
     pub site: Site,
     pub species: Vec<Likes>,
     pub animals: Vec<usize>,
+    /// The first keeper-class staff member that holds the exhibit in his list (habitat rating 11.2).
+    pub keeper: Option<u32>,
 }
 
 /// The record of one species in an exhibit (rule 3): its part scores and the recommendation
@@ -636,6 +639,7 @@ impl State {
     pub fn compute(&mut self, input: &Input) {
         self.dirty = false;
         self.records = rate(input);
+        self.keeper = input.keeper;
         self.attractiveness = (input.animals.iter())
             .filter_map(|&a| input.species.get(a))
             .map(|l| l.attractiveness)
@@ -762,9 +766,14 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
             });
         animals.push(at);
     }
+    let keeper = (world.units.iter())
+        .filter(|u| u.kind == Kind::Keeper)
+        .find(|u| matches!(&u.part, Part::Staff(s) if s.assigned.contains(&id)))
+        .map(|u| u.id);
     Input {
         site,
         species,
         animals,
+        keeper,
     }
 }

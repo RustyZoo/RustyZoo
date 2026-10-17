@@ -45,6 +45,14 @@ impl App<'_> {
             self.ui_sounds.push("place");
             return true;
         }
+        self.carry_up(id);
+        true
+    }
+
+    /// Picks the unit up (8.2): it follows the pointer as a pending unit, free of charge, and
+    /// nothing is selected (`world carry ID`).
+    pub(super) fn carry_up(&mut self, id: u32) {
+        let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
         if let Some(carry) = place::unit::pick_up(&mut game.world, cat, id, game.camera.rotation) {
             game.selected = None;
@@ -53,7 +61,6 @@ impl App<'_> {
             self.ui_sounds.push("place");
             self.aim(false);
         }
-        true
     }
 
     /// A release on the map with a unit carried (8.4): a valid place puts it down there, facing
