@@ -316,6 +316,7 @@ pub fn run(
                 return Err(sdl3::get_error().into());
             }
         }
+        sound.pause(app.paused());
         // Printed, not logged: the log is replayed headless, where nothing is heard.
         for line in sound.units(vfs, &app) {
             println!("pass {pass} t={now} {line}");
