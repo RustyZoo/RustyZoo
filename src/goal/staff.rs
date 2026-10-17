@@ -20,7 +20,7 @@ const HEAL: u8 = 3;
 const HEALING: u8 = 4;
 const CLEAN: u8 = 5;
 const CLEANING: u8 = 6;
-/// "%s is having trouble getting to %s." and "The entrance to %s is blocked ...".
+/// The messages 11004 (trouble getting to an exhibit) and 11001 (blocked entrance), staff 10.
 const TROUBLE: i32 = 11004;
 const BLOCKED: i32 = 11001;
 /// The food types by `cKeeperFoodType` (staff 7.6).
@@ -79,7 +79,7 @@ impl<'c> Cx<'_, 'c> {
         self.world.units.post_named(TROUBLE, self.unit.id, names);
     }
 
-    /// The keeper's own target tile (staff 7.4 "The two target tiles").
+    /// The keeper's own target tile (staff 7.4).
     fn own(&self) -> Option<usize> {
         match &self.unit.part {
             Part::Staff(s) => s.target,
