@@ -264,6 +264,14 @@ impl Sim {
         self.status.rating_check(sums, money, &mut self.lines);
     }
 
+    /// The fence pieces of a zoo just loaded post their events (placing 7.4): the broken ones and
+    /// the decayed ones, after the events the file stored.
+    pub fn fences_loaded(&mut self, world: &World, cat: &Catalogue) {
+        for event in world.loaded_events(cat) {
+            self.events.post(event);
+        }
+    }
+
     /// A new game (not a saved one) has just been set up: every fence piece is made healthy and
     /// draws its wear interval (placing 7.4), the timers and the donation counter start again and
     /// the rating check of the set-up runs, with no cash, the built-in settings and every research
