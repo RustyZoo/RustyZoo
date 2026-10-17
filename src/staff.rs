@@ -5,6 +5,7 @@
 //! The keeper class (the zookeeper, the scientist and the marine specialist), the tour guide and
 //! the maintenance worker are staff; the helicopter comes with the scenarios.
 
+use crate::behaviour::Data;
 use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
@@ -45,6 +46,35 @@ pub fn duties(ty: &EntityType) -> i32 {
     number(ty, "cDutiesTextID").map_or(0, |n| n as i32)
 }
 
+/// The keys of a tour guide type (tour guide 3) that its group reads, with the program's value
+/// for a missing key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Crowd {
+    /// `cTourGuideBonus`, the happiness a viewing area under the guide gives.
+    pub bonus: i32,
+    /// `cCrowdCheck`: status ticks between two gatherings.
+    pub check: i32,
+    /// `cCrowdRadius`: half side of the square the guide gathers from, in tiles.
+    pub radius: i32,
+    /// `cFollowChance` in per cent and `cMaxGroupSize`.
+    pub chance: i32,
+    pub max: i32,
+}
+
+impl Crowd {
+    pub fn of(ty: Option<&EntityType>) -> Crowd {
+        let key =
+            |k: &str, fallback: i32| ty.and_then(|t| number(t, k)).map_or(fallback, |v| v as i32);
+        Crowd {
+            bonus: key("cTourGuideBonus", 5),
+            check: key("cCrowdCheck", 10),
+            radius: key("cCrowdRadius", 2),
+            chance: key("cFollowChance", 50),
+            max: key("cMaxGroupSize", 12),
+        }
+    }
+}
+
 /// `rand % n` of a counter key, as the C runtime reduces it: -1 without a draw when the key is 0.
 fn counter(ty: Option<&EntityType>, key: &str, fallback: f32, ctx: &mut Ctx) -> i32 {
     let n = ty.and_then(|t| number(t, key)).unwrap_or(fallback) as i32;
@@ -63,7 +93,8 @@ pub fn duty_kinds(cat: &Catalogue) -> usize {
 }
 
 /// The first turn of a staff member: the work counter and then the chase counter, one draw each
-/// (staff 4.2). The values are kept; nothing reads them yet.
+/// (staff 4.2), and a tour guide's crowd countdown (tour guide 4). The values are kept; only the
+/// guide reads them.
 pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     if !matches!(unit.part, Part::Staff(_)) {
         return;
@@ -71,13 +102,21 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let ty = type_of(ctx.cat, &world.zoo.entities[at]);
     let work = counter(ty, "cWorkCheck", 5.0, ctx);
     let chase = counter(ty, "cChaseCheck", 2.0, ctx);
+    let crowd = match unit.kind {
+        Kind::Guide => counter(ty, "cCrowdCheck", 10.0, ctx),
+        _ => 0,
+    };
     if let Part::Staff(s) = &mut unit.part {
-        (s.work, s.chase) = (work, chase);
+        (s.work, s.chase, s.crowd, s.members) = (work, chase, crowd, Vec::new());
     }
 }
 
-/// A keeper's status tick (staff 4.2): the assigned exhibits with fewer than 2 tiles go.
-pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+/// A staff member's status tick: a guide's gathering countdown (tour guide 4); a keeper's
+/// assigned exhibits with fewer than 2 tiles go (staff 4.2).
+pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    if unit.kind == Kind::Guide {
+        return crate::goal::crowd(unit, world, ctx, at, data);
+    }
     let Part::Staff(s) = &unit.part else {
         return;
     };
@@ -92,8 +131,16 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 }
 
 /// The keeper `id` stops going to the exhibit of his own target tile, which is lowered by one, and
-/// closes the gate he remembers (movement 6.2): he is picked up or removed. Only a keeper does.
+/// closes the gate he remembers (movement 6.2): he is picked up or removed. A guide lets its group
+/// go.
 pub fn leaves(world: &mut World, id: u32) {
+    // A guide picked up or removed lets its group go: the guests notice at their next update.
+    if let Some(Part::Staff(s)) = (world.units.get_mut(id))
+        .filter(|u| u.kind == Kind::Guide)
+        .map(|u| &mut u.part)
+    {
+        (s.members, s.leg) = (Vec::new(), false);
+    }
     let Some(keeper) = world.units.get_mut(id).filter(|u| u.kind == Kind::Keeper) else {
         world.units.release_gate_of(id);
         return;

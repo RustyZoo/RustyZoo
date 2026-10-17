@@ -44,6 +44,9 @@ pub struct Sight {
     pub crowd: i32,
     /// The average happiness of all the animals of the exhibit.
     pub average: i32,
+    /// The tour bonus of the area: `cTourGuideBonus` of the first guide on its tiles (habitat
+    /// rating 10.4).
+    pub bonus: i32,
 }
 
 /// The tile a unit stands on.
@@ -179,6 +182,15 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
         .filter(|(_, e)| e.class == "guests")
         .filter(|(at, _)| tile_of(world, *at).is_some_and(|t| area.tiles.contains(&t)))
         .count();
+    let bonus = (area.tiles.iter()).find_map(|&t| {
+        let mut guides = (world.zoo.entities.iter().enumerate())
+            .filter(|(at, e)| e.class == "tour" && tile_of(world, *at) == Some(t));
+        guides.find_map(|(_, e)| {
+            let b = crate::staff::Crowd::of(crate::place::bulldozer::type_of(cat, e)).bonus;
+            let carried = e.common.as_ref().is_none_or(|c| world.is_carried(c.id));
+            (b != 0 && !carried).then_some(b)
+        })
+    });
     Some(Sight {
         exhibit: *exhibit,
         total: all.len() as u32,
@@ -192,6 +204,7 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
             .sum::<i32>()
             .checked_div(all.len() as i32)
             .unwrap_or(0),
+        bonus: bonus.unwrap_or(0),
     })
 }
 
@@ -291,7 +304,7 @@ pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, ti
     // The calendar's milliseconds (it runs 7,200 times faster than the play) in units of 100 ns.
     let t = (world.units.now.saturating_sub(g.viewed_at)).saturating_mul(10_000);
     let factor = f64::from(world.units.donation_factor);
-    let raw = t as f64 * factor * f64::from(s.average) * 0.01;
+    let raw = t as f64 * factor * (f64::from(s.average) + f64::from(s.bonus)) * 0.01;
     let d = if raw.is_nan() { 0.0 } else { raw.min(10.0) } as f32;
     let give = s.animals > 0 && s.sick == 0 && s.crowd < 50 && d > 0.0;
     let Some(x) = world.exhibits_mut().get_mut(s.exhibit) else {

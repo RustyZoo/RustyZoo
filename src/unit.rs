@@ -125,6 +125,12 @@ pub struct Staff {
     pub target: Option<usize>,
     /// The `cKeeperFoodType` of the animal a keeper feeds (staff 7.6).
     pub food_kind: i32,
+    /// A tour guide's group, in the order the guests joined, its countdown of status ticks to the
+    /// next gathering (-1 never) and whether this leg's release and gathering have run (tour
+    /// guide 4).
+    pub members: Vec<u32>,
+    pub crowd: i32,
+    pub leg: bool,
 }
 
 /// The kind-specific part of a unit.
@@ -582,6 +588,10 @@ impl Units {
                     s.lost_animals.iter().for_each(|&a| h.word(a));
                     h.word(s.food_kind as u32);
                     h.word(s.target.map_or(u32::MAX, |t| t as u32));
+                    h.word(s.members.len() as u32);
+                    s.members.iter().for_each(|&m| h.word(m));
+                    h.word(s.crowd as u32);
+                    h.word(u32::from(s.leg));
                 }
                 Part::Guest(g) => h.bytes(format!("{g:?}").as_bytes()),
             }
@@ -713,6 +723,9 @@ impl Hooks for Standard<'_> {
             && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
         let key = (!took).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
+        let record = &unit.goal.record;
+        unit.runner.talking =
+            unit.kind == Kind::Guide && record.task == crate::goal::TALK && !record.done;
         let mut env = Env {
             data: self.data,
             unit: &world.zoo.entities[at],
@@ -764,7 +777,7 @@ impl Hooks for Standard<'_> {
     fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::checks(unit, world, ctx, at, self.data);
         crate::guest::checks(unit, world, ctx, at, self.data);
-        crate::staff::checks(unit, world, ctx, at);
+        crate::staff::checks(unit, world, ctx, at, self.data);
         // The checks end with the ambient choice, with the happiness of that moment.
         let asked = match &mut unit.part {
             Part::Animal(a) => std::mem::take(&mut a.ambient),

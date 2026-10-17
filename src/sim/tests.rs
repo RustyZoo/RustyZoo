@@ -589,7 +589,9 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     };
     let base = guest(&|_| {});
     let date = crate::timing::Calendar::new().date();
-    let changes: [&dyn Fn(&mut crate::guest::Guest); 24] = [
+    let changes: [&dyn Fn(&mut crate::guest::Guest); 26] = [
+        &|g| g.guide = 9,
+        &|g| g.listening = true,
         &|g| g.values[3] = 1,
         &|g| g.values[0] = 1,
         &|g| g.pending[4] = 1,
@@ -720,6 +722,34 @@ fn a_run_gives_the_same_hash_twice_and_another_with_another_seed() {
         2,
         "the first month ended and the accounts moved on"
     );
+}
+
+#[test]
+fn the_guide_command_puts_a_tour_guide_on_a_tile() {
+    for bad in ["guide", "guide 3", "guide x,y", "guide 3,4 5", "guide 3,"] {
+        assert!(bad.parse::<drive::Command>().is_err(), "{bad}");
+    }
+    assert_eq!("guide 3,4".parse(), Ok(drive::Command::Guide(3, 4)));
+    let mut run = game(0);
+    assert!(!run.apply(&drive::Command::Guide(1, 1)), "no such type");
+    let ty = |class: &'static str| crate::entity::EntityType {
+        class,
+        type_name: b"tour".to_vec(),
+        subtype: b"m".to_vec(),
+        file: None,
+        config: None,
+        name_id: 9502,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    run.cat.push(ty("tour"));
+    assert!(!run.apply(&drive::Command::Guide(-1, 99)), "off the map");
+    assert!(run.apply(&drive::Command::Guide(1, 1)));
+    run.step(67);
+    let unit = run.world.units.iter().next().unwrap();
+    assert_eq!(unit.kind, crate::unit::Kind::Guide);
+    let name = &run.world.zoo.entities[0].common.as_ref().unwrap().name;
+    assert_eq!(name, "Guide 1");
 }
 
 #[test]
@@ -943,7 +973,10 @@ fn the_hash_follows_what_a_keeper_and_his_exhibit_keep() {
         }
     }
     let base = hash(&|_| {});
-    let changes: [&dyn Fn(&mut Run); 7] = [
+    let changes: [&dyn Fn(&mut Run); 10] = [
+        &|r| staff(r).members.push(3),
+        &|r| staff(r).crowd = 4,
+        &|r| staff(r).leg = true,
         &|r| staff(r).lost_tiles.push(3),
         &|r| staff(r).lost_animals.push(3),
         &|r| staff(r).food_kind = 1,

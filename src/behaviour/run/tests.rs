@@ -301,6 +301,26 @@ fn a_routine_call_shows_the_idle_animation_after_a_walk() {
 }
 
 #[test]
+fn a_guide_routine_keeps_the_base_during_the_talk() {
+    let mut rig = Rig::new(&[("bAmbient", &["fGuideRoutine()"])]);
+    rig.unit.class = "tour".into();
+    rig.data.timings.insert(
+        "walk".into(),
+        Timing {
+            count: 2,
+            delay: 100,
+        },
+    );
+    let data = &rig.data;
+    rig.anim.set_base("walk", &|n| data.timing(&rig.unit, n));
+    rig.anim.cut();
+    rig.runner.talking = true;
+    for _ in 0..3 {
+        assert_eq!(rig.tick(100).0, "walk");
+    }
+}
+
+#[test]
 fn a_move_call_waits_for_the_units_answer_and_the_set_goes_on_when_it_is_done() {
     let resume = |rig: &mut Rig| {
         let mut env = Env {

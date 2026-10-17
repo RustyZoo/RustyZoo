@@ -55,10 +55,14 @@ fn the_monthly_cost_is_the_purchase_cost_unless_the_file_says_otherwise() {
 /// The counters a keeper of the type draws at its first turn of a seeded run, and the draws that
 /// ought to give them.
 fn first_turn(ini: &str) -> (Staff, Rng) {
+    first_turn_of("keeper", ini)
+}
+
+fn first_turn_of(class: &'static str, ini: &str) -> (Staff, Rng) {
     let mut cat = Catalogue::default();
-    cat.push(staff_type("keeper", ini));
+    cat.push(staff_type(class, ini));
     let mut w = world((4, 4), |_, entities| {
-        let mut keeper = entity("keeper", "hand", 1, centre((1, 1)), 0);
+        let mut keeper = entity(class, "hand", 1, centre((1, 1)), 0);
         keeper.subtype = "m".into();
         entities.push(keeper);
     });
@@ -117,4 +121,57 @@ fn the_service_interval_is_an_unsigned_whole_number_and_90_without_one() {
     );
     assert_eq!(read("[AI]\nexhibitServiceInterval=x\n"), 90);
     read("[AI]\nexhibitServiceInterval=99999999999999999999\n");
+}
+
+#[test]
+fn a_new_guide_draws_its_crowd_countdown_after_the_two_counters_and_nobody_else_does() {
+    let section = |keys: &str| format!("[m/Characteristics/Integers]\n{keys}");
+    let (staff, mut rng) = first_turn_of("tour", &section("cWorkCheck=20\ncCrowdCheck=5\n"));
+    assert_eq!(
+        (staff.work, staff.chase, staff.crowd),
+        (rng.pick(20) as i32, rng.pick(2) as i32, rng.pick(5) as i32)
+    );
+    assert!(staff.members.is_empty() && !staff.leg);
+    // A missing key reads 10, a key of 0 gives -1 without a draw.
+    let (staff, mut rng) = first_turn_of("tour", "");
+    assert_eq!(
+        (staff.work, staff.chase, staff.crowd),
+        (rng.pick(5) as i32, rng.pick(2) as i32, rng.pick(10) as i32)
+    );
+    let (staff, _) = first_turn_of("tour", &section("cCrowdCheck=0\n"));
+    assert_eq!(staff.crowd, -1);
+    assert_eq!(
+        first_turn_of("maint", &section("cCrowdCheck=5\n")).0.crowd,
+        0
+    );
+}
+
+#[test]
+fn the_keys_of_a_guides_group_read_the_programs_values_for_a_missing_key() {
+    let read = |keys: &str| {
+        let ty = staff_type("tour", &format!("[m/Characteristics/Integers]\n{keys}"));
+        Crowd::of(Some(&ty))
+    };
+    let own = Crowd {
+        bonus: 30,
+        check: 5,
+        radius: 1,
+        chance: 60,
+        max: 15,
+    };
+    let keys = "cTourGuideBonus=30\ncCrowdCheck=5\ncCrowdRadius=1\ncFollowChance=60\n\
+                NOT IMPLEMENTED:\ncMaxGroupSize=15\n";
+    assert_eq!(read(keys), own);
+    let missing = Crowd {
+        bonus: 5,
+        check: 10,
+        radius: 2,
+        chance: 50,
+        max: 12,
+    };
+    assert_eq!(read(""), missing);
+    assert_eq!(Crowd::of(None), missing);
+    // Zero, negative and huge numbers are kept as numbers.
+    let odd = read("cCrowdCheck=-3\ncCrowdRadius=99999999999\ncMaxGroupSize=0\n");
+    assert_eq!((odd.check, odd.radius, odd.max), (-3, i32::MAX, 0));
 }
