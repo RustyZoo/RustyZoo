@@ -66,7 +66,10 @@ fn pass(
         bottom: rect.bottom.min(target.height as i32),
     };
     let (line_height, ascent) = (font.line_height(), font.ascent());
-    let bilevel = (9..=16).contains(&font.ppem());
+    // Which sizes are bilevel follows the weight, as the original's fonts do: bold at 9 and 10
+    // pixels per em, regular at 9 to 17; everything else is smoothed.
+    let bold = font.is_bold();
+    let bilevel = (9..=if bold { 10 } else { 17 }).contains(&font.ppem());
     for (i, line) in layout(font, text, rect.width()).iter().enumerate() {
         let top = rect
             .top
@@ -82,10 +85,17 @@ fn pass(
                 pen.saturating_add(glyph.left),
                 top + ascent - glyph.bottom - glyph.height as i32,
             );
-            put(target, &clip, glyph, (x, y), color, bilevel);
+            put(target, &clip, glyph, (x, y), color, bilevel, bold);
             pen = pen.saturating_add(advance);
         }
     }
+}
+
+/// The coverage of a bold glyph pixel made heavier: the original's hinted bold stems are whole
+/// pixels wide, which unhinted coverage cannot match; a square root of the coverage has the same
+/// amount of ink.
+pub(super) fn heavier(coverage: u32) -> u32 {
+    (255.0 * (coverage as f32 / 255.0).sqrt()).round() as u32
 }
 
 /// Writes the coverage of `glyph` with its top left corner at `at`.
@@ -96,6 +106,7 @@ fn put(
     at: (i32, i32),
     color: [u8; 3],
     bilevel: bool,
+    bold: bool,
 ) {
     let width = target.width as usize;
     for row in 0..glyph.height {
@@ -108,6 +119,9 @@ fn put(
             let mut coverage = u32::from(glyph.coverage[row * glyph.width + col]);
             if x < clip.left || x >= clip.right || coverage == 0 {
                 continue;
+            }
+            if bold {
+                coverage = heavier(coverage);
             }
             if bilevel {
                 if coverage < 128 {
