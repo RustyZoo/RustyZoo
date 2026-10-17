@@ -47,14 +47,14 @@ pub(super) fn sim() -> Sim {
     sim
 }
 
-/// A guest type whose sets `bWalk` and `bEatStanding` end at once and whose set `bGawk` never
+/// A guest type whose sets `bWalk`, `bEatStanding` and `bSick` end at once and whose set `bGawk` never
 /// does.
 pub(super) struct Walks(Vec<Call>, Vec<Call>);
 
 impl Data for Walks {
     fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
         match name {
-            "bWalk" | "bEatStanding" => Some(&self.0[..]),
+            "bWalk" | "bEatStanding" | "bSick" => Some(&self.0[..]),
             "bGawk" => Some(&self.1[..]),
             _ => None,
         }
@@ -559,4 +559,31 @@ fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
     );
     assert_ne!(va, 0, "the guest started facing 0");
     assert_eq!(rotation, u32::from(va));
+}
+
+#[test]
+fn a_guest_that_feels_sick_draws_its_chance_is_sick_on_the_spot_and_wanders_on() {
+    let sick = |chance: i32| {
+        let man = format!(
+            "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\ncSickChance={chance}\n"
+        );
+        let mut w = map(false);
+        w.units.get_mut(1).unwrap().part = Part::Guest(Guest {
+            sick: true,
+            countdowns: [1000; 11],
+            saw_animal: 1000,
+            ..Guest::default()
+        });
+        let log = visit_run_in(&types_with(&man), &mut w, 60);
+        let g = w.units.get(1).unwrap();
+        (log, matches!(&g.part, Part::Guest(g) if g.sick))
+    };
+    let (log, still) = sick(100);
+    for line in ["goal 1 sick 4 1 -", "set 1 bSick", "guest thought 1 10285"] {
+        assert!(log.contains(&line.to_string()), "{line}: {log:?}");
+    }
+    // The flag stays up after the goal; only the surroundings lower it.
+    assert!(still);
+    let (log, _) = sick(0);
+    assert!(!log.iter().any(|l| l.contains("sick")), "{log:?}");
 }

@@ -94,7 +94,10 @@ fn count(world: &World, cat: &Catalogue, cells: usize) -> Vec<Cell> {
             });
             if let Some((bonus, stink)) = found {
                 let cell = &mut out[cell_of(t)];
-                cell.esthetic.iter_mut().zip(bonus).for_each(|(v, b)| *v += b);
+                cell.esthetic
+                    .iter_mut()
+                    .zip(bonus)
+                    .for_each(|(v, b)| *v += b);
                 cell.stink += stink;
             }
         }

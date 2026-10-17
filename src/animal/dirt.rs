@@ -22,7 +22,10 @@ pub fn put(
     rotation: u32,
     food: i32,
 ) -> bool {
-    let at = (x.saturating_mul(64).saturating_add(32), y.saturating_mul(64).saturating_add(32));
+    let at = (
+        x.saturating_mul(64).saturating_add(32),
+        y.saturating_mul(64).saturating_add(32),
+    );
     put_at(world, ty, names, at, rotation, food)
 }
 

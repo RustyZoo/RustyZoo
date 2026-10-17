@@ -69,7 +69,12 @@ impl Cx<'_, '_> {
     /// `radius` tiles, with the expensive ones farther and the cheap ones nearer; a tie is
     /// drawn. When none is found and `crowded` the draw of the crowded building is made: the
     /// error holds the one drawn among all that satisfy the need, if any.
-    pub(super) fn nearest(&mut self, need: &str, radius: i64, crowded: bool) -> Result<u32, Option<u32>> {
+    pub(super) fn nearest(
+        &mut self,
+        need: &str,
+        radius: i64,
+        crowded: bool,
+    ) -> Result<u32, Option<u32>> {
         let here = self.tile().ok_or(None)?;
         let width = self.world.zoo.width as usize;
         let area = self.world.exhibits().region(here);

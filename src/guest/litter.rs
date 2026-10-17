@@ -17,14 +17,22 @@ pub const CAN_FILLING: u16 = 10030;
 /// lands on a free quarter of a tile that is not in an exhibit or a tank and not water. Whether
 /// it did.
 pub fn drop(world: &mut World, cat: &Catalogue, at: usize, id: u32) -> bool {
-    let Some((x, y)) = world.zoo.entities.get(at).and_then(|e| e.common.as_ref()).map(|c| (c.x, c.y))
+    let Some((x, y)) = world
+        .zoo
+        .entities
+        .get(at)
+        .and_then(|e| e.common.as_ref())
+        .map(|c| (c.x, c.y))
     else {
         return false;
     };
     let Some(tile) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
         return false;
     };
-    let inside = world.exhibits().region(tile).is_some_and(|r| r != GROUNDS && r != EXTERIOR);
+    let inside = world
+        .exhibits()
+        .region(tile)
+        .is_some_and(|r| r != GROUNDS && r != EXTERIOR);
     let quarter = (y.rem_euclid(64) / 32 * 2 + x.rem_euclid(64) / 32) as usize;
     let Some(ty) = cat.find("objects", b"other", b"trash") else {
         return false;
@@ -38,7 +46,14 @@ pub fn drop(world: &mut World, cat: &Catalogue, at: usize, id: u32) -> bool {
     }
     world.mark_rating(tile);
     let width = world.zoo.width.max(1);
-    world.units.posts.push(piece_event(id, DROPPED, tile as u32));
-    world.units.guest_note(format!("litter {id} {},{}", tile as u32 % width, tile as u32 / width));
+    world
+        .units
+        .posts
+        .push(piece_event(id, DROPPED, tile as u32));
+    world.units.guest_note(format!(
+        "litter {id} {},{}",
+        tile as u32 % width,
+        tile as u32 / width
+    ));
     true
 }

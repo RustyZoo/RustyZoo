@@ -646,7 +646,11 @@ impl Cx<'_, '_> {
     /// Point 1 (a guest in an exhibit or a tank leaves it) and point 2 (a guest that is to leave
     /// takes the leave task) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
-        if self.exit_ladder() || self.leave_ladder() || self.sick_ladder() || self.stand_ladder(task) {
+        if self.exit_ladder()
+            || self.leave_ladder()
+            || self.sick_ladder()
+            || self.stand_ladder(task)
+        {
             return;
         }
         // A guest after a guide keeps its done task until it is released (tour guide 10.3).

@@ -589,7 +589,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     };
     let base = guest(&|_| {});
     let date = crate::timing::Calendar::new().date();
-    let changes: [&dyn Fn(&mut crate::guest::Guest); 26] = [
+    let changes: [&dyn Fn(&mut crate::guest::Guest); 27] = [
         &|g| g.guide = 9,
         &|g| g.listening = true,
         &|g| g.values[3] = 1,
@@ -616,6 +616,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         &|g| g.entrance = (1, 2),
         &|g| g.stand = true,
         &|g| g.gift = true,
+        &|g| g.littered = true,
     ];
     let hashes: Vec<u64> = changes.iter().map(|c| guest(c)).collect();
     assert!(hashes.iter().all(|&h| h != base), "{hashes:?}");
@@ -652,7 +653,7 @@ fn the_hash_follows_the_live_state_of_a_building_and_a_hidden_user() {
         run.hash()
     };
     let base = game(3).hash();
-    let changes: [&dyn Fn(&mut Live); 8] = [
+    let changes: [&dyn Fn(&mut Live); 9] = [
         &|l| l.users.push((1, 0, 5)),
         &|l| l.users.push((1, 1, 5)),
         &|l| l.users.push((1, 0, 6)),
@@ -661,6 +662,7 @@ fn the_hash_follows_the_live_state_of_a_building_and_a_hidden_user() {
         &|l| l.guests[2] = 1,
         &|l| l.income[1] = 1.0,
         &|l| l.upkeep = 1.0,
+        &|l| l.fill = 13,
     ];
     let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
     assert!(hashes.iter().all(|&h| h != base));
@@ -670,6 +672,37 @@ fn the_hash_follows_the_live_state_of_a_building_and_a_hidden_user() {
     let mut run = game(3);
     run.world.units.get_mut(1).unwrap().hidden = true;
     assert_ne!(run.hash(), base);
+}
+
+#[test]
+fn the_hash_follows_the_thoughts_and_the_megatiles() {
+    let hash = |change: &dyn Fn(&mut Run)| {
+        let mut run = game(3);
+        change(&mut run);
+        run.hash()
+    };
+    let base = hash(&|_| {});
+    let think = |text, object| move |r: &mut Run| r.world.units.think(1, text, object);
+    let changes: [&dyn Fn(&mut Run); 6] = [
+        &think(10079, None),
+        &think(10082, None),
+        &think(10243, Some(3)),
+        &|r| {
+            think(10079, None)(r);
+            think(10082, None)(r);
+        },
+        &|r| crate::guest::mega::update(&mut r.world, &Catalogue::default(), 67),
+        &|r| crate::guest::mega::update(&mut r.world, &Catalogue::default(), 7600),
+    ];
+    let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
+    assert!(hashes.iter().all(|&h| h != base));
+    hashes.sort_unstable();
+    hashes.dedup();
+    assert_eq!(
+        hashes.len(),
+        5,
+        "both counts leave the clock at 0 and the same cells"
+    );
 }
 
 #[test]
