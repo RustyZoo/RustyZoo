@@ -54,6 +54,7 @@ fn types() -> Catalogue {
         now: false,
         litter: true,
         remove: true,
+        thought: 10659,
     };
     cat.items.insert("hotdog".into(), item);
     cat

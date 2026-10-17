@@ -15,6 +15,25 @@ use crate::guest::{BATHROOM, ENERGY, Guest, HAPPINESS, HUNGER, THIRST};
 use crate::unit::Part;
 use crate::zoo::Entity;
 
+mod litter;
+
+/// The thought of a guest too crowded to be served by a building (guests 7.2).
+const CROWDED: i32 = 10243;
+/// The thoughts of a price that is really low and too high (guests 9.4).
+const CHEAP: i32 = 10072;
+const EXPENSIVE: i32 = 10073;
+
+/// The thoughts of a need: wanting it and finding nothing to serve it (guests 14).
+fn wants(need: &str) -> (i32, i32) {
+    match need {
+        "bathroom" => (10084, 10086),
+        "food" => (10079, 10081),
+        "drink" => (10082, 10083),
+        "energy" => (10092, 10093),
+        _ => (10090, 10091),
+    }
+}
+
 /// The slot of an item by need (guests 9.2).
 fn slot_of(need: &str) -> Option<usize> {
     match need {
@@ -48,13 +67,14 @@ impl Cx<'_, '_> {
 
     /// Guests 7.1 and 7.2: the building that satisfies `need` nearest to the guest within
     /// `radius` tiles, with the expensive ones farther and the cheap ones nearer; a tie is
-    /// drawn. When none is found and `crowded` the draw of the crowded building is made.
-    fn nearest(&mut self, need: &str, radius: i64, crowded: bool) -> Option<u32> {
-        let here = self.tile()?;
+    /// drawn. When none is found and `crowded` the draw of the crowded building is made: the
+    /// error holds the one drawn among all that satisfy the need, if any.
+    pub(super) fn nearest(&mut self, need: &str, radius: i64, crowded: bool) -> Result<u32, Option<u32>> {
+        let here = self.tile().ok_or(None)?;
         let width = self.world.zoo.width as usize;
         let area = self.world.exhibits().region(here);
         let prices = self.world.units.prices;
-        let (mut all, mut best, mut ties) = (0u32, i64::MAX, Vec::new());
+        let (mut all, mut best, mut ties) = (Vec::new(), i64::MAX, Vec::new());
         for e in &self.world.zoo.entities {
             let (Some(kind), Some(c)) = (
                 building::kind_of(self.ctx.cat, e, prices.default),
@@ -65,7 +85,7 @@ impl Cx<'_, '_> {
             let Some(t) = self.tile_at((c.x, c.y)).filter(|_| kind.satisfies(need)) else {
                 continue;
             };
-            all += 1;
+            all.push(c.id);
             let live = self.world.units.buildings.get(&c.id);
             if self.world.exhibits().region(t) != area
                 || !building::has_open_slot(self.world, e, &kind, live)
@@ -96,13 +116,9 @@ impl Cx<'_, '_> {
         }
         let rng = &mut *self.ctx.rng;
         match ties.len() {
-            0 => {
-                if crowded && all > 0 {
-                    rng.pick(all);
-                }
-                None
-            }
-            n => Some(ties[rng.pick(n as u32) as usize]),
+            0 if crowded && !all.is_empty() => Err(Some(all[rng.pick(all.len() as u32) as usize])),
+            0 => Err(None),
+            n => Ok(ties[rng.pick(n as u32) as usize]),
         }
     }
 
@@ -118,8 +134,17 @@ impl Cx<'_, '_> {
         }
         let energy = need == "energy";
         let radius = if energy { k.search_radius } else { 46_340 };
+        let (want, none) = wants(need);
+        self.think(want, None);
         let found = self.nearest(need, i64::from(radius), !energy);
-        if !found.is_some_and(|b| self.head_for(b, need)) && energy {
+        if found.is_ok_and(|b| self.head_for(b, need)) {
+            return;
+        }
+        match found {
+            Err(Some(b)) => self.think(CROWDED, Some(b)),
+            _ => self.think(none, None),
+        }
+        if energy {
             self.reset();
             self.unit.goal.wandered = true;
         }
@@ -299,6 +324,14 @@ impl Cx<'_, '_> {
             let facing = building::facing(&e, kind.slots[slot].facing);
             self.world.place_unit(self.at, (x, y, z), facing);
         }
+        // Guest buildings 6.4 step 7: the used thought, the items the building removes, the sale.
+        if !kind.used.is_empty() {
+            let at = self.ctx.rng.pick(kind.used.len() as u32) as usize;
+            self.think(kind.used[at], None);
+        }
+        let items = &self.ctx.cat.items;
+        let takes = (kind.removes.iter()).any(|n| items.get(n).is_some_and(|i| i.id == LITTER));
+        self.bin_litter(id, takes);
         self.sell(id, &kind, price);
         true
     }
@@ -351,6 +384,11 @@ impl Cx<'_, '_> {
             Mood::Angry => k.price[1],
             Mood::Fair => 0,
         };
+        match mood {
+            Mood::Happy => self.think(CHEAP, None),
+            Mood::Angry => self.think(EXPENSIVE, None),
+            Mood::Fair => {}
+        }
         if let Some(g) = self.guest() {
             g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(change);
         }
@@ -381,8 +419,12 @@ impl Cx<'_, '_> {
             record,
             remove,
             litter,
+            thought,
             ..
         } = item;
+        if thought != 0 {
+            self.think(thought, None);
+        }
         self.apply(record);
         if let Some(g) = self.guest() {
             if remove {

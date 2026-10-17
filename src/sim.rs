@@ -403,6 +403,7 @@ impl Sim {
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);
         let month_end = self.calendar.advance(step);
+        guest::mega::update(world, cat, step);
         let bars = self.zoo_status(world, cat, money, step, month_end);
         world.units.now = self.calendar.state().0;
         // The AI manager: the clock in whole ticks with the remainder kept, the removal pass,
@@ -444,6 +445,9 @@ impl Sim {
                     self.events.post(event);
                 }
             }
+        }
+        for event in std::mem::take(&mut world.units.posts) {
+            self.events.post(event);
         }
         self.events.age();
         for (category, cost) in std::mem::take(&mut world.units.spent) {

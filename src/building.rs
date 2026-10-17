@@ -5,9 +5,11 @@
 //! buildings 12.1) uses the same users and slots.
 //!
 //! Only the buildings that have had a user or a month change have a live entry; a missing one is
-//! a building at its default price with no users. Left for later issues: the trash can's fill and
-//! litter, the random use animation and the sounds, the building panel, users pushed out of a
-//! building that is moved or removed, the slot filters of a user type, `cUseRandomSlot`.
+//! a building at its default price with no users. A trash can counts the litter its users put in
+//! ([`Live::fill`]; the pictures and the emptying are left, and the litter of a deleted can).
+//! Left for later issues: the random use animation and the sounds, the building panel, users
+//! pushed out of a building that is moved or removed, the slot filters of a user type,
+//! `cUseRandomSlot`.
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
 //! `building buy <id> <item> <price>` when it buys an item.
@@ -89,6 +91,10 @@ pub struct Kind {
     pub holds: bool,
     pub sells: Vec<String>,
     pub satisfies: Vec<String>,
+    /// The items it takes from a user it enters (guest buildings 7.6), and the thoughts a user
+    /// may think there (`cUsedThought`).
+    pub removes: Vec<String>,
+    pub used: Vec<i32>,
     pub slots: Vec<Slot>,
 }
 
@@ -159,6 +165,11 @@ impl Kind {
             holds: flag("cHoldsOntoUser", false),
             sells: names("Sells"),
             satisfies: names("Satisfies"),
+            removes: names("Removes"),
+            used: (ints.map(|s| s.get_all("cUsedThought")).unwrap_or_default())
+                .iter()
+                .filter_map(|v| to_int(v))
+                .collect(),
             slots,
         }
     }
@@ -177,6 +188,8 @@ pub struct Live {
     /// In entering order.
     pub users: Vec<User>,
     pub price: f32,
+    /// The pieces of litter a trash can holds (guest buildings 8).
+    pub fill: u32,
     /// Guests and income this month, last month and since construction; the upkeep paid since.
     pub guests: [u32; 3],
     pub income: [f32; 3],

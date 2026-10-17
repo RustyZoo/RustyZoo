@@ -327,6 +327,12 @@ pub struct Units {
     /// What guests paid buildings during the step, which the step books as concessions.
     pub concessions: Vec<f32>,
     building_lines: Vec<String>,
+    /// The thoughts of the guests, newest first (guests visit 8), and the megatiles their
+    /// surroundings check reads (guests 12).
+    pub thoughts: crate::guest::thought::Thoughts,
+    pub mega: crate::guest::mega::Mega,
+    /// The events the units posted to the task pool during the step, which the step posts.
+    pub posts: Vec<Event>,
 }
 
 impl Default for Units {
@@ -360,6 +366,9 @@ impl Default for Units {
             concessions: Vec::new(),
             building_lines: Vec::new(),
             guest_lines: Vec::new(),
+            thoughts: Default::default(),
+            mega: Default::default(),
+            posts: Vec::new(),
         }
     }
 }
@@ -462,6 +471,12 @@ impl Units {
         self.guest_lines.push(line);
     }
 
+    /// Guest `thinker` thinks text `text`, about `object` (guests visit 8.2).
+    pub(crate) fn think(&mut self, thinker: u32, text: i32, object: Option<u32>) {
+        self.thoughts.add(thinker, text, object);
+        self.guest_lines.push(format!("thought {thinker} {text}"));
+    }
+
     pub(crate) fn tell(&mut self, line: String) {
         self.animal_lines.push(line);
     }
@@ -512,6 +527,7 @@ impl Units {
         for id in before {
             if !self.index.contains_key(&id) {
                 self.lines.push(format!("remove {id}"));
+                self.thoughts.forget(id);
             }
         }
         // A removed unit is no user of a building.
@@ -539,6 +555,7 @@ impl Units {
             h.word((v >> 32) as u32);
         }
         h.bytes(format!("{:?}", self.buildings).as_bytes());
+        h.bytes(format!("{:?}{:?}", self.thoughts, self.mega).as_bytes());
         for u in &self.list {
             h.word(u.id);
             h.word(u.kind as u32);

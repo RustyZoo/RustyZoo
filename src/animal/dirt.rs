@@ -22,12 +22,25 @@ pub fn put(
     rotation: u32,
     food: i32,
 ) -> bool {
-    let Some(tile) = world.tile_index(x, y) else {
+    let at = (x.saturating_mul(64).saturating_add(32), y.saturating_mul(64).saturating_add(32));
+    put_at(world, ty, names, at, rotation, food)
+}
+
+/// The same at the point `(x, y)` in world units (64 to a tile).
+pub fn put_at(
+    world: &mut World,
+    ty: &EntityType,
+    names: (&str, &str, &str),
+    (x, y): (i32, i32),
+    rotation: u32,
+    food: i32,
+) -> bool {
+    let Some(tile) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
         return false;
     };
     let common = Common {
-        x: x * 64 + 32,
-        y: y * 64 + 32,
+        x,
+        y,
         z: world.zoo.tiles[tile].elevation * 16,
         rotation,
         id: 0,

@@ -43,6 +43,8 @@ pub const GAWK: u8 = 112;
 /// a guest's walk after a guide.
 pub const LEG: u8 = 118;
 pub const TALK: u8 = 119;
+/// A guest is sick on the spot (goals 11.10).
+pub const SICK: u8 = 121;
 /// The tasks the costs of the path finder look at (pathfinding 6.5, 6.6): entering a building,
 /// chasing, avoiding a predator, returning to a show building, recovering from a fall into water
 /// and the animal's trips to and from a show tank.
@@ -220,6 +222,8 @@ pub enum Goal {
     Eat,
     EatStand,
     Eating,
+    /// 0x79 of a guest: be sick on the spot (11.10).
+    Sick,
 }
 
 impl Goal {
@@ -247,6 +251,7 @@ impl Goal {
             (EAT, Kind::Guest) => Some(Goal::Eat),
             (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
             (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
+            (SICK, Kind::Guest) => Some(Goal::Sick),
             _ => None,
         }
     }
@@ -271,6 +276,7 @@ impl Goal {
             Goal::Eat => EAT,
             Goal::EatStand => EAT_STANDING,
             Goal::Eating => EATING_STANDING,
+            Goal::Sick => SICK,
         }
     }
 
@@ -284,6 +290,7 @@ impl Goal {
                 true
             }
             Goal::Eating => cx.eating_init(),
+            Goal::Sick => cx.sick_init(),
             _ => true,
         }
     }
@@ -323,6 +330,7 @@ impl Goal {
             Goal::Eating => {
                 return cx.record().done = cx.unit.runner.top() != Some("bEatStanding");
             }
+            Goal::Sick => return cx.record().done = cx.unit.runner.top() != Some("bSick"),
             _ => {}
         }
         if self != Goal::Base && cx.reached(false) {
@@ -369,6 +377,7 @@ impl Goal {
             Goal::Eat => cx.eat_done(),
             Goal::EatStand => cx.set_task(EATING_STANDING, 1, 0, None),
             Goal::Eating => cx.reset(),
+            Goal::Sick => cx.sick_done(),
             Goal::Base | Goal::Site => {}
         }
     }
@@ -637,7 +646,7 @@ impl Cx<'_, '_> {
     /// Point 1 (a guest in an exhibit or a tank leaves it) and point 2 (a guest that is to leave
     /// takes the leave task) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
-        if self.exit_ladder() || self.leave_ladder() || self.stand_ladder(task) {
+        if self.exit_ladder() || self.leave_ladder() || self.sick_ladder() || self.stand_ladder(task) {
             return;
         }
         // A guest after a guide keeps its done task until it is released (tour guide 10.3).

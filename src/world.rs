@@ -21,6 +21,7 @@ mod water;
 mod wear;
 pub use exhibit::Event;
 pub use wear::Decay;
+pub(crate) use wear::piece_event;
 
 /// How an entity takes its place on the map, from its type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

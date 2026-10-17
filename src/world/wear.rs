@@ -233,8 +233,9 @@ fn deteriorates(ty: &EntityType) -> bool {
         && number(ty, "cIndestructible").unwrap_or(0.0) == 0.0
 }
 
-/// The plain entity post of a piece to the task pool, with the worker tile as data.
-fn piece_event(id: u32, kind: u16, tile: u32) -> Event {
+/// The plain entity post of an entity (a fence piece, a guest, a trash can) to the task pool, with
+/// the worker tile as data.
+pub(crate) fn piece_event(id: u32, kind: u16, tile: u32) -> Event {
     Event {
         sender: id,
         target: 0,
