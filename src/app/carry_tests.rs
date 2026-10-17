@@ -117,3 +117,35 @@ fn the_marker_follows_the_animal_chosen_in_the_list_after_a_click() {
         assert_eq!(marked(s), Some(b));
     });
 }
+
+#[test]
+fn a_click_on_an_animal_or_a_keeper_opens_its_panel_and_the_ground_closes_it() {
+    with_game("panels", "", |s| {
+        let (zebra, keeper) = (
+            s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0),
+            s.add(12, 19 * 64 + 32, 20 * 64 + 32, 0),
+        );
+        s.pass(&[]);
+        let shown = |s: &Session| {
+            let ui = s.app.ui.as_ref().unwrap();
+            let game = s.app.game.as_ref().unwrap();
+            (
+                game.selected,
+                ui.shown(crate::panel::animal::LAYOUT),
+                ui.shown(crate::panel::staff::LAYOUT),
+            )
+        };
+        assert_eq!(shown(s), (None, false, false));
+        s.click(s.at(21, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(shown(s), (Some(zebra), true, false));
+        assert_eq!(s.app.game.as_ref().unwrap().animal.selected, Some(zebra));
+        // The keeper takes the panel over; the ground closes it.
+        s.click(s.at(19, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(shown(s), (Some(keeper), false, true));
+        s.click(s.at(20, 22, 32, 32));
+        s.pass(&[]);
+        assert_eq!(shown(s), (None, false, false));
+    });
+}
