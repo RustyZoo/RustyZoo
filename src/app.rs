@@ -1832,7 +1832,7 @@ impl<'a> App<'a> {
         want.marks.clone_from(&game.marks);
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
-        want.selected = game.selected.or(game.animal.selected);
+        want.selected = game.selected;
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         want.marks.extend(game.assign_marks());

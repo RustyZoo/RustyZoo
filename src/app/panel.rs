@@ -119,7 +119,6 @@ impl App<'_> {
         };
         game.selected = Some(id);
         game.animal.select(id);
-        game.selected = Some(id);
         ui.show(animal::LAYOUT);
         if ui.shown(LAYOUT) {
             game.panel.current =

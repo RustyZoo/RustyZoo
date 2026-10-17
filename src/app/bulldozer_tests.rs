@@ -46,8 +46,12 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [e]\ntype=UIButton\nid=1075\nx=280\ny=220\ndx=8\ndy=8\nstate=2\ntransparent=0\n\
     [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n\
     [f]\ntype=UILayout\nlayout=ui/animal.lyt\nstate=1\n\
-    [g]\ntype=UILayout\nlayout=ui/staff.lyt\nstate=1\n";
-const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
+    [g]\ntype=UILayout\nlayout=ui/staff.lyt\nstate=1\n\
+    [h]\ntype=UILayout\nlayout=ui/exhibit.lyt\nstate=1\n";
+const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
+    [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n";
+const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
+    [a]\ntype=UIListBox\nid=4326\nx=0\ny=0\ndx=40\ndy=36\n";
 const STAFF: &str = "[LayoutInfo]\nid=17\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
 const QUESTION: &str = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ntransparent=0\n\
@@ -189,6 +193,7 @@ fn install(name: &str, ini: &str) -> crate::sprite::tests::Install {
         ("ui/q.lyt", QUESTION.as_bytes().to_vec()),
         ("ui/animal.lyt", ANIMAL.as_bytes().to_vec()),
         ("ui/staff.lyt", STAFF.as_bytes().to_vec()),
+        ("ui/exhibit.lyt", EXHIBIT.as_bytes().to_vec()),
         ("zoo.ini", ini.as_bytes().to_vec()),
     ];
     cache_install_with(&format!("app-dozer-{name}"), frame_file(), &ui)

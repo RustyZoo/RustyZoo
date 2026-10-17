@@ -100,52 +100,58 @@ fn a_unit_is_selected_picked_up_refused_where_another_stands_and_put_down() {
 }
 
 #[test]
-fn the_marker_follows_the_animal_chosen_in_the_list_after_a_click() {
-    with_game("marker-list", "", |s| {
-        let (a, b) = (
-            s.add(12, 21 * 64 + 32, 20 * 64 + 32, 0),
-            s.add(12, 19 * 64 + 32, 20 * 64 + 32, 0),
-        );
-        s.pass(&[]);
-        let here = s.at(21, 20, 32, 32);
-        s.click_log(here);
-        let marked = |s: &Session| s.app.game.as_ref().unwrap().extra.selected;
-        assert_eq!(marked(s), Some(a));
-        // Choosing another unit in the animal list makes it the one selected.
-        s.app.open_animal(b);
-        s.pass(&[]);
-        assert_eq!(marked(s), Some(b));
-    });
-}
-
-#[test]
-fn a_click_on_an_animal_or_a_keeper_opens_its_panel_and_the_ground_closes_it() {
+fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() {
     with_game("panels", "", |s| {
+        for side in [0, 2, 4, 6] {
+            s.fence(1, 20, 20, side);
+        }
         let (zebra, keeper) = (
             s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0),
             s.add(12, 19 * 64 + 32, 20 * 64 + 32, 0),
         );
+        // Two animals in the pen at (20, 20), the exhibit panel on it.
+        let (a, b) = (
+            s.add(13, 20 * 64 + 16, 20 * 64 + 32, 0),
+            s.add(13, 20 * 64 + 48, 20 * 64 + 32, 0),
+        );
         s.pass(&[]);
+        // The panels shown and the unit marked.
         let shown = |s: &Session| {
             let ui = s.app.ui.as_ref().unwrap();
             let game = s.app.game.as_ref().unwrap();
             (
-                game.selected,
+                (game.selected, game.extra.selected),
                 ui.shown(crate::panel::animal::LAYOUT),
                 ui.shown(crate::panel::staff::LAYOUT),
             )
         };
-        assert_eq!(shown(s), (None, false, false));
+        assert_eq!(shown(s), ((None, None), false, false));
         s.click(s.at(21, 20, 32, 32));
         s.pass(&[]);
-        assert_eq!(shown(s), (Some(zebra), true, false));
+        assert_eq!(shown(s), ((Some(zebra), Some(zebra)), true, false));
         assert_eq!(s.app.game.as_ref().unwrap().animal.selected, Some(zebra));
-        // The keeper takes the panel over; the ground closes it.
+        // The panel's close button removes the selection and the marker.
+        let ui = s.app.ui.as_mut().unwrap();
+        assert!(ui.press_button(3100));
+        // The panels follow after the picture of the pass, so the marker leaves with the next one.
+        s.pass(&[]);
+        s.pass(&[]);
+        assert_eq!(shown(s), ((None, None), false, false));
+        // A click on the keeper shows the staff panel instead; the ground removes both.
         s.click(s.at(19, 20, 32, 32));
         s.pass(&[]);
-        assert_eq!(shown(s), (Some(keeper), false, true));
+        assert_eq!(shown(s), ((Some(keeper), Some(keeper)), false, true));
         s.click(s.at(20, 22, 32, 32));
         s.pass(&[]);
-        assert_eq!(shown(s), (None, false, false));
+        assert_eq!(shown(s), ((None, None), false, false));
+        // A row of the exhibit panel's animal list moves both to that animal.
+        let exhibit = s.app.game.as_ref().unwrap().world.exhibits().list()[0].id;
+        s.app.open_exhibit(exhibit);
+        s.pass(&[]);
+        for (row, id) in [(0, a), (1, b)] {
+            s.app.panel_animal(row);
+            s.pass(&[]);
+            assert_eq!(shown(s), ((Some(id), Some(id)), true, false));
+        }
     });
 }
