@@ -249,6 +249,9 @@ pub struct Guest {
     /// The eat-standing flag, and the wish for a gift (guests 6.9, 8).
     pub stand: bool,
     pub gift: bool,
+    /// The tour guide it follows, 0 for none, and whether it heard the guide's talk (tour guide 10).
+    pub guide: u32,
+    pub listening: bool,
 }
 
 impl Guest {

@@ -13,6 +13,8 @@ use crate::place::bulldozer::type_of;
 use crate::staff::{assign, service};
 use crate::unit::{Part, Staff, movement};
 
+mod guide;
+
 /// The jobs of the duties.
 const PUT_FOOD: u8 = 1;
 const PUTTING_FOOD: u8 = 2;

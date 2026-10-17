@@ -26,6 +26,8 @@ pub enum Command {
     /// `food X,Y TYPE [UNITS]`: a pile of food of the type (`herbchow`) on a tile, as a keeper puts
     /// it down: full, or with this many units.
     Food(i32, i32, String, Option<i32>),
+    /// `guide X,Y`: a tour guide stands on the tile, hired without the hiring cost.
+    Guide(i32, i32),
     /// `leave ID`: the guest decides to leave the zoo (the flag its checks raise).
     Leave(u32),
     /// `heal ID`: the animal is healed as a keeper's heal does (animals-needs 9.7), without the
@@ -57,6 +59,12 @@ impl std::str::FromStr for Command {
             Some("cash") if words.len() == 2 => {
                 let cash = words[1].parse::<f32>().ok().filter(|c| c.is_finite());
                 Command::Cash(cash.ok_or_else(|| format!("bad cash: {text:?}"))?)
+            }
+            Some("guide") if words.len() == 2 => {
+                let at = words[1].split_once(',');
+                let at = at.and_then(|(x, y)| Some((x.parse().ok()?, y.parse().ok()?)));
+                let (x, y) = at.ok_or_else(|| format!("bad tile: {text:?}"))?;
+                Command::Guide(x, y)
             }
             Some("food") if (3..=4).contains(&words.len()) => {
                 let at = words[1].split_once(',');
@@ -188,7 +196,52 @@ impl Run {
             }
             Command::Food(x, y, ref name, units) => self.put_food(x, y, name, units),
             Command::Heal(id) => self.heal(id),
+            Command::Guide(x, y) => self.hire_guide(x, y),
         }
+    }
+
+    /// A tour guide (the first sex of the data) on tile `(x, y)`; whether there is such a tile and
+    /// such a type.
+    fn hire_guide(&mut self, x: i32, y: i32) -> bool {
+        let Some(ty) = self.cat.types.iter().find(|t| t.class == "tour") else {
+            return false;
+        };
+        let Some(tile) = self.world.tile_index(x, y) else {
+            return false;
+        };
+        let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
+        let name = crate::place::unit::name(&mut self.world, ty, "Guide");
+        let entity = crate::zoo::Entity {
+            class: ty.class.into(),
+            type_name: text(&ty.type_name),
+            subtype: text(&ty.subtype),
+            body_size: None,
+            common: Some(crate::zoo::Common {
+                x: x * 64 + 32,
+                y: y * 64 + 32,
+                z: self.world.zoo.tiles[tile].elevation * 16,
+                rotation: 0,
+                id: 0,
+                name,
+                colors: Vec::new(),
+                fence: None,
+                food: 0,
+                movement_mode: 0,
+                animal: None,
+                guest: None,
+            }),
+        };
+        let shape = crate::world::Shape {
+            kind: crate::render::order::Kind::of_class("tour"),
+            footprint: (ty.footprint[0], ty.footprint[1]),
+            fence: false,
+            wall: false,
+            gate: false,
+            gated: false,
+            tank: crate::world::TankKind::NONE,
+            walkable: (false, false),
+        };
+        self.world.add(entity, Some(shape)).is_some()
     }
 
     /// A pile of food of the type `name` in the middle of tile `(x, y)`, full unless `units` says

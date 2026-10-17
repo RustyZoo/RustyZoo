@@ -39,6 +39,10 @@ pub const HABITAT: u8 = 101;
 /// The duties of a keeper (staff 7.5).
 pub const DUTIES: u8 = 110;
 pub const GAWK: u8 = 112;
+/// A tour guide's leg to a viewing area and its talk there (tour guide 5 to 7); the first is also
+/// a guest's walk after a guide.
+pub const LEG: u8 = 118;
+pub const TALK: u8 = 119;
 /// The tasks the costs of the path finder look at (pathfinding 6.5, 6.6): entering a building,
 /// chasing, avoiding a predator, returning to a show building, recovering from a fall into water
 /// and the animal's trips to and from a show tank.
@@ -101,6 +105,16 @@ pub fn task_name(task: u8) -> &'static str {
         t => TASKS
             .get(usize::from(t).wrapping_sub(100))
             .unwrap_or(&"unknown"),
+    }
+}
+
+/// The job the log names for a guide's task: `staff job <id> <job>` (tour guide 18).
+fn guide_job(task: u8) -> Option<&'static str> {
+    match task {
+        LEG => Some("va"),
+        TALK => Some("speak"),
+        RANDOM => Some("random"),
+        _ => None,
     }
 }
 
@@ -190,6 +204,11 @@ pub enum Goal {
     Site,
     /// 0x70 of a guest: view the animals from the viewing area (11.5).
     Gawk,
+    /// 0x76 of a guide: a leg to a viewing area, and 0x77 the talk there; 0x76 of a guest: the walk
+    /// after the guide (11.7).
+    Leg,
+    Talk,
+    Follow,
     /// 0x66 to 0x6a of a guest: the building chain (11.3), walking to the building, to its
     /// entrance and into its slot, using it and leaving.
     Go,
@@ -217,6 +236,9 @@ impl Goal {
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
             (SITE, Kind::Guest) => Some(Goal::Site),
             (GAWK, Kind::Guest) => Some(Goal::Gawk),
+            (LEG, Kind::Guide) => Some(Goal::Leg),
+            (TALK, Kind::Guide) => Some(Goal::Talk),
+            (LEG, Kind::Guest) => Some(Goal::Follow),
             (GO_BUILDING, Kind::Guest) => Some(Goal::Go),
             (ENTRANCE, Kind::Guest) => Some(Goal::Entrance),
             (ENTER_BUILDING, Kind::Guest) => Some(Goal::Enter),
@@ -239,6 +261,8 @@ impl Goal {
             Goal::DrinkWater => DRINK,
             Goal::Site => SITE,
             Goal::Gawk => GAWK,
+            Goal::Leg | Goal::Follow => LEG,
+            Goal::Talk => TALK,
             Goal::Go => GO_BUILDING,
             Goal::Entrance => ENTRANCE,
             Goal::Enter => ENTER_BUILDING,
@@ -254,6 +278,7 @@ impl Goal {
     fn init(self, cx: &mut Cx) -> bool {
         match self {
             Goal::Gawk => cx.gawk_init(),
+            Goal::Talk => cx.talk_init(),
             Goal::Duties => {
                 cx.duties_init();
                 true
@@ -287,6 +312,8 @@ impl Goal {
         match self {
             Goal::Leave => return cx.leave_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
+            Goal::Leg => return cx.leg_check_done(),
+            Goal::Talk => return cx.talk_check_done(),
             Goal::Exhibit => return cx.exhibit_check_done(),
             Goal::Duties => return cx.duties_check_done(),
             Goal::Enter => return cx.enter_check_done(),
@@ -313,6 +340,8 @@ impl Goal {
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Site => cx.site_decide(),
             Goal::Gawk => cx.gawk_decide(),
+            Goal::Leg => cx.leg_decide(),
+            Goal::Follow if cx.record().target.tile.is_none() => cx.reset(),
             Goal::Exit => cx.exit_decide(),
             Goal::Go if cx.record().target.tile.is_none() => cx.reset(),
             Goal::EatStand if cx.record().target.tile.is_none() => cx.wander(false),
@@ -329,6 +358,9 @@ impl Goal {
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
             Goal::Gawk => cx.gawk_complete(),
+            Goal::Leg => cx.leg_complete(),
+            Goal::Talk => cx.talk_complete(),
+            Goal::Follow => cx.follow_complete(),
             Goal::Go => cx.building_arrived(),
             Goal::Entrance => cx.entrance_arrived(),
             Goal::Enter => cx.enter_arrived(),
@@ -412,6 +444,18 @@ pub struct Cx<'a, 'c> {
     pub data: &'a dyn Data,
 }
 
+/// A guide's status tick: the countdown of its gathering (tour guide 4).
+pub fn crowd(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    }
+    .crowd_check();
+}
+
 /// One unit's goal update (6.2), after its behaviour.
 pub fn update(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     let mut cx = Cx {
@@ -451,7 +495,7 @@ impl Cx<'_, '_> {
 
     /// 3.2: sets the task. The object is marked stale, the job cleared.
     pub fn set_task(&mut self, task: u8, mode: u8, id: u32, tile: Option<usize>) {
-        let (now, unit) = (self.now(), self.unit.id);
+        let (now, unit, guide) = (self.now(), self.unit.id, self.unit.kind == Kind::Guide);
         let world = &mut *self.world;
         let goal = &mut self.unit.goal;
         let r = &mut goal.record;
@@ -462,6 +506,9 @@ impl Cx<'_, '_> {
         r.target.set_tile(world, tile);
         goal.stale = true;
         if changed {
+            if let (true, Some(job)) = (guide, guide_job(task)) {
+                world.units.staff_note(format!("job {unit} {job}"));
+            }
             let width = world.zoo.width as usize;
             let place = tile.map_or("-".into(), |t| format!("{},{}", t % width, t / width));
             let target = if id == 0 { "-".into() } else { id.to_string() };
@@ -493,8 +540,10 @@ impl Cx<'_, '_> {
 
     /// 12.1: clears the record, empties the path, lowers the flags.
     pub fn reset(&mut self) {
-        if self.unit.kind == Kind::Keeper {
-            self.keeper_reset();
+        match self.unit.kind {
+            Kind::Keeper => self.keeper_reset(),
+            Kind::Guide => self.guide_reset(),
+            _ => self.unfollow(),
         }
         self.set_task(NONE, 0, 0, None);
         self.unit.path.clear();
@@ -577,6 +626,7 @@ impl Cx<'_, '_> {
             Kind::Animal => self.animal_ladder(task),
             Kind::Guest => self.guest_ladder(task, done),
             Kind::Keeper => self.keeper_ladder(task, done),
+            Kind::Guide => self.guide_ladder(task, done),
             _ => {}
         }
         true
@@ -590,7 +640,8 @@ impl Cx<'_, '_> {
         if self.exit_ladder() || self.leave_ladder() || self.stand_ladder(task) {
             return;
         }
-        if task != NONE && task != SITE && !done {
+        // A guest after a guide keeps its done task until it is released (tour guide 10.3).
+        if task != NONE && task != SITE && (!done || task == LEG) {
             return;
         }
         // Point 9: a guest that holds food looks for a place to eat it.
