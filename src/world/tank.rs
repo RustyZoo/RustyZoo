@@ -173,6 +173,7 @@ impl World {
                 movement_mode: 0,
                 food: 0,
                 animal: None,
+                guest: None,
             }),
         };
         self.zoo.id_counter = id;

@@ -292,6 +292,19 @@ impl Sim {
     /// class keys in `world.units.class`. The draws come before every draw of the first step.
     pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
         crate::animal::load(world, cat, &mut self.rng);
+        // The guests the map stores keep their five status values (guests 4).
+        for e in &world.zoo.entities {
+            let Some((id, values)) = e
+                .common
+                .as_ref()
+                .and_then(|c| Some((c.id, *c.guest.as_deref()?)))
+            else {
+                continue;
+            };
+            if let Some(unit::Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) {
+                g.values = values;
+            }
+        }
     }
 
     pub fn calendar(&self) -> &Calendar {

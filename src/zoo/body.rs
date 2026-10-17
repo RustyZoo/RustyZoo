@@ -59,8 +59,11 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             }
         }
         b"guests" => {
-            guest(r)?;
-            zoo_unit(r, true)?
+            let values = guest(r)?;
+            Common {
+                guest: Some(Box::new(values)),
+                ..zoo_unit(r, true)?
+            }
         }
         b"staff" | b"keeper" | b"maint" | b"tour" | b"helicopter" => {
             staff(r, class)?;
@@ -110,6 +113,7 @@ fn base(r: &mut Reader) -> R<Common> {
         movement_mode: 0,
         food: 0,
         animal: None,
+        guest: None,
     })
 }
 
@@ -255,9 +259,11 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
     })
 }
 
-fn guest(r: &mut Reader) -> R<()> {
+/// The guest fields: the five status values come first and the rest is skipped.
+fn guest(r: &mut Reader) -> R<[i32; 5]> {
     let v = r.v;
-    r.skip(20 + 1 + 20)?;
+    let values = [r.i32()?, r.i32()?, r.i32()?, r.i32()?, r.i32()?];
+    r.skip(1 + 20)?;
     if v <= 66 {
         r.skip(4)?;
     }
@@ -289,7 +295,7 @@ fn guest(r: &mut Reader) -> R<()> {
     if v >= 65 {
         r.skip(4)?;
     }
-    Ok(())
+    Ok(values)
 }
 
 fn staff(r: &mut Reader, class: &[u8]) -> R<()> {

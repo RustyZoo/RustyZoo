@@ -407,6 +407,7 @@ fn entity(class: &str, subtype: &str, (tx, ty): (i32, i32), rotation: u32, id: u
             movement_mode: 0,
             food: 0,
             animal: None,
+            guest: None,
         }),
     }
 }

@@ -262,6 +262,7 @@ pub fn arrive(
             food: 0,
             movement_mode: 0,
             animal: None,
+            guest: None,
         }),
     };
     let shape = Shape {
