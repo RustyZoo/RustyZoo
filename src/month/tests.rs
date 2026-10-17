@@ -167,3 +167,38 @@ fn a_month_of_steps_charges_once_and_the_charge_is_in_the_state_hash() {
     assert_eq!((upkeep, wages), (50.0, 0.0));
     assert_ne!(with, without);
 }
+
+#[test]
+fn the_month_end_shifts_the_exhibits_figures_and_the_shift_is_in_the_state_hash() {
+    let cat = catalogue();
+    let mut w = world((4, 4), |_, _| {});
+    let part = crate::exhibit::Part {
+        tiles: vec![5],
+        grounds: false,
+    };
+    let id = w.exhibits_mut().add(&part, String::new());
+    let stats = &mut w.exhibits_mut().get_mut(id).unwrap().stats;
+    stats.donations = [1.0, 12.5, 20.0];
+    stats.upkeep = [2.0, 185.49, 300.0];
+    let (mut sim, mut money) = (Sim::new(b""), Money::default());
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    let before = crate::sim::hash::state(&sim, &w, &money);
+    for _ in 0..400 {
+        sim.step_game(
+            &crate::behaviour::NoData,
+            &cat,
+            &mut w,
+            &mut money,
+            1000,
+            |_, _, _| {},
+        );
+    }
+    let stats = &w.exhibits().get(id).unwrap().stats;
+    assert_eq!(stats.donations, [12.5, 0.0, 20.0], "one month end in 400 s");
+    assert_eq!(stats.upkeep, [185.49, 0.0, 300.0]);
+    let after = crate::sim::hash::state(&sim, &w, &money);
+    w.exhibits_mut().get_mut(id).unwrap().stats.donations[0] = 7.0;
+    assert_ne!(after, crate::sim::hash::state(&sim, &w, &money));
+    assert_ne!(before, after);
+}

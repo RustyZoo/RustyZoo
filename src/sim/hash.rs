@@ -187,6 +187,11 @@ impl Fnv {
             self.u32(n);
         }
         self.rating(&x.rating);
+        let s = &x.stats;
+        self.u32(s.popularity);
+        for v in s.donations.into_iter().chain(s.upkeep) {
+            self.f32(v);
+        }
     }
 
     fn rating(&mut self, s: &rating::State) {
