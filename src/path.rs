@@ -82,8 +82,8 @@ pub struct Mover {
     pub turn: Option<usize>,
     /// The unit goes in or out of a building: only the edge cost decides a step (4.2).
     pub building: bool,
-    /// A guest travelling in water, one recovering from a fall into water, and one avoiding a
-    /// predator (task 0x75), with the `cNonPathCostEmergency` it then pays.
+    /// A guest travelling in water, one recovering from a fall into water or entering a building,
+    /// and one avoiding a predator (task 0x75), with the `cNonPathCostEmergency` it then pays.
     pub in_water: bool,
     pub recovering: bool,
     pub avoiding: bool,

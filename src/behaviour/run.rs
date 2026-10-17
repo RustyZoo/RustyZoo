@@ -44,6 +44,11 @@ pub trait Data {
     fn number(&self, unit: &Entity, number: &Number) -> i32;
     /// The sound the unit's `[Sounds]` section names with this key.
     fn sound(&self, unit: &Entity, key: &str) -> Option<Heard>;
+    /// A whole number of `[Characteristics/Integers]` of the unit class file `ztunit.ai`, shared by
+    /// all units (pathfinding 6.5); `None` when the file or the key is missing.
+    fn unit_class(&self, _key: &str) -> Option<i32> {
+        None
+    }
 }
 
 /// No data: no set, no animation.

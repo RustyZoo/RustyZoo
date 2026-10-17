@@ -336,6 +336,11 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
         &[
             ("guests.cfg", b"[guests]\nman = man.ai\n".to_vec()),
             ("man.ai", definition),
+            (
+                "ztunit.ai",
+                b"[Characteristics/Integers]\ncNonPathCost = 5\nCNonPathCostEmergency = x\n"
+                    .to_vec(),
+            ),
             ("guests/man/idle/idle.ani", ani("idle")),
             ("guests/man/walk/walk.ani", ani("walk")),
             ("guests/man/broken/broken.ani", ani("broken")),
@@ -409,6 +414,15 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
     assert_eq!(sound("yell"), heard("sounds/yell.wav", 0, "yell"));
     assert_eq!(sound("noise"), heard("guests/man/x.wav.wav", 0, "noise"));
     assert_eq!(library.sound(&man, "roar"), None);
+    // The unit class file: a whole number by key (case does not matter), nothing for a key that
+    // is missing or has no number.
+    let class = |key| library.unit_class(key);
+    assert_eq!(class("cNonPathCost"), Some(5));
+    assert_eq!(class("cnonpathcost"), Some(5));
+    assert_eq!(
+        (class("CNonPathCostEmergency"), class("cNone"), class("")),
+        (None, None, None)
+    );
     // A unit of a type the catalogue lacks has nothing.
     let other = guest("woman");
     assert!(library.set(&other, "bZooRoutine").is_none() && library.ambient(&other, 0).is_empty());

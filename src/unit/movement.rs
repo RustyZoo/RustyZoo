@@ -410,9 +410,37 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) 
     m.avoid_edges = data
         .number(entity, &Number::Characteristic("cAvoidEdges".into()))
         .max(0) as u32;
+    // The guest's costs off the paths are the unit class file's; a missing key keeps the fallback.
+    if unit.kind == Kind::Guest {
+        let cost = |key, fallback: u32| data.unit_class(key).map_or(fallback, |v| v.max(0) as u32);
+        m.non_path_cost = cost("cNonPathCost", m.non_path_cost);
+        m.emergency_cost = cost("cNonPathCostEmergency", m.emergency_cost);
+    }
 }
 
-/// The unit as the costs of the path finder see it, standing on tile `here`.
+/// Sets the fields of the path finder's `Mover` that depend on a unit's task (pathfinding 6.5,
+/// 6.6): a guest on its way out (0x71), avoiding a predator (0x75), recovering from a fall into
+/// water (0x83) or entering a building (0x68, both recovering) or travelling in water (0x83 and
+/// 0x82), and an animal chasing (0x74, `target` is
+/// the unit chased) or on a show trip (0x85, 0x86). The other kinds ignore the tasks.
+pub fn task(m: &mut path::Mover, task: u8, target: u32) {
+    use crate::goal::{
+        AVOID, CHASE, ENTER_BUILDING, GO_TO_SHOW, LEAVE, RECOVER, RETURN_FROM_SHOW,
+        RETURN_TO_BUILDING,
+    };
+    let (guest, animal) = (m.kind == path::Kind::Guest, m.kind == path::Kind::Animal);
+    m.leaving = guest && task == LEAVE;
+    m.avoiding = guest && task == AVOID;
+    m.recovering = guest && [ENTER_BUILDING, RECOVER].contains(&task);
+    m.in_water = guest && [RETURN_TO_BUILDING, RECOVER].contains(&task);
+    m.show = animal && [GO_TO_SHOW, RETURN_FROM_SHOW].contains(&task);
+    m.chasing = (animal && task == CHASE && target != 0).then_some(target);
+}
+
+/// The unit as the costs of the path finder see it, standing on tile `here`: its place, its
+/// destination tile now (before a request sets a new one), the building flag, its task and, for an
+/// animal, its terrain mode. The values of its type come from [`read_type`]; the relaxed and test
+/// flags of a keeper and an animal are the caller's, on `unit.mover`.
 pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path::Mover {
     let mut m = unit.mover.clone();
     (m.at, m.id) = (Some(here), Some(unit.id));
@@ -420,6 +448,13 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
     m.footprint = world
         .shape(at)
         .map_or(1, |s| (s.footprint.0 * s.footprint.1).clamp(1, 4) as u32);
+    m.dest = unit
+        .destination
+        .and_then(|(x, y, _)| tile_of(world, (x, y)));
+    m.building |= unit.through_building;
+    let record = &unit.goal.record;
+    task(&mut m, record.task, record.target.id);
+    m.water_mode = matches!(&unit.part, Part::Animal(a) if a.terrain == 1);
     m
 }
 

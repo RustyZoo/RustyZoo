@@ -98,12 +98,13 @@ usage: rustyzoo [--data <dir>] <command>
                       also the viewing areas of each exhibit (tiles, size, tiles seen) and its
                       fence deterioration; exit 1 if none matches, a rating is not 0 to 100 or
                       an area covers more than 4 columns or rows
-  find-path <map> <x,y> <x,y> --unit <keeper|guest|animal>
+  find-path <map> <x,y> <x,y> --unit <keeper|guest|animal> [--task <name>]
                       the path the finder gives a unit of that kind from the first tile to the
                       second of a map (a .zoo member), as the game asks for it (a partial path
                       accepted): a line with the state (found, partial or no path), the number
                       of tiles and the move cost, then one x,y line per tile; the [AI] settings
-                      are those of the ini file
+                      are those of the ini file; --task names the unit's task by the original's
+                      word (leave, avoid, chase, gotoshow, ...), which changes the costs it pays
   render-ani <member.ani> <dir> [--anim NAME]
                       write frame 0 of an animation set as eight PNG files into <dir>, one per
                       screen direction, and print the anchor point; with --anim, the first

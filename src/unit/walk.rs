@@ -64,7 +64,7 @@ pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize)
     };
     // The finder leaves the table for the walk, as the unit does for its turn.
     let mut finder = std::mem::take(&mut world.units.finder);
-    let mover = movement::mover(unit, world, at, here);
+    let mover = walker(unit, world, at, here, facing);
     let mut walk = Walk {
         unit,
         world,
@@ -79,6 +79,15 @@ pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize)
     let ok = walk.run();
     world.units.finder = finder;
     ok
+}
+
+/// The unit as the searches of a random walk see it: with the turn flag of the call, which makes
+/// them charge the first step for the turn off the unit's facing (pathfinding 5.1).
+fn walker(unit: &Unit, world: &World, at: usize, here: usize, facing: u32) -> Mover {
+    Mover {
+        turn: Some(facing as usize),
+        ..movement::mover(unit, world, at, here)
+    }
 }
 
 struct Walk<'a> {
@@ -174,6 +183,9 @@ impl Walk<'_> {
                 Some((64 * x + 32, 64 * y + 32, z))
             }
         };
+        // The next request of the walk sees the destination this one left.
+        self.mover.dest = (self.unit.destination)
+            .and_then(|(x, y, _)| self.world.tile_index(x.div_euclid(64), y.div_euclid(64)));
         reply.ok
     }
 

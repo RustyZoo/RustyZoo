@@ -779,3 +779,194 @@ fn a_corner_cut_before_the_destination_walks_back_into_it() {
     assert_eq!((x.div_euclid(64), y.div_euclid(64)), (18, 21));
     assert!(w.units.get(1).unwrap().path.is_empty());
 }
+
+/// The `Mover` the path finder gets for unit `id`, as a goal's request builds it.
+fn mover_of(w: &World, id: u32) -> path::Mover {
+    let at = w.find(id).unwrap();
+    let here = here(w, at).unwrap();
+    mover(w.units.get(id).unwrap(), w, at, here)
+}
+
+fn set_task(w: &mut World, id: u32, task: u8, target: u32) {
+    let record = &mut w.units.get_mut(id).unwrap().goal.record;
+    (record.task, record.target.id) = (task, target);
+}
+
+#[test]
+fn the_mover_follows_the_task_of_the_unit() {
+    use crate::goal::{
+        AVOID, CHASE, ENTER_BUILDING, GO_TO_SHOW, LEAVE, RECOVER, RETURN_FROM_SHOW,
+        RETURN_TO_BUILDING,
+    };
+    let mut w = map(vec![
+        entity("guests", "", 1, centre((3, 3)), 0),
+        entity("animals", "", 2, centre((5, 5)), 0),
+        entity("keeper", "", 3, centre((7, 7)), 0),
+    ]);
+    // (task, guest: leaving, avoiding, recovering, in water; animal: show, chasing).
+    let guest = |m: &path::Mover| [m.leaving, m.avoiding, m.recovering, m.in_water];
+    for (task, flags) in [
+        (0, [false; 4]),
+        (LEAVE, [true, false, false, false]),
+        (AVOID, [false, true, false, false]),
+        (RECOVER, [false, false, true, true]),
+        (ENTER_BUILDING, [false, false, true, false]),
+        (RETURN_TO_BUILDING, [false, false, false, true]),
+        (CHASE, [false; 4]),
+        (u8::MAX, [false; 4]),
+    ] {
+        set_task(&mut w, 1, task, 9);
+        assert_eq!(guest(&mover_of(&w, 1)), flags, "guest, task {task}");
+        // The animal's and the keeper's tasks never set the guest's states.
+        for id in [2, 3] {
+            set_task(&mut w, id, task, 9);
+            assert_eq!(
+                guest(&mover_of(&w, id)),
+                [false; 4],
+                "unit {id}, task {task}"
+            );
+        }
+    }
+    for (task, target, show, chasing) in [
+        (GO_TO_SHOW, 9, true, None),
+        (RETURN_FROM_SHOW, 9, true, None),
+        (CHASE, 9, false, Some(9)),
+        // No target, no chase.
+        (CHASE, 0, false, None),
+        (LEAVE, 9, false, None),
+    ] {
+        set_task(&mut w, 2, task, target);
+        let m = mover_of(&w, 2);
+        assert_eq!((m.show, m.chasing), (show, chasing), "animal, task {task}");
+        // Only an animal has them.
+        for id in [1, 3] {
+            set_task(&mut w, id, task, target);
+            let m = mover_of(&w, id);
+            assert_eq!((m.show, m.chasing), (false, None), "unit {id}, task {task}");
+        }
+    }
+}
+
+#[test]
+fn the_mover_has_the_destination_tile_the_building_flag_and_the_terrain_mode() {
+    let mut w = map(vec![
+        entity("animals", "", 1, centre((3, 3)), 0),
+        entity("keeper", "", 2, centre((7, 7)), 0),
+    ]);
+    assert_eq!(mover_of(&w, 1).dest, None);
+    for (dest, tile) in [
+        (Some(centre((9, 4))), Some(tile(9, 4))),
+        // Off the map, in either direction, and far off it.
+        (Some((-1, 32)), None),
+        (Some((32, -1)), None),
+        (Some((i32::MAX, i32::MIN)), None),
+        (None, None),
+    ] {
+        w.units.get_mut(1).unwrap().destination = dest.map(|(x, y)| (x, y, 0));
+        assert_eq!(mover_of(&w, 1).dest, tile, "{dest:?}");
+    }
+    let m = mover_of(&w, 1);
+    assert_eq!(
+        (m.id, m.at, m.building, m.water_mode),
+        (Some(1), Some(tile(3, 3)), false, false)
+    );
+    w.units.get_mut(1).unwrap().through_building = true;
+    assert!(mover_of(&w, 1).building);
+    for (terrain, water) in [(0, false), (1, true), (2, false), (u8::MAX, false)] {
+        if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+            a.terrain = terrain;
+        }
+        assert_eq!(mover_of(&w, 1).water_mode, water, "mode {terrain}");
+    }
+    // A keeper has no terrain mode.
+    assert!(!mover_of(&w, 2).water_mode);
+}
+
+#[test]
+fn a_guest_leaving_crosses_the_grass_between_two_ends_of_a_path_it_would_walk_round() {
+    // A path from (10, 10) up to row 6, across and down to (12, 10); the grass between its ends
+    // is two steps.
+    let mut tiles: Vec<(i32, i32)> = (6..=10).flat_map(|y| [(10, y), (12, y)]).collect();
+    tiles.push((11, 6));
+    let mut e: Vec<_> = tiles
+        .iter()
+        .map(|&t| entity("paths", "", 0, centre(t), 0))
+        .collect();
+    e.push(entity("guests", "", 1, centre((10, 10)), 0));
+    let mut w = map(e);
+    let walk = |w: &mut World, task| {
+        set_task(w, 1, task, 0);
+        let m = mover_of(w, 1);
+        let reply = path::Finder::default().request(w, &m, tile(12, 10), false);
+        reply.path.map_or(0, |p| p.len())
+    };
+    // Round by the path, 11 tiles; leaving, over the grass tile between.
+    assert_eq!(walk(&mut w, 0), 11);
+    assert_eq!(walk(&mut w, crate::goal::LEAVE), 3);
+    // Avoiding a predator, the grass costs the emergency cost of 1.
+    assert_eq!(walk(&mut w, crate::goal::AVOID), 3);
+}
+
+/// A class file with these keys.
+struct Class(Vec<(&'static str, i32)>);
+
+impl crate::behaviour::Data for Class {
+    fn set(&self, _: &crate::zoo::Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
+        None
+    }
+    fn ambient(&self, _: &crate::zoo::Entity, _: usize) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Timing> {
+        None
+    }
+    fn number(&self, _: &crate::zoo::Entity, _: &crate::behaviour::Number) -> i32 {
+        0
+    }
+    fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+    fn unit_class(&self, key: &str) -> Option<i32> {
+        self.0.iter().find(|k| k.0 == key).map(|k| k.1)
+    }
+}
+
+#[test]
+fn a_guest_reads_its_costs_off_the_paths_from_the_class_file() {
+    let w = map(vec![
+        entity("guests", "", 1, centre((3, 3)), 0),
+        entity("keeper", "", 2, centre((7, 7)), 0),
+    ]);
+    let costs = |id: u32, class: &Class| {
+        let mut unit = w.units.get(id).unwrap().clone();
+        read_type(&mut unit, class, &w.zoo.entities[w.find(id).unwrap()]);
+        (unit.mover.non_path_cost, unit.mover.emergency_cost)
+    };
+    let class = |v: Vec<(&'static str, i32)>| Class(v);
+    // The fallbacks are 7 and 1; the file's values replace them; none goes below 0.
+    assert_eq!(costs(1, &class(vec![])), (7, 1));
+    assert_eq!(
+        costs(
+            1,
+            &class(vec![("cNonPathCost", 5), ("cNonPathCostEmergency", 2)])
+        ),
+        (5, 2)
+    );
+    assert_eq!(costs(1, &class(vec![("cNonPathCost", 0)])), (0, 1));
+    assert_eq!(
+        costs(
+            1,
+            &class(vec![
+                ("cNonPathCost", -3),
+                ("cNonPathCostEmergency", i32::MIN)
+            ])
+        ),
+        (0, 0)
+    );
+    assert_eq!(
+        costs(1, &class(vec![("cNonPathCost", i32::MAX)])),
+        (i32::MAX as u32, 1)
+    );
+    // Only a guest has them.
+    assert_eq!(costs(2, &class(vec![("cNonPathCost", 5)])), (7, 1));
+}

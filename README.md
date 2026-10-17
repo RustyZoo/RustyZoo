@@ -59,7 +59,7 @@ rustyzoo movie-info mslogo.avi --dump 100 out/    # size, frames, frame rate and
 rustyzoo map-info maps/default.zoo                # version, size, terrain and entities of a map or saved game
 rustyzoo check-maps                               # read every .zoo file; exit 1 if one is corrupted
 rustyzoo check-exhibits '*.zoo'                   # the exhibits each map's fences make, against the habitat count and first tiles it stores, and the tanks (exhibits closed by tank walls only) against its stored tanks; exit 1 if one differs
-rustyzoo find-path maps/med_kids.zoo 23,59 37,59 --unit keeper   # the path the finder gives a keeper, guest or animal between two tiles (a partial path accepted), with its cost, one x,y line per tile
+rustyzoo find-path maps/med_kids.zoo 23,59 37,59 --unit keeper   # the path the finder gives a keeper, guest or animal between two tiles (a partial path accepted), with its cost, one x,y line per tile; --task leave (or avoid, chase, ...) asks as a unit with that task
 rustyzoo render-ani objects/aviary/idle/idle.ani out/   # frame 0 of an animation set, one PNG per screen direction, into out/
 rustyzoo render-ani animals/lion/f out/ --anim walk     # the same for animals/lion/f/walk/walk.ani
 rustyzoo check-anis                               # load every animation set and its sprite files; a defective palette is a warning; exit 1 if one fails
