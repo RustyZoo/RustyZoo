@@ -55,6 +55,8 @@ pub struct Stats {
     /// The exhibit's spending (the keepers' food and healing costs; the panel calls it upkeep),
     /// in the same order.
     pub upkeep: [f32; 3],
+    /// The calendar time guests spent watching it, in units of 100 ns (habitat rating 13.2).
+    pub viewing: u64,
 }
 
 impl Stats {

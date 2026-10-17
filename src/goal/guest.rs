@@ -1,17 +1,24 @@
-//! The goals of guests (goals 10.2, 11): so far the way out. A guest whose leave flag is up and
-//! that is not busy gets the leave task (0x71) from its ladder, walks to the zoo entrance tile and
-//! is removed there; the step books it as gone and, with some chance, as a new endowment member.
-//! The log line `guest leave <id>` tells it (the `guest` family of [`crate::guest`]).
+//! The goals of guests (goals 10.2, 11): the way out, the choice of what to see and viewing it.
+//! A guest whose leave flag is up and that is not busy gets the leave task (0x71) from its
+//! ladder, walks to the zoo entrance tile and is removed there; the step books it as gone and, with
+//! some chance, as a new endowment member. A guest with an exhibit it has not seen gets the site
+//! task, which picks one and sends it to a tile it can look at it from ([`sites`]), where it
+//! views the animals. The leave flag is raised by the unhappy-leave check
+//! ([`crate::guest::checks`]) and by `checkLeaveZoo`, which the ladder runs when nothing is left to
+//! see. The log lines are those of the `guest` family of [`crate::guest`].
 
 use super::Cx;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Part;
 
+mod sites;
+
 /// The leave task.
 pub const LEAVE: u8 = 113;
-/// The avoid and exit tasks, which keep a guest from leaving.
+/// The avoid and exit tasks, which keep a guest from leaving, and the drowning task.
 const AVOID: u8 = 117;
 const EXIT: u8 = 127;
+const DROWN: u8 = 132;
 /// The tasks of using a building: entering, leaving and using it.
 const IN_BUILDING: std::ops::RangeInclusive<u8> = 104..=106;
 
@@ -34,6 +41,37 @@ impl Cx<'_, '_> {
             return false;
         }
         self.set_task(LEAVE, 1, 0, None);
+        true
+    }
+
+    /// Ladder point 1: a guest standing in an exhibit or a tank (put there, or fallen in) gets the
+    /// exit task, mode 0, unless it has it already or is drowning or avoiding (the thought is the
+    /// thoughts issue's). Whether it did.
+    pub(super) fn exit_ladder(&mut self) -> bool {
+        let task = self.record().task;
+        let inside = self.tile().and_then(|t| self.world.exhibits().region(t));
+        if [EXIT, DROWN, AVOID].contains(&task)
+            || !inside.is_some_and(|r| r != GROUNDS && r != EXTERIOR)
+        {
+            return false;
+        }
+        self.set_task(EXIT, 0, 0, None);
+        true
+    }
+
+    /// Ladder point 10.3 and `checkLeaveZoo` (guests 11.1): a guest that is neither leaving nor
+    /// on water leaves with the chance `cLeaveChanceDone`. One draw when it can.
+    pub(super) fn check_leave_zoo(&mut self) -> bool {
+        let Some(k) = crate::guest::keys(self.world, self.ctx.cat, self.at) else {
+            return false;
+        };
+        let wet = self.tile().is_some_and(|t| self.world.is_water(t));
+        if self.record().task == LEAVE || wet || !self.ctx.rng.chance(k.leave[3]) {
+            return false;
+        }
+        if let Part::Guest(g) = &mut self.unit.part {
+            g.leave = true;
+        }
         true
     }
 

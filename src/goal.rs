@@ -32,6 +32,8 @@ pub use guest::LEAVE;
 pub const NONE: u8 = 0;
 /// The wander.
 pub const RANDOM: u8 = 1;
+/// A guest picks what to see next.
+pub const SITE: u8 = 100;
 pub const HABITAT: u8 = 101;
 pub const GAWK: u8 = 112;
 /// The tasks the costs of the path finder look at (pathfinding 6.5, 6.6): entering a building,
@@ -74,7 +76,7 @@ pub(crate) fn quiet(world: &mut World) {
     let ids: Vec<u32> = world.units.iter().map(|u| u.id).collect();
     for id in ids {
         if let Some(u) = world.units.get_mut(id) {
-            u.goal.record.task = GAWK;
+            u.goal.record.task = 134;
         }
     }
 }
@@ -169,6 +171,10 @@ pub enum Goal {
     Leave,
     /// 0x7a of an animal: walk to the water and drink (11.9).
     DrinkWater,
+    /// 100 of a guest: choose an exhibit to see (11.1).
+    Site,
+    /// 0x70 of a guest: view the animals from the viewing area (11.5).
+    Gawk,
 }
 
 impl Goal {
@@ -181,6 +187,8 @@ impl Goal {
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
+            (SITE, Kind::Guest) => Some(Goal::Site),
+            (GAWK, Kind::Guest) => Some(Goal::Gawk),
             _ => None,
         }
     }
@@ -192,12 +200,14 @@ impl Goal {
             Goal::KeeperFood => KEEPER_FOOD,
             Goal::Leave => LEAVE,
             Goal::DrinkWater => DRINK,
+            Goal::Site => SITE,
+            Goal::Gawk => GAWK,
         }
     }
 
     /// Called once when the object is built; false clears the record.
-    fn init(self, _: &mut Cx) -> bool {
-        true
+    fn init(self, cx: &mut Cx) -> bool {
+        self != Goal::Gawk || cx.gawk_init()
     }
 
     /// Called when a stale object is removed.
@@ -221,8 +231,10 @@ impl Goal {
     }
 
     fn check_done(self, cx: &mut Cx) {
-        if self == Goal::Leave {
-            return cx.leave_check_done();
+        match self {
+            Goal::Leave => return cx.leave_check_done(),
+            Goal::Gawk => return cx.gawk_check_done(),
+            _ => {}
         }
         if self != Goal::Base && cx.reached(false) {
             cx.record().done = true;
@@ -235,6 +247,8 @@ impl Goal {
             Goal::KeeperFood => cx.keeper_food_decide(),
             Goal::Leave => cx.leave_decide(),
             Goal::DrinkWater => cx.drink_decide(),
+            Goal::Site => cx.site_decide(),
+            Goal::Gawk => cx.gawk_decide(),
             _ => {}
         }
     }
@@ -245,7 +259,8 @@ impl Goal {
             Goal::KeeperFood => cx.keeper_food_complete(),
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
-            Goal::Base => {}
+            Goal::Gawk => cx.gawk_complete(),
+            Goal::Base | Goal::Site => {}
         }
     }
 }
@@ -288,7 +303,7 @@ pub struct Goals {
     /// Raised by the guest's ladder to let an idle unit wander again (7.1).
     pub wants_to_decide: bool,
     /// A guest made a random walk and stands until a draw or its status tick lets it walk again
-    /// (7.3); the status tick that lowers it is the guest issue's.
+    /// (7.3); the status tick lowers it (`guest::checks`).
     pub wandered: bool,
 }
 
@@ -466,13 +481,14 @@ impl Cx<'_, '_> {
     }
 
     /// 10.2 point 8: the task goes on. Point 10: the guest stands while its wandered flag is up,
-    /// else it picks again (the sites, and the checks that raise the leave flag, are the guest
-    /// issues'). Point 2 comes first: a guest that is to leave takes the leave task.
+    /// else it picks again: the sites to see, else the seen count goes and it may decide to leave.
+    /// Point 1 (a guest in an exhibit or a tank leaves it) and point 2 (a guest that is to leave
+    /// takes the leave task) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
-        if self.leave_ladder() {
+        if self.exit_ladder() || self.leave_ladder() {
             return;
         }
-        if task != NONE && task != 100 && !done {
+        if task != NONE && task != SITE && !done {
             return;
         }
         if self.unit.goal.wandered {
@@ -480,8 +496,11 @@ impl Cx<'_, '_> {
                 self.unit.goal.wandered = false;
                 self.unit.goal.wants_to_decide = true;
             }
-        } else if task != 100 {
+        } else if task != SITE {
             self.reset();
+            if self.next_site() {
+                return;
+            }
             if self.keeps_moving() {
                 self.set_task(RANDOM, 1, 0, None);
             }

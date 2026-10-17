@@ -290,6 +290,12 @@ pub struct Units {
     /// The guests that left and the members that joined during the step, which the step books.
     pub guests_gone: u32,
     pub members_joined: u32,
+    /// The viewing areas of the exhibits, built again after the map changed.
+    pub views: crate::guest::view::Views,
+    /// What guests donated during the step, which the step books.
+    pub donated: Vec<f32>,
+    /// `cDonationFactor`, set by the step from the economy file.
+    pub donation_factor: f32,
 }
 
 impl Default for Units {
@@ -312,6 +318,9 @@ impl Default for Units {
             guest_join: (80, 50),
             guests_gone: 0,
             members_joined: 0,
+            views: Default::default(),
+            donated: Vec::new(),
+            donation_factor: 2.8e-13,
             guest_lines: Vec::new(),
         }
     }
@@ -671,9 +680,11 @@ impl Hooks for Standard<'_> {
     }
     fn needs(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::needs(unit, world, ctx, at);
+        crate::guest::needs(unit, world, ctx, at);
     }
     fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::checks(unit, world, ctx, at, self.data);
+        crate::guest::checks(unit, world, ctx, at, self.data);
         // The checks end with the ambient choice, with the happiness of that moment.
         let asked = match &mut unit.part {
             Part::Animal(a) => std::mem::take(&mut a.ambient),

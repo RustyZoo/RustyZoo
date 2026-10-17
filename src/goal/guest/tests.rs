@@ -47,12 +47,16 @@ fn sim() -> Sim {
     sim
 }
 
-/// A guest type whose set `bWalk` ends at once.
-struct Walks(Vec<Call>);
+/// A guest type whose set `bWalk` ends at once and whose set `bGawk` never does.
+struct Walks(Vec<Call>, Vec<Call>);
 
 impl Data for Walks {
     fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
-        (name == "bWalk").then_some(&self.0[..])
+        match name {
+            "bWalk" => Some(&self.0[..]),
+            "bGawk" => Some(&self.1[..]),
+            _ => None,
+        }
     }
     fn ambient(&self, _: &crate::zoo::Entity, _: usize) -> &[Row] {
         &[]
@@ -73,7 +77,8 @@ impl Data for Walks {
 }
 
 fn walks() -> Walks {
-    Walks(vec![parse_call(b"fWalk(0,0)").unwrap().0])
+    let call = |text: &[u8]| parse_call(text).unwrap().0;
+    Walks(vec![call(b"fWalk(0,0)")], vec![call(b"fKeepControl()")])
 }
 
 /// Runs `n` steps with the cash `money`; the `unit` and `guest` lines.
@@ -126,6 +131,16 @@ fn a_guest_on_the_entrance_starts_its_walk_like_any_other_and_leaves() {
 
 /// Runs `f` on the goal update context of guest 1.
 fn with_cx<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> R {
+    with_cx_in(&Catalogue::default(), &NoData, w, rng, f)
+}
+
+fn with_cx_in<R>(
+    cat: &Catalogue,
+    data: &dyn Data,
+    w: &mut World,
+    rng: &mut Rng,
+    f: impl FnOnce(&mut Cx) -> R,
+) -> R {
     let mut u: Unit = w.units.get(1).unwrap().clone();
     let (events, mut removals) = (Events::default(), Vec::new());
     let mut ctx = Ctx {
@@ -133,14 +148,14 @@ fn with_cx<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> R {
         events: &events,
         removals: &mut removals,
         step: 67,
-        cat: &Catalogue::default(),
+        cat,
     };
     let mut cx = Cx {
         unit: &mut u,
         world: w,
         ctx: &mut ctx,
         at: 0,
-        data: &NoData,
+        data,
     };
     let r = f(&mut cx);
     *w.units.get_mut(1).unwrap() = u;
@@ -264,4 +279,283 @@ fn without_an_entrance_the_guest_walks_at_random_and_keeps_its_flag() {
     assert!(log.contains(&"set 1 bWalk".to_string()), "{log:?}");
     assert!(flag(&w), "the walk is no walk to the entrance");
     assert!(!log.contains(&"guest leave 1".to_string()));
+}
+
+/// The keys of a guest that matter here, with a certain leave once everything is seen.
+const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\n\
+    cLeaveChanceDone=100\ncGawkTime=10\ncGawkTime=15\ncGawkTime=25\ncGawkTime=35\ncGawkTime=45\n";
+
+fn types() -> Catalogue {
+    types_with(MAN)
+}
+
+fn types_with(man: &str) -> Catalogue {
+    let ty = |class, name: &str, text: &str, name_id| crate::entity::EntityType {
+        class,
+        type_name: name.as_bytes().to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(text.as_bytes()).unwrap(),
+        )),
+        name_id,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = Catalogue::default();
+    cat.push(ty("guests", "man", man, 9503));
+    cat.push(ty("animals", "zebra", "", 5));
+    cat
+}
+
+/// A zebra pen round (2, 5) with a path beside it along x = 5 and guest 1 at (8, 2), whose
+/// countdowns are far from firing.
+fn visit(happiness: i32) -> World {
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entrance = (9, 5);
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((8, 2)), 0));
+        for i in 0..3 {
+            for (at, d) in [
+                ((1 + i, 4), 0),
+                ((1 + i, 6), 4),
+                ((1, 4 + i), 6),
+                ((3, 4 + i), 2),
+            ] {
+                let id = 100 + zoo.entities.len() as u32;
+                zoo.entities.push(entity("fences", "", id, centre(at), d));
+            }
+            zoo.entities.push(entity(
+                "paths",
+                "stone",
+                200 + i as u32,
+                centre((5, 4 + i)),
+                0,
+            ));
+        }
+        zoo.entities
+            .push(entity("animals", "zebra", 10, centre((2, 5)), 0));
+    });
+    let animal = crate::animal::Animal {
+        happiness,
+        ..Default::default()
+    };
+    let zebra = w.units.get_mut(10).unwrap();
+    (zebra.part, zebra.started, zebra.repositioning) = (Part::Animal(animal), true, true);
+    w.units.get_mut(1).unwrap().part = Part::Guest(Guest {
+        countdowns: [1000; 11],
+        saw_animal: 1000,
+        ..Guest::default()
+    });
+    w
+}
+
+/// Runs `n` steps of 67 ms in a game of `types()`; the `unit` and `guest` lines.
+fn visit_run(w: &mut World, n: usize) -> Vec<String> {
+    visit_run_in(&types(), w, n)
+}
+
+fn visit_run_in(cat: &Catalogue, w: &mut World, n: usize) -> Vec<String> {
+    let (mut s, mut money) = (sim(), Money::default());
+    let mut log = Vec::new();
+    for _ in 0..n {
+        s.step_game(&walks(), cat, w, &mut money, 67, |_, _, _| {});
+        log.extend(w.units.take_lines());
+        log.extend((w.units.take_guest_lines().into_iter()).map(|l| format!("guest {l}")));
+    }
+    log
+}
+
+#[test]
+fn a_guest_goes_to_the_exhibit_it_has_not_seen_views_it_and_leaves_when_all_is_seen() {
+    let mut w = visit(50);
+    let log = visit_run(&mut w, 4000);
+    let at = |text: &str| log.iter().position(|l| l.starts_with(text));
+    let order: Vec<_> = [
+        "goal 1 site 4",
+        "goal 1 habitat 0",
+        "goal 1 gawk 0",
+        "guest view 1 1",
+        "guest donate 1 1",
+        "goal 1 leave 1",
+        "guest leave 1",
+    ]
+    .iter()
+    .map(|t| at(t))
+    .collect();
+    assert!(
+        order.iter().all(Option::is_some) && order.is_sorted(),
+        "{order:?} {log:?}"
+    );
+    // It walked to a tile of the path, and viewed once.
+    let walked = log.iter().filter(|l| l.starts_with("tile 1 5,")).count();
+    assert!(walked >= 1, "{log:?}");
+    // The first guest only: the new guest check lets others in.
+    assert_eq!(
+        log.iter()
+            .filter(|l| l.starts_with("guest view 1 "))
+            .count(),
+        1
+    );
+    assert!(w.units.get(1).is_none(), "removed at the entrance");
+    // The exhibit got the time and the donation.
+    let stats = &w.exhibits().list()[0].stats;
+    assert!(stats.viewing > 0 && stats.donations[2] > 0.0, "{stats:?}");
+}
+
+/// The seconds of play between the start of viewing and the end of the goal.
+fn lasted(cat: &Catalogue, happiness: i32) -> i32 {
+    let mut w = visit(happiness);
+    let log = visit_run_in(cat, &mut w, 1500);
+    let from = log
+        .iter()
+        .position(|l| l.starts_with("guest view 1 1"))
+        .unwrap();
+    let to = from
+        + log[from..]
+            .iter()
+            .position(|l| l.starts_with("goal 1 none"))
+            .unwrap();
+    log[from..to]
+        .iter()
+        .filter(|l| l.starts_with("guest status 1 "))
+        .count() as i32
+}
+
+#[test]
+fn viewing_lasts_by_the_average_happiness_of_the_exhibit() {
+    // 25 to 30 seconds for an average of 50 (guests visit 5.3), 15 to 20 for -20; the status
+    // lines counted are one or two fewer than the ticks.
+    for (happiness, seconds) in [(50, 25..=30), (-20, 15..=20), (90, 45..=50), (-90, 10..=10)] {
+        let n = lasted(&types(), happiness);
+        assert!(
+            n >= *seconds.start() - 1 && n <= seconds.end() + 1,
+            "{happiness}: {n}"
+        );
+    }
+    // Without the key the time is 10 to 13 seconds; a negative time and a huge one are kept in
+    // range (the goal is over at once, or lasts for ever).
+    let plain =
+        "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\ncLeaveChanceDone=100\n";
+    let n = lasted(&types_with(plain), 50);
+    assert!((9..=14).contains(&n), "{n}");
+    let negative =
+        format!("{plain}cGawkTime=-9\ncGawkTime=-9\ncGawkTime=-9\ncGawkTime=-9\ncGawkTime=-9\n");
+    assert!(lasted(&types_with(&negative), 50) <= 6);
+    let huge = format!(
+        "{plain}cGawkTime=2000000000\ncGawkTime=2000000000\ncGawkTime=2000000000\ncGawkTime=2000000000\ncGawkTime=2000000000\ncGawkAttrTime=2000000000\n"
+    );
+    let mut w = visit(50);
+    let log = visit_run_in(&types_with(&huge), &mut w, 1500);
+    assert!(log.iter().any(|l| l.starts_with("guest view 1 1")));
+    assert!(
+        !log.iter().any(|l| l.starts_with("goal 1 none")),
+        "still viewing"
+    );
+}
+
+#[test]
+fn a_guest_in_an_exhibit_gets_the_exit_task_before_anything_else() {
+    let mut w = map(true);
+    let (mut s, mut money) = (sim(), Money::default());
+    // It wants to leave, but the exit task comes first (ladder point 1 before point 2).
+    let log = run(&mut w, &mut s, &mut money, 3);
+    assert!(
+        log.contains(&"goal 1 exittank 0 - -".to_string()),
+        "{log:?}"
+    );
+    assert!(!log.iter().any(|l| l.contains("leave 1")), "{log:?}");
+    assert!(flag(&w), "the wish to leave stays");
+}
+
+#[test]
+fn a_guest_that_has_seen_everything_forgets_the_count_and_may_decide_to_leave() {
+    let mut w = visit(50);
+    let first = w.exhibits().list()[0].first;
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.seen, g.seen_count) = (vec![first], 3);
+    }
+    let log = visit_run(&mut w, 3);
+    assert!(log.contains(&"goal 1 leave 1 - -".to_string()), "{log:?}");
+    let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert_eq!(
+        (g.seen_count, g.seen.len()),
+        (0, 1),
+        "the count goes, the list stays"
+    );
+    assert!(!log.iter().any(|l| l.starts_with("goal 1 site")));
+}
+
+#[test]
+fn an_exhibit_scores_by_attractiveness_the_favourite_species_and_a_far_tile() {
+    // attractiveness + 500 for the favourite - (1000 - d) / 10 + 100, d at most 990.
+    for (attractiveness, loved, d, score) in [
+        (5, false, 0, 5),
+        (5, false, 9, 6),
+        (5, false, 990, 104),
+        (5, true, 4000, 604),
+    ] {
+        let d = d.min(990);
+        assert_eq!(
+            super::sites::site_score(attractiveness, loved, d),
+            score,
+            "{attractiveness} {loved} {d}"
+        );
+    }
+}
+
+#[test]
+fn the_site_goal_of_a_guest_that_has_seen_the_sites_of_the_zoo_forgets_them_and_may_leave() {
+    let mut w = visit(50);
+    let first = w.exhibits().list()[0].first;
+    let u = w.units.get_mut(1).unwrap();
+    u.goal.record.task = crate::goal::SITE;
+    if let Part::Guest(g) = &mut u.part {
+        (g.seen, g.seen_count) = (vec![first], 5);
+    }
+    let log = visit_run(&mut w, 1);
+    let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert_eq!(
+        (g.seen_count, g.seen.len(), g.leave),
+        (0, 0, true),
+        "{log:?}"
+    );
+}
+
+#[test]
+fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
+    let (cat, walks) = (types(), walks());
+    let mut w = visit(50);
+    let (x, y) = centre((5, 5));
+    w.place_unit(0, (x, y, 0), 0);
+    let order = w.exhibits().list()[0].order.clone();
+    let (mut rng, mut by_hand) = (Rng::default(), Rng::default());
+    by_hand.rand();
+    let drawn = order[by_hand.pick(order.len() as u32) as usize];
+    let started = with_cx_in(&cat, &walks, &mut w, &mut rng, |cx| cx.gawk_init());
+    assert!(started);
+    // The lookup draw, then the draw of the tile; the set has no target.
+    assert_eq!(rng.state(), {
+        let mut r = Rng::default();
+        r.rand();
+        r.pick(order.len() as u32);
+        // The duration of the gawk (5.3) follows.
+        r.rand();
+        r.rand();
+        r.state()
+    });
+    let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert_eq!(g.seen, vec![drawn]);
+    let (va, rotation) = (
+        g.va.unwrap(),
+        w.zoo.entities[0].common.as_ref().unwrap().rotation,
+    );
+    assert_ne!(va, 0, "the guest started facing 0");
+    assert_eq!(rotation, u32::from(va));
 }
