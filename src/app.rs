@@ -349,6 +349,11 @@ impl Game {
                 animation: u.animation.name.clone(),
                 frame: u.animation.shown(),
             })
+            .chain(self.world.units.gate_frames().map(|(id, frame)| Shown {
+                id,
+                animation: "idle".into(),
+                frame,
+            }))
             .collect()
     }
 

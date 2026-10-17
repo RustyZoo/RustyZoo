@@ -467,6 +467,36 @@ fn a_keeper_opens_the_gate_ahead_and_closes_it_behind_but_an_animal_does_not_ope
     }
 }
 
+/// A keeper enters (11, 10) of [`gated`] from (11, 11) with `path` (tile coordinates), and the
+/// gate lines of the log are returned.
+fn enters_the_gate_tile(path: &[(usize, usize)]) -> Vec<String> {
+    let mut w = gated(true);
+    let t = |x, y| w.tile_index(x as i32, y as i32).unwrap();
+    let (old, new) = (t(11, 11), t(11, 10));
+    let mut unit = Unit::new(1, Kind::Keeper);
+    unit.path = path.iter().map(|&(x, y)| t(x, y)).collect();
+    enter(&mut unit, &mut w, old, new);
+    let lines = w.units.take_lines();
+    lines
+        .into_iter()
+        .filter(|l| l.starts_with("gate"))
+        .collect()
+}
+
+#[test]
+fn a_gate_is_looked_up_towards_the_second_entry_of_the_path_and_across_a_corner() {
+    // The second entry is the tile north of the gate tile: the gate is ahead. The first entry
+    // does not matter, even when it is another tile (the unit is off its path).
+    assert_eq!(enters_the_gate_tile(&[(11, 10), (11, 9)]).len(), 1);
+    assert_eq!(enters_the_gate_tile(&[(12, 10), (11, 9)]).len(), 1);
+    // A diagonal step to the north east reads the north slot of the tile, the north west one
+    // does not reach the gate (it is the slot of the next edge round the corner).
+    assert_eq!(enters_the_gate_tile(&[(11, 10), (12, 9)]).len(), 1);
+    assert!(enters_the_gate_tile(&[(11, 10), (10, 9)]).is_empty());
+    // Only the second entry counts.
+    assert!(enters_the_gate_tile(&[(11, 9), (12, 10)]).is_empty());
+}
+
 #[test]
 fn a_move_call_takes_the_rate_the_animation_and_the_animation_speed_of_its_band() {
     for (call, rate, anim, speed) in [

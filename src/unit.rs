@@ -40,6 +40,7 @@ use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::Entity;
 
+pub mod gate;
 pub mod movement;
 pub mod swim;
 #[cfg(test)]
@@ -272,6 +273,8 @@ pub struct Units {
     messages: Vec<(i32, u32)>,
     /// The sounds the units' animations began, with the unit's id, for the app.
     sounds: Vec<(u32, Heard)>,
+    /// The gates that are open or playing their animation (movement 6.2).
+    gates: gate::Gates,
     /// The game milliseconds the calendar has run: the date a new animal is fed and rested.
     pub now: u64,
     /// The word before the number in a guest's name (string 9507).
@@ -298,6 +301,7 @@ impl Default for Units {
             animal_lines: Vec::new(),
             messages: Vec::new(),
             sounds: Vec::new(),
+            gates: gate::Gates::new(),
             now: 0,
             guest_name: "Guest".into(),
             guest_join: (80, 50),
@@ -544,6 +548,7 @@ impl Ctx<'_> {
     /// at once (an undo must neither bring back nor remove a destroyed entity).
     pub fn remove(&mut self, world: &mut World, id: u32) {
         world.forget_undo(id);
+        world.units.release_gate_of(id);
         self.removals.push(id);
     }
 }

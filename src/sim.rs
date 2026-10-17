@@ -434,6 +434,7 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
+                unit::gate::advance(world, cat, data, at, step);
                 update(world, at, step);
                 // A fence piece wears at its own place in the list.
                 for event in world.wear(cat, at, step, &mut self.lines) {
