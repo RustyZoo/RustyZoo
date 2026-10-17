@@ -9,6 +9,11 @@ use crate::world::{Decay, World};
 
 /// A fence type `iron` with the given characteristics under its plain section.
 fn types(keys: &str) -> Catalogue {
+    types_with("", keys)
+}
+
+/// The same with more `sections` (text of other blocks) before the characteristics.
+fn types_with(sections: &str, keys: &str) -> Catalogue {
     let mut cat = Catalogue::default();
     for subtype in [&b"f"[..], b"g"] {
         cat.push(EntityType {
@@ -18,7 +23,7 @@ fn types(keys: &str) -> Catalogue {
             file: None,
             config: Some(std::sync::Arc::new(
                 crate::config::Config::parse(
-                    format!("[Characteristics/Integers]\n{keys}\n").as_bytes(),
+                    format!("{sections}[Characteristics/Integers]\n{keys}\n").as_bytes(),
                 )
                 .unwrap(),
             )),
@@ -286,6 +291,11 @@ fn a_worn_piece_posts_its_events_with_the_worker_tile() {
 
 /// The kinds of the events a loaded world with the piece at `life` posts, and their data.
 fn loaded(keys: &str, life: Option<u32>) -> Vec<(u16, u32)> {
+    loaded_in("[HabitatFence]\n", keys, life)
+}
+
+/// The same for a type with these other `sections`.
+fn loaded_in(sections: &str, keys: &str, life: Option<u32>) -> Vec<(u16, u32)> {
     let mut w = world("f");
     let c = w.zoo.entities[0].common.as_mut().unwrap();
     c.fence = life.map(|life| crate::zoo::Fence {
@@ -294,7 +304,7 @@ fn loaded(keys: &str, life: Option<u32>) -> Vec<(u16, u32)> {
         timers: [5, 5],
         portal: false,
     });
-    w.loaded_events(&types(keys))
+    w.loaded_events(&types_with(sections, keys))
         .iter()
         .map(|e| {
             let sent = (e.sender, e.target, e.channel, e.sender_channel, e.delay);
@@ -324,7 +334,7 @@ fn a_loaded_piece_posts_broken_or_decayed_with_its_worker_tile() {
 
 #[test]
 fn the_events_of_a_loaded_zoo_wait_for_the_next_step_after_the_stored_ones() {
-    let cat = types(WEARING);
+    let cat = types_with("[HabitatFence]\n", WEARING);
     let mut run = run(types(WEARING), world("f"), 1);
     run.world.zoo.entities[0]
         .common
@@ -339,4 +349,29 @@ fn the_events_of_a_loaded_zoo_wait_for_the_next_step_after_the_stored_ones() {
     let next = run.sim.events.buffers()[1];
     assert_eq!(next.len(), before + 1);
     assert_eq!(next.last().map(|e| e.kind), Some(10034));
+}
+
+#[test]
+fn a_loaded_broken_piece_posts_only_when_its_type_can_deteriorate() {
+    let fence = "[HabitatFence]\n";
+    let sturdy = format!("{WEARING}\ncIndestructible=1");
+    assert_eq!(loaded_in(fence, WEARING, Some(0)), [(10034, 5)]);
+    assert_eq!(loaded_in(fence, &sturdy, Some(0)), []);
+    assert_eq!(loaded_in("", WEARING, Some(0)), []);
+    // A tank wall or a zoo wall never breaks either.
+    assert_eq!(
+        loaded_in("[HabitatFence]\n[TankFence]\n", WEARING, Some(0)),
+        []
+    );
+    assert_eq!(
+        loaded_in("[HabitatFence]\n[Member]\nzoowall\n", WEARING, Some(0)),
+        []
+    );
+    assert_eq!(
+        loaded_in("[HabitatFence]\n[Member]\nzoogate\n", WEARING, Some(0)),
+        []
+    );
+    // The decayed branch has no such test.
+    assert_eq!(loaded_in(fence, &sturdy, Some(2)), [(10033, 5)]);
+    assert_eq!(loaded_in("", WEARING, Some(2)), [(10033, 5)]);
 }

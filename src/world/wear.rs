@@ -171,7 +171,7 @@ impl World {
     }
 
     /// The events a zoo just loaded posts for its fence pieces (placing 7.4 "The events"), in
-    /// entity list order: a piece with life below 1 is broken again (10034), else one at or below
+    /// entity list order: a piece with life below 1 that can break is broken again (10034), else one at or below
     /// the `cDecayedLife` of its type is decayed (10033, 10034 when electrified).
     pub fn loaded_events(&self, cat: &Catalogue) -> Vec<Event> {
         let mut events = Vec::new();
@@ -182,6 +182,9 @@ impl World {
             let ty = type_of(cat, e);
             let key = |name| ty.and_then(|t| number(t, name)).unwrap_or(0.0);
             let kind = if f.life == 0 {
+                if !ty.is_some_and(deteriorates) {
+                    continue;
+                }
                 BROKEN
             } else if i64::from(f.life) <= key("cDecayedLife") as i64 {
                 [DECAYED, BROKEN][usize::from(key("cIsElectrified") != 0.0)]
@@ -215,6 +218,19 @@ impl World {
         let found = pick(&|t| grounds(t) && self.open(t)).or_else(|| pick(&|t| self.open(t)));
         found.unwrap_or(t) as u32
     }
+}
+
+/// Whether a piece of this type can break (placing 7.4): an exhibit fence that is no zoo wall,
+/// zoo gate, tank wall or `cIndestructible` type.
+fn deteriorates(ty: &EntityType) -> bool {
+    let habitat = (ty.config.as_deref()).is_some_and(|c| c.section("HabitatFence").is_some());
+    let tank = (ty.config.as_deref()).is_some_and(|c| c.section("TankFence").is_some());
+    let member = |name| crate::render::member(ty, name);
+    habitat
+        && !tank
+        && !member("zoowall")
+        && !member("zoogate")
+        && number(ty, "cIndestructible").unwrap_or(0.0) == 0.0
 }
 
 /// The plain entity post of a piece to the task pool, with the worker tile as data.

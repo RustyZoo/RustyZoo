@@ -1455,7 +1455,7 @@ struct Meta<'a> {
 }
 
 /// Whether the `[Member]` list of the type holds this name.
-fn member(ty: &EntityType, name: &str) -> bool {
+pub(crate) fn member(ty: &EntityType, name: &str) -> bool {
     ty.config
         .as_deref()
         .and_then(|c| c.section("Member"))
