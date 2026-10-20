@@ -988,8 +988,8 @@ fn find<'c>(cat: &'c Catalogue, e: &Entity) -> Option<&'c EntityType> {
 }
 
 /// The records of exhibit `x`; a dirty exhibit is rated first.
-fn records(world: &mut World, cat: &Catalogue, x: u32) -> Vec<Record> {
-    rating::refresh(world, cat, x);
+fn records(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> Vec<Record> {
+    rating::refresh(world, cat, x, &mut || rng.rand());
     world
         .exhibits()
         .get(x)
@@ -1199,7 +1199,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         let regions = food::near(world, x, &k);
         let pieces = food::pieces(world, ctx.cat, &regions, k.food_kind);
         env.food_total = pieces.iter().map(|p| p.left).fold(0, i32::saturating_add);
-        let own = records(world, ctx.cat, x)
+        let own = records(world, ctx.cat, x, ctx.rng)
             .into_iter()
             .find(|r| r.key == key);
         if let Some(r) = own {
@@ -1207,7 +1207,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
                 .exhibits()
                 .get(x)
                 .map_or(Vec::new(), |e| e.amphibious.clone());
-            let read = &mut |n| records(world, ctx.cat, n);
+            let read = &mut |n| records(world, ctx.cat, n, ctx.rng);
             let seen = rating::rating(x, &near, &key, read).unwrap_or_default();
             env.species = r.animals as i32;
             env.rating = rating::shown(seen) as i32;

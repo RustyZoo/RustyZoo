@@ -119,12 +119,26 @@ impl World {
         Some(interval)
     }
 
+    /// The state of the fence piece at `at` changed (habitat rating 12): the exhibits on its two
+    /// sides get the escape check flag (5.8) when it is broken, or when a species of their
+    /// surrounding list bashes (`cBashStrength` above 0).
+    pub(crate) fn fence_changed(&mut self, at: usize, broken: bool) {
+        for t in self.rated_tiles(at) {
+            let x = self.exhibits.region(t);
+            if let Some(e) = x.and_then(|x| self.exhibits.get_mut(x))
+                && (broken || e.rating.bash)
+            {
+                e.rating.escape = true;
+            }
+        }
+    }
+
     /// One step of `ms` milliseconds of wear of the piece at `at` (placing 7.4), run at its place in
     /// the entity loop: a piece that wears loses `ms` from its countdown; at 0 or below it loses
     /// one life and `cDecayDelta` strength (not below 1), restarts the countdown at its interval
     /// and, when its life is below 1, breaks: life and strength 0. A line tells the piece when it
-    /// wears; the events 10033 and 10034 it posts are returned. The break sound and the exhibits'
-    /// escape check wait for the animal milestone.
+    /// wears; the events 10033 and 10034 it posts are returned. A piece that becomes decayed or
+    /// broken sets the escape check flags of 12. The break sound waits for the animal milestone.
     pub fn wear(
         &mut self,
         cat: &Catalogue,
@@ -172,7 +186,11 @@ impl World {
             "fence {id} life {} strength {}{state}",
             f.life, f.strength
         ));
+        let broken = f.life < 1;
         self.dirty = true;
+        if !state.is_empty() {
+            self.fence_changed(at, broken);
+        }
         let tile = self.worker_tile(at);
         kinds
             .into_iter()

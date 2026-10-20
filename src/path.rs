@@ -261,6 +261,19 @@ impl Finder {
         }
     }
 
+    /// The search of an exhibit's reachability test (habitat rating 5.8) from the unit's tile to
+    /// tile `to`: the search alone, with no partial path and no unreachable list, after the
+    /// diagonal switch takes the unit's rule. Whether it reaches `to`.
+    pub fn test(&mut self, w: &World, m: &Mover, to: usize) -> bool {
+        let Some(from) =
+            m.at.filter(|&s| s < w.zoo.tiles.len() && to < w.zoo.tiles.len())
+        else {
+            return false;
+        };
+        self.switch = Some(search::diagonal(m, &self.settings));
+        search(w, m, &self.settings, from, to, false).reached
+    }
+
     /// The failures held for destination tile `t`.
     pub fn failures(&self, t: usize) -> Option<i8> {
         self.unreachable.get(&t).copied()

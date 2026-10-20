@@ -345,7 +345,14 @@ impl App<'_> {
             bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);
         let Some(r) = removed else { return };
         if let Some((before, (habitat, name))) = object {
-            rating::react(&mut game.world, cat, before, Some((habitat, name, -1)));
+            let rand = &mut || self.sim.rng.rand();
+            rating::react(
+                &mut game.world,
+                cat,
+                before,
+                Some((habitat, name, -1)),
+                rand,
+            );
         }
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));
         self.world_lines.push(format!(

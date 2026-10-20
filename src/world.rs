@@ -457,6 +457,15 @@ impl World {
             .collect()
     }
 
+    /// Sets the escape check flag of the exhibit that tile `t` belongs to (habitat rating 5.8);
+    /// the zoo grounds have none.
+    pub fn escape_check(&mut self, t: usize) {
+        let x = self.exhibits.region(t);
+        if let Some(e) = x.and_then(|x| self.exhibits.get_mut(x)) {
+            e.rating.escape = true;
+        }
+    }
+
     /// Marks the exhibit that tile `t` belongs to for a new rating (something on it changed);
     /// the zoo grounds have none.
     pub fn mark_rating(&mut self, t: usize) {
@@ -600,6 +609,10 @@ impl World {
             self.note_opening(slot, false);
         }
         let rated = self.rated_tiles(at);
+        // A fence piece removed sets the escape check flag on both sides (habitat rating 5.8).
+        if fence {
+            rated.iter().for_each(|&t| self.escape_check(t));
+        }
         let entity = self.zoo.entities.remove(at);
         let shape = self.shapes.remove(at);
         self.changed();
@@ -735,6 +748,7 @@ impl World {
         self.edges_around(t);
         self.changed();
         self.mark_rating(t);
+        self.escape_check(t);
     }
 
     /// Tells the price of the action recorded last: what an undo gives back (a purchase) or takes

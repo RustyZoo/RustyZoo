@@ -61,9 +61,10 @@ impl App<'_> {
                 let cat = self.renderer.catalogue();
                 let habits = |e: &Entity| habit(cat, e);
                 let (tool, money) = (&mut game.terrain, &mut game.money);
-                let left = rating::terrain(&mut game.world, cat, |w| {
-                    tool.leave(w, &habits, money, lines)
-                });
+                let left =
+                    rating::terrain(&mut game.world, cat, &mut || self.sim.rng.rand(), |w| {
+                        tool.leave(w, &habits, money, lines)
+                    });
                 lines.push("leave".into());
                 short = left == Left::Short;
                 game.grid = game.choice;
@@ -136,14 +137,14 @@ impl App<'_> {
             Mouse::Down | Mouse::Double => {
                 let tile = under(&game.world, at);
                 let tool = &mut game.terrain;
-                rating::terrain(&mut game.world, cat, |w| {
+                rating::terrain(&mut game.world, cat, &mut || self.sim.rng.rand(), |w| {
                     tool.press(w, &habits, at, tile, lines)
                 });
             }
             Mouse::Move(..) => {
                 let before = game.terrain.tiles(&game.world);
                 let tool = &mut game.terrain;
-                rating::terrain(&mut game.world, cat, |w| {
+                rating::terrain(&mut game.world, cat, &mut || self.sim.rng.rand(), |w| {
                     tool.moved(w, &habits, at, &under, zoom, lines)
                 });
                 let after = game.terrain.tiles(&game.world);
@@ -213,13 +214,15 @@ impl App<'_> {
             }
             Press::Accept => {
                 let (tool, money) = (&mut game.terrain, &mut game.money);
-                rating::terrain(&mut game.world, cat, |w| {
+                rating::terrain(&mut game.world, cat, &mut || self.sim.rng.rand(), |w| {
                     tool.accept(w, &habits, money, lines)
                 });
             }
             Press::Cancel => {
                 let tool = &mut game.terrain;
-                rating::terrain(&mut game.world, cat, |w| tool.cancel(w, &habits, lines));
+                rating::terrain(&mut game.world, cat, &mut || self.sim.rng.rand(), |w| {
+                    tool.cancel(w, &habits, lines)
+                });
             }
             Press::Mode(id, contiguous, level) => {
                 panel::mode_text(ui, id);

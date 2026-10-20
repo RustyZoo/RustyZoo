@@ -79,6 +79,8 @@ pub struct Likes {
     /// value.
     pub ids: [i32; 3],
     pub compatible: Vec<(i32, i32)>,
+    /// `cBashStrength` above 0 (habitat rating 12).
+    pub bash: bool,
 }
 
 /// The value of an id in a list of pairs: the last pair that names it, 0 when none does.
@@ -167,6 +169,7 @@ impl Likes {
             attractiveness: int("cAttractiveness", 1),
             ids: [ty.name_id, int("cGenus", 0), int("cFamily", 0)],
             compatible: pairs("cCompatibleAnimals"),
+            bash: int("cBashStrength", 0) > 0,
         }
     }
 }
@@ -270,10 +273,10 @@ pub struct Input {
     pub keeper: Option<u32>,
     /// The exhibit has an amphibious neighbour.
     pub linked: bool,
-    /// For a land exhibit, the animal types of its amphibious neighbours, each once (5.3, 9.2),
-    /// and those neighbours with their tiles and water.
+    /// The animal types of its amphibious neighbours, each once (5.1 point 4, 9.2), and those
+    /// neighbours' tiles, a tank's with its water (5.3).
     pub near: Vec<Likes>,
-    pub tanks: Vec<(usize, Water)>,
+    pub neighbours: Vec<Site>,
 }
 
 /// The record of one species in an exhibit (rule 3): its part scores and the recommendation
@@ -401,25 +404,98 @@ pub fn rating(
     Some(best.fold(-1000.0, f32::max))
 }
 
-/// Computes exhibit `x` again when it is dirty, as reading a part of it does (rule 4).
-pub fn refresh(world: &mut World, cat: &Catalogue, x: u32) {
+/// The draws of the simulation's generator.
+pub type Rand<'a> = &'a mut dyn FnMut() -> u32;
+
+/// Computes exhibit `x` again when it is dirty, as reading a part of it does (rule 4), with its
+/// reachability test (5.8) drawing from `rand`.
+pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     if world.exhibits().get(x).is_some_and(|e| e.rating.dirty) {
         let input = input(world, cat, x);
         if let Some(e) = world.exhibits_mut().get_mut(x) {
             e.rating.compute(&input);
         }
-        refresh_neighbours(world, cat, x);
+        finish(world, cat, x, rand);
     }
 }
 
-/// A land exhibit that was computed has read the species lists of its amphibious neighbours,
-/// which computes those that are dirty (9.2).
-pub fn refresh_neighbours(world: &mut World, cat: &Catalogue, x: u32) {
-    let Some(e) = world.exhibits().get(x).filter(|e| e.tank.is_none()) else {
+/// The end of the recomputation of exhibit `x`: a land exhibit has read the species lists of its
+/// amphibious neighbours, which computes those that are dirty first (9.2), then the
+/// reachability test runs (5.8).
+pub fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
+    let Some(e) = world.exhibits().get(x) else {
         return;
     };
-    for n in e.amphibious.clone() {
-        refresh(world, cat, n);
+    if e.tank.is_none() {
+        for n in e.amphibious.clone() {
+            refresh(world, cat, n, rand);
+        }
+    }
+    reach(world, cat, x, rand);
+}
+
+/// The reachability test of exhibit `x` (5.8): the program's counter goes up; with the escape
+/// check flag set or the counter at 30, the counter and the flag are cleared, a target is drawn
+/// among the candidate tiles of 10.2 that belong to no amphibious neighbour, and the last animal
+/// of each type searches its way there with its test flag up (no diagonals). The types that get
+/// there make the escape table, which the escapes read (M7).
+pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
+    let exhibits = world.exhibits_mut();
+    exhibits.tests = exhibits.tests.saturating_add(1);
+    let due = exhibits.tests >= 30;
+    let Some(e) = exhibits.get_mut(x).filter(|e| e.rating.escape || due) else {
+        return;
+    };
+    e.rating.escape = false;
+    e.rating.escapes.clear();
+    let (near, order) = (e.amphibious.clone(), e.order.clone());
+    world.exhibits_mut().tests = 0;
+    let plan = crate::exhibit::viewing::Plan::of(world, x);
+    let tiles: Vec<usize> = crate::exhibit::viewing::candidates(&plan)
+        .into_iter()
+        .filter(|&t| {
+            world
+                .exhibits()
+                .region(t)
+                .is_none_or(|r| !near.contains(&r))
+        })
+        .collect();
+    if tiles.is_empty() {
+        return;
+    }
+    let target = tiles[rand() as usize % tiles.len()];
+    let water = world.tank_at(target).and_then(|t| world.tank(t));
+    let level = world.zoo.tiles[target].elevation + water.map_or(0, |t| t.steps().1);
+    let mut last: Vec<(&EntityType, usize)> = Vec::new();
+    for (at, ty) in animals_at(world, cat, &order) {
+        match last.iter_mut().find(|l| std::ptr::eq(l.0, ty)) {
+            Some(l) => l.1 = at,
+            None => last.push((ty, at)),
+        }
+    }
+    let mut escapes = Vec::new();
+    for (ty, at) in last {
+        let c = world.zoo.entities[at].common.as_ref();
+        let here = c.and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
+        let unit = c.and_then(|c| world.units.get(c.id));
+        let (Some(here), Some(unit)) = (here, unit) else {
+            continue;
+        };
+        let mut m = crate::unit::movement::mover(unit, world, at, here);
+        (m.test, m.levels.1) = (true, level);
+        let mut finder = std::mem::take(&mut world.units.finder);
+        let reached = finder.test(world, &m, target);
+        world.units.finder = finder;
+        if reached {
+            let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+            escapes.push((
+                format!("{}/{}", text(&ty.type_name), text(&ty.subtype)),
+                target,
+            ));
+        }
+    }
+    if let Some(e) = world.exhibits_mut().get_mut(x) {
+        e.rating.escapes = escapes;
     }
 }
 
@@ -447,7 +523,12 @@ pub fn before(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, Vec<
 
 /// Runs `edit`, a terrain change, then lets the animals of the exhibits of the tiles it changed
 /// react (9.4): their sums before are taken from the tiles as they were.
-pub fn terrain<T>(world: &mut World, cat: &Catalogue, edit: impl FnOnce(&mut World) -> T) -> T {
+pub fn terrain<T>(
+    world: &mut World,
+    cat: &Catalogue,
+    rand: Rand,
+    edit: impl FnOnce(&mut World) -> T,
+) -> T {
     let old = world.zoo.tiles.clone();
     let done = edit(world);
     let changed: Vec<usize> = (0..old.len().min(world.zoo.tiles.len()))
@@ -457,7 +538,7 @@ pub fn terrain<T>(world: &mut World, cat: &Catalogue, edit: impl FnOnce(&mut Wor
         let new = std::mem::replace(&mut world.zoo.tiles, old);
         let sums = before(world, cat, &changed);
         world.zoo.tiles = new;
-        react(world, cat, sums, None);
+        react(world, cat, sums, None, rand);
     }
     done
 }
@@ -473,13 +554,14 @@ pub fn react(
     cat: &Catalogue,
     before: Vec<(u32, Vec<(String, f32)>)>,
     object: Option<(i32, i32, i64)>,
+    rand: Rand,
 ) {
     for (x, old) in before {
         // The species list waits for its own timer; the original revises it here too, which
         // draws only for a type with a sound that came since the last revision.
         world.exhibits_mut().mark(x);
         let likes = input(world, cat, x);
-        refresh(world, cat, x);
+        refresh(world, cat, x, rand);
         let Some(e) = world.exhibits().get(x) else {
             continue;
         };
@@ -556,9 +638,10 @@ pub fn rate(input: &Input) -> Vec<Record> {
             records[r].animals += 1;
         }
     }
-    // The surrounding species list (9.2): the amphibious types of the neighbours join the list.
+    // The surrounding species list (9.2): in a land exhibit the amphibious types of the
+    // neighbours join the list.
     let mut around: Vec<&Likes> = input.species.iter().collect();
-    for l in input.near.iter().filter(|l| l.amphibious) {
+    for l in input.near.iter().filter(|l| l.amphibious && !tank) {
         if !(around.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
             around.push(l);
         }
@@ -573,19 +656,6 @@ pub fn rate(input: &Input) -> Vec<Record> {
             .sum();
         rec.other = sum as f32;
     }
-    // The neighbour tanks (5.3): their tiles, the filled ones by water, and their murk.
-    let (mut fresh, mut salt, mut size, mut murk) = (0i64, 0i64, 0i64, 0i64);
-    let count = |n: usize| n.min(u32::MAX as usize) as i64;
-    for &(tiles, w) in &input.tanks {
-        let tiles = count(tiles);
-        size += tiles;
-        match (w.filled, w.salt) {
-            (true, true) => salt += tiles,
-            (true, false) => fresh += tiles,
-            _ => {}
-        }
-        murk = murk.saturating_add((100 - i64::from(w.purity)).saturating_mul(tiles) / 100);
-    }
     let n = site.tiles.max(1) as f32;
     let value = |l: &Likes, it: &Item| l.value(it.habitat) + l.value(it.name);
     let per_slot = |l: &Likes, it: &Item| 100 * value(l, it) / i64::from(it.slots.max(1));
@@ -594,30 +664,57 @@ pub fn rate(input: &Input) -> Vec<Record> {
         vec![0u32; records.len()],
         vec![0u32; records.len()],
     );
-    // The tile pass (5.2).
+    // The tile pass (5.2): the paths, then the scenery.
     for (r, &i) in first.iter().enumerate() {
-        let l = all[i];
         for &(habitat, name) in &site.paths {
-            sums[r] += l.value(habitat) + 25 * l.value(name);
+            sums[r] += all[i].value(habitat) + 25 * all[i].value(name);
         }
-        for tile in &site.slots {
+    }
+    // The scenery of tiles `slots` for the species of record `r`: each slot's share of the value,
+    // the rocks and the tiles with foliage, those of a negative value only when `any`.
+    let mut scenery = |r: usize, l: &Likes, s: &Site, any: bool| {
+        for tile in &s.slots {
             let mut leafy = false;
-            for it in tile.iter().filter_map(|&s| site.items.get(s)) {
+            for it in tile.iter().filter_map(|&k| s.items.get(k)) {
                 sums[r] += per_slot(l, it);
-                if value(l, it) >= 0 {
+                if any || value(l, it) >= 0 {
                     rock_count[r] += u32::from(it.rock);
                     leafy |= it.foliage;
                 }
             }
             foliage_tiles[r] += u32::from(leafy);
         }
+    };
+    for (r, &i) in first.iter().enumerate() {
+        scenery(r, all[i], site, false);
     }
-    // The claims of shelters and toys (5.4); each walk adds the building's value again (an
-    // original bug, kept).
-    let rooms: Vec<(i32, i32)> = site
-        .listed
-        .iter()
-        .map(|&b| site.items[b].rooms.unwrap_or_default())
+    // The neighbours (5.3): of a tank its tiles, the filled ones by water, and its murk, and in a
+    // land exhibit its scenery for each amphibious species, whatever its value.
+    let (mut fresh, mut salt, mut size, mut murk) = (0i64, 0i64, 0i64, 0f32);
+    let count = |n: usize| n.min(u32::MAX as usize) as i64;
+    for s in &input.neighbours {
+        let Some(w) = s.water else { continue };
+        let tiles = count(s.tiles);
+        size += tiles;
+        match (w.filled, w.salt) {
+            (true, true) => salt += tiles,
+            (true, false) => fresh += tiles,
+            _ => {}
+        }
+        murk += (100 - i64::from(w.purity)).saturating_mul(tiles) as f32 * 0.01f32;
+        for (r, &i) in first.iter().enumerate() {
+            if !tank && all[i].amphibious {
+                scenery(r, all[i], s, true);
+            }
+        }
+    }
+    // The claims of shelters and toys (5.4), the neighbours' joining the exhibit's (5.3); each
+    // walk adds the building's value again (an original bug, kept).
+    let listed: Vec<&Item> = (std::iter::once(site).chain(&input.neighbours))
+        .flat_map(|s| s.listed.iter().map(|&b| &s.items[b]))
+        .collect();
+    let rooms: Vec<(i32, i32)> = (listed.iter())
+        .map(|it| it.rooms.unwrap_or_default())
         .collect();
     let (mut shelter_room, mut toy_room): (Vec<i32>, Vec<i32>) = rooms.iter().copied().unzip();
     let (mut shelterless, mut toyless) = (vec![0i32; records.len()], vec![0i32; records.len()]);
@@ -631,8 +728,7 @@ pub fn rate(input: &Input) -> Vec<Record> {
                 (l.shelter, &mut shelter_room)
             };
             let mut claimed = false;
-            for (k, &b) in site.listed.iter().enumerate() {
-                let it = &site.items[b];
+            for (k, &it) in listed.iter().enumerate() {
                 sums[r] += per_slot(l, it);
                 if need && value(l, it) >= 0 && room[k] != 0 {
                     room[k] -= 1;
@@ -651,12 +747,8 @@ pub fn rate(input: &Input) -> Vec<Record> {
         let l = all[i];
         let rec = &mut records[r];
         let unused = |full: &[i32], left: &[i32]| {
-            site.listed
-                .iter()
-                .enumerate()
-                .filter(|&(k, &b)| {
-                    full[k] > 0 && left[k] == full[k] && value(l, &site.items[b]) >= 0
-                })
+            (listed.iter().enumerate())
+                .filter(|&(k, &it)| full[k] > 0 && left[k] == full[k] && value(l, it) >= 0)
                 .count() as i32
         };
         let u = unused(
@@ -708,7 +800,10 @@ pub fn rate(input: &Input) -> Vec<Record> {
             objects *= 50.0;
         }
         rec.objects = objects;
-        // Foliage, rocks and elevation (5.5.3, 5.5.4).
+        // Foliage, rocks and elevation (5.5.3, 5.5.4): an amphibious species counts all the
+        // neighbours' water, not its extras.
+        let water = if l.amphibious { fresh + salt } else { 0 };
+        let d = (count(site.tiles) + water).max(1) as f32;
         let tree = foliage_tiles[r] as f32 * 100.0 / d;
         let rock = rock_count[r] as f32 * 100.0 / (4.0 * d);
         let hill = site.hills as f32 * 50.0 / n;
@@ -802,7 +897,7 @@ pub fn rate(input: &Input) -> Vec<Record> {
                 rec.set(bit::SALINITY, true);
             }
         } else if l.amphibious && size > 0 {
-            rec.water = 100.0 - 100.0 * murk as f32 / size as f32;
+            rec.water = 100.0 - murk / size as f32 * 100.0;
         }
         // The water quality bit is written again after the terrain pairs.
         rec.clear(bit::DIRTY_WATER);
@@ -842,13 +937,23 @@ pub struct State {
     pub serviced: u64,
     /// The keepers on their way to the exhibit (staff 2).
     pub coming: u32,
+    /// The escape check flag (5.8): the next reachability test runs.
+    pub escape: bool,
+    /// The species and the animals the last recomputation counted (5.1 point 5).
+    pub counts: (usize, usize),
+    /// The surrounding species list holds a species with `cBashStrength` above 0 (12).
+    pub bash: bool,
+    /// The escape table the last reachability test wrote, for the escapes (M7): the animal
+    /// types (`key/subtype`) that reach the target, and the target tile.
+    pub escapes: Vec<(String, usize)>,
 }
 
 impl State {
-    /// An exhibit that was just made: dirty, both timers at 0.
+    /// An exhibit that was just made: dirty, its escape check flag set, both timers at 0.
     pub fn new() -> State {
         State {
             dirty: true,
+            escape: true,
             ..State::default()
         }
     }
@@ -907,6 +1012,14 @@ impl State {
     pub fn compute(&mut self, input: &Input) {
         self.dirty = false;
         self.records = rate(input);
+        // A change of the species or the animals counted sets the escape check flag (5.1).
+        let counts = (self.records.len(), input.animals.len());
+        self.escape |= counts != self.counts;
+        self.counts = counts;
+        let land = input.site.water.is_none();
+        self.bash = (input.species.iter())
+            .chain(input.near.iter().filter(|l| land && l.amphibious))
+            .any(|l| l.bash);
         self.keeper = input.keeper;
         self.attractiveness = (input.animals.iter())
             .filter_map(|&a| input.species.get(a))
@@ -947,20 +1060,48 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
     let Some(exhibit) = world.exhibits().get(id) else {
         return Input::default();
     };
+    let (species, animals) = animals_on(world, catalogue, &exhibit.order);
+    let keeper = (world.units.iter())
+        .filter(|u| u.kind == Kind::Keeper)
+        .find(|u| matches!(&u.part, Part::Staff(s) if s.assigned.contains(&id)))
+        .map(|u| u.id);
+    // The types and the tiles of the amphibious neighbours (5.1 point 4, 5.3).
+    let (mut near, mut neighbours): (Vec<Likes>, Vec<Site>) = (Vec::new(), Vec::new());
+    for n in (exhibit.amphibious.iter()).filter_map(|&n| world.exhibits().get(n)) {
+        for l in animals_on(world, catalogue, &n.order).0 {
+            if !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
+                near.push(l);
+            }
+        }
+        neighbours.push(site(world, catalogue, &n.order, n.tank.map(water)));
+    }
+    Input {
+        site: site(world, catalogue, &exhibit.order, exhibit.tank.map(water)),
+        species,
+        animals,
+        keeper,
+        linked: !exhibit.amphibious.is_empty(),
+        near,
+        neighbours,
+    }
+}
+
+/// The tiles `order` of an exhibit as the tile pass reads them (5.2).
+fn site(world: &World, catalogue: &Catalogue, order: &[usize], water: Option<Water>) -> Site {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     let kind = |e: usize| {
         let e = &world.zoo.entities[e];
         catalogue.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
     };
     let mut site = Site {
-        tiles: exhibit.order.len(),
-        water: exhibit.tank.map(water),
+        tiles: order.len(),
+        water,
         ..Site::default()
     };
     let mut items: HashMap<usize, usize> = HashMap::new();
     let mut inside = vec![false; world.zoo.tiles.len()];
-    exhibit.order.iter().for_each(|&t| inside[t] = true);
-    for &t in &exhibit.order {
+    order.iter().for_each(|&t| inside[t] = true);
+    for &t in order {
         let tile = &world.zoo.tiles[t];
         match world.path(t) {
             Some(p) => {
@@ -1004,34 +1145,7 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
             .filter(|&d| world.cliff(t, d) && world.neighbour(t, d).is_some_and(|n| inside[n]))
             .count() as i32;
     }
-    let (species, animals) = animals_on(world, catalogue, &exhibit.order);
-    let keeper = (world.units.iter())
-        .filter(|u| u.kind == Kind::Keeper)
-        .find(|u| matches!(&u.part, Part::Staff(s) if s.assigned.contains(&id)))
-        .map(|u| u.id);
-    // A land exhibit reads the types and the water of its amphibious neighbours (5.3, 9.2).
-    let (mut near, mut tanks): (Vec<Likes>, Vec<(usize, Water)>) = (Vec::new(), Vec::new());
-    let neighbours = exhibit
-        .amphibious
-        .iter()
-        .filter_map(|&n| world.exhibits().get(n));
-    for n in neighbours.filter(|_| exhibit.tank.is_none()) {
-        for l in animals_on(world, catalogue, &n.order).0 {
-            if !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
-                near.push(l);
-            }
-        }
-        tanks.extend(n.tank.map(|t| (n.order.len(), water(t))));
-    }
-    Input {
-        site,
-        species,
-        animals,
-        keeper,
-        linked: !exhibit.amphibious.is_empty(),
-        near,
-        tanks,
-    }
+    site
 }
 
 fn water(t: Tank) -> Water {
@@ -1047,12 +1161,33 @@ fn water(t: Tank) -> Water {
 /// The animal types on the tiles `order`, each once in the order they first appear tile by
 /// tile, and the type of each animal.
 fn animals_on(world: &World, catalogue: &Catalogue, order: &[usize]) -> (Vec<Likes>, Vec<usize>) {
+    let (mut species, mut animals): (Vec<Likes>, Vec<usize>) = (Vec::new(), Vec::new());
+    for (_, ty) in animals_at(world, catalogue, order) {
+        let likes = Likes::of(ty);
+        let at = (species.iter())
+            .position(|s| (&s.key, &s.subtype) == (&likes.key, &likes.subtype))
+            .unwrap_or_else(|| {
+                species.push(likes);
+                species.len() - 1
+            });
+        animals.push(at);
+    }
+    (species, animals)
+}
+
+/// The animals whose own tile is one of `order` (5.1 point 3), tile by tile in that order: the
+/// place of each in the entity list and its type.
+fn animals_at<'c>(
+    world: &World,
+    catalogue: &'c Catalogue,
+    order: &[usize],
+) -> Vec<(usize, &'c EntityType)> {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     let mut inside = vec![false; world.zoo.tiles.len()];
     order.iter().for_each(|&t| inside[t] = true);
     let width = world.zoo.width as i64;
-    let mut on: HashMap<usize, Vec<&EntityType>> = HashMap::new();
-    for entity in &world.zoo.entities {
+    let mut on: HashMap<usize, Vec<(usize, &EntityType)>> = HashMap::new();
+    for (at, entity) in world.zoo.entities.iter().enumerate() {
         let (Some(c), "animals") = (&entity.common, entity.class.as_str()) else {
             continue;
         };
@@ -1068,19 +1203,10 @@ fn animals_on(world: &World, catalogue: &Catalogue, order: &[usize]) -> (Vec<Lik
             &bytes(&entity.subtype),
         );
         if let Some((t, ty)) = t.filter(|&t| inside.get(t) == Some(&true)).zip(ty) {
-            on.entry(t).or_default().push(ty);
+            on.entry(t).or_default().push((at, ty));
         }
     }
-    let (mut species, mut animals): (Vec<Likes>, Vec<usize>) = (Vec::new(), Vec::new());
-    for ty in order.iter().flat_map(|t| on.remove(t).unwrap_or_default()) {
-        let likes = Likes::of(ty);
-        let at = (species.iter())
-            .position(|s| (&s.key, &s.subtype) == (&likes.key, &likes.subtype))
-            .unwrap_or_else(|| {
-                species.push(likes);
-                species.len() - 1
-            });
-        animals.push(at);
-    }
-    (species, animals)
+    (order.iter())
+        .flat_map(|t| on.remove(t).unwrap_or_default())
+        .collect()
 }

@@ -232,6 +232,8 @@ pub struct Exhibits {
     /// The zoo grounds' own timers and record (habitat rating 4): the update is the exhibits',
     /// and its recomputation only clears the record.
     pub grounds: rating::State,
+    /// The reachability tests since the last one that went on (habitat rating 5.8).
+    pub tests: u32,
 }
 
 /// The tiles of the region of `start` in the original's order (exhibits and money 3.1): a stack of
@@ -398,6 +400,7 @@ impl Exhibits {
             next: self.next,
             counter: self.counter,
             grounds: self.grounds.clone(),
+            tests: self.tests,
         }
     }
 

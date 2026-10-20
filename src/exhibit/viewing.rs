@@ -96,9 +96,9 @@ pub struct Area {
     pub seen: Vec<usize>,
 }
 
-/// Builds the viewing areas of an exhibit (10.2 and 10.3): the path tiles within 2 tiles of a
-/// fenced tile, each joined to the area of a neighbour with room, else made a new area.
-pub fn areas(plan: &Plan) -> Vec<Area> {
+/// The candidate set of an exhibit (10.2 point 1): the map tiles outside it within 2 tiles of a
+/// fenced tile, each once, in the order found.
+pub fn candidates(plan: &Plan) -> Vec<usize> {
     let mut set: Vec<usize> = Vec::new();
     let mut taken = vec![false; plan.inside.len()];
     for &e in plan.order.iter().filter(|&&e| plan.fenced[e]) {
@@ -115,6 +115,13 @@ pub fn areas(plan: &Plan) -> Vec<Area> {
             }
         }
     }
+    set
+}
+
+/// Builds the viewing areas of an exhibit (10.2 and 10.3): the path tiles of the candidate set,
+/// each joined to the area of a neighbour with room, else made a new area.
+pub fn areas(plan: &Plan) -> Vec<Area> {
+    let set = candidates(plan);
     let mut areas: Vec<Area> = Vec::new();
     // The area held by each direction of a tile.
     let mut slots: HashMap<usize, [Option<usize>; 8]> = HashMap::new();

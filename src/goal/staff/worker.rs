@@ -381,8 +381,14 @@ impl Cx<'_, '_> {
         };
         for id in chores::mended(self.world, at, wide) {
             let rng = &mut *self.ctx.rng;
+            let at = self.world.find(id);
+            let was = at.is_some_and(|at| self.world.decayed(cat, at));
             if self.world.heal(cat, id, &mut || rng.rand()).is_none() {
                 continue;
+            }
+            // A decayed or broken piece made healthy changes state (habitat rating 12).
+            if let Some(at) = at.filter(|_| was) {
+                self.world.fence_changed(at, false);
             }
             let life = (self.world.find(id))
                 .and_then(|e| self.world.zoo.entities[e].common.as_ref()?.fence)

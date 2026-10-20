@@ -1424,7 +1424,8 @@ impl<'a> App<'a> {
             );
             if let Outcome::Placed(_) = outcome {
                 let (habitat, name) = rating::object(ty);
-                rating::react(&mut game.world, cat, before, Some((habitat, name, 1)));
+                let rand = &mut || self.sim.rng.rand();
+                rating::react(&mut game.world, cat, before, Some((habitat, name, 1)), rand);
             }
             match outcome {
                 Outcome::Placed(id) => {

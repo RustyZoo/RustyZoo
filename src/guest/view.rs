@@ -245,8 +245,8 @@ pub fn sites(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<u32>) {
 }
 
 /// The attractiveness of an exhibit, rated first when it is marked (habitat rating 13.1).
-pub fn attractiveness(world: &mut World, cat: &Catalogue, id: u32) -> i32 {
-    crate::exhibit::rating::refresh(world, cat, id);
+pub fn attractiveness(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> i32 {
+    crate::exhibit::rating::refresh(world, cat, id, &mut || rng.rand());
     world
         .exhibits()
         .get(id)

@@ -291,8 +291,14 @@ fn a_keeper_feeds_the_hungry_exhibit_pays_for_it_and_notes_the_service() {
     let x = g.w.exhibits().get(pen).unwrap();
     assert_eq!((x.stats.upkeep[1], x.rating.coming), (50.0, 0));
     assert!(x.rating.serviced > 0);
-    // The gate opened and closed round him.
-    assert_eq!(g.lines(&["unit gate 1"]).len(), 4, "in and out");
+    // The gate opened and closed round him (his walks after the duties draw since the
+    // reachability test draws, habitat rating 5.8, and may pass it again).
+    let gates = g.lines(&["unit gate 1"]);
+    let gates: Vec<&str> = gates
+        .iter()
+        .filter_map(|l| l.split(' ').rev().nth(1))
+        .collect();
+    assert_eq!(gates[..4], ["open", "close", "open", "close"], "in and out");
 }
 
 #[test]

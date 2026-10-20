@@ -77,7 +77,8 @@ pub fn sell_rate(ty: &EntityType, health: u32) -> f32 {
 
 impl World {
     /// Sets the purity of tank `id` to `purity` cut to 0 and `initialWaterPurity` (tank staff 7.4):
-    /// the tank is rated again, and the water too murky to see through is told once.
+    /// the water too murky to see through is told once. The tank is not marked for a new rating
+    /// (habitat rating 4).
     pub fn set_purity(&mut self, id: u32, purity: i64) {
         let Some(old) = self.tank(id).map(|t| t.purity) else {
             return;
@@ -87,7 +88,6 @@ impl World {
             return;
         }
         self.edit_tank(id, |t, _| t.purity = new);
-        self.exhibits.mark(id);
         if let Some(x) = self.exhibits.get(id)
             && old > EXTREME
             && new <= EXTREME

@@ -500,7 +500,7 @@ impl Sim {
                 .collect();
             world.exhibits_mut().list_mut()[at].rating = state;
             if rated {
-                rating::refresh_neighbours(world, cat, id);
+                rating::finish(world, cat, id, &mut || self.rng.rand());
                 self.lines.push(format!("rate {id}{}", shown.concat()));
             }
         }

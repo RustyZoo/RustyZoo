@@ -209,7 +209,8 @@ impl Run {
                 known
             }
             Command::Tile(x, y, elevation, shape, terrain) => {
-                crate::exhibit::rating::terrain(&mut self.world, &self.cat, |w| {
+                let rand = &mut || self.sim.rng.rand();
+                crate::exhibit::rating::terrain(&mut self.world, &self.cat, rand, |w| {
                     w.set_tile(x, y, elevation, shape, terrain)
                 })
             }
