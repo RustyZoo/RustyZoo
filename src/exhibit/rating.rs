@@ -670,7 +670,7 @@ pub fn rate(input: &Input) -> Vec<Record> {
             sums[r] += all[i].value(habitat) + 25 * all[i].value(name);
         }
     }
-    // The scenery of tiles `slots` for the species of record `r`: each slot's share of the value,
+    // The scenery of site `s` for the species of record `r`: each slot's share of the value,
     // the rocks and the tiles with foliage, those of a negative value only when `any`.
     let mut scenery = |r: usize, l: &Likes, s: &Site, any: bool| {
         for tile in &s.slots {
