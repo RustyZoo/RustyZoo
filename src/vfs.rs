@@ -1752,7 +1752,11 @@ mod tests {
                 vfs.member_count(),
                 vfs.shadowed_count()
             ),
-            (174, 484, 328_964, 3_567)
+            if crate::pe::installed_language(&dir) == 1036 {
+                (172, 475, 328_950, 2_468)
+            } else {
+                (174, 484, 328_964, 3_567)
+            }
         );
         // For each name: the archives in search order with the sizes of their copies. The
         // first supplies the name; for the last two names it is not the archive whose file
@@ -1807,6 +1811,10 @@ mod tests {
             ),
         ];
         for (name, expected) in examples {
+            // One of the archives of this name is in the English install only.
+            if name == "animals/mntnlion.ai" && crate::pe::installed_language(&dir) == 1036 {
+                continue;
+            }
             let found = copies(&vfs, name);
             let expected: Vec<_> = expected.iter().map(|&(n, s)| (n.to_string(), s)).collect();
             assert_eq!(found, expected, "{name}");

@@ -98,7 +98,7 @@ A dependency is added by the milestone that first uses it. Today: `sdl3`, `zip`,
 ## Tests
 
 - Unit tests build synthetic bytes in code.
-- Tests on real data are `#[ignore]` and read `ZT_DATA_DIR`; run them with `cargo test -- --ignored`.
+- Tests on real data are `#[ignore]` and read `ZT_DATA_DIR`; run them with `cargo test -- --ignored`. They run on the English and the French install, picking expected values by the language of `lang0.dll`; `ci/gate.sh` runs them a second time on `ZT_DATA_DIR_FR` (step `full-fr`).
 - `README.md` and this document merge as a union (`.gitattributes`), so two changes to the same row do not conflict; `ci/check-doc-rows.sh` fails on a table row with the same first cell as another in its table, or two bullets with the same bold lead in a section, which is what a union merge leaves behind.
 - CI builds on Linux, Windows and macOS, runs `window-smoke`, and runs the commands on the two official trials (`ci/check-trials.sh`), including a windowed run on the dummy video driver, a timing summary and a window screenshot on the real video driver (see The window).
 - Nothing derived from the game is committed.

@@ -371,6 +371,19 @@ mod tests {
         assert_eq!(tables.libraries().count(), 19);
         assert_eq!(tables.libraries().next(), Some("lang300.dll"));
         assert_eq!(tables.libraries().last(), Some("lang0.dll"));
+        if crate::pe::installed_language(&dir) == 1036 {
+            // The same libraries supply the same ids; the texts are not English.
+            for (id, library) in [
+                (7077, "lang300.dll"),
+                (5184, "lang019.dll"),
+                (5006, "lang0.dll"),
+            ] {
+                let (found, text) = tables.string_source(id).unwrap();
+                assert_eq!((found, text.is_empty()), (library, false), "{id}");
+            }
+            assert_eq!(tables.text("lion_general").len(), 1905);
+            return;
+        }
         assert_eq!(tables.string_source(314).map(|s| s.0), Some("lang300.dll"));
         assert_eq!(
             tables.string_source(7077),

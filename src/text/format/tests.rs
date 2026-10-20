@@ -296,6 +296,19 @@ fn the_installed_strings_format_as_the_game_does() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let tables = StringTables::open(std::path::Path::new(&dir)).unwrap();
     assert_eq!(money(&tables, 74878, true), "$74,878");
+    if crate::pe::installed_language(&dir) == 1036 {
+        // The month and weekday names come from the engine, so the French patterns give the same
+        // names; only the text around them differs.
+        let first = day(2001, 1, 1, 0);
+        for id in [22012, 22014] {
+            let text = date(tables.string(id), &first);
+            assert!(text.starts_with("Jan") && text.ends_with('1'), "{text}");
+        }
+        assert!(date(tables.string(22013), &first).starts_with("Mon"));
+        assert!(!graph_month(&tables, 12).is_empty());
+        assert!(build(&tables, 1030, &[Text("X")]).contains('X'));
+        return;
+    }
     // The shapes of the installed patterns, without quoting them.
     let first = day(2001, 1, 1, 0);
     let long = date(tables.string(22012), &first);

@@ -306,12 +306,16 @@ fn hostile_text_does_not_panic() {
 fn full_game_survey() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let found = survey(&Vfs::open(std::path::Path::new(&dir)).unwrap()).unwrap();
-    assert_eq!(
-        (found.files, found.sets, found.calls, found.tables),
-        (263, 20299, 60727, 432)
-    );
-    assert_eq!((found.unknown, found.defects), (276, 33));
-    assert_eq!(found.counts["fPlay"], 25538);
+    // The French install ships other files, so its totals differ.
+    let french = crate::pe::installed_language(&dir) == 1036;
+    let (counts, rest, play) = if french {
+        ((261, 20189, 60252, 430), (274, 32), 25295)
+    } else {
+        ((263, 20299, 60727, 432), (276, 33), 25538)
+    };
+    assert_eq!((found.files, found.sets, found.calls, found.tables), counts);
+    assert_eq!((found.unknown, found.defects), rest);
+    assert_eq!(found.counts["fPlay"], play);
 }
 
 #[test]

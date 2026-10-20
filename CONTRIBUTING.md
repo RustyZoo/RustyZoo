@@ -20,13 +20,13 @@ Everything is written in English: code, comments, commit messages, pull requests
   cargo test
   ```
 
-  `ci/gate.sh [trials dir]` runs them all (plus the ignored full-game tests when `ZT_DATA_DIR` is set, and `ci/check-trials.sh` on the trials dir) and prints one line per step.
+  `ci/gate.sh [trials dir]` runs them all (plus the ignored full-game tests when `ZT_DATA_DIR` is set, again on a second install when `ZT_DATA_DIR_FR` is set, and `ci/check-trials.sh` on the trials dir) and prints one line per step.
 
 ## Original game data
 
 Never commit original game files, or anything derived from them: extracted sprites, texts, decompiled code and the like. RustyZoo must contain no original code or assets.
 
-Tests that need real game data are marked `#[ignore]` and read the install path of the game from the `ZT_DATA_DIR` environment variable. Run them with `cargo test -- --ignored`.
+Tests that need real game data are marked `#[ignore]` and read the install path of the game from the `ZT_DATA_DIR` environment variable. Run them with `cargo test -- --ignored`. They expect either the English or the French install and pick their expected values by the language of `lang0.dll`.
 
 ## Dependencies
 

@@ -720,7 +720,11 @@ mod tests {
         }
         assert_eq!(
             (sections, keys, values, empty),
-            (33_621, 202_459, 300_138, 3)
+            if crate::pe::installed_language(&dir) == 1036 {
+                (33_610, 202_431, 300_109, 3)
+            } else {
+                (33_621, 202_459, 300_138, 3)
+            }
         );
     }
 
