@@ -507,6 +507,7 @@ impl Animal {
         for (c, saved) in self.counters.iter_mut().zip(&r.counters) {
             *c = saved.unwrap_or(*c);
         }
+        self.breath = r.breath.unwrap_or(self.breath);
         self.at_minimum_health = r.at_minimum_health;
         self.very_unhappy = r.very_unhappy;
         self.keeper_visited = r.keeper_visited;

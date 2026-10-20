@@ -118,7 +118,7 @@ pub fn kind(world: &World, t: usize) -> u8 {
     }
 }
 
-/// `setTerrainMode(mode, send)` (tank fauna 5) after the water check: the animal takes the terrain
+/// The terrain mode change (tank fauna 5) after the water check: the animal takes the terrain
 /// mode (a species that lives only under water, always the tank mode); when it changes, the animal
 /// walks to the tile `pick` of the tiles of its exhibit and its amphibious neighbours that have
 /// the new kind.
