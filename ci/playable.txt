@@ -6,9 +6,9 @@
 # worker, then the game unpaused. ci/check-playable.sh runs it twice and reads the log.
 #
 # The window is the default one (1024x768); every position is in its pixels. The game is built while
-# it is paused. The game starts on its map and not from the main menu because a run from the menu
-# ignores --seed (issue 500). The seed 5 draws women for the two hires: the staff of the base trial
-# are women only, and the Hire list is empty when a man is drawn. The trial's staff cost nothing
+# it is paused. The game starts on its map: there the seed 5 draws women for the two hires (the
+# staff of the base trial are women only, and the Hire list is empty when a man is drawn); a game
+# started from the main menu draws a man for the second hire. The trial's staff cost nothing
 # and its keeper rakes no dung, so the gazelles are happy until the first dung and unhappy after it.
 # A gazelle lives 4320 s of the game, about the length of the run: one may die of old age in the
 # thirteenth month.

@@ -4,12 +4,14 @@
 # maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
 # reads the log.
 #
-# The window is the default one (1024x768); every position is in its pixels. The tank filter is
-# left out: it cannot be placed yet (issue 471). The rays' happiness is left out: the rating of the
-# bare tank is 66 and the species wants 70, and the rating of tanks is not complete yet (issue 325).
+# The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
+# and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
+# rocks and plants cost points) and want 70; with these they rate it 91. The rays' happiness is left
+# out until the rating of tanks is complete (issue 325).
 # The seed 5 draws women for the three hires (the staff of the trials are women only, and the Hire
-# list is empty when a man is drawn).
-#run maps/sm_aqua.zoo --cash 75000 --seed 5 --passes 5700 --clock 200
+# list is empty when a man is drawn) when the game starts on its map; a game started from the main
+# menu draws a man for the second hire.
+#run maps/sm_aqua.zoo --cash 75000 --seed 5 --passes 5800 --clock 200
 #exhibit 16,35,21,40
 #months 3
 #expect 1 exhibit gate [0-9]+
@@ -19,6 +21,7 @@
 #expect 1 unit add [0-9]+ worker
 #expect 1 unit add [0-9]+ guide
 #expect 1 exhibit tank [0-9]+
+#expect 1 world filter [0-9]+
 #pending happiness 325
 2 pause
 # construction panel, fence tab: tank walls round a tank of 6 x 6 tiles at 16..21, 35..40
@@ -46,7 +49,6 @@
 26 up
 27 key enter
 30 key escape
-# (the tank filter is pending: it cannot be placed yet, RustyZoo issue 471)
 # objects panel: a food stand (structures tab) and a trash can (scenery tab) by the path
 32 mouse 25 129
 33 down
@@ -140,7 +142,65 @@
 157 mouse 220 291
 158 down
 159 up
+# construction panel, fence tab: a tank filter beside the tank, on the side away from the gate
+162 mouse 25 34
+163 down
+164 up
+166 mouse 183 74
+167 down
+168 up
+170 mouse 70 80
+171 down
+172 up
+174 mouse 268 220
+175 down
+176 up
+# rocks tab, scrolled down: a rock of 2 x 2 tiles in a corner of the tank (the rays want rocks on
+# about 14 % of its slots, a value that this rock gives them)
+178 mouse 183 174
+179 down
+180 up
+182 mouse 100 200
+183 wheel -10
+185 mouse 70 200
+186 down
+187 up
+189 mouse 508 196
+190 down
+191 up
+# foliage tab, scrolled down: a plant the rays value on seven tiles of the tank (they want plants on
+# about 20 % of its tiles)
+193 mouse 183 141
+194 down
+195 up
+197 mouse 100 200
+198 wheel -10
+200 mouse 70 120
+201 down
+202 up
+204 mouse 300 180
+205 down
+206 up
+208 mouse 332 228
+209 down
+210 up
+212 mouse 332 164
+213 down
+214 up
+216 mouse 364 212
+217 down
+218 up
+220 mouse 364 148
+221 down
+222 up
+224 mouse 396 196
+225 down
+226 up
+228 mouse 396 132
+229 down
+230 up
+232 key escape
 # run unpaused
-162 pause
+262 pause
 # the fourth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
-5600 char Z
+5700 char Z

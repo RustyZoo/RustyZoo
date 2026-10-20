@@ -15,10 +15,11 @@
 #                         The checks fail when the game did not build it; they never skip for it
 #   #pending <check> N    leaves the check out until the issue N is fixed
 #
-# Both logs must be the same, byte for byte (the run has no state hash, issue 501; the lines carry
-# the units, guests, money, rating and the hash of every frame). The checks below read the first log;
-# a line says `ok`, `skipped` (the game has nothing for it), `pending` or FAILED. Exit status: 1 if one
-# failed.
+# Both logs must have the same state hashes (the `sim hash` line of each month change) and be the
+# same, byte for byte (the lines carry the units, guests, money, rating and the hash of every frame).
+# The line `ok: <script>: ... last frame F, last state S` gives the last hashes, which CI compares
+# between systems. The checks below read the first log; a line says `ok`, `skipped` (the game has
+# nothing for it), `pending` or FAILED. Exit status: 1 if one failed.
 set -u
 export SDL_AUDIO_DRIVER=dummy # never a real audio device
 bin=$1
@@ -59,10 +60,17 @@ for r in a b; do
 done
 tr -d '\r' <"$tmp/a.log" >"$tmp/log"
 
-# The same game twice.
-if cmp -s "$tmp/a.log" "$tmp/b.log"; then
+# The same game twice: the same state at each month change, then the same log.
+hashes() { awk '$4 == "sim" && $5 == "hash" { print $1, $2, $6 }' "$tmp/$1.log" | tr -d '\r'; }
+hashes a >"$tmp/a.hash"
+hashes b >"$tmp/b.hash"
+if [ ! -s "$tmp/a.hash" ]; then
+  fail "no state hash: the run shows no month change"
+elif ! cmp -s "$tmp/a.hash" "$tmp/b.hash"; then
+  fail "the state hashes of the two runs differ from the month change $(cmp "$tmp/a.hash" "$tmp/b.hash" | sed 's/.*line //') on: $(diff "$tmp/a.hash" "$tmp/b.hash" | sed -n 's/^< //p' | head -1)"
+elif cmp -s "$tmp/a.log" "$tmp/b.log"; then
   last=$(awk '$4 == "draw" && $5 != "-" { h = $5 } END { print h }' "$tmp/log")
-  ok "two runs of $SECONDS s, the same $(wc -l <"$tmp/log" | tr -d ' ') lines, last frame $last"
+  ok "two runs of $SECONDS s, the same $(wc -l <"$tmp/log" | tr -d ' ') lines, last frame $last, last state $(tail -n 1 "$tmp/a.hash" | cut -d' ' -f3)"
 else
   fail "the two runs differ: first line $(cmp "$tmp/a.log" "$tmp/b.log" | sed 's/.*line //')"
 fi

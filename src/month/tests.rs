@@ -226,3 +226,38 @@ fn the_month_end_shifts_the_exhibits_figures_and_the_shift_is_in_the_state_hash(
     assert_ne!(after, crate::sim::hash::state(&sim, &w, &money));
     assert_ne!(before, after);
 }
+
+#[test]
+fn a_replay_of_a_test_run_has_its_state_hash() {
+    let cat = catalogue();
+    let run = |replay: Option<Vec<u32>>| {
+        let mut w = world((4, 4), |_, _| {});
+        let (mut sim, mut money) = (Sim::new(b""), Money::default());
+        match replay {
+            Some(seeds) => sim.set_seeds(seeds),
+            None => sim.set_seed(1),
+        }
+        sim.start_game(16, Clocks::default());
+        let mut seeds = Vec::new();
+        for _ in 0..400 {
+            sim.step_game(
+                &crate::behaviour::NoData,
+                &cat,
+                &mut w,
+                &mut money,
+                1000,
+                |_, _, _| {},
+            );
+            let lines = sim.take_lines();
+            seeds.extend(
+                lines
+                    .iter()
+                    .filter_map(|l| l.strip_prefix("seed ")?.parse::<u32>().ok()),
+            );
+        }
+        (crate::sim::hash::state(&sim, &w, &money), seeds)
+    };
+    let (hash, seeds) = run(None);
+    assert_eq!(seeds, [1, 2, 3], "the start, the map and one month end");
+    assert_eq!(run(Some(seeds)).0, hash);
+}

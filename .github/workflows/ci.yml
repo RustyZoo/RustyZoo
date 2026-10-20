@@ -32,7 +32,7 @@ jobs:
       run:
         shell: bash
     # The state hashes of the simulation, one output per system: a leg sets only its own, and the
-    # job `simhash` compares them.
+    # job `hashes` compares them.
     outputs:
       linux: ${{ steps.simhash.outputs.linux }}
       windows: ${{ steps.simhash.outputs.windows }}
@@ -45,18 +45,21 @@ jobs:
       SDL_RENDER_DRIVER: software
       SDL_AUDIO_DRIVER: dummy
     steps:
-      - uses: actions/checkout@v7
+      - &checkout
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       # Never the real user folder of the runner.
-      - name: Set the user folder
+      - &user-folder
+        name: Set the user folder
         run: echo "RUSTYZOO_USER_DIR=$RUNNER_TEMP/rustyzoo-user" >> "$GITHUB_ENV"
 
       # The SDL3 build dependencies from SDL's docs/README-linux.md (Ubuntu 22.04+ list),
       # without the build tools the runner already has. They make SDL build its real
       # X11, Wayland, ALSA, PulseAudio and PipeWire backends.
-      - name: Install SDL build dependencies
+      - &sdl-dependencies
+        name: Install SDL build dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -68,10 +71,12 @@ jobs:
             libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev \
             liburing-dev xvfb
 
-      - name: Install the Rust toolchain from rust-toolchain.toml
+      - &toolchain
+        name: Install the Rust toolchain from rust-toolchain.toml
         run: rustup toolchain install --profile minimal
 
-      - uses: actions/cache@v6
+      - &cargo-cache
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -134,7 +139,8 @@ jobs:
       # The two free official trials from Microsoft, extracted outside the checkout. Only the
       # extracted folders are cached; neither they nor the downloads are uploaded below. The
       # window screenshot step further down checks one picture of a map and publishes none.
-      - uses: actions/cache@v6
+      - &trials-cache
+        uses: actions/cache@v6
         with:
           path: |
             ${{ runner.temp }}/trials/base-trial
@@ -156,23 +162,9 @@ jobs:
           [ "$status" = 0 ] || exit "$status"
           ci/check-trials.sh ${{ matrix.path }} "$trials"
 
-      # The two games of the exit test of milestone M6, played by script (docs/playing.md), each twice
-      # at the same time on the real data: the freeform game of the base trial to the thirteenth month
-      # and the tank of the expansion trial for three months. The runs and their checks take about
-      # eight and two minutes.
-      - name: Play the freeform and tank games
-        run: |
-          trials="${RUNNER_TEMP//\\//}/trials"
-          if [ ! -d "$trials/base-trial" ] || [ ! -d "$trials/expansion-trial" ]; then
-            echo "::warning title=Games skipped::No trial data on this runner."
-            exit 0
-          fi
-          ci/check-playable.sh ${{ matrix.path }} "$trials/base-trial" ci/playable.txt
-          ci/check-playable.sh ${{ matrix.path }} "$trials/expansion-trial" ci/playable-tank.txt
-
       # The state hash of 1000 simulation steps of every map of the trials, with steps of 67 ms and
       # of 1000 ms (two month changes), kept as a job output (nothing is uploaded) for the job
-      # `simhash`.
+      # `hashes`.
       - name: State hash of the simulation
         id: simhash
         run: |
@@ -236,44 +228,121 @@ jobs:
           path: ${{ matrix.path }}
           if-no-files-found: error
 
+  # The two games of the exit test of milestone M6, played by script (docs/playing.md) on the real data,
+  # beside the build: each twice at the same time, the freeform game of the base trial to the
+  # thirteenth month and the tank of the expansion trial for three months (about eight and two
+  # minutes). The last frame and state hashes of each game are kept as a job output (nothing is
+  # uploaded) for the job `hashes`.
+  play:
+    name: play (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            system: linux
+            bin: target/release/rustyzoo
+          - os: windows-2025
+            system: windows
+            bin: target/release/rustyzoo.exe
+          - os: macos-15
+            system: macos
+            bin: target/release/rustyzoo
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      linux: ${{ steps.play.outputs.linux }}
+      windows: ${{ steps.play.outputs.windows }}
+      macos: ${{ steps.play.outputs.macos }}
+    env:
+      SDL_VIDEO_DRIVER: dummy
+      SDL_RENDER_DRIVER: software
+      SDL_AUDIO_DRIVER: dummy
+    steps:
+      - *checkout
+      - *user-folder
+      - *sdl-dependencies
+      - *toolchain
+      - *cargo-cache
+      - run: cargo build --release
+      - *trials-cache
+
+      - name: Fetch the official trials
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          status=0
+          ci/fetch-trials.sh "$trials" || status=$?
+          if [ "$status" = 3 ]; then
+            rm -rf "$trials"
+            echo "::warning title=Trials skipped::A trial download was unavailable, so the games were not played."
+            exit 0
+          fi
+          exit "$status"
+
+      - name: Play the freeform and tank games
+        id: play
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          if [ ! -d "$trials/base-trial" ] || [ ! -d "$trials/expansion-trial" ]; then
+            echo "::warning title=Games skipped::No trial data on this runner."
+            exit 0
+          fi
+          status=0
+          ci/check-playable.sh ${{ matrix.bin }} "$trials/base-trial" ci/playable.txt | tee "$RUNNER_TEMP/play.out" || status=1
+          ci/check-playable.sh ${{ matrix.bin }} "$trials/expansion-trial" ci/playable-tank.txt | tee -a "$RUNNER_TEMP/play.out" || status=1
+          hashes=$(sed -n 's/^ok: \([^:]*\): two runs .*, last frame \([0-9a-f]*\), last state \([0-9a-f]*\)$/\1=\2,\3/p' "$RUNNER_TEMP/play.out" | tr '\n' ' ')
+          echo "${{ matrix.system }}=$hashes" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
-  # and long) is the same on the three systems, and no map fails to run. A system without trial data
-  # is skipped with a warning.
-  simhash:
-    name: simulation hash
-    needs: build
+  # and long) is the same on the three systems, and no map fails to run; so are the last frame and
+  # state hashes of each played game. A system without trial data is skipped with a warning.
+  hashes:
+    name: hashes
+    needs: [build, play]
     runs-on: ubuntu-24.04
     env:
       LINUX: ${{ needs.build.outputs.linux }}
       WINDOWS: ${{ needs.build.outputs.windows }}
       MACOS: ${{ needs.build.outputs.macos }}
+      PLAY_LINUX: ${{ needs.play.outputs.linux }}
+      PLAY_WINDOWS: ${{ needs.play.outputs.windows }}
+      PLAY_MACOS: ${{ needs.play.outputs.macos }}
     steps:
       - run: |
-          printf 'linux:   %s\nwindows: %s\nmacos:   %s\n' "$LINUX" "$WINDOWS" "$MACOS"
-          seen=0
-          for hashes in "$LINUX" "$WINDOWS" "$MACOS"; do
-            [ -n "$hashes" ] || continue
-            seen=$((seen + 1))
-            [ "$hashes" = "${first:=$hashes}" ] || {
-              echo "the state hash of the simulation differs between systems"
-              exit 1
-            }
-          done
+          failed=0
+          same() { # same <what> <linux> <windows> <macos>
+            printf '%s\n  linux:   %s\n  windows: %s\n  macos:   %s\n' "$1" "$2" "$3" "$4"
+            seen=0 first=
+            for hashes in "$2" "$3" "$4"; do
+              [ -n "$hashes" ] || continue
+              seen=$((seen + 1))
+              [ "$hashes" = "${first:=$hashes}" ] || { echo "the $1 differ between systems"; failed=1; return; }
+            done
+            if [ "$seen" -lt 3 ]; then
+              echo "::warning title=$1::Only $seen of 3 systems had trial data, so the hashes were not all compared."
+            fi
+          }
+          same "state hashes of the simulation" "$LINUX" "$WINDOWS" "$MACOS"
           case "$LINUX$WINDOWS$MACOS" in
             *=failed*)
               echo "a map did not run"
-              exit 1
+              failed=1
               ;;
           esac
-          if [ "$seen" -lt 3 ]; then
-            echo "::warning title=Simulation hash::Only $seen of 3 systems had trial data, so the hashes were not all compared."
-          fi
+          same "hashes of the played games" "$PLAY_LINUX" "$PLAY_WINDOWS" "$PLAY_MACOS"
+          exit "$failed"
 
-  # The single required status check: fails unless every build leg and the hash comparison succeeded.
+  # The single required status check: fails unless every build and play leg and the hash comparison
+  # succeeded.
   ci:
     name: ci
-    needs: [build, simhash]
+    needs: [build, play, hashes]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     steps:
-      - run: test "${{ needs.build.result }}" = success && test "${{ needs.simhash.result }}" = success
+      - run: |
+          test "${{ needs.build.result }}" = success && test "${{ needs.play.result }}" = success &&
+            test "${{ needs.hashes.result }}" = success
