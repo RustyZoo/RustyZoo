@@ -163,22 +163,17 @@ impl Interface {
 
     /// Gives the button `id` this icon (none removes it); `false` if there is no such element.
     pub fn set_icon(&mut self, id: i32, icon: Option<Picture>) -> bool {
-        self.set_icon_frame(id, icon, (0, 0, false))
+        self.set_icon_file(id, icon, None)
     }
 
-    /// As [`Interface::set_icon`], showing the sprite file, the frame and the reflection `frame`
-    /// of an animated icon.
-    pub fn set_icon_frame(
-        &mut self,
-        id: i32,
-        icon: Option<Picture>,
-        frame: (usize, usize, bool),
-    ) -> bool {
+    /// As [`Interface::set_icon`] for an animated icon shown from sprite file `file` of its set,
+    /// centred in the button and clipped to it.
+    pub fn set_icon_file(&mut self, id: i32, icon: Option<Picture>, file: Option<usize>) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
         let look = &mut self.tree.elements[i].look;
-        (look.icon, look.icon_frame) = (icon, frame);
+        (look.icon, look.icon_file) = (icon, file);
         self.dirty = true;
         true
     }

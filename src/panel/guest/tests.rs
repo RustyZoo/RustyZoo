@@ -146,10 +146,10 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
     // No selection, no such entity, and an entity that is not a guest: nothing.
     for id in [None, Some(99), Some(1)] {
         panel.selected = id;
-        assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs, 0, now), None);
+        assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs, now), None);
     }
     panel.select(2);
-    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0, now).unwrap();
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, now).unwrap();
     assert_eq!(
         told,
         "guest 2 \"\" happiness 75 drink 70 food 40 restroom 90 energy 20 time \"T0\" \
@@ -165,7 +165,7 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
     assert_eq!((help(3481), help(3483)), (vec![6303], vec![]));
     assert_eq!(state(&ui, 3416) & DISABLED, 0);
     assert_eq!(
-        panel.refresh(&mut ui, &world, &cat, &vfs, 0, now),
+        panel.refresh(&mut ui, &world, &cat, &vfs, now),
         None,
         "unchanged"
     );
@@ -176,38 +176,37 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
         c.advance(1500 * 500);
         c.date()
     };
-    let told = panel
-        .refresh(&mut ui, &world, &cat, &vfs, 0, later)
-        .unwrap();
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, later).unwrap();
     assert!(told.contains("time \"T1\""), "{told}");
     assert_ne!(state(&ui, 3416) & DISABLED, 0);
 }
 
 #[test]
-fn the_follow_button_shows_the_units_frame_when_shown_and_when_forced_only() {
+fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
     let (mut ui, vfs, mut world) = panel_in_game("guest-panel-follow");
     let cat = follow::catalogue("guests", "guest");
     let mut panel = Panel::default();
     panel.select(2);
     let now = Calendar::new().date();
-    let frame = |ui: &Interface| follow::shown(ui, FOLLOW);
-    assert_eq!(frame(&ui), (false, (0, 0, false)), "blank until shown");
+    let shown = |ui: &Interface| follow::shown(ui, FOLLOW);
+    assert_eq!(shown(&ui), (false, None), "blank until shown");
     panel.clock.due(0, true, PERIOD);
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
-    assert!(frame(&ui).0, "set when the panel is shown");
-    assert_eq!(frame(&ui).1.1, 0);
-    // An ordinary refresh leaves the picture, a forced one takes the frame of the moment.
-    world.units.get_mut(2).unwrap().animation.frame = 1;
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    let first = shown(&ui);
+    assert!(first.0, "set when the panel is shown");
+    // The picture is the type's: what the unit plays does not change it.
+    let unit = world.units.get_mut(2).unwrap();
+    (unit.animation.name, unit.animation.frame) = ("walk".into(), 1);
+    ui.set_icon(FOLLOW, None);
     assert!(!panel.clock.due(1, false, PERIOD));
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
-    assert_eq!(frame(&ui).1.1, 0);
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    assert_eq!(shown(&ui), (false, None), "an ordinary refresh leaves it");
     panel.clock.force = true;
     assert!(panel.clock.due(1, false, PERIOD));
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
-    assert_eq!(frame(&ui).1.1, 1);
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    assert_eq!(shown(&ui), first, "a forced one sets it again");
+    ui.set_icon(FOLLOW, None);
     assert!(panel.clock.due(PERIOD, true, PERIOD));
-    world.units.get_mut(2).unwrap().animation.frame = 0;
-    assert!(!panel.clock.forced);
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
-    assert_eq!(frame(&ui).1.1, 1, "a periodic refresh keeps it");
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    assert_eq!(shown(&ui), (false, None), "a periodic one does not");
 }

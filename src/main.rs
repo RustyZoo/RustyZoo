@@ -311,7 +311,7 @@ usage: rustyzoo [--data <dir>] <command>
                       yellow or red as its habitat check judges it), the sex and when it last ate and slept,
                       refreshed every 5 s of clock while shown and not while the game is paused; its
                       recommendations button shows the plaque of that animal, its exhibit button the
-                      exhibit panel on its exhibit, its follow button (showing the animal's frame, taken when the panel opens and at a forced refresh such as a tab click) keeps the view on it, and a click
+                      exhibit panel on its exhibit, its follow button (showing its type's idle picture seen from the south-east, centred and clipped, set when the panel opens and at a forced refresh such as a tab click) keeps the view on it, and a click
                       anywhere else on the map closes it (the sell and pick-up buttons do nothing yet). `panel animal ID
                       \"NAME\" happiness H hunger N health L suitability S fed WORDS slept WORDS` tells what it
                       shows, when it opens and when a value changes, and `panel animal none` when it closes. A click on a
@@ -319,7 +319,7 @@ usage: rustyzoo [--data <dir>] <command>
                       salary, the text of its job, and a second tab with the exhibits assigned to a keeper or tour
                       guide or the duty switches of a maintenance worker, refreshed every second of clock while
                       shown and not while the game is paused; its fire button asks as the bulldozer does, its
-                      pick-up button picks it up, its follow button shows its frame (taken likewise), and its assign button (the second tab) starts the assign mode:
+                      pick-up button picks it up, its follow button shows its type's picture (set likewise), and its assign button (the second tab) starts the assign mode:
                       the exhibit under the pointer is tinted green when the keeper may serve it and red when
                       not, a click assigns it (or shows why not) and appends it to the list, a row of the list
                       centres the view on that exhibit's gate and opens the exhibit panel, the clear buttons
@@ -330,7 +330,7 @@ usage: rustyzoo [--data <dir>] <command>
                       of happiness, drink, food, restroom and energy (the needs as 100 minus their percentage, so a full
                       bar is a satisfied guest), and on the other tabs the time in the park, the favourite species, the
                       items held and the five newest thoughts of the guest, refreshed every 10 s of clock while shown and
-                      not while the game is paused; its pick-up button picks it up and its follow button (showing the guest's frame, taken likewise) keeps the view
+                      not while the game is paused; its pick-up button picks it up and its follow button (showing its type's picture, set likewise) keeps the view
                       on it. `panel guest ID \"NAME\" happiness H drink D food F restroom R energy E time \"TEXT\"
                       favourite \"NAME\" thoughts [TEXTS]` tells what it shows, when it opens and when a value changes, and
                       `panel guest none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel

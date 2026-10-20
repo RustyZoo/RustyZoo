@@ -4,7 +4,6 @@ use crate::entity::Catalogue;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::Tree;
-use crate::unit::Kind;
 
 pub(crate) struct Texts;
 
@@ -42,13 +41,12 @@ pub(crate) fn catalogue(class: &'static str, kind: &str) -> Catalogue {
     cat
 }
 
-/// What the follow button `id` shows: whether it has an animated icon, and the sprite file, the
-/// frame and the reflection.
-pub(crate) fn shown(ui: &Interface, id: i32) -> (bool, (usize, usize, bool)) {
+/// What the follow button `id` shows: whether it has an animated icon, and its sprite file.
+pub(crate) fn shown(ui: &Interface, id: i32) -> (bool, Option<usize>) {
     let look = &ui.tree.elements[ui.tree.find(id).unwrap()].look;
     (
         matches!(look.icon, Some(Picture::Animation(_))),
-        look.icon_frame,
+        look.icon_file,
     )
 }
 
@@ -71,52 +69,31 @@ fn button(name: &str) -> (Interface, Vfs) {
 }
 
 #[test]
-fn the_button_shows_the_frame_and_the_view_of_the_unit() {
+fn the_button_shows_the_idle_animation_seen_from_the_south_east() {
     let (mut ui, vfs) = button("follow-icon");
     let cat = catalogue("keeper", "keeper");
-    let ty = cat.types.first();
-    let mut unit = Unit::new(1, Kind::Keeper);
-    // The animation the type does not have falls back to its idle one; the frame is the unit's.
-    unit.animation.name = "walk".into();
-    unit.animation.frame = 1;
-    set_follow_icon(&mut ui, &vfs, 3114, ty, &unit, (0, 0));
-    let (animated, (file, frame, _)) = shown(&ui, 3114);
+    set_follow_icon(&mut ui, &vfs, 3114, cat.types.first());
+    let (animated, file) = shown(&ui, 3114);
     assert!(animated);
-    assert_eq!((file < 4, frame), (true, 1));
-    // Another facing and another turn of the map pick another sprite file.
-    let views: Vec<_> = [(0, 0), (2, 0), (0, 1), (7, 3)]
-        .map(|view| {
-            set_follow_icon(&mut ui, &vfs, 3114, ty, &unit, view);
-            shown(&ui, 3114).1.0
-        })
-        .into();
-    assert!(views.iter().any(|&f| f != views[0]), "{views:?}");
-    // A facing past the eighth is taken round.
-    set_follow_icon(&mut ui, &vfs, 3114, ty, &unit, (8, 0));
-    let wrapped = shown(&ui, 3114);
-    set_follow_icon(&mut ui, &vfs, 3114, ty, &unit, (0, 0));
-    assert_eq!(wrapped, shown(&ui, 3114));
+    // The view of facing 4 at rotation 0, as the set maps it.
+    let Some(Picture::Animation(a)) = ui.tree.elements[ui.tree.find(3114).unwrap()].look.icon
+    else {
+        panic!("no animation");
+    };
+    assert_eq!(
+        file,
+        Some(ui.tree.pictures.animations[a].view_of(4, 0).file)
+    );
 }
 
 #[test]
-fn a_unit_without_a_picture_clears_the_button() {
+fn a_type_without_a_picture_clears_the_button() {
     let (mut ui, vfs) = button("follow-icon-none");
-    let unit = Unit::new(1, Kind::Keeper);
     let cat = catalogue("keeper", "keeper");
-    set_follow_icon(&mut ui, &vfs, 3114, cat.types.first(), &unit, (0, 0));
+    set_follow_icon(&mut ui, &vfs, 3114, cat.types.first());
     assert!(shown(&ui, 3114).0);
-    // No type, a missing button and a huge frame are no harm.
-    set_follow_icon(&mut ui, &vfs, 3114, None, &unit, (0, 0));
-    assert_eq!(shown(&ui, 3114), (false, (0, 0, false)));
-    let mut far = Unit::new(2, Kind::Keeper);
-    far.animation.frame = u32::MAX;
-    set_follow_icon(
-        &mut ui,
-        &vfs,
-        3114,
-        cat.types.first(),
-        &far,
-        (u32::MAX, u8::MAX),
-    );
-    set_follow_icon(&mut ui, &vfs, 1, cat.types.first(), &far, (0, 0));
+    // No type clears it; a missing button is no harm.
+    set_follow_icon(&mut ui, &vfs, 3114, None);
+    assert_eq!(shown(&ui, 3114), (false, None));
+    set_follow_icon(&mut ui, &vfs, 1, cat.types.first());
 }

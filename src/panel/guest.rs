@@ -106,7 +106,6 @@ impl Panel {
         world: &World,
         cat: &Catalogue,
         vfs: &Vfs,
-        rotation: u8,
         now: Date,
     ) -> Option<String> {
         let id = self.selected?;
@@ -176,11 +175,7 @@ impl Panel {
             ui.set_button(FOLLOW, false, !unit.carried);
         }
         if fresh || self.clock.forced {
-            let facing = world.zoo.entities[at]
-                .common
-                .as_ref()
-                .map_or(0, |c| c.rotation);
-            set_follow_icon(ui, vfs, FOLLOW, ty, unit, (facing, rotation));
+            set_follow_icon(ui, vfs, FOLLOW, ty);
         }
         let moveable =
             ty.is_none_or(|t| crate::build::number(t, "cMoveable").is_none_or(|v| v != 0.0));

@@ -219,10 +219,10 @@ fn a_refresh_writes_the_bars_the_time_rows_and_the_buttons_and_tells_what_change
     // No selection, no such entity, and an entity that is not an animal: nothing.
     for id in [None, Some(99), Some(2)] {
         panel.selected = id;
-        assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0), None);
+        assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs, 0), None);
     }
     panel.select(1);
-    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0).unwrap();
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
     assert_eq!(
         told,
         "animal 1 \"\" happiness 99 hunger 30 health 50 suitability 0 fed Recently slept Recently"
@@ -232,14 +232,14 @@ fn a_refresh_writes_the_bars_the_time_rows_and_the_buttons_and_tells_what_change
     assert_eq!(flags(&ui, 3176) & HIDDEN, 0);
     assert_eq!(flags(&ui, 3111) & DISABLED, 0);
     assert_eq!(
-        panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0),
+        panel.refresh(&mut ui, &world, &cat, &vfs, 0),
         None,
         "unchanged"
     );
     // 1500 hours later the rows read "a while"; a carried animal cannot be sold.
     world.units.get_mut(1).unwrap().carried = true;
     let told = panel
-        .refresh(&mut ui, &world, &cat, &vfs, 0, 1500 * HOUR)
+        .refresh(&mut ui, &world, &cat, &vfs, 1500 * HOUR)
         .unwrap();
     assert!(told.ends_with("fed A while slept A while"), "{told}");
     for id in [3111, 3115, 3197] {
@@ -251,7 +251,7 @@ fn a_refresh_writes_the_bars_the_time_rows_and_the_buttons_and_tells_what_change
     };
     egg.egg = true;
     panel.select(3);
-    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0).unwrap();
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
     assert!(told.contains("happiness 100 hunger 100"), "{told}");
     for id in [3176, 3177, 3178, 3179] {
         assert_ne!(flags(&ui, id) & HIDDEN, 0, "{id}");
@@ -259,30 +259,30 @@ fn a_refresh_writes_the_bars_the_time_rows_and_the_buttons_and_tells_what_change
 }
 
 #[test]
-fn the_follow_button_shows_the_units_frame_when_shown_and_when_forced_only() {
+fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
     let (mut ui, vfs, mut world) = panel_in_game("animal-panel-follow");
     let cat = follow::catalogue("animals", "zebra");
     let mut panel = Panel::default();
     panel.select(1);
-
-    let frame = |ui: &Interface| follow::shown(ui, FOLLOW);
-    assert_eq!(frame(&ui), (false, (0, 0, false)), "blank until shown");
+    let shown = |ui: &Interface| follow::shown(ui, FOLLOW);
+    assert_eq!(shown(&ui), (false, None), "blank until shown");
     panel.clock.due(0, true, PERIOD);
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0);
-    assert!(frame(&ui).0, "set when the panel is shown");
-    assert_eq!(frame(&ui).1.1, 0);
-    // An ordinary refresh leaves the picture, a forced one takes the frame of the moment.
-    world.units.get_mut(1).unwrap().animation.frame = 1;
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    let first = shown(&ui);
+    assert!(first.0, "set when the panel is shown");
+    // The picture is the type's: what the unit plays does not change it.
+    let unit = world.units.get_mut(1).unwrap();
+    (unit.animation.name, unit.animation.frame) = ("walk".into(), 1);
+    ui.set_icon(FOLLOW, None);
     assert!(!panel.clock.due(1, false, PERIOD));
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0);
-    assert_eq!(frame(&ui).1.1, 0);
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    assert_eq!(shown(&ui), (false, None), "an ordinary refresh leaves it");
     panel.clock.force = true;
     assert!(panel.clock.due(1, false, PERIOD));
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0);
-    assert_eq!(frame(&ui).1.1, 1);
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    assert_eq!(shown(&ui), first, "a forced one sets it again");
+    ui.set_icon(FOLLOW, None);
     assert!(panel.clock.due(PERIOD, true, PERIOD));
-    world.units.get_mut(1).unwrap().animation.frame = 0;
-    assert!(!panel.clock.forced);
-    panel.refresh(&mut ui, &world, &cat, &vfs, 0, 0);
-    assert_eq!(frame(&ui).1.1, 1, "a periodic refresh keeps it");
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    assert_eq!(shown(&ui), (false, None), "a periodic one does not");
 }

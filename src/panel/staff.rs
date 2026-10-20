@@ -194,7 +194,6 @@ impl Panel {
         world: &World,
         cat: &Catalogue,
         vfs: &Vfs,
-        rotation: u8,
         placing: bool,
     ) -> Option<String> {
         let id = self.selected?;
@@ -237,11 +236,7 @@ impl Panel {
             ui.set_button(FOLLOW, false, !unit.carried);
         }
         if fresh || self.clock.forced {
-            let facing = world.zoo.entities[at]
-                .common
-                .as_ref()
-                .map_or(0, |c| c.rotation);
-            set_follow_icon(ui, vfs, FOLLOW, ty, unit, (facing, rotation));
+            set_follow_icon(ui, vfs, FOLLOW, ty);
         }
         for button in [PICK_UP, FIRE] {
             ui.set_enabled(button, !unit.carried);

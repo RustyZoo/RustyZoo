@@ -108,7 +108,7 @@ fn units_that_are_not_staff_have_no_text() {
 }
 
 #[test]
-fn the_follow_button_shows_the_units_frame_when_shown_and_when_forced_only() {
+fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
     use crate::panel::follow::tests as follow;
     use crate::unit::testing::{centre, entity, world};
     let layout = "[LayoutInfo]\nid=17\nx=0\ny=0\ndx=40\ndy=40\n\
@@ -133,25 +133,28 @@ fn the_follow_button_shows_the_units_frame_when_shown_and_when_forced_only() {
     let cat = follow::catalogue("keeper", "keeper");
     let mut panel = Panel::default();
     panel.select(1);
-    let frame = |ui: &Interface| follow::shown(ui, FOLLOW);
-    assert_eq!(frame(&ui), (false, (0, 0, false)), "blank until shown");
     let refresh = |ui: &mut Interface, world: &World, panel: &mut Panel| {
-        panel.refresh(ui, world, &cat, &vfs, 0, false);
+        panel.refresh(ui, world, &cat, &vfs, false);
     };
+    let shown = |ui: &Interface| follow::shown(ui, FOLLOW);
+    assert_eq!(shown(&ui), (false, None), "blank until shown");
     panel.clock.due(0, true, PERIOD);
     refresh(&mut ui, &world, &mut panel);
-    assert!(frame(&ui).0, "set when the panel is shown");
-    assert_eq!(frame(&ui).1.1, 0);
-    world.units.get_mut(1).unwrap().animation.frame = 1;
+    let first = shown(&ui);
+    assert!(first.0, "set when the panel is shown");
+    // The picture is the type's: what the unit plays does not change it.
+    let unit = world.units.get_mut(1).unwrap();
+    (unit.animation.name, unit.animation.frame) = ("walk".into(), 1);
+    ui.set_icon(FOLLOW, None);
     assert!(!panel.clock.due(1, false, PERIOD));
     refresh(&mut ui, &world, &mut panel);
-    assert_eq!(frame(&ui).1.1, 0, "an ordinary refresh leaves it");
+    assert_eq!(shown(&ui), (false, None), "an ordinary refresh leaves it");
     panel.clock.force = true;
     assert!(panel.clock.due(1, false, PERIOD));
     refresh(&mut ui, &world, &mut panel);
-    assert_eq!(
-        frame(&ui).1.1,
-        1,
-        "a forced one takes the frame of the moment"
-    );
+    assert_eq!(shown(&ui), first, "a forced one sets it again");
+    ui.set_icon(FOLLOW, None);
+    assert!(panel.clock.due(PERIOD, true, PERIOD));
+    refresh(&mut ui, &world, &mut panel);
+    assert_eq!(shown(&ui), (false, None), "a periodic one does not");
 }

@@ -155,7 +155,6 @@ impl Panel {
         world: &World,
         cat: &Catalogue,
         vfs: &Vfs,
-        rotation: u8,
         now: u64,
     ) -> Option<String> {
         let id = self.selected?;
@@ -193,11 +192,7 @@ impl Panel {
             ui.set_button(FOLLOW, false, !carried);
         }
         if fresh || self.clock.forced {
-            let facing = world.zoo.entities[at]
-                .common
-                .as_ref()
-                .map_or(0, |c| c.rotation);
-            set_follow_icon(ui, vfs, FOLLOW, ty, unit, (facing, rotation));
+            set_follow_icon(ui, vfs, FOLLOW, ty);
         }
         let moveable = ty.is_none_or(|t| number(t, "cMoveable").is_none_or(|v| v != 0.0));
         ui.set_enabled(SELL, !carried);

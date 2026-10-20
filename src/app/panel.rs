@@ -268,35 +268,24 @@ impl App<'_> {
             return;
         };
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
-        let rotation = game.camera.rotation;
         if ui.shown(LAYOUT) && game.panel.clock.due(now, ticking, exhibit::PERIOD) {
             let lines = game.panel.refresh(ui, &game.world, cat, vfs);
             self.panel_lines.extend(lines);
         }
         if ui.shown(animal::LAYOUT) && game.animal.clock.due(now, ticking, animal::PERIOD) {
             let when = self.sim.calendar().state().0;
-            self.panel_lines.extend(
-                game.animal
-                    .refresh(ui, &game.world, cat, vfs, rotation, when),
-            );
+            self.panel_lines
+                .extend(game.animal.refresh(ui, &game.world, cat, vfs, when));
         }
         if ui.shown(staff::LAYOUT) && game.staff.clock.due(now, ticking, staff::PERIOD) {
             let placing = game.pending.is_some() || game.carry.is_some();
-            self.panel_lines.extend(game.staff.refresh(
-                ui,
-                &game.world,
-                cat,
-                vfs,
-                rotation,
-                placing,
-            ));
+            self.panel_lines
+                .extend(game.staff.refresh(ui, &game.world, cat, vfs, placing));
         }
         if ui.shown(guest::LAYOUT) && game.guest.clock.due(now, ticking, guest::PERIOD) {
             let date = self.sim.calendar().date();
-            self.panel_lines.extend(
-                game.guest
-                    .refresh(ui, &game.world, cat, vfs, rotation, date),
-            );
+            self.panel_lines
+                .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
         if game.panel.plaque.is_some() && game.panel.plaque_clock.due(now, ticking, exhibit::PERIOD)
         {
