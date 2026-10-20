@@ -116,11 +116,7 @@ fn base(r: &mut Reader) -> R<Common> {
         name,
         colors,
         fence: None,
-        movement_mode: 0,
-        food: 0,
-        animal: None,
-        guest: None,
-        filter: None,
+        ..Default::default()
     })
 }
 

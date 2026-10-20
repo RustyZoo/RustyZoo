@@ -113,11 +113,7 @@ fn entity_at(class: &str, name: &str, subtype: &str, x: i32, y: i32, rotation: u
             name: String::new(),
             colors: Vec::new(),
             fence,
-            movement_mode: 0,
-            food: 0,
-            animal: None,
-            guest: None,
-            filter: None,
+            ..Default::default()
         }),
     }
 }

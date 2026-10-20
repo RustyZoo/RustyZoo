@@ -330,11 +330,7 @@ impl Session<'_> {
                 name: String::new(),
                 colors: Vec::new(),
                 fence,
-                movement_mode: 0,
-                food: 0,
-                animal: None,
-                guest: None,
-                filter: None,
+                ..Default::default()
             }),
         };
         let shape = self.app.renderer.shape(&entity);

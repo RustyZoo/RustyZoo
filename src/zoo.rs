@@ -87,7 +87,7 @@ pub struct Tile {
 }
 
 /// The part every entity body ends with.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Common {
     /// World position; a tile is 64 by 64 units and a world z unit is 1/16 of an elevation step.
     pub x: i32,

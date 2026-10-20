@@ -480,11 +480,7 @@ pub(crate) fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
-            movement_mode: 0,
-            food: 0,
-            animal: None,
-            guest: None,
-            filter: None,
+            ..Default::default()
         }),
     };
     Zoo {
@@ -1093,11 +1089,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
-            movement_mode: 0,
-            food: 0,
-            animal: None,
-            guest: None,
-            filter: None,
+            ..Default::default()
         }),
     };
     let zoo = Zoo {
@@ -1409,11 +1401,7 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
                     name: String::new(),
                     colors: stored.to_vec(),
                     fence: None,
-                    movement_mode: 0,
-                    food: 0,
-                    animal: None,
-                    guest: None,
-                    filter: None,
+                    ..Default::default()
                 }),
             }],
         };

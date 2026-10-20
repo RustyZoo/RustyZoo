@@ -27,11 +27,7 @@ fn world(entities: usize) -> World {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
-            movement_mode: 0,
-            food: 0,
-            animal: None,
-            guest: None,
-            filter: None,
+            ..Default::default()
         }),
     };
     let zoo = Zoo {

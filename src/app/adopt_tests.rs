@@ -69,11 +69,7 @@ fn map() -> Zoo {
                     timers: [0; 2],
                     portal: false,
                 }),
-                movement_mode: 0,
-                food: 0,
-                animal: None,
-                guest: None,
-                filter: None,
+                ..Default::default()
             }),
         });
     }
