@@ -61,7 +61,10 @@ impl Animal {
         let start = i64::from(threshold(k)) - 1 + i64::from(self.hatch);
         let top = i64::from(k.max_hits);
         let cap = (100 - sickly.clamp(0, 100)) * top / 100;
-        self.health = start.min(top).min(cap).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+        self.health = start
+            .min(top)
+            .min(cap)
+            .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     }
 }
 
@@ -194,7 +197,9 @@ pub fn candidates(world: &World, at: usize, x: u32, me: &Animal) -> Vec<u32> {
             && other.female != me.female
             && other.mate == 0
             && !world.is_carried(c.id)
-            && [other.mother, other.father].iter().all(|&p| Some(p) != mine)
+            && [other.mother, other.father]
+                .iter()
+                .all(|&p| Some(p) != mine)
             && [me.mother, me.father].iter().all(|&p| p != c.id);
         if let (true, Some(t)) = (fit, tile.filter(|&t| world.exhibits().region(t) == Some(x))) {
             found.push((t, i, c.id));
@@ -212,7 +217,10 @@ pub fn mate_of(world: &World, at: usize, mate: u32) -> Mate {
     };
     let mine = world.zoo.entities[at].common.as_ref().and_then(region);
     let other = world.find(mate).map(|m| &world.zoo.entities[m]);
-    match other.filter(|e| e.class == "animals").and_then(|e| e.common.as_ref()) {
+    match other
+        .filter(|e| e.class == "animals")
+        .and_then(|e| e.common.as_ref())
+    {
         None => Mate::Gone,
         Some(c) if region(c) == mine || region(c) == Some(crate::exhibit::GROUNDS) => Mate::Here,
         Some(_) => Mate::Away,
@@ -244,7 +252,10 @@ pub fn pair(world: &mut World, id: u32, out: &Out) {
 fn sickly(cat: &Catalogue) -> i64 {
     let value = |t: &&EntityType| crate::build::number(t, "cSicklyAnimalPct");
     let keepers = cat.types.iter().filter(|t| t.class == "keeper");
-    keepers.filter_map(|t| value(&t)).last().map_or(10, |p| p as i64)
+    keepers
+        .filter_map(|t| value(&t))
+        .next_back()
+        .map_or(10, |p| p as i64)
 }
 
 /// How an animal of the type takes its place on the map.
@@ -267,7 +278,9 @@ pub fn shape(ty: &EntityType) -> Shape {
 fn suitable(world: &World, x: u32, ty: &EntityType, egg: bool) -> Vec<usize> {
     let under = crate::build::number(ty, "cOnlyUnderwater") == Some(1.0) && !egg;
     let near = (world.exhibits().get(x)).map_or(Vec::new(), |e| e.amphibious.clone());
-    let tiles = std::iter::once(x).chain(near).flat_map(|r| world.tiles_of(r));
+    let tiles = std::iter::once(x)
+        .chain(near)
+        .flat_map(|r| world.tiles_of(r));
     let free = |t: &usize| {
         (0..4).all(|q| world.quadrant(*t, q).is_none()) && world.units_on(*t).count() < 4
     };
@@ -284,14 +297,13 @@ fn suitable(world: &World, x: u32, ty: &EntityType, egg: bool) -> Vec<usize> {
 /// `fCheckReproduction` after the roll (11.4 points 2 to 4) for the male `father` standing at
 /// position `at`: the young of its species are made one after the other and put on random
 /// suitable tiles of its exhibit, until `cOffspring` are there or no tile suits. Every animal of
-/// the species in the exhibit takes `cBabyBornChange` happiness, the father apart (the caller
-/// does it), and the birth is told. Whether a young animal was put there.
-#[allow(clippy::too_many_arguments)]
+/// the species in the exhibit takes the happiness change `bonus` (`cBabyBornChange`), the father
+/// apart (the caller does it), and the birth is told. Whether a young animal was put there.
 pub fn born(
     father: &mut Animal,
     id: u32,
     (world, cat, data): (&mut World, &Catalogue, &dyn Data),
-    at: usize,
+    (at, bonus): (usize, i32),
     rng: &mut Rng,
 ) -> bool {
     let type_name = world.zoo.entities[at].type_name.clone();
@@ -342,10 +354,13 @@ pub fn born(
         return false;
     }
     // The species in the exhibit are glad, and the mother is named.
-    let bonus = k.baby_born_change;
     for e in crate::panel::exhibit::animals_in(world, x) {
         let other = &world.zoo.entities[e];
-        let Some(c) = other.common.as_ref().filter(|_| other.type_name == type_name) else {
+        let Some(c) = other
+            .common
+            .as_ref()
+            .filter(|_| other.type_name == type_name)
+        else {
             continue;
         };
         if c.id != id
@@ -355,7 +370,12 @@ pub fn born(
         }
     }
     let name = (world.find(father.mate))
-        .and_then(|m| world.zoo.entities[m].common.as_ref().map(|c| c.name.clone()))
+        .and_then(|m| {
+            world.zoo.entities[m]
+                .common
+                .as_ref()
+                .map(|c| c.name.clone())
+        })
         .unwrap_or_default();
     world.units.post_named(BIRTH, id, vec![name]);
     world.units.tell(format!("message {BIRTH} {id}"));
@@ -437,9 +457,11 @@ pub fn grow_up(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, dat
     let entity = &world.zoo.entities[at];
     let bytes = entity.type_name.bytes().collect::<Vec<u8>>();
     let wanted = if a.female { "f" } else { "m" };
-    let adult = [wanted, "m"]
-        .into_iter()
-        .find_map(|s| ctx.cat.find("animals", &bytes, s.as_bytes()).map(|t| (s, t)));
+    let adult = [wanted, "m"].into_iter().find_map(|s| {
+        ctx.cat
+            .find("animals", &bytes, s.as_bytes())
+            .map(|t| (s, t))
+    });
     let Some((sub, ty)) = adult else {
         return;
     };

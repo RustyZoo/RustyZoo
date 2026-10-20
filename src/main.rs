@@ -137,7 +137,8 @@ usage: rustyzoo [--data <dir>] <command>
                       default), or the log lines of each step (--log; the units run their behaviour sets as in
                       `run`). The script has one
                       `<step> <command>` per line, applied before that step (the first is 0):
-                      remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N, leave ID
+                      remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N, leave ID,
+                      animal TYPE X,Y [male|female], mood ID N (happiness, -100 to 100)
   check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
                       pieces) as the engine does when their copies in ztst/ are missing, and
                       compare each with its shipped copy; exit 1 if one differs or fails

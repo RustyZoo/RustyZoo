@@ -8,6 +8,7 @@ use crate::sim::Sim;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Clocks, Common, Tile, View, Zoo};
 
+mod breed;
 mod life;
 
 fn keys() -> Keys {
@@ -428,6 +429,19 @@ fn shape(e: &Entity) -> Option<Shape> {
 }
 
 fn pens() -> World {
+    pens_with(|n, x0| {
+        [0, 1]
+            .into_iter()
+            .map(|i| {
+                let id = 500 + 10 * n as u32 + i;
+                entity("animals", "f", (x0 + i as i32, 2), 0, id)
+            })
+            .collect()
+    })
+}
+
+/// The two pens with the animals `animals` makes for the pen `n` whose left column is `x0`.
+fn pens_with(animals: impl Fn(usize, i32) -> Vec<Entity>) -> World {
     let mut entities = vec![entity("gate", "", (SIZE - 1, SIZE - 1), 2, 1)];
     for (n, x0) in [1, 5].into_iter().enumerate() {
         for i in 0..3 {
@@ -440,10 +454,7 @@ fn pens() -> World {
                 entities.push(entity("fences", "f", at, d, 100 + entities.len() as u32));
             }
         }
-        for (i, dx) in [0, 1].into_iter().enumerate() {
-            let id = 500 + 10 * n as u32 + i as u32;
-            entities.push(entity("animals", "f", (x0 + dx, 2), 0, id));
-        }
+        entities.extend(animals(n, x0));
     }
     let tile = |x: i32| Tile {
         elevation: 0,

@@ -370,10 +370,10 @@ fn old_age_counts_the_life_down_and_rolls_death_once_it_is_spent() {
 }
 
 /// The sets of the animals of these tests.
-struct Life(std::collections::HashMap<&'static str, Vec<Call>>, Vec<Row>);
+pub(super) struct Life(std::collections::HashMap<&'static str, Vec<Call>>, Vec<Row>);
 
 impl Life {
-    fn new() -> Life {
+    pub(super) fn new() -> Life {
         let call = |c: &str| parse_call(c.as_bytes()).unwrap().0;
         let sets = [
             ("bDie", vec![call("fDie()")]),
@@ -385,7 +385,7 @@ impl Life {
     }
 
     /// The same with a set of the given calls added.
-    fn with(mut self, name: &'static str, call: &str) -> Life {
+    pub(super) fn with(mut self, name: &'static str, call: &str) -> Life {
         let call = parse_call(call.as_bytes()).unwrap().0;
         self.0.insert(name, vec![call]);
         self

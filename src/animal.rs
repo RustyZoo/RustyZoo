@@ -20,15 +20,20 @@
 //! Sleep, health, old age and the dung meter are [`life`]; the dung pile and the keeper's heal are
 //! [`dirt`].
 //!
-//! Not here yet: the use of shelters, breeding and eggs, the water check and the swimmers and the
+//! Mates, births, young animals growing up and eggs are [`breed`]: a male in good spirits with a
+//! mate of its species in the exhibit rolls for young at the reproduction check, which puts them
+//! (or eggs, for a species that lays them) on free tiles of the exhibit.
+//!
+//! Not here yet: the use of shelters, the water check and the swimmers and the
 //! effects of the escape, rampage and zap checks (M7: only their counters and draws run). The
 //! ambient choice is taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
 //! after each update of the values, `animal message <string> <id>` for a message posted,
 //! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
-//! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down and
-//! `animal heal <id>`.
+//! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down,
+//! `animal heal <id>`, `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
+//! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>` and `animal hatch <id>`.
 
 use crate::behaviour::Data;
 use crate::config::{Config, to_int};
@@ -570,9 +575,11 @@ pub struct Env {
     pub sick_near: u32,
     /// A keeper is at work in its exhibit.
     pub keeper_working: bool,
-    /// Its subtype is `m` or `f`; `y`; `m` (animals-needs 11.2, 12).
+    /// Its subtype is `m` or `f` (an adult, animals-needs 11.2).
     pub adult: bool,
+    /// Its subtype is `y` (it grows up, 12).
     pub baby: bool,
+    /// Its subtype is `m` (it gives birth, 11.2).
     pub male: bool,
     /// It stands in a tank that holds a show.
     pub show_tank: bool,
@@ -647,10 +654,11 @@ pub fn run_with(
                 (_, true) => "f",
                 _ => "m",
             };
-            // The zap counter keeps running down across the reset.
-            let zap = a.zap;
+            // The zap counter keeps running down across the reset, and the mate and the parents
+            // are not status values.
+            let (zap, mate, mother, father) = (a.zap, a.mate, a.mother, a.father);
             *a = Animal::create(k, class, subtype, rng);
-            a.zap = zap;
+            (a.zap, a.mate, a.mother, a.father) = (zap, mate, mother, father);
         }
     }
     breed::grow(a, k, env, &mut out);
@@ -973,6 +981,10 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
     animal.restore(&saved);
     if let Some(unit) = world.units.get_mut(id) {
+        // An egg shows its own picture (animals-needs 13.1).
+        if animal.egg {
+            unit.animation.base_to("egg_idle");
+        }
         unit.part = Part::Animal(animal);
         unit.started = true;
     }
@@ -1092,7 +1104,13 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     let id = unit.id;
     let cat = ctx.cat;
     let mut birth = |father: &mut Animal, rng: &mut Rng| {
-        breed::born(father, id, (&mut *world, cat, data), at, rng)
+        breed::born(
+            father,
+            id,
+            (&mut *world, cat, data),
+            (at, k.baby_born_change),
+            rng,
+        )
     };
     let mut out = run_with(a, &k, &class, &env, ctx.rng, &mut birth);
     let meal = std::mem::take(&mut out.meal);

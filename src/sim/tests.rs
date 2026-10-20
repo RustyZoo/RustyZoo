@@ -793,7 +793,7 @@ fn the_guide_command_puts_a_tour_guide_on_a_tile() {
 
 #[test]
 fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
-    use drive::Command::{Animal, Filter, Keeper, Worker};
+    use drive::Command::{Animal, Filter, Keeper, Mood, Worker};
     for bad in [
         "keeper",
         "keeper 3",
@@ -820,6 +820,27 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         Ok(Animal("mantaray".into(), 3, 4, None))
     );
     assert_eq!("filter 3,4 7".parse(), Ok(Filter(3, 4, 7)));
+    for (text, sex) in [("male", Some(false)), ("female", Some(true))] {
+        let command = format!("animal mantaray 3,4 {text}");
+        assert_eq!(command.parse(), Ok(Animal("mantaray".into(), 3, 4, sex)));
+    }
+    for bad in [
+        "animal mantaray 3,4 x",
+        "animal mantaray 3,4 Male",
+        "animal mantaray 3,4 male 1",
+        "mood",
+        "mood 5",
+        "mood 5 101",
+        "mood 5 -101",
+        "mood 5 x",
+        "mood -5 1",
+        "mood 5 99999999999",
+        "mood 5 1 1",
+    ] {
+        assert!(bad.parse::<drive::Command>().is_err(), "{bad}");
+    }
+    assert_eq!("mood 5 -100".parse(), Ok(Mood(5, -100)));
+    assert_eq!("mood 5 0".parse(), Ok(Mood(5, 0)));
     let mut run = game(0);
     // No such types: nothing changes.
     for c in [
@@ -853,7 +874,10 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         !run.apply(&Keeper(-1, 99)) && !run.apply(&Filter(-1, 99, 0)),
         "off the map"
     );
-    assert!(!run.apply(&Animal("orca".into(), 1, 1, None)), "no such animal");
+    assert!(
+        !run.apply(&Animal("orca".into(), 1, 1, None)),
+        "no such animal"
+    );
     for c in [
         Keeper(1, 1),
         Worker(2, 1),
@@ -881,6 +905,57 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         .and_then(|e| e.common.as_ref());
     assert_eq!(filter.map(|c| c.rotation), Some(6));
     assert_eq!(filter.and_then(|c| c.filter).map(|f| f.health), Some(10));
+}
+
+#[test]
+fn a_script_gives_an_animal_its_sex_and_its_mood() {
+    use drive::Command::{Animal, Mood};
+    let ty = |name: &str, sub: &str| crate::entity::EntityType {
+        class: "animals",
+        type_name: name.as_bytes().to_vec(),
+        subtype: sub.as_bytes().to_vec(),
+        file: None,
+        config: None,
+        name_id: 1,
+        footprint: [2, 2, 1],
+        height: 0,
+    };
+    let mut run = game(0);
+    // A species with both sexes gives the subtype of each; one with only `m` gives a female
+    // that subtype.
+    for t in [ty("zebra", "f"), ty("zebra", "m"), ty("yak", "m")] {
+        run.cat.push(t);
+    }
+    let asked = [
+        ("zebra", Some(true)),
+        ("zebra", Some(false)),
+        ("yak", Some(true)),
+    ];
+    for (name, sex) in asked {
+        assert!(run.apply(&Animal(name.into(), 1, 1, sex)), "{name}");
+    }
+    run.step(67);
+    let animals: Vec<_> = (run.world.zoo.entities.iter())
+        .filter(|e| e.class == "animals")
+        .filter_map(|e| Some((e.common.as_ref()?.id, e.subtype.clone())))
+        .collect();
+    let sexes: Vec<_> = animals
+        .iter()
+        .map(|(id, sub)| match &run.world.units.get(*id).unwrap().part {
+            crate::unit::Part::Animal(a) => (sub.as_str(), a.female),
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(sexes, [("f", true), ("m", false), ("m", true)]);
+    // The mood sets the happiness; a number outside -100 to 100 or a unit that is no animal
+    // changes nothing.
+    let (id, _) = animals[0].clone();
+    assert!(run.apply(&Mood(id, -100)) && run.apply(&Mood(id, 100)));
+    let crate::unit::Part::Animal(a) = &run.world.units.get(id).unwrap().part else {
+        panic!("not an animal");
+    };
+    assert_eq!(a.happiness, 100);
+    assert!(!run.apply(&Mood(9999, 5)), "no such unit");
 }
 
 #[test]

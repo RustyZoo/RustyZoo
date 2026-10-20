@@ -71,7 +71,10 @@ impl std::str::FromStr for Command {
             Some("heal") if words.len() == 2 => Command::Heal(id(1)?),
             Some("mood") if words.len() == 3 => {
                 let mood = n(2).ok().filter(|m| (-100..=100).contains(m));
-                Command::Mood(id(1)?, mood.ok_or_else(|| format!("bad mood: {text:?}"))? as i32)
+                Command::Mood(
+                    id(1)?,
+                    mood.ok_or_else(|| format!("bad mood: {text:?}"))? as i32,
+                )
             }
             Some("fill") if words.len() == 2 => Command::Fill(id(1)?),
             Some("drain") if words.len() == 2 => Command::Drain(id(1)?),
@@ -243,9 +246,7 @@ impl Run {
             Command::Guide(x, y) => self.add_unit("tour", None, x, y, None),
             Command::Keeper(x, y) => self.add_unit("keeper", Some("trainer"), x, y, None),
             Command::Worker(x, y) => self.add_unit("maint", None, x, y, None),
-            Command::Animal(ref name, x, y, sex) => {
-                self.add_unit("animals", Some(name), x, y, sex)
-            }
+            Command::Animal(ref name, x, y, sex) => self.add_unit("animals", Some(name), x, y, sex),
             Command::Filter(x, y, facing) => self.add_filter(x, y, facing),
         }
     }
@@ -254,10 +255,22 @@ impl Run {
     /// subtype of the sex asked for, which the animal then has even when the species has no such
     /// subtype) on tile `(x, y)`, hired without the hiring cost; whether there is such a tile and
     /// such a type.
-    fn add_unit(&mut self, class: &str, name: Option<&str>, x: i32, y: i32, sex: Option<bool>) -> bool {
+    fn add_unit(
+        &mut self,
+        class: &str,
+        name: Option<&str>,
+        x: i32,
+        y: i32,
+        sex: Option<bool>,
+    ) -> bool {
         let named =
             |t: &&crate::entity::EntityType| name.is_none_or(|n| t.type_name == n.as_bytes());
-        let mut found = self.cat.types.iter().filter(named).filter(|t| t.class == class);
+        let mut found = self
+            .cat
+            .types
+            .iter()
+            .filter(named)
+            .filter(|t| t.class == class);
         let wanted = sex.map(|female| if female { b"f" } else { b"m" });
         let first = found.clone().next();
         let Some(ty) = found
