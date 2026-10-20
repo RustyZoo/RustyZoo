@@ -817,7 +817,7 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
     assert_eq!("worker -3,0".parse(), Ok(Worker(-3, 0)));
     assert_eq!(
         "animal mantaray 3,4".parse(),
-        Ok(Animal("mantaray".into(), 3, 4))
+        Ok(Animal("mantaray".into(), 3, 4, None))
     );
     assert_eq!("filter 3,4 7".parse(), Ok(Filter(3, 4, 7)));
     let mut run = game(0);
@@ -825,7 +825,7 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
     for c in [
         Keeper(1, 1),
         Worker(1, 1),
-        Animal("mantaray".into(), 1, 1),
+        Animal("mantaray".into(), 1, 1, None),
         Filter(1, 1, 0),
     ] {
         assert!(!run.apply(&c), "{c:?}");
@@ -853,11 +853,11 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         !run.apply(&Keeper(-1, 99)) && !run.apply(&Filter(-1, 99, 0)),
         "off the map"
     );
-    assert!(!run.apply(&Animal("orca".into(), 1, 1)), "no such animal");
+    assert!(!run.apply(&Animal("orca".into(), 1, 1, None)), "no such animal");
     for c in [
         Keeper(1, 1),
         Worker(2, 1),
-        Animal("mantaray".into(), 3, 1),
+        Animal("mantaray".into(), 3, 1, None),
         Filter(2, 2, 6),
     ] {
         assert!(run.apply(&c), "{c:?}");

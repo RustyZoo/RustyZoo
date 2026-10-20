@@ -240,7 +240,7 @@ pub fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
 }
 
 /// The end of `stopEating` for the unit at `at`: the queued set is forgotten, the goal reset.
-fn halt(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+pub(super) fn halt(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     unit.runner.forget();
     let mut cx = Cx {
         unit,

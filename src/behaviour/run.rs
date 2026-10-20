@@ -340,6 +340,8 @@ pub struct Runner {
     face: bool,
     /// An `fDie` call ran, for the animal to be removed.
     die: bool,
+    /// An `fHatch` call ran, for the egg to hatch.
+    hatch: bool,
 }
 
 /// The answer to a move call (movement 8.2).
@@ -364,6 +366,7 @@ impl Default for Runner {
             moving: None,
             face: false,
             die: false,
+            hatch: false,
         }
     }
 }
@@ -392,6 +395,11 @@ impl Runner {
     /// Whether an `fDie` call ran since the last time, once.
     pub fn take_die(&mut self) -> bool {
         std::mem::take(&mut self.die)
+    }
+
+    /// Whether an `fHatch` call ran since the last time, once.
+    pub fn take_hatch(&mut self) -> bool {
+        std::mem::take(&mut self.hatch)
     }
 
     /// The set asked to follow the current one, if any.
@@ -656,6 +664,11 @@ impl Runner {
             }
             Op::Die => {
                 self.die = true;
+                self.chain[k].done = true;
+                return true;
+            }
+            Op::Hatch => {
+                self.hatch = true;
                 self.chain[k].done = true;
                 return true;
             }

@@ -211,6 +211,8 @@ pub struct Unit {
     pub started: bool,
     /// The unit has read the characteristics of its type (the costs of the path finder).
     pub typed: bool,
+    /// The sex a script gave the animal, which its first turn keeps (the `sim` command).
+    pub sex: Option<bool>,
 }
 
 impl Unit {
@@ -254,6 +256,7 @@ impl Unit {
             repositioning: false,
             started: false,
             typed: false,
+            sex: None,
         }
     }
 
@@ -316,6 +319,8 @@ pub struct Units {
     pub now: u64,
     /// The word before the number in a guest's name (string 9507).
     pub guest_name: String,
+    /// The texts of the names of the animal types, by name id, for the names of the young.
+    pub names: HashMap<i32, String>,
     /// The happiness above which, and the chance in percent with which, a guest that leaves joins
     /// the endowment; set by the step from the economy file.
     pub guest_join: (i32, i32),
@@ -368,6 +373,7 @@ impl Default for Units {
             gates: gate::Gates::new(),
             now: 0,
             guest_name: "Guest".into(),
+            names: HashMap::new(),
             guest_join: (80, 50),
             variable_speeds: true,
             guests_gone: 0,
@@ -773,7 +779,9 @@ impl Hooks for Standard<'_> {
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         let took = unit.kind == Kind::Animal
             && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
-        let key = (!took).then(|| ambient_key(unit));
+        // An egg chooses nothing: only the set that hatches it runs.
+        let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
+        let key = (!took && !egg).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
         let record = &unit.goal.record;
         unit.runner.talking =
@@ -810,6 +818,9 @@ impl Hooks for Standard<'_> {
         }
         if unit.runner.take_die() {
             crate::animal::dirt::die(unit, world, ctx, at);
+        }
+        if unit.runner.take_hatch() {
+            crate::animal::breed::hatch(unit, world, at, self.data);
         }
         self.tell(unit, world, at);
     }
