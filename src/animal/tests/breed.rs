@@ -451,7 +451,7 @@ fn a_pair_in_a_good_exhibit_has_young_that_grow_up_and_two_runs_agree() {
     assert_eq!(line("mate 600 601").len() + line("mate 601 600").len(), 1);
     let births = line("birth 600 ");
     assert!(births.len() >= 2 && births[0].contains(" y "));
-    assert!(log.iter().any(|l| l == "message 10032 600"));
+    assert!(log.iter().any(|l| l == "message 10032 601"));
     let grown = line("grow ");
     assert!(!grown.is_empty());
     // Every young animal stands inside the pen, with a name and its parents; the grown ones
@@ -681,6 +681,67 @@ fn the_candidates_are_the_unmated_of_the_other_sex_that_are_not_family() {
         breed::candidates(&world, at, x + 100, &a),
         Vec::<u32>::new()
     );
+}
+
+#[test]
+fn the_candidates_follow_the_tiles_of_the_exhibit_then_the_unit_list_of_a_tile() {
+    // Females on four tiles, two of them on the same one (604 after 603); 600 is the male.
+    let at = [
+        (600, (2, 2)),
+        (601, (3, 3)),
+        (602, (1, 1)),
+        (603, (2, 1)),
+        (604, (2, 1)),
+    ];
+    let mut world = pens_with(|n, _| match n {
+        0 => at
+            .iter()
+            .map(|&(id, tile)| entity("animals", if id == 600 { "m" } else { "f" }, tile, 0, id))
+            .collect(),
+        _ => Vec::new(),
+    });
+    let cat = breeders("");
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    sim.step(&mut world, 67, |_, _, _| {});
+    let x = world
+        .exhibits()
+        .region(world.tile_index(2, 2).unwrap())
+        .unwrap();
+    // A fill may leave the tiles in any order: here, the largest tile number first.
+    let mut order = world.tiles_of(x);
+    order.sort_unstable_by(|a, b| b.cmp(a));
+    world.exhibits_mut().reorder(x, order);
+    let tile = |id: u32| {
+        let (_, (tx, ty)) = *at.iter().find(|a| a.0 == id).unwrap();
+        world.tile_index(tx, ty).unwrap()
+    };
+    let rank = |id: u32| {
+        world
+            .tiles_of(x)
+            .iter()
+            .position(|&t| t == tile(id))
+            .unwrap()
+    };
+    let mut want = vec![601, 602, 603];
+    want.sort_by_key(|&id| rank(id));
+    assert_eq!(want, [601, 603, 602]);
+    let p = want.iter().position(|&id| id == 603).unwrap();
+    want.insert(p + 1, 604);
+    let mut me = match &world.units.get(600).unwrap().part {
+        Part::Animal(a) => a.clone(),
+        _ => unreachable!(),
+    };
+    me.female = false;
+    for id in [601, 602, 603, 604] {
+        if let Some(Part::Animal(a)) = world.units.get_mut(id).map(|u| &mut u.part) {
+            a.female = true;
+        }
+    }
+    let at600 = world.find(600).unwrap();
+    assert_eq!(breed::candidates(&world, at600, x, &me), want);
 }
 
 #[test]

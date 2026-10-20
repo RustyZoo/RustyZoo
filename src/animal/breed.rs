@@ -182,36 +182,31 @@ pub fn reproduction(
 }
 
 /// The animals the one at position `at` could pick as a mate (11.3), in the order of the
-/// exhibit's list (the tiles in order, then the entity list): the ones of its species in its
-/// exhibit that are adults (`m` or `f`, not a young animal or its egg) of the other sex, have no mate and are neither its parents nor its young.
+/// exhibit's list (the tiles in the exhibit's order, then each tile's unit list): the ones of its
+/// species in its exhibit that are adults (`m` or `f`, not a young animal or its egg) of the other
+/// sex, have no mate and are neither its parents nor its young.
 pub fn candidates(world: &World, at: usize, x: u32, me: &Animal) -> Vec<u32> {
     let own = &world.zoo.entities[at];
-    let mut found: Vec<(usize, usize, u32)> = Vec::new();
-    for (i, e) in world.zoo.entities.iter().enumerate() {
-        let Some(c) = e.common.as_ref().filter(|_| e.type_name == own.type_name) else {
-            continue;
-        };
-        let Some(Part::Animal(other)) = world.units.get(c.id).map(|u| &u.part) else {
-            continue;
-        };
-        let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
-        let mine = own.common.as_ref().map(|c| c.id);
-        let fit = e.class == "animals"
-            && matches!(e.subtype.as_str(), "m" | "f")
-            && Some(c.id) != mine
-            && other.female != me.female
-            && other.mate == 0
-            && !world.is_carried(c.id)
-            && [other.mother, other.father]
-                .iter()
-                .all(|&p| Some(p) != mine)
-            && [me.mother, me.father].iter().all(|&p| p != c.id);
-        if let (true, Some(t)) = (fit, tile.filter(|&t| world.exhibits().region(t) == Some(x))) {
-            found.push((t, i, c.id));
-        }
-    }
-    found.sort_unstable();
-    found.into_iter().map(|(_, _, id)| id).collect()
+    let mine = own.common.as_ref().map(|c| c.id);
+    crate::animal::exhibit_animals(world, x)
+        .into_iter()
+        .filter_map(|i| {
+            let e = &world.zoo.entities[i];
+            let c = e.common.as_ref().filter(|_| e.type_name == own.type_name)?;
+            let Some(Part::Animal(other)) = world.units.get(c.id).map(|u| &u.part) else {
+                return None;
+            };
+            let fit = matches!(e.subtype.as_str(), "m" | "f")
+                && Some(c.id) != mine
+                && other.female != me.female
+                && other.mate == 0
+                && [other.mother, other.father]
+                    .iter()
+                    .all(|&p| Some(p) != mine)
+                && [me.mother, me.father].iter().all(|&p| p != c.id);
+            fit.then_some(c.id)
+        })
+        .collect()
 }
 
 /// Where the animal at position `at`'s mate stands, for the check of 11.2 point 1.
@@ -389,8 +384,9 @@ pub fn born(
                 .map(|c| c.name.clone())
         })
         .unwrap_or_default();
-    world.units.post_named(BIRTH, id, vec![name]);
-    world.units.tell(format!("message {BIRTH} {id}"));
+    // The message is the mate's own (11.2 point 4), posted even if the mate is gone.
+    world.units.post_named(BIRTH, father.mate, vec![name]);
+    world.units.tell(format!("message {BIRTH} {}", father.mate));
     true
 }
 
