@@ -30,6 +30,7 @@ pub fn entity(class: &str, kind: &str, id: u32, (x, y): (i32, i32), rotation: u3
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     }
 }
@@ -70,6 +71,11 @@ fn shape(e: &Entity) -> Option<Shape> {
         }
         _ => None,
     }
+}
+
+/// The shape of a keeper or any other unit.
+pub fn keeper_shape() -> Shape {
+    shape(&entity("keeper", "", 0, (0, 0), 0)).expect("a unit has a shape")
 }
 
 /// A flat `w` by `h` map, all of it inside the zoo, with the entities `edit` makes.

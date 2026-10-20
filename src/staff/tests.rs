@@ -187,10 +187,10 @@ fn the_pool_makes_a_task_of_each_event_of_its_channel_and_an_urgent_one_goes_fir
         at(10033, 7),
         at(10034, 8),
         at(10034, 9),
-        // The events of the jobs that are not here, of no known number, and a tile off the map.
-        at(10032, 1),
         at(10035, 1),
-        at(10036, 1),
+        at(10036, 2),
+        // The events of the job that is not here, of no known number, and a tile off the map.
+        at(10032, 1),
         at(10029, 1),
         at(10030, 10),
         at(10030, u32::MAX),
@@ -204,27 +204,29 @@ fn the_pool_makes_a_task_of_each_event_of_its_channel_and_an_urgent_one_goes_fir
     assert_eq!(
         seen,
         [
+            (26, 2, true),
             (16, 9, true),
             (16, 8, true),
             (9, 5, false),
             (7, 6, false),
-            (16, 7, false)
+            (16, 7, false),
+            (26, 1, false)
         ]
     );
     // A can that refills makes a new task; none is merged. Ids are not reused.
     pool.listen([at(10030, 5)].iter(), 10);
-    assert_eq!(pool.tasks.len(), 6);
+    assert_eq!(pool.tasks.len(), 8);
     let mut ids: Vec<u32> = pool.tasks.iter().map(|t| t.id).collect();
     ids.sort_unstable();
     ids.dedup();
-    assert_eq!(ids.len(), 6);
+    assert_eq!(ids.len(), 8);
     // A task can be held, given back and finished.
     let id = pool.tasks[2].id;
     pool.tasks[2].worker = 4;
     pool.unlink(4);
     assert_eq!(pool.get(id).map(|t| t.worker), Some(0));
     pool.finish(id);
-    assert!(pool.get(id).is_none() && pool.tasks.len() == 5);
+    assert!(pool.get(id).is_none() && pool.tasks.len() == 7);
 }
 
 #[test]

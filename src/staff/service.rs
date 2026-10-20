@@ -1,6 +1,5 @@
 //! What a keeper looks at in an exhibit: his animals, his dung, whether the exhibit needs him
-//! and which one he serves next (staff 7.2, 7.3, 7.6 to 7.8). Land exhibits only: the tank
-//! parts come with the tank fauna.
+//! and which one he serves next (staff 7.2, 7.3, 7.6 to 7.8), land exhibits and tanks.
 
 use std::cmp::Reverse;
 
@@ -171,13 +170,30 @@ pub fn claimed(world: &World) -> Vec<usize> {
     world.units.iter().filter_map(own).collect()
 }
 
-/// Whether exhibit `x` needs the keeper (7.2), now being the AI clock. Nothing for a tank.
+/// Whether exhibit `x` needs the keeper (7.2), now being the AI clock: a tank a marine keeper and
+/// a land exhibit another one (point 1); in a tank the amphibious animals are the land keepers'
+/// (point 2, tank staff 5.2), no animal of a show tank is hungry for him, and water below
+/// `murkyWaterPurity` calls the marine keeper (point 4). The amphibious neighbours and the nested
+/// tanks wait for their issues.
 pub fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
-    let Some(exhibit) = world.exhibits().get(x).filter(|e| e.tank.is_none()) else {
+    let Some(exhibit) = world.exhibits().get(x) else {
         return false;
     };
-    let mine = animals(world, cat, x, who);
-    if mine.iter().any(|a| a.sick || (!a.egg && a.unfed())) || !dung(world, cat, x, who).is_empty()
+    let marine = number(who, "cUnderwater") == Some(1.0);
+    if exhibit.tank.is_some() != marine {
+        return false;
+    }
+    let (tank, show) = (exhibit.tank.is_some(), exhibit.tank.is_some_and(|t| t.show));
+    let mut mine = animals(world, cat, x, who);
+    mine.retain(|a| !(tank && a.amphibious));
+    let hungry = |a: &Seen| !a.egg && !show && a.unfed();
+    if mine.iter().any(|a| a.sick || hungry(a)) || !dung(world, cat, x, who).is_empty() {
+        return true;
+    }
+    let murky = world.tank_config().murky;
+    if exhibit
+        .tank
+        .is_some_and(|t| t.level > 0 && i64::from(t.purity) < i64::from(murky))
     {
         return true;
     }
@@ -251,7 +267,12 @@ pub fn gate_tiles(world: &World, x: u32) -> Option<(usize, usize)> {
 /// The entrance test of a failed way to an exhibit with the gate tiles `(inside, outside)` (staff
 /// 7.4): a fence piece on both sides of the gate edge, or the larger crossing cost of the keeper
 /// 19 or more, or an object in the centre slot of either tile.
-pub fn entrance_blocked(world: &World, keeper: &Mover, (inside, outside): (usize, usize)) -> bool {
+pub fn entrance_blocked(
+    world: &World,
+    keeper: &Mover,
+    (inside, outside): (usize, usize),
+    tank: bool,
+) -> bool {
     let d = (0..8).find(|&d| world.neighbour(inside, d) == Some(outside));
     let fenced = d.is_some_and(|d| {
         world.edge(inside, d).is_some() && world.edge(outside, (d + 4) % 8).is_some()
@@ -260,7 +281,12 @@ pub fn entrance_blocked(world: &World, keeper: &Mover, (inside, outside): (usize
         Some(d) => path::step(world, keeper, a, b, d, None),
         None => path::MAX,
     };
-    let crossing = cost(inside, outside).max(cost(outside, inside));
+    // For a tank it is the terrain costs of the two tiles (tank staff 5).
+    let crossing = match tank {
+        true => path::terrain(world, keeper, inside, None)
+            .max(path::terrain(world, keeper, outside, None)),
+        false => cost(inside, outside).max(cost(outside, inside)),
+    };
     fenced
         || crossing >= 19
         || [inside, outside]

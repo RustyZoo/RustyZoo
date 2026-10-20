@@ -778,6 +778,34 @@ guest_panel() { # guest_panel <map>
 }
 check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"Just_arrived"_favourite_"Manta_Ray"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
 
+# The marine round (tank staff): scn27 has a filled tank with a manta ray, a tank filter and a
+# maintenance worker. The script sends the worker away (he would service the filter as soon as it
+# is worn), brings a marine specialist and a second manta ray, and a worker back late, after the
+# filter broke. Prints the first jobs of the specialist (the ladders, the food in the water), the
+# lowest purity while the filter was sound, the purity when it broke and when the worker serviced
+# it, the worker's jobs, the bites the rays took and the higher of their hunger at the end.
+marine_round() { # marine_round <map>
+  d=$(mktemp -d)
+  printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"
+  rz sim "$1" --ticks 36000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+    / unit add [0-9]+ keeper /{k=$5}
+    / staff job /{
+      if ($5==k) { if ($6=="none") next; if (!done) j=j (j?",":"") $6; if ($6=="ClimbDownOutsideLadder") done=1 }
+      else if ($6!="none") w=w (w?",":"") $6
+    }
+    / world filter /{
+      if ($8=="") { if (!broke && (min=="" || $7<min)) min=$7 }
+      else if ($8=="worn" && $6==0) { broke=1; at=$7 }
+      else if ($8=="serviced" && fixed=="") fixed=$7
+    }
+    / animal eat /{ ate++ }
+    / animal status /{ last[$5]=$7 }
+    END{ for (a in last) if (last[a]>h) h=last[a]
+         print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
+  rm -rf "$d"
+}
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>90;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:79;hunger<=33" "marine_round maps/scn27.zoo"
+
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
 sim_twice() { # sim_twice <map>

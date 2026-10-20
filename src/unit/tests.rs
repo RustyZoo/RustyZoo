@@ -24,6 +24,7 @@ fn entity(class: &str, id: u32, (x, y): (i32, i32)) -> Entity {
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     }
 }

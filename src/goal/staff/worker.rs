@@ -1,11 +1,12 @@
 //! The goals of a maintenance worker (staff 8): the duties (task 0x78) choose a task of the pool
 //! and its job, and the jobs go to the trash can and empty it (9, 10), go to the litter and
-//! sweep it (7, 8), and go to a worn fence and mend it (16, 17). The worker's target tile is the
-//! task's, kept in [`Staff::target`] (staff 8.3 step 3). The jobs for dung (11, 12) and the tank
-//! filters (26, 27) are not here.
+//! sweep it (7, 8), go to a worn fence and mend it (16, 17), and go to a worn tank filter and
+//! service it (26, 27, tank staff 8). The worker's target tile is the task's, kept in
+//! [`Staff::target`] (staff 8.3 step 3). The jobs for dung (11, 12) are not here.
 
 use super::super::{Cx, MAINT, NONE, RANDOM};
 use crate::build::number;
+use crate::path::{self, MAX};
 use crate::staff::pool::{self, Task};
 use crate::staff::{chores, duty_kinds, service};
 use crate::unit::movement;
@@ -14,6 +15,7 @@ use crate::unit::movement;
 const SWEEP: u8 = 8;
 const EMPTY: u8 = 10;
 const FIX: u8 = 17;
+const FIX_FILTER: u8 = 27;
 /// The milliseconds between two clearings of the unreachable lists (staff 4.3).
 const CLEARING: i32 = 10_000;
 
@@ -133,6 +135,7 @@ impl Cx<'_, '_> {
                 pool::TRASH_CAN => 0,
                 pool::TRASH_PILE => 1,
                 pool::GO_TO_FENCE => 2,
+                pool::GO_TO_FILTER => 3,
                 _ => continue,
             };
             if kind >= allowed || off[kind] || lost.contains(&t.tile) {
@@ -177,13 +180,22 @@ impl Cx<'_, '_> {
     /// The init of a job: the sweep, the emptying and the mending start their set where the worker
     /// stands, at what is there to do; false clears the job.
     pub(in crate::goal) fn work_init(&mut self, job: u8) -> bool {
-        if !matches!(job, SWEEP | EMPTY | FIX) {
+        if !matches!(job, SWEEP | EMPTY | FIX | FIX_FILTER) {
             return true;
         }
         let Some(tile) = self.own() else {
             self.work_fail();
             return false;
         };
+        // The service starts where he stands and sets no facing (tank staff 8).
+        if job == FIX_FILTER {
+            movement::stop(self.unit);
+            self.unit.destination = None;
+            if !self.start_set(Self::work_set(job), false) {
+                self.record().job_done = true;
+            }
+            return true;
+        }
         let cat = self.ctx.cat;
         let ready = match job {
             EMPTY => chores::trash_in(self.world, cat, tile) > 0,
@@ -226,7 +238,8 @@ impl Cx<'_, '_> {
                 self.record().job_done = true;
             }
             pool::TRASH_PILE if !chores::litter_left(self.world) => self.work_finish(),
-            SWEEP | EMPTY | FIX => {
+            pool::GO_TO_FILTER if self.reached(true) => self.record().job_done = true,
+            SWEEP | EMPTY | FIX | FIX_FILTER => {
                 let set = Self::work_set(job);
                 let running = self.unit.runner.top() == Some(set) && self.unit.runner.running();
                 self.record().job_done |= !running;
@@ -247,6 +260,7 @@ impl Cx<'_, '_> {
         let cat = self.ctx.cat;
         match job {
             pool::TRASH_CAN => return self.can_decide(tile),
+            pool::GO_TO_FILTER => return self.filter_decide(tile, urgent),
             pool::GO_TO_FENCE => match chores::decayed_near(self.world, cat, tile) {
                 Some((piece, _)) => self.record().job_target.id = piece,
                 // A piece mended since the event leaves nothing to do: the task is void.
@@ -281,6 +295,28 @@ impl Cx<'_, '_> {
         self.work_fail();
     }
 
+    /// 8 job 26: the way to the first side of the filter that is dry land and open to him; a
+    /// filter with none goes on his list.
+    fn filter_decide(&mut self, tile: usize, urgent: bool) {
+        let Some(here) = self.tile().filter(|_| !self.lost().0.contains(&tile)) else {
+            return self.work_fail();
+        };
+        let mover = movement::mover(self.unit, self.world, self.at, here);
+        let sides: Vec<usize> = (0..8)
+            .step_by(2)
+            .filter_map(|d| self.world.neighbour(tile, d))
+            .collect();
+        for side in sides {
+            let world = &*self.world;
+            let dry = world.tank_at(side).is_none() && !world.is_water(side);
+            if dry && path::terrain(world, &mover, side, None) < MAX && self.go_work(side, urgent) {
+                return;
+            }
+        }
+        self.list(tile);
+        self.work_fail();
+    }
+
     /// A path to tile `to` and the walk, running when `run`.
     fn go_work(&mut self, to: usize, run: bool) -> bool {
         self.unit.path.clear();
@@ -297,6 +333,11 @@ impl Cx<'_, '_> {
             pool::TRASH_PILE => self.set_job(SWEEP, 0, Some(tile)),
             pool::TRASH_CAN => self.set_job(EMPTY, 0, Some(tile)),
             pool::GO_TO_FENCE => self.set_job(FIX, id, Some(tile)),
+            pool::GO_TO_FILTER => self.set_job(FIX_FILTER, 0, Some(tile)),
+            FIX_FILTER => {
+                self.service(tile);
+                self.work_finish();
+            }
             SWEEP => {
                 self.sweep(tile);
                 self.work_finish();
@@ -309,6 +350,15 @@ impl Cx<'_, '_> {
                 self.mend(id);
                 self.work_finish();
             }
+        }
+    }
+
+    /// 8 job 27: the filter in the centre slot of the tile is serviced.
+    fn service(&mut self, tile: usize) {
+        let filter = self.world.quadrant(tile, 3);
+        let id = filter.and_then(|e| self.world.zoo.entities[e].common.as_ref().map(|c| c.id));
+        if let Some(id) = id {
+            self.world.service_filter(self.ctx.cat, id);
         }
     }
 

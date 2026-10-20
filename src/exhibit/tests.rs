@@ -26,6 +26,7 @@ fn entity(class: &str, tx: i32, ty: i32, rotation: u32) -> Entity {
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     }
 }
@@ -869,6 +870,7 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
     }
 }
 
+mod filter;
 mod rating;
 mod tank;
 mod viewing;

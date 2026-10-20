@@ -16,6 +16,7 @@ use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
 mod exhibit;
+mod filter;
 mod tank;
 mod water;
 mod wear;
@@ -59,6 +60,10 @@ pub struct TankKind {
     /// `cLife` and `cStrength`: what a new piece of the type starts with.
     pub life: u32,
     pub strength: u32,
+    /// `cDepth` and `cHeight`: the levels below and above its own that an object blocks in a
+    /// tank (tank fauna 7.3).
+    pub depth: i32,
+    pub height: i32,
 }
 
 impl TankKind {
@@ -72,6 +77,8 @@ impl TankKind {
         transient: false,
         life: 0,
         strength: 0,
+        depth: 0,
+        height: 0,
     };
 }
 
@@ -152,7 +159,7 @@ pub enum Step {
     Removed(Spot, f32),
     /// A wall the wall step built went: the full price of its type comes back, the entity tells
     /// the type.
-    Copied(Spot, Entity),
+    Copied(Spot, Box<Entity>),
     /// A removed object came back; its refund is taken back.
     Back(Spot, f32),
     /// A piece got its old type back; the price of the change comes back.
@@ -765,7 +772,7 @@ impl World {
                         self.shapes.remove(at);
                         self.changed();
                         stale = true;
-                        done.steps.push(Step::Copied(spot, entity));
+                        done.steps.push(Step::Copied(spot, Box::new(entity)));
                     }
                 }
                 Action::Tank { tile, value } => {

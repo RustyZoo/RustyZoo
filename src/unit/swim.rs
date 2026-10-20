@@ -4,15 +4,15 @@
 //! animation names (9).
 //!
 //! Kept as the original has it: the segment of the 3D move is as long as its truncated true
-//! length, so a flat diagonal step of a tile takes 90 units. Not here yet: the ladder and the
-//! platform (the marine specialist's), the water mode destination, the amphibious neighbours'
-//! links, and objects that block only some levels of a tank (7.3).
+//! length, so a flat diagonal step of a tile takes 90 units. The marine specialist's ladders and
+//! platform are held by the tank position check (tank staff 3). Not here yet: the water mode
+//! destination and the amphibious neighbours' links.
 
 use super::{Kind, Part, Unit, movement};
 use crate::behaviour::{Place, Target};
-use crate::place::unit::gate_inside;
 use crate::render::order::ground_height;
 use crate::sim::Rng;
+use crate::staff::ladder::Ladder;
 use crate::world::World;
 
 #[cfg(test)]
@@ -35,17 +35,28 @@ fn diver(unit: &Unit) -> bool {
 }
 
 /// 4: the tank mode and the move kind of the unit at position `at` of the entity list from the
-/// tank it stands in, its height and its type. A unit in a tank with water is under water (4)
+/// tank it stands in (or, on the outside ladder, the tank of a keeper's target), its height and its
+/// type. A unit in a tank with water is under water (4)
 /// below the surface, unless its type stays at the surface, else it is put on the surface (3); a
 /// dry tank holds it on the floor. A change of mode restarts its animation.
 pub fn check(unit: &mut Unit, world: &mut World, at: usize) {
     let Some(c) = world.zoo.entities.get(at).and_then(|e| e.common.as_ref()) else {
         return;
     };
-    let (x, y, z0, rotation) = (c.x, c.y, c.z, c.rotation);
+    let (x, y, z0, rotation, kind0) = (c.x, c.y, c.z, c.rotation, c.movement_mode);
     let tile = world.tile_index(x.div_euclid(64), y.div_euclid(64));
+    // A keeper on the outside ladder (jobs 20, 21) belongs to the tank of his target tile.
+    let job = if unit.kind == Kind::Keeper {
+        unit.goal.record.job
+    } else {
+        0
+    };
+    let ladder_tank = match &unit.part {
+        Part::Staff(s) if matches!(job, 20 | 21) => s.target.and_then(|t| world.tank_at(t)),
+        _ => None,
+    };
     let tank = tile.and_then(|t| {
-        let id = world.tank_at(t)?;
+        let id = ladder_tank.or_else(|| world.tank_at(t))?;
         Some((t, id, world.tank(id)?))
     });
     let only = unit.mover.only_underwater;
@@ -54,20 +65,31 @@ pub fn check(unit: &mut Unit, world: &mut World, at: usize) {
         Some((t, id, k)) => {
             let ground = ground_height(&world.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64));
             let (height, level) = (16 * k.steps().0, 16 * k.steps().1);
+            let gate = Ladder::of(world, id);
+            // On a ladder (tank staff 3): the height stays between its foot and its top.
+            let ladder = gate.and_then(|l| match () {
+                _ if t == l.inside && matches!(job, 28 | 29) => Some((l.in_foot.2, l.in_top.2)),
+                _ if t == l.outside && ladder_tank.is_some() => Some((l.out_foot.2, l.out_top.2)),
+                _ => None,
+            });
             // The tile inside the gate keeps a unit on the platform it is on.
-            let platform = gate_inside(world, id) == Some(t)
+            let platform = gate.is_some_and(|l| l.inside == t)
                 && (unit.tank == 2
                     || unit.kind != Kind::Animal && z0.saturating_sub(ground) == height);
-            let (mode, h) = if platform {
-                (2, height)
-            } else if level < 16 {
-                (if only { 4 } else { 0 }, 0)
-            } else if z0.saturating_sub(ground) < level && !unit.mover.surface {
-                (4, z0.saturating_sub(ground))
+            if let Some((foot, top)) = ladder {
+                (kind0, 1, z0.clamp(foot, top.max(foot)))
             } else {
-                (3, level)
-            };
-            (3, mode, ground + h)
+                let (mode, h) = if platform {
+                    (2, height)
+                } else if level < 16 {
+                    (if only { 4 } else { 0 }, 0)
+                } else if z0.saturating_sub(ground) < level && !unit.mover.surface {
+                    (4, z0.saturating_sub(ground))
+                } else {
+                    (3, level)
+                };
+                (3, mode, ground + h)
+            }
         }
     };
     if let Some(c) = world.zoo.entities[at].common.as_mut() {

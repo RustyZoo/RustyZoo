@@ -41,6 +41,9 @@ pub const DUTIES: u8 = 110;
 pub const GAWK: u8 = 112;
 /// The maintenance duties of a worker (staff 8).
 pub const MAINT: u8 = 120;
+/// A keeper enters a tank by the ladders of its gate and leaves it (tank staff 4).
+pub const ENTER_TANK: u8 = 126;
+pub const EXIT_TANK: u8 = 127;
 /// A tour guide's leg to a viewing area and its talk there (tour guide 5 to 7); the first is also
 /// a guest's walk after a guide.
 pub const LEG: u8 = 118;
@@ -200,6 +203,9 @@ pub enum Goal {
     Duties,
     /// 0x78 of a maintenance worker: take a task of the pool and do its jobs (staff 8.3).
     Maint,
+    /// 0x7e and 0x7f of a keeper: enter a tank and leave it by the ladders (tank staff 4).
+    EnterTank,
+    ExitTank,
     /// 0x72 of an animal: walk to a piece of keeper food and eat it (11.8).
     KeeperFood,
     /// 0x71 of a guest: walk to the zoo entrance and go (11.6).
@@ -240,6 +246,8 @@ impl Goal {
             (HABITAT, Kind::Keeper) => Some(Goal::Exhibit),
             (DUTIES, Kind::Keeper) => Some(Goal::Duties),
             (MAINT, Kind::Worker) => Some(Goal::Maint),
+            (ENTER_TANK, Kind::Keeper) => Some(Goal::EnterTank),
+            (EXIT_TANK, Kind::Keeper) => Some(Goal::ExitTank),
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
@@ -267,6 +275,8 @@ impl Goal {
             Goal::Habitat | Goal::Exhibit => HABITAT,
             Goal::Duties => DUTIES,
             Goal::Maint => MAINT,
+            Goal::EnterTank => ENTER_TANK,
+            Goal::ExitTank => EXIT_TANK,
             Goal::KeeperFood => KEEPER_FOOD,
             Goal::Leave => LEAVE,
             Goal::DrinkWater => DRINK,
@@ -297,6 +307,8 @@ impl Goal {
             }
             Goal::Eating => cx.eating_init(),
             Goal::Sick => cx.sick_init(),
+            Goal::EnterTank => cx.enter_init(),
+            Goal::ExitTank => cx.exit_init(),
             _ => true,
         }
     }
@@ -331,6 +343,7 @@ impl Goal {
             Goal::Duties => return cx.duties_check_done(),
             // It never completes by itself (staff 8.1).
             Goal::Maint => return,
+            Goal::EnterTank | Goal::ExitTank => return cx.ladder_task_check_done(),
             Goal::Enter => return cx.enter_check_done(),
             Goal::Use => return cx.use_check_done(),
             Goal::Exit => return cx.exit_check_done(),
@@ -372,6 +385,7 @@ impl Goal {
             Goal::KeeperFood => cx.keeper_food_complete(),
             Goal::Exhibit => cx.exhibit_complete(),
             Goal::Duties => cx.duties_complete(),
+            Goal::EnterTank | Goal::ExitTank => cx.ladder_task_complete(),
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
             Goal::Gawk => cx.gawk_complete(),
@@ -393,7 +407,7 @@ impl Goal {
 }
 
 /// The sub-goal object of a job: the keeper's jobs 1 to 6 (staff 7.6 to 7.8), the worker's jobs 7 to
-/// 10, 16 and 17 (staff 8.4 to 8.7), the base one (9.2) for every other job.
+/// 10, 16, 17, 26 and 27 (staff 8.4 to 8.7, tank staff 8), the base one (9.2) for every other job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sub {
     Base,
@@ -404,8 +418,8 @@ pub enum Sub {
 impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
-            (Kind::Keeper, 1..=6) => Some(Sub::Keeper(job)),
-            (Kind::Worker, 7..=10 | 16 | 17) => Some(Sub::Worker(job)),
+            (Kind::Keeper, 1..=6 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
+            (Kind::Worker, 7..=10 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
             _ => Some(Sub::Base),
         }
     }
@@ -852,10 +866,19 @@ impl Cx<'_, '_> {
     /// Asks the finder for a path to tile `to`; on success the unit holds the path and its
     /// destination (the tile's centre at its height, movement 8.1).
     pub fn path_to(&mut self, to: usize, partial: bool) -> bool {
+        self.path_to_level(to, partial, None)
+    }
+
+    /// The same for a unit in a tank, to the level `level` of the destination when it is given
+    /// (else the unit's own).
+    pub fn path_to_level(&mut self, to: usize, partial: bool, level: Option<i32>) -> bool {
         let Some(here) = self.tile() else {
             return false;
         };
-        let mover = crate::unit::movement::mover(self.unit, self.world, self.at, here);
+        let mut mover = crate::unit::movement::mover(self.unit, self.world, self.at, here);
+        if let Some(l) = level {
+            mover.levels.1 = l;
+        }
         let mut finder = std::mem::take(&mut self.world.units.finder);
         let reply = finder.request(self.world, &mover, to, partial);
         self.world.units.finder = finder;

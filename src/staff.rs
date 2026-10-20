@@ -172,6 +172,7 @@ pub fn leaves(world: &mut World, id: u32) {
 
 pub mod assign;
 pub mod chores;
+pub mod ladder;
 pub mod pool;
 pub mod service;
 

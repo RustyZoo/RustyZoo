@@ -5,7 +5,7 @@ use super::tank::{CONFIG, put_wall, ring, tank, tank_shape, tanks};
 use super::*;
 
 /// A new exhibit tank (2..3, 2..3), made with its last wall.
-fn new_tank(kind: &'static str, things: &[(&str, i32, i32)]) -> World {
+pub(super) fn new_tank(kind: &'static str, things: &[(&str, i32, i32)]) -> World {
     let mut pieces = ring(kind, 2, 2, 3, 3);
     let last = pieces.pop().unwrap();
     let mut world = tanks(&pieces, things, &[]);

@@ -549,7 +549,7 @@ fn the_entrance_is_blocked_by_a_fence_across_the_gate_or_an_object_in_a_gate_til
         let gate = service::gate_tiles(&g.w, pen).unwrap();
         let at = g.w.find(KEEPER).unwrap();
         let mover = movement::mover(g.w.units.get(KEEPER).unwrap(), &g.w, at, 9 * 22 + 1);
-        service::entrance_blocked(&g.w, &mover, gate)
+        service::entrance_blocked(&g.w, &mover, gate, false)
     };
     assert!(!blocked(&Game::new(&[PEN_A])), "as built");
     assert!(
@@ -587,4 +587,27 @@ fn the_keepers_own_target_tile_is_claimed_on_his_way_and_kept_into_his_duties() 
     }
     assert_ne!(own(&g), go, "the first job sets another");
     assert!(own(&g).is_some());
+}
+
+#[test]
+fn a_visit_with_nothing_to_do_ends_at_once_and_is_not_started_again_by_the_ladder() {
+    // The pen was never serviced, so it wants a keeper, but it has food and nothing else to do.
+    let mut g = Game::new(&[PEN_A]);
+    assert!(g.put("herbchow", (5, 3), 1000));
+    let pen = g.exhibit((4, 3));
+    g.run(1500);
+    let done = g.lines(&["staff done"]);
+    assert_eq!(done.len(), 1, "{:?}", g.lines(&["staff", "habitatduties"]));
+    assert!(done[0].ends_with(&format!(" 1 {pen}")), "{done:?}");
+    assert_eq!(
+        g.lines(&["habitatduties"]).len(),
+        1,
+        "the duties start once"
+    );
+    assert!(
+        g.lines(&["staff job"]).is_empty(),
+        "{:?}",
+        g.lines(&["staff job"])
+    );
+    assert!(g.w.exhibits().get(pen).unwrap().rating.serviced > 0);
 }

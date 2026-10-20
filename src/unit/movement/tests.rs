@@ -971,3 +971,49 @@ fn a_guest_reads_its_costs_off_the_paths_from_the_class_file() {
     // Only a guest has them.
     assert_eq!(costs(2, &class(vec![("cNonPathCost", 5)])), (7, 1));
 }
+
+#[test]
+fn a_free_move_goes_straight_to_its_point_by_the_distance_of_a_step_and_stands_on_it() {
+    let (x, y) = centre((5, 5));
+    let mut w = map(vec![entity("keeper", "keeper", 1, (x, y), 0)]);
+    let at = w.find(1).unwrap();
+    let mut unit = w.units.get(1).unwrap().clone();
+    let z = |w: &World| w.zoo.entities[at].common.as_ref().unwrap().z;
+    // Straight up: two units a step, the last one onto the point, which is done.
+    unit.destination = Some((x, y, 5));
+    assert_eq!(
+        [fly(&mut unit, &mut w, 2, at), fly(&mut unit, &mut w, 2, at)],
+        [false, false]
+    );
+    assert_eq!(z(&w), 4);
+    assert!(fly(&mut unit, &mut w, 2, at));
+    assert_eq!((position(&w, 1), z(&w)), ((x, y), 5));
+    // On the point, and with no destination, it is done at once.
+    assert!(fly(&mut unit, &mut w, 2, at));
+    unit.destination = None;
+    assert!(fly(&mut unit, &mut w, 2, at));
+    // Down, and along a line: the length is truncated, the end is the point.
+    unit.destination = Some((x + 30, y, -35));
+    let mut steps = 0;
+    while !fly(&mut unit, &mut w, 16, at) {
+        steps += 1;
+        assert!(steps < 10);
+    }
+    assert_eq!((position(&w, 1), z(&w)), ((x + 30, y), -35));
+    // From (x, y, 5): a length of 50 is three steps of 16 and the one that reaches it.
+    assert_eq!(steps, 3);
+}
+
+#[test]
+fn a_unit_in_the_air_is_not_put_on_the_ground_by_the_snap() {
+    let (x, y) = centre((5, 5));
+    let mut w = map(vec![entity("keeper", "keeper", 1, (x, y), 0)]);
+    let at = w.find(1).unwrap();
+    w.place_unit(at, (x, y, 50), 0);
+    snap(&mut w, at);
+    assert_eq!(w.zoo.entities[at].common.as_ref().unwrap().z, 0);
+    w.place_unit(at, (x, y, 50), 0);
+    w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 1;
+    snap(&mut w, at);
+    assert_eq!(w.zoo.entities[at].common.as_ref().unwrap().z, 50);
+}

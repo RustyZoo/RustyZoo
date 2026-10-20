@@ -546,7 +546,7 @@ fn reads_the_common_part_of_fixed_entities() {
         ambient.z(8);
         base(&mut ambient, v, 0, 10, "Bird");
         let mut filter = scenery(v, 11, "Filter");
-        filter.extend(vec![0; if v >= 95 { 4 + 12 + 16 + 4 } else { 4 }]);
+        filter.extend(vec![7; if v >= 95 { 4 + 12 + 16 + 4 } else { 4 }]);
         let mut rubble = scenery(v, 12, "Rubble");
         rubble.extend([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         let mut tankwall = fence(v, 13);
@@ -578,6 +578,9 @@ fn reads_the_common_part_of_fixed_entities() {
         }
         let c = z.entities[3].common.as_ref().unwrap();
         assert_eq!((c.rotation, c.id, &*c.name), (4, 9, "House"));
+        // The words after the health are upkeep and dates, never timers (zoo format 6.8).
+        let f = z.entities[5].common.as_ref().unwrap().filter.unwrap();
+        assert_eq!((f.health, f.timers), (0x0707_0707, None), "filter at {v}");
     }
 }
 

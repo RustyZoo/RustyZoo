@@ -31,6 +31,7 @@ fn world(entities: usize) -> World {
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     };
     let zoo = Zoo {
@@ -783,6 +784,98 @@ fn the_guide_command_puts_a_tour_guide_on_a_tile() {
     assert_eq!(unit.kind, crate::unit::Kind::Guide);
     let name = &run.world.zoo.entities[0].common.as_ref().unwrap().name;
     assert_eq!(name, "Guide 1");
+}
+
+#[test]
+fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
+    use drive::Command::{Animal, Filter, Keeper, Worker};
+    for bad in [
+        "keeper",
+        "keeper 3",
+        "worker x,y",
+        "keeper 3,4 5",
+        "animal",
+        "animal mantaray",
+        "animal 3,4",
+        "animal mantaray 3,",
+        "filter",
+        "filter 3,4",
+        "filter 3,4 8",
+        "filter 3,4 -1",
+        "filter 3,4 x",
+        "filter 3,4 99999999999",
+        "filter 3,4 2 1",
+    ] {
+        assert!(bad.parse::<drive::Command>().is_err(), "{bad}");
+    }
+    assert_eq!("keeper 3,4".parse(), Ok(Keeper(3, 4)));
+    assert_eq!("worker -3,0".parse(), Ok(Worker(-3, 0)));
+    assert_eq!(
+        "animal mantaray 3,4".parse(),
+        Ok(Animal("mantaray".into(), 3, 4))
+    );
+    assert_eq!("filter 3,4 7".parse(), Ok(Filter(3, 4, 7)));
+    let mut run = game(0);
+    // No such types: nothing changes.
+    for c in [
+        Keeper(1, 1),
+        Worker(1, 1),
+        Animal("mantaray".into(), 1, 1),
+        Filter(1, 1, 0),
+    ] {
+        assert!(!run.apply(&c), "{c:?}");
+    }
+    let ty = |class: &'static str, name: &str, sub: &str| crate::entity::EntityType {
+        class,
+        type_name: name.as_bytes().to_vec(),
+        subtype: sub.as_bytes().to_vec(),
+        file: None,
+        config: None,
+        name_id: 1,
+        footprint: [2, 2, 1],
+        height: 0,
+    };
+    for t in [
+        ty("keeper", "keeper", "m"),
+        ty("keeper", "trainer", "m"),
+        ty("maint", "maint", "m"),
+        ty("animals", "mantaray", "m"),
+        ty("filter", "filter1", "f"),
+    ] {
+        run.cat.push(t);
+    }
+    assert!(
+        !run.apply(&Keeper(-1, 99)) && !run.apply(&Filter(-1, 99, 0)),
+        "off the map"
+    );
+    assert!(!run.apply(&Animal("orca".into(), 1, 1)), "no such animal");
+    for c in [
+        Keeper(1, 1),
+        Worker(2, 1),
+        Animal("mantaray".into(), 3, 1),
+        Filter(2, 2, 6),
+    ] {
+        assert!(run.apply(&c), "{c:?}");
+    }
+    run.step(67);
+    let kinds: Vec<_> = run.world.units.iter().map(|u| u.kind).collect();
+    use crate::unit::Kind;
+    assert!(
+        kinds.ends_with(&[Kind::Keeper, Kind::Worker, Kind::Animal]),
+        "{kinds:?}"
+    );
+    // The keeper is the marine specialist, the filter has its health and a timer of 0.
+    let entities = &run.world.zoo.entities;
+    let marine = entities
+        .iter()
+        .find(|e| e.class == "keeper" && e.type_name == "trainer");
+    assert!(marine.is_some_and(|e| e.common.as_ref().is_some_and(|c| c.name == "Keeper 1")));
+    let filter = entities
+        .iter()
+        .find(|e| e.class == "filter")
+        .and_then(|e| e.common.as_ref());
+    assert_eq!(filter.map(|c| c.rotation), Some(6));
+    assert_eq!(filter.and_then(|c| c.filter).map(|f| f.health), Some(10));
 }
 
 #[test]

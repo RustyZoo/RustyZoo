@@ -28,7 +28,7 @@ use crate::world::World;
 mod tests;
 
 /// The eight directions as steps of a tile (movement 2).
-pub(super) const DIR: [(i32, i32); 8] = [
+pub const DIR: [(i32, i32); 8] = [
     (0, -1),
     (1, -1),
     (1, 0),
@@ -98,7 +98,7 @@ fn tile_of(world: &World, (x, y): (i32, i32)) -> Option<usize> {
 }
 
 /// The direction from tile `a` to tile `b` by the signs of the differences, -1 for the same tile.
-pub(super) fn direction(world: &World, a: usize, b: usize) -> i32 {
+pub fn direction(world: &World, a: usize, b: usize) -> i32 {
     let width = world.zoo.width as usize;
     let d = |a: usize, b: usize| (b as i32 - a as i32).signum();
     let step = (d(a % width, b % width), d(a / width, b / width));
@@ -164,13 +164,14 @@ pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
     if unit.moving && unit.speed > 0 {
         // The remainder of the division is lost (issue 301).
         let distance = (unit.speed.wrapping_mul(ms) / 1000).max(1);
-        let in_tank = world.zoo.entities[at]
+        let mode = world.zoo.entities[at]
             .common
             .as_ref()
-            .is_some_and(|c| c.movement_mode == 3);
-        let done = match in_tank {
-            true => swim::progress(unit, world, distance, at),
-            false => progress(unit, world, distance, at),
+            .map_or(2, |c| c.movement_mode);
+        let done = match mode {
+            3 => swim::progress(unit, world, distance, at),
+            1 => fly(unit, world, distance, at),
+            _ => progress(unit, world, distance, at),
         };
         if done {
             unit.through_building = false;
@@ -189,6 +190,35 @@ pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
     }
 }
 
+/// The free move (movement 11): one step of `distance` straight toward the destination point,
+/// whole-number division with the length truncated, or onto the point when it is nearer; true
+/// when the unit is on the point. The ladders of a tank are climbed this way.
+fn fly(unit: &mut Unit, world: &mut World, distance: u32, at: usize) -> bool {
+    let (Some(d), Some(p)) = (unit.destination, point(world, at)) else {
+        return true;
+    };
+    let delta = (d.0 - p.0, d.1 - p.1, d.2 - p.2);
+    let squares: i64 = [delta.0, delta.1, delta.2]
+        .iter()
+        .map(|&v| i64::from(v).pow(2))
+        .sum();
+    let length = (squares as f64).sqrt() as i64;
+    let go = |v: i32| (i64::from(v) * i64::from(distance) / length) as i32;
+    let to = match length <= i64::from(distance) {
+        true => d,
+        false => (p.0 + go(delta.0), p.1 + go(delta.1), p.2 + go(delta.2)),
+    };
+    let rotation = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .map_or(0, |c| c.rotation);
+    let facing = DIR
+        .iter()
+        .position(|&s| s == (delta.0.signum(), delta.1.signum()));
+    world.place_unit(at, to, facing.map_or(rotation, |f| f as u32));
+    to == d
+}
+
 /// The end of a walk (8.2 step 3): the path is empty, or the unit stands in its destination tile.
 fn ended(unit: &Unit, world: &World, at: usize) -> bool {
     let target = unit
@@ -200,11 +230,16 @@ fn ended(unit: &Unit, world: &World, at: usize) -> bool {
         .common
         .as_ref()
         .is_some_and(|c| c.movement_mode == 3);
+    let flying = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .is_some_and(|c| c.movement_mode == 1);
     let arrived = match (swimming, point(world, at), unit.destination) {
+        _ if flying => point(world, at) == unit.destination,
         (true, Some(p), Some(d)) => cell(p) == cell(d),
         _ => here(world, at).is_some() && here(world, at) == target,
     };
-    unit.path.is_empty() || arrived
+    (unit.path.is_empty() && !flying) || arrived
 }
 
 /// The tile of the unit at position `at` of the entity list.
@@ -309,6 +344,11 @@ pub fn call(
         unit.goal.record.target.clear();
         unit.target = *target;
     }
+    // The climb of a ladder is a free move to the destination point; its second argument is the
+    // speed (tank staff 3).
+    if let (Gait::Fly(speed), Some(1)) = (gait, mode_of(world, at)) {
+        return start_fly(unit, world, data, at, speed);
+    }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.
     if unit.path.is_empty() {
@@ -355,13 +395,37 @@ pub fn call(
     Flow::Running
 }
 
+/// The movement mode of the unit at position `at` of the entity list.
+fn mode_of(world: &World, at: usize) -> Option<u32> {
+    world
+        .zoo
+        .entities
+        .get(at)?
+        .common
+        .as_ref()
+        .map(|c| c.movement_mode)
+}
+
+/// The start of a free move: the `climb` animation at the speed the call gives, toward the
+/// destination the goal set. Fails without a destination or the animation.
+fn start_fly(unit: &mut Unit, world: &World, data: &dyn Data, at: usize, speed: &Number) -> Flow {
+    if unit.destination.is_none() || !animate(unit, world, data, at, Some(("climb", 100))) {
+        stop(unit);
+        return Flow::Failed;
+    }
+    unit.band = Band::Slow;
+    unit.speed = data.number(&world.zoo.entities[at], speed).max(0) as u32;
+    unit.walking = true;
+    Flow::Running
+}
+
 fn point(world: &World, at: usize) -> Option<(i32, i32, i32)> {
     let c = world.zoo.entities.get(at)?.common.as_ref()?;
     Some((c.x, c.y, c.z))
 }
 
 /// A walking unit on the ground stands on it (5): its height is the ground's at its point. Not
-/// done in a tank, where the unit swims.
+/// done in a tank, where the unit swims, nor on a ladder.
 fn snap(world: &mut World, at: usize) {
     let Some(c) = world.zoo.entities.get(at).and_then(|e| e.common.as_ref()) else {
         return;
@@ -370,7 +434,7 @@ fn snap(world: &mut World, at: usize) {
     let Some(t) = tile_of(world, (x, y)) else {
         return;
     };
-    if c.movement_mode == 3 || world.tank_at(t).is_some() {
+    if matches!(c.movement_mode, 1 | 3) || world.tank_at(t).is_some() {
         return;
     }
     let ground = ground_height(&world.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64));

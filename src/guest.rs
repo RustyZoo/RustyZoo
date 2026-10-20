@@ -461,6 +461,7 @@ pub fn arrive(
             movement_mode: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     };
     let shape = Shape {
