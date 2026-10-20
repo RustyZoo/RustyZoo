@@ -22,7 +22,6 @@
 #expect 1 unit add [0-9]+ guide
 #expect 1 exhibit tank [0-9]+
 #expect 1 world filter [0-9]+
-#pending happiness 325
 2 pause
 # construction panel, fence tab: tank walls round a tank of 6 x 6 tiles at 16..21, 35..40
 3 mouse 25 34
