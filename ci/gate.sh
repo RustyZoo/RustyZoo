@@ -7,6 +7,9 @@
 #   full     cargo test -- --ignored, only when ZT_DATA_DIR is set (the full game)
 #   full-fr  the same with ZT_DATA_DIR set to $ZT_DATA_DIR_FR (a second install, in another language;
 #            the tests pick their expected values by the language of lang0.dll); skipped when unset
+#   play     release build, then ci/check-playable.sh with ci/playable-full.txt on $ZT_DATA_DIR (the
+#            full game; about eight minutes); skipped when unset
+#   play-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
 #   trials   release build, then ci/check-trials.sh on the trials dir (see ci/fetch-trials.sh);
 #            skipped without the argument
 #
@@ -44,6 +47,10 @@ trials_step() {
   cargo build --release && ci/check-trials.sh "${CARGO_TARGET_DIR:-target}/release/rustyzoo" "$trials"
 }
 
+play_step() { # play_step <game folder>
+  cargo build --release && ci/check-playable.sh "${CARGO_TARGET_DIR:-target}/release/rustyzoo" "$1" ci/playable-full.txt
+}
+
 step fmt cargo fmt --check
 step clippy cargo clippy --all-targets -- -D warnings
 step test cargo test
@@ -51,6 +58,8 @@ if [ -n "${ZT_DATA_DIR:-}" ]; then step full cargo test -- --ignored; else skip 
 if [ -n "${ZT_DATA_DIR_FR:-}" ]; then
   step full-fr env ZT_DATA_DIR="$ZT_DATA_DIR_FR" cargo test -- --ignored
 else skip full-fr "ZT_DATA_DIR_FR is not set"; fi
+if [ -n "${ZT_DATA_DIR:-}" ]; then step play play_step "$ZT_DATA_DIR"; else skip play "ZT_DATA_DIR is not set"; fi
+if [ -n "${ZT_DATA_DIR_FR:-}" ]; then step play-fr play_step "$ZT_DATA_DIR_FR"; else skip play-fr "ZT_DATA_DIR_FR is not set"; fi
 if [ -n "$trials" ]; then step trials trials_step; else skip trials "no trials dir given"; fi
 
 echo "gate: $ok ok, $failed failed, $skipped skipped"

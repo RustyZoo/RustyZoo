@@ -1,0 +1,138 @@
+# The exit test of milestone M6 on the expansion trial: the game of its freeform screen (the map of
+# the aquarium and 75000 of cash), played to the fourth month: a tank of 6 x 6 tiles built with
+# tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
+# maintenance worker, a bronto burger stand and a trash can. ci/check-playable.sh runs it twice and
+# reads the log.
+#
+# The window is the default one (1024x768); every position is in its pixels. The tank filter is
+# left out: it cannot be placed yet (issue 471). The rays' happiness is left out: the rating of the
+# bare tank is 66 and the species wants 70, and the rating of tanks is not complete yet (issue 325).
+# The seed 5 draws women for the three hires (the staff of the trials are women only, and the Hire
+# list is empty when a man is drawn).
+#run maps/sm_aqua.zoo --cash 75000 --seed 5 --passes 5700 --clock 200
+#exhibit 16,35,21,40
+#pending happiness 325
+2 pause
+# construction panel, fence tab: tank walls round a tank of 6 x 6 tiles at 16..21, 35..40
+3 mouse 25 34
+4 down
+5 up
+7 mouse 140 80
+8 down
+9 up
+11 mouse 242 174
+12 down
+13 mouse 402 94
+14 up
+15 mouse 422 264
+16 down
+17 mouse 582 184
+18 up
+19 mouse 242 184
+20 down
+21 mouse 402 264
+22 up
+23 mouse 422 94
+24 down
+25 mouse 582 174
+26 up
+27 key enter
+30 key escape
+# (the tank filter is pending: it cannot be placed yet, RustyZoo issue 471)
+# objects panel: a bronto burger stand (structures tab) and a trash can (scenery tab) by the path
+32 mouse 25 129
+33 down
+34 up
+36 mouse 140 200
+37 down
+38 up
+39 mouse 796 195
+41 down
+42 up
+43 mouse 183 107
+44 down
+45 up
+47 mouse 70 80
+48 down
+49 up
+50 mouse 700 179
+52 down
+53 up
+54 key escape
+# adopt panel: two manta rays
+57 mouse 25 81
+58 down
+59 up
+61 mouse 140 120
+62 down
+63 up
+64 mouse 380 179
+65 down
+66 up
+68 mouse 140 120
+69 down
+70 up
+71 mouse 444 179
+72 down
+73 up
+75 key escape
+# hire panel: a marine specialist, a tour guide, a maintenance worker
+78 mouse 25 175
+79 down
+80 up
+82 mouse 70 120
+83 down
+84 up
+85 mouse 572 115
+86 down
+87 up
+89 mouse 140 120
+90 down
+91 up
+92 mouse 636 147
+93 down
+94 up
+96 mouse 70 160
+97 down
+98 up
+99 mouse 508 83
+100 down
+101 up
+103 key escape
+# assign the marine specialist and the tour guide to the tank, one after the other
+106 mouse 572 105
+107 down
+108 up
+111 mouse 1006 665
+112 down
+113 up
+116 mouse 992 587
+117 down
+118 up
+121 mouse 380 179
+122 down
+123 up
+126 key escape
+129 mouse 220 291
+130 down
+131 up
+134 mouse 636 137
+135 down
+136 up
+139 mouse 1006 665
+140 down
+141 up
+144 mouse 992 587
+145 down
+146 up
+149 mouse 380 179
+150 down
+151 up
+154 key escape
+157 mouse 220 291
+158 down
+159 up
+# run unpaused
+162 pause
+# the fourth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
+5600 char Z

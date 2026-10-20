@@ -156,6 +156,20 @@ jobs:
           [ "$status" = 0 ] || exit "$status"
           ci/check-trials.sh ${{ matrix.path }} "$trials"
 
+      # The two games of the exit test of milestone M6, played by script (docs/playing.md), each twice
+      # at the same time on the real data: the freeform game of the base trial to the thirteenth month
+      # and the tank of the expansion trial for three months. The runs and their checks take about
+      # eight and two minutes.
+      - name: Play the freeform and tank games
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          if [ ! -d "$trials/base-trial" ] || [ ! -d "$trials/expansion-trial" ]; then
+            echo "::warning title=Games skipped::No trial data on this runner."
+            exit 0
+          fi
+          ci/check-playable.sh ${{ matrix.path }} "$trials/base-trial" ci/playable.txt
+          ci/check-playable.sh ${{ matrix.path }} "$trials/expansion-trial" ci/playable-tank.txt
+
       # The state hash of 1000 simulation steps of every map of the trials, with steps of 67 ms and
       # of 1000 ms (two month changes), kept as a job output (nothing is uploaded) for the job
       # `simhash`.
