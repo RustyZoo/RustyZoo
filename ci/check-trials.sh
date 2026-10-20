@@ -899,13 +899,16 @@ check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happin
 
 # Amphibious neighbours: scn28b's tank 1 and land exhibit 2 are level with the wall between them,
 # which is a connector. The polar bear of the tank goes ashore and comes back, and the bear of the
-# land exhibit swims into the tank. Prints the exhibits each entered and when (steps of 67 ms).
+# land exhibit swims into the tank. Prints the exhibits each entered and when (steps of 67 ms). The
+# land exhibit counts the tank's water for the bears (habitat rating 5.3), so its bear is content
+# and the draws differ from a rating without it: the tank bear sleeps on its way back and is home
+# at step 3333.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>
-  rz sim "$1" --ticks 3000 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
+  rz sim "$1" --ticks 3500 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@897,1@2882;97902:1@1520" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@897,1@3333;97902:1@1472" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 the water check gives animal 51758 the water mode at
 # step 18 and sends it to a water tile of its exhibit; in the water mode its walks end on water tiles
