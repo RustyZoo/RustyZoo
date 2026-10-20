@@ -250,7 +250,7 @@ fn the_set_comes_from_the_esthetic_bonus_for_the_guest_type() {
 /// The ring tiles (x, y) of a 3 x 2 half-tile object with anchor tile `(ax, ay)` and rotation `r`
 /// on a 10 by 10 map; the anchor is the minimum corner of the footprint.
 fn ring_at(front: bool, r: u32, (ax, ay): (i32, i32)) -> Vec<(i32, i32)> {
-    let (fx, fy) = if r % 4 == 0 { (3, 2) } else { (2, 3) };
+    let (fx, fy) = if r.is_multiple_of(4) { (3, 2) } else { (2, 3) };
     let w = crate::unit::testing::world_with((10, 10), |zoo| {
         let at = (ax * 64 + fx * 16, ay * 64 + fy * 16);
         zoo.entities.push(entity("animals", "big", 7, at, r));
