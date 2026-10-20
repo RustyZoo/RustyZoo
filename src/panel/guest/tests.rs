@@ -59,12 +59,12 @@ struct Texts;
 impl Strings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            3404 => "Happiness: %d".into(),
-            3420 => "Just arrived".into(),
-            3421 => "A short time".into(),
+            3404 => "H %d".into(),
+            3420 => "T0".into(),
+            3421 => "T1".into(),
             5000 => "Lion".into(),
-            10074 => "I am happy".into(),
-            10102 => "Can't see %s".into(),
+            10074 => "Th1".into(),
+            10102 => "Th2 %s".into(),
             _ => String::new(),
         }
     }
@@ -151,14 +151,10 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
     let told = panel.refresh(&mut ui, &world, &cat, &vfs, now).unwrap();
     assert_eq!(
         told,
-        "guest 2 \"\" happiness 75 drink 70 food 40 restroom 90 energy 20 time \"Just arrived\" \
-         favourite \"Lion\" thoughts [\"Can't see Zed\", \"I am happy\"]"
+        "guest 2 \"\" happiness 75 drink 70 food 40 restroom 90 energy 20 time \"T0\" \
+         favourite \"Lion\" thoughts [\"Th2 Zed\", \"Th1\"]"
     );
-    assert_eq!(
-        ui.string(3404),
-        "Happiness: 75",
-        "the tooltip holds the value"
-    );
+    assert_eq!(ui.string(3404), "H 75", "the tooltip holds the value");
     assert_eq!(ui.text(3476).unwrap(), b"Lion");
     // The two items fill the first two pictures and the third is hidden.
     assert_eq!(state(&ui, 3481) & HIDDEN, 0);
@@ -180,6 +176,6 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
         c.date()
     };
     let told = panel.refresh(&mut ui, &world, &cat, &vfs, later).unwrap();
-    assert!(told.contains("time \"A short time\""), "{told}");
+    assert!(told.contains("time \"T1\""), "{told}");
     assert_ne!(state(&ui, 3416) & DISABLED, 0);
 }
