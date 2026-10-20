@@ -2,10 +2,19 @@
 # tiles with another entrance and view, the lists of the panels are much longer (the items are other
 # rows of them: a fence of an exhibit after the tank walls, a snack machine, a restroom), and its
 # staff cost wages and rake dung. A tour guide is hired too and assigned to the exhibit. The
-# ignored test tests/playable.rs runs it on the install of ZT_DATA_DIR (and ZT_DATA_DIR_FR, in
-# the gate). Every position is in the pixels of the default window (1024x768).
+# steps `play` and `play-fr` of ci/gate.sh run it on the install of ZT_DATA_DIR and of ZT_DATA_DIR_FR.
+# Every position is in the pixels of the default window (1024x768).
 #run maps/default.zoo --cash 75000 --seed 5 --passes 22300 --clock 200
 #exhibit 16,36,21,41
+#months 12
+#expect 1 exhibit gate [0-9]+
+#expect 2 unit add [0-9]+ animal
+#expect 1 unit add [0-9]+ keeper
+#expect 2 tool assign [0-9]+ [0-9]+
+#expect 1 unit add [0-9]+ worker
+#expect 1 world drop [0-9]+
+#expect 1 unit add [0-9]+ guide
+#expect 0 exhibit tank [0-9]+
 # pause the game while building
 2 pause
 # construction panel, terrain paint tab: savannah grass with a brush of 5 x 5 tiles over the exhibit to be

@@ -7,6 +7,12 @@
 #   #run <map> <flags>    the words after `run`, such as `maps/default.zoo --cash 75000 --seed 5
 #                         --passes 22300 --clock 200` (the run adds --headless and --script)
 #   #exhibit X0,Y0,X1,Y1  the tiles of the land exhibit with the animals (none for a tank)
+#   #months N             the month changes (`sim month` lines) the run must show: 12 for the thirteenth
+#                         month, 3 for the fourth
+#   #expect N <words>     what the script builds and hires: at least N lines of the log start (after the
+#                         pass and the time) with the words, each an extended regular expression that
+#                         must match a whole word (`unit add [0-9]+ keeper`); N 0 means no such line.
+#                         The checks fail when the game did not build it; they never skip for it
 #   #pending <check> N    leaves the check out until the issue N is fixed
 #
 # Both logs must be the same, byte for byte (the run has no state hash, issue 501; the lines carry
@@ -19,7 +25,8 @@ bin=$1
 data=$2
 script=$3
 
-# The clock at which an animal of the shortest-lived species may die of old age, in ms.
+# The clock at which an animal of the shortest-lived species may die of old age, in ms. An animal
+# that is gone later must have posted `animal dying ID` before (animals-needs 10.2).
 OLD_AGE_MS=4000000
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -63,6 +70,35 @@ fi
 # Counts of the log: <awk condition> -> number of lines.
 count() { awk "$1 { n++ } END { print n + 0 }" "$tmp/log"; }
 
+# What the script builds and hires, as its header declares it.
+while read -r n words; do
+  [ -n "$n" ] || continue
+  case $n in *[!0-9]*) fail "builds: '$n $words' does not start with a number"; continue ;; esac
+  got=$(awk -v w="$words" 'BEGIN { nw = split(w, p, " ") }
+    { for (i = 1; i <= nw; i++) if ($(3 + i) !~ ("^(" p[i] ")$")) next; c++ }
+    END { print c + 0 }' "$tmp/log")
+  if [ "$n" = 0 ]; then
+    [ "$got" = 0 ] && ok "builds: no '$words'" || fail "builds: $got lines '$words', the script has none"
+  elif [ "$got" -ge "$n" ]; then
+    ok "builds: $got lines '$words' (at least $n)"
+  else
+    fail "builds: $got lines '$words', at least $n needed"
+  fi
+done <<EXPECT
+$(sed -n 's/^#expect //p' "$script" | tr -d '\r')
+EXPECT
+# want <words>: the number the script expects for these words (0 when it names none).
+want() { tr -d '\r' <"$script" | awk -v w="$1" '/^#expect [0-9]+ / { n = $2; sub(/^#expect [0-9]+ /, ""); if ($0 == w) { print n; exit } }'; }
+
+# The run reached the month the script names.
+months=$(header months)
+case $months in
+  ""|*[!0-9]*) fail "months: no '#months N' line in the header" ;;
+  *) shown=$(count '$4 == "sim" && $5 == "month"')
+     if [ "$shown" -ge "$months" ]; then ok "months: $shown month changes (at least $months)"
+     else fail "months: $shown month changes, at least $months needed"; fi ;;
+esac
+
 # Guests created and gone.
 made=$(count '$4 == "guest" && $5 == "add"')
 gone=$(count '$4 == "guest" && $5 == "leave"')
@@ -73,10 +109,10 @@ else
 fi
 
 # A tour group formed: a guest asked to follow a tour guide (when one was hired).
-guides=$(count '$4 == "unit" && $5 == "add" && $7 == "guide"')
+guides=$(want 'unit add [0-9]+ guide')
 followers=$(count '$4 == "guest" && $5 == "follow" && $7 != 0')
-if [ "$guides" = 0 ]; then
-  skip "tour group: no tour guide hired (the base trial has none)"
+if [ "${guides:-0}" = 0 ]; then
+  skip "tour group: the script hires no tour guide"
 elif pending tour; then :
 elif [ "$followers" -gt 0 ]; then
   ok "tour group: $followers requests to follow a guide"
@@ -118,32 +154,42 @@ n=$(echo "$animals" | wc -w | tr -d ' ')
 if [ "$n" = 0 ]; then
   fail "animals: none adopted"
 else
-  lost=0 early=0 hungry=""
+  lost=0 early="" died="" hungry=""
   for a in $animals; do
-    # The time of the clock, in ms, at which the animal left the game, 0 if it did not.
-    left=$(awk -v id="$a" '$4 == "unit" && $5 == "remove" && $6 == id { print substr($3, 3) + 0 }' "$tmp/log")
+    # The time of the clock, in ms, at which the animal left the game, and 1 if a line `animal dying`
+    # of it came before; nothing if it did not leave.
+    left=$(awk -v id="$a" '$4 == "animal" && $5 == "dying" && $6 == id { d = 1 }
+      $4 == "unit" && $5 == "remove" && $6 == id { print substr($3, 3) + 0, d + 0; exit }' "$tmp/log")
     if [ -n "$left" ]; then
       lost=$((lost + 1))
-      [ "$left" -ge "$OLD_AGE_MS" ] || early=$((early + 1))
+      if [ "${left% *}" -ge "$OLD_AGE_MS" ] && [ "${left#* }" = 1 ]; then died="$died $a"; else early="$early $a"; fi
     fi
     [ "$(count '$4 == "animal" && $5 == "eat" && $6 == '"$a")" -gt 0 ] || hungry="$hungry $a"
   done
   # The shortest life of the species of the data is 4320 s (cTimeDeath of a gazelle, a zebra, a walrus):
-  # an animal that is gone after $OLD_AGE_MS ms of the clock may have died of old age.
-  if [ "$early" -gt 0 ]; then fail "animals: $early of $n gone before the age of $((OLD_AGE_MS / 1000)) s"
+  # an animal may be gone after $OLD_AGE_MS ms of the clock only if it died of old age (it posted
+  # `animal dying` first); any other removal is a failure.
+  if [ -n "$early" ]; then fail "animals: gone, and not of old age after $((OLD_AGE_MS / 1000)) s:$early"
   elif [ "$lost" = 0 ]; then ok "animals: $n alive at the end"
-  else ok "animals: $((n - lost)) of $n alive at the end, $lost gone of old age"; fi
+  else ok "animals: $((n - lost)) of $n alive at the end, died of old age:$died"; fi
   if pending fed; then :
   elif [ -z "$hungry" ]; then ok "animals: all $n fed"; else fail "animals: never ate:$hungry"; fi
-  # Happiness above the start value (cInitialHappiness, 60) at some time of the run; the exhibit
-  # of the base trial has no raked dung (its keeper has no cDirt), so it falls later.
+  # Happiness above the start value of the animal (its first status line; the species differ) at some
+  # time of the run; the exhibit of the base trial has no raked dung (its keeper has no cDirt), so it
+  # falls later.
   if pending happiness; then :; else
-    best=$(awk '$4 == "animal" && $5 == "status" && $7 > b { b = $7 } END { print b + 0 }' "$tmp/log")
-    [ "$best" -gt 60 ] && ok "animals: happiness up to $best, above the start value 60" || fail "animals: happiness never above 60 (best $best)"
+    flat="" up=""
+    for a in $animals; do
+      h=$(awk -v id="$a" '$4 == "animal" && $5 == "status" && $6 == id { if (!seen++) first = $7; if ($7 > best) best = $7 }
+        END { print first + 0, best + 0 }' "$tmp/log")
+      if [ "${h#* }" -gt "${h% *}" ]; then up="$up $a:${h% *}->${h#* }"; else flat="$flat $a:${h% *}"; fi
+    done
+    [ -z "$flat" ] && ok "animals: happiness above the start value (start->best):$up" || fail "animals: happiness never above the start value (start):$flat"
   fi
   # Swimming: a tank's animals have a depth.
-  if [ "$(count '$4 == "exhibit" && $5 == "tank"')" = 0 ]; then
-    skip "swimming: no tank"
+  tanks=$(want 'exhibit tank [0-9]+')
+  if [ "${tanks:-0}" = 0 ]; then
+    skip "swimming: the script builds no tank"
   elif pending swim; then :
   else
     still=""

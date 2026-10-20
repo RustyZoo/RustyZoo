@@ -11,6 +11,14 @@
 # list is empty when a man is drawn).
 #run maps/sm_aqua.zoo --cash 75000 --seed 5 --passes 5700 --clock 200
 #exhibit 16,35,21,40
+#months 3
+#expect 1 exhibit gate [0-9]+
+#expect 2 unit add [0-9]+ animal
+#expect 1 unit add [0-9]+ keeper
+#expect 1 tool assign [0-9]+ [0-9]+
+#expect 1 unit add [0-9]+ worker
+#expect 1 unit add [0-9]+ guide
+#expect 1 exhibit tank [0-9]+
 #pending happiness 325
 2 pause
 # construction panel, fence tab: tank walls round a tank of 6 x 6 tiles at 16..21, 35..40

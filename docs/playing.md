@@ -7,7 +7,7 @@ Open a game folder with `--data <folder>` (or `ZT_DATA_DIR`), and start the game
 ## Start
 
 1. At the main menu press the freeform button. A list of maps comes up with the starting cash beside it. Choose a map (the first is chosen) and press Play. The map opens with the main panel over its left edge and the bar of buttons along the bottom.
-2. Press the pause button at the bottom left, or the space bar, while you build: nothing moves until you press it again. The game unpaused advances by one step every 200 ms of the clock.
+2. Press the pause button at the bottom left, or the space bar, while you build: nothing moves until you press it again. The game unpaused advances by one step each time the window's timer fires, nominally every 67 ms.
 
 The scripts do not go through the menu: they start on the map of the freeform game with `run <map> --cash <cash> --seed <n>`, because a game started from the menu ignores `--seed` (issue 500). `ci/check-trials.sh` checks the menu start separately.
 
@@ -20,10 +20,10 @@ The four round buttons at the top of the left bar open the panels of the game. I
 3. Objects panel, first tab (structures): choose a food stand and a restroom and click the ground beside the path. The second tab holds scenery: a trash can and a bench. A tile that cannot hold the object shows it red.
 4. Adopt panel, first tab: choose an animal and click inside the exhibit. The two buttons below the list choose male or female. Put in what the animal likes before it is unhappy: the construction panel has foliage and rocks on its other tabs, and the animal panel (click the animal) shows how well the exhibit suits it.
 5. Pick an animal up: click it to select it and click it again; it follows the pointer; click on a free tile of the exhibit to put it down. A click on bare ground clears the selection. (Escape with something selected asks whether to leave the game: answer No.)
-6. Hire panel: choose a keeper and click the ground by the gate, then a maintenance worker. The list shows staff of one sex at a time, drawn again after each hire. A hire costs the first month's wages at once (the staff of the base trial cost nothing).
+6. Hire panel: choose a keeper and click the ground by the gate, then a maintenance worker. The list shows staff of one sex at a time, drawn again after each hire; in the trials, which hold staff of one sex only, the list is empty whenever the other sex is drawn for the next hire, so a player may meet an empty Hire list. A hire costs the first month's wages at once (the staff of the base trial cost nothing).
 7. Click the keeper: its panel opens. On its second tab press the assign button and click the exhibit; it is added to the list of the keeper. Escape ends the assign mode, a click on bare ground closes the panel.
 
-Press pause again and let the game run. A month is about 1800 steps (a step is one pass of the main loop at 200 ms). Guests arrive at the entrance, pay the admission, walk along the paths, look at the animals and leave; the keeper feeds the animals, the worker repairs the fences and empties the trash can.
+Press pause again and let the game run. A month of 28 to 31 days at 12 s a day lasts about six minutes of play (main-loop spec 7.2). Guests arrive at the entrance, pay the admission, walk along the paths, look at the animals and leave; the keeper feeds the animals, the worker repairs the fences and empties the trash can.
 
 ## What to look at
 
@@ -37,10 +37,12 @@ The first tab of the construction panel lists the tank filter and the tank walls
 
 ## The log
 
-`run --headless --script <file>` prints one line per event; `rustyzoo help` lists them. The checks of `ci/check-playable.sh` read these: guests created and gone (`guest add`, `guest leave`), a tour group (`guest follow`), purchases (`building buy`), the Finances table (`money cell`), wages (`sim wages`), the animals (`unit add`, `animal eat`, `animal status`, `unit tile`, `unit depth`) and the rating (`sim rating`).
+`run --headless --script <file>` prints one line per event; `rustyzoo help` lists them. The checks of `ci/check-playable.sh` read these: guests created and gone (`guest add`, `guest leave`), a tour group (`guest follow`), purchases (`building buy`), the Finances table (`money cell`), wages (`sim wages`), the animals (`unit add`, `animal eat`, `animal status`, `animal dying`, `unit tile`, `unit depth`) and the rating (`sim rating`).
 
 Run a script by hand with the line of its `#run` comment:
 
     ci/check-playable.sh target/release/rustyzoo <folder> ci/playable.txt
 
-The two runs of a script give the same log, byte for byte. A run takes about seven minutes in a release build (the game month is about 1800 passes, issue 502).
+The scripts do not wait for the window's timer: a headless run steps the game as fast as it can with a clock of 200 ms a step (`--clock 200`, the cap of a step), so a month is about 1800 steps there (issue 502) and a run takes about seven minutes in a release build. The two runs of a script give the same log, byte for byte.
+
+The header of a script says what the checks assert: `#months N` is the number of `sim month` lines the run must show (12 for the thirteenth month, 3 for the fourth), and each `#expect N <words>` line is a count of log lines the game must have printed for what the script builds and hires (the gate, the pick-up and put-down, the keeper and its assignment, the maintenance worker, the guide, the tank). A check fails when the game did not build it. An animal that is gone after 4000 s of the clock passes only if it posted `animal dying` first (old age); the happiness is compared with the animal's own first status line.
