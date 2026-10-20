@@ -391,11 +391,12 @@ fn favourites(cat: &Catalogue) -> Vec<i32> {
 
 /// Creates the guest at position `at` of a loaded map as the loader does (guests 5.2, zoo format
 /// 6.12): through its type, with all the draws of a creation, and then the fields its record
-/// stores: the five status values, the check countdowns, the arrival date, the favourite
-/// species and the sick flag. A favourite that is not a loaded species is drawn anew among the species that are not
-/// special animals, as at arrival; with none, the guest has no favourite. `date` is the game date
-/// of the load and `reset` is `[AI] GuestResetInterval`. The caller goes in file order before the
-/// first step; a guest whose type is unknown is left as it is.
+/// stores: the five status values, the sick flag, female and child, the check countdowns, the
+/// saw-animal countdown, the arrival date and the favourite species. A favourite that is not a
+/// loaded species is drawn anew among the species that are not special animals, as at arrival;
+/// with none, the guest has no favourite. `date` is the game date of the load and `reset` is
+/// `[AI] GuestResetInterval`. The caller goes in file order before the first step; a guest whose
+/// type is unknown is left as it is.
 pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: Date, reset: i32) {
     let Some((id, record)) =
         (world.zoo.entities[at].common.as_ref()).and_then(|c| Some((c.id, *c.guest.as_deref()?)))
@@ -420,7 +421,8 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: 
     guest.values = record.values;
     guest.countdowns = record.countdowns;
     guest.arrived = Some(Date::from_file_time(record.arrived));
-    guest.sick = record.sick;
+    (guest.sick, guest.saw_animal) = (record.sick, record.saw_animal);
+    (guest.female, guest.child) = (record.female, record.child);
     if let Some(unit) = world.units.get_mut(id) {
         unit.part = Part::Guest(guest);
     }

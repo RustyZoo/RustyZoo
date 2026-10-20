@@ -128,7 +128,7 @@ pub struct Filter {
 
 /// What a guest record stores: the five status values (happiness, hunger, thirst, energy,
 /// bathroom), the eleven check countdowns in the order of the guest's periods, the arrival date (a
-/// file time), the name id of the favourite species and the sick flag (zoo format 6.12).
+/// file time), the name id of the favourite species and the sick flag, the saw-animal countdown, female and child (zoo format 6.12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GuestRecord {
     pub values: [i32; 5],
@@ -136,6 +136,10 @@ pub struct GuestRecord {
     pub arrived: u64,
     pub favourite: i32,
     pub sick: bool,
+    /// The saw-animal countdown, female and child.
+    pub saw_animal: i32,
+    pub female: bool,
+    pub child: bool,
 }
 
 /// The values, counters and flags an animal record stores (animals 3.5). A counter the record

@@ -229,6 +229,9 @@ const RECORD: crate::zoo::GuestRecord = crate::zoo::GuestRecord {
     arrived: 0,
     favourite: 10,
     sick: false,
+    saw_animal: 14,
+    female: true,
+    child: true,
 };
 
 fn guest_of(world: &World, id: u32) -> Guest {
@@ -255,22 +258,16 @@ fn a_loaded_guest_is_created_with_its_draws_and_then_takes_its_saved_fields() {
         (g.values, g.countdowns, g.favourite, g.sick),
         (RECORD.values, RECORD.countdowns, Some(10), false)
     );
-    // What the record does not hold is the creation's: its sex and age, speed, countdowns of the
-    // reset and of the saw-animal check, and the pending changes.
+    // The record overwrites the sex and age the type name chose, and the saw-animal countdown;
+    // what it does not hold is the creation's: the speed offset, the reset countdown, the pending
+    // changes.
     assert_eq!(
-        (
-            g.female,
-            g.child,
-            g.speed_offset,
-            g.reset,
-            g.saw_animal,
-            g.pending
-        ),
-        (made.female, made.child, made.speed_offset, 9, 20, [0; 5])
+        (g.female, g.child, g.saw_animal),
+        (RECORD.female, RECORD.child, 14)
     );
-    assert!(
-        !g.child && !g.female,
-        "the type name decides the sex and age"
+    assert_eq!(
+        (g.speed_offset, g.reset, g.pending),
+        (made.speed_offset, 9, [0; 5])
     );
     // The arrival date is the record's (a file time), not today.
     assert_eq!(g.arrived, Some(Date::from_file_time(0)));
