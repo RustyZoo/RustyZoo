@@ -1,13 +1,15 @@
-//! The goals of animals: the ladder's need rungs, the keeper food goal and the drink goal (goals
-//! 10.1, 11.8, 11.9).
+//! The goals of animals: the ladder's need rungs, the keeper food goal, the drink goal and the
+//! surface goal (goals 10.1, 11.8, 11.9; tank fauna 10.2).
 
-use super::{BUILDING, Cx, NONE};
+use super::{BUILDING, Cx, NONE, RANDOM};
 use crate::animal::food;
-use crate::unit::Part;
+use crate::behaviour::Target;
+use crate::unit::{Part, walk};
 
-/// Task 0x72, keeper food, and 0x7a, drink water.
+/// Task 0x72, keeper food, 0x7a, drink water, and 0x7c, go to the surface for air.
 pub const KEEPER_FOOD: u8 = 114;
 pub const DRINK: u8 = 122;
+pub const SURFACE: u8 = 124;
 
 impl Cx<'_, '_> {
     /// 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
@@ -17,13 +19,62 @@ impl Cx<'_, '_> {
         let Part::Animal(a) = &self.unit.part else {
             return;
         };
-        if a.drinking || BUILDING.contains(&task) {
+        let (breath, task) = (a.breath, task);
+        if !(a.drinking || BUILDING.contains(&task)) {
+            if a.wants_food && task != KEEPER_FOOD {
+                self.set_task(KEEPER_FOOD, 1, 0, None);
+            } else if a.thirsty && task != DRINK {
+                self.set_task(DRINK, 1, 0, None);
+            }
+        }
+        // Point 9: an animal under water that has the breath of its threshold goes to the surface.
+        if self.unit.tank == 4 && self.record().task != SURFACE {
+            let k = crate::animal::keys(self.world, self.ctx.cat, self.at);
+            if breath >= k.breath_threshold {
+                self.set_task(SURFACE, 0, 0, None);
+            }
+        }
+    }
+
+    /// Tank fauna 10.2 start: the animal has to stand on a tank tile.
+    pub(super) fn surface_init(&self) -> bool {
+        self.tile().is_some_and(|t| self.world.tank_at(t).is_some())
+    }
+
+    /// Tank fauna 10.2 decide: with no target, the animal aims at the surface (its 3D target), draws
+    /// a destination of its terrain mode and walks there; the goal is cleared when any step fails.
+    pub(super) fn surface_decide(&mut self) {
+        if self.record().target.tile.is_some() || !self.surface_init() {
             return;
         }
-        if a.wants_food && task != KEEPER_FOOD {
-            self.set_task(KEEPER_FOOD, 1, 0, None);
-        } else if a.thirsty && task != DRINK {
-            self.set_task(DRINK, 1, 0, None);
+        self.unit.target = Target::Surface;
+        self.unit.path.clear();
+        let found = walk::surface_walk(self.unit, self.world, self.ctx.rng, self.at);
+        if !(found && self.start_walk(false, false, false)) {
+            self.set_task(NONE, 0, 0, None);
+        }
+    }
+
+    /// Tank fauna 10.2 complete: at the surface the animal breathes (`bBreathe`, which empties its
+    /// breath when it starts) and its target is cleared.
+    pub(super) fn surface_complete(&mut self) {
+        if self.start_set("bBreathe", false)
+            && let Part::Animal(a) = &mut self.unit.part
+        {
+            a.breath = 0;
+        }
+        self.reset();
+    }
+
+    /// Tank fauna 5: sends the animal to tile `to`, which has the terrain mode it just took: it
+    /// stops what it does and walks there at the base level of the tile.
+    pub fn send_to(&mut self, to: usize) {
+        crate::unit::movement::stop(self.unit);
+        self.reset();
+        self.set_task(RANDOM, 1, 0, None);
+        let level = self.world.zoo.tiles[to].elevation;
+        if self.path_to_level(to, false, Some(level)) {
+            self.start_walk(false, false, true);
         }
     }
 

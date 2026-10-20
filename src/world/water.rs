@@ -46,6 +46,10 @@ impl World {
                 .world_note(format!("water {id} level {level} purity {purity}"));
             self.events.push(super::Event::Tank(id));
             self.sync_tanks();
+            // The top of the walls moved: the links (tank fauna 12.2).
+            if now.height != before.height {
+                self.relink();
+            }
         }
     }
 

@@ -10,6 +10,7 @@ use crate::zoo::{Clocks, Common, Tile, View, Zoo};
 
 mod breed;
 mod life;
+mod tank;
 
 fn keys() -> Keys {
     Keys::read(&|_, fallback| fallback, &Class::default())

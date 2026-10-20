@@ -274,12 +274,16 @@ fn passes(w: &World, m: &Mover, t: usize, n: usize, pieces: &[usize]) -> bool {
             .is_some_and(|r| r == GROUNDS || r == EXTERIOR)
     };
     let every = |ok: &dyn Fn(usize) -> bool| pieces.iter().all(|&p| ok(p));
+    let amphibious = m.underwater && !m.only_underwater;
     match m.kind {
         _ if pieces.is_empty() => true,
         Kind::Keeper | Kind::Worker => every(&|p| broken(p) || low(p) || gate(p, true)),
         Kind::Guest => every(&|p| gate(p, false)) && !(grounds(t) && !grounds(n)),
         Kind::Guide => every(&|p| broken(p) || gate(p, false)),
-        Kind::Animal => every(&|p| low(p) || broken(p) || m.show && show_gate(p)),
+        // An amphibious species crosses a connector wall (tank fauna 12.3).
+        Kind::Animal => every(&|p| {
+            low(p) || broken(p) || m.show && show_gate(p) || amphibious && w.connector(p)
+        }),
     }
 }
 

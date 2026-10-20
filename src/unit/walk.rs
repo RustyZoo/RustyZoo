@@ -3,7 +3,7 @@
 //!
 //! Kept as the original has it: with no suitable tile on the ring, the corner of the ring is the
 //! destination (engine issue 304). An animal in the tank mode picks a tile of its tank not behind
-//! it and a level for it (tank fauna 6). Not here yet: the water mode of an animal, the
+//! it and a level for it (tank fauna 6), one in the water mode a water tile. Not here yet: the
 //! exhibits a worker or a guide is assigned to, the exhibits a keeper without assignments may
 //! serve, the escape of an animal.
 
@@ -53,6 +53,26 @@ impl Ring {
 /// to it. True when a search succeeded; the unit then holds the path and its destination, and a
 /// move call starts the walk ([`movement::call`]). A unit that has a path does nothing.
 pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize) -> bool {
+    walking(unit, world, rng, at, |walk| walk.run())
+}
+
+/// 10.2 for the surface goal (tank fauna 10.2): the unit's own destination by its terrain mode,
+/// with a path to it that is not partial and no fallback.
+pub fn surface_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize) -> bool {
+    walking(unit, world, rng, at, |walk| {
+        let pick = walk.pick();
+        pick.is_some_and(|to| walk.search(to, false))
+    })
+}
+
+/// A walk of the unit at position `at` that `how` makes.
+fn walking(
+    unit: &mut Unit,
+    world: &mut World,
+    rng: &mut Rng,
+    at: usize,
+    how: impl FnOnce(&mut Walk) -> bool,
+) -> bool {
     if !unit.path.is_empty() {
         return false;
     }
@@ -77,7 +97,7 @@ pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize)
         facing,
         goal: None,
     };
-    let ok = walk.run();
+    let ok = how(&mut walk);
     world.units.finder = finder;
     ok
 }
@@ -194,10 +214,14 @@ impl Walk<'_> {
     fn pick(&mut self) -> Option<usize> {
         let region = self.world.exhibits().region(self.here);
         let exhibit = region.filter(|&r| r != GROUNDS && r != EXTERIOR);
-        let tank_mode = matches!(&self.unit.part, Part::Animal(a) if a.terrain == 2);
+        let mode = match &self.unit.part {
+            Part::Animal(a) => a.terrain,
+            _ => 0,
+        };
         match (self.unit.kind, exhibit) {
             (Kind::Animal, None) => None,
-            (Kind::Animal, Some(id)) if tank_mode => self.tank_tile(id),
+            (Kind::Animal, Some(id)) if mode == 2 => self.tank_tile(id),
+            (Kind::Animal, Some(id)) if mode == 1 => self.water_tile(id),
             (Kind::Animal, Some(id)) => {
                 // The exhibit's tiles, then those of its amphibious neighbours: no other test.
                 let around =
@@ -212,6 +236,21 @@ impl Walk<'_> {
             (Kind::Keeper, None) => self.assigned_gate().or_else(|| self.stroll()),
             _ => self.stroll(),
         }
+    }
+
+    /// 6.1, the water mode: a water tile of the exhibit or an amphibious neighbour, one draw; no
+    /// tile gives the land mode.
+    fn water_tile(&mut self, id: u32) -> Option<usize> {
+        let around = (self.world.exhibits().get(id)).map_or(Vec::new(), |e| e.amphibious.clone());
+        let wet: Vec<usize> = (self.world.tiles_of(id).into_iter())
+            .chain(around.into_iter().flat_map(|n| self.world.tiles_of(n)))
+            .filter(|&t| crate::animal::tank::kind(self.world, t) == 1)
+            .collect();
+        if wet.is_empty() {
+            swim::set_terrain(self.unit, 0);
+            return None;
+        }
+        Some(wet[self.rng.pick(wet.len() as u32) as usize])
     }
 
     /// 6.1, the tank mode: a tile of the animal's tank that costs it less than 20 and is not
@@ -361,14 +400,15 @@ impl Walk<'_> {
             }
             Kind::Guide => w.in_zoo(t) && (w.path(t).is_some() || off_path) && self.room(t),
             Kind::Animal => {
-                // The terrain mode: the tank mode takes tank tiles, the others neither water nor
-                // tank (the water mode's own tiles are a later issue).
+                // The terrain mode: the tank mode takes tank tiles, the water mode water tiles, the
+                // land mode neither.
                 let mode = match &self.unit.part {
                     Part::Animal(a) => a.terrain,
                     _ => 0,
                 };
                 let ground = match mode {
                     2 => w.tank_at(t).is_some(),
+                    1 => crate::animal::tank::kind(w, t) == 1,
                     _ => !w.is_water(t) && w.tank_at(t).is_none(),
                 };
                 region == here

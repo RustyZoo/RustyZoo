@@ -231,3 +231,42 @@ pub fn rates(number: &crate::behaviour::Number) -> i32 {
         },
     }
 }
+
+/// The tank of `tank_world` (2 high, full, so its surface is at the wall tops) and a land exhibit of 4 by 3 tiles from (6, 2) beside it
+/// that shares the tank's right wall, the ground raised to level `land`: the wall tops are level
+/// with it at 2. The land exhibit's other three sides are exhibit fences; `animals` stand at
+/// the given tiles.
+pub fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
+    let piece = |class: &str, (x, y): (i32, i32), d: u32| {
+        let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
+        let id = 1000 + x as u32 * 10 + y as u32 + d;
+        entity(class, "iron", id, (x * 64 + side.0, y * 64 + side.1), d)
+    };
+    let mut pieces = Vec::new();
+    for t in 0..4 {
+        pieces.push(piece("tankwall", (2 + t, 2), 0));
+        pieces.push(piece("tankwall", (2 + t, 4), 4));
+        pieces.push(piece("fences", (6 + t, 2), 0));
+        pieces.push(piece("fences", (6 + t, 4), 4));
+    }
+    for t in 0..3 {
+        pieces.push(piece("tankwall", (2, 2 + t), 6));
+        pieces.push(piece("tankwall", (5, 2 + t), 2));
+        pieces.push(piece("fences", (9, 2 + t), 2));
+    }
+    let mut w = world_with((12, 8), |z| {
+        z.entities.extend(pieces);
+        for &(id, kind, tile) in animals {
+            z.entities
+                .push(entity("animals", kind, id, centre(tile), 0));
+        }
+        for t in (0..4).flat_map(|x| (0..3).map(move |y| (6 + x, 2 + y))) {
+            z.tiles[t.1 * 12 + t.0].elevation = land;
+        }
+    });
+    let id = w.tank_at(2 * 12 + 2).unwrap();
+    w.set_height(id, 2);
+    let tank = w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap();
+    (tank.level, tank.filled) = (2, true);
+    w
+}

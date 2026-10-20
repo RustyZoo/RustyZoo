@@ -122,6 +122,63 @@ fn an_animal_walks_to_a_dry_tile_of_its_exhibit_with_one_draw() {
 }
 
 #[test]
+fn an_animal_in_the_water_mode_walks_to_a_water_tile_and_without_one_goes_back_to_land() {
+    let mut w = world_with((30, 30), |z| {
+        fences(&mut z.entities, (10, 10), (12, 12));
+        z.entities
+            .push(entity("animals", "", 1, centre((11, 11)), 2));
+        for t in [(12, 12), (10, 12)] {
+            z.tiles[t.1 as usize * 30 + t.0 as usize].terrain = 9;
+        }
+    });
+    // Terrain type 9 is water, and the animal swims.
+    w.set_water((0..10).map(|t| t == 9).collect());
+    w.units.get_mut(1).unwrap().mover.swims = true;
+    let terrain = |w: &World| match &w.units.get(1).unwrap().part {
+        Part::Animal(a) => a.terrain,
+        _ => 9,
+    };
+    let set = |w: &mut World, mode: u8| {
+        if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+            a.terrain = mode;
+        }
+    };
+    // The water mode: one draw among the two water tiles of the exhibit.
+    set(&mut w, 1);
+    let (ok, after) = walk(&mut w, 1, 3);
+    let wet = [tile_of(&w, (12, 12)), tile_of(&w, (10, 12))];
+    let order: Vec<usize> = w
+        .tiles_of(w.exhibits().region(tile_of(&w, (11, 11))).unwrap())
+        .into_iter()
+        .filter(|t| wet.contains(t))
+        .collect();
+    assert_eq!(order.len(), 2);
+    assert!(ok && goes_to(&w, 1) == Some(order[rng(3).pick(2) as usize]));
+    assert_eq!(after, {
+        let mut r = rng(3);
+        r.pick(2);
+        r
+    });
+    assert_eq!(terrain(&w), 1);
+    // The land mode never picks water.
+    set(&mut w, 0);
+    w.units.get_mut(1).unwrap().path.clear();
+    for seed in 1..20 {
+        let (_, _) = walk(&mut w, 1, seed);
+        assert!(!wet.contains(&goes_to(&w, 1).unwrap()), "seed {seed}");
+        w.units.get_mut(1).unwrap().path.clear();
+    }
+    // No water tile in the exhibit: the animal goes to the land mode.
+    for t in wet {
+        w.zoo.tiles[t].terrain = 0;
+    }
+    set(&mut w, 1);
+    w.set_tile(12, 12, 0, 0, 0);
+    let (_, _) = walk(&mut w, 1, 3);
+    assert_eq!(terrain(&w), 0);
+}
+
+#[test]
 fn an_animal_on_the_grounds_picks_nothing_and_goes_to_the_ring_again() {
     let mut w = world((40, 30), |_, e| {
         e.push(entity("animals", "", 1, centre((20, 15)), 2));

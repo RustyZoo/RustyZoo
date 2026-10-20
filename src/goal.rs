@@ -27,7 +27,7 @@ mod staff;
 #[cfg(test)]
 mod tests;
 
-pub use animal::{DRINK, KEEPER_FOOD};
+pub use animal::{DRINK, KEEPER_FOOD, SURFACE};
 pub use guest::LEAVE;
 
 pub const NONE: u8 = 0;
@@ -215,6 +215,8 @@ pub enum Goal {
     Leave,
     /// 0x7a of an animal: walk to the water and drink (11.9).
     DrinkWater,
+    /// 0x7c of an animal: swim to the surface and breathe (tank fauna 10.2).
+    Surface,
     /// 100 of a guest: choose an exhibit to see (11.1).
     Site,
     /// 0x70 of a guest: view the animals from the viewing area (11.5).
@@ -257,6 +259,7 @@ impl Goal {
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
+            (SURFACE, Kind::Animal) => Some(Goal::Surface),
             (SITE, Kind::Guest) => Some(Goal::Site),
             (GAWK, Kind::Guest) => Some(Goal::Gawk),
             (SCENERY, Kind::Guest) => Some(Goal::Scenery),
@@ -288,6 +291,7 @@ impl Goal {
             Goal::KeeperFood => KEEPER_FOOD,
             Goal::Leave => LEAVE,
             Goal::DrinkWater => DRINK,
+            Goal::Surface => SURFACE,
             Goal::Site => SITE,
             Goal::Gawk => GAWK,
             Goal::Scenery => SCENERY,
@@ -318,6 +322,7 @@ impl Goal {
             }
             Goal::Eating => cx.eating_init(),
             Goal::Sick => cx.sick_init(),
+            Goal::Surface => cx.surface_init(),
             Goal::EnterTank => cx.enter_init(),
             Goal::ExitTank => cx.exit_init(),
             _ => true,
@@ -383,6 +388,7 @@ impl Goal {
             Goal::Maint => cx.maint_decide(),
             Goal::Leave => cx.leave_decide(),
             Goal::DrinkWater => cx.drink_decide(),
+            Goal::Surface => cx.surface_decide(),
             Goal::Site => cx.site_decide(),
             Goal::Gawk => cx.gawk_decide(),
             Goal::Leg => cx.leg_decide(),
@@ -403,6 +409,7 @@ impl Goal {
             Goal::EnterTank | Goal::ExitTank => cx.ladder_task_complete(),
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
+            Goal::Surface => cx.surface_complete(),
             Goal::Gawk => cx.gawk_complete(),
             Goal::Scenery => cx.scenery_arrived(),
             Goal::DoScenery => cx.reset(),
@@ -518,6 +525,25 @@ pub fn lose_task(unit: &mut Unit) {
     (unit.goal.stale, unit.goal.sub_stale) = (true, true);
     crate::unit::movement::stop(unit);
     unit.destination = None;
+}
+
+/// Tank fauna 5: the animal at position `at` is sent to tile `to`.
+pub fn send(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    to: usize,
+) {
+    Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    }
+    .send_to(to);
 }
 
 /// A guide's status tick: the countdown of its gathering (tour guide 4).

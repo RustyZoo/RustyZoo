@@ -50,6 +50,7 @@ pub mod breed;
 pub mod dirt;
 pub mod food;
 pub mod life;
+pub mod tank;
 #[cfg(test)]
 mod tests;
 
@@ -216,6 +217,13 @@ macro_rules! keys {
             pub death_chance: i32,
             /// `cUnderwater` 1 and `cOnlyUnderwater` 0.
             pub amphibious: bool,
+            /// `cSwims`, `cUnderwater` and `cOnlyUnderwater` of the type.
+            pub swims: bool,
+            pub underwater: bool,
+            pub only_underwater: bool,
+            /// The species prefers salt water: its value for terrain 10 is at least that of
+            /// terrain 9 (tank fauna 11). The keys' reading leaves it out; [`Keys::of`] sets it.
+            pub salt: bool,
         }
 
         impl Keys {
@@ -231,6 +239,10 @@ macro_rules! keys {
                     dirt_chance: int("cDirtChance", class.dirt_chance),
                     death_chance: int("cDeathChance", class.death_chance),
                     amphibious,
+                    swims: int("cSwims", 0) == 1,
+                    underwater: int("cUnderwater", 0) == 1,
+                    only_underwater: int("cOnlyUnderwater", 0) == 1,
+                    salt: false,
                 }
             }
         }
@@ -297,6 +309,28 @@ keys! {
     offspring: "cOffspring" = 1,
     baby_born_change: "cBabyBornChange" = 60,
     baby_to_adult: "cBabyToAdult" = 100,
+    breath_threshold: "cBreathThreshold" = 100,
+    breath_increment: "cBreathIncrement" = 0,
+    murky: "cMurkyWaterThreshold" = 60,
+    very_murky: "cVeryMurkyWaterThreshold" = 20,
+    extremely_murky: "cExtremelyMurkyWaterThreshold" = 1,
+    murky_change: "cMurkyWaterChange" = -5,
+    very_murky_change: "cVeryMurkyWaterChange" = -10,
+    extremely_murky_change: "cExtremelyMurkyWaterChange" = -15,
+    murky_health: "cMurkyWaterHealthChange" = -5,
+    very_murky_health: "cVeryMurkyWaterHealthChange" = -10,
+    extremely_murky_health: "cExtremelyMurkyWaterHealthChange" = -15,
+    depth_min: "cDepthMin" = 0,
+    depth_max: "cDepthMax" = 0,
+    depth_change: "cDepthChange" = -5,
+    salinity_change: "cSalinityChange" = -5,
+    salinity_health: "cSalinityHealthChange" = -5,
+    enter_water: "cEnterWaterChance" = 40,
+    enter_tank: "cEnterTankChance" = 0,
+    enter_land: "cEnterLandChance" = 40,
+    water_needed: "cWaterNeeded" = 10,
+    underwater_needed: "cUnderwaterNeeded" = 10,
+    land_needed: "cLandNeeded" = 1,
     lays_eggs: "cLaysEggs" = 0,
     time_to_hatch: "cTimeToHatch" = 0,
     min_hatch_hits: "cMinHatchHits" = 0,
@@ -322,8 +356,26 @@ impl Keys {
                 })
                 .unwrap_or(fallback)
         };
-        Keys::read(&int, class)
+        let mut keys = Keys::read(&int, class);
+        keys.salt = prefers_salt(config);
+        keys
     }
+}
+
+/// Whether the species' compatible terrain (`cCompatibleTerrain`, pairs of a terrain and a wish)
+/// values salt water (terrain 10) at least as much as fresh water (terrain 9); the last pair that
+/// names a terrain counts.
+fn prefers_salt(config: &Config) -> bool {
+    let values = config.section("cCompatibleTerrain");
+    let numbers: Vec<i32> = (values.map_or(&[][..], |s| s.get_all("v")).iter())
+        .map(|v| to_int(v).unwrap_or(0))
+        .collect();
+    let wish = |terrain: i32| {
+        (numbers.as_chunks::<2>().0.iter().rev())
+            .find(|p| p[0] == terrain)
+            .map_or(0, |p| p[1])
+    };
+    wish(10) >= wish(9)
 }
 
 /// The live state of an animal: the values, their pending changes, the counters, the flags that
@@ -340,6 +392,9 @@ pub struct Animal {
     pub health_change: i32,
     pub energy_change: i32,
     pub dung_change: i32,
+    /// The breath, 0 to 100 (tank fauna 10): it rises under water and an animal at its
+    /// threshold surfaces.
+    pub breath: i32,
     /// The counters of the checks, indexed by [`HUNGER`] and the other names.
     pub counters: [i32; COUNTERS],
     pub female: bool,
@@ -583,6 +638,14 @@ pub struct Env {
     pub male: bool,
     /// It stands in a tank that holds a show.
     pub show_tank: bool,
+    /// The tank mode of the unit (tank fauna 4) and the tank it stands in.
+    pub tank_mode: u8,
+    pub tank: Option<crate::exhibit::Tank>,
+    /// The land, water and tank tiles of its exhibit and its amphibious neighbours (indexed by
+    /// the terrain mode), counted for the water check when its counter is due, and the kind of
+    /// tile it stands on.
+    pub kinds: [usize; 3],
+    pub stands: u8,
     /// Where its mate is, when it has one.
     pub mate: breed::Mate,
     /// The animals it could pick as a mate, in the exhibit's order (animals-needs 11.3); only
@@ -615,6 +678,9 @@ pub struct Out {
     pub unpair: Option<u32>,
     /// A young animal grows up.
     pub grow: bool,
+    /// The water check asks for this terrain mode, and the draw that picks the tile it sends the
+    /// animal to (tank fauna 5).
+    pub terrain: Option<(u8, Option<usize>)>,
 }
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
@@ -684,6 +750,8 @@ pub fn run_with(
         food::eat(a, k, &mut out.meal);
     }
     food::hunger(a, k, class, env, &mut out);
+    tank::breath(a, k, class, env);
+    tank::murky(a, k, class, env);
     life::health(a, k, class, env, rng, &mut out);
     life::sleep(a, k, class, env, &mut out);
     captivity(a, k, class, env, rng, &mut out);
@@ -691,6 +759,7 @@ pub fn run_with(
     fire(&mut a.counters[KEEPER], class.periods[KEEPER]);
     habitat(a, k, class, env, &mut out.messages);
     bored(a, k, class, env, rng, &mut out);
+    out.terrain = tank::water(a, k, class, env, rng);
     shelter(a, k, class, rng);
     other(a, k, class, env);
     zap(a, k, class, env, rng);
@@ -972,6 +1041,15 @@ pub fn exhibit_animals(world: &World, x: u32) -> Vec<usize> {
     found
 }
 
+/// The land, water and tank tiles of the exhibits `near` (animals-needs 7.2).
+fn kinds(world: &World, near: &[u32]) -> [usize; 3] {
+    let mut count = [0; 3];
+    for t in near.iter().flat_map(|&x| world.tiles_of(x)) {
+        count[usize::from(tank::kind(world, t))] += 1;
+    }
+    count
+}
+
 /// The keys of the animal at position `at` of the entity list.
 pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
     let class = &world.units.class;
@@ -1074,6 +1152,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         wet: tile.is_some_and(|t| world.is_water(t)),
         now: world.units.now,
         busy,
+        tank_mode: unit.tank,
         food_task: matches!(task, 114 | 115),
         meal,
         sets,
@@ -1093,6 +1172,11 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             .collect();
         env.wet |= exhibit.is_some_and(|e| e.tank.is_some());
         env.show_tank = exhibit.is_some_and(|e| e.tank.is_some_and(|t| t.show));
+        env.tank = exhibit.and_then(|e| e.tank);
+        if a.counters[WATER] == 0 && (k.swims || k.underwater) {
+            env.kinds = kinds(world, &near);
+            env.stands = tile.map_or(0, |t| tank::kind(world, t));
+        }
         if env.adult && !a.dying && a.counters[REPRODUCTION] == 0 {
             env.candidates = breed::candidates(world, at, x, a);
         }
@@ -1127,11 +1211,18 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             rng,
         )
     };
+    let breath = a.breath;
     let mut out = run_with(a, &k, &class, &env, ctx.rng, &mut birth);
+    if a.breath != breath {
+        world.units.tell(format!("breath {id} {}", a.breath));
+    }
     let meal = std::mem::take(&mut out.meal);
     breed::pair(world, id, &out);
     for word in &out.log {
         world.units.tell(format!("{word} {id}"));
+    }
+    if let Some(change) = out.terrain {
+        tank::switch(unit, world, ctx, at, data, change);
     }
     if let Some(t) = tile.filter(|_| out.trample) {
         let tile = world.zoo.tiles[t];
