@@ -8,8 +8,8 @@
 # left out: it cannot be placed yet (issue 471). The rays' happiness is left out: the rating of the
 # bare tank is 66 and the species wants 70, and the rating of tanks is not complete yet (issue 325).
 # The seed 5 draws women for the three hires (the staff of the trials are women only, and the Hire
-# list is empty when a man is drawn) when the game starts on its map; started from the main menu, it
-# draws a man for the second hire.
+# list is empty when a man is drawn) when the game starts on its map; a game started from the main
+# menu draws a man for the second hire.
 #run maps/sm_aqua.zoo --cash 75000 --seed 5 --passes 5700 --clock 200
 #exhibit 16,35,21,40
 #months 3

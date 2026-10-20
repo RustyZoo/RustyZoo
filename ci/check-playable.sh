@@ -4,9 +4,8 @@
 #
 # The script is a `run` script (see `rustyzoo help`) whose first comment lines say how it is run
 # and what it builds:
-#   #run [<map>] <flags>  the words after `run`, such as `maps/default.zoo --cash 75000 --seed 5
-#                         --passes 22300 --clock 200` (the run adds --headless and --script);
-#                         without a map the run starts at the main menu (the intro movies are off)
+#   #run <map> <flags>    the words after `run`, such as `maps/default.zoo --cash 75000 --seed 5
+#                         --passes 22300 --clock 200` (the run adds --headless and --script)
 #   #exhibit X0,Y0,X1,Y1  the tiles of the land exhibit with the animals (none for a tank)
 #   #months N             the month changes (`sim month` lines) the run must show: 12 for the thirteenth
 #                         month, 3 for the fourth
@@ -52,8 +51,6 @@ if [ -z "$words" ]; then
   exit 1
 fi
 for r in a b; do
-  mkdir -p "$tmp/user-$r"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user-$r/zoo.ini"
   # shellcheck disable=SC2086 # the words are a list of flags
   (RUSTYZOO_USER_DIR=$tmp/user-$r "$bin" --data "$data" run $words --headless --script "$script" >"$tmp/$r.log" 2>"$tmp/$r.err"; echo $? >"$tmp/$r.status") &
 done

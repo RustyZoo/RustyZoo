@@ -9,7 +9,7 @@ Open a game folder with `--data <folder>` (or `ZT_DATA_DIR`), and start the game
 1. At the main menu press the freeform button. A list of maps comes up with the starting cash beside it. Choose a map (the first is chosen) and press Play. The map opens with the main panel over its left edge and the bar of buttons along the bottom.
 2. Press the pause button at the bottom left, or the space bar, while you build: nothing moves until you press it again. The game unpaused advances by one step each time the window's timer fires, nominally every 67 ms.
 
-`ci/playable.txt` goes through the menu as above, with `run --seed <n>`: the seed is used for the game the menu starts too. `ci/playable-tank.txt` starts on the map of the freeform game with `run <map> --cash <cash> --seed <n>`: its seed draws the staff of its hires for that start (a game started from the menu draws other ones).
+The scripts do not go through the menu: they start on the map of the freeform game with `run <map> --cash <cash> --seed <n>`, where their seed draws women for the hires (the staff of the trials are women only). `--seed` seeds a game started from the menu too, which draws a man for the second hire with these seeds. `ci/check-trials.sh` checks the menu start, with a seed, separately.
 
 ## Build an exhibit (base trial)
 
