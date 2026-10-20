@@ -224,3 +224,22 @@ fn each_exhibit_is_rated_at_its_first_update_then_at_its_timer_or_when_marked() 
     step(&mut w, &mut sim, 111, &mut rated);
     assert_eq!(rated.len(), 2);
 }
+
+#[test]
+fn amphibious_is_under_water_and_not_only_under_water() {
+    let amphibious = |keys: &str| {
+        let text = format!("[Characteristics/Integers]\n{keys}\n");
+        rating::Likes::of(&kind("animals", "a", 1, &text)).amphibious
+    };
+    assert!(amphibious("cUnderwater=1"));
+    assert!(amphibious("cUnderwater=1\ncOnlyUnderwater=0"));
+    for keys in [
+        "",
+        "cUnderwater=0",
+        "cUnderwater=-1",
+        "cUnderwater=2147483647",
+    ] {
+        assert!(!amphibious(keys), "{keys}");
+    }
+    assert!(!amphibious("cUnderwater=1\ncOnlyUnderwater=1"));
+}

@@ -462,9 +462,10 @@ pub fn terrain<T>(world: &mut World, cat: &Catalogue, edit: impl FnOnce(&mut Wor
     done
 }
 
-/// After the change (9.4, animals 10): each exhibit of `before` is marked and rated again. The animals (not eggs) of a species whose sum went up queue a "likes"
-/// reaction, those of one whose sum went down a "dislikes" one; in a land exhibit the animals
-/// of an amphibious species in its amphibious neighbours react too. An old sum of 0 counts as
+/// After the change (9.4, animals 10): each exhibit of `before` is marked and rated again. The
+/// animals (not eggs) of a species whose sum went up queue a "likes" reaction, those of one
+/// whose sum went down a "dislikes" one; in a land exhibit the animals of an amphibious species
+/// in its amphibious neighbours react too. An old sum of 0 counts as
 /// unchanged; an unchanged sum lets the `object` placed (`1`) or removed (`-1`), its habitat
 /// number and name id, decide by its value to the species. Logs `likes ID` or `dislikes ID`.
 pub fn react(
@@ -574,15 +575,16 @@ pub fn rate(input: &Input) -> Vec<Record> {
     }
     // The neighbour tanks (5.3): their tiles, the filled ones by water, and their murk.
     let (mut fresh, mut salt, mut size, mut murk) = (0i64, 0i64, 0i64, 0i64);
+    let count = |n: usize| n.min(u32::MAX as usize) as i64;
     for &(tiles, w) in &input.tanks {
-        let tiles = tiles as i64;
+        let tiles = count(tiles);
         size += tiles;
         match (w.filled, w.salt) {
             (true, true) => salt += tiles,
             (true, false) => fresh += tiles,
             _ => {}
         }
-        murk += (100 - i64::from(w.purity)) * tiles / 100;
+        murk = murk.saturating_add((100 - i64::from(w.purity)).saturating_mul(tiles) / 100);
     }
     let n = site.tiles.max(1) as f32;
     let value = |l: &Likes, it: &Item| l.value(it.habitat) + l.value(it.name);
@@ -672,11 +674,11 @@ pub fn rate(input: &Input) -> Vec<Record> {
         for (k, available) in [(FRESH, fresh), (SALT, salt)] {
             let w = i64::from(l.terrain[k]);
             if l.amphibious && (1..=99).contains(&w) {
-                let x = (w * site.tiles as i64 - 100 * i64::from(site.terrain[k])) / (100 - w);
+                let x = (w * count(site.tiles) - 100 * i64::from(site.terrain[k])) / (100 - w);
                 extra[k] = x.min(available).max(0);
             }
         }
-        let d = (site.tiles as i64 + extra[FRESH] + extra[SALT]).max(1) as f32;
+        let d = (count(site.tiles) + extra[FRESH] + extra[SALT]).max(1) as f32;
         // Terrain (5.5.1) and its bits (5.6), land only; terrain 17's pair is bits 55 and 56.
         let mut sum = 0.0f32;
         for (k, more_water) in extra.into_iter().enumerate() {
@@ -854,8 +856,7 @@ impl State {
     /// One step of the exhibit update (rule 4): `ms` is added to both timers; a timer past its
     /// limit marks the list or the records, then the list is revised and the records computed,
     /// each restarting its timer at `rand() % 200`. `rand` is the simulation's generator;
-    /// `input` is called only when something is due.
-    /// Whether the records were computed.
+    /// `input` is called only when something is due. Whether the records were computed.
     pub fn update(
         &mut self,
         ms: u32,

@@ -306,6 +306,34 @@ fn extreme_values_neither_panic_nor_draw() {
     });
     input.animals.push(7); // a type that is not in the list
     assert_eq!(only(&input).animals, 2);
+    // Neighbour tanks of no size, of a huge one, of any purity; wanted water at its limits.
+    let tank = |purity, filled, salt| Water {
+        purity,
+        filled,
+        salt,
+        ..Water::default()
+    };
+    let mut land = Input {
+        species: vec![otter()],
+        animals: vec![0],
+        tanks: vec![
+            (0, tank(i32::MIN, true, false)),
+            (usize::MAX, tank(i32::MIN, true, true)),
+            (usize::MAX, tank(i32::MAX, true, false)),
+        ],
+        near: vec![otter()],
+        ..flat()
+    };
+    for (fresh, salt) in [(1, 99), (99, 1), (100, 100), (0, -1), (i32::MAX, i32::MIN)] {
+        (land.species[0].terrain[9], land.species[0].terrain[10]) = (fresh, salt);
+        let r = only(&land);
+        assert!(
+            r.terrain.is_finite() && r.water.is_finite(),
+            "{fresh} {salt}"
+        );
+    }
+    land.site.tiles = usize::MAX;
+    assert!(only(&land).terrain.is_finite());
     // No tiles, no animals, no species; the clock at its limit.
     assert!(rate(&Input::default()).is_empty());
     let mut state = State::new();
