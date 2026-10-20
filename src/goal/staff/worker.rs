@@ -214,8 +214,14 @@ impl Cx<'_, '_> {
         };
         let cat = self.ctx.cat;
         match job {
-            pool::TRASH_CAN if chores::trash_in(self.world, cat, tile) == 0 => self.work_finish(),
-            pool::TRASH_CAN if self.near(tile) => self.record().job_done = true,
+            // Nothing is tested while he walks: only once he stands on the tile his walk targets.
+            pool::TRASH_CAN if self.reached(true) => {
+                if self.near(tile) && chores::trash_in(self.world, cat, tile) > 0 {
+                    self.record().job_done = true;
+                } else {
+                    self.work_finish();
+                }
+            }
             pool::TRASH_PILE | pool::GO_TO_FENCE if self.tile() == Some(tile) => {
                 self.record().job_done = true;
             }

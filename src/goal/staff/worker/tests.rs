@@ -231,6 +231,23 @@ impl Game {
 }
 
 #[test]
+fn the_can_is_emptied_from_the_tile_the_worker_walked_to() {
+    // The path from (1, 9) to the can at (3, 9) crosses (2, 9), within one tile of the can: the
+    // check done of the job waits until he stands on the tile he walks to (staff 8.4).
+    let mut g = Game::new("");
+    g.fill(13);
+    for _ in 0..1000 {
+        g.run(1);
+        if g.jobs().contains(&"EmptyTrash") {
+            break;
+        }
+    }
+    let at = g.w.find(WORKER).unwrap();
+    let c = g.w.zoo.entities[at].common.as_ref().unwrap();
+    assert_eq!((c.x.div_euclid(64), c.y.div_euclid(64)), CAN_TILE);
+}
+
+#[test]
 fn a_worker_empties_the_full_can_sweeps_the_litter_and_mends_the_worn_fence() {
     let mut g = Game::new("");
     g.fill(13);

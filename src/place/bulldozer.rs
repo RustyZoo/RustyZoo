@@ -13,6 +13,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::money::{ANIMAL_REFUND, CONSTRUCTION_REFUND, Money};
 use crate::render::order::Kind;
+use crate::sim::Rng;
 use crate::staff;
 use crate::world::World;
 use crate::zoo::{Entity, Fence};
@@ -267,8 +268,14 @@ pub struct Removed {
 
 /// Removes the entity with this id and books its refund as a construction refund (placing 7.2).
 /// The world gives an exhibit whose gate goes a new one and tells the exhibits what happened
-/// (exhibits and money 3.3). `None` if there is no such entity.
-pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) -> Option<Removed> {
+/// (exhibits and money 3.3). `None` if there is no such entity. A trash can's spill draws from `rng`.
+pub fn remove(
+    world: &mut World,
+    money: &mut Money,
+    cat: &Catalogue,
+    id: u32,
+    rng: &mut Rng,
+) -> Option<Removed> {
     let at = world.find(id)?;
     let entity = &world.zoo.entities[at];
     let c = entity.common.as_ref()?;
@@ -289,7 +296,7 @@ pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) ->
     let (animal, staff) = type_of(cat, &world.zoo.entities[at]).map_or((false, false), |ty| {
         (unit::is_animal(ty), staff::is_staff(ty))
     });
-    crate::guest::litter::spill(world, cat, id);
+    crate::guest::litter::spill(world, cat, id, rng);
     world.remove(id);
     world.priced(removed.refund);
     let category = if animal {

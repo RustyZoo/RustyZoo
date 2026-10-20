@@ -323,7 +323,8 @@ impl App<'_> {
     pub(super) fn bulldoze_remove(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
-        let removed = bulldozer::remove(&mut game.world, &mut game.money, cat, id);
+        let removed =
+            bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);
         let Some(r) = removed else { return };
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));
         self.world_lines.push(format!(

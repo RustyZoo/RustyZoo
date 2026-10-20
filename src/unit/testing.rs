@@ -40,7 +40,7 @@ pub fn centre((tx, ty): (i32, i32)) -> (i32, i32) {
 }
 
 /// Units take their place by their position, `paths` are path pieces, `fences` exhibit fences,
-/// `bush` a one-quarter object.
+/// `bush` and `building` a one-quarter object.
 fn shape(e: &Entity) -> Option<Shape> {
     let thing = |kind, footprint, fence| Shape {
         kind,
@@ -56,7 +56,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "fences" => Some(thing(Class::Edge, (1, 1), true)),
         "paths" => Some(thing(Class::Path, (2, 2), false)),
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
-        "building" => Some(thing(Class::Fixed, (2, 2), false)),
+        "building" => Some(thing(Class::Fixed, (1, 1), false)),
         "tankwall" => Some(Shape {
             tank: TankKind {
                 wall: true,
