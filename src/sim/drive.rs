@@ -209,7 +209,9 @@ impl Run {
                 known
             }
             Command::Tile(x, y, elevation, shape, terrain) => {
-                self.world.set_tile(x, y, elevation, shape, terrain)
+                crate::exhibit::rating::terrain(&mut self.world, &self.cat, |w| {
+                    w.set_tile(x, y, elevation, shape, terrain)
+                })
             }
             Command::Fill(id) | Command::Drain(id) => {
                 let tank = self

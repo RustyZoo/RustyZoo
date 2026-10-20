@@ -428,8 +428,37 @@ impl World {
         }
     }
 
-    /// Marks the exhibit that tile `t` belongs to for a new rating (a unit left it or came into
-    /// it); the zoo grounds have none.
+    /// The tiles whose exhibits an entity placed or removed at position `at` changes (habitat
+    /// rating 4): its own, and the one across for a piece on an edge; none for a guest, a staff
+    /// member or an ambient creature, which the rating does not see.
+    fn rated_tiles(&self, at: usize) -> Vec<usize> {
+        let e = &self.zoo.entities[at];
+        let unseen = [
+            "guests",
+            "keeper",
+            "maint",
+            "tour",
+            "staff",
+            "helicopter",
+            "ambient",
+        ];
+        if unseen.contains(&e.class.as_str()) {
+            return Vec::new();
+        }
+        if let Some((t, d)) = self.slot_of(at) {
+            return [Some(t), self.neighbour(t, d)]
+                .into_iter()
+                .flatten()
+                .collect();
+        }
+        let c = e.common.as_ref();
+        (c.and_then(|c| self.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))))
+            .into_iter()
+            .collect()
+    }
+
+    /// Marks the exhibit that tile `t` belongs to for a new rating (something on it changed);
+    /// the zoo grounds have none.
     pub fn mark_rating(&mut self, t: usize) {
         if let Some(r) = self.exhibits.region(t) {
             self.exhibits.mark(r);
@@ -519,6 +548,7 @@ impl World {
         self.shapes.push(shape);
         self.changed();
         let mut notes = Vec::new();
+        let rated = self.rated_tiles(self.zoo.entities.len() - 1);
         if shape.is_some_and(|s| s.fence) {
             let slot = self.slot_of(self.zoo.entities.len() - 1);
             let seen = self.events.len();
@@ -526,6 +556,7 @@ impl World {
             self.settle(slot, false);
             notes = self.changed_by(before, seen);
         }
+        rated.into_iter().for_each(|t| self.mark_rating(t));
         notes.into_iter().for_each(|note| self.record(note));
         self.record(Action::Placed { id, price: 0.0 });
         self.filter_added(self.zoo.entities.len() - 1);
@@ -568,12 +599,14 @@ impl World {
             self.note_tank(at);
             self.note_opening(slot, false);
         }
+        let rated = self.rated_tiles(at);
         let entity = self.zoo.entities.remove(at);
         let shape = self.shapes.remove(at);
         self.changed();
         if fence {
             self.settle(slot, false);
         }
+        rated.into_iter().for_each(|t| self.mark_rating(t));
         self.record(Action::Removed {
             at,
             entity,
@@ -635,6 +668,8 @@ impl World {
         if fence.0 || fence.1 {
             self.settle(slot, false);
         }
+        let rated = self.rated_tiles(at);
+        rated.into_iter().for_each(|t| self.mark_rating(t));
         // A fence replaced by one of another kind (a morph) records the exhibits it changes
         // (kind 11); a path laid on a path of the same type records nothing (placing 8).
         self.changed_by(before, seen)
@@ -699,6 +734,7 @@ impl World {
         }
         self.edges_around(t);
         self.changed();
+        self.mark_rating(t);
     }
 
     /// Tells the price of the action recorded last: what an undo gives back (a purchase) or takes

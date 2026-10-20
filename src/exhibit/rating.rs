@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use crate::build::number;
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
-use crate::exhibit::Tank;
+use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
 use crate::unit::{Kind, Part};
 use crate::world::World;
 
@@ -423,6 +423,104 @@ pub fn refresh_neighbours(world: &mut World, cat: &Catalogue, x: u32) {
     }
 }
 
+/// The sum of each species (`getSpeciesRating`) in each exhibit of `tiles`, the zoo grounds
+/// left out, before a terrain change or an object placed or removed there (9.4). Nothing is
+/// marked: [`react`] does that once the change is made.
+pub fn before(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, Vec<(String, f32)>)> {
+    let mut ids: Vec<u32> = Vec::new();
+    for &t in tiles {
+        let id = world
+            .exhibits()
+            .region(t)
+            .filter(|&r| r != GROUNDS && r != EXTERIOR);
+        if let Some(id) = id.filter(|id| !ids.contains(id)) {
+            ids.push(id);
+        }
+    }
+    let sums = |x| {
+        (rate(&input(world, cat, x)).iter())
+            .map(|r| (r.key.clone(), r.sum()))
+            .collect()
+    };
+    ids.into_iter().map(|x| (x, sums(x))).collect()
+}
+
+/// Runs `edit`, a terrain change, then lets the animals of the exhibits of the tiles it changed
+/// react (9.4): their sums before are taken from the tiles as they were.
+pub fn terrain<T>(world: &mut World, cat: &Catalogue, edit: impl FnOnce(&mut World) -> T) -> T {
+    let old = world.zoo.tiles.clone();
+    let done = edit(world);
+    let changed: Vec<usize> = (0..old.len().min(world.zoo.tiles.len()))
+        .filter(|&t| old[t] != world.zoo.tiles[t])
+        .collect();
+    if !changed.is_empty() {
+        let new = std::mem::replace(&mut world.zoo.tiles, old);
+        let sums = before(world, cat, &changed);
+        world.zoo.tiles = new;
+        react(world, cat, sums, None);
+    }
+    done
+}
+
+/// After the change (9.4, animals 10): each exhibit of `before` is marked and rated again. The animals (not eggs) of a species whose sum went up queue a "likes"
+/// reaction, those of one whose sum went down a "dislikes" one; in a land exhibit the animals
+/// of an amphibious species in its amphibious neighbours react too. An old sum of 0 counts as
+/// unchanged; an unchanged sum lets the `object` placed (`1`) or removed (`-1`), its habitat
+/// number and name id, decide by its value to the species. Logs `likes ID` or `dislikes ID`.
+pub fn react(
+    world: &mut World,
+    cat: &Catalogue,
+    before: Vec<(u32, Vec<(String, f32)>)>,
+    object: Option<(i32, i32, i64)>,
+) {
+    for (x, old) in before {
+        // The species list waits for its own timer; the original revises it here too, which
+        // draws only for a type with a sound that came since the last revision.
+        world.exhibits_mut().mark(x);
+        let likes = input(world, cat, x);
+        refresh(world, cat, x);
+        let Some(e) = world.exhibits().get(x) else {
+            continue;
+        };
+        let near = match e.tank {
+            Some(_) => Vec::new(),
+            None => e.amphibious.clone(),
+        };
+        let mut moods: Vec<(String, bool, bool)> = Vec::new();
+        for r in &e.rating.records {
+            let was = (old.iter()).find(|o| o.0 == r.key).map_or(0.0, |o| o.1);
+            let l = (likes.species.iter().chain(&likes.near)).find(|l| l.key == r.key);
+            let by = match (was != 0.0 && was != r.sum(), object, l) {
+                (true, ..) => r.sum() - was,
+                (false, Some((habitat, name, sign)), Some(l)) => {
+                    (sign * (l.value(habitat) + l.value(name))) as f32
+                }
+                _ => 0.0,
+            };
+            if by != 0.0 {
+                moods.push((r.key.clone(), by > 0.0, r.amphibious));
+            }
+        }
+        for (key, liked, amphibious) in moods {
+            let mut places = vec![x];
+            places.extend(near.iter().filter(|_| amphibious));
+            let ids: Vec<u32> = (places.into_iter())
+                .flat_map(|p| crate::animal::exhibit_animals(world, p))
+                .map(|at| &world.zoo.entities[at])
+                .filter(|e| e.type_name == key)
+                .filter_map(|e| e.common.as_ref().map(|c| c.id))
+                .collect();
+            for id in ids {
+                if let Some(Part::Animal(a)) = world.units.get(id).map(|u| &u.part)
+                    && !a.egg
+                {
+                    world.units.react(id, liked);
+                }
+            }
+        }
+    }
+}
+
 /// Rates the exhibit for each species in it, in the order the species first appear, then for
 /// those of its amphibious neighbours (rules 5.1 to 5.6). The fields that depend on the animals'
 /// own state (happiness sums, hunger counts) are not part of the rating and not kept.
@@ -581,9 +679,9 @@ pub fn rate(input: &Input) -> Vec<Record> {
         let d = (site.tiles as i64 + extra[FRESH] + extra[SALT]).max(1) as f32;
         // Terrain (5.5.1) and its bits (5.6), land only; terrain 17's pair is bits 55 and 56.
         let mut sum = 0.0f32;
-        for k in 0..TERRAINS {
+        for (k, more_water) in extra.into_iter().enumerate() {
             let (w, count) = (l.terrain[k], site.terrain[k]);
-            let (wanted, share) = (w as f32, (count as i64 + extra[k]) as f32 * 100.0 / d);
+            let (wanted, share) = (w as f32, (count as i64 + more_water) as f32 * 100.0 / d);
             sum += if w < 0 {
                 if count > 0 { wanted } else { 0.0 }
             } else {
@@ -814,6 +912,12 @@ impl State {
             .map(|l| l.attractiveness)
             .sum();
     }
+}
+
+/// The habitat number and name id of an object type (habitat rating 2).
+pub fn object(ty: &EntityType) -> (i32, i32) {
+    let it = item(Some(ty), 1);
+    (it.habitat, it.name)
 }
 
 /// The item an object type makes; a type that is not found makes the default one.

@@ -323,9 +323,30 @@ impl App<'_> {
     pub(super) fn bulldoze_remove(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
+        // The animals of the exhibit react to an object removed (habitat rating 9.4).
+        let object = game.world.find(id).and_then(|at| {
+            use crate::render::order::Kind;
+            let e = &game.world.zoo.entities[at];
+            let c = e.common.as_ref()?;
+            let tile = game
+                .world
+                .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
+            let kind = Kind::of_class(&e.class);
+            let ty =
+                bulldozer::type_of(cat, e).filter(|_| matches!(kind, Kind::Fixed | Kind::Path));
+            ty.map(|ty| {
+                (
+                    rating::before(&game.world, cat, &[tile]),
+                    rating::object(ty),
+                )
+            })
+        });
         let removed =
             bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);
         let Some(r) = removed else { return };
+        if let Some((before, (habitat, name))) = object {
+            rating::react(&mut game.world, cat, before, Some((habitat, name, -1)));
+        }
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));
         self.world_lines.push(format!(
             "remove {} {},{}{side} id {} refund {}",

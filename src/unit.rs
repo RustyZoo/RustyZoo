@@ -357,6 +357,9 @@ pub struct Units {
     /// The maintenance task pool (staff 8.2).
     pub pool: crate::staff::pool::Pool,
     world_lines: Vec<String>,
+    /// The animals' reactions to a change of their exhibit (animals 10): the animal, whether it
+    /// likes the change, and the milliseconds since.
+    pub reactions: Vec<(u32, bool, u32)>,
 }
 
 impl Default for Units {
@@ -398,6 +401,7 @@ impl Default for Units {
             posts: Vec::new(),
             pool: Default::default(),
             world_lines: Vec::new(),
+            reactions: Vec::new(),
         }
     }
 }
@@ -529,6 +533,23 @@ impl Units {
         self.guest_lines.push(format!("thought {thinker} {text}"));
     }
 
+    /// Animal `id` reacts to a change of its exhibit; `likes` it or not (animals 10).
+    pub(crate) fn react(&mut self, id: u32, likes: bool) {
+        self.reactions.push((id, likes, 0));
+        let word = if likes { "likes" } else { "dislikes" };
+        self.tell(format!("{word} {id}"));
+    }
+
+    /// The reactions age by the step of `ms` milliseconds and go at 1250 ms, or with their animal.
+    pub fn fade(&mut self, ms: u32) {
+        let mut reactions = std::mem::take(&mut self.reactions);
+        reactions.retain_mut(|r| {
+            r.2 = r.2.saturating_add(ms);
+            r.2 < 1250 && self.get(r.0).is_some()
+        });
+        self.reactions = reactions;
+    }
+
     pub(crate) fn tell(&mut self, line: String) {
         self.animal_lines.push(line);
     }
@@ -616,6 +637,11 @@ impl Units {
         h.bytes(format!("{:?}", self.buildings).as_bytes());
         h.bytes(format!("{:?}{:?}{:?}", self.thoughts, self.mega, self.gawk).as_bytes());
         h.bytes(format!("{:?}", self.pool).as_bytes());
+        for &(id, likes, age) in &self.reactions {
+            h.word(id);
+            h.word(u32::from(likes));
+            h.word(age);
+        }
         for u in &self.list {
             h.word(u.id);
             h.word(u.kind as u32);

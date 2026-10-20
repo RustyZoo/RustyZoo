@@ -88,11 +88,12 @@ impl World {
         }
         self.edit_tank(id, |t, _| t.purity = new);
         self.exhibits.mark(id);
-        if let Some(x) = self.exhibits.get(id) {
-            if old > EXTREME && new <= EXTREME {
-                let names = vec![x.name.clone()];
-                self.units.post_named(TOO_MURKY, 0, names);
-            }
+        if let Some(x) = self.exhibits.get(id)
+            && old > EXTREME
+            && new <= EXTREME
+        {
+            let names = vec![x.name.clone()];
+            self.units.post_named(TOO_MURKY, 0, names);
         }
     }
 

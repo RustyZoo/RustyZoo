@@ -423,6 +423,8 @@ impl Sim {
                 .wrapping_add(self.ai.clear_unreachable_freq as u32);
         }
         world.units.finder.tick(u64::from(self.ai_ticks));
+        // Each animal's update ages its reactions (animals 10).
+        world.units.fade(step);
         for id in std::mem::take(&mut self.removals) {
             world.unrecorded(|w| w.remove(id));
         }

@@ -60,9 +60,10 @@ impl App<'_> {
                 let lines = &mut self.terrain_lines;
                 let cat = self.renderer.catalogue();
                 let habits = |e: &Entity| habit(cat, e);
-                let left = game
-                    .terrain
-                    .leave(&mut game.world, &habits, &mut game.money, lines);
+                let (tool, money) = (&mut game.terrain, &mut game.money);
+                let left = rating::terrain(&mut game.world, cat, |w| {
+                    tool.leave(w, &habits, money, lines)
+                });
                 lines.push("leave".into());
                 short = left == Left::Short;
                 game.grid = game.choice;
@@ -134,13 +135,17 @@ impl App<'_> {
         match mouse {
             Mouse::Down | Mouse::Double => {
                 let tile = under(&game.world, at);
-                game.terrain
-                    .press(&mut game.world, &habits, at, tile, lines);
+                let tool = &mut game.terrain;
+                rating::terrain(&mut game.world, cat, |w| {
+                    tool.press(w, &habits, at, tile, lines)
+                });
             }
             Mouse::Move(..) => {
                 let before = game.terrain.tiles(&game.world);
-                game.terrain
-                    .moved(&mut game.world, &habits, at, &under, zoom, lines);
+                let tool = &mut game.terrain;
+                rating::terrain(&mut game.world, cat, |w| {
+                    tool.moved(w, &habits, at, &under, zoom, lines)
+                });
                 let after = game.terrain.tiles(&game.world);
                 if before != after
                     && let Some(first) = after.first()
@@ -207,10 +212,15 @@ impl App<'_> {
                 }
             }
             Press::Accept => {
-                game.terrain
-                    .accept(&mut game.world, &habits, &mut game.money, lines);
+                let (tool, money) = (&mut game.terrain, &mut game.money);
+                rating::terrain(&mut game.world, cat, |w| {
+                    tool.accept(w, &habits, money, lines)
+                });
             }
-            Press::Cancel => game.terrain.cancel(&mut game.world, &habits, lines),
+            Press::Cancel => {
+                let tool = &mut game.terrain;
+                rating::terrain(&mut game.world, cat, |w| tool.cancel(w, &habits, lines));
+            }
             Press::Mode(id, contiguous, level) => {
                 panel::mode_text(ui, id);
                 game.terrain.set_shaping(contiguous, level);
