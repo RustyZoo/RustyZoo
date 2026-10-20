@@ -416,13 +416,18 @@ fn entity(class: &str, subtype: &str, (tx, ty): (i32, i32), rotation: u32, id: u
 
 fn shape(e: &Entity) -> Option<Shape> {
     let gate = e.class == "gate";
-    (gate || e.class == "fences").then_some(Shape {
-        kind: if gate { Kind::Fixed } else { Kind::Edge },
+    let unit = e.class == "animals";
+    (gate || unit || e.class == "fences").then_some(Shape {
+        kind: match () {
+            _ if unit => Kind::Unit,
+            _ if gate => Kind::Fixed,
+            _ => Kind::Edge,
+        },
         footprint: if gate { (2, 2) } else { (1, 1) },
-        fence: !gate,
+        fence: !gate && !unit,
         wall: false,
         gate,
-        gated: !gate,
+        gated: !gate && !unit,
         walkable: (gate, gate),
         tank: TankKind::NONE,
     })

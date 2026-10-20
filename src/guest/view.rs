@@ -166,14 +166,16 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
     let (e, a) = through(world, tile, k)?;
     let (exhibit, areas) = &world.units.views.areas[e];
     let area = &areas[a];
-    // The exhibit's animal list (6.3): its tiles in their own order, then the entity order in a
-    // tile (the sort is stable).
-    let order = &world.exhibits().get(*exhibit)?.order;
-    let mut all: Vec<Beast> = beasts(world, cat)
+    // The exhibit's animal list (6.3): the tiles in their own order, then each tile's unit list.
+    let mut held = beasts(world, cat);
+    let all: Vec<Beast> = crate::animal::exhibit_animals(world, *exhibit)
         .into_iter()
-        .filter(|b| b.exhibit == *exhibit)
+        .filter_map(|at| {
+            let id = world.zoo.entities[at].common.as_ref()?.id;
+            let i = held.iter().position(|b| b.id == id)?;
+            Some(held.swap_remove(i))
+        })
         .collect();
-    all.sort_by_key(|b| order.iter().position(|&t| t == b.tile));
     let seen: Vec<&Beast> = area
         .seen
         .iter()

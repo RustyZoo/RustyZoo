@@ -957,6 +957,21 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
     c
 }
 
+/// The animals (positions in the entity list) of exhibit `x` in the order of the exhibit's
+/// animal list (habitat rating 5.1, guests visit 6.3): its tiles in the order of the last fill,
+/// then each tile's unit list. An animal counts on its own tile only; a carried one is on none.
+pub fn exhibit_animals(world: &World, x: u32) -> Vec<usize> {
+    let mut found = Vec::new();
+    for t in world.tiles_of(x) {
+        found.extend(
+            world
+                .units_on(t)
+                .filter(|&i| world.zoo.entities[i].class == "animals"),
+        );
+    }
+    found
+}
+
 /// The keys of the animal at position `at` of the entity list.
 pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
     let class = &world.units.class;
