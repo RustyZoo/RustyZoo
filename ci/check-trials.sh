@@ -840,33 +840,33 @@ tank_decay() { # tank_decay <map> <tank id>
 }
 check expansion-trial "447:92;99>100;0:100,1:100,2:100,3:100,4:100,5:100,6:100,7:100" "tank_decay maps/scn28.zoo 2"
 
-# Breeding (animals-needs 11 to 13). The base trial's animals are all male; a female lion joins the
-# three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first
-# reproduction check that rolls it. Prints the step of the first birth and the number of young,
-# when two runs agree.
-lion_birth() { # lion_birth <map> <tile of the lions>
+# Breeding (animals-needs 11 to 13). The base trial's animals are all male; three female lions join
+# the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first
+# reproduction check that rolls it. Prints the number of pairs, the step of the first birth and the
+# number of young, when two runs agree.
+lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
-  printf '0 animal lion %s female\n' "$2" >"$d/script"
-  once() { rz sim "$1" --ticks 3000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
+  once() { rz sim "$1" --ticks 6000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:1;birth@2357;young:2" "lion_birth maps/scn01a.zoo 45,37"
+check base-trial "mates:3;birth@5199;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
-# the best of spirits every 100 steps, as a good exhibit would. Prints the steps of the first
-# clutch, the number of eggs, and the step of the first hatching, which waits for a keeper to heal
-# the egg (an untended egg is below its hit points when its time is up).
+# the best of spirits every 30 steps, as a good exhibit would. Steps of 200 ms. Prints the step of
+# the first clutch, the number of eggs, and the step of the first hatching, which waits for a
+# keeper to heal the egg (an untended egg is below its hit points when its time is up).
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
   { printf '0 remove %s\n0 remove %s\n1 animal velocira 23,27 male\n1 animal velocira 30,27 female\n' "$2" "$3"
-    for s in $(seq 5 100 12000); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$d/script"
-  rz sim "$1" --ticks 12000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+    for s in $(seq 5 30 4500); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$d/script"
+  rz sim "$1" --ticks 4500 --dt 200 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@7509;eggs:3;hatch@9774" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3341;eggs:3;hatch@3982" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
