@@ -242,6 +242,36 @@ fn a_buttons_icon_is_drawn_over_its_picture_or_under_it_with_iconfirst() {
 }
 
 #[test]
+fn an_icon_with_a_sprite_file_is_centred_in_the_button_and_clipped_to_it() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIButton\nid=2\nx=10\ny=5\ndx=2\ndy=1\nanimation=ui/b/b\n\
+         [i]\ntype=UIImage\nid=3\nx=0\ny=40\nanimation=ui/c/c\n"
+    );
+    let mut members = animation("b");
+    members.push(animation("c").swap_remove(0));
+    let mut tree = tree("icon-file", &root, &members);
+    for e in &mut tree.elements {
+        e.state &= !HIDDEN;
+    }
+    let icon = tree.elements[2].look.animation[0];
+    assert!(matches!(icon, Some(Picture::Animation(_))));
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    tree.elements[1].look.icon = icon;
+    // Without a file the 3 x 1 icon of the first sprite file (red) is centred on the button's
+    // half width and overflows its 2 pixels.
+    let frame = paint(&mut tree, &mut painter, &texts);
+    assert_eq!(at(&frame, 12, 5), [255, 0, 0], "not clipped");
+    // With the third file (blue) it is clipped to the button's two pixels.
+    tree.elements[1].look.icon_file = Some(2);
+    tree.elements[1].state |= DIRTY;
+    let frame = paint(&mut tree, &mut painter, &texts);
+    assert_eq!(at(&frame, 10, 5), [0, 0, 255]);
+    assert_eq!(at(&frame, 11, 5), [0, 0, 255]);
+    assert_ne!(at(&frame, 12, 5), [0, 0, 255], "clipped");
+}
+
+#[test]
 fn a_button_text_takes_the_colour_of_its_state() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\

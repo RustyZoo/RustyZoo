@@ -10,7 +10,8 @@
 use crate::entity::Catalogue;
 use crate::goal;
 use crate::money::{SYMBOL, Symbol};
-use crate::panel::exhibit::{Clock, list_icon, type_at};
+use crate::panel::exhibit::{Clock, type_at};
+use crate::panel::follow::set_follow_icon;
 use crate::staff;
 use crate::status::Words;
 use crate::text::format::{self, Arg};
@@ -229,13 +230,13 @@ impl Panel {
             .common
             .as_ref()
             .map_or("", |c| &c.name);
-        if std::mem::take(&mut self.fresh) {
+        let fresh = std::mem::take(&mut self.fresh);
+        if fresh {
             ui.set_text(NAME, &to_cp1252(name));
-            let icon = ty
-                .and_then(list_icon)
-                .and_then(|n| ui.tree.picture(vfs, &n));
-            ui.set_icon(FOLLOW, icon);
             ui.set_button(FOLLOW, false, !unit.carried);
+        }
+        if fresh || self.clock.forced {
+            set_follow_icon(ui, vfs, FOLLOW, ty);
         }
         for button in [PICK_UP, FIRE] {
             ui.set_enabled(button, !unit.carried);

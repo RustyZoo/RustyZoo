@@ -345,7 +345,9 @@ impl Painter {
         }
     }
 
-    /// The icon of a button, at its first frame, placed like the button's picture.
+    /// The icon of a button, at its first frame, placed like the button's picture. An icon with
+    /// a sprite file (the unit's picture on a panel's follow button) is centred in the button and
+    /// clipped to its rectangle.
     fn icon(
         &mut self,
         pictures: &Pictures,
@@ -354,14 +356,20 @@ impl Painter {
         frame: &mut Framebuffer,
     ) {
         let Some(icon) = e.look.icon else { return };
-        let Some(cut) = self.cut(pictures, icon, 0, 0) else {
+        let file = e.look.icon_file;
+        let Some(cut) = self.cut(pictures, icon, file.unwrap_or(0), 0) else {
             return;
         };
         let (x, y) = match cut.animation {
             true => (sx + w / 2 + cut.origin.0, sy + h / 2 + cut.origin.1),
             false => (sx, sy),
         };
-        blit(frame, &cut.pixels, (x, y), None);
+        if file.is_none() || w <= 0 || h <= 0 {
+            return blit(frame, &cut.pixels, (x, y), None);
+        }
+        let mut inside = Framebuffer::new(w as u32, h as u32);
+        blit(&mut inside, &cut.pixels, (x - sx, y - sy), None);
+        blit(frame, &inside, (sx, sy), None);
     }
 
     /// Whether the point (`x`, `y`) of the screen is on an opaque pixel of what the element shows:

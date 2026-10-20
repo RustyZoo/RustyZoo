@@ -217,6 +217,8 @@ pub struct Look {
     pub icon_first: bool,
     /// The picture the game's code put in a button, drawn over its own or under it (`iconfirst`).
     pub icon: Option<Picture>,
+    /// The sprite file of an animated icon that is centred in the button and clipped to it.
+    pub icon_file: Option<usize>,
     pub color_as_icon: bool,
     pub volatile: bool,
     pub update_while_paused: bool,
@@ -833,6 +835,7 @@ impl Tree {
             highlight_color: [255, 255, 0],
             icon_first: false,
             icon: None,
+            icon_file: None,
             color_as_icon: false,
             volatile: true,
             update_while_paused: true,
@@ -899,6 +902,7 @@ impl Tree {
                 highlight_color: color(s, "highlightcolor").unwrap_or(look.highlight_color),
                 icon_first: flag("iconfirst", false),
                 icon: None,
+                icon_file: None,
                 color_as_icon: flag("colorasicon", false),
                 volatile: flag("volatile", true),
                 update_while_paused: flag("updateWhilePaused", true),

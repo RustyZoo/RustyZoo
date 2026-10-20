@@ -49,6 +49,7 @@ fn the_time_in_the_park_is_banded_by_hours_of_calendar_time() {
 
 use crate::building::items::Item;
 use crate::entity::Catalogue;
+use crate::panel::follow::tests as follow;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree};
@@ -96,14 +97,14 @@ fn panel_in_game(name: &str) -> (Interface, Vfs, World) {
     let layout = format!("[LayoutInfo]\nid=9\nx=0\ny=0\ndx=40\ndy=40\n{layout}");
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n";
-    let install = Install::new(
-        name,
-        &[
-            ("ui/root.lyt", root.as_bytes().to_vec()),
-            ("ui/p.lyt", layout.into_bytes()),
-            ("ui/g.tga", tga()),
-        ],
-    );
+    let mut files = vec![
+        ("ui/root.lyt", root.as_bytes().to_vec()),
+        ("ui/p.lyt", layout.into_bytes()),
+        ("ui/g.tga", tga()),
+    ];
+    let members = follow::members();
+    files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
+    let install = Install::new(name, &files);
     let vfs = Vfs::open(&install.0).unwrap();
     let mut tree = Tree::load(&vfs, "ui/root.lyt", 0);
     tree.resolve(100, 80, |_| 12);
@@ -178,4 +179,34 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
     let told = panel.refresh(&mut ui, &world, &cat, &vfs, later).unwrap();
     assert!(told.contains("time \"T1\""), "{told}");
     assert_ne!(state(&ui, 3416) & DISABLED, 0);
+}
+
+#[test]
+fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
+    let (mut ui, vfs, mut world) = panel_in_game("guest-panel-follow");
+    let cat = follow::catalogue("guests", "guest");
+    let mut panel = Panel::default();
+    panel.select(2);
+    let now = Calendar::new().date();
+    let shown = |ui: &Interface| follow::shown(ui, FOLLOW);
+    assert_eq!(shown(&ui), (false, None), "blank until shown");
+    panel.clock.due(0, true, PERIOD);
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    let first = shown(&ui);
+    assert!(first.0, "set when the panel is shown");
+    // The picture is the type's: what the unit plays does not change it.
+    let unit = world.units.get_mut(2).unwrap();
+    (unit.animation.name, unit.animation.frame) = ("walk".into(), 1);
+    ui.set_icon(FOLLOW, None);
+    assert!(!panel.clock.due(1, false, PERIOD));
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    assert_eq!(shown(&ui), (false, None), "an ordinary refresh leaves it");
+    panel.clock.force = true;
+    assert!(panel.clock.due(1, false, PERIOD));
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    assert_eq!(shown(&ui), first, "a forced one sets it again");
+    ui.set_icon(FOLLOW, None);
+    assert!(panel.clock.due(PERIOD, true, PERIOD));
+    panel.refresh(&mut ui, &world, &cat, &vfs, now);
+    assert_eq!(shown(&ui), (false, None), "a periodic one does not");
 }

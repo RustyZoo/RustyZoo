@@ -106,3 +106,55 @@ fn units_that_are_not_staff_have_no_text() {
     assert_eq!(text(&unit(Kind::Animal, 1, 0, None, 0), 0), None);
     assert_eq!(text(&unit(Kind::Guest, 1, 0, None, 0), 0), None);
 }
+
+#[test]
+fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
+    use crate::panel::follow::tests as follow;
+    use crate::unit::testing::{centre, entity, world};
+    let layout = "[LayoutInfo]\nid=17\nx=0\ny=0\ndx=40\ndy=40\n\
+                  [u]\ntype=UIButton\nid=3515\nx=0\ny=0\ndx=4\ndy=4\n";
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+                [b]\ntype=UILayout\nlayout=ui/p.lyt\n";
+    let mut files = vec![
+        ("ui/root.lyt", root.as_bytes().to_vec()),
+        ("ui/p.lyt", layout.as_bytes().to_vec()),
+    ];
+    let members = follow::members();
+    files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
+    let install = crate::sprite::tests::Install::new("staff-panel-follow", &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = crate::ui::layout::Tree::load(&vfs, "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    let mut ui = Interface::new(tree, Box::new(follow::Texts));
+    ui.show(17);
+    let mut world = world((4, 4), |_, e| {
+        e.push(entity("keeper", "keeper", 1, centre((1, 1)), 0));
+    });
+    let cat = follow::catalogue("keeper", "keeper");
+    let mut panel = Panel::default();
+    panel.select(1);
+    let refresh = |ui: &mut Interface, world: &World, panel: &mut Panel| {
+        panel.refresh(ui, world, &cat, &vfs, false);
+    };
+    let shown = |ui: &Interface| follow::shown(ui, FOLLOW);
+    assert_eq!(shown(&ui), (false, None), "blank until shown");
+    panel.clock.due(0, true, PERIOD);
+    refresh(&mut ui, &world, &mut panel);
+    let first = shown(&ui);
+    assert!(first.0, "set when the panel is shown");
+    // The picture is the type's: what the unit plays does not change it.
+    let unit = world.units.get_mut(1).unwrap();
+    (unit.animation.name, unit.animation.frame) = ("walk".into(), 1);
+    ui.set_icon(FOLLOW, None);
+    assert!(!panel.clock.due(1, false, PERIOD));
+    refresh(&mut ui, &world, &mut panel);
+    assert_eq!(shown(&ui), (false, None), "an ordinary refresh leaves it");
+    panel.clock.force = true;
+    assert!(panel.clock.due(1, false, PERIOD));
+    refresh(&mut ui, &world, &mut panel);
+    assert_eq!(shown(&ui), first, "a forced one sets it again");
+    ui.set_icon(FOLLOW, None);
+    assert!(panel.clock.due(PERIOD, true, PERIOD));
+    refresh(&mut ui, &world, &mut panel);
+    assert_eq!(shown(&ui), (false, None), "a periodic one does not");
+}
