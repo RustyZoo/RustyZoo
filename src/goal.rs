@@ -39,6 +39,8 @@ pub const HABITAT: u8 = 101;
 /// The duties of a keeper (staff 7.5).
 pub const DUTIES: u8 = 110;
 pub const GAWK: u8 = 112;
+/// The maintenance duties of a worker (staff 8).
+pub const MAINT: u8 = 120;
 /// A tour guide's leg to a viewing area and its talk there (tour guide 5 to 7); the first is also
 /// a guest's walk after a guide.
 pub const LEG: u8 = 118;
@@ -196,6 +198,8 @@ pub enum Goal {
     /// (staff 7.5).
     Exhibit,
     Duties,
+    /// 0x78 of a maintenance worker: take a task of the pool and do its jobs (staff 8.3).
+    Maint,
     /// 0x72 of an animal: walk to a piece of keeper food and eat it (11.8).
     KeeperFood,
     /// 0x71 of a guest: walk to the zoo entrance and go (11.6).
@@ -235,6 +239,7 @@ impl Goal {
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
             (HABITAT, Kind::Keeper) => Some(Goal::Exhibit),
             (DUTIES, Kind::Keeper) => Some(Goal::Duties),
+            (MAINT, Kind::Worker) => Some(Goal::Maint),
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
@@ -261,6 +266,7 @@ impl Goal {
             Goal::Base => RANDOM,
             Goal::Habitat | Goal::Exhibit => HABITAT,
             Goal::Duties => DUTIES,
+            Goal::Maint => MAINT,
             Goal::KeeperFood => KEEPER_FOOD,
             Goal::Leave => LEAVE,
             Goal::DrinkWater => DRINK,
@@ -323,6 +329,8 @@ impl Goal {
             Goal::Talk => return cx.talk_check_done(),
             Goal::Exhibit => return cx.exhibit_check_done(),
             Goal::Duties => return cx.duties_check_done(),
+            // It never completes by itself (staff 8.1).
+            Goal::Maint => return,
             Goal::Enter => return cx.enter_check_done(),
             Goal::Use => return cx.use_check_done(),
             Goal::Exit => return cx.exit_check_done(),
@@ -344,6 +352,7 @@ impl Goal {
             Goal::KeeperFood => cx.keeper_food_decide(),
             Goal::Exhibit => cx.exhibit_decide(),
             Goal::Duties => cx.duties_decide(),
+            Goal::Maint => cx.maint_decide(),
             Goal::Leave => cx.leave_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Site => cx.site_decide(),
@@ -378,23 +387,25 @@ impl Goal {
             Goal::EatStand => cx.set_task(EATING_STANDING, 1, 0, None),
             Goal::Eating => cx.reset(),
             Goal::Sick => cx.sick_done(),
-            Goal::Base | Goal::Site => {}
+            Goal::Base | Goal::Site | Goal::Maint => {}
         }
     }
 }
 
-/// The sub-goal object of a job: the keeper's jobs 1 to 6 (staff 7.6 to 7.8), the base one (9.2)
-/// for every other job.
+/// The sub-goal object of a job: the keeper's jobs 1 to 6 (staff 7.6 to 7.8), the worker's jobs 7 to
+/// 10, 16 and 17 (staff 8.4 to 8.7), the base one (9.2) for every other job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sub {
     Base,
     Keeper(u8),
+    Worker(u8),
 }
 
 impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
             (Kind::Keeper, 1..=6) => Some(Sub::Keeper(job)),
+            (Kind::Worker, 7..=10 | 16 | 17) => Some(Sub::Worker(job)),
             _ => Some(Sub::Base),
         }
     }
@@ -411,6 +422,19 @@ impl Sub {
                 cx.job_decide(job);
             } else {
                 cx.job_complete(job);
+            }
+            return;
+        }
+        if let Sub::Worker(job) = self {
+            if !cx.record().job_done {
+                cx.work_check_done(job);
+            }
+            if cx.record().job != job {
+                cx.unit.goal.sub_stale = true;
+            } else if !cx.record().job_done {
+                cx.work_decide(job);
+            } else {
+                cx.work_complete(job);
             }
             return;
         }
@@ -451,6 +475,18 @@ pub struct Cx<'a, 'c> {
     pub ctx: &'a mut Ctx<'c>,
     pub at: usize,
     pub data: &'a dyn Data,
+}
+
+/// A maintenance worker loses its task (staff 8.3, 8.9): the link, the target and the goal go, the
+/// worker stands, and the ladder gives it the duties again at its next update.
+pub fn lose_task(unit: &mut Unit) {
+    if let Part::Staff(s) = &mut unit.part {
+        (s.task, s.target) = (0, None);
+    }
+    unit.goal.record = Record::default();
+    (unit.goal.stale, unit.goal.sub_stale) = (true, true);
+    crate::unit::movement::stop(unit);
+    unit.destination = None;
 }
 
 /// A guide's status tick: the countdown of its gathering (tour guide 4).
@@ -552,6 +588,7 @@ impl Cx<'_, '_> {
         match self.unit.kind {
             Kind::Keeper => self.keeper_reset(),
             Kind::Guide => self.guide_reset(),
+            Kind::Worker => self.worker_reset(),
             _ => self.unfollow(),
         }
         self.set_task(NONE, 0, 0, None);
@@ -635,8 +672,8 @@ impl Cx<'_, '_> {
             Kind::Animal => self.animal_ladder(task),
             Kind::Guest => self.guest_ladder(task, done),
             Kind::Keeper => self.keeper_ladder(task, done),
+            Kind::Worker => self.worker_ladder(task, done),
             Kind::Guide => self.guide_ladder(task, done),
-            _ => {}
         }
         true
     }
@@ -710,9 +747,12 @@ impl Cx<'_, '_> {
         if self.unit.goal.sub.is_none() {
             let job = self.record().job;
             self.unit.goal.sub = Sub::build(job, self.unit.kind);
-            if let Some(Sub::Keeper(job)) = self.unit.goal.sub
-                && !self.job_init(job)
-            {
+            let refused = match self.unit.goal.sub {
+                Some(Sub::Keeper(job)) => !self.job_init(job),
+                Some(Sub::Worker(job)) => !self.work_init(job),
+                _ => false,
+            };
+            if refused {
                 self.unit.goal.sub = None;
                 self.set_job(0, 0, None);
             }

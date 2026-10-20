@@ -813,6 +813,62 @@ fn a_unit_is_drawn_with_the_animation_and_frame_it_holds() {
     assert_eq!(drawn(Some(("run", 1))), at("a/idle/N", 0));
 }
 
+#[test]
+fn a_trash_can_shows_empty_up_to_12_pieces_and_half_from_13_and_never_full() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani =
+        |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n").into_bytes();
+    let picture = || sprite_file(None, 1, &[sized(&frame)]);
+    let install = Install::new(
+        "render-can",
+        &[
+            ("bldg.cfg", b"[building]\ntrshcan = can.ai\n".to_vec()),
+            (
+                "can.ai",
+                b"[Animations]\nempty = idle\nhalf = half\nfull = full\n".to_vec(),
+            ),
+            ("objects/trshcan/idle/idle.ani", ani("idle")),
+            ("objects/trshcan/half/half.ani", ani("half")),
+            ("objects/trshcan/full/full.ani", ani("full")),
+            ("a/idle/N", picture()),
+            ("a/half/N", picture()),
+            ("a/full/N", picture()),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let drawn = |pieces: i32| {
+        let mut zoo = tile_with(&[("building", "building", "trshcan")]);
+        zoo.entities[0].common.as_mut().unwrap().food = pieces;
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &Extra::default())
+            .unwrap();
+        let pics: Vec<_> = (staged.placed.iter())
+            .filter_map(|(p, _)| match &p.pic {
+                Pic::Anim(anim, ..) => Some(anim.set.files[0].clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pics.len(), 1);
+        pics[0].clone()
+    };
+    for (pieces, member) in [
+        (0, "a/idle/N"),
+        (12, "a/idle/N"),
+        (13, "a/half/N"),
+        (25, "a/half/N"),
+        (i32::MAX, "a/half/N"),
+        (-1, "a/idle/N"),
+    ] {
+        assert_eq!(drawn(pieces), member, "{pieces} pieces");
+    }
+}
+
 /// An install with three guest types (`small`, `mid`, `big` by footprint, `small` with the height
 /// 10) whose pictures are one frame of height 1 with the offsets (8, 4) and the three marker
 /// pictures of one frame of height `marker` with its offsets at its middle.

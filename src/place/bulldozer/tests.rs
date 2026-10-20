@@ -52,6 +52,9 @@ fn catalogue() -> Catalogue {
     cat.push(ty("tankwall", "glass", "f", tank, [1, 1, 1]));
     cat.push(ty("tankwall", "show", "f", tank, [1, 1, 1]));
     cat.push(ty("tankwall", "glass", "g", tank, [1, 1, 1]));
+    let can = "[Characteristics/Integers]\ncPurchaseCost=25\n[Removes]\ntrash\n[Satisfies]\nbuilding\ntrash\n";
+    cat.push(ty("building", "can", "", can, [2, 2, 1]));
+    cat.push(ty("objects", "other", "trash", "", [1, 1, 1]));
     let keeper = "[m/Characteristics/Integers]\ncPurchaseCost=800\ncMonthlyCost=650.5\n";
     cat.push(ty("keeper", "keeper", "m", keeper, [1, 1, 1]));
     cat
@@ -300,7 +303,7 @@ fn removing_books_the_refund_and_the_gate_moves_to_the_piece_across() {
     let mut w = world(v);
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
     w.set_gate(1, id);
-    let removed = remove(&mut w, &mut money, &cat, id).unwrap();
+    let removed = remove(&mut w, &mut money, &cat, id, &mut Rng::default()).unwrap();
     assert_eq!(removed.refund, 100.0);
     assert_eq!(removed.name, "fences/iron/g");
     assert_eq!((removed.tile, removed.side), ((3, 3), Some(0)));
@@ -317,7 +320,7 @@ fn removing_books_the_refund_and_the_gate_moves_to_the_piece_across() {
     assert!(!w.undo().is_empty());
     assert!(w.find(id).is_some());
     // An unknown id removes nothing and refunds nothing.
-    assert!(remove(&mut w, &mut money, &cat, 9999).is_none());
+    assert!(remove(&mut w, &mut money, &cat, 9999, &mut Rng::default()).is_none());
     assert_eq!(money.cash, 1100.0);
 }
 
@@ -330,7 +333,7 @@ fn removing_the_gate_of_an_open_line_or_a_plain_piece_makes_no_gate() {
     v[0] = piece("g", 3, 3, 0);
     let mut w = world(v);
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
-    let removed = remove(&mut w, &mut money, &cat, id).unwrap();
+    let removed = remove(&mut w, &mut money, &cat, id, &mut Rng::default()).unwrap();
     assert_eq!(removed.id, id);
     assert!(w.exhibits().list().is_empty());
     // A plain piece with one across: the piece across stays a fence.
@@ -338,7 +341,7 @@ fn removing_the_gate_of_an_open_line_or_a_plain_piece_makes_no_gate() {
     v.push(piece("f", 3, 2, 4));
     let mut w = world(v);
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
-    remove(&mut w, &mut money, &cat, id).unwrap();
+    remove(&mut w, &mut money, &cat, id, &mut Rng::default()).unwrap();
     let across = at(&w, "fences", "iron");
     assert!(w.zoo.entities.iter().skip(across).all(|e| e.subtype == "f"));
 }
@@ -561,7 +564,7 @@ fn a_staff_member_is_fired_after_a_question_and_nothing_is_refunded() {
     assert_eq!(Question::Fire.pair(), None);
     assert_eq!(check(&w, &cat, 0, false, &[]), Check::Go);
     let id = w.zoo.entities[0].common.as_ref().unwrap().id;
-    let removed = remove(&mut w, &mut money, &cat, id).unwrap();
+    let removed = remove(&mut w, &mut money, &cat, id, &mut Rng::default()).unwrap();
     assert_eq!(
         (removed.refund, removed.name.as_str()),
         (0.0, "keeper/keeper/m")
@@ -569,4 +572,92 @@ fn a_staff_member_is_fired_after_a_question_and_nothing_is_refunded() {
     assert_eq!(money.cash, 1000.0);
     assert_eq!(money.total, Money::default().total, "nothing was booked");
     assert!(w.zoo.entities.is_empty());
+}
+
+#[test]
+fn a_deleted_trash_can_puts_its_pieces_back_on_the_ground_round_it() {
+    let cat = catalogue();
+    let mut money = Money::default();
+    let mut w = world(vec![
+        entity("building", "can", "", 3 * 64 + 32, 3 * 64 + 32, 0),
+        entity("building", "shop", "", 6 * 64 + 32, 6 * 64 + 32, 0),
+    ]);
+    let (can, shop) = (1, 2);
+    w.units.buildings.entry(can).or_default().fill = 10;
+    w.units.buildings.entry(shop).or_default().fill = 10;
+    let litter = |w: &World| -> Vec<(i32, i32)> {
+        let found = w.zoo.entities.iter().filter(|e| e.subtype == "trash");
+        found
+            .filter_map(|e| e.common.as_ref().map(|c| (c.x, c.y)))
+            .collect()
+    };
+    // Something that is no can spills nothing.
+    remove(&mut w, &mut money, &cat, shop, &mut Rng::default()).unwrap();
+    assert!(litter(&w).is_empty() && w.units.posts.is_empty());
+    let mut rng = Rng::default();
+    remove(&mut w, &mut money, &cat, can, &mut rng).unwrap();
+    // One pass over the eight quarter positions, west to east and north to south, at most one
+    // piece each, so 8 of the 10 (the rest is lost); each tells the task pool, and each position
+    // drew a facing `rand & 7` from the generator first.
+    let (x, y) = (3 * 64 + 32, 3 * 64 + 32);
+    let ring = [
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+    ];
+    let expected: Vec<_> = ring
+        .iter()
+        .map(|(dx, dy)| (x + dx * 32, y + dy * 32))
+        .collect();
+    assert_eq!(litter(&w), expected);
+    let mut twin = Rng::default();
+    let facings: Vec<u32> = (0..8).map(|_| twin.rand() & 7).collect();
+    let turned: Vec<u32> = w
+        .zoo
+        .entities
+        .iter()
+        .filter(|e| e.subtype == "trash")
+        .filter_map(|e| e.common.as_ref().map(|c| c.rotation))
+        .collect();
+    assert_eq!(turned, facings);
+    assert_eq!(rng, twin, "one draw for each position, no more");
+    let posts = &w.units.posts;
+    assert_eq!(posts.len(), 8);
+    assert!(
+        posts
+            .iter()
+            .all(|e| (e.kind, e.channel, e.sender) == (10031, 0x4d, can))
+    );
+    assert_eq!(posts[0].data, 3 * 8 + 3, "the tile of the first position");
+    // The undo does not take the litter away with the can.
+    w.undo();
+    assert_eq!(litter(&w).len(), 8);
+    // A count past what a can holds spills the eight positions.
+    let mut w = world(vec![entity(
+        "building",
+        "can",
+        "",
+        3 * 64 + 32,
+        3 * 64 + 32,
+        0,
+    )]);
+    w.units.buildings.entry(1).or_default().fill = u32::MAX;
+    remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
+    assert_eq!(litter(&w).len(), 8);
+    // An empty can spills nothing.
+    let mut w = world(vec![entity(
+        "building",
+        "can",
+        "",
+        3 * 64 + 32,
+        3 * 64 + 32,
+        0,
+    )]);
+    remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
+    assert!(litter(&w).is_empty());
 }

@@ -64,3 +64,61 @@ pub fn drop(world: &mut World, cat: &Catalogue, at: usize, id: u32, rng: &mut Rn
     ));
     Some(true)
 }
+
+/// The eight quarter positions round a can, west to east and north to south, the centre left out
+/// (guest buildings 8 point 4, open point 5), in quarters of a tile.
+const AROUND: [(i32, i32); 8] = [
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+];
+
+/// A trash can that is deleted puts its fill back on the ground (guest buildings 8 point 4): one
+/// pass over the eight quarter positions round it, at most one piece of litter for each (so at most
+/// 8; the rest is lost), until the fill is out. Each position tried draws the piece's facing
+/// (`rand() & 7`) first, whether the add then succeeds or not; each piece added tells the task pool.
+/// A can that holds nothing, and anything that is no can, changes nothing. The pieces are not part
+/// of the deletion an undo takes back.
+pub fn spill(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) {
+    let default = world.units.prices.default;
+    let Some(at) = world.find(id) else {
+        return;
+    };
+    let e = &world.zoo.entities[at];
+    let can = crate::building::kind_of(cat, e, default).is_some_and(|k| k.satisfies("trash"));
+    let mut left = world.units.buildings.get(&id).map_or(0, |l| l.fill);
+    let (Some(c), Some(ty), true) = (
+        e.common.as_ref(),
+        cat.find("objects", b"other", b"trash"),
+        can,
+    ) else {
+        return;
+    };
+    let (x, y) = (c.x, c.y);
+    crate::building::set_fill(world, id, 0);
+    for &(dx, dy) in &AROUND {
+        if left == 0 {
+            break;
+        }
+        let at = (x.saturating_add(dx * 32), y.saturating_add(dy * 32));
+        let names = ("objects", "other", "trash");
+        let facing = rng.rand() & 7;
+        let tile = world.tile_index(at.0.div_euclid(64), at.1.div_euclid(64));
+        let Some(tile) =
+            tile.filter(|_| world.unrecorded(|w| dirt::put_at(w, ty, names, at, facing, 0)))
+        else {
+            continue;
+        };
+        left -= 1;
+        world.mark_rating(tile);
+        world
+            .units
+            .posts
+            .push(piece_event(id, DROPPED, tile as u32));
+    }
+}

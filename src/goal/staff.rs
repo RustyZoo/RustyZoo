@@ -14,6 +14,7 @@ use crate::staff::{assign, service};
 use crate::unit::{Part, Staff, movement};
 
 mod guide;
+mod worker;
 
 /// The jobs of the duties.
 const PUT_FOOD: u8 = 1;

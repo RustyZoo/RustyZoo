@@ -11,14 +11,14 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::GROUNDS;
 use crate::place::bulldozer::type_of;
 use crate::place::{LIFE, STRENGTH};
+use crate::sim::TASK_CHANNEL;
 use crate::vfs::Vfs;
 use crate::zoo::Event;
 
 /// The events a worn piece posts (placing 7.4): decayed, and broken (an urgent task).
 const DECAYED: u16 = 10033;
 const BROKEN: u16 = 10034;
-/// The channel the task pool listens on, and the plain entity post's own channel.
-const TASK_CHANNEL: u8 = 0x4d;
+/// The plain entity post's own channel.
 const PIECE_CHANNEL: u8 = 0x45;
 
 /// The bounds of a wear interval in milliseconds (`[Decay]` of `fences/fence.ai`).
@@ -92,6 +92,16 @@ impl World {
     /// Whether the piece at `at` wears with time.
     pub fn wears(&self, cat: &Catalogue, at: usize) -> bool {
         self.wearing(cat, at).is_some()
+    }
+
+    /// Whether the piece at `at` is decayed or broken (staff 8.7): it wears with time and its life is at
+    /// most the `cDecayedLife` of its type.
+    pub fn decayed(&self, cat: &Catalogue, at: usize) -> bool {
+        let life = (self.zoo.entities[at].common.as_ref()).and_then(|c| Some(c.fence?.life));
+        let limit = |ty: &EntityType| number(ty, "cDecayedLife").unwrap_or(0.0) as i64;
+        let ty = self.wearing(cat, at);
+        life.zip(ty)
+            .is_some_and(|(l, ty)| i64::from(l) <= limit(ty))
     }
 
     /// Makes the fence piece with this id healthy (placing 7.4): the strength and life of its

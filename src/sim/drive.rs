@@ -312,6 +312,9 @@ impl Run {
         lines.extend(
             (self.world.units.take_building_lines().into_iter()).map(|l| format!("building {l}")),
         );
+        lines.extend(
+            (self.world.units.take_world_lines().into_iter()).map(|l| format!("world {l}")),
+        );
         lines
     }
 

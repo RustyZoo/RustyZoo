@@ -131,6 +131,10 @@ pub struct Staff {
     pub members: Vec<u32>,
     pub crowd: i32,
     pub leg: bool,
+    /// A maintenance worker's task in the pool (0 none) and the milliseconds left before its
+    /// unreachable lists are emptied (staff 4.3, 8.3).
+    pub task: u32,
+    pub clear: i32,
 }
 
 /// The kind-specific part of a unit.
@@ -333,6 +337,9 @@ pub struct Units {
     pub mega: crate::guest::mega::Mega,
     /// The events the units posted to the task pool during the step, which the step posts.
     pub posts: Vec<Event>,
+    /// The maintenance task pool (staff 8.2).
+    pub pool: crate::staff::pool::Pool,
+    world_lines: Vec<String>,
 }
 
 impl Default for Units {
@@ -369,6 +376,8 @@ impl Default for Units {
             thoughts: Default::default(),
             mega: Default::default(),
             posts: Vec::new(),
+            pool: Default::default(),
+            world_lines: Vec::new(),
         }
     }
 }
@@ -461,6 +470,15 @@ impl Units {
 
     pub(crate) fn staff_note(&mut self, line: String) {
         self.staff_lines.push(line);
+    }
+
+    /// The `world` lines the units told since the last call (`world fence ID LIFE`).
+    pub fn take_world_lines(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.world_lines)
+    }
+
+    pub(crate) fn world_note(&mut self, line: String) {
+        self.world_lines.push(line);
     }
 
     pub(crate) fn building_note(&mut self, line: String) {
@@ -563,6 +581,7 @@ impl Units {
         }
         h.bytes(format!("{:?}", self.buildings).as_bytes());
         h.bytes(format!("{:?}{:?}", self.thoughts, self.mega).as_bytes());
+        h.bytes(format!("{:?}", self.pool).as_bytes());
         for u in &self.list {
             h.word(u.id);
             h.word(u.kind as u32);
@@ -616,6 +635,8 @@ impl Units {
                     s.members.iter().for_each(|&m| h.word(m));
                     h.word(s.crowd as u32);
                     h.word(u32::from(s.leg));
+                    h.word(s.task);
+                    h.word(s.clear as u32);
                 }
                 Part::Guest(g) => h.bytes(format!("{g:?}").as_bytes()),
             }

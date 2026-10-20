@@ -6,7 +6,7 @@
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
-//! so far: the task pool, the shows, the water ripples, the ambient creatures, and the scenario, research and
+//! so far: the shows, the water ripples, the ambient creatures, and the scenario, research and
 //! marketing managers, which are empty until M7.
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
@@ -26,7 +26,7 @@ mod tests;
 #[cfg(test)]
 mod wear_tests;
 
-pub use events::{Event, Events, KEEPER_CHANNEL, UNIT_CHANNEL};
+pub use events::{Event, Events, KEEPER_CHANNEL, TASK_CHANNEL, UNIT_CHANNEL};
 pub use rng::{Rng, Seconds};
 
 use crate::behaviour::{Data, NoData};
@@ -406,7 +406,10 @@ impl Sim {
         guest::mega::update(world, cat, step);
         let bars = self.zoo_status(world, cat, money, step, month_end);
         world.units.now = self.calendar.state().0;
-        // The AI manager: the clock in whole ticks with the remainder kept, the removal pass,
+        // The AI manager: first the task pool reads the events of the buffer (simulation 4.2).
+        let tiles = world.zoo.tiles.len();
+        (world.units.pool).listen(self.events.listen(0, TASK_CHANNEL), tiles);
+        // The clock in whole ticks with the remainder kept, the removal pass,
         // the entities, the event queue.
         let total = self.ai_rem.wrapping_add(step);
         self.ai_rem = total % self.ai.ai_tick;

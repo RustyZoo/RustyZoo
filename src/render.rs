@@ -1359,6 +1359,11 @@ impl<'a> MapRenderer<'a> {
             "objects" if ty.type_name == b"other" && ty.subtype.ends_with(b"poo") => {
                 ["idle", "small", "giant"][meta.food.clamp(0, 2) as usize].into()
             }
+            // A trash can shows `empty` up to 12 pieces and `half` from 13; `full` is never shown
+            // (guest buildings 8). Its counter holds the pieces.
+            "building" if ty.subtype == b"trshcan" => {
+                ["empty", "half"][usize::from(meta.food >= 13)].into()
+            }
             // Food shows `empty`, `half` or `full` by its units left (animals-needs 5.1).
             "food" => {
                 let max = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;

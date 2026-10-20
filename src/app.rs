@@ -927,6 +927,7 @@ impl<'a> App<'a> {
         self.animal_lines = game.world.units.take_animal_lines();
         self.guest_lines = game.world.units.take_guest_lines();
         self.staff_lines = game.world.units.take_staff_lines();
+        self.world_lines.extend(game.world.units.take_world_lines());
         self.building_lines = game.world.units.take_building_lines();
         for (message, id, names) in game.world.units.take_messages() {
             let own = (game.world.find(id))

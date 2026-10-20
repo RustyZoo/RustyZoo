@@ -111,9 +111,7 @@ impl Cx<'_, '_> {
         let tile = (self.building(id))
             .and_then(|(e, _)| e.common.map(|c| (c.x, c.y)))
             .and_then(|p| self.tile_at(p));
-        if let Some(live) = self.world.units.buildings.get_mut(&id) {
-            live.fill = fill + 1;
-        }
+        building::set_fill(self.world, id, fill + 1);
         if fill + 1 == CALL {
             let event = crate::world::piece_event(id, CAN_FILLING, tile.unwrap_or(0) as u32);
             self.world.units.posts.push(event);
