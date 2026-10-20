@@ -3,8 +3,9 @@
 //! plays the audio.
 
 use crate::Framebuffer;
-use crate::config::{Config, to_int};
+use crate::config::Config;
 use crate::movie::{Frames, Movie};
+use crate::timing::ini_whole;
 use crate::vfs::Vfs;
 
 /// A movie that plays at start-up.
@@ -21,8 +22,7 @@ pub struct Intro {
 /// `[UI] playSecondMovie` is not 0 as well. A movie that is missing or cannot be read is skipped,
 /// with its reason in the second value.
 pub fn list(vfs: &Vfs, ini: &Config) -> (Vec<Intro>, Vec<String>) {
-    let ui = ini.section("UI");
-    let get = |key: &str| ui.and_then(|s| s.get(key)).and_then(to_int).unwrap_or(0);
+    let get = |key: &str| ini_whole(ini, "UI", key).unwrap_or(0);
     let mut movies = Vec::new();
     let mut skipped = Vec::new();
     let first = get("playMovie") != 0;

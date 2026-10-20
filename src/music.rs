@@ -1,7 +1,8 @@
 //! The menu music's loudness and its fade when a game starts (sound specification 4 and 6),
 //! without a sound device: the program plays the music and follows what this says.
 
-use crate::config::{Config, to_int};
+use crate::config::Config;
+use crate::timing::{ini_value, ini_whole};
 
 /// The most a sound may be attenuated for it to start (sound specification 4.2).
 pub const START_LIMIT: i32 = 6000;
@@ -45,11 +46,7 @@ pub fn user_term(u: i32) -> i32 {
 
 /// The global term `G` of the `[UI] userAttenuation` setting of the ini file (0 when absent).
 pub fn global_term(ini: &Config) -> i32 {
-    let u = ini
-        .section("UI")
-        .and_then(|ui| ui.get("userAttenuation"))
-        .and_then(to_int);
-    user_term(u.unwrap_or(0))
+    user_term(ini_whole(ini, "UI", "userAttenuation").unwrap_or(0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,18 +74,16 @@ impl Music {
     /// The file is `menuMusic` (`sounds/mainmenu.wav` when absent), `G` comes from
     /// `userAttenuation` and `B` from `menuMusicAttenuation` (0 when absent).
     pub fn from_config(ini: &Config) -> Option<Music> {
-        let ui = ini.section("UI");
-        let get = |key: &str| ui.and_then(|ui| ui.get(key));
-        if get("noMenuMusic").and_then(to_int) == Some(1) {
+        if ini_whole(ini, "UI", "noMenuMusic") == Some(1) {
             return None;
         }
         let music = Music {
-            file: get("menuMusic").map_or_else(
+            file: ini_value(ini, "UI", "menuMusic").map_or_else(
                 || "sounds/mainmenu.wav".to_string(),
                 |name| String::from_utf8_lossy(name).into_owned(),
             ),
             global: global_term(ini),
-            base: get("menuMusicAttenuation").and_then(to_int).unwrap_or(0),
+            base: ini_whole(ini, "UI", "menuMusicAttenuation").unwrap_or(0),
             fade: 0,
             state: State::Playing,
         };
@@ -191,6 +186,9 @@ mod tests {
         assert_eq!(term("[UI]\nuserAttenuation=-5\n"), 0);
         assert_eq!(term("[UI]\nuserAttenuation=1500\n"), 5000);
         assert_eq!(term("[UI]\nuserAttenuation=x\n"), 0);
+        // Names ignore case and an integer reads like `%d`: no `0x` rule.
+        assert_eq!(term("[ui]\nUSERATTENUATION=600\n"), 600);
+        assert_eq!(term("[UI]\nuserAttenuation=0x258\n"), 0);
     }
 
     #[test]

@@ -6,8 +6,9 @@
 //! Full screen (C1) changes two rules: the edge band is 2 pixels, not 7, and the view of 800
 //! pixels in width cannot zoom in.
 
-use crate::config::{Config, to_int};
+use crate::config::Config;
 use crate::render::order::{ground_height, project};
+use crate::timing::ini_whole;
 use crate::zoo::{View, Zoo};
 
 /// The scroll settings of the `[UI]` section.
@@ -35,12 +36,7 @@ impl Default for Settings {
 
 impl Settings {
     pub fn from_config(config: &Config) -> Self {
-        let ui = config.section("UI");
-        let get = |key: &str, default: i32| {
-            ui.and_then(|s| s.get(key))
-                .and_then(to_int)
-                .unwrap_or(default)
-        };
+        let get = |key: &str, default: i32| ini_whole(config, "UI", key).unwrap_or(default);
         let d = Settings::default();
         Settings {
             key: (get("keyScrollX", d.key.0), get("keyScrollY", d.key.1)),

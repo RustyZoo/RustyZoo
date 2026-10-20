@@ -30,6 +30,7 @@ use crate::config::{Config, Section, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
 use crate::sprite::{Blend, Frame, Palette, Place, Sprite, screen};
+use crate::timing::ini_whole;
 use crate::vfs::Vfs;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Tile, Zoo};
@@ -661,11 +662,7 @@ impl<'a> MapRenderer<'a> {
             .unwrap_or(30);
         let tank_shadows = Config::parse(vfs.ini())
             .ok()
-            .and_then(|c| {
-                c.section("advanced")?
-                    .get("useTankShadows")
-                    .and_then(to_int)
-            })
+            .and_then(|c| ini_whole(&c, "advanced", "useTankShadows"))
             .is_none_or(|v| v == 1);
         MapRenderer {
             vfs,

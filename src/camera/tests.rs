@@ -212,6 +212,8 @@ fn the_settings_come_from_the_ini_with_the_shipped_values_as_defaults() {
         shipped
     );
     assert_eq!(Settings::from_config(&Config::default()), shipped);
+    let ini = Config::parse(b"[ui]\nKEYSCROLLX=30\nkeyScrollY=0x20\n").unwrap();
+    assert_eq!(Settings::from_config(&ini).key, (30, 0));
 
     let beach = map(75, 75, 0);
     let mut c = camera(0, 0, (1888, -384), 1, BEACH);
