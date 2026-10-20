@@ -87,8 +87,8 @@ impl World {
             return;
         }
         self.edit_tank(id, |t, _| t.purity = new);
-        if let Some(x) = self.exhibits.get_mut(id) {
-            x.rating.dirty = true;
+        self.exhibits.mark(id);
+        if let Some(x) = self.exhibits.get(id) {
             if old > EXTREME && new <= EXTREME {
                 let names = vec![x.name.clone()];
                 self.units.post_named(TOO_MURKY, 0, names);

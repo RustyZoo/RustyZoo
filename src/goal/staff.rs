@@ -750,8 +750,8 @@ impl<'c> Cx<'_, 'c> {
         if let Some(e) = self.world.exhibits_mut().get_mut(x) {
             e.stats.upkeep[1] += price;
             e.stats.upkeep[2] += price;
-            e.rating.dirty = true;
         }
+        self.world.exhibits_mut().mark(x);
     }
 }
 

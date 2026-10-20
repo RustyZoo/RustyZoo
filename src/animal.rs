@@ -987,15 +987,13 @@ fn find<'c>(cat: &'c Catalogue, e: &Entity) -> Option<&'c EntityType> {
     cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
 }
 
-/// The record of species `key` in exhibit `x`; a dirty exhibit is rated first.
-fn record(world: &mut World, cat: &Catalogue, x: u32, key: &str) -> Option<Record> {
-    if world.exhibits().get(x)?.rating.dirty {
-        let input = rating::input(world, cat, x);
-        world.exhibits_mut().get_mut(x)?.rating.compute(&input);
-    }
-    (world.exhibits().get(x)?.rating.records.iter())
-        .find(|r| r.key == key)
-        .cloned()
+/// The records of exhibit `x`; a dirty exhibit is rated first.
+fn records(world: &mut World, cat: &Catalogue, x: u32) -> Vec<Record> {
+    rating::refresh(world, cat, x);
+    world
+        .exhibits()
+        .get(x)
+        .map_or_else(Vec::new, |e| e.rating.records.clone())
 }
 
 /// Counts the animals of the regions `near` (an exhibit and its amphibious neighbours) for an
@@ -1201,9 +1199,18 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         let regions = food::near(world, x, &k);
         let pieces = food::pieces(world, ctx.cat, &regions, k.food_kind);
         env.food_total = pieces.iter().map(|p| p.left).fold(0, i32::saturating_add);
-        if let Some(r) = record(world, ctx.cat, x, &key) {
+        let own = records(world, ctx.cat, x)
+            .into_iter()
+            .find(|r| r.key == key);
+        if let Some(r) = own {
+            let near = world
+                .exhibits()
+                .get(x)
+                .map_or(Vec::new(), |e| e.amphibious.clone());
+            let read = &mut |n| records(world, ctx.cat, n);
+            let seen = rating::rating(x, &near, &key, read).unwrap_or_default();
             env.species = r.animals as i32;
-            env.rating = r.shown() as i32;
+            env.rating = rating::shown(seen) as i32;
             env.other = r.other.round() as i32;
         }
     }
@@ -1236,11 +1243,8 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         let painted =
             world.unrecorded(|w| w.set_tile(tx, ty_, tile.elevation, tile.shape, class.trample));
         // The ground of the exhibit changed: it is rated again.
-        if let Some(e) = x
-            .filter(|_| painted)
-            .and_then(|x| world.exhibits_mut().get_mut(x))
-        {
-            e.rating.dirty = true;
+        if let Some(x) = x.filter(|_| painted) {
+            world.exhibits_mut().mark(x);
         }
         world.units.tell(format!("trample {} {tx},{ty_}", unit.id));
     }

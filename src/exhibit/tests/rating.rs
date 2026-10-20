@@ -57,7 +57,7 @@ fn flat() -> Input {
         site,
         species: vec![zebra()],
         animals: vec![0, 0],
-        keeper: None,
+        ..Input::default()
     }
 }
 
@@ -205,7 +205,7 @@ fn a_tank_is_rated_by_its_depth_and_water() {
     input.site.water = Some(Water {
         level: 1,
         purity: 40,
-        show: false,
+        ..Water::default()
     });
     let r = only(&input);
     assert_eq!((r.terrain, r.depth, r.water), (100.0, 60.0, 40.0));
@@ -218,7 +218,7 @@ fn a_tank_is_rated_by_its_depth_and_water() {
     input.site.water = Some(Water {
         level: 9,
         purity: 100,
-        show: false,
+        ..Water::default()
     });
     let r = only(&input);
     assert!(r.has(bit::TOO_DEEP) && r.depth == 20.0);
@@ -302,6 +302,7 @@ fn extreme_values_neither_panic_nor_draw() {
         level: i32::MAX,
         purity: -5,
         show: true,
+        ..Water::default()
     });
     input.animals.push(7); // a type that is not in the list
     assert_eq!(only(&input).animals, 2);

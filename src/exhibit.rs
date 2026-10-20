@@ -467,6 +467,20 @@ impl Exhibits {
         }
     }
 
+    /// Marks exhibit `id` to be rated again (habitat rating 4), and its amphibious neighbours
+    /// with it, theirs in turn, up to those already marked; the zoo grounds have no rating.
+    pub fn mark(&mut self, id: u32) {
+        let Some(e) = self.get_mut(id) else {
+            return;
+        };
+        e.rating.dirty = true;
+        for n in e.amphibious.clone() {
+            if self.get(n).is_some_and(|n| !n.rating.dirty) {
+                self.mark(n);
+            }
+        }
+    }
+
     pub fn get_mut(&mut self, id: u32) -> Option<&mut Exhibit> {
         self.list.iter_mut().find(|e| e.id == id)
     }

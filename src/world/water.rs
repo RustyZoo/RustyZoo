@@ -38,8 +38,8 @@ impl World {
         }
         let (now, changed) = (*tank, *tank != before);
         if changed {
-            if reset && let Some(x) = self.exhibits.get_mut(id) {
-                x.rating.dirty = true;
+            if reset {
+                self.exhibits.mark(id);
             }
             let (level, purity) = (now.level, now.purity);
             self.units

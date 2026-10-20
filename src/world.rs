@@ -431,9 +431,8 @@ impl World {
     /// Marks the exhibit that tile `t` belongs to for a new rating (a unit left it or came into
     /// it); the zoo grounds have none.
     pub fn mark_rating(&mut self, t: usize) {
-        let region = self.exhibits.region(t).filter(|&r| r != GROUNDS);
-        if let Some(e) = region.and_then(|r| self.exhibits.get_mut(r)) {
-            e.rating.dirty = true;
+        if let Some(r) = self.exhibits.region(t) {
+            self.exhibits.mark(r);
         }
     }
 
