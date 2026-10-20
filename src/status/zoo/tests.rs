@@ -403,6 +403,14 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
         let class = crate::animal::Class::load(&vfs);
         let mut run = Run::new((vfs.ini(), &economy), (catalogue, class), world, money, 1);
         assert_eq!(run.sim.status.rating, setup, "{map}: the set-up check");
+        if map == "med_kids" {
+            // The ratings do not depend on the limit of a need (`cUIThreshold`, above every
+            // stored need here): a lookup that fell back to the built-in 50 would count some.
+            let sums = Sums::of(&run.world, &run.cat, 0.0, 0);
+            assert_eq!(sums.guests, 51, "{map}: the stored guests");
+            let needs = [sums.hungry, sums.thirsty, sums.restroom, sums.tired];
+            assert_eq!(needs, [0; 4], "{map}: the guests with a need");
+        }
         (0..61).for_each(|_| _ = run.step(67));
         assert_eq!(run.sim.status.rating, first, "{map}: the first check");
     }
