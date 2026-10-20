@@ -305,6 +305,10 @@ fn hostile_text_does_not_panic() {
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn full_game_survey() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    if crate::pe::installed_language(&dir) == 1036 {
+        eprintln!("skipped: the survey counts files that only the English install has");
+        return;
+    }
     let found = survey(&Vfs::open(std::path::Path::new(&dir)).unwrap()).unwrap();
     assert_eq!(
         (found.files, found.sets, found.calls, found.tables),

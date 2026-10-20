@@ -1049,28 +1049,33 @@ fn full_game_facts() {
     let c = fence.common.as_ref().unwrap();
     assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (767, 2848, 0, 2, 2));
 
-    let save = load("saved games/test.zoo").unwrap();
-    assert_eq!(
-        (save.version, save.expansion, save.width, save.height),
-        (106, 0, 125, 125)
-    );
-    assert_eq!(
-        (save.entrance, save.habitat_tiles.len(), save.id_counter),
-        ((12, 73), 6, 166520)
-    );
-    assert_eq!((save.tiles.len(), save.entities.len()), (15625, 1683));
-    let first = save.tiles[0];
-    assert_eq!((first.elevation, first.shape, first.terrain), (-2, 0, 10));
-    let path = &save.entities[0];
-    assert_eq!(
-        (&*path.class, &*path.type_name, &*path.subtype),
-        ("paths", "paths", "path")
-    );
-    assert_eq!(path.body_size, Some(84));
-    let c = path.common.as_ref().unwrap();
-    assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (800, 4704, 0, 4, 37091));
+    // The saved game exists in the English install only.
+    if crate::pe::installed_language(&dir) == 1036 {
+        eprintln!("skipped: saved games/test.zoo is not in the French install");
+    } else {
+        let save = load("saved games/test.zoo").unwrap();
+        assert_eq!(
+            (save.version, save.expansion, save.width, save.height),
+            (106, 0, 125, 125)
+        );
+        assert_eq!(
+            (save.entrance, save.habitat_tiles.len(), save.id_counter),
+            ((12, 73), 6, 166520)
+        );
+        assert_eq!((save.tiles.len(), save.entities.len()), (15625, 1683));
+        let first = save.tiles[0];
+        assert_eq!((first.elevation, first.shape, first.terrain), (-2, 0, 10));
+        let path = &save.entities[0];
+        assert_eq!(
+            (&*path.class, &*path.type_name, &*path.subtype),
+            ("paths", "paths", "path")
+        );
+        assert_eq!(path.body_size, Some(84));
+        let c = path.common.as_ref().unwrap();
+        assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (800, 4704, 0, 4, 37091));
+    }
 
-    // Every .zoo file: 96 parse, 3 are older than version 38, 6 of version 38 are corrupted.
+    // Every .zoo file: 96 parse (95 in the French install), 3 are older than version 38, 6 of version 38 are corrupted.
     // Two of the 96 (the leftovers of the scenario archive, versions 45 and 55) hold entities
     // of a type without definition, which the original cannot load before version 70.
     let catalogue = crate::entity::Catalogue::load(&vfs).unwrap();
@@ -1100,7 +1105,9 @@ fn full_game_facts() {
             Err(e) => panic!("{member}: {e}"),
         }
     }
-    assert_eq!((ok, old, corrupted), (96, 3, 6));
+    // The English install also holds the saved game.
+    let (parsed, french) = (96, crate::pe::installed_language(&dir) == 1036);
+    assert_eq!((ok, old, corrupted), (parsed - usize::from(french), 3, 6));
     untyped.sort();
     assert_eq!(
         untyped,
@@ -1109,8 +1116,9 @@ fn full_game_facts() {
             ("scenario/scn15/scn15.zoo".to_string(), 45)
         ]
     );
-    // The only bodies not decoded are the 939 of size 0.
-    assert_eq!((transient, skipped), (939, 939));
+    // The only bodies not decoded are the 939 of size 0 (730 without the saved game).
+    let empty = if french { 730 } else { 939 };
+    assert_eq!((transient, skipped), (empty, empty));
 }
 
 #[test]

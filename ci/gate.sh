@@ -5,6 +5,8 @@
 #   clippy   cargo clippy --all-targets -- -D warnings
 #   test     cargo test
 #   full     cargo test -- --ignored, only when ZT_DATA_DIR is set (the full game)
+#   full-fr  the same with ZT_DATA_DIR set to $ZT_DATA_DIR_FR (a second install, in another language;
+#            the tests pick their expected values by the language of lang0.dll); skipped when unset
 #   trials   release build, then ci/check-trials.sh on the trials dir (see ci/fetch-trials.sh);
 #            skipped without the argument
 #
@@ -24,17 +26,17 @@ step() { # step <name> <command...>
   shift
   start=$SECONDS
   if "$@" >"$logs/$name" 2>&1; then
-    printf 'ok      %-7s %ss\n' "$name" $((SECONDS - start))
+    printf 'ok      %-8s %ss\n' "$name" $((SECONDS - start))
     ok=$((ok + 1))
   else
-    printf 'FAILED  %-7s %ss\n' "$name" $((SECONDS - start))
+    printf 'FAILED  %-8s %ss\n' "$name" $((SECONDS - start))
     tail -n 40 "$logs/$name" | sed -E 's/\x1b(\[[0-9;]*[A-Za-z]|\(B)|\x0f//g; s/^/        /'
     failed=$((failed + 1))
   fi
 }
 
 skip() { # skip <name> <reason>
-  printf 'skipped %-7s %s\n' "$1" "$2"
+  printf 'skipped %-8s %s\n' "$1" "$2"
   skipped=$((skipped + 1))
 }
 
@@ -46,6 +48,9 @@ step fmt cargo fmt --check
 step clippy cargo clippy --all-targets -- -D warnings
 step test cargo test
 if [ -n "${ZT_DATA_DIR:-}" ]; then step full cargo test -- --ignored; else skip full "ZT_DATA_DIR is not set"; fi
+if [ -n "${ZT_DATA_DIR_FR:-}" ]; then
+  step full-fr env ZT_DATA_DIR="$ZT_DATA_DIR_FR" cargo test -- --ignored
+else skip full-fr "ZT_DATA_DIR_FR is not set"; fi
 if [ -n "$trials" ]; then step trials trials_step; else skip trials "no trials dir given"; fi
 
 echo "gate: $ok ok, $failed failed, $skipped skipped"
