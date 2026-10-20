@@ -539,6 +539,14 @@ impl World {
             .collect()
     }
 
+    /// The unit at position `at` of the list takes another subtype of its type and the shape that
+    /// goes with it (a young animal grows up).
+    pub fn retype(&mut self, at: usize, subtype: &str, shape: Shape) {
+        self.zoo.entities[at].subtype = subtype.into();
+        self.shapes[at] = Some(shape);
+        self.changed();
+    }
+
     /// Removes the entity with this id; whether there was one. A fence piece that opens its line
     /// records the exhibits it opens, with their names and gates, first.
     pub fn remove(&mut self, id: u32) -> bool {

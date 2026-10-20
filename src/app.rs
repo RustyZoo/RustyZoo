@@ -623,6 +623,10 @@ impl<'a> App<'a> {
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
+            let animals = self.renderer.catalogue().types.iter();
+            world.units.names = (animals.filter(|t| t.class == "animals"))
+                .map(|t| (t.name_id, ui.string(t.name_id)))
+                .collect();
         }
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);

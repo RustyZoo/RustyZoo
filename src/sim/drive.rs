@@ -31,8 +31,9 @@ pub enum Command {
     /// `keeper X,Y` and `worker X,Y`: a marine specialist or a maintenance worker, the same way.
     Keeper(i32, i32),
     Worker(i32, i32),
-    /// `animal TYPE X,Y`: an animal of the type (`mantaray`) stands on the tile.
-    Animal(String, i32, i32),
+    /// `animal TYPE X,Y [male|female]`: an animal of the type (`mantaray`) stands on the tile; of
+    /// the sex when one is given (the subtype of that sex when the species has one).
+    Animal(String, i32, i32, Option<bool>),
     /// `filter X,Y DIRECTION`: a tank filter on the tile, facing a direction 0 to 7, as placed
     /// during play.
     Filter(i32, i32, u32),
@@ -41,6 +42,8 @@ pub enum Command {
     /// `heal ID`: the animal is healed as a keeper's heal does (animals-needs 9.7), without the
     /// keeper and without the booking.
     Heal(u32),
+    /// `mood ID N`: the animal's happiness is N, from -100 to 100.
+    Mood(u32, i32),
 }
 
 /// The highest elevation a script sets.
@@ -66,6 +69,13 @@ impl std::str::FromStr for Command {
         let command = match words.first().copied() {
             Some("remove") if words.len() == 2 => Command::Remove(id(1)?),
             Some("heal") if words.len() == 2 => Command::Heal(id(1)?),
+            Some("mood") if words.len() == 3 => {
+                let mood = n(2).ok().filter(|m| (-100..=100).contains(m));
+                Command::Mood(
+                    id(1)?,
+                    mood.ok_or_else(|| format!("bad mood: {text:?}"))? as i32,
+                )
+            }
             Some("fill") if words.len() == 2 => Command::Fill(id(1)?),
             Some("drain") if words.len() == 2 => Command::Drain(id(1)?),
             Some("leave") if words.len() == 2 => Command::Leave(id(1)?),
@@ -81,9 +91,15 @@ impl std::str::FromStr for Command {
                     _ => Command::Worker(x, y),
                 }
             }
-            Some("animal") if words.len() == 3 => {
+            Some("animal") if (3..=4).contains(&words.len()) => {
                 let (x, y) = tile(words[2])?;
-                Command::Animal(words[1].into(), x, y)
+                let female = match words.get(3) {
+                    None => None,
+                    Some(&"male") => Some(false),
+                    Some(&"female") => Some(true),
+                    Some(_) => return Err(format!("bad sex: {text:?}")),
+                };
+                Command::Animal(words[1].into(), x, y, female)
             }
             Some("filter") if words.len() == 3 => {
                 let (x, y) = tile(words[1])?;
@@ -220,25 +236,46 @@ impl Run {
             }
             Command::Food(x, y, ref name, units) => self.put_food(x, y, name, units),
             Command::Heal(id) => self.heal(id),
-            Command::Guide(x, y) => self.add_unit("tour", None, x, y),
-            Command::Keeper(x, y) => self.add_unit("keeper", Some("trainer"), x, y),
-            Command::Worker(x, y) => self.add_unit("maint", None, x, y),
-            Command::Animal(ref name, x, y) => self.add_unit("animals", Some(name), x, y),
+            Command::Mood(id, mood) => match self.world.units.get_mut(id).map(|u| &mut u.part) {
+                Some(Part::Animal(a)) => {
+                    a.happiness = mood;
+                    true
+                }
+                _ => false,
+            },
+            Command::Guide(x, y) => self.add_unit("tour", None, x, y, None),
+            Command::Keeper(x, y) => self.add_unit("keeper", Some("trainer"), x, y, None),
+            Command::Worker(x, y) => self.add_unit("maint", None, x, y, None),
+            Command::Animal(ref name, x, y, sex) => self.add_unit("animals", Some(name), x, y, sex),
             Command::Filter(x, y, facing) => self.add_filter(x, y, facing),
         }
     }
 
-    /// A unit of the class (and the type, when it is given; the first sex of the data) on tile
-    /// `(x, y)`, hired without the hiring cost; whether there is such a tile and such a type.
-    fn add_unit(&mut self, class: &str, name: Option<&str>, x: i32, y: i32) -> bool {
+    /// A unit of the class (and the type, when it is given; the first sex of the data, or the
+    /// subtype of the sex asked for, which the animal then has even when the species has no such
+    /// subtype) on tile `(x, y)`, hired without the hiring cost; whether there is such a tile and
+    /// such a type.
+    fn add_unit(
+        &mut self,
+        class: &str,
+        name: Option<&str>,
+        x: i32,
+        y: i32,
+        sex: Option<bool>,
+    ) -> bool {
         let named =
             |t: &&crate::entity::EntityType| name.is_none_or(|n| t.type_name == n.as_bytes());
-        let Some(ty) = self
+        let mut found = self
             .cat
             .types
             .iter()
             .filter(named)
-            .find(|t| t.class == class)
+            .filter(|t| t.class == class);
+        let wanted = sex.map(|female| if female { b"f" } else { b"m" });
+        let first = found.clone().next();
+        let Some(ty) = found
+            .find(|t| wanted.is_some_and(|w| t.subtype == w))
+            .or(first)
         else {
             return false;
         };
@@ -280,7 +317,13 @@ impl Run {
             tank: crate::world::TankKind::NONE,
             walkable: (false, false),
         };
-        self.world.add(entity, Some(shape)).is_some()
+        let Some(id) = self.world.add(entity, Some(shape)) else {
+            return false;
+        };
+        if let (Some(female), Some(unit)) = (sex, self.world.units.get_mut(id)) {
+            unit.sex = Some(female);
+        }
+        true
     }
 
     /// A tank filter facing `facing` on tile `(x, y)`; whether there is such a tile and such a

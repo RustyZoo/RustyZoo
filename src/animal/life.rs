@@ -27,6 +27,9 @@ pub struct Sets {
     pub sleep_now: bool,
     pub sick_now: bool,
     pub dying_now: bool,
+    /// The type has `bHatch`, and it is the current set.
+    pub has_hatch: bool,
+    pub hatch_now: bool,
 }
 
 impl Animal {
@@ -125,11 +128,19 @@ pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng,
 
 /// The old age part of the reproduction check (10): the life counter runs down by the check's
 /// period, and once it is spent each check rolls the species' chance of dying. The animal then
-/// starts `bDie` (its `fDie` removes it) or, with no such set, is removed at once.
-pub fn aging(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
+/// starts `bDie` (its `fDie` removes it) or, with no such set, is removed at once. Whether the
+/// check was due.
+pub fn aging(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &Env,
+    rng: &mut Rng,
+    out: &mut Out,
+) -> bool {
     let period = class.periods[super::REPRODUCTION];
     if !fire(&mut a.counters[super::REPRODUCTION], period) {
-        return;
+        return false;
     }
     a.life = a.life.saturating_sub(period);
     if a.life < 1 && !a.dying && rng.chance(k.death_chance) {
@@ -141,6 +152,7 @@ pub fn aging(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, 
             (out.remove, out.mourn) = (true, true);
         }
     }
+    true
 }
 
 /// What the checks read of the sets of the animal at position `at`. A set that has ended still
@@ -156,6 +168,8 @@ pub fn sets(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Sets {
         sleep_now: now("bSleep") || runner.queued() == Some("bSleep"),
         sick_now: now("bSick"),
         dying_now: now("bDie"),
+        has_hatch: has("bHatch"),
+        hatch_now: now("bHatch"),
     }
 }
 

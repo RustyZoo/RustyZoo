@@ -20,15 +20,20 @@
 //! Sleep, health, old age and the dung meter are [`life`]; the dung pile and the keeper's heal are
 //! [`dirt`].
 //!
-//! Not here yet: the use of shelters, breeding and eggs, the water check and the swimmers and the
+//! Mates, births, young animals growing up and eggs are [`breed`]: a male in good spirits with a
+//! mate of its species in the exhibit rolls for young at the reproduction check, which puts them
+//! (or eggs, for a species that lays them) on free tiles of the exhibit.
+//!
+//! Not here yet: the use of shelters, the water check and the swimmers and the
 //! effects of the escape, rampage and zap checks (M7: only their counters and draws run). The
 //! ambient choice is taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
 //! after each update of the values, `animal message <string> <id>` for a message posted,
 //! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
-//! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down and
-//! `animal heal <id>`.
+//! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down,
+//! `animal heal <id>`, `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
+//! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>` and `animal hatch <id>`.
 
 use crate::behaviour::Data;
 use crate::config::{Config, to_int};
@@ -41,6 +46,7 @@ use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{AnimalRecord, Entity};
 
+pub mod breed;
 pub mod dirt;
 pub mod food;
 pub mod life;
@@ -139,6 +145,9 @@ pub struct Class {
     pub reset_interval: i32,
     /// `cDeathChance`, the fallback of the species key (animals-needs 10.2).
     pub death_chance: i32,
+    /// `cMatePickDelay`: the reproduction checks a monogamous animal waits before it looks for
+    /// another mate (animals-needs 11.2).
+    pub mate_pick_delay: i32,
 }
 
 impl Default for Class {
@@ -189,6 +198,7 @@ impl Class {
             trample: TRAMPLED,
             reset_interval: 0,
             death_chance: int("cDeathChance", 99),
+            mate_pick_delay: int("cMatePickDelay", 3),
         }
     }
 }
@@ -279,6 +289,17 @@ keys! {
     sick_time: "cSickTime" = 5,
     time_death: "cTimeDeath" = 5001,
     building_use: "cBuildingUseChance" = 0,
+    reproduction_chance: "cReproductionChance" = 10,
+    reproduction_interval: "cReproductionInterval" = 70,
+    happy_reproduce: "cHappyReproduceThreshold" = 0,
+    mating_type: "cMatingType" = 0,
+    no_mate_change: "cNoMateChange" = -19,
+    offspring: "cOffspring" = 1,
+    baby_born_change: "cBabyBornChange" = 60,
+    baby_to_adult: "cBabyToAdult" = 100,
+    lays_eggs: "cLaysEggs" = 0,
+    time_to_hatch: "cTimeToHatch" = 0,
+    min_hatch_hits: "cMinHatchHits" = 0,
 }
 
 impl Keys {
@@ -355,6 +376,17 @@ pub struct Animal {
     /// with full hunger (animals-needs 9, 10.1).
     pub life: i32,
     pub starving: i32,
+    /// The mate's id (0 for none), the reproduction checks left before a monogamous animal that
+    /// lost its mate looks for another, the status ticks since the last birth (ready at
+    /// `cReproductionInterval`), the ones left before a young animal grows up, the ones left
+    /// before an egg hatches, and the ids of its parents (animals-needs 11, 12, 13).
+    pub mate: u32,
+    pub mate_delay: i32,
+    pub interval: i32,
+    pub baby: i32,
+    pub hatch: i32,
+    pub mother: u32,
+    pub father: u32,
     /// The food entity it goes to and eats from; 0 for none.
     pub food: u32,
     /// The rampage flag and its counter (animals 11): they gate the rampage draws and the bored
@@ -395,6 +427,9 @@ impl Animal {
             counters,
             female,
             life: k.time_death.wrapping_sub(1),
+            mate_delay: class.mate_pick_delay.wrapping_sub(1),
+            interval: k.reproduction_interval,
+            baby: k.baby_to_adult.wrapping_sub(1),
             reset: class.reset_interval,
             crowd_direction: -1,
             ..Animal::default()
@@ -540,6 +575,19 @@ pub struct Env {
     pub sick_near: u32,
     /// A keeper is at work in its exhibit.
     pub keeper_working: bool,
+    /// Its subtype is `m` or `f` (an adult, animals-needs 11.2).
+    pub adult: bool,
+    /// Its subtype is `y` (it grows up, 12).
+    pub baby: bool,
+    /// Its subtype is `m` (it gives birth, 11.2).
+    pub male: bool,
+    /// It stands in a tank that holds a show.
+    pub show_tank: bool,
+    /// Where its mate is, when it has one.
+    pub mate: breed::Mate,
+    /// The animals it could pick as a mate, in the exhibit's order (animals-needs 11.3); only
+    /// listed for an animal whose reproduction check is due.
+    pub candidates: Vec<u32>,
 }
 
 /// What a tick of checks asks of the world besides the animal's own state.
@@ -561,15 +609,35 @@ pub struct Out {
     pub mourn: bool,
     /// The changes of state for the log, one word each.
     pub log: Vec<&'static str>,
+    /// It took the animal with this id as its mate; it lost the mate with this id, whose own id
+    /// of it goes too (animals-needs 11.2, 11.3).
+    pub pair: Option<u32>,
+    pub unpair: Option<u32>,
+    /// A young animal grows up.
+    pub grow: bool,
 }
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
-/// generator, drawn from in that order.
+/// generator, drawn from in that order. No young animal is ever born.
 pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) -> Out {
+    run_with(a, k, class, env, rng, &mut |_, _| false)
+}
+
+/// The same, with `birth` making the young when the reproduction check succeeds, among the
+/// draws (animals-needs 11.4).
+pub fn run_with(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &Env,
+    rng: &mut Rng,
+    birth: breed::Birth,
+) -> Out {
     let mut out = Out {
         meal: env.meal.clone(),
         ..Out::default()
     };
+    breed::egg_check(a, k, env, &mut out);
     if a.crated || a.egg {
         if a.egg && !a.crated {
             life::health(a, k, class, env, rng, &mut out);
@@ -586,13 +654,15 @@ pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) ->
                 (_, true) => "f",
                 _ => "m",
             };
-            // The zap counter keeps running down across the reset.
-            let zap = a.zap;
+            // The zap counter keeps running down across the reset, and the mate and the parents
+            // are not status values.
+            let (zap, mate, mother, father) = (a.zap, a.mate, a.mother, a.father);
             *a = Animal::create(k, class, subtype, rng);
-            a.zap = zap;
+            (a.zap, a.mate, a.mother, a.father) = (zap, mate, mother, father);
         }
     }
-    life::aging(a, k, class, env, rng, &mut out);
+    breed::grow(a, k, env, &mut out);
+    breed::reproduction(a, k, class, env, rng, &mut out, birth);
     if a.dying {
         // Removed unless its death set still runs.
         out.remove |= !(env.sets.dying_now || out.sets.contains(&"bDie"));
@@ -911,6 +981,10 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
     animal.restore(&saved);
     if let Some(unit) = world.units.get_mut(id) {
+        // An egg shows its own picture (animals-needs 13.1).
+        if animal.egg {
+            unit.animation.base_to("egg_idle");
+        }
         unit.part = Part::Animal(animal);
         unit.started = true;
     }
@@ -926,6 +1000,9 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let subtype = world.zoo.entities[at].subtype.clone();
     *a = Animal::create(&k, &world.units.class, &subtype, ctx.rng);
     (a.fed, a.slept) = (world.units.now, world.units.now);
+    if let Some(female) = unit.sex.take() {
+        a.female = female;
+    }
 }
 
 /// The update of the values at a status tick (animals 3.3).
@@ -985,6 +1062,13 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         food_task: matches!(task, 114 | 115),
         meal,
         sets,
+        adult: matches!(entity.subtype.as_str(), "m" | "f"),
+        baby: entity.subtype == "y",
+        male: entity.subtype == "m",
+        mate: match a.mate {
+            0 => breed::Mate::Here,
+            mate => breed::mate_of(world, at, mate),
+        },
         ..Env::default()
     };
     if let Some(x) = x {
@@ -993,6 +1077,10 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             .flat_map(|e| std::iter::once(x).chain(e.amphibious.iter().copied()))
             .collect();
         env.wet |= exhibit.is_some_and(|e| e.tank.is_some());
+        env.show_tank = exhibit.is_some_and(|e| e.tank.is_some_and(|t| t.show));
+        if env.adult && !a.dying && a.counters[REPRODUCTION] == 0 {
+            env.candidates = breed::candidates(world, at, x, a);
+        }
         env.size = (near.iter())
             .filter_map(|&n| world.exhibits().get(n))
             .map(|e| e.tiles)
@@ -1013,9 +1101,20 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             env.other = r.other.round() as i32;
         }
     }
-    let mut out = run(a, &k, &class, &env, ctx.rng);
-    let meal = std::mem::take(&mut out.meal);
     let id = unit.id;
+    let cat = ctx.cat;
+    let mut birth = |father: &mut Animal, rng: &mut Rng| {
+        breed::born(
+            father,
+            id,
+            (&mut *world, cat, data),
+            (at, k.baby_born_change),
+            rng,
+        )
+    };
+    let mut out = run_with(a, &k, &class, &env, ctx.rng, &mut birth);
+    let meal = std::mem::take(&mut out.meal);
+    breed::pair(world, id, &out);
     for word in &out.log {
         world.units.tell(format!("{word} {id}"));
     }
@@ -1055,4 +1154,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         dirt::mourn(world, x);
     }
     food::apply(unit, world, ctx, at, data, meal);
+    if out.grow && !out.remove {
+        breed::grow_up(unit, world, ctx, at, data);
+    }
 }
