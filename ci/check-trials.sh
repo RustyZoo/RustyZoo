@@ -261,18 +261,18 @@ check base-trial '1,75000:middle' 'freeform_screen'
 check expansion-trial '1,75000:middle' 'freeform_screen'
 
 # Play on the freeform screen (its button at y 405, Play at 831,657) starts the map of the list with the
-# cash of the screen: the map and the cash the game starts with. (The scripts of ci/playable*.txt start
-# on that map and not from the menu, because a game started from the menu ignores --seed, issue 500.)
-freeform_play() {
+# cash of the screen: the map and the cash the game starts with. With --seed, the game started there
+# is a test run too: the seconds of the seedings, at the start of the program and of the map.
+freeform_play() { # freeform_play [flags]: the log
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 405\n2 down\n3 up\n4 mouse 831 657\n5 down\n6 up\n' >"$tmp/play"
-  rz run --headless --passes 8 --clock 100 --script "$tmp/play" 2>/dev/null |
-    sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p'
+  rz run --headless --passes 8 --clock 100 --script "$tmp/play" "$@" 2>/dev/null
 }
-check base-trial 'freeformcash75000maps/default.zoo' 'freeform_play'
-check expansion-trial 'freeformcash75000maps/sm_aqua.zoo' 'freeform_play'
+check base-trial 'freeformcash75000maps/default.zoo' "freeform_play | sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p'"
+check expansion-trial 'freeformcash75000maps/sm_aqua.zoo' "freeform_play | sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p'"
+check base-trial '5,6' "freeform_play --seed 5 | sed -n 's/^pass [0-9]* t=[0-9]* sim seed //p' | paste -sd, -"
 
 # From the menu into a game and back: Continue (at y) opens `[user] lastfile` as a saved game,
 # Escape asks (leave), No shows the menu again (the music starts again), Continue once more, then
@@ -994,7 +994,7 @@ egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first ne
 }
 check expansion-trial "1,1,1,1" "egg_mates maps/scn19.zoo 51757 51758 53931"
 
-# The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
+# The simulation run twice in a row prints the same state hash (the CI job `hashes` compares the
 # hashes of the three systems).
 sim_twice() { # sim_twice <map>
   a=$(rz sim "$1" --ticks 1000 --hash)

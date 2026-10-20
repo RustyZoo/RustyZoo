@@ -518,6 +518,9 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
                 booted.menu,
                 Music::from_config(&ini),
             )?;
+            if let Some(seed) = flags.seed {
+                app.set_seed(seed);
+            }
             if !seeds.is_empty() {
                 app.set_seeds(seeds);
             }

@@ -202,7 +202,7 @@ pub fn run(
         }
         (None, Some(booted)) => {
             catalogue = booted.catalogue;
-            App::menu(
+            let mut app = App::menu(
                 MapRenderer::new(vfs, &catalogue),
                 Settings::from_config(ini),
                 timers,
@@ -210,7 +210,11 @@ pub fn run(
                 booted.interface,
                 booted.menu,
                 menu,
-            )?
+            )?;
+            if let Some(seed) = flags.seed {
+                app.set_seed(seed);
+            }
+            app
         }
         (None, None) => unreachable!("a run without a map boots"),
     };

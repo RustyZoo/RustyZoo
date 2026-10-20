@@ -2,7 +2,7 @@
 # Prints the state hash of 1000 steps of every map of the two trials, twice: one `<trial>/<map>=<hash>`
 # line per map for steps of 67 ms, and one `<trial>/<map>@dt1000=<hash>` line for steps of 1000 ms,
 # which cross two month changes (`failed` for a map that does not run). The simulation is
-# deterministic, so the lines are the same on every system; the CI job `simhash` compares them and
+# deterministic, so the lines are the same on every system; the CI job `hashes` compares them and
 # fails on a `failed`. Usage: ci/sim-hash.sh <rustyzoo binary> <trials dir>
 set -u
 bin=$1

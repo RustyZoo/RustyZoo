@@ -342,10 +342,12 @@ usage: rustyzoo [--data <dir>] <command>
                       each time something changed: when it opens, at once when its list is clicked or a name is
                       set, and every 10 s of clock while it is shown, not while the game is paused. --cash N is the cash a map starts with instead of
                       the one it stores (any finite number). --seed N (0 to 4294967295) makes a test run: the game's
-                      random generator is seeded with N and N+1 at the start, and with N+2, N+3, ... each time a map of
+                      random generator is seeded with N at the start and N+1 when the first map is set up (at once with
+                      a map, else when the menu starts a game), and with N+2, N+3, ... each time a map of
                       another size is set up or a month ends, instead of the wall clock; the lines `sim seed S`
                       (each seeding, also from the wall clock), `sim step MS` (each step the game runs) and `sim month M Y` (the step that acts on the
-                      month flag of the one before) tell it, so two runs with one seed print the same lines (a
+                      month flag of the one before, followed by `sim hash H`, the state hash that `sim --hash`
+                      prints, after that pass) tell it, so two runs with one seed print the same lines (a
                       replay of a log seeds the generator with the seconds the log tells). The zoo status
                       logs `sim rating N` at each rating check (after the set-up check of a new game, the first
                       periodic one comes 4 s later), `sim message ID` for each advice message and `sim donation

@@ -219,7 +219,7 @@ fn the_month_change_clears_the_new_column_one_step_after_the_calendar_enters_the
         money.charge(CONSTRUCTION, 10.0);
         money.monthly[CONSTRUCTION][1] = 99.0; // February of last year
         app.set_money(money);
-        let (mut now, mut months) = (0, Vec::new());
+        let (mut now, mut months, mut hashes) = (0, Vec::new(), Vec::new());
         // Steps of the cap (200 ms) are 24 minutes of game time: 31 days take 1860 of them.
         for pass in 0..1870 {
             app.pass(now, &[]);
@@ -228,9 +228,20 @@ fn the_month_change_clears_the_new_column_one_step_after_the_calendar_enters_the
                     .into_iter()
                     .filter(|l| l.starts_with("month")),
             );
+            // The state hash follows the month change, as `sim --hash` computes it.
+            let lead = format!("pass {pass} t={now} sim hash ");
+            for line in app.log_lines(pass, now) {
+                if let Some(hash) = line.strip_prefix(&lead) {
+                    let game = app.game.as_ref().unwrap();
+                    let state = crate::sim::hash::state(&app.sim, &game.world, &game.money);
+                    hashes.push((hash.to_string(), format!("{state:016x}")));
+                }
+            }
             now += 200;
         }
         assert_eq!(months, ["month 2 year 0"]);
+        assert_eq!(hashes.len(), 1);
+        assert_eq!(hashes[0].0, hashes[0].1);
         let m = app.money().unwrap();
         assert_eq!(m.monthly[CONSTRUCTION][..2], [10.0, 0.0]);
         assert_eq!(m.total[CONSTRUCTION], 10.0);

@@ -3,7 +3,7 @@
 //! width of the field, decimal values by the bits of their `f32`, a string or a list after its
 //! length as a `u32`. The tables are walked in list order, never through a hash map.
 
-use super::{Seconds, Sim};
+use super::Sim;
 use crate::exhibit::{Exhibit, rating};
 use crate::money::Money;
 use crate::status::zoo::Status;
@@ -306,14 +306,8 @@ impl Fnv {
         }
         self.u8(u8::from(sim.hire_male));
         self.status(&sim.status);
-        match sim.seconds {
-            Seconds::Clock | Seconds::Replay(_) => self.u8(0),
-            Seconds::Test { seed, n } => {
-                self.u8(1);
-                self.u32(seed);
-                self.u32(n);
-            }
-        }
+        // Not the source of the seconds of the seedings: a replay takes them from the log, and its
+        // states must hash as those of the run it replays. Each seeding shows in the generator.
         self.len(sim.removals.len());
         for &id in &sim.removals {
             self.u32(id);

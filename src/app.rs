@@ -813,6 +813,7 @@ impl<'a> App<'a> {
             self.acts();
         }
         let modal = self.modal();
+        let mut month_end = false;
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
@@ -830,6 +831,7 @@ impl<'a> App<'a> {
                 step,
                 |_, _, _| {},
             );
+            month_end = report.month_end;
             if report.month_end {
                 self.money_events.push(format!(
                     "month {} year {}",
@@ -846,6 +848,11 @@ impl<'a> App<'a> {
         self.tell_money(now);
         self.menu_lines = std::mem::take(&mut self.menu_events);
         self.sim_lines = self.sim.take_lines();
+        // The state hash at each month change, so that two runs of a game can be compared by it.
+        if month_end && let Some(game) = &self.game {
+            let hash = crate::sim::hash::state(&self.sim, &game.world, &game.money);
+            self.sim_lines.push(format!("hash {hash:016x}"));
+        }
         self.unit_lines =
             (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.animal_told();

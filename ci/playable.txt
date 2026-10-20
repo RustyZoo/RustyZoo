@@ -1,18 +1,18 @@
 # The exit test of milestone M6 on the base trial: the game of the freeform screen (its map and its
-# 75000 of cash), played the way docs/playing.md says, to the thirteenth month: savannah grass
-# painted on the ground of an exhibit, the fenced exhibit with a gate, a path from it to the path of
-# the entrance, a restroom, a burger stand, a trash can and a bench, two gazelles (one picked up and
-# put down elsewhere) with trees and a rock, a keeper assigned to the exhibit and a maintenance
-# worker, then the game unpaused. ci/check-playable.sh runs it twice and reads the log.
+# 75000 of cash), started from the main menu and played the way docs/playing.md says, to the
+# thirteenth month: savannah grass painted on the ground of an exhibit, the fenced exhibit with a
+# gate, a path from it to the path of the entrance, a restroom, a burger stand, a trash can and a
+# bench, two gazelles (one picked up and put down elsewhere) with trees and a rock, a keeper assigned
+# to the exhibit and a maintenance worker, then the game unpaused. ci/check-playable.sh runs it twice
+# and reads the log.
 #
 # The window is the default one (1024x768); every position is in its pixels. The game is built while
-# it is paused. The game starts on its map and not from the main menu because a run from the menu
-# ignores --seed (issue 500). The seed 5 draws women for the two hires: the staff of the base trial
-# are women only, and the Hire list is empty when a man is drawn. The trial's staff cost nothing
+# it is paused. The seed 5 draws women for the two hires: the staff of the base trial are women
+# only, and the Hire list is empty when a man is drawn. The trial's staff cost nothing
 # and its keeper rakes no dung, so the gazelles are happy until the first dung and unhappy after it.
 # A gazelle lives 4320 s of the game, about the length of the run: one may die of old age in the
 # thirteenth month.
-#run maps/default.zoo --cash 75000 --seed 5 --passes 22300 --clock 200
+#run --seed 5 --passes 22306 --clock 200
 #exhibit 16,36,21,41
 #months 12
 #expect 1 exhibit gate [0-9]+
@@ -23,197 +23,204 @@
 #expect 1 world drop [0-9]+
 #expect 0 unit add [0-9]+ guide
 #expect 0 exhibit tank [0-9]+
+# the main menu: the freeform button, then Play on the freeform screen
+1 mouse 512 405
+2 down
+3 up
+4 mouse 831 657
+5 down
+6 up
 # pause the game while building
-2 pause
+8 pause
 # construction panel, terrain paint tab: savannah grass with a brush of 5 x 5 tiles over the exhibit to be
-3 mouse 25 34
-4 down
-5 up
-7 mouse 183 207
-8 down
-9 up
-11 mouse 131 183
-12 down
-13 up
-15 mouse 152 72
-16 down
-17 up
-18 mouse 152 72
-19 down
-20 up
+9 mouse 25 34
+10 down
+11 up
+13 mouse 183 207
+14 down
+15 up
+17 mouse 131 183
+18 down
+19 up
 21 mouse 152 72
 22 down
 23 up
-24 mouse 448 272
-26 down
-27 up
-28 mouse 544 224
-30 down
-31 up
-32 mouse 544 320
-34 down
-35 up
-36 mouse 640 272
-38 down
-39 up
+24 mouse 152 72
+25 down
+26 up
+27 mouse 152 72
+28 down
+29 up
+30 mouse 448 272
+32 down
+33 up
+34 mouse 544 224
+36 down
+37 up
+38 mouse 544 320
+40 down
+41 up
+42 mouse 640 272
+44 down
+45 up
 # the fence tab accepts the painting; its first item is the fence: the four sides of an exhibit of 6 x 6 tiles at 16..21, 36..41
-40 mouse 183 74
-41 down
-42 up
-44 mouse 310 267
-45 down
-46 mouse 470 187
-47 up
-48 mouse 490 357
-49 down
-50 mouse 650 277
-51 up
-52 mouse 310 277
-53 down
-54 mouse 470 357
-55 up
-56 mouse 490 187
-57 down
-58 mouse 650 267
-59 up
+46 mouse 183 74
+47 down
+48 up
+50 mouse 310 267
+51 down
+52 mouse 470 187
+53 up
+54 mouse 490 357
+55 down
+56 mouse 650 277
+57 up
+58 mouse 310 277
+59 down
+60 mouse 470 357
+61 up
+62 mouse 490 187
+63 down
+64 mouse 650 267
+65 up
 # the name dialog: Enter keeps the default name; the game puts the first gate on the exhibit
-60 key enter
-63 key escape
+66 key enter
+69 key escape
 # paths tab: a path from the gate to the path of the entrance
-64 mouse 183 107
-65 down
-66 up
-68 mouse 672 256
-69 down
-70 mouse 608 224
-71 up
-72 key escape
-# objects panel, structures tab: a burger stand and a family restroom; scenery tab: a trash can and a bench
-75 mouse 25 129
-76 down
+70 mouse 183 107
+71 down
+72 up
+74 mouse 672 256
+75 down
+76 mouse 608 224
 77 up
-79 mouse 140 120
-80 down
-81 up
-82 mouse 864 256
-84 down
-85 up
-86 mouse 140 160
-87 down
-88 up
-89 mouse 768 176
-91 down
-92 up
-93 mouse 183 107
-94 down
-95 up
-96 mouse 70 80
+78 key escape
+# objects panel, structures tab: a burger stand and a family restroom; scenery tab: a trash can and a bench
+81 mouse 25 129
+82 down
+83 up
+85 mouse 140 120
+86 down
+87 up
+88 mouse 864 256
+90 down
+91 up
+92 mouse 140 160
+93 down
+94 up
+95 mouse 768 176
 97 down
 98 up
-99 mouse 768 272
-101 down
-102 up
-103 mouse 140 80
-104 down
-105 up
-106 mouse 800 256
-108 down
-109 up
-110 key escape
+99 mouse 183 107
+100 down
+101 up
+102 mouse 70 80
+103 down
+104 up
+105 mouse 768 272
+107 down
+108 up
+109 mouse 140 80
+110 down
+111 up
+112 mouse 800 256
+114 down
+115 up
+116 key escape
 # adopt panel, animals tab: two gazelles
-112 mouse 25 81
-113 down
-114 up
-116 mouse 70 80
-117 down
-118 up
-119 mouse 416 288
-120 down
-121 up
-123 mouse 144 283
-124 down
-125 up
-126 mouse 70 80
-127 down
-128 up
-129 mouse 512 272
+118 mouse 25 81
+119 down
+120 up
+122 mouse 70 80
+123 down
+124 up
+125 mouse 416 288
+126 down
+127 up
+129 mouse 144 283
 130 down
 131 up
-133 key escape
+132 mouse 70 80
+133 down
+134 up
+135 mouse 512 272
+136 down
+137 up
+139 key escape
 # construction panel: foliage tab (trees) and rocks tab (a small rock) for the habitat
-136 mouse 25 34
-137 down
-138 up
-140 mouse 183 141
-141 down
-142 up
-144 mouse 140 80
-145 down
-146 up
-147 mouse 512 304
-149 down
-150 up
-151 mouse 480 224
-153 down
-154 up
-155 mouse 183 174
-156 down
-157 up
-159 mouse 70 80
-160 down
-161 up
-162 mouse 512 336
-164 down
-165 up
-166 key escape
-# pick the first gazelle up and put it down elsewhere in the exhibit; a click on bare ground clears the selection
-169 mouse 416 280
+142 mouse 25 34
+143 down
+144 up
+146 mouse 183 141
+147 down
+148 up
+150 mouse 140 80
+151 down
+152 up
+153 mouse 512 304
+155 down
+156 up
+157 mouse 480 224
+159 down
+160 up
+161 mouse 183 174
+162 down
+163 up
+165 mouse 70 80
+166 down
+167 up
+168 mouse 512 336
 170 down
 171 up
-174 mouse 416 280
-175 down
-176 up
-179 mouse 448 240
-182 down
-183 up
-186 mouse 256 368
-187 down
-188 up
+172 key escape
+# pick the first gazelle up and put it down elsewhere in the exhibit; a click on bare ground clears the selection
+175 mouse 416 280
+176 down
+177 up
+180 mouse 416 280
+181 down
+182 up
+185 mouse 448 240
+188 down
+189 up
+192 mouse 256 368
+193 down
+194 up
 # hire panel: a keeper and a maintenance worker
-191 mouse 25 175
-192 down
-193 up
-195 mouse 70 80
-196 down
-197 up
-198 mouse 704 240
-199 down
-200 up
-202 mouse 140 80
-203 down
-204 up
-205 mouse 736 224
-206 down
-207 up
-209 key escape
-# select the keeper, open the second tab of its panel, press its assign button and click the exhibit
-211 mouse 704 230
+197 mouse 25 175
+198 down
+199 up
+201 mouse 70 80
+202 down
+203 up
+204 mouse 704 240
+205 down
+206 up
+208 mouse 140 80
+209 down
+210 up
+211 mouse 736 224
 212 down
 213 up
-216 mouse 1006 665
-217 down
-218 up
-221 mouse 992 587
-222 down
-223 up
-226 mouse 480 288
-227 down
-228 up
-231 key escape
-234 mouse 256 368
-235 down
-236 up
+215 key escape
+# select the keeper, open the second tab of its panel, press its assign button and click the exhibit
+217 mouse 704 230
+218 down
+219 up
+222 mouse 1006 665
+223 down
+224 up
+227 mouse 992 587
+228 down
+229 up
+232 mouse 480 288
+233 down
+234 up
+237 key escape
+240 mouse 256 368
+241 down
+242 up
 # run unpaused
-239 pause
+245 pause
 # the thirteenth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
-22200 char Z
+22206 char Z

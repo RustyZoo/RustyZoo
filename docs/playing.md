@@ -9,7 +9,7 @@ Open a game folder with `--data <folder>` (or `ZT_DATA_DIR`), and start the game
 1. At the main menu press the freeform button. A list of maps comes up with the starting cash beside it. Choose a map (the first is chosen) and press Play. The map opens with the main panel over its left edge and the bar of buttons along the bottom.
 2. Press the pause button at the bottom left, or the space bar, while you build: nothing moves until you press it again. The game unpaused advances by one step each time the window's timer fires, nominally every 67 ms.
 
-The scripts do not go through the menu: they start on the map of the freeform game with `run <map> --cash <cash> --seed <n>`, because a game started from the menu ignores `--seed` (issue 500). `ci/check-trials.sh` checks the menu start separately.
+`ci/playable.txt` goes through the menu as above, with `run --seed <n>`: the seed is used for the game the menu starts too. `ci/playable-tank.txt` starts on the map of the freeform game with `run <map> --cash <cash> --seed <n>`: its seed draws the staff of its hires for that start (a game started from the menu draws other ones).
 
 ## Build an exhibit (base trial)
 
@@ -43,6 +43,6 @@ Run a script by hand with the line of its `#run` comment:
 
     ci/check-playable.sh target/release/rustyzoo <folder> ci/playable.txt
 
-The scripts do not wait for the window's timer: a headless run steps the game as fast as it can with a clock of 200 ms a step (`--clock 200`, the cap of a step), so a month is about 1800 steps there (issue 502) and a run takes about seven minutes in a release build. The two runs of a script give the same log, byte for byte.
+The scripts do not wait for the window's timer: a headless run steps the game as fast as it can with a clock of 200 ms a step (`--clock 200`, the cap of a step), so a month is about 1800 steps there (issue 502) and a run takes about seven minutes in a release build. The two runs of a script give the same state hash at each month change (`sim hash`) and the same log, byte for byte; CI compares the last frame and state hashes of each game between the three systems.
 
 The header of a script says what the checks assert: `#months N` is the number of `sim month` lines the run must show (12 for the thirteenth month, 3 for the fourth), and each `#expect N <words>` line is a count of log lines the game must have printed for what the script builds and hires (the gate, the pick-up and put-down, the keeper and its assignment, the maintenance worker, the guide, the tank). A check fails when the game did not build it. An animal that is gone after 4000 s of the clock passes only if it posted `animal dying` first (old age); the happiness is compared with the animal's own first status line.
