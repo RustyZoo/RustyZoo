@@ -23,6 +23,7 @@ pub struct Views {
 
 /// An animal of an exhibit as the guests judge it.
 pub struct Beast {
+    pub id: u32,
     pub exhibit: u32,
     pub tile: usize,
     pub name: i32,
@@ -34,8 +35,9 @@ pub struct Beast {
 #[derive(Debug, PartialEq)]
 pub struct Sight {
     pub exhibit: u32,
-    /// How many animals the exhibit holds, and how many stand on the tiles the area sees.
-    pub total: u32,
+    /// The animals the exhibit holds as (id, happiness), in list order, and how many stand on the
+    /// tiles the area sees.
+    pub all: Vec<(u32, i32)>,
     pub animals: usize,
     /// The species in view (name ids, in order) and how many animals in view are sick.
     pub species: Vec<i32>,
@@ -77,6 +79,7 @@ pub fn beasts(world: &World, cat: &Catalogue) -> Vec<Beast> {
         let ty = cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype));
         let name = ty.map_or(0, |t| t.name_id);
         list.push(Beast {
+            id: c.id,
             exhibit,
             tile,
             name,
@@ -193,7 +196,7 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
     });
     Some(Sight {
         exhibit: *exhibit,
-        total: all.len() as u32,
+        all: all.iter().map(|b| (b.id, b.happy)).collect(),
         animals: seen.len(),
         sick: seen.iter().filter(|b| b.sick).count(),
         species,
@@ -249,8 +252,22 @@ pub fn attractiveness(world: &mut World, cat: &Catalogue, id: u32) -> i32 {
         .map_or(0, |x| x.rating.attractiveness)
 }
 
+/// 6.3: the animal of a thought, drawn from `all` for the band `lo..=hi` of happiness: the first
+/// in the band at or after the drawn index, else the last in it before. One draw, none for an
+/// empty list.
+fn pick(rng: &mut Rng, all: &[(u32, i32)], band: std::ops::RangeInclusive<i32>) -> Option<u32> {
+    let k = rng.pick(all.len() as u32) as usize;
+    let in_band = |a: &&(u32, i32)| band.contains(&a.1);
+    let (before, after) = all.split_at(k);
+    (after
+        .iter()
+        .find(in_band)
+        .or_else(|| before.iter().rfind(in_band)))
+    .map(|a| a.0)
+}
+
 /// 6: the viewing check of a guest on `tile`: the happiness changes by what the exhibit shows.
-/// The draws of the thoughts' animals are made; the thoughts are not given yet.
+/// The thoughts it gives are returned in order, as the string id and the animal they are about.
 pub fn check(
     g: &mut Guest,
     k: &Keys,
@@ -258,38 +275,48 @@ pub fn check(
     cat: &Catalogue,
     rng: &mut Rng,
     tile: Option<usize>,
-) {
+) -> Vec<(i32, Option<u32>)> {
     g.va = lookup(world, cat, tile, rng);
     let Some(s) = tile
         .zip(g.va)
         .and_then(|(t, dir)| sight(world, cat, t, dir))
     else {
-        return;
+        return Vec::new();
     };
     if s.animals == 0 {
-        return;
+        return Vec::new();
     }
-    let (v, mut change) = (&k.view, 0i32);
+    let (v, mut change, mut thoughts) = (&k.view, 0i32, Vec::new());
     if s.sick > 0 {
         change += v.sick;
-        rng.pick(s.total);
+        if s.sick > 1 {
+            thoughts.push((10096, None));
+        }
+        let sick = pick(rng, &s.all, -100..=100);
+        thoughts.extend(sick.map(|a| (10545, Some(a))));
     }
-    change += match s.average {
-        81.. => v.happy[0],
-        61..=80 => v.happy[1],
-        -60..=60 => v.angry[0],
-        -80..=-61 => v.angry[1],
-        _ => v.angry[2],
+    let (band, thought);
+    (change, band, thought) = match s.average {
+        81.. => (change + v.happy[0], 81..=100, 10098),
+        61..=80 => (change + v.happy[1], 61..=80, 10281),
+        0..=60 => (change + v.angry[0], 0..=60, 10282),
+        -60..=-1 => (change + v.angry[0], -61..=-1, 10284),
+        -80..=-61 => (change + v.angry[1], -80..=-61, 10283),
+        _ => (change + v.angry[2], -100..=-81, 10099),
     };
-    rng.pick(s.total);
+    let mood = pick(rng, &s.all, band);
+    thoughts.extend(mood.map(|a| (thought, Some(a))));
     if s.species.len() as i32 >= v.species.0 {
         change += v.species.1;
+        thoughts.push((10100, None));
     }
     if s.crowd >= v.crowd.0 {
         change += v.crowd.1;
-        rng.pick(s.total);
+        let hidden = pick(rng, &s.all, -100..=100);
+        thoughts.extend(hidden.map(|a| (10102, Some(a))));
     }
     g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(change);
+    thoughts
 }
 
 /// 7: the guest on `tile` stops viewing: the exhibit gets the time it watched and, when it saw

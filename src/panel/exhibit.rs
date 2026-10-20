@@ -13,6 +13,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::{self, Record};
 use crate::exhibit::viewing::{self, Wear};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
+use crate::panel::guest::{thought_rows, thought_texts};
 use crate::status::Words;
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
@@ -386,8 +387,7 @@ impl Panel {
         }
         ui.set_text(KEEPER, &to_cp1252(&staff));
         ui.set_image(STARS, star);
-        // The animals of the exhibit, each with its type's list icon; the thoughts are the
-        // guests', which the simulation does not make yet.
+        // The animals of the exhibit, each with its type's list icon.
         let at_all = current.map_or_else(Vec::new, |c| animals_in(world, c.id));
         let (mut rows, mut ids) = (Vec::new(), Vec::new());
         for at in at_all {
@@ -408,14 +408,23 @@ impl Panel {
         ui.refill_rows(ANIMALS, rows);
         let shown = self.animal.and_then(|p| ids.iter().position(|&a| a == p));
         ui.select_row(ANIMALS, shown);
-        ui.refill_rows(THOUGHTS, Vec::new());
+        // The twenty newest thoughts about the exhibit.
+        let list = current.map_or_else(Vec::new, |c| world.units.thoughts.in_exhibit(c.id));
+        ui.refill_rows(
+            THOUGHTS,
+            thought_rows(&thought_texts(ui, world, cat, &list)),
+        );
+        let thoughts: Vec<i32> = list.iter().map(|t| t.text).collect();
         self.animals = ids;
         let told = match current {
             Some(c) => vec![
                 format!("exhibit {} {:?}", c.id, c.name),
                 format!("status {date:?} upkeep {} staff {staff}", upkeep.join(" ")),
                 format!("donations stars {star} {}", donations.join(" ")),
-                format!("animals {count} thoughts 0"),
+                match thoughts.is_empty() {
+                    true => format!("animals {count} thoughts 0"),
+                    false => format!("animals {count} thoughts {} {thoughts:?}", thoughts.len()),
+                },
             ],
             None => vec!["exhibit none".to_string()],
         };

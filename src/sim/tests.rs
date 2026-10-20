@@ -688,7 +688,7 @@ fn the_hash_follows_the_thoughts_and_the_megatiles() {
         run.hash()
     };
     let base = hash(&|_| {});
-    let think = |text, object| move |r: &mut Run| r.world.units.think(1, text, object);
+    let think = |text, object| move |r: &mut Run| r.world.units.think(1, text, object, None);
     let changes: [&dyn Fn(&mut Run); 6] = [
         &think(10079, None),
         &think(10082, None),

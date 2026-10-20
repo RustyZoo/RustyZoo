@@ -306,16 +306,17 @@ usage: rustyzoo [--data <dir>] <command>
                       (the exhibit list button, 1050, shows the panel with no exhibit; a click on a row of
                       its list makes that exhibit the current one and centres the view on its gate; the name
                       field renames it; its tabs show the construction date, upkeep and keeper, the popularity
-                      and donations, the animals and the thoughts); a click on an animal (or on a row of the
+                      and donations, the animals and the twenty newest thoughts about the exhibit); a click on an animal (or on a row of the
                       Animals tab, which also centres the view on it) opens the animal panel: the name field,
                       the four bars of happiness, hunger, health and the suitability of its exhibit (green,
                       yellow or red as its habitat check judges it), the sex and when it last ate and slept,
-                      refreshed every 5 s of clock while shown and not while the game is paused; its
+                      and the five newest thoughts about it, refreshed every 5 s of clock while shown and not while the game is paused; its
                       recommendations button shows the plaque of that animal, its exhibit button the
                       exhibit panel on its exhibit, its follow button (showing its type's idle picture seen from the south-east, centred and clipped, set when the panel opens and at a forced refresh such as a tab click) keeps the view on it, and a click
                       anywhere else on the map closes it (the sell and pick-up buttons do nothing yet). `panel animal ID
                       \"NAME\" happiness H hunger N health L suitability S fed WORDS slept WORDS` tells what it
-                      shows, when it opens and when a value changes, and `panel animal none` when it closes. A click on a
+                      shows (` thoughts [IDS]` closes the line when guests have thoughts about it: their string ids,
+                      newest first), when it opens and when a value changes, and `panel animal none` when it closes. A click on a
                       staff member (a second click picks it up) opens the staff panel: the name field, the monthly
                       salary, the text of its job, and a second tab with the exhibits assigned to a keeper or tour
                       guide or the duty switches of a maintenance worker, refreshed every second of clock while
@@ -335,7 +336,7 @@ usage: rustyzoo [--data <dir>] <command>
                       on it. `panel guest ID \"NAME\" happiness H drink D food F restroom R energy E time \"TEXT\"
                       favourite \"NAME\" thoughts [TEXTS]` tells what it shows, when it opens and when a value changes, and
                       `panel guest none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
-                      donations stars N A B C`, `panel animals N thoughts N` (or `panel exhibit none`) tell
+                      donations stars N A B C`, `panel animals N thoughts N` (` [IDS]` follows a number above 0) (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
                       recommendation (`panel line!` for an important one, written in red) what the plaque shows,
                       each time something changed: when it opens, at once when its list is clicked or a name is

@@ -104,7 +104,7 @@ fn a_guest_on_a_path_beside_a_pen_finds_its_area_and_sees_the_animals() {
         "one draw"
     );
     let s = sight(&mut w, &cat, tile, dir).unwrap();
-    assert_eq!((s.exhibit, s.total, s.animals), (1, 2, 2));
+    assert_eq!((s.exhibit, s.all.len(), s.animals), (1, 2, 2));
     assert_eq!((s.species, s.sick, s.average), (vec![5], 0, 50));
     // The guest alone on a 3-tile area: ten times one third, rounded.
     assert_eq!(s.crowd, 3);
@@ -304,4 +304,139 @@ fn the_site_draws_an_area_then_one_of_its_tiles() {
     let mut rng = Rng::default();
     assert_eq!(viewing_tile(&mut w, &cat, 99, &mut rng), None);
     assert_eq!(rng, Rng::default());
+}
+
+/// The thoughts of a check: the string ids and whether each has an animal.
+fn said(t: &[(i32, Option<u32>)]) -> Vec<(i32, bool)> {
+    t.iter().map(|&(text, a)| (text, a.is_some())).collect()
+}
+
+#[test]
+fn the_viewing_check_thinks_by_the_band_of_the_exhibit_about_an_animal_of_it() {
+    let (cat, k) = (catalogue(), keys());
+    for (h, text) in [
+        (90, 10098),
+        (70, 10281),
+        (60, 10282),
+        (0, 10282),
+        (-1, 10284),
+        (-60, 10284),
+        (-61, 10283),
+        (-80, 10283),
+        (-90, 10099),
+    ] {
+        let mut w = pen(&[h, h]);
+        let mut g = Guest::default();
+        let got = check(&mut g, &k, &mut w, &cat, &mut Rng::default(), Some(55));
+        assert_eq!(said(&got), [(text, true)], "{h}");
+        assert!(
+            [Some(10), Some(11)].contains(&got[0].1),
+            "an animal of the exhibit"
+        );
+    }
+    // Nothing in view, no area: no thought.
+    let got = check(
+        &mut Guest::default(),
+        &k,
+        &mut pen(&[]),
+        &cat,
+        &mut Rng::default(),
+        Some(55),
+    );
+    assert!(got.is_empty());
+    let got = check(
+        &mut Guest::default(),
+        &k,
+        &mut pen(&[50]),
+        &cat,
+        &mut Rng::default(),
+        None,
+    );
+    assert!(got.is_empty());
+}
+
+#[test]
+fn a_thought_is_about_an_animal_of_its_band_and_none_when_no_animal_fits() {
+    let all = [(1, 10), (2, 95), (3, 20), (4, 97)];
+    for seed in 0..8 {
+        let mut rng = Rng::default();
+        rng.seed(seed);
+        let (before, k) = (rng.clone(), rng.clone().rand() % 4);
+        let got = pick(&mut rng, &all, 81..=100);
+        // The first in the band at or after the drawn index, else the last before it.
+        assert_eq!(
+            got,
+            Some(if k <= 1 { 2 } else { 4 }),
+            "seed {seed}, index {k}"
+        );
+        assert_eq!(drew(&before, &rng), 1);
+        let got = pick(&mut before.clone(), &all, 0..=15);
+        assert_eq!(
+            got,
+            Some(1),
+            "the last one before the index when none is at or after it"
+        );
+    }
+    let mut rng = Rng::default();
+    assert_eq!(pick(&mut rng, &all, -100..=-81), None);
+    assert_eq!(
+        drew(&Rng::default(), &rng),
+        1,
+        "the draw is made all the same"
+    );
+    let mut rng = Rng::default();
+    assert_eq!(pick(&mut rng, &[], -100..=100), None);
+    assert_eq!(drew(&Rng::default(), &rng), 0, "no draw for no animals");
+}
+
+#[test]
+fn sick_animals_variety_and_a_crowd_add_their_thoughts_in_order() {
+    let (cat, k) = (catalogue_with_species(), keys());
+    let mut w = pen(&[90, 90, 90, 90]);
+    for (n, name) in ["b", "c", "d"].into_iter().enumerate() {
+        let at = w.find(11 + n as u32).unwrap();
+        w.zoo.entities[at].type_name = name.into();
+    }
+    // One sick animal: the thought about an animal of the exhibit; two: "lots of sick" first.
+    let sick = |w: &mut World, id| {
+        w.units.get_mut(id).unwrap().part = Part::Animal(Animal {
+            happiness: 90,
+            dying: true,
+            ..Animal::default()
+        });
+    };
+    sick(&mut w, 10);
+    let got = check(
+        &mut Guest::default(),
+        &k,
+        &mut w,
+        &cat,
+        &mut Rng::default(),
+        Some(55),
+    );
+    assert_eq!(said(&got), [(10545, true), (10098, true), (10100, false)]);
+    sick(&mut w, 11);
+    for n in 0..25 {
+        w.zoo
+            .entities
+            .push(entity("guests", "man", 300 + n, centre((5, 4)), 0));
+    }
+    let mut g = Guest::default();
+    let (before, mut rng) = (Rng::default(), Rng::default());
+    let got = check(&mut g, &k, &mut w, &cat, &mut rng, Some(55));
+    assert_eq!(
+        said(&got),
+        [
+            (10096, false),
+            (10545, true),
+            (10098, true),
+            (10100, false),
+            (10102, true)
+        ]
+    );
+    assert_eq!(
+        drew(&before, &rng),
+        4,
+        "the lookup, the sick animal, the mood and the crowd"
+    );
 }

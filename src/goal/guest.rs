@@ -18,6 +18,8 @@ mod building;
 mod scenery;
 mod sites;
 
+/// The thought about an egg.
+const EGG: i32 = 10250;
 /// The leave task.
 pub const LEAVE: u8 = 113;
 /// The avoid and exit tasks, which keep a guest from leaving, and the drowning task.
@@ -28,9 +30,27 @@ const DROWN: u8 = 132;
 const IN_BUILDING: std::ops::RangeInclusive<u8> = 104..=106;
 
 impl Cx<'_, '_> {
-    /// The guest thinks `text`, about the entity `object` if there is one.
+    /// The guest thinks `text`, about the entity `object` if there is one (guests visit 8.1, 8.2):
+    /// a thought about an egg is the egg thought, and one about an animal is about the exhibit the
+    /// animal stands in, with the tile inside its gate.
     pub(crate) fn think(&mut self, text: i32, object: Option<u32>) {
-        self.world.units.think(self.unit.id, text, object);
+        let animal = object.and_then(|o| match self.world.units.get(o).map(|u| &u.part) {
+            Some(Part::Animal(a)) => Some((o, a.egg)),
+            _ => None,
+        });
+        let text = if animal.is_some_and(|a| a.1) {
+            EGG
+        } else {
+            text
+        };
+        let home = animal.and_then(|(o, _)| {
+            let tile = crate::guest::view::tile_of(self.world, self.world.find(o)?)?;
+            let x = self.world.exhibits().region(tile);
+            x.filter(|&x| x != GROUNDS && x != EXTERIOR)
+        });
+        let gate = home.and_then(|x| crate::staff::service::gate_tiles(self.world, x));
+        let exhibit = home.map(|x| (x, gate.map(|g| g.0)));
+        self.world.units.think(self.unit.id, text, object, exhibit);
     }
 
     /// Ladder point 2: a guest that decided to leave and is not leaving, avoiding or exiting, not

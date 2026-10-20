@@ -470,6 +470,7 @@ impl World {
         // The exhibits that are gone: their gate is a fence again.
         let into: HashMap<u32, u32> = lost.iter().copied().collect();
         for e in old.list().iter().filter(|e| !kept_ids.contains(&e.id)) {
+            self.units.thoughts.drop_exhibit(e.id);
             if let Some(at) = e.gate.and_then(|g| self.find(g)) {
                 self.make_fence(at);
             }

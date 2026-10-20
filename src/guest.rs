@@ -24,8 +24,8 @@
 //! when no trash can will take it.
 //! Gawk scenery ([`gawk`]) is a site like an exhibit: the list of scenery worth a look, the weight
 //! of what a guest has not seen and the choice of the nearest object.
-//! Missing so far (other issues): the viewing thoughts; the Halloween colours; the entrance tiles
-//! other than the zoo entrance of the map.
+//! Missing so far (other issues): the Halloween colours; the entrance tiles other than the zoo
+//! entrance of the map.
 //!
 //! The log family `guest`: `guest add <id> <adult|child>` for each guest made, `guest status <id>
 //! <happiness> <hunger> <thirst> <bathroom> <energy>` after each update of the values, `guest

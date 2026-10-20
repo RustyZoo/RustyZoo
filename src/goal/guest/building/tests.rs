@@ -620,9 +620,9 @@ fn a_price_thought_is_about_the_building() {
 #[test]
 fn a_removed_building_takes_the_thoughts_about_it() {
     let mut w = zoo();
-    w.units.think(1, 10243, Some(7));
-    w.units.think(1, 10243, Some(8));
-    w.units.think(1, 10237, None);
+    w.units.think(1, 10243, Some(7), None);
+    w.units.think(1, 10243, Some(8), None);
+    w.units.think(1, 10237, None, None);
     assert!(w.remove(7));
     let all = w.units.thoughts.of(1);
     assert_eq!(

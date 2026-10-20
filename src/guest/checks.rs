@@ -256,7 +256,9 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     g = seeks(&mut cx, g, ENERGY_SEEK + 1..SEEKS.len(), &out);
     cx.unit.goal.wandered = false;
     if out.view {
-        view::check(&mut g, &k, cx.world, cx.ctx.cat, cx.ctx.rng, tile);
+        for (text, object) in view::check(&mut g, &k, cx.world, cx.ctx.cat, cx.ctx.rng, tile) {
+            cx.think(text, object);
+        }
     }
     // 6.11: the megatile under the guest.
     let width = cx.world.zoo.width as usize;

@@ -354,10 +354,22 @@ fn removing_a_piece_deletes_an_exhibit_open_to_the_grounds() {
     let mut world = loaded(&pieces);
     let door = put(&mut world, last);
     world.take_events();
+    // A thought about the exhibit and one about an animal in it.
+    world.units.think(5, 10096, None, Some((1, None)));
+    world.units.think(5, 10098, Some(6), Some((1, None)));
     // Another piece: the exhibit goes, and its gate is a fence again.
     let other = at(&world, 2, 2, 0);
     assert!(world.remove(other));
     assert_eq!(world.take_events(), [Event::Removed(1)]);
+    // The thought with no object goes with it; the other keeps its object and loses the exhibit.
+    let kept: Vec<_> = world
+        .units
+        .thoughts
+        .of(5)
+        .iter()
+        .map(|t| (t.text, t.exhibit))
+        .collect();
+    assert_eq!(kept, [(10098, None)]);
     assert!(world.exhibits().list().is_empty());
     assert!(!is_gate(&world, door));
     assert_eq!(region(&world, 3, 3), GROUNDS);

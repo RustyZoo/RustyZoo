@@ -3,8 +3,8 @@
 //! refreshed every 5 s of the interface clock while shown and not while the game is paused.
 //!
 //! [`Panel`] holds the selected animal and the clock; [`Panel::refresh`] writes the layout from
-//! the world and returns the `panel` log line when what it shows changed. The thoughts list
-//! stays empty (the guests' thoughts do not exist yet); the sell and pick-up buttons are enabled
+//! the world and returns the `panel` log line when what it shows changed. The thoughts list is
+//! the five newest thoughts about the animal, newest first (its ids close the line); the sell and pick-up buttons are enabled
 //! as their rules say and their actions are other issues'.
 
 use crate::animal::{self, Animal, Keys};
@@ -13,6 +13,7 @@ use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::panel::exhibit::{Clock, animals_exhibit, type_at};
 use crate::panel::follow::set_follow_icon;
+use crate::panel::guest::{thought_rows, thought_texts};
 use crate::status::Words;
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
@@ -198,13 +199,21 @@ impl Panel {
         ui.set_enabled(SELL, !carried);
         ui.set_enabled(PICK_UP, moveable && !carried);
         ui.set_enabled(EXHIBIT, !carried);
-        ui.refill_rows(THOUGHTS, Vec::new());
+        let list = world.units.thoughts.about(id);
+        ui.refill_rows(
+            THOUGHTS,
+            thought_rows(&thought_texts(ui, world, cat, &list)),
+        );
+        let thoughts: Vec<i32> = list.iter().map(|t| t.text).collect();
         let [fed, slept] = ago;
         let [happiness, hunger, health, suitability] = shown.values;
-        let told = format!(
+        let mut told = format!(
             "animal {id} {name:?} happiness {happiness} hunger {hunger} health {health} \
              suitability {suitability} fed {fed} slept {slept}"
         );
+        if !thoughts.is_empty() {
+            told += &format!(" thoughts {thoughts:?}");
+        }
         match told == self.told {
             true => None,
             false => {
