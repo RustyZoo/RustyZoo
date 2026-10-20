@@ -1,0 +1,239 @@
+# The same game as ci/playable.txt on the full game (any language): the map `default` has the same
+# tiles with another entrance and view, the lists of the panels are much longer (the items are other
+# rows of them: a fence of an exhibit after the tank walls, a snack machine, a restroom), and its
+# staff cost wages and rake dung. A tour guide is hired too and assigned to the exhibit. The
+# steps `play` and `play-fr` of ci/gate.sh run it on the install of ZT_DATA_DIR and of ZT_DATA_DIR_FR.
+# Every position is in the pixels of the default window (1024x768).
+#run maps/default.zoo --cash 75000 --seed 5 --passes 22300 --clock 200
+#exhibit 16,36,21,41
+#months 12
+#expect 1 exhibit gate [0-9]+
+#expect 2 unit add [0-9]+ animal
+#expect 1 unit add [0-9]+ keeper
+#expect 2 tool assign [0-9]+ [0-9]+
+#expect 1 unit add [0-9]+ worker
+#expect 1 world drop [0-9]+
+#expect 1 unit add [0-9]+ guide
+#expect 0 exhibit tank [0-9]+
+# pause the game while building
+2 pause
+# construction panel, terrain paint tab: savannah grass with a brush of 5 x 5 tiles over the exhibit to be
+3 mouse 25 34
+4 down
+5 up
+7 mouse 183 207
+8 down
+9 up
+11 mouse 131 183
+12 down
+13 up
+15 mouse 152 72
+16 down
+17 up
+18 mouse 152 72
+19 down
+20 up
+21 mouse 152 72
+22 down
+23 up
+24 mouse 464 252
+26 down
+27 up
+28 mouse 560 204
+30 down
+31 up
+32 mouse 560 300
+34 down
+35 up
+36 mouse 656 252
+38 down
+39 up
+# the fence tab accepts the painting; its first item is the fence: the four sides of an exhibit of 6 x 6 tiles at 16..21, 36..41
+40 mouse 183 74
+41 down
+42 up
+# the first items of the full game are tank walls: choose a fence of an exhibit
+44 mouse 140 240
+45 down
+46 up
+47 mouse 326 247
+48 down
+49 mouse 486 167
+50 up
+51 mouse 506 337
+52 down
+53 mouse 666 257
+54 up
+55 mouse 326 257
+56 down
+57 mouse 486 337
+58 up
+59 mouse 506 167
+60 down
+61 mouse 666 247
+62 up
+# the name dialog: Enter keeps the default name; the game puts the first gate on the exhibit
+63 key enter
+66 key escape
+# paths tab: a path from the gate to the path of the entrance
+67 mouse 183 107
+68 down
+69 up
+71 mouse 688 236
+72 down
+73 mouse 624 204
+74 up
+75 key escape
+# objects panel, structures tab: a burger stand and a family restroom; scenery tab: a trash can and a bench
+78 mouse 25 129
+79 down
+80 up
+82 mouse 70 80
+83 down
+84 up
+85 mouse 880 236
+87 down
+88 up
+89 mouse 70 200
+90 down
+91 up
+92 mouse 784 156
+94 down
+95 up
+96 mouse 183 107
+97 down
+98 up
+99 mouse 70 80
+100 down
+101 up
+102 mouse 784 252
+104 down
+105 up
+106 mouse 70 160
+107 down
+108 up
+109 mouse 816 236
+111 down
+112 up
+113 key escape
+# adopt panel, animals tab: two gazelles
+115 mouse 25 81
+116 down
+117 up
+119 mouse 70 160
+120 down
+121 up
+122 mouse 432 268
+123 down
+124 up
+126 mouse 144 283
+127 down
+128 up
+129 mouse 70 160
+130 down
+131 up
+132 mouse 528 252
+133 down
+134 up
+136 key escape
+# construction panel: foliage tab (trees) and rocks tab (a small rock) for the habitat
+139 mouse 25 34
+140 down
+141 up
+143 mouse 183 141
+144 down
+145 up
+147 mouse 70 200
+148 down
+149 up
+150 mouse 528 284
+152 down
+153 up
+154 mouse 496 204
+156 down
+157 up
+158 mouse 183 174
+159 down
+160 up
+162 mouse 140 80
+163 down
+164 up
+165 mouse 528 316
+167 down
+168 up
+169 key escape
+# pick the first gazelle up and put it down elsewhere in the exhibit; a click on bare ground clears the selection
+172 mouse 428 270
+173 down
+174 up
+177 mouse 428 270
+178 down
+179 up
+182 mouse 464 220
+185 down
+186 up
+189 mouse 272 348
+190 down
+191 up
+# hire panel: a keeper and a maintenance worker
+194 mouse 25 175
+195 down
+196 up
+198 mouse 70 80
+199 down
+200 up
+201 mouse 720 220
+202 down
+203 up
+205 mouse 70 160
+206 down
+207 up
+208 mouse 752 204
+209 down
+210 up
+# a tour guide too: the base trial has none
+212 mouse 140 120
+213 down
+214 up
+215 mouse 784 188
+216 down
+217 up
+219 key escape
+# select the keeper, open the second tab of its panel, press its assign button and click the exhibit
+221 mouse 720 210
+222 down
+223 up
+226 mouse 1006 665
+227 down
+228 up
+231 mouse 992 587
+232 down
+233 up
+236 mouse 496 268
+237 down
+238 up
+241 key escape
+244 mouse 272 348
+245 down
+246 up
+# assign the tour guide the same way
+249 mouse 784 178
+250 down
+251 up
+254 mouse 1006 665
+255 down
+256 up
+259 mouse 992 587
+260 down
+261 up
+264 mouse 496 268
+265 down
+266 up
+269 key escape
+272 mouse 272 348
+273 down
+274 up
+# run unpaused
+277 pause
+# the thirteenth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
+22200 char Z
