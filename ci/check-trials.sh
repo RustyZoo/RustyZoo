@@ -783,7 +783,7 @@ check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_rest
 # is worn), brings a marine specialist and a second manta ray, and a worker back late, after the
 # filter broke. Prints the first jobs of the specialist (the ladders, the food in the water), the
 # lowest purity while the filter was sound, the purity when it broke and when the worker serviced
-# it, the worker's jobs and the highest hunger of the two rays.
+# it, the worker's jobs, the bites the rays took and the higher of their hunger at the end.
 marine_round() { # marine_round <map>
   d=$(mktemp -d)
   printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n28000 worker 20,40\n' >"$d/script"
@@ -798,11 +798,13 @@ marine_round() { # marine_round <map>
       else if ($8=="worn" && $6==0) { broke=1; at=$7 }
       else if ($8=="serviced" && fixed=="") fixed=$7
     }
-    / animal status /{ if ($7>h) h=$7 }
-    END{ print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";hunger<=" h }'
+    / animal eat /{ ate++ }
+    / animal status /{ last[$5]=$7 }
+    END{ for (a in last) if (last[a]>h) h=last[a]
+         print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;hunger<=77" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:72;hunger<=41" "marine_round maps/scn27.zoo"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).

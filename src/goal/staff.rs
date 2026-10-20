@@ -369,7 +369,11 @@ impl<'c> Cx<'_, 'c> {
             // On the platform any job first climbs down into the water (tank staff 5.2).
             Some(_) if self.unit.tank == 2 => self.set_job(CLIMB_DOWN_INSIDE, 0, None),
             Some((job, id)) => self.set_job(job, id, None),
-            None => self.record().done = true,
+            // Nothing left: the duties are over now, before the ladder can start them again.
+            None => {
+                self.record().done = true;
+                self.duties_complete();
+            }
         }
     }
 
