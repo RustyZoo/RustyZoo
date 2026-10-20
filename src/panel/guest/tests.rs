@@ -42,6 +42,8 @@ fn the_time_in_the_park_is_banded_by_hours_of_calendar_time() {
     assert_eq!(stay(None, start), 0, "no arrival date: just arrived");
     // The difference divides unsigned: an arrival later than now is a huge time.
     assert_eq!(stay(Some(start), Date::from_file_time(0)), 3);
+    // Whatever the file stores, the text is one of the four.
+    assert!(stay(Some(Date::from_file_time(u64::MAX)), start) < 4);
 }
 
 use crate::building::items::Item;
