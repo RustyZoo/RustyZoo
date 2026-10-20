@@ -719,3 +719,75 @@ fn scenery_that_is_gone_ends_the_walk_and_cannot_be_gawked_at() {
     assert_eq!(rng.state(), Rng::default().state());
     assert!(w.units.take_guest_lines().is_empty());
 }
+
+/// A stream whose next `pick(n)` gives `v`, and the stream after that draw.
+fn stream_giving(n: u32, v: u32) -> (Rng, Rng) {
+    let mut rng = Rng::default();
+    loop {
+        let mut next = rng.clone();
+        if next.pick(n) == v {
+            return (rng, next);
+        }
+        rng.rand();
+    }
+}
+
+/// Runs the scenery choice of guest 1 in `w` with `rng`; the task and the target tile it took.
+fn scenery_choice(w: &mut World, rng: &mut Rng) -> (u8, Option<usize>) {
+    let cat = statued();
+    crate::guest::gawk::update(w, &cat);
+    let list: Vec<_> = w.units.gawk.members().copied().collect();
+    let here = w.tile_index(8, 2).unwrap();
+    with_cx_in(&cat, &walks(), w, rng, |cx| cx.scenery_decide(&list, here));
+    let r = &w.units.get(1).unwrap().goal.record;
+    (r.task, r.target.tile)
+}
+
+#[test]
+fn a_guest_draws_its_viewing_tile_among_the_ring_tiles_that_have_a_path() {
+    let tile = |w: &World, x, y| w.tile_index(x, y).unwrap();
+    // The statue at (7, 7); paths on (6, 7), (7, 8) and (8, 6) of its ring, listed x outer.
+    let paths = [
+        ("paths", "stone", 60, (6, 7)),
+        ("paths", "stone", 61, (7, 8)),
+    ];
+    let more = [paths[0], paths[1], ("paths", "stone", 62, (8, 6))];
+    let with = |extra: &[(&str, &str, u32, (i32, i32))]| {
+        let mut all = vec![("building", "statue", 50, (7, 7))];
+        all.extend_from_slice(extra);
+        visit_with(50, &all)
+    };
+    let seen = |w: &mut World| {
+        let pen = w.tile_index(2, 5).unwrap();
+        if let Some(Part::Guest(g)) = w.units.get_mut(1).map(|u| &mut u.part) {
+            g.seen = vec![pen];
+        }
+    };
+    // The first and the last candidate of the list with a path, by the first and last draw; one
+    // draw is spent each time, and the stream is then exactly one pick further.
+    for (v, (x, y)) in [(0, (6, 7)), (1, (7, 8)), (2, (8, 6))] {
+        let (mut rng, after) = stream_giving(3, v);
+        let mut w = with(&more);
+        seen(&mut w);
+        let (task, target) = scenery_choice(&mut w, &mut rng);
+        assert_eq!((task, target), (128, Some(tile(&w, x, y))), "draw {v}");
+        assert_eq!(rng, after, "one draw");
+    }
+    // No path on the ring: the draw is over all eight tiles (the first (6, 6), the last (8, 8)).
+    for (v, (x, y)) in [(0, (6, 6)), (7, (8, 8)), (4, (7, 8))] {
+        let (mut rng, after) = stream_giving(8, v);
+        let mut w = with(&[]);
+        seen(&mut w);
+        let (task, target) = scenery_choice(&mut w, &mut rng);
+        assert_eq!((task, target), (128, Some(tile(&w, x, y))), "draw {v}");
+        assert_eq!(rng, after);
+    }
+    // The drawn tile has no way to it (a pillar of rock): the draw is spent, nothing else
+    // happens and no other tile is tried.
+    let mut w = with(&[]);
+    seen(&mut w);
+    assert!(w.set_tile(6, 6, 30, 0, 0));
+    let (mut rng, after) = stream_giving(8, 0);
+    assert_eq!(scenery_choice(&mut w, &mut rng), (0, None));
+    assert_eq!(rng, after);
+}

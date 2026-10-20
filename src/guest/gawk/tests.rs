@@ -169,6 +169,7 @@ fn unseen_scenery_weighs_a_hundredth_of_its_weight_and_at_least_one_site() {
         weight,
         help: None,
         tile: 0,
+        front: false,
     };
     assert_eq!(sites(&[]), 0);
     assert_eq!(sites(&[j(0)]), 0);
@@ -189,6 +190,7 @@ fn the_nearest_unseen_object_within_reach_wins_and_the_first_wins_a_tie() {
         weight,
         help: None,
         tile,
+        front: false,
     };
     // The guest on (0, 0): statues of weight 20 at squared distances 40, 400 and 1200.
     let list = [j(3, 20, at(0, 34)), j(2, 20, at(20, 0)), j(1, 20, at(6, 2))];
@@ -243,4 +245,80 @@ fn the_set_comes_from_the_esthetic_bonus_for_the_guest_type() {
     assert_eq!(thoughts(ty), [10593, 10594]);
     assert!(thoughts(cat.find("building", b"bench", b"").unwrap()).len() == 2);
     assert!(thoughts(&kind("building", "x", "")).is_empty());
+}
+
+/// The ring tiles (x, y) of a 3 x 2 half-tile object with anchor tile `(ax, ay)` and rotation `r`
+/// on a 10 by 10 map; the anchor is the minimum corner of the footprint.
+fn ring_at(front: bool, r: u32, (ax, ay): (i32, i32)) -> Vec<(i32, i32)> {
+    let (fx, fy) = if r % 4 == 0 { (3, 2) } else { (2, 3) };
+    let w = crate::unit::testing::world_with((10, 10), |zoo| {
+        let at = (ax * 64 + fx * 16, ay * 64 + fy * 16);
+        zoo.entities.push(entity("animals", "big", 7, at, r));
+    });
+    let object = Judged {
+        id: 7,
+        member: true,
+        weight: 1,
+        help: None,
+        tile: 0,
+        front,
+    };
+    ring(&w, &object)
+        .into_iter()
+        .map(|t| (t as i32 % 10, t as i32 / 10))
+        .collect()
+}
+
+#[test]
+fn the_front_flag_keeps_one_side_of_the_ring_by_the_rotation_of_the_object() {
+    // 3 x 2 half tiles: 2 x 1 tiles, anchor (4, 4), the ring is x 3 to 6 by y 3 to 5.
+    let col = |x, ys: &[i32]| ys.iter().map(|&y| (x, y)).collect::<Vec<_>>();
+    let row = |y, xs: &[i32]| xs.iter().map(|&x| (x, y)).collect::<Vec<_>>();
+    let rows = |y| row(y, &[3, 4, 5, 6]);
+    // Without the flag the whole ring, x outer and y inner, corners included.
+    let all = ring_at(false, 0, (4, 4));
+    assert_eq!(all.len(), 10);
+    assert_eq!(all[..3], [(3, 3), (3, 4), (3, 5)]);
+    assert_eq!(all[9], (6, 5));
+    // Rotation 0: the row above; 4: the row below.
+    assert_eq!(ring_at(true, 0, (4, 4)), rows(3));
+    assert_eq!(ring_at(true, 4, (4, 4)), rows(5));
+    // Rotations 2 and 6 swap the footprint (1 x 2 tiles, ring x 3 to 5 by y 3 to 6): the column
+    // past the footprint and the column before it.
+    assert_eq!(ring_at(true, 2, (4, 4)), col(5, &[3, 4, 5, 6]));
+    assert_eq!(ring_at(true, 6, (4, 4)), col(3, &[3, 4, 5, 6]));
+    // An odd rotation keeps the whole ring (of the swapped footprint: 3 x 4 less 1 x 2).
+    for r in [1, 3, 5, 7] {
+        assert_eq!(ring_at(true, r, (4, 4)).len(), 10, "{r}");
+    }
+    // Tiles off the map are left out.
+    assert_eq!(ring_at(false, 0, (0, 0)), [(0, 1), (1, 1), (2, 0), (2, 1)]);
+    assert_eq!(ring_at(true, 0, (0, 0)), []);
+}
+
+#[test]
+fn a_ring_with_a_path_piece_lists_those_tiles_only() {
+    let mut w = crate::unit::testing::world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("building", "x", 7, centre((5, 5)), 0));
+        for (id, at) in [(20, (6, 5)), (21, (4, 6)), (22, (9, 9))] {
+            zoo.entities
+                .push(entity("paths", "stone", id, centre(at), 0));
+        }
+    });
+    let object = Judged {
+        id: 7,
+        member: true,
+        weight: 1,
+        help: None,
+        tile: 55,
+        front: false,
+    };
+    let tiles = |w: &World| ring(w, &object);
+    // Paths on two ring tiles and one far away: x outer, y inner.
+    assert_eq!(tiles(&w), [64, 56]);
+    w.remove(20);
+    w.remove(21);
+    // No path left on the ring: all eight tiles.
+    assert_eq!(tiles(&w).len(), 8);
 }

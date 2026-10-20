@@ -16,7 +16,7 @@ use crate::world::World;
 use crate::zoo::Entity;
 
 /// A scenery object the list has judged: whether it joined, its `cEstheticWeight` and `cHelpID`,
-/// and the tile it stands on.
+/// the tile it stands on and whether it is gawked at from its front only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Judged {
     pub id: u32,
@@ -24,6 +24,8 @@ pub struct Judged {
     pub weight: i32,
     pub help: Option<i32>,
     pub tile: usize,
+    /// `cGawkOnlyFromFront` is 1.
+    pub front: bool,
 }
 
 /// The objects judged so far in entity order, and the edit count they were judged at.
@@ -81,6 +83,7 @@ pub fn update(world: &mut World, cat: &Catalogue) {
             weight,
             help: help_id(cat, e),
             tile,
+            front: type_of(cat, e).and_then(|ty| number(ty, "cGawkOnlyFromFront")) == Some(1.0),
         });
     }
     world.units.gawk = Gawk {
@@ -157,31 +160,48 @@ pub fn kind<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a Enti
     type_of(cat, world.zoo.entities.get(at)?)
 }
 
-/// The tiles beside the object, outside exhibits, that a guest can stand on to look at it: the
-/// neighbours of the tiles it holds that it does not hold itself.
-pub fn beside(world: &World, object: &Judged) -> Vec<usize> {
-    let width = world.zoo.width as i32;
-    let (ox, oy) = (object.tile as i32 % width, object.tile as i32 / width);
-    let held = |t: usize| {
-        let at = |q| world.quadrant(t, q);
-        (0..4).any(|q| {
-            at(q)
-                .and_then(|e| world.zoo.entities[e].common.as_ref())
-                .is_some_and(|c| c.id == object.id)
-        })
+/// 3.7, the viewing place: the tiles on the ring around the footprint of the object (the
+/// footprint box grown by one tile, corners included, those on the map), x outer and y inner. The
+/// tiles with a path piece come first as one list, else the others; with `cGawkOnlyFromFront`
+/// only the side the object faces is kept (an odd rotation keeps the whole ring).
+pub fn ring(world: &World, object: &Judged) -> Vec<usize> {
+    let Some((e, shape)) = world
+        .find(object.id)
+        .and_then(|e| Some((e, world.shape(e)?)))
+    else {
+        return Vec::new();
     };
-    let near = |x: i32, y: i32| world.tile_index(x, y);
-    let mut out = Vec::new();
-    for (x, y) in (-4..=4).flat_map(|y| (-4..=4).map(move |x| (ox + x, oy + y))) {
-        let Some(t) = near(x, y).filter(|&t| !held(t)) else {
-            continue;
-        };
-        let touches = (-1..=1).any(|dy| (-1..=1).any(|dx| near(x + dx, y + dy).is_some_and(held)));
-        if touches && world.exhibits().region(t) == Some(crate::exhibit::GROUNDS) {
-            out.push(t);
+    let Some(c) = world.zoo.entities[e].common.as_ref() else {
+        return Vec::new();
+    };
+    let (mut fx, mut fy) = shape.footprint;
+    if c.rotation % 4 != 0 {
+        (fx, fy) = (fy, fx);
+    }
+    let (n, m) = ((fx + 1) / 2, (fy + 1) / 2);
+    let ax = (c.x - fx * 16).div_euclid(64);
+    let ay = (c.y - fy * 16).div_euclid(64);
+    let mut with = Vec::new();
+    let mut without = Vec::new();
+    for x in ax - 1..=ax + n {
+        for y in ay - 1..=ay + m {
+            let edge = x == ax - 1 || x == ax + n || y == ay - 1 || y == ay + m;
+            let side = match (object.front, c.rotation % 8) {
+                (true, 0) => y == ay - 1,
+                (true, 4) => y == ay + m,
+                (true, 2) => x == ax + n,
+                (true, 6) => x == ax - 1,
+                _ => true,
+            };
+            if let (true, true, Some(t)) = (edge, side, world.tile_index(x, y)) {
+                match world.path(t) {
+                    Some(_) => with.push(t),
+                    None => without.push(t),
+                }
+            }
         }
     }
-    out
+    if with.is_empty() { without } else { with }
 }
 
 #[cfg(test)]

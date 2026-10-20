@@ -99,29 +99,21 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 11.1, scenery: the object `pickGawkScenery` chooses is walked to, to the nearest tile beside
-    /// it that has a path, and the task becomes 0x80 with that tile. Nothing within reach, or no
-    /// way there: nothing happens this time.
-    fn scenery_decide(&mut self, scenery: &[Judged], here: usize) {
+    /// 11.1, scenery: the object `pickGawkScenery` chooses, then one draw over the tiles around
+    /// its footprint (guests visit 3.7); only that tile is tried, and the task becomes 0x80 with
+    /// it. Nothing within reach, or no way there: nothing happens this time.
+    pub(in crate::goal) fn scenery_decide(&mut self, scenery: &[Judged], here: usize) {
         let width = self.world.zoo.width as usize;
         let Some(object) = gawk::pick(scenery, here, width) else {
             return;
         };
-        let at = |t: usize| ((t % width) as i64, (t / width) as i64);
-        let mut beside: Vec<_> = (gawk::beside(self.world, &object).into_iter())
-            .map(|t| {
-                (
-                    (at(t).0 - at(here).0).pow(2) + (at(t).1 - at(here).1).pow(2),
-                    t,
-                )
-            })
-            .collect();
-        beside.sort_unstable();
-        for (_, place) in beside {
-            if self.path_to(place, false) && self.start_walk(false, false, false) {
-                self.set_task(SCENERY, 0, object.id, Some(place));
-                return;
-            }
+        let ring = gawk::ring(self.world, &object);
+        if ring.is_empty() {
+            return;
+        }
+        let place = ring[self.ctx.rng.pick(ring.len() as u32) as usize];
+        if self.path_to(place, false) && self.start_walk(false, false, false) {
+            self.set_task(SCENERY, 0, object.id, Some(place));
         }
     }
 
