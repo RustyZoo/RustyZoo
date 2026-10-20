@@ -449,8 +449,9 @@ fn the_animal_of_a_thought_is_picked_in_the_tile_order_of_the_exhibit() {
     // the second tile first.
     for (id, tile) in [(10, (1, 4)), (11, (3, 6))] {
         let at = w.find(id).unwrap();
-        let c = w.zoo.entities[at].common.as_mut().unwrap();
-        (c.x, c.y) = centre(tile);
+        let c = w.zoo.entities[at].common.as_ref().unwrap();
+        let (x, y) = centre(tile);
+        w.place_unit(at, (x, y, c.z), c.rotation);
     }
     let mut order = w.exhibits().get(1).unwrap().order.clone();
     let (first, second) = (

@@ -745,6 +745,62 @@ fn the_candidates_follow_the_tiles_of_the_exhibit_then_the_unit_list_of_a_tile()
 }
 
 #[test]
+fn the_candidates_follow_the_unit_list_of_a_tile_not_the_entity_order() {
+    // 601 and 602 share a tile; 601 is first in the entity list, but leaves the tile and comes
+    // back, so the tile lists it last.
+    let mut world = pens_with(|n, _| match n {
+        0 => [(600, "m", (2, 2)), (601, "f", (3, 3)), (602, "f", (3, 3))]
+            .iter()
+            .map(|&(id, sub, tile)| entity("animals", sub, tile, 0, id))
+            .collect(),
+        _ => Vec::new(),
+    });
+    let cat = breeders("");
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    sim.step(&mut world, 67, |_, _, _| {});
+    let x = world
+        .exhibits()
+        .region(world.tile_index(2, 2).unwrap())
+        .unwrap();
+    let positions = |world: &World, ids: &[u32]| -> Vec<usize> {
+        ids.iter().map(|&i| world.find(i).unwrap()).collect()
+    };
+    let (m, first, second) = (
+        world.find(600).unwrap(),
+        world.find(601).unwrap(),
+        world.find(602).unwrap(),
+    );
+    assert!(first < second);
+    let point = world.zoo.entities[first]
+        .common
+        .as_ref()
+        .map(|c| (c.x, c.y, c.z));
+    world.lift_unit(first);
+    world.place_unit(first, point.unwrap(), 0);
+    assert_eq!(
+        crate::animal::exhibit_animals(&world, x)
+            .into_iter()
+            .filter(|&i| i != m)
+            .collect::<Vec<_>>(),
+        positions(&world, &[602, 601])
+    );
+    let mut me = match &world.units.get(600).unwrap().part {
+        Part::Animal(a) => a.clone(),
+        _ => unreachable!(),
+    };
+    me.female = false;
+    for id in [601, 602] {
+        if let Some(Part::Animal(a)) = world.units.get_mut(id).map(|u| &mut u.part) {
+            a.female = true;
+        }
+    }
+    assert_eq!(breed::candidates(&world, m, x, &me), [602, 601]);
+}
+
+#[test]
 fn the_mate_of_an_animal_is_here_gone_or_away() {
     let mut world = pen(&[(600, "m"), (601, "f")]);
     let at = world.find(600).unwrap();
