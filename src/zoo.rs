@@ -118,8 +118,8 @@ pub struct Common {
 }
 
 /// What a tank filter keeps (tank staff 7): its health, and the milliseconds left before it loses
-/// a point and before it filters again. A record of a version before 95 has no timers: the first
-/// update starts them from the type.
+/// a point and before it filters again. A loaded filter has none, since a record does not save them
+/// (zoo format 6.8): the first update starts them from the type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Filter {
     pub health: u32,

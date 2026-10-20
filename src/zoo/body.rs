@@ -35,12 +35,15 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
         b"filter" => {
             let mut common = scenery(r)?;
             let health = r.u32()?;
-            let mut timers = None;
+            // From 95 the upkeep of last month, this month and since built, two dates and one word
+            // follow; the timers are not saved (zoo format 6.8).
             if v >= 95 {
-                timers = Some([r.u32()? as i32, r.u32()? as i32]);
-                r.skip(4 + 16 + 4)?;
+                r.skip(3 * 4 + 2 * 8 + 4)?;
             }
-            common.filter = Some(Filter { health, timers });
+            common.filter = Some(Filter {
+                health,
+                timers: None,
+            });
             common
         }
         b"rubble" => {

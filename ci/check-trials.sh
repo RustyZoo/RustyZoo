@@ -786,8 +786,8 @@ check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_rest
 # it, the worker's jobs, the bites the rays took and the higher of their hunger at the end.
 marine_round() { # marine_round <map>
   d=$(mktemp -d)
-  printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n28000 worker 20,40\n' >"$d/script"
-  rz sim "$1" --ticks 33000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+  printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"
+  rz sim "$1" --ticks 36000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ keeper /{k=$5}
     / staff job /{
       if ($5==k) { if ($6=="none") next; if (!done) j=j (j?",":"") $6; if ($6=="ClimbDownOutsideLadder") done=1 }
@@ -804,7 +804,7 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:72;hunger<=41" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>90;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:79;hunger<=33" "marine_round maps/scn27.zoo"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).

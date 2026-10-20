@@ -135,6 +135,9 @@ pub struct Staff {
     /// unreachable lists are emptied (staff 4.3, 8.3).
     pub task: u32,
     pub clear: i32,
+    /// A keeper's duties found nothing left to do: the goal's own flag, which the next check done
+    /// turns into the record's done (staff 7.5).
+    pub duties_done: bool,
 }
 
 /// The kind-specific part of a unit.

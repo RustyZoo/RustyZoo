@@ -295,6 +295,7 @@ impl<'c> Cx<'_, 'c> {
     pub(super) fn duties_init(&mut self) {
         if let Some(s) = self.staff() {
             (s.lost_tiles, s.lost_animals) = (Vec::new(), Vec::new());
+            s.duties_done = false;
         }
         let Some(x) = self.exhibit() else {
             return;
@@ -312,9 +313,9 @@ impl<'c> Cx<'_, 'c> {
         }
     }
 
-    /// 7.5 check done: done on the grounds.
+    /// 7.5 check done: done on the grounds or when the decide raised the goal's flag.
     pub(super) fn duties_check_done(&mut self) {
-        if self.exhibit().is_none() {
+        if self.exhibit().is_none() || self.staff().is_some_and(|s| s.duties_done) {
             self.record().done = true;
         }
     }
@@ -325,10 +326,11 @@ impl<'c> Cx<'_, 'c> {
             return;
         };
         let cat = self.ctx.cat;
+        // The flag is the goal's own; the next check done turns it into the record's done.
         if assign::block_service(self.world, cat, x, who, (false, true)) != 0 {
-            self.record().done = true;
+            self.set_duties_done();
         }
-        if self.record().done || self.record().job != 0 {
+        if self.staff().is_some_and(|s| s.duties_done) || self.record().job != 0 {
             return;
         }
         let (tiles, animals) = self.lost();
@@ -369,11 +371,13 @@ impl<'c> Cx<'_, 'c> {
             // On the platform any job first climbs down into the water (tank staff 5.2).
             Some(_) if self.unit.tank == 2 => self.set_job(CLIMB_DOWN_INSIDE, 0, None),
             Some((job, id)) => self.set_job(job, id, None),
-            // Nothing left: the duties are over now, before the ladder can start them again.
-            None => {
-                self.record().done = true;
-                self.duties_complete();
-            }
+            None => self.set_duties_done(),
+        }
+    }
+
+    fn set_duties_done(&mut self) {
+        if let Some(s) = self.staff() {
+            s.duties_done = true;
         }
     }
 
