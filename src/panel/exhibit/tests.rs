@@ -486,8 +486,10 @@ fn the_thoughts_about_the_exhibit_are_listed_with_the_exhibits_name_for_the_perc
         "no object, no exhibit"
     );
     // The panel tells the ids, newest first.
-    let mut p = Panel::default();
-    p.current = Some(id);
+    let mut p = Panel {
+        current: Some(id),
+        ..Panel::default()
+    };
     let told = p.refresh(&mut ui, &w, &cat, &vfs);
     assert_eq!(told[3], "animals 1 thoughts 2 [10098, 10096]");
     // Twenty-five thoughts: the twenty newest.

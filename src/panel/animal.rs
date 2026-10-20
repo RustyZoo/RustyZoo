@@ -3,9 +3,9 @@
 //! refreshed every 5 s of the interface clock while shown and not while the game is paused.
 //!
 //! [`Panel`] holds the selected animal and the clock; [`Panel::refresh`] writes the layout from
-//! the world and returns the `panel` log line when what it shows changed. The thoughts list is
-//! the five newest thoughts about the animal, newest first (its ids close the line); the sell and pick-up buttons are enabled
-//! as their rules say and their actions are other issues'.
+//! the world and returns the `panel` log line when what it shows changed. The thoughts list is the
+//! five newest thoughts about the animal, newest first (their ids close the line); the sell and
+//! pick-up buttons are enabled as their rules say and their actions are other issues'.
 
 use crate::animal::{self, Animal, Keys};
 use crate::build::number;
