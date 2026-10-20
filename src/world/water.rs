@@ -18,7 +18,8 @@ impl World {
         tanks.filter(|e| e.tank.is_some()).map(|e| e.id).collect()
     }
 
-    /// Changes the values of tank `id` and tells it when they differ.
+    /// Changes the values of tank `id` and tells it when they differ. A level that comes back to 0
+    /// from above resets the purity to `initialWaterPurity`.
     pub(super) fn edit_tank(
         &mut self,
         id: u32,
@@ -30,7 +31,19 @@ impl World {
         };
         let before = *tank;
         change(tank, &config);
-        if *tank != before {
+        // The level coming back to 0 from above gives clean water again (3.10).
+        let reset = before.level > 0 && tank.level == 0 && tank.purity != config.purity;
+        if reset {
+            tank.purity = config.purity;
+        }
+        let (now, changed) = (*tank, *tank != before);
+        if changed {
+            if reset && let Some(x) = self.exhibits.get_mut(id) {
+                x.rating.dirty = true;
+            }
+            let (level, purity) = (now.level, now.purity);
+            self.units
+                .world_note(format!("water {id} level {level} purity {purity}"));
             self.events.push(super::Event::Tank(id));
             self.sync_tanks();
         }

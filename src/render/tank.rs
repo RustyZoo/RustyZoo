@@ -11,11 +11,11 @@ const HALF: Blend = Blend {
 
 /// The water and glass sets of one tank (9.7.1).
 pub(super) struct Look {
-    water: String,
-    glass: String,
+    pub(super) water: String,
+    pub(super) glass: String,
     /// With scum: the noise thresholds for the surface pictures `tscum1` to `tscum3`, and the
     /// threshold for the faces. `None` for clean water.
-    scum: Option<([u8; 3], u8)>,
+    pub(super) scum: Option<([u8; 3], u8)>,
 }
 
 impl Look {

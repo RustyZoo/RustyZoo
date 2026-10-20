@@ -977,46 +977,21 @@ impl<'a> MapRenderer<'a> {
         // The game puts a ripple on the clean water against every active wall of a tank.
         let first_ripple = metas.len();
         let ripple = self.catalogue.find("objects", b"other", b"tankripl");
-        for (k, (tank, look)) in scene.tanks.clone().iter().zip(&looks).enumerate() {
-            let Some(ty) = ripple.filter(|_| tank.level > 0 && look.is_clean()) else {
-                continue;
-            };
-            let inside: Vec<usize> = (0..tiles.len())
-                .filter(|&t| scene.tank_of(t) == Some(k))
-                .collect();
-            for t in inside {
-                for d in [0, 2, 4, 6] {
-                    let Some(w) = scene
-                        .edge_object(t, d)
-                        .filter(|&w| scene.wall_tank(w) == Some(k))
-                    else {
-                        continue;
-                    };
-                    let wall = scene.objects[w];
-                    scene.add_transient(
-                        t,
-                        Object {
-                            kind: Kind::Unit,
-                            z: scene.surface(t).unwrap_or(0),
-                            footprint: (1, 1),
-                            late: false,
-                            height: 0,
-                            ..wall
-                        },
-                    );
-                    metas.push(Meta {
-                        ty,
-                        colors: &[],
-                        life: None,
-                        mode: 0,
-                        portal: false,
-                        food: 0,
-                        tint: None,
-                        wall: 0,
-                        shown: None,
-                    });
-                }
-            }
+        for ty in ripple.iter().flat_map(|&ty| {
+            let n = add_ripples(&mut scene, &looks, tiles.len());
+            std::iter::repeat_n(ty, n)
+        }) {
+            metas.push(Meta {
+                ty,
+                colors: &[],
+                life: None,
+                mode: 0,
+                portal: false,
+                food: 0,
+                tint: None,
+                wall: 0,
+                shown: None,
+            });
         }
 
         let mut placed: Vec<Placed> = Vec::new();
@@ -1649,4 +1624,40 @@ fn path_view(scene: &Scene, o: usize, ty: &EntityType) -> usize {
 fn shape_index(codes: &[Option<i32>], key: i32) -> usize {
     let find = |key: i32| codes.iter().position(|&c| c == Some(key));
     find(key).or_else(|| find(100)).unwrap_or(0)
+}
+
+/// Adds a ripple, a transient object at the surface, against every active wall of every tank that
+/// holds clean water (map drawing 9.7.8); the number added. They are made at each staging, so
+/// they come and go with the level and the purity.
+fn add_ripples(scene: &mut Scene, looks: &[tank::Look], tiles: usize) -> usize {
+    let mut added = 0;
+    for (k, (tank, look)) in scene.tanks.clone().iter().zip(looks).enumerate() {
+        if tank.level == 0 || !look.is_clean() {
+            continue;
+        }
+        let inside: Vec<usize> = (0..tiles)
+            .filter(|&t| scene.tank_of(t) == Some(k))
+            .collect();
+        for t in inside {
+            for d in [0, 2, 4, 6] {
+                let wall = scene
+                    .edge_object(t, d)
+                    .filter(|&w| scene.wall_tank(w) == Some(k))
+                    .map(|w| scene.objects[w]);
+                let Some(wall) = wall else { continue };
+                let z = scene.surface(t).unwrap_or(0);
+                let ripple = Object {
+                    kind: Kind::Unit,
+                    z,
+                    footprint: (1, 1),
+                    late: false,
+                    height: 0,
+                    ..wall
+                };
+                scene.add_transient(t, ripple);
+                added += 1;
+            }
+        }
+    }
+    added
 }

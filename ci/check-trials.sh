@@ -820,6 +820,26 @@ marine_round() { # marine_round <map>
 }
 check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>90;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:75;hunger<=33" "marine_round maps/scn27.zoo"
 
+# The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
+# and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
+# the script drains it at step 1000 and fills it at 1100. Prints the step and purity of the first
+# decay, the purity before and after the level came back to 0 (the reset to `initialWaterPurity`),
+# and the levels of the refill, which leave the purity alone.
+tank_decay() { # tank_decay <map> <tank id>
+  d=$(mktemp -d)
+  printf '1000 drain %s\n1100 fill %s\n' "$2" "$2" >"$d/script"
+  rz sim "$1" --ticks 1200 --seed 1 --script "$d/script" --log 2>/dev/null | awk -v t="$2" '
+    $3=="world" && $4=="water" && $5==t && $2>0 {
+      if (!first) { first=$2 ":" $9 }
+      if ($7==0 && !reset) { reset=prev ">" $9 }
+      if ($2>=1100) refill=refill (refill ? "," : "") $7 ":" $9
+      prev=$9
+    }
+    END{print first ";" reset ";" refill}'
+  rm -rf "$d"
+}
+check expansion-trial "447:92;99>100;0:100,1:100,2:100,3:100,4:100,5:100,6:100,7:100" "tank_decay maps/scn28.zoo 2"
+
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
 sim_twice() { # sim_twice <map>
