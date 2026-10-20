@@ -19,9 +19,9 @@ pub(super) fn site_score(attractiveness: i32, loved: bool, d: i64) -> i64 {
 }
 
 impl Cx<'_, '_> {
-    /// Ladder point 10.2 and 10.3: a guest with an exhibit or scenery to see takes the site task, mode 4;
-    /// with none the seen count goes and `checkLeaveZoo` may send it away. Whether the ladder
-    /// ends there.
+    /// Ladder point 10.2 and 10.3: a guest with an exhibit or scenery to see takes the site task,
+    /// mode 4; with none the seen count goes and `checkLeaveZoo` may send it away. Whether the
+    /// ladder ends there.
     pub(in crate::goal) fn next_site(&mut self) -> bool {
         let Part::Guest(g) = &self.unit.part else {
             return false;
