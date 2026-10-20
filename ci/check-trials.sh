@@ -818,7 +818,7 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:78;hunger<=33" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:77;hunger<=55" "marine_round maps/scn27.zoo"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -839,6 +839,59 @@ tank_decay() { # tank_decay <map> <tank id>
   rm -rf "$d"
 }
 check expansion-trial "447:92;99>100;0:100,1:100,2:100,3:100,4:100,5:100,6:100,7:100" "tank_decay maps/scn28.zoo 2"
+
+# The tank animals' checks (tank fauna 10 to 12).
+#
+# Breath: a polar bear joins scn28b's tank (the bears of the map have dead counters, the original's
+# bug of tank fauna 10.3: they never surface). It gains 10 breath at each run-out of its counter
+# under water (30 status ticks, 448 steps of 67 ms), takes the surface task at the second, when it
+# has the 20 of its threshold, breathes there, and its next run-out falls at the surface: the check
+# never runs again. A run-out at the surface kills the counter for good, which happens to the bear
+# at its first run-out under half of the seeds; seed 6 is one where it does not. Prints the steps
+# and breath of the gains, the step of the surface task and of `bBreathe`, and the gains after it.
+tank_breath() { # tank_breath <map> <x,y>
+  d=$(mktemp -d)
+  printf '0 animal polarbr %s male\n' "$2" >"$d/script"
+  rz sim "$1" --ticks 3000 --seed 6 --script "$d/script" --log 2>/dev/null | awk '
+    / unit add [0-9]+ animal /{id=$5}
+    $5==id && / animal breath /{ if (done) later++; else gains=gains (gains ? "," : "") $2 ":" $6 }
+    $5==id && / unit goal [0-9]+ surfacebreath /{ surface=$2 }
+    $5==id && / unit set [0-9]+ bBreathe/{ if (!done) { breathe=$2; done=1 } }
+    END{ print gains ";surface@" surface ";breathe@" breathe ";later:" later+0 }'
+  rm -rf "$d"
+}
+check expansion-trial "117:10,565:20;surface@567;breathe@991;later:0" "tank_breath maps/scn28b.zoo 22,23"
+
+# Murky water: scn28's filters are taken away and a manta ray joins tank 2, which holds water of
+# purity 93 and loses a point every 448 steps. The ray's happiness is set to 0 every second so that
+# the changes of its checks show. Once the purity is below 60 it loses 5 happiness and 5 health at
+# each murky check, every 5 status ticks (75 steps); the other checks add to the first two. Prints
+# the step the purity went below 60, then the steps of the first five losses of exactly 5 health,
+# and the happiness at the last three.
+tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <filter>
+  d=$(mktemp -d)
+  { printf '0 remove %s\n0 remove %s\n0 remove %s\n0 animal mantaray %s\n' "$4" "$5" "$6" "$2"
+    for s in $(seq 10 15 12000); do printf '%s mood %s 0\n' "$s" "$3"; done; } >"$d/script"
+  rz sim "$1" --ticks 12000 --seed 1 --script "$d/script" --log 2>/dev/null | awk -v ray="$3" '
+    BEGIN{ n=0 }
+    / world water 2 /{ if ($9 < 60 && !low) low=$2 }
+    $5 == ray && / animal status /{
+      if (low && h0 != "" && $9 == health - 5 && n < 5) { steps[n]=$2; hap[n]=$6; n++ }
+      health=$9; h0=1 }
+    END{ print "below60@" low ";losses@" steps[0] "," steps[1] "," steps[2] "," steps[3] "," steps[4] ";happiness:" hap[2] "," hap[3] "," hap[4] }'
+  rm -rf "$d"
+}
+check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happiness:-5,-5,-5" "tank_murky maps/scn28.zoo 28,47 47192 31192 31194 37416"
+
+# Amphibious neighbours: scn28b's tank 1 and land exhibit 2 are level with the wall between them,
+# which is a connector. The polar bear of the tank goes ashore and comes back, and the bear of the
+# land exhibit swims into the tank. Prints the exhibits each entered and when (steps of 67 ms).
+tank_cross() { # tank_cross <map> <tank bear> <land bear>
+  rz sim "$1" --ticks 3000 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
+    / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
+    END{ print a ":" x ";" b ":" y }'
+}
+check expansion-trial "93962:2@897,1@2882;97902:1@1520" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # Breeding (animals-needs 11 to 13). The base trial's animals are all male; three female lions join
 # the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first

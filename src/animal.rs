@@ -24,16 +24,22 @@
 //! mate of its species in the exhibit rolls for young at the reproduction check, which puts them
 //! (or eggs, for a species that lays them) on free tiles of the exhibit.
 //!
-//! Not here yet: the use of shelters, the water check and the swimmers and the
-//! effects of the escape, rampage and zap checks (M7: only their counters and draws run). The
-//! ambient choice is taken at the end of the checks by the behaviour runner ([`Animal::ambient`]).
+//! The animals that live in tanks are [`tank`]: the breath check, the murky water check and the
+//! water check, which moves an animal between the land, the water and a tank (and so across the
+//! wall to the land exhibit beside its tank, the amphibious neighbours).
+//!
+//! Not here yet: the use of shelters and the effects of the escape, rampage and zap checks (M7:
+//! only their counters and draws run). The ambient choice is taken at the end of the checks by the
+//! behaviour runner ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
 //! after each update of the values, `animal message <string> <id>` for a message posted,
 //! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
 //! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down,
 //! `animal heal <id>`, `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
-//! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>` and `animal hatch <id>`.
+//! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>`, `animal hatch <id>`,
+//! `animal breath <id> <breath>` when the breath rises and `animal terrain <id> <mode>` when the
+//! water check changes the terrain mode (0 land, 1 water, 2 tank).
 
 use crate::behaviour::Data;
 use crate::config::{Config, to_int};
