@@ -926,15 +926,16 @@ mod tests {
                 ),
                 (
                     "items/hotdog.cfg",
-                    "[characteristics]\nnameID=6303\nhungerdelta=-75\nadulthappydelta=50\n\
+                    "[characteristics]\nnameID=6303\nicon=items\\hotdog\\hotdog\nhungerdelta=-75\nadulthappydelta=50\n\
                      consumenow=1\ntrashwhenconsumed=2\n",
                 ),
             ],
         );
-        let item = c.items["hotdog"];
+        let item = &c.items["hotdog"];
         assert_eq!((item.id, item.record[0], item.record[2]), (6303, 50, -75));
         // A flag is on only for 1.
         assert!(item.now && !item.litter && !item.remove);
+        assert_eq!(item.icon, "items/hotdog/hotdog");
         assert_eq!(c.items.len(), 1);
         assert!(
             c.warnings.iter().any(|w| w.contains("gone.cfg")),

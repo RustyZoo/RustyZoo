@@ -70,6 +70,7 @@ fn types() -> Catalogue {
         litter: true,
         remove: true,
         thought: 10659,
+        ..Default::default()
     };
     cat.items.insert("hotdog".into(), item);
     cat

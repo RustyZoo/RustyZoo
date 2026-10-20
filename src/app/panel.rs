@@ -4,8 +4,8 @@
 //! refresh on the interface clock (information panels 4, 5, 6, 10).
 
 use super::*;
-use crate::panel::animal;
 use crate::panel::exhibit::{BUTTON, LAYOUT, NAME, PLAQUE};
+use crate::panel::{animal, guest, staff};
 use crate::text::from_cp1252;
 use crate::unit::Part;
 
@@ -183,7 +183,9 @@ impl App<'_> {
     fn followed(&self) -> Option<u32> {
         let (game, ui) = (self.game.as_ref()?, self.ui.as_ref()?);
         let animal = game.animal.selected.filter(|_| ui.is_down(animal::FOLLOW));
-        animal.or(game.staff.selected.filter(|_| ui.is_down(staff::FOLLOW)))
+        let staff = game.staff.selected.filter(|_| ui.is_down(staff::FOLLOW));
+        let guest = game.guest.selected.filter(|_| ui.is_down(guest::FOLLOW));
+        animal.or(staff).or(guest)
     }
 
     /// Whether the view follows a unit.
@@ -260,6 +262,7 @@ impl App<'_> {
         self.units_sync();
         self.animal_sync();
         self.staff_sync();
+        self.guest_sync();
         let ticking = self.fired.interface.is_some() && !self.paused() && !self.modal();
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
@@ -278,6 +281,11 @@ impl App<'_> {
             let placing = game.pending.is_some() || game.carry.is_some();
             self.panel_lines
                 .extend(game.staff.refresh(ui, &game.world, cat, vfs, placing));
+        }
+        if ui.shown(guest::LAYOUT) && game.guest.clock.due(now, ticking, guest::PERIOD) {
+            let date = self.sim.calendar().date();
+            self.panel_lines
+                .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
         if game.panel.plaque.is_some() && game.panel.plaque_clock.due(now, ticking, exhibit::PERIOD)
         {

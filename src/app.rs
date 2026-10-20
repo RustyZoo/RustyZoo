@@ -26,7 +26,7 @@ use crate::camera::{Camera, Settings, zoom_view};
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
-use crate::panel::{animal, exhibit, staff};
+use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
@@ -340,6 +340,8 @@ struct Game {
     animal: crate::panel::animal::Panel,
     /// The staff panel and the staff member selected.
     staff: crate::panel::staff::Panel,
+    /// The guest panel and the guest selected.
+    guest: crate::panel::guest::Panel,
     /// The unit the player selected, and the one it carries (unit placing 8).
     selected: Option<u32>,
     carry: Option<place::unit::Carry>,
@@ -679,6 +681,7 @@ impl<'a> App<'a> {
             panel: Default::default(),
             animal: Default::default(),
             staff: Default::default(),
+            guest: Default::default(),
             selected: None,
             carry: None,
         });
@@ -1492,6 +1495,7 @@ impl<'a> App<'a> {
                 Action::Row(staff::LIST, row) if self.game.is_some() => self.staff_row(row),
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
+                Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
                 _ => {}
             }
         }
@@ -1509,12 +1513,18 @@ impl<'a> App<'a> {
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
+                guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
                 staff::REMOVE | staff::REMOVE_ALL if self.game.is_some() => {
                     self.staff_remove(id == staff::REMOVE_ALL);
                 }
                 t if staff::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.staff.clock.force = true;
+                    }
+                }
+                t if guest::TABS.contains(&t) && self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.guest.clock.force = true;
                     }
                 }
                 t if animal::TABS.contains(&t) && self.game.is_some() => {
@@ -2072,6 +2082,7 @@ mod bulldozer;
 mod carry;
 mod exhibits;
 mod gates;
+mod guest_panel;
 mod panel;
 mod staff_panel;
 mod terrain;

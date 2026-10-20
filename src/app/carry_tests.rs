@@ -155,3 +155,41 @@ fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() 
         }
     });
 }
+
+#[test]
+fn a_click_on_a_guest_shows_the_guest_panel_alone_and_its_close_button_clears_it() {
+    with_game("guest-panel", "", |s| {
+        let (guest, zebra) = (
+            s.add(14, 20 * 64 + 32, 20 * 64 + 32, 0),
+            s.add(13, 22 * 64 + 32, 20 * 64 + 32, 0),
+        );
+        s.pass(&[]);
+        let shown = |s: &Session| {
+            let ui = s.app.ui.as_ref().unwrap();
+            let game = s.app.game.as_ref().unwrap();
+            (
+                game.selected,
+                ui.shown(crate::panel::guest::LAYOUT),
+                ui.shown(crate::panel::animal::LAYOUT),
+            )
+        };
+        assert_eq!(shown(s), (None, false, false));
+        s.click(s.at(20, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(shown(s), (Some(guest), true, false));
+        assert_eq!(s.app.game.as_ref().unwrap().guest.selected, Some(guest));
+        // Another unit takes the panel; the close button clears the selection.
+        s.click(s.at(22, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(shown(s), (Some(zebra), false, true));
+        assert_eq!(s.app.game.as_ref().unwrap().guest.selected, None);
+        s.click(s.at(20, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(shown(s), (Some(guest), true, false));
+        assert!(s.app.ui.as_mut().unwrap().press_button(3413));
+        s.pass(&[]);
+        s.pass(&[]);
+        assert_eq!(shown(s), (None, false, false));
+        assert_eq!(s.app.game.as_ref().unwrap().guest.selected, None);
+    });
+}

@@ -765,6 +765,19 @@ staff_duties() { # staff_duties <map>
 }
 check expansion-trial "duties_1111;duties_1011" "staff_duties maps/scn19.zoo"
 
+# The guest panel (information panels 8): the game paused, a click on a guest of the map opens it,
+# the second tab is chosen, a click on the ground closes it. Prints the `panel guest` lines (spaces
+# as underscores, the id left out, joined by semicolons): the name, the five bars, the time in the
+# park (a guest of a stored map has no arrival date), the favourite and the thoughts.
+guest_panel() { # guest_panel <map>
+  d=$(mktemp -d)
+  printf '1 pause\n2 mouse 652 598\n3 down\n4 up\n6 mouse 1005 667\n7 down\n8 up\n10 mouse 400 100\n11 down\n12 up\n' >"$d/script"
+  rz run "$1" --headless --seed 3 --passes 14 --clock 67 --script "$d/script" 2>/dev/null |
+    grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' | tr ' ' _ | paste -sd';' -
+  rm -rf "${d:?}"
+}
+check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"Just_arrived"_favourite_""_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
+
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
 sim_twice() { # sim_twice <map>

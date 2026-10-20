@@ -50,7 +50,7 @@ const RECENT: u64 = 1440;
 const SHORT: u64 = 8640;
 
 /// The percentage of `v` between `lo` and `hi`, truncated; 0 when the limits meet.
-fn percent(v: i32, lo: i32, hi: i32) -> i32 {
+pub(crate) fn percent(v: i32, lo: i32, hi: i32) -> i32 {
     let span = i64::from(hi) - i64::from(lo);
     let p = (i64::from(v) - i64::from(lo)) * 100 / span.max(1);
     p.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32

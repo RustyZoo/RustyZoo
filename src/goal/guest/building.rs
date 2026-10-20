@@ -350,7 +350,7 @@ impl Cx<'_, '_> {
             return item.map_or((), |i| self.consume(i));
         }
         let name = &kind.sells[self.ctx.rng.pick(kind.sells.len() as u32) as usize];
-        let Some(item) = self.ctx.cat.items.get(name).copied() else {
+        let Some(item) = self.ctx.cat.items.get(name).cloned() else {
             return;
         };
         match self.mood(id, kind) {
@@ -418,7 +418,7 @@ impl Cx<'_, '_> {
 
     /// Guests 9.3: the guest consumes the item of name id `id`.
     fn consume(&mut self, id: i32) {
-        let Some(item) = self.ctx.cat.items.values().find(|i| i.id == id).copied() else {
+        let Some(item) = self.ctx.cat.items.values().find(|i| i.id == id).cloned() else {
             return;
         };
         let Item {
