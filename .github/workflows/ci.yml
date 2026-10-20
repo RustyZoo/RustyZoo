@@ -229,9 +229,9 @@ jobs:
           if-no-files-found: error
 
   # The two games of the exit test of milestone M6, played by script (docs/playing.md) on the real data,
-  # beside the build: each twice at the same time, the freeform game of the base trial from the main
-  # menu to the thirteenth month and the tank of the expansion trial for three months (about eight and
-  # two minutes). The last frame and state hashes of each game are kept as a job output (nothing is
+  # beside the build: each twice at the same time, the freeform game of the base trial to the
+  # thirteenth month and the tank of the expansion trial for three months (about eight and two
+  # minutes). The last frame and state hashes of each game are kept as a job output (nothing is
   # uploaded) for the job `hashes`.
   play:
     name: play (${{ matrix.os }})
@@ -242,10 +242,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             system: linux
+            bin: target/release/rustyzoo
           - os: windows-2025
             system: windows
+            bin: target/release/rustyzoo.exe
           - os: macos-15
             system: macos
+            bin: target/release/rustyzoo
     defaults:
       run:
         shell: bash
@@ -287,8 +290,8 @@ jobs:
             exit 0
           fi
           status=0
-          ci/check-playable.sh target/release/rustyzoo "$trials/base-trial" ci/playable.txt | tee "$RUNNER_TEMP/play.out" || status=1
-          ci/check-playable.sh target/release/rustyzoo "$trials/expansion-trial" ci/playable-tank.txt | tee -a "$RUNNER_TEMP/play.out" || status=1
+          ci/check-playable.sh ${{ matrix.bin }} "$trials/base-trial" ci/playable.txt | tee "$RUNNER_TEMP/play.out" || status=1
+          ci/check-playable.sh ${{ matrix.bin }} "$trials/expansion-trial" ci/playable-tank.txt | tee -a "$RUNNER_TEMP/play.out" || status=1
           hashes=$(sed -n 's/^ok: \([^:]*\): two runs .*, last frame \([0-9a-f]*\), last state \([0-9a-f]*\)$/\1=\2,\3/p' "$RUNNER_TEMP/play.out" | tr '\n' ' ')
           echo "${{ matrix.system }}=$hashes" >> "$GITHUB_OUTPUT"
           exit "$status"
