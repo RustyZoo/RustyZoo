@@ -406,3 +406,201 @@ fn the_scenery_a_species_dislikes_is_listed_once_per_type_and_by_how_much() {
     assert_eq!(disliked(&site, &likes, false), [1, 3, 4]);
     assert!(disliked(&Site::default(), &likes, true).is_empty());
 }
+
+#[test]
+fn a_tank_of_the_other_water_costs_400_points_and_says_so() {
+    // The zebra wants fresh water (5) more than salt water (-20).
+    let mut input = flat();
+    let tank = |salt| Water {
+        salt,
+        ..Water::default()
+    };
+    input.site.water = Some(tank(true));
+    let r = only(&input);
+    assert_eq!(r.salinity, -400.0);
+    assert!(r.has(bit::SALINITY) && r.important >> bit::SALINITY & 1 == 1);
+    input.site.water = Some(tank(false));
+    let r = only(&input);
+    assert!(r.salinity == 100.0 && !r.has(bit::SALINITY));
+    // A tie wants salt water; a land exhibit refuses no water.
+    input.species[0].terrain[9] = -20;
+    assert_eq!(only(&input).salinity, -400.0);
+    input.site.water = None;
+    assert_eq!(only(&input).salinity, 100.0);
+}
+
+/// An amphibious species that wants trees, rocks and hills, and a fresh water share of 30.
+fn otter() -> Likes {
+    let mut terrain = [0; 18];
+    (terrain[0], terrain[9]) = (70, 30);
+    Likes {
+        key: "otter".into(),
+        amphibious: true,
+        terrain,
+        trees: 30,
+        rocks: 10,
+        elevation: 40,
+        ids: [7001, 7101, 7201],
+        ..zebra()
+    }
+}
+
+#[test]
+fn an_amphibious_species_in_a_tank_with_no_land_beside_it_is_told_so() {
+    let mut input = Input {
+        species: vec![otter(), zebra()],
+        animals: vec![0, 1],
+        ..flat()
+    };
+    input.site.water = Some(Water::default());
+    let records = rate(&input);
+    let (otter, zebra) = (&records[0], &records[1]);
+    // The trees, rocks and hills say nothing and the elevation is full; the trees still count.
+    assert_eq!((otter.elevation, otter.foliage), (100.0, -140.0));
+    let flags = [bit::FEW_TREES, bit::FEW_ROCKS, bit::TOO_FLAT];
+    assert!(flags.iter().all(|&b| !otter.has(b)));
+    assert!(otter.has(bit::NO_LAND) && otter.important >> bit::NO_LAND & 1 == 1);
+    // A species that is not amphibious keeps them all.
+    assert!(!zebra.has(bit::NO_LAND) && zebra.has(bit::FEW_TREES));
+    // With land beside the tank, the otter is rated as the zebra is.
+    input.linked = true;
+    let otter = rate(&input).remove(0);
+    assert_eq!(otter.elevation, 60.0);
+    assert!(flags.iter().all(|&b| otter.has(b)) && !otter.has(bit::NO_LAND));
+}
+
+#[test]
+fn a_land_exhibit_counts_the_water_of_its_neighbour_tank_for_an_amphibious_species() {
+    let shark = Likes {
+        key: "shark".into(),
+        ids: [7002, 7102, 7202],
+        ..Likes::default()
+    };
+    let mut zebra = zebra();
+    zebra.ids = [5004, 5104, 5204];
+    zebra.compatible = vec![(7001, -10), (7002, -50)];
+    let tank = Water {
+        filled: true,
+        purity: 60,
+        ..Water::default()
+    };
+    let mut input = Input {
+        species: vec![zebra],
+        animals: vec![0, 0],
+        linked: true,
+        near: vec![otter(), shark],
+        tanks: vec![(20, tank)],
+        ..flat()
+    };
+    let records = rate(&input);
+    let keys: Vec<&str> = records.iter().map(|r| r.key.as_str()).collect();
+    assert_eq!(keys, ["zebra", "otter", "shark"]);
+    // Of the tank's 20 fresh tiles the otter counts the 10 that bring its share near 30: 25 of
+    // 35 tiles of grass (70 at most) and 10 of water (28.57).
+    let otter = &records[1];
+    assert!((otter.terrain - 98.571).abs() < 0.01, "{}", otter.terrain);
+    assert!(!otter.has(bit::terrain(9)));
+    // The murk of the tank: 40 points of its 20 tiles, 8 tiles in all, of 20.
+    assert_eq!((otter.animals, otter.water), (0, 60.0));
+    // The zebra counts no water and meets the amphibious otter, not the shark.
+    assert_eq!((records[0].water, records[0].other), (100.0, -10.0));
+    // A salt tank or one not filled gives the otter no fresh water; murk is still counted.
+    input.tanks[0].1.salt = true;
+    let otter = rate(&input).remove(1);
+    assert_eq!(otter.terrain, 70.0);
+    assert!(otter.has(bit::terrain(9)) && otter.important >> bit::terrain(9) & 1 == 1);
+    input.tanks[0].1.purity = 10;
+    let otter = rate(&input).remove(1);
+    assert_eq!(otter.water, 10.0);
+    assert!(otter.has(bit::DIRTY_WATER) && otter.important >> bit::DIRTY_WATER & 1 == 1);
+}
+
+#[test]
+fn gunnite_in_a_land_exhibit_sets_the_crowding_line() {
+    let mut input = flat();
+    (input.site.terrain[0], input.site.terrain[17]) = (24, 1);
+    // 4 percent of gunnite is too much (bit 56), not important.
+    let r = only(&input);
+    assert!(r.has(56) && r.important >> 56 & 1 == 0 && !r.has(55));
+    // 8 percent is important; bit 55 is the water quality's again.
+    (input.site.terrain[0], input.site.terrain[17]) = (23, 2);
+    let r = only(&input);
+    assert!(r.has(56) && r.important >> 56 & 1 == 1 && !r.has(55));
+    input.site.water = Some(Water::default());
+    assert!(!only(&input).has(56), "a tank has no terrain bits");
+}
+
+#[test]
+fn an_amphibious_animal_in_a_tank_takes_the_best_rating_of_the_land_beside_it() {
+    use crate::exhibit::rating::rating;
+    let full = Record {
+        key: "otter".into(),
+        depth: 100.0,
+        water: 100.0,
+        salinity: 100.0,
+        objects: 100.0,
+        foliage: 100.0,
+        rocks: 100.0,
+        elevation: 100.0,
+        shelters: 100.0,
+        toys: 100.0,
+        tank: true,
+        amphibious: true,
+        ..Record::default()
+    };
+    assert_eq!(full.rating(), 100.0);
+    // A show tank has no show neighbour yet: an amphibious species loses 50.
+    let show = Record {
+        show: true,
+        ..full.clone()
+    };
+    assert_eq!(show.rating(), 50.0);
+    // The land exhibits 2 and 3 rate it 70 and 87.
+    let land = |terrain| Record {
+        tank: false,
+        terrain,
+        ..full.clone()
+    };
+    let mut records = |x: u32| match x {
+        1 => vec![full.clone()],
+        2 => vec![land(0.0)],
+        3 => vec![land(56.67)],
+        _ => Vec::new(),
+    };
+    let best = rating(1, &[2, 3], "otter", &mut records).unwrap();
+    assert!((best - 87.0).abs() < 0.01, "{best}");
+    assert_eq!(rating(1, &[], "otter", &mut records), Some(100.0));
+    // A neighbour without the species counts nothing; none at all leaves -1000.
+    assert_eq!(rating(1, &[4], "otter", &mut records), Some(-1000.0));
+    assert_eq!(rating(1, &[2], "zebra", &mut records), None);
+}
+
+#[test]
+fn the_sum_of_a_species_leaves_the_elevation_out_in_a_tank() {
+    let r = Record {
+        terrain: 1.0,
+        objects: 2.0,
+        foliage: 4.0,
+        rocks: 8.0,
+        elevation: 16.0,
+        shelters: 32.0,
+        toys: 64.0,
+        depth: 128.0,
+        water: 256.0,
+        salinity: 512.0,
+        ..Record::default()
+    };
+    assert_eq!(r.sum(), 127.0);
+    let tank = Record { tank: true, ..r };
+    assert_eq!(tank.sum(), 1006.0);
+}
+
+#[test]
+fn the_update_tells_whether_it_rated() {
+    let mut state = State::new();
+    assert!(state.update(67, &mut draws(&[1]), flat));
+    assert!(!state.update(67, &mut draws(&[]), || unreachable!()));
+    // The species list alone is no rating.
+    state.species_ms = 8000;
+    assert!(!state.update(0, &mut draws(&[2]), flat));
+}
