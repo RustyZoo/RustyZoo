@@ -103,6 +103,20 @@ fn animation(world: &World, at: usize) -> String {
     }
 }
 
+/// Drops the entry of a gate that is gone from the zoo, or that is no longer a gate (the gate
+/// tool turned it into an ordinary fence): an undo that brings the gate back with its id then
+/// shows it closed.
+pub fn forget(world: &mut World) {
+    if world.units.gates.is_empty() {
+        return;
+    }
+    let live: std::collections::HashSet<u32> = (world.zoo.entities.iter())
+        .filter(|e| e.subtype.starts_with('g'))
+        .filter_map(|e| e.common.as_ref().map(|c| c.id))
+        .collect();
+    world.units.gates.retain(|id, _| live.contains(id));
+}
+
 /// The sound the type of the gate at `at` gives to opening or closing, with its attenuation.
 fn heard(world: &World, cat: &Catalogue, at: usize, open: bool) -> Option<Heard> {
     let e = &world.zoo.entities[at];
@@ -269,6 +283,23 @@ mod tests {
         // Closing a closed gate plays it again all the same.
         w.units.close_gate(7);
         assert_eq!(run(&mut w, &cat, 1), [Some(2)]);
+    }
+
+    #[test]
+    fn the_entry_of_a_removed_gate_or_of_one_turned_into_a_fence_is_dropped() {
+        let (mut w, _) = gate_world();
+        w.units.open_gate(7);
+        forget(&mut w);
+        assert_eq!(w.units.gate_frames().count(), 1, "the gate stays");
+        w.zoo.entities[0].subtype = "iron".into();
+        forget(&mut w);
+        assert_eq!(w.units.gate_frames().count(), 0, "now a fence");
+        w.zoo.entities[0].subtype = "g".into();
+        assert_eq!(w.units.gate_frames().count(), 0, "put back: closed");
+        w.units.open_gate(7);
+        w.zoo.entities.clear();
+        forget(&mut w);
+        assert_eq!(w.units.gate_frames().count(), 0, "bulldozed");
     }
 
     #[test]
