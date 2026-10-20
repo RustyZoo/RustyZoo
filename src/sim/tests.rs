@@ -197,6 +197,15 @@ fn the_ai_keys_have_their_fallbacks() {
     assert!(!ai.allow_diagonal_moves && !ai.animated_water);
     assert_eq!((ai.min_unreachable_count, ai.heuristic), (44, 1.5));
     assert_eq!((ai.max_guests, ai.map_size), (1000, 30));
+    assert_eq!(none.variable_unit_speeds, 1);
+    for (text, want) in [("0", 0), ("-1", -1), ("99999999999", 1_215_752_191)] {
+        let ini = format!("[AI]\nVariableUnitSpeeds={text}\n");
+        assert_eq!(
+            Ai::from_ini(ini.as_bytes()).variable_unit_speeds,
+            want,
+            "{text}"
+        );
+    }
     // 0 would divide by zero: refused. Negative reads as the huge unsigned number.
     assert_eq!(Ai::from_ini(b"[AI]\nmAITick=0\n").ai_tick, 1000);
     assert_eq!(Ai::from_ini(b"[AI]\nmAITick=-1\n").ai_tick, u32::MAX);

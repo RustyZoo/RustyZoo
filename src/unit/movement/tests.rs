@@ -1,6 +1,7 @@
 //! The move on synthetic maps: the worked examples of the spec.
 
 use super::*;
+use crate::guest::ENERGY;
 use crate::sim::Sim;
 use crate::unit::testing::{Walker, centre, entity, world, world_with};
 use crate::zoo::Clocks;
@@ -105,6 +106,55 @@ fn a_guest_takes_the_rate_of_its_offset_and_its_energy() {
     assert_eq!(guest_speed(44, 5, 0, false), 44);
     assert_eq!(guest_speed(0, 0, 100, true), 0);
     assert_eq!(guest_speed(3, 0, -5, true), 0);
+}
+
+/// Guests 1 to 5 and an animal 6 start a move call along a row, each with its offset and energy;
+/// returns the world after one step. The type's slow rate is 20.
+fn call_walk(variable: bool, guests: &[(u32, i32)]) -> World {
+    let mut es: Vec<_> = (0..guests.len())
+        .map(|i| entity("guests", "", i as u32 + 1, centre((2, 3 + 3 * i as i32)), 2))
+        .collect();
+    es.push(entity("animals", "", 99, centre((2, 0)), 2));
+    let mut w = map(es);
+    let row = |y: usize| (2..30).map(|x| tile(x, y)).collect::<Vec<_>>();
+    for (i, &(offset, energy)) in guests.iter().enumerate() {
+        let u = w.units.get_mut(i as u32 + 1).unwrap();
+        if let Part::Guest(g) = &mut u.part {
+            (g.speed_offset, g.values[ENERGY]) = (offset, energy);
+        }
+        (u.path, u.destination) = (
+            row(3 + 3 * i),
+            Some((29 * 64 + 32, 64 * (3 + 3 * i as i32) + 32, 0)),
+        );
+        Walker::new("fWalk(0,0)").start(&mut w, i as u32 + 1);
+    }
+    let u = w.units.get_mut(99).unwrap();
+    (u.path, u.destination) = (row(0), Some((29 * 64 + 32, 32, 0)));
+    Walker::new("fWalk(0,0)").start(&mut w, 99);
+    let mut s = sim();
+    s.ai.variable_unit_speeds = i32::from(variable);
+    step_all(&mut w, &mut s, &[67]);
+    w
+}
+
+#[test]
+fn a_guest_walks_at_its_own_speed_from_its_offset_and_energy() {
+    // Rate 20: 15 + offset, 10 % up from energy 75, 10 % down below 20.
+    let w = call_walk(
+        true,
+        &[(0, 50), (10, 50), (0, 75), (0, 74), (0, 19), (10, 20)],
+    );
+    let speeds: Vec<u32> = (1..=6).map(|id| w.units.get(id).unwrap().speed).collect();
+    assert_eq!(speeds, [15, 25, 16, 15, 13, 25]);
+    // The walk starts in the first step; then 3 and 5 per step of 200 ms of the slow one.
+    let mut w = call_walk(true, &[(0, 50), (10, 50)]);
+    let mut s = sim();
+    step_all(&mut w, &mut s, &[200; 10]);
+    let (slow, quick) = (position(&w, 1).0, position(&w, 2).0);
+    assert_eq!((slow - 160, quick - 160), (9 * 3, 9 * 5));
+    // An animal and a guest with the setting off take the rate as it is.
+    let w = call_walk(false, &[(10, 80), (3, 5)]);
+    assert_eq!([1, 2, 99].map(|id| w.units.get(id).unwrap().speed), [20; 3]);
 }
 
 #[test]

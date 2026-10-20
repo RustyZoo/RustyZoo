@@ -5,7 +5,7 @@
 //! Kept as the original has it: the remainder of the distance is lost at every step (engine issue
 //! 301) and a long diagonal step of a unit that may not go diagonally does not move it (issue 302).
 //! The move call of a behaviour set (8.2) starts a walk with the rate, the animation and the
-//! animation speed of its speed band, and ends it. Entering a tile opens the gate ahead of a unit
+//! animation speed of its speed band, and ends it; a guest walks at its own pace ([`guest_speed`]). Entering a tile opens the gate ahead of a unit
 //! that is not an animal and closes the gate behind it (6.2), and has a swimmer that changes
 //! between land and water pick its move animation again. The gate plays its animation and sound
 //! ([`super::gate`]).
@@ -19,6 +19,7 @@
 use super::{Kind, Part, Unit, swim};
 use crate::behaviour::{Data, Flow, Gait, Number, Target};
 use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::guest::ENERGY;
 use crate::path;
 use crate::render::order::ground_height;
 use crate::sim::Rng;
@@ -389,8 +390,17 @@ pub fn call(
         stop(unit);
         return Flow::Failed;
     }
-    // A guest's own pace (7.2) needs its offset and energy, which the guest issues bring.
-    unit.speed = rate.max(0) as u32;
+    let rate = rate.max(0) as u32;
+    // A guest walks at its own pace (7.2), set when the move starts.
+    unit.speed = match &unit.part {
+        Part::Guest(g) => guest_speed(
+            rate,
+            g.speed_offset,
+            g.values[ENERGY],
+            world.units.variable_speeds,
+        ),
+        _ => rate,
+    };
     unit.walking = true;
     Flow::Running
 }

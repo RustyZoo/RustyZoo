@@ -319,6 +319,9 @@ pub struct Units {
     /// The happiness above which, and the chance in percent with which, a guest that leaves joins
     /// the endowment; set by the step from the economy file.
     pub guest_join: (i32, i32),
+    /// `[AI] VariableUnitSpeeds` is not 0: a guest walks at its own pace (movement 7.2); set by
+    /// the step.
+    pub variable_speeds: bool,
     /// The guests that left and the members that joined during the step, which the step books.
     pub guests_gone: u32,
     pub members_joined: u32,
@@ -366,6 +369,7 @@ impl Default for Units {
             now: 0,
             guest_name: "Guest".into(),
             guest_join: (80, 50),
+            variable_speeds: true,
             guests_gone: 0,
             members_joined: 0,
             views: Default::default(),
