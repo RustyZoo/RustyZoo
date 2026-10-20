@@ -286,3 +286,53 @@ fn the_depth_search_changes_the_level_by_at_most_one_and_stays_in_the_water() {
     let reply = finder.request(&w, &m, tile((5, 4)), false);
     assert!(reply.ok && reply.levels.iter().all(|&l| l == 4));
 }
+
+#[test]
+fn a_keeper_on_a_ladder_is_in_the_ladder_mode_and_kept_between_its_foot_and_its_top() {
+    let mut w = tank_world(5, 4, &[]);
+    let keeper = crate::unit::testing::entity("keeper", "keeper", 9, (0, 0), 0);
+    let id = (w.add(keeper, Some(crate::unit::testing::keeper_shape()))).unwrap();
+    let entities = w.zoo.entities.clone();
+    w.units.sync(&entities);
+    let place = move |w: &mut World, tile: (i32, i32), z: i32| {
+        let at = w.find(id).unwrap();
+        w.place_unit(at, (tile.0 * 64 + 32, tile.1 * 64 + 32, z), 0);
+    };
+    let job = move |w: &mut World, job: u8, target: Option<(i32, i32)>| {
+        let u = w.units.get_mut(id).unwrap();
+        u.goal.record.job = job;
+        if let Part::Staff(s) = &mut u.part {
+            s.target = target.map(tile);
+        }
+    };
+    // The gate of the tank is on the north side of (2, 2): the tile outside is (2, 1). The
+    // outside ladder (jobs 20 and 21, the target tile in the tank) holds the height between the
+    // ground and the top of the wall, 80, and leaves the move kind the job gave (the air, 1).
+    let air = move |w: &mut World| {
+        let at = w.find(id).unwrap();
+        w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 1;
+    };
+    job(&mut w, 20, Some((3, 3)));
+    air(&mut w);
+    place(&mut w, (2, 1), 30);
+    assert_eq!((checked(&mut w, id), height(&w, id)), ((1, 1), 30));
+    place(&mut w, (2, 1), 500);
+    assert_eq!((checked(&mut w, id), height(&w, id)), ((1, 1), 80));
+    // Without the job the tile is plain ground.
+    job(&mut w, 0, Some((3, 3)));
+    assert_eq!(checked(&mut w, id), (0, 2));
+    // The inside ladder (jobs 28 and 29) is on the tile inside the gate, from the floor up.
+    job(&mut w, 29, None);
+    air(&mut w);
+    place(&mut w, (2, 2), -20);
+    assert_eq!((checked(&mut w, id), height(&w, id)), ((1, 1), 0));
+    place(&mut w, (2, 2), 70);
+    assert_eq!((checked(&mut w, id), height(&w, id)), ((1, 1), 70));
+    // With no job a unit at the height of the wall is on the platform; lower it is in the water.
+    job(&mut w, 0, None);
+    place(&mut w, (2, 2), 80);
+    assert_eq!((checked(&mut w, id), height(&w, id)), ((2, 3), 80));
+    place(&mut w, (2, 2), 40);
+    w.units.get_mut(id).unwrap().tank = 0;
+    assert_eq!((checked(&mut w, id), height(&w, id)), ((4, 3), 40));
+}

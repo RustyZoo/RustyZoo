@@ -159,7 +159,7 @@ pub enum Step {
     Removed(Spot, f32),
     /// A wall the wall step built went: the full price of its type comes back, the entity tells
     /// the type.
-    Copied(Spot, Entity),
+    Copied(Spot, Box<Entity>),
     /// A removed object came back; its refund is taken back.
     Back(Spot, f32),
     /// A piece got its old type back; the price of the change comes back.
@@ -772,7 +772,7 @@ impl World {
                         self.shapes.remove(at);
                         self.changed();
                         stale = true;
-                        done.steps.push(Step::Copied(spot, entity));
+                        done.steps.push(Step::Copied(spot, Box::new(entity)));
                     }
                 }
                 Action::Tank { tile, value } => {

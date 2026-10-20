@@ -421,3 +421,89 @@ fn a_repair_with_a_modifier_mends_the_lines_beside_too() {
         assert_eq!(g.lines(&["world fence"]).len(), mended, "{keys}");
     }
 }
+
+/// A tank filter on (10, 5) facing the tile beside it with this health; its type and the shape of
+/// a one-tile object. Its events are due at the first step.
+fn filter(g: &mut Game, health: u32, urgent: bool) -> u32 {
+    let mut e = entity("filter", "filter1", 0, centre((10, 5)), 6);
+    e.subtype = "f".into();
+    e.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
+        health,
+        timers: Some([1_000_000, 1_000_000]),
+    });
+    let shape = crate::world::Shape {
+        kind: crate::render::order::Kind::Fixed,
+        footprint: (1, 1),
+        fence: false,
+        wall: false,
+        gate: false,
+        gated: false,
+        tank: crate::world::TankKind::NONE,
+        walkable: (false, false),
+    };
+    let id = g.w.add(e, Some(shape)).unwrap();
+    let keys = "[Characteristics/Integers]\ncStartingHealth=10\ncDecayedHealth=5\n";
+    g.cat.push(ty("filter", "filter1", "f", keys));
+    // The workers service filters where the marine data is installed (staff 8.1).
+    g.cat.push(ty("keeper", "trainer", "m", ""));
+    let kind = [10035, 10036][usize::from(urgent)];
+    let event = piece_event(id, kind, Game::tile((10, 5)) as u32);
+    g.sim.events.post(event);
+    id
+}
+
+#[test]
+fn a_worker_walks_beside_a_worn_filter_and_services_it() {
+    let mut g = Game::new("");
+    let id = filter(&mut g, 4, false);
+    while !g.jobs().contains(&"FixFilter") && g.log.len() < 100_000 {
+        g.run(1);
+    }
+    // He stands on a side of the filter's tile, not on it.
+    let at = g.w.find(WORKER).unwrap();
+    let c = g.w.zoo.entities[at].common.as_ref().unwrap();
+    let (tile, filter) = ((c.x.div_euclid(64), c.y.div_euclid(64)), (10, 5));
+    assert_eq!(
+        (tile.0 - filter.0).abs() + (tile.1 - filter.1).abs(),
+        1,
+        "{tile:?}"
+    );
+    g.run(1000);
+    // The fence of the map wears meanwhile and has its turn after.
+    assert_eq!(
+        g.jobs()[..3],
+        ["GoToFilter", "FixFilter", "none"],
+        "{:?}",
+        g.lines(&["staff", "world", "unit set"])
+    );
+    // It has its health back, free of charge.
+    let f = g.w.zoo.entities[g.w.find(id).unwrap()]
+        .common
+        .as_ref()
+        .unwrap();
+    assert_eq!(f.filter.unwrap().health, 10);
+    assert!(
+        g.lines(&["world filter"])
+            .iter()
+            .any(|l| l.ends_with("serviced"))
+    );
+    assert!(g.w.units.pool.tasks.iter().all(|t| t.job != 26));
+}
+
+#[test]
+fn a_broken_filter_is_run_to_and_the_duty_switch_keeps_the_others_away() {
+    let mut g = Game::new("");
+    filter(&mut g, 0, true);
+    g.run(1000);
+    assert_eq!(g.jobs()[..2], ["GoToFilter", "FixFilter"]);
+    // Kind 3 is the worker's fourth duty: switched off, the task waits in the pool.
+    let mut g = Game::new("");
+    g.staff(WORKER).off[3] = true;
+    filter(&mut g, 4, false);
+    g.run(400);
+    assert!(!g.jobs().contains(&"GoToFilter"), "{:?}", g.jobs());
+    assert_eq!(
+        g.w.units.pool.tasks.iter().filter(|t| t.job == 26).count(),
+        1
+    );
+}

@@ -4,9 +4,9 @@
 //! animation names (9).
 //!
 //! Kept as the original has it: the segment of the 3D move is as long as its truncated true
-//! length, so a flat diagonal step of a tile takes 90 units. Not here yet: the ladder and the
-//! platform (the marine specialist's), the water mode destination, the amphibious neighbours'
-//! links, and objects that block only some levels of a tank (7.3).
+//! length, so a flat diagonal step of a tile takes 90 units. The marine specialist's ladders and
+//! platform are held by the tank position check (tank staff 3). Not here yet: the water mode
+//! destination and the amphibious neighbours' links.
 
 use super::{Kind, Part, Unit, movement};
 use crate::behaviour::{Place, Target};
@@ -35,7 +35,8 @@ fn diver(unit: &Unit) -> bool {
 }
 
 /// 4: the tank mode and the move kind of the unit at position `at` of the entity list from the
-/// tank it stands in, its height and its type. A unit in a tank with water is under water (4)
+/// tank it stands in (or, on the outside ladder, the tank of a keeper's target), its height and its
+/// type. A unit in a tank with water is under water (4)
 /// below the surface, unless its type stays at the surface, else it is put on the surface (3); a
 /// dry tank holds it on the floor. A change of mode restarts its animation.
 pub fn check(unit: &mut Unit, world: &mut World, at: usize) {

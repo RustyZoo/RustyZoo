@@ -183,7 +183,7 @@ impl Cx<'_, '_> {
     pub(super) fn tank_decide(&mut self, job: u8) {
         let here = self.here_tank();
         match job {
-            TO_OUTSIDE_LADDER => self.to_outside_ladder(),
+            TO_OUTSIDE_LADDER => self.walk_to_outside_ladder(),
             CLIMB_UP_OUTSIDE => {
                 if let Some(l) = self.gate(self.target_tank()) {
                     self.climb(l.out_top, "bClimbUp");
@@ -204,7 +204,7 @@ impl Cx<'_, '_> {
                     self.climb(l.in_surface, "bClimbDown");
                 }
             }
-            TO_INSIDE_LADDER => self.to_inside_ladder(here),
+            TO_INSIDE_LADDER => self.swim_to_inside_ladder(here),
             CLEAN_TANK => self.clean_decide(here, false),
             _ => self.clean_decide(here, true),
         }
@@ -212,7 +212,7 @@ impl Cx<'_, '_> {
 
     /// 4.1 job 22: the way to the tile outside the gate; with none a random walk and the job
     /// stays.
-    fn to_outside_ladder(&mut self) {
+    fn walk_to_outside_ladder(&mut self) {
         let outside = self.gate(self.target_tank()).map(|l| l.outside);
         if outside.is_some_and(|o| self.go_job(o)) {
             return;
@@ -222,7 +222,7 @@ impl Cx<'_, '_> {
 
     /// 4.2 job 23: the way to the tile inside the gate at the water surface, none when he stands
     /// on it.
-    fn to_inside_ladder(&mut self, tank: Option<u32>) {
+    fn swim_to_inside_ladder(&mut self, tank: Option<u32>) {
         let Some(l) = self.gate(tank) else {
             return self.set_job(0, 0, None);
         };

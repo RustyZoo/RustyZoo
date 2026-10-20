@@ -73,6 +73,11 @@ fn shape(e: &Entity) -> Option<Shape> {
     }
 }
 
+/// The shape of a keeper or any other unit.
+pub fn keeper_shape() -> Shape {
+    shape(&entity("keeper", "", 0, (0, 0), 0)).expect("a unit has a shape")
+}
+
 /// A flat `w` by `h` map, all of it inside the zoo, with the entities `edit` makes.
 pub fn world(size: (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
     world_with(size, |zoo| edit(&mut zoo.tiles, &mut zoo.entities))
