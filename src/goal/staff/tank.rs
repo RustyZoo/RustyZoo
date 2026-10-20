@@ -12,6 +12,7 @@ use crate::goal::{DUTIES, EXIT_TANK};
 use crate::path::{self, MAX};
 use crate::staff::ladder::{Ladder, Point};
 use crate::unit::{movement, swim};
+use crate::world::World;
 
 /// The jobs of the tank (goals 5.2).
 pub(super) const CLIMB_UP_OUTSIDE: u8 = 20;
@@ -340,20 +341,14 @@ impl Cx<'_, '_> {
     /// tile of the tank is free. Returns the tile and the level of the pile.
     pub(super) fn tank_food_place(&mut self, x: u32, here: usize) -> Option<(usize, i32)> {
         use crate::panel::exhibit::animals_in;
-        let n = animals_in(self.world, x).len() as u32;
-        if n > 0 {
-            self.ctx.rng.pick(n);
-        }
-        let (tiles, _) = self.lost();
-        let mover = movement::mover(self.unit, self.world, self.at, here);
-        let world = &*self.world;
-        let free = |t: &usize| {
-            !tiles.contains(t)
-                && (0..4).all(|q| world.quadrant(*t, q).is_none())
-                && !world.unit_on(*t)
-                && path::terrain(world, &mover, *t, None) < MAX
-        };
-        let places: Vec<usize> = world.tiles_of(x).into_iter().filter(free).collect();
+        let animals = animals_in(self.world, x);
+        let n = animals.len() as u32;
+        let drawn = (n > 0).then(|| animals[self.ctx.rng.pick(n) as usize]);
+        let (lost, _) = self.lost();
+        // The cost of a tile is the drawn animal's; with none, his own.
+        let mover = food_mover(self.world, drawn)
+            .unwrap_or_else(|| movement::mover(self.unit, self.world, self.at, here));
+        let places = food_places(self.world, x, &mover, &lost);
         let n = places.len() as u32;
         if n == 0 {
             return None;
@@ -371,3 +366,27 @@ impl Cx<'_, '_> {
         Some((tile, self.world.zoo.tiles[tile].elevation + d))
     }
 }
+
+/// The path finder's view of the animal at entity `at`: whose terrain costs choose the place of
+/// the food (5.3).
+fn food_mover(world: &World, at: Option<usize>) -> Option<path::Mover> {
+    let at = at?;
+    let c = world.zoo.entities.get(at)?.common.as_ref()?;
+    let here = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
+    Some(movement::mover(world.units.get(c.id)?, world, at, here))
+}
+
+/// 5.3: the tiles of tank `x` where a pile can go: not listed as lost, with the four quarter
+/// holders and the tile free of units, and open (cost below 20) to the unit of `mover`.
+fn food_places(world: &World, x: u32, mover: &path::Mover, lost: &[usize]) -> Vec<usize> {
+    let free = |t: &usize| {
+        !lost.contains(t)
+            && (0..4).all(|q| world.quadrant(*t, q).is_none())
+            && !world.unit_on(*t)
+            && path::terrain(world, mover, *t, None) < MAX
+    };
+    world.tiles_of(x).into_iter().filter(free).collect()
+}
+
+#[cfg(test)]
+mod tests;
