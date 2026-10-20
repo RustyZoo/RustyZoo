@@ -98,7 +98,7 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// The ladder job `job` runs against the gate of the tank, `None` when it has none.
+    /// The ladders and the platform of the tank, `None` for no tank or no gate.
     fn gate(&self, tank: Option<u32>) -> Option<Ladder> {
         Ladder::of(self.world, tank?)
     }

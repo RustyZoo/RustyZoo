@@ -169,7 +169,7 @@ impl<'c> Cx<'_, 'c> {
         if there.is_none() || there != self.tile() {
             return;
         }
-        // A tank is served from the tile outside its gate (point "Check done").
+        // A tank is served from the tile outside its gate (staff 7.4, check done).
         let gate = service::gate_tiles(self.world, x).map(|g| g.1);
         let at_gate = self.world.tank(x).is_some() && gate == self.tile();
         if self.exhibit() == Some(x) || at_gate {
