@@ -859,14 +859,29 @@ check base-trial "mates:3;birth@5199;young:2" "lion_birth maps/scn01a.zoo 45,37 
 # the best of spirits every 30 steps, as a good exhibit would. Steps of 200 ms. Prints the step of
 # the first clutch, the number of eggs, and the step of the first hatching, which waits for a
 # keeper to heal the egg (an untended egg is below its hit points when its time is up).
+egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first new id> <last step>
+  { printf '0 remove %s\n0 remove %s\n1 animal velocira 23,27 male\n1 animal velocira 30,27 female\n' "$2" "$3"
+    for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
+}
+# A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
+# random stream: the seed (2) is the first that gives a clutch and a hatching in these 4500 steps.
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
-  { printf '0 remove %s\n0 remove %s\n1 animal velocira 23,27 male\n1 animal velocira 30,27 female\n' "$2" "$3"
-    for s in $(seq 5 30 4500); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$d/script"
-  rz sim "$1" --ticks 4500 --dt 200 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  egg_script "$d/script" "$2" "$3" "$4" 4500
+  rz sim "$1" --ticks 4500 --dt 200 --seed 2 --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@3341;eggs:3;hatch@3997" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@1401;eggs:3;hatch@2028" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+# Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
+egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
+  d=$(mktemp -d)
+  egg_script "$d/script" "$2" "$3" "$4" 100
+  for seed in 1 2 3 4; do
+    rz sim "$1" --ticks 100 --dt 200 --seed $seed --script "$d/script" --log 2>/dev/null | grep -c ' animal mate '
+  done | paste -sd, -
+  rm -rf "$d"
+}
+check expansion-trial "1,1,1,1" "egg_mates maps/scn19.zoo 51757 51758 53931"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).

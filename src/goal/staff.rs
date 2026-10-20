@@ -456,8 +456,8 @@ impl<'c> Cx<'_, 'c> {
         who.is_some_and(|w| service::is_dung(self.world, self.ctx.cat, w, t))
     }
 
-    /// He turns towards tile `t` (the direction of the eight nearest to it).
-    fn face(&mut self, t: usize) {
+    /// The unit turns towards tile `t` (the direction of the eight nearest to it).
+    pub(super) fn face(&mut self, t: usize) {
         let (Some(here), w) = (self.tile(), self.world.zoo.width as i32) else {
             return;
         };

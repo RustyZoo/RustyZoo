@@ -47,14 +47,15 @@ pub(super) fn sim() -> Sim {
     sim
 }
 
-/// A guest type whose sets `bWalk`, `bEatStanding` and `bSick` end at once and whose set `bGawk` never
+/// A guest type whose sets `bWalk`, `bEatStanding`, and `bSick` end at once, the sets `bGawkObject1` to `6` end at once without moving and whose set `bGawk` never
 /// does.
-pub(super) struct Walks(Vec<Call>, Vec<Call>);
+pub(super) struct Walks(Vec<Call>, Vec<Call>, Vec<Call>);
 
 impl Data for Walks {
     fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
         match name {
             "bWalk" | "bEatStanding" | "bSick" => Some(&self.0[..]),
+            n if n.starts_with("bGawkObject") => Some(&self.2[..]),
             "bGawk" => Some(&self.1[..]),
             _ => None,
         }
@@ -79,7 +80,11 @@ impl Data for Walks {
 
 pub(super) fn walks() -> Walks {
     let call = |text: &[u8]| parse_call(text).unwrap().0;
-    Walks(vec![call(b"fWalk(0,0)")], vec![call(b"fKeepControl()")])
+    Walks(
+        vec![call(b"fWalk(0,0)")],
+        vec![call(b"fKeepControl()")],
+        vec![call(b"fFaceTowardTarget()")],
+    )
 }
 
 /// Runs `n` steps with the cash `money`; the `unit` and `guest` lines.
@@ -312,7 +317,15 @@ fn types_with(man: &str) -> Catalogue {
 /// A zebra pen round (2, 5) with a path beside it along x = 5 and guest 1 at (8, 2), whose
 /// countdowns are far from firing.
 fn visit(happiness: i32) -> World {
+    visit_with(happiness, &[])
+}
+
+/// The same with more entities, as (class, type, id, tile).
+fn visit_with(happiness: i32, more: &[(&str, &str, u32, (i32, i32))]) -> World {
     let mut w = world_with((10, 10), |zoo| {
+        for &(class, name, id, at) in more {
+            zoo.entities.push(entity(class, name, id, centre(at), 0));
+        }
         zoo.entrance = (9, 5);
         zoo.entities
             .push(entity("guests", "man", 1, centre((8, 2)), 0));
@@ -586,4 +599,195 @@ fn a_guest_that_feels_sick_draws_its_chance_is_sick_on_the_spot_and_wanders_on()
     assert!(still);
     let (log, _) = sick(0);
     assert!(!log.iter().any(|l| l.contains("sick")), "{log:?}");
+}
+
+/// The catalogue of `types()` with a statue of weight 60 whose bonus gives the man (9503) 8, and
+/// two thoughts.
+fn statued() -> Catalogue {
+    let man = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\ncLeaveChanceDone=0\n";
+    let mut cat = types_with(man);
+    cat.push(crate::entity::EntityType {
+        class: "building",
+        type_name: b"statue".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(
+                b"[Characteristics/Integers]\ncEstheticWeight=60\ncHelpID=70\n\
+                  cUsedThought=10593\ncUsedThought=10594\n[EstheticBonus]\nv=9503\nv=8\n",
+            )
+            .unwrap(),
+        )),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    cat
+}
+
+/// Visit world with the zebra pen seen already (the guest's seen list holds its tile) and a statue
+/// at (7, 7).
+fn statue_visit() -> World {
+    let mut w = visit_with(50, &[("building", "statue", 50, (7, 7))]);
+    let pen = w.tile_index(2, 5).unwrap();
+    if let Some(Part::Guest(g)) = w.units.get_mut(1).map(|u| &mut u.part) {
+        g.seen = vec![pen];
+    }
+    w
+}
+
+#[test]
+fn a_guest_walks_to_scenery_beside_it_gawks_at_it_thinks_and_has_seen_it() {
+    let mut w = statue_visit();
+    let log = visit_run_in(&statued(), &mut w, 500);
+    let at = |text: &str| log.iter().position(|l| l.starts_with(text));
+    let order: Vec<_> = [
+        "goal 1 site 4",
+        "goal 1 scenery 0 50 ",
+        "goal 1 doscenery 0 50 -",
+        "set 1 bGawkObject3",
+        "guest thought 1 1059",
+        "goal 1 none",
+    ]
+    .iter()
+    .map(|t| at(t))
+    .collect();
+    assert!(
+        order.iter().all(Option::is_some) && order.is_sorted(),
+        "{order:?} {log:?}"
+    );
+    // It stands on a tile beside the statue, and the statue is in its seen list now.
+    let line = &log[order[1].unwrap()];
+    let place: Vec<i32> = (line.rsplit(' ').next().unwrap().split(','))
+        .map(|n| n.parse().unwrap())
+        .collect();
+    let (dx, dy) = ((place[0] - 7).abs(), (place[1] - 7).abs());
+    assert!(dx.max(dy) == 1, "{line}");
+    assert!(
+        log.contains(&format!("tile 1 {},{}", place[0], place[1])),
+        "{log:?}"
+    );
+    let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+        panic!("a guest");
+    };
+    assert!(g.seen.contains(&w.tile_index(7, 7).unwrap()));
+    // One thought, and nothing is viewed at an exhibit.
+    assert_eq!(
+        log.iter()
+            .filter(|l| l.starts_with("guest thought 1 1059"))
+            .count(),
+        1
+    );
+    assert!(!log.iter().any(|l| l.starts_with("guest view")), "{log:?}");
+}
+
+#[test]
+fn the_choice_between_the_exhibit_and_the_scenery_is_one_draw_over_their_sites() {
+    // One exhibit, the statue: weight 60 is one site. The guest has seen nothing.
+    let (cat, walks) = (statued(), walks());
+    let mut w = visit_with(50, &[("building", "statue", 50, (7, 7))]);
+    crate::guest::gawk::update(&mut w, &cat);
+    let mut rng = Rng::default();
+    let mut by_hand = Rng::default();
+    let r = by_hand.pick(2);
+    with_cx_in(&cat, &walks, &mut w, &mut rng, |cx| cx.site_decide());
+    let task = w.units.get(1).unwrap().goal.record.task;
+    // r < H = 1 is the exhibit (task 0x65); else the scenery (0x80).
+    assert_eq!(task, if r < 1 { 101 } else { 128 }, "{r}");
+}
+
+#[test]
+fn scenery_that_is_gone_ends_the_walk_and_cannot_be_gawked_at() {
+    let cat = statued();
+    let mut w = statue_visit();
+    let (mut s, mut money) = (sim(), Money::default());
+    let mut log = Vec::new();
+    for n in 0..120 {
+        if n == 30 {
+            assert!(w.remove(50));
+        }
+        s.step_game(&walks(), &cat, &mut w, &mut money, 67, |_, _, _| {});
+        log.extend(w.units.take_lines());
+    }
+    let at = |text: &str| log.iter().position(|l| l.starts_with(text));
+    assert!(at("goal 1 scenery 0 50 ").is_some(), "{log:?}");
+    assert!(at("goal 1 none").is_some() && at("goal 1 doscenery").is_none());
+    // The init of the gawk refuses an object that is gone, and no thought is given.
+    let (mut w, mut rng) = (statue_visit(), Rng::default());
+    w.units.get_mut(1).unwrap().goal.record.target.id = 999;
+    assert!(!with_cx_in(&cat, &walks(), &mut w, &mut rng, |cx| cx.do_scenery_init()));
+    assert_eq!(rng.state(), Rng::default().state());
+    assert!(w.units.take_guest_lines().is_empty());
+}
+
+/// A stream whose next `pick(n)` gives `v`, and the stream after that draw.
+fn stream_giving(n: u32, v: u32) -> (Rng, Rng) {
+    let mut rng = Rng::default();
+    loop {
+        let mut next = rng.clone();
+        if next.pick(n) == v {
+            return (rng, next);
+        }
+        rng.rand();
+    }
+}
+
+/// Runs the scenery choice of guest 1 in `w` with `rng`; the task and the target tile it took.
+fn scenery_choice(w: &mut World, rng: &mut Rng) -> (u8, Option<usize>) {
+    let cat = statued();
+    crate::guest::gawk::update(w, &cat);
+    let list: Vec<_> = w.units.gawk.members().copied().collect();
+    let here = w.tile_index(8, 2).unwrap();
+    with_cx_in(&cat, &walks(), w, rng, |cx| cx.scenery_decide(&list, here));
+    let r = &w.units.get(1).unwrap().goal.record;
+    (r.task, r.target.tile)
+}
+
+#[test]
+fn a_guest_draws_its_viewing_tile_among_the_ring_tiles_that_have_a_path() {
+    let tile = |w: &World, x, y| w.tile_index(x, y).unwrap();
+    // The statue at (7, 7); paths on (6, 7), (7, 8) and (8, 6) of its ring, listed x outer.
+    let paths = [
+        ("paths", "stone", 60, (6, 7)),
+        ("paths", "stone", 61, (7, 8)),
+    ];
+    let more = [paths[0], paths[1], ("paths", "stone", 62, (8, 6))];
+    let with = |extra: &[(&str, &str, u32, (i32, i32))]| {
+        let mut all = vec![("building", "statue", 50, (7, 7))];
+        all.extend_from_slice(extra);
+        visit_with(50, &all)
+    };
+    let seen = |w: &mut World| {
+        let pen = w.tile_index(2, 5).unwrap();
+        if let Some(Part::Guest(g)) = w.units.get_mut(1).map(|u| &mut u.part) {
+            g.seen = vec![pen];
+        }
+    };
+    // The first and the last candidate of the list with a path, by the first and last draw; one
+    // draw is spent each time, and the stream is then exactly one pick further.
+    for (v, (x, y)) in [(0, (6, 7)), (1, (7, 8)), (2, (8, 6))] {
+        let (mut rng, after) = stream_giving(3, v);
+        let mut w = with(&more);
+        seen(&mut w);
+        let (task, target) = scenery_choice(&mut w, &mut rng);
+        assert_eq!((task, target), (128, Some(tile(&w, x, y))), "draw {v}");
+        assert_eq!(rng, after, "one draw");
+    }
+    // No path on the ring: the draw is over all eight tiles (the first (6, 6), the last (8, 8)).
+    for (v, (x, y)) in [(0, (6, 6)), (7, (8, 8)), (4, (7, 8))] {
+        let (mut rng, after) = stream_giving(8, v);
+        let mut w = with(&[]);
+        seen(&mut w);
+        let (task, target) = scenery_choice(&mut w, &mut rng);
+        assert_eq!((task, target), (128, Some(tile(&w, x, y))), "draw {v}");
+        assert_eq!(rng, after);
+    }
+    // The drawn tile has no way to it (a pillar of rock): the draw is spent, nothing else
+    // happens and no other tile is tried.
+    let mut w = with(&[]);
+    seen(&mut w);
+    assert!(w.set_tile(6, 6, 30, 0, 0));
+    let (mut rng, after) = stream_giving(8, 0);
+    assert_eq!(scenery_choice(&mut w, &mut rng), (0, None));
+    assert_eq!(rng, after);
 }
