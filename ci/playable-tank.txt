@@ -15,7 +15,7 @@
 #expect 1 exhibit gate [0-9]+
 #expect 2 unit add [0-9]+ animal
 #expect 1 unit add [0-9]+ keeper
-#expect 1 tool assign [0-9]+ [0-9]+
+#expect 2 tool assign [0-9]+ [0-9]+
 #expect 1 unit add [0-9]+ worker
 #expect 1 unit add [0-9]+ guide
 #expect 1 exhibit tank [0-9]+
