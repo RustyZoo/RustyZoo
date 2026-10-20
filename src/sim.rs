@@ -425,7 +425,7 @@ impl Sim {
             world.unrecorded(|w| w.remove(id));
         }
         for id in std::mem::take(&mut self.bulldozed) {
-            world.remove(id);
+            world.remove_filter(cat, id);
         }
         world.units.ai_ticks = self.ai_ticks;
         let settings = &self.status.settings;

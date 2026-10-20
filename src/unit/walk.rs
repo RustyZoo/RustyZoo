@@ -138,6 +138,17 @@ impl Walk<'_> {
         }
         // The level belongs to the picked destination only.
         self.goal = None;
+        let found = self.fallbacks();
+        if found {
+            // The first search of the fallbacks replaces a tile the pick sent the animal to (tank
+            // fauna 6.1); the send stands only when none succeeds.
+            self.unit.sent = None;
+        }
+        found
+    }
+
+    /// 3 to 5, the fallbacks of the random walk.
+    fn fallbacks(&mut self) -> bool {
         // 3: the ring again, with the lenient tile test and without the path tile test.
         let (tx, ty) = self.xy(self.here);
         let (rx, ry) = self.ring();

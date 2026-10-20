@@ -11,7 +11,7 @@ use super::{Shape, TankKind, World, piece_event};
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::BUILDING_UPKEEP;
-use crate::place::bulldozer::type_of;
+use crate::place::bulldozer::{refund, type_of};
 use crate::render::order::Kind;
 use crate::zoo::{Common, Entity, Event, Filter};
 
@@ -319,6 +319,18 @@ impl World {
             c.filter = Some(f);
         }
         (events, None)
+    }
+
+    /// Removes the flooded or doubled filter with this id (tank staff 7.3): nothing is refunded,
+    /// but the undo action records its sell price of the moment, which an undo takes back
+    /// (placing 8, kind 2). Whether there was such a filter.
+    pub fn remove_filter(&mut self, cat: &Catalogue, id: u32) -> bool {
+        let price = (self.find(id)).map(|at| refund(cat, &self.zoo.entities[at]));
+        let gone = self.remove(id);
+        if let Some(price) = price.filter(|_| gone) {
+            self.priced(price);
+        }
+        gone
     }
 
     /// The filter with this id is serviced (tank staff 7.6): its health is the starting health.

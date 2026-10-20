@@ -259,6 +259,31 @@ fn a_doubled_or_flooded_filter_is_removed_at_its_update_and_does_nothing_more() 
 }
 
 #[test]
+fn undoing_the_removal_of_a_flooded_filter_takes_back_its_sell_price_of_the_moment() {
+    use crate::world::Step;
+    // Cost 100: sold for 80 healthy, 40 decayed (5 or below), 0 broken.
+    let keys = "cPurchaseCost=100\ncDecayedHealth=5";
+    for (health, price) in [(10, 80.0), (5, 40.0), (0, 0.0)] {
+        let (mut world, cat, at) = filtered(health, [200_000, 0], keys);
+        let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+        assert!(world.remove_filter(&cat, id));
+        let undone = world.undo();
+        let prices: Vec<f32> = (undone.steps.iter())
+            .filter_map(|s| match s {
+                Step::Back(_, p) => Some(*p),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(prices, [price], "{health}");
+    }
+    assert!(
+        !filtered(10, [1, 1], keys)
+            .0
+            .remove_filter(&Catalogue::default(), 9999)
+    );
+}
+
+#[test]
 fn a_loaded_filter_that_is_decayed_or_broken_posts_its_event_again() {
     let kinds = |health| {
         let (world, cat, _) = filtered(health, [1, 1], KEYS);

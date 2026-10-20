@@ -315,17 +315,11 @@ fn a_terrain_mode_with_no_tile_changes_and_sends_the_animal_to_a_tile_of_its_new
     let sent = |w: &mut World, id: u32| w.units.get_mut(id).unwrap().sent.take();
     // The tank from (2, 2) and the land exhibit from (6, 2) beside it, linked; no water.
     let mut w = amphibious_world(2, &[(1, "fish", (3, 3)), (2, "fish", (7, 3))]);
-    let land = w.exhibits().region(tile_of(&w, (7, 3))).unwrap();
-    let dry = w.tiles_of(land);
-    // In the water mode in the tank: no water tile, so the land mode, and one draw sends the
-    // animal to a tile of the land exhibit, which is the tank's neighbour.
+    // In the water mode in the tank: no water tile, so the land mode; a send is made, which the
+    // fallbacks of the walk replace (the next test).
     set(&mut w, 1, 1, true, true);
     walk(&mut w, 1, 7);
     assert_eq!(terrain(&w, 1), 0);
-    assert_eq!(
-        sent(&mut w, 1),
-        Some(dry[rng(7).pick(dry.len() as u32) as usize])
-    );
     // Already in the land mode: nothing changes, nothing is sent.
     set(&mut w, 1, 0, false, false);
     walk(&mut w, 1, 7);
@@ -360,4 +354,28 @@ fn a_terrain_mode_with_no_tile_changes_and_sends_the_animal_to_a_tile_of_its_new
     set(&mut w, 1, 0, true, false);
     walk(&mut w, 1, 7);
     assert_eq!((terrain(&w, 1), sent(&mut w, 1)), (1, None));
+}
+
+#[test]
+fn a_send_by_the_random_walk_gives_way_to_its_fallbacks() {
+    use crate::unit::testing::amphibious_world;
+    // The tank and the land exhibit beside it, linked; no water.
+    let mut w = amphibious_world(2, &[(1, "fish", (3, 3)), (2, "fish", (7, 3))]);
+    let here = tile_of(&w, (3, 3));
+    let set = |w: &mut World| {
+        let u = w.units.get_mut(1).unwrap();
+        (u.mover.swims, u.mover.underwater, u.path) = (true, true, Vec::new());
+        if let Part::Animal(a) = &mut u.part {
+            a.terrain = 1;
+        }
+    };
+    // The water mode with no water tile: the pick draws a land tile to send the animal to; the
+    // first successful search of the fallbacks sets the path instead, and nothing is sent.
+    set(&mut w);
+    let (ok, _) = walk(&mut w, 1, 7);
+    let u = w.units.get(1).unwrap();
+    assert!(ok && u.sent.is_none());
+    // In the water mode the lenient tile test refuses the tank's tiles and the land beside it:
+    // the walk ends on the last fallback, from here to here.
+    assert_eq!(u.path, vec![here]);
 }
