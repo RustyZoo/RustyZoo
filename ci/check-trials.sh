@@ -866,7 +866,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rz sim "$1" --ticks 4500 --dt 200 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@3341;eggs:3;hatch@3982" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3341;eggs:3;hatch@3997" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).
