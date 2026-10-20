@@ -33,7 +33,7 @@ Press pause again and let the game run. A month of 28 to 31 days at 12 s a day l
 
 ## The tank (expansion trial)
 
-The first tab of the construction panel lists the tank filter and the tank walls before the fences. Drag a wall along four sides like a fence; the closed area becomes a tank, filled with water at once when the game is paused. Adopt two manta rays on the water, hire a marine specialist and a tour guide and assign them to the tank as above, and let the game run for three months. The tank filter cannot be placed yet (issue 471).
+The first tab of the construction panel lists the tank filter and the tank walls before the fences. Drag a wall along four sides like a fence; the closed area becomes a tank, filled with water at once when the game is paused. Adopt two manta rays on the water, hire a marine specialist and a tour guide and assign them to the tank as above. Put a tank filter beside the tank (the first item of the tab: off the tank, next to a tank tile), and give the rays rocks and plants: their foliage and rocks tabs list the underwater ones further down. A bare tank does not suit the rays (they want plants on about a fifth of its tiles and rocks on about a seventh of its slots). Let the game run for three months.
 
 ## The log
 
