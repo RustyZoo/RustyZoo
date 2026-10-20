@@ -154,6 +154,8 @@ pub struct AnimalRecord {
     pub female: bool,
     /// The counters of the checks in the order of the animal module's indices.
     pub counters: [Option<i32>; 16],
+    /// The breath, as saved (tank fauna 10.1): only from version 87, `None` before.
+    pub breath: Option<i32>,
     pub at_minimum_health: bool,
     pub very_unhappy: bool,
     pub keeper_visited: bool,

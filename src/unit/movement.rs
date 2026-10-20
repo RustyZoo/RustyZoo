@@ -459,6 +459,17 @@ fn allowed(unit: &Unit, world: &World, at: usize, here: usize, next: usize) -> b
     if world.neighbour(here, d) != Some(next) {
         return false;
     }
+    // A step from the land into a tank is asked the elevation test of its two heights, the
+    // unit's own and the one of the next node (movement 4.7, tank fauna 7.1).
+    if world.tank_at(next).is_some() {
+        let (level, zb) = (
+            point(world, at).map(|p| p.2.div_euclid(16)),
+            unit.levels.get(1),
+        );
+        return level
+            .zip(zb)
+            .is_some_and(|(za, &zb)| allowed_deep(unit, world, at, ((here, za), (next, zb)), d));
+    }
     let mover = mover(unit, world, at, here);
     path::allowed(
         world,

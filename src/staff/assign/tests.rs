@@ -300,10 +300,12 @@ fn his_dung_in_a_centre_slot_and_an_amphibious_neighbour_are_reasons_to_go() {
     // An amphibious animal in a neighbour counts whatever `kindOnly` says, with `checkKind` only.
     w.remove(off);
     w.remove(centre.unwrap());
-    w.exhibits_mut().get_mut(empty).unwrap().amphibious = vec![small];
     w.add(entity("animals", "zebra", (4, 1), 0, 302), None);
+    // Edits make the links again, so the link is set after them.
+    w.exhibits_mut().get_mut(empty).unwrap().amphibious = vec![small];
     assert_eq!(code(&w, (true, true)), 2, "a zebra is no amphibious animal");
     w.add(entity("animals", "frog", (4, 1), 0, 303), None);
+    w.exhibits_mut().get_mut(empty).unwrap().amphibious = vec![small];
     assert_eq!(
         [(true, true), (false, true), (true, false)].map(|f| code(&w, f)),
         [0, 0, 2]

@@ -523,6 +523,7 @@ impl World {
         if !quiet {
             self.merge_tanks(&old, &lost);
         }
+        self.relink();
         let Some((a, d)) = hint.filter(|_| !quiet) else {
             return;
         };

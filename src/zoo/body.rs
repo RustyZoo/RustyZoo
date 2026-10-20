@@ -234,8 +234,9 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
         egg = r.u8()? != 0;
         r.skip(4)?;
     }
+    let mut breath = None;
     if v >= 87 {
-        r.skip(4)?;
+        breath = Some(r.i32()?);
         c[1] = Some(r.i32()?);
     }
     if v >= 101 {
@@ -249,6 +250,7 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
         dung,
         female,
         counters: c,
+        breath,
         at_minimum_health,
         very_unhappy,
         keeper_visited,

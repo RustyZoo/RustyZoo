@@ -35,8 +35,8 @@ pub struct Exhibit {
     /// The milliseconds the water of a tank has held its purity (exhibits and money 3.10).
     pub purity_ms: u32,
     /// The exhibits it is linked to as amphibious neighbours, in the order they became so
-    /// (tank fauna 12); the company checks count their animals and tiles with its own. Nothing
-    /// makes the links yet.
+    /// (tank fauna 12); the company checks count their animals and tiles with its own. The world
+    /// makes them again after each edit (`World::relink`).
     pub amphibious: Vec<u32>,
     /// Its records, species list and timers (habitat rating).
     pub rating: rating::State,

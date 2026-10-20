@@ -800,6 +800,8 @@ impl Hooks for Standard<'_> {
         let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
         let key = (!took && !egg).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
+        // The terrain mode follows the animal where an ambient set is chosen (tank fauna 9.4).
+        let choosing = key.is_some() && !unit.runner.running() && unit.runner.queued().is_none();
         let record = &unit.goal.record;
         unit.runner.talking =
             unit.kind == Kind::Guide && record.task == crate::goal::TALK && !record.done;
@@ -809,6 +811,9 @@ impl Hooks for Standard<'_> {
             rng: ctx.rng,
         };
         unit.runner.step(&mut unit.animation, &mut env, key);
+        if choosing {
+            swim::add_to_map(unit, world, at);
+        }
         // A move call is the unit's to run (movement 8.2); when it is done the set goes on in
         // the same step.
         let mut moved = false;
@@ -866,6 +871,7 @@ impl Hooks for Standard<'_> {
         if asked {
             if !crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data) {
                 let key = ambient_key(unit);
+                let choosing = !unit.runner.running() && unit.runner.queued().is_none();
                 unit.runner.place = swim::place(unit, world, at);
                 let mut env = Env {
                     data: self.data,
@@ -873,8 +879,10 @@ impl Hooks for Standard<'_> {
                     rng: ctx.rng,
                 };
                 unit.runner.ambient(&mut unit.animation, &mut env, key);
+                if choosing {
+                    swim::add_to_map(unit, world, at);
+                }
             }
-            swim::add_to_map(unit, world, at);
             self.tell(unit, world, at);
         }
     }

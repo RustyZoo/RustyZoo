@@ -5,8 +5,9 @@
 //!
 //! Kept as the original has it: the segment of the 3D move is as long as its truncated true
 //! length, so a flat diagonal step of a tile takes 90 units. The marine specialist's ladders and
-//! platform are held by the tank position check (tank staff 3). Not here yet: the water mode
-//! destination and the amphibious neighbours' links.
+//! platform are held by the tank position check (tank staff 3). The terrain mode of an animal
+//! follows where it stands whenever an ambient set is chosen (9.4); the water check changes it and
+//! sends the animal ([`crate::animal::tank::switch`]).
 
 use super::{Kind, Part, Unit, movement};
 use crate::behaviour::{Place, Target};

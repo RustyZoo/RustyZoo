@@ -10,6 +10,7 @@ use crate::zoo::{Clocks, Common, Tile, View, Zoo};
 
 mod breed;
 mod life;
+mod tank;
 
 fn keys() -> Keys {
     Keys::read(&|_, fallback| fallback, &Class::default())
@@ -564,6 +565,7 @@ fn record() -> AnimalRecord {
         dung: 3,
         female: true,
         counters,
+        breath: None,
         at_minimum_health: false,
         very_unhappy: false,
         keeper_visited: false,
@@ -846,6 +848,35 @@ fn a_rampage_draws_nothing_while_it_lasts() {
     let mut rng = Rng::default();
     super::run(&mut a, &k, &class, &env, &mut rng);
     assert!(drew(&rng, 0) && !a.thirsty && a.counters[BORED] == class.periods[BORED] - 1);
+}
+
+#[test]
+fn a_loaded_animal_keeps_the_breath_of_its_record() {
+    let cat = zebras();
+    let breath = |saved: Option<i32>| {
+        let mut world = pens();
+        for e in &mut world.zoo.entities {
+            if e.class == "animals" {
+                e.common.as_mut().unwrap().animal = Some(Box::new(AnimalRecord {
+                    breath: saved,
+                    ..record()
+                }));
+            }
+        }
+        let mut sim = Sim::new(b"");
+        sim.set_seed(1);
+        sim.start_game(64, Clocks::default());
+        sim.load(&mut world, &cat);
+        let Part::Animal(a) = &world.units.get(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        a.breath
+    };
+    // Saved as is (not cut to 0..100); a record without it (before version 87) keeps 0.
+    assert_eq!(
+        (breath(Some(20)), breath(Some(250)), breath(None)),
+        (20, 250, 0)
+    );
 }
 
 #[test]

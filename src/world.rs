@@ -15,6 +15,7 @@ use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
+mod amphibious;
 mod exhibit;
 mod filter;
 mod tank;
@@ -211,6 +212,8 @@ pub struct World {
     water: Vec<bool>,
     /// The numbers that make a new tank.
     tank_config: TankConfig,
+    /// The ids of the wall pieces that link amphibious neighbours (tank fauna 12), sorted.
+    connectors: Vec<u32>,
     /// The bounds of the interval a fence piece made healthy draws.
     decay: Decay,
     undo: Vec<Action>,
@@ -238,6 +241,7 @@ impl World {
             words: ["Exhibit".into(), "Tank".into(), "Show Tank".into()],
             water: Vec::new(),
             tank_config: TankConfig::default(),
+            connectors: Vec::new(),
             decay: Decay::default(),
             zoo,
             units: Units::default(),
@@ -255,6 +259,7 @@ impl World {
         world.load_gates();
         world.load_tanks();
         world.retank(false);
+        world.relink();
         world.walk_loaded();
         world.units.sync(&world.zoo.entities);
         world.dirty = false;
@@ -1074,6 +1079,7 @@ impl World {
         self.units.sync(&self.zoo.entities);
         self.dirty = true;
         self.edits += 1;
+        self.relink();
     }
 
     /// The objects standing on tile `t` take their height from the ground again (not the ones
