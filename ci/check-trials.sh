@@ -516,7 +516,7 @@ pending_object() { # pending_object <map> <script>
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;b96f4eb79b9f987f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;061dde0b578c0cf3" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;084d3d0def26a597" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;9eceb1d94994347f" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
