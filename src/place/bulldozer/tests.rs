@@ -57,6 +57,7 @@ fn catalogue() -> Catalogue {
     cat.push(ty("objects", "other", "trash", "", [1, 1, 1]));
     let keeper = "[m/Characteristics/Integers]\ncPurchaseCost=800\ncMonthlyCost=650.5\n";
     cat.push(ty("keeper", "keeper", "m", keeper, [1, 1, 1]));
+    cat.push(ty("filter", "filter1", "f", &cost(200), [2, 2, 1]));
     cat
 }
 
@@ -192,6 +193,27 @@ fn the_refund_is_80_percent_and_a_fence_gets_less_as_it_decays() {
     assert_eq!(refund(&cat, &fence), 0.0);
     // An unknown type refunds nothing.
     assert_eq!(refund(&cat, &entity("objects", "ghost", "", 0, 0, 0)), 0.0);
+}
+
+#[test]
+fn a_tank_filter_sells_for_less_once_decayed_and_for_nothing_broken() {
+    let cat = catalogue();
+    let mut filter = entity("filter", "filter1", "f", 0, 0, 0);
+    // No record of its health: as new.
+    assert_eq!(refund(&cat, &filter), 160.0);
+    // Above cDecayedHealth (5 without the key): 80 %; at it and below: 40 %; broken: nothing.
+    for (health, price) in [(10, 160.0), (6, 160.0), (5, 80.0), (1, 80.0), (0, 0.0)] {
+        filter.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
+            health,
+            timers: None,
+        });
+        assert_eq!(refund(&cat, &filter), price, "health {health}");
+    }
+    filter.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
+        health: u32::MAX,
+        timers: None,
+    });
+    assert_eq!(refund(&cat, &filter), 160.0);
 }
 
 #[test]

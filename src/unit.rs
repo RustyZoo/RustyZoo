@@ -187,6 +187,9 @@ pub struct Unit {
     /// The next tile step was refused: the goal has to give up (movement 4.7). The goals read
     /// and clear it.
     pub aborted: bool,
+    /// The tile a change of the terrain mode by the random walk sends the animal to (tank fauna
+    /// 5), for its turn to act on once the walk is over.
+    pub sent: Option<usize>,
     /// What the costs of the path finder read of the unit's type; its tile is set for each use.
     pub mover: Mover,
     /// The animation the unit holds.
@@ -244,6 +247,7 @@ impl Unit {
             gate: None,
             through_building: false,
             aborted: false,
+            sent: None,
             mover: Mover::new(kind.mover(), None),
             animation: Animation::default(),
             runner: Runner::default(),
@@ -800,6 +804,7 @@ impl Hooks for Standard<'_> {
         let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
         let key = (!took && !egg).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
+        swim::nesting(unit, world, at);
         // The terrain mode follows the animal where an ambient set is chosen (tank fauna 9.4).
         let choosing = key.is_some() && !unit.runner.running() && unit.runner.queued().is_none();
         let record = &unit.goal.record;
@@ -834,6 +839,9 @@ impl Hooks for Standard<'_> {
         // Another set took the place of the move call: the walk ends.
         if unit.walking && !moved {
             movement::stop(unit);
+        }
+        if let Some(to) = unit.sent.take() {
+            crate::goal::send(unit, world, ctx, at, self.data, to);
         }
         if unit.runner.take_face() {
             crate::animal::food::face(unit, world, at);
@@ -873,6 +881,7 @@ impl Hooks for Standard<'_> {
                 let key = ambient_key(unit);
                 let choosing = !unit.runner.running() && unit.runner.queued().is_none();
                 unit.runner.place = swim::place(unit, world, at);
+                swim::nesting(unit, world, at);
                 let mut env = Env {
                     data: self.data,
                     unit: &world.zoo.entities[at],

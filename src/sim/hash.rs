@@ -190,6 +190,7 @@ impl Fnv {
             self.i32(t.platform.0);
             self.i32(t.platform.1);
             self.u32(x.purity_ms);
+            self.option(x.filter);
         }
         self.len(x.amphibious.len());
         for &n in &x.amphibious {
@@ -315,6 +316,10 @@ impl Fnv {
         }
         self.len(sim.removals.len());
         for &id in &sim.removals {
+            self.u32(id);
+        }
+        self.len(sim.bulldozed.len());
+        for &id in &sim.bulldozed {
             self.u32(id);
         }
         let [current, next] = sim.events.buffers();

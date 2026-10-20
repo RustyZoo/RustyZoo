@@ -893,7 +893,11 @@ impl Cx<'_, '_> {
             return;
         }
         self.unit.path.clear();
-        if !walk::random_walk(self.unit, self.world, self.ctx.rng, self.at) {
+        let walked = walk::random_walk(self.unit, self.world, self.ctx.rng, self.at);
+        if let Some(to) = self.unit.sent.take() {
+            return self.send_to(to);
+        }
+        if !walked {
             return;
         }
         if !job && self.unit.kind == Kind::Animal {

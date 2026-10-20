@@ -1511,7 +1511,7 @@ pub(crate) fn member(ty: &EntityType, name: &str) -> bool {
 
 /// What the type says about tanks: a tank wall (a `[TankFence]` section) and its show flag, and
 /// what a tank allows inside it (exhibits and money 3.9).
-fn tank_kind(ty: &EntityType) -> TankKind {
+pub(crate) fn tank_kind(ty: &EntityType) -> TankKind {
     let flag = |key: &str| crate::build::number(ty, key) == Some(1.0);
     let wall = ty
         .config

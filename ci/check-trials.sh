@@ -832,7 +832,7 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:77;hunger<=55" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:78;hunger<=33" "marine_round maps/scn27.zoo"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -906,6 +906,50 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>
     END{ print a ":" x ";" b ":" y }'
 }
 check expansion-trial "93962:2@897,1@2882;97902:1@1520" "tank_cross maps/scn28b.zoo 93962 97902"
+
+# The water mode (tank fauna 5, 6.1): on scn19 the water check gives animal 51758 the water mode at
+# step 18 and sends it to a water tile of its exhibit; in the water mode its walks end on water tiles
+# too, where it chooses from its water table (`bInWater`). Prints the change of mode, then each tile
+# a walk ended on with the set chosen there, for 800 steps.
+water_mode() { # water_mode <map> <animal>
+  rz sim "$1" --ticks 800 --seed 1 --log 2>/dev/null | awk -v a="$2" '
+    $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
+    $5 == a && / unit tile /{ t = $6 }
+    $5 == a && / unit goal [0-9]+ none /{ ended = t }
+    $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
+    END{ print out }'
+}
+check expansion-trial "mode1@18;21,27:bInWater;23,29:bInWater" "water_mode maps/scn19.zoo 51758"
+
+# Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
+# scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
+# crosses the line (a pile stops the 2 by 2 ray from entering its tile at the levels it blocks, so
+# with every level blocked it never would). Prints how many times the ray entered a tile of the line
+# in 6000 steps, its lowest height there (the floor is at -96) and the first step.
+tank_over() { # tank_over <map> <ray>
+  d=$(mktemp -d)
+  for y in 44 45 46 47 48 49 50 51; do printf '0 food 30,%s herbchow\n' "$y"; done >"$d/script"
+  rz sim "$1" --ticks 6000 --seed 1 --script "$d/script" --log 2>/dev/null | awk -v a="$2" '
+    $5 == a && / unit tile /{ split($6, p, ","); x = p[1] }
+    $5 == a && / unit depth / && x == 30 { n++; if (low == "" || $6 < low) low = $6; if (!first) first = $2 }
+    END{ print n + 0 ";" low ";" first }'
+  rm -rf "$d"
+}
+check expansion-trial "23;-65;382" "tank_over maps/scn27.zoo 36659"
+
+# The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
+# are put down: one beside the tank, which then serves it and filters (and charges) at its first
+# update, step 0, then every `cFilterDelay` (50 s, 747 steps); one beside the tank too (doubled) and
+# one on a tank tile (flooded), both removed at their first update. Prints the step, the id and the
+# word of each `world filter` line.
+tank_filters() { # tank_filters <map> <map's filter>
+  d=$(mktemp -d)
+  printf '0 remove %s\n0 filter 33,52 0\n0 filter 34,52 0\n0 filter 30,50 0\n' "$2" >"$d/script"
+  rz sim "$1" --ticks 1600 --seed 1 --script "$d/script" --log 2>/dev/null |
+    awk '/ world filter /{ printf "%s%s:%s%s", n++ ? ";" : "", $2, $5, ($8 == "" ? "" : ":" $8) } END{ print "" }'
+  rm -rf "$d"
+}
+check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36661" "tank_filters maps/scn27.zoo 25167"
 
 # Breeding (animals-needs 11 to 13). The base trial's animals are all male; three female lions join
 # the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first

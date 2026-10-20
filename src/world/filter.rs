@@ -2,8 +2,10 @@
 //! change of the purity goes through, the timed decay of the purity, and the filter that cleans
 //! the water, charges its upkeep, wears out and asks the maintenance workers for a service.
 //!
-//! The filter is flooded or doubled never: placing keeps a filter out of a tank and one filter
-//! to a tank, so the update does not test either (tank staff 7.3 points 1 and 3).
+//! A tank records the filter that serves it: the first filter added to the map that faces it
+//! while no live filter serves it, then each filter that updates while it serves none. A filter
+//! whose own tile has become a tank tile (flooded) or whose tank is served by another live filter
+//! facing it (doubled) is removed at its update, as the bulldozer removes it.
 
 use super::{Shape, TankKind, World, piece_event};
 use crate::build::number;
@@ -50,6 +52,27 @@ impl Keys {
 /// A time kept in the record: whole milliseconds in 32 bits.
 fn ms(v: i64) -> i32 {
     v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
+/// What a filter of type `ty` placed during play starts with (tank staff 7.2): the starting
+/// health, its decay timer full and a filter timer of 0, so that it filters (and charges) at its
+/// first update.
+pub fn placed(ty: &EntityType) -> Filter {
+    let keys = Keys::of(ty);
+    Filter {
+        health: keys.start.max(0) as u32,
+        timers: Some([ms(keys.decay_ms), 0]),
+    }
+}
+
+/// The sell price of a filter of type `ty` with `health` as a part of its purchase cost (tank
+/// staff 7.2): 0.8, halved once decayed, 0 once broken.
+pub fn sell_rate(ty: &EntityType, health: u32) -> f32 {
+    match i64::from(health) {
+        0 => 0.0,
+        h if h <= Keys::of(ty).decayed => 0.4,
+        _ => 0.8,
+    }
 }
 
 impl World {
@@ -100,6 +123,54 @@ impl World {
         self.tank_at(self.neighbour(tile, c.rotation as usize)?)
     }
 
+    /// The filter that serves tank `tank`: the one it recorded, while it is still on the map
+    /// (tank staff 7.2).
+    fn serving(&self, tank: u32) -> Option<usize> {
+        let id = self.exhibits.get(tank)?.filter?;
+        let at = self.find(id)?;
+        let c = self.zoo.entities[at].common.as_ref()?;
+        c.filter.is_some().then_some(at)
+    }
+
+    /// A filter was added to the map at position `at`: the tank it faces records it, unless a
+    /// live filter serves that tank already (tank staff 7.2).
+    pub(super) fn filter_added(&mut self, at: usize) {
+        let c = self.zoo.entities[at].common.as_ref();
+        let Some(id) = c.filter(|c| c.filter.is_some()).map(|c| c.id) else {
+            return;
+        };
+        let Some(tank) = self.filter_tank(at) else {
+            return;
+        };
+        if self.serving(tank).is_none()
+            && let Some(x) = self.exhibits.get_mut(tank)
+        {
+            x.filter = Some(id);
+        }
+    }
+
+    /// The facing a tank filter placed on tile `tile` takes (placing 5.1): towards a side
+    /// neighbour (directions 0, 2, 4, 6) that is a tile of a tank no live filter serves, with no
+    /// piece on the side of `tile` towards it; `facing` when it is one of them, else the last.
+    /// None on a tank tile or with no such neighbour.
+    pub fn filter_facing(&self, tile: usize, facing: u32) -> Option<u32> {
+        if self.tank_at(tile).is_some() {
+            return None;
+        }
+        let open = |d: &u32| {
+            let tank = self
+                .neighbour(tile, *d as usize)
+                .and_then(|n| self.tank_at(n));
+            tank.is_some_and(|t| self.serving(t).is_none())
+                && self.edge(tile, *d as usize).is_none()
+        };
+        let sides: Vec<u32> = [0, 2, 4, 6].into_iter().filter(open).collect();
+        match sides.contains(&facing) {
+            true => Some(facing),
+            false => sides.last().copied(),
+        }
+    }
+
     /// The tile a filter at `at` stands on, for the worker's task.
     fn filter_tile(&self, at: usize) -> u32 {
         let c = self.zoo.entities[at].common.as_ref();
@@ -111,7 +182,6 @@ impl World {
     /// (tank staff 7.2): full health, and a filter timer of 0 so that it filters at its first
     /// update. Whether it was added.
     pub fn add_filter(&mut self, ty: &EntityType, tile: usize, rotation: u32) -> bool {
-        let keys = Keys::of(ty);
         let w = self.zoo.width as usize;
         let common = Common {
             x: (tile % w) as i32 * 64 + 32,
@@ -122,10 +192,7 @@ impl World {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
-            filter: Some(Filter {
-                health: keys.start.max(0) as u32,
-                timers: Some([ms(keys.decay_ms), 0]),
-            }),
+            filter: Some(placed(ty)),
             ..Default::default()
         };
         let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
@@ -169,16 +236,36 @@ impl World {
     }
 
     /// One step of `step` milliseconds of the filter at `at`, run at its place in the entity loop
-    /// (tank staff 7.3 points 4 and 5): the cycle that charges the upkeep and cleans the water,
-    /// then the wear. A `world filter` line tells each cycle and each loss of health; the events the
-    /// wear posts are returned.
-    pub fn filter_step(&mut self, cat: &Catalogue, at: usize, step: u32) -> Vec<Event> {
-        let Some((id, mut f)) = (self.zoo.entities.get(at))
+    /// (tank staff 7.3): a flooded or doubled filter is to be removed, and does nothing more;
+    /// otherwise its tank records it, then the cycle that charges the upkeep and cleans the water
+    /// runs, then the wear. A `world filter` line tells each cycle, each loss of health and a
+    /// removal. The events the wear posts are returned, and the id of a filter to remove.
+    pub fn filter_step(
+        &mut self,
+        cat: &Catalogue,
+        at: usize,
+        step: u32,
+    ) -> (Vec<Event>, Option<u32>) {
+        let Some((id, mut f, (x, y))) = (self.zoo.entities.get(at))
             .and_then(|e| e.common.as_ref())
-            .and_then(|c| Some((c.id, c.filter?)))
+            .and_then(|c| Some((c.id, c.filter?, (c.x, c.y))))
         else {
-            return Vec::new();
+            return (Vec::new(), None);
         };
+        let own = self.tile_index(x.div_euclid(64), y.div_euclid(64));
+        let faced = self.filter_tank(at);
+        let flooded = own.and_then(|t| self.tank_at(t)).is_some();
+        let other = faced.and_then(|t| self.serving(t)).filter(|&o| o != at);
+        let doubled = other.is_some_and(|o| self.filter_tank(o) == faced);
+        if flooded || doubled {
+            let word = if flooded { "flooded" } else { "doubled" };
+            let purity = faced.and_then(|t| self.tank(t)).map_or(0, |t| t.purity);
+            (self.units).world_note(format!("filter {id} {} {purity} {word}", f.health));
+            return (Vec::new(), Some(id));
+        }
+        if let Some(x) = faced.and_then(|t| self.exhibits.get_mut(t)) {
+            x.filter = Some(id);
+        }
         let ty = type_of(cat, &self.zoo.entities[at]);
         let keys = ty.map(Keys::of);
         let step = i64::from(step);
@@ -187,9 +274,7 @@ impl World {
                 .map_or([0; 2], |k| [ms(k.decay_ms), ms(k.delay_ms)])
         };
         let [mut decay, mut timer] = f.timers.unwrap_or_else(|| fresh(&keys));
-        let tank = self
-            .filter_tank(at)
-            .filter(|&t| self.tank(t).is_some_and(|k| k.level > 0));
+        let tank = faced.filter(|&t| self.tank(t).is_some_and(|k| k.level > 0));
         // The cycle: only a tank holding water is cleaned.
         if let Some(tank) = tank {
             timer = ms(i64::from(timer) - step);
@@ -233,7 +318,7 @@ impl World {
         if let Some(c) = self.zoo.entities[at].common.as_mut() {
             c.filter = Some(f);
         }
-        events
+        (events, None)
     }
 
     /// The filter with this id is serviced (tank staff 7.6): its health is the starting health.

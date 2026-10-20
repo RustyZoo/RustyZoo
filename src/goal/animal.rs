@@ -50,6 +50,9 @@ impl Cx<'_, '_> {
         self.unit.target = Target::Surface;
         self.unit.path.clear();
         let found = walk::surface_walk(self.unit, self.world, self.ctx.rng, self.at);
+        if let Some(to) = self.unit.sent.take() {
+            return self.send_to(to);
+        }
         if !(found && self.start_walk(false, false, false)) {
             self.set_task(NONE, 0, 0, None);
         }

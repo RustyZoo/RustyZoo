@@ -297,3 +297,67 @@ fn a_random_walk_charges_the_turn_off_the_facing_of_the_unit() {
     let wrapped = walker(unit, &w, at, here, u32::MAX);
     assert_eq!([0, 2, 4, 6].map(|d| cost(&wrapped, d)), [3, 6, 6, 3]);
 }
+
+#[test]
+fn a_terrain_mode_with_no_tile_changes_and_sends_the_animal_to_a_tile_of_its_new_kind() {
+    use crate::unit::testing::amphibious_world;
+    let terrain = |w: &World, id: u32| match &w.units.get(id).unwrap().part {
+        Part::Animal(a) => a.terrain,
+        _ => 9,
+    };
+    let set = |w: &mut World, id: u32, mode: u8, swims: bool, underwater: bool| {
+        let u = w.units.get_mut(id).unwrap();
+        (u.mover.swims, u.mover.underwater, u.path) = (swims, underwater, Vec::new());
+        if let Part::Animal(a) = &mut u.part {
+            a.terrain = mode;
+        }
+    };
+    let sent = |w: &mut World, id: u32| w.units.get_mut(id).unwrap().sent.take();
+    // The tank from (2, 2) and the land exhibit from (6, 2) beside it, linked; no water.
+    let mut w = amphibious_world(2, &[(1, "fish", (3, 3)), (2, "fish", (7, 3))]);
+    let land = w.exhibits().region(tile_of(&w, (7, 3))).unwrap();
+    let dry = w.tiles_of(land);
+    // In the water mode in the tank: no water tile, so the land mode, and one draw sends the
+    // animal to a tile of the land exhibit, which is the tank's neighbour.
+    set(&mut w, 1, 1, true, true);
+    walk(&mut w, 1, 7);
+    assert_eq!(terrain(&w, 1), 0);
+    assert_eq!(
+        sent(&mut w, 1),
+        Some(dry[rng(7).pick(dry.len() as u32) as usize])
+    );
+    // Already in the land mode: nothing changes, nothing is sent.
+    set(&mut w, 1, 0, false, false);
+    walk(&mut w, 1, 7);
+    assert_eq!((terrain(&w, 1), sent(&mut w, 1)), (0, None));
+    // Not linked (the land lower than the wall tops): the tank mode on land finds no tank tile;
+    // the land mode, and the animal stands on land already: not sent.
+    let mut w = amphibious_world(0, &[(1, "fish", (3, 3)), (2, "fish", (7, 3))]);
+    set(&mut w, 2, 2, true, true);
+    walk(&mut w, 2, 7);
+    assert_eq!((terrain(&w, 2), sent(&mut w, 2)), (0, None));
+    // A species that lives only under water stays in the tank mode.
+    set(&mut w, 2, 2, true, true);
+    w.units.get_mut(2).unwrap().mover.only_underwater = true;
+    walk(&mut w, 2, 7);
+    assert_eq!((terrain(&w, 2), sent(&mut w, 2)), (2, None));
+    // The land mode in the tank, which has no land tile: a diver takes the tank mode, not sent;
+    // a unit that neither swims nor dives keeps the land mode.
+    set(&mut w, 1, 0, false, true);
+    walk(&mut w, 1, 7);
+    assert_eq!((terrain(&w, 1), sent(&mut w, 1)), (2, None));
+    set(&mut w, 1, 0, false, false);
+    walk(&mut w, 1, 7);
+    assert_eq!((terrain(&w, 1), sent(&mut w, 1)), (0, None));
+    // An exhibit of water only: a swimmer in the land mode on it takes the water mode.
+    let mut w = world_with((30, 30), |z| {
+        fences(&mut z.entities, (10, 10), (12, 12));
+        z.entities
+            .push(entity("animals", "", 1, centre((11, 11)), 2));
+        (10..=12).for_each(|y| (10..=12).for_each(|x| z.tiles[y * 30 + x].terrain = 9));
+    });
+    w.set_water((0..10).map(|t| t == 9).collect());
+    set(&mut w, 1, 0, true, false);
+    walk(&mut w, 1, 7);
+    assert_eq!((terrain(&w, 1), sent(&mut w, 1)), (1, None));
+}

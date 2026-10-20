@@ -124,9 +124,7 @@ pub fn put(world: &mut World, id: u32) {
 /// 9.4: where the unit is for its ambient table: under water or at the surface of a tank for a
 /// diver, on water for a swimmer, else on land.
 pub fn place(unit: &Unit, world: &World, at: usize) -> Place {
-    let wet = (world.zoo.entities.get(at).and_then(|e| e.common.as_ref()))
-        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
-        .is_some_and(|t| world.is_water(t));
+    let wet = wet(world, at);
     let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
     match (diver(unit), unit.tank) {
         (true, 4) => Place::Under,
@@ -134,6 +132,19 @@ pub fn place(unit: &Unit, world: &World, at: usize) -> Place {
         _ if unit.mover.swims && !egg && wet => Place::Water,
         _ => Place::Land,
     }
+}
+
+/// Whether the entity at position `at` stands on a water tile.
+pub fn wet(world: &World, at: usize) -> bool {
+    (world.zoo.entities.get(at).and_then(|e| e.common.as_ref()))
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
+        .is_some_and(|t| world.is_water(t))
+}
+
+/// 9.5: what the nesting calls of the unit at position `at` choose by: its tank mode and whether
+/// its tile is a water tile, whatever its type and even for an egg.
+pub fn nesting(unit: &mut Unit, world: &World, at: usize) {
+    (unit.runner.tank_mode, unit.runner.wet) = (unit.tank, wet(world, at));
 }
 
 /// 9.1: the idle animation of the unit by its tank mode.

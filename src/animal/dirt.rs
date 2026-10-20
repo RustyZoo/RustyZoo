@@ -9,7 +9,7 @@ use super::{DIED, Keys};
 use crate::entity::EntityType;
 use crate::render::order::Kind;
 use crate::unit::{Ctx, Part, Unit};
-use crate::world::{Shape, TankKind, World};
+use crate::world::{Shape, World};
 use crate::zoo::{Common, Entity};
 
 /// Puts a scenery object of type `ty`, named `(class, type, subtype)`, in the middle of tile
@@ -79,7 +79,7 @@ pub fn put_z(
         wall: false,
         gate: false,
         gated: false,
-        tank: TankKind::NONE,
+        tank: crate::render::tank_kind(ty),
         walkable: (false, false),
     };
     world.add(entity, Some(shape)).is_some()
