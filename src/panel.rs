@@ -3,4 +3,5 @@
 
 pub mod animal;
 pub mod exhibit;
+pub mod guest;
 pub mod staff;

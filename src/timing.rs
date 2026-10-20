@@ -349,6 +349,21 @@ impl Date {
         }
     }
 
+    /// Milliseconds from 1 January 1970 to this date and time of day.
+    pub fn millis(&self) -> i64 {
+        let y = i64::from(self.year) - i64::from(self.month <= 2);
+        let era = y.div_euclid(400);
+        let yoe = y - era * 400;
+        let mp = i64::from((self.month + 9) % 12);
+        let doy = (153 * mp + 2) / 5 + i64::from(self.day) - 1;
+        let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+        let day_ms = i64::from(self.hour) * 3_600_000
+            + i64::from(self.minute) * 60_000
+            + i64::from(self.second) * 1000
+            + i64::from(self.millisecond);
+        days * DAY_MS as i64 + day_ms
+    }
+
     /// The date of a file time: 100 ns steps since 1 January 1601 (zoo format 1).
     pub fn from_file_time(t: u64) -> Date {
         let ms = t / 10_000;
@@ -385,6 +400,27 @@ mod tests {
                 "{s} {k}"
             );
         }
+    }
+
+    #[test]
+    fn a_date_counts_milliseconds_from_1970() {
+        let at = |t: u64| Date::from_file_time(t * 10_000 + 134_774 * DAY_MS * 10_000);
+        for ms in [
+            0,
+            1,
+            86_399_999,
+            86_400_000,
+            951_782_400_000,
+            4_102_444_800_123,
+        ] {
+            assert_eq!(at(ms).millis(), ms as i64, "{ms}");
+        }
+        let mut c = Calendar::new();
+        c.advance(1_000_000);
+        assert_eq!(
+            c.date().millis() - Calendar::new().date().millis(),
+            7_200_000_000
+        );
     }
 
     #[test]

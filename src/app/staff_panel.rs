@@ -5,7 +5,7 @@
 
 use super::*;
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::panel::staff;
+use crate::panel::{guest, staff};
 use crate::staff::assign::{self, Outcome};
 use crate::unit::{Kind, Part};
 
@@ -19,6 +19,7 @@ const BAD: [u8; 3] = [0xEC, 0, 0];
 enum Show {
     Animal(u32),
     Staff(u32),
+    Guest(u32),
     Nothing,
 }
 
@@ -53,33 +54,46 @@ impl App<'_> {
             |open: Option<u32>, layout| open.is_some() && open == want && !ui.shown(layout);
         if closed(game.animal.selected, animal::LAYOUT)
             || closed(game.staff.selected, staff::LAYOUT)
+            || closed(game.guest.selected, guest::LAYOUT)
         {
             (game.selected, want) = (None, None);
         }
         let show = match want.and_then(|id| world.units.get(id)) {
             Some(u) if u.kind == Kind::Animal => Show::Animal(u.id),
+            Some(u) if u.kind == Kind::Guest => Show::Guest(u.id),
             Some(u) if matches!(u.kind, Kind::Keeper | Kind::Worker | Kind::Guide) => {
                 Show::Staff(u.id)
             }
             _ => Show::Nothing,
         };
         let (animal_open, staff_open) = (game.animal.selected, game.staff.selected);
+        let guest_open = game.guest.selected;
         match show {
             Show::Animal(id) => {
                 if animal_open != Some(id) {
                     self.open_animal(id);
                 }
                 self.close_staff();
+                self.close_guest();
             }
             Show::Staff(id) => {
                 if staff_open != Some(id) {
                     self.open_staff(id);
                 }
                 self.close_animal();
+                self.close_guest();
+            }
+            Show::Guest(id) => {
+                if guest_open != Some(id) {
+                    self.open_guest(id);
+                }
+                self.close_animal();
+                self.close_staff();
             }
             Show::Nothing => {
                 self.close_animal();
                 self.close_staff();
+                self.close_guest();
             }
         }
     }

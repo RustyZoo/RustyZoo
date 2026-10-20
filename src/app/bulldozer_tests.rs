@@ -47,11 +47,14 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n\
     [f]\ntype=UILayout\nlayout=ui/animal.lyt\nstate=1\n\
     [g]\ntype=UILayout\nlayout=ui/staff.lyt\nstate=1\n\
+    [i]\ntype=UILayout\nlayout=ui/guest.lyt\nstate=1\n\
     [h]\ntype=UILayout\nlayout=ui/exhibit.lyt\nstate=1\n";
 const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n";
 const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
     [a]\ntype=UIListBox\nid=4326\nx=0\ny=0\ndx=40\ndy=36\n";
+const GUEST: &str = "[LayoutInfo]\nid=9\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
+    [a]\ntype=UIButton\nid=3413\ndx=8\ndy=8\ntarget=9\naction=2\ntransparent=0\n";
 const STAFF: &str = "[LayoutInfo]\nid=17\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
 const QUESTION: &str = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ntransparent=0\n\
@@ -88,7 +91,7 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
 /// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40), 8 bench (50,
 /// a scenery object that does not live under water), 9 stone path (20), 10 steel fence (150) and
-/// 11 its gate, 12 a zookeeper (800, its monthly cost 650.5), 13 a zebra (800). Every picture is a square around the anchor: 24 pixels, the tree's 16.
+/// 11 its gate, 12 a zookeeper (800, its monthly cost 650.5), 13 a zebra (800), 14 a guest. Every picture is a square around the anchor: 24 pixels, the tree's 16.
 pub(super) fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
@@ -153,6 +156,7 @@ pub(super) fn catalogue() -> Catalogue {
     cat.push(ty("keeper", b"keeper", b"m", keeper, [1, 1, 1]));
     let zebra = "[m/Characteristics/Integers]\ncPurchaseCost=800\n";
     cat.push(ty("animals", b"zebra", b"m", zebra, [1, 1, 1]));
+    cat.push(ty("guests", b"man", b"", "", [1, 1, 1]));
     cat
 }
 
@@ -193,6 +197,7 @@ fn install(name: &str, ini: &str) -> crate::sprite::tests::Install {
         ("ui/q.lyt", QUESTION.as_bytes().to_vec()),
         ("ui/animal.lyt", ANIMAL.as_bytes().to_vec()),
         ("ui/staff.lyt", STAFF.as_bytes().to_vec()),
+        ("ui/guest.lyt", GUEST.as_bytes().to_vec()),
         ("ui/exhibit.lyt", EXHIBIT.as_bytes().to_vec()),
         ("zoo.ini", ini.as_bytes().to_vec()),
     ];

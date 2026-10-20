@@ -5,7 +5,7 @@ use crate::vfs::Vfs;
 use std::collections::BTreeMap;
 
 /// An item type.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Item {
     /// The name id, which a guest holds in its slot.
     pub id: i32,
@@ -17,6 +17,8 @@ pub struct Item {
     pub remove: bool,
     /// `consumedThoughtID`, 0 for none.
     pub thought: i32,
+    /// The picture of the item in the guest panel (`icon`, no extension); empty for none.
+    pub icon: String,
 }
 
 /// The litter item's name id.
@@ -43,6 +45,10 @@ impl Item {
             litter: int("trashwhenconsumed") == 1,
             remove: int("removewhenconsumed") == 1,
             thought: int("consumedThoughtID"),
+            icon: s
+                .get("icon")
+                .map(|v| String::from_utf8_lossy(v).replace('\\', "/"))
+                .unwrap_or_default(),
         })
     }
 }

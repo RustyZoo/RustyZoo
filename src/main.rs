@@ -326,7 +326,14 @@ usage: rustyzoo [--data <dir>] <command>
                       remove one or all, and Escape or the right button end the mode. `panel staff ID \"NAME\"
                       salary S duty \"TEXT\" exhibits [NAMES]` (`duties 1111` for a worker) and `panel staff none`
                       tell what it shows; `tool assign over N good|bad|none`, `tool assign ID N` and
-                      `tool unassign ID row R|all` tell the assign mode. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
+                      `tool unassign ID row R|all` tell the assign mode. A click on a guest (a second click picks it up) opens the guest panel: the name field, the five bars
+                      of happiness, drink, food, restroom and energy (the needs as 100 minus their percentage, so a full
+                      bar is a satisfied guest), and on the other tabs the time in the park, the favourite species, the
+                      items held and the five newest thoughts of the guest, refreshed every 10 s of clock while shown and
+                      not while the game is paused; its pick-up button picks it up and its follow button keeps the view
+                      on it. `panel guest ID \"NAME\" happiness H drink D food F restroom R energy E time \"TEXT\"
+                      favourite \"NAME\" thoughts [TEXTS]` tells what it shows, when it opens and when a value changes, and
+                      `panel guest none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
                       donations stars N A B C`, `panel animals N thoughts N` (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
                       recommendation (`panel line!` for an important one, written in red) what the plaque shows,

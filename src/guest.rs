@@ -381,6 +381,34 @@ fn favourites(cat: &Catalogue) -> Vec<i32> {
     (species.into_iter()).filter(|s| s.1).map(|s| s.0).collect()
 }
 
+/// Restores the guest at position `at` of a loaded map: its five status values, its countdowns and
+/// its favourite species. A favourite that is not a loaded species is drawn anew among the species
+/// that are not special animals, as at arrival (guests 5.2 point 9; zoo format 6.12); with none, the
+/// guest has no favourite.
+pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
+    let Some((id, record)) =
+        (world.zoo.entities[at].common.as_ref()).and_then(|c| Some((c.id, *c.guest.as_deref()?)))
+    else {
+        return;
+    };
+    let known = |name| {
+        cat.types
+            .iter()
+            .any(|t| t.class == "animals" && t.name_id == name)
+    };
+    let favourite = if known(record.favourite) {
+        Some(record.favourite)
+    } else {
+        let list = favourites(cat);
+        (!list.is_empty()).then(|| list[rng.pick(list.len() as u32) as usize])
+    };
+    if let Some(Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) {
+        g.values = record.values;
+        g.countdowns = record.countdowns;
+        g.favourite = favourite;
+    }
+}
+
 /// Creates a guest at the zoo entrance (guests 3.2), the draws in the original's order, and books
 /// its admission. Whether one was made: not with the last sums at the limit, without an entrance
 /// tile or without a guest type.

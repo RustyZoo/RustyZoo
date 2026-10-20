@@ -296,23 +296,13 @@ impl Sim {
         self.status.settings = set;
     }
 
-    /// Creates the animals of the map just loaded (animals 3.5), with the types of `cat` and the
-    /// class keys in `world.units.class`. The draws come before every draw of the first step.
+    /// Creates the animals of the map just loaded (animals 3.5) and restores its guests (guests 4,
+    /// zoo format 6.12), in file order, with the types of `cat` and the class keys in
+    /// `world.units.class`. The draws come before every draw of the first step.
     pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
-        crate::animal::load(world, cat, &mut self.rng);
-        // The guests the map stores keep their five status values and their countdowns (guests 4).
-        for e in &world.zoo.entities {
-            let Some((id, record)) = e
-                .common
-                .as_ref()
-                .and_then(|c| Some((c.id, *c.guest.as_deref()?)))
-            else {
-                continue;
-            };
-            if let Some(unit::Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) {
-                g.values = record.values;
-                g.countdowns = record.countdowns;
-            }
+        for at in 0..world.zoo.entities.len() {
+            crate::animal::load(world, cat, &mut self.rng, at);
+            crate::guest::load(world, cat, &mut self.rng, at);
         }
     }
 

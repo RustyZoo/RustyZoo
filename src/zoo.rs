@@ -116,11 +116,13 @@ pub struct Common {
 }
 
 /// What a guest record stores: the five status values (happiness, hunger, thirst, energy,
-/// bathroom) and the eleven check countdowns in the order of the guest's periods.
+/// bathroom), the eleven check countdowns in the order of the guest's periods and the name id of
+/// the favourite species (zoo format 6.12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GuestRecord {
     pub values: [i32; 5],
     pub countdowns: [i32; 11],
+    pub favourite: i32,
 }
 
 /// The values, counters and flags an animal record stores (animals 3.5). A counter the record

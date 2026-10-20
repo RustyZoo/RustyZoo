@@ -206,6 +206,40 @@ fn the_favourite_is_drawn_among_the_species_that_are_not_special() {
 }
 
 #[test]
+fn a_stored_favourite_stays_and_an_unknown_one_is_drawn_in_file_order() {
+    let mut cat = Catalogue::default();
+    for (name, id, special) in [("a", 30, 0), ("b", 10, 1), ("c", 20, 0)] {
+        let text = format!("[Characteristics/Integers]\ncIsSpecialAnimal={special}\n");
+        cat.push(kind("animals", name, &text, id));
+    }
+    let mut world = world_with((4, 4), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 2)), 0));
+    });
+    let c = world.zoo.entities[0].common.as_mut().unwrap();
+    let mut record = crate::zoo::GuestRecord {
+        values: [1, 2, 3, 4, 5],
+        countdowns: [0; 11],
+        favourite: 10,
+    };
+    c.guest = Some(Box::new(record));
+    let id = c.id;
+    let mut rng = seeded(1);
+    load(&mut world, &cat, &mut rng, 0);
+    let favourite = |w: &World| match &w.units.get(id).unwrap().part {
+        Part::Guest(g) => g.favourite,
+        _ => None,
+    };
+    // A special species is a loaded one: it stays and nothing is drawn.
+    assert_eq!((favourite(&world), drawn(&seeded(1), &rng)), (Some(10), 0));
+    record.favourite = 99;
+    world.zoo.entities[0].common.as_mut().unwrap().guest = Some(Box::new(record));
+    load(&mut world, &cat, &mut rng, 0);
+    assert!(matches!(favourite(&world), Some(20 | 30)));
+    assert_eq!(drawn(&seeded(1), &rng), 1);
+}
+
+#[test]
 fn every_cell_of_the_arrival_table_has_its_chance_and_its_advice() {
     // Rows: 81 and above, 60 to 80, 30 to 59, below 30; columns: the price against 49, 29, 19, 9.
     #[rustfmt::skip]
