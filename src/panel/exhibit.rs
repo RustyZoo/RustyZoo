@@ -218,6 +218,9 @@ pub(super) fn list_icon(ty: &EntityType) -> Option<String> {
 pub struct Clock {
     due: u64,
     pub force: bool,
+    /// The last [`Clock::due`] that said yes was a forced one: the panel sets what only a shown
+    /// or forced refresh sets (the follow button's picture).
+    pub forced: bool,
 }
 
 impl Clock {
@@ -226,6 +229,7 @@ impl Clock {
     /// asked for sets the due time to `period` itself, as a call with the clock at 0 does, so
     /// the next ordinary call refreshes again.
     pub fn due(&mut self, now: u64, ticking: bool, period: u64) -> bool {
+        self.forced = self.force;
         if self.force {
             (self.force, self.due) = (false, period);
             return true;

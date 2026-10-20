@@ -92,7 +92,7 @@ pub struct Painter {
     fonts: Fonts,
     canvases: HashMap<usize, (Made, Framebuffer)>,
     /// A cut of a picture, its set and its frame.
-    cuts: HashMap<(Picture, usize, usize), Option<Cut>>,
+    cuts: HashMap<(Picture, usize, usize, bool), Option<Cut>>,
     /// The frame an animated element shows, the milliseconds it has been shown and the clock when
     /// it was last drawn.
     frames: HashMap<usize, (usize, u64, u64)>,
@@ -345,7 +345,7 @@ impl Painter {
         }
     }
 
-    /// The icon of a button, at its first frame, placed like the button's picture.
+    /// The icon of a button, at the frame its look names, placed like the button's picture.
     fn icon(
         &mut self,
         pictures: &Pictures,
@@ -354,7 +354,7 @@ impl Painter {
         frame: &mut Framebuffer,
     ) {
         let Some(icon) = e.look.icon else { return };
-        let Some(cut) = self.cut(pictures, icon, 0, 0) else {
+        let Some(cut) = self.cut_as(pictures, icon, e.look.icon_frame) else {
             return;
         };
         let (x, y) = match cut.animation {
@@ -405,6 +405,16 @@ impl Painter {
         set: usize,
         frame: usize,
     ) -> Option<&Cut> {
+        self.cut_as(pictures, picture, (set, frame, false))
+    }
+
+    /// As [`Painter::cut`] for a sprite file, a frame and whether the picture is reflected.
+    fn cut_as(
+        &mut self,
+        pictures: &Pictures,
+        picture: Picture,
+        (set, frame, mirror): (usize, usize, bool),
+    ) -> Option<&Cut> {
         let (set, frame) = match picture {
             Picture::Image(_) => (0, 0),
             Picture::Animation(a) => {
@@ -415,8 +425,8 @@ impl Painter {
             }
         };
         self.cuts
-            .entry((picture, set, frame))
-            .or_insert_with(|| make_cut(pictures, picture, set, frame))
+            .entry((picture, set, frame, mirror))
+            .or_insert_with(|| make_cut(pictures, picture, (set, frame, mirror)))
             .as_ref()
     }
 
@@ -1059,7 +1069,11 @@ fn fill_rect(dst: &mut Framebuffer, (l, t, r, b): (i32, i32, i32, i32), color: [
 
 /// Cuts a picture for drawing: an image reduced to 5-6-5; a frame of an animation's set drawn once
 /// on a transparent picture of its box (drawing reduces the pixels).
-fn make_cut(pictures: &Pictures, picture: Picture, set: usize, frame: usize) -> Option<Cut> {
+fn make_cut(
+    pictures: &Pictures,
+    picture: Picture,
+    (set, frame, mirror): (usize, usize, bool),
+) -> Option<Cut> {
     match picture {
         Picture::Image(m) => {
             let image = pictures.images.get(m)?;
@@ -1090,10 +1104,7 @@ fn make_cut(pictures: &Pictures, picture: Picture, set: usize, frame: usize) -> 
                 return None;
             }
             let mut pixels = Framebuffer::new(w as u32, h as u32);
-            let view = View {
-                file: set,
-                mirror: false,
-            };
+            let view = View { file: set, mirror };
             animation.draw(view, frame, &mut pixels, -s.x0, -s.y0);
             Some(Cut {
                 pixels,

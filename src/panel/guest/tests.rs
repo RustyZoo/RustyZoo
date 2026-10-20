@@ -49,6 +49,7 @@ fn the_time_in_the_park_is_banded_by_hours_of_calendar_time() {
 
 use crate::building::items::Item;
 use crate::entity::Catalogue;
+use crate::panel::follow::tests as follow;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree};
@@ -96,14 +97,14 @@ fn panel_in_game(name: &str) -> (Interface, Vfs, World) {
     let layout = format!("[LayoutInfo]\nid=9\nx=0\ny=0\ndx=40\ndy=40\n{layout}");
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n";
-    let install = Install::new(
-        name,
-        &[
-            ("ui/root.lyt", root.as_bytes().to_vec()),
-            ("ui/p.lyt", layout.into_bytes()),
-            ("ui/g.tga", tga()),
-        ],
-    );
+    let mut files = vec![
+        ("ui/root.lyt", root.as_bytes().to_vec()),
+        ("ui/p.lyt", layout.into_bytes()),
+        ("ui/g.tga", tga()),
+    ];
+    let members = follow::members();
+    files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
+    let install = Install::new(name, &files);
     let vfs = Vfs::open(&install.0).unwrap();
     let mut tree = Tree::load(&vfs, "ui/root.lyt", 0);
     tree.resolve(100, 80, |_| 12);
@@ -145,10 +146,10 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
     // No selection, no such entity, and an entity that is not a guest: nothing.
     for id in [None, Some(99), Some(1)] {
         panel.selected = id;
-        assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs, now), None);
+        assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs, 0, now), None);
     }
     panel.select(2);
-    let told = panel.refresh(&mut ui, &world, &cat, &vfs, now).unwrap();
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0, now).unwrap();
     assert_eq!(
         told,
         "guest 2 \"\" happiness 75 drink 70 food 40 restroom 90 energy 20 time \"T0\" \
@@ -164,7 +165,7 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
     assert_eq!((help(3481), help(3483)), (vec![6303], vec![]));
     assert_eq!(state(&ui, 3416) & DISABLED, 0);
     assert_eq!(
-        panel.refresh(&mut ui, &world, &cat, &vfs, now),
+        panel.refresh(&mut ui, &world, &cat, &vfs, 0, now),
         None,
         "unchanged"
     );
@@ -175,7 +176,38 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
         c.advance(1500 * 500);
         c.date()
     };
-    let told = panel.refresh(&mut ui, &world, &cat, &vfs, later).unwrap();
+    let told = panel
+        .refresh(&mut ui, &world, &cat, &vfs, 0, later)
+        .unwrap();
     assert!(told.contains("time \"T1\""), "{told}");
     assert_ne!(state(&ui, 3416) & DISABLED, 0);
+}
+
+#[test]
+fn the_follow_button_shows_the_units_frame_when_shown_and_when_forced_only() {
+    let (mut ui, vfs, mut world) = panel_in_game("guest-panel-follow");
+    let cat = follow::catalogue("guests", "guest");
+    let mut panel = Panel::default();
+    panel.select(2);
+    let now = Calendar::new().date();
+    let frame = |ui: &Interface| follow::shown(ui, FOLLOW);
+    assert_eq!(frame(&ui), (false, (0, 0, false)), "blank until shown");
+    panel.clock.due(0, true, PERIOD);
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
+    assert!(frame(&ui).0, "set when the panel is shown");
+    assert_eq!(frame(&ui).1.1, 0);
+    // An ordinary refresh leaves the picture, a forced one takes the frame of the moment.
+    world.units.get_mut(2).unwrap().animation.frame = 1;
+    assert!(!panel.clock.due(1, false, PERIOD));
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
+    assert_eq!(frame(&ui).1.1, 0);
+    panel.clock.force = true;
+    assert!(panel.clock.due(1, false, PERIOD));
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
+    assert_eq!(frame(&ui).1.1, 1);
+    assert!(panel.clock.due(PERIOD, true, PERIOD));
+    world.units.get_mut(2).unwrap().animation.frame = 0;
+    assert!(!panel.clock.forced);
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0, now);
+    assert_eq!(frame(&ui).1.1, 1, "a periodic refresh keeps it");
 }

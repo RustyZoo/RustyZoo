@@ -11,7 +11,8 @@ use crate::animal::{self, Animal, Keys};
 use crate::build::number;
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
-use crate::panel::exhibit::{Clock, animals_exhibit, list_icon, type_at};
+use crate::panel::exhibit::{Clock, animals_exhibit, type_at};
+use crate::panel::follow::set_follow_icon;
 use crate::status::Words;
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
@@ -154,6 +155,7 @@ impl Panel {
         world: &World,
         cat: &Catalogue,
         vfs: &Vfs,
+        rotation: u8,
         now: u64,
     ) -> Option<String> {
         let id = self.selected?;
@@ -185,13 +187,17 @@ impl Panel {
             .common
             .as_ref()
             .map_or("", |c| &c.name);
-        if std::mem::take(&mut self.fresh) {
+        let fresh = std::mem::take(&mut self.fresh);
+        if fresh {
             ui.set_text(NAME, &to_cp1252(name));
-            let icon = ty
-                .and_then(list_icon)
-                .and_then(|n| ui.tree.picture(vfs, &n));
-            ui.set_icon(FOLLOW, icon);
             ui.set_button(FOLLOW, false, !carried);
+        }
+        if fresh || self.clock.forced {
+            let facing = world.zoo.entities[at]
+                .common
+                .as_ref()
+                .map_or(0, |c| c.rotation);
+            set_follow_icon(ui, vfs, FOLLOW, ty, unit, (facing, rotation));
         }
         let moveable = ty.is_none_or(|t| number(t, "cMoveable").is_none_or(|v| v != 0.0));
         ui.set_enabled(SELL, !carried);

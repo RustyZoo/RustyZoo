@@ -106,3 +106,52 @@ fn units_that_are_not_staff_have_no_text() {
     assert_eq!(text(&unit(Kind::Animal, 1, 0, None, 0), 0), None);
     assert_eq!(text(&unit(Kind::Guest, 1, 0, None, 0), 0), None);
 }
+
+#[test]
+fn the_follow_button_shows_the_units_frame_when_shown_and_when_forced_only() {
+    use crate::panel::follow::tests as follow;
+    use crate::unit::testing::{centre, entity, world};
+    let layout = "[LayoutInfo]\nid=17\nx=0\ny=0\ndx=40\ndy=40\n\
+                  [u]\ntype=UIButton\nid=3515\nx=0\ny=0\ndx=4\ndy=4\n";
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+                [b]\ntype=UILayout\nlayout=ui/p.lyt\n";
+    let mut files = vec![
+        ("ui/root.lyt", root.as_bytes().to_vec()),
+        ("ui/p.lyt", layout.as_bytes().to_vec()),
+    ];
+    let members = follow::members();
+    files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
+    let install = crate::sprite::tests::Install::new("staff-panel-follow", &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = crate::ui::layout::Tree::load(&vfs, "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    let mut ui = Interface::new(tree, Box::new(follow::Texts));
+    ui.show(17);
+    let mut world = world((4, 4), |_, e| {
+        e.push(entity("keeper", "keeper", 1, centre((1, 1)), 0));
+    });
+    let cat = follow::catalogue("keeper", "keeper");
+    let mut panel = Panel::default();
+    panel.select(1);
+    let frame = |ui: &Interface| follow::shown(ui, FOLLOW);
+    assert_eq!(frame(&ui), (false, (0, 0, false)), "blank until shown");
+    let refresh = |ui: &mut Interface, world: &World, panel: &mut Panel| {
+        panel.refresh(ui, world, &cat, &vfs, 0, false);
+    };
+    panel.clock.due(0, true, PERIOD);
+    refresh(&mut ui, &world, &mut panel);
+    assert!(frame(&ui).0, "set when the panel is shown");
+    assert_eq!(frame(&ui).1.1, 0);
+    world.units.get_mut(1).unwrap().animation.frame = 1;
+    assert!(!panel.clock.due(1, false, PERIOD));
+    refresh(&mut ui, &world, &mut panel);
+    assert_eq!(frame(&ui).1.1, 0, "an ordinary refresh leaves it");
+    panel.clock.force = true;
+    assert!(panel.clock.due(1, false, PERIOD));
+    refresh(&mut ui, &world, &mut panel);
+    assert_eq!(
+        frame(&ui).1.1,
+        1,
+        "a forced one takes the frame of the moment"
+    );
+}
