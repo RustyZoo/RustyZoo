@@ -205,9 +205,10 @@ fn the_favourite_is_drawn_among_the_species_that_are_not_special() {
     assert!(favourites(&Catalogue::default()).is_empty());
 }
 
-#[test]
-fn a_stored_favourite_stays_and_an_unknown_one_is_drawn_in_file_order() {
-    let mut cat = Catalogue::default();
+/// A map with one stored man at the centre of a tile, with the record `record`, and the guest
+/// types and three species of `types()` besides: name ids 5 (zebra), and the given ones.
+fn stored(record: crate::zoo::GuestRecord) -> (World, Catalogue, u32) {
+    let mut cat = types();
     for (name, id, special) in [("a", 30, 0), ("b", 10, 1), ("c", 20, 0)] {
         let text = format!("[Characteristics/Integers]\ncIsSpecialAnimal={special}\n");
         cat.push(kind("animals", name, &text, id));
@@ -217,26 +218,124 @@ fn a_stored_favourite_stays_and_an_unknown_one_is_drawn_in_file_order() {
             .push(entity("guests", "man", 1, centre((2, 2)), 0));
     });
     let c = world.zoo.entities[0].common.as_mut().unwrap();
-    let mut record = crate::zoo::GuestRecord {
-        values: [1, 2, 3, 4, 5],
-        countdowns: [0; 11],
-        favourite: 10,
-    };
     c.guest = Some(Box::new(record));
     let id = c.id;
+    (world, cat, id)
+}
+
+const RECORD: crate::zoo::GuestRecord = crate::zoo::GuestRecord {
+    values: [1, 2, 3, 4, 5],
+    countdowns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    arrived: 0,
+    favourite: 10,
+    sick: false,
+};
+
+fn guest_of(world: &World, id: u32) -> Guest {
+    match &world.units.get(id).unwrap().part {
+        Part::Guest(g) => g.clone(),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn a_loaded_guest_is_created_with_its_draws_and_then_takes_its_saved_fields() {
+    let (mut world, cat, id) = stored(RECORD);
+    let ty = man();
+    let k = Keys::of(&ty);
     let mut rng = seeded(1);
-    load(&mut world, &cat, &mut rng, 0);
-    let favourite = |w: &World| match &w.units.get(id).unwrap().part {
-        Part::Guest(g) => g.favourite,
-        _ => None,
-    };
-    // A special species is a loaded one: it stays and nothing is drawn.
-    assert_eq!((favourite(&world), drawn(&seeded(1), &rng)), (Some(10), 0));
-    record.favourite = 99;
-    world.zoo.entities[0].common.as_mut().unwrap().guest = Some(Box::new(record));
-    load(&mut world, &cat, &mut rng, 0);
-    assert!(matches!(favourite(&world), Some(20 | 30)));
-    assert_eq!(drawn(&seeded(1), &rng), 1);
+    let today = date(5, 6);
+    load(&mut world, &cat, &mut rng, 0, today, 9);
+    // The draws of a creation, with the favourite of the record a loaded species: none more.
+    let mut check = seeded(1);
+    let made = Guest::create(&k, &ty, &favourites(&cat), today, 9, &mut check);
+    assert_eq!(rng, check);
+    let g = guest_of(&world, id);
+    assert_eq!(
+        (g.values, g.countdowns, g.favourite, g.sick),
+        (RECORD.values, RECORD.countdowns, Some(10), false)
+    );
+    // What the record does not hold is the creation's: its sex and age, speed, countdowns of the
+    // reset and of the saw-animal check, and the pending changes.
+    assert_eq!(
+        (
+            g.female,
+            g.child,
+            g.speed_offset,
+            g.reset,
+            g.saw_animal,
+            g.pending
+        ),
+        (made.female, made.child, made.speed_offset, 9, 20, [0; 5])
+    );
+    assert!(
+        !g.child && !g.female,
+        "the type name decides the sex and age"
+    );
+    // The arrival date is the record's (a file time), not today.
+    assert_eq!(g.arrived, Some(Date::from_file_time(0)));
+    // The sick flag is the record's, whatever the date.
+    let (mut world, cat, id) = stored(crate::zoo::GuestRecord {
+        sick: true,
+        ..RECORD
+    });
+    load(&mut world, &cat, &mut seeded(1), 0, date(1, 1), 0);
+    assert!(guest_of(&world, id).sick);
+    let (mut world, cat, id) = stored(RECORD);
+    load(&mut world, &cat, &mut seeded(1), 0, date(1, 1), 0);
+    assert!(!guest_of(&world, id).sick);
+}
+
+#[test]
+fn an_unknown_favourite_is_drawn_again_in_file_order() {
+    let (mut world, cat, id) = stored(crate::zoo::GuestRecord {
+        favourite: 99,
+        ..RECORD
+    });
+    let ty = man();
+    let mut rng = seeded(1);
+    load(&mut world, &cat, &mut rng, 0, date(5, 6), 0);
+    let mut check = seeded(1);
+    Guest::create(
+        &Keys::of(&ty),
+        &ty,
+        &favourites(&cat),
+        date(5, 6),
+        0,
+        &mut check,
+    );
+    // One draw more than a creation, and a species that is not special.
+    assert_eq!(drawn(&check, &rng), 1);
+    assert!(matches!(guest_of(&world, id).favourite, Some(5 | 20 | 30)));
+    // A guest of an unknown type, or without a record, draws nothing and stays as it is.
+    let mut world = world_with((4, 4), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 2)), 0));
+    });
+    let mut rng = seeded(1);
+    load(&mut world, &cat, &mut rng, 0, date(5, 6), 0);
+    assert_eq!(rng, seeded(1));
+    let (mut world, _, _) = stored(RECORD);
+    load(
+        &mut world,
+        &Catalogue::default(),
+        &mut rng,
+        0,
+        date(5, 6),
+        0,
+    );
+    assert_eq!(rng, seeded(1));
+}
+
+#[test]
+fn a_start_with_a_reset_sets_the_arrival_of_every_guest_to_the_game_date() {
+    let (mut world, _cat, id) = stored(RECORD);
+    world.units.get_mut(id).unwrap().part = Part::Guest(Guest {
+        arrived: Some(date(1, 2)),
+        ..Guest::default()
+    });
+    arrive_all(&mut world, date(7, 8));
+    assert_eq!(guest_of(&world, id).arrived, Some(date(7, 8)));
 }
 
 #[test]

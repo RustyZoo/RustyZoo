@@ -648,16 +648,19 @@ fn reads_units_of_version_106() {
     for v in [36, 52, 60, 70, 80] {
         guest.i32(v);
     }
-    // Then 29 bytes, the ten countdowns of the block, the 20 bytes of the lists and the chase
+    // Then the sick flag and 28 bytes, the ten countdowns of the block, the 20 bytes of the lists and the chase
     // countdown, which comes after them.
-    guest.z(29);
+    guest.0.push(1);
+    guest.z(28);
     for c in [1, 2, 3, 4, 5, 6, 8, 9, 10, 11] {
         guest.i32(c);
     }
     guest.z(20);
     guest.i32(7);
-    // Then 16 bytes, and the favourite species.
-    guest.z(16);
+    // Then 8 bytes, the arrival date and the favourite species.
+    guest.z(8);
+    guest.i32(7);
+    guest.i32(2);
     guest.i32(5003);
     guest
         .0
@@ -684,6 +687,7 @@ fn reads_units_of_version_106() {
     assert_eq!(record.values, [36, 52, 60, 70, 80]);
     assert_eq!(record.countdowns, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     assert_eq!(record.favourite, 5003);
+    assert_eq!((record.arrived, record.sick), (7 | 2 << 32, true));
     assert_eq!(z.entities[0].common.as_ref().unwrap().guest, None);
 }
 

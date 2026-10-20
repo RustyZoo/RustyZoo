@@ -40,11 +40,8 @@ fn the_time_in_the_park_is_banded_by_hours_of_calendar_time() {
         .into();
     assert_eq!(shown, [0, 0, 1, 1, 2, 2, 3, 3]);
     assert_eq!(stay(None, start), 0, "no arrival date: just arrived");
-    assert_eq!(
-        stay(Some(start), Date::from_file_time(0)),
-        0,
-        "never negative"
-    );
+    // The difference divides unsigned: an arrival later than now is a huge time.
+    assert_eq!(stay(Some(start), Date::from_file_time(0)), 3);
 }
 
 use crate::building::items::Item;

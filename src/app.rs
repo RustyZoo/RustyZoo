@@ -1610,6 +1610,9 @@ impl<'a> App<'a> {
             .push(format!("game start {} {}", start.label, start.path));
         if let Some(game) = &mut self.game {
             game.money.start(start.cash, start.reset);
+            if start.reset {
+                crate::guest::arrive_all(&mut game.world, self.sim.calendar().date());
+            }
             if start.forget_last {
                 // A scenario or freeform map is a new game: the set-up rating check.
                 let cat = self.renderer.catalogue();

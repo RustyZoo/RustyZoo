@@ -7,6 +7,10 @@
 //! half). The way out is the leave goal ([`crate::goal`]): a guest whose `leave` flag is up walks
 //! to the entrance and is removed there.
 //!
+//! A guest of a loaded map is made by [`load`] with the draws of a creation and then takes the
+//! fields its record stores; a start with a reset sets every arrival to the game date
+//! ([`arrive_all`]).
+//!
 //! At each status tick [`checks::needs`] applies the pending changes and [`checks::checks`] runs
 //! the checks of guests 6 in the original's order: the needs grow, the trash check costs
 //! happiness, the leave check raises the flag of an unhappy guest, the viewing check
@@ -341,10 +345,14 @@ impl Guest {
 
 /// The keys of the guest at position `at` of the entity list; none when its type is unknown.
 pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Option<Keys> {
+    type_of(world, cat, at).map(Keys::of)
+}
+
+/// The type of the entity at position `at` of the list, if the catalogue has it.
+fn type_of<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
     let e = world.zoo.entities.get(at)?;
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-    let ty = cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))?;
-    Some(Keys::of(ty))
+    cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
 }
 
 /// What a creation needs besides the world.
@@ -381,31 +389,54 @@ fn favourites(cat: &Catalogue) -> Vec<i32> {
     (species.into_iter()).filter(|s| s.1).map(|s| s.0).collect()
 }
 
-/// Restores the guest at position `at` of a loaded map: its five status values, its countdowns and
-/// its favourite species. A favourite that is not a loaded species is drawn anew among the species
-/// that are not special animals, as at arrival (guests 5.2 point 9; zoo format 6.12); with none, the
-/// guest has no favourite.
-pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
+/// Creates the guest at position `at` of a loaded map as the loader does (guests 5.2, zoo format
+/// 6.12): through its type, with all the draws of a creation, and then the fields its record
+/// stores: the five status values, the check countdowns, the arrival date, the favourite
+/// species and the sick flag. A favourite that is not a loaded species is drawn anew among the species that are not
+/// special animals, as at arrival; with none, the guest has no favourite. `date` is the game date
+/// of the load and `reset` is `[AI] GuestResetInterval`. The caller goes in file order before the
+/// first step; a guest whose type is unknown is left as it is.
+pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: Date, reset: i32) {
     let Some((id, record)) =
         (world.zoo.entities[at].common.as_ref()).and_then(|c| Some((c.id, *c.guest.as_deref()?)))
     else {
         return;
     };
+    let Some(ty) = type_of(world, cat, at) else {
+        return;
+    };
+    let mut guest = Guest::create(&Keys::of(ty), ty, &favourites(cat), date, reset, rng);
     let known = |name| {
         cat.types
             .iter()
             .any(|t| t.class == "animals" && t.name_id == name)
     };
-    let favourite = if known(record.favourite) {
+    guest.favourite = if known(record.favourite) {
         Some(record.favourite)
     } else {
         let list = favourites(cat);
         (!list.is_empty()).then(|| list[rng.pick(list.len() as u32) as usize])
     };
-    if let Some(Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) {
-        g.values = record.values;
-        g.countdowns = record.countdowns;
-        g.favourite = favourite;
+    guest.values = record.values;
+    guest.countdowns = record.countdowns;
+    guest.arrived = Some(Date::from_file_time(record.arrived));
+    guest.sick = record.sick;
+    if let Some(unit) = world.units.get_mut(id) {
+        unit.part = Part::Guest(guest);
+    }
+}
+
+/// Sets the arrival date of every guest to `date`: a start with `reset` or `resetdate` (zoo format
+/// 6.12).
+pub fn arrive_all(world: &mut World, date: Date) {
+    let ids: Vec<u32> = (world.zoo.entities.iter())
+        .filter(|e| e.class == "guests")
+        .filter_map(|e| e.common.as_ref().map(|c| c.id))
+        .collect();
+    for id in ids {
+        if let Some(Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) {
+            g.arrived = Some(date);
+        }
     }
 }
 
