@@ -189,7 +189,7 @@ impl World {
     /// Moves the gate of exhibit `id` to the fence piece with id `piece` (placing 6.4): the old
     /// gate becomes a fence piece again, the piece a gate made healthy (`life` and `strength` of
     /// its new type), and the undo list is cleared. Whether the piece could become a gate.
-    pub fn move_gate(&mut self, id: u32, piece: u32, life: u32, strength: u32) -> bool {
+    pub fn move_gate(&mut self, id: u32, piece: u32, life: i32, strength: u32) -> bool {
         let Some(at) = self.find(piece) else {
             return false;
         };

@@ -180,7 +180,7 @@ fn the_refund_is_80_percent_and_a_fence_gets_less_as_it_decays() {
     );
     let mut fence = piece("f", 1, 1, 0);
     assert_eq!(refund(&cat, &fence), 100.0);
-    let life = |e: &mut Entity, l: u32| e.common.as_mut().unwrap().fence.as_mut().unwrap().life = l;
+    let life = |e: &mut Entity, l: i32| e.common.as_mut().unwrap().fence.as_mut().unwrap().life = l;
     // Above the decayed life 4: 80 %; at it: 40 %; broken: nothing.
     life(&mut fence, 5);
     assert_eq!(refund(&cat, &fence), 100.0);

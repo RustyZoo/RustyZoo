@@ -114,7 +114,7 @@ impl Fnv {
             self.put(colors);
             self.u8(u8::from(fence.is_some()));
             if let Some(f) = fence {
-                for v in [f.strength, f.life, f.timers[0], f.timers[1]] {
+                for v in [f.strength, f.life as u32, f.timers[0], f.timers[1]] {
                     self.u32(v);
                 }
                 self.u8(u8::from(f.portal));

@@ -1412,7 +1412,7 @@ fn a_new_food_entity_starts_at_the_max_food_units_of_its_type() {
 #[test]
 fn a_fence_on_a_held_slot_is_free_only_for_the_same_type_above_its_decayed_life() {
     let cat = catalogue();
-    let old = |type_name: &str, life: Option<u32>| {
+    let old = |type_name: &str, life: Option<i32>| {
         let mut e = entity("fences", type_name, 5 * 64 + 32, 5 * 64, 0);
         e.common.as_mut().unwrap().fence = life.map(|life| Fence {
             strength: 300,

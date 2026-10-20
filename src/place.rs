@@ -895,7 +895,7 @@ pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>) -> Entity {
             colors,
             fence: (Class::of(ty) == Class::Fence).then(|| Fence {
                 strength: number(ty, "cStrength").unwrap_or(STRENGTH) as u32,
-                life: number(ty, "cLife").unwrap_or(LIFE) as u32,
+                life: number(ty, "cLife").unwrap_or(LIFE) as i32,
                 timers: [0; 2],
                 portal: false,
             }),

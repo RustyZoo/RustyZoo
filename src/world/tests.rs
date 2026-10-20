@@ -337,7 +337,7 @@ fn a_piece_of_the_same_type_and_a_path_of_another_type_keep_their_id_and_place()
     assert_eq!(world.find(other.unwrap()), Some(at + 1));
     // A fence of the same type keeps its entity, made healthy; another type takes the old one's
     // place of the list under a fresh id; the undo gives each its old state back.
-    let wall = |name: &str, life: u32| {
+    let wall = |name: &str, life: i32| {
         let mut e = typed("plain", name, 2 * 64 + 32, 64, 0);
         e.common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
             strength: 300,

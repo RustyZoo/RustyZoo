@@ -14,7 +14,7 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             if v >= 55 {
                 common.fence = Some(Fence {
                     strength: r.u32()?,
-                    life: r.u32()?,
+                    life: r.u32()? as i32,
                     timers: [r.u32()?, r.u32()?],
                     portal: false,
                 });

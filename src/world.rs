@@ -58,7 +58,7 @@ pub struct TankKind {
     pub shows: bool,
     pub transient: bool,
     /// `cLife` and `cStrength`: what a new piece of the type starts with.
-    pub life: u32,
+    pub life: i32,
     pub strength: u32,
     /// `cDepth` and `cHeight`: the levels below and above its own that an object blocks in a
     /// tank (tank fauna 7.3).

@@ -171,8 +171,9 @@ pub struct AnimalRecord {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fence {
     pub strength: u32,
-    /// Below 1 the fence is broken; at or below the `cDecayedLife` of its type, decayed.
-    pub life: u32,
+    /// A signed number, as the original tests it: below 1 (a stored value above `i32::MAX` too) the
+    /// fence is broken; at or below the `cDecayedLife` of its type, decayed.
+    pub life: i32,
     /// Two decay timers.
     pub timers: [u32; 2],
     /// A tank wall whose first trailing byte is not 0 is a portal.
