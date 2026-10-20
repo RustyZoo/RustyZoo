@@ -16,6 +16,7 @@ use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
 mod exhibit;
+mod filter;
 mod tank;
 mod water;
 mod wear;
@@ -59,6 +60,10 @@ pub struct TankKind {
     /// `cLife` and `cStrength`: what a new piece of the type starts with.
     pub life: u32,
     pub strength: u32,
+    /// `cDepth` and `cHeight`: the levels below and above its own that an object blocks in a
+    /// tank (tank fauna 7.3).
+    pub depth: i32,
+    pub height: i32,
 }
 
 impl TankKind {
@@ -72,6 +77,8 @@ impl TankKind {
         transient: false,
         life: 0,
         strength: 0,
+        depth: 0,
+        height: 0,
     };
 }
 

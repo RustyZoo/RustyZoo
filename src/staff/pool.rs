@@ -2,17 +2,18 @@
 //! events posted on the channel 0x4d. A normal task goes to the end of the pool, an urgent one to
 //! the front; duplicates are not merged.
 //!
-//! The pool turns the events of the trash cans (10030), of the litter on the ground (10031) and
-//! of the fences (10033 decayed, 10034 broken, urgent). The events of dung on the grounds
-//! (10032) and of the tank filters (10035, 10036) belong to the issues of those jobs and make no
-//! task yet.
+//! The pool turns the events of the trash cans (10030), of the litter on the ground (10031), of
+//! the fences (10033 decayed, 10034 broken, urgent) and of the tank filters (10035 decayed, 10036
+//! broken, urgent). The events of dung on the grounds (10032) belong to the issue of that job and
+//! make no task yet.
 
 use crate::zoo::Event;
 
-/// The jobs a task names (goals 5): litter, a full trash can and a worn fence.
+/// The jobs a task names (goals 5): litter, a full trash can, a worn fence and a worn filter.
 pub const TRASH_PILE: u8 = 7;
 pub const TRASH_CAN: u8 = 9;
 pub const GO_TO_FENCE: u8 = 16;
+pub const GO_TO_FILTER: u8 = 26;
 
 /// A task: what to do and where, the worker that holds it (0 none) and whether it comes first.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +38,8 @@ fn job_of(kind: u16) -> Option<(u8, bool)> {
         10031 => Some((TRASH_PILE, false)),
         10033 => Some((GO_TO_FENCE, false)),
         10034 => Some((GO_TO_FENCE, true)),
+        10035 => Some((GO_TO_FILTER, false)),
+        10036 => Some((GO_TO_FILTER, true)),
         _ => None,
     }
 }

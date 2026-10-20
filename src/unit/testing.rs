@@ -30,6 +30,7 @@ pub fn entity(class: &str, kind: &str, id: u32, (x, y): (i32, i32), rotation: u3
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     }
 }

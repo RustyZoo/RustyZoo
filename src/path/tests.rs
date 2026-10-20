@@ -36,6 +36,7 @@ fn entity_at(class: &str, kind: &str, subtype: &str, (x, y): (i32, i32), rotatio
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     }
 }
@@ -284,7 +285,7 @@ fn objects_hold_quarters_and_close_a_side() {
         e.push(entity_at("bush", "", "", (5 * 64 + 48, 5 * 64 + 48), 0));
     });
     let m = unit(Kind::Keeper, (5, 6));
-    let clear = |from, to, d| cost::clear(&w, &m, t(from), t(to), d, true);
+    let clear = |from, to, d| cost::clear(&w, &m, (t(from), t(to)), d, true, None);
     assert!(!clear((5, 6), (5, 5), 0), "in from the south");
     assert!(clear((5, 4), (5, 5), 4), "in from the north");
     assert!(clear((4, 5), (5, 5), 2), "in from the west");

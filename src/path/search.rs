@@ -100,7 +100,7 @@ pub fn open(
     let fits = if building { edge(w, m, a, d) } else { cost };
     (w.tank_at(b).is_none()
         && fits < MAX
-        && (building && !other_building(w, m, b) || clear(w, m, a, b, d, diagonal(m, s))))
+        && (building && !other_building(w, m, b) || clear(w, m, (a, b), d, diagonal(m, s), None)))
     .then_some(cost)
 }
 
@@ -116,7 +116,9 @@ pub fn open_deep(
 ) -> Option<u32> {
     let cost = step(w, m, a, b, d, goal);
     let fits = if building { edge(w, m, a, d) } else { cost };
-    (clear(w, m, a, b, d, diagonal(m, s)) && elevated(w, m, (a, za), (b, zb)) && fits < MAX)
+    (clear(w, m, (a, b), d, diagonal(m, s), Some((za, zb)))
+        && elevated(w, m, (a, za), (b, zb))
+        && fits < MAX)
         .then_some(cost)
 }
 

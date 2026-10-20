@@ -334,6 +334,7 @@ impl Session<'_> {
                 food: 0,
                 animal: None,
                 guest: None,
+                filter: None,
             }),
         };
         let shape = self.app.renderer.shape(&entity);

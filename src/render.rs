@@ -1549,6 +1549,8 @@ fn tank_kind(ty: &EntityType) -> TankKind {
         transient: flag("cIsTransient"),
         life: crate::build::number(ty, "cLife").unwrap_or(crate::place::LIFE) as u32,
         strength: crate::build::number(ty, "cStrength").unwrap_or(crate::place::STRENGTH) as u32,
+        depth: crate::build::number(ty, "cDepth").unwrap_or(0.0) as i32,
+        height: crate::build::number(ty, "cHeight").unwrap_or(0.0) as i32,
     }
 }
 

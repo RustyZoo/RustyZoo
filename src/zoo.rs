@@ -113,6 +113,17 @@ pub struct Common {
     pub animal: Option<Box<AnimalRecord>>,
     /// What a guest record stores of the guest; `None` for everything else.
     pub guest: Option<Box<GuestRecord>>,
+    /// The health and timers of a tank filter; `None` for everything else.
+    pub filter: Option<Filter>,
+}
+
+/// What a tank filter keeps (tank staff 7): its health, and the milliseconds left before it loses
+/// a point and before it filters again. A record of a version before 95 has no timers: the first
+/// update starts them from the type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Filter {
+    pub health: u32,
+    pub timers: Option<[i32; 2]>,
 }
 
 /// What a guest record stores: the five status values (happiness, hunger, thirst, energy,

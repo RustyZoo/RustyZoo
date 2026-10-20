@@ -28,6 +28,14 @@ pub enum Command {
     Food(i32, i32, String, Option<i32>),
     /// `guide X,Y`: a tour guide stands on the tile, hired without the hiring cost.
     Guide(i32, i32),
+    /// `keeper X,Y` and `worker X,Y`: a marine specialist or a maintenance worker, the same way.
+    Keeper(i32, i32),
+    Worker(i32, i32),
+    /// `animal TYPE X,Y`: an animal of the type (`mantaray`) stands on the tile.
+    Animal(String, i32, i32),
+    /// `filter X,Y DIRECTION`: a tank filter on the tile, facing a direction 0 to 7, as placed
+    /// during play.
+    Filter(i32, i32, u32),
     /// `leave ID`: the guest decides to leave the zoo (the flag its checks raise).
     Leave(u32),
     /// `heal ID`: the animal is healed as a keeper's heal does (animals-needs 9.7), without the
@@ -50,6 +58,11 @@ impl std::str::FromStr for Command {
                 .ok_or_else(|| format!("bad command: {text:?}"))
         };
         let id = |i: usize| u32::try_from(n(i)?).map_err(|_| format!("bad id: {text:?}"));
+        let tile = |word: &str| -> Result<(i32, i32), String> {
+            let at = word.split_once(',');
+            let at = at.and_then(|(x, y)| Some((x.parse().ok()?, y.parse().ok()?)));
+            at.ok_or_else(|| format!("bad tile: {text:?}"))
+        };
         let command = match words.first().copied() {
             Some("remove") if words.len() == 2 => Command::Remove(id(1)?),
             Some("heal") if words.len() == 2 => Command::Heal(id(1)?),
@@ -60,11 +73,22 @@ impl std::str::FromStr for Command {
                 let cash = words[1].parse::<f32>().ok().filter(|c| c.is_finite());
                 Command::Cash(cash.ok_or_else(|| format!("bad cash: {text:?}"))?)
             }
-            Some("guide") if words.len() == 2 => {
-                let at = words[1].split_once(',');
-                let at = at.and_then(|(x, y)| Some((x.parse().ok()?, y.parse().ok()?)));
-                let (x, y) = at.ok_or_else(|| format!("bad tile: {text:?}"))?;
-                Command::Guide(x, y)
+            Some(who @ ("guide" | "keeper" | "worker")) if words.len() == 2 => {
+                let (x, y) = tile(words[1])?;
+                match who {
+                    "guide" => Command::Guide(x, y),
+                    "keeper" => Command::Keeper(x, y),
+                    _ => Command::Worker(x, y),
+                }
+            }
+            Some("animal") if words.len() == 3 => {
+                let (x, y) = tile(words[2])?;
+                Command::Animal(words[1].into(), x, y)
+            }
+            Some("filter") if words.len() == 3 => {
+                let (x, y) = tile(words[1])?;
+                let facing = words[2].parse().ok().filter(|d| *d < 8);
+                Command::Filter(x, y, facing.ok_or_else(|| format!("bad facing: {text:?}"))?)
             }
             Some("food") if (3..=4).contains(&words.len()) => {
                 let at = words[1].split_once(',');
@@ -196,21 +220,39 @@ impl Run {
             }
             Command::Food(x, y, ref name, units) => self.put_food(x, y, name, units),
             Command::Heal(id) => self.heal(id),
-            Command::Guide(x, y) => self.hire_guide(x, y),
+            Command::Guide(x, y) => self.add_unit("tour", None, x, y),
+            Command::Keeper(x, y) => self.add_unit("keeper", Some("trainer"), x, y),
+            Command::Worker(x, y) => self.add_unit("maint", None, x, y),
+            Command::Animal(ref name, x, y) => self.add_unit("animals", Some(name), x, y),
+            Command::Filter(x, y, facing) => self.add_filter(x, y, facing),
         }
     }
 
-    /// A tour guide (the first sex of the data) on tile `(x, y)`; whether there is such a tile and
-    /// such a type.
-    fn hire_guide(&mut self, x: i32, y: i32) -> bool {
-        let Some(ty) = self.cat.types.iter().find(|t| t.class == "tour") else {
+    /// A unit of the class (and the type, when it is given; the first sex of the data) on tile
+    /// `(x, y)`, hired without the hiring cost; whether there is such a tile and such a type.
+    fn add_unit(&mut self, class: &str, name: Option<&str>, x: i32, y: i32) -> bool {
+        let named =
+            |t: &&crate::entity::EntityType| name.is_none_or(|n| t.type_name == n.as_bytes());
+        let Some(ty) = self
+            .cat
+            .types
+            .iter()
+            .filter(named)
+            .find(|t| t.class == class)
+        else {
             return false;
         };
         let Some(tile) = self.world.tile_index(x, y) else {
             return false;
         };
         let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
-        let name = crate::place::unit::name(&mut self.world, ty, "Guide");
+        let label = match class {
+            "tour" => "Guide",
+            "keeper" => "Keeper",
+            "maint" => "Worker",
+            _ => "Animal",
+        };
+        let name = crate::place::unit::name(&mut self.world, ty, label);
         let entity = crate::zoo::Entity {
             class: ty.class.into(),
             type_name: text(&ty.type_name),
@@ -229,6 +271,7 @@ impl Run {
                 movement_mode: 0,
                 animal: None,
                 guest: None,
+                filter: None,
             }),
         };
         let shape = crate::world::Shape {
@@ -242,6 +285,17 @@ impl Run {
             walkable: (false, false),
         };
         self.world.add(entity, Some(shape)).is_some()
+    }
+
+    /// A tank filter facing `facing` on tile `(x, y)`; whether there is such a tile and such a
+    /// type.
+    fn add_filter(&mut self, x: i32, y: i32, facing: u32) -> bool {
+        let tile = self.world.tile_index(x, y);
+        let ty = self.cat.types.iter().find(|t| t.class == "filter");
+        match (tile, ty) {
+            (Some(tile), Some(ty)) => self.world.add_filter(ty, tile, facing),
+            _ => false,
+        }
     }
 
     /// A pile of food of the type `name` in the middle of tile `(x, y)`, full unless `units` says

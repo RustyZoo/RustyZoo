@@ -1,7 +1,7 @@
 //! The bodies of entity records, by class. Only the common part is kept; every other field is
 //! read and dropped to reach the next record (or the end of the body).
 
-use super::{AnimalRecord, Common, Fence, GuestRecord, R, Reader, bad};
+use super::{AnimalRecord, Common, Fence, Filter, GuestRecord, R, Reader, bad};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -33,11 +33,14 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             base(r)?
         }
         b"filter" => {
-            let common = scenery(r)?;
-            r.skip(4)?;
+            let mut common = scenery(r)?;
+            let health = r.u32()?;
+            let mut timers = None;
             if v >= 95 {
-                r.skip(12 + 16 + 4)?;
+                timers = Some([r.u32()? as i32, r.u32()? as i32]);
+                r.skip(4 + 16 + 4)?;
             }
+            common.filter = Some(Filter { health, timers });
             common
         }
         b"rubble" => {
@@ -114,6 +117,7 @@ fn base(r: &mut Reader) -> R<Common> {
         food: 0,
         animal: None,
         guest: None,
+        filter: None,
     })
 }
 

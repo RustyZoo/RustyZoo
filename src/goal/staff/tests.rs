@@ -549,7 +549,7 @@ fn the_entrance_is_blocked_by_a_fence_across_the_gate_or_an_object_in_a_gate_til
         let gate = service::gate_tiles(&g.w, pen).unwrap();
         let at = g.w.find(KEEPER).unwrap();
         let mover = movement::mover(g.w.units.get(KEEPER).unwrap(), &g.w, at, 9 * 22 + 1);
-        service::entrance_blocked(&g.w, &mover, gate)
+        service::entrance_blocked(&g.w, &mover, gate, false)
     };
     assert!(!blocked(&Game::new(&[PEN_A])), "as built");
     assert!(

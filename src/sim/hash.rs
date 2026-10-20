@@ -101,6 +101,7 @@ impl Fnv {
             food,
             animal: _,
             guest: _,
+            filter,
         }) = &e.common
         {
             for v in [*x, *y, *z] {
@@ -120,6 +121,12 @@ impl Fnv {
             }
             self.u32(*movement_mode);
             self.i32(*food);
+            if let Some(f) = filter {
+                self.u32(f.health);
+                for v in f.timers.unwrap_or([-1; 2]) {
+                    self.i32(v);
+                }
+            }
         }
     }
 
@@ -182,6 +189,7 @@ impl Fnv {
             self.put(&[u8::from(t.show), u8::from(t.salt), u8::from(t.filled)]);
             self.i32(t.platform.0);
             self.i32(t.platform.1);
+            self.u32(x.purity_ms);
         }
         self.len(x.amphibious.len());
         for &n in &x.amphibious {

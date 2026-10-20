@@ -34,7 +34,19 @@ pub fn put_at(
     world: &mut World,
     ty: &EntityType,
     names: (&str, &str, &str),
-    (x, y): (i32, i32),
+    at: (i32, i32),
+    rotation: u32,
+    food: i32,
+) -> bool {
+    put_z(world, ty, names, (at.0, at.1, None), rotation, food)
+}
+
+/// The same at the height `z` when it is given (food in the water), else on the ground.
+pub fn put_z(
+    world: &mut World,
+    ty: &EntityType,
+    names: (&str, &str, &str),
+    (x, y, z): (i32, i32, Option<i32>),
     rotation: u32,
     food: i32,
 ) -> bool {
@@ -44,7 +56,7 @@ pub fn put_at(
     let common = Common {
         x,
         y,
-        z: world.zoo.tiles[tile].elevation * 16,
+        z: z.unwrap_or(world.zoo.tiles[tile].elevation * 16),
         rotation,
         id: 0,
         name: String::new(),
@@ -54,6 +66,7 @@ pub fn put_at(
         food,
         animal: None,
         guest: None,
+        filter: None,
     };
     let entity = Entity {
         class: names.0.into(),

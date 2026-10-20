@@ -32,6 +32,8 @@ pub struct Exhibit {
     pub gate: Option<u32>,
     /// What a tank has besides: set when every wall of its boundary is a tank wall.
     pub tank: Option<Tank>,
+    /// The milliseconds the water of a tank has held its purity (exhibits and money 3.10).
+    pub purity_ms: u32,
     /// The exhibits it is linked to as amphibious neighbours, in the order they became so
     /// (tank fauna 12); the company checks count their animals and tiles with its own. Nothing
     /// makes the links yet.
@@ -118,6 +120,8 @@ pub struct TankConfig {
     pub limit: u32,
     /// `murkyWaterPurity`: the purity below which the water is not clean.
     pub murky: i32,
+    /// `waterPurityDecayTime`: the milliseconds before the purity of the water drops one point.
+    pub decay: u32,
 }
 
 impl Default for TankConfig {
@@ -136,6 +140,7 @@ impl Default for TankConfig {
             offset: 0,
             limit: 30,
             murky: 60,
+            decay: 30_000,
         }
     }
 }
@@ -180,6 +185,7 @@ impl TankConfig {
         found.offset = number("waterOffset").map_or(found.offset, |n| n.clamp(-255, 255));
         found.limit = number("maximumTankHeight").map_or(found.limit, |n| n.clamp(0, 255) as u32);
         found.murky = number("murkyWaterPurity").unwrap_or(found.murky);
+        found.decay = number("waterPurityDecayTime").map_or(found.decay, |n| n.max(0) as u32);
         found
     }
 
@@ -411,6 +417,7 @@ impl Exhibits {
             name,
             gate: None,
             tank: None,
+            purity_ms: 0,
             amphibious: Vec::new(),
             rating: rating::State::new(),
             stats: Stats::default(),

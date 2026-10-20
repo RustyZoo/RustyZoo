@@ -88,8 +88,8 @@ pub enum Gait {
     Slow,
     Medium,
     Fast,
-    /// `fFly`: a flying unit's move.
-    Fly,
+    /// `fFly`: a flying unit's move, or the climb of a ladder; the second argument is its speed.
+    Fly(Number),
     /// `fMove` and the like: the call names the animation, the speed and the percentage of the
     /// animation speed (100 if absent), and perhaps a sound.
     Own {
@@ -412,7 +412,7 @@ fn build(name: &str, args: &[String]) -> Result<Op, &'static str> {
                 "fWalk" | "fSwim" | "fMoveSlow" => Gait::Slow,
                 "fTrot" | "fMoveMedium" => Gait::Medium,
                 "fRun" | "fMoveFast" => Gait::Fast,
-                _ => Gait::Fly,
+                _ => Gait::Fly(number(&args[1])),
             };
             to_move(gait, name == "fFlyReverse")
         }

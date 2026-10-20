@@ -73,6 +73,7 @@ fn map() -> Zoo {
                 food: 0,
                 animal: None,
                 guest: None,
+                filter: None,
             }),
         });
     }

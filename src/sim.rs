@@ -270,6 +270,9 @@ impl Sim {
         for event in world.loaded_events(cat) {
             self.events.post(event);
         }
+        for event in world.loaded_filter_events(cat) {
+            self.events.post(event);
+        }
     }
 
     /// A new game (not a saved one) has just been set up: every fence piece is made healthy and
@@ -437,6 +440,10 @@ impl Sim {
                 for event in world.wear(cat, at, step, &mut self.lines) {
                     self.events.post(event);
                 }
+                // So does a tank filter.
+                for event in world.filter_step(cat, at, step) {
+                    self.events.post(event);
+                }
             }
         }
         for event in std::mem::take(&mut world.units.posts) {
@@ -472,6 +479,7 @@ impl Sim {
             world.exhibits_mut().list_mut()[at].rating = state;
         }
         let water_moved = world.step_water();
+        world.decay_water(step);
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;
         self.world_secs = self.world_secs.wrapping_add(total / 1000);

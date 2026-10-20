@@ -117,6 +117,7 @@ fn entity_at(class: &str, name: &str, subtype: &str, x: i32, y: i32, rotation: u
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     }
 }

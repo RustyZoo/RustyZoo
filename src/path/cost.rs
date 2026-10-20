@@ -20,15 +20,31 @@ fn steep(w: &World, t: usize) -> bool {
 }
 
 /// Per quarter (the spec's numbering): whether it holds an entity, and whether that entity stops
-/// the unit (4.3).
-fn quarters(w: &World, m: &Mover, t: usize) -> [(bool, bool); 4] {
+/// the unit (4.3). In a depth search `level` is the level the unit would be at: an object on a
+/// tank tile stops only the levels from its own minus its depth to its own plus its height.
+fn quarters(w: &World, m: &Mover, t: usize, level: Option<i32>) -> [(bool, bool); 4] {
     SLOT.map(|q| match w.quadrant(t, q) {
         None => (false, false),
         Some(e) => {
             let walk = w.shape(e).map(|s| s.walkable);
-            (true, !walk.is_some_and(|k| if m.tall { k.1 } else { k.0 }))
+            let stops = !walk.is_some_and(|k| if m.tall { k.1 } else { k.0 });
+            (true, stops && level.is_none_or(|l| in_reach(w, e, t, l)))
         }
     })
+}
+
+/// Whether level `level` is one the entity `e` on tile `t` blocks (tank fauna 7.3): every level
+/// out of a tank.
+fn in_reach(w: &World, e: usize, t: usize, level: i32) -> bool {
+    let (Some(tank), Some(c)) = (
+        w.shape(e).map(|s| s.tank),
+        w.zoo.entities[e].common.as_ref(),
+    ) else {
+        return true;
+    };
+    let own = c.z.div_euclid(16);
+    w.tank_at(t).is_none()
+        || (own.saturating_sub(tank.depth)..=own.saturating_add(tank.height)).contains(&level)
 }
 
 /// The units on tile `t` other than `m`: their ids, and whether they let it through (an animal
@@ -97,7 +113,7 @@ pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
         return MAX;
     }
     let (path, steep, tank) = (on_path(w, t), steep(w, t), w.tank_at(t).is_some());
-    let blocked = quarters(w, m, t).iter().all(|q| q.1);
+    let blocked = quarters(w, m, t, None).iter().all(|q| q.1);
     // The food a keeper put down: scenery in quarter 0 with food units left.
     let food = w.quadrant(t, SLOT[0]).is_some_and(|e| {
         w.zoo.entities[e]
@@ -279,7 +295,14 @@ pub fn other_building(w: &World, m: &Mover, t: usize) -> bool {
 }
 
 /// 4.3: whether the step from `a` to `b` in direction `d` clears the objects.
-pub fn clear(w: &World, m: &Mover, a: usize, b: usize, d: usize, diagonal: bool) -> bool {
+pub fn clear(
+    w: &World,
+    m: &Mover,
+    (a, b): (usize, usize),
+    d: usize,
+    diagonal: bool,
+    levels: Option<(i32, i32)>,
+) -> bool {
     if d % 2 == 1 && diagonal {
         let (x, y) = ((d + 7) % 8, (d + 1) % 8);
         let (ax, ay) = (w.neighbour(a, x), w.neighbour(a, y));
@@ -287,15 +310,27 @@ pub fn clear(w: &World, m: &Mover, a: usize, b: usize, d: usize, diagonal: bool)
             return false;
         };
         let sides = [(a, ax, x), (a, ay, y), (ax, b, y), (ay, b, x)];
-        if !sides.iter().all(|&(p, q, d)| clear_one(w, m, p, q, d)) {
+        if !sides
+            .iter()
+            .all(|&(p, q, d)| clear_one(w, m, (p, q), d, levels))
+        {
             return false;
         }
     }
-    clear_one(w, m, a, b, d)
+    clear_one(w, m, (a, b), d, levels)
 }
 
-fn clear_one(w: &World, m: &Mover, a: usize, b: usize, d: usize) -> bool {
-    let (qa, qb) = (quarters(w, m, a), quarters(w, m, b));
+fn clear_one(
+    w: &World,
+    m: &Mover,
+    (a, b): (usize, usize),
+    d: usize,
+    levels: Option<(i32, i32)>,
+) -> bool {
+    let (qa, qb) = (
+        quarters(w, m, a, levels.map(|l| l.0)),
+        quarters(w, m, b, levels.map(|l| l.1)),
+    );
     if !qa.iter().chain(&qb).any(|q| q.0) {
         return true;
     }

@@ -26,6 +26,7 @@ fn entity(class: &str, tx: i32, ty: i32, rotation: u32) -> Entity {
             food: 0,
             animal: None,
             guest: None,
+            filter: None,
         }),
     }
 }

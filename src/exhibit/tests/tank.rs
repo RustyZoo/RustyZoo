@@ -280,6 +280,7 @@ pub(super) const CONFIG: TankConfig = TankConfig {
     offset: -1,
     limit: 20,
     murky: 60,
+    decay: 30_000,
 };
 
 /// A map of tiles with these elevations by tile (0 elsewhere), and the pieces, with the
@@ -681,8 +682,20 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
             offset: 0,
             limit: 30,
             murky: 60,
+            decay: 30_000,
         }
     );
+    // The time before the purity drops: any whole number, below 0 none.
+    for (text, decay) in [
+        ("30000", 30_000),
+        ("0", 0),
+        ("-5", 0),
+        ("99999999", 99_999_999),
+        ("", 30_000),
+    ] {
+        let cfg = format!("[tank]\nwaterPurityDecayTime = {text}\n");
+        assert_eq!(read(&cfg).decay, decay, "{text:?}");
+    }
     // The limit of the clean water: any number, as the original takes it.
     for (text, murky) in [("60", 60), ("0", 0), ("-5", -5), ("99999", 99999), ("", 60)] {
         let cfg = format!("[tank]\nmurkyWaterPurity = {text}\n");

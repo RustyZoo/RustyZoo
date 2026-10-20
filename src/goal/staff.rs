@@ -1,10 +1,10 @@
 //! The goals of a keeper (staff 7): going to the exhibit that needs him (task 0x65), his duties
 //! there (0x6e) and the jobs of the duties, feeding, healing and raking (1 to 6). The exhibit
 //! counters, the claimed and unreachable places and the gate he opened follow his own target tile
-//! ([`Cx::keeper_target`]), which is not the goal record's target tile (staff 7.4). Land exhibits
-//! only.
+//! ([`Cx::keeper_target`]), which is not the goal record's target tile (staff 7.4). A marine
+//! keeper's tanks are in [`tank`].
 
-use super::{Cx, DUTIES, HABITAT, NONE, RANDOM};
+use super::{Cx, DUTIES, ENTER_TANK, EXIT_TANK, HABITAT, NONE, RANDOM};
 use crate::animal::{self, dirt, food};
 use crate::build::{cost, number};
 use crate::entity::EntityType;
@@ -12,8 +12,10 @@ use crate::path::{self, MAX};
 use crate::place::bulldozer::type_of;
 use crate::staff::{assign, service};
 use crate::unit::{Part, Staff, movement};
+use tank::{CLEAN_TANK, CLIMB_DOWN_INSIDE, is_tank_job};
 
 mod guide;
+mod tank;
 mod worker;
 
 /// The jobs of the duties.
@@ -137,6 +139,10 @@ impl<'c> Cx<'_, 'c> {
     pub(super) fn keeper_ladder(&mut self, task: u8, done: bool) {
         let here = self.exhibit();
         if task == NONE || (done && here.is_none()) {
+            // Standing in a tank he leaves it first (point 3.1).
+            if here.is_some_and(|x| self.world.tank(x).is_some()) {
+                return self.set_task(EXIT_TANK, 0, 0, None);
+            }
             self.set_task(HABITAT, 4, 0, None);
             return self.keeper_target(None);
         }
@@ -163,7 +169,10 @@ impl<'c> Cx<'_, 'c> {
         if there.is_none() || there != self.tile() {
             return;
         }
-        if self.exhibit() == Some(x) {
+        // A tank is served from the tile outside its gate (point "Check done").
+        let gate = service::gate_tiles(self.world, x).map(|g| g.1);
+        let at_gate = self.world.tank(x).is_some() && gate == self.tile();
+        if self.exhibit() == Some(x) || at_gate {
             self.record().done = true;
         } else {
             self.reset();
@@ -189,7 +198,13 @@ impl<'c> Cx<'_, 'c> {
         };
         let gate = service::gate_tiles(self.world, x);
         let mover = movement::mover(self.unit, self.world, self.at, self.tile().unwrap_or(0));
-        let walk = gate.map(|(inside, _)| self.gate_side(x, inside, &mover));
+        // A tank is walked to at the tile outside its gate, a land exhibit at one beside its inside
+        // tile.
+        let tank = self.world.tank(x).is_some();
+        let walk = gate.map(|(inside, outside)| match tank {
+            true => outside,
+            false => self.gate_side(x, inside, &mover),
+        });
         // A path, else one more in the relaxed mode that may stop short (pathfinding 6.2): a
         // path that ends anywhere but in the exhibit is a short one.
         self.unit.path.clear();
@@ -200,7 +215,7 @@ impl<'c> Cx<'_, 'c> {
             ok = self.path_to(to, true);
             self.unit.mover.relaxed = false;
             let end = self.unit.path.last();
-            short = end.and_then(|&t| food::exhibit_of(self.world, t)) != Some(x);
+            short = !tank && end.and_then(|&t| food::exhibit_of(self.world, t)) != Some(x);
         }
         let started = ok && self.start_walk(false, false, false);
         if !started {
@@ -246,7 +261,8 @@ impl<'c> Cx<'_, 'c> {
     /// exhibit hears he is not coming and he wanders.
     fn exhibit_failed(&mut self, x: u32, gate: Option<(usize, usize)>, walking: bool) {
         let mover = movement::mover(self.unit, self.world, self.at, self.tile().unwrap_or(0));
-        let blocked = gate.is_none_or(|g| service::entrance_blocked(self.world, &mover, g));
+        let tank = self.world.tank(x).is_some();
+        let blocked = gate.is_none_or(|g| service::entrance_blocked(self.world, &mover, g, tank));
         let name = self.exhibit_name(x);
         match (blocked, walking) {
             (true, _) => {
@@ -262,6 +278,10 @@ impl<'c> Cx<'_, 'c> {
 
     /// 7.4 complete: the duties, unless two keepers work there.
     pub(super) fn exhibit_complete(&mut self) {
+        let tank = self.own().and_then(|t| food::exhibit_of(self.world, t));
+        if tank.is_some_and(|x| self.world.tank(x).is_some()) {
+            return self.set_task(ENTER_TANK, 0, 0, None);
+        }
         match self.exhibit() {
             Some(x) if service::present(self.world, x) >= 2 => self.reset(),
             _ => self.set_task(DUTIES, 0, 0, None),
@@ -329,16 +349,27 @@ impl<'c> Cx<'_, 'c> {
         let rake = rake
             .filter(|t| !claimed.contains(t) && !tiles.contains(t))
             .count();
-        match eater {
+        let tank = self.world.tank(x);
+        let murky = i64::from(self.world.tank_config().murky);
+        let job = match eater {
             Some(a) if service::food_needed(self.world, cat, x, who, a.food) > 0 => {
                 if let Some(s) = self.staff() {
                     s.food_kind = a.food;
                 }
-                self.set_job(PUT_FOOD, a.id, None);
+                Some((PUT_FOOD, a.id))
             }
-            _ if sick => self.set_job(HEAL, 0, None),
-            _ if rake > 0 => self.set_job(CLEAN, 0, None),
-            _ => self.record().done = true,
+            _ if sick => Some((HEAL, 0)),
+            _ if tank.is_none() && rake > 0 => Some((CLEAN, 0)),
+            _ if tank.is_some_and(|t| t.level > 0 && i64::from(t.purity) < murky) => {
+                Some((CLEAN_TANK, 0))
+            }
+            _ => None,
+        };
+        match job {
+            // On the platform any job first climbs down into the water (tank staff 5.2).
+            Some(_) if self.unit.tank == 2 => self.set_job(CLIMB_DOWN_INSIDE, 0, None),
+            Some((job, id)) => self.set_job(job, id, None),
+            None => self.record().done = true,
         }
     }
 
@@ -367,7 +398,9 @@ impl<'c> Cx<'_, 'c> {
         let id = self.record().job_target.id;
         let target = self.world.units.get(id);
         let egg = matches!(target.map(|u| &u.part), Some(Part::Animal(a)) if a.egg);
+        let tank = self.exhibit().is_some_and(|x| self.world.tank(x).is_some());
         match job {
+            PUTTING_FOOD if tank => "bFeedTank",
             PUTTING_FOOD if kind == 1 => "bFeedCarn",
             PUTTING_FOOD => "bFeedHerb",
             HEALING if egg => "bHealEgg",
@@ -379,6 +412,9 @@ impl<'c> Cx<'_, 'c> {
     /// The init of a job: the animal or the dung must be there; he faces it and starts the set.
     /// False clears the job.
     pub(super) fn job_init(&mut self, job: u8) -> bool {
+        if is_tank_job(job) {
+            return self.tank_init(job);
+        }
         if !matches!(job, PUTTING_FOOD | HEALING | CLEANING) {
             return true;
         }
@@ -443,6 +479,9 @@ impl<'c> Cx<'_, 'c> {
 
     /// 4.3 check done of a job: the keeper stands on the job's tile, or the set has ended.
     pub(super) fn job_check_done(&mut self, job: u8) {
+        if is_tank_job(job) {
+            return self.tank_check_done(job);
+        }
         let id = self.record().job_target.id;
         let done = match job {
             PUT_FOOD | HEAL | CLEAN => self.reached(true),
@@ -454,6 +493,9 @@ impl<'c> Cx<'_, 'c> {
 
     pub(super) fn job_decide(&mut self, job: u8) {
         if self.record().job_target.tile.is_none() {
+            if is_tank_job(job) {
+                return self.tank_decide(job);
+            }
             match job {
                 PUT_FOOD => self.food_decide(),
                 HEAL => self.heal_decide(),
@@ -464,12 +506,21 @@ impl<'c> Cx<'_, 'c> {
     }
 
     pub(super) fn job_complete(&mut self, job: u8) {
+        if is_tank_job(job) {
+            return self.tank_complete(job);
+        }
         let r = self.record().job_target.clone();
         match job {
             PUT_FOOD => {
                 let more = self.food_short();
                 match more {
-                    true => self.set_job(PUTTING_FOOD, r.id, r.tile),
+                    true => {
+                        self.set_job(PUTTING_FOOD, r.id, r.tile);
+                        // The pile in the water goes at the depth the keeper swam to.
+                        if self.exhibit().is_some_and(|x| self.world.tank(x).is_some()) {
+                            self.record().job_target.pos = r.pos;
+                        }
+                    }
                     false => self.job_end(),
                 }
             }
@@ -483,8 +534,13 @@ impl<'c> Cx<'_, 'c> {
 
     /// Walks to tile `to` for the job: a path and the walk set; the job target follows.
     fn go_job(&mut self, to: usize) -> bool {
+        self.go_job_at(to, None)
+    }
+
+    /// The same to the level `level` of the tile, in a tank.
+    fn go_job_at(&mut self, to: usize, level: Option<i32>) -> bool {
         self.unit.path.clear();
-        self.path_to(to, false) && self.start_walk(false, true, false)
+        self.path_to_level(to, false, level) && self.start_walk(false, true, false)
     }
 
     /// Whether the animals of the exhibit still need food of the keeper's food kind.
@@ -509,6 +565,15 @@ impl<'c> Cx<'_, 'c> {
             return self.job_end();
         };
         let (tiles, _) = self.lost();
+        // A tank has its place in the water (tank staff 5.3).
+        let (mut level, tank) = (None, self.world.tank(x).is_some());
+        let tank_place = match tank {
+            true => self.tank_food_place(x, here),
+            false => None,
+        };
+        if tank && tank_place.is_none() {
+            return self.job_end();
+        }
         let claimed = service::claimed(self.world);
         let inside = service::gate_tiles(self.world, x).map(|g| g.0);
         let mover = movement::mover(self.unit, self.world, self.at, here);
@@ -523,11 +588,15 @@ impl<'c> Cx<'_, 'c> {
                 && !claimed.contains(t)
         };
         let places: Vec<usize> = self.world.tiles_of(x).into_iter().filter(free).collect();
-        let place = match places.len() {
-            0 => here,
-            n => places[self.ctx.rng.pick(n as u32) as usize],
+        let place = match (tank_place, places.len()) {
+            (Some((tile, l)), _) => {
+                level = Some(l);
+                tile
+            }
+            (None, 0) => here,
+            (None, n) => places[self.ctx.rng.pick(n as u32) as usize],
         };
-        if self.go_job(place) {
+        if self.go_job_at(place, level) {
             return self.keeper_target(Some(place));
         }
         let give_up = self.staff().is_some_and(|s| {
@@ -558,15 +627,16 @@ impl<'c> Cx<'_, 'c> {
                 .unwrap_or(100.0);
             let facing = self.ctx.rng.rand() & 7;
             let w = self.world.zoo.width as usize;
-            let at = ((tile % w) as i32, (tile / w) as i32);
-            if dirt::put(
-                self.world,
-                ty,
-                ("food", "food", name),
-                at,
-                facing,
-                per as i32,
-            ) {
+            let at = ((tile % w) as i32 * 64 + 32, (tile / w) as i32 * 64 + 32);
+            let in_water = self.world.tank(x).is_some();
+            let z = self
+                .record()
+                .job_target
+                .pos
+                .map(|p| p.2)
+                .filter(|_| in_water);
+            let names = ("food", "food", name);
+            if dirt::put_z(self.world, ty, names, (at.0, at.1, z), facing, per as i32) {
                 self.world.mark_rating(tile);
                 self.spend(x, crate::money::ANIMAL_FOOD, cost(ty));
             }
