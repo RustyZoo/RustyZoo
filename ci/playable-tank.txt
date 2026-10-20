@@ -1,7 +1,7 @@
 # The exit test of milestone M6 on the expansion trial: the game of its freeform screen (the map of
 # the aquarium and 75000 of cash), played to the fourth month: a tank of 6 x 6 tiles built with
 # tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
-# maintenance worker, a bronto burger stand and a trash can. ci/check-playable.sh runs it twice and
+# maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
 # reads the log.
 #
 # The window is the default one (1024x768); every position is in its pixels. The tank filter is
@@ -39,7 +39,7 @@
 27 key enter
 30 key escape
 # (the tank filter is pending: it cannot be placed yet, RustyZoo issue 471)
-# objects panel: a bronto burger stand (structures tab) and a trash can (scenery tab) by the path
+# objects panel: a food stand (structures tab) and a trash can (scenery tab) by the path
 32 mouse 25 129
 33 down
 34 up

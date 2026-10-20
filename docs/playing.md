@@ -15,7 +15,7 @@ The scripts do not go through the menu: they start on the map of the freeform ga
 
 The four round buttons at the top of the left bar open the panels of the game. In order from the top they are: construction, adopt, objects and hire.
 
-1. Construction panel, first tab (fences). Choose a fence and drag it along the side of a tile, from one end of the side to the other. The fence is laid on the side of the tile that the press is nearest to. Four drags close a square of 6 x 6 tiles; the last one asks for the name of the new exhibit. Enter keeps the name it proposes. The game puts the first gate on the exhibit itself.
+1. In the construction panel, the first tab (fences). Choose a fence and drag it along the side of a tile, from one end of the side to the other. The fence is laid on the side of the tile that the press is nearest to. Four drags close a square of 6 x 6 tiles; the last one asks for the name of the new exhibit. Enter keeps the name it proposes. The game puts the first gate on the exhibit itself.
 2. The second tab holds paths: drag one from the gate of the exhibit to the path that leads from the entrance. The entrance already has a path.
 3. Objects panel, first tab (structures): choose a food stand and a restroom and click the ground beside the path. The second tab holds scenery: a trash can and a bench. A tile that cannot hold the object shows it red.
 4. Adopt panel, first tab: choose an animal and click inside the exhibit. The two buttons below the list choose male or female. Put in what the animal likes before it is unhappy: the construction panel has foliage and rocks on its other tabs, and the animal panel (click the animal) shows how well the exhibit suits it.

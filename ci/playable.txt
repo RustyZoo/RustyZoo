@@ -131,7 +131,7 @@
 130 down
 131 up
 133 key escape
-# construction panel: foliage tab (umbrella thorn trees) and rocks tab (a small rock) for the habitat
+# construction panel: foliage tab (trees) and rocks tab (a small rock) for the habitat
 136 mouse 25 34
 137 down
 138 up
