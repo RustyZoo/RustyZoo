@@ -2021,3 +2021,16 @@ fn a_path_picture_follows_the_slope_or_the_neighbours_that_hold_a_path() {
     assert_eq!(shape_index(&[Some(5)], 107), 0);
     assert_eq!(shape_index(&[], 100), 0);
 }
+
+#[test]
+fn a_piece_on_a_sloping_edge_takes_the_30p_or_30n_name_of_its_row() {
+    let tile = Tile {
+        shape: 0b11_00_00_00,
+        ..flat()
+    };
+    // Corner 1 stands 3 steps above the others: edge 0 (corners 7, 1) rises, edge 1 (1, 3) falls.
+    assert_eq!(slope_name("idle", &tile, 0), "idle30p");
+    assert_eq!(slope_name("det", &tile, 3), "det30n");
+    assert_eq!(slope_name("idle", &tile, 4), "idle");
+    assert_eq!(slope_name("broke", &flat(), 0), "broke");
+}

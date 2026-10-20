@@ -484,6 +484,24 @@ fn corner_at(x: i32, y: i32) -> usize {
     }
 }
 
+/// The animation of a fence piece of the row `row` (`idle`, `det`, `broke`) facing `facing` on
+/// `tile`: the name of the row with `30p` when the second corner of the edge it stands on is
+/// higher than the first, `30n` when it is lower (sprite drawing 3.6). The gates use it too.
+pub(crate) fn slope_name(row: &str, tile: &crate::zoo::Tile, facing: u32) -> String {
+    // The corners of the edge, in this order.
+    let [first, second] = match facing / 2 {
+        0 => [7, 1],
+        1 => [1, 3],
+        2 => [3, 5],
+        _ => [5, 7],
+    };
+    match corner_elevation(tile, second).cmp(&corner_elevation(tile, first)) {
+        std::cmp::Ordering::Greater => format!("{row}30p"),
+        std::cmp::Ordering::Less => format!("{row}30n"),
+        std::cmp::Ordering::Equal => row.to_string(),
+    }
+}
+
 /// The elevation of the corner of a tile, in steps.
 pub(crate) fn corner_elevation(tile: &crate::zoo::Tile, corner: usize) -> i32 {
     let field = |c: usize| {
@@ -1297,21 +1315,9 @@ impl<'a> MapRenderer<'a> {
                     Some(life) if !gate && life <= decayed => "det",
                     _ => "idle",
                 };
-                // The corners of the edge the fence stands on, in this order.
-                let slope = scene.tile_at(obj.x, obj.y).map(|t| {
-                    let tile = &scene.tiles[t];
-                    let [c1, c2] = match obj.facing / 2 {
-                        0 => [7, 1],
-                        1 => [1, 3],
-                        2 => [3, 5],
-                        _ => [5, 7],
-                    };
-                    corner_elevation(tile, c2).cmp(&corner_elevation(tile, c1))
-                });
-                match slope {
-                    Some(std::cmp::Ordering::Greater) => format!("{row}30p"),
-                    Some(std::cmp::Ordering::Less) => format!("{row}30n"),
-                    _ => row.to_string(),
+                match scene.tile_at(obj.x, obj.y) {
+                    Some(t) => slope_name(row, &scene.tiles[t], obj.facing),
+                    None => row.to_string(),
                 }
             }
             // An animal inside a tank swims: below the water it shows `subidle`, at the surface
