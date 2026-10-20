@@ -289,6 +289,7 @@ pub fn remove(world: &mut World, money: &mut Money, cat: &Catalogue, id: u32) ->
     let (animal, staff) = type_of(cat, &world.zoo.entities[at]).map_or((false, false), |ty| {
         (unit::is_animal(ty), staff::is_staff(ty))
     });
+    crate::guest::litter::spill(world, cat, id);
     world.remove(id);
     world.priced(removed.refund);
     let category = if animal {

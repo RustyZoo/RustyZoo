@@ -7,6 +7,9 @@ use crate::zoo::Queue;
 /// The channel an entity posts on and units read.
 pub const UNIT_CHANNEL: u8 = 0x55;
 
+/// The channel the maintenance task pool reads (staff 8.2).
+pub const TASK_CHANNEL: u8 = 0x4d;
+
 /// The channel keepers read (the cues of shows).
 pub const KEEPER_CHANNEL: u8 = 0x4b;
 

@@ -52,6 +52,9 @@ fn catalogue() -> Catalogue {
     cat.push(ty("tankwall", "glass", "f", tank, [1, 1, 1]));
     cat.push(ty("tankwall", "show", "f", tank, [1, 1, 1]));
     cat.push(ty("tankwall", "glass", "g", tank, [1, 1, 1]));
+    let can = "[Characteristics/Integers]\ncPurchaseCost=25\n[Removes]\ntrash\n[Satisfies]\nbuilding\ntrash\n";
+    cat.push(ty("building", "can", "", can, [2, 2, 1]));
+    cat.push(ty("objects", "other", "trash", "", [1, 1, 1]));
     let keeper = "[m/Characteristics/Integers]\ncPurchaseCost=800\ncMonthlyCost=650.5\n";
     cat.push(ty("keeper", "keeper", "m", keeper, [1, 1, 1]));
     cat
@@ -569,4 +572,81 @@ fn a_staff_member_is_fired_after_a_question_and_nothing_is_refunded() {
     assert_eq!(money.cash, 1000.0);
     assert_eq!(money.total, Money::default().total, "nothing was booked");
     assert!(w.zoo.entities.is_empty());
+}
+
+#[test]
+fn a_deleted_trash_can_puts_its_pieces_back_on_the_ground_round_it() {
+    let cat = catalogue();
+    let mut money = Money::default();
+    let mut w = world(vec![
+        entity("building", "can", "", 3 * 64 + 32, 3 * 64 + 32, 0),
+        entity("building", "shop", "", 6 * 64 + 32, 6 * 64 + 32, 0),
+    ]);
+    let (can, shop) = (1, 2);
+    w.units.buildings.entry(can).or_default().fill = 10;
+    w.units.buildings.entry(shop).or_default().fill = 10;
+    let litter = |w: &World| -> Vec<(i32, i32)> {
+        let found = w.zoo.entities.iter().filter(|e| e.subtype == "trash");
+        found
+            .filter_map(|e| e.common.as_ref().map(|c| (c.x, c.y)))
+            .collect()
+    };
+    // Something that is no can spills nothing.
+    remove(&mut w, &mut money, &cat, shop).unwrap();
+    assert!(litter(&w).is_empty() && w.units.posts.is_empty());
+    remove(&mut w, &mut money, &cat, can).unwrap();
+    // One piece for each of the 10, on the eight quarter positions in turn, west to east and north
+    // to south, and the first two again; each tells the task pool.
+    let (x, y) = (3 * 64 + 32, 3 * 64 + 32);
+    let ring = [
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+    ];
+    let expected: Vec<_> = ring
+        .iter()
+        .cycle()
+        .take(10)
+        .map(|(dx, dy)| (x + dx * 32, y + dy * 32))
+        .collect();
+    assert_eq!(litter(&w), expected);
+    let posts = &w.units.posts;
+    assert_eq!(posts.len(), 10);
+    assert!(
+        posts
+            .iter()
+            .all(|e| (e.kind, e.channel, e.sender) == (10031, 0x4d, can))
+    );
+    assert_eq!(posts[0].data, 3 * 8 + 3, "the tile of the first position");
+    // The undo does not take the litter away with the can.
+    w.undo();
+    assert_eq!(litter(&w).len(), 10);
+    // A count past what a can holds spills what it holds.
+    let mut w = world(vec![entity(
+        "building",
+        "can",
+        "",
+        3 * 64 + 32,
+        3 * 64 + 32,
+        0,
+    )]);
+    w.units.buildings.entry(1).or_default().fill = u32::MAX;
+    remove(&mut w, &mut money, &cat, 1).unwrap();
+    assert_eq!(litter(&w).len(), 25);
+    // An empty can spills nothing.
+    let mut w = world(vec![entity(
+        "building",
+        "can",
+        "",
+        3 * 64 + 32,
+        3 * 64 + 32,
+        0,
+    )]);
+    remove(&mut w, &mut money, &cat, 1).unwrap();
+    assert!(litter(&w).is_empty());
 }

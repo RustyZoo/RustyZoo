@@ -14,6 +14,10 @@ use crate::world::{World, piece_event};
 pub const DROPPED: u16 = 10031;
 pub const CAN_FILLING: u16 = 10030;
 
+/// The pieces a trash can holds at most (guest buildings 8): a guest finding it at 25 drops its
+/// litter instead.
+pub const CAN_MAX: u32 = 25;
+
 /// The guest `id` at position `at` of the entity list drops a piece of litter at its feet. It
 /// lands on a free quarter of a tile that is not in an exhibit or a tank and not water, facing a
 /// drawn direction (`rand() & 7`, drawn before the add as for dung). Whether it did; `None` when
@@ -63,4 +67,55 @@ pub fn drop(world: &mut World, cat: &Catalogue, at: usize, id: u32, rng: &mut Rn
         tile as u32 / width
     ));
     Some(true)
+}
+
+/// The eight quarter positions round a can, west to east and north to south, the centre left out
+/// (guest buildings 8 point 4, open point 5), in quarters of a tile.
+const AROUND: [(i32, i32); 8] = [
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+];
+
+/// A trash can that is deleted puts its fill back on the ground (guest buildings 8 point 4): one
+/// piece of litter for each piece it holds (25 at most), on the eight quarter positions round it in turn, each
+/// telling the task pool. A can that holds nothing, and anything that is no can, changes nothing.
+/// The pieces are not part of the deletion an undo takes back, and have no drawn facing.
+pub fn spill(world: &mut World, cat: &Catalogue, id: u32) {
+    let default = world.units.prices.default;
+    let Some(at) = world.find(id) else {
+        return;
+    };
+    let e = &world.zoo.entities[at];
+    let can = crate::building::kind_of(cat, e, default).is_some_and(|k| k.satisfies("trash"));
+    let fill = world.units.buildings.get(&id).map_or(0, |l| l.fill);
+    let (Some(c), Some(ty), true) = (
+        e.common.as_ref(),
+        cat.find("objects", b"other", b"trash"),
+        can,
+    ) else {
+        return;
+    };
+    let (x, y) = (c.x, c.y);
+    crate::building::set_fill(world, id, 0);
+    for &(dx, dy) in AROUND.iter().cycle().take(fill.min(CAN_MAX) as usize) {
+        let at = (x.saturating_add(dx * 32), y.saturating_add(dy * 32));
+        let names = ("objects", "other", "trash");
+        let tile = world.tile_index(at.0.div_euclid(64), at.1.div_euclid(64));
+        let Some(tile) =
+            tile.filter(|_| world.unrecorded(|w| dirt::put_at(w, ty, names, at, 0, 0)))
+        else {
+            continue;
+        };
+        world.mark_rating(tile);
+        world
+            .units
+            .posts
+            .push(piece_event(id, DROPPED, tile as u32));
+    }
 }

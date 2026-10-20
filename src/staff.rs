@@ -106,8 +106,12 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         Kind::Guide => counter(ty, "cCrowdCheck", 10.0, ctx),
         _ => 0,
     };
+    // A worker's countdown to the clearing of his unreachable lists (staff 4.2).
+    let clear = ty.and_then(|t| number(t, "cClearInvalidListInterval"));
+    let clear = (unit.kind == Kind::Worker).then_some(clear.map_or(10_000, |n| n as i32));
     if let Part::Staff(s) = &mut unit.part {
         (s.work, s.chase, s.crowd, s.members) = (work, chase, crowd, Vec::new());
+        s.clear = clear.unwrap_or(0);
     }
 }
 
@@ -132,7 +136,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
 
 /// The keeper `id` stops going to the exhibit of his own target tile, which is lowered by one, and
 /// closes the gate he remembers (movement 6.2): he is picked up or removed. A guide lets its group
-/// go.
+/// go, a worker gives his task back.
 pub fn leaves(world: &mut World, id: u32) {
     // A guide picked up or removed lets its group go: the guests notice at their next update.
     if let Some(Part::Staff(s)) = (world.units.get_mut(id))
@@ -140,6 +144,11 @@ pub fn leaves(world: &mut World, id: u32) {
         .map(|u| &mut u.part)
     {
         (s.members, s.leg) = (Vec::new(), false);
+    }
+    // A worker removed or picked up gives his task back (staff 8.9, O8).
+    if let Some(worker) = world.units.get_mut(id).filter(|u| u.kind == Kind::Worker) {
+        crate::goal::lose_task(worker);
+        world.units.pool.unlink(id);
     }
     let Some(keeper) = world.units.get_mut(id).filter(|u| u.kind == Kind::Keeper) else {
         world.units.release_gate_of(id);
@@ -162,6 +171,8 @@ pub fn leaves(world: &mut World, id: u32) {
 }
 
 pub mod assign;
+pub mod chores;
+pub mod pool;
 pub mod service;
 
 #[cfg(test)]

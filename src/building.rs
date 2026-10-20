@@ -6,7 +6,7 @@
 //!
 //! Only the buildings that have had a user or a month change have a live entry; a missing one is
 //! a building at its default price with no users. A trash can counts the litter its users put in
-//! ([`Live::fill`]; the pictures and the emptying are left, and the litter of a deleted can).
+//! ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can spills it).
 //! Left for later issues: the random use animation and the sounds, the building panel, users
 //! pushed out of a building that is moved or removed, the slot filters of a user type,
 //! `cUseRandomSlot`.
@@ -209,6 +209,17 @@ impl Live {
         self.guests[1] = std::mem::take(&mut self.guests[0]);
         self.income[1] = std::mem::take(&mut self.income[0]);
         self.upkeep += upkeep;
+    }
+}
+
+/// Sets the pieces trash can `id` holds. Its picture follows the count (guest buildings 8): the
+/// entity keeps it in its counter, which the picture reads.
+pub fn set_fill(world: &mut World, id: u32, fill: u32) {
+    if let Some(live) = world.units.buildings.get_mut(&id) {
+        live.fill = fill;
+    }
+    if let Some(at) = world.find(id) {
+        world.set_food(at, i32::try_from(fill).unwrap_or(i32::MAX));
     }
 }
 
