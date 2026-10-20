@@ -362,3 +362,51 @@ fn the_reachability_test_draws_its_target_and_raises_the_test_flag() {
     rating::reach(&mut w, &cat, tank, &mut rand);
     assert_eq!(drawn.get(), 4);
 }
+
+#[test]
+fn the_escape_check_flag_is_set_by_its_changes() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let flag = |w: &World, x: u32| w.exhibits().get(x).unwrap().rating.escape;
+    let clear = |w: &mut World| {
+        for e in w.exhibits_mut().list_mut() {
+            e.rating.escape = false;
+        }
+    };
+    // A new exhibit has it; a recomputation keeps it unless the counts change.
+    assert!(flag(&w, land));
+    let mut state = rating::State::new();
+    state.compute(&input(&w, &cat, land));
+    state.escape = false;
+    state.compute(&input(&w, &cat, land));
+    assert!(!state.escape);
+    state.compute(&rating::Input::default());
+    assert!(state.escape, "no species and no animals any more");
+    // A terrain change on its tiles.
+    clear(&mut w);
+    let tile = w.zoo.tiles[3 * WIDE + 8];
+    w.set_tile(8, 3, tile.elevation, tile.shape, 5);
+    assert!(flag(&w, land) && !flag(&w, tank));
+    // A fence piece that breaks sets it on its side (the other is the grounds); one that decays
+    // only when a species of the exhibit bashes.
+    let piece = w.find(1000 + 9 * 10 + 3 + 2).unwrap();
+    for (broken, bash, set) in [
+        (true, false, true),
+        (false, false, false),
+        (false, true, true),
+    ] {
+        clear(&mut w);
+        w.exhibits_mut().get_mut(land).unwrap().rating.bash = bash;
+        w.fence_changed(piece, broken);
+        assert_eq!(flag(&w, land), set, "{broken} {bash}");
+    }
+    // A species bashes with `cBashStrength` above 0; missing, 0 or negative, it does not.
+    let bashes = |keys: &str| {
+        let text = format!("[Characteristics/Integers]\n{keys}\n");
+        rating::Likes::of(&kind("animals", "a", 1, &text)).bash
+    };
+    assert!(bashes("cBashStrength=1") && bashes("cBashStrength=2147483647"));
+    for keys in ["", "cBashStrength=0", "cBashStrength=-1"] {
+        assert!(!bashes(keys), "{keys}");
+    }
+}
