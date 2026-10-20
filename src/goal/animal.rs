@@ -2,7 +2,7 @@
 //! surface goal (goals 10.1, 11.8, 11.9; tank fauna 10.2).
 
 use super::{BUILDING, Cx, NONE, RANDOM};
-use crate::animal::food;
+use crate::animal::{food, tank};
 use crate::behaviour::Target;
 use crate::unit::{Part, walk};
 
@@ -14,23 +14,23 @@ pub const SURFACE: u8 = 124;
 impl Cx<'_, '_> {
     /// 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
     /// has it, is in the building chain or is drinking; point 8 does the same for a thirsty one
-    /// and the drink task.
+    /// and the drink task. Point 9 comes last, whatever those do.
     pub(super) fn animal_ladder(&mut self, task: u8) {
         let Part::Animal(a) = &self.unit.part else {
             return;
         };
-        let (breath, task) = (a.breath, task);
-        if !(a.drinking || BUILDING.contains(&task)) {
-            if a.wants_food && task != KEEPER_FOOD {
+        let (drinking, hungry, thirsty, breath) = (a.drinking, a.wants_food, a.thirsty, a.breath);
+        if !(drinking || BUILDING.contains(&task)) {
+            if hungry && task != KEEPER_FOOD {
                 self.set_task(KEEPER_FOOD, 1, 0, None);
-            } else if a.thirsty && task != DRINK {
+            } else if thirsty && task != DRINK {
                 self.set_task(DRINK, 1, 0, None);
             }
         }
         // Point 9: an animal under water that has the breath of its threshold goes to the surface.
         if self.unit.tank == 4 && self.record().task != SURFACE {
             let k = crate::animal::keys(self.world, self.ctx.cat, self.at);
-            if breath >= k.breath_threshold {
+            if tank::needs_air(breath, &k, self.unit.tank) {
                 self.set_task(SURFACE, 0, 0, None);
             }
         }

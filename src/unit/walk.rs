@@ -56,8 +56,8 @@ pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize)
     walking(unit, world, rng, at, |walk| walk.run())
 }
 
-/// 10.2 for the surface goal (tank fauna 10.2): the unit's own destination by its terrain mode,
-/// with a path to it that is not partial and no fallback.
+/// The walk of the surface goal (tank fauna 10.2): the destination of the unit's terrain mode and a
+/// path to it that is not partial, with no fallback.
 pub fn surface_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize) -> bool {
     walking(unit, world, rng, at, |walk| {
         let pick = walk.pick();

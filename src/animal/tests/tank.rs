@@ -447,3 +447,76 @@ fn an_amphibious_animal_sent_to_land_crosses_the_connector_and_comes_back() {
         assert_eq!(a.terrain, mode);
     }
 }
+
+#[test]
+fn the_tank_keys_at_their_edges() {
+    // The breath threshold: missing is 100, 0 and below are always reached, a huge one never.
+    let at = |threshold: Option<i32>, breath, mode| {
+        let k = Keys {
+            breath_threshold: threshold.unwrap_or(keys().breath_threshold),
+            ..keys()
+        };
+        super::super::tank::needs_air(breath, &k, mode)
+    };
+    assert!(at(None, 100, 4) && !at(None, 99, 4) && !at(None, 100, 3));
+    assert!(at(Some(0), 0, 4) && at(Some(-5), 0, 4) && !at(Some(0), 0, 0));
+    assert!(!at(Some(i32::MAX), 100, 4));
+    // A huge increment stops at 100, as a negative one does at 0.
+    for (increment, want) in [(i32::MAX, 100), (i32::MIN, 0), (0, 0)] {
+        let mut a = animal();
+        let k = Keys {
+            breath_increment: increment,
+            ..keys()
+        };
+        tick(&mut a, BREATH, &k, &swimmer(4, None));
+        assert_eq!(a.breath, want, "increment {increment}");
+    }
+    // The bands: a threshold of 0 or below is never reached, a huge one always; a huge change adds
+    // up without overflowing.
+    let cost = |threshold: i32, change: i32| {
+        let k = Keys {
+            murky: threshold,
+            murky_change: change,
+            murky_health: change,
+            ..keys()
+        };
+        let mut a = animal();
+        tick(&mut a, MURKY, &k, &swimmer(4, Some(tank(50, false))));
+        (a.happiness_change, a.health_change)
+    };
+    assert_eq!(cost(0, -5), (0, 0));
+    assert_eq!(cost(i32::MIN, -5), (0, 0));
+    assert_eq!(cost(i32::MAX, -5), (-5, -5));
+    assert_eq!(cost(i32::MAX, i32::MIN), (i32::MIN, i32::MIN));
+    assert_eq!(cost(i32::MAX, 0), (0, 0));
+    // The depths: a negative one is below any level, a huge maximum above all.
+    let depth = |min: i32, max: i32| {
+        let k = Keys {
+            depth_min: min,
+            depth_max: max,
+            ..keys()
+        };
+        let mut a = animal();
+        tick(&mut a, MURKY, &k, &swimmer(4, Some(tank(100, false))));
+        a.happiness_change
+    };
+    assert_eq!(depth(-9, -1), -5, "the level 6 is above");
+    assert_eq!(depth(i32::MAX, i32::MAX), 0, "equal depths ask for nothing");
+    assert_eq!(depth(7, i32::MAX), -5);
+    assert_eq!(depth(0, i32::MAX), 0);
+    // The chances and the counts of the water check: 0 or below never, 100 or more always, a count
+    // needs to be above the number, whatever it is.
+    let goes = |chance: i32, needed: i32, count: usize| {
+        let k = Keys {
+            underwater: true,
+            enter_tank: chance,
+            underwater_needed: needed,
+            ..keys()
+        };
+        let mut a = animal();
+        water(&mut a, &k, &tiles(50, 0, count, 0), 0).0.is_some()
+    };
+    assert!(!goes(0, 0, 5) && !goes(-3, 0, 5) && !goes(i32::MIN, 0, 5));
+    assert!(goes(100, 0, 5) && goes(i32::MAX, 0, 5));
+    assert!(!goes(100, 5, 5) && goes(100, 4, 5) && goes(100, -1, 0) && !goes(100, i32::MAX, 5));
+}

@@ -21,6 +21,13 @@ pub fn breath(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
     a.breath = a.breath.saturating_add(k.breath_increment).clamp(0, 100);
 }
 
+/// 10.2: whether the animal has to go to the surface: it is under water (tank mode 4) and has the
+/// breath of its threshold (`cBreathThreshold`, 100 without the key; a threshold of 0 or less is
+/// always reached).
+pub fn needs_air(breath: i32, k: &Keys, tank_mode: u8) -> bool {
+    tank_mode == 4 && breath >= k.breath_threshold
+}
+
 /// 11: every `cMurkyWaterCheck` status ticks an animal in a tank loses happiness and health by the
 /// band of the purity, happiness when the water level is outside its depths (not in a show tank)
 /// and both when the water is of the wrong kind.

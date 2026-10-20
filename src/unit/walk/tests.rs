@@ -164,17 +164,17 @@ fn an_animal_in_the_water_mode_walks_to_a_water_tile_and_without_one_goes_back_t
     set(&mut w, 0);
     w.units.get_mut(1).unwrap().path.clear();
     for seed in 1..20 {
-        let (_, _) = walk(&mut w, 1, seed);
+        walk(&mut w, 1, seed);
         assert!(!wet.contains(&goes_to(&w, 1).unwrap()), "seed {seed}");
         w.units.get_mut(1).unwrap().path.clear();
     }
     // No water tile in the exhibit: the animal goes to the land mode.
-    for t in wet {
-        w.zoo.tiles[t].terrain = 0;
+    for (x, y) in [(12, 12), (10, 12)] {
+        w.set_tile(x, y, 0, 0, 0);
     }
     set(&mut w, 1);
-    w.set_tile(12, 12, 0, 0, 0);
-    let (_, _) = walk(&mut w, 1, 3);
+    w.units.get_mut(1).unwrap().path.clear();
+    walk(&mut w, 1, 3);
     assert_eq!(terrain(&w), 0);
 }
 
