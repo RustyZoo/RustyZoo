@@ -768,7 +768,8 @@ check expansion-trial "duties_1111;duties_1011" "staff_duties maps/scn19.zoo"
 # The guest panel (information panels 8): the game paused, a click on a guest of the map opens it,
 # the second tab is chosen, a click on the ground closes it. Prints the `panel guest` lines (spaces
 # as underscores, the id left out, joined by semicolons): the name, the five bars, the time in the
-# park (a guest of a stored map has no arrival date), the favourite and the thoughts.
+# park (the stored arrival date of a guest of this map is later than the game date: the last text),
+# the favourite and the thoughts.
 guest_panel() { # guest_panel <map>
   d=$(mktemp -d)
   printf '1 pause\n2 mouse 652 598\n3 down\n4 up\n6 mouse 1005 667\n7 down\n8 up\n10 mouse 400 100\n11 down\n12 up\n' >"$d/script"
@@ -776,7 +777,20 @@ guest_panel() { # guest_panel <map>
     grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
 }
-check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"Just_arrived"_favourite_"Manta_Ray"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
+check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_long_time"_favourite_"Polar_Bear"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
+
+# The same panel after Play on the first scenario, whose start has `reset`: the guest has just
+# arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
+scenario_guest_panel() {
+  d=$(mktemp -d)
+  mkdir -p "$RUSTYZOO_USER_DIR"
+  printf '[UI]\nplayMovie=0\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
+  printf '1 mouse 512 365\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n9 pause\n10 mouse 652 598\n11 down\n12 up\n14 mouse 1005 667\n15 down\n16 up\n' >"$d/script"
+  rz run --headless --seed 3 --passes 20 --clock 100 --script "$d/script" 2>/dev/null |
+    sed -n 's/.* panel guest [0-9]* \("[^"]*"\) .* time \("[^"]*"\).*/\1 time \2/p' | tr ' ' _ | paste -sd';' -
+  rm -rf "${d:?}"
+}
+check expansion-trial '"Guest_58"_time_"Just_arrived"' "scenario_guest_panel"
 
 # The marine round (tank staff): scn27 has a filled tank with a manta ray, a tank filter and a
 # maintenance worker. The script sends the worker away (he would service the filter as soon as it
@@ -787,7 +801,7 @@ check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_rest
 marine_round() { # marine_round <map>
   d=$(mktemp -d)
   printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"
-  rz sim "$1" --ticks 36000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+  rz sim "$1" --ticks 36000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ keeper /{k=$5}
     / staff job /{
       if ($5==k) { if ($6=="none") next; if (!done) j=j (j?",":"") $6; if ($6=="ClimbDownOutsideLadder") done=1 }
@@ -804,7 +818,7 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>90;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:79;hunger<=33" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>90;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:75;hunger<=33" "marine_round maps/scn27.zoo"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).

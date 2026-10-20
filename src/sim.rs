@@ -299,13 +299,14 @@ impl Sim {
         self.status.settings = set;
     }
 
-    /// Creates the animals of the map just loaded (animals 3.5) and restores its guests (guests 4,
-    /// zoo format 6.12), in file order, with the types of `cat` and the class keys in
+    /// Creates the animals of the map just loaded (animals 3.5) and its guests (guests 5.2, zoo
+    /// format 6.12) with their saved state, in file order, with the types of `cat` and the class keys in
     /// `world.units.class`. The draws come before every draw of the first step.
     pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
+        let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
         for at in 0..world.zoo.entities.len() {
             crate::animal::load(world, cat, &mut self.rng, at);
-            crate::guest::load(world, cat, &mut self.rng, at);
+            crate::guest::load(world, cat, &mut self.rng, at, date, reset);
         }
     }
 

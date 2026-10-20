@@ -44,6 +44,8 @@ pub const PERIOD: u64 = 10_000;
 /// "a while".
 const BANDS: [i64; 3] = [1440, 5760, 8640];
 const HOUR: i64 = 3_600_000;
+/// Ticks of 100 ns in a millisecond.
+const TICKS: u64 = 10_000;
 
 /// What the bars show (8.2): happiness as a percentage of its range, and each need as 100 minus
 /// its percentage, so a full bar is a satisfied guest. The energy's upper limit is `max_energy`.
@@ -60,10 +62,14 @@ pub fn bars(g: &Guest, max_energy: i32) -> [i32; 5] {
 }
 
 /// The time in the park (8.3): the index of its text, from the hours of calendar time since the
-/// arrival date; a guest with no arrival date has just arrived.
+/// arrival date, the difference divided as an unsigned number (an arrival later than `now` is a
+/// huge time); a guest with no arrival date has just arrived.
 pub fn stay(arrived: Option<Date>, now: Date) -> usize {
-    let hours = arrived.map_or(0, |a| (now.millis() - a.millis()) / HOUR);
-    BANDS.iter().filter(|&&b| hours >= b).count()
+    let hours = arrived.map_or(0, |a| {
+        let ticks = ((now.millis() - a.millis()) as u64).wrapping_mul(TICKS);
+        (ticks / (HOUR as u64 * TICKS)) as u32 as i32
+    });
+    BANDS.iter().filter(|&&b| i64::from(hours) >= b).count()
 }
 
 /// The selected guest and the refresh clock.

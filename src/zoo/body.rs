@@ -271,11 +271,13 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
 fn guest(r: &mut Reader) -> R<GuestRecord> {
     let v = r.v;
     let values = [r.i32()?, r.i32()?, r.i32()?, r.i32()?, r.i32()?];
-    r.skip(1 + 20)?;
+    // The sick flag (the byte at 0x336 of the guest) and the five increment factors.
+    let sick = r.u8()? != 0;
+    r.skip(20)?;
     if v <= 66 {
         r.skip(4)?;
     }
-    r.skip(8)?;
+    let (female, child) = (r.u32()? != 0, r.u32()? != 0);
     if v <= 64 {
         r.skip(6)?;
     }
@@ -295,8 +297,12 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
     }
     r.skip_list(8)?;
     let chase = r.i32()?;
-    // The unknown bytes, the arrival date, the favourite species and the rest.
-    r.skip(6 + 2 + 8)?;
+    // The leave and afraid flags, the saw-animal countdown, two more flags, the arrival date, the
+    // favourite species and the rest.
+    r.skip(2)?;
+    let saw_animal = r.i32()?;
+    r.skip(2)?;
+    let arrived = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
     let favourite = r.i32()?;
     r.skip(2 + 8)?;
     if v >= 42 {
@@ -315,7 +321,12 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
     Ok(GuestRecord {
         values,
         countdowns: [a, b, c, d, e, f, chase, g, h, i, j],
+        arrived,
         favourite,
+        sick,
+        saw_animal,
+        female,
+        child,
     })
 }
 
