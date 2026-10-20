@@ -22,6 +22,7 @@ mod tank;
 mod water;
 mod wear;
 pub use exhibit::Event;
+pub use filter::{placed as placed_filter, sell_rate as filter_sell_rate};
 pub use wear::Decay;
 pub(crate) use wear::piece_event;
 
@@ -260,6 +261,9 @@ impl World {
         world.load_tanks();
         world.retank(false);
         world.relink();
+        for at in 0..world.zoo.entities.len() {
+            world.filter_added(at);
+        }
         world.walk_loaded();
         world.units.sync(&world.zoo.entities);
         world.dirty = false;
@@ -525,6 +529,7 @@ impl World {
         }
         notes.into_iter().for_each(|note| self.record(note));
         self.record(Action::Placed { id, price: 0.0 });
+        self.filter_added(self.zoo.entities.len() - 1);
         Some(id)
     }
 

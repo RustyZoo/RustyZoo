@@ -177,8 +177,8 @@ fn a_decayed_filter_cleans_less_and_a_filter_with_no_water_does_nothing() {
 fn a_filter_wears_posts_its_events_and_stops_when_broken_until_it_is_serviced() {
     let (mut world, cat, at) = filtered(6, [1_000, 50_000], KEYS);
     world.set_purity(1, 60);
-    assert!(world.filter_step(&cat, at, 999).is_empty());
-    let events = world.filter_step(&cat, at, 1);
+    assert!(world.filter_step(&cat, at, 999).0.is_empty());
+    let (events, _) = world.filter_step(&cat, at, 1);
     assert_eq!(record(&world, at).health, 5);
     assert_eq!(events.len(), 1);
     let (kind, tile, channel) = (events[0].kind, events[0].data, events[0].channel);
@@ -187,15 +187,15 @@ fn a_filter_wears_posts_its_events_and_stops_when_broken_until_it_is_serviced() 
         (10035, 2 * 8 + 4, crate::sim::TASK_CHANNEL)
     );
     for health in (1..5).rev() {
-        assert!(world.filter_step(&cat, at, 200_000).is_empty());
+        assert!(world.filter_step(&cat, at, 200_000).0.is_empty());
         assert_eq!(record(&world, at).health, health);
     }
-    let events = world.filter_step(&cat, at, 200_000);
+    let (events, _) = world.filter_step(&cat, at, 200_000);
     assert_eq!((record(&world, at).health, events.len()), (0, 1));
     assert_eq!(events[0].kind, 10036);
     // Broken: no cycle, no more wear, however long it runs.
     let before = (purity(&world), world.units.spent.len());
-    assert!(world.filter_step(&cat, at, 10_000_000).is_empty());
+    assert!(world.filter_step(&cat, at, 10_000_000).0.is_empty());
     assert_eq!((purity(&world), world.units.spent.len()), before);
     assert_eq!(record(&world, at).health, 0);
     // The service is free and gives back the health; the next update cleans at once.
@@ -205,6 +205,82 @@ fn a_filter_wears_posts_its_events_and_stops_when_broken_until_it_is_serviced() 
     world.filter_step(&cat, at, 1);
     assert_eq!(purity(&world), 70);
     assert!(!world.service_filter(&cat, 0));
+}
+
+/// Another filter of the tank's type on tile `(tx, ty)` facing `rotation`, as placed during play.
+fn another(world: &mut World, (tx, ty): (i32, i32), rotation: u32) -> u32 {
+    let mut e = entity("filter", tx, ty, rotation);
+    (e.type_name, e.subtype) = ("filter1".into(), "f".into());
+    e.common.as_mut().unwrap().filter = Some(Filter {
+        health: 10,
+        timers: Some([200_000, 0]),
+    });
+    world.add(e, None).unwrap()
+}
+
+#[test]
+fn a_doubled_or_flooded_filter_is_removed_at_its_update_and_does_nothing_more() {
+    let (mut world, cat, first) = filtered(10, [200_000, 0], KEYS);
+    let first_id = world.zoo.entities[first].common.as_ref().unwrap().id;
+    assert_eq!(world.exhibits().get(1).unwrap().filter, Some(first_id));
+    world.set_purity(1, 60);
+    // A second filter facing the same tank: the first serves it, so the second is to go, and
+    // neither cleans nor charges nor wears.
+    let second = another(&mut world, (4, 3), 6);
+    assert_eq!(world.exhibits().get(1).unwrap().filter, Some(first_id));
+    let at = world.find(second).unwrap();
+    assert_eq!(
+        world.filter_step(&cat, at, 300_000),
+        (Vec::new(), Some(second))
+    );
+    assert_eq!((purity(&world), world.units.spent.len()), (60, 0));
+    assert_eq!(record(&world, at).health, 10);
+    assert_eq!(world.filter_step(&cat, first, 67).1, None);
+    assert_eq!(purity(&world), 70);
+    // Once the first is gone the second serves the tank: it is no longer doubled.
+    assert!(world.remove(first_id));
+    let at = world.find(second).unwrap();
+    assert_eq!(world.filter_step(&cat, at, 67).1, None);
+    assert_eq!(world.exhibits().get(1).unwrap().filter, Some(second));
+    assert_eq!(purity(&world), 80);
+    // A filter whose own tile is a tank tile is flooded, whatever it faces.
+    for (tile, facing) in [((3, 3), 6), ((2, 2), 0)] {
+        let wet = another(&mut world, tile, facing);
+        let at = world.find(wet).unwrap();
+        assert_eq!(world.filter_step(&cat, at, 67), (Vec::new(), Some(wet)));
+    }
+    assert_eq!(purity(&world), 80);
+    let lines = world.units.take_world_lines();
+    let words: Vec<_> = (lines.iter())
+        .filter_map(|l| l.strip_prefix("filter "))
+        .filter_map(|l| l.split(' ').nth(3))
+        .collect();
+    assert_eq!(words, ["doubled", "flooded", "flooded"], "{lines:?}");
+}
+
+#[test]
+fn undoing_the_removal_of_a_flooded_filter_takes_back_its_sell_price_of_the_moment() {
+    use crate::world::Step;
+    // Cost 100: sold for 80 healthy, 40 decayed (5 or below), 0 broken.
+    let keys = "cPurchaseCost=100\ncDecayedHealth=5";
+    for (health, price) in [(10, 80.0), (5, 40.0), (0, 0.0)] {
+        let (mut world, cat, at) = filtered(health, [200_000, 0], keys);
+        let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+        assert!(world.remove_filter(&cat, id));
+        let undone = world.undo();
+        let prices: Vec<f32> = (undone.steps.iter())
+            .filter_map(|s| match s {
+                Step::Back(_, p) => Some(*p),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(prices, [price], "{health}");
+    }
+    assert!(
+        !filtered(10, [1, 1], keys)
+            .0
+            .remove_filter(&Catalogue::default(), 9999)
+    );
 }
 
 #[test]
@@ -320,4 +396,24 @@ fn a_filter_type_with_missing_zero_negative_or_huge_keys_still_runs() {
     let id = world.zoo.entities[at].common.as_ref().unwrap().id;
     assert!(world.service_filter(&cat, id));
     assert_eq!(record(&world, at).health, 0);
+}
+
+#[test]
+fn the_sell_rate_of_a_filter_follows_its_decayed_health() {
+    let rate = |keys: &str, health: u32| {
+        let (_, cat, _) = filtered(10, [1, 1], keys);
+        crate::world::filter_sell_rate(&cat.types[0], health)
+    };
+    // Missing: 5; 0, negative and huge as written; broken is always 0.
+    for (keys, health, expected) in [
+        ("", 6, 0.8),
+        ("", 5, 0.4),
+        ("cDecayedHealth=0", 1, 0.8),
+        ("cDecayedHealth=-5", 1, 0.8),
+        ("cDecayedHealth=99999999", 10, 0.4),
+        ("cDecayedHealth=99999999", u32::MAX, 0.8),
+        ("cDecayedHealth=-5", 0, 0.0),
+    ] {
+        assert_eq!(rate(keys, health), expected, "{keys} {health}");
+    }
 }

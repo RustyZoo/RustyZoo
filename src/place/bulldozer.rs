@@ -109,7 +109,8 @@ pub fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
 }
 
 /// The sell price of an entity (placing 7.2): 0.8 of its purchase cost; for a fence 0.4 once its
-/// life is at or below the decayed life of its type, 0 once it is broken.
+/// life is at or below the decayed life of its type, 0 once it is broken; the same for a tank
+/// filter by its health (tank staff 7.2).
 pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
     let Some(ty) = type_of(cat, e) else {
         return 0.0;
@@ -125,6 +126,10 @@ pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
                 l if l <= number(ty, "cDecayedLife").unwrap_or(0.0) => 0.4,
                 _ => 0.8,
             }
+        }
+        _ if e.class == "filter" => {
+            let health = e.common.as_ref().and_then(|c| c.filter).map(|f| f.health);
+            health.map_or(0.8, |h| crate::world::filter_sell_rate(ty, h))
         }
         _ if unit::is_animal(ty) => return unit::new_sell_price(ty),
         // Firing refunds nothing (unit placing 10.2).

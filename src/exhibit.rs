@@ -34,6 +34,9 @@ pub struct Exhibit {
     pub tank: Option<Tank>,
     /// The milliseconds the water of a tank has held its purity (exhibits and money 3.10).
     pub purity_ms: u32,
+    /// The id of the filter that serves a tank, as the last filter added or updated left it
+    /// (tank staff 7.2, 7.3); not saved.
+    pub filter: Option<u32>,
     /// The exhibits it is linked to as amphibious neighbours, in the order they became so
     /// (tank fauna 12); the company checks count their animals and tiles with its own. The world
     /// makes them again after each edit (`World::relink`).
@@ -418,6 +421,7 @@ impl Exhibits {
             gate: None,
             tank: None,
             purity_ms: 0,
+            filter: None,
             amphibious: Vec::new(),
             rating: rating::State::new(),
             stats: Stats::default(),

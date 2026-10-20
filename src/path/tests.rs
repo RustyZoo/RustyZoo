@@ -490,3 +490,91 @@ fn the_distance_threshold_keeps_the_first_width_and_measures_on_the_map() {
     assert!(!finder.request(&w, &m, 2 * 20 + 5, false).ok);
     assert_eq!(finder.failures(2 * 20 + 5), Some(1));
 }
+
+#[test]
+fn an_object_in_a_tank_blocks_only_its_own_levels() {
+    use crate::unit::testing::tank_world;
+    // The tank of 4 by 3 tiles from (2, 2), walls 9 high, water to 8; 12 tiles wide.
+    let mut w = tank_world(9, 8, &[]);
+    let tile = |x: i32, y: i32| (y * 12 + x) as usize;
+    // Four quarters of an object of `cDepth` `depth` and `cHeight` `height` at level `level` fill
+    // tile `(x, y)`.
+    let mut put = |(x, y): (i32, i32), level: i32, depth: i32, height: i32| {
+        for (qx, qy) in [(16, 16), (48, 16), (16, 48), (48, 48)] {
+            let mut e = entity_at("rock", "", "", (x * 64 + qx, y * 64 + qy), 0);
+            e.common.as_mut().unwrap().z = 16 * level;
+            let tank = TankKind {
+                depth,
+                height,
+                ..TankKind::NONE
+            };
+            let shape = Shape {
+                kind: Class::Fixed,
+                footprint: (1, 1),
+                fence: false,
+                wall: false,
+                gate: false,
+                gated: false,
+                tank,
+                walkable: (false, false),
+            };
+            w.add(e, Some(shape)).unwrap();
+        }
+    };
+    // A rock on the floor, 1 high; a buoy floating at level 6 that reaches 2 below it; a rock on
+    // land.
+    put((3, 3), 0, 0, 1);
+    put((4, 3), 6, 2, 0);
+    put((8, 6), 0, 0, 1);
+    let m = Mover::new(Kind::Animal, Some(tile(2, 3)));
+    let clear =
+        |a: usize, b: usize, d: usize, z: i32| cost::clear(&w, &m, (a, b), d, true, Some((z, z)));
+    let over_rock: Vec<i32> = (0..=8)
+        .filter(|&z| clear(tile(2, 3), tile(3, 3), 2, z))
+        .collect();
+    assert_eq!(
+        over_rock,
+        [2, 3, 4, 5, 6, 7, 8],
+        "a swimmer passes over the rock"
+    );
+    let under_buoy: Vec<i32> = (0..=8)
+        .filter(|&z| clear(tile(4, 2), tile(4, 3), 4, z))
+        .collect();
+    assert_eq!(under_buoy, [0, 1, 2, 3, 7, 8], "and under the buoy");
+    // Out of a tank an object blocks every level; without levels (a flat search) too.
+    assert!((-5..=5).all(|z| !clear(tile(7, 6), tile(8, 6), 2, z)));
+    assert!(!cost::clear(
+        &w,
+        &m,
+        (tile(2, 3), tile(3, 3)),
+        2,
+        true,
+        None
+    ));
+    // Food put in the water at level 4 blocks by its type's `cDepth` (1): levels 3 and 4.
+    let food = crate::entity::EntityType {
+        class: "food",
+        type_name: b"fish".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(b"[Characteristics/Integers]\ncDepth=1\n").unwrap(),
+        )),
+        name_id: 0,
+        footprint: [2, 2, 1],
+        height: 0,
+    };
+    let names = ("food", "food", "fish");
+    assert!(crate::animal::dirt::put_z(
+        &mut w,
+        &food,
+        names,
+        (5 * 64 + 32, 2 * 64 + 32, Some(64)),
+        0,
+        5
+    ));
+    let m = Mover::new(Kind::Animal, Some(tile(4, 2)));
+    let clear = |z: i32| cost::clear(&w, &m, (tile(4, 2), tile(5, 2)), 2, true, Some((z, z)));
+    let past_food: Vec<i32> = (0..=8).filter(|&z| clear(z)).collect();
+    assert_eq!(past_food, [0, 1, 2, 5, 6, 7, 8]);
+}

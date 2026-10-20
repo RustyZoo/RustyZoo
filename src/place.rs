@@ -592,9 +592,12 @@ fn check(
     if !world.in_zoo(tile) {
         return fail(p, Some(NOT_IN_THE_ZOO));
     }
-    // A tank filter needs a finished tank next to it (placing 5.1); no tank exists yet, so none is valid.
+    // A tank filter goes next to a tank that no filter serves, facing it (placing 5.1).
     if t.class == "filter" {
-        return fail(p, Some(NO_TANK));
+        match world.filter_facing(tile, p.facing) {
+            Some(d) => p.facing = d,
+            None => return fail(p, Some(NO_TANK)),
+        }
     }
     let same = |old: usize| {
         let same = world.zoo.entities.get(old).is_some_and(|e| is_of(e, t));
@@ -900,6 +903,7 @@ pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>) -> Entity {
                 portal: false,
             }),
             food: number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32,
+            filter: (ty.class == "filter").then(|| crate::world::placed_filter(ty)),
             ..Default::default()
         }),
     }

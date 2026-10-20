@@ -161,6 +161,9 @@ pub struct Sim {
     world_rem: u32,
     /// The entities that asked to be removed, by id.
     removals: Vec<u32>,
+    /// The entities the step removes as the bulldozer does, with an undo record (a flooded or
+    /// doubled tank filter, tank staff 7.3), by id.
+    bulldozed: Vec<u32>,
     lines: Vec<String>,
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
     /// first seeding, and after every hire (unit placing 4.3).
@@ -188,6 +191,7 @@ impl Sim {
             world_secs: 0,
             world_rem: 0,
             removals: Vec::new(),
+            bulldozed: Vec::new(),
             lines: Vec::new(),
             hire_male: false,
         };
@@ -244,6 +248,7 @@ impl Sim {
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
+        self.bulldozed.clear();
         self.events.restore(&clocks.queue);
         if tiles != self.tiles {
             self.tiles = tiles;
@@ -419,6 +424,9 @@ impl Sim {
         for id in std::mem::take(&mut self.removals) {
             world.unrecorded(|w| w.remove(id));
         }
+        for id in std::mem::take(&mut self.bulldozed) {
+            world.remove_filter(cat, id);
+        }
         world.units.ai_ticks = self.ai_ticks;
         let settings = &self.status.settings;
         world.units.guest_join = (settings.join_happiness, settings.join_chance);
@@ -444,9 +452,11 @@ impl Sim {
                     self.events.post(event);
                 }
                 // So does a tank filter.
-                for event in world.filter_step(cat, at, step) {
+                let (events, gone) = world.filter_step(cat, at, step);
+                for event in events {
                     self.events.post(event);
                 }
+                self.bulldozed.extend(gone);
             }
         }
         unit::gate::forget(world);

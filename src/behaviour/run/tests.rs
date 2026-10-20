@@ -202,6 +202,55 @@ fn a_nested_set_runs_in_place_of_its_calls_and_a_failure_ends_the_chain() {
     assert!(rig.runner.chain.len() <= DEPTH);
 }
 
+/// The animation the set a nesting call `call` picks plays, for a unit in tank mode `mode` on a
+/// water tile or not: `a` for the first set (land), `b`, `c` and `d` for the others.
+fn nested(call: &str, mode: u8, wet: bool) -> String {
+    let mut rig = Rig::new(&[
+        ("bAmbient", &[call]),
+        ("bL", &["fPlay(a)"]),
+        ("bW", &["fPlay(b)"]),
+        ("bS", &["fPlay(c)"]),
+        ("bU", &["fPlay(d)"]),
+    ]);
+    // Where the unit is for its ambient table does not count.
+    (rig.runner.tank_mode, rig.runner.wet, rig.runner.place) = (mode, wet, Place::Land);
+    rig.tick(100);
+    rig.tick(100);
+    rig.tick(100).0
+}
+
+#[test]
+fn the_nesting_calls_choose_by_the_tank_mode_and_the_tile_only() {
+    let four = "fPlaySetTerrain(bL,bW,bS,bU)";
+    // Under water, at the surface, then by the tile alone: a unit that does not swim on water
+    // (a guest in the water) takes the water set.
+    for (mode, wet, shown) in [
+        (4, false, "d"),
+        (4, true, "d"),
+        (3, true, "c"),
+        (0, true, "b"),
+        (1, true, "b"),
+        (2, false, "a"),
+        (0, false, "a"),
+    ] {
+        assert_eq!(nested(four, mode, wet), shown, "{mode} {wet}");
+    }
+    // Two sets: the tile alone, whatever the tank mode.
+    let two = "fPlaySetTerrain(bL,bW)";
+    assert_eq!(nested(two, 4, false), "a");
+    assert_eq!(nested(two, 3, true), "b");
+    // The tank call: the second set under water only, whatever the tile.
+    let tank = "fPlaySetTank(bL,bW)";
+    for (mode, wet, shown) in [
+        (4, false, "b"),
+        (3, true, "a"),
+        (0, true, "a"),
+        (u8::MAX, false, "a"),
+    ] {
+        assert_eq!(nested(tank, mode, wet), shown, "{mode} {wet}");
+    }
+}
+
 #[test]
 fn a_call_that_cannot_run_ends_its_set() {
     for call in [

@@ -8,6 +8,7 @@
 //! serve, the escape of an animal.
 
 use super::{Kind, Part, Unit, movement, swim};
+use crate::animal::tank::kind;
 use crate::config::Config;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path::{self, Dest, Finder, MAX, Mover};
@@ -137,6 +138,17 @@ impl Walk<'_> {
         }
         // The level belongs to the picked destination only.
         self.goal = None;
+        let found = self.fallbacks();
+        if found {
+            // The first search of the fallbacks replaces a tile the pick sent the animal to (tank
+            // fauna 6.1); the send stands only when none succeeds.
+            self.unit.sent = None;
+        }
+        found
+    }
+
+    /// 3 to 5, the fallbacks of the random walk.
+    fn fallbacks(&mut self) -> bool {
         // 3: the ring again, with the lenient tile test and without the path tile test.
         let (tx, ty) = self.xy(self.here);
         let (rx, ry) = self.ring();
@@ -224,13 +236,19 @@ impl Walk<'_> {
             (Kind::Animal, Some(id)) if mode == 1 => self.water_tile(id),
             (Kind::Animal, Some(id)) => {
                 // The exhibit's tiles, then those of its amphibious neighbours: no other test.
-                let around =
-                    (self.world.exhibits().get(id)).map_or(Vec::new(), |e| e.amphibious.clone());
-                let dry: Vec<usize> = (self.world.tiles_of(id).into_iter())
-                    .chain(around.into_iter().flat_map(|n| self.world.tiles_of(n)))
-                    .filter(|&t| !self.world.is_water(t) && self.world.tank_at(t).is_none())
-                    .collect();
-                (!dry.is_empty()).then(|| dry[self.rng.pick(dry.len() as u32) as usize])
+                let dry = self.of_kind(id, 0);
+                if dry.is_empty() {
+                    // A swimmer on water takes the water mode, a diver in a tank the tank mode;
+                    // either stands on a tile of its new kind already, so it is not sent.
+                    let (m, w, here) = (&self.unit.mover, &*self.world, self.here);
+                    if m.swims && w.is_water(here) {
+                        swim::set_terrain(self.unit, 1);
+                    } else if m.underwater && !self.egg() && w.tank_at(here).is_some() {
+                        swim::set_terrain(self.unit, 2);
+                    }
+                    return None;
+                }
+                Some(dry[self.rng.pick(dry.len() as u32) as usize])
             }
             (_, Some(id)) => self.gate_neighbour(id),
             (Kind::Keeper, None) => self.assigned_gate().or_else(|| self.stroll()),
@@ -238,16 +256,48 @@ impl Walk<'_> {
         }
     }
 
+    /// The tiles of exhibit `id` and then of its amphibious neighbours that suit the terrain
+    /// mode `mode` (tank fauna 5), each in its list order.
+    fn of_kind(&self, id: u32, mode: u8) -> Vec<usize> {
+        let around = (self.world.exhibits().get(id)).map_or(Vec::new(), |e| e.amphibious.clone());
+        (self.world.tiles_of(id).into_iter())
+            .chain(around.into_iter().flat_map(|n| self.world.tiles_of(n)))
+            .filter(|&t| kind(self.world, t) == mode)
+            .collect()
+    }
+
+    fn egg(&self) -> bool {
+        matches!(&self.unit.part, Part::Animal(a) if a.egg)
+    }
+
+    /// 6.1: a choice in the water or the tank mode found no tile: the animal takes the land mode
+    /// and, when the mode changes and it stands on water or in a tank, is sent to a land tile of
+    /// exhibit `id` and its amphibious neighbours, one draw (tank fauna 5).
+    fn back_to_land(&mut self, id: u32) {
+        let was = match &self.unit.part {
+            Part::Animal(a) => a.terrain,
+            _ => return,
+        };
+        swim::set_terrain(self.unit, 0);
+        let now = match &self.unit.part {
+            Part::Animal(a) => a.terrain,
+            _ => return,
+        };
+        if was == now || kind(self.world, self.here) == 0 {
+            return;
+        }
+        let dry = self.of_kind(id, 0);
+        if !dry.is_empty() {
+            self.unit.sent = Some(dry[self.rng.pick(dry.len() as u32) as usize]);
+        }
+    }
+
     /// 6.1, the water mode: a water tile of the exhibit or an amphibious neighbour, one draw; no
     /// tile gives the land mode.
     fn water_tile(&mut self, id: u32) -> Option<usize> {
-        let around = (self.world.exhibits().get(id)).map_or(Vec::new(), |e| e.amphibious.clone());
-        let wet: Vec<usize> = (self.world.tiles_of(id).into_iter())
-            .chain(around.into_iter().flat_map(|n| self.world.tiles_of(n)))
-            .filter(|&t| crate::animal::tank::kind(self.world, t) == 1)
-            .collect();
+        let wet = self.of_kind(id, 1);
         if wet.is_empty() {
-            swim::set_terrain(self.unit, 0);
+            self.back_to_land(id);
             return None;
         }
         Some(wet[self.rng.pick(wet.len() as u32) as usize])
@@ -281,7 +331,7 @@ impl Walk<'_> {
         };
         let from = if open.is_empty() { &tiles } else { &open };
         if from.is_empty() {
-            swim::set_terrain(self.unit, 0);
+            self.back_to_land(id);
             return None;
         }
         let tile = from[self.rng.pick(from.len() as u32) as usize];
@@ -408,7 +458,7 @@ impl Walk<'_> {
                 };
                 let ground = match mode {
                     2 => w.tank_at(t).is_some(),
-                    1 => crate::animal::tank::kind(w, t) == 1,
+                    1 => kind(w, t) == 1,
                     _ => !w.is_water(t) && w.tank_at(t).is_none(),
                 };
                 region == here

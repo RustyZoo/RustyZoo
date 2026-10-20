@@ -417,7 +417,7 @@ fn a_tile_outside_the_zoo_wall_gives_the_wall_message() {
 }
 
 #[test]
-fn a_tank_filter_is_invalid_with_its_message_until_tanks_exist() {
+fn a_tank_filter_is_invalid_with_its_message_on_a_map_without_tanks() {
     let cat = catalogue();
     let mut entities = vec![entity("gate", "", 96, 288, 6)];
     entities.extend((0..8).map(|row| entity("fences", "", 4 * 64 + 63, row * 64 + 32, 2)));
@@ -1725,4 +1725,70 @@ fn a_fence_that_only_swims_is_accepted_on_a_tank_tile() {
     // A raft (cLand 0) may stand in the tank without the water message.
     let p = at(&w, &cat, 9, 0, 2 * 64 + 20, 2 * 64 + 20).unwrap();
     assert_eq!((p.verdict, p.message), (Verdict::Valid, None));
+}
+
+#[test]
+fn a_tank_filter_goes_beside_a_tank_no_filter_serves_and_faces_it() {
+    let cat = catalogue();
+    // A second tank on (5..=6, 2..=3): the tile (4, 2) between the two has a tank on each side.
+    let mut pieces = tank_walls("glass");
+    for t in 2..=3 {
+        pieces.push(entity("tankwall", "glass", 5 * 64 + 32, t * 64 + 32, 6));
+        pieces.push(entity("tankwall", "glass", 6 * 64 + 32, t * 64 + 32, 2));
+    }
+    for t in 5..=6 {
+        pieces.push(entity("tankwall", "glass", t * 64 + 32, 2 * 64 + 32, 0));
+        pieces.push(entity("tankwall", "glass", t * 64 + 32, 3 * 64 + 32, 4));
+    }
+    // A fence on the east side of (1, 3), towards the first tank.
+    pieces.push(entity("fences", "wire", 64 + 63, 3 * 64 + 32, 2));
+    let mut w = world((7, 7), pieces, |_| {});
+    let (left, right) = (w.tank_at(2 * 8 + 2).unwrap(), w.tank_at(2 * 8 + 5).unwrap());
+    assert_ne!(left, right);
+    let filter = |w: &World, (tx, ty): (i64, i64), step: usize| {
+        let p = at(w, &cat, 6, step, tx * 64 + 20, ty * 64 + 20).unwrap();
+        (p.verdict, p.message, p.facing)
+    };
+    let refused = (Verdict::Invalid, Some(NO_TANK));
+    // West of the tank: facing east, whatever the panel's facing.
+    assert_eq!(filter(&w, (1, 2), 0), (Verdict::Valid, None, 2));
+    assert_eq!(filter(&w, (1, 2), 1), (Verdict::Valid, None, 2));
+    // On a tank tile, at a corner, away from tanks, or with a piece on the side: 10517.
+    for tile in [(2, 2), (1, 1), (0, 6), (1, 3)] {
+        let (verdict, message, _) = filter(&w, tile, 0);
+        assert_eq!((verdict, message), refused, "{tile:?}");
+    }
+    // Between two tanks: the panel's facing when it is one of the two, else the last (6).
+    assert_eq!(filter(&w, (4, 2), 0).2, 6, "facing 4");
+    assert_eq!(filter(&w, (4, 2), 1).2, 6, "facing 6");
+    assert_eq!(filter(&w, (4, 2), 3).2, 2, "facing 2");
+    // Placed, it starts as placed during play (full health, filter timer 0) and serves the tank.
+    let mut money = zoo_money(1_000.0);
+    let p = at(&w, &cat, 6, 0, 64 + 20, 2 * 64 + 20).unwrap();
+    let outcome = place(
+        &mut w,
+        &mut money,
+        &cat.types[6],
+        &p,
+        &[false, true],
+        Vec::new(),
+        shape,
+    );
+    let Outcome::Placed(id) = outcome else {
+        panic!("{outcome:?}");
+    };
+    let c = w.zoo.entities.last().unwrap().common.as_ref().unwrap();
+    let record = crate::zoo::Filter {
+        health: 10,
+        timers: Some([200_000, 0]),
+    };
+    assert_eq!((c.rotation, c.filter), (2, Some(record)));
+    assert_eq!(money.cash, 900.0);
+    assert_eq!(w.exhibits().get(left).unwrap().filter, Some(id));
+    // One filter to a tank: between the two only the other one is left.
+    assert_eq!(filter(&w, (4, 3), 0), (Verdict::Valid, None, 2));
+    assert_eq!(filter(&w, (1, 2), 0).1, refused.1);
+    // A recorded filter that is gone does not count.
+    assert!(w.remove(id));
+    assert_eq!(filter(&w, (4, 3), 0).2, 6);
 }

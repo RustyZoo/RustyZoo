@@ -552,6 +552,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         "carried",
         "tank mode",
         "food",
+        "bulldozed",
     ] {
         let mut run = game(3);
         match what {
@@ -574,6 +575,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
             "column" => run.sim.status.column += 1,
             "carried" => run.world.units.get_mut(1).unwrap().carried = true,
             "food" => run.world.zoo.entities[0].common.as_mut().unwrap().food = 1,
+            "bulldozed" => run.sim.bulldozed.push(1),
             "tank mode" => {
                 run.world.zoo.entities[0]
                     .common

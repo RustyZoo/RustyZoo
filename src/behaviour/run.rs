@@ -329,8 +329,12 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
-    /// Where the unit is: set by the unit before each run (the table and the nesting calls).
+    /// Where the unit is for its ambient table: set by the unit before each run.
     pub place: Place,
+    /// The unit's tank mode and whether its tile is a water tile, which alone choose the set of
+    /// a nesting call (tank fauna 9.5): set by the unit before each run.
+    pub tank_mode: u8,
+    pub wet: bool,
     /// The guide's task is the talk and not done: its routine does not make idle the base
     /// (behaviours 5.5). Set by the unit before each run.
     pub talking: bool,
@@ -362,6 +366,8 @@ impl Default for Runner {
             ready: true,
             playing: false,
             place: Place::Land,
+            tank_mode: 0,
+            wet: false,
             talking: false,
             moving: None,
             face: false,
@@ -617,20 +623,16 @@ impl Runner {
                 return false;
             }
             Op::PlaySetTerrain { land, water, tank } => {
-                let name = match (self.place, tank) {
-                    (Place::Under, Some((_, under))) => under,
-                    (Place::Surface, Some((surface, _))) => surface,
-                    (Place::Water, _) => water,
+                let name = match (self.tank_mode, tank) {
+                    (4, Some((_, under))) => under,
+                    (3, Some((surface, _))) => surface,
+                    _ if self.wet => water,
                     _ => land,
                 };
                 return self.nest_call(env, name);
             }
             Op::PlaySetTank { land, tank } => {
-                let name = if self.place == Place::Under {
-                    tank
-                } else {
-                    land
-                };
+                let name = if self.tank_mode == 4 { tank } else { land };
                 return self.nest_call(env, name);
             }
             Op::Routine(routine) => {
