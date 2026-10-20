@@ -681,11 +681,7 @@ fn the_thoughts_about_an_animal_and_an_exhibit_are_the_five_and_twenty_newest() 
     assert!(list.in_exhibit(4).is_empty());
     assert_eq!(list.len(), 30 - 10);
     assert_eq!(texts(list.about(7))[..2], [28, 26], "the object stays");
-    assert!(
-        list.about(7)
-            .iter()
-            .all(|t| t.exhibit.is_none() && t.gate.is_none())
-    );
+    assert!(list.about(7).iter().all(|t| t.exhibit.is_none()));
 }
 
 #[test]
@@ -776,4 +772,20 @@ fn the_megatiles_count_guests_and_spread_an_objects_values_once_every_seven_and_
     assert_eq!((at(&w, 2, 2).guests, at(&w, 7, 3).guests), (0, 1));
     // A tile off the map has none.
     assert!(w.units.mega.at(width, 100).is_none());
+}
+
+#[test]
+fn a_gone_exhibit_leaves_the_entrance_tile_of_a_thought_with_an_object() {
+    use thought::{Thought, Thoughts};
+    let mut list = Thoughts::default();
+    list.add(Thought {
+        text: 10098,
+        thinker: 1,
+        object: Some(7),
+        exhibit: Some(4),
+        gate: Some(12),
+    });
+    list.drop_exhibit(4);
+    let kept = list.about(7);
+    assert_eq!((kept[0].exhibit, kept[0].gate), (None, Some(12)));
 }

@@ -51,12 +51,12 @@ impl Thoughts {
     }
 
     /// 8.5: an exhibit that is gone takes the thoughts about it that have no object; the others
-    /// lose the exhibit.
+    /// lose the exhibit and keep the tile inside its gate.
     pub fn drop_exhibit(&mut self, exhibit: u32) {
         self.0
             .retain(|t| t.exhibit != Some(exhibit) || t.object.is_some());
         for t in self.0.iter_mut().filter(|t| t.exhibit == Some(exhibit)) {
-            (t.exhibit, t.gate) = (None, None);
+            t.exhibit = None;
         }
     }
 

@@ -440,3 +440,44 @@ fn sick_animals_variety_and_a_crowd_add_their_thoughts_in_order() {
         "the lookup, the sick animal, the mood and the crowd"
     );
 }
+
+#[test]
+fn the_animal_of_a_thought_is_picked_in_the_tile_order_of_the_exhibit() {
+    let (cat, k) = (catalogue(), keys());
+    let mut w = pen(&[50, 50]);
+    // The animals stand in tiles (1, 4) and (3, 6) in this entity order, but the exhibit lists
+    // the second tile first.
+    for (id, tile) in [(10, (1, 4)), (11, (3, 6))] {
+        let at = w.find(id).unwrap();
+        let c = w.zoo.entities[at].common.as_mut().unwrap();
+        (c.x, c.y) = centre(tile);
+    }
+    let mut order = w.exhibits().get(1).unwrap().order.clone();
+    let (first, second) = (
+        order.iter().position(|&t| t == 41),
+        order.iter().position(|&t| t == 63),
+    );
+    assert!(first.is_some() && second.is_some(), "{order:?}");
+    order.retain(|&t| t != 63);
+    order.insert(0, 63);
+    w.exhibits_mut().reorder(1, order);
+    let dir = lookup(&mut w, &cat, Some(55), &mut Rng::default()).unwrap();
+    let s = sight(&mut w, &cat, 55, dir);
+    assert_eq!(
+        s.unwrap().all.iter().map(|a| a.0).collect::<Vec<_>>(),
+        [11, 10]
+    );
+    // With the draw 0 the first in tile order is picked, and the draws are the same as ever.
+    let seed = (0..99).find(|&n| {
+        let mut r = Rng::default();
+        r.seed(n);
+        r.rand();
+        r.rand() % 2 == 0
+    });
+    let mut rng = Rng::default();
+    rng.seed(seed.unwrap());
+    let before = rng.clone();
+    let got = check(&mut Guest::default(), &k, &mut w, &cat, &mut rng, Some(55));
+    assert_eq!(got, [(10282, Some(11))]);
+    assert_eq!(drew(&before, &rng), 2);
+}
