@@ -925,7 +925,7 @@ impl<'a> MapRenderer<'a> {
             metas.push(Meta {
                 ty,
                 colors: &c.colors,
-                life: c.fence.map(|f| f.life as i32),
+                life: c.fence.map(|f| f.life),
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
                 food: c.food,
