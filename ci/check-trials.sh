@@ -776,7 +776,7 @@ guest_panel() { # guest_panel <map>
     grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
 }
-check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"Just_arrived"_favourite_""_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
+check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"Just_arrived"_favourite_"Manta_Ray"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
 
 # The simulation run twice in a row prints the same state hash (the CI job `simhash` compares the
 # hashes of the three systems).

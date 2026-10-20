@@ -288,7 +288,10 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
     }
     r.skip_list(8)?;
     let chase = r.i32()?;
-    r.skip(6 + 2 + 12 + 2 + 8)?;
+    // The unknown bytes, the arrival date, the favourite species and the rest.
+    r.skip(6 + 2 + 8)?;
+    let favourite = r.i32()?;
+    r.skip(2 + 8)?;
     if v >= 42 {
         r.skip(2)?;
     }
@@ -305,6 +308,7 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
     Ok(GuestRecord {
         values,
         countdowns: [a, b, c, d, e, f, chase, g, h, i, j],
+        favourite,
     })
 }
 

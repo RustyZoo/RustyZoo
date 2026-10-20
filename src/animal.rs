@@ -896,25 +896,23 @@ pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
     }
 }
 
-/// Creates the animals of a loaded map as the loader does (animals 3.5): each gets its creation
-/// in file order, with its draws, and then the values its record stores. They are done before
-/// the first step, and their first turn draws nothing.
-pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng) {
-    for at in 0..world.zoo.entities.len() {
-        let entity = &world.zoo.entities[at];
-        let Some((id, saved)) = (entity.common.as_ref())
-            .and_then(|c| Some((c.id, c.animal.clone()?)))
-            .filter(|&(id, _)| world.find(id) == Some(at))
-        else {
-            continue;
-        };
-        let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
-        let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
-        animal.restore(&saved);
-        if let Some(unit) = world.units.get_mut(id) {
-            unit.part = Part::Animal(animal);
-            unit.started = true;
-        }
+/// Creates the animal at position `at` of a loaded map as the loader does (animals 3.5): it gets
+/// its creation, with its draws, and then the values its record stores. The caller goes in file
+/// order before the first step; the first turn of the animal draws nothing.
+pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
+    let entity = &world.zoo.entities[at];
+    let Some((id, saved)) = (entity.common.as_ref())
+        .and_then(|c| Some((c.id, c.animal.clone()?)))
+        .filter(|&(id, _)| world.find(id) == Some(at))
+    else {
+        return;
+    };
+    let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
+    let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
+    animal.restore(&saved);
+    if let Some(unit) = world.units.get_mut(id) {
+        unit.part = Part::Animal(animal);
+        unit.started = true;
     }
 }
 

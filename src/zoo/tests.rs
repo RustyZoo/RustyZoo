@@ -653,7 +653,12 @@ fn reads_units_of_version_106() {
     }
     guest.z(20);
     guest.i32(7);
-    guest.0.extend(unit(106, 310 - 20 - 29 - 40 - 20 - 4, 22));
+    // Then 16 bytes, and the favourite species.
+    guest.z(16);
+    guest.i32(5003);
+    guest
+        .0
+        .extend(unit(106, 310 - 20 - 29 - 40 - 20 - 4 - 20, 22));
     let guest = guest.0;
     // Own fields of each staff class, the common staff block (16 bytes), the unit block (161).
     let staff = |own: usize, id| unit(106, own + 16 + 161, id);
@@ -675,6 +680,7 @@ fn reads_units_of_version_106() {
     let record = guest.guest.as_deref().unwrap();
     assert_eq!(record.values, [36, 52, 60, 70, 80]);
     assert_eq!(record.countdowns, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    assert_eq!(record.favourite, 5003);
     assert_eq!(z.entities[0].common.as_ref().unwrap().guest, None);
 }
 
