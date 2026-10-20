@@ -81,7 +81,8 @@ fn near_edge(w: &World, t: usize, r: u32) -> bool {
         .any(|n| (0..4).any(|d| w.edge(n, d * 2).is_some()))
 }
 
-/// 6.6 item 4: whether the animal keeps off tile `t` for the fences near it.
+/// 6.6 item 4: whether the animal keeps off tile `t` for the fences near it. An animal with no
+/// tile (a young one not yet placed) stands on no tile that is near an edge piece.
 fn avoids(w: &World, m: &Mover, t: usize) -> bool {
     let tank = |t: usize| w.tank_at(t).is_some();
     let same = m
@@ -91,7 +92,7 @@ fn avoids(w: &World, m: &Mover, t: usize) -> bool {
         && !m.test
         && !m.show
         && near_edge(w, t, m.avoid_edges)
-        && m.at.is_some_and(|s| !near_edge(w, s, m.avoid_edges))
+        && m.at.is_none_or(|s| !near_edge(w, s, m.avoid_edges))
         && same
 }
 

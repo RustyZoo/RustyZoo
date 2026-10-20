@@ -507,7 +507,7 @@ fn no_birth_without_a_mate_or_with_a_sad_male() {
 }
 
 #[test]
-fn the_young_fill_the_tiles_of_the_pen_four_to_a_tile_and_no_more() {
+fn the_young_take_only_tiles_with_no_unit_on_them_and_no_more_than_the_pen_holds() {
     let cat = breeders("cOffspring=1000\ncReproductionInterval=100000\n");
     let mut world = pen(&[(600, "m"), (601, "f")]);
     let pen = world
@@ -517,13 +517,44 @@ fn the_young_fill_the_tiles_of_the_pen_four_to_a_tile_and_no_more() {
     let tiles = world.exhibits().get(pen).unwrap().tiles;
     let log = lived(&mut world, &cat, &Life::new(), 40_000);
     let born = log.iter().filter(|l| l.starts_with("birth ")).count();
-    assert_eq!(born, 4 * tiles, "a unit slot each");
+    assert!((1..=tiles).contains(&born), "{born} young in {tiles} tiles");
     assert_eq!(
         log.iter()
             .filter(|l| l.starts_with("message 10032 "))
             .count(),
         1
     );
+}
+
+#[test]
+fn a_young_animal_goes_only_on_an_empty_tile_it_may_enter() {
+    let swimmer = breeders("cSwims=1");
+    let walker = breeders("");
+    let mut world = pen(&[]);
+    // The tile (3, 3) of the pen is water.
+    let wet = world.tile_index(3, 3).unwrap();
+    world.zoo.tiles[wet].terrain = 1;
+    world.set_water(vec![false, true]);
+    let adult = walker.find("animals", b"zebra", b"m").unwrap();
+    world.add(
+        entity("animals", "m", (2, 2), 0, 700),
+        Some(breed::shape(adult)),
+    );
+    let from = world.tile_index(2, 2).unwrap();
+    let x = world.exhibits().region(from).unwrap();
+    let tiles = world.exhibits().get(x).unwrap().tiles;
+    let at = |world: &World, cat: &Catalogue, egg| {
+        breed::suitable(world, x, cat.find("animals", b"zebra", b"y").unwrap(), egg)
+    };
+    // A unit on a tile closes it, however much room is left; water is for a swimmer only.
+    let walks = at(&world, &walker, false);
+    assert_eq!(walks.len(), tiles - 2);
+    assert!(!walks.contains(&from) && !walks.contains(&wet));
+    let swims = at(&world, &swimmer, false);
+    assert_eq!(swims.len(), tiles - 1);
+    assert!(swims.contains(&wet) && !swims.contains(&from));
+    // An egg reads `cSwims` as 0.
+    assert_eq!(at(&world, &swimmer, true), walks);
 }
 
 #[test]
@@ -604,7 +635,14 @@ fn an_egg_laying_pair_lays_eggs_that_hatch_when_a_keeper_has_healed_them() {
 
 #[test]
 fn the_candidates_are_the_unmated_of_the_other_sex_that_are_not_family() {
-    let mut world = pen(&[(600, "m"), (601, "f"), (602, "f"), (603, "f"), (604, "m")]);
+    let mut world = pen(&[
+        (600, "m"),
+        (601, "f"),
+        (602, "f"),
+        (603, "f"),
+        (604, "m"),
+        (605, "y"),
+    ]);
     let cat = breeders("");
     let mut sim = Sim::new(b"");
     sim.set_seed(1);
@@ -628,9 +666,10 @@ fn the_candidates_are_the_unmated_of_the_other_sex_that_are_not_family() {
     // Females are 601, 602, 603 in the order of the pen (the tiles, then the list).
     let mut a = me(&world);
     a.female = false;
-    for id in [601, 602, 603, 604] {
+    for id in [601, 602, 603, 604, 605] {
         set(&mut world, id, &|b| b.female = id != 604);
     }
+    // 605 is a young female: never a candidate.
     assert_eq!(breed::candidates(&world, at, x, &a), [601, 602, 603]);
     // A taken female, a daughter and the mother are left out.
     set(&mut world, 601, &|b| b.mate = 77);

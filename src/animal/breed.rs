@@ -13,6 +13,7 @@ use super::life;
 use super::{Animal, Class, Env, Keys, Out, fire};
 use crate::behaviour::Data;
 use crate::entity::{Catalogue, EntityType};
+use crate::path;
 use crate::render::order::Kind;
 use crate::sim::Rng;
 use crate::unit::{Ctx, Part, Unit};
@@ -22,6 +23,9 @@ use crate::zoo::{Common, Entity};
 /// The messages "has given birth" (it names the mother) and "has hatched".
 pub const BIRTH: i32 = 10032;
 pub const HATCHED: i32 = 10322;
+
+/// The failed attempts to place one young animal that destroy it (11.4 point 3).
+const ATTEMPTS: u32 = 10;
 
 /// The reason bits (animals 8): "lost its mate" (0x80) and "no mate" (0x8000).
 const LOST_MATE: u32 = 7;
@@ -179,7 +183,7 @@ pub fn reproduction(
 
 /// The animals the one at position `at` could pick as a mate (11.3), in the order of the
 /// exhibit's list (the tiles in order, then the entity list): the ones of its species in its
-/// exhibit that are of the other sex, have no mate and are neither its parents nor its young.
+/// exhibit that are adults (`m` or `f`, not a young animal or its egg) of the other sex, have no mate and are neither its parents nor its young.
 pub fn candidates(world: &World, at: usize, x: u32, me: &Animal) -> Vec<u32> {
     let own = &world.zoo.entities[at];
     let mut found: Vec<(usize, usize, u32)> = Vec::new();
@@ -193,6 +197,7 @@ pub fn candidates(world: &World, at: usize, x: u32, me: &Animal) -> Vec<u32> {
         let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
         let mine = own.common.as_ref().map(|c| c.id);
         let fit = e.class == "animals"
+            && matches!(e.subtype.as_str(), "m" | "f")
             && Some(c.id) != mine
             && other.female != me.female
             && other.mate == 0
@@ -272,26 +277,28 @@ pub fn shape(ty: &EntityType) -> Shape {
     }
 }
 
-/// The tiles of exhibit `x` and its amphibious neighbours that suit an animal of type `ty`, in
-/// the exhibit's order: land for most, water of a filled tank for one that lives only under it,
-/// with nothing standing on it and room for one more unit.
-fn suitable(world: &World, x: u32, ty: &EntityType, egg: bool) -> Vec<usize> {
-    let under = crate::build::number(ty, "cOnlyUnderwater") == Some(1.0) && !egg;
+/// The tiles of exhibit `x` and its amphibious neighbours that suit a young animal of type `ty`
+/// (11.4 point 3), in the exhibit's order: nothing in the four quarters, no unit listed, and a
+/// terrain cost below 20 for the young, which has no tile yet; an egg swims and dives not.
+pub(super) fn suitable(world: &World, x: u32, ty: &EntityType, egg: bool) -> Vec<usize> {
+    let flag = |key| crate::build::number(ty, key) == Some(1.0);
+    let mut young = path::Mover::new(path::Kind::Animal, None);
+    young.swims = flag("cSwims") && !egg;
+    young.underwater = flag("cUnderwater") && !egg;
+    young.only_underwater = flag("cOnlyUnderwater");
+    young.climbs = flag("cClimbsCliffs");
+    young.avoid_edges = crate::build::number(ty, "cAvoidEdges").map_or(0, |r| r.max(0.0) as u32);
+    young.footprint = (ty.footprint[0] * ty.footprint[1]).clamp(1, 4) as u32;
     let near = (world.exhibits().get(x)).map_or(Vec::new(), |e| e.amphibious.clone());
     let tiles = std::iter::once(x)
         .chain(near)
         .flat_map(|r| world.tiles_of(r));
-    let free = |t: &usize| {
-        (0..4).all(|q| world.quadrant(*t, q).is_none()) && world.units_on(*t).count() < 4
+    let suits = |t: &usize| {
+        (0..4).all(|q| world.quadrant(*t, q).is_none())
+            && world.units_on(*t).next().is_none()
+            && path::terrain(world, &young, *t, None) < path::MAX
     };
-    let ground = |t: &usize| match under {
-        true => world
-            .tank_at(*t)
-            .and_then(|id| world.tank(id))
-            .is_some_and(|k| k.filled && k.level >= 1),
-        false => !world.is_water(*t) && world.tank_at(*t).is_none(),
-    };
-    tiles.filter(free).filter(ground).collect()
+    tiles.filter(suits).collect()
 }
 
 /// `fCheckReproduction` after the roll (11.4 points 2 to 4) for the male `father` standing at
@@ -339,13 +346,18 @@ pub fn born(
         }
         (baby.father, baby.mother) = (id, mother);
         (baby.fed, baby.slept) = (world.units.now, world.units.now);
-        let spots = suitable(world, x, young, baby.egg);
-        // The tile is drawn from the ones that suit the young; with none, it is destroyed.
-        if spots.is_empty() {
-            break;
-        }
-        let t = spots[rng.pick(spots.len() as u32) as usize];
-        if !put(world, data, young, sub, t, baby) {
+        // Ten attempts for each young: a random tile among the ones that suit it (no draw when
+        // none does), which the world may refuse. A young that finds no place is destroyed and
+        // no more are made.
+        let done = (0..ATTEMPTS).any(|_| {
+            let spots = suitable(world, x, young, baby.egg);
+            let t = match spots.len() as u32 {
+                0 => return false,
+                n => spots[rng.pick(n) as usize],
+            };
+            put(world, data, young, sub, t, baby.clone())
+        });
+        if !done {
             break;
         }
         placed += 1;
