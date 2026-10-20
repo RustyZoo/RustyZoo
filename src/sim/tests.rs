@@ -712,6 +712,35 @@ fn the_hash_follows_the_thoughts_and_the_megatiles() {
 }
 
 #[test]
+fn the_hash_follows_the_gawk_list() {
+    let hash = |weight: i32| {
+        let text = format!("[Characteristics/Integers]\ncEstheticWeight={weight}\n");
+        let mut cat = Catalogue::default();
+        cat.push(crate::entity::EntityType {
+            class: "building",
+            type_name: b"statue".to_vec(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                crate::config::Config::parse(text.as_bytes()).unwrap(),
+            )),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+        let mut run = game(3);
+        let statue = crate::unit::testing::entity("building", "statue", 0, (96, 96), 0);
+        run.world
+            .add(statue, Some(crate::unit::testing::keeper_shape()));
+        crate::guest::gawk::update(&mut run.world, &cat);
+        run.hash()
+    };
+    // The same statue joins the list or does not by its weight.
+    assert_ne!(hash(20), hash(0));
+    assert_eq!(hash(20), hash(20));
+}
+
+#[test]
 fn the_sex_of_the_first_hire_is_drawn_at_start_up_after_the_first_seeding_only() {
     // Bit 16 of the state after one draw from the seed: seed 2 gives a man, seed 3 a woman.
     let first = |seed: u32| {

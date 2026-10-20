@@ -1,9 +1,10 @@
 //! The goals of guests (goals 10.2, 11): the way out, the choice of what to see and viewing it.
 //! A guest whose leave flag is up and that is not busy gets the leave task (0x71) from its
 //! ladder, walks to the zoo entrance tile and is removed there; the step books it as gone and, with
-//! some chance, as a new endowment member. A guest with an exhibit it has not seen gets the site
-//! task, which picks one and sends it to a tile it can look at it from ([`sites`]), where it
-//! views the animals. The leave flag is raised by the unhappy-leave check
+//! some chance, as a new endowment member. A guest with an exhibit or scenery it has not seen gets
+//! the site task, which picks one and sends it to a tile it can look at it from ([`sites`]), where
+//! it views the animals or gawks at the object ([`scenery`]). The leave flag is raised by the
+//! unhappy-leave check
 //! ([`crate::guest::checks`]) and by `checkLeaveZoo`, which the ladder runs when nothing is left to
 //! see. A guest that feels sick (the surroundings check, or the first of January) gets the sick
 //! task by chance and is sick on the spot ([`Cx::sick_ladder`]). The log lines are those of the
@@ -14,6 +15,7 @@ use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Part;
 
 mod building;
+mod scenery;
 mod sites;
 
 /// The leave task.

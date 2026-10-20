@@ -22,8 +22,10 @@
 //! area pleases, a crowd annoys, a smell makes it sick. The thoughts ([`thought`]) a guest thinks
 //! at its checks are kept newest first for the panels. Litter ([`litter`]) is dropped on the ground
 //! when no trash can will take it.
-//! Missing so far (other issues): the viewing thoughts; gawk scenery; the Halloween colours; the
-//! entrance tiles other than the zoo entrance of the map.
+//! Gawk scenery ([`gawk`]) is a site like an exhibit: the list of scenery worth a look, the weight
+//! of what a guest has not seen and the choice of the nearest object.
+//! Missing so far (other issues): the viewing thoughts; the Halloween colours; the entrance tiles
+//! other than the zoo entrance of the map.
 //!
 //! The log family `guest`: `guest add <id> <adult|child>` for each guest made, `guest status <id>
 //! <happiness> <hunger> <thirst> <bathroom> <energy>` after each update of the values, `guest
@@ -43,6 +45,7 @@ use crate::world::{Shape, TankKind, World};
 use crate::zoo::{Common, Entity};
 
 pub mod checks;
+pub mod gawk;
 pub mod litter;
 pub mod mega;
 #[cfg(test)]

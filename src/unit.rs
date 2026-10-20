@@ -346,6 +346,8 @@ pub struct Units {
     /// surroundings check reads (guests 12).
     pub thoughts: crate::guest::thought::Thoughts,
     pub mega: crate::guest::mega::Mega,
+    /// The scenery guests gawk at (guests visit 3.1).
+    pub gawk: crate::guest::gawk::Gawk,
     /// The events the units posted to the task pool during the step, which the step posts.
     pub posts: Vec<Event>,
     /// The maintenance task pool (staff 8.2).
@@ -388,6 +390,7 @@ impl Default for Units {
             guest_lines: Vec::new(),
             thoughts: Default::default(),
             mega: Default::default(),
+            gawk: Default::default(),
             posts: Vec::new(),
             pool: Default::default(),
             world_lines: Vec::new(),
@@ -593,7 +596,7 @@ impl Units {
             h.word((v >> 32) as u32);
         }
         h.bytes(format!("{:?}", self.buildings).as_bytes());
-        h.bytes(format!("{:?}{:?}", self.thoughts, self.mega).as_bytes());
+        h.bytes(format!("{:?}{:?}{:?}", self.thoughts, self.mega, self.gawk).as_bytes());
         h.bytes(format!("{:?}", self.pool).as_bytes());
         for u in &self.list {
             h.word(u.id);

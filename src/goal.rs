@@ -39,6 +39,9 @@ pub const HABITAT: u8 = 101;
 /// The duties of a keeper (staff 7.5).
 pub const DUTIES: u8 = 110;
 pub const GAWK: u8 = 112;
+/// A guest walks to a scenery object and gawks at it (goals 11.12).
+pub const SCENERY: u8 = 128;
+pub const DO_SCENERY: u8 = 129;
 /// The maintenance duties of a worker (staff 8).
 pub const MAINT: u8 = 120;
 /// A keeper enters a tank by the ladders of its gate and leaves it (tank staff 4).
@@ -216,6 +219,9 @@ pub enum Goal {
     Site,
     /// 0x70 of a guest: view the animals from the viewing area (11.5).
     Gawk,
+    /// 0x80 of a guest: walk to a scenery object; 0x81: gawk at it (11.12).
+    Scenery,
+    DoScenery,
     /// 0x76 of a guide: a leg to a viewing area, and 0x77 the talk there; 0x76 of a guest: the walk
     /// after the guide (11.7).
     Leg,
@@ -253,6 +259,8 @@ impl Goal {
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
             (SITE, Kind::Guest) => Some(Goal::Site),
             (GAWK, Kind::Guest) => Some(Goal::Gawk),
+            (SCENERY, Kind::Guest) => Some(Goal::Scenery),
+            (DO_SCENERY, Kind::Guest) => Some(Goal::DoScenery),
             (LEG, Kind::Guide) => Some(Goal::Leg),
             (TALK, Kind::Guide) => Some(Goal::Talk),
             (LEG, Kind::Guest) => Some(Goal::Follow),
@@ -282,6 +290,8 @@ impl Goal {
             Goal::DrinkWater => DRINK,
             Goal::Site => SITE,
             Goal::Gawk => GAWK,
+            Goal::Scenery => SCENERY,
+            Goal::DoScenery => DO_SCENERY,
             Goal::Leg | Goal::Follow => LEG,
             Goal::Talk => TALK,
             Goal::Go => GO_BUILDING,
@@ -300,6 +310,7 @@ impl Goal {
     fn init(self, cx: &mut Cx) -> bool {
         match self {
             Goal::Gawk => cx.gawk_init(),
+            Goal::DoScenery => cx.do_scenery_init(),
             Goal::Talk => cx.talk_init(),
             Goal::Duties => {
                 cx.duties_init();
@@ -337,6 +348,8 @@ impl Goal {
         match self {
             Goal::Leave => return cx.leave_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
+            Goal::Scenery => return cx.scenery_check_done(),
+            Goal::DoScenery => return cx.do_scenery_check_done(),
             Goal::Leg => return cx.leg_check_done(),
             Goal::Talk => return cx.talk_check_done(),
             Goal::Exhibit => return cx.exhibit_check_done(),
@@ -361,7 +374,9 @@ impl Goal {
 
     fn decide(self, cx: &mut Cx) {
         match self {
-            Goal::Habitat if cx.record().target.tile.is_none() => cx.set_task(NONE, 0, 0, None),
+            Goal::Habitat | Goal::Scenery if cx.record().target.tile.is_none() => {
+                cx.set_task(NONE, 0, 0, None)
+            }
             Goal::KeeperFood => cx.keeper_food_decide(),
             Goal::Exhibit => cx.exhibit_decide(),
             Goal::Duties => cx.duties_decide(),
@@ -389,6 +404,8 @@ impl Goal {
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
             Goal::Gawk => cx.gawk_complete(),
+            Goal::Scenery => cx.scenery_arrived(),
+            Goal::DoScenery => cx.reset(),
             Goal::Leg => cx.leg_complete(),
             Goal::Talk => cx.talk_complete(),
             Goal::Follow => cx.follow_complete(),

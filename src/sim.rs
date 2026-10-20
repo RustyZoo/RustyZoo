@@ -398,6 +398,7 @@ impl Sim {
         self.total = self.total.wrapping_add(step);
         let month_end = self.calendar.advance(step);
         guest::mega::update(world, cat, step);
+        guest::gawk::update(world, cat);
         let bars = self.zoo_status(world, cat, money, step, month_end);
         world.units.now = self.calendar.state().0;
         // The AI manager: first the task pool reads the events of the buffer (simulation 4.2).

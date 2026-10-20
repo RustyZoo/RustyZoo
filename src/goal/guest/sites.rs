@@ -1,7 +1,9 @@
-//! The site goal (100) and viewing (0x70) of a guest (goals 11.1, 11.5; guests visit 3, 5).
+//! The site goal (100) and viewing (0x70) of a guest (goals 11.1, 11.5; guests visit 3, 5). The
+//! walk to scenery it picks ends in [`super::scenery`].
 
-use super::super::{Cx, HABITAT, SITE};
+use super::super::{Cx, HABITAT, SCENERY, SITE};
 use crate::exhibit::GROUNDS;
+use crate::guest::gawk::{self, Judged};
 use crate::guest::view;
 use crate::unit::{Part, movement};
 
@@ -17,14 +19,15 @@ pub(super) fn site_score(attractiveness: i32, loved: bool, d: i64) -> i64 {
 }
 
 impl Cx<'_, '_> {
-    /// Ladder point 10.2 and 10.3: a guest with an exhibit to see takes the site task, mode 4;
+    /// Ladder point 10.2 and 10.3: a guest with an exhibit or scenery to see takes the site task, mode 4;
     /// with none the seen count goes and `checkLeaveZoo` may send it away. Whether the ladder
     /// ends there.
     pub(in crate::goal) fn next_site(&mut self) -> bool {
         let Part::Guest(g) = &self.unit.part else {
             return false;
         };
-        if !view::sites(self.world, self.ctx.cat, g).1.is_empty() {
+        let sites = view::sites(self.world, self.ctx.cat, g).1.len();
+        if sites + gawk::sites(&gawk::unseen(self.world, self.ctx.cat, g)) > 0 {
             self.set_task(SITE, 4, 0, None);
             return true;
         }
@@ -35,7 +38,8 @@ impl Cx<'_, '_> {
     }
 
     /// 11.1, decide: a guest that has seen all the sites forgets them, stops and may leave;
-    /// otherwise one of the exhibits it has not seen is chosen by its score and walked to.
+    /// otherwise one draw picks an exhibit or the scenery it has not seen: the exhibit with the
+    /// best score is walked to, or the scenery object `pickGawkScenery` chooses.
     pub(in crate::goal) fn site_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
@@ -45,6 +49,7 @@ impl Cx<'_, '_> {
         };
         let (n, unseen) = view::sites(self.world, self.ctx.cat, g);
         let favourite = g.favourite;
+        let scenery = gawk::unseen(self.world, self.ctx.cat, g);
         if g.seen_count as usize >= n {
             g.forget();
             movement::stop(self.unit);
@@ -52,11 +57,14 @@ impl Cx<'_, '_> {
             self.check_leave_zoo();
             return;
         }
-        let (Some(here), false) = (self.tile(), unseen.is_empty()) else {
+        let total = unseen.len() + gawk::sites(&scenery);
+        let (Some(here), false) = (self.tile(), total == 0) else {
             return;
         };
-        // r = rand % (H + A + S) with no attraction or scenery: always an exhibit.
-        self.ctx.rng.pick(unseen.len() as u32);
+        // r = rand % (H + A + S), with no attraction as a site yet.
+        if self.ctx.rng.pick(total as u32) as usize >= unseen.len() {
+            return self.scenery_decide(&scenery, here);
+        }
         let width = self.world.zoo.width as usize;
         let beasts = view::beasts(self.world, self.ctx.cat);
         let mut best: Option<(i64, u32)> = None;
@@ -88,6 +96,32 @@ impl Cx<'_, '_> {
         };
         if self.path_to(to, false) && self.start_walk(false, false, false) {
             self.set_task(HABITAT, 0, 0, Some(to));
+        }
+    }
+
+    /// 11.1, scenery: the object `pickGawkScenery` chooses is walked to, to the nearest tile beside
+    /// it that has a path, and the task becomes 0x80 with that tile. Nothing within reach, or no
+    /// way there: nothing happens this time.
+    fn scenery_decide(&mut self, scenery: &[Judged], here: usize) {
+        let width = self.world.zoo.width as usize;
+        let Some(object) = gawk::pick(scenery, here, width) else {
+            return;
+        };
+        let at = |t: usize| ((t % width) as i64, (t / width) as i64);
+        let mut beside: Vec<_> = (gawk::beside(self.world, &object).into_iter())
+            .map(|t| {
+                (
+                    (at(t).0 - at(here).0).pow(2) + (at(t).1 - at(here).1).pow(2),
+                    t,
+                )
+            })
+            .collect();
+        beside.sort_unstable();
+        for (_, place) in beside {
+            if self.path_to(place, false) && self.start_walk(false, false, false) {
+                self.set_task(SCENERY, 0, object.id, Some(place));
+                return;
+            }
         }
     }
 
