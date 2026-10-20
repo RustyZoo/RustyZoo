@@ -95,6 +95,48 @@ fn the_water_loses_a_point_each_decay_time_while_it_holds_water() {
 }
 
 #[test]
+fn the_purity_is_reset_when_the_level_comes_back_to_0() {
+    let mut world = new_tank("tank", &[]);
+    (0..4).for_each(|_| _ = world.step_water());
+    world.set_purity(1, 40);
+    // Lowering the walls keeps water in the tank: nothing is reset.
+    world.set_height(1, 3);
+    assert_eq!((purity(&world), tank(&world, 2, 2).unwrap().level), (40, 2));
+    // A drain keeps the purity until the last step, which brings the level to 0.
+    world.drain(1);
+    world.step_water();
+    assert_eq!(purity(&world), 40);
+    world.take_events();
+    world.step_water();
+    assert_eq!((purity(&world), tank(&world, 2, 2).unwrap().level), (90, 0));
+    assert!(world.exhibits().get(1).unwrap().rating.dirty);
+    assert!(!world.take_events().is_empty());
+    // A tank with no water does not decay, and a refill is not a reset.
+    world.set_purity(1, 50);
+    world.fill(1);
+    world.step_water();
+    assert_eq!(purity(&world), 50);
+    // Nothing to reset when the water is clean already: nothing is told.
+    world.set_purity(1, 90);
+    world.drain(1);
+    world.step_water();
+    world.take_events();
+    assert!(!world.step_water());
+    assert!(world.take_events().is_empty());
+}
+
+#[test]
+fn a_drain_while_paused_resets_the_purity_at_once() {
+    let mut world = new_tank("tank", &[]);
+    world.set_paused(true);
+    world.fill(1);
+    world.set_purity(1, 7);
+    assert_eq!(purity(&world), 7);
+    world.drain(1);
+    assert_eq!((purity(&world), tank(&world, 2, 2).unwrap().level), (90, 0));
+}
+
+#[test]
 fn a_filter_cleans_the_water_and_charges_its_upkeep_at_each_cycle() {
     let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
     world.set_purity(1, 60);
@@ -110,6 +152,7 @@ fn a_filter_cleans_the_water_and_charges_its_upkeep_at_each_cycle() {
     assert_eq!(purity(&world), 90, "cut to initialWaterPurity");
     assert_eq!(world.units.spent.len(), 3);
     let lines = world.units.take_world_lines();
+    let lines: Vec<_> = lines.iter().filter(|l| l.starts_with("filter")).collect();
     assert_eq!(lines.len(), 3);
     assert!(lines[0].ends_with(" 10 70"), "{lines:?}");
 }
@@ -121,9 +164,9 @@ fn a_decayed_filter_cleans_less_and_a_filter_with_no_water_does_nothing() {
     world.filter_step(&cat, at, 1);
     assert_eq!(purity(&world), 65);
     let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
-    world.set_purity(1, 60);
     world.set_paused(true);
     world.drain(1);
+    world.set_purity(1, 60);
     world.filter_step(&cat, at, 1_000_000);
     assert_eq!((purity(&world), world.units.spent.len()), (60, 0));
     // It still wears, off or on.

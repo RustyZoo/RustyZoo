@@ -1534,6 +1534,30 @@ fn tank_scene(r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
     scene
 }
 
+#[test]
+fn ripples_come_with_the_water_and_go_with_the_level_and_the_purity() {
+    let look = |scum| tank::Look {
+        water: "salt".into(),
+        glass: "glass".into(),
+        scum,
+    };
+    let ripples = |level: i32, look: tank::Look| {
+        let mut scene = tank_scene(0, 5, level, Vec::new());
+        let before = scene.objects.len();
+        let added = add_ripples(&mut scene, &[look], 16);
+        assert_eq!(scene.objects.len(), before + added);
+        added
+    };
+    // One for each of the eight walls on the edges of the four tiles, at any level above 0.
+    assert_eq!(ripples(0, look(None)), 0);
+    assert_eq!(ripples(1, look(None)), 8);
+    assert_eq!(ripples(4, look(None)), 8);
+    // Not on water below the murky purity, and none for a tank without a look.
+    assert_eq!(ripples(3, look(Some(([220, 230, 240], 200)))), 0);
+    let mut scene = tank_scene(0, 5, 3, Vec::new());
+    assert_eq!(add_ripples(&mut scene, &[], 16), 0);
+}
+
 fn position(items: &[Item], wanted: impl Fn(&Item) -> bool) -> usize {
     items.iter().position(wanted).expect("the item is painted")
 }
