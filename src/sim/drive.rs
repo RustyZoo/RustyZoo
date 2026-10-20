@@ -267,11 +267,7 @@ impl Run {
                 name,
                 colors: Vec::new(),
                 fence: None,
-                food: 0,
-                movement_mode: 0,
-                animal: None,
-                guest: None,
-                filter: None,
+                ..Default::default()
             }),
         };
         let shape = crate::world::Shape {

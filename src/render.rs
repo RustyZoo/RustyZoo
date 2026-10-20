@@ -30,6 +30,7 @@ use crate::config::{Config, Section, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::ground::{self, Key, Picture};
 use crate::sprite::{Blend, Frame, Palette, Place, Sprite, screen};
+use crate::timing::ini_whole;
 use crate::vfs::Vfs;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Tile, Zoo};
@@ -483,6 +484,24 @@ fn corner_at(x: i32, y: i32) -> usize {
     }
 }
 
+/// The animation of a fence piece of the row `row` (`idle`, `det`, `broke`) facing `facing` on
+/// `tile`: the name of the row with `30p` when the second corner of the edge it stands on is
+/// higher than the first, `30n` when it is lower (sprite drawing 3.6). The gates use it too.
+pub(crate) fn slope_name(row: &str, tile: &crate::zoo::Tile, facing: u32) -> String {
+    // The corners of the edge, in this order.
+    let [first, second] = match facing / 2 {
+        0 => [7, 1],
+        1 => [1, 3],
+        2 => [3, 5],
+        _ => [5, 7],
+    };
+    match corner_elevation(tile, second).cmp(&corner_elevation(tile, first)) {
+        std::cmp::Ordering::Greater => format!("{row}30p"),
+        std::cmp::Ordering::Less => format!("{row}30n"),
+        std::cmp::Ordering::Equal => row.to_string(),
+    }
+}
+
 /// The elevation of the corner of a tile, in steps.
 pub(crate) fn corner_elevation(tile: &crate::zoo::Tile, corner: usize) -> i32 {
     let field = |c: usize| {
@@ -661,11 +680,7 @@ impl<'a> MapRenderer<'a> {
             .unwrap_or(30);
         let tank_shadows = Config::parse(vfs.ini())
             .ok()
-            .and_then(|c| {
-                c.section("advanced")?
-                    .get("useTankShadows")
-                    .and_then(to_int)
-            })
+            .and_then(|c| ini_whole(&c, "advanced", "useTankShadows"))
             .is_none_or(|v| v == 1);
         MapRenderer {
             vfs,
@@ -910,7 +925,7 @@ impl<'a> MapRenderer<'a> {
             metas.push(Meta {
                 ty,
                 colors: &c.colors,
-                life: c.fence.map(|f| f.life as i32),
+                life: c.fence.map(|f| f.life),
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
                 food: c.food,
@@ -1300,21 +1315,9 @@ impl<'a> MapRenderer<'a> {
                     Some(life) if !gate && life <= decayed => "det",
                     _ => "idle",
                 };
-                // The corners of the edge the fence stands on, in this order.
-                let slope = scene.tile_at(obj.x, obj.y).map(|t| {
-                    let tile = &scene.tiles[t];
-                    let [c1, c2] = match obj.facing / 2 {
-                        0 => [7, 1],
-                        1 => [1, 3],
-                        2 => [3, 5],
-                        _ => [5, 7],
-                    };
-                    corner_elevation(tile, c2).cmp(&corner_elevation(tile, c1))
-                });
-                match slope {
-                    Some(std::cmp::Ordering::Greater) => format!("{row}30p"),
-                    Some(std::cmp::Ordering::Less) => format!("{row}30n"),
-                    _ => row.to_string(),
+                match scene.tile_at(obj.x, obj.y) {
+                    Some(t) => slope_name(row, &scene.tiles[t], obj.facing),
+                    None => row.to_string(),
                 }
             }
             // An animal inside a tank swims: below the water it shows `subidle`, at the surface
@@ -1522,7 +1525,7 @@ fn tank_kind(ty: &EntityType) -> TankKind {
         surface: flag("cSurface"),
         shows: show || flag("cShow"),
         transient: flag("cIsTransient"),
-        life: crate::build::number(ty, "cLife").unwrap_or(crate::place::LIFE) as u32,
+        life: crate::build::number(ty, "cLife").unwrap_or(crate::place::LIFE) as i32,
         strength: crate::build::number(ty, "cStrength").unwrap_or(crate::place::STRENGTH) as u32,
         depth: crate::build::number(ty, "cDepth").unwrap_or(0.0) as i32,
         height: crate::build::number(ty, "cHeight").unwrap_or(0.0) as i32,

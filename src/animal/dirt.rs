@@ -62,11 +62,8 @@ pub fn put_z(
         name: String::new(),
         colors: Vec::new(),
         fence: None,
-        movement_mode: 0,
         food,
-        animal: None,
-        guest: None,
-        filter: None,
+        ..Default::default()
     };
     let entity = Entity {
         class: names.0.into(),

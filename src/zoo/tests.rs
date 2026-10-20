@@ -631,7 +631,7 @@ fn keeps_the_condition_of_fences_from_version_55() {
         match v {
             55.. => {
                 let fence = fence.unwrap();
-                assert_eq!((fence.strength, fence.life as i32), (7, -1));
+                assert_eq!((fence.strength, fence.life), (7, -1));
                 assert_eq!(fence.timers, [5, 6]);
             }
             _ => assert_eq!(fence, None),

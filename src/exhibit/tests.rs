@@ -22,11 +22,7 @@ fn entity(class: &str, tx: i32, ty: i32, rotation: u32) -> Entity {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
-            movement_mode: 0,
-            food: 0,
-            animal: None,
-            guest: None,
-            filter: None,
+            ..Default::default()
         }),
     }
 }

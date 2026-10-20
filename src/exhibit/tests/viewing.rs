@@ -276,7 +276,7 @@ fn made(class: &str, mut zoo: Zoo) -> Zoo {
     zoo
 }
 
-fn worn(world: &mut World, x: usize, y: usize, d: usize, life: u32) {
+fn worn(world: &mut World, x: usize, y: usize, d: usize, life: i32) {
     let e = world.edge(y * 8 + x, d).unwrap();
     world.zoo.entities[e].common.as_mut().unwrap().fence = Some(Fence {
         strength: 500,

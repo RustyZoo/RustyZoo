@@ -14,6 +14,7 @@ use crate::lists::{Cash, Freeform, Scenario};
 use crate::money::{Money, StartCash};
 use crate::music::Music;
 use crate::text::format::{Arg, Strings, expand};
+use crate::timing::{ini_value, ini_whole};
 use crate::ui::interface::Interface;
 use crate::ui::layout::{DISABLED, HIDDEN};
 use crate::userdir;
@@ -181,7 +182,7 @@ impl Menu {
     }
 
     fn setting(&self, section: &str, key: &str) -> Option<&[u8]> {
-        self.ini.section(section)?.get(key)
+        ini_value(&self.ini, section, key)
     }
 
     /// Writes `key` of `section` back, to the memory of the menu and to the settings of the user.
@@ -235,10 +236,7 @@ impl Menu {
             .map(|v| String::from_utf8_lossy(v).trim().to_string())
             .unwrap_or_default();
         let exists = !last.is_empty() && find_file(&self.root, &last.replace('\\', "/")).is_some();
-        let long = self
-            .setting("UI", "helpType")
-            .and_then(to_int)
-            .is_some_and(|n| n != 0);
+        let long = ini_whole(&self.ini, "UI", "helpType").is_some_and(|n| n != 0);
         let offset = if long { LONG_HELP } else { 0 };
         let tip = if exists {
             CONTINUE_TIP

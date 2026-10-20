@@ -111,7 +111,7 @@ impl World {
         let at = self.find(id)?;
         let ty = type_of(cat, &self.zoo.entities[at])?;
         let strength = number(ty, "cStrength").unwrap_or(STRENGTH) as u32;
-        let life = number(ty, "cLife").unwrap_or(LIFE) as u32;
+        let life = number(ty, "cLife").unwrap_or(LIFE) as i32;
         let fence = self.zoo.entities[at].common.as_mut()?.fence.as_mut()?;
         let interval = self.decay.interval(rand());
         (fence.strength, fence.life, fence.timers) = (strength, life, [interval; 2]);
@@ -145,8 +145,8 @@ impl World {
         let Some(f) = c.fence.as_mut() else {
             return Vec::new();
         };
-        // A broken piece does not wear.
-        if f.life == 0 {
+        // A broken piece does not wear (its life below 1, as a signed number).
+        if f.life < 1 {
             return Vec::new();
         }
         if f.timers[1] > ms {
@@ -159,14 +159,14 @@ impl World {
         let mut kinds = Vec::new();
         let mut state = "";
         // The piece's own life is below 1, never 500: it can deteriorate.
-        if f.life == 0 {
+        if f.life < 1 {
             f.strength = 0;
             kinds.push(BROKEN);
             state = " broken";
         }
         if i64::from(f.life) == decayed {
             kinds.push(if electrified { BROKEN } else { DECAYED });
-            state = if f.life == 0 { state } else { " decayed" };
+            state = if f.life < 1 { state } else { " decayed" };
         }
         lines.push(format!(
             "fence {id} life {} strength {}{state}",
@@ -191,7 +191,7 @@ impl World {
             };
             let ty = type_of(cat, e);
             let key = |name| ty.and_then(|t| number(t, name)).unwrap_or(0.0);
-            let kind = if f.life == 0 {
+            let kind = if f.life < 1 {
                 if !ty.is_some_and(deteriorates) {
                     continue;
                 }

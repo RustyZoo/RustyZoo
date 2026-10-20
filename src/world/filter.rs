@@ -122,14 +122,11 @@ impl World {
             name: String::new(),
             colors: Vec::new(),
             fence: None,
-            movement_mode: 0,
-            food: 0,
-            animal: None,
-            guest: None,
             filter: Some(Filter {
                 health: keys.start.max(0) as u32,
                 timers: Some([ms(keys.decay_ms), 0]),
             }),
+            ..Default::default()
         };
         let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
         let entity = Entity {

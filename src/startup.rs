@@ -5,11 +5,12 @@ use std::path::Path;
 
 use crate::Framebuffer;
 use crate::bitmap;
-use crate::config::{Config, to_int};
+use crate::config::Config;
 use crate::pe::{self, ResKey};
 use crate::sprite::show;
 use crate::strings::library_names;
 use crate::text::fill_color;
+use crate::timing::ini_whole;
 use crate::vfs::{MAX_MEMBER_SIZE, find_ignoring_case};
 
 /// The bitmap resource of the start-up picture for the expansion flags (0 to 3).
@@ -129,12 +130,7 @@ struct Bar {
 
 impl Bar {
     fn from_config(ini: &Config) -> Bar {
-        let ui = ini.section("UI");
-        let get = |key: &str, default: i32| {
-            ui.and_then(|s| s.get(key))
-                .and_then(to_int)
-                .unwrap_or(default)
-        };
+        let get = |key: &str, default: i32| ini_whole(ini, "UI", key).unwrap_or(default);
         let rgb = |prefix: &str, default: [i32; 3]| {
             let channel = |name: &str, i: usize| get(&format!("{prefix}{name}"), default[i]);
             fill_color([

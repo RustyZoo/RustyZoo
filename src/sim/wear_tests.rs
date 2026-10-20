@@ -127,7 +127,7 @@ fn a_piece_goes_healthy_then_decayed_then_broken_at_the_drawn_times() {
     assert_eq!((log[4].0 + log[4].1, log[4].2.0), (0, 0));
 }
 
-fn run_state(run: &Run) -> (u32, u32, u32) {
+fn run_state(run: &Run) -> (i32, u32, u32) {
     let f = fence(run);
     (f.life, f.strength, f.timers[1])
 }
@@ -290,12 +290,12 @@ fn a_worn_piece_posts_its_events_with_the_worker_tile() {
 }
 
 /// The kinds of the events a loaded world with the piece at `life` posts, and their data.
-fn loaded(keys: &str, life: Option<u32>) -> Vec<(u16, u32)> {
+fn loaded(keys: &str, life: Option<i32>) -> Vec<(u16, u32)> {
     loaded_in("[HabitatFence]\n", keys, life)
 }
 
 /// The same for a type with these other `sections`.
-fn loaded_in(sections: &str, keys: &str, life: Option<u32>) -> Vec<(u16, u32)> {
+fn loaded_in(sections: &str, keys: &str, life: Option<i32>) -> Vec<(u16, u32)> {
     let mut w = world("f");
     let c = w.zoo.entities[0].common.as_mut().unwrap();
     c.fence = life.map(|life| crate::zoo::Fence {
@@ -321,7 +321,11 @@ fn a_loaded_piece_posts_broken_or_decayed_with_its_worker_tile() {
     assert_eq!(loaded(WEARING, Some(2)), [(10033, 5)]);
     assert_eq!(loaded(WEARING, Some(1)), [(10033, 5)]);
     assert_eq!(loaded(WEARING, Some(3)), []);
-    assert_eq!(loaded(WEARING, Some(u32::MAX)), []);
+    assert_eq!(loaded(WEARING, Some(i32::MAX)), []);
+    // The original tests "life below 1" on a signed number: a stored life above `i32::MAX` is a
+    // broken piece.
+    assert_eq!(loaded(WEARING, Some(-1)), [(10034, 5)]);
+    assert_eq!(loaded(WEARING, Some(i32::MIN)), [(10034, 5)]);
     // An electrified piece posts the urgent kind, once, and a piece with no wear data none.
     let live = format!("{WEARING}\ncIsElectrified=1");
     assert_eq!(loaded(&live, Some(2)), [(10034, 5)]);
@@ -374,4 +378,14 @@ fn a_loaded_broken_piece_posts_only_when_its_type_can_deteriorate() {
     // The decayed branch has no such test.
     assert_eq!(loaded_in(fence, &sturdy, Some(2)), [(10033, 5)]);
     assert_eq!(loaded_in("", WEARING, Some(2)), [(10033, 5)]);
+}
+
+#[test]
+fn a_piece_whose_stored_life_is_above_i32_max_is_broken_and_does_not_wear() {
+    let mut run = run(types(WEARING), world("f"), 1);
+    let c = run.world.zoo.entities[0].common.as_mut().unwrap();
+    c.fence.as_mut().unwrap().life = u32::MAX as i32;
+    let before = fence(&run);
+    assert!(run.step(10_000).iter().all(|l| !l.starts_with("fence")));
+    assert_eq!(fence(&run), before);
 }

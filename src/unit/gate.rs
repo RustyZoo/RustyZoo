@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use super::{Kind, Unit, Units};
 use crate::behaviour::{Data, Heard, Timing};
 use crate::entity::Catalogue;
-use crate::render::corner_elevation;
+use crate::render::slope_name;
 use crate::world::World;
 
 /// The state of one gate.
@@ -92,25 +92,29 @@ impl Units {
 
 /// The animation of the gate at `at`: `idle`, with the slope of the edge it stands on (sprite
 /// drawing 3.6).
-fn animation(world: &World, at: usize) -> &'static str {
+fn animation(world: &World, at: usize) -> String {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
-        return "idle";
+        return "idle".into();
     };
     let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
-    let Some(tile) = tile.and_then(|t| world.zoo.tiles.get(t)) else {
-        return "idle";
-    };
-    let [first, second] = match c.rotation % 8 / 2 {
-        0 => [7, 1],
-        1 => [1, 3],
-        2 => [3, 5],
-        _ => [5, 7],
-    };
-    match corner_elevation(tile, second).cmp(&corner_elevation(tile, first)) {
-        std::cmp::Ordering::Greater => "idle30p",
-        std::cmp::Ordering::Less => "idle30n",
-        std::cmp::Ordering::Equal => "idle",
+    match tile.and_then(|t| world.zoo.tiles.get(t)) {
+        Some(tile) => slope_name("idle", tile, c.rotation % 8),
+        None => "idle".into(),
     }
+}
+
+/// Drops the entry of a gate that is gone from the zoo, or that is no longer a gate (the gate
+/// tool turned it into an ordinary fence): an undo that brings the gate back with its id then
+/// shows it closed.
+pub fn forget(world: &mut World) {
+    if world.units.gates.is_empty() {
+        return;
+    }
+    let live: std::collections::HashSet<u32> = (world.zoo.entities.iter())
+        .filter(|e| e.subtype.starts_with('g'))
+        .filter_map(|e| e.common.as_ref().map(|c| c.id))
+        .collect();
+    world.units.gates.retain(|id, _| live.contains(id));
 }
 
 /// The sound the type of the gate at `at` gives to opening or closing, with its attenuation.
@@ -154,7 +158,7 @@ pub fn advance(world: &mut World, cat: &Catalogue, data: &dyn Data, at: usize, s
         return;
     };
     let name = animation(world, at);
-    let timing = data.timing(&world.zoo.entities[at], name);
+    let timing = data.timing(&world.zoo.entities[at], &name);
     let Timing { count, delay } = timing.unwrap_or(Timing { count: 0, delay: 0 });
     gate.count = count;
     if std::mem::take(&mut gate.fresh) {
@@ -279,6 +283,23 @@ mod tests {
         // Closing a closed gate plays it again all the same.
         w.units.close_gate(7);
         assert_eq!(run(&mut w, &cat, 1), [Some(2)]);
+    }
+
+    #[test]
+    fn the_entry_of_a_removed_gate_or_of_one_turned_into_a_fence_is_dropped() {
+        let (mut w, _) = gate_world();
+        w.units.open_gate(7);
+        forget(&mut w);
+        assert_eq!(w.units.gate_frames().count(), 1, "the gate stays");
+        w.zoo.entities[0].subtype = "iron".into();
+        forget(&mut w);
+        assert_eq!(w.units.gate_frames().count(), 0, "now a fence");
+        w.zoo.entities[0].subtype = "g".into();
+        assert_eq!(w.units.gate_frames().count(), 0, "put back: closed");
+        w.units.open_gate(7);
+        w.zoo.entities.clear();
+        forget(&mut w);
+        assert_eq!(w.units.gate_frames().count(), 0, "bulldozed");
     }
 
     #[test]

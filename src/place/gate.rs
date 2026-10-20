@@ -104,7 +104,7 @@ pub fn place(world: &mut World, money: &mut Money, cat: &Catalogue, gate: &Gate)
         return Outcome::Refused(Some(NO_FUNDS));
     }
     let ty = &cat.types[p.ty];
-    let life = number(ty, "cLife").unwrap_or(LIFE) as u32;
+    let life = number(ty, "cLife").unwrap_or(LIFE) as i32;
     let strength = number(ty, "cStrength").unwrap_or(STRENGTH) as u32;
     if !world.move_gate(gate.exhibit, gate.piece, life, strength) {
         return Outcome::Refused(None);

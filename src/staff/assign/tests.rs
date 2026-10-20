@@ -21,11 +21,7 @@ fn entity(class: &str, type_name: &str, (tx, ty): (i32, i32), rotation: u32, id:
             name: String::new(),
             colors: Vec::new(),
             fence: None,
-            movement_mode: 0,
-            food: 0,
-            animal: None,
-            guest: None,
-            filter: None,
+            ..Default::default()
         }),
     }
 }

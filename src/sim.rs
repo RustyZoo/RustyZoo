@@ -448,6 +448,7 @@ impl Sim {
                 }
             }
         }
+        unit::gate::forget(world);
         for event in std::mem::take(&mut world.units.posts) {
             self.events.post(event);
         }
