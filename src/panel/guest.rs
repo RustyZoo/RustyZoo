@@ -7,6 +7,7 @@
 //! world and returns the `panel` log line when what it shows changed.
 
 use crate::entity::Catalogue;
+use crate::guest::thought::Thought;
 use crate::guest::{self, Guest};
 use crate::panel::animal::percent;
 use crate::panel::exhibit::{Clock, type_at};
@@ -59,6 +60,46 @@ pub fn bars(g: &Guest, max_energy: i32) -> [i32; 5] {
         need(v[guest::BATHROOM], 100),
         need(v[guest::ENERGY], max_energy),
     ]
+}
+
+/// The texts of thoughts (guests visit 8.3): `%s` is the name of the object, else of the exhibit;
+/// with neither the text stays as read.
+pub(crate) fn thought_texts(
+    ui: &Interface,
+    world: &World,
+    cat: &Catalogue,
+    list: &[&Thought],
+) -> Vec<String> {
+    let none = Words::new(|_| String::new());
+    let name_of = |id: u32| {
+        let at = world.find(id)?;
+        let named = world.zoo.entities[at]
+            .common
+            .as_ref()
+            .map(|c| c.name.clone());
+        named
+            .filter(|n| !n.is_empty())
+            .or_else(|| type_at(world, cat, at).map(|t| ui.string(t.name_id)))
+    };
+    let exhibit = |t: &Thought| Some(world.exhibits().get(t.exhibit?)?.name.clone());
+    let text = |t: &&Thought| {
+        let template = ui.string(t.text);
+        match t.object.and_then(name_of).or_else(|| exhibit(t)) {
+            Some(name) => format::expand(&none, &template, &[Arg::Text(&name)]),
+            None => template,
+        }
+    };
+    list.iter().map(text).collect()
+}
+
+/// The rows of a thoughts list for these texts.
+pub(crate) fn thought_rows(texts: &[String]) -> Vec<Row> {
+    (texts.iter())
+        .map(|t| Row {
+            text: to_cp1252(t),
+            ..Row::default()
+        })
+        .collect()
 }
 
 /// The time in the park (8.3): the index of its text, from the hours of calendar time since the
@@ -145,32 +186,8 @@ impl Panel {
                 ui.tree.elements[i].help_id = item.into_iter().collect();
             }
         }
-        let name_of = |id: u32| {
-            let at = world.find(id)?;
-            let named = world.zoo.entities[at]
-                .common
-                .as_ref()
-                .map(|c| c.name.clone());
-            named
-                .filter(|n| !n.is_empty())
-                .or_else(|| type_at(world, cat, at).map(|t| ui.string(t.name_id)))
-        };
-        let texts: Vec<String> = (world.units.thoughts.of(id).into_iter())
-            .map(|t| {
-                let template = ui.string(t.text);
-                match t.object.and_then(name_of) {
-                    Some(name) => format::expand(&none, &template, &[Arg::Text(&name)]),
-                    None => template,
-                }
-            })
-            .collect();
-        let rows = (texts.iter())
-            .map(|t| Row {
-                text: to_cp1252(t),
-                ..Row::default()
-            })
-            .collect();
-        ui.refill_rows(THOUGHTS, rows);
+        let texts = thought_texts(ui, world, cat, &world.units.thoughts.of(id));
+        ui.refill_rows(THOUGHTS, thought_rows(&texts));
         let name = world.zoo.entities[at]
             .common
             .as_ref()

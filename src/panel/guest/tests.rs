@@ -138,9 +138,9 @@ fn a_refresh_writes_the_bars_the_time_the_items_and_the_thoughts() {
     (g.items[0], g.items[3]) = (Some(6303), Some(6303));
     let at = world.find(1).unwrap();
     world.zoo.entities[at].common.as_mut().unwrap().name = "Zed".into();
-    world.units.think(2, 10074, None);
-    world.units.think(2, 10102, Some(1));
-    world.units.think(1, 10074, None);
+    world.units.think(2, 10074, None, None);
+    world.units.think(2, 10102, Some(1), None);
+    world.units.think(1, 10074, None, None);
     let mut panel = Panel::default();
     // No selection, no such entity, and an entity that is not a guest: nothing.
     for id in [None, Some(99), Some(1)] {

@@ -505,9 +505,23 @@ impl Units {
         self.guest_lines.push(line);
     }
 
-    /// Guest `thinker` thinks text `text`, about `object` (guests visit 8.2).
-    pub(crate) fn think(&mut self, thinker: u32, text: i32, object: Option<u32>) {
-        self.thoughts.add(thinker, text, object);
+    /// Guest `thinker` thinks text `text`, about `object` and the exhibit with the tile inside
+    /// its gate (guests visit 8.2).
+    pub(crate) fn think(
+        &mut self,
+        thinker: u32,
+        text: i32,
+        object: Option<u32>,
+        exhibit: Option<(u32, Option<usize>)>,
+    ) {
+        let (exhibit, gate) = exhibit.map_or((None, None), |(x, g)| (Some(x), g));
+        self.thoughts.add(crate::guest::thought::Thought {
+            text,
+            thinker,
+            object,
+            exhibit,
+            gate,
+        });
         self.guest_lines.push(format!("thought {thinker} {text}"));
     }
 

@@ -428,3 +428,74 @@ fn an_exhibit_that_becomes_current_shows_the_selected_tabs_layout() {
     p.refresh(&mut ui, &w, &cat, &vfs);
     assert_eq!(shown(&ui), [false, true, false, false, false]);
 }
+
+#[test]
+fn the_thoughts_about_the_exhibit_are_listed_with_the_exhibits_name_for_the_percent_s() {
+    use crate::sprite::tests::Install;
+    use crate::ui::layout::Tree;
+    struct Look;
+    impl crate::ui::draw::Strings for Look {
+        fn string(&self, _: i32) -> String {
+            "Look %s".into()
+        }
+        fn text_entry(&self, _: &[u8]) -> Vec<u8> {
+            vec![]
+        }
+    }
+    let files = [(
+        "ui/root.lyt",
+        b"[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n".to_vec(),
+    )];
+    let install = Install::new("exhibit-thoughts", &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = Tree::load(&vfs, "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    let mut ui = Interface::new(tree, Box::new(Look));
+    let (mut w, cat) = (world(), Catalogue::default());
+    let id = w
+        .exhibits()
+        .list()
+        .iter()
+        .find(|e| e.id != GROUNDS)
+        .unwrap()
+        .id;
+    let name = w.exhibits().get(id).unwrap().name.clone();
+    let animal = w
+        .zoo
+        .entities
+        .iter()
+        .find(|e| e.class == "animals")
+        .unwrap();
+    let animal = animal.common.as_ref().unwrap().id;
+    let at = w.find(animal).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().name = "Zed".into();
+    // The exhibit's, then an animal's thought (the object's name wins), and one elsewhere.
+    w.units.think(5, 10096, None, Some((id, None)));
+    w.units.think(5, 10098, Some(animal), Some((id, None)));
+    w.units.think(5, 10100, None, None);
+    let texts =
+        |ui: &Interface, w: &World| thought_texts(ui, w, &cat, &w.units.thoughts.in_exhibit(id));
+    assert_eq!(
+        texts(&ui, &w),
+        ["Look Zed".to_string(), format!("Look {name}")]
+    );
+    let wild = &w.units.thoughts.of(5)[0].clone();
+    assert_eq!(
+        thought_texts(&ui, &w, &cat, &[wild]),
+        ["Look %s"],
+        "no object, no exhibit"
+    );
+    // The panel tells the ids, newest first.
+    let mut p = Panel {
+        current: Some(id),
+        ..Panel::default()
+    };
+    let told = p.refresh(&mut ui, &w, &cat, &vfs);
+    assert_eq!(told[3], "animals 1 thoughts 2 [10098, 10096]");
+    // Twenty-five thoughts: the twenty newest.
+    for _ in 0..25 {
+        w.units.think(5, 10096, None, Some((id, None)));
+    }
+    assert_eq!(texts(&ui, &w).len(), 20);
+    assert!(p.refresh(&mut ui, &w, &cat, &vfs)[3].starts_with("animals 1 thoughts 20 [10096,"));
+}

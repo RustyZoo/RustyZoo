@@ -791,3 +791,62 @@ fn a_guest_draws_its_viewing_tile_among_the_ring_tiles_that_have_a_path() {
     assert_eq!(scenery_choice(&mut w, &mut rng), (0, None));
     assert_eq!(rng, after);
 }
+
+#[test]
+fn a_thought_about_an_animal_is_about_its_exhibit_and_an_egg_is_the_egg_thought() {
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entrance = (8, 5);
+        for (id, at) in [(1, (2, 5)), (10, (2, 5)), (11, (2, 5)), (12, (7, 7))] {
+            let class = if id == 1 { "guests" } else { "animals" };
+            zoo.entities.push(entity(class, "man", id, centre(at), 0));
+        }
+        for i in 0..3 {
+            for (at, d) in [
+                ((1 + i, 4), 0),
+                ((1 + i, 6), 4),
+                ((1, 4 + i), 6),
+                ((3, 4 + i), 2),
+            ] {
+                let id = 100 + zoo.entities.len() as u32;
+                zoo.entities.push(entity("fences", "", id, centre(at), d));
+            }
+        }
+    });
+    w.units.get_mut(11).unwrap().part = Part::Animal(crate::animal::Animal {
+        egg: true,
+        ..Default::default()
+    });
+    let mut rng = Rng::default();
+    // An animal in the pen: the pen is the exhibit; an egg changes the text; the grounds, an
+    // object that is not an animal and no object leave the exhibit out.
+    for (text, object) in [
+        (10282, Some(10)),
+        (10282, Some(11)),
+        (10282, Some(12)),
+        (10282, Some(77)),
+        (10096, None),
+    ] {
+        with_cx(&mut w, &mut rng, |cx| cx.think(text, object));
+    }
+    let got: Vec<_> = w
+        .units
+        .thoughts
+        .of(1)
+        .iter()
+        .map(|t| (t.text, t.exhibit))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (10096, None),
+            (10282, None),
+            (10282, None),
+            (10250, Some(1)),
+            (10282, Some(1))
+        ]
+    );
+    assert!(
+        w.units.thoughts.of(1).iter().all(|t| t.gate.is_none()),
+        "the pen has no gate"
+    );
+}

@@ -151,6 +151,7 @@ impl Strings for Texts {
         match id {
             3104 => "Mood %d".into(),
             3116 | 3119 => "Recently".into(),
+            10098 => "Look %s".into(),
             3117 | 3120 => "A while".into(),
             _ => String::new(),
         }
@@ -236,12 +237,29 @@ fn a_refresh_writes_the_bars_the_time_rows_and_the_buttons_and_tells_what_change
         None,
         "unchanged"
     );
+    // The thoughts about it, five at most, are told by their ids, newest first.
+    for text in [10096, 10098, 10098, 10098, 10098, 10098] {
+        world
+            .units
+            .think(2, text, (text == 10098).then_some(1), None);
+    }
+    world.units.think(2, 10100, Some(3), None);
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+    assert!(
+        told.ends_with("thoughts [10098, 10098, 10098, 10098, 10098]"),
+        "{told}"
+    );
+    panel.select(3);
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+    assert!(told.ends_with("thoughts [10100]"), "{told}");
+    panel.select(1);
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
     // 1500 hours later the rows read "a while"; a carried animal cannot be sold.
     world.units.get_mut(1).unwrap().carried = true;
     let told = panel
         .refresh(&mut ui, &world, &cat, &vfs, 1500 * HOUR)
         .unwrap();
-    assert!(told.ends_with("fed A while slept A while"), "{told}");
+    assert!(told.contains("fed A while slept A while"), "{told}");
     for id in [3111, 3115, 3197] {
         assert_ne!(flags(&ui, id) & DISABLED, 0, "{id}");
     }

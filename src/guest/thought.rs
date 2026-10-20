@@ -1,18 +1,23 @@
 //! The thoughts of guests (guests visit 8): one list for the whole zoo, newest first, which keeps
-//! the last 1000. A thought is a string id of the language files and the guest who thinks it, and
-//! the entity it is about when it has one.
+//! the last 1000. A thought is a string id of the language files and the guest who thinks it, the
+//! entity it is about when it has one, and the exhibit it is about and that exhibit's gate tile.
 
 use std::collections::VecDeque;
 
 /// The thoughts the list keeps, and those the guest panel shows.
 pub const KEPT: usize = 1000;
 pub const SHOWN: usize = 5;
+/// The thoughts the exhibit panel shows.
+pub const SHOWN_EXHIBIT: usize = 20;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Thought {
     pub text: i32,
     pub thinker: u32,
     pub object: Option<u32>,
+    /// The exhibit it is about (never the zoo grounds), and the tile inside its gate.
+    pub exhibit: Option<u32>,
+    pub gate: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -20,19 +25,39 @@ pub struct Thoughts(VecDeque<Thought>);
 
 impl Thoughts {
     /// 8.2: a new thought goes in front; the oldest are dropped past [`KEPT`].
-    pub fn add(&mut self, thinker: u32, text: i32, object: Option<u32>) {
-        self.0.push_front(Thought {
-            text,
-            thinker,
-            object,
-        });
+    pub fn add(&mut self, thought: Thought) {
+        self.0.push_front(thought);
         self.0.truncate(KEPT);
     }
 
-    /// 8.4: the newest thoughts of a guest, newest first (what the guest panel lists).
+    /// 8.4: the newest `n` thoughts that match, newest first.
+    fn newest(&self, n: usize, matches: impl Fn(&Thought) -> bool) -> Vec<&Thought> {
+        self.0.iter().filter(|t| matches(t)).take(n).collect()
+    }
+
+    /// 8.4: the newest thoughts of a guest (what the guest panel lists).
     pub fn of(&self, thinker: u32) -> Vec<&Thought> {
-        let mine = self.0.iter().filter(|t| t.thinker == thinker);
-        mine.take(SHOWN).collect()
+        self.newest(SHOWN, |t| t.thinker == thinker)
+    }
+
+    /// 8.4: the newest thoughts about an entity (the animal panel).
+    pub fn about(&self, object: u32) -> Vec<&Thought> {
+        self.newest(SHOWN, |t| t.object == Some(object))
+    }
+
+    /// 8.4: the newest thoughts about an exhibit (the exhibit panel).
+    pub fn in_exhibit(&self, exhibit: u32) -> Vec<&Thought> {
+        self.newest(SHOWN_EXHIBIT, |t| t.exhibit == Some(exhibit))
+    }
+
+    /// 8.5: an exhibit that is gone takes the thoughts about it that have no object; the others
+    /// lose the exhibit and keep the tile inside its gate.
+    pub fn drop_exhibit(&mut self, exhibit: u32) {
+        self.0
+            .retain(|t| t.exhibit != Some(exhibit) || t.object.is_some());
+        for t in self.0.iter_mut().filter(|t| t.exhibit == Some(exhibit)) {
+            t.exhibit = None;
+        }
     }
 
     /// 8.5: a unit that is gone takes its thoughts, and those about it, with it.
