@@ -182,6 +182,25 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
 }
 
 #[test]
+fn a_species_of_eggs_only_likes_a_change_without_a_reaction_or_a_sound() {
+    use crate::unit::Part;
+    let (mut w, cat) = (linked(), catalogue());
+    for id in [1, 3] {
+        if let Some(Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) {
+            a.egg = true;
+        }
+    }
+    let tile = 3 * WIDE + 8;
+    let before = rating::before(&w, &cat, &[tile]);
+    let (r, shape) = rock((8, 3));
+    w.unrecorded(|w| w.add(r, shape)).unwrap();
+    rating::react(&mut w, &cat, before, Some((9400, 7, 1)), &mut || 0);
+    assert!(w.units.take_animal_lines().is_empty());
+    assert!(w.units.take_cheers().is_empty());
+    assert!(w.units.reactions.is_empty());
+}
+
+#[test]
 fn a_terrain_change_that_changes_no_tile_marks_nothing() {
     let (mut w, cat) = (linked(), catalogue());
     let (_, land) = pair(&w);

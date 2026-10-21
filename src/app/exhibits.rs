@@ -40,7 +40,8 @@ pub(super) fn visible(bytes: &[u8]) -> bool {
 impl App<'_> {
     /// Tells what happened to the exhibits since the last call: one `exhibit` line each (`new 1
     /// "Exhibit 1" tiles 9 gate none`, `split 1 tiles 6`, `removed 1`, `merged 2 into 3 tiles 12`,
-    /// `gate 1 13,41 side 2`), the gate button follows the number of exhibits that are named, and
+    /// `gate 1 13,41 side 2`; the exhibit sound of a new exhibit that is named logs `sound exhibit 1`),
+    /// the gate button follows the number of exhibits that are named, and
     /// each new exhibit queues its name dialog.
     pub(super) fn exhibits_told(&mut self) {
         let Some(game) = &mut self.game else { return };
@@ -84,6 +85,11 @@ impl App<'_> {
                 _ => continue,
             };
             self.exhibit_lines.push(line);
+            // The exhibit sound plays once for each exhibit that asks for its name (sound 7).
+            if let Event::New { id, ask: true } = event {
+                self.tool_lines.push(format!("sound exhibit {id}"));
+                self.ui_sounds.push("exhibit");
+            }
         }
         for event in events {
             match event {

@@ -1763,7 +1763,11 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
         app.pass(pass + 10, &[Command::Mouse(Mouse::Up)]);
         let told = exhibit_lines(&app);
         match n {
-            3 => assert_eq!(told, ["exhibit new 1 \"Pen 1\" tiles 1 gate none"]),
+            3 => {
+                assert_eq!(told, ["exhibit new 1 \"Pen 1\" tiles 1 gate none"]);
+                let log = app.log_lines(0, 0);
+                assert!(log.iter().any(|l| l.ends_with(" sound exhibit 1")));
+            }
             _ => assert!(told.is_empty()),
         }
     }
@@ -1777,6 +1781,12 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
         None,
         "the gate comes after the name"
     );
+    assert_eq!(
+        app.sounds().last(),
+        Some(&"exhibit"),
+        "once, as it is named"
+    );
+    assert_eq!(app.sounds().iter().filter(|&&s| s == "exhibit").count(), 1);
     let ui = app.interface().unwrap();
     assert_eq!(ui.text(45308), Some(b"Pen 1".to_vec()));
     // Typing replaces the selected default name; Enter answers.

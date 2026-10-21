@@ -565,8 +565,8 @@ pub fn terrain<T>(
 /// in its amphibious neighbours react too. An old sum of 0 counts as
 /// unchanged; an unchanged sum lets the `object` placed (`1`) or removed (`-1`), its habitat
 /// number and name id, decide by its value to the species. Logs `likes ID` or `dislikes ID`.
-/// Once all exhibits are done, the approving sound plays if a species liked the change and the
-/// disapproving one if a species disliked it.
+/// Once all exhibits are done, the approving sound plays if an animal liked the change and the
+/// disapproving one if an animal disliked it (a species of eggs only reaches none).
 pub fn react(
     world: &mut World,
     cat: &Catalogue,
@@ -604,8 +604,6 @@ pub fn react(
             }
         }
         for (key, liked, amphibious) in moods {
-            liked_any |= liked;
-            disliked_any |= !liked;
             let mut places = vec![x];
             places.extend(near.iter().filter(|_| amphibious));
             let ids: Vec<u32> = (places.into_iter())
@@ -619,6 +617,8 @@ pub fn react(
                     && !a.egg
                 {
                     world.units.react(id, liked);
+                    liked_any |= liked;
+                    disliked_any |= !liked;
                 }
             }
         }
