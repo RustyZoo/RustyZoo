@@ -2,6 +2,7 @@
 //! screen; this module fills it from the world and tells what it shows.
 
 pub mod animal;
+pub mod building;
 pub mod exhibit;
 pub mod follow;
 pub mod guest;

@@ -4,6 +4,7 @@
 //! refresh on the interface clock (information panels 4, 5, 6, 10).
 
 use super::*;
+use crate::panel::building;
 use crate::panel::exhibit::{BUTTON, LAYOUT, NAME, PLAQUE};
 use crate::panel::{animal, guest, staff};
 use crate::text::from_cp1252;
@@ -12,7 +13,8 @@ use crate::unit::Part;
 impl App<'_> {
     /// A release on the map with no tool and no unit under the pointer (those are
     /// [`App::pick_or_select`]'s, and [`App::units_sync`] shows their panels): the gate of an
-    /// exhibit opens the exhibit panel on that exhibit.
+    /// exhibit opens the exhibit panel on that exhibit, and a guest building becomes the
+    /// selected entity, which shows its panel (`tool select ID`).
     pub(super) fn select(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
             return;
@@ -29,7 +31,17 @@ impl App<'_> {
                 .map(|e| e.id)
         });
         if let Some(gate) = gate {
-            self.open_exhibit(gate);
+            return self.open_exhibit(gate);
+        }
+        let id = hit
+            .and_then(|at| world.zoo.entities[at].common.as_ref())
+            .map(|c| c.id);
+        if let Some(id) = id.filter(|&id| self.building_layout(id).is_some())
+            && let Some(game) = &mut self.game
+        {
+            game.selected = Some(id);
+            self.tool_lines.push(format!("tool select {id}"));
+            self.ui_sounds.push("place");
         }
     }
 
@@ -263,6 +275,7 @@ impl App<'_> {
         self.animal_sync();
         self.staff_sync();
         self.guest_sync();
+        self.building_sync();
         let ticking = self.fired.interface.is_some() && !self.paused() && !self.modal();
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
@@ -286,6 +299,14 @@ impl App<'_> {
             let date = self.sim.calendar().date();
             self.panel_lines
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
+        }
+        let layout = game.building.layout;
+        // The panel of a building that charges nothing is filled when shown, never by the clock.
+        let ticks = ticking && layout == building::CHARGING;
+        if ui.shown(layout) && game.building.clock.due(now, ticks, building::PERIOD) {
+            let when = self.sim.calendar().state().0;
+            self.panel_lines
+                .extend(game.building.refresh(ui, &game.world, cat, vfs, when));
         }
         if game.panel.plaque.is_some() && game.panel.plaque_clock.due(now, ticking, exhibit::PERIOD)
         {

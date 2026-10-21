@@ -265,7 +265,7 @@ fn period_of(value: &[u8], fallback: u32) -> u32 {
 
 /// Game milliseconds per millisecond of step: 7.2 seconds.
 const GAME_MS_PER_STEP_MS: u64 = 7200;
-const DAY_MS: u64 = 86_400_000;
+pub const DAY_MS: u64 = 86_400_000;
 /// Days from 1970-01-01 to 2001-01-01.
 const DAYS_TO_2001: i64 = 11_323;
 /// Days from 1601-01-01 to 1970-01-01.

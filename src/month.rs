@@ -1,6 +1,7 @@
 //! The charges of the month-end finance check (zoo status 9 items 6 and 7): the monthly wage of
 //! every staff member and the upkeep of the guest buildings, taken whatever the cash.
 
+use crate::building::{Kind, Live};
 use crate::config::to_float;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{BUILDING_UPKEEP, Money};
@@ -13,7 +14,7 @@ const HELICOPTER_BASE: i32 = 8031;
 
 /// Whether the type is a guest building: a building that satisfies the need `building` (guest
 /// buildings 3.4). The compost does not, and pays nothing.
-fn is_guest_building(ty: &EntityType) -> bool {
+pub fn is_guest_building(ty: &EntityType) -> bool {
     ty.class == "building"
         && ty
             .config
@@ -24,7 +25,7 @@ fn is_guest_building(ty: &EntityType) -> bool {
 
 /// The monthly upkeep of a building type: `cUpkeep`, 0 when the file has none or for the
 /// helicopter base (guest buildings 9; the upgrades of the expansions come with M7).
-fn upkeep(ty: &EntityType) -> f32 {
+pub fn upkeep(ty: &EntityType) -> f32 {
     let key = ty
         .config
         .as_deref()
@@ -55,12 +56,11 @@ pub fn charge(world: &mut World, cat: &Catalogue, money: &mut Money, log: &mut V
             let u = upkeep(ty);
             total += u;
             // Each building rolls its monthly figures in the same loop (guest buildings 9).
-            if let Some(live) = e
-                .common
-                .as_ref()
-                .and_then(|c| world.units.buildings.get_mut(&c.id))
-            {
-                live.roll(u);
+            if let Some(c) = e.common.as_ref() {
+                let default = world.units.prices.default;
+                (world.units.buildings.entry(c.id))
+                    .or_insert_with(|| Live::new(&Kind::of(ty, default)))
+                    .roll(u);
             }
         }
     }

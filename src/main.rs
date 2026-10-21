@@ -338,7 +338,15 @@ usage: rustyzoo [--data <dir>] <command>
                       not while the game is paused; its pick-up button picks it up and its follow button (showing its type's picture, set likewise) keeps the view
                       on it. `panel guest ID \"NAME\" happiness H drink D food F restroom R energy E time \"TEXT\"
                       favourite \"NAME\" thoughts [TEXTS]` tells what it shows, when it opens and when a value changes, and
-                      `panel guest none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
+                      `panel guest none` when it closes. A click on a guest building (a burger stand, a restroom) opens its
+                      panel: a building that charges has the price field with up and down buttons (0.25 a press, within the
+                      economy's building price maximum and the type's low and high cost; the field of the full game can be
+                      typed into, the number going through the same bounds), the income, upkeep and profit since built and per month, the months open
+                      and the items sold (refreshed every 5 s of the clock); any other building shows its guests and months open
+                      (and on the full game its monthly upkeep), filled when it opens. `panel building ID \"NAME\" price P income I
+                      upkeep U profit R month I U R months M guests last A this B total C sells [ITEMS]` tells what it shows, when
+                      it opens and when a value changes, `building price ID P` each change of the price, and
+                      `panel building none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
                       donations stars N A B C`, `panel animals N thoughts N` (` [IDS]` follows a number above 0) (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
                       recommendation (`panel line!` for an important one, written in red) what the plaque shows,

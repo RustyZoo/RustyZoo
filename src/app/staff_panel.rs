@@ -20,6 +20,7 @@ enum Show {
     Animal(u32),
     Staff(u32),
     Guest(u32),
+    Building(u32, i32),
     Nothing,
 }
 
@@ -41,6 +42,8 @@ impl App<'_> {
     /// the panel the player closed clears the selection, a selection that is no unit with a panel
     /// closes them.
     pub(super) fn units_sync(&mut self) {
+        let building = self.game.as_ref().and_then(|g| g.selected);
+        let building = building.and_then(|id| Some((id, self.building_layout(id)?)));
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
@@ -55,6 +58,7 @@ impl App<'_> {
         if closed(game.animal.selected, animal::LAYOUT)
             || closed(game.staff.selected, staff::LAYOUT)
             || closed(game.guest.selected, guest::LAYOUT)
+            || closed(game.building.selected, game.building.layout)
         {
             (game.selected, want) = (None, None);
         }
@@ -64,10 +68,13 @@ impl App<'_> {
             Some(u) if matches!(u.kind, Kind::Keeper | Kind::Worker | Kind::Guide) => {
                 Show::Staff(u.id)
             }
-            _ => Show::Nothing,
+            Some(_) => Show::Nothing,
+            None => building
+                .filter(|&(id, _)| want == Some(id))
+                .map_or(Show::Nothing, |(id, layout)| Show::Building(id, layout)),
         };
         let (animal_open, staff_open) = (game.animal.selected, game.staff.selected);
-        let guest_open = game.guest.selected;
+        let (guest_open, building_open) = (game.guest.selected, game.building.selected);
         match show {
             Show::Animal(id) => {
                 if animal_open != Some(id) {
@@ -75,6 +82,7 @@ impl App<'_> {
                 }
                 self.close_staff();
                 self.close_guest();
+                self.close_building();
             }
             Show::Staff(id) => {
                 if staff_open != Some(id) {
@@ -82,6 +90,7 @@ impl App<'_> {
                 }
                 self.close_animal();
                 self.close_guest();
+                self.close_building();
             }
             Show::Guest(id) => {
                 if guest_open != Some(id) {
@@ -89,11 +98,21 @@ impl App<'_> {
                 }
                 self.close_animal();
                 self.close_staff();
+                self.close_building();
+            }
+            Show::Building(id, layout) => {
+                if building_open != Some(id) {
+                    self.open_building(id, layout);
+                }
+                self.close_animal();
+                self.close_staff();
+                self.close_guest();
             }
             Show::Nothing => {
                 self.close_animal();
                 self.close_staff();
                 self.close_guest();
+                self.close_building();
             }
         }
     }

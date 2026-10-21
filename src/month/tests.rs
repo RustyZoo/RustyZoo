@@ -125,6 +125,19 @@ fn each_building_rolls_its_monthly_figures_and_adds_its_upkeep() {
 }
 
 #[test]
+fn a_building_that_never_had_a_guest_still_adds_its_upkeep() {
+    let mut w = world((4, 4), |_, entities| {
+        entities.push(entity("building", "shop", 7, centre((1, 1)), 0));
+        entities.push(entity("building", "compost", 8, centre((2, 1)), 0));
+    });
+    charge(&mut w, &catalogue(), &mut Money::default(), &mut Vec::new());
+    charge(&mut w, &catalogue(), &mut Money::default(), &mut Vec::new());
+    // The shop was started at its default price; the compost pays nothing and has no entry.
+    assert_eq!(w.units.buildings[&7].upkeep, 100.0);
+    assert!(!w.units.buildings.contains_key(&8));
+}
+
+#[test]
 fn a_hostile_upkeep_is_no_charge() {
     let mut t = ty(
         "building",

@@ -136,6 +136,7 @@ fn game() -> Sim {
         expensive: 2.0,
         cheap: 0.5,
         default: 3.0,
+        ..Prices::default()
     };
     s
 }

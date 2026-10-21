@@ -27,6 +27,7 @@ use crate::exhibit::rating;
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
+use crate::panel::building as panel_building;
 use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
@@ -343,6 +344,8 @@ struct Game {
     staff: crate::panel::staff::Panel,
     /// The guest panel and the guest selected.
     guest: crate::panel::guest::Panel,
+    /// The building panels and the building selected.
+    building: crate::panel::building::Panel,
     /// The unit the player selected, and the one it carries (unit placing 8).
     selected: Option<u32>,
     carry: Option<place::unit::Carry>,
@@ -687,6 +690,7 @@ impl<'a> App<'a> {
             animal: Default::default(),
             staff: Default::default(),
             guest: Default::default(),
+            building: Default::default(),
             selected: None,
             carry: None,
         });
@@ -1423,7 +1427,8 @@ impl<'a> App<'a> {
                 colors,
                 |e| renderer.shape(e),
             );
-            if let Outcome::Placed(_) = outcome {
+            if let Outcome::Placed(id) = outcome {
+                crate::building::built(&mut game.world, ty, id, self.sim.calendar().state().0);
                 let (habitat, name) = rating::object(ty);
                 let rand = &mut || self.sim.rng.rand();
                 rating::react(&mut game.world, cat, before, Some((habitat, name, 1)), rand);
@@ -1519,6 +1524,9 @@ impl<'a> App<'a> {
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
                 Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
+                Action::Edited(panel_building::PRICE) if self.game.is_some() => {
+                    self.building_type_price();
+                }
                 _ => {}
             }
         }
@@ -1537,6 +1545,14 @@ impl<'a> App<'a> {
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
+                panel_building::UP | panel_building::DOWN if self.game.is_some() => {
+                    self.building_price(id == panel_building::UP);
+                }
+                t if panel_building::TABS.contains(&t) && self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.building.clock.force = true;
+                    }
+                }
                 staff::REMOVE | staff::REMOVE_ALL if self.game.is_some() => {
                     self.staff_remove(id == staff::REMOVE_ALL);
                 }
@@ -2108,6 +2124,7 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
 }
 
 mod adopt;
+mod building_panel;
 mod bulldozer;
 mod carry;
 mod exhibits;

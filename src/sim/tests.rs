@@ -661,7 +661,7 @@ fn the_hash_follows_the_live_state_of_a_building_and_a_hidden_user() {
         run.hash()
     };
     let base = game(3).hash();
-    let changes: [&dyn Fn(&mut Live); 9] = [
+    let changes: [&dyn Fn(&mut Live); 10] = [
         &|l| l.users.push((1, 0, 5)),
         &|l| l.users.push((1, 1, 5)),
         &|l| l.users.push((1, 0, 6)),
@@ -671,6 +671,7 @@ fn the_hash_follows_the_live_state_of_a_building_and_a_hidden_user() {
         &|l| l.income[1] = 1.0,
         &|l| l.upkeep = 1.0,
         &|l| l.fill = 13,
+        &|l| l.built = 1,
     ];
     let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
     assert!(hashes.iter().all(|&h| h != base));
