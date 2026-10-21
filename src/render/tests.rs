@@ -949,7 +949,7 @@ fn extra_pics(
         .unwrap();
     let pics = (staged.placed.iter())
         .filter_map(|(p, _)| match &p.pic {
-            Pic::Anim(anim, _, _, at) => Some((anim.set.files[0].clone(), p.x, p.y, *at)),
+            Pic::Anim(anim, _, _, at) => Some((anim.set.files[0].clone(), p.x, p.y - p.lift, *at)),
             _ => None,
         })
         .collect();
@@ -1047,6 +1047,27 @@ fn each_reaction_draws_its_face_over_its_unit_at_the_frame_of_its_age() {
     assert_eq!(pics[2].2, pics[0].2 + 5);
     let pics = extra_pics(&install, "huge", &extra).0;
     assert_eq!(pics[2].2, pics[0].2.saturating_sub(i32::MAX));
+}
+
+#[test]
+fn the_faces_offset_is_in_pixels_of_the_zoom() {
+    let install = marker_install("render-faces-zoom", 1);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let extra = Extra {
+        faces: vec![(1, true, 0)],
+        ..Extra::default()
+    };
+    let staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&tile_with(&[("guests", "mid", "")]), 0, false, &extra)
+        .unwrap();
+    assert_eq!(staged.placed.len(), 2);
+    // The face rises by the offset (20) at every zoom, and is not scaled with the unit.
+    for zoom in [-2, 0, 2] {
+        let level = Zoom::from_value(zoom);
+        let [unit, face] = [0, 1].map(|i| staged.placed[i].0.anchor(0, zoom, level));
+        assert_eq!((unit.0, unit.1 - face.1), (face.0, 20), "zoom {zoom}");
+    }
 }
 
 /// A small deterministic pseudo-random sequence.

@@ -227,6 +227,8 @@ struct Placed {
     piece: Option<Piece>,
     /// Set for a grid line that only a switched-on grid draws; it never counts in the bounds.
     grid: bool,
+    /// Pixels the picture is raised after the zoom (a face's `cFacesYOffset`): not scaled by it.
+    lift: i32,
     pic: Pic,
 }
 
@@ -240,7 +242,7 @@ impl Placed {
     fn bounds(&self) -> Option<[i64; 4]> {
         if let Pic::Rendered(picture) = &self.pic {
             let left = i64::from(self.x) - i64::from(picture.x_offset);
-            let top = i64::from(self.y) - i64::from(picture.y_offset);
+            let top = i64::from(self.y) - i64::from(self.lift) - i64::from(picture.y_offset);
             let (w, h) = (
                 i64::from(picture.image.width),
                 i64::from(picture.image.height),
@@ -279,7 +281,7 @@ impl Placed {
     /// camera's conversion of the view position, and for a tile piece the origin offset and the
     /// anchor of map drawing 4.4 and 8.
     fn anchor(&self, rotation: u8, zoom: i32, level: Zoom) -> (i64, i64) {
-        match self.piece {
+        let (x, y) = match self.piece {
             Some(Piece { corner, offset }) if level != Zoom::Normal => {
                 // `piece_anchor` adds its origin unchanged, so the corner is added in i64 after.
                 let (cx, cy) = zoom_view(zoom, corner);
@@ -287,17 +289,19 @@ impl Placed {
                 (cx + i64::from(x), cy + i64::from(y))
             }
             _ => zoom_view(zoom, (self.x, self.y)),
-        }
+        };
+        (x, y - i64::from(self.lift))
     }
 
     /// The box `b` of the picture at normal zoom, moved to the zoomed `anchor`: scaled about the
     /// anchor by the blitter, with two pixels to spare for its rounding.
     fn zoomed_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom) -> [i64; 4] {
+        let y = i64::from(self.y) - i64::from(self.lift);
         let rel = [
             b[0] - i64::from(self.x),
-            b[1] - i64::from(self.y),
+            b[1] - y,
             b[2] - i64::from(self.x),
-            b[3] - i64::from(self.y),
+            b[3] - y,
         ];
         let rel = match level {
             Zoom::Normal => {
@@ -1238,6 +1242,7 @@ impl<'a> MapRenderer<'a> {
                             y: oy + y,
                             piece: Some(piece_at((x, y))),
                             grid: false,
+                            lift: 0,
                             pic: Pic::Flat(flat),
                         });
                     }
@@ -1256,6 +1261,7 @@ impl<'a> MapRenderer<'a> {
                     y: oy + 32,
                     piece: Some(piece_at((32, 32))),
                     grid: false,
+                    lift: 0,
                     pic,
                 });
             }
@@ -1282,6 +1288,7 @@ impl<'a> MapRenderer<'a> {
                     y: oy + 32,
                     piece: Some(piece_at((32, 32))),
                     grid: !forced,
+                    lift: 0,
                     pic: Pic::Flat(flat),
                 });
             }
@@ -1296,6 +1303,7 @@ impl<'a> MapRenderer<'a> {
                 y: oy + 32,
                 piece: Some(piece_at((32, 32))),
                 grid: false,
+                lift: 0,
                 pic: Pic::Mark(flat, palette),
             });
         }
@@ -1370,7 +1378,8 @@ impl<'a> MapRenderer<'a> {
 
     /// Places the face of a reaction above the unit whose anchor is `(x, y)` (animals 10, sprite
     /// drawing 9.3): `objects/smile` when it likes the change, `objects/frown` when not, up by the
-    /// type's `cFacesYOffset`, at the frame its age in milliseconds has reached.
+    /// type's `cFacesYOffset` pixels of the view's zoom (not scaled by it), at the frame its age in
+    /// milliseconds has reached.
     fn face(
         &mut self,
         ty: &EntityType,
@@ -1395,9 +1404,10 @@ impl<'a> MapRenderer<'a> {
         };
         out.push(Placed {
             x,
-            y: y.saturating_sub(up),
+            y,
             piece: None,
             grid: false,
+            lift: up,
             pic: Pic::Anim(anim, view, None, frame),
         });
     }
@@ -1446,6 +1456,7 @@ impl<'a> MapRenderer<'a> {
             y: y - (yo + 5 + half),
             piece: None,
             grid: false,
+            lift: 0,
             pic: Pic::Anim(anim, view, None, 0),
         });
     }
@@ -1499,6 +1510,7 @@ impl<'a> MapRenderer<'a> {
             y,
             piece: None,
             grid: false,
+            lift: 0,
             pic: Pic::Anim(anim, view, palette, frame),
         });
     }
