@@ -79,10 +79,20 @@ impl App<'_> {
             refusal(ui, &mut self.tool_lines, p.message);
             return;
         }
-        let ty = &self.renderer.catalogue().types[carry.ty];
+        let cat = self.renderer.catalogue();
+        let ty = &cat.types[carry.ty];
+        // A unit put down is a placement: the animals of the exhibit react (habitat rating 9.4).
+        let tile = game.world.tile_index(p.tile.0, p.tile.1);
+        let before = rating::before(&game.world, cat, tile.as_slice());
         let done = place::unit::put_down(&mut game.world, carry.id, (p.x, p.y, p.z), p.facing);
         game.carry = None;
         if done {
+            let change = place::unit::is_animal(ty).then(|| rating::Change::Animal {
+                ids: rating::Likes::of(ty).ids,
+                sign: 1,
+            });
+            let rand = &mut || self.sim.rng.rand();
+            rating::react(&mut game.world, cat, before, change, rand);
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);
             self.world_lines.push(line);

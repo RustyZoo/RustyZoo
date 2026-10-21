@@ -791,19 +791,37 @@ fn an_animal_placed_reacts_by_the_compatible_animals_of_the_species() {
     assert!(goat.is_some());
     // The bears dislike the goat (-10): the bear of the land and, being amphibious, the one of
     // the tank; the goat has no likes of its own.
-    let change = rating::Change::Animal([5003, 0, 0]);
+    let change = rating::Change::Animal {
+        ids: [5003, 0, 0],
+        sign: 1,
+    };
     rating::react(&mut w, &cat, before, Some(change), &mut || 0);
     let mut lines = w.units.take_animal_lines();
     lines.sort();
     assert_eq!(lines, ["dislikes 1", "dislikes 3", "sound frown"]);
     assert_eq!(w.units.take_cheers(), ["frown"]);
+    // The goat removed again: the bears like it, the sign flipped.
+    let before = rating::before(&w, &cat, &[tile]);
+    w.unrecorded(|w| w.remove(goat.unwrap()));
+    let change = rating::Change::Animal {
+        ids: [5003, 0, 0],
+        sign: -1,
+    };
+    rating::react(&mut w, &cat, before, Some(change), &mut || 0);
+    let mut lines = w.units.take_animal_lines();
+    lines.sort();
+    assert_eq!(lines, ["likes 1", "likes 3", "sound smile"]);
+    w.units.take_cheers();
     // An animal nobody has an opinion about changes nothing.
     let before = rating::before(&w, &cat, &[tile]);
     rating::react(
         &mut w,
         &cat,
         before,
-        Some(rating::Change::Animal([1, 2, 3])),
+        Some(rating::Change::Animal {
+            ids: [1, 2, 3],
+            sign: 1,
+        }),
         &mut || 0,
     );
     assert!(w.units.take_animal_lines().is_empty());

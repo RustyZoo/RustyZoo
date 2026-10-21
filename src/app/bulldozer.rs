@@ -324,7 +324,7 @@ impl App<'_> {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
         // The animals of the exhibit react to an object, an animal or a staff member removed
-        // (habitat rating 9.4); only an object decides an unchanged sum by its value.
+        // (habitat rating 9.4); an object or an animal decides an unchanged sum by its value, negated.
         let object = game.world.find(id).and_then(|at| {
             use crate::render::order::Kind;
             let e = &game.world.zoo.entities[at];
@@ -337,11 +337,18 @@ impl App<'_> {
                 .filter(|_| matches!(kind, Kind::Fixed | Kind::Path | Kind::Unit));
             ty.map(|ty| {
                 let (habitat, name) = rating::object(ty);
-                let change = (kind != Kind::Unit).then_some(rating::Change::Object {
-                    habitat,
-                    name,
-                    sign: -1,
-                });
+                let change = match kind {
+                    Kind::Unit if place::unit::is_animal(ty) => Some(rating::Change::Animal {
+                        ids: rating::Likes::of(ty).ids,
+                        sign: -1,
+                    }),
+                    Kind::Unit => None,
+                    _ => Some(rating::Change::Object {
+                        habitat,
+                        name,
+                        sign: -1,
+                    }),
+                };
                 (rating::before(&game.world, cat, &[tile]), change)
             })
         });

@@ -33,8 +33,10 @@ impl App<'_> {
             Outcome::Placed(id) => {
                 // An animal decides by the compatible animals of the species; a staff member
                 // by nothing but the sums.
-                let change = place::unit::is_animal(ty)
-                    .then(|| rating::Change::Animal(rating::Likes::of(ty).ids));
+                let change = place::unit::is_animal(ty).then(|| rating::Change::Animal {
+                    ids: rating::Likes::of(ty).ids,
+                    sign: 1,
+                });
                 let rand = &mut || self.sim.rng.rand();
                 rating::react(&mut game.world, cat, before, change, rand);
                 let name = game

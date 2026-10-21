@@ -592,9 +592,9 @@ pub fn depth(world: &mut World, cat: &Catalogue, rand: Rand, id: u32, from: u32,
 pub enum Change {
     /// An object placed (`sign` 1) or removed (-1), with its habitat number and name id.
     Object { habitat: i32, name: i32, sign: i64 },
-    /// An animal placed, with its name id, genus and family: the compatible animals of the
-    /// species decide.
-    Animal([i32; 3]),
+    /// An animal placed (`sign` 1) or removed (-1), with its name id, genus and family: the
+    /// compatible animals of the species decide, the newcomer's own species included.
+    Animal { ids: [i32; 3], sign: i64 },
 }
 
 /// After the change (9.4, animals 10): each exhibit of `before` is marked, its species list is
@@ -644,8 +644,8 @@ pub fn react(
                     }),
                     Some(l),
                 ) => (sign * (l.value(habitat) + l.value(name))) as f32,
-                (false, Some(Change::Animal(ids)), Some(l)) => {
-                    ids.iter().map(|&id| lookup(&l.compatible, id)).sum::<i64>() as f32
+                (false, Some(Change::Animal { ids, sign }), Some(l)) => {
+                    (sign * ids.iter().map(|&id| lookup(&l.compatible, id)).sum::<i64>()) as f32
                 }
                 _ => 0.0,
             };
