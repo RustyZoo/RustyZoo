@@ -615,7 +615,7 @@ fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
 }
 
 #[test]
-fn a_land_exhibit_cut_so_that_a_part_is_a_tank_asks_a_name_for_the_tank_only() {
+fn a_land_exhibit_cut_so_that_a_part_is_a_tank_names_the_tank_only() {
     // A land exhibit (2..5, 2) closed by plain fences on tiles 2 and 3 and by tank walls on 4 and 5.
     // A tank wall between 3 and 4 makes 4..5 a tank. The piece is placed on either side of the line,
     // so the tank is the new part or the part that keeps the exhibit.
@@ -627,6 +627,7 @@ fn a_land_exhibit_cut_so_that_a_part_is_a_tank_asks_a_name_for_the_tank_only() {
         let mut world = tanks(&pieces, &[], &[]);
         assert_eq!(sizes(&world), [4]);
         assert!(tank(&world, 4, 2).is_none());
+        world.rename(1, "Lions".into());
         world.begin();
         world.take_events();
         put_wall(&mut world, "tank", line);
@@ -640,6 +641,13 @@ fn a_land_exhibit_cut_so_that_a_part_is_a_tank_asks_a_name_for_the_tank_only() {
             .collect();
         let tank_id = world.exhibits().list().iter().find(|e| e.tank.is_some());
         assert_eq!(asked, [tank_id.unwrap().id], "{line:?}: the tank only");
+        // The land part is the exhibit's own, with its name and no number; the tank took one.
+        let land: Vec<&str> = (world.exhibits().list().iter())
+            .filter(|e| e.tank.is_none())
+            .map(|e| e.name.as_str())
+            .collect();
+        assert_eq!(land, ["Lions"], "{line:?}");
+        assert_eq!(world.exhibits().counter, 2, "{line:?}");
     }
 }
 

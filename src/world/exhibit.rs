@@ -387,8 +387,8 @@ impl World {
             .iter()
             .map(|p| self.tank_test(&p.tiles, &other, quiet))
             .collect();
-        // A land exhibit cut in two with a tank for a part asks no name for the land part (the tank
-        // is named when it is made).
+        // A land exhibit cut in two with a tank for a part names no land part (3.2 step 4): the
+        // tank is named when it is made.
         let silent: Vec<usize> = (split_land.iter())
             .filter(|held| held.iter().any(|&i| kinds[i].is_some()))
             .flatten()
@@ -457,10 +457,15 @@ impl World {
                         .get(&i)
                         .and_then(|&x| self.morph_start(&old, x, part, &beside, merged.as_deref()));
                     let part = &filled(start.map(|s| s.0), None);
+                    // The land part of such a cut is the exhibit's own: its name, no number.
+                    let silent = kind.is_none() && silent.contains(&i);
                     let number = next.counter;
-                    next.counter += u32::from(!quiet);
+                    next.counter += u32::from(!quiet && !silent);
                     let word = &self.words[kind.map_or(0, |show| 1 + usize::from(show))];
-                    let name = format!("{word} {number}");
+                    let name = match split_from.get(&i).and_then(|&x| old.get(x)) {
+                        Some(x) if silent => x.name.clone(),
+                        _ => format!("{word} {number}"),
+                    };
                     let id = next.add(part, name);
                     fresh.push(id);
                     match kind {
@@ -471,7 +476,7 @@ impl World {
                         }
                         None => self.events.push(Event::New {
                             id,
-                            ask: !quiet && !silent.contains(&i),
+                            ask: !quiet && !silent,
                         }),
                     }
                     if let Some(start) = start {

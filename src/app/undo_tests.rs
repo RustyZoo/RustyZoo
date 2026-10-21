@@ -252,8 +252,9 @@ fn exhibit_sounds(s: &Session) -> usize {
 }
 
 #[test]
-fn the_exhibit_sound_is_quiet_at_an_undo_a_merge_and_a_declined_tank() {
-    // A closed area plays it once, as it asks for its name; the undo that makes it again does not.
+fn the_exhibit_sound_is_quiet_at_an_undo_a_load_a_merge_and_a_declined_tank() {
+    // A closed area plays it once, as it asks for its name; the undo that makes it again does not,
+    // nor does a load.
     with_game("quiet", "[UI]\nconfirmSell=0\n", |s| {
         for side in [0, 2, 4, 6] {
             s.fence(1, 20, 20, side);
@@ -267,6 +268,14 @@ fn the_exhibit_sound_is_quiet_at_an_undo_a_merge_and_a_declined_tank() {
         assert!(world(s).exhibits().list().is_empty());
         s.log(&[BACKSPACE]);
         assert_eq!(world(s).exhibits().list().len(), 1);
+        assert_eq!(exhibit_sounds(s), 0);
+        // The same zoo opened again, as a load does, plays nothing either.
+        let zoo = world(s).zoo.clone();
+        s.app.open_game(zoo, Money::default()).unwrap();
+        s.app.exhibits_told();
+        assert_eq!(world(s).exhibits().list().len(), 1);
+        assert_eq!(exhibit_sounds(s), 0);
+        s.pass(&[]);
         assert_eq!(exhibit_sounds(s), 0);
     });
     // Two exhibits are named; the click on the line between them merges them without a sound.
