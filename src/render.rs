@@ -217,6 +217,9 @@ fn shown_frames<'a>(
     Some(sprite.extra.iter().chain(sprite.frames.get(frame)))
 }
 
+/// A placed picture with the box `[left, top, right, bottom)` of the pixels it can cover.
+type Boxed = (Placed, [i64; 4]);
+
 /// A picture placed in view space: `(x, y)` is its anchor at normal zoom.
 struct Placed {
     x: i32,
@@ -349,7 +352,7 @@ pub struct Staged {
     /// The paint order.
     items: Vec<Entry>,
     /// The pictures of the items that are not tiles, in paint order.
-    own: Vec<(Placed, [i64; 4])>,
+    own: Vec<Boxed>,
     /// For each picture of `own`, the entity of the zoo it was placed for (picking).
     hits: Vec<Option<pick::Hit>>,
     /// The box `[left, top, right, bottom)` of every tile.
@@ -361,7 +364,7 @@ pub struct Staged {
 
 impl Staged {
     /// Every picture with its box, in paint order.
-    fn pictures(&self) -> impl Iterator<Item = &(Placed, [i64; 4])> {
+    fn pictures(&self) -> impl Iterator<Item = &Boxed> {
         self.items.iter().flat_map(|&e| match e {
             Entry::Tile(t) => self.grounds.placed[t].0.iter(),
             Entry::Own(i) => std::slice::from_ref(&self.own[i]).iter(),
@@ -597,7 +600,7 @@ struct Grounds {
     edges: Vec<[bool; 4]>,
     marks: HashMap<usize, [u8; 3]>,
     /// Per tile, its pictures with their boxes, and its counts.
-    placed: Vec<(Vec<(Placed, [i64; 4])>, Summary)>,
+    placed: Vec<(Vec<Boxed>, Summary)>,
 }
 
 /// An item of the paint order of a staging: the pictures of a tile, or one other picture.
