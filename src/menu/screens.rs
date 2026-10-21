@@ -58,8 +58,12 @@ fn desc(vfs: &Vfs, file: &str, section: &str) -> impl Fn(&str) -> Option<String>
 /// Whether a start clears the accounts: `reset` above 0, else `resetdate` above 0 (both
 /// integers; 0 or less does nothing; exhibits and money 5.4).
 fn resets(start: &impl Fn(&str) -> Option<String>) -> bool {
-    let above_zero = |key: &str| start(key).and_then(|v| to_int(v.as_bytes())) > Some(0);
-    above_zero("reset") || above_zero("resetdate")
+    above_zero(start, "reset") || above_zero(start, "resetdate")
+}
+
+/// Whether the integer `key` of `[start]` is above 0 (missing, unreadable, 0 or less is not).
+fn above_zero(start: &impl Fn(&str) -> Option<String>, key: &str) -> bool {
+    start(key).and_then(|v| to_int(v.as_bytes())) > Some(0)
 }
 
 /// The row an action tells of, or none (-1 is none or a disabled row).
@@ -232,6 +236,7 @@ impl Menu {
                     },
                 },
                 reset: resets(&start),
+                reset_fences: above_zero(&start, "resetfences"),
             }),
             None => Request::Message(format!("{file}: no map to start")),
         });

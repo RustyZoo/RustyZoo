@@ -27,6 +27,7 @@ struct Flags<'a> {
     seed: u32,
     script: Option<&'a str>,
     log: bool,
+    fences: bool,
 }
 
 fn flags<'a>(mut words: &[&'a str]) -> Result<Flags<'a>, CliError> {
@@ -36,6 +37,7 @@ fn flags<'a>(mut words: &[&'a str]) -> Result<Flags<'a>, CliError> {
         seed: DEFAULT_SEED,
         script: None,
         log: false,
+        fences: false,
     };
     let (mut ticks, mut hash) = (false, false);
     while let [word, rest @ ..] = words {
@@ -58,6 +60,10 @@ fn flags<'a>(mut words: &[&'a str]) -> Result<Flags<'a>, CliError> {
             }
             ("--hash", rest) => {
                 hash = true;
+                rest
+            }
+            ("--reset-fences", rest) => {
+                f.fences = true;
                 rest
             }
             ("--log", rest) => {
@@ -98,12 +104,13 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         eprintln!("rustyzoo: warning: economy.cfg: {e}; the built-in economy settings are used");
         Vec::new()
     });
-    let mut run = Run::new(
+    let mut run = Run::start(
         (vfs.ini(), &economy),
         (catalogue, Class::load(vfs)),
         world,
         money,
         flags.seed,
+        flags.fences,
     );
     let mut report = Report::new();
     let mut commands = commands.into_iter().peekable();
@@ -139,6 +146,13 @@ mod tests {
             .unwrap();
         assert_eq!((f.ticks, f.dt, f.seed, f.log), (0, 1, u32::MAX, true));
         assert_eq!(flags(&["--hash", "--ticks", "1"]).ok().unwrap().ticks, 1);
+        assert!(!f.fences);
+        assert!(
+            flags(&["--ticks", "1", "--reset-fences"])
+                .ok()
+                .unwrap()
+                .fences
+        );
         for bad in [
             &[][..],
             &["--hash"],

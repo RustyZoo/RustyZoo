@@ -114,7 +114,7 @@ fn fixture(name: &str, scn: bool, free: bool) -> (Install, Vfs, Interface) {
             (
                 "f/m1.scn",
                 b"[freeform]\nname=27001\ndescription=DESC_1\nicon=ui/pic1.tga\n\
-                  [start]\nsavegame=maps/m1.zoo\nreset=1\nsetcash=1\n"
+                  [start]\nsavegame=maps/m1.zoo\nreset=1\nresetfences=1\nsetcash=1\n"
                     .to_vec(),
             ),
             ("f/m2.scn", b"[freeform]\nname=27002\n".to_vec()),
@@ -268,6 +268,7 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
                 add: Some(200.0),
             },
             reset: true,
+            reset_fences: false,
         }))
     );
     // The third entry's file is missing: no picture, no story, but it can be played (it fails
@@ -372,6 +373,7 @@ fn the_freeform_screen_lists_the_maps_and_shows_the_first_with_the_starting_cash
                 add: None,
             },
             reset: true,
+            reset_fences: true,
         }))
     );
     ui.select_row(11504, Some(1));
@@ -550,4 +552,21 @@ fn setcash_and_addcash_are_read_as_integers() {
         (start.cash.set, start.cash.add),
         (Some(256.0), Some(-1234.0))
     );
+}
+
+#[test]
+fn a_start_repairs_the_fences_when_resetfences_is_above_zero() {
+    let reads = |value: Option<&str>| {
+        above_zero(
+            &move |k: &str| value.filter(|_| k == "resetfences").map(String::from),
+            "resetfences",
+        )
+    };
+    for yes in ["1", "2", "0x10", "2147483647"] {
+        assert!(reads(Some(yes)), "{yes}");
+    }
+    for no in ["0", "-1", "-2147483648", "yes", "", "0x"] {
+        assert!(!reads(Some(no)), "{no}");
+    }
+    assert!(!reads(None));
 }

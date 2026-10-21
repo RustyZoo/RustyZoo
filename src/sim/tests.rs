@@ -1129,7 +1129,7 @@ fn a_new_game_starts_the_timers_again_and_runs_the_set_up_check() {
     again.sim.status.given = 2.0;
     again
         .sim
-        .new_game(&mut again.world, &again.cat, &mut again.money);
+        .new_game(&mut again.world, &again.cat, &mut again.money, false);
     assert_eq!(
         (again.sim.status.timers, again.sim.status.given),
         ([0; 3], 0.0)

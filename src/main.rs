@@ -130,12 +130,14 @@ usage: rustyzoo [--data <dir>] <command>
                       draw every .zoo file in memory and print the same summary per map and
                       for all of them; a file that cannot be read is skipped; exit 1 only if
                       a map cannot be drawn
-  sim <map> --ticks N [--dt MS] [--seed S] [--script FILE] [--hash|--log]
+  sim <map> --ticks N [--dt MS] [--seed S] [--script FILE] [--reset-fences] [--hash|--log]
                       run a map (a .zoo member) for N steps of MS milliseconds (default 67)
                       without an interface, with the generator seeded from S (default 1), and
                       print the hash of the whole state, the same on every system (--hash, the
                       default), or the log lines of each step (--log; the units run their behaviour sets as in
-                      `run`). The script has one
+                      `run`). The fence pieces stay as the map stores them; --reset-fences makes
+                      them all healthy first, as a start whose map file has `resetfences` above 0
+                      does (a map of a version older than 55 has its pieces made healthy anyway). The script has one
                       `<step> <command>` per line, applied before that step (the first is 0):
                       remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N, leave ID,
                       animal TYPE X,Y [male|female], mood ID N (happiness, -100 to 100)
