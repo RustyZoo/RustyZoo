@@ -411,9 +411,6 @@ pub struct Animal {
     /// The recommendation bits shown and the ones among them that are important.
     pub advice: u64,
     pub important: u64,
-    /// The home exhibit (tank fauna 12.3): the exhibit whose record the panel shows, `None` on the
-    /// grounds and in a show tank. Set at each rating of the exhibit the animal stands in ([`home`]).
-    pub home: Option<u32>,
     /// The guests' pressure on the animal: the total and its x and y parts (viewing areas).
     pub pressure: [i32; 3],
     /// The direction away from the pressing guests, 0 to 7, or -1 for none.

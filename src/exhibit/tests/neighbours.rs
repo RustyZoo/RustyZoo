@@ -9,7 +9,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::{self, input, rate};
 use crate::render::order::Kind;
 use crate::sim::Sim;
-use crate::unit::testing::{amphibious_world, centre, entity};
+use crate::unit::testing::{amphibious_world, amphibious_world_between, centre, entity, gated};
 use crate::world::{Shape, TankKind, World};
 use crate::zoo::Clocks;
 
@@ -33,9 +33,11 @@ fn kind(class: &'static str, name: &str, name_id: i32, text: &str) -> EntityType
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let polar = "[Characteristics/Integers]\ncUnderwater=1\ncOnlyUnderwater=0\n\
-                 [cSuitableObjects]\nv=7\nv=20\n[cCompatibleTerrain]\nv=0\nv=100\n\
+                 [cSuitableObjects]\nv=7\nv=20\nv=8\nv=-30\nv=9\nv=-30\n[cCompatibleTerrain]\nv=0\nv=100\n\
                  [cCompatibleAnimals]\nv=5003\nv=-10\n";
     cat.push(kind("animals", "polar", 5001, polar));
+    cat.push(kind("objects", "thorn", 8, ""));
+    cat.push(kind("objects", "briar", 9, ""));
     cat.push(kind("animals", "goat", 5003, ""));
     cat.push(kind("fences", "iron", 0, ""));
     let shark = "[Characteristics/Integers]\ncUnderwater=1\ncOnlyUnderwater=1\n";
@@ -463,23 +465,195 @@ fn the_reachability_counter_belongs_to_the_program_not_to_the_world() {
     assert_eq!(rating::tests(), 6);
 }
 
-/// Rates exhibit `x` and settles the home and the bits of its animals, as the world manager does.
+/// Rates exhibit `x` and settles the bits of its animals, as the world manager does.
 fn settle(w: &mut World, cat: &Catalogue, x: u32) {
     let input = input(w, cat, x);
     w.exhibits_mut().get_mut(x).unwrap().rating.compute(&input);
     crate::animal::home::settle(w, cat, x);
 }
 
-fn bits(w: &World, id: u32) -> (Option<u32>, u64, u64) {
+fn bits(w: &World, id: u32) -> (u64, u64) {
     match &w.units.get(id).unwrap().part {
-        crate::unit::Part::Animal(a) => (a.home, a.advice, a.important),
+        crate::unit::Part::Animal(a) => (a.advice, a.important),
         _ => panic!("not an animal"),
     }
 }
 
+fn home(w: &World, cat: &Catalogue, id: u32) -> Option<u32> {
+    crate::panel::exhibit::home_at(w, cat, w.find(id).unwrap())
+}
+
+fn give_gate(w: &mut World, x: u32) {
+    w.exhibits_mut().get_mut(x).unwrap().gate = Some(u32::MAX);
+}
+
+#[test]
+fn the_land_score_is_the_five_parts() {
+    use crate::animal::home::land_score;
+    let part = |f: fn(&mut rating::Record)| {
+        let mut r = rating::Record::default();
+        f(&mut r);
+        land_score(&r)
+    };
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-4;
+    assert!(near(part(|r| r.terrain = 100.0), 30.0));
+    assert!(near(part(|r| r.objects = 100.0), 20.0));
+    assert!(near(part(|r| r.foliage = 100.0), 10.0));
+    assert!(near(part(|r| r.rocks = 100.0), 10.0));
+    assert!(near(part(|r| r.elevation = 100.0), 10.0));
+    // The shelters and toys are not in it, and the rating has them.
+    let mut r = rating::Record {
+        shelters: 100.0,
+        toys: -100.0,
+        ..Default::default()
+    };
+    assert_eq!(land_score(&r), 0.0);
+    r.shelters = -150.0;
+    r.toys = 0.0;
+    assert_eq!(land_score(&r), 0.0);
+    assert!(r.rating() < 0.0);
+    // All five at once.
+    let all = rating::Record {
+        terrain: 90.0,
+        objects: 40.0,
+        foliage: 50.0,
+        rocks: 20.0,
+        elevation: 70.0,
+        ..Default::default()
+    };
+    assert!(near(land_score(&all), 27.0 + 8.0 + 5.0 + 2.0 + 7.0));
+}
+
+/// The tank and the land beside it on each side: the east one with three unused shelters (its
+/// rating loses 15), the west one with a tile of other ground (its land score is lower). With the
+/// east one the home, the better by rating is the west one.
+fn between() -> (World, Catalogue, [u32; 3]) {
+    let mut cat = catalogue();
+    cat.push(kind(
+        "building",
+        "lean",
+        8104,
+        "[Characteristics/Integers]\ncShelter=1\ncCapacity=2\n",
+    ));
+    let mut w = gated(amphibious_world_between(
+        2,
+        &[(1, "polar", (3, 3)), (3, "polar", (7, 3))],
+    ));
+    for x in 6..9 {
+        let shape = rock((x, 2)).1;
+        w.unrecorded(|w| w.add(entity("building", "lean", 0, centre((x, 2)), 0), shape));
+    }
+    w.zoo.tiles[3 * WIDE].terrain = 3;
+    let region = |t: usize| w.exhibits().region(t).unwrap();
+    let ids = [region(2 * WIDE + 2), region(2 * WIDE + 6), region(2 * WIDE)];
+    (w, cat, ids)
+}
+
+#[test]
+fn the_panel_shows_the_best_neighbour_rating() {
+    let (w, cat, [tank, east, west]) = between();
+    let polar = |x| {
+        let records = rate(&input(&w, &cat, x));
+        records.into_iter().find(|r| r.key == "polar").unwrap()
+    };
+    let (e, o) = (polar(east), polar(west));
+    assert!(crate::animal::home::land_score(&e) > crate::animal::home::land_score(&o));
+    assert!(e.rating() < o.rating(), "{} {}", e.rating(), o.rating());
+    assert_eq!(w.exhibits().get(tank).unwrap().amphibious.len(), 2);
+    // The home is the better by the five parts, and the bar shows the better by the full rating.
+    assert_eq!(home(&w, &cat, 1), Some(east));
+    let at = w.find(1).unwrap();
+    assert_eq!(
+        crate::panel::animal::suitability(&w, &cat, at),
+        o.shown() as i32
+    );
+    assert!(o.shown() as i32 > e.shown() as i32);
+}
+
+#[test]
+fn the_plaque_lists_the_scenery_of_the_exhibit_under_the_animal() {
+    let (mut w, cat) = (gated(linked()), catalogue());
+    let (tank, land) = pair(&w);
+    // The tank has a thorn the bears dislike, the land a briar and a patch of other ground.
+    let mut put = |name: &str, tile: (i32, i32)| {
+        let shape = rock(tile).1;
+        w.unrecorded(|w| w.add(entity("objects", name, 0, centre(tile), 0), shape));
+    };
+    put("thorn", (3, 2));
+    put("briar", (8, 3));
+    w.zoo.tiles[2 * WIDE + 7].terrain = 3;
+    let lines = |w: &World, id| crate::panel::exhibit::plaque_lines(w, &cat, w.find(id).unwrap());
+    let objects =
+        |l: &[crate::panel::exhibit::Line]| l.iter().filter_map(|l| l.2).collect::<Vec<_>>();
+    assert_eq!(home(&w, &cat, 1), Some(land));
+    assert_eq!(w.exhibits().region(2 * WIDE + 2), Some(tank));
+    // The bear that swims lists the tank's thorn; the one on the land, its own briar.
+    assert_eq!(objects(&lines(&w, 1)), [8]);
+    assert_eq!(objects(&lines(&w, 3)), [9]);
+    // Its bits are the land home's: too much of the other ground, which a tank never says.
+    let too_much = 9900 + 1 + rating::bit::terrain(3) + 1;
+    assert!(lines(&w, 1).iter().any(|l| l.0 == too_much as i32));
+}
+
+#[test]
+fn an_exhibit_without_a_gate_is_nobodys_home() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let stale = !(1u64 << 3);
+    let set = |w: &mut World, id| {
+        if let crate::unit::Part::Animal(a) = &mut w.units.get_mut(id).unwrap().part {
+            (a.advice, a.important) = (stale, stale);
+        }
+    };
+    let (bear, land_bear, shark) = (1, 3, 2);
+    let same = |w: &World, id| bits(w, id) == (stale, stale);
+    // No gate anywhere: nobody has a home, and the bits of the bear in the tank are kept; a
+    // species that is not amphibious and a land exhibit are rewritten, as the rule says.
+    for id in [bear, land_bear, shark] {
+        assert_eq!(home(&w, &cat, id), None);
+        set(&mut w, id);
+    }
+    settle(&mut w, &cat, tank);
+    assert!(same(&w, bear) && !same(&w, shark));
+    settle(&mut w, &cat, land);
+    assert!(!same(&w, land_bear));
+    // The land has a gate, the tank not: the bear in the tank has the land for its home, the
+    // shark has none.
+    give_gate(&mut w, land);
+    assert_eq!(home(&w, &cat, bear), Some(land));
+    assert_eq!(home(&w, &cat, land_bear), Some(land));
+    assert_eq!(home(&w, &cat, shark), None);
+    // The tank has one, the land not: the land neighbour is the candidate, and no other is tried.
+    w.exhibits_mut().get_mut(land).unwrap().gate = None;
+    give_gate(&mut w, tank);
+    assert_eq!(home(&w, &cat, bear), None);
+    assert_eq!(home(&w, &cat, shark), Some(tank));
+    set(&mut w, bear);
+    settle(&mut w, &cat, tank);
+    assert!(same(&w, bear));
+}
+
+#[test]
+fn the_home_is_read_when_asked() {
+    // Nothing was rated: a loaded zoo has its homes right away.
+    let (mut w, cat, [tank, east, west]) = between();
+    assert_eq!(w.exhibits().region(2 * WIDE + 2), Some(tank));
+    assert_eq!(home(&w, &cat, 1), Some(east));
+    assert_eq!(home(&w, &cat, 3), Some(east));
+    // The bear that moves onto the other land is at home there at once, and back in the tank
+    // it has the better land again.
+    let at = w.find(1).unwrap();
+    let c = w.zoo.entities[at].common.as_mut().unwrap();
+    (c.x, c.y) = centre((0, 3));
+    assert_eq!(home(&w, &cat, 1), Some(west));
+    let c = w.zoo.entities[at].common.as_mut().unwrap();
+    (c.x, c.y) = centre((3, 3));
+    assert_eq!(home(&w, &cat, 1), Some(east));
+}
+
 #[test]
 fn an_amphibious_animal_in_a_linked_tank_keeps_the_bits_of_its_land_home() {
-    let (mut w, cat) = (linked(), catalogue());
+    let (mut w, cat) = (gated(linked()), catalogue());
     let (tank, land) = pair(&w);
     // The bear on the land is at home there and takes the bits of the land record, keeping the
     // bit of the animal checks.
@@ -487,9 +661,9 @@ fn an_amphibious_animal_in_a_linked_tank_keeps_the_bits_of_its_land_home() {
         (a.advice, a.important) = (1 << 3 | 1 << 20, 1 << 20);
     }
     settle(&mut w, &cat, land);
-    let (home, advice, _) = bits(&w, 3);
+    let (advice, _) = bits(&w, 3);
     let advice = advice & !(1 << 3);
-    assert_eq!(home, Some(land));
+    assert_eq!(home(&w, &cat, 3), Some(land));
     let record = rate(&input(&w, &cat, land));
     assert_eq!(
         advice,
@@ -497,35 +671,20 @@ fn an_amphibious_animal_in_a_linked_tank_keeps_the_bits_of_its_land_home() {
     );
     // The bear that swims in the tank beside it has the land for its home, and a rating of the
     // tank leaves its bits alone: the animal checks' bit 3 and the pass's bit 20 stay.
-    let bear = w.find(1).unwrap();
     if let crate::unit::Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
         (a.advice, a.important) = (1 << 3 | 1 << 20, 1 << 20);
     }
     settle(&mut w, &cat, tank);
-    assert_eq!(bits(&w, 1), (Some(land), 1 << 3 | 1 << 20, 1 << 20));
-    // The panel shows the record of the home, not that of the tank.
-    assert_eq!(
-        crate::panel::exhibit::record_exhibit(&w, &cat, bear),
-        Some(land)
-    );
+    assert_eq!(home(&w, &cat, 1), Some(land));
+    assert_eq!(bits(&w, 1), (1 << 3 | 1 << 20, 1 << 20));
     // The shark is not amphibious: the tank is its home and its bits are the tank's.
     let shark = rate(&input(&w, &cat, tank));
-    let want = shark.iter().find(|r| r.key == "shark").unwrap().advice;
-    assert_eq!(
-        bits(&w, 2),
-        (
-            Some(tank),
-            want,
-            shark.iter().find(|r| r.key == "shark").unwrap().important
-        )
-    );
-    assert_eq!(
-        crate::panel::exhibit::record_exhibit(&w, &cat, w.find(2).unwrap()),
-        Some(tank)
-    );
+    let want = shark.iter().find(|r| r.key == "shark").unwrap();
+    assert_eq!(bits(&w, 2), (want.advice, want.important));
+    assert_eq!(home(&w, &cat, 2), Some(tank));
     // Without a land neighbour the bear is at home in the tank and takes its bits.
     w.exhibits_mut().get_mut(tank).unwrap().amphibious.clear();
     settle(&mut w, &cat, tank);
-    assert_eq!(bits(&w, 1).0, Some(tank));
-    assert_ne!(bits(&w, 1).1 & 1 << 63, 0, "no land access");
+    assert_eq!(home(&w, &cat, 1), Some(tank));
+    assert_ne!(bits(&w, 1).0 & 1 << 63, 0, "no land access");
 }

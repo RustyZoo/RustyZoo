@@ -237,10 +237,34 @@ pub fn rates(number: &crate::behaviour::Number) -> i32 {
 /// with it at 2. The land exhibit's other three sides are exhibit fences; `animals` stand at
 /// the given tiles.
 pub fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
+    amphibious_world_with(land, animals, false)
+}
+
+/// [`amphibious_world`] with a second land exhibit of 2 by 3 tiles from (0, 2) on the other side
+/// of the tank (its other three sides are exhibit fences, the tank's left wall is shared).
+pub fn amphibious_world_between(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
+    amphibious_world_with(land, animals, true)
+}
+
+/// Gives every exhibit a gate, an id no piece has, for what needs a gate (tank fauna 12.3).
+pub fn gated(mut w: World) -> World {
+    w.exhibits_mut()
+        .list_mut()
+        .iter_mut()
+        .for_each(|e| e.gate = Some(u32::MAX));
+    w
+}
+
+fn amphibious_world_with(land: i32, animals: &[(u32, &str, (i32, i32))], west: bool) -> World {
     let piece = |class: &str, (x, y): (i32, i32), d: u32| {
         let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
         let id = 1000 + x as u32 * 10 + y as u32 + d;
         entity(class, "iron", id, (x * 64 + side.0, y * 64 + side.1), d)
+    };
+    // The ids of the west land's pieces are kept apart from the others'.
+    let far = |mut e: Entity| {
+        e.common.as_mut().unwrap().id += 5000;
+        e
     };
     let mut pieces = Vec::new();
     for t in 0..4 {
@@ -253,6 +277,15 @@ pub fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World
         pieces.push(piece("tankwall", (2, 2 + t), 6));
         pieces.push(piece("tankwall", (5, 2 + t), 2));
         pieces.push(piece("fences", (9, 2 + t), 2));
+        if west {
+            pieces.push(far(piece("fences", (0, 2 + t), 6)));
+        }
+    }
+    for t in 0..2 {
+        if west {
+            pieces.push(far(piece("fences", (t, 2), 0)));
+            pieces.push(far(piece("fences", (t, 4), 4)));
+        }
     }
     let mut w = world_with((12, 8), |z| {
         z.entities.extend(pieces);
@@ -260,7 +293,9 @@ pub fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World
             z.entities
                 .push(entity("animals", kind, id, centre(tile), 0));
         }
-        for t in (0..4).flat_map(|x| (0..3).map(move |y| (6 + x, 2 + y))) {
+        let west = if west { 0..2 } else { 0..0 };
+        let lands = (0..4).map(|x| 6 + x).chain(west);
+        for t in lands.flat_map(|x| (0..3).map(move |y| (x, 2 + y))) {
             z.tiles[t.1 * 12 + t.0].elevation = land;
         }
     });

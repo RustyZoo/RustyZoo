@@ -485,7 +485,6 @@ fn the_hash_covers_the_animals() {
         mother: _,
         father: _,
         breath: _,
-        home: _,
     } = Animal::default();
     let changes: [fn(&mut Animal); 49] = [
         |a| a.happiness = 1,

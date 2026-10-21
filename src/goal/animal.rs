@@ -164,11 +164,10 @@ impl Cx<'_, '_> {
     }
 
     /// 11.8 decide: with no target, a piece of the species' food in the exhibit under the animal
-    /// (not its home exhibit, which `Animal::home` keeps but this does not read yet), chosen by
-    /// up to three draws (the nearest, else the piece with the least left, else a random one);
-    /// then the walk to it with `bFindKeeperFood`. With no piece or no way there the task is
-    /// cleared. The flag that started it goes down. With no exhibit under the animal nothing
-    /// happens at all.
+    /// (not its home exhibit), chosen by up to three draws (the nearest, else the piece with the
+    /// least left, else a random one); then the walk to it with `bFindKeeperFood`. With no piece
+    /// or no way there the task is cleared. The flag that started it goes down. With no exhibit
+    /// under the animal nothing happens at all.
     pub(super) fn keeper_food_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
