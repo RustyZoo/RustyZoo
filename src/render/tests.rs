@@ -872,15 +872,16 @@ fn a_trash_can_shows_empty_up_to_12_pieces_and_half_from_13_and_never_full() {
 /// middle, and the two faces of three frames of 125 ms.
 fn marker_install(name: &str, marker: u16) -> Install {
     use crate::sprite::tests::{sized, sprite_file};
-    let one_frame = |height: u16, (y, x): (u16, u16)| {
+    let record = |height: u16, (y, x): (u16, u16)| {
         let mut frame = Vec::new();
         for field in [height, 1, y, x, 0] {
             frame.extend(field.to_le_bytes());
         }
         // Each row covers its one pixel.
         frame.extend([1, 0, 1, 1].repeat(usize::from(height)));
-        sprite_file(None, 1, &[sized(&frame)])
+        sized(&frame)
     };
+    let one_frame = |height, offsets| sprite_file(None, 1, &[record(height, offsets)]);
     let (unit, selection) = (
         one_frame(1, (4, 8)),
         one_frame(marker, (marker / 2, marker / 2)),
@@ -920,7 +921,7 @@ fn marker_install(name: &str, marker: u16) -> Install {
         members.push((format!("ui/select/{name}/{name}.ani"), ani(&dirs)));
         members.push((format!("ui/select/{name}/N"), selection.clone()));
     }
-    let face = sized(&one_frame(1, (0, 0)));
+    let face = record(1, (0, 0));
     for name in ["smile", "frown"] {
         let dirs = format!("dir0 = objects\ndir1 = {name}\ndir2 = idle\n");
         members.push((format!("objects/{name}/idle/idle.ani"), ani(&dirs)));
