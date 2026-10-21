@@ -301,6 +301,7 @@ pub fn remove(
     let (animal, staff) = type_of(cat, &world.zoo.entities[at]).map_or((false, false), |ty| {
         (unit::is_animal(ty), staff::is_staff(ty))
     });
+    crate::building::leave::push_out(world, cat, id);
     crate::guest::litter::spill(world, cat, id, rng);
     world.remove(id);
     world.priced(removed.refund);

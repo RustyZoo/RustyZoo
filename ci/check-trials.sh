@@ -853,6 +853,27 @@ check base-trial 1968 "building_running maps/default.zoo '140 120' 'months 2 '"
 check base-trial 1968 "building_running maps/default.zoo '140 120' 'upkeep .50 '"
 check base-trial '' "building_running maps/default.zoo '140 160' 'months 2'"
 
+# A building deleted while a guest uses it (guest buildings 11.1): `sim` runs the map; a second run has the
+# bulldozer delete the building one step after the first guest entered it. The user is pushed out (one
+# `building push` line; none in the plain run) and its walk out of the building (the goal `leavebuilding`,
+# which the plain run shows) never comes. Prints, for the plain run and the deleting one, the `building push`
+# lines and the walk-out goals of that guest, then the building and the guest.
+pushed_out() { # pushed_out <map>
+  d=$(mktemp -d)
+  rz sim "$1" --ticks 400 --seed 1 --log 2>/dev/null >"$d/plain"
+  read -r step b g <<<"$(awk '$3 == "building" && $4 == "use" { print $2, $5, $6; exit }' "$d/plain")"
+  printf '%s bulldoze %s\n' $((step + 1)) "$b" >"$d/script"
+  rz sim "$1" --ticks 400 --seed 1 --script "$d/script" --log 2>/dev/null >"$d/log"
+  for f in plain log; do
+    awk -v g="$g" '$3 == "building" && $4 == "push" { p++ }
+      $3 == "unit" && $4 == "goal" && $5 == g && $6 == "leavebuilding" { l++ }
+      END { printf "%d/%d,", p, l }' "$d/$f"
+  done
+  echo "$b,$g"
+  rm -rf "${d:?}"
+}
+check expansion-trial 0/1,1/0,31076,32762 "pushed_out maps/scn19.zoo"
+
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
 scenario_guest_panel() {

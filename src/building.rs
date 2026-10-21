@@ -9,8 +9,8 @@
 //! price with no users. A trash can counts the litter its users put in
 //! ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can spills it).
 //! The panels that set the price and show the figures are [`crate::panel::building`]'s.
-//! Left for later issues: the random use animation and the sounds, users
-//! pushed out of a building that is moved or removed, the slot filters of a user type,
+//! A building that is deleted or picked up pushes its users out ([`leave::push_out`]).
+//! Left for later issues: the random use animation and the sounds, the slot filters of a user type,
 //! `cUseRandomSlot`.
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
@@ -25,6 +25,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 pub mod items;
+pub mod leave;
 
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
 /// which a price is expensive and cheap, and the default price of a type that names none.
@@ -323,6 +324,16 @@ pub fn set_fill(world: &mut World, id: u32, fill: u32) {
 /// The live states by building id.
 pub type Table = BTreeMap<u32, Live>;
 
+/// How the price of building `id` of kind `kind` strikes a guest (guest buildings 7.3).
+pub fn mood(world: &World, id: u32, kind: &Kind) -> Mood {
+    let price = world
+        .units
+        .buildings
+        .get(&id)
+        .map_or(kind.price, |l| l.price);
+    world.units.prices.mood(price, kind.price)
+}
+
 /// The type of the building entity `e`.
 pub fn kind_of(cat: &Catalogue, e: &Entity, default: f32) -> Option<Kind> {
     if e.class != "building" {
@@ -354,6 +365,22 @@ pub fn facing(e: &Entity, facing: u32) -> u32 {
     (e.common.as_ref().map_or(0, |c| c.rotation) + facing) % 8
 }
 
+/// The place a user of slot `slot` of the building is put when it leaves by force (guest buildings
+/// 6.3, 6.7): the slot's exit for a type whose users use it, else the first entrance; the place
+/// must be on the map. `None` when there is none, and the slot cannot be used.
+pub fn exit_of(world: &World, e: &Entity, kind: &Kind, slot: usize) -> Option<Point> {
+    let s = kind.slots.get(slot)?;
+    let list = match kind.uses_exit {
+        true => s.exit.as_slice(),
+        false => s.entrances.as_slice(),
+    };
+    (list.iter().map(|&p| place(e, p))).find(|&(x, y)| {
+        world
+            .tile_index(x.div_euclid(64), y.div_euclid(64))
+            .is_some()
+    })
+}
+
 /// Whether the unit may use slot `slot` of a building (guest buildings 6.1): the building and the
 /// slot have room and an exit exists (6.3: an entrance, or the slot's exit for a type that uses
 /// it, on the map).
@@ -363,17 +390,9 @@ pub fn can_add(world: &World, e: &Entity, kind: &Kind, live: Option<&Live>, slot
         return false;
     };
     let in_slot = live.map_or(0, |l| l.users.iter().filter(|u| u.1 == slot).count());
-    let on_map = |p: &Point| {
-        let (x, y) = place(e, *p);
-        world
-            .tile_index(x.div_euclid(64), y.div_euclid(64))
-            .is_some()
-    };
-    let exit = match kind.uses_exit {
-        true => s.exit.iter().any(on_map),
-        false => s.entrances.iter().any(on_map),
-    };
-    users < kind.capacity.max(0) as usize && in_slot < s.capacity.max(0) as usize && exit
+    users < kind.capacity.max(0) as usize
+        && in_slot < s.capacity.max(0) as usize
+        && exit_of(world, e, kind, slot).is_some()
 }
 
 /// Whether some slot of the building is open (guest buildings 6.1).

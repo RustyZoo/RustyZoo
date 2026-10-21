@@ -139,7 +139,7 @@ usage: rustyzoo [--data <dir>] <command>
                       them all healthy first, as a start whose map file has `resetfences` above 0
                       does (a map of a version older than 55 has its pieces made healthy anyway). The script has one
                       `<step> <command>` per line, applied before that step (the first is 0):
-                      remove ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N, leave ID,
+                      remove ID, bulldoze ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N, leave ID,
                       animal TYPE X,Y [male|female], mood ID N (happiness, -100 to 100)
   check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
                       pieces) as the engine does when their copies in ztst/ are missing, and

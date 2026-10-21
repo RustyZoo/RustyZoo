@@ -16,6 +16,9 @@ use crate::world::World;
 pub enum Command {
     /// `remove ID`: the entity goes at the next step's removal pass.
     Remove(u32),
+    /// `bulldoze ID`: the bulldozer deletes the entity at once, with its refund (a building pushes
+    /// its users out, a trash can spills its litter).
+    Bulldoze(u32),
     /// `tile TX TY ELEVATION SHAPE TERRAIN`: sets a tile.
     Tile(i32, i32, i32, u8, u8),
     /// `fill ID` and `drain ID`: the water of a tank.
@@ -68,6 +71,7 @@ impl std::str::FromStr for Command {
         };
         let command = match words.first().copied() {
             Some("remove") if words.len() == 2 => Command::Remove(id(1)?),
+            Some("bulldoze") if words.len() == 2 => Command::Bulldoze(id(1)?),
             Some("heal") if words.len() == 2 => Command::Heal(id(1)?),
             Some("mood") if words.len() == 3 => {
                 let mood = n(2).ok().filter(|m| (-100..=100).contains(m));
@@ -220,6 +224,10 @@ impl Run {
                 let known = self.world.find(id).is_some();
                 self.sim.remove(id);
                 known
+            }
+            Command::Bulldoze(id) => {
+                let (world, money, cat) = (&mut self.world, &mut self.money, &self.cat);
+                crate::place::bulldozer::remove(world, money, cat, id, &mut self.sim.rng).is_some()
             }
             Command::Tile(x, y, elevation, shape, terrain) => {
                 let rand = &mut || self.sim.rng.rand();
