@@ -35,10 +35,9 @@ fn home(world: &World, cat: &Catalogue, x: u32, own: &Record) -> Option<u32> {
     let mut best: Option<(u32, f32)> = None;
     for &n in &e.amphibious {
         let records = rating::rate(&rating::input(world, cat, n));
-        if let Some(r) = records.iter().find(|r| r.key == own.key) {
-            if best.is_none_or(|(_, s)| r.rating() > s) {
-                best = Some((n, r.rating()));
-            }
+        let found = records.iter().find(|r| r.key == own.key);
+        if let Some(r) = found.filter(|r| best.is_none_or(|(_, s)| r.rating() > s)) {
+            best = Some((n, r.rating()));
         }
     }
     best.map(|(n, _)| n).filter(|&n| !show(n))

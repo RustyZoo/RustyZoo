@@ -440,7 +440,8 @@ impl Panel {
 
     /// Writes the plaque for the animal `self.plaque`, if it is still in the world: its name, the
     /// background and title of its keeper kind, and the recommendations of its species in the
-    /// exhibit of its record (`record_exhibit`), rated from the world now. Returns the log lines of what changed.
+    /// exhibit of its record (`record_exhibit`), rated from the world now. Returns the log lines of
+    /// what changed.
     pub fn refresh_plaque(
         &mut self,
         ui: &mut Interface,
