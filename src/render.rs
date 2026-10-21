@@ -207,17 +207,18 @@ struct Piece {
     offset: (i32, i32),
 }
 
-/// The frames of a view drawn for frame `frame`: its background frame, then the frame itself, and
-/// whether they are mirrored.
+/// The frames of a view drawn for frame `frame`: its background frame, then the frame itself.
 fn shown_frames<'a>(
     anim: &'a Animation,
     view: &View,
     frame: usize,
-) -> Option<Vec<(&'a Frame, bool)>> {
+) -> Option<impl Iterator<Item = &'a Frame>> {
     let sprite = &anim.sprites.get(view.file)?.0;
-    let frames = sprite.extra.iter().chain(sprite.frames.get(frame));
-    Some(frames.map(|frame| (frame, view.mirror)).collect())
+    Some(sprite.extra.iter().chain(sprite.frames.get(frame)))
 }
+
+/// A placed picture with the box `[left, top, right, bottom)` of the pixels it can cover.
+type Boxed = (Placed, [i64; 4]);
 
 /// A picture placed in view space: `(x, y)` is its anchor at normal zoom.
 struct Placed {
@@ -249,32 +250,23 @@ impl Placed {
             );
             return Some([left, top, left + w, top + h]);
         }
-        let frames: Vec<(&Frame, bool)> = match &self.pic {
-            Pic::Flat(flat) | Pic::Mark(flat, _) => vec![(&flat.0, false)],
-            Pic::Rendered(_) => return None,
-            Pic::Anim(anim, view, _, frame) => shown_frames(anim, view, *frame)?,
-            Pic::Blended(anim, view, _) => shown_frames(anim, view, 0)?,
+        let one = |frame: &Frame, mirror: bool| {
+            let (w, h) = (i64::from(frame.width), i64::from(frame.height));
+            let (xo, yo) = (i64::from(frame.x_offset), i64::from(frame.y_offset));
+            let left = match mirror {
+                false => i64::from(self.x) - xo,
+                true => i64::from(self.x) + xo - (w - 1),
+            };
+            let top = i64::from(self.y) - yo;
+            [left, top, left + w, top + h]
         };
-        frames
-            .into_iter()
-            .map(|(frame, mirror)| {
-                let (w, h) = (i64::from(frame.width), i64::from(frame.height));
-                let (xo, yo) = (i64::from(frame.x_offset), i64::from(frame.y_offset));
-                let left = match mirror {
-                    false => i64::from(self.x) - xo,
-                    true => i64::from(self.x) + xo - (w - 1),
-                };
-                let top = i64::from(self.y) - yo;
-                [left, top, left + w, top + h]
-            })
-            .reduce(|a, b| {
-                [
-                    a[0].min(b[0]),
-                    a[1].min(b[1]),
-                    a[2].max(b[2]),
-                    a[3].max(b[3]),
-                ]
-            })
+        let (frames, mirror) = match &self.pic {
+            Pic::Flat(flat) | Pic::Mark(flat, _) => return Some(one(&flat.0, false)),
+            Pic::Rendered(_) => return None,
+            Pic::Anim(anim, view, _, frame) => (shown_frames(anim, view, *frame)?, view.mirror),
+            Pic::Blended(anim, view, _) => (shown_frames(anim, view, 0)?, view.mirror),
+        };
+        frames.map(|frame| one(frame, mirror)).reduce(union)
     }
 
     /// The anchor at the zoom value `zoom` (level `level`), in the view space of that zoom: the
@@ -355,8 +347,13 @@ impl Placed {
 /// from it.
 pub struct Staged {
     rotation: u8,
-    placed: Vec<(Placed, [i64; 4])>,
-    /// For each picture of `placed`, the entity of the zoo it was placed for (picking).
+    /// The pictures of the tiles, which the renderer keeps for the next staging.
+    grounds: Rc<Grounds>,
+    /// The paint order.
+    items: Vec<Entry>,
+    /// The pictures of the items that are not tiles, in paint order.
+    own: Vec<Boxed>,
+    /// For each picture of `own`, the entity of the zoo it was placed for (picking).
     hits: Vec<Option<pick::Hit>>,
     /// The box `[left, top, right, bottom)` of every tile.
     tile_bounds: [i64; 4],
@@ -366,6 +363,14 @@ pub struct Staged {
 }
 
 impl Staged {
+    /// Every picture with its box, in paint order.
+    fn pictures(&self) -> impl Iterator<Item = &Boxed> {
+        self.items.iter().flat_map(|&e| match e {
+            Entry::Tile(t) => self.grounds.placed[t].0.iter(),
+            Entry::Own(i) => std::slice::from_ref(&self.own[i]).iter(),
+        })
+    }
+
     /// The size of the picture of the whole map at normal zoom, or an error if it is empty or
     /// too big.
     pub fn size(&self) -> Result<(u32, u32), RenderError> {
@@ -392,8 +397,7 @@ impl Staged {
         };
         let [l, t, r, b] = self.tile_bounds.map(scale);
         let tiles = [l - 2, t - 2, r + 2, b + 2];
-        self.placed
-            .iter()
+        self.pictures()
             .filter(|(p, _)| !p.grid)
             .fold(tiles, |all, (placed, b)| {
                 let anchor = placed.anchor(self.rotation, zoom, level);
@@ -413,7 +417,7 @@ impl Staged {
         let (left, top) = (i64::from(view_x), i64::from(view_y));
         let right = left + i64::from(target.width);
         let bottom = top + i64::from(target.height);
-        for (placed, b) in self.placed.iter().filter(|(p, _)| grid || !p.grid) {
+        for (placed, b) in self.pictures().filter(|(p, _)| grid || !p.grid) {
             let anchor = placed.anchor(self.rotation, zoom, level);
             let b = placed.zoomed_box(b, anchor, level);
             if b[0] < right && b[2] > left && b[1] < bottom && b[3] > top {
@@ -581,6 +585,29 @@ pub struct MapRenderer<'a> {
     murky: (i32, i32),
     /// `[advanced] useTankShadows` of the ini file: units cast shadows on the floor of a tank.
     tank_shadows: bool,
+    /// The pictures of the tiles of the last staging, for the next one.
+    grounds: Option<Rc<Grounds>>,
+}
+
+/// The pictures of every tile of a staging and what they were made from: the next staging
+/// takes them again while the ground, the edge objects and the marks are the same (a staging
+/// in which only units moved).
+struct Grounds {
+    width: usize,
+    rotation: u8,
+    tiles: Vec<Tile>,
+    /// Per tile, whether each edge slot holds an object.
+    edges: Vec<[bool; 4]>,
+    marks: HashMap<usize, [u8; 3]>,
+    /// Per tile, its pictures with their boxes, and its counts.
+    placed: Vec<(Vec<Boxed>, Summary)>,
+}
+
+/// An item of the paint order of a staging: the pictures of a tile, or one other picture.
+#[derive(Clone, Copy)]
+enum Entry {
+    Tile(usize),
+    Own(usize),
 }
 
 impl<'a> MapRenderer<'a> {
@@ -703,6 +730,7 @@ impl<'a> MapRenderer<'a> {
             groups,
             murky: (murky, very_murky),
             tank_shadows,
+            grounds: None,
         }
     }
 
@@ -1016,65 +1044,114 @@ impl<'a> MapRenderer<'a> {
             });
         }
 
-        let mut placed: Vec<Placed> = Vec::new();
+        let order = paint_order(&scene);
+        let edges: Vec<[bool; 4]> = (0..scene.tiles.len())
+            .map(|t| [0, 2, 4, 6].map(|d| scene.edge_object(t, d).is_some()))
+            .collect();
+        let grounds = match self.grounds.take() {
+            Some(g)
+                if (g.width, g.rotation) == (width, rotation)
+                    && g.tiles == scene.tiles
+                    && g.edges == edges
+                    && g.marks == marks =>
+            {
+                g
+            }
+            _ => {
+                let placed = (0..scene.tiles.len())
+                    .map(|t| {
+                        let (mut out, mut counts) = (Vec::new(), Summary::default());
+                        self.terrain(&scene, &marks, t, &mut counts, &mut out);
+                        let out = out.into_iter().filter_map(|p| p.bounds().map(|b| (p, b)));
+                        (out.collect(), counts)
+                    })
+                    .collect();
+                Rc::new(Grounds {
+                    width,
+                    rotation,
+                    tiles: scene.tiles.clone(),
+                    edges,
+                    marks,
+                    placed,
+                })
+            }
+        };
+        let mut items = Vec::with_capacity(order.len());
+        let mut own = Vec::new();
         let mut hits: Vec<Option<pick::Hit>> = Vec::new();
-        for item in paint_order(&scene) {
-            let before = placed.len();
+        // The pictures of the item at hand.
+        let mut fresh: Vec<Placed> = Vec::new();
+        for item in order {
             // The pictures of a path, an edge object or any other object are the entity's own.
             let owner = match item {
                 Item::Path(o) | Item::Edge(o) | Item::Object(o) => owners.get(o).copied().flatten(),
                 _ => None,
             };
             match item {
-                Item::Terrain(t) => self.terrain(&scene, &marks, t, &mut summary, &mut placed),
+                Item::Terrain(t) => {
+                    let counts = &grounds.placed[t].1;
+                    summary.tiles_cached += counts.tiles_cached;
+                    summary.tiles_rendered += counts.tiles_rendered;
+                    summary.ground_missing += counts.ground_missing;
+                    summary.cliffs_drawn += counts.cliffs_drawn;
+                    summary.cliffs_missing += counts.cliffs_missing;
+                    items.push(Entry::Tile(t));
+                    continue;
+                }
                 Item::Object(o) if o >= first_ripple => {
-                    self.object(&scene, o, &metas[o], &mut Summary::default(), &mut placed)
+                    self.object(&scene, o, &metas[o], &mut Summary::default(), &mut fresh)
                 }
                 Item::Object(o) if metas[o].wall > 0 && owners[o].is_none() => {
-                    self.pending_wall(&scene, &metas, o, &mut summary, &mut placed)
+                    self.pending_wall(&scene, &metas, o, &mut summary, &mut fresh)
                 }
                 Item::Path(o) | Item::Object(o) => {
-                    self.object(&scene, o, &metas[o], &mut summary, &mut placed)
+                    self.object(&scene, o, &metas[o], &mut summary, &mut fresh)
                 }
                 Item::Edge(o) if scene.wall_tank(o).is_none() => {
-                    self.object(&scene, o, &metas[o], &mut summary, &mut placed)
+                    self.object(&scene, o, &metas[o], &mut summary, &mut fresh)
                 }
-                item => self.tank_item(&scene, &metas, &looks, item, &mut summary, &mut placed),
+                item => self.tank_item(&scene, &metas, &looks, item, &mut summary, &mut fresh),
             }
-            hits.resize(placed.len(), owner);
+            // The selection marker and the faces are nobody's.
+            let owned = fresh.len();
             if let (Item::Object(o), Some(hit)) = (item, owner)
-                && let Some(&Placed { x, y, .. }) = placed.last().filter(|_| placed.len() > before)
+                && let Some(&Placed { x, y, .. }) = fresh.last()
                 && scene.objects[o].kind == Kind::Unit
             {
                 if Some(hit.id) == extra.selected {
-                    self.marker(metas[o].ty, &mut placed);
+                    self.marker(metas[o].ty, &mut fresh);
                 }
                 for &(_, likes, age) in extra.faces.iter().filter(|f| f.0 == hit.id) {
-                    self.face(metas[o].ty, (x, y), likes, age, &mut placed);
+                    self.face(metas[o].ty, (x, y), likes, age, &mut fresh);
                 }
-                hits.resize(placed.len(), None);
+            }
+            for (k, p) in fresh.drain(..).enumerate() {
+                if let Some(b) = p.bounds() {
+                    items.push(Entry::Own(own.len()));
+                    own.push((p, b));
+                    hits.push(owner.filter(|_| k < owned));
+                }
             }
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
 
-        // The box of every tile and every picture.
-        let (placed, hits): (Vec<_>, Vec<_>) = placed
-            .into_iter()
-            .zip(hits)
-            .filter_map(|(p, hit)| p.bounds().map(|b| ((p, b), hit)))
-            .unzip();
-        let bounds = placed
-            .iter()
-            .filter(|(p, _)| !p.grid)
-            .fold(tile_bounds, |all, (_, b)| union(all, *b));
-        Ok(Staged {
+        self.grounds = Some(Rc::clone(&grounds));
+        let mut staged = Staged {
             rotation,
-            placed,
+            grounds,
+            items,
+            own,
             hits,
             tile_bounds,
-            bounds,
+            bounds: tile_bounds,
             summary,
-        })
+        };
+        // The box of every tile and every picture.
+        staged.bounds = staged
+            .pictures()
+            .filter(|(p, _)| !p.grid)
+            .fold(tile_bounds, |all, (_, b)| union(all, *b));
+        Ok(staged)
     }
 
     /// The type of the terrain of a tile, as the drawing code uses it.
@@ -1366,13 +1443,11 @@ impl<'a> MapRenderer<'a> {
         };
         // Without the swimming pictures an animal in a tank shows its rest picture.
         let tank = ty.class == "animals" && meta.mode == 3;
-        let mut animations = ty.animations();
-        let at = [wanted.as_str(), "idle"]
+        let found = [wanted.as_str(), "idle"]
             .into_iter()
             .take(if tank || meta.shown.is_some() { 2 } else { 1 })
             .filter(|w| !w.is_empty())
-            .find_map(|w| animations.iter().position(|a| a.name == w));
-        let found = at.map(|i| animations.swap_remove(i));
+            .find_map(|w| ty.animation_named(w));
         found.or_else(|| ty.base_animation()).and_then(|a| a.member)
     }
 
@@ -1428,7 +1503,7 @@ impl<'a> MapRenderer<'a> {
         else {
             return;
         };
-        let Some(frame) = shown_frames(anim, view, *at).and_then(|f| f.last().map(|f| f.0)) else {
+        let Some(frame) = shown_frames(anim, view, *at).and_then(Iterator::last) else {
             return;
         };
         let (x, y, xo, yo) = (*x, *y, i32::from(frame.x_offset), i32::from(frame.y_offset));

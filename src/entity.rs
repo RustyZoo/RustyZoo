@@ -165,6 +165,15 @@ impl EntityType {
         })
     }
 
+    /// The first of [`EntityType::animations`] named `name`, without making the others.
+    pub fn animation_named(&self, name: &str) -> Option<Animation> {
+        let section = self.animation_section()?;
+        let key = section
+            .keys()
+            .find(|key| String::from_utf8_lossy(key) == name)?;
+        Some(self.animation(section, key))
+    }
+
     /// The animation a still picture of the type shows. Its member is `None` if the key has no
     /// value.
     ///
