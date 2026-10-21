@@ -940,6 +940,7 @@ impl<'a> App<'a> {
             return;
         };
         self.animal_lines = game.world.units.take_animal_lines();
+        self.ui_sounds.extend(game.world.units.take_cheers());
         self.guest_lines = game.world.units.take_guest_lines();
         self.staff_lines = game.world.units.take_staff_lines();
         self.world_lines.extend(game.world.units.take_world_lines());
@@ -1882,6 +1883,7 @@ impl<'a> App<'a> {
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
         want.selected = game.selected;
+        want.faces.clone_from(&game.world.units.reactions);
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         want.marks.extend(game.assign_marks());
@@ -1963,8 +1965,10 @@ impl<'a> App<'a> {
         &self.unit_sounds
     }
 
-    /// The sounds the interface and the placing of objects asked for in the last pass, by file
-    /// name without the extension (`uiclick`, `place`, `noplace`, `sounds/uiclick.wav`): the shell plays them.
+    /// The sounds the interface, the placing of objects and the animals' reactions to a change
+    /// of their exhibit asked for in the last pass, by file name without the extension
+    /// (`uiclick`, `place`, `noplace`, `smile`, `frown`, `sounds/uiclick.wav`): the shell plays
+    /// them.
     pub fn sounds(&self) -> &[&'static str] {
         &self.ui_sounds
     }

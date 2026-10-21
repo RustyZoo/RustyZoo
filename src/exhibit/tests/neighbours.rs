@@ -155,7 +155,12 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
     rating::react(&mut w, &cat, before, Some((9400, 7, 1)), &mut || 0);
     let mut lines = w.units.take_animal_lines();
     lines.sort();
-    assert_eq!(lines, ["likes 1", "likes 3"], "the shark is not amphibious");
+    assert_eq!(
+        lines,
+        ["likes 1", "likes 3", "sound smile"],
+        "the shark is not amphibious"
+    );
+    assert_eq!(w.units.take_cheers(), ["smile"], "once for the change");
     assert!(!dirty(&w, land) && !dirty(&w, tank), "rated again");
     // The reactions last 1250 ms.
     w.units.fade(1249);
@@ -167,11 +172,13 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
     rating::react(&mut w, &cat, before, Some((9400, 7, -1)), &mut || 0);
     let mut lines = w.units.take_animal_lines();
     lines.sort();
-    assert_eq!(lines, ["dislikes 1", "dislikes 3"]);
+    assert_eq!(lines, ["dislikes 1", "dislikes 3", "sound frown"]);
+    assert_eq!(w.units.take_cheers(), ["frown"]);
     // Nothing changed: an object the species does not value leaves it alone.
     let before = rating::before(&w, &cat, &[tile]);
     rating::react(&mut w, &cat, before, Some((9400, 99, 1)), &mut || 0);
     assert!(w.units.take_animal_lines().is_empty());
+    assert!(w.units.take_cheers().is_empty());
 }
 
 #[test]
@@ -189,7 +196,7 @@ fn a_terrain_change_that_changes_no_tile_marks_nothing() {
     });
     let mut lines = w.units.take_animal_lines();
     lines.sort();
-    assert_eq!(lines, ["likes 1", "likes 3"]);
+    assert_eq!(lines, ["likes 1", "likes 3", "sound smile"]);
 }
 
 #[test]

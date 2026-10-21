@@ -151,6 +151,9 @@ pub struct Extra {
     pub hidden: Vec<u32>,
     /// The unit (id) that carries the selection marker (sprite drawing 9.2).
     pub selected: Option<u32>,
+    /// The animals' reactions to a change of their exhibit: the unit (id), whether it likes the
+    /// change and the milliseconds since; each is a face above its unit (animals 10).
+    pub faces: Vec<(u32, bool, u32)>,
 }
 
 /// The animation and frame a unit of the zoo holds.
@@ -1036,12 +1039,16 @@ impl<'a> MapRenderer<'a> {
             }
             hits.resize(placed.len(), owner);
             if let (Item::Object(o), Some(hit)) = (item, owner)
-                && Some(hit.id) == extra.selected
-                && placed.len() > before
+                && let Some(&Placed { x, y, .. }) = placed.last().filter(|_| placed.len() > before)
                 && scene.objects[o].kind == Kind::Unit
-                && self.marker(metas[o].ty, &mut placed)
             {
-                hits.push(None);
+                if Some(hit.id) == extra.selected {
+                    self.marker(metas[o].ty, &mut placed);
+                }
+                for &(_, likes, age) in extra.faces.iter().filter(|f| f.0 == hit.id) {
+                    self.face(metas[o].ty, (x, y), likes, age, &mut placed);
+                }
+                hits.resize(placed.len(), None);
             }
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
@@ -1361,13 +1368,47 @@ impl<'a> MapRenderer<'a> {
         found.or_else(|| ty.base_animation()).and_then(|a| a.member)
     }
 
+    /// Places the face of a reaction above the unit whose anchor is `(x, y)` (animals 10, sprite
+    /// drawing 9.3): `objects/smile` when it likes the change, `objects/frown` when not, up by the
+    /// type's `cFacesYOffset`, at the frame its age in milliseconds has reached.
+    fn face(
+        &mut self,
+        ty: &EntityType,
+        (x, y): (i32, i32),
+        likes: bool,
+        age: u32,
+        out: &mut Vec<Placed>,
+    ) {
+        let name = if likes { "smile" } else { "frown" };
+        let Some(anim) = self.animation(&format!("objects/{name}/idle/idle.ani")) else {
+            return;
+        };
+        let Some(sprite) = anim.sprites.first().map(|s| &s.0) else {
+            return;
+        };
+        let last = sprite.frames.len().saturating_sub(1);
+        let frame = (age.checked_div(sprite.delay_ms)).map_or(0, |f| (f as usize).min(last));
+        let up = crate::build::number(ty, "cFacesYOffset").unwrap_or(0.0) as i32;
+        let view = View {
+            file: 0,
+            mirror: false,
+        };
+        out.push(Placed {
+            x,
+            y: y.saturating_sub(up),
+            piece: None,
+            grid: false,
+            pic: Pic::Anim(anim, view, None, frame),
+        });
+    }
+
     /// Places the selection marker after the picture of the unit that was placed last (sprite
     /// drawing 9.2): `selsmall` for a footprint of at most 1 x 1 half tiles, `selmed` for at most
     /// 4 in each direction, else `sellarge`. Its anchor is the unit's, up and left by a quarter of
     /// the x offset of the unit's frame, and by its y offset, 5 and half the height of the marker's
     /// own frame (the type's height plays no part). The marker has one frame, so it
-    /// needs no clock. Returns whether it was placed.
-    fn marker(&mut self, ty: &EntityType, out: &mut Vec<Placed>) -> bool {
+    /// needs no clock.
+    fn marker(&mut self, ty: &EntityType, out: &mut Vec<Placed>) {
         let Some(Placed {
             x,
             y,
@@ -1375,10 +1416,10 @@ impl<'a> MapRenderer<'a> {
             ..
         }) = out.last()
         else {
-            return false;
+            return;
         };
         let Some(frame) = shown_frames(anim, view, *at).and_then(|f| f.last().map(|f| f.0)) else {
-            return false;
+            return;
         };
         let (x, y, xo, yo) = (*x, *y, i32::from(frame.x_offset), i32::from(frame.y_offset));
         let [fx, fy, _] = ty.footprint;
@@ -1388,7 +1429,7 @@ impl<'a> MapRenderer<'a> {
             _ => "sellarge",
         };
         let Some(anim) = self.animation(&format!("ui/select/{name}/{name}.ani")) else {
-            return false;
+            return;
         };
         let view = View {
             file: 0,
@@ -1407,7 +1448,6 @@ impl<'a> MapRenderer<'a> {
             grid: false,
             pic: Pic::Anim(anim, view, None, 0),
         });
-        true
     }
 
     /// Places the picture of one object.

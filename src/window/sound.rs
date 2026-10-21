@@ -26,7 +26,8 @@ pub struct Sound {
     /// each type has one sound object (sound 9.1), so two units that call it while it plays give
     /// one voice.
     units: HashMap<String, Voice>,
-    /// The attenuation sum of the click: `G` from `userAttenuation`, `B` and `F` being 0.
+    /// The global term `G`, from `userAttenuation`: the attenuation sum of the click, whose `B` and
+    /// `F` are 0.
     click_sum: i32,
     /// The output is silent because the window has no focus.
     quiet: Quiet,
@@ -53,6 +54,16 @@ impl Quiet {
 /// `[advanced] use8BitSound` is a number other than 0: the 8-bit set is played (sound 2.3). Read once, at start-up.
 fn use_8_bit(ini: &Config) -> bool {
     ini_whole(ini, "advanced", "use8BitSound").is_some_and(|n| n != 0)
+}
+
+/// The base term `B` of an interface sound: 1,200 for the smile and 1,000 for the frown of an
+/// exhibit's animals, 0 for the others (sound 4.4, 7).
+fn base(name: &str) -> i32 {
+    match name {
+        "smile" => 1200,
+        "frown" => 1000,
+        _ => 0,
+    }
 }
 
 impl Sound {
@@ -142,17 +153,19 @@ impl Sound {
         }
     }
 
-    /// Plays the sounds the interface asked for in the last pass (`sounds/<name>.wav`). Each
+    /// Plays the sounds the interface asked for in the last pass (`sounds/<name>.wav`), at `G`
+    /// and the sound's base term ([`base`]). Each
     /// sound has one voice: a sound asked for while its last one plays continues it, at the
     /// volume of the new start, and one that has played to its end starts again. A sound that cannot be played is a
     /// warning.
     pub fn clicks(&mut self, vfs: &Vfs, app: &App) {
         let Some(audio) = &self.audio else { return };
         for name in app.sounds() {
+            let sum = self.click_sum.saturating_add(base(name));
             if let Some(voice) = self.clicks.get(name)
                 && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
             {
-                if let Err(e) = voice.set_sum(self.click_sum) {
+                if let Err(e) = voice.set_sum(sum) {
                     eprintln!("rustyzoo: sounds/{name}.wav: {e}");
                 }
                 continue;
@@ -160,7 +173,7 @@ impl Sound {
             let file = format!("sounds/{name}.wav");
             let played = audio
                 .load(vfs, &file)
-                .and_then(|wave| audio.play(wave, self.click_sum, false, false));
+                .and_then(|wave| audio.play(wave, sum, false, false));
             match played {
                 Ok(Some(voice)) => {
                     self.clicks.insert(name, voice);
@@ -294,6 +307,12 @@ mod tests {
         ] {
             assert!(!ini(off), "{off:?}");
         }
+    }
+
+    #[test]
+    fn the_smile_and_the_frown_are_quieter_than_the_other_interface_sounds() {
+        assert_eq!([base("smile"), base("frown")], [1200, 1000]);
+        assert_eq!([base("uiclick"), base(""), base("Smile")], [0, 0, 0]);
     }
 
     #[test]

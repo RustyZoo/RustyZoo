@@ -360,6 +360,8 @@ pub struct Units {
     /// The animals' reactions to a change of their exhibit (animals 10): the animal, whether it
     /// likes the change, and the milliseconds since.
     pub reactions: Vec<(u32, bool, u32)>,
+    /// The exhibit sounds the changes asked for (`smile`, `frown`), which the interface plays.
+    cheers: Vec<&'static str>,
 }
 
 impl Default for Units {
@@ -402,6 +404,7 @@ impl Default for Units {
             pool: Default::default(),
             world_lines: Vec::new(),
             reactions: Vec::new(),
+            cheers: Vec::new(),
         }
     }
 }
@@ -538,6 +541,18 @@ impl Units {
         self.reactions.push((id, likes, 0));
         let word = if likes { "likes" } else { "dislikes" };
         self.tell(format!("{word} {id}"));
+    }
+
+    /// Some species liked a change of its exhibit (`smile`) or disliked it (`frown`): the sound
+    /// plays once (habitat rating 9.4, sound 7). Logs `sound smile` or `sound frown`.
+    pub(crate) fn cheer(&mut self, sound: &'static str) {
+        self.cheers.push(sound);
+        self.tell(format!("sound {sound}"));
+    }
+
+    /// The exhibit sounds asked for since the last call.
+    pub fn take_cheers(&mut self) -> Vec<&'static str> {
+        std::mem::take(&mut self.cheers)
     }
 
     /// The reactions age by the step of `ms` milliseconds and go at 1250 ms, or with their animal.
