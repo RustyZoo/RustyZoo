@@ -314,6 +314,7 @@ mod tests {
     #[test]
     fn the_smile_and_the_frown_are_quieter_than_the_other_interface_sounds() {
         assert_eq!([base("smile"), base("frown")], [1200, 1000]);
+        assert_eq!(base("exhibit"), 100);
         assert_eq!([base("uiclick"), base(""), base("Smile")], [0, 0, 0]);
     }
 

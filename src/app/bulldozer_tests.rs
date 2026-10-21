@@ -740,7 +740,7 @@ fn the_tree_in_front_of_a_building_is_picked_where_their_pictures_overlap() {
 
 /// The tank (20, 20) closed with walls but its last, the bench of tile (20, 20) in it; the
 /// game is told what happened to the exhibits, as after a placed piece.
-fn tank_with_a_bench(s: &mut Session) {
+pub(super) fn tank_with_a_bench(s: &mut Session) {
     s.add(8, 20 * 64 + 16, 20 * 64 + 16, 0);
     s.app.game.as_mut().unwrap().world.begin();
     for side in [0, 2, 4, 6] {
