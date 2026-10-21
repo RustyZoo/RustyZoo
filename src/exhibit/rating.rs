@@ -434,22 +434,38 @@ pub fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     reach(world, cat, x, rand);
 }
 
+thread_local! {
+    /// The reachability tests since the last one that went on (5.8): one counter for the program,
+    /// never saved in a zoo file and not reset by a load or a new game. The simulation runs on one
+    /// thread; a test thread starts at 0.
+    static TESTS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// The reachability tests since the last one that went on (5.8).
+pub fn tests() -> u32 {
+    TESTS.get()
+}
+
 /// The reachability test of exhibit `x` (5.8): the program's counter goes up; with the escape
 /// check flag set or the counter at 30, the counter and the flag are cleared, a target is drawn
 /// among the candidate tiles of 10.2 that belong to no amphibious neighbour, and the last animal
 /// of each type searches its way there with its test flag up (no diagonals). The types that get
 /// there make the escape table, which the escapes read (M7).
 pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
-    let exhibits = world.exhibits_mut();
-    exhibits.tests = exhibits.tests.saturating_add(1);
-    let due = exhibits.tests >= 30;
-    let Some(e) = exhibits.get_mut(x).filter(|e| e.rating.escape || due) else {
+    let tests = TESTS.get().saturating_add(1);
+    TESTS.set(tests);
+    let due = tests >= 30;
+    let Some(e) = world
+        .exhibits_mut()
+        .get_mut(x)
+        .filter(|e| e.rating.escape || due)
+    else {
         return;
     };
     e.rating.escape = false;
     e.rating.escapes.clear();
     let (near, order) = (e.amphibious.clone(), e.order.clone());
-    world.exhibits_mut().tests = 0;
+    TESTS.set(0);
     let plan = crate::exhibit::viewing::Plan::of(world, x);
     let tiles: Vec<usize> = crate::exhibit::viewing::candidates(&plan)
         .into_iter()

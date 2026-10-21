@@ -37,6 +37,7 @@ fn catalogue() -> Catalogue {
                  [cCompatibleAnimals]\nv=5003\nv=-10\n";
     cat.push(kind("animals", "polar", 5001, polar));
     cat.push(kind("animals", "goat", 5003, ""));
+    cat.push(kind("fences", "iron", 0, ""));
     let shark = "[Characteristics/Integers]\ncUnderwater=1\ncOnlyUnderwater=1\n";
     cat.push(kind("animals", "shark", 5002, shark));
     cat.push(kind(
@@ -335,17 +336,17 @@ fn the_reachability_test_draws_its_target_and_raises_the_test_flag() {
     assert_eq!(w.units.finder.state()[2], 2, "no search yet");
     rating::reach(&mut w, &cat, land, &mut rand);
     let x = w.exhibits().get(land).unwrap();
-    assert!(!x.rating.escape && w.exhibits().tests == 0);
+    assert!(!x.rating.escape && rating::tests() == 0);
     assert_eq!(x.rating.escapes, [("polar/".to_string(), target)]);
     // The bear searched with its test flag up: the finder's diagonal switch is left off.
     assert_eq!(w.units.finder.state()[2], 0);
     // With the flag clear the test stops at once 29 times; the 30th goes on.
     for n in 1..30 {
         rating::reach(&mut w, &cat, land, &mut rand);
-        assert_eq!(w.exhibits().tests, n);
+        assert_eq!(rating::tests(), n);
     }
     rating::reach(&mut w, &cat, land, &mut rand);
-    assert_eq!(w.exhibits().tests, 0);
+    assert_eq!(rating::tests(), 0);
     assert_eq!(drawn.get(), 2);
     // The fence mended, the bear stays in: the table is empty. A tank has a test of its own.
     w.zoo.entities[piece]
@@ -400,6 +401,13 @@ fn the_escape_check_flag_is_set_by_its_changes() {
         w.fence_changed(piece, broken);
         assert_eq!(flag(&w, land), set, "{broken} {bash}");
     }
+    // Making the piece healthy is such a change too, whatever called it.
+    for (bash, set) in [(false, false), (true, true)] {
+        clear(&mut w);
+        w.exhibits_mut().get_mut(land).unwrap().rating.bash = bash;
+        w.heal(&cat, 1000 + 9 * 10 + 3 + 2, &mut || 0).unwrap();
+        assert_eq!(flag(&w, land), set, "heal {bash}");
+    }
     // A species bashes with `cBashStrength` above 0; missing, 0 or negative, it does not.
     let bashes = |keys: &str| {
         let text = format!("[Characteristics/Integers]\n{keys}\n");
@@ -409,4 +417,22 @@ fn the_escape_check_flag_is_set_by_its_changes() {
     for keys in ["", "cBashStrength=0", "cBashStrength=-1"] {
         assert!(!bashes(keys), "{keys}");
     }
+}
+
+#[test]
+fn the_reachability_counter_belongs_to_the_program_not_to_the_world() {
+    let cat = catalogue();
+    let (mut w, mut rand) = (linked(), || 0);
+    let (_, land) = pair(&w);
+    for _ in 0..5 {
+        w.exhibits_mut().get_mut(land).unwrap().rating.escape = false;
+        rating::reach(&mut w, &cat, land, &mut rand);
+    }
+    assert_eq!(rating::tests(), 5);
+    // A second zoo loaded in the same run goes on from the count the first left.
+    let mut second = linked();
+    let (_, land) = pair(&second);
+    second.exhibits_mut().get_mut(land).unwrap().rating.escape = false;
+    rating::reach(&mut second, &cat, land, &mut rand);
+    assert_eq!(rating::tests(), 6);
 }
