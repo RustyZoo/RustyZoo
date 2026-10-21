@@ -1,0 +1,116 @@
+# The reactions to an animal placed (habitat rating 9.4, animals 10), played by ci/check-trials.sh on
+# the base trial: the exhibit of ci/playable.txt (savannah grass, a pen of 6 x 6 tiles with a gate)
+# built while the game is paused, a gazelle adopted, then a lion, then the game unpaused. The
+# gazelle's compatible animals list holds the cat family at -20, so it dislikes the lion; the lion's
+# own list says nothing of the gazelle, and the first gazelle has no company to judge.
+2 pause
+3 mouse 25 34
+4 down
+5 up
+7 mouse 183 207
+8 down
+9 up
+11 mouse 131 183
+12 down
+13 up
+15 mouse 152 72
+16 down
+17 up
+18 mouse 152 72
+19 down
+20 up
+21 mouse 152 72
+22 down
+23 up
+24 mouse 448 272
+26 down
+27 up
+28 mouse 544 224
+30 down
+31 up
+32 mouse 544 320
+34 down
+35 up
+36 mouse 640 272
+38 down
+39 up
+40 mouse 183 74
+41 down
+42 up
+44 mouse 310 267
+45 down
+46 mouse 470 187
+47 up
+48 mouse 490 357
+49 down
+50 mouse 650 277
+51 up
+52 mouse 310 277
+53 down
+54 mouse 470 357
+55 up
+56 mouse 490 187
+57 down
+58 mouse 650 267
+59 up
+60 key enter
+63 key escape
+64 mouse 183 107
+65 down
+66 up
+68 mouse 672 256
+69 down
+70 mouse 608 224
+71 up
+72 key escape
+75 mouse 25 129
+76 down
+77 up
+79 mouse 140 120
+80 down
+81 up
+82 mouse 864 256
+84 down
+85 up
+86 mouse 140 160
+87 down
+88 up
+89 mouse 768 176
+91 down
+92 up
+93 mouse 183 107
+94 down
+95 up
+96 mouse 70 80
+97 down
+98 up
+99 mouse 768 272
+101 down
+102 up
+103 mouse 140 80
+104 down
+105 up
+106 mouse 800 256
+108 down
+109 up
+110 key escape
+112 mouse 25 81
+113 down
+114 up
+116 mouse 70 80
+117 down
+118 up
+119 mouse 416 288
+120 down
+121 up
+123 mouse 144 283
+124 down
+125 up
+126 mouse 70 120
+127 down
+128 up
+129 mouse 512 272
+130 down
+131 up
+133 key escape
+135 space
