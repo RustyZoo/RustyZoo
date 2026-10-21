@@ -14,6 +14,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export RUSTYZOO_USER_DIR=$tmp/user # never the real user folder
 
+# The seeded sims whose result depends on the shared random stream pass --reset-fences: their pins were
+# found with every fence piece made healthy at the start, which draws from that stream.
 rz() { "$bin" --data "$dir/$trial" "$@"; }
 
 # Plays a map headless (--bare: the map view alone, without the main panel that a game shows) with
@@ -220,7 +222,7 @@ check base-trial same,animated,changing 'animating maps/scn01a.zoo'
 check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 2>/dev/null | grep -q " unit set " && echo yes'
 # A hungry lion (27645) goes to the pile of 50 units that the script puts down, takes bites of 20, 20 and
 # what is left, and the pile goes.
-check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --reset-fences --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # A play call queues behind the playing sequence, the base loop included: the lion shows its first
 # animation other than the idle one at pass 14 (the lion 27645, happiness 75, chooses bFriendly; the lion
 # 27646 is tired, so its ambient choice runs the sleep check instead of a row, behaviours 6.4: it starts
@@ -815,7 +817,7 @@ check expansion-trial '"Guest_58"_time_"Just_arrived"' "scenario_guest_panel"
 marine_round() { # marine_round <map>
   d=$(mktemp -d)
   printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"
-  rz sim "$1" --ticks 36000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+  rz sim "$1" --ticks 36000 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ keeper /{k=$5}
     / staff job /{
       if ($5==k) { if ($6=="none") next; if (!done) j=j (j?",":"") $6; if ($6=="ClimbDownOutsideLadder") done=1 }
@@ -866,7 +868,7 @@ check expansion-trial "447:92;99>100;0:100,1:100,2:100,3:100,4:100,5:100,6:100,7
 tank_breath() { # tank_breath <map> <x,y>
   d=$(mktemp -d)
   printf '0 animal polarbr %s male\n' "$2" >"$d/script"
-  rz sim "$1" --ticks 3000 --seed 6 --script "$d/script" --log 2>/dev/null | awk '
+  rz sim "$1" --ticks 3000 --seed 6 --reset-fences --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ animal /{id=$5}
     $5==id && / animal breath /{ if (done) later++; else gains=gains (gains ? "," : "") $2 ":" $6 }
     $5==id && / unit goal [0-9]+ surfacebreath /{ surface=$2 }
@@ -886,7 +888,7 @@ tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <fil
   d=$(mktemp -d)
   { printf '0 remove %s\n0 remove %s\n0 remove %s\n0 animal mantaray %s\n' "$4" "$5" "$6" "$2"
     for s in $(seq 10 15 12000); do printf '%s mood %s 0\n' "$s" "$3"; done; } >"$d/script"
-  rz sim "$1" --ticks 12000 --seed 1 --script "$d/script" --log 2>/dev/null | awk -v ray="$3" '
+  rz sim "$1" --ticks 12000 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk -v ray="$3" '
     BEGIN{ n=0 }
     / world water 2 /{ if ($9 < 60 && !low) low=$2 }
     $5 == ray && / animal status /{
@@ -904,7 +906,7 @@ check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happin
 # every recomputation ends with the reachability test (5.8), which draws: the tank bear is home at
 # step 4210.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>
-  rz sim "$1" --ticks 4300 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
+  rz sim "$1" --ticks 4300 --seed 3 --reset-fences --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
@@ -916,7 +918,7 @@ check expansion-trial "93962:2@1639,1@4210;97902:1@1235" "tank_cross maps/scn28b
 # (`bInWater`). Prints each tile a walk ended on with the set chosen there and the change of mode,
 # for 1200 steps.
 water_mode() { # water_mode <map> <animal>
-  rz sim "$1" --ticks 1200 --seed 1 --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 1200 --seed 1 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
     $5 == a && / unit tile /{ t = $6 }
     $5 == a && / unit goal [0-9]+ none /{ ended = t }
@@ -933,7 +935,7 @@ check expansion-trial ";28,34:bWalk;mode1@615;28,28:bInWater" "water_mode maps/s
 tank_over() { # tank_over <map> <ray>
   d=$(mktemp -d)
   for y in 44 45 46 47 48 49 50 51; do printf '0 food 30,%s herbchow\n' "$y"; done >"$d/script"
-  rz sim "$1" --ticks 6000 --seed 1 --script "$d/script" --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 6000 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / unit tile /{ split($6, p, ","); x = p[1] }
     $5 == a && / unit depth / && x == 30 { n++; if (low == "" || $6 < low) low = $6; if (!first) first = $2 }
     END{ print n + 0 ";" low ";" first }'
@@ -962,7 +964,7 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
-  once() { rz sim "$1" --ticks 6000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  once() { rz sim "$1" --ticks 6000 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
@@ -983,7 +985,7 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 4500
-  rz sim "$1" --ticks 4500 --dt 200 --seed 2 --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  rz sim "$1" --ticks 4500 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
 check expansion-trial "egg@3791;eggs:3;hatch@4477" "egg_clutch maps/scn19.zoo 51757 51758 53931"

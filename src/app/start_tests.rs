@@ -488,6 +488,7 @@ fn only_the_first_fade_waits_and_a_freeform_start_counts_one_update_of_the_wait(
             freeform: true,
             cash: Default::default(),
             reset: false,
+            reset_fences: false,
         };
         app.begin(&start);
         let steps: Vec<u64> = (1..8)

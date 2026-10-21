@@ -132,6 +132,37 @@ fn run_state(run: &Run) -> (i32, u32, u32) {
     (f.life, f.strength, f.timers[1])
 }
 
+/// The run of a version 55 file whose piece is stored worn: strength 9, life 1, timers 5 and 6.
+fn stored(version: u32) -> Run {
+    let mut world = world("f");
+    world.zoo.version = version;
+    let piece = world.zoo.entities[0].common.as_mut().unwrap();
+    piece.fence = Some(crate::zoo::Fence {
+        strength: 9,
+        life: 1,
+        timers: [5, 6],
+        portal: false,
+    });
+    run(types(WEARING), world, 1)
+}
+
+#[test]
+fn a_piece_of_a_file_from_version_55_keeps_its_condition_until_a_map_asks_for_a_reset() {
+    let mut kept = stored(55);
+    assert_eq!((fence(&kept).strength, fence(&kept).life), (9, 1));
+    assert_eq!(fence(&kept).timers, [5, 6]);
+    // A start whose map file has `resetfences` heals it and draws its interval.
+    let cat = types(WEARING);
+    let mut money = Money::default();
+    kept.sim.new_game(&mut kept.world, &cat, &mut money, true);
+    let healed = fence(&kept);
+    assert_eq!((healed.strength, healed.life), (300, 3));
+    assert_eq!(healed.timers[0], healed.timers[1]);
+    // A file of version 54 is healed at load, a file of 55 is not.
+    assert_eq!(fence(&stored(54)).life, 3);
+    assert_eq!(fence(&stored(54)).timers, [1003; 2]);
+}
+
 #[test]
 fn the_start_of_a_game_logs_the_healthy_pieces_that_wear() {
     // The wear steps of the same run are logged by the step.

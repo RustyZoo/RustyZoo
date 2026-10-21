@@ -13,7 +13,7 @@ use crate::place::bulldozer::type_of;
 use crate::place::{LIFE, STRENGTH};
 use crate::sim::TASK_CHANNEL;
 use crate::vfs::Vfs;
-use crate::zoo::Event;
+use crate::zoo::{Event, Fence};
 
 /// The events a worn piece posts (placing 7.4): decayed, and broken (an urgent task).
 const DECAYED: u16 = 10033;
@@ -104,6 +104,11 @@ impl World {
             .is_some_and(|(l, ty)| i64::from(l) <= limit(ty))
     }
 
+    /// Whether the entity at `at` is a fence piece or a tank wall (the class of 6.7 of the zoo format).
+    pub fn is_fence(&self, at: usize) -> bool {
+        matches!(&*self.zoo.entities[at].class, "fences" | "tankwall")
+    }
+
     /// Makes the fence piece with this id healthy (placing 7.4): the strength and life of its
     /// type, a new interval drawn with `rand`, and the countdown starting equal to it. It is a
     /// state change of the fence (`fence_changed`: the escape check flag beside a bashing species).
@@ -114,7 +119,19 @@ impl World {
         let ty = type_of(cat, &self.zoo.entities[at])?;
         let strength = number(ty, "cStrength").unwrap_or(STRENGTH) as u32;
         let life = number(ty, "cLife").unwrap_or(LIFE) as i32;
-        let fence = self.zoo.entities[at].common.as_mut()?.fence.as_mut()?;
+        let piece = self.is_fence(at);
+        let common = self.zoo.entities[at].common.as_mut()?;
+        // A piece of a file older than version 55 has no condition yet.
+        let fence = match (&mut common.fence, piece) {
+            (Some(f), _) => f,
+            (none, true) => none.insert(Fence {
+                strength,
+                life,
+                timers: [0; 2],
+                portal: false,
+            }),
+            _ => return None,
+        };
         let interval = self.decay.interval(rand());
         (fence.strength, fence.life, fence.timers) = (strength, life, [interval; 2]);
         self.dirty = true;

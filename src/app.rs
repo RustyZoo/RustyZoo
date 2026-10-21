@@ -636,10 +636,10 @@ impl<'a> App<'a> {
             reset_interval: self.sim.ai.animal_reset_interval,
             ..crate::animal::Class::load(self.renderer.vfs())
         };
+        world.set_decay(crate::world::Decay::load(self.renderer.vfs()));
         self.sim.load(&mut world, self.renderer.catalogue());
         self.sim.fences_loaded(&world, self.renderer.catalogue());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
-        world.set_decay(crate::world::Decay::load(self.renderer.vfs()));
         let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
         // outside 1 to 5 leaves the default.
@@ -1639,7 +1639,8 @@ impl<'a> App<'a> {
             if start.forget_last {
                 // A scenario or freeform map is a new game: the set-up rating check.
                 let cat = self.renderer.catalogue();
-                self.sim.new_game(&mut game.world, cat, &mut game.money);
+                self.sim
+                    .new_game(&mut game.world, cat, &mut game.money, start.reset_fences);
             }
             for (name, amount) in [("set", start.cash.set), ("add", start.cash.add)] {
                 if let Some(amount) = amount {

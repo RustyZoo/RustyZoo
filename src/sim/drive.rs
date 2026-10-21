@@ -171,13 +171,26 @@ pub struct Run {
 impl Run {
     /// Starts the game as the window's does, from a generator seeded with `seed` (a test run),
     /// with the types `cat`, the keys `class` of the animals' class and the economy file. It is
-    /// a new game: the set-up rating check runs.
+    /// a new game: the set-up rating check runs, and the fence pieces stay as the file stores them.
     pub fn new(
+        files: (&[u8], &[u8]),
+        types: (Catalogue, Class),
+        world: World,
+        money: Money,
+        seed: u32,
+    ) -> Run {
+        Run::start(files, types, world, money, seed, false)
+    }
+
+    /// The same, a start whose map file has `resetfences` above 0 when `fences` is set: every fence
+    /// piece is made healthy first (placing 7.4).
+    pub fn start(
         (ini, economy): (&[u8], &[u8]),
         (cat, class): (Catalogue, Class),
         mut world: World,
         mut money: Money,
         seed: u32,
+        fences: bool,
     ) -> Run {
         let mut sim = Sim::new(ini);
         sim.set_seed(seed);
@@ -189,7 +202,7 @@ impl Run {
             ..class
         };
         sim.load(&mut world, &cat);
-        sim.new_game(&mut world, &cat, &mut money);
+        sim.new_game(&mut world, &cat, &mut money, fences);
         Run {
             cat,
             sim,

@@ -282,21 +282,33 @@ impl Sim {
         }
     }
 
-    /// A new game (not a saved one) has just been set up: every fence piece is made healthy and
-    /// draws its wear interval (placing 7.4), the timers and the donation counter start again and
-    /// the rating check of the set-up runs, with no cash, the built-in settings and every research
-    /// program counted as done (zoo status 6.4).
-    pub fn new_game(&mut self, world: &mut World, cat: &Catalogue, money: &mut Money) {
-        for at in 0..world.zoo.entities.len() {
-            let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
-                continue;
-            };
-            let Some(interval) = world.heal(cat, id, &mut || self.rng.rand()) else {
-                continue;
-            };
-            if world.wears(cat, at) {
-                self.lines.push(format!("fence {id} healthy {interval}"));
-            }
+    /// Makes the fence piece at `at` healthy and draws its wear interval (placing 7.4); a line
+    /// tells of a piece that wears.
+    fn heal(&mut self, world: &mut World, cat: &Catalogue, at: usize) {
+        let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
+            return;
+        };
+        if let Some(interval) = world.heal(cat, id, &mut || self.rng.rand())
+            && world.wears(cat, at)
+        {
+            self.lines.push(format!("fence {id} healthy {interval}"));
+        }
+    }
+
+    /// A new game (not a saved one) has just been set up: with `fences` (the map file's
+    /// `resetfences` above 0) every fence piece is made healthy and draws its wear interval,
+    /// otherwise the pieces stay as the map stores them (placing 7.4); the timers and the donation
+    /// counter start again and the rating check of the set-up runs, with no cash, the built-in
+    /// settings and every research program counted as done (zoo status 6.4).
+    pub fn new_game(
+        &mut self,
+        world: &mut World,
+        cat: &Catalogue,
+        money: &mut Money,
+        fences: bool,
+    ) {
+        for at in (0..world.zoo.entities.len()).filter(|_| fences) {
+            self.heal(world, cat, at);
         }
         self.status.timers = [0; 3];
         self.status.given = 0.0;
@@ -308,10 +320,15 @@ impl Sim {
 
     /// Creates the animals of the map just loaded (animals 3.5) and its guests (guests 5.2, zoo
     /// format 6.12) with their saved state, in file order, with the types of `cat` and the class keys in
-    /// `world.units.class`. The draws come before every draw of the first step.
+    /// `world.units.class`. The fence pieces of a file older than version 55 have no condition:
+    /// they are made healthy (placing 7.4). The draws come before every draw of the first step.
     pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
         let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
+        let old = world.zoo.version < 55;
         for at in 0..world.zoo.entities.len() {
+            if old && world.is_fence(at) {
+                self.heal(world, cat, at);
+            }
             crate::animal::load(world, cat, &mut self.rng, at);
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
         }

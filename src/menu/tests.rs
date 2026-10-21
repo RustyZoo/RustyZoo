@@ -434,6 +434,7 @@ fn continue_asks_for_the_last_file_and_tells_the_player_when_it_is_gone() {
             freeform: false,
             cash: Default::default(),
             reset: false,
+            reset_fences: false,
         }))
     );
     assert_eq!(menu.take_request(), None, "once");

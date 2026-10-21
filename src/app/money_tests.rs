@@ -283,6 +283,7 @@ fn start(cash: StartCash, reset: bool) -> Start {
         freeform: false,
         cash,
         reset,
+        reset_fences: false,
     }
 }
 

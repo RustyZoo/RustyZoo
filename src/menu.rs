@@ -101,6 +101,8 @@ pub struct Start {
     /// The cash the game starts with, and whether its accounts are cleared first.
     pub cash: StartCash,
     pub reset: bool,
+    /// Whether every fence piece is made healthy at the start: `resetfences` above 0 (8.3).
+    pub reset_fences: bool,
 }
 
 /// What a button asks of the game.
@@ -298,6 +300,7 @@ impl Menu {
                 freeform: false,
                 cash: StartCash::default(),
                 reset: false,
+                reset_fences: false,
             }),
             None => Request::Message(ui.string(CANNOT_OPEN)),
         });
