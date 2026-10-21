@@ -1968,7 +1968,7 @@ impl<'a> App<'a> {
 
     /// The sounds the interface, the placing of objects and the animals' reactions to a change
     /// of their exhibit asked for in the last pass, by file name without the extension
-    /// (`uiclick`, `place`, `noplace`, `smile`, `frown`, `sounds/uiclick.wav`): the shell plays
+    /// (`uiclick`, `place`, `noplace`, `smile`, `frown`, `exhibit`, `sounds/uiclick.wav`): the shell plays
     /// them.
     pub fn sounds(&self) -> &[&'static str] {
         &self.ui_sounds

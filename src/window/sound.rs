@@ -57,11 +57,13 @@ fn use_8_bit(ini: &Config) -> bool {
 }
 
 /// The base term `B` of an interface sound: 1,200 for the smile and 1,000 for the frown of an
-/// exhibit's animals, 0 for the others (sound 4.4, 7).
+/// exhibit's animals, 100 for the completed exhibit (the key `completedExhibitAttenuation` is
+/// read and dropped by the original, sound 4.4), 0 for the others (sound 4.4, 7).
 fn base(name: &str) -> i32 {
     match name {
         "smile" => 1200,
         "frown" => 1000,
+        "exhibit" => 100,
         _ => 0,
     }
 }
