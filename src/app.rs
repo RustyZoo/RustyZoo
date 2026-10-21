@@ -23,6 +23,7 @@ use crate::behaviour::{Library, Timings};
 use crate::build::terrain::{MINUS, PLUS};
 use crate::build::{BULLDOZER, Build};
 use crate::camera::{Camera, Settings, zoom_view};
+use crate::exhibit::rating;
 use crate::menu::{Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
@@ -1407,6 +1408,11 @@ impl<'a> App<'a> {
             };
             let water = &game.water;
             let colors = renderer.default_colors(ty);
+            // The animals of the exhibit react to an object (habitat rating 9.4).
+            let before = match fence {
+                true => Vec::new(),
+                false => rating::before(&game.world, cat, at.as_slice()),
+            };
             let outcome = place::place(
                 &mut game.world,
                 &mut game.money,
@@ -1416,6 +1422,11 @@ impl<'a> App<'a> {
                 colors,
                 |e| renderer.shape(e),
             );
+            if let Outcome::Placed(_) = outcome {
+                let (habitat, name) = rating::object(ty);
+                let rand = &mut || self.sim.rng.rand();
+                rating::react(&mut game.world, cat, before, Some((habitat, name, 1)), rand);
+            }
             match outcome {
                 Outcome::Placed(id) => {
                     // A new or replaced fence piece is healthy and draws its wear interval.

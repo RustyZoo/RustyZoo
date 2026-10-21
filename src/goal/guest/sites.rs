@@ -80,7 +80,7 @@ impl Cx<'_, '_> {
             let loved = beasts
                 .iter()
                 .any(|b| b.exhibit == x && Some(b.name) == favourite);
-            let a = view::attractiveness(self.world, self.ctx.cat, x);
+            let a = view::attractiveness(self.world, self.ctx.cat, x, self.ctx.rng);
             let score = site_score(a, loved, d);
             if score > -1 && best.is_none_or(|(s, _)| score > s) {
                 best = Some((score, x));
@@ -181,7 +181,8 @@ impl Cx<'_, '_> {
             Some((time, n)) => time.saturating_add(rng.pick(n) as i32),
             None => fallback,
         };
-        let attractiveness = view::attractiveness(self.world, self.ctx.cat, s.exhibit);
+        let attractiveness =
+            view::attractiveness(self.world, self.ctx.cat, s.exhibit, self.ctx.rng);
         let more = [20, 50, 90, 150, 200]
             .iter()
             .take_while(|&&limit| attractiveness >= limit)

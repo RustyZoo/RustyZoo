@@ -6,8 +6,7 @@
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
-# rocks and plants cost points) and want 70; with these they rate it 91. The rays' happiness is left
-# out until the rating of tanks is complete (issue 325).
+# rocks and plants cost points) and want 70; with these they rate it 91.
 # The seed 5 draws women for the three hires (the staff of the trials are women only, and the Hire
 # list is empty when a man is drawn) when the game starts on its map; a game started from the main
 # menu draws a man for the second hire.
@@ -22,7 +21,6 @@
 #expect 1 unit add [0-9]+ guide
 #expect 1 exhibit tank [0-9]+
 #expect 1 world filter [0-9]+
-#pending happiness 325
 2 pause
 # construction panel, fence tab: tank walls round a tank of 6 x 6 tiles at 16..21, 35..40
 3 mouse 25 34

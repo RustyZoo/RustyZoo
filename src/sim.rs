@@ -14,7 +14,9 @@
 //!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
 //! step, `sim month M Y` when a step acts on the month flag of the one before, and the zoo
-//! status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`, and at a month end the
+//! status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`, `sim rate ID [KEY SHOWN]...`
+//! when exhibit `ID` is rated at its update (habitat rating 4), with the suitability its record of
+//! each species gives, and at a month end the
 //! `sim wages ID AMOUNT` of each staff member and `sim upkeep AMOUNT` of the buildings ([`crate::month`]).
 
 pub mod drive;
@@ -421,6 +423,8 @@ impl Sim {
                 .wrapping_add(self.ai.clear_unreachable_freq as u32);
         }
         world.units.finder.tick(u64::from(self.ai_ticks));
+        // Each animal's update ages its reactions (animals 10).
+        world.units.fade(step);
         for id in std::mem::take(&mut self.removals) {
             world.unrecorded(|w| w.remove(id));
         }
@@ -489,8 +493,16 @@ impl Sim {
             let id = world.exhibits().list()[at].id;
             let mut state = std::mem::take(&mut world.exhibits_mut().list_mut()[at].rating);
             let rand = &mut || self.rng.rand();
-            state.update(step, rand, || rating::input(world, cat, id));
+            let rated = state.update(step, rand, || rating::input(world, cat, id));
+            let shown: Vec<String> = (state.records.iter())
+                .filter(|_| rated)
+                .map(|r| format!(" {} {}", r.key, r.shown()))
+                .collect();
             world.exhibits_mut().list_mut()[at].rating = state;
+            if rated {
+                rating::finish(world, cat, id, &mut || self.rng.rand());
+                self.lines.push(format!("rate {id}{}", shown.concat()));
+            }
         }
         let water_moved = world.step_water();
         world.decay_water(step);

@@ -557,7 +557,9 @@ fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
         let mut r = Rng::default();
         r.rand();
         r.pick(order.len() as u32);
-        // The duration of the gawk (5.3) follows.
+        // The duration of the gawk (5.3) follows; reading the attractiveness rates the exhibit
+        // just made, whose reachability test draws its target (habitat rating 5.8).
+        r.rand();
         r.rand();
         r.rand();
         r.state()

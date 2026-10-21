@@ -422,6 +422,54 @@ fn a_repair_with_a_modifier_mends_the_lines_beside_too() {
     }
 }
 
+#[test]
+fn a_piece_made_healthy_by_a_worker_sets_the_escape_flag_decayed_or_not() {
+    use crate::unit::testing::amphibious_world;
+    // The amphibious world with a bear that bashes in the tank. The decayed piece on the north edge
+    // of the land exhibit is mended by a worker inside it and, with the modifier, the wall it shares
+    // with the tank, which borders the tank only: sound or decayed, it sets the tank's flag.
+    let mut g = Game::new("cFixFenceModifier=1");
+    g.w = amphibious_world(2, &[(5, "bear", (3, 3))]);
+    let bear = "[Characteristics/Integers]\ncBashStrength=1\n";
+    g.cat.push(ty("animals", "bear", "", bear));
+    let wall = "[Characteristics/Integers]\ncLife=5\n";
+    g.cat.push(ty("tankwall", "iron", "f", wall));
+    let fence =
+        "[Characteristics/Integers]\ncStrength=300\ncLife=5\ncDecayedLife=2\ncDecayDelta=100\n";
+    g.cat.push(ty("fences", "iron", "f", fence));
+    g.w.set_decay(Decay {
+        min: 600_000,
+        max: 600_000,
+    });
+    let worker = entity("maint", "maint", 0, centre((8, 3)), 2);
+    g.w.add(worker, None).unwrap();
+    g.w.zoo
+        .entities
+        .iter_mut()
+        .filter(|e| e.class == "maint")
+        .for_each(|e| e.subtype = "m".into());
+    let tank = g.w.exhibits().region(2 * 12 + 2).unwrap();
+    g.run(2);
+    assert!(g.w.exhibits().get(tank).unwrap().rating.bash);
+    for life in [5, 2] {
+        for id in [1062, 1054] {
+            let at = g.w.find(id).unwrap();
+            g.w.zoo.entities[at].subtype = "f".into();
+            g.w.heal(&g.cat, id, &mut || 0);
+            g.piece(id).life = if id == 1062 { 2 } else { life };
+        }
+        g.log.clear();
+        g.sim.events.post(piece_event(1062, 10033, 2 * 12 + 6));
+        let mut seen = false;
+        for _ in 0..1000 {
+            g.run(1);
+            seen |= g.w.exhibits().get(tank).unwrap().rating.escape;
+        }
+        assert_eq!(g.lines(&["world fence"]).len(), 2, "life {life}");
+        assert!(seen, "life {life}");
+    }
+}
+
 /// A tank filter on (10, 5) facing the tile beside it with this health; its type and the shape of
 /// a one-tile object. Its events are due at the first step.
 fn filter(g: &mut Game, health: u32, urgent: bool) -> u32 {

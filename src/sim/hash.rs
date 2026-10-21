@@ -245,6 +245,14 @@ impl Fnv {
         self.option(s.keeper);
         self.u64(s.serviced);
         self.u32(s.coming);
+        self.put(&[u8::from(s.escape), u8::from(s.bash)]);
+        self.len(s.counts.0);
+        self.len(s.counts.1);
+        self.len(s.escapes.len());
+        for (name, tile) in &s.escapes {
+            self.text(name);
+            self.u64(*tile as u64);
+        }
     }
 
     fn money(&mut self, m: &Money) {
@@ -339,6 +347,7 @@ pub fn state(sim: &Sim, world: &World, money: &Money) -> u64 {
     }
     h.u32(world.exhibits().next);
     h.u32(world.exhibits().counter);
+    h.u32(world.exhibits().tests);
     h.money(money);
     h.sim(sim);
     h.finish()

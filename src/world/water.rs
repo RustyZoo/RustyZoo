@@ -38,17 +38,22 @@ impl World {
         }
         let (now, changed) = (*tank, *tank != before);
         if changed {
-            if reset && let Some(x) = self.exhibits.get_mut(id) {
-                x.rating.dirty = true;
-            }
             let (level, purity) = (now.level, now.purity);
             self.units
                 .world_note(format!("water {id} level {level} purity {purity}"));
             self.events.push(super::Event::Tank(id));
             self.sync_tanks();
-            // The top of the walls moved: the links (tank fauna 12.2).
+            // The top of the walls moved: the links (tank fauna 12.2) and the escape check flag;
+            // a filled tank with a gate is rated again (habitat rating 4, 5.8). The water level
+            // and the purity mark nothing.
             if now.height != before.height {
                 self.relink();
+                if let Some(e) = self.exhibits.get_mut(id) {
+                    e.rating.escape = true;
+                    if now.filled && e.gate.is_some() {
+                        self.exhibits.mark(id);
+                    }
+                }
             }
         }
     }
