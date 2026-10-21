@@ -799,6 +799,35 @@ guest_panel() { # guest_panel <map>
 }
 check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_long_time"_favourite_"Polar_Bear"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
 
+# The building panel (information panels 4.1, guest buildings 7.2, 10.3): the game paused, the Objects
+# panel's second item (a burger stand, 3.50 within 1.00 and 6.50) is placed and clicked, then the up
+# button is pressed 14 times and the down button 30 times. Prints the number of changes the price
+# logged and the last price of each run (the bounds hold: 12 steps up to 6.50, 22 down to 1.00) and
+# the last `panel building` line (spaces as underscores, the id left out).
+building_panel() { # building_panel <map>
+  d=$(mktemp -d)
+  printf '2 pause\n75 mouse 25 129\n76 down\n77 up\n79 mouse 140 120\n80 down\n81 up\n82 mouse 864 256\n84 down\n85 up\n86 key escape\n90 mouse 864 256\n91 down\n92 up\n94 mouse 956 572\n' >"$d/script"
+  for i in $(seq 0 13); do printf '%d down\n%d up\n' $((95 + 2 * i)) $((96 + 2 * i)) >>"$d/script"; done
+  printf '125 mouse 956 586\n' >>"$d/script"
+  for i in $(seq 0 29); do printf '%d down\n%d up\n' $((126 + 2 * i)) $((127 + 2 * i)) >>"$d/script"; done
+  rz run "$1" --headless --cash 75000 --seed 5 --passes 190 --clock 200 --script "$d/script" 2>/dev/null |
+    awk '/ building price /{ if ($2 < 125) { u++; up = $7 } else { d++; down = $7 } }
+         / panel building /{ l = $0; sub(/^.* panel building [0-9]+ /, "", l) }
+         END{ printf "%s:%s;%s:%s;%s\n", u, up, d, down, l }' | tr ' ' _
+  rm -rf "${d:?}"
+}
+check base-trial '12:6.50;22:1.00;"Burger_Stand"_price_$1.00_income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_guests_last_0_this_0_total_0_sells_["burger"]' "building_panel maps/default.zoo"
+
+# The panel of a building that charges nothing: the third item (a family restroom) is placed and clicked.
+building_plain() { # building_plain <map>
+  d=$(mktemp -d)
+  printf '2 pause\n75 mouse 25 129\n76 down\n77 up\n79 mouse 140 160\n80 down\n81 up\n82 mouse 864 256\n84 down\n85 up\n86 key escape\n90 mouse 864 256\n91 down\n92 up\n' >"$d/script"
+  rz run "$1" --headless --cash 75000 --seed 5 --passes 100 --clock 200 --script "$d/script" 2>/dev/null |
+    sed -n 's/^.* panel building [0-9]* //p' | tr ' ' _
+  rm -rf "${d:?}"
+}
+check base-trial '"Family_Restroom"_guests_last_0_this_0_total_0_months_1' "building_plain maps/default.zoo"
+
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
 scenario_guest_panel() {

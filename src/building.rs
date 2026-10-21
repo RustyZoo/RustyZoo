@@ -4,15 +4,18 @@
 //! The goals of the guests that use them are [`crate::goal`]'s; a shelter for animals (guest
 //! buildings 12.1) uses the same users and slots.
 //!
-//! Only the buildings that have had a user or a month change have a live entry; a missing one is
-//! a building at its default price with no users. A trash can counts the litter its users put in
+//! Only the buildings that have been built in play, had a user, a month change or a price change
+//! have a live entry; a missing one (a building of a loaded zoo) is a building at its default
+//! price with no users. A trash can counts the litter its users put in
 //! ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can spills it).
-//! Left for later issues: the random use animation and the sounds, the building panel, users
+//! The panels that set the price and show the figures are [`crate::panel::building`]'s.
+//! Left for later issues: the random use animation and the sounds, users
 //! pushed out of a building that is moved or removed, the slot filters of a user type,
 //! `cUseRandomSlot`.
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
-//! `building buy <id> <item> <price>` when it buys an item.
+//! `building buy <id> <item> <price>` when it buys an item, and `building price <id> <price>` when
+//! the player sets the price in the panel.
 
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
@@ -29,6 +32,8 @@ pub struct Prices {
     pub expensive: f32,
     pub cheap: f32,
     pub default: f32,
+    /// The ceiling of a price set in the panel (`cBuildingUseCostMax`).
+    pub max: f32,
 }
 
 impl Default for Prices {
@@ -37,6 +42,7 @@ impl Default for Prices {
             expensive: 1.2,
             cheap: 0.8,
             default: 29.0,
+            max: 100.0,
         }
     }
 }
@@ -61,6 +67,9 @@ impl Prices {
     }
 }
 
+/// What one press of the panel's up or down button moves the price by.
+const STEP: f32 = 0.25;
+
 /// A point in world units: 64 to a tile.
 pub type Point = (i32, i32);
 
@@ -81,7 +90,14 @@ pub struct Kind {
     pub time_inside: i32,
     pub commerce: bool,
     pub price: f32,
+    /// The bounds the panel keeps the price between (`cLowCost`, `cHighCost`; guest buildings 7.2).
+    pub low: f32,
+    pub high: f32,
     pub factor: f32,
+    /// The panel's price field is read only (`cHideCostChange`).
+    pub fixed_price: bool,
+    /// The panel leaves its money figures and counts empty (`cHideCommerceInfo`).
+    pub hide_info: bool,
     /// The change record given at leaving (guests 5.4).
     pub change: [i32; 6],
     pub hide: bool,
@@ -148,7 +164,11 @@ impl Kind {
             time_inside: int("cTimeInside", 0),
             commerce: flag("cCommerce", false),
             price: float("cDefaultCost", default),
+            low: float("cLowCost", 1.0),
+            high: float("cHighCost", 1.0),
             factor: float("cPriceFactor", 1.0),
+            fixed_price: flag("cHideCostChange", false),
+            hide_info: flag("cHideCommerceInfo", false),
             change: [
                 "cAdultChange",
                 "cChildChange",
@@ -177,6 +197,27 @@ impl Kind {
     pub fn satisfies(&self, need: &str) -> bool {
         self.satisfies.iter().any(|n| n == need)
     }
+
+    /// The price after the up button (guest buildings 7.2): 0.25 more, within the economy's
+    /// ceiling and the type's.
+    pub fn raised(&self, price: f32, max: f32) -> f32 {
+        (price + STEP).min(max).min(self.high)
+    }
+
+    /// The price after the down button: 0.25 less, not below 0 or the type's floor.
+    pub fn lowered(&self, price: f32) -> f32 {
+        (price - STEP).max(0.0).max(self.low)
+    }
+
+    /// Whether the up button is enabled at this price.
+    pub fn can_raise(&self, price: f32, max: f32) -> bool {
+        !(self.high != 0.0 && price >= self.high || price >= max)
+    }
+
+    /// Whether the down button is enabled at this price.
+    pub fn can_lower(&self, price: f32) -> bool {
+        !(self.low != 0.0 && price <= self.low || price <= 0.0)
+    }
 }
 
 /// A user of a building: the unit, the slot it uses and the AI clock when it entered.
@@ -194,6 +235,9 @@ pub struct Live {
     pub guests: [u32; 3],
     pub income: [f32; 3],
     pub upkeep: f32,
+    /// The calendar time the building was built at (ms of game time); 0 for one that was there
+    /// when the zoo was loaded.
+    pub built: u64,
 }
 
 impl Live {
@@ -210,6 +254,37 @@ impl Live {
         self.income[1] = std::mem::take(&mut self.income[0]);
         self.upkeep += upkeep;
     }
+}
+
+/// Building `id` of type `ty` was built at calendar time `now` (ms of game time): a guest
+/// building starts its live state, with the date its months open are counted from (guest
+/// buildings 4).
+pub fn built(world: &mut World, ty: &EntityType, id: u32, now: u64) {
+    if crate::month::is_guest_building(ty) {
+        let live = Live::new(&Kind::of(ty, world.units.prices.default));
+        world
+            .units
+            .buildings
+            .insert(id, Live { built: now, ..live });
+    }
+}
+
+/// Sets the price of building `id` of type `ty` to what `new` makes of the type and the price it
+/// has (guest buildings 7.2): the guests that come later pay it, nothing is booked. Returns the
+/// new price when it is another.
+pub fn set_price(
+    world: &mut World,
+    ty: &EntityType,
+    id: u32,
+    new: impl FnOnce(&Kind, f32) -> f32,
+) -> Option<f32> {
+    let kind = Kind::of(ty, world.units.prices.default);
+    let live = (world.units.buildings.entry(id)).or_insert_with(|| Live::new(&kind));
+    let price = new(&kind, live.price);
+    (price != live.price).then(|| {
+        live.price = price;
+        price
+    })
 }
 
 /// Sets the pieces trash can `id` holds. Its picture follows the count (guest buildings 8): the

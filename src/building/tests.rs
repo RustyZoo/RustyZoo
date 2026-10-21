@@ -65,6 +65,7 @@ fn a_price_is_expensive_from_twice_the_default_and_cheap_to_half_of_it() {
         expensive: 2.0,
         cheap: 0.5,
         default: 3.0,
+        ..Prices::default()
     };
     for (price, mood) in [
         (4.0, Mood::Angry),
@@ -117,4 +118,63 @@ fn slot_places_and_facings_turn_with_the_building_as_the_original() {
     }
     b.common.as_mut().unwrap().rotation = 4;
     assert_eq!(facing(&b, 7), 3);
+}
+
+fn kind(low: f32, high: f32) -> Kind {
+    Kind {
+        low,
+        high,
+        ..Kind::of(&ty("[Characteristics/Integers]\ncCommerce = 1\n"), 3.0)
+    }
+}
+
+#[test]
+fn the_price_steps_by_a_quarter_within_the_economy_and_the_type() {
+    // The burger stand: 1.00 to 6.50 (guest buildings 7.2), the shipped ceiling 30.
+    let k = kind(1.0, 6.5);
+    assert_eq!(k.raised(3.5, 30.0), 3.75);
+    assert_eq!(k.lowered(3.5), 3.25);
+    assert_eq!((k.raised(6.5, 30.0), k.lowered(1.0)), (6.5, 1.0));
+    assert_eq!((k.raised(6.4, 30.0), k.lowered(1.1)), (6.5, 1.0));
+    assert!(k.can_raise(6.25, 30.0) && !k.can_raise(6.5, 30.0));
+    assert!(k.can_lower(1.25) && !k.can_lower(1.0));
+    // The economy's ceiling comes first.
+    assert_eq!(k.raised(3.5, 3.5), 3.5);
+    assert!(!k.can_raise(3.5, 3.5));
+    // A type with no floor still stops at 0.
+    let free = kind(0.0, 6.5);
+    assert_eq!(free.lowered(0.1), 0.0);
+    assert!(free.can_lower(0.25) && !free.can_lower(0.0));
+    // A type with no ceiling can be raised up to the economy's.
+    assert!(kind(1.0, 0.0).can_raise(29.0, 30.0));
+    // Odd prices and limits never panic: a negative ceiling, a price that is not a number, huge.
+    for price in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -5.0, f32::MAX] {
+        for max in [-1.0, 0.0, f32::MAX] {
+            k.raised(price, max);
+            k.can_raise(price, max);
+        }
+        k.lowered(price);
+        k.can_lower(price);
+    }
+}
+
+#[test]
+fn a_price_set_in_the_panel_is_the_live_price_of_the_building() {
+    let ty = ty(
+        "[Characteristics/Integers]\ncCommerce = 1\n[Characteristics/Floats]\ncDefaultCost = 3.5\ncLowCost = 1\ncHighCost = 6.5\n",
+    );
+    let mut w = world_with((4, 4), |_| {});
+    // A building that never had a guest starts at its default price and is changed from there.
+    assert_eq!(
+        set_price(&mut w, &ty, 7, |k, p| k.raised(p, 30.0)),
+        Some(3.75)
+    );
+    assert_eq!(w.units.buildings[&7].price, 3.75);
+    // The bound keeps the price, which is no change.
+    assert_eq!(
+        set_price(&mut w, &ty, 7, |k, _| k.raised(6.5, 30.0)),
+        Some(6.5)
+    );
+    assert_eq!(set_price(&mut w, &ty, 7, |k, p| k.raised(p, 30.0)), None);
+    assert_eq!(w.units.buildings[&7].price, 6.5);
 }
