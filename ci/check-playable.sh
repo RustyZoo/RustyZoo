@@ -184,11 +184,12 @@ else
   elif [ -z "$hungry" ]; then ok "animals: all $n fed"; else fail "animals: never ate:$hungry"; fi
   # Happiness above the start value of the animal (its first status line; the species differ) at some
   # time of the run; the exhibit of the base trial has no raked dung (its keeper has no cDirt), so it
-  # falls later. Only the animals added before the first month change count: a young born during the
-  # run starts at 100 and cannot rise above it.
+  # falls later. The young (the ids of the `animal birth FATHER ID ...` lines) are left out: a young
+  # born during the run starts at 100 and cannot rise above it.
   if pending happiness; then :; else
     flat="" up=""
-    adopted=$(awk '$4 == "sim" && $5 == "month" { exit } $4 == "unit" && $5 == "add" && $7 == "animal" { print $6 }' "$tmp/log" | tr '\n' ' ')
+    adopted=$(awk '$4 == "animal" && $5 == "birth" { young[$7] } $4 == "unit" && $5 == "add" && $7 == "animal" { all[++n] = $6 }
+      END { for (i = 1; i <= n; i++) if (!(all[i] in young)) print all[i] }' "$tmp/log" | tr '\n' ' ')
     for a in $adopted; do
       h=$(awk -v id="$a" '$4 == "animal" && $5 == "status" && $6 == id { if (!seen++) first = $7; if ($7 > best) best = $7 }
         END { print first + 0, best + 0 }' "$tmp/log")
