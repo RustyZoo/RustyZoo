@@ -118,6 +118,7 @@ impl MapRenderer<'_> {
                 y: at.1,
                 piece: None,
                 grid: false,
+                lift: 0,
                 pic: Pic::Blended(anim, view, HALF),
             });
         }
@@ -242,6 +243,7 @@ impl MapRenderer<'_> {
                 y,
                 piece: None,
                 grid: false,
+                lift: 0,
                 pic: Pic::Anim(anim, view, palette, 0),
             });
         }
@@ -352,6 +354,7 @@ impl MapRenderer<'_> {
                     y,
                     piece: None,
                     grid: false,
+                    lift: 0,
                     pic: Pic::Anim(anim, view, palette, 0),
                 });
             }
@@ -403,6 +406,7 @@ impl MapRenderer<'_> {
             y,
             piece: None,
             grid: false,
+            lift: 0,
             pic: Pic::Anim(under, view, palette, 0),
         });
     }
@@ -446,6 +450,7 @@ impl MapRenderer<'_> {
             y,
             piece: None,
             grid: false,
+            lift: 0,
             pic: Pic::Blended(anim, view, blend),
         });
     }

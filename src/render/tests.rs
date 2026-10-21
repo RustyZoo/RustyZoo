@@ -866,20 +866,22 @@ fn a_trash_can_shows_empty_up_to_12_pieces_and_half_from_13_and_never_full() {
     }
 }
 
-/// An install with three guest types (`small`, `mid`, `big` by footprint, `small` with the height
-/// 10) whose pictures are one frame of height 1 with the offsets (8, 4) and the three marker
-/// pictures of one frame of height `marker` with its offsets at its middle.
+/// An install with four guest types (`small`, `mid`, `big` and `huge` by footprint, `small` with
+/// the height 10, faces offsets of 20 for `mid`, -5 for `big` and 99999999999 for `huge`) whose pictures are one frame of height 1 with the offsets
+/// (8, 4), the three marker pictures of one frame of height `marker` with its offsets at its
+/// middle, and the two faces of three frames of 125 ms.
 fn marker_install(name: &str, marker: u16) -> Install {
     use crate::sprite::tests::{sized, sprite_file};
-    let one_frame = |height: u16, (y, x): (u16, u16)| {
+    let record = |height: u16, (y, x): (u16, u16)| {
         let mut frame = Vec::new();
         for field in [height, 1, y, x, 0] {
             frame.extend(field.to_le_bytes());
         }
         // Each row covers its one pixel.
         frame.extend([1, 0, 1, 1].repeat(usize::from(height)));
-        sprite_file(None, 1, &[sized(&frame)])
+        sized(&frame)
     };
+    let one_frame = |height, offsets| sprite_file(None, 1, &[record(height, offsets)]);
     let (unit, selection) = (
         one_frame(1, (4, 8)),
         one_frame(marker, (marker / 2, marker / 2)),
@@ -889,20 +891,27 @@ fn marker_install(name: &str, marker: u16) -> Install {
     let mut members: Vec<(String, Vec<u8>)> = vec![
         (
             "guests.cfg".into(),
-            b"[guests]\nsmall = small.ai\nmid = mid.ai\nbig = big.ai\n".to_vec(),
+            b"[guests]\nsmall = small.ai\nmid = mid.ai\nbig = big.ai\nhuge = huge.ai\n".to_vec(),
         ),
         ("small.ai".into(), ai("cHeight = 10\n").into_bytes()),
         (
             "mid.ai".into(),
-            ai("cFootprintX = 2\ncFootprintY = 4\n").into_bytes(),
+            ai("cFootprintX = 2\ncFootprintY = 4\ncFacesYOffset = 20\n").into_bytes(),
         ),
-        ("big.ai".into(), ai("cFootprintX = 5\n").into_bytes()),
+        (
+            "big.ai".into(),
+            ai("cFootprintX = 5\ncFacesYOffset = -5\n").into_bytes(),
+        ),
+        (
+            "huge.ai".into(),
+            ai("cFootprintX = 5\ncFacesYOffset = 99999999999\n").into_bytes(),
+        ),
         (
             "animals/Lion/lion.pal".into(),
             palette_file(&[[255, 0, 255], [1, 2, 3]]),
         ),
     ];
-    for name in ["small", "mid", "big"] {
+    for name in ["small", "mid", "big", "huge"] {
         let dirs = format!("dir0 = guests\ndir1 = {name}\ndir2 = idle\n");
         members.push((format!("guests/{name}/idle/idle.ani"), ani(&dirs)));
         members.push((format!("guests/{name}/idle/N"), unit.clone()));
@@ -912,6 +921,13 @@ fn marker_install(name: &str, marker: u16) -> Install {
         members.push((format!("ui/select/{name}/{name}.ani"), ani(&dirs)));
         members.push((format!("ui/select/{name}/N"), selection.clone()));
     }
+    let face = record(1, (0, 0));
+    for name in ["smile", "frown"] {
+        let dirs = format!("dir0 = objects\ndir1 = {name}\ndir2 = idle\n");
+        members.push((format!("objects/{name}/idle/idle.ani"), ani(&dirs)));
+        let frames = sprite_file(None, 3, &[face.clone(), face.clone(), face.clone()]);
+        members.push((format!("objects/{name}/idle/N"), frames));
+    }
     let members: Vec<_> = members
         .iter()
         .map(|(n, d)| (n.as_str(), d.clone()))
@@ -919,29 +935,40 @@ fn marker_install(name: &str, marker: u16) -> Install {
     Install::new(name, &members)
 }
 
-/// The sprite members and anchors of the pictures of a zoo with one guest of type `ty`, whose id
-/// is 1, when `selected` carries the marker, and the number of pictures that pick an entity.
+/// The sprite members, anchors and frames of the pictures of a zoo with one guest of type `ty`,
+/// whose id is 1, with `extra`, and the number of pictures that pick an entity.
+fn extra_pics(
+    install: &Install,
+    ty: &str,
+    extra: &Extra,
+) -> (Vec<(String, i32, i32, usize)>, usize) {
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&tile_with(&[("guests", ty, "")]), 0, false, extra)
+        .unwrap();
+    let pics = (staged.placed.iter())
+        .filter_map(|(p, _)| match &p.pic {
+            Pic::Anim(anim, _, _, at) => Some((anim.set.files[0].clone(), p.x, p.y - p.lift, *at)),
+            _ => None,
+        })
+        .collect();
+    (pics, staged.hits.iter().flatten().count())
+}
+
+/// [`extra_pics`] without the frames, when `selected` carries the marker.
 fn marker_pics(
     install: &Install,
     ty: &str,
     selected: Option<u32>,
 ) -> (Vec<(String, i32, i32)>, usize) {
-    let vfs = Vfs::open(&install.0).unwrap();
-    let catalogue = Catalogue::load(&vfs).unwrap();
     let extra = Extra {
         selected,
         ..Extra::default()
     };
-    let staged = MapRenderer::new(&vfs, &catalogue)
-        .stage_with(&tile_with(&[("guests", ty, "")]), 0, false, &extra)
-        .unwrap();
-    let pics = (staged.placed.iter())
-        .filter_map(|(p, _)| match &p.pic {
-            Pic::Anim(anim, ..) => Some((anim.set.files[0].clone(), p.x, p.y)),
-            _ => None,
-        })
-        .collect();
-    (pics, staged.hits.iter().flatten().count())
+    let (pics, picks) = extra_pics(install, ty, &extra);
+    let pics = pics.into_iter().map(|(m, x, y, _)| (m, x, y)).collect();
+    (pics, picks)
 }
 
 #[test]
@@ -979,6 +1006,68 @@ fn the_marker_height_is_its_own_frame_height() {
     let (unit, marker) = (&pics[0], &pics[1]);
     assert_eq!(marker.2, unit.2 - 12);
     assert_eq!(marker.2 - 3 + 6, unit.2 - 4 - 5);
+}
+
+#[test]
+fn each_reaction_draws_its_face_over_its_unit_at_the_frame_of_its_age() {
+    let install = marker_install("render-faces", 1);
+    let faces = |ty: &str, faces: &[(u32, bool, u32)]| {
+        let extra = Extra {
+            faces: faces.to_vec(),
+            ..Extra::default()
+        };
+        extra_pics(&install, ty, &extra)
+    };
+    let (alone, picks) = faces("small", &[]);
+    let (x, y) = (alone[0].1, alone[0].2);
+    // Another unit's reaction draws nothing here.
+    assert_eq!(faces("small", &[(2, true, 0)]).0, alone);
+    // At the unit's anchor (no offset), a frame per 125 ms, held on the last one; not picked.
+    let (pics, n) = faces("small", &[(1, true, 0), (1, false, 250), (1, true, 1249)]);
+    let face = |m: &str, f| (format!("objects/{m}/idle/N"), x, y, f);
+    assert_eq!(
+        pics[1..],
+        [face("smile", 0), face("frown", 2), face("smile", 2)]
+    );
+    assert_eq!(n, picks);
+    // Up by the type's faces offset, after the marker.
+    let extra = Extra {
+        selected: Some(1),
+        faces: vec![(1, false, 124)],
+        ..Extra::default()
+    };
+    let pics = extra_pics(&install, "mid", &extra).0;
+    assert_eq!(pics.len(), 3);
+    assert_eq!(
+        pics[2],
+        ("objects/frown/idle/N".into(), pics[0].1, pics[0].2 - 20, 0)
+    );
+    // A negative offset puts it lower; a huge one is clamped, not a failure.
+    let pics = extra_pics(&install, "big", &extra).0;
+    assert_eq!(pics[2].2, pics[0].2 + 5);
+    let pics = extra_pics(&install, "huge", &extra).0;
+    assert_eq!(pics[2].2, pics[0].2.saturating_sub(i32::MAX));
+}
+
+#[test]
+fn the_faces_offset_is_in_pixels_of_the_zoom() {
+    let install = marker_install("render-faces-zoom", 1);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let extra = Extra {
+        faces: vec![(1, true, 0)],
+        ..Extra::default()
+    };
+    let staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&tile_with(&[("guests", "mid", "")]), 0, false, &extra)
+        .unwrap();
+    assert_eq!(staged.placed.len(), 2);
+    // The face rises by the offset (20) at every zoom, and is not scaled with the unit.
+    for zoom in [-2, 0, 2] {
+        let level = Zoom::from_value(zoom);
+        let [unit, face] = [0, 1].map(|i| staged.placed[i].0.anchor(0, zoom, level));
+        assert_eq!((unit.0, unit.1 - face.1), (face.0, 20), "zoom {zoom}");
+    }
 }
 
 /// A small deterministic pseudo-random sequence.

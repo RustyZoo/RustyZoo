@@ -151,6 +151,9 @@ pub struct Extra {
     pub hidden: Vec<u32>,
     /// The unit (id) that carries the selection marker (sprite drawing 9.2).
     pub selected: Option<u32>,
+    /// The animals' reactions to a change of their exhibit: the unit (id), whether it likes the
+    /// change and the milliseconds since; each is a face above its unit (animals 10).
+    pub faces: Vec<(u32, bool, u32)>,
 }
 
 /// The animation and frame a unit of the zoo holds.
@@ -224,6 +227,8 @@ struct Placed {
     piece: Option<Piece>,
     /// Set for a grid line that only a switched-on grid draws; it never counts in the bounds.
     grid: bool,
+    /// Pixels the picture is raised after the zoom (a face's `cFacesYOffset`): not scaled by it.
+    lift: i32,
     pic: Pic,
 }
 
@@ -237,7 +242,7 @@ impl Placed {
     fn bounds(&self) -> Option<[i64; 4]> {
         if let Pic::Rendered(picture) = &self.pic {
             let left = i64::from(self.x) - i64::from(picture.x_offset);
-            let top = i64::from(self.y) - i64::from(picture.y_offset);
+            let top = i64::from(self.y) - i64::from(self.lift) - i64::from(picture.y_offset);
             let (w, h) = (
                 i64::from(picture.image.width),
                 i64::from(picture.image.height),
@@ -276,7 +281,7 @@ impl Placed {
     /// camera's conversion of the view position, and for a tile piece the origin offset and the
     /// anchor of map drawing 4.4 and 8.
     fn anchor(&self, rotation: u8, zoom: i32, level: Zoom) -> (i64, i64) {
-        match self.piece {
+        let (x, y) = match self.piece {
             Some(Piece { corner, offset }) if level != Zoom::Normal => {
                 // `piece_anchor` adds its origin unchanged, so the corner is added in i64 after.
                 let (cx, cy) = zoom_view(zoom, corner);
@@ -284,17 +289,19 @@ impl Placed {
                 (cx + i64::from(x), cy + i64::from(y))
             }
             _ => zoom_view(zoom, (self.x, self.y)),
-        }
+        };
+        (x, y - i64::from(self.lift))
     }
 
     /// The box `b` of the picture at normal zoom, moved to the zoomed `anchor`: scaled about the
     /// anchor by the blitter, with two pixels to spare for its rounding.
     fn zoomed_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom) -> [i64; 4] {
+        let y = i64::from(self.y) - i64::from(self.lift);
         let rel = [
             b[0] - i64::from(self.x),
-            b[1] - i64::from(self.y),
+            b[1] - y,
             b[2] - i64::from(self.x),
-            b[3] - i64::from(self.y),
+            b[3] - y,
         ];
         let rel = match level {
             Zoom::Normal => {
@@ -1036,12 +1043,16 @@ impl<'a> MapRenderer<'a> {
             }
             hits.resize(placed.len(), owner);
             if let (Item::Object(o), Some(hit)) = (item, owner)
-                && Some(hit.id) == extra.selected
-                && placed.len() > before
+                && let Some(&Placed { x, y, .. }) = placed.last().filter(|_| placed.len() > before)
                 && scene.objects[o].kind == Kind::Unit
-                && self.marker(metas[o].ty, &mut placed)
             {
-                hits.push(None);
+                if Some(hit.id) == extra.selected {
+                    self.marker(metas[o].ty, &mut placed);
+                }
+                for &(_, likes, age) in extra.faces.iter().filter(|f| f.0 == hit.id) {
+                    self.face(metas[o].ty, (x, y), likes, age, &mut placed);
+                }
+                hits.resize(placed.len(), None);
             }
         }
         summary.objects_skipped += (0..metas.len()).filter(|&o| !scene.is_placed(o)).count();
@@ -1231,6 +1242,7 @@ impl<'a> MapRenderer<'a> {
                             y: oy + y,
                             piece: Some(piece_at((x, y))),
                             grid: false,
+                            lift: 0,
                             pic: Pic::Flat(flat),
                         });
                     }
@@ -1249,6 +1261,7 @@ impl<'a> MapRenderer<'a> {
                     y: oy + 32,
                     piece: Some(piece_at((32, 32))),
                     grid: false,
+                    lift: 0,
                     pic,
                 });
             }
@@ -1275,6 +1288,7 @@ impl<'a> MapRenderer<'a> {
                     y: oy + 32,
                     piece: Some(piece_at((32, 32))),
                     grid: !forced,
+                    lift: 0,
                     pic: Pic::Flat(flat),
                 });
             }
@@ -1289,6 +1303,7 @@ impl<'a> MapRenderer<'a> {
                 y: oy + 32,
                 piece: Some(piece_at((32, 32))),
                 grid: false,
+                lift: 0,
                 pic: Pic::Mark(flat, palette),
             });
         }
@@ -1361,13 +1376,49 @@ impl<'a> MapRenderer<'a> {
         found.or_else(|| ty.base_animation()).and_then(|a| a.member)
     }
 
+    /// Places the face of a reaction above the unit whose anchor is `(x, y)` (animals 10, sprite
+    /// drawing 9.3): `objects/smile` when it likes the change, `objects/frown` when not, up by the
+    /// type's `cFacesYOffset` pixels of the view's zoom (not scaled by it), at the frame its age in
+    /// milliseconds has reached.
+    fn face(
+        &mut self,
+        ty: &EntityType,
+        (x, y): (i32, i32),
+        likes: bool,
+        age: u32,
+        out: &mut Vec<Placed>,
+    ) {
+        let name = if likes { "smile" } else { "frown" };
+        let Some(anim) = self.animation(&format!("objects/{name}/idle/idle.ani")) else {
+            return;
+        };
+        let Some(sprite) = anim.sprites.first().map(|s| &s.0) else {
+            return;
+        };
+        let last = sprite.frames.len().saturating_sub(1);
+        let frame = (age.checked_div(sprite.delay_ms)).map_or(0, |f| (f as usize).min(last));
+        let up = crate::build::number(ty, "cFacesYOffset").unwrap_or(0.0) as i32;
+        let view = View {
+            file: 0,
+            mirror: false,
+        };
+        out.push(Placed {
+            x,
+            y,
+            piece: None,
+            grid: false,
+            lift: up,
+            pic: Pic::Anim(anim, view, None, frame),
+        });
+    }
+
     /// Places the selection marker after the picture of the unit that was placed last (sprite
     /// drawing 9.2): `selsmall` for a footprint of at most 1 x 1 half tiles, `selmed` for at most
     /// 4 in each direction, else `sellarge`. Its anchor is the unit's, up and left by a quarter of
     /// the x offset of the unit's frame, and by its y offset, 5 and half the height of the marker's
     /// own frame (the type's height plays no part). The marker has one frame, so it
-    /// needs no clock. Returns whether it was placed.
-    fn marker(&mut self, ty: &EntityType, out: &mut Vec<Placed>) -> bool {
+    /// needs no clock.
+    fn marker(&mut self, ty: &EntityType, out: &mut Vec<Placed>) {
         let Some(Placed {
             x,
             y,
@@ -1375,10 +1426,10 @@ impl<'a> MapRenderer<'a> {
             ..
         }) = out.last()
         else {
-            return false;
+            return;
         };
         let Some(frame) = shown_frames(anim, view, *at).and_then(|f| f.last().map(|f| f.0)) else {
-            return false;
+            return;
         };
         let (x, y, xo, yo) = (*x, *y, i32::from(frame.x_offset), i32::from(frame.y_offset));
         let [fx, fy, _] = ty.footprint;
@@ -1388,7 +1439,7 @@ impl<'a> MapRenderer<'a> {
             _ => "sellarge",
         };
         let Some(anim) = self.animation(&format!("ui/select/{name}/{name}.ani")) else {
-            return false;
+            return;
         };
         let view = View {
             file: 0,
@@ -1405,9 +1456,9 @@ impl<'a> MapRenderer<'a> {
             y: y - (yo + 5 + half),
             piece: None,
             grid: false,
+            lift: 0,
             pic: Pic::Anim(anim, view, None, 0),
         });
-        true
     }
 
     /// Places the picture of one object.
@@ -1459,6 +1510,7 @@ impl<'a> MapRenderer<'a> {
             y,
             piece: None,
             grid: false,
+            lift: 0,
             pic: Pic::Anim(anim, view, palette, frame),
         });
     }

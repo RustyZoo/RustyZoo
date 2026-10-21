@@ -565,6 +565,8 @@ pub fn terrain<T>(
 /// in its amphibious neighbours react too. An old sum of 0 counts as
 /// unchanged; an unchanged sum lets the `object` placed (`1`) or removed (`-1`), its habitat
 /// number and name id, decide by its value to the species. Logs `likes ID` or `dislikes ID`.
+/// Once all exhibits are done, the approving sound plays if a species liked the change and the
+/// disapproving one if a species disliked it.
 pub fn react(
     world: &mut World,
     cat: &Catalogue,
@@ -572,6 +574,7 @@ pub fn react(
     object: Option<(i32, i32, i64)>,
     rand: Rand,
 ) {
+    let (mut liked_any, mut disliked_any) = (false, false);
     for (x, old) in before {
         // The species list waits for its own timer; the original revises it here too, which
         // draws only for a type with a sound that came since the last revision.
@@ -601,6 +604,8 @@ pub fn react(
             }
         }
         for (key, liked, amphibious) in moods {
+            liked_any |= liked;
+            disliked_any |= !liked;
             let mut places = vec![x];
             places.extend(near.iter().filter(|_| amphibious));
             let ids: Vec<u32> = (places.into_iter())
@@ -617,6 +622,12 @@ pub fn react(
                 }
             }
         }
+    }
+    if liked_any {
+        world.units.cheer("smile");
+    }
+    if disliked_any {
+        world.units.cheer("frown");
     }
 }
 

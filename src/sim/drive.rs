@@ -399,6 +399,8 @@ impl Run {
         lines.extend(
             (self.world.units.take_animal_lines().into_iter()).map(|l| format!("animal {l}")),
         );
+        // No interface plays the exhibit sounds here; the animal log tells them.
+        self.world.units.take_cheers();
         lines.extend(
             (self.world.units.take_guest_lines().into_iter()).map(|l| format!("guest {l}")),
         );
