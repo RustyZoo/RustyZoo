@@ -614,6 +614,35 @@ fn a_tank_cut_in_two_gives_the_new_part_its_water_and_a_wall_of_its_own() {
     assert_eq!(a.filled, b.filled);
 }
 
+#[test]
+fn a_land_exhibit_cut_so_that_a_part_is_a_tank_asks_a_name_for_the_tank_only() {
+    // A land exhibit (2..5, 2) closed by plain fences on tiles 2 and 3 and by tank walls on 4 and 5.
+    // A tank wall between 3 and 4 makes 4..5 a tank. The piece is placed on either side of the line,
+    // so the tank is the new part or the part that keeps the exhibit.
+    for line in [(3, 2, 2), (4, 2, 6)] {
+        let mut pieces = ring("fences", 2, 2, 5, 2);
+        for p in pieces.iter_mut().filter(|p| p.1.0 >= 4) {
+            p.0 = "tank";
+        }
+        let mut world = tanks(&pieces, &[], &[]);
+        assert_eq!(sizes(&world), [4]);
+        assert!(tank(&world, 4, 2).is_none());
+        world.begin();
+        world.take_events();
+        put_wall(&mut world, "tank", line);
+        assert_eq!(sizes(&world), [2, 2]);
+        assert!(tank(&world, 4, 2).is_some() && tank(&world, 3, 2).is_none());
+        let asked: Vec<u32> = (world.take_events().into_iter())
+            .filter_map(|e| match e {
+                Event::New { id, ask: true } => Some(id),
+                _ => None,
+            })
+            .collect();
+        let tank_id = world.exhibits().list().iter().find(|e| e.tank.is_some());
+        assert_eq!(asked, [tank_id.unwrap().id], "{line:?}: the tank only");
+    }
+}
+
 // ---- tanks.cfg
 
 #[test]

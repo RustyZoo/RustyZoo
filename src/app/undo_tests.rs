@@ -1,7 +1,7 @@
 //! The undo button and the Backspace key through the pass (placing 8), on the made-up
 //! map and left bar of the bulldozer tests.
 
-use super::bulldozer_tests::{DELETE, Session, with_game};
+use super::bulldozer_tests::{DELETE, Session, tank_with_a_bench, with_game};
 use super::*;
 use crate::ui::layout::DISABLED;
 
@@ -243,6 +243,63 @@ fn bulldozing_the_piece_that_closed_an_exhibit_is_undone_with_its_name_and_gate(
         // No name is asked and the counter did not move.
         assert_eq!(w.exhibits().counter, 2);
         assert!(!s.asking());
+    });
+}
+
+/// How many times the last pass asked for the exhibit sound.
+fn exhibit_sounds(s: &Session) -> usize {
+    s.app.sounds().iter().filter(|&&n| n == "exhibit").count()
+}
+
+#[test]
+fn the_exhibit_sound_is_quiet_at_an_undo_a_merge_and_a_declined_tank() {
+    // A closed area plays it once, as it asks for its name; the undo that makes it again does not.
+    with_game("quiet", "[UI]\nconfirmSell=0\n", |s| {
+        for side in [0, 2, 4, 6] {
+            s.fence(1, 20, 20, side);
+        }
+        s.app.exhibits_told();
+        assert_eq!(exhibit_sounds(s), 1);
+        s.pass(&[Command::Key(Key::Enter, false, false)]);
+        s.pass(&[DELETE]);
+        s.click(s.at(20, 20, 32, 4));
+        s.pass(&[Command::Key(Key::Y, false, false)]);
+        assert!(world(s).exhibits().list().is_empty());
+        s.log(&[BACKSPACE]);
+        assert_eq!(world(s).exhibits().list().len(), 1);
+        assert_eq!(exhibit_sounds(s), 0);
+    });
+    // Two exhibits are named; the click on the line between them merges them without a sound.
+    with_game("quiet-merge", "[UI]\nconfirmSell=0\n", |s| {
+        for (tile, side) in [
+            (20, 0),
+            (20, 2),
+            (20, 4),
+            (20, 6),
+            (21, 0),
+            (21, 2),
+            (21, 4),
+        ] {
+            s.fence(1, tile, 20, side);
+        }
+        s.app.exhibits_told();
+        assert_eq!(exhibit_sounds(s), 2);
+        s.pass(&[Command::Key(Key::Enter, false, false)]);
+        s.pass(&[Command::Key(Key::Enter, false, false)]);
+        s.pass(&[DELETE]);
+        s.click(s.at(20, 20, 60, 32));
+        s.pass(&[Command::Key(Key::Y, false, false)]);
+        assert_eq!(world(s).exhibits().list().len(), 1);
+        assert_eq!(exhibit_sounds(s), 0);
+    });
+    // A tank whose objects are not sold plays nothing, before or after the answer.
+    with_game("quiet-tank", "[UI]\nconfirmSell=0\n", |s| {
+        tank_with_a_bench(s);
+        assert!(s.asking());
+        assert_eq!(exhibit_sounds(s), 0);
+        s.pass(&[Command::Key(Key::N, false, false)]);
+        assert!(world(s).exhibits().list().is_empty());
+        assert_eq!(exhibit_sounds(s), 0);
     });
 }
 

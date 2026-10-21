@@ -347,6 +347,7 @@ impl World {
         // it remember where they come from, and a tank that kept a part has its walls to bring
         // to its side again.
         let mut split_from: HashMap<usize, u32> = HashMap::new();
+        let mut split_land: Vec<Vec<usize>> = Vec::new();
         let mut split_kept: Vec<u32> = Vec::new();
         for e in old.list() {
             let held: Vec<usize> = (0..parts.len())
@@ -371,6 +372,9 @@ impl World {
                 split_from.insert(i, e.id);
             }
             split_kept.extend(e.tank.map(|_| e.id));
+            if e.tank.is_none() {
+                split_land.push(held);
+            }
             self.events.push(Event::Split(e.id));
         }
         // The kind of each part: a tank (a show tank or not) or land.
@@ -382,6 +386,13 @@ impl World {
         let kinds: Vec<Option<bool>> = parts
             .iter()
             .map(|p| self.tank_test(&p.tiles, &other, quiet))
+            .collect();
+        // A land exhibit cut in two with a tank for a part asks no name for the land part (the tank
+        // is named when it is made).
+        let silent: Vec<usize> = (split_land.iter())
+            .filter(|held| held.iter().any(|&i| kinds[i].is_some()))
+            .flatten()
+            .copied()
             .collect();
         // The morph: an exhibit whose kind no longer fits its walls is replaced by a new one of
         // the other kind on the same tiles (3.9).
@@ -458,7 +469,10 @@ impl World {
                             let from = split_from.get(&i).and_then(|&x| old.get(x));
                             tanks.push((id, from.and_then(|e| e.tank)));
                         }
-                        None => self.events.push(Event::New { id, ask: !quiet }),
+                        None => self.events.push(Event::New {
+                            id,
+                            ask: !quiet && !silent.contains(&i),
+                        }),
                     }
                     if let Some(start) = start {
                         starts.push((id, start));

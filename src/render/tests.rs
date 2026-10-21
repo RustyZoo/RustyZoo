@@ -1376,6 +1376,108 @@ fn a_renderer_keeps_the_tiles_of_a_staging_only_while_the_ground_and_the_rotatio
 }
 
 #[test]
+fn a_renderer_takes_no_picture_from_a_staging_whose_ground_edges_objects_or_marks_differ() {
+    use crate::bitmap::tests::{WHITE, bmp24};
+    const BLUE: [u8; 3] = [0, 0, 255];
+    let palette = |c: [u8; 3]| {
+        let mut p = 2u32.to_le_bytes().to_vec();
+        p.extend([0, 0, 0, 255, c[0], c[1], c[2], 255]);
+        p
+    };
+    // Two terrain types that blend. The first tile has a plain picture of its own and one for the
+    // blend with its east neighbour; the picture of the second tile is rendered.
+    let mut members = vec![
+        (
+            "terrain/tiletex.cfg".to_string(),
+            b"[ttGrass]\ntype=0\n[ttSand]\ntype=1\n".to_vec(),
+        ),
+        ("ztats/00.pal".into(), palette([200, 0, 0])),
+        (
+            "ztatb/00/00000100/00000000/0000.pal".into(),
+            palette([0, 200, 0]),
+        ),
+        ("ztatb/00/00000100/00000000/0000.lle".into(), frame_file()),
+        (
+            "fences.cfg".into(),
+            b"[fences]\nrail = fence.ai\n[rail/subtypes]\nf\n".to_vec(),
+        ),
+        ("fence.ai".into(), Vec::new()),
+        ("tile.cfg".into(), b"[0]\nhighlight=hl.bmp\n".to_vec()),
+        (
+            "hl.bmp".into(),
+            bmp24(&[vec![WHITE, BLUE], vec![WHITE, WHITE]], false),
+        ),
+    ];
+    for variation in 0..9 {
+        members.push((format!("ztats/0000{variation:02x}.lle"), frame_file()));
+    }
+    let members: Vec<(&str, Vec<u8>)> = members
+        .iter()
+        .map(|(n, c)| (n.as_str(), c.clone()))
+        .collect();
+    let install = Install::new("render-inputs", &members);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut zoo = Zoo {
+        width: 2,
+        height: 1,
+        tiles: flat_map(2, 1),
+        ..tile_with(&[])
+    };
+    zoo.tiles[1].terrain = 1;
+    let picture = |renderer: &mut MapRenderer, zoo: &Zoo, extra: &Extra| {
+        let staged = renderer.stage_with(zoo, 0, false, extra).unwrap();
+        let (w, h) = staged.size().unwrap();
+        let mut canvas = Framebuffer::new(w, h);
+        let (x, y) = staged.origin();
+        staged.draw(&mut canvas, x, y, 0, true);
+        canvas.pixels
+    };
+    // Each input changes what one renderer draws, as a fresh renderer draws it.
+    let edit = |f: &dyn Fn(&mut Zoo)| {
+        let mut next = zoo.clone();
+        f(&mut next);
+        next
+    };
+    // On the east edge of the first tile.
+    let fence = || {
+        let mut fence = tile_with(&[("fences", "rail", "f")]).entities;
+        fence[0].common.as_mut().unwrap().rotation = 2;
+        fence
+    };
+    let no = Extra::default();
+    let marked = Extra {
+        marks: vec![Mark {
+            tile: 1,
+            color: [64, 32, 96],
+        }],
+        ..no.clone()
+    };
+    let hidden = Extra {
+        hidden: vec![1],
+        ..no.clone()
+    };
+    let cases = [
+        (zoo.clone(), no.clone()),
+        (edit(&|z| z.entities = fence()), no.clone()),
+        (edit(&|z| z.entities = fence()), hidden),
+        (zoo.clone(), marked.clone()),
+        (edit(&|z| z.tiles[1].terrain = 0), marked.clone()),
+        (edit(&|z| step(&mut z.tiles, 2, 0, 0, 2)), marked.clone()),
+    ];
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let mut last = None;
+    for (n, (zoo, extra)) in cases.iter().enumerate() {
+        let fresh = picture(&mut MapRenderer::new(&vfs, &catalogue), zoo, extra);
+        assert!(picture(&mut renderer, zoo, extra) == fresh, "case {n}");
+        assert!(
+            last.replace(fresh.clone()) != Some(fresh),
+            "case {n} changes the picture"
+        );
+    }
+}
+
+#[test]
 fn a_marked_tile_gets_its_highlight_in_the_colour_of_the_mark_and_frees_the_grid_behind_it() {
     use crate::bitmap::tests::{WHITE, bmp24};
     const BLUE: [u8; 3] = [0, 0, 255];
