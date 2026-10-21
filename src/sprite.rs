@@ -395,6 +395,19 @@ impl Frame {
             height: i64::from(self.height),
         };
         let skip_zero = palette.zero_is_transparent();
+        let drawn = |value: u8| !palette.is_empty() && !(value == 0 && skip_zero);
+        let color = |value: u8| {
+            let [r, g, b, _] = palette.color(value).unwrap_or(MISSING_COLOR);
+            [r, g, b]
+        };
+        // What each value puts unblended, worked out once for the frame instead of per pixel.
+        let shown: [Option<[u8; 4]>; 256] = std::array::from_fn(|value| {
+            let value = value as u8;
+            drawn(value).then(|| {
+                let [r, g, b] = screen(color(value));
+                [r, g, b, 255]
+            })
+        });
         let (width, height) = (i64::from(target.width), i64::from(target.height));
         // `parse` validated the rows, so the `else` and `unwrap_or_default` cases never happen.
         let mut data = self.rows.as_slice();
@@ -410,17 +423,15 @@ impl Frame {
                 rest = self.draw_row(data, line, width, &place, |pixel, value| {
                     if self.shadow {
                         darken(pixel, blend.map_or(SHADOW_STRENGTH, |b| b.strength));
-                    } else if let Some(value) = value
-                        && !palette.is_empty()
-                        && !(value == 0 && skip_zero)
-                    {
-                        let [r, g, b, _] = palette.color(value).unwrap_or(MISSING_COLOR);
+                    } else if let Some(value) = value {
                         match blend {
                             None => {
-                                let [r, g, b] = screen([r, g, b]);
-                                pixel.copy_from_slice(&[r, g, b, 255]);
+                                if let Some(shown) = &shown[usize::from(value)] {
+                                    pixel.copy_from_slice(shown);
+                                }
                             }
-                            Some(blend) => mix(pixel, [r, g, b], blend),
+                            Some(blend) if drawn(value) => mix(pixel, color(value), blend),
+                            Some(_) => {}
                         }
                     }
                 });
@@ -540,12 +551,12 @@ pub(crate) const SHIFT: [u32; 3] = [3, 2, 3];
 
 /// The 5-6-5 code of the 8 bit channel `c` (0 red, 1 green, 2 blue): `value * max / 255`, rounded
 /// down (sprite drawing 7.1). Not `value >> shift`: 254 gives 30.
-pub(crate) fn code(c: usize, value: u8) -> u16 {
-    u16::from(value) * (255 >> SHIFT[c]) / 255
+pub(crate) const fn code(c: usize, value: u8) -> u16 {
+    value as u16 * (255 >> SHIFT[c]) / 255
 }
 
 /// What the display shows for a code: its high bits repeated (map drawing 7.2).
-pub(crate) fn show(c: usize, code: u16) -> u8 {
+pub(crate) const fn show(c: usize, code: u16) -> u8 {
     let s = SHIFT[c];
     (code << s | code >> (8 - 2 * s)) as u8
 }
@@ -553,8 +564,23 @@ pub(crate) fn show(c: usize, code: u16) -> u8 {
 /// A colour as the 16 bit screen shows it: reduced to codes, then shown (map drawing 7.2).
 /// Colours that were reduced before (palettes) come out one code lower; that is the original's.
 pub fn screen(rgb: [u8; 3]) -> [u8; 3] {
-    [0, 1, 2].map(|c| show(c, code(c, rgb[c])))
+    [0, 1, 2].map(|c| SCREENED[c][usize::from(rgb[c])])
 }
+
+/// What the screen shows for each value of each channel.
+const SCREENED: [[u8; 256]; 3] = {
+    let mut table = [[0; 256]; 3];
+    let mut c = 0;
+    while c < 3 {
+        let mut value = 0;
+        while value < 256 {
+            table[c][value] = show(c, code(c, value as u8));
+            value += 1;
+        }
+        c += 1;
+    }
+    table
+};
 
 /// The code of a channel of a frame pixel, which always holds a shown value.
 fn shown_code(c: usize, value: u8) -> u16 {

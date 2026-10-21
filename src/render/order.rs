@@ -828,14 +828,15 @@ pub fn paint_order(scene: &Scene) -> Vec<Item> {
 fn paint_order_here(scene: &Scene) -> Vec<Item> {
     let n = scene.tiles.len();
     let rotation = scene.rotation;
-    let mut order: Vec<usize> = (0..n).collect();
     let key = |t: usize| sort_key(rotation, (t % scene.width) as i32, (t / scene.width) as i32);
-    order.sort_by_key(|&t| key(t));
+    // By key, then by tile: the order of a stable sort by key, without a key per comparison.
+    let mut sorted: Vec<((i32, i32), usize)> = (0..n).map(|t| (key(t), t)).collect();
+    sorted.sort_unstable();
+    let (keys, order): (Vec<_>, Vec<_>) = sorted.into_iter().unzip();
     let mut at = vec![0; n];
     for (i, &t) in order.iter().enumerate() {
         at[t] = i;
     }
-    let keys = order.iter().map(|&t| key(t)).collect();
     let mut painter = Painter {
         scene,
         order,
