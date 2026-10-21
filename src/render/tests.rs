@@ -793,7 +793,8 @@ fn a_unit_is_drawn_with_the_animation_and_frame_it_holds() {
         let staged = MapRenderer::new(&vfs, &catalogue)
             .stage_with(&zoo, 0, false, &extra)
             .unwrap();
-        let pics: Vec<_> = (staged.placed.iter())
+        let pics: Vec<_> = staged
+            .pictures()
             .filter_map(|(p, _)| match &p.pic {
                 Pic::Anim(anim, _, _, frame) => Some((anim.set.files[0].clone(), *frame)),
                 _ => None,
@@ -845,7 +846,8 @@ fn a_trash_can_shows_empty_up_to_12_pieces_and_half_from_13_and_never_full() {
         let staged = MapRenderer::new(&vfs, &catalogue)
             .stage_with(&zoo, 0, false, &Extra::default())
             .unwrap();
-        let pics: Vec<_> = (staged.placed.iter())
+        let pics: Vec<_> = staged
+            .pictures()
             .filter_map(|(p, _)| match &p.pic {
                 Pic::Anim(anim, ..) => Some(anim.set.files[0].clone()),
                 _ => None,
@@ -947,7 +949,8 @@ fn extra_pics(
     let staged = MapRenderer::new(&vfs, &catalogue)
         .stage_with(&tile_with(&[("guests", ty, "")]), 0, false, extra)
         .unwrap();
-    let pics = (staged.placed.iter())
+    let pics = staged
+        .pictures()
         .filter_map(|(p, _)| match &p.pic {
             Pic::Anim(anim, _, _, at) => Some((anim.set.files[0].clone(), p.x, p.y - p.lift, *at)),
             _ => None,
@@ -1061,11 +1064,11 @@ fn the_faces_offset_is_in_pixels_of_the_zoom() {
     let staged = MapRenderer::new(&vfs, &catalogue)
         .stage_with(&tile_with(&[("guests", "mid", "")]), 0, false, &extra)
         .unwrap();
-    assert_eq!(staged.placed.len(), 2);
+    assert_eq!(staged.own.len(), 2);
     // The face rises by the offset (20) at every zoom, and is not scaled with the unit.
     for zoom in [-2, 0, 2] {
         let level = Zoom::from_value(zoom);
-        let [unit, face] = [0, 1].map(|i| staged.placed[i].0.anchor(0, zoom, level));
+        let [unit, face] = [0, 1].map(|i| staged.own[i].0.anchor(0, zoom, level));
         assert_eq!((unit.0, unit.1 - face.1), (face.0, 20), "zoom {zoom}");
     }
 }
@@ -1338,6 +1341,37 @@ fn the_grid_lines_of_every_tile_are_drawn_only_with_the_grid_on() {
         assert_eq!(red(&off), 0, "zoom {zoom}");
         // A one-pixel line is thinned away when zoomed out (map drawing 8).
         assert_eq!(red(&on) > 0, zoom >= 0, "zoom {zoom}");
+    }
+}
+
+#[test]
+fn a_renderer_keeps_the_tiles_of_a_staging_only_while_the_ground_and_the_rotation_are_the_same() {
+    let install = cache_install_with("render-again", frame_file(), &grid_members());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut zoo = Zoo {
+        width: 2,
+        height: 1,
+        tiles: flat_map(2, 1),
+        ..tile_with(&[])
+    };
+    let picture = |renderer: &mut MapRenderer, zoo: &Zoo, rotation| {
+        let staged = renderer.stage(zoo, rotation, false).unwrap();
+        let (w, h) = staged.size().unwrap();
+        let mut canvas = Framebuffer::new(w, h);
+        let (x, y) = staged.origin();
+        staged.draw(&mut canvas, x, y, 0, true);
+        (canvas.pixels, staged.summary)
+    };
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let first = picture(&mut renderer, &zoo, 0);
+    assert_eq!(picture(&mut renderer, &zoo, 0), first);
+    // A raised corner: no picture in the cache and no grid lines for the shape.
+    zoo.tiles[1].shape = 1;
+    for rotation in [0, 1] {
+        let fresh = picture(&mut MapRenderer::new(&vfs, &catalogue), &zoo, rotation);
+        assert_ne!(fresh, first, "rotation {rotation}");
+        assert_eq!(picture(&mut renderer, &zoo, rotation), fresh);
     }
 }
 

@@ -68,7 +68,7 @@ impl Staged {
         extra: i32,
         mut wanted: impl FnMut(u32) -> bool,
     ) -> Option<u32> {
-        let it = self.placed.iter().zip(&self.hits).rev();
+        let it = self.own.iter().zip(&self.hits).rev();
         it.filter_map(|((placed, b), hit)| Some((placed, b, (*hit)?)))
             .filter(|(_, b, hit)| {
                 let start = point
