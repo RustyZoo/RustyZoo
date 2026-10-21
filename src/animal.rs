@@ -55,6 +55,7 @@ use crate::zoo::{AnimalRecord, Entity};
 pub mod breed;
 pub mod dirt;
 pub mod food;
+pub mod home;
 pub mod life;
 pub mod tank;
 #[cfg(test)]

@@ -103,15 +103,20 @@ pub fn band(now: u64, then: u64) -> usize {
     usize::from(hours >= RECENT) + usize::from(hours > SHORT)
 }
 
-/// The rating the animal at `at` shows: its species' in the exhibit it stands in, 0 on the
-/// grounds.
-fn suitability(world: &World, cat: &Catalogue, at: usize) -> i32 {
+/// The rating the animal at `at` shows (habitat rating 6): its species' in the exhibit under it
+/// with its neighbours followed, 0 on the grounds. It need not be the home's.
+pub(crate) fn suitability(world: &World, cat: &Catalogue, at: usize) -> i32 {
     let Some(exhibit) = animals_exhibit(world, at) else {
         return 0;
     };
-    let records = rating::rate(&rating::input(world, cat, exhibit));
+    let near = world
+        .exhibits()
+        .get(exhibit)
+        .map_or(Vec::new(), |e| e.amphibious.clone());
+    let read = &mut |x| rating::rate(&rating::input(world, cat, x));
     let key = &world.zoo.entities[at].type_name;
-    (records.iter().find(|r| &r.key == key)).map_or(0, |r| r.shown().min(i32::MAX as u32) as i32)
+    rating::rating(exhibit, &near, key, read)
+        .map_or(0, |r| rating::shown(r).min(i32::MAX as u32) as i32)
 }
 
 /// The selected animal and the refresh clock.

@@ -518,6 +518,7 @@ impl Sim {
             world.exhibits_mut().list_mut()[at].rating = state;
             if rated {
                 rating::finish(world, cat, id, &mut || self.rng.rand());
+                crate::animal::home::settle(world, cat, id);
                 self.lines.push(format!("rate {id}{}", shown.concat()));
             }
         }

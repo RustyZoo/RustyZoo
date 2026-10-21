@@ -726,7 +726,7 @@ panel_plaque() { # panel_plaque <map>
 check base-trial "1,2,3" "panel_plaque maps/scn01.zoo"
 check expansion-trial "2,2,2" "panel_plaque maps/scn19.zoo"
 check expansion-trial "1,2,2" "panel_plaque maps/scn27.zoo"
-check expansion-trial "1,0,2" "panel_plaque maps/scn28b.zoo"
+check expansion-trial "1,0,1" "panel_plaque maps/scn28b.zoo"
 
 # The animal panel of the first animal of the first exhibit (the Animals tab's first row): its
 # bars, with the suitability the `check-rating` line of its species shows (89 for scn01's giraffe),

@@ -1204,7 +1204,7 @@ fn animals_on(world: &World, catalogue: &Catalogue, order: &[usize]) -> (Vec<Lik
 
 /// The animals whose own tile is one of `order` (5.1 point 3), tile by tile in that order: the
 /// place of each in the entity list and its type.
-fn animals_at<'c>(
+pub(crate) fn animals_at<'c>(
     world: &World,
     catalogue: &'c Catalogue,
     order: &[usize],

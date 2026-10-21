@@ -8,6 +8,7 @@
 //! the refresh clocks; [`Panel::refresh`] writes the layout from the world and returns the
 //! `panel` log lines of what changed. The rating is computed from the world at each refresh.
 
+use crate::animal::home;
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::{self, Record};
@@ -438,8 +439,8 @@ impl Panel {
     }
 
     /// Writes the plaque for the animal `self.plaque`, if it is still in the world: its name, the
-    /// background and title of its keeper kind, and the recommendations of its species in the
-    /// exhibit it stands in, rated from the world now. Returns the log lines of what changed.
+    /// background and title of its keeper kind, and its recommendations ([`plaque_lines`]),
+    /// rated from the world now. Returns the log lines of what changed.
     pub fn refresh_plaque(
         &mut self,
         ui: &mut Interface,
@@ -451,23 +452,10 @@ impl Panel {
             return Vec::new();
         };
         let (entity, ty) = (&world.zoo.entities[at], type_at(world, cat, at));
-        let exhibit = animals_exhibit(world, at);
         let kind = ty.map_or(0, |t| {
             keeper_kind(number(t, "cKeeper").map_or(9500, |v| v as i32))
         });
-        let input = exhibit.map(|id| rating::input(world, cat, id));
-        let species = ty.map(|t| String::from_utf8_lossy(&t.type_name).into_owned());
-        let records = input.as_ref().map(rating::rate).unwrap_or_default();
-        let record = records.iter().find(|r| Some(&r.key) == species.as_ref());
-        let female = ty.is_some_and(|t| t.subtype.first() == Some(&b'f'));
-        let show = exhibit
-            .and_then(|id| world.exhibits().get(id))
-            .is_some_and(|e| e.tank.is_some_and(|t| t.show));
-        let dislikes = |important| match (&input, ty) {
-            (Some(i), Some(t)) => rating::disliked(&i.site, &rating::Likes::of(t), important),
-            _ => Vec::new(),
-        };
-        let lines = recommendations(record, female, show, [&dislikes(true), &dislikes(false)]);
+        let lines = plaque_lines(world, cat, at);
         let none = Words::new(|_| String::new());
         let animal = entity
             .common
@@ -513,6 +501,28 @@ impl Panel {
     }
 }
 
+/// The lines of the plaque of the animal at `at` (habitat rating 7). The bits come from the
+/// record of its species in its home (tank fauna 12.3), else in the exhibit under it; the show
+/// test and the undesirable scenery come from the exhibit under it.
+pub(crate) fn plaque_lines(world: &World, cat: &Catalogue, at: usize) -> Vec<Line> {
+    let ty = type_at(world, cat, at);
+    let under = animals_exhibit(world, at);
+    let input = under.map(|id| rating::input(world, cat, id));
+    let home = home_at(world, cat, at).filter(|&h| Some(h) != under);
+    let bits = home.map(|h| rating::input(world, cat, h));
+    let records = bits.as_ref().or(input.as_ref()).map(rating::rate);
+    let species = ty.map(|t| String::from_utf8_lossy(&t.type_name).into_owned());
+    let record = (records.iter().flatten()).find(|r| Some(&r.key) == species.as_ref());
+    let female = ty.is_some_and(|t| t.subtype.first() == Some(&b'f'));
+    let show = (under.and_then(|id| world.exhibits().get(id)))
+        .is_some_and(|e| e.tank.is_some_and(|t| t.show));
+    let dislikes = |important| match (&input, ty) {
+        (Some(i), Some(t)) => rating::disliked(&i.site, &rating::Likes::of(t), important),
+        _ => Vec::new(),
+    };
+    recommendations(record, female, show, [&dislikes(true), &dislikes(false)])
+}
+
 /// The exhibit that the entity at `at` stands in, if it is an exhibit and not the grounds.
 pub fn animals_exhibit(world: &World, at: usize) -> Option<u32> {
     let c = world.zoo.entities.get(at)?.common.as_ref()?;
@@ -523,6 +533,13 @@ pub fn animals_exhibit(world: &World, at: usize) -> Option<u32> {
         .exhibits()
         .region(t)
         .filter(|&r| r != GROUNDS && r != EXTERIOR)
+}
+
+/// The home of the animal at `at` (tank fauna 12.3), worked out now: `None` on the zoo grounds,
+/// when the exhibit under it is a show tank, or when its candidate has no gate.
+pub fn home_at(world: &World, cat: &Catalogue, at: usize) -> Option<u32> {
+    let likes = rating::Likes::of(type_at(world, cat, at)?);
+    home::home(world, cat, animals_exhibit(world, at)?, &likes)
 }
 
 #[cfg(test)]
