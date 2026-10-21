@@ -347,7 +347,7 @@ pub fn state(sim: &Sim, world: &World, money: &Money) -> u64 {
     }
     h.u32(world.exhibits().next);
     h.u32(world.exhibits().counter);
-    h.u32(world.exhibits().tests);
+    h.u32(crate::exhibit::rating::tests());
     h.money(money);
     h.sim(sim);
     h.finish()

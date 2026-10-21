@@ -294,6 +294,11 @@ jobs:
           ci/check-playable.sh ${{ matrix.bin }} "$trials/expansion-trial" ci/playable-tank.txt | tee -a "$RUNNER_TEMP/play.out" || status=1
           hashes=$(sed -n 's/^ok: \([^:]*\): two runs .*, last frame \([0-9a-f]*\), last state \([0-9a-f]*\)$/\1=\2,\3/p' "$RUNNER_TEMP/play.out" | tr '\n' ' ')
           echo "${{ matrix.system }}=$hashes" >> "$GITHUB_OUTPUT"
+          set -- $hashes
+          if [ $# != 2 ]; then
+            echo "::error title=Games played::The hashes of both games were not read from the ok: lines: '$hashes'"
+            status=1
+          fi
           exit "$status"
 
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short

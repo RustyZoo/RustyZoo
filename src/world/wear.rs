@@ -105,8 +105,10 @@ impl World {
     }
 
     /// Makes the fence piece with this id healthy (placing 7.4): the strength and life of its
-    /// type, a new interval drawn with `rand`, and the countdown starting equal to it. Returns the
-    /// interval; `None`, drawing nothing, for an entity that is no fence piece or has no type.
+    /// type, a new interval drawn with `rand`, and the countdown starting equal to it. It is a
+    /// state change of the fence (`fence_changed`: the escape check flag beside a bashing species).
+    /// Returns the interval; `None`, drawing nothing, for an entity that is no fence piece or has
+    /// no type.
     pub fn heal(&mut self, cat: &Catalogue, id: u32, rand: &mut dyn FnMut() -> u32) -> Option<u32> {
         let at = self.find(id)?;
         let ty = type_of(cat, &self.zoo.entities[at])?;
@@ -116,6 +118,8 @@ impl World {
         let interval = self.decay.interval(rand());
         (fence.strength, fence.life, fence.timers) = (strength, life, [interval; 2]);
         self.dirty = true;
+        // Every piece made healthy, decayed or not, changes state (habitat rating 12).
+        self.fence_changed(at, false);
         Some(interval)
     }
 
