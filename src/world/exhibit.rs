@@ -39,6 +39,9 @@ pub enum Event {
     Objects(u32),
     /// A tank got its water values.
     Tank(u32),
+    /// A filled tank with a gate got a new wall height: its animals react to the new depth
+    /// (habitat rating 4). The levels are the full levels of the old and of the new height.
+    Depth { id: u32, from: u32, to: u32 },
     /// The gate went where no keeper can pass, or none could be put: the message is about the
     /// exhibit (its name goes in the `%s`).
     Blocked { id: u32, message: i32 },

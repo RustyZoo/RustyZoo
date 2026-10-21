@@ -407,12 +407,17 @@ pub fn rating(
 /// The draws of the simulation's generator.
 pub type Rand<'a> = &'a mut dyn FnMut() -> u32;
 
-/// Computes exhibit `x` again when it is dirty, as reading a part of it does (rule 4), with its
-/// reachability test (5.8) drawing from `rand`.
+/// Computes exhibit `x` again when it is dirty, as reading a part of it does (rule 4): the species
+/// list is revised first when it must be (5.1 point 1), which draws for a type that came with an
+/// ambient sound; the reachability test (5.8) draws last, all from `rand`.
 pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     if world.exhibits().get(x).is_some_and(|e| e.rating.dirty) {
         let input = input(world, cat, x);
         if let Some(e) = world.exhibits_mut().get_mut(x) {
+            // The species list is revised first when it must be (5.1 point 1).
+            if e.rating.revise {
+                e.rating.revise_list(&input, rand);
+            }
             e.rating.compute(&input);
         }
         finish(world, cat, x, rand);
@@ -559,26 +564,62 @@ pub fn terrain<T>(
     done
 }
 
-/// After the change (9.4, animals 10): each exhibit of `before` is marked and rated again. The
+/// A new wall height of the filled tank `id` with a gate (habitat rating 4): the animals react
+/// as to a terrain change at the gate's tile, with the water at the full level of the old height
+/// (`from`) for the sums before and at that of the new height (`to`) for the sums after. The
+/// level is then put back and the tank marked again.
+pub fn depth(world: &mut World, cat: &Catalogue, rand: Rand, id: u32, from: u32, to: u32) {
+    let Some((tile, level)) =
+        (world.exhibits().get(id)).and_then(|e| Some((e.order.first().copied()?, e.tank?.level)))
+    else {
+        return;
+    };
+    let set = |world: &mut World, level| {
+        if let Some(t) = (world.exhibits_mut().get_mut(id)).and_then(|e| e.tank.as_mut()) {
+            t.level = level;
+        }
+    };
+    set(world, from);
+    let sums = before(world, cat, &[tile]);
+    set(world, to);
+    react(world, cat, sums, None, rand);
+    set(world, level);
+    world.exhibits_mut().mark(id);
+}
+
+/// What changed besides the ground, for the species whose sum stays the same (animals 10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Change {
+    /// An object placed (`sign` 1) or removed (-1), with its habitat number and name id.
+    Object { habitat: i32, name: i32, sign: i64 },
+    /// An animal placed, with its name id, genus and family: the compatible animals of the
+    /// species decide.
+    Animal([i32; 3]),
+}
+
+/// After the change (9.4, animals 10): each exhibit of `before` is marked, its species list is
+/// marked for revision and the exhibit is rated again (the list is revised first, 5.1). The
 /// animals (not eggs) of a species whose sum went up queue a "likes" reaction, those of one
 /// whose sum went down a "dislikes" one; in a land exhibit the animals of an amphibious species
 /// in its amphibious neighbours react too. An old sum of 0 counts as
-/// unchanged; an unchanged sum lets the `object` placed (`1`) or removed (`-1`), its habitat
-/// number and name id, decide by its value to the species. Logs `likes ID` or `dislikes ID`.
+/// unchanged; an unchanged sum lets the `change`, an object placed or removed or an animal
+/// placed, decide by its value to the species (no `change`, as for a staff member: no
+/// reaction). Logs `likes ID` or `dislikes ID`.
 /// Once all exhibits are done, the approving sound plays if an animal liked the change and the
 /// disapproving one if an animal disliked it (a species of eggs only reaches none).
 pub fn react(
     world: &mut World,
     cat: &Catalogue,
     before: Vec<(u32, Vec<(String, f32)>)>,
-    object: Option<(i32, i32, i64)>,
+    change: Option<Change>,
     rand: Rand,
 ) {
     let (mut liked_any, mut disliked_any) = (false, false);
     for (x, old) in before {
-        // The species list waits for its own timer; the original revises it here too, which
-        // draws only for a type with a sound that came since the last revision.
         world.exhibits_mut().mark(x);
+        if let Some(e) = world.exhibits_mut().get_mut(x) {
+            e.rating.revise = true;
+        }
         let likes = input(world, cat, x);
         refresh(world, cat, x, rand);
         let Some(e) = world.exhibits().get(x) else {
@@ -592,10 +633,19 @@ pub fn react(
         for r in &e.rating.records {
             let was = (old.iter()).find(|o| o.0 == r.key).map_or(0.0, |o| o.1);
             let l = (likes.species.iter().chain(&likes.near)).find(|l| l.key == r.key);
-            let by = match (was != 0.0 && was != r.sum(), object, l) {
+            let by = match (was != 0.0 && was != r.sum(), change, l) {
                 (true, ..) => r.sum() - was,
-                (false, Some((habitat, name, sign)), Some(l)) => {
-                    (sign * (l.value(habitat) + l.value(name))) as f32
+                (
+                    false,
+                    Some(Change::Object {
+                        habitat,
+                        name,
+                        sign,
+                    }),
+                    Some(l),
+                ) => (sign * (l.value(habitat) + l.value(name))) as f32,
+                (false, Some(Change::Animal(ids)), Some(l)) => {
+                    ids.iter().map(|&id| lookup(&l.compatible, id)).sum::<i64>() as f32
                 }
                 _ => 0.0,
             };

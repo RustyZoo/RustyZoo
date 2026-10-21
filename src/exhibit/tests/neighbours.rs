@@ -154,7 +154,17 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
     assert_eq!(before.iter().map(|b| b.0).collect::<Vec<_>>(), [land]);
     let (r, shape) = rock((8, 3));
     let id = w.unrecorded(|w| w.add(r, shape)).unwrap();
-    rating::react(&mut w, &cat, before, Some((9400, 7, 1)), &mut || 0);
+    rating::react(
+        &mut w,
+        &cat,
+        before,
+        Some(rating::Change::Object {
+            habitat: 9400,
+            name: 7,
+            sign: 1,
+        }),
+        &mut || 0,
+    );
     let mut lines = w.units.take_animal_lines();
     lines.sort();
     assert_eq!(
@@ -171,14 +181,34 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
     assert!(w.units.reactions.is_empty());
     let before = rating::before(&w, &cat, &[tile]);
     w.unrecorded(|w| w.remove(id));
-    rating::react(&mut w, &cat, before, Some((9400, 7, -1)), &mut || 0);
+    rating::react(
+        &mut w,
+        &cat,
+        before,
+        Some(rating::Change::Object {
+            habitat: 9400,
+            name: 7,
+            sign: -1,
+        }),
+        &mut || 0,
+    );
     let mut lines = w.units.take_animal_lines();
     lines.sort();
     assert_eq!(lines, ["dislikes 1", "dislikes 3", "sound frown"]);
     assert_eq!(w.units.take_cheers(), ["frown"]);
     // Nothing changed: an object the species does not value leaves it alone.
     let before = rating::before(&w, &cat, &[tile]);
-    rating::react(&mut w, &cat, before, Some((9400, 99, 1)), &mut || 0);
+    rating::react(
+        &mut w,
+        &cat,
+        before,
+        Some(rating::Change::Object {
+            habitat: 9400,
+            name: 99,
+            sign: 1,
+        }),
+        &mut || 0,
+    );
     assert!(w.units.take_animal_lines().is_empty());
     assert!(w.units.take_cheers().is_empty());
 }
@@ -196,7 +226,17 @@ fn a_species_of_eggs_only_likes_a_change_without_a_reaction_or_a_sound() {
     let before = rating::before(&w, &cat, &[tile]);
     let (r, shape) = rock((8, 3));
     w.unrecorded(|w| w.add(r, shape)).unwrap();
-    rating::react(&mut w, &cat, before, Some((9400, 7, 1)), &mut || 0);
+    rating::react(
+        &mut w,
+        &cat,
+        before,
+        Some(rating::Change::Object {
+            habitat: 9400,
+            name: 7,
+            sign: 1,
+        }),
+        &mut || 0,
+    );
     assert!(w.units.take_animal_lines().is_empty());
     assert!(w.units.take_cheers().is_empty());
     assert!(w.units.reactions.is_empty());
@@ -687,4 +727,150 @@ fn an_amphibious_animal_in_a_linked_tank_keeps_the_bits_of_its_land_home() {
     settle(&mut w, &cat, tank);
     assert_eq!(home(&w, &cat, 1), Some(tank));
     assert_ne!(bits(&w, 1).0 & 1 << 63, 0, "no land access");
+}
+
+/// The `catalogue` and an owl with an ambient sound, a goat-hating bear is the polar bear, and an
+/// eel that wants water 6 to 9 deep.
+fn zoo_catalogue() -> Catalogue {
+    let mut cat = catalogue();
+    cat.push(kind(
+        "animals",
+        "owl",
+        5008,
+        "[Characteristics/Strings]\ncAmbients=owl.wav\n",
+    ));
+    let eel = "[Characteristics/Integers]\ncUnderwater=1\ncOnlyUnderwater=1\n\
+               cDepthMin=6\ncDepthMax=9\n";
+    cat.push(kind("animals", "eel", 5009, eel));
+    cat
+}
+
+fn draw_counter() -> (std::rc::Rc<std::cell::Cell<u32>>, impl FnMut() -> u32) {
+    let n = std::rc::Rc::new(std::cell::Cell::new(0));
+    let draws = n.clone();
+    (n, move || {
+        draws.set(draws.get() + 1);
+        draws.get() * 1000 + 5
+    })
+}
+
+#[test]
+fn the_rating_that_follows_a_change_revises_the_species_list_first() {
+    let cat = zoo_catalogue();
+    let mut w = amphibious_world(2, &[(1, "polar", (7, 3)), (4, "owl", (8, 3))]);
+    let (_, land) = pair(&w);
+    let tile = 3 * WIDE + 8;
+    let before = rating::before(&w, &cat, &[tile]);
+    assert!(w.exhibits().get(land).unwrap().rating.sounds.is_empty());
+    // A staff member placed: no reaction, but the exhibit is marked, compared and rated, and the
+    // list is revised first: the first draw picks the tile of the owl's sound, the later ones
+    // are the reachability test's.
+    let (draws, mut rand) = draw_counter();
+    rating::react(&mut w, &cat, before, None, &mut rand);
+    let rating = &w.exhibits().get(land).unwrap().rating;
+    assert!(!rating.dirty && !rating.revise);
+    assert_eq!(rating.sounds, [("owl/".to_string(), 1005 % 12)]);
+    assert_eq!(rating.types, ["polar/", "owl/"]);
+    assert!(
+        draws.get() >= 2,
+        "the reachability test draws after the list"
+    );
+    assert!(w.units.take_animal_lines().is_empty() && w.units.take_cheers().is_empty());
+    // The type is known: the next change draws no sound tile.
+    let before = rating::before(&w, &cat, &[tile]);
+    rating::react(&mut w, &cat, before, None, &mut || 7);
+    assert_eq!(w.exhibits().get(land).unwrap().rating.sounds.len(), 1);
+}
+
+#[test]
+fn an_animal_placed_reacts_by_the_compatible_animals_of_the_species() {
+    let (mut w, cat) = (linked(), catalogue());
+    let tile = 3 * WIDE + 8;
+    let before = rating::before(&w, &cat, &[tile]);
+    let goat = w.unrecorded(|w| w.add(entity("animals", "goat", 5, centre((8, 3)), 0), None));
+    assert!(goat.is_some());
+    // The bears dislike the goat (-10): the bear of the land and, being amphibious, the one of
+    // the tank; the goat has no likes of its own.
+    let change = rating::Change::Animal([5003, 0, 0]);
+    rating::react(&mut w, &cat, before, Some(change), &mut || 0);
+    let mut lines = w.units.take_animal_lines();
+    lines.sort();
+    assert_eq!(lines, ["dislikes 1", "dislikes 3", "sound frown"]);
+    assert_eq!(w.units.take_cheers(), ["frown"]);
+    // An animal nobody has an opinion about changes nothing.
+    let before = rating::before(&w, &cat, &[tile]);
+    rating::react(
+        &mut w,
+        &cat,
+        before,
+        Some(rating::Change::Animal([1, 2, 3])),
+        &mut || 0,
+    );
+    assert!(w.units.take_animal_lines().is_empty());
+}
+
+#[test]
+fn a_new_wall_height_of_a_filled_tank_with_a_gate_runs_the_terrain_pair() {
+    let cat = zoo_catalogue();
+    let new = || {
+        let mut w = amphibious_world(2, &[(1, "polar", (3, 3)), (2, "eel", (4, 3))]);
+        let tank = pair(&w).0;
+        w.exhibits_mut().get_mut(tank).unwrap().gate = Some(1000);
+        w.take_events();
+        (w, tank)
+    };
+    let (mut w, tank) = new();
+    w.set_height(tank, 3);
+    let depth = w.take_events().into_iter().find_map(|e| match e {
+        crate::world::Event::Depth { id, from, to } => Some((id, from, to)),
+        _ => None,
+    });
+    assert_eq!(depth, Some((tank, 2, 3)));
+    let level = w.tank(tank).unwrap().level;
+    rating::depth(&mut w, &cat, &mut || 0, tank, 2, 3);
+    // The eel wants deeper water: it likes the new depth; the bear has no wish.
+    let mut lines = w.units.take_animal_lines();
+    lines.sort();
+    assert_eq!(lines, ["likes 2", "sound smile"]);
+    assert_eq!(
+        w.tank(tank).unwrap().level,
+        level,
+        "the water level is put back"
+    );
+    assert!(dirty(&w, tank), "the tank is marked again");
+    // Lowering the walls is disliked.
+    w.set_height(tank, 2);
+    rating::depth(&mut w, &cat, &mut || 0, tank, 3, 2);
+    let mut lines = w.units.take_animal_lines();
+    lines.sort();
+    assert_eq!(lines, ["dislikes 2", "sound frown"]);
+    // No gate, not filled, or the same height: no event.
+    let (mut w, tank) = new();
+    w.exhibits_mut().get_mut(tank).unwrap().gate = None;
+    w.set_height(tank, 3);
+    assert!(
+        w.take_events()
+            .iter()
+            .all(|e| !matches!(e, crate::world::Event::Depth { .. }))
+    );
+    let (mut w, tank) = new();
+    w.set_height(tank, 2);
+    assert!(w.take_events().is_empty());
+    w.exhibits_mut()
+        .get_mut(tank)
+        .unwrap()
+        .tank
+        .as_mut()
+        .unwrap()
+        .filled = false;
+    w.set_height(tank, 4);
+    assert!(
+        w.take_events()
+            .iter()
+            .all(|e| !matches!(e, crate::world::Event::Depth { .. }))
+    );
+    // A tank that is gone, and levels at the limits, do not panic.
+    rating::depth(&mut w, &cat, &mut || 0, 99, 0, u32::MAX);
+    rating::depth(&mut w, &cat, &mut || 0, tank, u32::MAX, 0);
+    rating::depth(&mut w, &cat, &mut || 0, tank, 0, u32::MAX);
 }

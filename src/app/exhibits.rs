@@ -112,6 +112,17 @@ impl App<'_> {
                 Event::Removed(id) | Event::Merged { gone: id, .. } => {
                     crate::staff::assign::clear_habitat(&mut game.world, id);
                 }
+                Event::Depth { id, from, to } => {
+                    let rand = &mut || self.sim.rng.rand();
+                    rating::depth(
+                        &mut game.world,
+                        self.renderer.catalogue(),
+                        rand,
+                        id,
+                        from,
+                        to,
+                    );
+                }
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
                 Event::Objects(id) => game.refused = Some(id),
                 _ => {}
