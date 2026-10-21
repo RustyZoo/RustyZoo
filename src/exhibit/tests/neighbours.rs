@@ -462,3 +462,70 @@ fn the_reachability_counter_belongs_to_the_program_not_to_the_world() {
     rating::reach(&mut second, &cat, land, &mut rand);
     assert_eq!(rating::tests(), 6);
 }
+
+/// Rates exhibit `x` and settles the home and the bits of its animals, as the world manager does.
+fn settle(w: &mut World, cat: &Catalogue, x: u32) {
+    let input = input(w, cat, x);
+    w.exhibits_mut().get_mut(x).unwrap().rating.compute(&input);
+    crate::animal::home::settle(w, cat, x);
+}
+
+fn bits(w: &World, id: u32) -> (Option<u32>, u64, u64) {
+    match &w.units.get(id).unwrap().part {
+        crate::unit::Part::Animal(a) => (a.home, a.advice, a.important),
+        _ => panic!("not an animal"),
+    }
+}
+
+#[test]
+fn an_amphibious_animal_in_a_linked_tank_keeps_the_bits_of_its_land_home() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    // The bear on the land is at home there and takes the bits of the land record, keeping the
+    // bit of the animal checks.
+    if let crate::unit::Part::Animal(a) = &mut w.units.get_mut(3).unwrap().part {
+        (a.advice, a.important) = (1 << 3 | 1 << 20, 1 << 20);
+    }
+    settle(&mut w, &cat, land);
+    let (home, advice, _) = bits(&w, 3);
+    let advice = advice & !(1 << 3);
+    assert_eq!(home, Some(land));
+    let record = rate(&input(&w, &cat, land));
+    assert_eq!(
+        advice,
+        record.iter().find(|r| r.key == "polar").unwrap().advice
+    );
+    // The bear that swims in the tank beside it has the land for its home, and a rating of the
+    // tank leaves its bits alone: the animal checks' bit 3 and the pass's bit 20 stay.
+    let bear = w.find(1).unwrap();
+    if let crate::unit::Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+        (a.advice, a.important) = (1 << 3 | 1 << 20, 1 << 20);
+    }
+    settle(&mut w, &cat, tank);
+    assert_eq!(bits(&w, 1), (Some(land), 1 << 3 | 1 << 20, 1 << 20));
+    // The panel shows the record of the home, not that of the tank.
+    assert_eq!(
+        crate::panel::exhibit::record_exhibit(&w, &cat, bear),
+        Some(land)
+    );
+    // The shark is not amphibious: the tank is its home and its bits are the tank's.
+    let shark = rate(&input(&w, &cat, tank));
+    let want = shark.iter().find(|r| r.key == "shark").unwrap().advice;
+    assert_eq!(
+        bits(&w, 2),
+        (
+            Some(tank),
+            want,
+            shark.iter().find(|r| r.key == "shark").unwrap().important
+        )
+    );
+    assert_eq!(
+        crate::panel::exhibit::record_exhibit(&w, &cat, w.find(2).unwrap()),
+        Some(tank)
+    );
+    // Without a land neighbour the bear is at home in the tank and takes its bits.
+    w.exhibits_mut().get_mut(tank).unwrap().amphibious.clear();
+    settle(&mut w, &cat, tank);
+    assert_eq!(bits(&w, 1).0, Some(tank));
+    assert_ne!(bits(&w, 1).1 & 1 << 63, 0, "no land access");
+}

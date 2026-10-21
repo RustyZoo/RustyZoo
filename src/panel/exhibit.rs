@@ -20,6 +20,7 @@ use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
 use crate::ui::layout::{Picture, Rgb};
 use crate::ui::widgets::Row;
+use crate::unit::Part;
 use crate::vfs::Vfs;
 use crate::world::World;
 
@@ -439,7 +440,7 @@ impl Panel {
 
     /// Writes the plaque for the animal `self.plaque`, if it is still in the world: its name, the
     /// background and title of its keeper kind, and the recommendations of its species in the
-    /// exhibit it stands in, rated from the world now. Returns the log lines of what changed.
+    /// exhibit of its record (`record_exhibit`), rated from the world now. Returns the log lines of what changed.
     pub fn refresh_plaque(
         &mut self,
         ui: &mut Interface,
@@ -451,7 +452,7 @@ impl Panel {
             return Vec::new();
         };
         let (entity, ty) = (&world.zoo.entities[at], type_at(world, cat, at));
-        let exhibit = animals_exhibit(world, at);
+        let exhibit = record_exhibit(world, cat, at);
         let kind = ty.map_or(0, |t| {
             keeper_kind(number(t, "cKeeper").map_or(9500, |v| v as i32))
         });
@@ -523,6 +524,21 @@ pub fn animals_exhibit(world: &World, at: usize) -> Option<u32> {
         .exhibits()
         .region(t)
         .filter(|&r| r != GROUNDS && r != EXTERIOR)
+}
+
+/// The exhibit whose record the animal panel shows for the animal at `at`: the home of an
+/// amphibious animal in a tank (tank fauna 12.3), else the exhibit it stands in.
+pub fn record_exhibit(world: &World, cat: &Catalogue, at: usize) -> Option<u32> {
+    let here = animals_exhibit(world, at)?;
+    let tank = (world.exhibits().get(here)).is_some_and(|e| e.tank.is_some_and(|t| !t.show));
+    let amphibious = type_at(world, cat, at).is_some_and(|t| rating::Likes::of(t).amphibious);
+    let id = world.zoo.entities[at].common.as_ref()?.id;
+    let home = match world.units.get(id).map(|u| &u.part) {
+        Some(Part::Animal(a)) => a.home,
+        _ => None,
+    };
+    let home = home.filter(|&h| world.exhibits().get(h).is_some());
+    Some(home.filter(|_| tank && amphibious).unwrap_or(here))
 }
 
 #[cfg(test)]

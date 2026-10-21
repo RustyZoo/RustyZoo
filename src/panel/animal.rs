@@ -11,7 +11,7 @@ use crate::animal::{self, Animal, Keys};
 use crate::build::number;
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
-use crate::panel::exhibit::{Clock, animals_exhibit, type_at};
+use crate::panel::exhibit::{Clock, record_exhibit, type_at};
 use crate::panel::follow::set_follow_icon;
 use crate::panel::guest::{thought_rows, thought_texts};
 use crate::status::Words;
@@ -103,10 +103,10 @@ pub fn band(now: u64, then: u64) -> usize {
     usize::from(hours >= RECENT) + usize::from(hours > SHORT)
 }
 
-/// The rating the animal at `at` shows: its species' in the exhibit it stands in, 0 on the
-/// grounds.
+/// The rating the animal at `at` shows: its species' in the exhibit of its record (its home for an
+/// amphibious animal in a tank), 0 on the grounds.
 fn suitability(world: &World, cat: &Catalogue, at: usize) -> i32 {
-    let Some(exhibit) = animals_exhibit(world, at) else {
+    let Some(exhibit) = record_exhibit(world, cat, at) else {
         return 0;
     };
     let records = rating::rate(&rating::input(world, cat, exhibit));
