@@ -301,7 +301,9 @@ impl App<'_> {
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
         let layout = game.building.layout;
-        if ui.shown(layout) && game.building.clock.due(now, ticking, building::PERIOD) {
+        // The panel of a building that charges nothing is filled when shown, never by the clock.
+        let ticks = ticking && layout == building::CHARGING;
+        if ui.shown(layout) && game.building.clock.due(now, ticks, building::PERIOD) {
             let when = self.sim.calendar().state().0;
             self.panel_lines
                 .extend(game.building.refresh(ui, &game.world, cat, vfs, when));

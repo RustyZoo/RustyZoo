@@ -25,7 +25,7 @@ pub fn is_guest_building(ty: &EntityType) -> bool {
 
 /// The monthly upkeep of a building type: `cUpkeep`, 0 when the file has none or for the
 /// helicopter base (guest buildings 9; the upgrades of the expansions come with M7).
-fn upkeep(ty: &EntityType) -> f32 {
+pub fn upkeep(ty: &EntityType) -> f32 {
     let key = ty
         .config
         .as_deref()

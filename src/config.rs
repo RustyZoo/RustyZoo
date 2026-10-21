@@ -312,6 +312,11 @@ pub fn to_int(value: &[u8]) -> Option<i32> {
 /// number can be read. The decimal mark is always `.`.
 /// ponytail: the original's use of a locale with another decimal mark is not ruled out.
 pub fn to_float(value: &[u8]) -> f32 {
+    to_double(value) as f32
+}
+
+/// [`to_float`] as the double the original reads.
+pub fn to_double(value: &[u8]) -> f64 {
     let value = value.trim_ascii_start();
     let digits_from = |at: usize| {
         value[at..]
@@ -339,7 +344,7 @@ pub fn to_float(value: &[u8]) -> f32 {
     std::str::from_utf8(&value[..end])
         .ok()
         .and_then(|number| number.parse::<f64>().ok())
-        .map_or(0.0, |number| number as f32)
+        .unwrap_or(0.0)
 }
 
 /// A flag is an integer tested against 0: `1`, `2` and `-1` are on; `0`, `yes` and `true` are

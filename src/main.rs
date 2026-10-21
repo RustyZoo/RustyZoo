@@ -341,8 +341,9 @@ usage: rustyzoo [--data <dir>] <command>
                       `panel guest none` when it closes. A click on a guest building (a burger stand, a restroom) opens its
                       panel: a building that charges has the price field with up and down buttons (0.25 a press, within the
                       economy's building price maximum and the type's low and high cost; the field of the full game can be
-                      typed into), the income, upkeep and profit since built and per month, the months open and the items
-                      sold; any other building shows its guests and months open. `panel building ID \"NAME\" price P income I
+                      typed into, the number going through the same bounds), the income, upkeep and profit since built and per month, the months open
+                      and the items sold (refreshed every 5 s of the clock); any other building shows its guests and months open
+                      (and on the full game its monthly upkeep), filled when it opens. `panel building ID \"NAME\" price P income I
                       upkeep U profit R month I U R months M guests last A this B total C sells [ITEMS]` tells what it shows, when
                       it opens and when a value changes, `building price ID P` each change of the price, and
                       `panel building none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel

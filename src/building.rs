@@ -21,6 +21,7 @@ use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::world::World;
 use crate::zoo::Entity;
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 pub mod items;
@@ -198,20 +199,41 @@ impl Kind {
         self.satisfies.iter().any(|n| n == need)
     }
 
-    /// The price after the up button (guest buildings 7.2): 0.25 more, within the economy's
-    /// ceiling and the type's.
-    pub fn raised(&self, price: f32, max: f32) -> f32 {
-        (price + STEP).min(max).min(self.high)
+    /// The price after the up step by `amount` (guest buildings 7.2; the button's is 0.25): within
+    /// the economy's ceiling and the type's, which are applied whatever they are (a `cHighCost`
+    /// of 0 gives 0).
+    pub fn raised(&self, price: f32, max: f32, amount: f32) -> f32 {
+        (price + amount).min(max).min(self.high)
     }
 
-    /// The price after the down button: 0.25 less, not below 0 or the type's floor.
-    pub fn lowered(&self, price: f32) -> f32 {
-        (price - STEP).max(0.0).max(self.low)
+    /// The price after the down step by `amount`: not below 0 or the type's floor.
+    pub fn lowered(&self, price: f32, amount: f32) -> f32 {
+        (price - amount).max(0.0).max(self.low)
     }
 
-    /// Whether the up button is enabled at this price.
+    /// The price after the up or down button (the step of 0.25).
+    pub fn pressed(&self, price: f32, max: f32, up: bool) -> f32 {
+        match up {
+            true => self.raised(price, max, STEP),
+            false => self.lowered(price, STEP),
+        }
+    }
+
+    /// The price after the player typed the number `typed` into the price field (7.2): the step up
+    /// or down by the difference, so the bounds hold as for a button press; the same number is no
+    /// change.
+    pub fn typed(&self, price: f32, max: f32, typed: f64) -> f32 {
+        let at = f64::from(price);
+        match typed.partial_cmp(&at) {
+            Some(Ordering::Less) => self.lowered(price, (at - typed) as f32),
+            Some(Ordering::Greater) => self.raised(price, max, (typed - at) as f32),
+            _ => price,
+        }
+    }
+
+    /// Whether the up button is enabled at this price (at exactly the economy's ceiling it is).
     pub fn can_raise(&self, price: f32, max: f32) -> bool {
-        !(self.high != 0.0 && price >= self.high || price >= max)
+        !(self.high != 0.0 && price >= self.high || price > max)
     }
 
     /// Whether the down button is enabled at this price.

@@ -1,14 +1,18 @@
 //! The building panels (information panels 3, 4.1; guest buildings 7.2, 10.3): the charging panel
 //! with the price field, its up and down buttons, the income, upkeep and profit since the
 //! building was built and per month, the guests and the items sold, and the panel of a building
-//! that charges nothing, with the guests. Refreshed while shown and not while the game is paused.
+//! that charges nothing, with the guests and the upkeep. The charging panel is refreshed every 5 s
+//! of the interface clock while shown and the game runs; the other one is filled when shown, never
+//! by the clock.
 //!
 //! [`Panel`] holds the selected building and the clock; [`Panel::refresh`] writes the layout from
 //! the world and returns the `panel` log line when what it shows changed.
 
 use crate::building::{Kind, Live};
+use crate::config::to_double;
 use crate::entity::Catalogue;
 use crate::money::{SYMBOL, Symbol};
+use crate::month::upkeep;
 use crate::panel::exhibit::{Clock, type_at};
 use crate::text::format;
 use crate::text::to_cp1252;
@@ -25,9 +29,9 @@ pub const PLAIN: i32 = 20;
 pub const UP: i32 = 4557;
 pub const DOWN: i32 = 4556;
 pub const TABS: [i32; 6] = [4575, 4576, 4577, 4675, 4678, 4677];
-/// The period of the interface clock between two refreshes (ms; the spec gives none, the staff
-/// panel's is taken).
-pub const PERIOD: u64 = 1000;
+/// The period of the interface clock between two refreshes of the charging panel (ms; guest
+/// buildings 10.3).
+pub const PERIOD: u64 = 5000;
 
 /// The elements of the charging panel.
 const NAME: i32 = 4502;
@@ -43,27 +47,47 @@ const MONTHS: i32 = 4573;
 const GUESTS: [i32; 3] = [4563, 4565, 4592];
 const ITEMS: [i32; 5] = [4567, 4568, 4569, 4570, 4571];
 /// The elements of the panel of a building that charges nothing: the guests last month, this
-/// month and since construction, and the months open (the layout of the full game also has an
-/// upkeep field, 4696, which nothing names).
+/// month and since construction, and the months open; the layout of the full game also has an
+/// upkeep field.
 const PLAIN_NAME: i32 = 4602;
 const PLAIN_SELL: i32 = 4616;
 const PLAIN_GUESTS: [i32; 3] = [4664, 4666, 4662];
 const PLAIN_MONTHS: i32 = 4668;
+const PLAIN_UPKEEP: i32 = 4696;
 
 /// The months a building has been open at game time `now` when it was built at `built` (ms):
-/// `round(days + 29.9)` divided by 30 as whole numbers, at least 1 (guest buildings 10.3).
+/// `(d + 29) / 30` (the ceiling of `d / 30`) for `d` whole days, at least 1 (guest buildings 10.3).
 pub fn months(built: u64, now: u64) -> i64 {
-    let days = now.saturating_sub(built) as f64 / DAY_MS as f64;
-    ((days + 29.9).round() as i64 / 30).max(1)
+    let days = now.saturating_sub(built) / DAY_MS;
+    days.div_ceil(30).max(1) as i64
 }
 
 /// The figures the charging panel shows (guest buildings 10.3): income, upkeep and profit since
-/// construction, each rounded and the profit their difference, and the same per month.
+/// construction, the first two cut toward zero and the profit their difference, and the same
+/// per month (whole division).
 pub fn figures(live: &Live, months: i64) -> ([i64; 3], [i64; 3]) {
-    let income = format::whole_units(f64::from(live.income[2]));
-    let upkeep = format::whole_units(f64::from(live.upkeep));
+    let (income, upkeep) = (
+        f64::from(live.income[2]) as i64,
+        f64::from(live.upkeep) as i64,
+    );
     let total = [income, upkeep, income.saturating_sub(upkeep)];
     (total, total.map(|v| v / months))
+}
+
+/// The number the player typed into the price field (guest buildings 7.2): the first currency
+/// `symbol` and then the first thousands separator cut out, the rest read as `atof` does.
+pub fn typed(text: &[u8], symbol: &[u8]) -> f64 {
+    let mut text = text.to_vec();
+    let cut = |text: &mut Vec<u8>, part: &[u8]| {
+        if let Some(at) = text.windows(part.len()).position(|w| w == part) {
+            text.drain(at..at + part.len());
+        }
+    };
+    if !symbol.is_empty() {
+        cut(&mut text, symbol);
+    }
+    cut(&mut text, b",");
+    to_double(&text)
 }
 
 /// The selected building and the refresh clock.
@@ -131,13 +155,20 @@ impl Panel {
             let open = months(live.built, now);
             let texts = PLAIN_GUESTS.iter().zip(&shown);
             for (&element, text) in texts.chain([(&PLAIN_MONTHS, &open.to_string())]) {
-                let text = if kind.hide_info { "" } else { text };
                 ui.set_text(element, text.as_bytes());
             }
-            format!(
+            let mut told = format!(
                 "guests last {} this {} total {} months {open}",
                 shown[0], shown[1], shown[2]
-            )
+            );
+            // The full game's layout also shows the monthly upkeep, money with two decimals.
+            if ui.tree.find(PLAIN_UPKEEP).is_some() {
+                let symbol = Symbol::new(ui.string(SYMBOL));
+                let upkeep = format::money_cents(&symbol, f64::from(upkeep(ty)), false);
+                ui.set_text(PLAIN_UPKEEP, &to_cp1252(&upkeep));
+                told += &format!(" upkeep {upkeep}");
+            }
+            told
         };
         let told = format!("building {id} {name:?} {told}");
         match told == self.told {

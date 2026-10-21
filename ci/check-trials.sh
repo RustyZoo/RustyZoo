@@ -828,6 +828,23 @@ building_plain() { # building_plain <map>
 }
 check base-trial '"Family_Restroom"_guests_last_0_this_0_total_0_months_1' "building_plain maps/default.zoo"
 
+# The same panels in a running game (the game unpaused at pass 93; a game day is 60 passes of 200 ms), over
+# the month change at pass 1951 (guest buildings 10.3). building_running <map> <x y of the item> <awk pattern>
+# prints the pass of the first `panel building` line that matches: the charging panel is refreshed every 5000 ms
+# of the clock (a refresh every 25 passes from pass 93), so it shows the second month and the upkeep of the month
+# (the burger stand's 50) at pass 1968, not at the 31st day (pass 1953); the panel of a building that charges
+# nothing is filled when shown and never by the clock.
+building_running() { # building_running <map> <x y> <awk pattern>
+  d=$(mktemp -d)
+  printf '2 pause\n75 mouse 25 129\n76 down\n77 up\n79 mouse %s\n80 down\n81 up\n82 mouse 864 256\n84 down\n85 up\n86 key escape\n90 mouse 864 256\n91 down\n92 up\n93 pause\n' "$2" >"$d/script"
+  rz run "$1" --headless --cash 75000 --seed 5 --passes 2100 --clock 200 --script "$d/script" 2>/dev/null |
+    awk "/ panel building .*$3/{ print \$2; exit }" | tr -d '\n'
+  rm -rf "${d:?}"
+}
+check base-trial 1968 "building_running maps/default.zoo '140 120' 'months 2 '"
+check base-trial 1968 "building_running maps/default.zoo '140 120' 'upkeep .50 '"
+check base-trial '' "building_running maps/default.zoo '140 160' 'months 2'"
+
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
 scenario_guest_panel() {

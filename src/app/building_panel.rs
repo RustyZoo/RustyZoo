@@ -6,6 +6,7 @@ use super::*;
 use crate::building::Kind;
 use crate::panel::building as panel;
 use crate::place::bulldozer::type_of;
+use crate::text::to_cp1252;
 
 impl App<'_> {
     /// The panel of entity `id`, if it is a guest building: the charging layout for a building
@@ -65,34 +66,27 @@ impl App<'_> {
     /// `building price ID PRICE`.
     pub(super) fn building_price(&mut self, up: bool) {
         let max = self.game.as_ref().map_or(0.0, |g| g.world.units.prices.max);
-        self.set_price(|kind, price| match up {
-            true => kind.raised(price, max),
-            false => kind.lowered(price),
-        });
+        self.set_price(|kind, price| kind.pressed(price, max, up));
     }
 
-    /// The player ended editing the price field (7.2): the text without the currency symbol is
-    /// read as a number and stored as the price, whatever the bounds of the buttons; text that
-    /// is no finite number leaves the price as it was.
+    /// The player ended editing the price field (7.2): the text is cleaned and read as a number
+    /// ([`panel::typed`], no number is 0) and the price takes the up or down step by the
+    /// difference, so it is clamped like a button press.
     pub(super) fn building_type_price(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
             return;
         };
-        let typed = ui.text(panel::PRICE).unwrap_or_default();
+        let text = ui.text(panel::PRICE).unwrap_or_default();
         let symbol = ui.string(SYMBOL);
-        let typed = typed.trim_ascii_start();
-        let number = typed
-            .strip_prefix(symbol.trim().as_bytes())
-            .unwrap_or(typed);
-        let value = crate::config::to_float(number);
-        let locked = game.building.layout != panel::CHARGING;
-        match value.is_finite() && !locked {
-            true => self.set_price(|_, _| value),
-            false => {
-                if let Some(game) = &mut self.game {
-                    game.building.clock.force = true;
-                }
-            }
+        let symbol = if symbol.trim().is_empty() {
+            "$"
+        } else {
+            &symbol
+        };
+        let value = panel::typed(&text, &to_cp1252(symbol));
+        let max = game.world.units.prices.max;
+        if game.building.layout == panel::CHARGING {
+            self.set_price(|kind, price| kind.typed(price, max, value));
         }
     }
 

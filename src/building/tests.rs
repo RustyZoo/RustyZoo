@@ -132,30 +132,55 @@ fn kind(low: f32, high: f32) -> Kind {
 fn the_price_steps_by_a_quarter_within_the_economy_and_the_type() {
     // The burger stand: 1.00 to 6.50 (guest buildings 7.2), the shipped ceiling 30.
     let k = kind(1.0, 6.5);
-    assert_eq!(k.raised(3.5, 30.0), 3.75);
-    assert_eq!(k.lowered(3.5), 3.25);
-    assert_eq!((k.raised(6.5, 30.0), k.lowered(1.0)), (6.5, 1.0));
-    assert_eq!((k.raised(6.4, 30.0), k.lowered(1.1)), (6.5, 1.0));
+    let (up, down) = (
+        |k: &Kind, p, max| k.pressed(p, max, true),
+        |k: &Kind, p| k.pressed(p, 30.0, false),
+    );
+    assert_eq!(up(&k, 3.5, 30.0), 3.75);
+    assert_eq!(down(&k, 3.5), 3.25);
+    assert_eq!((up(&k, 6.5, 30.0), down(&k, 1.0)), (6.5, 1.0));
+    assert_eq!((up(&k, 6.4, 30.0), down(&k, 1.1)), (6.5, 1.0));
     assert!(k.can_raise(6.25, 30.0) && !k.can_raise(6.5, 30.0));
     assert!(k.can_lower(1.25) && !k.can_lower(1.0));
-    // The economy's ceiling comes first.
-    assert_eq!(k.raised(3.5, 3.5), 3.5);
-    assert!(!k.can_raise(3.5, 3.5));
+    // The economy's ceiling comes first; at exactly the ceiling the button stays enabled and a
+    // press changes nothing, above it the button is off.
+    assert_eq!(up(&k, 3.5, 3.5), 3.5);
+    assert!(k.can_raise(3.5, 3.5) && !k.can_raise(3.75, 3.5));
     // A type with no floor still stops at 0.
     let free = kind(0.0, 6.5);
-    assert_eq!(free.lowered(0.1), 0.0);
+    assert_eq!(free.lowered(0.1, 0.25), 0.0);
     assert!(free.can_lower(0.25) && !free.can_lower(0.0));
-    // A type with no ceiling can be raised up to the economy's.
+    // A type with no ceiling can be raised up to the economy's by the button; the step applies the
+    // 0 literally, as the button does.
     assert!(kind(1.0, 0.0).can_raise(29.0, 30.0));
+    assert_eq!(kind(1.0, 0.0).pressed(3.0, 30.0, true), 0.0);
     // Odd prices and limits never panic: a negative ceiling, a price that is not a number, huge.
     for price in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -5.0, f32::MAX] {
         for max in [-1.0, 0.0, f32::MAX] {
-            k.raised(price, max);
+            k.raised(price, max, 0.25);
             k.can_raise(price, max);
+            k.typed(price, max, 7.0);
         }
-        k.lowered(price);
+        k.lowered(price, 0.25);
         k.can_lower(price);
     }
+}
+
+#[test]
+fn a_typed_price_is_clamped_like_a_button_press() {
+    // The popcorn stand of the full game: 3.00 within 1.00 and 5.00.
+    let k = kind(1.0, 5.0);
+    let typed = |v: f64| k.typed(3.0, 30.0, v);
+    assert_eq!([typed(9999.0), typed(0.5), typed(4.25)], [5.0, 1.0, 4.25]);
+    // A number below 0, no number (0) and the same price.
+    assert_eq!([typed(-3.0), typed(0.0), typed(3.0)], [1.0, 1.0, 3.0]);
+    // Not numbers and huge values stay finite or clamped.
+    assert_eq!(typed(f64::INFINITY), 5.0);
+    assert_eq!(typed(f64::NEG_INFINITY), 1.0);
+    assert_eq!(typed(f64::NAN), 3.0);
+    // The economy's ceiling holds, and a type with a ceiling of 0 gives 0.
+    assert_eq!(k.typed(3.0, 4.0, 4.5), 4.0);
+    assert_eq!(kind(1.0, 0.0).typed(3.0, 30.0, 4.0), 0.0);
 }
 
 #[test]
@@ -166,15 +191,18 @@ fn a_price_set_in_the_panel_is_the_live_price_of_the_building() {
     let mut w = world_with((4, 4), |_| {});
     // A building that never had a guest starts at its default price and is changed from there.
     assert_eq!(
-        set_price(&mut w, &ty, 7, |k, p| k.raised(p, 30.0)),
+        set_price(&mut w, &ty, 7, |k, p| k.pressed(p, 30.0, true)),
         Some(3.75)
     );
     assert_eq!(w.units.buildings[&7].price, 3.75);
     // The bound keeps the price, which is no change.
     assert_eq!(
-        set_price(&mut w, &ty, 7, |k, _| k.raised(6.5, 30.0)),
+        set_price(&mut w, &ty, 7, |k, _| k.pressed(6.5, 30.0, true)),
         Some(6.5)
     );
-    assert_eq!(set_price(&mut w, &ty, 7, |k, p| k.raised(p, 30.0)), None);
+    assert_eq!(
+        set_price(&mut w, &ty, 7, |k, p| k.pressed(p, 30.0, true)),
+        None
+    );
     assert_eq!(w.units.buildings[&7].price, 6.5);
 }
