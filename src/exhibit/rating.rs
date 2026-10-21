@@ -603,8 +603,8 @@ pub enum Change {
 /// whose sum went down a "dislikes" one; in a land exhibit the animals of an amphibious species
 /// in its amphibious neighbours react too. An old sum of 0 counts as
 /// unchanged; an unchanged sum lets the `change`, an object placed or removed or an animal
-/// placed, decide by its value to the species (no `change`, as for a staff member: no
-/// reaction). Logs `likes ID` or `dislikes ID`.
+/// placed, decide by its value to the species (with none, as for a staff member, an unchanged
+/// sum gives no reaction). Logs `likes ID` or `dislikes ID`.
 /// Once all exhibits are done, the approving sound plays if an animal liked the change and the
 /// disapproving one if an animal disliked it (a species of eggs only reaches none).
 pub fn react(

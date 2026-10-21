@@ -8,7 +8,9 @@
 # The window is the default one (1024x768); every position is in its pixels. The game is built while
 # it is paused. The game starts on its map: there the seed 5 draws women for the two hires (the
 # staff of the base trial are women only, and the Hire list is empty when a man is drawn); a game
-# started from the main menu draws a man for the second hire. The trial's staff cost nothing
+# started from the main menu draws a man for the second hire.
+# The hires come before the adoption: an animal placed rates its exhibit at once (habitat rating 9.4),
+# which draws from the shared stream, and the seed 5 draws women for the hires made first. The trial's staff cost nothing
 # and its keeper rakes no dung, so the gazelles are happy until the first dung and unhappy after it.
 # A gazelle lives 4320 s of the game, about the length of the run: one may die of old age in the
 # thirteenth month.
@@ -120,99 +122,99 @@
 108 down
 109 up
 110 key escape
-# adopt panel, animals tab: two gazelles
-112 mouse 25 81
+# hire panel: a keeper and a maintenance worker
+112 mouse 25 175
 113 down
 114 up
 116 mouse 70 80
 117 down
 118 up
-119 mouse 416 288
+119 mouse 704 240
 120 down
 121 up
-123 mouse 144 283
+123 mouse 140 80
 124 down
 125 up
-126 mouse 70 80
+126 mouse 736 224
 127 down
 128 up
-129 mouse 512 272
-130 down
-131 up
-133 key escape
-# construction panel: foliage tab (trees) and rocks tab (a small rock) for the habitat
-136 mouse 25 34
+130 key escape
+# adopt panel, animals tab: two gazelles
+132 mouse 25 81
+133 down
+134 up
+136 mouse 70 80
 137 down
 138 up
-140 mouse 183 141
-141 down
-142 up
-144 mouse 140 80
-145 down
-146 up
-147 mouse 512 304
-149 down
-150 up
-151 mouse 480 224
-153 down
-154 up
-155 mouse 183 174
+139 mouse 416 288
+140 down
+141 up
+143 mouse 144 283
+144 down
+145 up
+146 mouse 70 80
+147 down
+148 up
+149 mouse 512 272
+150 down
+151 up
+153 key escape
+# construction panel: foliage tab (trees) and rocks tab (a small rock) for the habitat
+155 mouse 25 34
 156 down
 157 up
-159 mouse 70 80
+159 mouse 183 141
 160 down
 161 up
-162 mouse 512 336
+163 mouse 140 80
 164 down
 165 up
-166 key escape
-# pick the first gazelle up and put it down elsewhere in the exhibit; a click on bare ground clears the selection
-169 mouse 416 280
-170 down
-171 up
-174 mouse 416 280
+166 mouse 512 304
+168 down
+169 up
+170 mouse 480 224
+172 down
+173 up
+174 mouse 183 174
 175 down
 176 up
-179 mouse 448 240
-182 down
-183 up
-186 mouse 256 368
-187 down
-188 up
-# hire panel: a keeper and a maintenance worker
-191 mouse 25 175
-192 down
-193 up
-195 mouse 70 80
-196 down
-197 up
-198 mouse 704 240
-199 down
-200 up
-202 mouse 140 80
-203 down
-204 up
-205 mouse 736 224
-206 down
-207 up
-209 key escape
+178 mouse 70 80
+179 down
+180 up
+181 mouse 512 336
+183 down
+184 up
+185 key escape
+# pick the first gazelle up and put it down elsewhere in the exhibit; a click on bare ground clears the selection
+187 mouse 416 280
+188 down
+189 up
+192 mouse 416 280
+193 down
+194 up
+197 mouse 448 240
+200 down
+201 up
+204 mouse 256 368
+205 down
+206 up
 # select the keeper, open the second tab of its panel, press its assign button and click the exhibit
-211 mouse 704 230
-212 down
-213 up
-216 mouse 1006 665
-217 down
-218 up
-221 mouse 992 587
-222 down
-223 up
-226 mouse 480 288
-227 down
-228 up
-231 key escape
-234 mouse 256 368
-235 down
-236 up
+208 mouse 704 230
+209 down
+210 up
+213 mouse 1006 665
+214 down
+215 up
+218 mouse 992 587
+219 down
+220 up
+223 mouse 480 288
+224 down
+225 up
+228 key escape
+231 mouse 256 368
+232 down
+233 up
 # run unpaused
 239 pause
 # the thirteenth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
