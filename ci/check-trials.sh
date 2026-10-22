@@ -921,7 +921,7 @@ check base-trial 'income_$182_upkeep_$100_profit_$82_month_$182_$100_$82_months_
 check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$354_$300_$54_months_1_guests_last_10_this_0_total_59' "loaded_building maps/scn19.zoo 5 1 0 880 320"
 
 # A building sold from its panel while a guest uses it (guest buildings 11.1, placing 7): the first
-# guest to use the Bronto Burger Stand of scn19 is inside from pass 209 (the stand is at the pixel the
+# guest to use the burger stand of scn19 (type brontbrg) is inside from pass 209 (the stand is at the pixel the
 # first lines click; the panel's sell button is the one at 987 578), the question is answered Yes at
 # pass 224 and the guest is pushed out. Prints the `building push` lines (building/guest), the refund
 # (0.8 of 250) and the cash the sale left, and the walk-out goals the guest took after it (none).
@@ -939,7 +939,7 @@ sold_with_user() { # sold_with_user <map>
 check expansion-trial "31076/32762;Sell;200;0" "sold_with_user maps/scn19.zoo"
 
 # A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
-# Dinosaur Gift Stand of scn19 (cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
+# gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
 # user (from pass 1068) pushed out when the pick-up button (871 573) is pressed at pass 1071, and it is put
 # down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
 # shows once it is down: the stand keeps its figures (the user's $10 and one guest this month).
