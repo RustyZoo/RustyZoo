@@ -1192,3 +1192,48 @@ fn reads_the_values_counters_and_flags_of_an_animal_record() {
     ));
     assert_eq!(z.entities[0].common.as_ref().unwrap().animal, None);
 }
+
+#[test]
+fn reads_the_figures_of_a_building() {
+    let bits = |v: f32| v.to_bits();
+    // Users now, guests since construction, income since construction, the price, the users
+    // (one pair), the fill, income last and this month, guests last and this month, the date.
+    for v in [66, 67, 68, 70, 74, 106] {
+        let mut b = W::default();
+        b.z(4);
+        base(&mut b, v, 4, 9, "House");
+        b.u32(2).u32(40).u32(bits(182.5)).u32(bits(3.5));
+        b.u32(1).z(8);
+        b.u32(14).u32(bits(105.0)).u32(bits(77.25)).u32(15).u32(12);
+        b.u32(0x1234_5678).u32(0x01d0_0000);
+        if (48..=66).contains(&v) {
+            b.u32(0);
+        } else if v < 48 {
+            b.z(2);
+        }
+        if v >= 68 {
+            b.u32(bits(100.0));
+        }
+        if v >= 74 {
+            b.z(4);
+        }
+        if v >= 75 {
+            b.u32(0);
+        }
+        let z = parse(&file(
+            v,
+            1,
+            1,
+            &[],
+            &[("building", "building", "shop", b.0)],
+        ));
+        let r = z.entities[0].common.as_ref().unwrap().building.unwrap();
+        assert_eq!(r.guests, [12, 15, 40], "version {v}");
+        let money = r.income.map(f32::from_bits);
+        assert_eq!(money, [77.25, 105.0, 182.5], "version {v}");
+        assert_eq!(r.fill, 14, "version {v}");
+        assert_eq!(r.built, 0x01d0_0000_1234_5678, "version {v}");
+        let upkeep = r.upkeep.map(f32::from_bits);
+        assert_eq!(upkeep, (v >= 68).then_some(100.0), "version {v}");
+    }
+}

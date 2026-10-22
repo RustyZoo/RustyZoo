@@ -115,6 +115,21 @@ pub struct Common {
     pub guest: Option<Box<GuestRecord>>,
     /// The health and timers of a tank filter; `None` for everything else.
     pub filter: Option<Filter>,
+    /// The figures a guest building record stores; `None` for everything else.
+    pub building: Option<BuildingRecord>,
+}
+
+/// What a guest building record stores of its figures (zoo format 6.9, guest buildings 4): the
+/// guests and the income this month, last month and since construction, the upkeep paid since
+/// construction (from version 68), the trash can's fill and the construction date (a file time).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildingRecord {
+    pub guests: [u32; 3],
+    /// The money figures as the bits of a single precision number.
+    pub income: [u32; 3],
+    pub upkeep: Option<u32>,
+    pub fill: u32,
+    pub built: u64,
 }
 
 /// What a tank filter keeps (tank staff 7): its health, and the milliseconds left before it loses
@@ -446,6 +461,10 @@ impl<'a> Reader<'a> {
                 })
             })
             .collect()
+    }
+
+    fn u64(&mut self) -> R<u64> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
     }
 
     fn u32(&mut self) -> R<u32> {

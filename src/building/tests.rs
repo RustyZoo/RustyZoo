@@ -206,3 +206,147 @@ fn a_price_set_in_the_panel_is_the_live_price_of_the_building() {
     );
     assert_eq!(w.units.buildings[&7].price, 6.5);
 }
+
+const STAND: &str = "[Characteristics/Integers]\ncCommerce=1\n[Satisfies]\nbuilding\nfood\n";
+const CAN: &str = "[Removes]\ntrash\n[Satisfies]\nbuilding\ntrash\n";
+const COMPOST: &str = "[Satisfies]\ncompost\n";
+const START: u64 = 126_227_808_000_000_000; // 1 January 2001 as a file time
+
+fn named(name: &str, text: &str) -> EntityType {
+    EntityType {
+        type_name: name.as_bytes().to_vec(),
+        ..ty(text)
+    }
+}
+
+fn record(fill: u32, built: u64) -> crate::zoo::BuildingRecord {
+    let bits = |v: f32| v.to_bits();
+    crate::zoo::BuildingRecord {
+        guests: [3, 2, 9],
+        income: [bits(10.5), bits(20.0), bits(30.5)],
+        upkeep: Some(bits(75.0)),
+        fill,
+        built,
+    }
+}
+
+/// A zoo with the buildings `(type, id, record)` on tiles in a row, loaded with the types.
+fn loaded(list: &[(&str, u32, Option<crate::zoo::BuildingRecord>)]) -> World {
+    let mut cat = Catalogue::default();
+    for (name, text) in [("stand", STAND), ("can", CAN), ("compost", COMPOST)] {
+        cat.push(named(name, text));
+    }
+    let mut w = world_with((12, 4), |zoo| {
+        for (i, &(name, id, _)) in list.iter().enumerate() {
+            let at = (i as i32, 1);
+            zoo.entities
+                .push(entity("building", name, id, centre(at), 0));
+        }
+    });
+    for (i, &(_, _, record)) in list.iter().enumerate() {
+        w.zoo.entities[i].common.as_mut().unwrap().building = record;
+    }
+    for at in 0..list.len() {
+        load(&mut w, &cat, at);
+    }
+    w
+}
+
+#[test]
+fn a_loaded_building_takes_the_figures_its_record_stores() {
+    let day = crate::timing::DAY_MS as i64;
+    let w = loaded(&[
+        (
+            "stand",
+            7,
+            Some(record(0, START + 10 * day as u64 * 10_000)),
+        ),
+        // A date before the calendar starts is a negative time, not 0.
+        ("stand", 8, Some(record(0, START - 5 * day as u64 * 10_000))),
+    ]);
+    let live = &w.units.buildings[&7];
+    assert_eq!(live.guests, [3, 2, 9]);
+    assert_eq!(live.income, [10.5, 20.0, 30.5]);
+    assert_eq!(live.upkeep, 75.0);
+    assert_eq!(live.built, 10 * day);
+    assert_eq!(w.units.buildings[&8].built, -5 * day);
+    // The price is the type's default and nobody is inside.
+    assert_eq!((live.price, live.users.len()), (29.0, 0));
+    // A stand holds no litter whatever the record says.
+    let w = loaded(&[("stand", 7, Some(record(20, START)))]);
+    assert_eq!(w.units.buildings[&7].fill, 0);
+    assert_eq!(w.zoo.entities[0].common.as_ref().unwrap().food, 0);
+}
+
+#[test]
+fn a_record_before_version_68_has_no_upkeep_and_the_extremes_do_not_panic() {
+    let none = crate::zoo::BuildingRecord {
+        upkeep: None,
+        ..record(0, START)
+    };
+    let w = loaded(&[("stand", 7, Some(none))]);
+    assert_eq!(w.units.buildings[&7].upkeep, 0.0);
+    // The largest date, and money and counts that are not numbers.
+    let wild = crate::zoo::BuildingRecord {
+        guests: [u32::MAX; 3],
+        income: [f32::NAN.to_bits(), f32::INFINITY.to_bits(), u32::MAX],
+        upkeep: Some(u32::MAX),
+        fill: u32::MAX,
+        built: u64::MAX,
+    };
+    let w = loaded(&[("stand", 7, Some(wild)), ("can", 8, Some(wild))]);
+    assert_eq!(w.units.buildings[&7].guests, [u32::MAX; 3]);
+    assert!(w.units.buildings[&7].built > 0);
+    assert_eq!(w.units.buildings[&8].fill, u32::MAX);
+    assert_eq!(loaded_events(&w).len(), 1);
+    let w = loaded(&[(
+        "stand",
+        7,
+        Some(crate::zoo::BuildingRecord { built: 0, ..wild }),
+    )]);
+    assert!(w.units.buildings[&7].built < 0);
+}
+
+#[test]
+fn a_building_without_a_record_or_a_guest_building_or_a_known_type_keeps_no_live_state() {
+    let w = loaded(&[
+        ("stand", 7, None),
+        ("compost", 8, Some(record(0, START))),
+        ("unknown", 9, Some(record(0, START))),
+    ]);
+    assert!(w.units.buildings.is_empty());
+}
+
+#[test]
+fn a_loaded_trash_can_keeps_its_fill_and_the_picture_follows() {
+    let w = loaded(&[("can", 7, Some(record(13, START)))]);
+    assert_eq!(w.units.buildings[&7].fill, 13);
+    // The counter of the entity is what the picture reads (half from 13 pieces).
+    assert_eq!(w.zoo.entities[0].common.as_ref().unwrap().food, 13);
+    let w = loaded(&[("can", 7, Some(record(12, START)))]);
+    assert_eq!(w.zoo.entities[0].common.as_ref().unwrap().food, 12);
+}
+
+#[test]
+fn a_loaded_can_above_12_pieces_calls_a_worker_with_its_tile() {
+    use crate::guest::litter::CAN_FILLING;
+    let w = loaded(&[
+        ("can", 7, Some(record(12, START))),
+        ("can", 8, Some(record(13, START))),
+        ("stand", 9, Some(record(0, START))),
+        ("can", 10, Some(record(25, START))),
+        ("can", 11, Some(record(0, START))),
+    ]);
+    let events: Vec<_> = (loaded_events(&w).iter())
+        .map(|e| (e.sender, e.kind, e.data, e.channel))
+        .collect();
+    let task = crate::sim::TASK_CHANNEL;
+    // Entity list order; the tile is the can's (row 1 of a map 12 tiles wide).
+    assert_eq!(
+        events,
+        [
+            (8, CAN_FILLING, 12 + 1, task),
+            (10, CAN_FILLING, 12 + 3, task)
+        ]
+    );
+}

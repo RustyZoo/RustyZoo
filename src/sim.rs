@@ -271,9 +271,13 @@ impl Sim {
         self.status.rating_check(sums, money, &mut self.lines);
     }
 
-    /// The fence pieces of a zoo just loaded post their events (placing 7.4): the broken ones and
-    /// the decayed ones, after the events the file stored.
+    /// The trash cans, fence pieces and filters of a zoo just loaded post their events, after the
+    /// events the file stored: a can above 12 pieces calls a worker (staff 8.2), then the broken
+    /// and the decayed pieces (placing 7.4).
     pub fn fences_loaded(&mut self, world: &World, cat: &Catalogue) {
+        for event in crate::building::loaded_events(world) {
+            self.events.post(event);
+        }
         for event in world.loaded_events(cat) {
             self.events.post(event);
         }
@@ -331,6 +335,7 @@ impl Sim {
             }
             crate::animal::load(world, cat, &mut self.rng, at);
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
+            crate::building::load(world, cat, at);
         }
     }
 

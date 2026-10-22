@@ -101,6 +101,7 @@ impl Fnv {
             food,
             animal: _,
             guest: _,
+            building: _,
             filter,
         }) = &e.common
         {
