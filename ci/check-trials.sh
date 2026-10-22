@@ -869,11 +869,12 @@ building_fixed() { # building_fixed <map> <x y of the stand>
 check expansion-trial '"Show_Grandstand_7"_$5.00_fixed' "building_fixed maps/scn28.zoo '600 60'"
 
 # The same panels in a running game (the game unpaused at pass 93; a game day is 60 passes of 200 ms), over
-# the month change at pass 1951 (guest buildings 10.3). building_running <map> <x y of the item> <awk pattern>
+# the month change (guest buildings 10.3). The map starts on the date it stores, 7 January 2001, so the month
+# changes at pass 1561. building_running <map> <x y of the item> <awk pattern>
 # prints the pass of the first `panel building` line that matches: the charging panel is refreshed every 5000 ms
-# of the clock (a refresh every 25 passes from pass 93), so it shows the second month and the upkeep of the month
-# (the burger stand's 50) at pass 1968, not at the 31st day (pass 1953); the panel of a building that charges
-# nothing is filled when shown and never by the clock.
+# of the clock (a refresh every 25 passes from pass 93), so it shows the upkeep of the month (the burger stand's
+# 50) at pass 1568, and the second month at pass 1968 (the stand is built at pass 85 and is 31 days old at
+# pass 1953); the panel of a building that charges nothing is filled when shown and never by the clock.
 building_running() { # building_running <map> <x y> <awk pattern>
   d=$(mktemp -d)
   printf '2 pause\n75 mouse 25 129\n76 down\n77 up\n79 mouse %s\n80 down\n81 up\n82 mouse 864 256\n84 down\n85 up\n86 key escape\n90 mouse 864 256\n91 down\n92 up\n93 pause\n' "$2" >"$d/script"
@@ -882,7 +883,7 @@ building_running() { # building_running <map> <x y> <awk pattern>
   rm -rf "${d:?}"
 }
 check base-trial 1968 "building_running maps/default.zoo '140 120' 'months 2 '"
-check base-trial 1968 "building_running maps/default.zoo '140 120' 'upkeep .50 '"
+check base-trial 1568 "building_running maps/default.zoo '140 120' 'upkeep .50 '"
 check base-trial '' "building_running maps/default.zoo '140 160' 'months 2'"
 
 # A building deleted while a guest uses it (guest buildings 11.1): `sim` runs the map; a second run has the
@@ -918,7 +919,7 @@ loaded_building() { # loaded_building <map> <presses> <dx> <dy> <x> <y>
   rm -rf "${d:?}"
 }
 check base-trial 'income_$182_upkeep_$100_profit_$82_month_$182_$100_$82_months_1_guests_last_15_this_12_total_27' "loaded_building maps/scn01a.zoo 8 -1 0 500 440"
-check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$354_$300_$54_months_1_guests_last_10_this_0_total_59' "loaded_building maps/scn19.zoo 5 1 0 880 320"
+check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$50_$42_$7_months_7_guests_last_10_this_0_total_59' "loaded_building maps/scn19.zoo 5 1 0 880 320"
 
 # A building sold from its panel while a guest uses it (guest buildings 11.1, placing 7): the first
 # guest to use the burger stand of scn19 (type brontbrg) is inside from pass 209 (the stand is at the pixel the
@@ -940,13 +941,13 @@ check expansion-trial "31076/32762;Sell;200;0" "sold_with_user maps/scn19.zoo"
 
 # A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
 # gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
-# user (from pass 1334) pushed out when the pick-up button (871 573) is pressed at pass 1337, and it is put
-# down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
+# user (from pass 1175, with seed 6) pushed out when the pick-up button (871 573) is pressed at pass 1337, and it
+# is put down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
 # shows once it is down: the stand keeps its figures (the $430 its saved record stores and the user's $10).
 building_moved() { # building_moved <map>
   d=$(mktemp -d)
   printf '2 mouse 300 375\n3 down\n4 up\n1336 mouse 871 573\n1337 down\n1338 up\n1340 mouse 500 300\n1342 mouse 520 310\n1343 down\n1344 up\n1346 mouse 871 573\n' >"$d/script"
-  rz run "$1" --headless --passes 1356 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1356 --clock 67 --seed 6 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "drop") { w = w $5 "," $6 "," $7 ";" }
       $4 == "building" && $5 == "push" && $6 == 29780 { w = w "push;" }
       $4 == "panel" && $5 == "building" && $6 == 29780 { for (i = 7; i < NF; i++) if ($i == "income") l = "income " $(i + 1) }
