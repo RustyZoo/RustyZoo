@@ -200,6 +200,7 @@ impl Run {
         sim.set_seed(seed);
         sim.set_economy(economy);
         sim.start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
+        sim.restart_calendar();
         world.units.set_period(sim.ai.status_period);
         world.units.class = Class {
             reset_interval: sim.ai.animal_reset_interval,

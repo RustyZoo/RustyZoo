@@ -302,6 +302,14 @@ impl Calendar {
         Self::default()
     }
 
+    /// A calendar that stands at `elapsed` game milliseconds after the start (a saved zoo's date).
+    pub fn at(elapsed: u64) -> Self {
+        Self {
+            elapsed,
+            month_changed: false,
+        }
+    }
+
     /// Advances by one simulation step. Returns whether the previous step changed the month:
     /// the month-end work (the finance check) belongs to this step, one late. A step that
     /// changes the month raises the flag for the next one.
@@ -364,6 +372,23 @@ impl Date {
         days * DAY_MS as i64 + day_ms
     }
 
+    /// Game milliseconds from the calendar's start to this date; 0 for a date before it or one
+    /// whose fields are out of range.
+    pub fn game_ms(&self) -> u64 {
+        let ok = (1..=12).contains(&self.month)
+            && (1..=31).contains(&self.day)
+            && self.hour < 24
+            && self.minute < 60
+            && self.second < 60
+            && self.millisecond < 1000;
+        let start = DAYS_TO_2001 * DAY_MS as i64;
+        if ok {
+            (self.millis() - start).max(0) as u64
+        } else {
+            0
+        }
+    }
+
     /// The date of a file time: 100 ns steps since 1 January 1601 (zoo format 1).
     pub fn from_file_time(t: u64) -> Date {
         let ms = t / 10_000;
@@ -400,6 +425,40 @@ mod tests {
                 "{s} {k}"
             );
         }
+    }
+
+    #[test]
+    fn a_stored_date_counts_game_milliseconds_and_a_bad_one_is_the_start() {
+        let at = |year, month, day, hour| Date {
+            year,
+            month,
+            day,
+            weekday: 0,
+            hour,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+        };
+        assert_eq!(at(2001, 1, 1, 0).game_ms(), 0);
+        assert_eq!(at(2001, 1, 2, 1).game_ms(), DAY_MS + 3_600_000);
+        // The calendar stands at the date and goes on from it.
+        let mut c = Calendar::at(at(2001, 1, 31, 23).game_ms());
+        assert_eq!((c.date().month, c.date().day), (1, 31));
+        c.advance(100_000);
+        assert_eq!((c.date().month, c.date().day), (2, 9));
+        for bad in [
+            at(2000, 12, 31, 0),
+            at(0, 1, 1, 0),
+            at(2001, 0, 1, 0),
+            at(2001, 13, 1, 0),
+            at(2001, 1, 0, 0),
+            at(2001, 1, 32, 0),
+            at(2001, 1, 1, 24),
+            at(2001, 1, 1, u32::MAX),
+        ] {
+            assert_eq!(bad.game_ms(), 0, "{bad:?}");
+        }
+        assert!(at(65535, 12, 31, 23).game_ms() > 0);
     }
 
     #[test]

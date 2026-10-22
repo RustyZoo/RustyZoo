@@ -11,6 +11,10 @@ impl W {
         self.0.push(n);
         self
     }
+    fn u16(&mut self, n: u16) -> &mut Self {
+        self.0.extend(n.to_le_bytes());
+        self
+    }
     fn u32(&mut self, n: u32) -> &mut Self {
         self.0.extend(n.to_le_bytes());
         self
@@ -150,7 +154,10 @@ fn tail(w: &mut W, v: u32) {
     if v >= 71 {
         w.z(8);
     }
-    w.z(16);
+    // The calendar: Friday 14 March 2003, 06:30:15.250.
+    for n in [2003, 3, 5, 14, 6, 30, 15, 250] {
+        w.u16(n);
+    }
     w.u32(1234.5f32.to_bits()); // cash
     if v >= 73 {
         w.z(4);
@@ -324,6 +331,19 @@ fn reads_the_clocks_the_file_stores() {
             );
             assert_eq!((e.delay, e.sender_channel, e.channel), (5, 0x55, 0x4b));
         }
+    }
+}
+
+#[test]
+fn reads_the_game_date_the_file_stores() {
+    // 802 days from 1 January 2001 to 14 March 2003.
+    let ms = 802 * 86_400_000 + (6 * 3600 + 30 * 60 + 15) * 1000 + 250;
+    for v in VERSIONS {
+        assert_eq!(
+            parse(&file(v, 2, 2, &[], &[])).clocks.calendar,
+            ms,
+            "version {v}"
+        );
     }
 }
 
