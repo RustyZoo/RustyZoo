@@ -3,9 +3,11 @@
 //! [`crate::unit`].
 
 use super::*;
+use crate::behaviour::{Data, Library};
 use crate::entity::EntityType;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Kind as UnitKind;
+use crate::unit::Part as UnitPart;
 
 /// Tells the player why a place was refused: the stored message in the message line
 /// (`tool message N`), or `tool refused` without one.
@@ -44,7 +46,7 @@ impl App<'_> {
         if game.selected != Some(id) {
             game.selected = Some(id);
             self.tool_lines.push(format!("tool select {id}"));
-            self.ui_sounds.push("place");
+            self.type_sound(id, "placesound");
             return true;
         }
         self.carry_up(id);
@@ -60,8 +62,39 @@ impl App<'_> {
             game.selected = None;
             game.carry = Some(carry);
             self.world_lines.push(format!("carry {id}"));
-            self.ui_sounds.push("place");
+            self.type_sound(id, "pickupsound");
             self.aim(false);
+        }
+    }
+
+    /// Plays the sound the entity's type names with `key` in its `[Sounds]` section (a selection
+    /// asks for `placesound`, a pick-up for `pickupsound`, unit placing 8.1, 8.2), as a plain
+    /// one-shot. A type without it, an egg and a building (none shipped has one) are silent.
+    pub(super) fn type_sound(&mut self, id: u32, key: &str) {
+        let Some(game) = &self.game else { return };
+        let world = &game.world;
+        let egg = world
+            .units
+            .get(id)
+            .is_some_and(|u| matches!(&u.part, UnitPart::Animal(a) if a.egg));
+        let Some(at) = world.find(id).filter(|_| !egg) else {
+            return;
+        };
+        let data = Library {
+            catalogue: self.renderer.catalogue(),
+            vfs: self.renderer.vfs(),
+            timings: &self.timings,
+        };
+        if let Some(heard) = data.sound(&world.zoo.entities[at], key) {
+            self.type_sounds.push(UnitSound {
+                id,
+                file: heard.file,
+                voice: heard.voice,
+                base: heard.base,
+                at: (0, 0),
+                distance: 0,
+                pan: 0,
+            });
         }
     }
 
@@ -93,7 +126,7 @@ impl App<'_> {
         game.selected = None;
         game.carry = Some(carry);
         self.world_lines.push(format!("carry {id}"));
-        self.ui_sounds.push("place");
+        self.type_sound(id, "pickupsound");
         self.aim(false);
         true
     }

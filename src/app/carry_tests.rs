@@ -304,3 +304,39 @@ fn an_undo_while_a_building_is_held_puts_it_back_and_removes_it_with_its_whole_p
         assert_eq!(s.cash(), cash + 60.0);
     });
 }
+
+#[test]
+fn a_selection_and_a_pick_up_play_the_sound_of_a_type_that_has_one() {
+    with_game("sounds", "", |s| {
+        let (zebra, keeper, cart) = (
+            s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0),
+            s.add(12, 19 * 64 + 32, 20 * 64 + 32, 0),
+            s.add(15, 25 * 64 + 32, 20 * 64 + 32, 4),
+        );
+        s.pass(&[]);
+        // What the pass played: the sounds of types, and the plain `place` of the interface.
+        let heard = |s: &Session| {
+            let sounds = s.app.unit_sounds().iter();
+            let all = sounds.map(|u| (u.id, u.file.clone(), u.base, u.distance, u.pan));
+            (all.collect::<Vec<_>>(), s.app.sounds().contains(&"place"))
+        };
+        let escape = Command::Key(Key::Escape, false, false);
+        // The zebra's own sounds, one voice for each, plain (no distance, no pan).
+        let own = |id, file: &str, base| (id, file.to_string(), base, 0, 0);
+        s.click(s.at(21, 20, 32, 32));
+        let want = own(zebra, "animals/zebra/zplace.wav", 1500);
+        assert_eq!(heard(s), (vec![want], false));
+        s.click(s.at(21, 20, 32, 32));
+        let want = own(zebra, "animals/zebra/zpick.wav", 0);
+        assert_eq!(heard(s), (vec![want], false));
+        s.pass(&[escape]);
+        // A keeper, which has no [Sounds], and a cart are silent when selected and picked up.
+        for (id, point) in [(keeper, s.at(19, 20, 32, 32)), (cart, s.at(25, 20, 32, 32))] {
+            for _ in 0..2 {
+                s.click(point);
+                assert_eq!(heard(s), (vec![], false), "{id}");
+            }
+            s.pass(&[escape]);
+        }
+    });
+}

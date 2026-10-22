@@ -154,7 +154,8 @@ pub(super) fn catalogue() -> Catalogue {
     }
     let keeper = "[m/Characteristics/Integers]\ncPurchaseCost=800\ncMonthlyCost=650.5\n";
     cat.push(ty("keeper", b"keeper", b"m", keeper, [1, 1, 1]));
-    let zebra = "[m/Characteristics/Integers]\ncPurchaseCost=800\n";
+    let zebra = "[m/Characteristics/Integers]\ncPurchaseCost=800\n\
+        [Sounds]\nplacesound=zplace\nplacesound=1500\npickupsound=zpick\n";
     cat.push(ty("animals", b"zebra", b"m", zebra, [1, 1, 1]));
     cat.push(ty("guests", b"man", b"", "", [1, 1, 1]));
     // 15: a cart (60, moveable), a building the player can pick up.
