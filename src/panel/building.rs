@@ -1,21 +1,20 @@
 //! The building panels (information panels 3, 4.1; guest buildings 7.2, 10.3): the charging panel
 //! with the price field, its up and down buttons, the income, upkeep and profit since the
 //! building was built and per month, the guests and the items sold, and the panel of a building
-//! that charges nothing, with the guests and the upkeep; both show the type's picture and the
-//! building's name. The charging panel is refreshed every 5 s
-//! of the interface clock while shown and the game runs; the other one is filled when shown, never
-//! by the clock.
+//! that charges nothing, with the guests and the upkeep; both show the type's information image
+//! and the building's name. A type with `cHideCommerceInfo` has nothing filled below the price.
+//! The charging panel is refreshed every 5 s of the interface clock while shown and the game
+//! runs; the other one is filled when shown, never by the clock.
 //!
 //! [`Panel`] holds the selected building and the clock; [`Panel::refresh`] writes the layout from
 //! the world and returns the `panel` log line when what it shows changed.
 
 use crate::building::{Kind, Live};
 use crate::config::to_double;
-use crate::entity::Catalogue;
+use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
 use crate::month::upkeep;
 use crate::panel::exhibit::{Clock, type_at};
-use crate::panel::follow::set_follow_icon;
 use crate::text::format;
 use crate::text::to_cp1252;
 use crate::timing::DAY_MS;
@@ -59,9 +58,20 @@ const PLAIN_GUESTS: [i32; 3] = [4664, 4666, 4662];
 const PLAIN_MONTHS: i32 = 4668;
 const PLAIN_UPKEEP: i32 = 4696;
 
-/// The round slot of the picture, where the other panels have their follow button (relative to the
-/// panel): the picture slot of the layouts has no size of its own.
-const SLOT: (i32, i32, i32, i32) = (0, 3, 68, 68);
+/// The status and finance tab buttons, hidden when the type hides its commerce info.
+const HIDDEN_TABS: [i32; 2] = [4575, 4576];
+
+/// The name of the animation of the panel's picture, `cInfoImageName` of the type: none if the type
+/// names none.
+fn info_image(ty: &EntityType) -> Option<String> {
+    let value = ty
+        .config
+        .as_deref()?
+        .section("Characteristics/Strings")?
+        .get("cInfoImageName")?;
+    let name = String::from_utf8_lossy(value.trim_ascii()).into_owned();
+    (!name.is_empty()).then_some(name)
+}
 
 /// The months a building has been open at game time `now` when it was built at `built` (ms):
 /// `(d + 29) / 30` (the ceiling of `d / 30`) for `d` whole days, at least 1 (guest buildings 10.3).
@@ -157,10 +167,16 @@ impl Panel {
         let name_field = if charging { NAME } else { PLAIN_NAME };
         if fresh {
             ui.set_text(name_field, &to_cp1252(&name));
-            // The type's picture, as the unit panels show theirs (information panels 4.3.1).
-            let picture = if charging { PICTURE } else { PLAIN_PICTURE };
-            ui.set_rect(picture, SLOT);
-            set_follow_icon(ui, vfs, picture, Some(ty));
+            // The type's information image at the top left of the element, set only now; a type
+            // that names none shows no picture (guest buildings 10.3.1).
+            let picture = info_image(ty).and_then(|name| ui.tree.picture(vfs, &name));
+            ui.set_picture(if charging { PICTURE } else { PLAIN_PICTURE }, picture);
+            if charging {
+                for tab in HIDDEN_TABS {
+                    ui.set_hidden(tab, kind.hide_info);
+                    ui.set_enabled(tab, !kind.hide_info);
+                }
+            }
             // Selling and picking up a building are other issues': the buttons stay off.
             for button in [SELL, PICK_UP, PLAIN_SELL] {
                 ui.set_enabled(button, false);
@@ -237,15 +253,18 @@ impl Panel {
             }
             ui.set_text(MONTHS, &to_cp1252(&open.to_string()));
         }
-        // One picture per item sold, from the left, each with its name as tooltip.
-        for (n, &element) in ITEMS.iter().enumerate() {
-            let item = kind.sells.get(n).and_then(|name| cat.items.get(name));
-            let picture = item
-                .filter(|i| !i.icon.is_empty())
-                .and_then(|i| ui.tree.picture(vfs, &i.icon));
-            ui.set_picture(element, picture);
-            if let Some(i) = ui.tree.find(element) {
-                ui.tree.elements[i].help_id = item.map(|i| i.id).into_iter().collect();
+        // The item icons are part of the block `cHideCommerceInfo` leaves alone.
+        if !kind.hide_info {
+            // One picture per item sold, from the left, each with its name as tooltip.
+            for (n, &element) in ITEMS.iter().enumerate() {
+                let item = kind.sells.get(n).and_then(|name| cat.items.get(name));
+                let picture = item
+                    .filter(|i| !i.icon.is_empty())
+                    .and_then(|i| ui.tree.picture(vfs, &i.icon));
+                ui.set_picture(element, picture);
+                if let Some(i) = ui.tree.find(element) {
+                    ui.tree.elements[i].help_id = item.map(|i| i.id).into_iter().collect();
+                }
             }
         }
         // The line says when the buttons are hidden (` fixed`) and the figures are not filled.
@@ -255,7 +274,7 @@ impl Panel {
             price
         };
         if kind.hide_info {
-            return format!("price {price} sells {:?}", kind.sells);
+            return format!("price {price}");
         }
         let [t, u, p] = total;
         let [mt, mu, mp] = monthly;

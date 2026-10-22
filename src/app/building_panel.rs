@@ -69,8 +69,8 @@ impl App<'_> {
         self.set_price(|kind, price| kind.pressed(price, max, up));
     }
 
-    /// The player ended editing the name field of the panel (guest buildings 10.3): the text is the
-    /// building's name, whatever it is, and the panel shows the name again.
+    /// The player ended editing the name field of the panel (guest buildings 10.3): a text with a visible
+    /// character is the building's name (exhibits and money 3.6), and the panel shows the name again.
     pub(super) fn building_rename(&mut self) {
         let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
             return;
@@ -81,7 +81,9 @@ impl App<'_> {
         };
         let bytes = ui.text(field).unwrap_or_default();
         let at = game.building.selected.and_then(|id| game.world.find(id));
-        if let Some(c) = at.and_then(|at| game.world.zoo.entities[at].common.as_mut()) {
+        if let Some(c) = at.and_then(|at| game.world.zoo.entities[at].common.as_mut())
+            && super::exhibits::visible(&bytes)
+        {
             c.name = bytes.iter().map(|&b| crate::text::from_cp1252(b)).collect();
         }
         game.building.reselect();

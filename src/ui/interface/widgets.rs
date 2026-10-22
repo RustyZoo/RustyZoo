@@ -178,20 +178,6 @@ impl Interface {
         true
     }
 
-    /// Gives the element `id` the rectangle (`x`, `y`, `dx`, `dy`), relative to what its position
-    /// is measured from; `false` if there is no such element.
-    pub fn set_rect(&mut self, id: i32, (x, y, dx, dy): (i32, i32, i32, i32)) -> bool {
-        let Some(i) = self.tree.find(id) else {
-            return false;
-        };
-        let Some(placed) = &mut self.tree.elements[i].placed else {
-            return false;
-        };
-        (placed.x, placed.y, placed.dx, placed.dy) = (x, y, dx, dy);
-        self.dirty = true;
-        true
-    }
-
     /// Moves the element `id` to its alternative position or back; `false` if there is none.
     pub fn set_alt(&mut self, id: i32, alt: bool) -> bool {
         let Some(i) = self.tree.find(id) else {

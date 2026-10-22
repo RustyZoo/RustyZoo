@@ -88,9 +88,12 @@ impl Strings for Texts {
 /// a type with the idle animation of [`follow::members`] and the integer settings `ints`.
 fn panel_in(name: &str, layout: i32, ints: &str) -> (Interface, Vfs, World, Catalogue) {
     let ids = [
-        ("UIImage", [4550, 4650].as_slice()),
+        ("UIImage", [4550, 4650, 4567, 4568].as_slice()),
         ("UIEditableText", &[4502, 4602, 4555]),
-        ("UIButton", &[4557, 4556, 4516, 4580, 4616]),
+        (
+            "UIButton",
+            &[4557, 4556, 4516, 4580, 4616, 4575, 4576, 4577],
+        ),
         (
             "UIText",
             &[
@@ -121,7 +124,7 @@ fn panel_in(name: &str, layout: i32, ints: &str) -> (Interface, Vfs, World, Cata
     ui.show(layout);
     let text = format!(
         "[Characteristics/Integers]\n{ints}[Characteristics/Floats]\ncDefaultCost=2\ncHighCost=150\n\
-         [Animations]\nidle = ui/z/z.ani\n"
+         [Characteristics/Strings]\ncInfoImageName = ui/z/z\n[Animations]\nidle = ui/z/z.ani\n"
     );
     let mut cat = Catalogue::default();
     cat.push(EntityType {
@@ -145,31 +148,56 @@ fn state(ui: &Interface, id: i32) -> u32 {
 }
 
 #[test]
-fn both_panels_show_the_types_picture_in_the_round_slot_when_shown() {
+fn both_panels_show_the_types_information_image_when_shown_only() {
     for (layout, picture) in [(CHARGING, PICTURE), (PLAIN, PLAIN_PICTURE)] {
         let (mut ui, vfs, world, cat) = panel_in("building-panel-picture", layout, "");
         let mut panel = Panel::default();
         panel.select(1, layout);
-        assert_eq!(
-            follow::shown(&ui, picture),
-            (false, None),
-            "blank until shown"
-        );
-        panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
-        let first = follow::shown(&ui, picture);
-        assert!(first.0, "the idle animation");
         let at = ui.tree.find(picture).unwrap();
+        let animated = |ui: &Interface| {
+            let e = &ui.tree.elements[at];
+            (
+                e.state & HIDDEN == 0,
+                e.look.animation.first().copied().flatten().is_some(),
+            )
+        };
+        panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+        assert_eq!(
+            animated(&ui),
+            (true, true),
+            "the animation named by the type"
+        );
+        // The element keeps its place and takes the size of the animation.
         let placed = ui.tree.elements[at].placed.unwrap();
-        assert_eq!((placed.x, placed.y, placed.dx, placed.dy), (0, 3, 68, 68));
-        assert!(!ui.set_rect(99_999, SLOT), "no such element");
-        // A refresh of the clock leaves it; selecting again (a rename) sets it again.
-        ui.set_icon(picture, None);
+        assert_eq!((placed.x, placed.y), (0, 0));
+        assert!(placed.dx > 0 && placed.dy > 0);
+        // A refresh of the clock leaves it; showing the panel again sets it again.
+        ui.set_picture(picture, None);
         panel.clock.force = true;
         panel.refresh(&mut ui, &world, &cat, &vfs, 0);
-        assert_eq!(follow::shown(&ui, picture), (false, None));
+        assert!(!animated(&ui).0, "a refresh leaves it hidden");
         panel.reselect();
         panel.refresh(&mut ui, &world, &cat, &vfs, 0);
-        assert_eq!(follow::shown(&ui, picture), first);
+        assert_eq!(animated(&ui), (true, true));
+    }
+}
+
+#[test]
+fn a_type_with_no_information_image_or_a_missing_one_shows_no_picture() {
+    let (mut ui, vfs, world, mut cat) = panel_in("building-panel-no-image", CHARGING, "");
+    let at = ui.tree.find(PICTURE).unwrap();
+    for text in [
+        "",
+        "[Characteristics/Strings]\ncInfoImageName =\n",
+        "[Characteristics/Strings]\ncInfoImageName = ui/nothing/here\n",
+    ] {
+        cat.types[0].config = Some(std::sync::Arc::new(Config::parse(text.as_bytes()).unwrap()));
+        let mut panel = Panel::default();
+        panel.select(1, CHARGING);
+        let shown = ui.tree.picture(&vfs, "ui/z/z");
+        ui.set_picture(PICTURE, shown);
+        panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+        assert_ne!(ui.tree.elements[at].state & HIDDEN, 0, "{text:?}");
     }
 }
 
@@ -238,28 +266,56 @@ fn the_up_button_is_enabled_at_the_economy_maximum_and_not_above() {
 }
 
 #[test]
-fn hiding_the_commerce_info_leaves_the_figures_of_the_charging_panel_alone() {
+fn hiding_the_commerce_info_leaves_everything_below_the_price_alone() {
     let run = |ints: &str, name: &str| {
-        let (mut ui, vfs, world, cat) = panel_in(name, CHARGING, ints);
+        let (mut ui, vfs, mut world, mut cat) = panel_in(name, CHARGING, ints);
+        // The building sells an item with an icon.
+        cat.types[0].config = {
+            let text = format!(
+                "[Characteristics/Integers]\n{ints}[Sells]\nhotdog\n[Characteristics/Floats]\n\
+                 cDefaultCost=2\ncHighCost=150\n[Characteristics/Strings]\ncInfoImageName = ui/z/z\n"
+            );
+            Some(std::sync::Arc::new(Config::parse(text.as_bytes()).unwrap()))
+        };
+        cat.items.insert(
+            "hotdog".into(),
+            crate::building::items::Item {
+                id: 6303,
+                icon: "ui/z/z".into(),
+                ..Default::default()
+            },
+        );
+        world.units.buildings.clear();
         let ids = [TOTALS, MONTHLY].concat();
         for id in ids.iter().chain(&GUESTS).chain([&MONTHS]) {
             ui.set_text(*id, b"layout");
         }
+        ui.set_hidden(ITEMS[0], true);
         let mut panel = Panel::default();
         panel.select(1, CHARGING);
         let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
         let texts = ids.iter().chain(&GUESTS).chain([&MONTHS]);
-        let texts: Vec<_> = texts.map(|&id| ui.text(id).unwrap()).collect();
-        (told, texts.iter().all(|t| t == b"layout"))
+        let kept = texts
+            .map(|&id| ui.text(id).unwrap())
+            .all(|t| t == b"layout");
+        let items = state(&ui, ITEMS[0]) & HIDDEN != 0;
+        let tabs = [4575, 4576, 4577]
+            .map(|id| (state(&ui, id) & HIDDEN != 0, state(&ui, id) & DISABLED != 0));
+        (told, kept, items, tabs)
     };
-    let (told, kept) = run("cCommerce = 1\n", "building-panel-info");
+    let (told, kept, items, tabs) = run("cCommerce = 1\n", "building-panel-info");
     assert!(!kept && told.contains(" income $0 "), "{told}");
-    let (told, kept) = run(
+    assert!(!items, "the item icon is shown");
+    assert_eq!(tabs, [(false, false); 3]);
+    let (told, kept, items, tabs) = run(
         "cCommerce = 1\ncHideCommerceInfo = 1\n",
         "building-panel-info-hidden",
     );
     assert!(kept, "the layout's text stays");
-    assert_eq!(told, "building 1 \"\" price $2.00 sells []");
+    assert!(items, "the item row is not touched");
+    assert_eq!(told, "building 1 \"\" price $2.00");
+    // The status and finance tabs are hidden and disabled; the colour tab stays.
+    assert_eq!(tabs, [(true, true), (true, true), (false, false)]);
 }
 
 #[test]
