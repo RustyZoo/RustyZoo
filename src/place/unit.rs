@@ -120,9 +120,23 @@ pub fn carried(
     view: u8,
     aim: Aim,
 ) -> Option<Pending> {
+    pending_of(
+        world,
+        cat,
+        water,
+        carry.ty,
+        turned(carry, view),
+        view,
+        aim,
+        0.0,
+    )
+}
+
+/// The map direction the carried thing faces when the view is turned by `view`: it keeps its
+/// screen facing, `facing + 2 * (view at pick-up - view now)` (unit placing 8.3).
+pub fn turned(carry: &Carry, view: u8) -> u32 {
     let turn = 2 * (i32::from(carry.view) - i32::from(view));
-    let dir = (i64::from(carry.facing) + i64::from(turn)).rem_euclid(8) as u32;
-    pending_of(world, cat, water, carry.ty, dir, view, aim, 0.0)
+    (i64::from(carry.facing) + i64::from(turn)).rem_euclid(8) as u32
 }
 
 #[allow(clippy::too_many_arguments)]

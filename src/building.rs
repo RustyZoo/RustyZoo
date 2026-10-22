@@ -21,8 +21,9 @@
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::guest::litter::CAN_FILLING;
+use crate::sim::Rng;
 use crate::timing::Date;
-use crate::world::World;
+use crate::world::{Shape, World};
 use crate::zoo::Entity;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -370,6 +371,57 @@ pub fn loaded_events(world: &World) -> Vec<crate::sim::Event> {
         }
     }
     events
+}
+
+/// Whether a building of the type can be picked up: `cMoveable` 1 (default 0; unit placing 8.7).
+pub fn moveable(ty: &EntityType) -> bool {
+    crate::build::number(ty, "cMoveable") == Some(1.0)
+}
+
+/// A building the player holds (unit placing 8.7): taken off the map with its users pushed out,
+/// it keeps its id, its place in the entity list and its figures until it is set down again.
+#[derive(Debug, Clone)]
+pub struct Held {
+    at: usize,
+    entity: Entity,
+    shape: Option<Shape>,
+    live: Option<Live>,
+}
+
+/// Picks building `id` up (guest buildings 11.1): its users are pushed out as a forced leave, a
+/// trash can spills its fill, and the building leaves the world, nothing recorded for the undo.
+/// `None` when there is no such building.
+pub fn lift(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> Option<Held> {
+    let at = world.find(id)?;
+    leave::push_out(world, cat, id);
+    crate::guest::litter::spill(world, cat, id, rng);
+    let (entity, shape) = (world.zoo.entities[at].clone(), world.shape(at));
+    let live = world.units.buildings.get(&id).cloned();
+    world.unrecorded(|w| w.remove(id));
+    Some(Held {
+        at,
+        entity,
+        shape,
+        live,
+    })
+}
+
+/// Sets the held building down at `point` facing `facing`, with the figures it had.
+pub fn set_down(world: &mut World, held: Held, point: (i32, i32, i32), facing: u32) {
+    let Held {
+        at,
+        mut entity,
+        shape,
+        live,
+    } = held;
+    let id = entity.common.as_mut().map(|c| {
+        (c.x, c.y, c.z, c.rotation) = (point.0, point.1, point.2, facing);
+        c.id
+    });
+    world.put_back(at, entity, shape);
+    if let Some((id, live)) = id.zip(live) {
+        world.units.buildings.insert(id, live);
+    }
 }
 
 /// Sets the price of building `id` of type `ty` to what `new` makes of the type and the price it

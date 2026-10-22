@@ -225,9 +225,10 @@ impl App<'_> {
         self.sweep_step();
     }
 
-    /// The fire button of the staff panel: the staff member with this id is the one entity of a
-    /// removal, which asks its question like the bulldozer's (unit placing 10.1).
-    pub(super) fn fire(&mut self, id: u32) {
+    /// The fire button of the staff panel and the sell button of the building panel: the entity
+    /// with this id is the one entity of a removal, which asks its question like the bulldozer's
+    /// (unit placing 10.1, placing 7).
+    pub(super) fn remove_one(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         game.sweep = Some(Sweep {
             queue: VecDeque::from([id]),

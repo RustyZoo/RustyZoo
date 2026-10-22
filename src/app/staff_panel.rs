@@ -347,7 +347,7 @@ impl App<'_> {
     pub(super) fn staff_fire(&mut self) {
         if let Some(id) = self.game.as_ref().and_then(|g| g.staff.selected) {
             self.end_assign();
-            self.fire(id);
+            self.remove_one(id);
         }
     }
 

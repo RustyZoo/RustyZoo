@@ -23,21 +23,23 @@ impl App<'_> {
     /// A release on the map with no tool (8.1): a unit under the pointer that is not the selected
     /// one becomes the selected one (`tool select ID`); the selected unit again is picked up
     /// (`world carry ID`), and follows the pointer as a pending unit, free of charge. Anything
-    /// else under the pointer, or nothing, clears the selection. Returns whether a unit was
-    /// under the pointer; the other things (a gate) are [`App::select`]'s.
+    /// else under the pointer, or nothing, clears the selection, except that the selected
+    /// building under the pointer is picked up when it is moveable (8.1, 8.7). Returns whether
+    /// something was selected or picked up; the other things (a gate) are [`App::select`]'s.
     pub(super) fn pick_or_select(&mut self) -> bool {
         let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
             return false;
         };
         let world = &game.world;
-        let hit = (game.staged)
-            .pick(game.camera.view_point(ui.pointer()), 0, |id| {
-                world.find(id).is_some()
-            })
-            .filter(|&id| world.units.get(id).is_some());
+        let pointed = (game.staged).pick(game.camera.view_point(ui.pointer()), 0, |id| {
+            world.find(id).is_some()
+        });
+        let hit = pointed.filter(|&id| world.units.get(id).is_some());
         let Some(id) = hit else {
+            // The selected building again picks it up when it is moveable (8.1 point 2).
+            let again = pointed.filter(|&id| game.selected == Some(id));
             game.selected = None;
-            return false;
+            return again.is_some_and(|id| self.lift_building(id));
         };
         if game.selected != Some(id) {
             game.selected = Some(id);
@@ -63,6 +65,39 @@ impl App<'_> {
         }
     }
 
+    /// Picks the building up (unit placing 8.7, guest buildings 11.1): its users are pushed out,
+    /// it leaves the map and follows the pointer as a pending object, free of charge, keeping its
+    /// facing, and nothing is selected (`world carry ID`). A building that is not moveable stays,
+    /// and the answer is false.
+    pub(super) fn lift_building(&mut self, id: u32) -> bool {
+        let Some(game) = &mut self.game else {
+            return false;
+        };
+        let cat = self.renderer.catalogue();
+        let entity = game.world.find(id).map(|at| &game.world.zoo.entities[at]);
+        let ty = entity
+            .and_then(|e| cat.position(&e.class, e.type_name.as_bytes(), e.subtype.as_bytes()));
+        let c = entity.and_then(|e| e.common.as_ref());
+        let (Some(ty), Some(c)) = (ty.filter(|&t| crate::building::moveable(&cat.types[t])), c)
+        else {
+            return false;
+        };
+        let carry = place::unit::Carry {
+            id,
+            ty,
+            from: (c.x, c.y, c.z),
+            facing: c.rotation,
+            view: game.camera.rotation,
+        };
+        game.held = crate::building::lift(&mut game.world, cat, id, &mut self.sim.rng);
+        game.selected = None;
+        game.carry = Some(carry);
+        self.world_lines.push(format!("carry {id}"));
+        self.ui_sounds.push("place");
+        self.aim(false);
+        true
+    }
+
     /// A release on the map with a unit carried (8.4): a valid place puts it down there, facing
     /// as the pending unit does, selected again, and logs `world drop ID X,Y`, with `home N` for an
     /// animal that stands in an exhibit; a place that is not valid keeps it carried and shows its
@@ -81,6 +116,16 @@ impl App<'_> {
         }
         let cat = self.renderer.catalogue();
         let ty = &cat.types[carry.ty];
+        // A building held (8.7) is set down where it was judged, with its figures, and selected.
+        if let Some(held) = game.held.take() {
+            crate::building::set_down(&mut game.world, held, (p.x, p.y, p.z), p.facing);
+            game.carry = None;
+            game.selected = Some(carry.id);
+            let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);
+            self.world_lines.push(line);
+            self.ui_sounds.push("place");
+            return self.aim(false);
+        }
         // A unit put down is a placement: the animals of the exhibit react (habitat rating 9.4).
         let tile = game.world.tile_index(p.tile.0, p.tile.1);
         let before = rating::before(&game.world, cat, tile.as_slice());
@@ -109,6 +154,14 @@ impl App<'_> {
             return;
         };
         let ty = &self.renderer.catalogue().types[carry.ty];
+        if let Some(held) = game.held.take() {
+            crate::building::set_down(&mut game.world, held, carry.from, carry.facing);
+            game.selected = Some(carry.id);
+            let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
+            let line = Self::landing("putback", &game.world, ty, carry.id, tile);
+            self.world_lines.push(line);
+            return self.aim(false);
+        }
         if place::unit::put_down(&mut game.world, carry.id, carry.from, carry.facing) {
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));

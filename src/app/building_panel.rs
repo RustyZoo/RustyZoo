@@ -110,6 +110,22 @@ impl App<'_> {
         }
     }
 
+    /// The sell button (placing 7): the selected building goes as the bulldozer removes it, after
+    /// the question with its refund when `[UI] confirmSell` asks for one; its users are pushed out.
+    pub(super) fn building_sell(&mut self) {
+        if let Some(id) = self.game.as_ref().and_then(|g| g.building.selected) {
+            self.remove_one(id);
+        }
+    }
+
+    /// The pick-up button (unit placing 8.7): the selected building is picked up as a second
+    /// click on it does.
+    pub(super) fn building_pick_up(&mut self) {
+        if let Some(id) = self.game.as_ref().and_then(|g| g.building.selected) {
+            self.lift_building(id);
+        }
+    }
+
     /// Sets the price of the selected building to what `new` makes of its type and price.
     fn set_price(&mut self, new: impl FnOnce(&Kind, f32) -> f32) {
         let Some(game) = &mut self.game else { return };
