@@ -2,7 +2,7 @@
 //! and the forced leave of every user when the building is taken off the map. The guest's own
 //! leave (task 0x69) is [`crate::goal`]'s and uses [`pay`] too.
 
-use super::{Kind, Mood, Point, exit_of, kind_of};
+use super::{Kind, Mood, exit_of, kind_of};
 use crate::entity::Catalogue;
 use crate::guest::{BATHROOM, ENERGY, HAPPINESS, HUNGER, THIRST};
 use crate::render::order::ground_height;
@@ -120,24 +120,26 @@ pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
 }
 
 /// Guest buildings 6.7: the user at position `at` of the entity list is put at the exit of its
-/// slot, on the ground there and facing as the slot says (an entrance keeps its facing), and shown.
-/// With no exit on the map it is shown where it stands.
-fn put_out(world: &mut World, at: usize, unit: &mut Unit, e: &Entity, kind: &Kind, slot: usize) {
-    unit.hidden = false;
+/// slot ([`exit_of`]), on the ground there with its own facing, and shown. With no exit it is
+/// taken off the map and stays as it was, hidden or not.
+pub(crate) fn put_out(
+    world: &mut World,
+    at: usize,
+    unit: &mut Unit,
+    e: &Entity,
+    kind: &Kind,
+    slot: usize,
+) {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
         return;
     };
-    let (own, turned) = ((c.x, c.y, c.z), c.rotation);
-    let spot = exit_of(world, e, kind, slot).map(|(x, y): Point| {
-        let z = (world.tile_index(x.div_euclid(64), y.div_euclid(64))).map_or(own.2, |t| {
-            ground_height(&world.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64))
-        });
-        let facing = match kind.uses_exit {
-            true => super::facing(e, kind.slots[slot].facing),
-            false => turned,
-        };
-        ((x, y, z), facing)
+    let (z, facing) = (c.z, c.rotation);
+    let Some((x, y)) = exit_of(world, e, kind, slot) else {
+        return world.lift_unit(at);
+    };
+    let z = (world.tile_index(x.div_euclid(64), y.div_euclid(64))).map_or(z, |t| {
+        ground_height(&world.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64))
     });
-    let (point, facing) = spot.unwrap_or((own, turned));
-    world.place_unit(at, point, facing);
+    unit.hidden = false;
+    world.place_unit(at, (x, y, z), facing);
 }
