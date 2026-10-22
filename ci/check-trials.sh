@@ -720,7 +720,7 @@ panel_gate() { # panel_gate <map>
     sed -n 's/^pass [0-9]* t=[0-9]* panel //p' | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
-check base-trial 'exhibit_1_"Lion";status_"Jan_1,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;donations_stars_0_$0.00_$0.00_$0.00;animals_0_thoughts_0' "panel_gate maps/default.zoo"
+check base-trial 'exhibit_1_"Lion";status_"Jan_7,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;donations_stars_0_$0.00_$0.00_$0.00;animals_0_thoughts_0' "panel_gate maps/default.zoo"
 # The exhibit list button, the first row, the Animals tab and its first row open the animal panel,
 # and its recommendations button the plaque of that animal: prints the animals of the exhibit, the
 # lines in red (important) and the others, as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
@@ -747,7 +747,7 @@ panel_animal() { # panel_animal <map>
   rm -rf "$d"
 }
 check base-trial '35179_"Giraffe_2"_happiness_69_hunger_93_health_100_suitability_89_fed_Recently_slept_Recently' "panel_animal maps/scn01.zoo"
-check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_Recently_slept_Recently' "panel_animal maps/scn19.zoo"
+check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_A_short_time_ago_slept_A_short_time_ago' "panel_animal maps/scn19.zoo"
 
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
@@ -796,7 +796,7 @@ check expansion-trial "duties_1111;duties_1011" "staff_duties maps/scn19.zoo"
 # The guest panel (information panels 8): the game paused, a click on a guest of the map opens it,
 # the second tab is chosen, a click on the ground closes it. Prints the `panel guest` lines (spaces
 # as underscores, the id left out, joined by semicolons): the name, the five bars, the time in the
-# park (the stored arrival date of a guest of this map is later than the game date: the last text),
+# park (the arrival date the map stores is before the date it starts on: a short time),
 # the favourite and the thoughts.
 guest_panel() { # guest_panel <map>
   d=$(mktemp -d)
@@ -805,7 +805,7 @@ guest_panel() { # guest_panel <map>
     grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
 }
-check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_long_time"_favourite_"Polar_Bear"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
+check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_short_time"_favourite_"Polar_Bear"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
 
 # The building panel (information panels 4.1, guest buildings 7.2, 10.3): the game paused, the Objects
 # panel's second item (a burger stand, 3.50 within 1.00 and 6.50) is placed and clicked, then the up
