@@ -342,10 +342,10 @@ usage: rustyzoo [--data <dir>] <command>
                       panel: a building that charges has the price field with up and down buttons (0.25 a press, within the
                       economy's building price maximum and the type's low and high cost; the field of the full game can be
                       typed into, the number going through the same bounds), the income, upkeep and profit since built and per month, the months open
-                      and the items sold (refreshed every 5 s of the clock); any other building shows its guests and months open
+                      and the items sold (refreshed every 5 s of the clock); a type that hides the cost change (a grandstand) hides the buttons and disables the field, one that hides the commerce info leaves the figures unfilled; both panels show the type's picture and the name field renames the building; any other building shows its guests and months open
                       (and on the full game its monthly upkeep), filled when it opens. `panel building ID \"NAME\" price P income I
                       upkeep U profit R month I U R months M guests last A this B total C sells [ITEMS]` tells what it shows, when
-                      it opens and when a value changes, `building price ID P` each change of the price, and
+                      it opens and when a value changes (` fixed` follows the price when the buttons are hidden, and a panel with unfilled figures tells `price P sells [ITEMS]`), `building price ID P` each change of the price, and
                       `panel building none` when it closes. `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
                       donations stars N A B C`, `panel animals N thoughts N` (` [IDS]` follows a number above 0) (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per

@@ -187,6 +187,7 @@ impl Painter {
             }
             Kind::Image | Kind::ImageSet(_) => {
                 self.picture(pictures, i, e, 0, screen, frame);
+                self.icon(pictures, e, screen, frame);
                 color_as_icon(frame, e, screen);
             }
             Kind::Button(_) => {

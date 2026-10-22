@@ -1,7 +1,8 @@
 //! The building panels (information panels 3, 4.1; guest buildings 7.2, 10.3): the charging panel
 //! with the price field, its up and down buttons, the income, upkeep and profit since the
 //! building was built and per month, the guests and the items sold, and the panel of a building
-//! that charges nothing, with the guests and the upkeep. The charging panel is refreshed every 5 s
+//! that charges nothing, with the guests and the upkeep; both show the type's picture and the
+//! building's name. The charging panel is refreshed every 5 s
 //! of the interface clock while shown and the game runs; the other one is filled when shown, never
 //! by the clock.
 //!
@@ -14,6 +15,7 @@ use crate::entity::Catalogue;
 use crate::money::{SYMBOL, Symbol};
 use crate::month::upkeep;
 use crate::panel::exhibit::{Clock, type_at};
+use crate::panel::follow::set_follow_icon;
 use crate::text::format;
 use crate::text::to_cp1252;
 use crate::timing::DAY_MS;
@@ -34,7 +36,8 @@ pub const TABS: [i32; 6] = [4575, 4576, 4577, 4675, 4678, 4677];
 pub const PERIOD: u64 = 5000;
 
 /// The elements of the charging panel.
-const NAME: i32 = 4502;
+pub const NAME: i32 = 4502;
+const PICTURE: i32 = 4550;
 pub const PRICE: i32 = 4555;
 const SELL: i32 = 4516;
 const PICK_UP: i32 = 4580;
@@ -49,11 +52,16 @@ const ITEMS: [i32; 5] = [4567, 4568, 4569, 4570, 4571];
 /// The elements of the panel of a building that charges nothing: the guests last month, this
 /// month and since construction, and the months open; the layout of the full game also has an
 /// upkeep field.
-const PLAIN_NAME: i32 = 4602;
+pub const PLAIN_NAME: i32 = 4602;
+const PLAIN_PICTURE: i32 = 4650;
 const PLAIN_SELL: i32 = 4616;
 const PLAIN_GUESTS: [i32; 3] = [4664, 4666, 4662];
 const PLAIN_MONTHS: i32 = 4668;
 const PLAIN_UPKEEP: i32 = 4696;
+
+/// The round slot of the picture, where the other panels have their follow button (relative to the
+/// panel): the picture slot of the layouts has no size of its own.
+const SLOT: (i32, i32, i32, i32) = (0, 3, 68, 68);
 
 /// The months a building has been open at game time `now` when it was built at `built` (ms):
 /// `(d + 29) / 30` (the ceiling of `d / 30`) for `d` whole days, at least 1 (guest buildings 10.3).
@@ -112,6 +120,13 @@ impl Panel {
         self.told.clear();
     }
 
+    /// Fills the panel again from the start: the name field shows the building's name.
+    pub fn reselect(&mut self) {
+        if let Some(id) = self.selected {
+            self.select(id, self.layout);
+        }
+    }
+
     pub fn deselect(&mut self) {
         self.selected = None;
         self.told.clear();
@@ -142,6 +157,10 @@ impl Panel {
         let name_field = if charging { NAME } else { PLAIN_NAME };
         if fresh {
             ui.set_text(name_field, &to_cp1252(&name));
+            // The type's picture, as the unit panels show theirs (information panels 4.3.1).
+            let picture = if charging { PICTURE } else { PLAIN_PICTURE };
+            ui.set_rect(picture, SLOT);
+            set_follow_icon(ui, vfs, picture, Some(ty));
             // Selling and picking up a building are other issues': the buttons stay off.
             for button in [SELL, PICK_UP, PLAIN_SELL] {
                 ui.set_enabled(button, false);
@@ -194,24 +213,30 @@ impl Panel {
         let symbol = Symbol::new(ui.string(SYMBOL));
         let price = format::money_cents(&symbol, f64::from(live.price), true);
         ui.set_text(PRICE, &to_cp1252(&price));
+        // With `cHideCostChange` the field is disabled and the two buttons are hidden.
         ui.set_enabled(PRICE, !kind.fixed_price);
-        ui.set_enabled(UP, kind.can_raise(live.price, max));
-        ui.set_enabled(DOWN, kind.can_lower(live.price));
+        for (button, enabled) in [
+            (UP, kind.can_raise(live.price, max)),
+            (DOWN, kind.can_lower(live.price)),
+        ] {
+            ui.set_enabled(button, enabled);
+            ui.set_hidden(button, kind.fixed_price);
+        }
         let open = months(live.built, now);
         let (total, monthly) = figures(live, open);
         let shown = |v: [i64; 3]| v.map(|n| format::money(&symbol, n, true));
         let (total, monthly) = (shown(total), shown(monthly));
         let guests = [live.guests[1], live.guests[0], live.guests[2]];
-        // With `cHideCommerceInfo` the money figures and counts stay empty.
-        let mut write = |element: i32, text: &str| {
-            ui.set_text(element, &to_cp1252(if kind.hide_info { "" } else { text }));
-        };
         let counts = guests.map(|n| n.to_string());
-        let pairs = (TOTALS.iter().zip(&total)).chain(MONTHLY.iter().zip(&monthly));
-        for (&element, text) in pairs.chain(GUESTS.iter().zip(&counts)) {
-            write(element, text);
+        // With `cHideCommerceInfo` the money figures, counts and months are not filled at all: the
+        // layout's text stays.
+        if !kind.hide_info {
+            let pairs = (TOTALS.iter().zip(&total)).chain(MONTHLY.iter().zip(&monthly));
+            for (&element, text) in pairs.chain(GUESTS.iter().zip(&counts)) {
+                ui.set_text(element, &to_cp1252(text));
+            }
+            ui.set_text(MONTHS, &to_cp1252(&open.to_string()));
         }
-        write(MONTHS, &open.to_string());
         // One picture per item sold, from the left, each with its name as tooltip.
         for (n, &element) in ITEMS.iter().enumerate() {
             let item = kind.sells.get(n).and_then(|name| cat.items.get(name));
@@ -222,6 +247,15 @@ impl Panel {
             if let Some(i) = ui.tree.find(element) {
                 ui.tree.elements[i].help_id = item.map(|i| i.id).into_iter().collect();
             }
+        }
+        // The line says when the buttons are hidden (` fixed`) and the figures are not filled.
+        let price = if kind.fixed_price {
+            format!("{price} fixed")
+        } else {
+            price
+        };
+        if kind.hide_info {
+            return format!("price {price} sells {:?}", kind.sells);
         }
         let [t, u, p] = total;
         let [mt, mu, mp] = monthly;
