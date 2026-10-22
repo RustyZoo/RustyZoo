@@ -418,6 +418,7 @@ fn put(
             id: 0,
             name,
             colors: Vec::new(),
+            stamp: None,
             fence: None,
             food: 0,
             movement_mode: 0,

@@ -544,6 +544,25 @@ pub fn stop_use(unit: &mut Unit) {
     }
 }
 
+/// A guest listed as a user of slot `slot` of building `id` in a zoo just loaded goes on with its
+/// use (task 0x6a, guest buildings 4.1, 6.5), as if it had entered at AI tick `now`: the walk and
+/// the set it ran stop and the building is its target.
+pub fn resume_use(unit: &mut Unit, id: u32, slot: usize, now: u32) {
+    stop_use(unit);
+    unit.goal.record = Record {
+        task: USE,
+        target: Target {
+            id,
+            ..Target::default()
+        },
+        start: now,
+        ..Record::default()
+    };
+    if let Part::Guest(g) = &mut unit.part {
+        (g.building, g.slot) = (id, slot);
+    }
+}
+
 /// Tank fauna 5: the animal at position `at` is sent to tile `to`.
 pub fn send(
     unit: &mut Unit,

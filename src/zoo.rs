@@ -102,6 +102,9 @@ pub struct Common {
     /// The colour choices of the entity, one byte per replaceable colour group of its type, from
     /// version 67 (empty before, and when the entity stores none).
     pub colors: Vec<u8>,
+    /// The AI clock stamp of the entity base (zoo format 6.4): the tick a guest took its building
+    /// slot, among others. A stored 0 is the current tick, so the loader keeps it as `None`.
+    pub stamp: Option<u32>,
     /// The condition of a fence or tank wall of a version from 55; `None` for everything else.
     pub fence: Option<Fence>,
     /// The movement mode of a unit (3: inside a tank); 0 for everything else.
@@ -121,13 +124,17 @@ pub struct Common {
 
 /// What a guest building record stores of its figures (zoo format 6.9, guest buildings 4): the
 /// guests and the income this month, last month and since construction, the upkeep paid since
-/// construction (from version 68), the trash can's fill and the construction date (a file time).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// construction (from version 68), the price, the users as (unit id, slot) pairs in entering
+/// order, the trash can's fill and the construction date (a file time).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildingRecord {
     pub guests: [u32; 3],
     /// The money figures as the bits of a single precision number.
     pub income: [u32; 3],
     pub upkeep: Option<u32>,
+    /// The price as the bits of a single precision number.
+    pub price: u32,
+    pub users: Vec<(u32, u32)>,
     pub fill: u32,
     pub built: u64,
 }

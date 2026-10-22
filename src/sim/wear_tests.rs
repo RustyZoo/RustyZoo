@@ -445,6 +445,8 @@ fn a_loaded_trash_can_above_12_pieces_posts_its_call_before_the_fence_events() {
         guests: [0; 3],
         income: [0; 3],
         upkeep: None,
+        price: 0,
+        users: Vec::new(),
         fill: 13,
         built: 0,
     });

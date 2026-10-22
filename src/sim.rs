@@ -324,8 +324,10 @@ impl Sim {
 
     /// Creates the animals of the map just loaded (animals 3.5) and its guests (guests 5.2, zoo
     /// format 6.12) with their saved state, in file order, with the types of `cat` and the class keys in
-    /// `world.units.class`. The fence pieces of a file older than version 55 have no condition:
-    /// they are made healthy (placing 7.4). The draws come before every draw of the first step.
+    /// `world.units.class`; the guest buildings take their figures, price and fill, and then, once
+    /// every guest is made, their users (guest buildings 4.1). The fence pieces of a file older than
+    /// version 55 have no condition: they are made healthy (placing 7.4). The draws come before
+    /// every draw of the first step.
     pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
         let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
         let old = world.zoo.version < 55;
@@ -337,6 +339,8 @@ impl Sim {
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
             crate::building::load(world, cat, at);
         }
+        // The users come once every guest is made, whatever the order of the file.
+        crate::building::users::restore(world, cat, self.ai_ticks);
     }
 
     pub fn calendar(&self) -> &Calendar {
