@@ -323,7 +323,8 @@ impl App<'_> {
     pub(super) fn bulldoze_remove(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
-        // The animals of the exhibit react to an object removed (habitat rating 9.4).
+        // The animals of the exhibit react to an object, an animal or a staff member removed
+        // (habitat rating 9.4); an object or an animal decides an unchanged sum by its value, negated.
         let object = game.world.find(id).and_then(|at| {
             use crate::render::order::Kind;
             let e = &game.world.zoo.entities[at];
@@ -332,27 +333,31 @@ impl App<'_> {
                 .world
                 .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
             let kind = Kind::of_class(&e.class);
-            let ty =
-                bulldozer::type_of(cat, e).filter(|_| matches!(kind, Kind::Fixed | Kind::Path));
+            let ty = bulldozer::type_of(cat, e)
+                .filter(|_| matches!(kind, Kind::Fixed | Kind::Path | Kind::Unit));
             ty.map(|ty| {
-                (
-                    rating::before(&game.world, cat, &[tile]),
-                    rating::object(ty),
-                )
+                let (habitat, name) = rating::object(ty);
+                let change = match kind {
+                    Kind::Unit if place::unit::is_animal(ty) => Some(rating::Change::Animal {
+                        ids: rating::Likes::of(ty).ids,
+                        sign: -1,
+                    }),
+                    Kind::Unit => None,
+                    _ => Some(rating::Change::Object {
+                        habitat,
+                        name,
+                        sign: -1,
+                    }),
+                };
+                (rating::before(&game.world, cat, &[tile]), change)
             })
         });
         let removed =
             bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);
         let Some(r) = removed else { return };
-        if let Some((before, (habitat, name))) = object {
+        if let Some((before, change)) = object {
             let rand = &mut || self.sim.rng.rand();
-            rating::react(
-                &mut game.world,
-                cat,
-                before,
-                Some((habitat, name, -1)),
-                rand,
-            );
+            rating::react(&mut game.world, cat, before, change, rand);
         }
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));
         self.world_lines.push(format!(

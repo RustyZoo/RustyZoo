@@ -44,14 +44,16 @@ impl World {
             self.events.push(super::Event::Tank(id));
             self.sync_tanks();
             // The top of the walls moved: the links (tank fauna 12.2) and the escape check flag;
-            // a filled tank with a gate is rated again (habitat rating 4, 5.8). The water level
-            // and the purity mark nothing.
+            // a filled tank with a gate is rated again, and its animals react (habitat rating 4,
+            // 5.8). The water level and the purity mark nothing.
             if now.height != before.height {
                 self.relink();
                 if let Some(e) = self.exhibits.get_mut(id) {
                     e.rating.escape = true;
                     if now.filled && e.gate.is_some() {
                         self.exhibits.mark(id);
+                        let (from, to) = (config.top(before.height), config.top(now.height));
+                        self.events.push(super::Event::Depth { id, from, to });
                     }
                 }
             }

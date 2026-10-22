@@ -224,6 +224,14 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # A hungry lion (27645) goes to the pile of 50 units that the script puts down, takes bites of 20, 20 and
 # what is left, and the pile goes.
 check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 600 --seed 1 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+# An animal placed (habitat rating 9.4, animals 10): ci/reactions.txt adopts a gazelle and a lion into a
+# pen. The lion's cat family is at -20 in the gazelle's compatible animals, so the gazelle (15672)
+# dislikes the newcomer at pass 131, and the frown plays once.
+check base-trial 'dislikes15672@131;frown' 'rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 140 --clock 200 --script ci/reactions.txt 2>/dev/null | awk "/ animal dislikes /{r=\$6 \"@\" \$2} / animal sound /{s=\$NF} END{print \"dislikes\" r \";\" s}"'
+# The same pen: a second lion is adopted and the first one sold, which the gazelle likes (the compatible animals
+# values negated for a removal); then the lion is picked up and put down elsewhere, which counts as a placement.
+check base-trial 'likes15672@146;smile' 'd=$(mktemp -d); head -n "$(grep -n "^131 up" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "134 mouse 448 304\n135 down\n136 up\n138 key escape\n140 key delete\n142 mouse 512 268\n143 down\n144 up\n146 key y\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 148 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
+check base-trial 'dislikes15672@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "^133 key escape" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "136 mouse 512 268\n137 down\n138 up\n141 mouse 512 268\n142 down\n143 up\n146 mouse 448 240\n149 down\n150 up\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 152 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
 # A play call queues behind the playing sequence, the base loop included: the lion shows its first
 # animation other than the idle one at pass 14 (the lion 27645, happiness 75, chooses bFriendly; the lion
 # 27646 is tired, so its ambient choice runs the sleep check instead of a row, behaviours 6.4: it starts

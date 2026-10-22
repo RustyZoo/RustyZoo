@@ -1431,7 +1431,17 @@ impl<'a> App<'a> {
                 crate::building::built(&mut game.world, ty, id, self.sim.calendar().state().0);
                 let (habitat, name) = rating::object(ty);
                 let rand = &mut || self.sim.rng.rand();
-                rating::react(&mut game.world, cat, before, Some((habitat, name, 1)), rand);
+                rating::react(
+                    &mut game.world,
+                    cat,
+                    before,
+                    Some(rating::Change::Object {
+                        habitat,
+                        name,
+                        sign: 1,
+                    }),
+                    rand,
+                );
             }
             match outcome {
                 Outcome::Placed(id) => {
