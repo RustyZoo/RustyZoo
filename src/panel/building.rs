@@ -2,7 +2,8 @@
 //! with the price field, its up and down buttons, the income, upkeep and profit since the
 //! building was built and per month, the guests and the items sold, and the panel of a building
 //! that charges nothing, with the guests and the upkeep; both show the type's information image
-//! and the building's name. A type with `cHideCommerceInfo` has nothing filled below the price.
+//! and the building's name; the sell button is on for every building and the pick-up button shows
+//! for a moveable type only. A type with `cHideCommerceInfo` has nothing filled below the price.
 //! The charging panel is refreshed every 5 s of the interface clock while shown and the game
 //! runs; the other one is filled when shown, never by the clock.
 //!

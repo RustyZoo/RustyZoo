@@ -283,8 +283,7 @@ fn sell_is_always_on_and_pick_up_shows_for_a_moveable_type_only() {
         let got = buttons(ints, &name, CHARGING);
         assert_eq!(got, [on, on, pick], "{ints:?}");
     }
-    // The panel of a building that charges nothing has the same rule (its layout has only the
-    // sell button, the other ids are not there).
+    // The panel of a building that charges nothing has the same rule.
     assert_eq!(
         buttons("cMoveable = 1\n", "building-panel-move-plain", PLAIN),
         [on, on, on]

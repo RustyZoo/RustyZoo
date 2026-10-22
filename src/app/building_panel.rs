@@ -1,6 +1,6 @@
 //! The building panels in the game (information panels 4.1; guest buildings 7.2, 10.3): what
-//! opens them (a guest building clicked on the map, [`App::select`]), the price buttons, and the
-//! look at what the player did to them. The panels themselves are [`crate::panel::building`].
+//! opens them (a guest building clicked on the map, [`App::select`]), the price buttons, the sell
+//! and pick-up buttons, and the look at what the player did to them. The panels themselves are [`crate::panel::building`].
 
 use super::*;
 use crate::building::Kind;
