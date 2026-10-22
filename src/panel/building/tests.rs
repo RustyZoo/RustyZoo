@@ -260,6 +260,38 @@ fn hiding_the_cost_change_hides_the_buttons_and_disables_the_field() {
 }
 
 #[test]
+fn sell_is_always_on_and_pick_up_shows_for_a_moveable_type_only() {
+    let buttons = |ints: &str, name: &str, layout| {
+        let (mut ui, vfs, world, cat) = panel_in(name, layout, ints);
+        let mut panel = Panel::default();
+        panel.select(1, layout);
+        panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+        [SELL, PLAIN_SELL, PICK_UP].map(|id| {
+            let s = state(&ui, id);
+            (s & HIDDEN != 0, s & DISABLED != 0)
+        })
+    };
+    let (on, off) = ((false, false), (true, true));
+    for (ints, pick) in [
+        ("cCommerce = 1\ncMoveable = 1\n", on),
+        ("cCommerce = 1\n", off),
+        ("cCommerce = 1\ncMoveable = 0\n", off),
+        ("cCommerce = 1\ncMoveable = -7\n", off),
+        ("cCommerce = 1\ncMoveable = 99999999999\n", off),
+    ] {
+        let name = format!("building-panel-move-{}", ints.len());
+        let got = buttons(ints, &name, CHARGING);
+        assert_eq!(got, [on, on, pick], "{ints:?}");
+    }
+    // The panel of a building that charges nothing has the same rule (its layout has only the
+    // sell button, the other ids are not there).
+    assert_eq!(
+        buttons("cMoveable = 1\n", "building-panel-move-plain", PLAIN),
+        [on, on, on]
+    );
+}
+
+#[test]
 fn the_up_button_is_enabled_at_the_economy_maximum_and_not_above() {
     let (mut ui, vfs, mut world, cat) = panel_in("building-panel-max", CHARGING, "cCommerce = 1\n");
     let mut panel = Panel::default();

@@ -308,6 +308,38 @@ fn a_quarter_tile_object_is_valid_on_free_ground_and_costs_what_the_type_says() 
 }
 
 #[test]
+fn a_held_building_is_judged_as_a_new_one_facing_as_given_at_no_cost() {
+    let cat = catalogue();
+    let (blocked, free) = (
+        world((0, 0), vec![entity("objects", "tree", 16, 16, 0)], |_| {}),
+        world((0, 0), vec![], |_| {}),
+    );
+    let held =
+        |w: &World, dir, x, y| moved(w, &cat, &[false, true], &|_| None, true, 0, dir, (x, y));
+    // The facing is the one given, odd or not, and the type's cost is not asked.
+    for dir in [0, 3, 6] {
+        let p = held(&free, dir, 3 * 64 + 40, 2 * 64 + 10).unwrap();
+        assert_eq!(
+            (p.facing, p.verdict, p.price, p.amount()),
+            (dir, Verdict::Valid, 0.0, 0)
+        );
+    }
+    // A held quadrant refuses it as it refuses a new one, with the same message.
+    let (new, old) = (
+        at(&blocked, &cat, 0, 0, 5, 5).unwrap(),
+        held(&blocked, 4, 5, 5).unwrap(),
+    );
+    assert_eq!(
+        (old.verdict, old.message, old.blocking),
+        (new.verdict, new.message, new.blocking)
+    );
+    assert_eq!(old.verdict, Verdict::Invalid);
+    // Off the map and an unknown type give nothing.
+    assert!(held(&free, 4, -1, 10).is_none());
+    assert!(moved(&free, &cat, &[], &|_| None, true, 99, 4, (10, 10)).is_none());
+}
+
+#[test]
 fn the_height_is_the_ground_height_under_the_snapped_position() {
     let cat = catalogue();
     // Shape 0x50 rises along x by lx / 4, from 16 * 2 at the corner.

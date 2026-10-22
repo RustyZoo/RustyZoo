@@ -920,6 +920,55 @@ loaded_building() { # loaded_building <map> <presses> <dx> <dy> <x> <y>
 check base-trial 'income_$182_upkeep_$100_profit_$82_month_$182_$100_$82_months_1_guests_last_15_this_12_total_27' "loaded_building maps/scn01a.zoo 8 -1 0 500 440"
 check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$354_$300_$54_months_1_guests_last_10_this_0_total_59' "loaded_building maps/scn19.zoo 5 1 0 880 320"
 
+# A building sold from its panel while a guest uses it (guest buildings 11.1, placing 7): the first
+# guest to use the Bronto Burger Stand of scn19 is inside from pass 209 (the stand is at the pixel the
+# first lines click; the panel's sell button is the one at 987 578), the question is answered Yes at
+# pass 224 and the guest is pushed out. Prints the `building push` lines (building/guest), the refund
+# (0.8 of 250) and the cash the sale left, and the walk-out goals the guest took after it (none).
+sold_with_user() { # sold_with_user <map>
+  d=$(mktemp -d)
+  printf '2 mouse 875 230\n3 down\n4 up\n220 mouse 987 578\n221 down\n222 up\n224 key y\n' >"$d/script"
+  rz run "$1" --headless --passes 260 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+    awk '$4 == "building" && $5 == "push" { p = p $6 "/" $7 ";" }
+      $4 == "tool" && $5 == "bulldoze" && $6 == "ask" { q = $7 }
+      $4 == "world" && $5 == "remove" { r = $NF }
+      $4 == "unit" && $5 == "goal" && $6 == 32762 && $7 == "leavebuilding" && r != "" { l++ }
+      END { printf "%s%s;%s;%d\n", p, q, r, l }'
+  rm -rf "${d:?}"
+}
+check expansion-trial "31076/32762;Sell;200;0" "sold_with_user maps/scn19.zoo"
+
+# A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
+# Dinosaur Gift Stand of scn19 (cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
+# user (from pass 1068) pushed out when the pick-up button (871 573) is pressed at pass 1071, and it is put
+# down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
+# shows once it is down: the stand keeps its figures (the user's $10 and one guest this month).
+building_moved() { # building_moved <map>
+  d=$(mktemp -d)
+  printf '2 mouse 300 375\n3 down\n4 up\n1070 mouse 871 573\n1071 down\n1072 up\n1074 mouse 500 300\n1076 mouse 520 310\n1077 down\n1078 up\n1080 mouse 871 573\n' >"$d/script"
+  rz run "$1" --headless --passes 1090 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+    awk '$4 == "world" && ($5 == "carry" || $5 == "drop") { w = w $5 "," $6 "," $7 ";" }
+      $4 == "building" && $5 == "push" && $6 == 29780 { w = w "push;" }
+      $4 == "panel" && $5 == "building" && $6 == 29780 { for (i = 7; i < NF; i++) if ($i == "income") l = "income " $(i + 1) }
+      END { print w l }' | tr ' ' _
+  rm -rf "${d:?}"
+}
+check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$10' "building_moved maps/scn19.zoo"
+
+# The same stand picked up by a second click on it while it is selected, put back by Escape and picked
+# up again by the same click (it is selected again): the lines they give, with no user in the stand (so
+# no push).
+building_put_back() { # building_put_back <map>
+  d=$(mktemp -d)
+  printf '0 pause\n2 mouse 300 375\n3 down\n4 up\n6 down\n7 up\n10 mouse 500 300\n12 mouse 520 310\n13 key escape\n15 mouse 300 375\n16 down\n17 up\n' >"$d/script"
+  rz run "$1" --headless --passes 20 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+    awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 "," $7 ";" }
+      $4 == "building" && $5 == "push" { w = w "push;" }
+      END { print w }'
+  rm -rf "${d:?}"
+}
+check expansion-trial 'carry,29780,;putback,29780,31,41;carry,29780,;' "building_put_back maps/scn19.zoo"
+
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
 scenario_guest_panel() {

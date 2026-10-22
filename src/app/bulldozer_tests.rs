@@ -91,7 +91,7 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
 /// 0 dirt path (10), 1 iron fence (125, an exhibit fence), 2 shop (350, asks), 3 wall (125, not
 /// deletable), 4 the gate of the iron fence, 5 tank wall, 6 show tank wall, 7 tree (40), 8 bench (50,
 /// a scenery object that does not live under water), 9 stone path (20), 10 steel fence (150) and
-/// 11 its gate, 12 a zookeeper (800, its monthly cost 650.5), 13 a zebra (800), 14 a guest. Every picture is a square around the anchor: 24 pixels, the tree's 16.
+/// 11 its gate, 12 a zookeeper (800, its monthly cost 650.5), 13 a zebra (800), 14 a guest and 15 a moveable cart. Every picture is a square around the anchor: 24 pixels, the tree's 16.
 pub(super) fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let cost = |n: u32| format!("[Characteristics/Integers]\ncPurchaseCost={n}\n");
@@ -157,6 +157,9 @@ pub(super) fn catalogue() -> Catalogue {
     let zebra = "[m/Characteristics/Integers]\ncPurchaseCost=800\n";
     cat.push(ty("animals", b"zebra", b"m", zebra, [1, 1, 1]));
     cat.push(ty("guests", b"man", b"", "", [1, 1, 1]));
+    // 15: a cart (60, moveable), a building the player can pick up.
+    let cart = format!("{}cMoveable=1\n[Satisfies]\nbuilding\n", cost(60));
+    cat.push(ty("building", b"cart", b"", &cart, [2, 2, 1]));
     cat
 }
 
@@ -526,6 +529,30 @@ fn a_building_asks_before_it_is_sold_and_the_answer_decides() {
         assert!(removed.ends_with("refund 280"));
         assert!(told.contains(&"money cash 50280".to_string()));
         assert_eq!(s.count(), 0);
+    });
+}
+
+#[test]
+fn the_sell_button_of_the_building_panel_sells_as_the_bulldozer_does() {
+    with_game("sell-button", "", |s| {
+        let id = s.add(2, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        // With no building selected the button does nothing.
+        s.app.building_sell();
+        assert!(!s.asking());
+        s.app.game.as_mut().unwrap().building.select(id, 21);
+        s.app.building_sell();
+        assert!(s.asking());
+        let told = s.pass(&[Command::Key(Key::N, false, false)]);
+        assert_eq!(told, ["tool bulldoze answer no"]);
+        assert_eq!((s.count(), s.cash()), (1, 50_000.0));
+        // (The test has no panel to keep shown, so the pass deselected the building.)
+        s.app.game.as_mut().unwrap().building.select(id, 21);
+        s.app.building_sell();
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
+        assert!(removed.ends_with("refund 280"), "{removed}");
+        assert_eq!((s.count(), s.cash()), (0, 50_280.0));
     });
 }
 
