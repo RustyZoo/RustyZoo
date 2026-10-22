@@ -11,7 +11,7 @@ use super::super::{Cx, ENTER_BUILDING, ENTRANCE, EXIT_BUILDING, GO_BUILDING as G
 use super::IN_BUILDING;
 use crate::building::items::{Item, LITTER};
 use crate::building::{self, Kind, Live, Mood, Point};
-use crate::guest::{BATHROOM, ENERGY, Guest, HAPPINESS, HUNGER, THIRST};
+use crate::guest::Guest;
 use crate::unit::Part;
 use crate::zoo::Entity;
 
@@ -19,9 +19,6 @@ mod litter;
 
 /// The thought of a guest too crowded to be served by a building (guests 7.2).
 const CROWDED: i32 = 10243;
-/// The thoughts of a price that is really low and too high (guests 9.4).
-const CHEAP: i32 = 10072;
-const EXPENSIVE: i32 = 10073;
 
 /// The thoughts of a need: wanting it and finding nothing to serve it (guests 14).
 fn wants(need: &str) -> (i32, i32) {
@@ -374,46 +371,14 @@ impl Cx<'_, '_> {
 
     /// How the price of building `id` strikes a guest (guest buildings 7.3).
     fn mood(&self, id: u32, kind: &Kind) -> Mood {
-        let live = self.world.units.buildings.get(&id);
-        let price = live.map_or(kind.price, |l| l.price);
-        self.world.units.prices.mood(price, kind.price)
+        building::mood(self.world, id, kind)
     }
 
     /// The price reaction (guests 9.4): the happiness changes by the class key, and the thought is
     /// about the building.
     fn react(&mut self, mood: Mood, building: u32) {
-        let Some(k) = crate::guest::keys(self.world, self.ctx.cat, self.at) else {
-            return;
-        };
-        let change = match mood {
-            Mood::Happy => k.price[0],
-            Mood::Angry => k.price[1],
-            Mood::Fair => 0,
-        };
-        match mood {
-            Mood::Happy => self.think(CHEAP, Some(building)),
-            Mood::Angry => self.think(EXPENSIVE, Some(building)),
-            Mood::Fair => {}
-        }
-        if let Some(g) = self.guest() {
-            g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(change);
-        }
-    }
-
-    /// Guests 5.4: the change record is added to the pending values.
-    fn apply(&mut self, record: [i32; 6]) {
-        if let Some(g) = self.guest() {
-            let happy = if g.child { record[1] } else { record[0] };
-            for (v, change) in [
-                (HAPPINESS, happy),
-                (HUNGER, record[2]),
-                (THIRST, record[3]),
-                (BATHROOM, record[4]),
-                (ENERGY, record[5]),
-            ] {
-                g.pending[v] = g.pending[v].saturating_add(change);
-            }
-        }
+        let (world, cat, at) = (&mut *self.world, self.ctx.cat, self.at);
+        building::leave::react(world, cat, at, self.unit, mood, building);
     }
 
     /// Guests 9.3: the guest consumes the item of name id `id`.
@@ -431,7 +396,7 @@ impl Cx<'_, '_> {
         if thought != 0 {
             self.think(thought, None);
         }
-        self.apply(record);
+        building::leave::apply(self.unit, record);
         if let Some(g) = self.guest() {
             if remove {
                 let at = [0, 1, 3, 4, 2]
@@ -524,21 +489,8 @@ impl Cx<'_, '_> {
             return self.show();
         };
         let (_, slot, _) = live.users.remove(i);
-        if kind.commerce {
-            if kind.sells.is_empty() {
-                let mood = self.mood(id, &kind);
-                self.react(mood, id);
-            }
-            let Some(live) = self.world.units.buildings.get_mut(&id) else {
-                return;
-            };
-            // A hostile factor or price books nothing.
-            let income = (kind.factor * live.price).max(0.0);
-            live.income[0] += income;
-            live.income[2] += income;
-            self.world.units.concessions.push(income);
-        }
-        self.apply(kind.change);
+        let (world, cat, at) = (&mut *self.world, self.ctx.cat, self.at);
+        building::leave::pay(world, cat, at, self.unit, id, &kind);
         match kind.slots[slot].exit.filter(|_| kind.uses_exit) {
             Some(exit) => {
                 let (x, y) = building::place(&e, exit);

@@ -631,3 +631,100 @@ fn a_removed_building_takes_the_thoughts_about_it() {
         [None, Some(8)]
     );
 }
+
+/// Deletes building `id` with the bulldozer.
+fn delete(w: &mut World, cat: &Catalogue, id: u32) {
+    let mut money = Money::default();
+    let removed = crate::place::bulldozer::remove(w, &mut money, cat, id, &mut Rng::default());
+    assert!(removed.is_some());
+}
+
+fn spot(w: &World) -> (i32, i32, u32) {
+    let c = w.zoo.entities[w.find(1).unwrap()].common.as_ref().unwrap();
+    (c.x, c.y, c.rotation)
+}
+
+#[test]
+fn a_deleted_stand_pushes_its_customer_out_to_an_entrance_after_it_has_been_paid() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    let mut s = game();
+    hungry(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    let log = run(&mut s, &cat, &mut w, &mut money, 600, "buy");
+    assert_eq!(log, ["use 7 1", "buy 7 hotdog 2"]);
+    assert_eq!(task(&w), crate::goal::USE);
+    w.units.concessions.clear();
+    delete(&mut w, &cat, 7);
+    // 3 x 2.00, booked at once; the guest is at the first entrance, with no goal and no target.
+    assert_eq!(w.units.concessions, [6.0]);
+    assert_eq!(w.units.take_building_lines(), ["push 7 1"]);
+    assert_eq!((spot(&w).0, spot(&w).1), (336, 400));
+    assert_eq!((task(&w), guest(&w).building, guest(&w).need), (0, 0, None));
+    // The building and its state are gone with it.
+    assert!(w.find(7).is_none() && !w.units.buildings.contains_key(&7));
+    // The guest goes on with its life.
+    run(&mut s, &cat, &mut w, &mut money, 50, "never");
+}
+
+#[test]
+fn a_deleted_restroom_shows_its_hidden_user_at_the_entrance_with_the_change_record() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    let mut s = game();
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.values[BATHROOM], g.countdowns, g.saw_animal) = (80, [1000; 11], 1000);
+    }
+    with_cx(&cat, &mut w, |cx| cx.seek("bathroom"));
+    run(&mut s, &cat, &mut w, &mut money, 800, "use");
+    assert!(w.units.get(1).unwrap().hidden);
+    let before = guest(&w).pending[BATHROOM];
+    delete(&mut w, &cat, 8);
+    assert!(!w.units.get(1).unwrap().hidden);
+    assert_eq!(guest(&w).pending[BATHROOM], before - 100);
+    // Nothing is booked for a restroom; the guest stands at the entrance (0, 48) of the slot.
+    assert!(w.units.concessions.is_empty());
+    assert_eq!((spot(&w).0, spot(&w).1), (352, 592));
+    assert!(w.units.get(1).unwrap().goal.record.task == 0);
+}
+
+#[test]
+fn a_deleted_table_puts_its_visible_user_at_the_exit_facing_as_the_slot_says() {
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    holding(&mut w);
+    run(&mut game(), &cat, &mut w, &mut money, 1500, "use");
+    assert_eq!(spot(&w), (336, 240, 3));
+    delete(&mut w, &cat, 9);
+    assert_eq!(spot(&w), (336, 272, 3));
+    assert_eq!(task(&w), 0);
+}
+
+#[test]
+fn a_deleted_trash_can_pushes_out_its_user_and_spills_its_pieces() {
+    let (cat, mut w, mut money) = (types(), littered(true), Money::default());
+    with_cx(&cat, &mut w, |cx| cx.seek_trash());
+    run(&mut game(), &cat, &mut w, &mut money, 800, "use");
+    assert_eq!(w.units.buildings[&11].fill, 1);
+    delete(&mut w, &cat, 11);
+    assert_eq!((pieces(&w), task(&w)), (1, 0));
+    // The can stands at (5, 6); the user was outside at its entrance and is put at the first.
+    assert_eq!((spot(&w).0, spot(&w).1), (352, 464));
+}
+
+#[test]
+fn a_user_of_a_building_with_no_exit_on_the_map_is_shown_where_it_stands() {
+    let (cat, mut w) = (types(), zoo());
+    // The stand at the last row has its entrances below the map: nobody could enter it.
+    w.units.buildings.insert(
+        7,
+        Live {
+            users: vec![(1, 0, 0)],
+            ..Default::default()
+        },
+    );
+    let at = w.find(7).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().y = 9 * 64 + 32;
+    w.units.get_mut(1).unwrap().hidden = true;
+    let own = spot(&w);
+    crate::building::leave::push_out(&mut w, &cat, 7);
+    assert!(!w.units.get(1).unwrap().hidden);
+    assert_eq!(spot(&w), own);
+}

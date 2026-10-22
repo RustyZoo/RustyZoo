@@ -527,6 +527,23 @@ pub fn lose_task(unit: &mut Unit) {
     unit.destination = None;
 }
 
+/// A user is pushed out of its building (guest buildings 6.7, 11.1): its walk, its set and its goal
+/// stop and a guest forgets the building it came for; the ladder gives it a task at its next
+/// update.
+pub fn stop_use(unit: &mut Unit) {
+    unit.goal.record = Record::default();
+    (unit.goal.stale, unit.goal.sub_stale) = (true, true);
+    unit.goal.wants_to_decide = false;
+    crate::unit::movement::stop(unit);
+    unit.destination = None;
+    (unit.through_building, unit.aborted) = (false, false);
+    unit.runner = Default::default();
+    unit.animation = Default::default();
+    if let Part::Guest(g) = &mut unit.part {
+        (g.need, g.building, g.stand) = (None, 0, false);
+    }
+}
+
 /// Tank fauna 5: the animal at position `at` is sent to tile `to`.
 pub fn send(
     unit: &mut Unit,

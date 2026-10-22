@@ -1022,6 +1022,11 @@ fn a_script_applies_its_commands_to_the_run() {
         panic!("not an animal");
     };
     assert_eq!((a.health, a.at_minimum_health), (500, false));
+    // The bulldozer deletes at once; there is no entity 99.
+    assert_eq!("bulldoze 1".parse(), Ok(drive::Command::Bulldoze(1)));
+    assert!(!run.apply(&drive::Command::Bulldoze(99)) && !run.apply(&drive::Command::Bulldoze(0)));
+    assert!(run.apply(&drive::Command::Bulldoze(1)));
+    assert_eq!(run.world.zoo.entities.len(), 1);
 }
 
 #[test]
@@ -1034,6 +1039,10 @@ fn a_bad_script_is_an_error() {
         "1 remove",
         "1 remove -1",
         "1 remove 4294967296",
+        "1 bulldoze",
+        "1 bulldoze -1",
+        "1 bulldoze 1 2",
+        "1 bulldoze 4294967296",
         "1 cash nan",
         "1 cash inf",
         "1 cash",
