@@ -332,6 +332,24 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
     }
 }
 
+/// A start with `reset` or `resetdate` resets every building (guest buildings 4.1): the fill, the
+/// users and the figures go to 0 and the construction date becomes the game time `now` (ms since
+/// the calendar's start); the price is kept. It runs after the load events, so a can that called a
+/// worker is empty with its task still in the pool.
+pub fn reset_all(world: &mut World, now: u64) {
+    let ids: Vec<u32> = world.units.buildings.keys().copied().collect();
+    for id in ids {
+        set_fill(world, id, 0);
+        if let Some(live) = world.units.buildings.get_mut(&id) {
+            *live = Live {
+                price: live.price,
+                built: now as i64,
+                ..Live::default()
+            };
+        }
+    }
+}
+
 /// The events a zoo just loaded posts for its trash cans (staff 8.2): a can above 12 pieces calls
 /// a worker as it does when it reaches 13, with its tile, in entity list order.
 pub fn loaded_events(world: &World) -> Vec<crate::sim::Event> {

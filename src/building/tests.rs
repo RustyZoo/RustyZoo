@@ -350,3 +350,27 @@ fn a_loaded_can_above_12_pieces_calls_a_worker_with_its_tile() {
         ]
     );
 }
+
+#[test]
+fn a_reset_start_zeroes_every_building_and_keeps_its_price() {
+    let mut w = loaded(&[
+        ("stand", 7, Some(record(0, START))),
+        ("can", 8, Some(record(20, START))),
+    ]);
+    w.units.buildings.get_mut(&7).unwrap().price = 4.5;
+    w.units.buildings.get_mut(&7).unwrap().users.push((3, 0, 9));
+    reset_all(&mut w, 5 * crate::timing::DAY_MS);
+    let want = |price| Live {
+        price,
+        built: 5 * crate::timing::DAY_MS as i64,
+        ..Live::default()
+    };
+    assert_eq!(w.units.buildings[&7], want(4.5));
+    assert_eq!(w.units.buildings[&8], want(29.0));
+    // The can is empty and its picture follows; the call it posted at load is a separate event.
+    assert_eq!(w.zoo.entities[1].common.as_ref().unwrap().food, 0);
+    // No building, nothing to do.
+    let mut none = world_with((2, 2), |_| {});
+    reset_all(&mut none, u64::MAX);
+    assert!(none.units.buildings.is_empty());
+}

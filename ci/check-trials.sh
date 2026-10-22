@@ -933,6 +933,20 @@ scenario_guest_panel() {
 }
 check expansion-trial '"Guest_58"_time_"Just_arrived"' "scenario_guest_panel"
 
+# The panel of a building after Play on the first scenario of the expansion trial (`resetdate`): the
+# start resets every building (guest buildings 4.1), so the burger stand that stores income 847 and
+# upkeep 250 shows no income, upkeep or guests (the plain load above keeps them).
+scenario_building() {
+  d=$(mktemp -d)
+  mkdir -p "$RUSTYZOO_USER_DIR"
+  printf '[UI]\nplayMovie=0\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
+  printf '1 mouse 512 365\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n9 pause\n12 mouse 905 185\n13 down\n14 up\n' >"$d/script"
+  rz run --headless --seed 3 --passes 25 --clock 100 --size 1024x768 --script "$d/script" 2>/dev/null |
+    sed -n 's/.* panel building [0-9]* .* \(income .*\) sells.*/\1/p' | head -1 | tr ' ' _
+  rm -rf "${d:?}"
+}
+check expansion-trial 'income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_guests_last_0_this_0_total_0' "scenario_building"
+
 # The marine round (tank staff): scn27 has a filled tank with a manta ray, a tank filter and a
 # maintenance worker. The script sends the worker away (he would service the filter as soon as it
 # is worn), brings a marine specialist and a second manta ray, and a worker back late, after the
