@@ -942,7 +942,7 @@ check expansion-trial "31076/32762;Sell;200;0" "sold_with_user maps/scn19.zoo"
 # gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
 # user (from pass 1068) pushed out when the pick-up button (871 573) is pressed at pass 1071, and it is put
 # down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
-# shows once it is down: the stand keeps its figures (the user's $10 and one guest this month).
+# shows once it is down: the stand keeps its figures (the $430 its saved record stores and the user's $10).
 building_moved() { # building_moved <map>
   d=$(mktemp -d)
   printf '2 mouse 300 375\n3 down\n4 up\n1070 mouse 871 573\n1071 down\n1072 up\n1074 mouse 500 300\n1076 mouse 520 310\n1077 down\n1078 up\n1080 mouse 871 573\n' >"$d/script"
@@ -953,7 +953,7 @@ building_moved() { # building_moved <map>
       END { print w l }' | tr ' ' _
   rm -rf "${d:?}"
 }
-check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$10' "building_moved maps/scn19.zoo"
+check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$440' "building_moved maps/scn19.zoo"
 
 # The same stand picked up by a second click on it while it is selected, put back by Escape and picked
 # up again by the same click (it is selected again): the lines they give, with no user in the stand (so
