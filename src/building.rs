@@ -4,10 +4,11 @@
 //! The goals of the guests that use them are [`crate::goal`]'s; a shelter for animals (guest
 //! buildings 12.1) uses the same users and slots.
 //!
-//! Only the buildings that have been built in play, had a user, a month change or a price change
-//! have a live entry; a missing one (a building of a loaded zoo) is a building at its default
-//! price with no users. A trash can counts the litter its users put in
-//! ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can spills it).
+//! Only the buildings that have been built in play, had a user, a month change or a price change,
+//! or were loaded with a zoo ([`load`]: the figures and the can's fill its record stores) have a
+//! live entry; a missing one is a building at its default price with no users. A trash can counts
+//! the litter its users put in ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can
+//! spills it).
 //! The panels that set the price and show the figures are [`crate::panel::building`]'s.
 //! A building that is deleted or picked up pushes its users out ([`leave::push_out`]).
 //! Left for later issues: the random use animation and the sounds, the slot filters of a user type,
