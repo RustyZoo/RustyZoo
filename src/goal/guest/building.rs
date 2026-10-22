@@ -475,7 +475,7 @@ impl Cx<'_, '_> {
 
     /// Guest buildings 6.6: the building lets the guest go. A charging building books its price
     /// times its factor as concessions; the type's change record is given to the guest; a type
-    /// whose users use the exit puts it there, any other shows a hidden guest where it stands.
+    /// whose users use the exit puts it there (6.7), any other shows a hidden guest where it stands.
     fn remove_user(&mut self) {
         let id = self.guest().map_or(0, |g| g.building);
         let unit = self.unit.id;
@@ -491,15 +491,9 @@ impl Cx<'_, '_> {
         let (_, slot, _) = live.users.remove(i);
         let (world, cat, at) = (&mut *self.world, self.ctx.cat, self.at);
         building::leave::pay(world, cat, at, self.unit, id, &kind);
-        match kind.slots[slot].exit.filter(|_| kind.uses_exit) {
-            Some(exit) => {
-                let (x, y) = building::place(&e, exit);
-                let z = e.common.as_ref().map_or(0, |c| c.z);
-                self.unit.hidden = false;
-                let facing = building::facing(&e, kind.slots[slot].facing);
-                self.world.place_unit(self.at, (x, y, z), facing);
-            }
-            None => self.show(),
+        match kind.uses_exit {
+            true => building::leave::put_out(self.world, self.at, self.unit, &e, &kind, slot),
+            false => self.show(),
         }
     }
 

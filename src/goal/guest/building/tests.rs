@@ -385,15 +385,19 @@ fn a_guest_with_a_hot_dog_eats_it_at_a_table_which_puts_it_down_at_its_exit() {
     let c = w.zoo.entities[at].common.as_ref().unwrap();
     // Facing 7 at the table's rotation 4 turns to 3 (guest buildings 3.2).
     assert_eq!((c.x, c.y, c.rotation), (336, 240, 3));
+    w.place_unit(at, (336, 240, 0), 6);
     for _ in 0..400 {
         run(&mut s, &cat, &mut w, &mut money, 1, "never");
         if w.units.buildings[&9].users.is_empty() {
             break;
         }
     }
-    // It leaves by the exit, below the table.
+    // It leaves by the exit, below the table, facing as it sat (turned to 6 above).
     let c = w.zoo.entities[at].common.as_ref().unwrap();
-    assert_eq!((c.x.div_euclid(64), c.y.div_euclid(64)), (5, 4));
+    assert_eq!(
+        (c.x.div_euclid(64), c.y.div_euclid(64), c.rotation),
+        (5, 4, 6)
+    );
     assert!(w.units.buildings[&9].users.is_empty());
     assert_eq!(money.total[money::CONCESSIONS], 0.0);
 }
@@ -700,13 +704,16 @@ fn a_deleted_restroom_shows_its_hidden_user_at_the_entrance_with_the_change_reco
 }
 
 #[test]
-fn a_deleted_table_puts_its_visible_user_at_the_exit_facing_as_the_slot_says() {
+fn a_deleted_table_puts_its_visible_user_at_the_exit_with_its_own_facing() {
     let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
     holding(&mut w);
     run(&mut game(), &cat, &mut w, &mut money, 1500, "use");
     assert_eq!(spot(&w), (336, 240, 3));
+    // Turned in its seat: the exit keeps the facing, the slot's is not given again.
+    let at = w.find(1).unwrap();
+    w.place_unit(at, (336, 240, 0), 6);
     delete(&mut w, &cat, 9);
-    assert_eq!(spot(&w), (336, 272, 3));
+    assert_eq!(spot(&w), (336, 272, 6));
     assert_eq!(task(&w), 0);
 }
 
@@ -723,7 +730,7 @@ fn a_deleted_trash_can_pushes_out_its_user_and_spills_its_pieces() {
 }
 
 #[test]
-fn a_user_of_a_building_with_no_exit_on_the_map_is_shown_where_it_stands() {
+fn a_user_of_a_building_with_no_exit_on_the_map_is_taken_off_it_and_stays_hidden() {
     let (cat, mut w) = (types(), zoo());
     // The stand at the last row has its entrances below the map: nobody could enter it.
     w.units.buildings.insert(
@@ -736,10 +743,12 @@ fn a_user_of_a_building_with_no_exit_on_the_map_is_shown_where_it_stands() {
     let at = w.find(7).unwrap();
     w.zoo.entities[at].common.as_mut().unwrap().y = 9 * 64 + 32;
     w.units.get_mut(1).unwrap().hidden = true;
-    let own = spot(&w);
+    let (own, at) = (w.tile_index(2, 6).unwrap(), w.find(1).unwrap());
+    assert!(w.units_on(own).any(|e| e == at));
     crate::building::leave::push_out(&mut w, &cat, 7);
-    assert!(!w.units.get(1).unwrap().hidden);
-    assert_eq!(spot(&w), own);
+    assert_eq!(w.units.take_building_lines(), ["push 7 1"]);
+    assert!(w.units.get(1).unwrap().hidden && !w.units_on(own).any(|e| e == at));
+    assert_eq!(task(&w), 0);
 }
 
 #[test]

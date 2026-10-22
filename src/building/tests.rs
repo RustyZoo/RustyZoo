@@ -27,7 +27,7 @@ fn a_type_declares_its_slots_prices_items_and_needs_with_the_defaults_of_the_pro
              cHideUser=2\ncAdultChange=8\n[Characteristics/Floats]\ncPriceFactor=3\n\
              [Sells]\nHotDog\n[Satisfies]\nbuilding\nfood\n[slots]\nname=a\nname=b\n\
              [a]\nslotpos=-16\nslotpos=48\nentrpos=-16\nentrpos=48\nentrpos=16\nentrpos=48\n\
-             exitpos=0\nexitpos=48\ncapacity=2\nfacing=3\n[b]\n",
+             exitpos=0\nexitpos=48\ncapacity=2\nfacing=3\n[b]\nexitonland=0\nexitonwater=1\n",
         ),
         3.0,
     );
@@ -49,6 +49,9 @@ fn a_type_declares_its_slots_prices_items_and_needs_with_the_defaults_of_the_pro
         ((-16, 48), &[(-16, 48), (16, 48)][..], Some((0, 48)), 2, 3)
     );
     assert_eq!((k.slots[1].capacity, k.slots[1].exit), (0, None));
+    // An exit may be on land and not on water unless the slot says otherwise.
+    assert_eq!((a.exit_land, a.exit_water), (true, false));
+    assert_eq!((k.slots[1].exit_land, k.slots[1].exit_water), (false, true));
     // A file without the keys: one user, outside; a type without a file: any number.
     let bare = Kind::of(&ty("[Satisfies]\nbuilding\n"), 3.0);
     assert_eq!(
@@ -101,6 +104,98 @@ fn a_user_needs_room_in_the_building_and_the_slot() {
     assert!(!can_add(&world, &b, &k, Some(&live), 0) && !can_add(&world, &b, &k, None, 1));
     b.common.as_mut().unwrap().y = -500;
     assert!(!can_add(&world, &b, &k, None, 0));
+}
+
+#[test]
+fn a_slot_flag_is_on_only_for_the_value_one() {
+    let slot = |keys: &str| {
+        let text = format!("[slots]\nname=a\n[a]\ncapacity=1\n{keys}");
+        let k = Kind::of(&ty(&text), 3.0);
+        (k.slots[0].exit_land, k.slots[0].exit_water)
+    };
+    // Missing: land on, water off.
+    assert_eq!(slot(""), (true, false));
+    for (value, on) in [
+        ("0", false),
+        ("1", true),
+        ("2", false),
+        ("-1", false),
+        ("99999999999", false),
+        ("4294967297", true),
+        ("yes", false),
+    ] {
+        let keys = format!("exitonland={value}\nexitonwater={value}\n");
+        assert_eq!(slot(&keys), (on, on), "{value}");
+    }
+}
+
+/// A stand at the centre of tile (1, 1), rotation 4: its entrances are on tiles (2, 1) and
+/// (1, 2), its exit on (0, 1); `slot` adds keys to its slot.
+fn exits(uses_exit: bool, slot: &str) -> (Kind, Entity) {
+    let text = format!(
+        "[Characteristics/Integers]\ncUserUsesExit={}\n[slots]\nname=a\n[a]\n\
+         entrpos=64\nentrpos=0\nentrpos=0\nentrpos=64\nexitpos=-64\nexitpos=0\ncapacity=1\n{slot}",
+        u8::from(uses_exit)
+    );
+    let k = Kind::of(&ty(&text), 3.0);
+    (k, entity("building", "stand", 7, centre((1, 1)), 4))
+}
+
+/// A 4 by 4 map with a bush of type `bush` on each quarter of each tile listed.
+fn blocked(tiles: &[(i32, i32)], bush: &str) -> World {
+    world_with((4, 4), |zoo| {
+        for &(tx, ty) in tiles {
+            for (x, y) in [(16, 16), (48, 16), (16, 48), (48, 48)] {
+                let at = (tx * 64 + x, ty * 64 + y);
+                zoo.entities.push(entity("bush", bush, 0, at, 0));
+            }
+        }
+    })
+}
+
+#[test]
+fn a_user_leaves_by_the_first_entrance_in_the_zoo_with_a_free_or_walkable_quarter() {
+    let (k, b) = exits(false, "");
+    let at = |w: &World| exit_of(w, &b, &k, 0);
+    assert_eq!(at(&blocked(&[], "bush")), Some((160, 96)));
+    // All four quarters held: the next entrance; both held, no exit and no use of the slot.
+    assert_eq!(at(&blocked(&[(2, 1)], "bush")), Some((96, 160)));
+    let shut = blocked(&[(2, 1), (1, 2)], "bush");
+    assert_eq!(at(&shut), None);
+    assert!(!can_add(&shut, &b, &k, None, 0) && !has_open_slot(&shut, &b, &k, None));
+    // Objects a guest walks through block nothing.
+    assert_eq!(at(&blocked(&[(2, 1), (1, 2)], "grass")), Some((160, 96)));
+    // An entrance on water is a way out: only an exit is tested for land and water.
+    let mut wet = world_with((4, 4), |zoo| zoo.tiles[4 + 2].terrain = 1);
+    wet.set_water(vec![false, true]);
+    assert_eq!(at(&wet), Some((160, 96)));
+    // A map whose every tile is outside the zoo wall: an entrance building with no wall around.
+    let outside = world_with((4, 4), |zoo| {
+        zoo.entrance = (3, 3);
+        zoo.entities
+            .push(entity("bush", "bush", 0, centre((3, 3)), 6));
+    });
+    assert!(!outside.in_zoo(outside.tile_index(2, 1).unwrap()));
+    assert_eq!(at(&outside), None);
+}
+
+#[test]
+fn an_exit_must_be_on_the_terrain_its_slot_allows() {
+    let at = |w: &World, slot: &str| {
+        let (k, b) = exits(true, slot);
+        exit_of(w, &b, &k, 0)
+    };
+    let land = blocked(&[], "bush");
+    let mut wet = world_with((4, 4), |zoo| zoo.tiles[4].terrain = 1);
+    wet.set_water(vec![false, true]);
+    assert_eq!(at(&land, ""), Some((32, 96)));
+    assert_eq!(at(&land, "exitonland=0\n"), None);
+    assert_eq!(at(&wet, ""), None);
+    assert_eq!(at(&wet, "exitonwater=1\n"), Some((32, 96)));
+    // Only the exit counts for such a type, whatever its entrances; a held exit is none.
+    assert_eq!(at(&blocked(&[(0, 1)], "bush"), ""), None);
+    // A value that wraps to another than 1 is off.
+    assert_eq!(at(&land, "exitonland=99999999999\n"), None);
 }
 
 #[test]

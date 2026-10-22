@@ -89,6 +89,9 @@ pub struct Slot {
     pub exit: Option<Point>,
     pub capacity: i32,
     pub facing: u32,
+    /// Whether the exit may be on land and on water (`exitonland`, `exitonwater`; 6.3).
+    pub exit_land: bool,
+    pub exit_water: bool,
 }
 
 /// What a building type declares (guest buildings 3.1).
@@ -158,12 +161,18 @@ impl Kind {
                     .collect()
             };
             let number = |key: &str| s.get(key).and_then(to_int).unwrap_or(0);
+            // A slot flag is on only when its value is exactly 1.
+            let flag = |key: &str, fallback: bool| {
+                s.get(key).and_then(to_int).map_or(fallback, |v| v == 1)
+            };
             Slot {
                 at: points("slotpos").first().copied().unwrap_or((0, 0)),
                 entrances: points("entrpos"),
                 exit: points("exitpos").first().copied(),
                 capacity: number("capacity"),
                 facing: number("facing") as u32,
+                exit_land: flag("exitonland", true),
+                exit_water: flag("exitonwater", false),
             }
         })
         .collect();
@@ -504,25 +513,36 @@ pub fn facing(e: &Entity, facing: u32) -> u32 {
     (e.common.as_ref().map_or(0, |c| c.rotation) + facing) % 8
 }
 
-/// The place a user of slot `slot` of the building is put when it leaves by force (guest buildings
-/// 6.3, 6.7): the slot's exit for a type whose users use it, else the first entrance; the place
-/// must be on the map. `None` when there is none, and the slot cannot be used.
+/// The place a user of slot `slot` of the building is put at when it leaves by force or by the
+/// exit (guest buildings 6.3, 6.7): the slot's exit for a type whose users use it, else the first
+/// entrance, whose place passes [`fits`]. `None` when there is none, and the slot cannot be used.
 pub fn exit_of(world: &World, e: &Entity, kind: &Kind, slot: usize) -> Option<Point> {
     let s = kind.slots.get(slot)?;
-    let list = match kind.uses_exit {
-        true => s.exit.as_slice(),
-        false => s.entrances.as_slice(),
+    match kind.uses_exit {
+        true => (s.exit.map(|p| place(e, p))).filter(|&p| fits(world, p, Some(s))),
+        false => (s.entrances.iter().map(|&p| place(e, p))).find(|&p| fits(world, p, None)),
+    }
+}
+
+/// Guest buildings 6.3, the place test for a guest: the tile of `p` is on the map, in the zoo and
+/// has a quarter free or held by a walkable object; an exit place (`exit` given) must also be on
+/// the terrain the slot allows, water or land.
+fn fits(world: &World, (x, y): Point, exit: Option<&Slot>) -> bool {
+    let Some(t) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
+        return false;
     };
-    (list.iter().map(|&p| place(e, p))).find(|&(x, y)| {
-        world
-            .tile_index(x.div_euclid(64), y.div_euclid(64))
-            .is_some()
-    })
+    let walkable = |e: usize| world.shape(e).is_some_and(|s| s.walkable.0);
+    let open = (0..4).any(|q| world.quadrant(t, q).is_none_or(walkable));
+    let terrain = exit.is_none_or(|s| match world.is_water(t) {
+        true => s.exit_water,
+        false => s.exit_land,
+    });
+    world.in_zoo(t) && open && terrain
 }
 
 /// Whether the unit may use slot `slot` of a building (guest buildings 6.1): the building and the
 /// slot have room and an exit exists (6.3: an entrance, or the slot's exit for a type that uses
-/// it, on the map).
+/// it, that passes the place test).
 pub fn can_add(world: &World, e: &Entity, kind: &Kind, live: Option<&Live>, slot: usize) -> bool {
     let users = live.map_or(0, |l| l.users.len());
     let Some(s) = kind.slots.get(slot) else {
