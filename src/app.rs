@@ -1684,7 +1684,10 @@ impl<'a> App<'a> {
             game.money.start(start.cash, start.reset);
             if start.reset {
                 crate::guest::arrive_all(&mut game.world, self.sim.calendar().date());
-                crate::building::reset_all(&mut game.world, self.sim.calendar().state().0);
+                let now = self.sim.calendar().state().0;
+                for id in crate::building::reset_all(&mut game.world, now) {
+                    self.sim.remove(id);
+                }
             }
             if start.forget_last {
                 // A scenario or freeform map is a new game: the set-up rating check.

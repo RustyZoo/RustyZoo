@@ -940,13 +940,13 @@ check expansion-trial "31076/32762;Sell;200;0" "sold_with_user maps/scn19.zoo"
 
 # A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
 # gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
-# user (from pass 1068) pushed out when the pick-up button (871 573) is pressed at pass 1071, and it is put
+# user (from pass 1334) pushed out when the pick-up button (871 573) is pressed at pass 1337, and it is put
 # down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
 # shows once it is down: the stand keeps its figures (the $430 its saved record stores and the user's $10).
 building_moved() { # building_moved <map>
   d=$(mktemp -d)
-  printf '2 mouse 300 375\n3 down\n4 up\n1070 mouse 871 573\n1071 down\n1072 up\n1074 mouse 500 300\n1076 mouse 520 310\n1077 down\n1078 up\n1080 mouse 871 573\n' >"$d/script"
-  rz run "$1" --headless --passes 1090 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+  printf '2 mouse 300 375\n3 down\n4 up\n1336 mouse 871 573\n1337 down\n1338 up\n1340 mouse 500 300\n1342 mouse 520 310\n1343 down\n1344 up\n1346 mouse 871 573\n' >"$d/script"
+  rz run "$1" --headless --passes 1356 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "drop") { w = w $5 "," $6 "," $7 ";" }
       $4 == "building" && $5 == "push" && $6 == 29780 { w = w "push;" }
       $4 == "panel" && $5 == "building" && $6 == 29780 { for (i = 7; i < NF; i++) if ($i == "income") l = "income " $(i + 1) }
@@ -996,6 +996,36 @@ check expansion-trial '75000;1' 'scripted "2 pause\n3 mouse 25 129\n4 down\n5 up
 # The pick-up and the drop record nothing for the undo: the burger stand is sold, the gift stand picked up and
 # put down, then Backspace gives the burger stand back.
 check expansion-trial 'carry;drop;1' 'scripted "2 mouse 875 230\n3 down\n4 up\n6 mouse 987 578\n7 down\n8 up\n10 key y\n14 mouse 300 375\n15 down\n16 up\n18 down\n19 up\n22 mouse 500 300\n24 mouse 520 310\n26 down\n27 up\n30 key backspace\n" maps/scn19.zoo --headless --passes 40 --clock 67 --seed 1 | awk "\$4 == \"world\" && \$5 == \"carry\"{w = w \"carry;\"} \$4 == \"world\" && \$5 == \"drop\"{w = w \"drop;\"} / world add .* undo\$/{n++} END{print w n+0}"'
+
+# The same click, printing the name and the price of the panel: a loaded building shows the price its
+# record stores (guest buildings 4.1), not the type's default. A grandstand of scn28 stores 3.00 where
+# the type's price is 5.00.
+loaded_price() { # loaded_price <map> <presses> <dx> <dy> <x> <y>
+  d=$(mktemp -d)
+  { echo '2 pause'; for i in $(seq 1 "$2"); do echo "$((2 + i)) scroll $3 $4"; done
+    echo "20 mouse $5 $6"; echo '21 down'; echo '22 up'; } >"$d/script"
+  rz run "$1" --headless --passes 30 --clock 67 --script "$d/script" 2>/dev/null |
+    sed -n 's/.* panel building [0-9]* \("[^"]*"\) price \([^ ]*\) .*/\1 \2/p' | head -1 | tr ' ' _
+  rm -rf "${d:?}"
+}
+check expansion-trial '"Show_Grandstand_4"_$3.00' "loaded_price maps/scn28.zoo 10 1 0 472 316"
+
+# The users of a building are back inside after a load (guest buildings 4.1, 6.5): a guest the record
+# lists is on the use of its building (task `dobuilding`), so its first goal is to leave, after the
+# time it has left; one that is not listed starts with a goal of its own. Prints the step, the guest
+# and the first goal of each guest given, in the order of the log. A pair whose guest is not in the
+# zoo is dropped.
+restored_users() { # restored_users <map> <guest>...
+  m=$1
+  shift
+  rz sim "$m" --ticks 300 --seed 1 --log 2>/dev/null | awk -v ids="$*" '
+    BEGIN { n = split(ids, a, " "); for (i = 1; i <= n; i++) want[a[i]] = 1 }
+    $3 == "unit" && $4 == "goal" && ($5 in want) && !seen[$5]++ { printf "%s%s:%s:%s", c++ ? "," : "", $2, $5, $6 }
+    END { print "" }'
+}
+check base-trial "11:29997:leavebuilding" "restored_users maps/scn01a.zoo 29997"
+check expansion-trial "24:40253:leavebuilding" "restored_users maps/scn19.zoo 40253"
+check expansion-trial "6:24919:leavebuilding" "restored_users maps/scn27.zoo 24919"
 
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
@@ -1050,7 +1080,7 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>90;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:77;hunger<=66" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=97;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:76;hunger<=66" "marine_round maps/scn27.zoo"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -1132,16 +1162,18 @@ check expansion-trial "93962:2@2937,1@4800;97902:1@1151" "tank_cross maps/scn28b
 # the water check gives it the water mode at step 615 and sends it to a water tile of its exhibit; in
 # the water mode its walks end on water tiles too, where it chooses from its water table
 # (`bInWater`). Prints each tile a walk ended on with the set chosen there and the change of mode,
-# for 1200 steps.
+# for 1200 steps. The seed is the first (from 1) that shows this whole sequence once the users of a saved
+# zoo are put back at the load: 1 shows no walk in the water mode in 2400 steps, 2, 3 and 6 put the animal
+# in the water mode at step 18 (no walk ends on land first), 4 shows no walk and 5 no walk in the water mode.
 water_mode() { # water_mode <map> <animal>
-  rz sim "$1" --ticks 1200 --seed 1 --reset-fences --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 1200 --seed 7 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
     $5 == a && / unit tile /{ t = $6 }
     $5 == a && / unit goal [0-9]+ none /{ ended = t }
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial ";28,34:bWalk;mode1@615;28,28:bInWater" "water_mode maps/scn19.zoo 51758"
+check expansion-trial ";30,23:bWalk;mode1@615;25,21:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1157,7 +1189,7 @@ tank_over() { # tank_over <map> <ray>
     END{ print n + 0 ";" low ";" first }'
   rm -rf "$d"
 }
-check expansion-trial "31;-65;393" "tank_over maps/scn27.zoo 36659"
+check expansion-trial "26;-79;155" "tank_over maps/scn27.zoo 36659"
 
 # The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
 # are put down: one beside the tank, which then serves it and filters (and charges) at its first
@@ -1185,7 +1217,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@8835;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@3924;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1197,14 +1229,15 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream: the seed (2) is the first that gives a clutch and a hatching in these 5000 steps.
+# random stream. Seed 2 gave a clutch and a hatching in 5000 steps; since the users of the buildings of
+# scn19 are put back at the load (their goals draw), the same seed needs 7200 steps for them.
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
-  egg_script "$d/script" "$2" "$3" "$4" 5000
-  rz sim "$1" --ticks 5000 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  egg_script "$d/script" "$2" "$3" "$4" 7200
+  rz sim "$1" --ticks 7200 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@3691;eggs:3;hatch@4662" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@6511;eggs:3;hatch@7142" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

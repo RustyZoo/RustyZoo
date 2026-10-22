@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::config::Config;
+use crate::unit::Part;
 use crate::unit::testing::{centre, entity, world_with};
 use std::sync::Arc;
 
@@ -225,6 +226,8 @@ fn record(fill: u32, built: u64) -> crate::zoo::BuildingRecord {
         guests: [3, 2, 9],
         income: [bits(10.5), bits(20.0), bits(30.5)],
         upkeep: Some(bits(75.0)),
+        price: bits(5.5),
+        users: Vec::new(),
         fill,
         built,
     }
@@ -243,8 +246,8 @@ fn loaded(list: &[(&str, u32, Option<crate::zoo::BuildingRecord>)]) -> World {
                 .push(entity("building", name, id, centre(at), 0));
         }
     });
-    for (i, &(_, _, record)) in list.iter().enumerate() {
-        w.zoo.entities[i].common.as_mut().unwrap().building = record;
+    for (i, (_, _, record)) in list.iter().enumerate() {
+        w.zoo.entities[i].common.as_mut().unwrap().building = record.clone();
     }
     for at in 0..list.len() {
         load(&mut w, &cat, at);
@@ -270,8 +273,8 @@ fn a_loaded_building_takes_the_figures_its_record_stores() {
     assert_eq!(live.upkeep, 75.0);
     assert_eq!(live.built, 10 * day);
     assert_eq!(w.units.buildings[&8].built, -5 * day);
-    // The price is the type's default and nobody is inside.
-    assert_eq!((live.price, live.users.len()), (29.0, 0));
+    // The price is the stored one, not the type's default, and nobody is listed by `load`.
+    assert_eq!((live.price, live.users.len()), (5.5, 0));
     // A stand holds no litter whatever the record says.
     let w = loaded(&[("stand", 7, Some(record(20, START)))]);
     assert_eq!(w.units.buildings[&7].fill, 0);
@@ -291,10 +294,15 @@ fn a_record_before_version_68_has_no_upkeep_and_the_extremes_do_not_panic() {
         guests: [u32::MAX; 3],
         income: [f32::NAN.to_bits(), f32::INFINITY.to_bits(), u32::MAX],
         upkeep: Some(u32::MAX),
+        price: f32::NAN.to_bits(),
+        users: vec![(u32::MAX, u32::MAX)],
         fill: u32::MAX,
         built: u64::MAX,
     };
-    let w = loaded(&[("stand", 7, Some(wild)), ("can", 8, Some(wild))]);
+    let w = loaded(&[
+        ("stand", 7, Some(wild.clone())),
+        ("can", 8, Some(wild.clone())),
+    ]);
     assert_eq!(w.units.buildings[&7].guests, [u32::MAX; 3]);
     assert!(w.units.buildings[&7].built > 0);
     assert_eq!(w.units.buildings[&8].fill, u32::MAX);
@@ -359,18 +367,200 @@ fn a_reset_start_zeroes_every_building_and_keeps_its_price() {
     ]);
     w.units.buildings.get_mut(&7).unwrap().price = 4.5;
     w.units.buildings.get_mut(&7).unwrap().users.push((3, 0, 9));
-    reset_all(&mut w, 5 * crate::timing::DAY_MS);
+    // The listed unit is removed from the world by the caller, not released.
+    assert_eq!(reset_all(&mut w, 5 * crate::timing::DAY_MS), [3]);
     let want = |price| Live {
         price,
         built: 5 * crate::timing::DAY_MS as i64,
         ..Live::default()
     };
     assert_eq!(w.units.buildings[&7], want(4.5));
-    assert_eq!(w.units.buildings[&8], want(29.0));
+    assert_eq!(w.units.buildings[&8], want(5.5));
     // The can is empty and its picture follows; the call it posted at load is a separate event.
     assert_eq!(w.zoo.entities[1].common.as_ref().unwrap().food, 0);
     // No building, nothing to do.
     let mut none = world_with((2, 2), |_| {});
-    reset_all(&mut none, u64::MAX);
+    assert!(reset_all(&mut none, u64::MAX).is_empty());
     assert!(none.units.buildings.is_empty());
+}
+
+#[test]
+fn a_loaded_building_keeps_the_price_its_record_stores_whatever_it_is() {
+    let price = |bits: u32| {
+        let r = crate::zoo::BuildingRecord {
+            price: bits,
+            ..record(0, START)
+        };
+        loaded(&[("stand", 7, Some(r))]).units.buildings[&7].price
+    };
+    assert_eq!(price(5.5f32.to_bits()), 5.5);
+    // The type's default is 29.0 here: a stored price that differs is not replaced by it.
+    assert_eq!(price(0), 0.0);
+    assert_eq!(price((-2.25f32).to_bits()), -2.25);
+    assert_eq!(price(f32::MAX.to_bits()), f32::MAX);
+    assert!(price(f32::NAN.to_bits()).is_nan());
+    // No record: no live entry, so the type's default price.
+    let w = loaded(&[("stand", 7, None)]);
+    assert_eq!(w.units.buildings.get(&7), None);
+}
+
+const SHOP: &str = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=3\ncTimeInside=3\ncUserStaysOutside=0\n\
+    [Satisfies]\nbuilding\nfood\n[slots]\nname=a\nname=b\n\
+    [a]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=2\n\
+    [b]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=2\n";
+const HIDER: &str = "[Characteristics/Integers]\ncCapacity=3\ncTimeInside=3\ncHideUser=1\n\
+    [Satisfies]\nbuilding\nbathroom\n[slots]\nname=a\n\
+    [a]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=3\n";
+
+/// A zoo of a shop 7 and a hiding restroom 8, loaded with `pairs` as the users of each (and the
+/// entity stamps `stamps` of the units 1 to 3, who are guests, and a keeper 4); the users are
+/// put back at AI tick 9.
+fn seated(pairs: [Vec<(u32, u32)>; 2], stamps: [Option<u32>; 3]) -> World {
+    seated_in(106, pairs, stamps)
+}
+
+/// The same for a file of version `version`.
+fn seated_in(version: u32, pairs: [Vec<(u32, u32)>; 2], stamps: [Option<u32>; 3]) -> World {
+    let mut cat = Catalogue::default();
+    for (name, text) in [("shop", SHOP), ("hider", HIDER)] {
+        cat.push(named(name, text));
+    }
+    let mut w = world_with((12, 4), |zoo| {
+        for (i, (class, name, id)) in [
+            ("building", "shop", 7),
+            ("building", "hider", 8),
+            ("guests", "man", 1),
+            ("guests", "man", 2),
+            ("guests", "man", 3),
+            ("keeper", "keeper", 4),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            zoo.entities
+                .push(entity(class, name, id, centre((i as i32, 1)), 0));
+        }
+    });
+    w.zoo.version = version;
+    for (i, users) in pairs.into_iter().enumerate() {
+        let r = crate::zoo::BuildingRecord {
+            users,
+            ..record(0, START)
+        };
+        w.zoo.entities[i].common.as_mut().unwrap().building = Some(r);
+    }
+    for (i, stamp) in stamps.into_iter().enumerate() {
+        w.zoo.entities[2 + i].common.as_mut().unwrap().stamp = stamp;
+    }
+    for at in 0..2 {
+        load(&mut w, &cat, at);
+    }
+    users::restore(&mut w, &cat, 9);
+    w
+}
+
+#[test]
+fn the_users_of_a_record_are_back_in_their_slots_with_the_time_they_entered_at() {
+    let w = seated(
+        [vec![(1, 0), (2, 1)], vec![(3, 0)]],
+        [Some(5), None, Some(7)],
+    );
+    // In entering order, the stamp of the guest as the entry time and 0 (none) as the load's tick.
+    assert_eq!(w.units.buildings[&7].users, [(1, 0, 5), (2, 1, 9)]);
+    assert_eq!(w.units.buildings[&8].users, [(3, 0, 7)]);
+    // Each takes up the building as its target and goes on with the use (task 0x6a); only the
+    // type that hides its users hides them.
+    for (id, building, slot, hidden) in [(1, 7, 0, false), (2, 7, 1, false), (3, 8, 0, true)] {
+        let u = w.units.get(id).unwrap();
+        let Part::Guest(g) = &u.part else {
+            panic!("not a guest")
+        };
+        assert_eq!(
+            (g.building, g.slot, u.hidden),
+            (building, slot, hidden),
+            "{id}"
+        );
+        let r = &u.goal.record;
+        assert_eq!(
+            (r.task, r.target.id, r.start),
+            (crate::goal::USE, building, 9)
+        );
+    }
+}
+
+#[test]
+fn a_pair_whose_unit_is_missing_or_unfit_is_dropped() {
+    let pairs = vec![
+        (99, 0),       // no such unit
+        (4, 0),        // a keeper, not a guest
+        (7, 0),        // a building
+        (1, 5),        // a slot the type does not have
+        (1, u32::MAX), // the same, at the extreme
+        (2, 1),        // fine
+        (2, 0),        // the same unit again
+        (0, 0),        // id 0
+    ];
+    let w = seated([pairs.clone(), vec![(2, 0), (3, 0)]], [None; 3]);
+    // Unit 1 was dropped for its slot, 2 is the shop's, and the restroom does not take it again.
+    assert_eq!(w.units.buildings[&7].users, [(2, 1, 9)]);
+    assert_eq!(w.units.buildings[&8].users, [(3, 0, 9)]);
+    assert!(!w.units.get(1).unwrap().hidden);
+    assert_eq!(w.units.get(1).unwrap().goal.record.task, 0);
+    // No pairs at all, and a huge count of them, do not panic.
+    let w = seated([Vec::new(), vec![(3, 0); 10_000]], [Some(u32::MAX); 3]);
+    assert!(w.units.buildings[&7].users.is_empty());
+    assert_eq!(w.units.buildings[&8].users.len(), 1);
+}
+
+#[test]
+fn putting_the_users_back_twice_gives_the_same_state() {
+    let mut cat = Catalogue::default();
+    cat.push(named("shop", SHOP));
+    let mut w = world_with((12, 4), |zoo| {
+        zoo.entities
+            .push(entity("building", "shop", 7, centre((0, 1)), 0));
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((1, 1)), 0));
+    });
+    w.zoo.version = 106;
+    w.zoo.entities[0].common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
+        users: vec![(1, 0)],
+        ..record(0, START)
+    });
+    let once = |w: &mut World| {
+        load(w, &cat, 0);
+        users::restore(w, &cat, 3);
+        w.units.buildings[&7].clone()
+    };
+    let first = once(&mut w);
+    assert_eq!(once(&mut w), first);
+    assert_eq!(first.users, [(1, 0, 3)]);
+}
+
+#[test]
+fn a_file_before_version_80_restores_no_user_of_a_type_visible_inside() {
+    // The shop shows its users inside, the restroom hides them. Guests 1 and 2 are kept pairs of the
+    // shop, 99 is missing: two are counted off the figures [3, 2, 9] and nobody is listed. The
+    // restroom takes its user as in any version.
+    for version in [38, 79] {
+        let w = seated_in(
+            version,
+            [vec![(1, 0), (99, 0), (2, 1)], vec![(3, 0)]],
+            [None; 3],
+        );
+        assert_eq!(w.units.buildings[&7].guests, [1, 0, 7], "{version}");
+        assert!(w.units.buildings[&7].users.is_empty(), "{version}");
+        assert_eq!(w.units.get(1).unwrap().goal.record.task, 0);
+        assert_eq!(w.units.buildings[&8].users.len(), 1, "{version}");
+    }
+    // The figures never go below 0, and version 80 keeps them and the users.
+    let w = seated_in(
+        70,
+        [vec![(1, 0), (2, 0), (3, 0), (1, 1), (2, 1)], Vec::new()],
+        [None; 3],
+    );
+    assert_eq!(w.units.buildings[&7].guests, [0, 0, 4]);
+    let w = seated_in(80, [vec![(1, 0), (2, 1)], Vec::new()], [None; 3]);
+    assert_eq!(w.units.buildings[&7].guests, [3, 2, 9]);
+    assert_eq!(w.units.buildings[&7].users.len(), 2);
 }

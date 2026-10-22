@@ -5,8 +5,9 @@
 //! buildings 12.1) uses the same users and slots.
 //!
 //! Only the buildings that have been built in play, had a user, a month change or a price change,
-//! or were loaded with a zoo ([`load`]: the figures and the can's fill its record stores) have a
-//! live entry; a missing one is a building at its default price with no users. A trash can counts
+//! or were loaded with a zoo ([`load`]: the figures, the price and the can's fill its record
+//! stores, and [`users::restore`] its users) have a live entry; a missing one is a building at its
+//! default price with no users. A trash can counts
 //! the litter its users put in ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can
 //! spills it).
 //! The panels that set the price and show the figures are [`crate::panel::building`]'s.
@@ -30,6 +31,7 @@ use std::collections::BTreeMap;
 
 pub mod items;
 pub mod leave;
+pub mod users;
 
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
 /// which a price is expensive and cheap, and the default price of a type that names none.
@@ -303,11 +305,11 @@ pub fn built(world: &mut World, ty: &EntityType, id: u32, now: u64) {
 /// The building at position `at` of the entity list of a zoo just loaded takes the figures its
 /// record stores (zoo format 6.9, guest buildings 4): the guests and the income of this month,
 /// last month and since construction, the upkeep paid since construction (from version 68), the
-/// trash can's fill and the construction date. The users, the price and the slots are not
-/// restored: the price is the type's default and no unit is in a building.
+/// trash can's fill, the construction date and the price. The users come after the guests are
+/// made ([`users::restore`]).
 pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
     let e = &world.zoo.entities[at];
-    let Some(record) = e.common.as_ref().and_then(|c| c.building) else {
+    let Some(record) = e.common.as_ref().and_then(|c| c.building.clone()) else {
         return;
     };
     let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
@@ -324,6 +326,7 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
         guests: record.guests,
         income: record.income.map(f32::from_bits),
         upkeep: record.upkeep.map_or(0.0, f32::from_bits),
+        price: f32::from_bits(record.price),
         built,
         ..Live::new(&kind)
     };
@@ -336,12 +339,15 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
 /// A start with `reset` or `resetdate` resets every building (guest buildings 4.1): the fill, the
 /// users and the figures go to 0 and the construction date becomes the game time `now` (ms since
 /// the calendar's start); the price is kept. It runs after the load events, so a can that called a
-/// worker is empty with its task still in the pool.
-pub fn reset_all(world: &mut World, now: u64) {
+/// worker is empty with its task still in the pool. Every unit a building listed as a user is
+/// removed from the world, not released: the ids are returned for the caller to ask the removal.
+pub fn reset_all(world: &mut World, now: u64) -> Vec<u32> {
     let ids: Vec<u32> = world.units.buildings.keys().copied().collect();
+    let mut removed = Vec::new();
     for id in ids {
         set_fill(world, id, 0);
         if let Some(live) = world.units.buildings.get_mut(&id) {
+            removed.extend(live.users.iter().map(|u| u.0));
             *live = Live {
                 price: live.price,
                 built: now as i64,
@@ -349,6 +355,7 @@ pub fn reset_all(world: &mut World, now: u64) {
             };
         }
     }
+    removed
 }
 
 /// The events a zoo just loaded posts for its trash cans (staff 8.2): a can above 12 pieces calls

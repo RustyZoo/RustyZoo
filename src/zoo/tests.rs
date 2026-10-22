@@ -1203,7 +1203,7 @@ fn reads_the_figures_of_a_building() {
         b.z(4);
         base(&mut b, v, 4, 9, "House");
         b.u32(2).u32(40).u32(bits(182.5)).u32(bits(3.5));
-        b.u32(1).z(8);
+        b.u32(1).u32(77).u32(2);
         b.u32(14).u32(bits(105.0)).u32(bits(77.25)).u32(15).u32(12);
         b.u32(0x1234_5678).u32(0x01d0_0000);
         if (48..=66).contains(&v) {
@@ -1220,6 +1220,9 @@ fn reads_the_figures_of_a_building() {
         if v >= 75 {
             b.u32(0);
         }
+        // The stamp of the entity base follows the food word, the position, the rotation, the id,
+        // the name and the visible flag.
+        b.0[34..38].copy_from_slice(&42u32.to_le_bytes());
         let z = parse(&file(
             v,
             1,
@@ -1227,7 +1230,11 @@ fn reads_the_figures_of_a_building() {
             &[],
             &[("building", "building", "shop", b.0)],
         ));
-        let r = z.entities[0].common.as_ref().unwrap().building.unwrap();
+        let c = z.entities[0].common.as_ref().unwrap();
+        assert_eq!(c.stamp, Some(42), "version {v}");
+        let r = c.building.as_ref().unwrap();
+        assert_eq!(f32::from_bits(r.price), 3.5, "version {v}");
+        assert_eq!(r.users, [(77, 2)], "version {v}");
         assert_eq!(r.guests, [12, 15, 40], "version {v}");
         let money = r.income.map(f32::from_bits);
         assert_eq!(money, [77.25, 105.0, 182.5], "version {v}");

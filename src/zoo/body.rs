@@ -97,7 +97,8 @@ fn base(r: &mut Reader) -> R<Common> {
     if v <= 62 {
         r.string()?;
     }
-    r.skip(1 + 4)?;
+    r.skip(1)?;
+    let stamp = Some(r.u32()?).filter(|&s| s != 0);
     if v >= 58 {
         r.skip(1)?;
     }
@@ -117,6 +118,7 @@ fn base(r: &mut Reader) -> R<Common> {
         id,
         name,
         colors,
+        stamp,
         fence: None,
         ..Default::default()
     })
@@ -147,15 +149,18 @@ fn behaviour_set(r: &mut Reader) -> R<()> {
     Ok(())
 }
 
-/// The figures of a guest building (zoo format 6.9, guest buildings 4); the users, the price
-/// and the fields the engine has no use for are read past.
+/// The figures, the price and the users of a guest building (zoo format 6.9, guest buildings 4);
+/// the fields the engine has no use for are read past.
 fn building(r: &mut Reader) -> R<BuildingRecord> {
     let v = r.v;
     r.skip(4)?; // users now
     let guests_since = r.u32()?;
     let income_since = r.u32()?;
-    r.skip(4)?; // the price
-    r.skip_list(8)?;
+    let price = r.u32()?;
+    let mut users = Vec::new();
+    for _ in 0..r.count(8)? {
+        users.push((r.u32()?, r.u32()?));
+    }
     let fill = r.u32()?;
     let income_last = r.u32()?;
     let income_this = r.u32()?;
@@ -181,6 +186,8 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
         guests: [guests_this, guests_last, guests_since],
         income: [income_this, income_last, income_since],
         upkeep,
+        price,
+        users,
         fill,
         built,
     })

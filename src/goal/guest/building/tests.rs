@@ -3,7 +3,7 @@
 use super::*;
 use crate::building::Prices;
 use crate::entity::{Catalogue, EntityType};
-use crate::goal::guest::tests::{sim, walks};
+use crate::goal::guest::tests::walks;
 use crate::guest::{BATHROOM, HAPPINESS, HUNGER};
 use crate::money::{self, Money};
 use crate::sim::{Events, Rng, Sim};
@@ -131,7 +131,20 @@ fn guest(w: &World) -> &Guest {
 
 /// A game with the prices of the shipped economy.
 fn game() -> Sim {
-    let mut s = sim();
+    game_at(0)
+}
+
+/// The same, with the AI clock at `ticks` as a saved zoo restores it.
+fn game_at(ticks: u32) -> Sim {
+    let mut s = Sim::new(b"");
+    s.set_seed(1);
+    s.start_game(
+        100,
+        crate::zoo::Clocks {
+            ai_ticks: ticks,
+            ..Default::default()
+        },
+    );
     s.status.settings.prices = Prices {
         expensive: 2.0,
         cheap: 0.5,
@@ -759,4 +772,75 @@ fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and
     assert_eq!(w.units.buildings[&7].price, 4.5);
     assert!(w.units.buildings[&7].income[2] > 0.0 && w.units.buildings[&7].users.is_empty());
     assert_eq!((w.can_undo(), w.zoo.entities.len()), (before, count));
+}
+
+/// The zoo of `zoo()` loaded as a saved one: building `id` lists guest 1 as a user of its slot 0
+/// and stores the price `price`; the guest's stamp is `stamp`; the AI clock reads 100.
+fn saved(cat: &Catalogue, id: u32, price: f32, stamp: Option<u32>) -> World {
+    let mut w = zoo();
+    let at = w.find(id).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
+        guests: [0; 3],
+        income: [0; 3],
+        upkeep: None,
+        price: price.to_bits(),
+        users: vec![(1, 0)],
+        fill: 0,
+        built: 0,
+    });
+    let guest = w.find(1).unwrap();
+    w.zoo.entities[guest].common.as_mut().unwrap().stamp = stamp;
+    for at in 0..w.zoo.entities.len() {
+        crate::building::load(&mut w, cat, at);
+    }
+    crate::building::users::restore(&mut w, cat, 100);
+    w
+}
+
+/// Steps until the guest is no longer listed in building `id`; the AI tick it was gone at.
+fn gone_at(s: &mut Sim, cat: &Catalogue, w: &mut World, money: &mut Money, id: u32) -> u32 {
+    for _ in 0..3000 {
+        if w.units.buildings[&id].users.is_empty() {
+            return w.units.ai_ticks;
+        }
+        run(s, cat, w, money, 1, "never");
+    }
+    panic!("the guest never left");
+}
+
+#[test]
+fn a_guest_inside_a_stand_at_the_save_leaves_after_its_time_left_and_pays_the_stored_price() {
+    let (cat, mut money) = (types(), Money::default());
+    // The stand's time inside is 3 ticks. A guest stamped 98 has 1 tick left at the load, one with
+    // no stamp (0) is taken to enter now and has all 3.
+    let mut ticks = Vec::new();
+    for stamp in [Some(98), None] {
+        let mut w = saved(&cat, 7, 3.0, stamp);
+        let live = &w.units.buildings[&7];
+        assert_eq!((live.price, live.users.len()), (3.0, 1));
+        assert_eq!(task(&w), crate::goal::USE);
+        let mut s = game_at(100);
+        let at = gone_at(&mut s, &cat, &mut w, &mut money, 7);
+        ticks.push(at);
+        // 3 x 3.00 for the stored price, booked when it left: not the default 2.00.
+        run(&mut s, &cat, &mut w, &mut money, 1, "never");
+    }
+    assert_eq!(money.total[money::CONCESSIONS], 18.0);
+    assert_eq!(ticks[1] - ticks[0], 2, "{ticks:?}");
+}
+
+#[test]
+fn a_reset_start_removes_the_users_put_back_at_the_load() {
+    let (cat, mut money) = (types(), Money::default());
+    let mut w = saved(&cat, 8, 0.0, Some(100));
+    assert!(w.units.get(1).unwrap().hidden);
+    let removed = crate::building::reset_all(&mut w, 0);
+    assert_eq!(removed, [1]);
+    assert!(w.units.buildings[&8].users.is_empty());
+    // The caller asks the removal; the unit is gone at the next removal pass and pays nothing.
+    let mut s = game_at(100);
+    s.remove(1);
+    run(&mut s, &cat, &mut w, &mut money, 3, "never");
+    assert!(w.units.get(1).is_none() && w.find(1).is_none());
+    assert_eq!(money.total[money::CONCESSIONS], 0.0);
 }

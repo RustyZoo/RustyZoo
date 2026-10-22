@@ -96,6 +96,7 @@ impl Fnv {
             id,
             name,
             colors,
+            stamp: _,
             fence,
             movement_mode,
             food,
