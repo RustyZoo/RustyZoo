@@ -161,6 +161,9 @@ pub(super) fn catalogue() -> Catalogue {
     // 15: a cart (60, moveable), a building the player can pick up.
     let cart = format!("{}cMoveable=1\n[Satisfies]\nbuilding\n", cost(60));
     cat.push(ty("building", b"cart", b"", &cart, [2, 2, 1]));
+    // 16: a dock (2000) the bulldozer cannot remove.
+    let dock = format!("{}cNeedsConfirm=1\ncDeletable=0\n", cost(2000));
+    cat.push(ty("building", b"dock", b"", &dock, [2, 2, 1]));
     cat
 }
 
@@ -557,6 +560,28 @@ fn the_sell_button_of_the_building_panel_sells_as_the_bulldozer_does() {
         let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
         assert!(removed.ends_with("refund 280"), "{removed}");
         assert_eq!((s.count(), s.cash()), (0, 50_280.0));
+    });
+}
+
+#[test]
+fn the_sell_button_does_not_test_cdeletable_but_the_bulldozer_does() {
+    with_game("sell-undeletable", "", |s| {
+        let id = s.add(16, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[DELETE]);
+        let over = s.at(20, 20, 32, 32);
+        s.pass(&[over]);
+        assert_eq!(
+            s.click(over).iter().filter(|l| l.contains("ask")).count(),
+            0
+        );
+        assert_eq!((s.count(), s.cash(), s.asking()), (1, 50_000.0, false));
+        s.app.game.as_mut().unwrap().building.select(id, 21);
+        s.app.building_sell();
+        assert!(s.asking());
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
+        assert!(removed.ends_with("refund 1600"), "{removed}");
+        assert_eq!((s.count(), s.cash()), (0, 51_600.0));
     });
 }
 

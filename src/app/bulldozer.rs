@@ -46,6 +46,8 @@ pub(super) struct Sweep {
     asked: Vec<(u32, u32)>,
     asking: Option<u32>,
     area: bool,
+    /// A panel's button: the bulldozer's tests (`cDeletable`, the zoo wall) are not made.
+    panel: bool,
     removed: usize,
     refund: f32,
 }
@@ -219,6 +221,7 @@ impl App<'_> {
             asked: Vec::new(),
             asking: None,
             area: game.dozer.rect.is_some(),
+            panel: false,
             removed: 0,
             refund: 0.0,
         });
@@ -227,8 +230,9 @@ impl App<'_> {
 
     /// The fire button of the staff panel and the sell button of the building panel: the entity
     /// with this id is the one entity of a removal, which asks its question like the bulldozer's
-    /// (unit placing 10.1, placing 7). The selection is cleared first, which closes the panel, so
-    /// the entity a No keeps is no longer selected (placing 7.1).
+    /// (unit placing 10.1, placing 7) but is not tested for `cDeletable` or the zoo wall. The
+    /// selection is cleared first, which closes the panel, so the entity a No keeps is no longer
+    /// selected (placing 7.1).
     pub(super) fn remove_one(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         game.selected = None;
@@ -237,6 +241,7 @@ impl App<'_> {
             asked: Vec::new(),
             asking: None,
             area: false,
+            panel: true,
             removed: 0,
             refund: 0.0,
         });
@@ -258,7 +263,7 @@ impl App<'_> {
         let world = &game.world;
         let Some(at) = world
             .find(id)
-            .filter(|&at| bulldozer::removable(world, cat, at))
+            .filter(|&at| sweep.panel || bulldozer::removable(world, cat, at))
         else {
             return Next::Skip;
         };
