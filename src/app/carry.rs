@@ -116,9 +116,21 @@ impl App<'_> {
         }
         let cat = self.renderer.catalogue();
         let ty = &cat.types[carry.ty];
-        // A building held (8.7) is set down where it was judged, with its figures, and selected.
+        // A building held (8.7) is set down where it was judged, with its figures, and selected;
+        // a put-back after a cancelled move runs no comparison.
         if let Some(held) = game.held.take() {
+            // A building put down is a placement: the animals of the exhibit react (9.4).
+            let tile = game.world.tile_index(p.tile.0, p.tile.1);
+            let before = rating::before(&game.world, cat, tile.as_slice());
             crate::building::set_down(&mut game.world, held, (p.x, p.y, p.z), p.facing);
+            let (habitat, name) = rating::object(ty);
+            let rand = &mut || self.sim.rng.rand();
+            let change = rating::Change::Object {
+                habitat,
+                name,
+                sign: 1,
+            };
+            rating::react(&mut game.world, cat, before, Some(change), rand);
             game.carry = None;
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);

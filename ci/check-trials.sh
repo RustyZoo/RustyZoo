@@ -969,6 +969,24 @@ building_put_back() { # building_put_back <map>
 }
 check expansion-trial 'carry,29780,;putback,29780,31,41;carry,29780,;' "building_put_back maps/scn19.zoo"
 
+# A building put down after a pick-up is a placement: the animals of the exhibit react (habitat rating 9.4,
+# unit placing 8.7). The gift stand of scn19 is picked up by a second click and put down in the pen of the two
+# bears of the map, which value its habitat key below 0: both dislike it and the frown plays.
+check expansion-trial 'dislikes2,likes0;frown' 'rz run maps/scn19.zoo --headless --passes 40 --clock 67 --seed 1 --script <({ echo "1 pause"; for p in 2 3 4 5 6 7 8 9 10 11; do echo "$p scroll -1 0"; done; printf "12 scroll 0 0\n14 mouse 940 375\n15 down\n16 up\n18 down\n19 up\n22 mouse 500 240\n24 mouse 500 240\n26 down\n27 up\n"; }) 2>/dev/null | awk "\$2>=26 && / animal dislikes /{n++} \$2>=26 && / animal likes /{m++} / animal sound /{s=s \$NF} END{print \"dislikes\" n+0 \",likes\" m+0 \";\" s}"'
+
+# The sell button clears the selection before it asks (placing 7.1): after a No the building stays and its
+# panel is closed (the last `panel building` line is `none`).
+check expansion-trial 'none' 'rz run maps/scn19.zoo --headless --passes 40 --clock 67 --seed 1 --script <(printf "2 mouse 875 230\n3 down\n4 up\n20 mouse 987 578\n21 down\n22 up\n24 key n\n") 2>/dev/null | awk "\$4 == \"panel\" && \$5 == \"building\" && \$2 >= 21 {l = \$6} END{print l}"'
+
+# An undo while a building is held (placing 8, unit placing 8.7): a gift stand is bought (130), placed, picked up by
+# a second click and Backspace pressed: its move is cancelled and it is removed with its whole price (one
+# removal told, the cash back to its start).
+check expansion-trial '75000;1' 'rz run maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed 5 --script <(printf "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n") 2>/dev/null | awk "/ money cash /{c=\$6} / world remove .* undo\$/{n++} END{print c \";\" n+0}"'
+
+# The pick-up and the drop record nothing for the undo: the burger stand is sold, the gift stand picked up and
+# put down, then Backspace gives the burger stand back.
+check expansion-trial 'carry;drop;1' 'rz run maps/scn19.zoo --headless --passes 40 --clock 67 --seed 1 --script <(printf "2 mouse 875 230\n3 down\n4 up\n6 mouse 987 578\n7 down\n8 up\n10 key y\n14 mouse 300 375\n15 down\n16 up\n18 down\n19 up\n22 mouse 500 300\n24 mouse 520 310\n26 down\n27 up\n30 key backspace\n") 2>/dev/null | awk "\$4 == \"world\" && \$5 == \"carry\"{w = w \"carry;\"} \$4 == \"world\" && \$5 == \"drop\"{w = w \"drop;\"} / world add .* undo\$/{n++} END{print w n+0}"'
+
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
 scenario_guest_panel() {

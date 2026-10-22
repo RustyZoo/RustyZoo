@@ -227,9 +227,11 @@ impl App<'_> {
 
     /// The fire button of the staff panel and the sell button of the building panel: the entity
     /// with this id is the one entity of a removal, which asks its question like the bulldozer's
-    /// (unit placing 10.1, placing 7).
+    /// (unit placing 10.1, placing 7). The selection is cleared first, which closes the panel, so
+    /// the entity a No keeps is no longer selected (placing 7.1).
     pub(super) fn remove_one(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
+        game.selected = None;
         game.sweep = Some(Sweep {
             queue: VecDeque::from([id]),
             asked: Vec::new(),

@@ -266,3 +266,41 @@ fn the_selected_moveable_building_is_picked_up_free_put_down_or_put_back_and_the
         assert_eq!(place(s).map(|p| p.2), Some(4));
     });
 }
+
+#[test]
+fn an_undo_while_a_building_is_held_puts_it_back_and_removes_it_with_its_whole_price() {
+    with_game("carry-undo", "", |s| {
+        let cart = s.add(15, 20 * 64 + 32, 20 * 64 + 32, 4);
+        s.app.game.as_mut().unwrap().world.clear_undo();
+        let shop = s.add(2, 22 * 64 + 32, 20 * 64 + 32, 4);
+        s.pass(&[]);
+        let here = s.at(20, 20, 32, 32);
+        s.click(here);
+        assert_eq!(told(s.click_log(here)), [format!("world carry {cart}")]);
+        // The list holds another placement only: it is undone and the cart stays held.
+        s.app.undo();
+        let game = s.app.game.as_ref().unwrap();
+        assert!(game.held.is_some() && game.carry.is_some());
+        assert!(game.world.find(shop).is_none() && !game.world.can_undo());
+    });
+    with_game("carry-undo-placed", "", |s| {
+        let cart = s.add(15, 20 * 64 + 32, 20 * 64 + 32, 4);
+        s.app.game.as_mut().unwrap().world.priced(60.0);
+        s.pass(&[]);
+        let (here, cash) = (s.at(20, 20, 32, 32), s.cash());
+        s.click(here);
+        assert_eq!(told(s.click_log(here)), [format!("world carry {cart}")]);
+        // The held cart is the last operation's placement: the move is cancelled, the cart is
+        // removed, the price is given back and nothing is held.
+        let told = s.log(&[Command::Key(Key::Backspace, false, false)]);
+        assert!(
+            told.iter()
+                .any(|l| l.starts_with("world remove building/cart/")),
+            "{told:?}"
+        );
+        let game = s.app.game.as_ref().unwrap();
+        assert!(game.held.is_none() && game.carry.is_none() && game.selected.is_none());
+        assert!(game.world.find(cart).is_none());
+        assert_eq!(s.cash(), cash + 60.0);
+    });
+}

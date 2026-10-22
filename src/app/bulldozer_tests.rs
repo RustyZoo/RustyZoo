@@ -541,8 +541,11 @@ fn the_sell_button_of_the_building_panel_sells_as_the_bulldozer_does() {
         s.app.building_sell();
         assert!(!s.asking());
         s.app.game.as_mut().unwrap().building.select(id, 21);
+        s.app.game.as_mut().unwrap().selected = Some(id);
         s.app.building_sell();
         assert!(s.asking());
+        // The selection went before the question, so a No leaves the building unselected.
+        assert_eq!(s.app.game.as_ref().unwrap().selected, None);
         let told = s.pass(&[Command::Key(Key::N, false, false)]);
         assert_eq!(told, ["tool bulldoze answer no"]);
         assert_eq!((s.count(), s.cash()), (1, 50_000.0));

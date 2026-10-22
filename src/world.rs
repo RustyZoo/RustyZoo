@@ -787,6 +787,13 @@ impl World {
         result
     }
 
+    /// Whether the undo list holds the placement of the entity `id`.
+    pub fn undoes(&self, id: u32) -> bool {
+        self.undo
+            .iter()
+            .any(|a| matches!(a, Action::Placed { id: i, .. } if *i == id))
+    }
+
     /// Drops the actions of the undo list that concern the entity `id`, which the simulation
     /// removed: an undo must neither bring it back nor remove it.
     pub fn forget_undo(&mut self, id: u32) {

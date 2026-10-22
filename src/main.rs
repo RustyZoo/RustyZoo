@@ -350,7 +350,7 @@ usage: rustyzoo [--data <dir>] <command>
                       question with the refund when `confirmSell` asks for one) and the pick-up button, shown for a type with `cMoveable` 1
                       only, picks it up as a second click on the selected building does (`world carry ID`): it follows the pointer free of
                       charge with its facing, a release on a valid place puts it down (`world drop ID X,Y`) and Escape, the right button or
-                      choosing an item puts it back (`world putback ID X,Y`); both push its users out first (`building push ID GUEST`). `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
+                      choosing an item puts it back (`world putback ID X,Y`); a drop makes the animals of the exhibit react as a new building does; an undo of its placement while it is held removes it with its whole price; the sell button clears the selection first, so a No leaves the panel closed; both push its users out first (`building push ID GUEST`). `panel exhibit ID \"NAME\"`, `panel status DATE upkeep A B C staff Yes|No`, `panel
                       donations stars N A B C`, `panel animals N thoughts N` (` [IDS]` follows a number above 0) (or `panel exhibit none`) tell
                       what the panel shows, `panel plaque \"ANIMAL\"` and one `panel line TEXT` per
                       recommendation (`panel line!` for an important one, written in red) what the plaque shows,
