@@ -728,3 +728,35 @@ fn a_user_of_a_building_with_no_exit_on_the_map_is_shown_where_it_stands() {
     assert!(!w.units.get(1).unwrap().hidden);
     assert_eq!(spot(&w), own);
 }
+
+#[test]
+fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and_its_id() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    let mut s = game();
+    hungry(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    run(&mut s, &cat, &mut w, &mut money, 600, "buy");
+    assert_eq!(task(&w), crate::goal::USE);
+    let (before, count) = (w.can_undo(), w.zoo.entities.len());
+    let mut live = w.units.buildings[&7].clone();
+    live.price = 4.5;
+    w.units.buildings.insert(7, live);
+    let at = w.find(7).unwrap();
+    let held = crate::building::lift(&mut w, &cat, 7, &mut Rng::default()).unwrap();
+    // The customer paid and stands at the first entrance; the stand is off the map and no
+    // undo records it; there is nothing to lift twice.
+    assert_eq!(w.units.take_building_lines(), ["push 7 1"]);
+    assert_eq!((spot(&w).0, spot(&w).1, task(&w)), (336, 400, 0));
+    assert!(w.find(7).is_none() && !w.units.buildings.contains_key(&7));
+    assert_eq!((w.can_undo(), w.zoo.entities.len()), (before, count - 1));
+    assert!(crate::building::lift(&mut w, &cat, 7, &mut Rng::default()).is_none());
+    // Set down elsewhere, facing another way: the same id, the same place in the list, the
+    // price it had, and the figures the customer left.
+    crate::building::set_down(&mut w, held, (352, 160, 0), 2);
+    assert_eq!(w.find(7), Some(at));
+    let c = w.zoo.entities[at].common.clone().unwrap();
+    assert_eq!((c.x, c.y, c.rotation), (352, 160, 2));
+    assert_eq!(w.units.buildings[&7].price, 4.5);
+    assert!(w.units.buildings[&7].income[2] > 0.0 && w.units.buildings[&7].users.is_empty());
+    assert_eq!((w.can_undo(), w.zoo.entities.len()), (before, count));
+}

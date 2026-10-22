@@ -41,8 +41,21 @@ impl App<'_> {
     /// the tiles given back, `tool undo N` with the number of actions) and moves its price in
     /// the cash. A removed object that cannot be put back stops the undo (`world blocked`) and
     /// shows string 159 with its name.
+    ///
+    /// A building held (unit placing 8.7) that the list holds the placement of is put back first
+    /// and then goes with the rest, its whole price given back, and nothing is held after; the
+    /// undo of another operation leaves it held.
     pub(super) fn undo(&mut self) {
         let Some(game) = &mut self.game else { return };
+        let held =
+            (game.carry.as_ref()).is_some_and(|c| game.held.is_some() && game.world.undoes(c.id));
+        if held {
+            self.put_back();
+        }
+        let Some(game) = &mut self.game else { return };
+        if held {
+            game.selected = None;
+        }
         let done = game.world.undo();
         if !done.is_empty() {
             self.undone(done);

@@ -535,13 +535,64 @@ pub fn pending(
     view: u8,
     point: (i64, i64),
 ) -> Option<Pending> {
+    pending_of(
+        world,
+        cat,
+        water,
+        dirt,
+        smart,
+        (ty, None),
+        (step, view),
+        point,
+    )
+}
+
+/// The pending object of the building the player holds (unit placing 8.7), of the type `ty`
+/// facing `dir` on the map, for the world point `point`: the checks of a new object, the cost 0.
+#[allow(clippy::too_many_arguments)]
+pub fn moved(
+    world: &World,
+    cat: &Catalogue,
+    water: &[bool],
+    dirt: &dyn Fn(usize) -> Option<(u8, f32)>,
+    smart: bool,
+    ty: usize,
+    dir: u32,
+    point: (i64, i64),
+) -> Option<Pending> {
+    let mut p = pending_of(
+        world,
+        cat,
+        water,
+        dirt,
+        smart,
+        (ty, Some(dir)),
+        (0, 0),
+        point,
+    )?;
+    p.price = 0.0;
+    Some(p)
+}
+
+/// [`pending`], with the facing given for an object (`turned`) instead of the one the step makes.
+#[allow(clippy::too_many_arguments)]
+fn pending_of(
+    world: &World,
+    cat: &Catalogue,
+    water: &[bool],
+    dirt: &dyn Fn(usize) -> Option<(u8, f32)>,
+    smart: bool,
+    (ty, turned): (usize, Option<u32>),
+    (step, view): (usize, u8),
+    point: (i64, i64),
+) -> Option<Pending> {
     let t = cat.types.get(ty)?;
     let class = Class::of(t);
     let point = (i32::try_from(point.0).ok()?, i32::try_from(point.1).ok()?);
     let (tile_x, tile_y) = (point.0.div_euclid(64), point.1.div_euclid(64));
     let tile = world.tile_index(tile_x, tile_y)?;
     let dir = match class {
-        Class::Fixed => facing(step, view),
+        Class::Fixed => turned.unwrap_or_else(|| facing(step, view)),
         Class::Path => 0,
         Class::Fence => side(point.0.rem_euclid(64), point.1.rem_euclid(64)),
     };

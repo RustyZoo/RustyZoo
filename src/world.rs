@@ -629,6 +629,19 @@ impl World {
         true
     }
 
+    /// Puts back an entity that was taken out for the player to hold (guest buildings 11.1): it
+    /// keeps its id and goes to position `at` of the list again, with nothing recorded for the
+    /// undo. The exhibit it stands in is marked for a new rating.
+    pub fn put_back(&mut self, at: usize, entity: Entity, shape: Option<Shape>) {
+        let at = at.min(self.zoo.entities.len());
+        self.zoo.entities.insert(at, entity);
+        self.shapes.insert(at, shape);
+        self.changed();
+        self.rated_tiles(at)
+            .into_iter()
+            .for_each(|t| self.mark_rating(t));
+    }
+
     /// Whether `entity` has the type of the one at `at` in the list.
     pub fn same_type(&self, at: usize, entity: &Entity) -> bool {
         let old = &self.zoo.entities[at];
@@ -772,6 +785,13 @@ impl World {
         let result = edit(self);
         (self.undo, self.fresh) = (undo, fresh);
         result
+    }
+
+    /// Whether the undo list holds the placement of the entity `id`.
+    pub fn undoes(&self, id: u32) -> bool {
+        self.undo
+            .iter()
+            .any(|a| matches!(a, Action::Placed { id: i, .. } if *i == id))
     }
 
     /// Drops the actions of the undo list that concern the entity `id`, which the simulation

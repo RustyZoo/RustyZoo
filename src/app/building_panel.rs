@@ -1,6 +1,6 @@
 //! The building panels in the game (information panels 4.1; guest buildings 7.2, 10.3): what
-//! opens them (a guest building clicked on the map, [`App::select`]), the price buttons, and the
-//! look at what the player did to them. The panels themselves are [`crate::panel::building`].
+//! opens them (a guest building clicked on the map, [`App::select`]), the price buttons, the sell
+//! and pick-up buttons, and the look at what the player did to them. The panels themselves are [`crate::panel::building`].
 
 use super::*;
 use crate::building::Kind;
@@ -107,6 +107,22 @@ impl App<'_> {
         let max = game.world.units.prices.max;
         if game.building.layout == panel::CHARGING {
             self.set_price(|kind, price| kind.typed(price, max, value));
+        }
+    }
+
+    /// The sell button (placing 7): the selected building goes as the bulldozer removes it, after
+    /// the question with its refund when `[UI] confirmSell` asks for one; its users are pushed out.
+    pub(super) fn building_sell(&mut self) {
+        if let Some(id) = self.game.as_ref().and_then(|g| g.building.selected) {
+            self.remove_one(id);
+        }
+    }
+
+    /// The pick-up button (unit placing 8.7): the selected building is picked up as a second
+    /// click on it does.
+    pub(super) fn building_pick_up(&mut self) {
+        if let Some(id) = self.game.as_ref().and_then(|g| g.building.selected) {
+            self.lift_building(id);
         }
     }
 

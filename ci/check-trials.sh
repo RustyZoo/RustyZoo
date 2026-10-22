@@ -920,6 +920,83 @@ loaded_building() { # loaded_building <map> <presses> <dx> <dy> <x> <y>
 check base-trial 'income_$182_upkeep_$100_profit_$82_month_$182_$100_$82_months_1_guests_last_15_this_12_total_27' "loaded_building maps/scn01a.zoo 8 -1 0 500 440"
 check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$354_$300_$54_months_1_guests_last_10_this_0_total_59' "loaded_building maps/scn19.zoo 5 1 0 880 320"
 
+# A building sold from its panel while a guest uses it (guest buildings 11.1, placing 7): the first
+# guest to use the burger stand of scn19 (type brontbrg) is inside from pass 209 (the stand is at the pixel the
+# first lines click; the panel's sell button is the one at 987 578), the question is answered Yes at
+# pass 224 and the guest is pushed out. Prints the `building push` lines (building/guest), the refund
+# (0.8 of 250) and the cash the sale left, and the walk-out goals the guest took after it (none).
+sold_with_user() { # sold_with_user <map>
+  d=$(mktemp -d)
+  printf '2 mouse 875 230\n3 down\n4 up\n220 mouse 987 578\n221 down\n222 up\n224 key y\n' >"$d/script"
+  rz run "$1" --headless --passes 260 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+    awk '$4 == "building" && $5 == "push" { p = p $6 "/" $7 ";" }
+      $4 == "tool" && $5 == "bulldoze" && $6 == "ask" { q = $7 }
+      $4 == "world" && $5 == "remove" { r = $NF }
+      $4 == "unit" && $5 == "goal" && $6 == 32762 && $7 == "leavebuilding" && r != "" { l++ }
+      END { printf "%s%s;%s;%d\n", p, q, r, l }'
+  rm -rf "${d:?}"
+}
+check expansion-trial "31076/32762;Sell;200;0" "sold_with_user maps/scn19.zoo"
+
+# A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
+# gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
+# user (from pass 1068) pushed out when the pick-up button (871 573) is pressed at pass 1071, and it is put
+# down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
+# shows once it is down: the stand keeps its figures (the $430 its saved record stores and the user's $10).
+building_moved() { # building_moved <map>
+  d=$(mktemp -d)
+  printf '2 mouse 300 375\n3 down\n4 up\n1070 mouse 871 573\n1071 down\n1072 up\n1074 mouse 500 300\n1076 mouse 520 310\n1077 down\n1078 up\n1080 mouse 871 573\n' >"$d/script"
+  rz run "$1" --headless --passes 1090 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+    awk '$4 == "world" && ($5 == "carry" || $5 == "drop") { w = w $5 "," $6 "," $7 ";" }
+      $4 == "building" && $5 == "push" && $6 == 29780 { w = w "push;" }
+      $4 == "panel" && $5 == "building" && $6 == 29780 { for (i = 7; i < NF; i++) if ($i == "income") l = "income " $(i + 1) }
+      END { print w l }' | tr ' ' _
+  rm -rf "${d:?}"
+}
+check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$440' "building_moved maps/scn19.zoo"
+
+# The same stand picked up by a second click on it while it is selected, put back by Escape and picked
+# up again by the same click (it is selected again): the lines they give, with no user in the stand (so
+# no push).
+building_put_back() { # building_put_back <map>
+  d=$(mktemp -d)
+  printf '0 pause\n2 mouse 300 375\n3 down\n4 up\n6 down\n7 up\n10 mouse 500 300\n12 mouse 520 310\n13 key escape\n15 mouse 300 375\n16 down\n17 up\n' >"$d/script"
+  rz run "$1" --headless --passes 20 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+    awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 "," $7 ";" }
+      $4 == "building" && $5 == "push" { w = w "push;" }
+      END { print w }'
+  rm -rf "${d:?}"
+}
+check expansion-trial 'carry,29780,;putback,29780,31,41;carry,29780,;' "building_put_back maps/scn19.zoo"
+
+# Runs the game headless with a script given as printf text (a file in a scratch folder: the native Windows
+# program cannot open a process substitution) and prints the log. scripted <script> <rz run arguments...>
+scripted() {
+  d=$(mktemp -d)
+  printf "$1" >"$d/script"
+  shift
+  rz run "$@" --script "$d/script" 2>/dev/null
+  rm -rf "${d:?}"
+}
+
+# A building put down after a pick-up is a placement: the animals of the exhibit react (habitat rating 9.4,
+# unit placing 8.7). The gift stand of scn19 is picked up by a second click and put down in the pen of the two
+# bears of the map, which value its habitat key below 0: both dislike it and the frown plays.
+check expansion-trial 'dislikes2,likes0;frown' 'scripted "$({ echo "1 pause"; for p in 2 3 4 5 6 7 8 9 10 11; do echo "$p scroll -1 0"; done; printf "12 scroll 0 0\n14 mouse 940 375\n15 down\n16 up\n18 down\n19 up\n22 mouse 500 240\n24 mouse 500 240\n26 down\n27 up\n"; })" maps/scn19.zoo --headless --passes 40 --clock 67 --seed 1 | awk "\$2>=26 && / animal dislikes /{n++} \$2>=26 && / animal likes /{m++} / animal sound /{s=s \$NF} END{print \"dislikes\" n+0 \",likes\" m+0 \";\" s}"'
+
+# The sell button clears the selection before it asks (placing 7.1): after a No the building stays and its
+# panel is closed (the last `panel building` line is `none`).
+check expansion-trial 'none' 'scripted "2 mouse 875 230\n3 down\n4 up\n20 mouse 987 578\n21 down\n22 up\n24 key n\n" maps/scn19.zoo --headless --passes 40 --clock 67 --seed 1 | awk "\$4 == \"panel\" && \$5 == \"building\" && \$2 >= 21 {l = \$6} END{print l}"'
+
+# An undo while a building is held (placing 8, unit placing 8.7): a gift stand is bought (130), placed, picked up by
+# a second click and Backspace pressed: its move is cancelled and it is removed with its whole price (one
+# removal told, the cash back to its start).
+check expansion-trial '75000;1' 'scripted "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n" maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed 5 | awk "/ money cash /{c=\$6} / world remove .* undo\$/{n++} END{print c \";\" n+0}"'
+
+# The pick-up and the drop record nothing for the undo: the burger stand is sold, the gift stand picked up and
+# put down, then Backspace gives the burger stand back.
+check expansion-trial 'carry;drop;1' 'scripted "2 mouse 875 230\n3 down\n4 up\n6 mouse 987 578\n7 down\n8 up\n10 key y\n14 mouse 300 375\n15 down\n16 up\n18 down\n19 up\n22 mouse 500 300\n24 mouse 520 310\n26 down\n27 up\n30 key backspace\n" maps/scn19.zoo --headless --passes 40 --clock 67 --seed 1 | awk "\$4 == \"world\" && \$5 == \"carry\"{w = w \"carry;\"} \$4 == \"world\" && \$5 == \"drop\"{w = w \"drop;\"} / world add .* undo\$/{n++} END{print w n+0}"'
+
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
 scenario_guest_panel() {

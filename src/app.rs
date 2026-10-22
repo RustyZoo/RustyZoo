@@ -349,6 +349,8 @@ struct Game {
     /// The unit the player selected, and the one it carries (unit placing 8).
     selected: Option<u32>,
     carry: Option<place::unit::Carry>,
+    /// The building it carries, when what it carries is one (unit placing 8.7).
+    held: Option<crate::building::Held>,
 }
 
 impl Game {
@@ -693,6 +695,7 @@ impl<'a> App<'a> {
             building: Default::default(),
             selected: None,
             carry: None,
+            held: None,
         });
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
@@ -1242,16 +1245,27 @@ impl<'a> App<'a> {
             .and_then(|ty| at(ty, (point.0, point.1)));
         // The unit the player carries follows the pointer with the same checks (8.3).
         // (A unit that was taken from the zoo meanwhile, by an undo, is no longer carried.)
-        if game
-            .carry
-            .as_ref()
-            .is_some_and(|c| game.world.find(c.id).is_none())
+        if (game.carry.as_ref())
+            .is_some_and(|c| game.held.is_none() && game.world.find(c.id).is_none())
         {
             game.carry = None;
         }
         if let Some(carry) = game.carry.as_ref().filter(|_| game.hover) {
             let water = &game.water;
-            game.pending = place::unit::carried(&game.world, cat, water, carry, view, aim);
+            game.pending = match game.held {
+                // A building held (8.7) is judged as a new one, facing as the view keeps it.
+                Some(_) => place::moved(
+                    &game.world,
+                    cat,
+                    water,
+                    &dirt,
+                    game.smart,
+                    carry.ty,
+                    place::unit::turned(carry, view),
+                    (point.0, point.1),
+                ),
+                None => place::unit::carried(&game.world, cat, water, carry, view, aim),
+            };
         }
         // The gate tool's pending gate sits on the fence piece under the pointer.
         // It is judged when the piece changes, so a gate just placed shows nothing until the
@@ -1563,6 +1577,10 @@ impl<'a> App<'a> {
                 panel_building::UP | panel_building::DOWN if self.game.is_some() => {
                     self.building_price(id == panel_building::UP);
                 }
+                panel_building::SELL | panel_building::PLAIN_SELL if self.game.is_some() => {
+                    self.building_sell();
+                }
+                panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
                 t if panel_building::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.building.clock.force = true;

@@ -2,14 +2,15 @@
 //! with the price field, its up and down buttons, the income, upkeep and profit since the
 //! building was built and per month, the guests and the items sold, and the panel of a building
 //! that charges nothing, with the guests and the upkeep; both show the type's information image
-//! and the building's name. A type with `cHideCommerceInfo` has nothing filled below the price.
+//! and the building's name; the sell button is on for every building and the pick-up button shows
+//! for a moveable type only. A type with `cHideCommerceInfo` has nothing filled below the price.
 //! The charging panel is refreshed every 5 s of the interface clock while shown and the game
 //! runs; the other one is filled when shown, never by the clock.
 //!
 //! [`Panel`] holds the selected building and the clock; [`Panel::refresh`] writes the layout from
 //! the world and returns the `panel` log line when what it shows changed.
 
-use crate::building::{Kind, Live};
+use crate::building::{Kind, Live, moveable};
 use crate::config::to_double;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
@@ -38,8 +39,8 @@ pub const PERIOD: u64 = 5000;
 pub const NAME: i32 = 4502;
 const PICTURE: i32 = 4550;
 pub const PRICE: i32 = 4555;
-const SELL: i32 = 4516;
-const PICK_UP: i32 = 4580;
+pub const SELL: i32 = 4516;
+pub const PICK_UP: i32 = 4580;
 /// Income, upkeep and profit since construction, and per month.
 const TOTALS: [i32; 3] = [4531, 4533, 4535];
 const MONTHLY: [i32; 3] = [4559, 4561, 4591];
@@ -53,7 +54,7 @@ const ITEMS: [i32; 5] = [4567, 4568, 4569, 4570, 4571];
 /// upkeep field.
 pub const PLAIN_NAME: i32 = 4602;
 const PLAIN_PICTURE: i32 = 4650;
-const PLAIN_SELL: i32 = 4616;
+pub const PLAIN_SELL: i32 = 4616;
 const PLAIN_GUESTS: [i32; 3] = [4664, 4666, 4662];
 const PLAIN_MONTHS: i32 = 4668;
 const PLAIN_UPKEEP: i32 = 4696;
@@ -178,10 +179,13 @@ impl Panel {
                     ui.set_enabled(tab, !kind.hide_info);
                 }
             }
-            // Selling and picking up a building are other issues': the buttons stay off.
-            for button in [SELL, PICK_UP, PLAIN_SELL] {
-                ui.set_enabled(button, false);
+            // A building can always be sold; the pick-up button shows for a moveable type only
+            // (guest buildings 10.3).
+            for button in [SELL, PLAIN_SELL] {
+                ui.set_enabled(button, true);
             }
+            ui.set_hidden(PICK_UP, !moveable(ty));
+            ui.set_enabled(PICK_UP, moveable(ty));
         }
         let told = if charging {
             self.charging(ui, world, cat, vfs, (&kind, &live), now)
