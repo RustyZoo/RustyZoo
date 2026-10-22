@@ -75,9 +75,10 @@ fn info_image(ty: &EntityType) -> Option<String> {
 
 /// The months a building has been open at game time `now` when it was built at `built` (ms):
 /// `(d + 29) / 30` (the ceiling of `d / 30`) for `d` whole days, at least 1 (guest buildings 10.3).
-pub fn months(built: u64, now: u64) -> i64 {
-    let days = now.saturating_sub(built) / DAY_MS;
-    days.div_ceil(30).max(1) as i64
+pub fn months(built: i64, now: u64) -> i64 {
+    let now = i64::try_from(now).unwrap_or(i64::MAX);
+    let days = now.saturating_sub(built) / DAY_MS as i64;
+    ((days.max(0) + 29) / 30).max(1)
 }
 
 /// The figures the charging panel shows (guest buildings 10.3): income, upkeep and profit since

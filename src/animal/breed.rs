@@ -424,6 +424,7 @@ fn put(
             animal: None,
             guest: None,
             filter: None,
+            building: None,
         }),
     };
     let Some(id) = world.unrecorded(|w| w.add(entity, Some(shape(ty)))) else {

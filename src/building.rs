@@ -4,10 +4,11 @@
 //! The goals of the guests that use them are [`crate::goal`]'s; a shelter for animals (guest
 //! buildings 12.1) uses the same users and slots.
 //!
-//! Only the buildings that have been built in play, had a user, a month change or a price change
-//! have a live entry; a missing one (a building of a loaded zoo) is a building at its default
-//! price with no users. A trash can counts the litter its users put in
-//! ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can spills it).
+//! Only the buildings that have been built in play, had a user, a month change or a price change,
+//! or were loaded with a zoo ([`load`]: the figures and the can's fill its record stores) have a
+//! live entry; a missing one is a building at its default price with no users. A trash can counts
+//! the litter its users put in ([`Live::fill`], [`set_fill`]; the workers empty it, a deleted can
+//! spills it).
 //! The panels that set the price and show the figures are [`crate::panel::building`]'s.
 //! A building that is deleted or picked up pushes its users out ([`leave::push_out`]).
 //! Left for later issues: the random use animation and the sounds, the slot filters of a user type,
@@ -19,6 +20,8 @@
 
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
+use crate::guest::litter::CAN_FILLING;
+use crate::timing::Date;
 use crate::world::World;
 use crate::zoo::Entity;
 use std::cmp::Ordering;
@@ -258,9 +261,10 @@ pub struct Live {
     pub guests: [u32; 3],
     pub income: [f32; 3],
     pub upkeep: f32,
-    /// The calendar time the building was built at (ms of game time); 0 for one that was there
-    /// when the zoo was loaded.
-    pub built: u64,
+    /// The calendar time the building was built at (ms of game time since the calendar's start):
+    /// the stored construction date for one that was there when the zoo was loaded, so it may be
+    /// before the start or after now.
+    pub built: i64,
 }
 
 impl Live {
@@ -285,11 +289,87 @@ impl Live {
 pub fn built(world: &mut World, ty: &EntityType, id: u32, now: u64) {
     if crate::month::is_guest_building(ty) {
         let live = Live::new(&Kind::of(ty, world.units.prices.default));
-        world
+        world.units.buildings.insert(
+            id,
+            Live {
+                built: now as i64,
+                ..live
+            },
+        );
+    }
+}
+
+/// The building at position `at` of the entity list of a zoo just loaded takes the figures its
+/// record stores (zoo format 6.9, guest buildings 4): the guests and the income of this month,
+/// last month and since construction, the upkeep paid since construction (from version 68), the
+/// trash can's fill and the construction date. The users, the price and the slots are not
+/// restored: the price is the type's default and no unit is in a building.
+pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
+    let e = &world.zoo.entities[at];
+    let Some(record) = e.common.as_ref().and_then(|c| c.building) else {
+        return;
+    };
+    let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
+        return;
+    };
+    if !crate::month::is_guest_building(ty) {
+        return;
+    }
+    let kind = Kind::of(ty, world.units.prices.default);
+    let id = e.common.as_ref().map_or(0, |c| c.id);
+    let start = crate::timing::Calendar::new().date().millis();
+    let built = Date::from_file_time(record.built).millis() - start;
+    let live = Live {
+        guests: record.guests,
+        income: record.income.map(f32::from_bits),
+        upkeep: record.upkeep.map_or(0.0, f32::from_bits),
+        built,
+        ..Live::new(&kind)
+    };
+    world.units.buildings.insert(id, live);
+    if kind.satisfies("trash") {
+        set_fill(world, id, record.fill);
+    }
+}
+
+/// A start with `reset` or `resetdate` resets every building (guest buildings 4.1): the fill, the
+/// users and the figures go to 0 and the construction date becomes the game time `now` (ms since
+/// the calendar's start); the price is kept. It runs after the load events, so a can that called a
+/// worker is empty with its task still in the pool.
+pub fn reset_all(world: &mut World, now: u64) {
+    let ids: Vec<u32> = world.units.buildings.keys().copied().collect();
+    for id in ids {
+        set_fill(world, id, 0);
+        if let Some(live) = world.units.buildings.get_mut(&id) {
+            *live = Live {
+                price: live.price,
+                built: now as i64,
+                ..Live::default()
+            };
+        }
+    }
+}
+
+/// The events a zoo just loaded posts for its trash cans (staff 8.2): a can above 12 pieces calls
+/// a worker as it does when it reaches 13, with its tile, in entity list order.
+pub fn loaded_events(world: &World) -> Vec<crate::sim::Event> {
+    let mut events = Vec::new();
+    for e in &world.zoo.entities {
+        let Some(c) = e.common.as_ref() else {
+            continue;
+        };
+        let full = world
             .units
             .buildings
-            .insert(id, Live { built: now, ..live });
+            .get(&c.id)
+            .is_some_and(|l| l.fill > 12);
+        let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+        if e.class == "building" && full {
+            let tile = tile.unwrap_or(0) as u32;
+            events.push(crate::world::piece_event(c.id, CAN_FILLING, tile));
+        }
     }
+    events
 }
 
 /// Sets the price of building `id` of type `ty` to what `new` makes of the type and the price it

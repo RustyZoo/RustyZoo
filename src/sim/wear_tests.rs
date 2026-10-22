@@ -420,3 +420,42 @@ fn a_piece_whose_stored_life_is_above_i32_max_is_broken_and_does_not_wear() {
     assert!(run.step(10_000).iter().all(|l| !l.starts_with("fence")));
     assert_eq!(fence(&run), before);
 }
+
+#[test]
+fn a_loaded_trash_can_above_12_pieces_posts_its_call_before_the_fence_events() {
+    let cat = || {
+        let mut cat = types_with("[HabitatFence]\n", WEARING);
+        cat.push(EntityType {
+            class: "building",
+            type_name: b"can".to_vec(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                crate::config::Config::parse(b"[Satisfies]\nbuilding\ntrash\n").unwrap(),
+            )),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+        cat
+    };
+    let mut world = world("f");
+    let mut can = entity("building", "can", 9, (96, 160), 0);
+    can.common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
+        guests: [0; 3],
+        income: [0; 3],
+        upkeep: None,
+        fill: 13,
+        built: 0,
+    });
+    world.zoo.entities.push(can);
+    let mut run = run(cat(), world, 1);
+    let piece = run.world.zoo.entities[0].common.as_mut().unwrap();
+    piece.fence.as_mut().unwrap().life = 0;
+    assert_eq!(run.world.units.buildings[&9].fill, 13);
+    let before = run.sim.events.buffers()[1].len();
+    run.sim.fences_loaded(&run.world, &cat());
+    let next = run.sim.events.buffers()[1];
+    let kinds: Vec<_> = next[before..].iter().map(|e| (e.sender, e.kind)).collect();
+    assert_eq!(kinds, [(9, 10030), (7, 10034)]);
+}

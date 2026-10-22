@@ -1,7 +1,7 @@
 //! The bodies of entity records, by class. Only the common part is kept; every other field is
 //! read and dropped to reach the next record (or the end of the body).
 
-use super::{AnimalRecord, Common, Fence, Filter, GuestRecord, R, Reader, bad};
+use super::{AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, bad};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -54,8 +54,10 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
         }
         b"building" => {
             let common = scenery(r)?;
-            building(r)?;
-            common
+            Common {
+                building: Some(building(r)?),
+                ..common
+            }
         }
         b"animals" => {
             let record = animal(r)?;
@@ -145,18 +147,29 @@ fn behaviour_set(r: &mut Reader) -> R<()> {
     Ok(())
 }
 
-fn building(r: &mut Reader) -> R<()> {
+/// The figures of a guest building (zoo format 6.9, guest buildings 4); the users, the price
+/// and the fields the engine has no use for are read past.
+fn building(r: &mut Reader) -> R<BuildingRecord> {
     let v = r.v;
-    r.skip(16)?;
+    r.skip(4)?; // users now
+    let guests_since = r.u32()?;
+    let income_since = r.u32()?;
+    r.skip(4)?; // the price
     r.skip_list(8)?;
-    r.skip(4 + 16 + 8)?;
+    let fill = r.u32()?;
+    let income_last = r.u32()?;
+    let income_this = r.u32()?;
+    let guests_last = r.u32()?;
+    let guests_this = r.u32()?;
+    let built = r.u64()?;
     match v {
         45..=47 => r.skip(2)?,
         48..=66 => r.skip_list(1)?,
         _ => {}
     }
+    let mut upkeep = None;
     if v >= 68 {
-        r.skip(4)?;
+        upkeep = Some(r.u32()?);
     }
     if v >= 74 {
         r.skip(4)?;
@@ -164,7 +177,13 @@ fn building(r: &mut Reader) -> R<()> {
     if v >= 75 {
         r.skip_list(4)?;
     }
-    Ok(())
+    Ok(BuildingRecord {
+        guests: [guests_this, guests_last, guests_since],
+        income: [income_this, income_last, income_since],
+        upkeep,
+        fill,
+        built,
+    })
 }
 
 fn animal(r: &mut Reader) -> R<AnimalRecord> {

@@ -906,6 +906,20 @@ pushed_out() { # pushed_out <map>
 }
 check expansion-trial 0/1,1/0,31076,32762 "pushed_out maps/scn19.zoo"
 
+# The panel of a building of a saved zoo shows the figures its record stores (zoo format 6.9, guest
+# buildings 4): the game paused, the view scrolled <presses> times by <dx> <dy> to the building, a
+# click on it at <x> <y>. Prints the income, upkeep, profit, per month, months and guests of the panel.
+loaded_building() { # loaded_building <map> <presses> <dx> <dy> <x> <y>
+  d=$(mktemp -d)
+  { echo '2 pause'; for i in $(seq 1 "$2"); do echo "$((2 + i)) scroll $3 $4"; done
+    echo "20 mouse $5 $6"; echo '21 down'; echo '22 up'; } >"$d/script"
+  rz run "$1" --headless --passes 30 --clock 67 --script "$d/script" 2>/dev/null |
+    sed -n 's/.* panel building [0-9]* .* \(income .*\) sells.*/\1/p' | head -1 | tr ' ' _
+  rm -rf "${d:?}"
+}
+check base-trial 'income_$182_upkeep_$100_profit_$82_month_$182_$100_$82_months_1_guests_last_15_this_12_total_27' "loaded_building maps/scn01a.zoo 8 -1 0 500 440"
+check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$354_$300_$54_months_1_guests_last_10_this_0_total_59' "loaded_building maps/scn19.zoo 5 1 0 880 320"
+
 # The same panel after Play on the first scenario, whose start has `reset`: the guest has just
 # arrived (zoo format 6.12), where the plain run above shows its stored date. Prints the name and the time.
 scenario_guest_panel() {
@@ -918,6 +932,20 @@ scenario_guest_panel() {
   rm -rf "${d:?}"
 }
 check expansion-trial '"Guest_58"_time_"Just_arrived"' "scenario_guest_panel"
+
+# The panel of a building after Play on the first scenario of the expansion trial (`resetdate`): the
+# start resets every building (guest buildings 4.1), so the burger stand that stores income 847 and
+# upkeep 250 shows no income, upkeep or guests (the plain load above keeps them).
+scenario_building() {
+  d=$(mktemp -d)
+  mkdir -p "$RUSTYZOO_USER_DIR"
+  printf '[UI]\nplayMovie=0\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
+  printf '1 mouse 512 365\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n9 pause\n12 mouse 905 185\n13 down\n14 up\n' >"$d/script"
+  rz run --headless --seed 3 --passes 25 --clock 100 --size 1024x768 --script "$d/script" 2>/dev/null |
+    sed -n 's/.* panel building [0-9]* .* \(income .*\) sells.*/\1/p' | head -1 | tr ' ' _
+  rm -rf "${d:?}"
+}
+check expansion-trial 'income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_guests_last_0_this_0_total_0' "scenario_building"
 
 # The marine round (tank staff): scn27 has a filled tank with a manta ray, a tank filter and a
 # maintenance worker. The script sends the worker away (he would service the filter as soon as it
@@ -1080,7 +1108,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@7297;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@8835;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1092,14 +1120,14 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream: the seed (2) is the first that gives a clutch and a hatching in these 4500 steps.
+# random stream: the seed (2) is the first that gives a clutch and a hatching in these 5000 steps.
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
-  egg_script "$d/script" "$2" "$3" "$4" 4500
-  rz sim "$1" --ticks 4500 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  egg_script "$d/script" "$2" "$3" "$4" 5000
+  rz sim "$1" --ticks 5000 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@3791;eggs:3;hatch@4477" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3691;eggs:3;hatch@4662" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
