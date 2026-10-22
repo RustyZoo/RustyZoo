@@ -836,6 +836,38 @@ building_plain() { # building_plain <map>
 }
 check base-trial '"Family_Restroom"_guests_last_0_this_0_total_0_months_1' "building_plain maps/default.zoo"
 
+# A building is renamed in its panel (guest buildings 10.3.1): the item at `<x y>` is placed and clicked, a click on
+# the name field gives it the focus, "Zoo" is typed and Enter ends the editing; `<more>` (script lines) edits the
+# field again. Prints the names the panel logged, the last one the name it shows back after the last editing.
+building_rename() { # building_rename <map> <x y of the item> [<more script lines>]
+  d=$(mktemp -d)
+  printf '2 pause\n75 mouse 25 129\n76 down\n77 up\n79 mouse %s\n80 down\n81 up\n82 mouse 864 256\n84 down\n85 up\n86 key escape\n90 mouse 864 256\n91 down\n92 up\n94 mouse 940 555\n95 down\n96 up\n97 char Z\n98 char o\n99 char o\n100 key enter\n%b' "$2" "${3-}" >"$d/script"
+  rz run "$1" --headless --cash 75000 --seed 5 --passes 120 --clock 200 --script "$d/script" 2>/dev/null |
+    sed -n 's/^.* panel building [0-9]* \("[^"]*"\).*/\1/p' | tr ' ' _ | paste -sd';' -
+  rm -rf "${d:?}"
+}
+check base-trial '"Burger_Stand";"Zoo"' "building_rename maps/default.zoo '140 120'"
+check base-trial '"Family_Restroom";"Zoo"' "building_rename maps/default.zoo '140 160'"
+# A text of spaces only, and an empty one, leave the name (the test of the unit panels); other text replaces it.
+again='101 mouse 940 555\n102 down\n103 up\n104 key backspace\n105 key backspace\n106 key backspace\n107 key backspace\n'
+spaces='108 char 32\n109 key enter\n'
+empty='108 key enter\n'
+zed='108 char Z\n109 char e\n110 char d\n111 key enter\n'
+check base-trial '"Burger_Stand";"Zoo";"Zoo"' "building_rename maps/default.zoo '140 120' '$again$spaces'"
+check base-trial '"Burger_Stand";"Zoo";"Zoo"' "building_rename maps/default.zoo '140 120' '$again$empty'"
+check base-trial '"Burger_Stand";"Zoo";"Zed"' "building_rename maps/default.zoo '140 120' '$again$zed'"
+
+# A grandstand of the expansion trial (`cHideCostChange` 1; scn28 has some) is clicked: its panel hides the up and
+# down buttons and disables the price field. Prints the name, the price and the word the line has for it.
+building_fixed() { # building_fixed <map> <x y of the stand>
+  d=$(mktemp -d)
+  printf '1 pause\n3 mouse %s\n4 down\n5 up\n' "$2" >"$d/script"
+  rz run "$1" --headless --passes 10 --clock 200 --script "$d/script" 2>/dev/null |
+    sed -n 's/^.* panel building [0-9]* \("[^"]*"\) price \([^ ]*\) \(fixed\) .*/\1 \2 \3/p' | head -1 | tr ' ' _
+  rm -rf "${d:?}"
+}
+check expansion-trial '"Show_Grandstand_7"_$5.00_fixed' "building_fixed maps/scn28.zoo '600 60'"
+
 # The same panels in a running game (the game unpaused at pass 93; a game day is 60 passes of 200 ms), over
 # the month change at pass 1951 (guest buildings 10.3). building_running <map> <x y of the item> <awk pattern>
 # prints the pass of the first `panel building` line that matches: the charging panel is refreshed every 5000 ms

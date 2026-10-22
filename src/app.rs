@@ -1534,6 +1534,11 @@ impl<'a> App<'a> {
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
                 Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
+                Action::Edited(panel_building::NAME | panel_building::PLAIN_NAME)
+                    if self.game.is_some() =>
+                {
+                    self.building_rename();
+                }
                 Action::Edited(panel_building::PRICE) if self.game.is_some() => {
                     self.building_type_price();
                 }

@@ -69,6 +69,26 @@ impl App<'_> {
         self.set_price(|kind, price| kind.pressed(price, max, up));
     }
 
+    /// The player ended editing the name field of the panel (guest buildings 10.3): a text with a visible
+    /// character is the building's name (exhibits and money 3.6), and the panel shows the name again.
+    pub(super) fn building_rename(&mut self) {
+        let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
+            return;
+        };
+        let field = match game.building.layout {
+            panel::CHARGING => panel::NAME,
+            _ => panel::PLAIN_NAME,
+        };
+        let bytes = ui.text(field).unwrap_or_default();
+        let at = game.building.selected.and_then(|id| game.world.find(id));
+        if let Some(c) = at.and_then(|at| game.world.zoo.entities[at].common.as_mut())
+            && super::exhibits::visible(&bytes)
+        {
+            c.name = bytes.iter().map(|&b| crate::text::from_cp1252(b)).collect();
+        }
+        game.building.reselect();
+    }
+
     /// The player ended editing the price field (7.2): the text is cleaned and read as a number
     /// ([`panel::typed`], no number is 0) and the price takes the up or down step by the
     /// difference, so it is clamped like a button press.
