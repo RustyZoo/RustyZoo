@@ -41,7 +41,7 @@ impl App<'_> {
         {
             game.selected = Some(id);
             self.tool_lines.push(format!("tool select {id}"));
-            self.ui_sounds.push("place");
+            self.type_sound(id, "placesound");
         }
     }
 

@@ -457,6 +457,9 @@ pub struct App<'a> {
     building_lines: Vec<String>,
     /// The sounds the units' animations began in the last pass.
     unit_sounds: Vec<UnitSound>,
+    /// The sounds of a type's own that a selection or a pick-up asked for in this pass, not placed
+    /// in the view: they join the unit sounds at its end (unit placing 8.1, 8.2).
+    type_sounds: Vec<UnitSound>,
     /// The frames and delays of the animations the units played.
     timings: Timings,
     /// The main menu, while the player is in it.
@@ -596,6 +599,7 @@ impl<'a> App<'a> {
             staff_lines: Vec::new(),
             building_lines: Vec::new(),
             unit_sounds: Vec::new(),
+            type_sounds: Vec::new(),
             timings: Timings::default(),
             music: None,
             music_changed: false,
@@ -865,6 +869,7 @@ impl<'a> App<'a> {
             (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.animal_told();
         self.unit_sounds = self.unit_sounds_placed();
+        self.unit_sounds.append(&mut self.type_sounds);
         let sounds = self
             .unit_sounds
             .iter()
