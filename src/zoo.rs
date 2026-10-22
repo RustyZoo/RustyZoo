@@ -307,6 +307,8 @@ pub struct Clocks {
     pub world_secs: u32,
     /// The two event buffers (from version 97).
     pub queue: Queue,
+    /// The game date, in game milliseconds from the calendar's start (0 when absent or invalid).
+    pub calendar: u64,
 }
 
 /// One record of the event queue (simulation 5.1).
@@ -838,7 +840,19 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
     }
     clocks.status.price = if v >= 39 { r.f32()? } else { 49.0 };
     r.skip(if v >= 71 { 8 } else { 0 })?;
-    r.skip(16)?; // calendar
+    // The calendar: year, month, day of week, day, hour, minute, second, millisecond.
+    let [year, month, _, day, hour, minute, second, millisecond] = [(); 8].map(|_| r.u16());
+    clocks.calendar = crate::timing::Date {
+        year: u32::from(year?),
+        month: u32::from(month?),
+        day: u32::from(day?),
+        weekday: 0,
+        hour: u32::from(hour?),
+        minute: u32::from(minute?),
+        second: u32::from(second?),
+        millisecond: u32::from(millisecond?),
+    }
+    .game_ms();
     money.set_cash(r.f32()?);
     if v >= 73 {
         r.skip(4)?;

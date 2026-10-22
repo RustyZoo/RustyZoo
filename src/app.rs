@@ -1685,6 +1685,9 @@ impl<'a> App<'a> {
         }
         self.menu_events
             .push(format!("game start {} {}", start.label, start.path));
+        if start.forget_last {
+            self.sim.restart_calendar();
+        }
         if let Some(game) = &mut self.game {
             game.money.start(start.cash, start.reset);
             if start.reset {

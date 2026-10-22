@@ -503,3 +503,32 @@ fn only_the_first_fade_waits_and_a_freeform_start_counts_one_update_of_the_wait(
         assert_eq!(steps, [5, 6, 7]);
     });
 }
+
+#[test]
+fn a_saved_zoo_starts_on_its_date_and_a_new_game_on_the_first_of_january_2001() {
+    // The test map stores 14 March 2003.
+    with_menu("calendar", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        started(app);
+        let date = app.calendar().unwrap().date();
+        assert_eq!((date.year, date.month, date.day), (2003, 3, 14));
+    });
+    with_menu("calendar-new", "", |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        let date = app.calendar().unwrap().date();
+        assert_eq!((date.year, date.month, date.day), (2003, 3, 14));
+        let start = Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+        };
+        app.begin(&start);
+        let date = app.calendar().unwrap().date();
+        assert_eq!((date.year, date.month, date.day), (2001, 1, 1));
+    });
+}

@@ -239,13 +239,14 @@ impl Sim {
         self.hire_male = self.rng.rand() & 1 == 1;
     }
 
-    /// A new game on a map of `tiles` tiles that stores these clocks: the total time and the
-    /// calendar start again, the AI and world clocks start from the map's (simulation 4.3, 8.3),
-    /// the queue is empty, and the generator is seeded again if the map has another number of
-    /// tiles than the last one (main loop 9.2, the second moment).
+    /// A game on a map of `tiles` tiles that stores these clocks: the total time starts again, the
+    /// calendar starts from the stored date (a new game restarts it, `restart_calendar`), the AI
+    /// and world clocks start from the map's (simulation 4.3, 8.3), the queue is empty,
+    /// and the generator is seeded again if the map has another number of tiles than the last one
+    /// (main loop 9.2, the second moment).
     pub fn start_game(&mut self, tiles: usize, clocks: Clocks) {
         self.status = Status::start(&clocks.status, self.economy.as_ref());
-        self.calendar = Calendar::new();
+        self.calendar = Calendar::at(clocks.calendar);
         self.total = 0;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
@@ -256,6 +257,12 @@ impl Sim {
             self.tiles = tiles;
             self.reseed();
         }
+    }
+
+    /// A scenario or freeform map is a new game: its calendar starts on 1 January 2001 whatever
+    /// date the file stores (main loop 7.2).
+    pub fn restart_calendar(&mut self) {
+        self.calendar = Calendar::new();
     }
 
     /// Gives the economy file that every later game's zoo status starts from.
