@@ -135,7 +135,7 @@ usage: rustyzoo [--data <dir>] <command>
                       without an interface, with the generator seeded from S (default 1), and
                       print the hash of the whole state, the same on every system (--hash, the
                       default), or the log lines of each step (--log; the units run their behaviour sets as in
-                      `run`). The fence pieces stay as the map stores them; --reset-fences makes
+                      `run`). The events a loaded zoo posts (cans, fence pieces, filters) are posted. The fence pieces stay as the map stores them; --reset-fences makes
                       them all healthy first, as a start whose map file has `resetfences` above 0
                       does (a map of a version older than 55 has its pieces made healthy anyway). The script has one
                       `<step> <command>` per line, applied before that step (the first is 0):
