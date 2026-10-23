@@ -269,7 +269,8 @@ impl Names {
     }
 
     /// The names of the user's regional settings, as the original's date formatter has them, or
-    /// the English ones when [`ENGLISH_DATES`] (its value given) is `1` or the system gives none.
+    /// the English ones when `english` (the value of [`ENGLISH_DATES`]) is `1` or the system
+    /// gives none.
     fn of_user(english: Option<&std::ffi::OsStr>) -> Names {
         let system = english.is_none_or(|v| v != "1");
         system
