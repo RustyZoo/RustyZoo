@@ -298,6 +298,9 @@ pub struct Record {
     pub tank: bool,
     pub show: bool,
     pub amphibious: bool,
+    /// What the pair rates (9.2, 9.4): a land exhibit rates its own species and the amphibious
+    /// types of its neighbours, though it keeps a record of every species of its tank.
+    pub rated: bool,
     /// What the other species of the exhibit mean to this one (5.5.7); not part of the rating.
     pub other: f32,
     pub advice: u64,
@@ -598,7 +601,7 @@ fn sums(
     refresh(world, cat, x, rand);
     (world.exhibits().get(x).into_iter())
         .flat_map(|e| &e.rating.records)
-        .filter(|r| rates.is_none_or(|a| r.amphibious == a))
+        .filter(|r| r.rated && rates.is_none_or(|a| r.amphibious == a))
         .map(|r| (r.key.clone(), r.sum()))
         .collect()
 }
@@ -699,7 +702,9 @@ pub fn react(world: &mut World, cat: &Catalogue, before: Sums, change: Option<Ch
             None => e.amphibious.clone(),
         };
         let mut moods: Vec<(String, bool, bool)> = Vec::new();
-        for r in (e.rating.records.iter()).filter(|r| rates.is_none_or(|a| r.amphibious == a)) {
+        for r in
+            (e.rating.records.iter()).filter(|r| r.rated && rates.is_none_or(|a| r.amphibious == a))
+        {
             let was = (old.iter()).find(|o| o.0 == r.key).map_or(0.0, |o| o.1);
             let l = (likes.species.iter().chain(&likes.near)).find(|l| l.key == r.key);
             let by = match (was != 0.0 && was != r.sum(), change, l) {
@@ -774,6 +779,7 @@ pub fn rate(input: &Input) -> Vec<Record> {
                         tank,
                         show,
                         amphibious: l.amphibious,
+                        rated: tank || i < input.species.len() || l.amphibious,
                         ..Record::default()
                     });
                     first.push(i);
@@ -1222,13 +1228,11 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
         .filter(|u| u.kind == Kind::Keeper)
         .find(|u| matches!(&u.part, Part::Staff(s) if s.assigned.contains(&id)))
         .map(|u| u.id);
-    // The types and the tiles of the amphibious neighbours (5.1 point 4, 5.3); a land exhibit
-    // takes in the amphibious types of a tank only (9.2).
+    // The types and the tiles of the amphibious neighbours (5.1 point 4, 5.3).
     let (mut near, mut neighbours): (Vec<Likes>, Vec<Site>) = (Vec::new(), Vec::new());
     for n in (exhibit.amphibious.iter()).filter_map(|&n| world.exhibits().get(n)) {
         for l in animals_on(world, catalogue, &n.order).0 {
-            let skip = exhibit.tank.is_none() && !l.amphibious;
-            if !skip && !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
+            if !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
                 near.push(l);
             }
         }
