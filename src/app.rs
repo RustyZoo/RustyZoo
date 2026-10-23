@@ -917,7 +917,7 @@ impl<'a> App<'a> {
             .collect()
     }
 
-    /// Writes the three bars and the date when they are due (the bars when they changed), and
+    /// Writes the three bars (when they changed), and the date and the money text at each refresh, and
     /// shows the zoo status' messages in the message line; a donation names its amount.
     fn status_told(&mut self, bars: Option<[i32; 3]>) {
         let messages = self.sim.take_messages();
@@ -927,16 +927,19 @@ impl<'a> App<'a> {
         if bars.is_some() {
             let date = self.sim.calendar().date();
             let text = to_cp1252(&format::date(&ui.string(DATE_PATTERN), &date));
-            if ui.text(STATUS_DATE).as_deref() != Some(&text) {
-                ui.set_text(STATUS_DATE, &text);
-                let day = format::date(&ui.string(DAY_PATTERN), &date);
-                let tip = format::expand(
-                    &Words::new(|_| String::new()),
-                    &ui.template(STATUS_DATE),
-                    &[Arg::Text(&day)],
-                );
-                ui.set_string(STATUS_DATE, tip);
-            }
+            ui.set_text(STATUS_DATE, &text);
+            let day = format::date(&ui.string(DAY_PATTERN), &date);
+            let tip = format::expand(
+                &Words::new(|_| String::new()),
+                &ui.template(STATUS_DATE),
+                &[Arg::Text(&day)],
+            );
+            ui.set_string(STATUS_DATE, tip);
+            let (units, _) = game.money.bar();
+            ui.set_text(
+                STATUS_MONEY,
+                &to_cp1252(&Symbol::new(ui.string(SYMBOL)).text(units)),
+            );
         }
         if let Some(bars) = bars.filter(|b| game.bars != Some(*b)) {
             game.bars = Some(bars);

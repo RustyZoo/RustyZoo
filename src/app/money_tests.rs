@@ -517,3 +517,48 @@ fn the_status_bar_writes_the_month_and_the_year_once_a_second_with_the_weekday_a
         assert_eq!(app.interface().unwrap().string(1030), "Date: Mon Jan 1");
     });
 }
+
+#[test]
+fn the_status_bar_tooltip_follows_the_day() {
+    with_game("tooltip", |app| {
+        let mut seen: Vec<String> = Vec::new();
+        // A game day lasts 12 s of clock; the tooltip is the weekday and the day at each refresh.
+        for pass in 0..=250 {
+            app.pass(pass * 200, &[]);
+            let tip = app.interface().unwrap().string(1030);
+            if tip != "Date: %s" && seen.last() != Some(&tip) {
+                seen.push(tip);
+            }
+        }
+        assert_eq!(
+            seen,
+            [
+                "Date: Mon Jan 1",
+                "Date: Tue Jan 2",
+                "Date: Wed Jan 3",
+                "Date: Thu Jan 4",
+                "Date: Fri Jan 5"
+            ]
+        );
+    });
+}
+
+#[test]
+fn the_status_bar_writes_the_money_again_at_each_refresh() {
+    with_game("money-refresh", |app| {
+        let money = |app: &mut App| app.interface().unwrap().text(1016).unwrap();
+        let mut now = 0;
+        while app.interface().unwrap().text(1030).unwrap().is_empty() {
+            now += 200;
+            app.pass(now, &[]);
+            assert!(now < 12_000, "the date never came");
+        }
+        let told = money(app);
+        app.interface().unwrap().set_text(1016, b"scribbled");
+        for _ in 0..8 {
+            now += 200;
+            app.pass(now, &[]);
+        }
+        assert_eq!(money(app), told);
+    });
+}
