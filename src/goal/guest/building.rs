@@ -433,12 +433,7 @@ impl Cx<'_, '_> {
 
     /// A hidden guest is shown again where it stands.
     fn show(&mut self) {
-        if std::mem::take(&mut self.unit.hidden) {
-            let c = self.world.zoo.entities[self.at].common.as_ref();
-            if let Some((p, r)) = c.map(|c| ((c.x, c.y, c.z), c.rotation)) {
-                self.world.place_unit(self.at, p, r);
-            }
-        }
+        building::leave::show(self.world, self.at, self.unit);
     }
 
     /// 0x6a complete: the guest sets out to leave (0x69); the building still lists it.
