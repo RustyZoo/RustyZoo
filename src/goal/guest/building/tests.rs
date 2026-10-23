@@ -1267,3 +1267,155 @@ fn a_hidden_user_stays_in_the_crowd_of_its_megatile() {
         .sum();
     assert_eq!(n, 1);
 }
+
+/// A hall whose users neither stay outside nor use the exit, and whose slot has no entrance.
+const SHUT: &str = "[Characteristics/Integers]\ncCapacity=1\ncUserStaysOutside=0\n\
+    [slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nexitpos=0\nexitpos=48\ncapacity=1\n";
+
+/// Draws until the next `pick(15)` is 0.
+fn hit(cx: &mut Cx) {
+    while cx.ctx.rng.clone().pick(15) != 0 {
+        cx.ctx.rng.rand();
+    }
+}
+
+/// Runs `f` and checks that it made `n` draws.
+fn draws(cx: &mut Cx, n: usize, f: impl FnOnce(&mut Cx)) {
+    let mut seen = cx.ctx.rng.clone();
+    (0..n).for_each(|_| _ = seen.rand());
+    f(cx);
+    assert_eq!(*cx.ctx.rng, seen);
+}
+
+#[test]
+fn a_walk_out_with_no_entrance_or_no_building_sets_no_target_and_decides_again() {
+    let cat = with_hall(SHUT);
+    for building in [9, 0] {
+        let mut w = footprint("guests", centre((5, 3)), centre((5, 3)));
+        with_cx(&cat, &mut w, |cx| {
+            cx.guest().unwrap().building = building;
+            cx.set_task(EXIT_BUILDING, 1, building, None);
+            for _ in 0..2 {
+                draws(cx, 0, |cx| cx.exit_decide());
+                assert_eq!(cx.record().target.tile, None, "{building}");
+                assert!(cx.unit.through_building, "{building}");
+            }
+        });
+    }
+}
+
+#[test]
+fn the_walk_out_is_done_on_the_one_in_fifteen_once_off_a_building() {
+    let cat = with_hall(SHUT);
+    // On (2, 6), no building; on the hall's tile (5, 3), the hall: the target is far either way.
+    for (at, done) in [((2, 6), true), ((5, 3), false)] {
+        let mut w = footprint("guests", centre(at), centre((5, 3)));
+        let done_now = with_cx(&cat, &mut w, |cx| {
+            cx.guest().unwrap().building = 7;
+            cx.set_task(EXIT_BUILDING, 1, 7, w_tile((9, 9)));
+            hit(cx);
+            cx.exit_check_done();
+            cx.record().done
+        });
+        assert_eq!(done_now, done, "{at:?}");
+    }
+}
+
+/// Guest 1 on the entrance tile (5, 9) of the restroom 8 at (5, 8), heading for it (0x67).
+fn at_the_entrance() -> World {
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((5, 9)), 0));
+        zoo.entities
+            .push(entity("building", "restroom", 8, centre((5, 8)), 4));
+    });
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.need, g.building, g.entrance) = (Some("bathroom"), 8, centre((5, 9)));
+    }
+    w.units.get_mut(1).unwrap().goal.record.task = ENTRANCE;
+    w
+}
+
+#[test]
+fn the_walk_into_the_slot_starts_in_the_decide_one_update_after_the_entrance() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        cx.set_task(ENTRANCE, 0, 8, w_tile((5, 9)));
+        // The entrance is reached: 0x68 with no target, no walk yet.
+        cx.run_goal();
+        assert_eq!(
+            (cx.record().task, cx.record().target.tile),
+            (ENTER_BUILDING, None)
+        );
+        assert!(!cx.unit.through_building && cx.unit.path.is_empty());
+        // The next update walks into the slot on (5, 8), with the building flag.
+        cx.run_goal();
+        assert_eq!(cx.record().target.tile, w_tile((5, 8)));
+        assert!(cx.unit.through_building && !cx.unit.path.is_empty());
+    });
+}
+
+#[test]
+fn a_slot_that_filled_up_leaves_the_walk_in_to_the_complete() {
+    let cat = types();
+    for (need, left) in [("bathroom", ENTER_BUILDING), ("food", 0)] {
+        let mut w = at_the_entrance();
+        let kind = building::kind_of(&cat, &w.zoo.entities[1], 3.0).unwrap();
+        let live = w
+            .units
+            .buildings
+            .entry(8)
+            .or_insert_with(|| Live::new(&kind));
+        live.users.extend([(100, 0, 0), (101, 0, 0)]);
+        let task_now = with_cx(&cat, &mut w, |cx| {
+            cx.guest().unwrap().need = Some(need);
+            cx.set_task(ENTER_BUILDING, 0, 8, w_tile((5, 8)));
+            hit(cx);
+            cx.enter_check_done();
+            cx.record().task
+        });
+        // The full slot does not end the goal; a building that does not serve the need does.
+        assert_eq!(task_now, left, "{need}");
+        if left == ENTER_BUILDING {
+            // The complete refuses the user.
+            with_cx(&cat, &mut w, |cx| cx.enter_arrived());
+            assert_eq!(task(&w), 0);
+        }
+    }
+}
+
+#[test]
+fn the_draws_of_the_changed_building_goals_follow_the_goal_updates() {
+    let cat = with_hall(SHUT);
+    let mut w = at_the_entrance();
+    with_cx(&cat, &mut w, |cx| {
+        cx.set_task(ENTRANCE, 0, 8, w_tile((5, 9)));
+        // Update n: the common part; the 0x67 complete draws nothing.
+        draws(cx, 1, |cx| {
+            cx.common();
+            cx.run_goal();
+        });
+        // Update n + 1: the common part, the 0x68 check done, then the walk in.
+        draws(cx, 2, |cx| {
+            cx.common();
+            cx.run_goal();
+        });
+        assert_eq!(cx.record().target.tile, w_tile((5, 8)));
+    });
+    // A unit sent out of the hall, whose slot has no entrance: the common part and the check done
+    // at every update, no entrance drawn, the goal kept.
+    let mut w = footprint("guests", centre((5, 3)), centre((5, 3)));
+    with_cx(&cat, &mut w, |cx| {
+        hit(cx);
+        for _ in 0..3 {
+            draws(cx, 2, |cx| {
+                cx.common();
+                cx.run_goal();
+            });
+            assert_eq!(
+                (cx.record().task, cx.record().target.tile),
+                (EXIT_BUILDING, None)
+            );
+        }
+    });
+}
