@@ -1182,7 +1182,23 @@ impl World {
     }
 
     fn changed(&mut self) {
+        // A unit off its tile list stays off it across the rebuild (guest buildings 6.7.1).
+        let off: Vec<u32> = self
+            .scene
+            .unlisted()
+            .filter_map(|o| {
+                self.zoo.entities[self.owner[o]]
+                    .common
+                    .as_ref()
+                    .map(|c| c.id)
+            })
+            .collect();
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+        for id in off {
+            if let Some(at) = self.find(id) {
+                self.unlist_unit(at);
+            }
+        }
         self.units.sync(&self.zoo.entities);
         self.dirty = true;
         self.edits += 1;

@@ -837,6 +837,28 @@ fn a_visible_user_with_no_exit_stays_drawn_where_it_is_off_its_tile_list() {
     assert_eq!(task(&w), 0);
 }
 
+#[test]
+fn a_user_with_no_exit_stays_off_its_tile_list_across_a_map_edit_until_it_changes_tile() {
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    let mut s = game();
+    holding(&mut w);
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    let (at, before) = (w.find(1).unwrap(), spot(&w));
+    let own = w.tile_index(before.0 / 64, before.1 / 64).unwrap();
+    lose_exit(&mut w, 9);
+    crate::building::leave::push_out(&mut w, &cat, 9);
+    assert!(w.is_drawn(at) && !w.units_on(own).any(|e| e == at));
+    // A map edit rebuilds the index from the entity list; the unit stays off its list.
+    assert!(w.set_tile(0, 0, 1, 0, 0));
+    assert!(w.is_drawn(at) && !w.units_on(own).any(|e| e == at));
+    // Moving inside its tile does not list it; entering another tile does.
+    w.place_unit(at, (before.0 + 1, before.1, 0), 0);
+    assert!(!w.units_on(own).any(|e| e == at));
+    let next = w.tile_index(before.0 / 64 + 1, before.1 / 64).unwrap();
+    w.place_unit(at, (before.0 + 64, before.1, 0), 0);
+    assert!(w.units_on(next).any(|e| e == at) && !w.units_on(own).any(|e| e == at));
+}
+
 /// Unit 1 of class `class` at `(x, y)` (first, as the context wants it), a stand 7 at (5, 5) and a
 /// hall 9 of a whole tile at `hall`.
 fn footprint(class: &str, (x, y): (i32, i32), hall: (i32, i32)) -> World {

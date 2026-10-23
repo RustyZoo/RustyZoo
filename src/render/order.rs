@@ -384,6 +384,18 @@ impl Scene {
         }
     }
 
+    /// The unit objects that are painted but on no tile list (see [`Scene::unlist_unit`]).
+    pub fn unlisted(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.objects.len()).filter(|&o| {
+            let obj = &self.objects[o];
+            obj.kind == Kind::Unit
+                && self.placed[o]
+                && self
+                    .tile_at(obj.x, obj.y)
+                    .is_some_and(|t| !self.list[t].contains(&o))
+        })
+    }
+
     /// Paints unit object `o` where it is without putting it on a tile list.
     pub fn paint_unit(&mut self, o: usize) {
         self.placed[o] = true;
