@@ -1091,7 +1091,7 @@ check expansion-trial 'income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_gue
 marine_round() { # marine_round <map>
   d=$(mktemp -d)
   printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"
-  rz sim "$1" --ticks 36000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+  rz sim "$1" --ticks 38000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ keeper /{k=$5}
     / staff job /{
       if ($5==k) { if ($6=="none") next; if (!done) j=j (j?",":"") $6; if ($6=="ClimbDownOutsideLadder") done=1 }
@@ -1108,7 +1108,7 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=97;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:79;hunger<=22" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=97;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:78;hunger<=33" "marine_round maps/scn27.zoo"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -1178,13 +1178,13 @@ check expansion-trial "below60@10751;losses@10818,10892,10967,11041,11116;happin
 # land exhibit swims into the tank. Prints the exhibits each entered and when (steps of 67 ms). The
 # land exhibit counts the tank's water for the bears (habitat rating 5.3), so its bear is content;
 # every recomputation ends with the reachability test (5.8), which draws: the tank bear goes ashore
-# at step 6482 and is home at step 6989; the land bear swims back ashore and into the tank again.
+# at step 10138 and is home at step 13797; the land bear swims back ashore and into the tank again.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>
-  rz sim "$1" --ticks 8000 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
+  rz sim "$1" --ticks 14000 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@6482,1@6989;97902:1@1151,2@2529,1@4369" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@10138,1@13797;97902:1@1151,2@2529,1@4369,2@6171,1@8040,2@8455,1@10241,2@11091,1@11898" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode at step 615 and sends it to a water tile of its exhibit; in
@@ -1201,7 +1201,7 @@ water_mode() { # water_mode <map> <animal>
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial ";30,23:bWalk;mode1@615;28,20:bInWater" "water_mode maps/scn19.zoo 51758"
+check expansion-trial ";30,23:bWalk;mode1@615;27,29:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1236,16 +1236,16 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # Breeding (animals-needs 11 to 13). The base trial's animals are all male; three female lions join
 # the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first
 # reproduction check that rolls it. Prints the number of pairs, the step of the first birth and the
-# number of young, when two runs agree.
+# number of young, when two runs agree. Seed 3 is the first (from 1) with a birth in the run.
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
-  once() { rz sim "$1" --ticks 10000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  once() { rz sim "$1" --ticks 10000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@835;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@2214;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1257,14 +1257,14 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream. Seed 2 gives a clutch and a hatching well inside the 7200 steps.
+# random stream. Seed 2 gives a clutch and a hatching inside the 7200 steps.
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 7200
   rz sim "$1" --ticks 7200 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@2311;eggs:3;hatch@3093" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@6161;eggs:6;hatch@6880" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

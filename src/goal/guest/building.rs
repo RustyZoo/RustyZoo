@@ -483,18 +483,19 @@ impl Cx<'_, '_> {
         {
             return self.set_task(EXIT_BUILDING, 1, id, own);
         }
-        self.unit.through_building = true;
         let entrance = found.and_then(|(e, k)| {
             let list = &k.slots.get(slot)?.entrances;
             let n = (!list.is_empty()).then_some(list.len() as u32)?;
             Some(building::place(&e, list[self.ctx.rng.pick(n) as usize]))
         });
-        let Some(t) = entrance.and_then(|p| self.tile_at(p)) else {
-            return;
-        };
-        if Some(t) == own {
+        let tile = entrance.and_then(|p| self.tile_at(p));
+        if tile.is_some() && tile == own {
             return self.set_task(EXIT_BUILDING, 1, id, own);
         }
+        self.unit.through_building = true;
+        let Some(t) = tile else {
+            return;
+        };
         if self.path_to(t, false) && self.start_walk(false, false, false) {
             self.set_task(EXIT_BUILDING, 1, id, Some(t));
         }
