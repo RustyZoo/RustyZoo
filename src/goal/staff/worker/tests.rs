@@ -673,7 +673,7 @@ fn food_is_bagged_without_pay_while_dung_lies_somewhere() {
     assert!(!g.w.zoo.entities.iter().any(|e| e.class == "food"));
     assert!(g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
     assert_eq!(g.refunds(), (cash, 0.0));
-    assert!(g.w.units.buildings.get(&COMPOST).is_none());
+    assert!(!g.w.units.buildings.contains_key(&COMPOST));
     // The same food with no dung anywhere is left where it lies.
     let mut g = Game::new("");
     g.calm();
@@ -696,7 +696,7 @@ fn the_nearest_compost_by_manhattan_distance_is_paid_and_none_means_nothing() {
     let tile = Game::tile((6, 9));
     crate::staff::chores::recycle(&mut g.w, &g.cat, tile, false);
     assert_eq!(g.w.units.buildings[&15].income[2], 50.0);
-    assert!(g.w.units.buildings.get(&COMPOST).is_none());
+    assert!(!g.w.units.buildings.contains_key(&COMPOST));
     assert_eq!(g.w.units.recycled, [50.0]);
     let _ = at(&g, 15);
     // With no compost in the zoo nothing is paid.
