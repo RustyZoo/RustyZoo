@@ -1868,7 +1868,15 @@ impl crate::behaviour::Data for Eats {
 
 /// The zebras that hunger slowly, and a food type of 100 units.
 fn feeding() -> Catalogue {
-    let mut cat = zebras_with("cHungerIncrement=1\ncHungerThreshold=50", "");
+    feeding_of("")
+}
+
+/// [`feeding`] with the zebra keys `keys` added.
+fn feeding_of(keys: &str) -> Catalogue {
+    let mut cat = zebras_with(
+        &format!("cHungerIncrement=1\ncHungerThreshold=50\n{keys}"),
+        "",
+    );
     cat.push(EntityType {
         class: "food",
         type_name: b"food".to_vec(),
@@ -2015,6 +2023,53 @@ fn the_bite_that_empties_a_pile_stops_every_animal_that_aims_at_it_at_once() {
         };
         assert!(!a.eating);
     }
+}
+
+#[test]
+fn the_bite_that_empties_a_pile_leaves_an_amphibious_animal_of_the_neighbour_exhibit_its_goal() {
+    use crate::sim::drive::{Command, Run};
+    // The zebras swim: the pen on the water is the neighbour of the land pen that holds the pile.
+    let mut run = Run::new(
+        (b"", b""),
+        (feeding_of("cUnderwater=1"), Class::default()),
+        pens(),
+        Default::default(),
+        1,
+    );
+    let ids: Vec<u32> = run.world.exhibits().list().iter().map(|e| e.id).collect();
+    run.world.exhibits_mut().list_mut()[0].amphibious = vec![ids[1]];
+    let data = Eats::new();
+    step_log(&mut run, &data);
+    assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+    let pile = (run.world.zoo.entities.iter())
+        .find(|e| e.class == "food")
+        .and_then(|e| e.common.as_ref())
+        .map(|c| c.id)
+        .unwrap();
+    // 510 lies on the water of the neighbour pen and aims at the pile on the land.
+    for id in [500, 501] {
+        let Part::Animal(a) = &mut run.world.units.get_mut(id).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.hunger, a.counters[HUNGER]) = (60, 0);
+    }
+    let Part::Animal(a) = &mut run.world.units.get_mut(510).unwrap().part else {
+        panic!("not an animal");
+    };
+    a.food = pile;
+    let mut last = Vec::new();
+    for _ in 0..40 * 15 {
+        let step = step_log(&mut run, &data);
+        if step.iter().any(|l| l.ends_with(" 0 empty")) {
+            last = step;
+            break;
+        }
+    }
+    assert!(!last.is_empty(), "the pile was not emptied");
+    assert!(
+        !last.iter().any(|l| l.starts_with("unit goal 510 none ")),
+        "{last:?}"
+    );
 }
 
 #[test]

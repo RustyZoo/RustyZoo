@@ -444,8 +444,9 @@ impl Cx<'_, '_> {
             .map(|u| u.2);
         let kind = self.building(id).map(|b| b.1);
         let (Some(entered), Some(kind)) = (entered, kind) else {
-            self.show();
-            return self.reset();
+            self.reset();
+            self.unit.goal.wandered = true;
+            return;
         };
         let over = self.now().wrapping_sub(entered) >= kind.time_inside.max(0) as u32;
         self.record().done = over && !kind.holds;
@@ -572,7 +573,6 @@ impl Cx<'_, '_> {
         let id = self.target_building();
         if self.ctx.rng.pick(15) == 0 {
             if self.building(id).is_none() {
-                self.show();
                 return self.reset();
             }
             let on = (self.tile()).and_then(|t| self.world.quadrant(t, 3));
