@@ -929,3 +929,16 @@ fn a_guest_with_no_building_visit_picked_up_keeps_its_task() {
     crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
     assert_eq!(task(&w), before);
 }
+
+#[test]
+fn picked_up_is_carried_from_the_exit() {
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    holding(&mut w);
+    run(&mut game(), &cat, &mut w, &mut money, 1500, "use");
+    // Seated at the table, 32 above the exit tile.
+    assert_eq!(spot(&w), (336, 240, 3));
+    assert!(!w.units.buildings[&9].users.is_empty());
+    let carry = crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
+    assert_eq!((carry.from.0, carry.from.1), (336, 272));
+    assert!(w.units.buildings[&9].users.is_empty());
+}
