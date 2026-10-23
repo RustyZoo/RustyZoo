@@ -16,6 +16,8 @@ use std::sync::Arc;
 const WORKER: u32 = 1;
 const CAN: u32 = 11;
 const FENCE: u32 = 12;
+const COMPOST: u32 = 14;
+const COMPOST_TILE: (i32, i32) = (18, 2);
 const CAN_TILE: (i32, i32) = (3, 9);
 const LITTER_TILE: (i32, i32) = (8, 9);
 const FENCE_TILE: (i32, i32) = (14, 9);
@@ -48,6 +50,25 @@ fn catalogue(worker: &str) -> Catalogue {
             ..ty("objects", "other", "trash", "")
         },
         ty("fences", "iron", "f", fence),
+        ty(
+            "building",
+            "compost",
+            "",
+            "[Characteristics/Integers]\ncCommerce=1\n[Characteristics/Floats]\ncDefaultCost=50\n\
+            [Satisfies]\ncompost\n",
+        ),
+        EntityType {
+            footprint: [1, 1, 1],
+            ..ty("objects", "other", "poo", "")
+        },
+        EntityType {
+            footprint: [1, 1, 1],
+            ..ty("objects", "other", "dinopoo", "")
+        },
+        EntityType {
+            footprint: [1, 1, 1],
+            ..ty("food", "meat", "", "")
+        },
     ] {
         cat.push(t);
     }
@@ -60,7 +81,7 @@ struct Sets(HashMap<String, Vec<Call>>);
 fn sets() -> Sets {
     let call = |c: &str| vec![parse_call(c.as_bytes()).unwrap().0];
     let walk = ["bWalk", "bRun"].map(|n| (n, call("fWalk(0,0)")));
-    let play = ["bEmpty", "bSweep", "bFix"].map(|n| (n, call("fPlay(a)")));
+    let play = ["bEmpty", "bSweep", "bFix", "bBag", "bBagDino"].map(|n| (n, call("fPlay(a)")));
     Sets(HashMap::from_iter(
         walk.into_iter().chain(play).map(|(n, c)| (n.into(), c)),
     ))
@@ -128,6 +149,13 @@ impl Game {
             let mut fence = entity("fences", "iron", FENCE, centre(FENCE_TILE), 0);
             fence.subtype = "f".into();
             z.entities.push(fence);
+            z.entities.push(entity(
+                "building",
+                "compost",
+                COMPOST,
+                centre(COMPOST_TILE),
+                4,
+            ));
             if side {
                 let mut piece = entity("fences", "iron", 13, centre(FENCE_TILE), 2);
                 piece.subtype = "f".into();
@@ -554,4 +582,126 @@ fn a_broken_filter_is_run_to_and_the_duty_switch_keeps_the_others_away() {
         g.w.units.pool.tasks.iter().filter(|t| t.job == 26).count(),
         1
     );
+}
+
+impl Game {
+    /// A pile of `name` (`poo`, `dinopoo`) or a piece of `food` on `tile`, with its event due at
+    /// the first step when `told`.
+    fn dung(&mut self, tile: (i32, i32), name: &str, told: bool) {
+        let (class, kind, sub) = match name {
+            "food" => ("food", "meat", ""),
+            _ => ("objects", "other", name),
+        };
+        let ty = self
+            .cat
+            .find(class, kind.as_bytes(), sub.as_bytes())
+            .unwrap();
+        assert!(dirt::put(&mut self.w, ty, (class, kind, sub), tile, 0, 0));
+        if told {
+            let event = piece_event(1, 10032, Game::tile(tile) as u32);
+            self.sim.events.post(event);
+        }
+    }
+
+    /// The fence takes hours to wear, so that only the dung is on the worker's list.
+    fn calm(&mut self) {
+        let min = 1_000_000_000;
+        self.w.set_decay(Decay { min, max: min });
+        self.w.heal(&self.cat, FENCE, &mut || 0);
+    }
+
+    /// The cash and the construction refunds the money holds.
+    fn refunds(&self) -> (f32, f32) {
+        let paid = self.money.monthly[crate::money::CONSTRUCTION_REFUND].iter();
+        (self.money.cash, paid.sum())
+    }
+
+    fn compost_income(&self) -> f32 {
+        self.w
+            .units
+            .buildings
+            .get(&COMPOST)
+            .map_or(0.0, |l| l.income[2])
+    }
+}
+
+#[test]
+fn a_worker_takes_the_dung_task_bags_the_pile_and_the_compost_pays() {
+    let mut g = Game::new("");
+    g.calm();
+    g.dung((6, 9), "poo", true);
+    let (cash, _) = g.refunds();
+    g.run(400);
+    assert_eq!(
+        g.jobs(),
+        ["ZooDoo", "BagDoo", "none"],
+        "{:?}",
+        g.lines(&["staff", "unit set"])
+    );
+    assert_eq!(g.lines(&["unit set 1 bBag"]).len(), 1);
+    // The pile is gone and the task with it; the compost has one use and the cash 50.
+    assert!(!g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
+    assert!(g.w.units.pool.tasks.is_empty());
+    assert_eq!(g.refunds(), (cash + 50.0, 50.0));
+    assert_eq!(g.compost_income(), 50.0);
+}
+
+#[test]
+fn dinosaur_dung_is_bagged_with_its_own_set_and_pays_twice() {
+    let mut g = Game::new("");
+    g.calm();
+    g.dung((6, 9), "dinopoo", true);
+    let (cash, _) = g.refunds();
+    g.run(400);
+    assert_eq!(g.jobs(), ["ZooDoo", "BagDoo", "none"]);
+    assert_eq!(g.lines(&["unit set 1 bBagDino"]).len(), 1);
+    assert!(g.lines(&["unit set 1 bBag "]).is_empty());
+    assert_eq!(g.refunds(), (cash + 100.0, 100.0));
+    assert_eq!(g.compost_income(), 100.0);
+}
+
+#[test]
+fn food_is_bagged_without_pay_while_dung_lies_somewhere() {
+    let mut g = Game::new("");
+    g.calm();
+    g.dung((6, 9), "food", true);
+    // Dung elsewhere keeps the walk going: with none in the world the job is cleared (O7).
+    g.dung((12, 3), "poo", false);
+    let (cash, _) = g.refunds();
+    g.run(400);
+    assert_eq!(g.jobs(), ["ZooDoo", "BagDoo", "none"]);
+    assert!(!g.w.zoo.entities.iter().any(|e| e.class == "food"));
+    assert!(g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
+    assert_eq!(g.refunds(), (cash, 0.0));
+    assert!(g.w.units.buildings.get(&COMPOST).is_none());
+    // The same food with no dung anywhere is left where it lies.
+    let mut g = Game::new("");
+    g.calm();
+    g.dung((6, 9), "food", true);
+    g.run(400);
+    assert!(g.w.zoo.entities.iter().any(|e| e.class == "food"));
+    assert!(g.w.units.pool.tasks.is_empty());
+}
+
+#[test]
+fn the_nearest_compost_by_manhattan_distance_is_paid_and_none_means_nothing() {
+    let mut g = Game::new("");
+    g.calm();
+    g.dung((6, 9), "poo", false);
+    let at = |g: &Game, id| g.w.find(id).unwrap();
+    // A second compost nearer to the pile than the first.
+    let mut near = entity("building", "compost", 15, centre((7, 9)), 4);
+    near.subtype = String::new();
+    g.w.zoo.entities.push(near);
+    let tile = Game::tile((6, 9));
+    crate::staff::chores::recycle(&mut g.w, &g.cat, tile, false);
+    assert_eq!(g.w.units.buildings[&15].income[2], 50.0);
+    assert!(g.w.units.buildings.get(&COMPOST).is_none());
+    assert_eq!(g.w.units.recycled, [50.0]);
+    let _ = at(&g, 15);
+    // With no compost in the zoo nothing is paid.
+    let mut g = Game::new("");
+    g.w.zoo.entities.retain(|e| e.type_name != "compost");
+    crate::staff::chores::recycle(&mut g.w, &g.cat, tile, true);
+    assert!(g.w.units.recycled.is_empty() && g.w.units.buildings.is_empty());
 }

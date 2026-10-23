@@ -1,8 +1,8 @@
 //! The goals of a maintenance worker (staff 8): the duties (task 0x78) choose a task of the pool
 //! and its job, and the jobs go to the trash can and empty it (9, 10), go to the litter and
-//! sweep it (7, 8), go to a worn fence and mend it (16, 17), and go to a worn tank filter and
-//! service it (26, 27, tank staff 8). The worker's target tile is the task's, kept in
-//! [`Staff::target`] (staff 8.3 step 3). The jobs for dung (11, 12) are not here.
+//! sweep it (7, 8), go to dung or food and bag it (11, 12), go to a worn fence and mend it (16,
+//! 17), and go to a worn tank filter and service it (26, 27, tank staff 8). The worker's target
+//! tile is the task's, kept in [`Staff::target`] (staff 8.3 step 3).
 
 use super::super::{Cx, MAINT, NONE, RANDOM};
 use crate::build::number;
@@ -14,6 +14,7 @@ use crate::unit::movement;
 /// The jobs after the first of a task.
 const SWEEP: u8 = 8;
 const EMPTY: u8 = 10;
+const BAG: u8 = 12;
 const FIX: u8 = 17;
 const FIX_FILTER: u8 = 27;
 /// The milliseconds between two clearings of the unreachable lists (staff 4.3).
@@ -133,7 +134,7 @@ impl Cx<'_, '_> {
         for t in &self.world.units.pool.tasks {
             let kind = match t.job {
                 pool::TRASH_CAN => 0,
-                pool::TRASH_PILE => 1,
+                pool::TRASH_PILE | pool::ZOO_DOO => 1,
                 pool::GO_TO_FENCE => 2,
                 pool::GO_TO_FILTER => 3,
                 _ => continue,
@@ -180,13 +181,31 @@ impl Cx<'_, '_> {
     /// The init of a job: the sweep, the emptying and the mending start their set where the worker
     /// stands, at what is there to do; false clears the job.
     pub(in crate::goal) fn work_init(&mut self, job: u8) -> bool {
-        if !matches!(job, SWEEP | EMPTY | FIX | FIX_FILTER) {
+        if !matches!(job, SWEEP | EMPTY | BAG | FIX | FIX_FILTER) {
             return true;
         }
         let Some(tile) = self.own() else {
             self.work_fail();
             return false;
         };
+        // The bag starts where he stands, at what lies in the centre slot; an empty slot starts
+        // nothing (staff 8.6).
+        if job == BAG {
+            movement::stop(self.unit);
+            self.unit.destination = None;
+            let set = match chores::centre(self.world, tile) {
+                Some((_, true, _)) => "bBagDino",
+                Some(_) => "bBag",
+                None => {
+                    self.record().job_done = true;
+                    return true;
+                }
+            };
+            if !self.start_set(set, false) {
+                self.record().job_done = true;
+            }
+            return true;
+        }
         // The service starts where he stands and sets no facing (tank staff 8).
         if job == FIX_FILTER {
             movement::stop(self.unit);
@@ -234,11 +253,18 @@ impl Cx<'_, '_> {
                     self.work_finish();
                 }
             }
-            pool::TRASH_PILE | pool::GO_TO_FENCE if self.tile() == Some(tile) => {
+            // No dung left anywhere ends the walk, even to food an emptied exhibit left (staff 8.6).
+            pool::ZOO_DOO if !chores::poo_left(self.world) => self.work_finish(),
+            pool::TRASH_PILE | pool::ZOO_DOO | pool::GO_TO_FENCE if self.tile() == Some(tile) => {
                 self.record().job_done = true;
             }
             pool::TRASH_PILE if !chores::litter_left(self.world) => self.work_finish(),
             pool::GO_TO_FILTER if self.reached(true) => self.record().job_done = true,
+            BAG => {
+                let top = self.unit.runner.top();
+                let bagging = matches!(top, Some("bBag" | "bBagDino"));
+                self.record().job_done |= !(bagging && self.unit.runner.running());
+            }
             SWEEP | EMPTY | FIX | FIX_FILTER => {
                 let set = Self::work_set(job);
                 let running = self.unit.runner.top() == Some(set) && self.unit.runner.running();
@@ -261,6 +287,8 @@ impl Cx<'_, '_> {
         match job {
             pool::TRASH_CAN => return self.can_decide(tile),
             pool::GO_TO_FILTER => return self.filter_decide(tile, urgent),
+            // An exhibit with animals again is the keepers' work: the task is void.
+            pool::ZOO_DOO if self.keepers_own(tile) => return self.work_finish(),
             pool::GO_TO_FENCE => match chores::decayed_near(self.world, cat, tile) {
                 Some((piece, _)) => self.record().job_target.id = piece,
                 // A piece mended since the event leaves nothing to do: the task is void.
@@ -272,6 +300,13 @@ impl Cx<'_, '_> {
             self.list(tile);
             self.work_fail();
         }
+    }
+
+    /// Whether tile `t` lies in an exhibit that holds animals.
+    fn keepers_own(&self, t: usize) -> bool {
+        let x = self.world.exhibits().region(t);
+        let x = x.filter(|&x| x != crate::exhibit::GROUNDS && x != crate::exhibit::EXTERIOR);
+        x.is_some_and(|x| !crate::panel::exhibit::animals_in(self.world, x).is_empty())
     }
 
     /// 8.4 job 9: the way to the can, else to one of the four tiles beside it, drawn.
@@ -332,6 +367,7 @@ impl Cx<'_, '_> {
         match job {
             pool::TRASH_PILE => self.set_job(SWEEP, 0, Some(tile)),
             pool::TRASH_CAN => self.set_job(EMPTY, 0, Some(tile)),
+            pool::ZOO_DOO => self.set_job(BAG, 0, Some(tile)),
             pool::GO_TO_FENCE => self.set_job(FIX, id, Some(tile)),
             pool::GO_TO_FILTER => self.set_job(FIX_FILTER, 0, Some(tile)),
             FIX_FILTER => {
@@ -346,10 +382,28 @@ impl Cx<'_, '_> {
                 chores::empty(self.world, self.ctx.cat, tile);
                 self.work_finish();
             }
+            BAG => {
+                self.bag(tile);
+                self.work_finish();
+            }
             _ => {
                 self.mend(id);
                 self.work_finish();
             }
+        }
+    }
+
+    /// 8.6 job 12, and the keeper's raking (7.8): what lies in the centre slot goes, the exhibit is
+    /// rated again and the compost pays unless it is food.
+    pub(in crate::goal) fn bag(&mut self, tile: usize) {
+        let held = chores::centre(self.world, tile);
+        let Some((id, dino, food)) = held.filter(|h| !self.ctx.removals.contains(&h.0)) else {
+            return;
+        };
+        self.ctx.remove(self.world, id);
+        self.world.mark_rating(tile);
+        if !food {
+            chores::recycle(self.world, self.ctx.cat, tile, dino);
         }
     }
 

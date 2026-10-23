@@ -514,6 +514,36 @@ fn a_full_meter_puts_down_a_pile_of_the_size_of_the_species() {
     assert!(piles(&world).is_empty());
 }
 
+/// Runs until the first pile of dung is put down; whether a worker was called for it, with the
+/// tile of the call.
+fn dung_call(mut world: World) -> (bool, Option<u32>) {
+    let cat = dirty("cDirtyThreshold=0\ncDirtyIncrement=1");
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    for _ in 0..3000 {
+        sim.step_with(&Life::new(), &cat, &mut world, 67, |_, _, _| {});
+        if (world.units.take_animal_lines().iter()).any(|l| l.starts_with("dung")) {
+            let [now, next] = sim.events.buffers();
+            let call = now.iter().chain(next).find(|e| e.kind == 10032);
+            return (true, call.map(|e| e.data));
+        }
+    }
+    (false, None)
+}
+
+#[test]
+fn a_pile_on_the_zoo_grounds_calls_a_worker_and_one_in_a_pen_does_not() {
+    let pen = dung_call(pens());
+    assert_eq!(pen, (true, None));
+    let ground = pens_with(|n, _| match n {
+        0 => vec![entity("animals", "f", (4, 5), 0, 500)],
+        _ => Vec::new(),
+    });
+    assert_eq!(dung_call(ground), (true, Some(5 * 8 + 4)));
+}
+
 #[test]
 fn a_starving_animal_with_no_keeper_is_taken_away_with_its_message() {
     let cat = zebras_with(

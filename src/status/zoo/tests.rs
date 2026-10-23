@@ -415,3 +415,17 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
         assert_eq!(run.sim.status.rating, first, "{map}: the first check");
     }
 }
+
+#[test]
+fn the_economy_file_sets_what_the_compost_pays_for_dung() {
+    let paid = |text: &str| status(text).settings.prices.recycling;
+    assert_eq!(paid(""), 50.0);
+    assert_eq!(paid("[Characteristics]\ncOtherKey=9\n"), 50.0);
+    assert_eq!(paid("[characteristics]\nczoodoorecyclingamount=75\n"), 75.0);
+    assert_eq!(paid("[characteristics]\ncZooDooRecyclingAmount=0\n"), 0.0);
+    assert_eq!(paid("[characteristics]\ncZooDooRecyclingAmount=-5\n"), -5.0);
+    assert_eq!(
+        paid("[characteristics]\ncZooDooRecyclingAmount=1e30\n"),
+        1e30
+    );
+}

@@ -2,10 +2,14 @@
 //!
 //! The dung meter is tested by the hunger check ([`super::food::hunger`]); this puts the pile
 //! down. A pile is a scenery object of the type `objects/other/poo` (`dinopoo` for a dinosaur)
-//! whose food counter holds its size: 0 normal, 1 small, 2 giant. The keepers that rake it and the
-//! workers that hear of it are the staff issues'.
+//! whose food counter holds its size: 0 normal, 1 small, 2 giant. A pile on the zoo grounds calls a
+//! maintenance worker (staff 8.2); the keepers rake the piles of an exhibit.
 
 use super::{DIED, Keys};
+
+/// The event a pile of dung on the zoo grounds posts for the maintenance task pool (the same
+/// number as the one an exhibit posts for what an emptied exhibit leaves).
+pub const DUNG: u16 = 10032;
 use crate::entity::EntityType;
 use crate::render::order::Kind;
 use crate::unit::{Ctx, Part, Unit};
@@ -114,6 +118,11 @@ pub fn put_down(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, k:
             .filter(|_| free)
             .is_some_and(|ty| put(world, ty, ("objects", "other", name), (x, y), facing, size));
         world.mark_rating(tile);
+        // A pile on the zoo grounds calls a maintenance worker (8.1 point 3).
+        if made && world.exhibits().region(tile) == Some(crate::exhibit::GROUNDS) {
+            let event = crate::world::piece_event(unit.id, DUNG, tile as u32);
+            world.units.posts.push(event);
+        }
         made
     } else {
         false

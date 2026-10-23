@@ -726,15 +726,10 @@ impl<'c> Cx<'_, 'c> {
         self.job_end();
     }
 
-    /// 7.8 job 6 complete: the dung goes, the exhibit is rated again.
+    /// 7.8 job 6 complete: the dung goes and the compost pays (8.6), the exhibit is rated again.
     fn raked(&mut self, tile: Option<usize>) {
         if let Some(t) = tile.filter(|&t| self.dung_at(t)) {
-            let pile = self.world.quadrant(t, 3);
-            let id = pile.and_then(|e| self.world.zoo.entities[e].common.as_ref().map(|c| c.id));
-            if let Some(id) = id {
-                self.ctx.remove(self.world, id);
-            }
-            self.world.mark_rating(t);
+            self.bag(t);
         }
         self.job_end();
     }

@@ -520,6 +520,9 @@ impl Sim {
         for d in std::mem::take(&mut world.units.concessions) {
             money.refund(money::CONCESSIONS, d);
         }
+        for d in std::mem::take(&mut world.units.recycled) {
+            money.refund(money::CONSTRUCTION_REFUND, d);
+        }
         for _ in 0..std::mem::take(&mut world.units.guests_gone) {
             money.count(money::GUESTS_GONE);
         }
@@ -542,6 +545,18 @@ impl Sim {
                 .map(|r| format!(" {} {}", r.key, r.shown()))
                 .collect();
             world.exhibits_mut().list_mut()[at].rating = state;
+            // An exhibit whose last animal went calls the workers for its dung and food (5.1).
+            let emptied = &mut world.exhibits_mut().list_mut()[at].rating.emptied;
+            if std::mem::take(emptied) && world.exhibits().get(id).is_some_and(|e| e.tank.is_none())
+            {
+                for (piece, tile) in crate::staff::chores::leftovers(world, cat, id) {
+                    self.events.post(crate::world::piece_event(
+                        piece,
+                        crate::animal::dirt::DUNG,
+                        tile as u32,
+                    ));
+                }
+            }
             if rated {
                 rating::finish(world, cat, id, &mut || self.rng.rand());
                 crate::animal::home::settle(world, cat, id);
