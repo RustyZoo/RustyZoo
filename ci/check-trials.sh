@@ -233,6 +233,12 @@ check base-trial 'dislikes15672@131;frown' 'rz run maps/default.zoo --headless -
 # values negated for a removal); then the lion is picked up and put down elsewhere, which counts as a placement.
 check base-trial 'likes15672@146;smile' 'd=$(mktemp -d); head -n "$(grep -n "^131 up" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "134 mouse 448 304\n135 down\n136 up\n138 key escape\n140 key delete\n142 mouse 512 268\n143 down\n144 up\n146 key y\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 148 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
 check base-trial 'dislikes15672@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "^133 key escape" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "136 mouse 512 268\n137 down\n138 up\n141 mouse 512 268\n142 down\n143 up\n146 mouse 448 240\n149 down\n150 up\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 152 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
+# Each fence piece of a drag runs the habitat pair (habitat rating 9.4), on the zoo grounds too: the
+# pair marks the grounds for revision, so their next update draws and the state hash of the first month
+# change moves (without the pair it would be 2cf67ce9093b3d71). A drag the cash cannot pay for (100 for
+# pieces of 150) is refused and runs no pair: the hash is that of the same game with no drag at all.
+check base-trial a19f5f5542c33205 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial c3806921661f5f9c 'rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 # A play call queues behind the playing sequence, the base loop included: the lion shows its first
 # animation other than the idle one at pass 14 (the lion 27645, happiness 75, chooses bFriendly; the lion
 # 27646 is tired, so its ambient choice runs the sleep check instead of a row, behaviours 6.4: it starts

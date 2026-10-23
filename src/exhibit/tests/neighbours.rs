@@ -146,7 +146,8 @@ fn marking_one_marks_its_neighbour_up_to_the_marked_ones() {
 
 #[test]
 fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike_it_going() {
-    let (mut w, cat) = (linked(), catalogue());
+    // The land is the home of the bear in the tank.
+    let (mut w, cat) = (gated(linked()), catalogue());
     let (tank, land) = pair(&w);
     let tile = 3 * WIDE + 8;
     // Each exhibit once; the grounds of an entity's change are marked and flagged, with no
@@ -261,7 +262,7 @@ fn a_species_of_eggs_only_likes_a_change_without_a_reaction_or_a_sound() {
 
 #[test]
 fn a_terrain_change_that_changes_no_tile_marks_nothing() {
-    let (mut w, cat) = (linked(), catalogue());
+    let (mut w, cat) = (gated(linked()), catalogue());
     let (_, land) = pair(&w);
     clean(&mut w);
     rating::terrain(&mut w, &cat, &mut || 0, |_| {});
@@ -848,7 +849,7 @@ fn the_rating_that_follows_a_change_revises_the_species_list_first() {
 
 #[test]
 fn an_animal_placed_reacts_by_the_compatible_animals_of_the_species() {
-    let (mut w, cat) = (linked(), catalogue());
+    let (mut w, cat) = (gated(linked()), catalogue());
     let tile = 3 * WIDE + 8;
     let before = rating::before(&mut w, &cat, &[tile], true, &mut || 0);
     let goat = w.unrecorded(|w| w.add(entity("animals", "goat", 5, centre((8, 3)), 0), None));
@@ -955,4 +956,174 @@ fn a_new_wall_height_of_a_filled_tank_with_a_gate_runs_the_terrain_pair() {
     rating::depth(&mut w, &cat, &mut || 0, 99, 0, u32::MAX);
     rating::depth(&mut w, &cat, &mut || 0, tank, u32::MAX, 0);
     rating::depth(&mut w, &cat, &mut || 0, tank, 0, u32::MAX);
+}
+
+fn rock_change(sign: i64) -> Option<rating::Change> {
+    Some(rating::Change::Object {
+        habitat: 9400,
+        name: 7,
+        sign,
+    })
+}
+
+/// The ids and what each compares of the exhibits a pair read.
+fn read(before: &rating::Sums) -> Vec<(u32, Option<bool>)> {
+    before.iter().map(|b| (b.0, b.2)).collect()
+}
+
+/// Puts a rock at `at` with the pair of an entity, and returns the animal lines, sorted.
+fn put_rock(w: &mut World, cat: &Catalogue, at: (i32, i32)) -> Vec<String> {
+    let tile = at.1 as usize * WIDE + at.0 as usize;
+    let before = rating::entity(w, cat, Some(tile), true, &mut || 0);
+    let (r, shape) = rock(at);
+    w.unrecorded(|w| w.add(r, shape)).unwrap();
+    rating::react(w, cat, before, rock_change(1), &mut || 0);
+    let mut lines = w.units.take_animal_lines();
+    lines.sort();
+    lines
+}
+
+#[test]
+fn a_rock_put_in_the_tank_is_read_by_the_land_beside_it_too() {
+    let (mut w, cat) = (gated(linked()), catalogue());
+    let (tank, land) = pair(&w);
+    // The tank first, its amphibious species skipped, then its neighbour, which compares them only
+    // and reaches the bear in the tank, its home: the bear reacts once.
+    let before = rating::entity(&mut w, &cat, Some(3 * WIDE + 3), true, &mut || 0);
+    assert_eq!(read(&before), [(tank, Some(false)), (land, Some(true))]);
+    let mut w = gated(linked());
+    assert_eq!(
+        put_rock(&mut w, &cat, (3, 3)),
+        ["likes 1", "likes 3", "sound smile"]
+    );
+}
+
+#[test]
+fn a_bear_in_the_tank_reacts_once_to_a_rock() {
+    // Two lands beside the tank: only the east one, its home, reaches the bear in the tank.
+    let (mut w, cat, [_, east, _]) = between();
+    assert_eq!(home(&w, &cat, 1), Some(east));
+    assert_eq!(
+        put_rock(&mut w, &cat, (4, 3)),
+        ["likes 1", "likes 3", "sound smile"]
+    );
+}
+
+#[test]
+fn a_fence_piece_in_a_tank_reads_the_land_beside_it() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let tile = 3 * WIDE + 3;
+    let fence = kind("fences", "iron", 0, "");
+    let wall = kind("tankwall", "glass", 0, "");
+    let staff = kind("staff", "keeper", 0, "");
+    assert!(rating::reads_neighbours(&fence) && rating::reads_neighbours(&wall));
+    assert!(!rating::reads_neighbours(&staff));
+    let near = rating::reads_neighbours(&fence);
+    let before = rating::entity(&mut w, &cat, Some(tile), near, &mut || 0);
+    assert_eq!(read(&before), [(tank, Some(false)), (land, Some(true))]);
+    // A fence gives its value to no species: nothing reacts.
+    rating::react(&mut w, &cat, before, None, &mut || 0);
+    assert!(w.units.take_animal_lines().is_empty());
+    // A staff member reads the tank alone, and skips its amphibious species.
+    let near = rating::reads_neighbours(&staff);
+    let before = rating::entity(&mut w, &cat, Some(tile), near, &mut || 0);
+    assert_eq!(read(&before), [(tank, Some(false))]);
+}
+
+#[test]
+fn the_pair_of_a_tank_compares_against_the_last_neighbours_sums() {
+    // The sums of the amphibious species of exhibit `x`, or of all with `all`.
+    let of = |w: &World, x: u32, all: bool| -> Vec<(String, f32)> {
+        (w.exhibits().get(x).unwrap().rating.records.iter())
+            .filter(|r| all || r.amphibious)
+            .map(|r| (r.key.clone(), r.sum()))
+            .collect()
+    };
+    let sums = |w: &World, x: u32| of(w, x, false);
+    // One neighbour: the tank is compared against the land's sums, which do not hold the shark.
+    let (mut w, cat) = (linked(), catalogue());
+    let (_, land) = pair(&w);
+    let before = rating::entity(&mut w, &cat, Some(3 * WIDE + 3), true, &mut || 0);
+    let table = sums(&w, land);
+    assert!(before.iter().all(|b| b.1 == table));
+    assert!(!table.is_empty() && table.iter().all(|s| s.0 != "shark"));
+    // Two neighbours: the tank and the first are compared against the second's sums.
+    let (mut w, cat, [tank, ..]) = between();
+    let before = rating::entity(&mut w, &cat, Some(3 * WIDE + 3), true, &mut || 0);
+    let order = w.exhibits().get(tank).unwrap().amphibious.clone();
+    assert_eq!(
+        read(&before),
+        [
+            (tank, Some(false)),
+            (order[0], Some(true)),
+            (order[1], Some(true))
+        ]
+    );
+    let table = sums(&w, order[1]);
+    assert_ne!(sums(&w, order[0]), table);
+    assert!(before.iter().all(|b| b.1 == table));
+    // A terrain change keeps the sums of each exhibit.
+    let before = rating::before(
+        &mut w,
+        &cat,
+        &[3 * WIDE + 3, 3 * WIDE + 7],
+        false,
+        &mut || 0,
+    );
+    assert_eq!(before[0].1, of(&w, tank, true));
+}
+
+#[test]
+fn a_neighbour_is_read_before_a_change_without_a_revise_flag() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    clean(&mut w);
+    let r = &mut w.exhibits_mut().get_mut(land).unwrap().rating;
+    (r.revise, r.types) = (false, Vec::new());
+    let before = rating::entity(&mut w, &cat, Some(3 * WIDE + 3), true, &mut || 0);
+    assert_eq!(read(&before), [(tank, Some(false)), (land, Some(true))]);
+    let r = &w.exhibits().get(land).unwrap().rating;
+    assert!(!r.dirty, "marked with the tank, then read");
+    assert!(!r.revise && r.types.is_empty(), "its list is not revised");
+    // After the change it is flagged too, and its list revised.
+    rating::react(&mut w, &cat, before, None, &mut || 0);
+    assert_eq!(w.exhibits().get(land).unwrap().rating.types, ["polar/"]);
+}
+
+#[test]
+fn a_land_neighbour_reaches_only_the_tank_animals_it_is_home_to() {
+    // No gate: the land is nobody's home, so only the bear on it reacts.
+    let cat = catalogue();
+    let mut w = linked();
+    assert_eq!(put_rock(&mut w, &cat, (8, 3)), ["likes 3", "sound smile"]);
+    // Two lands, the east one the home of the bear in the tank: a rock on the west one reaches
+    // nobody, one on the east one the bear in the tank too.
+    let (mut w, cat, [_, east, _]) = between();
+    assert_eq!(home(&w, &cat, 1), Some(east));
+    assert!(put_rock(&mut w, &cat, (1, 3)).is_empty());
+    let (mut w, cat, _) = between();
+    assert_eq!(
+        put_rock(&mut w, &cat, (8, 3)),
+        ["likes 1", "likes 3", "sound smile"]
+    );
+}
+
+#[test]
+fn a_terrain_change_marks_every_exhibit_before_it_reads_any() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let tiles = [3 * WIDE + 8, 3 * WIDE + 3];
+    // A first change settles the species lists.
+    let before = rating::before(&mut w, &cat, &tiles, false, &mut || 0);
+    rating::react(&mut w, &cat, before, None, &mut || 0);
+    for e in w.exhibits_mut().list_mut() {
+        e.rating.escape = false;
+    }
+    // The land read first computes the tank, already flagged, which its own read finds clean:
+    // two recomputations, not three.
+    let tests = rating::tests();
+    let before = rating::before(&mut w, &cat, &tiles, false, &mut || 0);
+    assert_eq!(before.iter().map(|b| b.0).collect::<Vec<_>>(), [land, tank]);
+    assert_eq!(rating::tests() - tests, 2);
 }

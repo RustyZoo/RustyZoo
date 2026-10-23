@@ -1455,13 +1455,14 @@ impl<'a> App<'a> {
             };
             let water = &game.water;
             let colors = renderer.default_colors(ty);
-            // The animals of the exhibit react to an object placed (habitat rating 9.4).
+            // The animals of the exhibit react to an object placed (habitat rating 9.4); a fence
+            // piece runs the pair too and decides nothing by its value.
             let placed = p.verdict != place::Verdict::Invalid && game.money.can_pay(p.price);
-            let before = match fence || !placed {
-                true => Vec::new(),
-                false => {
+            let before = match placed {
+                false => Vec::new(),
+                true => {
                     let rand = &mut || self.sim.rng.rand();
-                    rating::before(&mut game.world, cat, at.as_slice(), true, rand)
+                    rating::entity(&mut game.world, cat, at, rating::reads_neighbours(ty), rand)
                 }
             };
             let outcome = place::place(
@@ -1476,18 +1477,13 @@ impl<'a> App<'a> {
             if let Outcome::Placed(id) = outcome {
                 crate::building::built(&mut game.world, ty, id, self.sim.calendar().state().0);
                 let (habitat, name) = rating::object(ty);
+                let change = (!fence).then_some(rating::Change::Object {
+                    habitat,
+                    name,
+                    sign: 1,
+                });
                 let rand = &mut || self.sim.rng.rand();
-                rating::react(
-                    &mut game.world,
-                    cat,
-                    before,
-                    Some(rating::Change::Object {
-                        habitat,
-                        name,
-                        sign: 1,
-                    }),
-                    rand,
-                );
+                rating::react(&mut game.world, cat, before, change, rand);
             }
             match outcome {
                 Outcome::Placed(id) => {

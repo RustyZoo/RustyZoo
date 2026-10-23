@@ -520,19 +520,23 @@ pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     }
 }
 
-/// The sum of each species (`getSpeciesRating`) in each exhibit of `tiles`, before a terrain
-/// change or an entity placed or removed there (9.4): each exhibit is marked, its species list
-/// marked for revision, and the sums are read through a recomputation (the list revised first,
-/// the reachability test last, drawing from `rand`). With `grounds`, an entity's change, the zoo
-/// grounds under `tiles` are marked and flagged too, and listed with no sums: [`react`] marks
-/// them again and compares nothing.
+/// The sums of each species (`getSpeciesRating`) of each exhibit read by a pair (9.4), with the
+/// species [`react`] compares there: `None` all of them, `Some(a)` those whose amphibious flag is `a`.
+pub type Sums = Vec<(u32, Vec<(String, f32)>, Option<bool>)>;
+
+/// The sum of each species in each exhibit of `tiles`, before a terrain change or an entity
+/// placed or removed there (9.4): every exhibit is marked and its species list marked for
+/// revision first, then the sums of each are read in turn through a recomputation (the list
+/// revised first, the reachability test last, drawing from `rand`). With `grounds`, an entity's
+/// change, the zoo grounds under `tiles` are marked and flagged too, and listed with no sums:
+/// [`react`] marks them again and compares nothing.
 pub fn before(
     world: &mut World,
     cat: &Catalogue,
     tiles: &[usize],
     grounds: bool,
     rand: Rand,
-) -> Vec<(u32, Vec<(String, f32)>)> {
+) -> Sums {
     let mut ids: Vec<u32> = Vec::new();
     for &t in tiles {
         let id = world
@@ -543,16 +547,59 @@ pub fn before(
             ids.push(id);
         }
     }
+    for &x in &ids {
+        touch(world, x);
+    }
     (ids.into_iter())
-        .map(|x| {
-            touch(world, x);
-            refresh(world, cat, x, rand);
-            let sums = (world.exhibits().get(x).into_iter())
-                .flat_map(|e| &e.rating.records)
-                .map(|r| (r.key.clone(), r.sum()))
-                .collect();
-            (x, sums)
-        })
+        .map(|x| (x, sums(world, cat, x, None, rand), None))
+        .collect()
+}
+
+/// The sums before an entity is placed or removed at `tile` (9.4): its exhibit, or the zoo
+/// grounds, as [`before`]. When that exhibit is a tank, its amphibious species are compared only
+/// when it has no amphibious neighbour and `near` (an animal or a scenery piece, not a staff
+/// member); with `near`, each of its neighbours is then read in turn (already marked with the
+/// tank, not flagged), to read and compare its amphibious species only. The sums are one table
+/// that each read empties first: every exhibit is compared against the last one read.
+pub fn entity(
+    world: &mut World,
+    cat: &Catalogue,
+    tile: Option<usize>,
+    near: bool,
+    rand: Rand,
+) -> Sums {
+    let mut all = before(world, cat, tile.as_slice(), true, rand);
+    let tank = (all.first().and_then(|b| world.exhibits().get(b.0)))
+        .filter(|e| e.tank.is_some())
+        .map(|e| e.amphibious.clone());
+    let Some(neighbours) = tank else { return all };
+    if !neighbours.is_empty() || !near {
+        all[0].2 = Some(false);
+    }
+    for x in neighbours.into_iter().filter(|_| near) {
+        all.push((x, sums(world, cat, x, Some(true), rand), Some(true)));
+    }
+    let last = all.last().map(|b| b.1.clone()).unwrap_or_default();
+    for b in &mut all {
+        b.1.clone_from(&last);
+    }
+    all
+}
+
+/// The sum of each species of exhibit `x` that `rates` names (as [`Sums`]), read through a
+/// recomputation.
+fn sums(
+    world: &mut World,
+    cat: &Catalogue,
+    x: u32,
+    rates: Option<bool>,
+    rand: Rand,
+) -> Vec<(String, f32)> {
+    refresh(world, cat, x, rand);
+    (world.exhibits().get(x).into_iter())
+        .flat_map(|e| &e.rating.records)
+        .filter(|r| rates.is_none_or(|a| r.amphibious == a))
+        .map(|r| (r.key.clone(), r.sum()))
         .collect()
 }
 
@@ -628,21 +675,16 @@ pub enum Change {
 /// marked for revision and the exhibit is rated again (the list is revised first, 5.1); the zoo
 /// grounds are only marked and flagged. The animals (not eggs) of a species whose sum went up
 /// queue a "likes" reaction, those of one whose sum went down a "dislikes" one; in a land exhibit
-/// the animals of an amphibious species in its amphibious neighbours react too. An old sum of 0
-/// counts as unchanged; an unchanged sum lets the `change`, an object placed or removed or an animal
-/// placed, decide by its value to the species (with none, as for a staff member, an unchanged
-/// sum gives no reaction). Logs `likes ID` or `dislikes ID`.
+/// the animals of an amphibious species in its amphibious neighbours whose home it is react too.
+/// Each exhibit compares the species its entry names. An old sum of 0 counts as unchanged; an
+/// unchanged sum lets the `change`, an object placed or removed or an animal placed, decide by its
+/// value to the species (with none, as for a staff member or a fence, an unchanged sum gives no
+/// reaction). Logs `likes ID` or `dislikes ID`.
 /// Once all exhibits are done, the approving sound plays if an animal liked the change and the
 /// disapproving one if an animal disliked it (a species of eggs only reaches none).
-pub fn react(
-    world: &mut World,
-    cat: &Catalogue,
-    before: Vec<(u32, Vec<(String, f32)>)>,
-    change: Option<Change>,
-    rand: Rand,
-) {
+pub fn react(world: &mut World, cat: &Catalogue, before: Sums, change: Option<Change>, rand: Rand) {
     let (mut liked_any, mut disliked_any) = (false, false);
-    for (x, old) in before {
+    for (x, old, rates) in before {
         touch(world, x);
         if x == GROUNDS {
             continue;
@@ -657,7 +699,7 @@ pub fn react(
             None => e.amphibious.clone(),
         };
         let mut moods: Vec<(String, bool, bool)> = Vec::new();
-        for r in &e.rating.records {
+        for r in (e.rating.records.iter()).filter(|r| rates.is_none_or(|a| r.amphibious == a)) {
             let was = (old.iter()).find(|o| o.0 == r.key).map_or(0.0, |o| o.1);
             let l = (likes.species.iter().chain(&likes.near)).find(|l| l.key == r.key);
             let by = match (was != 0.0 && was != r.sum(), change, l) {
@@ -681,8 +723,11 @@ pub fn react(
             }
         }
         for (key, liked, amphibious) in moods {
+            // A neighbour's animals are reached when this land exhibit is their home.
+            let l = (likes.species.iter().chain(&likes.near)).find(|l| l.key == key);
+            let home = |p: u32| l.and_then(|l| crate::animal::home::home(world, cat, p, l));
             let mut places = vec![x];
-            places.extend(near.iter().filter(|_| amphibious));
+            places.extend(near.iter().filter(|&&p| amphibious && home(p) == Some(x)));
             let ids: Vec<u32> = (places.into_iter())
                 .flat_map(|p| crate::animal::exhibit_animals(world, p))
                 .map(|at| &world.zoo.entities[at])
@@ -1130,6 +1175,14 @@ impl State {
             .map(|l| l.attractiveness)
             .sum();
     }
+}
+
+/// Whether the pair of an entity of type `ty` reads the neighbours of a tank ([`entity`]): an
+/// animal or a scenery piece (an object, a fence or tank wall piece, a path, a building), not a
+/// staff member or a guest.
+pub fn reads_neighbours(ty: &EntityType) -> bool {
+    use crate::render::order::Kind;
+    ty.class == "animals" || Kind::of_class(ty.class) != Kind::Unit
 }
 
 /// The habitat number and name id of an object type (habitat rating 2).
