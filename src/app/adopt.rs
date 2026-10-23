@@ -25,7 +25,11 @@ impl App<'_> {
         // The animals of the exhibit react to a unit placed (habitat rating 9.4, animals 10).
         let cat = renderer.catalogue();
         let tile = game.world.tile_index(p.tile.0, p.tile.1);
-        let before = rating::before(&game.world, cat, tile.as_slice());
+        let rand = &mut || self.sim.rng.rand();
+        let before = match p.verdict != place::Verdict::Invalid && game.money.can_pay(p.price) {
+            true => rating::before(&mut game.world, cat, tile.as_slice(), true, rand),
+            false => Vec::new(),
+        };
         let outcome = place::unit::place(&mut game.world, &mut game.money, ty, &text, &p, |e| {
             renderer.shape(e)
         });
@@ -37,7 +41,6 @@ impl App<'_> {
                     ids: rating::Likes::of(ty).ids,
                     sign: 1,
                 });
-                let rand = &mut || self.sim.rng.rand();
                 rating::react(&mut game.world, cat, before, change, rand);
                 let name = game
                     .world

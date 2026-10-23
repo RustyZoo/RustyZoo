@@ -357,8 +357,15 @@ impl App<'_> {
                         sign: -1,
                     }),
                 };
-                (rating::before(&game.world, cat, &[tile]), change)
+                (tile, change)
             })
+        });
+        let object = object.map(|(tile, change)| {
+            let rand = &mut || self.sim.rng.rand();
+            (
+                rating::before(&mut game.world, cat, &[tile], true, rand),
+                change,
+            )
         });
         let removed =
             bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);
