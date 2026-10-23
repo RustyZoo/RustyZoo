@@ -956,6 +956,21 @@ building_moved() { # building_moved <map>
 }
 check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$440' "building_moved maps/scn19.zoo"
 
+# A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
+# stand of scn19 (seed 1) is inside at pass 214. It is selected by a click (pass 214), picked up by a second
+# click (217) and put back by Escape (219); it leaves the stand as a normal leave, so the stand's panel read at
+# pass 224 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed).
+guest_picked() { # guest_picked <map>
+  d=$(mktemp -d)
+  printf '212 mouse 830 230\n213 down\n214 up\n216 down\n217 up\n219 key escape\n222 mouse 875 230\n223 down\n224 up\n' >"$d/script"
+  rz run "$1" --headless --passes 228 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+    awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 ";" }
+      $4 == "panel" && $5 == "building" && $6 == 31076 { for (i = 7; i < NF; i++) if ($i == "income") l = "income_" $(i + 1) }
+      END { print w l }'
+  rm -rf "${d:?}"
+}
+check expansion-trial 'carry,32762;putback,32762;income_$854' "guest_picked maps/scn19.zoo"
+
 # The same stand picked up by a second click on it while it is selected, put back by Escape and picked
 # up again by the same click (it is selected again): the lines they give, with no user in the stand (so
 # no push).
