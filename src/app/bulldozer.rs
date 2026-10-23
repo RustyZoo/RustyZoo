@@ -358,12 +358,12 @@ impl App<'_> {
                         sign: -1,
                     }),
                 };
-                (tile, change)
+                (tile, change, rating::reads_neighbours(ty))
             })
         });
-        let object = object.map(|(tile, change)| {
+        let object = object.map(|(tile, change, near)| {
             let rand = &mut || self.sim.rng.rand();
-            let before = rating::entity(&mut game.world, cat, Some(tile), change.is_some(), rand);
+            let before = rating::entity(&mut game.world, cat, Some(tile), near, rand);
             (before, change)
         });
         let removed =

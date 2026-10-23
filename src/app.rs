@@ -1462,7 +1462,7 @@ impl<'a> App<'a> {
                 false => Vec::new(),
                 true => {
                     let rand = &mut || self.sim.rng.rand();
-                    rating::entity(&mut game.world, cat, at, !fence, rand)
+                    rating::entity(&mut game.world, cat, at, rating::reads_neighbours(ty), rand)
                 }
             };
             let outcome = place::place(
