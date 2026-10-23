@@ -1455,10 +1455,14 @@ impl<'a> App<'a> {
             };
             let water = &game.water;
             let colors = renderer.default_colors(ty);
-            // The animals of the exhibit react to an object (habitat rating 9.4).
-            let before = match fence {
+            // The animals of the exhibit react to an object placed (habitat rating 9.4).
+            let placed = p.verdict != place::Verdict::Invalid && game.money.can_pay(p.price);
+            let before = match fence || !placed {
                 true => Vec::new(),
-                false => rating::before(&game.world, cat, at.as_slice()),
+                false => {
+                    let rand = &mut || self.sim.rng.rand();
+                    rating::before(&mut game.world, cat, at.as_slice(), true, rand)
+                }
             };
             let outcome = place::place(
                 &mut game.world,

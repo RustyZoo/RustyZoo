@@ -520,26 +520,53 @@ pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     }
 }
 
-/// The sum of each species (`getSpeciesRating`) in each exhibit of `tiles`, the zoo grounds
-/// left out, before a terrain change or an object placed or removed there (9.4). Nothing is
-/// marked: [`react`] does that once the change is made.
-pub fn before(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, Vec<(String, f32)>)> {
+/// The sum of each species (`getSpeciesRating`) in each exhibit of `tiles`, before a terrain
+/// change or an entity placed or removed there (9.4): each exhibit is marked, its species list
+/// marked for revision, and the sums are read through a recomputation (the list revised first,
+/// the reachability test last, drawing from `rand`). With `grounds`, an entity's change, the zoo
+/// grounds under `tiles` are marked and flagged too, and listed with no sums: [`react`] marks
+/// them again and compares nothing.
+pub fn before(
+    world: &mut World,
+    cat: &Catalogue,
+    tiles: &[usize],
+    grounds: bool,
+    rand: Rand,
+) -> Vec<(u32, Vec<(String, f32)>)> {
     let mut ids: Vec<u32> = Vec::new();
     for &t in tiles {
         let id = world
             .exhibits()
             .region(t)
-            .filter(|&r| r != GROUNDS && r != EXTERIOR);
+            .filter(|&r| r != EXTERIOR && (grounds || r != GROUNDS));
         if let Some(id) = id.filter(|id| !ids.contains(id)) {
             ids.push(id);
         }
     }
-    let sums = |x| {
-        (rate(&input(world, cat, x)).iter())
-            .map(|r| (r.key.clone(), r.sum()))
-            .collect()
+    (ids.into_iter())
+        .map(|x| {
+            touch(world, x);
+            refresh(world, cat, x, rand);
+            let sums = (world.exhibits().get(x).into_iter())
+                .flat_map(|e| &e.rating.records)
+                .map(|r| (r.key.clone(), r.sum()))
+                .collect();
+            (x, sums)
+        })
+        .collect()
+}
+
+/// Marks exhibit `x`, or the zoo grounds, dirty and its species list for revision.
+fn touch(world: &mut World, x: u32) {
+    let exhibits = world.exhibits_mut();
+    exhibits.mark(x);
+    let state = match x {
+        GROUNDS => Some(&mut exhibits.grounds),
+        _ => exhibits.get_mut(x).map(|e| &mut e.rating),
     };
-    ids.into_iter().map(|x| (x, sums(x))).collect()
+    if let Some(s) = state {
+        (s.dirty, s.revise) = (true, true);
+    }
 }
 
 /// Runs `edit`, a terrain change, then lets the animals of the exhibits of the tiles it changed
@@ -557,7 +584,7 @@ pub fn terrain<T>(
         .collect();
     if !changed.is_empty() {
         let new = std::mem::replace(&mut world.zoo.tiles, old);
-        let sums = before(world, cat, &changed);
+        let sums = before(world, cat, &changed, false, rand);
         world.zoo.tiles = new;
         react(world, cat, sums, None, rand);
     }
@@ -580,7 +607,7 @@ pub fn depth(world: &mut World, cat: &Catalogue, rand: Rand, id: u32, from: u32,
         }
     };
     set(world, from);
-    let sums = before(world, cat, &[tile]);
+    let sums = before(world, cat, &[tile], false, rand);
     set(world, to);
     react(world, cat, sums, None, rand);
     set(world, level);
@@ -598,11 +625,11 @@ pub enum Change {
 }
 
 /// After the change (9.4, animals 10): each exhibit of `before` is marked, its species list is
-/// marked for revision and the exhibit is rated again (the list is revised first, 5.1). The
-/// animals (not eggs) of a species whose sum went up queue a "likes" reaction, those of one
-/// whose sum went down a "dislikes" one; in a land exhibit the animals of an amphibious species
-/// in its amphibious neighbours react too. An old sum of 0 counts as
-/// unchanged; an unchanged sum lets the `change`, an object placed or removed or an animal
+/// marked for revision and the exhibit is rated again (the list is revised first, 5.1); the zoo
+/// grounds are only marked and flagged. The animals (not eggs) of a species whose sum went up
+/// queue a "likes" reaction, those of one whose sum went down a "dislikes" one; in a land exhibit
+/// the animals of an amphibious species in its amphibious neighbours react too. An old sum of 0
+/// counts as unchanged; an unchanged sum lets the `change`, an object placed or removed or an animal
 /// placed, decide by its value to the species (with none, as for a staff member, an unchanged
 /// sum gives no reaction). Logs `likes ID` or `dislikes ID`.
 /// Once all exhibits are done, the approving sound plays if an animal liked the change and the
@@ -616,9 +643,9 @@ pub fn react(
 ) {
     let (mut liked_any, mut disliked_any) = (false, false);
     for (x, old) in before {
-        world.exhibits_mut().mark(x);
-        if let Some(e) = world.exhibits_mut().get_mut(x) {
-            e.rating.revise = true;
+        touch(world, x);
+        if x == GROUNDS {
+            continue;
         }
         let likes = input(world, cat, x);
         refresh(world, cat, x, rand);

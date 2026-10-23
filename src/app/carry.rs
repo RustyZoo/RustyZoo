@@ -154,10 +154,10 @@ impl App<'_> {
         if let Some(held) = game.held.take() {
             // A building put down is a placement: the animals of the exhibit react (9.4).
             let tile = game.world.tile_index(p.tile.0, p.tile.1);
-            let before = rating::before(&game.world, cat, tile.as_slice());
+            let rand = &mut || self.sim.rng.rand();
+            let before = rating::before(&mut game.world, cat, tile.as_slice(), true, rand);
             crate::building::set_down(&mut game.world, held, (p.x, p.y, p.z), p.facing);
             let (habitat, name) = rating::object(ty);
-            let rand = &mut || self.sim.rng.rand();
             let change = rating::Change::Object {
                 habitat,
                 name,
@@ -173,7 +173,8 @@ impl App<'_> {
         }
         // A unit put down is a placement: the animals of the exhibit react (habitat rating 9.4).
         let tile = game.world.tile_index(p.tile.0, p.tile.1);
-        let before = rating::before(&game.world, cat, tile.as_slice());
+        let rand = &mut || self.sim.rng.rand();
+        let before = rating::before(&mut game.world, cat, tile.as_slice(), true, rand);
         let done = place::unit::put_down(&mut game.world, carry.id, (p.x, p.y, p.z), p.facing);
         game.carry = None;
         if done {
@@ -181,7 +182,6 @@ impl App<'_> {
                 ids: rating::Likes::of(ty).ids,
                 sign: 1,
             });
-            let rand = &mut || self.sim.rng.rand();
             rating::react(&mut game.world, cat, before, change, rand);
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);

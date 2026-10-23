@@ -6,8 +6,9 @@
 # Every position is in the pixels of the default window (1024x768).
 # The second young one is born near the end of the run (an animal placed rates its exhibit at once,
 # habitat rating 9.4, which draws from the shared stream and moves the births): the run is long enough
-# for it to eat.
-#run maps/default.zoo --cash 75000 --seed 5 --passes 23000 --clock 200
+# for it to eat (the sums before a change read through a rating draw too, and so does the grounds'
+# update after an entity placed on them).
+#run maps/default.zoo --cash 75000 --seed 5 --passes 25000 --clock 200
 #exhibit 16,36,21,41
 #months 12
 #expect 1 exhibit gate [0-9]+

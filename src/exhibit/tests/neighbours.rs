@@ -149,9 +149,24 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
     let (mut w, cat) = (linked(), catalogue());
     let (tank, land) = pair(&w);
     let tile = 3 * WIDE + 8;
-    // Each exhibit once, the grounds never.
-    let before = rating::before(&w, &cat, &[tile, 0, tile]);
+    // Each exhibit once; the grounds of an entity's change are marked and flagged, with no
+    // sums, those of a terrain change are not.
+    let grounds = crate::exhibit::GROUNDS;
+    let g = &mut w.exhibits_mut().grounds;
+    (g.dirty, g.revise) = (false, false);
+    let before = rating::before(&mut w, &cat, &[tile, 0], false, &mut || 0);
     assert_eq!(before.iter().map(|b| b.0).collect::<Vec<_>>(), [land]);
+    let g = &w.exhibits().grounds;
+    assert!(!g.dirty && !g.revise);
+    let before = rating::before(&mut w, &cat, &[tile, 0, tile], true, &mut || 0);
+    assert_eq!(
+        before.iter().map(|b| b.0).collect::<Vec<_>>(),
+        [land, grounds]
+    );
+    assert!(before[1].1.is_empty());
+    let g = &mut w.exhibits_mut().grounds;
+    assert!(g.dirty && g.revise);
+    (g.dirty, g.revise) = (false, false);
     let (r, shape) = rock((8, 3));
     let id = w.unrecorded(|w| w.add(r, shape)).unwrap();
     rating::react(
@@ -173,13 +188,15 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
         "the shark is not amphibious"
     );
     assert_eq!(w.units.take_cheers(), ["smile"], "once for the change");
+    let g = &w.exhibits().grounds;
+    assert!(g.dirty && g.revise, "the grounds are marked again after");
     assert!(!dirty(&w, land) && !dirty(&w, tank), "rated again");
     // The reactions last 1250 ms.
     w.units.fade(1249);
     assert_eq!(w.units.reactions.len(), 2);
     w.units.fade(1);
     assert!(w.units.reactions.is_empty());
-    let before = rating::before(&w, &cat, &[tile]);
+    let before = rating::before(&mut w, &cat, &[tile], true, &mut || 0);
     w.unrecorded(|w| w.remove(id));
     rating::react(
         &mut w,
@@ -197,7 +214,7 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
     assert_eq!(lines, ["dislikes 1", "dislikes 3", "sound frown"]);
     assert_eq!(w.units.take_cheers(), ["frown"]);
     // Nothing changed: an object the species does not value leaves it alone.
-    let before = rating::before(&w, &cat, &[tile]);
+    let before = rating::before(&mut w, &cat, &[tile], true, &mut || 0);
     rating::react(
         &mut w,
         &cat,
@@ -223,7 +240,7 @@ fn a_species_of_eggs_only_likes_a_change_without_a_reaction_or_a_sound() {
         }
     }
     let tile = 3 * WIDE + 8;
-    let before = rating::before(&w, &cat, &[tile]);
+    let before = rating::before(&mut w, &cat, &[tile], true, &mut || 0);
     let (r, shape) = rock((8, 3));
     w.unrecorded(|w| w.add(r, shape)).unwrap();
     rating::react(
@@ -786,13 +803,12 @@ fn the_rating_that_follows_a_change_revises_the_species_list_first() {
     let mut w = amphibious_world(2, &[(1, "polar", (7, 3)), (4, "owl", (8, 3))]);
     let (_, land) = pair(&w);
     let tile = 3 * WIDE + 8;
-    let before = rating::before(&w, &cat, &[tile]);
     assert!(w.exhibits().get(land).unwrap().rating.sounds.is_empty());
-    // A staff member placed: no reaction, but the exhibit is marked, compared and rated, and the
-    // list is revised first: the first draw picks the tile of the owl's sound, the later ones
-    // are the reachability test's.
+    // The sums before a change are read through a recomputation: the exhibit is marked and rated,
+    // and the list is revised first: the first draw picks the tile of the owl's sound, the later
+    // ones are the reachability test's.
     let (draws, mut rand) = draw_counter();
-    rating::react(&mut w, &cat, before, None, &mut rand);
+    let before = rating::before(&mut w, &cat, &[tile], true, &mut rand);
     let rating = &w.exhibits().get(land).unwrap().rating;
     assert!(!rating.dirty && !rating.revise);
     assert_eq!(rating.sounds, [("owl/".to_string(), 1005 % 12)]);
@@ -801,18 +817,27 @@ fn the_rating_that_follows_a_change_revises_the_species_list_first() {
         draws.get() >= 2,
         "the reachability test draws after the list"
     );
-    assert!(w.units.take_animal_lines().is_empty() && w.units.take_cheers().is_empty());
-    // The type is known: the next change draws no sound tile.
-    let before = rating::before(&w, &cat, &[tile]);
+    assert_eq!(before[0].0, land);
+    assert!(
+        !before[0].1.is_empty(),
+        "the sums of the recomputed records"
+    );
+    // A staff member placed: no reaction, but the exhibit is marked and rated again; the type is
+    // known, so no sound tile is drawn.
+    let sounds = &mut w.exhibits_mut().get_mut(land).unwrap().rating.sounds;
+    *sounds = vec![("owl/".into(), 0)];
     rating::react(&mut w, &cat, before, None, &mut || 7);
-    assert_eq!(w.exhibits().get(land).unwrap().rating.sounds.len(), 1);
+    let rating = &w.exhibits().get(land).unwrap().rating;
+    assert!(!rating.dirty && !rating.revise);
+    assert_eq!(rating.sounds, [("owl/".to_string(), 0)]);
+    assert!(w.units.take_animal_lines().is_empty() && w.units.take_cheers().is_empty());
 }
 
 #[test]
 fn an_animal_placed_reacts_by_the_compatible_animals_of_the_species() {
     let (mut w, cat) = (linked(), catalogue());
     let tile = 3 * WIDE + 8;
-    let before = rating::before(&w, &cat, &[tile]);
+    let before = rating::before(&mut w, &cat, &[tile], true, &mut || 0);
     let goat = w.unrecorded(|w| w.add(entity("animals", "goat", 5, centre((8, 3)), 0), None));
     assert!(goat.is_some());
     // The bears dislike the goat (-10): the bear of the land and, being amphibious, the one of
@@ -827,7 +852,7 @@ fn an_animal_placed_reacts_by_the_compatible_animals_of_the_species() {
     assert_eq!(lines, ["dislikes 1", "dislikes 3", "sound frown"]);
     assert_eq!(w.units.take_cheers(), ["frown"]);
     // The goat removed again: the bears like it, the sign flipped.
-    let before = rating::before(&w, &cat, &[tile]);
+    let before = rating::before(&mut w, &cat, &[tile], true, &mut || 0);
     w.unrecorded(|w| w.remove(goat.unwrap()));
     let change = rating::Change::Animal {
         ids: [5003, 0, 0],
@@ -839,7 +864,7 @@ fn an_animal_placed_reacts_by_the_compatible_animals_of_the_species() {
     assert_eq!(lines, ["likes 1", "likes 3", "sound smile"]);
     w.units.take_cheers();
     // An animal nobody has an opinion about changes nothing.
-    let before = rating::before(&w, &cat, &[tile]);
+    let before = rating::before(&mut w, &cat, &[tile], true, &mut || 0);
     rating::react(
         &mut w,
         &cat,
