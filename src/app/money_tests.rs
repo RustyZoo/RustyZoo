@@ -18,8 +18,8 @@ struct Texts;
 impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            22012 => "MMM',' 'Year' y",
-            22013 => "ddd'.' MMM d",
+            22012 => "MMM' of Era' y",
+            22013 => "ddd MMM d",
             1030 => "Date: %s",
             _ => "",
         }
@@ -513,7 +513,7 @@ fn the_status_bar_writes_the_month_and_the_year_once_a_second_with_the_weekday_a
             }
             assert!(pass < 59, "the date never came");
         }
-        assert_eq!(text(app), b"Jan, Year 1");
-        assert_eq!(app.interface().unwrap().string(1030), "Date: Mon. Jan 1");
+        assert_eq!(text(app), b"Jan of Era 1");
+        assert_eq!(app.interface().unwrap().string(1030), "Date: Mon Jan 1");
     });
 }
