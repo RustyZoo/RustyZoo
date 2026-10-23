@@ -211,7 +211,8 @@ impl Sim {
     }
 
     /// Makes a replay: the seconds of the seedings are `seeds` in order (those a log told), and
-    /// the seedings that already happened are made again with them.
+    /// the seedings that already happened are made again with them (the lines they gave are
+    /// dropped).
     pub fn set_seeds(&mut self, seeds: Vec<u32>) {
         self.restart(Seconds::Replay(seeds.into()));
     }
@@ -225,7 +226,9 @@ impl Sim {
 
     fn restart(&mut self, seconds: Seconds) {
         self.seconds = seconds;
-        self.lines.retain(|l| !l.starts_with("seed "));
+        // What the lines told so far came from the earlier seeding: the load that follows tells it
+        // again.
+        self.lines.clear();
         self.reseed();
         self.draw_hire();
         if self.tiles != 0 {
