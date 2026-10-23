@@ -298,8 +298,9 @@ pub struct Record {
     pub tank: bool,
     pub show: bool,
     pub amphibious: bool,
-    /// What the pair rates (9.2, 9.4): a land exhibit rates its own species and the amphibious
-    /// types of its neighbours, though it keeps a record of every species of its tank.
+    /// What the pair rates (9.2, 9.4), the surrounding species list: an exhibit rates its own
+    /// species, a land exhibit also the amphibious types of its tank, though both keep a record of
+    /// every species of their neighbours.
     pub rated: bool,
     /// What the other species of the exhibit mean to this one (5.5.7); not part of the rating.
     pub other: f32,
@@ -800,7 +801,7 @@ pub fn rate(input: &Input) -> Vec<Record> {
                         tank,
                         show,
                         amphibious: l.amphibious,
-                        rated: tank || i < input.species.len() || l.amphibious,
+                        rated: i < input.species.len() || (l.amphibious && !tank),
                         ..Record::default()
                     });
                     first.push(i);
