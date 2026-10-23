@@ -275,12 +275,49 @@ fn the_names_of_every_month_and_weekday() {
 }
 
 #[test]
+fn english_dates_set_to_1_forces_the_english_names() {
+    assert_eq!(Names::of_user(Some("1".as_ref())), Names::english());
+    // Any other value, or none, leaves the regional settings (English where the system has none).
+    let system = locale::names("").unwrap_or_else(Names::english);
+    for value in [
+        None,
+        Some(""),
+        Some("0"),
+        Some("-1"),
+        Some("99999999999999999999"),
+        Some("yes"),
+    ] {
+        assert_eq!(
+            Names::of_user(value.map(|v| v.as_ref())),
+            system,
+            "{value:?}"
+        );
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn a_locale_gives_its_own_names() {
+    // The C locale has the English names, and its week is put to start on Monday.
+    assert_eq!(locale::names("C"), Some(Names::english()));
+    assert_eq!(locale::names("no_such_locale"), None);
+    let Some(french) = locale::names("fr_FR.UTF-8") else {
+        eprintln!("skipped: the fr_FR.UTF-8 locale is not installed");
+        return;
+    };
+    assert_eq!(french.months[0], "janvier");
+    assert_eq!(french.weekdays[0], "lundi");
+    assert_eq!(french.weekdays[6], "dimanche");
+    assert_ne!(french.short_months[1], "Feb");
+}
+
+#[test]
 fn graph_months_come_from_the_string_table() {
     let t = table(&[(22101, "Jan"), (22102, "Feb."), (22112, "Dez")]);
     assert_eq!(graph_month(&t, 1), "Jan");
     assert_eq!(graph_month(&t, 2), "Feb.");
     assert_eq!(graph_month(&t, 12), "Dez");
-    // An empty string falls back to the English abbreviation.
+    // An empty string falls back to the abbreviation of the dates (English in a test build).
     assert_eq!(graph_month(&t, 3), "Mar");
     assert_eq!(graph_month(&table(&[]), 9), "Sep");
     // Months that do not exist have no name.
@@ -297,8 +334,8 @@ fn the_installed_strings_format_as_the_game_does() {
     let tables = StringTables::open(std::path::Path::new(&dir)).unwrap();
     assert_eq!(money(&tables, 74878, true), "$74,878");
     if crate::pe::installed_language(&dir) == 1036 {
-        // The month and weekday names come from the engine, so the French patterns give the same
-        // names; only the text around them differs.
+        // The month and weekday names come from the regional settings (English in a test build),
+        // so the French patterns give the same names; only the text around them differs.
         let first = day(2001, 1, 1, 0);
         for id in [22012, 22014] {
             let text = date(tables.string(id), &first);

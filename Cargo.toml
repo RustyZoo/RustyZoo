@@ -19,6 +19,10 @@ png = { version = "0.18.1", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 fontdue = { version = "0.9.4", default-features = false }
 
+# The month and weekday names of the user's time locale (text::format::date).
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 # Writes the small archives that the tests need.
 zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
