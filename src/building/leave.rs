@@ -4,6 +4,7 @@
 
 use super::{Kind, Mood, exit_of, kind_of};
 use crate::entity::Catalogue;
+use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
 use crate::guest::{BATHROOM, ENERGY, HAPPINESS, HUNGER, THIRST};
 use crate::render::order::ground_height;
 use crate::unit::{Part, Unit};
@@ -115,6 +116,57 @@ pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
         put_out(world, at, &mut u, &e, &kind, slot);
         if let Some(entry) = world.units.get_mut(unit) {
             *entry = u;
+        }
+    }
+}
+
+/// Guest buildings 11.2: the unit `id`, about to be picked up by hand, leaves its building first.
+/// A guest whose task is entering, using or leaving a building that exists is removed as a normal
+/// leave when it is listed (it pays, gets the change record, and is put at the exit or shown); one
+/// that is not listed (still walking in) is taken out unserved. Its goal then stops. Any other
+/// unit is untouched.
+pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32) {
+    let (Some(at), Some(u)) = (world.find(id), world.units.get(id)) else {
+        return;
+    };
+    let task = u.goal.record.task;
+    let building = u.goal.record.target.id;
+    if !matches!(u.part, Part::Guest(_)) || ![ENTER_BUILDING, EXIT_BUILDING, USE].contains(&task) {
+        return;
+    }
+    let Some(e) = world.find(building).map(|b| world.zoo.entities[b].clone()) else {
+        return;
+    };
+    let Some(kind) = kind_of(cat, &e, world.units.prices.default) else {
+        return;
+    };
+    let listed = (world.units.buildings.get_mut(&building)).and_then(|l| {
+        let i = l.users.iter().position(|u| u.0 == id)?;
+        Some(l.users.remove(i).1)
+    });
+    let Some(entry) = world.units.get_mut(id) else {
+        return;
+    };
+    let mut u = std::mem::replace(entry, Unit::new(id, entry.kind));
+    if let Some(slot) = listed {
+        pay(world, cat, at, &mut u, building, &kind);
+        match kind.uses_exit {
+            true => put_out(world, at, &mut u, &e, &kind, slot),
+            false => show(world, at, &mut u),
+        }
+    }
+    crate::goal::stop_use(&mut u);
+    if let Some(entry) = world.units.get_mut(id) {
+        *entry = u;
+    }
+}
+
+/// A hidden user is shown again where it stands.
+pub(crate) fn show(world: &mut World, at: usize, unit: &mut Unit) {
+    if std::mem::take(&mut unit.hidden) {
+        let c = world.zoo.entities[at].common.as_ref();
+        if let Some((p, r)) = c.map(|c| ((c.x, c.y, c.z), c.rotation)) {
+            world.place_unit(at, p, r);
         }
     }
 }

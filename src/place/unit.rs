@@ -524,11 +524,15 @@ pub struct Carry {
 pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<Carry> {
     let at = world.find(id)?;
     let e = &world.zoo.entities[at];
-    let c = e.common.as_ref()?;
+    e.common.as_ref()?;
     let ty = cat.position(&e.class, e.type_name.as_bytes(), e.subtype.as_bytes())?;
     if number(&cat.types[ty], "cMoveable") == Some(0.0) || world.units.get(id)?.carried {
         return None;
     }
+    // A guest in the middle of a building visit leaves the building first (guest buildings 11.2).
+    crate::building::leave::pick_up(world, cat, id);
+    let e = &world.zoo.entities[at];
+    let c = e.common.as_ref()?;
     let carry = Carry {
         id,
         ty,

@@ -853,3 +853,74 @@ fn a_reset_start_removes_the_users_put_back_at_the_load() {
     assert!(w.units.get(1).is_none() && w.find(1).is_none());
     assert_eq!(money.total[money::CONCESSIONS], 0.0);
 }
+
+#[test]
+fn a_customer_picked_up_leaves_the_stand_paying_and_with_no_goal() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    let mut s = game();
+    hungry(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    run(&mut s, &cat, &mut w, &mut money, 600, "buy");
+    assert_eq!(task(&w), crate::goal::USE);
+    w.units.concessions.clear();
+    let carry = crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
+    assert_eq!(w.units.concessions, [6.0]);
+    assert!(w.units.buildings[&7].users.is_empty());
+    assert_eq!((task(&w), guest(&w).building, guest(&w).need), (0, 0, None));
+    assert!(w.units.get(1).unwrap().carried);
+    assert_eq!(carry.from.0, spot(&w).0);
+    // Put down, the guest goes on with its life and the stand is free for the next one.
+    assert!(crate::place::unit::put_down(&mut w, 1, (2 * 64 + 32, 6 * 64 + 32, 0), 0));
+    run(&mut s, &cat, &mut w, &mut money, 50, "never");
+    assert_eq!(w.units.buildings[&7].income[2], 6.0);
+}
+
+#[test]
+fn a_hidden_restroom_user_picked_up_is_shown_and_not_counted_any_more() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    let mut s = game();
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.values[BATHROOM], g.countdowns, g.saw_animal) = (80, [1000; 11], 1000);
+    }
+    with_cx(&cat, &mut w, |cx| cx.seek("bathroom"));
+    run(&mut s, &cat, &mut w, &mut money, 800, "use");
+    assert!(w.units.get(1).unwrap().hidden);
+    let before = guest(&w).pending[BATHROOM];
+    crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
+    assert!(!w.units.get(1).unwrap().hidden);
+    assert!(w.units.buildings[&8].users.is_empty());
+    assert_eq!(guest(&w).pending[BATHROOM], before - 100);
+}
+
+#[test]
+fn a_guest_picked_up_on_its_way_in_is_taken_out_unserved() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    let mut s = game();
+    hungry(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    for _ in 0..600 {
+        run(&mut s, &cat, &mut w, &mut money, 1, "use");
+        if task(&w) == crate::goal::ENTER_BUILDING {
+            break;
+        }
+    }
+    assert_eq!(task(&w), crate::goal::ENTER_BUILDING);
+    w.units.concessions.clear();
+    crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
+    assert!(w.units.concessions.is_empty());
+    assert!(w.units.buildings.get(&7).is_none_or(|l| l.users.is_empty()));
+    assert_eq!((task(&w), guest(&w).building), (0, 0));
+    // Put down, it does not walk into the stand on the old goal.
+    crate::place::unit::put_down(&mut w, 1, (2 * 64 + 32, 6 * 64 + 32, 0), 0);
+    assert!(run(&mut s, &cat, &mut w, &mut money, 5, "use").is_empty());
+}
+
+#[test]
+fn a_guest_with_no_building_visit_picked_up_keeps_its_task() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    let mut s = game();
+    run(&mut s, &cat, &mut w, &mut money, 3, "never");
+    let before = task(&w);
+    crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
+    assert_eq!(task(&w), before);
+}
