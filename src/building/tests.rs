@@ -129,6 +129,27 @@ fn a_slot_flag_is_on_only_for_the_value_one() {
     }
 }
 
+#[test]
+fn a_user_is_put_inside_only_for_the_value_one() {
+    let teleports = |keys: &str| {
+        let text = format!("[Characteristics/Integers]\n{keys}");
+        Kind::of(&ty(&text), 3.0).teleports
+    };
+    assert!(!teleports(""));
+    for (value, on) in [
+        ("0", false),
+        ("1", true),
+        ("-1", false),
+        ("99999999999", false),
+    ] {
+        assert_eq!(
+            teleports(&format!("cUserTeleportsInside={value}\n")),
+            on,
+            "{value}"
+        );
+    }
+}
+
 /// A stand at the centre of tile (1, 1), rotation 4: its entrances are on tiles (2, 1) and
 /// (1, 2), its exit on (0, 1); `slot` adds keys to its slot.
 fn exits(uses_exit: bool, slot: &str) -> (Kind, Entity) {
