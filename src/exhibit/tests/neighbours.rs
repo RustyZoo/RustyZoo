@@ -956,3 +956,47 @@ fn a_new_wall_height_of_a_filled_tank_with_a_gate_runs_the_terrain_pair() {
     rating::depth(&mut w, &cat, &mut || 0, tank, u32::MAX, 0);
     rating::depth(&mut w, &cat, &mut || 0, tank, 0, u32::MAX);
 }
+
+#[test]
+fn a_rock_put_in_the_tank_is_read_by_the_land_beside_it_too() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let tile = 3 * WIDE + 3;
+    // The tank first, then its neighbour, which compares its amphibious species only.
+    let before = rating::entity(&mut w, &cat, Some(tile), true, &mut || 0);
+    let read: Vec<(u32, bool)> = before.iter().map(|b| (b.0, b.2)).collect();
+    assert_eq!(read, [(tank, false), (land, true)]);
+    let (r, shape) = rock((3, 3));
+    w.unrecorded(|w| w.add(r, shape)).unwrap();
+    let change = rating::Change::Object {
+        habitat: 9400,
+        name: 7,
+        sign: 1,
+    };
+    rating::react(&mut w, &cat, before, Some(change), &mut || 0);
+    let mut lines = w.units.take_animal_lines();
+    lines.sort();
+    assert_eq!(lines, ["likes 1", "likes 1", "likes 3", "sound smile"]);
+    // A fence or a staff member reads the tank alone.
+    let before = rating::entity(&mut w, &cat, Some(tile), false, &mut || 0);
+    assert_eq!(before.iter().map(|b| b.0).collect::<Vec<_>>(), [tank]);
+}
+
+#[test]
+fn a_terrain_change_marks_every_exhibit_before_it_reads_any() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let tiles = [3 * WIDE + 8, 3 * WIDE + 3];
+    // A first change settles the species lists.
+    let before = rating::before(&mut w, &cat, &tiles, false, &mut || 0);
+    rating::react(&mut w, &cat, before, None, &mut || 0);
+    for e in w.exhibits_mut().list_mut() {
+        e.rating.escape = false;
+    }
+    // The land read first computes the tank, already flagged, which its own read finds clean:
+    // two recomputations, not three.
+    let tests = rating::tests();
+    let before = rating::before(&mut w, &cat, &tiles, false, &mut || 0);
+    assert_eq!(before.iter().map(|b| b.0).collect::<Vec<_>>(), [land, tank]);
+    assert_eq!(rating::tests() - tests, 2);
+}

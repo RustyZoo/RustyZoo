@@ -331,18 +331,19 @@ impl App<'_> {
     pub(super) fn bulldoze_remove(&mut self, id: u32) {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
-        // The animals of the exhibit react to an object, an animal or a staff member removed
-        // (habitat rating 9.4); an object or an animal decides an unchanged sum by its value, negated.
+        // The animals of the exhibit react to an object, a fence piece, an animal or a staff
+        // member removed (habitat rating 9.4); an object or an animal decides an unchanged sum by
+        // its value, negated. A fence piece's pair runs at the tile it stands on.
         let object = game.world.find(id).and_then(|at| {
             use crate::render::order::Kind;
             let e = &game.world.zoo.entities[at];
             let c = e.common.as_ref()?;
-            let tile = game
-                .world
-                .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
+            let tile = match game.world.slot(at) {
+                Some((t, _)) => t,
+                None => (game.world).tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?,
+            };
             let kind = Kind::of_class(&e.class);
-            let ty = bulldozer::type_of(cat, e)
-                .filter(|_| matches!(kind, Kind::Fixed | Kind::Path | Kind::Unit));
+            let ty = bulldozer::type_of(cat, e).filter(|_| kind != Kind::Overlay);
             ty.map(|ty| {
                 let (habitat, name) = rating::object(ty);
                 let change = match kind {
@@ -350,7 +351,7 @@ impl App<'_> {
                         ids: rating::Likes::of(ty).ids,
                         sign: -1,
                     }),
-                    Kind::Unit => None,
+                    Kind::Unit | Kind::Edge | Kind::Wall => None,
                     _ => Some(rating::Change::Object {
                         habitat,
                         name,
@@ -362,10 +363,8 @@ impl App<'_> {
         });
         let object = object.map(|(tile, change)| {
             let rand = &mut || self.sim.rng.rand();
-            (
-                rating::before(&mut game.world, cat, &[tile], true, rand),
-                change,
-            )
+            let before = rating::entity(&mut game.world, cat, Some(tile), change.is_some(), rand);
+            (before, change)
         });
         let removed =
             bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);

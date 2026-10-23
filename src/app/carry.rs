@@ -155,7 +155,7 @@ impl App<'_> {
             // A building put down is a placement: the animals of the exhibit react (9.4).
             let tile = game.world.tile_index(p.tile.0, p.tile.1);
             let rand = &mut || self.sim.rng.rand();
-            let before = rating::before(&mut game.world, cat, tile.as_slice(), true, rand);
+            let before = rating::entity(&mut game.world, cat, tile, true, rand);
             crate::building::set_down(&mut game.world, held, (p.x, p.y, p.z), p.facing);
             let (habitat, name) = rating::object(ty);
             let change = rating::Change::Object {
@@ -174,11 +174,12 @@ impl App<'_> {
         // A unit put down is a placement: the animals of the exhibit react (habitat rating 9.4).
         let tile = game.world.tile_index(p.tile.0, p.tile.1);
         let rand = &mut || self.sim.rng.rand();
-        let before = rating::before(&mut game.world, cat, tile.as_slice(), true, rand);
+        let animal = place::unit::is_animal(ty);
+        let before = rating::entity(&mut game.world, cat, tile, animal, rand);
         let done = place::unit::put_down(&mut game.world, carry.id, (p.x, p.y, p.z), p.facing);
         game.carry = None;
         if done {
-            let change = place::unit::is_animal(ty).then(|| rating::Change::Animal {
+            let change = animal.then(|| rating::Change::Animal {
                 ids: rating::Likes::of(ty).ids,
                 sign: 1,
             });

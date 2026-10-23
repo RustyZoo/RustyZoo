@@ -27,7 +27,7 @@ impl App<'_> {
         let tile = game.world.tile_index(p.tile.0, p.tile.1);
         let rand = &mut || self.sim.rng.rand();
         let before = match p.verdict != place::Verdict::Invalid && game.money.can_pay(p.price) {
-            true => rating::before(&mut game.world, cat, tile.as_slice(), true, rand),
+            true => rating::entity(&mut game.world, cat, tile, place::unit::is_animal(ty), rand),
             false => Vec::new(),
         };
         let outcome = place::unit::place(&mut game.world, &mut game.money, ty, &text, &p, |e| {
