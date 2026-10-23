@@ -151,7 +151,9 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32) {
     if let Some(slot) = listed {
         pay(world, cat, at, &mut u, building, &kind);
         match kind.uses_exit {
-            true => put_out(world, at, &mut u, &e, &kind, slot),
+            true => {
+                put_out(world, at, &mut u, &e, &kind, slot);
+            }
             false => show(world, at, &mut u),
         }
     }
@@ -173,7 +175,8 @@ pub(crate) fn show(world: &mut World, at: usize, unit: &mut Unit) {
 
 /// Guest buildings 6.7: the user at position `at` of the entity list is put at the exit of its
 /// slot ([`exit_of`]), on the ground there with its own facing, and shown. With no exit it is
-/// taken off the map and stays as it was, hidden or not.
+/// only taken off its tile's unit list (6.7.1): it stays where it is, hidden or not, and false is
+/// returned.
 pub(crate) fn put_out(
     world: &mut World,
     at: usize,
@@ -181,17 +184,19 @@ pub(crate) fn put_out(
     e: &Entity,
     kind: &Kind,
     slot: usize,
-) {
+) -> bool {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
-        return;
+        return false;
     };
     let (z, facing) = (c.z, c.rotation);
     let Some((x, y)) = exit_of(world, e, kind, slot) else {
-        return world.lift_unit(at);
+        world.unlist_unit(at);
+        return false;
     };
     let z = (world.tile_index(x.div_euclid(64), y.div_euclid(64))).map_or(z, |t| {
         ground_height(&world.zoo.tiles[t], x.rem_euclid(64), y.rem_euclid(64))
     });
     unit.hidden = false;
     world.place_unit(at, (x, y, z), facing);
+    true
 }

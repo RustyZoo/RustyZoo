@@ -342,13 +342,21 @@ impl Scene {
         );
         let obj = &mut self.objects[o];
         (obj.x, obj.y, obj.z, obj.facing) = (x, y, z, facing);
-        if obj.kind == Kind::Unit && (from != to || !self.placed[o]) {
-            if let Some(f) = from {
-                self.list[f].retain(|&u| u != o);
+        if obj.kind == Kind::Unit {
+            // Off every list and not painted (lifted): back on at once. Painted but off its list
+            // (see `unlist_unit`): back on at the first change of tile.
+            let listed = |l: &[Vec<usize>]| from.is_some_and(|f| l[f].contains(&o));
+            let relist = from != to || !self.placed[o] && !listed(&self.list);
+            if relist {
+                if let Some(f) = from {
+                    self.list[f].retain(|&u| u != o);
+                }
+                if let Some(t) = to {
+                    self.list[t].push(o);
+                }
             }
-            self.placed[o] = to.is_some();
-            if let Some(t) = to {
-                self.list[t].push(o);
+            if relist || !self.placed[o] {
+                self.placed[o] = to.is_some();
             }
         }
     }
@@ -360,6 +368,25 @@ impl Scene {
             self.list[t].retain(|&u| u != o);
         }
         self.placed[o] = false;
+    }
+
+    /// Stops painting unit object `o`, which stays on its tile's list (a user hidden in a
+    /// building); [`Scene::move_unit`] paints it again.
+    pub fn hide_unit(&mut self, o: usize) {
+        self.placed[o] = false;
+    }
+
+    /// Takes unit object `o` off its tile's list only: it stays painted if it was, and goes back on
+    /// a list at its first change of tile ([`Scene::move_unit`]).
+    pub fn unlist_unit(&mut self, o: usize) {
+        if let Some(t) = self.tile_at(self.objects[o].x, self.objects[o].y) {
+            self.list[t].retain(|&u| u != o);
+        }
+    }
+
+    /// Paints unit object `o` where it is without putting it on a tile list.
+    pub fn paint_unit(&mut self, o: usize) {
+        self.placed[o] = true;
     }
 
     /// Takes the quadrants of the footprint, all or none: it wants the `fx * fy` quadrants

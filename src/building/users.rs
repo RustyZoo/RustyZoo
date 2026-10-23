@@ -61,7 +61,7 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     crate::goal::resume_use(u, id, slot, now);
     u.hidden = kind.hide;
     if kind.hide {
-        world.lift_unit(at);
+        world.hide_unit(at);
     }
     let entered = stamp.unwrap_or(now);
     if let Some(Live { users, .. }) = world.units.buildings.get_mut(&id) {

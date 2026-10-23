@@ -24,6 +24,10 @@ const TABLE: &str = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=2\n\
     cUserStaysOutside=0\ncUserUsesExit=1\n[Satisfies]\nbuilding\neat\n[slots]\nname=slot\n\
     [slot]\nslotpos=-16\nslotpos=16\nentrpos=-16\nentrpos=48\nexitpos=-16\nexitpos=48\n\
     capacity=1\nfacing=7\n";
+const BOOTH: &str = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=2\ncHideUser=1\n\
+    cUserStaysOutside=0\ncUserUsesExit=1\n[Satisfies]\nbuilding\neat\n[slots]\nname=slot\n\
+    [slot]\nslotpos=-16\nslotpos=16\nentrpos=-16\nentrpos=48\nexitpos=-16\nexitpos=48\n\
+    capacity=1\nfacing=7\n";
 const CAN: &str = "[Characteristics/Integers]\ncCapacity=1000\ncUserStaysOutside=1\n\
     cUsedThought=10215\n[Removes]\ntrash\n[Satisfies]\nbuilding\ntrash\n[slots]\nname=slot\n\
     [slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=1000\n";
@@ -51,6 +55,7 @@ fn types() -> Catalogue {
     cat.push(ty("building", "stand", STAND));
     cat.push(ty("building", "restroom", RESTROOM));
     cat.push(ty("building", "table", TABLE));
+    cat.push(ty("building", "booth", BOOTH));
     cat.push(ty("building", "can", CAN));
     let trash = EntityType {
         subtype: b"trash".to_vec(),
@@ -84,10 +89,15 @@ fn zoo() -> World {
 
 /// The same, with a table 9 at (5, 3) whose entrance is on row 4.
 fn zoo_with(table: bool) -> World {
+    zoo_of(table.then_some("table"))
+}
+
+/// The same, with a building 9 of type `name` at (5, 3) when given.
+fn zoo_of(name: Option<&str>) -> World {
     world_with((10, 10), |zoo| {
-        if table {
+        if let Some(name) = name {
             zoo.entities
-                .push(entity("building", "table", 9, centre((5, 3)), 4));
+                .push(entity("building", name, 9, centre((5, 3)), 4));
         }
         zoo.entities
             .push(entity("guests", "man", 1, centre((2, 6)), 0));
@@ -312,6 +322,13 @@ fn a_user_walks_out_to_an_entrance_of_its_slot_and_is_released_there() {
             w.units.get(1).unwrap().hidden,
         );
         assert_eq!(listed, hidden);
+        // Walking hidden, it stays on the list of the tile it is on and is not painted.
+        let at = w.find(1).unwrap();
+        let c = w.zoo.entities[at].common.as_ref().unwrap();
+        let t = w
+            .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
+            .unwrap();
+        assert_eq!(hidden, w.units_on(t).any(|e| e == at) && !w.is_drawn(at));
         !listed
     });
     let at = w.find(1).unwrap();
@@ -751,6 +768,69 @@ fn a_user_of_a_building_with_no_exit_on_the_map_is_taken_off_it_and_stays_hidden
     assert_eq!(task(&w), 0);
 }
 
+/// Moves building `id` to the last row, where the exit of its slot is off the map.
+fn lose_exit(w: &mut World, id: u32) {
+    let at = w.find(id).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().y = 9 * 64 + 32;
+}
+
+#[test]
+fn a_user_with_no_exit_is_only_off_its_tile_list_and_is_shown_when_the_leave_goal_completes() {
+    let (cat, mut w, mut money) = (types(), zoo_of(Some("booth")), Money::default());
+    let mut s = game();
+    holding(&mut w);
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    let (at, before) = (w.find(1).unwrap(), spot(&w));
+    let own = w.tile_index(before.0 / 64, before.1 / 64).unwrap();
+    // Hidden, not painted, and still on its tile's list.
+    assert!(w.units.get(1).unwrap().hidden && w.units_on(own).any(|e| e == at));
+    assert!(!w.is_drawn(at));
+    lose_exit(&mut w, 9);
+    for _ in 0..3000 {
+        s.step_game(&walks(), &cat, &mut w, &mut money, 67, |_, _, _| {});
+        if w.units.buildings[&9].users.is_empty() {
+            break;
+        }
+    }
+    // Where it was, shown, its goal gone, in the entity list and on no tile list.
+    assert!(w.units.buildings[&9].users.is_empty());
+    assert_eq!(spot(&w), before);
+    assert!(!w.units.get(1).unwrap().hidden && w.is_drawn(at));
+    assert_eq!(task(&w), 0);
+    assert!(!w.units_on(own).any(|e| e == at));
+    // It joins a list again at its first change of tile (it holds nothing to drop, which would
+    // edit the map).
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        g.items = Default::default();
+    }
+    for _ in 0..600 {
+        s.step_game(&walks(), &cat, &mut w, &mut money, 67, |_, _, _| {});
+        let (x, y, _) = spot(&w);
+        if (x / 64, y / 64) != (before.0 / 64, before.1 / 64) {
+            let t = w.tile_index(x / 64, y / 64).unwrap();
+            assert!(w.units_on(t).any(|e| e == at));
+            return;
+        }
+        assert!(!w.units_on(own).any(|e| e == at));
+    }
+    panic!("the guest never left its tile");
+}
+
+#[test]
+fn a_visible_user_with_no_exit_stays_drawn_where_it_is_off_its_tile_list() {
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    let mut s = game();
+    holding(&mut w);
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    let (at, before) = (w.find(1).unwrap(), spot(&w));
+    let own = w.tile_index(before.0 / 64, before.1 / 64).unwrap();
+    lose_exit(&mut w, 9);
+    crate::building::leave::push_out(&mut w, &cat, 9);
+    assert_eq!(spot(&w), before);
+    assert!(w.is_drawn(at) && !w.units_on(own).any(|e| e == at));
+    assert_eq!(task(&w), 0);
+}
+
 #[test]
 fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and_its_id() {
     let (cat, mut w, mut money) = (types(), zoo(), Money::default());
@@ -941,4 +1021,19 @@ fn picked_up_is_carried_from_the_exit() {
     let carry = crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
     assert_eq!((carry.from.0, carry.from.1), (336, 272));
     assert!(w.units.buildings[&9].users.is_empty());
+}
+
+#[test]
+fn a_hidden_user_stays_in_the_crowd_of_its_megatile() {
+    let (cat, mut w, mut money) = (types(), zoo_of(Some("booth")), Money::default());
+    let mut s = game();
+    holding(&mut w);
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    assert!(w.units.get(1).unwrap().hidden);
+    crate::guest::mega::update(&mut w, &cat, 7500);
+    let n: u32 = [0usize, 5, 50, 55]
+        .iter()
+        .map(|&t| w.units.mega.at(10, t).unwrap().guests)
+        .sum();
+    assert_eq!(n, 1);
 }

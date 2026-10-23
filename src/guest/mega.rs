@@ -64,10 +64,12 @@ fn count(world: &World, cat: &Catalogue, cells: usize) -> Vec<Cell> {
     let width = world.zoo.width as usize;
     let mut out = vec![Cell::default(); cells];
     let cell_of = |t: usize| (t / width / SIDE) * width.div_ceil(SIDE) + t % width / SIDE;
-    for (at, e) in world.zoo.entities.iter().enumerate() {
-        if let (Some(t), "guests") = (super::view::tile_of(world, at), e.class.as_str()) {
-            out[cell_of(t)].guests += 1;
-        }
+    // The tile lists are walked (6.7.1): a guest taken off its tile's list is not counted.
+    for t in 0..world.zoo.tiles.len() {
+        let guests = world
+            .units_on(t)
+            .filter(|&at| world.zoo.entities[at].class == "guests");
+        out[cell_of(t)].guests += guests.count() as u32;
     }
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     // (bonus, stink) of an entity, shared by its quadrants.
