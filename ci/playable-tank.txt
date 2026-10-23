@@ -7,12 +7,13 @@
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
 # rocks and plants cost points) and want 70; with these they rate it 91.
-# The seed 5 draws women for the three hires (the staff of the trials are women only, and the Hire
+# The seed 6 draws women for the three hires (the staff of the trials are women only, and the Hire
 # list is empty when a man is drawn) when the game starts on its map; a game started from the main
-# menu draws a man for the second hire.
+# menu draws a man for the second hire. The seed was 5 before the closing wall piece drew once for
+# the new tank (the exhibit is rated when the pen closes), which shifted the shared stream.
 # The hires come before the adoption: an animal placed rates its exhibit at once (habitat rating 9.4),
-# which draws from the shared stream, and the seed 5 draws women for the hires made first.
-#run maps/sm_aqua.zoo --cash 75000 --seed 5 --passes 5800 --clock 200
+# which draws from the shared stream, and the seed 6 draws women for the hires made first.
+#run maps/sm_aqua.zoo --cash 75000 --seed 6 --passes 5800 --clock 200
 #exhibit 16,35,21,40
 #months 3
 #expect 1 exhibit gate [0-9]+

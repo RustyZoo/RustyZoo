@@ -1011,3 +1011,58 @@ fn the_water_waits_while_the_game_is_paused_and_a_tank_made_then_is_full_at_once
         assert_eq!((tank.level, tank.filled), (4, true), "full at once");
     });
 }
+
+#[test]
+fn a_piece_the_tool_places_to_close_a_pen_marks_and_rates_the_pen() {
+    with_game("close", "", |s| {
+        for side in [0, 2, 4] {
+            s.fence(1, 20, 20, side);
+        }
+        s.app.game.as_mut().unwrap().build.hold(1);
+        s.pass(&[s.at(20, 20, 12, 32)]);
+        s.pass(&[Command::Mouse(Mouse::Down)]);
+        s.pass(&[Command::Mouse(Mouse::Up)]);
+        let world = &s.app.game.as_ref().unwrap().world;
+        let pen = world.exhibits().region(20 * 40 + 20).unwrap();
+        assert_ne!(pen, crate::exhibit::GROUNDS);
+        let pen = world.exhibits().get(pen).unwrap();
+        assert!(!pen.rating.dirty, "marked and rated by the pair");
+    });
+}
+
+#[test]
+fn a_piece_the_bulldozer_takes_to_join_two_pens_marks_and_rates_the_one_left() {
+    with_game("join", "[UI]\nconfirmSell=0\n", |s| {
+        // Two pens side by side, the line between them held by one piece of the west pen.
+        for side in [0, 2, 4, 6] {
+            s.fence(1, 20, 20, side);
+        }
+        for side in [0, 2, 4] {
+            s.fence(1, 21, 20, side);
+        }
+        assert_eq!(
+            s.app.game.as_ref().unwrap().world.exhibits().list().len(),
+            2
+        );
+        // The pair alone rates the pen: the game is paused, so no step does.
+        s.pass(&[Command::Pause]);
+        s.pass(&[DELETE]);
+        s.pass(&[s.at(20, 20, 62, 32)]);
+        assert_eq!(
+            s.click(s.at(20, 20, 62, 32)),
+            ["tool bulldoze ask Merge(1, 2)"]
+        );
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        assert!(
+            told.iter().any(|l| l.starts_with("world remove")),
+            "{told:?}"
+        );
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert_eq!(world.exhibits().list().len(), 1);
+        let pen = world.exhibits().region(20 * 40 + 20).unwrap();
+        assert!(
+            !world.exhibits().get(pen).unwrap().rating.dirty,
+            "rated by the pair"
+        );
+    });
+}
