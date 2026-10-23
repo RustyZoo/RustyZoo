@@ -497,6 +497,50 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// Goals 6.2, guest buildings 11.3: a guest on tile `t` that stands on the footprint of a
+    /// building of a whole tile or more (the building does not let it through and the guest's
+    /// level lies within its depth and height), outside tasks 0x68 to 0x6a, leaves it (0x69). Only
+    /// guests have the leave goal here.
+    pub(in crate::goal) fn send_out(&mut self, t: usize) {
+        if self.unit.kind != crate::unit::Kind::Guest || IN_BUILDING.contains(&self.record().task) {
+            return;
+        }
+        let Some(e) = self.world.quadrant(t, 3) else {
+            return;
+        };
+        let (b, here) = (
+            &self.world.zoo.entities[e],
+            self.world.zoo.entities.get(self.at),
+        );
+        let (Some(s), Some(c), Some(u)) = (
+            self.world.shape(e),
+            b.common.as_ref(),
+            here.and_then(|u| u.common.as_ref()),
+        ) else {
+            return;
+        };
+        let through = if self.unit.mover.tall {
+            s.walkable.1
+        } else {
+            s.walkable.0
+        };
+        let level = c.z.div_euclid(16);
+        let reach = level.saturating_sub(s.tank.depth)..=level.saturating_add(s.tank.height);
+        if b.class != "building"
+            || through
+            || s.footprint.0.saturating_mul(s.footprint.1) <= 3
+            || !reach.contains(&u.z.div_euclid(16))
+        {
+            return;
+        }
+        let id = c.id;
+        self.reset();
+        if let Some(g) = self.guest() {
+            g.building = id;
+        }
+        self.set_task(EXIT_BUILDING, 1, id, None);
+    }
+
     /// 0x69 check done: one time in 15 the building is looked at again (it is gone: the goal ends
     /// and the guest is shown); done at the target.
     pub(in crate::goal) fn exit_check_done(&mut self) {

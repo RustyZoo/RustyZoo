@@ -742,11 +742,15 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 6.2 before the object: one draw, and one time in 15 a unit outside the zoo is removed.
-    /// (The unit on the footprint of a building is sent out by the building issue.)
+    /// 6.2 before the object: one draw, and one time in 15 a unit outside the zoo is removed and
+    /// a guest on the footprint of a building is sent out of it.
     fn common(&mut self) {
-        if self.ctx.rng.pick(15) == 0 && !self.tile().is_some_and(|t| self.world.in_zoo(t)) {
-            self.ctx.remove(self.world, self.unit.id);
+        if self.ctx.rng.pick(15) != 0 {
+            return;
+        }
+        match self.tile() {
+            Some(t) if self.world.in_zoo(t) => self.send_out(t),
+            _ => self.ctx.remove(self.world, self.unit.id),
         }
     }
 

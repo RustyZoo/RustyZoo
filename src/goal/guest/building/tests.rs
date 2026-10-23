@@ -832,6 +832,38 @@ fn a_visible_user_with_no_exit_stays_drawn_where_it_is_off_its_tile_list() {
 }
 
 #[test]
+fn one_draw_in_fifteen_sends_a_guest_on_the_footprint_of_a_building_out_of_it() {
+    // Guest 1 first, as the context wants it; a stand 7 at (5, 5) and a hall 9 at (5, 3).
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 6)), 0));
+        zoo.entities
+            .push(entity("building", "stand", 7, centre((5, 5)), 4));
+        zoo.entities
+            .push(entity("building", "hall", 9, centre((5, 3)), 4));
+    });
+    let cat = types();
+    let task_at = |w: &mut World, tile: (i32, i32)| {
+        let at = w.find(1).unwrap();
+        let c = w.zoo.entities[at].common.as_mut().unwrap();
+        (c.x, c.y) = centre(tile);
+        with_cx(&cat, w, |cx| {
+            while cx.ctx.rng.clone().pick(15) != 0 {
+                cx.ctx.rng.rand();
+            }
+            cx.common();
+            cx.record().task
+        })
+    };
+    // Off any building, and on the one-quarter stand, nothing changes; on the hall, a whole
+    // tile, the guest leaves it.
+    assert_eq!(task_at(&mut w, (2, 6)), 0);
+    assert_eq!(task_at(&mut w, (5, 5)), 0);
+    assert_eq!(task_at(&mut w, (5, 3)), EXIT_BUILDING);
+    assert_eq!(guest(&w).building, 9);
+}
+
+#[test]
 fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and_its_id() {
     let (cat, mut w, mut money) = (types(), zoo(), Money::default());
     let mut s = game();
