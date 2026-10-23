@@ -679,6 +679,19 @@ fn the_plaque_shows_the_stored_sets_without_a_rating() {
 }
 
 #[test]
+fn the_plaque_of_an_egg_has_the_egg_line_and_no_scenery() {
+    let (mut w, cat) = (gated(linked()), catalogue());
+    let shape = rock((8, 3)).1;
+    w.unrecorded(|w| w.add(entity("objects", "briar", 0, centre((8, 3)), 0), shape));
+    let lines = |w: &World, id| crate::panel::exhibit::plaque_lines(w, &cat, w.find(id).unwrap());
+    assert!(lines(&w, 3).iter().any(|l| l.2.is_some()));
+    if let crate::unit::Part::Animal(a) = &mut w.units.get_mut(3).unwrap().part {
+        a.egg = true;
+    }
+    assert_eq!(lines(&w, 3), [(9965, false, None)]);
+}
+
+#[test]
 fn an_exhibit_without_a_gate_is_nobodys_home() {
     let (mut w, cat) = (linked(), catalogue());
     let (tank, land) = pair(&w);

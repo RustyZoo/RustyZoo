@@ -82,6 +82,8 @@ const FEMALE: i32 = 30000;
 /// (the string is the base plus this).
 const SALINITY: u32 = 11;
 const SHOW_TANK: i32 = 91;
+/// The single line of an egg (the string is the base plus this; no female variant).
+const EGG: i32 = 65;
 /// The line about a kind of scenery the species dislikes, and the first string of the names of
 /// object types.
 const DISLIKED: i32 = 90;
@@ -135,11 +137,13 @@ pub type Line = (i32, bool, Option<i32>);
 /// (`Animal::advice` and `important`): the important bits, the important scenery the species
 /// dislikes (`scenery[0]`, name ids), the other bits, the other scenery (`scenery[1]`); when
 /// nothing is added the exhibit is well suited. An animal in a show tank has its own line, and
-/// the salinity bit after it in red.
+/// the salinity bit after it in red. An egg lists no scenery and ends with its own care line,
+/// which also keeps the exhibit from being well suited.
 pub fn recommendations(
     (advice, important): (u64, u64),
     female: bool,
     show_tank: bool,
+    egg: bool,
     scenery: [&[i32]; 2],
 ) -> Vec<Line> {
     let base = RECOMMENDATION + if female { FEMALE } else { 0 };
@@ -159,10 +163,13 @@ pub fn recommendations(
             .map(move |b| (base + 1 + b, first, None));
         let about = scenery[usize::from(!first)]
             .iter()
+            .filter(|_| !egg)
             .map(move |&name| (base + DISLIKED, first, Some(name)));
         bits.chain(about)
     };
-    let lines: Vec<Line> = part(true).chain(part(false)).collect();
+    let lines: Vec<Line> = (part(true).chain(part(false)))
+        .chain(egg.then_some((RECOMMENDATION + EGG, false, None)))
+        .collect();
     match lines.is_empty() {
         true => vec![(base, false, None)],
         false => lines,
@@ -515,6 +522,10 @@ pub(crate) fn plaque_lines(world: &World, cat: &Catalogue, at: usize) -> Vec<Lin
             _ => None,
         })
         .unwrap_or_default();
+    let egg = (world.zoo.entities.get(at))
+        .and_then(|e| e.common.as_ref())
+        .and_then(|c| world.units.get(c.id))
+        .is_some_and(|u| matches!(&u.part, Part::Animal(a) if a.egg));
     let female = ty.is_some_and(|t| t.subtype.first() == Some(&b'f'));
     let show = (under.and_then(|id| world.exhibits().get(id)))
         .is_some_and(|e| e.tank.is_some_and(|t| t.show));
@@ -522,7 +533,13 @@ pub(crate) fn plaque_lines(world: &World, cat: &Catalogue, at: usize) -> Vec<Lin
         (Some(i), Some(t)) => rating::disliked(&i.site, &rating::Likes::of(t), important),
         _ => Vec::new(),
     };
-    recommendations(stored, female, show, [&dislikes(true), &dislikes(false)])
+    recommendations(
+        stored,
+        female,
+        show,
+        egg,
+        [&dislikes(true), &dislikes(false)],
+    )
 }
 
 /// The exhibit that the entity at `at` stands in, if it is an exhibit and not the grounds.
