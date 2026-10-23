@@ -16,7 +16,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-pub use cost::{step, terrain};
+pub use cost::{in_reach, step, terrain};
 use search::open_deep;
 pub use search::search;
 

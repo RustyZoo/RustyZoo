@@ -113,6 +113,8 @@ pub struct Kind {
     pub change: [i32; 6],
     pub hide: bool,
     pub outside: bool,
+    /// A user is put inside without a walk (`cUserTeleportsInside`).
+    pub teleports: bool,
     pub uses_exit: bool,
     pub direct: bool,
     pub holds: bool,
@@ -197,6 +199,7 @@ impl Kind {
             .map(|k| int(k, 0)),
             hide: flag("cHideUser", false),
             outside: flag("cUserStaysOutside", true),
+            teleports: flag("cUserTeleportsInside", false),
             uses_exit: flag("cUserUsesExit", false),
             direct: flag("cDirectEntrance", false),
             holds: flag("cHoldsOntoUser", false),

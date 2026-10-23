@@ -35,7 +35,7 @@ fn quarters(w: &World, m: &Mover, t: usize, level: Option<i32>) -> [(bool, bool)
 
 /// Whether level `level` is one the entity `e` on tile `t` blocks (tank fauna 7.3): every level
 /// out of a tank.
-fn in_reach(w: &World, e: usize, t: usize, level: i32) -> bool {
+pub fn in_reach(w: &World, e: usize, t: usize, level: i32) -> bool {
     let (Some(tank), Some(c)) = (
         w.shape(e).map(|s| s.tank),
         w.zoo.entities[e].common.as_ref(),
