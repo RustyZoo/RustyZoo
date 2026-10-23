@@ -1419,3 +1419,58 @@ fn the_draws_of_the_changed_building_goals_follow_the_goal_updates() {
         }
     });
 }
+
+#[test]
+fn an_entrance_or_slot_on_the_units_own_tile_still_raises_the_flag_and_walks() {
+    let cat = types();
+    // The restroom 8 at (5, 8): its slot is on (5, 8), its only entrance on (5, 9).
+    let on = |at| {
+        world_with((10, 10), |zoo| {
+            zoo.entities.push(entity("guests", "man", 1, centre(at), 0));
+            zoo.entities
+                .push(entity("building", "restroom", 8, centre((5, 8)), 4));
+        })
+    };
+    let mut w = on((5, 8));
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 8;
+        cx.set_task(ENTER_BUILDING, 0, 8, None);
+        cx.enter_decide();
+        assert_eq!(cx.record().task, ENTER_BUILDING);
+        assert_eq!(cx.record().target.tile, w_tile((5, 8)));
+        assert!(cx.unit.through_building);
+    });
+    let mut w = on((5, 9));
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 8;
+        cx.set_task(EXIT_BUILDING, 1, 8, None);
+        draws(cx, 1, |cx| cx.exit_decide());
+        assert_eq!(cx.record().target.tile, w_tile((5, 9)));
+        assert!(cx.unit.through_building);
+    });
+    // A user that stays outside is done on its own tile, with the flag down.
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((5, 4)), 0));
+        zoo.entities
+            .push(entity("building", "kiosk", 9, centre((5, 3)), 4));
+    });
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 9;
+        cx.set_task(EXIT_BUILDING, 1, 9, None);
+        cx.exit_decide();
+        assert_eq!(cx.record().target.tile, w_tile((5, 4)));
+        assert!(!cx.unit.through_building);
+    });
+}
+
+#[test]
+fn the_enter_decide_clears_the_goal_when_the_building_is_gone() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 99;
+        cx.set_task(ENTER_BUILDING, 0, 99, None);
+        cx.enter_decide();
+        assert_eq!(cx.record().task, 0);
+    });
+}

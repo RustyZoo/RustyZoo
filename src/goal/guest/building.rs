@@ -271,11 +271,12 @@ impl Cx<'_, '_> {
     }
 
     /// 0x68 decide (goals 11.3): a user that stays outside or is put inside is done on its own
-    /// tile, at the entrance; any other walks into its slot, and a refused walk ends the goal.
+    /// tile, at the entrance; any other walks into its slot, even when the slot's inside position
+    /// is on its own tile, and a refused walk or a building that is gone ends the goal.
     pub(in crate::goal) fn enter_decide(&mut self) {
         let (id, slot) = self.guest().map_or((0, 0), |g| (g.building, g.slot));
         let Some((e, kind)) = self.building(id) else {
-            return;
+            return self.reset();
         };
         let own = self.tile();
         if kind.outside || kind.teleports {
@@ -286,12 +287,10 @@ impl Cx<'_, '_> {
             return self.reset();
         };
         // The walk into the building looks at the edge cost only (pathfinding 4.2).
-        if Some(t) != own {
-            self.unit.through_building = true;
-            if !(self.path_to(t, false) && self.start_walk(false, false, false)) {
-                self.unit.through_building = false;
-                return self.reset();
-            }
+        self.unit.through_building = true;
+        if !(self.path_to(t, false) && self.start_walk(false, false, false)) {
+            self.unit.through_building = false;
+            return self.reset();
         }
         self.unit.goal.record.target.set_tile(self.world, Some(t));
     }
@@ -489,9 +488,6 @@ impl Cx<'_, '_> {
             Some(building::place(&e, list[self.ctx.rng.pick(n) as usize]))
         });
         let tile = entrance.and_then(|p| self.tile_at(p));
-        if tile.is_some() && tile == own {
-            return self.set_task(EXIT_BUILDING, 1, id, own);
-        }
         self.unit.through_building = true;
         let Some(t) = tile else {
             return;
