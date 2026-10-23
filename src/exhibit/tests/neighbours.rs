@@ -520,7 +520,14 @@ fn bits(w: &World, id: u32) -> (u64, u64) {
 }
 
 fn home(w: &World, cat: &Catalogue, id: u32) -> Option<u32> {
-    crate::panel::exhibit::home_at(w, cat, w.find(id).unwrap())
+    let at = w.find(id).unwrap();
+    let likes = rating::Likes::of(crate::panel::exhibit::type_at(w, cat, at)?);
+    crate::animal::home::home(
+        w,
+        cat,
+        crate::panel::exhibit::animals_exhibit(w, at)?,
+        &likes,
+    )
 }
 
 fn give_gate(w: &mut World, x: u32) {
@@ -630,9 +637,28 @@ fn the_plaque_lists_the_scenery_of_the_exhibit_under_the_animal() {
     // The bear that swims lists the tank's thorn; the one on the land, its own briar.
     assert_eq!(objects(&lines(&w, 1)), [8]);
     assert_eq!(objects(&lines(&w, 3)), [9]);
-    // Its bits are the land home's: too much of the other ground, which a tank never says.
-    let too_much = 9900 + 1 + rating::bit::terrain(3) + 1;
-    assert!(lines(&w, 1).iter().any(|l| l.0 == too_much as i32));
+    // The bits are the stored ones, written by the passes: the land bear has too much of the
+    // other ground; the one that swims in the tank is not written by either pass.
+    settle(&mut w, &cat, land);
+    settle(&mut w, &cat, tank);
+    let too_much = 9900 + 1 + rating::bit::terrain(3) as i32 + 1;
+    assert!(lines(&w, 3).iter().any(|l| l.0 == too_much));
+    assert!(!lines(&w, 1).iter().any(|l| l.0 == too_much));
+}
+
+#[test]
+fn the_plaque_shows_the_stored_sets_without_a_rating() {
+    let (mut w, cat) = (gated(linked()), catalogue());
+    let lines = |w: &World, id| crate::panel::exhibit::plaque_lines(w, &cat, w.find(id).unwrap());
+    let hungry = (9900 + 1, true, None);
+    assert!(!lines(&w, 3).contains(&hungry));
+    // A bit the hunger check sets shows at once, in the important group, with no exhibit change.
+    if let crate::unit::Part::Animal(a) = &mut w.units.get_mut(3).unwrap().part {
+        (a.advice, a.important) = (1, 1);
+    }
+    assert_eq!(lines(&w, 3)[0], hungry);
+    // Another animal's plaque does not show it.
+    assert!(!lines(&w, 1).contains(&hungry));
 }
 
 #[test]

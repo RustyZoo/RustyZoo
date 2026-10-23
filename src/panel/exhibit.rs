@@ -6,12 +6,11 @@
 //!
 //! [`Panel`] holds what the player chose (the current exhibit, the animal of the plaque) and
 //! the refresh clocks; [`Panel::refresh`] writes the layout from the world and returns the
-//! `panel` log lines of what changed. The rating is computed from the world at each refresh.
+//! `panel` log lines of what changed. The exhibit panel rates its exhibit at each refresh.
 
-use crate::animal::home;
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
-use crate::exhibit::rating::{self, Record};
+use crate::exhibit::rating;
 use crate::exhibit::viewing::{self, Wear};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
 use crate::panel::guest::{thought_rows, thought_texts};
@@ -21,6 +20,7 @@ use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
 use crate::ui::layout::{Picture, Rgb};
 use crate::ui::widgets::Row;
+use crate::unit::Part;
 use crate::vfs::Vfs;
 use crate::world::World;
 
@@ -131,19 +131,20 @@ pub fn keeper_kind(keeper: i32) -> usize {
 /// scenery the name id of the object type.
 pub type Line = (i32, bool, Option<i32>);
 
-/// The lines of an animal's recommendations (habitat rating 7): the important bits, the
-/// important scenery the species dislikes (`scenery[0]`, name ids), the other bits, the other
-/// scenery (`scenery[1]`); when nothing is added the exhibit is well suited. An animal in a show
-/// tank has its own line, and the salinity bit after it in red.
+/// The lines of an animal's recommendations (habitat rating 7) from its two stored sets `bits`
+/// (`Animal::advice` and `important`): the important bits, the important scenery the species
+/// dislikes (`scenery[0]`, name ids), the other bits, the other scenery (`scenery[1]`); when
+/// nothing is added the exhibit is well suited. An animal in a show tank has its own line, and
+/// the salinity bit after it in red.
 pub fn recommendations(
-    record: Option<&Record>,
+    (advice, important): (u64, u64),
     female: bool,
     show_tank: bool,
     scenery: [&[i32]; 2],
 ) -> Vec<Line> {
     let base = RECOMMENDATION + if female { FEMALE } else { 0 };
     if show_tank {
-        let salt = record.is_some_and(|r| r.has(SALINITY));
+        let salt = advice >> SALINITY & 1 == 1;
         return [
             Some((base + SHOW_TANK, false, None)),
             salt.then_some((base + 1 + SALINITY as i32, true, None)),
@@ -152,15 +153,13 @@ pub fn recommendations(
         .flatten()
         .collect();
     }
-    let part = |important: bool| {
+    let part = |first: bool| {
         let bits = (0..64)
-            .filter(move |&b| {
-                record.is_some_and(|r| r.has(b) && (r.important >> b & 1 == 1) == important)
-            })
-            .map(move |b| (base + 1 + b as i32, important, None));
-        let about = scenery[usize::from(!important)]
+            .filter(move |&b| advice >> b & 1 == 1 && (important >> b & 1 == 1) == first)
+            .map(move |b| (base + 1 + b, first, None));
+        let about = scenery[usize::from(!first)]
             .iter()
-            .map(move |&name| (base + DISLIKED, important, Some(name)));
+            .map(move |&name| (base + DISLIKED, first, Some(name)));
         bits.chain(about)
     };
     let lines: Vec<Line> = part(true).chain(part(false)).collect();
@@ -171,7 +170,7 @@ pub fn recommendations(
 }
 
 /// The type of the entity at position `at` of the entity list.
-pub(super) fn type_at<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
+pub(crate) fn type_at<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
     crate::place::bulldozer::type_of(cat, world.zoo.entities.get(at)?)
 }
 
@@ -440,7 +439,7 @@ impl Panel {
 
     /// Writes the plaque for the animal `self.plaque`, if it is still in the world: its name, the
     /// background and title of its keeper kind, and its recommendations ([`plaque_lines`]),
-    /// rated from the world now. Returns the log lines of what changed.
+    /// read from the animal's stored sets. Returns the log lines of what changed.
     pub fn refresh_plaque(
         &mut self,
         ui: &mut Interface,
@@ -501,18 +500,21 @@ impl Panel {
     }
 }
 
-/// The lines of the plaque of the animal at `at` (habitat rating 7). The bits come from the
-/// record of its species in its home (tank fauna 12.3), else in the exhibit under it; the show
-/// test and the undesirable scenery come from the exhibit under it.
+/// The lines of the plaque of the animal at `at` (habitat rating 7). The bits are the animal's
+/// stored sets, the animal checks' included; the show test and the undesirable scenery come
+/// from the exhibit under it.
 pub(crate) fn plaque_lines(world: &World, cat: &Catalogue, at: usize) -> Vec<Line> {
     let ty = type_at(world, cat, at);
     let under = animals_exhibit(world, at);
     let input = under.map(|id| rating::input(world, cat, id));
-    let home = home_at(world, cat, at).filter(|&h| Some(h) != under);
-    let bits = home.map(|h| rating::input(world, cat, h));
-    let records = bits.as_ref().or(input.as_ref()).map(rating::rate);
-    let species = ty.map(|t| String::from_utf8_lossy(&t.type_name).into_owned());
-    let record = (records.iter().flatten()).find(|r| Some(&r.key) == species.as_ref());
+    let stored = (world.zoo.entities.get(at))
+        .and_then(|e| e.common.as_ref())
+        .and_then(|c| world.units.get(c.id))
+        .and_then(|u| match &u.part {
+            Part::Animal(a) => Some((a.advice, a.important)),
+            _ => None,
+        })
+        .unwrap_or_default();
     let female = ty.is_some_and(|t| t.subtype.first() == Some(&b'f'));
     let show = (under.and_then(|id| world.exhibits().get(id)))
         .is_some_and(|e| e.tank.is_some_and(|t| t.show));
@@ -520,7 +522,7 @@ pub(crate) fn plaque_lines(world: &World, cat: &Catalogue, at: usize) -> Vec<Lin
         (Some(i), Some(t)) => rating::disliked(&i.site, &rating::Likes::of(t), important),
         _ => Vec::new(),
     };
-    recommendations(record, female, show, [&dislikes(true), &dislikes(false)])
+    recommendations(stored, female, show, [&dislikes(true), &dislikes(false)])
 }
 
 /// The exhibit that the entity at `at` stands in, if it is an exhibit and not the grounds.
@@ -533,13 +535,6 @@ pub fn animals_exhibit(world: &World, at: usize) -> Option<u32> {
         .exhibits()
         .region(t)
         .filter(|&r| r != GROUNDS && r != EXTERIOR)
-}
-
-/// The home of the animal at `at` (tank fauna 12.3), worked out now: `None` on the zoo grounds,
-/// when the exhibit under it is a show tank, or when its candidate has no gate.
-pub fn home_at(world: &World, cat: &Catalogue, at: usize) -> Option<u32> {
-    let likes = rating::Likes::of(type_at(world, cat, at)?);
-    home::home(world, cat, animals_exhibit(world, at)?, &likes)
 }
 
 #[cfg(test)]
