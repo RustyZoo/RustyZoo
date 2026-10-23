@@ -1483,7 +1483,7 @@ impl<'a> App<'a> {
                     sign: 1,
                 });
                 let rand = &mut || self.sim.rng.rand();
-                rating::again(&game.world, &mut before, at);
+                rating::again(&game.world, &mut before, at, rating::reads_neighbours(ty));
                 rating::react(&mut game.world, cat, before, change, rand);
             }
             match outcome {

@@ -591,13 +591,23 @@ pub fn entity(
 
 /// After an entity is placed or removed at `tile`, the exhibit of its tile is looked up again
 /// (9.4): a fence piece that closes, opens or splits an exhibit leaves the tile in another one, and
-/// that one is marked, flagged and compared by [`react`] in place of the one read before. The sums
-/// read before stay; the neighbours read with them are kept.
-pub fn again(world: &World, before: &mut Sums, tile: Option<usize>) {
-    let now = tile.and_then(|t| world.exhibits().region(t));
-    if let (Some(first), Some(x)) = (before.first_mut(), now.filter(|&x| x != EXTERIOR)) {
-        first.0 = x;
+/// everything the after step reads comes from that one, as [`entity`] reads it from the exhibit
+/// of the before: its tank test, its amphibious neighbours when `near`, its rates flag. Only the
+/// table of sums read before stays (a species it lacks is an old sum of 0).
+pub fn again(world: &World, before: &mut Sums, tile: Option<usize>, near: bool) {
+    let x = tile.and_then(|t| world.exhibits().region(t));
+    let (Some(x), Some(last)) = (x.filter(|&x| x != EXTERIOR), before.last()) else {
+        return;
+    };
+    let table = last.1.clone();
+    let tank = world.exhibits().get(x).filter(|e| e.tank.is_some());
+    let neighbours = tank.map(|e| e.amphibious.clone());
+    let rates = neighbours.as_ref().filter(|n| !n.is_empty() || !near);
+    let mut all = vec![(x, table.clone(), rates.map(|_| false))];
+    for n in neighbours.into_iter().flatten().filter(|_| near) {
+        all.push((n, table.clone(), Some(true)));
     }
+    *before = all;
 }
 
 /// The sum of each species of exhibit `x` that `rates` names (as [`Sums`]), read through a

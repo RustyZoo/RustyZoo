@@ -1169,7 +1169,57 @@ fn a_fence_that_closes_a_pen_marks_and_rates_the_exhibit_it_makes() {
     w.unrecorded(|w| w.add(piece, shape)).unwrap();
     let closed = w.exhibits().region(tile).unwrap();
     assert!(closed != crate::exhibit::GROUNDS && dirty(&w, closed));
-    rating::again(&w, &mut before, Some(tile));
+    rating::again(&w, &mut before, Some(tile), false);
     rating::react(&mut w, &cat, before, None, &mut || 0);
     assert!(!dirty(&w, closed), "rated again");
+}
+
+/// A piece of the tank's north wall, its shape and its tile.
+fn north_wall(w: &World) -> (crate::zoo::Entity, Option<Shape>, usize) {
+    let tile = 2 * WIDE + 3;
+    let at = w.edge(tile, 0).unwrap();
+    (w.zoo.entities[at].clone(), w.shape(at), tile)
+}
+
+#[test]
+fn a_wall_that_opens_a_tank_leaves_its_land_neighbour_alone() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let (piece, _, tile) = north_wall(&w);
+    let mut before = rating::entity(&mut w, &cat, Some(tile), true, &mut || 0);
+    assert_eq!(read(&before), [(tank, Some(false)), (land, Some(true))]);
+    let table = before[0].1.clone();
+    assert!(w.unrecorded(|w| w.remove(piece.common.as_ref().unwrap().id)));
+    assert_eq!(w.exhibits().region(tile), Some(crate::exhibit::GROUNDS));
+    // The tile is in the grounds now: no tank, so no neighbour step; the table stays.
+    rating::again(&w, &mut before, Some(tile), true);
+    assert_eq!(read(&before), [(crate::exhibit::GROUNDS, None)]);
+    assert_eq!(before[0].1, table);
+    clean(&mut w);
+    let (draws, mut rand) = draw_counter();
+    rating::react(&mut w, &cat, before, None, &mut rand);
+    assert_eq!(draws.get(), 0);
+    assert!(!dirty(&w, land));
+}
+
+#[test]
+fn a_wall_that_closes_a_pen_into_a_tank_reads_the_land_beside_it() {
+    let (mut w, cat) = (linked(), catalogue());
+    let (piece, shape, tile) = north_wall(&w);
+    assert!(w.unrecorded(|w| w.remove(piece.common.as_ref().unwrap().id)));
+    // The pen reads as the grounds before.
+    let mut before = rating::entity(&mut w, &cat, Some(tile), true, &mut || 0);
+    assert_eq!(read(&before), [(crate::exhibit::GROUNDS, None)]);
+    w.unrecorded(|w| w.add(piece, shape)).unwrap();
+    let tank = w.exhibits().region(tile).unwrap();
+    assert!(w.exhibits().get(tank).is_some_and(|e| e.tank.is_some()));
+    // The new tank's ground is not level with the land, so the link is made by hand.
+    let land = w.exhibits().region(2 * WIDE + 6).unwrap();
+    w.exhibits_mut().get_mut(tank).unwrap().amphibious = vec![land];
+    // The tank first, its amphibious species skipped, then its land neighbour.
+    rating::again(&w, &mut before, Some(tile), true);
+    assert_eq!(read(&before), [(tank, Some(false)), (land, Some(true))]);
+    // A staff member's pair reads the tank alone.
+    rating::again(&w, &mut before, Some(tile), false);
+    assert_eq!(read(&before), [(tank, Some(false))]);
 }
