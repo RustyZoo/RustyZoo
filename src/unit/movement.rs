@@ -187,7 +187,7 @@ pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
     }
     snap(world, at);
     if off_map {
-        world.lift_unit(at);
+        world.hide_unit(at);
     }
 }
 

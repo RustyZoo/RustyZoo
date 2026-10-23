@@ -428,6 +428,15 @@ impl World {
         }
     }
 
+    /// Stops painting the unit at position `at` of the entity list; it stays on its tile's unit
+    /// list (a user hidden in a building, guest buildings 6.7.1).
+    pub fn hide_unit(&mut self, at: usize) {
+        if let Ok(o) = self.owner.binary_search(&at) {
+            self.scene.hide_unit(o);
+            self.dirty = true;
+        }
+    }
+
     /// Takes the unit at position `at` of the entity list off its tile's unit list only (guest
     /// buildings 6.7.1): it keeps its place, is drawn as before and joins a list again at its
     /// first change of tile.

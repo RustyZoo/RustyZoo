@@ -319,7 +319,7 @@ impl Cx<'_, '_> {
         self.world.units.building_note(format!("use {id} {unit}"));
         if kind.hide {
             self.unit.hidden = true;
-            self.world.lift_unit(self.at);
+            self.world.hide_unit(self.at);
         } else if !kind.outside {
             let (x, y) = building::place(&e, kind.slots[slot].at);
             let z = e.common.as_ref().map_or(0, |c| c.z);

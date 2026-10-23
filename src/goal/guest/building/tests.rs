@@ -322,6 +322,13 @@ fn a_user_walks_out_to_an_entrance_of_its_slot_and_is_released_there() {
             w.units.get(1).unwrap().hidden,
         );
         assert_eq!(listed, hidden);
+        // Walking hidden, it stays on the list of the tile it is on and is not painted.
+        let at = w.find(1).unwrap();
+        let c = w.zoo.entities[at].common.as_ref().unwrap();
+        let t = w
+            .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
+            .unwrap();
+        assert_eq!(hidden, w.units_on(t).any(|e| e == at) && !w.is_drawn(at));
         !listed
     });
     let at = w.find(1).unwrap();
@@ -775,7 +782,9 @@ fn a_user_with_no_exit_is_only_off_its_tile_list_and_is_shown_when_the_leave_goa
     run(&mut s, &cat, &mut w, &mut money, 1500, "use");
     let (at, before) = (w.find(1).unwrap(), spot(&w));
     let own = w.tile_index(before.0 / 64, before.1 / 64).unwrap();
-    assert!(w.units.get(1).unwrap().hidden && !w.units_on(own).any(|e| e == at));
+    // Hidden, not painted, and still on its tile's list.
+    assert!(w.units.get(1).unwrap().hidden && w.units_on(own).any(|e| e == at));
+    assert!(!w.is_drawn(at));
     lose_exit(&mut w, 9);
     for _ in 0..3000 {
         s.step_game(&walks(), &cat, &mut w, &mut money, 67, |_, _, _| {});
@@ -1012,4 +1021,19 @@ fn picked_up_is_carried_from_the_exit() {
     let carry = crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
     assert_eq!((carry.from.0, carry.from.1), (336, 272));
     assert!(w.units.buildings[&9].users.is_empty());
+}
+
+#[test]
+fn a_hidden_user_stays_in_the_crowd_of_its_megatile() {
+    let (cat, mut w, mut money) = (types(), zoo_of(Some("booth")), Money::default());
+    let mut s = game();
+    holding(&mut w);
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    assert!(w.units.get(1).unwrap().hidden);
+    crate::guest::mega::update(&mut w, &cat, 7500);
+    let n: u32 = [0usize, 5, 50, 55]
+        .iter()
+        .map(|&t| w.units.mega.at(10, t).unwrap().guests)
+        .sum();
+    assert_eq!(n, 1);
 }
