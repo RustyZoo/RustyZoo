@@ -33,8 +33,9 @@ use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::sim::Sim;
-use crate::status::{Finances, STATUS_BUTTON};
+use crate::status::{Finances, STATUS_BUTTON, Words};
 use crate::terrain::{Tool, habit};
+use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
@@ -509,6 +510,11 @@ const STATUS_MONEY: i32 = 1016;
 const STATUS_ANIMALS: i32 = 1011;
 const STATUS_GUESTS: i32 = 1013;
 const STATUS_ZOO: i32 = 1015;
+/// The date on the status bar (its tooltip is the string of the same number), and the strings of
+/// the patterns of the date and of the weekday in the tooltip.
+const STATUS_DATE: i32 = 1030;
+const DATE_PATTERN: i32 = 22012;
+const DAY_PATTERN: i32 = 22013;
 const OPTIONS_PANEL: i32 = 5;
 const MAIN_MENU_BUTTON: i32 = 1503;
 const EXIT_BUTTON: i32 = 1504;
@@ -911,13 +917,30 @@ impl<'a> App<'a> {
             .collect()
     }
 
-    /// Writes the three bars when they are due and when they changed, and shows the zoo status'
-    /// messages in the message line; a donation names its amount.
+    /// Writes the three bars (when they changed), and the date and the money text at each refresh, and
+    /// shows the zoo status' messages in the message line; a donation names its amount.
     fn status_told(&mut self, bars: Option<[i32; 3]>) {
         let messages = self.sim.take_messages();
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return;
         };
+        if bars.is_some() {
+            let date = self.sim.calendar().date();
+            let text = to_cp1252(&format::date(&ui.string(DATE_PATTERN), &date));
+            ui.set_text(STATUS_DATE, &text);
+            let day = format::date(&ui.string(DAY_PATTERN), &date);
+            let tip = format::expand(
+                &Words::new(|_| String::new()),
+                &ui.template(STATUS_DATE),
+                &[Arg::Text(&day)],
+            );
+            ui.set_string(STATUS_DATE, tip);
+            let (units, _) = game.money.bar();
+            ui.set_text(
+                STATUS_MONEY,
+                &to_cp1252(&Symbol::new(ui.string(SYMBOL)).text(units)),
+            );
+        }
         if let Some(bars) = bars.filter(|b| game.bars != Some(*b)) {
             game.bars = Some(bars);
             for (id, value) in [STATUS_ANIMALS, STATUS_GUESTS, STATUS_ZOO]
