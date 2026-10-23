@@ -870,7 +870,12 @@ fn a_customer_picked_up_leaves_the_stand_paying_and_with_no_goal() {
     assert!(w.units.get(1).unwrap().carried);
     assert_eq!(carry.from.0, spot(&w).0);
     // Put down, the guest goes on with its life and the stand is free for the next one.
-    assert!(crate::place::unit::put_down(&mut w, 1, (2 * 64 + 32, 6 * 64 + 32, 0), 0));
+    assert!(crate::place::unit::put_down(
+        &mut w,
+        1,
+        (2 * 64 + 32, 6 * 64 + 32, 0),
+        0
+    ));
     run(&mut s, &cat, &mut w, &mut money, 50, "never");
     assert_eq!(w.units.buildings[&7].income[2], 6.0);
 }
