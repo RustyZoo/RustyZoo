@@ -102,7 +102,7 @@ fn the_land_reads_the_types_and_the_water_of_its_tank_and_rates_them_too() {
     assert_eq!(keys(&of_land.species), ["polar"]);
     let mut near = keys(&of_land.near);
     near.sort();
-    assert_eq!(near, ["polar", "shark"]);
+    assert_eq!(near, ["polar"], "the shark is not amphibious");
     assert!(of_land.linked && of_land.near.iter().any(|l| l.amphibious));
     let water = w.exhibits().get(tank).unwrap().tank.unwrap();
     assert_eq!(of_land.neighbours.len(), 1);
@@ -117,7 +117,21 @@ fn the_land_reads_the_types_and_the_water_of_its_tank_and_rates_them_too() {
         polar.animals, 1,
         "the bear in the tank is not counted on the land"
     );
-    assert!(records.iter().any(|r| r.key == "shark"));
+    assert!(records.iter().all(|r| r.key != "shark"));
+}
+
+#[test]
+fn a_land_exhibit_rates_only_the_amphibious_species_of_its_tank() {
+    let (w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let keys = |x| {
+        rate(&input(&w, &cat, x))
+            .into_iter()
+            .map(|r| r.key)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(keys(land), ["polar"]);
+    assert_eq!(keys(tank), ["polar", "shark"]);
 }
 
 #[test]

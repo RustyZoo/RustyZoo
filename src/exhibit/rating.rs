@@ -1222,11 +1222,13 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
         .filter(|u| u.kind == Kind::Keeper)
         .find(|u| matches!(&u.part, Part::Staff(s) if s.assigned.contains(&id)))
         .map(|u| u.id);
-    // The types and the tiles of the amphibious neighbours (5.1 point 4, 5.3).
+    // The types and the tiles of the amphibious neighbours (5.1 point 4, 5.3); a land exhibit
+    // takes in the amphibious types of a tank only (9.2).
     let (mut near, mut neighbours): (Vec<Likes>, Vec<Site>) = (Vec::new(), Vec::new());
     for n in (exhibit.amphibious.iter()).filter_map(|&n| world.exhibits().get(n)) {
         for l in animals_on(world, catalogue, &n.order).0 {
-            if !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
+            let skip = exhibit.tank.is_none() && !l.amphibious;
+            if !skip && !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
                 near.push(l);
             }
         }
