@@ -2217,6 +2217,9 @@ mod carry_tests;
 mod tests;
 
 #[cfg(test)]
+mod replay_tests;
+
+#[cfg(test)]
 mod start_tests;
 
 #[cfg(test)]
