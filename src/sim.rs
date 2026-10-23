@@ -279,16 +279,23 @@ impl Sim {
     }
 
     /// The trash cans, fence pieces and filters of a zoo just loaded post their events, after the
-    /// events the file stored: a can above 12 pieces calls a worker (staff 8.2), then the broken
-    /// and the decayed pieces (placing 7.4).
+    /// events the file stored, in one pass in entity list order (guest buildings 4.1): a can above
+    /// 12 pieces calls a worker (staff 8.2), a broken or decayed piece (placing 7.4) or filter
+    /// asks for a mender.
     pub fn fences_loaded(&mut self, world: &World, cat: &Catalogue) {
-        for event in crate::building::loaded_events(world) {
-            self.events.post(event);
-        }
-        for event in world.loaded_events(cat) {
-            self.events.post(event);
-        }
-        for event in world.loaded_filter_events(cat) {
+        let mut events = crate::building::loaded_events(world);
+        events.extend(world.loaded_events(cat));
+        events.extend(world.loaded_filter_events(cat));
+        // One event per entity, so the sort by the sender's place is the file's order.
+        let place = |id| {
+            world
+                .zoo
+                .entities
+                .iter()
+                .position(|e| e.common.as_ref().is_some_and(|c| c.id == id))
+        };
+        events.sort_by_key(|e| place(e.sender));
+        for event in events {
             self.events.post(event);
         }
     }

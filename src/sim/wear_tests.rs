@@ -422,7 +422,7 @@ fn a_piece_whose_stored_life_is_above_i32_max_is_broken_and_does_not_wear() {
 }
 
 #[test]
-fn a_loaded_trash_can_above_12_pieces_posts_its_call_before_the_fence_events() {
+fn a_loaded_zoo_posts_its_can_and_fence_events_in_entity_list_order() {
     let cat = || {
         let mut cat = types_with("[HabitatFence]\n", WEARING);
         cat.push(EntityType {
@@ -455,6 +455,13 @@ fn a_loaded_trash_can_above_12_pieces_posts_its_call_before_the_fence_events() {
     let piece = run.world.zoo.entities[0].common.as_mut().unwrap();
     piece.fence.as_mut().unwrap().life = 0;
     assert_eq!(run.world.units.buildings[&9].fill, 13);
+    let before = run.sim.events.buffers()[1].len();
+    run.sim.fences_loaded(&run.world, &cat());
+    let next = run.sim.events.buffers()[1];
+    let kinds: Vec<_> = next[before..].iter().map(|e| (e.sender, e.kind)).collect();
+    assert_eq!(kinds, [(7, 10034), (9, 10030)]);
+    // A can before the piece posts first.
+    run.world.zoo.entities.reverse();
     let before = run.sim.events.buffers()[1].len();
     run.sim.fences_loaded(&run.world, &cat());
     let next = run.sim.events.buffers()[1];
