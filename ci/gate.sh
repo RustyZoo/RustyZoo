@@ -22,6 +22,7 @@ trials=${1:-}
 logs=$(mktemp -d)
 trap 'rm -rf "$logs"' EXIT
 export RUSTYZOO_USER_DIR=$logs/user # tests never touch the real user folder
+export RUSTYZOO_ENGLISH_DATES=1 # the same dates (and frames) whatever the system's locale
 ok=0 failed=0 skipped=0
 
 step() { # step <name> <command...>

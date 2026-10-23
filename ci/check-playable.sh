@@ -22,6 +22,7 @@
 # nothing for it), `pending` or FAILED. Exit status: 1 if one failed.
 set -u
 export SDL_AUDIO_DRIVER=dummy # never a real audio device
+export RUSTYZOO_ENGLISH_DATES=1 # the same dates (and frames) whatever the system's locale
 bin=$1
 data=$2
 script=$3

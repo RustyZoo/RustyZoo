@@ -13,6 +13,7 @@ export SDL_AUDIO_DRIVER=dummy # check-music opens the audio device: never a real
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export RUSTYZOO_USER_DIR=$tmp/user # never the real user folder
+export RUSTYZOO_ENGLISH_DATES=1 # the same dates (and frames) whatever the system's locale
 
 # --reset-fences is for a map whose scenario file has `resetfences` above 0 (scn19 of the expansion trial):
 # its start makes every fence piece healthy, which draws from the shared random stream. The other maps

@@ -109,6 +109,8 @@ Text is drawn in Liberation Sans (Regular and Bold, SIL Open Font License 1.1, e
 
 The game loads every `lang*.dll` of the install folder, ordered by file name from the greatest to the smallest (`lang300.dll` first, `lang0.dll` last), and a string number or a `TEXT` name comes from the first library that has it non-empty. `strings` prints that merged view; the `[lib]` and `[language]` entries of `zoo.ini` are not used.
 
+The dates (the status bar, its tooltip, an exhibit's creation date) take their pattern from the game's language and, as in the original, their month and weekday names from the regional settings of the user: the time locale of the environment (`LC_ALL`, `LC_TIME`, `LANG`) on Linux and macOS, the user locale on Windows. Where the system gives no names, and when the environment variable `RUSTYZOO_ENGLISH_DATES` is `1`, they are English; the tests, CI and the scripts of `ci/` set it, so their frames do not depend on the machine.
+
 ## Settings and saved games
 
 RustyZoo never writes into the game folder. What it changes goes in a folder of the user:

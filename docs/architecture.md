@@ -17,7 +17,7 @@ Modules of the core:
 | `config` | Reader of the game's INI-like files (`.ai`, `.cfg`, `.lyt`, ...) |
 | `pe` | Bounded reader for the resources of the game's resource DLLs |
 | `strings` | The game's texts, merged from the `lang*.dll` libraries |
-| `text` | Liberation Sans Regular and Bold (embedded) with the metrics of Arial: line height, baseline, whole-pixel advances; wrapping, alignment, clipping, shadow and drawing into a canvas; templates, numbers, money and dates (`text::format`) |
+| `text` | Liberation Sans Regular and Bold (embedded) with the metrics of Arial: line height, baseline, whole-pixel advances; wrapping, alignment, clipping, shadow and drawing into a canvas; templates, numbers, money and dates (`text::format`, the month and weekday names from the user's regional settings, `text/format/locale.rs`) |
 | `sprite` | Sprite files and palettes: decoding, drawing, tinting a palette, PNG output |
 | `userdir` | The per-user folder: where it is, the settings written there, read over the game's `zoo.ini` |
 | `startup` | The start-up picture (a bitmap resource of the language and resource libraries), its progress bar, and the product version of the executable |

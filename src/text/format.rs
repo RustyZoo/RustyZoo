@@ -4,6 +4,7 @@
 
 use crate::strings::StringTables;
 use crate::timing::Date;
+use std::sync::OnceLock;
 
 /// The strings of the game, by number. [`StringTables`] is the real one.
 pub trait Strings {
@@ -242,14 +243,69 @@ fn abbreviation(name: &str) -> &str {
     &name[..3.min(name.len())]
 }
 
+/// The environment variable that, set to `1`, makes the dates use the English names whatever the
+/// regional settings (the tests, CI and the pinned runs set it).
+pub const ENGLISH_DATES: &str = "RUSTYZOO_ENGLISH_DATES";
+
+/// The month and weekday names of the dates, full and abbreviated; the weeks start on Monday.
+#[derive(Debug, PartialEq)]
+struct Names {
+    months: [String; 12],
+    short_months: [String; 12],
+    weekdays: [String; 7],
+    short_weekdays: [String; 7],
+}
+
+impl Names {
+    fn english() -> Names {
+        let full = |name: &&str| name.to_string();
+        let short = |name: &&str| abbreviation(name).to_string();
+        Names {
+            months: MONTHS.each_ref().map(full),
+            short_months: MONTHS.each_ref().map(short),
+            weekdays: WEEKDAYS.each_ref().map(full),
+            short_weekdays: WEEKDAYS.each_ref().map(short),
+        }
+    }
+
+    /// The names of the user's regional settings, as the original's date formatter has them, or
+    /// the English ones when `english` (the value of [`ENGLISH_DATES`]) is `1` or the system
+    /// gives none.
+    fn of_user(english: Option<&std::ffi::OsStr>) -> Names {
+        let system = english.is_none_or(|v| v != "1");
+        system
+            .then(|| locale::names(""))
+            .flatten()
+            .unwrap_or_else(Names::english)
+    }
+}
+
+/// The names of the dates, read once; a test build always has the English ones.
+fn names() -> &'static Names {
+    static NAMES: OnceLock<Names> = OnceLock::new();
+    NAMES.get_or_init(|| {
+        if cfg!(test) {
+            Names::english()
+        } else {
+            Names::of_user(std::env::var_os(ENGLISH_DATES).as_deref())
+        }
+    })
+}
+
 /// A date written from a pattern of the Windows date pictures: `d` the day, `dd` with a leading
 /// zero, `ddd` and `dddd` the weekday's short and full name, `M` and `MM` the month number,
 /// `MMM` and `MMMM` its short and full name, `y` the last two digits of the year without a
 /// leading zero (the game shows year 2100 as "0"), `yy` with it, `yyy` and `yyyy` the whole year;
-/// text in single quotes is written as it is, any other character too.
+/// text in single quotes is written as it is, any other character too. The names are those of
+/// the user's regional settings, as in the original, English where the system gives none or
+/// [`ENGLISH_DATES`] is `1`.
 pub fn date(pattern: &str, date: &Date) -> String {
-    let month = MONTHS.get((date.month as usize).wrapping_sub(1)).copied();
-    let weekday = WEEKDAYS.get(date.weekday as usize).copied();
+    let names = names();
+    let month = (date.month as usize).wrapping_sub(1);
+    let weekday = date.weekday as usize;
+    fn name(list: &[String], i: usize) -> &str {
+        list.get(i).map_or("", String::as_str)
+    }
     let mut out = String::new();
     let mut chars = pattern.chars().peekable();
     while let Some(c) = chars.next() {
@@ -280,12 +336,12 @@ pub fn date(pattern: &str, date: &Date) -> String {
         match (c, run) {
             ('d', 1) => out.push_str(&date.day.to_string()),
             ('d', 2) => out.push_str(&format!("{:02}", date.day)),
-            ('d', 3) => out.push_str(weekday.map_or("", abbreviation)),
-            ('d', _) => out.push_str(weekday.unwrap_or("")),
+            ('d', 3) => out.push_str(name(&names.short_weekdays, weekday)),
+            ('d', _) => out.push_str(name(&names.weekdays, weekday)),
             ('M', 1) => out.push_str(&date.month.to_string()),
             ('M', 2) => out.push_str(&format!("{:02}", date.month)),
-            ('M', 3) => out.push_str(month.map_or("", abbreviation)),
-            ('M', _) => out.push_str(month.unwrap_or("")),
+            ('M', 3) => out.push_str(name(&names.short_months, month)),
+            ('M', _) => out.push_str(name(&names.months, month)),
             (_, 1) => out.push_str(&(date.year % 100).to_string()),
             (_, 2) => out.push_str(&format!("{:02}", date.year % 100)),
             _ => out.push_str(&format!("{:04}", date.year)),
@@ -295,16 +351,19 @@ pub fn date(pattern: &str, date: &Date) -> String {
 }
 
 /// The abbreviated name of month 1 to 12 on the axes of the graphs: strings 22101 to 22112,
-/// or the English abbreviation where the string is empty. Any other month gives nothing.
+/// or the abbreviation of the dates (see [`date`]) where the string is empty. Any other month
+/// gives nothing.
 pub fn graph_month(strings: &impl Strings, month: u32) -> String {
-    let Some(name) = MONTHS.get((month as usize).wrapping_sub(1)) else {
+    let Some(name) = names().short_months.get((month as usize).wrapping_sub(1)) else {
         return String::new();
     };
     match strings.string(GRAPH_MONTH + month) {
-        "" => abbreviation(name).to_string(),
+        "" => name.clone(),
         text => text.to_string(),
     }
 }
+
+mod locale;
 
 #[cfg(test)]
 mod tests;

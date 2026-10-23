@@ -220,6 +220,7 @@ version = "0.0.0"
 dependencies = [
  "flate2",
  "fontdue",
+ "libc",
  "nihav_core",
  "nihav_indeo",
  "png",
