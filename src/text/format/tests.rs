@@ -305,9 +305,10 @@ fn a_locale_gives_its_own_names() {
         eprintln!("skipped: the fr_FR.UTF-8 locale is not installed");
         return;
     };
-    assert_eq!(french.months[0], "janvier");
-    assert_eq!(french.weekdays[0], "lundi");
-    assert_eq!(french.weekdays[6], "dimanche");
+    // macOS writes the weekdays with a capital, glibc does not.
+    assert_eq!(french.months[0].to_lowercase(), "janvier");
+    assert_eq!(french.weekdays[0].to_lowercase(), "lundi");
+    assert_eq!(french.weekdays[6].to_lowercase(), "dimanche");
     assert_ne!(french.short_months[1], "Feb");
 }
 
