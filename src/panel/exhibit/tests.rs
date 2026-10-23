@@ -131,7 +131,7 @@ fn the_important_lines_come_first_and_a_female_reads_the_other_range() {
         (bit::terrain(2), true),
     ]);
     assert_eq!(
-        recommendations(r, false, false, NONE),
+        recommendations(r, false, false, false, NONE),
         [
             (9900 + 1 + 25, true, None),
             (9900 + 1 + 58, true, None),
@@ -140,11 +140,11 @@ fn the_important_lines_come_first_and_a_female_reads_the_other_range() {
         ]
     );
     assert_eq!(
-        recommendations(r, true, false, NONE)[0],
+        recommendations(r, true, false, false, NONE)[0],
         (39900 + 1 + 25, true, None)
     );
     let all = record(&(0..64).map(|b| (b, b % 2 == 0)).collect::<Vec<_>>());
-    let lines = recommendations(all, false, false, NONE);
+    let lines = recommendations(all, false, false, false, NONE);
     assert_eq!(lines.len(), 64);
     assert_eq!(
         lines[0],
@@ -157,11 +157,11 @@ fn the_important_lines_come_first_and_a_female_reads_the_other_range() {
 #[test]
 fn an_exhibit_with_nothing_to_say_is_well_suited() {
     assert_eq!(
-        recommendations((0, 0), false, false, NONE),
+        recommendations((0, 0), false, false, false, NONE),
         [(9900, false, None)]
     );
     assert_eq!(
-        recommendations((0, 0), true, false, NONE),
+        recommendations((0, 0), true, false, false, NONE),
         [(39900, false, None)]
     );
 }
@@ -174,20 +174,20 @@ fn an_animal_in_a_show_tank_has_its_own_line_and_the_salinity_bit_after_it() {
         (bit::FEW_ROCKS, false),
     ]);
     assert_eq!(
-        recommendations(r, false, true, NONE),
+        recommendations(r, false, true, false, NONE),
         [(9991, false, None), (9912, true, None)]
     );
     assert_eq!(
-        recommendations(r, true, true, NONE),
+        recommendations(r, true, true, false, NONE),
         [(39991, false, None), (39912, true, None)]
     );
     let plain = record(&[(bit::STINK, true)]);
     assert_eq!(
-        recommendations(plain, false, true, NONE),
+        recommendations(plain, false, true, false, NONE),
         [(9991, false, None)]
     );
     assert_eq!(
-        recommendations((0, 0), false, true, NONE),
+        recommendations((0, 0), false, true, false, NONE),
         [(9991, false, None)]
     );
 }
@@ -303,7 +303,7 @@ fn an_animals_list_icon_is_the_first_of_its_subtype_default_or_plain_section() {
 fn scenery_lines_follow_the_bits_of_their_importance_and_suppress_the_well_suited_line() {
     let r = record(&[(bit::FEW_ROCKS, false), (bit::NEEDS_SHELTER, true)]);
     assert_eq!(
-        recommendations(r, true, false, [&[7], &[8, 9]]),
+        recommendations(r, true, false, false, [&[7], &[8, 9]]),
         [
             (39900 + 1 + 58, true, None),
             (39990, true, Some(7)),
@@ -313,13 +313,31 @@ fn scenery_lines_follow_the_bits_of_their_importance_and_suppress_the_well_suite
         ]
     );
     assert_eq!(
-        recommendations((0, 0), false, false, [&[], &[4]]),
+        recommendations((0, 0), false, false, false, [&[], &[4]]),
         [(9990, false, Some(4))]
     );
     // A show tank has no scenery lines.
     assert_eq!(
-        recommendations((0, 0), false, true, [&[7], &[4]]),
+        recommendations((0, 0), false, true, false, [&[7], &[4]]),
         [(9991, false, None)]
+    );
+}
+
+#[test]
+fn an_egg_lists_its_bits_and_the_egg_line_but_no_scenery() {
+    let r = record(&[(bit::FEW_ROCKS, false), (bit::NEEDS_SHELTER, true)]);
+    assert_eq!(
+        recommendations(r, false, false, true, [&[7], &[8]]),
+        [
+            (9900 + 1 + 58, true, None),
+            (9900 + 1 + 19, false, None),
+            (9965, false, None)
+        ]
+    );
+    // Nothing else to say: the egg line replaces "well suited", also for a female.
+    assert_eq!(
+        recommendations((0, 0), true, false, true, [&[7], &[4]]),
+        [(9965, false, None)]
     );
 }
 
