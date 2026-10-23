@@ -984,16 +984,27 @@ fn put_rock(w: &mut World, cat: &Catalogue, at: (i32, i32)) -> Vec<String> {
 }
 
 #[test]
-fn a_bear_in_the_tank_reacts_once_to_a_rock() {
+fn a_rock_put_in_the_tank_is_read_by_the_land_beside_it_too() {
     let (mut w, cat) = (gated(linked()), catalogue());
     let (tank, land) = pair(&w);
     // The tank first, its amphibious species skipped, then its neighbour, which compares them only
-    // and reaches the bear in the tank, its home.
+    // and reaches the bear in the tank, its home: the bear reacts once.
     let before = rating::entity(&mut w, &cat, Some(3 * WIDE + 3), true, &mut || 0);
     assert_eq!(read(&before), [(tank, Some(false)), (land, Some(true))]);
-    let mut w2 = gated(linked());
+    let mut w = gated(linked());
     assert_eq!(
-        put_rock(&mut w2, &cat, (3, 3)),
+        put_rock(&mut w, &cat, (3, 3)),
+        ["likes 1", "likes 3", "sound smile"]
+    );
+}
+
+#[test]
+fn a_bear_in_the_tank_reacts_once_to_a_rock() {
+    // Two lands beside the tank: only the east one, its home, reaches the bear in the tank.
+    let (mut w, cat, [_, east, _]) = between();
+    assert_eq!(home(&w, &cat, 1), Some(east));
+    assert_eq!(
+        put_rock(&mut w, &cat, (4, 3)),
         ["likes 1", "likes 3", "sound smile"]
     );
 }
