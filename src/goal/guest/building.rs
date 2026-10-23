@@ -248,13 +248,13 @@ impl Cx<'_, '_> {
     }
 
     /// 0x67 complete: a charging building with an expensive price turns the guest away angry;
-    /// else it walks into the slot (0x68). A user that stays outside or is put inside makes no
-    /// walk: the decide of 0x68 serves it where it stands.
+    /// else it takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
+    /// walk at the next update.
     pub(in crate::goal) fn entrance_arrived(&mut self) {
         let Some(id) = self.guest().map(|g| g.building) else {
             return;
         };
-        let Some((e, kind)) = self.building(id) else {
+        let Some((_, kind)) = self.building(id) else {
             return self.reset();
         };
         if kind.commerce && self.mood(id, &kind) == Mood::Angry {
@@ -264,49 +264,44 @@ impl Cx<'_, '_> {
         let Some((slot, _)) = self.open_slot(id) else {
             return self.reset();
         };
-        let to = self.tile_at(building::place(&e, kind.slots[slot].at));
         if let Some(g) = self.guest() {
             g.slot = slot;
         }
-        if kind.outside || kind.teleports {
-            return self.set_task(ENTER_BUILDING, 0, id, None);
-        }
-        let Some(t) = to else {
-            return self.reset();
-        };
-        // The walk into the building looks at the edge cost only (pathfinding 4.2).
-        if Some(t) != self.tile() {
-            self.unit.through_building = true;
-            if !(self.path_to(t, false) && self.start_walk(false, false, false)) {
-                self.unit.through_building = false;
-                return self.reset();
-            }
-        }
-        self.set_task(ENTER_BUILDING, 0, id, Some(t));
+        self.set_task(ENTER_BUILDING, 0, id, None);
     }
 
     /// 0x68 decide (goals 11.3): a user that stays outside or is put inside is done on its own
-    /// tile, at the entrance.
+    /// tile, at the entrance; any other walks into its slot, even when the slot's inside position
+    /// is on its own tile, and a refused walk or a building that is gone ends the goal.
     pub(in crate::goal) fn enter_decide(&mut self) {
-        let id = self.target_building();
-        if self
-            .building(id)
-            .is_some_and(|(_, k)| k.outside || k.teleports)
-        {
-            let own = self.tile();
-            self.unit.goal.record.target.set_tile(self.world, own);
+        let (id, slot) = self.guest().map_or((0, 0), |g| (g.building, g.slot));
+        let Some((e, kind)) = self.building(id) else {
+            return self.reset();
+        };
+        let own = self.tile();
+        if kind.outside || kind.teleports {
+            return self.unit.goal.record.target.set_tile(self.world, own);
         }
+        let to = kind.slots.get(slot).map(|s| building::place(&e, s.at));
+        let Some(t) = to.and_then(|p| self.tile_at(p)) else {
+            return self.reset();
+        };
+        // The walk into the building looks at the edge cost only (pathfinding 4.2).
+        self.unit.through_building = true;
+        if !(self.path_to(t, false) && self.start_walk(false, false, false)) {
+            self.unit.through_building = false;
+            return self.reset();
+        }
+        self.unit.goal.record.target.set_tile(self.world, Some(t));
     }
 
-    /// 0x68 check done: one time in 15 the slot is looked at again; done at the slot.
+    /// 0x68 check done: one time in 15 the goal ends when the building is gone or no longer
+    /// serves the need (a full slot is left to the complete); done at the slot.
     pub(in crate::goal) fn enter_check_done(&mut self) {
-        let (id, slot) = self.guest().map_or((0, 0), |g| (g.building, g.slot));
+        let (id, need) = self.guest().map_or((0, None), |g| (g.building, g.need));
         if self.ctx.rng.pick(15) == 0 {
-            let open = self.building(id).is_some_and(|(e, kind)| {
-                let live = self.world.units.buildings.get(&id);
-                building::can_add(self.world, &e, &kind, live, slot)
-            });
-            if !open {
+            let serves = self.building(id);
+            if !serves.is_some_and(|(_, k)| need.is_none_or(|n| k.satisfies(n))) {
                 return self.reset();
             }
         }
@@ -470,8 +465,9 @@ impl Cx<'_, '_> {
 
     /// 0x69 decide (goals 11.3): a user that uses the exit or stays outside is done where it
     /// stands; any other walks, with the building flag, to one entrance of its slot (one draw;
-    /// slot 0 for a unit that has none). A refused walk sets no target and leaves the flag up: the
-    /// decide runs again, with a new draw, at the next update.
+    /// slot 0 for a unit that has none). A refused walk, a slot with no entrance, an entrance off
+    /// the map or a building that is gone sets no target and leaves the flag up: the decide runs
+    /// again, with a new draw, at the next update.
     pub(in crate::goal) fn exit_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
@@ -479,16 +475,23 @@ impl Cx<'_, '_> {
         let id = self.target_building();
         let slot = self.guest().map_or(0, |g| g.slot);
         let own = self.tile();
-        let entrance = self.building(id).and_then(|(e, k)| {
+        let found = self.building(id);
+        if found
+            .as_ref()
+            .is_some_and(|(_, k)| k.uses_exit || k.outside)
+        {
+            return self.set_task(EXIT_BUILDING, 1, id, own);
+        }
+        let entrance = found.and_then(|(e, k)| {
             let list = &k.slots.get(slot)?.entrances;
-            let walks = !(k.uses_exit || k.outside) && !list.is_empty();
-            walks.then(|| building::place(&e, list[self.ctx.rng.pick(list.len() as u32) as usize]))
+            let n = (!list.is_empty()).then_some(list.len() as u32)?;
+            Some(building::place(&e, list[self.ctx.rng.pick(n) as usize]))
         });
         let tile = entrance.and_then(|p| self.tile_at(p));
-        let Some(t) = tile.filter(|&t| Some(t) != own) else {
-            return self.set_task(EXIT_BUILDING, 1, id, own);
-        };
         self.unit.through_building = true;
+        let Some(t) = tile else {
+            return;
+        };
         if self.path_to(t, false) && self.start_walk(false, false, false) {
             self.set_task(EXIT_BUILDING, 1, id, Some(t));
         }
@@ -563,12 +566,19 @@ impl Cx<'_, '_> {
     }
 
     /// 0x69 check done: one time in 15 the building is looked at again (it is gone: the goal ends
-    /// and the guest is shown); done at the target.
+    /// and the guest is shown) and the goal is done when quarter 3 of the unit's tile holds no
+    /// building; done at the target.
     pub(in crate::goal) fn exit_check_done(&mut self) {
         let id = self.target_building();
-        if self.ctx.rng.pick(15) == 0 && self.building(id).is_none() {
-            self.show();
-            return self.reset();
+        if self.ctx.rng.pick(15) == 0 {
+            if self.building(id).is_none() {
+                self.show();
+                return self.reset();
+            }
+            let on = (self.tile()).and_then(|t| self.world.quadrant(t, 3));
+            if on.is_none_or(|e| self.world.zoo.entities[e].class != "building") {
+                self.record().done = true;
+            }
         }
         if self.reached(false) {
             self.record().done = true;
