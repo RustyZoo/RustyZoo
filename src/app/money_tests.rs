@@ -16,8 +16,14 @@ const SIZE: (u32, u32) = (64, 48);
 struct Texts;
 
 impl UiStrings for Texts {
-    fn string(&self, _: i32) -> String {
-        String::new()
+    fn string(&self, id: i32) -> String {
+        match id {
+            22012 => "MMM',' 'Year' y",
+            22013 => "ddd'.' MMM d",
+            1030 => "Date: %s",
+            _ => "",
+        }
+        .into()
     }
 
     fn text_entry(&self, _: &[u8]) -> Vec<u8> {
@@ -40,6 +46,7 @@ fn interface(name: &str) -> Interface {
         [b]\ntype=UILayout\nlayout=ui/bar.lyt\n";
     let bar = "[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=0\ndx=40\ndy=10\n\
         [m]\ntype=UIText\nid=1016\nx=0\ny=0\ndx=40\ndy=10\nforecolor=255\nforecolor=212\nforecolor=60\n\
+        [d]\ntype=UIText\nid=1030\nx=0\ny=0\ndx=40\ndy=10\n\
         [u]\ntype=UIStatusImage\nid=1011\nx=0\ny=0\ndx=10\ndy=2\n\
         [v]\ntype=UIStatusImage\nid=1013\nx=0\ny=0\ndx=10\ndy=2\n\
         [w]\ntype=UIStatusImage\nid=1015\nx=0\ny=0\ndx=10\ndy=2\n";
@@ -487,5 +494,26 @@ fn a_disabled_remembered_tab_gives_way_to_the_next_enabled_one() {
         app.pass(20, &[Command::Char(b'z')]);
         let ui = app.interface().unwrap();
         assert!(ui.shown(14) && ui.shown(110) && !ui.shown(800));
+    });
+}
+
+#[test]
+fn the_status_bar_writes_the_month_and_the_year_once_a_second_with_the_weekday_as_tooltip() {
+    with_game("date", |app| {
+        let text = |app: &mut App| app.interface().unwrap().text(1030).unwrap();
+        // The field stays empty until more than 1001 ms of game clock have gathered.
+        app.pass(0, &[]);
+        assert_eq!(text(app), b"");
+        let mut now = 0;
+        for pass in 1..60 {
+            now += 200;
+            app.pass(now, &[]);
+            if !text(app).is_empty() {
+                break;
+            }
+            assert!(pass < 59, "the date never came");
+        }
+        assert_eq!(text(app), b"Jan, Year 1");
+        assert_eq!(app.interface().unwrap().string(1030), "Date: Mon. Jan 1");
     });
 }

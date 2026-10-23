@@ -367,7 +367,7 @@ usage: rustyzoo [--data <dir>] <command>
                       logs `sim rating N` at each rating check (after the set-up check of a new game, the first
                       periodic one comes 4 s later), `sim message ID` for each advice message and `sim donation
                       AMOUNT`, and the world manager `sim rate ID KEY SHOWN ...` each time it rates exhibit ID
-                      (the suitability each species shows); the three bars of the status bar are written once a second and `money bars A G Z`
+                      (the suitability each species shows); the three bars and the date (month and year) of the status bar are written once a second and `money bars A G Z`
                       (animal happiness, guest happiness, rating) tells a change. The units of a
                       map (animals, guests and staff) log `unit add ID KIND X,Y` when a game opens or one is
                       placed, `unit remove ID` and `unit status ID` at each unit's status tick, once a second of
