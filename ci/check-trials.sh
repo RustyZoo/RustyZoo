@@ -723,17 +723,19 @@ panel_gate() { # panel_gate <map>
 check base-trial 'exhibit_1_"Lion";status_"Jan_7,_Year_1"_upkeep_$0.00_$0.00_$0.00_staff_No;donations_stars_0_$0.00_$0.00_$0.00;animals_0_thoughts_0' "panel_gate maps/default.zoo"
 # The exhibit list button, the first row, the Animals tab and its first row open the animal panel,
 # and its recommendations button the plaque of that animal: prints the animals of the exhibit, the
-# lines in red (important) and the others, as the rating of `check-rating` has them (scn01's giraffe: bits 24 and 27 are important).
+# lines in red (important) and the others, read from the animal's stored bits: the game runs to just past the first
+# rating of the exhibits (pass 102, which settles the bits) and is then paused, so the animal checks' bits are in too
+# (scn01's giraffe: bits 24 and 27 are important, the "few animals" bit of its social check is an other line).
 panel_plaque() { # panel_plaque <map>
   d=$(mktemp -d)
-  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n15 mouse 992 256\n16 down\n17 up\n' >"$d/script"
-  rz run "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
+  printf '110 pause\n111 mouse 965 750\n112 down\n113 up\n114 mouse 900 455\n115 down\n116 up\n118 mouse 1004 668\n119 down\n120 up\n121 mouse 880 610\n122 down\n123 up\n125 mouse 992 256\n126 down\n127 up\n' >"$d/script"
+  rz run "$1" --headless --passes 132 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '/ panel animals /{a=$6} / panel line! /{i++} / panel line "/{o++} END{print a "," i+0 "," o+0}'
   rm -rf "$d"
 }
-check base-trial "1,2,3" "panel_plaque maps/scn01.zoo"
+check base-trial "1,2,4" "panel_plaque maps/scn01.zoo"
 check expansion-trial "2,2,2" "panel_plaque maps/scn19.zoo"
-check expansion-trial "1,2,2" "panel_plaque maps/scn27.zoo"
+check expansion-trial "1,3,2" "panel_plaque maps/scn27.zoo"
 check expansion-trial "1,0,1" "panel_plaque maps/scn28b.zoo"
 
 # The animal panel of the first animal of the first exhibit (the Animals tab's first row): its
