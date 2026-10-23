@@ -230,7 +230,8 @@ pub enum Goal {
     Talk,
     Follow,
     /// 0x66 to 0x6a of a guest: the building chain (11.3), walking to the building, to its
-    /// entrance and into its slot, using it and leaving.
+    /// entrance and into its slot, using it and leaving (0x69 also for a unit of any kind sent
+    /// out of a building).
     Go,
     Entrance,
     Enter,
@@ -270,7 +271,8 @@ impl Goal {
             (GO_BUILDING, Kind::Guest) => Some(Goal::Go),
             (ENTRANCE, Kind::Guest) => Some(Goal::Entrance),
             (ENTER_BUILDING, Kind::Guest) => Some(Goal::Enter),
-            (EXIT_BUILDING, Kind::Guest) => Some(Goal::Exit),
+            // Any unit sent out of a building by the common part (6.2) leaves it.
+            (EXIT_BUILDING, _) => Some(Goal::Exit),
             (USE, Kind::Guest) => Some(Goal::Use),
             (EAT, Kind::Guest) => Some(Goal::Eat),
             (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
@@ -393,6 +395,7 @@ impl Goal {
             Goal::Gawk => cx.gawk_decide(),
             Goal::Leg => cx.leg_decide(),
             Goal::Follow if cx.record().target.tile.is_none() => cx.reset(),
+            Goal::Enter if cx.record().target.tile.is_none() => cx.enter_decide(),
             Goal::Exit => cx.exit_decide(),
             Goal::Go if cx.record().target.tile.is_none() => cx.reset(),
             Goal::EatStand if cx.record().target.tile.is_none() => cx.wander(false),
@@ -742,11 +745,15 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 6.2 before the object: one draw, and one time in 15 a unit outside the zoo is removed.
-    /// (The unit on the footprint of a building is sent out by the building issue.)
+    /// 6.2 before the object: one draw, and one time in 15 a unit outside the zoo is removed and
+    /// a unit on the footprint of a building is sent out of it.
     fn common(&mut self) {
-        if self.ctx.rng.pick(15) == 0 && !self.tile().is_some_and(|t| self.world.in_zoo(t)) {
-            self.ctx.remove(self.world, self.unit.id);
+        if self.ctx.rng.pick(15) != 0 {
+            return;
+        }
+        match self.tile() {
+            Some(t) if self.world.in_zoo(t) => self.send_out(t),
+            _ => self.ctx.remove(self.world, self.unit.id),
         }
     }
 

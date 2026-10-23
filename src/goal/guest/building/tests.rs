@@ -4,7 +4,7 @@ use super::*;
 use crate::building::Prices;
 use crate::entity::{Catalogue, EntityType};
 use crate::goal::guest::tests::walks;
-use crate::guest::{BATHROOM, HAPPINESS, HUNGER};
+use crate::guest::{BATHROOM, HAPPINESS, HUNGER, THIRST};
 use crate::money::{self, Money};
 use crate::sim::{Events, Rng, Sim};
 use crate::unit::testing::{centre, entity, world_with};
@@ -31,6 +31,11 @@ const BOOTH: &str = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=2\ncHi
 const CAN: &str = "[Characteristics/Integers]\ncCapacity=1000\ncUserStaysOutside=1\n\
     cUsedThought=10215\n[Removes]\ntrash\n[Satisfies]\nbuilding\ntrash\n[slots]\nname=slot\n\
     [slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=1000\n";
+/// A drink kiosk whose user stays outside: its slot is on its own tile, its entrance one tile
+/// below.
+const KIOSK: &str = "[Characteristics/Integers]\ncCapacity=2\ncTimeInside=3\n[Satisfies]\n\
+    building\ndrink\n[slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\n\
+    exitpos=0\nexitpos=48\ncapacity=2\n";
 const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\n\
     cPriceHappy1Change=5\ncPriceAngry1Change=-5\n";
 
@@ -57,6 +62,7 @@ fn types() -> Catalogue {
     cat.push(ty("building", "table", TABLE));
     cat.push(ty("building", "booth", BOOTH));
     cat.push(ty("building", "can", CAN));
+    cat.push(ty("building", "kiosk", KIOSK));
     let trash = EntityType {
         subtype: b"trash".to_vec(),
         ..ty("objects", "other", "")
@@ -829,6 +835,230 @@ fn a_visible_user_with_no_exit_stays_drawn_where_it_is_off_its_tile_list() {
     assert_eq!(spot(&w), before);
     assert!(w.is_drawn(at) && !w.units_on(own).any(|e| e == at));
     assert_eq!(task(&w), 0);
+}
+
+/// Unit 1 of class `class` at `(x, y)` (first, as the context wants it), a stand 7 at (5, 5) and a
+/// hall 9 of a whole tile at `hall`.
+fn footprint(class: &str, (x, y): (i32, i32), hall: (i32, i32)) -> World {
+    world_with((10, 10), |zoo| {
+        zoo.entities.push(entity(class, "man", 1, (x, y), 0));
+        zoo.entities
+            .push(entity("building", "stand", 7, centre((5, 5)), 4));
+        zoo.entities.push(entity("building", "hall", 9, hall, 4));
+    })
+}
+
+/// The catalogue with the hall as a type of the config `text`.
+fn with_hall(text: &str) -> Catalogue {
+    let mut cat = types();
+    cat.push(ty("building", "hall", text));
+    cat
+}
+
+/// Moves unit 1 to `(x, y, z)`.
+fn put(w: &mut World, (x, y, z): (i32, i32, i32)) {
+    let at = w.find(1).unwrap();
+    let c = w.zoo.entities[at].common.as_mut().unwrap();
+    (c.x, c.y, c.z) = (x, y, z);
+}
+
+/// The common part with a draw of 0 (the 1 in 15); the task after it.
+fn common_hit(cx: &mut Cx) -> u8 {
+    while cx.ctx.rng.clone().pick(15) != 0 {
+        cx.ctx.rng.rand();
+    }
+    cx.common();
+    cx.record().task
+}
+
+#[test]
+fn one_draw_in_fifteen_sends_a_guest_on_the_footprint_of_a_building_out_of_it() {
+    let (cat, mut w) = (types(), footprint("guests", centre((2, 6)), centre((5, 3))));
+    let mut task_at = |tile: (i32, i32)| {
+        let (x, y) = centre(tile);
+        put(&mut w, (x, y, 0));
+        if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+            g.slot = 1;
+        }
+        with_cx(&cat, &mut w, common_hit)
+    };
+    // Off any building, and on the one-quarter stand, nothing changes; on the hall, a whole
+    // tile, the guest leaves it, with the hall as its building and no slot.
+    assert_eq!(task_at((2, 6)), 0);
+    assert_eq!(task_at((5, 5)), 0);
+    assert_eq!(task_at((5, 3)), EXIT_BUILDING);
+    assert_eq!((guest(&w).building, guest(&w).slot), (9, 0));
+    let r = &w.units.get(1).unwrap().goal.record;
+    assert_eq!((r.mode, r.target.id, r.target.tile), (1, 9, None));
+}
+
+#[test]
+fn only_the_building_on_quarter_3_of_the_tile_sends_a_unit_out() {
+    // The hall straddles four tiles: quarter 3 of (5, 3), quarter 2 of (6, 3).
+    let cat = types();
+    let mut w = footprint("guests", centre((2, 6)), (6 * 64, 4 * 64));
+    // In quarter 0 of (5, 3), which is free, the unit is still sent out.
+    put(&mut w, (5 * 64 + 10, 3 * 64 + 10, 0));
+    assert_eq!(with_cx(&cat, &mut w, common_hit), EXIT_BUILDING);
+    // On (6, 3), held by the hall in another quarter, nothing.
+    with_cx(&cat, &mut w, |cx| cx.reset());
+    put(&mut w, (6 * 64 + 48, 3 * 64 + 16, 0));
+    assert_eq!(with_cx(&cat, &mut w, common_hit), 0);
+}
+
+#[test]
+fn the_height_of_a_unit_on_a_building_counts_only_on_a_tank_tile() {
+    // Ten levels above the hall, out of a tank: still on its footprint.
+    let (cat, mut w) = (types(), footprint("guests", centre((2, 6)), centre((5, 3))));
+    let (x, y) = centre((5, 3));
+    put(&mut w, (x, y, 160));
+    assert_eq!(with_cx(&cat, &mut w, common_hit), EXIT_BUILDING);
+}
+
+#[test]
+fn a_unit_of_any_kind_is_sent_out_unless_it_moves_inside_a_tank() {
+    let cat = with_hall(KIOSK);
+    for class in ["animals", "keeper"] {
+        let mut w = footprint(class, centre((5, 3)), centre((5, 3)));
+        let at = w.find(1).unwrap();
+        w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 3;
+        assert_eq!(with_cx(&cat, &mut w, common_hit), 0, "{class}");
+        w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 2;
+        assert_eq!(with_cx(&cat, &mut w, common_hit), EXIT_BUILDING, "{class}");
+        // The hall keeps its users outside: the goal is done where the unit stands at the next
+        // update, and the unit has no task.
+        let task = with_cx(&cat, &mut w, |cx| {
+            cx.run_goal();
+            assert_eq!(cx.record().target.tile, w_tile((5, 3)), "{class}");
+            cx.run_goal();
+            cx.record().task
+        });
+        assert_eq!(task, 0, "{class}");
+    }
+}
+
+/// The index of tile `(x, y)` on the maps of these tests.
+fn w_tile((x, y): (i32, i32)) -> Option<usize> {
+    Some((y * 10 + x) as usize)
+}
+
+#[test]
+fn the_draws_of_a_send_out_follow_the_goal_updates() {
+    for (text, first) in [(KIOSK, 2), (RESTROOM, 3)] {
+        let cat = with_hall(text);
+        let mut w = footprint("guests", centre((5, 3)), centre((5, 3)));
+        let (moved, task) = with_cx(&cat, &mut w, |cx| {
+            let draws = |cx: &mut Cx, n: usize, f: fn(&mut Cx)| {
+                let mut seen = cx.ctx.rng.clone();
+                (0..n).for_each(|_| _ = seen.rand());
+                f(cx);
+                assert_eq!(*cx.ctx.rng, seen);
+            };
+            while cx.ctx.rng.clone().pick(15) != 0 {
+                cx.ctx.rng.rand();
+            }
+            // Update n: the common part, the check done and, for a type whose users leave by an
+            // entrance, the draw of the entrance.
+            draws(cx, first, |cx| {
+                cx.common();
+                cx.run_goal();
+            });
+            assert_eq!(cx.record().task, EXIT_BUILDING);
+            // Update n + 1: the common part and the check done.
+            draws(cx, 2, |cx| {
+                cx.common();
+                cx.run_goal();
+            });
+            (cx.unit.through_building, cx.record().task)
+        });
+        match text {
+            // Done on its own tile: no task, the wandered flag up.
+            KIOSK => {
+                assert_eq!((moved, task), (false, 0));
+                assert!(w.units.get(1).unwrap().goal.wandered);
+            }
+            // On its way to the entrance of slot 0, (5, 4), with the building flag.
+            _ => {
+                assert_eq!((moved, task), (true, EXIT_BUILDING));
+                let r = &w.units.get(1).unwrap().goal.record;
+                assert_eq!(r.target.tile, w_tile((5, 4)));
+            }
+        }
+        // The hall is not touched: no user, no money.
+        assert!(!w.units.buildings.contains_key(&9));
+    }
+}
+
+#[test]
+fn a_refused_walk_out_decides_again_with_a_new_draw_at_the_next_update() {
+    let cat = types();
+    // The guest is penned in on (2, 6) and leaves the restroom 8, whose entrance is on (5, 9).
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 6)), 0));
+        zoo.entities
+            .push(entity("building", "restroom", 8, centre((5, 8)), 4));
+        for i in 0..3 {
+            for (at, d) in [
+                ((1 + i, 5), 0),
+                ((1 + i, 7), 4),
+                ((1, 5 + i), 6),
+                ((3, 5 + i), 2),
+            ] {
+                let id = 100 + zoo.entities.len() as u32;
+                zoo.entities.push(entity("fences", "", id, centre(at), d));
+            }
+        }
+    });
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 8;
+        cx.set_task(EXIT_BUILDING, 1, 8, None);
+        for _ in 0..2 {
+            let mut seen = cx.ctx.rng.clone();
+            seen.rand();
+            cx.exit_decide();
+            // No target and the flag still up; one draw each time.
+            assert_eq!(*cx.ctx.rng, seen);
+            assert_eq!(cx.record().target.tile, None);
+            assert!(cx.unit.through_building);
+        }
+    });
+}
+
+#[test]
+fn a_user_who_stays_outside_is_served_at_the_entrance_and_never_steps_on_the_footprint() {
+    let (cat, mut money) = (types(), Money::default());
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 6)), 0));
+        zoo.entities
+            .push(entity("building", "kiosk", 9, centre((5, 3)), 4));
+    });
+    let mut s = game();
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.values[THIRST], g.countdowns, g.saw_animal) = (90, [1000; 11], 1000);
+    }
+    with_cx(&cat, &mut w, |cx| cx.seek("drink"));
+    assert_eq!(guest(&w).building, 9);
+    let tile = |w: &World| {
+        let (x, y, _) = spot(w);
+        (x.div_euclid(64), y.div_euclid(64))
+    };
+    let mut served = false;
+    for _ in 0..3000 {
+        run(&mut s, &cat, &mut w, &mut money, 1, "never");
+        // The kiosk is on (5, 3), its entrance on (5, 4).
+        assert!(!(ENTRANCE..=USE).contains(&task(&w)) || tile(&w) != (5, 3));
+        let users = &w.units.buildings.get(&9).map_or(0, |l| l.users.len());
+        served |= *users == 1;
+        if served && *users == 0 {
+            break;
+        }
+        if *users == 1 {
+            assert_eq!(tile(&w), (5, 4));
+        }
+    }
+    assert!(served && w.units.buildings[&9].users.is_empty());
 }
 
 #[test]
