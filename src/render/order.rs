@@ -362,6 +362,19 @@ impl Scene {
         self.placed[o] = false;
     }
 
+    /// Takes unit object `o` off its tile's list only: it stays painted if it was, and goes back on
+    /// a list at its first change of tile ([`Scene::move_unit`]).
+    pub fn unlist_unit(&mut self, o: usize) {
+        if let Some(t) = self.tile_at(self.objects[o].x, self.objects[o].y) {
+            self.list[t].retain(|&u| u != o);
+        }
+    }
+
+    /// Paints unit object `o` where it is without putting it on a tile list.
+    pub fn paint_unit(&mut self, o: usize) {
+        self.placed[o] = true;
+    }
+
     /// Takes the quadrants of the footprint, all or none: it wants the `fx * fy` quadrants
     /// that contain the points `(x - 16 (fx - 1) + 32 i, y - 16 (fy - 1) + 32 j)`. Returns
     /// whether it got them.

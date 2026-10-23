@@ -775,6 +775,26 @@ fn the_megatiles_count_guests_and_spread_an_objects_values_once_every_seven_and_
 }
 
 #[test]
+fn a_guest_off_its_tile_list_is_not_in_the_crowd_until_it_changes_tile() {
+    let (mut w, cat) = smelly();
+    let count = |w: &World| w.units.mega.at(10, 2 * 10 + 2).unwrap().guests;
+    mega::update(&mut w, &cat, 7500);
+    assert_eq!(count(&w), 1);
+    w.unlist_unit(0);
+    mega::update(&mut w, &cat, 7500);
+    assert_eq!(count(&w), 0);
+    // Moving inside its tile does not list it; entering another tile does.
+    let (x, y) = centre((2, 2));
+    w.place_unit(0, (x + 5, y, 0), 0);
+    mega::update(&mut w, &cat, 7500);
+    assert_eq!(count(&w), 0);
+    let (x, y) = centre((3, 2));
+    w.place_unit(0, (x, y, 0), 0);
+    mega::update(&mut w, &cat, 7500);
+    assert_eq!(w.units.mega.at(10, 2 * 10 + 3).unwrap().guests, 1);
+}
+
+#[test]
 fn a_gone_exhibit_leaves_the_entrance_tile_of_a_thought_with_an_object() {
     use thought::{Thought, Thoughts};
     let mut list = Thoughts::default();

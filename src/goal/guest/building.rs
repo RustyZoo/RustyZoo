@@ -487,7 +487,12 @@ impl Cx<'_, '_> {
         let (world, cat, at) = (&mut *self.world, self.ctx.cat, self.at);
         building::leave::pay(world, cat, at, self.unit, id, &kind);
         match kind.uses_exit {
-            true => building::leave::put_out(self.world, self.at, self.unit, &e, &kind, slot),
+            true => {
+                let out = building::leave::put_out(self.world, self.at, self.unit, &e, &kind, slot);
+                if !out {
+                    crate::goal::stop_use(self.unit);
+                }
+            }
             false => self.show(),
         }
     }
@@ -510,6 +515,10 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn exit_done(&mut self) {
         self.unit.through_building = false;
         self.remove_user();
+        // A failed exit left it hidden; the goal shows it whatever the removal did (6.7.1).
+        if std::mem::take(&mut self.unit.hidden) {
+            self.world.paint_unit(self.at);
+        }
         self.reset();
         let food = self.guest().is_some_and(|g| g.items[0].is_some());
         self.unit.goal.wandered = !food;

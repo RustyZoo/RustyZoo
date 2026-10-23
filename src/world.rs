@@ -428,6 +428,30 @@ impl World {
         }
     }
 
+    /// Takes the unit at position `at` of the entity list off its tile's unit list only (guest
+    /// buildings 6.7.1): it keeps its place, is drawn as before and joins a list again at its
+    /// first change of tile.
+    pub fn unlist_unit(&mut self, at: usize) {
+        if let Ok(o) = self.owner.binary_search(&at) {
+            self.scene.unlist_unit(o);
+            self.dirty = true;
+        }
+    }
+
+    /// Whether the entity at position `at` is painted.
+    #[cfg(test)]
+    pub fn is_drawn(&self, at: usize) -> bool {
+        self.fits(at)
+    }
+
+    /// Paints the unit at position `at` where it stands, on no tile list.
+    pub fn paint_unit(&mut self, at: usize) {
+        if let Ok(o) = self.owner.binary_search(&at) {
+            self.scene.paint_unit(o);
+            self.dirty = true;
+        }
+    }
+
     /// The tiles whose exhibits an entity placed or removed at position `at` changes (habitat
     /// rating 4): its own, and the one across for a piece on an edge; none for a guest, a staff
     /// member or an ambient creature, which the rating does not see.
