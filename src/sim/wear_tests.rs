@@ -422,7 +422,7 @@ fn a_piece_whose_stored_life_is_above_i32_max_is_broken_and_does_not_wear() {
 }
 
 #[test]
-fn a_loaded_zoo_posts_its_can_and_fence_events_in_entity_list_order() {
+fn a_loaded_zoo_posts_its_can_fence_and_filter_events_in_entity_list_order() {
     let cat = || {
         let mut cat = types_with("[HabitatFence]\n", WEARING);
         cat.push(EntityType {
@@ -437,9 +437,29 @@ fn a_loaded_zoo_posts_its_can_and_fence_events_in_entity_list_order() {
             footprint: [1, 1, 1],
             height: 0,
         });
+        cat.push(EntityType {
+            class: "filter",
+            type_name: b"filter".to_vec(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                crate::config::Config::parse(b"[Characteristics/Integers]\ncDecayedHealth=5\n")
+                    .unwrap(),
+            )),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
         cat
     };
     let mut world = world("f");
+    // A broken filter between the piece and the can.
+    let mut filter = entity("filter", "filter", 8, (96, 128), 0);
+    filter.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
+        health: 0,
+        timers: None,
+    });
+    world.zoo.entities.push(filter);
     let mut can = entity("building", "can", 9, (96, 160), 0);
     can.common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
         guests: [0; 3],
@@ -459,12 +479,29 @@ fn a_loaded_zoo_posts_its_can_and_fence_events_in_entity_list_order() {
     run.sim.fences_loaded(&run.world, &cat());
     let next = run.sim.events.buffers()[1];
     let kinds: Vec<_> = next[before..].iter().map(|e| (e.sender, e.kind)).collect();
-    assert_eq!(kinds, [(7, 10034), (9, 10030)]);
+    assert_eq!(kinds, [(7, 10034), (8, 10036), (9, 10030)]);
     // A can before the piece posts first.
     run.world.zoo.entities.reverse();
     let before = run.sim.events.buffers()[1].len();
     run.sim.fences_loaded(&run.world, &cat());
     let next = run.sim.events.buffers()[1];
     let kinds: Vec<_> = next[before..].iter().map(|e| (e.sender, e.kind)).collect();
-    assert_eq!(kinds, [(9, 10030), (7, 10034)]);
+    assert_eq!(kinds, [(9, 10030), (8, 10036), (7, 10034)]);
+}
+
+#[test]
+fn a_run_starts_with_the_events_of_the_loaded_zoo() {
+    let mut world = world("f");
+    world.zoo.version = 55;
+    world.zoo.entities[0]
+        .common
+        .as_mut()
+        .unwrap()
+        .fence
+        .as_mut()
+        .unwrap()
+        .life = 0;
+    let cat = types_with("[HabitatFence]\n", WEARING);
+    let run = run(cat, world, 1);
+    assert!(run.sim.events.buffers()[1].iter().any(|e| e.kind == 10034));
 }

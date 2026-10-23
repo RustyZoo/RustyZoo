@@ -207,6 +207,7 @@ impl Run {
             ..class
         };
         sim.load(&mut world, &cat);
+        sim.fences_loaded(&world, &cat);
         sim.new_game(&mut world, &cat, &mut money, fences);
         Run {
             cat,
