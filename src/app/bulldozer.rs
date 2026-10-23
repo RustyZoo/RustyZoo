@@ -364,13 +364,14 @@ impl App<'_> {
         let object = object.map(|(tile, change, near)| {
             let rand = &mut || self.sim.rng.rand();
             let before = rating::entity(&mut game.world, cat, Some(tile), near, rand);
-            (before, change)
+            (before, change, tile)
         });
         let removed =
             bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);
         let Some(r) = removed else { return };
-        if let Some((before, change)) = object {
+        if let Some((mut before, change, tile)) = object {
             let rand = &mut || self.sim.rng.rand();
+            rating::again(&game.world, &mut before, Some(tile));
             rating::react(&mut game.world, cat, before, change, rand);
         }
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));

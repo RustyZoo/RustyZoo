@@ -1152,3 +1152,24 @@ fn a_terrain_change_marks_every_exhibit_before_it_reads_any() {
     assert_eq!(before.iter().map(|b| b.0).collect::<Vec<_>>(), [land, tank]);
     assert_eq!(rating::tests() - tests, 2);
 }
+
+#[test]
+fn a_fence_that_closes_a_pen_marks_and_rates_the_exhibit_it_makes() {
+    let (mut w, cat) = (linked(), catalogue());
+    // Open the land: its east fence piece goes, and the land is the grounds.
+    let tile = 3 * WIDE + 9;
+    let at = w.edge(tile, 2).unwrap();
+    let (piece, shape) = (w.zoo.entities[at].clone(), w.shape(at));
+    let id = piece.common.as_ref().unwrap().id;
+    assert!(w.unrecorded(|w| w.remove(id)));
+    assert_eq!(w.exhibits().region(tile), Some(crate::exhibit::GROUNDS));
+    // Put it back: the pen closes, and the exhibit holding the tile is not the one read before.
+    let mut before = rating::entity(&mut w, &cat, Some(tile), false, &mut || 0);
+    assert_eq!(before[0].0, crate::exhibit::GROUNDS);
+    w.unrecorded(|w| w.add(piece, shape)).unwrap();
+    let closed = w.exhibits().region(tile).unwrap();
+    assert!(closed != crate::exhibit::GROUNDS && dirty(&w, closed));
+    rating::again(&w, &mut before, Some(tile));
+    rating::react(&mut w, &cat, before, None, &mut || 0);
+    assert!(!dirty(&w, closed), "rated again");
+}

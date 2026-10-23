@@ -1458,7 +1458,7 @@ impl<'a> App<'a> {
             // The animals of the exhibit react to an object placed (habitat rating 9.4); a fence
             // piece runs the pair too and decides nothing by its value.
             let placed = p.verdict != place::Verdict::Invalid && game.money.can_pay(p.price);
-            let before = match placed {
+            let mut before = match placed {
                 false => Vec::new(),
                 true => {
                     let rand = &mut || self.sim.rng.rand();
@@ -1483,6 +1483,7 @@ impl<'a> App<'a> {
                     sign: 1,
                 });
                 let rand = &mut || self.sim.rng.rand();
+                rating::again(&game.world, &mut before, at);
                 rating::react(&mut game.world, cat, before, change, rand);
             }
             match outcome {

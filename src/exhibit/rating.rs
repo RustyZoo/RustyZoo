@@ -589,6 +589,17 @@ pub fn entity(
     all
 }
 
+/// After an entity is placed or removed at `tile`, the exhibit of its tile is looked up again
+/// (9.4): a fence piece that closes, opens or splits an exhibit leaves the tile in another one, and
+/// that one is marked, flagged and compared by [`react`] in place of the one read before. The sums
+/// read before stay; the neighbours read with them are kept.
+pub fn again(world: &World, before: &mut Sums, tile: Option<usize>) {
+    let now = tile.and_then(|t| world.exhibits().region(t));
+    if let (Some(first), Some(x)) = (before.first_mut(), now.filter(|&x| x != EXTERIOR)) {
+        first.0 = x;
+    }
+}
+
 /// The sum of each species of exhibit `x` that `rates` names (as [`Sums`]), read through a
 /// recomputation.
 fn sums(
