@@ -159,7 +159,10 @@ fn the_bears_on_the_land_and_in_the_tank_like_a_rock_put_on_the_land_and_dislike
     let g = &w.exhibits().grounds;
     assert!(!g.dirty && !g.revise);
     let before = rating::before(&mut w, &cat, &[tile, 0, tile], true, &mut || 0);
-    assert_eq!(before.iter().map(|b| b.0).collect::<Vec<_>>(), [land, grounds]);
+    assert_eq!(
+        before.iter().map(|b| b.0).collect::<Vec<_>>(),
+        [land, grounds]
+    );
     assert!(before[1].1.is_empty());
     let g = &mut w.exhibits_mut().grounds;
     assert!(g.dirty && g.revise);
@@ -815,11 +818,14 @@ fn the_rating_that_follows_a_change_revises_the_species_list_first() {
         "the reachability test draws after the list"
     );
     assert_eq!(before[0].0, land);
-    assert!(!before[0].1.is_empty(), "the sums of the recomputed records");
+    assert!(
+        !before[0].1.is_empty(),
+        "the sums of the recomputed records"
+    );
     // A staff member placed: no reaction, but the exhibit is marked and rated again; the type is
     // known, so no sound tile is drawn.
-    w.exhibits_mut().get_mut(land).unwrap().rating.sounds.clear();
-    w.exhibits_mut().get_mut(land).unwrap().rating.sounds.push(("owl/".into(), 0));
+    let sounds = &mut w.exhibits_mut().get_mut(land).unwrap().rating.sounds;
+    *sounds = vec![("owl/".into(), 0)];
     rating::react(&mut w, &cat, before, None, &mut || 7);
     let rating = &w.exhibits().get(land).unwrap().rating;
     assert!(!rating.dirty && !rating.revise);
