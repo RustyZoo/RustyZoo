@@ -121,6 +121,31 @@ fn the_land_reads_the_types_and_the_water_of_its_tank_and_rates_them_too() {
 }
 
 #[test]
+fn a_land_exhibit_counts_every_species_of_its_tank() {
+    let (w, cat) = (linked(), catalogue());
+    let (_, land) = pair(&w);
+    let mut state = rating::State::default();
+    state.compute(&input(&w, &cat, land));
+    assert_eq!(state.records.len(), 2);
+    assert_eq!(state.counts.0, 2);
+}
+
+#[test]
+fn a_land_exhibit_rates_only_the_amphibious_species_of_its_tank() {
+    let (w, cat) = (linked(), catalogue());
+    let (tank, land) = pair(&w);
+    let keys = |x| {
+        rate(&input(&w, &cat, x))
+            .into_iter()
+            .filter(|r| r.rated)
+            .map(|r| r.key)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(keys(land), ["polar"]);
+    assert_eq!(keys(tank), ["polar", "shark"]);
+}
+
+#[test]
 fn marking_one_marks_its_neighbour_up_to_the_marked_ones() {
     let mut w = linked();
     let (tank, land) = pair(&w);
