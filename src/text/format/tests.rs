@@ -313,6 +313,22 @@ fn a_locale_gives_its_own_names() {
 }
 
 #[test]
+fn a_cflocale_identifier_gives_a_libc_locale_name() {
+    let name = |id| locale::region_locale_name(id);
+    assert_eq!(name("fr_CH").as_deref(), Some("fr_CH.UTF-8"));
+    assert_eq!(
+        name("en_US@calendar=gregorian").as_deref(),
+        Some("en_US.UTF-8")
+    );
+    assert_eq!(name("zh-Hans_CN").as_deref(), Some("zh_CN.UTF-8"));
+    assert_eq!(name("de-DE").as_deref(), Some("de_DE.UTF-8"));
+    // No region, no language or garbage: none, so the names are English.
+    for id in ["", "fr", "_CH", "fr_", "FR_ch", "fr_CHE", "@x", "\u{e9}_FR"] {
+        assert_eq!(name(id), None, "{id:?}");
+    }
+}
+
+#[test]
 fn graph_months_come_from_the_string_table() {
     let t = table(&[(22101, "Jan"), (22102, "Feb."), (22112, "Dez")]);
     assert_eq!(graph_month(&t, 1), "Jan");
