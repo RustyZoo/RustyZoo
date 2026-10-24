@@ -9,8 +9,8 @@ use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::panel::exhibit::animals_in;
 use crate::place::bulldozer::type_of;
 use crate::unit::{Kind, Part};
-use crate::world::World;
-use crate::zoo::Entity;
+use crate::world::{World, piece_event};
+use crate::zoo::{Entity, Event};
 
 /// Whether the entity is a piece of litter (`objects/other/trash`).
 pub fn is_litter(e: &Entity) -> bool {
@@ -106,26 +106,48 @@ pub fn recycle(world: &mut World, cat: &Catalogue, t: usize, dino: bool) {
         .push(world.units.prices.recycling * uses);
 }
 
-/// The objects of a land exhibit's tiles that call a worker when its last animal goes (habitat
-/// rating 5.1 point 5): what stinks, and food. Their ids and tiles, each object once, in tile order.
-pub fn leftovers(world: &World, cat: &Catalogue, x: u32) -> Vec<(u32, usize)> {
-    let mut found: Vec<(u32, usize)> = Vec::new();
-    let tiles = world.exhibits().get(x).map_or(&[][..], |e| &e.order);
-    for &t in tiles {
-        for at in held(world, t) {
-            let e = &world.zoo.entities[at];
-            let stinks = type_of(cat, e)
-                .and_then(|ty| number(ty, "cStink"))
-                .is_some_and(|v| v > 0.0);
-            let Some(id) = e.common.as_ref().map(|c| c.id) else {
-                continue;
-            };
-            if (stinks || e.class == "food") && !found.iter().any(|f| f.0 == id) {
-                found.push((id, t));
-            }
-        }
-    }
+/// Whether the entity stinks or is food: it calls a worker when it is left behind (staff 8.2).
+fn leaves(cat: &Catalogue, e: &Entity) -> bool {
+    let stinks = type_of(cat, e)
+        .and_then(|ty| number(ty, "cStink"))
+        .is_some_and(|v| v != 0.0);
+    stinks || e.class == "food"
+}
+
+/// The objects that call a worker when the exhibit with these tiles is emptied or destroyed
+/// (staff 8.2): the object in the centre slot of each tile, when it stinks or is food. Their ids
+/// and tiles, in tile order; an object that holds the centre slot of two tiles comes twice.
+pub fn leftovers(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, usize)> {
+    let slot = |&t| {
+        let e = &world.zoo.entities[world.quadrant(t, 3)?];
+        let id = e.common.as_ref()?.id;
+        leaves(cat, e).then_some((id, t))
+    };
+    tiles.iter().filter_map(slot).collect()
+}
+
+/// The events a zoo just loaded posts for what it left behind (staff 8.2): each object that
+/// stinks or is food, on a tile of the zoo grounds or of an exhibit with no animals. In entity
+/// list order, the tile of the object as data.
+pub fn loaded_leftovers(world: &World, cat: &Catalogue) -> Vec<Event> {
+    let empty = |x: u32| {
+        let near = world
+            .exhibits()
+            .get(x)
+            .map_or(&[][..], |e| &e.amphibious[..]);
+        (near.iter().chain([&x])).all(|&n| animals_in(world, n).is_empty())
+    };
+    let tile = |e: &Entity| tile_of(world, e);
+    let found = world.zoo.entities.iter().filter(|e| leaves(cat, e));
+    let found = found.filter_map(|e| Some((e.common.as_ref()?.id, tile(e)?)));
+    let found = found.filter(|&(_, t)| match world.exhibits().region(t) {
+        Some(GROUNDS) => true,
+        Some(EXTERIOR) | None => false,
+        Some(x) => empty(x),
+    });
     found
+        .map(|(id, t)| piece_event(id, crate::animal::dirt::DUNG, t as u32))
+        .collect()
 }
 
 /// The ids of the trash cans of tile `t`.

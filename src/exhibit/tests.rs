@@ -348,6 +348,19 @@ fn a_piece_that_cuts_nothing_changes_nothing() {
 }
 
 #[test]
+fn a_destroyed_exhibit_tells_its_tiles_in_order() {
+    let mut pieces = square(2, 2, 4, 4);
+    let last = pieces.pop().unwrap();
+    let mut world = loaded(&pieces);
+    put(&mut world, last);
+    world.take_events();
+    let other = at(&world, 2, 2, 0);
+    let tiles = world.exhibits().get(1).unwrap().order.clone();
+    assert!(world.remove(other));
+    assert_eq!(world.take_events()[0], Event::Left(tiles));
+}
+
+#[test]
 fn removing_a_piece_deletes_an_exhibit_open_to_the_grounds() {
     let mut pieces = square(2, 2, 4, 4);
     let last = pieces.pop().unwrap();
@@ -360,7 +373,7 @@ fn removing_a_piece_deletes_an_exhibit_open_to_the_grounds() {
     // Another piece: the exhibit goes, and its gate is a fence again.
     let other = at(&world, 2, 2, 0);
     assert!(world.remove(other));
-    assert_eq!(world.take_events(), [Event::Removed(1)]);
+    assert_eq!(told(&mut world), [Event::Removed(1)]);
     // The thought with no object goes with it; the other keeps its object and loses the exhibit.
     let kept: Vec<_> = world
         .units
@@ -428,6 +441,15 @@ fn a_cut_exhibit_without_a_gate_keeps_the_side_of_the_piece() {
     assert_eq!(gate(&world, 2), Some((4, 1, 0)));
 }
 
+/// The events since the last call, but for the tile lists of the exhibits that are gone.
+fn told(world: &mut World) -> Vec<Event> {
+    let events = world.take_events();
+    events
+        .into_iter()
+        .filter(|e| !matches!(e, Event::Left(_)))
+        .collect()
+}
+
 /// Two exhibits side by side, x 1 to 2 and x 3 to `east`, with one piece for each line between
 /// them (the east side of x 2): the pieces of both exhibits are loaded.
 fn pair(east: i32) -> World {
@@ -444,7 +466,7 @@ fn two_merged_exhibits_leave_the_larger_and_on_equal_sizes_the_far_side() {
     assert_eq!(sizes(&world), [4, 4]);
     let gone = at(&world, 2, 2, 2);
     world.remove(gone);
-    assert_eq!(world.take_events(), [Event::Merged { kept: 2, gone: 1 }]);
+    assert_eq!(told(&mut world), [Event::Merged { kept: 2, gone: 1 }]);
     assert_eq!(names(&world), [(2, String::new(), 8)]);
     // The first side is larger.
     let mut world = loaded(&{
@@ -456,7 +478,7 @@ fn two_merged_exhibits_leave_the_larger_and_on_equal_sizes_the_far_side() {
     });
     let gone = at(&world, 3, 2, 2);
     world.remove(gone);
-    assert_eq!(world.take_events(), [Event::Merged { kept: 1, gone: 2 }]);
+    assert_eq!(told(&mut world), [Event::Merged { kept: 1, gone: 2 }]);
 }
 
 #[test]
@@ -467,7 +489,7 @@ fn the_exhibit_whose_gate_was_removed_is_the_one_that_goes() {
     let kept = at(&world, 1, 1, 0);
     world.set_gate(1, kept);
     world.remove(line);
-    assert_eq!(world.take_events(), [Event::Merged { kept: 1, gone: 2 }]);
+    assert_eq!(told(&mut world), [Event::Merged { kept: 1, gone: 2 }]);
     assert!(is_gate(&world, kept), "the survivor keeps its gate");
 }
 
@@ -479,7 +501,7 @@ fn an_exhibit_that_opens_into_the_other_goes() {
     world.set_gate(2, lead);
     let line = at(&world, 2, 2, 2);
     world.remove(line);
-    assert_eq!(world.take_events(), [Event::Merged { kept: 1, gone: 2 }]);
+    assert_eq!(told(&mut world), [Event::Merged { kept: 1, gone: 2 }]);
     assert!(!is_gate(&world, lead));
 }
 

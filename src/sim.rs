@@ -284,11 +284,12 @@ impl Sim {
     /// The trash cans, fence pieces and filters of a zoo just loaded post their events, after the
     /// events the file stored, in one pass in entity list order (guest buildings 4.1): a can above
     /// 12 pieces calls a worker (staff 8.2), a broken or decayed piece (placing 7.4) or filter
-    /// asks for a mender.
+    /// asks for a mender, and dung or food on the grounds or in an empty exhibit calls a worker.
     pub fn fences_loaded(&mut self, world: &World, cat: &Catalogue) {
         let mut events = crate::building::loaded_events(world);
         events.extend(world.loaded_events(cat));
         events.extend(world.loaded_filter_events(cat));
+        events.extend(crate::staff::chores::loaded_leftovers(world, cat));
         // One event per entity, so the sort by the sender's place is the file's order.
         let place = |id| {
             world
@@ -549,7 +550,11 @@ impl Sim {
             let emptied = &mut world.exhibits_mut().list_mut()[at].rating.emptied;
             if std::mem::take(emptied) && world.exhibits().get(id).is_some_and(|e| e.tank.is_none())
             {
-                for (piece, tile) in crate::staff::chores::leftovers(world, cat, id) {
+                let tiles = world
+                    .exhibits()
+                    .get(id)
+                    .map_or(Vec::new(), |e| e.order.clone());
+                for (piece, tile) in crate::staff::chores::leftovers(world, cat, &tiles) {
                     self.events.post(crate::world::piece_event(
                         piece,
                         crate::animal::dirt::DUNG,
