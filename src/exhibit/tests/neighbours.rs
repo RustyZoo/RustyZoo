@@ -30,7 +30,7 @@ fn kind(class: &'static str, name: &str, name_id: i32, text: &str) -> EntityType
 
 /// The polar bear wants grass only, likes the rock (name id 7) at 20 and dislikes the goat (name
 /// id 5003) at -10; the shark and the goat have no likes.
-fn catalogue() -> Catalogue {
+pub(super) fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let polar = "[Characteristics/Integers]\ncUnderwater=1\ncOnlyUnderwater=0\n\
                  [cSuitableObjects]\nv=7\nv=20\nv=8\nv=-30\nv=9\nv=-30\n[cCompatibleTerrain]\nv=0\nv=100\n\
@@ -42,6 +42,8 @@ fn catalogue() -> Catalogue {
     cat.push(kind("fences", "iron", 0, ""));
     let shark = "[Characteristics/Integers]\ncUnderwater=1\ncOnlyUnderwater=1\n";
     cat.push(kind("animals", "shark", 5002, shark));
+    let orca = "[Characteristics/Integers]\ncUnderwater=1\ncOnlyUnderwater=0\n";
+    cat.push(kind("animals", "orca", 5004, orca));
     cat.push(kind(
         "bush",
         "rock",

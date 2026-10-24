@@ -6,7 +6,7 @@
 //! parameters: the world manager calls [`State::update`] for every exhibit at each step with the
 //! simulation's generator, and [`input`] reads an exhibit of a [`World`] into the plain
 //! description the rules work on. Land exhibits and tanks are rated with their amphibious
-//! neighbours (5.3, 9.2); show neighbours belong to the shows and are none here.
+//! neighbours (5.3, 9.2) and a tank with its show neighbours (5.1 point 4, 9.2).
 
 use std::collections::{HashMap, HashSet};
 
@@ -81,6 +81,9 @@ pub struct Likes {
     pub compatible: Vec<(i32, i32)>,
     /// `cBashStrength` above 0 (habitat rating 12).
     pub bash: bool,
+    /// Found on a show neighbour of an amphibious neighbour: a record, never in the surrounding
+    /// list (5.1 point 4, 9.2).
+    pub via: bool,
 }
 
 /// The value of an id in a list of pairs: the last pair that names it, 0 when none does.
@@ -170,6 +173,7 @@ impl Likes {
             ids: [ty.name_id, int("cGenus", 0), int("cFamily", 0)],
             compatible: pairs("cCompatibleAnimals"),
             bash: int("cBashStrength", 0) > 0,
+            via: false,
         }
     }
 }
@@ -277,6 +281,10 @@ pub struct Input {
     /// neighbours' tiles, a tank's with its water (5.3).
     pub near: Vec<Likes>,
     pub neighbours: Vec<Site>,
+    /// The exhibit has a show neighbour, and the animal types of its show neighbours, each once
+    /// (5.1 point 4, 9.2).
+    pub show_linked: bool,
+    pub show: Vec<Likes>,
 }
 
 /// The record of one species in an exhibit (rule 3): its part scores and the recommendation
@@ -297,6 +305,8 @@ pub struct Record {
     pub salinity: f32,
     pub tank: bool,
     pub show: bool,
+    /// The exhibit has a show neighbour (6).
+    pub show_linked: bool,
     pub amphibious: bool,
     /// What the pair rates (9.2, 9.4), the surrounding species list: an exhibit rates its own
     /// species, a land exhibit also the amphibious types of its tank, though both keep a record of
@@ -328,8 +338,7 @@ impl Record {
         for part in rest {
             sum += 0.1f32 * part;
         }
-        // No show tank has a show neighbour before the shows.
-        if self.show && self.amphibious {
+        if self.show && self.amphibious && !self.show_linked {
             sum -= 50.0;
         }
         sum
@@ -429,16 +438,22 @@ pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
 }
 
 /// The end of the recomputation of exhibit `x`: a land exhibit has read the species lists of its
-/// amphibious neighbours, which computes those that are dirty first (9.2), then the
+/// amphibious neighbours and a tank those of its show neighbours, which computes those that are
+/// dirty first (9.2), then the
 /// reachability test runs (5.8).
 pub fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     let Some(e) = world.exhibits().get(x) else {
         return;
     };
-    if e.tank.is_none() {
-        for n in e.amphibious.clone() {
-            refresh(world, cat, n, rand);
-        }
+    // The lists read are those of the amphibious neighbours of a land exhibit and the show
+    // neighbours of a tank.
+    let read = if e.tank.is_none() {
+        &e.amphibious
+    } else {
+        &e.show_near
+    };
+    for n in read.clone() {
+        refresh(world, cat, n, rand);
     }
     reach(world, cat, x, rand);
 }
@@ -728,7 +743,8 @@ pub fn react(world: &mut World, cat: &Catalogue, before: Sums, change: Option<Ch
             (e.rating.records.iter()).filter(|r| r.rated && rates.is_none_or(|a| r.amphibious == a))
         {
             let was = (old.iter()).find(|o| o.0 == r.key).map_or(0.0, |o| o.1);
-            let l = (likes.species.iter().chain(&likes.near)).find(|l| l.key == r.key);
+            let l = (likes.species.iter().chain(&likes.near).chain(&likes.show))
+                .find(|l| l.key == r.key);
             let by = match (was != 0.0 && was != r.sum(), change, l) {
                 (true, ..) => r.sum() - was,
                 (
@@ -751,7 +767,8 @@ pub fn react(world: &mut World, cat: &Catalogue, before: Sums, change: Option<Ch
         }
         for (key, liked, amphibious) in moods {
             // A neighbour's animals are reached when this land exhibit is their home.
-            let l = (likes.species.iter().chain(&likes.near)).find(|l| l.key == key);
+            let l =
+                (likes.species.iter().chain(&likes.near).chain(&likes.show)).find(|l| l.key == key);
             let home = |p: u32| l.and_then(|l| crate::animal::home::home(world, cat, p, l));
             let mut places = vec![x];
             places.extend(near.iter().filter(|&&p| amphibious && home(p) == Some(x)));
@@ -780,49 +797,68 @@ pub fn react(world: &mut World, cat: &Catalogue, before: Sums, change: Option<Ch
     }
 }
 
+/// The surrounding species list (9.2): the species list, then in a land exhibit the amphibious
+/// types of its amphibious neighbours, then the types of its show neighbours. What a show
+/// neighbour of an amphibious neighbour holds is in the records only.
+fn surrounding(input: &Input) -> Vec<&Likes> {
+    let land = input.site.water.is_none();
+    let mut list: Vec<&Likes> = input.species.iter().collect();
+    let amphibious = input.near.iter().filter(|l| land && l.amphibious && !l.via);
+    for l in amphibious.chain(&input.show) {
+        if !(list.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
+            list.push(l);
+        }
+    }
+    list
+}
+
 /// Rates the exhibit for each species in it, in the order the species first appear, then for
 /// those of its amphibious neighbours (rules 5.1 to 5.6). The fields that depend on the animals'
 /// own state (happiness sums, hunger counts) are not part of the rating and not kept.
 pub fn rate(input: &Input) -> Vec<Record> {
     let site = &input.site;
     let (tank, show) = (site.water.is_some(), site.water.is_some_and(|w| w.show));
-    let all: Vec<&Likes> = input.species.iter().chain(&input.near).collect();
+    let all: Vec<&Likes> = (input.species.iter())
+        .chain(&input.near)
+        .chain(&input.show)
+        .collect();
     let mut records: Vec<Record> = Vec::new();
     // The first type of each record, and the record of each type.
     let mut first: Vec<usize> = Vec::new();
-    let of: Vec<usize> = (all.iter().enumerate())
-        .map(|(i, l)| {
-            records
-                .iter()
-                .position(|r| r.key == l.key)
-                .unwrap_or_else(|| {
-                    records.push(Record {
-                        key: l.key.clone(),
-                        tank,
-                        show,
-                        amphibious: l.amphibious,
-                        rated: i < input.species.len() || (l.amphibious && !tank),
-                        ..Record::default()
-                    });
-                    first.push(i);
-                    records.len() - 1
-                })
-        })
-        .collect();
+    let mut of: Vec<usize> = Vec::new();
+    let own = input.species.len();
+    for (i, l) in all.iter().enumerate() {
+        // What the pair rates: the exhibit's own species, a land exhibit the amphibious types of
+        // its tank, a tank the types of its show neighbours (9.2).
+        let rated = match i {
+            _ if i < own => true,
+            _ if i < own + input.near.len() => l.amphibious && !tank && !l.via,
+            _ => true,
+        };
+        let at = records.iter().position(|r| r.key == l.key);
+        if let Some(r) = at {
+            records[r].rated |= rated;
+        } else {
+            records.push(Record {
+                key: l.key.clone(),
+                tank,
+                show,
+                show_linked: input.show_linked,
+                amphibious: l.amphibious,
+                rated,
+                ..Record::default()
+            });
+            first.push(i);
+        }
+        of.push(at.unwrap_or(records.len() - 1));
+    }
     let of = &of[..input.species.len()];
     for &a in &input.animals {
         if let Some(&r) = of.get(a) {
             records[r].animals += 1;
         }
     }
-    // The surrounding species list (9.2): in a land exhibit the amphibious types of the
-    // neighbours join the list.
-    let mut around: Vec<&Likes> = input.species.iter().collect();
-    for l in input.near.iter().filter(|l| l.amphibious && !tank) {
-        if !(around.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
-            around.push(l);
-        }
-    }
+    let around = surrounding(input);
     // The other animals (5.5.7): the types of another name id, by name id, genus and family.
     for (rec, &i) in records.iter_mut().zip(&first) {
         let l = all[i];
@@ -1196,10 +1232,7 @@ impl State {
         self.escape |= counts != self.counts;
         self.emptied |= counts.1 == 0 && self.counts.1 != 0;
         self.counts = counts;
-        let land = input.site.water.is_none();
-        self.bash = (input.species.iter())
-            .chain(input.near.iter().filter(|l| land && l.amphibious))
-            .any(|l| l.bash);
+        self.bash = surrounding(input).iter().any(|l| l.bash);
         self.keeper = input.keeper;
         self.attractiveness = (input.animals.iter())
             .filter_map(|&a| input.species.get(a))
@@ -1256,12 +1289,28 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
     // The types and the tiles of the amphibious neighbours (5.1 point 4, 5.3).
     let (mut near, mut neighbours): (Vec<Likes>, Vec<Site>) = (Vec::new(), Vec::new());
     for n in (exhibit.amphibious.iter()).filter_map(|&n| world.exhibits().get(n)) {
-        for l in animals_on(world, catalogue, &n.order).0 {
-            if !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
-                near.push(l);
+        // Its species, then those of its show neighbours.
+        let beside = (n.show_near.iter()).filter_map(|&s| world.exhibits().get(s));
+        let listed = [(n, false)].into_iter().chain(beside.map(|s| (s, true)));
+        for (from, via) in listed {
+            for l in animals_on(world, catalogue, &from.order).0 {
+                if !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
+                    near.push(Likes { via, ..l });
+                }
             }
         }
         neighbours.push(site(world, catalogue, &n.order, n.tank.map(water)));
+    }
+    let mut show: Vec<Likes> = Vec::new();
+    for s in (exhibit.show_near.iter()).filter_map(|&s| world.exhibits().get(s)) {
+        for l in animals_on(world, catalogue, &s.order).0 {
+            if !show
+                .iter()
+                .any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype))
+            {
+                show.push(l);
+            }
+        }
     }
     Input {
         site: site(world, catalogue, &exhibit.order, exhibit.tank.map(water)),
@@ -1271,6 +1320,8 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
         linked: !exhibit.amphibious.is_empty(),
         near,
         neighbours,
+        show_linked: !exhibit.show_near.is_empty(),
+        show,
     }
 }
 

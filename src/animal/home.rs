@@ -3,7 +3,8 @@
 //!
 //! [`home`] is read when asked, as the original does: the exhibit under the animal, or for an
 //! amphibious animal in a tank with land neighbours the neighbour with the best [`land_score`]
-//! (the first on ties), and only when that exhibit is not a show tank and has a gate. [`settle`]
+//! (the first on ties), or for an animal in a show tank with show neighbours the best rated of
+//! those, and only when that exhibit is not a show tank and has a gate. [`settle`]
 //! runs after exhibit `x` was rated: for each animal on its tiles that is not an egg it takes the
 //! bits of the pass from the record of `x` when `x` is a land exhibit, or the species is not
 //! amphibious, or the home is `x`. So an amphibious animal that swims in a linked tank keeps the
@@ -37,11 +38,26 @@ pub fn land_score(r: &Record) -> f64 {
 pub fn home(world: &World, cat: &Catalogue, x: u32, likes: &Likes) -> Option<u32> {
     let e = world.exhibits().get(x)?;
     let mut home = x;
-    if e.tank.is_some() && likes.amphibious {
+    if e.tank.is_some() && likes.amphibious && !e.amphibious.is_empty() {
         let mut best: Option<(u32, f64)> = None;
         for &n in &e.amphibious {
             let records = rating::rate(&rating::input(world, cat, n));
             let score = (records.iter().find(|r| r.key == likes.key)).map_or(0.0, land_score);
+            if best.is_none_or(|(_, s)| score > s) {
+                best = Some((n, score));
+            }
+        }
+        home = best.map_or(x, |(n, _)| n);
+    } else if e.tank.is_some_and(|t| t.show) && !e.show_near.is_empty() {
+        // A show tank: the best rated of its show neighbours, each following its own neighbours.
+        let mut records = |n| rating::rate(&rating::input(world, cat, n));
+        let mut best: Option<(u32, f32)> = None;
+        for &n in &e.show_near {
+            let near = world
+                .exhibits()
+                .get(n)
+                .map_or(Vec::new(), |e| e.amphibious.clone());
+            let score = rating::rating(n, &near, &likes.key, &mut records).unwrap_or_default();
             if best.is_none_or(|(_, s)| score > s) {
                 best = Some((n, score));
             }

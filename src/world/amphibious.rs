@@ -5,9 +5,13 @@
 //!
 //! The links are made again after every edit that can move one (12.2 lists the triggers; one that
 //! is made again after each edit gets the same links, O3).
+//!
+//! The show neighbours (exhibits and money 3.11) are made here too, by the same rebuild: a show tank
+//! and a plain tank that touch, both filled and at least 4 high, with their wall tops at one level.
+//! The portal wall pair is not made; a saved portal flag is read and drawn as it is.
 
 use super::World;
-use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
 use crate::render::corner_elevation;
 
 impl World {
@@ -59,6 +63,18 @@ impl World {
         level.then_some((y, wall))
     }
 
+    /// 3.11: whether tanks `x` and `y`, which touch, are show neighbours.
+    fn show_pair(&self, x: u32, y: u32) -> bool {
+        let tank = |id: u32| self.exhibits.get(id).and_then(|e| e.tank);
+        let top = |id: u32, k: &Tank| Some(i64::from(self.floor(id)?) + i64::from(k.height));
+        let (Some(a), Some(b)) = (tank(x), tank(y)) else {
+            return false;
+        };
+        a.show != b.show
+            && [a, b].iter().all(|k| k.filled && k.height >= 4)
+            && top(x, &a).is_some_and(|t| Some(t) == top(y, &b))
+    }
+
     /// 12.2: the links of every exhibit and the connectors, made again; the neighbours of an
     /// exhibit keep the order they became so in.
     pub(super) fn relink(&mut self) {
@@ -66,9 +82,15 @@ impl World {
         let mut connectors = Vec::new();
         let mut found = Vec::new();
         for &x in &ids {
-            let mut mine: Vec<u32> = Vec::new();
+            let (mut mine, mut shows): (Vec<u32>, Vec<u32>) = (Vec::new(), Vec::new());
             for (a, b) in self.exhibits.boundary(self, x) {
-                let Some((y, wall)) = b.and_then(|b| self.link(x, a, b)) else {
+                let Some(b) = b else { continue };
+                if let Some(y) = (self.exhibits.region(b)).filter(|&y| self.show_pair(x, y))
+                    && !shows.contains(&y)
+                {
+                    shows.push(y);
+                }
+                let Some((y, wall)) = self.link(x, a, b) else {
                     continue;
                 };
                 connectors.extend(self.zoo.entities[wall].common.as_ref().map(|c| c.id));
@@ -76,22 +98,22 @@ impl World {
                     mine.push(y);
                 }
             }
-            found.push(mine);
+            found.push((mine, shows));
         }
         connectors.sort_unstable();
         connectors.dedup();
         self.connectors = connectors;
-        for (&x, mine) in ids.iter().zip(&found) {
+        // A set keeps the order its members became so in.
+        let keep = |old: &[u32], now: &[u32]| {
+            let mut next: Vec<u32> = old.iter().copied().filter(|n| now.contains(n)).collect();
+            let added: Vec<u32> = now.iter().filter(|n| !next.contains(n)).copied().collect();
+            next.extend(added);
+            next
+        };
+        for (&x, (mine, shows)) in ids.iter().zip(&found) {
             if let Some(e) = self.exhibits.get_mut(x) {
-                let mut next: Vec<u32> = (e.amphibious.iter().copied())
-                    .filter(|n| mine.contains(n))
-                    .collect();
-                for n in mine {
-                    if !next.contains(n) {
-                        next.push(*n);
-                    }
-                }
-                e.amphibious = next;
+                e.amphibious = keep(&e.amphibious, mine);
+                e.show_near = keep(&e.show_near, shows);
             }
         }
     }

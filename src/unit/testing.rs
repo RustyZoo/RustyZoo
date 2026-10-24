@@ -266,6 +266,59 @@ pub fn gated(mut w: World) -> World {
     w
 }
 
+/// Three exhibits on a 12 by 8 map, 3 tiles tall each: the land exhibit `L` from (0, 2), 2 wide,
+/// fenced on three sides; the plain tank `T` from (2, 2), 4 wide, whose left wall is the line it
+/// shares with `L`; and the show tank `S` from (6, 2), 4 wide, which shares `T`'s right wall.
+/// Both tanks are filled and 4 high on a floor at 0, `L`'s ground is at 4, so `T` and `L` are
+/// amphibious neighbours and `T` and `S` show neighbours. `animals` stand at the given tiles.
+pub fn show_world(animals: &[(u32, &str, (i32, i32))]) -> World {
+    let piece = |class: &str, (x, y): (i32, i32), d: u32| {
+        let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
+        let id = 1000 + x as u32 * 10 + y as u32 + d;
+        entity(class, "iron", id, (x * 64 + side.0, y * 64 + side.1), d)
+    };
+    let mut pieces = Vec::new();
+    for t in 0..4 {
+        for x in [2 + t, 6 + t] {
+            pieces.push(piece("tankwall", (x, 2), 0));
+            pieces.push(piece("tankwall", (x, 4), 4));
+        }
+    }
+    for t in 0..2 {
+        pieces.push(piece("fences", (t, 2), 0));
+        pieces.push(piece("fences", (t, 4), 4));
+    }
+    for t in 0..3 {
+        pieces.push(piece("fences", (0, 2 + t), 6));
+        pieces.push(piece("tankwall", (2, 2 + t), 6));
+        pieces.push(piece("tankwall", (5, 2 + t), 2));
+        pieces.push(piece("tankwall", (6, 2 + t), 6));
+        pieces.push(piece("tankwall", (9, 2 + t), 2));
+    }
+    let mut w = world_with((12, 8), |z| {
+        z.entities.extend(pieces);
+        for &(id, kind, tile) in animals {
+            z.entities
+                .push(entity("animals", kind, id, centre(tile), 0));
+        }
+        for t in (0..2).flat_map(|x| (0..3).map(move |y| (2 + y) * 12 + x)) {
+            z.tiles[t].elevation = 4;
+        }
+    });
+    let (tank, show) = (
+        w.tank_at(2 * 12 + 2).unwrap(),
+        w.tank_at(2 * 12 + 6).unwrap(),
+    );
+    for (id, is_show) in [(tank, false), (show, true)] {
+        let k = w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap();
+        (k.show, k.filled, k.level) = (is_show, true, 4);
+        // A change of height rebuilds the links.
+        w.set_height(id, 5);
+        w.set_height(id, 4);
+    }
+    w
+}
+
 fn amphibious_world_with(land: i32, animals: &[(u32, &str, (i32, i32))], west: bool) -> World {
     let piece = |class: &str, (x, y): (i32, i32), d: u32| {
         let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
