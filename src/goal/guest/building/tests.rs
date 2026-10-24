@@ -1474,3 +1474,39 @@ fn the_enter_decide_clears_the_goal_when_the_building_is_gone() {
         assert_eq!(cx.record().task, 0);
     });
 }
+
+/// Guest 1 hidden where it stands, its building 9 gone: the hidden user of a gone building.
+fn hidden_in_a_gone_building() -> World {
+    let mut w = zoo();
+    let at = w.find(1).unwrap();
+    w.units.get_mut(1).unwrap().hidden = true;
+    w.hide_unit(at);
+    w
+}
+
+#[test]
+fn a_hidden_user_of_a_gone_building_stays_hidden_after_the_use_check() {
+    let (cat, mut w) = (types(), hidden_in_a_gone_building());
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 9;
+        cx.set_task(USE, 0, 9, None);
+        cx.use_check_done();
+    });
+    assert!(w.units.get(1).unwrap().hidden);
+    assert_eq!(task(&w), 0);
+    assert!(w.units.get(1).unwrap().goal.wandered);
+}
+
+#[test]
+fn a_hidden_user_of_a_gone_building_stays_hidden_after_the_walk_out_check() {
+    let (cat, mut w) = (types(), hidden_in_a_gone_building());
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 9;
+        cx.set_task(EXIT_BUILDING, 1, 9, None);
+        hit(cx);
+        cx.exit_check_done();
+    });
+    assert!(w.units.get(1).unwrap().hidden);
+    assert_eq!(task(&w), 0);
+    assert!(!w.units.get(1).unwrap().goal.wandered);
+}

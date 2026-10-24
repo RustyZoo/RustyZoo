@@ -253,11 +253,31 @@ pub(super) fn halt(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize,
     cx.unit.goal.wants_to_decide = true;
 }
 
-/// A pile was emptied: every other animal that aims at it stops eating and resets its goal in the
-/// same bite (5.1).
-fn stop_others(world: &mut World, ctx: &mut Ctx, data: &dyn Data, food: u32, eater: u32) {
+/// The tile of the entity at position `at`, if it stands on the map.
+fn tile_at(world: &World, at: usize) -> Option<usize> {
+    let c = world.zoo.entities.get(at)?.common.as_ref()?;
+    world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
+}
+
+/// A pile was emptied: every other animal of the eater's exhibit that aims at it stops eating and
+/// resets its goal in the same bite (5.1). An amphibious animal swimming in a neighbour exhibit
+/// keeps its goal.
+fn stop_others(
+    world: &mut World,
+    ctx: &mut Ctx,
+    data: &dyn Data,
+    food: u32,
+    (eater, at): (u32, usize),
+) {
+    let Some(area) = tile_at(world, at).and_then(|t| exhibit_of(world, t)) else {
+        return;
+    };
     let aiming: Vec<u32> = (world.units.iter())
         .filter(|u| u.id != eater && matches!(&u.part, Part::Animal(a) if a.food == food))
+        .filter(|u| {
+            let tile = world.find(u.id).and_then(|i| tile_at(world, i));
+            tile.and_then(|t| exhibit_of(world, t)) == Some(area)
+        })
         .map(|u| u.id)
         .collect();
     for id in aiming {
@@ -310,7 +330,7 @@ pub fn apply(
     world.set_food(i, m.left);
     if m.left <= 0 {
         ctx.remove(world, id);
-        stop_others(world, ctx, data, id, unit.id);
+        stop_others(world, ctx, data, id, (unit.id, at));
     }
     let line = format!(
         "eat {} {id} {} {}",
