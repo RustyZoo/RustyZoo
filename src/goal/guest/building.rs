@@ -62,7 +62,8 @@ impl Cx<'_, '_> {
     /// The species of the unit when it is an animal (guest buildings 6.1 point 7).
     fn species(&self) -> Option<building::Species> {
         let e = self.world.zoo.entities.get(self.at)?;
-        building::Species::of(self.ctx.cat, e)
+        let egg = matches!(&self.unit.part, Part::Animal(a) if a.egg);
+        building::Species::of(self.ctx.cat, e, egg)
     }
 
     fn tile_at(&self, (x, y): Point) -> Option<usize> {

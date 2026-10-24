@@ -494,7 +494,7 @@ fn a_slot_that_lists_other_species_or_filters_the_subtype_is_no_shelter_for_the_
         let cat = types_with(&format!("{CAVE}{slot}"));
         let mut w = zoo("m");
         let e = w.zoo.entities[w.find(1).unwrap()].clone();
-        let who = building::Species::of(&cat, &e);
+        let who = building::Species::of(&cat, &e, false);
         assert_eq!(who.as_ref().map(|s| s.id), Some(LION_ID));
         // The search.
         let found = animal::shelters(&w, &cat, 0, Some(tile(2, 6)), who.as_ref());

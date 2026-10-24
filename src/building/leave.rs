@@ -204,7 +204,8 @@ pub(crate) fn put_out(
         return false;
     };
     let (z, facing) = (c.z, c.rotation);
-    let who = Species::of(cat, &world.zoo.entities[at]);
+    let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
+    let who = Species::of(cat, &world.zoo.entities[at], egg);
     let Some((x, y)) = exit_of(world, e, kind, slot, who.as_ref()) else {
         world.unlist_unit(at);
         return false;
