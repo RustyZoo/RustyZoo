@@ -36,11 +36,15 @@ fn ty(class: &'static str, name: &str, subtype: &str, text: &str) -> EntityType 
 }
 
 fn types() -> Catalogue {
+    types_with(CAVE)
+}
+
+fn types_with(cave: &str) -> Catalogue {
     let mut cat = Catalogue::default();
     for subtype in ["m", "y", "p"] {
         cat.push(ty("animals", "lion", subtype, LION));
     }
-    cat.push(ty("building", "cave", "", CAVE));
+    cat.push(ty("building", "cave", "", cave));
     cat.push(ty("building", "stand", "", STAND));
     cat
 }
@@ -377,4 +381,39 @@ fn the_draws_of_the_path_follow_the_check_and_the_goal_updates() {
         cx.set_task(EXIT_BUILDING, 1, 8, None);
         draws(cx, 3, &update);
     });
+}
+
+#[test]
+fn a_hidden_animal_is_not_walked_off_by_its_ambient_choice() {
+    let (mut w, mut s) = (zoo("m"), sim());
+    if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+        a.building = 8;
+    }
+    let spot = |w: &World| {
+        let c = w.zoo.entities[w.find(1).unwrap()].common.as_ref().unwrap();
+        (c.x, c.y)
+    };
+    // The ambient table of this type walks at every choice; the checks make a choice every step.
+    // The cave keeps its user long; the walk in ends within some steps of the entering, and no
+    // ambient walk follows.
+    let (cat, data) = (
+        types_with(&CAVE.replace("cTimeInside=3", "cTimeInside=100")),
+        Sets::strolling(),
+    );
+    let (mut inside, mut since) = (None, 0);
+    for _ in 0..1500 {
+        w.units.get_mut(1).unwrap().status_timer = i32::MAX / 2;
+        s.step_with(&data, &cat, &mut w, 67, |_, _, _| {});
+        w.units.take_lines();
+        since += usize::from(users(&w, 8) == 1);
+        match inside {
+            None if since == 60 => inside = Some(spot(&w)),
+            Some(at) => assert_eq!((users(&w, 8), spot(&w)), (1, at)),
+            None => {}
+        }
+        if since == 120 {
+            return;
+        }
+    }
+    panic!("it never got in");
 }
