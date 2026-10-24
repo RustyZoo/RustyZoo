@@ -589,6 +589,29 @@ pub fn send(
     .send_to(to);
 }
 
+/// A use set reaches the building (guest buildings 6.4.1): `fEnterBuilding` when `enter`, else
+/// `fExitBuilding`.
+pub fn use_call(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    enter: bool,
+) {
+    let mut cx = Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    };
+    match enter {
+        true => cx.set_enters(),
+        false => cx.set_exits(),
+    }
+}
+
 /// A guide's status tick: the countdown of its gathering (tour guide 4).
 pub fn crowd(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     Cx {
@@ -1032,6 +1055,11 @@ impl Cx<'_, '_> {
     /// The plain start of a set (behaviours 4.2): a running `name` starts again. Interruptible;
     /// the sequence playing goes on, the move call of the set puts the walk animation behind it.
     pub fn start_set(&mut self, name: &str, force: bool) -> bool {
+        self.start_with(name, true, force)
+    }
+
+    /// The same, `interruptible` as the caller says.
+    pub fn start_with(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
         let entity: &Entity = &self.world.zoo.entities[self.at];
         let env = Env {
             data: self.data,
@@ -1039,7 +1067,7 @@ impl Cx<'_, '_> {
             rng: &mut *self.ctx.rng,
         };
         let (anim, runner) = (&mut self.unit.animation, &mut self.unit.runner);
-        runner.start(anim, &env, name, true, force, true)
+        runner.start(anim, &env, name, interruptible, force, true)
     }
 
     /// 8.1: a path to `to`, then the walk.

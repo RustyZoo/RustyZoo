@@ -303,13 +303,67 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 0x68 complete: the building takes the guest as a user.
+    /// Whether the user of a building of this kind is released by its use set (guest buildings
+    /// 6.4.1, 6.5, 12.1): an animal that is visible inside. A guest ends by the time inside.
+    fn uses_set(&self, kind: &Kind) -> bool {
+        matches!(self.unit.part, Part::Animal(_)) && !kind.hide && !kind.outside
+    }
+
+    /// 0x68 complete: the building takes the unit as a user; a user visible inside starts its use
+    /// set instead, which does (guest buildings 6.4, 6.4.1).
     pub(in crate::goal) fn enter_arrived(&mut self) {
         self.unit.path.clear();
         let (id, slot) = self.target();
-        match self.add_user(id, slot) {
+        let set = self.building(id).filter(|(_, k)| self.uses_set(k));
+        let started = match set {
+            Some((e, _)) if self.may_add(id, slot) => {
+                let name = format!("b{}{}{slot}", e.subtype, crate::animal::NEED);
+                self.start_with(&name, false, true);
+                true
+            }
+            Some(_) => false,
+            None => self.add_user(id, slot),
+        };
+        match started {
             true => self.set_task(USE, 0, id, None),
             false => self.reset(),
+        }
+    }
+
+    /// Guest buildings 6.1: the building `id` takes the unit in slot `slot`.
+    fn may_add(&self, id: u32, slot: usize) -> bool {
+        let Some((e, kind)) = self.building(id) else {
+            return false;
+        };
+        let live = self.world.units.buildings.get(&id);
+        building::can_add(self.world, &e, &kind, live, slot, self.species().as_ref())
+    }
+
+    /// `fEnterBuilding` of a use set (guest buildings 6.4.1): the building adds the unit when it
+    /// serves the need and has room; else everything stops, and the set still asked for stays.
+    pub(in crate::goal) fn set_enters(&mut self) {
+        let (id, slot) = self.target();
+        let serves = self
+            .need()
+            .is_some_and(|n| self.building(id).is_some_and(|(_, k)| k.satisfies(n)));
+        if self.record().task == USE && !(serves && self.add_user(id, slot)) {
+            let pending = self.unit.runner.queued().map(String::from);
+            super::super::stop_use(self.unit);
+            pending.iter().for_each(|p| self.unit.runner.request(p));
+        }
+    }
+
+    /// `fExitBuilding` of a use set (guest buildings 6.4.1): a normal leave. A type whose users use
+    /// the exit puts the unit there and resets its goal, which ends the use (6.5, 6.7).
+    pub(in crate::goal) fn set_exits(&mut self) {
+        if self.record().task != USE {
+            return;
+        }
+        let id = self.target().0;
+        let uses_exit = self.building(id).is_some_and(|(_, k)| k.uses_exit);
+        self.remove_user();
+        if uses_exit {
+            super::super::stop_use(self.unit);
         }
     }
 
@@ -320,8 +374,7 @@ impl Cx<'_, '_> {
         let Some((e, kind)) = self.building(id) else {
             return false;
         };
-        let live = self.world.units.buildings.get(&id);
-        if !building::can_add(self.world, &e, &kind, live, slot, self.species().as_ref()) {
+        if !self.may_add(id, slot) {
             return false;
         }
         let (unit, now) = (self.unit.id, self.now());
@@ -444,6 +497,10 @@ impl Cx<'_, '_> {
             .and_then(|l| l.users.iter().find(|u| u.0 == unit))
             .map(|u| u.2);
         let kind = self.building(id).map(|b| b.1);
+        // The use set of a visible-inside user releases it (6.5); a building that is gone ends it.
+        if kind.as_ref().is_some_and(|k| self.uses_set(k)) {
+            return;
+        }
         let (Some(entered), Some(kind)) = (entered, kind) else {
             self.reset();
             self.unit.goal.wandered = true;

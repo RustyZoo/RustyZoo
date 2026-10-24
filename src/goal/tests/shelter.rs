@@ -519,3 +519,129 @@ fn a_slot_that_lists_other_species_or_filters_the_subtype_is_no_shelter_for_the_
     let kind = building::kind_of(&cat, &b, 0.0).unwrap();
     assert!(building::has_open_slot(&w, &b, &kind, None, None));
 }
+
+/// A rock: one animal at a time, visible inside, left by the exit; the time inside is short.
+const ROCK: &str = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=3\ncUserStaysOutside=0\n\
+    cUserUsesExit=1\ncAdultChange=7\n[Satisfies]\nbuilding\nanimalrest\n[slots]\nname=slot\n\
+    [slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=1\n";
+
+/// The zoo with building 8 a rock (the registry key `rock`), the types and the sets: the lion
+/// walks, and the rock's use set is `set`.
+fn rock(set: &[&str]) -> (World, Catalogue, Sets) {
+    let mut w = zoo("m");
+    let at = w.find(8).unwrap();
+    w.zoo.entities[at].type_name = "building".into();
+    w.zoo.entities[at].subtype = "rock".into();
+    let mut cat = types();
+    cat.push(ty("building", "building", "rock", ROCK));
+    let mut sets = Sets::walking();
+    if !set.is_empty() {
+        let calls: Vec<_> = set
+            .iter()
+            .map(|c| parse_call(c.as_bytes()).unwrap().0)
+            .collect();
+        sets.0.insert("brockanimalrest0".into(), calls);
+    }
+    if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+        a.building = 8;
+    }
+    (w, cat, sets)
+}
+
+/// One step with these types and sets; the `unit` lines.
+fn step_in(w: &mut World, s: &mut Sim, cat: &Catalogue, sets: &Sets) -> Vec<String> {
+    s.step_with(sets, cat, w, 67, |_, _, _| {});
+    w.units.take_lines()
+}
+
+#[test]
+fn an_animal_visible_inside_stays_for_its_use_set_and_leaves_by_the_exit() {
+    let (mut w, cat, sets) = rock(&["fEnterBuilding()", "fPlayTime(a,5)", "fExitBuilding()"]);
+    let mut s = sim();
+    let at = w.find(1).unwrap();
+    let (mut log, mut listed, mut before) = (Vec::new(), None, values(&w));
+    for _ in 0..1000 {
+        if users(&w, 8) == 1 {
+            before = values(&w);
+        }
+        log.extend(step_in(&mut w, &mut s, &cat, &sets));
+        let u = w.units.get(1).unwrap();
+        match (users(&w, 8), listed) {
+            (1, None) => listed = Some(w.units.ai_ticks),
+            // Past the 3 ticks of the type the animal is still there, in the set, visible.
+            (1, Some(t)) if w.units.ai_ticks > t + 3 => {
+                assert!(!u.hidden && u.goal.record.task == USE && u.runner.running());
+            }
+            (0, Some(_)) => break,
+            _ => {}
+        }
+    }
+    assert_eq!(users(&w, 8), 0, "{log:?}");
+    assert!(
+        log.contains(&"set 1 brockanimalrest0".to_string()),
+        "{log:?}"
+    );
+    // The release is the normal leave: the exit, no goal, no shelter, the change record, and the
+    // leave task never ran.
+    let u = w.units.get(1).unwrap();
+    let c = w.zoo.entities[at].common.as_ref().unwrap();
+    assert_eq!((c.x.div_euclid(64), c.y.div_euclid(64)), (5, 9));
+    assert_eq!(animal(&w).building, 0);
+    assert!(![USE, EXIT_BUILDING].contains(&u.goal.record.task));
+    assert!(
+        !log.iter().any(|l| l.starts_with("goal 1 leavebuilding")),
+        "{log:?}"
+    );
+    assert_eq!(values(&w)[0] - before[0], 7);
+}
+
+#[test]
+fn a_missing_use_set_leaves_the_animal_in_task_0x6a_and_never_a_user() {
+    let (mut w, cat, sets) = rock(&[]);
+    let mut s = sim();
+    for _ in 0..600 {
+        step_in(&mut w, &mut s, &cat, &sets);
+        w.units.get_mut(1).unwrap().status_timer = i32::MAX / 2;
+    }
+    let u = w.units.get(1).unwrap();
+    assert_eq!((u.goal.record.task, animal(&w).building), (USE, 8));
+    assert_eq!(users(&w, 8), 0);
+}
+
+#[test]
+fn an_enter_call_that_the_building_refuses_stops_the_animal() {
+    let (mut w, cat, sets) = rock(&[
+        "fPlay(a)",
+        "fEnterBuilding()",
+        "fPlayTime(a,5)",
+        "fExitBuilding()",
+    ]);
+    let (mut s, mut log) = (sim(), Vec::new());
+    for _ in 0..1000 {
+        log.extend(step_in(&mut w, &mut s, &cat, &sets));
+        if w.units.get(1).unwrap().goal.record.task == USE {
+            break;
+        }
+    }
+    assert_eq!(w.units.get(1).unwrap().goal.record.task, USE);
+    assert!(
+        log.contains(&"set 1 brockanimalrest0".to_string()),
+        "{log:?}"
+    );
+    assert_eq!(users(&w, 8), 0);
+    // The rock fills up while the animal plays: the call finds no room.
+    let other = Live {
+        users: vec![(100, 0, 0)],
+        ..Live::default()
+    };
+    w.units.buildings.insert(8, other);
+    for _ in 0..30 {
+        step_in(&mut w, &mut s, &cat, &sets);
+        if animal(&w).building == 0 {
+            break;
+        }
+    }
+    let u = w.units.get(1).unwrap();
+    assert_eq!((animal(&w).building, users(&w, 8)), (0, 1));
+    assert!(u.goal.record.task != USE && !u.runner.running());
+}
