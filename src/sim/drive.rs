@@ -349,6 +349,9 @@ impl Run {
         if let (Some(female), Some(unit)) = (sex, self.world.units.get_mut(id)) {
             unit.sex = Some(female);
         }
+        if let Some(at) = self.world.find(id) {
+            crate::staff::make(&mut self.world, &self.cat, &mut self.sim.rng, at);
+        }
         true
     }
 

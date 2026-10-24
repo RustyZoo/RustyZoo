@@ -250,3 +250,35 @@ fn a_staff_member_is_hired_anywhere_booked_in_the_wages_and_the_next_sex_is_draw
         assert_eq!(&names[4..], ["text5500 1", "text5500 2"]);
     });
 }
+
+#[test]
+fn the_pending_staff_member_draws_its_counters_when_made_and_the_hire_only_the_sex() {
+    with_app("app-hire-draws", |app| {
+        app.game.as_mut().unwrap().paused = true;
+        let game = app.game.as_mut().unwrap();
+        game.build.hold(3);
+        game.build.chose(3);
+        let mut generator = app.sim.rng.clone();
+        app.make_pending();
+        // The keys are missing: the work counter of 5 and the chase counter of 2, in that order.
+        let drawn = (generator.pick(5) as i32, generator.pick(2) as i32);
+        assert_eq!(app.sim.rng, generator);
+        let made = app.game.as_ref().unwrap().made.clone();
+        assert_eq!(
+            made.map(|(ty, s)| (ty, s.work, s.chase)),
+            Some((3, drawn.0, drawn.1))
+        );
+        // The release hires that very staff member: it keeps the draws and starts no state at its
+        // first turn, and the hire draws the next sex after them.
+        let camera = app.camera().unwrap().clone();
+        click(app, 10, point(&camera, 19 * 64 + 32, 20 * 64 + 32));
+        generator.rand();
+        assert_eq!(app.sim.rng, generator);
+        let game = app.game.as_ref().unwrap();
+        let crate::unit::Part::Staff(s) = &game.world.units.get(101).unwrap().part else {
+            panic!("not staff");
+        };
+        assert_eq!((s.work, s.chase), drawn);
+        assert!(game.world.units.get(101).unwrap().started && game.made.is_none());
+    });
+}

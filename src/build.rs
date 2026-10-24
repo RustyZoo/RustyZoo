@@ -456,6 +456,9 @@ pub struct Build {
     october: bool,
     /// The Hire panel lists the male staff (unit placing 4.3).
     hire_male: bool,
+    /// The staff types chosen since the last [`Build::take_made`]: each is a pending staff member
+    /// made (staff 4.2).
+    made: Vec<usize>,
 }
 
 impl Build {
@@ -480,7 +483,14 @@ impl Build {
             gate: false,
             october: false,
             hire_male: false,
+            made: Vec::new(),
         }
+    }
+
+    /// The staff types chosen since the last call, in order: the app creates a pending staff
+    /// member for each.
+    pub fn take_made(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.made)
     }
 
     /// The sex of the staff the Hire panel lists.
@@ -753,6 +763,12 @@ impl Build {
     #[cfg(test)]
     pub fn hold(&mut self, ty: usize) {
         self.held = Some(ty);
+    }
+
+    /// A staff item was chosen, as a test needs it without the panels (see [`Build::hold`]).
+    #[cfg(test)]
+    pub fn chose(&mut self, ty: usize) {
+        self.made.push(ty);
     }
 
     /// The rotation step of the pending object, 0 to 3 (placing 4.4).
@@ -1079,6 +1095,9 @@ impl Build {
         self.stop_gate(ui, log);
         self.chosen[p][tab] = Some(index);
         self.held = Some(index);
+        if staff::is_staff(ty) {
+            self.made.push(index);
+        }
         self.turn = self.step[p];
         ui.select_item(panel.list, Some(at));
         let name = ui.string(ty.name_id);

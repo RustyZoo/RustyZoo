@@ -109,7 +109,7 @@ impl Kind {
 /// The part of the state of a staff member: its exhibits and job (staff issues).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Staff {
-    /// The counters drawn when the first turn starts the state (staff 4.2): -1 for a key of 0.
+    /// The counters drawn at the creation (staff 4.2): -1 for a key of 0.
     pub work: i32,
     pub chase: i32,
     /// The exhibits it is assigned to, the oldest first, none twice (staff 6).

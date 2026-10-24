@@ -52,8 +52,8 @@ fn the_monthly_cost_is_the_purchase_cost_unless_the_file_says_otherwise() {
     assert_eq!(monthly(&staff_type("keeper", "")), 0.0, "no key at all");
 }
 
-/// The counters a keeper of the type draws at its first turn of a seeded run, and the draws that
-/// ought to give them.
+/// The counters a keeper of the type draws at the load of a seeded run (the staff member is on the
+/// map the zoo was loaded with), and the generator before the draws that ought to give them.
 fn first_turn(ini: &str) -> (Staff, Rng) {
     first_turn_of("keeper", ini)
 }
@@ -70,6 +70,7 @@ fn first_turn_of(class: &'static str, ini: &str) -> (Staff, Rng) {
     sim.set_seed(1);
     sim.start_game(16, Clocks::default());
     let drawn = sim.rng.clone();
+    sim.load(&mut w, &cat);
     sim.step_in(&mut w, &cat, 67, |_, _, _| {});
     let Part::Staff(staff) = &w.units.get(1).unwrap().part else {
         panic!("not staff");
@@ -78,7 +79,7 @@ fn first_turn_of(class: &'static str, ini: &str) -> (Staff, Rng) {
 }
 
 #[test]
-fn a_new_staff_member_draws_its_work_and_chase_counters_at_its_first_turn() {
+fn a_new_staff_member_draws_its_work_and_chase_counters_at_its_creation() {
     let section = |keys: &str| format!("[m/Characteristics/Integers]\n{keys}");
     let (staff, mut rng) = first_turn(&section("cWorkCheck=20\ncChaseCheck=3\n"));
     assert_eq!(staff.work, rng.pick(20) as i32);
@@ -98,6 +99,41 @@ fn a_new_staff_member_draws_its_work_and_chase_counters_at_its_first_turn() {
     let (staff, mut rng) = first_turn(&section("cWorkCheck=-7\ncChaseCheck=99999999999\n"));
     assert_eq!(staff.work, rng.pick(7) as i32);
     assert_eq!(staff.chase, rng.pick(i32::MAX as u32) as i32);
+}
+
+#[test]
+fn a_staff_member_draws_nothing_at_its_first_turn() {
+    let section = "[m/Characteristics/Integers]\ncWorkCheck=20\ncChaseCheck=3\ncCrowdCheck=7\n";
+    for class in ["keeper", "maint", "tour"] {
+        let mut cat = Catalogue::default();
+        cat.push(staff_type(class, section));
+        let mut w = world((4, 4), |_, entities| {
+            let mut member = entity(class, "hand", 1, centre((1, 1)), 0);
+            member.subtype = "m".into();
+            entities.push(member);
+        });
+        let mut sim = Sim::new(b"");
+        sim.set_seed(1);
+        sim.start_game(16, Clocks::default());
+        let mut expect = sim.rng.clone();
+        sim.load(&mut w, &cat);
+        let counters = |w: &World| match &w.units.get(1).unwrap().part {
+            Part::Staff(s) => (s.work, s.chase, s.crowd),
+            _ => panic!("not staff"),
+        };
+        let (work, chase) = (expect.pick(20) as i32, expect.pick(3) as i32);
+        let crowd = if class == "tour" {
+            expect.pick(7) as i32
+        } else {
+            0
+        };
+        let made = (work, chase, crowd);
+        assert!(w.units.get(1).unwrap().started, "{class}");
+        assert_eq!(counters(&w), made, "{class}: drawn at the load");
+        // The first turn would draw them again, from the generator the load left.
+        sim.step_in(&mut w, &cat, 67, |_, _, _| {});
+        assert_eq!(counters(&w), made, "{class}: kept at the first turn");
+    }
 }
 
 #[test]
