@@ -327,7 +327,7 @@ fn tga(w: u16, h: u16) -> Vec<u8> {
     out
 }
 
-fn interface(name: &str) -> (Interface, Vfs, Install) {
+pub(crate) fn interface(name: &str) -> (Interface, Vfs, Install) {
     let construction = panel(
         8,
         3261,
@@ -1195,6 +1195,8 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
         ),
         ("".into(), "Name101".into(), "$650".into(), "Cares".into())
     );
+    // Choosing the item made a pending staff member, and so does the new list's choice.
+    assert_eq!(build.take_made(), [0]);
     assert_eq!(state_of(&ui, 3676) & HIDDEN, HIDDEN, "staff do not turn");
     assert_eq!(state_of(&ui, 3609) & HIDDEN, HIDDEN);
     // A hire draws a woman: the list is made again and the same kind of staff stays chosen.
@@ -1202,6 +1204,7 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
     build.set_hire(false);
     build.rehire(&mut ui, &vfs, &cat, &mut log);
     assert_eq!((build.list.clone(), build.tool()), (vec![1, 8, 3], Some(1)));
+    assert_eq!(build.take_made(), [1]);
     // With the expansion the scientist is listed with the zookeeper, before the tour guide.
     assert_eq!(
         items_of(&cat, "staff", 1, |t| t.subtype == b"m"),
@@ -1211,5 +1214,6 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
     let none = catalogue(vec![]);
     build.rehire(&mut ui, &vfs, &none, &mut log);
     assert_eq!((build.tool(), state_of(&ui, 3609) & HIDDEN), (None, 0));
+    assert!(build.take_made().is_empty(), "nothing chosen, nothing made");
     assert_eq!(text(&ui, 3620), "");
 }

@@ -48,6 +48,12 @@ impl App<'_> {
                     .and_then(|at| game.world.zoo.entities[at].common.as_ref())
                     .map(|c| c.name.clone())
                     .unwrap_or_default();
+                // The hired unit is the pending staff member, with the counters it drew.
+                let made = game.made.take_if(|m| m.0 == p.ty);
+                if let (Some((_, made)), Some(unit)) = (made, game.world.units.get_mut(id)) {
+                    unit.part = crate::unit::Part::Staff(made);
+                    unit.started = true;
+                }
                 self.world_lines.push(format!(
                     "add {}/{}/{} {},{} id {id} name={name}",
                     ty.class,
@@ -59,11 +65,18 @@ impl App<'_> {
                 self.ui_sounds.push("place");
                 self.money_events
                     .push(format!("book {} {}", place::unit::category(ty), p.price));
+                // A hire makes the new pending staff member of the same item, draws the sex,
+                // and the rebuilt list's choice makes another one (unit placing 7.1 step 6).
                 if staff::is_staff(ty) {
+                    game.build.chose(p.ty);
+                    self.make_pending();
                     self.sim.draw_hire();
-                    game.build.set_hire(self.sim.hire_male);
-                    let (vfs, cat) = (renderer.vfs(), renderer.catalogue());
-                    game.build.rehire(ui, vfs, cat, &mut self.tool_lines);
+                    if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
+                        game.build.set_hire(self.sim.hire_male);
+                        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+                        game.build.rehire(ui, vfs, cat, &mut self.tool_lines);
+                    }
+                    self.make_pending();
                 }
             }
             Outcome::Refused(message) => {

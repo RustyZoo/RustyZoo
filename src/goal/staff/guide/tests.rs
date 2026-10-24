@@ -256,7 +256,8 @@ fn a_guide_leads_a_group_to_guests_on_a_viewing_area_talks_and_releases_it_at_th
 #[test]
 fn a_guide_with_nobody_on_a_viewing_area_walks_at_random() {
     let mut g = Game::new("", &[]);
-    g.run(200);
+    // The next leg starts at step 164.
+    g.run(150);
     assert_eq!(
         g.lines("staff job 2"),
         ["staff job 2 va", "staff job 2 random"]

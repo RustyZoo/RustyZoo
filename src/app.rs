@@ -299,6 +299,9 @@ struct Game {
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
     /// last move left it) is over the map view and a tool is chosen.
     pending: Option<Pending>,
+    /// The pending staff member made when its item was chosen (staff 4.2): the type and the
+    /// counters it drew; the hire gives them to the unit.
+    made: Option<(usize, crate::unit::Staff)>,
     /// The gate tool's pending gate (`pending` is its object), while it is over a fence piece.
     gate: Option<place::gate::Gate>,
     /// The fence piece the gate tool last judged under the pointer (placing 6.4: the pending gate
@@ -677,6 +680,7 @@ impl<'a> App<'a> {
             finances: Finances::default(),
             build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
             pending: None,
+            made: None,
             gate: None,
             gate_over: None,
             run: Vec::new(),
@@ -1667,6 +1671,7 @@ impl<'a> App<'a> {
             self.terrain_pressed(id);
         }
         self.terrain_sync();
+        self.make_pending();
         // Every change of the tool or the step tells a line. Choosing an item ends a move (8.6).
         if self.tool_lines.len() != told {
             let b = self.game.as_ref().map(|g| &g.build);
@@ -1675,6 +1680,19 @@ impl<'a> App<'a> {
                 return self.put_back();
             }
             self.aim(false);
+        }
+    }
+
+    /// Makes the pending staff member of each staff item chosen since the last call: its two
+    /// counters are drawn now (staff 4.2), the last one made is the pending one.
+    pub(super) fn make_pending(&mut self) {
+        let Some(game) = &mut self.game else { return };
+        let cat = self.renderer.catalogue();
+        for ty in game.build.take_made() {
+            let t = &cat.types[ty];
+            if let Some(kind) = crate::unit::Kind::of_class(t.class) {
+                game.made = Some((ty, crate::staff::create(Some(t), kind, &mut self.sim.rng)));
+            }
         }
     }
 

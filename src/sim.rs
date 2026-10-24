@@ -341,7 +341,8 @@ impl Sim {
     }
 
     /// Creates the animals of the map just loaded (animals 3.5) and its guests (guests 5.2, zoo
-    /// format 6.12) with their saved state, in file order, with the types of `cat` and the class keys in
+    /// format 6.12) with their saved state, and its staff (staff 4.2) with the draws of a new one,
+    /// in file order, with the types of `cat` and the class keys in
     /// `world.units.class`; the guest buildings take their figures, price and fill, and then, once
     /// every guest is made, their users (guest buildings 4.1). The fence pieces of a file older than
     /// version 55 have no condition: they are made healthy (placing 7.4). The draws come before
@@ -355,6 +356,7 @@ impl Sim {
             }
             crate::animal::load(world, cat, &mut self.rng, at);
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
+            crate::staff::make(world, cat, &mut self.rng, at);
             crate::building::load(world, cat, at);
         }
         // The users come once every guest is made, whatever the order of the file.

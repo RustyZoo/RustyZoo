@@ -1,6 +1,7 @@
 //! Staff (staff 3 to 5): the types the Hire panel lists, what hiring books and where, the monthly
-//! cost, and the two numbers a new staff member draws when its first turn starts its state; a
-//! keeper's status tick and what leaving does to the exhibit he was going to.
+//! cost, and the colours and counters a new staff member draws when it is created (the pending one
+//! when an item of the Hire panel is chosen, the staff of a loaded map at the load); a keeper's
+//! status tick and what leaving does to the exhibit he was going to.
 //!
 //! The keeper class (the zookeeper, the scientist and the marine specialist), the tour guide and
 //! the maintenance worker are staff; the helicopter comes with the scenarios.
@@ -10,7 +11,8 @@ use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
 use crate::place::bulldozer::type_of;
-use crate::unit::{Ctx, Kind, Part, Unit};
+use crate::sim::Rng;
+use crate::unit::{Ctx, Kind, Part, Staff, Unit};
 use crate::world::World;
 
 /// Whether the type is a staff member the player hires.
@@ -76,11 +78,11 @@ impl Crowd {
 }
 
 /// `rand % n` of a counter key, as the C runtime reduces it: -1 without a draw when the key is 0.
-fn counter(ty: Option<&EntityType>, key: &str, fallback: f32, ctx: &mut Ctx) -> i32 {
+fn counter(ty: Option<&EntityType>, key: &str, fallback: f32, rng: &mut Rng) -> i32 {
     let n = ty.and_then(|t| number(t, key)).unwrap_or(fallback) as i32;
     match n {
         0 => -1,
-        n => ctx.rng.pick(n.unsigned_abs()) as i32,
+        n => rng.pick(n.unsigned_abs()) as i32,
     }
 }
 
@@ -92,26 +94,65 @@ pub fn duty_kinds(cat: &Catalogue) -> usize {
     3 + usize::from(marine)
 }
 
-/// The first turn of a staff member: the work counter and then the chase counter, one draw each
-/// (staff 4.2), and a tour guide's crowd countdown (tour guide 4). The values are kept; only the
-/// guide reads them.
+/// The replaceable colours of every shipped staff type (hair and skin), one draw each at creation.
+const COLOURS: usize = 2;
+
+/// The creation of a staff member of type `ty` and kind `kind`: one draw per replaceable colour,
+/// the work counter and then the chase counter, one draw each (staff 4.2), and a tour guide's crowd
+/// countdown (tour guide 4). The counters are kept; only the guide reads them.
+pub fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
+    for _ in 0..COLOURS {
+        rng.rand();
+    }
+    let work = counter(ty, "cWorkCheck", 5.0, rng);
+    let chase = counter(ty, "cChaseCheck", 2.0, rng);
+    let crowd = match kind {
+        Kind::Guide => counter(ty, "cCrowdCheck", 10.0, rng),
+        _ => 0,
+    };
+    // A worker's countdown to the clearing of his unreachable lists (staff 4.2).
+    let clear = ty.and_then(|t| number(t, "cClearInvalidListInterval"));
+    let clear = (kind == Kind::Worker).then_some(clear.map_or(10_000, |n| n as i32));
+    Staff {
+        work,
+        chase,
+        crowd,
+        clear: clear.unwrap_or(0),
+        ..Staff::default()
+    }
+}
+
+/// Creates the staff member of the entity at position `at` of the entity list, as the loader of a
+/// map does (staff 4.2; the `sim` command hires through it too): the draws of [`create`], in file
+/// order with the animals and the guests.
+/// Nothing for an entity that is not staff. The unit counts as started, so its first turn draws
+/// nothing.
+pub fn make(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
+    let Some(entity) = world.zoo.entities.get(at) else {
+        return;
+    };
+    let kind = Kind::of_class(&entity.class).filter(|k| !matches!(k, Kind::Animal | Kind::Guest));
+    let (Some(kind), Some(common)) = (kind, entity.common.as_ref()) else {
+        return;
+    };
+    let (id, staff) = (common.id, create(type_of(cat, entity), kind, rng));
+    if let Some(unit) = world.units.get_mut(id) {
+        unit.part = Part::Staff(staff);
+        unit.started = true;
+    }
+}
+
+/// The first turn of a staff member that was not created by [`make`] or the Hire panel (one a test
+/// world added): the same draws as [`create`].
 pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     if !matches!(unit.part, Part::Staff(_)) {
         return;
     }
     let ty = type_of(ctx.cat, &world.zoo.entities[at]);
-    let work = counter(ty, "cWorkCheck", 5.0, ctx);
-    let chase = counter(ty, "cChaseCheck", 2.0, ctx);
-    let crowd = match unit.kind {
-        Kind::Guide => counter(ty, "cCrowdCheck", 10.0, ctx),
-        _ => 0,
-    };
-    // A worker's countdown to the clearing of his unreachable lists (staff 4.2).
-    let clear = ty.and_then(|t| number(t, "cClearInvalidListInterval"));
-    let clear = (unit.kind == Kind::Worker).then_some(clear.map_or(10_000, |n| n as i32));
+    let new = create(ty, unit.kind, ctx.rng);
     if let Part::Staff(s) = &mut unit.part {
-        (s.work, s.chase, s.crowd, s.members) = (work, chase, crowd, Vec::new());
-        s.clear = clear.unwrap_or(0);
+        (s.work, s.chase, s.crowd, s.members, s.clear) =
+            (new.work, new.chase, new.crowd, Vec::new(), new.clear);
     }
 }
 
