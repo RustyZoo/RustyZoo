@@ -117,7 +117,7 @@ jobs:
           report=$(cat target/release/build/sdl3-sys-*/output)
           for backend in 'Video drivers:.* x11' 'Video drivers:.* wayland' 'Audio drivers:.* alsa' \
             'Audio drivers:.* pulseaudio' 'Audio drivers:.* pipewire'; do
-            echo "$report" | grep -Eq "$backend" || { echo "SDL was built without: $backend"; exit 1; }
+            grep -Eq "$backend" <<<"$report" || { echo "SDL was built without: $backend"; exit 1; }
           done
           echo "$report" | grep -E '(Video|Audio) drivers:'
 
@@ -177,7 +177,7 @@ jobs:
           fi
           hashes=$(ci/sim-hash.sh ${{ matrix.path }} "$trials")
           echo "$hashes"
-          if echo "$hashes" | grep -q '=failed$'; then
+          if grep -q '=failed$' <<<"$hashes"; then
             echo "::warning title=Simulation hash::A map did not run."
           fi
           echo "${{ matrix.system }}=$(echo "$hashes" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
