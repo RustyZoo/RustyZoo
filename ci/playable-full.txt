@@ -8,10 +8,7 @@
 # habitat rating 9.4, which draws from the shared stream and moves the births): the run is long enough
 # for it to eat (the sums before a change read through a rating draw too, and so does the grounds'
 # update after an entity placed on them).
-# The run was 25000 passes before a pending staff member drew its two counters when its item is chosen
-# (staff 4.2): the draws moved the second young one's birth to pass 22602 and its first meal to pass 25299, so
-# the run is 26000 passes (seeds 1, 2, 4 and 6 also pass at 25000, seed 3 does not).
-#run maps/default.zoo --cash 75000 --seed 5 --passes 26000 --clock 200
+#run maps/default.zoo --cash 75000 --seed 5 --passes 25000 --clock 200
 #exhibit 16,36,21,41
 #months 12
 #expect 1 exhibit gate [0-9]+

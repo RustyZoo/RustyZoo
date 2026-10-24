@@ -6,15 +6,17 @@
 # worker, then the game unpaused. ci/check-playable.sh runs it twice and reads the log.
 #
 # The window is the default one (1024x768); every position is in its pixels. The game is built while
-# it is paused. The game starts on its map: there the seed 5 draws women for the two hires (the
-# staff of the base trial are women only, and the Hire list is empty when a man is drawn); a game
-# started from the main menu draws a man for the second hire.
+# it is paused. The game starts on its map: there the seed 6 draws women for the two hires (the
+# staff of the base trial are women only, and the Hire list is empty when a man is drawn). The seed
+# was 5 before a staff member drew its colours and counters at its creation and a hire made two
+# pending staff members (staff 4.2), which put those draws before the sex draws of the hires; seeds
+# 1 to 5 now hire one staff member or none.
 # The hires come before the adoption: an animal placed rates its exhibit at once (habitat rating 9.4),
-# which draws from the shared stream, and the seed 5 draws women for the hires made first. The trial's staff cost nothing
+# which draws from the shared stream, and the seed 6 draws women for the hires made first. The trial's staff cost nothing
 # and its keeper rakes no dung, so the gazelles are happy until the first dung and unhappy after it.
 # A gazelle lives 4320 s of the game, about the length of the run: one may die of old age in the
 # thirteenth month.
-#run maps/default.zoo --cash 75000 --seed 5 --passes 22300 --clock 200
+#run maps/default.zoo --cash 75000 --seed 6 --passes 22300 --clock 200
 #exhibit 16,36,21,41
 #months 12
 #expect 1 exhibit gate [0-9]+
