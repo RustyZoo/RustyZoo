@@ -300,7 +300,7 @@ impl Fnv {
 
     fn sim(&mut self, sim: &Sim) {
         let (elapsed, month_changed) = sim.calendar.state();
-        self.u64(elapsed);
+        self.u64(elapsed as u64);
         self.u8(u8::from(month_changed));
         for v in [
             sim.total,

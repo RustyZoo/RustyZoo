@@ -288,11 +288,11 @@ pub struct Date {
 }
 
 /// The game's calendar: starts on Monday 1 January 2001, 00:00, and advances by 7.2 seconds
-/// per millisecond of step, in whole numbers.
+/// per millisecond of step, in whole numbers. A saved date before the start is a negative time.
 #[derive(Debug, Clone, Default)]
 pub struct Calendar {
-    /// Game milliseconds since the start.
-    elapsed: u64,
+    /// Game milliseconds since the start (negative before it).
+    elapsed: i64,
     /// Raised by the step that changed the month; acted on by the next one.
     month_changed: bool,
 }
@@ -303,7 +303,7 @@ impl Calendar {
     }
 
     /// A calendar that stands at `elapsed` game milliseconds after the start (a saved zoo's date).
-    pub fn at(elapsed: u64) -> Self {
+    pub fn at(elapsed: i64) -> Self {
         Self {
             elapsed,
             month_changed: false,
@@ -316,19 +316,38 @@ impl Calendar {
     pub fn advance(&mut self, step: u32) -> bool {
         let month_end = std::mem::take(&mut self.month_changed);
         let before = self.date().month;
-        self.elapsed += u64::from(step) * GAME_MS_PER_STEP_MS;
+        self.elapsed += i64::from(step) * GAME_MS_PER_STEP_MS as i64;
         self.month_changed = self.date().month != before;
         month_end
     }
 
     /// The game milliseconds since the start and the month flag, for the state hash.
-    pub fn state(&self) -> (u64, bool) {
+    pub fn state(&self) -> (i64, bool) {
         (self.elapsed, self.month_changed)
     }
 
+    /// The game milliseconds the timers count from the start: 0 before it, so a saved date before
+    /// 2001 starts them at 0 and they count on from there.
+    pub fn elapsed_ms(&self) -> u64 {
+        self.elapsed.max(0) as u64
+    }
+
     pub fn date(&self) -> Date {
-        let days = (self.elapsed / DAY_MS) as i64 + DAYS_TO_2001;
-        Date::from_days(days, (self.elapsed % DAY_MS) as u32)
+        let day_ms = DAY_MS as i64;
+        let days = self.elapsed.div_euclid(day_ms) + DAYS_TO_2001;
+        Date::from_days(days, self.elapsed.rem_euclid(day_ms) as u32)
+    }
+}
+
+/// The days of a month of a year of the proleptic Gregorian calendar (`month` 1 to 12).
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        2 if (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400) => {
+            29
+        }
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
     }
 }
 
@@ -372,21 +391,19 @@ impl Date {
         days * DAY_MS as i64 + day_ms
     }
 
-    /// Game milliseconds from the calendar's start to this date; 0 for a date before it or one
-    /// whose fields are out of range.
-    pub fn game_ms(&self) -> u64 {
+    /// Game milliseconds from the calendar's start to this date, negative before it. A date the
+    /// system's conversion refuses (a field out of range, a day the month does not have, a year
+    /// before 1601) is the start, 0.
+    pub fn game_ms(&self) -> i64 {
         let ok = (1..=12).contains(&self.month)
-            && (1..=31).contains(&self.day)
+            && (1..=days_in_month(self.year, self.month)).contains(&self.day)
             && self.hour < 24
             && self.minute < 60
             && self.second < 60
-            && self.millisecond < 1000;
+            && self.millisecond < 1000
+            && self.year >= 1601;
         let start = DAYS_TO_2001 * DAY_MS as i64;
-        if ok {
-            (self.millis() - start).max(0) as u64
-        } else {
-            0
-        }
+        if ok { self.millis() - start } else { 0 }
     }
 
     /// The date of a file time: 100 ns steps since 1 January 1601 (zoo format 1).
@@ -440,14 +457,14 @@ mod tests {
             millisecond: 0,
         };
         assert_eq!(at(2001, 1, 1, 0).game_ms(), 0);
-        assert_eq!(at(2001, 1, 2, 1).game_ms(), DAY_MS + 3_600_000);
+        assert_eq!(at(2001, 1, 2, 1).game_ms(), (DAY_MS + 3_600_000) as i64);
         // The calendar stands at the date and goes on from it.
         let mut c = Calendar::at(at(2001, 1, 31, 23).game_ms());
         assert_eq!((c.date().month, c.date().day), (1, 31));
         c.advance(100_000);
         assert_eq!((c.date().month, c.date().day), (2, 9));
         for bad in [
-            at(2000, 12, 31, 0),
+            at(1600, 12, 31, 23),
             at(0, 1, 1, 0),
             at(2001, 0, 1, 0),
             at(2001, 13, 1, 0),
@@ -459,6 +476,96 @@ mod tests {
             assert_eq!(bad.game_ms(), 0, "{bad:?}");
         }
         assert!(at(65535, 12, 31, 23).game_ms() > 0);
+    }
+
+    #[test]
+    fn a_date_before_2001_is_kept_and_the_calendar_counts_back_to_it() {
+        let at = |year, month, day, hour| Date {
+            year,
+            month,
+            day,
+            weekday: 0,
+            hour,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+        };
+        assert_eq!(
+            i128::from(at(2000, 12, 31, 0).game_ms()),
+            -i128::from(DAY_MS)
+        );
+        assert_eq!(
+            i128::from(at(2000, 2, 29, 0).game_ms()),
+            -307 * i128::from(DAY_MS)
+        );
+        // 31 December 2000 at 23:00 is one hour before the start: a Sunday.
+        let c = Calendar::at(at(2000, 12, 31, 23).game_ms());
+        let d = c.date();
+        assert_eq!(
+            (d.year, d.month, d.day, d.hour, d.weekday),
+            (2000, 12, 31, 23, 6)
+        );
+        // The timers read 0 before the start, and count from it once the calendar gets there.
+        assert_eq!(c.elapsed_ms(), 0);
+        let mut c = c;
+        c.advance(1_000);
+        let d = c.date();
+        assert_eq!((d.year, d.month, d.day, d.hour), (2001, 1, 1, 1));
+        assert_eq!(c.elapsed_ms(), 3_600_000);
+        for x in [at(1601, 1, 1, 0), at(1999, 6, 15, 12), at(2000, 2, 29, 6)] {
+            let d = Calendar::at(x.game_ms()).date();
+            assert_eq!(
+                (d.year, d.month, d.day, d.hour),
+                (x.year, x.month, x.day, x.hour),
+                "{x:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refused_date_is_the_start_of_the_calendar() {
+        let at = |year, month, day| Date {
+            year,
+            month,
+            day,
+            weekday: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+        };
+        for bad in [
+            at(2001, 2, 29),
+            at(2001, 4, 31),
+            at(2000, 2, 30),
+            at(1600, 12, 31),
+            Date {
+                minute: 60,
+                ..at(2001, 1, 1)
+            },
+            Date {
+                second: 60,
+                ..at(2001, 1, 1)
+            },
+            Date {
+                millisecond: 1000,
+                ..at(2001, 1, 1)
+            },
+        ] {
+            assert_eq!(bad.game_ms(), 0, "{bad:?}");
+        }
+        // The start is Monday 1 January 2001, 00:00.
+        let d = Calendar::at(0).date();
+        assert_eq!((d.year, d.month, d.day, d.weekday), (2001, 1, 1, 0));
+        // February 29 of 2000 and 2001 February 28 are valid.
+        assert_eq!(
+            i128::from(at(2000, 2, 29).game_ms()),
+            -307 * i128::from(DAY_MS)
+        );
+        assert_eq!(
+            i128::from(at(2001, 2, 28).game_ms()),
+            58 * i128::from(DAY_MS)
+        );
     }
 
     #[test]

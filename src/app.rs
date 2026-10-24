@@ -1475,7 +1475,7 @@ impl<'a> App<'a> {
                 |e| renderer.shape(e),
             );
             if let Outcome::Placed(id) = outcome {
-                crate::building::built(&mut game.world, ty, id, self.sim.calendar().state().0);
+                crate::building::built(&mut game.world, ty, id, self.sim.calendar().elapsed_ms());
                 let (habitat, name) = rating::object(ty);
                 let change = (!fence).then_some(rating::Change::Object {
                     habitat,
@@ -1716,7 +1716,7 @@ impl<'a> App<'a> {
             game.money.start(start.cash, start.reset);
             if start.reset {
                 crate::guest::arrive_all(&mut game.world, self.sim.calendar().date());
-                let now = self.sim.calendar().state().0;
+                let now = self.sim.calendar().elapsed_ms();
                 for id in crate::building::reset_all(&mut game.world, now) {
                     self.sim.remove(id);
                 }

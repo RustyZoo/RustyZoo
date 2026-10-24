@@ -450,7 +450,7 @@ impl Sim {
         guest::mega::update(world, cat, step);
         guest::gawk::update(world, cat);
         let bars = self.zoo_status(world, cat, money, step, month_end);
-        world.units.now = self.calendar.state().0;
+        world.units.now = self.calendar.elapsed_ms();
         // The AI manager: first the task pool reads the events of the buffer (simulation 4.2).
         let tiles = world.zoo.tiles.len();
         (world.units.pool).listen(self.events.listen(0, TASK_CHANNEL), tiles);
