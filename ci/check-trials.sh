@@ -1114,7 +1114,8 @@ check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsid
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
 # the script drains it at step 1000 and fills it at 1100. Prints the step and purity of the first
 # decay, the purity before and after the level came back to 0 (the reset to `initialWaterPurity`),
-# and the levels of the refill, which leave the purity alone.
+# and the levels of the refill, which leave the purity alone. The fill at 1100 changes only the flag
+# of an empty tank, which is not told, so the refill starts at level 1.
 tank_decay() { # tank_decay <map> <tank id>
   d=$(mktemp -d)
   printf '1000 drain %s\n1100 fill %s\n' "$2" "$2" >"$d/script"
@@ -1128,7 +1129,7 @@ tank_decay() { # tank_decay <map> <tank id>
     END{print first ";" reset ";" refill}'
   rm -rf "$d"
 }
-check expansion-trial "447:92;99>100;0:100,1:100,2:100,3:100,4:100,5:100,6:100,7:100" "tank_decay maps/scn28.zoo 2"
+check expansion-trial "447:92;99>100;1:100,2:100,3:100,4:100,5:100,6:100,7:100" "tank_decay maps/scn28.zoo 2"
 
 # The tank animals' checks (tank fauna 10 to 12).
 #
