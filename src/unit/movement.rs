@@ -359,6 +359,11 @@ pub fn call(
         if wants {
             return Flow::Running;
         }
+        // A unit in a building task does not walk at random (movement 8.2): the call ends.
+        if crate::goal::BUILDING.contains(&unit.goal.record.task) {
+            stop(unit);
+            return Flow::Done;
+        }
         unit.aborted = false;
         if !super::walk::random_walk(unit, world, rng, at) {
             return Flow::Failed;
@@ -548,6 +553,7 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
     m.building |= unit.through_building;
     m.target_building = match &unit.part {
         Part::Guest(g) if g.building != 0 && world.find(g.building).is_some() => Some(g.building),
+        Part::Animal(a) if a.building != 0 && world.find(a.building).is_some() => Some(a.building),
         _ => None,
     };
     let record = &unit.goal.record;

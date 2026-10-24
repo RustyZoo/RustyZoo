@@ -1,4 +1,5 @@
-//! The guest's use of buildings: the seek of a need ([`Cx::seek`], guests 6.4 to 6.9, 7), the chain
+//! The use of buildings by guests and, for the chain of tasks 0x66 to 0x6a, by animals going to a
+//! shelter: the seek of a need ([`Cx::seek`], guests 6.4 to 6.9, 7), the chain
 //! of tasks 0x66 to 0x6a (goals 11.3; guest buildings 6 and 7) and eating (goals 11.4, guests 9).
 //!
 //! A building target is a building id on the guest ([`crate::guest::Guest::building`]) with the
@@ -52,10 +53,16 @@ impl Cx<'_, '_> {
     }
 
     /// The building `id`: a copy of its entity and its kind.
-    fn building(&self, id: u32) -> Option<(Entity, Kind)> {
+    pub(in crate::goal) fn building(&self, id: u32) -> Option<(Entity, Kind)> {
         let e = self.world.zoo.entities.get(self.world.find(id)?)?.clone();
         let kind = building::kind_of(self.ctx.cat, &e, self.world.units.prices.default)?;
         Some((e, kind))
+    }
+
+    /// The species of the unit when it is an animal (guest buildings 6.1 point 7).
+    fn species(&self) -> Option<building::Species> {
+        let e = self.world.zoo.entities.get(self.at)?;
+        building::Species::of(self.ctx.cat, e)
     }
 
     fn tile_at(&self, (x, y): Point) -> Option<usize> {
@@ -73,49 +80,7 @@ impl Cx<'_, '_> {
         crowded: bool,
     ) -> Result<u32, Option<u32>> {
         let here = self.tile().ok_or(None)?;
-        let width = self.world.zoo.width as usize;
-        let area = self.world.exhibits().region(here);
-        let prices = self.world.units.prices;
-        let (mut all, mut best, mut ties) = (Vec::new(), i64::MAX, Vec::new());
-        for e in &self.world.zoo.entities {
-            let (Some(kind), Some(c)) = (
-                building::kind_of(self.ctx.cat, e, prices.default),
-                e.common.as_ref(),
-            ) else {
-                continue;
-            };
-            let Some(t) = self.tile_at((c.x, c.y)).filter(|_| kind.satisfies(need)) else {
-                continue;
-            };
-            all.push(c.id);
-            let live = self.world.units.buildings.get(&c.id);
-            if self.world.exhibits().region(t) != area
-                || !building::has_open_slot(self.world, e, &kind, live)
-            {
-                continue;
-            }
-            let dx = (t % width) as i64 - (here % width) as i64;
-            let dy = (t / width) as i64 - (here / width) as i64;
-            let mut d = dx * dx + dy * dy;
-            let price = live.map_or(kind.price, |l| l.price);
-            let scale = match prices.mood(price, kind.price) {
-                _ if !kind.commerce => None,
-                Mood::Angry => Some(prices.expensive),
-                Mood::Happy => Some(prices.cheap),
-                Mood::Fair => None,
-            };
-            if let Some(f) = scale {
-                let far = ((d as f64).sqrt() * f64::from(f)).round_ties_even() as i64;
-                d = far * far;
-            }
-            if d > radius * radius || d > best {
-                continue;
-            }
-            if d < best {
-                (best, ties) = (d, Vec::new());
-            }
-            ties.push(c.id);
-        }
+        let (all, ties) = building::satisfiers(self.world, self.ctx.cat, here, need, radius, None);
         let rng = &mut *self.ctx.rng;
         match ties.len() {
             0 if crowded && !all.is_empty() => Err(Some(all[rng.pick(all.len() as u32) as usize])),
@@ -159,8 +124,9 @@ impl Cx<'_, '_> {
         let (e, kind) = self.building(id)?;
         let c = self.world.zoo.entities.get(self.at)?.common.as_ref()?;
         let (from, here) = ((c.x, c.y), self.tile());
+        let who = self.species();
         let live = self.world.units.buildings.get(&id);
-        let list = building::entrances(self.world, &e, &kind, live, from);
+        let list = building::entrances(self.world, &e, &kind, live, from, who.as_ref());
         let saved = (
             self.unit.path.clone(),
             self.unit.levels.clone(),
@@ -192,7 +158,7 @@ impl Cx<'_, '_> {
     }
 
     /// The walk of [`Cx::head_for`] to the entrance of the nearest open slot of building `b`.
-    fn set_out(&mut self, b: u32) -> bool {
+    pub(in crate::goal) fn set_out(&mut self, b: u32) -> bool {
         let Some((_, kind)) = self.building(b) else {
             return false;
         };
@@ -208,24 +174,51 @@ impl Cx<'_, '_> {
         if Some(t) != self.tile() && !self.start_walk(false, false, false) {
             return false;
         }
-        if let Some(g) = self.guest() {
-            (g.slot, g.entrance) = (slot, p);
+        if let Some((_, s, e)) = self.aim() {
+            (*s, *e) = (slot, p);
         }
         self.set_task(if kind.direct { ENTRANCE } else { GO }, 0, b, Some(t));
         true
     }
 
-    /// The guest has no building target and serves no need; its slot is forgotten (slot 0).
+    /// The unit has no building target and serves no need; its slot is forgotten (slot 0).
     pub(in crate::goal) fn clear_target(&mut self) {
         if let Some(g) = self.guest() {
-            (g.need, g.building, g.slot) = (None, 0, 0);
+            g.need = None;
+        }
+        if let Some((b, s, _)) = self.aim() {
+            (*b, *s) = (0, 0);
         }
     }
 
-    /// The building a unit aims at: a guest's building target, else the task's target.
+    /// The building target of a guest or an animal (a shelter): the building, 0 for none, the slot
+    /// and the entrance.
+    fn aim(&mut self) -> Option<(&mut u32, &mut usize, &mut Point)> {
+        match &mut self.unit.part {
+            Part::Guest(g) => Some((&mut g.building, &mut g.slot, &mut g.entrance)),
+            Part::Animal(a) => Some((&mut a.building, &mut a.slot, &mut a.entrance)),
+            _ => None,
+        }
+    }
+
+    /// The building and the slot the unit aims at; 0 and 0 for a unit with no target.
+    fn target(&mut self) -> (u32, usize) {
+        self.aim().map_or((0, 0), |(b, s, _)| (*b, *s))
+    }
+
+    /// The need being served: a guest's, `animalrest` for an animal with a shelter.
+    fn need(&mut self) -> Option<&'static str> {
+        match &self.unit.part {
+            Part::Guest(g) => g.need,
+            Part::Animal(a) => (a.building != 0).then_some(crate::animal::NEED),
+            _ => None,
+        }
+    }
+
+    /// The building a unit aims at: its building target, else the task's target.
     fn target_building(&mut self) -> u32 {
-        match self.guest() {
-            Some(g) => g.building,
+        match self.aim() {
+            Some((b, _, _)) => *b,
             None => self.record().target.id,
         }
     }
@@ -233,13 +226,13 @@ impl Cx<'_, '_> {
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
     /// (0x67), else it gives up.
     pub(in crate::goal) fn building_arrived(&mut self) {
-        let id = self.guest().map_or(0, |g| g.building);
+        let id = self.target().0;
         let slot = self.open_slot(id);
         let tile = slot.and_then(|(_, p)| self.tile_at(p));
         match (slot, tile) {
             (Some((slot, p)), Some(t)) => {
-                if let Some(g) = self.guest() {
-                    (g.slot, g.entrance) = (slot, p);
+                if let Some((_, s, e)) = self.aim() {
+                    (*s, *e) = (slot, p);
                 }
                 self.set_task(ENTRANCE, 0, id, Some(t));
             }
@@ -251,7 +244,7 @@ impl Cx<'_, '_> {
     /// else it takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
     /// walk at the next update.
     pub(in crate::goal) fn entrance_arrived(&mut self) {
-        let Some(id) = self.guest().map(|g| g.building) else {
+        let Some(id) = self.aim().map(|(b, _, _)| *b) else {
             return;
         };
         let Some((_, kind)) = self.building(id) else {
@@ -264,8 +257,8 @@ impl Cx<'_, '_> {
         let Some((slot, _)) = self.open_slot(id) else {
             return self.reset();
         };
-        if let Some(g) = self.guest() {
-            g.slot = slot;
+        if let Some((_, s, _)) = self.aim() {
+            *s = slot;
         }
         self.set_task(ENTER_BUILDING, 0, id, None);
     }
@@ -274,7 +267,7 @@ impl Cx<'_, '_> {
     /// tile, at the entrance; any other walks into its slot, even when the slot's inside position
     /// is on its own tile, and a refused walk or a building that is gone ends the goal.
     pub(in crate::goal) fn enter_decide(&mut self) {
-        let (id, slot) = self.guest().map_or((0, 0), |g| (g.building, g.slot));
+        let (id, slot) = self.target();
         let Some((e, kind)) = self.building(id) else {
             return self.reset();
         };
@@ -298,7 +291,7 @@ impl Cx<'_, '_> {
     /// 0x68 check done: one time in 15 the goal ends when the building is gone or no longer
     /// serves the need (a full slot is left to the complete); done at the slot.
     pub(in crate::goal) fn enter_check_done(&mut self) {
-        let (id, need) = self.guest().map_or((0, None), |g| (g.building, g.need));
+        let (id, need) = (self.target().0, self.need());
         if self.ctx.rng.pick(15) == 0 {
             let serves = self.building(id);
             if !serves.is_some_and(|(_, k)| need.is_none_or(|n| k.satisfies(n))) {
@@ -313,28 +306,32 @@ impl Cx<'_, '_> {
     /// 0x68 complete: the building takes the guest as a user.
     pub(in crate::goal) fn enter_arrived(&mut self) {
         self.unit.path.clear();
-        let (id, slot) = self.guest().map_or((0, 0), |g| (g.building, g.slot));
+        let (id, slot) = self.target();
         match self.add_user(id, slot) {
             true => self.set_task(USE, 0, id, None),
             false => self.reset(),
         }
     }
 
-    /// Guest buildings 6.4: the guest becomes a user of slot `slot` of building `id`. The building
-    /// counts it, hides it or puts it at the slot, and sells it an item. Whether it did.
-    fn add_user(&mut self, id: u32, slot: usize) -> bool {
+    /// Guest buildings 6.4: the unit becomes a user of slot `slot` of building `id`. The building
+    /// lists it and hides it or puts it at the slot; a guest is also counted, thinks, and is sold
+    /// an item. Whether it did.
+    pub(in crate::goal) fn add_user(&mut self, id: u32, slot: usize) -> bool {
         let Some((e, kind)) = self.building(id) else {
             return false;
         };
         let live = self.world.units.buildings.get(&id);
-        if !building::can_add(self.world, &e, &kind, live, slot) {
+        if !building::can_add(self.world, &e, &kind, live, slot, self.species().as_ref()) {
             return false;
         }
         let (unit, now) = (self.unit.id, self.now());
         let live = (self.world.units.buildings.entry(id)).or_insert_with(|| Live::new(&kind));
         live.users.push((unit, slot, now));
-        live.guests[0] += 1;
-        live.guests[2] += 1;
+        let guest = matches!(self.unit.part, Part::Guest(_));
+        if guest {
+            live.guests[0] += 1;
+            live.guests[2] += 1;
+        }
         let price = live.price;
         self.world.units.building_note(format!("use {id} {unit}"));
         if kind.hide {
@@ -346,7 +343,11 @@ impl Cx<'_, '_> {
             let facing = building::facing(&e, kind.slots[slot].facing);
             self.world.place_unit(self.at, (x, y, z), facing);
         }
-        // Guest buildings 6.4 step 7: the used thought, the items the building removes, the sale.
+        // Guest buildings 6.4 step 7, for a guest: the used thought, the items the building removes,
+        // the sale.
+        if !guest {
+            return true;
+        }
         if !kind.used.is_empty() {
             let at = self.ctx.rng.pick(kind.used.len() as u32) as usize;
             self.think(kind.used[at], None);
@@ -433,7 +434,7 @@ impl Cx<'_, '_> {
     /// 0x6a check done (goals 11.3, guest buildings 6.5): the time inside is over. A building that
     /// is gone, or that does not list the guest, ends the goal.
     pub(in crate::goal) fn use_check_done(&mut self) {
-        let id = self.guest().map_or(0, |g| g.building);
+        let id = self.target().0;
         let unit = self.unit.id;
         let entered = self
             .world
@@ -460,7 +461,7 @@ impl Cx<'_, '_> {
     /// 0x6a complete: the guest sets out to leave (0x69); the building still lists it.
     pub(in crate::goal) fn use_done(&mut self) {
         self.unit.path.clear();
-        let id = self.guest().map_or(0, |g| g.building);
+        let id = self.target().0;
         self.set_task(EXIT_BUILDING, 1, id, None);
     }
 
@@ -474,7 +475,7 @@ impl Cx<'_, '_> {
             return;
         }
         let id = self.target_building();
-        let slot = self.guest().map_or(0, |g| g.slot);
+        let slot = self.target().1;
         let own = self.tile();
         let found = self.building(id);
         if found
@@ -502,7 +503,7 @@ impl Cx<'_, '_> {
     /// times its factor as concessions; the type's change record is given to the guest; a type
     /// whose users use the exit puts it there (6.7), any other shows a hidden guest where it stands.
     fn remove_user(&mut self) {
-        let id = self.guest().map_or(0, |g| g.building);
+        let id = self.target().0;
         let unit = self.unit.id;
         let Some((e, kind)) = self.building(id) else {
             return self.show();
@@ -560,8 +561,8 @@ impl Cx<'_, '_> {
         }
         let id = c.id;
         self.reset();
-        if let Some(g) = self.guest() {
-            g.building = id;
+        if let Some((b, _, _)) = self.aim() {
+            *b = id;
         }
         self.set_task(EXIT_BUILDING, 1, id, None);
     }
@@ -589,7 +590,7 @@ impl Cx<'_, '_> {
     /// on after a stand (guests 8). Any other unit is only shown and reset.
     pub(in crate::goal) fn exit_done(&mut self) {
         self.unit.through_building = false;
-        if self.guest().is_some() {
+        if self.aim().is_some() {
             self.remove_user();
         }
         // A failed exit left it hidden; the goal shows it whatever the removal did (6.7.1).
@@ -617,7 +618,7 @@ impl Cx<'_, '_> {
 
     /// 0x6b complete: with a place to eat the guest goes there; else it stands to eat.
     pub(in crate::goal) fn eat_done(&mut self) {
-        let b = self.guest().map_or(0, |g| g.building);
+        let b = self.target().0;
         if b == 0 || !self.head_for(b, "eat") {
             self.reset();
             if let Some(g) = self.guest() {
