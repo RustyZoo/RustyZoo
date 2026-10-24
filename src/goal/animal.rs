@@ -45,7 +45,7 @@ impl Cx<'_, '_> {
     /// 10.1 points 6 and 7: an animal busy in the building chain keeps its task. One that aims at a
     /// building that serves `animalrest` and whose task is not done goes there when it is in no
     /// building task, or is in the walk to the building with an empty path (guest buildings 6.2;
-    /// the target is dropped when it cannot start out). Whether either held.
+    /// the whole goal is reset when it cannot start out). Whether either held.
     fn shelter_rung(&mut self) -> bool {
         let (task, done) = (self.record().task, self.record().done);
         let chain = BUILDING.contains(&task);
@@ -62,7 +62,7 @@ impl Cx<'_, '_> {
             return false;
         }
         if !self.set_out(target) {
-            self.clear_target();
+            self.reset();
         }
         true
     }
