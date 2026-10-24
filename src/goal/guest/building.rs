@@ -172,7 +172,7 @@ impl Cx<'_, '_> {
         let Some(t) = self.tile_at(p) else {
             return false;
         };
-        if Some(t) != self.tile() && !self.start_walk(false, false, false) {
+        if Some(t) != self.tile() && !self.start_walk(false, false, true) {
             return false;
         }
         if let Some((_, s, e)) = self.aim() {

@@ -393,6 +393,23 @@ fn the_nearest_entrance_is_taken_unless_the_guest_cannot_reach_it() {
     assert!(building::entrances(&w, &e, &kind, Some(&full), (0, 0), None).is_empty());
 }
 
+#[test]
+fn the_walk_to_the_slot_is_forced_over_a_set_that_cannot_be_interrupted() {
+    let (cat, mut w) = (types(), zoo());
+    assert!(with_cx(&cat, &mut w, |cx| {
+        let mut rng = Rng::default();
+        let env = crate::goal::Env {
+            data: cx.data,
+            unit: &cx.world.zoo.entities[0],
+            rng: &mut rng,
+        };
+        let (anim, runner) = (&mut cx.unit.animation, &mut cx.unit.runner);
+        assert!(runner.start(anim, &env, "bWalk", false, false, true));
+        cx.set_out(7)
+    }));
+    assert_eq!(task(&w), GO);
+}
+
 /// The guest holds a hot dog and its checks are far from firing.
 fn holding(w: &mut World) {
     if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
