@@ -1090,7 +1090,9 @@ check expansion-trial 'income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_gue
 # is worn), brings a marine specialist and a second manta ray, and a worker back late, after the
 # filter broke. Prints the first jobs of the specialist (the ladders, the food in the water), the
 # lowest purity while the filter was sound, the purity when it broke and when the worker serviced
-# it, the worker's jobs, the bites the rays took and the higher of their hunger at the end.
+# it, the worker's jobs, the number of rays and whether each took at least 10
+# bites in the second half of the run (they eat all along, 17 to 20 bites a half; the floor leaves
+# room for a change of the draw order).
 marine_round() { # marine_round <map>
   d=$(mktemp -d)
   printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"
@@ -1105,13 +1107,29 @@ marine_round() { # marine_round <map>
       else if ($8=="worn" && $6==0) { broke=1; at=$7 }
       else if ($8=="serviced" && fixed=="") fixed=$7
     }
-    / animal eat /{ ate++ }
-    / animal status /{ last[$5]=$7 }
-    END{ for (a in last) if (last[a]>h) h=last[a]
-         print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";ate:" ate ";hunger<=" h }'
+    / animal status /{ ray[$5]=1 }
+    / animal eat / && $2>=19000 { late[$5]++ }
+    END{ m=-1; for (a in ray) { n++; if (m<0 || late[a]+0<m) m=late[a]+0 }
+         print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";rays:" n ";second-half-bites>=10:" (m>=10 ? "yes" : "no(" m ")") }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;ate:80;hunger<=44" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;rays:2;second-half-bites>=10:yes" "marine_round maps/scn27.zoo"
+
+# The pace of the guests (movement 7.2): the first five guests the map loads walk for 1500 steps;
+# prints, for each, the tiles it entered and the last of them. Each guest has its own pace, so the
+# pins differ from the same run with `[AI] VariableUnitSpeeds=0` (a user-folder zoo.ini on top of
+# the game's), which gives every guest the plain rate.
+guest_pace() { # guest_pace <map> [unit speeds setting]
+  u=$(mktemp -d)
+  [ -n "${2:-}" ] && printf '[AI]\nVariableUnitSpeeds=%s\n' "$2" >"$u/zoo.ini"
+  RUSTYZOO_USER_DIR=$u rz sim "$1" --ticks 1500 --seed 1 --log 2>/dev/null | awk '
+    / unit add [0-9]+ guest /{ if (n++ < 5) first[$5]=1 }
+    / unit tile /{ if ($5 in first) { c[$5]++; l[$5]=$6 } }
+    END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
+  rm -rf "$u"
+}
+check base-trial "29699:25@29,50;29726:12@21,51;29745:17@36,32;29748:19@34,34;29750:21@20,50" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:28@29,53;29726:22@22,42;29745:17@36,32;29748:20@33,34;29750:21@20,50" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
