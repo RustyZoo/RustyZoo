@@ -1267,11 +1267,11 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # at the load, which moved the first birth to 6178 and made it four young). A shelter walk that cannot
 # start resets the whole goal (a lion's, at step 1238), which moved the first birth to 30208 and made
 # it two young: the run is 34000 steps long. That reset now lowers the need flags of the animal too,
-# which brought the first birth back to 5089 (the same two young).
+# which brought the first birth back to 5089 (the same two young): the run is 16000 steps long again.
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
-  once() { rz sim "$1" --ticks 34000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  once() { rz sim "$1" --ticks 16000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
