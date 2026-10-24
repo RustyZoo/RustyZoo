@@ -1091,6 +1091,7 @@ pub(crate) fn shelters(
     cat: &Catalogue,
     target: u32,
     tile: Option<usize>,
+    who: Option<&crate::building::Species>,
 ) -> Shelter {
     let serves = |id: u32| {
         let e = world.find(id).map(|at| &world.zoo.entities[at]);
@@ -1099,7 +1100,7 @@ pub(crate) fn shelters(
     };
     let held = target != 0 && serves(target);
     let nearest = match tile {
-        Some(t) if !held => crate::building::satisfiers(world, cat, t, NEED, SEARCH).1,
+        Some(t) if !held => crate::building::satisfiers(world, cat, t, NEED, SEARCH, who).1,
         _ => Vec::new(),
     };
     Shelter { held, nearest }
@@ -1274,7 +1275,8 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         }
     }
     if a.counters[SHELTER] == 0 && k.building_use > 0 {
-        env.shelter = shelters(world, ctx.cat, a.building, tile);
+        let who = crate::building::Species::of(ctx.cat, &world.zoo.entities[at]);
+        env.shelter = shelters(world, ctx.cat, a.building, tile, who.as_ref());
     }
     let id = unit.id;
     let cat = ctx.cat;

@@ -374,7 +374,7 @@ fn the_nearest_entrance_is_taken_unless_the_guest_cannot_reach_it() {
     assert_eq!(open, Some((0, (336, 400))));
     // Two entrances at different distances are sorted: the guest at x = 336 is nearer the left.
     let (e, kind) = with_cx(&cat, &mut w, |cx| cx.building(7).unwrap());
-    let list = building::entrances(&w, &e, &kind, None, (100, 400));
+    let list = building::entrances(&w, &e, &kind, None, (100, 400), None);
     assert_eq!(
         list.iter().map(|l| l.2).collect::<Vec<_>>(),
         [(336, 400), (368, 400)]
@@ -384,7 +384,7 @@ fn the_nearest_entrance_is_taken_unless_the_guest_cannot_reach_it() {
         users: vec![(2, 0, 0), (3, 0, 0)],
         ..Live::new(&kind)
     };
-    assert!(building::entrances(&w, &e, &kind, Some(&full), (0, 0)).is_empty());
+    assert!(building::entrances(&w, &e, &kind, Some(&full), (0, 0), None).is_empty());
 }
 
 /// The guest holds a hot dog and its checks are far from firing.

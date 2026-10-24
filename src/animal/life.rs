@@ -199,7 +199,7 @@ pub fn ambient_sleep(
     let Part::Animal(a) = &unit.part else {
         return false;
     };
-    if !idle || a.egg || a.dying || a.crated || unit.hidden {
+    if !idle || a.egg || a.dying || a.crated {
         return false;
     }
     let k = super::keys(world, ctx.cat, at);

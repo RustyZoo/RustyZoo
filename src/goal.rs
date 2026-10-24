@@ -72,7 +72,7 @@ pub const RECOVER: u8 = 131;
 pub const GO_TO_SHOW: u8 = 133;
 pub const RETURN_FROM_SHOW: u8 = 134;
 /// The tasks of the building chain, 0x66 to 0x6a.
-const BUILDING: std::ops::RangeInclusive<u8> = 102..=106;
+pub(crate) const BUILDING: std::ops::RangeInclusive<u8> = 102..=106;
 /// The names of the tasks 100 to 134, by the number less 100.
 #[rustfmt::skip]
 const TASKS: [&str; 35] = [

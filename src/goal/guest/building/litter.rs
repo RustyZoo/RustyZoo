@@ -41,7 +41,7 @@ impl Cx<'_, '_> {
             let dx = (t % width) as i64 - (here % width) as i64;
             let dy = (t / width) as i64 - (here / width) as i64;
             if self.world.exhibits().region(t) == area
-                && building::has_open_slot(self.world, e, &kind, live)
+                && building::has_open_slot(self.world, e, &kind, live, None)
                 && dx * dx + dy * dy <= radius * radius
             {
                 kept.push(c.id);

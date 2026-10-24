@@ -12,8 +12,7 @@
 //! spills it).
 //! The panels that set the price and show the figures are [`crate::panel::building`]'s.
 //! A building that is deleted or picked up pushes its users out ([`leave::push_out`]).
-//! Left for later issues: the random use animation and the sounds, the slot filters of a user type,
-//! `cUseRandomSlot`.
+//! Left for later issues: the random use animation and the sounds, `cUseRandomSlot`.
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
 //! `building buy <id> <item> <price>` when it buys an item, and `building price <id> <price>` when
@@ -96,6 +95,40 @@ pub struct Slot {
     /// Whether the exit may be on land and on water (`exitonland`, `exitonwater`; 6.3).
     pub exit_land: bool,
     pub exit_water: bool,
+    /// The species that may use the slot (`id`, empty: any) and the subtype letters it refuses
+    /// (`filter`; guest buildings 6.1 point 7).
+    pub species: Vec<i32>,
+    pub filter: String,
+}
+
+/// The species and subtype of an animal, which the slots of a building test (guest buildings 6.1
+/// point 7); guests are passed as `None`, no guest building lists a species or a filter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Species {
+    pub id: i32,
+    pub subtype: String,
+}
+
+impl Species {
+    /// The species of the animal entity `e`, none for another entity.
+    pub fn of(cat: &Catalogue, e: &Entity) -> Option<Species> {
+        let ty = crate::place::bulldozer::type_of(cat, e).filter(|_| e.class == "animals")?;
+        Some(Species {
+            id: ty.name_id,
+            subtype: e.subtype.clone(),
+        })
+    }
+}
+
+impl Slot {
+    /// Whether the slot's species list and filter let `who` use it.
+    fn allows(&self, who: Option<&Species>) -> bool {
+        let Some(who) = who else {
+            return true;
+        };
+        (self.species.is_empty() || self.species.contains(&who.id))
+            && (self.filter.is_empty() || !self.filter.contains(&who.subtype))
+    }
 }
 
 /// What a building type declares (guest buildings 3.1).
@@ -179,6 +212,8 @@ impl Kind {
                 facing: number("facing") as u32,
                 exit_land: flag("exitonland", true),
                 exit_water: flag("exitonwater", false),
+                species: s.get_all("id").iter().filter_map(|v| to_int(v)).collect(),
+                filter: String::from_utf8_lossy(s.get("filter").unwrap_or_default()).into(),
             }
         })
         .collect();
@@ -498,6 +533,7 @@ pub fn satisfiers(
     here: usize,
     need: &str,
     radius: i64,
+    who: Option<&Species>,
 ) -> (Vec<u32>, Vec<u32>) {
     let width = world.zoo.width as usize;
     let area = world.exhibits().region(here);
@@ -515,7 +551,7 @@ pub fn satisfiers(
         };
         all.push(c.id);
         let live = world.units.buildings.get(&c.id);
-        if world.exhibits().region(t) != area || !has_open_slot(world, e, &kind, live) {
+        if world.exhibits().region(t) != area || !has_open_slot(world, e, &kind, live, who) {
             continue;
         }
         let dx = (t % width) as i64 - (here % width) as i64;
@@ -601,10 +637,17 @@ fn fits(world: &World, (x, y): Point, exit: Option<&Slot>) -> bool {
     world.in_zoo(t) && open && terrain
 }
 
-/// Whether the unit may use slot `slot` of a building (guest buildings 6.1): the building and the
-/// slot have room and an exit exists (6.3: an entrance, or the slot's exit for a type that uses
+/// Whether the unit (`who` for an animal) may use slot `slot` of a building (guest buildings 6.1):
+/// the building and the slot have room, the slot's species and filter let it in, and an exit exists (6.3: an entrance, or the slot's exit for a type that uses
 /// it, that passes the place test).
-pub fn can_add(world: &World, e: &Entity, kind: &Kind, live: Option<&Live>, slot: usize) -> bool {
+pub fn can_add(
+    world: &World,
+    e: &Entity,
+    kind: &Kind,
+    live: Option<&Live>,
+    slot: usize,
+    who: Option<&Species>,
+) -> bool {
     let users = live.map_or(0, |l| l.users.len());
     let Some(s) = kind.slots.get(slot) else {
         return false;
@@ -612,12 +655,19 @@ pub fn can_add(world: &World, e: &Entity, kind: &Kind, live: Option<&Live>, slot
     let in_slot = live.map_or(0, |l| l.users.iter().filter(|u| u.1 == slot).count());
     users < kind.capacity.max(0) as usize
         && in_slot < s.capacity.max(0) as usize
+        && s.allows(who)
         && exit_of(world, e, kind, slot).is_some()
 }
 
 /// Whether some slot of the building is open (guest buildings 6.1).
-pub fn has_open_slot(world: &World, e: &Entity, kind: &Kind, live: Option<&Live>) -> bool {
-    (0..kind.slots.len()).any(|s| can_add(world, e, kind, live, s))
+pub fn has_open_slot(
+    world: &World,
+    e: &Entity,
+    kind: &Kind,
+    live: Option<&Live>,
+    who: Option<&Species>,
+) -> bool {
+    (0..kind.slots.len()).any(|s| can_add(world, e, kind, live, s, who))
 }
 
 /// The entrances of the open slots with their squared distance from `from`, the nearest first and
@@ -628,10 +678,11 @@ pub fn entrances(
     kind: &Kind,
     live: Option<&Live>,
     from: Point,
+    who: Option<&Species>,
 ) -> Vec<(i64, usize, Point)> {
     let mut found = Vec::new();
     for (i, s) in kind.slots.iter().enumerate() {
-        if !can_add(world, e, kind, live, i) {
+        if !can_add(world, e, kind, live, i, who) {
             continue;
         }
         for &rel in &s.entrances {

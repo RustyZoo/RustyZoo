@@ -359,6 +359,11 @@ pub fn call(
         if wants {
             return Flow::Running;
         }
+        // A unit in a building task does not walk at random (movement 8.2): the call ends.
+        if crate::goal::BUILDING.contains(&unit.goal.record.task) {
+            stop(unit);
+            return Flow::Done;
+        }
         unit.aborted = false;
         if !super::walk::random_walk(unit, world, rng, at) {
             return Flow::Failed;

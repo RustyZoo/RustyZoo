@@ -59,6 +59,12 @@ impl Cx<'_, '_> {
         Some((e, kind))
     }
 
+    /// The species of the unit when it is an animal (guest buildings 6.1 point 7).
+    fn species(&self) -> Option<building::Species> {
+        let e = self.world.zoo.entities.get(self.at)?;
+        building::Species::of(self.ctx.cat, e)
+    }
+
     fn tile_at(&self, (x, y): Point) -> Option<usize> {
         self.world.tile_index(x.div_euclid(64), y.div_euclid(64))
     }
@@ -74,7 +80,7 @@ impl Cx<'_, '_> {
         crowded: bool,
     ) -> Result<u32, Option<u32>> {
         let here = self.tile().ok_or(None)?;
-        let (all, ties) = building::satisfiers(self.world, self.ctx.cat, here, need, radius);
+        let (all, ties) = building::satisfiers(self.world, self.ctx.cat, here, need, radius, None);
         let rng = &mut *self.ctx.rng;
         match ties.len() {
             0 if crowded && !all.is_empty() => Err(Some(all[rng.pick(all.len() as u32) as usize])),
@@ -118,8 +124,9 @@ impl Cx<'_, '_> {
         let (e, kind) = self.building(id)?;
         let c = self.world.zoo.entities.get(self.at)?.common.as_ref()?;
         let (from, here) = ((c.x, c.y), self.tile());
+        let who = self.species();
         let live = self.world.units.buildings.get(&id);
-        let list = building::entrances(self.world, &e, &kind, live, from);
+        let list = building::entrances(self.world, &e, &kind, live, from, who.as_ref());
         let saved = (
             self.unit.path.clone(),
             self.unit.levels.clone(),
@@ -309,12 +316,12 @@ impl Cx<'_, '_> {
     /// Guest buildings 6.4: the unit becomes a user of slot `slot` of building `id`. The building
     /// lists it and hides it or puts it at the slot; a guest is also counted, thinks, and is sold
     /// an item. Whether it did.
-    fn add_user(&mut self, id: u32, slot: usize) -> bool {
+    pub(in crate::goal) fn add_user(&mut self, id: u32, slot: usize) -> bool {
         let Some((e, kind)) = self.building(id) else {
             return false;
         };
         let live = self.world.units.buildings.get(&id);
-        if !building::can_add(self.world, &e, &kind, live, slot) {
+        if !building::can_add(self.world, &e, &kind, live, slot, self.species().as_ref()) {
             return false;
         }
         let (unit, now) = (self.unit.id, self.now());

@@ -98,12 +98,16 @@ fn a_user_needs_room_in_the_building_and_the_slot() {
     let world = world_with((4, 4), |_| {});
     let mut b = entity("building", "stand", 7, centre((1, 1)), 0);
     let mut live = Live::new(&k);
-    assert!(can_add(&world, &b, &k, Some(&live), 0) && has_open_slot(&world, &b, &k, None));
+    assert!(
+        can_add(&world, &b, &k, Some(&live), 0, None) && has_open_slot(&world, &b, &k, None, None)
+    );
     // The slot holds one; the entrance of a slot that leads off the map is no exit.
     live.users.push((1, 0, 0));
-    assert!(!can_add(&world, &b, &k, Some(&live), 0) && !can_add(&world, &b, &k, None, 1));
+    assert!(
+        !can_add(&world, &b, &k, Some(&live), 0, None) && !can_add(&world, &b, &k, None, 1, None)
+    );
     b.common.as_mut().unwrap().y = -500;
-    assert!(!can_add(&world, &b, &k, None, 0));
+    assert!(!can_add(&world, &b, &k, None, 0, None));
 }
 
 #[test]
@@ -183,7 +187,7 @@ fn a_user_leaves_by_the_first_entrance_in_the_zoo_with_a_free_or_walkable_quarte
     assert_eq!(at(&blocked(&[(2, 1)], "bush")), Some((96, 160)));
     let shut = blocked(&[(2, 1), (1, 2)], "bush");
     assert_eq!(at(&shut), None);
-    assert!(!can_add(&shut, &b, &k, None, 0) && !has_open_slot(&shut, &b, &k, None));
+    assert!(!can_add(&shut, &b, &k, None, 0, None) && !has_open_slot(&shut, &b, &k, None, None));
     // Objects a guest walks through block nothing.
     assert_eq!(at(&blocked(&[(2, 1), (1, 2)], "grass")), Some((160, 96)));
     // An entrance on water is a way out: only an exit is tested for land and water.

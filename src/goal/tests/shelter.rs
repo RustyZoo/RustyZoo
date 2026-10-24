@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::animal::{self, Animal, Census, Class, Env, Keys, Shelter};
-use crate::building::Live;
+use crate::building::{self, Live};
 use crate::entity::EntityType;
 use crate::unit::testing::world_with;
 use std::sync::Arc;
@@ -19,6 +19,9 @@ const CAVE: &str = "[Characteristics/Integers]\ncCapacity=2\ncTimeInside=3\ncHid
 const STAND: &str = "[Characteristics/Integers]\ncCapacity=2\n[Satisfies]\nbuilding\nfood\n\
     [slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\n\
     exitpos=48\ncapacity=2\n";
+
+/// The species id of the lion.
+const LION_ID: i32 = 5;
 
 fn ty(class: &'static str, name: &str, subtype: &str, text: &str) -> EntityType {
     EntityType {
@@ -42,7 +45,9 @@ fn types() -> Catalogue {
 fn types_with(cave: &str) -> Catalogue {
     let mut cat = Catalogue::default();
     for subtype in ["m", "y", "p"] {
-        cat.push(ty("animals", "lion", subtype, LION));
+        let mut lion = ty("animals", "lion", subtype, LION);
+        lion.name_id = LION_ID;
+        cat.push(lion);
     }
     cat.push(ty("building", "cave", "", cave));
     cat.push(ty("building", "stand", "", STAND));
@@ -118,7 +123,12 @@ fn until(w: &mut World, s: &mut Sim, n: usize, stop: impl Fn(&World) -> bool) ->
 
 /// Runs `f` on the goal update context of unit 1 with the types above.
 fn with_types<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> R {
-    let (cat, data) = (types(), Sets::walking());
+    with_cat(w, rng, &types(), f)
+}
+
+/// The same with the types `cat`.
+fn with_cat<R>(w: &mut World, rng: &mut Rng, cat: &Catalogue, f: impl FnOnce(&mut Cx) -> R) -> R {
+    let data = Sets::walking();
     let mut u = unit(w).clone();
     let (events, mut removals) = (Events::default(), Vec::new());
     let mut ctx = Ctx {
@@ -126,7 +136,7 @@ fn with_types<R>(w: &mut World, rng: &mut Rng, f: impl FnOnce(&mut Cx) -> R) -> 
         events: &events,
         removals: &mut removals,
         step: 67,
-        cat: &cat,
+        cat,
     };
     let mut cx = Cx {
         unit: &mut u,
@@ -146,7 +156,7 @@ fn the_check_searches_the_nearest_shelter_and_keeps_one_that_still_serves() {
     let here = Some(tile(2, 6));
     // The stand is nearer but no shelter; of the caves, 8 is nearer than 9.
     assert_eq!(
-        animal::shelters(&w, &cat, 0, here),
+        animal::shelters(&w, &cat, 0, here, None),
         Shelter {
             held: false,
             nearest: vec![8]
@@ -160,13 +170,13 @@ fn the_check_searches_the_nearest_shelter_and_keeps_one_that_still_serves() {
             ..Live::default()
         },
     );
-    assert_eq!(animal::shelters(&w, &cat, 0, here).nearest, vec![9]);
+    assert_eq!(animal::shelters(&w, &cat, 0, here, None).nearest, vec![9]);
     // An animal that aims at a building that serves the need keeps it, and searches no more; one
     // that aims at a stand, or at nothing that exists, searches.
-    let held = animal::shelters(&w, &cat, 9, here);
+    let held = animal::shelters(&w, &cat, 9, here, None);
     assert!(held.held && held.nearest.is_empty());
     for target in [7, 99] {
-        let s = animal::shelters(&w, &cat, target, here);
+        let s = animal::shelters(&w, &cat, target, here, None);
         assert!(!s.held && s.nearest == [9], "{target}");
     }
     // The check itself, through the status tick: it takes the building and says so.
@@ -416,4 +426,92 @@ fn a_hidden_animal_is_not_walked_off_by_its_ambient_choice() {
         }
     }
     panic!("it never got in");
+}
+
+#[test]
+fn a_hidden_animal_chooses_its_ambient_set_and_sleep_check_but_does_not_walk_off() {
+    let (mut w, mut s) = (zoo("m"), sim());
+    if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+        a.building = 8;
+    }
+    let spot = |w: &World| {
+        let c = w.zoo.entities[w.find(1).unwrap()].common.as_ref().unwrap();
+        (c.x, c.y)
+    };
+    // The cave keeps its user long; the ambient table walks at every choice. Once inside, the
+    // animal chooses its ambient set; then it is tired and its energy check is due.
+    let (cat, data) = (
+        types_with(&CAVE.replace("cTimeInside=3", "cTimeInside=100")),
+        Sets::strolling(),
+    );
+    let (mut inside, mut since, mut log) = (None, 0, Vec::new());
+    for _ in 0..400 {
+        w.units.get_mut(1).unwrap().status_timer = i32::MAX / 2;
+        if since == 80 {
+            if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+                (a.energy, a.counters[animal::ENERGY]) = (100, 0);
+            }
+        }
+        s.step_with(&data, &cat, &mut w, 67, |_, _, _| {});
+        let lines = w.units.take_lines();
+        let animal = w.units.take_animal_lines();
+        since += usize::from(users(&w, 8) == 1);
+        match inside {
+            None if since == 60 => inside = Some(spot(&w)),
+            Some(at) => {
+                assert_eq!((users(&w, 8), spot(&w)), (1, at));
+                log.extend(lines.into_iter().chain(animal));
+            }
+            None => {}
+        }
+    }
+    assert!(inside.is_some(), "it never got in");
+    assert!(log.contains(&"set 1 bWalk".to_string()), "no ambient set");
+    assert!(log.contains(&"sleep 1".to_string()), "no sleep check");
+}
+
+#[test]
+fn a_slot_that_lists_other_species_or_filters_the_subtype_is_no_shelter_for_the_animal() {
+    // The lion is species 5 and subtype m. A slot that lists another species or a filter that holds
+    // the subtype refuses it; its own species, an empty list and a filter of other subtypes let it in.
+    let caves = [
+        ("id=6\n", false),
+        ("id=6\nid=7\n", false),
+        ("filter=m\n", false),
+        ("filter=ym\n", false),
+        ("id=5\nfilter=m\n", false),
+        ("id=6\nid=5\n", true),
+        ("id=5\n", true),
+        ("filter=y\n", true),
+        ("filter=yf\n", true),
+        ("", true),
+    ];
+    for (slot, allowed) in caves {
+        let cat = types_with(&format!("{CAVE}{slot}"));
+        let mut w = zoo("m");
+        let e = w.zoo.entities[w.find(1).unwrap()].clone();
+        let who = building::Species::of(&cat, &e);
+        assert_eq!(who.as_ref().map(|s| s.id), Some(LION_ID));
+        // The search.
+        let found = animal::shelters(&w, &cat, 0, Some(tile(2, 6)), who.as_ref());
+        assert_eq!(found.nearest == [8], allowed, "search {slot:?}");
+        assert_eq!(found.nearest.is_empty(), !allowed, "search {slot:?}");
+        // The open slots of the walk.
+        let b = w.zoo.entities[w.find(8).unwrap()].clone();
+        let kind = building::kind_of(&cat, &b, 0.0).unwrap();
+        let at = (e.common.as_ref().unwrap().x, e.common.as_ref().unwrap().y);
+        let open = building::entrances(&w, &b, &kind, None, at, who.as_ref());
+        assert_eq!(!open.is_empty(), allowed, "walk {slot:?}");
+        // The entry.
+        let mut rng = Rng::default();
+        let entered = with_cat(&mut w, &mut rng, &cat, |cx| cx.add_user(8, 0));
+        assert_eq!(entered, allowed, "entry {slot:?}");
+        assert_eq!(users(&w, 8), usize::from(allowed), "entry {slot:?}");
+    }
+    // A guest is not tested: the slot lists species, no guest building does.
+    let cat = types_with(&format!("{CAVE}id=6\n"));
+    let w = zoo("m");
+    let b = w.zoo.entities[w.find(8).unwrap()].clone();
+    let kind = building::kind_of(&cat, &b, 0.0).unwrap();
+    assert!(building::has_open_slot(&w, &b, &kind, None, None));
 }

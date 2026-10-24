@@ -846,9 +846,7 @@ impl Hooks for Standard<'_> {
             && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
         // An egg chooses nothing: only the set that hatches it runs.
         let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
-        // An animal hidden in a shelter chooses nothing either.
-        let inside = unit.hidden && unit.kind == Kind::Animal;
-        let key = (!took && !egg && !inside).then(|| ambient_key(unit));
+        let key = (!took && !egg).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
         swim::nesting(unit, world, at);
         // The terrain mode follows the animal where an ambient set is chosen (tank fauna 9.4).
@@ -928,7 +926,7 @@ impl Hooks for Standard<'_> {
             Part::Animal(a) => std::mem::take(&mut a.ambient),
             _ => false,
         };
-        if asked && !unit.hidden {
+        if asked {
             if !crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data) {
                 let key = ambient_key(unit);
                 let choosing = !unit.runner.running() && unit.runner.queued().is_none();
