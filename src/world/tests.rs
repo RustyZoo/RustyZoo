@@ -522,3 +522,44 @@ fn edge_states_match_the_shipped_maps() {
         assert_eq!(wrong, 0, "{map}");
     }
 }
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn the_shipped_maps_have_show_neighbours_where_the_tank_walls_say_so() {
+    use crate::entity::Catalogue;
+    use crate::render::MapRenderer;
+    let (vfs, maps) = shipped();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let renderer = MapRenderer::new(&vfs, &catalogue);
+    let mut linked = Vec::new();
+    for map in maps {
+        let Ok(zoo) = Zoo::parse(&vfs.read(&map).unwrap()) else {
+            continue;
+        };
+        let world = World::new(zoo, |e| renderer.shape(e));
+        let list = world.exhibits().list();
+        let pairs = |e: &crate::exhibit::Exhibit| {
+            e.show_near.iter().all(|&n| {
+                let back = world.exhibits().get(n);
+                back.is_some_and(|b| {
+                    b.show_near.contains(&e.id) && b.tank.map(|t| t.show) != e.tank.map(|t| t.show)
+                })
+            })
+        };
+        assert!(list.iter().all(pairs), "{map}: the link is symmetric");
+        if list.iter().any(|e| !e.show_near.is_empty()) {
+            linked.push(map.to_ascii_lowercase());
+        }
+    }
+    // The maps whose tank walls on the boundary of a show tank carry the portal flag (3.11); the
+    // sea lion pair of scn28b has walls of different heights and none.
+    for pair in ["med_kids", "scn28.", "scn36", "saved games/test"] {
+        let n = linked.iter().filter(|m| m.contains(pair)).count();
+        let present = vfs
+            .list(None)
+            .iter()
+            .any(|m| m.to_ascii_lowercase().contains(pair));
+        assert_eq!(n > 0, present, "{pair}: {linked:?}");
+    }
+    assert!(linked.iter().all(|m| !m.contains("scn28b")), "{linked:?}");
+}
