@@ -38,8 +38,9 @@ fn tile_of(world: &World, e: &Entity) -> Option<usize> {
 }
 
 /// Whether the check done of a dung job goes on for worker `me` (staff 8.6): a pile of dung on a
-/// tile of the zoo grounds, or food on the grounds or in an exhibit with no animals, unless it is
-/// the target tile of another worker. A pile in an exhibit counts for nothing.
+/// tile of the zoo grounds (the tiles beyond the zoo wall too), or food on the grounds or in an
+/// exhibit with no animals, unless it is the target tile of another worker. A pile in an exhibit
+/// counts for nothing.
 pub fn poo_left(world: &World, me: u32) -> bool {
     let others: Vec<usize> = (world.units.iter())
         .filter(|u| u.id != me && u.kind == Kind::Worker)
@@ -54,11 +55,11 @@ pub fn poo_left(world: &World, me: u32) -> bool {
         };
         let region = world.exhibits().region(t);
         if is_poo(e) {
-            return region == Some(GROUNDS);
+            return matches!(region, Some(GROUNDS | EXTERIOR));
         }
         let open = match region {
-            Some(GROUNDS) => true,
-            Some(EXTERIOR) | None => false,
+            Some(GROUNDS | EXTERIOR) => true,
+            None => false,
             Some(x) => animals_in(world, x).is_empty(),
         };
         e.class == "food" && open && !others.contains(&t)
@@ -108,10 +109,12 @@ pub fn recycle(world: &mut World, cat: &Catalogue, t: usize, dino: bool) {
 
 /// Whether the entity stinks or is food: it calls a worker when it is left behind (staff 8.2).
 fn leaves(cat: &Catalogue, e: &Entity) -> bool {
-    let stinks = type_of(cat, e)
-        .and_then(|ty| number(ty, "cStink"))
-        .is_some_and(|v| v != 0.0);
-    stinks || e.class == "food"
+    let flag = |key: &str| {
+        type_of(cat, e)
+            .and_then(|ty| number(ty, key))
+            .is_some_and(|v| v != 0.0)
+    };
+    flag("cStink") || flag("cFood")
 }
 
 /// The objects that call a worker when the exhibit with these tiles is emptied or destroyed

@@ -306,8 +306,8 @@ impl Cx<'_, '_> {
     /// habitat is not the zoo grounds and holds animals, its amphibious neighbours' included.
     fn keepers_own(&self, t: usize) -> bool {
         let x = match self.world.exhibits().region(t) {
-            None | Some(crate::exhibit::EXTERIOR) => return true,
-            Some(crate::exhibit::GROUNDS) => return false,
+            None => return true,
+            Some(crate::exhibit::GROUNDS | crate::exhibit::EXTERIOR) => return false,
             Some(x) => x,
         };
         let neighbours = self.world.exhibits().get(x).map(|e| e.amphibious.clone());
