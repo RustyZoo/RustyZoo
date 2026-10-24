@@ -719,8 +719,12 @@ impl Cx<'_, '_> {
         self.unit.goal.wants_to_decide = false;
         // A guest's building target goes with it, and so does the eat-standing flag (guests 8).
         self.clear_target();
-        if let Part::Guest(g) = &mut self.unit.part {
-            g.stand = false;
+        match &mut self.unit.part {
+            Part::Guest(g) => g.stand = false,
+            // An animal's reset lowers its need flags too (12.1, animals 9.2); the afraid, playing,
+            // prey and chase-partner ones belong to M7.
+            Part::Animal(a) => (a.drinking, a.wants_food, a.thirsty) = (false, false, false),
+            _ => {}
         }
     }
 

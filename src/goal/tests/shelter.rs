@@ -671,3 +671,26 @@ fn a_walk_to_the_shelter_that_cannot_start_resets_the_whole_goal() {
         u.path
     );
 }
+
+#[test]
+fn the_failed_shelter_walk_lowers_the_need_flags_of_the_animal() {
+    let mut w = zoo("m");
+    w.units.buildings.insert(
+        8,
+        Live {
+            users: vec![(100, 0, 0), (101, 0, 0)],
+            ..Live::default()
+        },
+    );
+    if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+        (a.building, a.counters[animal::SHELTER]) = (8, 1000);
+        (a.thirsty, a.wants_food, a.drinking) = (true, true, true);
+    }
+    let mut s = sim();
+    step(&mut w, &mut s);
+    let a = animal(&w);
+    assert_eq!(
+        (a.building, a.thirsty, a.wants_food, a.drinking),
+        (0, false, false, false)
+    );
+}

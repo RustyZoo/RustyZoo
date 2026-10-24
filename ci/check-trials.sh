@@ -1128,7 +1128,7 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:25@29,50;29726:12@21,51;29745:17@36,32;29748:19@34,34;29750:21@20,50" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:25@29,50;29726:12@21,51;29745:16@36,33;29748:21@32,34;29750:21@20,50" "guest_pace maps/scn01a.zoo"
 check base-trial "29699:28@29,53;29726:22@22,42;29745:17@36,32;29748:20@33,34;29750:21@20,50" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
@@ -1266,16 +1266,17 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # 16000 steps long (the same seed and the same three pairs as before; the staff of a loaded map draw
 # at the load, which moved the first birth to 6178 and made it four young). A shelter walk that cannot
 # start resets the whole goal (a lion's, at step 1238), which moved the first birth to 30208 and made
-# it two young: the run is 34000 steps long.
+# it two young: the run is 34000 steps long. That reset now lowers the need flags of the animal too,
+# which brought the first birth back to 5089 (the same two young): the run is 16000 steps long again.
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
-  once() { rz sim "$1" --ticks 34000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  once() { rz sim "$1" --ticks 16000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@30208;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@5089;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
