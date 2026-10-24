@@ -307,8 +307,9 @@ pub struct Clocks {
     pub world_secs: u32,
     /// The two event buffers (from version 97).
     pub queue: Queue,
-    /// The game date, in game milliseconds from the calendar's start (0 when absent or invalid).
-    pub calendar: u64,
+    /// The game date, in game milliseconds from the calendar's start: negative before 2001, 0 when
+    /// absent or refused.
+    pub calendar: i64,
 }
 
 /// One record of the event queue (simulation 5.1).

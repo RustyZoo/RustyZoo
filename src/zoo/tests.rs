@@ -334,6 +334,64 @@ fn reads_the_clocks_the_file_stores() {
     }
 }
 
+/// The file with its game date (the 2003 date of `file`) replaced by `date`.
+fn with_date(bytes: &[u8], date: [u16; 8]) -> Vec<u8> {
+    let old: Vec<u8> = [2003u16, 3, 5, 14, 6, 30, 15, 250]
+        .iter()
+        .flat_map(|n| n.to_le_bytes())
+        .collect();
+    let new: Vec<u8> = date.iter().flat_map(|n| n.to_le_bytes()).collect();
+    let at: Vec<usize> = bytes
+        .windows(old.len())
+        .enumerate()
+        .filter(|(_, w)| *w == old.as_slice())
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(at.len(), 1);
+    let mut out = bytes.to_vec();
+    out[at[0]..at[0] + new.len()].copy_from_slice(&new);
+    out
+}
+
+#[test]
+fn a_game_date_before_2001_is_kept_as_stored() {
+    // Thursday 15 June 2000, 06:30:15.250 (the weekday is stored, and not read).
+    let stored = [2000, 6, 3, 15, 6, 30, 15, 250];
+    for v in VERSIONS {
+        let zoo = parse(&with_date(&file(v, 2, 2, &[], &[]), stored));
+        assert!(zoo.clocks.calendar < 0, "version {v}");
+        let d = crate::timing::Calendar::at(zoo.clocks.calendar).date();
+        assert_eq!(
+            [
+                d.year,
+                d.month,
+                d.day,
+                d.hour,
+                d.minute,
+                d.second,
+                d.millisecond
+            ],
+            [2000u32, 6, 15, 6, 30, 15, 250],
+            "version {v}"
+        );
+    }
+}
+
+#[test]
+fn a_refused_game_date_is_the_start_of_the_calendar() {
+    for date in [
+        [2003, 13, 5, 14, 6, 30, 15, 250],
+        [2003, 0, 5, 14, 6, 30, 15, 250],
+        [2003, 2, 5, 29, 6, 30, 15, 250],
+        [2001, 2, 5, 29, 6, 30, 15, 250],
+        [2003, 3, 5, 14, 24, 30, 15, 250],
+        [1600, 12, 5, 31, 6, 30, 15, 250],
+    ] {
+        let zoo = parse(&with_date(&file(VERSIONS[0], 2, 2, &[], &[]), date));
+        assert_eq!(zoo.clocks.calendar, 0, "{date:?}");
+    }
+}
+
 #[test]
 fn reads_the_game_date_the_file_stores() {
     // 802 days from 1 January 2001 to 14 March 2003.
