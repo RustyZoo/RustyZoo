@@ -247,7 +247,9 @@ check base-trial c3806921661f5f9c 'rz run maps/default.zoo --headless --cash 100
 # file of the type's folder.
 check base-trial 28 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
 check base-trial bFriendly,14 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit set 27645 / && s == \"\" {s=\$NF} / unit anim 27645 / && \$NF != \"idle\" && a == \"\" {a=\$2} END {print s \",\" a}"'
-check base-trial animals/lion/cat_sgr.wav 'rz run maps/scn01a.zoo --headless --bare --passes 1500 --clock 67 --seed 3 2>/dev/null | grep " unit sound " | awk "\$NF ~ /^animals/ {print \$NF}" | sort -u'
+# The lion's first sound comes after pass 1500 (a failed shelter walk resets the whole goal, which shifted
+# the draws of the run), so this run is 3000 passes long.
+check base-trial animals/lion/cat_sgr.wav 'rz run maps/scn01a.zoo --headless --bare --passes 3000 --clock 67 --seed 3 2>/dev/null | grep " unit sound " | awk "\$NF ~ /^animals/ {print \$NF}" | sort -u'
 
 # The scenario screen from the menu button at y: the number of entries, the state of each, and the
 # first entry selected (its state and whether Play is on). A click on the icon of the first row and a
@@ -1245,16 +1247,18 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # ambient set and runs its sleep check as any animal does (the draws they make) to 15835, and the use
 # set of the visible-inside rock, whose trial version holds no enter call, to 3109: the run is
 # 16000 steps long (the same seed and the same three pairs as before; the staff of a loaded map draw
-# at the load, which moved the first birth to 6178 and made it four young).
+# at the load, which moved the first birth to 6178 and made it four young). A shelter walk that cannot
+# start resets the whole goal (a lion's, at step 1238), which moved the first birth to 30208 and made
+# it two young: the run is 34000 steps long.
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
-  once() { rz sim "$1" --ticks 16000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  once() { rz sim "$1" --ticks 34000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@6178;young:4" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@30208;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
