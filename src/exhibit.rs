@@ -41,6 +41,10 @@ pub struct Exhibit {
     /// (tank fauna 12); the company checks count their animals and tiles with its own. The world
     /// makes them again after each edit (`World::relink`).
     pub amphibious: Vec<u32>,
+    /// The tanks it is linked to as show neighbours (exhibits and money 3.11), in the order they
+    /// became so: a show tank and a plain tank that touch, both filled and at least 4 high, with
+    /// wall tops at one level. Made again with the amphibious links.
+    pub show_near: Vec<u32>,
     /// Its records, species list and timers (habitat rating).
     pub rating: rating::State,
     /// What its panel shows besides the rating.
@@ -423,6 +427,7 @@ impl Exhibits {
             purity_ms: 0,
             filter: None,
             amphibious: Vec::new(),
+            show_near: Vec::new(),
             rating: rating::State::new(),
             stats: Stats::default(),
         });
@@ -467,14 +472,21 @@ impl Exhibits {
         }
     }
 
-    /// Marks exhibit `id` to be rated again (habitat rating 4), and its amphibious neighbours
-    /// with it, theirs in turn, up to those already marked; the zoo grounds have no rating.
+    /// Marks exhibit `id` to be rated again (habitat rating 4), and its amphibious and show
+    /// neighbours with it, theirs in turn, up to those already marked; the zoo grounds have no
+    /// rating.
     pub fn mark(&mut self, id: u32) {
         let Some(e) = self.get_mut(id) else {
             return;
         };
         e.rating.dirty = true;
-        for n in e.amphibious.clone() {
+        for n in e
+            .amphibious
+            .iter()
+            .chain(&e.show_near)
+            .copied()
+            .collect::<Vec<_>>()
+        {
             if self.get(n).is_some_and(|n| !n.rating.dirty) {
                 self.mark(n);
             }

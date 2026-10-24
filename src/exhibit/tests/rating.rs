@@ -586,7 +586,7 @@ fn an_amphibious_animal_in_a_tank_takes_the_best_rating_of_the_land_beside_it() 
         ..Record::default()
     };
     assert_eq!(full.rating(), 100.0);
-    // A show tank has no show neighbour yet: an amphibious species loses 50.
+    // A show tank without a show neighbour: an amphibious species loses 50.
     let show = Record {
         show: true,
         ..full.clone()
