@@ -1266,7 +1266,8 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # 16000 steps long (the same seed and the same three pairs as before; the staff of a loaded map draw
 # at the load, which moved the first birth to 6178 and made it four young). A shelter walk that cannot
 # start resets the whole goal (a lion's, at step 1238), which moved the first birth to 30208 and made
-# it two young: the run is 34000 steps long.
+# it two young: the run is 34000 steps long. That reset now lowers the need flags of the animal too,
+# which brought the first birth back to 5089 (the same two young).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
@@ -1275,7 +1276,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@30208;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@5089;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
