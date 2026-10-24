@@ -2,8 +2,7 @@ use super::*;
 
 #[test]
 fn months_open_are_the_whole_days_plus_29_over_30() {
-    let day = DAY_MS;
-    let months = |built: u64, now| months(built as i64, now);
+    let day = DAY_MS as i64;
     // Built today: one month, and until day 30; day 31 is the second month (guest buildings 10.3).
     assert_eq!(months(0, 0), 1);
     assert_eq!(months(5 * day, 5 * day + day / 10), 1);
@@ -14,14 +13,14 @@ fn months_open_are_the_whole_days_plus_29_over_30() {
     assert_eq!(months(0, 61 * day), 3);
     // A building "built" after now, and a huge time, never panic or give less than 1.
     assert_eq!(months(10, 0), 1);
-    assert!(months(0, u64::MAX) > 1);
+    assert!(months(0, i64::MAX) > 1);
     // A construction date before the calendar's start counts the days before it too, and the
     // extremes do not overflow.
     let before = |days: i64, now| super::months(-days * DAY_MS as i64, now);
     assert_eq!(before(30, 0), 1);
     assert_eq!(before(31, 0), 2);
     assert_eq!(
-        super::months(i64::MIN, u64::MAX),
+        super::months(i64::MIN, i64::MAX),
         super::months(i64::MIN, 0)
     );
     assert_eq!(super::months(i64::MAX, 0), 1);

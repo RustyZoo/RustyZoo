@@ -340,16 +340,13 @@ impl Live {
 /// Building `id` of type `ty` was built at calendar time `now` (ms of game time): a guest
 /// building starts its live state, with the date its months open are counted from (guest
 /// buildings 4).
-pub fn built(world: &mut World, ty: &EntityType, id: u32, now: u64) {
+pub fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
     if crate::month::is_guest_building(ty) {
         let live = Live::new(&Kind::of(ty, world.units.prices.default));
-        world.units.buildings.insert(
-            id,
-            Live {
-                built: now as i64,
-                ..live
-            },
-        );
+        world
+            .units
+            .buildings
+            .insert(id, Live { built: now, ..live });
     }
 }
 
@@ -392,7 +389,7 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
 /// the calendar's start); the price is kept. It runs after the load events, so a can that called a
 /// worker is empty with its task still in the pool. Every unit a building listed as a user is
 /// removed from the world, not released: the ids are returned for the caller to ask the removal.
-pub fn reset_all(world: &mut World, now: u64) -> Vec<u32> {
+pub fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
     let ids: Vec<u32> = world.units.buildings.keys().copied().collect();
     let mut removed = Vec::new();
     for id in ids {
@@ -401,7 +398,7 @@ pub fn reset_all(world: &mut World, now: u64) -> Vec<u32> {
             removed.extend(live.users.iter().map(|u| u.0));
             *live = Live {
                 price: live.price,
-                built: now as i64,
+                built: now,
                 ..Live::default()
             };
         }

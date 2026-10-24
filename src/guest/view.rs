@@ -330,7 +330,7 @@ pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, ti
         return;
     };
     // The calendar's milliseconds (it runs 7,200 times faster than the play) in units of 100 ns.
-    let t = (world.units.now.saturating_sub(g.viewed_at)).saturating_mul(10_000);
+    let t = (world.units.now.saturating_sub(g.viewed_at).max(0) as u64).saturating_mul(10_000);
     let factor = f64::from(world.units.donation_factor);
     let raw = t as f64 * factor * (f64::from(s.average) + f64::from(s.bonus)) * 0.01;
     let d = if raw.is_nan() { 0.0 } else { raw.min(10.0) } as f32;

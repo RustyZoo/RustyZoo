@@ -227,7 +227,7 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
     // A long view is capped at 10; a sick animal in view, or a view of nothing, gives none.
     w.units.donated.clear();
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
-    w.units.now = u64::MAX / 1000;
+    w.units.now = i64::MAX / 1000;
     leave_area(&mut g, 1, &mut w, &cat, Some(55));
     assert_eq!(w.units.donated, [10.0]);
     let mut sick = pen(&[40, 60]);

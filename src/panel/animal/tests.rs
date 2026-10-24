@@ -1,5 +1,6 @@
 use super::*;
 use crate::entity::Catalogue;
+use crate::timing::Calendar;
 use crate::vfs::Vfs;
 
 fn keys() -> Keys {
@@ -129,13 +130,22 @@ fn a_species_without_limits_or_with_huge_values_gives_numbers_not_panics() {
 
 #[test]
 fn the_time_ago_has_three_bands_by_the_hours_of_calendar_time() {
-    let at = |hours: u64| band(hours * HOUR, 0);
+    let at = |hours: i64| band(hours * HOUR, 0);
     assert_eq!(
         [at(0), at(1439), at(1440), at(8640), at(8641)],
         [0, 0, 1, 1, 2]
     );
-    assert_eq!(band(0, u64::MAX), 0, "a date in the future is recent");
-    assert_eq!(band(u64::MAX, 0), 2, "huge");
+    assert_eq!(band(0, i64::MAX), 0, "a date in the future is recent");
+    assert_eq!(band(i64::MAX, 0), 2, "huge");
+}
+
+#[test]
+fn a_unit_stamped_in_2000_reads_its_age_in_2001() {
+    // Fed 1,500 hours before the start (early November 2000), read at the start: 62 days ago.
+    let now = Calendar::at(0).elapsed_ms();
+    let then = Calendar::at(-1500 * HOUR).elapsed_ms();
+    assert_eq!(band(now, then), 1);
+    assert_eq!(band(now, Calendar::at(-9000 * HOUR).elapsed_ms()), 2);
 }
 
 use crate::panel::follow::tests as follow;
