@@ -645,3 +645,29 @@ fn an_enter_call_that_the_building_refuses_stops_the_animal() {
     assert_eq!((animal(&w).building, users(&w, 8)), (0, 1));
     assert!(u.goal.record.task != USE && !u.runner.running());
 }
+
+#[test]
+fn a_walk_to_the_shelter_that_cannot_start_resets_the_whole_goal() {
+    let mut w = zoo("m");
+    // The cave is full, and the animal holds a path of its own: the failed start resets the goal.
+    w.units.buildings.insert(
+        8,
+        Live {
+            users: vec![(100, 0, 0), (101, 0, 0)],
+            ..Live::default()
+        },
+    );
+    let u = w.units.get_mut(1).unwrap();
+    u.path = vec![1, 2];
+    if let Part::Animal(a) = &mut u.part {
+        (a.building, a.counters[animal::SHELTER]) = (8, 1000);
+    }
+    let mut s = sim();
+    step(&mut w, &mut s);
+    let u = w.units.get(1).unwrap();
+    assert!(
+        u.path.is_empty() && animal(&w).building == 0,
+        "{:?}",
+        u.path
+    );
+}
