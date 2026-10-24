@@ -12,6 +12,8 @@
 #   play-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
 #   trials   release build, then ci/check-trials.sh on the trials dir (see ci/fetch-trials.sh);
 #            skipped without the argument
+#   play-trials  as CI does: ci/playable.txt on base-trial and ci/playable-tank.txt on expansion-trial
+#            (a trial folder missing from the trials dir fails the step); skipped without the argument
 #
 # Runs on the repository that contains the current directory, so a copy of this script can gate
 # another checkout. Every step runs, even after a failure; the output of a failed step follows its
@@ -30,17 +32,17 @@ step() { # step <name> <command...>
   shift
   start=$SECONDS
   if "$@" >"$logs/$name" 2>&1; then
-    printf 'ok      %-8s %ss\n' "$name" $((SECONDS - start))
+    printf 'ok      %-11s %ss\n' "$name" $((SECONDS - start))
     ok=$((ok + 1))
   else
-    printf 'FAILED  %-8s %ss\n' "$name" $((SECONDS - start))
+    printf 'FAILED  %-11s %ss\n' "$name" $((SECONDS - start))
     tail -n 40 "$logs/$name" | sed -E 's/\x1b(\[[0-9;]*[A-Za-z]|\(B)|\x0f//g; s/^/        /'
     failed=$((failed + 1))
   fi
 }
 
 skip() { # skip <name> <reason>
-  printf 'skipped %-8s %s\n' "$1" "$2"
+  printf 'skipped %-11s %s\n' "$1" "$2"
   skipped=$((skipped + 1))
 }
 
@@ -50,6 +52,15 @@ trials_step() {
 
 play_step() { # play_step <game folder>
   cargo build --release && ci/check-playable.sh "${CARGO_TARGET_DIR:-target}/release/rustyzoo" "$1" ci/playable-full.txt
+}
+
+play_trials_step() {
+  cargo build --release || return
+  bin=${CARGO_TARGET_DIR:-target}/release/rustyzoo
+  status=0
+  ci/check-playable.sh "$bin" "$trials/base-trial" ci/playable.txt || status=1
+  ci/check-playable.sh "$bin" "$trials/expansion-trial" ci/playable-tank.txt || status=1
+  return $status
 }
 
 step fmt cargo fmt --check
@@ -62,6 +73,7 @@ else skip full-fr "ZT_DATA_DIR_FR is not set"; fi
 if [ -n "${ZT_DATA_DIR:-}" ]; then step play play_step "$ZT_DATA_DIR"; else skip play "ZT_DATA_DIR is not set"; fi
 if [ -n "${ZT_DATA_DIR_FR:-}" ]; then step play-fr play_step "$ZT_DATA_DIR_FR"; else skip play-fr "ZT_DATA_DIR_FR is not set"; fi
 if [ -n "$trials" ]; then step trials trials_step; else skip trials "no trials dir given"; fi
+if [ -n "$trials" ]; then step play-trials play_trials_step; else skip play-trials "no trials dir given"; fi
 
 echo "gate: $ok ok, $failed failed, $skipped skipped"
 [ "$failed" = 0 ]

@@ -20,7 +20,7 @@ Everything is written in English: code, comments, commit messages, pull requests
   cargo test
   ```
 
-  `ci/gate.sh [trials dir]` runs them all (plus the ignored full-game tests when `ZT_DATA_DIR` is set, again on a second install when `ZT_DATA_DIR_FR` is set, the freeform game of `ci/playable-full.txt` on each of the two installs, and `ci/check-trials.sh` on the trials dir) and prints one line per step.
+  `ci/gate.sh [trials dir]` runs them all (plus the ignored full-game tests when `ZT_DATA_DIR` is set, again on a second install when `ZT_DATA_DIR_FR` is set, the freeform game of `ci/playable-full.txt` on each of the two installs, `ci/check-trials.sh` on the trials dir, and the games of `ci/playable.txt` and `ci/playable-tank.txt` on the two trials as CI plays them) and prints one line per step.
 
 ## Original game data
 
