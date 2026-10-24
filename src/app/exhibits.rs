@@ -123,6 +123,18 @@ impl App<'_> {
                         to,
                     );
                 }
+                Event::Left(tiles) => {
+                    let cat = self.renderer.catalogue();
+                    let left = crate::staff::chores::leftovers(&game.world, cat, &tiles);
+                    for (piece, tile) in left {
+                        let event = crate::world::piece_event(
+                            piece,
+                            crate::animal::dirt::DUNG,
+                            tile as u32,
+                        );
+                        game.world.units.posts.push(event);
+                    }
+                }
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
                 Event::Objects(id) => game.refused = Some(id),
                 _ => {}

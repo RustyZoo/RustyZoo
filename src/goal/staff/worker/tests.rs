@@ -61,11 +61,21 @@ fn catalogue(worker: &str) -> Catalogue {
         ),
         EntityType {
             footprint: [1, 1, 1],
-            ..ty("objects", "other", "poo", "")
+            ..ty(
+                "objects",
+                "other",
+                "poo",
+                "[Characteristics/Integers]\ncStink=1\n",
+            )
         },
         EntityType {
             footprint: [1, 1, 1],
-            ..ty("objects", "other", "dinopoo", "")
+            ..ty(
+                "objects",
+                "other",
+                "dinopoo",
+                "[Characteristics/Integers]\ncStink=1\n",
+            )
         },
         EntityType {
             footprint: [1, 1, 1],
@@ -795,4 +805,79 @@ fn the_nearest_compost_by_manhattan_distance_is_paid_and_none_means_nothing() {
     g.w.zoo.entities.retain(|e| e.type_name != "compost");
     crate::staff::chores::recycle(&mut g.w, &g.cat, tile, true);
     assert!(g.w.units.recycled.is_empty() && g.w.units.buildings.is_empty());
+}
+
+/// The tiles the events of a zoo just loaded name, in order.
+fn loaded_tiles(g: &Game) -> Vec<u32> {
+    let events = crate::staff::chores::loaded_leftovers(&g.w, &g.cat);
+    assert!(events.iter().all(|e| e.kind == 10032));
+    events.iter().map(|e| e.data).collect()
+}
+
+#[test]
+fn a_loaded_zoo_calls_the_workers_for_the_dung_on_the_grounds_and_the_food_of_an_empty_exhibit() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &pen(PEN));
+    g.dung((4, 3), "food", false);
+    g.dung((6, 9), "poo", false);
+    let tiles = [(4, 3), (6, 9)].map(|t| Game::tile(t) as u32);
+    assert_eq!(loaded_tiles(&g), tiles);
+}
+
+#[test]
+fn a_loaded_zoo_calls_the_workers_for_the_dung_outside_the_zoo_wall() {
+    // A zoo wall down the east side of column 1, the entrance on tile (0, 0) facing east: columns
+    // 0 and 1 are beyond the wall, and their dung and food are the grounds' (staff 8.2).
+    let mut extra: Vec<Entity> = (0..12)
+        .map(|y: i32| entity("zoowall", "", 300 + y as u32, centre((1, y)), 2))
+        .collect();
+    extra.push(entity("building", "", 320, centre((0, 0)), 2));
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &extra);
+    g.dung((0, 5), "poo", false);
+    g.dung((1, 2), "food", false);
+    let tiles = [(0, 5), (1, 2)].map(|t| Game::tile(t) as u32);
+    assert_eq!(loaded_tiles(&g), tiles);
+}
+
+#[test]
+fn a_loaded_zoo_leaves_the_dung_of_an_exhibit_with_an_animal_alone() {
+    let mut zebra = entity("animals", "zebra", 300, centre((5, 3)), 0);
+    zebra.subtype = "z".into();
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &[pen(PEN), vec![zebra]].concat());
+    g.dung((4, 3), "poo", false);
+    assert_eq!(loaded_tiles(&g), Vec::<u32>::new());
+}
+
+#[test]
+fn an_emptied_exhibit_calls_a_worker_for_the_centre_slot_of_a_tile_only() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &pen(PEN));
+    g.dung((4, 3), "poo", false);
+    let ty = g.cat.find("objects", b"other", b"poo").unwrap();
+    // A pile in a corner quarter of the next tile is not looked at.
+    let corner = (5 * 64 + 8, 3 * 64 + 8);
+    assert!(dirt::put_at(
+        &mut g.w,
+        ty,
+        ("objects", "other", "poo"),
+        corner,
+        0,
+        0
+    ));
+    let x = g.w.exhibits().region(Game::tile((4, 3))).unwrap();
+    let tiles = g.w.exhibits().get(x).unwrap().order.clone();
+    let found = crate::staff::chores::leftovers(&g.w, &g.cat, &tiles);
+    assert_eq!(
+        found.iter().map(|f| f.1).collect::<Vec<_>>(),
+        [Game::tile((4, 3))]
+    );
+}
+
+#[test]
+fn a_worker_bags_the_old_dung_of_a_loaded_zoo() {
+    let mut g = Game::new("");
+    g.calm();
+    g.dung((6, 9), "poo", false);
+    g.sim.fences_loaded(&g.w, &g.cat);
+    g.run(400);
+    assert_eq!(g.jobs(), ["ZooDoo", "BagDoo", "none"]);
+    assert!(!g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
 }

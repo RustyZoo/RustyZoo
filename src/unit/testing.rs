@@ -60,6 +60,11 @@ fn shape(e: &Entity) -> Option<Shape> {
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
         "building" if e.type_name == "hall" => Some(thing(Class::Fixed, (2, 2), false)),
         "building" => Some(thing(Class::Fixed, (1, 1), false)),
+        // A zoo wall: it stops the exterior fill.
+        "zoowall" => Some(Shape {
+            wall: true,
+            ..thing(Class::Edge, (1, 1), true)
+        }),
         "tankwall" => Some(Shape {
             tank: TankKind {
                 wall: true,
