@@ -415,8 +415,8 @@ pub struct Animal {
     pub counters: [i32; COUNTERS],
     pub female: bool,
     /// The game milliseconds of the calendar when it last ate and last slept (animals 13.2).
-    pub fed: u64,
-    pub slept: u64,
+    pub fed: i64,
+    pub slept: i64,
     /// The recommendation bits shown and the ones among them that are important.
     pub advice: u64,
     pub important: u64,
@@ -637,7 +637,7 @@ pub struct Env {
     /// The tile holds water or the exhibit is a tank: it does not look for a drink here.
     pub wet: bool,
     /// The game milliseconds of the calendar, for the date of its last meal.
-    pub now: u64,
+    pub now: i64,
     /// Its set or its task occupies it (9.3).
     pub busy: bool,
     /// Its task is the keeper food or the other food task.

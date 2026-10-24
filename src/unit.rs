@@ -319,8 +319,9 @@ pub struct Units {
     sounds: Vec<(u32, Heard)>,
     /// The gates that are open or playing their animation (movement 6.2).
     gates: gate::Gates,
-    /// The game milliseconds the calendar has run: the date a new animal is fed and rested.
-    pub now: u64,
+    /// The game milliseconds the calendar has run (negative before 2001): the date a new animal is
+    /// fed and rested.
+    pub now: i64,
     /// The word before the number in a guest's name (string 9507).
     pub guest_name: String,
     /// The texts of the names of the animal types, by name id, for the names of the young.

@@ -265,7 +265,7 @@ pub struct Guest {
     /// The direction in which it looks for its viewing area (guests visit 4.2).
     pub va: Option<u8>,
     /// The calendar time viewing began, in milliseconds.
-    pub viewed_at: u64,
+    pub viewed_at: i64,
     /// The items held: food, drink, fun gift, gift and litter, each an item name id (guests 9.2).
     pub items: [Option<i32>; crate::building::items::SLOTS],
     /// The need being served and the building target (guests 7.3): the building's id, 0 for none,

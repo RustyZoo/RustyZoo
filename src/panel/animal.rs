@@ -47,9 +47,9 @@ const SLEPT_STRING: i32 = 3119;
 pub const PERIOD: u64 = 5000;
 /// Game milliseconds in an hour, and the hours up to which a time ago is "recently" and "a short
 /// time ago".
-const HOUR: u64 = 3_600_000;
-const RECENT: u64 = 1440;
-const SHORT: u64 = 8640;
+const HOUR: i64 = 3_600_000;
+const RECENT: i64 = 1440;
+const SHORT: i64 = 8640;
 
 /// The percentage of `v` between `lo` and `hi`, truncated; 0 when the limits meet.
 pub(crate) fn percent(v: i32, lo: i32, hi: i32) -> i32 {
@@ -98,7 +98,7 @@ pub fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
 
 /// The band of a time ago (animals 13.2): 0 below 1440 hours of calendar time, 1 up to 8640, 2
 /// above.
-pub fn band(now: u64, then: u64) -> usize {
+pub fn band(now: i64, then: i64) -> usize {
     let hours = now.saturating_sub(then) / HOUR;
     usize::from(hours >= RECENT) + usize::from(hours > SHORT)
 }
@@ -161,7 +161,7 @@ impl Panel {
         world: &World,
         cat: &Catalogue,
         vfs: &Vfs,
-        now: u64,
+        now: i64,
     ) -> Option<String> {
         let id = self.selected?;
         let (at, unit) = (world.find(id)?, world.units.get(id)?);

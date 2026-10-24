@@ -488,7 +488,7 @@ fn a_reset_start_zeroes_every_building_and_keeps_its_price() {
     w.units.buildings.get_mut(&7).unwrap().price = 4.5;
     w.units.buildings.get_mut(&7).unwrap().users.push((3, 0, 9));
     // The listed unit is removed from the world by the caller, not released.
-    assert_eq!(reset_all(&mut w, 5 * crate::timing::DAY_MS), [3]);
+    assert_eq!(reset_all(&mut w, 5 * crate::timing::DAY_MS as i64), [3]);
     let want = |price| Live {
         price,
         built: 5 * crate::timing::DAY_MS as i64,
@@ -500,7 +500,7 @@ fn a_reset_start_zeroes_every_building_and_keeps_its_price() {
     assert_eq!(w.zoo.entities[1].common.as_ref().unwrap().food, 0);
     // No building, nothing to do.
     let mut none = world_with((2, 2), |_| {});
-    assert!(reset_all(&mut none, u64::MAX).is_empty());
+    assert!(reset_all(&mut none, i64::MAX).is_empty());
     assert!(none.units.buildings.is_empty());
 }
 

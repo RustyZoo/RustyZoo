@@ -326,10 +326,10 @@ impl Calendar {
         (self.elapsed, self.month_changed)
     }
 
-    /// The game milliseconds the timers count from the start: 0 before it, so a saved date before
-    /// 2001 starts them at 0 and they count on from there.
-    pub fn elapsed_ms(&self) -> u64 {
-        self.elapsed.max(0) as u64
+    /// The game milliseconds the timers count from the start, negative before it: a stamp taken
+    /// before 2001 ages from its own date, and the difference of two timers is the time between.
+    pub fn elapsed_ms(&self) -> i64 {
+        self.elapsed
     }
 
     pub fn date(&self) -> Date {
@@ -505,8 +505,8 @@ mod tests {
             (d.year, d.month, d.day, d.hour, d.weekday),
             (2000, 12, 31, 23, 6)
         );
-        // The timers read 0 before the start, and count from it once the calendar gets there.
-        assert_eq!(c.elapsed_ms(), 0);
+        // The timers count from the start, an hour before it included.
+        assert_eq!(c.elapsed_ms(), -3_600_000);
         let mut c = c;
         c.advance(1_000);
         let d = c.date();
@@ -955,6 +955,21 @@ mod tests {
             d.second,
             d.millisecond,
         )
+    }
+
+    #[test]
+    fn a_timer_stamped_before_2001_ages_from_its_stamp() {
+        // Stamped at 31 December 2000, 23:00, one hour before the start, and read at the start.
+        let stamp = Calendar::at(-3_600_000);
+        assert_eq!(stamp.date().year, 2000);
+        assert_eq!(Calendar::at(0).elapsed_ms() - stamp.elapsed_ms(), 3_600_000);
+    }
+
+    #[test]
+    fn from_2001_on_the_timers_are_the_game_milliseconds() {
+        assert_eq!(Calendar::at(0).elapsed_ms(), 0);
+        assert_eq!(Calendar::at(3_600_000).elapsed_ms(), 3_600_000);
+        assert_eq!(Calendar::at(34_560_000_000).elapsed_ms(), 34_560_000_000);
     }
 
     #[test]

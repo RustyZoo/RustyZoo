@@ -76,8 +76,7 @@ fn info_image(ty: &EntityType) -> Option<String> {
 
 /// The months a building has been open at game time `now` when it was built at `built` (ms):
 /// `(d + 29) / 30` (the ceiling of `d / 30`) for `d` whole days, at least 1 (guest buildings 10.3).
-pub fn months(built: i64, now: u64) -> i64 {
-    let now = i64::try_from(now).unwrap_or(i64::MAX);
+pub fn months(built: i64, now: i64) -> i64 {
     let days = now.saturating_sub(built) / DAY_MS as i64;
     ((days.max(0) + 29) / 30).max(1)
 }
@@ -152,7 +151,7 @@ impl Panel {
         world: &World,
         cat: &Catalogue,
         vfs: &Vfs,
-        now: u64,
+        now: i64,
     ) -> Option<String> {
         let id = self.selected?;
         let at = world.find(id)?;
@@ -228,7 +227,7 @@ impl Panel {
         cat: &Catalogue,
         vfs: &Vfs,
         (kind, live): (&Kind, &Live),
-        now: u64,
+        now: i64,
     ) -> String {
         let max = world.units.prices.max;
         let symbol = Symbol::new(ui.string(SYMBOL));
