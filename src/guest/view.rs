@@ -244,6 +244,34 @@ pub fn sites(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<u32>) {
     (all.len(), unseen.map(|x| x.id).collect())
 }
 
+/// 3.3 and 3.4: the attractions (the buildings that satisfy `fun`, in the order of the list) with
+/// the tile each stands on, and of them those the guest has not seen (3.2): the seen list holds
+/// the building, or an entity of the same help id, on one of its tiles.
+pub fn attractions(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<(u32, usize)>) {
+    let (ids, helps) = gawk::marks(world, cat, g);
+    let default = world.units.prices.default;
+    let mut all = 0;
+    let mut unseen = Vec::new();
+    for e in &world.zoo.entities {
+        let (Some(kind), Some(c)) = (crate::building::kind_of(cat, e, default), e.common.as_ref())
+        else {
+            continue;
+        };
+        let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+        let Some(tile) = tile.filter(|_| kind.satisfies("fun")) else {
+            continue;
+        };
+        all += 1;
+        let seen = g.seen.contains(&tile)
+            || ids.contains(&c.id)
+            || gawk::help_id(cat, e).is_some_and(|h| helps.contains(&h));
+        if !seen {
+            unseen.push((c.id, tile));
+        }
+    }
+    (all, unseen)
+}
+
 /// The attractiveness of an exhibit, rated first when it is marked (habitat rating 13.1).
 pub fn attractiveness(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> i32 {
     crate::exhibit::rating::refresh(world, cat, id, &mut || rng.rand());

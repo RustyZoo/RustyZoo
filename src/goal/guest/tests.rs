@@ -794,6 +794,150 @@ fn a_guest_draws_its_viewing_tile_among_the_ring_tiles_that_have_a_path() {
     assert_eq!(rng, after);
 }
 
+/// The catalogue of `types()` with two kinds of attraction, rides of one help id (77) and a
+/// carousel of another, which satisfy `fun` and have their entrance a tile above them.
+fn rides() -> Catalogue {
+    let text = |help| {
+        format!(
+            "[Characteristics/Integers]\ncCapacity=2\ncTimeInside=3\ncHelpID={help}\n\
+             [Satisfies]\nbuilding\nfun\n[slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\n\
+             entrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=2\n"
+        )
+    };
+    let mut cat = types();
+    for (name, help) in [("ride", 77), ("carousel", 78)] {
+        cat.push(crate::entity::EntityType {
+            class: "building",
+            type_name: name.as_bytes().to_vec(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                crate::config::Config::parse(text(help).as_bytes()).unwrap(),
+            )),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+    }
+    cat
+}
+
+/// Marks the zebra pen as seen by guest 1, with `count` sites counted.
+fn saw_the_pen(w: &mut World, count: u32) {
+    let pen = w.tile_index(2, 5).unwrap();
+    if let Some(Part::Guest(g)) = w.units.get_mut(1).map(|u| &mut u.part) {
+        (g.seen, g.seen_count) = (vec![pen], count);
+    }
+}
+
+/// Runs the site decision of guest 1 with `rng`; the task and the building it took.
+fn site_choice(w: &mut World, rng: &mut Rng) -> (u8, u32) {
+    with_cx_in(&rides(), &walks(), w, rng, |cx| cx.site_decide());
+    let r = &w.units.get(1).unwrap().goal.record;
+    (r.task, r.target.id)
+}
+
+#[test]
+fn the_site_draw_is_over_the_exhibits_and_the_attractions_alike() {
+    // One exhibit, one ride: r = 0 is the exhibit (0x65), r = 1 the ride (0x66).
+    for (v, want) in [(0, 101), (1, 102)] {
+        let mut w = visit_with(50, &[("building", "ride", 50, (7, 3))]);
+        let (mut rng, _) = stream_giving(2, v);
+        assert_eq!(
+            site_choice(&mut w, &mut rng),
+            (want, if v == 1 { 50 } else { 0 })
+        );
+    }
+}
+
+#[test]
+fn a_zoo_with_only_an_attraction_gives_the_guest_the_site_task() {
+    let mut w = visit_with(50, &[("building", "ride", 50, (7, 3))]);
+    w.remove(10);
+    let mut rng = Rng::default();
+    assert!(with_cx_in(&rides(), &walks(), &mut w, &mut rng, |cx| cx.next_site()));
+    assert_eq!(w.units.get(1).unwrap().goal.record.task, 100);
+}
+
+#[test]
+fn the_attractions_count_in_the_sites_a_guest_must_have_seen_before_it_forgets() {
+    // The pen and a ride are two sites: one seen is not all of them, two are.
+    for (count, forgets) in [(1, false), (2, true)] {
+        let mut w = visit_with(50, &[("building", "ride", 50, (7, 3))]);
+        saw_the_pen(&mut w, count);
+        let (task, _) = site_choice(&mut w, &mut Rng::default());
+        let Some(Part::Guest(g)) = w.units.get(1).map(|u| &u.part) else {
+            panic!("a guest");
+        };
+        assert_eq!(
+            (g.seen.is_empty(), task == 102),
+            (forgets, !forgets),
+            "{count}"
+        );
+    }
+}
+
+#[test]
+fn an_attraction_is_the_nth_of_the_list_or_by_default_the_farthest_with_the_setting() {
+    // Rides 50 at (7, 3) and 51 at (1, 9); the pen is seen, so r is the index in the list. The
+    // guest stands at (8, 2): the second ride is the farther one.
+    let more = [
+        ("building", "ride", 50, (7, 3)),
+        ("building", "ride", 51, (1, 9)),
+    ];
+    for (score, v, want) in [(false, 0, 50), (false, 1, 51), (true, 0, 51), (true, 1, 51)] {
+        let mut w = visit_with(50, &more);
+        saw_the_pen(&mut w, 1);
+        w.units.attraction_score = score;
+        let (mut rng, _) = stream_giving(2, v);
+        assert_eq!(site_choice(&mut w, &mut rng), (102, want), "{score} {v}");
+    }
+}
+
+#[test]
+fn the_attraction_score_setting_is_on_for_any_value_but_0_and_off_when_missing() {
+    for (value, on) in [
+        ("", false),
+        ("0", false),
+        ("1", true),
+        ("-1", true),
+        ("99999999999", true),
+    ] {
+        let ini = format!("[AI]\nuseAttractionAttractiveness={value}\n");
+        let (mut s, mut money) = (Sim::new(ini.as_bytes()), Money::default());
+        s.set_seed(1);
+        s.start_game(100, Clocks::default());
+        let mut w = visit(50);
+        s.step_game(&walks(), &types(), &mut w, &mut money, 67, |_, _, _| {});
+        assert_eq!(w.units.attraction_score, on, "{value:?}");
+    }
+    let mut w = visit(50);
+    let (mut s, mut money) = (Sim::new(b""), Money::default());
+    s.step_game(&walks(), &types(), &mut w, &mut money, 67, |_, _, _| {});
+    assert!(!w.units.attraction_score, "no ini");
+}
+
+#[test]
+fn seeing_an_attraction_makes_every_one_of_its_help_id_seen() {
+    let more = [
+        ("building", "ride", 50, (7, 3)),
+        ("building", "ride", 51, (7, 7)),
+        ("building", "carousel", 52, (1, 9)),
+    ];
+    let (cat, mut w) = (rides(), visit_with(50, &more));
+    let tile = w.tile_index(7, 3).unwrap();
+    let mut guest = Guest::default();
+    let ids = |w: &World, g: &Guest| {
+        let (all, list) = crate::guest::view::attractions(w, &cat, g);
+        (all, list.iter().map(|a| a.0).collect::<Vec<_>>())
+    };
+    assert_eq!(ids(&w, &guest), (3, vec![50, 51, 52]));
+    guest.seen = vec![tile];
+    assert_eq!(ids(&w, &guest), (3, vec![52]));
+    w.remove(52);
+    assert_eq!(ids(&w, &guest), (2, vec![]));
+}
+
 #[test]
 fn a_thought_about_an_animal_is_about_its_exhibit_and_an_egg_is_the_egg_thought() {
     let mut w = world_with((10, 10), |zoo| {

@@ -482,6 +482,7 @@ impl Sim {
         world.units.guest_join = (settings.join_happiness, settings.join_chance);
         world.units.donation_factor = settings.donation_factor;
         world.units.variable_speeds = self.ai.variable_unit_speeds != 0;
+        world.units.attraction_score = self.ai.use_attraction_attractiveness != 0;
         world.units.prices = settings.prices;
         let count = world.zoo.entities.len();
         for at in 0..count {

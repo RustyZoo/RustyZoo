@@ -224,6 +224,16 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// Guests visit 3.5: a guest that uses an attraction, or gives it up at a step of the chain,
+    /// has seen it; its tile joins the seen list. Any other building is not a site.
+    fn saw(&mut self, id: u32) {
+        let at = self.building(id).filter(|(_, k)| k.satisfies("fun"));
+        let tile = at.and_then(|(e, _)| e.common.and_then(|c| self.tile_at((c.x, c.y))));
+        if let (Some(t), Some(g)) = (tile, self.guest()) {
+            crate::guest::view::see(g, t);
+        }
+    }
+
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
     /// (0x67), else it gives up.
     pub(in crate::goal) fn building_arrived(&mut self) {
@@ -237,7 +247,10 @@ impl Cx<'_, '_> {
                 }
                 self.set_task(ENTRANCE, 0, id, Some(t));
             }
-            _ => self.reset(),
+            _ => {
+                self.saw(id);
+                self.reset();
+            }
         }
     }
 
@@ -253,9 +266,11 @@ impl Cx<'_, '_> {
         };
         if kind.commerce && self.mood(id, &kind) == Mood::Angry {
             self.react(Mood::Angry, id);
+            self.saw(id);
             return self.reset();
         }
         let Some((slot, _)) = self.open_slot(id) else {
+            self.saw(id);
             return self.reset();
         };
         if let Some((_, s, _)) = self.aim() {
@@ -327,7 +342,10 @@ impl Cx<'_, '_> {
         };
         match started {
             true => self.set_task(USE, 0, id, None),
-            false => self.reset(),
+            false => {
+                self.saw(id);
+                self.reset();
+            }
         }
     }
 
@@ -388,6 +406,9 @@ impl Cx<'_, '_> {
         }
         let price = live.price;
         self.world.units.building_note(format!("use {id} {unit}"));
+        if guest {
+            self.saw(id);
+        }
         if kind.hide {
             self.unit.hidden = true;
             self.world.hide_unit(self.at);

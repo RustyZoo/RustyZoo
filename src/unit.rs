@@ -306,6 +306,9 @@ pub struct Units {
     /// `[AI] exhibitServiceInterval`, in AI ticks (staff 7.2): read as the unsigned number the
     /// original compares with, so a negative value is never reached.
     pub service_interval: u32,
+    /// `[AI] useAttractionAttractiveness` is not 0: guests choose an attraction by a score of the
+    /// distance, not by its place in the list (guests visit 3.7).
+    pub attraction_score: bool,
     /// What the keepers spent during the step, as (category, cost), which the step books.
     pub spent: Vec<(usize, f32)>,
     lines: Vec<String>,
@@ -378,6 +381,7 @@ impl Default for Units {
             class: Class::default(),
             ring: walk::Ring::default(),
             service_interval: 90,
+            attraction_score: false,
             spent: Vec::new(),
             lines: Vec::new(),
             animal_lines: Vec::new(),

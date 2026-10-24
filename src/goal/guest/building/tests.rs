@@ -36,6 +36,11 @@ const CAN: &str = "[Characteristics/Integers]\ncCapacity=1000\ncUserStaysOutside
 const KIOSK: &str = "[Characteristics/Integers]\ncCapacity=2\ncTimeInside=3\n[Satisfies]\n\
     building\ndrink\n[slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\n\
     exitpos=0\nexitpos=48\ncapacity=2\n";
+/// An attraction: it satisfies `fun`, charges, and its entrance is one tile below it.
+const RIDE: &str = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=2\ncTimeInside=3\n\
+    [Characteristics/Floats]\ncDefaultCost=2\ncPriceFactor=3\n[Satisfies]\nbuilding\nfun\n\
+    [slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\n\
+    exitpos=48\ncapacity=2\n";
 const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\n\
     cPriceHappy1Change=5\ncPriceAngry1Change=-5\n";
 
@@ -63,6 +68,7 @@ fn types() -> Catalogue {
     cat.push(ty("building", "booth", BOOTH));
     cat.push(ty("building", "can", CAN));
     cat.push(ty("building", "kiosk", KIOSK));
+    cat.push(ty("building", "ride", RIDE));
     let trash = EntityType {
         subtype: b"trash".to_vec(),
         ..ty("objects", "other", "")
@@ -1576,4 +1582,57 @@ fn a_hidden_user_of_a_gone_building_stays_hidden_after_the_walk_out_check() {
     assert!(w.units.get(1).unwrap().hidden);
     assert_eq!(task(&w), 0);
     assert!(!w.units.get(1).unwrap().goal.wandered);
+}
+
+/// Guest 1 free of every need check, and the ride 9 at (5, 3) in the zoo of the tests.
+fn at_the_ride() -> World {
+    let mut w = zoo_of(Some("ride"));
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.countdowns, g.saw_animal) = ([1000; 11], 1000);
+    }
+    w
+}
+
+#[test]
+fn a_guest_the_site_goal_sends_to_an_attraction_uses_it_and_has_seen_it() {
+    let (cat, mut w, mut money) = (types(), at_the_ride(), Money::default());
+    with_cx(&cat, &mut w, |cx| cx.site_decide());
+    assert_eq!(
+        (task(&w), w.units.get(1).unwrap().goal.record.target.id),
+        (GO, 9)
+    );
+    let log = run(&mut game(), &cat, &mut w, &mut money, 600, "use");
+    assert_eq!(log, ["use 9 1"]);
+    let ride = w.tile_index(5, 3).unwrap();
+    assert_eq!(
+        (&guest(&w).seen[..], guest(&w).seen_count),
+        (&[ride][..], 1)
+    );
+}
+
+#[test]
+fn a_guest_turned_away_from_an_attraction_by_its_price_has_seen_it_all_the_same() {
+    let (cat, mut w, mut money) = (types(), at_the_ride(), Money::default());
+    w.units.buildings.insert(
+        9,
+        crate::building::Live {
+            price: 4.0,
+            ..Default::default()
+        },
+    );
+    with_cx(&cat, &mut w, |cx| cx.site_decide());
+    let log = run(&mut game(), &cat, &mut w, &mut money, 600, "use");
+    assert!(log.is_empty(), "{log:?}");
+    let ride = w.tile_index(5, 3).unwrap();
+    assert_eq!(guest(&w).seen, [ride]);
+}
+
+#[test]
+fn a_building_that_is_no_attraction_never_joins_the_seen_list() {
+    let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+    hungry(&mut w);
+    with_cx(&cat, &mut w, |cx| cx.seek("food"));
+    let log = run(&mut game(), &cat, &mut w, &mut money, 600, "buy");
+    assert_eq!(log, ["use 7 1", "buy 7 hotdog 2"]);
+    assert_eq!((&guest(&w).seen[..], guest(&w).seen_count), (&[][..], 0));
 }

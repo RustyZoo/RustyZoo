@@ -27,7 +27,8 @@ impl Cx<'_, '_> {
             return false;
         };
         let sites = view::sites(self.world, self.ctx.cat, g).1.len();
-        if sites + gawk::sites(&gawk::unseen(self.world, self.ctx.cat, g)) > 0 {
+        let attractions = view::attractions(self.world, self.ctx.cat, g).1.len();
+        if sites + attractions + gawk::sites(&gawk::unseen(self.world, self.ctx.cat, g)) > 0 {
             self.set_task(SITE, 4, 0, None);
             return true;
         }
@@ -38,8 +39,9 @@ impl Cx<'_, '_> {
     }
 
     /// 11.1, decide: a guest that has seen all the sites forgets them, stops and may leave;
-    /// otherwise one draw picks an exhibit or the scenery it has not seen: the exhibit with the
-    /// best score is walked to, or the scenery object `pickGawkScenery` chooses.
+    /// otherwise one draw picks an exhibit, an attraction or the scenery it has not seen: the
+    /// exhibit with the best score is walked to, the attraction is gone to, or the scenery object
+    /// `pickGawkScenery` chooses.
     pub(in crate::goal) fn site_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
@@ -48,6 +50,8 @@ impl Cx<'_, '_> {
             return;
         };
         let (n, unseen) = view::sites(self.world, self.ctx.cat, g);
+        let (count, attractions) = view::attractions(self.world, self.ctx.cat, g);
+        let n = n + count;
         let favourite = g.favourite;
         let scenery = gawk::unseen(self.world, self.ctx.cat, g);
         if g.seen_count as usize >= n {
@@ -57,13 +61,17 @@ impl Cx<'_, '_> {
             self.check_leave_zoo();
             return;
         }
-        let total = unseen.len() + gawk::sites(&scenery);
+        let total = unseen.len() + attractions.len() + gawk::sites(&scenery);
         let (Some(here), false) = (self.tile(), total == 0) else {
             return;
         };
-        // r = rand % (H + A + S), with no attraction as a site yet.
-        if self.ctx.rng.pick(total as u32) as usize >= unseen.len() {
+        // r = rand % (H + A + S): an exhibit below H, an attraction below H + A, else scenery.
+        let r = self.ctx.rng.pick(total as u32) as usize;
+        if r >= unseen.len() + attractions.len() {
             return self.scenery_decide(&scenery, here);
+        }
+        if r >= unseen.len() {
+            return self.attraction_decide(&attractions, r - unseen.len(), here);
         }
         let width = self.world.zoo.width as usize;
         let beasts = view::beasts(self.world, self.ctx.cat);
@@ -96,6 +104,38 @@ impl Cx<'_, '_> {
         };
         if self.path_to(to, false) && self.start_walk(false, false, false) {
             self.set_task(HABITAT, 0, 0, Some(to));
+        }
+    }
+
+    /// 11.1, attraction: the `k`-th unseen one of the list, or with `useAttractionAttractiveness`
+    /// the first with the highest score `100 - (1000 - min(d, 990)) / 10` (guests visit 3.7, the
+    /// farthest wins). The guest's building target is set and it sets out for the building as for
+    /// any need, with no need being served; with no way in nothing happens this time.
+    fn attraction_decide(&mut self, list: &[(u32, usize)], k: usize, here: usize) {
+        let width = self.world.zoo.width as usize;
+        let score = |&(_, t): &(u32, usize)| {
+            let (dx, dy) = (
+                (t % width) as i64 - (here % width) as i64,
+                (t / width) as i64 - (here / width) as i64,
+            );
+            100 - (1000 - (dx * dx + dy * dy).min(990)) / 10
+        };
+        let mut best = k;
+        if self.world.units.attraction_score {
+            best = (1..list.len()).fold(0, |b, i| {
+                if score(&list[i]) > score(&list[b]) {
+                    i
+                } else {
+                    b
+                }
+            });
+        }
+        let id = list[best].0;
+        if let Part::Guest(g) = &mut self.unit.part {
+            g.building = id;
+        }
+        if !self.set_out(id) {
+            self.clear_target();
         }
     }
 
