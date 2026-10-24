@@ -350,6 +350,10 @@ pub struct Runner {
     die: bool,
     /// An `fHatch` call ran, for the egg to hatch.
     hatch: bool,
+    /// An `fEnterBuilding` and an `fExitBuilding` call ran, for the building to take or release
+    /// the unit (guest buildings 6.4.1).
+    enter: bool,
+    exit: bool,
 }
 
 /// The answer to a move call (movement 8.2).
@@ -379,6 +383,8 @@ impl Default for Runner {
             halt: false,
             die: false,
             hatch: false,
+            enter: false,
+            exit: false,
         }
     }
 }
@@ -422,6 +428,16 @@ impl Runner {
     /// Whether an `fHatch` call ran since the last time, once.
     pub fn take_hatch(&mut self) -> bool {
         std::mem::take(&mut self.hatch)
+    }
+
+    /// Whether an `fEnterBuilding` call ran since the last time, once.
+    pub fn take_enter(&mut self) -> bool {
+        std::mem::take(&mut self.enter)
+    }
+
+    /// Whether an `fExitBuilding` call ran since the last time, once.
+    pub fn take_exit(&mut self) -> bool {
+        std::mem::take(&mut self.exit)
     }
 
     /// The set asked to follow the current one, if any.
@@ -697,6 +713,16 @@ impl Runner {
             }
             Op::Hatch => {
                 self.hatch = true;
+                self.chain[k].done = true;
+                return true;
+            }
+            Op::EnterBuilding => {
+                self.enter = true;
+                self.chain[k].done = true;
+                return true;
+            }
+            Op::ExitBuilding => {
+                self.exit = true;
                 self.chain[k].done = true;
                 return true;
             }

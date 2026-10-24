@@ -812,6 +812,20 @@ pub struct Standard<'a> {
 }
 
 impl Standard<'_> {
+    /// The calls of a use set that reach the building (guest buildings 6.4.1).
+    fn building_calls(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        for enter in [true, false] {
+            let ran = if enter {
+                unit.runner.take_enter()
+            } else {
+                unit.runner.take_exit()
+            };
+            if ran {
+                crate::goal::use_call(unit, world, ctx, at, self.data, enter);
+            }
+        }
+    }
+
     /// Tells the log and the app what the unit's animation and runner noted.
     fn tell(&self, unit: &mut Unit, world: &mut World, at: usize) {
         for note in std::mem::take(&mut unit.animation.notes) {
@@ -861,6 +875,7 @@ impl Hooks for Standard<'_> {
             rng: ctx.rng,
         };
         unit.runner.step(&mut unit.animation, &mut env, key);
+        self.building_calls(unit, world, ctx, at);
         if choosing {
             swim::add_to_map(unit, world, at);
         }
@@ -880,6 +895,7 @@ impl Hooks for Standard<'_> {
                 rng: ctx.rng,
             };
             unit.runner.resume(&mut unit.animation, &mut env);
+            self.building_calls(unit, world, ctx, at);
         }
         // Another set took the place of the move call: the walk ends.
         if unit.walking && !moved {
