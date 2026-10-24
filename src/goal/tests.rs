@@ -751,7 +751,8 @@ fn a_hungry_animal_takes_the_keeper_food_task_unless_it_has_it_or_is_in_the_buil
         let took = log.iter().any(|l| l.contains("goal 1 keeperfood"));
         assert_eq!(took, takes, "task {task}");
         // With no exhibit the decide does nothing: the task and the flag stay; in the building chain
-        // the goal is not the keeper food one and the flag stays up too.
+        // the goal is not the keeper food one, and the enter goal without a target resets, which
+        // lowers the flag.
         let u = w.units.get(1).unwrap();
         assert_eq!(
             u.goal.record.task == KEEPER_FOOD,
@@ -761,6 +762,23 @@ fn a_hungry_animal_takes_the_keeper_food_task_unless_it_has_it_or_is_in_the_buil
         let Part::Animal(a) = &w.units.get(1).unwrap().part else {
             panic!("not an animal");
         };
-        assert!(a.wants_food, "task {task}");
+        assert_eq!(a.wants_food, task != 104, "task {task}");
     }
+}
+
+#[test]
+fn the_reset_of_an_animal_lowers_its_need_flags() {
+    let (mut w, mut rng) = (map("animals"), Rng::default());
+    if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+        (a.thirsty, a.wants_food, a.drinking, a.eating) = (true, true, true, true);
+    }
+    with_cx(&mut w, &mut rng, |cx| cx.reset());
+    let Part::Animal(a) = &w.units.get(1).unwrap().part else {
+        panic!("not an animal");
+    };
+    // Eating is the eat code's own flag (`stopEating`), not one of the need flags.
+    assert_eq!(
+        (a.thirsty, a.wants_food, a.drinking, a.eating),
+        (false, false, false, true)
+    );
 }
