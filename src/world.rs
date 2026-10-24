@@ -11,7 +11,7 @@
 use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::path::{Finder, Settings};
 use crate::render::corner_elevation;
-use crate::render::order::{Kind, Object, Scene, ground_height};
+use crate::render::order::{Held, Kind, Object, Scene, ground_height};
 use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
@@ -1182,21 +1182,26 @@ impl World {
     }
 
     fn changed(&mut self) {
-        // A unit off its tile list stays off it across the rebuild (guest buildings 6.7.1).
-        let off: Vec<u32> = self
+        // The units held off the map keep how they are held across the rebuild: a carried unit is
+        // on no list and not painted (simulation 6.2), a hidden user is not painted but stays on
+        // its list (guest buildings 6.4 point 6), a unit off its list stays off it (6.7.1).
+        let held: Vec<(u32, Held)> = self
             .scene
-            .unlisted()
-            .filter_map(|o| {
-                self.zoo.entities[self.owner[o]]
-                    .common
-                    .as_ref()
-                    .map(|c| c.id)
+            .held()
+            .filter_map(|(o, held)| {
+                let id = self.zoo.entities[self.owner[o]].common.as_ref()?.id;
+                Some((id, held))
             })
             .collect();
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
-        for id in off {
-            if let Some(at) = self.find(id) {
-                self.unlist_unit(at);
+        for (id, held) in held {
+            let Some(at) = self.find(id) else {
+                continue;
+            };
+            match held {
+                Held::Unlisted => self.unlist_unit(at),
+                Held::Hidden => self.hide_unit(at),
+                Held::Lifted => self.lift_unit(at),
             }
         }
         self.units.sync(&self.zoo.entities);

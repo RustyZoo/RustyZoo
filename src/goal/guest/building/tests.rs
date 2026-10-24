@@ -859,6 +859,51 @@ fn a_user_with_no_exit_stays_off_its_tile_list_across_a_map_edit_until_it_change
     assert!(w.units_on(next).any(|e| e == at) && !w.units_on(own).any(|e| e == at));
 }
 
+#[test]
+fn a_carried_unit_stays_off_the_map_across_a_map_edit() {
+    let (cat, mut w) = (types(), zoo());
+    let (at, own) = (w.find(1).unwrap(), w.tile_index(2, 6).unwrap());
+    crate::place::unit::pick_up(&mut w, &cat, 1, 0).unwrap();
+    assert!(!w.is_drawn(at) && !w.units_on(own).any(|e| e == at));
+    // A map edit rebuilds the index from the entity list; the carried unit stays off the map.
+    assert!(w.set_tile(0, 0, 1, 0, 0));
+    assert!(!w.is_drawn(at) && !w.units_on(own).any(|e| e == at));
+    // Put down, it is painted and listed again.
+    assert!(crate::place::unit::put_down(
+        &mut w,
+        1,
+        (2 * 64 + 32, 6 * 64 + 32, 0),
+        0
+    ));
+    assert!(w.is_drawn(at) && w.units_on(own).any(|e| e == at));
+}
+
+#[test]
+fn a_hidden_user_stays_hidden_across_a_map_edit() {
+    let (cat, mut w, mut money) = (types(), zoo_of(Some("booth")), Money::default());
+    let mut s = game();
+    holding(&mut w);
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    let (at, before) = (w.find(1).unwrap(), spot(&w));
+    let own = w.tile_index(before.0 / 64, before.1 / 64).unwrap();
+    assert!(w.units.get(1).unwrap().hidden && !w.is_drawn(at));
+    // A map edit rebuilds the index; the hidden user is not painted again and stays on its list.
+    assert!(w.set_tile(0, 0, 1, 0, 0));
+    assert!(!w.is_drawn(at) && w.units_on(own).any(|e| e == at));
+    // It is shown again only when its goal completes, at the exit.
+    let mut shown = false;
+    for _ in 0..3000 {
+        s.step_game(&walks(), &cat, &mut w, &mut money, 67, |_, _, _| {});
+        if w.units.get(1).unwrap().hidden {
+            assert!(!w.is_drawn(at), "drawn while hidden");
+        } else {
+            shown = true;
+            break;
+        }
+    }
+    assert!(shown && w.is_drawn(at));
+}
+
 /// Unit 1 of class `class` at `(x, y)` (first, as the context wants it), a stand 7 at (5, 5) and a
 /// hall 9 of a whole tile at `hall`.
 fn footprint(class: &str, (x, y): (i32, i32), hall: (i32, i32)) -> World {

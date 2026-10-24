@@ -161,6 +161,17 @@ pub struct Scene {
     face_scum: Vec<u8>,
 }
 
+/// How a unit object is held off the map, which a rebuild of the index keeps.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Held {
+    /// Painted, but on no tile list (see [`Scene::unlist_unit`]).
+    Unlisted,
+    /// On its tile's list, not painted (see [`Scene::hide_unit`]).
+    Hidden,
+    /// On no tile list and not painted (see [`Scene::lift_unit`]).
+    Lifted,
+}
+
 /// The tile step of each map direction, `0..8`.
 const STEP: [(i32, i32); 8] = [
     (0, -1),
@@ -384,15 +395,22 @@ impl Scene {
         }
     }
 
-    /// The unit objects that are painted but on no tile list (see [`Scene::unlist_unit`]).
-    pub fn unlisted(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..self.objects.len()).filter(|&o| {
+    /// The unit objects held off the map, with how (see [`Held`]).
+    pub fn held(&self) -> impl Iterator<Item = (usize, Held)> + '_ {
+        (0..self.objects.len()).filter_map(|o| {
             let obj = &self.objects[o];
-            obj.kind == Kind::Unit
-                && self.placed[o]
-                && self
-                    .tile_at(obj.x, obj.y)
-                    .is_some_and(|t| !self.list[t].contains(&o))
+            if obj.kind != Kind::Unit {
+                return None;
+            }
+            let listed = self
+                .tile_at(obj.x, obj.y)
+                .is_some_and(|t| self.list[t].contains(&o));
+            match (self.placed[o], listed) {
+                (true, true) => None,
+                (true, false) => Some((o, Held::Unlisted)),
+                (false, true) => Some((o, Held::Hidden)),
+                (false, false) => Some((o, Held::Lifted)),
+            }
         })
     }
 
