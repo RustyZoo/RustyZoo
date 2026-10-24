@@ -729,6 +729,40 @@ fn food_in_an_emptied_exhibit_is_bagged_with_no_dung_in_the_world() {
 }
 
 #[test]
+fn food_in_an_exhibit_is_left_to_the_keepers_while_its_amphibious_neighbour_holds_animals() {
+    // A second exhibit beside the emptied one, with a zebra in it, the two linked as neighbours.
+    let mut other = pen((10, 2, 12, 5, 11));
+    for e in &mut other {
+        e.common.as_mut().unwrap().id += 100;
+    }
+    let mut zebra = entity("animals", "zebra", 400, centre((11, 3)), 0);
+    zebra.subtype = "m".into();
+    let extra: Vec<Entity> = pen(PEN).into_iter().chain(other).chain([zebra]).collect();
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &extra);
+    let ids: Vec<(usize, u32)> = (g.w.exhibits().list())
+        .iter()
+        .map(|e| (e.first, e.id))
+        .collect();
+    g.calm();
+    g.dung((4, 3), "food", true);
+    let id = |t: (i32, i32)| ids.iter().find(|(f, _)| *f == Game::tile(t)).unwrap().1;
+    let (emptied, next) = (id((3, 2)), id((10, 2)));
+    let list = g.w.exhibits_mut().list_mut();
+    for e in list.iter_mut() {
+        e.amphibious = match e.id {
+            i if i == emptied => vec![next],
+            i if i == next => vec![emptied],
+            _ => Vec::new(),
+        };
+    }
+    g.run(1000);
+    // The keepers' work: the task is void, the food stays and no worker walks to it.
+    assert!(!g.jobs().contains(&"BagDoo"), "{:?}", g.jobs());
+    assert!(g.w.zoo.entities.iter().any(|e| e.class == "food"));
+    assert!(g.w.units.pool.tasks.is_empty());
+}
+
+#[test]
 fn a_lone_pile_in_an_emptied_exhibit_clears_the_job() {
     let mut g = Game::with("", &[(WORKER, (1, 9))], &pen(PEN));
     g.calm();

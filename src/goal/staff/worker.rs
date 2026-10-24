@@ -302,11 +302,18 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Whether tile `t` lies in an exhibit that holds animals.
+    /// Whether job 11 is void for tile `t` (staff 8.6, failure A): the tile has no habitat, or its
+    /// habitat is not the zoo grounds and holds animals, its amphibious neighbours' included.
     fn keepers_own(&self, t: usize) -> bool {
-        let x = self.world.exhibits().region(t);
-        let x = x.filter(|&x| x != crate::exhibit::GROUNDS && x != crate::exhibit::EXTERIOR);
-        x.is_some_and(|x| !crate::panel::exhibit::animals_in(self.world, x).is_empty())
+        let x = match self.world.exhibits().region(t) {
+            None | Some(crate::exhibit::EXTERIOR) => return true,
+            Some(crate::exhibit::GROUNDS) => return false,
+            Some(x) => x,
+        };
+        let neighbours = self.world.exhibits().get(x).map(|e| e.amphibious.clone());
+        std::iter::once(x)
+            .chain(neighbours.unwrap_or_default())
+            .any(|n| !crate::panel::exhibit::animals_in(self.world, n).is_empty())
     }
 
     /// 8.4 job 9: the way to the can, else to one of the four tiles beside it, drawn.
