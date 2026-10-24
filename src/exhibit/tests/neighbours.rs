@@ -146,6 +146,37 @@ fn a_land_exhibit_rates_only_the_amphibious_species_of_its_tank() {
 }
 
 #[test]
+fn a_tank_rates_its_own_species_not_those_of_its_land_neighbour() {
+    let cat = catalogue();
+    let mut w = amphibious_world(
+        2,
+        &[
+            (1, "polar", (3, 3)),
+            (2, "shark", (4, 3)),
+            (3, "polar", (7, 3)),
+            (4, "goat", (8, 3)),
+        ],
+    );
+    let (tank, land) = pair(&w);
+    let rated = |w: &World, x| {
+        rate(&input(w, &cat, x))
+            .into_iter()
+            .filter(|r| r.rated)
+            .map(|r| r.key)
+            .collect::<Vec<_>>()
+    };
+    // The tank keeps a record for the goat of its land (it counts for the escape check) but rates
+    // only its own species; the land rates its own and the amphibious ones of the tank.
+    assert_eq!(rate(&input(&w, &cat, tank)).len(), 3);
+    assert_eq!(rated(&w, tank), ["polar", "shark"]);
+    assert_eq!(rated(&w, land), ["polar", "goat"]);
+    // So the sums the pair of an entity reads in the tank hold none of the goat.
+    let before = rating::entity(&mut w, &cat, Some(3 * WIDE + 3), false, &mut || 0);
+    let tank_sums = &before.iter().find(|b| b.0 == tank).unwrap().1;
+    assert!(tank_sums.iter().all(|s| s.0 != "goat"));
+}
+
+#[test]
 fn marking_one_marks_its_neighbour_up_to_the_marked_ones() {
     let mut w = linked();
     let (tank, land) = pair(&w);
