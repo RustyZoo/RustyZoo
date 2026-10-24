@@ -447,10 +447,10 @@ fn a_hidden_animal_chooses_its_ambient_set_and_sleep_check_but_does_not_walk_off
     let (mut inside, mut since, mut log) = (None, 0, Vec::new());
     for _ in 0..400 {
         w.units.get_mut(1).unwrap().status_timer = i32::MAX / 2;
-        if since == 80 {
-            if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
-                (a.energy, a.counters[animal::ENERGY]) = (100, 0);
-            }
+        if since == 80
+            && let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part
+        {
+            (a.energy, a.counters[animal::ENERGY]) = (100, 0);
         }
         s.step_with(&data, &cat, &mut w, 67, |_, _, _| {});
         let lines = w.units.take_lines();
