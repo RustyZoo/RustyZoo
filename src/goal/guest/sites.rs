@@ -110,7 +110,7 @@ impl Cx<'_, '_> {
     /// 11.1, attraction: the `k`-th unseen one of the list, or with `useAttractionAttractiveness`
     /// the first with the highest score `100 - (1000 - min(d, 990)) / 10` (guests visit 3.7, the
     /// farthest wins). The guest's building target is set and it sets out for the building as for
-    /// any need, with no need being served; with no way in nothing happens this time.
+    /// any need, serving `fun`; with no way in nothing happens this time (the target is cleared).
     fn attraction_decide(&mut self, list: &[(u32, usize)], k: usize, here: usize) {
         let width = self.world.zoo.width as usize;
         let score = |&(_, t): &(u32, usize)| {
@@ -131,12 +131,7 @@ impl Cx<'_, '_> {
             });
         }
         let id = list[best].0;
-        if let Part::Guest(g) = &mut self.unit.part {
-            g.building = id;
-        }
-        if !self.set_out(id) {
-            self.clear_target();
-        }
+        self.head_for(id, "fun");
     }
 
     /// 11.1, scenery: the object `pickGawkScenery` chooses, then one draw over the tiles around

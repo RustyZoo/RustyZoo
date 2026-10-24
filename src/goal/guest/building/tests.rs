@@ -1601,13 +1601,25 @@ fn a_guest_the_site_goal_sends_to_an_attraction_uses_it_and_has_seen_it() {
         (task(&w), w.units.get(1).unwrap().goal.record.target.id),
         (GO, 9)
     );
-    let log = run(&mut game(), &cat, &mut w, &mut money, 600, "use");
+    let mut s = game();
+    let log = run(&mut s, &cat, &mut w, &mut money, 600, "use");
     assert_eq!(log, ["use 9 1"]);
+    until_seen(&mut s, &cat, &mut w, &mut money);
     let ride = w.tile_index(5, 3).unwrap();
     assert_eq!(
         (&guest(&w).seen[..], guest(&w).seen_count),
         (&[ride][..], 1)
     );
+}
+
+/// Steps until the guest has a seen entry (at most 600 steps).
+fn until_seen(s: &mut Sim, cat: &Catalogue, w: &mut World, money: &mut Money) {
+    for _ in 0..600 {
+        if !guest(w).seen.is_empty() {
+            break;
+        }
+        run(s, cat, w, money, 1, "never");
+    }
 }
 
 #[test]
@@ -1635,4 +1647,38 @@ fn a_building_that_is_no_attraction_never_joins_the_seen_list() {
     let log = run(&mut game(), &cat, &mut w, &mut money, 600, "buy");
     assert_eq!(log, ["use 7 1", "buy 7 hotdog 2"]);
     assert_eq!((&guest(&w).seen[..], guest(&w).seen_count), (&[][..], 0));
+}
+
+#[test]
+fn a_guest_sees_an_attraction_when_its_use_ends_not_when_it_enters() {
+    let (cat, mut w, mut money) = (types(), at_the_ride(), Money::default());
+    let mut s = game();
+    with_cx(&cat, &mut w, |cx| cx.site_decide());
+    let log = run(&mut s, &cat, &mut w, &mut money, 600, "use");
+    assert_eq!(log, ["use 9 1"]);
+    assert_eq!((task(&w), guest(&w).seen.len()), (USE, 0));
+    until_seen(&mut s, &cat, &mut w, &mut money);
+    let ride = w.tile_index(5, 3).unwrap();
+    assert_eq!(
+        (&guest(&w).seen[..], guest(&w).seen_count),
+        (&[ride][..], 1)
+    );
+}
+
+#[test]
+fn a_guest_whose_goal_is_reset_during_the_stay_has_not_seen_the_attraction() {
+    let (cat, mut w, mut money) = (types(), at_the_ride(), Money::default());
+    let mut s = game();
+    with_cx(&cat, &mut w, |cx| cx.site_decide());
+    run(&mut s, &cat, &mut w, &mut money, 600, "use");
+    with_cx(&cat, &mut w, |cx| cx.reset());
+    run(&mut s, &cat, &mut w, &mut money, 5, "never");
+    assert_eq!((guest(&w).seen.len(), guest(&w).seen_count), (0, 0));
+}
+
+#[test]
+fn the_site_goal_sets_the_need_fun_for_the_attraction_it_chooses() {
+    let (cat, mut w) = (types(), at_the_ride());
+    with_cx(&cat, &mut w, |cx| cx.site_decide());
+    assert_eq!((guest(&w).need, guest(&w).building), (Some("fun"), 9));
 }
