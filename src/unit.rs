@@ -847,7 +847,8 @@ impl Hooks for Standard<'_> {
         // An egg chooses nothing: only the set that hatches it runs.
         let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
         // An animal hidden in a shelter chooses nothing either.
-        let key = (!took && !egg && !unit.hidden).then(|| ambient_key(unit));
+        let inside = unit.hidden && unit.kind == Kind::Animal;
+        let key = (!took && !egg && !inside).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
         swim::nesting(unit, world, at);
         // The terrain mode follows the animal where an ambient set is chosen (tank fauna 9.4).

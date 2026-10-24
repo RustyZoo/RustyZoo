@@ -1237,7 +1237,8 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # Breeding (animals-needs 11 to 13). The base trial's animals are all male; three female lions join
 # the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first
 # reproduction check that rolls it. Prints the number of pairs, the step of the first birth and the
-# number of young, when two runs agree. Seed 3 is the first (from 1) with a birth in the run.
+# number of young, when two runs agree. Seed 3 has a birth in the run (the animals rest in their
+# shelters, which moves the first birth from step 2214 to 8491; seed 1 has one at 7506 now, seed 2 none).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
@@ -1246,7 +1247,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@2214;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@8491;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to

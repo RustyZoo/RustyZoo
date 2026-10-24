@@ -1,4 +1,5 @@
-//! The guest's use of buildings: the seek of a need ([`Cx::seek`], guests 6.4 to 6.9, 7), the chain
+//! The use of buildings by guests and, for the chain of tasks 0x66 to 0x6a, by animals going to a
+//! shelter: the seek of a need ([`Cx::seek`], guests 6.4 to 6.9, 7), the chain
 //! of tasks 0x66 to 0x6a (goals 11.3; guest buildings 6 and 7) and eating (goals 11.4, guests 9).
 //!
 //! A building target is a building id on the guest ([`crate::guest::Guest::building`]) with the
@@ -305,8 +306,9 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Guest buildings 6.4: the guest becomes a user of slot `slot` of building `id`. The building
-    /// counts it, hides it or puts it at the slot, and sells it an item. Whether it did.
+    /// Guest buildings 6.4: the unit becomes a user of slot `slot` of building `id`. The building
+    /// lists it and hides it or puts it at the slot; a guest is also counted, thinks, and is sold
+    /// an item. Whether it did.
     fn add_user(&mut self, id: u32, slot: usize) -> bool {
         let Some((e, kind)) = self.building(id) else {
             return false;
