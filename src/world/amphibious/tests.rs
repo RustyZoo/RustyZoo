@@ -129,6 +129,7 @@ fn an_amphibious_animal_crosses_a_connector_and_one_that_lives_only_in_water_doe
 mod show {
     use super::*;
     use crate::unit::testing::show_world;
+    use crate::world::TankValue;
 
     fn ids(w: &World) -> (u32, u32, u32) {
         let region = |x: usize| w.exhibits.region(2 * WIDE + x).unwrap();
@@ -210,5 +211,18 @@ mod show {
         assert_eq!(shows(&w), (vec![], vec![], vec![]), "drained");
         w.edit_tank(t, |k, _| k.filled = true);
         assert_eq!(shows(&w), (vec![s], vec![t], vec![]), "filled again");
+    }
+
+    #[test]
+    fn an_undone_filled_state_rebuilds_the_show_links() {
+        let mut w = show_world(&[]);
+        let (t, s, _) = ids(&w);
+        w.drain(t);
+        assert!(shows(&w).0.is_empty(), "drained");
+        // The undo of a removed wall puts the filled flag back.
+        w.restore_tank(2 * WIDE + 2, TankValue::Filled(true));
+        assert_eq!(shows(&w), (vec![s], vec![t], vec![]), "filled again");
+        w.restore_tank(2 * WIDE + 2, TankValue::Filled(false));
+        assert_eq!(shows(&w), (vec![], vec![], vec![]), "drained again");
     }
 }

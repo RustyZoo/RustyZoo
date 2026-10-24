@@ -5,7 +5,7 @@
 use super::neighbours::catalogue;
 use crate::animal::home::home;
 use crate::exhibit::rating::{self, Likes, Record, input, rate};
-use crate::unit::testing::{gated, show_world};
+use crate::unit::testing::{gated, show_world, show_world2};
 use crate::world::World;
 
 fn world() -> World {
@@ -153,6 +153,25 @@ fn the_home_of_an_animal_in_a_show_tank_is_the_plain_tank_beside_it() {
         None,
         "a show tank is no home"
     );
+}
+
+#[test]
+fn an_amphibious_type_of_a_second_neighbour_is_listed_though_a_show_neighbour_of_the_first_holds_it()
+ {
+    // L has the plain tanks T (shark; its show tank S holds a polar bear) and T2 (polar bear).
+    let w = show_world2(&[
+        (1, "shark", (3, 3)),
+        (3, "polar", (7, 3)),
+        (4, "goat", (0, 3)),
+        (5, "polar", (0, 6)),
+    ]);
+    let l = w.exhibits().region(2 * 12).unwrap();
+    let t2 = w.exhibits().region(6 * 12).unwrap();
+    assert_eq!(w.exhibits().get(l).unwrap().amphibious.len(), 2);
+    assert!(w.exhibits().get(t2).is_some());
+    let records = rate(&input(&w, &catalogue(), l));
+    let bear = records.iter().find(|r| r.key.contains("polar")).unwrap();
+    assert!(bear.rated);
 }
 
 fn cat_type<'a>(cat: &'a crate::entity::Catalogue, name: &str) -> &'a crate::entity::EntityType {

@@ -1289,8 +1289,11 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
         let listed = [(n, false)].into_iter().chain(beside.map(|s| (s, true)));
         for (from, via) in listed {
             for l in animals_on(world, catalogue, &from.order).0 {
-                if !(near.iter()).any(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype)) {
-                    near.push(Likes { via, ..l });
+                let seen = (near.iter_mut()).find(|o| (&o.key, &o.subtype) == (&l.key, &l.subtype));
+                match seen {
+                    // Met again on the tiles of a neighbour: no longer only a show neighbour's.
+                    Some(o) => o.via &= via,
+                    None => near.push(Likes { via, ..l }),
                 }
             }
         }

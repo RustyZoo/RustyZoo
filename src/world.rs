@@ -1127,9 +1127,12 @@ impl World {
             match value {
                 TankValue::Purity(v) => tank.purity = v,
                 TankValue::Salt(v) => tank.salt = v,
-                TankValue::Filled(v) => tank.filled = v,
-                TankValue::Height(_) | TankValue::Level(_) => {}
+                TankValue::Height(_) | TankValue::Level(_) | TankValue::Filled(_) => {}
             }
+        }
+        // The filled state goes through the fill change, which makes the show links again.
+        if let TankValue::Filled(v) = value {
+            self.edit_tank(id, |t, _| t.filled = v);
         }
         // The height goes through the wall height change: the water is cut to the new full level.
         if let TankValue::Height(v) = value {
