@@ -125,7 +125,7 @@ fn catalogue() -> Catalogue {
             "food",
             "herbchow",
             6060,
-            "cPurchaseCost=50\ncMaxFoodUnits=1000",
+            "cPurchaseCost=50\ncMaxFoodUnits=1000\ncFood=1",
         ),
         ty("objects", "other", "poo", 6062, "cStink=1"),
         ty(

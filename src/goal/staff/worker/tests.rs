@@ -79,7 +79,7 @@ fn catalogue(worker: &str) -> Catalogue {
         },
         EntityType {
             footprint: [1, 1, 1],
-            ..ty("food", "meat", "", "")
+            ..ty("food", "meat", "", "[Characteristics/Integers]\ncFood=1\n")
         },
     ] {
         cat.push(t);
@@ -823,19 +823,89 @@ fn a_loaded_zoo_calls_the_workers_for_the_dung_on_the_grounds_and_the_food_of_an
     assert_eq!(loaded_tiles(&g), tiles);
 }
 
-#[test]
-fn a_loaded_zoo_calls_the_workers_for_the_dung_outside_the_zoo_wall() {
-    // A zoo wall down the east side of column 1, the entrance on tile (0, 0) facing east: columns
-    // 0 and 1 are beyond the wall, and their dung and food are the grounds' (staff 8.2).
+/// A zoo wall down the east side of column 1, the entrance on tile (0, 0) facing east: columns 0
+/// and 1 are beyond the wall, the tiles of the grounds (staff 8.2).
+fn wall_beyond_column_one() -> Vec<Entity> {
     let mut extra: Vec<Entity> = (0..12)
         .map(|y: i32| entity("zoowall", "", 300 + y as u32, centre((1, y)), 2))
         .collect();
     extra.push(entity("building", "", 320, centre((0, 0)), 2));
-    let mut g = Game::with("", &[(WORKER, (1, 9))], &extra);
+    extra
+}
+
+#[test]
+fn a_loaded_zoo_calls_the_workers_for_the_dung_outside_the_zoo_wall() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &wall_beyond_column_one());
     g.dung((0, 5), "poo", false);
     g.dung((1, 2), "food", false);
     let tiles = [(0, 5), (1, 2)].map(|t| Game::tile(t) as u32);
     assert_eq!(loaded_tiles(&g), tiles);
+}
+
+#[test]
+fn a_pile_beyond_the_zoo_wall_keeps_the_dung_check_of_the_job_going() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &wall_beyond_column_one());
+    g.dung((0, 5), "poo", false);
+    assert!(crate::staff::chores::poo_left(&g.w, WORKER));
+}
+
+#[test]
+fn food_beyond_the_zoo_wall_does_not_keep_the_dung_check_going() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &wall_beyond_column_one());
+    g.dung((0, 5), "food", false);
+    assert!(!crate::staff::chores::poo_left(&g.w, WORKER));
+}
+
+#[test]
+fn dung_beyond_the_zoo_wall_is_bagged_like_dung_on_the_grounds() {
+    let mut g = Game::with("", &[(WORKER, (0, 5))], &wall_beyond_column_one());
+    g.calm();
+    g.dung((0, 5), "poo", true);
+    g.run(400);
+    assert_eq!(
+        g.jobs(),
+        ["ZooDoo", "BagDoo", "none"],
+        "{:?}",
+        g.lines(&["staff", "unit set"])
+    );
+    assert!(!g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
+    assert!(g.w.units.pool.tasks.is_empty());
+}
+
+#[test]
+fn a_worker_who_cannot_reach_a_pile_beyond_the_zoo_wall_keeps_the_task_in_the_pool() {
+    // Beyond the wall the pile is the grounds' (staff 8.6): the worker does not take the task as
+    // the keepers' void one, it finds no way there and the task is unlinked.
+    let mut g = Game::with("", &[(WORKER, (0, 9))], &wall_beyond_column_one());
+    g.calm();
+    g.dung((0, 5), "poo", true);
+    g.run(400);
+    assert_eq!(g.jobs(), ["ZooDoo", "none"], "{:?}", g.lines(&["staff"]));
+    assert_eq!(g.w.units.pool.tasks.len(), 1);
+    assert!(g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
+}
+
+#[test]
+fn a_leftover_is_food_by_its_type_flag_not_its_class() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &[]);
+    let mut snack = ty(
+        "objects",
+        "other",
+        "snack",
+        "[Characteristics/Integers]\ncFood=1\n",
+    );
+    snack.footprint = [1, 1, 1];
+    g.cat.push(snack);
+    let ty = g.cat.find("objects", b"other", b"snack").unwrap();
+    assert!(dirt::put(
+        &mut g.w,
+        ty,
+        ("objects", "other", "snack"),
+        (4, 3),
+        0,
+        0
+    ));
+    assert_eq!(loaded_tiles(&g), [Game::tile((4, 3)) as u32]);
 }
 
 #[test]
