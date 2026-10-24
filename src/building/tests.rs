@@ -263,6 +263,27 @@ fn an_animal_leaves_only_into_the_exhibit_of_its_shelter() {
 }
 
 #[test]
+fn an_animal_leaves_into_another_exhibit_from_the_any_exhibit_shelter() {
+    // The stand of the test above, of the type whose users are not held to their exhibit.
+    let (mut k, b) = exits(true, "");
+    k.name_id = SHELTER_OF_ANY_EXHIBIT;
+    let walker = animal(true, false);
+    let pen = |tiles: Vec<usize>| crate::exhibit::Part {
+        tiles,
+        grounds: false,
+    };
+    // The exit on the grounds, and on another exhibit than the stand's: both accepted.
+    let mut grounds = blocked(&[], "bush");
+    grounds.exhibits_mut().add(&pen(vec![5]), String::new());
+    assert_eq!(exit_of(&grounds, &b, &k, 0, Some(&walker)), Some((32, 96)));
+    let mut apart = blocked(&[], "bush");
+    for part in [pen(vec![5]), pen(vec![4])] {
+        apart.exhibits_mut().add(&part, String::new());
+    }
+    assert_eq!(exit_of(&apart, &b, &k, 0, Some(&walker)), Some((32, 96)));
+}
+
+#[test]
 fn a_large_animal_leaves_only_onto_a_flat_or_one_side_raised_tile() {
     let (k, b) = exits(true, "");
     let at = |shape: u8| {
@@ -276,6 +297,24 @@ fn a_large_animal_leaves_only_onto_a_flat_or_one_side_raised_tile() {
     };
     assert_eq!(at(0x05), Some((32, 96)));
     assert_eq!(at(0x01), None);
+}
+
+#[test]
+fn an_animal_is_large_above_a_footprint_of_three() {
+    let large = |footprint: [i32; 3]| {
+        let mut cat = Catalogue::default();
+        cat.push(EntityType {
+            class: "animals",
+            type_name: b"lion".to_vec(),
+            footprint,
+            ..ty("")
+        });
+        Species::of(&cat, &entity("animals", "lion", 0, centre((0, 0)), 0))
+            .unwrap()
+            .large
+    };
+    assert!(!large([1, 3, 1]));
+    assert!(large([2, 2, 1]));
 }
 
 #[test]
