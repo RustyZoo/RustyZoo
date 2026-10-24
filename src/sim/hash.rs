@@ -200,6 +200,21 @@ impl Fnv {
         }
         self.rating(&x.rating);
         let s = &x.stats;
+        self.u8(u8::from(s.created.is_some()));
+        if let Some(d) = s.created {
+            for v in [
+                d.year,
+                d.month,
+                d.day,
+                d.weekday,
+                d.hour,
+                d.minute,
+                d.second,
+                d.millisecond,
+            ] {
+                self.u32(v);
+            }
+        }
         self.u32(s.popularity);
         self.u64(s.viewing);
         for v in s.donations.into_iter().chain(s.upkeep) {
