@@ -551,7 +551,7 @@ pending_object() { # pending_object <map> <script>
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;b96f4eb79b9f987f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;061dde0b578c0cf3" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;2f1604fe9cc2157b" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;084d3d0def26a597" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
@@ -566,8 +566,8 @@ path_drag() { # path_drag <map> <first move>
 }
 check base-trial "8,49800,40076d8b2dbe27f3" "path_drag maps/default.zoo '632 384'"
 check base-trial "8,49800,748d30093a68402c" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49997,d4e0dc9b3d36f57f" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49997,b7e5bf4b789a2659" "path_drag maps/scn19.zoo '632 416'"
+check expansion-trial "8,49920,59582e50e95c7800" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,366c8f5fdd04c4be" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -581,7 +581,7 @@ paint_text() { # paint_text <map> <script>
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;a5b3e85a3e274ffa" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;6caed5f381e67309" "paint_text maps/scn19.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;30b0a2e1d2acb812" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -595,7 +595,7 @@ fence_drag() { # fence_drag <map> <last move>
   rm -rf "$d"
 }
 check base-trial "6,48920,ca28e88f552e7b7b" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial "6,49327,8e0e430b7a29bdfe" "fence_drag maps/scn19.zoo '878 332'"
+check expansion-trial "6,49250,28f313922f510318" "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -653,7 +653,7 @@ bulldozer_area() { # bulldozer_area <map>
   rm -rf "$d"
 }
 check base-trial "8,49960,b656d74441897b68" "bulldozer_area maps/default.zoo"
-check expansion-trial "16,50233,86c83dfe4ab5a1d2" "bulldozer_area maps/scn19.zoo"
+check expansion-trial "16,50156,c909f3065c5caab4" "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
@@ -667,7 +667,7 @@ building_place() { # building_place <map>
   rm -rf "$d"
 }
 check base-trial "building/building/vendfood,16,45,2;message10555;49950;54c1c4d355b2e07d" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49977;a6fd2ba163b33aaa" "building_place maps/scn19.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;8750d2c7a694e0c9" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)
@@ -919,7 +919,7 @@ pushed_out() { # pushed_out <map>
   echo "$b,$g"
   rm -rf "${d:?}"
 }
-check expansion-trial 0/1,1/0,51781,32688 "pushed_out maps/scn19.zoo"
+check expansion-trial 0/2,1/1,29753,40253 "pushed_out maps/scn19.zoo"
 
 # The panel of a building of a saved zoo shows the figures its record stores (zoo format 6.9, guest
 # buildings 4): the game paused, the view scrolled <presses> times by <dx> <dy> to the building, a
@@ -936,55 +936,55 @@ check base-trial 'income_$182_upkeep_$100_profit_$82_month_$182_$100_$82_months_
 check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$50_$42_$7_months_7_guests_last_10_this_0_total_59' "loaded_building maps/scn19.zoo 5 1 0 880 320"
 
 # A building sold from its panel while a guest uses it (guest buildings 11.1, placing 7): the first
-# guest to use the burger stand of scn19 (type brontbrg) is inside from pass 209 (the stand is at the pixel the
+# guest to use the burger stand of scn19 (type brontbrg) is inside from pass 1084 (the stand is at the pixel the
 # first lines click; the panel's sell button is the one at 987 578), the question is answered Yes at
-# pass 224 and the guest is pushed out. Prints the `building push` lines (building/guest), the refund
+# pass 1098 and the guest is pushed out. Prints the `building push` lines (building/guest), the refund
 # (0.8 of 250) and the cash the sale left, and the walk-out goals the guest took after it (none).
 sold_with_user() { # sold_with_user <map>
   d=$(mktemp -d)
-  printf '2 mouse 875 230\n3 down\n4 up\n220 mouse 987 578\n221 down\n222 up\n224 key y\n' >"$d/script"
-  rz run "$1" --headless --passes 260 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+  printf '2 mouse 875 230\n3 down\n4 up\n1094 mouse 987 578\n1095 down\n1096 up\n1098 key y\n' >"$d/script"
+  rz run "$1" --headless --passes 1134 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '$4 == "building" && $5 == "push" { p = p $6 "/" $7 ";" }
       $4 == "tool" && $5 == "bulldoze" && $6 == "ask" { q = $7 }
       $4 == "world" && $5 == "remove" { r = $NF }
-      $4 == "unit" && $5 == "goal" && $6 == 32762 && $7 == "leavebuilding" && r != "" { l++ }
+      $4 == "unit" && $5 == "goal" && $6 == 40287 && $7 == "leavebuilding" && r != "" { l++ }
       END { printf "%s%s;%s;%d\n", p, q, r, l }'
   rm -rf "${d:?}"
 }
-check expansion-trial "31076/32762;Sell;200;0" "sold_with_user maps/scn19.zoo"
+check expansion-trial "31076/40287;Sell;200;0" "sold_with_user maps/scn19.zoo"
 
 # A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
 # gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
-# user (with seed 4, the first from 1 whose pick-up pushes a user out and whose panel then shows $440: seed 2
-# pushes one and shows $460, 1 and 3 push none) pushed out when the pick-up button (871 573) is pressed at pass 1337, and it
-# is put down at the pixel 520 310 (tile 37,42). Prints the carry, the push and the drop lines, then what the panel
-# shows once it is down: the stand keeps its figures (the $430 its saved record stores and the user's $10).
+# user (with seed 4, the first from 1 whose pick-up pushes a user out: 1, 2 and 3 push none) pushed out when the
+# pick-up button (871 573) is pressed at pass 1150, and it is put down at the pixel 520 310 (tile 37,42). Prints
+# the carry, the push and the drop lines, then what the panel shows once it is down: the stand keeps its figures
+# (the $430 its saved record stores and the $10 of each of two users, the one that left before and the one pushed out).
 building_moved() { # building_moved <map>
   d=$(mktemp -d)
-  printf '2 mouse 300 375\n3 down\n4 up\n1336 mouse 871 573\n1337 down\n1338 up\n1340 mouse 500 300\n1342 mouse 520 310\n1343 down\n1344 up\n1346 mouse 871 573\n' >"$d/script"
-  rz run "$1" --headless --passes 1356 --clock 67 --seed 4 --script "$d/script" 2>/dev/null |
+  printf '2 mouse 300 375\n3 down\n4 up\n1149 mouse 871 573\n1150 down\n1151 up\n1153 mouse 500 300\n1155 mouse 520 310\n1156 down\n1157 up\n1159 mouse 871 573\n' >"$d/script"
+  rz run "$1" --headless --passes 1169 --clock 67 --seed 4 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "drop") { w = w $5 "," $6 "," $7 ";" }
       $4 == "building" && $5 == "push" && $6 == 29780 { w = w "push;" }
       $4 == "panel" && $5 == "building" && $6 == 29780 { for (i = 7; i < NF; i++) if ($i == "income") l = "income " $(i + 1) }
       END { print w l }' | tr ' ' _
   rm -rf "${d:?}"
 }
-check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$440' "building_moved maps/scn19.zoo"
+check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$450' "building_moved maps/scn19.zoo"
 
 # A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
-# stand of scn19 (seed 1) is inside at pass 214. It is selected by a click (pass 214), picked up by a second
-# click (217) and put back by Escape (219); it leaves the stand as a normal leave, so the stand's panel read at
-# pass 224 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed).
+# stand of scn19 (seed 1) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
+# click (1091) and put back by Escape (1093); it leaves the stand as a normal leave, so the stand's panel read at
+# pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed).
 guest_picked() { # guest_picked <map>
   d=$(mktemp -d)
-  printf '212 mouse 830 230\n213 down\n214 up\n216 down\n217 up\n219 key escape\n222 mouse 875 230\n223 down\n224 up\n' >"$d/script"
-  rz run "$1" --headless --passes 228 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+  printf '1086 mouse 830 230\n1087 down\n1088 up\n1090 down\n1091 up\n1093 key escape\n1096 mouse 875 230\n1097 down\n1098 up\n' >"$d/script"
+  rz run "$1" --headless --passes 1102 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 ";" }
       $4 == "panel" && $5 == "building" && $6 == 31076 { for (i = 7; i < NF; i++) if ($i == "income") l = "income_" $(i + 1) }
       END { print w l }'
   rm -rf "${d:?}"
 }
-check expansion-trial 'carry,32762;putback,32762;income_$854' "guest_picked maps/scn19.zoo"
+check expansion-trial 'carry,40287;putback,40287;income_$854' "guest_picked maps/scn19.zoo"
 
 # The same stand picked up by a second click on it while it is selected, put back by Escape and picked
 # up again by the same click (it is selected again): the lines they give, with no user in the stand (so
@@ -1022,7 +1022,7 @@ check expansion-trial 'none' 'scripted "2 mouse 875 230\n3 down\n4 up\n20 mouse 
 # An undo while a building is held (placing 8, unit placing 8.7): a gift stand is bought (130), placed, picked up by
 # a second click and Backspace pressed: its move is cancelled and it is removed with its whole price (one
 # removal told, the cash back to its start).
-check expansion-trial '75000;1' 'scripted "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n" maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed 5 | awk "/ money cash /{c=\$6} / world remove .* undo\$/{n++} END{print c \";\" n+0}"'
+check expansion-trial '75077;1' 'scripted "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n" maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed 5 | awk "/ money cash /{c=\$6} / world remove .* undo\$/{n++} END{print c \";\" n+0}"'
 
 # The pick-up and the drop record nothing for the undo: the burger stand is sold, the gift stand picked up and
 # put down, then Backspace gives the burger stand back.
@@ -1213,19 +1213,18 @@ check expansion-trial "93962:2@602,1@1192,2@2810,1@4742;97902:1@1226,2@9609,1@11
 # the water check gives it the water mode at step 615 and sends it to a water tile of its exhibit; in
 # the water mode its walks end on water tiles too, where it chooses from its water table
 # (`bInWater`). Prints each tile a walk ended on with the set chosen there and the change of mode,
-# for 1200 steps. The seed is the first (from 1) that shows this whole sequence once the staff of a saved
-# zoo draw their colours and counters at the load: 1 puts the animal in the water mode at step 18 (no walk
-# ends on land first). The former seed 7 shows no walk in the water mode in 1200 steps, and in 2400 only
-# after a return to the land mode at 1212.
+# for 1200 steps. The seed is the first (from 1) that shows this whole sequence once the guests choose
+# attractions as sites: 1 to 8, 10, 12 and 13 put the animal in the water mode at step 18 (no walk ends on
+# land first), 9 shows no walk in the water mode, 11 none at all.
 water_mode() { # water_mode <map> <animal>
-  rz sim "$1" --ticks 1200 --seed 2 --reset-fences --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 1200 --seed 14 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
     $5 == a && / unit tile /{ t = $6 }
     $5 == a && / unit goal [0-9]+ none /{ ended = t }
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial ";29,30:bHappy;29,30:bWalk;mode1@615;27,22:bInWater" "water_mode maps/scn19.zoo 51758"
+check expansion-trial ";29,31:bWalk;mode1@615;28,25:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1241,7 +1240,7 @@ tank_over() { # tank_over <map> <ray>
     END{ print n + 0 ";" low ";" first }'
   rm -rf "$d"
 }
-check expansion-trial "23;-65;155" "tank_over maps/scn27.zoo 36659"
+check expansion-trial "24;-65;156" "tank_over maps/scn27.zoo 36659"
 
 # The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
 # are put down: one beside the tank, which then serves it and filters (and charges) at its first
@@ -1295,7 +1294,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rz sim "$1" --ticks 7200 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@4801;eggs:3;hatch@5547" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@1296;eggs:3;hatch@2045" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
