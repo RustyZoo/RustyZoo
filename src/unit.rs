@@ -890,6 +890,12 @@ impl Hooks for Standard<'_> {
         if unit.runner.take_face() {
             crate::animal::food::face(unit, world, at);
         }
+        if unit.runner.take_target() {
+            face_target(unit, world, at);
+        }
+        if unit.runner.take_halt() {
+            unit.moving = false;
+        }
         if unit.runner.take_die() {
             crate::animal::dirt::die(unit, world, ctx, at);
         }
@@ -951,6 +957,29 @@ fn ambient_key(unit: &Unit) -> i32 {
     match &unit.part {
         Part::Animal(a) => a.happiness,
         _ => 0,
+    }
+}
+
+/// `fFaceTowardTarget` (behaviours 5.5): a guest or a staff member turns at once to its own target
+/// tile, a keeper's own tile (staff 7.4) or, for a guest, the scenery object of its goal. Nothing
+/// for a tile that is none; an animal is left as it is.
+fn face_target(unit: &Unit, world: &mut World, at: usize) {
+    let tile = match &unit.part {
+        Part::Staff(s) => s.target,
+        Part::Guest(_) => {
+            let record = &unit.goal.record;
+            let scenery = matches!(record.task, crate::goal::SCENERY | crate::goal::DO_SCENERY);
+            world
+                .find(record.target.id)
+                .filter(|_| scenery)
+                .and_then(|i| crate::guest::view::tile_of(world, i))
+        }
+        Part::Animal(_) => None,
+    };
+    let width = world.zoo.width as usize;
+    if let Some(t) = tile {
+        let to = ((t % width) as i32, (t / width) as i32);
+        crate::animal::food::turn(unit, world, at, to);
     }
 }
 

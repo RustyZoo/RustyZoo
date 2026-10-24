@@ -667,3 +667,108 @@ fn a_unit_runs_its_set_after_the_animation_and_tells_the_log_and_the_app() {
     s.step_with(&data, &Catalogue::default(), &mut w, 100, |_, _, _| {});
     assert_ne!(w.units.hash(), before);
 }
+
+/// One set of one call each, by name.
+struct Once(Vec<(&'static str, Vec<crate::behaviour::Call>)>);
+
+impl Once {
+    fn new(sets: &[(&'static str, &str)]) -> Once {
+        let call = |c: &str| crate::behaviour::parse_call(c.as_bytes()).unwrap().0;
+        Once(
+            sets.iter()
+                .map(|&(name, c)| (name, vec![call(c)]))
+                .collect(),
+        )
+    }
+}
+
+impl Data for Once {
+    fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
+        let (_, calls) = self.0.iter().find(|(n, _)| *n == name)?;
+        Some(calls.as_slice())
+    }
+    fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Timing> {
+        None
+    }
+    fn number(&self, unit: &Entity, number: &crate::behaviour::Number) -> i32 {
+        NoData.number(unit, number)
+    }
+    fn sound(&self, _: &Entity, _: &str) -> Option<Heard> {
+        None
+    }
+}
+
+/// Runs the behaviour hook of unit `id` once with its set `name` requested.
+fn behave(w: &mut World, data: &Once, id: u32, name: &str) {
+    let at = w.find(id).unwrap();
+    let kind = w.units.get(id).unwrap().kind;
+    let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, kind));
+    unit.runner.request(name);
+    let (mut rng, mut removals) = (Rng::default(), Vec::new());
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &Events::default(),
+        removals: &mut removals,
+        step: 100,
+        cat: &crate::entity::Catalogue::default(),
+    };
+    Standard { data }.behaviour(&mut unit, w, &mut ctx, at);
+    *w.units.get_mut(id).unwrap() = unit;
+}
+
+/// Moves the entity `id` to the centre of tile `(tx, ty)`.
+fn put(w: &mut World, id: u32, tile: (i32, i32)) {
+    let at = w.find(id).unwrap();
+    let c = w.zoo.entities[at].common.as_mut().unwrap();
+    (c.x, c.y) = crate::unit::testing::centre(tile);
+}
+
+fn rotation(w: &World, id: u32) -> u32 {
+    let at = w.find(id).unwrap();
+    w.zoo.entities[at].common.as_ref().unwrap().rotation
+}
+
+#[test]
+fn a_guest_or_staff_member_turns_at_once_to_its_own_target_tile() {
+    // The keeper 3 and the guest 2 stand on tile (1, 1); the scenery 50 is the guest's target.
+    let mut w = world(&[("guests", 2), ("keeper", 3), ("building", 50)]);
+    let data = Once::new(&[("bFace", "fFaceTowardTarget()")]);
+    // East (2), south (4) and west (6) of the keeper's own target tile.
+    for (tile, facing) in [((2, 1), 2), ((1, 2), 4), ((0, 1), 6)] {
+        let target = w.tile_index(tile.0, tile.1).unwrap();
+        w.units.get_mut(3).unwrap().part = Part::Staff(Staff {
+            target: Some(target),
+            ..Staff::default()
+        });
+        behave(&mut w, &data, 3, "bFace");
+        assert_eq!(rotation(&w, 3), facing, "keeper towards {tile:?}");
+    }
+    // The guest faces the scenery of its goal, its object's tile, the same way.
+    for (tile, facing) in [((2, 1), 2), ((1, 2), 4)] {
+        put(&mut w, 50, tile);
+        let record = &mut w.units.get_mut(2).unwrap().goal.record;
+        (record.task, record.target.id) = (crate::goal::SCENERY, 50);
+        behave(&mut w, &data, 2, "bFace");
+        assert_eq!(rotation(&w, 2), facing, "guest towards {tile:?}");
+    }
+    // A staff member with no target tile keeps its facing, and the call is done all the same.
+    w.units.get_mut(3).unwrap().part = Part::Staff(Staff::default());
+    behave(&mut w, &data, 3, "bFace");
+    assert_eq!(rotation(&w, 3), 6);
+}
+
+#[test]
+fn a_halt_clears_the_moving_flag_of_a_unit_and_keeps_its_path() {
+    let mut w = world(&[("animals", 1)]);
+    let path = vec![w.tile_index(1, 1).unwrap(), w.tile_index(2, 1).unwrap()];
+    let unit = w.units.get_mut(1).unwrap();
+    (unit.moving, unit.path) = (true, path.clone());
+    let data = Once::new(&[("bHalt", "fHalt()")]);
+    behave(&mut w, &data, 1, "bHalt");
+    let unit = w.units.get(1).unwrap();
+    assert!(!unit.moving);
+    assert_eq!(unit.path, path);
+}
