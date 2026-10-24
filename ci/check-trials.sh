@@ -1244,7 +1244,8 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # shelters, which moved the first birth from step 2214 to 8491, and a hidden animal that chooses its
 # ambient set and runs its sleep check as any animal does (the draws they make) to 15835, and the use
 # set of the visible-inside rock, whose trial version holds no enter call, to 3109: the run is
-# 16000 steps long (the same seed, the same three pairs and two young as before).
+# 16000 steps long (the same seed and the same three pairs as before; the staff of a loaded map draw
+# at the load, which moved the first birth to 6178 and made it four young).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
@@ -1253,7 +1254,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@3109;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@6178;young:4" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
