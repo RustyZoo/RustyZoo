@@ -439,8 +439,7 @@ pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
 
 /// The end of the recomputation of exhibit `x`: a land exhibit has read the species lists of its
 /// amphibious neighbours and a tank those of its show neighbours, which computes those that are
-/// dirty first (9.2), then the
-/// reachability test runs (5.8).
+/// dirty first (9.2), then the reachability test runs (5.8).
 pub fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     let Some(e) = world.exhibits().get(x) else {
         return;
@@ -830,11 +829,7 @@ pub fn rate(input: &Input) -> Vec<Record> {
     for (i, l) in all.iter().enumerate() {
         // What the pair rates: the exhibit's own species, a land exhibit the amphibious types of
         // its tank, a tank the types of its show neighbours (9.2).
-        let rated = match i {
-            _ if i < own => true,
-            _ if i < own + input.near.len() => l.amphibious && !tank && !l.via,
-            _ => true,
-        };
+        let rated = i < own || i >= own + input.near.len() || (l.amphibious && !tank && !l.via);
         let at = records.iter().position(|r| r.key == l.key);
         if let Some(r) = at {
             records[r].rated |= rated;
