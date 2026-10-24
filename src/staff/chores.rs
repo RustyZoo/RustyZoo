@@ -127,8 +127,8 @@ pub fn leftovers(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, u
 }
 
 /// The events a zoo just loaded posts for what it left behind (staff 8.2): each object that
-/// stinks or is food, on a tile of the zoo grounds or of an exhibit with no animals. In entity
-/// list order, the tile of the object as data.
+/// stinks or is food, on a tile of the zoo grounds (the tiles beyond the zoo wall too) or of an
+/// exhibit with no animals. In entity list order, the tile of the object as data.
 pub fn loaded_leftovers(world: &World, cat: &Catalogue) -> Vec<Event> {
     let empty = |x: u32| {
         let near = world
@@ -141,8 +141,8 @@ pub fn loaded_leftovers(world: &World, cat: &Catalogue) -> Vec<Event> {
     let found = world.zoo.entities.iter().filter(|e| leaves(cat, e));
     let found = found.filter_map(|e| Some((e.common.as_ref()?.id, tile(e)?)));
     let found = found.filter(|&(_, t)| match world.exhibits().region(t) {
-        Some(GROUNDS) => true,
-        Some(EXTERIOR) | None => false,
+        Some(GROUNDS | EXTERIOR) => true,
+        None => false,
         Some(x) => empty(x),
     });
     found

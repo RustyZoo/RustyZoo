@@ -824,6 +824,21 @@ fn a_loaded_zoo_calls_the_workers_for_the_dung_on_the_grounds_and_the_food_of_an
 }
 
 #[test]
+fn a_loaded_zoo_calls_the_workers_for_the_dung_outside_the_zoo_wall() {
+    // A zoo wall down the east side of column 1, the entrance on tile (0, 0) facing east: columns
+    // 0 and 1 are beyond the wall, and their dung and food are the grounds' (staff 8.2).
+    let mut extra: Vec<Entity> = (0..12)
+        .map(|y: i32| entity("zoowall", "", 300 + y as u32, centre((1, y)), 2))
+        .collect();
+    extra.push(entity("building", "", 320, centre((0, 0)), 2));
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &extra);
+    g.dung((0, 5), "poo", false);
+    g.dung((1, 2), "food", false);
+    let tiles = [(0, 5), (1, 2)].map(|t| Game::tile(t) as u32);
+    assert_eq!(loaded_tiles(&g), tiles);
+}
+
+#[test]
 fn a_loaded_zoo_leaves_the_dung_of_an_exhibit_with_an_animal_alone() {
     let mut zebra = entity("animals", "zebra", 300, centre((5, 3)), 0);
     zebra.subtype = "z".into();

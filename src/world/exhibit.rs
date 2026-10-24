@@ -30,7 +30,7 @@ pub enum Event {
     Split(u32),
     /// An exhibit opened to the zoo grounds and is gone.
     Removed(u32),
-    /// A land exhibit is gone with these tiles: what it leaves calls a worker (staff 8.2).
+    /// An exhibit (a tank too) is gone with these tiles: what it leaves calls a worker (staff 8.2).
     Left(Vec<usize>),
     /// Two exhibits became one: `gone` into `kept`.
     Merged { kept: u32, gone: u32 },
@@ -498,9 +498,7 @@ impl World {
             if let Some(at) = e.gate.and_then(|g| self.find(g)) {
                 self.make_fence(at);
             }
-            if e.tank.is_none() {
-                self.events.push(Event::Left(e.order.clone()));
-            }
+            self.events.push(Event::Left(e.order.clone()));
             self.events.push(match into.get(&e.id) {
                 Some(&kept) => Event::Merged { kept, gone: e.id },
                 None => Event::Removed(e.id),

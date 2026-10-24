@@ -1117,3 +1117,17 @@ fn a_morph_without_a_gate_starts_at_the_changed_line() {
     assert_eq!(new.order, [t(2, 2), t(3, 2), t(2, 3), t(3, 3)]);
     assert_eq!(world.gate_slot(new.id), Some((t(3, 3), 2)));
 }
+
+#[test]
+fn a_destroyed_tank_tells_its_tiles() {
+    // A piece of fish food in the centre slot of the tank: when the tank goes, its tiles are told
+    // as a land exhibit's are, for the worker who bags what it left (staff 8.2).
+    let food = ("food", 2 * 64 + 32, 2 * 64 + 32);
+    let mut world = tanks(&ring("tank", 2, 2, 3, 3), &[food], &[]);
+    let tiles = world.exhibits().get(1).unwrap().order.clone();
+    let side = at(&world, 2, 2, 0);
+    world.begin();
+    assert!(world.remove(side));
+    assert!(world.zoo.tanks.is_empty());
+    assert!(world.take_events().contains(&Event::Left(tiles)));
+}
