@@ -576,7 +576,7 @@ impl<'c> Cx<'_, 'c> {
         // A tank has its place in the water (tank staff 5.3).
         let (mut level, tank) = (None, self.world.tank(x).is_some());
         let tank_place = match tank {
-            true => self.tank_food_place(x, here),
+            true => self.tank_food_place(x),
             false => None,
         };
         if tank && tank_place.is_none() {

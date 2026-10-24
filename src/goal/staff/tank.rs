@@ -339,16 +339,14 @@ impl Cx<'_, '_> {
 
     /// 5.3: the place for a pile of food in the water and the way there. The job ends when no
     /// tile of the tank is free. Returns the tile and the level of the pile.
-    pub(super) fn tank_food_place(&mut self, x: u32, here: usize) -> Option<(usize, i32)> {
+    pub(super) fn tank_food_place(&mut self, x: u32) -> Option<(usize, i32)> {
         use crate::panel::exhibit::animals_in;
         let animals = animals_in(self.world, x);
         let n = animals.len() as u32;
         let drawn = (n > 0).then(|| animals[self.ctx.rng.pick(n) as usize]);
-        let (lost, _) = self.lost();
-        // The cost of a tile is the drawn animal's; with none, his own.
-        let mover = food_mover(self.world, drawn)
-            .unwrap_or_else(|| movement::mover(self.unit, self.world, self.at, here));
-        let places = food_places(self.world, x, &mover, &lost);
+        // The cost of a tile is the drawn animal's; with none, there is no cost test.
+        let mover = food_mover(self.world, drawn);
+        let places = food_places(self.world, x, mover.as_ref());
         let n = places.len() as u32;
         if n == 0 {
             return None;
@@ -376,14 +374,13 @@ fn food_mover(world: &World, at: Option<usize>) -> Option<path::Mover> {
     Some(movement::mover(world.units.get(c.id)?, world, at, here))
 }
 
-/// 5.3: the tiles of tank `x` where a pile can go: not listed as lost, with the four quarter
-/// holders and the tile free of units, and open (cost below 20) to the unit of `mover`.
-fn food_places(world: &World, x: u32, mover: &path::Mover, lost: &[usize]) -> Vec<usize> {
+/// 5.3: the tiles of tank `x` where a pile can go: with the four quarter holders and the tile free
+/// of units, and, when an animal was drawn, open (cost below 20) to its `mover`.
+fn food_places(world: &World, x: u32, mover: Option<&path::Mover>) -> Vec<usize> {
     let free = |t: &usize| {
-        !lost.contains(t)
-            && (0..4).all(|q| world.quadrant(*t, q).is_none())
+        (0..4).all(|q| world.quadrant(*t, q).is_none())
             && !world.unit_on(*t)
-            && path::terrain(world, mover, *t, None) < MAX
+            && mover.is_none_or(|m| path::terrain(world, m, *t, None) < MAX)
     };
     world.tiles_of(x).into_iter().filter(free).collect()
 }
