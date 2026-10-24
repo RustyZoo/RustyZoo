@@ -109,7 +109,7 @@ fn with_app(name: &str, test: impl FnOnce(&mut App)) {
         });
     }
     catalogue.push(animal("m", 800));
-    let ini = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=800\n";
+    let ini = "[Global]\nDefaultSubtype=m\n[Member]\nstaff\n[m/Characteristics/Integers]\ncPurchaseCost=800\n";
     for sub in ["m", "f"] {
         catalogue.push(EntityType {
             class: "keeper",
@@ -208,7 +208,7 @@ fn an_animal_is_adopted_into_the_pen_named_booked_and_refused_on_the_grounds() {
 #[test]
 fn a_staff_member_is_hired_anywhere_booked_in_the_wages_and_the_next_sex_is_drawn() {
     with_app("app-hire", |app| {
-        // The clock stands still, so the only draw is the hire's.
+        // The clock stands still, so the only draws are the hire's.
         app.game.as_mut().unwrap().paused = true;
         app.game.as_mut().unwrap().build.hold(3);
         let camera = app.camera().unwrap().clone();
@@ -231,8 +231,11 @@ fn a_staff_member_is_hired_anywhere_booked_in_the_wages_and_the_next_sex_is_draw
             ),
             (1200.0, 800.0, false)
         );
-        // One draw of the simulation's generator gave the sex of the next hire.
-        generator.rand();
+        // The new pending staff member of the same item drew two colours and two counters, then
+        // one draw gave the sex of the next hire.
+        for _ in 0..5 {
+            generator.rand();
+        }
         assert_eq!(app.sim.rng, generator);
         assert_eq!(app.sim.hire_male, (generator.state() >> 16) & 1 == 1);
         // A second hire, then the cash is short: a refusal draws nothing.
@@ -252,33 +255,47 @@ fn a_staff_member_is_hired_anywhere_booked_in_the_wages_and_the_next_sex_is_draw
 }
 
 #[test]
-fn the_pending_staff_member_draws_its_counters_when_made_and_the_hire_only_the_sex() {
+fn a_hire_draws_a_pending_staff_member_before_the_sex_and_another_after_it() {
     with_app("app-hire-draws", |app| {
         app.game.as_mut().unwrap().paused = true;
-        let game = app.game.as_mut().unwrap();
-        game.build.hold(3);
-        game.build.chose(3);
+        // Two colours, then the keys are missing: the work counter of 5 and the chase counter of 2.
+        let creation = |g: &mut crate::sim::Rng| {
+            g.rand();
+            g.rand();
+            (g.pick(5) as i32, g.pick(2) as i32)
+        };
+        let made = |app: &App| {
+            let made = app.game.as_ref().unwrap().made.clone();
+            made.map(|(ty, s)| (ty, s.work, s.chase))
+        };
+        // The Hire panel opens on the sex drawn: its first item, the zookeeper (3 or 4), is chosen
+        // and makes the pending staff member.
+        let first = if app.sim.hire_male { 3 } else { 4 };
+        let (mut ui, _vfs, _install) = crate::build::tests::interface("app-hire-draws-ui");
+        ui.tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
+        assert!(ui.show(10));
+        app.set_interface(ui);
         let mut generator = app.sim.rng.clone();
-        app.make_pending();
-        // The keys are missing: the work counter of 5 and the chase counter of 2, in that order.
-        let drawn = (generator.pick(5) as i32, generator.pick(2) as i32);
+        app.pass(1, &[]);
+        let drawn = creation(&mut generator);
         assert_eq!(app.sim.rng, generator);
-        let made = app.game.as_ref().unwrap().made.clone();
-        assert_eq!(
-            made.map(|(ty, s)| (ty, s.work, s.chase)),
-            Some((3, drawn.0, drawn.1))
-        );
+        assert_eq!(made(app), Some((first, drawn.0, drawn.1)));
         // The release hires that very staff member: it keeps the draws and starts no state at its
-        // first turn, and the hire draws the next sex after them.
+        // first turn. Then the new pending staff member of the same item draws, then the sex, then
+        // the rebuilt list's choice makes another one.
         let camera = app.camera().unwrap().clone();
         click(app, 10, point(&camera, 19 * 64 + 32, 20 * 64 + 32));
-        generator.rand();
+        creation(&mut generator);
+        let male = (generator.rand() & 1) == 1;
+        let next = creation(&mut generator);
         assert_eq!(app.sim.rng, generator);
         let game = app.game.as_ref().unwrap();
-        let crate::unit::Part::Staff(s) = &game.world.units.get(101).unwrap().part else {
+        let unit = game.world.units.get(101).unwrap();
+        let crate::unit::Part::Staff(s) = &unit.part else {
             panic!("not staff");
         };
-        assert_eq!((s.work, s.chase), drawn);
-        assert!(game.world.units.get(101).unwrap().started && game.made.is_none());
+        assert_eq!((s.work, s.chase, unit.started), (drawn.0, drawn.1, true));
+        let ty = if male { 3 } else { 4 };
+        assert_eq!(made(app), Some((ty, next.0, next.1)));
     });
 }

@@ -53,7 +53,8 @@ fn the_monthly_cost_is_the_purchase_cost_unless_the_file_says_otherwise() {
 }
 
 /// The counters a keeper of the type draws at the load of a seeded run (the staff member is on the
-/// map the zoo was loaded with), and the generator before the draws that ought to give them.
+/// map the zoo was loaded with) and keeps through its first turn, and the generator after its two
+/// colour draws, before the draws that ought to give them.
 fn first_turn(ini: &str) -> (Staff, Rng) {
     first_turn_of("keeper", ini)
 }
@@ -69,9 +70,21 @@ fn first_turn_of(class: &'static str, ini: &str) -> (Staff, Rng) {
     let mut sim = Sim::new(b"");
     sim.set_seed(1);
     sim.start_game(16, Clocks::default());
-    let drawn = sim.rng.clone();
+    let mut drawn = sim.rng.clone();
+    drawn.rand();
+    drawn.rand();
     sim.load(&mut w, &cat);
+    let counters = |w: &World| match &w.units.get(1).unwrap().part {
+        Part::Staff(s) => (s.work, s.chase, s.crowd),
+        _ => panic!("not staff"),
+    };
+    let made = counters(&w);
     sim.step_in(&mut w, &cat, 67, |_, _, _| {});
+    assert_eq!(
+        counters(&w),
+        made,
+        "drawn at the load, not at the first turn"
+    );
     let Part::Staff(staff) = &w.units.get(1).unwrap().part else {
         panic!("not staff");
     };
@@ -121,6 +134,8 @@ fn a_staff_member_draws_nothing_at_its_first_turn() {
             Part::Staff(s) => (s.work, s.chase, s.crowd),
             _ => panic!("not staff"),
         };
+        expect.rand();
+        expect.rand();
         let (work, chase) = (expect.pick(20) as i32, expect.pick(3) as i32);
         let crowd = if class == "tour" {
             expect.pick(7) as i32
@@ -133,6 +148,29 @@ fn a_staff_member_draws_nothing_at_its_first_turn() {
         // The first turn would draw them again, from the generator the load left.
         sim.step_in(&mut w, &cat, 67, |_, _, _| {});
         assert_eq!(counters(&w), made, "{class}: kept at the first turn");
+    }
+}
+
+#[test]
+fn a_staff_member_draws_its_colours_before_its_counters_at_its_creation() {
+    // Distinct ranges, so a draw out of place gives other numbers.
+    let section =
+        "[m/Characteristics/Integers]\ncWorkCheck=30011\ncChaseCheck=29989\ncCrowdCheck=29983\n";
+    for kind in [Kind::Keeper, Kind::Worker, Kind::Guide] {
+        let ty = staff_type("keeper", section);
+        let mut rng = Rng::default();
+        let mut expect = rng.clone();
+        let made = create(Some(&ty), kind, &mut rng);
+        // Hair and skin, then the work and chase counters, and a guide's crowd countdown last.
+        expect.rand();
+        expect.rand();
+        let (work, chase) = (expect.pick(30011) as i32, expect.pick(29989) as i32);
+        let crowd = match kind {
+            Kind::Guide => expect.pick(29983) as i32,
+            _ => 0,
+        };
+        assert_eq!((made.work, made.chase, made.crowd), (work, chase, crowd));
+        assert_eq!(rng, expect, "{kind:?}: nothing else drawn");
     }
 }
 

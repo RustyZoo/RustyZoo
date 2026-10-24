@@ -327,7 +327,7 @@ fn tga(w: u16, h: u16) -> Vec<u8> {
     out
 }
 
-fn interface(name: &str) -> (Interface, Vfs, Install) {
+pub(crate) fn interface(name: &str) -> (Interface, Vfs, Install) {
     let construction = panel(
         8,
         3261,

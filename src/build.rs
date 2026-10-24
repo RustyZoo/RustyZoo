@@ -765,8 +765,8 @@ impl Build {
         self.held = Some(ty);
     }
 
-    /// A staff item was chosen, as a test needs it without the panels (see [`Build::hold`]).
-    #[cfg(test)]
+    /// The staff type `ty` makes a pending staff member without a choice in the panels: the new
+    /// pending unit of the same item after a hire (unit placing 7.1 step 6), or a test.
     pub fn chose(&mut self, ty: usize) {
         self.made.push(ty);
     }
@@ -1160,4 +1160,4 @@ impl Build {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -1,7 +1,7 @@
 //! Staff (staff 3 to 5): the types the Hire panel lists, what hiring books and where, the monthly
-//! cost, and the two numbers a new staff member draws when it is created (the pending one when an
-//! item of the Hire panel is chosen, the staff of a loaded map at the load); a keeper's status tick
-//! and what leaving does to the exhibit he was going to.
+//! cost, and the colours and counters a new staff member draws when it is created (the pending one
+//! when an item of the Hire panel is chosen, the staff of a loaded map at the load); a keeper's
+//! status tick and what leaving does to the exhibit he was going to.
 //!
 //! The keeper class (the zookeeper, the scientist and the marine specialist), the tour guide and
 //! the maintenance worker are staff; the helicopter comes with the scenarios.
@@ -94,10 +94,16 @@ pub fn duty_kinds(cat: &Catalogue) -> usize {
     3 + usize::from(marine)
 }
 
-/// The creation of a staff member of type `ty` and kind `kind`: the work counter and then the chase
-/// counter, one draw each (staff 4.2), and a tour guide's crowd countdown (tour guide 4). The
-/// values are kept; only the guide reads them.
+/// The replaceable colours of every shipped staff type (hair and skin), one draw each at creation.
+const COLOURS: usize = 2;
+
+/// The creation of a staff member of type `ty` and kind `kind`: one draw per replaceable colour,
+/// the work counter and then the chase counter, one draw each (staff 4.2), and a tour guide's crowd
+/// countdown (tour guide 4). The counters are kept; only the guide reads them.
 pub fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
+    for _ in 0..COLOURS {
+        rng.rand();
+    }
     let work = counter(ty, "cWorkCheck", 5.0, rng);
     let chase = counter(ty, "cChaseCheck", 2.0, rng);
     let crowd = match kind {

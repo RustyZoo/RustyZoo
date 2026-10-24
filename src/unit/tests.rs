@@ -370,9 +370,9 @@ fn the_simulation_draws_once_per_unit_that_runs_its_goals() {
     let (mut a, mut b) = (sim(), sim());
     a.step(&mut w, 67, |_, _, _| {});
     // The animal (of no known subtype: a young one) draws its sex and its sixteen counters on
-    // its first turn, the keeper its two counters, and the zoo grounds' rating timer draws once
-    // (it starts dirty).
-    (0..3 + 17 + 2 + 1).for_each(|_| _ = b.rng.rand());
+    // its first turn, the keeper its two colours and two counters, and the zoo grounds' rating
+    // timer draws once (it starts dirty).
+    (0..3 + 17 + 4 + 1).for_each(|_| _ = b.rng.rand());
     assert_eq!(a.rng.state(), b.rng.state());
     // A waiting unit draws nothing.
     w.units.get_mut(2).unwrap().wait = 1000;
