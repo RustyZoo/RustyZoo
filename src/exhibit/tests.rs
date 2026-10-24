@@ -461,6 +461,33 @@ fn pair(east: i32) -> World {
 }
 
 #[test]
+fn the_state_hash_covers_the_exhibit_creation_date() {
+    let hash = |w: &World| {
+        let mut sim = crate::sim::Sim::new(b"");
+        sim.set_seed(1);
+        crate::sim::hash::state(&sim, w, &crate::money::Money::default())
+    };
+    let mut w = pair(4);
+    let id = w.exhibits().list()[0].id;
+    let base = hash(&w);
+    let date = Date {
+        year: 2001,
+        month: 3,
+        day: 9,
+        weekday: 4,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+    };
+    w.set_created(id, date);
+    let made = hash(&w);
+    assert_ne!(made, base);
+    w.set_created(id, Date { year: 2002, ..date });
+    assert_ne!(hash(&w), made);
+}
+
+#[test]
 fn two_merged_exhibits_leave_the_larger_and_on_equal_sizes_the_far_side() {
     let mut world = pair(4);
     assert_eq!(sizes(&world), [4, 4]);
