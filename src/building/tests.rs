@@ -223,13 +223,15 @@ fn an_exit_must_be_on_the_terrain_its_slot_allows() {
     assert_eq!(at(&land, "exitonland=99999999999\n"), None);
 }
 
-/// An animal of the shelter's species: `swims`, and `large` for a footprint above 3.
+/// An animal of the shelter's species standing on the shelter's tile 5 (1, 1): `swims`, and
+/// `large` for a footprint above 3.
 fn animal(swims: bool, large: bool) -> Species {
     Species {
         id: 0,
         subtype: "f".into(),
         swims,
         large,
+        tile: Some((1, 1)),
     }
 }
 
@@ -260,6 +262,56 @@ fn an_animal_leaves_only_into_the_exhibit_of_its_shelter() {
     let own = with(vec![pen(vec![4, 5])]);
     assert_eq!(exit_of(&own, &b, &k, 0, Some(&walker)), Some((32, 96)));
     assert_eq!(exit_of(&apart, &b, &k, 0, None), Some((32, 96)));
+}
+
+#[test]
+fn an_animal_leaves_into_the_exhibit_it_stands_in() {
+    // The stand is on tile 5 (1, 1) in the exhibit {5}, its exit on tile 4 (0, 1) in {4}.
+    let (k, b) = exits(true, "");
+    let mut w = blocked(&[], "bush");
+    for tiles in [vec![5], vec![4]] {
+        let part = crate::exhibit::Part {
+            tiles,
+            grounds: false,
+        };
+        w.exhibits_mut().add(&part, String::new());
+    }
+    let standing = |tile| Species {
+        tile: Some(tile),
+        ..animal(true, false)
+    };
+    // An animal standing in the exit's exhibit leaves; one standing in the stand's is refused.
+    assert_eq!(
+        exit_of(&w, &b, &k, 0, Some(&standing((0, 1)))),
+        Some((32, 96))
+    );
+    assert_eq!(exit_of(&w, &b, &k, 0, Some(&standing((1, 1)))), None);
+}
+
+#[test]
+fn an_egg_is_no_swimmer_at_a_shelter_exit() {
+    let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "animals",
+        type_name: b"duck".to_vec(),
+        ..ty("[Characteristics/Integers]\ncSwims=1\n")
+    });
+    let duck =
+        |egg| Species::of(&cat, &entity("animals", "duck", 0, centre((1, 1)), 0), egg).unwrap();
+    let (k, b) = exits(true, "exitonwater=1\n");
+    let mut wet = world_with((4, 4), |zoo| {
+        zoo.tiles[4].terrain = 1;
+        zoo.tiles[5].terrain = 1;
+    });
+    wet.set_water(vec![false, true]);
+    let part = crate::exhibit::Part {
+        tiles: vec![4, 5],
+        grounds: false,
+    };
+    wet.exhibits_mut().add(&part, String::new());
+    // The type swims; the animal leaves onto water only when it is no egg.
+    assert_eq!(exit_of(&wet, &b, &k, 0, Some(&duck(true))), None);
+    assert_eq!(exit_of(&wet, &b, &k, 0, Some(&duck(false))), Some((32, 96)));
 }
 
 #[test]
@@ -309,9 +361,13 @@ fn an_animal_is_large_above_a_footprint_of_three() {
             footprint,
             ..ty("")
         });
-        Species::of(&cat, &entity("animals", "lion", 0, centre((0, 0)), 0))
-            .unwrap()
-            .large
+        Species::of(
+            &cat,
+            &entity("animals", "lion", 0, centre((0, 0)), 0),
+            false,
+        )
+        .unwrap()
+        .large
     };
     assert!(!large([1, 3, 1]));
     assert!(large([2, 2, 1]));

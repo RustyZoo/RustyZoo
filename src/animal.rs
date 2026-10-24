@@ -1275,7 +1275,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         }
     }
     if a.counters[SHELTER] == 0 && k.building_use > 0 {
-        let who = crate::building::Species::of(ctx.cat, &world.zoo.entities[at]);
+        let who = crate::building::Species::of(ctx.cat, &world.zoo.entities[at], a.egg);
         env.shelter = shelters(world, ctx.cat, a.building, tile, who.as_ref());
     }
     let id = unit.id;

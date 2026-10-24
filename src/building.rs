@@ -109,21 +109,28 @@ pub struct Slot {
 pub struct Species {
     pub id: i32,
     pub subtype: String,
-    /// `cSwims` is 1: the animal may stand on water.
+    /// `cSwims` is 1 and the animal is no egg: it may stand on water.
     pub swims: bool,
     /// Its footprint (`cFootprintX` times `cFootprintY`) is above 3.
     pub large: bool,
+    /// The tile it stands on (`x / 64`, `y / 64`): its exhibit is the one its place must be in.
+    pub tile: Option<(i32, i32)>,
 }
 
 impl Species {
-    /// The species of the animal entity `e`, none for another entity.
-    pub fn of(cat: &Catalogue, e: &Entity) -> Option<Species> {
+    /// The species of the animal entity `e`, none for another entity; `egg` is the animal's egg
+    /// flag, which an egg never swims by.
+    pub fn of(cat: &Catalogue, e: &Entity, egg: bool) -> Option<Species> {
         let ty = crate::place::bulldozer::type_of(cat, e).filter(|_| e.class == "animals")?;
         Some(Species {
             id: ty.name_id,
             subtype: e.subtype.clone(),
-            swims: crate::build::number(ty, "cSwims") == Some(1.0),
+            swims: !egg && crate::build::number(ty, "cSwims") == Some(1.0),
             large: ty.footprint[0].saturating_mul(ty.footprint[1]) > 3,
+            tile: e
+                .common
+                .as_ref()
+                .map(|c| (c.x.div_euclid(64), c.y.div_euclid(64))),
         })
     }
 }
@@ -624,8 +631,8 @@ const SHELTER_OF_ANY_EXHIBIT: i32 = 7059;
 /// The place a user of slot `slot` of the building is put at when it leaves by force or by the
 /// exit (guest buildings 6.3, 6.7): the slot's exit for a type whose users use it, else the first
 /// entrance, whose place passes [`fits`]. `who` is the animal that leaves, which its own place
-/// rules apply to too (6.3 point 5); `None` for a guest. `None` when there is none, and the slot
-/// cannot be used.
+/// rules apply to too (6.3 point 5), its exhibit being the one of the tile it stands on; `None`
+/// for a guest. `None` when there is none, and the slot cannot be used.
 pub fn exit_of(
     world: &World,
     e: &Entity,
@@ -634,10 +641,9 @@ pub fn exit_of(
     who: Option<&Species>,
 ) -> Option<Point> {
     let s = kind.slots.get(slot)?;
-    let home = e
-        .common
-        .as_ref()
-        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
+    let home = who
+        .and_then(|w| w.tile)
+        .and_then(|(x, y)| world.tile_index(x, y))
         .and_then(|t| world.exhibits().region(t));
     let exempt = kind.name_id == SHELTER_OF_ANY_EXHIBIT;
     let animal = |t: usize| who.is_none_or(|w| animal_place(world, t, w, home, exempt));
@@ -667,9 +673,9 @@ fn fits(world: &World, (x, y): Point, exit: Option<&Slot>, animal: &dyn Fn(usize
 }
 
 /// Guest buildings 6.3 point 5, the place of an animal on tile `t`: in its own exhibit, which is
-/// the exhibit of its shelter `home` unless the type is `exempt`; not a large animal on a tile that
-/// is not flat or raised along one side (the path shapes of placing 5.3); and not water for a
-/// non-swimmer.
+/// the exhibit of the tile it stands on (`home`) unless the type is `exempt`; not a large animal on
+/// a tile that is not flat or raised along one side (the path shapes of placing 5.3); and not water
+/// for a non-swimmer.
 fn animal_place(world: &World, t: usize, who: &Species, home: Option<u32>, exempt: bool) -> bool {
     let own = exempt || world.exhibits().region(t) == home;
     own && !(who.large && !path_shape(world.zoo.tiles[t].shape))
