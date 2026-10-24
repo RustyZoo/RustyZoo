@@ -28,15 +28,18 @@
 //! water check, which moves an animal between the land, the water and a tank (and so across the
 //! wall to the land exhibit beside its tank, the amphibious neighbours).
 //!
-//! Not here yet: the use of shelters and the effects of the escape, rampage and zap checks (M7:
-//! only their counters and draws run). The ambient choice is taken at the end of the checks by the
+//! The shelter check picks a building to rest in; the goals walk the animal there and the building
+//! holds it for its time inside (`crate::goal`, `crate::building`).
+//!
+//! Not here yet: the effects of the escape, rampage and zap checks (M7: only their counters and
+//! draws run). The ambient choice is taken at the end of the checks by the
 //! behaviour runner ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
 //! after each update of the values, `animal message <string> <id>` for a message posted,
 //! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
 //! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down,
-//! `animal heal <id>`, `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
+//! `animal shelter <id> <building>` when the check takes a shelter, `animal heal <id>`, `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
 //! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>`, `animal hatch <id>`,
 //! `animal breath <id> <breath>` when the breath rises and `animal terrain <id> <mode>` when the
 //! water check changes the terrain mode (0 land, 1 water, 2 tank).
@@ -110,6 +113,11 @@ const INCOMPATIBLE: u32 = 10;
 const CRAMPED: u32 = 16;
 const CROWDED: u32 = 56;
 const NEEDS_EXHIBIT: u32 = 62;
+
+/// The need a shelter serves, and the radius of the search for one (the square root of the largest
+/// whole number: no limit in practice).
+pub const NEED: &str = "animalrest";
+const SEARCH: i64 = 46_340;
 
 /// The terrain type of trampled ground.
 const TRAMPLED: u8 = 16;
@@ -465,6 +473,11 @@ pub struct Animal {
     /// The terrain mode: 0 land, 1 water, 2 tank (tank fauna 5); it decides where the animal looks
     /// for a destination.
     pub terrain: u8,
+    /// The shelter it aims at (animals 6): the building's id, 0 for none, and the slot and entrance
+    /// it was given by the goals (guest buildings 6.2). The need served is `animalrest`.
+    pub building: u32,
+    pub slot: usize,
+    pub entrance: crate::building::Point,
 }
 
 impl Animal {
@@ -654,11 +667,23 @@ pub struct Env {
     /// tile it stands on.
     pub kinds: [usize; 3],
     pub stands: u8,
+    /// What the shelter check reads of the buildings (animals 6), listed only when its counter is
+    /// due.
+    pub shelter: Shelter,
     /// Where its mate is, when it has one.
     pub mate: breed::Mate,
     /// The animals it could pick as a mate, in the exhibit's order (animals-needs 11.3); only
     /// listed for an animal whose reproduction check is due.
     pub candidates: Vec<u32>,
+}
+
+/// The shelters around an animal when its shelter check is due: whether the building it aims at
+/// still serves the need `animalrest`, and the nearest buildings that do, in the list order
+/// (guests 7.1); the draw among them is the check's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Shelter {
+    pub held: bool,
+    pub nearest: Vec<u32>,
 }
 
 /// What a tick of checks asks of the world besides the animal's own state.
@@ -689,6 +714,8 @@ pub struct Out {
     /// The water check asks for this terrain mode, and the draw that picks the tile it sends the
     /// animal to (tank fauna 5).
     pub terrain: Option<(u8, Option<usize>)>,
+    /// The shelter it took as its target.
+    pub shelter: Option<u32>,
 }
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
@@ -768,7 +795,7 @@ pub fn run_with(
     habitat(a, k, class, env, &mut out.messages);
     bored(a, k, class, env, rng, &mut out);
     out.terrain = tank::water(a, k, class, env, rng);
-    shelter(a, k, class, rng);
+    shelter(a, k, class, env, rng, &mut out);
     other(a, k, class, env);
     zap(a, k, class, env, rng);
     if fire(&mut a.counters[MESSAGE], class.periods[MESSAGE]) && a.happiness < -60 {
@@ -946,10 +973,19 @@ fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out:
 }
 
 /// The shelter check (animals 6): the draw that decides whether the animal looks for a shelter.
-/// The search and the use of a shelter are a later issue's.
-fn shelter(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
-    if fire(&mut a.counters[SHELTER], class.periods[SHELTER]) && k.building_use > 0 {
-        rng.chance(k.building_use);
+/// An animal that aims at a building that still serves the need keeps it; else the nearest
+/// building that serves it, one drawn among the ties, becomes its target. The goals walk it there.
+fn shelter(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
+    if !(fire(&mut a.counters[SHELTER], class.periods[SHELTER]) && k.building_use > 0)
+        || !rng.chance(k.building_use)
+        || env.shelter.held
+    {
+        return;
+    }
+    let n = env.shelter.nearest.len() as u32;
+    if n > 0 {
+        a.building = env.shelter.nearest[rng.pick(n) as usize];
+        out.shelter = Some(a.building);
     }
 }
 
@@ -1045,6 +1081,27 @@ pub fn exhibit_animals(world: &World, x: u32) -> Vec<usize> {
         );
     }
     found
+}
+
+/// The shelters for the check of an animal on tile `tile` that aims at building `target` (animals
+/// 6): the nearest buildings that serve `animalrest`, none when the target still does.
+pub(crate) fn shelters(
+    world: &World,
+    cat: &Catalogue,
+    target: u32,
+    tile: Option<usize>,
+) -> Shelter {
+    let serves = |id: u32| {
+        let e = world.find(id).map(|at| &world.zoo.entities[at]);
+        let kind = e.and_then(|e| crate::building::kind_of(cat, e, world.units.prices.default));
+        kind.is_some_and(|k| k.satisfies(NEED))
+    };
+    let held = target != 0 && serves(target);
+    let nearest = match tile {
+        Some(t) if !held => crate::building::satisfiers(world, cat, t, NEED, SEARCH).1,
+        _ => Vec::new(),
+    };
+    Shelter { held, nearest }
 }
 
 /// The land, water and tank tiles of the exhibits `near` (animals-needs 7.2).
@@ -1215,6 +1272,9 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             env.other = r.other.round() as i32;
         }
     }
+    if a.counters[SHELTER] == 0 && k.building_use > 0 {
+        env.shelter = shelters(world, ctx.cat, a.building, tile);
+    }
     let id = unit.id;
     let cat = ctx.cat;
     let mut birth = |father: &mut Animal, rng: &mut Rng| {
@@ -1232,6 +1292,9 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.units.tell(format!("breath {id} {}", a.breath));
     }
     let meal = std::mem::take(&mut out.meal);
+    if let Some(b) = out.shelter {
+        world.units.tell(format!("shelter {id} {b}"));
+    }
     breed::pair(world, id, &out);
     for word in &out.log {
         world.units.tell(format!("{word} {id}"));

@@ -229,9 +229,9 @@ pub enum Goal {
     Leg,
     Talk,
     Follow,
-    /// 0x66 to 0x6a of a guest: the building chain (11.3), walking to the building, to its
-    /// entrance and into its slot, using it and leaving (0x69 also for a unit of any kind sent
-    /// out of a building).
+    /// 0x66 to 0x6a of a guest or an animal (to a shelter): the building chain (11.3), walking to
+    /// the building, to its entrance and into its slot, using it and leaving (0x69 also for a unit
+    /// of any kind sent out of a building).
     Go,
     Entrance,
     Enter,
@@ -268,12 +268,12 @@ impl Goal {
             (LEG, Kind::Guide) => Some(Goal::Leg),
             (TALK, Kind::Guide) => Some(Goal::Talk),
             (LEG, Kind::Guest) => Some(Goal::Follow),
-            (GO_BUILDING, Kind::Guest) => Some(Goal::Go),
-            (ENTRANCE, Kind::Guest) => Some(Goal::Entrance),
-            (ENTER_BUILDING, Kind::Guest) => Some(Goal::Enter),
+            (GO_BUILDING, Kind::Guest | Kind::Animal) => Some(Goal::Go),
+            (ENTRANCE, Kind::Guest | Kind::Animal) => Some(Goal::Entrance),
+            (ENTER_BUILDING, Kind::Guest | Kind::Animal) => Some(Goal::Enter),
             // Any unit sent out of a building by the common part (6.2) leaves it.
             (EXIT_BUILDING, _) => Some(Goal::Exit),
-            (USE, Kind::Guest) => Some(Goal::Use),
+            (USE, Kind::Guest | Kind::Animal) => Some(Goal::Use),
             (EAT, Kind::Guest) => Some(Goal::Eat),
             (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
             (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
@@ -542,8 +542,10 @@ pub fn stop_use(unit: &mut Unit) {
     (unit.through_building, unit.aborted) = (false, false);
     unit.runner = Default::default();
     unit.animation = Default::default();
-    if let Part::Guest(g) = &mut unit.part {
-        (g.need, g.building, g.stand) = (None, 0, false);
+    match &mut unit.part {
+        Part::Guest(g) => (g.need, g.building, g.stand) = (None, 0, false),
+        Part::Animal(a) => a.building = 0,
+        _ => {}
     }
 }
 

@@ -489,6 +489,60 @@ pub fn mood(world: &World, id: u32, kind: &Kind) -> Mood {
     world.units.prices.mood(price, kind.price)
 }
 
+/// Guests 7.1: the buildings that satisfy `need`, and among them the ones nearest to tile `here`
+/// within `radius` tiles that lie in its area and have an open slot, the expensive ones farther
+/// and the cheap ones nearer; the draw among the ties is the caller's.
+pub fn satisfiers(
+    world: &World,
+    cat: &Catalogue,
+    here: usize,
+    need: &str,
+    radius: i64,
+) -> (Vec<u32>, Vec<u32>) {
+    let width = world.zoo.width as usize;
+    let area = world.exhibits().region(here);
+    let prices = world.units.prices;
+    let (mut all, mut best, mut ties) = (Vec::new(), i64::MAX, Vec::new());
+    for e in &world.zoo.entities {
+        let (Some(kind), Some(c)) = (kind_of(cat, e, prices.default), e.common.as_ref()) else {
+            continue;
+        };
+        let Some(t) = world
+            .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
+            .filter(|_| kind.satisfies(need))
+        else {
+            continue;
+        };
+        all.push(c.id);
+        let live = world.units.buildings.get(&c.id);
+        if world.exhibits().region(t) != area || !has_open_slot(world, e, &kind, live) {
+            continue;
+        }
+        let dx = (t % width) as i64 - (here % width) as i64;
+        let dy = (t / width) as i64 - (here / width) as i64;
+        let mut d = dx * dx + dy * dy;
+        let price = live.map_or(kind.price, |l| l.price);
+        let scale = match prices.mood(price, kind.price) {
+            _ if !kind.commerce => None,
+            Mood::Angry => Some(prices.expensive),
+            Mood::Happy => Some(prices.cheap),
+            Mood::Fair => None,
+        };
+        if let Some(f) = scale {
+            let far = ((d as f64).sqrt() * f64::from(f)).round_ties_even() as i64;
+            d = far * far;
+        }
+        if d > radius * radius || d > best {
+            continue;
+        }
+        if d < best {
+            (best, ties) = (d, Vec::new());
+        }
+        ties.push(c.id);
+    }
+    (all, ties)
+}
+
 /// The type of the building entity `e`.
 pub fn kind_of(cat: &Catalogue, e: &Entity, default: f32) -> Option<Kind> {
     if e.class != "building" {

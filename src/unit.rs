@@ -926,7 +926,8 @@ impl Hooks for Standard<'_> {
             Part::Animal(a) => std::mem::take(&mut a.ambient),
             _ => false,
         };
-        if asked {
+        // An animal hidden in a shelter shows and walks nothing.
+        if asked && !unit.hidden {
             if !crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data) {
                 let key = ambient_key(unit);
                 let choosing = !unit.runner.running() && unit.runner.queued().is_none();

@@ -64,7 +64,8 @@ pub(crate) fn react(
 
 /// Guest buildings 6.6 points 2 and 3: the guest `unit` has left building `id` of kind `kind`. A
 /// charging building books its price times its factor as concessions (a building that sells
-/// nothing first makes the price reaction), then the type's change record is given.
+/// nothing first makes the price reaction), then the type's change record is given. An animal
+/// that leaves a shelter gets the change record only (animals 6).
 pub(crate) fn pay(
     world: &mut World,
     cat: &Catalogue,
@@ -73,6 +74,19 @@ pub(crate) fn pay(
     id: u32,
     kind: &Kind,
 ) {
+    if let Part::Animal(a) = &mut unit.part {
+        // Animals 6: an adult gets the adult happiness change, a young one the young one, any other
+        // subtype none; hunger and energy change for all. No money.
+        let happy = match world.zoo.entities[at].subtype.as_str() {
+            "m" | "f" => kind.change[0],
+            "y" => kind.change[1],
+            _ => 0,
+        };
+        a.happiness_change = a.happiness_change.saturating_add(happy);
+        a.hunger_change = a.hunger_change.saturating_add(kind.change[2]);
+        a.energy_change = a.energy_change.saturating_add(kind.change[5]);
+        return;
+    }
     if !matches!(unit.part, Part::Guest(_)) {
         return;
     }

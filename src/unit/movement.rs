@@ -548,6 +548,7 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
     m.building |= unit.through_building;
     m.target_building = match &unit.part {
         Part::Guest(g) if g.building != 0 && world.find(g.building).is_some() => Some(g.building),
+        Part::Animal(a) if a.building != 0 && world.find(a.building).is_some() => Some(a.building),
         _ => None,
     };
     let record = &unit.goal.record;

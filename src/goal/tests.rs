@@ -8,6 +8,7 @@ use crate::unit::testing::{centre, entity, rates, world};
 use crate::zoo::Clocks;
 use std::collections::HashMap;
 
+mod shelter;
 mod surface;
 
 /// A 10 by 10 map with one unit of this class and id 1 at tile (5, 5).

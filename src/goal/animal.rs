@@ -1,8 +1,8 @@
 //! The goals of animals: the ladder's need rungs, the keeper food goal, the drink goal and the
 //! surface goal (goals 10.1, 11.8, 11.9; tank fauna 10.2).
 
-use super::{BUILDING, Cx, NONE, RANDOM};
-use crate::animal::{food, tank};
+use super::{BUILDING, Cx, GO_BUILDING, NONE, RANDOM};
+use crate::animal::{NEED, food, tank};
 use crate::behaviour::Target;
 use crate::unit::{Part, walk};
 
@@ -13,19 +13,25 @@ pub const SURFACE: u8 = 124;
 
 impl Cx<'_, '_> {
     /// 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
-    /// has it, is in the building chain or is drinking; point 8 does the same for a thirsty one
-    /// and the drink task. Point 9 comes last, whatever those do.
+    /// has it, is in the building chain or is drinking. Points 6 and 7 keep the building chain and
+    /// send the animal to the shelter it aims at; they end the ladder, so the thirst of point 8 and
+    /// the breath of point 9 wait. Point 8 sets the drink task for a thirsty animal and point 9
+    /// comes last, whatever those do.
     pub(super) fn animal_ladder(&mut self, task: u8) {
         let Part::Animal(a) = &self.unit.part else {
             return;
         };
         let (drinking, hungry, thirsty, breath) = (a.drinking, a.wants_food, a.thirsty, a.breath);
-        if !(drinking || BUILDING.contains(&task)) {
-            if hungry && task != KEEPER_FOOD {
-                self.set_task(KEEPER_FOOD, 1, 0, None);
-            } else if thirsty && task != DRINK {
-                self.set_task(DRINK, 1, 0, None);
-            }
+        let free = !(drinking || BUILDING.contains(&task));
+        let food = free && hungry && task != KEEPER_FOOD;
+        if food {
+            self.set_task(KEEPER_FOOD, 1, 0, None);
+        }
+        if self.shelter_rung() {
+            return;
+        }
+        if free && !food && thirsty && task != DRINK {
+            self.set_task(DRINK, 1, 0, None);
         }
         // Point 9: an animal under water that has the breath of its threshold goes to the surface.
         if self.unit.tank == 4 && self.record().task != SURFACE {
@@ -34,6 +40,31 @@ impl Cx<'_, '_> {
                 self.set_task(SURFACE, 0, 0, None);
             }
         }
+    }
+
+    /// 10.1 points 6 and 7: an animal busy in the building chain keeps its task. One that aims at a
+    /// building that serves `animalrest` and whose task is not done goes there when it is in no
+    /// building task, or is in the walk to the building with an empty path (guest buildings 6.2;
+    /// the target is dropped when it cannot start out). Whether either held.
+    fn shelter_rung(&mut self) -> bool {
+        let (task, done) = (self.record().task, self.record().done);
+        let chain = BUILDING.contains(&task);
+        let stalled = task == GO_BUILDING && self.unit.path.is_empty();
+        if chain && !done && !stalled {
+            return true;
+        }
+        let Part::Animal(a) = &self.unit.part else {
+            return false;
+        };
+        let target = a.building;
+        let serves = self.building(target).is_some_and(|b| b.1.satisfies(NEED));
+        if done || !serves {
+            return false;
+        }
+        if !self.set_out(target) {
+            self.clear_target();
+        }
+        true
     }
 
     /// Tank fauna 10.2 start: the animal has to stand on a tank tile.
