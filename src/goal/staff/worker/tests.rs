@@ -21,6 +21,8 @@ const COMPOST_TILE: (i32, i32) = (18, 2);
 const CAN_TILE: (i32, i32) = (3, 9);
 const LITTER_TILE: (i32, i32) = (8, 9);
 const FENCE_TILE: (i32, i32) = (14, 9);
+/// The pen of the emptied exhibit: its tiles and its gate column.
+const PEN: (i32, i32, i32, i32, i32) = (3, 2, 7, 5, 5);
 
 fn ty(class: &'static str, name: &str, sub: &str, keys: &str) -> EntityType {
     EntityType {
@@ -120,6 +122,32 @@ struct Game {
     started: bool,
 }
 
+/// The second fence piece (13) on the east edge of the fence's tile.
+fn side_piece() -> Entity {
+    let mut piece = entity("fences", "iron", 13, centre(FENCE_TILE), 2);
+    piece.subtype = "f".into();
+    piece
+}
+
+/// A pen of exhibit fences over the tiles from (x0, y0) to (x1, y1), its gate on the south side
+/// at column `gate`: an exhibit of its own with no animal in it.
+fn pen((x0, y0, x1, y1, gate): (i32, i32, i32, i32, i32)) -> Vec<Entity> {
+    let mut found = Vec::new();
+    for (x, y) in (x0..=x1).flat_map(|x| (y0..=y1).map(move |y| (x, y))) {
+        for (d, outside) in [(0, y == y0), (2, x == x1), (4, y == y1), (6, x == x0)] {
+            if outside {
+                let id = 200 + found.len() as u32;
+                let mut piece = entity("fences", "exhibit", id, centre((x, y)), d);
+                if (x, y, d) == (gate, y1, 4) {
+                    piece.subtype = "g".into();
+                }
+                found.push(piece);
+            }
+        }
+    }
+    found
+}
+
 /// The characteristics of a worker type with the given keys.
 fn worker(keys: &str) -> String {
     format!("[m/Characteristics/Integers]\n{keys}\n")
@@ -129,12 +157,12 @@ impl Game {
     /// A 22 by 12 map with the worker at (1, 9), a trash can at (3, 9) and a fence piece that wears
     /// out in 20 s of its own at (14, 9). Fixed seed.
     fn new(keys: &str) -> Game {
-        Game::with(keys, &[(WORKER, (1, 9))], false)
+        Game::with(keys, &[(WORKER, (1, 9))], &[])
     }
 
-    /// The same with the workers `(id, tile)`, in this order of the entity list, and a second
-    /// piece (13) on the east edge of the fence's tile.
-    fn with(keys: &str, workers: &[(u32, (i32, i32))], side: bool) -> Game {
+    /// The same with the workers `(id, tile)`, in this order of the entity list, and the extra
+    /// entities (a pen, a second piece).
+    fn with(keys: &str, workers: &[(u32, (i32, i32))], extra: &[Entity]) -> Game {
         let mut sim = Sim::new(b"");
         sim.set_seed(1);
         sim.start_game(22 * 12, Clocks::default());
@@ -156,11 +184,7 @@ impl Game {
                 centre(COMPOST_TILE),
                 4,
             ));
-            if side {
-                let mut piece = entity("fences", "iron", 13, centre(FENCE_TILE), 2);
-                piece.subtype = "f".into();
-                z.entities.push(piece);
-            }
+            z.entities.extend(extra.iter().cloned());
         });
         let cat = catalogue(&worker(keys));
         w.set_decay(Decay {
@@ -387,7 +411,7 @@ fn a_worker_skips_the_duties_switched_off_and_the_tiles_he_could_not_reach() {
 #[test]
 fn a_nearer_worker_takes_the_task_of_a_worker_farther_away() {
     const OTHER: u32 = 2;
-    let mut g = Game::with("", &[(OTHER, (10, 9)), (WORKER, (4, 9))], false);
+    let mut g = Game::with("", &[(OTHER, (10, 9)), (WORKER, (4, 9))], &[]);
     g.fill(13);
     g.run(2);
     let holder =
@@ -431,7 +455,7 @@ fn a_repair_with_a_modifier_mends_the_lines_beside_too() {
         ("cFixFenceModifier=1", 2),
         ("cFixFenceModifier=-1", 1),
     ] {
-        let mut g = Game::with(keys, &[(WORKER, (1, 9))], true);
+        let mut g = Game::with(keys, &[(WORKER, (1, 9))], &[side_piece()]);
         // The pieces do not wear again in the time of the test.
         let slow = Decay {
             min: 600_000,
@@ -674,13 +698,46 @@ fn food_is_bagged_without_pay_while_dung_lies_somewhere() {
     assert!(g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
     assert_eq!(g.refunds(), (cash, 0.0));
     assert!(!g.w.units.buildings.contains_key(&COMPOST));
-    // The same food with no dung anywhere is left where it lies.
+    // The same food with no dung anywhere is bagged too: food on the grounds keeps the walk going.
     let mut g = Game::new("");
     g.calm();
     g.dung((6, 9), "food", true);
+    let (cash, _) = g.refunds();
     g.run(400);
-    assert!(g.w.zoo.entities.iter().any(|e| e.class == "food"));
+    assert!(!g.w.zoo.entities.iter().any(|e| e.class == "food"));
+    assert_eq!(g.refunds(), (cash, 0.0));
+    assert!(!g.w.units.buildings.contains_key(&COMPOST));
+}
+
+#[test]
+fn food_in_an_emptied_exhibit_is_bagged_with_no_dung_in_the_world() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &pen(PEN));
+    g.calm();
+    g.dung((4, 3), "food", true);
+    let (cash, _) = g.refunds();
+    g.run(1000);
+    assert_eq!(
+        g.jobs(),
+        ["ZooDoo", "BagDoo", "none"],
+        "{:?}",
+        g.lines(&["staff", "unit set"])
+    );
+    assert!(!g.w.zoo.entities.iter().any(|e| e.class == "food"));
     assert!(g.w.units.pool.tasks.is_empty());
+    assert_eq!(g.refunds(), (cash, 0.0));
+    assert_eq!(g.compost_income(), 0.0);
+}
+
+#[test]
+fn a_lone_pile_in_an_emptied_exhibit_clears_the_job() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &pen(PEN));
+    g.calm();
+    g.dung((4, 3), "poo", true);
+    g.run(400);
+    assert_eq!(g.jobs(), ["ZooDoo", "none"], "{:?}", g.lines(&["staff"]));
+    assert!(g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
+    assert!(g.w.units.pool.tasks.is_empty());
+    assert_eq!(g.refunds().1, 0.0);
 }
 
 #[test]

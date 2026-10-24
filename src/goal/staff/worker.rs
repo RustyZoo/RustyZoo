@@ -253,8 +253,8 @@ impl Cx<'_, '_> {
                     self.work_finish();
                 }
             }
-            // No dung left anywhere ends the walk, even to food an emptied exhibit left (staff 8.6).
-            pool::ZOO_DOO if !chores::poo_left(self.world) => self.work_finish(),
+            // Nothing left to bag on the grounds or in an empty exhibit ends the walk (staff 8.6).
+            pool::ZOO_DOO if !chores::poo_left(self.world, self.unit.id) => self.work_finish(),
             pool::TRASH_PILE | pool::ZOO_DOO | pool::GO_TO_FENCE if self.tile() == Some(tile) => {
                 self.record().job_done = true;
             }

@@ -5,7 +5,10 @@
 use crate::build::number;
 use crate::building;
 use crate::entity::Catalogue;
+use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::panel::exhibit::animals_in;
 use crate::place::bulldozer::type_of;
+use crate::unit::{Kind, Part};
 use crate::world::World;
 use crate::zoo::Entity;
 
@@ -28,9 +31,38 @@ pub fn is_poo(e: &Entity) -> bool {
         && matches!(e.subtype.as_str(), "poo" | "dinopoo")
 }
 
-/// Whether any dung lies on the map.
-pub fn poo_left(world: &World) -> bool {
-    world.zoo.entities.iter().any(is_poo)
+/// The tile of an entity: the one its centre lies on.
+fn tile_of(world: &World, e: &Entity) -> Option<usize> {
+    let c = e.common.as_ref()?;
+    world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
+}
+
+/// Whether the check done of a dung job goes on for worker `me` (staff 8.6): a pile of dung on a
+/// tile of the zoo grounds, or food on the grounds or in an exhibit with no animals, unless it is
+/// the target tile of another worker. A pile in an exhibit counts for nothing.
+pub fn poo_left(world: &World, me: u32) -> bool {
+    let others: Vec<usize> = (world.units.iter())
+        .filter(|u| u.id != me && u.kind == Kind::Worker)
+        .filter_map(|u| match &u.part {
+            Part::Staff(s) => s.target,
+            _ => None,
+        })
+        .collect();
+    world.zoo.entities.iter().any(|e| {
+        let Some(t) = tile_of(world, e) else {
+            return false;
+        };
+        let region = world.exhibits().region(t);
+        if is_poo(e) {
+            return region == Some(GROUNDS);
+        }
+        let open = match region {
+            Some(GROUNDS) => true,
+            Some(EXTERIOR) | None => false,
+            Some(x) => animals_in(world, x).is_empty(),
+        };
+        e.class == "food" && open && !others.contains(&t)
+    })
 }
 
 /// The object in the centre slot of tile `t` (staff 8.6): its id, whether it is dinosaur dung and
