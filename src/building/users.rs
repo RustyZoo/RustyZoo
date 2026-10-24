@@ -8,11 +8,12 @@ use crate::unit::Part;
 use crate::world::World;
 
 /// Puts back the users of every guest building, after all the guests are made (`building::load`
-/// made the live states). A pair whose unit does not exist, is not a guest (animals and staff use
-/// no guest building here), is a user already, or names a slot the type does not have is dropped.
-/// A kept guest is listed in entering order with the entity stamp of its record as its entry
-/// time (0: `now`, the AI tick of the load), hidden when the type hides its users, and goes on
-/// with the task of using the building, so it leaves after the time it has left and pays then.
+/// made the live states). A pair whose unit does not exist, is neither a guest nor an animal
+/// (staff use no guest building here), is a user already, or names a slot the type does not have
+/// is dropped. A kept guest or animal is listed in entering order with the entity stamp of its
+/// record as its entry time (0: `now`, the AI tick of the load), hidden when the type hides its
+/// users, and goes on with the task of using the building, so it leaves after the time it has
+/// left (a guest pays then).
 /// A file before version 80 restores none of the users of a type whose users are visible inside
 /// (a bench, a picnic table): their pairs are skipped and counted off the guest figures
 /// (guest buildings 4.2).
@@ -55,7 +56,7 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     let Some(u) = world.units.get_mut(unit) else {
         return;
     };
-    if !matches!(u.part, Part::Guest(_)) {
+    if !matches!(u.part, Part::Guest(_) | Part::Animal(_)) {
         return;
     }
     crate::goal::resume_use(u, id, slot, now);

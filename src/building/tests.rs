@@ -553,6 +553,7 @@ fn seated_in(version: u32, pairs: [Vec<(u32, u32)>; 2], stamps: [Option<u32>; 3]
             ("guests", "man", 2),
             ("guests", "man", 3),
             ("keeper", "keeper", 4),
+            ("animals", "lion", 5),
         ]
         .into_iter()
         .enumerate()
@@ -606,6 +607,20 @@ fn the_users_of_a_record_are_back_in_their_slots_with_the_time_they_entered_at()
             (crate::goal::USE, building, 9)
         );
     }
+}
+
+#[test]
+fn an_animal_listed_as_a_shelter_user_is_seated_like_a_guest() {
+    // The lion 5 is listed as the user of the hiding restroom 8 in slot 0.
+    let w = seated([Vec::new(), vec![(5, 0)]], [None; 3]);
+    assert_eq!(w.units.buildings[&8].users, [(5, 0, 9)]);
+    let u = w.units.get(5).unwrap();
+    let Part::Animal(a) = &u.part else {
+        panic!("not an animal")
+    };
+    assert_eq!((a.building, a.slot, u.hidden), (8, 0, true));
+    let r = &u.goal.record;
+    assert_eq!((r.task, r.target.id, r.start), (crate::goal::USE, 8, 9));
 }
 
 #[test]
