@@ -127,7 +127,14 @@ fn catalogue() -> Catalogue {
             6060,
             "cPurchaseCost=50\ncMaxFoodUnits=1000",
         ),
-        ty("objects", "other", "poo", 6062, ""),
+        ty("objects", "other", "poo", 6062, "cStink=1"),
+        ty(
+            "building",
+            "compost",
+            "",
+            8026,
+            "cCommerce=1\n[Characteristics/Floats]\ncDefaultCost=50\n[Satisfies]\ncompost",
+        ),
     ] {
         cat.push(t);
     }
@@ -339,6 +346,52 @@ fn a_keeper_heals_a_sick_animal_then_rakes_the_dung_and_pays_the_medicine() {
     );
     assert!(dung.is_empty());
     assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, 0);
+}
+
+#[test]
+fn the_compost_pays_for_the_dung_a_keeper_rakes() {
+    let compost = entity("building", "compost", 99, centre((18, 9)), 4);
+    let mut g = Game::with(&[PEN_A], &[compost], b"");
+    assert!(g.put("herbchow", (6, 4), 1000));
+    assert!(g.put("poo", (6, 3), 0));
+    g.run(2500);
+    assert_eq!(g.lines(&["staff job 1 CleaningDirt"]).len(), 1);
+    // The pile is raked: the compost has the use and the cash the recycling amount, booked as a
+    // construction refund.
+    assert!(!g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
+    assert_eq!(g.w.units.buildings[&99].income[2], 50.0);
+    assert_eq!(g.money.cash, 50.0);
+    assert_eq!(g.money.total[crate::money::CONSTRUCTION_REFUND], 50.0);
+}
+
+#[test]
+fn the_last_animal_going_calls_the_workers_for_the_dung_and_the_food_left() {
+    let mut g = Game::new(&[PEN_A]);
+    let pen = g.exhibit((4, 3));
+    assert!(g.put("herbchow", (6, 4), 1000));
+    assert!(g.put("poo", (6, 3), 0));
+    // The pen is rated with its animal; the next rating finds it empty.
+    g.run(120);
+    assert!(
+        g.w.units.pool.tasks.is_empty(),
+        "no call while an animal is there"
+    );
+    assert!(g.w.remove(ZEBRA_A));
+    g.w.exhibits_mut().mark(pen);
+    g.run(3);
+    let tile = |p: (i32, i32)| p.1 as usize * 22 + p.0 as usize;
+    let calls: Vec<_> = (g.w.units.pool.tasks.iter())
+        .map(|t| (t.job, t.tile))
+        .collect();
+    assert_eq!(
+        calls,
+        [(11, tile((6, 3))), (11, tile((6, 4)))],
+        "the order of the exhibit's tiles"
+    );
+    // The animal count stays at 0: another rating calls nobody again.
+    g.w.exhibits_mut().mark(pen);
+    g.run(3);
+    assert_eq!(g.w.units.pool.tasks.len(), 2);
 }
 
 #[test]

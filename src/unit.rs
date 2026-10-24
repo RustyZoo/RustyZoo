@@ -345,6 +345,8 @@ pub struct Units {
     pub prices: crate::building::Prices,
     /// What guests paid buildings during the step, which the step books as concessions.
     pub concessions: Vec<f32>,
+    /// What the compost paid for dung during the step, which the step books as a construction refund.
+    pub recycled: Vec<f32>,
     building_lines: Vec<String>,
     /// The thoughts of the guests, newest first (guests visit 8), and the megatiles their
     /// surroundings check reads (guests 12).
@@ -395,6 +397,7 @@ impl Default for Units {
             buildings: Default::default(),
             prices: Default::default(),
             concessions: Vec::new(),
+            recycled: Vec::new(),
             building_lines: Vec::new(),
             guest_lines: Vec::new(),
             thoughts: Default::default(),

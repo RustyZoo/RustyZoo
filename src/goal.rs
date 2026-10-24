@@ -446,7 +446,7 @@ impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
             (Kind::Keeper, 1..=6 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
-            (Kind::Worker, 7..=10 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
+            (Kind::Worker, 7..=12 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
             _ => Some(Sub::Base),
         }
     }

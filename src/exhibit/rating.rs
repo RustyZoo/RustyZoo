@@ -1118,6 +1118,8 @@ pub struct State {
     pub escape: bool,
     /// The species and the animals the last recomputation counted (5.1 point 5).
     pub counts: (usize, usize),
+    /// The animal count fell to 0 at a recomputation: the step posts the call for the leftovers.
+    pub emptied: bool,
     /// The surrounding species list holds a species with `cBashStrength` above 0 (12).
     pub bash: bool,
     /// The escape table the last reachability test wrote, for the escapes (M7): the animal
@@ -1192,6 +1194,7 @@ impl State {
         // A change of the species or the animals counted sets the escape check flag (5.1).
         let counts = (self.records.len(), input.animals.len());
         self.escape |= counts != self.counts;
+        self.emptied |= counts.1 == 0 && self.counts.1 != 0;
         self.counts = counts;
         let land = input.site.water.is_none();
         self.bash = (input.species.iter())

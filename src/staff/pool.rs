@@ -3,15 +3,15 @@
 //! the front; duplicates are not merged.
 //!
 //! The pool turns the events of the trash cans (10030), of the litter on the ground (10031), of
-//! the fences (10033 decayed, 10034 broken, urgent) and of the tank filters (10035 decayed, 10036
-//! broken, urgent). The events of dung on the grounds (10032) belong to the issue of that job and
-//! make no task yet.
+//! the dung on the grounds and the leftovers of an emptied exhibit (10032), of the fences (10033
+//! decayed, 10034 broken, urgent) and of the tank filters (10035 decayed, 10036 broken, urgent).
 
 use crate::zoo::Event;
 
-/// The jobs a task names (goals 5): litter, a full trash can, a worn fence and a worn filter.
+/// The jobs a task names (goals 5): litter, a full trash can, dung, a worn fence and a worn filter.
 pub const TRASH_PILE: u8 = 7;
 pub const TRASH_CAN: u8 = 9;
+pub const ZOO_DOO: u8 = 11;
 pub const GO_TO_FENCE: u8 = 16;
 pub const GO_TO_FILTER: u8 = 26;
 
@@ -36,6 +36,7 @@ fn job_of(kind: u16) -> Option<(u8, bool)> {
     match kind {
         10030 => Some((TRASH_CAN, false)),
         10031 => Some((TRASH_PILE, false)),
+        10032 => Some((ZOO_DOO, false)),
         10033 => Some((GO_TO_FENCE, false)),
         10034 => Some((GO_TO_FENCE, true)),
         10035 => Some((GO_TO_FILTER, false)),

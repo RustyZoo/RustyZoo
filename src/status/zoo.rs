@@ -179,6 +179,7 @@ impl Settings {
         decimal("cItemCheap", &mut self.prices.cheap);
         decimal("cBuildingUseCostDefault", &mut self.prices.default);
         decimal("cBuildingUseCostMax", &mut self.prices.max);
+        decimal("cZooDooRecyclingAmount", &mut self.prices.recycling);
     }
 }
 

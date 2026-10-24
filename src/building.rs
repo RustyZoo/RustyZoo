@@ -34,7 +34,8 @@ pub mod leave;
 pub mod users;
 
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
-/// which a price is expensive and cheap, and the default price of a type that names none.
+/// which a price is expensive and cheap, and the default price of a type that names none; and the
+/// compost's pay for dung.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Prices {
     pub expensive: f32,
@@ -42,6 +43,8 @@ pub struct Prices {
     pub default: f32,
     /// The ceiling of a price set in the panel (`cBuildingUseCostMax`).
     pub max: f32,
+    /// What the compost pays for a pile of dung (`cZooDooRecyclingAmount`, staff 8.6).
+    pub recycling: f32,
 }
 
 impl Default for Prices {
@@ -51,6 +54,7 @@ impl Default for Prices {
             cheap: 0.8,
             default: 29.0,
             max: 100.0,
+            recycling: 50.0,
         }
     }
 }
