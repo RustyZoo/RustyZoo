@@ -2,7 +2,7 @@
 //! and the forced leave of every user when the building is taken off the map. The guest's own
 //! leave (task 0x69) is [`crate::goal`]'s and uses [`pay`] too.
 
-use super::{Kind, Mood, exit_of, kind_of};
+use super::{Kind, Mood, Species, exit_of, kind_of};
 use crate::entity::Catalogue;
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
 use crate::guest::{BATHROOM, ENERGY, HAPPINESS, HUNGER, THIRST};
@@ -127,7 +127,7 @@ pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
         pay(world, cat, at, &mut u, id, &kind);
         world.units.building_note(format!("push {id} {unit}"));
         crate::goal::stop_use(&mut u);
-        put_out(world, at, &mut u, &e, &kind, slot);
+        put_out(world, cat, at, &mut u, &e, &kind, slot);
         if let Some(entry) = world.units.get_mut(unit) {
             *entry = u;
         }
@@ -166,7 +166,7 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32) {
         pay(world, cat, at, &mut u, building, &kind);
         match kind.uses_exit {
             true => {
-                put_out(world, at, &mut u, &e, &kind, slot);
+                put_out(world, cat, at, &mut u, &e, &kind, slot);
             }
             false => show(world, at, &mut u),
         }
@@ -193,6 +193,7 @@ pub(crate) fn show(world: &mut World, at: usize, unit: &mut Unit) {
 /// returned.
 pub(crate) fn put_out(
     world: &mut World,
+    cat: &Catalogue,
     at: usize,
     unit: &mut Unit,
     e: &Entity,
@@ -203,7 +204,8 @@ pub(crate) fn put_out(
         return false;
     };
     let (z, facing) = (c.z, c.rotation);
-    let Some((x, y)) = exit_of(world, e, kind, slot) else {
+    let who = Species::of(cat, &world.zoo.entities[at]);
+    let Some((x, y)) = exit_of(world, e, kind, slot, who.as_ref()) else {
         world.unlist_unit(at);
         return false;
     };

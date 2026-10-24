@@ -181,7 +181,7 @@ fn blocked(tiles: &[(i32, i32)], bush: &str) -> World {
 #[test]
 fn a_user_leaves_by_the_first_entrance_in_the_zoo_with_a_free_or_walkable_quarter() {
     let (k, b) = exits(false, "");
-    let at = |w: &World| exit_of(w, &b, &k, 0);
+    let at = |w: &World| exit_of(w, &b, &k, 0, None);
     assert_eq!(at(&blocked(&[], "bush")), Some((160, 96)));
     // All four quarters held: the next entrance; both held, no exit and no use of the slot.
     assert_eq!(at(&blocked(&[(2, 1)], "bush")), Some((96, 160)));
@@ -208,7 +208,7 @@ fn a_user_leaves_by_the_first_entrance_in_the_zoo_with_a_free_or_walkable_quarte
 fn an_exit_must_be_on_the_terrain_its_slot_allows() {
     let at = |w: &World, slot: &str| {
         let (k, b) = exits(true, slot);
-        exit_of(w, &b, &k, 0)
+        exit_of(w, &b, &k, 0, None)
     };
     let land = blocked(&[], "bush");
     let mut wet = world_with((4, 4), |zoo| zoo.tiles[4].terrain = 1);
@@ -221,6 +221,83 @@ fn an_exit_must_be_on_the_terrain_its_slot_allows() {
     assert_eq!(at(&blocked(&[(0, 1)], "bush"), ""), None);
     // A value that wraps to another than 1 is off.
     assert_eq!(at(&land, "exitonland=99999999999\n"), None);
+}
+
+/// An animal of the shelter's species: `swims`, and `large` for a footprint above 3.
+fn animal(swims: bool, large: bool) -> Species {
+    Species {
+        id: 0,
+        subtype: "f".into(),
+        swims,
+        large,
+    }
+}
+
+#[test]
+fn an_animal_leaves_only_into_the_exhibit_of_its_shelter() {
+    // The stand is on tile 5 (1, 1) and its exit on tile 4 (0, 1).
+    let (k, b) = exits(true, "");
+    let pen = |tiles: Vec<usize>| crate::exhibit::Part {
+        tiles,
+        grounds: false,
+    };
+    let with = |parts: Vec<crate::exhibit::Part>| {
+        let mut w = blocked(&[], "bush");
+        for part in parts {
+            w.exhibits_mut().add(&part, String::new());
+        }
+        w
+    };
+    let walker = animal(true, false);
+    // The exit on the grounds, and on another exhibit than the stand's: both refused.
+    assert_eq!(
+        exit_of(&with(vec![pen(vec![5])]), &b, &k, 0, Some(&walker)),
+        None
+    );
+    let apart = with(vec![pen(vec![5]), pen(vec![4])]);
+    assert_eq!(exit_of(&apart, &b, &k, 0, Some(&walker)), None);
+    // The same exhibit: accepted; a guest is not held to it.
+    let own = with(vec![pen(vec![4, 5])]);
+    assert_eq!(exit_of(&own, &b, &k, 0, Some(&walker)), Some((32, 96)));
+    assert_eq!(exit_of(&apart, &b, &k, 0, None), Some((32, 96)));
+}
+
+#[test]
+fn a_large_animal_leaves_only_onto_a_flat_or_one_side_raised_tile() {
+    let (k, b) = exits(true, "");
+    let at = |shape: u8| {
+        let mut w = world_with((4, 4), |zoo| zoo.tiles[4].shape = shape);
+        let part = crate::exhibit::Part {
+            tiles: vec![4, 5],
+            grounds: false,
+        };
+        w.exhibits_mut().add(&part, String::new());
+        exit_of(&w, &b, &k, 0, Some(&animal(true, true)))
+    };
+    assert_eq!(at(0x05), Some((32, 96)));
+    assert_eq!(at(0x01), None);
+}
+
+#[test]
+fn a_non_swimmer_does_not_leave_onto_water() {
+    // The exit may be on water here, so only the animal's own rule refuses it.
+    let (k, b) = exits(true, "exitonwater=1\n");
+    let mut wet = world_with((4, 4), |zoo| {
+        zoo.tiles[4].terrain = 1;
+        zoo.tiles[5].terrain = 1;
+    });
+    wet.set_water(vec![false, true]);
+    let part = crate::exhibit::Part {
+        tiles: vec![4, 5],
+        grounds: false,
+    };
+    wet.exhibits_mut().add(&part, String::new());
+    assert_eq!(exit_of(&wet, &b, &k, 0, Some(&animal(false, false))), None);
+    assert_eq!(
+        exit_of(&wet, &b, &k, 0, Some(&animal(true, false))),
+        Some((32, 96))
+    );
+    assert_eq!(exit_of(&wet, &b, &k, 0, None), Some((32, 96)));
 }
 
 #[test]
