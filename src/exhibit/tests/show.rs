@@ -103,6 +103,7 @@ fn the_species_count_follows_the_records_and_no_animal_of_a_neighbour_is_counted
 fn a_drained_neighbour_takes_its_species_away() {
     let mut w = world();
     let (t, s, l) = ids(&w);
+    assert_eq!(lists(&w, s).0.len(), 3);
     empty_and_drain(&mut w, t);
     assert_eq!(lists(&w, s).0, strings(&["orca"]));
     assert_eq!(lists(&w, t).0, strings(&["goat"]));

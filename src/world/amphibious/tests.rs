@@ -159,6 +159,7 @@ mod show {
     fn each_condition_of_the_link_breaks_it() {
         let linked = |w: &World| !shows(w).0.is_empty();
         let (t, s, _) = ids(&show_world(&[]));
+        assert!(linked(&show_world(&[])), "the world as built");
         // Two show tanks, two plain tanks.
         for show in [(true, true), (false, false)] {
             let mut w = show_world(&[]);
