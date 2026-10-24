@@ -32,14 +32,15 @@
 //! holds it for its time inside (`crate::goal`, `crate::building`).
 //!
 //! Not here yet: the effects of the escape, rampage and zap checks (M7: only their counters and
-//! draws run). The ambient choice is taken at the end of the checks by the
-//! behaviour runner ([`Animal::ambient`]).
+//! draws run). The ambient choice is taken at the end of the checks by the behaviour runner
+//! ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
 //! after each update of the values, `animal message <string> <id>` for a message posted,
 //! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
 //! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down,
-//! `animal shelter <id> <building>` when the check takes a shelter, `animal heal <id>`, `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
+//! `animal shelter <id> <building>` when the check takes a shelter, `animal heal <id>`,
+//! `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
 //! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>`, `animal hatch <id>`,
 //! `animal breath <id> <breath>` when the breath rises and `animal terrain <id> <mode>` when the
 //! water check changes the terrain mode (0 land, 1 water, 2 tank).
