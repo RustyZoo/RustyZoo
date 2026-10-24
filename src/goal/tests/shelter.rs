@@ -476,12 +476,16 @@ fn a_slot_that_lists_other_species_or_filters_the_subtype_is_no_shelter_for_the_
     // the subtype refuses it; its own species, an empty list and a filter of other subtypes let it in.
     let caves = [
         ("id=6\n", false),
+        ("id=0\n", false),
+        ("id=-5\n", false),
         ("id=6\nid=7\n", false),
         ("filter=m\n", false),
         ("filter=ym\n", false),
         ("id=5\nfilter=m\n", false),
         ("id=6\nid=5\n", true),
         ("id=5\n", true),
+        ("filter=\n", true),
+        ("id=\n", true),
         ("filter=y\n", true),
         ("filter=yf\n", true),
         ("", true),
