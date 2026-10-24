@@ -21,6 +21,7 @@
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::guest::litter::CAN_FILLING;
+use crate::place::path_shape;
 use crate::sim::Rng;
 use crate::timing::Date;
 use crate::world::{Shape, World};
@@ -102,11 +103,16 @@ pub struct Slot {
 }
 
 /// The species and subtype of an animal, which the slots of a building test (guest buildings 6.1
-/// point 7); guests are passed as `None`, no guest building lists a species or a filter.
+/// point 7), and what the animal needs of its place (6.3 point 5); guests are passed as `None`, no
+/// guest building lists a species or a filter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Species {
     pub id: i32,
     pub subtype: String,
+    /// `cSwims` is 1: the animal may stand on water.
+    pub swims: bool,
+    /// Its footprint (`cFootprintX` times `cFootprintY`) is above 3.
+    pub large: bool,
 }
 
 impl Species {
@@ -116,6 +122,8 @@ impl Species {
         Some(Species {
             id: ty.name_id,
             subtype: e.subtype.clone(),
+            swims: crate::build::number(ty, "cSwims") == Some(1.0),
+            large: ty.footprint[0].saturating_mul(ty.footprint[1]) > 3,
         })
     }
 }
@@ -134,6 +142,8 @@ impl Slot {
 /// What a building type declares (guest buildings 3.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Kind {
+    /// The type's name id (`cNameID`).
+    pub name_id: i32,
     pub capacity: i32,
     pub time_inside: i32,
     pub commerce: bool,
@@ -218,6 +228,7 @@ impl Kind {
         })
         .collect();
         Kind {
+            name_id: ty.name_id,
             capacity: int("cCapacity", if config.is_some() { 1 } else { i32::MAX }),
             time_inside: int("cTimeInside", 0),
             commerce: flag("cCommerce", false),
@@ -607,21 +618,42 @@ pub fn facing(e: &Entity, facing: u32) -> u32 {
     (e.common.as_ref().map_or(0, |c| c.rotation) + facing) % 8
 }
 
+/// The type whose users are not held to their animal's exhibit (guest buildings 6.3 point 5a).
+const SHELTER_OF_ANY_EXHIBIT: i32 = 7059;
+
 /// The place a user of slot `slot` of the building is put at when it leaves by force or by the
 /// exit (guest buildings 6.3, 6.7): the slot's exit for a type whose users use it, else the first
-/// entrance, whose place passes [`fits`]. `None` when there is none, and the slot cannot be used.
-pub fn exit_of(world: &World, e: &Entity, kind: &Kind, slot: usize) -> Option<Point> {
+/// entrance, whose place passes [`fits`]. `who` is the animal that leaves, which its own place
+/// rules apply to too (6.3 point 5); `None` for a guest. `None` when there is none, and the slot
+/// cannot be used.
+pub fn exit_of(
+    world: &World,
+    e: &Entity,
+    kind: &Kind,
+    slot: usize,
+    who: Option<&Species>,
+) -> Option<Point> {
     let s = kind.slots.get(slot)?;
+    let home = e
+        .common
+        .as_ref()
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
+        .and_then(|t| world.exhibits().region(t));
+    let exempt = kind.name_id == SHELTER_OF_ANY_EXHIBIT;
+    let animal = |t: usize| who.is_none_or(|w| animal_place(world, t, w, home, exempt));
     match kind.uses_exit {
-        true => (s.exit.map(|p| place(e, p))).filter(|&p| fits(world, p, Some(s))),
-        false => (s.entrances.iter().map(|&p| place(e, p))).find(|&p| fits(world, p, None)),
+        true => (s.exit.map(|p| place(e, p))).filter(|&p| fits(world, p, Some(s), &animal)),
+        false => {
+            (s.entrances.iter().map(|&p| place(e, p))).find(|&p| fits(world, p, None, &animal))
+        }
     }
 }
 
 /// Guest buildings 6.3, the place test for a guest: the tile of `p` is on the map, in the zoo and
 /// has a quarter free or held by a walkable object; an exit place (`exit` given) must also be on
-/// the terrain the slot allows, water or land.
-fn fits(world: &World, (x, y): Point, exit: Option<&Slot>) -> bool {
+/// the terrain the slot allows, water or land. `animal` is the animal's part of the test (point 5),
+/// which passes a guest.
+fn fits(world: &World, (x, y): Point, exit: Option<&Slot>, animal: &dyn Fn(usize) -> bool) -> bool {
     let Some(t) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
         return false;
     };
@@ -631,7 +663,17 @@ fn fits(world: &World, (x, y): Point, exit: Option<&Slot>) -> bool {
         true => s.exit_water,
         false => s.exit_land,
     });
-    world.in_zoo(t) && open && terrain
+    world.in_zoo(t) && open && terrain && animal(t)
+}
+
+/// Guest buildings 6.3 point 5, the place of an animal on tile `t`: in its own exhibit, which is
+/// the exhibit of its shelter `home` unless the type is `exempt`; not a large animal on a tile that
+/// is not flat or raised along one side (the path shapes of placing 5.3); and not water for a
+/// non-swimmer.
+fn animal_place(world: &World, t: usize, who: &Species, home: Option<u32>, exempt: bool) -> bool {
+    let own = exempt || world.exhibits().region(t) == home;
+    own && !(who.large && !path_shape(world.zoo.tiles[t].shape))
+        && (who.swims || !world.is_water(t))
 }
 
 /// Whether the unit (`who` for an animal) may use slot `slot` of a building (guest buildings 6.1):
@@ -653,7 +695,7 @@ pub fn can_add(
     users < kind.capacity.max(0) as usize
         && in_slot < s.capacity.max(0) as usize
         && s.allows(who)
-        && exit_of(world, e, kind, slot).is_some()
+        && exit_of(world, e, kind, slot, who).is_some()
 }
 
 /// Whether some slot of the building is open (guest buildings 6.1).

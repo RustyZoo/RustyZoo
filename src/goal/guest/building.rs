@@ -519,7 +519,8 @@ impl Cx<'_, '_> {
         building::leave::pay(world, cat, at, self.unit, id, &kind);
         match kind.uses_exit {
             true => {
-                let out = building::leave::put_out(self.world, self.at, self.unit, &e, &kind, slot);
+                let out =
+                    building::leave::put_out(self.world, cat, self.at, self.unit, &e, &kind, slot);
                 if !out {
                     crate::goal::stop_use(self.unit);
                 }
