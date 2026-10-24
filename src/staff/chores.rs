@@ -58,8 +58,8 @@ pub fn poo_left(world: &World, me: u32) -> bool {
             return matches!(region, Some(GROUNDS | EXTERIOR));
         }
         let open = match region {
-            Some(GROUNDS | EXTERIOR) => true,
-            None => false,
+            Some(GROUNDS) => true,
+            Some(EXTERIOR) | None => false,
             Some(x) => animals_in(world, x).is_empty(),
         };
         e.class == "food" && open && !others.contains(&t)

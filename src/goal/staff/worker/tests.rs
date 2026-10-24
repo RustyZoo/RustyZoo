@@ -850,12 +850,18 @@ fn a_pile_beyond_the_zoo_wall_keeps_the_dung_check_of_the_job_going() {
 }
 
 #[test]
+fn food_beyond_the_zoo_wall_does_not_keep_the_dung_check_going() {
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &wall_beyond_column_one());
+    g.dung((0, 5), "food", false);
+    assert!(!crate::staff::chores::poo_left(&g.w, WORKER));
+}
+
+#[test]
 fn dung_beyond_the_zoo_wall_is_bagged_like_dung_on_the_grounds() {
     let mut g = Game::with("", &[(WORKER, (0, 5))], &wall_beyond_column_one());
     g.calm();
     g.dung((0, 5), "poo", true);
     g.run(400);
-    eprintln!("DBG {:?}", g.log);
     assert_eq!(
         g.jobs(),
         ["ZooDoo", "BagDoo", "none"],
