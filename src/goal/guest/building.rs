@@ -147,7 +147,7 @@ impl Cx<'_, '_> {
     /// Guest buildings 6.2: the guest takes building `b` for `need` and sets out for the entrance
     /// of the nearest open slot: task 0x66, or 0x67 for a type with a direct entrance. Whether it
     /// did; if not, the target is cleared.
-    fn head_for(&mut self, b: u32, need: &'static str) -> bool {
+    pub(in crate::goal) fn head_for(&mut self, b: u32, need: &'static str) -> bool {
         if let Some(g) = self.guest() {
             (g.need, g.building) = (Some(need), b);
         }
@@ -224,6 +224,16 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// Guests visit 3.5: a guest that has used an attraction (the stay's check done, the release
+    /// of a user visible inside), or gives it up at a step of the chain, has seen it; its tile joins the seen list. Any other building is not a site.
+    fn saw(&mut self, id: u32) {
+        let at = self.building(id).filter(|(_, k)| k.satisfies("fun"));
+        let tile = at.and_then(|(e, _)| e.common.and_then(|c| self.tile_at((c.x, c.y))));
+        if let (Some(t), Some(g)) = (tile, self.guest()) {
+            crate::guest::view::see(g, t);
+        }
+    }
+
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
     /// (0x67), else it gives up.
     pub(in crate::goal) fn building_arrived(&mut self) {
@@ -237,7 +247,10 @@ impl Cx<'_, '_> {
                 }
                 self.set_task(ENTRANCE, 0, id, Some(t));
             }
-            _ => self.reset(),
+            _ => {
+                self.saw(id);
+                self.reset();
+            }
         }
     }
 
@@ -253,9 +266,11 @@ impl Cx<'_, '_> {
         };
         if kind.commerce && self.mood(id, &kind) == Mood::Angry {
             self.react(Mood::Angry, id);
+            self.saw(id);
             return self.reset();
         }
         let Some((slot, _)) = self.open_slot(id) else {
+            self.saw(id);
             return self.reset();
         };
         if let Some((_, s, _)) = self.aim() {
@@ -327,7 +342,10 @@ impl Cx<'_, '_> {
         };
         match started {
             true => self.set_task(USE, 0, id, None),
-            false => self.reset(),
+            false => {
+                self.saw(id);
+                self.reset();
+            }
         }
     }
 
@@ -362,6 +380,7 @@ impl Cx<'_, '_> {
         }
         let id = self.target().0;
         let uses_exit = self.building(id).is_some_and(|(_, k)| k.uses_exit);
+        self.saw(id);
         self.remove_user();
         if uses_exit {
             super::super::stop_use(self.unit);
@@ -508,7 +527,11 @@ impl Cx<'_, '_> {
             return;
         };
         let over = self.now().wrapping_sub(entered) >= kind.time_inside.max(0) as u32;
-        self.record().done = over && !kind.holds;
+        let done = over && !kind.holds;
+        if done && !self.record().done {
+            self.saw(id);
+        }
+        self.record().done = done;
     }
 
     /// A hidden guest is shown again where it stands.
