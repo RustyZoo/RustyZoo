@@ -8,6 +8,8 @@
 //! `Common::id`, to keep one). The game's rules (what may be placed where, what it costs) are not
 //! here.
 
+use std::collections::BTreeMap;
+
 use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::path::{Finder, Settings};
 use crate::render::corner_elevation;
@@ -226,6 +228,8 @@ pub struct World {
     pub edits: u64,
     /// The game is paused: a fill or drain of a tank is instant.
     paused: bool,
+    /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
+    told_water: BTreeMap<u32, (u32, u32)>,
 }
 
 impl World {
@@ -254,6 +258,7 @@ impl World {
             dirty: false,
             edits: 0,
             paused: false,
+            told_water: BTreeMap::new(),
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);

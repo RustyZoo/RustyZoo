@@ -38,9 +38,15 @@ impl World {
         }
         let (now, changed) = (*tank, *tank != before);
         if changed {
+            // Told only when the level or the purity differ from the last line of the tank (the
+            // values before the first change when none was told): a change of the flag alone is not.
             let (level, purity) = (now.level, now.purity);
-            self.units
-                .world_note(format!("water {id} level {level} purity {purity}"));
+            let told = self.told_water.get(&id).copied();
+            if told.unwrap_or((before.level, before.purity)) != (level, purity) {
+                self.told_water.insert(id, (level, purity));
+                self.units
+                    .world_note(format!("water {id} level {level} purity {purity}"));
+            }
             self.events.push(super::Event::Tank(id));
             self.sync_tanks();
             // The top of the walls moved: the links (tank fauna 12.2) and the escape check flag;

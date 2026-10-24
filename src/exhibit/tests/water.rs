@@ -50,6 +50,30 @@ fn the_level_is_told_to_the_picture() {
 }
 
 #[test]
+fn a_change_of_the_flag_alone_is_not_told_and_a_level_change_is() {
+    let mut world = new_tank("tank", &[]);
+    world.units.take_world_lines();
+    world.drain(1);
+    world.fill(1);
+    world.drain(1);
+    assert!(
+        world.units.take_world_lines().is_empty(),
+        "the level and purity are the same"
+    );
+    world.fill(1);
+    world.step_water();
+    assert_eq!(
+        world.units.take_world_lines(),
+        ["water 1 level 1 purity 90"]
+    );
+    world.drain(1);
+    assert!(
+        world.units.take_world_lines().is_empty(),
+        "a drain is a flag change too"
+    );
+}
+
+#[test]
 fn a_tank_made_while_paused_is_full_at_once_and_drained_at_once() {
     let mut pieces = ring("tank", 2, 2, 3, 3);
     let last = pieces.pop().unwrap();
