@@ -380,19 +380,29 @@ pub fn face(unit: &Unit, world: &mut World, at: usize) {
     let Part::Animal(a) = &unit.part else {
         return;
     };
-    let tile = |e: &Entity| {
-        e.common
-            .as_ref()
-            .map(|c| (c.x.div_euclid(64), c.y.div_euclid(64)))
-    };
     let food = world
         .find(a.food)
-        .and_then(|i| tile(&world.zoo.entities[i]));
+        .and_then(|i| tile_xy(&world.zoo.entities[i]));
+    if let Some(food) = food {
+        turn(unit, world, at, food);
+    }
+}
+
+/// The tile `(x, y)` an entity stands on.
+fn tile_xy(e: &Entity) -> Option<(i32, i32)> {
+    e.common
+        .as_ref()
+        .map(|c| (c.x.div_euclid(64), c.y.div_euclid(64)))
+}
+
+/// Turns the unit at `at` to the nearest direction of tile `to` (movement 9); nothing when it
+/// stands on that tile.
+pub fn turn(unit: &Unit, world: &mut World, at: usize, to: (i32, i32)) {
     let me = &world.zoo.entities[at];
-    let (Some(food), Some(c), Some(here)) = (food, me.common.as_ref(), tile(me)) else {
+    let (Some(c), Some(here)) = (me.common.as_ref(), tile_xy(me)) else {
         return;
     };
-    let Some(facing) = nearest_direction(food.0 - here.0, food.1 - here.1) else {
+    let Some(facing) = nearest_direction(to.0 - here.0, to.1 - here.1) else {
         return;
     };
     let (point, old) = ((c.x, c.y, c.z), c.rotation);

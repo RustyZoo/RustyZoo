@@ -342,6 +342,10 @@ pub struct Runner {
     moving: Option<(Gait, Target)>,
     /// A `fFaceTowardFood` call ran, for the unit to turn.
     face: bool,
+    /// A `fFaceTowardTarget` call ran, for a guest or staff member to turn to its own target.
+    target: bool,
+    /// A `fHalt` call ran, for the unit to stop moving.
+    halt: bool,
     /// An `fDie` call ran, for the animal to be removed.
     die: bool,
     /// An `fHatch` call ran, for the egg to hatch.
@@ -371,6 +375,8 @@ impl Default for Runner {
             talking: false,
             moving: None,
             face: false,
+            target: false,
+            halt: false,
             die: false,
             hatch: false,
         }
@@ -396,6 +402,16 @@ impl Runner {
     /// Whether a face-the-food call ran since the last time, once.
     pub fn take_face(&mut self) -> bool {
         std::mem::take(&mut self.face)
+    }
+
+    /// Whether a face-the-target call ran since the last time, once.
+    pub fn take_target(&mut self) -> bool {
+        std::mem::take(&mut self.target)
+    }
+
+    /// Whether a halt call ran since the last time, once.
+    pub fn take_halt(&mut self) -> bool {
+        std::mem::take(&mut self.halt)
     }
 
     /// Whether an `fDie` call ran since the last time, once.
@@ -661,6 +677,16 @@ impl Runner {
             }
             Op::FaceFood => {
                 self.face = true;
+                self.chain[k].done = true;
+                return true;
+            }
+            Op::FaceTarget => {
+                self.target = true;
+                self.chain[k].done = true;
+                return true;
+            }
+            Op::Halt => {
+                self.halt = true;
                 self.chain[k].done = true;
                 return true;
             }
