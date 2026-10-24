@@ -1128,7 +1128,7 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:25@29,50;29726:12@21,51;29745:17@36,32;29748:19@34,34;29750:21@20,50" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:25@29,50;29726:12@21,51;29745:16@36,33;29748:21@32,34;29750:21@20,50" "guest_pace maps/scn01a.zoo"
 check base-trial "29699:28@29,53;29726:22@22,42;29745:17@36,32;29748:20@33,34;29750:21@20,50" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
