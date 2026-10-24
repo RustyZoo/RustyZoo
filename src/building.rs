@@ -638,8 +638,8 @@ fn fits(world: &World, (x, y): Point, exit: Option<&Slot>) -> bool {
 }
 
 /// Whether the unit (`who` for an animal) may use slot `slot` of a building (guest buildings 6.1):
-/// the building and the slot have room, the slot's species and filter let it in, and an exit exists (6.3: an entrance, or the slot's exit for a type that uses
-/// it, that passes the place test).
+/// the building and the slot have room, the slot's species and filter let it in, and an exit exists
+/// (6.3: an entrance, or the slot's exit for a type that uses it, that passes the place test).
 pub fn can_add(
     world: &World,
     e: &Entity,
