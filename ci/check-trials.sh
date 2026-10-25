@@ -814,10 +814,21 @@ guest_panel() { # guest_panel <map>
   d=$(mktemp -d)
   printf '1 pause\n2 mouse 652 598\n3 down\n4 up\n6 mouse 1005 667\n7 down\n8 up\n10 mouse 400 100\n11 down\n12 up\n' >"$d/script"
   rz run "$1" --headless --seed 3 --passes 14 --clock 67 --script "$d/script" 2>/dev/null |
-    grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' | tr ' ' _ | paste -sd';' -
+    grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' |
+    while IFS= read -r l; do # the thoughts are printed as their count and a checksum, not as text
+      case $l in
+        *' thoughts ['*)
+          t=${l#*' thoughts '}
+          l=${l%%' thoughts ['*}
+          n=$(printf '%s' "$t" | grep -o '", "' | wc -l | tr -d ' ')
+          [ "$t" = '[]' ] || n=$((n + 1))
+          printf '%s thoughts %s %08x\n' "$l" "$n" "$(printf '%s' "$t" | cksum | cut -d' ' -f1)" ;;
+        *) printf '%s\n' "$l" ;;
+      esac
+    done | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
 }
-check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_short_time"_favourite_"Polar_Bear"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
+check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_short_time"_favourite_"Polar_Bear"_thoughts_5_b193c13a;panel_guest_none' "guest_panel maps/scn19.zoo"
 
 # The building panel (information panels 4.1, guest buildings 7.2, 10.3): the game paused, the Objects
 # panel's second item (a burger stand, 3.50 within 1.00 and 6.50) is placed and clicked, then the up
@@ -1332,9 +1343,9 @@ save_load() { # save_load <map>
   echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
   rm -rf "$d"
 }
-check base-trial "102706,0,77016be6e5143c71" "save_load maps/default.zoo"
+check base-trial "102637,0,93f230a1cc604adf" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial "231828,0,57ec654d8e099da0" "save_load maps/scn19.zoo"
+check expansion-trial "227408,0,09719a9f060e88a1" "save_load maps/scn19.zoo"
 
 exit $failed

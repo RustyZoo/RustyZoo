@@ -30,6 +30,16 @@ impl Thoughts {
         self.0.truncate(KEPT);
     }
 
+    /// Puts a thought of a loaded file at the back (save games 9).
+    pub fn push_back(&mut self, thought: Thought) {
+        self.0.push_back(thought);
+    }
+
+    /// The thoughts, newest first.
+    pub fn iter(&self) -> impl Iterator<Item = &Thought> {
+        self.0.iter()
+    }
+
     /// 8.4: the newest `n` thoughts that match, newest first.
     fn newest(&self, n: usize, matches: impl Fn(&Thought) -> bool) -> Vec<&Thought> {
         self.0.iter().filter(|t| matches(t)).take(n).collect()

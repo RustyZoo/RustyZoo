@@ -842,6 +842,114 @@ fn a_gate_where_the_keeper_cannot_pass_is_still_valid_but_not_clear() {
     assert!(!passes(&world, 4, 2, 2));
 }
 
+/// A map with one square exhibit (tile (3, 3) inside) whose record stores `stats`, and a second
+/// record at tile (0, 0), which is the grounds.
+fn saved_world(stats: [u32; 9]) -> World {
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+    z.habitat_tiles = vec![(3, 3), (0, 0)];
+    z.habitat_gates = vec![((-1, -1), -1); 2];
+    z.habitat_info = vec![stored("A", stats, 0), stored("B", [9; 9], 0)];
+    unique(&mut z);
+    World::new(z, shape)
+}
+
+#[test]
+fn a_saved_exhibit_writes_its_live_statistics_and_service_time() {
+    let bits = |v: [f32; 6]| v.map(f32::to_bits);
+    let [a, b, c, d, e, f] = bits([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    // Stored this month, last month, total: the counts are 7, 8, 9.
+    let mut world = saved_world([a, b, c, d, e, f, 7, 8, 9]);
+    let x = world.exhibits_mut().get_mut(1).unwrap();
+    assert_eq!(
+        x.stats.count,
+        [8, 7, 9],
+        "kept last month, this month, total"
+    );
+    // The game moved the figures on.
+    x.stats.donations = [10.0, 20.0, 30.0];
+    x.stats.upkeep = [40.0, 50.0, 60.0];
+    x.stats.count = [1, 2, 3];
+    x.rating.serviced = 99;
+    let zoo = world.saved(|_| true);
+    let [a, b, c, d, e, f] = bits([20.0, 10.0, 30.0, 50.0, 40.0, 60.0]);
+    assert_eq!(zoo.habitat_info[0].stats, [a, b, c, d, e, f, 2, 1, 3]);
+    assert_eq!(zoo.habitat_info[0].serviced, 99);
+    // A record whose tile is in no exhibit keeps what it stored, and the world is not touched.
+    assert_eq!(zoo.habitat_info[1].stats, [9; 9]);
+    assert_eq!(world.zoo.habitat_info[0].stats[0], 1.0f32.to_bits());
+}
+
+#[test]
+fn the_month_end_moves_the_counts_and_the_grounds_figures_like_the_money() {
+    let mut world = saved_world([0, 0, 0, 0, 0, 0, 7, 8, 9]);
+    world.exhibits_mut().grounds_stats.count = [1, 2, 3];
+    world.exhibits_mut().grounds_stats.donations = [1.0, 2.0, 3.0];
+    world.exhibits_mut().enter_new_month();
+    let x = world.exhibits().get(1).unwrap();
+    assert_eq!(x.stats.count, [7, 0, 9]);
+    let g = &world.exhibits().grounds_stats;
+    assert_eq!((g.count, g.donations), ([2, 0, 3], [2.0, 0.0, 3.0]));
+}
+
+#[test]
+fn thoughts_load_in_file_order_keeping_the_ones_about_known_entities() {
+    use crate::guest::thought::Thought;
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+    z.habitat_tiles = vec![(3, 3)];
+    z.habitat_gates = vec![((-1, -1), -1)];
+    z.habitat_info = vec![stored("A", [0; 9], 0)];
+    unique(&mut z);
+    let none = u32::MAX;
+    // Text, thinker, object and tile: on the exhibit, with an object, an unknown thinker, an
+    // unknown object, outside the map, one coordinate missing, and without anything.
+    z.set_thoughts(vec![
+        [100, 1, 0, 3, 3],
+        [101, 2, 3, none, none],
+        [102, 777, 0, 3, 3],
+        [103, 1, 777, 3, 3],
+        [104, 0, 0, 50, 50],
+        [105, 0, 0, 3, none],
+        [106, 0, 0, none, none],
+    ]);
+    let mut world = World::new(z, shape);
+    let got: Vec<Thought> = world.units.thoughts.iter().cloned().collect();
+    let thought = |text, thinker, object, exhibit, gate| Thought {
+        text,
+        thinker,
+        object,
+        exhibit,
+        gate,
+    };
+    assert_eq!(
+        got,
+        [
+            thought(100, 1, None, Some(1), Some(27)),
+            thought(101, 2, Some(3), None, None),
+            thought(104, 0, None, None, None),
+            thought(105, 0, None, None, None),
+            thought(106, 0, None, None, None),
+        ]
+    );
+    // Saved, they come back in the same order; one about an entity the file will not hold is not
+    // written, and the entity of a thought that went is not needed.
+    let all = world.saved(|_| true).thoughts().to_vec();
+    assert_eq!(all.len(), 5);
+    assert_eq!(all[0], [100, 1, 0, 3, 3]);
+    assert_eq!(all[1], [101, 2, 3, none, none]);
+    assert_eq!(all[4], [106, 0, 0, none, none]);
+    let id_of = |e: &Entity| e.common.as_ref().unwrap().id;
+    let fewer = world.saved(|e| id_of(e) != 3);
+    let texts: Vec<u32> = fewer.thoughts().iter().map(|t| t[0]).collect();
+    assert_eq!(texts, [100, 104, 105, 106]);
+    // A thought given in play goes in front.
+    world.units.think(1, 200, None, None);
+    assert_eq!(world.saved(|_| true).thoughts()[0][0], 200);
+}
+
 fn stored(name: &str, stats: [u32; 9], created: u64) -> HabitatInfo {
     HabitatInfo {
         name: name.into(),

@@ -1761,9 +1761,8 @@ impl<'a> App<'a> {
     /// warning and the run goes on.
     fn save_game(&mut self, file: &str) {
         let Some(game) = &self.game else { return };
-        let mut zoo = game.world.zoo.clone();
+        let mut zoo = (game.world).saved(crate::zoo::knows(self.renderer.catalogue()));
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
-        zoo.drop_unknown(crate::zoo::knows(self.renderer.catalogue()));
         let written = zoo
             .write(&game.money)
             .and_then(|bytes| std::fs::write(file, bytes).map_err(|e| e.to_string()));

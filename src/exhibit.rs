@@ -66,6 +66,9 @@ pub struct Stats {
     pub upkeep: [f32; 3],
     /// The calendar time guests spent watching it, in units of 100 ns (habitat rating 13.2).
     pub viewing: u64,
+    /// The counts, in the same order. Nothing counts yet (habitat rating O12): a file's values
+    /// are kept, moved at the month end and written back. Not hashed.
+    pub count: [u32; 3],
 }
 
 impl Stats {
@@ -75,6 +78,7 @@ impl Stats {
         for t in [&mut self.donations, &mut self.upkeep] {
             *t = [t[1], 0.0, t[2]];
         }
+        self.count = [self.count[1], 0, self.count[2]];
     }
 }
 
@@ -236,6 +240,9 @@ pub struct Exhibits {
     /// The zoo grounds' own timers and record (habitat rating 4): the update is the exhibits',
     /// and its recomputation only clears the record.
     pub grounds: rating::State,
+    /// The zoo grounds' figures, which the month end moves like an exhibit's. No file stores them
+    /// and nothing writes them yet (habitat rating 13.3).
+    pub grounds_stats: Stats,
 }
 
 /// The tiles of the region of `start` in the original's order (exhibits and money 3.1): a stack of
@@ -402,6 +409,7 @@ impl Exhibits {
             next: self.next,
             counter: self.counter,
             grounds: self.grounds.clone(),
+            grounds_stats: self.grounds_stats.clone(),
         }
     }
 
@@ -470,6 +478,7 @@ impl Exhibits {
         for e in &mut self.list {
             e.stats.enter_new_month();
         }
+        self.grounds_stats.enter_new_month();
     }
 
     /// Marks exhibit `id` to be rated again (habitat rating 4), and its amphibious and show

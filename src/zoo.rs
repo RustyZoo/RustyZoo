@@ -11,8 +11,9 @@
 //! name). Of the sections after the entities it models the view, the clocks with the event queue, the
 //! name counters and, through [`Zoo::parse_money`], the cash and the accounts. Everything else is read
 //! only to refuse the files the original loader refuses, and its bytes are kept for [`Zoo::write`]
-//! (the habitat and show records, the body of every entity, the scenario, thoughts, research, awards,
-//! marketing and cheats). Bytes after the last section are ignored, as the original does.
+//! (the habitat and show records, the body of every entity, the scenario, research, awards,
+//! marketing and cheats; the thoughts are kept as five words each, the statistics of the habitats
+//! are patched in by [`Zoo::write`]). Bytes after the last section are ignored, as the original does.
 //!
 //! From version 70 every entity record states the size of its body, so a record whose class or
 //! layout is not understood is skipped (its [`Entity::common`] is `None`). Before version 70 the
@@ -179,8 +180,10 @@ pub struct Kept {
     finances: Vec<u8>,
     /// Where the account tables, the adult price (from 39), the calendar and the cash start in it.
     at: [usize; 4],
-    /// The thoughts.
-    thoughts: Vec<u8>,
+    /// Where the statistics of each habitat start in `habitats`.
+    stats_at: Vec<usize>,
+    /// The thoughts as stored: text id, thinker, object, tile x and y (save games 9).
+    thoughts: Vec<[u32; 5]>,
     /// Research, awards, marketing, the shows of 89 to 96 and the cheats.
     research: Vec<u8>,
     /// The word after the world clock (until 66).
@@ -423,6 +426,16 @@ pub struct View {
 }
 
 impl Zoo {
+    /// The thoughts as stored, newest first.
+    pub fn thoughts(&self) -> &[[u32; 5]] {
+        &self.kept.thoughts
+    }
+
+    /// Replaces the thoughts a save writes.
+    pub fn set_thoughts(&mut self, thoughts: Vec<[u32; 5]>) {
+        self.kept.thoughts = thoughts;
+    }
+
     /// The tile in column `x` and row `y`, if it is on the map.
     pub fn tile(&self, x: u32, y: u32) -> Option<&Tile> {
         if x >= self.width || y >= self.height {
@@ -680,8 +693,10 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let mut habitat_tiles = Vec::new();
     let mut habitat_gates = Vec::new();
     let mut habitat_info = Vec::new();
+    let mut stats_at = Vec::new();
     for _ in 0..habitat_count {
-        let (tile, gate, tank, info) = habitat(r)?;
+        let (tile, gate, tank, info, at) = habitat(r, from.len())?;
+        stats_at.push(at);
         habitat_tiles.push(tile);
         habitat_gates.push(gate);
         habitat_info.push(info);
@@ -740,6 +755,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     *section = "later sections";
     let (view, clocks, names, mut kept) = after_entities(r, money)?;
     kept.habitats = habitats;
+    kept.stats_at = stats_at;
     Ok(Zoo {
         version: v,
         locale,
@@ -769,14 +785,23 @@ fn taken(from: &[u8], r: &Reader) -> Vec<u8> {
 /// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
 const HABITAT_MIN: usize = 76;
 
-type Habitat = ((i32, i32), ((i32, i32), i32), Option<Tank>, HabitatInfo);
+type Habitat = (
+    (i32, i32),
+    ((i32, i32), i32),
+    Option<Tank>,
+    HabitatInfo,
+    usize,
+);
 
-fn habitat(r: &mut Reader) -> R<Habitat> {
+/// Reads a habitat record; `size` is the length of the bytes the section started with, and the last
+/// value is where the record's statistics start in them.
+fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
     let v = r.v;
     let tile = (r.i32()?, r.i32()?);
     let name = latin1(r.string()?);
     let gate = (r.i32()?, r.i32()?);
     let side = r.i32()?;
+    let at = size - r.data.len();
     let mut stats = [0; 9];
     for s in &mut stats {
         *s = r.u32()?;
@@ -796,7 +821,7 @@ fn habitat(r: &mut Reader) -> R<Habitat> {
         show_info(r)?;
     }
     if !is_tank {
-        return Ok((tile, (gate, side), None, info));
+        return Ok((tile, (gate, side), None, info, at));
     }
     let (height, level) = (r.u32()?, r.u32()?);
     if v >= 88 {
@@ -820,6 +845,7 @@ fn habitat(r: &mut Reader) -> R<Habitat> {
             purity,
         }),
         info,
+        at,
     ))
 }
 
@@ -1041,9 +1067,9 @@ fn after_entities(
     }
     kept.finances = taken(from, r);
 
-    let from = r.data;
-    r.skip_list(20)?; // thoughts
-    kept.thoughts = taken(from, r);
+    kept.thoughts = (0..r.count(20)?)
+        .map(|_| Ok([r.u32()?, r.u32()?, r.u32()?, r.u32()?, r.u32()?]))
+        .collect::<R<_>>()?;
     // The AI clock: the milliseconds left over, then the whole AI ticks (7.6).
     (clocks.ai_rem, clocks.ai_ticks) = (r.u32()?, r.u32()?);
     if v >= 97 {

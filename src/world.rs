@@ -20,6 +20,7 @@ use crate::zoo::{Entity, Tile, Zoo};
 mod amphibious;
 mod exhibit;
 mod filter;
+mod save;
 mod tank;
 mod water;
 mod wear;
@@ -271,6 +272,7 @@ impl World {
         }
         world.walk_loaded();
         world.units.sync(&world.zoo.entities);
+        world.load_thoughts();
         world.dirty = false;
         world
     }
