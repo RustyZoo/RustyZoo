@@ -79,7 +79,8 @@ fn fixture(name: &str, scn: bool, free: bool) -> (Install, Vfs, Interface) {
          [f]\nid=11512\nx=70\ny=75\n{button}\
          [g]\ntype=UIText\nid=11531\nx=0\ny=130\ndx=60\ndy=10\n\
          [h]\nid=11513\nx=70\ny=20\n{button}\
-         [i]\nid=11514\nx=70\ny=40\naction=2\ntarget=-1\n{button}"
+         [i]\nid=11514\nx=70\ny=40\naction=2\ntarget=-1\n{button}\
+         [j]\ntype=UIText\nid=11503\nx=0\ny=0\ndx=60\ndy=10\n"
     );
     let mut files: Vec<(&str, Vec<u8>)> = vec![
         ("ui/root.lyt", root.as_bytes().to_vec()),
@@ -569,4 +570,28 @@ fn a_start_repairs_the_fences_when_resetfences_is_above_zero() {
         assert!(!reads(Some(no)), "{no}");
     }
     assert!(!reads(None));
+}
+
+#[test]
+fn the_freeform_screen_can_list_saved_games_and_goes_back_to_the_maps() {
+    let (install, vfs, mut ui) = fixture("saved", false, true);
+    let mut menu = menu("", &install, &vfs);
+    assert!(show_saved(
+        &mut ui,
+        vec![b"a.zoo".to_vec(), b"b.zoo".to_vec()],
+        b"Load"
+    ));
+    assert_eq!(text(&ui, 11503), "Load");
+    assert_eq!(text_of_row(&ui, 11504, 1), "b.zoo");
+    for id in [11501, 11507, 11510, 11511, 11512, 11531] {
+        assert!(flag(&ui, id, HIDDEN), "{id}");
+    }
+    assert!(flag(&ui, 11513, DISABLED), "Load waits for a row");
+    enable_load(&mut ui, true);
+    assert!(!flag(&ui, 11513, DISABLED));
+    // The map list shows what it hides again, with its own title.
+    menu.pressed(&vfs, &mut ui, 7110);
+    assert!(!flag(&ui, 11510, HIDDEN) && !flag(&ui, 11511, HIDDEN));
+    assert_eq!(text_of_row(&ui, 11504, 1), "Map Two");
+    assert_ne!(text(&ui, 11503), "Load");
 }

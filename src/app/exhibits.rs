@@ -12,8 +12,8 @@ use crate::timing::ini_whole;
 use crate::world::Event;
 
 /// The layout of the name dialog, its message, its field and the string of its message.
-const NAME_DIALOG: i32 = 45300;
-const NAME_FIELD: i32 = 45308;
+pub(super) const NAME_DIALOG: i32 = 45300;
+pub(super) const NAME_FIELD: i32 = 45308;
 const NAME_TEXT: i32 = 158;
 /// The question about the objects a new tank does not allow.
 const TANK_OBJECTS: i32 = 10552;

@@ -49,6 +49,9 @@ pub fn interface_command(event: &Event) -> Option<Command> {
         Scancode::PageDown => Key::PageDown,
         Scancode::Y => Key::Y,
         Scancode::N => Key::N,
+        // Only Ctrl+S and Ctrl+L act (input 10); typed letters come as characters.
+        Scancode::S => Key::S,
+        Scancode::L => Key::L,
         _ => return None,
     };
     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
@@ -253,6 +256,14 @@ mod tests {
         assert_eq!(
             press(Scancode::Y, Mod::NOMOD),
             Some(Command::Key(Key::Y, false, false))
+        );
+        assert_eq!(
+            press(Scancode::S, Mod::RCTRLMOD),
+            Some(Command::Key(Key::S, true, false))
+        );
+        assert_eq!(
+            press(Scancode::L, Mod::LCTRLMOD),
+            Some(Command::Key(Key::L, true, false))
         );
         assert_eq!(press(Scancode::Return, Mod::LALTMOD), None);
         assert_eq!(press(Scancode::F1, Mod::NOMOD), None);

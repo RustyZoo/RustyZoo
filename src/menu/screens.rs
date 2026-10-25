@@ -23,6 +23,9 @@ const SCENARIO_PLAY: i32 = 50008;
 
 /// The freeform screen: list, picture, description, cash field and its spinners, difficulty, Play.
 const MAP_LIST: i32 = 11504;
+/// The list and the Play button of the freeform screen are those of the saved games too.
+pub const SAVED_LIST: i32 = MAP_LIST;
+pub const SAVED_LOAD: i32 = MAP_PLAY;
 const MAP_PICTURE: i32 = 11501;
 const MAP_DESCRIPTION: i32 = 11507;
 const CASH_FIELD: i32 = 11510;
@@ -31,6 +34,46 @@ const CASH_DOWN: i32 = 11512;
 const DIFFICULTY: i32 = 11531;
 const MAP_PLAY: i32 = 11513;
 const BACK: [i32; 2] = [50009, 11514];
+
+/// The title of the freeform screen, and what a list of saved games does not use: the picture, the
+/// description, the starting cash and the difficulty.
+const TITLE: i32 = 11503;
+const UNUSED: [i32; 11] = [
+    11501, 11502, 11506, 11507, 11508, 11509, CASH_FIELD, CASH_UP, CASH_DOWN, 11530, DIFFICULTY,
+];
+
+/// Shows the freeform screen as a list of saved games: `names` are the rows, `title` the heading,
+/// and Play (Load) is off until a row is selected. `false` if there is no such screen.
+pub fn show_saved(ui: &mut Interface, names: Vec<Vec<u8>>, title: &[u8]) -> bool {
+    // Showing a layout shows what it holds.
+    let shown = ui.show(super::FREEFORM_LAYOUT);
+    for id in UNUSED {
+        ui.set_hidden(id, true);
+    }
+    ui.set_text(TITLE, title);
+    let rows = names.into_iter().map(|text| Row {
+        text,
+        ..Row::default()
+    });
+    ui.set_rows(MAP_LIST, rows.collect());
+    enable(ui, MAP_PLAY, false);
+    shown
+}
+
+/// Load is on while a row of the list of saved games is selected.
+pub fn enable_load(ui: &mut Interface, on: bool) {
+    enable(ui, MAP_PLAY, on);
+}
+
+/// The freeform screen as the map list uses it again.
+fn show_maps(ui: &mut Interface) {
+    for id in UNUSED {
+        ui.set_hidden(id, false);
+    }
+    if let Some(i) = ui.tree.find(TITLE) {
+        ui.tree.elements[i].text = None;
+    }
+}
 
 /// The icons in front of a scenario: won, playable, locked.
 const ICONS: [&str; 3] = [
@@ -247,6 +290,7 @@ impl Menu {
     /// The screen is shown: the list of maps (or its one line), the selection that was there or
     /// the first map, and the starting cash from the settings.
     fn open_freeform(&mut self, vfs: &Vfs, ui: &mut Interface, log: &mut Vec<String>) {
+        show_maps(ui);
         let rows: Vec<Row> = match self.freeforms.is_empty() {
             true => vec![Row {
                 text: NO_MAPS.as_bytes().to_vec(),

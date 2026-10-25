@@ -22,6 +22,8 @@ impl UiStrings for Texts {
             151 => "Exit?",
             153 => "Leave?",
             318 => "Cannot open",
+            11645 => "Save failed",
+            11646 => "Name too long",
             _ => "",
         }
         .into()
@@ -34,18 +36,23 @@ impl UiStrings for Texts {
 
 /// The main menu (layout 26) with Exit (7116, at the top left) and Continue (7113, at 20, 0), a
 /// question (45000, its message 45006 and the buttons Yes, No, OK and Cancel at 0, 10, 20 and 30
-/// of its top) and, hidden, the options panel (5) with Main Menu (1503) and Exit Game (1504).
+/// of its top), the name dialog (45300: message 45306, field 45308, OK 45312 and Cancel 45313), the
+/// list of saved games (layout 39: title 11503, list 11504, Load 11513, Back 11514) and, hidden, the
+/// options panel (5) with Load Game (1501), Save Game (1502), Main Menu (1503) and Exit Game (1504).
 fn interface(install: &Install) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
         [b]\ntype=UILayout\nlayout=ui/menu.lyt\n\
         [c]\ntype=UILayout\nlayout=ui/q.lyt\n\
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
+        [n]\ntype=UILayout\nlayout=ui/name.lyt\n\
+        [l]\ntype=UILayout\nlayout=ui/list.lyt\n\
         [e]\ntype=UILayout\nlayout=ui/panel.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
         "[LayoutInfo]\nid=26\nlayer=2\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
-         [x]\nid=7116\nx=0\ny=0\n{button}[y]\nid=7113\nx=20\ny=0\n{button}"
+         [x]\nid=7116\nx=0\ny=0\n{button}[y]\nid=7113\nx=20\ny=0\n{button}\
+         [z]\nid=7112\nx=40\ny=0\n{button}"
     );
     let q = format!(
         "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=40\ndy=10\nstate=1\n\
@@ -57,7 +64,23 @@ fn interface(install: &Install) -> Interface {
     );
     let options = format!(
         "[LayoutInfo]\nid=5\nlayer=3\nx=40\ny=20\ndx=20\ndy=20\nstate=1\n\
-         [a]\nid=1503\nx=0\ny=0\n{button}[b]\nid=1504\nx=10\ny=10\n{button}"
+         [a]\nid=1503\nx=0\ny=0\n{button}[b]\nid=1504\nx=10\ny=10\n{button}\
+         [c]\nid=1501\nx=10\ny=0\n{button}[d]\nid=1502\nx=0\ny=10\n{button}"
+    );
+    let name = format!(
+        "[LayoutInfo]\nid=45300\nlayer=7\nx=0\ny=0\ndx=40\ndy=26\nstate=1\n\
+         [m]\ntype=UIText\nid=45306\nx=0\ny=0\ndx=40\ndy=8\n\
+         [f]\ntype=UIEditableText\nid=45308\nx=0\ny=8\ndx=40\ndy=8\n\
+         [o]\nid=45312\nx=0\ny=16\ntarget=1\naction=5\n{button}\
+         [c]\nid=45313\nx=10\ny=16\ntarget=2\naction=5\n{button}"
+    );
+    let list = format!(
+        "[LayoutInfo]\nid=39\nlayer=3\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
+         [t]\ntype=UIText\nid=11503\nx=0\ny=0\ndx=40\ndy=10\n\
+         [l]\ntype=UIListBox\nid=11504\nx=0\ny=12\ndx=40\ndy=36\nhandledoubleclicks=1\n\
+         state=131072\nborder=0\n\
+         [p]\nid=11513\nx=44\ny=12\n{button}\
+         [b]\nid=11514\nx=44\ny=24\naction=2\ntarget=-1\n{button}"
     );
     let made = Install::new(
         &format!(
@@ -69,6 +92,8 @@ fn interface(install: &Install) -> Interface {
             ("ui/menu.lyt", menu.into_bytes()),
             ("ui/q.lyt", q.into_bytes()),
             ("ui/options.lyt", options.into_bytes()),
+            ("ui/name.lyt", name.into_bytes()),
+            ("ui/list.lyt", list.into_bytes()),
             (
                 "ui/panel.lyt",
                 b"[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=40\ndx=64\ndy=8\nstate=1\n\
@@ -84,13 +109,13 @@ fn interface(install: &Install) -> Interface {
 }
 
 /// The bytes of a map of 2 by 2 tiles.
-fn map() -> Vec<u8> {
+pub(super) fn map() -> Vec<u8> {
     crate::zoo::tests::file(106, 2, 2, &[], &[])
 }
 
 /// Runs `body` on the main menu over a folder that has `saved.zoo` (a good map), `bad.zoo` (not
 /// a map), and the settings `ini`.
-fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Install)) {
+pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Install)) {
     let files = Install::new(&format!("start-{name}"), &[]);
     std::fs::write(files.0.join("saved.zoo"), map()).unwrap();
     std::fs::write(files.0.join("bad.zoo"), b"not a map").unwrap();
@@ -113,7 +138,7 @@ fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Install)) {
     body(&mut app, &files);
 }
 
-fn click(x: i32, y: i32) -> [Command; 3] {
+pub(super) fn click(x: i32, y: i32) -> [Command; 3] {
     [
         Command::Mouse(Mouse::Move(x, y)),
         Command::Mouse(Mouse::Down),
@@ -122,7 +147,7 @@ fn click(x: i32, y: i32) -> [Command; 3] {
 }
 
 /// The log lines of a pass that the menu and the game wrote, without the lead.
-fn said(app: &App, pass: u64, now: u64) -> Vec<String> {
+pub(super) fn said(app: &App, pass: u64, now: u64) -> Vec<String> {
     let lead = format!("pass {pass} t={now} ");
     app.log_lines(pass, now)
         .iter()
@@ -132,14 +157,14 @@ fn said(app: &App, pass: u64, now: u64) -> Vec<String> {
         .collect()
 }
 
-fn shown(app: &mut App, id: i32) -> bool {
+pub(super) fn shown(app: &mut App, id: i32) -> bool {
     let ui = app.interface().unwrap();
     ui.tree
         .find(id)
         .is_some_and(|i| ui.tree.elements[i].state & HIDDEN == 0)
 }
 
-const CONTINUE: [Command; 3] = [
+pub(super) const CONTINUE: [Command; 3] = [
     Command::Mouse(Mouse::Move(25, 5)),
     Command::Mouse(Mouse::Down),
     Command::Mouse(Mouse::Up),
@@ -179,14 +204,14 @@ fn continue_opens_the_file_hides_the_menu_fades_the_music_and_runs_with_the_capp
 }
 
 /// Starts the game of `Continue` and runs a few passes; returns the clock.
-fn started(app: &mut App) -> u64 {
+pub(super) fn started(app: &mut App) -> u64 {
     app.pass(0, &[]);
     app.pass(66, &CONTINUE);
     assert!(app.camera().is_some());
     66
 }
 
-fn key(key: Key) -> [Command; 1] {
+pub(super) fn key(key: Key) -> [Command; 1] {
     [Command::Key(key, false, false)]
 }
 
@@ -205,7 +230,7 @@ fn escape_asks_and_no_stops_the_game_for_the_menu_with_continue_checked_and_the_
         assert_eq!(said(app, 11, now), ["menu game ask leave"]);
         assert!(app.paused() && app.camera().is_some());
         assert!(app.interface().unwrap().modal_open());
-        // Cancel, and Yes (which cannot save yet), leave the game as it is.
+        // Cancel, and Yes then Cancel in the save dialog, leave the game as it is.
         now += 66;
         app.pass(now, &key(Key::Escape));
         assert!(app.camera().is_some() && !app.paused());
@@ -213,7 +238,9 @@ fn escape_asks_and_no_stops_the_game_for_the_menu_with_continue_checked_and_the_
         app.pass(now, &key(Key::Escape));
         now += 66;
         app.pass(now, &key(Key::Y));
-        assert_eq!(said(app, 14, now), ["menu game save unavailable"]);
+        assert_eq!(said(app, 14, now), ["menu game save dialog"]);
+        now += 66;
+        app.pass(now, &key(Key::Escape));
         assert!(app.camera().is_some() && !app.paused());
         // No stops it: the menu is back, Continue is checked again, the music restarts.
         now += 66;
@@ -221,7 +248,7 @@ fn escape_asks_and_no_stops_the_game_for_the_menu_with_continue_checked_and_the_
         now += 66;
         app.pass(now, &key(Key::N));
         assert_eq!(
-            said(app, 16, now),
+            said(app, 17, now),
             [
                 "menu game stop",
                 "menu continue saved.zoo",

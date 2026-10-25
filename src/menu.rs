@@ -22,14 +22,15 @@ use crate::vfs::Vfs;
 use crate::zoo::Zoo;
 
 mod screens;
+pub use screens::{SAVED_LIST, SAVED_LOAD, enable_load, show_saved};
 
 /// The layout of the main menu and the elements the code touches.
-const LAYOUT: i32 = 26;
+pub const LAYOUT: i32 = 26;
 const BACKGROUND: i32 = 7100;
 const CONTINUE: i32 = 7113;
 /// The string of the message when the file Continue names cannot be opened.
 const CANNOT_OPEN: i32 = 318;
-const LOAD: i32 = 7112;
+pub const LOAD: i32 = 7112;
 const ZOO_ITEMS: i32 = 7114;
 const EXIT: i32 = 7116;
 const VERSION: i32 = 7119;
@@ -38,7 +39,7 @@ const CREDITS: i32 = 7115;
 const CREDITS_LAYOUT: i32 = 40;
 /// The layouts of the scenario and freeform screens.
 const SCENARIO_LAYOUT: i32 = 32;
-const FREEFORM_LAYOUT: i32 = 39;
+pub const FREEFORM_LAYOUT: i32 = 39;
 /// Seconds a credits page stays when no registry file says.
 const CREDITS_DELAY: i32 = 8;
 /// The string of the version label and the tooltips of Continue.
@@ -211,9 +212,9 @@ impl Menu {
             }
         }
         self.check_continue(ui, &mut log);
-        // Zoo Items needs the original's download service, Load needs the saved games.
+        // Zoo Items needs the original's download service.
         enable(ui, ZOO_ITEMS, false);
-        enable(ui, LOAD, false);
+        enable(ui, LOAD, true);
         if let Some(version) = &self.version
             && let Some(i) = ui.tree.find(VERSION)
         {
@@ -264,6 +265,20 @@ impl Menu {
             }
             log.push("continue disabled".to_string());
         }
+    }
+
+    /// `[user] lastfile` as a path: relative to the install folder unless it is absolute, with
+    /// the slashes of the system; `None` when it is empty.
+    pub fn last_path(&self) -> Option<PathBuf> {
+        let last = self.setting("user", "lastfile")?;
+        let last = String::from_utf8_lossy(last).trim().replace('\\', "/");
+        (!last.is_empty()).then(|| self.root.join(last))
+    }
+
+    /// A game was saved to or loaded from `path`: it becomes `[user] lastfile`, the file Continue
+    /// opens.
+    pub fn set_last_file(&mut self, path: &str) {
+        self.write_back("user", "lastfile", path);
     }
 
     /// The button `id` was selected: the lines for the log and whether the program ends.

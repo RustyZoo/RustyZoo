@@ -452,8 +452,10 @@ usage: rustyzoo [--data <dir>] <command>
                       every [credits] delay seconds (8) of interface time, in the order of the registry
                       files ui/credits/credit*.cfg (descending names, version above 0): a log line
                       `menu credits page N layout ID` for each, `menu credits end` after the last and
-                      `menu credits closed` when Exit closed them. The button that loads a saved game is disabled until saved games
-                      come. The scenario and freeform buttons show their screens with the lists
+                      `menu credits closed` when Exit closed them. Load Saved Game (or Ctrl+L) lists the `.zoo` files of the folder of
+                      `lastfile`, else of the `Saved Games` folder of the user folder, on the freeform
+                      screen (`menu game load list N`); Load starts the one selected and makes it
+                      `lastfile` (`menu game start load FILE`). The scenario and freeform buttons show their screens with the lists
                       filled: `menu scenarios N`, one `menu scenario SECTION won|playable|locked
                       NAMEID` per entry (ascending section names; won, playable and locked by
                       `[scenario]` of the ini file), `menu scenario select SECTION STATE picture
@@ -475,9 +477,14 @@ usage: rustyzoo [--data <dir>] <command>
                       be loaded is a question box with its message (`menu message TEXT`) and the
                       menu stays. In a game, Escape (with nothing to cancel; an open panel closes
                       first), the window being closed (`close` in a script) and the Main Menu and
-                      Exit Game buttons of the options panel ask whether to save (`menu game ask
-                      leave|exit`, Yes No Cancel; Yes cannot save yet and changes nothing, `menu
-                      game save unavailable`): No stops the game and shows the menu again (`menu
+                      Exit Game buttons of the options panel, and Load Game (Ctrl+L), ask whether to
+                      save (`menu game ask leave|exit|load`, Yes No Cancel; Yes opens the save dialog, `menu game save dialog`, a name field that starts
+                      from `lastfile`; `.zoo` is added to a name that does not end exactly in it, the
+                      file is written aside and renamed (`menu game saved FILE`, which becomes
+                      `lastfile`), and a failed write or a name over 256 bytes is a message; after a
+                      good save the question goes on, after Cancel nothing happens; Save Game and Ctrl+S
+                      open the same dialog; none of this asks while the Save Game button is
+                      disabled): No stops the game and shows the menu again (`menu
                       game stop`, Continue checked, the music from its start unless it plays at
                       full level: `menu music restart`) or, for Exit, ends the run (`menu game
                       exit`). `quit` in a script ends the run without a question. A run of a map
