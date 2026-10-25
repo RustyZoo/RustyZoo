@@ -100,9 +100,20 @@ impl World {
             match e.class.as_str() {
                 "animals" => {
                     let k = animal::Keys::of(ty, &self.units.class);
+                    let class = &self.units.class;
                     let new = || {
                         let mut a = animal_new(k.initial_happiness, k.max_hits, now);
                         a.female = matches!(e.subtype.as_str(), "f" | "p");
+                        // The counters that are not drawn take their creation values.
+                        (a.life, a.baby) = (
+                            k.time_death.wrapping_sub(1),
+                            k.baby_to_adult.wrapping_sub(1),
+                        );
+                        (a.interval, a.mate_delay) = (
+                            k.reproduction_interval,
+                            class.mate_pick_delay.wrapping_sub(1),
+                        );
+                        a.boxed = class.boxed.wrapping_sub(1);
                         a
                     };
                     let base = c.animal.take().map_or_else(new, |a| *a);

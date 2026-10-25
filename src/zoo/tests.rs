@@ -1574,8 +1574,13 @@ fn new_animal() -> AnimalRecord {
             words: [5, 6, 7],
             last: 8,
         }),
+        life: 4319,
+        baby: 999,
+        interval: 1600,
+        mate_delay: 2,
+        boxed: 1,
         home: [30, 40],
-        spare: (1..=94).collect(),
+        spare: (1..=74).collect(),
     }
 }
 
@@ -2449,7 +2454,15 @@ fn animal_back(a: &AnimalRecord) -> AnimalRecord {
 
 #[test]
 fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
-    let back = animal_back(&animal_new(75, 120, 7));
+    let new = AnimalRecord {
+        life: 4319,
+        baby: 999,
+        interval: 1600,
+        mate_delay: 2,
+        boxed: 1,
+        ..animal_new(75, 120, 7)
+    };
+    let back = animal_back(&new);
     assert_eq!(
         (back.happiness, back.hunger, back.health, back.energy),
         (75, 0, 120, 0)
@@ -2458,12 +2471,20 @@ fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
         (back.dates, back.home, back.escape),
         ([7, 7], [-1, -1], None)
     );
-    // The keeper-visit level, the five rate multipliers and the crate counter are 1.
-    let ones: Vec<usize> = (0..94).filter(|&i| back.spare[i] != 0).collect();
+    assert_eq!(back.second, "\n");
     assert_eq!(
-        (back.spare.len(), ones),
-        (94, vec![1, 6, 10, 14, 18, 22, 76])
+        (
+            back.life,
+            back.baby,
+            back.interval,
+            back.mate_delay,
+            back.boxed
+        ),
+        (4319, 999, 1600, 2, 1)
     );
+    // The keeper-visit level and the five rate multipliers are 1.
+    let ones: Vec<usize> = (0..74).filter(|&i| back.spare[i] != 0).collect();
+    assert_eq!((back.spare.len(), ones), (74, vec![1, 6, 10, 14, 18, 22]));
     assert!(back.spare.iter().filter(|&&b| b > 1).count() == 0);
 }
 
@@ -2489,12 +2510,12 @@ fn an_animal_record_of_any_size_is_written_whole() {
     );
     assert_eq!(back.breath, Some(i32::MAX));
     assert_eq!(back.spare[..3], [9, 1, 0]);
-    assert_eq!(back.spare.len(), 94);
+    assert_eq!(back.spare.len(), 74);
     let long = AnimalRecord {
         spare: vec![1; 500],
         ..full
     };
-    assert_eq!(animal_back(&long).spare, vec![1; 94]);
+    assert_eq!(animal_back(&long).spare, vec![1; 74]);
     // An escape record is kept only with the flag 1.
     let none = AnimalRecord {
         escape: None,

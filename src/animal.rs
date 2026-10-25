@@ -165,6 +165,8 @@ pub struct Class {
     /// `cMatePickDelay`: the reproduction checks a monogamous animal waits before it looks for
     /// another mate (animals-needs 11.2).
     pub mate_pick_delay: i32,
+    /// `cBoxedCheck`: the period of the crate counter, which creation does not draw.
+    pub boxed: i32,
 }
 
 impl Default for Class {
@@ -216,6 +218,7 @@ impl Class {
             reset_interval: 0,
             death_chance: int("cDeathChance", 99),
             mate_pick_delay: int("cMatePickDelay", 3),
+            boxed: int("cBoxedCheck", 2),
         }
     }
 }

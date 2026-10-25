@@ -16,7 +16,7 @@ pub struct AnimalRecord {
     pub energy: i32,
     pub dung: i32,
     pub female: bool,
-    /// The second string, which the original writes empty.
+    /// The second string: one line feed for a new animal, the file's text for a read one.
     pub second: String,
     /// The counters of the checks in the order of the animal module's indices.
     pub counters: [Option<i32>; 16],
@@ -36,6 +36,13 @@ pub struct AnimalRecord {
     /// The rampage flag and counter (animals 11).
     pub rampaging: bool,
     pub rampage: i32,
+    /// The counters the record stores that are not drawn (save games 11.3): life, grow-up, birth
+    /// interval, mate delay and crate. A version that lacks one reads it as 0.
+    pub life: i32,
+    pub baby: i32,
+    pub interval: i32,
+    pub mate_delay: i32,
+    pub boxed: i32,
     /// The two dates (zoo format 6.11), as file times.
     pub dates: [u64; 2],
     /// Where the animal escaped from, when the escape flag is 1.
@@ -57,11 +64,13 @@ pub struct Escape {
 }
 
 /// A new animal (save games 11.3): the type's initial happiness and full health, not hungry, no
-/// energy, no counter running, both dates `now`, no home exhibit.
+/// energy, no counter running, the one line feed, both dates `now`, no home exhibit. The caller
+/// gives the counters that are not drawn their creation values.
 pub(crate) fn animal_new(happiness: i32, health: i32, now: u64) -> AnimalRecord {
     AnimalRecord {
         happiness,
         health,
+        second: "\n".into(),
         dates: [now; 2],
         home: [-1; 2],
         ..AnimalRecord::default()
@@ -98,7 +107,9 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
     a.keeper_visited = r.u8()? != 0;
     spare.extend(r.take(2)?);
     a.counters[4] = Some(r.i32()?);
-    spare.extend(r.take(6 + 12)?);
+    spare.extend(r.take(6)?);
+    (a.baby, a.interval) = (r.i32()?, r.i32()?);
+    spare.extend(r.take(4)?);
     a.dates = [r.u64()?, r.u64()?];
     spare.extend(r.take(2)?);
     // Two words (from 41), three words (from 43) and the dying flag.
@@ -108,10 +119,11 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
     }
     match v >= 43 {
         true => {
-            spare.extend(r.take(12)?);
+            (a.mate_delay, a.life) = (r.i32()?, r.i32()?);
+            spare.extend(r.take(4)?);
             a.dying = r.u8()? != 0;
         }
-        false => spare.extend([0; 12]),
+        false => spare.extend([0; 4]),
     }
     a.mourning = v >= 44 && r.u8()? != 0;
     if v >= 46 {
@@ -125,13 +137,14 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
         let last = if v >= 81 { r.u32()? } else { 0 };
         a.escape = Some(Escape { tiles, words, last });
     }
-    // Two words and a byte, then the crated flag.
+    // The crate counter, a word and a byte, then the crated flag.
     match v >= 52 {
         true => {
-            spare.extend(r.take(9)?);
+            a.boxed = r.i32()?;
+            spare.extend(r.take(5)?);
             a.crated = r.u8()? != 0;
         }
-        false => spare.extend([0; 9]),
+        false => spare.extend([0; 5]),
     }
     a.thirsty = v >= 54 && r.u8()? != 0;
     a.drinking = (v == 57 || v >= 61) && r.u8()? != 0;
@@ -211,11 +224,17 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
     o.u8(flag(a.keeper_visited));
     s.put(o, &[0; 2]);
     o.i32(c(4));
-    s.put(o, &[0; 6 + 12]);
+    s.put(o, &[0; 6]);
+    o.i32(a.baby);
+    o.i32(a.interval);
+    s.put(o, &[0; 4]);
     for d in a.dates {
         o.bytes(&d.to_le_bytes());
     }
-    s.put(o, &[0; 2 + 8 + 12]);
+    s.put(o, &[0; 2 + 8]);
+    o.i32(a.mate_delay);
+    o.i32(a.life);
+    s.put(o, &[0; 4]);
     o.bytes(&[flag(a.dying), flag(a.mourning)]);
     o.i32(c(14));
     match &a.escape {
@@ -227,8 +246,9 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
         }
         None => o.u32(0),
     }
-    // The crate counter 1, a word and the tranquilised flag; then the crated one.
-    s.put(o, &[1, 0, 0, 0, 0, 0, 0, 0, 0]);
+    // The crate counter, a word and the tranquilised flag; then the crated one.
+    o.i32(a.boxed);
+    s.put(o, &[0; 5]);
     o.bytes(&[flag(a.crated), flag(a.thirsty), flag(a.drinking)]);
     o.u8(flag(a.rampaging));
     s.put(o, &[0; 4]);

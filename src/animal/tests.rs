@@ -2116,6 +2116,49 @@ fn the_keeper_food_goal_draws_before_looking_and_picks_by_them() {
 }
 
 #[test]
+fn the_crate_period_is_the_class_key_or_two() {
+    let boxed = |v: Option<i32>| {
+        let int = |key: &str, fallback| match (key, v) {
+            ("cBoxedCheck", Some(v)) => v,
+            _ => fallback,
+        };
+        Class::read(&int).boxed
+    };
+    assert_eq!(
+        [
+            boxed(None),
+            boxed(Some(0)),
+            boxed(Some(-5)),
+            boxed(Some(i32::MAX))
+        ],
+        [2, 0, -5, i32::MAX]
+    );
+}
+
+#[test]
+fn a_new_animal_takes_the_creation_values_of_the_counters_it_does_not_draw() {
+    let cat = zebras_with(
+        "cTimeDeath=4320\ncBabyToAdult=1000\ncReproductionInterval=1601\ncMatePickDelay=4",
+        "",
+    );
+    let mut world = pens();
+    world.units.class.boxed = 3;
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    let a = zoo
+        .entities
+        .iter()
+        .find(|e| e.common.as_ref().is_some_and(|c| c.id == 500))
+        .and_then(|e| e.common.as_ref()?.animal.clone())
+        .unwrap();
+    assert_eq!(
+        (a.life, a.baby, a.interval, a.mate_delay, a.boxed),
+        (4319, 999, 1601, 2, 2)
+    );
+    assert_eq!(a.second, "\n");
+}
+
+#[test]
 fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     let cat = zebras();
     let escape = Escape {
