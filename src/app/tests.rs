@@ -520,6 +520,8 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Char(0),
         Command::Char(255),
         Command::Skip,
+        Command::Save("my zoo.zoo"),
+        Command::Load("saved games/a.zoo"),
     ] {
         assert_eq!(command.to_string().parse(), Ok(command));
     }
@@ -550,6 +552,8 @@ fn commands_have_a_text_form_that_reads_back() {
         "char -1",
         "char ab",
         "skip 1",
+        "save",
+        "load   ",
     ] {
         assert!(bad.parse::<Command>().is_err(), "{bad:?}");
     }

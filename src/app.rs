@@ -112,6 +112,8 @@ pub enum Mouse {
 /// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
 /// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
+/// `save FILE` writes the game to a file and `load FILE` opens a saved game as Continue does (the
+/// file name runs to the end of the line; the name is kept for the rest of the run).
 /// A window reads `fullscreen` in a script as a request to switch, and makes the command itself
 /// when the window has switched, so a log replays it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +150,8 @@ pub enum Command {
     Char(u8),
     /// A key or a mouse button was pressed: stops the intro movie that plays. Ignored by the game.
     Skip,
+    Save(&'static str),
+    Load(&'static str),
 }
 
 impl fmt::Display for Command {
@@ -183,6 +187,8 @@ impl fmt::Display for Command {
             }
             Command::Char(byte) => write!(f, "char {byte}"),
             Command::Skip => f.write_str("skip"),
+            Command::Save(file) => write!(f, "save {file}"),
+            Command::Load(file) => write!(f, "load {file}"),
         }
     }
 }
@@ -193,7 +199,13 @@ impl FromStr for Command {
     fn from_str(text: &str) -> Result<Command, String> {
         let words: Vec<&str> = text.split_whitespace().collect();
         let number = |w: &str| w.parse::<i32>().map_err(|_| format!("not a number: {w:?}"));
+        let file = |word: &str| match text.trim().strip_prefix(word).map(str::trim) {
+            Some(file) if !file.is_empty() => Ok(&*Box::leak(file.to_string().into_boxed_str())),
+            _ => Err(format!("{word} takes a file name: {text:?}")),
+        };
         Ok(match words.as_slice() {
+            ["save", ..] => Command::Save(file("save")?),
+            ["load", ..] => Command::Load(file("load")?),
             ["scroll", x, y] => {
                 let (x, y) = (number(x)?, number(y)?);
                 if !(-1..=1).contains(&x) || !(-1..=1).contains(&y) {
@@ -1068,6 +1080,8 @@ impl<'a> App<'a> {
                 return self.cancel(true);
             }
             Command::Fullscreen(on) => self.fullscreen = on,
+            Command::Load(file) => return self.load_saved(file),
+            Command::Save(file) => return self.save_game(file),
             _ => {}
         }
         let keys = self.map_keys();
@@ -1702,18 +1716,59 @@ impl<'a> App<'a> {
             Some(Request::Open(start)) => {
                 let Some(menu) = &self.menu else { return };
                 let zoo = menu.load(&start.path, self.renderer.catalogue());
-                let opened = zoo
-                    .and_then(|(zoo, money)| self.open_game(zoo, money).map_err(|e| e.to_string()));
-                match opened {
-                    Ok(()) => {
-                        self.loaded_check();
-                        self.begin(&start)
-                    }
-                    Err(why) => self.say(&why),
-                }
+                self.open(&start, zoo);
             }
             Some(Request::Message(text)) => self.say(&text),
             None => {}
+        }
+    }
+
+    /// Opens the game that was read, or tells why it was not.
+    fn open(&mut self, start: &Start, read: Result<(Zoo, Money), String>) {
+        let opened =
+            read.and_then(|(zoo, money)| self.open_game(zoo, money).map_err(|e| e.to_string()));
+        match opened {
+            Ok(()) => {
+                self.loaded_check();
+                self.begin(start)
+            }
+            Err(why) => self.say(&why),
+        }
+    }
+
+    /// `load FILE` of a script: a saved game opens as a Continue does.
+    fn load_saved(&mut self, file: &str) {
+        let catalogue = self.renderer.catalogue();
+        let read = std::fs::read(file).map_err(|e| format!("{file}: {e}"));
+        let read = read.and_then(|bytes| {
+            Zoo::parse_money(&bytes)
+                .and_then(|(zoo, money)| Ok((zoo.checked(catalogue)?, money)))
+                .map_err(|e| format!("{file}: {e}"))
+        });
+        let start = Start {
+            path: file.to_string(),
+            label: "load".to_string(),
+            forget_last: false,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+        };
+        self.open(&start, read);
+    }
+
+    /// `save FILE` of a script: the game as it is, with the camera of the moment. A failure is a
+    /// warning and the run goes on.
+    fn save_game(&mut self, file: &str) {
+        let Some(game) = &self.game else { return };
+        let mut zoo = game.world.zoo.clone();
+        (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
+        let written = zoo
+            .write(&game.money)
+            .and_then(|bytes| std::fs::write(file, bytes).map_err(|e| e.to_string()));
+        match written {
+            Ok(()) => self.menu_events.push(format!("game saved {file}")),
+            Err(why) => eprintln!("rustyzoo: warning: save {file}: {why}"),
         }
     }
 

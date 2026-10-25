@@ -1320,4 +1320,19 @@ sim_twice() { # sim_twice <map>
 check base-trial same "sim_twice maps/default.zoo"
 check expansion-trial same "sim_twice maps/sm_aqua.zoo"
 
+# A saved game: `save` writes the zoo (the size of the file, as the map's), `load` opens it as Continue
+# does, and neither warns. Prints the size, the warnings and the state hash after the load.
+save_load() { # save_load <map>
+  abs_bin=$(cd "$(dirname "$bin")" && pwd)/$(basename "$bin")
+  abs_dir=$(cd "$dir" && pwd)
+  d=$(mktemp -d)
+  # The names are relative to the folder: a native Windows program does not read a Unix path in a file.
+  printf '0 save a.zoo\n1 load a.zoo\n' >"$d/script"
+  h=$(cd "$d" && "$abs_bin" --data "$abs_dir/$trial" sim "$1" --ticks 3 --hash --script script 2>err)
+  echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
+  rm -rf "$d"
+}
+check base-trial "102706,0,77016be6e5143c71" "save_load maps/default.zoo"
+check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
+
 exit $failed
