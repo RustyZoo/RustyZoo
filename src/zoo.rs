@@ -21,7 +21,7 @@
 //! The parser knows nothing of the entity definitions. The original also refuses a file of a
 //! version below 70 whose entity has a type it has no definition for, even if its class is
 //! known; [`Zoo::check_types`] does the same once the caller has the definitions, and
-//! [`Zoo::drop_unknown`] drops the entities of an unknown type of a newer file.
+//! [`Zoo::drop_unknown`] drops the entities of an unknown type, which the engine does when it writes.
 //!
 //! [`Zoo::write`] mirrors the reader. What the engine does not model is kept as read ([`Kept`], and
 //! the body of each entity in [`Common`]) and written back; what it models is written from the model.
@@ -438,22 +438,16 @@ impl Zoo {
         }
     }
 
-    /// Drops the entities whose type `known` does not find, as the original does when it skips
-    /// their records: no unit is made for them and they are not saved again (zoo format 6.2).
+    /// Drops the entities whose type `known` does not find, as the original's loader does when it
+    /// skips their records: it makes no unit for them and so never saves them (zoo format 6.2).
+    /// The engine keeps them in play and drops them when it writes.
     pub fn drop_unknown(&mut self, known: impl Fn(&Entity) -> bool) {
         self.entities.retain(known);
     }
 
-    /// Applies [`Zoo::check_types`] and [`Zoo::drop_unknown`] with the types of `catalogue`.
-    pub fn checked(mut self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
-        let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-        let known = |e: &Entity| {
-            catalogue
-                .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
-                .is_some()
-        };
-        self.check_types(known)?;
-        self.drop_unknown(known);
+    /// Applies [`Zoo::check_types`] with the types of `catalogue`.
+    pub fn checked(self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
+        self.check_types(knows(catalogue))?;
         Ok(self)
     }
 
@@ -496,6 +490,16 @@ type R<T> = Result<T, Bad>;
 
 fn bad<T>(why: &str) -> R<T> {
     Err(Bad(why.into()))
+}
+
+/// Whether the types of `catalogue` have a definition for an entity.
+pub fn knows(catalogue: &Catalogue) -> impl Fn(&Entity) -> bool + '_ {
+    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+    move |e| {
+        catalogue
+            .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
+            .is_some()
+    }
 }
 
 /// A bounds-checked reader over untrusted bytes; `v` is the version of the file.

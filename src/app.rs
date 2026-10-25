@@ -1763,6 +1763,7 @@ impl<'a> App<'a> {
         let Some(game) = &self.game else { return };
         let mut zoo = game.world.zoo.clone();
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
+        zoo.drop_unknown(crate::zoo::knows(self.renderer.catalogue()));
         let written = zoo
             .write(&game.money)
             .and_then(|bytes| std::fs::write(file, bytes).map_err(|e| e.to_string()));

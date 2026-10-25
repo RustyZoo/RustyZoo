@@ -843,7 +843,7 @@ fn a_type_without_definition_refuses_a_file_without_body_sizes() {
         // The class is known and the body decodes; only the type is missing.
         assert_eq!(z.check_types(known).is_err(), refused, "version {v}");
         assert!(z.check_types(|_| true).is_ok(), "version {v}");
-        // From 70 the entity of the missing type is dropped, with its record.
+        // The entity of the missing type can be dropped, with its record.
         if !refused {
             let (mut z, money) = Zoo::parse_money(&file(v, 1, 1, &[], &ents)).unwrap();
             z.drop_unknown(known);
