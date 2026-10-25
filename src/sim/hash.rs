@@ -102,6 +102,7 @@ impl Fnv {
             food,
             animal: _,
             guest: _,
+            unit: _,
             building: _,
             filter,
             raw: _,

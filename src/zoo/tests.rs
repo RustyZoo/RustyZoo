@@ -1,5 +1,6 @@
 //! Synthetic files built in code; no original data.
 
+use super::write::Out;
 use super::*;
 
 /// A growing byte buffer with the field types of the format.
@@ -1434,6 +1435,355 @@ fn an_entity_without_a_body_is_not_written() {
         ..Zoo::parse(&rich(106)).unwrap()
     };
     assert!(blank.write(&money).is_err());
+}
+
+/// A unit block of the model, with every kind of field set.
+fn block() -> UnitBlock {
+    let level = |name: &str, child| Level {
+        name: name.into(),
+        list_a: vec!["a".into(), "b".into()],
+        call: "bCall".into(),
+        args: vec!["x".into()],
+        flags: [1, 2, 3],
+        child,
+        list_b: vec!["t".into()],
+        tail: [4, 5, 6, 7],
+        ..Level::default()
+    };
+    UnitBlock {
+        b1: 3,
+        w1: 9,
+        p1: [32 + 64 * 3, 32 + 64 * 5, 0],
+        building: [4, 8],
+        p2: [64 * 2 + 7, 64 * 4 + 9, 0],
+        p3: [32 + 64 * 9, 32 + 64 * 8, 0],
+        target: Target {
+            goal: 7,
+            sub_goal: -3,
+            words: [1, u32::MAX],
+            target: [64 * 6, 64, 0],
+            sub_target: [-1, -1, -1],
+            bytes: [1, 2],
+            extra: [5, 6],
+            active: 7,
+            active_sub: 0,
+        },
+        pending: "bEat".into(),
+        pending_flag: 1,
+        records: vec![[1, 2, 3], [4, 5, 6]],
+        limited: 10,
+        b11: 1,
+        w9: 12,
+        move_kind: 3,
+        move_data: (1..=33).collect(),
+        text: "far".into(),
+        flags: [(1, 513), (0, 0)],
+        behaviour: Behaviour {
+            levels: vec![level("bWalk", 1), level("bHappy", 1), level("bSit", 0)],
+        },
+        ..UnitBlock::default()
+    }
+}
+
+/// The unit block as written in version `v`, read back in version `v`.
+fn through(v: u32, guest: bool, u: &UnitBlock) -> UnitBlock {
+    let mut o = Out(Vec::new());
+    unit::write(&mut o, v, guest, 2, u).unwrap();
+    let mut r = Reader::new(&o.0, v);
+    let (back, mode) = unit::read(&mut r, guest).unwrap_or_else(|e| panic!("{}", e.0));
+    assert_eq!((mode, r.data.len()), (2, 0), "version {v}");
+    back
+}
+
+fn read_unit(bytes: &[u8], v: u32) -> (UnitBlock, u32) {
+    unit::read(&mut Reader::new(bytes, v), false).unwrap_or_else(|e| panic!("{}", e.0))
+}
+
+#[test]
+fn the_unit_block_is_written_and_read_back_in_every_version() {
+    for v in [45, 53, 57, 62, 70, 74, 80, 84, 85, 90, 93, 97, 98, 101, 106] {
+        let mut u = block();
+        // What a version lacks takes the default: the model of an old file cannot hold more.
+        let old = through(v, false, &u);
+        assert_eq!(through(v, false, &old), old, "version {v}");
+        assert_eq!(old.p1, u.p1, "version {v}");
+        assert_eq!(old.p2, u.p2, "version {v}");
+        assert_eq!(old.target.target, u.target.target, "version {v}");
+        assert_eq!(old.p3, u.p3, "version {v}");
+        assert_eq!(old.b1, 3);
+        assert_eq!(old.pending, "bEat");
+        assert_eq!(old.records.len(), 2);
+        assert_eq!(old.limited, if v >= 46 { 10 } else { 0 });
+        if v >= 106 {
+            u.behaviour = old.behaviour.clone();
+            assert_eq!(old, u);
+        }
+    }
+}
+
+#[test]
+fn a_field_a_version_lacks_takes_the_value_the_original_writes() {
+    let u = UnitBlock {
+        short: 5,
+        b5: 4,
+        w9: 9,
+        text: "x".into(),
+        move_kind: 3,
+        move_data: vec![1; 33],
+        limited: 4,
+        target: Target {
+            goal: 12,
+            sub_goal: 4,
+            extra: [1, 2],
+            active: 99,
+            active_sub: 98,
+            ..Target::default()
+        },
+        records: vec![[1, 2, 3]],
+        ..UnitBlock::default()
+    };
+    let old = through(70, false, &u);
+    assert_eq!((old.short, old.b5, old.w9), (100, 0, 0));
+    assert_eq!((old.move_kind, old.move_data.len(), &*old.text), (2, 0, ""));
+    // Before 72 the active goal and sub-goal are the wanted ones.
+    assert_eq!((old.target.active, old.target.active_sub), (12, 4));
+    let newer = through(72, false, &u);
+    assert_eq!((newer.target.active, newer.target.active_sub), (99, 98));
+    assert_eq!(through(52, false, &u).target.extra, [0, 0]);
+    assert_eq!(old.records, [[1, 2, 0]]);
+    assert_eq!(through(83, false, &u).records, [[1, 2, 0]]);
+    // Reading version 84 gives the mode and the type 2 only when the file lacks them.
+    let mut o = Out(Vec::new());
+    unit::write(&mut o, 83, false, 3, &u).unwrap();
+    let (back, mode) = read_unit(&o.0, 83);
+    assert_eq!((mode, back.move_kind), (2, 2));
+}
+
+#[test]
+fn old_tiles_become_world_positions() {
+    let u = UnitBlock {
+        p1: [32 + 64 * 3, 32 + 64 * 5, 0],
+        p2: [64 * 2 + 7, 64 * 4 + 9, 0],
+        target: Target {
+            target: [64 * 6, 64 * 7, 0],
+            sub_target: [-1; 3],
+            ..Target::default()
+        },
+        p3: [32 + 64 * 9, 32 + 64 * 8, 0],
+        ..UnitBlock::default()
+    };
+    let mut o = Out(Vec::new());
+    unit::write(&mut o, 70, false, 2, &u).unwrap();
+    let int = |o: &Out, at: usize| i32::from_le_bytes(o.0[at..at + 4].try_into().unwrap());
+    // 6 bytes, then the first tile; a tile and two words; then the pair of tiles.
+    assert_eq!((int(&o, 6), int(&o, 10)), (3, 5));
+    assert_eq!(
+        [int(&o, 30), int(&o, 34), int(&o, 38), int(&o, 42)],
+        [2, 4, 7, 9]
+    );
+    // After 12 more bytes of the base block and 16 of the goals: the two target tiles.
+    assert_eq!(
+        [int(&o, 80), int(&o, 84), int(&o, 88), int(&o, 92)],
+        [6, 7, -1, -1]
+    );
+    let (back, _) = read_unit(&o.0, 70);
+    assert_eq!((back.p1, back.p2), (u.p1, u.p2));
+    assert_eq!(
+        (back.target.target, back.target.sub_target),
+        (u.target.target, [-1; 3])
+    );
+    assert_eq!(back.p3, u.p3);
+    // The tile (-1, -1) is the position (-1, -1, -1), and the pair of tiles (-1, -1) is (-65, -65, 0).
+    let none = UnitBlock {
+        p1: [-1; 3],
+        p2: [-65, -65, 0],
+        ..UnitBlock::default()
+    };
+    let mut o = Out(Vec::new());
+    unit::write(&mut o, 70, false, 2, &none).unwrap();
+    assert_eq!([int(&o, 6), int(&o, 10)], [-1, -1]);
+    assert_eq!(
+        [int(&o, 30), int(&o, 34), int(&o, 38), int(&o, 42)],
+        [-1; 4]
+    );
+    let (back, _) = read_unit(&o.0, 70);
+    assert_eq!((back.p1, back.p2), (none.p1, none.p2));
+    // And the hostile extremes wrap instead of panicking.
+    let huge = UnitBlock {
+        p1: [i32::MAX, i32::MIN, 0],
+        p2: [i32::MIN, i32::MAX, 0],
+        ..UnitBlock::default()
+    };
+    through(70, false, &huge);
+}
+
+#[test]
+fn the_destination_before_75_is_the_tile_centre() {
+    let at = |p: [i32; 3]| {
+        through(
+            70,
+            false,
+            &UnitBlock {
+                p3: p,
+                ..UnitBlock::default()
+            },
+        )
+        .p3
+    };
+    assert_eq!(at([64 * 27 + 32, 64 * 30 + 32, 0]), [1760, 1952, 0]);
+    // No (-1, -1) case.
+    assert_eq!(at([-32, -32, 0]), [-32, -32, 0]);
+    assert_eq!(at([-1, -1, -1]), [-32, -32, 0]);
+}
+
+#[test]
+fn old_tiles_carry_the_ground_height() {
+    use super::{Ground, Tile};
+    let tile = |elevation, shape| Tile {
+        elevation,
+        shape,
+        terrain: 0,
+        edges: 0,
+    };
+    // Row 0: base -3 flat, base 2 sloping; row 1 the same.
+    let tiles = vec![tile(-3, 0), tile(2, 0x50), tile(-3, 0), tile(2, 0x50)];
+    let ground = std::rc::Rc::new(Ground {
+        width: 2,
+        height: 2,
+        tiles,
+    });
+    let u = UnitBlock {
+        p1: [32, 32, 0],
+        p2: [64 + 8, 5, 0],
+        p3: [32 + 64, 32, 0],
+        target: Target {
+            target: [0, 0, 0],
+            sub_target: [64 * 5, 0, 0],
+            ..Target::default()
+        },
+        ..UnitBlock::default()
+    };
+    let mut o = Out(Vec::new());
+    unit::write(&mut o, 70, false, 2, &u).unwrap();
+    let mut r = Reader::new(&o.0, 70);
+    r.ground = Some(ground);
+    let (back, _) = unit::read(&mut r, false).unwrap_or_else(|e| panic!("{}", e.0));
+    assert_eq!(back.p1, [32, 32, -48]);
+    // The point (8, 5) of a sloping tile: 16 * 2 + 8 / 4.
+    assert_eq!(back.p2, [72, 5, 34]);
+    assert_eq!(back.p3, [96, 32, 40]);
+    // The target takes the base height only; a tile outside the map is (-1, -1, -1).
+    assert_eq!(back.target.target, [0, 0, -48]);
+    assert_eq!(back.target.sub_target, [-1; 3]);
+}
+
+#[test]
+fn a_unit_block_value_above_10_is_reset() {
+    let mut o = Out(Vec::new());
+    let u = UnitBlock {
+        limited: 11,
+        ..UnitBlock::default()
+    };
+    unit::write(&mut o, 106, false, 2, &u).unwrap();
+    let (back, _) = read_unit(&o.0, 106);
+    assert_eq!(back.limited, 0);
+    for n in [0, 10] {
+        let u = UnitBlock {
+            limited: n,
+            ..u.clone()
+        };
+        assert_eq!(through(106, false, &u).limited, n);
+    }
+}
+
+#[test]
+fn the_flags_of_version_97_are_written_only_when_exactly_1() {
+    let flags = [(1, 513), (2, 0)];
+    let u = UnitBlock {
+        flags,
+        ..UnitBlock::default()
+    };
+    assert_eq!(through(106, false, &u).flags, flags);
+    // Guests have none, and neither has a version before 97.
+    assert_eq!(through(106, true, &u).flags, [(0, 0); 2]);
+    assert_eq!(through(96, false, &u).flags, [(0, 0); 2]);
+    // A value that follows a flag other than 1 is not written.
+    let lost = UnitBlock {
+        flags: [(2, 77), (0, 0)],
+        ..u
+    };
+    assert_eq!(through(106, false, &lost).flags, [(2, 0), (0, 0)]);
+}
+
+#[test]
+fn a_movement_of_type_3_keeps_its_data_and_the_mode_is_the_type_before_93() {
+    let u = block();
+    let back = through(106, false, &u);
+    assert_eq!((back.move_kind, back.move_data), (3, u.move_data.clone()));
+    let back = through(95, false, &u);
+    assert_eq!(back.move_data.len(), 13);
+    // Before 93 the type written is the mode, so a mode of 3 gets data and another mode drops it.
+    let mut o = Out(Vec::new());
+    unit::write(&mut o, 92, false, 1, &u).unwrap();
+    let (back, mode) = read_unit(&o.0, 92);
+    assert_eq!((mode, back.move_kind, back.move_data.len()), (1, 1, 0));
+    for kind in [-1, i32::MIN, 1, 2] {
+        let u = UnitBlock {
+            move_kind: kind,
+            ..u.clone()
+        };
+        assert_eq!(through(106, false, &u).move_kind, kind);
+    }
+}
+
+#[test]
+fn a_string_of_4096_characters_in_a_unit_block_is_not_written() {
+    let mut o = Out(Vec::new());
+    let u = UnitBlock {
+        pending: "x".repeat(4096),
+        ..UnitBlock::default()
+    };
+    assert!(unit::write(&mut o, 106, false, 2, &u).is_err());
+    let mut b = block().behaviour;
+    assert!(unit::write_behaviour(&mut Out(Vec::new()), &b).is_ok());
+    b.levels[1].args.push("y".repeat(4096));
+    assert!(unit::write_behaviour(&mut Out(Vec::new()), &b).is_err());
+}
+
+#[test]
+fn the_unit_blocks_of_a_zoo_are_read_and_written() {
+    for v in [101, 106] {
+        let (mut zoo, money) = Zoo::parse_money(&rich(v)).unwrap();
+        let c = zoo.entities[1].common.as_mut().unwrap();
+        let mut u = through(v, false, &block());
+        u.behaviour = block().behaviour;
+        c.unit = Some(Box::new(u.clone()));
+        c.movement_mode = 3;
+        let out = zoo.write(&money).unwrap();
+        let back = Zoo::parse(&out).unwrap();
+        let b = back.entities[1].common.as_ref().unwrap();
+        assert_eq!(b.unit.as_deref(), Some(&u), "version {v}");
+        // The mode is stored from version 84.
+        assert_eq!(b.movement_mode, if v >= 84 { 3 } else { 2 }, "version {v}");
+        // The entity base after the set is intact.
+        assert_eq!(b.name, "unit");
+        assert_eq!(b.colors, [3, 9]);
+        assert_eq!(b.rotation, 6);
+    }
+    // A unit read from a file keeps the set of its base, and the other entities have none.
+    let zoo = Zoo::parse(&rich(106)).unwrap();
+    let u = zoo.entities[1]
+        .common
+        .as_ref()
+        .unwrap()
+        .unit
+        .as_ref()
+        .unwrap();
+    assert_eq!(u.behaviour.levels[0].name, "bWalk");
+    assert_eq!(u.behaviour.levels[0].list_a, ["x"]);
+    assert_eq!(u.behaviour.levels[0].list_b, ["y"]);
+    assert!(zoo.entities[0].common.as_ref().unwrap().unit.is_none());
+    assert_eq!(u.short, 0);
 }
 
 /// Every shipped file that loads is written back byte for byte.

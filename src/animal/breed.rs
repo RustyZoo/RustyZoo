@@ -423,6 +423,7 @@ fn put(
             food: 0,
             movement_mode: 0,
             animal: None,
+            unit: None,
             guest: None,
             filter: None,
             building: None,
