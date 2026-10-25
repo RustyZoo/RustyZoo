@@ -1,9 +1,8 @@
 //! The bodies of entity records, by class. Only the common part is decoded; every other field is
 //! read and dropped to reach the next record (or the end of the body). The reader keeps the bytes.
 
-use super::{
-    AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans, bad,
-};
+use super::unit::{behaviour_set, read};
+use super::{AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -107,8 +106,9 @@ fn base(r: &mut Reader) -> R<Common> {
     if v >= 58 {
         r.skip(1)?;
     }
+    r.behaviour = None;
     if v >= 63 {
-        behaviour_set(r)?;
+        r.behaviour = Some(behaviour_set(r)?);
     }
     let mut colors = Vec::new();
     let colors_at = r.pos();
@@ -117,6 +117,7 @@ fn base(r: &mut Reader) -> R<Common> {
         colors = r.take(n)?.to_vec();
     }
     r.spans = Spans {
+        unit: 0,
         base: start,
         name: name_end,
         stamp: stamp_at,
@@ -135,31 +136,6 @@ fn base(r: &mut Reader) -> R<Common> {
         fence: None,
         ..Default::default()
     })
-}
-
-/// A behaviour set holds at most one nested set, which holds one more, and so on. The leading
-/// fields of each level come first and its trailing fields after the nested set, so the levels
-/// are read in a loop: all the leading parts, then all the trailing parts, innermost first.
-fn behaviour_set(r: &mut Reader) -> R<()> {
-    let mut levels = 1;
-    loop {
-        r.string()?;
-        r.skip(1)?;
-        r.skip_strings()?;
-        r.string()?;
-        r.string()?; // the current call: name, arguments, three flags
-        r.skip_strings()?;
-        r.skip(3)?;
-        if r.u8()? == 0 {
-            break;
-        }
-        levels += 1;
-    }
-    for _ in 0..levels {
-        r.skip_strings()?;
-        r.skip(4)?;
-    }
-    Ok(())
 }
 
 /// The figures, the price and the users of a guest building (zoo format 6.9, guest buildings 4);
@@ -412,80 +388,16 @@ fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
 
 /// The unit block of animals, guests and staff, ending with the common part.
 fn zoo_unit(r: &mut Reader, guest: bool) -> R<Common> {
-    let v = r.v;
-    if v <= 57 {
-        r.skip(1)?;
+    let start = r.pos();
+    let (mut unit, mode) = read(r, guest)?;
+    let common = base(r)?;
+    if let Some(set) = r.behaviour.take() {
+        unit.behaviour = set;
     }
-    r.skip(1 + 5)?;
-    r.skip(if v <= 90 { 8 } else { 12 })?;
-    r.skip(8 + 8)?;
-    r.skip(if v <= 85 { 16 } else { 12 })?;
-    r.skip(6)?;
-    if v >= 97 && !guest {
-        // Two flags, each followed by a value only when it is exactly 1.
-        for _ in 0..2 {
-            if r.u8()? == 1 {
-                r.skip(2)?;
-            }
-        }
-    }
-    if v >= 98 {
-        r.skip(2)?;
-    }
-    base_unit(r)
-}
-
-fn base_unit(r: &mut Reader) -> R<Common> {
-    let v = r.v;
-    r.skip(2 + 10)?;
-    // The target block.
-    r.skip(16)?;
-    r.skip(if v <= 85 { 16 } else { 24 })?;
-    r.skip(2)?;
-    if v >= 53 {
-        r.skip(8)?;
-    }
-    if v >= 72 {
-        r.skip(8)?;
-    }
-    r.skip(4)?;
-    r.skip(if v <= 74 { 8 } else { 12 })?;
-    r.skip(4)?;
-    r.string()?;
-    r.skip(1)?;
-    r.skip_list(if v <= 83 { 8 } else { 12 })?;
-    if v >= 46 {
-        r.skip(1)?;
-    }
-    if v >= 62 {
-        r.skip(1)?;
-    }
-    let mut mode = 0;
-    if v >= 84 {
-        r.skip(4)?;
-        mode = movement(r)?;
-    }
-    if v >= 85 {
-        r.string()?;
-    }
-    if v >= 98 {
-        r.skip(2)?;
-    }
+    r.spans.unit = start;
     Ok(Common {
-        movement_mode: mode as u32,
-        ..base(r)?
+        movement_mode: mode,
+        unit: Some(Box::new(unit)),
+        ..common
     })
-}
-
-/// Reads the movement block; returns the movement mode.
-fn movement(r: &mut Reader) -> R<i32> {
-    let first = r.i32()?;
-    let kind = if r.v >= 93 { r.i32()? } else { first };
-    match kind {
-        _ if kind < 0 => {} // no movement
-        1 | 2 => {}
-        3 => r.skip(if r.v >= 96 { 1 + 32 } else { 1 + 12 })?,
-        _ => return bad("movement of an unknown type"),
-    }
-    Ok(first)
 }

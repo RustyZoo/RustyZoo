@@ -2,30 +2,31 @@
 //! order of the format, from the model where the engine has one and from the bytes kept as read
 //! elsewhere. The version written is the version read (the upgrade to 106 is not done yet).
 
+use super::unit;
 use super::{Common, Entity, MAX_VERSION, MIN_VERSION, Zoo};
 use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
 use crate::timing::Calendar;
 
-struct Out(Vec<u8>);
+pub(super) struct Out(pub(super) Vec<u8>);
 
 impl Out {
-    fn u8(&mut self, n: u8) {
+    pub(super) fn u8(&mut self, n: u8) {
         self.0.push(n);
     }
-    fn u16(&mut self, n: u16) {
+    pub(super) fn u16(&mut self, n: u16) {
         self.0.extend(n.to_le_bytes());
     }
-    fn u32(&mut self, n: u32) {
+    pub(super) fn u32(&mut self, n: u32) {
         self.0.extend(n.to_le_bytes());
     }
-    fn i32(&mut self, n: i32) {
+    pub(super) fn i32(&mut self, n: i32) {
         self.u32(n as u32);
     }
-    fn bytes(&mut self, b: &[u8]) {
+    pub(super) fn bytes(&mut self, b: &[u8]) {
         self.0.extend(b);
     }
     /// A string of one byte per character, below 4096 bytes.
-    fn string(&mut self, s: &str) -> Result<(), String> {
+    pub(super) fn string(&mut self, s: &str) -> Result<(), String> {
         if s.chars().count() >= 4096 || s.chars().any(|c| c as u32 > 255) {
             return Err(format!("a string of {} characters", s.chars().count()));
         }
@@ -232,7 +233,11 @@ fn body(v: u32, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
             e.class, e.type_name
         ));
     }
-    let mut o = Out(b[..s.base].to_vec());
+    // The unit block replaces the bytes read, up to the entity base.
+    let mut o = Out(b[..c.unit.as_ref().map_or(s.base, |_| s.unit)].to_vec());
+    if let Some(u) = &c.unit {
+        unit::write(&mut o, v, e.class == "guests", c.movement_mode, u)?;
+    }
     if has_food(&e.class) && s.base >= 4 {
         let keeps = e.class == "food"
             || ["poo", "dinopoo"]
@@ -250,7 +255,14 @@ fn body(v: u32, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     o.string(&c.name)?;
     o.bytes(&b[s.name..s.stamp]);
     o.u32(c.stamp.unwrap_or(0));
-    o.bytes(&b[s.stamp + 4..s.colors]);
+    match &c.unit {
+        // The visible flag of version 58, then the behaviour set of the unit.
+        Some(u) if v >= 63 => {
+            o.bytes(&b[s.stamp + 4..s.stamp + 5]);
+            unit::write_behaviour(&mut o, &u.behaviour)?;
+        }
+        _ => o.bytes(&b[s.stamp + 4..s.colors]),
+    }
     if v >= 67 {
         o.u32(c.colors.len() as u32);
         o.bytes(&c.colors);

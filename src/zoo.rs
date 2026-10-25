@@ -33,7 +33,9 @@
 mod body;
 #[cfg(test)]
 pub(crate) mod tests;
+mod unit;
 mod write;
+pub use unit::{Behaviour, Level, Target, UnitBlock};
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -121,6 +123,9 @@ pub struct Common {
     pub animal: Option<Box<AnimalRecord>>,
     /// What a guest record stores of the guest; `None` for everything else.
     pub guest: Option<Box<GuestRecord>>,
+    /// The goal, target, movement, pending call and behaviour set of a unit; `None` for everything
+    /// else.
+    pub unit: Option<Box<UnitBlock>>,
     /// The health and timers of a tank filter; `None` for everything else.
     pub filter: Option<Filter>,
     /// The figures a guest building record stores; `None` for everything else.
@@ -134,6 +139,8 @@ pub struct Common {
 /// was not read from a file.
 #[derive(Debug, Clone, Copy, Default)]
 struct Spans {
+    /// The start of the unit block, for a unit.
+    unit: usize,
     base: usize,
     name: usize,
     stamp: usize,
@@ -509,6 +516,8 @@ struct Reader<'a> {
     /// The length `data` had at the start of the body being read, and where its entity base lies.
     total: usize,
     spans: Spans,
+    /// The behaviour set of the entity base just read.
+    behaviour: Option<Behaviour>,
 }
 
 impl<'a> Reader<'a> {
@@ -518,6 +527,7 @@ impl<'a> Reader<'a> {
             v,
             total: data.len(),
             spans: Spans::default(),
+            behaviour: None,
         }
     }
 
