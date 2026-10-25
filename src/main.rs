@@ -452,7 +452,7 @@ usage: rustyzoo [--data <dir>] <command>
                       every [credits] delay seconds (8) of interface time, in the order of the registry
                       files ui/credits/credit*.cfg (descending names, version above 0): a log line
                       `menu credits page N layout ID` for each, `menu credits end` after the last and
-                      `menu credits closed` when Exit closed them. Load Saved Game (or Ctrl+L) lists the `.zoo` files of the folder of
+                      `menu credits closed` when Exit closed them. The load button of the main menu (or Ctrl+L) lists the `.zoo` files of the folder of
                       `lastfile`, else of the `Saved Games` folder of the user folder, on the freeform
                       screen (`menu game load list N`); Load starts the one selected and makes it
                       `lastfile` (`menu game start load FILE`). The scenario and freeform buttons show their screens with the lists

@@ -6,7 +6,7 @@ use super::*;
 use crate::sprite::tests::Install;
 
 const INI: &str = "[user]\nlastfile=saved.zoo\n";
-/// The Save Game and Load Game buttons of the options panel, the menu's Load Saved Game, the
+/// The Save Game and Load Game buttons of the options panel, the load button of the main menu, the
 /// first two rows of the list, and its Load and Back buttons.
 const SAVE: (i32, i32) = (42, 32);
 const LOAD_GAME: (i32, i32) = (52, 22);

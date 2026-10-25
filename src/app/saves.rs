@@ -1,5 +1,5 @@
 //! Saving and loading in play (save games 3 to 5, main menu 7.1 and 9): the Save Game button and
-//! Ctrl+S, the Yes of the three questions, Load Game and Ctrl+L, and Load Saved Game of the menu.
+//! Ctrl+S, the Yes of the three questions, Load Game and Ctrl+L, and the load button of the main menu.
 //!
 //! The system's file dialogs are replaced by two screens of the game's own: the name dialog for
 //! the file to save (its folder is that of `[user] lastfile`, else the saved games folder of the
