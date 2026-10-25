@@ -814,10 +814,21 @@ guest_panel() { # guest_panel <map>
   d=$(mktemp -d)
   printf '1 pause\n2 mouse 652 598\n3 down\n4 up\n6 mouse 1005 667\n7 down\n8 up\n10 mouse 400 100\n11 down\n12 up\n' >"$d/script"
   rz run "$1" --headless --seed 3 --passes 14 --clock 67 --script "$d/script" 2>/dev/null |
-    grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' | tr ' ' _ | paste -sd';' -
+    grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' |
+    while IFS= read -r l; do # the thoughts are printed as their count and a checksum, not as text
+      case $l in
+        *' thoughts ['*)
+          t=${l#*' thoughts '}
+          l=${l%%' thoughts ['*}
+          n=$(printf '%s' "$t" | grep -o '", "' | wc -l | tr -d ' ')
+          [ "$t" = '[]' ] || n=$((n + 1))
+          printf '%s thoughts %s %08x\n' "$l" "$n" "$(printf '%s' "$t" | cksum | cut -d' ' -f1)" ;;
+        *) printf '%s\n' "$l" ;;
+      esac
+    done | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
 }
-check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_short_time"_favourite_"Polar_Bear"_thoughts_["Look_at_the_duck_pond!_That'"'"'s_neat!",_"Great!_I_can_throw_my_trash_in_the_trash_can.",_"I_need_to_throw_away_this_trash.",_"I_really_like_this_hamburger.",_"I_enjoy_sitting_at_the_picnic_table."];panel_guest_none' "guest_panel maps/scn19.zoo"
+check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_short_time"_favourite_"Polar_Bear"_thoughts_5_b193c13a;panel_guest_none' "guest_panel maps/scn19.zoo"
 
 # The building panel (information panels 4.1, guest buildings 7.2, 10.3): the game paused, the Objects
 # panel's second item (a burger stand, 3.50 within 1.00 and 6.50) is placed and clicked, then the up
