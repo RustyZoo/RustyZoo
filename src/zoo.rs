@@ -40,9 +40,11 @@ pub use unit::{Behaviour, Level, Target, UnitBlock};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
+use std::rc::Rc;
 
 use crate::entity::Catalogue;
 use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
+use crate::render::order::ground_height;
 
 /// The oldest version the original accepts.
 pub const MIN_VERSION: u32 = 38;
@@ -518,6 +520,33 @@ struct Reader<'a> {
     spans: Spans,
     /// The behaviour set of the entity base just read.
     behaviour: Option<Behaviour>,
+    /// The tile grid, once it is read: the old tiles of a unit become positions with its heights.
+    ground: Option<Rc<Ground>>,
+}
+
+/// The map of a file, for the heights of the positions an old file stores as tiles.
+struct Ground {
+    width: u32,
+    height: u32,
+    tiles: Vec<Tile>,
+}
+
+impl Ground {
+    /// The tile at the tile coordinates, if it is on the map.
+    fn tile(&self, x: i32, y: i32) -> Option<&Tile> {
+        let (x, y) = (u32::try_from(x).ok()?, u32::try_from(y).ok()?);
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        self.tiles
+            .get(y as usize * self.width as usize + x as usize)
+    }
+
+    /// The height of the ground at a world point, 0 outside the map.
+    fn at(&self, x: i32, y: i32) -> i32 {
+        self.tile(x.div_euclid(64), y.div_euclid(64))
+            .map_or(0, |t| ground_height(t, x.rem_euclid(64), y.rem_euclid(64)))
+    }
 }
 
 impl<'a> Reader<'a> {
@@ -528,6 +557,7 @@ impl<'a> Reader<'a> {
             total: data.len(),
             spans: Spans::default(),
             behaviour: None,
+            ground: None,
         }
     }
 
@@ -684,6 +714,19 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
             edges: rec[6],
         });
     }
+
+    r.ground = Some(Rc::new(Ground {
+        width,
+        height,
+        // A hostile elevation must not overflow the height.
+        tiles: tiles
+            .iter()
+            .map(|t| Tile {
+                elevation: t.elevation.clamp(-(1 << 24), 1 << 24),
+                ..*t
+            })
+            .collect(),
+    }));
 
     *section = "entities";
     let min_record = if v >= 70 { 16 } else { 12 };
@@ -844,6 +887,7 @@ fn entity(r: &mut Reader) -> R<Entity> {
         let size = r.u32()?;
         let data = r.take(size as usize)?;
         let mut body = Reader::new(data, r.v);
+        body.ground = r.ground.clone();
         // A body that does not decode to exactly its size is skipped, like an unknown class.
         let common = match body::decode(&mut body, class) {
             Ok(Some(mut common)) if body.data.is_empty() && size > 0 => {
@@ -859,6 +903,7 @@ fn entity(r: &mut Reader) -> R<Entity> {
     } else {
         let (from, v) = (r.data, r.v);
         let mut body = Reader::new(from, v);
+        body.ground = r.ground.clone();
         match body::decode(&mut body, class)? {
             Some(mut common) => {
                 let data = &from[..from.len() - body.data.len()];

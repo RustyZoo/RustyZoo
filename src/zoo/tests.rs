@@ -1454,9 +1454,9 @@ fn block() -> UnitBlock {
         b1: 3,
         w1: 9,
         p1: [32 + 64 * 3, 32 + 64 * 5, 0],
-        t1: [4, 8],
+        building: [4, 8],
         p2: [64 * 2 + 7, 64 * 4 + 9, 0],
-        p3: [64 * 9, 64 * 8, 0],
+        p3: [32 + 64 * 9, 32 + 64 * 8, 0],
         target: Target {
             goal: 7,
             sub_goal: -3,
@@ -1533,6 +1533,7 @@ fn a_field_a_version_lacks_takes_the_value_the_original_writes() {
         limited: 4,
         target: Target {
             goal: 12,
+            sub_goal: 4,
             extra: [1, 2],
             active: 99,
             active_sub: 98,
@@ -1544,8 +1545,8 @@ fn a_field_a_version_lacks_takes_the_value_the_original_writes() {
     let old = through(70, false, &u);
     assert_eq!((old.short, old.b5, old.w9), (100, 0, 0));
     assert_eq!((old.move_kind, old.move_data.len(), &*old.text), (2, 0, ""));
-    // Before 72 the active goal is the wanted one and the sub-goal 0.
-    assert_eq!((old.target.active, old.target.active_sub), (12, 0));
+    // Before 72 the active goal and sub-goal are the wanted ones.
+    assert_eq!((old.target.active, old.target.active_sub), (12, 4));
     let newer = through(72, false, &u);
     assert_eq!((newer.target.active, newer.target.active_sub), (99, 98));
     assert_eq!(through(52, false, &u).target.extra, [0, 0]);
@@ -1568,7 +1569,7 @@ fn old_tiles_become_world_positions() {
             sub_target: [-1; 3],
             ..Target::default()
         },
-        p3: [64 * 9, 64 * 8, 0],
+        p3: [32 + 64 * 9, 32 + 64 * 8, 0],
         ..UnitBlock::default()
     };
     let mut o = Out(Vec::new());
@@ -1614,6 +1615,66 @@ fn old_tiles_become_world_positions() {
         ..UnitBlock::default()
     };
     through(70, false, &huge);
+}
+
+#[test]
+fn the_destination_before_75_is_the_tile_centre() {
+    let at = |p: [i32; 3]| {
+        through(
+            70,
+            false,
+            &UnitBlock {
+                p3: p,
+                ..UnitBlock::default()
+            },
+        )
+        .p3
+    };
+    assert_eq!(at([64 * 27 + 32, 64 * 30 + 32, 0]), [1760, 1952, 0]);
+    // No (-1, -1) case.
+    assert_eq!(at([-32, -32, 0]), [-32, -32, 0]);
+    assert_eq!(at([-1, -1, -1]), [-32, -32, 0]);
+}
+
+#[test]
+fn old_tiles_carry_the_ground_height() {
+    use super::{Ground, Tile};
+    let tile = |elevation, shape| Tile {
+        elevation,
+        shape,
+        terrain: 0,
+        edges: 0,
+    };
+    // Row 0: base -3 flat, base 2 sloping; row 1 the same.
+    let tiles = vec![tile(-3, 0), tile(2, 0x50), tile(-3, 0), tile(2, 0x50)];
+    let ground = std::rc::Rc::new(Ground {
+        width: 2,
+        height: 2,
+        tiles,
+    });
+    let u = UnitBlock {
+        p1: [32, 32, 0],
+        p2: [64 + 8, 5, 0],
+        p3: [32 + 64, 32, 0],
+        target: Target {
+            target: [0, 0, 0],
+            sub_target: [64 * 5, 0, 0],
+            ..Target::default()
+        },
+        ..UnitBlock::default()
+    };
+    let mut o = Out(Vec::new());
+    unit::write(&mut o, 70, false, 2, &u).unwrap();
+    let mut r = Reader::new(&o.0, 70);
+    r.ground = Some(ground);
+    let (back, _) = unit::read(&mut r, false).unwrap_or_else(|e| panic!("{}", e.0));
+    assert_eq!(back.p1, [32, 32, -48]);
+    // The point (8, 5) of a sloping tile: 16 * 2 + 8 / 4.
+    assert_eq!(back.p2, [72, 5, 34]);
+    assert_eq!(back.p3, [96, 32, 40]);
+    // The target takes the base height only; a tile outside the map is (-1, -1, -1).
+    assert_eq!(back.target.target, [0, 0, -48]);
+    assert_eq!(back.target.sub_target, [-1; 3]);
 }
 
 #[test]

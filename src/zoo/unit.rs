@@ -1,7 +1,8 @@
 //! The unit blocks of animals, guests and staff: the goal and target, the movement, the pending
-//! behaviour call and the behaviour set (zoo format 6.10 and 6.14). Fields are named by type and
-//! place in the file (`b` a byte, `w` a word, `p` a position, `t` a tile). A field a version lacks takes the value the original writes for it
-//! (save games 11.2), and positions are held as world positions, the form of version 106.
+//! behaviour call and the behaviour set (zoo format 6.10 and 6.14). Fields the specs name are named
+//! so; the others by type and place in the file (`b` a byte, `w` a word, `p` a position). A field a
+//! version lacks takes the value the original writes for it (save games 11.2), and positions are
+//! held as world positions, the form of version 106.
 
 use super::write::Out;
 use super::{R, Reader, bad};
@@ -81,13 +82,15 @@ pub struct UnitBlock {
     pub w1: u32,
     pub b2: u8,
     pub p1: [i32; 3],
-    /// A tile, (-1, -1) for none.
-    pub t1: [i32; 2],
+    /// The tile of the building a guest uses, (-1, -1) for none.
+    pub building: [i32; 2],
     pub w2: u32,
     pub w3: u32,
     pub p2: [i32; 3],
-    pub b3: u8,
-    pub b4: u8,
+    /// The slot a guest has at the building it uses.
+    pub slot: u8,
+    /// The need being served.
+    pub need: u8,
     pub w4: u32,
     /// The two optional flags of version 97 (not for guests) and the value that follows a flag of 1.
     pub flags: [(u8, u16); 2],
@@ -128,12 +131,12 @@ impl Default for UnitBlock {
             w1: 0,
             b2: 0,
             p1: [0; 3],
-            t1: [-1; 2],
+            building: [-1; 2],
             w2: 0,
             w3: 0,
             p2: [0; 3],
-            b3: 0,
-            b4: 0,
+            slot: 0,
+            need: 0,
             w4: 0,
             flags: [(0, 0); 2],
             b5: 0,
@@ -166,16 +169,35 @@ impl Default for UnitBlock {
 /// The movement mode of a unit whose version has no movement block: on the ground.
 const GROUND: i32 = 2;
 
-/// A tile from a version before the world positions: its corner, (-1, -1) for none.
-fn corner(t: [i32; 2]) -> [i32; 3] {
-    if t == [-1, -1] {
-        [-1; 3]
-    } else {
-        [t[0].wrapping_mul(64), t[1].wrapping_mul(64), 0]
+/// A tile from a version before the world positions, as the target block has it: the corner at the
+/// height of the tile's base. With the map known, a tile outside it is (-1, -1, -1); a reader
+/// without a map keeps every tile but (-1, -1).
+fn corner(r: &Reader, t: [i32; 2]) -> [i32; 3] {
+    let (x, y) = (t[0].wrapping_mul(64), t[1].wrapping_mul(64));
+    match &r.ground {
+        Some(g) => g
+            .tile(t[0], t[1])
+            .map_or([-1; 3], |tile| [x, y, 16 * tile.elevation]),
+        None if t == [-1, -1] => [-1; 3],
+        None => [x, y, 0],
     }
 }
 
-/// The tile of a position, the inverse of `corner` and of the centre.
+/// The tile's centre as a world position, at the ground height there.
+fn centre(r: &Reader, t: [i32; 2]) -> [i32; 3] {
+    at(
+        r,
+        t[0].wrapping_mul(64).wrapping_add(32),
+        t[1].wrapping_mul(64).wrapping_add(32),
+    )
+}
+
+/// A world point with the ground height as `z`, 0 without a map or outside it.
+fn at(r: &Reader, x: i32, y: i32) -> [i32; 3] {
+    [x, y, r.ground.as_ref().map_or(0, |g| g.at(x, y))]
+}
+
+/// The tile of a position, the inverse of `corner` and of `centre`.
 fn tile(p: [i32; 3]) -> [i32; 2] {
     [p[0].div_euclid(64), p[1].div_euclid(64)]
 }
@@ -235,33 +257,25 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
     u.b2 = r.u8()?;
     u.p1 = if v <= 90 {
         let t = read_tile(r)?;
-        if t == [-1, -1] {
-            [-1; 3]
-        } else {
-            [
-                t[0].wrapping_mul(64).wrapping_add(32),
-                t[1].wrapping_mul(64).wrapping_add(32),
-                0,
-            ]
-        }
+        if t == [-1, -1] { [-1; 3] } else { centre(r, t) }
     } else {
         read_pos(r)?
     };
-    u.t1 = read_tile(r)?;
+    u.building = read_tile(r)?;
     u.w2 = r.u32()?;
     u.w3 = r.u32()?;
     u.p2 = if v <= 85 {
         let (t, inner) = (read_tile(r)?, read_tile(r)?);
-        [
+        at(
+            r,
             t[0].wrapping_mul(64).wrapping_add(inner[0]),
             t[1].wrapping_mul(64).wrapping_add(inner[1]),
-            0,
-        ]
+        )
     } else {
         read_pos(r)?
     };
-    u.b3 = r.u8()?;
-    u.b4 = r.u8()?;
+    u.slot = r.u8()?;
+    u.need = r.u8()?;
     u.w4 = r.u32()?;
     if v >= 97 && !guest {
         // Each flag is followed by a value only when it is exactly 1.
@@ -287,8 +301,8 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
     t.sub_goal = r.i32()?;
     t.words = [r.u32()?, r.u32()?];
     if v <= 85 {
-        t.target = corner(read_tile(r)?);
-        t.sub_target = corner(read_tile(r)?);
+        let (a, b) = (read_tile(r)?, read_tile(r)?);
+        (t.target, t.sub_target) = (corner(r, a), corner(r, b));
     } else {
         t.target = read_pos(r)?;
         t.sub_target = read_pos(r)?;
@@ -298,13 +312,14 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
         t.extra = [r.u32()?, r.u32()?];
     }
     // Before 72 the active goal is the one built for the wanted task.
-    (t.active, t.active_sub) = (t.goal, 0);
+    (t.active, t.active_sub) = (t.goal, t.sub_goal);
     if v >= 72 {
         (t.active, t.active_sub) = (r.i32()?, r.i32()?);
     }
     u.w7 = r.u32()?;
     u.p3 = if v <= 74 {
-        corner(read_tile(r)?)
+        let t = read_tile(r)?;
+        centre(r, t)
     } else {
         read_pos(r)?
     };
@@ -398,7 +413,7 @@ pub(super) fn write(
     } else {
         put_pos(o, u.p1);
     }
-    put_tile(o, u.t1);
+    put_tile(o, u.building);
     o.u32(u.w2);
     o.u32(u.w3);
     if v <= 85 {
@@ -414,8 +429,8 @@ pub(super) fn write(
     } else {
         put_pos(o, u.p2);
     }
-    o.u8(u.b3);
-    o.u8(u.b4);
+    o.u8(u.slot);
+    o.u8(u.need);
     o.u32(u.w4);
     if v >= 97 && !guest {
         for &(flag, n) in &u.flags {
