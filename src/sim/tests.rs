@@ -1280,15 +1280,30 @@ fn a_saved_game_opens_as_it_was_saved() {
         let (a, b) = (&run.world.zoo, &back.world.zoo);
         assert!(a.tiles == b.tiles, "{member}: tiles");
         assert!(a.entities == b.entities, "{member}: entities");
+        // A counter at 0 is not saved (it means the same as none).
+        let named = |z: &crate::zoo::Zoo| {
+            (z.names.iter())
+                .filter(|&(_, &n)| n > 0)
+                .map(|(k, &n)| (k.clone(), n))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            (a.id_counter, &a.names),
-            (b.id_counter, &b.names),
+            (a.id_counter, named(a)),
+            (b.id_counter, named(b)),
             "{member}"
         );
         assert_eq!(
             run.world.units.hash(),
             back.world.units.hash(),
             "{member}: units"
+        );
+        assert_eq!(
+            run.world.units.thoughts, back.world.units.thoughts,
+            "{member}: thoughts"
+        );
+        assert!(
+            run.world.exhibits() == back.world.exhibits(),
+            "{member}: exhibits"
         );
         // Saving the opened game again changes none of that.
         let twice = start(&back.save().unwrap(), true);

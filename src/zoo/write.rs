@@ -61,7 +61,7 @@ impl Zoo {
         o.u32(self.height);
         o.u32(self.entrance.0);
         o.u32(self.entrance.1);
-        o.bytes(&kept.habitats);
+        o.bytes(&habitats(self));
         o.u32(self.id_counter);
         if self.tiles.len() as u64 != u64::from(self.width) * u64::from(self.height) {
             return Err("the tiles do not fill the map".into());
@@ -84,14 +84,18 @@ impl Zoo {
         }
         o.u32(view.brush);
         o.bytes(&kept.scenario);
-        // The original writes only the counters above 0; a 0 means the same, and is kept as read.
-        o.u32(self.names.len() as u32);
-        for (name, &n) in &self.names {
+        // Only the counters above 0, as the original does.
+        let named = || self.names.iter().filter(|&(_, &n)| n > 0);
+        o.u32(named().count() as u32);
+        for (name, &n) in named() {
             o.string(name)?;
             o.u32(n);
         }
         o.bytes(&finances(self, money)?);
-        o.bytes(&kept.thoughts);
+        o.u32(kept.thoughts.len() as u32);
+        for n in kept.thoughts.iter().flatten() {
+            o.u32(*n);
+        }
         o.u32(self.clocks.ai_rem);
         o.u32(self.clocks.ai_ticks);
         if v >= 97 {
@@ -119,6 +123,28 @@ impl Zoo {
         }
         Ok(o.0)
     }
+}
+
+/// The habitat section as read, with the statistics and the last service of each habitat written
+/// over it.
+fn habitats(zoo: &Zoo) -> Vec<u8> {
+    let mut b = zoo.kept.habitats.clone();
+    for (&at, info) in zoo.kept.stats_at.iter().zip(&zoo.habitat_info) {
+        // The statistics, two dates, then the last service (from 83).
+        let service = at + 36 + 16;
+        let mut put = |at: usize, n: u32| {
+            if let Some(to) = b.get_mut(at..at + 4) {
+                to.copy_from_slice(&n.to_le_bytes());
+            }
+        };
+        for (i, &n) in info.stats.iter().enumerate() {
+            put(at + 4 * i, n);
+        }
+        if zoo.version >= 83 {
+            put(service, info.serviced);
+        }
+    }
+    b
 }
 
 /// The game block as read, with the modelled values written over it.

@@ -163,7 +163,7 @@ fn tail(w: &mut W, v: u32) {
     if v >= 73 {
         w.z(4);
     }
-    w.u32(2).z(40); // thoughts
+    w.u32(2).z(40); // two thoughts, all 0
     w.u32(7).u32(8); // the AI clock: milliseconds left over, ticks
     if v >= 97 {
         // One event in the first buffer, none in the second, and the first is the next one.
@@ -1417,6 +1417,30 @@ fn the_fields_of_the_model_are_written() {
 }
 
 #[test]
+fn the_writer_puts_names_thoughts_and_habitat_figures_over_the_file() {
+    for v in [70, 82, 83, 106] {
+        let bytes = file(v, 3, 3, &[(false, false), (true, false)], &[]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        assert_eq!(zoo.write(&money).unwrap(), bytes, "version {v}");
+        assert_eq!(zoo.thoughts(), [[0; 5]; 2]);
+        // A counter at 0 is not written; the thoughts and the figures are the live ones.
+        zoo.names.insert("z".into(), 0);
+        zoo.set_thoughts(vec![[1, 2, 3, 4, 5], [6, 7, 8, u32::MAX, u32::MAX]]);
+        zoo.habitat_info[1].stats = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        zoo.habitat_info[1].serviced = 55;
+        let (back, _) = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap();
+        assert_eq!(back.names.len(), 2, "version {v}");
+        assert_eq!(back.thoughts(), zoo.thoughts(), "version {v}");
+        assert_eq!(back.habitat_info[0], zoo.habitat_info[0], "version {v}");
+        assert_eq!(back.habitat_info[1].stats, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(back.habitat_info[1].serviced, if v >= 83 { 55 } else { 0 });
+        assert_eq!(back.tanks, zoo.tanks, "version {v}");
+        assert_eq!(back.id_counter, zoo.id_counter, "version {v}");
+        assert_eq!(back.clocks, zoo.clocks, "version {v}");
+    }
+}
+
+#[test]
 fn an_entity_without_a_body_is_not_written() {
     let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
     zoo.entities[0].common.as_mut().unwrap().raw = Raw::default();
@@ -1786,7 +1810,8 @@ fn the_unit_blocks_of_a_zoo_are_read_and_written() {
     assert_eq!(u.short, 0);
 }
 
-/// Every shipped file that loads is written back byte for byte.
+/// Every shipped file that loads is written back byte for byte, but for the name counters at 0,
+/// which the original does not write (save games 7): then the counters at 0 are the only difference.
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn full_game_round_trip() {
@@ -1801,7 +1826,14 @@ fn full_game_round_trip() {
         let out = zoo
             .write(&money)
             .unwrap_or_else(|e| panic!("{member}: {e}"));
-        assert!(out == bytes, "{member}");
+        if out != bytes {
+            let zeros = zoo.names.values().filter(|&&n| n == 0).count();
+            let (back, back_money) = Zoo::parse_money(&out).unwrap();
+            assert!(zeros > 0, "{member}");
+            assert_eq!(back.names.len() + zeros, zoo.names.len(), "{member}");
+            let again = back.write(&back_money).unwrap();
+            assert!(again == out, "{member}");
+        }
         files += 1;
     }
     // The 96 files that parse (95 in the French install, which lacks the saved game).

@@ -486,9 +486,8 @@ impl Run {
 
     /// The file of the zoo as it is now (see [`Zoo::write`]).
     pub fn save(&self) -> Result<Vec<u8>, String> {
-        let mut zoo = self.world.zoo.clone();
+        let mut zoo = self.world.saved(crate::zoo::knows(&self.cat));
         zoo.clocks = self.sim.clocks();
-        zoo.drop_unknown(crate::zoo::knows(&self.cat));
         zoo.write(&self.money)
     }
 

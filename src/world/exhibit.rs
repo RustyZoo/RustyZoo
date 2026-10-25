@@ -110,6 +110,8 @@ impl World {
                 // Stored this month, last month, total; kept last month, this month, total.
                 e.stats.donations = [stat(last), stat(this), stat(total)];
                 e.stats.upkeep = [stat(3 + last), stat(3 + this), stat(3 + total)];
+                let count = |k: usize| info.stats[6 + k];
+                e.stats.count = [count(last), count(this), count(total)];
                 e.stats.created = Some(Date::from_file_time(info.created));
                 e.rating.serviced = u64::from(info.serviced);
             }
