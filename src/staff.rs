@@ -9,11 +9,13 @@
 use crate::behaviour::Data;
 use crate::build::{cost, number};
 use crate::entity::{Catalogue, EntityType};
+use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
 use crate::place::bulldozer::type_of;
 use crate::sim::Rng;
 use crate::unit::{Ctx, Kind, Part, Staff, Unit};
 use crate::world::World;
+use crate::zoo::StaffRecord;
 
 /// Whether the type is a staff member the player hires.
 pub fn is_staff(ty: &EntityType) -> bool {
@@ -135,10 +137,73 @@ pub fn make(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     let (Some(kind), Some(common)) = (kind, entity.common.as_ref()) else {
         return;
     };
-    let (id, staff) = (common.id, create(type_of(cat, entity), kind, rng));
+    let (id, record) = (common.id, common.staff.clone());
+    let mut staff = create(type_of(cat, entity), kind, rng);
+    if let Some(record) = record {
+        let assigned = (record.tiles.iter())
+            .filter_map(|&t| exhibit_at(world, t))
+            .collect();
+        let guest = |m: &u32| (world.units.get(*m)).is_some_and(|u| u.kind == Kind::Guest);
+        let members = record.members.iter().copied().filter(guest).collect();
+        staff.restore(&record, assigned, members);
+    }
     if let Some(unit) = world.units.get_mut(id) {
         unit.part = Part::Staff(staff);
         unit.started = true;
+    }
+}
+
+/// The exhibit that has the tile `t` inside its gate (staff 6 point 4), if there is one.
+fn exhibit_at(world: &World, [x, y]: [i32; 2]) -> Option<u32> {
+    let t = world.tile_index(x, y)?;
+    (world.exhibits().region(t)).filter(|&r| r != GROUNDS && r != EXTERIOR)
+}
+
+/// The tile inside the gate of exhibit `x`, as the file stores an assignment; `None` for an exhibit
+/// without a gate.
+pub fn gate_tile(world: &World, x: u32) -> Option<[i32; 2]> {
+    let (inside, _) = service::gate_tiles(world, x)?;
+    let width = world.zoo.width as usize;
+    Some([(inside % width) as i32, (inside / width) as i32])
+}
+
+impl Staff {
+    /// Overwrites what the record of a loaded map stores (zoo format 6.13); a guide's crowd
+    /// countdown of a version below 54 keeps the draw. `assigned` and `members` are the exhibits
+    /// and guests the record's tiles and ids stand for, in the record's order.
+    pub fn restore(&mut self, r: &StaffRecord, assigned: Vec<u32>, members: Vec<u32>) {
+        (self.work, self.chase) = (r.work, r.chase);
+        self.crowd = r.crowd.unwrap_or(self.crowd);
+        self.assigned.clear();
+        for x in assigned {
+            if !self.assigned.contains(&x) {
+                self.assigned.push(x);
+            }
+        }
+        (self.members, self.leg) = (members, r.leg);
+        for (off, &on) in self.off.iter_mut().zip(&r.duties) {
+            *off = !on;
+        }
+    }
+
+    /// The record of this staff member: `base` with the live values written over it, so what the
+    /// engine does not model stays as it was. `tiles` are the tiles of the assigned exhibits.
+    pub fn record(&self, base: StaffRecord, tiles: Vec<[i32; 2]>) -> StaffRecord {
+        let mut duties = base.duties;
+        duties.resize(duties.len().max(self.off.len()), true);
+        for (on, &off) in duties.iter_mut().zip(&self.off) {
+            *on = !off;
+        }
+        StaffRecord {
+            work: self.work,
+            chase: self.chase,
+            tiles,
+            crowd: Some(self.crowd),
+            members: self.members.clone(),
+            leg: self.leg,
+            duties,
+            ..base
+        }
     }
 }
 

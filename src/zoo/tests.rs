@@ -1812,10 +1812,9 @@ fn animal_through(v: u32, own: usize) -> Vec<u8> {
 #[test]
 fn the_class_fields_of_every_version_become_those_of_106() {
     // The length of the class fields in version `v` and in 106, from zoo format 6.7 to 6.13.
-    let staff = |v: u32, own: usize| own + 12 + 4 * usize::from(v >= 75);
     for v in 70..=106u32 {
         let from = |x: bool| usize::from(x);
-        let cases: [(&str, usize, usize); 10] = [
+        let cases: [(&str, usize, usize); 5] = [
             (
                 "animals",
                 195 + from(v >= 76)
@@ -1828,11 +1827,6 @@ fn the_class_fields_of_every_version_become_those_of_106() {
                 232,
             ),
             ("guests", 151, 151),
-            ("keeper", staff(v, 21 + 4 * from(v <= 74)), 37),
-            ("maint", staff(v, 4 + 14 * from(v >= 92)), 34),
-            ("tour", staff(v, 13), 29),
-            ("helicopter", staff(v, 12 * from(v >= 75)), 28),
-            ("staff", staff(v, 0), 16),
             (
                 "building",
                 4 * 5 + 4 + 16 + 8 + 4 + 4 * from(v >= 74) + 4 * from(v >= 75),
@@ -1859,6 +1853,32 @@ fn the_class_fields_of_every_version_become_those_of_106() {
         }
         let body = zero_body(v, "ambient", 8);
         assert_eq!(body::transcode(v, b"ambient", &body).unwrap().0.len(), 8);
+    }
+}
+
+#[test]
+fn the_staff_record_of_every_version_is_written_as_that_of_106() {
+    // The own fields and the common staff block (zero counts) in version `v`, and the written length.
+    for v in 70..=106u32 {
+        let from = |x: bool| usize::from(x);
+        let common = 12 + 4 * from(v >= 75);
+        let cases = [
+            ("keeper", 21 + 4 * from(v <= 74), 37),
+            ("maint", 4 + 14 * from(v >= 92), 34 + 4 * from(v < 92)),
+            ("tour", 13, 29),
+            ("helicopter", 12 * from(v >= 75), 28),
+            ("staff", 0, 16),
+        ];
+        for (class, own, to) in cases {
+            let body = vec![0; own + common];
+            let mut r = Reader::new(&body, v);
+            let record = staff::read(&mut r, class.as_bytes())
+                .unwrap_or_else(|e| panic!("{class} in version {v}: {}", e.0));
+            assert!(r.data.is_empty(), "{class} in version {v}");
+            let mut o = Out(Vec::new());
+            staff::write(&mut o, class.as_bytes(), &record);
+            assert_eq!(o.0.len(), to, "{class} in version {v}");
+        }
     }
 }
 
@@ -2522,4 +2542,123 @@ fn an_animal_record_of_any_size_is_written_whole() {
         ..new_animal()
     };
     assert_eq!(animal_back(&none), none);
+}
+
+/// A staff body of version 106 up to the end of the staff block: the own fields of `class`, then
+/// the work and chase counters, two assigned tiles and the captured animal.
+fn staff_106(class: &str) -> Vec<u8> {
+    let mut w = W::default();
+    match class {
+        "keeper" => {
+            w.u32(1).u32(2).u32(3).u32(4).u32(5).u8(6);
+        }
+        "maint" => {
+            w.u32(9).u32(2).u32(3).u16(4).u32(4).bytes(&[1, 0, 1, 0]);
+        }
+        "tour" => {
+            w.u32(7).i32(-1).u32(2).u32(40).u32(41).u8(1);
+        }
+        "helicopter" => {
+            w.u32(8).u32(9).u32(10);
+        }
+        _ => {}
+    }
+    w.i32(-7)
+        .i32(30)
+        .u32(2)
+        .i32(3)
+        .i32(4)
+        .i32(-1)
+        .i32(-1)
+        .u32(55);
+    w.0
+}
+
+fn staff_read(v: u32, class: &str, body: &[u8]) -> Result<StaffRecord, String> {
+    let mut r = Reader::new(body, v);
+    let record = staff::read(&mut r, class.as_bytes()).map_err(|e| e.0)?;
+    assert!(r.data.is_empty() || v < 106, "{class}: unread bytes");
+    Ok(record)
+}
+
+#[test]
+fn a_staff_record_of_version_106_is_read_and_written_back_byte_for_byte() {
+    for class in ["keeper", "maint", "tour", "helicopter", "staff"] {
+        let body = staff_106(class);
+        let record = staff_read(106, class, &body).unwrap();
+        assert_eq!((record.work, record.chase, record.captured), (-7, 30, 55));
+        assert_eq!(record.tiles, [[3, 4], [-1, -1]], "{class}");
+        let mut o = Out(Vec::new());
+        staff::write(&mut o, class.as_bytes(), &record);
+        assert_eq!(o.0, body, "{class}");
+    }
+    let tour = staff_read(106, "tour", &staff_106("tour")).unwrap();
+    assert_eq!(
+        (tour.crowd, &tour.members[..], tour.leg),
+        (Some(-1), &[40, 41][..], true)
+    );
+    let maint = staff_read(106, "maint", &staff_106("maint")).unwrap();
+    assert_eq!(maint.duties, [true, false, true, false]);
+}
+
+#[test]
+fn the_staff_fields_a_version_lacks_take_the_values_of_the_original() {
+    let write = |class: &str, record: &StaffRecord| {
+        let mut o = Out(Vec::new());
+        staff::write(&mut o, class.as_bytes(), record);
+        o.0
+    };
+    // A worker before 92: the two words 2 and 2, the number of duty kinds, all four on; before 75
+    // no captured animal.
+    let mut w = W::default();
+    w.u32(5).i32(8).i32(9).u32(0);
+    let record = staff_read(70, "maint", &w.0).unwrap();
+    assert_eq!((record.work, record.chase, record.captured), (8, 9, 0));
+    let mut expect = W::default();
+    expect.u32(5).u32(2).u32(2).u16(4).u32(4).bytes(&[1; 4]);
+    expect.i32(8).i32(9).u32(0).u32(0);
+    assert_eq!(write("maint", &record), expect.0);
+    // A guide before 54 has no crowd countdown (the load keeps its draw), from 54 to 64 a word that
+    // 106 drops, before 65 no group and before 66 no leg flag.
+    let mut w = W::default();
+    w.u32(1).i32(8).i32(9).u32(0);
+    let record = staff_read(53, "tour", &w.0).unwrap();
+    assert_eq!(
+        (record.crowd, record.members.len(), record.leg),
+        (None, 0, false)
+    );
+    let mut w = W::default();
+    w.u32(1).i32(6).u32(77).i32(8).i32(9).u32(0);
+    let record = staff_read(60, "tour", &w.0).unwrap();
+    assert_eq!((record.crowd, record.work, record.chase), (Some(6), 8, 9));
+    // A keeper of 52 to 74 has one more word; a helicopter before 75 has no own fields.
+    let mut w = W::default();
+    w.z(21 + 4).i32(8).i32(9).u32(0);
+    assert_eq!(staff_read(70, "keeper", &w.0).unwrap().work, 8);
+    let mut w = W::default();
+    w.i32(8).i32(9).u32(0);
+    let record = staff_read(70, "helicopter", &w.0).unwrap();
+    assert_eq!(write("helicopter", &record).len(), 12 + 16);
+}
+
+#[test]
+fn a_staff_record_with_a_count_past_the_end_or_cut_short_is_an_error() {
+    let full = staff_106("tour");
+    for cut in 0..full.len() {
+        assert!(
+            staff_read(106, "tour", &full[..cut]).is_err(),
+            "cut at {cut}"
+        );
+    }
+    for (class, at) in [("tour", 8), ("maint", 14), ("staff", 8)] {
+        for huge in [u32::MAX, 1 << 30, 1000] {
+            let mut body = staff_106(class);
+            body[at..at + 4].copy_from_slice(&huge.to_le_bytes());
+            assert!(staff_read(106, class, &body).is_err(), "{class} {huge}");
+        }
+    }
+    // Empty lists are fine.
+    let mut w = W::default();
+    w.u32(0).i32(0).u32(0).u8(0).i32(0).i32(0).u32(0).u32(0);
+    assert!(staff_read(106, "tour", &w.0).unwrap().members.is_empty());
 }

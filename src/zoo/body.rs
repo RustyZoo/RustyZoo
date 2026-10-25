@@ -87,9 +87,11 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             }
         }
         b"staff" | b"keeper" | b"maint" | b"tour" | b"helicopter" => {
-            r.copy_on();
-            staff(r, class)?;
-            zoo_unit(r, false)?
+            let record = super::staff::read(r, class)?;
+            Common {
+                staff: Some(Box::new(record)),
+                ..zoo_unit(r, false)?
+            }
         }
         _ => return Ok(None),
     };
@@ -279,54 +281,6 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         listening,
         guide,
     })
-}
-
-fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
-    let v = r.v;
-    match class {
-        b"keeper" => {
-            r.skip(4 + 16 + 1)?;
-            if (52..=74).contains(&v) {
-                r.quiet(|r| r.skip(4))?;
-            }
-        }
-        b"maint" => {
-            r.skip(4)?;
-            if v >= 92 {
-                r.skip(10)?;
-                r.skip_list(1)?;
-            } else {
-                r.put(&[0; 14]);
-            }
-        }
-        b"tour" => {
-            r.skip(4)?;
-            if v >= 54 {
-                r.skip(4)?;
-            }
-            if (54..=64).contains(&v) {
-                r.skip(4)?;
-            }
-            if v >= 65 {
-                r.skip_list(4)?;
-            }
-            if v >= 66 {
-                r.skip(1)?;
-            }
-        }
-        b"helicopter" if v >= 75 => r.skip(12)?,
-        b"helicopter" => r.put(&[0; 12]),
-        _ => {}
-    }
-    // The common staff block.
-    r.skip(8)?;
-    r.skip_list(8)?;
-    if v >= 75 {
-        r.skip(4)?;
-    } else {
-        r.put(&[0; 4]);
-    }
-    Ok(())
 }
 
 /// The unit block of animals, guests and staff, ending with the common part.

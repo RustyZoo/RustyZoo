@@ -36,6 +36,7 @@
 mod animal;
 mod body;
 pub(crate) mod fresh;
+mod staff;
 #[cfg(test)]
 pub(crate) mod tests;
 mod unit;
@@ -43,6 +44,7 @@ mod upgrade;
 mod write;
 pub(crate) use animal::animal_new;
 pub use animal::{AnimalRecord, Escape};
+pub use staff::StaffRecord;
 pub use unit::{Behaviour, Level, Target, UnitBlock};
 
 use std::collections::BTreeMap;
@@ -133,6 +135,8 @@ pub struct Common {
     pub animal: Option<Box<AnimalRecord>>,
     /// What a guest record stores of the guest; `None` for everything else.
     pub guest: Option<Box<GuestRecord>>,
+    /// What a staff record stores of the staff member; `None` for everything else.
+    pub staff: Option<Box<StaffRecord>>,
     /// The goal, target, movement, pending call and behaviour set of a unit; `None` for everything
     /// else.
     pub unit: Option<Box<UnitBlock>>,
