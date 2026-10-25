@@ -24,17 +24,21 @@
 //! known; [`Zoo::check_types`] does the same once the caller has the definitions, and
 //! [`Zoo::drop_unknown`] drops the entities of an unknown type, which the engine does when it writes.
 //!
-//! [`Zoo::write`] mirrors the reader. What the engine does not model is kept as read ([`Kept`], and
-//! the body of each entity in [`Common`]) and written back; what it models is written from the model.
+//! [`Zoo::write`] mirrors the reader and always writes version 106 (from 70 on). What the engine
+//! does not model is kept as read ([`Kept`], and the body of each entity in [`Common`]), converted to
+//! that version and written back; what it models is written from the model. An entity made in play
+//! has no body: its class fields are built from the model.
 //!
 //! Everything read from a file is untrusted. Every count and size is checked against the bytes
 //! left before anything is allocated or looped over, so the time and memory used are linear in
 //! the size of the input, which is limited to [`MAX_SIZE`].
 
 mod body;
+mod fresh;
 #[cfg(test)]
 pub(crate) mod tests;
 mod unit;
+mod upgrade;
 mod write;
 pub use unit::{Behaviour, Level, Target, UnitBlock};
 
@@ -137,15 +141,11 @@ pub struct Common {
     pub raw: Raw,
 }
 
-/// Where the entity base starts and ends inside a body, so a writer can replace it: the position, the
-/// end of the name, the stamp, the colour count and the end of the colours. All 0 for an entity that
-/// was not read from a file.
+/// Where parts of the entity base lie inside a body, so a writer can keep what it does not model:
+/// the stamp, the colour count and the end of the colours. All 0 for an entity that was not read
+/// from a file.
 #[derive(Debug, Clone, Copy, Default)]
 struct Spans {
-    /// The start of the unit block, for a unit.
-    unit: usize,
-    base: usize,
-    name: usize,
     stamp: usize,
     colors: usize,
     end: usize,
@@ -172,22 +172,26 @@ impl Eq for Raw {}
 /// `finances`.
 #[derive(Debug, Clone, Default)]
 pub struct Kept {
-    /// From the habitat count to the end of the shows that precede the id counter.
+    /// From the habitat count to the end of the habitat records.
     habitats: Vec<u8>,
+    /// The shows that precede the id counter (from version 97).
+    shows: Vec<u8>,
+    /// The shows after the marketing (versions 89 to 96).
+    late_shows: Vec<u8>,
+    /// The cheats (from version 104).
+    cheats: Vec<u8>,
     /// The scenario block: its size and content.
     scenario: Vec<u8>,
     /// The game block, from the zoo status to the cash and the word after it.
     finances: Vec<u8>,
-    /// Where the account tables, the adult price (from 39), the calendar and the cash start in it.
-    at: [usize; 4],
+    /// Where the calendar and the cash start in it.
+    at: [usize; 2],
     /// Where the statistics of each habitat start in `habitats`.
     stats_at: Vec<usize>,
     /// The thoughts as stored: text id, thinker, object, tile x and y (save games 9).
     thoughts: Vec<[u32; 5]>,
-    /// Research, awards, marketing, the shows of 89 to 96 and the cheats.
+    /// Research, awards and marketing.
     research: Vec<u8>,
-    /// The word after the world clock (until 66).
-    tail: Vec<u8>,
 }
 
 impl PartialEq for Kept {
@@ -535,6 +539,15 @@ struct Reader<'a> {
     behaviour: Option<Behaviour>,
     /// The tile grid, once it is read: the old tiles of a unit become positions with its heights.
     ground: Option<Rc<Ground>>,
+    /// The copy being made of what is read, in the form of version 106: fields the version lacks
+    /// are put into it, fields it no longer has are left out. A copy is made when it is `want`ed,
+    /// while `copy` is set.
+    tee: Vec<u8>,
+    want: bool,
+    copy: bool,
+    /// The copy of the fields before the unit block or the entity base, and after them.
+    pre: Vec<u8>,
+    post: Vec<u8>,
 }
 
 /// The map of a file, for the heights of the positions an old file stores as tiles.
@@ -571,7 +584,38 @@ impl<'a> Reader<'a> {
             spans: Spans::default(),
             behaviour: None,
             ground: None,
+            tee: Vec::new(),
+            want: false,
+            copy: false,
+            pre: Vec::new(),
+            post: Vec::new(),
         }
+    }
+
+    /// Reads without copying what `f` reads.
+    fn quiet<T>(&mut self, f: impl FnOnce(&mut Self) -> R<T>) -> R<T> {
+        let was = std::mem::replace(&mut self.copy, false);
+        let out = f(self);
+        self.copy = was;
+        out
+    }
+
+    /// Puts bytes into the copy only (a field the version lacks).
+    fn put(&mut self, bytes: &[u8]) {
+        if self.copy {
+            self.tee.extend(bytes);
+        }
+    }
+
+    /// Starts copying, if a copy is wanted.
+    fn copy_on(&mut self) {
+        self.copy = self.want;
+    }
+
+    /// Ends the part of the copy before the unit block or the entity base.
+    fn cut(&mut self) {
+        self.pre = std::mem::take(&mut self.tee);
+        self.copy = false;
     }
 
     /// The offset in the body being read.
@@ -585,6 +629,9 @@ impl<'a> Reader<'a> {
         }
         let (head, tail) = self.data.split_at(len);
         self.data = tail;
+        if self.copy {
+            self.tee.extend(head);
+        }
         Ok(head)
     }
 
@@ -705,11 +752,14 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     if v >= 64 {
         r.skip(4)?;
     }
+    let habitats = taken(from, r);
+    let mut early_shows = Vec::new();
     if v >= 97 {
         *section = "shows";
+        let from = r.data;
         shows(r)?;
+        early_shows = taken(from, r);
     }
-    let habitats = taken(from, r);
 
     *section = "id counter";
     let id_counter = r.u32()?;
@@ -754,7 +804,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
 
     *section = "later sections";
     let (view, clocks, names, mut kept) = after_entities(r, money)?;
-    kept.habitats = habitats;
+    (kept.habitats, kept.shows) = (habitats, early_shows);
     kept.stats_at = stats_at;
     Ok(Zoo {
         version: v,
@@ -1018,7 +1068,6 @@ fn after_entities(
         .checked_mul(rows)
         .filter(|&n| n <= r.data.len() as u64);
     tables.ok_or_else(|| Bad("finance tables pass the end of the file".into()))?;
-    kept.at[0] = from.len() - r.data.len();
     // The rows past the 31 and the columns past the 20 that are kept are read and dropped.
     let (rows, columns) = (rows as usize, columns as usize);
     for m in 0..rows {
@@ -1043,10 +1092,9 @@ fn after_entities(
             money.total[c] = value;
         }
     }
-    kept.at[1] = from.len() - r.data.len();
     clocks.status.price = if v >= 39 { r.f32()? } else { 49.0 };
     r.skip(if v >= 71 { 8 } else { 0 })?;
-    kept.at[2] = from.len() - r.data.len();
+    kept.at[0] = from.len() - r.data.len();
     // The calendar: year, month, day of week, day, hour, minute, second, millisecond.
     let [year, month, _, day, hour, minute, second, millisecond] = [(); 8].map(|_| r.u16());
     clocks.calendar = crate::timing::Date {
@@ -1060,7 +1108,7 @@ fn after_entities(
         millisecond: u32::from(millisecond?),
     }
     .game_ms();
-    kept.at[3] = from.len() - r.data.len();
+    kept.at[1] = from.len() - r.data.len();
     money.set_cash(r.f32()?);
     if v >= 73 {
         r.skip(4)?;
@@ -1099,19 +1147,21 @@ fn after_entities(
     if v >= 60 {
         r.skip(4)?; // marketing
     }
+    kept.research = taken(from, r);
     if (89..=96).contains(&v) {
+        let from = r.data;
         shows(r)?;
+        kept.late_shows = taken(from, r);
     }
     if v >= 104 {
+        let from = r.data;
         r.skip_strings()?; // cheats
+        kept.cheats = taken(from, r);
     }
-    kept.research = taken(from, r);
     if v >= 58 {
         // The world clock: the milliseconds left over, then the whole seconds (7.11).
         (clocks.world_rem, clocks.world_secs) = (r.u32()?, r.u32()?);
-        let from = r.data;
         r.skip(if v <= 66 { 4 } else { 0 })?;
-        kept.tail = taken(from, r);
     }
     Ok((view, clocks, names, kept))
 }

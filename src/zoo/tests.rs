@@ -105,13 +105,16 @@ fn show_info(w: &mut W, v: u32) {
 }
 
 /// The scripts (from 89) and counters (from 97), with one script of one item.
-fn shows(w: &mut W, v: u32) {
+fn shows(w: &mut W, v: u32, scripts: u32) {
     if v >= 89 {
-        w.u32(1).z(10).u32(1).z(12);
-        w.str("a").str("").str("bc").str("");
-        w.z(8 + 1 + 16);
-        if v >= 103 {
-            w.z(8).str("icon").str("grey");
+        w.u32(scripts);
+        for _ in 0..scripts {
+            w.z(10).u32(1).z(12);
+            w.str("a").str("").str("bc").str("");
+            w.z(8 + 1 + 16);
+            if v >= 103 {
+                w.z(8).str("icon").str("grey");
+            }
         }
     }
     if v >= 97 {
@@ -120,7 +123,7 @@ fn shows(w: &mut W, v: u32) {
 }
 
 /// The sections after the entities, with something in every list.
-fn tail(w: &mut W, v: u32) {
+fn tail(w: &mut W, v: u32, scripts: u32) {
     w.i32(-2).i32(3).i32(1216).i32(-16).u32(5); // view
     if v >= 51 {
         w.u32(4 + 5 + 4 + 8).str("scn/x").u32(8).z(8);
@@ -184,7 +187,7 @@ fn tail(w: &mut W, v: u32) {
         w.z(4);
     }
     if (89..=96).contains(&v) {
-        shows(w, v);
+        shows(w, v, scripts);
     }
     if v >= 104 {
         w.u32(1).str("cheat");
@@ -256,6 +259,18 @@ pub(crate) fn file(
     habitats: &[(bool, bool)],
     ents: &[(&str, &str, &str, Vec<u8>)],
 ) -> Vec<u8> {
+    file_with(v, width, height, habitats, ents, 1)
+}
+
+/// [`file`] with `scripts` show scripts.
+fn file_with(
+    v: u32,
+    width: u32,
+    height: u32,
+    habitats: &[(bool, bool)],
+    ents: &[(&str, &str, &str, Vec<u8>)],
+    scripts: u32,
+) -> Vec<u8> {
     let mut w = W::default();
     header(&mut w, v, 1033);
     w.u32(width)
@@ -270,7 +285,7 @@ pub(crate) fn file(
         w.u32(1);
     }
     if v >= 97 {
-        shows(&mut w, v);
+        shows(&mut w, v, scripts);
     }
     w.u32(7777);
     for i in 0..width * height {
@@ -287,7 +302,7 @@ pub(crate) fn file(
         }
         w.bytes(body);
     }
-    tail(&mut w, v);
+    tail(&mut w, v, scripts);
     w.0
 }
 
@@ -1013,7 +1028,7 @@ fn huge_counts_do_not_allocate_or_loop() {
     let mut w = W::default();
     header(&mut w, 106, 1033);
     w.u32(u32::MAX).u32(u32::MAX).z(8).u32(0).z(4);
-    shows(&mut w, 106);
+    shows(&mut w, 106, 1);
     w.z(4);
     assert_eq!(
         refusal(&w.0),
@@ -1038,7 +1053,7 @@ fn huge_counts_do_not_allocate_or_loop() {
 
 fn tail_len(v: u32) -> usize {
     let mut w = W::default();
-    tail(&mut w, v);
+    tail(&mut w, v, 1);
     w.0.len()
 }
 
@@ -1051,6 +1066,15 @@ fn next(state: &mut u64) -> u64 {
 }
 
 fn rich(v: u32) -> Vec<u8> {
+    rich_with(v, true)
+}
+
+/// [`rich`] without a show, which the writer cannot upgrade below 106.
+fn lean(v: u32) -> Vec<u8> {
+    rich_with(v, false)
+}
+
+fn rich_with(v: u32, show: bool) -> Vec<u8> {
     let ents = [
         ("fences", "zoowall", "f", fence(v, 1)),
         (
@@ -1072,7 +1096,8 @@ fn rich(v: u32) -> Vec<u8> {
     } else {
         ents[..1].to_vec()
     };
-    file(v, 3, 3, &[(true, true), (false, false)], &ents)
+    let habitats = [(true, show), (false, false)];
+    file_with(v, 3, 3, &habitats, &ents, show.into())
 }
 
 #[test]
@@ -1337,51 +1362,64 @@ fn reads_the_figures_of_a_building() {
     }
 }
 
+/// Reads `bytes` and checks that they end where the last section does.
+fn parse_to_the_end(bytes: &[u8]) -> Zoo {
+    let v = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    let mut r = Reader::new(&bytes[8..], v);
+    let zoo = read(&mut r, &mut "", &mut Money::default()).unwrap_or_else(|e| panic!("{}", e.0));
+    assert!(r.data.is_empty(), "{} bytes left", r.data.len());
+    zoo
+}
+
 /// Reads `bytes`, writes them back and reads that.
 fn again(bytes: &[u8]) -> (Zoo, Vec<u8>, Zoo) {
     let (zoo, money) = Zoo::parse_money(bytes).unwrap();
     let out = zoo.write(&money).unwrap();
-    let (back, money_back) = Zoo::parse_money(&out).unwrap();
-    assert_eq!(money, money_back);
+    let back = parse_to_the_end(&out);
+    assert_eq!(money, Zoo::parse_money(&out).unwrap().1);
     (zoo, out, back)
 }
 
-#[test]
-fn a_file_written_reads_the_same() {
-    for v in [38, 45, 55, 60, 63, 67, 70, 84, 97, 101, 104, 106] {
-        let (mut zoo, out, back) = again(&rich(v));
-        // A body the reader skipped is written empty.
-        for e in zoo.entities.iter_mut().filter(|e| e.common.is_none()) {
-            e.body_size = e.body_size.map(|_| 0);
-        }
-        assert_eq!(zoo, back, "version {v}");
-        // And a second write changes nothing.
-        let (again, money) = Zoo::parse_money(&out).unwrap();
-        let second = again.write(&money).unwrap();
-        let at = out.iter().zip(&second).position(|(a, b)| a != b);
-        assert_eq!((at, second.len()), (None, out.len()), "version {v}");
+/// What a zoo read in `from` equals once written as 106: the version and the sizes of the records.
+fn upgraded(mut zoo: Zoo, back: &Zoo) -> Zoo {
+    zoo.version = MAX_VERSION;
+    for (e, b) in zoo.entities.iter_mut().zip(&back.entities) {
+        e.body_size = b.body_size;
     }
+    zoo
 }
 
+const WRITTEN: [u32; 10] = [70, 71, 82, 84, 97, 101, 104, 105, 106, 83];
+
 #[test]
-fn a_file_with_no_change_is_written_byte_for_byte() {
-    for v in [38, 60, 70, 106] {
-        let bytes = rich(v);
-        let (zoo, out, _) = again(&bytes);
-        let skipped = zoo
-            .entities
-            .iter()
-            .any(|e| e.body_size.is_some() && e.common.is_none());
-        if !skipped {
-            assert_eq!(out, bytes, "version {v}");
-        }
+fn a_file_is_written_as_version_106_and_reads_the_same() {
+    for v in WRITTEN {
+        let (zoo, out, back) = again(&lean(v));
+        assert_eq!(back.version, 106, "version {v}");
+        let (mut a, mut b) = (upgraded(zoo, &back), back.clone());
+        (a.kept, b.kept) = (Kept::default(), Kept::default());
+        let (a, b) = (format!("{a:?}"), format!("{b:?}"));
+        let at = a
+            .chars()
+            .zip(b.chars())
+            .position(|(x, y)| x != y)
+            .unwrap_or(0);
+        assert!(
+            a == b,
+            "version {v}: {} / {}",
+            &a[at.saturating_sub(100)..at + 100],
+            &b[at.saturating_sub(100)..at + 100]
+        );
+        // A second write changes nothing.
+        let (again, money) = Zoo::parse_money(&out).unwrap();
+        assert!(again.write(&money).unwrap() == out, "version {v}");
     }
 }
 
 #[test]
 fn the_fields_of_the_model_are_written() {
-    for v in [60, 70, 106] {
-        let (mut zoo, money) = Zoo::parse_money(&rich(v)).unwrap();
+    for v in [70, 106] {
+        let (mut zoo, money) = Zoo::parse_money(&lean(v)).unwrap();
         zoo.id_counter = 77;
         zoo.tiles[4].elevation = -3;
         zoo.names.insert("lion".into(), 5);
@@ -1389,25 +1427,21 @@ fn the_fields_of_the_model_are_written() {
         zoo.clocks.ai_ticks = 9;
         zoo.clocks.world_secs = 11;
         zoo.clocks.status.rating = 42;
+        zoo.clocks.status.price = 31.5;
         zoo.clocks.calendar = 123_456_789;
         let c = zoo.entities[0].common.as_mut().unwrap();
         (c.x, c.y, c.z, c.rotation, c.id) = (1, 2, 3, 6, 99);
         c.name = "A longer name".into();
         c.stamp = Some(55);
-        if v >= 67 {
-            c.colors = vec![1, 2, 3];
-        }
+        c.colors = vec![1, 2, 3];
         let mut money = money;
         money.set_cash(1234.5);
         money.monthly[1][4] = 7.0;
+        money.monthly[30][11] = 8.0;
         money.total[1] = 8.0;
-        let (back, money_back) = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap();
-        for e in zoo.entities.iter_mut().filter(|e| e.common.is_none()) {
-            e.body_size = e.body_size.map(|_| 0);
-        }
-        // The record is longer with the longer name.
-        zoo.entities[0].body_size = back.entities[0].body_size;
-        assert_eq!(back, zoo, "version {v}");
+        let back = parse_to_the_end(&zoo.write(&money).unwrap());
+        let money_back = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap().1;
+        assert_eq!(back, upgraded(zoo, &back), "version {v}");
         assert_eq!(money_back, money, "version {v}");
         assert_eq!(
             back.entities[0].common.as_ref().unwrap().name,
@@ -1421,7 +1455,8 @@ fn the_writer_puts_names_thoughts_and_habitat_figures_over_the_file() {
     for v in [70, 82, 83, 106] {
         let bytes = file(v, 3, 3, &[(false, false), (true, false)], &[]);
         let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
-        assert_eq!(zoo.write(&money).unwrap(), bytes, "version {v}");
+        let out = zoo.write(&money).unwrap();
+        assert_eq!(parse_to_the_end(&out).version, 106, "version {v}");
         assert_eq!(zoo.thoughts(), [[0; 5]; 2]);
         // A counter at 0 is not written; the thoughts and the figures are the live ones.
         zoo.names.insert("z".into(), 0);
@@ -1441,24 +1476,412 @@ fn the_writer_puts_names_thoughts_and_habitat_figures_over_the_file() {
 }
 
 #[test]
-fn an_entity_without_a_body_is_not_written() {
-    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
-    zoo.entities[0].common.as_mut().unwrap().raw = Raw::default();
+fn the_game_block_of_an_old_file_gets_the_rows_and_words_it_lacked() {
+    for v in [70, 71, 73, 106] {
+        let back = again(&lean(v)).2;
+        let (f, at) = (&back.kept.finances, back.kept.at);
+        // 31 rows and 20 columns, whatever the file had.
+        assert_eq!(
+            f[45..53],
+            [31u32.to_le_bytes(), 20u32.to_le_bytes()].concat()
+        );
+        // The date after the price is 1 January 2000 when the file has none (before 71).
+        let date = u64::from_le_bytes(f[at[0] - 8..at[0]].try_into().unwrap());
+        assert_eq!(
+            date,
+            if v < 71 { 125_911_584_000_000_000 } else { 0 },
+            "version {v}"
+        );
+        assert_eq!(f.len(), at[1] + 8, "version {v}");
+    }
+}
+
+#[test]
+fn an_entity_without_a_body_is_not_written_unless_the_model_builds_it() {
+    // A class the writer has no fields for.
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    let mut mystery = zoo.entities[0].clone();
+    mystery.class = "mystery".into();
+    mystery.common.as_mut().unwrap().raw = Raw::default();
+    zoo.entities.push(mystery);
+    let at = zoo.entities.len() - 1;
+    let why = zoo.write(&money).unwrap_err();
     assert!(
-        zoo.write(&money)
-            .unwrap_err()
-            .starts_with("entity 0: fences/zoowall")
+        why.starts_with(&format!("entity {at}: mystery/zoowall")),
+        "{why}"
     );
-    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
     zoo.entities[0].common.as_mut().unwrap().name = "x".repeat(4096);
     assert!(zoo.write(&money).is_err());
     zoo.version = 107;
     assert!(zoo.write(&money).is_err());
     let blank = Zoo {
         kept: Kept::default(),
-        ..Zoo::parse(&rich(106)).unwrap()
+        ..Zoo::parse(&lean(106)).unwrap()
     };
     assert!(blank.write(&money).is_err());
+}
+
+/// An entity made in play: no body was read for it.
+fn made(class: &str, subtype: &str, common: Common) -> Entity {
+    Entity {
+        class: class.into(),
+        type_name: "t".into(),
+        subtype: subtype.into(),
+        body_size: None,
+        common: Some(common),
+    }
+}
+
+fn new_animal() -> AnimalRecord {
+    let mut counters = [None; 16];
+    for (i, at) in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14]
+        .iter()
+        .enumerate()
+    {
+        counters[*at] = Some(i as i32 + 1);
+    }
+    AnimalRecord {
+        happiness: 71,
+        hunger: 12,
+        health: 88,
+        energy: 33,
+        dung: 5,
+        female: true,
+        counters,
+        breath: Some(44),
+        at_minimum_health: true,
+        very_unhappy: true,
+        keeper_visited: true,
+        mourning: true,
+        dying: true,
+        crated: true,
+        egg: true,
+        thirsty: true,
+        rampaging: true,
+        rampage: 9,
+    }
+}
+
+fn new_guest() -> GuestRecord {
+    GuestRecord {
+        values: [1, -2, 3, 4, 5],
+        countdowns: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+        arrived: 0x01d0_0000_1234_5678,
+        favourite: 7,
+        sick: true,
+        saw_animal: 9,
+        female: true,
+        child: true,
+    }
+}
+
+#[test]
+fn an_entity_made_in_play_is_written_and_read_back() {
+    let fence = Fence {
+        strength: 30,
+        life: -20,
+        timers: [1, 2],
+        portal: false,
+    };
+    let record = BuildingRecord {
+        guests: [1, 2, 3],
+        income: [4, 5, 6],
+        upkeep: Some(7),
+        price: 8,
+        users: vec![(9, 1)],
+        fill: 10,
+        built: 11,
+    };
+    let at = Common {
+        x: 96,
+        y: 160,
+        z: 16,
+        rotation: 3,
+        name: "New".into(),
+        colors: vec![5, 6],
+        ..Common::default()
+    };
+    let with = |f: &dyn Fn(&mut Common)| {
+        let mut c = at.clone();
+        f(&mut c);
+        c
+    };
+    let made = [
+        made("objects", "bush", at.clone()),
+        made("objects", "poo", with(&|c| c.food = 4)),
+        made("objects", "bush", with(&|c| c.food = 4)),
+        made("food", "meat", with(&|c| c.food = -3)),
+        made("paths", "path", at.clone()),
+        made("ambient", "bird", at.clone()),
+        made("rubble", "r", at.clone()),
+        made("fences", "f", with(&|c| c.fence = Some(fence))),
+        made(
+            "tankwall",
+            "f",
+            with(&|c| {
+                c.fence = Some(Fence {
+                    portal: true,
+                    ..fence
+                })
+            }),
+        ),
+        made(
+            "filter",
+            "f",
+            with(&|c| {
+                c.filter = Some(Filter {
+                    health: 55,
+                    timers: None,
+                })
+            }),
+        ),
+        made(
+            "building",
+            "shop",
+            with(&|c| c.building = Some(record.clone())),
+        ),
+        made(
+            "animals",
+            "m",
+            with(&|c| c.animal = Some(Box::new(new_animal()))),
+        ),
+        made(
+            "guests",
+            "",
+            with(&|c| c.guest = Some(Box::new(new_guest()))),
+        ),
+        made("keeper", "k", at.clone()),
+        made("maint", "k", at.clone()),
+        made("tour", "k", at.clone()),
+        made("helicopter", "k", at.clone()),
+        made("staff", "k", at.clone()),
+        // A new unit without a record is written with the values of a new one.
+        made("animals", "m", at.clone()),
+        made("guests", "", at.clone()),
+    ];
+    for v in [70, 106] {
+        let (mut zoo, money) = Zoo::parse_money(&lean(v)).unwrap();
+        let before = zoo.entities.len();
+        for (i, e) in made.iter().enumerate() {
+            let mut e = e.clone();
+            e.common.as_mut().unwrap().id = 100 + i as u32;
+            zoo.entities.push(e);
+        }
+        let back = parse_to_the_end(&zoo.write(&money).unwrap());
+        assert_eq!(back.entities.len(), before + made.len());
+        for (i, (e, b)) in made.iter().zip(&back.entities[before..]).enumerate() {
+            let what = format!("version {v}, {}/{} ({i})", e.class, e.subtype);
+            assert_eq!((&b.class, &b.subtype), (&e.class, &e.subtype), "{what}");
+            let (c, b) = (e.common.as_ref().unwrap(), b.common.as_ref().expect(&what));
+            let place = |c: &Common| {
+                (
+                    c.x,
+                    c.y,
+                    c.z,
+                    c.rotation,
+                    c.id,
+                    c.name.clone(),
+                    c.colors.clone(),
+                )
+            };
+            assert_eq!(
+                place(b),
+                (96, 160, 16, 3, 100 + i as u32, "New".into(), vec![5, 6]),
+                "{what}"
+            );
+            let keeps = e.class == "food" || e.subtype == "poo";
+            assert_eq!(b.food, if keeps { c.food } else { 0 }, "{what}");
+            assert_eq!((b.fence, b.filter), (c.fence, c.filter), "{what}");
+            assert_eq!(b.building, c.building, "{what}");
+            assert_eq!(b.animal.is_some(), e.class == "animals", "{what}");
+            assert_eq!(b.guest.is_some(), e.class == "guests", "{what}");
+            if c.animal.is_some() {
+                assert_eq!(b.animal, c.animal, "{what}");
+            }
+            if c.guest.is_some() {
+                assert_eq!(b.guest, c.guest, "{what}");
+            }
+            // A unit is on the ground with the blocks of a new one.
+            if let Some(u) = &b.unit {
+                assert_eq!(
+                    (b.movement_mode, u.as_ref()),
+                    (2, &UnitBlock::default()),
+                    "{what}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_new_unit_is_alive_and_a_new_building_is_not_for_free() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.clocks.calendar = 86_400_000 * 40;
+    let at = Common::default();
+    zoo.entities.push(made("animals", "m", at.clone()));
+    zoo.entities.push(made("guests", "", at.clone()));
+    zoo.entities.push(made("building", "shop", at));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let c = |i: usize| {
+        back.entities[back.entities.len() - 3 + i]
+            .common
+            .clone()
+            .unwrap()
+    };
+    let a = c(0).animal.unwrap();
+    assert_eq!(
+        (a.happiness, a.health, a.energy, a.dying),
+        (100, 100, 100, false)
+    );
+    // The arrival and construction dates are the game date.
+    let now = crate::timing::file_time(zoo.clocks.calendar);
+    assert_eq!(c(1).guest.unwrap().arrived, now);
+    assert_eq!(c(2).building.unwrap().built, now);
+}
+
+/// A zero body of class `class` in version `v`, whose class fields before the unit block or after
+/// the base are `own` bytes.
+fn zero_body(v: u32, class: &str, own: usize) -> Vec<u8> {
+    let mut w = W::default();
+    let unit = is_unit_class(class);
+    match class {
+        "ambient" => w.z(own),
+        _ if !unit => w.z(4),
+        _ => &mut w,
+    };
+    if unit {
+        w.z(own);
+        let mut o = Out(Vec::new());
+        unit::write(&mut o, v, class == "guests", 2, &UnitBlock::default()).unwrap();
+        w.bytes(&o.0);
+    }
+    base(&mut w, v, 6, 1, "x");
+    if !unit && class != "ambient" {
+        w.z(own);
+    }
+    w.0
+}
+
+fn is_unit_class(class: &str) -> bool {
+    !matches!(class, "building" | "filter" | "rubble" | "ambient")
+}
+
+#[test]
+fn the_class_fields_of_every_version_become_those_of_106() {
+    // The length of the class fields in version `v` and in 106, from zoo format 6.7 to 6.13.
+    let staff = |v: u32, own: usize| own + 12 + 4 * usize::from(v >= 75);
+    for v in 70..=106u32 {
+        let from = |x: bool| usize::from(x);
+        let cases: [(&str, usize, usize); 10] = [
+            (
+                "animals",
+                195 + from(v >= 76)
+                    + 8 * from(v >= 77)
+                    + from(v >= 78)
+                    + 5 * from(v >= 79)
+                    + 8 * from(v >= 87)
+                    + 8 * from(v >= 101),
+                226,
+            ),
+            ("guests", 151, 151),
+            ("keeper", staff(v, 21 + 4 * from(v <= 74)), 37),
+            ("maint", staff(v, 4 + 14 * from(v >= 92)), 34),
+            ("tour", staff(v, 13), 29),
+            ("helicopter", staff(v, 12 * from(v >= 75)), 28),
+            ("staff", staff(v, 0), 16),
+            (
+                "building",
+                4 * 5 + 4 + 16 + 8 + 4 + 4 * from(v >= 74) + 4 * from(v >= 75),
+                60,
+            ),
+            ("filter", 4 + 32 * from(v >= 95), 36),
+            ("rubble", 8, 8),
+        ];
+        for (class, own, to) in cases {
+            let body = zero_body(v, class, own);
+            let (pre, post) = body::transcode(v, class.as_bytes(), &body)
+                .unwrap_or_else(|e| panic!("{class} in version {v}: {e}"));
+            let got = if is_unit_class(class) {
+                pre.len()
+            } else {
+                post.len()
+            };
+            assert_eq!(got, to, "{class} in version {v}");
+            assert_eq!(pre.len() + post.len(), got, "{class} in version {v}");
+        }
+        let body = zero_body(v, "ambient", 8);
+        assert_eq!(body::transcode(v, b"ambient", &body).unwrap().0.len(), 8);
+    }
+}
+
+#[test]
+fn the_fields_a_record_lacked_take_the_values_of_the_original() {
+    // An animal before 101 has no home exhibit: none is written; before 87 the breath is 0.
+    let body = zero_body(70, "animals", 195);
+    let (pre, _) = body::transcode(70, b"animals", &body).unwrap();
+    assert_eq!(pre[218..], [0xff; 8]);
+    assert_eq!(pre[210..218], [0; 8]);
+    // A filter before 95 has no upkeep: three zero words, two "never" dates and a 1 follow its health.
+    let mut body = zero_body(70, "filter", 4);
+    body[4 + 12..4 + 16].copy_from_slice(&[7, 0, 0, 0]);
+    let (_, post) = body::transcode(70, b"filter", &body).unwrap();
+    assert_eq!(post[..4], [0; 4]);
+    let never = 125_911_584_000_000_000u64.to_le_bytes();
+    assert_eq!(post[16..24], never);
+    assert_eq!(post[32..], [1, 0, 0, 0]);
+    // A guest before 94 drops its two strings for a word and an empty string.
+    let mut own = vec![0; 97];
+    own.extend([2, 0, 0, 0, b'a', b'b', 0, 0, 0, 0]);
+    own.extend([0; 46]);
+    let mut body = zero_body(93, "guests", 0);
+    body.splice(0..0, own);
+    let (pre, _) = body::transcode(93, b"guests", &body).unwrap();
+    assert_eq!((pre.len(), pre[97..105].to_vec()), (151, vec![0; 8]));
+}
+
+#[test]
+fn habitats_and_shows_of_an_old_file_are_written_as_106() {
+    for v in [70, 83, 85, 88, 89, 93, 97, 99, 100, 103, 105] {
+        let (zoo, money) = Zoo::parse_money(&lean(v)).unwrap();
+        let back = parse_to_the_end(&zoo.write(&money).unwrap());
+        assert_eq!(back.tanks, zoo.tanks, "version {v}");
+        assert_eq!(back.habitat_info, zoo.habitat_info, "version {v}");
+        if v < 97 {
+            // No script, and the counters of a fresh map.
+            assert_eq!(
+                back.kept.shows,
+                [0, 0, 0, 0, 0xd0, 7, 0xe8, 3],
+                "version {v}"
+            );
+        }
+    }
+    // A show is written from 106 only, scripts from 103.
+    for v in [90, 98, 101, 105] {
+        let (zoo, money) = Zoo::parse_money(&rich(v)).unwrap();
+        let why = zoo.write(&money).unwrap_err();
+        assert!(why.contains("show"), "version {v}: {why}");
+    }
+    for v in [89, 96, 97, 102] {
+        let (zoo, money) = Zoo::parse_money(&file_with(v, 3, 3, &[], &[], 1)).unwrap();
+        let why = zoo.write(&money).unwrap_err();
+        assert!(why.starts_with("shows with scripts"), "version {v}: {why}");
+    }
+    for (v, file) in [(103, file_with(103, 3, 3, &[], &[], 1)), (106, rich(106))] {
+        let (zoo, money) = Zoo::parse_money(&file).unwrap();
+        let out = zoo.write(&money).unwrap();
+        assert_eq!(
+            parse_to_the_end(&out).kept.shows,
+            zoo.kept.shows,
+            "version {v}"
+        );
+    }
+}
+
+#[test]
+fn a_file_before_version_70_is_not_written_yet() {
+    let (zoo, money) = Zoo::parse_money(&lean(60)).unwrap();
+    assert!(zoo.write(&money).unwrap_err().contains("70"));
 }
 
 /// A unit block of the model, with every kind of field set.
@@ -1777,7 +2200,7 @@ fn a_string_of_4096_characters_in_a_unit_block_is_not_written() {
 #[test]
 fn the_unit_blocks_of_a_zoo_are_read_and_written() {
     for v in [101, 106] {
-        let (mut zoo, money) = Zoo::parse_money(&rich(v)).unwrap();
+        let (mut zoo, money) = Zoo::parse_money(&lean(v)).unwrap();
         let c = zoo.entities[1].common.as_mut().unwrap();
         let mut u = through(v, false, &block());
         u.behaviour = block().behaviour;
@@ -1787,8 +2210,7 @@ fn the_unit_blocks_of_a_zoo_are_read_and_written() {
         let back = Zoo::parse(&out).unwrap();
         let b = back.entities[1].common.as_ref().unwrap();
         assert_eq!(b.unit.as_deref(), Some(&u), "version {v}");
-        // The mode is stored from version 84.
-        assert_eq!(b.movement_mode, if v >= 84 { 3 } else { 2 }, "version {v}");
+        assert_eq!(b.movement_mode, 3, "version {v}");
         // The entity base after the set is intact.
         assert_eq!(b.name, "unit");
         assert_eq!(b.colors, [3, 9]);
@@ -1810,32 +2232,51 @@ fn the_unit_blocks_of_a_zoo_are_read_and_written() {
     assert_eq!(u.short, 0);
 }
 
-/// Every shipped file that loads is written back byte for byte, but for the name counters at 0,
-/// which the original does not write (save games 7): then the counters at 0 are the only difference.
+/// Every shipped file that loads is written as version 106, which reads to the last byte and does
+/// not change on a second write; a file that was 106 comes back byte for byte but for the name
+/// counters at 0, which the original does not write (save games 7).
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn full_game_round_trip() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
-    let mut files = 0;
+    let (mut files, mut same, mut refused) = (0, 0, 0);
     for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
         let bytes = vfs.read(member).unwrap();
         let Ok((zoo, money)) = Zoo::parse_money(&bytes) else {
             continue;
         };
-        let out = zoo
-            .write(&money)
-            .unwrap_or_else(|e| panic!("{member}: {e}"));
-        if out != bytes {
-            let zeros = zoo.names.values().filter(|&&n| n == 0).count();
-            let (back, back_money) = Zoo::parse_money(&out).unwrap();
-            assert!(zeros > 0, "{member}");
-            assert_eq!(back.names.len() + zeros, zoo.names.len(), "{member}");
-            let again = back.write(&back_money).unwrap();
-            assert!(again == out, "{member}");
-        }
         files += 1;
+        let out = match zoo.write(&money) {
+            Ok(out) => out,
+            Err(why) if why.contains("show") || zoo.version < 70 => {
+                refused += 1;
+                continue;
+            }
+            Err(why) => panic!("{member}: {why}"),
+        };
+        let back = parse_to_the_end(&out);
+        assert_eq!(back.entities.len(), zoo.entities.len(), "{member}");
+        let (again, money) = Zoo::parse_money(&out).unwrap();
+        assert!(
+            again.write(&money).unwrap() == out,
+            "{member}: second write"
+        );
+        if zoo.version == 106 {
+            let zeros = zoo.names.values().filter(|&&n| n == 0).count();
+            let at = out.iter().zip(&bytes).position(|(a, b)| a != b);
+            assert!(
+                out == bytes || zeros > 0,
+                "{member}: first difference at {at:?}"
+            );
+            assert_eq!(back.names.len() + zeros, zoo.names.len(), "{member}");
+            same += 1;
+        }
     }
     // The 96 files that parse (95 in the French install, which lacks the saved game).
     assert!(files >= 95, "{files} files");
+    assert!(
+        same >= 10 && refused < 10,
+        "{same} identical, {refused} refused"
+    );
 }

@@ -416,9 +416,25 @@ impl Date {
     }
 }
 
+/// The file time (100 ns steps since 1 January 1601, zoo format 1) of a game date in game
+/// milliseconds from the calendar's start; 0 before 1601.
+pub fn file_time(game_ms: i64) -> u64 {
+    let ms = game_ms.saturating_add((DAYS_TO_2001 + DAYS_1601_TO_1970) * DAY_MS as i64);
+    u64::try_from(ms).map_or(0, |ms| ms.saturating_mul(10_000))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_time_reads_back_as_the_game_date() {
+        for ms in [0, 1, 123_456_789, -86_400_000 * 400] {
+            assert_eq!(Date::from_file_time(file_time(ms)).game_ms(), ms);
+        }
+        assert_eq!(file_time(i64::MIN), 0);
+        assert_eq!(file_time(i64::MAX), u64::MAX);
+    }
 
     fn periods(ini: &str) -> (u32, u32, u32) {
         let t = Timers::from_config(&Config::parse(ini.as_bytes()).unwrap());

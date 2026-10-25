@@ -2,12 +2,13 @@
 //! read and dropped to reach the next record (or the end of the body). The reader keeps the bytes.
 
 use super::unit::{behaviour_set, read};
+use super::upgrade::NEVER;
 use super::{AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
     let v = r.v;
-    Ok(Some(match class {
+    let common = match class {
         // Scenery, then (after the common part) the fields of the class.
         b"objects" | b"food" | b"paths" => scenery(r)?,
         b"fences" | b"tankwall" => {
@@ -30,16 +31,24 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             common
         }
         b"ambient" => {
+            r.copy_on();
             r.skip(8)?;
+            r.cut();
             base(r)?
         }
         b"filter" => {
             let mut common = scenery(r)?;
+            r.copy_on();
             let health = r.u32()?;
             // From 95 the upkeep of last month, this month and since built, two dates and one word
             // follow; the timers are not saved (zoo format 6.8).
             if v >= 95 {
                 r.skip(3 * 4 + 2 * 8 + 4)?;
+            } else {
+                r.put(&[0; 12]);
+                r.put(&NEVER.to_le_bytes());
+                r.put(&NEVER.to_le_bytes());
+                r.put(&1u32.to_le_bytes());
             }
             common.filter = Some(Filter {
                 health,
@@ -49,18 +58,21 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
         }
         b"rubble" => {
             let common = scenery(r)?;
+            r.copy_on();
             r.skip_list(4)?;
             r.skip(4)?;
             common
         }
         b"building" => {
             let common = scenery(r)?;
+            r.copy_on();
             Common {
                 building: Some(building(r)?),
                 ..common
             }
         }
         b"animals" => {
+            r.copy_on();
             let record = animal(r)?;
             Common {
                 animal: Some(Box::new(record)),
@@ -68,6 +80,7 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             }
         }
         b"guests" => {
+            r.copy_on();
             let record = guest(r)?;
             Common {
                 guest: Some(Box::new(record)),
@@ -75,11 +88,17 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             }
         }
         b"staff" | b"keeper" | b"maint" | b"tour" | b"helicopter" => {
+            r.copy_on();
             staff(r, class)?;
             zoo_unit(r, false)?
         }
         _ => return Ok(None),
-    }))
+    };
+    if r.copy {
+        r.post = std::mem::take(&mut r.tee);
+        r.copy = false;
+    }
+    Ok(Some(common))
 }
 
 /// The food counter, then the common part.
@@ -91,12 +110,10 @@ fn scenery(r: &mut Reader) -> R<Common> {
 /// The common part of every body.
 fn base(r: &mut Reader) -> R<Common> {
     let v = r.v;
-    let start = r.pos();
     let (x, y, z) = (r.i32()?, r.i32()?, r.i32()?);
     let rotation = r.u32()? % 8;
     let id = r.u32()?;
     let name = r.text()?;
-    let name_end = r.pos();
     if v <= 62 {
         r.string()?;
     }
@@ -117,9 +134,6 @@ fn base(r: &mut Reader) -> R<Common> {
         colors = r.take(n)?.to_vec();
     }
     r.spans = Spans {
-        unit: 0,
-        base: start,
-        name: name_end,
         stamp: stamp_at,
         colors: colors_at,
         end: r.pos(),
@@ -167,9 +181,13 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
     }
     if v >= 74 {
         r.skip(4)?;
+    } else {
+        r.put(&[0; 4]);
     }
     if v >= 75 {
         r.skip_list(4)?;
+    } else {
+        r.put(&[0; 4]);
     }
     Ok(BuildingRecord {
         guests: [guests_this, guests_last, guests_since],
@@ -224,6 +242,8 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
         r.skip(8 + 8 + 12)?;
         if v >= 81 {
             r.skip(4)?;
+        } else {
+            r.put(&[0; 4]);
         }
     }
     let mut crated = false;
@@ -236,26 +256,40 @@ fn animal(r: &mut Reader) -> R<AnimalRecord> {
         r.skip(1)?;
     }
     let rampaging = v >= 76 && r.u8()? != 0;
+    if v < 76 {
+        r.put(&[0]);
+    }
     let mut rampage = 0;
     if v >= 77 {
         r.skip(4)?;
         rampage = r.i32()?;
+    } else {
+        r.put(&[0; 8]);
     }
     if v >= 78 {
         r.skip(1)?;
+    } else {
+        r.put(&[0]);
     }
     let mut egg = false;
     if v >= 79 {
         egg = r.u8()? != 0;
         r.skip(4)?;
+    } else {
+        r.put(&[0; 5]);
     }
     let mut breath = None;
     if v >= 87 {
         breath = Some(r.i32()?);
         c[1] = Some(r.i32()?);
+    } else {
+        r.put(&[0; 8]);
     }
     if v >= 101 {
         r.skip(8)?;
+    } else {
+        // No home: the reader works it out again.
+        r.put(&[0xff; 8]);
     }
     Ok(AnimalRecord {
         happiness,
@@ -302,8 +336,11 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
     r.skip_list(4)?;
     r.skip_list(4)?;
     if v <= 93 {
-        r.string()?;
-        r.string()?;
+        r.quiet(|r| {
+            r.string()?;
+            r.string().map(|_| ())
+        })?;
+        r.put(&[0; 8]);
     } else {
         r.skip(4)?;
         r.string()?;
@@ -349,7 +386,7 @@ fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
         b"keeper" => {
             r.skip(4 + 16 + 1)?;
             if (52..=74).contains(&v) {
-                r.skip(4)?;
+                r.quiet(|r| r.skip(4))?;
             }
         }
         b"maint" => {
@@ -357,6 +394,8 @@ fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
             if v >= 92 {
                 r.skip(10)?;
                 r.skip_list(1)?;
+            } else {
+                r.put(&[0; 14]);
             }
         }
         b"tour" => {
@@ -375,6 +414,7 @@ fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
             }
         }
         b"helicopter" if v >= 75 => r.skip(12)?,
+        b"helicopter" => r.put(&[0; 12]),
         _ => {}
     }
     // The common staff block.
@@ -382,22 +422,35 @@ fn staff(r: &mut Reader, class: &[u8]) -> R<()> {
     r.skip_list(8)?;
     if v >= 75 {
         r.skip(4)?;
+    } else {
+        r.put(&[0; 4]);
     }
     Ok(())
 }
 
 /// The unit block of animals, guests and staff, ending with the common part.
 fn zoo_unit(r: &mut Reader, guest: bool) -> R<Common> {
-    let start = r.pos();
+    r.cut();
     let (mut unit, mode) = read(r, guest)?;
     let common = base(r)?;
     if let Some(set) = r.behaviour.take() {
         unit.behaviour = set;
     }
-    r.spans.unit = start;
     Ok(Common {
         movement_mode: mode,
         unit: Some(Box::new(unit)),
         ..common
     })
+}
+
+/// The class fields of a body read in version `v`, in the form of version 106: the ones before the
+/// unit block or the entity base, and the ones after them. The food counter, the fence figures,
+/// the unit block and the entity base are not among them.
+pub(super) fn transcode(v: u32, class: &[u8], body: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let mut r = Reader::new(body, v);
+    r.want = true;
+    match decode(&mut r, class) {
+        Ok(Some(_)) if r.data.is_empty() => Ok((r.pre, r.post)),
+        _ => Err("the body cannot be read again".into()),
+    }
 }
