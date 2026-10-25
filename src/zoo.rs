@@ -33,6 +33,7 @@
 //! left before anything is allocated or looped over, so the time and memory used are linear in
 //! the size of the input, which is limited to [`MAX_SIZE`].
 
+mod animal;
 mod body;
 pub(crate) mod fresh;
 #[cfg(test)]
@@ -40,6 +41,8 @@ pub(crate) mod tests;
 mod unit;
 mod upgrade;
 mod write;
+pub(crate) use animal::animal_new;
+pub use animal::{AnimalRecord, Escape};
 pub use unit::{Behaviour, Level, Target, UnitBlock};
 
 use std::collections::BTreeMap;
@@ -265,33 +268,6 @@ pub struct GuestRecord {
     pub listening: bool,
     /// The id of the tour guide followed, 0 for none.
     pub guide: u32,
-}
-
-/// The values, counters and flags an animal record stores (animals 3.5). A counter the record
-/// does not hold (by the version) is `None`: it keeps what creation gave it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AnimalRecord {
-    pub happiness: i32,
-    pub hunger: i32,
-    pub health: i32,
-    pub energy: i32,
-    pub dung: i32,
-    pub female: bool,
-    /// The counters of the checks in the order of the animal module's indices.
-    pub counters: [Option<i32>; 16],
-    /// The breath, as saved (tank fauna 10.1): only from version 87, `None` before.
-    pub breath: Option<i32>,
-    pub at_minimum_health: bool,
-    pub very_unhappy: bool,
-    pub keeper_visited: bool,
-    pub mourning: bool,
-    pub dying: bool,
-    pub crated: bool,
-    pub egg: bool,
-    pub thirsty: bool,
-    /// The rampage flag and counter (animals 11).
-    pub rampaging: bool,
-    pub rampage: i32,
 }
 
 /// The four values a fence or tank wall record holds after its common part.

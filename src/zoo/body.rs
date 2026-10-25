@@ -3,7 +3,7 @@
 
 use super::unit::{behaviour_set, read};
 use super::upgrade::NEVER;
-use super::{AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans};
+use super::{BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -72,8 +72,7 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             }
         }
         b"animals" => {
-            r.copy_on();
-            let record = animal(r)?;
+            let record = super::animal::read(r)?;
             Common {
                 animal: Some(Box::new(record)),
                 ..zoo_unit(r, false)?
@@ -200,119 +199,6 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
         users_now,
         fill,
         built,
-    })
-}
-
-fn animal(r: &mut Reader) -> R<AnimalRecord> {
-    let v = r.v;
-    let (happiness, hunger, health, energy) = (r.i32()?, r.i32()?, r.i32()?, r.i32()?);
-    let flags = r.take(5)?;
-    let (at_minimum_health, very_unhappy) = (flags[0] != 0, flags[3] != 0);
-    r.skip(5 + 20)?;
-    let female = !r.string()?.starts_with(b"M");
-    r.string()?;
-    // Hunger, health, energy, other, keeper, captivity, habitat, bored, social, reproduction,
-    // and one more.
-    let mut c = [None; 16];
-    for at in [0, 2, 3, 5, 6, 7, 8, 9, 10, 11] {
-        c[at] = Some(r.i32()?);
-    }
-    r.skip(4)?;
-    if v <= 53 {
-        r.skip(4)?;
-    }
-    r.skip(4)?;
-    c[12] = Some(r.i32()?);
-    let dung = r.i32()?;
-    let keeper_visited = r.u8()? != 0;
-    r.skip(2)?;
-    c[4] = Some(r.i32()?);
-    r.skip(6 + 12 + 16 + 2)?;
-    if v >= 41 {
-        r.skip(8)?;
-    }
-    let mut dying = false;
-    if v >= 43 {
-        r.skip(12)?;
-        dying = r.u8()? != 0;
-    }
-    let mourning = v >= 44 && r.u8()? != 0;
-    if v >= 46 {
-        c[14] = Some(r.i32()?);
-    }
-    // The escape flag counts only when it is exactly 1.
-    if v >= 47 && r.u32()? == 1 {
-        r.skip(8 + 8 + 12)?;
-        if v >= 81 {
-            r.skip(4)?;
-        } else {
-            r.put(&[0; 4]);
-        }
-    }
-    let mut crated = false;
-    if v >= 52 {
-        r.skip(9)?;
-        crated = r.u8()? != 0;
-    }
-    let thirsty = v >= 54 && r.u8()? != 0;
-    if v == 57 || v >= 61 {
-        r.skip(1)?;
-    }
-    let rampaging = v >= 76 && r.u8()? != 0;
-    if v < 76 {
-        r.put(&[0]);
-    }
-    let mut rampage = 0;
-    if v >= 77 {
-        r.skip(4)?;
-        rampage = r.i32()?;
-    } else {
-        r.put(&[0; 8]);
-    }
-    if v >= 78 {
-        r.skip(1)?;
-    } else {
-        r.put(&[0]);
-    }
-    let mut egg = false;
-    if v >= 79 {
-        egg = r.u8()? != 0;
-        r.skip(4)?;
-    } else {
-        r.put(&[0; 5]);
-    }
-    let mut breath = None;
-    if v >= 87 {
-        breath = Some(r.i32()?);
-        c[1] = Some(r.i32()?);
-    } else {
-        r.put(&[0; 8]);
-    }
-    if v >= 101 {
-        r.skip(8)?;
-    } else {
-        // No home: the reader works it out again.
-        r.put(&[0xff; 8]);
-    }
-    Ok(AnimalRecord {
-        happiness,
-        hunger,
-        health,
-        energy,
-        dung,
-        female,
-        counters: c,
-        breath,
-        at_minimum_health,
-        very_unhappy,
-        keeper_visited,
-        mourning,
-        dying,
-        crated,
-        egg,
-        thirsty,
-        rampaging,
-        rampage,
     })
 }
 

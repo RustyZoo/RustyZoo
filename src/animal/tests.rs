@@ -6,7 +6,7 @@ use super::*;
 use crate::render::order::Kind;
 use crate::sim::Sim;
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Clocks, Common, Tile, View, Zoo};
+use crate::zoo::{Clocks, Common, Escape, Tile, View, Zoo};
 
 mod breed;
 mod life;
@@ -566,17 +566,7 @@ fn record() -> AnimalRecord {
         dung: 3,
         female: true,
         counters,
-        breath: None,
-        at_minimum_health: false,
-        very_unhappy: false,
-        keeper_visited: false,
-        mourning: false,
-        dying: false,
-        crated: false,
-        egg: false,
-        thirsty: false,
-        rampaging: false,
-        rampage: 0,
+        ..AnimalRecord::default()
     }
 }
 
@@ -2123,4 +2113,131 @@ fn the_keeper_food_goal_draws_before_looking_and_picks_by_them() {
     }
     assert_eq!(seen, [true; 3], "every way of choosing came up");
     assert_eq!(choose(&[], distance, &mut Rng::default()), None);
+}
+
+#[test]
+fn the_crate_period_is_the_class_key_or_two() {
+    let boxed = |v: Option<i32>| {
+        let int = |key: &str, fallback| match (key, v) {
+            ("cBoxedCheck", Some(v)) => v,
+            _ => fallback,
+        };
+        Class::read(&int).boxed
+    };
+    assert_eq!(
+        [
+            boxed(None),
+            boxed(Some(0)),
+            boxed(Some(-5)),
+            boxed(Some(i32::MAX))
+        ],
+        [2, 0, -5, i32::MAX]
+    );
+}
+
+#[test]
+fn a_new_animal_takes_the_creation_values_of_the_counters_it_does_not_draw() {
+    let cat = zebras_with(
+        "cTimeDeath=4320\ncBabyToAdult=1000\ncReproductionInterval=1601\ncMatePickDelay=4",
+        "",
+    );
+    let mut world = pens();
+    world.units.class.boxed = 3;
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    let a = zoo
+        .entities
+        .iter()
+        .find(|e| e.common.as_ref().is_some_and(|c| c.id == 500))
+        .and_then(|e| e.common.as_ref()?.animal.clone())
+        .unwrap();
+    assert_eq!(
+        (a.life, a.baby, a.interval, a.mate_delay, a.boxed),
+        (4319, 999, 1601, 2, 2)
+    );
+    assert_eq!(a.second, "\n");
+}
+
+#[test]
+fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
+    let cat = zebras();
+    let escape = Escape {
+        tiles: [[1, 2], [3, 4]],
+        words: [5, 6, 7],
+        last: 8,
+    };
+    let mut world = pens();
+    for e in &mut world.zoo.entities {
+        if e.class == "animals" {
+            e.common.as_mut().unwrap().animal = Some(Box::new(AnimalRecord {
+                sleeping: true,
+                eating: true,
+                drinking: true,
+                escape: Some(escape),
+                home: [3, 4],
+                dates: [5, 6],
+                second: "x".into(),
+                spare: (1..=94).collect(),
+                ..record()
+            }));
+        }
+    }
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let saved = |world: &World| {
+        let mut zoo = world.saved(|_| true);
+        world.finish_save(&mut zoo, &cat);
+        let at = zoo
+            .entities
+            .iter()
+            .position(|e| e.common.as_ref().is_some_and(|c| c.id == 500));
+        *zoo.entities[at.unwrap()]
+            .common
+            .as_ref()
+            .unwrap()
+            .animal
+            .clone()
+            .unwrap()
+    };
+    // Loaded, then saved at once: the same record, with the counters creation drew.
+    let a = saved(&world);
+    assert_eq!((a.sleeping, a.eating, a.drinking), (true, true, true));
+    assert_eq!(
+        (a.happiness, a.hunger, a.health, a.energy),
+        (38, 7, 250, 15)
+    );
+    assert_eq!(
+        (a.counters[CAPTIVITY], a.counters[HABITAT]),
+        (Some(6), Some(15))
+    );
+    assert!(a.counters[HUNGER].is_some() && a.breath == Some(0));
+    // What the engine does not model is kept as read.
+    assert_eq!(a.escape, Some(escape));
+    assert_eq!((a.home, a.dates, a.second.as_str()), ([3, 4], [5, 6], "x"));
+    assert_eq!(a.spare, (1..=94).collect::<Vec<u8>>());
+    // What it models is the live state.
+    let Part::Animal(live) = &mut world.units.get_mut(500).unwrap().part else {
+        panic!("not an animal");
+    };
+    live.hunger = 33;
+    live.counters[HABITAT] = 7;
+    live.counters[WATER] = 9;
+    live.breath = 12;
+    live.rampage = 4;
+    live.female = false;
+    (live.sleeping, live.eating, live.drinking) = (false, false, false);
+    let a = saved(&world);
+    assert_eq!(
+        (a.hunger, a.counters[HABITAT], a.counters[WATER]),
+        (33, Some(7), Some(9))
+    );
+    assert_eq!(
+        (a.breath, a.drinking, a.rampage, a.female),
+        (Some(12), true, 4, false)
+    );
+    // The flags the load does not take stay as read.
+    assert_eq!((a.sleeping, a.eating), (true, true));
+    assert_eq!(a.escape, Some(escape));
 }

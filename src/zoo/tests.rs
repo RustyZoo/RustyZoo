@@ -1380,11 +1380,15 @@ fn again(bytes: &[u8]) -> (Zoo, Vec<u8>, Zoo) {
     (zoo, out, back)
 }
 
-/// What a zoo read in `from` equals once written as 106: the version and the sizes of the records.
+/// What a zoo read in `from` equals once written as 106: the version, the sizes and the bytes of the records.
 fn upgraded(mut zoo: Zoo, back: &Zoo) -> Zoo {
     zoo.version = MAX_VERSION;
     for (e, b) in zoo.entities.iter_mut().zip(&back.entities) {
         e.body_size = b.body_size;
+        // The bytes of an animal are those of its record, not of the file.
+        if let (Some(a), Some(b)) = (&mut e.common, &b.common) {
+            a.raw = b.raw.clone();
+        }
     }
     zoo
 }
@@ -1550,7 +1554,10 @@ fn new_animal() -> AnimalRecord {
         female: true,
         counters,
         breath: Some(44),
+        second: "x".into(),
         at_minimum_health: true,
+        sleeping: true,
+        eating: true,
         very_unhappy: true,
         keeper_visited: true,
         mourning: true,
@@ -1558,8 +1565,22 @@ fn new_animal() -> AnimalRecord {
         crated: true,
         egg: true,
         thirsty: true,
+        drinking: true,
         rampaging: true,
         rampage: 9,
+        dates: [0x01d0_0000_1234_5678, 0x01d0_0000_8765_4321],
+        escape: Some(Escape {
+            tiles: [[1, 2], [-3, 4]],
+            words: [5, 6, 7],
+            last: 8,
+        }),
+        life: 4319,
+        baby: 999,
+        interval: 1600,
+        mate_delay: 2,
+        boxed: 1,
+        home: [30, 40],
+        spare: (1..=74).collect(),
     }
 }
 
@@ -1777,6 +1798,17 @@ fn is_unit_class(class: &str) -> bool {
     !matches!(class, "building" | "filter" | "rubble" | "ambient")
 }
 
+/// An animal record of `own` zero bytes in version `v`, read and written as 106.
+fn animal_through(v: u32, own: usize) -> Vec<u8> {
+    let body = vec![0; own];
+    let mut r = Reader::new(&body, v);
+    let a = animal::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0));
+    assert!(r.data.is_empty(), "version {v}");
+    let mut o = Out(Vec::new());
+    animal::write(&mut o, &a).unwrap();
+    o.0
+}
+
 #[test]
 fn the_class_fields_of_every_version_become_those_of_106() {
     // The length of the class fields in version `v` and in 106, from zoo format 6.7 to 6.13.
@@ -1792,7 +1824,8 @@ fn the_class_fields_of_every_version_become_those_of_106() {
                     + 5 * from(v >= 79)
                     + 8 * from(v >= 87)
                     + 8 * from(v >= 101),
-                226,
+                // The sex string is written as "Female" for the empty one read.
+                232,
             ),
             ("guests", 151, 151),
             ("keeper", staff(v, 21 + 4 * from(v <= 74)), 37),
@@ -1809,6 +1842,10 @@ fn the_class_fields_of_every_version_become_those_of_106() {
             ("rubble", 8, 8),
         ];
         for (class, own, to) in cases {
+            if class == "animals" {
+                assert_eq!(animal_through(v, own).len(), to, "animals in version {v}");
+                continue;
+            }
             let body = zero_body(v, class, own);
             let (pre, post) = body::transcode(v, class.as_bytes(), &body)
                 .unwrap_or_else(|e| panic!("{class} in version {v}: {e}"));
@@ -1828,10 +1865,9 @@ fn the_class_fields_of_every_version_become_those_of_106() {
 #[test]
 fn the_fields_a_record_lacked_take_the_values_of_the_original() {
     // An animal before 101 has no home exhibit: none is written; before 87 the breath is 0.
-    let body = zero_body(70, "animals", 195);
-    let (pre, _) = body::transcode(70, b"animals", &body).unwrap();
-    assert_eq!(pre[218..], [0xff; 8]);
-    assert_eq!(pre[210..218], [0; 8]);
+    let out = animal_through(70, 195);
+    assert_eq!(out[out.len() - 8..], [0xff; 8]);
+    assert_eq!(out[out.len() - 16..out.len() - 8], [0; 8]);
     // A filter before 95 has no upkeep: three zero words, two "never" dates and a 1 follow its health.
     let mut body = zero_body(70, "filter", 4);
     body[4 + 12..4 + 16].copy_from_slice(&[7, 0, 0, 0]);
@@ -2404,4 +2440,86 @@ fn a_short_or_wild_guest_record_is_refused_and_never_panics() {
     assert_eq!(out.len(), 200 - 28 + 20);
     // The smallest record there is.
     assert!(fresh::guest(Some(vec![0; 135]), &g).is_ok());
+}
+
+/// An animal record written as 106 and read back.
+fn animal_back(a: &AnimalRecord) -> AnimalRecord {
+    let mut o = Out(Vec::new());
+    animal::write(&mut o, a).unwrap();
+    let mut r = Reader::new(&o.0, 106);
+    let back = animal::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0));
+    assert!(r.data.is_empty());
+    back
+}
+
+#[test]
+fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
+    let new = AnimalRecord {
+        life: 4319,
+        baby: 999,
+        interval: 1600,
+        mate_delay: 2,
+        boxed: 1,
+        ..animal_new(75, 120, 7)
+    };
+    let back = animal_back(&new);
+    assert_eq!(
+        (back.happiness, back.hunger, back.health, back.energy),
+        (75, 0, 120, 0)
+    );
+    assert_eq!(
+        (back.dates, back.home, back.escape),
+        ([7, 7], [-1, -1], None)
+    );
+    assert_eq!(back.second, "\n");
+    assert_eq!(
+        (
+            back.life,
+            back.baby,
+            back.interval,
+            back.mate_delay,
+            back.boxed
+        ),
+        (4319, 999, 1600, 2, 1)
+    );
+    // The keeper-visit level and the five rate multipliers are 1.
+    let ones: Vec<usize> = (0..74).filter(|&i| back.spare[i] != 0).collect();
+    assert_eq!((back.spare.len(), ones), (74, vec![1, 6, 10, 14, 18, 22]));
+    assert!(back.spare.iter().filter(|&&b| b > 1).count() == 0);
+}
+
+#[test]
+fn an_animal_record_of_any_size_is_written_whole() {
+    let full = new_animal();
+    assert_eq!(animal_back(&full), full);
+    // The extremes, a spare list that is short or too long: the segments it lacks are a new animal's,
+    // the extra ones are not written.
+    let extreme = AnimalRecord {
+        happiness: i32::MIN,
+        hunger: i32::MAX,
+        rampage: -1,
+        counters: [Some(i32::MIN); 16],
+        breath: Some(i32::MAX),
+        spare: vec![9; 3],
+        ..full.clone()
+    };
+    let back = animal_back(&extreme);
+    assert_eq!(
+        (back.happiness, back.hunger, back.rampage),
+        (i32::MIN, i32::MAX, -1)
+    );
+    assert_eq!(back.breath, Some(i32::MAX));
+    assert_eq!(back.spare[..3], [9, 1, 0]);
+    assert_eq!(back.spare.len(), 74);
+    let long = AnimalRecord {
+        spare: vec![1; 500],
+        ..full
+    };
+    assert_eq!(animal_back(&long).spare, vec![1; 74]);
+    // An escape record is kept only with the flag 1.
+    let none = AnimalRecord {
+        escape: None,
+        ..new_animal()
+    };
+    assert_eq!(animal_back(&none), none);
 }

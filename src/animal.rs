@@ -165,6 +165,8 @@ pub struct Class {
     /// `cMatePickDelay`: the reproduction checks a monogamous animal waits before it looks for
     /// another mate (animals-needs 11.2).
     pub mate_pick_delay: i32,
+    /// `cBoxedCheck`: the period of the crate counter, which creation does not draw.
+    pub boxed: i32,
 }
 
 impl Default for Class {
@@ -216,6 +218,7 @@ impl Class {
             reset_interval: 0,
             death_chance: int("cDeathChance", 99),
             mate_pick_delay: int("cMatePickDelay", 3),
+            boxed: int("cBoxedCheck", 2),
         }
     }
 }
@@ -513,7 +516,8 @@ impl Animal {
     }
 
     /// Overwrites what the record of a loaded map stores (animals 3.5); the rest keeps the value
-    /// creation gave.
+    /// creation gave. The sleeping, eating and drinking flags are not taken yet: the behaviour set
+    /// and the goals do not start from them, and an animal loaded asleep never fathers young.
     pub fn restore(&mut self, saved: &AnimalRecord) {
         let r = saved;
         (self.happiness, self.hunger, self.health, self.energy) =
@@ -533,6 +537,39 @@ impl Animal {
         self.thirsty = r.thirsty;
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
+    }
+
+    /// The record of this animal: `base` with the live values written over it, so what the engine
+    /// does not model stays as it was. The sleeping, eating and drinking flags stay as they were
+    /// too: the load does not take them (see [`Animal::restore`]), so the live ones are not the
+    /// animal's.
+    pub fn record(&self, base: AnimalRecord) -> AnimalRecord {
+        let mut counters = base.counters;
+        // The shelter and murky water counters are not stored.
+        for at in (0..=12).chain([WATER]) {
+            counters[at] = Some(self.counters[at]);
+        }
+        AnimalRecord {
+            happiness: self.happiness,
+            hunger: self.hunger,
+            health: self.health,
+            energy: self.energy,
+            dung: self.dung,
+            female: self.female,
+            counters,
+            breath: Some(self.breath),
+            at_minimum_health: self.at_minimum_health,
+            very_unhappy: self.very_unhappy,
+            keeper_visited: self.keeper_visited,
+            mourning: self.mourning,
+            dying: self.dying,
+            crated: self.crated,
+            egg: self.egg,
+            thirsty: self.thirsty,
+            rampaging: self.rampaging,
+            rampage: self.rampage,
+            ..base
+        }
     }
 
     /// Applies the pending changes (animals 3.3).

@@ -9,8 +9,7 @@ use crate::guest::thought::Thought;
 use crate::place::bulldozer::type_of;
 use crate::render::tank_kind;
 use crate::unit::Part;
-use crate::zoo::fresh;
-use crate::zoo::{Common, Entity, Zoo};
+use crate::zoo::{Common, Entity, Zoo, animal_new, fresh};
 use crate::{animal, guest};
 use std::collections::HashSet;
 
@@ -85,8 +84,9 @@ impl World {
 
     /// Finishes a zoo from [`World::saved`] for writing, from the types of `cat`: the record of a
     /// transient type keeps no body (zoo format 6.2, the original refuses a file where it has one;
-    /// a fence keeps its figures), and an animal, a guest or a building made in play gets the
-    /// record of a new one (save games 11.3), and a guest's record takes the live guest's fields.
+    /// a fence keeps its figures), an animal gets the record of its live state over the one it was
+    /// read with (or the record of a new one, save games 11.3), a guest or a building made in play
+    /// gets the record of a new one, and a guest's record takes the live guest's fields.
     pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         let now = crate::timing::file_time(zoo.clocks.calendar);
         for e in &mut zoo.entities {
@@ -95,27 +95,47 @@ impl World {
             };
             if !matches!(e.class.as_str(), "fences" | "tankwall") && tank_kind(ty).transient {
                 e.common = None;
-            } else if c.raw.is_new() {
-                match e.class.as_str() {
-                    "animals" => {
-                        let k = animal::Keys::of(ty, &self.units.class);
-                        let record = fresh::animal_new(k.initial_happiness, k.max_hits);
-                        c.animal.get_or_insert_with(|| Box::new(record));
-                    }
-                    "guests" => {
+                continue;
+            }
+            match e.class.as_str() {
+                "animals" => {
+                    let k = animal::Keys::of(ty, &self.units.class);
+                    let class = &self.units.class;
+                    let new = || {
+                        let mut a = animal_new(k.initial_happiness, k.max_hits, now);
+                        a.female = matches!(e.subtype.as_str(), "f" | "p");
+                        // The counters that are not drawn take their creation values.
+                        (a.life, a.baby) = (
+                            k.time_death.wrapping_sub(1),
+                            k.baby_to_adult.wrapping_sub(1),
+                        );
+                        (a.interval, a.mate_delay) = (
+                            k.reproduction_interval,
+                            class.mate_pick_delay.wrapping_sub(1),
+                        );
+                        a.boxed = class.boxed.wrapping_sub(1);
+                        a
+                    };
+                    let base = c.animal.take().map_or_else(new, |a| *a);
+                    let live = self.units.get(c.id).filter(|u| u.started);
+                    c.animal = Some(Box::new(match live.map(|u| &u.part) {
+                        Some(Part::Animal(a)) => a.record(base),
+                        _ => base,
+                    }));
+                }
+                "guests" => {
+                    if c.raw.is_new() {
                         let record = fresh::guest_new(guest::Keys::of(ty).initial_happiness, now);
                         c.guest.get_or_insert_with(|| Box::new(record));
-                        self.live_guest(c);
                     }
-                    "building" => {
-                        let price = Kind::of(ty, self.units.prices.default).price;
-                        c.building
-                            .get_or_insert_with(|| fresh::building_new(price, now));
-                    }
-                    _ => {}
+                    self.live_guest(c);
                 }
-            } else if e.class == "guests" {
-                self.live_guest(c);
+                "building" if c.raw.is_new() => {
+                    let price = Kind::of(ty, self.units.prices.default).price;
+                    c.building
+                        .get_or_insert_with(|| fresh::building_new(price, now));
+                }
+                _ => {}
             }
         }
     }
