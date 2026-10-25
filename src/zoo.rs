@@ -34,7 +34,7 @@
 //! the size of the input, which is limited to [`MAX_SIZE`].
 
 mod body;
-mod fresh;
+pub(crate) mod fresh;
 #[cfg(test)]
 pub(crate) mod tests;
 mod unit;
@@ -157,6 +157,13 @@ struct Spans {
 pub struct Raw {
     body: Vec<u8>,
     spans: Spans,
+}
+
+impl Raw {
+    /// Whether the entity was made in play: no body was read for it.
+    pub fn is_new(&self) -> bool {
+        self.body.is_empty()
+    }
 }
 
 impl PartialEq for Raw {

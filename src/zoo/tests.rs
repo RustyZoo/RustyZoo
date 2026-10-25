@@ -1732,7 +1732,7 @@ fn a_new_unit_is_alive_and_a_new_building_is_not_for_free() {
     let a = c(0).animal.unwrap();
     assert_eq!(
         (a.happiness, a.health, a.energy, a.dying),
-        (100, 100, 100, false)
+        (60, 500, 0, false)
     );
     // The arrival and construction dates are the game date.
     let now = crate::timing::file_time(zoo.clocks.calendar);

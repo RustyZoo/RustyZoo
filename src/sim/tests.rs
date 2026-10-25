@@ -1338,3 +1338,97 @@ fn save_and_load_take_a_file_name_to_the_end_of_the_line() {
         assert!(drive::parse(bad).is_err(), "{bad:?}");
     }
 }
+
+/// A zoo finished for writing: units and buildings made in play take the values of a new one from
+/// their type, a record of a transient type keeps no body, and a record that was read is left alone.
+#[test]
+fn a_finished_zoo_has_new_values_and_no_transient_body() {
+    use crate::entity::EntityType;
+    let ty = |class: &'static str, name: &str, ini: &str| EntityType {
+        class,
+        type_name: name.into(),
+        subtype: "m".into(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(ini.as_bytes()).unwrap(),
+        )),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut run = game(0);
+    let ints = "[Characteristics/Integers]\n";
+    run.cat.push(ty(
+        "animals",
+        "zebra",
+        &format!("{ints}cInitialHappiness=75\ncMaxHits=120\n"),
+    ));
+    run.cat.push(ty(
+        "animals",
+        "odd",
+        &format!("{ints}cInitialHappiness=-5\ncMaxHits=2000000000\n"),
+    ));
+    run.cat.push(ty("animals", "bare", ""));
+    run.cat.push(ty(
+        "guests",
+        "man",
+        &format!("{ints}cInitialHappiness=50\ncMaxEnergy=100\n"),
+    ));
+    run.cat.push(ty("guests", "bare", ""));
+    run.cat.push(ty(
+        "building",
+        "shop",
+        "[Characteristics/Floats]\ncDefaultCost=2.5\n",
+    ));
+    run.cat.push(ty("building", "bare", ""));
+    run.cat
+        .push(ty("objects", "ripple", &format!("{ints}cIsTransient=1\n")));
+    run.cat
+        .push(ty("fences", "wall", &format!("{ints}cIsTransient=1\n")));
+    let made = |class: &str, name: &str| Entity {
+        class: class.into(),
+        type_name: name.into(),
+        subtype: "m".into(),
+        body_size: None,
+        common: Some(Common::default()),
+    };
+    let names = [
+        ("animals", "zebra"),
+        ("animals", "odd"),
+        ("animals", "bare"),
+        ("guests", "man"),
+        ("guests", "bare"),
+        ("building", "shop"),
+        ("building", "bare"),
+        ("objects", "ripple"),
+        ("fences", "wall"),
+    ];
+    for (class, name) in names {
+        assert!(run.world.add(made(class, name), None).is_some());
+    }
+    let mut zoo = run.world.saved(|_| true);
+    run.world.finish_save(&mut zoo, &run.cat);
+    let c = |i: usize| zoo.entities[i].common.as_ref();
+    let animal = |i: usize| {
+        c(i).and_then(|c| c.animal.as_deref())
+            .map(|a| (a.happiness, a.hunger, a.health, a.energy))
+    };
+    assert_eq!(animal(0), Some((75, 0, 120, 0)));
+    assert_eq!(animal(1), Some((-5, 0, 2_000_000_000, 0)));
+    assert_eq!(
+        animal(2),
+        Some((60, 0, 500, 0)),
+        "the defaults of a type that names none"
+    );
+    let guest = |i: usize| c(i).and_then(|c| c.guest.as_deref()).map(|g| g.values);
+    assert_eq!(guest(3), Some([50, 0, 0, 0, 0]));
+    assert_eq!(guest(4), Some([40, 0, 0, 0, 0]));
+    let price = |i: usize| {
+        c(i).and_then(|c| c.building.as_ref())
+            .map(|b| f32::from_bits(b.price))
+    };
+    assert_eq!(price(5), Some(2.5));
+    assert_eq!(price(6), Some(run.world.units.prices.default));
+    assert!(c(7).is_none(), "a transient type keeps no body");
+    assert!(c(8).is_some(), "a fence keeps its figures");
+}

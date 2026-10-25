@@ -23,9 +23,16 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
         }
         // An empty list of pieces and one word.
         "rubble" => post.bytes(&[0; 8]),
-        "building" => building(&mut post, c.building.as_ref(), now),
-        "animals" => animal(&mut pre, c.animal.as_deref().unwrap_or(&animal_new()), now),
-        "guests" => guest(&mut pre, c.guest.as_deref().unwrap_or(&guest_new(now))),
+        "building" => building(
+            &mut post,
+            &c.building.clone().unwrap_or(building_new(0.0, now)),
+        ),
+        "animals" => animal(
+            &mut pre,
+            c.animal.as_deref().unwrap_or(&animal_new(60, 500)),
+            now,
+        ),
+        "guests" => guest(&mut pre, c.guest.as_deref().unwrap_or(&guest_new(40, now))),
         "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
             // The own fields of the class, then the common staff block: all 0, the lists empty.
             let own = match e.class.as_str() {
@@ -59,18 +66,21 @@ pub(super) fn fence(class: &str, f: &Fence) -> Vec<u8> {
     o.0
 }
 
-/// The figures of a guest building: none yet for a new one.
-fn building(o: &mut Out, b: Option<&BuildingRecord>, now: u64) {
-    let none = BuildingRecord {
+/// The record of a new guest building: no figure yet, the type's default price (save games 11.3).
+pub(crate) fn building_new(price: f32, now: u64) -> BuildingRecord {
+    BuildingRecord {
         guests: [0; 3],
         income: [0; 3],
         upkeep: Some(0),
-        price: 0,
+        price: price.to_bits(),
         users: Vec::new(),
         fill: 0,
         built: now,
-    };
-    let b = b.unwrap_or(&none);
+    }
+}
+
+/// The figures of a guest building.
+fn building(o: &mut Out, b: &BuildingRecord) {
     o.u32(0); // users now
     o.u32(b.guests[2]);
     o.u32(b.income[2]);
@@ -90,13 +100,14 @@ fn building(o: &mut Out, b: Option<&BuildingRecord>, now: u64) {
     o.bytes(&[0; 8]);
 }
 
-/// A new animal: unhurt and content, no counter running.
-fn animal_new() -> AnimalRecord {
+/// A new animal (save games 11.3): the type's initial happiness and full health, not hungry, no
+/// energy, no counter running.
+pub(crate) fn animal_new(happiness: i32, health: i32) -> AnimalRecord {
     AnimalRecord {
-        happiness: 100,
-        hunger: 50,
-        health: 100,
-        energy: 100,
+        happiness,
+        hunger: 0,
+        health,
+        energy: 0,
         dung: 0,
         female: false,
         counters: [None; 16],
@@ -150,10 +161,10 @@ fn animal(o: &mut Out, a: &AnimalRecord, now: u64) {
     o.bytes(&[0xff; 8]);
 }
 
-/// A new guest: happy, rested, and not hungry or thirsty.
-fn guest_new(now: u64) -> GuestRecord {
+/// A new guest (save games 11.3): the type's initial happiness, every need at 0.
+pub(crate) fn guest_new(happiness: i32, now: u64) -> GuestRecord {
     GuestRecord {
-        values: [50, 0, 0, 100, 0],
+        values: [happiness, 0, 0, 0, 0],
         countdowns: [0; 11],
         arrived: now,
         favourite: -1,
