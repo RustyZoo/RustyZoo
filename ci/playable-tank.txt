@@ -2,7 +2,7 @@
 # the aquarium and 75000 of cash), played to the fourth month: a tank of 6 x 6 tiles built with
 # tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
 # maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
-# reads the log.
+# reads the log. The run is long enough for the can to have 13 uses (the check fails below that).
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
@@ -15,7 +15,7 @@
 # sex draws of the hires; seeds 1 to 43 now hire two staff members at most.
 # The hires come before the adoption: an animal placed rates its exhibit at once (habitat rating 9.4),
 # which draws from the shared stream, and the seed 44 draws women for the hires made first.
-#run maps/sm_aqua.zoo --cash 75000 --seed 44 --passes 5800 --clock 200
+#run maps/sm_aqua.zoo --cash 75000 --seed 44 --passes 6500 --clock 200
 #exhibit 16,35,21,40
 #months 3
 #expect 1 exhibit gate [0-9]+
