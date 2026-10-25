@@ -127,6 +127,7 @@ fn world(mut entities: Vec<Entity>) -> World {
     };
     World::new(
         Zoo {
+            kept: Default::default(),
             version: 0,
             locale: 0,
             expansion: 0,

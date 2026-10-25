@@ -93,6 +93,7 @@ pub fn world(size: (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity
 /// The same, with the whole zoo to edit.
 pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
     let mut zoo = Zoo {
+        kept: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,

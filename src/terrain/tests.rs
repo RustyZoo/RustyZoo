@@ -157,6 +157,7 @@ fn map(gate: Entity, entities: Vec<Entity>, wall: bool) -> World {
         edges: 0,
     };
     let mut zoo = Zoo {
+        kept: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,

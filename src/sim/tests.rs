@@ -31,6 +31,7 @@ fn world(entities: usize) -> World {
         }),
     };
     let zoo = Zoo {
+        kept: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,

@@ -1322,3 +1322,125 @@ fn reads_the_figures_of_a_building() {
         assert_eq!(upkeep, (v >= 68).then_some(100.0), "version {v}");
     }
 }
+
+/// Reads `bytes`, writes them back and reads that.
+fn again(bytes: &[u8]) -> (Zoo, Vec<u8>, Zoo) {
+    let (zoo, money) = Zoo::parse_money(bytes).unwrap();
+    let out = zoo.write(&money).unwrap();
+    let (back, money_back) = Zoo::parse_money(&out).unwrap();
+    assert_eq!(money, money_back);
+    (zoo, out, back)
+}
+
+#[test]
+fn a_file_written_reads_the_same() {
+    for v in [38, 45, 55, 60, 63, 67, 70, 84, 97, 101, 104, 106] {
+        let (mut zoo, out, back) = again(&rich(v));
+        // A body the reader skipped is written empty.
+        for e in zoo.entities.iter_mut().filter(|e| e.common.is_none()) {
+            e.body_size = e.body_size.map(|_| 0);
+        }
+        assert_eq!(zoo, back, "version {v}");
+        // And a second write changes nothing.
+        let (again, money) = Zoo::parse_money(&out).unwrap();
+        let second = again.write(&money).unwrap();
+        let at = out.iter().zip(&second).position(|(a, b)| a != b);
+        assert_eq!((at, second.len()), (None, out.len()), "version {v}");
+    }
+}
+
+#[test]
+fn a_file_with_no_change_is_written_byte_for_byte() {
+    for v in [38, 60, 70, 106] {
+        let bytes = rich(v);
+        let (zoo, out, _) = again(&bytes);
+        let skipped = zoo
+            .entities
+            .iter()
+            .any(|e| e.body_size.is_some() && e.common.is_none());
+        if !skipped {
+            assert_eq!(out, bytes, "version {v}");
+        }
+    }
+}
+
+#[test]
+fn the_fields_of_the_model_are_written() {
+    for v in [60, 70, 106] {
+        let (mut zoo, money) = Zoo::parse_money(&rich(v)).unwrap();
+        zoo.id_counter = 77;
+        zoo.tiles[4].elevation = -3;
+        zoo.names.insert("lion".into(), 5);
+        zoo.view.zoom = 2;
+        zoo.clocks.ai_ticks = 9;
+        zoo.clocks.world_secs = 11;
+        zoo.clocks.status.rating = 42;
+        zoo.clocks.calendar = 123_456_789;
+        let c = zoo.entities[0].common.as_mut().unwrap();
+        (c.x, c.y, c.z, c.rotation, c.id) = (1, 2, 3, 6, 99);
+        c.name = "A longer name".into();
+        c.stamp = Some(55);
+        if v >= 67 {
+            c.colors = vec![1, 2, 3];
+        }
+        let mut money = money;
+        money.set_cash(1234.5);
+        money.monthly[1][4] = 7.0;
+        money.total[1] = 8.0;
+        let (back, money_back) = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap();
+        for e in zoo.entities.iter_mut().filter(|e| e.common.is_none()) {
+            e.body_size = e.body_size.map(|_| 0);
+        }
+        // The record is longer with the longer name.
+        zoo.entities[0].body_size = back.entities[0].body_size;
+        assert_eq!(back, zoo, "version {v}");
+        assert_eq!(money_back, money, "version {v}");
+        assert_eq!(
+            back.entities[0].common.as_ref().unwrap().name,
+            "A longer name"
+        );
+    }
+}
+
+#[test]
+fn an_entity_without_a_body_is_not_written() {
+    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    zoo.entities[0].common.as_mut().unwrap().raw = Raw::default();
+    assert!(
+        zoo.write(&money)
+            .unwrap_err()
+            .starts_with("entity 0: fences/zoowall")
+    );
+    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    zoo.entities[0].common.as_mut().unwrap().name = "x".repeat(4096);
+    assert!(zoo.write(&money).is_err());
+    zoo.version = 107;
+    assert!(zoo.write(&money).is_err());
+    let blank = Zoo {
+        kept: Kept::default(),
+        ..Zoo::parse(&rich(106)).unwrap()
+    };
+    assert!(blank.write(&money).is_err());
+}
+
+/// Every shipped file that loads is written back byte for byte.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_round_trip() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let mut files = 0;
+    for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
+        let bytes = vfs.read(member).unwrap();
+        let Ok((zoo, money)) = Zoo::parse_money(&bytes) else {
+            continue;
+        };
+        let out = zoo
+            .write(&money)
+            .unwrap_or_else(|e| panic!("{member}: {e}"));
+        assert!(out == bytes, "{member}");
+        files += 1;
+    }
+    // The 96 files that parse (95 in the French install, which lacks the saved game).
+    assert!(files >= 95, "{files} files");
+}

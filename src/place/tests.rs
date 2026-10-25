@@ -262,6 +262,7 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
     edit(&mut tiles);
     World::new(
         Zoo {
+            kept: Default::default(),
             version: 0,
             locale: 0,
             expansion: 0,

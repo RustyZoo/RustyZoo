@@ -469,6 +469,7 @@ fn pens_with(animals: impl Fn(usize, i32) -> Vec<Entity>) -> World {
         edges: 0,
     };
     let zoo = Zoo {
+        kept: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,
