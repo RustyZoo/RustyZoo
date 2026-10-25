@@ -363,6 +363,20 @@ impl Sim {
         crate::building::users::restore(world, cat, self.ai_ticks);
     }
 
+    /// The clocks, the status and the event queue a file stores (the inverse of
+    /// [`Sim::start_game`]).
+    pub fn clocks(&self) -> Clocks {
+        Clocks {
+            status: self.status.record(),
+            ai_rem: self.ai_rem,
+            ai_ticks: self.ai_ticks,
+            world_rem: self.world_rem,
+            world_secs: self.world_secs,
+            queue: self.events.queue(),
+            calendar: self.calendar.elapsed_ms(),
+        }
+    }
+
     pub fn calendar(&self) -> &Calendar {
         &self.calendar
     }

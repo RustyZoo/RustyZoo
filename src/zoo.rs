@@ -437,14 +437,22 @@ impl Zoo {
         }
     }
 
-    /// Applies [`Zoo::check_types`] with the types of `catalogue`.
-    pub fn checked(self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
+    /// Drops the entities whose type `known` does not find, as the original does when it skips
+    /// their records: no unit is made for them and they are not saved again (zoo format 6.2).
+    pub fn drop_unknown(&mut self, known: impl Fn(&Entity) -> bool) {
+        self.entities.retain(known);
+    }
+
+    /// Applies [`Zoo::check_types`] and [`Zoo::drop_unknown`] with the types of `catalogue`.
+    pub fn checked(mut self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
         let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-        self.check_types(|e| {
+        let known = |e: &Entity| {
             catalogue
                 .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
                 .is_some()
-        })?;
+        };
+        self.check_types(known)?;
+        self.drop_unknown(known);
         Ok(self)
     }
 

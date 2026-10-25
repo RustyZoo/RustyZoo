@@ -1239,3 +1239,80 @@ fn the_hash_follows_what_a_keeper_and_his_exhibit_keep() {
     hashes.dedup();
     assert_eq!(hashes.len(), changes.len());
 }
+
+/// A game saved and opened again as Continue has the tiles, the entities and the units it had.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn a_saved_game_opens_as_it_was_saved() {
+    use crate::{exhibit::TankConfig, place, terrain, vfs::Vfs, world::Decay};
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let start = |bytes: &[u8], saved: bool| {
+        let cat = Catalogue::load(&vfs).unwrap();
+        let (zoo, money) = crate::zoo::Zoo::parse_money(bytes)
+            .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+            .unwrap();
+        let renderer = crate::render::MapRenderer::new(&vfs, &cat);
+        let mut world = World::new(zoo, |e| renderer.shape(e));
+        world.set_water(place::water(&terrain::types(&vfs)));
+        world.set_tank_config(TankConfig::load(&vfs));
+        world.set_decay(Decay::load(&vfs));
+        let files = (vfs.ini(), &[][..]);
+        let types = (cat, Class::load(&vfs));
+        match saved {
+            false => Run::start(files, types, world, money, 1, false),
+            true => Run::resume(files, types, world, money, 1),
+        }
+    };
+    for member in [
+        "maps/default.zoo",
+        "maps/airport.zoo",
+        "maps/med_aqua.zoo",
+        "maps/scn28.zoo",
+        "saved games/test.zoo",
+    ] {
+        let Ok(bytes) = vfs.read(member) else {
+            continue; // the saved game is in the English install only
+        };
+        let run = start(&bytes, false);
+        let saved = run.save().unwrap_or_else(|e| panic!("{member}: {e}"));
+        let back = start(&saved, true);
+        let (a, b) = (&run.world.zoo, &back.world.zoo);
+        assert!(a.tiles == b.tiles, "{member}: tiles");
+        assert!(a.entities == b.entities, "{member}: entities");
+        assert_eq!(
+            (a.id_counter, &a.names),
+            (b.id_counter, &b.names),
+            "{member}"
+        );
+        assert_eq!(
+            run.world.units.hash(),
+            back.world.units.hash(),
+            "{member}: units"
+        );
+        // Saving the opened game again changes none of that.
+        let twice = start(&back.save().unwrap(), true);
+        assert!(
+            twice.world.zoo.entities == b.entities,
+            "{member}: second save"
+        );
+        assert_eq!(
+            back.world.units.hash(),
+            twice.world.units.hash(),
+            "{member}"
+        );
+    }
+}
+
+#[test]
+fn save_and_load_take_a_file_name_to_the_end_of_the_line() {
+    let ok = |text: &str| drive::parse(text).unwrap().remove(0).1;
+    assert_eq!(ok("0 save out.zoo"), drive::Command::Save("out.zoo".into()));
+    assert_eq!(
+        ok("3 load  my zoo.zoo "),
+        drive::Command::Load("my zoo.zoo".into())
+    );
+    for bad in ["0 save", "0 load   ", "0 saved x", "0 loader"] {
+        assert!(drive::parse(bad).is_err(), "{bad:?}");
+    }
+}

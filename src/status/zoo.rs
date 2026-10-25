@@ -398,6 +398,16 @@ impl Status {
         status
     }
 
+    /// What a file stores of the status (the inverse of [`Status::start`]).
+    pub fn record(&self) -> StatusRecord {
+        StatusRecord {
+            timers: self.timers,
+            rating: self.rating as u32,
+            given: self.given,
+            price: self.price,
+        }
+    }
+
     /// Adds a step to the timers and says which checks are due (4): the rating check also when
     /// the month flag is set. The bar counter is [`Status::bars`]'.
     pub fn due(&mut self, step: u32, month_flag: bool) -> Due {
