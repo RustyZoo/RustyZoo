@@ -1573,6 +1573,15 @@ fn new_guest() -> GuestRecord {
         saw_animal: 9,
         female: true,
         child: true,
+        items: [0, 6491, 0, 6319, 6310],
+        leave: true,
+        afraid: true,
+        gift: true,
+        wandered: true,
+        stand: true,
+        in_group: true,
+        listening: true,
+        guide: 77,
     }
 }
 
@@ -1590,6 +1599,7 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         upkeep: Some(7),
         price: 8,
         users: vec![(9, 1)],
+        users_now: 2,
         fill: 10,
         built: 11,
     };
@@ -2279,4 +2289,119 @@ fn full_game_round_trip() {
         same >= 10 && refused < 10,
         "{same} identical, {refused} refused"
     );
+}
+
+/// A guest record of version 106 whose lists hold five item slots and marks in the fields the
+/// model does not hold (the increment factors, the second date), and the guest's class fields'
+/// length. The tail starts 42 bytes before its end.
+fn marked_guest() -> (Vec<u8>, usize) {
+    let mut body = zero_body(106, "guests", 151);
+    let items: Vec<u8> = [0u32, 6491, 0, 6319, 6310]
+        .iter()
+        .flat_map(|n| n.to_le_bytes())
+        .collect();
+    body.splice(89..93, [5, 0, 0, 0].into_iter().chain(items));
+    let tail = 171 - 42;
+    body[21] = 7;
+    body[tail + 10] = 9;
+    body[tail + 34] = 3;
+    for (at, v) in [(4, 1), (5, 1), (11, 1), (24, 1), (25, 1), (36, 1), (37, 1)] {
+        body[tail + at] = v;
+    }
+    body[tail + 38] = 77;
+    (body, tail)
+}
+
+#[test]
+fn a_guest_record_reads_and_writes_its_items_flags_and_guide() {
+    let (body, tail) = marked_guest();
+    let bytes = file(106, 1, 1, &[], &[("guests", "man", "", body)]);
+    let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+    let g = *zoo.entities[0]
+        .common
+        .as_ref()
+        .unwrap()
+        .guest
+        .as_deref()
+        .unwrap();
+    assert_eq!(g.items, [0, 6491, 0, 6319, 6310]);
+    let flags = [
+        g.leave,
+        g.afraid,
+        g.gift,
+        g.wandered,
+        g.stand,
+        g.in_group,
+        g.listening,
+    ];
+    assert_eq!((flags, g.guide), ([true; 7], 77));
+    // What was read is written back as it was.
+    let same = parse_to_the_end(&zoo.write(&money).unwrap());
+    let kept = |z: &Zoo| z.entities[0].common.as_ref().unwrap().raw.body.clone();
+    assert!(kept(&same) == kept(&zoo));
+    // The model's fields are written over the record, the rest of it stays.
+    let c = zoo.entities[0].common.as_mut().unwrap();
+    c.guest = Some(Box::new(GuestRecord {
+        items: [5003, 0, 0, 0, u32::MAX],
+        leave: false,
+        wandered: false,
+        guide: 0,
+        values: [1, -2, 3, 4, 5],
+        ..g
+    }));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let c = back.entities[0].common.as_ref().unwrap();
+    let r = *c.guest.as_deref().unwrap();
+    assert_eq!(r.items, [5003, 0, 0, 0, u32::MAX]);
+    assert_eq!(
+        (r.leave, r.wandered, r.guide, r.values),
+        (false, false, 0, [1, -2, 3, 4, 5])
+    );
+    assert_eq!(
+        (r.afraid, r.gift, r.stand, r.listening),
+        (true, true, true, true)
+    );
+    let b = &c.raw.body;
+    assert_eq!((b[21], b[tail + 10], b[tail + 34]), (7, 9, 3));
+}
+
+#[test]
+fn a_new_guest_record_has_five_empty_slots_and_factors_of_one() {
+    let b = fresh::guest(None, &fresh::guest_new(50, 5)).unwrap();
+    assert_eq!(b.len(), 171);
+    assert_eq!(b[21..41], [1, 0, 0, 0].repeat(5));
+    assert_eq!(b[89..93], 5u32.to_le_bytes());
+    assert_eq!(b[93..113], [0; 20]);
+    assert_eq!(b[0..4], 50u32.to_le_bytes());
+    // The same record patched again does not change.
+    assert!(fresh::guest(Some(b.clone()), &fresh::guest_new(50, 5)).unwrap() == b);
+}
+
+#[test]
+fn the_guest_record_of_every_version_takes_the_model_without_changing_its_length() {
+    for v in 70..=106u32 {
+        let body = zero_body(v, "guests", 151);
+        let (pre, _) = body::transcode(v, b"guests", &body).unwrap();
+        let out = fresh::guest(Some(pre.clone()), &fresh::guest_new(1, 1)).unwrap();
+        // Five slots instead of none.
+        assert_eq!(out.len(), pre.len() + 20, "version {v}");
+    }
+}
+
+#[test]
+fn a_short_or_wild_guest_record_is_refused_and_never_panics() {
+    let g = fresh::guest_new(1, 1);
+    for n in [0, 1, 41, 42, 88, 89, 92, 93, 100, 134] {
+        assert!(fresh::guest(Some(vec![0; n]), &g).is_err(), "{n} bytes");
+    }
+    // A count of items that passes the end.
+    let mut wild = vec![0; 200];
+    wild[89..93].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(fresh::guest(Some(wild.clone()), &g).is_err());
+    // More than five items: the first five are the slots, the rest is dropped.
+    wild[89..93].copy_from_slice(&7u32.to_le_bytes());
+    let out = fresh::guest(Some(wild), &g).unwrap();
+    assert_eq!(out.len(), 200 - 28 + 20);
+    // The smallest record there is.
+    assert!(fresh::guest(Some(vec![0; 135]), &g).is_ok());
 }

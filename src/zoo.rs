@@ -212,7 +212,8 @@ impl Eq for Kept {}
 /// What a guest building record stores of its figures (zoo format 6.9, guest buildings 4): the
 /// guests and the income this month, last month and since construction, the upkeep paid since
 /// construction (from version 68), the price, the users as (unit id, slot) pairs in entering
-/// order, the trash can's fill and the construction date (a file time).
+/// order, the count of users (the stored one, or the number of pairs if that is more), the trash
+/// can's fill and the construction date (a file time).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildingRecord {
     pub guests: [u32; 3],
@@ -222,6 +223,7 @@ pub struct BuildingRecord {
     /// The price as the bits of a single precision number.
     pub price: u32,
     pub users: Vec<(u32, u32)>,
+    pub users_now: u32,
     pub fill: u32,
     pub built: u64,
 }
@@ -237,7 +239,8 @@ pub struct Filter {
 
 /// What a guest record stores: the five status values (happiness, hunger, thirst, energy,
 /// bathroom), the eleven check countdowns in the order of the guest's periods, the arrival date (a
-/// file time), the name id of the favourite species and the sick flag, the saw-animal countdown, female and child (zoo format 6.12).
+/// file time), the name id of the favourite species, the sick flag, the saw-animal countdown,
+/// female and child, the item slots, the other flags and the guide id (zoo format 6.12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GuestRecord {
     pub values: [i32; 5],
@@ -249,6 +252,19 @@ pub struct GuestRecord {
     pub saw_animal: i32,
     pub female: bool,
     pub child: bool,
+    /// The item slots, an item name id each, 0 for an empty slot (guests 9.2).
+    pub items: [u32; 5],
+    pub leave: bool,
+    /// Seen a predator; nothing in the engine raises it yet.
+    pub afraid: bool,
+    pub gift: bool,
+    pub wandered: bool,
+    /// Eating standing.
+    pub stand: bool,
+    pub in_group: bool,
+    pub listening: bool,
+    /// The id of the tour guide followed, 0 for none.
+    pub guide: u32,
 }
 
 /// The values, counters and flags an animal record stores (animals 3.5). A counter the record

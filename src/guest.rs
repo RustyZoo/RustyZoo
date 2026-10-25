@@ -39,10 +39,10 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating;
 use crate::money::{self, Money};
 use crate::sim::Rng;
-use crate::timing::Date;
+use crate::timing::{Date, file_time};
 use crate::unit::Part;
 use crate::world::{Shape, TankKind, World};
-use crate::zoo::{Common, Entity};
+use crate::zoo::{Common, Entity, GuestRecord};
 
 pub mod checks;
 pub mod gawk;
@@ -285,6 +285,35 @@ pub struct Guest {
 }
 
 impl Guest {
+    /// What a record stores of this guest, `base` being the one it was loaded with or made as: the
+    /// afraid flag, which nothing raises, and a favourite or arrival date that did not change are
+    /// kept as they were. The guest follows a guide exactly when it is in a group.
+    pub fn record(&self, base: &GuestRecord, wandered: bool) -> GuestRecord {
+        let arrived = match self.arrived {
+            Some(d) if d != Date::from_file_time(base.arrived) => file_time(d.game_ms()),
+            _ => base.arrived,
+        };
+        GuestRecord {
+            values: self.values,
+            countdowns: self.countdowns,
+            arrived,
+            favourite: self.favourite.unwrap_or(base.favourite),
+            sick: self.sick,
+            saw_animal: self.saw_animal,
+            female: self.female,
+            child: self.child,
+            items: self.items.map(|i| i.map_or(0, |n| n as u32)),
+            leave: self.leave,
+            gift: self.gift,
+            wandered,
+            stand: self.stand,
+            in_group: self.guide != 0,
+            listening: self.listening,
+            guide: self.guide,
+            ..*base
+        }
+    }
+
     /// The guest forgets the sites it has seen (guests visit 3.6).
     pub fn forget(&mut self) {
         self.seen.clear();
@@ -395,11 +424,12 @@ fn favourites(cat: &Catalogue) -> Vec<i32> {
 /// Creates the guest at position `at` of a loaded map as the loader does (guests 5.2, zoo format
 /// 6.12): through its type, with all the draws of a creation, and then the fields its record
 /// stores: the five status values, the sick flag, female and child, the check countdowns, the
-/// saw-animal countdown, the arrival date and the favourite species. A favourite that is not a
-/// loaded species is drawn anew among the species that are not special animals, as at arrival;
-/// with none, the guest has no favourite. `date` is the game date of the load and `reset` is
-/// `[AI] GuestResetInterval`. The caller goes in file order before the first step; a guest whose
-/// type is unknown is left as it is.
+/// saw-animal countdown, the item slots, the leave, wants-a-gift, wandered and eat-standing flags,
+/// the arrival date, the favourite species, the listening flag and the guide id. A favourite that
+/// is not a loaded species is drawn anew among the species that are not special animals, as at
+/// arrival; with none, the guest has no favourite. `date` is the game date of the load and `reset`
+/// is `[AI] GuestResetInterval`. The caller goes in file order before the first step; a guest
+/// whose type is unknown is left as it is.
 pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: Date, reset: i32) {
     let Some((id, record)) =
         (world.zoo.entities[at].common.as_ref()).and_then(|c| Some((c.id, *c.guest.as_deref()?)))
@@ -426,7 +456,11 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: 
     guest.arrived = Some(Date::from_file_time(record.arrived));
     (guest.sick, guest.saw_animal) = (record.sick, record.saw_animal);
     (guest.female, guest.child) = (record.female, record.child);
+    guest.items = record.items.map(|n| (n != 0).then_some(n as i32));
+    (guest.leave, guest.gift, guest.stand) = (record.leave, record.gift, record.stand);
+    (guest.guide, guest.listening) = (record.guide, record.listening);
     if let Some(unit) = world.units.get_mut(id) {
+        unit.goal.wandered = record.wandered;
         unit.part = Part::Guest(guest);
     }
 }

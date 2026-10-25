@@ -12,8 +12,10 @@ use crate::world::World;
 /// (staff use no guest building here), is a user already, or names a slot the type does not have
 /// is dropped. A kept guest or animal is listed in entering order with the entity stamp of its
 /// record as its entry time (0: `now`, the AI tick of the load), hidden when the type hides its
-/// users, and goes on with the task of using the building, so it leaves after the time it has
-/// left (a guest pays then).
+/// users, and goes on with the task its unit block stores when that is entering, using or leaving,
+/// so a user leaves after the time it has left (a guest pays then); a unit saved in another task
+/// ends its use at once. The stored count of users is not brought back to the list: the pairs
+/// dropped stay counted (`Live::extra`).
 /// A file before version 80 restores none of the users of a type whose users are visible inside
 /// (a bench, a picnic table): their pairs are skipped and counted off the guest figures
 /// (guest buildings 4.2).
@@ -24,6 +26,7 @@ pub fn restore(world: &mut World, cat: &Catalogue, now: u32) {
             continue;
         };
         let (id, pairs) = (e.common.as_ref().map_or(0, |c| c.id), record.users.clone());
+        let record_now = record.users_now;
         let Some(kind) = super::kind_of(cat, e, world.units.prices.default) else {
             continue;
         };
@@ -43,6 +46,11 @@ pub fn restore(world: &mut World, cat: &Catalogue, now: u32) {
         for (unit, slot) in pairs {
             seat(world, id, &kind, unit, slot as usize, now);
         }
+        // The count is not brought back to the list: a dropped pair stays counted.
+        if let Some(live) = world.units.buildings.get_mut(&id) {
+            let counted = live.users.len() as u32;
+            live.extra = record_now.saturating_sub(counted);
+        }
     }
 }
 
@@ -52,14 +60,16 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     let (Some(at), false, true) = (world.find(unit), listed, slot < kind.slots.len()) else {
         return;
     };
-    let stamp = (world.zoo.entities[at].common.as_ref()).and_then(|c| c.stamp);
+    let common = world.zoo.entities[at].common.as_ref();
+    let stamp = common.and_then(|c| c.stamp);
+    let saved = common.and_then(|c| Some(c.unit.as_ref()?.target.active));
     let Some(u) = world.units.get_mut(unit) else {
         return;
     };
     if !matches!(u.part, Part::Guest(_) | Part::Animal(_)) {
         return;
     }
-    crate::goal::resume_use(u, id, slot, now);
+    crate::goal::resume_use(u, id, slot, now, saved);
     u.hidden = kind.hide;
     if kind.hide {
         world.hide_unit(at);
