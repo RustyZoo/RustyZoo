@@ -8,11 +8,11 @@
 //! [`Zoo::parse`] keeps everything up to and including the entities: the header, the map size
 //! and entrance, the number of exhibits, the id counter, the tiles, and for every entity its
 //! class, type and subtype names and the part every body ends with (position, rotation, id and
-//! name). The sections after the entities (view, scenario, counters, finances, thoughts, events,
-//! research, awards, marketing, cheats and the tail) are not kept, except the view, the clocks with
-//! the event queue and, through [`Zoo::parse_money`], the cash and the accounts: they are read and dropped, only to refuse
-//! the files the original loader refuses. Bytes after the last section are
-//! ignored, as the original does. The habitat and show records are skipped the same way.
+//! name). Of the sections after the entities it models the view, the clocks with the event queue, the
+//! name counters and, through [`Zoo::parse_money`], the cash and the accounts. Everything else is read
+//! only to refuse the files the original loader refuses, and its bytes are kept for [`Zoo::write`]
+//! (the habitat and show records, the body of every entity, the scenario, thoughts, research, awards,
+//! marketing and cheats). Bytes after the last section are ignored, as the original does.
 //!
 //! From version 70 every entity record states the size of its body, so a record whose class or
 //! layout is not understood is skipped (its [`Entity::common`] is `None`). Before version 70 the
@@ -20,7 +20,8 @@
 //!
 //! The parser knows nothing of the entity definitions. The original also refuses a file of a
 //! version below 70 whose entity has a type it has no definition for, even if its class is
-//! known; [`Zoo::check_types`] does the same once the caller has the definitions.
+//! known; [`Zoo::check_types`] does the same once the caller has the definitions, and
+//! [`Zoo::drop_unknown`] drops the entities of an unknown type of a newer file.
 //!
 //! [`Zoo::write`] mirrors the reader. What the engine does not model is kept as read ([`Kept`], and
 //! the body of each entity in [`Common`]) and written back; what it models is written from the model.
@@ -156,14 +157,6 @@ impl PartialEq for Raw {
 
 impl Eq for Raw {}
 
-impl PartialEq for Kept {
-    fn eq(&self, _: &Kept) -> bool {
-        true
-    }
-}
-
-impl Eq for Kept {}
-
 /// The bytes of the sections the engine does not model, as read (save games 7): written back
 /// unchanged, so they never make two zoos differ. The offsets tell where the modelled values lie in
 /// `finances`.
@@ -184,6 +177,14 @@ pub struct Kept {
     /// The word after the world clock (until 66).
     tail: Vec<u8>,
 }
+
+impl PartialEq for Kept {
+    fn eq(&self, _: &Kept) -> bool {
+        true
+    }
+}
+
+impl Eq for Kept {}
 
 /// What a guest building record stores of its figures (zoo format 6.9, guest buildings 4): the
 /// guests and the income this month, last month and since construction, the upkeep paid since

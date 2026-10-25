@@ -140,7 +140,8 @@ usage: rustyzoo [--data <dir>] <command>
                       does (a map of a version older than 55 has its pieces made healthy anyway). The script has one
                       `<step> <command>` per line, applied before that step (the first is 0):
                       remove ID, bulldoze ID, tile TX TY ELEVATION SHAPE TERRAIN, fill ID, drain ID, cash N, leave ID,
-                      animal TYPE X,Y [male|female], mood ID N (happiness, -100 to 100)
+                      animal TYPE X,Y [male|female], mood ID N (happiness, -100 to 100),
+                      save FILE (write the zoo), load FILE (open a saved game as Continue does)
   check-bitmaps       convert the root bitmaps of the terrain (grid lines, highlight, cliff
                       pieces) as the engine does when their copies in ztst/ are missing, and
                       compare each with its shipped copy; exit 1 if one differs or fails
@@ -161,7 +162,7 @@ usage: rustyzoo [--data <dir>] <command>
                       interface mouse X Y, down, up, double (the second press of a double click), right (the right button went up),
                       wheel N, key NAME [ctrl] [shift] with NAME enter, escape, tab,
                       backspace, delete, left, right, up, down, home, end, pageup, pagedown, y
-                      or n, and char C with C a byte or one character; # starts a comment).
+                      or n, and char C with C a byte or one character, save FILE and load FILE (write the game, open a saved game; the name runs to the end of the line); # starts a comment).
                       The interface is drawn over the map, with the layouts given by --show
                       (each ID shown, repeatable) and the map view; the keys and the edge
                       scroll of the map act only while the map view is shown and no field has

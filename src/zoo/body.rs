@@ -1,5 +1,5 @@
-//! The bodies of entity records, by class. Only the common part is kept; every other field is
-//! read and dropped to reach the next record (or the end of the body).
+//! The bodies of entity records, by class. Only the common part is decoded; every other field is
+//! read and dropped to reach the next record (or the end of the body). The reader keeps the bytes.
 
 use super::{
     AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans, bad,
