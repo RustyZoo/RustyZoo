@@ -1451,12 +1451,12 @@ fn block() -> UnitBlock {
         ..Level::default()
     };
     UnitBlock {
-        u24c: 3,
-        u22c: 9,
-        u238: [32 + 64 * 3, 32 + 64 * 5, 0],
-        u244: [4, 8],
-        u220: [64 * 2 + 7, 64 * 4 + 9, 0],
-        u1dc: [64 * 9, 64 * 8, 0],
+        b1: 3,
+        w1: 9,
+        p1: [32 + 64 * 3, 32 + 64 * 5, 0],
+        t1: [4, 8],
+        p2: [64 * 2 + 7, 64 * 4 + 9, 0],
+        p3: [64 * 9, 64 * 8, 0],
         target: Target {
             goal: 7,
             sub_goal: -3,
@@ -1471,12 +1471,12 @@ fn block() -> UnitBlock {
         pending: "bEat".into(),
         pending_flag: 1,
         records: vec![[1, 2, 3], [4, 5, 6]],
-        u204: 10,
-        u211: 1,
-        u208: 12,
+        limited: 10,
+        b11: 1,
+        w9: 12,
         move_kind: 3,
         move_data: (1..=33).collect(),
-        u1ec: "far".into(),
+        text: "far".into(),
         flags: [(1, 513), (0, 0)],
         behaviour: Behaviour {
             levels: vec![level("bWalk", 1), level("bHappy", 1), level("bSit", 0)],
@@ -1506,14 +1506,14 @@ fn the_unit_block_is_written_and_read_back_in_every_version() {
         // What a version lacks takes the default: the model of an old file cannot hold more.
         let old = through(v, false, &u);
         assert_eq!(through(v, false, &old), old, "version {v}");
-        assert_eq!(old.u238, u.u238, "version {v}");
-        assert_eq!(old.u220, u.u220, "version {v}");
+        assert_eq!(old.p1, u.p1, "version {v}");
+        assert_eq!(old.p2, u.p2, "version {v}");
         assert_eq!(old.target.target, u.target.target, "version {v}");
-        assert_eq!(old.u1dc, u.u1dc, "version {v}");
-        assert_eq!(old.u24c, 3);
+        assert_eq!(old.p3, u.p3, "version {v}");
+        assert_eq!(old.b1, 3);
         assert_eq!(old.pending, "bEat");
         assert_eq!(old.records.len(), 2);
-        assert_eq!(old.u204, if v >= 46 { 10 } else { 0 });
+        assert_eq!(old.limited, if v >= 46 { 10 } else { 0 });
         if v >= 106 {
             u.behaviour = old.behaviour.clone();
             assert_eq!(old, u);
@@ -1524,13 +1524,13 @@ fn the_unit_block_is_written_and_read_back_in_every_version() {
 #[test]
 fn a_field_a_version_lacks_takes_the_value_the_original_writes() {
     let u = UnitBlock {
-        u1fc: 5,
-        u24f: 4,
-        u208: 9,
-        u1ec: "x".into(),
+        short: 5,
+        b5: 4,
+        w9: 9,
+        text: "x".into(),
         move_kind: 3,
         move_data: vec![1; 33],
-        u204: 4,
+        limited: 4,
         target: Target {
             goal: 12,
             extra: [1, 2],
@@ -1542,8 +1542,8 @@ fn a_field_a_version_lacks_takes_the_value_the_original_writes() {
         ..UnitBlock::default()
     };
     let old = through(70, false, &u);
-    assert_eq!((old.u1fc, old.u24f, old.u208), (100, 0, 0));
-    assert_eq!((old.move_kind, old.move_data.len(), &*old.u1ec), (2, 0, ""));
+    assert_eq!((old.short, old.b5, old.w9), (100, 0, 0));
+    assert_eq!((old.move_kind, old.move_data.len(), &*old.text), (2, 0, ""));
     // Before 72 the active goal is the wanted one and the sub-goal 0.
     assert_eq!((old.target.active, old.target.active_sub), (12, 0));
     let newer = through(72, false, &u);
@@ -1561,20 +1561,20 @@ fn a_field_a_version_lacks_takes_the_value_the_original_writes() {
 #[test]
 fn old_tiles_become_world_positions() {
     let u = UnitBlock {
-        u238: [32 + 64 * 3, 32 + 64 * 5, 0],
-        u220: [64 * 2 + 7, 64 * 4 + 9, 0],
+        p1: [32 + 64 * 3, 32 + 64 * 5, 0],
+        p2: [64 * 2 + 7, 64 * 4 + 9, 0],
         target: Target {
             target: [64 * 6, 64 * 7, 0],
             sub_target: [-1; 3],
             ..Target::default()
         },
-        u1dc: [64 * 9, 64 * 8, 0],
+        p3: [64 * 9, 64 * 8, 0],
         ..UnitBlock::default()
     };
     let mut o = Out(Vec::new());
     unit::write(&mut o, 70, false, 2, &u).unwrap();
     let int = |o: &Out, at: usize| i32::from_le_bytes(o.0[at..at + 4].try_into().unwrap());
-    // Offsets: 6 bytes, then the tile of unknown_238; unknown_244, 214 and 218; unknown_220.
+    // 6 bytes, then the first tile; a tile and two words; then the pair of tiles.
     assert_eq!((int(&o, 6), int(&o, 10)), (3, 5));
     assert_eq!(
         [int(&o, 30), int(&o, 34), int(&o, 38), int(&o, 42)],
@@ -1586,16 +1586,16 @@ fn old_tiles_become_world_positions() {
         [6, 7, -1, -1]
     );
     let (back, _) = read_unit(&o.0, 70);
-    assert_eq!((back.u238, back.u220), (u.u238, u.u220));
+    assert_eq!((back.p1, back.p2), (u.p1, u.p2));
     assert_eq!(
         (back.target.target, back.target.sub_target),
         (u.target.target, [-1; 3])
     );
-    assert_eq!(back.u1dc, u.u1dc);
+    assert_eq!(back.p3, u.p3);
     // The tile (-1, -1) is the position (-1, -1, -1), and the pair of tiles (-1, -1) is (-65, -65, 0).
     let none = UnitBlock {
-        u238: [-1; 3],
-        u220: [-65, -65, 0],
+        p1: [-1; 3],
+        p2: [-65, -65, 0],
         ..UnitBlock::default()
     };
     let mut o = Out(Vec::new());
@@ -1606,11 +1606,11 @@ fn old_tiles_become_world_positions() {
         [-1; 4]
     );
     let (back, _) = read_unit(&o.0, 70);
-    assert_eq!((back.u238, back.u220), (none.u238, none.u220));
+    assert_eq!((back.p1, back.p2), (none.p1, none.p2));
     // And the hostile extremes wrap instead of panicking.
     let huge = UnitBlock {
-        u238: [i32::MAX, i32::MIN, 0],
-        u220: [i32::MIN, i32::MAX, 0],
+        p1: [i32::MAX, i32::MIN, 0],
+        p2: [i32::MIN, i32::MAX, 0],
         ..UnitBlock::default()
     };
     through(70, false, &huge);
@@ -1620,18 +1620,18 @@ fn old_tiles_become_world_positions() {
 fn a_unit_block_value_above_10_is_reset() {
     let mut o = Out(Vec::new());
     let u = UnitBlock {
-        u204: 11,
+        limited: 11,
         ..UnitBlock::default()
     };
     unit::write(&mut o, 106, false, 2, &u).unwrap();
     let (back, _) = read_unit(&o.0, 106);
-    assert_eq!(back.u204, 0);
+    assert_eq!(back.limited, 0);
     for n in [0, 10] {
         let u = UnitBlock {
-            u204: n,
+            limited: n,
             ..u.clone()
         };
-        assert_eq!(through(106, false, &u).u204, n);
+        assert_eq!(through(106, false, &u).limited, n);
     }
 }
 
@@ -1722,7 +1722,7 @@ fn the_unit_blocks_of_a_zoo_are_read_and_written() {
     assert_eq!(u.behaviour.levels[0].list_a, ["x"]);
     assert_eq!(u.behaviour.levels[0].list_b, ["y"]);
     assert!(zoo.entities[0].common.as_ref().unwrap().unit.is_none());
-    assert_eq!(u.u1fc, 0);
+    assert_eq!(u.short, 0);
 }
 
 /// Every shipped file that loads is written back byte for byte.

@@ -1,6 +1,6 @@
 //! The unit blocks of animals, guests and staff: the goal and target, the movement, the pending
-//! behaviour call and the behaviour set (zoo format 6.10 and 6.14). Fields are named after their
-//! offset in the original. A field a version lacks takes the value the original writes for it
+//! behaviour call and the behaviour set (zoo format 6.10 and 6.14). Fields are named by type and
+//! place in the file (`b` a byte, `w` a word, `p` a position, `t` a tile). A field a version lacks takes the value the original writes for it
 //! (save games 11.2), and positions are held as world positions, the form of version 106.
 
 use super::write::Out;
@@ -17,9 +17,9 @@ pub struct Behaviour {
 pub struct Level {
     /// The current behaviour (`bWalk` ...).
     pub name: String,
-    pub u58: u8,
+    pub flag: u8,
     pub list_a: Vec<String>,
-    pub u34: String,
+    pub text: String,
     /// The current call: name, arguments, three flags.
     pub call: String,
     pub args: Vec<String>,
@@ -34,9 +34,9 @@ impl Default for Level {
     fn default() -> Level {
         Level {
             name: String::new(),
-            u58: 1,
+            flag: 1,
             list_a: Vec::new(),
-            u34: String::new(),
+            text: String::new(),
             call: String::new(),
             args: Vec::new(),
             flags: [0; 3],
@@ -77,44 +77,45 @@ pub struct Target {
 pub struct UnitBlock {
     /// Until version 57.
     pub old_flag: u8,
-    pub u24c: u8,
-    pub u22c: u32,
-    pub u25c: u8,
-    pub u238: [i32; 3],
+    pub b1: u8,
+    pub w1: u32,
+    pub b2: u8,
+    pub p1: [i32; 3],
     /// A tile, (-1, -1) for none.
-    pub u244: [i32; 2],
-    pub u214: u32,
-    pub u218: u32,
-    pub u220: [i32; 3],
-    pub u24d: u8,
-    pub u24e: u8,
-    pub u230: u32,
+    pub t1: [i32; 2],
+    pub w2: u32,
+    pub w3: u32,
+    pub p2: [i32; 3],
+    pub b3: u8,
+    pub b4: u8,
+    pub w4: u32,
     /// The two optional flags of version 97 (not for guests) and the value that follows a flag of 1.
     pub flags: [(u8, u16); 2],
-    pub u24f: u8,
-    pub u250: u8,
-    pub u20d: u8,
-    pub u20c: u8,
-    pub u1f8: u32,
-    pub u20e: u8,
-    pub u20f: u8,
-    pub u200: u32,
+    pub b5: u8,
+    pub b6: u8,
+    pub b7: u8,
+    pub b8: u8,
+    pub w5: u32,
+    pub b9: u8,
+    pub b10: u8,
+    pub w6: u32,
     pub target: Target,
-    pub u1d8: u32,
-    pub u1dc: [i32; 3],
-    pub u1e8: u32,
+    pub w7: u32,
+    pub p3: [i32; 3],
+    pub w8: u32,
     /// The pending behaviour call: name and flag.
     pub pending: String,
     pub pending_flag: u8,
     pub records: Vec<[u32; 3]>,
-    pub u204: u8,
-    pub u211: u8,
-    pub u208: u32,
+    /// Reset to 0 on load when above 10.
+    pub limited: u8,
+    pub b11: u8,
+    pub w9: u32,
     /// The type of the movement in progress (negative: none) and its data.
     pub move_kind: i32,
     pub move_data: Vec<u8>,
-    pub u1ec: String,
-    pub u1fc: u16,
+    pub text: String,
+    pub short: u16,
     pub behaviour: Behaviour,
 }
 
@@ -123,40 +124,40 @@ impl Default for UnitBlock {
     fn default() -> UnitBlock {
         UnitBlock {
             old_flag: 0,
-            u24c: 0,
-            u22c: 0,
-            u25c: 0,
-            u238: [0; 3],
-            u244: [-1; 2],
-            u214: 0,
-            u218: 0,
-            u220: [0; 3],
-            u24d: 0,
-            u24e: 0,
-            u230: 0,
+            b1: 0,
+            w1: 0,
+            b2: 0,
+            p1: [0; 3],
+            t1: [-1; 2],
+            w2: 0,
+            w3: 0,
+            p2: [0; 3],
+            b3: 0,
+            b4: 0,
+            w4: 0,
             flags: [(0, 0); 2],
-            u24f: 0,
-            u250: 0,
-            u20d: 0,
-            u20c: 0,
-            u1f8: 0,
-            u20e: 0,
-            u20f: 0,
-            u200: 0,
+            b5: 0,
+            b6: 0,
+            b7: 0,
+            b8: 0,
+            w5: 0,
+            b9: 0,
+            b10: 0,
+            w6: 0,
             target: Target::default(),
-            u1d8: 0,
-            u1dc: [0; 3],
-            u1e8: 0,
+            w7: 0,
+            p3: [0; 3],
+            w8: 0,
             pending: String::new(),
             pending_flag: 0,
             records: Vec::new(),
-            u204: 0,
-            u211: 0,
-            u208: 0,
+            limited: 0,
+            b11: 0,
+            w9: 0,
             move_kind: 2,
             move_data: Vec::new(),
-            u1ec: String::new(),
-            u1fc: 100,
+            text: String::new(),
+            short: 100,
             behaviour: Behaviour::default(),
         }
     }
@@ -198,9 +199,9 @@ pub(super) fn behaviour_set(r: &mut Reader) -> R<Behaviour> {
     loop {
         let mut l = Level {
             name: r.text()?,
-            u58: r.u8()?,
+            flag: r.u8()?,
             list_a: strings(r)?,
-            u34: r.text()?,
+            text: r.text()?,
             call: r.text()?,
             args: strings(r)?,
             ..Level::default()
@@ -229,10 +230,10 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
     if v <= 57 {
         u.old_flag = r.u8()?;
     }
-    u.u24c = r.u8()?;
-    u.u22c = r.u32()?;
-    u.u25c = r.u8()?;
-    u.u238 = if v <= 90 {
+    u.b1 = r.u8()?;
+    u.w1 = r.u32()?;
+    u.b2 = r.u8()?;
+    u.p1 = if v <= 90 {
         let t = read_tile(r)?;
         if t == [-1, -1] {
             [-1; 3]
@@ -246,10 +247,10 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
     } else {
         read_pos(r)?
     };
-    u.u244 = read_tile(r)?;
-    u.u214 = r.u32()?;
-    u.u218 = r.u32()?;
-    u.u220 = if v <= 85 {
+    u.t1 = read_tile(r)?;
+    u.w2 = r.u32()?;
+    u.w3 = r.u32()?;
+    u.p2 = if v <= 85 {
         let (t, inner) = (read_tile(r)?, read_tile(r)?);
         [
             t[0].wrapping_mul(64).wrapping_add(inner[0]),
@@ -259,9 +260,9 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
     } else {
         read_pos(r)?
     };
-    u.u24d = r.u8()?;
-    u.u24e = r.u8()?;
-    u.u230 = r.u32()?;
+    u.b3 = r.u8()?;
+    u.b4 = r.u8()?;
+    u.w4 = r.u32()?;
     if v >= 97 && !guest {
         // Each flag is followed by a value only when it is exactly 1.
         for f in &mut u.flags {
@@ -272,15 +273,15 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
         }
     }
     if v >= 98 {
-        u.u24f = r.u8()?;
-        u.u250 = r.u8()?;
+        u.b5 = r.u8()?;
+        u.b6 = r.u8()?;
     }
-    u.u20d = r.u8()?;
-    u.u20c = r.u8()?;
-    u.u1f8 = r.u32()?;
-    u.u20e = r.u8()?;
-    u.u20f = r.u8()?;
-    u.u200 = r.u32()?;
+    u.b7 = r.u8()?;
+    u.b8 = r.u8()?;
+    u.w5 = r.u32()?;
+    u.b9 = r.u8()?;
+    u.b10 = r.u8()?;
+    u.w6 = r.u32()?;
     let t = &mut u.target;
     t.goal = r.i32()?;
     t.sub_goal = r.i32()?;
@@ -301,13 +302,13 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
     if v >= 72 {
         (t.active, t.active_sub) = (r.i32()?, r.i32()?);
     }
-    u.u1d8 = r.u32()?;
-    u.u1dc = if v <= 74 {
+    u.w7 = r.u32()?;
+    u.p3 = if v <= 74 {
         corner(read_tile(r)?)
     } else {
         read_pos(r)?
     };
-    u.u1e8 = r.u32()?;
+    u.w8 = r.u32()?;
     u.pending = r.text()?;
     u.pending_flag = r.u8()?;
     let size = if v <= 83 { 8 } else { 12 };
@@ -317,13 +318,13 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
     }
     if v >= 46 {
         // A value above 10 is reset.
-        u.u204 = Some(r.u8()?).filter(|&n| n <= 10).unwrap_or(0);
+        u.limited = Some(r.u8()?).filter(|&n| n <= 10).unwrap_or(0);
     }
     if v >= 62 {
-        u.u211 = r.u8()?;
+        u.b11 = r.u8()?;
     }
     if v >= 84 {
-        u.u208 = r.u32()?;
+        u.w9 = r.u32()?;
         let first = r.i32()?;
         mode = first;
         u.move_kind = if v >= 93 { r.i32()? } else { first };
@@ -335,10 +336,10 @@ pub(super) fn read(r: &mut Reader, guest: bool) -> R<(UnitBlock, u32)> {
         }
     }
     if v >= 85 {
-        u.u1ec = r.text()?;
+        u.text = r.text()?;
     }
     if v >= 98 {
-        u.u1fc = r.u16()?;
+        u.short = r.u16()?;
     }
     Ok((u, mode as u32))
 }
@@ -361,9 +362,9 @@ pub(super) fn write_behaviour(o: &mut Out, b: &Behaviour) -> Result<(), String> 
     let last = b.levels.len().saturating_sub(1);
     for (i, l) in b.levels.iter().enumerate() {
         o.string(&l.name)?;
-        o.u8(l.u58);
+        o.u8(l.flag);
         put_strings(o, &l.list_a)?;
-        o.string(&l.u34)?;
+        o.string(&l.text)?;
         o.string(&l.call)?;
         put_strings(o, &l.args)?;
         o.bytes(&l.flags);
@@ -389,33 +390,33 @@ pub(super) fn write(
     if v <= 57 {
         o.u8(u.old_flag);
     }
-    o.u8(u.u24c);
-    o.u32(u.u22c);
-    o.u8(u.u25c);
+    o.u8(u.b1);
+    o.u32(u.w1);
+    o.u8(u.b2);
     if v <= 90 {
-        put_tile(o, tile(u.u238));
+        put_tile(o, tile(u.p1));
     } else {
-        put_pos(o, u.u238);
+        put_pos(o, u.p1);
     }
-    put_tile(o, u.u244);
-    o.u32(u.u214);
-    o.u32(u.u218);
+    put_tile(o, u.t1);
+    o.u32(u.w2);
+    o.u32(u.w3);
     if v <= 85 {
         // The position (-65, -65) is the pair of tiles (-1, -1).
-        let (t, inner) = if u.u220[..2] == [-65, -65] {
+        let (t, inner) = if u.p2[..2] == [-65, -65] {
             ([-1; 2], [-1; 2])
         } else {
-            let p = u.u220;
+            let p = u.p2;
             (tile(p), [p[0].rem_euclid(64), p[1].rem_euclid(64)])
         };
         put_tile(o, t);
         put_tile(o, inner);
     } else {
-        put_pos(o, u.u220);
+        put_pos(o, u.p2);
     }
-    o.u8(u.u24d);
-    o.u8(u.u24e);
-    o.u32(u.u230);
+    o.u8(u.b3);
+    o.u8(u.b4);
+    o.u32(u.w4);
     if v >= 97 && !guest {
         for &(flag, n) in &u.flags {
             o.u8(flag);
@@ -425,15 +426,15 @@ pub(super) fn write(
         }
     }
     if v >= 98 {
-        o.u8(u.u24f);
-        o.u8(u.u250);
+        o.u8(u.b5);
+        o.u8(u.b6);
     }
-    o.u8(u.u20d);
-    o.u8(u.u20c);
-    o.u32(u.u1f8);
-    o.u8(u.u20e);
-    o.u8(u.u20f);
-    o.u32(u.u200);
+    o.u8(u.b7);
+    o.u8(u.b8);
+    o.u32(u.w5);
+    o.u8(u.b9);
+    o.u8(u.b10);
+    o.u32(u.w6);
     let t = &u.target;
     o.i32(t.goal);
     o.i32(t.sub_goal);
@@ -453,13 +454,13 @@ pub(super) fn write(
         o.i32(t.active);
         o.i32(t.active_sub);
     }
-    o.u32(u.u1d8);
+    o.u32(u.w7);
     if v <= 74 {
-        put_tile(o, tile(u.u1dc));
+        put_tile(o, tile(u.p3));
     } else {
-        put_pos(o, u.u1dc);
+        put_pos(o, u.p3);
     }
-    o.u32(u.u1e8);
+    o.u32(u.w8);
     o.string(&u.pending)?;
     o.u8(u.pending_flag);
     o.u32(u.records.len() as u32);
@@ -469,13 +470,13 @@ pub(super) fn write(
             .for_each(|&n| o.u32(n));
     }
     if v >= 46 {
-        o.u8(u.u204);
+        o.u8(u.limited);
     }
     if v >= 62 {
-        o.u8(u.u211);
+        o.u8(u.b11);
     }
     if v >= 84 {
-        o.u32(u.u208);
+        o.u32(u.w9);
         o.u32(mode);
         // Before 93 the mode is also the type.
         let kind = if v >= 93 { u.move_kind } else { mode as i32 };
@@ -489,10 +490,10 @@ pub(super) fn write(
         }
     }
     if v >= 85 {
-        o.string(&u.u1ec)?;
+        o.string(&u.text)?;
     }
     if v >= 98 {
-        o.u16(u.u1fc);
+        o.u16(u.short);
     }
     Ok(())
 }
