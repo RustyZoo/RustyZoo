@@ -167,7 +167,7 @@ if [ -z "$can" ] || [ "${workers:-0}" = 0 ]; then
 else
   uses=$(count '$4 == "building" && $5 == "use" && $6 == '"$can")
   first=$(awk -v can="$can" '$4 == "building" && $5 == "use" && $6 == can { n++ } $4 == "staff" && $5 == "job" && $7 == "TrashCan" { print n + 0; exit }' "$tmp/log")
-  if [ "$uses" -lt 13 ]; then skip "trash can: only $uses uses, the can never held 13 pieces"
+  if [ "$uses" -lt 13 ]; then fail "trash can: only $uses uses, the can never held 13 pieces"
   elif [ -z "$first" ]; then fail "trash can: $uses uses and no worker went to it"
   elif [ "$first" -lt 13 ]; then fail "trash can: a worker was sent after $first uses, before 13"
   else ok "trash can: $uses uses, the first worker went to it after $first"; fi
