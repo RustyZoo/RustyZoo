@@ -2160,7 +2160,7 @@ fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     };
     // Loaded, then saved at once: the same record, with the counters creation drew.
     let a = saved(&world);
-    assert!(!a.drinking, "the flag is not taken at the load");
+    assert_eq!((a.sleeping, a.eating, a.drinking), (true, true, true));
     assert_eq!(
         (a.happiness, a.hunger, a.health, a.energy),
         (38, 7, 250, 15)
@@ -2182,10 +2182,9 @@ fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     live.counters[HABITAT] = 7;
     live.counters[WATER] = 9;
     live.breath = 12;
-    live.drinking = true;
-    (live.sleeping, live.eating) = (true, true);
     live.rampage = 4;
     live.female = false;
+    (live.sleeping, live.eating, live.drinking) = (false, false, false);
     let a = saved(&world);
     assert_eq!(
         (a.hunger, a.counters[HABITAT], a.counters[WATER]),
@@ -2195,6 +2194,7 @@ fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
         (a.breath, a.drinking, a.rampage, a.female),
         (Some(12), true, 4, false)
     );
+    // The flags the load does not take stay as read.
     assert_eq!((a.sleeping, a.eating), (true, true));
     assert_eq!(a.escape, Some(escape));
 }

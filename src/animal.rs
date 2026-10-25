@@ -537,7 +537,9 @@ impl Animal {
     }
 
     /// The record of this animal: `base` with the live values written over it, so what the engine
-    /// does not model stays as it was.
+    /// does not model stays as it was. The sleeping, eating and drinking flags stay as they were
+    /// too: the load does not take them (see [`Animal::restore`]), so the live ones are not the
+    /// animal's.
     pub fn record(&self, base: AnimalRecord) -> AnimalRecord {
         let mut counters = base.counters;
         // The shelter and murky water counters are not stored.
@@ -554,8 +556,6 @@ impl Animal {
             counters,
             breath: Some(self.breath),
             at_minimum_health: self.at_minimum_health,
-            sleeping: self.sleeping,
-            eating: self.eating,
             very_unhappy: self.very_unhappy,
             keeper_visited: self.keeper_visited,
             mourning: self.mourning,
@@ -563,7 +563,6 @@ impl Animal {
             crated: self.crated,
             egg: self.egg,
             thirsty: self.thirsty,
-            drinking: self.drinking,
             rampaging: self.rampaging,
             rampage: self.rampage,
             ..base
