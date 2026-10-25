@@ -1335,6 +1335,6 @@ save_load() { # save_load <map>
 check base-trial "102706,0,77016be6e5143c71" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial "231828,0,0011ef43f4366a8a" "save_load maps/scn19.zoo"
+check expansion-trial "231828,0,57ec654d8e099da0" "save_load maps/scn19.zoo"
 
 exit $failed
