@@ -5,7 +5,7 @@
 
 use super::upgrade::NEVER;
 use super::write::Out;
-use super::{AnimalRecord, BuildingRecord, Common, Entity, Fence, GuestRecord};
+use super::{BuildingRecord, Common, Entity, Fence, GuestRecord};
 
 /// The fields before the unit block or the entity base, and the fields after them.
 pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8>), String> {
@@ -27,11 +27,11 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
             &mut post,
             &c.building.clone().unwrap_or(building_new(0.0, now)),
         ),
-        "animals" => animal(
-            &mut pre,
-            c.animal.as_deref().unwrap_or(&animal_new(60, 500)),
-            now,
-        ),
+        "animals" => {
+            let new = || super::animal::animal_new(60, 500, now);
+            let a = c.animal.as_deref().cloned().unwrap_or_else(new);
+            super::animal::write(&mut pre, &a)?;
+        }
         "guests" => {
             let record = c.guest.as_deref().copied();
             pre.bytes(&guest(None, &record.unwrap_or(guest_new(40, now)))?);
@@ -102,67 +102,6 @@ fn building(o: &mut Out, b: &BuildingRecord) {
     o.u32(b.upkeep.unwrap_or(0));
     // The unknown word and the empty list of members.
     o.bytes(&[0; 8]);
-}
-
-/// A new animal (save games 11.3): the type's initial happiness and full health, not hungry, no
-/// energy, no counter running.
-pub(crate) fn animal_new(happiness: i32, health: i32) -> AnimalRecord {
-    AnimalRecord {
-        happiness,
-        hunger: 0,
-        health,
-        energy: 0,
-        dung: 0,
-        female: false,
-        counters: [None; 16],
-        breath: None,
-        at_minimum_health: false,
-        very_unhappy: false,
-        keeper_visited: false,
-        mourning: false,
-        dying: false,
-        crated: false,
-        egg: false,
-        thirsty: false,
-        rampaging: false,
-        rampage: 0,
-    }
-}
-
-/// The animal record (zoo format 6.11): what the model holds, 0 or a date elsewhere.
-fn animal(o: &mut Out, a: &AnimalRecord, now: u64) {
-    let c = |i: usize| a.counters[i].unwrap_or(0);
-    for n in [a.happiness, a.hunger, a.health, a.energy] {
-        o.i32(n);
-    }
-    // At minimum health, sleeping, eating, very unhappy and one more; then 25 unknown bytes.
-    o.bytes(&[a.at_minimum_health.into(), 0, 0, a.very_unhappy.into(), 0]);
-    o.bytes(&[0; 25]);
-    o.string(if a.female { "Female" } else { "Male" }).ok();
-    o.u32(0);
-    for i in [0, 2, 3, 5, 6, 7, 8, 9, 10, 11] {
-        o.i32(c(i));
-    }
-    o.bytes(&[0; 8]);
-    o.i32(c(12));
-    o.i32(a.dung);
-    o.bytes(&[a.keeper_visited.into(), 0, 0]);
-    o.i32(c(4));
-    o.bytes(&[0; 6 + 12]);
-    [now, now].iter().for_each(|d| o.bytes(&d.to_le_bytes()));
-    o.bytes(&[0; 2 + 8 + 12]);
-    o.bytes(&[a.dying.into(), a.mourning.into()]);
-    o.i32(c(14));
-    o.u32(0); // not escaped
-    o.bytes(&[0; 9]);
-    o.bytes(&[a.crated.into(), a.thirsty.into(), 0, a.rampaging.into()]);
-    o.bytes(&[0; 4]);
-    o.i32(a.rampage);
-    o.bytes(&[0, a.egg.into(), 0, 0, 0, 0]);
-    o.i32(a.breath.unwrap_or(0));
-    o.i32(c(1));
-    // No home exhibit.
-    o.bytes(&[0xff; 8]);
 }
 
 /// A new guest (save games 11.3) with no live state: the type's initial happiness, every need at 0,

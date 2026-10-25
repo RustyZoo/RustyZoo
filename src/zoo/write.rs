@@ -238,11 +238,12 @@ fn is_unit(class: &str) -> bool {
 }
 
 /// The body in the form of version 106. An entity read from a file of version `v` has its class
-/// fields converted; one made in play has them built from the model (`fresh`).
+/// fields converted; one made in play has them built from the model (`fresh`), as is an animal's.
 fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     let (b, s) = (&c.raw.body, &c.raw.spans);
     let read = !b.is_empty() && s.end <= b.len();
-    let (mut pre, mut post) = match read {
+    // An animal is written from its record, whether it was read or made in play.
+    let (mut pre, mut post) = match read && e.class != "animals" {
         true => super::body::transcode(v, e.class.as_bytes(), b)?,
         false => fresh::parts(e, c, now)?,
     };
