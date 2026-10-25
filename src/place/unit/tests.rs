@@ -170,6 +170,7 @@ fn world_with(mut entities: Vec<Entity>, edit: impl FnOnce(&mut Zoo)) -> World {
     let mut tiles = vec![flat; 64];
     tiles[5 * 8 + 5].terrain = 1;
     let mut zoo = Zoo {
+        kept: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,

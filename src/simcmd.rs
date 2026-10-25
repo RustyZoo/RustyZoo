@@ -4,6 +4,7 @@
 use rustyzoo::animal::Class;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::exhibit::TankConfig;
+use rustyzoo::money::Money;
 use rustyzoo::place;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::sim::drive::{self, Run};
@@ -79,6 +80,14 @@ fn flags<'a>(mut words: &[&'a str]) -> Result<Flags<'a>, CliError> {
     }
 }
 
+/// A saved game read from a file on disk.
+fn load(file: &str, catalogue: &Catalogue) -> Result<(Zoo, Money), String> {
+    let bytes = std::fs::read(file).map_err(|e| format!("{file}: {e}"))?;
+    Zoo::parse_money(&bytes)
+        .and_then(|(zoo, money)| Ok((zoo.checked(catalogue)?, money)))
+        .map_err(|e| format!("{file}: {e}"))
+}
+
 pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
     let flags = flags(words)?;
     let commands = match flags.script {
@@ -92,32 +101,45 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         eprintln!("rustyzoo: warning: script step {step} is never reached");
     }
     let catalogue = Catalogue::load(vfs)?;
-    let renderer = MapRenderer::new(vfs, &catalogue);
     let (zoo, money) = Zoo::parse_money(&vfs.read(member)?)
         .and_then(|(zoo, money)| Ok((zoo.checked(&catalogue)?, money)))
         .map_err(|e| format!("{member}: {e}"))?;
-    let mut world = World::new(zoo, |e| renderer.shape(e));
-    world.set_water(place::water(&terrain::types(vfs)));
-    world.set_tank_config(TankConfig::load(vfs));
-    world.set_decay(Decay::load(vfs));
     let economy = vfs.read("economy.cfg").unwrap_or_else(|e| {
         eprintln!("rustyzoo: warning: economy.cfg: {e}; the built-in economy settings are used");
         Vec::new()
     });
-    let mut run = Run::start(
-        (vfs.ini(), &economy),
-        (catalogue, Class::load(vfs)),
-        world,
-        money,
-        flags.seed,
-        flags.fences,
-    );
+    let start = |catalogue, zoo, money, saved| {
+        let renderer = MapRenderer::new(vfs, &catalogue);
+        let mut world = World::new(zoo, |e| renderer.shape(e));
+        world.set_water(place::water(&terrain::types(vfs)));
+        world.set_tank_config(TankConfig::load(vfs));
+        world.set_decay(Decay::load(vfs));
+        let files = (vfs.ini(), &economy[..]);
+        let types = (catalogue, Class::load(vfs));
+        match saved {
+            false => Run::start(files, types, world, money, flags.seed, flags.fences),
+            true => Run::resume(files, types, world, money, flags.seed),
+        }
+    };
+    let mut run = start(catalogue, zoo, money, false);
     let mut report = Report::new();
     let mut commands = commands.into_iter().peekable();
     for step in 0..flags.ticks {
         while let Some((_, command)) = commands.next_if(|(at, _)| *at == step) {
-            if !run.apply(&command) {
-                eprintln!("rustyzoo: warning: step {step}: {command:?} changed nothing");
+            let done = match &command {
+                drive::Command::Save(file) => run
+                    .save()
+                    .and_then(|bytes| std::fs::write(file, bytes).map_err(|e| e.to_string())),
+                drive::Command::Load(file) => load(file, &run.cat).map(|(zoo, money)| {
+                    run = start(std::mem::take(&mut run.cat), zoo, money, true);
+                }),
+                _ => run
+                    .apply(&command)
+                    .then_some(())
+                    .ok_or("changed nothing".into()),
+            };
+            if let Err(why) = done {
+                eprintln!("rustyzoo: warning: step {step}: {command:?}: {why}");
             }
         }
         let lines = run.step_with(flags.dt, Some(vfs));

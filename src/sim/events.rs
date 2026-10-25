@@ -60,6 +60,16 @@ impl Events {
         [&self.current, &self.next]
     }
 
+    /// The two buffers as a map stores them, the current one first (the inverse of
+    /// [`Events::restore`]).
+    pub fn queue(&self) -> Queue {
+        Queue {
+            first: self.current.clone(),
+            second: self.next.clone(),
+            next_is_first: false,
+        }
+    }
+
     /// Forgets every event, for a new game.
     pub fn clear(&mut self) {
         self.current.clear();

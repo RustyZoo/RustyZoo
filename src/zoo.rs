@@ -8,11 +8,11 @@
 //! [`Zoo::parse`] keeps everything up to and including the entities: the header, the map size
 //! and entrance, the number of exhibits, the id counter, the tiles, and for every entity its
 //! class, type and subtype names and the part every body ends with (position, rotation, id and
-//! name). The sections after the entities (view, scenario, counters, finances, thoughts, events,
-//! research, awards, marketing, cheats and the tail) are not kept, except the view, the clocks with
-//! the event queue and, through [`Zoo::parse_money`], the cash and the accounts: they are read and dropped, only to refuse
-//! the files the original loader refuses. Bytes after the last section are
-//! ignored, as the original does. The habitat and show records are skipped the same way.
+//! name). Of the sections after the entities it models the view, the clocks with the event queue, the
+//! name counters and, through [`Zoo::parse_money`], the cash and the accounts. Everything else is read
+//! only to refuse the files the original loader refuses, and its bytes are kept for [`Zoo::write`]
+//! (the habitat and show records, the body of every entity, the scenario, thoughts, research, awards,
+//! marketing and cheats). Bytes after the last section are ignored, as the original does.
 //!
 //! From version 70 every entity record states the size of its body, so a record whose class or
 //! layout is not understood is skipped (its [`Entity::common`] is `None`). Before version 70 the
@@ -20,7 +20,11 @@
 //!
 //! The parser knows nothing of the entity definitions. The original also refuses a file of a
 //! version below 70 whose entity has a type it has no definition for, even if its class is
-//! known; [`Zoo::check_types`] does the same once the caller has the definitions.
+//! known; [`Zoo::check_types`] does the same once the caller has the definitions, and
+//! [`Zoo::drop_unknown`] drops the entities of an unknown type, which the engine does when it writes.
+//!
+//! [`Zoo::write`] mirrors the reader. What the engine does not model is kept as read ([`Kept`], and
+//! the body of each entity in [`Common`]) and written back; what it models is written from the model.
 //!
 //! Everything read from a file is untrusted. Every count and size is checked against the bytes
 //! left before anything is allocated or looped over, so the time and memory used are linear in
@@ -29,6 +33,7 @@
 mod body;
 #[cfg(test)]
 pub(crate) mod tests;
+mod write;
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -120,7 +125,66 @@ pub struct Common {
     pub filter: Option<Filter>,
     /// The figures a guest building record stores; `None` for everything else.
     pub building: Option<BuildingRecord>,
+    /// The body as read, which the writer patches with the fields above.
+    pub raw: Raw,
 }
+
+/// Where the entity base starts and ends inside a body, so a writer can replace it: the position, the
+/// end of the name, the stamp, the colour count and the end of the colours. All 0 for an entity that
+/// was not read from a file.
+#[derive(Debug, Clone, Copy, Default)]
+struct Spans {
+    base: usize,
+    name: usize,
+    stamp: usize,
+    colors: usize,
+    end: usize,
+}
+
+/// The body of an entity record as read. It never makes two entities differ: the fields of [`Common`]
+/// are the state, the bytes are what is kept of the rest.
+#[derive(Debug, Clone, Default)]
+pub struct Raw {
+    body: Vec<u8>,
+    spans: Spans,
+}
+
+impl PartialEq for Raw {
+    fn eq(&self, _: &Raw) -> bool {
+        true
+    }
+}
+
+impl Eq for Raw {}
+
+/// The bytes of the sections the engine does not model, as read (save games 7): written back
+/// unchanged, so they never make two zoos differ. The offsets tell where the modelled values lie in
+/// `finances`.
+#[derive(Debug, Clone, Default)]
+pub struct Kept {
+    /// From the habitat count to the end of the shows that precede the id counter.
+    habitats: Vec<u8>,
+    /// The scenario block: its size and content.
+    scenario: Vec<u8>,
+    /// The game block, from the zoo status to the cash and the word after it.
+    finances: Vec<u8>,
+    /// Where the account tables, the adult price (from 39), the calendar and the cash start in it.
+    at: [usize; 4],
+    /// The thoughts.
+    thoughts: Vec<u8>,
+    /// Research, awards, marketing, the shows of 89 to 96 and the cheats.
+    research: Vec<u8>,
+    /// The word after the world clock (until 66).
+    tail: Vec<u8>,
+}
+
+impl PartialEq for Kept {
+    fn eq(&self, _: &Kept) -> bool {
+        true
+    }
+}
+
+impl Eq for Kept {}
 
 /// What a guest building record stores of its figures (zoo format 6.9, guest buildings 4): the
 /// guests and the income this month, last month and since construction, the upkeep paid since
@@ -268,6 +332,8 @@ pub struct Zoo {
     /// How many units of each type name were named so far (zoo format 7.3), for the number in a
     /// default name.
     pub names: BTreeMap<String, u32>,
+    /// What the file holds that is not modelled.
+    pub kept: Kept,
 }
 
 /// What a habitat record stores besides its place (zoo format 4.1): the name, the nine
@@ -372,14 +438,16 @@ impl Zoo {
         }
     }
 
+    /// Drops the entities whose type `known` does not find, as the original's loader does when it
+    /// skips their records: it makes no unit for them and so never saves them (zoo format 6.2).
+    /// The engine keeps them in play and drops them when it writes.
+    pub fn drop_unknown(&mut self, known: impl Fn(&Entity) -> bool) {
+        self.entities.retain(known);
+    }
+
     /// Applies [`Zoo::check_types`] with the types of `catalogue`.
     pub fn checked(self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
-        let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-        self.check_types(|e| {
-            catalogue
-                .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
-                .is_some()
-        })?;
+        self.check_types(knows(catalogue))?;
         Ok(self)
     }
 
@@ -406,10 +474,7 @@ impl Zoo {
         if bytes.len() > MAX_SIZE {
             return Err(ZooError::Corrupted("file too big".into()));
         }
-        let mut r = Reader {
-            data: &bytes[8..],
-            v: version,
-        };
+        let mut r = Reader::new(&bytes[8..], version);
         let mut section = "header";
         let mut money = Money::default();
         read(&mut r, &mut section, &mut money)
@@ -427,13 +492,40 @@ fn bad<T>(why: &str) -> R<T> {
     Err(Bad(why.into()))
 }
 
+/// Whether the types of `catalogue` have a definition for an entity.
+pub fn knows(catalogue: &Catalogue) -> impl Fn(&Entity) -> bool + '_ {
+    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+    move |e| {
+        catalogue
+            .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
+            .is_some()
+    }
+}
+
 /// A bounds-checked reader over untrusted bytes; `v` is the version of the file.
 struct Reader<'a> {
     data: &'a [u8],
     v: u32,
+    /// The length `data` had at the start of the body being read, and where its entity base lies.
+    total: usize,
+    spans: Spans,
 }
 
 impl<'a> Reader<'a> {
+    fn new(data: &'a [u8], v: u32) -> Reader<'a> {
+        Reader {
+            data,
+            v,
+            total: data.len(),
+            spans: Spans::default(),
+        }
+    }
+
+    /// The offset in the body being read.
+    fn pos(&self) -> usize {
+        self.total - self.data.len()
+    }
+
     fn take(&mut self, len: usize) -> R<&'a [u8]> {
         if len > self.data.len() {
             return bad("truncated");
@@ -542,6 +634,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     *section = "habitats";
     let (width, height) = (r.u32()?, r.u32()?);
     let entrance = (r.u32()?, r.u32()?);
+    let from = r.data;
     let habitat_count = r.count(HABITAT_MIN)?;
     let mut tanks = Vec::new();
     let mut habitat_tiles = Vec::new();
@@ -561,6 +654,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         *section = "shows";
         shows(r)?;
     }
+    let habitats = taken(from, r);
 
     *section = "id counter";
     let id_counter = r.u32()?;
@@ -591,7 +685,8 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     }
 
     *section = "later sections";
-    let (view, clocks, names) = after_entities(r, money)?;
+    let (view, clocks, names, mut kept) = after_entities(r, money)?;
+    kept.habitats = habitats;
     Ok(Zoo {
         version: v,
         locale,
@@ -609,7 +704,13 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         view,
         clocks,
         names,
+        kept,
     })
+}
+
+/// The bytes `r` has read since `from` was its data.
+fn taken(from: &[u8], r: &Reader) -> Vec<u8> {
+    from[..from.len() - r.data.len()].to_vec()
 }
 
 /// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
@@ -731,19 +832,33 @@ fn entity(r: &mut Reader) -> R<Entity> {
     let subtype = r.text()?;
     let (body_size, common) = if r.v >= 70 {
         let size = r.u32()?;
-        let mut body = Reader {
-            data: r.take(size as usize)?,
-            v: r.v,
-        };
+        let data = r.take(size as usize)?;
+        let mut body = Reader::new(data, r.v);
         // A body that does not decode to exactly its size is skipped, like an unknown class.
         let common = match body::decode(&mut body, class) {
-            Ok(Some(common)) if body.data.is_empty() && size > 0 => Some(common),
+            Ok(Some(mut common)) if body.data.is_empty() && size > 0 => {
+                common.raw = Raw {
+                    body: data.to_vec(),
+                    spans: body.spans,
+                };
+                Some(common)
+            }
             _ => None,
         };
         (Some(size), common)
     } else {
-        match body::decode(r, class)? {
-            Some(common) => (None, Some(common)),
+        let (from, v) = (r.data, r.v);
+        let mut body = Reader::new(from, v);
+        match body::decode(&mut body, class)? {
+            Some(mut common) => {
+                let data = &from[..from.len() - body.data.len()];
+                common.raw = Raw {
+                    body: data.to_vec(),
+                    spans: body.spans,
+                };
+                r.data = body.data;
+                (None, Some(common))
+            }
             None => return bad("unknown class in a file without body sizes"),
         }
     };
@@ -765,8 +880,12 @@ fn entity(r: &mut Reader) -> R<Entity> {
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.
-fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMap<String, u32>)> {
+fn after_entities(
+    r: &mut Reader,
+    money: &mut Money,
+) -> R<(View, Clocks, BTreeMap<String, u32>, Kept)> {
     let mut clocks = Clocks::default();
+    let mut kept = Kept::default();
     let v = r.v;
     let view = View {
         zoom: r.i32()?,
@@ -779,6 +898,7 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
     // `u32` each. The original skips the block by its size when it starts a scenario and reads
     // its content otherwise, and the two agree only when the size is exactly that of the
     // content, so any other size is refused. Before 51 the block is the name alone.
+    let from = r.data;
     let size = u64::from(r.u32()?);
     if size > 0 && v >= 51 {
         let name = u64::from(r.u32()?);
@@ -794,6 +914,7 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
     } else {
         r.skip(size as usize)?;
     }
+    kept.scenario = taken(from, r);
 
     // Name counters: type name and number.
     let mut names = BTreeMap::new();
@@ -803,6 +924,7 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
     }
 
     // Game and finances: the zoo status' timers, rating and donation counter first.
+    let from = r.data;
     r.skip(4)?;
     clocks.status.timers = [r.u32()?, r.u32()?, r.u32()?];
     r.skip(1)?;
@@ -815,6 +937,7 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
         .checked_mul(rows)
         .filter(|&n| n <= r.data.len() as u64);
     tables.ok_or_else(|| Bad("finance tables pass the end of the file".into()))?;
+    kept.at[0] = from.len() - r.data.len();
     // The rows past the 31 and the columns past the 20 that are kept are read and dropped.
     let (rows, columns) = (rows as usize, columns as usize);
     for m in 0..rows {
@@ -839,8 +962,10 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
             money.total[c] = value;
         }
     }
+    kept.at[1] = from.len() - r.data.len();
     clocks.status.price = if v >= 39 { r.f32()? } else { 49.0 };
     r.skip(if v >= 71 { 8 } else { 0 })?;
+    kept.at[2] = from.len() - r.data.len();
     // The calendar: year, month, day of week, day, hour, minute, second, millisecond.
     let [year, month, _, day, hour, minute, second, millisecond] = [(); 8].map(|_| r.u16());
     clocks.calendar = crate::timing::Date {
@@ -854,12 +979,16 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
         millisecond: u32::from(millisecond?),
     }
     .game_ms();
+    kept.at[3] = from.len() - r.data.len();
     money.set_cash(r.f32()?);
     if v >= 73 {
         r.skip(4)?;
     }
+    kept.finances = taken(from, r);
 
+    let from = r.data;
     r.skip_list(20)?; // thoughts
+    kept.thoughts = taken(from, r);
     // The AI clock: the milliseconds left over, then the whole AI ticks (7.6).
     (clocks.ai_rem, clocks.ai_ticks) = (r.u32()?, r.u32()?);
     if v >= 97 {
@@ -867,6 +996,7 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
         clocks.queue.second = r.events()?;
         clocks.queue.next_is_first = r.u8()? != 0;
     }
+    let from = r.data;
     if v >= 40 {
         r.skip(4)?;
         loop {
@@ -894,10 +1024,13 @@ fn after_entities(r: &mut Reader, money: &mut Money) -> R<(View, Clocks, BTreeMa
     if v >= 104 {
         r.skip_strings()?; // cheats
     }
+    kept.research = taken(from, r);
     if v >= 58 {
         // The world clock: the milliseconds left over, then the whole seconds (7.11).
         (clocks.world_rem, clocks.world_secs) = (r.u32()?, r.u32()?);
+        let from = r.data;
         r.skip(if v <= 66 { 4 } else { 0 })?;
+        kept.tail = taken(from, r);
     }
-    Ok((view, clocks, names))
+    Ok((view, clocks, names, kept))
 }

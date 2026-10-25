@@ -104,6 +104,7 @@ impl Fnv {
             guest: _,
             building: _,
             filter,
+            raw: _,
         }) = &e.common
         {
             for v in [*x, *y, *z] {

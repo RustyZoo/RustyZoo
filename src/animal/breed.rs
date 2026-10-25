@@ -426,6 +426,7 @@ fn put(
             guest: None,
             filter: None,
             building: None,
+            raw: Default::default(),
         }),
     };
     let Some(id) = world.unrecorded(|w| w.add(entity, Some(shape(ty)))) else {

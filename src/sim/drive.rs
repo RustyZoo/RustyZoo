@@ -47,6 +47,10 @@ pub enum Command {
     Heal(u32),
     /// `mood ID N`: the animal's happiness is N, from -100 to 100.
     Mood(u32, i32),
+    /// `save FILE` and `load FILE`: the zoo is written to a file on disk, or a saved game is opened
+    /// from one as Continue does. The caller does these; [`Run::apply`] does nothing for them.
+    Save(String),
+    Load(String),
 }
 
 /// The highest elevation a script sets.
@@ -86,6 +90,14 @@ impl std::str::FromStr for Command {
             Some("cash") if words.len() == 2 => {
                 let cash = words[1].parse::<f32>().ok().filter(|c| c.is_finite());
                 Command::Cash(cash.ok_or_else(|| format!("bad cash: {text:?}"))?)
+            }
+            Some(which @ ("save" | "load")) => {
+                let file = text.trim_start().strip_prefix(which).unwrap_or("").trim();
+                match (which, file.is_empty()) {
+                    (_, true) => return Err(format!("bad command: {text:?}")),
+                    ("save", _) => Command::Save(file.into()),
+                    _ => Command::Load(file.into()),
+                }
             }
             Some(who @ ("guide" | "keeper" | "worker")) if words.len() == 2 => {
                 let (x, y) = tile(words[1])?;
@@ -189,18 +201,44 @@ impl Run {
     /// The same, a start whose map file has `resetfences` above 0 when `fences` is set: every fence
     /// piece is made healthy first (placing 7.4).
     pub fn start(
+        files: (&[u8], &[u8]),
+        types: (Catalogue, Class),
+        world: World,
+        money: Money,
+        seed: u32,
+        fences: bool,
+    ) -> Run {
+        Run::open(files, types, world, money, seed, Some(fences))
+    }
+
+    /// A saved game opened as Continue does: the calendar and the zoo status are the file's, and
+    /// the load ends with the rating check.
+    pub fn resume(
+        files: (&[u8], &[u8]),
+        types: (Catalogue, Class),
+        world: World,
+        money: Money,
+        seed: u32,
+    ) -> Run {
+        Run::open(files, types, world, money, seed, None)
+    }
+
+    /// `fences` is `None` for a saved game, else the new game's reset of the fence pieces.
+    fn open(
         (ini, economy): (&[u8], &[u8]),
         (cat, class): (Catalogue, Class),
         mut world: World,
         mut money: Money,
         seed: u32,
-        fences: bool,
+        fences: Option<bool>,
     ) -> Run {
         let mut sim = Sim::new(ini);
         sim.set_seed(seed);
         sim.set_economy(economy);
         sim.start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
-        sim.restart_calendar();
+        if fences.is_some() {
+            sim.restart_calendar();
+        }
         world.units.set_period(sim.ai.status_period);
         world.units.class = Class {
             reset_interval: sim.ai.animal_reset_interval,
@@ -208,7 +246,10 @@ impl Run {
         };
         sim.load(&mut world, &cat);
         sim.fences_loaded(&world, &cat);
-        sim.new_game(&mut world, &cat, &mut money, fences);
+        match fences {
+            Some(fences) => sim.new_game(&mut world, &cat, &mut money, fences),
+            None => sim.loaded(&world, &cat, &mut money),
+        }
         Run {
             cat,
             sim,
@@ -274,6 +315,7 @@ impl Run {
             Command::Worker(x, y) => self.add_unit("maint", None, x, y, None),
             Command::Animal(ref name, x, y, sex) => self.add_unit("animals", Some(name), x, y, sex),
             Command::Filter(x, y, facing) => self.add_filter(x, y, facing),
+            Command::Save(_) | Command::Load(_) => false,
         }
     }
 
@@ -440,6 +482,14 @@ impl Run {
             (self.world.units.take_world_lines().into_iter()).map(|l| format!("world {l}")),
         );
         lines
+    }
+
+    /// The file of the zoo as it is now (see [`Zoo::write`]).
+    pub fn save(&self) -> Result<Vec<u8>, String> {
+        let mut zoo = self.world.zoo.clone();
+        zoo.clocks = self.sim.clocks();
+        zoo.drop_unknown(crate::zoo::knows(&self.cat));
+        zoo.write(&self.money)
     }
 
     pub fn hash(&self) -> u64 {

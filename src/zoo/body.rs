@@ -1,7 +1,9 @@
-//! The bodies of entity records, by class. Only the common part is kept; every other field is
-//! read and dropped to reach the next record (or the end of the body).
+//! The bodies of entity records, by class. Only the common part is decoded; every other field is
+//! read and dropped to reach the next record (or the end of the body). The reader keeps the bytes.
 
-use super::{AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, bad};
+use super::{
+    AnimalRecord, BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans, bad,
+};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -90,14 +92,17 @@ fn scenery(r: &mut Reader) -> R<Common> {
 /// The common part of every body.
 fn base(r: &mut Reader) -> R<Common> {
     let v = r.v;
+    let start = r.pos();
     let (x, y, z) = (r.i32()?, r.i32()?, r.i32()?);
     let rotation = r.u32()? % 8;
     let id = r.u32()?;
     let name = r.text()?;
+    let name_end = r.pos();
     if v <= 62 {
         r.string()?;
     }
     r.skip(1)?;
+    let stamp_at = r.pos();
     let stamp = Some(r.u32()?).filter(|&s| s != 0);
     if v >= 58 {
         r.skip(1)?;
@@ -106,10 +111,18 @@ fn base(r: &mut Reader) -> R<Common> {
         behaviour_set(r)?;
     }
     let mut colors = Vec::new();
+    let colors_at = r.pos();
     if v >= 67 {
         let n = r.count(1)?;
         colors = r.take(n)?.to_vec();
     }
+    r.spans = Spans {
+        base: start,
+        name: name_end,
+        stamp: stamp_at,
+        colors: colors_at,
+        end: r.pos(),
+    };
     Ok(Common {
         x,
         y,

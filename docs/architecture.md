@@ -15,6 +15,7 @@ Modules of the core:
 | --- | --- |
 | `vfs` | Read-only file system over the loose files and archives of the install folder |
 | `config` | Reader of the game's INI-like files (`.ai`, `.cfg`, `.lyt`, ...) |
+| `zoo` | Maps and saved games (`.zoo`): `Zoo::parse` keeps the header, the tiles, the entities' common part, the view, the clocks, the name counters and the money, and `Zoo::write` writes a file back in the version it was read in: the sections the engine does not model (habitats, shows, scenario, the rest of the game block, thoughts, research, awards, marketing, cheats) and the body of every entity are kept as read (`Kept`, `Common::raw`) and the modelled fields written over them, so a file read and written is byte for byte the same (all 96 shipped files). An entity made in play has no body to write yet and fails the write. The engine drops the entities whose type is unknown when it writes (`Zoo::drop_unknown`). The `save FILE` and `load FILE` script commands of `sim` and `run` write and open a file |
 | `pe` | Bounded reader for the resources of the game's resource DLLs |
 | `strings` | The game's texts, merged from the `lang*.dll` libraries |
 | `text` | Liberation Sans Regular and Bold (embedded) with the metrics of Arial: line height, baseline, whole-pixel advances; wrapping, alignment, clipping, shadow and drawing into a canvas; templates, numbers, money and dates (`text::format`, the month and weekday names from the user's regional settings, `text/format/locale.rs`) |

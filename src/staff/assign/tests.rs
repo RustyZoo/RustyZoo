@@ -107,6 +107,7 @@ fn world() -> (World, [u32; 4]) {
         entities.push(entity(class, name, (7, n as i32), 0, 1 + n as u32));
     }
     let zoo = Zoo {
+        kept: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,
