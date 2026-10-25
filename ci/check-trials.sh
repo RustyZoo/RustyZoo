@@ -817,7 +817,7 @@ guest_panel() { # guest_panel <map>
     grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
 }
-check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_short_time"_favourite_"Polar_Bear"_thoughts_[];panel_guest_none' "guest_panel maps/scn19.zoo"
+check expansion-trial 'panel_guest_"Guest_58"_happiness_70_drink_48_food_48_restroom_58_energy_64_time_"A_short_time"_favourite_"Polar_Bear"_thoughts_["Look_at_the_duck_pond!_That'"'"'s_neat!",_"Great!_I_can_throw_my_trash_in_the_trash_can.",_"I_need_to_throw_away_this_trash.",_"I_really_like_this_hamburger.",_"I_enjoy_sitting_at_the_picnic_table."];panel_guest_none' "guest_panel maps/scn19.zoo"
 
 # The building panel (information panels 4.1, guest buildings 7.2, 10.3): the game paused, the Objects
 # panel's second item (a burger stand, 3.50 within 1.00 and 6.50) is placed and clicked, then the up
@@ -1332,9 +1332,9 @@ save_load() { # save_load <map>
   echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
   rm -rf "$d"
 }
-check base-trial "102706,0,77016be6e5143c71" "save_load maps/default.zoo"
+check base-trial "102637,0,93f230a1cc604adf" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial "231828,0,57ec654d8e099da0" "save_load maps/scn19.zoo"
+check expansion-trial "227408,0,09719a9f060e88a1" "save_load maps/scn19.zoo"
 
 exit $failed
