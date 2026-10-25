@@ -2,9 +2,15 @@
 //! thoughts, and the statistics and last service of each exhibit.
 
 use super::World;
+use crate::building::Kind;
+use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::guest::thought::Thought;
+use crate::place::bulldozer::type_of;
+use crate::render::tank_kind;
+use crate::zoo::fresh;
 use crate::zoo::{Entity, Zoo};
+use crate::{animal, guest};
 use std::collections::HashSet;
 
 impl World {
@@ -74,5 +80,39 @@ impl World {
             info.serviced = e.rating.serviced as u32;
         }
         zoo
+    }
+
+    /// Finishes a zoo from [`World::saved`] for writing, from the types of `cat`: the record of a
+    /// transient type keeps no body (zoo format 6.2, the original refuses a file where it has one;
+    /// a fence keeps its figures), and an animal, a guest or a building made in play gets the
+    /// record of a new one (save games 11.3).
+    pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
+        let now = crate::timing::file_time(zoo.clocks.calendar);
+        for e in &mut zoo.entities {
+            let (Some(ty), Some(c)) = (type_of(cat, e), e.common.as_mut()) else {
+                continue;
+            };
+            if !matches!(e.class.as_str(), "fences" | "tankwall") && tank_kind(ty).transient {
+                e.common = None;
+            } else if c.raw.is_new() {
+                match e.class.as_str() {
+                    "animals" => {
+                        let k = animal::Keys::of(ty, &self.units.class);
+                        let record = fresh::animal_new(k.initial_happiness, k.max_hits);
+                        c.animal.get_or_insert_with(|| Box::new(record));
+                    }
+                    "guests" => {
+                        let record = fresh::guest_new(guest::Keys::of(ty).initial_happiness, now);
+                        c.guest.get_or_insert_with(|| Box::new(record));
+                    }
+                    "building" => {
+                        let price = Kind::of(ty, self.units.prices.default).price;
+                        c.building
+                            .get_or_insert_with(|| fresh::building_new(price, now));
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 }

@@ -488,6 +488,7 @@ impl Run {
     pub fn save(&self) -> Result<Vec<u8>, String> {
         let mut zoo = self.world.saved(crate::zoo::knows(&self.cat));
         zoo.clocks = self.sim.clocks();
+        self.world.finish_save(&mut zoo, &self.cat);
         zoo.write(&self.money)
     }
 

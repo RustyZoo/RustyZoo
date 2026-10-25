@@ -1343,7 +1343,7 @@ save_load() { # save_load <map>
   echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
   rm -rf "$d"
 }
-check base-trial "102637,0,93f230a1cc604adf" "save_load maps/default.zoo"
+check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
 check expansion-trial "227408,0,09719a9f060e88a1" "save_load maps/scn19.zoo"

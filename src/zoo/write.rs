@@ -1,10 +1,10 @@
 //! The writer: the mirror of the reader (save games 6, 7). Every section is written in the
 //! order of the format, from the model where the engine has one and from the bytes kept as read
-//! elsewhere. The version written is the version read (the upgrade to 106 is not done yet).
+//! elsewhere. The version written is 106, whatever the version read.
 
-use super::unit;
-use super::{Common, Entity, MAX_VERSION, MIN_VERSION, Zoo};
-use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
+use super::{Behaviour, Common, Entity, MAX_VERSION, MIN_VERSION, Zoo};
+use super::{fresh, unit, upgrade};
+use crate::money::{CATEGORIES, Money, YEARS};
 use crate::timing::Calendar;
 
 pub(super) struct Out(pub(super) Vec<u8>);
@@ -37,31 +37,33 @@ impl Out {
 }
 
 impl Zoo {
-    /// The file of this zoo, with the cash and accounts of `money`. Fails for an entity the writer
-    /// has no body for (one made by the game, not read from a file) and for a zoo that was not read
-    /// from a file.
+    /// The file of this zoo, with the cash and accounts of `money`, as version 106 (save games 6
+    /// and 11.2): what the file read lacks of that version takes the values of the original. Fails
+    /// for an entity the writer has no body for, for a zoo that was not read from a file, and for
+    /// the files this writer cannot upgrade yet (a version below 70, shows below 103 that hold
+    /// scripts, a habitat with a show below 106).
     pub fn write(&self, money: &Money) -> Result<Vec<u8>, String> {
         let v = self.version;
         if !(MIN_VERSION..=MAX_VERSION).contains(&v) {
             return Err(format!("version {v} cannot be written"));
+        }
+        if v < 70 {
+            return Err(format!("version {v} cannot be upgraded yet (70 and later)"));
         }
         let kept = &self.kept;
         if kept.habitats.is_empty() || kept.finances.is_empty() {
             return Err("the zoo was not read from a file".into());
         }
         let mut o = Out(b"TZFB".to_vec());
-        o.u32(v);
-        if v >= 69 {
-            o.u32(self.locale);
-        }
-        if v >= 82 {
-            o.u32(self.expansion);
-        }
+        o.u32(MAX_VERSION);
+        o.u32(self.locale);
+        o.u32(self.expansion);
         o.u32(self.width);
         o.u32(self.height);
         o.u32(self.entrance.0);
         o.u32(self.entrance.1);
-        o.bytes(&habitats(self));
+        o.bytes(&upgrade::habitats(v, &habitats(self))?);
+        o.bytes(&upgrade::shows(v, kept)?);
         o.u32(self.id_counter);
         if self.tiles.len() as u64 != u64::from(self.width) * u64::from(self.height) {
             return Err("the tiles do not fill the map".into());
@@ -74,8 +76,9 @@ impl Zoo {
             o.bytes(&[0; 3]);
         }
         o.u32(self.entities.len() as u32);
+        let now = crate::timing::file_time(self.clocks.calendar);
         for (i, e) in self.entities.iter().enumerate() {
-            entity(&mut o, v, e).map_err(|why| format!("entity {i}: {why}"))?;
+            entity(&mut o, v, now, e).map_err(|why| format!("entity {i}: {why}"))?;
         }
 
         let view = &self.view;
@@ -98,29 +101,29 @@ impl Zoo {
         }
         o.u32(self.clocks.ai_rem);
         o.u32(self.clocks.ai_ticks);
-        if v >= 97 {
-            let q = &self.clocks.queue;
-            for list in [&q.first, &q.second] {
-                o.u32(list.len() as u32);
-                for e in list {
-                    o.u32(e.sender);
-                    o.u32(e.target);
-                    o.u32(e.data);
-                    o.u16(e.extra);
-                    o.u16(e.kind);
-                    o.u16(e.delay);
-                    o.u8(e.sender_channel);
-                    o.u8(e.channel);
-                }
+        let q = &self.clocks.queue;
+        for list in [&q.first, &q.second] {
+            o.u32(list.len() as u32);
+            for e in list {
+                o.u32(e.sender);
+                o.u32(e.target);
+                o.u32(e.data);
+                o.u16(e.extra);
+                o.u16(e.kind);
+                o.u16(e.delay);
+                o.u8(e.sender_channel);
+                o.u8(e.channel);
             }
-            o.u8(q.next_is_first.into());
         }
+        o.u8(q.next_is_first.into());
         o.bytes(&kept.research);
-        if v >= 58 {
-            o.u32(self.clocks.world_rem);
-            o.u32(self.clocks.world_secs);
-            o.bytes(&kept.tail);
+        // No cheat was used in a file of a version before 104.
+        match v >= 104 {
+            true => o.bytes(&kept.cheats),
+            false => o.u32(0),
         }
+        o.u32(self.clocks.world_rem);
+        o.u32(self.clocks.world_secs);
         Ok(o.0)
     }
 }
@@ -147,54 +150,31 @@ fn habitats(zoo: &Zoo) -> Vec<u8> {
     b
 }
 
-/// The game block as read, with the modelled values written over it.
+/// The game block as read, with the modelled values written over it, and the fields a version lacks
+/// (31 rows of accounts, the date after the adult price, the word after the cash) added.
 fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
     let (kept, status) = (&zoo.kept, &zoo.clocks.status);
-    let mut b = kept.finances.clone();
-    let word = |b: &[u8], at: usize| {
-        b.get(at..at + 4)
-            .map(|w| u32::from_le_bytes(w.try_into().unwrap()))
-    };
+    let b = &kept.finances;
     let short = || "the game block is short".to_string();
-    let (rows, columns) = (
-        word(&b, 45).ok_or_else(short)?,
-        word(&b, 49).ok_or_else(short)?,
-    );
-    let (rows, columns) = (rows as usize, columns as usize);
-    let mut put = |at: usize, bytes: &[u8]| {
-        let to = b.get_mut(at..at + bytes.len()).ok_or_else(short)?;
-        to.copy_from_slice(bytes);
-        Ok::<(), String>(())
-    };
+    let mut o = Out(b.get(..45).ok_or_else(short)?.to_vec());
     for (i, t) in status.timers.iter().enumerate() {
-        put(4 + 4 * i, &t.to_le_bytes())?;
+        o.0[4 + 4 * i..8 + 4 * i].copy_from_slice(&t.to_le_bytes());
     }
-    put(17, &status.rating.to_le_bytes())?;
-    put(33, &status.given.to_le_bytes())?;
-    put(37, &money.month.to_le_bytes())?;
-    put(41, &money.year.to_le_bytes())?;
-    let mut at = kept.at[0];
-    for m in 0..rows {
-        for column in 0..MONTHS {
-            if m < CATEGORIES {
-                put(at, &money.monthly[m][column].to_le_bytes())?;
-            }
-            at += 4;
-        }
+    o.0[17..21].copy_from_slice(&status.rating.to_le_bytes());
+    o.0[33..37].copy_from_slice(&status.given.to_le_bytes());
+    o.0[37..41].copy_from_slice(&money.month.to_le_bytes());
+    o.0[41..45].copy_from_slice(&money.year.to_le_bytes());
+    o.u32(CATEGORIES as u32);
+    o.u32(YEARS as u32);
+    let floats = money.monthly.iter().flatten();
+    let floats = floats.chain(money.yearly.iter().flatten());
+    for f in floats.chain(&money.total).chain([&status.price]) {
+        o.u32(f.to_bits());
     }
-    for y in 0..rows {
-        for column in 0..columns {
-            if y < CATEGORIES && column < YEARS {
-                put(at, &money.yearly[y][column].to_le_bytes())?;
-            }
-            at += 4;
-        }
-    }
-    for c in 0..rows.min(CATEGORIES) {
-        put(at + 4 * c, &money.total[c].to_le_bytes())?;
-    }
-    if zoo.version >= 39 {
-        put(kept.at[1], &status.price.to_le_bytes())?;
+    // The date after the price (from 71) is 1 January 2000 when the file has none.
+    match zoo.version >= 71 {
+        true => o.bytes(b.get(kept.at[0] - 8..kept.at[0]).ok_or_else(short)?),
+        false => o.bytes(&upgrade::NEVER.to_le_bytes()),
     }
     // The calendar: year, month, day of week (Sunday is 0), day, hour, minute, second, millisecond.
     let d = Calendar::at(zoo.clocks.calendar).date();
@@ -208,11 +188,15 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
         d.second,
         d.millisecond,
     ];
-    for (i, n) in fields.iter().enumerate() {
-        put(kept.at[2] + 2 * i, &(*n as u16).to_le_bytes())?;
+    for n in fields {
+        o.u16(n as u16);
     }
-    put(kept.at[3], &money.cash.to_le_bytes())?;
-    Ok(b)
+    o.u32(money.cash.to_bits());
+    match zoo.version >= 73 {
+        true => o.bytes(b.get(kept.at[1] + 4..kept.at[1] + 8).ok_or_else(short)?),
+        false => o.u32(0),
+    }
+    Ok(o.0)
 }
 
 /// Whether the body of this class starts with the food counter.
@@ -230,48 +214,63 @@ fn has_food(class: &str) -> bool {
     )
 }
 
-fn entity(o: &mut Out, v: u32, e: &Entity) -> Result<(), String> {
+fn entity(o: &mut Out, v: u32, now: u64, e: &Entity) -> Result<(), String> {
     o.string(&e.class)?;
     o.string(&e.type_name)?;
     o.string(&e.subtype)?;
     // A body the reader skipped (a transient entity, or one it could not decode) is written empty.
     let Some(c) = &e.common else {
-        if v < 70 {
-            return Err("no body in a file without body sizes".into());
-        }
         o.u32(0);
         return Ok(());
     };
-    let body = body(v, e, c)?;
-    if v >= 70 {
-        o.u32(body.len() as u32);
-    }
+    let body = body(v, now, e, c)?;
+    o.u32(body.len() as u32);
     o.bytes(&body);
     Ok(())
 }
 
-/// The body: the one read, with the entity base written from the fields of `c`.
-fn body(v: u32, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
+/// Whether the class has a unit block (zoo format 6.14).
+fn is_unit(class: &str) -> bool {
+    matches!(
+        class,
+        "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter"
+    )
+}
+
+/// The body in the form of version 106. An entity read from a file of version `v` has its class
+/// fields converted; one made in play has them built from the model (`fresh`).
+fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     let (b, s) = (&c.raw.body, &c.raw.spans);
-    if b.is_empty() || s.end > b.len() {
-        return Err(format!(
-            "{}/{}: no body to write for an entity that was not read from a file",
-            e.class, e.type_name
-        ));
-    }
-    // The unit block replaces the bytes read, up to the entity base.
-    let mut o = Out(b[..c.unit.as_ref().map_or(s.base, |_| s.unit)].to_vec());
-    if let Some(u) = &c.unit {
-        unit::write(&mut o, v, e.class == "guests", c.movement_mode, u)?;
-    }
-    if has_food(&e.class) && s.base >= 4 {
+    let read = !b.is_empty() && s.end <= b.len();
+    let (pre, mut post) = match read {
+        true => super::body::transcode(v, e.class.as_bytes(), b)?,
+        false => fresh::parts(e, c, now)?,
+    };
+    let mut o = Out(Vec::new());
+    if has_food(&e.class) {
         let keeps = e.class == "food"
             || ["poo", "dinopoo"]
                 .iter()
                 .any(|n| e.subtype.eq_ignore_ascii_case(n));
-        if keeps {
-            o.0[..4].copy_from_slice(&c.food.to_le_bytes());
-        }
+        o.i32(if keeps { c.food } else { 0 });
+    }
+    o.bytes(&pre);
+    // The fields the game changes while it runs are written from the model.
+    match (&e.class[..], &c.fence, &c.filter) {
+        ("fences" | "tankwall", Some(f), _) => post = fresh::fence(&e.class, f),
+        ("fences" | "tankwall", None, _) => return Err("no fence figures".into()),
+        ("filter", _, Some(f)) if read => post[..4].copy_from_slice(&f.health.to_le_bytes()),
+        _ => {}
+    }
+    let unit = c.unit.as_deref().cloned().unwrap_or_default();
+    if is_unit(&e.class) {
+        // A unit made in play is on the ground.
+        let mode = if read {
+            c.movement_mode
+        } else {
+            c.movement_mode.max(2)
+        };
+        unit::write(&mut o, MAX_VERSION, e.class == "guests", mode, &unit)?;
     }
     for n in [c.x, c.y, c.z] {
         o.i32(n);
@@ -279,20 +278,20 @@ fn body(v: u32, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     o.u32(c.rotation);
     o.u32(c.id);
     o.string(&c.name)?;
-    o.bytes(&b[s.name..s.stamp]);
+    // The visible flag, the stamp, the flag after it and the behaviour set; a unit has its own set.
+    o.u8(if read { b[s.stamp - 1] } else { 1 });
     o.u32(c.stamp.unwrap_or(0));
-    match &c.unit {
-        // The visible flag of version 58, then the behaviour set of the unit.
-        Some(u) if v >= 63 => {
-            o.bytes(&b[s.stamp + 4..s.stamp + 5]);
-            unit::write_behaviour(&mut o, &u.behaviour)?;
+    o.u8(if read { b[s.stamp + 4] } else { 0 });
+    match (read, is_unit(&e.class)) {
+        (true, false) => o.bytes(&b[s.stamp + 5..s.colors]),
+        (_, unit_set) => {
+            let fixed = Behaviour::default();
+            let set = if unit_set { &unit.behaviour } else { &fixed };
+            unit::write_behaviour(&mut o, set)?;
         }
-        _ => o.bytes(&b[s.stamp + 4..s.colors]),
     }
-    if v >= 67 {
-        o.u32(c.colors.len() as u32);
-        o.bytes(&c.colors);
-    }
-    o.bytes(&b[s.end..]);
+    o.u32(c.colors.len() as u32);
+    o.bytes(&c.colors);
+    o.bytes(&post);
     Ok(o.0)
 }
