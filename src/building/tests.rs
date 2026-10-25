@@ -520,6 +520,7 @@ fn record(fill: u32, built: u64) -> crate::zoo::BuildingRecord {
         upkeep: Some(bits(75.0)),
         price: bits(5.5),
         users: Vec::new(),
+        users_now: 0,
         fill,
         built,
     }
@@ -588,6 +589,7 @@ fn a_record_before_version_68_has_no_upkeep_and_the_extremes_do_not_panic() {
         upkeep: Some(u32::MAX),
         price: f32::NAN.to_bits(),
         users: vec![(u32::MAX, u32::MAX)],
+        users_now: u32::MAX,
         fill: u32::MAX,
         built: u64::MAX,
     };
@@ -713,6 +715,19 @@ fn seated(pairs: [Vec<(u32, u32)>; 2], stamps: [Option<u32>; 3]) -> World {
 
 /// The same for a file of version `version`.
 fn seated_in(version: u32, pairs: [Vec<(u32, u32)>; 2], stamps: [Option<u32>; 3]) -> World {
+    let counts = [pairs[0].len() as u32, pairs[1].len() as u32];
+    seated_with(version, pairs, counts, [None; 3], stamps).0
+}
+
+/// The same with the stored counts of users of the two buildings and the task each of the three
+/// guests was saved in (none: no unit block). The catalogue comes back too.
+fn seated_with(
+    version: u32,
+    pairs: [Vec<(u32, u32)>; 2],
+    counts: [u32; 2],
+    tasks: [Option<i32>; 3],
+    stamps: [Option<u32>; 3],
+) -> (World, Catalogue) {
     let mut cat = Catalogue::default();
     for (name, text) in [("shop", SHOP), ("hider", HIDER)] {
         cat.push(named(name, text));
@@ -738,6 +753,7 @@ fn seated_in(version: u32, pairs: [Vec<(u32, u32)>; 2], stamps: [Option<u32>; 3]
     for (i, users) in pairs.into_iter().enumerate() {
         let r = crate::zoo::BuildingRecord {
             users,
+            users_now: counts[i],
             ..record(0, START)
         };
         w.zoo.entities[i].common.as_mut().unwrap().building = Some(r);
@@ -745,11 +761,17 @@ fn seated_in(version: u32, pairs: [Vec<(u32, u32)>; 2], stamps: [Option<u32>; 3]
     for (i, stamp) in stamps.into_iter().enumerate() {
         w.zoo.entities[2 + i].common.as_mut().unwrap().stamp = stamp;
     }
+    for (i, task) in tasks.into_iter().enumerate() {
+        let mut block = crate::zoo::UnitBlock::default();
+        block.target.active = task.unwrap_or(-1);
+        let c = w.zoo.entities[2 + i].common.as_mut().unwrap();
+        c.unit = task.map(|_| Box::new(block));
+    }
     for at in 0..2 {
         load(&mut w, &cat, at);
     }
     users::restore(&mut w, &cat, 9);
-    w
+    (w, cat)
 }
 
 #[test]
@@ -817,6 +839,65 @@ fn a_pair_whose_unit_is_missing_or_unfit_is_dropped() {
     let w = seated([Vec::new(), vec![(3, 0); 10_000]], [Some(u32::MAX); 3]);
     assert!(w.units.buildings[&7].users.is_empty());
     assert_eq!(w.units.buildings[&8].users.len(), 1);
+}
+
+#[test]
+fn a_listed_user_keeps_the_task_its_record_stores() {
+    use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
+    // Saved using, leaving and entering stay so; any other task, a task that is no task and a record
+    // without a unit block: the last uses, the others end the use at once.
+    let cases = [
+        (Some(106), (USE, false)),
+        (Some(105), (EXIT_BUILDING, false)),
+        (Some(104), (ENTER_BUILDING, false)),
+        (Some(100), (USE, true)),
+        (Some(0), (USE, true)),
+        (Some(-1), (USE, true)),
+        (Some(i32::MAX), (USE, true)),
+        (Some(106 + 256), (USE, true)),
+        (None, (USE, false)),
+    ];
+    for (saved, want) in cases {
+        let (w, _) = seated_with(
+            106,
+            [vec![(1, 0)], Vec::new()],
+            [1, 0],
+            [saved, None, None],
+            [None; 3],
+        );
+        let r = &w.units.get(1).unwrap().goal.record;
+        assert_eq!((r.task, r.done), want, "{saved:?}");
+        assert_eq!(
+            (r.target.id, r.mode),
+            (7, u8::from(r.task == EXIT_BUILDING))
+        );
+        assert_eq!(w.units.buildings[&7].users, [(1, 0, 9)], "{saved:?}");
+    }
+}
+
+#[test]
+fn a_dropped_pair_stays_counted_against_the_capacity() {
+    // The shop takes 3 users. Unit 99 is gone, so one user is listed; the stored count decides how
+    // many more the shop takes (and a count below the pairs is raised to them by the reader).
+    let free = |count: u32| {
+        let (w, cat) = seated_with(
+            106,
+            [vec![(1, 0), (99, 0)], Vec::new()],
+            [count, 0],
+            [None; 3],
+            [None; 3],
+        );
+        let e = &w.zoo.entities[0];
+        let kind = crate::building::kind_of(&cat, e, w.units.prices.default).unwrap();
+        let live = w.units.buildings.get(&7);
+        let open = crate::building::can_add(&w, e, &kind, live, 1, None);
+        (live.unwrap().extra, open)
+    };
+    assert_eq!(free(0), (0, true));
+    assert_eq!(free(2), (1, true));
+    assert_eq!(free(3), (2, false));
+    let (extra, open) = free(u32::MAX);
+    assert_eq!((extra, open), (u32::MAX - 1, false));
 }
 
 #[test]

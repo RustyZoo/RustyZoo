@@ -156,7 +156,7 @@ fn base(r: &mut Reader) -> R<Common> {
 /// the fields the engine has no use for are read past.
 fn building(r: &mut Reader) -> R<BuildingRecord> {
     let v = r.v;
-    r.skip(4)?; // users now
+    let stored = r.u32()?;
     let guests_since = r.u32()?;
     let income_since = r.u32()?;
     let price = r.u32()?;
@@ -164,6 +164,8 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
     for _ in 0..r.count(8)? {
         users.push((r.u32()?, r.u32()?));
     }
+    // The count is not brought back to the list (guest buildings 4.2).
+    let users_now = stored.max(users.len() as u32);
     let fill = r.u32()?;
     let income_last = r.u32()?;
     let income_this = r.u32()?;
@@ -195,6 +197,7 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
         upkeep,
         price,
         users,
+        users_now,
         fill,
         built,
     })
@@ -333,7 +336,14 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
     for c in &mut block {
         *c = r.i32()?;
     }
-    r.skip_list(4)?;
+    // The item slots (at most five kept), then the list of seen things.
+    let mut items = [0; 5];
+    for i in 0..r.count(4)? {
+        let item = r.u32()?;
+        if let Some(slot) = items.get_mut(i) {
+            *slot = item;
+        }
+    }
     r.skip_list(4)?;
     if v <= 93 {
         r.quiet(|r| {
@@ -347,26 +357,22 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
     }
     r.skip_list(8)?;
     let chase = r.i32()?;
-    // The leave and afraid flags, the saw-animal countdown, two more flags, the arrival date, the
-    // favourite species and the rest.
-    r.skip(2)?;
+    // The leave and afraid flags, the saw-animal countdown, an unknown flag and the wants-a-gift
+    // flag, the arrival date, the favourite species, the wandered and eat-standing flags, a date,
+    // an unknown word, and the in-group, listening and guide fields of the versions that have them.
+    let (leave, afraid) = (r.u8()? != 0, r.u8()? != 0);
     let saw_animal = r.i32()?;
-    r.skip(2)?;
+    let gift = r.take(2)?[1] != 0;
     let arrived = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
     let favourite = r.i32()?;
-    r.skip(2 + 8)?;
+    let (wandered, stand) = (r.u8()? != 0, r.u8()? != 0);
+    r.skip(8)?;
     if v >= 42 {
         r.skip(2)?;
     }
-    if v >= 54 {
-        r.skip(1)?;
-    }
-    if v >= 56 {
-        r.skip(1)?;
-    }
-    if v >= 65 {
-        r.skip(4)?;
-    }
+    let in_group = v >= 54 && r.u8()? != 0;
+    let listening = v >= 56 && r.u8()? != 0;
+    let guide = if v >= 65 { r.u32()? } else { 0 };
     let [a, b, c, d, e, f, g, h, i, j] = block;
     Ok(GuestRecord {
         values,
@@ -377,6 +383,15 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         saw_animal,
         female,
         child,
+        items,
+        leave,
+        afraid,
+        gift,
+        wandered,
+        stand,
+        in_group,
+        listening,
+        guide,
     })
 }
 

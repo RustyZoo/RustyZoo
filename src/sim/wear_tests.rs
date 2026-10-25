@@ -467,6 +467,7 @@ fn a_loaded_zoo_posts_its_can_fence_and_filter_events_in_entity_list_order() {
         upkeep: None,
         price: 0,
         users: Vec::new(),
+        users_now: 0,
         fill: 13,
         built: 0,
     });

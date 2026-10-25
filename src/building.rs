@@ -326,6 +326,9 @@ pub type User = (u32, usize, u32);
 pub struct Live {
     /// In entering order.
     pub users: Vec<User>,
+    /// Users counted against the capacity that are not in the list: a loaded building keeps its
+    /// stored count when a listed unit is gone (guest buildings 4.2).
+    pub extra: u32,
     pub price: f32,
     /// The pieces of litter a trash can holds (guest buildings 8).
     pub fill: u32,
@@ -693,7 +696,7 @@ pub fn can_add(
     slot: usize,
     who: Option<&Species>,
 ) -> bool {
-    let users = live.map_or(0, |l| l.users.len());
+    let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
     let Some(s) = kind.slots.get(slot) else {
         return false;
     };

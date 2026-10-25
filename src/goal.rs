@@ -551,11 +551,17 @@ pub fn stop_use(unit: &mut Unit) {
 
 /// A guest listed as a user of slot `slot` of building `id` in a zoo just loaded goes on with its
 /// use (task 0x6a, guest buildings 4.1, 6.5), as if it had entered at AI tick `now`: the walk and
-/// the set it ran stop and the building is its target (for an animal, its shelter).
-pub fn resume_use(unit: &mut Unit, id: u32, slot: usize, now: u32) {
+/// the set it ran stop and the building is its target (for an animal, its shelter). A unit saved
+/// entering or leaving (`saved` 0x68 or 0x69) keeps that task; one saved in any other task (a
+/// record without a unit block counts as using) ends its use at once (guest buildings 4.2).
+pub fn resume_use(unit: &mut Unit, id: u32, slot: usize, now: u32, saved: Option<i32>) {
     stop_use(unit);
+    let kept = saved.and_then(|t| u8::try_from(t).ok());
+    let kept = kept.filter(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(t));
     unit.goal.record = Record {
-        task: USE,
+        task: kept.unwrap_or(USE),
+        mode: u8::from(kept == Some(EXIT_BUILDING)),
+        done: saved.is_some() && kept.is_none(),
         target: Target {
             id,
             ..Target::default()

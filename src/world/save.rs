@@ -8,8 +8,9 @@ use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::guest::thought::Thought;
 use crate::place::bulldozer::type_of;
 use crate::render::tank_kind;
+use crate::unit::Part;
 use crate::zoo::fresh;
-use crate::zoo::{Entity, Zoo};
+use crate::zoo::{Common, Entity, Zoo};
 use crate::{animal, guest};
 use std::collections::HashSet;
 
@@ -85,7 +86,7 @@ impl World {
     /// Finishes a zoo from [`World::saved`] for writing, from the types of `cat`: the record of a
     /// transient type keeps no body (zoo format 6.2, the original refuses a file where it has one;
     /// a fence keeps its figures), and an animal, a guest or a building made in play gets the
-    /// record of a new one (save games 11.3).
+    /// record of a new one (save games 11.3), and a guest's record takes the live guest's fields.
     pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         let now = crate::timing::file_time(zoo.clocks.calendar);
         for e in &mut zoo.entities {
@@ -104,6 +105,7 @@ impl World {
                     "guests" => {
                         let record = fresh::guest_new(guest::Keys::of(ty).initial_happiness, now);
                         c.guest.get_or_insert_with(|| Box::new(record));
+                        self.live_guest(c);
                     }
                     "building" => {
                         let price = Kind::of(ty, self.units.prices.default).price;
@@ -112,7 +114,23 @@ impl World {
                     }
                     _ => {}
                 }
+            } else if e.class == "guests" {
+                self.live_guest(c);
             }
+        }
+    }
+
+    /// A guest record takes the live guest's fields (a guest made in play has its drawn countdowns
+    /// and its start values here, save games 11.3). A guest the game never made, which has no
+    /// arrival date, keeps the record it has.
+    fn live_guest(&self, c: &mut Common) {
+        let unit = self.units.get(c.id);
+        let live = unit.and_then(|u| match &u.part {
+            Part::Guest(g) if g.arrived.is_some() => Some((g, u.goal.wandered)),
+            _ => None,
+        });
+        if let (Some(base), Some((g, wandered))) = (c.guest.as_deref().copied(), live) {
+            c.guest = Some(Box::new(g.record(&base, wandered)));
         }
     }
 }

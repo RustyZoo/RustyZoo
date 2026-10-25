@@ -242,10 +242,14 @@ fn is_unit(class: &str) -> bool {
 fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     let (b, s) = (&c.raw.body, &c.raw.spans);
     let read = !b.is_empty() && s.end <= b.len();
-    let (pre, mut post) = match read {
+    let (mut pre, mut post) = match read {
         true => super::body::transcode(v, e.class.as_bytes(), b)?,
         false => fresh::parts(e, c, now)?,
     };
+    // The guest's fields come from the model, the rest of the record as read.
+    if let (true, Some(g)) = (read && e.class == "guests", c.guest.as_deref()) {
+        pre = fresh::guest(Some(pre), g)?;
+    }
     let mut o = Out(Vec::new());
     if has_food(&e.class) {
         let keeps = e.class == "food"

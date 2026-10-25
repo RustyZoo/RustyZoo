@@ -232,6 +232,15 @@ const RECORD: crate::zoo::GuestRecord = crate::zoo::GuestRecord {
     saw_animal: 14,
     female: true,
     child: true,
+    items: [0, 6491, 0, 6319, 6310],
+    leave: true,
+    afraid: true,
+    gift: true,
+    wandered: true,
+    stand: true,
+    in_group: true,
+    listening: true,
+    guide: 77,
 };
 
 fn guest_of(world: &World, id: u32) -> Guest {
@@ -281,6 +290,112 @@ fn a_loaded_guest_is_created_with_its_draws_and_then_takes_its_saved_fields() {
     let (mut world, cat, id) = stored(RECORD);
     load(&mut world, &cat, &mut seeded(1), 0, date(1, 1), 0);
     assert!(!guest_of(&world, id).sick);
+}
+
+#[test]
+fn a_loaded_guest_takes_its_items_flags_and_guide() {
+    let (mut world, cat, id) = stored(RECORD);
+    load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
+    let g = guest_of(&world, id);
+    assert_eq!(g.items, [None, Some(6491), None, Some(6319), Some(6310)]);
+    assert_eq!((g.leave, g.gift, g.stand), (true, true, true));
+    assert_eq!((g.guide, g.listening), (77, true));
+    assert!(world.units.get(id).unwrap().goal.wandered);
+    // Nothing set, and the extremes: an item id above `i32::MAX` and a guide that is no unit.
+    let none = crate::zoo::GuestRecord {
+        items: [0; 5],
+        leave: false,
+        gift: false,
+        wandered: false,
+        stand: false,
+        listening: false,
+        guide: 0,
+        ..RECORD
+    };
+    let (mut world, cat, id) = stored(none);
+    load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
+    let g = guest_of(&world, id);
+    assert_eq!(g.items, [None; 5]);
+    assert_eq!(
+        (g.leave, g.gift, g.stand, g.guide, g.listening),
+        (false, false, false, 0, false)
+    );
+    assert!(!world.units.get(id).unwrap().goal.wandered);
+    let wild = crate::zoo::GuestRecord {
+        items: [u32::MAX; 5],
+        guide: u32::MAX,
+        ..none
+    };
+    let (mut world, cat, id) = stored(wild);
+    load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
+    let g = guest_of(&world, id);
+    assert_eq!((g.items, g.guide), ([Some(-1); 5], u32::MAX));
+    assert_eq!(g.record(&wild, false), wild);
+}
+
+#[test]
+fn a_guest_gives_back_its_record_with_what_changed() {
+    let (mut world, cat, id) = stored(RECORD);
+    load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
+    let mut g = guest_of(&world, id);
+    assert_eq!(g.record(&RECORD, true), RECORD);
+    g.values = [-100, 100, 0, 7, 8];
+    g.countdowns = [-1; 11];
+    g.items = [Some(1), None, None, None, None];
+    g.guide = 0;
+    g.listening = false;
+    g.stand = false;
+    g.favourite = None;
+    g.arrived = Some(date(2, 3));
+    let r = g.record(&RECORD, false);
+    assert_eq!((r.values, r.countdowns), ([-100, 100, 0, 7, 8], [-1; 11]));
+    assert_eq!(
+        (r.items, r.guide, r.in_group, r.listening),
+        ([1, 0, 0, 0, 0], 0, false, false)
+    );
+    assert_eq!((r.wandered, r.stand, r.afraid), (false, false, true));
+    // No favourite keeps the stored one; the arrival is a file time.
+    assert_eq!(r.favourite, RECORD.favourite);
+    assert_eq!(
+        Date::from_file_time(r.arrived).game_ms(),
+        date(2, 3).game_ms()
+    );
+}
+
+#[test]
+fn a_guest_made_in_play_is_saved_with_the_countdowns_it_drew() {
+    let mut cat = types();
+    cat.push(kind("animals", "a", "[Characteristics/Integers]\n", 30));
+    let mut world = world_with((4, 4), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((2, 2)), 0));
+    });
+    let ty = man();
+    let made = Guest::create(&Keys::of(&ty), &ty, &[30], date(5, 6), 0, &mut seeded(3));
+    world.units.get_mut(1).unwrap().part = Part::Guest(Guest {
+        items: [None, None, Some(6310), None, None],
+        guide: 9,
+        ..made.clone()
+    });
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    let r = zoo.entities[0]
+        .common
+        .as_ref()
+        .unwrap()
+        .guest
+        .as_deref()
+        .unwrap();
+    assert_ne!(made.countdowns, [0; 11]);
+    assert_eq!((r.countdowns, r.values), (made.countdowns, made.values));
+    assert_eq!(
+        (r.items, r.guide, r.in_group),
+        ([0, 0, 6310, 0, 0], 9, true)
+    );
+    assert_eq!(
+        Date::from_file_time(r.arrived).game_ms(),
+        date(5, 6).game_ms()
+    );
 }
 
 #[test]
