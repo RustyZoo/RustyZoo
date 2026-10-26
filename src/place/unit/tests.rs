@@ -428,6 +428,22 @@ fn the_counter_is_per_type_name_shared_by_both_sexes_and_kept_with_the_zoo() {
 }
 
 #[test]
+fn a_type_without_the_key_is_numbered_if_it_is_a_unit_and_not_otherwise() {
+    let mut w = world(vec![]);
+    let key = |class, ini: &str| EntityType {
+        class,
+        ..ty("m", "thing", ini)
+    };
+    assert_eq!(name(&mut w, &key("keeper", ""), "Thing"), "Thing 1");
+    assert_eq!(name(&mut w, &key("objects", ""), "Thing"), "Thing");
+    let on = "[Characteristics/Integers]\ncUseNumbersInName=1\n";
+    assert_eq!(name(&mut w, &key("objects", on), "Thing"), "Thing 2");
+    // A missing text gives no name, and no number is taken.
+    assert_eq!(named(&mut w, &key("keeper", "")), "");
+    assert_eq!(w.zoo.names["thing"], 2);
+}
+
+#[test]
 fn the_crate_goes_to_the_best_free_tile_of_the_grounds_three_or_more_tiles_away() {
     let w = world(vec![]);
     let width = 8;
