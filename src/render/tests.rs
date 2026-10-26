@@ -897,7 +897,18 @@ fn marker_install(name: &str, marker: u16) -> Install {
             "guests.cfg".into(),
             b"[guests]\nsmall = small.ai\nmid = mid.ai\nbig = big.ai\nhuge = huge.ai\n".to_vec(),
         ),
-        ("small.ai".into(), ai("cHeight = 10\n").into_bytes()),
+        (
+            "small.ai".into(),
+            ai("cHeight = 10\ncEggFootprintX = 3\ncEggFootprintY = 1\ncBoxFootprintX = 6\n")
+                .into_bytes(),
+        ),
+        ("bldg.cfg".into(), b"[building]\npost = post.ai\n".to_vec()),
+        ("post.ai".into(), ai("cFootprintX = 2\n").into_bytes()),
+        (
+            "objects/post/idle/idle.ani".into(),
+            ani("dir0 = a\ndir1 = idle\n"),
+        ),
+        ("a/idle/N".into(), unit.clone()),
         (
             "mid.ai".into(),
             ai("cFootprintX = 2\ncFootprintY = 4\ncFacesYOffset = 20\n").into_bytes(),
@@ -946,10 +957,19 @@ fn extra_pics(
     ty: &str,
     extra: &Extra,
 ) -> (Vec<(String, i32, i32, usize)>, usize) {
+    extra_pics_of(install, ("guests", ty, ""), extra)
+}
+
+/// [`extra_pics`] for the one entity `(class, type, subtype)`.
+fn extra_pics_of(
+    install: &Install,
+    entity: (&str, &str, &str),
+    extra: &Extra,
+) -> (Vec<(String, i32, i32, usize)>, usize) {
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let staged = MapRenderer::new(&vfs, &catalogue)
-        .stage_with(&tile_with(&[("guests", ty, "")]), 0, false, extra)
+        .stage_with(&tile_with(&[entity]), 0, false, extra)
         .unwrap();
     let pics = staged
         .pictures()
@@ -1000,6 +1020,51 @@ fn the_selected_unit_gets_a_marker_by_its_footprint_after_its_picture() {
         marker_pics(&install, "big", Some(1)).0[1].0,
         "ui/select/sellarge/N"
     );
+}
+
+#[test]
+fn a_selected_building_gets_the_marker_too_and_an_egg_or_a_crate_its_own_footprint() {
+    let install = marker_install("render-marker-kinds", 1);
+    let pics = |entity, form| {
+        let extra = Extra {
+            selected: Some(1),
+            form,
+            ..Extra::default()
+        };
+        let (pics, picks) = extra_pics_of(&install, entity, &extra);
+        (pics.get(1).map(|p| p.0.clone()), pics.len(), picks)
+    };
+    // A building of footprint 2 gets the medium marker, not picked.
+    let building = ("building", "building", "post");
+    assert_eq!(
+        pics(building, Form::Plain),
+        (Some("ui/select/selmed/N".into()), 2, 1)
+    );
+    // Nothing selected: its picture alone.
+    let extra = Extra::default();
+    assert_eq!(extra_pics_of(&install, building, &extra).0.len(), 1);
+    // The unit `small` is 1 x 1; its egg is 3 x 1 and its crate 6 x 2 (the other number is 2).
+    let small = ("guests", "small", "");
+    for (form, marker) in [
+        (Form::Plain, "selsmall"),
+        (Form::Egg, "selmed"),
+        (Form::Crate, "sellarge"),
+    ] {
+        assert_eq!(
+            pics(small, form).0,
+            Some(format!("ui/select/{marker}/N")),
+            "{form:?}"
+        );
+    }
+    // A type with no egg or crate keys has 2 x 2 for both: the medium marker for a 5 x 1 one.
+    let big = ("guests", "big", "");
+    assert_eq!(
+        pics(big, Form::Plain).0,
+        Some("ui/select/sellarge/N".into())
+    );
+    for form in [Form::Egg, Form::Crate] {
+        assert_eq!(pics(big, form).0, Some("ui/select/selmed/N".into()));
+    }
 }
 
 #[test]

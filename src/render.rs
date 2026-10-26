@@ -149,11 +149,22 @@ pub struct Extra {
     pub shown: Vec<Shown>,
     /// Entities (ids) that are in the zoo but not drawn: the unit the player carries.
     pub hidden: Vec<u32>,
-    /// The unit (id) that carries the selection marker (sprite drawing 9.2).
+    /// The entity (id) that carries the selection marker (sprite drawing 9.2).
     pub selected: Option<u32>,
+    /// The form of the selected animal, which decides the footprint the marker is chosen by.
+    pub form: Form,
     /// The animals' reactions to a change of their exhibit: the unit (id), whether it likes the
     /// change and the milliseconds since; each is a face above its unit (animals 10).
     pub faces: Vec<(u32, bool, u32)>,
+}
+
+/// What an animal is, as far as its footprint goes: its plain one, its egg's or its crate's.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Form {
+    #[default]
+    Plain,
+    Egg,
+    Crate,
 }
 
 /// The animation and frame a unit of the zoo holds.
@@ -1114,15 +1125,16 @@ impl<'a> MapRenderer<'a> {
             }
             // The selection marker and the faces are nobody's.
             let owned = fresh.len();
-            if let (Item::Object(o), Some(hit)) = (item, owner)
+            if let (Item::Object(o) | Item::Edge(o), Some(hit)) = (item, owner)
                 && let Some(&Placed { x, y, .. }) = fresh.last()
-                && scene.objects[o].kind == Kind::Unit
             {
                 if Some(hit.id) == extra.selected {
-                    self.marker(metas[o].ty, &mut fresh);
+                    self.marker(metas[o].ty, extra.form, &mut fresh);
                 }
-                for &(_, likes, age) in extra.faces.iter().filter(|f| f.0 == hit.id) {
-                    self.face(metas[o].ty, (x, y), likes, age, &mut fresh);
+                if scene.objects[o].kind == Kind::Unit {
+                    for &(_, likes, age) in extra.faces.iter().filter(|f| f.0 == hit.id) {
+                        self.face(metas[o].ty, (x, y), likes, age, &mut fresh);
+                    }
                 }
             }
             for (k, p) in fresh.drain(..).enumerate() {
@@ -1487,13 +1499,13 @@ impl<'a> MapRenderer<'a> {
         });
     }
 
-    /// Places the selection marker after the picture of the unit that was placed last (sprite
+    /// Places the selection marker after the picture of the entity that was placed last (sprite
     /// drawing 9.2): `selsmall` for a footprint of at most 1 x 1 half tiles, `selmed` for at most
-    /// 4 in each direction, else `sellarge`. Its anchor is the unit's, up and left by a quarter of
-    /// the x offset of the unit's frame, and by its y offset, 5 and half the height of the marker's
-    /// own frame (the type's height plays no part). The marker has one frame, so it
-    /// needs no clock.
-    fn marker(&mut self, ty: &EntityType, out: &mut Vec<Placed>) {
+    /// 4 in each direction, else `sellarge`; an egg or a crate has its own footprint. Its anchor
+    /// is the entity's, up and left by a quarter of the x offset of the entity's frame, and by its
+    /// y offset, 5 and half the height of the marker's own frame (the type's height plays no
+    /// part). The marker has one frame, so it needs no clock.
+    fn marker(&mut self, ty: &EntityType, form: Form, out: &mut Vec<Placed>) {
         let Some(Placed {
             x,
             y,
@@ -1507,7 +1519,11 @@ impl<'a> MapRenderer<'a> {
             return;
         };
         let (x, y, xo, yo) = (*x, *y, i32::from(frame.x_offset), i32::from(frame.y_offset));
-        let [fx, fy, _] = ty.footprint;
+        let [fx, fy] = match form {
+            Form::Egg => ty.form_footprint(true),
+            Form::Crate => ty.form_footprint(false),
+            Form::Plain => [ty.footprint[0], ty.footprint[1]],
+        };
         let name = match fx.max(fy) {
             ..=1 => "selsmall",
             2..=4 => "selmed",

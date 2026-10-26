@@ -33,7 +33,7 @@ use crate::panel::building as panel_building;
 use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
-use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
+use crate::render::{Extra, Form, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::sim::Sim;
 use crate::status::{Finances, STATUS_BUTTON, Words};
 use crate::terrain::{Tool, habit};
@@ -2097,6 +2097,17 @@ impl<'a> App<'a> {
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
         want.selected = game.selected;
+        let animal = game
+            .selected
+            .and_then(|id| match &game.world.units.get(id)?.part {
+                crate::unit::Part::Animal(a) => Some((a.egg, a.crated)),
+                _ => None,
+            });
+        want.form = match animal {
+            Some((_, true)) => Form::Crate,
+            Some((true, _)) => Form::Egg,
+            _ => Form::Plain,
+        };
         want.faces.clone_from(&game.world.units.reactions);
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
