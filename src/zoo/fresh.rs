@@ -5,7 +5,7 @@
 
 use super::upgrade::NEVER;
 use super::write::Out;
-use super::{BuildingRecord, Common, Entity, Fence, GuestRecord, StaffRecord};
+use super::{BuildingRecord, Common, Entity, Fence, GuestRecord, StaffRecord, Target, UnitBlock};
 
 /// The fields before the unit block or the entity base, and the fields after them.
 pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8>), String> {
@@ -64,6 +64,27 @@ pub(super) fn fence(class: &str, f: &Fence) -> Vec<u8> {
         o.bytes(&[f.portal.into(), 0]);
     }
     o.0
+}
+
+/// The unit block of a unit made in play, before it has run (save games 11.3): no goal, no target and
+/// no movement in progress, the counters a new unit has. A guest's word 230 is 0: the table gives it
+/// for animals and staff only.
+pub(crate) fn unit_new(guest: bool) -> UnitBlock {
+    UnitBlock {
+        slot: 255,
+        need: 255,
+        w4: u32::from(!guest),
+        w7: 4,
+        p3: [-1; 3],
+        target: Target {
+            target: [-1; 3],
+            active: -1,
+            active_sub: -1,
+            ..Target::default()
+        },
+        move_kind: -1,
+        ..UnitBlock::default()
+    }
 }
 
 /// The record of a new guest building: no figure yet, the type's default price (save games 11.3).

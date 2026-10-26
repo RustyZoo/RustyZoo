@@ -2159,6 +2159,40 @@ fn a_new_animal_takes_the_creation_values_of_the_counters_it_does_not_draw() {
 }
 
 #[test]
+fn a_saved_unit_holds_its_live_goal_and_job() {
+    let cat = zebras();
+    let mut world = pens();
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let active = |world: &World| {
+        let mut zoo = world.saved(|_| true);
+        world.finish_save(&mut zoo, &cat);
+        let at = zoo
+            .entities
+            .iter()
+            .position(|e| e.common.as_ref().is_some_and(|c| c.id == 500));
+        let block = zoo.entities[at.unwrap()]
+            .common
+            .as_ref()
+            .unwrap()
+            .unit
+            .clone()
+            .unwrap();
+        (block.target.active, block.target.active_sub)
+    };
+    // The unit has had its first turn.
+    world.units.get_mut(500).unwrap().started = true;
+    world.units.get_mut(500).unwrap().goal.record.task = crate::goal::DRINK;
+    world.units.get_mut(500).unwrap().goal.record.job = 3;
+    assert_eq!(active(&world), (i32::from(crate::goal::DRINK), 3));
+    // A task with no goal object for an animal is none.
+    world.units.get_mut(500).unwrap().goal.record.task = crate::goal::MAINT;
+    assert_eq!(active(&world), (-1, 3));
+}
+
+#[test]
 fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     let cat = zebras();
     let escape = Escape {

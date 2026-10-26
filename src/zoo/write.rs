@@ -272,7 +272,11 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
         ("filter", _, Some(f)) if read => post[..4].copy_from_slice(&f.health.to_le_bytes()),
         _ => {}
     }
-    let unit = c.unit.as_deref().cloned().unwrap_or_default();
+    let unit = c
+        .unit
+        .as_deref()
+        .cloned()
+        .unwrap_or_else(|| fresh::unit_new(e.class == "guests"));
     if is_unit(&e.class) {
         // A unit made in play is on the ground.
         let mode = if read {

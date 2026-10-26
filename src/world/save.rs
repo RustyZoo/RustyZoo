@@ -5,6 +5,7 @@ use super::World;
 use crate::building::Kind;
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::goal;
 use crate::guest::thought::Thought;
 use crate::place::bulldozer::type_of;
 use crate::render::tank_kind;
@@ -154,7 +155,31 @@ impl World {
                     _ => base,
                 }));
             }
+            if matches!(
+                e.class.as_str(),
+                "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter"
+            ) {
+                self.live_unit(c, &e.class);
+            }
         }
+    }
+
+    /// A started unit made in play takes its live goal and job numbers into its block (save games
+    /// 11.2, 11.3), and is on the ground. A loaded unit keeps its stored block: the engine does not
+    /// take the stored goal back at load, so its live goal is not the stored one.
+    fn live_unit(&self, c: &mut Common, class: &str) {
+        let Some(u) = self.units.get(c.id).filter(|u| u.started && c.raw.is_new()) else {
+            return;
+        };
+        let mut block = c
+            .unit
+            .take()
+            .map_or_else(|| fresh::unit_new(class == "guests"), |b| *b);
+        let record = &u.goal.record;
+        block.target.active = goal::active_goal(record.task, u.kind);
+        block.target.active_sub = i32::from(record.job);
+        block.move_kind = 2;
+        c.unit = Some(Box::new(block));
     }
 
     /// A guest record takes the live guest's fields (a guest made in play has its drawn countdowns
