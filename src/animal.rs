@@ -517,15 +517,19 @@ impl Animal {
     }
 
     /// Overwrites what the record of a loaded map stores (animals 3.5); the rest keeps the value
-    /// creation gave. The life and the mate delay are clamped to the class's limits, the dates
-    /// are read as game milliseconds. The sleeping, eating and drinking flags are not taken yet:
+    /// creation gave. The life and the mate delay are clamped to the class's limits (a record
+    /// below version 43 has neither: they keep creation's values), the dates are read as game
+    /// milliseconds. The sleeping, eating and drinking flags are not taken yet:
     /// the behaviour set and the goals do not start from them, and an animal loaded asleep never
     /// fathers young.
     pub fn restore(&mut self, saved: &AnimalRecord, k: &Keys, class: &Class) {
         let r = saved;
         (self.life, self.mate_delay) = (
-            r.life.min(k.time_death.wrapping_sub(1)),
-            r.mate_delay.min(class.mate_pick_delay.wrapping_sub(1)),
+            r.life
+                .map_or(self.life, |life| life.min(k.time_death.wrapping_sub(1))),
+            r.mate_delay.map_or(self.mate_delay, |delay| {
+                delay.min(class.mate_pick_delay.wrapping_sub(1))
+            }),
         );
         (self.baby, self.interval) = (r.baby, r.interval);
         (self.fed, self.slept) = (
@@ -585,10 +589,10 @@ impl Animal {
             thirsty: self.thirsty,
             rampaging: self.rampaging,
             rampage: self.rampage,
-            life: self.life,
+            life: Some(self.life),
             baby: self.baby,
             interval: self.interval,
-            mate_delay: self.mate_delay,
+            mate_delay: Some(self.mate_delay),
             dates: [
                 kept(self.fed, base.dates[0]),
                 kept(self.slept, base.dates[1]),

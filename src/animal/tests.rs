@@ -2154,7 +2154,7 @@ fn a_new_animal_takes_the_creation_values_of_the_counters_it_does_not_draw() {
         .unwrap();
     assert_eq!(
         (a.life, a.baby, a.interval, a.mate_delay, a.boxed),
-        (4319, 999, 1601, 2, 2)
+        (Some(4319), 999, 1601, Some(2), 2)
     );
     assert_eq!(a.second, "\n");
 }
@@ -2268,8 +2268,8 @@ fn a_loaded_animal_keeps_its_life_grow_up_interval_and_mate_delay_clamped_to_the
             _ => (4000, 1),
         };
         c.animal = Some(Box::new(AnimalRecord {
-            life,
-            mate_delay: delay,
+            life: Some(life),
+            mate_delay: Some(delay),
             baby: 77,
             interval: 5,
             ..record()
@@ -2291,10 +2291,36 @@ fn a_loaded_animal_keeps_its_life_grow_up_interval_and_mate_delay_clamped_to_the
         let a = saved_record(&zoo, id);
         assert_eq!(
             (a.life, a.mate_delay, a.baby, a.interval),
-            (life, delay, 77, 5),
+            (Some(life), Some(delay), 77, 5),
             "{id}"
         );
     }
+}
+
+#[test]
+fn a_record_below_version_43_leaves_the_creation_life_and_mate_delay() {
+    let cat = zebras_with("cTimeDeath=4320", "");
+    let mut world = pens();
+    // A version below 43 has no life or mate delay: the record holds none (`None`).
+    for e in &mut world.zoo.entities {
+        let Some(c) = e.common.as_mut().filter(|_| e.class == "animals") else {
+            continue;
+        };
+        c.animal = Some(Box::new(AnimalRecord {
+            baby: 77,
+            interval: 5,
+            ..record()
+        }));
+    }
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    // The creation values: life 4319 (cTimeDeath - 1), mate delay 2 (the class default 3, less one).
+    let a = saved_record(&zoo, 500);
+    assert_eq!((a.life, a.mate_delay, a.baby), (Some(4319), Some(2), 77));
 }
 
 #[test]

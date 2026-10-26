@@ -106,12 +106,12 @@ impl World {
                         a.female = matches!(e.subtype.as_str(), "f" | "p");
                         // The counters that are not drawn take their creation values.
                         (a.life, a.baby) = (
-                            k.time_death.wrapping_sub(1),
+                            Some(k.time_death.wrapping_sub(1)),
                             k.baby_to_adult.wrapping_sub(1),
                         );
                         (a.interval, a.mate_delay) = (
                             k.reproduction_interval,
-                            class.mate_pick_delay.wrapping_sub(1),
+                            Some(class.mate_pick_delay.wrapping_sub(1)),
                         );
                         a.boxed = class.boxed.wrapping_sub(1);
                         a
