@@ -11,7 +11,10 @@ use crate::strings::library_names;
 use crate::timing::ini_whole;
 use crate::vfs::MAX_MEMBER_SIZE;
 
-/// The cursor of the idle pointer, and those of the terrain tool (terrain editing 7.1).
+/// The interface's default, over any element with no cursor of its own (string tables 6.1).
+pub const DEFAULT: u32 = 200;
+/// The map view's idle cursor, and those of the terrain tool (terrain editing 7.1); the map
+/// view's cursors show only while the pointer is over the map view.
 pub const NORMAL: u32 = 209;
 pub const TERRAIN_IDLE: u32 = 203;
 pub const TERRAIN_DRAG: u32 = 204;

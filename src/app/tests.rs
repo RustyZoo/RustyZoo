@@ -1001,6 +1001,23 @@ fn a_press_and_a_release_on_the_map_view_are_logged_with_the_tile_at_every_rotat
 }
 
 #[test]
+fn the_cursor_over_the_interface_is_the_default() {
+    with_app("app-cursor", |app, _| {
+        app.start_game(None);
+        app.set_interface(interface("paint"));
+        app.interface().unwrap().show(10);
+        app.pass(0, &[Command::Mouse(Mouse::Move(30, 30))]);
+        assert_eq!(app.cursor(), 209, "the map view");
+        // The layout shown on the map (its text covers 2 to 41, 2 to 21 of the 64 by 48 window)
+        // is the interface: its default, then the map view's again on leaving it.
+        app.pass(20, &[Command::Mouse(Mouse::Move(5, 5))]);
+        assert_eq!(app.cursor(), 200, "over the interface");
+        app.pass(40, &[Command::Mouse(Mouse::Move(30, 30))]);
+        assert_eq!(app.cursor(), 209, "back on the map view");
+    });
+}
+
+#[test]
 fn a_press_off_the_map_or_on_the_interface_logs_the_tile_or_nothing() {
     with_app("app-tool-off", |app, _| {
         app.set_interface(interface("tool-off"));
