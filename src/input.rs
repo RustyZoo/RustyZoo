@@ -69,6 +69,17 @@ pub fn alt_enter(event: &Event) -> bool {
     )
 }
 
+/// Whether the event is a key-down of Ctrl+C, without Alt (a system key): the alternate cursors
+/// on or off, wherever the player is (input 3.2).
+pub fn ctrl_c(event: &Event) -> bool {
+    matches!(
+        *event,
+        Event::KeyDown { scancode: Some(Scancode::C), keymod, .. }
+            if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD)
+                && !keymod.intersects(Mod::LALTMOD | Mod::RALTMOD)
+    )
+}
+
 fn key_command(key: Scancode, keymod: Mod) -> Option<Command> {
     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
@@ -126,6 +137,31 @@ mod tests {
             which: 0,
             raw: 0,
         })
+    }
+
+    #[test]
+    fn ctrl_c_switches_the_cursors_whatever_else_is_held() {
+        let down = |key, keymod| {
+            ctrl_c(&Event::KeyDown {
+                timestamp: 0,
+                window_id: 1,
+                keycode: None,
+                scancode: Some(key),
+                keymod,
+                repeat: false,
+                which: 0,
+                raw: 0,
+            })
+        };
+        assert!(down(Scancode::C, Mod::LCTRLMOD));
+        assert!(down(
+            Scancode::C,
+            Mod::RCTRLMOD | Mod::LSHIFTMOD | Mod::CAPSMOD
+        ));
+        assert!(!down(Scancode::C, Mod::NOMOD));
+        assert!(!down(Scancode::C, Mod::LCTRLMOD | Mod::LALTMOD));
+        assert!(!down(Scancode::V, Mod::LCTRLMOD));
+        assert_eq!(press(Scancode::C, Mod::LCTRLMOD), None, "no other command");
     }
 
     #[test]

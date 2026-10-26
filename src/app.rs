@@ -2165,6 +2165,13 @@ impl<'a> App<'a> {
         self.game.as_ref().map(|g| &g.money)
     }
 
+    /// The cursor to show, by its number without the 50 of the alternate set ([`crate::cursor`]):
+    /// the terrain tool's while it is the map view's tool, else the normal one.
+    pub fn cursor(&self) -> u32 {
+        let tool = self.game.as_ref().and_then(|g| g.terrain.cursor());
+        tool.unwrap_or(crate::cursor::NORMAL)
+    }
+
     pub fn paused(&self) -> bool {
         self.modal() || self.game.as_ref().is_some_and(|g| g.paused)
     }
