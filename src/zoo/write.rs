@@ -242,8 +242,13 @@ fn is_unit(class: &str) -> bool {
 fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     let (b, s) = (&c.raw.body, &c.raw.spans);
     let read = !b.is_empty() && s.end <= b.len();
-    // An animal is written from its record, whether it was read or made in play.
-    let (mut pre, mut post) = match read && e.class != "animals" {
+    // An animal and a staff member are written from their records, whether they were read or made
+    // in play.
+    let staff = matches!(
+        &e.class[..],
+        "staff" | "keeper" | "maint" | "tour" | "helicopter"
+    );
+    let (mut pre, mut post) = match read && e.class != "animals" && !staff {
         true => super::body::transcode(v, e.class.as_bytes(), b)?,
         false => fresh::parts(e, c, now)?,
     };

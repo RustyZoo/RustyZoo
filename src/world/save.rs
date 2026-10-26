@@ -86,7 +86,8 @@ impl World {
     /// transient type keeps no body (zoo format 6.2, the original refuses a file where it has one;
     /// a fence keeps its figures), an animal gets the record of its live state over the one it was
     /// read with (or the record of a new one, save games 11.3), a guest or a building made in play
-    /// gets the record of a new one, and a guest's record takes the live guest's fields.
+    /// gets the record of a new one, a guest's record takes the live guest's fields, and a staff
+    /// member's record takes its live state.
     pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         let now = crate::timing::file_time(zoo.clocks.calendar);
         for e in &mut zoo.entities {
@@ -136,6 +137,22 @@ impl World {
                         .get_or_insert_with(|| fresh::building_new(price, now));
                 }
                 _ => {}
+            }
+            if matches!(
+                e.class.as_str(),
+                "staff" | "keeper" | "maint" | "tour" | "helicopter"
+            ) {
+                let base = c.staff.take().map_or_else(Default::default, |s| *s);
+                let live = self.units.get(c.id).filter(|u| u.started);
+                c.staff = Some(Box::new(match live.map(|u| &u.part) {
+                    Some(Part::Staff(s)) => {
+                        let tiles = (s.assigned.iter())
+                            .filter_map(|&x| crate::staff::gate_tile(self, x))
+                            .collect();
+                        s.record(base, tiles, crate::staff::duty_kinds(cat))
+                    }
+                    _ => base,
+                }));
             }
         }
     }

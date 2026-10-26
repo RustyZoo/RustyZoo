@@ -913,15 +913,15 @@ check base-trial '' "building_running maps/default.zoo '140 160' 'months 2'"
 # bulldozer delete the building one step after the first guest entered it. The user is pushed out (one
 # `building push` line; none in the plain run) and its walk out of the building (the goal `leavebuilding`,
 # which the plain run shows) never comes. Prints, for the plain run and the deleting one, the `building push`
-# lines and the walk-out goals of that guest, then the building and the guest. Seed 4 is the first (from 1)
-# whose first user has no other walk-out in the run: with seed 1 the user's walk-out goals are not all gone in the
-# deleting run, with seed 2 it used the stand twice, with seed 3 it also has a walk-out in the deleting run.
+# lines and the walk-out goals of that guest, then the building and the guest. Seed 1 is the first (from 1)
+# whose first user has no other walk-out in the run. Once keepers keep the exhibits their records assign, seed 4,
+# the former seed, shows a walk-out in the deleting run (a longer run only adds more); seeds searched from 1.
 pushed_out() { # pushed_out <map>
   d=$(mktemp -d)
-  rz sim "$1" --ticks 400 --seed 4 --log 2>/dev/null >"$d/plain"
+  rz sim "$1" --ticks 400 --seed 1 --log 2>/dev/null >"$d/plain"
   read -r step b g <<<"$(awk '$3 == "building" && $4 == "use" { print $2, $5, $6; exit }' "$d/plain")"
   printf '%s bulldoze %s\n' $((step + 1)) "$b" >"$d/script"
-  rz sim "$1" --ticks 400 --seed 4 --script "$d/script" --log 2>/dev/null >"$d/log"
+  rz sim "$1" --ticks 400 --seed 1 --script "$d/script" --log 2>/dev/null >"$d/log"
   for f in plain log; do
     awk -v g="$g" '$3 == "building" && $4 == "push" { p++ }
       $3 == "unit" && $4 == "goal" && $5 == g && $6 == "leavebuilding" { l++ }
@@ -1171,12 +1171,12 @@ check expansion-trial "447:92;99>100;1:100,2:100,3:100,4:100,5:100,6:100,7:100" 
 # under water (30 status ticks, 448 steps of 67 ms), takes the surface task at the second, when it
 # has the 20 of its threshold, breathes there, and its next run-out falls at the surface: the check
 # never runs again. A run-out at the surface kills the counter for good, which happens to the bear
-# at its first run-out under half of the seeds; seed 1 is one where it does not (seeds 1 to 24 tried in order, 14 of them keep the counter, and seed 1 is the first; the former seed 6 no longer does). Prints the steps
+# at its first run-out under half of the seeds; seed 2 is the first (from 1) where it does not: with the assigned exhibits of the loaded keepers, seed 1 loses it, as 3000 steps or 10000 do not bring the gain back (seeds 1 to 30 tried in order). Prints the steps
 # and breath of the gains, the step of the surface task and of `bBreathe`, and the gains after it.
 tank_breath() { # tank_breath <map> <x,y>
   d=$(mktemp -d)
   printf '0 animal polarbr %s male\n' "$2" >"$d/script"
-  rz sim "$1" --ticks 3000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+  rz sim "$1" --ticks 3000 --seed 2 --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ animal /{id=$5}
     $5==id && / animal breath /{ if (done) later++; else gains=gains (gains ? "," : "") $2 ":" $6 }
     $5==id && / unit goal [0-9]+ surfacebreath /{ surface=$2 }
@@ -1184,7 +1184,7 @@ tank_breath() { # tank_breath <map> <x,y>
     END{ print gains ";surface@" surface ";breathe@" breathe ";later:" later+0 }'
   rm -rf "$d"
 }
-check expansion-trial "57:10,505:20;surface@507;breathe@1079;later:0" "tank_breath maps/scn28b.zoo 22,23"
+check expansion-trial "57:10,505:20;surface@505;breathe@708;later:0" "tank_breath maps/scn28b.zoo 22,23"
 
 # Murky water: scn28's filters are taken away and a manta ray joins tank 2, which holds water of
 # purity 93 and loses a point every 448 steps. The ray's happiness is set to 0 every second so that
@@ -1219,24 +1219,25 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@602,1@1192,2@4780,1@5729;97902:1@1226,2@6109,1@8446,2@13350" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@422,1@2905,2@13768;97902:1@1156" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
-# the water check gives it the water mode at step 615 and sends it to a water tile of its exhibit; in
-# the water mode its walks end on water tiles too, where it chooses from its water table
-# (`bInWater`). Prints each tile a walk ended on with the set chosen there and the change of mode,
-# for 1200 steps. The seed is the first (from 1) that shows this whole sequence once the guests choose
-# attractions as sites and walk to a building slot forced: 1 to 8, 10, 12 and 13 put the animal in the water mode at
-# step 18 (no walk ends on land first), 9 shows no walk in the water mode, 14 none at all.
+# the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
+# mode its walks end on water tiles too, where it chooses from its water table (`bInWater`). Prints
+# each tile a walk ended on with the set chosen there and the change of mode, for 3300 steps. Since
+# the loaded keepers keep their assigned exhibits, the animal is in the water mode from step 18 and
+# the sequence (a land walk, the mode at step 3003, then `bInWater`) comes once, at the end: 1200
+# steps no longer show it, a longer run does, so the seed stays 11 (the guests choose attractions as
+# sites and walk to a building slot forced).
 water_mode() { # water_mode <map> <animal>
-  rz sim "$1" --ticks 1200 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 3300 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
     $5 == a && / unit tile /{ t = $6 }
     $5 == a && / unit goal [0-9]+ none /{ ended = t }
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;24,26:bInWater;25,29:bWalk;mode0@615;22,33:bHappy" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;24,26:bInWater;25,31:bInWater;23,32:bInWater;25,29:bWalk;mode0@1212;18,27:bWalk;mode1@1809;25,23:bHappy;25,23:bWalk;mode1@3003;25,24:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1310,7 +1311,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@6141;eggs:3;hatch@6772" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@1341;eggs:6;hatch@2013" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1347,6 +1348,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial "227408,0,47aca967359f2fd0" "save_load maps/scn19.zoo"
+check expansion-trial "227408,0,0718aa22fb55793b" "save_load maps/scn19.zoo"
 
 exit $failed
