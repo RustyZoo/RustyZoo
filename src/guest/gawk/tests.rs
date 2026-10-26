@@ -71,6 +71,7 @@ fn shape(e: &Entity) -> Option<Shape> {
 /// inside, urn 52 at (2, 1) outside, bench 53 at (7, 7) has no weight, stone 54 at (7, 2).
 fn zoo_map() -> World {
     let mut zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,

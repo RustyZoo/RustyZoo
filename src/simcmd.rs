@@ -141,6 +141,12 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
             if let Err(why) = done {
                 eprintln!("rustyzoo: warning: step {step}: {command:?}: {why}");
             }
+            if let (drive::Command::Award(_), true) = (&command, flags.log) {
+                report.line(format_args!(
+                    "step {step} awards {}",
+                    run.world.zoo.awards.len()
+                ));
+            }
         }
         let lines = run.step_with(flags.dt, Some(vfs));
         if flags.log {

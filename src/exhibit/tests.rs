@@ -76,6 +76,7 @@ fn zoo(fences: &[(i32, i32, u32)]) -> Zoo {
     let mut entities = vec![entity("gate", SIZE - 1, SIZE - 1, 2)];
     entities.extend(fences.iter().map(|&(x, y, d)| entity("fences", x, y, d)));
     Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,

@@ -209,6 +209,8 @@ pub struct Catalogue {
     files: HashMap<String, Definition>,
     /// The item types guests buy, by lower-case name.
     pub items: BTreeMap<String, crate::building::items::Item>,
+    /// The award definitions (`award*.cfg`), read with the types.
+    pub awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
     behaviours: BTreeMap<String, Behaviours>,
     /// The bytes of the definition files loaded.
@@ -514,6 +516,7 @@ impl Catalogue {
         }
         let (items, warnings) = crate::building::items::load(vfs);
         catalogue.items = items;
+        catalogue.awards = crate::award::Definitions::load(vfs);
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {
             let more = catalogue.suppressed;

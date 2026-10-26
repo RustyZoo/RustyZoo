@@ -47,6 +47,9 @@ pub enum Command {
     Heal(u32),
     /// `mood ID N`: the animal's happiness is N, from -100 to 100.
     Mood(u32, i32),
+    /// `award add ID`: the zoo holds the award (`awards.md` 4.1); an id without a definition is
+    /// held too.
+    Award(i32),
     /// `save FILE` and `load FILE`: the zoo is written to a file on disk, or a saved game is opened
     /// from one as Continue does. The caller does these; [`Run::apply`] does nothing for them.
     Save(String),
@@ -87,6 +90,10 @@ impl std::str::FromStr for Command {
             Some("fill") if words.len() == 2 => Command::Fill(id(1)?),
             Some("drain") if words.len() == 2 => Command::Drain(id(1)?),
             Some("leave") if words.len() == 2 => Command::Leave(id(1)?),
+            Some("award") if words.len() == 3 && words[1] == "add" => {
+                let id = i32::try_from(n(2)?).map_err(|_| format!("bad id: {text:?}"));
+                Command::Award(id?)
+            }
             Some("cash") if words.len() == 2 => {
                 let cash = words[1].parse::<f32>().ok().filter(|c| c.is_finite());
                 Command::Cash(cash.ok_or_else(|| format!("bad cash: {text:?}"))?)
@@ -315,6 +322,10 @@ impl Run {
             Command::Worker(x, y) => self.add_unit("maint", None, x, y, None),
             Command::Animal(ref name, x, y, sex) => self.add_unit("animals", Some(name), x, y, sex),
             Command::Filter(x, y, facing) => self.add_filter(x, y, facing),
+            Command::Award(id) => {
+                crate::award::add(&mut self.world.zoo.awards, id);
+                true
+            }
             Command::Save(_) | Command::Load(_) => false,
         }
     }

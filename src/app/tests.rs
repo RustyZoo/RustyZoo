@@ -522,6 +522,9 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Skip,
         Command::Save("my zoo.zoo"),
         Command::Load("saved games/a.zoo"),
+        Command::Award(8),
+        Command::Award(0),
+        Command::Award(-1),
     ] {
         assert_eq!(command.to_string().parse(), Ok(command));
     }
@@ -554,6 +557,11 @@ fn commands_have_a_text_form_that_reads_back() {
         "skip 1",
         "save",
         "load   ",
+        "award",
+        "award add",
+        "award add x",
+        "award add 2147483648",
+        "award 8",
     ] {
         assert!(bad.parse::<Command>().is_err(), "{bad:?}");
     }

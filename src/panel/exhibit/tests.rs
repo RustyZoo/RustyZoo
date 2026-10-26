@@ -63,6 +63,7 @@ fn world() -> World {
     add("animals", -3, 1);
     add("objects", 2, 2);
     let mut zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
