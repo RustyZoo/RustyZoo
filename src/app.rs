@@ -721,7 +721,12 @@ impl<'a> App<'a> {
             bar: None,
             bars: None,
             finances: Finances::default(),
-            build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
+            build: Build::new(installed_expansions(self.renderer.vfs()))
+                .with_exhibits(exhibits)
+                .unlocked(
+                    self.renderer.catalogue(),
+                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+                ),
             pending: None,
             made: None,
             gate: None,
