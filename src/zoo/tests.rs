@@ -2523,3 +2523,23 @@ fn an_animal_record_of_any_size_is_written_whole() {
     };
     assert_eq!(animal_back(&none), none);
 }
+
+#[test]
+fn the_viewing_time_and_the_play_time_are_read_and_written() {
+    for v in [70, 73, 106] {
+        let bytes = file(v, 3, 3, &[(false, false), (true, false)], &[]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        // Zero, a value past 32 bits, and the largest values.
+        for (viewing, play) in [(0, 0), (0x1_0000_0002, 123_456), (u64::MAX, u32::MAX)] {
+            zoo.habitat_info[1].viewing = viewing;
+            zoo.clocks.play = play;
+            let (back, _) = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap();
+            assert_eq!(back.habitat_info[1].viewing, viewing, "version {v}");
+            assert_eq!(back.clocks.play, play, "version {v}");
+        }
+        // A file before 73 has no play time to read.
+        if v < 73 {
+            assert_eq!(Zoo::parse(&bytes).unwrap().clocks.play, 0, "version {v}");
+        }
+    }
+}

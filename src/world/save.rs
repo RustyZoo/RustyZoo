@@ -77,6 +77,7 @@ impl World {
             let bits = |v: [f32; 3]| order(v.map(f32::to_bits));
             let words = [bits(d), bits(u), order(e.stats.count)];
             info.stats = words.concat().try_into().unwrap_or(info.stats);
+            info.viewing = e.stats.viewing;
             info.serviced = e.rating.serviced as u32;
         }
         zoo

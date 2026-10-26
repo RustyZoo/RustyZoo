@@ -150,7 +150,7 @@ pub struct Sim {
     /// The tile count of the last map set up, which decides whether a new one seeds again.
     tiles: usize,
     calendar: Calendar,
-    /// Simulated time since the zoo began, in milliseconds.
+    /// The play time in milliseconds: the stored one (save games 8) and the steps run since.
     total: u32,
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     ai_rem: u32,
@@ -242,15 +242,15 @@ impl Sim {
         self.hire_male = self.rng.rand() & 1 == 1;
     }
 
-    /// A game on a map of `tiles` tiles that stores these clocks: the total time starts again, the
-    /// calendar starts from the stored date (a new game restarts it, `restart_calendar`), the AI
-    /// and world clocks start from the map's (simulation 4.3, 8.3), the queue is empty,
-    /// and the generator is seeded again if the map has another number of tiles than the last one
-    /// (main loop 9.2, the second moment).
+    /// A game on a map of `tiles` tiles that stores these clocks: the play time starts from the
+    /// stored one, the calendar starts from the stored date (a new game restarts it,
+    /// `restart_calendar`), the AI and world clocks start from the map's (simulation 4.3, 8.3), the
+    /// queue is empty, and the generator is seeded again if the map has another number of tiles
+    /// than the last one (main loop 9.2, the second moment).
     pub fn start_game(&mut self, tiles: usize, clocks: Clocks) {
         self.status = Status::start(&clocks.status, self.economy.as_ref());
         self.calendar = Calendar::at(clocks.calendar);
-        self.total = 0;
+        self.total = clocks.play;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
@@ -374,6 +374,7 @@ impl Sim {
             world_secs: self.world_secs,
             queue: self.events.queue(),
             calendar: self.calendar.elapsed_ms(),
+            play: self.total,
         }
     }
 
@@ -381,6 +382,7 @@ impl Sim {
         &self.calendar
     }
 
+    /// The play time in milliseconds (the stored one and the steps since).
     pub fn total_ms(&self) -> u32 {
         self.total
     }

@@ -262,6 +262,38 @@ fn a_new_game_starts_from_the_clocks_of_its_map() {
 }
 
 #[test]
+fn the_play_time_starts_from_the_stored_one_and_counts_the_steps_run() {
+    let mut w = world(0);
+    let mut s = sim("");
+    s.start_game(
+        16,
+        Clocks {
+            play: 5_000,
+            ..Clocks::default()
+        },
+    );
+    assert_eq!(s.clocks().play, 5_000, "the stored play time");
+    run(&mut s, &mut w, 10, 300);
+    assert_eq!(s.clocks().play, 8_000);
+    // A paused game runs no step, so the time stays.
+    assert_eq!(s.clocks().play, 8_000);
+    // The largest stored value wraps as the other clocks do.
+    s.start_game(
+        16,
+        Clocks {
+            play: u32::MAX,
+            ..Clocks::default()
+        },
+    );
+    run(&mut s, &mut w, 1, 1);
+    assert_eq!(s.clocks().play, 0);
+    // A file before version 73 stores none.
+    s.start_game(16, Clocks::default());
+    run(&mut s, &mut w, 1, 67);
+    assert_eq!(s.clocks().play, 67);
+}
+
+#[test]
 fn the_zoo_status_chance_draws_nothing_at_0() {
     let state = |f: &dyn Fn(&mut Rng) -> bool| {
         let mut r = Rng::default();

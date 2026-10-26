@@ -218,6 +218,7 @@ pub fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -
             name: String::new(),
             stats: [0; 9],
             created: 0,
+            viewing: 0,
             serviced: 0,
         }];
     });

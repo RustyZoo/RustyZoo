@@ -133,7 +133,8 @@ impl Zoo {
 fn habitats(zoo: &Zoo) -> Vec<u8> {
     let mut b = zoo.kept.habitats.clone();
     for (&at, info) in zoo.kept.stats_at.iter().zip(&zoo.habitat_info) {
-        // The statistics, two dates, then the last service (from 83).
+        // The statistics, the creation date and the viewing time (two dates), then the last service
+        // (from 83).
         let service = at + 36 + 16;
         let mut put = |at: usize, n: u32| {
             if let Some(to) = b.get_mut(at..at + 4) {
@@ -143,6 +144,8 @@ fn habitats(zoo: &Zoo) -> Vec<u8> {
         for (i, &n) in info.stats.iter().enumerate() {
             put(at + 4 * i, n);
         }
+        put(at + 44, info.viewing as u32);
+        put(at + 48, (info.viewing >> 32) as u32);
         if zoo.version >= 83 {
             put(service, info.serviced);
         }
@@ -150,8 +153,9 @@ fn habitats(zoo: &Zoo) -> Vec<u8> {
     b
 }
 
-/// The game block as read, with the modelled values written over it, and the fields a version lacks
-/// (31 rows of accounts, the date after the adult price, the word after the cash) added.
+/// The game block as read, with the modelled values written over it (the play time, the word after
+/// the cash, is the model's), and the fields a version lacks (31 rows of accounts, the date after the
+/// adult price) added.
 fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
     let (kept, status) = (&zoo.kept, &zoo.clocks.status);
     let b = &kept.finances;
@@ -192,10 +196,7 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
         o.u16(n as u16);
     }
     o.u32(money.cash.to_bits());
-    match zoo.version >= 73 {
-        true => o.bytes(b.get(kept.at[1] + 4..kept.at[1] + 8).ok_or_else(short)?),
-        false => o.u32(0),
-    }
+    o.u32(zoo.clocks.play);
     Ok(o.0)
 }
 
