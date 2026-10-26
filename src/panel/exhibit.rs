@@ -10,6 +10,7 @@
 
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
+use crate::exhibit::price::Prices;
 use crate::exhibit::rating;
 use crate::exhibit::viewing::{self, Wear};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
@@ -36,6 +37,20 @@ pub const ANIMALS: i32 = 4326;
 const THOUGHTS: i32 = 4330;
 const STATUS_TAB: i32 = 4310;
 const TANK_TAB: i32 = 4365;
+// The tank tab (4.7): the wall buttons, the fill buttons, the drain button, the ground buttons, and
+// the texts of the wall price, the two fill prices, the salinity and the ground price.
+pub const WALL_DOWN: i32 = 4874;
+pub const WALL_UP: i32 = 4875;
+pub const SALT: i32 = 4869;
+pub const FRESH: i32 = 4870;
+pub const DRAIN: i32 = 4885;
+const GROUND: [i32; 2] = [4879, 4880];
+const WALL_COST: i32 = 4877;
+const FILL_COST: [i32; 2] = [4871, 4872];
+const SALINITY_TEXT: i32 = 4868;
+const GROUND_COST: i32 = 4882;
+/// The strings of the names of salt and fresh water.
+const WATERS: [i32; 2] = [4891, 4893];
 const STATUS_LAYOUT: i32 = 700;
 const TANK_LAYOUT: i32 = 704;
 /// Each tab button and the sub-layout it shows: status, donations, animals, thoughts, tank.
@@ -100,6 +115,58 @@ const TANK_ICONS: [[&str; 3]; 2] = [
     ["exbtank", "exbdirt1", "exbdirt2"],
     ["shwtank", "shwdirt1", "shwdirt2"],
 ];
+
+/// Writes the tank tab (4.7) of tank `id` and returns its log line: the prices of the next wall
+/// raise and of the two fills (the fills while the tank is empty), the salinity, and which buttons
+/// work. The wall buttons stop at the lowest height the tank takes and at the highest; the fill
+/// buttons work while the water is at 0, the drain button while the tank holds or fills water. The
+/// ground buttons do nothing yet.
+fn tank_tab(
+    ui: &mut Interface,
+    world: &World,
+    cat: &Catalogue,
+    id: u32,
+    whole: &dyn Fn(f32) -> String,
+) -> Option<String> {
+    let (tank, prices) = (world.tank(id)?, Prices::of(world, cat, id)?);
+    let config = world.tank_config();
+    let (low, high) = (world.wall_floor(id), config.limit);
+    let next = prices.step(
+        tank.height,
+        config.height[usize::from(tank.show)],
+        true,
+        tank.filled,
+    );
+    let dry = tank.level == 0;
+    let water = ui.string(WATERS[usize::from(!tank.salt)]);
+    ui.set_text(WALL_COST, &to_cp1252(&whole(next)));
+    ui.set_text(SALINITY_TEXT, &to_cp1252(&water));
+    ui.set_text(GROUND_COST, b"");
+    for (i, button) in [SALT, FRESH].into_iter().enumerate() {
+        let text = if dry {
+            whole(prices.fill[i])
+        } else {
+            String::new()
+        };
+        ui.set_text(FILL_COST[i], &to_cp1252(&text));
+        ui.set_enabled(button, dry);
+    }
+    ui.set_enabled(WALL_DOWN, tank.height > low);
+    ui.set_enabled(WALL_UP, tank.height < high);
+    ui.set_enabled(DRAIN, tank.filled || !dry);
+    for button in GROUND {
+        ui.set_enabled(button, false);
+    }
+    Some(format!(
+        "tank {id} walls {} level {} min {low} max {high} next {} water {} fill {} {}",
+        tank.height,
+        tank.level,
+        whole(next),
+        if tank.salt { "salt" } else { "fresh" },
+        whole(prices.fill[0]),
+        whole(prices.fill[1]),
+    ))
+}
 
 /// The picture of a popularity (0 to 100) in the image set of 11 stars by halves.
 pub fn stars(popularity: u32) -> usize {
@@ -319,6 +386,8 @@ impl Panel {
     ) -> Vec<String> {
         let words = Words::new(|id| ui.string(id as i32));
         let money = |amount: f32| format::money_cents(&words, f64::from(amount), false);
+        let whole =
+            |amount: f32| format::money(&words, format::whole_units(f64::from(amount)), false);
         let wear = viewing::wear(world, viewing::decayed(cat));
         // The list of the exhibits: every one but the grounds, its fence state or tank.
         let exhibits: Vec<_> = (world.exhibits().list().iter())
@@ -423,6 +492,7 @@ impl Panel {
         );
         let thoughts: Vec<i32> = list.iter().map(|t| t.text).collect();
         self.animals = ids;
+        let tank_line = current.and_then(|c| tank_tab(ui, world, cat, c.id, &whole));
         let told = match current {
             Some(c) => vec![
                 format!("exhibit {} {:?}", c.id, c.name),
@@ -435,6 +505,7 @@ impl Panel {
             ],
             None => vec!["exhibit none".to_string()],
         };
+        let told = [told, tank_line.into_iter().collect()].concat();
         match told == self.told {
             true => Vec::new(),
             false => {

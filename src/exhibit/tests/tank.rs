@@ -230,6 +230,15 @@ pub(super) fn tank_shape(e: &Entity) -> Option<Shape> {
                 ..none
             },
         ),
+        // A swimmer that needs 6 levels of water.
+        "whale" => thing(
+            Kind::Unit,
+            TankKind {
+                underwater: true,
+                depth: 6,
+                ..none
+            },
+        ),
         "dog" => thing(Kind::Unit, none),
         "guests" => thing(Kind::Unit, none),
         "bench" => thing(Kind::Fixed, none),
@@ -281,6 +290,8 @@ pub(super) const CONFIG: TankConfig = TankConfig {
     limit: 20,
     murky: 60,
     decay: 30_000,
+    water: [1.5, 1.0],
+    divisor: 5.0,
 };
 
 /// A map of tiles with these elevations by tile (0 elsewhere), and the pieces, with the
@@ -720,6 +731,8 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
             limit: 30,
             murky: 60,
             decay: 30_000,
+            water: [1.5, 0.0],
+            divisor: 0.0,
         }
     );
     // The time before the purity drops: any whole number, below 0 none.
@@ -737,6 +750,19 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
     for (text, murky) in [("60", 60), ("0", 0), ("-5", -5), ("99999", 99999), ("", 60)] {
         let cfg = format!("[tank]\nmurkyWaterPurity = {text}\n");
         assert_eq!(read(&cfg).murky, murky, "{text:?}");
+    }
+    // The prices: a decimal, below 0 none, a huge one cut; missing, none.
+    for (text, price) in [
+        ("1.5", 1.5),
+        ("0", 0.0),
+        ("-3", 0.0),
+        ("1e30", 1e6),
+        ("", 0.0),
+    ] {
+        let cfg = format!("[cost]\nsaltWater = {text}\nwallHeightPriceDivisor = {text}\n");
+        let found = read(&cfg);
+        assert_eq!((found.water[0], found.divisor), (price, price), "{text:?}");
+        assert_eq!(found.water[1], 0.0, "fresh water is missing");
     }
     // Missing: what there is without a file, heights of 1 included; an empty file too.
     let none = TankConfig::default();

@@ -76,47 +76,57 @@ impl World {
     }
 
     /// One simulation step of the water of every tank (3.10): one elevation step up while filled
-    /// and below the full level, one down while not filled and above 0.
+    /// and below the full level, one down while not filled and above 0; a tank that comes empty
+    /// with another target salinity takes it and is filled again.
     /// Whether a level moved.
     pub fn step_water(&mut self) -> bool {
         let before = self.events.len();
         for id in self.tank_ids() {
+            let mut swapped = false;
             self.edit_tank(id, |t, config| {
                 let top = config.top(t.height);
                 if t.filled && t.level < top {
                     t.level += 1;
                 } else if !t.filled && t.level > 0 {
                     t.level -= 1;
+                    if t.level == 0 && t.target != t.salt {
+                        (t.salt, swapped) = (t.target, true);
+                    }
                 }
             });
+            if swapped {
+                self.fill(id);
+            }
         }
         self.events.len() > before
     }
 
-    /// Fills tank `id` (3.10): refused, silently, while something in it may not be in water. The
-    /// level then rises with the steps, or at once while the game is paused.
-    pub fn fill(&mut self, id: u32) {
-        if !self.unfit(id, false).is_empty() {
-            return;
+    /// Fills tank `id` (3.10): refused, silently, while something in it may not be in water; the
+    /// first such object (an entity id) is returned. The level then rises with the steps, or at
+    /// once while the game is paused.
+    pub fn fill(&mut self, id: u32) -> Option<u32> {
+        if let Some(&object) = self.unfit(id, false).first() {
+            return Some(object);
         }
         let paused = self.paused;
         self.edit_tank(id, |t, config| {
-            t.filled = true;
+            (t.filled, t.target) = (true, t.salt);
             if paused {
                 t.level = config.top(t.height);
             }
         });
+        None
     }
 
-    /// Drains tank `id`: refused while an animal is in it. The level falls with the steps, or to
-    /// 0 at once while the game is paused.
-    pub fn drain(&mut self, id: u32) {
+    /// Drains tank `id`: refused (false) while an animal is in it. The level falls with the steps,
+    /// or to 0 at once while the game is paused.
+    pub fn drain(&mut self, id: u32) -> bool {
         let animal = self.tiles_of(id).into_iter().any(|t| {
             let units = self.scene.units_on(t);
             (units.iter()).any(|&o| self.zoo.entities[self.owner[o]].class == "animals")
         });
         if animal {
-            return;
+            return false;
         }
         let paused = self.paused;
         self.edit_tank(id, |t, _| {
@@ -125,12 +135,53 @@ impl World {
                 t.level = 0;
             }
         });
+        true
     }
 
-    /// Gives tank `id` a wall height, cut to 2 and the highest a tank has (4.7); when the water
-    /// is then above the full level it is cut at once.
+    /// Gives tank `id` the salinity `salt` (4.7 fill tools): another salinity drains it first
+    /// (refused, false, while an animal is in it) and is taken as soon as it is empty, at once
+    /// when it already is. The caller fills it.
+    pub fn set_salinity(&mut self, id: u32, salt: bool) -> bool {
+        let Some(tank) = self.tank(id) else {
+            return false;
+        };
+        if tank.salt == salt {
+            return true;
+        }
+        if !self.drain(id) {
+            return false;
+        }
+        self.edit_tank(id, |t, _| {
+            t.target = salt;
+            if t.level == 0 {
+                t.salt = salt;
+            }
+        });
+        true
+    }
+
+    /// The lowest wall height tank `id` takes (4.7): 2, or what the units standing in it need, the
+    /// depth of their type and the height of the scenery in their tile's quarters.
+    pub fn wall_floor(&self, id: u32) -> u32 {
+        let mut need = 2;
+        for t in self.tiles_of(id) {
+            let units = self.scene.units_on(t);
+            let kind = |e: usize| self.shapes[e].map(|s| s.tank);
+            let deepest = units.iter().filter_map(|&o| kind(self.owner[o]));
+            let deepest = deepest.map(|k| k.depth).max();
+            if let Some(depth) = deepest {
+                let scenery = (0..4).filter_map(|q| self.quadrant(t, q)).filter_map(kind);
+                let height = scenery.map(|k| k.height).max().unwrap_or(0);
+                need = need.max(depth.max(height));
+            }
+        }
+        need.max(2) as u32
+    }
+
+    /// Gives tank `id` a wall height, cut to the lowest it takes and the highest a tank has (4.7);
+    /// when the water is then above the full level it is cut at once.
     pub fn set_height(&mut self, id: u32, height: u32) {
-        let height = height.max(2).min(self.tank_config.limit);
+        let height = height.max(self.wall_floor(id)).min(self.tank_config.limit);
         self.edit_tank(id, |t, config| {
             t.height = height;
             t.level = t.level.min(config.top(height));
@@ -164,7 +215,7 @@ impl World {
         });
         self.set_height(kept, u32::try_from(height).unwrap_or(u32::MAX));
         match lead.filled {
-            true => self.fill(kept),
+            true => _ = self.fill(kept),
             false => {
                 self.drain(kept);
                 self.clear_refused(kept);

@@ -4,11 +4,12 @@
 //! the zoo entrance is the zoo grounds, the tiles beyond the zoo wall are the exterior, and
 //! every other region is an exhibit, from one tile up. The map edge closes a region like a fence.
 
-use crate::config::{Config, to_int};
+use crate::config::{Config, to_float, to_int};
 use crate::timing::Date;
 use crate::vfs::Vfs;
 use crate::world::World;
 
+pub mod price;
 pub mod rating;
 pub mod viewing;
 
@@ -90,8 +91,9 @@ pub struct Tank {
     /// The wall height and the water level, in elevation steps above the tank floor.
     pub height: u32,
     pub level: u32,
-    /// Salt water; the purity of the water.
+    /// Salt water, and the salinity the tank takes once it is empty (3.10); the purity of the water.
     pub salt: bool,
+    pub target: bool,
     pub purity: u32,
     /// The tank is filled (not drained): the flag of exhibits and money 4.7.
     pub filled: bool,
@@ -110,7 +112,7 @@ impl Tank {
 
 /// The numbers of `tanks.cfg` that make a new tank (exhibits and money 3.9 and 4.7); the first of
 /// a pair is for a tank, the second for a show tank.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TankConfig {
     /// How far the ground of a new tank is lowered (`initialSink`, `initialSinkShow`).
     pub sink: [i32; 2],
@@ -133,6 +135,10 @@ pub struct TankConfig {
     pub murky: i32,
     /// `waterPurityDecayTime`: the milliseconds before the purity of the water drops one point.
     pub decay: u32,
+    /// `[cost]` `saltWater` and `freshWater`: the price of one cubic unit of water, and
+    /// `wallHeightPriceDivisor` (0 makes the walls free) (4.7).
+    pub water: [f32; 2],
+    pub divisor: f32,
 }
 
 impl Default for TankConfig {
@@ -152,6 +158,8 @@ impl Default for TankConfig {
             limit: 30,
             murky: 60,
             decay: 30_000,
+            water: [0.0; 2],
+            divisor: 0.0,
         }
     }
 }
@@ -197,6 +205,15 @@ impl TankConfig {
         found.limit = number("maximumTankHeight").map_or(found.limit, |n| n.clamp(0, 255) as u32);
         found.murky = number("murkyWaterPurity").unwrap_or(found.murky);
         found.decay = number("waterPurityDecayTime").map_or(found.decay, |n| n.max(0) as u32);
+        // A price is cut to 0 .. 1,000,000 (a negative or a huge one never books an absurd sum).
+        let cost = |key: &str| {
+            let value = config.section("cost")?.get(key)?;
+            Some(to_float(value).clamp(0.0, 1e6))
+        };
+        for (i, key) in ["saltWater", "freshWater"].into_iter().enumerate() {
+            found.water[i] = cost(key).unwrap_or(found.water[i]);
+        }
+        found.divisor = cost("wallHeightPriceDivisor").unwrap_or(found.divisor);
         found
     }
 
@@ -214,6 +231,7 @@ impl Default for Tank {
             height: 0,
             level: 0,
             salt: true,
+            target: true,
             purity: 100,
             filled: false,
             platform: (-1, -1),
