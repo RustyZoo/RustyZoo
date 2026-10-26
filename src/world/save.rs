@@ -149,7 +149,7 @@ impl World {
                         let tiles = (s.assigned.iter())
                             .filter_map(|&x| crate::staff::gate_tile(self, x))
                             .collect();
-                        s.record(base, tiles)
+                        s.record(base, tiles, crate::staff::duty_kinds(cat))
                     }
                     _ => base,
                 }));

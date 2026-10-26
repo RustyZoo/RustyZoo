@@ -21,7 +21,8 @@ pub struct StaffRecord {
     /// A guide's group and its leg flag.
     pub members: Vec<u32>,
     pub leg: bool,
-    /// One flag per duty kind of a maintenance worker, true for switched on.
+    /// One flag per duty kind of a maintenance worker, true for switched on; the switches on are
+    /// counted from them when the record is written.
     pub duties: Vec<bool>,
     /// The captured animal, from version 75.
     pub captured: u32,
@@ -33,12 +34,12 @@ pub struct StaffRecord {
 /// The duty kinds a worker's record holds when the file has none.
 const KINDS: usize = 4;
 
-/// The own fields of a new member: a worker's two words are 2 and 2 and its u16 is the number of
-/// duty kinds.
+/// The own fields of a new member: a worker's two words are 2 and 2 (its u16, the number of
+/// switches on, is written from the flags).
 fn own_new(class: &[u8]) -> Vec<u8> {
     match class {
         b"keeper" => vec![0; 21],
-        b"maint" => [&[0; 4][..], &[2, 0, 0, 0, 2, 0, 0, 0, KINDS as u8, 0]].concat(),
+        b"maint" => [&[0; 4][..], &[2, 0, 0, 0, 2, 0, 0, 0]].concat(),
         b"tour" => vec![0; 4],
         b"helicopter" => vec![0; 12],
         _ => Vec::new(),
@@ -63,7 +64,8 @@ pub(super) fn read(r: &mut Reader, class: &[u8]) -> R<StaffRecord> {
         b"maint" => {
             s.own = r.take(4)?.to_vec();
             if v >= 92 {
-                s.own.extend(r.take(10)?);
+                s.own.extend(r.take(8)?);
+                r.skip(2)?;
                 let n = r.count(1)?;
                 s.duties = r.take(n)?.iter().map(|&b| b != 0).collect();
             } else {
@@ -109,7 +111,8 @@ pub(super) fn write(o: &mut Out, class: &[u8], s: &StaffRecord) {
     match class {
         b"keeper" => own(0, 21, o),
         b"maint" => {
-            own(0, 14, o);
+            own(0, 12, o);
+            o.u16(s.duties.iter().filter(|&&d| d).count() as u16);
             o.u32(s.duties.len() as u32);
             s.duties.iter().for_each(|&d| o.u8(d.into()));
         }

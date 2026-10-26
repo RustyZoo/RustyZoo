@@ -2553,7 +2553,7 @@ fn staff_106(class: &str) -> Vec<u8> {
             w.u32(1).u32(2).u32(3).u32(4).u32(5).u8(6);
         }
         "maint" => {
-            w.u32(9).u32(2).u32(3).u16(4).u32(4).bytes(&[1, 0, 1, 0]);
+            w.u32(9).u32(2).u32(3).u16(2).u32(4).bytes(&[1, 0, 1, 0]);
         }
         "tour" => {
             w.u32(7).i32(-1).u32(2).u32(40).u32(41).u8(1);
@@ -2599,6 +2599,23 @@ fn a_staff_record_of_version_106_is_read_and_written_back_byte_for_byte() {
     );
     let maint = staff_read(106, "maint", &staff_106("maint")).unwrap();
     assert_eq!(maint.duties, [true, false, true, false]);
+}
+
+#[test]
+fn a_worker_writes_the_count_of_switches_on_from_its_flags() {
+    let mut record = staff_read(106, "maint", &staff_106("maint")).unwrap();
+    let count = |record: &StaffRecord| {
+        let mut o = Out(Vec::new());
+        staff::write(&mut o, b"maint", record);
+        o.0[12..14].to_vec()
+    };
+    assert_eq!(count(&record), 2u16.to_le_bytes());
+    record.duties = vec![true, true, true, false];
+    assert_eq!(count(&record), 3u16.to_le_bytes());
+    record.duties = vec![false; 4];
+    assert_eq!(count(&record), 0u16.to_le_bytes());
+    record.duties = Vec::new();
+    assert_eq!(count(&record), 0u16.to_le_bytes());
 }
 
 #[test]

@@ -483,6 +483,20 @@ fn a_saved_staff_member_writes_its_live_state_over_the_record_it_was_read_with()
     assert_eq!(r.members, [4, 4]);
     // A member made in play, never read, gets a full list of duties, all on.
     let r = saved(&w, 2);
-    assert_eq!(r.duties, [true; 4]);
+    assert_eq!(r.duties, [true, true, true, false]);
     assert_eq!((r.tiles.len(), r.members.len(), r.leg), (0, 0, false));
+}
+
+#[test]
+fn a_duty_kind_the_data_lacks_is_off_and_not_counted_when_saved() {
+    let mut s = Staff::default();
+    let saved =
+        |s: &Staff, kinds: usize| s.record(StaffRecord::default(), Vec::new(), kinds).duties;
+    assert_eq!(saved(&s, 3), [true, true, true, false]);
+    assert_eq!(saved(&s, 4), [true; 4]);
+    assert_eq!(saved(&s, 0), [false; 4]);
+    assert_eq!(saved(&s, usize::MAX), [true; 4]);
+    s.off[1] = true;
+    assert_eq!(saved(&s, 4), [true, false, true, true]);
+    assert_eq!(saved(&s, 3), [true, false, true, false]);
 }

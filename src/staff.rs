@@ -187,12 +187,13 @@ impl Staff {
     }
 
     /// The record of this staff member: `base` with the live values written over it, so what the
-    /// engine does not model stays as it was. `tiles` are the tiles of the assigned exhibits.
-    pub fn record(&self, base: StaffRecord, tiles: Vec<[i32; 2]>) -> StaffRecord {
+    /// engine does not model stays as it was. `tiles` are the tiles of the assigned exhibits. A
+    /// duty kind the data lacks (past `kinds`) is off and not counted (staff 8.1).
+    pub fn record(&self, base: StaffRecord, tiles: Vec<[i32; 2]>, kinds: usize) -> StaffRecord {
         let mut duties = base.duties;
         duties.resize(duties.len().max(self.off.len()), true);
-        for (on, &off) in duties.iter_mut().zip(&self.off) {
-            *on = !off;
+        for (k, (on, &off)) in duties.iter_mut().zip(&self.off).enumerate() {
+            *on = !off && k < kinds;
         }
         StaffRecord {
             work: self.work,
