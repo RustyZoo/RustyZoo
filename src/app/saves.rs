@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 use super::exhibits::{NAME_DIALOG, NAME_FIELD};
 use super::{Action, App, Asked, Buttons, OPTIONS_PANEL, SAVE_BUTTON};
+use crate::build::Build;
 use crate::menu::{self, FREEFORM_LAYOUT, SAVED_LIST};
+use crate::panel::exhibit;
 use crate::text::{from_cp1252, to_cp1252};
 use crate::ui::layout::DISABLED;
 use crate::userdir;
@@ -77,9 +79,28 @@ impl App<'_> {
         done.map_err(|e| e.to_string())
     }
 
+    /// Makes `path` the last file: `[user] lastfile` of the menu, or without the menu the file of
+    /// this game, written to the user folder when there is one.
+    fn set_last(&mut self, path: &str) {
+        match &mut self.menu {
+            Some(menu) => menu.set_last_file(path),
+            None => {
+                self.last_file = Some(PathBuf::from(path));
+                if let Some(dir) = &self.user
+                    && let Err(why) = userdir::save(dir, "user", "lastfile", path)
+                {
+                    eprintln!("rustyzoo: warning: {why}");
+                }
+            }
+        }
+    }
+
     /// The folder of `[user] lastfile` and its file name, or the saved games folder and no name.
     fn dialog_start(&self) -> (PathBuf, String) {
-        let last = self.menu.as_ref().and_then(menu::Menu::last_path);
+        let last = match &self.menu {
+            Some(menu) => menu.last_path(),
+            None => self.last_file.clone(),
+        };
         let last = last.filter(|p| p.parent().is_some_and(Path::is_dir));
         match last {
             Some(p) => {
@@ -94,10 +115,38 @@ impl App<'_> {
         }
     }
 
-    /// The Save Game button or Ctrl+S: the save dialog, if saving is allowed.
+    /// The Save Game button: the save dialog, if saving is allowed. The button closes nothing.
     pub(super) fn save_pressed(&mut self) {
         if self.can_save() {
             self.begin_save(None);
+        }
+    }
+
+    /// Ctrl+S: the open panels close first, then the save dialog as the button opens it.
+    pub(super) fn save_key(&mut self) {
+        if self.can_save() {
+            self.close_panels();
+        }
+        self.save_pressed();
+    }
+
+    /// Closes the open panels and clears the selection, before a save dialog or a question
+    /// (save games 3.1): the options panel, the tool panels, and the exhibit, animal, staff, guest
+    /// and building panels. Their next look clears their selections.
+    fn close_panels(&mut self) {
+        if let Some(game) = &mut self.game {
+            game.selected = None;
+        }
+        self.close_building();
+        self.close_guest();
+        self.close_staff();
+        self.close_animal();
+        if let Some(ui) = &mut self.ui {
+            Build::hide_panels(ui);
+            for id in [OPTIONS_PANEL, exhibit::LAYOUT] {
+                ui.set_hidden(id, true);
+            }
+            ui.touch();
         }
     }
 
@@ -144,9 +193,7 @@ impl App<'_> {
         let path = std::path::absolute(&path).unwrap_or(path);
         let path = path.to_string_lossy().into_owned();
         self.menu_events.push(format!("game saved {path}"));
-        if let Some(menu) = &mut self.menu {
-            menu.set_last_file(&path);
-        }
+        self.set_last(&path);
         self.saved_then(saving.then);
     }
 
@@ -168,7 +215,12 @@ impl App<'_> {
     /// Ctrl+L: in a game the question of Load Game, in the main menu the list of saved games.
     pub(super) fn load_pressed(&mut self) {
         match (&self.game, &self.ui) {
-            (Some(_), _) => self.ask(Asked::Load),
+            (Some(_), _) => {
+                if self.can_save() {
+                    self.close_panels();
+                }
+                self.ask(Asked::Load);
+            }
             (None, Some(ui)) if ui.shown(menu::LAYOUT) => self.open_list(),
             _ => {}
         }
@@ -249,9 +301,7 @@ impl App<'_> {
         if !self.load_saved(&path) {
             return;
         }
-        if let Some(menu) = &mut self.menu {
-            menu.set_last_file(&path);
-        }
+        self.set_last(&path);
         self.close_list();
         if let Some(ui) = &mut self.ui
             && let Some(i) = ui.tree.find(OPTIONS_PANEL)

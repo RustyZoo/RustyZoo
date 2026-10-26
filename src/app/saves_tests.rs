@@ -1,9 +1,15 @@
 //! Save Game, the Yes of the questions and the list of saved games, on the made-up interface of
 //! the start tests.
 
-use super::start_tests::{CONTINUE, click, key, shown, started, with_menu};
+use super::exhibits::NAME_FIELD;
+use super::start_tests::{CONTINUE, SIZE, click, interface, key, shown, started, with_menu};
 use super::*;
+use crate::entity::Catalogue;
+use crate::render::MapRenderer;
+use crate::render::tests::{cache_install, frame_file};
 use crate::sprite::tests::Install;
+use crate::vfs::Vfs;
+use crate::zoo::Zoo;
 
 const INI: &str = "[user]\nlastfile=saved.zoo\n";
 /// The Save Game and Load Game buttons of the options panel, the load button of the main menu, the
@@ -136,7 +142,7 @@ fn a_name_of_more_than_256_bytes_is_refused_with_its_message() {
             let name = "n".repeat(len);
             app.interface().unwrap().set_text(45308, name.as_bytes());
             now = pass(app, now, &[enter()]);
-            let told = said(app).contains(&"message Name too long".to_string());
+            let told = said(app).contains(&"message name-too-long-text".to_string());
             assert_eq!(told, message, "{len}");
             // The message box (or, on a system that cannot take 256 letters, the failure) is
             // answered; 257 wrote nothing.
@@ -161,7 +167,7 @@ fn a_failed_write_shows_a_message_and_keeps_the_old_file_and_the_last_file() {
         std::fs::create_dir(files.0.join("d.zoo")).unwrap();
         now = press_save(app, now);
         now = type_name(app, now, "d");
-        assert_eq!(said(app), ["message Save failed"]);
+        assert_eq!(said(app), ["message save-failed-text"]);
         assert!(files.0.join("d.zoo").is_dir() && !files.0.join("d.zoo.tmp").exists());
         assert!(last(files).is_empty(), "lastfile is not touched");
         assert!(shown(app, 5), "the panel stays");
@@ -169,7 +175,7 @@ fn a_failed_write_shows_a_message_and_keeps_the_old_file_and_the_last_file() {
         now = pass(app, now, &[enter()]);
         now = press_save(app, now);
         now = type_name(app, now, "no/such");
-        assert_eq!(said(app), ["message Save failed"]);
+        assert_eq!(said(app), ["message save-failed-text"]);
         assert!(!files.0.join("no").exists() && last(files).is_empty());
         let _ = now;
         assert!(app.camera().is_some(), "the run goes on");
@@ -323,5 +329,66 @@ fn load_saved_game_in_the_menu_lists_the_files_and_starts_the_one_chosen() {
             last(files),
             format!("[user]\nlastfile={}\n", path.display())
         );
+    });
+}
+
+/// Runs `body` on a game started without the menu, as `rz run` starts one, with the user folder
+/// `files/user` and the interface of the start tests.
+fn with_game(name: &str, body: impl FnOnce(&mut App, &Install)) {
+    let files = Install::new(&format!("saves-game-{name}"), &[]);
+    let game = cache_install(&format!("saves-game-install-{name}"), frame_file());
+    let vfs = Vfs::open(&game.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo::parse(&super::start_tests::map()).unwrap();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        zoo,
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    app.set_user_folder(Some(files.0.join("user")));
+    app.set_interface(interface(&files));
+    body(&mut app, &files);
+}
+
+#[test]
+fn without_the_menu_a_save_makes_the_last_file_and_the_next_dialog_starts_from_it() {
+    with_game("last", |app, files| {
+        let mut now = pass(app, 0, &[]);
+        // The game was opened from a file, so the dialog starts in its folder.
+        app.last_file = Some(files.0.join("start.zoo"));
+        now = pass(app, now, &[Command::Key(Key::S, true, false)]);
+        now = type_name(app, now, "made");
+        assert!(files.0.join("made.zoo").is_file());
+        assert!(last(files).contains(&format!("lastfile={}", files.0.join("made.zoo").display())));
+        now = pass(app, now, &[Command::Key(Key::S, true, false)]);
+        let field = app.interface().unwrap().text(NAME_FIELD);
+        assert_eq!(field.as_deref(), Some(&b"made.zoo"[..]));
+        let _ = now;
+    });
+}
+
+#[test]
+fn ctrl_s_and_ctrl_l_close_the_open_panels_and_clear_the_selection_before_the_dialog_and_the_question()
+ {
+    with_game("panels", |app, _| {
+        let mut now = pass(app, 0, &[]);
+        app.game.as_mut().unwrap().selected = Some(1);
+        app.interface().unwrap().show(5);
+        now = pass(app, now, &[Command::Key(Key::S, true, false)]);
+        assert!(app.interface().unwrap().modal_open());
+        assert!(!shown(app, 5), "the options panel closes");
+        assert_eq!(app.game.as_ref().unwrap().selected, None);
+        now = pass(app, now, &key(Key::Escape));
+        app.interface().unwrap().show(5);
+        now = pass(app, now, &[Command::Key(Key::L, true, false)]);
+        assert_eq!(said(app), ["game ask load"]);
+        assert!(
+            !shown(app, 5),
+            "the options panel closes before the question"
+        );
+        let _ = now;
     });
 }

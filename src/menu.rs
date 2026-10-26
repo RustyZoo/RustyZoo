@@ -148,6 +148,13 @@ pub struct Menu {
     request: Option<Request>,
 }
 
+/// [`Menu::last_path`] for the settings `ini` of the install folder `root`.
+pub fn last_path(ini: &Config, root: &Path) -> Option<PathBuf> {
+    let last = ini_value(ini, "user", "lastfile")?;
+    let last = String::from_utf8_lossy(last).trim().replace('\\', "/");
+    (!last.is_empty()).then(|| root.join(last))
+}
+
 impl Menu {
     pub fn new(
         ini: Config,
@@ -270,9 +277,7 @@ impl Menu {
     /// `[user] lastfile` as a path: relative to the install folder unless it is absolute, with
     /// the slashes of the system; `None` when it is empty.
     pub fn last_path(&self) -> Option<PathBuf> {
-        let last = self.setting("user", "lastfile")?;
-        let last = String::from_utf8_lossy(last).trim().replace('\\', "/");
-        (!last.is_empty()).then(|| self.root.join(last))
+        last_path(&self.ini, &self.root)
     }
 
     /// A game was saved to or loaded from `path`: it becomes `[user] lastfile`, the file Continue

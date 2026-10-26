@@ -16,6 +16,7 @@
 //! other element has the keyboard focus. Without one, the frame is the map alone.
 
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::Framebuffer;
@@ -23,8 +24,9 @@ use crate::behaviour::{Library, Timings};
 use crate::build::terrain::{MINUS, PLUS};
 use crate::build::{BULLDOZER, Build};
 use crate::camera::{Camera, Settings, zoom_view};
+use crate::config::Config;
 use crate::exhibit::rating;
-use crate::menu::{Menu, Request, Start};
+use crate::menu::{self, Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
 use crate::panel::building as panel_building;
@@ -502,6 +504,10 @@ pub struct App<'a> {
     /// The save dialog, while it is open, and the list of saved games, while it is shown.
     saving: Option<saves::Saving>,
     listing: Option<saves::Listing>,
+    /// The folder of the settings a game without the menu writes `[user] lastfile` to (none: not
+    /// written), and that file: the menu keeps both for itself.
+    user: Option<PathBuf>,
+    last_file: Option<PathBuf>,
     /// Whether a fade of the menu music has begun in this run (only the first one waits), and
     /// whether a game opens without the main panel.
     faded: bool,
@@ -595,6 +601,9 @@ impl<'a> App<'a> {
             Ok(economy) => sim.set_economy(&economy),
             Err(why) => eprintln!("rustyzoo: warning: economy.cfg: {why}; built-in settings used"),
         }
+        let last_file = Config::parse(renderer.vfs().ini())
+            .ok()
+            .and_then(|ini| menu::last_path(&ini, renderer.vfs().root()));
         Ok(App {
             renderer,
             game: None,
@@ -643,6 +652,8 @@ impl<'a> App<'a> {
             asked: None,
             saving: None,
             listing: None,
+            user: None,
+            last_file,
             faded: false,
             bare: false,
         })
@@ -1111,7 +1122,7 @@ impl<'a> App<'a> {
             }
             Command::Save(file) => return self.save_game(file),
             Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
-                return self.save_pressed();
+                return self.save_key();
             }
             Command::Key(Key::L, true, _) if self.map_keys() => return self.load_pressed(),
             _ => {}
@@ -2115,6 +2126,11 @@ impl<'a> App<'a> {
     /// The camera of the game; `None` in the menu.
     pub fn camera(&self) -> Option<&Camera> {
         self.game.as_ref().map(|g| &g.camera)
+    }
+
+    /// The folder of the settings that a game without the menu writes its last file to.
+    pub fn set_user_folder(&mut self, dir: Option<PathBuf>) {
+        self.user = dir;
     }
 
     /// Makes this a test run: the generator is seeded from `seed` and the seconds of its later

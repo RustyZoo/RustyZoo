@@ -12,7 +12,7 @@ use crate::ui::layout::{HIDDEN, Tree};
 use crate::vfs::Vfs;
 use crate::zoo::Zoo;
 
-const SIZE: (u32, u32) = (64, 48);
+pub(super) const SIZE: (u32, u32) = (64, 48);
 
 struct Texts;
 
@@ -22,8 +22,8 @@ impl UiStrings for Texts {
             151 => "Exit?",
             153 => "Leave?",
             318 => "Cannot open",
-            11645 => "Save failed",
-            11646 => "Name too long",
+            11645 => "save-failed-text",
+            11646 => "name-too-long-text",
             _ => "",
         }
         .into()
@@ -39,7 +39,7 @@ impl UiStrings for Texts {
 /// of its top), the name dialog (45300: message 45306, field 45308, OK 45312 and Cancel 45313), the
 /// list of saved games (layout 39: title 11503, list 11504, Load 11513, Back 11514) and, hidden, the
 /// options panel (5) with Load Game (1501), Save Game (1502), Main Menu (1503) and Exit Game (1504).
-fn interface(install: &Install) -> Interface {
+pub(super) fn interface(install: &Install) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
         [b]\ntype=UILayout\nlayout=ui/menu.lyt\n\

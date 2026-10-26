@@ -791,6 +791,13 @@ impl Build {
         self.terrain
     }
 
+    /// Hides every tool panel: the next [`Build::sync`] closes the open one and drops its tool.
+    pub fn hide_panels(ui: &mut Interface) {
+        for panel in &PANELS {
+            ui.set_hidden(panel.layout, true);
+        }
+    }
+
     /// Notices that a panel was shown or hidden since the last call, and acts on it.
     pub fn sync(&mut self, ui: &mut Interface, vfs: &Vfs, cat: &Catalogue, log: &mut Vec<String>) {
         self.notice_bulldozer(ui, log);

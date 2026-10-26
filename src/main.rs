@@ -483,8 +483,10 @@ usage: rustyzoo [--data <dir>] <command>
                       file is written aside and renamed (`menu game saved FILE`, which becomes
                       `lastfile`), and a failed write or a name over 256 bytes is a message; after a
                       good save the question goes on, after Cancel nothing happens; Save Game and Ctrl+S
-                      open the same dialog; none of this asks while the Save Game button is
-                      disabled): No stops the game and shows the menu again (`menu
+                      open the same dialog, and Ctrl+S and Ctrl+L close the open panels and clear the
+                      selection first (the options panel's buttons close nothing); a save
+                      sets `lastfile` also in a run of a map; none of this asks while the Save Game
+                      button is disabled): No stops the game and shows the menu again (`menu
                       game stop`, Continue checked, the music from its start unless it plays at
                       full level: `menu music restart`) or, for Exit, ends the run (`menu game
                       exit`). `quit` in a script ends the run without a question. A run of a map

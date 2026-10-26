@@ -145,7 +145,7 @@ impl App<'_> {
     }
 
     /// Hides the staff panel: the next look clears the selection.
-    fn close_staff(&mut self) {
+    pub(super) fn close_staff(&mut self) {
         if let Some(ui) = &mut self.ui {
             ui.set_hidden(staff::LAYOUT, true);
         }
