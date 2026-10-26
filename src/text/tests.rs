@@ -446,6 +446,20 @@ fn a_button_centres_one_line() {
 }
 
 #[test]
+fn a_nine_point_tooltip_is_small_only_with_the_bold_word() {
+    // Only " Bold" makes the 9 point font small (text 5.5), whatever the language's bold word.
+    let text = b"Sample tooltip text";
+    let small = |face: &str| {
+        let font = Font::request(face, "9");
+        tooltip_size(&font, text, true, 200, 0, 0).0 - font.width(text)
+    };
+    assert_eq!(small("Arial Bold"), 2);
+    assert_eq!(small("Arial Gras"), 0, "bold by the word, not small");
+    assert_eq!(small("Arial,700"), 0, "bold by the weight, not small");
+    assert_eq!(small("Arial"), 0);
+}
+
+#[test]
 fn a_tooltip_is_sized_to_its_text() {
     let regular = Font::request("Arial", "8"); // small
     let big = Font::request("Arial", "10");

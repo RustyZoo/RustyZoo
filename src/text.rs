@@ -45,6 +45,8 @@ pub struct Glyph {
 pub struct Font {
     face: &'static fontdue::Font,
     bold: bool,
+    /// Whether the face string holds the word " Bold" (the small-font test of text 5.5).
+    bold_word: bool,
     ppem: u32,
     advances: [u16; 256],
     glyphs: HashMap<u8, Glyph>,
@@ -73,11 +75,12 @@ impl Font {
     /// numbers too long for 32 bits) are cut to 200.
     pub fn request(face: &str, size: &str) -> Font {
         let (bold, ppem) = parse_request(face, size);
-        Font::new(bold, ppem)
+        Font::new(bold, ppem, face.contains(" Bold"))
     }
 
-    /// The font at `ppem` pixels per em (the character height).
-    pub fn new(bold: bool, ppem: u32) -> Font {
+    /// The font at `ppem` pixels per em (the character height); `bold_word` is whether the face
+    /// string holds " Bold".
+    pub fn new(bold: bool, ppem: u32, bold_word: bool) -> Font {
         let face = face(bold);
         // At 2048 pixels per em one pixel is one font unit.
         let mut advances = [0; 256];
@@ -91,6 +94,7 @@ impl Font {
         Font {
             face,
             bold,
+            bold_word,
             ppem,
             advances,
             glyphs: HashMap::new(),
@@ -99,6 +103,11 @@ impl Font {
 
     pub fn is_bold(&self) -> bool {
         self.bold
+    }
+
+    /// Whether the face string holds " Bold", in any language's text (text 5.5).
+    pub fn bold_word(&self) -> bool {
+        self.bold_word
     }
 
     /// Pixels per em, the character height.
@@ -150,16 +159,17 @@ impl Font {
 /// The fonts of a run, one per (face, size), made at the first request.
 #[derive(Default)]
 pub struct Fonts {
-    fonts: HashMap<(bool, u32), Font>,
+    fonts: HashMap<(bool, u32, bool), Font>,
 }
 
 impl Fonts {
     /// The font for a face string and a size string (see [`Font::request`]).
     pub fn get(&mut self, face: &str, size: &str) -> &mut Font {
-        let wanted = parse_request(face, size);
+        let (bold, ppem) = parse_request(face, size);
+        let bold_word = face.contains(" Bold");
         self.fonts
-            .entry(wanted)
-            .or_insert_with(|| Font::new(wanted.0, wanted.1))
+            .entry((bold, ppem, bold_word))
+            .or_insert_with(|| Font::new(bold, ppem, bold_word))
     }
 }
 
