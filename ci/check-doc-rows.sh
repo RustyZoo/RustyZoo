@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Fails if a table of docs/architecture.md or README.md has two rows with the same first cell, a
+# Fails if a table of docs/architecture.md or README.md has two rows with the same first cell (a cell
+# with no letter or digit, such as a status icon, does not count), a
 # section has two bullets with the same bold lead (`- **Lead.**`), or a code block has two command
 # lines with the same command (the text before the first ` #`; blank and comment-only lines are
 # left out; a line after a trailing backslash is part of the command before it). Both files merge
@@ -21,7 +22,7 @@ for f in docs/architecture.md README.md; do
            else cmd[cur] = start
            next }
     /^\|/ { split($0, c, "|"); k = c[2]; gsub(/^ +| +$/, "", k)
-            if (k in row) { printf "%s:%d: row \"%s\" repeats line %d\n", f, NR, k, row[k]; bad = 1 }
+            if (k ~ /[[:alnum:]]/ && k in row) { printf "%s:%d: row \"%s\" repeats line %d\n", f, NR, k, row[k]; bad = 1 }
             else row[k] = NR; next }
     { delete row }
     /^#/ { delete lead }
