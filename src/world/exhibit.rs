@@ -13,9 +13,6 @@ use crate::place::path_shape;
 use crate::timing::Date;
 use std::collections::{HashMap, HashSet};
 
-/// The language of the running game: US English.
-const LOCALE: u32 = 1033;
-
 /// The message that the exhibit is inaccessible to the staff.
 pub const INACCESSIBLE: i32 = 11000;
 /// The message that the entrance of the exhibit is blocked.
@@ -104,7 +101,7 @@ impl World {
             let (this, last, total) = (0, 1, 2);
             if let Some(e) = id.and_then(|id| self.exhibits.get_mut(id)) {
                 e.gate = piece;
-                if self.zoo.locale == LOCALE {
+                if self.zoo.locale == self.language {
                     e.name.clone_from(&info.name);
                 }
                 // Stored this month, last month, total; kept last month, this month, total.

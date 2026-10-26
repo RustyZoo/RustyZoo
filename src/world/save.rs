@@ -89,6 +89,8 @@ impl World {
     /// gets the record of a new one, a guest's record takes the live guest's fields, and a staff
     /// member's record takes its live state.
     pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
+        // A save writes the install language, whatever the file loaded said (localisation 10).
+        zoo.locale = self.language;
         let now = crate::timing::file_time(zoo.clocks.calendar);
         for e in &mut zoo.entities {
             let (Some(ty), Some(c)) = (type_of(cat, e), e.common.as_mut()) else {

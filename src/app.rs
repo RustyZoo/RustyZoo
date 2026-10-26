@@ -673,7 +673,8 @@ impl<'a> App<'a> {
             camera.set_fullscreen(&zoo, true);
         }
         let brush = (zoo.view.brush & 0xff) as usize;
-        let mut world = World::new(zoo, |e| self.renderer.shape(e));
+        let language = crate::strings::install_language(self.renderer.vfs().root());
+        let mut world = World::with_language(zoo, |e| self.renderer.shape(e), language);
         let staged = self.renderer.stage(&world.zoo, camera.rotation, false)?;
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;

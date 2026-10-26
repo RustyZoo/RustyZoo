@@ -1006,6 +1006,30 @@ fn a_loaded_exhibit_keeps_its_stored_name_statistics_date_and_service_time() {
 }
 
 #[test]
+fn a_loaded_name_is_kept_only_when_the_stored_locale_is_the_install_language() {
+    let load = |install: u32, locale: u32| {
+        let mut z = zoo(&[]);
+        z.locale = locale;
+        z.entities
+            .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+        z.habitat_tiles = vec![(3, 3)];
+        z.habitat_gates = vec![((-1, -1), -1)];
+        z.habitat_info = vec![stored("Lions", [0; 9], 0)];
+        unique(&mut z);
+        World::with_language(z, shape, install)
+    };
+    let name = |world: &World| world.exhibits().get(1).unwrap().name.clone();
+    assert_eq!(
+        name(&load(1036, 1036)),
+        "Lions",
+        "French file, French install"
+    );
+    assert_eq!(name(&load(1036, 1033)), "", "English file, French install");
+    assert_eq!(name(&load(1033, 1036)), "", "French file, English install");
+    assert_eq!(name(&load(1033, 1033)), "Lions");
+}
+
+#[test]
 fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
     let load = |tile: (i32, i32), side: i32| {
         let mut z = zoo(&[]);

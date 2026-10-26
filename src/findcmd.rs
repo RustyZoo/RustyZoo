@@ -6,6 +6,7 @@ use rustyzoo::goal::task_name;
 use rustyzoo::path::{Dest, Finder, Kind, Mover, Settings, path_cost};
 use rustyzoo::place;
 use rustyzoo::render::MapRenderer;
+use rustyzoo::strings;
 use rustyzoo::terrain;
 use rustyzoo::timing::ini_whole;
 use rustyzoo::unit::movement;
@@ -88,7 +89,8 @@ pub fn find_path(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError
     let zoo = Zoo::parse(&vfs.read(member)?)
         .and_then(|zoo| zoo.checked(&catalogue))
         .map_err(|e| format!("{member}: {e}"))?;
-    let mut world = World::new(zoo, |e| renderer.shape(e));
+    let language = strings::install_language(vfs.root());
+    let mut world = World::with_language(zoo, |e| renderer.shape(e), language);
     world.set_water(place::water(&terrain::types(vfs)));
     let width = world.zoo.width as usize;
     let at = |(x, y): (i32, i32)| {

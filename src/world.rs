@@ -231,12 +231,25 @@ pub struct World {
     paused: bool,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
+    /// The install language (string 22015): the exhibit names of a loaded zoo are kept when its
+    /// stored locale is this one, and a save writes it.
+    language: u32,
 }
 
 impl World {
-    /// The world of a zoo, with the exterior of the zoo marked (exhibits and money 3.1). `shape`
-    /// tells how each entity takes its place.
+    /// The world of a test zoo in the shipped language (see [`World::with_language`]).
+    #[cfg(test)]
     pub fn new(zoo: Zoo, shape: impl Fn(&Entity) -> Option<Shape>) -> World {
+        World::with_language(zoo, shape, crate::strings::SHIPPED_LANGUAGE)
+    }
+
+    /// The world of a zoo in the install language `language`, with the exterior of the zoo marked
+    /// (exhibits and money 3.1). `shape` tells how each entity takes its place.
+    pub fn with_language(
+        zoo: Zoo,
+        shape: impl Fn(&Entity) -> Option<Shape>,
+        language: u32,
+    ) -> World {
         let shapes: Vec<_> = zoo.entities.iter().map(shape).collect();
         let (scene, owner) = index(&zoo, &shapes);
         let mut world = World {
@@ -260,6 +273,7 @@ impl World {
             edits: 0,
             paused: false,
             told_water: BTreeMap::new(),
+            language,
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
