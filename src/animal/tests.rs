@@ -5,6 +5,7 @@ use std::sync::Arc;
 use super::*;
 use crate::render::order::Kind;
 use crate::sim::Sim;
+use crate::timing::file_time;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Clocks, Common, Escape, Tile, View, Zoo};
 
@@ -2240,4 +2241,112 @@ fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     // The flags the load does not take stay as read.
     assert_eq!((a.sleeping, a.eating), (true, true));
     assert_eq!(a.escape, Some(escape));
+}
+
+/// The record of the animal `id` of `zoo`, after a save.
+fn saved_record(zoo: &Zoo, id: u32) -> AnimalRecord {
+    let c = zoo
+        .entities
+        .iter()
+        .find_map(|e| e.common.as_ref().filter(|c| c.id == id));
+    *c.and_then(|c| c.animal.clone()).unwrap()
+}
+
+#[test]
+fn a_loaded_animal_keeps_its_life_grow_up_interval_and_mate_delay_clamped_to_the_limits() {
+    let cat = zebras_with("cTimeDeath=4320", "");
+    let mut world = pens();
+    // The limits: life 4319 (the key), mate delay 2 (the class default 3, less one).
+    for e in &mut world.zoo.entities {
+        let Some(c) = e.common.as_mut().filter(|_| e.class == "animals") else {
+            continue;
+        };
+        let (life, delay) = match c.id {
+            500 => (i32::MAX, i32::MAX),
+            501 => (0, 0),
+            510 => (-7, -2),
+            _ => (4000, 1),
+        };
+        c.animal = Some(Box::new(AnimalRecord {
+            life,
+            mate_delay: delay,
+            baby: 77,
+            interval: 5,
+            ..record()
+        }));
+    }
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    let want = [
+        (500, (4319, 2)),
+        (501, (0, 0)),
+        (510, (-7, -2)),
+        (511, (4000, 1)),
+    ];
+    for (id, (life, delay)) in want {
+        let a = saved_record(&zoo, id);
+        assert_eq!(
+            (a.life, a.mate_delay, a.baby, a.interval),
+            (life, delay, 77, 5),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn a_loaded_animal_writes_its_last_fed_and_slept_dates_as_play_sets_them() {
+    let cat = zebras();
+    // The first date has 300 ns more than a millisecond: an unchanged date keeps its file time.
+    let base = [file_time(1000) + 3, file_time(2000)];
+    let mut world = pens_with(|_, x0| vec![entity("animals", "f", (x0, 2), 0, 500)]);
+    world
+        .zoo
+        .entities
+        .iter_mut()
+        .filter_map(|e| e.common.as_mut())
+        .for_each(|c| {
+            c.animal = Some(Box::new(AnimalRecord {
+                dates: base,
+                ..record()
+            }));
+        });
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    assert_eq!(saved_record(&zoo, 500).dates, base);
+    // Play sets the last fed date (5000 game ms) and leaves the last slept date.
+    let Part::Animal(live) = &mut world.units.get_mut(500).unwrap().part else {
+        panic!("not an animal");
+    };
+    live.fed = 5000;
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    assert_eq!(saved_record(&zoo, 500).dates, [file_time(5000), base[1]]);
+}
+
+#[test]
+fn a_reset_animal_starts_its_dates_at_the_game_date() {
+    let class = Class {
+        reset_interval: 1,
+        ..Class::default()
+    };
+    let mut a = Animal {
+        reset: 1,
+        fed: 5,
+        slept: 5,
+        ..animal()
+    };
+    let env = Env {
+        now: 99,
+        ..Env::default()
+    };
+    super::run(&mut a, &keys(), &class, &env, &mut Rng::default());
+    assert_eq!((a.fed, a.slept), (99, 99));
 }
