@@ -420,16 +420,46 @@ fn a_file_that_exists_is_confirmed_before_it_is_replaced() {
             "the question is open"
         );
         assert_eq!(std::fs::read(files.0.join("saved.zoo")).unwrap(), original);
-        // No writes nothing and ends the command.
+        // No writes nothing and returns to the dialog, the name kept.
         now = pass(app, now, &key(Key::N));
         assert_eq!(std::fs::read(files.0.join("saved.zoo")).unwrap(), original);
-        assert!(last(files).is_empty() && !app.interface().unwrap().modal_open());
-        // Yes writes the file over.
-        now = press_save(app, now);
-        now = type_name(app, now, "saved");
+        assert!(last(files).is_empty() && app.interface().unwrap().modal_open());
+        // Enter asks again; Yes writes the file over.
+        now = pass(app, now, &[enter()]);
+        assert!(
+            app.interface().unwrap().modal_open(),
+            "the question is open"
+        );
         now = pass(app, now, &key(Key::Y));
         assert_ne!(std::fs::read(files.0.join("saved.zoo")).unwrap(), original);
         assert!(last(files).contains("saved.zoo"));
         let _ = now;
+    });
+}
+
+#[test]
+fn the_question_checks_the_name_as_typed_and_not_the_name_with_zoo_added() {
+    with_menu("asked", INI, |app, files| {
+        let now = started(app);
+        // z.txt is saved as z.txt.zoo; saving z.txt again asks nothing, as z.txt does not exist.
+        let now = press_save(app, now);
+        let now = type_name(app, now, "z.txt");
+        assert!(files.0.join("z.txt.zoo").is_file());
+        let now = press_save(app, now);
+        let _ = type_name(app, now, "z.txt");
+        assert!(!app.interface().unwrap().modal_open(), "no question");
+    });
+}
+
+#[test]
+fn a_name_with_an_extension_is_asked_as_typed() {
+    with_menu("typed", INI, |app, files| {
+        let now = started(app);
+        std::fs::write(files.0.join("ex.txt"), b"x").unwrap();
+        let now = press_save(app, now);
+        let now = type_name(app, now, "ex.txt");
+        assert!(app.interface().unwrap().modal_open(), "asked about ex.txt");
+        let _ = pass(app, now, &key(Key::Y));
+        assert!(files.0.join("ex.txt.zoo").is_file());
     });
 }

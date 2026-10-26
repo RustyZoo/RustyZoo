@@ -31,12 +31,21 @@ const EXTENSION: &str = ".zoo";
 const REPLACE_TEXT: &str = "The file already exists. Replace it?";
 
 /// The save dialog being open: the folder of the file and what follows a successful save (the
-/// question it answers; none for the button). `replace` is the file of the question about
-/// replacing a file, while that question is open.
+/// question it answers; none for the button). `replace` is the name as typed, while the question
+/// about replacing a file is open.
 pub(super) struct Saving {
     then: Option<Asked>,
     dir: PathBuf,
-    replace: Option<PathBuf>,
+    replace: Option<String>,
+}
+
+/// The file name a typed name is saved as: `.zoo` added unless it ends in it (case-sensitive).
+fn zoo_name(typed: &str) -> String {
+    if typed.ends_with(EXTENSION) {
+        typed.to_string()
+    } else {
+        format!("{typed}{EXTENSION}")
+    }
 }
 
 /// The list of saved games being shown: the folder, the file names and the row selected.
@@ -158,6 +167,11 @@ impl App<'_> {
     /// the save is the Yes of: it goes on after a successful save.
     pub(super) fn begin_save(&mut self, then: Option<Asked>) {
         let (dir, name) = self.dialog_start();
+        self.name_dialog(dir, &name, then);
+    }
+
+    /// Opens the save dialog with `name` in its field, for the save of `dir` that `then` follows.
+    fn name_dialog(&mut self, dir: PathBuf, name: &str, then: Option<Asked>) {
         let Some(ui) = &mut self.ui else { return };
         let title = to_cp1252(&ui.string(SAVE_TITLE));
         if !ui.ask(NAME_DIALOG, &title, Buttons::OK_CANCEL) {
@@ -165,7 +179,7 @@ impl App<'_> {
         }
         ui.set_char_limit(NAME_FIELD, NAME_BUFFER);
         ui.set_wide_text(NAME_FIELD, true);
-        ui.set_text(NAME_FIELD, &to_cp1252(&name));
+        ui.set_text(NAME_FIELD, &to_cp1252(name));
         ui.focus(NAME_FIELD);
         self.saving = Some(Saving {
             then,
@@ -176,39 +190,44 @@ impl App<'_> {
     }
 
     /// The save dialog was answered: OK writes the file named in the field, anything else ends
-    /// the command without saving (save games 4). A file that exists is first confirmed: Yes
-    /// writes it, anything else ends the command.
+    /// the command without saving (save games 4). A name whose file exists is first confirmed
+    /// (save games 4 point 2): Yes writes it, No opens the dialog again with the name as typed.
+    /// The name is the one typed; `.zoo` is added to a name with no extension for the question,
+    /// and to any name not ending in it for the file.
     pub(super) fn save_answered(&mut self, code: i32, saving: Saving) {
-        if let Some(path) = saving.replace {
+        if let Some(typed) = saving.replace {
             if code == 6 {
-                self.write_named(&saving.dir, &path, saving.then);
+                let path = saving.dir.join(zoo_name(&typed));
+                return self.write_named(&saving.dir, &path, saving.then);
             }
-            return;
+            return self.name_dialog(saving.dir, &typed, saving.then);
         }
         let Some(ui) = &self.ui else { return };
-        let mut name = ui.text(NAME_FIELD).unwrap_or_default();
+        let name = ui.text(NAME_FIELD).unwrap_or_default();
         if code != 1 || name.iter().all(u8::is_ascii_whitespace) {
             return;
         }
-        if !name.ends_with(EXTENSION.as_bytes()) {
-            if name.len() > LONGEST {
-                return self.say(&ui.string(NAME_TOO_LONG));
-            }
-            name.extend_from_slice(EXTENSION.as_bytes());
+        let typed: String = name.iter().map(|&b| from_cp1252(b)).collect();
+        if !typed.ends_with(EXTENSION) && name.len() > LONGEST {
+            return self.say(&ui.string(NAME_TOO_LONG));
         }
-        let name: String = name.iter().map(|&b| from_cp1252(b)).collect();
-        let path = saving.dir.join(name);
-        if path.is_file() {
+        let asked = if Path::new(&typed).extension().is_some() {
+            typed.clone()
+        } else {
+            zoo_name(&typed)
+        };
+        if saving.dir.join(asked).is_file() {
             let Some(ui) = &mut self.ui else { return };
             if !ui.ask(QUESTION, &to_cp1252(REPLACE_TEXT), Buttons::YES_NO) {
                 return eprintln!("rustyzoo: warning: this interface has no replace question");
             }
             self.saving = Some(Saving {
-                replace: Some(path),
+                replace: Some(typed),
                 ..saving
             });
             return;
         }
+        let path = saving.dir.join(zoo_name(&typed));
         self.write_named(&saving.dir, &path, saving.then);
     }
 
