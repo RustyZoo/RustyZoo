@@ -444,6 +444,42 @@ fn a_type_without_the_key_is_numbered_if_it_is_a_unit_and_not_otherwise() {
 }
 
 #[test]
+fn a_building_or_a_tank_filter_is_numbered_under_its_subtype_and_the_flag_can_turn_it_off() {
+    let mut w = world(vec![]);
+    let of = |class: &'static str, subtype: &str, ini: &str| EntityType {
+        class,
+        ..ty(subtype, "building", ini)
+    };
+    assert_eq!(
+        name(&mut w, &of("building", "vendfood", ""), "Snack Machine"),
+        "Snack Machine 1"
+    );
+    assert_eq!(
+        name(&mut w, &of("building", "vendfood", ""), "Snack Machine"),
+        "Snack Machine 2"
+    );
+    assert_eq!(
+        name(&mut w, &of("filter", "f", ""), "Tank Filter"),
+        "Tank Filter 1"
+    );
+    // A flag of 0, -1, a huge value or a missing one: the bare text for 0, -1 and huge, and no counter taken.
+    for ini in [
+        "cUseNumbersInName=0",
+        "cUseNumbersInName=-1",
+        "cUseNumbersInName=2000000000",
+    ] {
+        let ini = format!("[Characteristics/Integers]\n{ini}\n");
+        assert_eq!(
+            name(&mut w, &of("building", "trshcan", &ini), "Trash Can"),
+            "Trash Can"
+        );
+    }
+    assert_eq!(w.zoo.names["vendfood"], 2);
+    assert_eq!(w.zoo.names["f"], 1);
+    assert!(!w.zoo.names.contains_key("trshcan") && !w.zoo.names.contains_key("building"));
+}
+
+#[test]
 fn the_crate_goes_to_the_best_free_tile_of_the_grounds_three_or_more_tiles_away() {
     let w = world(vec![]);
     let width = 8;
