@@ -34,6 +34,7 @@ use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
+use crate::scenario::Scenario;
 use crate::sim::Sim;
 use crate::status::{Finances, STATUS_BUTTON, Words};
 use crate::terrain::{Tool, habit};
@@ -1814,6 +1815,7 @@ impl<'a> App<'a> {
             cash: Default::default(),
             reset: false,
             reset_fences: false,
+            scenario: None,
         };
         self.open(&start, read)
     }
@@ -1851,6 +1853,11 @@ impl<'a> App<'a> {
                     self.money_events.push(format!("{name} {amount}"));
                 }
             }
+        }
+        if let Some(scenario) = &start.scenario
+            && let Some(scenario) = Scenario::prepare(self.renderer.vfs(), scenario)
+        {
+            self.sim.start_scenario(scenario);
         }
         let music = self.music.take();
         self.start_game(music);

@@ -473,7 +473,10 @@ usage: rustyzoo [--data <dir>] <command>
                       plain path (absolute, or relative to the install folder), the menu layouts
                       are hidden, the map view shows, the menu music starts to fade, and the
                       first step of the simulation is the cap; scenarios and freeform maps empty
-                      `lastfile`. The lines are `menu game start LABEL FILE`; a file that cannot
+                      `lastfile` and run the goals of their `.scn` file (`sim scenario start
+                      FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; the
+                      rules and triggers are stubs). The lines are `menu game start LABEL
+                      FILE`; a file that cannot
                       be loaded is a question box with its message (`menu message TEXT`) and the
                       menu stays. In a game, Escape (with nothing to cancel; an open panel closes
                       first), the window being closed (`close` in a script) and the Main Menu and
