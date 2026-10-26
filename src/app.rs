@@ -515,6 +515,9 @@ pub struct App<'a> {
     /// whether a game opens without the main panel.
     faded: bool,
     bare: bool,
+    /// What the scenario's triggers changed in the interface.
+    marks: crate::scenario::Marks,
+    scenario_lines: Vec<String>,
 }
 
 /// What an open question leads to when it is answered No: stopping the game for the menu, or
@@ -660,6 +663,8 @@ impl<'a> App<'a> {
             last_file,
             faded: false,
             bare: false,
+            marks: Default::default(),
+            scenario_lines: Vec::new(),
         })
     }
 
@@ -678,6 +683,7 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
+        self.scenario_clean();
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
@@ -886,6 +892,7 @@ impl<'a> App<'a> {
         }
         let modal = self.modal();
         let mut month_end = false;
+        self.scenario_sync();
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
@@ -915,6 +922,7 @@ impl<'a> App<'a> {
             }
             self.status_told(report.bars);
         }
+        self.scenario_effects();
         self.undo_button();
         self.panel_pass(now);
         self.tell_money(now);
@@ -1628,6 +1636,7 @@ impl<'a> App<'a> {
         self.build(None);
         let actions: Vec<Action> = self.ui_actions[self.acted..].to_vec();
         self.acted = self.ui_actions.len();
+        self.scenario_pressed(&selected, &actions);
         for action in actions {
             match action {
                 Action::Answer(code) => self.answered(code),
@@ -2006,6 +2015,7 @@ impl<'a> App<'a> {
             return;
         };
         self.game = None;
+        self.marks.clean(ui);
         (self.painted, self.drawn_at) = (None, None);
         for id in [
             OPTIONS_PANEL,
@@ -2352,6 +2362,7 @@ mod gates;
 mod guest_panel;
 mod panel;
 mod saves;
+mod scenario;
 mod staff_panel;
 mod terrain;
 mod undo;

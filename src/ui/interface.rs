@@ -8,6 +8,7 @@
 //! [`dirty`](Interface::dirty); a paint clears that.
 
 mod dialog;
+mod element;
 mod input;
 mod region;
 mod tooltip;
@@ -87,6 +88,9 @@ pub struct Interface {
     tip: tooltip::Tip,
     /// The layout of the open question: only it receives input, and the game stands still.
     modal: Option<usize>,
+    /// The layout of the open popup (a question that does not stop the game) and the milliseconds
+    /// left before it closes.
+    popup: Option<(usize, i64)>,
     /// The clock of the last interface update; `None` before the first.
     updated: Option<u64>,
 }
@@ -118,6 +122,7 @@ impl Interface {
             settings: Settings::default(),
             tip: tooltip::Tip::default(),
             modal: None,
+            popup: None,
             updated: None,
         };
         ui.start_tooltip();
@@ -318,6 +323,15 @@ impl Interface {
         self.input.clock = now;
         self.repeat();
         self.tooltip_update(elapsed);
+        if self.modal.is_none()
+            && let Some((d, left)) = self.popup
+        {
+            let left = left.saturating_sub(i64::try_from(elapsed).unwrap_or(i64::MAX));
+            match left > 0 {
+                true => self.popup = Some((d, left)),
+                false => self.answer(dialog::CANCEL),
+            }
+        }
         let period = i64::try_from(elapsed).unwrap_or(i64::MAX);
         for i in 0..self.tree.elements.len() {
             if self.tree.elements[i].state & TIMED == 0 {

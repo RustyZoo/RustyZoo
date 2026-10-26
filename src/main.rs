@@ -474,8 +474,13 @@ usage: rustyzoo [--data <dir>] <command>
                       are hidden, the map view shows, the menu music starts to fade, and the
                       first step of the simulation is the cap; scenarios and freeform maps empty
                       `lastfile` and run the goals of their `.scn` file (`sim scenario start
-                      FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; the
-                      rules and triggers are stubs). The lines are `menu game start LABEL
+                      FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; most rules and
+                      triggers are stubs: trigger 2 shows popups (`sim scenario popup LAYOUT
+                      modal|open`, with a hint line, `sim scenario hint LAYOUT`) and disables,
+                      enables, hides, shows and presses elements by id (`sim scenario element ID
+                      disable|enable|hide|show|press`), and rules 10 and 11 read what the
+                      interface shows and what was pressed; a game that opens gives the elements
+                      back). The lines are `menu game start LABEL
                       FILE`; a file that cannot
                       be loaded is a question box with its message (`menu message TEXT`) and the
                       menu stays. In a game, Escape (with nothing to cancel; an open panel closes

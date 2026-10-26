@@ -317,8 +317,15 @@ fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the
             long_help: true,
             max_short_width: 120,
             max_long_width: 300,
+            popup_delay: d.popup_delay,
         }
     );
+    // The popup delay: 1 to an hour; 0, below 0 and a wrong kind of number keep the built-in one.
+    let delay = |v: &str| read(&format!("[UI]\nNonmodalDialogDelay={v}\n")).popup_delay;
+    assert_eq!(delay("2500"), 2500);
+    assert_eq!(delay("1"), 1);
+    assert_eq!(delay("2000000000"), 3_600_000);
+    assert_eq!([delay("0"), delay("-5"), delay("abc")], [10_000; 3]);
     // 0 delay is no delay; below 0 is 0; a number of the wrong kind is not a setting.
     assert_eq!(read("[UI]\nTooltipDelay=0\n").tooltip_delay, 0);
     assert_eq!(read("[UI]\nTooltipDelay=-5\n").tooltip_delay, 0);

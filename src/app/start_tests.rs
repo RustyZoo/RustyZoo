@@ -8,7 +8,7 @@ use crate::money::Money;
 use crate::render::tests::{cache_install, cache_install_with, frame_file};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
-use crate::ui::layout::{HIDDEN, Tree};
+use crate::ui::layout::{DISABLED, HIDDEN, Tree};
 use crate::vfs::Vfs;
 use crate::zoo::Zoo;
 
@@ -47,7 +47,8 @@ pub(super) fn interface(install: &Install) -> Interface {
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
         [n]\ntype=UILayout\nlayout=ui/name.lyt\n\
         [l]\ntype=UILayout\nlayout=ui/list.lyt\n\
-        [e]\ntype=UILayout\nlayout=ui/panel.lyt\n";
+        [e]\ntype=UILayout\nlayout=ui/panel.lyt\n\
+        [h]\ntype=UILayout\nlayout=ui/hint.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
         "[LayoutInfo]\nid=26\nlayer=2\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
@@ -60,7 +61,8 @@ pub(super) fn interface(install: &Install) -> Interface {
          [a]\nid=45010\nx=0\ny=0\ntarget=6\naction=5\n{button}\
          [b]\nid=45011\nx=10\ny=0\ntarget=7\naction=5\n{button}\
          [c]\nid=45012\nx=20\ny=0\ntarget=1\naction=5\n{button}\
-         [d]\nid=45013\nx=30\ny=0\ntarget=2\naction=5\n{button}"
+         [d]\nid=45013\nx=30\ny=0\ntarget=2\naction=5\n{button}\
+         [i]\ntype=UIImage\nid=45004\nx=0\ny=0\nlayer=1\n"
     );
     let options = format!(
         "[LayoutInfo]\nid=5\nlayer=3\nx=40\ny=20\ndx=20\ndy=20\nstate=1\n\
@@ -97,7 +99,14 @@ pub(super) fn interface(install: &Install) -> Interface {
             (
                 "ui/panel.lyt",
                 b"[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=40\ndx=64\ndy=8\nstate=1\n\
-                  [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n"
+                  [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
+                  [b]\ntype=UIButton\nid=2002\nx=10\ny=0\ndx=8\ndy=8\ncolorasicon=1\n"
+                    .to_vec(),
+            ),
+            (
+                "ui/hint.lyt",
+                b"[LayoutInfo]\nid=45400\nlayer=7\nx=0\ny=0\ndx=40\ndy=8\nstate=1\n\
+                  [a]\ntype=UIButton\nid=45406\nx=0\ny=0\ndx=40\ndy=8\ncolorasicon=1\n"
                     .to_vec(),
             ),
         ],
@@ -124,7 +133,22 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
     let menu = Menu::new(ini.clone(), &files.0, Some(files.0.join("user")), None, 0);
     let scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=t\n[t]\ntrulea=2\n\
         [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=1\n";
-    let extra = [("s/play.scn", scn.to_vec())];
+    let ui_scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=off\n\
+        [off]\ntrulea=2\ntruleb=3\ntarga=2001\ntargb=9\n[goals]\ngoal=shown\ngoal=click\n\
+        [shown]\nrulea=10\nruleb=0\narga=2001\nvalue=1\ntrulea=2\ntruleb=0\ntarga=8\n\
+        [click]\nrulea=10\nruleb=1\narga=2002\nvalue=1\ntrulea=2\ntruleb=5\ntarga=2001\n\
+        [9]\nlayout=45300\nshortText1=151\n\
+        [8]\nlayout=45000\nshortText1=153\nmodal=1\nimage1=s/pic.tga\npersistentTextLayout=45400\n\
+        persistentShortText=151\n";
+    // A picture of 2 by 1 pixels.
+    let tga = [
+        0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 24, 0x20, 9, 9, 9, 9, 9, 9,
+    ];
+    let extra = [
+        ("s/play.scn", scn.to_vec()),
+        ("s/ui.scn", ui_scn.to_vec()),
+        ("s/pic.tga", tga.to_vec()),
+    ];
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
@@ -610,5 +634,97 @@ fn a_scenario_start_prepares_its_goals_and_a_later_game_drops_them() {
         // A scenario file that cannot be read starts a plain game.
         app.begin(&start(Some("s/none.scn")));
         assert!(seen(app, 200).is_empty());
+    });
+}
+
+#[test]
+fn a_scenario_disables_an_element_shows_popups_and_a_hint_sees_presses_and_gives_back_at_the_next_game()
+ {
+    with_menu("scenario-ui", "", |app, _| {
+        let start = Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: Some("s/ui.scn".into()),
+        };
+        let lines = std::cell::RefCell::new(Vec::new());
+        let next = std::cell::Cell::new(1);
+        let pass = |app: &mut App, commands: &[Command]| {
+            let p = next.replace(next.get() + 1);
+            app.pass(66 * p, commands);
+            lines
+                .borrow_mut()
+                .extend((app.log_lines(p, 66 * p).into_iter()).filter_map(|l| {
+                    l.split_once(" sim scenario ")
+                        .filter(|(_, r)| !r.starts_with("trigger"))
+                        .map(|(_, r)| r.to_string())
+                }));
+        };
+        let disabled = |app: &mut App| {
+            let ui = app.interface().unwrap();
+            ui.tree.elements[ui.tree.find(2001).unwrap()].state & DISABLED != 0
+        };
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.begin(&start);
+        pass(app, &[]);
+        // The start trigger disabled the button and showed its popup, which does not stop the game.
+        assert!(disabled(app) && shown(app, 45300) && !app.interface().unwrap().modal_open());
+        assert_eq!(
+            *lines.borrow(),
+            [
+                "start s/ui.scn 3",
+                "element 2001 disable",
+                "popup 45300 open"
+            ]
+        );
+        // The rule saw the element shown at its first pass: a modal popup and the hint.
+        for _ in 2..70 {
+            pass(app, &[]);
+        }
+        assert!(app.interface().unwrap().modal_open() && shown(app, 45000));
+        assert!(shown(app, 45400));
+        let ui = app.interface().unwrap();
+        assert_eq!(ui.text(45406), Some(b"Exit?".to_vec()));
+        assert_eq!(ui.text(45006), Some(b"Leave?".to_vec()));
+        assert_eq!(lines.borrow()[3..], ["popup 45000 modal", "hint 45400"]);
+        // The picture of the popup is in its image, which took its size.
+        let ui = app.interface().unwrap();
+        assert!(ui.shown(45004));
+        assert_eq!(ui.tree.rect(ui.tree.find(45004).unwrap()).2, 2);
+        // OK closes it; the hint's button shows it again, and OK closes it once more.
+        pass(app, &key(Key::Enter));
+        assert!(!app.interface().unwrap().modal_open());
+        pass(app, &click(3, 3));
+        assert!(app.interface().unwrap().modal_open() && shown(app, 45400));
+        assert_eq!(lines.borrow().last().unwrap(), "hint 45400");
+        pass(app, &key(Key::Enter));
+        assert!(!app.interface().unwrap().modal_open());
+        // A press of the other button is seen by the second goal, which enables the first.
+        for _ in 0..2 {
+            pass(app, &[]);
+        }
+        pass(app, &click(14, 44));
+        for _ in 0..70 {
+            pass(app, &[]);
+        }
+        assert!(!disabled(app), "{:?}", lines.borrow());
+        assert_eq!(lines.borrow().last().unwrap(), "element 2001 enable");
+        // The hint stays. A game that opens hides it and gives back what the scenario changed.
+        assert!(shown(app, 45400));
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        assert!(!shown(app, 45400));
+        app.begin(&start);
+        pass(app, &[]);
+        assert!(disabled(app));
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        assert!(!disabled(app));
     });
 }

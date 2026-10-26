@@ -378,7 +378,7 @@ impl Interface {
     }
 
     /// The other members of the radio sets that `b` belongs to.
-    fn radio_members(&self, b: usize) -> Vec<usize> {
+    pub(super) fn radio_members(&self, b: usize) -> Vec<usize> {
         let id = self.id(b);
         let mut members = Vec::new();
         for e in &self.tree.elements {
@@ -440,7 +440,7 @@ impl Interface {
     }
 
     /// A toggle member released as deselected: every member is deselected that way.
-    fn radio_deselect_all(&mut self, b: usize) {
+    pub(super) fn radio_deselect_all(&mut self, b: usize) {
         for m in self.radio_members(b) {
             self.flag(m, SELECTED, false);
             self.deselect(m);

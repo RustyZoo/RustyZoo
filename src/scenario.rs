@@ -3,20 +3,37 @@
 //!
 //! The goal list is the timer, the goals of the file's `[goals]`, then those of each `[start]
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
-//! The rules a simple goal reads and the triggers it fires are stubs: only rule 7 (the date) and
-//! rule 99 (a constant) read anything, and a trigger logs `scenario trigger` and does nothing
-//! else. The texts, the objectives list, saving and the end screens come with later issues.
+//! The rules and triggers are stubs but for rule 7 (the date), rule 99 (a constant), rules 10 and
+//! 11 (the interface) and trigger 2 (popups and elements): a trigger logs `scenario trigger` and
+//! does nothing else. The texts, the objectives list, saving and the end screens come with later
+//! issues.
+//!
+//! Trigger 2 (scenarios 7.1) and the interface rules 10 and 11 reach the interface through
+//! [`gui::Gui`]: a trigger leaves an [`Effect`] for the application, which tells back which
+//! elements are shown and which were pressed. Popups and blocks are read when the goal is made.
 //!
 //! The log (family `sim`): `scenario start FILE GOALS` when a scenario is prepared, `scenario
 //! trigger WHO STATE TRULEA TRULEB TARGA TARGB` for each trigger fired with a non-zero `trulea`,
-//! and `scenario end won|lost`.
+//! and `scenario end won|lost`; the application adds `scenario popup LAYOUT modal|open`,
+//! `scenario hint LAYOUT` and `scenario element ID disable|enable|hide|show|press` for what it
+//! did to the interface.
 
 use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
 
+pub use apply::Marks;
+pub use gui::{Effect, Gui};
+pub use popup::{Hint, Op, Popup};
+
+mod apply;
+mod gui;
+mod popup;
+
 #[cfg(test)]
 mod tests;
 
+/// The question layout a trigger 2 of `truleb` 11 shows.
+const QUESTION: i32 = 45000;
 /// The milliseconds the manager gathers between two passes.
 const PERIOD: u32 = 1500;
 /// Goals one scenario holds, children included, and how deep goals nest: a hostile file whose
@@ -47,21 +64,78 @@ pub enum Run {
     Lost,
 }
 
-/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. A stub.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct Trigger([i32; 4]);
+/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Only trigger 2
+/// does anything; the others are stubs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Trigger {
+    v: [i32; 4],
+    /// What trigger 2 leaves for the interface.
+    effect: Option<Box<Effect>>,
+}
 
 impl Trigger {
-    fn read(s: Option<&Section>) -> Trigger {
-        Trigger(["trulea", "truleb", "targa", "targb"].map(|k| int(s, k)))
+    fn read(cfg: &Config, name: &[u8]) -> Trigger {
+        let s = cfg.section(name);
+        let v = ["trulea", "truleb", "targa", "targb"].map(|k| int(s, k));
+        let effect = (v[0] == 2).then(|| effect(cfg, v)).flatten().map(Box::new);
+        Trigger { v, effect }
     }
 
-    fn fire(&self, who: &str, state: &str, log: &mut Vec<String>) {
-        if self.0[0] != 0 {
-            let [a, b, c, d] = self.0;
+    fn fire(&self, who: &str, state: &str, log: &mut Vec<String>, gui: &Gui) {
+        if self.v[0] != 0 {
+            let [a, b, c, d] = self.v;
             log.push(format!("scenario trigger {who} {state} {a} {b} {c} {d}"));
         }
+        self.run(true, gui);
     }
+
+    /// The trigger runs, fresh or again after a load (7).
+    fn run(&self, fresh: bool, gui: &Gui) {
+        let effect = self.effect.as_deref().cloned();
+        if let Some(effect) = effect.and_then(|e| if fresh { Some(e) } else { e.quiet() }) {
+            gui.push(effect);
+        }
+    }
+}
+
+/// Trigger 2 (7.1): `truleb` says what, `targa` and `targb` which element or block and which popup.
+fn effect(cfg: &Config, [_, b, a, p]: [i32; 4]) -> Option<Effect> {
+    let popup = || Popup::read(cfg, p);
+    let one = |op| Effect::Set {
+        ops: vec![(a, op)],
+        popup: popup(),
+        always: false,
+    };
+    let block = |op| Effect::Set {
+        ops: popup::ids(cfg, a).into_iter().map(|i| (i, op)).collect(),
+        popup: popup(),
+        always: false,
+    };
+    Some(match b {
+        0 => Effect::Popup(Popup::read(cfg, a)?),
+        1 | 2 => Effect::Press(a, popup()),
+        3 | 4 => one(Op::Disable),
+        5 | 6 => one(Op::Enable),
+        7 | 8 => one(Op::Hide),
+        9 | 10 => one(Op::Show),
+        11 => Effect::Popup(Popup {
+            layout: QUESTION,
+            short: [a, 0],
+            ok: true,
+            modal: p > 0,
+            ..Popup::default()
+        }),
+        12 => block(Op::Disable),
+        13 => block(Op::Enable),
+        14 => block(Op::Hide),
+        15 => block(Op::Show),
+        16 => Effect::Set {
+            ops: popup::entries(cfg, a),
+            popup: popup(),
+            always: true,
+        },
+        _ => return None,
+    })
 }
 
 /// A simple goal: one rule compared with `value` by `kind`.
@@ -89,6 +163,8 @@ pub struct Goal {
     name: String,
     state: u8,
     optional: bool,
+    /// The string id of the goal's line (`text`); 0 for none.
+    text: i32,
     body: Body,
 }
 
@@ -96,8 +172,8 @@ fn int(s: Option<&Section>, key: &str) -> i32 {
     s.and_then(|s| s.get(key)).and_then(to_int).unwrap_or(0)
 }
 
-/// The value a rule reads.
-fn eval(rule: &[i32; 4], env: &Env) -> i32 {
+/// The value a rule reads; `value` is what the interface rules answer when they hold.
+fn eval(rule: &[i32; 4], value: i32, env: &Env, gui: &Gui) -> i32 {
     match rule[0] {
         7 => match rule[1] {
             0 => env.month,
@@ -105,6 +181,23 @@ fn eval(rule: &[i32; 4], env: &Env) -> i32 {
             2 => env.total_months(),
             _ => 0,
         },
+        // The element `arga` is shown (`ruleb` 0) or was pressed since the last question (1).
+        10 => match rule[1] {
+            0 if gui.shown(rule[2]) => value,
+            1 if gui.take_press(rule[2]).is_some() => value,
+            _ => 0,
+        },
+        // A list box that was pressed: the row (`ruleb` 0), or 1 if the row's text is the string
+        // `argb`; -2 for the rest.
+        11 => {
+            let text = (rule[1] != 0).then(|| gui.text(rule[3]));
+            let row = gui.take_press(rule[2]).and_then(|p| p.row);
+            match (row, text) {
+                (Some((row, _)), None) => i32::try_from(row).unwrap_or(i32::MAX),
+                (Some((_, shown)), Some(text)) if shown == text => 1,
+                _ => -2,
+            }
+        }
         99 => rule[2],
         _ => 0,
     }
@@ -153,13 +246,14 @@ impl Goal {
                 kind: int(s, "type"),
                 value: int(s, "value"),
                 sticky: int(s, "sticky") != 0,
-                trigger: Trigger::read(s),
+                trigger: Trigger::read(cfg, name),
             }),
         };
         Some(Goal {
             name: String::from_utf8_lossy(name).into_owned(),
             state: 0,
             optional: int(s, "optional") != 0,
+            text: int(s, "text"),
             body,
         })
     }
@@ -170,18 +264,18 @@ impl Goal {
     }
 
     /// One update (4.2, 4.4). The timer is updated by the manager, which knows the other goals.
-    fn update(&mut self, env: &Env, log: &mut Vec<String>) {
+    fn update(&mut self, env: &Env, gui: &Gui, log: &mut Vec<String>) {
         let new = match &mut self.body {
             Body::Timer(_) => return,
             Body::Simple(s) => {
                 if s.sticky && self.state != 0 {
                     return;
                 }
-                s.judge(eval(&s.rule, env))
+                s.judge(eval(&s.rule, s.value, env, gui))
             }
             Body::Complex(children) => {
                 for c in children.iter_mut() {
-                    c.update(env, log);
+                    c.update(env, gui, log);
                 }
                 let of = |c: &Goal| c.reported();
                 Some(if children.iter().any(|c| of(c) == 2) {
@@ -195,7 +289,7 @@ impl Goal {
             Body::Chain(children) => {
                 let mut state = 1;
                 for c in children.iter_mut() {
-                    c.update(env, log);
+                    c.update(env, gui, log);
                     if c.reported() != 1 {
                         state = c.reported();
                         break;
@@ -208,7 +302,7 @@ impl Goal {
             // Only a simple goal runs a trigger; a group just takes its state.
             (Some(s @ 1..=3), Body::Simple(simple)) if s != self.state => {
                 self.state = s;
-                simple.trigger.fire(&self.name, &s.to_string(), log);
+                simple.trigger.fire(&self.name, &s.to_string(), log, gui);
             }
             (Some(s), _) => self.state = s,
             (None, _) => {}
@@ -225,6 +319,7 @@ pub struct Scenario {
     start: Vec<(String, Trigger)>,
     gathered: u32,
     run: Run,
+    gui: Gui,
 }
 
 impl Scenario {
@@ -257,6 +352,7 @@ impl Scenario {
             // No limit stated: nothing to wait for.
             state: u8::from(months == 0),
             optional: false,
+            text: 0,
             body: Body::Timer(months),
         };
         let mut goals = vec![timer];
@@ -272,7 +368,7 @@ impl Scenario {
             .section("start")
             .map_or(&[][..], |s| s.get_all("triggers"));
         let start = names.iter().map(|n| {
-            let trigger = Trigger::read(main.section(n));
+            let trigger = Trigger::read(main, n);
             (String::from_utf8_lossy(n).into_owned(), trigger)
         });
         Scenario {
@@ -281,7 +377,13 @@ impl Scenario {
             start: start.collect(),
             gathered: 0,
             run: Run::On,
+            gui: Gui::default(),
         }
+    }
+
+    /// What the scenario and the interface tell one another.
+    pub fn gui(&self) -> &Gui {
+        &self.gui
     }
 
     pub fn run(&self) -> Run {
@@ -292,16 +394,20 @@ impl Scenario {
     pub fn start(&self, log: &mut Vec<String>) {
         log.push(format!("scenario start {} {}", self.file, self.goals.len()));
         for (name, trigger) in &self.start {
-            trigger.fire(name, "start", log);
+            trigger.fire(name, "start", log, &self.gui);
         }
     }
 
     /// The timer is the first goal; the others are updated in list order.
     fn update_goal(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
         let total = env.total_months();
+        let gui = &self.gui;
+        // The line a hint of -1 shows: the first goal in progress that has one (8.3).
+        let first = self.goals.iter().find(|g| g.reported() == 0 && g.text > 0);
+        gui.set_goal_text(first.map_or(0, |g| g.text));
         let (timer, rest) = self.goals.split_first_mut().expect("the timer");
         if at > 0 {
-            return rest[at - 1].update(env, log);
+            return rest[at - 1].update(env, gui, log);
         }
         if let Body::Timer(months) = timer.body
             && timer.state == 0
@@ -309,7 +415,7 @@ impl Scenario {
         {
             timer.state = 3;
             for g in rest.iter_mut() {
-                g.update(env, log);
+                g.update(env, gui, log);
             }
             if rest.iter().any(|g| !matches!(g.reported(), 1 | 3)) {
                 timer.state = 2;
