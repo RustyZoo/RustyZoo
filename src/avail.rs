@@ -41,11 +41,8 @@ impl Availability {
     }
 
     /// Makes every type with this name id, whatever its subtype, available or not. A name id of
-    /// 0 or less names no type. Whether a flag changed.
+    /// 0 sets the nameless types; a negative one matches no type. Whether a flag changed.
     pub fn set(&mut self, cat: &Catalogue, name_id: i32, on: bool) -> bool {
-        if name_id <= 0 {
-            return false;
-        }
         let mut changed = false;
         for (i, ty) in cat.types.iter().enumerate() {
             if ty.name_id == name_id

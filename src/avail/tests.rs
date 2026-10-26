@@ -64,12 +64,28 @@ fn a_name_id_sets_every_subtype_and_a_wrong_id_sets_none() {
         [false, false, false, false, true, false, false]
     );
     assert!(!a.set(&cat, 19001, false), "a user type stays available");
-    for id in [0, -1, 5008, i32::MAX, i32::MIN] {
+    for id in [-1, 5008, i32::MAX, i32::MIN] {
         assert!(!a.set(&cat, id, true), "{id}");
     }
     assert_eq!(
         flags(&a, &cat),
         [false, false, false, false, true, false, false]
+    );
+}
+
+#[test]
+fn a_name_id_of_0_sets_the_types_without_a_name() {
+    let (cat, mut a) = (catalogue(), Availability::default());
+    assert!(a.set(&cat, 0, true));
+    assert_eq!(
+        flags(&a, &cat),
+        [false, false, true, false, true, true, false]
+    );
+    assert!(a.set(&cat, 0, false));
+    assert!(!a.set(&cat, -1, true), "a negative id names no type");
+    assert_eq!(
+        flags(&a, &cat),
+        [false, false, true, false, true, false, false]
     );
 }
 
