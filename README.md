@@ -49,6 +49,8 @@ Each step is compared with the original, picture by picture, in the [screenshots
 
 You need [Rust](https://rustup.rs/) (the version in `rust-toolchain.toml` is installed for you), CMake and a C compiler. SDL3 is built from source, nothing else to install.
 
+On Windows use the Visual Studio build tools (MSVC); on macOS, the Xcode command line tools.
+
 ```sh
 cargo build --release
 ```
