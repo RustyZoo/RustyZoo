@@ -567,7 +567,11 @@ fn the_shipped_maps_have_show_neighbours_where_the_tank_walls_say_so() {
 
 #[test]
 fn a_save_writes_the_install_language() {
-    let world = World::with_language(zoo(4, 4, (0, 0)), |_| None, 1036);
+    let language = Language {
+        number: 1036,
+        ..Language::shipped()
+    };
+    let world = World::with_language(zoo(4, 4, (0, 0)), |_| None, language);
     let mut saved = world.saved(|_| true);
     saved.locale = 1033;
     world.finish_save(&mut saved, &crate::entity::Catalogue::default());

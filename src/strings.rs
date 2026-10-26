@@ -19,14 +19,32 @@ use crate::vfs::MAX_MEMBER_SIZE;
 /// language of a folder that does not give one.
 pub const SHIPPED_LANGUAGE: u32 = 1033;
 
-/// The install language of the game folder `install_dir`. A folder whose libraries cannot be read
-/// is a warning and the shipped language.
-pub fn install_language(install_dir: &Path) -> u32 {
-    match StringTables::open(install_dir) {
-        Ok(tables) => tables.install_language(),
-        Err(why) => {
-            eprintln!("rustyzoo: warning: install language: {why}");
-            SHIPPED_LANGUAGE
+/// The install language: its number (string 22015) and the words of the default exhibit names
+/// (strings 6208 to 6210: exhibit, tank, show tank).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Language {
+    pub number: u32,
+    pub exhibit_words: [String; 3],
+}
+
+impl Language {
+    /// The language the game ships in, with its English words.
+    pub fn shipped() -> Language {
+        Language {
+            number: SHIPPED_LANGUAGE,
+            exhibit_words: ["Exhibit", "Tank", "Show Tank"].map(String::from),
+        }
+    }
+
+    /// The language of the game folder `install_dir`. A folder whose libraries cannot be read is
+    /// a warning and the shipped language.
+    pub fn of(install_dir: &Path) -> Language {
+        match StringTables::open(install_dir) {
+            Ok(tables) => tables.language(),
+            Err(why) => {
+                eprintln!("rustyzoo: warning: install language: {why}");
+                Language::shipped()
+            }
         }
     }
 }
@@ -182,6 +200,14 @@ impl StringTables {
         match self.string(22015).trim().parse() {
             Ok(number) if number != 0 => number,
             _ => SHIPPED_LANGUAGE,
+        }
+    }
+
+    /// The install language with the words of its default exhibit names.
+    pub fn language(&self) -> Language {
+        Language {
+            number: self.install_language(),
+            exhibit_words: [6208, 6209, 6210].map(|id| self.string(id).to_string()),
         }
     }
 

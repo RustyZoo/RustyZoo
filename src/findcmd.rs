@@ -89,7 +89,7 @@ pub fn find_path(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError
     let zoo = Zoo::parse(&vfs.read(member)?)
         .and_then(|zoo| zoo.checked(&catalogue))
         .map_err(|e| format!("{member}: {e}"))?;
-    let language = strings::install_language(vfs.root());
+    let language = strings::Language::of(vfs.root());
     let mut world = World::with_language(zoo, |e| renderer.shape(e), language);
     world.set_water(place::water(&terrain::types(vfs)));
     let width = world.zoo.width as usize;

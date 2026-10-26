@@ -109,10 +109,10 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         eprintln!("rustyzoo: warning: economy.cfg: {e}; the built-in economy settings are used");
         Vec::new()
     });
-    let language = strings::install_language(vfs.root());
+    let language = strings::Language::of(vfs.root());
     let start = |catalogue, zoo, money, saved| {
         let renderer = MapRenderer::new(vfs, &catalogue);
-        let mut world = World::with_language(zoo, |e| renderer.shape(e), language);
+        let mut world = World::with_language(zoo, |e| renderer.shape(e), language.clone());
         world.set_water(place::water(&terrain::types(vfs)));
         world.set_tank_config(TankConfig::load(vfs));
         world.set_decay(Decay::load(vfs));

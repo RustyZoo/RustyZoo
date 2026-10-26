@@ -1291,7 +1291,7 @@ fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
 fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
     let catalogue = Catalogue::load(vfs)?;
     let renderer = MapRenderer::new(vfs, &catalogue);
-    let language = strings::install_language(vfs.root());
+    let language = strings::Language::of(vfs.root());
     let mut report = Report::new();
     let (mut maps, mut agree, mut mismatch, mut skipped) = (0, 0, 0, 0);
     for member in vfs.list(Some(pattern)) {
@@ -1319,7 +1319,7 @@ fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
         let stored = zoo.habitat_tiles.len();
         let tiles = zoo.habitat_tiles.clone();
         let stored_tanks = zoo.tanks.clone();
-        let world = World::with_language(zoo, |e| renderer.shape(e), language);
+        let world = World::with_language(zoo, |e| renderer.shape(e), language.clone());
         let list = world.exhibits().list();
         let distinct = world.exhibits().distinct(&world, &tiles);
         let sizes: Vec<String> = list.iter().map(|e| e.tiles.to_string()).collect();
@@ -1371,7 +1371,7 @@ fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
 fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
     let catalogue = Catalogue::load(vfs)?;
     let renderer = MapRenderer::new(vfs, &catalogue);
-    let language = strings::install_language(vfs.root());
+    let language = strings::Language::of(vfs.root());
     let mut report = Report::new();
     let (mut maps, mut rated, mut bad) = (0, 0, 0);
     for member in vfs.list(Some(pattern)) {
@@ -1388,7 +1388,7 @@ fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
             continue;
         };
         maps += 1;
-        let world = World::with_language(zoo, |e| renderer.shape(e), language);
+        let world = World::with_language(zoo, |e| renderer.shape(e), language.clone());
         let ground = viewing::Ground::of(&world, viewing::bodies(&catalogue));
         let wear = viewing::wear(&world, viewing::decayed(&catalogue));
         for exhibit in world.exhibits().list() {

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::render::order::Kind;
+use crate::strings::Language;
 use crate::world::{Event, Shape, TankKind};
 use crate::zoo::{Common, Entity, HabitatInfo, Tile, View, Zoo};
 
@@ -1000,7 +1001,7 @@ fn a_loaded_exhibit_keeps_its_stored_name_statistics_date_and_service_time() {
     // A file of another language keeps the default name, the rest loads the same.
     let world = load(1031, 0);
     let e = world.exhibits().get(1).unwrap();
-    assert_eq!(e.name, "");
+    assert_eq!(e.name, "Exhibit 1");
     assert_eq!(e.stats.donations, [0.0, 12.5, 12.5]);
     assert_eq!(e.stats.created.map(|d| d.year), Some(1601));
 }
@@ -1016,7 +1017,7 @@ fn a_loaded_name_is_kept_only_when_the_stored_locale_is_the_install_language() {
         z.habitat_gates = vec![((-1, -1), -1)];
         z.habitat_info = vec![stored("Lions", [0; 9], 0)];
         unique(&mut z);
-        World::with_language(z, shape, install)
+        World::with_language(z, shape, french(install))
     };
     let name = |world: &World| world.exhibits().get(1).unwrap().name.clone();
     assert_eq!(
@@ -1024,9 +1025,43 @@ fn a_loaded_name_is_kept_only_when_the_stored_locale_is_the_install_language() {
         "Lions",
         "French file, French install"
     );
-    assert_eq!(name(&load(1036, 1033)), "", "English file, French install");
-    assert_eq!(name(&load(1033, 1036)), "", "French file, English install");
+    assert_eq!(
+        name(&load(1036, 1033)),
+        "Enclos 1",
+        "English file, French install"
+    );
+    assert_eq!(
+        name(&load(1033, 1036)),
+        "Enclos 1",
+        "French file, English install"
+    );
     assert_eq!(name(&load(1033, 1033)), "Lions");
+}
+
+/// The language of a French install (its number, and the words of the default names).
+fn french(number: u32) -> Language {
+    Language {
+        number,
+        exhibit_words: [
+            "Enclos".into(),
+            "Bassin".into(),
+            "Bassin d'exhibition".into(),
+        ],
+    }
+}
+
+#[test]
+fn a_save_writes_the_names_the_exhibits_have_now() {
+    let mut z = zoo(&[]);
+    z.locale = 1033;
+    z.entities
+        .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+    z.habitat_tiles = vec![(3, 3)];
+    z.habitat_gates = vec![((-1, -1), -1)];
+    z.habitat_info = vec![stored("Lions", [0; 9], 0)];
+    unique(&mut z);
+    let world = World::with_language(z, shape, french(1036));
+    assert_eq!(world.saved(|_| true).habitat_info[0].name, "Enclos 1");
 }
 
 #[test]
