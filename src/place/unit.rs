@@ -415,12 +415,17 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
 /// `cUseNumbersInName` (on by default for a unit, a building and a tank filter, off for anything
 /// else) a space and the next number of the counter of its key, started at 1 (unit placing 7.2).
 /// The key is the type name for a unit (`giraffe`, not the text) and the subtype for a building or
-/// a filter (`vendfood`, `f`).
+/// a filter (`vendfood`, `f`). Scenery, fences, paths, tank walls, rubble and ambient animals keep
+/// the bare text whatever the flag says.
 pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
+    let bare = matches!(
+        ty.class,
+        "objects" | "fences" | "paths" | "tankwall" | "rubble" | "ambient"
+    );
     let subtyped = matches!(ty.class, "building" | "filter");
     let counted = is_unit(ty) || subtyped;
     let numbered = plain(ty, "cUseNumbersInName").unwrap_or(f32::from(u8::from(counted)));
-    if numbered != 1.0 {
+    if bare || numbered != 1.0 {
         return text.into();
     }
     let key = if subtyped { &ty.subtype } else { &ty.type_name };

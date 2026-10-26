@@ -394,6 +394,14 @@ impl Run {
         }
         if let Some(at) = self.world.find(id) {
             crate::staff::make(&mut self.world, &self.cat, &mut self.sim.rng, at);
+            // The colours the creation drew are kept with the entity, as the interface hire does.
+            let colours = match self.world.units.get(id).map(|u| &u.part) {
+                Some(crate::unit::Part::Staff(s)) => s.colours.clone(),
+                _ => Vec::new(),
+            };
+            if let Some(c) = self.world.zoo.entities[at].common.as_mut() {
+                c.colors = colours;
+            }
         }
         true
     }
