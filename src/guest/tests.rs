@@ -119,6 +119,7 @@ fn a_guest_draws_colours_the_start_stat_sex_countdowns_favourite_and_speed_in_or
         let (before, mut rng) = (seeded(seed), seeded(seed));
         let g = Guest::create(&k, &ty, &[7, 9], date(3, 4), 0, &mut rng);
         let n = drawn(&before, &rng);
+        assert_eq!(g.colours.len(), 4);
         let started = g.values[1..].iter().any(|&v| v != 0);
         assert!(
             n == 22 && started || n == 21 || n == 20 && !started,
