@@ -22,6 +22,29 @@ pub fn dir() -> Option<PathBuf> {
 
 /// [`dir`] for the operating system `os` and the environment `env`.
 fn dir_of(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    folder(os, env, "XDG_CONFIG_HOME", ".config")
+}
+
+/// The folder where the saved games go, `Saved Games` in the user folder, or `None` if the system
+/// does not say where.
+pub fn saved_games() -> Option<PathBuf> {
+    saved_of(std::env::consts::OS, |name| std::env::var_os(name))
+}
+
+/// [`saved_games`] for the operating system `os` and the environment `env`.
+fn saved_of(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    let base = folder(os, env, "XDG_DATA_HOME", ".local/share")?;
+    Some(base.join("Saved Games"))
+}
+
+/// The user folder of `os`: the override, else the base of the system (on Linux `$xdg`, else
+/// `~/<under_home>`) and `RustyZoo`.
+fn folder(
+    os: &str,
+    env: impl Fn(&str) -> Option<OsString>,
+    xdg: &str,
+    under_home: &str,
+) -> Option<PathBuf> {
     let var = |name| {
         env(name)
             .filter(|value| !value.is_empty())
@@ -34,9 +57,9 @@ fn dir_of(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
         "windows" => var("APPDATA")?,
         "macos" => var("HOME")?.join("Library/Application Support"),
         // The base directory specification ignores a relative path.
-        _ => var("XDG_CONFIG_HOME")
+        _ => var(xdg)
             .filter(|dir| dir.is_absolute())
-            .or_else(|| var("HOME").map(|home| home.join(".config")))?,
+            .or_else(|| var("HOME").map(|home| home.join(under_home)))?,
     };
     Some(base.join("RustyZoo"))
 }
@@ -108,6 +131,39 @@ mod tests {
             paths("windows", &[("APPDATA", "C:/a")]),
             path("C:/a/RustyZoo")
         );
+    }
+
+    #[test]
+    fn the_saved_games_are_in_the_data_folder_on_linux_and_with_the_settings_elsewhere() {
+        let saved = |os: &str, vars: &[(&str, &str)]| {
+            saved_of(os, |name| {
+                vars.iter()
+                    .find(|(n, _)| *n == name)
+                    .map(|(_, value)| OsString::from(value))
+            })
+        };
+        let path = |text: &str| Some(PathBuf::from(text));
+        let home = [("HOME", "/h")];
+        assert_eq!(
+            saved("linux", &home),
+            path("/h/.local/share/RustyZoo/Saved Games")
+        );
+        let relative = [("HOME", "/h"), ("XDG_DATA_HOME", "x")];
+        assert_eq!(
+            saved("linux", &relative),
+            path("/h/.local/share/RustyZoo/Saved Games")
+        );
+        assert_eq!(
+            saved("macos", &home),
+            path("/h/Library/Application Support/RustyZoo/Saved Games")
+        );
+        assert_eq!(
+            saved("windows", &[("APPDATA", "C:/a")]),
+            path("C:/a/RustyZoo/Saved Games")
+        );
+        let both = [("HOME", "/h"), ("RUSTYZOO_USER_DIR", "/t")];
+        assert_eq!(saved("linux", &both), path("/t/Saved Games"));
+        assert_eq!(saved("linux", &[]), None);
     }
 
     #[test]

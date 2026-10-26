@@ -16,6 +16,7 @@
 //! other element has the keyboard focus. Without one, the frame is the map alone.
 
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::Framebuffer;
@@ -23,8 +24,9 @@ use crate::behaviour::{Library, Timings};
 use crate::build::terrain::{MINUS, PLUS};
 use crate::build::{BULLDOZER, Build};
 use crate::camera::{Camera, Settings, zoom_view};
+use crate::config::Config;
 use crate::exhibit::rating;
-use crate::menu::{Menu, Request, Start};
+use crate::menu::{self, Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
 use crate::panel::building as panel_building;
@@ -61,9 +63,11 @@ pub enum Key {
     PageDown,
     Y,
     N,
+    S,
+    L,
 }
 
-const KEY_NAMES: [(&str, Key); 15] = [
+const KEY_NAMES: [(&str, Key); 17] = [
     ("enter", Key::Enter),
     ("escape", Key::Escape),
     ("tab", Key::Tab),
@@ -79,6 +83,8 @@ const KEY_NAMES: [(&str, Key); 15] = [
     ("pagedown", Key::PageDown),
     ("y", Key::Y),
     ("n", Key::N),
+    ("s", Key::S),
+    ("l", Key::L),
 ];
 
 impl Key {
@@ -110,7 +116,7 @@ pub enum Mouse {
 /// window is closed) for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
 /// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
-/// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n) and
+/// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n, s, l; Ctrl+S saves and Ctrl+L loads) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
 /// `save FILE` writes the game to a file and `load FILE` opens a saved game as Continue does (the
 /// file name runs to the end of the line; the name is kept for the rest of the run).
@@ -495,6 +501,13 @@ pub struct App<'a> {
     fullscreen: bool,
     /// The question that is open and what it leads to.
     asked: Option<Asked>,
+    /// The save dialog, while it is open, and the list of saved games, while it is shown.
+    saving: Option<saves::Saving>,
+    listing: Option<saves::Listing>,
+    /// The folder of the settings a game without the menu writes `[user] lastfile` to (none: not
+    /// written), and that file: the menu keeps both for itself.
+    user: Option<PathBuf>,
+    last_file: Option<PathBuf>,
     /// Whether a fade of the menu music has begun in this run (only the first one waits), and
     /// whether a game opens without the main panel.
     faded: bool,
@@ -507,6 +520,8 @@ pub struct App<'a> {
 enum Asked {
     Leave,
     Exit,
+    /// Load Game: the list of saved games follows.
+    Load,
     /// A question of the bulldozer: any answer goes back to it.
     Sweep,
     /// The objects a new tank does not allow: Yes sells and moves them, anything else undoes
@@ -536,6 +551,10 @@ const EXIT_BUTTON: i32 = 1504;
 /// The questions: save before starting a new zoo, before exiting.
 const ASK_LEAVE: i32 = 153;
 const ASK_EXIT: i32 = 151;
+const ASK_LOAD: i32 = 152;
+/// The Load Game and Save Game buttons of the options panel.
+const LOAD_BUTTON: i32 = 1501;
+const SAVE_BUTTON: i32 = 1502;
 
 impl<'a> App<'a> {
     /// A game on `zoo` seen through a window of `size` pixels, with the camera the map stores.
@@ -582,6 +601,9 @@ impl<'a> App<'a> {
             Ok(economy) => sim.set_economy(&economy),
             Err(why) => eprintln!("rustyzoo: warning: economy.cfg: {why}; built-in settings used"),
         }
+        let last_file = Config::parse(renderer.vfs().ini())
+            .ok()
+            .and_then(|ini| menu::last_path(&ini, renderer.vfs().root()));
         Ok(App {
             renderer,
             game: None,
@@ -628,6 +650,10 @@ impl<'a> App<'a> {
             settings,
             fullscreen: false,
             asked: None,
+            saving: None,
+            listing: None,
+            user: None,
+            last_file,
             faded: false,
             bare: false,
         })
@@ -761,17 +787,24 @@ impl<'a> App<'a> {
         self.ui.as_mut()
     }
 
-    /// Whether a question is open.
+    /// Whether a question is open or the list of saved games is shown: the game stands still.
     fn modal(&self) -> bool {
+        self.question_open() || self.listing_open()
+    }
+
+    /// Whether a question is open.
+    fn question_open(&self) -> bool {
         self.ui.as_ref().is_some_and(Interface::modal_open)
     }
 
     /// Whether the keys and the edge scroll of the map view act: always without an interface,
     /// else while the map view is shown and no other element has the keyboard focus.
     fn map_keys(&self) -> bool {
-        self.ui
-            .as_ref()
-            .is_none_or(Interface::map_view_has_the_keys)
+        !self.listing_open()
+            && self
+                .ui
+                .as_ref()
+                .is_none_or(Interface::map_view_has_the_keys)
     }
 
     /// One pass at the clock reading `now` (ms) with the commands that came before it. Returns
@@ -1074,27 +1107,38 @@ impl<'a> App<'a> {
     fn apply(&mut self, command: Command) {
         match command {
             Command::Close => return self.close(),
+            Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
+                return self.close_list();
+            }
             Command::Key(Key::Escape, ..)
                 if self.game.is_some() && self.ui.is_some() && self.map_keys() =>
             {
                 return self.cancel(true);
             }
             Command::Fullscreen(on) => self.fullscreen = on,
-            Command::Load(file) => return self.load_saved(file),
+            Command::Load(file) => {
+                self.load_saved(file);
+                return;
+            }
             Command::Save(file) => return self.save_game(file),
+            Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
+                return self.save_key();
+            }
+            Command::Key(Key::L, true, _) if self.map_keys() => return self.load_pressed(),
             _ => {}
         }
         let keys = self.map_keys();
         let following = self.following();
         let shown = self.ui.as_ref().is_none_or(Interface::map_view_shown);
         let modal = self.modal();
+        let listing = self.listing_open();
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
             (Command::Quit, _) => self.quit = true,
             (Command::Mouse(mouse), game) => {
                 // A press or release that belongs to the map view is logged with the tile it is
                 // on, and the terrain tool, if it is the map view's tool, acts on the mouse.
-                let on_map = self.ui.as_mut().is_some_and(|ui| ui.mouse(mouse));
+                let on_map = self.ui.as_mut().is_some_and(|ui| ui.mouse(mouse)) && !listing;
                 let phase = match mouse {
                     Mouse::Down | Mouse::Double => Some("down"),
                     Mouse::Up => Some("up"),
@@ -1571,6 +1615,10 @@ impl<'a> App<'a> {
     /// questions, the actions of the lists and the cash field, the buttons selected.
     fn acts(&mut self) {
         let Some(ui) = &mut self.ui else { return };
+        // The list of saved games was closed by its own Back button, or by a game that started.
+        if self.listing.is_some() && !ui.shown(crate::menu::FREEFORM_LAYOUT) {
+            self.listing = None;
+        }
         let selected = ui.take_selected();
         self.build(None);
         let actions: Vec<Action> = self.ui_actions[self.acted..].to_vec();
@@ -1578,6 +1626,7 @@ impl<'a> App<'a> {
         for action in actions {
             match action {
                 Action::Answer(code) => self.answered(code),
+                action if self.listing_open() => self.listed(action),
                 action if self.game.is_none() => {
                     if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
                         let lines = menu.action(self.renderer.vfs(), ui, action);
@@ -1608,6 +1657,10 @@ impl<'a> App<'a> {
         }
         for id in selected {
             match id {
+                SAVE_BUTTON if self.game.is_some() => self.save_pressed(),
+                LOAD_BUTTON if self.game.is_some() => self.ask(Asked::Load),
+                crate::menu::SAVED_LOAD if self.listing_open() => self.load_listed(),
+                crate::menu::LOAD if self.game.is_none() => self.open_list(),
                 MAIN_MENU_BUTTON | EXIT_BUTTON if self.game.is_some() => {
                     let kind = if id == EXIT_BUTTON {
                         Asked::Exit
@@ -1723,21 +1776,25 @@ impl<'a> App<'a> {
         }
     }
 
-    /// Opens the game that was read, or tells why it was not.
-    fn open(&mut self, start: &Start, read: Result<(Zoo, Money), String>) {
+    /// Opens the game that was read, or tells why it was not. Whether it opened.
+    fn open(&mut self, start: &Start, read: Result<(Zoo, Money), String>) -> bool {
         let opened =
             read.and_then(|(zoo, money)| self.open_game(zoo, money).map_err(|e| e.to_string()));
         match opened {
             Ok(()) => {
                 self.loaded_check();
-                self.begin(start)
+                self.begin(start);
+                true
             }
-            Err(why) => self.say(&why),
+            Err(why) => {
+                self.say(&why);
+                false
+            }
         }
     }
 
-    /// `load FILE` of a script: a saved game opens as a Continue does.
-    fn load_saved(&mut self, file: &str) {
+    /// `load FILE` of a script: a saved game opens as a Continue does. Whether it opened.
+    fn load_saved(&mut self, file: &str) -> bool {
         let catalogue = self.renderer.catalogue();
         let read = std::fs::read(file).map_err(|e| format!("{file}: {e}"));
         let read = read.and_then(|bytes| {
@@ -1754,24 +1811,7 @@ impl<'a> App<'a> {
             reset: false,
             reset_fences: false,
         };
-        self.open(&start, read);
-    }
-
-    /// `save FILE` of a script: the game as it is, with the camera of the moment. A failure is a
-    /// warning and the run goes on.
-    fn save_game(&mut self, file: &str) {
-        let Some(game) = &self.game else { return };
-        let cat = self.renderer.catalogue();
-        let mut zoo = (game.world).saved(crate::zoo::knows(cat));
-        (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
-        game.world.finish_save(&mut zoo, cat);
-        let written = zoo
-            .write(&game.money)
-            .and_then(|bytes| std::fs::write(file, bytes).map_err(|e| e.to_string()));
-        match written {
-            Ok(()) => self.menu_events.push(format!("game saved {file}")),
-            Err(why) => eprintln!("rustyzoo: warning: save {file}: {why}"),
-        }
+        self.open(&start, read)
     }
 
     /// A game was opened from the menu: the menu layouts are hidden, the main panel and the map
@@ -1830,9 +1870,14 @@ impl<'a> App<'a> {
         let (id, name) = match kind {
             Asked::Leave => (ASK_LEAVE, "leave"),
             Asked::Exit => (ASK_EXIT, "exit"),
+            Asked::Load => (ASK_LOAD, "load"),
             // The bulldozer and the tanks ask their own questions.
             Asked::Sweep | Asked::Tank => return,
         };
+        // The questions ask only when saving is allowed (save games 3).
+        if !self.can_save() {
+            return self.proceed(kind);
+        }
         let asked = self.ui.as_mut().is_some_and(|ui| {
             let text = to_cp1252(&ui.string(id));
             ui.ask(QUESTION, &text, Buttons::YES_NO_CANCEL)
@@ -1846,10 +1891,12 @@ impl<'a> App<'a> {
         }
     }
 
-    /// The answer to the question that was asked: Yes would save first, which there is nothing to
-    /// do yet (saved games come later), so the question closes and the game goes on; No leaves;
-    /// Cancel stays.
+    /// The answer to the question that was asked: Yes saves first and goes on if it saved, No goes
+    /// on, Cancel stays.
     fn answered(&mut self, code: i32) {
+        if let Some(saving) = self.saving.take() {
+            return self.save_answered(code, saving);
+        }
         if self.game.as_ref().is_some_and(|g| g.naming_open) {
             return self.named();
         }
@@ -1863,7 +1910,7 @@ impl<'a> App<'a> {
             return self.tank_answered(code);
         }
         match code {
-            6 => self.menu_events.push("game save unavailable".to_string()),
+            6 => self.begin_save(Some(kind)),
             7 => self.proceed(kind),
             _ => {}
         }
@@ -1873,6 +1920,7 @@ impl<'a> App<'a> {
         match kind {
             Asked::Sweep | Asked::Tank => {}
             Asked::Leave => self.stop_game(),
+            Asked::Load => self.open_list(),
             Asked::Exit => {
                 self.menu_events.push("game exit".to_string());
                 self.quit = true;
@@ -1895,7 +1943,7 @@ impl<'a> App<'a> {
             let waiting = ui.take_actions();
             self.ui_actions
                 .extend(waiting.into_iter().filter(|a| *a != Action::Answer(2)));
-            self.asked = None;
+            (self.asked, self.saving) = (None, None);
             if let Some(game) = &mut self.game {
                 game.sweep = None;
             }
@@ -1953,6 +2001,7 @@ impl<'a> App<'a> {
             MAIN_PANEL,
             crate::build::CONSTRUCTION,
             crate::build::OBJECTS,
+            crate::menu::FREEFORM_LAYOUT,
         ] {
             if let Some(i) = ui.tree.find(id) {
                 ui.tree.hide(i);
@@ -2077,6 +2126,11 @@ impl<'a> App<'a> {
     /// The camera of the game; `None` in the menu.
     pub fn camera(&self) -> Option<&Camera> {
         self.game.as_ref().map(|g| &g.camera)
+    }
+
+    /// The folder of the settings that a game without the menu writes its last file to.
+    pub fn set_user_folder(&mut self, dir: Option<PathBuf>) {
+        self.user = dir;
     }
 
     /// Makes this a test run: the generator is seeded from `seed` and the seconds of its later
@@ -2275,6 +2329,7 @@ mod exhibits;
 mod gates;
 mod guest_panel;
 mod panel;
+mod saves;
 mod staff_panel;
 mod terrain;
 mod undo;
@@ -2293,6 +2348,9 @@ mod replay_tests;
 
 #[cfg(test)]
 mod start_tests;
+
+#[cfg(test)]
+mod saves_tests;
 
 #[cfg(test)]
 mod terrain_tests;

@@ -19,6 +19,7 @@ use rustyzoo::render::MapRenderer;
 use rustyzoo::sprite::write_png;
 use rustyzoo::timing::Timers;
 use rustyzoo::ui::interface::Buttons;
+use rustyzoo::userdir;
 use rustyzoo::vfs::Vfs;
 use rustyzoo::zoo::Zoo;
 
@@ -429,6 +430,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
                 Timers::from_config(&ini),
                 size,
             )?;
+            app.set_user_folder(userdir::dir());
             if let Some(ui) = crate::layout::load_interface(vfs, size, &flags.show, &flags.fill)? {
                 app.set_interface(ui);
             }
