@@ -294,3 +294,25 @@ fn a_scenario_is_read_from_the_install_and_an_unreadable_extra_file_is_skipped()
     assert_eq!(s.goals.len(), 3);
     assert!(Scenario::prepare(&vfs, "x/gone.scn").is_none());
 }
+
+#[test]
+fn an_extra_value_names_every_file_its_prefix_and_suffix_match_and_no_other() {
+    use crate::sprite::tests::Install;
+    let main =
+        "[start]\nextragoals=x/more.scn\nextragoals=x/more\nextragoals=x/more.\n[goals]\ngoal=a\n";
+    let install = Install::new(
+        "scenario-pattern",
+        &[
+            ("x/main.scn", main.as_bytes().to_vec()),
+            ("x/more.scn", b"[goals]\ngoal=b\n".to_vec()),
+            ("x/more02.scn", b"[goals]\ngoal=d\n".to_vec()),
+            ("x/more01.scn", b"[goals]\ngoal=c\n".to_vec()),
+            ("x/morex.txt", b"[goals]\ngoal=e\n".to_vec()),
+            ("x/other.scn", b"[goals]\ngoal=f\n".to_vec()),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let s = Scenario::prepare(&vfs, "x/main.scn").unwrap();
+    let names: Vec<&str> = s.goals.iter().map(|g| g.name.as_str()).collect();
+    assert_eq!(names, ["timer", "a", "b", "c", "d"]);
+}

@@ -233,9 +233,17 @@ impl Scenario {
     pub fn prepare(vfs: &Vfs, file: &str) -> Option<Scenario> {
         let read = |name: &str| Config::parse(&vfs.read(name).ok()?).ok();
         let main = read(file)?;
+        // An `extragoals` value is a pattern: the text before its last dot is the prefix, the dot
+        // and the rest the suffix. A value with no dot, or ending in one, lists nothing.
         let extra = |s: Option<&Section>| -> Vec<Config> {
-            let names = s.map_or(&[][..], |s| s.get_all("extragoals"));
-            let names = names.iter().map(|n| String::from_utf8_lossy(n));
+            let values = s.map_or(&[][..], |s| s.get_all("extragoals"));
+            let names = values.iter().flat_map(|v| {
+                let value = String::from_utf8_lossy(v);
+                match value.rfind('.') {
+                    Some(dot) if dot + 1 < value.len() => vfs.listed(&value[..dot], &value[dot..]),
+                    _ => Vec::new(),
+                }
+            });
             names.filter_map(|n| read(&n)).collect()
         };
         Some(Scenario::build(file, &main, &extra(main.section("start"))))
