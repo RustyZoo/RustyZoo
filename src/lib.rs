@@ -9,6 +9,7 @@ pub mod build;
 pub mod building;
 pub mod camera;
 pub mod config;
+pub mod cursor;
 pub mod entity;
 pub mod exhibit;
 pub mod goal;
