@@ -54,12 +54,18 @@ fn a_unit_is_selected_picked_up_refused_where_another_stands_and_put_down() {
             s.at(19, 20, 32, 32),
             s.at(20, 20, 32, 32),
         );
+        // The cursor turns to the hover one over a unit, the pending one while it is carried.
+        s.pass(&[here]);
+        assert_eq!(s.app.cursor(), 210, "over a unit");
+        s.pass(&[s.at(20, 21, 32, 32)]);
+        assert_eq!(s.app.cursor(), 209, "over bare ground");
         // The first click selects, the second picks the unit up: it is off the map and stopped.
         assert_eq!(told(s.click_log(here)), [format!("tool select {a}")]);
         // The staged picture carries the marker over the selected unit, and not any more over
         // the one that is picked up.
         assert_eq!(s.app.game.as_ref().unwrap().extra.selected, Some(a));
         assert_eq!(told(s.click_log(here)), [format!("world carry {a}")]);
+        assert_eq!(s.app.cursor(), 208, "a carried unit follows the pointer");
         assert_eq!(s.app.game.as_ref().unwrap().extra.selected, None);
         let game = s.app.game.as_ref().unwrap();
         assert_eq!(

@@ -135,6 +135,10 @@ pub fn run(
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
 
+    // The busy cursor shows from the start-up until the first pass.
+    let mut cursors = Cursors::new(vfs.root());
+    let mut alternate = rustyzoo::cursor::alternate(ini);
+    cursors.show(rustyzoo::cursor::number(rustyzoo::cursor::BUSY, alternate));
     let mut sound = Sound::open(&sdl, ini);
     let mut pump = sdl.event_pump()?;
     let mut script = flags.script.into_iter().peekable();
@@ -240,7 +244,7 @@ pub fn run(
     };
     let mut state = State {
         interface: app.interface().is_some(),
-        alternate: rustyzoo::cursor::alternate(ini),
+        alternate,
         ..State::default()
     };
     if state.interface {
@@ -266,8 +270,6 @@ pub fn run(
     let has_pointer = video.current_video_driver() != "dummy";
     let mut wait = Wait::default();
     let mut seen = false;
-    let mut cursors = Cursors::new(vfs.root());
-    let mut alternate = state.alternate;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
@@ -323,6 +325,12 @@ pub fn run(
         if at != pointer {
             pointer = at;
             commands.push(Command::Pointer(at));
+        }
+        if commands.iter().any(Command::busy) {
+            cursors.show(rustyzoo::cursor::number(
+                rustyzoo::cursor::BUSY,
+                state.alternate,
+            ));
         }
         let now = sdl3::timer::ticks() - start;
         let painted = match app.pass(now, &commands) {

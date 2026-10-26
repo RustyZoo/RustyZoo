@@ -1014,6 +1014,18 @@ fn the_cursor_over_the_interface_is_the_default() {
         assert_eq!(app.cursor(), 200, "over the interface");
         app.pass(40, &[Command::Mouse(Mouse::Move(30, 30))]);
         assert_eq!(app.cursor(), 209, "back on the map view");
+        // An editable text field has the text cursor.
+        app.interface().unwrap().show(4);
+        app.pass(60, &[Command::Mouse(Mouse::Move(51, 41))]);
+        assert_eq!(app.cursor(), 201, "over a text field");
+        app.pass(80, &[Command::Mouse(Mouse::Move(30, 30))]);
+        assert_eq!(app.cursor(), 209);
+        // The assign tool over a valid target has the hover cursor, over an invalid one not.
+        let game = app.game.as_mut().unwrap();
+        game.staff.over = Some((1, true));
+        assert_eq!(app.cursor(), 210);
+        app.game.as_mut().unwrap().staff.over = Some((1, false));
+        assert_eq!(app.cursor(), 209);
     });
 }
 
@@ -1398,6 +1410,49 @@ fn path_catalogue() -> Catalogue {
         height: 0,
     });
     cat
+}
+
+#[test]
+fn rotating_zooming_saving_and_loading_are_the_busy_commands() {
+    let busy = |c: Command| c.busy();
+    assert!(busy(Command::Rotate(true)) && busy(Command::Zoom(false)));
+    assert!(busy(Command::Save("a.zoo")) && busy(Command::Load("a.zoo")));
+    assert!(!busy(Command::Pause) && !busy(Command::Mouse(Mouse::Down)));
+}
+
+#[test]
+fn a_pending_object_and_a_drag_have_their_cursors_over_the_map_view() {
+    let install = cache_install_with("app-cursor-drag", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = path_catalogue();
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    app.set_interface(interface("cursor-drag"));
+    app.set_money(Money {
+        cash: 100.0,
+        ..Money::default()
+    });
+    app.pass(0, &[]);
+    let camera = app.camera().unwrap().clone();
+    let at = |tx: i32, ty: i32| {
+        let (x, y) = tile_point(&camera, tx, ty);
+        Command::Mouse(Mouse::Move(x, y))
+    };
+    app.pass(20, &[at(20, 19)]);
+    assert_eq!(app.cursor(), 209, "no tool");
+    app.game.as_mut().unwrap().build.hold(0);
+    app.pass(40, &[at(20, 19)]);
+    assert_eq!(app.cursor(), 208, "a pending object");
+    app.pass(60, &[Command::Mouse(Mouse::Down), at(20, 19)]);
+    assert_eq!(app.cursor(), 202, "a drag");
+    app.pass(100, &[at(20, 19), Command::Mouse(Mouse::Up)]);
+    assert_eq!(app.cursor(), 208, "the drag ended, the tool stays");
 }
 
 #[test]

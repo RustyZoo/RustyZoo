@@ -385,6 +385,8 @@ fn the_delete_key_and_the_button_make_the_bulldozer_the_tool_and_escape_drops_it
     with_game("tool", "", |s| {
         assert_eq!(s.pass(&[DELETE]), ["tool bulldozer on"]);
         assert!(s.app.game.as_ref().unwrap().build.bulldozing());
+        s.pass(&[s.at(20, 20, 32, 32)]);
+        assert_eq!(s.app.cursor(), 207, "the bulldozer");
         // Delete again presses the button again: it ends the tool.
         assert_eq!(s.pass(&[DELETE]), ["tool bulldozer off"]);
         // The button does the same.

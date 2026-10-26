@@ -160,6 +160,17 @@ pub enum Command {
     Load(&'static str),
 }
 
+impl Command {
+    /// Whether the command starts a long operation, which the window shows with the busy cursor
+    /// (string tables 6.1): rotating, zooming, saving and loading a game.
+    pub fn busy(&self) -> bool {
+        matches!(
+            self,
+            Command::Rotate(_) | Command::Zoom(_) | Command::Save(_) | Command::Load(_)
+        )
+    }
+}
+
 impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
@@ -432,6 +443,8 @@ pub struct App<'a> {
     pointer: Option<(i32, i32)>,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
     on_map: bool,
+    /// Whether it is over an editable text field.
+    on_text: bool,
     frame: Framebuffer,
     /// The interface drawn over the map, if the game has one.
     ui: Option<Interface>,
@@ -613,6 +626,7 @@ impl<'a> App<'a> {
             quit: false,
             pointer: None,
             on_map: true,
+            on_text: false,
             frame: Framebuffer::new(size.0, size.1),
             ui: None,
             map: Framebuffer::new(0, 0),
@@ -839,6 +853,7 @@ impl<'a> App<'a> {
             return None;
         }
         self.on_map = self.ui.as_mut().is_none_or(Interface::pointer_on_map);
+        self.on_text = self.ui.as_mut().is_some_and(Interface::pointer_on_text);
         if let Some(ui) = &mut self.ui {
             self.ui_events.extend(ui.take_events());
             self.ui_sounds.extend(ui.take_sounds());
@@ -2170,14 +2185,31 @@ impl<'a> App<'a> {
     }
 
     /// The cursor to show, by its number without the 50 of the alternate set ([`crate::cursor`]):
-    /// over the map view the terrain tool's while it is the map view's tool, else the normal one;
-    /// over the interface the default.
+    /// over the interface the text cursor on an editable field, else the default; over the map
+    /// view the terrain tool's, the bulldozer's, the drag's, the pending object's, the hover's
+    /// (a valid target of the assign tool, or, with no tool, a selectable entity), else the
+    /// normal one.
     pub fn cursor(&self) -> u32 {
+        use crate::cursor as c;
         if !self.on_map {
-            return crate::cursor::DEFAULT;
+            return if self.on_text { c::TEXT } else { c::DEFAULT };
         }
-        let tool = self.game.as_ref().and_then(|g| g.terrain.cursor());
-        tool.unwrap_or(crate::cursor::NORMAL)
+        let Some(game) = &self.game else {
+            return c::NORMAL;
+        };
+        if let Some(tool) = game.terrain.cursor() {
+            return tool;
+        }
+        let over = game.staff.over.is_some_and(|(_, good)| good)
+            || (self.assigning().is_none() && self.over_selectable());
+        let b = &game.build;
+        match () {
+            _ if b.bulldozing() => c::BULLDOZER,
+            _ if b.dragging() || !game.run.is_empty() => c::DRAG,
+            _ if game.pending.is_some() => c::PLACING,
+            _ if over => c::HOVER,
+            _ => c::NORMAL,
+        }
     }
 
     pub fn paused(&self) -> bool {
