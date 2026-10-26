@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use super::exhibits::{NAME_DIALOG, NAME_FIELD};
-use super::{Action, App, Asked, Buttons, OPTIONS_PANEL, SAVE_BUTTON};
+use super::{Action, App, Asked, Buttons, OPTIONS_PANEL, QUESTION, SAVE_BUTTON};
 use crate::build::Build;
 use crate::menu::{self, FREEFORM_LAYOUT, SAVED_LIST};
 use crate::panel::exhibit;
@@ -27,12 +27,16 @@ const NAME_TOO_LONG: i32 = 11646;
 const NAME_BUFFER: i32 = 260;
 const LONGEST: usize = 256;
 const EXTENSION: &str = ".zoo";
+/// The question asked before a file is replaced (the original asks with the system's dialog).
+const REPLACE_TEXT: &str = "The file already exists. Replace it?";
 
 /// The save dialog being open: the folder of the file and what follows a successful save (the
-/// question it answers; none for the button).
+/// question it answers; none for the button). `replace` is the file of the question about
+/// replacing a file, while that question is open.
 pub(super) struct Saving {
     then: Option<Asked>,
     dir: PathBuf,
+    replace: Option<PathBuf>,
 }
 
 /// The list of saved games being shown: the folder, the file names and the row selected.
@@ -160,15 +164,27 @@ impl App<'_> {
             return eprintln!("rustyzoo: warning: this interface has no save dialog");
         }
         ui.set_char_limit(NAME_FIELD, NAME_BUFFER);
+        ui.set_wide_text(NAME_FIELD, true);
         ui.set_text(NAME_FIELD, &to_cp1252(&name));
         ui.focus(NAME_FIELD);
-        self.saving = Some(Saving { then, dir });
+        self.saving = Some(Saving {
+            then,
+            dir,
+            replace: None,
+        });
         self.menu_events.push("game save dialog".to_string());
     }
 
     /// The save dialog was answered: OK writes the file named in the field, anything else ends
-    /// the command without saving (save games 4).
+    /// the command without saving (save games 4). A file that exists is first confirmed: Yes
+    /// writes it, anything else ends the command.
     pub(super) fn save_answered(&mut self, code: i32, saving: Saving) {
+        if let Some(path) = saving.replace {
+            if code == 6 {
+                self.write_named(&saving.dir, &path, saving.then);
+            }
+            return;
+        }
         let Some(ui) = &self.ui else { return };
         let mut name = ui.text(NAME_FIELD).unwrap_or_default();
         if code != 1 || name.iter().all(u8::is_ascii_whitespace) {
@@ -182,19 +198,36 @@ impl App<'_> {
         }
         let name: String = name.iter().map(|&b| from_cp1252(b)).collect();
         let path = saving.dir.join(name);
-        let written = std::fs::create_dir_all(&saving.dir)
+        if path.is_file() {
+            let Some(ui) = &mut self.ui else { return };
+            if !ui.ask(QUESTION, &to_cp1252(REPLACE_TEXT), Buttons::YES_NO) {
+                return eprintln!("rustyzoo: warning: this interface has no replace question");
+            }
+            self.saving = Some(Saving {
+                replace: Some(path),
+                ..saving
+            });
+            return;
+        }
+        self.write_named(&saving.dir, &path, saving.then);
+    }
+
+    /// Writes the game to `path` in `dir` (made if missing), then makes it the last file and goes
+    /// on with the question it answers. A failed write shows its message.
+    fn write_named(&mut self, dir: &Path, path: &Path, then: Option<Asked>) {
+        let written = std::fs::create_dir_all(dir)
             .map_err(|e| e.to_string())
-            .and_then(|()| self.write_zoo(&path));
+            .and_then(|()| self.write_zoo(path));
         if let Err(why) = written {
             eprintln!("rustyzoo: warning: save {}: {why}", path.display());
             let text = self.ui.as_ref().map(|ui| ui.string(SAVE_FAILED));
             return self.say(&text.unwrap_or(why));
         }
-        let path = std::path::absolute(&path).unwrap_or(path);
+        let path = std::path::absolute(path).unwrap_or(path.to_path_buf());
         let path = path.to_string_lossy().into_owned();
         self.menu_events.push(format!("game saved {path}"));
         self.set_last(&path);
-        self.saved_then(saving.then);
+        self.saved_then(then);
     }
 
     /// A save is over, or there was no dialog to save with: the question goes on, or the options

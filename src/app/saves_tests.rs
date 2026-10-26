@@ -196,6 +196,8 @@ fn yes_saves_then_goes_on_and_a_cancelled_save_ends_the_command() {
         now = pass(app, now, &key(Key::Y));
         let before = std::fs::metadata(files.0.join("saved.zoo")).unwrap().len();
         now = pass(app, now, &[enter()]);
+        // The file exists: its replacement is confirmed.
+        now = pass(app, now, &key(Key::Y));
         assert!(app.camera().is_none() && shown(app, 26));
         let after = std::fs::metadata(files.0.join("saved.zoo")).unwrap().len();
         assert_ne!(before, after, "saved.zoo was written");
@@ -205,7 +207,9 @@ fn yes_saves_then_goes_on_and_a_cancelled_save_ends_the_command() {
         now = pass(app, now, &[Command::Close]);
         now = pass(app, now, &key(Key::Y));
         assert!(!app.quit(), "the dialog is open");
-        pass(app, now, &[enter()]);
+        now = pass(app, now, &[enter()]);
+        // The replacement is confirmed, then the run ends.
+        pass(app, now, &key(Key::Y));
         assert!(app.quit());
     });
 }
@@ -389,6 +393,43 @@ fn ctrl_s_and_ctrl_l_close_the_open_panels_and_clear_the_selection_before_the_di
             !shown(app, 5),
             "the options panel closes before the question"
         );
+        let _ = now;
+    });
+}
+
+#[test]
+fn the_name_takes_up_to_256_bytes_and_is_not_cut_at_the_width_of_the_field() {
+    with_menu("wide", INI, |app, files| {
+        let now = started(app);
+        let now = press_save(app, now);
+        let name = "w".repeat(30);
+        let _ = type_name(app, now, &name);
+        assert!(files.0.join(format!("{name}.zoo")).is_file());
+    });
+}
+
+#[test]
+fn a_file_that_exists_is_confirmed_before_it_is_replaced() {
+    with_menu("replace", INI, |app, files| {
+        let mut now = started(app);
+        let original = std::fs::read(files.0.join("saved.zoo")).unwrap();
+        now = press_save(app, now);
+        now = type_name(app, now, "saved");
+        assert!(
+            app.interface().unwrap().modal_open(),
+            "the question is open"
+        );
+        assert_eq!(std::fs::read(files.0.join("saved.zoo")).unwrap(), original);
+        // No writes nothing and ends the command.
+        now = pass(app, now, &key(Key::N));
+        assert_eq!(std::fs::read(files.0.join("saved.zoo")).unwrap(), original);
+        assert!(last(files).is_empty() && !app.interface().unwrap().modal_open());
+        // Yes writes the file over.
+        now = press_save(app, now);
+        now = type_name(app, now, "saved");
+        now = pass(app, now, &key(Key::Y));
+        assert_ne!(std::fs::read(files.0.join("saved.zoo")).unwrap(), original);
+        assert!(last(files).contains("saved.zoo"));
         let _ = now;
     });
 }
