@@ -3,9 +3,10 @@
 //!
 //! The goal list is the timer, the goals of the file's `[goals]`, then those of each `[start]
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
-//! The rules a simple goal reads and the triggers it fires are stubs: only rule 7 (the date) and
-//! rule 99 (a constant) read anything, and a trigger logs `scenario trigger` and does nothing
-//! else. The texts, the objectives list, saving and the end screens come with later issues.
+//! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits and
+//! the entities; the research, awards, shows and interface rules read 0. The triggers are stubs:
+//! a trigger logs `scenario trigger` and does nothing else. The texts, the objectives list,
+//! saving and the end screens come with later issues.
 //!
 //! The log (family `sim`): `scenario start FILE GOALS` when a scenario is prepared, `scenario
 //! trigger WHO STATE TRULEA TRULEB TARGA TARGB` for each trigger fired with a non-zero `trulea`,
@@ -13,6 +14,9 @@
 
 use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
+
+mod rules;
+pub use rules::Game;
 
 #[cfg(test)]
 mod tests;
@@ -24,15 +28,26 @@ const PERIOD: u32 = 1500;
 const MAX_GOALS: u32 = 4096;
 const MAX_DEPTH: u32 = 16;
 
-/// What the rules read from the game.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Env {
+/// What the rules read from the game. Without a `game` the rules that read the zoo give 0.
+#[derive(Default)]
+pub struct Env<'a> {
     /// The accounts' month index (1 to 12) and year index (0 to 19).
     pub month: i32,
     pub year: i32,
+    pub game: Option<Game<'a>>,
+    cache: rules::Cache,
 }
 
-impl Env {
+impl<'a> Env<'a> {
+    pub fn new(month: i32, year: i32, game: Option<Game<'a>>) -> Env<'a> {
+        Env {
+            month,
+            year,
+            game,
+            cache: Default::default(),
+        }
+    }
+
     /// The month index plus 12 times the year index: 1 on the first day of a scenario.
     fn total_months(&self) -> i32 {
         self.month.saturating_add(self.year.saturating_mul(12))
@@ -96,20 +111,6 @@ fn int(s: Option<&Section>, key: &str) -> i32 {
     s.and_then(|s| s.get(key)).and_then(to_int).unwrap_or(0)
 }
 
-/// The value a rule reads.
-fn eval(rule: &[i32; 4], env: &Env) -> i32 {
-    match rule[0] {
-        7 => match rule[1] {
-            0 => env.month,
-            1 => env.year,
-            2 => env.total_months(),
-            _ => 0,
-        },
-        99 => rule[2],
-        _ => 0,
-    }
-}
-
 impl Simple {
     /// The state the rule value gives (4.2), or none for a type that is not 0 to 8.
     fn judge(&self, r: i32) -> Option<u8> {
@@ -170,18 +171,18 @@ impl Goal {
     }
 
     /// One update (4.2, 4.4). The timer is updated by the manager, which knows the other goals.
-    fn update(&mut self, env: &Env, log: &mut Vec<String>) {
+    fn update(&mut self, env: &Env, states: &[u8], log: &mut Vec<String>) {
         let new = match &mut self.body {
             Body::Timer(_) => return,
             Body::Simple(s) => {
                 if s.sticky && self.state != 0 {
                     return;
                 }
-                s.judge(eval(&s.rule, env))
+                s.judge(rules::eval(&s.rule, s.value, env, states))
             }
             Body::Complex(children) => {
                 for c in children.iter_mut() {
-                    c.update(env, log);
+                    c.update(env, states, log);
                 }
                 let of = |c: &Goal| c.reported();
                 Some(if children.iter().any(|c| of(c) == 2) {
@@ -195,7 +196,7 @@ impl Goal {
             Body::Chain(children) => {
                 let mut state = 1;
                 for c in children.iter_mut() {
-                    c.update(env, log);
+                    c.update(env, states, log);
                     if c.reported() != 1 {
                         state = c.reported();
                         break;
@@ -221,6 +222,8 @@ impl Goal {
 pub struct Scenario {
     file: String,
     goals: Vec<Goal>,
+    /// The state each goal of the list reports, kept in step with the goals for rule 9.
+    reported: Vec<u8>,
     /// The sections `[start] triggers` names, fired at the start.
     start: Vec<(String, Trigger)>,
     gathered: u32,
@@ -277,6 +280,7 @@ impl Scenario {
         });
         Scenario {
             file: file.to_string(),
+            reported: goals.iter().map(Goal::reported).collect(),
             goals,
             start: start.collect(),
             gathered: 0,
@@ -300,20 +304,26 @@ impl Scenario {
     fn update_goal(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
         let total = env.total_months();
         let (timer, rest) = self.goals.split_first_mut().expect("the timer");
+        let seen = &mut self.reported;
         if at > 0 {
-            return rest[at - 1].update(env, log);
+            rest[at - 1].update(env, seen, log);
+            seen[at] = rest[at - 1].reported();
+            return;
         }
         if let Body::Timer(months) = timer.body
             && timer.state == 0
             && (0..total).contains(&months)
         {
             timer.state = 3;
-            for g in rest.iter_mut() {
-                g.update(env, log);
+            seen[0] = 3;
+            for (i, g) in rest.iter_mut().enumerate() {
+                g.update(env, seen, log);
+                seen[i + 1] = g.reported();
             }
             if rest.iter().any(|g| !matches!(g.reported(), 1 | 3)) {
                 timer.state = 2;
             }
+            seen[0] = timer.reported();
         }
     }
 
