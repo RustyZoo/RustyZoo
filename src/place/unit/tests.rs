@@ -451,16 +451,16 @@ fn a_building_or_a_tank_filter_is_numbered_under_its_subtype_and_the_flag_can_tu
         ..ty(subtype, "building", ini)
     };
     assert_eq!(
-        name(&mut w, &of("building", "vendfood", ""), "Snack Machine"),
-        "Snack Machine 1"
+        name(&mut w, &of("building", "vendfood", ""), "Test Stand"),
+        "Test Stand 1"
     );
     assert_eq!(
-        name(&mut w, &of("building", "vendfood", ""), "Snack Machine"),
-        "Snack Machine 2"
+        name(&mut w, &of("building", "vendfood", ""), "Test Stand"),
+        "Test Stand 2"
     );
     assert_eq!(
-        name(&mut w, &of("filter", "f", ""), "Tank Filter"),
-        "Tank Filter 1"
+        name(&mut w, &of("filter", "f", ""), "Test Filter"),
+        "Test Filter 1"
     );
     // A flag of 0, -1, a huge value or a missing one: the bare text for 0, -1 and huge, and no counter taken.
     for ini in [
@@ -470,8 +470,8 @@ fn a_building_or_a_tank_filter_is_numbered_under_its_subtype_and_the_flag_can_tu
     ] {
         let ini = format!("[Characteristics/Integers]\n{ini}\n");
         assert_eq!(
-            name(&mut w, &of("building", "trshcan", &ini), "Trash Can"),
-            "Trash Can"
+            name(&mut w, &of("building", "trshcan", &ini), "Test Bin"),
+            "Test Bin"
         );
     }
     assert_eq!(w.zoo.names["vendfood"], 2);
