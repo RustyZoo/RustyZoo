@@ -1826,3 +1826,39 @@ fn a_tank_filter_goes_beside_a_tank_no_filter_serves_and_faces_it() {
     assert!(w.remove(id));
     assert_eq!(filter(&w, (4, 3), 0).2, 6);
 }
+
+#[test]
+fn a_new_object_is_named_from_its_type_and_numbered_only_when_the_type_says_so() {
+    let cat = catalogue();
+    let mut money = zoo_money(50_000.0);
+    // Without a text for the type the name stays empty; a plain type has the text alone.
+    for (texts, numbers, expect) in [
+        (false, "", ""),
+        (true, "", "Tree"),
+        (true, "cUseNumbersInName=0\n", "Tree"),
+        (true, "cUseNumbersInName=-1\n", "Tree"),
+        (true, "cUseNumbersInName=2000000000\n", "Tree"),
+        (true, "cUseNumbersInName=1\n", "Tree 1"),
+    ] {
+        let mut w = world((0, 0), vec![], |_| {});
+        if texts {
+            w.units.names.insert(0, "Tree".into());
+        }
+        let ini = format!("[Characteristics/Integers]\ncPurchaseCost=25\n{numbers}");
+        let tree = ty("objects", "tree", &ini, [1, 1, 1]);
+        let p = at(&w, &cat, 0, 0, 3 * 64 + 40, 2 * 64 + 10).unwrap();
+        place(
+            &mut w,
+            &mut money,
+            &tree,
+            &p,
+            &[false, true],
+            Vec::new(),
+            shape,
+        );
+        let name = &w.zoo.entities.last().unwrap().common.as_ref().unwrap().name;
+        assert_eq!(name, expect, "{numbers:?}");
+        let counted = w.zoo.names.get("tree").copied();
+        assert_eq!(counted, (expect == "Tree 1").then_some(1), "{numbers:?}");
+    }
+}

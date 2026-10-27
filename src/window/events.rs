@@ -48,6 +48,8 @@ pub struct State {
     pub exposed: bool,
     /// Alt+Enter was released.
     pub toggle: bool,
+    /// The alternate cursors are on (Ctrl+C switches them, input 3.2).
+    pub alternate: bool,
     /// The game has an interface: the mouse, the keys it reads and the typed characters become
     /// commands.
     pub interface: bool,
@@ -62,6 +64,7 @@ impl State {
             commands.push(command);
         }
         self.toggle |= input::alt_enter(&event);
+        self.alternate ^= input::ctrl_c(&event);
         if self.interface {
             commands.extend(input::interface_command(&event));
             match event {

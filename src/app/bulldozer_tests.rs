@@ -52,7 +52,12 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
 const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n";
 const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
-    [a]\ntype=UIListBox\nid=4326\nx=0\ny=0\ndx=40\ndy=36\n";
+    [a]\ntype=UIListBox\nid=4326\nx=0\ny=0\ndx=40\ndy=36\n\
+    [b]\ntype=UIText\nid=4868\ndx=8\ndy=8\n[c]\ntype=UIText\nid=4881\ndx=8\ndy=8\n\
+    [d]\ntype=UIText\nid=4883\ndx=8\ndy=8\n[e]\ntype=UIText\nid=4891\ndx=8\ndy=8\n\
+    [f]\ntype=UIText\nid=4893\ndx=8\ndy=8\n[g]\ntype=UIText\nid=4871\ndx=8\ndy=8\n\
+    [h]\ntype=UIText\nid=4872\ndx=8\ndy=8\n[i]\ntype=UIButton\nid=4869\ndx=8\ndy=8\n\
+    [j]\ntype=UIButton\nid=4870\ndx=8\ndy=8\n[k]\ntype=UIButton\nid=4885\ndx=8\ndy=8\n";
 const GUEST: &str = "[LayoutInfo]\nid=9\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3413\ndx=8\ndy=8\ntarget=9\naction=2\ntransparent=0\n";
 const STAFF: &str = "[LayoutInfo]\nid=17\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
@@ -164,6 +169,9 @@ pub(super) fn catalogue() -> Catalogue {
     // 16: a dock (2000) the bulldozer cannot remove.
     let dock = format!("{}cNeedsConfirm=1\ncDeletable=0\n", cost(2000));
     cat.push(ty("building", b"dock", b"", &dock, [2, 2, 1]));
+    // 17: a seal, an animal that lives under water.
+    let seal = "[m/Characteristics/Integers]\ncUnderwater=1\n";
+    cat.push(ty("animals", b"seal", b"m", seal, [1, 1, 1]));
     cat
 }
 

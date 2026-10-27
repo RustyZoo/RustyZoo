@@ -295,6 +295,10 @@ fn a_hire_draws_a_pending_staff_member_before_the_sex_and_another_after_it() {
             panic!("not staff");
         };
         assert_eq!((s.work, s.chase, unit.started), (drawn.0, drawn.1, true));
+        // Its two colour draws are the colour list of the entity.
+        let at = game.world.find(101).unwrap();
+        let colors = &game.world.zoo.entities[at].common.as_ref().unwrap().colors;
+        assert_eq!((colors, colors.len()), (&s.colours, 2));
         let ty = if male { 3 } else { 4 };
         assert_eq!(made(app), Some((ty, next.0, next.1)));
     });

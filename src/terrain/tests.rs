@@ -1293,3 +1293,20 @@ fn a_tank_beside_a_contiguous_step_is_not_pulled_out_of_shape() {
     assert!(flat(4, 3), "the tank tile keeps its shape");
     assert!(!flat(3, 2), "the ground tile beside it slopes");
 }
+
+#[test]
+fn the_cursor_follows_the_mode_and_the_button() {
+    let mut tool = tool();
+    assert_eq!(tool.cursor(), None, "no tool, the normal cursor");
+    tool.enter(Mode::Modify);
+    assert_eq!(tool.cursor(), Some(203));
+    tool.pressed = true;
+    assert_eq!(tool.cursor(), Some(204), "dragging");
+    tool.set_shaping(true, true);
+    assert_eq!(tool.cursor(), Some(205), "levelling");
+    tool.release();
+    assert_eq!(tool.cursor(), Some(203));
+    tool.enter(Mode::Paint);
+    tool.pressed = true;
+    assert_eq!(tool.cursor(), Some(206));
+}

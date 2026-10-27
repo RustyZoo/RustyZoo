@@ -292,8 +292,8 @@ impl Run {
                     .get(id)
                     .is_some_and(|x| x.tank.is_some());
                 match *command {
-                    Command::Fill(id) => self.world.fill(id),
-                    _ => self.world.drain(id),
+                    Command::Fill(id) => _ = self.world.fill(id),
+                    _ => _ = self.world.drain(id),
                 }
                 tank
             }
@@ -368,7 +368,8 @@ impl Run {
             "maint" => "Worker",
             _ => "Animal",
         };
-        let name = crate::place::unit::name(&mut self.world, ty, label);
+        let label = (self.world.units.names.get(&ty.name_id)).map_or(label.into(), Clone::clone);
+        let name = crate::place::unit::name(&mut self.world, ty, &label);
         let entity = crate::zoo::Entity {
             class: ty.class.into(),
             type_name: text(&ty.type_name),

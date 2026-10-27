@@ -93,6 +93,7 @@ fn start(reset_fences: bool) -> Start {
         cash: Default::default(),
         reset: false,
         reset_fences,
+        scenario: None,
     }
 }
 

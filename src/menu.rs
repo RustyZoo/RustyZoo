@@ -104,6 +104,8 @@ pub struct Start {
     pub reset: bool,
     /// Whether every fence piece is made healthy at the start: `resetfences` above 0 (8.3).
     pub reset_fences: bool,
+    /// The scenario file to play, for a scenario or a freeform map.
+    pub scenario: Option<String>,
 }
 
 /// What a button asks of the game.
@@ -321,6 +323,7 @@ impl Menu {
                 cash: StartCash::default(),
                 reset: false,
                 reset_fences: false,
+                scenario: None,
             }),
             None => Request::Message(ui.string(CANNOT_OPEN)),
         });

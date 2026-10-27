@@ -34,6 +34,7 @@ use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
+use crate::scenario::Scenario;
 use crate::sim::Sim;
 use crate::status::{Finances, STATUS_BUTTON, Words};
 use crate::terrain::{Tool, habit};
@@ -434,6 +435,8 @@ pub struct App<'a> {
     timers: Timers,
     quit: bool,
     pointer: Option<(i32, i32)>,
+    /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
+    on_map: bool,
     frame: Framebuffer,
     /// The interface drawn over the map, if the game has one.
     ui: Option<Interface>,
@@ -614,6 +617,7 @@ impl<'a> App<'a> {
             timers,
             quit: false,
             pointer: None,
+            on_map: true,
             frame: Framebuffer::new(size.0, size.1),
             ui: None,
             map: Framebuffer::new(0, 0),
@@ -673,7 +677,8 @@ impl<'a> App<'a> {
             camera.set_fullscreen(&zoo, true);
         }
         let brush = (zoo.view.brush & 0xff) as usize;
-        let mut world = World::new(zoo, |e| self.renderer.shape(e));
+        let language = crate::strings::Language::of(self.renderer.vfs().root());
+        let mut world = World::with_language(zoo, |e| self.renderer.shape(e), language);
         let staged = self.renderer.stage(&world.zoo, camera.rotation, false)?;
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
@@ -684,8 +689,8 @@ impl<'a> App<'a> {
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
-            let animals = self.renderer.catalogue().types.iter();
-            world.units.names = (animals.filter(|t| t.class == "animals"))
+            let types = self.renderer.catalogue().types.iter();
+            world.units.names = (types.filter(|t| t.name_id != 0))
                 .map(|t| (t.name_id, ui.string(t.name_id)))
                 .collect();
         }
@@ -720,7 +725,12 @@ impl<'a> App<'a> {
             bar: None,
             bars: None,
             finances: Finances::default(),
-            build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
+            build: Build::new(installed_expansions(self.renderer.vfs()))
+                .with_exhibits(exhibits)
+                .unlocked(
+                    self.renderer.catalogue(),
+                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+                ),
             pending: None,
             made: None,
             gate: None,
@@ -839,6 +849,7 @@ impl<'a> App<'a> {
         if self.quit {
             return None;
         }
+        self.on_map = self.ui.as_mut().is_none_or(Interface::pointer_on_map);
         if let Some(ui) = &mut self.ui {
             self.ui_events.extend(ui.take_events());
             self.ui_sounds.extend(ui.take_sounds());
@@ -1681,6 +1692,18 @@ impl<'a> App<'a> {
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
+                exhibit::WALL_DOWN | exhibit::WALL_UP if self.game.is_some() => {
+                    self.tank_wall(id == exhibit::WALL_UP);
+                }
+                exhibit::SALT | exhibit::FRESH if self.game.is_some() => {
+                    self.tank_fill(id == exhibit::SALT);
+                }
+                exhibit::DRAIN if self.game.is_some() => self.tank_drain(),
+                exhibit::TANK_TAB if self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.panel.clock.force = true;
+                    }
+                }
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
@@ -1820,6 +1843,7 @@ impl<'a> App<'a> {
             cash: Default::default(),
             reset: false,
             reset_fences: false,
+            scenario: None,
         };
         self.open(&start, read)
     }
@@ -1857,6 +1881,11 @@ impl<'a> App<'a> {
                     self.money_events.push(format!("{name} {amount}"));
                 }
             }
+        }
+        if let Some(scenario) = &start.scenario
+            && let Some(scenario) = Scenario::prepare(self.renderer.vfs(), scenario)
+        {
+            self.sim.start_scenario(scenario);
         }
         let music = self.music.take();
         self.start_game(music);
@@ -2175,6 +2204,17 @@ impl<'a> App<'a> {
         self.game.as_ref().map(|g| &g.money)
     }
 
+    /// The cursor to show, by its number without the 50 of the alternate set ([`crate::cursor`]):
+    /// over the map view the terrain tool's while it is the map view's tool, else the normal one;
+    /// over the interface the default.
+    pub fn cursor(&self) -> u32 {
+        if !self.on_map {
+            return crate::cursor::DEFAULT;
+        }
+        let tool = self.game.as_ref().and_then(|g| g.terrain.cursor());
+        tool.unwrap_or(crate::cursor::NORMAL)
+    }
+
     pub fn paused(&self) -> bool {
         self.modal() || self.game.as_ref().is_some_and(|g| g.paused)
     }
@@ -2352,11 +2392,14 @@ mod guest_panel;
 mod panel;
 mod saves;
 mod staff_panel;
+mod tank_panel;
 mod terrain;
 mod undo;
 
 #[cfg(test)]
 mod adopt_tests;
+#[cfg(test)]
+mod tank_panel_tests;
 
 #[cfg(test)]
 mod carry_tests;
