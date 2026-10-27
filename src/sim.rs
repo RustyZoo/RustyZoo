@@ -7,7 +7,7 @@
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
 //! so far: the shows, the water ripples, the ambient creatures, and the research and marketing
-//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (its rules and
+//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (most of its rules and
 //! triggers are stubs).
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
@@ -154,6 +154,8 @@ pub struct Sim {
     calendar: Calendar,
     /// Simulated time since the zoo began, in milliseconds.
     total: u32,
+    /// The play time of the file plus the steps since the load, in simulated milliseconds.
+    play_time: u32,
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     ai_rem: u32,
     ai_ticks: u32,
@@ -191,6 +193,7 @@ impl Sim {
             tiles: 0,
             calendar: Calendar::new(),
             total: 0,
+            play_time: 0,
             ai_rem: 0,
             ai_ticks: 0,
             next_clear: 0,
@@ -256,6 +259,7 @@ impl Sim {
         self.status = Status::start(&clocks.status, self.economy.as_ref());
         self.calendar = Calendar::at(clocks.calendar);
         self.total = 0;
+        self.play_time = clocks.play_time;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
@@ -274,9 +278,14 @@ impl Sim {
         self.scenario = Some(scenario);
     }
 
-    /// The scenario being played.
+    /// The scenario being played, if the game is one.
     pub fn scenario(&self) -> Option<&Scenario> {
         self.scenario.as_ref()
+    }
+
+    /// Adds a line to the `sim` log.
+    pub fn note(&mut self, line: String) {
+        self.lines.push(line);
     }
 
     /// How the scenario ended, once, when it has.
@@ -394,6 +403,7 @@ impl Sim {
             ai_ticks: self.ai_ticks,
             world_rem: self.world_rem,
             world_secs: self.world_secs,
+            play_time: self.play_time,
             queue: self.events.queue(),
             calendar: self.calendar.elapsed_ms(),
         }
@@ -485,6 +495,7 @@ impl Sim {
         // The game manager: the time, the calendar, whose month flag of the step before is acted
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);
+        self.play_time = self.play_time.saturating_add(step);
         let month_end = self.calendar.advance(step);
         guest::mega::update(world, cat, step);
         guest::gawk::update(world, cat);

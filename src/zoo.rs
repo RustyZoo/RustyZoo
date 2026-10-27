@@ -199,8 +199,8 @@ pub struct Kept {
     scenario: Vec<u8>,
     /// The game block, from the zoo status to the cash and the word after it.
     finances: Vec<u8>,
-    /// Where the calendar and the cash start in it.
-    at: [usize; 2],
+    /// Where the calendar starts in it.
+    at: usize,
     /// Where the statistics of each habitat start in `habitats`.
     stats_at: Vec<usize>,
     /// Where the name of each habitat is in `habitats`, its length word included.
@@ -397,6 +397,8 @@ pub struct Clocks {
     /// The world clock: the milliseconds left over and the whole seconds.
     pub world_rem: u32,
     pub world_secs: u32,
+    /// The play time: milliseconds of unpaused running time (read from version 73, else counted from 0; always written).
+    pub play_time: u32,
     /// The two event buffers (from version 97).
     pub queue: Queue,
     /// The game date, in game milliseconds from the calendar's start: negative before 2001, 0 when
@@ -1114,7 +1116,7 @@ fn after_entities(
     }
     clocks.status.price = if v >= 39 { r.f32()? } else { 49.0 };
     r.skip(if v >= 71 { 8 } else { 0 })?;
-    kept.at[0] = from.len() - r.data.len();
+    kept.at = from.len() - r.data.len();
     // The calendar: year, month, day of week, day, hour, minute, second, millisecond.
     let [year, month, _, day, hour, minute, second, millisecond] = [(); 8].map(|_| r.u16());
     clocks.calendar = crate::timing::Date {
@@ -1128,10 +1130,9 @@ fn after_entities(
         millisecond: u32::from(millisecond?),
     }
     .game_ms();
-    kept.at[1] = from.len() - r.data.len();
     money.set_cash(r.f32()?);
     if v >= 73 {
-        r.skip(4)?;
+        clocks.play_time = r.u32()?;
     }
     kept.finances = taken(from, r);
 

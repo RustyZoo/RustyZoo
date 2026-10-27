@@ -81,6 +81,18 @@ impl Interface {
     /// and the focus leaves the map view. A question that is already open is answered with
     /// Cancel first. `false` if there is no such layout.
     pub fn ask(&mut self, layout: i32, message: &[u8], buttons: Buttons) -> bool {
+        self.open_dialog(layout, message, buttons, true)
+    }
+
+    /// Opens the same layout without the question: the game runs on, the pointer is not
+    /// restricted to it, and an answer closes it with no [`Action::Answer`]. It closes by itself
+    /// after `[UI] NonmodalDialogDelay` ms of interface updates (0 or less: never), and at once
+    /// when a modal question opens or waits. One popup at a time: the one that was open is closed.
+    pub fn notify(&mut self, layout: i32, message: &[u8], buttons: Buttons) -> bool {
+        self.open_dialog(layout, message, buttons, false)
+    }
+
+    fn open_dialog(&mut self, layout: i32, message: &[u8], buttons: Buttons, modal: bool) -> bool {
         let Some(d) = self
             .tree
             .find(layout)
@@ -88,8 +100,12 @@ impl Interface {
         else {
             return false;
         };
-        if self.modal.is_some() {
+        if modal && self.modal.is_some() {
             self.answer(CANCEL);
+        }
+        // A new popup replaces the old one; a modal question closes it at once.
+        if let Some((open, _)) = self.popup.take() {
+            self.hide_element(open);
         }
         self.set_focus(None);
         if let Some(text) = self.tree.find(layout + MESSAGE) {
@@ -115,17 +131,25 @@ impl Interface {
                 .set_screen_position(d, (centre(window.0, p.dx), centre(window.1, p.dy)));
         }
         self.tree.bring_to_front(d);
-        self.modal = Some(d);
+        match modal {
+            true => self.modal = Some(d),
+            false => self.popup = Some((d, i64::from(self.settings.popup_delay.max(0)))),
+        }
         // The hover element is unhighlighted; the tooltip stays until the next mouse message.
         self.hover_to(None);
-        self.event(format!("ask {layout}"));
+        self.event(format!("{} {layout}", if modal { "ask" } else { "notify" }));
         true
     }
 
-    /// Answers the open question with `code` (values above 9 count as 1) and closes it. Nothing
-    /// if none is open.
+    /// Answers the open question with `code` (values above 9 count as 1) and closes it; with no
+    /// question open, closes the popup. Nothing if none is open.
     pub fn answer(&mut self, code: i32) {
-        let Some(d) = self.modal.take() else { return };
+        let Some(d) = self.modal.take() else {
+            if let Some((d, _)) = self.popup.take() {
+                self.hide_element(d);
+            }
+            return;
+        };
         let code = if code > 9 { OK } else { code };
         self.set_focus(None);
         self.hide_element(d);

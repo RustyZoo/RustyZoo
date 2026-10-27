@@ -18,7 +18,11 @@ export RUSTYZOO_ENGLISH_DATES=1 # the same dates (and frames) whatever the syste
 # --reset-fences is for a map whose scenario file has `resetfences` above 0 (scn19 of the expansion trial):
 # its start makes every fence piece healthy, which draws from the shared random stream. The other maps
 # keep the stored pieces, as `sim` does without the flag.
-rz() { "$bin" --data "$dir/$trial" "$@"; }
+# The base trial's update screen (ui/update.lyt) names ui/sharedui/updatbck.tga, a file that neither
+# trial ships (the trials keep only the folder of its animation): the picture is left out, as the
+# game does, and that one warning is dropped here. Every other warning is printed.
+missing_update_picture='rustyzoo: warning: picture ui/sharedui/updatbck.tga: no such member: ui/sharedui/updatbck.tga'
+rz() { "$bin" --data "$dir/$trial" "$@" 2> >(grep -v -x -F "$missing_update_picture" >&2); }
 
 # Plays a map headless (--bare: the map view alone, without the main panel that a game shows) with
 # scrolls, a rotation and the zoom in and out (-2, 0 and 2), the game paused so that the units
