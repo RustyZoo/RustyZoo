@@ -1705,6 +1705,9 @@ impl<'a> App<'a> {
                 exhibit::WALL_DOWN | exhibit::WALL_UP if self.game.is_some() => {
                     self.tank_wall(id == exhibit::WALL_UP);
                 }
+                exhibit::GROUND_DOWN | exhibit::GROUND_UP if self.game.is_some() => {
+                    self.tank_ground(id == exhibit::GROUND_UP);
+                }
                 exhibit::SALT | exhibit::FRESH if self.game.is_some() => {
                     self.tank_fill(id == exhibit::SALT);
                 }

@@ -482,6 +482,7 @@ fn a_wall_step_costs_above_the_initial_height_and_a_filled_tank_adds_its_water()
         wall: 80.0,
         water: 1.5,
         fill: [0.0; 2],
+        ground: 0.0,
     };
     // Up from the floor of 5 costs, a lowering above it gives the same back, at or below it is free.
     assert_eq!(p.step(5, 5, true, false), 80.0);
