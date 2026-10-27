@@ -788,6 +788,7 @@ impl World {
                     height: 0,
                     level: 0,
                     salt: r.salt,
+                    target: r.salt,
                     purity: r.purity,
                     filled: false,
                     platform: r.gate,
@@ -800,8 +801,8 @@ impl World {
             self.set_height(id, height);
             self.edit_tank(id, |t, c| t.level = level.min(c.top(t.height)));
             match level > 0 {
-                true => self.fill(id),
-                false => self.drain(id),
+                true => _ = self.fill(id),
+                false => _ = self.drain(id),
             }
         }
         self.events.truncate(told);

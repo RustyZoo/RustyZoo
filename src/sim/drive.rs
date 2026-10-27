@@ -285,8 +285,8 @@ impl Run {
                     .get(id)
                     .is_some_and(|x| x.tank.is_some());
                 match *command {
-                    Command::Fill(id) => self.world.fill(id),
-                    _ => self.world.drain(id),
+                    Command::Fill(id) => _ = self.world.fill(id),
+                    _ => _ = self.world.drain(id),
                 }
                 tank
             }
