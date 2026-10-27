@@ -235,6 +235,8 @@ impl Keys {
 /// The live state of a guest.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Guest {
+    /// The colour choices drawn at the creation, one per colour group (save games 11.2).
+    pub colours: Vec<u8>,
     /// Happiness, hunger, thirst, energy and bathroom, and the changes added at the next status
     /// tick.
     pub values: [i32; 5],
@@ -331,9 +333,7 @@ impl Guest {
         reset: i32,
         rng: &mut Rng,
     ) -> Guest {
-        for _ in 0..COLOURS {
-            rng.rand();
-        }
+        let colours = crate::unit::draw_colours(Some(ty), COLOURS, rng);
         let mut values = [k.initial_happiness, 0, 0, 0, 0];
         if k.random_nth >= 1 && rng.pick(k.random_nth as u32) == 0 {
             let stat = (rng.rand() & 3) as usize;
@@ -360,6 +360,7 @@ impl Guest {
             n => Some(favourites[rng.pick(n as u32) as usize]),
         };
         Guest {
+            colours,
             values,
             countdowns,
             saw_animal: k.saw_animal_reset,
@@ -525,7 +526,7 @@ pub fn arrive(
             rotation: 0,
             id: 0,
             name: format!("{label} {}", world.zoo.names[COUNTER]),
-            colors: Vec::new(),
+            colors: guest.colours.clone(),
             fence: None,
             ..Default::default()
         }),
