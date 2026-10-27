@@ -827,7 +827,7 @@ fn the_guide_command_puts_a_tour_guide_on_a_tile() {
 
 #[test]
 fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
-    use drive::Command::{Animal, Filter, Keeper, Mood, Worker};
+    use drive::Command::{Animal, Filter, Guide, Keeper, Mood, Worker};
     for bad in [
         "keeper",
         "keeper 3",
@@ -899,6 +899,7 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         ty("keeper", "keeper", "m"),
         ty("keeper", "trainer", "m"),
         ty("maint", "maint", "m"),
+        ty("tour", "guide", "m"),
         ty("animals", "mantaray", "m"),
         ty("filter", "filter1", "f"),
     ] {
@@ -913,6 +914,7 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         "no such animal"
     );
     for c in [
+        Guide(3, 2),
         Keeper(1, 1),
         Worker(2, 1),
         Animal("mantaray".into(), 3, 1, None),
@@ -933,6 +935,13 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         .iter()
         .find(|e| e.class == "keeper" && e.type_name == "trainer");
     assert!(marine.is_some_and(|e| e.common.as_ref().is_some_and(|c| c.name == "Keeper 1")));
+    // The guide, the keeper and the worker keep the two colours their creation drew.
+    for e in entities
+        .iter()
+        .filter(|e| matches!(e.class.as_str(), "tour" | "keeper" | "maint"))
+    {
+        assert_eq!(e.common.as_ref().map(|c| c.colors.len()), Some(2), "{e:?}");
+    }
     let filter = entities
         .iter()
         .find(|e| e.class == "filter")
