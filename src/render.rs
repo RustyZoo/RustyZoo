@@ -1504,7 +1504,7 @@ impl<'a> MapRenderer<'a> {
     /// 4 in each direction, else `sellarge`; an egg or a crate has its own footprint. Its anchor
     /// is the entity's, up and left by a quarter of the x offset of the entity's frame, and by its
     /// y offset, 5 and half the height of the marker's own frame (the type's height plays no
-    /// part). The marker has one frame, so it needs no clock.
+    /// part). The frame is the file's background frame when it has one, else the shown frame. The marker has one frame, so it needs no clock.
     fn marker(&mut self, ty: &EntityType, form: Form, out: &mut Vec<Placed>) {
         let Some(Placed {
             x,
@@ -1515,7 +1515,11 @@ impl<'a> MapRenderer<'a> {
         else {
             return;
         };
-        let Some(frame) = shown_frames(anim, view, *at).and_then(Iterator::last) else {
+        // The background frame of the file when it has one (9.2), else the frame shown.
+        let Some(sprite) = anim.sprites.get(view.file).map(|s| &s.0) else {
+            return;
+        };
+        let Some(frame) = sprite.extra.as_ref().or_else(|| sprite.frames.get(*at)) else {
             return;
         };
         let (x, y, xo, yo) = (*x, *y, i32::from(frame.x_offset), i32::from(frame.y_offset));

@@ -160,20 +160,6 @@ fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() 
         s.pass(&[]);
         assert_eq!(shown(s), ((Some(zebra), Some(zebra)), true, false));
         assert_eq!(s.app.game.as_ref().unwrap().animal.selected, Some(zebra));
-        // An egg or a crate makes the marker take its own footprint, the crate first.
-        for ((egg, crated), form) in [
-            ((true, false), Form::Egg),
-            ((true, true), Form::Crate),
-            ((false, true), Form::Crate),
-            ((false, false), Form::Plain),
-        ] {
-            let unit = s.app.game.as_mut().unwrap().world.units.get_mut(zebra);
-            if let Some(crate::unit::Part::Animal(a)) = unit.map(|u| &mut u.part) {
-                (a.egg, a.crated) = (egg, crated);
-            }
-            s.pass(&[]);
-            assert_eq!(s.app.game.as_ref().unwrap().extra.form, form);
-        }
         // The panel's close button removes the selection and the marker.
         let ui = s.app.ui.as_mut().unwrap();
         assert!(ui.press_button(3100));
@@ -196,6 +182,36 @@ fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() 
             s.app.panel_animal(row);
             s.pass(&[]);
             assert_eq!(shown(s), ((Some(id), Some(id)), true, false));
+        }
+    });
+}
+
+#[test]
+fn a_crated_egg_takes_the_egg_footprint() {
+    with_game("egg-marker", "", |s| {
+        let zebra = s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        s.click(s.at(21, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(zebra));
+        // The egg flag is tested first: a crated egg takes the egg's footprint, the crate's
+        // only when it is not an egg.
+        for ((egg, crated), form) in [
+            ((true, false), Form::Egg),
+            ((true, true), Form::Egg),
+            ((false, true), Form::Crate),
+            ((false, false), Form::Plain),
+        ] {
+            let unit = s.app.game.as_mut().unwrap().world.units.get_mut(zebra);
+            if let Some(crate::unit::Part::Animal(a)) = unit.map(|u| &mut u.part) {
+                (a.egg, a.crated) = (egg, crated);
+            }
+            s.pass(&[]);
+            assert_eq!(
+                s.app.game.as_ref().unwrap().extra.form,
+                form,
+                "{egg} {crated}"
+            );
         }
     });
 }

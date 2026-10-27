@@ -2104,8 +2104,8 @@ impl<'a> App<'a> {
                 _ => None,
             });
         want.form = match animal {
-            Some((_, true)) => Form::Crate,
             Some((true, _)) => Form::Egg,
+            Some((_, true)) => Form::Crate,
             _ => Form::Plain,
         };
         want.faces.clone_from(&game.world.units.reactions);

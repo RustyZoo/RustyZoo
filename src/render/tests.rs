@@ -908,7 +908,12 @@ fn marker_install(name: &str, marker: u16) -> Install {
             "objects/post/idle/idle.ani".into(),
             ani("dir0 = a\ndir1 = idle\n"),
         ),
-        ("a/idle/N".into(), unit.clone()),
+        // The post's animated frame is empty; its background frame (offsets 10, 8) is the one a
+        // marker follows (9.2).
+        (
+            "a/idle/N".into(),
+            sprite_file(Some(1), 1, &[record(0, (0, 0)), record(1, (10, 8))]),
+        ),
         (
             "mid.ai".into(),
             ai("cFootprintX = 2\ncFootprintY = 4\ncFacesYOffset = 20\n").into_bytes(),
@@ -1065,6 +1070,20 @@ fn a_selected_building_gets_the_marker_too_and_an_egg_or_a_crate_its_own_footpri
     for form in [Form::Egg, Form::Crate] {
         assert_eq!(pics(big, form).0, Some("ui/select/selmed/N".into()));
     }
+}
+
+#[test]
+fn the_marker_of_an_object_with_a_background_frame_follows_that_frame() {
+    // The marker is 6 high (half 3): up by 10 + 5 + 3 and left by 8 / 4, from the anchor.
+    let install = marker_install("render-marker-background", 6);
+    let extra = Extra {
+        selected: Some(1),
+        ..Extra::default()
+    };
+    let (pics, _) = extra_pics_of(&install, ("building", "building", "post"), &extra);
+    let (building, marker) = (&pics[0], &pics[1]);
+    assert_eq!(marker.0, "ui/select/selmed/N");
+    assert_eq!((marker.1, marker.2), (building.1 - 2, building.2 - 18));
 }
 
 #[test]
