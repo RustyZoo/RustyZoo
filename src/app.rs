@@ -673,7 +673,8 @@ impl<'a> App<'a> {
             camera.set_fullscreen(&zoo, true);
         }
         let brush = (zoo.view.brush & 0xff) as usize;
-        let mut world = World::new(zoo, |e| self.renderer.shape(e));
+        let language = crate::strings::Language::of(self.renderer.vfs().root());
+        let mut world = World::with_language(zoo, |e| self.renderer.shape(e), language);
         let staged = self.renderer.stage(&world.zoo, camera.rotation, false)?;
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
@@ -720,7 +721,12 @@ impl<'a> App<'a> {
             bar: None,
             bars: None,
             finances: Finances::default(),
-            build: Build::new(installed_expansions(self.renderer.vfs())).with_exhibits(exhibits),
+            build: Build::new(installed_expansions(self.renderer.vfs()))
+                .with_exhibits(exhibits)
+                .unlocked(
+                    self.renderer.catalogue(),
+                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+                ),
             pending: None,
             made: None,
             gate: None,
@@ -1676,6 +1682,18 @@ impl<'a> App<'a> {
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
+                exhibit::WALL_DOWN | exhibit::WALL_UP if self.game.is_some() => {
+                    self.tank_wall(id == exhibit::WALL_UP);
+                }
+                exhibit::SALT | exhibit::FRESH if self.game.is_some() => {
+                    self.tank_fill(id == exhibit::SALT);
+                }
+                exhibit::DRAIN if self.game.is_some() => self.tank_drain(),
+                exhibit::TANK_TAB if self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.panel.clock.force = true;
+                    }
+                }
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
@@ -2353,11 +2371,14 @@ mod guest_panel;
 mod panel;
 mod saves;
 mod staff_panel;
+mod tank_panel;
 mod terrain;
 mod undo;
 
 #[cfg(test)]
 mod adopt_tests;
+#[cfg(test)]
+mod tank_panel_tests;
 
 #[cfg(test)]
 mod carry_tests;
