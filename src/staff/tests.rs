@@ -170,6 +170,7 @@ fn a_staff_member_draws_its_colours_before_its_counters_at_its_creation() {
             _ => 0,
         };
         assert_eq!((made.work, made.chase, made.crowd), (work, chase, crowd));
+        assert_eq!(made.colours.len(), 2);
         assert_eq!(rng, expect, "{kind:?}: nothing else drawn");
     }
 }

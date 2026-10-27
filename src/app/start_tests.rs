@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::menu::{Menu, Start};
 use crate::money::Money;
-use crate::render::tests::{cache_install, frame_file};
+use crate::render::tests::{cache_install, cache_install_with, frame_file};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{HIDDEN, Tree};
@@ -122,7 +122,10 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
     let ui = interface(&files);
     let ini = Config::parse(ini.as_bytes()).unwrap();
     let menu = Menu::new(ini.clone(), &files.0, Some(files.0.join("user")), None, 0);
-    let game = cache_install(&format!("start-game-{name}"), frame_file());
+    let scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=t\n[t]\ntrulea=2\n\
+        [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=1\n";
+    let extra = [("s/play.scn", scn.to_vec())];
+    let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut app = App::menu(
@@ -516,6 +519,7 @@ fn only_the_first_fade_waits_and_a_freeform_start_counts_one_update_of_the_wait(
             cash: Default::default(),
             reset: false,
             reset_fences: false,
+            scenario: None,
         };
         app.begin(&start);
         let steps: Vec<u64> = (1..8)
@@ -553,9 +557,58 @@ fn a_saved_zoo_starts_on_its_date_and_a_new_game_on_the_first_of_january_2001() 
             cash: Default::default(),
             reset: false,
             reset_fences: false,
+            scenario: None,
         };
         app.begin(&start);
         let date = app.calendar().unwrap().date();
         assert_eq!((date.year, date.month, date.day), (2001, 1, 1));
+    });
+}
+
+#[test]
+fn a_scenario_start_prepares_its_goals_and_a_later_game_drops_them() {
+    with_menu("scenario-goals", "", |app, _| {
+        let start = |scenario: Option<&str>| Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: scenario.map(String::from),
+        };
+        let seen = |app: &mut App, from: u64| -> Vec<String> {
+            let mut lines = Vec::new();
+            for p in from..from + 60 {
+                app.pass(66 * p, &[]);
+                lines
+                    .extend((app.log_lines(p, 66 * p).into_iter()).filter_map(|l| {
+                        l.split_once(" sim scenario ").map(|(_, r)| r.to_string())
+                    }));
+            }
+            lines
+        };
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.begin(&start(Some("s/play.scn")));
+        let lines = seen(app, 1);
+        assert_eq!(
+            lines,
+            [
+                "start s/play.scn 2",
+                "trigger t start 2 0 0 0",
+                "trigger g 1 1 0 0 0"
+            ]
+        );
+        // Another game is opened: the scenario is over, whatever its state.
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.begin(&start(None));
+        assert!(seen(app, 100).is_empty());
+        // A scenario file that cannot be read starts a plain game.
+        app.begin(&start(Some("s/none.scn")));
+        assert!(seen(app, 200).is_empty());
     });
 }

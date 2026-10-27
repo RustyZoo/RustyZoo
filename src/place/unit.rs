@@ -411,17 +411,32 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
     (tank.show && plain(t, "cShow") != Some(1.0)).then_some(NOT_FOR_SHOWS)
 }
 
-/// The default name of a new unit of the type, `text` being the type's name: with
-/// `cUseNumbersInName` (the default) a space and the next number of the counter of the type name
-/// (`giraffe`, not the text), started at 1 (unit placing 7.2).
+/// The default name of a new entity of the type, `text` being the type's name: with
+/// `cUseNumbersInName` (on by default for a unit, a building and a tank filter, off for anything
+/// else) a space and the next number of the counter of its key, started at 1 (unit placing 7.2).
+/// The key is the type name for a unit (`giraffe`, not the text) and the subtype for a building or
+/// a filter (`vendfood`, `f`).
 pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
-    if plain(ty, "cUseNumbersInName").is_some_and(|n| n != 1.0) {
+    let subtyped = matches!(ty.class, "building" | "filter");
+    let counted = is_unit(ty) || subtyped;
+    let numbered = plain(ty, "cUseNumbersInName").unwrap_or(f32::from(u8::from(counted)));
+    if numbered != 1.0 {
         return text.into();
     }
-    let key = String::from_utf8_lossy(&ty.type_name).into_owned();
+    let key = if subtyped { &ty.subtype } else { &ty.type_name };
+    let key = String::from_utf8_lossy(key).into_owned();
     let counter = world.zoo.names.entry(key).or_insert(0);
     *counter = counter.saturating_add(1);
     format!("{text} {counter}")
+}
+
+/// The name of a new entity of the type from the type's name text (`world.units.names`): empty
+/// when the interface gave none.
+pub fn named(world: &mut World, ty: &EntityType) -> String {
+    match world.units.names.get(&ty.name_id).cloned() {
+        Some(text) => name(world, ty, &text),
+        None => String::new(),
+    }
 }
 
 /// The category a unit's purchase is booked in: animal purchase, or the wages of the staff's class.

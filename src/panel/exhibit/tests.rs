@@ -349,6 +349,7 @@ fn a_tank_shows_the_picture_of_its_water_and_of_its_kind() {
         height: 5,
         level: 5,
         salt: false,
+        target: false,
         purity,
         filled: true,
         platform: (-1, -1),

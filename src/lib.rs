@@ -3,6 +3,7 @@
 pub mod anim;
 pub mod animal;
 pub mod app;
+pub mod avail;
 pub mod behaviour;
 pub mod bitmap;
 pub mod build;
@@ -27,6 +28,7 @@ pub mod path;
 pub mod pe;
 pub mod place;
 pub mod render;
+pub mod scenario;
 pub mod sim;
 pub mod sprite;
 pub mod staff;

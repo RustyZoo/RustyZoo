@@ -202,6 +202,8 @@ pub struct Kept {
     at: [usize; 2],
     /// Where the statistics of each habitat start in `habitats`.
     stats_at: Vec<usize>,
+    /// Where the name of each habitat is in `habitats`, its length word included.
+    names_at: Vec<(usize, usize)>,
     /// The thoughts as stored: text id, thinker, object, tile x and y (save games 9).
     thoughts: Vec<[u32; 5]>,
     /// Research, awards and marketing.
@@ -744,9 +746,11 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let mut habitat_gates = Vec::new();
     let mut habitat_info = Vec::new();
     let mut stats_at = Vec::new();
+    let mut names_at = Vec::new();
     for _ in 0..habitat_count {
-        let (tile, gate, tank, info, at) = habitat(r, from.len())?;
+        let (tile, gate, tank, info, at, name) = habitat(r, from.len())?;
         stats_at.push(at);
+        names_at.push(name);
         habitat_tiles.push(tile);
         habitat_gates.push(gate);
         habitat_info.push(info);
@@ -809,6 +813,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let (view, clocks, names, mut kept) = after_entities(r, money)?;
     (kept.habitats, kept.shows) = (habitats, early_shows);
     kept.stats_at = stats_at;
+    kept.names_at = names_at;
     Ok(Zoo {
         version: v,
         locale,
@@ -844,14 +849,17 @@ type Habitat = (
     Option<Tank>,
     HabitatInfo,
     usize,
+    (usize, usize),
 );
 
 /// Reads a habitat record; `size` is the length of the bytes the section started with, and the last
-/// value is where the record's statistics start in them.
+/// values are where the record's statistics and its name start and end in them.
 fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
     let v = r.v;
     let tile = (r.i32()?, r.i32()?);
+    let name_at = size - r.data.len();
     let name = latin1(r.string()?);
+    let name_to = size - r.data.len();
     let gate = (r.i32()?, r.i32()?);
     let side = r.i32()?;
     let at = size - r.data.len();
@@ -874,7 +882,7 @@ fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
         show_info(r)?;
     }
     if !is_tank {
-        return Ok((tile, (gate, side), None, info, at));
+        return Ok((tile, (gate, side), None, info, at, (name_at, name_to)));
     }
     let (height, level) = (r.u32()?, r.u32()?);
     if v >= 88 {
@@ -899,6 +907,7 @@ fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
         }),
         info,
         at,
+        (name_at, name_to),
     ))
 }
 
