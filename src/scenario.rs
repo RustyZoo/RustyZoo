@@ -5,8 +5,8 @@
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits and
 //! the entities; the research, awards, shows and interface rules read 0. The triggers are stubs:
-//! a trigger logs `scenario trigger` and does nothing else. The texts, the objectives list,
-//! saving and the end screens come with later issues.
+//! a trigger logs `scenario trigger` and does nothing else. The objectives list (4.5) and the end
+//! (5.4, 9) are here; saving comes with a later issue.
 //!
 //! The log (family `sim`): `scenario start FILE GOALS` when a scenario is prepared, `scenario
 //! trigger WHO STATE TRULEA TRULEB TARGA TARGB` for each trigger fired with a non-zero `trulea`,
@@ -79,9 +79,21 @@ impl Trigger {
     }
 }
 
+/// A line of the objectives list (4.5): the string of its text, the values that go into it and
+/// the state of its goal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Line {
+    pub text: i32,
+    pub values: [i32; 3],
+    pub state: u8,
+}
+
 /// A simple goal: one rule compared with `value` by `kind`.
 #[derive(Clone, Debug)]
 struct Simple {
+    /// `text` and `hidden`: the goal shows a line when it has a text and is not hidden.
+    text: i32,
+    hidden: bool,
     /// `rulea`, `ruleb`, `arga`, `argb`.
     rule: [i32; 4],
     kind: i32,
@@ -150,6 +162,8 @@ impl Goal {
             1 => Body::Complex(children(left)),
             2 => Body::Chain(children(left)),
             _ => Body::Simple(Simple {
+                text: int(s, "text"),
+                hidden: int(s, "hidden") != 0,
                 rule: ["rulea", "ruleb", "arga", "argb"].map(|k| int(s, k)),
                 kind: int(s, "type"),
                 value: int(s, "value"),
@@ -163,6 +177,20 @@ impl Goal {
             optional: int(s, "optional") != 0,
             body,
         })
+    }
+
+    /// The lines this goal adds to the objectives list: its own, or its children's.
+    fn lines(&self, out: &mut Vec<Line>) {
+        match &self.body {
+            Body::Timer(_) => {}
+            Body::Simple(s) if s.text != 0 && !s.hidden => out.push(Line {
+                text: s.text,
+                values: [s.value, s.rule[2], s.rule[3]],
+                state: self.state,
+            }),
+            Body::Simple(_) => {}
+            Body::Complex(c) | Body::Chain(c) => c.iter().for_each(|c| c.lines(out)),
+        }
     }
 
     /// The state the manager and the groups see: 1 for an optional goal.
@@ -217,10 +245,79 @@ impl Goal {
     }
 }
 
+/// How a scenario ended (5.4): the file, the result and the types a win unlocks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ended {
+    pub file: String,
+    pub won: bool,
+    pub unlocks: Vec<i32>,
+}
+
+/// The seven tutorial files (9.1), in the order of their chain.
+const TUTORIALS: [&str; 7] = [
+    "scn01a", "scn01", "scn02", "scn19", "scn27", "scn28", "scn28b",
+];
+
+/// The name of a tutorial among the seven (9.1), from a scenario file path, or "".
+fn tutorial(file: &str) -> &'static str {
+    let name = file.replace('\\', "/").to_ascii_lowercase();
+    TUTORIALS
+        .into_iter()
+        .find(|t| name == format!("scenario/{t}/{t}.scn"))
+        .unwrap_or("")
+}
+
+/// Whether `file` is one of the seven tutorial files (9.1), listed or not.
+pub fn is_tutorial(file: &str) -> bool {
+    !tutorial(file).is_empty()
+}
+
+/// The file of the tutorial that follows the tutorial `file` (9.1), given the expansion flags
+/// (bit 1 the first expansion, bit 2 the second). None for any other file or without a next one.
+pub fn next_tutorial(file: &str, expansions: i32) -> Option<String> {
+    let next = match tutorial(file) {
+        "scn01a" => "scn01",
+        "scn01" => "scn02",
+        "scn02" if expansions & 1 != 0 => "scn19",
+        "scn02" | "scn19" if expansions & 2 != 0 => "scn27",
+        "scn27" => "scn28",
+        "scn28" => "scn28b",
+        _ => return None,
+    };
+    Some(format!("scenario/{next}/{next}.scn"))
+}
+
+/// The string of the end dialog's text (9.1) for the scenario `file` and the expansion flags
+/// (bit 1 the first expansion, bit 2 the second), plus 1 when lost.
+pub fn end_text(file: &str, won: bool, expansions: i32) -> i32 {
+    let name = file.replace('\\', "/").to_ascii_lowercase();
+    let base = match name.as_str() {
+        "scenario/scn01/scn01.scn" | "scenario/scn01a/scn01a.scn" => 16104,
+        "scenario/scn27/scn27.scn" | "scenario/scn28/scn28.scn" => 16104,
+        "scenario/scn02/scn02.scn" if expansions != 0 => 16104,
+        "scenario/scn19/scn19.scn" if expansions & 2 != 0 => 16104,
+        "scenario/scn02/scn02.scn" | "scenario/scn19/scn19.scn" => 16102,
+        "scenario/scn28b/scn28b.scn" => 16102,
+        _ => 16100,
+    };
+    base + i32::from(!won)
+}
+
 /// A scenario being played.
 #[derive(Debug)]
 pub struct Scenario {
     file: String,
+    /// `[desc]`: the string of the name, the name of the story's text, the pictures of the three
+    /// goal states (in progress, completed, failed).
+    name: i32,
+    story: Vec<u8>,
+    icons: [String; 3],
+    /// `[duration] text`: the string of the timer's line.
+    timer_text: i32,
+    /// `[completion] unlock`: the types a win makes available.
+    unlocks: Vec<i32>,
+    /// Whether the end was told.
+    told: bool,
     goals: Vec<Goal>,
     /// The state each goal of the list reports, kept in step with the goals for rule 9.
     reported: Vec<u8>,
@@ -278,9 +375,26 @@ impl Scenario {
             let trigger = Trigger::read(main.section(n));
             (String::from_utf8_lossy(n).into_owned(), trigger)
         });
+        let desc = main.section("desc");
+        let icon = |k: &str| {
+            let name = desc.and_then(|d| d.get(k)).unwrap_or_default();
+            String::from_utf8_lossy(name).into_owned()
+        };
+        let unlock = main
+            .section("completion")
+            .map_or(&[][..], |s| s.get_all("unlock"));
         Scenario {
             file: file.to_string(),
             reported: goals.iter().map(Goal::reported).collect(),
+            name: int(desc, "name"),
+            story: desc
+                .and_then(|d| d.get("story"))
+                .unwrap_or_default()
+                .to_vec(),
+            icons: ["iconp", "iconc", "iconf"].map(icon),
+            timer_text: int(main.section("duration"), "text"),
+            unlocks: unlock.iter().filter_map(|v| to_int(v)).collect(),
+            told: false,
             goals,
             start: start.collect(),
             gathered: 0,
@@ -290,6 +404,60 @@ impl Scenario {
 
     pub fn run(&self) -> Run {
         self.run
+    }
+
+    /// The scenario file.
+    pub fn file(&self) -> &str {
+        &self.file
+    }
+
+    /// The string id of the name and the name of the text of the story (`[desc]`).
+    pub fn title(&self) -> (i32, &[u8]) {
+        (self.name, &self.story)
+    }
+
+    /// The picture names of a goal in progress, completed and failed.
+    pub fn icons(&self) -> &[String; 3] {
+        &self.icons
+    }
+
+    /// The lines of the objectives list (4.5): the timer's, when it has a text, then the goals'.
+    pub fn lines(&self) -> Vec<Line> {
+        let mut out = Vec::new();
+        if let Some(Goal {
+            body: Body::Timer(months),
+            state,
+            ..
+        }) = self.goals.first()
+            && self.timer_text != 0
+        {
+            out.push(Line {
+                text: self.timer_text,
+                values: [*months, 0, 0],
+                state: *state,
+            });
+        }
+        self.goals.iter().for_each(|g| g.lines(&mut out));
+        out
+    }
+
+    /// How the scenario ended, once, when it has (5.4).
+    pub fn ended(&mut self) -> Option<Ended> {
+        let won = match self.run {
+            Run::On => return None,
+            Run::Won => true,
+            Run::Lost => false,
+        };
+        let told = std::mem::replace(&mut self.told, true);
+        (!told).then(|| Ended {
+            file: self.file.clone(),
+            won,
+            unlocks: if won {
+                self.unlocks.clone()
+            } else {
+                Vec::new()
+            },
+        })
     }
 
     /// The start triggers fire, in the order listed.

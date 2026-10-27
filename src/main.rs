@@ -475,9 +475,19 @@ usage: rustyzoo [--data <dir>] <command>
                       first step of the simulation is the cap; scenarios and freeform maps empty
                       `lastfile` and run the goals of their `.scn` file (`sim scenario start
                       FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; the
-                      triggers are stubs, and so are the
-                      research, awards, shows and interface rules). The lines are `menu game
-                      start LABEL FILE`; a file that cannot
+                      triggers are stubs, and so are the research, awards, shows and interface rules). When the scenario ends, its result is
+                      written to `[scenario]` of the settings of the user folder if lower than
+                      the stored one, and a win appends its `[completion] unlock` types to `[user]
+                      unlockEntityN` (`menu scenario ended won|lost`, `menu scenario result KEY N`,
+                      `menu scenario unlock ID`); the game's layouts hide and a dialog (layout
+                      45200, `menu scenario dialog TEXTID`) tells the result with Yes and
+                      No; No stops the game and shows the scenario screen with the win or lose
+                      picture and story (the main menu for a tutorial or a freeform map); Yes
+                      starts the next tutorial after a tutorial, else the game goes on; closing
+                      the window meanwhile ends the run. The Scenario button (4107, the O character) fills
+                      panel 803 with the scenario's name and story and one line per goal
+                      (`menu scenario list N`). The lines are `menu game start LABEL
+                      FILE`; a file that cannot
                       be loaded is a question box with its message (`menu message TEXT`) and the
                       menu stays. In a game, Escape (with nothing to cancel; an open panel closes
                       first), the window being closed (`close` in a script) and the Main Menu and
