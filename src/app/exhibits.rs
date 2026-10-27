@@ -270,6 +270,7 @@ impl App<'_> {
         let text = to_cp1252(&ui.string(NAME_TEXT));
         if ui.ask(NAME_DIALOG, &text, Buttons::OK) {
             ui.set_char_limit(NAME_FIELD, name_limit(self.renderer.vfs().ini()));
+            ui.set_wide_text(NAME_FIELD, false);
             ui.set_text(NAME_FIELD, &to_cp1252(name));
             ui.focus(NAME_FIELD);
             game.naming_open = true;
