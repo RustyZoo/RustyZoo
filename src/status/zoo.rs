@@ -6,8 +6,7 @@
 //! [`Status`] keeps the three timers, the last sums and the rating; the [`crate::sim::Sim`] step
 //! calls its checks in the original's order. The new guest check decides whether a guest arrives
 //! (the chance table of the rating and the admission price); the guest module makes it. Missing
-//! so far: the guests' gift and litter flags (their counts stay 0), research (its
-//! share is 0), the escape penalty, the endowment payments of the month-end check (its wages and
+//! so far: the guests' gift and litter flags (their counts stay 0), the escape penalty, the endowment payments of the month-end check (its wages and
 //! building upkeep are [`crate::month`]'s), the scenario's own economy file, the admission price window (the price is
 //! the map's).
 //!

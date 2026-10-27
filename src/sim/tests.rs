@@ -1203,6 +1203,50 @@ fn a_load_ends_with_a_rating_check_that_restarts_only_the_rating_timer() {
 }
 
 #[test]
+fn the_research_share_of_the_checks_is_the_trees_and_a_game_without_one_counts_0() {
+    use crate::research::{Branch, Category, Program, Tree};
+    let program = |cost| Program {
+        name: 1,
+        cost,
+        progress: 0.0,
+        target: 0,
+        effect: 0,
+    };
+    let tree = |programs| Tree {
+        branches: vec![Branch {
+            name: 1,
+            funding: vec![],
+            level: 0,
+            categories: vec![Category {
+                name: 1,
+                expansion: 0,
+                tick: true,
+                programs,
+            }],
+        }],
+    };
+    let mut run = game(0);
+    run.sim.loaded(&run.world, &run.cat, &mut run.money);
+    assert_eq!(run.sim.status.sums.research, 0);
+    // One of four programs is free: 25, and an empty tree is 100.
+    run.sim.set_research(tree(vec![
+        program(0.0),
+        program(1.0),
+        program(1.0),
+        program(9.0),
+    ]));
+    run.sim.loaded(&run.world, &run.cat, &mut run.money);
+    assert_eq!(run.sim.status.sums.research, 25);
+    run.sim.set_research(tree(vec![]));
+    run.sim.loaded(&run.world, &run.cat, &mut run.money);
+    assert_eq!(run.sim.status.sums.research, 100);
+    // The next game starts without a tree.
+    let clocks = run.world.zoo.clocks.clone();
+    run.sim.start_game(run.world.zoo.tiles.len(), clocks);
+    assert_eq!(run.sim.research_share(), 0);
+}
+
+#[test]
 fn the_hash_follows_the_statistics_of_an_exhibit() {
     let hash = |change: &dyn Fn(&mut crate::exhibit::Stats)| {
         let mut w = world(0);

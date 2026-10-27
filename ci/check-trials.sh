@@ -1228,20 +1228,20 @@ check expansion-trial "93962:2@422,1@2905,2@13768;97902:1@1156" "tank_cross maps
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
 # mode its walks end on water tiles too, where it chooses from its water table (`bInWater`). Prints
-# each tile a walk ended on with the set chosen there and the change of mode, for 3300 steps. Since
+# each tile a walk ended on with the set chosen there and the change of mode, for 3500 steps. Since
 # the loaded keepers keep their assigned exhibits, the animal is in the water mode from step 18 and
 # the sequence (a land walk, the mode at step 3003, then `bInWater`) comes once, at the end: 1200
 # steps no longer show it, a longer run does, so the seed stays 11 (the guests choose attractions as
 # sites and walk to a building slot forced).
 water_mode() { # water_mode <map> <animal>
-  rz sim "$1" --ticks 3300 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 3500 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
     $5 == a && / unit tile /{ t = $6 }
     $5 == a && / unit goal [0-9]+ none /{ ended = t }
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;24,26:bInWater;25,31:bInWater;23,32:bInWater;25,29:bWalk;mode0@1212;18,27:bWalk;mode1@1809;25,23:bHappy;25,23:bWalk;mode1@3003;25,24:bInWater" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;24,26:bInWater;25,31:bInWater;23,32:bInWater;25,29:bWalk;mode0@1212;18,27:bWalk;mode1@1809;25,23:bHappy;26,23:bWalk;mode1@3003;25,31:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1257,7 +1257,7 @@ tank_over() { # tank_over <map> <ray>
     END{ print n + 0 ";" low ";" first }'
   rm -rf "$d"
 }
-check expansion-trial "25;-65;156" "tank_over maps/scn27.zoo 36659"
+check expansion-trial "22;-65;156" "tank_over maps/scn27.zoo 36659"
 
 # The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
 # are put down: one beside the tank, which then serves it and filters (and charges) at its first
