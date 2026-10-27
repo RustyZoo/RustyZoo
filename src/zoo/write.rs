@@ -117,6 +117,11 @@ impl Zoo {
         }
         o.u8(q.next_is_first.into());
         o.bytes(&kept.research);
+        o.u32(self.awards.len() as u32);
+        for &id in &self.awards {
+            o.u32(id as u32);
+        }
+        o.bytes(&kept.marketing);
         // No cheat was used in a file of a version before 104.
         match v >= 104 {
             true => o.bytes(&kept.cheats),
