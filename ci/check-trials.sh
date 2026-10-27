@@ -1287,7 +1287,8 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # which brought the first birth back to 5089 (the same two young): the run is 16000 steps long again. The walk
 # to a building slot is started forced, which moved the first birth to 16029 (the same two young): the run is
 # 20000 steps long. A lion saved asleep in another set now wakes at its first sleep check (the saved flags are
-# restored), which moved the first birth to 19229 (four pairs, the same two young).
+# restored), which moved the first birth to 19229 (four pairs, the same two young). With the dates and the life of
+# the saved animals restored too (master), it is 9865 (three pairs, the same two young).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
@@ -1296,7 +1297,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:4;birth@19229;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@9865;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1353,6 +1354,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial "227408,0,ea3101c555d6aa77" "save_load maps/scn19.zoo"
+check expansion-trial "227408,0,366e1d06fa3bc451" "save_load maps/scn19.zoo"
 
 exit $failed
