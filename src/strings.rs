@@ -118,13 +118,12 @@ pub struct StringTables {
     libraries: Vec<Library>,
 }
 
-/// Whether a name id belongs to user-created content: its low 24 bits are in 19000..=21999,
-/// 49000..=51999 or 74000..=76999 (entity types 10.3).
+/// Whether a name id belongs to user-created content: the whole id is in 19000..=21999,
+/// 49000..=51999 or 74000..=76999 (entity types 10.3). No mask: high bits make it another id.
 pub fn is_user_id(id: i32) -> bool {
-    let user = id & 0xFF_FFFF;
     [19000..=21999, 49000..=51999, 74000..=76999]
         .iter()
-        .any(|range| range.contains(&user))
+        .any(|range| range.contains(&id))
 }
 
 impl StringTables {
@@ -362,6 +361,31 @@ mod tests {
         assert_eq!(tables.string(5184), "Megatherium");
         assert_eq!(tables.string(9999), "");
         assert_eq!(tables.string_source(9999), None);
+    }
+
+    #[test]
+    fn a_user_id_is_the_whole_id_in_a_range() {
+        for id in [19000, 21999, 49000, 51999, 74000, 76999] {
+            assert!(is_user_id(id), "{id}");
+        }
+        for id in [
+            18999,
+            22000,
+            48999,
+            52000,
+            73999,
+            77000,
+            0,
+            -1,
+            i32::MAX,
+            i32::MIN,
+        ] {
+            assert!(!is_user_id(id), "{id}");
+        }
+        assert!(
+            !is_user_id((1 << 24) | 19000),
+            "high bits are not masked away"
+        );
     }
 
     #[test]

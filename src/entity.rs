@@ -88,6 +88,26 @@ pub struct EntityType {
 }
 
 impl EntityType {
+    /// The footprint `(x, y)` in half tiles of an animal in its egg (`cEggFootprintX/Y`) or in its
+    /// crate (`cBoxFootprintX/Y`), read like the plain footprint; 2 by 2 when the file gives none.
+    pub fn form_footprint(&self, egg: bool) -> [i32; 2] {
+        let (x, y) = match egg {
+            true => ("cEggFootprintX", "cEggFootprintY"),
+            false => ("cBoxFootprintX", "cBoxFootprintY"),
+        };
+        let mut out = [2, 2];
+        if let Some(config) = self.config.as_deref() {
+            for prefix in unit_prefixes(self, config) {
+                let section = config.section([&prefix[..], b"Characteristics/Integers"].concat());
+                if let Some(section) = section {
+                    set(section, x, &mut out[0]);
+                    set(section, y, &mut out[1]);
+                }
+            }
+        }
+        out
+    }
+
     /// The number of palettes of each replaceable colour group of a staff or guest type, in the
     /// order of its `colorrep` section (sprite drawing 8.1; the section of the subtype, or of the
     /// type name for a guest); empty for a type with none.
@@ -840,6 +860,28 @@ fn default_subtype(config: &Config) -> &[u8] {
         .unwrap_or_default()
 }
 
+/// The prefixes of the sections a unit type reads its integers from, in the order they apply:
+/// the default subtype's (the plain ones when there is none), then the type's own, unless it is
+/// the default. With an empty own name and a default, the prefix is `/`, which matches nothing.
+fn unit_prefixes(ty: &EntityType, config: &Config) -> Vec<Vec<u8>> {
+    let default = default_subtype(config);
+    let own = if ty.class == "guests" {
+        &ty.type_name
+    } else {
+        &ty.subtype
+    };
+    let first = if default.is_empty() {
+        Vec::new()
+    } else {
+        [default, b"/"].concat()
+    };
+    let mut prefixes = vec![first];
+    if own[..] != *default {
+        prefixes.push([&own[..], b"/"].concat());
+    }
+    prefixes
+}
+
 /// Reads the values of a type by the rules of its class (specification 6).
 fn read_values(ty: &mut EntityType, config: &Config) {
     match ty.class {
@@ -848,21 +890,8 @@ fn read_values(ty: &mut EntityType, config: &Config) {
         // as a fallback), then the type's own on top. Guests use their type name where the
         // others use the subtype name.
         "animals" | "guests" | "keeper" | "tour" | "maint" | "helicopter" => {
-            let default = default_subtype(config);
-            let own = if ty.class == "guests" {
-                ty.type_name.clone()
-            } else {
-                ty.subtype.clone()
-            };
-            let first = if default.is_empty() {
-                Vec::new()
-            } else {
-                [default, b"/"].concat()
-            };
-            read_keys(ty, config, &first);
-            // With an empty own name and a default, the prefix is `/`, which matches nothing.
-            if own != default {
-                read_keys(ty, config, &[&own, &b"/"[..]].concat());
+            for prefix in unit_prefixes(ty, config) {
+                read_keys(ty, config, &prefix);
             }
         }
         // The scenery keys from the plain sections, then name id and height again from the
@@ -1665,8 +1694,8 @@ mod tests {
     fn values_follow_the_passes_of_their_class() {
         let rates = "cSlowRate=1\ncMediumRate=2\ncFastRate=3\n";
         let lion = format!(
-            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\n{rates}\
-             [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\n[Characteristics/Integers]\ncNameID = 999\n"
+            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\ncEggFootprintX = -3\ncEggFootprintY = 99999999999\n{rates}\
+             [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\ncBoxFootprintX = 0\n[Characteristics/Integers]\ncNameID = 999\n"
         );
         // Name id and footprint are read at the ZT unit level, which never falls back to the
         // plain sections when there is a default subtype: the plain name id is not used.
@@ -1723,6 +1752,16 @@ mod tests {
         // Scenery never reads a prefixed section.
         assert_eq!(values("objects", "foliage", "tree"), (7, [5, 6, 1], 0));
         assert!(get(&c, "objects", "foliage", "tree").config.is_some());
+        // The egg and crate footprints are 2 by 2 unless given: negative and huge values as they
+        // come, the own pass on top of the default one.
+        let forms = |subtype, egg| get(&c, "animals", "lion", subtype).form_footprint(egg);
+        assert_eq!(forms("f", true), [-3, 99999999999i64 as i32]);
+        assert_eq!(forms("f", false), [2, 2]);
+        assert_eq!(forms("m", false), [0, 2]);
+        assert_eq!(
+            get(&c, "animals", "tiger", "m").form_footprint(true),
+            [2, 2]
+        );
     }
 
     #[test]
