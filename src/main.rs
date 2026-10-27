@@ -306,7 +306,7 @@ usage: rustyzoo [--data <dir>] <command>
                       cell of its Finances table that changed, when the tab is shown and at
                       most every 10 s of clock while the window is shown (an older month's
                       column is blank before the accounts begin). A release on the map with no tool picks the
-                      topmost entity under the pointer, and the gate of an exhibit opens the exhibit panel on it
+                      topmost entity under the pointer, and the gate of an exhibit opens the exhibit panel on it and is the selected entity (an arrow marks it)
                       (the exhibit list button, 1050, shows the panel with no exhibit; a click on a row of
                       its list makes that exhibit the current one and centres the view on its gate; the name
                       field renames it; its tabs show the construction date, upkeep and keeper, the popularity
