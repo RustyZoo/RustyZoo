@@ -19,23 +19,15 @@ struct Texts;
 impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            151 => "Exit?",
-            153 => "Leave?",
-            318 => "Cannot open",
-            11645 => "save-failed-text",
-            11646 => "name-too-long-text",
-            9001 => "Name",
-            9101 => "Keep %d zoos",
-            16100 => "Done",
-            16101 => "Failed",
-            _ => "",
+            9101 => "text-9101 %d".into(),
+            151 | 153 | 318 | 11645 | 11646 | 9001 | 16100 | 16101 => format!("text-{id}"),
+            _ => String::new(),
         }
-        .into()
     }
 
     fn text_entry(&self, name: &[u8]) -> Vec<u8> {
         match name {
-            b"SCN_STORY" => b"Story".to_vec(),
+            b"SCN_STORY" => b"text-story".to_vec(),
             _ => vec![],
         }
     }
@@ -448,7 +440,7 @@ fn a_file_that_will_not_load_is_a_message_and_the_menu_stays() {
         app.pass(66, &CONTINUE);
         assert_eq!(
             said(app, 1, 66),
-            ["menu continue saved.zoo", "menu message Cannot open"]
+            ["menu continue saved.zoo", "menu message text-318"]
         );
         assert!(app.camera().is_none() && shown(app, 26));
     });

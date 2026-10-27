@@ -77,7 +77,7 @@ fn a_won_scenario_stores_its_result_asks_and_leaves_for_the_scenario_screen() {
         // The game stands still behind the dialog, and the game's layouts are hidden.
         assert!(app.interface().unwrap().modal_open() && shown(app, DIALOG));
         assert!(!shown(app, MAIN_PANEL));
-        assert_eq!(app.interface().unwrap().text(45206).unwrap(), b"Done");
+        assert_eq!(app.interface().unwrap().text(45206).unwrap(), b"text-16100");
         app.pass(now + 66, &[]);
         assert!(app.camera().is_some());
         // The answer stops the game and shows the scenario screen of the result.
@@ -113,7 +113,7 @@ fn the_end_dialog_of_a_lost_scenario_and_the_window_closing_during_it() {
         );
         let ini = std::fs::read_to_string(files.0.join("user/zoo.ini")).unwrap();
         assert!(ini.contains("aa=2") && !ini.contains("unlock"), "{ini}");
-        assert_eq!(app.interface().unwrap().text(45206).unwrap(), b"Failed");
+        assert_eq!(app.interface().unwrap().text(45206).unwrap(), b"text-16101");
         // Closing the window ends the run at once: the result is stored, nothing is left to save.
         app.pass(now + 66, &[Command::Close]);
         assert!(app.quit());
@@ -141,14 +141,14 @@ fn the_o_key_and_the_button_fill_the_objectives_panel() {
         assert_eq!(said(app, 1, now + 66), ["menu scenario list 1"]);
         assert!(shown(app, 803));
         let ui = app.interface().unwrap();
-        assert_eq!(ui.text(4142).unwrap(), b"Name");
-        assert_eq!(ui.text(4143).unwrap(), b"Story");
+        assert_eq!(ui.text(4142).unwrap(), b"text-9001");
+        assert_eq!(ui.text(4143).unwrap(), b"text-story");
         let rows = match &ui.tree.elements[ui.tree.find(4145).unwrap()].kind {
             crate::ui::layout::Kind::ListBox(l) => l.rows.rows.clone(),
             _ => panic!("no list"),
         };
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].text, b"Keep 1 zoos");
+        assert_eq!(rows[0].text, b"text-9101 1");
         // Pressed again with the panel open, the lines come again (the game's state is the same).
         app.pass(now + 132, &[Command::Char(b'O')]);
         assert_eq!(said(app, 2, now + 132), ["menu scenario list 1"]);

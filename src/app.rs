@@ -710,10 +710,7 @@ impl<'a> App<'a> {
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
-            let types = self.renderer.catalogue().types.iter();
-            world.units.names = (types.filter(|t| t.name_id != 0))
-                .map(|t| (t.name_id, ui.string(t.name_id)))
-                .collect();
+            world.units.names = self.type_names(ui);
         }
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
@@ -812,10 +809,21 @@ impl<'a> App<'a> {
         self.map = Framebuffer::new(self.frame.width, self.frame.height);
         self.painted = None;
         crate::usertext::serve(&mut ui, self.renderer.catalogue());
+        let names = self.type_names(&ui);
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();
+            game.world.units.names = names;
         }
+    }
+
+    /// The text of the name id of each type of the catalogue, as `ui` shows it: the units name
+    /// their new animals, staff and objects with it.
+    fn type_names(&self, ui: &Interface) -> std::collections::HashMap<i32, String> {
+        (self.renderer.catalogue().types.iter())
+            .filter(|t| t.name_id != 0)
+            .map(|t| (t.name_id, ui.string(t.name_id)))
+            .collect()
     }
 
     /// The interface, if the game has one.

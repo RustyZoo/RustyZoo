@@ -1806,6 +1806,36 @@ fn name_interface(name: &str) -> Interface {
 }
 
 #[test]
+fn a_game_opened_before_its_interface_names_its_units_with_the_type_texts() {
+    let install = cache_install_with("app-type-texts", frame_file(), &[]);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut catalogue = Catalogue::default();
+    catalogue.push(crate::entity::EntityType {
+        class: "fences",
+        type_name: b"iron".to_vec(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: None,
+        name_id: 6208,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &catalogue),
+        map(),
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        BIG,
+    )
+    .unwrap();
+    let mut ui = name_interface("type-texts");
+    ui.set_string(6208, "Pen".into());
+    app.set_interface(ui);
+    let names = &app.game.as_ref().unwrap().world.units.names;
+    assert_eq!(names.get(&6208).map(String::as_str), Some("Pen"));
+}
+
+#[test]
 fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
     let install = cache_install_with("app-exhibit", frame_file(), &[]);
     let vfs = Vfs::open(&install.0).unwrap();

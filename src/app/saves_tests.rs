@@ -142,7 +142,7 @@ fn a_name_of_more_than_256_bytes_is_refused_with_its_message() {
             let name = "n".repeat(len);
             app.interface().unwrap().set_text(45308, name.as_bytes());
             now = pass(app, now, &[enter()]);
-            let told = said(app).contains(&"message name-too-long-text".to_string());
+            let told = said(app).contains(&"message text-11646".to_string());
             assert_eq!(told, message, "{len}");
             // The message box (or, on a system that cannot take 256 letters, the failure) is
             // answered; 257 wrote nothing.
@@ -167,7 +167,7 @@ fn a_failed_write_shows_a_message_and_keeps_the_old_file_and_the_last_file() {
         std::fs::create_dir(files.0.join("d.zoo")).unwrap();
         now = press_save(app, now);
         now = type_name(app, now, "d");
-        assert_eq!(said(app), ["message save-failed-text"]);
+        assert_eq!(said(app), ["message text-11645"]);
         assert!(files.0.join("d.zoo").is_dir() && !files.0.join("d.zoo.tmp").exists());
         assert!(last(files).is_empty(), "lastfile is not touched");
         assert!(shown(app, 5), "the panel stays");
@@ -175,7 +175,7 @@ fn a_failed_write_shows_a_message_and_keeps_the_old_file_and_the_last_file() {
         now = pass(app, now, &[enter()]);
         now = press_save(app, now);
         now = type_name(app, now, "no/such");
-        assert_eq!(said(app), ["message save-failed-text"]);
+        assert_eq!(said(app), ["message text-11645"]);
         assert!(!files.0.join("no").exists() && last(files).is_empty());
         let _ = now;
         assert!(app.camera().is_some(), "the run goes on");
