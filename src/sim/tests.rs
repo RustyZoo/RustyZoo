@@ -238,6 +238,38 @@ fn the_ai_clock_keeps_whole_ticks_and_the_remainder() {
 }
 
 #[test]
+fn the_play_time_counts_the_steps_from_the_loaded_value() {
+    let mut w = world(0);
+    let mut s = sim("");
+    // A fresh game and a map without the word start at 0; a step adds its milliseconds.
+    s.start_game(16, Clocks::default());
+    s.step(&mut w, 300, |_, _, _| {});
+    s.step(&mut w, 0, |_, _, _| {});
+    assert_eq!(s.clocks().play_time, 300);
+    // A loaded value goes on from there, and a huge one stops at the end of the counter.
+    for (loaded, step, want) in [(1000, 250, 1250), (u32::MAX - 1, 300, u32::MAX)] {
+        s.start_game(
+            16,
+            Clocks {
+                play_time: loaded,
+                ..Clocks::default()
+            },
+        );
+        s.step(&mut w, step, |_, _, _| {});
+        assert_eq!(s.clocks().play_time, want);
+    }
+    // No step ran (a pause), no time passed.
+    s.start_game(
+        16,
+        Clocks {
+            play_time: 9,
+            ..Clocks::default()
+        },
+    );
+    assert_eq!(s.clocks().play_time, 9);
+}
+
+#[test]
 fn a_new_game_starts_from_the_clocks_of_its_map() {
     let mut w = world(0);
     let mut s = sim("");

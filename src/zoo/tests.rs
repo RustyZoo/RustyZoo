@@ -164,7 +164,7 @@ fn tail(w: &mut W, v: u32, scripts: u32) {
     }
     w.u32(1234.5f32.to_bits()); // cash
     if v >= 73 {
-        w.z(4);
+        w.u32(123_456); // the play time
     }
     w.u32(2).z(40); // two thoughts, all 0
     w.u32(7).u32(8); // the AI clock: milliseconds left over, ticks
@@ -405,6 +405,21 @@ fn a_refused_game_date_is_the_start_of_the_calendar() {
     ] {
         let zoo = parse(&with_date(&file(VERSIONS[0], 2, 2, &[], &[]), date));
         assert_eq!(zoo.clocks.calendar, 0, "{date:?}");
+    }
+}
+
+#[test]
+fn the_play_time_is_read_from_version_73_and_always_written() {
+    for v in [71, 73, 106] {
+        let (zoo, money) = Zoo::parse_money(&file(v, 2, 2, &[], &[])).unwrap();
+        let time = if v >= 73 { 123_456 } else { 0 };
+        assert_eq!(zoo.clocks.play_time, time, "version {v}");
+        for set in [0, 7, u32::MAX] {
+            let mut zoo = zoo.clone();
+            zoo.clocks.play_time = set;
+            let back = parse(&zoo.write(&money).unwrap());
+            assert_eq!(back.clocks.play_time, set, "{v}");
+        }
     }
 }
 
@@ -1515,13 +1530,13 @@ fn the_game_block_of_an_old_file_gets_the_rows_and_words_it_lacked() {
             [31u32.to_le_bytes(), 20u32.to_le_bytes()].concat()
         );
         // The date after the price is 1 January 2000 when the file has none (before 71).
-        let date = u64::from_le_bytes(f[at[0] - 8..at[0]].try_into().unwrap());
+        let date = u64::from_le_bytes(f[at - 8..at].try_into().unwrap());
         assert_eq!(
             date,
             if v < 71 { 125_911_584_000_000_000 } else { 0 },
             "version {v}"
         );
-        assert_eq!(f.len(), at[1] + 8, "version {v}");
+        assert_eq!(f.len(), at + 24, "version {v}");
     }
 }
 
@@ -1762,12 +1777,79 @@ fn an_entity_made_in_play_is_written_and_read_back() {
             if let Some(u) = &b.unit {
                 assert_eq!(
                     (b.movement_mode, u.as_ref()),
-                    (2, &UnitBlock::default()),
+                    (
+                        2,
+                        &fresh::unit_new(
+                            (e.class == "guests").then_some(fresh::DEFAULT_NON_PATH_COST)
+                        )
+                    ),
                     "{what}"
                 );
             }
         }
     }
+}
+
+#[test]
+fn a_new_unit_is_written_with_the_values_of_a_unit_made_in_play() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.entities.push(made("animals", "m", Common::default()));
+    zoo.entities.push(made("guests", "", Common::default()));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let n = back.entities.len();
+    let unit = |i: usize| {
+        back.entities[n - 2 + i]
+            .common
+            .clone()
+            .unwrap()
+            .unit
+            .unwrap()
+    };
+    let (a, g) = (unit(0), unit(1));
+    // No goal, no target, no movement yet; the counters a new unit has (save games 11.3).
+    assert_eq!(
+        (a.target.active, a.target.active_sub, a.target.target, a.p3),
+        (-1, -1, [-1; 3], [-1; 3])
+    );
+    assert_eq!((a.move_kind, a.w7, a.slot, a.need), (-1, 4, 255, 255));
+    assert_eq!((a.w4, a.short), (1, 100));
+    // A guest's word 230 is the type's cost (7 when none is given), not 0.
+    assert_eq!(g.w4, 7);
+    assert_eq!(g.target.active, -1);
+}
+
+#[test]
+fn a_new_unit_has_no_sub_target() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.entities.push(made("animals", "m", Common::default()));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let unit = back
+        .entities
+        .last()
+        .unwrap()
+        .common
+        .clone()
+        .unwrap()
+        .unit
+        .unwrap();
+    assert_eq!(unit.target.sub_target, [-1; 3]);
+}
+
+#[test]
+fn a_new_unit_has_the_last_position_and_call_flag_of_a_unit_made_in_play() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.entities.push(made("animals", "m", Common::default()));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let unit = back
+        .entities
+        .last()
+        .unwrap()
+        .common
+        .clone()
+        .unwrap()
+        .unit
+        .unwrap();
+    assert_eq!((unit.p1, unit.pending_flag), ([-1; 3], 1));
 }
 
 #[test]
@@ -2567,6 +2649,20 @@ fn an_animal_record_of_any_size_is_written_whole() {
         ..new_animal()
     };
     assert_eq!(animal_back(&none), none);
+}
+
+#[test]
+fn the_viewing_time_is_read_and_written() {
+    for v in [70, 73, 106] {
+        let bytes = file(v, 3, 3, &[(false, false), (true, false)], &[]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        // Zero, a value past 32 bits, and the largest value.
+        for viewing in [0, 0x1_0000_0002, u64::MAX] {
+            zoo.habitat_info[1].viewing = viewing;
+            let (back, _) = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap();
+            assert_eq!(back.habitat_info[1].viewing, viewing, "version {v}");
+        }
+    }
 }
 
 /// A staff body of version 106 up to the end of the staff block: the own fields of `class`, then

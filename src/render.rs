@@ -786,7 +786,7 @@ impl<'a> MapRenderer<'a> {
 
     /// The palette file `member`, read once.
     fn palette(&mut self, member: &[u8]) -> Option<&Palette> {
-        let member = crate::vfs::normalise(&String::from_utf8_lossy(member));
+        let member = crate::vfs::normalise(&crate::vfs::name_from_bytes(member));
         self.palettes
             .entry(member)
             .or_insert_with_key(|member| Palette::parse(&self.vfs.read(member).ok()?).ok())
@@ -1613,8 +1613,8 @@ impl<'a> MapRenderer<'a> {
 
 /// Whether two palette file names are the same member.
 fn same_member(a: &[u8], b: &[u8]) -> bool {
-    crate::vfs::normalise(&String::from_utf8_lossy(a))
-        == crate::vfs::normalise(&String::from_utf8_lossy(b))
+    crate::vfs::normalise(&crate::vfs::name_from_bytes(a))
+        == crate::vfs::normalise(&crate::vfs::name_from_bytes(b))
 }
 
 /// The position of `default` among the `pal` variants of a colour group, 0 when it is not there

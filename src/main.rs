@@ -475,7 +475,13 @@ usage: rustyzoo [--data <dir>] <command>
                       first step of the simulation is the cap; scenarios and freeform maps empty
                       `lastfile` and run the goals of their `.scn` file (`sim scenario start
                       FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; the
-                      triggers are stubs, and so are the research, awards, shows and interface rules). When the scenario ends, its result is
+                      triggers are stubs but for trigger 2, which shows popups (`sim scenario popup
+                      LAYOUT modal|open`, with a hint line, `sim scenario hint LAYOUT`) and
+                      disables, enables, hides, shows and presses elements by id (`sim scenario
+                      element ID disable|enable|hide|show|press`); the research, awards and shows
+                      rules are stubs, and rules 10 and 11 read what the interface shows and what
+                      was pressed; a game that opens gives the elements back). When the scenario
+                      ends, its result is
                       written to `[scenario]` of the settings of the user folder if lower than
                       the stored one, and a win appends its `[completion] unlock` types to `[user]
                       unlockEntityN` (`menu scenario ended won|lost`, `menu scenario result KEY N`,

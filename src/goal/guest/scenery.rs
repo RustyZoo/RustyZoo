@@ -2,6 +2,7 @@
 
 use super::super::{Cx, DO_SCENERY};
 use crate::guest::{gawk, view};
+use crate::strings::is_user_id;
 use crate::unit::Part;
 
 impl Cx<'_, '_> {
@@ -31,7 +32,8 @@ impl Cx<'_, '_> {
     }
 
     /// 0x81, init: the object must still exist. A guest not yet playing a gawk set starts the one
-    /// its esthetic bonus picks, and then thinks one of the object's thoughts, chosen by one draw.
+    /// its esthetic bonus picks, and then thinks one of the object's thoughts, chosen by one draw;
+    /// a user-created object thinks none (localisation 8.2: its thought is always 0).
     pub(in crate::goal) fn do_scenery_init(&mut self) -> bool {
         let id = self.record().target.id;
         let Some(at) = self.world.find(id) else {
@@ -49,7 +51,9 @@ impl Cx<'_, '_> {
         let thoughts = gawk::thoughts(ty);
         if self.start_set(gawk::gawk_set(ty, k.name_id), false) && !thoughts.is_empty() {
             let pick = self.ctx.rng.pick(thoughts.len() as u32) as usize;
-            self.think(thoughts[pick], None);
+            if !is_user_id(ty.name_id) {
+                self.think(thoughts[pick], None);
+            }
         }
         true
     }

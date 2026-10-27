@@ -53,6 +53,7 @@ fn zoo(pens: &[(i32, i32, i32, i32, i32)], extra: &[Entity]) -> World {
                 name: format!("Pen {n}"),
                 stats: [0; 9],
                 created: 0,
+                viewing: 0,
                 serviced: 0,
             });
         }

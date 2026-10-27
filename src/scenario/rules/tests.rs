@@ -92,7 +92,13 @@ impl Parts {
             money: &self.money,
             status: &self.status,
         };
-        eval(&rule, value, &Env::new(1, 0, Some(game)), &[])
+        eval(
+            &rule,
+            value,
+            &Env::new(1, 0, Some(game)),
+            &[],
+            &Gui::default(),
+        )
     }
 
     fn animal(&mut self, id: u32) -> &mut crate::animal::Animal {
@@ -428,6 +434,10 @@ fn rule_6_needs_one_counted_exhibit() {
 fn rules_that_read_the_game_read_0_without_one() {
     let env = Env::new(1, 0, None);
     for rule in [0, 1, 2, 3, 4, 5, 6, 16] {
-        assert_eq!(eval(&[rule, 0, 0, 0], 0, &env, &[]), 0, "rule {rule}");
+        assert_eq!(
+            eval(&[rule, 0, 0, 0], 0, &env, &[], &Gui::default()),
+            0,
+            "rule {rule}"
+        );
     }
 }

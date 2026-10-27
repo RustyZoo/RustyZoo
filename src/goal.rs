@@ -492,6 +492,12 @@ impl Sub {
     }
 }
 
+/// The active goal a unit writes (save games 11.2, S7): its task when the task has a goal object for
+/// the kind of unit, -1 for none.
+pub(crate) fn active_goal(task: u8, kind: Kind) -> i32 {
+    Goal::build(task, kind).map_or(-1, |_| i32::from(task))
+}
+
 /// The goal state of a unit: the record, the objects built from it and the flags of the base
 /// goal.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

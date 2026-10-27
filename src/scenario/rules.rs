@@ -4,14 +4,14 @@
 //! The figures that take a walk over the entities or the exhibits are made once per pass, the
 //! first time a rule asks, and kept in the [`Env`].
 //!
-//! Not read yet, they give 0: rule 8 (research makes types available), the interface rules 10
-//! and 11, rule 13 (research), rule 15 (shows), rule 1 with `ruleb` 11 (awards), the escaped
-//! animals of rule 4, and the rules and `ruleb` values no shipped file uses.
+//! Not read yet, they give 0: rule 8 (research makes types available), rule 13 (research), rule 15
+//! (shows), rule 1 with `ruleb` 11 (awards), the escaped animals of rule 4, and the rules and
+//! `ruleb` values no shipped file uses. The interface rules 10 and 11 read the [`Gui`].
 
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use super::Env;
+use super::{Env, Gui};
 use crate::animal::home::home;
 use crate::build::{number, plain};
 use crate::entity::Catalogue;
@@ -338,8 +338,9 @@ fn status(env: &Env, g: &Game, rule: &[i32; 4]) -> i32 {
 }
 
 /// The value a rule reads: `rule` is `rulea`, `ruleb`, `arga`, `argb`; `value` the goal's own;
-/// `states` the reported state of each goal of the list.
-pub(super) fn eval(rule: &[i32; 4], value: i32, env: &Env, states: &[u8]) -> i32 {
+/// `states` the reported state of each goal of the list; `value` is also what the interface rules
+/// answer when they hold.
+pub(super) fn eval(rule: &[i32; 4], value: i32, env: &Env, states: &[u8], gui: &Gui) -> i32 {
     match rule[0] {
         7 => match rule[1] {
             0 => env.month,
@@ -348,6 +349,23 @@ pub(super) fn eval(rule: &[i32; 4], value: i32, env: &Env, states: &[u8]) -> i32
             _ => 0,
         },
         9 => states.iter().filter(|&&s| i32::from(s) == rule[1]).count() as i32,
+        // The element `arga` is shown (`ruleb` 0) or was pressed since the last question (1).
+        10 => match rule[1] {
+            0 if gui.shown(rule[2]) => value,
+            1 if gui.take_press(rule[2]).is_some() => value,
+            _ => 0,
+        },
+        // A list box that was pressed: the row (`ruleb` 0), or 1 if the row's text is the string
+        // `argb`; -2 for the rest.
+        11 => {
+            let text = (rule[1] != 0).then(|| gui.text(rule[3]));
+            let row = gui.take_press(rule[2]).and_then(|p| p.row);
+            match (row, text) {
+                (Some((row, _)), None) => i32::try_from(row).unwrap_or(i32::MAX),
+                (Some((_, shown)), Some(text)) if shown == text => 1,
+                _ => -2,
+            }
+        }
         99 => rule[2],
         _ => {
             let Some(g) = env.game else { return 0 };
