@@ -436,7 +436,7 @@ fn trigger_2_popups_and_presses_and_single_elements() {
 
 #[test]
 fn trigger_2_blocks_and_the_question() {
-    let blocks = "[20]\nid=1000\nid=1001\nid=x\n[21]\n1000=enable\n1001=D\n1002=hide\n1003=s\n1004=x\n1005=\n";
+    let blocks = "[20]\nid=1000\nid=1001\nid=x\n[21]\n1000=enable\n1001=d\n1002=hide\n1003=s\n1004=x\n1005=\n";
     let e = |keys: &str| trigger(keys, &format!("{blocks}{POPUPS}"));
     for (b, op) in [
         (12, Op::Disable),
@@ -459,7 +459,7 @@ fn trigger_2_blocks_and_the_question() {
         assert_eq!(ops.len(), 3, "an id that is not a number is 0");
         assert!(popup.is_some());
     }
-    // 16: letters or words, any case; an entry with another value is not one; the popup shows anyway.
+    // 16: letters or words in lower case; an entry with another value is not one; the popup shows anyway.
     let got = e("truleb=16\ntarga=21\ntargb=9");
     let [
         Effect::Set {
@@ -488,6 +488,22 @@ fn trigger_2_blocks_and_the_question() {
             (45000, 77, modal, true)
         );
     }
+}
+
+#[test]
+fn trigger_16_acts_on_the_first_lower_case_letter_of_each_value() {
+    let block = "[21]\n1=disable\n2=e\n3=hide\n4=show\n5=D\n6=Enable\n7=\n8=x\n9=xd\n";
+    let got = trigger("truleb=16\ntarga=21\ntargb=9", &format!("{block}{POPUPS}"));
+    let [Effect::Set { ops, always, .. }] = &got[..] else {
+        panic!("{got:?}")
+    };
+    let want = [
+        (1, Op::Disable),
+        (2, Op::Enable),
+        (3, Op::Hide),
+        (4, Op::Show),
+    ];
+    assert_eq!((ops, *always), (&want.to_vec(), true));
 }
 
 #[test]
@@ -611,15 +627,24 @@ fn rule_11_reads_the_row_of_a_list_that_was_pressed() {
 }
 
 #[test]
-fn a_goal_on_rule_10_completes_when_the_element_is_shown_and_fires_its_trigger() {
+fn rule_10_reads_a_shown_element_in_the_first_pass() {
     let text = format!(
         "[goals]\ngoal=g\n[g]\nrulea=10\nruleb=0\narga=1000\nvalue=1\ntrulea=2\ntruleb=0\ntarga=9\n{POPUPS}"
     );
     let mut s = build(&text, &[]);
+    // The first sync already tells the element, so the first pass sees it; a hidden one waits.
+    s.gui().sync(&|id| id == 999, &|_| vec![]);
     pass(&mut s, &env(1, 0), &mut Vec::new());
     assert!(s.gui().take_effects().is_empty() && states(&s)[1] == 0);
     s.gui().sync(&|id| id == 1000, &|_| vec![]);
     pass(&mut s, &env(1, 0), &mut Vec::new());
     assert_eq!(s.gui().take_effects().len(), 1);
+    assert_eq!(states(&s)[1], 1);
+    // Also in a first pass of a fresh scenario, and inside a group.
+    let text =
+        "[goals]\ngoal=c\n[c]\nrtype=1\nchild=g\n[g]\nrulea=10\nruleb=0\narga=1000\nvalue=1\n";
+    let mut s = build(text, &[]);
+    s.gui().sync(&|id| id == 1000, &|_| vec![]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
     assert_eq!(states(&s)[1], 1);
 }

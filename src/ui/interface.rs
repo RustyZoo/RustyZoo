@@ -323,13 +323,14 @@ impl Interface {
         self.input.clock = now;
         self.repeat();
         self.tooltip_update(elapsed);
-        if self.modal.is_none()
-            && let Some((d, left)) = self.popup
-        {
+        if let Some((d, left)) = self.popup {
             let left = left.saturating_sub(i64::try_from(elapsed).unwrap_or(i64::MAX));
-            match left > 0 {
-                true => self.popup = Some((d, left)),
-                false => self.answer(dialog::CANCEL),
+            // A modal question closes the popup at once; a delay of 0 or less never does.
+            if self.modal.is_some() || (self.settings.popup_delay > 0 && left <= 0) {
+                self.popup = None;
+                self.hide_element(d);
+            } else {
+                self.popup = Some((d, left));
             }
         }
         let period = i64::try_from(elapsed).unwrap_or(i64::MAX);

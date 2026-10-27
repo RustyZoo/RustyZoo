@@ -86,8 +86,8 @@ impl Interface {
 
     /// Opens the same layout without the question: the game runs on, the pointer is not
     /// restricted to it, and an answer closes it with no [`Action::Answer`]. It closes by itself
-    /// after `[UI] NonmodalDialogDelay` ms of interface updates with no question open. One
-    /// popup at a time: the one that was open is closed.
+    /// after `[UI] NonmodalDialogDelay` ms of interface updates (0 or less: never), and at once
+    /// when a modal question opens or waits. One popup at a time: the one that was open is closed.
     pub fn notify(&mut self, layout: i32, message: &[u8], buttons: Buttons) -> bool {
         self.open_dialog(layout, message, buttons, false)
     }
@@ -103,7 +103,8 @@ impl Interface {
         if modal && self.modal.is_some() {
             self.answer(CANCEL);
         }
-        if !modal && let Some((open, _)) = self.popup.take() {
+        // A new popup replaces the old one; a modal question closes it at once.
+        if let Some((open, _)) = self.popup.take() {
             self.hide_element(open);
         }
         self.set_focus(None);
@@ -132,7 +133,7 @@ impl Interface {
         self.tree.bring_to_front(d);
         match modal {
             true => self.modal = Some(d),
-            false => self.popup = Some((d, i64::from(self.settings.popup_delay))),
+            false => self.popup = Some((d, i64::from(self.settings.popup_delay.max(0)))),
         }
         // The hover element is unhighlighted; the tooltip stays until the next mouse message.
         self.hover_to(None);

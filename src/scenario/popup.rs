@@ -89,13 +89,13 @@ pub fn ids(cfg: &Config, block: i32) -> Vec<i32> {
 }
 
 /// The entries `<id>=<letter>` of the section `[block]`: the first letter of the value, `d`, `e`,
-/// `h` or `s` in any case (the example file writes the words), says what to do.
+/// `h` or `s`, lower case only (the example file writes the words), says what to do.
 pub fn entries(cfg: &Config, block: i32) -> Vec<(i32, Op)> {
     let Some(s) = cfg.section(block.to_string()) else {
         return Vec::new();
     };
     let entry = |key: &[u8]| {
-        let op = match s.get(key)?.first()?.to_ascii_lowercase() {
+        let op = match s.get(key)?.first()? {
             b'd' => Op::Disable,
             b'e' => Op::Enable,
             b'h' => Op::Hide,

@@ -50,11 +50,16 @@ struct Inner {
 pub struct Gui(RefCell<Inner>);
 
 impl Gui {
-    /// Rule 10: whether the element exists and is shown. Asking registers it.
+    /// Rule 10: whether the element exists and is shown, as the last sync told.
     pub(super) fn shown(&self, id: i32) -> bool {
         let mut g = self.0.borrow_mut();
         g.asked.insert(id);
         g.shown.get(&id).copied().unwrap_or(false)
+    }
+
+    /// The application is to tell whether the element is shown from the next sync on.
+    pub(super) fn watch(&self, id: i32) {
+        self.0.borrow_mut().asked.insert(id);
     }
 
     /// Rules 10 and 11: the press of the element since the last question, which consumes it.

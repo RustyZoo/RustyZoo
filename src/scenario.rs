@@ -258,6 +258,19 @@ impl Goal {
         })
     }
 
+    /// Registers the elements this goal's rule 10 reads whether they are shown (8.2).
+    fn watch(&self, gui: &Gui) {
+        match &self.body {
+            Body::Timer(_) => {}
+            Body::Simple(s) => {
+                if s.rule[0] == 10 && s.rule[1] == 0 {
+                    gui.watch(s.rule[2]);
+                }
+            }
+            Body::Complex(c) | Body::Chain(c) => c.iter().for_each(|g| g.watch(gui)),
+        }
+    }
+
     /// The state the manager and the groups see: 1 for an optional goal.
     fn reported(&self) -> u8 {
         if self.optional { 1 } else { self.state }
@@ -371,13 +384,16 @@ impl Scenario {
             let trigger = Trigger::read(main, n);
             (String::from_utf8_lossy(n).into_owned(), trigger)
         });
+        // The elements rule 10 reads are known from the start, so the first sync tells them.
+        let gui = Gui::default();
+        goals.iter().for_each(|g| g.watch(&gui));
         Scenario {
             file: file.to_string(),
             goals,
             start: start.collect(),
             gathered: 0,
             run: Run::On,
-            gui: Gui::default(),
+            gui,
         }
     }
 

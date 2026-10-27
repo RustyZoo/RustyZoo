@@ -34,7 +34,7 @@ pub struct Settings {
     pub max_short_width: i32,
     pub max_long_width: i32,
     /// Milliseconds a popup that does not stop the game stays open (`NonmodalDialogDelay`).
-    pub popup_delay: u32,
+    pub popup_delay: i32,
 }
 
 impl Default for Settings {
@@ -52,7 +52,7 @@ impl Default for Settings {
 impl Settings {
     /// Reads `[UI]` of the ini file: `TooltipDelay` (below 0 is 0), `helpType` (not 0: the long
     /// help), `maxShortTooltipWidth` and `maxLongTooltipWidth` (from 1 to 4096) and
-    /// `NonmodalDialogDelay` (from 1 to an hour; below 1 is the built-in 10000). A missing key
+    /// `NonmodalDialogDelay` (up to an hour; 0 or less never closes a popup). A missing key
     /// keeps the built-in value.
     pub fn from_config(ini: &Config) -> Settings {
         let d = Settings::default();
@@ -64,10 +64,9 @@ impl Settings {
                 .map_or(d.max_short_width, |n| n.clamp(1, MAX_WIDTH)),
             max_long_width: get("maxLongTooltipWidth")
                 .map_or(d.max_long_width, |n| n.clamp(1, MAX_WIDTH)),
-            // A delay of 0 or less would close the popup at once: the built-in one stays.
+            // Kept as read: 0 or less never closes the popup.
             popup_delay: get("NonmodalDialogDelay")
-                .filter(|&n| n > 0)
-                .map_or(d.popup_delay, |n| n.min(MAX_POPUP_DELAY) as u32),
+                .map_or(d.popup_delay, |n| n.min(MAX_POPUP_DELAY)),
         }
     }
 }
