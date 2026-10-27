@@ -480,7 +480,18 @@ usage: rustyzoo [--data <dir>] <command>
                       enables, hides, shows and presses elements by id (`sim scenario element ID
                       disable|enable|hide|show|press`), and rules 10 and 11 read what the
                       interface shows and what was pressed; a game that opens gives the elements
-                      back). The lines are `menu game start LABEL
+                      back). When the scenario ends, its result is
+                      written to `[scenario]` of the settings of the user folder if lower than
+                      the stored one, and a win appends its `[completion] unlock` types to `[user]
+                      unlockEntityN` (`menu scenario ended won|lost`, `menu scenario result KEY N`,
+                      `menu scenario unlock ID`); the game's layouts hide and a dialog (layout
+                      45200, `menu scenario dialog TEXTID`) tells the result with Yes and
+                      No; No stops the game and shows the scenario screen with the win or lose
+                      picture and story (the main menu for a tutorial or a freeform map); Yes
+                      starts the next tutorial after a tutorial, else the game goes on; closing
+                      the window meanwhile ends the run. The Scenario button (4107, the O character) fills
+                      panel 803 with the scenario's name and story and one line per goal
+                      (`menu scenario list N`). The lines are `menu game start LABEL
                       FILE`; a file that cannot
                       be loaded is a question box with its message (`menu message TEXT`) and the
                       menu stays. In a game, Escape (with nothing to cancel; an open panel closes

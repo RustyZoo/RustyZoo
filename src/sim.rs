@@ -284,6 +284,11 @@ impl Sim {
         self.lines.push(line);
     }
 
+    /// How the scenario ended, once, when it has.
+    pub fn scenario_ended(&mut self) -> Option<crate::scenario::Ended> {
+        self.scenario.as_mut()?.ended()
+    }
+
     /// A scenario or freeform map is a new game: its calendar starts on 1 January 2001 whatever
     /// date the file stores (main loop 7.2).
     pub fn restart_calendar(&mut self) {

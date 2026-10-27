@@ -51,6 +51,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::Record;
 use crate::exhibit::{EXTERIOR, GROUNDS, rating};
 use crate::sim::Rng;
+use crate::timing::{Date, file_time};
 use crate::unit::{Ctx, Part, Unit};
 use crate::vfs::Vfs;
 use crate::world::World;
@@ -516,10 +517,25 @@ impl Animal {
     }
 
     /// Overwrites what the record of a loaded map stores (animals 3.5); the rest keeps the value
-    /// creation gave. The sleeping, eating and drinking flags are not taken yet: the behaviour set
-    /// and the goals do not start from them, and an animal loaded asleep never fathers young.
-    pub fn restore(&mut self, saved: &AnimalRecord) {
+    /// creation gave. The life and the mate delay are clamped to the class's limits (a record
+    /// below version 43 has neither: they keep creation's values), the dates are read as game
+    /// milliseconds. The sleeping, eating and drinking flags are not taken yet:
+    /// the behaviour set and the goals do not start from them, and an animal loaded asleep never
+    /// fathers young.
+    pub fn restore(&mut self, saved: &AnimalRecord, k: &Keys, class: &Class) {
         let r = saved;
+        (self.life, self.mate_delay) = (
+            r.life
+                .map_or(self.life, |life| life.min(k.time_death.wrapping_sub(1))),
+            r.mate_delay.map_or(self.mate_delay, |delay| {
+                delay.min(class.mate_pick_delay.wrapping_sub(1))
+            }),
+        );
+        (self.baby, self.interval) = (r.baby, r.interval);
+        (self.fed, self.slept) = (
+            Date::from_file_time(r.dates[0]).game_ms(),
+            Date::from_file_time(r.dates[1]).game_ms(),
+        );
         (self.happiness, self.hunger, self.health, self.energy) =
             (r.happiness, r.hunger, r.health, r.energy);
         (self.dung, self.female) = (r.dung, r.female);
@@ -549,6 +565,11 @@ impl Animal {
         for at in (0..=12).chain([WATER]) {
             counters[at] = Some(self.counters[at]);
         }
+        // A date that did not change keeps its file time, which the game date would round.
+        let kept = |live: i64, date: u64| match live == Date::from_file_time(date).game_ms() {
+            true => date,
+            false => file_time(live),
+        };
         AnimalRecord {
             happiness: self.happiness,
             hunger: self.hunger,
@@ -568,6 +589,14 @@ impl Animal {
             thirsty: self.thirsty,
             rampaging: self.rampaging,
             rampage: self.rampage,
+            life: Some(self.life),
+            baby: self.baby,
+            interval: self.interval,
+            mate_delay: Some(self.mate_delay),
+            dates: [
+                kept(self.fed, base.dates[0]),
+                kept(self.slept, base.dates[1]),
+            ],
             ..base
         }
     }
@@ -798,6 +827,7 @@ pub fn run_with(
             let (zap, mate, mother, father) = (a.zap, a.mate, a.mother, a.father);
             *a = Animal::create(k, class, subtype, rng);
             (a.zap, a.mate, a.mother, a.father) = (zap, mate, mother, father);
+            (a.fed, a.slept) = (env.now, env.now);
         }
     }
     breed::grow(a, k, env, &mut out);
@@ -1174,7 +1204,7 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     };
     let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
     let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
-    animal.restore(&saved);
+    animal.restore(&saved, &k, &world.units.class);
     if let Some(unit) = world.units.get_mut(id) {
         // An egg shows its own picture (animals-needs 13.1).
         if animal.egg {
