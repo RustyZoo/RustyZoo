@@ -109,6 +109,15 @@ pub struct StringTables {
     libraries: Vec<Library>,
 }
 
+/// Whether a name id belongs to user-created content: its low 24 bits are in 19000..=21999,
+/// 49000..=51999 or 74000..=76999 (entity types 10.3).
+pub fn is_user_id(id: i32) -> bool {
+    let user = id & 0xFF_FFFF;
+    [19000..=21999, 49000..=51999, 74000..=76999]
+        .iter()
+        .any(|range| range.contains(&user))
+}
+
 impl StringTables {
     /// Loads the libraries of the install folder `install_dir`.
     ///
@@ -151,15 +160,10 @@ impl StringTables {
 
     /// The text of string `id` and the library that supplies it; `None` if no library has it.
     pub fn string_source(&self, id: u32) -> Option<(&str, &str)> {
-        // ponytail: the numbers of user-created content (low 24 bits in 19000..=21999,
-        // 49000..=51999 or 74000..=76999; a string table holds numbers up to 65535 only, so
-        // the last range never meets a library) are not in the libraries; the text of that content
-        // is not specified yet, so they are empty.
-        let user = id & 0xFF_FFFF;
-        if [19000..=21999, 49000..=51999, 74000..=76999]
-            .iter()
-            .any(|range| range.contains(&user))
-        {
+        // ponytail: the text of user-created content (`is_user_id`) is not specified yet, so it
+        // is empty; a string table holds numbers up to 65535 only, so the last range never meets
+        // a library.
+        if is_user_id(id as i32) {
             return None;
         }
         self.libraries.iter().find_map(|l| {
