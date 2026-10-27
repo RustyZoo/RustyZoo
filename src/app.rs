@@ -433,6 +433,12 @@ pub struct App<'a> {
     pointer: Option<(i32, i32)>,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
     on_map: bool,
+    /// Whether it is over an editable text field.
+    on_text: bool,
+    /// Whether the last pass began a long operation: rotating or zooming a map, loading a game.
+    busy: bool,
+    /// Told when a long operation begins, so the window can show the busy cursor around it.
+    busy_hook: Option<Box<dyn FnMut() + 'a>>,
     frame: Framebuffer,
     /// The interface drawn over the map, if the game has one.
     ui: Option<Interface>,
@@ -625,6 +631,9 @@ impl<'a> App<'a> {
             quit: false,
             pointer: None,
             on_map: true,
+            on_text: false,
+            busy: false,
+            busy_hook: None,
             frame: Framebuffer::new(size.0, size.1),
             ui: None,
             map: Framebuffer::new(0, 0),
@@ -843,6 +852,7 @@ impl<'a> App<'a> {
         self.dev_lines = Vec::new();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
+        self.busy = false;
         (self.music_changed, self.music_restarted) = (false, false);
         if let Some(ui) = &mut self.ui {
             ui.set_time(now);
@@ -858,6 +868,7 @@ impl<'a> App<'a> {
             return None;
         }
         self.on_map = self.ui.as_mut().is_none_or(Interface::pointer_on_map);
+        self.on_text = self.ui.as_mut().is_some_and(Interface::pointer_on_text);
         if let Some(ui) = &mut self.ui {
             self.ui_events.extend(ui.take_events());
             self.ui_sounds.extend(ui.take_sounds());
@@ -1129,6 +1140,9 @@ impl<'a> App<'a> {
     }
 
     fn apply(&mut self, command: Command) {
+        if matches!(command, Command::Rotate(_) | Command::Zoom(_)) && self.game.is_some() {
+            self.start_busy();
+        }
         match command {
             Command::Close => return self.close(),
             Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
@@ -1810,6 +1824,7 @@ impl<'a> App<'a> {
     fn requested(&mut self) {
         match self.menu.as_mut().and_then(Menu::take_request) {
             Some(Request::Open(start)) => {
+                self.start_busy();
                 let Some(menu) = &self.menu else { return };
                 let zoo = menu.load(&start.path, self.renderer.catalogue());
                 self.open(&start, zoo);
@@ -1838,6 +1853,7 @@ impl<'a> App<'a> {
 
     /// `load FILE` of a script: a saved game opens as a Continue does. Whether it opened.
     fn load_saved(&mut self, file: &str) -> bool {
+        self.start_busy();
         let catalogue = self.renderer.catalogue();
         let read = std::fs::read(file).map_err(|e| format!("{file}: {e}"));
         let read = read.and_then(|bytes| {
@@ -2213,14 +2229,58 @@ impl<'a> App<'a> {
     }
 
     /// The cursor to show, by its number without the 50 of the alternate set ([`crate::cursor`]):
-    /// over the map view the terrain tool's while it is the map view's tool, else the normal one;
-    /// over the interface the default.
+    /// over the interface the text cursor on an editable field, else the default; over the map
+    /// view the terrain tool's, the bulldozer's, the drag's, the pending object's, the hover's
+    /// (an exhibit under the assign tool, a fence piece under the gate tool, or, with no tool, a
+    /// selectable entity), else the normal one.
     pub fn cursor(&self) -> u32 {
+        use crate::cursor as c;
         if !self.on_map {
-            return crate::cursor::DEFAULT;
+            return if self.on_text { c::TEXT } else { c::DEFAULT };
         }
-        let tool = self.game.as_ref().and_then(|g| g.terrain.cursor());
-        tool.unwrap_or(crate::cursor::NORMAL)
+        let Some(game) = &self.game else {
+            return c::NORMAL;
+        };
+        if let Some(tool) = game.terrain.cursor() {
+            return tool;
+        }
+        let over =
+            game.staff.over.is_some() || (self.assigning().is_none() && self.over_selectable());
+        let b = &game.build;
+        match () {
+            _ if b.bulldozing() => c::BULLDOZER,
+            _ if b.dragging() || !game.run.is_empty() => c::DRAG,
+            // The gate tool's pending gate is the hover, not a pending object.
+            _ if b.gating() => {
+                if game.gate.is_some() {
+                    c::HOVER
+                } else {
+                    c::NORMAL
+                }
+            }
+            _ if game.pending.is_some() => c::PLACING,
+            _ if over => c::HOVER,
+            _ => c::NORMAL,
+        }
+    }
+
+    /// Whether the last pass began a long operation, which shows the busy cursor (string tables
+    /// 6.1): rotating or zooming a map, loading a game from the interface or a script. A save
+    /// never does.
+    pub fn busy(&self) -> bool {
+        self.busy
+    }
+
+    /// Sets what is called when a long operation begins.
+    pub fn on_busy(&mut self, hook: impl FnMut() + 'a) {
+        self.busy_hook = Some(Box::new(hook));
+    }
+
+    fn start_busy(&mut self) {
+        self.busy = true;
+        if let Some(hook) = &mut self.busy_hook {
+            hook();
+        }
     }
 
     pub fn paused(&self) -> bool {
