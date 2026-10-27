@@ -54,13 +54,16 @@ fn a_list_holds_the_members_of_its_tag_sorted_by_cost() {
         ty("paths", "paths", "nofile", ""),
     ]);
     assert_eq!(
-        names(&cat, &items(&cat, "paths", 0)),
+        names(&cat, &items(&cat, &Availability::default(), "paths", 0)),
         ["b", "c"],
         "ascending cost"
     );
-    assert_eq!(names(&cat, &items(&cat, "foliage", 0)), ["a"]);
-    assert!(items(&cat, "rocks", 0).is_empty());
-    assert!(items(&catalogue(vec![]), "paths", 0).is_empty());
+    assert_eq!(
+        names(&cat, &items(&cat, &Availability::default(), "foliage", 0)),
+        ["a"]
+    );
+    assert!(items(&cat, &Availability::default(), "rocks", 0).is_empty());
+    assert!(items(&catalogue(vec![]), &Availability::default(), "paths", 0).is_empty());
 }
 
 /// A type with a definition file and no name.
@@ -108,7 +111,10 @@ fn the_fence_list_is_sorted_filter_tank_walls_by_show_then_by_height_then_the_re
     ]);
     // Filter, tanks without show (7 by cost 20, 4 by cost 50), tanks with show (8, 2), heights 3
     // (stable: 3 then 6), 1, then the fence of no exhibit.
-    assert_eq!(items(&cat, "fence", 0), [5, 7, 4, 8, 2, 3, 6, 1, 0]);
+    assert_eq!(
+        items(&cat, &Availability::default(), "fence", 0),
+        [5, 7, 4, 8, 2, 3, 6, 1, 0]
+    );
 }
 
 #[test]
@@ -129,7 +135,10 @@ fn foliage_is_sorted_by_habitat_with_the_bad_ones_last_then_location_then_cost()
         plant(Some(9500), Some(9600), 6), // 5
         plant(Some(9410), Some(5), 0),    // 6: last, before 0 by location
     ]);
-    assert_eq!(items(&cat, "foliage", 0), [3, 5, 4, 2, 6, 0, 1]);
+    assert_eq!(
+        items(&cat, &Availability::default(), "foliage", 0),
+        [3, 5, 4, 2, 6, 0, 1]
+    );
 }
 
 #[test]
@@ -160,7 +169,7 @@ fn a_type_that_is_not_available_at_the_start_is_left_out() {
         ty("paths", "paths", "missing", "[Member]\npaths\n"),
     ]);
     assert_eq!(
-        names(&cat, &items(&cat, "paths", 0)),
+        names(&cat, &items(&cat, &Availability::default(), "paths", 0)),
         ["1", "0x1", "missing"]
     );
 }
@@ -182,7 +191,7 @@ fn an_expansion_type_shows_when_it_is_in_all_or_one_of_its_expansions_is_install
         with("both", "dinosaur\naqua"),
         with("all", "aqua\nall"),
     ]);
-    let shown = |mask| names(&cat, &items(&cat, "paths", mask));
+    let shown = |mask| names(&cat, &items(&cat, &Availability::default(), "paths", mask));
     assert_eq!(shown(0), ["base", "all"]);
     assert_eq!(shown(1), ["base", "dino", "both", "all"]);
     assert_eq!(shown(2), ["base", "aqua", "both", "all"]);
@@ -199,7 +208,7 @@ fn the_fence_list_holds_fences_and_not_their_gates() {
         fence("tankwall", "f"),
         fence("tankwall", "g"),
     ]);
-    let list = items(&cat, "fence", 0);
+    let list = items(&cat, &Availability::default(), "fence", 0);
     assert_eq!(list, [0, 2]);
 }
 
@@ -715,14 +724,14 @@ fn the_full_game_has_items_in_every_tab() {
         "structures",
         "scenery",
     ] {
-        let list = items(&cat, tag, 3);
+        let list = items(&cat, &Availability::default(), tag, 3);
         assert!(list.len() > 10, "{tag}: {}", list.len());
         assert!(
             list.iter().all(|&i| !icons(&cat.types[i]).is_empty()),
             "{tag} has icons"
         );
     }
-    let paths = items(&cat, "paths", 3);
+    let paths = items(&cat, &Availability::default(), "paths", 3);
     assert_eq!(cat.types[paths[0]].class, "paths");
 }
 
@@ -1207,7 +1216,8 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
     assert_eq!(build.take_made(), [1]);
     // With the expansion the scientist is listed with the zookeeper, before the tour guide.
     assert_eq!(
-        items_of(&cat, "staff", 1, |t| t.subtype == b"m"),
+        items_of(&cat, &Availability::default(), "staff", 1, |t| t.subtype
+            == b"m"),
         [0, 4, 7, 2]
     );
     // Nothing of the kind: the empty text shows and no item is chosen.
@@ -1216,4 +1226,34 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
     assert_eq!((build.tool(), state_of(&ui, 3609) & HIDDEN), (None, 0));
     assert!(build.take_made().is_empty(), "nothing chosen, nothing made");
     assert_eq!(text(&ui, 3620), "");
+}
+
+#[test]
+fn a_flag_change_makes_the_open_list_again() {
+    let (mut ui, vfs, _install) = interface("avail");
+    let cat = types();
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    ui.show(8);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(build.list, [2]);
+    macro_rules! set {
+        ($id:expr, $on:expr) => {
+            build.set_available(&mut ui, &vfs, &cat, $id, $on, &mut log)
+        };
+    }
+    assert!(!set!(0, false), "no type has the id 0");
+    assert!(!set!(103, true), "already available");
+    assert_eq!(build.list, [2]);
+    assert!(set!(103, false));
+    assert!(build.list.is_empty());
+    assert!(!set!(104, true), "that subtype is not in the fences tab");
+    assert!(set!(103, true));
+    assert_eq!(build.list, [2]);
+    // Closed, a change is kept for the next opening.
+    build.cancel(&mut ui, &mut log);
+    build.cancel(&mut ui, &mut log);
+    assert!(set!(103, false));
+    ui.show(8);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert!(build.list.is_empty());
 }
