@@ -46,6 +46,14 @@ fn the_flag_starts_from_the_catalogue_and_a_user_type_is_always_available() {
 }
 
 #[test]
+fn a_name_id_with_high_bits_is_not_a_user_type() {
+    let mut cat = Catalogue::default();
+    cat.types = vec![ty("animals", "mine", (1 << 24) | 19001, Some(0))];
+    let a = Availability::default();
+    assert!(!a.is(&cat, 0), "only the start-up flag applies");
+}
+
+#[test]
 fn a_name_id_sets_every_subtype_and_a_wrong_id_sets_none() {
     let (cat, mut a) = (catalogue(), Availability::default());
     assert!(a.set(&cat, 5006, true));
