@@ -15,6 +15,15 @@ use std::path::Path;
 use crate::pe;
 use crate::vfs::MAX_MEMBER_SIZE;
 
+/// The install language that the text of string 22015 gives: a decimal number, else (missing,
+/// zero or not a number) [`SHIPPED_LANGUAGE`].
+pub fn language_number(text: &str) -> u32 {
+    match text.trim().parse() {
+        Ok(number) if number != 0 => number,
+        _ => SHIPPED_LANGUAGE,
+    }
+}
+
 /// The language the game ships in, US English (Windows language identifier 1033): the install
 /// language of a folder that does not give one.
 pub const SHIPPED_LANGUAGE: u32 = 1033;
@@ -160,9 +169,9 @@ impl StringTables {
 
     /// The text of string `id` and the library that supplies it; `None` if no library has it.
     pub fn string_source(&self, id: u32) -> Option<(&str, &str)> {
-        // ponytail: the text of user-created content (`is_user_id`) is not specified yet, so it
-        // is empty; a string table holds numbers up to 65535 only, so the last range never meets
-        // a library.
+        // The texts of user-created content (`is_user_id`) are not in the libraries: the
+        // interface gets them from the definition files (`usertext`). A string table holds
+        // numbers up to 65535 only, so the last range never meets a library.
         if is_user_id(id as i32) {
             return None;
         }
@@ -201,10 +210,7 @@ impl StringTables {
     /// The install language: the number of string 22015 (1033 English, 1036 French). A missing,
     /// zero or non-decimal text reads as [`SHIPPED_LANGUAGE`] (localisation 4 and 11).
     pub fn install_language(&self) -> u32 {
-        match self.string(22015).trim().parse() {
-            Ok(number) if number != 0 => number,
-            _ => SHIPPED_LANGUAGE,
-        }
+        language_number(self.string(22015))
     }
 
     /// The install language with the words of its default exhibit names.
