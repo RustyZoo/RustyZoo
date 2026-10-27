@@ -1838,7 +1838,8 @@ fn a_new_object_is_named_from_its_type_and_numbered_only_when_the_type_says_so()
         (true, "cUseNumbersInName=0\n", "Tree"),
         (true, "cUseNumbersInName=-1\n", "Tree"),
         (true, "cUseNumbersInName=2000000000\n", "Tree"),
-        (true, "cUseNumbersInName=1\n", "Tree 1"),
+        // Scenery keeps the bare text whatever the flag says.
+        (true, "cUseNumbersInName=1\n", "Tree"),
     ] {
         let mut w = world((0, 0), vec![], |_| {});
         if texts {
@@ -1858,7 +1859,6 @@ fn a_new_object_is_named_from_its_type_and_numbered_only_when_the_type_says_so()
         );
         let name = &w.zoo.entities.last().unwrap().common.as_ref().unwrap().name;
         assert_eq!(name, expect, "{numbers:?}");
-        let counted = w.zoo.names.get("tree").copied();
-        assert_eq!(counted, (expect == "Tree 1").then_some(1), "{numbers:?}");
+        assert_eq!(w.zoo.names.get("tree"), None, "{numbers:?}");
     }
 }
