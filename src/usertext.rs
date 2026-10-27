@@ -5,9 +5,8 @@
 //! and the texts of its name, long help and "the" text are asked for by the ids of the name plus
 //! 30000 and 55000 (string tables 4.2).
 
-use crate::config::{Config, Section, to_int};
+use crate::config::{Config, Section};
 use crate::entity::Catalogue;
-use crate::strings::{SHIPPED_LANGUAGE, language_number};
 use crate::text::from_cp1252;
 use crate::ui::interface::Interface;
 use std::ops::RangeInclusive;
@@ -22,20 +21,26 @@ const HELP: i32 = 30000;
 const THE: i32 = 55000;
 
 /// The language section of a user-created file (localisation 8.1): the first of the sections
-/// named by the install language, by the user's language (when the host gives one) and by
-/// `LCID` of `[defaultLCID]` (1033 when the key is missing) that has keys. `None` when none has:
-/// the type then has no texts.
-pub fn section(config: &Config, install: u32, user: Option<u32>) -> Option<&Section> {
+/// named by the install language (the text of string 22015, 1033 when empty), by the user's
+/// locale (its decimal text, when the host gives one) and by `LCID` of `[defaultLCID]` (1033
+/// when the key is missing or empty) that has keys. The names are compared as texts: `01033`
+/// names `[01033]`, not `[1033]`. `None` when none has: the type then has no texts.
+pub fn section<'a>(config: &'a Config, install: &str, user: Option<&str>) -> Option<&'a Section> {
+    let install = if install.is_empty() { "1033" } else { install };
     let lcid = config
         .section("defaultLCID")
         .and_then(|s| s.get("LCID"))
-        .and_then(to_int)
-        .unwrap_or(SHIPPED_LANGUAGE as i32);
-    [Some(install as i32), user.map(|u| u as i32), Some(lcid)]
-        .into_iter()
-        .flatten()
-        .filter_map(|number| config.section(number.to_string()))
-        .find(|section| section.keys().next().is_some())
+        .filter(|v| !v.is_empty())
+        .unwrap_or(&b"1033"[..]);
+    [
+        Some(install.as_bytes()),
+        user.map(str::as_bytes),
+        Some(lcid),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|name| config.section(name))
+    .find(|section| section.keys().next().is_some())
 }
 
 /// The texts of one user-created name (localisation 8.2), as the bytes of the file (Windows-1252).
@@ -66,7 +71,7 @@ pub fn texts(section: &Section) -> Texts {
 /// The text of every user name id of the catalogue, in the install language `install` (the user
 /// language is not known to the engine, so it is not tried): the name id, the help id and the
 /// "the" id of each type named in [`NAMES`], as the interface shows them.
-pub fn names(catalogue: &Catalogue, install: u32) -> Vec<(i32, String)> {
+pub fn names(catalogue: &Catalogue, install: &str) -> Vec<(i32, String)> {
     let mut out = Vec::new();
     for ty in catalogue
         .types
@@ -88,8 +93,8 @@ pub fn names(catalogue: &Catalogue, install: u32) -> Vec<(i32, String)> {
 /// Shows the texts of the user types of `catalogue` wherever their ids are shown, in the install
 /// language that string 22015 of `ui` gives.
 pub fn serve(ui: &mut Interface, catalogue: &Catalogue) {
-    let install = language_number(&ui.string(22015));
-    for (id, text) in names(catalogue, install) {
+    let install = ui.string(22015);
+    for (id, text) in names(catalogue, &install) {
         ui.set_string(id, text);
     }
 }
@@ -104,7 +109,7 @@ mod tests {
         Config::parse(text.as_bytes()).unwrap()
     }
 
-    fn name_of(config: &Config, install: u32, user: Option<u32>) -> Option<Vec<u8>> {
+    fn name_of(config: &Config, install: &str, user: Option<&str>) -> Option<Vec<u8>> {
         section(config, install, user)?
             .get("cName")
             .map(<[u8]>::to_vec)
@@ -113,45 +118,73 @@ mod tests {
     #[test]
     fn the_install_section_with_keys_comes_first() {
         let c = config("[1036]\ncName = fr\n[1033]\ncName = en\n[defaultLCID]\nLCID = 1033\n");
-        assert_eq!(name_of(&c, 1036, Some(1033)).as_deref(), Some(&b"fr"[..]));
+        assert_eq!(
+            name_of(&c, "1036", Some("1033")).as_deref(),
+            Some(&b"fr"[..])
+        );
     }
 
     #[test]
     fn an_empty_section_gives_way_to_the_user_then_to_lcid() {
         let c =
             config("[1036]\n[1031]\ncName = de\n[1033]\ncName = en\n[defaultLCID]\nLCID = 1033\n");
-        assert_eq!(name_of(&c, 1036, Some(1031)).as_deref(), Some(&b"de"[..]));
-        assert_eq!(name_of(&c, 1036, None).as_deref(), Some(&b"en"[..]));
-        assert_eq!(name_of(&c, 1036, Some(1040)).as_deref(), Some(&b"en"[..]));
+        assert_eq!(
+            name_of(&c, "1036", Some("1031")).as_deref(),
+            Some(&b"de"[..])
+        );
+        assert_eq!(name_of(&c, "1036", None).as_deref(), Some(&b"en"[..]));
+        assert_eq!(
+            name_of(&c, "1036", Some("1040")).as_deref(),
+            Some(&b"en"[..])
+        );
     }
 
     #[test]
     fn lcid_names_the_last_section_and_1033_when_missing() {
         let with = config("[0]\ncName = zero\n[defaultLCID]\nLCID = 0\n");
-        assert_eq!(name_of(&with, 1036, None).as_deref(), Some(&b"zero"[..]));
+        assert_eq!(name_of(&with, "1036", None).as_deref(), Some(&b"zero"[..]));
         let missing = config("[1033]\ncName = en\n");
-        assert_eq!(name_of(&missing, 1036, None).as_deref(), Some(&b"en"[..]));
+        assert_eq!(name_of(&missing, "1036", None).as_deref(), Some(&b"en"[..]));
     }
 
     #[test]
-    fn an_lcid_that_is_no_number_or_too_big_is_1033() {
+    fn an_empty_lcid_is_1033() {
         let empty = config("[1033]\ncName = en\n[defaultLCID]\nLCID =\n");
-        assert_eq!(name_of(&empty, 1036, None).as_deref(), Some(&b"en"[..]));
-        // A word reads as 0 and a huge or negative number names a section that is not there,
-        // as the number reader of the configuration gives them.
-        for lcid in ["fr", "-5", "99999999999"] {
-            let c = config(&format!(
-                "[1033]\ncName = en\n[defaultLCID]\nLCID = {lcid}\n"
-            ));
-            assert!(section(&c, 1036, None).is_none(), "{lcid}");
-        }
+        assert_eq!(name_of(&empty, "1036", None).as_deref(), Some(&b"en"[..]));
+    }
+
+    #[test]
+    fn section_names_are_texts_not_numbers() {
+        let fr = config("[fr]\ncName = fr\n[01033]\ncName = zeros\n[1033]\ncName = en\n");
+        assert_eq!(
+            name_of(&fr, "1036", Some("1033")).as_deref(),
+            Some(&b"en"[..])
+        );
+        assert_eq!(
+            name_of(&fr, "1036", Some("fr")).as_deref(),
+            Some(&b"fr"[..])
+        );
+        let lcid =
+            config("[1033]\ncName = en\n[01033]\ncName = zeros\n[defaultLCID]\nLCID = 01033\n");
+        assert_eq!(name_of(&lcid, "1036", None).as_deref(), Some(&b"zeros"[..]));
+        let word = config("[fr]\ncName = fr\n[defaultLCID]\nLCID = fr\n");
+        assert_eq!(name_of(&word, "1036", None).as_deref(), Some(&b"fr"[..]));
+        let hex = config("[0x409]\ncName = hex\n[defaultLCID]\nLCID = 0x409\n");
+        assert_eq!(name_of(&hex, "1036", None).as_deref(), Some(&b"hex"[..]));
+        // The install text is used as it is stored: "0" names [0], and an empty text names 1033.
+        let zero = config("[0]\ncName = zero\n[1033]\ncName = en\n");
+        assert_eq!(name_of(&zero, "0", None).as_deref(), Some(&b"zero"[..]));
+        assert_eq!(name_of(&zero, "", None).as_deref(), Some(&b"en"[..]));
+        // The install text "1033" does not name [01033].
+        let none = config("[01033]\ncName = zeros\n");
+        assert!(section(&none, "1033", None).is_none());
     }
 
     #[test]
     fn no_section_with_keys_gives_none() {
         let c = config("[1036]\n[defaultLCID]\nLCID = 1033\n[1033]\n");
-        assert!(section(&c, 1036, Some(1033)).is_none());
-        assert!(section(&config("[1033]\ncName = en\n"), 1036, None).is_some());
+        assert!(section(&c, "1036", Some("1033")).is_none());
+        assert!(section(&config("[1033]\ncName = en\n"), "1036", None).is_some());
     }
 
     #[test]
@@ -159,13 +192,13 @@ mod tests {
         let c = config(
             "[1033]\ncName = Yeti\ncLongHelp = Long\ncTheString = the yeti\ncGeneralInfoFileName = yeti.txt\n",
         );
-        let read = super::texts(section(&c, 1033, None).unwrap());
+        let read = super::texts(section(&c, "1033", None).unwrap());
         assert_eq!(read.name, b"Yeti");
         assert_eq!(read.help, b"Long");
         assert_eq!(read.the, b"the yeti");
         assert_eq!(read.info_file.as_deref(), Some(&b"yeti.txt"[..]));
         let empty = config("[1033]\ncName = Yeti\ncGeneralInfoFileName =\n");
-        let read = super::texts(section(&empty, 1033, None).unwrap());
+        let read = super::texts(section(&empty, "1033", None).unwrap());
         assert_eq!(read.help, b"");
         assert_eq!(read.info_file, None);
     }
@@ -196,7 +229,7 @@ mod tests {
         catalogue
             .types
             .push(user_type(49000, "[1033]\ncName = Nope\n"));
-        let served = names(&catalogue, 1036);
+        let served = names(&catalogue, "1036");
         assert_eq!(
             served,
             [
@@ -205,14 +238,14 @@ mod tests {
                 (74000, "le yéti".to_string()),
             ]
         );
-        assert_eq!(names(&catalogue, 1031)[0], (19000, "Yeti".to_string()));
+        assert_eq!(names(&catalogue, "1031")[0], (19000, "Yeti".to_string()));
     }
 
     #[test]
     fn a_type_without_a_section_serves_nothing() {
         let mut catalogue = Catalogue::default();
         catalogue.types.push(user_type(19000, "[1036]\n"));
-        assert!(names(&catalogue, 1036).is_empty());
+        assert!(names(&catalogue, "1036").is_empty());
     }
 
     /// The Yeti of the French install has only a French section, so it is French in the French
@@ -227,7 +260,7 @@ mod tests {
         };
         let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
         let catalogue = Catalogue::load(&vfs).unwrap();
-        let french = names(&catalogue, 1036);
+        let french = names(&catalogue, "1036");
         assert!(french.contains(&(19000, "Yéti".to_string())), "{french:?}");
         assert!(french.contains(&(19001, "United States Flag".to_string())));
     }
