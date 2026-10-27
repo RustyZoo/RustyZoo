@@ -540,8 +540,9 @@ usage: rustyzoo [--data <dir>] <command>
 
 --data <dir> is the install folder of the game (it holds zoo.ini). Without it, the
 ZT_DATA_DIR environment variable is used. window-smoke does not need it.
-The month and weekday names of the dates come from the user's regional settings;
-RUSTYZOO_ENGLISH_DATES=1 makes them English (as the tests and CI do).";
+The month and weekday names of the dates and the forms of numbers and money come from the
+user's regional settings; RUSTYZOO_ENGLISH_DATES=1 makes them English and US (as the tests and
+CI do).";
 
 enum CliError {
     Usage,

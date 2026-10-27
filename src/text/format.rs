@@ -1,9 +1,12 @@
-//! Templates, numbers, money and dates as the game writes them, with fixed US English
-//! conventions: "," groups thousands, "." is the decimal point, a negative amount of money is in
-//! parentheses, and the month and weekday names are English.
+//! Templates, numbers, money and dates as the game writes them, in the conventions of the user's
+//! regional settings as the original does: the separators and the forms of money (in the US ones,
+//! "," groups thousands, "." is the decimal point and a negative amount is in parentheses) and the
+//! month and weekday names. Where the system gives none, or [`ENGLISH_DATES`] is `1`, they are
+//! the US English ones.
 
 use crate::strings::StringTables;
 use crate::timing::Date;
+use profile::{Marks, Profile};
 use std::sync::OnceLock;
 
 /// The strings of the game, by number. [`StringTables`] is the real one.
@@ -106,24 +109,16 @@ pub fn expand(strings: &impl Strings, template: &str, args: &[Arg]) -> String {
     out
 }
 
-/// `digits` (decimal digits only) with a comma between every group of three.
-fn group(digits: &str) -> String {
-    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
 /// An integer: `1234567` is "1,234,567" with grouping and "1234567" without, `-5` is "-5".
 pub fn integer(n: i64, grouping: bool) -> String {
+    integer_in(&profile().number, n, grouping)
+}
+
+fn integer_in(marks: &Marks, n: i64, grouping: bool) -> String {
     let digits = n.unsigned_abs().to_string();
     let sign = if n < 0 { "-" } else { "" };
     match grouping {
-        true => format!("{sign}{}", group(&digits)),
+        true => format!("{sign}{}", marks.group(&digits)),
         false => format!("{sign}{digits}"),
     }
 }
@@ -136,21 +131,20 @@ fn symbol(strings: &impl Strings) -> &str {
     }
 }
 
-/// `body` with the symbol before it, in parentheses if negative.
-fn currency(strings: &impl Strings, body: &str, negative: bool) -> String {
-    let symbol = symbol(strings);
-    match negative {
-        true => format!("({symbol}{body})"),
-        false => format!("{symbol}{body}"),
-    }
-}
-
 /// An amount in whole units: `74878` is "$74,878", `0` is "$0", `-1234` is "($1,234)"; without
 /// `grouping` they are "$74878" and "($1234)".
 pub fn money(strings: &impl Strings, amount: i64, grouping: bool) -> String {
+    money_in(profile(), strings, amount, grouping)
+}
+
+fn money_in(profile: &Profile, strings: &impl Strings, amount: i64, grouping: bool) -> String {
     let digits = amount.unsigned_abs().to_string();
-    let body = if grouping { group(&digits) } else { digits };
-    currency(strings, &body, amount < 0)
+    let body = if grouping {
+        profile.money.group(&digits)
+    } else {
+        digits
+    };
+    profile.amount(symbol(strings), &body, amount < 0)
 }
 
 /// The whole part and the two cent digits of `x` (finite, not negative) as the original's C
@@ -201,11 +195,30 @@ fn cents(x: f64) -> (String, String) {
 /// that rounds to zero is "$0.00" whatever its sign, and one that is not a number is 0. Without
 /// `grouping` the whole part has no separators: "$1234.50".
 pub fn money_cents(strings: &impl Strings, amount: f64, grouping: bool) -> String {
+    money_cents_in(profile(), strings, amount, grouping)
+}
+
+fn money_cents_in(
+    profile: &Profile,
+    strings: &impl Strings,
+    amount: f64,
+    grouping: bool,
+) -> String {
     let amount = if amount.is_finite() { amount } else { 0.0 };
     let (whole, cents) = cents(amount.abs());
     let negative = amount < 0.0 && (whole != "0" || cents != "00");
-    let whole = if grouping { group(&whole) } else { whole };
-    currency(strings, &format!("{whole}.{cents}"), negative)
+    let whole = if grouping {
+        profile.money.group(&whole)
+    } else {
+        whole
+    };
+    let body = format!("{whole}{}{cents}", profile.money.decimal);
+    profile.amount(symbol(strings), &body, negative)
+}
+
+/// The group separator of money, to take out of an amount typed by the player.
+pub fn money_group() -> &'static str {
+    &profile().money.group
 }
 
 /// An amount held as a decimal number, rounded to whole units: to the nearest, halves to even.
@@ -243,8 +256,8 @@ fn abbreviation(name: &str) -> &str {
     &name[..3.min(name.len())]
 }
 
-/// The environment variable that, set to `1`, makes the dates use the English names whatever the
-/// regional settings (the tests, CI and the pinned runs set it).
+/// The environment variable that, set to `1`, makes the dates, numbers and money use the English
+/// forms whatever the regional settings (the tests, CI and the pinned runs set it).
 pub const ENGLISH_DATES: &str = "RUSTYZOO_ENGLISH_DATES";
 
 /// The month and weekday names of the dates, full and abbreviated; the weeks start on Monday.
@@ -278,6 +291,18 @@ impl Names {
             .flatten()
             .unwrap_or_else(Names::english)
     }
+}
+
+/// The number and money forms, read once; a test build always has the US ones.
+fn profile() -> &'static Profile {
+    static PROFILE: OnceLock<Profile> = OnceLock::new();
+    PROFILE.get_or_init(|| {
+        if cfg!(test) {
+            Profile::us()
+        } else {
+            Profile::of_user(std::env::var_os(ENGLISH_DATES).as_deref())
+        }
+    })
 }
 
 /// The names of the dates, read once; a test build always has the English ones.
@@ -364,6 +389,7 @@ pub fn graph_month(strings: &impl Strings, month: u32) -> String {
 }
 
 mod locale;
+mod profile;
 
 #[cfg(test)]
 mod tests;
