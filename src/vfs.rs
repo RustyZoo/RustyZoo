@@ -369,7 +369,7 @@ impl Vfs {
     // ponytail: this lists every member of every archive. The game's own listing by prefix and
     // suffix (how it discovers its configuration files) offers only the members ending in `.cfg`,
     // `.uca`, `.ucb`, `.ucs` or `.scn`; the code that discovers configuration files must apply
-    // that filter, this listing is for `ls`.
+    // that filter (`listed`), this listing is for `ls`.
     pub fn list(&self, pattern: Option<&str>) -> Vec<String> {
         let pattern = pattern.map(normalise);
         // Filter first: building the set of all names for every call is what costs.
@@ -383,6 +383,29 @@ impl Vfs {
                     .is_none_or(|p| wildcard_matches(p.as_bytes(), path.as_bytes()))
             })
             .collect();
+        let mut paths: Vec<String> = matching.into_iter().cloned().collect();
+        paths.sort();
+        paths
+    }
+
+    /// The normalised names that start with `prefix` and end with `suffix`, as the game lists its
+    /// files by prefix and suffix: the union of all sources, each name once, sorted. A directory
+    /// offers all its names; an archive offers only its members of the record types (see
+    /// `first_record_wins`). The prefix and the suffix are plain strings, not patterns.
+    pub fn listed(&self, prefix: &str, suffix: &str) -> Vec<String> {
+        let (prefix, suffix) = (normalise(prefix), normalise(suffix));
+        let mut matching = HashSet::new();
+        for source in &self.sources {
+            let archive = matches!(source, Source::Archive { .. });
+            for name in source.names() {
+                if (!archive || first_record_wins(name))
+                    && name.starts_with(&prefix)
+                    && name.ends_with(&suffix)
+                {
+                    matching.insert(name);
+                }
+            }
+        }
         let mut paths: Vec<String> = matching.into_iter().cloned().collect();
         paths.sort();
         paths
@@ -1442,6 +1465,31 @@ mod tests {
         assert_eq!(vfs.which("x.txt").unwrap().len(), 1);
         assert_eq!(vfs.which("y.txt").unwrap().len(), 1);
         assert_eq!(vfs.shadowed_count(), 0);
+    }
+
+    #[test]
+    fn listed_takes_the_union_of_the_sources_once_with_the_record_types_of_archives() {
+        let dir = TempDir::new("listed");
+        dir.ini(".");
+        dir.write("x/more.scn", b"1");
+        dir.archive(
+            "a.ztd",
+            &[
+                ("X/More.SCN", "2"),
+                ("x/more01.scn", "3"),
+                ("x/more.wav", "4"),
+                ("x/more02.cfg", "5"),
+            ],
+        );
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert_eq!(vfs.listed("X/More", ".SCN"), ["x/more.scn", "x/more01.scn"]);
+        assert_eq!(vfs.listed("x/more", ".wav"), Vec::<String>::new());
+        assert_eq!(vfs.listed("x/more", ".txt"), Vec::<String>::new());
+        assert_eq!(
+            vfs.listed("x/more", ""),
+            ["x/more.scn", "x/more01.scn", "x/more02.cfg"]
+        );
+        assert_eq!(vfs.listed("", ".scn").len(), 2);
     }
 
     #[test]

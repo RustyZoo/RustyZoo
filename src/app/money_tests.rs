@@ -291,6 +291,7 @@ fn start(cash: StartCash, reset: bool) -> Start {
         cash,
         reset,
         reset_fences: false,
+        scenario: None,
     }
 }
 

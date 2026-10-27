@@ -62,7 +62,7 @@ impl Zoo {
         o.u32(self.height);
         o.u32(self.entrance.0);
         o.u32(self.entrance.1);
-        o.bytes(&upgrade::habitats(v, &habitats(self))?);
+        o.bytes(&upgrade::habitats(v, &habitats(self)?)?);
         o.bytes(&upgrade::shows(v, kept)?);
         o.u32(self.id_counter);
         if self.tiles.len() as u64 != u64::from(self.width) * u64::from(self.height) {
@@ -128,9 +128,9 @@ impl Zoo {
     }
 }
 
-/// The habitat section as read, with the statistics and the last service of each habitat written
-/// over it.
-fn habitats(zoo: &Zoo) -> Vec<u8> {
+/// The habitat section as read, with the names, the statistics and the last service of each
+/// habitat written over it.
+fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
     let mut b = zoo.kept.habitats.clone();
     for (&at, info) in zoo.kept.stats_at.iter().zip(&zoo.habitat_info) {
         // The statistics, two dates, then the last service (from 83).
@@ -147,7 +147,13 @@ fn habitats(zoo: &Zoo) -> Vec<u8> {
             put(service, info.serviced);
         }
     }
-    b
+    // The names last, from the end, so that the places of the earlier ones stay right.
+    for (&(from, to), info) in zoo.kept.names_at.iter().zip(&zoo.habitat_info).rev() {
+        let mut name = Out(Vec::new());
+        name.string(&info.name)?;
+        b.splice(from..to, name.0);
+    }
+    Ok(b)
 }
 
 /// The game block as read, with the modelled values written over it, and the fields a version lacks
@@ -242,8 +248,13 @@ fn is_unit(class: &str) -> bool {
 fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     let (b, s) = (&c.raw.body, &c.raw.spans);
     let read = !b.is_empty() && s.end <= b.len();
-    // An animal is written from its record, whether it was read or made in play.
-    let (mut pre, mut post) = match read && e.class != "animals" {
+    // An animal and a staff member are written from their records, whether they were read or made
+    // in play.
+    let staff = matches!(
+        &e.class[..],
+        "staff" | "keeper" | "maint" | "tour" | "helicopter"
+    );
+    let (mut pre, mut post) = match read && e.class != "animals" && !staff {
         true => super::body::transcode(v, e.class.as_bytes(), b)?,
         false => fresh::parts(e, c, now)?,
     };

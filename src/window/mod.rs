@@ -12,6 +12,7 @@
 //! The parts: `size` (game and window size), `screen` (the window), `events`, `sound` (the
 //! menu music), `wait` (the pacing).
 
+mod cursor;
 mod events;
 mod fullscreen;
 mod intro;
@@ -41,6 +42,7 @@ use sdl3::video::WindowFlags;
 use crate::CliError;
 use crate::boot::boot;
 use crate::probe::{self, Timing};
+use cursor::Cursors;
 use events::{State, asleep, focused, maximised};
 use screen::Screen;
 use size::ini_fullscreen;
@@ -96,6 +98,24 @@ fn remember(on: bool) {
         return;
     };
     if let Err(e) = userdir::save(&dir, "user", "fullscreen", if on { "1" } else { "0" }) {
+        eprintln!("rustyzoo: warning: {e}");
+    }
+}
+
+/// Writes the choice of the alternate cursors into the settings of the user folder
+/// (`[UI] useAlternateCursors`), which the next start reads over the game's ini file. A failure
+/// only warns.
+fn remember_cursors(on: bool) {
+    let Some(dir) = userdir::dir() else {
+        eprintln!("rustyzoo: warning: no user folder, the cursors are not remembered");
+        return;
+    };
+    if let Err(e) = userdir::save(
+        &dir,
+        "UI",
+        "useAlternateCursors",
+        if on { "1" } else { "0" },
+    ) {
         eprintln!("rustyzoo: warning: {e}");
     }
 }
@@ -220,6 +240,7 @@ pub fn run(
     };
     let mut state = State {
         interface: app.interface().is_some(),
+        alternate: rustyzoo::cursor::alternate(ini),
         ..State::default()
     };
     if state.interface {
@@ -245,6 +266,8 @@ pub fn run(
     let has_pointer = video.current_video_driver() != "dummy";
     let mut wait = Wait::default();
     let mut seen = false;
+    let mut cursors = Cursors::new(vfs.root());
+    let mut alternate = state.alternate;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
@@ -319,6 +342,11 @@ pub fn run(
             if !screen.canvas.present() {
                 return Err(sdl3::get_error().into());
             }
+        }
+        cursors.show(rustyzoo::cursor::number(app.cursor(), state.alternate));
+        if state.alternate != alternate {
+            alternate = state.alternate;
+            remember_cursors(alternate);
         }
         sound.pause(app.paused());
         // Printed, not logged: the log is replayed headless, where nothing is heard.

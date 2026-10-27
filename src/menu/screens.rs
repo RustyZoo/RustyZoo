@@ -280,6 +280,7 @@ impl Menu {
                 },
                 reset: resets(&start),
                 reset_fences: above_zero(&start, "resetfences"),
+                scenario: Some(file.to_string()),
             }),
             None => Request::Message(format!("{file}: no map to start")),
         });
