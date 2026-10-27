@@ -363,12 +363,14 @@ pub struct Zoo {
 }
 
 /// What a habitat record stores besides its place (zoo format 4.1): the name, the nine
-/// statistics as stored (habitat rating 13.3) and the creation date (a file time).
+/// statistics as stored (habitat rating 13.3), the creation date (a file time) and the guests'
+/// viewing time (the second date, habitat rating 13.2, a duration in file time units).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HabitatInfo {
     pub name: String,
     pub stats: [u32; 9],
     pub created: u64,
+    pub viewing: u64,
     /// The AI tick a keeper last serviced the exhibit (`unknown_ec`, from version 83; 0 for never).
     pub serviced: u32,
 }
@@ -877,12 +879,13 @@ fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
         *s = r.u32()?;
     }
     let created = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
-    r.skip(8)?;
+    let viewing = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
     let serviced = if v >= 83 { r.u32()? } else { 0 };
     let info = HabitatInfo {
         name,
         stats,
         created,
+        viewing,
         serviced,
     };
     let is_tank = v >= 85 && r.u8()? != 0;
