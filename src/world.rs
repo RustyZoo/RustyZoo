@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::path::{Finder, Settings};
 use crate::render::corner_elevation;
@@ -300,6 +301,24 @@ impl World {
     /// search with them, the gate choice with the diagonal switch the last search left.
     pub fn set_finder(&mut self, settings: Settings) {
         self.units.finder = Finder::new(settings);
+    }
+
+    /// A loaded zoo whose stored locale is not the install language keeps no entity name either:
+    /// each entity gets the name of its type in the install language (localisation 10, zoo format
+    /// 2 rule 5). Needs the type names of `units.names`, so it runs once the interface gave them.
+    pub fn name_loaded_entities(&mut self, cat: &Catalogue) {
+        if self.zoo.locale == self.language.number {
+            return;
+        }
+        for e in &mut self.zoo.entities {
+            let name = crate::place::bulldozer::type_of(cat, e)
+                .and_then(|t| self.units.names.get(&t.name_id))
+                .cloned()
+                .unwrap_or_default();
+            if let Some(common) = e.common.as_mut() {
+                common.name = name;
+            }
+        }
     }
 
     /// The regions of the map (exhibits and money 3.1).

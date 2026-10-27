@@ -577,3 +577,42 @@ fn a_save_writes_the_install_language() {
     world.finish_save(&mut saved, &crate::entity::Catalogue::default());
     assert_eq!(saved.locale, 1036);
 }
+
+#[test]
+fn a_loaded_entity_takes_its_type_name_in_the_install_language_when_the_locale_differs() {
+    let lion = crate::entity::EntityType {
+        class: "animals",
+        type_name: b"lion".to_vec(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: None,
+        name_id: 5006,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = crate::entity::Catalogue::default();
+    cat.push(lion);
+    let world_of = |locale: u32, install: u32| {
+        let mut z = zoo(4, 4, (0, 0));
+        z.locale = locale;
+        let mut e = typed("animals", "lion", 0, 0, 0);
+        e.subtype = "f".into();
+        e.common.as_mut().unwrap().name = "Simba 2".into();
+        z.entities.push(e);
+        let language = Language {
+            number: install,
+            ..Language::shipped()
+        };
+        let mut world = World::with_language(z, |_| None, language);
+        world.units.names = [(5006, "Lion".to_string())].into();
+        world.name_loaded_entities(&cat);
+        world.zoo.entities[0].common.as_ref().unwrap().name.clone()
+    };
+    assert_eq!(
+        world_of(1036, 1036),
+        "Simba 2",
+        "same language keeps the name"
+    );
+    assert_eq!(world_of(1033, 1036), "Lion", "English file, French install");
+    assert_eq!(world_of(1036, 1033), "Lion", "French file, English install");
+}
