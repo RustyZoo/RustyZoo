@@ -23,10 +23,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt;
 use std::iter;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use crate::behaviour::{Behaviours, Call, Row};
 use crate::config::{Config, Section, to_int};
+use crate::strings::is_user_id;
+use crate::usertext;
 use crate::vfs::{Vfs, normalise};
 
 /// The most registry entries (types created or listed again) one catalogue takes. The full game
@@ -527,6 +530,10 @@ impl Catalogue {
                 }
             }
         }
+        let refused = number_user_names(&mut catalogue.types, usertext::NAMES);
+        if refused > 0 {
+            catalogue.warn(|| format!("{refused} user names without an id: the ids are used up"));
+        }
         let (items, warnings) = crate::building::items::load(vfs);
         catalogue.items = items;
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
@@ -748,6 +755,37 @@ impl Catalogue {
         self.types.push(ty);
         Ok(())
     }
+}
+
+/// Gives each user type (a name id that `is_user_id` accepts, entity types 10.3) its own name id
+/// from `ids`, in order: the same name always gets the same id. The name is the type name for
+/// units and the subtype name for the other classes. A name past the last id gets 0. Returns how
+/// many got none.
+fn number_user_names(types: &mut [EntityType], ids: RangeInclusive<i32>) -> usize {
+    let mut given: HashMap<Vec<u8>, i32> = HashMap::new();
+    let mut next = *ids.start();
+    let mut refused = 0;
+    for ty in types.iter_mut().filter(|t| is_user_id(t.name_id)) {
+        let name = if ty.class == "animals" {
+            ty.type_name.clone()
+        } else {
+            ty.subtype.clone()
+        };
+        let id = match given.get(&name) {
+            Some(&id) => id,
+            None if next <= *ids.end() => {
+                given.insert(name, next);
+                next += 1;
+                next - 1
+            }
+            None => {
+                refused += 1;
+                0
+            }
+        };
+        ty.name_id = id;
+    }
+    refused
 }
 
 /// Whether two names stand for the same copy of the same file.
@@ -1178,6 +1216,64 @@ mod tests {
         );
     }
 
+    fn typed(class: &'static str, type_name: &[u8], subtype: &[u8], name_id: i32) -> EntityType {
+        EntityType {
+            class,
+            type_name: type_name.to_vec(),
+            subtype: subtype.to_vec(),
+            file: None,
+            config: None,
+            name_id,
+            footprint: [1, 1, 1],
+            height: 0,
+        }
+    }
+
+    #[test]
+    fn user_names_get_their_own_ids_from_19000_and_a_name_keeps_its_id() {
+        let mut types = vec![
+            typed("animals", b"lion", b"m", 19000),
+            typed("animals", b"lion", b"f", 19000),
+            typed("animals", b"bear", b"f", 19000),
+            typed("building", b"building", b"shop", 19000),
+            typed("objects", b"other", b"rock", 19000),
+            typed("objects", b"other", b"rock", 19000),
+            typed("objects", b"other", b"tree", 0),
+            typed("objects", b"other", b"sign", -5),
+            typed("objects", b"other", b"bush", i32::MAX),
+            typed("objects", b"other", b"stone", 49000),
+        ];
+        assert_eq!(number_user_names(&mut types, usertext::NAMES), 0);
+        let ids: Vec<i32> = types.iter().map(|t| t.name_id).collect();
+        assert_eq!(
+            ids,
+            [
+                19000,
+                19000,
+                19001,
+                19002,
+                19003,
+                19003,
+                0,
+                -5,
+                i32::MAX,
+                19004
+            ]
+        );
+    }
+
+    #[test]
+    fn a_user_name_past_the_last_id_gets_none_and_is_counted() {
+        let mut types = vec![
+            typed("objects", b"other", b"a", 19000),
+            typed("objects", b"other", b"b", 19000),
+            typed("objects", b"other", b"a", 19000),
+        ];
+        assert_eq!(number_user_names(&mut types, 19000..=19000), 1);
+        let ids: Vec<i32> = types.iter().map(|t| t.name_id).collect();
+        assert_eq!(ids, [19000, 0, 19000]);
+    }
+
     #[test]
     fn user_files_come_after_the_registries_of_their_class() {
         let user = "[Global]\n[Characteristics/Integers]\ncNameID = 19000\n";
@@ -1216,6 +1312,16 @@ mod tests {
             Some("home.ucb")
         );
         assert!(c.warnings.iter().any(|w| w.contains("another file")));
+        // Each user name gets its own id from 19000, in creation order (the classes in their
+        // order); the three subtypes of a unit share one. The yak's file names a user id too, so
+        // it is numbered; the rock has no user id.
+        assert_eq!(get(&c, "building", "building", "home").name_id, 19000);
+        assert_eq!(get(&c, "animals", "yak", "").name_id, 19001);
+        for subtype in ["m", "f", "y"] {
+            assert_eq!(get(&c, "animals", "pony", subtype).name_id, 19002);
+        }
+        assert_eq!(get(&c, "objects", "other", "f554b047").name_id, 19003);
+        assert_eq!(get(&c, "objects", "other", "rock").name_id, 0);
 
         // Without a loaded registry of the class, its user files are not looked at.
         let c = catalogue(

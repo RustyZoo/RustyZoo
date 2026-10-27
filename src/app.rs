@@ -783,9 +783,10 @@ impl<'a> App<'a> {
     }
 
     /// Puts the interface around the game. The window is the size it was resolved for.
-    pub fn set_interface(&mut self, ui: Interface) {
+    pub fn set_interface(&mut self, mut ui: Interface) {
         self.map = Framebuffer::new(self.frame.width, self.frame.height);
         self.painted = None;
+        crate::usertext::serve(&mut ui, self.renderer.catalogue());
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();

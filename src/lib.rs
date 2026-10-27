@@ -42,6 +42,7 @@ pub mod timing;
 pub mod ui;
 pub mod unit;
 pub mod userdir;
+pub mod usertext;
 pub mod vfs;
 pub mod world;
 pub mod zoo;
