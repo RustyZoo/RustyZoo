@@ -449,6 +449,33 @@ fn a_type_without_the_key_is_numbered_if_it_is_a_unit_and_not_otherwise() {
 }
 
 #[test]
+fn food_keeps_the_bare_text_whatever_the_flag_says() {
+    let mut w = world(vec![]);
+    let food = |ini: &str| EntityType {
+        class: "food",
+        ..ty("m", "thing", ini)
+    };
+    assert_eq!(name(&mut w, &food(""), "Thing"), "Thing");
+    assert_eq!(
+        name(
+            &mut w,
+            &food("[Characteristics/Integers]\ncUseNumbersInName=1\n"),
+            "Thing"
+        ),
+        "Thing"
+    );
+    assert_eq!(
+        name(
+            &mut w,
+            &food("[Characteristics/Integers]\ncUseNumbersInName=0\n"),
+            "Thing"
+        ),
+        "Thing"
+    );
+    assert!(!w.zoo.names.contains_key("thing"));
+}
+
+#[test]
 fn a_building_or_a_tank_filter_is_numbered_under_its_subtype_and_the_flag_can_turn_it_off() {
     let mut w = world(vec![]);
     let of = |class: &'static str, subtype: &str, ini: &str| EntityType {
