@@ -66,23 +66,29 @@ pub(super) fn fence(class: &str, f: &Fence) -> Vec<u8> {
     o.0
 }
 
-/// The unit block of a unit made in play, before it has run (save games 11.3): no goal, no target and
-/// no movement in progress, the counters a new unit has. A guest's word 230 is 0: the table gives it
-/// for animals and staff only.
-pub(crate) fn unit_new(guest: bool) -> UnitBlock {
+/// The non-path cost of a guest type when the unit class file gives none (pathfinding 6.5).
+pub(crate) const DEFAULT_NON_PATH_COST: u32 = 7;
+
+/// The unit block of a unit made in play, before it has run (save games 11.3): no goal, no target,
+/// no movement in progress, the counters a new unit has and the call flag of a unit made in play.
+/// `guest` is the non-path cost of a guest, which is its word 230; the other units write 1 there.
+pub(crate) fn unit_new(guest: Option<u32>) -> UnitBlock {
     UnitBlock {
         slot: 255,
         need: 255,
-        w4: u32::from(!guest),
+        w4: guest.unwrap_or(1),
         w7: 4,
+        p1: [-1; 3],
         p3: [-1; 3],
         target: Target {
             target: [-1; 3],
+            sub_target: [-1; 3],
             active: -1,
             active_sub: -1,
             ..Target::default()
         },
         move_kind: -1,
+        pending_flag: 1,
         ..UnitBlock::default()
     }
 }

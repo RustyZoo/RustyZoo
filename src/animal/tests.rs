@@ -2183,7 +2183,7 @@ fn a_saved_unit_holds_its_live_goal_and_job() {
         (block.target.active, block.target.active_sub)
     };
     // The unit has had its first turn.
-    world.units.get_mut(500).unwrap().started = true;
+    world.units.get_mut(500).unwrap().typed = true;
     world.units.get_mut(500).unwrap().goal.record.task = crate::goal::DRINK;
     world.units.get_mut(500).unwrap().goal.record.job = 3;
     assert_eq!(active(&world), (i32::from(crate::goal::DRINK), 3));
