@@ -2,6 +2,7 @@
 //! table of the current month and the three before it, written from the accounts into the texts
 //! of the layout.
 
+pub mod awards;
 pub mod zoo;
 
 use crate::money::Money;

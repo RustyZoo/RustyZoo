@@ -36,7 +36,7 @@ use crate::render::order::project;
 use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::scenario::Scenario;
 use crate::sim::Sim;
-use crate::status::{Finances, STATUS_BUTTON, Words};
+use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
 use crate::terrain::{Tool, habit};
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
@@ -317,6 +317,8 @@ struct Game {
     bars: Option<[i32; 3]>,
     /// What the Finances table of the zoo status window holds.
     finances: Finances,
+    /// Whether the status window was shown at the last look, for the Awards page.
+    awards_page: Awards,
     /// The building panels and the tool they choose.
     build: Build,
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
@@ -746,6 +748,7 @@ impl<'a> App<'a> {
             bar: None,
             bars: None,
             finances: Finances::default(),
+            awards_page: Awards::default(),
             build: Build::new(installed_expansions(self.renderer.vfs()))
                 .with_exhibits(exhibits)
                 .unlocked(
@@ -814,6 +817,7 @@ impl<'a> App<'a> {
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();
+            game.awards_page = Awards::default();
         }
     }
 

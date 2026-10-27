@@ -321,6 +321,8 @@ impl App<'_> {
             self.panel_lines
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
+        game.awards_page
+            .refresh(ui, &game.world.zoo.awards, &cat.awards, vfs);
         let layout = game.building.layout;
         // The panel of a building that charges nothing is filled when shown, never by the clock.
         let ticks = ticking && layout == building::CHARGING;
