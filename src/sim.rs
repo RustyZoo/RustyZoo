@@ -38,6 +38,7 @@ use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::guest;
 use crate::money::{self, Money};
+use crate::research::Tree;
 use crate::scenario::{Env, Scenario};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
@@ -173,6 +174,9 @@ pub struct Sim {
     lines: Vec<String>,
     /// The scenario being played, if the game is one.
     scenario: Option<Scenario>,
+    /// The research tree of a scenario or freeform game; none for a saved game, which counts as
+    /// no research done until its research section is read.
+    research: Option<Tree>,
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
     /// first seeding, and after every hire (unit placing 4.3).
     pub hire_male: bool,
@@ -203,6 +207,7 @@ impl Sim {
             bulldozed: Vec::new(),
             lines: Vec::new(),
             scenario: None,
+            research: None,
             hire_male: false,
         };
         sim.reseed();
@@ -265,11 +270,23 @@ impl Sim {
         self.removals.clear();
         self.bulldozed.clear();
         self.scenario = None;
+        self.research = None;
         self.events.restore(&clocks.queue);
         if tiles != self.tiles {
             self.tiles = tiles;
             self.reseed();
         }
+    }
+
+    /// The research tree of the game just opened is built (research 7.4): the zoo status counts
+    /// its programs from the next check on.
+    pub fn set_research(&mut self, tree: Tree) {
+        self.research = Some(tree);
+    }
+
+    /// The research share of the zoo status: the tree's, 0 while a game has none.
+    pub fn research_share(&self) -> i32 {
+        self.research.as_ref().map_or(0, Tree::share)
     }
 
     /// The scenario of the game just opened starts: its start triggers fire.
@@ -306,9 +323,9 @@ impl Sim {
 
     /// A zoo has just been loaded (Continue, Load, the command line, or the file of a new game
     /// before its set-up): the load ends with a rating check with the stored cash and the entities
-    /// as loaded, research at 0 points, which restarts the rating timer (zoo status 16).
+    /// as loaded, research as the tree counts it, which restarts the rating timer (zoo status 16).
     pub fn loaded(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
-        let sums = Sums::of(world, cat, money.cash, 0);
+        let sums = Sums::of(world, cat, money.cash, self.research_share());
         self.status.rating_check(sums, money, &mut self.lines);
     }
 
@@ -652,7 +669,7 @@ impl Sim {
     ) -> Option<[i32; 3]> {
         let due = self.status.due(step, month_end);
         if due.rating {
-            let sums = Sums::of(world, cat, money.cash, 0);
+            let sums = Sums::of(world, cat, money.cash, self.research_share());
             self.status.rating_check(sums, money, &mut self.lines);
         }
         if due.message {
