@@ -336,7 +336,7 @@ fn the_end_dialog_text_follows_the_file_the_result_and_the_expansions() {
         );
         assert_eq!(text(file, false, 0), without + 1, "{file} lost");
     }
-    // Scenario 2 wants any expansion, scenario 19 Marine Mania; the path may use either slash.
+    // Scenario 2 wants any expansion, scenario 19 the second one; the path may use either slash.
     let scn2 = "scenario\\SCN02\\scn02.scn";
     assert_eq!(
         [0, 1, 2, 3].map(|x| text(scn2, true, x)),

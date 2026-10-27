@@ -253,7 +253,7 @@ pub struct Ended {
 }
 
 /// The string of the end dialog's text (9.1) for the scenario `file` and the expansion flags
-/// (bit 1 Dinosaur Digs, bit 2 Marine Mania), plus 1 when lost.
+/// (bit 1 the first expansion, bit 2 the second), plus 1 when lost.
 pub fn end_text(file: &str, won: bool, expansions: i32) -> i32 {
     let name = file.replace('\\', "/").to_ascii_lowercase();
     let base = match name.as_str() {
