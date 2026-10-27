@@ -103,7 +103,11 @@ impl App<'_> {
         } else {
             &symbol
         };
-        let value = panel::typed(&text, &to_cp1252(symbol));
+        let value = panel::typed(
+            &text,
+            &to_cp1252(symbol),
+            &to_cp1252(crate::text::format::money_group()),
+        );
         let max = game.world.units.prices.max;
         if game.building.layout == panel::CHARGING {
             self.set_price(|kind, price| kind.typed(price, max, value));

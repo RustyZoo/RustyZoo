@@ -63,7 +63,7 @@ fn the_figures_are_cut_toward_zero_and_divided_whole() {
 
 #[test]
 fn the_typed_text_loses_the_first_symbol_and_separator_and_reads_as_atof() {
-    let t = |text: &str| typed(text.as_bytes(), b"$");
+    let t = |text: &str| typed(text.as_bytes(), b"$", b",");
     assert_eq!([t("$4.25"), t("  4.25"), t("4.25$")], [4.25; 3]);
     // Only the first symbol and the first separator are cut: the second ones end the number.
     assert_eq!([t("$1,234.5"), t("1,2,3"), t("$$5")], [1234.5, 12.0, 0.0]);
@@ -71,7 +71,19 @@ fn the_typed_text_loses_the_first_symbol_and_separator_and_reads_as_atof() {
     assert_eq!([t("abc"), t(""), t("$")], [0.0; 3]);
     assert!(t("1e999").is_infinite());
     // An empty symbol cuts nothing.
-    assert_eq!(typed(b"$5", b""), 0.0);
+    assert_eq!(typed(b"$5", b"", b","), 0.0);
+}
+
+#[test]
+fn a_typed_price_cuts_the_host_money_group_not_a_comma() {
+    // A French host: the group is a no-break space, the comma stays a decimal mark read as atof.
+    let t = |text: &[u8], group: &[u8]| typed(text, b"$", group);
+    assert_eq!(t(b"12,50\xa0$", b"\xa0"), 12.0);
+    assert_eq!(t(b"1\xa0234", b"\xa0"), 1234.0);
+    // A group that is not there or is empty cuts nothing.
+    assert_eq!([t(b"12,50", b"\xa0"), t(b"1,234", b"")], [12.0, 1.0]);
+    // The US group is the comma.
+    assert_eq!(t(b"1,234.5", b","), 1234.5);
 }
 
 use crate::config::Config;
