@@ -208,7 +208,7 @@ impl EntityType {
         let section = self.animation_section()?;
         let key = section
             .keys()
-            .find(|key| String::from_utf8_lossy(key) == name)?;
+            .find(|key| crate::vfs::name_from_bytes(key) == name)?;
         Some(self.animation(section, key))
     }
 

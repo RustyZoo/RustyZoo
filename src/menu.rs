@@ -157,7 +157,7 @@ pub struct Menu {
 /// [`Menu::last_path`] for the settings `ini` of the install folder `root`.
 pub fn last_path(ini: &Config, root: &Path) -> Option<PathBuf> {
     let last = ini_value(ini, "user", "lastfile")?;
-    let last = String::from_utf8_lossy(last).trim().replace('\\', "/");
+    let last = crate::vfs::name_from_bytes(last).trim().replace('\\', "/");
     (!last.is_empty()).then(|| root.join(last))
 }
 
@@ -292,7 +292,7 @@ impl Menu {
     fn check_continue(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
         let last = self
             .setting("user", "lastfile")
-            .map(|v| String::from_utf8_lossy(v).trim().to_string())
+            .map(|v| crate::vfs::name_from_bytes(v).trim().to_string())
             .unwrap_or_default();
         let exists = !last.is_empty() && find_file(&self.root, &last.replace('\\', "/")).is_some();
         let long = ini_whole(&self.ini, "UI", "helpType").is_some_and(|n| n != 0);
@@ -355,7 +355,7 @@ impl Menu {
     fn continue_game(&mut self, ui: &Interface) -> Vec<String> {
         let last = self
             .setting("user", "lastfile")
-            .map(|v| String::from_utf8_lossy(v).trim().to_string())
+            .map(|v| crate::vfs::name_from_bytes(v).trim().to_string())
             .unwrap_or_default();
         if last.is_empty() {
             return Vec::new();

@@ -375,7 +375,7 @@ impl Scenario {
         let desc = main.section("desc");
         let icon = |k: &str| {
             let name = desc.and_then(|d| d.get(k)).unwrap_or_default();
-            String::from_utf8_lossy(name).into_owned()
+            crate::vfs::name_from_bytes(name)
         };
         let unlock = main
             .section("completion")

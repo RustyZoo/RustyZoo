@@ -226,7 +226,8 @@ impl Vfs {
         let ini = read_ini(&ini_path)
             .map_err(|e| VfsError(format!("cannot read {}: {e}", ini_path.display()), false))?;
         // Without a path the game uses the install folder itself.
-        let search_path = resource_path(&String::from_utf8_lossy(&ini)).unwrap_or(".".to_string());
+        let search_path =
+            resource_path(&crate::vfs::name_from_bytes(&ini)).unwrap_or(".".to_string());
 
         let real_root = install_dir.canonicalize().map_err(|e| {
             VfsError(
