@@ -24,13 +24,20 @@ impl UiStrings for Texts {
             318 => "Cannot open",
             11645 => "save-failed-text",
             11646 => "name-too-long-text",
+            9001 => "Name",
+            9101 => "Keep %d zoos",
+            16100 => "Done",
+            16101 => "Failed",
             _ => "",
         }
         .into()
     }
 
-    fn text_entry(&self, _: &[u8]) -> Vec<u8> {
-        vec![]
+    fn text_entry(&self, name: &[u8]) -> Vec<u8> {
+        match name {
+            b"SCN_STORY" => b"Story".to_vec(),
+            _ => vec![],
+        }
     }
 }
 
@@ -47,7 +54,9 @@ pub(super) fn interface(install: &Install) -> Interface {
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
         [n]\ntype=UILayout\nlayout=ui/name.lyt\n\
         [l]\ntype=UILayout\nlayout=ui/list.lyt\n\
-        [e]\ntype=UILayout\nlayout=ui/panel.lyt\n";
+        [e]\ntype=UILayout\nlayout=ui/panel.lyt\n\
+        [w]\ntype=UILayout\nlayout=ui/end.lyt\n\
+        [o]\ntype=UILayout\nlayout=ui/obj.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
         "[LayoutInfo]\nid=26\nlayer=2\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
@@ -97,7 +106,26 @@ pub(super) fn interface(install: &Install) -> Interface {
             (
                 "ui/panel.lyt",
                 b"[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=40\ndx=64\ndy=8\nstate=1\n\
-                  [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n"
+                  [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
+                  [b]\ntype=UIButton\nid=4107\nx=8\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
+                  action=3\ntarget=803\n"
+                    .to_vec(),
+            ),
+            (
+                "ui/end.lyt",
+                b"[LayoutInfo]\nid=45200\nlayer=7\nx=0\ny=0\ndx=40\ndy=10\nstate=1\n\
+                  [m]\ntype=UIText\nid=45206\nx=0\ny=0\ndx=40\ndy=10\n\
+                  [p]\ntype=UIImage\nid=45204\nx=0\ny=0\n\
+                  [o]\ntype=UIButton\nid=45212\nx=20\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
+                  target=1\naction=5\n"
+                    .to_vec(),
+            ),
+            (
+                "ui/obj.lyt",
+                b"[LayoutInfo]\nid=803\nlayer=1\nx=0\ny=0\ndx=40\ndy=40\nstate=1\n\
+                  [n]\ntype=UIText\nid=4142\nx=0\ny=0\ndx=40\ndy=8\n\
+                  [s]\ntype=UIText\nid=4143\nx=0\ny=8\ndx=40\ndy=8\n\
+                  [l]\ntype=UIListBox\nid=4145\nx=0\ny=16\ndx=40\ndy=24\nborder=0\n"
                     .to_vec(),
             ),
         ],
@@ -124,7 +152,18 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
     let menu = Menu::new(ini.clone(), &files.0, Some(files.0.join("user")), None, 0);
     let scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=t\n[t]\ntrulea=2\n\
         [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=1\n";
-    let extra = [("s/play.scn", scn.to_vec())];
+    let goal = |kind: &str| {
+        format!(
+            "[desc]\nname=9001\nstory=SCN_STORY\n[completion]\nunlock=7\n[goals]\ngoal=g\n\
+             [g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n{kind}\n"
+        )
+        .into_bytes()
+    };
+    let extra = [
+        ("s/play.scn", scn.to_vec()),
+        ("s/win.scn", goal("")),
+        ("s/lose.scn", goal("type=7")),
+    ];
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();

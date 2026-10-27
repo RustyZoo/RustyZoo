@@ -119,7 +119,10 @@ impl Menu {
     pub(super) fn pressed(&mut self, vfs: &Vfs, ui: &mut Interface, id: i32) -> Vec<String> {
         let mut log = Vec::new();
         match id {
-            SCENARIOS => self.open_scenarios(vfs, ui, &mut log),
+            SCENARIOS => {
+                self.ended = None;
+                self.open_scenarios(vfs, ui, &mut log);
+            }
             FREEFORM => self.open_freeform(vfs, ui, &mut log),
             SCENARIO_PLAY => self.play_scenario(vfs, ui, &mut log),
             MAP_PLAY => self.play_freeform(vfs, ui, &mut log),
@@ -158,6 +161,18 @@ impl Menu {
     }
 
     // ---- The scenario screen (5)
+
+    /// The screen after a scenario ended (5.3): the finished scenario is selected and shows its
+    /// win or lose picture and story. Nothing if it is not in the list (a freeform map).
+    pub fn show_result(&mut self, vfs: &Vfs, ui: &mut Interface) -> Vec<String> {
+        let mut log = Vec::new();
+        if let Some((i, _)) = self.ended {
+            self.scenario = Some(i);
+            ui.show(super::SCENARIO_LAYOUT);
+            self.open_scenarios(vfs, ui, &mut log);
+        }
+        log
+    }
 
     /// The screen is shown: the list is filled again, with the icon of each scenario, and the
     /// selection that was there, or the first entry, is selected and described.
@@ -208,9 +223,11 @@ impl Menu {
         let status = s.status(&self.ini);
         let playable = status != Status::Locked;
         let get = desc(vfs, &s.file, "desc");
-        let (picture, story) = match playable {
-            true => ("picture", "story"),
-            false => ("lockedpicture", "lockedstory"),
+        let (picture, story) = match (self.ended.filter(|e| Some(e.0) == self.scenario), playable) {
+            (Some((_, true)), _) => ("winpicture", "winstory"),
+            (Some((_, false)), _) => ("losepicture", "losestory"),
+            (None, true) => ("picture", "story"),
+            (None, false) => ("lockedpicture", "lockedstory"),
         };
         let picture = get(picture);
         let shown = picture

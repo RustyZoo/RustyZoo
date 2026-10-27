@@ -10,9 +10,10 @@
 use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Config, to_int};
-use crate::lists::{Cash, Freeform, Scenario};
+use crate::lists::{self, Cash, Freeform, Scenario};
 use crate::money::{Money, StartCash};
 use crate::music::Music;
+use crate::scenario::Ended;
 use crate::text::format::{Arg, Strings, expand};
 use crate::timing::{ini_value, ini_whole};
 use crate::ui::interface::Interface;
@@ -143,6 +144,9 @@ pub struct Menu {
     scenarios: Vec<Scenario>,
     freeforms: Vec<Freeform>,
     scenario: Option<usize>,
+    /// The scenario that just ended, as an index of the list, and whether it was won: the scenario
+    /// screen shows its win or lose picture and story (5.3).
+    ended: Option<(usize, bool)>,
     freeform: Option<usize>,
     /// The starting cash of the freeform screen.
     cash: Cash,
@@ -177,6 +181,7 @@ impl Menu {
             scenarios: Vec::new(),
             freeforms: Vec::new(),
             scenario: None,
+            ended: None,
             freeform: None,
             cash: Cash::from_settings(&Config::default()),
             request: None,
@@ -186,6 +191,45 @@ impl Menu {
     /// The lists of the scenario and freeform screens, see [`crate::lists`].
     pub fn set_lists(&mut self, scenarios: Vec<Scenario>, freeforms: Vec<Freeform>) {
         (self.scenarios, self.freeforms) = (scenarios, freeforms);
+    }
+
+    /// The expansion flags.
+    pub fn expansions(&self) -> i32 {
+        self.expansions
+    }
+
+    /// A scenario ended (scenarios 5.4, 9.2): its result is written to `[scenario]` when it is
+    /// lower than the stored one, and a win appends the types it unlocks to `[user]`
+    /// `unlockEntityN` (the types already listed are not listed twice). The lines for the log.
+    pub fn scenario_ended(&mut self, end: &Ended) -> Vec<String> {
+        let mut log = Vec::new();
+        let found = self.scenarios.iter().position(|s| s.file == end.file);
+        self.ended = found.map(|i| (i, end.won));
+        if let Some(i) = found {
+            let key = self.scenarios[i].result_key.clone();
+            let new = if end.won { 1 } else { 2 };
+            if new < lists::result(&self.ini, &key) {
+                self.write_back("scenario", &key, &new.to_string());
+                log.push(format!("scenario result {key} {new}"));
+            }
+        }
+        // The scan is bounded: a list that long is a hostile file.
+        let count = ini_whole(&self.ini, "user", "unlockCount").unwrap_or(0);
+        let start = count.clamp(0, 4096);
+        let mut n = start;
+        for &id in &end.unlocks {
+            let listed = (0..n)
+                .any(|i| ini_whole(&self.ini, "user", &format!("unlockEntity{i}")) == Some(id));
+            if !listed {
+                self.write_back("user", &format!("unlockEntity{n}"), &id.to_string());
+                log.push(format!("scenario unlock {id}"));
+                n += 1;
+            }
+        }
+        if n != start {
+            self.write_back("user", "unlockCount", &n.to_string());
+        }
+        log
     }
 
     /// The credits pages, see [`credit_pages`].
@@ -348,6 +392,7 @@ impl Menu {
     /// scenarios and freeform maps empty `lastfile`.
     pub fn hide(&mut self, ui: &mut Interface, forget_last: bool) {
         self.credits = None;
+        self.ended = None;
         for id in [LAYOUT, SCENARIO_LAYOUT, FREEFORM_LAYOUT, CREDITS_LAYOUT] {
             if let Some(i) = ui.tree.find(id) {
                 ui.tree.hide(i);

@@ -475,7 +475,17 @@ usage: rustyzoo [--data <dir>] <command>
                       first step of the simulation is the cap; scenarios and freeform maps empty
                       `lastfile` and run the goals of their `.scn` file (`sim scenario start
                       FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; the
-                      rules and triggers are stubs). The lines are `menu game start LABEL
+                      rules and triggers are stubs). When the scenario ends, its result is
+                      written to `[scenario]` of the settings of the user folder if lower than
+                      the stored one, and a win appends its `[completion] unlock` types to `[user]
+                      unlockEntityN` (`menu scenario ended won|lost`, `menu scenario result KEY N`,
+                      `menu scenario unlock ID`); the game's layouts hide and a dialog (layout
+                      45200, `menu scenario dialog TEXTID`) tells the result; its answer stops
+                      the game and shows the scenario screen with the win or lose picture and
+                      story of the scenario (the main menu for a freeform map); closing the window
+                      meanwhile ends the run. The Scenario button (4107, the O character) fills
+                      panel 803 with the scenario's name and story and one line per goal
+                      (`menu scenario list N`). The lines are `menu game start LABEL
                       FILE`; a file that cannot
                       be loaded is a question box with its message (`menu message TEXT`) and the
                       menu stays. In a game, Escape (with nothing to cancel; an open panel closes
