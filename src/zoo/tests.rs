@@ -1467,7 +1467,10 @@ fn the_writer_puts_names_thoughts_and_habitat_figures_over_the_file() {
         zoo.set_thoughts(vec![[1, 2, 3, 4, 5], [6, 7, 8, u32::MAX, u32::MAX]]);
         zoo.habitat_info[1].stats = [1, 2, 3, 4, 5, 6, 7, 8, 9];
         zoo.habitat_info[1].serviced = 55;
+        // A name of another length moves the figures after it.
+        zoo.habitat_info[1].name = "Lions 12".into();
         let (back, _) = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap();
+        assert_eq!(back.habitat_info[1].name, "Lions 12", "version {v}");
         assert_eq!(back.names.len(), 2, "version {v}");
         assert_eq!(back.thoughts(), zoo.thoughts(), "version {v}");
         assert_eq!(back.habitat_info[0], zoo.habitat_info[0], "version {v}");

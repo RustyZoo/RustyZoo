@@ -85,6 +85,21 @@ pub struct EntityType {
 }
 
 impl EntityType {
+    /// The number of palettes of each replaceable colour group of a staff or guest type, in the
+    /// order of its `colorrep` section (sprite drawing 8.1; the section of the subtype, or of the
+    /// type name for a guest); empty for a type with none.
+    pub fn palettes(&self) -> Vec<usize> {
+        let Some(config) = self.config.as_deref() else {
+            return Vec::new();
+        };
+        let section = |prefix: &[u8]| config.section([prefix, b"/colorrep"].concat());
+        let Some(replaced) = section(&self.subtype).or_else(|| section(&self.type_name)) else {
+            return Vec::new();
+        };
+        let count = |name: &Vec<u8>| config.section(name).map_or(0, |g| g.get_all("pal").len());
+        replaced.get_all("replace").iter().map(count).collect()
+    }
+
     /// The animation section of the type (specification 9.1): the first candidate that exists
     /// with at least one key.
     fn animation_section(&self) -> Option<&Section> {
@@ -1789,6 +1804,25 @@ mod tests {
         assert_eq!(base("food", "food", "bone").as_deref(), Some("idle"));
         assert_eq!(base("food", "food", "meat").as_deref(), Some("full"));
         assert_eq!(base("fences", "rail", "f").as_deref(), Some("idle"));
+    }
+
+    /// Two colour groups for every staff type and four for every guest type (save games 11.2).
+    #[test]
+    #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+    fn full_game_colour_groups() {
+        let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+        let c = Catalogue::load(&Vfs::open(std::path::Path::new(&dir)).unwrap()).unwrap();
+        for (class, groups) in [("keeper", 2), ("tour", 2), ("maint", 2), ("guests", 4)] {
+            let found: Vec<_> = c.types.iter().filter(|t| t.class == class).collect();
+            assert!(!found.is_empty());
+            for t in found {
+                let n = t.palettes();
+                assert!(
+                    n.len() == groups && n.iter().all(|&p| p > 0),
+                    "{class} {n:?}"
+                );
+            }
+        }
     }
 
     /// The numbers of the catalogue table of the specification, for the full game.

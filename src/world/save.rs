@@ -45,7 +45,7 @@ impl World {
 
     /// The zoo as a file stores it: without the entities `known` does not find (the original never
     /// makes them, so it never saves them or their thoughts), with the live thoughts and the live
-    /// statistics and last service of the exhibits. An exhibit is matched with the record that
+    /// names, statistics and last service of the exhibits. An exhibit is matched with the record that
     /// names its tile; a record whose tile is in no exhibit keeps what it stored.
     pub fn saved(&self, known: impl Fn(&Entity) -> bool) -> Zoo {
         let mut zoo = self.zoo.clone();
@@ -72,6 +72,7 @@ impl World {
                 .and_then(|t| self.exhibits.region(t))
                 .and_then(|id| self.exhibits.get(id));
             let Some(e) = exhibit else { continue };
+            info.name.clone_from(&e.name);
             // Kept last month, this month, total; stored this month, last month, total.
             let order = |v: [u32; 3]| [v[1], v[0], v[2]];
             let (d, u) = (e.stats.donations, e.stats.upkeep);
@@ -90,6 +91,8 @@ impl World {
     /// gets the record of a new one, a guest's record takes the live guest's fields, and a staff
     /// member's record takes its live state.
     pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
+        // A save writes the install language, whatever the file loaded said (localisation 10).
+        zoo.locale = self.language.number;
         let now = crate::timing::file_time(zoo.clocks.calendar);
         for e in &mut zoo.entities {
             let (Some(ty), Some(c)) = (type_of(cat, e), e.common.as_mut()) else {

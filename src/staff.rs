@@ -103,9 +103,7 @@ const COLOURS: usize = 2;
 /// the work counter and then the chase counter, one draw each (staff 4.2), and a tour guide's crowd
 /// countdown (tour guide 4). The counters are kept; only the guide reads them.
 pub fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
-    for _ in 0..COLOURS {
-        rng.rand();
-    }
+    let colours = crate::unit::draw_colours(ty, COLOURS, rng);
     let work = counter(ty, "cWorkCheck", 5.0, rng);
     let chase = counter(ty, "cChaseCheck", 2.0, rng);
     let crowd = match kind {
@@ -116,6 +114,7 @@ pub fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
     let clear = ty.and_then(|t| number(t, "cClearInvalidListInterval"));
     let clear = (kind == Kind::Worker).then_some(clear.map_or(10_000, |n| n as i32));
     Staff {
+        colours,
         work,
         chase,
         crowd,

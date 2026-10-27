@@ -135,6 +135,8 @@ impl App<'_> {
                         game.world.units.posts.push(event);
                     }
                 }
+                // The panel shows this tank's water: it is written again.
+                Event::Tank(id) if game.panel.current == Some(id) => game.panel.clock.force = true,
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
                 Event::Objects(id) => game.refused = Some(id),
                 _ => {}

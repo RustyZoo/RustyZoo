@@ -50,6 +50,10 @@ impl App<'_> {
                     .unwrap_or_default();
                 // The hired unit is the pending staff member, with the counters it drew.
                 let made = game.made.take_if(|m| m.0 == p.ty);
+                if let (Some((_, made)), Some(at)) = (&made, game.world.find(id)) {
+                    let c = game.world.zoo.entities[at].common.as_mut();
+                    c.expect("placed").colors.clone_from(&made.colours);
+                }
                 if let (Some((_, made)), Some(unit)) = (made, game.world.units.get_mut(id)) {
                     unit.part = crate::unit::Part::Staff(made);
                     unit.started = true;
