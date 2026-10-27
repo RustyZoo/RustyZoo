@@ -20,6 +20,8 @@ const OFFSET: i32 = 30;
 const LONG_HELP: i32 = 30000;
 /// The widest tooltip a setting can ask for.
 const MAX_WIDTH: i32 = 4096;
+/// The longest a setting can keep a popup open: one hour.
+const MAX_POPUP_DELAY: i32 = 3_600_000;
 
 /// The settings of the section `[UI]` that the interface reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +33,8 @@ pub struct Settings {
     /// The widest a short and a long tooltip gets before it wraps.
     pub max_short_width: i32,
     pub max_long_width: i32,
+    /// Milliseconds a popup that does not stop the game stays open (`NonmodalDialogDelay`).
+    pub popup_delay: i32,
 }
 
 impl Default for Settings {
@@ -40,13 +44,15 @@ impl Default for Settings {
             long_help: false,
             max_short_width: 200,
             max_long_width: 400,
+            popup_delay: 10_000,
         }
     }
 }
 
 impl Settings {
     /// Reads `[UI]` of the ini file: `TooltipDelay` (below 0 is 0), `helpType` (not 0: the long
-    /// help), `maxShortTooltipWidth` and `maxLongTooltipWidth` (from 1 to 4096). A missing key
+    /// help), `maxShortTooltipWidth` and `maxLongTooltipWidth` (from 1 to 4096) and
+    /// `NonmodalDialogDelay` (up to an hour; 0 or less never closes a popup). A missing key
     /// keeps the built-in value.
     pub fn from_config(ini: &Config) -> Settings {
         let d = Settings::default();
@@ -58,6 +64,9 @@ impl Settings {
                 .map_or(d.max_short_width, |n| n.clamp(1, MAX_WIDTH)),
             max_long_width: get("maxLongTooltipWidth")
                 .map_or(d.max_long_width, |n| n.clamp(1, MAX_WIDTH)),
+            // Kept as read: 0 or less never closes the popup.
+            popup_delay: get("NonmodalDialogDelay")
+                .map_or(d.popup_delay, |n| n.min(MAX_POPUP_DELAY)),
         }
     }
 }

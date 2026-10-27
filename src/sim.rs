@@ -7,7 +7,7 @@
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
 //! so far: the shows, the water ripples, the ambient creatures, and the research and marketing
-//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (its rules and
+//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (most of its rules and
 //! triggers are stubs).
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
@@ -274,9 +274,14 @@ impl Sim {
         self.scenario = Some(scenario);
     }
 
-    /// The scenario being played.
+    /// The scenario being played, if the game is one.
     pub fn scenario(&self) -> Option<&Scenario> {
         self.scenario.as_ref()
+    }
+
+    /// Adds a line to the `sim` log.
+    pub fn note(&mut self, line: String) {
+        self.lines.push(line);
     }
 
     /// How the scenario ended, once, when it has.

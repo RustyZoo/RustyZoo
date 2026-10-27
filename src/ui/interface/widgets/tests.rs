@@ -155,6 +155,16 @@ fn a_bar_follows_the_rows_of_its_list() {
     assert!(ui.set_rows(20, rows(10)));
     // Three rows show: seven are beyond; a page is the rows shown less one.
     assert_eq!(range(&ui), (0, 7, 2, 0));
+    assert_eq!(ui.row_text(20, 9), Some(&b"row 9"[..]));
+    assert_eq!(
+        (ui.row_text(20, 10), ui.row_text(20, usize::MAX)),
+        (None, None)
+    );
+    assert_eq!(
+        (ui.row_text(21, 0), ui.row_text(999, 0)),
+        (None, None),
+        "not a list"
+    );
     assert!(ui.set_rows(20, rows(2)));
     assert_eq!(range(&ui), (0, 0, 1, 0), "both rows show");
     assert!(!ui.set_rows(21, rows(1)), "not a list");
