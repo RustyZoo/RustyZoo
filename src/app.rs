@@ -504,6 +504,8 @@ pub struct App<'a> {
     fullscreen: bool,
     /// The question that is open and what it leads to.
     asked: Option<Asked>,
+    /// Whether the end dialog of a scenario is open.
+    ending: bool,
     /// The save dialog, while it is open, and the list of saved games, while it is shown.
     saving: Option<saves::Saving>,
     listing: Option<saves::Listing>,
@@ -516,6 +518,15 @@ pub struct App<'a> {
     faded: bool,
     bare: bool,
 }
+
+/// The layouts of the game screen that stopping or ending a game hides.
+const GAME_LAYOUTS: [i32; 5] = [
+    OPTIONS_PANEL,
+    MAIN_PANEL,
+    crate::build::CONSTRUCTION,
+    crate::build::OBJECTS,
+    crate::menu::FREEFORM_LAYOUT,
+];
 
 /// What an open question leads to when it is answered No: stopping the game for the menu, or
 /// ending the program (main menu 9).
@@ -654,6 +665,7 @@ impl<'a> App<'a> {
             settings,
             fullscreen: false,
             asked: None,
+            ending: false,
             saving: None,
             listing: None,
             user: None,
@@ -920,6 +932,7 @@ impl<'a> App<'a> {
                 self.exhibits_told();
             }
             self.status_told(report.bars);
+            self.scenario_over();
         }
         self.undo_button();
         self.panel_pass(now);
@@ -1275,6 +1288,12 @@ impl<'a> App<'a> {
             (Command::Char(b'z' | b'Z'), Some(_)) if keys => {
                 if let Some(ui) = &mut self.ui {
                     ui.press_button(STATUS_BUTTON);
+                }
+            }
+            // The O key presses the Scenario button (input 10).
+            (Command::Char(b'o' | b'O'), Some(_)) if keys => {
+                if let Some(ui) = &mut self.ui {
+                    ui.press_button(scenario::BUTTON);
                 }
             }
             // The `$` key donates (input 4.8).
@@ -1669,6 +1688,7 @@ impl<'a> App<'a> {
         for id in selected {
             match id {
                 SAVE_BUTTON if self.game.is_some() => self.save_pressed(),
+                scenario::BUTTON if self.game.is_some() => self.objectives(),
                 LOAD_BUTTON if self.game.is_some() => self.ask(Asked::Load),
                 crate::menu::SAVED_LOAD if self.listing_open() => self.load_listed(),
                 crate::menu::LOAD if self.game.is_none() => self.open_list(),
@@ -1923,6 +1943,9 @@ impl<'a> App<'a> {
     /// The answer to the question that was asked: Yes saves first and goes on if it saved, No goes
     /// on, Cancel stays.
     fn answered(&mut self, code: i32) {
+        if self.ending {
+            return self.end_answered(code);
+        }
         if let Some(saving) = self.saving.take() {
             return self.save_answered(code, saving);
         }
@@ -1960,7 +1983,8 @@ impl<'a> App<'a> {
     /// The window is closed: from the menu the program ends at once; in a game it asks first. A
     /// question that is open is answered Cancel before (input 4.7).
     fn close(&mut self) {
-        if self.game.is_none() || self.ui.is_none() {
+        // The scenario is over and its result stored: there is nothing left to save.
+        if self.game.is_none() || self.ui.is_none() || self.ending {
             self.quit = true;
             return;
         }
@@ -2025,13 +2049,7 @@ impl<'a> App<'a> {
         };
         self.game = None;
         (self.painted, self.drawn_at) = (None, None);
-        for id in [
-            OPTIONS_PANEL,
-            MAIN_PANEL,
-            crate::build::CONSTRUCTION,
-            crate::build::OBJECTS,
-            crate::menu::FREEFORM_LAYOUT,
-        ] {
+        for id in GAME_LAYOUTS {
             if let Some(i) = ui.tree.find(id) {
                 ui.tree.hide(i);
             }
@@ -2370,6 +2388,7 @@ mod gates;
 mod guest_panel;
 mod panel;
 mod saves;
+mod scenario;
 mod staff_panel;
 mod tank_panel;
 mod terrain;
@@ -2394,6 +2413,9 @@ mod start_tests;
 
 #[cfg(test)]
 mod saves_tests;
+
+#[cfg(test)]
+mod scenario_tests;
 
 #[cfg(test)]
 mod terrain_tests;
