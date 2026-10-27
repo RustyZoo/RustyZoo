@@ -237,6 +237,7 @@ fn a_keeper_in_an_exhibit_walks_to_a_tile_beside_its_gate() {
             name: String::new(),
             stats: [0; 9],
             created: 0,
+            viewing: 0,
             serviced: 0,
         }];
     });

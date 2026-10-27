@@ -957,6 +957,7 @@ fn stored(name: &str, stats: [u32; 9], created: u64) -> HabitatInfo {
         name: name.into(),
         stats,
         created,
+        viewing: 0,
         serviced: 0,
     }
 }
@@ -1063,6 +1064,36 @@ fn a_save_writes_the_names_the_exhibits_have_now() {
     unique(&mut z);
     let world = World::with_language(z, shape, french(1036));
     assert_eq!(world.saved(|_| true).habitat_info[0].name, "Enclos 1");
+}
+
+#[test]
+fn a_loaded_exhibit_keeps_its_viewing_time_and_writes_the_live_one() {
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+    z.habitat_tiles = vec![(3, 3)];
+    z.habitat_gates = vec![((-1, -1), -1)];
+    z.habitat_info = vec![HabitatInfo {
+        viewing: u64::MAX,
+        ..stored("Lions", [0; 9], 0)
+    }];
+    unique(&mut z);
+    let mut world = World::new(z, shape);
+    let e = world.exhibits_mut().get_mut(1).unwrap();
+    assert_eq!(e.stats.viewing, u64::MAX, "the stored viewing time");
+    e.stats.viewing = 0x1_0000_0002;
+    assert_eq!(world.saved(|_| true).habitat_info[0].viewing, 0x1_0000_0002);
+    // A new exhibit has none, and the file keeps 0.
+    let mut z = zoo(&[]);
+    z.entities
+        .extend(square(2, 2, 4, 4).iter().map(|&(x, y, d)| piece(x, y, d)));
+    z.habitat_tiles = vec![(3, 3)];
+    z.habitat_gates = vec![((-1, -1), -1)];
+    z.habitat_info = vec![stored("Lions", [0; 9], 0)];
+    unique(&mut z);
+    let world = World::new(z, shape);
+    assert_eq!(world.exhibits().get(1).unwrap().stats.viewing, 0);
+    assert_eq!(world.saved(|_| true).habitat_info[0].viewing, 0);
 }
 
 #[test]

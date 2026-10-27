@@ -10,6 +10,11 @@ fn env(month: i32, year: i32) -> Env {
     Env { month, year }
 }
 
+/// The value of a rule with no interface.
+fn read(rule: &[i32; 4], env: &Env) -> i32 {
+    eval(rule, 0, env, &Gui::default())
+}
+
 /// One pass of the manager.
 fn pass(s: &mut Scenario, e: &Env, log: &mut Vec<String>) {
     s.update(PERIOD, e, log);
@@ -270,10 +275,10 @@ fn start_triggers_fire_in_order_and_a_trigger_0_is_silent() {
 #[test]
 fn rule_7_reads_the_date_and_rule_99_its_argument_and_others_are_stubs_that_read_0() {
     let e = env(5, 2);
-    assert_eq!([0, 1, 2, 3].map(|b| eval(&[7, b, 0, 0], &e)), [5, 2, 29, 0]);
-    assert_eq!(eval(&[99, 0, -4, 0], &e), -4);
+    assert_eq!([0, 1, 2, 3].map(|b| read(&[7, b, 0, 0], &e)), [5, 2, 29, 0]);
+    assert_eq!(read(&[99, 0, -4, 0], &e), -4);
     for rule in [0, 1, 4, 9, 10, 16, 100, -1] {
-        assert_eq!(eval(&[rule, 0, 3, 0], &e), 0, "rule {rule}");
+        assert_eq!(read(&[rule, 0, 3, 0], &e), 0, "rule {rule}");
     }
     assert_eq!(env(12, i32::MAX).total_months(), i32::MAX);
 }
@@ -315,6 +320,333 @@ fn an_extra_value_names_every_file_its_prefix_and_suffix_match_and_no_other() {
     let s = Scenario::prepare(&vfs, "x/main.scn").unwrap();
     let names: Vec<&str> = s.goals.iter().map(|g| g.name.as_str()).collect();
     assert_eq!(names, ["timer", "a", "b", "c", "d"]);
+}
+
+/// A scenario from `text` with the sections 1 to 3 of popups, and its pass.
+fn effects(text: &str) -> Vec<Effect> {
+    let mut s = build(text, &[]);
+    s.start(&mut Vec::new());
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    s.gui().take_effects()
+}
+
+/// A scenario whose one start trigger is trigger 2 with these keys, and the sections `body`.
+fn trigger(keys: &str, body: &str) -> Vec<Effect> {
+    effects(&format!(
+        "[start]\ntriggers=t\n[t]\ntrulea=2\n{keys}\n{body}"
+    ))
+}
+
+const POPUPS: &str = "[9]\nlayout=45200\nlongText1=TXT\nimage1=pic\nshortText2=7\n\
+    [default]\nlayout=45100\nbackground=bg\nshortText1=3\nlongText1=BASE\npause=1\n\
+    persistentTextLayout=45400\npersistentShortText=-1\n";
+
+#[test]
+fn a_popup_is_its_section_over_the_default_one_with_its_defaults() {
+    let cfg = |t: &str| Config::parse(t.as_bytes()).unwrap();
+    let p = Popup::read(&cfg(POPUPS), 9).unwrap();
+    assert_eq!((p.layout, p.short, p.modal), (45200, [3, 7], true));
+    assert_eq!(p.long, ["TXT", ""]);
+    assert_eq!(p.pictures, ["bg", "", "pic", ""]);
+    assert_eq!((p.ok, p.cancel), (true, false));
+    assert_eq!(p.hint.layout, 45400);
+    assert_eq!((p.hint.short, p.hint.button), (-1, 45406));
+    // No section of its own: the default one alone; no default section: all defaults.
+    let q = Popup::read(&cfg(POPUPS), 4).unwrap();
+    assert_eq!((q.layout, q.long[0].as_str()), (45100, "BASE"));
+    let none = Popup::read(&cfg(""), 4).unwrap();
+    assert_eq!(
+        none,
+        Popup {
+            ok: true,
+            hint: Hint {
+                button: 45406,
+                ..Hint::default()
+            },
+            ..Popup::default()
+        }
+    );
+    // The id: 0 and below show nothing.
+    for id in [0, -1, i32::MIN] {
+        assert_eq!(Popup::read(&cfg(POPUPS), id), None);
+    }
+    // `modal` wins over `pause`; ok 0 with cancel 1 is a Cancel alone.
+    let t = "[1]\npause=1\nmodal=0\nok=0\ncancel=1\n[2]\npause=0\nmodal=1\n";
+    let (a, b) = (
+        Popup::read(&cfg(t), 1).unwrap(),
+        Popup::read(&cfg(t), 2).unwrap(),
+    );
+    assert_eq!(
+        (a.modal, a.ok, a.cancel, b.modal),
+        (false, false, true, true)
+    );
+}
+
+#[test]
+fn trigger_2_popups_and_presses_and_single_elements() {
+    let e = |keys: &str| trigger(keys, POPUPS);
+    // The hint of -1 is the text of the first goal in progress: none here.
+    let popup = Popup::read(&Config::parse(POPUPS.as_bytes()).unwrap(), 9).map(|mut p| {
+        p.hint.short = 0;
+        p
+    });
+    let set = |op, always| Effect::Set {
+        ops: vec![(1002, op)],
+        popup: popup.clone(),
+        always,
+    };
+    assert_eq!(
+        e("truleb=0\ntarga=9"),
+        [Effect::Popup(popup.clone().unwrap())]
+    );
+    for b in [1, 2] {
+        assert_eq!(
+            e(&format!("truleb={b}\ntarga=1002\ntargb=9")),
+            [Effect::Press(1002, popup.clone())]
+        );
+    }
+    let table = [
+        (3, Op::Disable),
+        (4, Op::Disable),
+        (5, Op::Enable),
+        (6, Op::Enable),
+        (7, Op::Hide),
+        (8, Op::Hide),
+        (9, Op::Show),
+        (10, Op::Show),
+    ];
+    for (b, op) in table {
+        assert_eq!(
+            e(&format!("truleb={b}\ntarga=1002\ntargb=9")),
+            [set(op, false)],
+            "truleb {b}"
+        );
+    }
+    // No popup named, or one of 0 or below: the operation alone. Unknown truleb: nothing.
+    let bare = Effect::Set {
+        ops: vec![(1002, Op::Hide)],
+        popup: None,
+        always: false,
+    };
+    assert_eq!(e("truleb=7\ntarga=1002"), std::slice::from_ref(&bare));
+    assert_eq!(e("truleb=7\ntarga=1002\ntargb=-5"), [bare]);
+    assert!(e("truleb=17\ntarga=1").is_empty() && e("truleb=-1\ntarga=1").is_empty());
+    assert!(e("truleb=0\ntarga=0").is_empty(), "popup 0 shows nothing");
+}
+
+#[test]
+fn trigger_2_blocks_and_the_question() {
+    let blocks = "[20]\nid=1000\nid=1001\nid=x\n[21]\n1000=enable\n1001=d\n1002=hide\n1003=s\n1004=x\n1005=\n";
+    let e = |keys: &str| trigger(keys, &format!("{blocks}{POPUPS}"));
+    for (b, op) in [
+        (12, Op::Disable),
+        (13, Op::Enable),
+        (14, Op::Hide),
+        (15, Op::Show),
+    ] {
+        let got = e(&format!("truleb={b}\ntarga=20\ntargb=9"));
+        let [
+            Effect::Set {
+                ops,
+                popup,
+                always: false,
+            },
+        ] = &got[..]
+        else {
+            panic!("{got:?}")
+        };
+        assert_eq!(ops[..2], [(1000, op), (1001, op)]);
+        assert_eq!(ops.len(), 3, "an id that is not a number is 0");
+        assert!(popup.is_some());
+    }
+    // 16: letters or words in lower case; an entry with another value is not one; the popup shows anyway.
+    let got = e("truleb=16\ntarga=21\ntargb=9");
+    let [
+        Effect::Set {
+            ops, always: true, ..
+        },
+    ] = &got[..]
+    else {
+        panic!("{got:?}")
+    };
+    let want = [
+        (1000, Op::Enable),
+        (1001, Op::Disable),
+        (1002, Op::Hide),
+        (1003, Op::Show),
+    ];
+    assert_eq!(ops, &want);
+    assert!(matches!(&e("truleb=12\ntarga=99")[..], [Effect::Set { ops, .. }] if ops.is_empty()));
+    // 11: a question with the string `targa`, modal when `targb` is above 0.
+    for (b, modal) in [(1, true), (0, false), (-3, false), (i32::MAX, true)] {
+        let got = e(&format!("truleb=11\ntarga=77\ntargb={b}"));
+        let [Effect::Popup(p)] = &got[..] else {
+            panic!("{got:?}")
+        };
+        assert_eq!(
+            (p.layout, p.short[0], p.modal, p.ok),
+            (45000, 77, modal, true)
+        );
+    }
+}
+
+#[test]
+fn trigger_16_acts_on_the_first_lower_case_letter_of_each_value() {
+    let block = "[21]\n1=disable\n2=e\n3=hide\n4=show\n5=D\n6=Enable\n7=\n8=x\n9=xd\n";
+    let got = trigger("truleb=16\ntarga=21\ntargb=9", &format!("{block}{POPUPS}"));
+    let [Effect::Set { ops, always, .. }] = &got[..] else {
+        panic!("{got:?}")
+    };
+    let want = [
+        (1, Op::Disable),
+        (2, Op::Enable),
+        (3, Op::Hide),
+        (4, Op::Show),
+    ];
+    assert_eq!((ops, *always), (&want.to_vec(), true));
+}
+
+#[test]
+fn a_trigger_run_again_after_a_load_keeps_the_elements_and_drops_popups_and_presses() {
+    let text = "[start]\ntriggers=a\ntriggers=b\ntriggers=c\ntriggers=d\n\
+        [a]\ntrulea=2\ntruleb=0\ntarga=9\n[b]\ntrulea=2\ntruleb=1\ntarga=5\ntargb=9\n\
+        [c]\ntrulea=2\ntruleb=3\ntarga=5\ntargb=9\n[d]\ntrulea=2\ntruleb=11\ntarga=5\n";
+    let s = build(&format!("{text}{POPUPS}"), &[]);
+    for (_, t) in &s.start {
+        t.run(false, s.gui());
+    }
+    let got = s.gui().take_effects();
+    assert_eq!(
+        got,
+        [Effect::Set {
+            ops: vec![(5, Op::Disable)],
+            popup: None,
+            always: false
+        }]
+    );
+}
+
+#[test]
+fn a_hint_of_minus_1_shows_the_text_of_the_first_goal_in_progress() {
+    let text = format!(
+        "[start]\ntriggers=t\n[goals]\ngoal=a\ngoal=b\ngoal=c\n\
+         [t]\ntrulea=2\ntruleb=0\ntarga=9\n{POPUPS}\
+         [a]\nrulea=99\narga=1\nvalue=1\ntext=11\n[b]\nrulea=99\narga=0\nvalue=1\ntext=22\n\
+         [c]\nrulea=99\narga=0\nvalue=1\ntext=33\n"
+    );
+    let mut s = build(&text, &[]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    s.start(&mut Vec::new());
+    let [Effect::Popup(p)] = &s.gui().take_effects()[..] else {
+        panic!()
+    };
+    assert_eq!(p.hint.short, 22, "a is done, b is the first in progress");
+    // Nothing in progress: no text.
+    let mut s = build(&text.replace("arga=0", "arga=1"), &[]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    s.start(&mut Vec::new());
+    let [Effect::Popup(p)] = &s.gui().take_effects()[..] else {
+        panic!()
+    };
+    assert_eq!(p.hint.short, 0);
+}
+
+#[test]
+fn a_goal_of_an_extra_file_reads_the_popup_of_its_own_file() {
+    let main = "[goals]\ngoal=a\n[a]\nrulea=99\narga=1\nvalue=1\ntrulea=2\ntruleb=0\ntarga=1\n[1]\nlayout=1\n";
+    let extra = main
+        .replace("goal=a", "goal=b")
+        .replace("[a]", "[b]")
+        .replace("layout=1", "layout=2");
+    let mut s = build(main, &[&extra]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    let layouts: Vec<i32> = s
+        .gui()
+        .take_effects()
+        .iter()
+        .map(|e| match e {
+            Effect::Popup(p) => p.layout,
+            _ => 0,
+        })
+        .collect();
+    assert_eq!(layouts, [1, 2]);
+}
+
+#[test]
+fn rule_10_reads_whether_an_element_is_shown_or_was_pressed_since_the_last_question() {
+    let (gui, e) = (Gui::default(), env(1, 0));
+    let shown = |gui: &Gui| eval(&[10, 0, 1000, 0], 5, &e, gui);
+    let pressed = |gui: &Gui, id| eval(&[10, 1, id, 0], 5, &e, gui);
+    // Nothing is known of an element until the application tells; asking registers it.
+    assert_eq!(shown(&gui), 0);
+    gui.sync(&|id| id == 1000, &|_| vec![]);
+    assert_eq!(shown(&gui), 5);
+    gui.sync(&|_| false, &|_| vec![]);
+    assert_eq!(shown(&gui), 0);
+    // A press before the first question is not seen; the first question makes the entry.
+    gui.pressed(1001, None);
+    assert_eq!(pressed(&gui, 1001), 0);
+    gui.pressed(1001, None);
+    assert_eq!(pressed(&gui, 1001), 5, "seen once");
+    assert_eq!(pressed(&gui, 1001), 0, "the question consumed it");
+    // Another ruleb or an element of no interest: 0.
+    assert_eq!(eval(&[10, 2, 1000, 0], 5, &e, &gui), 0);
+    assert_eq!(eval(&[10, -1, 1000, 0], 5, &e, &gui), 0);
+    assert_eq!(eval(&[10, 0, i32::MIN, 0], 5, &e, &gui), 0);
+}
+
+#[test]
+fn rule_11_reads_the_row_of_a_list_that_was_pressed() {
+    let (gui, e) = (Gui::default(), env(1, 0));
+    let by_row = |gui: &Gui| eval(&[11, 0, 22900, 0], 0, &e, gui);
+    let by_text = |gui: &Gui| eval(&[11, 1, 22900, 22903], 0, &e, gui);
+    assert_eq!(
+        (by_row(&gui), by_text(&gui)),
+        (-2, -2),
+        "first question: not pressed"
+    );
+    gui.sync(&|_| false, &|id| {
+        if id == 22903 {
+            b"Lion".to_vec()
+        } else {
+            vec![]
+        }
+    });
+    gui.pressed(22900, Some((3, b"Lion".to_vec())));
+    assert_eq!(by_text(&gui), 1);
+    assert_eq!(by_text(&gui), -2, "consumed");
+    gui.pressed(22900, Some((3, b"Tiger".to_vec())));
+    assert_eq!(by_text(&gui), -2, "another text");
+    gui.pressed(22900, Some((3, b"Lion".to_vec())));
+    assert_eq!(by_row(&gui), 3);
+    // A press without a row (a button) and a huge row.
+    gui.pressed(22900, None);
+    assert_eq!(by_row(&gui), -2);
+    gui.pressed(22900, Some((usize::MAX, vec![])));
+    assert_eq!(by_row(&gui), i32::MAX);
+}
+
+#[test]
+fn rule_10_reads_a_shown_element_in_the_first_pass() {
+    let text = format!(
+        "[goals]\ngoal=g\n[g]\nrulea=10\nruleb=0\narga=1000\nvalue=1\ntrulea=2\ntruleb=0\ntarga=9\n{POPUPS}"
+    );
+    let mut s = build(&text, &[]);
+    // The first sync already tells the element, so the first pass sees it; a hidden one waits.
+    s.gui().sync(&|id| id == 999, &|_| vec![]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    assert!(s.gui().take_effects().is_empty() && states(&s)[1] == 0);
+    s.gui().sync(&|id| id == 1000, &|_| vec![]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    assert_eq!(s.gui().take_effects().len(), 1);
+    assert_eq!(states(&s)[1], 1);
+    // Also in a first pass of a fresh scenario, and inside a group.
+    let text =
+        "[goals]\ngoal=c\n[c]\nrtype=1\nchild=g\n[g]\nrulea=10\nruleb=0\narga=1000\nvalue=1\n";
+    let mut s = build(text, &[]);
+    s.gui().sync(&|id| id == 1000, &|_| vec![]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    assert_eq!(states(&s)[1], 1);
 }
 
 #[test]

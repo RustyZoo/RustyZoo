@@ -68,17 +68,34 @@ pub fn texts(section: &Section) -> Texts {
     }
 }
 
-/// The text of every user name id of the catalogue, in the install language `install` (the user
-/// language is not known to the engine, so it is not tried): the name id, the help id and the
+/// The decimal text of the Windows user default locale (localisation 8.1, step 2); `None` on
+/// other systems, where the step is skipped.
+#[cfg(windows)]
+fn user_locale() -> Option<String> {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetUserDefaultLCID() -> u32;
+    }
+    // SAFETY: the call has no arguments and no side effect.
+    Some(unsafe { GetUserDefaultLCID() }.to_string())
+}
+
+#[cfg(not(windows))]
+fn user_locale() -> Option<String> {
+    None
+}
+
+/// The text of every user name id of the catalogue, in the install language `install` and the
+/// user's `user` locale (`None` when the host gives none): the name id, the help id and the
 /// "the" id of each type named in [`NAMES`], as the interface shows them.
-pub fn names(catalogue: &Catalogue, install: &str) -> Vec<(i32, String)> {
+pub fn names(catalogue: &Catalogue, install: &str, user: Option<&str>) -> Vec<(i32, String)> {
     let mut out = Vec::new();
     for ty in catalogue
         .types
         .iter()
         .filter(|t| NAMES.contains(&t.name_id))
     {
-        let Some(section) = ty.config.as_deref().and_then(|c| section(c, install, None)) else {
+        let Some(section) = ty.config.as_deref().and_then(|c| section(c, install, user)) else {
             continue;
         };
         let texts = texts(section);
@@ -94,7 +111,7 @@ pub fn names(catalogue: &Catalogue, install: &str) -> Vec<(i32, String)> {
 /// language that string 22015 of `ui` gives.
 pub fn serve(ui: &mut Interface, catalogue: &Catalogue) {
     let install = ui.string(22015);
-    for (id, text) in names(catalogue, &install) {
+    for (id, text) in names(catalogue, &install, user_locale().as_deref()) {
         ui.set_string(id, text);
     }
 }
@@ -229,7 +246,7 @@ mod tests {
         catalogue
             .types
             .push(user_type(49000, "[1033]\ncName = Nope\n"));
-        let served = names(&catalogue, "1036");
+        let served = names(&catalogue, "1036", None);
         assert_eq!(
             served,
             [
@@ -238,14 +255,32 @@ mod tests {
                 (74000, "le yéti".to_string()),
             ]
         );
-        assert_eq!(names(&catalogue, "1031")[0], (19000, "Yeti".to_string()));
+        assert_eq!(
+            names(&catalogue, "1031", None)[0],
+            (19000, "Yeti".to_string())
+        );
+    }
+
+    #[test]
+    fn names_follow_the_user_locale_before_lcid() {
+        let mut catalogue = Catalogue::default();
+        catalogue.types.push(user_type(
+            19000,
+            "[1031]\ncName = Schnee\n[1033]\ncName = Yeti\n",
+        ));
+        let name = |user| names(&catalogue, "1036", user)[0].1.clone();
+        assert_eq!(name(Some("1031")), "Schnee");
+        // Missing, unknown, empty and huge locales fall to LCID (1033).
+        for user in [None, Some("1040"), Some(""), Some("-1"), Some("4294967295")] {
+            assert_eq!(name(user), "Yeti");
+        }
     }
 
     #[test]
     fn a_type_without_a_section_serves_nothing() {
         let mut catalogue = Catalogue::default();
         catalogue.types.push(user_type(19000, "[1036]\n"));
-        assert!(names(&catalogue, "1036").is_empty());
+        assert!(names(&catalogue, "1036", None).is_empty());
     }
 
     /// The Yeti of the French install has only a French section, so it is French in the French
@@ -260,7 +295,7 @@ mod tests {
         };
         let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
         let catalogue = Catalogue::load(&vfs).unwrap();
-        let french = names(&catalogue, "1036");
+        let french = names(&catalogue, "1036", None);
         assert!(french.contains(&(19000, "Yéti".to_string())), "{french:?}");
         assert!(french.contains(&(19001, "United States Flag".to_string())));
     }

@@ -243,7 +243,7 @@ fn icons(ty: &EntityType) -> Vec<String> {
         .map_or_else(Vec::new, |values| {
             values
                 .iter()
-                .map(|v| String::from_utf8_lossy(v).into_owned())
+                .map(|v| crate::vfs::name_from_bytes(v))
                 .collect()
         })
 }
