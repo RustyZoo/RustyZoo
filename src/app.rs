@@ -1682,6 +1682,18 @@ impl<'a> App<'a> {
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
+                exhibit::WALL_DOWN | exhibit::WALL_UP if self.game.is_some() => {
+                    self.tank_wall(id == exhibit::WALL_UP);
+                }
+                exhibit::SALT | exhibit::FRESH if self.game.is_some() => {
+                    self.tank_fill(id == exhibit::SALT);
+                }
+                exhibit::DRAIN if self.game.is_some() => self.tank_drain(),
+                exhibit::TANK_TAB if self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.panel.clock.force = true;
+                    }
+                }
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
@@ -2359,11 +2371,14 @@ mod guest_panel;
 mod panel;
 mod saves;
 mod staff_panel;
+mod tank_panel;
 mod terrain;
 mod undo;
 
 #[cfg(test)]
 mod adopt_tests;
+#[cfg(test)]
+mod tank_panel_tests;
 
 #[cfg(test)]
 mod carry_tests;
