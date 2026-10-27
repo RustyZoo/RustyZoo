@@ -489,3 +489,19 @@ fn the_animal_of_a_thought_is_picked_in_the_tile_order_of_the_exhibit() {
     assert_eq!(got, [(10282, Some(11))]);
     assert_eq!(drew(&before, &rng), 2);
 }
+
+#[test]
+fn the_donation_constant_is_the_single_precision_one() {
+    // 13 days at an average of 50: the single-precision constant gives 0.19238544, the double
+    // one 0.19238545.
+    let (mut w, cat) = (pen(&[40, 60]), catalogue());
+    let mut rng = Rng::default();
+    let mut g = Guest {
+        viewed_at: 1000,
+        ..Guest::default()
+    };
+    (w.units.donation_factor, w.units.now) = (4.1108e-13, 1000 + 13 * 7_200_000);
+    g.va = lookup(&mut w, &cat, Some(55), &mut rng);
+    leave_area(&mut g, 1, &mut w, &cat, Some(55));
+    assert_eq!(w.units.donated, [0.19238544]);
+}
