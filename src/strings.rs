@@ -15,6 +15,40 @@ use std::path::Path;
 use crate::pe;
 use crate::vfs::MAX_MEMBER_SIZE;
 
+/// The language the game ships in, US English (Windows language identifier 1033): the install
+/// language of a folder that does not give one.
+pub const SHIPPED_LANGUAGE: u32 = 1033;
+
+/// The install language: its number (string 22015) and the words of the default exhibit names
+/// (strings 6208 to 6210: exhibit, tank, show tank).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Language {
+    pub number: u32,
+    pub exhibit_words: [String; 3],
+}
+
+impl Language {
+    /// The language the game ships in, with its English words.
+    pub fn shipped() -> Language {
+        Language {
+            number: SHIPPED_LANGUAGE,
+            exhibit_words: ["Exhibit", "Tank", "Show Tank"].map(String::from),
+        }
+    }
+
+    /// The language of the game folder `install_dir`. A folder whose libraries cannot be read is
+    /// a warning and the shipped language.
+    pub fn of(install_dir: &Path) -> Language {
+        match StringTables::open(install_dir) {
+            Ok(tables) => tables.language(),
+            Err(why) => {
+                eprintln!("rustyzoo: warning: install language: {why}");
+                Language::shipped()
+            }
+        }
+    }
+}
+
 /// Why the libraries could not be loaded. The message is a single line.
 #[derive(Debug)]
 pub struct StringsError(String);
@@ -75,6 +109,15 @@ pub struct StringTables {
     libraries: Vec<Library>,
 }
 
+/// Whether a name id belongs to user-created content: its low 24 bits are in 19000..=21999,
+/// 49000..=51999 or 74000..=76999 (entity types 10.3).
+pub fn is_user_id(id: i32) -> bool {
+    let user = id & 0xFF_FFFF;
+    [19000..=21999, 49000..=51999, 74000..=76999]
+        .iter()
+        .any(|range| range.contains(&user))
+}
+
 impl StringTables {
     /// Loads the libraries of the install folder `install_dir`.
     ///
@@ -117,15 +160,10 @@ impl StringTables {
 
     /// The text of string `id` and the library that supplies it; `None` if no library has it.
     pub fn string_source(&self, id: u32) -> Option<(&str, &str)> {
-        // ponytail: the numbers of user-created content (low 24 bits in 19000..=21999,
-        // 49000..=51999 or 74000..=76999; a string table holds numbers up to 65535 only, so
-        // the last range never meets a library) are not in the libraries; the text of that content
-        // is not specified yet, so they are empty.
-        let user = id & 0xFF_FFFF;
-        if [19000..=21999, 49000..=51999, 74000..=76999]
-            .iter()
-            .any(|range| range.contains(&user))
-        {
+        // ponytail: the text of user-created content (`is_user_id`) is not specified yet, so it
+        // is empty; a string table holds numbers up to 65535 only, so the last range never meets
+        // a library.
+        if is_user_id(id as i32) {
             return None;
         }
         self.libraries.iter().find_map(|l| {
@@ -158,6 +196,23 @@ impl StringTables {
     /// The bytes of the `TEXT` entry `name`, or an empty text if no library has it.
     pub fn text(&self, name: &str) -> &[u8] {
         self.text_source(name).map_or(&[], |(_, data)| data)
+    }
+
+    /// The install language: the number of string 22015 (1033 English, 1036 French). A missing,
+    /// zero or non-decimal text reads as [`SHIPPED_LANGUAGE`] (localisation 4 and 11).
+    pub fn install_language(&self) -> u32 {
+        match self.string(22015).trim().parse() {
+            Ok(number) if number != 0 => number,
+            _ => SHIPPED_LANGUAGE,
+        }
+    }
+
+    /// The install language with the words of its default exhibit names.
+    pub fn language(&self) -> Language {
+        Language {
+            number: self.install_language(),
+            exhibit_words: [6208, 6209, 6210].map(|id| self.string(id).to_string()),
+        }
     }
 
     /// The merged view: every string number that resolves to a text, with the library that
@@ -253,6 +308,28 @@ mod tests {
         dir.write("lang.txt", b"x");
         std::fs::create_dir(dir.0.join("lang7.dll")).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_install_language_is_string_22015() {
+        for (text, language) in [
+            ("1036", 1036),
+            (" 1033 ", 1033),
+            ("0", SHIPPED_LANGUAGE),
+            ("", SHIPPED_LANGUAGE),
+            ("-1", SHIPPED_LANGUAGE),
+            ("french", SHIPPED_LANGUAGE),
+            ("99999999999999999999", SHIPPED_LANGUAGE),
+        ] {
+            let dir = TempDir::new("language");
+            dir.write("lang0.dll", &library(&[(22015, text)], &[]));
+            let tables = StringTables::open(&dir.0).unwrap();
+            assert_eq!(tables.install_language(), language, "{text:?}");
+        }
+        let dir = TempDir::new("no-language");
+        dir.write("lang0.dll", &library(&[(314, "x")], &[]));
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(tables.install_language(), SHIPPED_LANGUAGE);
     }
 
     #[test]
@@ -371,7 +448,9 @@ mod tests {
         assert_eq!(tables.libraries().count(), 19);
         assert_eq!(tables.libraries().next(), Some("lang300.dll"));
         assert_eq!(tables.libraries().last(), Some("lang0.dll"));
-        if crate::pe::installed_language(&dir) == 1036 {
+        let language = crate::pe::installed_language(&dir);
+        assert_eq!(tables.install_language(), language);
+        if language == 1036 {
             // The same libraries supply the same ids; the texts are not English.
             for (id, library) in [
                 (7077, "lang300.dll"),

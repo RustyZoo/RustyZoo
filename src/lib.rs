@@ -3,6 +3,7 @@
 pub mod anim;
 pub mod animal;
 pub mod app;
+pub mod avail;
 pub mod behaviour;
 pub mod bitmap;
 pub mod build;

@@ -32,7 +32,7 @@ pub use crate::animal::Animal;
 use crate::animal::Class;
 use crate::behaviour::{Animation, Data, Env, Flow, Heard, Note, Runner, Target};
 use crate::config::Config;
-use crate::entity::Catalogue;
+use crate::entity::{Catalogue, EntityType};
 use crate::goal::Goals;
 pub use crate::guest::Guest;
 use crate::path::{self, Finder, Mover, Settings};
@@ -40,6 +40,21 @@ use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::timing::ini_whole;
 use crate::world::World;
 use crate::zoo::Entity;
+
+/// The colour choices of a new unit: `count` draws in a row, each `rand % palettes of the group`
+/// (0 for a group the type does not have), as the creation draws them (save games 11.2).
+pub fn draw_colours(ty: Option<&EntityType>, count: usize, rng: &mut Rng) -> Vec<u8> {
+    let palettes = ty.map(EntityType::palettes).unwrap_or_default();
+    (0..count)
+        .map(|g| {
+            let draw = rng.rand();
+            palettes
+                .get(g)
+                .filter(|&&n| n > 0)
+                .map_or(0, |&n| u8::try_from(draw as usize % n).unwrap_or(0))
+        })
+        .collect()
+}
 
 pub mod gate;
 pub mod movement;
@@ -109,6 +124,8 @@ impl Kind {
 /// The part of the state of a staff member: its exhibits and job (staff issues).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Staff {
+    /// The colour choices drawn at the creation, one per colour group (save games 11.2).
+    pub colours: Vec<u8>,
     /// The counters drawn at the creation (staff 4.2): -1 for a key of 0.
     pub work: i32,
     pub chase: i32,
@@ -327,7 +344,7 @@ pub struct Units {
     pub now: i64,
     /// The word before the number in a guest's name (string 9507).
     pub guest_name: String,
-    /// The texts of the names of the animal types, by name id, for the names of the young.
+    /// The texts of the names of the types, by name id: the names of new entities and of the young.
     pub names: HashMap<i32, String>,
     /// The happiness above which, and the chance in percent with which, a guest that leaves joins
     /// the endowment; set by the step from the economy file.

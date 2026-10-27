@@ -781,3 +781,45 @@ fn a_halt_clears_the_moving_flag_of_a_unit_and_keeps_its_path() {
     assert!(!unit.moving);
     assert_eq!(unit.path, path);
 }
+
+#[test]
+fn colours_are_drawn_per_group_modulo_its_palettes_and_always_the_same_number_of_draws() {
+    let ini = "[m/colorrep]\nreplace=cr_hair\nreplace=cr_skin\nreplace=cr_none\n\
+               [cr_hair]\npal=a\npal=b\npal=c\n[cr_skin]\npal=a\npal=b\n";
+    let make = |subtype: &[u8]| EntityType {
+        class: "keeper",
+        type_name: b"keeper".to_vec(),
+        subtype: subtype.to_vec(),
+        file: None,
+        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let (ty, other) = (make(b"m"), make(b"f"));
+    assert_eq!(ty.palettes(), [3, 2, 0]);
+    assert!(other.palettes().is_empty());
+    // More groups than the type has, none, no type and a type with no such section all draw the
+    // number asked for.
+    for (ty, count) in [
+        (Some(&ty), 3),
+        (Some(&ty), 5),
+        (Some(&ty), 0),
+        (None, 2),
+        (Some(&other), 2),
+    ] {
+        let (mut rng, mut expect) = (Rng::default(), Rng::default());
+        let palettes = ty.map(EntityType::palettes).unwrap_or_default();
+        let want: Vec<u8> = (0..count)
+            .map(|g| {
+                let r = expect.rand() as usize;
+                palettes
+                    .get(g)
+                    .filter(|&&n| n > 0)
+                    .map_or(0, |&n| (r % n) as u8)
+            })
+            .collect();
+        assert_eq!(draw_colours(ty, count, &mut rng), want);
+        assert_eq!(rng, expect);
+    }
+}
