@@ -49,6 +49,12 @@ pub mod world;
 pub mod zoo;
 pub mod zoom;
 
+/// The result of one operation of the original's 24-bit floating point unit: rounded to `f32`
+/// (nearest, ties to even) and kept in `f64` (main loop 5.4).
+pub fn single(x: f64) -> f64 {
+    f64::from(x as f32)
+}
+
 /// An RGBA8 image: four bytes per pixel in the order R, G, B, A, rows from top to bottom.
 pub struct Framebuffer {
     pub width: u32,

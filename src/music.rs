@@ -2,6 +2,7 @@
 //! without a sound device: the program plays the music and follows what this says.
 
 use crate::config::Config;
+use crate::single;
 use crate::timing::{ini_value, ini_whole};
 
 /// The most a sound may be attenuated for it to start (sound specification 4.2).
@@ -28,8 +29,9 @@ pub fn gain(sum: i32) -> f32 {
 pub fn positional(sound: (i64, i64), listener: (i64, i64)) -> (i32, i32) {
     let dx = sound.0.saturating_sub(listener.0);
     let dy = sound.1.saturating_sub(listener.1);
-    let d = ((dx as f64).powi(2) + (dy as f64).powi(2)).sqrt();
-    let distance = (2.75 * d).min(10_000.0) as i32;
+    // Every operation rounded to 24 bits (sound O9).
+    let squares = single(single((dx as f64).powi(2)) + single((dy as f64).powi(2)));
+    let distance = single(2.75 * single(squares.sqrt())).min(10_000.0) as i32;
     (distance, dx.saturating_mul(6).clamp(-10_000, 10_000) as i32)
 }
 
@@ -195,6 +197,8 @@ mod tests {
     fn a_positional_sound_is_attenuated_and_panned_by_its_place() {
         assert_eq!(positional((1300, 900), (1012, 784)), (853, 1728));
         assert_eq!(positional((5, 5), (5, 5)), (0, 0));
+        // Single precision all along: 5328, where double precision gives 5327.
+        assert_eq!(positional((1927, 201), (0, 0)).0, 5328);
         assert_eq!(positional((0, 0), (0, 600)), (1650, 0));
         assert_eq!(positional((-300, 0), (0, 0)), (825, -1800));
         assert_eq!(positional((9000, 0), (0, 0)), (10_000, 10_000));

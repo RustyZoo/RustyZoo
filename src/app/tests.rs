@@ -2192,15 +2192,15 @@ fn the_speed_keys_work_in_developer_mode_only_and_only_with_the_ini_key() {
         // The keys do nothing before the mode is on.
         app.pass(70, &[dot, comma, slash]);
         assert_eq!(dev_and_step(app, 1, 70), (vec![], Some(70)));
-        // Two `.`: 1.2000000000000002, as the original gives; the step of 70 ms is 84 ms.
+        // Two `.`: 1.2000000476837158, as the original gives; the step of 70 ms is 84 ms.
         app.pass(140, &[Command::DevMode, dot, dot]);
         assert_eq!(
             dev_and_step(app, 2, 140),
             (
                 vec![
                     "pass 2 t=140 dev on".into(),
-                    "pass 2 t=140 dev speed 1.1".into(),
-                    "pass 2 t=140 dev speed 1.2000000000000002".into()
+                    "pass 2 t=140 dev speed 1.100000023841858".into(),
+                    "pass 2 t=140 dev speed 1.2000000476837158".into()
                 ],
                 Some(84)
             )
@@ -2211,15 +2211,15 @@ fn the_speed_keys_work_in_developer_mode_only_and_only_with_the_ini_key() {
             dev_and_step(app, 3, 210),
             (vec!["pass 3 t=210 dev speed 1".into()], Some(70))
         );
-        // Downward the tenths stop at 0.10000000000000014: a step of 70 ms is 7 ms.
+        // Downward the tenths stop at 0.09999992698431015: a step of 70 ms is 6 ms.
         app.pass(280, &[comma; 20]);
-        assert_eq!(app.timers.speed.factor(), 0.10000000000000014);
+        assert_eq!(app.timers.speed.factor(), 0.09999992698431015);
         app.pass(350, &[]);
-        assert_eq!(app.fired().step, Some(7));
+        assert_eq!(app.fired().step, Some(6));
         // Ctrl+D again: the mode is off, the speed stays, the keys do nothing.
         app.pass(420, &[Command::DevMode, dot]);
         assert_eq!(dev_and_step(app, 6, 420).0, ["pass 6 t=420 dev off"]);
-        assert_eq!(app.timers.speed.factor(), 0.10000000000000014);
+        assert_eq!(app.timers.speed.factor(), 0.09999992698431015);
     });
 }
 

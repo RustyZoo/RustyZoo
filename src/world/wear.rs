@@ -12,6 +12,7 @@ use crate::exhibit::GROUNDS;
 use crate::place::bulldozer::type_of;
 use crate::place::{LIFE, STRENGTH};
 use crate::sim::TASK_CHANNEL;
+use crate::single;
 use crate::vfs::Vfs;
 use crate::zoo::{Event, Fence};
 
@@ -58,11 +59,12 @@ impl Decay {
         }
     }
 
-    /// `min + round(r * (max - min))` for the 15 bit draw `rand` (`r` is `rand / 32767`).
+    /// `min + round(f32(f32(n * (2^-15 + 2^-30)) * (max - min)))` for the 15 bit draw `n`, halves
+    /// to even (placing 7.4).
     fn interval(self, rand: u32) -> u32 {
         let (min, max) = (f64::from(self.min), f64::from(self.max));
-        let r = f64::from(rand.min(0x7fff)) / 32767.0;
-        (min + (r * (max - min)).round()).clamp(0.0, f64::from(u32::MAX)) as u32
+        let r = single(f64::from(rand.min(0x7fff)) * (1.0 / 32768.0 + 1.0 / 1_073_741_824.0));
+        (min + single(r * (max - min)).round_ties_even()).clamp(0.0, f64::from(u32::MAX)) as u32
     }
 }
 
