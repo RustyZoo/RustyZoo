@@ -276,6 +276,7 @@ fn replay(text: &str) -> Result<((u32, u32), Replay), String> {
         }
         if ![
             "animal ",
+            "awards ",
             "building ",
             "dev ",
             "draw ",

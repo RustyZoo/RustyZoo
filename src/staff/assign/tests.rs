@@ -107,6 +107,7 @@ fn world() -> (World, [u32; 4]) {
         entities.push(entity(class, name, (7, n as i32), 0, 1 + n as u32));
     }
     let zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
