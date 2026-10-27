@@ -252,6 +252,8 @@ pub struct Edit {
     pub numeric: bool,
     /// 0: no limit.
     pub char_limit: i32,
+    /// Whether the text may be wider than the field (no width check); set at run time.
+    pub wide: bool,
     pub caret: Caret,
     /// The text when the field got the focus: Escape puts it back.
     pub saved: Vec<u8>,
@@ -733,6 +735,7 @@ impl Tree {
             b"UIEditableText" => Kind::EditableText(Edit {
                 numeric: flag("numeric", false),
                 char_limit: int("charlimit"),
+                wide: false,
                 caret: Caret::default(),
                 saved: Vec::new(),
             }),
