@@ -5,7 +5,7 @@
 
 use super::upgrade::NEVER;
 use super::write::Out;
-use super::{BuildingRecord, Common, Entity, Fence, GuestRecord, StaffRecord};
+use super::{BuildingRecord, Common, Entity, Fence, GuestRecord, StaffRecord, Target, UnitBlock};
 
 /// The fields before the unit block or the entity base, and the fields after them.
 pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8>), String> {
@@ -64,6 +64,33 @@ pub(super) fn fence(class: &str, f: &Fence) -> Vec<u8> {
         o.bytes(&[f.portal.into(), 0]);
     }
     o.0
+}
+
+/// The non-path cost of a guest type when the unit class file gives none (pathfinding 6.5).
+pub(crate) const DEFAULT_NON_PATH_COST: u32 = 7;
+
+/// The unit block of a unit made in play, before it has run (save games 11.3): no goal, no target,
+/// no movement in progress, the counters a new unit has and the call flag of a unit made in play.
+/// `guest` is the non-path cost of a guest, which is its word 230; the other units write 1 there.
+pub(crate) fn unit_new(guest: Option<u32>) -> UnitBlock {
+    UnitBlock {
+        slot: 255,
+        need: 255,
+        w4: guest.unwrap_or(1),
+        w7: 4,
+        p1: [-1; 3],
+        p3: [-1; 3],
+        target: Target {
+            target: [-1; 3],
+            sub_target: [-1; 3],
+            active: -1,
+            active_sub: -1,
+            ..Target::default()
+        },
+        move_kind: -1,
+        pending_flag: 1,
+        ..UnitBlock::default()
+    }
 }
 
 /// The record of a new guest building: no figure yet, the type's default price (save games 11.3).

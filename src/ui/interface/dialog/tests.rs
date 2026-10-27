@@ -307,3 +307,44 @@ fn the_question_shows_its_scroll_bar_only_while_the_message_does_not_fit() {
     ui.mouse(Mouse::Move(66, 29));
     assert_eq!(ui.take_events(), ["hover 100"]);
 }
+
+#[test]
+fn a_modal_question_closes_the_open_popup_at_once() {
+    let mut ui = interface("popup");
+    assert!(ui.notify(100, b"", Buttons::OK));
+    ui.ask(200, b"", Buttons::OK);
+    assert!(!shown(&ui, 100) && shown(&ui, 200));
+    // A popup opened while a question waits goes at the next update.
+    ui.notify(100, b"", Buttons::OK);
+    ui.update(0);
+    assert!(!shown(&ui, 100) && shown(&ui, 200));
+    assert!(ui.modal_open());
+}
+
+#[test]
+fn a_popup_leaves_the_game_running_closes_on_its_button_and_by_itself() {
+    let mut ui = interface("popup");
+    assert!(!ui.notify(999, b"?", Buttons::OK) && !ui.notify(20, b"?", Buttons::OK));
+    assert!(ui.notify(100, b"Hi", Buttons::OK));
+    assert!(!ui.modal_open() && shown(&ui, 100) && shown(&ui, 112) && !shown(&ui, 110));
+    assert_eq!(ui.text(106), Some(b"Hi".to_vec()));
+    assert_eq!(ui.take_events().last().unwrap(), "notify 100");
+    // The pointer is not restricted to it; its button closes it and answers nobody.
+    ui.mouse(Mouse::Move(6, 6));
+    assert_eq!(state(&ui, 20) & HIGHLIGHTED, HIGHLIGHTED);
+    click(&mut ui, 45, 52);
+    assert!(!shown(&ui, 100));
+    assert!(ui.take_actions().is_empty());
+    // It closes by itself after the delay of interface time.
+    ui.settings.popup_delay = 100;
+    ui.notify(100, b"", Buttons::OK);
+    ui.update(0);
+    ui.update(60);
+    assert!(shown(&ui, 100));
+    ui.update(100);
+    assert!(!shown(&ui, 100));
+    // One popup at a time.
+    ui.notify(100, b"", Buttons::OK);
+    ui.notify(200, b"", Buttons::OK);
+    assert!(!shown(&ui, 100) && shown(&ui, 200));
+}

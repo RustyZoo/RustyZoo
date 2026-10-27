@@ -332,3 +332,40 @@ fn the_wheel_and_a_press_on_nothing_reach_the_map() {
     ui.mouse(Mouse::Move(3, 3));
     assert!(!ui.mouse(Mouse::Wheel(-1)));
 }
+
+#[test]
+fn disabling_and_hiding_by_id_tell_what_changed_and_a_selected_radio_member_is_deselected() {
+    let mut ui = interface("scenario-elements");
+    assert!(
+        ui.disable(20, true) && !ui.disable(20, true),
+        "only the first changes"
+    );
+    assert_eq!(state(&ui, 20) & DISABLED, DISABLED);
+    assert!(
+        click(&mut ui, (3, 3))
+            .iter()
+            .all(|e| !e.starts_with("press"))
+    );
+    assert!(ui.disable(20, false) && !ui.disable(20, false));
+    assert_eq!(state(&ui, 20) & DISABLED, 0);
+    // An element that is not there: nothing changes, whatever the id.
+    for id in [999, 0, -1, i32::MIN, i32::MAX] {
+        assert!(!ui.disable(id, true) && !ui.conceal(id, true), "id {id}");
+    }
+    // The selected member of a radio set gives way: deselected with its action, so its page goes.
+    click(&mut ui, (14, 3));
+    assert!(shown(&ui, 31));
+    assert!(ui.disable(21, true));
+    assert_eq!(state(&ui, 21) & (SELECTED | DISABLED), DISABLED);
+    assert!(!shown(&ui, 31));
+    // Hiding and showing a button on its own, and a layout.
+    assert!(ui.conceal(23, true) && !ui.conceal(23, true) && !shown(&ui, 23));
+    assert!(ui.conceal(23, false) && !ui.conceal(23, false) && shown(&ui, 23));
+    ui.show(30);
+    assert!(ui.conceal(30, true) && !shown(&ui, 30));
+    assert!(ui.conceal(30, false) && shown(&ui, 30));
+    // A button is pressed by id when it is shown and enabled.
+    ui.take_events();
+    assert!(ui.press_button(20) && !ui.press_button(26) && !ui.press_button(999));
+    assert!(ui.take_events().contains(&"select 20".to_string()));
+}

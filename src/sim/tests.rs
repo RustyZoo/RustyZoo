@@ -238,6 +238,38 @@ fn the_ai_clock_keeps_whole_ticks_and_the_remainder() {
 }
 
 #[test]
+fn the_play_time_counts_the_steps_from_the_loaded_value() {
+    let mut w = world(0);
+    let mut s = sim("");
+    // A fresh game and a map without the word start at 0; a step adds its milliseconds.
+    s.start_game(16, Clocks::default());
+    s.step(&mut w, 300, |_, _, _| {});
+    s.step(&mut w, 0, |_, _, _| {});
+    assert_eq!(s.clocks().play_time, 300);
+    // A loaded value goes on from there, and a huge one stops at the end of the counter.
+    for (loaded, step, want) in [(1000, 250, 1250), (u32::MAX - 1, 300, u32::MAX)] {
+        s.start_game(
+            16,
+            Clocks {
+                play_time: loaded,
+                ..Clocks::default()
+            },
+        );
+        s.step(&mut w, step, |_, _, _| {});
+        assert_eq!(s.clocks().play_time, want);
+    }
+    // No step ran (a pause), no time passed.
+    s.start_game(
+        16,
+        Clocks {
+            play_time: 9,
+            ..Clocks::default()
+        },
+    );
+    assert_eq!(s.clocks().play_time, 9);
+}
+
+#[test]
 fn a_new_game_starts_from_the_clocks_of_its_map() {
     let mut w = world(0);
     let mut s = sim("");
@@ -260,38 +292,6 @@ fn a_new_game_starts_from_the_clocks_of_its_map() {
         (s.ai_clock(), s.world_clock(), s.total_ms()),
         ((0, 0), (0, 0), 0)
     );
-}
-
-#[test]
-fn the_play_time_starts_from_the_stored_one_and_counts_the_steps_run() {
-    let mut w = world(0);
-    let mut s = sim("");
-    s.start_game(
-        16,
-        Clocks {
-            play: 5_000,
-            ..Clocks::default()
-        },
-    );
-    assert_eq!(s.clocks().play, 5_000, "the stored play time");
-    run(&mut s, &mut w, 10, 300);
-    assert_eq!(s.clocks().play, 8_000);
-    // A paused game runs no step, so the time stays.
-    assert_eq!(s.clocks().play, 8_000);
-    // The largest stored value wraps as the other clocks do.
-    s.start_game(
-        16,
-        Clocks {
-            play: u32::MAX,
-            ..Clocks::default()
-        },
-    );
-    run(&mut s, &mut w, 1, 1);
-    assert_eq!(s.clocks().play, 0);
-    // A file before version 73 stores none.
-    s.start_game(16, Clocks::default());
-    run(&mut s, &mut w, 1, 67);
-    assert_eq!(s.clocks().play, 67);
 }
 
 #[test]

@@ -47,7 +47,7 @@ impl Item {
             thought: int("consumedThoughtID"),
             icon: s
                 .get("icon")
-                .map(|v| String::from_utf8_lossy(v).replace('\\', "/"))
+                .map(|v| crate::vfs::name_from_bytes(v).replace('\\', "/"))
                 .unwrap_or_default(),
         })
     }
@@ -72,7 +72,7 @@ pub fn load(vfs: &Vfs) -> (BTreeMap<String, Item>, Vec<String>) {
         let section = list.section("items");
         for name in section.into_iter().flat_map(|s| s.keys()) {
             let file = section.and_then(|s| s.get(name)).unwrap_or_default();
-            let file = String::from_utf8_lossy(file).replace('\\', "/");
+            let file = crate::vfs::name_from_bytes(file).replace('\\', "/");
             match read(&file) {
                 Ok(c) => {
                     let name = String::from_utf8_lossy(name).to_ascii_lowercase();

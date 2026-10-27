@@ -447,6 +447,8 @@ pub struct Animal {
     /// Asleep (the sleep check, animals-needs 6) and drinking at the water (the drink goal).
     pub sleeping: bool,
     pub drinking: bool,
+    /// Loaded asleep with `bSleep` as its saved set: the set starts at the first checks.
+    pub resume: bool,
     /// Status ticks left before old age rolls death, and the health checks in a row at health 0
     /// with full hunger (animals-needs 9, 10.1).
     pub life: i32,
@@ -519,9 +521,8 @@ impl Animal {
     /// Overwrites what the record of a loaded map stores (animals 3.5); the rest keeps the value
     /// creation gave. The life and the mate delay are clamped to the class's limits (a record
     /// below version 43 has neither: they keep creation's values), the dates are read as game
-    /// milliseconds. The sleeping, eating and drinking flags are not taken yet:
-    /// the behaviour set and the goals do not start from them, and an animal loaded asleep never
-    /// fathers young.
+    /// milliseconds. The sleeping, eating and drinking flags come back as saved; [`load`] starts
+    /// the behaviour that matches them.
     pub fn restore(&mut self, saved: &AnimalRecord, k: &Keys, class: &Class) {
         let r = saved;
         (self.life, self.mate_delay) = (
@@ -553,12 +554,11 @@ impl Animal {
         self.thirsty = r.thirsty;
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
+        (self.sleeping, self.eating, self.drinking) = (r.sleeping, r.eating, r.drinking);
     }
 
     /// The record of this animal: `base` with the live values written over it, so what the engine
-    /// does not model stays as it was. The sleeping, eating and drinking flags stay as they were
-    /// too: the load does not take them (see [`Animal::restore`]), so the live ones are not the
-    /// animal's.
+    /// does not model stays as it was.
     pub fn record(&self, base: AnimalRecord) -> AnimalRecord {
         let mut counters = base.counters;
         // The shelter and murky water counters are not stored.
@@ -589,6 +589,9 @@ impl Animal {
             thirsty: self.thirsty,
             rampaging: self.rampaging,
             rampage: self.rampage,
+            sleeping: self.sleeping,
+            eating: self.eating,
+            drinking: self.drinking,
             life: Some(self.life),
             baby: self.baby,
             interval: self.interval,
@@ -1205,7 +1208,24 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
     let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
     animal.restore(&saved, &k, &world.units.class);
+    // What the saved unit was doing: the outer behaviour set and the active goal.
+    let block = entity.common.as_ref().and_then(|c| c.unit.as_ref());
+    let set = block.and_then(|b| b.behaviour.levels.first().map(|l| l.name.as_str()));
+    animal.resume = animal.sleeping && set == Some("bSleep");
+    // A drink only goes on in its goal: without it the flag would hold the ladder for good.
+    let drink = block.is_some_and(|b| b.target.active == i32::from(crate::goal::DRINK));
+    animal.drinking &= drink;
+    let now = world.units.ai_ticks;
     if let Some(unit) = world.units.get_mut(id) {
+        if animal.drinking {
+            let task = crate::goal::Record {
+                task: crate::goal::DRINK,
+                mode: 1,
+                start: now,
+                ..Default::default()
+            };
+            unit.goal.record = task;
+        }
         // An egg shows its own picture (animals-needs 13.1).
         if animal.egg {
             unit.animation.base_to("egg_idle");
@@ -1244,8 +1264,24 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     world.units.tell(line);
 }
 
+/// Starts the behaviour set `name` of the animal at position `at`.
+fn begin(unit: &mut Unit, world: &World, ctx: &mut Ctx, at: usize, data: &dyn Data, name: &str) {
+    let env = crate::behaviour::Env {
+        data,
+        unit: &world.zoo.entities[at],
+        rng: &mut *ctx.rng,
+    };
+    let (anim, runner) = (&mut unit.animation, &mut unit.runner);
+    runner.start(anim, &env, name, true, false, true);
+}
+
 /// The conditional checks of a status tick (animals 4.2).
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    if let Part::Animal(a) = &mut unit.part
+        && std::mem::take(&mut a.resume)
+    {
+        begin(unit, world, ctx, at, data, "bSleep");
+    }
     let task = unit.goal.record.task;
     let meal = food::meal(unit, world, data, at);
     let sets = life::sets(unit, world, data, at);
@@ -1387,13 +1423,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.units.tell(format!("message {m} {}", unit.id));
     }
     for set in &out.sets {
-        let env = crate::behaviour::Env {
-            data,
-            unit: &world.zoo.entities[at],
-            rng: &mut *ctx.rng,
-        };
-        let (anim, runner) = (&mut unit.animation, &mut unit.runner);
-        runner.start(anim, &env, set, true, false, true);
+        begin(unit, world, ctx, at, data, set);
     }
     if out.dung {
         dirt::put_down(unit, world, ctx, at, &k);
