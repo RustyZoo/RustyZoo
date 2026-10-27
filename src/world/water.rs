@@ -138,9 +138,10 @@ impl World {
         true
     }
 
-    /// Gives tank `id` the salinity `salt` (4.7 fill tools): another salinity drains it first
-    /// (refused, false, while an animal is in it) and is taken as soon as it is empty, at once
-    /// when it already is. The caller fills it.
+    /// Gives tank `id` the salinity `salt` (4.7 fill tools): another salinity drains it first and
+    /// is taken as soon as it is empty, at once when it already is. False when the drain was
+    /// refused (an animal is in the tank); only a tank that is still filled then keeps its
+    /// salinity. The caller fills it.
     pub fn set_salinity(&mut self, id: u32, salt: bool) -> bool {
         let Some(tank) = self.tank(id) else {
             return false;
@@ -148,7 +149,8 @@ impl World {
         if tank.salt == salt {
             return true;
         }
-        if !self.drain(id) {
+        let drained = self.drain(id);
+        if self.tank(id).is_some_and(|t| t.filled) {
             return false;
         }
         self.edit_tank(id, |t, _| {
@@ -157,25 +159,40 @@ impl World {
                 t.salt = salt;
             }
         });
-        true
+        drained
     }
 
-    /// The lowest wall height tank `id` takes (4.7): 2, or what the units standing in it need, the
-    /// depth of their type and the height of the scenery in their tile's quarters.
+    /// The lowest wall height tank `id` takes (4.7): 2, or the deepest need less the water offset.
+    /// The need of an object in a quarter of a tile is the `cDepth` of its type; that of a unit
+    /// (but a transient one) the larger of its `cDepth` and the `cHeight` of each quarter object
+    /// it cannot walk through.
     pub fn wall_floor(&self, id: u32) -> u32 {
-        let mut need = 2;
+        let mut need = i32::MIN;
         for t in self.tiles_of(id) {
-            let units = self.scene.units_on(t);
-            let kind = |e: usize| self.shapes[e].map(|s| s.tank);
-            let deepest = units.iter().filter_map(|&o| kind(self.owner[o]));
-            let deepest = deepest.map(|k| k.depth).max();
-            if let Some(depth) = deepest {
-                let scenery = (0..4).filter_map(|q| self.quadrant(t, q)).filter_map(kind);
-                let height = scenery.map(|k| k.height).max().unwrap_or(0);
-                need = need.max(depth.max(height));
+            let held: Vec<_> = (0..4).filter_map(|q| self.quadrant(t, q)).collect();
+            let shape = |e: usize| self.shapes[e];
+            need = (held.iter().filter_map(|&e| shape(e)))
+                .map(|s| s.tank.depth)
+                .fold(need, i32::max);
+            for e in self
+                .units_on(t)
+                .filter_map(shape)
+                .filter(|s| !s.tank.transient)
+            {
+                let blocks = held.iter().filter_map(|&o| shape(o)).filter(|o| {
+                    !(if e.tank.tall {
+                        o.walkable.1
+                    } else {
+                        o.walkable.0
+                    })
+                });
+                need = blocks
+                    .map(|o| o.tank.height)
+                    .fold(need.max(e.tank.depth), i32::max);
             }
         }
-        need.max(2) as u32
+        // The water offset is taken off the deepest need (the shipped -1 adds one).
+        need.saturating_sub(self.tank_config.offset).max(2) as u32
     }
 
     /// Gives tank `id` a wall height, cut to the lowest it takes and the highest a tank has (4.7);

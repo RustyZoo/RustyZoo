@@ -230,13 +230,37 @@ fn the_walls_never_go_below_what_the_swimmers_need() {
     assert_eq!(world.wall_floor(1), 2);
     assert_eq!(world.wall_floor(99), 2);
     let mut world = new_tank("tank", &[("whale", 3 * 64 + 30, 3 * 64 + 30)]);
-    assert_eq!(world.wall_floor(1), 6);
+    assert_eq!(world.wall_floor(1), 7);
     world.set_height(1, 3);
-    assert_eq!(water(&world).0, 6);
+    assert_eq!(water(&world).0, 7);
     world.set_height(1, 0);
-    assert_eq!(water(&world).0, 6);
+    assert_eq!(water(&world).0, 7);
     world.set_height(1, 12);
     assert_eq!(water(&world).0, 12);
+}
+
+#[test]
+fn the_lowest_wall_is_the_deepest_need_less_the_water_offset() {
+    let at = |x, y| (3 + x) * 64 + y;
+    let floor = |things: &[(&str, i32, i32)]| new_tank("tank", things).wall_floor(1);
+    // A swimmer of depth 6 needs 7 (offset -1).
+    assert_eq!(floor(&[("whale", at(0, 30), at(0, 30))]), 7);
+    // The depth of a quarter object counts with no unit on the tile, its height does not.
+    assert_eq!(floor(&[("reef", at(0, 10), at(0, 10))]), 6);
+    assert_eq!(floor(&[("pillar", at(0, 10), at(0, 10))]), 2);
+    // A transient unit counts for nothing.
+    assert_eq!(floor(&[("ghost", at(0, 30), at(0, 30))]), 2);
+    // A unit needs the height of what blocks it, not of what it walks through.
+    let whale = ("whale", at(0, 30), at(0, 30));
+    assert_eq!(floor(&[whale, ("pillar", at(0, 10), at(0, 10))]), 10);
+    assert_eq!(floor(&[whale, ("ledge", at(0, 10), at(0, 10))]), 7);
+    // Without an offset the need is the depth itself.
+    let mut world = new_tank("tank", &[whale]);
+    world.set_tank_config(crate::exhibit::TankConfig {
+        offset: 0,
+        ..CONFIG
+    });
+    assert_eq!(world.wall_floor(1), 6);
 }
 
 #[test]

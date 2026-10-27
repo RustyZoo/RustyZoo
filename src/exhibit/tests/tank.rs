@@ -239,6 +239,33 @@ pub(super) fn tank_shape(e: &Entity) -> Option<Shape> {
                 ..none
             },
         ),
+        // A transient unit that is deep, a reef (depth 5), a pillar (height 9) and a ledge of the
+        // same height that units walk through.
+        "ghost" => thing(
+            Kind::Unit,
+            TankKind {
+                underwater: true,
+                transient: true,
+                depth: 9,
+                ..none
+            },
+        ),
+        "reef" | "pillar" | "ledge" => {
+            let (depth, height) = if e.class == "reef" { (5, 0) } else { (0, 9) };
+            let mut shape = thing(
+                Kind::Fixed,
+                TankKind {
+                    underwater: true,
+                    depth,
+                    height,
+                    ..none
+                },
+            );
+            if let Some(s) = shape.as_mut() {
+                s.walkable = (e.class == "ledge", e.class == "ledge");
+            }
+            shape
+        }
         "dog" => thing(Kind::Unit, none),
         "guests" => thing(Kind::Unit, none),
         "bench" => thing(Kind::Fixed, none),

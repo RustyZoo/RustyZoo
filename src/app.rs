@@ -1689,6 +1689,11 @@ impl<'a> App<'a> {
                     self.tank_fill(id == exhibit::SALT);
                 }
                 exhibit::DRAIN if self.game.is_some() => self.tank_drain(),
+                exhibit::TANK_TAB if self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.panel.clock.force = true;
+                    }
+                }
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),

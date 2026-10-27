@@ -36,7 +36,8 @@ pub const LIST: i32 = 4305;
 pub const ANIMALS: i32 = 4326;
 const THOUGHTS: i32 = 4330;
 const STATUS_TAB: i32 = 4310;
-const TANK_TAB: i32 = 4365;
+/// The tank tab button: showing its layout shows all of it, so the panel is written again.
+pub const TANK_TAB: i32 = 4365;
 // The tank tab (4.7): the wall buttons, the fill buttons, the drain button, the ground buttons, and
 // the texts of the wall price, the two fill prices, the salinity and the ground price.
 pub const WALL_DOWN: i32 = 4874;
@@ -48,6 +49,19 @@ const GROUND: [i32; 2] = [4879, 4880];
 const WALL_COST: i32 = 4877;
 const FILL_COST: [i32; 2] = [4871, 4872];
 const SALINITY_TEXT: i32 = 4868;
+/// The labels of the drain group (the drain button is `DRAIN`) and of the fill group (the fill
+/// label, the two water labels, the buttons and the prices).
+const DRAIN_LABEL: i32 = 4883;
+const FILL_LABEL: i32 = 4881;
+const FILL_GROUP: [i32; 7] = [
+    FILL_LABEL,
+    4891,
+    4893,
+    SALT,
+    FRESH,
+    FILL_COST[0],
+    FILL_COST[1],
+];
 const GROUND_COST: i32 = 4882;
 /// The strings of the names of salt and fresh water.
 const WATERS: [i32; 2] = [4891, 4893];
@@ -117,10 +131,10 @@ const TANK_ICONS: [[&str; 3]; 2] = [
 ];
 
 /// Writes the tank tab (4.7) of tank `id` and returns its log line: the prices of the next wall
-/// raise and of the two fills (the fills while the tank is empty), the salinity, and which buttons
-/// work. The wall buttons stop at the lowest height the tank takes and at the highest; the fill
-/// buttons work while the water is at 0, the drain button while the tank holds or fills water. The
-/// ground buttons do nothing yet.
+/// raise and of the two fills, the salinity, and which buttons work. By the filled flag, not the
+/// water level: a filled tank shows the name of its water and the drain button, a tank that is
+/// not shows the fill group (its buttons work while the water is at 0). The wall buttons stop at
+/// the lowest height the tank takes and at the highest. The ground buttons do nothing yet.
 fn tank_tab(
     ui: &mut Interface,
     world: &World,
@@ -137,23 +151,24 @@ fn tank_tab(
         true,
         tank.filled,
     );
-    let dry = tank.level == 0;
     let water = ui.string(WATERS[usize::from(!tank.salt)]);
     ui.set_text(WALL_COST, &to_cp1252(&whole(next)));
     ui.set_text(SALINITY_TEXT, &to_cp1252(&water));
     ui.set_text(GROUND_COST, b"");
-    for (i, button) in [SALT, FRESH].into_iter().enumerate() {
-        let text = if dry {
-            whole(prices.fill[i])
-        } else {
-            String::new()
-        };
-        ui.set_text(FILL_COST[i], &to_cp1252(&text));
-        ui.set_enabled(button, dry);
+    for (i, text) in FILL_COST.into_iter().enumerate() {
+        ui.set_text(text, &to_cp1252(&whole(prices.fill[i])));
+    }
+    for id in FILL_GROUP {
+        ui.set_hidden(id, tank.filled);
+    }
+    for id in [SALINITY_TEXT, DRAIN_LABEL, DRAIN] {
+        ui.set_hidden(id, !tank.filled);
+    }
+    for button in [SALT, FRESH] {
+        ui.set_enabled(button, tank.level == 0);
     }
     ui.set_enabled(WALL_DOWN, tank.height > low);
     ui.set_enabled(WALL_UP, tank.height < high);
-    ui.set_enabled(DRAIN, tank.filled || !dry);
     for button in GROUND {
         ui.set_enabled(button, false);
     }

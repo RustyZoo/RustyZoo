@@ -3,6 +3,7 @@
 
 use super::bulldozer_tests::{Session, with_game};
 use crate::exhibit::TankConfig;
+use crate::ui::layout::{DISABLED, HIDDEN};
 
 /// Shipped numbers, but the walls cost 100 a piece (4 pieces over the divisor 5: 80 a step).
 fn config() -> TankConfig {
@@ -164,13 +165,72 @@ fn the_tab_tells_the_walls_the_limits_and_the_prices() {
 }
 
 #[test]
-fn a_new_salinity_with_an_animal_in_the_dry_tank_is_refused_with_10551_and_costs_nothing() {
+fn a_new_salinity_on_an_empty_tank_with_an_animal_says_10551_and_still_fills_and_charges() {
     with_game("tank-fill-animal", "", |s| {
         tank(s);
         s.app.game.as_mut().unwrap().world.drain(1);
-        s.add(13, 20 * 64 + 40, 20 * 64 + 40, 0);
+        s.add(17, 20 * 64 + 40, 20 * 64 + 40, 0);
         s.app.tank_fill(false);
-        assert_eq!((water(s), s.cash()), ((5, 0, false, true), 50_000.0));
+        assert_eq!((water(s), s.cash()), ((5, 0, true, false), 50_000.0 - 5.0));
         assert_eq!(told(s), ["tool message 10551"]);
+    });
+}
+
+/// The state of the elements: (hidden, disabled) by id.
+fn state(s: &Session, ids: &[i32]) -> Vec<(bool, bool)> {
+    let ui = s.app.ui.as_ref().unwrap();
+    let at = |id| ui.tree.elements[ui.tree.find(id).unwrap()].state;
+    ids.iter()
+        .map(|&id| (at(id) & HIDDEN != 0, at(id) & DISABLED != 0))
+        .collect()
+}
+
+fn refresh(s: &mut Session) {
+    let game = s.app.game.as_mut().unwrap();
+    let ui = s.app.ui.as_mut().unwrap();
+    let (vfs, cat) = (s.app.renderer.vfs(), s.app.renderer.catalogue());
+    game.panel.refresh(ui, &game.world, cat, vfs);
+}
+
+#[test]
+fn the_tab_shows_the_drain_group_while_filled_and_the_fill_group_while_not() {
+    with_game("tank-groups", "", |s| {
+        tank(s);
+        // The fill label, the water labels, the fill buttons and the prices; the water name, the
+        // drain label and the drain button.
+        let fill = [4881, 4891, 4893, 4869, 4870, 4871, 4872];
+        let drain = [4868, 4883, 4885];
+        let shown =
+            |s: &Session, ids: &[i32]| state(s, ids).iter().map(|e| !e.0).collect::<Vec<_>>();
+        refresh(s);
+        assert_eq!(shown(s, &fill), [false; 7]);
+        assert_eq!(state(s, &drain), [(false, false); 3]);
+        // The flag clear: the other group, also while the level falls (buttons greyed).
+        let world = &mut s.app.game.as_mut().unwrap().world;
+        world.step_water();
+        world.step_water();
+        world.drain(1);
+        refresh(s);
+        assert_eq!(water(s).1, 2);
+        assert!(!water(s).2);
+        assert_eq!(shown(s, &fill), [true; 7]);
+        assert_eq!(state(s, &[4869, 4870]), [(false, true); 2]);
+        assert_eq!(shown(s, &drain), [false; 3]);
+        // Empty: the fill buttons work.
+        s.app.game.as_mut().unwrap().world.set_paused(true);
+        s.app.game.as_mut().unwrap().world.drain(1);
+        refresh(s);
+        assert_eq!(state(s, &[4869, 4870]), [(false, false); 2]);
+    });
+}
+
+#[test]
+fn a_fill_press_while_the_flag_is_set_pays_nothing() {
+    with_game("tank-fill-set", "", |s| {
+        tank(s);
+        assert_eq!(water(s), (5, 0, true, true));
+        s.app.tank_fill(false);
+        assert_eq!((water(s), s.cash()), ((5, 0, true, true), 50_000.0));
+        assert!(told(s).is_empty());
     });
 }

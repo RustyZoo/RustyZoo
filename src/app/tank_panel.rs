@@ -60,29 +60,31 @@ impl App<'_> {
         self.exhibits_told();
     }
 
-    /// The fill buttons (4.7), enabled while the tank is empty: the cash is checked, the salinity
-    /// set (a change drains first, refused with 10551 while an animal is in the tank), the price
-    /// paid, then the tank filled. An object that may not be in water refuses the fill with 10550
+    /// The fill buttons (4.7), enabled while the tank is empty and not filled: the cash is
+    /// checked, the salinity set (a change drains first; an animal in the tank refuses that with
+    /// 10551, and the rest goes on), the price paid, then the tank filled. An object that may not be in water refuses the fill with 10550
     /// naming it; the price stays paid.
     pub(super) fn tank_fill(&mut self, salt: bool) {
         let Some((id, prices)) = self.panel_tank() else {
             return;
         };
         let Some(game) = &mut self.game else { return };
-        if game.world.tank(id).is_none_or(|t| t.level > 0) {
+        if (game.world.tank(id)).is_none_or(|t| t.level > 0 || t.filled) {
             return;
         }
         let price = prices.fill[usize::from(!salt)];
         if price > 0.0 && !game.money.can_pay(price) {
             return self.tank_message(NO_FUNDS, "");
         }
-        if !game.world.set_salinity(id, salt) {
-            return self.tank_message(NOT_DRAINED, "");
-        }
-        let Some(game) = &mut self.game else { return };
+        // An animal in the empty tank refuses the drain and says so, but the rest goes on.
+        let told = !game.world.set_salinity(id, salt);
         game.money.charge(CONSTRUCTION, price);
         let refused = game.world.fill(id);
         game.panel.clock.force = true;
+        if told {
+            self.tank_message(NOT_DRAINED, "");
+        }
+        let Some(game) = &mut self.game else { return };
         if let Some(object) = refused {
             let cat = self.renderer.catalogue();
             let world = &game.world;
