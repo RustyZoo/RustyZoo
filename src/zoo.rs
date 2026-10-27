@@ -397,7 +397,7 @@ pub struct Clocks {
     /// The world clock: the milliseconds left over and the whole seconds.
     pub world_rem: u32,
     pub world_secs: u32,
-    /// The play time: milliseconds of unpaused running time (from version 73, else 0).
+    /// The play time: milliseconds of unpaused running time (read from version 73, else counted from 0; always written).
     pub play_time: u32,
     /// The two event buffers (from version 97).
     pub queue: Queue,

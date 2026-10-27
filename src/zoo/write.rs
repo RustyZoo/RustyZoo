@@ -203,10 +203,7 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
         o.u16(n as u16);
     }
     o.u32(money.cash.to_bits());
-    match zoo.version >= 73 {
-        true => o.u32(zoo.clocks.play_time),
-        false => o.u32(0),
-    }
+    o.u32(zoo.clocks.play_time);
     Ok(o.0)
 }
 

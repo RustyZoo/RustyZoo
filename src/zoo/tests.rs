@@ -409,7 +409,7 @@ fn a_refused_game_date_is_the_start_of_the_calendar() {
 }
 
 #[test]
-fn the_play_time_is_read_from_version_73_and_written_back() {
+fn the_play_time_is_read_from_version_73_and_always_written() {
     for v in [71, 73, 106] {
         let (zoo, money) = Zoo::parse_money(&file(v, 2, 2, &[], &[])).unwrap();
         let time = if v >= 73 { 123_456 } else { 0 };
@@ -418,7 +418,7 @@ fn the_play_time_is_read_from_version_73_and_written_back() {
             let mut zoo = zoo.clone();
             zoo.clocks.play_time = set;
             let back = parse(&zoo.write(&money).unwrap());
-            assert_eq!(back.clocks.play_time, if v >= 73 { set } else { 0 }, "{v}");
+            assert_eq!(back.clocks.play_time, set, "{v}");
         }
     }
 }
