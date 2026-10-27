@@ -241,7 +241,7 @@ fn the_full_install_gives_two_branches_22_categories_and_about_120_programs_at_9
     let map = crate::lists::freeform_list(&vfs).remove(0);
     let t = Tree::of_scenario(&vfs, &map.file).unwrap();
     let categories = t.branches.iter().map(|b| b.categories.len()).sum::<usize>();
-    // 118 programs, or 122 with the content update that adds four to Animal Houses.
+    // 118 programs, or 122 with the content update that adds four to the category 23204.
     let programs = t.programs().count();
     assert_eq!((t.branches.len(), categories), (2, 22));
     assert!([118, 122].contains(&programs), "{programs}");
