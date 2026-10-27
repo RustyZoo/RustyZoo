@@ -501,6 +501,13 @@ impl Build {
         self
     }
 
+    /// The tree of a new game is built (research 7.4): its programs not done make their targets
+    /// unavailable, then the ini rewards apply again.
+    pub fn start_research(&mut self, cat: &Catalogue, ini: &Config, tree: &crate::research::Tree) {
+        tree.apply(cat, &mut self.avail);
+        self.avail.unlock(cat, ini);
+    }
+
     /// Makes every type with this name id available or not, whatever its subtype, and makes the
     /// open list again when a flag changed (research 6.2). Whether a flag changed.
     pub fn set_available(

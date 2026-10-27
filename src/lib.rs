@@ -28,6 +28,7 @@ pub mod path;
 pub mod pe;
 pub mod place;
 pub mod render;
+pub mod research;
 pub mod scenario;
 pub mod sim;
 pub mod sprite;

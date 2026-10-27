@@ -124,7 +124,18 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
     let menu = Menu::new(ini.clone(), &files.0, Some(files.0.join("user")), None, 0);
     let scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=t\n[t]\ntrulea=2\n\
         [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=1\n";
-    let extra = [("s/play.scn", scn.to_vec())];
+    let extra = [
+        ("s/play.scn", scn.to_vec()),
+        ("s/res.scn", b"[start]\nresearch=resx.cfg\n".to_vec()),
+        ("resx.cfg", b"[branches]\nbranch=rb.cfg\n".to_vec()),
+        ("rb.cfg", b"[branch]\nname=1\ncategory=rc.cfg\n".to_vec()),
+        (
+            "rc.cfg",
+            b"[category]\nname=2\nprogram=ra.cfg\nprogram=rd.cfg\n".to_vec(),
+        ),
+        ("ra.cfg", b"[research]\ncost=0\n".to_vec()),
+        ("rd.cfg", b"[research]\ncost=5\n".to_vec()),
+    ];
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
@@ -610,5 +621,35 @@ fn a_scenario_start_prepares_its_goals_and_a_later_game_drops_them() {
         // A scenario file that cannot be read starts a plain game.
         app.begin(&start(Some("s/none.scn")));
         assert!(seen(app, 200).is_empty());
+    });
+}
+
+#[test]
+fn a_scenario_start_builds_the_research_tree_and_the_next_game_drops_it() {
+    with_menu("research-tree", "", |app, _| {
+        let start = |scenario: Option<&str>| Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: scenario.map(String::from),
+        };
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        // One of two programs is free; a scenario with no research has an empty tree.
+        app.begin(&start(Some("s/res.scn")));
+        assert_eq!(app.sim.research_share(), 50);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.begin(&start(Some("s/play.scn")));
+        assert_eq!(app.sim.research_share(), 100);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.begin(&start(Some("s/none.scn")));
+        assert_eq!(app.sim.research_share(), 0);
     });
 }
