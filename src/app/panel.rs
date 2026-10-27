@@ -49,6 +49,27 @@ impl App<'_> {
         }
     }
 
+    /// Whether a click here would select what is under the pointer ([`App::pick_or_select`] and
+    /// [`App::select`]: a unit, a building with a panel, the gate of an exhibit); false while a
+    /// tool or a carried unit takes the click.
+    pub(super) fn over_selectable(&self) -> bool {
+        let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
+            return false;
+        };
+        let world = &game.world;
+        if game.build.tool().is_some() || game.build.gating() || game.carry.is_some() {
+            return false;
+        }
+        let Some(id) = (game.staged).pick(game.camera.view_point(ui.pointer()), 0, |id| {
+            world.find(id).is_some()
+        }) else {
+            return false;
+        };
+        let gate = world.find(id).is_some_and(|at| world.is_door(at))
+            && world.exhibits().list().iter().any(|e| e.gate == Some(id));
+        world.units.get(id).is_some() || self.building_layout(id).is_some() || gate
+    }
+
     /// Shows the exhibit panel, with the exhibit list button down, on exhibit `id`.
     pub(super) fn open_exhibit(&mut self, id: u32) {
         let Some(ui) = &mut self.ui else { return };

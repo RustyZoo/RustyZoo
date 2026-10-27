@@ -157,6 +157,8 @@ pub enum Command {
     Char(u8),
     /// A key or a mouse button was pressed: stops the intro movie that plays. Ignored by the game.
     Skip,
+    /// `award add ID`: the zoo holds the award (`awards.md` 4.1).
+    Award(i32),
     Save(&'static str),
     Load(&'static str),
 }
@@ -194,6 +196,7 @@ impl fmt::Display for Command {
             }
             Command::Char(byte) => write!(f, "char {byte}"),
             Command::Skip => f.write_str("skip"),
+            Command::Award(id) => write!(f, "award add {id}"),
             Command::Save(file) => write!(f, "save {file}"),
             Command::Load(file) => write!(f, "load {file}"),
         }
@@ -211,6 +214,7 @@ impl FromStr for Command {
             _ => Err(format!("{word} takes a file name: {text:?}")),
         };
         Ok(match words.as_slice() {
+            ["award", "add", id] => Command::Award(number(id)?),
             ["save", ..] => Command::Save(file("save")?),
             ["load", ..] => Command::Load(file("load")?),
             ["scroll", x, y] => {
@@ -433,6 +437,12 @@ pub struct App<'a> {
     pointer: Option<(i32, i32)>,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
     on_map: bool,
+    /// Whether it is over an editable text field.
+    on_text: bool,
+    /// Whether the last pass began a long operation: rotating or zooming a map, loading a game.
+    busy: bool,
+    /// Told when a long operation begins, so the window can show the busy cursor around it.
+    busy_hook: Option<Box<dyn FnMut() + 'a>>,
     frame: Framebuffer,
     /// The interface drawn over the map, if the game has one.
     ui: Option<Interface>,
@@ -504,6 +514,8 @@ pub struct App<'a> {
     fullscreen: bool,
     /// The question that is open and what it leads to.
     asked: Option<Asked>,
+    /// Whether the end dialog of a scenario is open.
+    ending: bool,
     /// The save dialog, while it is open, and the list of saved games, while it is shown.
     saving: Option<saves::Saving>,
     listing: Option<saves::Listing>,
@@ -516,6 +528,15 @@ pub struct App<'a> {
     faded: bool,
     bare: bool,
 }
+
+/// The layouts of the game screen that stopping or ending a game hides.
+const GAME_LAYOUTS: [i32; 5] = [
+    OPTIONS_PANEL,
+    MAIN_PANEL,
+    crate::build::CONSTRUCTION,
+    crate::build::OBJECTS,
+    crate::menu::FREEFORM_LAYOUT,
+];
 
 /// What an open question leads to when it is answered No: stopping the game for the menu, or
 /// ending the program (main menu 9).
@@ -614,6 +635,9 @@ impl<'a> App<'a> {
             quit: false,
             pointer: None,
             on_map: true,
+            on_text: false,
+            busy: false,
+            busy_hook: None,
             frame: Framebuffer::new(size.0, size.1),
             ui: None,
             map: Framebuffer::new(0, 0),
@@ -654,6 +678,7 @@ impl<'a> App<'a> {
             settings,
             fullscreen: false,
             asked: None,
+            ending: false,
             saving: None,
             listing: None,
             user: None,
@@ -831,6 +856,7 @@ impl<'a> App<'a> {
         self.dev_lines = Vec::new();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
+        self.busy = false;
         (self.music_changed, self.music_restarted) = (false, false);
         if let Some(ui) = &mut self.ui {
             ui.set_time(now);
@@ -846,6 +872,7 @@ impl<'a> App<'a> {
             return None;
         }
         self.on_map = self.ui.as_mut().is_none_or(Interface::pointer_on_map);
+        self.on_text = self.ui.as_mut().is_some_and(Interface::pointer_on_text);
         if let Some(ui) = &mut self.ui {
             self.ui_events.extend(ui.take_events());
             self.ui_sounds.extend(ui.take_sounds());
@@ -920,6 +947,7 @@ impl<'a> App<'a> {
                 self.exhibits_told();
             }
             self.status_told(report.bars);
+            self.scenario_over();
         }
         self.undo_button();
         self.panel_pass(now);
@@ -1116,6 +1144,9 @@ impl<'a> App<'a> {
     }
 
     fn apply(&mut self, command: Command) {
+        if matches!(command, Command::Rotate(_) | Command::Zoom(_)) && self.game.is_some() {
+            self.start_busy();
+        }
         match command {
             Command::Close => return self.close(),
             Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
@@ -1132,6 +1163,12 @@ impl<'a> App<'a> {
                 return;
             }
             Command::Save(file) => return self.save_game(file),
+            Command::Award(id) => {
+                if let Some(game) = &mut self.game {
+                    crate::award::add(&mut game.world.zoo.awards, id);
+                }
+                return;
+            }
             Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
                 return self.save_key();
             }
@@ -1275,6 +1312,12 @@ impl<'a> App<'a> {
             (Command::Char(b'z' | b'Z'), Some(_)) if keys => {
                 if let Some(ui) = &mut self.ui {
                     ui.press_button(STATUS_BUTTON);
+                }
+            }
+            // The O key presses the Scenario button (input 10).
+            (Command::Char(b'o' | b'O'), Some(_)) if keys => {
+                if let Some(ui) = &mut self.ui {
+                    ui.press_button(scenario::BUTTON);
                 }
             }
             // The `$` key donates (input 4.8).
@@ -1669,6 +1712,7 @@ impl<'a> App<'a> {
         for id in selected {
             match id {
                 SAVE_BUTTON if self.game.is_some() => self.save_pressed(),
+                scenario::BUTTON if self.game.is_some() => self.objectives(),
                 LOAD_BUTTON if self.game.is_some() => self.ask(Asked::Load),
                 crate::menu::SAVED_LOAD if self.listing_open() => self.load_listed(),
                 crate::menu::LOAD if self.game.is_none() => self.open_list(),
@@ -1790,6 +1834,7 @@ impl<'a> App<'a> {
     fn requested(&mut self) {
         match self.menu.as_mut().and_then(Menu::take_request) {
             Some(Request::Open(start)) => {
+                self.start_busy();
                 let Some(menu) = &self.menu else { return };
                 let zoo = menu.load(&start.path, self.renderer.catalogue());
                 self.open(&start, zoo);
@@ -1818,6 +1863,7 @@ impl<'a> App<'a> {
 
     /// `load FILE` of a script: a saved game opens as a Continue does. Whether it opened.
     fn load_saved(&mut self, file: &str) -> bool {
+        self.start_busy();
         let catalogue = self.renderer.catalogue();
         let read = std::fs::read(file).map_err(|e| format!("{file}: {e}"));
         let read = read.and_then(|bytes| {
@@ -1923,6 +1969,9 @@ impl<'a> App<'a> {
     /// The answer to the question that was asked: Yes saves first and goes on if it saved, No goes
     /// on, Cancel stays.
     fn answered(&mut self, code: i32) {
+        if self.ending {
+            return self.end_answered(code);
+        }
         if let Some(saving) = self.saving.take() {
             return self.save_answered(code, saving);
         }
@@ -1960,7 +2009,8 @@ impl<'a> App<'a> {
     /// The window is closed: from the menu the program ends at once; in a game it asks first. A
     /// question that is open is answered Cancel before (input 4.7).
     fn close(&mut self) {
-        if self.game.is_none() || self.ui.is_none() {
+        // The scenario is over and its result stored: there is nothing left to save.
+        if self.game.is_none() || self.ui.is_none() || self.ending {
             self.quit = true;
             return;
         }
@@ -2025,13 +2075,7 @@ impl<'a> App<'a> {
         };
         self.game = None;
         (self.painted, self.drawn_at) = (None, None);
-        for id in [
-            OPTIONS_PANEL,
-            MAIN_PANEL,
-            crate::build::CONSTRUCTION,
-            crate::build::OBJECTS,
-            crate::menu::FREEFORM_LAYOUT,
-        ] {
+        for id in GAME_LAYOUTS {
             if let Some(i) = ui.tree.find(id) {
                 ui.tree.hide(i);
             }
@@ -2206,14 +2250,58 @@ impl<'a> App<'a> {
     }
 
     /// The cursor to show, by its number without the 50 of the alternate set ([`crate::cursor`]):
-    /// over the map view the terrain tool's while it is the map view's tool, else the normal one;
-    /// over the interface the default.
+    /// over the interface the text cursor on an editable field, else the default; over the map
+    /// view the terrain tool's, the bulldozer's, the drag's, the pending object's, the hover's
+    /// (an exhibit under the assign tool, a fence piece under the gate tool, or, with no tool, a
+    /// selectable entity), else the normal one.
     pub fn cursor(&self) -> u32 {
+        use crate::cursor as c;
         if !self.on_map {
-            return crate::cursor::DEFAULT;
+            return if self.on_text { c::TEXT } else { c::DEFAULT };
         }
-        let tool = self.game.as_ref().and_then(|g| g.terrain.cursor());
-        tool.unwrap_or(crate::cursor::NORMAL)
+        let Some(game) = &self.game else {
+            return c::NORMAL;
+        };
+        if let Some(tool) = game.terrain.cursor() {
+            return tool;
+        }
+        let over =
+            game.staff.over.is_some() || (self.assigning().is_none() && self.over_selectable());
+        let b = &game.build;
+        match () {
+            _ if b.bulldozing() => c::BULLDOZER,
+            _ if b.dragging() || !game.run.is_empty() => c::DRAG,
+            // The gate tool's pending gate is the hover, not a pending object.
+            _ if b.gating() => {
+                if game.gate.is_some() {
+                    c::HOVER
+                } else {
+                    c::NORMAL
+                }
+            }
+            _ if game.pending.is_some() => c::PLACING,
+            _ if over => c::HOVER,
+            _ => c::NORMAL,
+        }
+    }
+
+    /// Whether the last pass began a long operation, which shows the busy cursor (string tables
+    /// 6.1): rotating or zooming a map, loading a game from the interface or a script. A save
+    /// never does.
+    pub fn busy(&self) -> bool {
+        self.busy
+    }
+
+    /// Sets what is called when a long operation begins.
+    pub fn on_busy(&mut self, hook: impl FnMut() + 'a) {
+        self.busy_hook = Some(Box::new(hook));
+    }
+
+    fn start_busy(&mut self) {
+        self.busy = true;
+        if let Some(hook) = &mut self.busy_hook {
+            hook();
+        }
     }
 
     pub fn paused(&self) -> bool {
@@ -2286,10 +2374,21 @@ impl<'a> App<'a> {
     /// `unit gate ID open|close GATE` for the units of the world. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
+    /// How many awards the zoo holds (none without a game).
+    pub fn awards(&self) -> usize {
+        self.game.as_ref().map_or(0, |g| g.world.zoo.awards.len())
+    }
+
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
         let mut lines = Vec::new();
         let lead = format!("pass {pass} t={now}");
         lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
+        // One count line per pass that gave an award: the awards the zoo holds after it.
+        let given = self
+            .applied
+            .iter()
+            .filter(|c| matches!(c, Command::Award(_)));
+        lines.extend(given.map(|_| format!("{lead} awards {}", self.awards())));
         lines.extend(self.ui_events.iter().map(|e| format!("{lead} ui {e}")));
         lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
         lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
@@ -2381,6 +2480,7 @@ mod gates;
 mod guest_panel;
 mod panel;
 mod saves;
+mod scenario;
 mod staff_panel;
 mod tank_panel;
 mod terrain;
@@ -2405,6 +2505,9 @@ mod start_tests;
 
 #[cfg(test)]
 mod saves_tests;
+
+#[cfg(test)]
+mod scenario_tests;
 
 #[cfg(test)]
 mod terrain_tests;

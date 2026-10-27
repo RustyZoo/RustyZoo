@@ -392,3 +392,77 @@ fn ctrl_s_and_ctrl_l_close_the_open_panels_and_clear_the_selection_before_the_di
         let _ = now;
     });
 }
+
+#[test]
+fn loading_a_saved_game_from_the_list_is_a_busy_pass() {
+    with_menu("busy-load", INI, |app, _| {
+        let mut now = started(app);
+        let told = std::rc::Rc::new(std::cell::Cell::new(0));
+        let hook = told.clone();
+        app.on_busy(move || hook.set(hook.get() + 1));
+        // Opening the list and choosing a row load nothing.
+        for commands in [
+            [Command::Key(Key::L, true, false)].as_slice(),
+            &key(Key::N),
+            &click(ROW_2.0, ROW_2.1),
+        ] {
+            now = pass(app, now, commands);
+            assert!(!app.busy());
+        }
+        assert_eq!(told.get(), 0);
+        // The Load button in play loads: the hook is told once, and the pass is busy.
+        now = pass(app, now, &click(PLAY.0, PLAY.1));
+        assert!(app.busy() && told.get() == 1);
+        assert!(!shown(app, 39), "the file was loaded");
+        // The next pass is not.
+        now = pass(app, now, &[]);
+        assert!(!app.busy());
+        // From the main menu, through the list, too.
+        pass(app, now, &[Command::Key(Key::Escape, false, false)]);
+    });
+    with_menu("busy-load-menu", INI, |app, _| {
+        app.pass(0, &[]);
+        let mut now = pass(app, 0, &click(LOAD_SAVED.0, LOAD_SAVED.1));
+        now = pass(app, now, &click(ROW_2.0, ROW_2.1));
+        assert!(!app.busy());
+        pass(app, now, &click(PLAY.0, PLAY.1));
+        assert!(app.busy() && app.camera().is_some());
+    });
+}
+
+#[test]
+fn rotating_or_zooming_with_no_game_is_not_busy() {
+    with_menu("busy-turn-menu", INI, |app, _| {
+        app.pass(0, &[]);
+        assert!(app.camera().is_none());
+        let now = pass(app, 0, &[Command::Rotate(true), Command::Zoom(false)]);
+        assert!(!app.busy());
+        let _ = now;
+    });
+    with_game("busy-turn", |app, _| {
+        let mut now = pass(app, 0, &[]);
+        for command in [Command::Rotate(false), Command::Zoom(true)] {
+            now = pass(app, now, &[command]);
+            assert!(app.busy(), "{command}");
+            now = pass(app, now, &[]);
+            assert!(!app.busy());
+        }
+    });
+}
+
+#[test]
+fn a_save_is_not_busy() {
+    with_game("busy-save", |app, files| {
+        let mut now = pass(app, 0, &[]);
+        app.last_file = Some(files.0.join("start.zoo"));
+        now = pass(app, now, &[Command::Key(Key::S, true, false)]);
+        assert!(!app.busy());
+        now = type_name(app, now, "made");
+        assert!(files.0.join("made.zoo").is_file());
+        assert!(!app.busy());
+        let file = files.0.join("scripted.zoo");
+        let file: &'static str = Box::leak(file.to_string_lossy().into_owned().into_boxed_str());
+        pass(app, now, &[Command::Save(file)]);
+        assert!(std::path::Path::new(file).is_file() && !app.busy());
+    });
+}
