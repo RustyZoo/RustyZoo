@@ -1001,7 +1001,10 @@ pub fn place(
     if !money.can_pay(p.price) {
         return Outcome::Refused(Some(NO_FUNDS));
     }
-    let entity = entity(ty, p, colors);
+    let mut entity = entity(ty, p, colors);
+    if let Some(common) = entity.common.as_mut() {
+        common.name = unit::named(world, ty);
+    }
     let shape = shape(&entity);
     let tile = world.tile_index(p.tile.0, p.tile.1);
     // The painting of a path on water is its own action, with no price: only the path's own price comes

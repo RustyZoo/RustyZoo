@@ -67,10 +67,10 @@ fn div_round(a: i64, b: i64) -> i64 {
 
 impl Font {
     /// The font a layout asks for: `face` is the face string and `size` the size string, whose
-    /// leading digits are the size in points. A face holding " Bold" (or ",weight" with a weight
-    /// of 600 or more) is Liberation Sans Bold, every other face Liberation Sans Regular. A size
-    /// without digits is the default 8 points; sizes above 200 points (and numbers too long for
-    /// 32 bits) are cut to 200.
+    /// leading digits are the size in points. A face holding a `BOLD_WORDS` word (or ",weight"
+    /// with a weight of 600 or more) is Liberation Sans Bold, every other face Liberation Sans
+    /// Regular. A size without digits is the default 8 points; sizes above 200 points (and
+    /// numbers too long for 32 bits) are cut to 200.
     pub fn request(face: &str, size: &str) -> Font {
         let (bold, ppem) = parse_request(face, size);
         Font::new(bold, ppem)
@@ -163,12 +163,16 @@ impl Fonts {
     }
 }
 
+/// The words that name the bold style in the face strings of each language: English, French,
+/// German, Italian (" Gras" also holds " Grassetto"), Spanish and Portuguese.
+const BOLD_WORDS: [&str; 5] = [" Bold", " Gras", " Fett", " Negrita", " Negrito"];
+
 /// Whether the request is for the bold face, and its pixel size.
 fn parse_request(face: &str, size: &str) -> (bool, u32) {
     let weight = face
         .split_once(',')
         .map_or(0, |(_, w)| digits(w.trim_start()));
-    let bold = face.contains(" Bold") || weight >= 600;
+    let bold = BOLD_WORDS.iter().any(|word| face.contains(word)) || weight >= 600;
     let points = match digits(size) {
         0 => DEFAULT_POINTS,
         n => n.min(MAX_POINTS),

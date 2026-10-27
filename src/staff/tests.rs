@@ -5,8 +5,8 @@ use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::sim::{Rng, Sim};
 use crate::unit::Staff;
-use crate::unit::testing::{centre, entity, world};
-use crate::zoo::Clocks;
+use crate::unit::testing::{centre, entity, world, world_with};
+use crate::zoo::{Clocks, StaffRecord};
 
 fn staff_type(class: &'static str, ini: &str) -> EntityType {
     EntityType {
@@ -170,6 +170,7 @@ fn a_staff_member_draws_its_colours_before_its_counters_at_its_creation() {
             _ => 0,
         };
         assert_eq!((made.work, made.chase, made.crowd), (work, chase, crowd));
+        assert_eq!(made.colours.len(), 2);
         assert_eq!(rng, expect, "{kind:?}: nothing else drawn");
     }
 }
@@ -321,4 +322,183 @@ fn a_worker_starts_the_countdown_of_its_unreachable_lists_and_nobody_else_does()
     }
     let (staff, _) = first_turn(&section("cClearInvalidListInterval=500"));
     assert_eq!(staff.clear, 0, "a keeper has none");
+}
+
+/// A 3 by 3 pen from (1, 1) in a 12 by 8 map with its gate on the south side at column 2 (its
+/// inside tile is (2, 3)), the keeper 1, the worker 2 and the guide 3 on the grounds, a guest 4,
+/// and a second pen from (6, 1) with no gate. `records` go to the three staff members.
+fn pens(records: [Option<StaffRecord>; 3]) -> World {
+    world_with((12, 8), |zoo| {
+        let mut id = 100;
+        for x0 in [1, 6] {
+            for (x, y) in (x0..x0 + 3).flat_map(|x| (1..4).map(move |y| (x, y))) {
+                for (d, edge) in [(0, y == 1), (2, x == x0 + 2), (4, y == 3), (6, x == x0)] {
+                    if edge {
+                        id += 1;
+                        zoo.entities
+                            .push(entity("fences", "exhibit", id, centre((x, y)), d));
+                    }
+                }
+            }
+        }
+        let classes = ["keeper", "maint", "tour", "guests"];
+        for (n, class) in classes.into_iter().enumerate() {
+            let mut member = entity(class, "hand", 1 + n as u32, centre((10, n as i32)), 0);
+            member.subtype = "m".into();
+            let record = records.get(n).cloned().flatten();
+            member.common.as_mut().unwrap().staff = record.map(Box::new);
+            zoo.entities.push(member);
+        }
+        zoo.habitat_tiles = vec![(1, 1), (6, 1)];
+        zoo.habitat_gates = vec![((2, 3), 4), ((-1, -1), -1)];
+        let info = crate::zoo::HabitatInfo {
+            name: "Pen".into(),
+            stats: [0; 9],
+            created: 0,
+            viewing: 0,
+            serviced: 0,
+        };
+        zoo.habitat_info = vec![info.clone(), info];
+    })
+}
+
+fn staff_types() -> Catalogue {
+    let mut cat = Catalogue::default();
+    for class in ["keeper", "maint", "tour"] {
+        cat.push(staff_type(class, ""));
+    }
+    cat
+}
+
+fn staff_of(w: &World, id: u32) -> Staff {
+    match &w.units.get(id).unwrap().part {
+        Part::Staff(s) => s.clone(),
+        _ => panic!("not staff"),
+    }
+}
+
+fn record() -> StaffRecord {
+    StaffRecord {
+        work: 7,
+        chase: -1,
+        tiles: vec![[2, 3], [9, 9], [-1, -1], [7, 2], [2, 3]],
+        crowd: Some(5),
+        members: vec![4, 99, 1],
+        leg: true,
+        duties: vec![true, false, true, false],
+        captured: 0,
+        own: Vec::new(),
+    }
+}
+
+#[test]
+fn a_loaded_staff_member_takes_the_counters_lists_and_switches_of_its_record() {
+    let cat = staff_types();
+    let mut w = pens([Some(record()), Some(record()), Some(record())]);
+    let pen = w.exhibits().region(3 * 12 + 2).unwrap();
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim.load(&mut w, &cat);
+    for id in 1..=3 {
+        let s = staff_of(&w, id);
+        assert_eq!((s.work, s.chase), (7, -1), "{id}");
+        // The tile inside a gate gives its exhibit, once; a tile off the map and the grounds none.
+        let other = w.exhibits().region(2 * 12 + 7).unwrap();
+        assert_eq!(s.assigned, [pen, other], "{id}");
+        assert_eq!(s.off, [false, true, false, true], "{id}");
+        // The group keeps the guests of the world, in the record's order.
+        assert_eq!((s.members, s.leg), (vec![4], true), "{id}");
+    }
+    assert_eq!(staff_of(&w, 3).crowd, 5);
+}
+
+#[test]
+fn the_draws_of_a_loaded_staff_member_do_not_depend_on_its_record() {
+    let cat = staff_types();
+    let next = |records| {
+        let mut w = pens(records);
+        let mut sim = Sim::new(b"");
+        sim.set_seed(1);
+        sim.start_game(16, Clocks::default());
+        sim.load(&mut w, &cat);
+        (sim.rng.clone(), staff_of(&w, 3))
+    };
+    let (with, a) = next([Some(record()), Some(record()), Some(record())]);
+    let (without, b) = next([None, None, None]);
+    assert_eq!(with, without);
+    // A record of a version below 54 has no crowd countdown: the draw stays.
+    let old = StaffRecord {
+        crowd: None,
+        ..record()
+    };
+    let (_, c) = next([None, None, Some(old)]);
+    assert_eq!(c.crowd, b.crowd);
+    assert_ne!(a.crowd, b.crowd);
+    assert_eq!((c.work, c.chase), (7, -1));
+}
+
+#[test]
+fn a_saved_staff_member_writes_its_live_state_over_the_record_it_was_read_with() {
+    let cat = staff_types();
+    let mut w = pens([Some(record()), None, None]);
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim.load(&mut w, &cat);
+    let (pen, other) = (
+        w.exhibits().region(3 * 12 + 2).unwrap(),
+        w.exhibits().region(2 * 12 + 7).unwrap(),
+    );
+    let saved = |w: &World, id: u32| {
+        let mut zoo = w.saved(|_| true);
+        w.finish_save(&mut zoo, &cat);
+        let at = w.find(id).unwrap();
+        *zoo.entities[at]
+            .common
+            .as_ref()
+            .unwrap()
+            .staff
+            .clone()
+            .unwrap()
+    };
+    // The assignment is written as the tile inside the gate, in the order of the list and once;
+    // an exhibit that lost its gate is not written.
+    let r = saved(&w, 1);
+    assert_eq!(r.tiles, [[2, 3], [8, 3]]);
+    w.exhibits_mut().get_mut(other).unwrap().gate = None;
+    assert_eq!(saved(&w, 1).tiles, [[2, 3]]);
+    assert_eq!((r.work, r.chase, r.crowd), (7, -1, Some(5)));
+    assert_eq!(r.duties, [true, false, true, false]);
+    assert_eq!(r.members, [4]);
+    assert_ne!(pen, other);
+    // The live state wins.
+    if let Some(Part::Staff(s)) = w.units.get_mut(1).map(|u| &mut u.part) {
+        s.assigned.clear();
+        (s.work, s.chase) = (i32::MIN, i32::MAX);
+        s.off = [true, false, false, true];
+        s.members = vec![4, 4];
+    }
+    let r = saved(&w, 1);
+    assert_eq!((r.tiles.len(), r.work, r.chase), (0, i32::MIN, i32::MAX));
+    assert_eq!(r.duties, [false, true, true, false]);
+    assert_eq!(r.members, [4, 4]);
+    // A member made in play, never read, gets a full list of duties, all on.
+    let r = saved(&w, 2);
+    assert_eq!(r.duties, [true, true, true, false]);
+    assert_eq!((r.tiles.len(), r.members.len(), r.leg), (0, 0, false));
+}
+
+#[test]
+fn a_duty_kind_the_data_lacks_is_off_and_not_counted_when_saved() {
+    let mut s = Staff::default();
+    let saved =
+        |s: &Staff, kinds: usize| s.record(StaffRecord::default(), Vec::new(), kinds).duties;
+    assert_eq!(saved(&s, 3), [true, true, true, false]);
+    assert_eq!(saved(&s, 4), [true; 4]);
+    assert_eq!(saved(&s, 0), [false; 4]);
+    assert_eq!(saved(&s, usize::MAX), [true; 4]);
+    s.off[1] = true;
+    assert_eq!(saved(&s, 4), [true, false, true, true]);
+    assert_eq!(saved(&s, 3), [true, false, true, false]);
 }

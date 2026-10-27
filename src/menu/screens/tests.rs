@@ -270,6 +270,7 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
             },
             reset: true,
             reset_fences: false,
+            scenario: Some("s/aa.scn".into()),
         }))
     );
     // The third entry's file is missing: no picture, no story, but it can be played (it fails
@@ -375,6 +376,7 @@ fn the_freeform_screen_lists_the_maps_and_shows_the_first_with_the_starting_cash
             },
             reset: true,
             reset_fences: true,
+            scenario: Some("f/m1.scn".into()),
         }))
     );
     ui.select_row(11504, Some(1));

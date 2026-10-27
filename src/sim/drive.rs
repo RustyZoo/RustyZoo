@@ -357,7 +357,8 @@ impl Run {
             "maint" => "Worker",
             _ => "Animal",
         };
-        let name = crate::place::unit::name(&mut self.world, ty, label);
+        let label = (self.world.units.names.get(&ty.name_id)).map_or(label.into(), Clone::clone);
+        let name = crate::place::unit::name(&mut self.world, ty, &label);
         let entity = crate::zoo::Entity {
             class: ty.class.into(),
             type_name: text(&ty.type_name),

@@ -184,13 +184,14 @@ impl World {
     /// update. Whether it was added.
     pub fn add_filter(&mut self, ty: &EntityType, tile: usize, rotation: u32) -> bool {
         let w = self.zoo.width as usize;
+        let name = crate::place::unit::named(self, ty);
         let common = Common {
             x: (tile % w) as i32 * 64 + 32,
             y: (tile / w) as i32 * 64 + 32,
             z: self.zoo.tiles[tile].elevation * 16,
             rotation: rotation % 8,
             id: 0,
-            name: String::new(),
+            name,
             colors: Vec::new(),
             fence: None,
             filter: Some(placed(ty)),

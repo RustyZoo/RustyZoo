@@ -5,6 +5,7 @@
 //! Nothing here knows the interface or the clock: [`Tool`] works on a [`World`] and the cash.
 
 use crate::config::{Config, to_float, to_int};
+use crate::cursor;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{CONSTRUCTION, Money};
 use crate::render::{Mark, corner_elevation};
@@ -331,6 +332,17 @@ impl Tool {
     /// The mode while a terrain tab is the map view's tool.
     pub fn mode(&self) -> Option<Mode> {
         self.mode
+    }
+
+    /// The cursor while a terrain tab is the map view's tool (terrain editing 7.1): the painter's,
+    /// or the shaper's idle, dragging (button down) and levelling (button down in a level mode).
+    pub fn cursor(&self) -> Option<u32> {
+        Some(match (self.mode?, self.pressed, self.level) {
+            (Mode::Paint, ..) => cursor::TERRAIN_PAINT,
+            (Mode::Modify, false, _) => cursor::TERRAIN_IDLE,
+            (Mode::Modify, true, false) => cursor::TERRAIN_DRAG,
+            (Mode::Modify, true, true) => cursor::TERRAIN_LEVEL,
+        })
     }
 
     pub fn size(&self) -> usize {

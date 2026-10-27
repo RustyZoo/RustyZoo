@@ -6,15 +6,16 @@
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
-//! so far: the shows, the water ripples, the ambient creatures, and the scenario, research and
-//! marketing managers, which are empty until M7.
+//! so far: the shows, the water ripples, the ambient creatures, and the research and marketing
+//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (its rules and
+//! triggers are stubs).
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
 //! the commands such a run applies at a step.
 //!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
-//! step, `sim month M Y` when a step acts on the month flag of the one before, and the zoo
-//! status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`, `sim rate ID [KEY SHOWN]...`
+//! step, `sim scenario ...` ([`crate::scenario`]), `sim month M Y` when a step acts on the month
+//! flag of the one before, and the zoo status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`, `sim rate ID [KEY SHOWN]...`
 //! when exhibit `ID` is rated at its update (habitat rating 4), with the suitability its record of
 //! each species gives, and at a month end the
 //! `sim wages ID AMOUNT` of each staff member and `sim upkeep AMOUNT` of the buildings ([`crate::month`]).
@@ -37,6 +38,7 @@ use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::guest;
 use crate::money::{self, Money};
+use crate::scenario::{Env, Scenario};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -167,6 +169,8 @@ pub struct Sim {
     /// doubled tank filter, tank staff 7.3), by id.
     bulldozed: Vec<u32>,
     lines: Vec<String>,
+    /// The scenario being played, if the game is one.
+    scenario: Option<Scenario>,
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
     /// first seeding, and after every hire (unit placing 4.3).
     pub hire_male: bool,
@@ -195,6 +199,7 @@ impl Sim {
             removals: Vec::new(),
             bulldozed: Vec::new(),
             lines: Vec::new(),
+            scenario: None,
             hire_male: false,
         };
         sim.reseed();
@@ -255,11 +260,18 @@ impl Sim {
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
         self.bulldozed.clear();
+        self.scenario = None;
         self.events.restore(&clocks.queue);
         if tiles != self.tiles {
             self.tiles = tiles;
             self.reseed();
         }
+    }
+
+    /// The scenario of the game just opened starts: its start triggers fire.
+    pub fn start_scenario(&mut self, scenario: Scenario) {
+        scenario.start(&mut self.lines);
+        self.scenario = Some(scenario);
     }
 
     /// A scenario or freeform map is a new game: its calendar starts on 1 January 2001 whatever
@@ -592,7 +604,15 @@ impl Sim {
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;
         self.world_secs = self.world_secs.wrapping_add(total / 1000);
-        // The scenario, research and marketing managers have nothing to do before M7.
+        // The scenario manager.
+        if let Some(scenario) = &mut self.scenario {
+            let env = Env {
+                month: money.month as i32,
+                year: money.year as i32,
+            };
+            scenario.update(step, &env, &mut self.lines);
+        }
+        // The research and marketing managers have nothing to do before M7.
         Report {
             month_end,
             clear_unreachable,

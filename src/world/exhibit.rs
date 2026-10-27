@@ -13,9 +13,6 @@ use crate::place::path_shape;
 use crate::timing::Date;
 use std::collections::{HashMap, HashSet};
 
-/// The language of the running game: US English.
-const LOCALE: u32 = 1033;
-
 /// The message that the exhibit is inaccessible to the staff.
 pub const INACCESSIBLE: i32 = 11000;
 /// The message that the entrance of the exhibit is blocked.
@@ -104,7 +101,7 @@ impl World {
             let (this, last, total) = (0, 1, 2);
             if let Some(e) = id.and_then(|id| self.exhibits.get_mut(id)) {
                 e.gate = piece;
-                if self.zoo.locale == LOCALE {
+                if self.zoo.locale == self.language.number {
                     e.name.clone_from(&info.name);
                 }
                 // Stored this month, last month, total; kept last month, this month, total.
@@ -230,6 +227,28 @@ impl World {
     pub fn rename(&mut self, id: u32, name: String) {
         if let Some(e) = self.exhibits.get_mut(id) {
             e.name = name;
+        }
+    }
+
+    /// A loaded zoo whose stored locale is not the install language keeps no exhibit name: each
+    /// exhibit that has a record gets the default name of its kind in the install language, the
+    /// word and the counter (exhibits and money 3.6). Made after the tanks and their shows are known.
+    pub(super) fn name_loaded(&mut self) {
+        if self.zoo.locale == self.language.number {
+            return;
+        }
+        let stored: HashSet<u32> = (self.zoo.habitat_tiles.iter())
+            .filter_map(|&(x, y)| self.tile_index(x, y))
+            .filter_map(|t| self.exhibits.region(t))
+            .filter(|&r| r != GROUNDS && r != EXTERIOR)
+            .collect();
+        let named = (self.exhibits.list_mut().iter_mut()).filter(|e| stored.contains(&e.id));
+        for (counter, e) in (1..).zip(named) {
+            let kind = match &e.tank {
+                Some(t) => 1 + usize::from(t.show),
+                None => 0,
+            };
+            e.name = format!("{} {counter}", self.words[kind]);
         }
     }
 

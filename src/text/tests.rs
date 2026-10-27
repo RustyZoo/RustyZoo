@@ -77,6 +77,31 @@ fn requests_read_the_strings_like_the_game() {
 }
 
 #[test]
+fn bold_words_of_every_language_make_the_bold_face() {
+    for face in [
+        "Arial Gras",
+        "Arial Grassetto",
+        "Arial Fett",
+        "Arial Negrita",
+        "Arial Negrito",
+        "Arial,600",
+        "Arial,900",
+    ] {
+        assert!(Font::request(face, "9").is_bold(), "{face:?}");
+    }
+    // The words are compared in the letter case written, and unknown faces stay regular.
+    for face in [
+        "Arial gras",
+        "Arial bold",
+        "Arial 700",
+        "Arial,599",
+        "Arial Gra",
+    ] {
+        assert!(!Font::request(face, "9").is_bold(), "{face:?}");
+    }
+}
+
+#[test]
 fn fonts_are_cached_per_face_and_size() {
     let mut fonts = Fonts::default();
     fonts.get("Arial", "9");
