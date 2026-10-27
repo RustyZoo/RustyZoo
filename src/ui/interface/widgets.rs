@@ -238,6 +238,18 @@ impl Interface {
         }
     }
 
+    /// Lets the text field `id` take text wider than the field; `false` if it is not a field.
+    pub fn set_wide_text(&mut self, id: i32, wide: bool) -> bool {
+        let field = self.tree.find(id).map(|i| &mut self.tree.elements[i].kind);
+        match field {
+            Some(Kind::EditableText(f)) => {
+                f.wide = wide;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// The text resource of the game under this name (empty if there is none).
     pub fn text_entry(&self, name: &[u8]) -> Vec<u8> {
         Strings::text_entry(&self.strings, name)
@@ -875,12 +887,13 @@ impl Interface {
             numeric: field.numeric,
             limit: usize::try_from(field.char_limit).unwrap_or(0),
         };
+        let wide = field.wide;
         let mut caret = field.caret;
         let before = caret;
         let old = text.clone();
         let mut done = f(&mut text, &mut caret, limits);
         // A character that would make the text wider than the field is refused.
-        if done == Edited::Changed && text.len() > old.len() && self.too_wide(i, &text) {
+        if done == Edited::Changed && text.len() > old.len() && !wide && self.too_wide(i, &text) {
             done = Edited::Ignored;
         }
         match done {

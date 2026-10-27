@@ -947,6 +947,28 @@ fn strings_of_4096_bytes_or_more_are_refused() {
 }
 
 #[test]
+fn the_awards_section_is_the_held_list_written_largest_first() {
+    let (zoo, money) = Zoo::parse_money(&file(106, 2, 2, &[], &[])).unwrap();
+    assert_eq!(zoo.awards, [0], "the file's one award");
+    assert!(
+        parse(&file(58, 2, 2, &[], &[])).awards.is_empty(),
+        "no section before 59"
+    );
+    let mut zoo = zoo;
+    zoo.awards = vec![8, 1];
+    let out = zoo.write(&money).unwrap();
+    assert_eq!(parse(&out).awards, [8, 1]);
+    // The ids are written as given; a load keeps each once, largest first.
+    zoo.awards = vec![1, 8, 1, -3];
+    let back = parse(&zoo.write(&money).unwrap());
+    assert_eq!(back.awards, [8, 1, -3]);
+    assert_eq!(
+        back.kept.research,
+        parse(&file(106, 2, 2, &[], &[])).kept.research
+    );
+}
+
+#[test]
 fn research_and_movement_with_unknown_types_are_refused() {
     let mut bytes = file(106, 1, 1, &[], &[]);
     // The type of the last research record, counted back from the end: the terminator, the
@@ -1577,10 +1599,10 @@ fn new_animal() -> AnimalRecord {
             words: [5, 6, 7],
             last: 8,
         }),
-        life: 4319,
+        life: Some(4319),
         baby: 999,
         interval: 1600,
-        mate_delay: 2,
+        mate_delay: Some(2),
         boxed: 1,
         home: [30, 40],
         spare: (1..=74).collect(),
@@ -2478,10 +2500,10 @@ fn animal_back(a: &AnimalRecord) -> AnimalRecord {
 #[test]
 fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
     let new = AnimalRecord {
-        life: 4319,
+        life: Some(4319),
         baby: 999,
         interval: 1600,
-        mate_delay: 2,
+        mate_delay: Some(2),
         boxed: 1,
         ..animal_new(75, 120, 7)
     };
@@ -2503,7 +2525,7 @@ fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
             back.mate_delay,
             back.boxed
         ),
-        (4319, 999, 1600, 2, 1)
+        (Some(4319), 999, 1600, Some(2), 1)
     );
     // The keeper-visit level and the five rate multipliers are 1.
     let ones: Vec<usize> = (0..74).filter(|&i| back.spare[i] != 0).collect();
@@ -2681,4 +2703,13 @@ fn a_staff_record_with_a_count_past_the_end_or_cut_short_is_an_error() {
     let mut w = W::default();
     w.u32(0).i32(0).u32(0).u8(0).i32(0).i32(0).u32(0).u32(0);
     assert!(staff_read(106, "tour", &w.0).unwrap().members.is_empty());
+}
+
+#[test]
+fn a_guide_written_with_a_zero_countdown_reads_it_back() {
+    let mut tour = staff_read(106, "tour", &staff_106("tour")).unwrap();
+    tour.crowd = Some(0);
+    let mut o = Out(Vec::new());
+    staff::write(&mut o, b"tour", &tour);
+    assert_eq!(staff_read(106, "tour", &o.0).unwrap().crowd, Some(0));
 }

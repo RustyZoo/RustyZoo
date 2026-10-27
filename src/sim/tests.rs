@@ -31,6 +31,7 @@ fn world(entities: usize) -> World {
         }),
     };
     let zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
@@ -826,7 +827,7 @@ fn the_guide_command_puts_a_tour_guide_on_a_tile() {
 
 #[test]
 fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
-    use drive::Command::{Animal, Filter, Keeper, Mood, Worker};
+    use drive::Command::{Animal, Filter, Guide, Keeper, Mood, Worker};
     for bad in [
         "keeper",
         "keeper 3",
@@ -898,6 +899,7 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         ty("keeper", "keeper", "m"),
         ty("keeper", "trainer", "m"),
         ty("maint", "maint", "m"),
+        ty("tour", "guide", "m"),
         ty("animals", "mantaray", "m"),
         ty("filter", "filter1", "f"),
     ] {
@@ -912,6 +914,7 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         "no such animal"
     );
     for c in [
+        Guide(3, 2),
         Keeper(1, 1),
         Worker(2, 1),
         Animal("mantaray".into(), 3, 1, None),
@@ -932,6 +935,13 @@ fn the_staff_animal_and_filter_commands_put_them_on_a_tile() {
         .iter()
         .find(|e| e.class == "keeper" && e.type_name == "trainer");
     assert!(marine.is_some_and(|e| e.common.as_ref().is_some_and(|c| c.name == "Keeper 1")));
+    // The guide, the keeper and the worker keep the two colours their creation drew.
+    for e in entities
+        .iter()
+        .filter(|e| matches!(e.class.as_str(), "tour" | "keeper" | "maint"))
+    {
+        assert_eq!(e.common.as_ref().map(|c| c.colors.len()), Some(2), "{e:?}");
+    }
     let filter = entities
         .iter()
         .find(|e| e.class == "filter")
@@ -1247,6 +1257,7 @@ fn a_saved_game_opens_as_it_was_saved() {
     use crate::{exhibit::TankConfig, place, terrain, vfs::Vfs, world::Decay};
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let cat = Catalogue::load(&vfs).unwrap();
     let start = |bytes: &[u8], saved: bool| {
         let cat = Catalogue::load(&vfs).unwrap();
         let (zoo, money) = crate::zoo::Zoo::parse_money(bytes)
@@ -1286,7 +1297,11 @@ fn a_saved_game_opens_as_it_was_saved() {
         let back = start(&saved, true);
         let (a, b) = (&run.world.zoo, &back.world.zoo);
         assert!(a.tiles == b.tiles, "{member}: tiles");
-        assert!(same(&a.entities, &b.entities), "{member}: entities");
+        // The entities as the save writes them: a load clamps the life and the mate delay
+        // (animals 3.5), so the loaded map's raw records are not the saved ones.
+        let mut written = run.world.saved(|_| true);
+        run.world.finish_save(&mut written, &cat);
+        assert!(same(&written.entities, &b.entities), "{member}: entities");
         // A counter at 0 is not saved (it means the same as none).
         let named = |z: &crate::zoo::Zoo| {
             (z.names.iter())
@@ -1324,6 +1339,34 @@ fn a_saved_game_opens_as_it_was_saved() {
             "{member}"
         );
     }
+}
+
+#[test]
+fn award_add_gives_a_signed_id_to_the_zoo() {
+    let ok = |text: &str| text.parse::<drive::Command>();
+    assert_eq!(ok("award add 8"), Ok(drive::Command::Award(8)));
+    assert_eq!(ok("award add 0"), Ok(drive::Command::Award(0)));
+    assert_eq!(ok("award add -1"), Ok(drive::Command::Award(-1)));
+    assert_eq!(
+        ok("award add 2147483647"),
+        Ok(drive::Command::Award(i32::MAX))
+    );
+    for bad in [
+        "award",
+        "award add",
+        "award add x",
+        "award add 2147483648",
+        "award add 1 2",
+        "award 8",
+        "award remove 8",
+    ] {
+        assert!(bad.parse::<drive::Command>().is_err(), "{bad:?}");
+    }
+    let mut run = game(3);
+    for id in [1, 8, 1] {
+        assert!(run.apply(&drive::Command::Award(id)));
+    }
+    assert_eq!(run.world.zoo.awards, [8, 1], "no duplicate, largest first");
 }
 
 #[test]

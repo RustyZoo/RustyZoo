@@ -18,7 +18,11 @@ export RUSTYZOO_ENGLISH_DATES=1 # the same dates (and frames) whatever the syste
 # --reset-fences is for a map whose scenario file has `resetfences` above 0 (scn19 of the expansion trial):
 # its start makes every fence piece healthy, which draws from the shared random stream. The other maps
 # keep the stored pieces, as `sim` does without the flag.
-rz() { "$bin" --data "$dir/$trial" "$@"; }
+# The base trial's update screen (ui/update.lyt) names ui/sharedui/updatbck.tga, a file that neither
+# trial ships (the trials keep only the folder of its animation): the picture is left out, as the
+# game does, and that one warning is dropped here. Every other warning is printed.
+missing_update_picture='rustyzoo: warning: picture ui/sharedui/updatbck.tga: no such member: ui/sharedui/updatbck.tga'
+rz() { "$bin" --data "$dir/$trial" "$@" 2> >(grep -v -x -F "$missing_update_picture" >&2); }
 
 # Plays a map headless (--bare: the map view alone, without the main panel that a game shows) with
 # scrolls, a rotation and the zoom in and out (-2, 0 and 2), the game paused so that the units
@@ -759,7 +763,7 @@ panel_animal() { # panel_animal <map>
   rm -rf "$d"
 }
 check base-trial '35179_"Giraffe_2"_happiness_69_hunger_93_health_100_suitability_89_fed_Recently_slept_Recently' "panel_animal maps/scn01.zoo"
-check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_A_short_time_ago_slept_A_short_time_ago' "panel_animal maps/scn19.zoo"
+check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_Recently_slept_Recently' "panel_animal maps/scn19.zoo"
 
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse

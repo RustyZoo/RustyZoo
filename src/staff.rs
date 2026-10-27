@@ -187,8 +187,15 @@ impl Staff {
 
     /// The record of this staff member: `base` with the live values written over it, so what the
     /// engine does not model stays as it was. `tiles` are the tiles of the assigned exhibits. A
-    /// duty kind the data lacks (past `kinds`) is off and not counted (staff 8.1).
-    pub fn record(&self, base: StaffRecord, tiles: Vec<[i32; 2]>, kinds: usize) -> StaffRecord {
+    /// duty kind the data lacks (past `kinds`) is off and not counted (staff 8.1). Only a guide
+    /// (`guide`) writes its crowd countdown (zoo format 6.13); the others keep the record's.
+    pub fn record(
+        &self,
+        base: StaffRecord,
+        tiles: Vec<[i32; 2]>,
+        kinds: usize,
+        guide: bool,
+    ) -> StaffRecord {
         let mut duties = base.duties;
         duties.resize(duties.len().max(self.off.len()), true);
         for (k, (on, &off)) in duties.iter_mut().zip(&self.off).enumerate() {
@@ -198,7 +205,7 @@ impl Staff {
             work: self.work,
             chase: self.chase,
             tiles,
-            crowd: Some(self.crowd),
+            crowd: if guide { Some(self.crowd) } else { base.crowd },
             members: self.members.clone(),
             leg: self.leg,
             duties,
