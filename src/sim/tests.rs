@@ -31,6 +31,7 @@ fn world(entities: usize) -> World {
         }),
     };
     let zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
@@ -1356,6 +1357,34 @@ fn a_saved_game_opens_as_it_was_saved() {
             "{member}"
         );
     }
+}
+
+#[test]
+fn award_add_gives_a_signed_id_to_the_zoo() {
+    let ok = |text: &str| text.parse::<drive::Command>();
+    assert_eq!(ok("award add 8"), Ok(drive::Command::Award(8)));
+    assert_eq!(ok("award add 0"), Ok(drive::Command::Award(0)));
+    assert_eq!(ok("award add -1"), Ok(drive::Command::Award(-1)));
+    assert_eq!(
+        ok("award add 2147483647"),
+        Ok(drive::Command::Award(i32::MAX))
+    );
+    for bad in [
+        "award",
+        "award add",
+        "award add x",
+        "award add 2147483648",
+        "award add 1 2",
+        "award 8",
+        "award remove 8",
+    ] {
+        assert!(bad.parse::<drive::Command>().is_err(), "{bad:?}");
+    }
+    let mut run = game(3);
+    for id in [1, 8, 1] {
+        assert!(run.apply(&drive::Command::Award(id)));
+    }
+    assert_eq!(run.world.zoo.awards, [8, 1], "no duplicate, largest first");
 }
 
 #[test]

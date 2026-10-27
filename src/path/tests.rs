@@ -95,6 +95,7 @@ fn sized((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)
     let mut entities = vec![entity("gate", "", "", (w - 1, h - 1), 2)];
     edit(&mut tiles, &mut entities);
     let zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,

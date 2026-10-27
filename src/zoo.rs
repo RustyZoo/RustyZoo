@@ -11,9 +11,10 @@
 //! name). Of the sections after the entities it models the view, the clocks with the event queue, the
 //! name counters and, through [`Zoo::parse_money`], the cash and the accounts. Everything else is read
 //! only to refuse the files the original loader refuses, and its bytes are kept for [`Zoo::write`]
-//! (the habitat and show records, the body of every entity, the scenario, research, awards,
-//! marketing and cheats; the thoughts are kept as five words each, the statistics of the habitats
-//! are patched in by [`Zoo::write`]). Bytes after the last section are ignored, as the original does.
+//! (the habitat and show records, the body of every entity, the scenario, research, marketing
+//! and cheats; the thoughts are kept as five words each, the statistics of the habitats are
+//! patched in by [`Zoo::write`]). The awards are read into [`Zoo::awards`]. Bytes after the last
+//! section are ignored, as the original does.
 //!
 //! From version 70 every entity record states the size of its body, so a record whose class or
 //! layout is not understood is skipped (its [`Entity::common`] is `None`). Before version 70 the
@@ -206,8 +207,10 @@ pub struct Kept {
     names_at: Vec<(usize, usize)>,
     /// The thoughts as stored: text id, thinker, object, tile x and y (save games 9).
     thoughts: Vec<[u32; 5]>,
-    /// Research, awards and marketing.
+    /// The research records (from version 40).
     research: Vec<u8>,
+    /// The marketing word (from version 60).
+    marketing: Vec<u8>,
 }
 
 impl PartialEq for Kept {
@@ -355,6 +358,8 @@ pub struct Zoo {
     pub names: BTreeMap<String, u32>,
     /// What the file holds that is not modelled.
     pub kept: Kept,
+    /// The awards the zoo holds: no duplicates, largest id first (`awards.md` 4).
+    pub awards: Vec<i32>,
 }
 
 /// What a habitat record stores besides its place (zoo format 4.1): the name, the nine
@@ -815,7 +820,8 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     }
 
     *section = "later sections";
-    let (view, clocks, names, mut kept) = after_entities(r, money)?;
+    let mut awards = Vec::new();
+    let (view, clocks, names, mut kept) = after_entities(r, money, &mut awards)?;
     (kept.habitats, kept.shows) = (habitats, early_shows);
     kept.stats_at = stats_at;
     kept.names_at = names_at;
@@ -837,6 +843,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         clocks,
         names,
         kept,
+        awards,
     })
 }
 
@@ -1032,6 +1039,7 @@ fn entity(r: &mut Reader) -> R<Entity> {
 fn after_entities(
     r: &mut Reader,
     money: &mut Money,
+    awards: &mut Vec<i32>,
 ) -> R<(View, Clocks, BTreeMap<String, u32>, Kept)> {
     let mut clocks = Clocks::default();
     let mut kept = Kept::default();
@@ -1159,13 +1167,17 @@ fn after_entities(
             }
         }
     }
+    kept.research = taken(from, r);
     if v >= 59 {
-        r.skip_list(4)?; // awards
+        for _ in 0..r.count(4)? {
+            crate::award::add(awards, r.i32()?);
+        }
     }
+    let from = r.data;
     if v >= 60 {
         r.skip(4)?; // marketing
     }
-    kept.research = taken(from, r);
+    kept.marketing = taken(from, r);
     if (89..=96).contains(&v) {
         let from = r.data;
         shows(r)?;

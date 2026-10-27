@@ -947,6 +947,28 @@ fn strings_of_4096_bytes_or_more_are_refused() {
 }
 
 #[test]
+fn the_awards_section_is_the_held_list_written_largest_first() {
+    let (zoo, money) = Zoo::parse_money(&file(106, 2, 2, &[], &[])).unwrap();
+    assert_eq!(zoo.awards, [0], "the file's one award");
+    assert!(
+        parse(&file(58, 2, 2, &[], &[])).awards.is_empty(),
+        "no section before 59"
+    );
+    let mut zoo = zoo;
+    zoo.awards = vec![8, 1];
+    let out = zoo.write(&money).unwrap();
+    assert_eq!(parse(&out).awards, [8, 1]);
+    // The ids are written as given; a load keeps each once, largest first.
+    zoo.awards = vec![1, 8, 1, -3];
+    let back = parse(&zoo.write(&money).unwrap());
+    assert_eq!(back.awards, [8, 1, -3]);
+    assert_eq!(
+        back.kept.research,
+        parse(&file(106, 2, 2, &[], &[])).kept.research
+    );
+}
+
+#[test]
 fn research_and_movement_with_unknown_types_are_refused() {
     let mut bytes = file(106, 1, 1, &[], &[]);
     // The type of the last research record, counted back from the end: the terminator, the

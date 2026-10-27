@@ -21,9 +21,11 @@ mod size;
 mod sound;
 mod wait;
 
+use std::cell::{Cell, RefCell};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::mem::take;
+use std::rc::Rc;
 
 use rustyzoo::app::{App, Command};
 use rustyzoo::camera::Settings;
@@ -135,6 +137,11 @@ pub fn run(
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
 
+    // The busy cursor shows from the start-up until the first pass.
+    let cursors = Rc::new(RefCell::new(Cursors::new(vfs.root())));
+    let mut alternate = rustyzoo::cursor::alternate(ini);
+    let busy_number = |alternate| rustyzoo::cursor::number(rustyzoo::cursor::BUSY, alternate);
+    cursors.borrow_mut().show(busy_number(alternate));
     let mut sound = Sound::open(&sdl, ini);
     let mut pump = sdl.event_pump()?;
     let mut script = flags.script.into_iter().peekable();
@@ -240,9 +247,16 @@ pub fn run(
     };
     let mut state = State {
         interface: app.interface().is_some(),
-        alternate: rustyzoo::cursor::alternate(ini),
+        alternate,
         ..State::default()
     };
+    // A long operation of the game shows the busy cursor before it begins: the pass that ends
+    // it shows the cursor of the pointer again.
+    let seen_alternate = Rc::new(Cell::new(alternate));
+    app.on_busy({
+        let (cursors, alternate) = (Rc::clone(&cursors), Rc::clone(&seen_alternate));
+        move || cursors.borrow_mut().show(busy_number(alternate.get()))
+    });
     if state.interface {
         // The window gets typed characters as text input events.
         // SAFETY: the window is open and owned by `screen` for the whole run.
@@ -266,8 +280,6 @@ pub fn run(
     let has_pointer = video.current_video_driver() != "dummy";
     let mut wait = Wait::default();
     let mut seen = false;
-    let mut cursors = Cursors::new(vfs.root());
-    let mut alternate = state.alternate;
     loop {
         while let Some(event) = pump.poll_event() {
             state.note(event, &mut commands);
@@ -324,6 +336,7 @@ pub fn run(
             pointer = at;
             commands.push(Command::Pointer(at));
         }
+        seen_alternate.set(state.alternate);
         let now = sdl3::timer::ticks() - start;
         let painted = match app.pass(now, &commands) {
             Some(frame) => {
@@ -343,7 +356,7 @@ pub fn run(
                 return Err(sdl3::get_error().into());
             }
         }
-        cursors.show(rustyzoo::cursor::number(app.cursor(), state.alternate));
+        (cursors.borrow_mut()).show(rustyzoo::cursor::number(app.cursor(), state.alternate));
         if state.alternate != alternate {
             alternate = state.alternate;
             remember_cursors(alternate);

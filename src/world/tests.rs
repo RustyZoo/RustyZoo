@@ -11,6 +11,7 @@ fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
         edges: 0,
     };
     Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
