@@ -63,6 +63,8 @@ pub struct TankKind {
     pub surface: bool,
     pub shows: bool,
     pub transient: bool,
+    /// `cTall` is 1: the unit passes what is `walkableByTall` (pathfinding 4.3).
+    pub tall: bool,
     /// `cLife` and `cStrength`: what a new piece of the type starts with.
     pub life: i32,
     pub strength: u32,
@@ -81,6 +83,7 @@ impl TankKind {
         surface: false,
         shows: false,
         transient: false,
+        tall: false,
         life: 0,
         strength: 0,
         depth: 0,

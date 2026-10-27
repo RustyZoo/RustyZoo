@@ -161,6 +161,109 @@ fn lowering_the_walls_cuts_the_water_at_once_and_raising_them_lets_it_rise() {
 }
 
 #[test]
+fn a_refused_fill_names_the_object_and_a_fill_that_works_returns_none() {
+    let mut world = new_tank("tank", &[("guests", 2 * 64 + 5, 3 * 64 + 5)]);
+    world.accept_tank(1);
+    let guest = world.fill(1).unwrap();
+    assert!(
+        world
+            .zoo
+            .entities
+            .iter()
+            .any(|e| e.common.as_ref().is_some_and(|c| c.id == guest))
+    );
+    assert_eq!(water(&world), (5, 0, false));
+    assert_eq!(new_tank("tank", &[]).fill(1), None);
+    assert_eq!(new_tank("tank", &[]).fill(99), None);
+}
+
+#[test]
+fn a_new_salinity_drains_the_tank_and_the_tank_fills_again_with_it_when_empty() {
+    let mut world = new_tank("tank", &[]);
+    (0..4).for_each(|_| _ = world.step_water());
+    assert!(world.set_salinity(1, false));
+    let salt = |w: &World| tank(w, 2, 2).map(|t| (t.salt, t.target, t.filled));
+    assert_eq!(
+        salt(&world),
+        Some((true, false, false)),
+        "still salt while it holds water"
+    );
+    let levels: Vec<_> = (0..6)
+        .map(|_| {
+            world.step_water();
+            (water(&world).1, salt(&world).unwrap())
+        })
+        .collect();
+    // 3, 2, 1, then empty: the water turns fresh and the tank is filled, and rises.
+    assert_eq!(
+        levels,
+        [
+            (3, (true, false, false)),
+            (2, (true, false, false)),
+            (1, (true, false, false)),
+            (0, (false, false, true)),
+            (1, (false, false, true)),
+            (2, (false, false, true))
+        ]
+    );
+    // The same salinity changes nothing; an empty tank takes another at once.
+    assert!(world.set_salinity(1, false));
+    let mut world = new_tank("tank", &[]);
+    assert!(world.set_salinity(1, false));
+    assert_eq!(salt(&world), Some((false, false, false)));
+    assert_eq!(world.fill(1), None);
+    assert_eq!(salt(&world), Some((false, false, true)));
+    assert!(!world.set_salinity(99, true));
+}
+
+#[test]
+fn an_animal_refuses_a_new_salinity_and_the_tank_keeps_its_own() {
+    let mut world = new_tank("tank", &[("animals", 3 * 64 + 30, 3 * 64 + 30)]);
+    assert!(!world.set_salinity(1, false));
+    let t = tank(&world, 2, 2).unwrap();
+    assert_eq!((t.salt, t.target, t.filled), (true, true, true));
+}
+
+#[test]
+fn the_walls_never_go_below_what_the_swimmers_need() {
+    let world = new_tank("tank", &[]);
+    assert_eq!(world.wall_floor(1), 2);
+    assert_eq!(world.wall_floor(99), 2);
+    let mut world = new_tank("tank", &[("whale", 3 * 64 + 30, 3 * 64 + 30)]);
+    assert_eq!(world.wall_floor(1), 7);
+    world.set_height(1, 3);
+    assert_eq!(water(&world).0, 7);
+    world.set_height(1, 0);
+    assert_eq!(water(&world).0, 7);
+    world.set_height(1, 12);
+    assert_eq!(water(&world).0, 12);
+}
+
+#[test]
+fn the_lowest_wall_is_the_deepest_need_less_the_water_offset() {
+    let at = |x, y| (3 + x) * 64 + y;
+    let floor = |things: &[(&str, i32, i32)]| new_tank("tank", things).wall_floor(1);
+    // A swimmer of depth 6 needs 7 (offset -1).
+    assert_eq!(floor(&[("whale", at(0, 30), at(0, 30))]), 7);
+    // The depth of a quarter object counts with no unit on the tile, its height does not.
+    assert_eq!(floor(&[("reef", at(0, 10), at(0, 10))]), 6);
+    assert_eq!(floor(&[("pillar", at(0, 10), at(0, 10))]), 2);
+    // A transient unit counts for nothing.
+    assert_eq!(floor(&[("ghost", at(0, 30), at(0, 30))]), 2);
+    // A unit needs the height of what blocks it, not of what it walks through.
+    let whale = ("whale", at(0, 30), at(0, 30));
+    assert_eq!(floor(&[whale, ("pillar", at(0, 10), at(0, 10))]), 10);
+    assert_eq!(floor(&[whale, ("ledge", at(0, 10), at(0, 10))]), 7);
+    // Without an offset the need is the depth itself.
+    let mut world = new_tank("tank", &[whale]);
+    world.set_tank_config(crate::exhibit::TankConfig {
+        offset: 0,
+        ..CONFIG
+    });
+    assert_eq!(world.wall_floor(1), 6);
+}
+
+#[test]
 fn a_drained_tank_does_not_move_when_its_walls_rise() {
     let mut world = new_tank("tank", &[]);
     world.drain(1);
@@ -370,4 +473,33 @@ fn dung_in_a_tank_lowers_the_purity_to_0_and_no_further_and_tells_the_picture() 
     assert_eq!(purity(&world), 0);
     // Not a tank: nothing.
     world.pollute(99, 5);
+}
+
+#[test]
+fn a_wall_step_costs_above_the_initial_height_and_a_filled_tank_adds_its_water() {
+    use crate::exhibit::price::Prices;
+    let p = Prices {
+        wall: 80.0,
+        water: 1.5,
+        fill: [0.0; 2],
+    };
+    // Up from the floor of 5 costs, a lowering above it gives the same back, at or below it is free.
+    assert_eq!(p.step(5, 5, true, false), 80.0);
+    assert_eq!(p.step(5, 5, true, true), 81.5);
+    assert_eq!(p.step(6, 5, false, true), -81.5);
+    assert_eq!(p.step(5, 5, false, true), 0.0);
+    assert_eq!(p.step(3, 5, true, true), 0.0);
+    assert_eq!(p.step(4, 5, true, true), 0.0);
+    // Nothing to overflow at the ends.
+    assert_eq!(p.step(u32::MAX, 5, true, false), 0.0);
+    assert_eq!(p.step(0, 0, false, false), 0.0);
+    // No pieces and no price: free.
+    let world = new_tank("tank", &[]);
+    let prices = Prices::of(&world, &crate::entity::Catalogue::default(), 1).unwrap();
+    // 4 tiles of 1.5 less... the shipped salt price of CONFIG times the tiles, at the height 5.
+    assert_eq!(
+        (prices.wall, prices.water, prices.fill),
+        (0.0, 6.0, [30.0, 20.0])
+    );
+    assert!(Prices::of(&world, &crate::entity::Catalogue::default(), 99).is_none());
 }
