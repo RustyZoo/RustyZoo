@@ -37,11 +37,12 @@ pub struct AnimalRecord {
     pub rampaging: bool,
     pub rampage: i32,
     /// The counters the record stores that are not drawn (save games 11.3): life, grow-up, birth
-    /// interval, mate delay and crate. A version that lacks one reads it as 0.
-    pub life: i32,
+    /// interval, mate delay and crate. A version that lacks one reads it as 0, and the life and
+    /// the mate delay as `None` (the animal keeps its creation values).
+    pub life: Option<i32>,
     pub baby: i32,
     pub interval: i32,
-    pub mate_delay: i32,
+    pub mate_delay: Option<i32>,
     pub boxed: i32,
     /// The two dates (zoo format 6.11), as file times.
     pub dates: [u64; 2],
@@ -119,7 +120,7 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
     }
     match v >= 43 {
         true => {
-            (a.mate_delay, a.life) = (r.i32()?, r.i32()?);
+            (a.mate_delay, a.life) = (Some(r.i32()?), Some(r.i32()?));
             spare.extend(r.take(4)?);
             a.dying = r.u8()? != 0;
         }
@@ -232,8 +233,8 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
         o.bytes(&d.to_le_bytes());
     }
     s.put(o, &[0; 2 + 8]);
-    o.i32(a.mate_delay);
-    o.i32(a.life);
+    o.i32(a.mate_delay.unwrap_or(0));
+    o.i32(a.life.unwrap_or(0));
     s.put(o, &[0; 4]);
     o.bytes(&[flag(a.dying), flag(a.mourning)]);
     o.i32(c(14));

@@ -157,6 +157,8 @@ pub enum Command {
     Char(u8),
     /// A key or a mouse button was pressed: stops the intro movie that plays. Ignored by the game.
     Skip,
+    /// `award add ID`: the zoo holds the award (`awards.md` 4.1).
+    Award(i32),
     Save(&'static str),
     Load(&'static str),
 }
@@ -194,6 +196,7 @@ impl fmt::Display for Command {
             }
             Command::Char(byte) => write!(f, "char {byte}"),
             Command::Skip => f.write_str("skip"),
+            Command::Award(id) => write!(f, "award add {id}"),
             Command::Save(file) => write!(f, "save {file}"),
             Command::Load(file) => write!(f, "load {file}"),
         }
@@ -211,6 +214,7 @@ impl FromStr for Command {
             _ => Err(format!("{word} takes a file name: {text:?}")),
         };
         Ok(match words.as_slice() {
+            ["award", "add", id] => Command::Award(number(id)?),
             ["save", ..] => Command::Save(file("save")?),
             ["load", ..] => Command::Load(file("load")?),
             ["scroll", x, y] => {
@@ -1159,6 +1163,12 @@ impl<'a> App<'a> {
                 return;
             }
             Command::Save(file) => return self.save_game(file),
+            Command::Award(id) => {
+                if let Some(game) = &mut self.game {
+                    crate::award::add(&mut game.world.zoo.awards, id);
+                }
+                return;
+            }
             Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
                 return self.save_key();
             }
@@ -2353,10 +2363,21 @@ impl<'a> App<'a> {
     /// `unit gate ID open|close GATE` for the units of the world. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
+    /// How many awards the zoo holds (none without a game).
+    pub fn awards(&self) -> usize {
+        self.game.as_ref().map_or(0, |g| g.world.zoo.awards.len())
+    }
+
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
         let mut lines = Vec::new();
         let lead = format!("pass {pass} t={now}");
         lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
+        // One count line per pass that gave an award: the awards the zoo holds after it.
+        let given = self
+            .applied
+            .iter()
+            .filter(|c| matches!(c, Command::Award(_)));
+        lines.extend(given.map(|_| format!("{lead} awards {}", self.awards())));
         lines.extend(self.ui_events.iter().map(|e| format!("{lead} ui {e}")));
         lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
         lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
