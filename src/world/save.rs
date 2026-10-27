@@ -5,6 +5,7 @@ use super::World;
 use crate::building::Kind;
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::goal;
 use crate::guest::thought::Thought;
 use crate::place::bulldozer::type_of;
 use crate::render::tank_kind;
@@ -162,7 +163,39 @@ impl World {
                     _ => base,
                 }));
             }
+            if matches!(
+                e.class.as_str(),
+                "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter"
+            ) {
+                let cost = cat
+                    .guest_non_path_cost
+                    .unwrap_or(fresh::DEFAULT_NON_PATH_COST);
+                self.unit_made(c, &e.class, cost);
+            }
         }
+    }
+
+    /// The unit block of a unit made in play (save games 11.2, 11.3). A unit that has had its first
+    /// turn (`typed`, set by the first turn; a staff member is started at hiring, before it) writes
+    /// its live goal and job numbers and is on the ground, and a guest its live non-path cost; one
+    /// that has not writes the values of a new one, a guest's cost being its type's. A loaded unit
+    /// keeps its stored block: the engine does not take the stored goal back at load.
+    fn unit_made(&self, c: &mut Common, class: &str, cost: u32) {
+        if !c.raw.is_new() {
+            return;
+        }
+        let guest = (class == "guests").then_some(cost);
+        let mut block = c.unit.take().map_or_else(|| fresh::unit_new(guest), |b| *b);
+        if let Some(u) = self.units.get(c.id).filter(|u| u.typed) {
+            let record = &u.goal.record;
+            block.target.active = goal::active_goal(record.task, u.kind);
+            block.target.active_sub = i32::from(record.job);
+            block.move_kind = 2;
+            if guest.is_some() {
+                block.w4 = u.mover.non_path_cost;
+            }
+        }
+        c.unit = Some(Box::new(block));
     }
 
     /// A guest record takes the live guest's fields (a guest made in play has its drawn countdowns

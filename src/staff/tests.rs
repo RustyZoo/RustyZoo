@@ -505,6 +505,75 @@ fn a_duty_kind_the_data_lacks_is_off_and_not_counted_when_saved() {
 }
 
 #[test]
+fn a_placed_guest_holds_the_non_path_cost_of_its_type() {
+    let mut cat = staff_types();
+    cat.push(staff_type("guests", ""));
+    let mut w = pens([None, None, None]);
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim.load(&mut w, &cat);
+    let guest = |w: &World, cat: &Catalogue| {
+        let mut zoo = w.saved(|_| true);
+        w.finish_save(&mut zoo, cat);
+        let at = w.find(4).unwrap();
+        zoo.entities[at]
+            .common
+            .as_ref()
+            .unwrap()
+            .unit
+            .clone()
+            .unwrap()
+    };
+    // The unit class file gives the cost; without one it is 7, and a placed guest holds it.
+    assert_eq!(guest(&w, &cat).w4, 7);
+    cat.guest_non_path_cost = Some(5);
+    assert_eq!(guest(&w, &cat).w4, 5);
+    cat.guest_non_path_cost = Some(u32::MAX);
+    assert_eq!(guest(&w, &cat).w4, u32::MAX);
+    // After its first turn it writes the cost it runs with (a goal that avoids a predator sets the emergency one).
+    let g = w.units.get_mut(4).unwrap();
+    (g.typed, g.mover.non_path_cost) = (true, 1);
+    assert_eq!(guest(&w, &cat).w4, 1);
+}
+
+#[test]
+fn a_staff_member_saved_before_its_first_update_has_no_goal() {
+    let cat = staff_types();
+    let mut w = pens([None, None, None]);
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim.load(&mut w, &cat);
+    let block = |w: &World| {
+        let mut zoo = w.saved(|_| true);
+        w.finish_save(&mut zoo, &cat);
+        let at = w.find(1).unwrap();
+        *zoo.entities[at]
+            .common
+            .as_ref()
+            .unwrap()
+            .unit
+            .clone()
+            .unwrap()
+    };
+    // Hired at once: started, but no first turn yet.
+    assert!(w.units.get(1).unwrap().started);
+    let b = block(&w);
+    assert_eq!(
+        (b.target.active, b.target.active_sub, b.move_kind),
+        (-1, -1, -1)
+    );
+    // After its first turn it writes the goal and job it has (the keeper's task 0 has one).
+    w.units.get_mut(1).unwrap().typed = true;
+    let b = block(&w);
+    assert_eq!(
+        (b.target.active, b.target.active_sub, b.move_kind),
+        (0, 0, 2)
+    );
+}
+
+#[test]
 fn only_a_guide_saves_its_crowd_countdown() {
     let s = Staff {
         crowd: 7,

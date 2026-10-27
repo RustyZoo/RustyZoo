@@ -1777,12 +1777,79 @@ fn an_entity_made_in_play_is_written_and_read_back() {
             if let Some(u) = &b.unit {
                 assert_eq!(
                     (b.movement_mode, u.as_ref()),
-                    (2, &UnitBlock::default()),
+                    (
+                        2,
+                        &fresh::unit_new(
+                            (e.class == "guests").then_some(fresh::DEFAULT_NON_PATH_COST)
+                        )
+                    ),
                     "{what}"
                 );
             }
         }
     }
+}
+
+#[test]
+fn a_new_unit_is_written_with_the_values_of_a_unit_made_in_play() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.entities.push(made("animals", "m", Common::default()));
+    zoo.entities.push(made("guests", "", Common::default()));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let n = back.entities.len();
+    let unit = |i: usize| {
+        back.entities[n - 2 + i]
+            .common
+            .clone()
+            .unwrap()
+            .unit
+            .unwrap()
+    };
+    let (a, g) = (unit(0), unit(1));
+    // No goal, no target, no movement yet; the counters a new unit has (save games 11.3).
+    assert_eq!(
+        (a.target.active, a.target.active_sub, a.target.target, a.p3),
+        (-1, -1, [-1; 3], [-1; 3])
+    );
+    assert_eq!((a.move_kind, a.w7, a.slot, a.need), (-1, 4, 255, 255));
+    assert_eq!((a.w4, a.short), (1, 100));
+    // A guest's word 230 is the type's cost (7 when none is given), not 0.
+    assert_eq!(g.w4, 7);
+    assert_eq!(g.target.active, -1);
+}
+
+#[test]
+fn a_new_unit_has_no_sub_target() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.entities.push(made("animals", "m", Common::default()));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let unit = back
+        .entities
+        .last()
+        .unwrap()
+        .common
+        .clone()
+        .unwrap()
+        .unit
+        .unwrap();
+    assert_eq!(unit.target.sub_target, [-1; 3]);
+}
+
+#[test]
+fn a_new_unit_has_the_last_position_and_call_flag_of_a_unit_made_in_play() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.entities.push(made("animals", "m", Common::default()));
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let unit = back
+        .entities
+        .last()
+        .unwrap()
+        .common
+        .clone()
+        .unwrap()
+        .unit
+        .unwrap();
+    assert_eq!((unit.p1, unit.pending_flag), ([-1; 3], 1));
 }
 
 #[test]

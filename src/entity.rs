@@ -247,6 +247,9 @@ pub struct Catalogue {
     files: HashMap<String, Definition>,
     /// The item types guests buy, by lower-case name.
     pub items: BTreeMap<String, crate::building::items::Item>,
+    /// `cNonPathCost` of the unit class file `ztunit.ai` (pathfinding 6.5): the guests' cost off the
+    /// paths; `None` when the file or the key is missing.
+    pub guest_non_path_cost: Option<u32>,
     /// The award definitions (`award*.cfg`), read with the types.
     pub awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
@@ -558,6 +561,12 @@ impl Catalogue {
         }
         let (items, warnings) = crate::building::items::load(vfs);
         catalogue.items = items;
+        catalogue.guest_non_path_cost = vfs
+            .read("ztunit.ai")
+            .ok()
+            .and_then(|b| Config::parse(&b).ok())
+            .and_then(|c| crate::timing::ini_whole(&c, "Characteristics/Integers", "cNonPathCost"))
+            .map(|v| v.max(0) as u32);
         catalogue.awards = crate::award::Definitions::load(vfs);
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {
@@ -1007,6 +1016,30 @@ mod tests {
     /// The catalogue of an installation with these members.
     fn catalogue(name: &str, members: &[(&str, &str)]) -> Catalogue {
         Install::new(name, members).load().unwrap()
+    }
+
+    #[test]
+    fn the_guests_non_path_cost_is_the_unit_class_files_or_none() {
+        let cost = |ai: Option<&str>| {
+            let members: Vec<(&str, &str)> = ai.map(|t| ("ztunit.ai", t)).into_iter().collect();
+            catalogue("ztunit", &members).guest_non_path_cost
+        };
+        assert_eq!(
+            cost(Some("[Characteristics/Integers]\ncNonPathCost=5\n")),
+            Some(5)
+        );
+        assert_eq!(
+            cost(Some("[Characteristics/Integers]\ncNonPathCost=-3\n")),
+            Some(0)
+        );
+        assert_eq!(
+            cost(Some(
+                "[Characteristics/Integers]\ncNonPathCost=2147483647\n"
+            )),
+            Some(i32::MAX as u32)
+        );
+        assert_eq!(cost(Some("[Characteristics/Integers]\n")), None);
+        assert_eq!(cost(None), None);
     }
 
     #[test]
