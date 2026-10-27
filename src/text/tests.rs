@@ -77,6 +77,31 @@ fn requests_read_the_strings_like_the_game() {
 }
 
 #[test]
+fn bold_words_of_every_language_make_the_bold_face() {
+    for face in [
+        "Arial Gras",
+        "Arial Grassetto",
+        "Arial Fett",
+        "Arial Negrita",
+        "Arial Negrito",
+        "Arial,600",
+        "Arial,900",
+    ] {
+        assert!(Font::request(face, "9").is_bold(), "{face:?}");
+    }
+    // The words are compared in the letter case written, and unknown faces stay regular.
+    for face in [
+        "Arial gras",
+        "Arial bold",
+        "Arial 700",
+        "Arial,599",
+        "Arial Gra",
+    ] {
+        assert!(!Font::request(face, "9").is_bold(), "{face:?}");
+    }
+}
+
+#[test]
 fn fonts_are_cached_per_face_and_size() {
     let mut fonts = Fonts::default();
     fonts.get("Arial", "9");
@@ -418,6 +443,20 @@ fn a_button_centres_one_line() {
             bottom: 19
         }
     );
+}
+
+#[test]
+fn a_nine_point_tooltip_is_small_only_with_the_bold_word() {
+    // Only " Bold" makes the 9 point font small (text 5.5), whatever the language's bold word.
+    let text = b"Sample tooltip text";
+    let small = |face: &str| {
+        let font = Font::request(face, "9");
+        tooltip_size(&font, text, true, 200, 0, 0).0 - font.width(text)
+    };
+    assert_eq!(small("Arial Bold"), 2);
+    assert_eq!(small("Arial Gras"), 0, "bold by the word, not small");
+    assert_eq!(small("Arial,700"), 0, "bold by the weight, not small");
+    assert_eq!(small("Arial"), 0);
 }
 
 #[test]

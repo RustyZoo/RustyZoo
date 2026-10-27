@@ -2,9 +2,11 @@
 
 use super::*;
 use crate::app::Mouse;
+use crate::lists::Status;
 use crate::lists::{freeform_list, scenario_list};
 use crate::menu::{Request, Start};
 use crate::money::StartCash;
+use crate::scenario::Ended;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{DISABLED, HIDDEN, Picture, Tree};
@@ -33,6 +35,7 @@ impl UiStrings for Texts {
         match name {
             b"STORY_A" => &b"Story A"[..],
             b"STORY_LOCK" => b"Locked story",
+            b"STORY_WIN" => b"You won",
             b"DESC_1" => b"About map one",
             _ => b"",
         }
@@ -95,7 +98,8 @@ fn fixture(name: &str, scn: bool, free: bool) -> (Install, Vfs, Interface) {
             (
                 "s/aa.scn",
                 b"[desc]\npicture=ui/pic1.tga\nstory=STORY_A\nlockedpicture=ui/lock.tga\n\
-                  lockedstory=STORY_LOCK\n[start]\nsavegame=maps/a.zoo\nsetcash=100000\naddcash=200.5\nreset=1\n"
+                  lockedstory=STORY_LOCK\nwinpicture=ui/pic1.tga\nwinstory=STORY_WIN\n\
+                  losepicture=ui/none.tga\nlosestory=\n[start]\nsavegame=maps/a.zoo\nsetcash=100000\naddcash=200.5\nreset=1\n"
                     .to_vec(),
             ),
             (
@@ -270,6 +274,7 @@ fn play_and_a_double_click_ask_for_the_selected_scenario_and_the_selection_is_ke
             },
             reset: true,
             reset_fences: false,
+            scenario: Some("s/aa.scn".into()),
         }))
     );
     // The third entry's file is missing: no picture, no story, but it can be played (it fails
@@ -375,6 +380,7 @@ fn the_freeform_screen_lists_the_maps_and_shows_the_first_with_the_starting_cash
             },
             reset: true,
             reset_fences: true,
+            scenario: Some("f/m1.scn".into()),
         }))
     );
     ui.select_row(11504, Some(1));
@@ -594,4 +600,139 @@ fn the_freeform_screen_can_list_saved_games_and_goes_back_to_the_maps() {
     assert!(!flag(&ui, 11510, HIDDEN) && !flag(&ui, 11511, HIDDEN));
     assert_eq!(text_of_row(&ui, 11504, 1), "Map Two");
     assert_ne!(text(&ui, 11503), "Load");
+}
+
+fn ended(file: &str, won: bool, unlocks: &[i32]) -> Ended {
+    Ended {
+        file: file.into(),
+        won,
+        unlocks: unlocks.to_vec(),
+    }
+}
+
+#[test]
+fn the_result_is_written_only_when_lower_than_the_stored_one_and_a_stranger_leaves_none() {
+    let (install, vfs, _) = fixture("result", true, false);
+    let mut menu = menu("", &install, &vfs);
+    // Never played is 3: a loss writes 2, a win then 1, and neither is replaced by a worse one.
+    assert_eq!(
+        menu.scenario_ended(&ended("s/aa.scn", false, &[])),
+        ["scenario result aa 2"]
+    );
+    assert_eq!(
+        menu.scenario_ended(&ended("s/aa.scn", false, &[])),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        menu.scenario_ended(&ended("s/aa.scn", true, &[])),
+        ["scenario result aa 1"]
+    );
+    assert!(
+        menu.scenario_ended(&ended("s/aa.scn", false, &[]))
+            .is_empty()
+    );
+    assert!(written(&install).unwrap().contains("aa=1"));
+    // A scenario that is not in the list (a freeform map) stores nothing.
+    assert!(
+        menu.scenario_ended(&ended("f/m1.scn", true, &[]))
+            .is_empty()
+    );
+    assert_eq!(menu.ended, None);
+    // The win unlocked the next scenario.
+    assert_eq!(menu.scenarios[1].status(&menu.ini), Status::Playable);
+}
+
+#[test]
+fn a_win_appends_the_unlocked_types_once_whatever_the_stored_count() {
+    // (stored settings, types unlocked, the list afterwards)
+    let table: [(&str, &[i32], &str); 5] = [
+        (
+            "",
+            &[9, 9, 4],
+            "unlockCount=2\nunlockEntity0=9\nunlockEntity1=4",
+        ),
+        (
+            "[user]\nunlockCount=2\nunlockEntity0=5\nunlockEntity1=6\n",
+            &[6, 9],
+            "unlockCount=3\nunlockEntity2=9",
+        ),
+        (
+            "[user]\nunlockCount=-4\nunlockEntity0=5\n",
+            &[7],
+            "unlockCount=1\nunlockEntity0=7",
+        ),
+        (
+            "[user]\nunlockCount=x\n",
+            &[7],
+            "unlockCount=1\nunlockEntity0=7",
+        ),
+        (
+            "[user]\nunlockCount=2147483647\n",
+            &[7],
+            "unlockCount=4097\nunlockEntity4096=7",
+        ),
+    ];
+    for (n, (ini, types, want)) in table.into_iter().enumerate() {
+        let (install, vfs, _) = fixture(&format!("unlock{n}"), true, false);
+        let mut menu = menu(ini, &install, &vfs);
+        let log = menu.scenario_ended(&ended("s/aa.scn", true, types));
+        let log: Vec<_> = log.iter().filter(|l| l.contains("unlock ")).collect();
+        let file = written(&install).unwrap();
+        for line in want.lines() {
+            assert!(file.contains(line), "{ini:?}: {file}");
+        }
+        assert_eq!(log.len(), want.lines().count() - 1, "{ini:?}");
+    }
+    // A loss unlocks nothing, whatever the scenario file says.
+    let (install, vfs, _) = fixture("unlock-lost", true, false);
+    let mut menu = menu("", &install, &vfs);
+    menu.scenario_ended(&ended("s/aa.scn", false, &[]));
+    assert!(!written(&install).unwrap().contains("unlock"));
+}
+
+#[test]
+fn the_screen_after_the_end_selects_the_scenario_and_shows_the_story_of_its_result() {
+    let (install, vfs, mut ui) = fixture("after", true, false);
+    let mut menu = menu("", &install, &vfs);
+    ui.show(32);
+    menu.pressed(&vfs, &mut ui, 7111);
+    ui.select_row(50002, Some(2));
+    menu.scenario_ended(&ended("s/aa.scn", true, &[]));
+    let log = menu.show_result(&vfs, &mut ui);
+    assert_eq!(ui.selected_row(50002), Some(0));
+    assert_eq!(
+        log.last().unwrap(),
+        "scenario select aa won picture ui/pic1.tga story shown play enabled"
+    );
+    assert_eq!(text(&ui, 50004), "You won");
+    // A loss shows the lose picture, which is missing here, and no story.
+    menu.scenario_ended(&ended("s/aa.scn", false, &[]));
+    let log = menu.show_result(&vfs, &mut ui);
+    assert_eq!(
+        log.last().unwrap(),
+        "scenario select aa won picture none story hidden play enabled"
+    );
+    // Another entry, or the screen opened again by its button, is described as ever.
+    menu.pressed(&vfs, &mut ui, 7111);
+    assert_eq!(text(&ui, 50004), "Story A");
+    // A scenario that is not in the list leaves the screen alone.
+    menu.scenario_ended(&ended("f/m1.scn", true, &[]));
+    assert!(menu.show_result(&vfs, &mut ui).is_empty());
+}
+
+#[test]
+fn an_unlock_id_of_zero_or_less_is_not_listed() {
+    let (install, vfs, _) = fixture("unlock-zero", true, false);
+    let mut first = menu("", &install, &vfs);
+    let log = first.scenario_ended(&ended("s/aa.scn", true, &[0, -3, i32::MIN, 7]));
+    let log: Vec<_> = log.iter().filter(|l| l.contains("unlock ")).collect();
+    assert_eq!(log, ["scenario unlock 7"]);
+    let file = written(&install).unwrap();
+    assert!(file.contains("unlockCount=1") && file.contains("unlockEntity0=7"));
+    assert!(!file.contains("unlockEntity1"));
+    // Only such ids: nothing is written at all.
+    let (install, vfs, _) = fixture("unlock-none", true, false);
+    let mut other = menu("", &install, &vfs);
+    other.scenario_ended(&ended("s/aa.scn", true, &[0, -1]));
+    assert!(!written(&install).unwrap_or_default().contains("unlock"));
 }

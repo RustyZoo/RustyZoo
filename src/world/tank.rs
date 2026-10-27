@@ -228,6 +228,7 @@ impl World {
             level: c.level,
             filled: false,
             salt: c.salt,
+            target: c.salt,
             purity: c.purity,
             ..*tank
         };
@@ -242,7 +243,7 @@ impl World {
         if let Some(old) = inherited {
             self.set_height(id, old.height);
             self.edit_tank(id, |t, c| {
-                (t.salt, t.purity) = (old.salt, old.purity);
+                (t.salt, t.target, t.purity) = (old.salt, old.target, old.purity);
                 t.level = old.level.min(c.top(t.height));
             });
             if !old.filled {
@@ -323,6 +324,25 @@ impl World {
             .iter()
             .filter_map(|&e| self.zoo.entities[e].common.as_ref().map(|c| c.id))
             .collect()
+    }
+
+    /// The wall pieces (entity indexes) of tank `id`, each once (4.7: the pieces on the lines of
+    /// its boundary, on either slot).
+    pub fn wall_pieces(&self, id: u32) -> Vec<usize> {
+        let mut found: Vec<usize> = Vec::new();
+        for (t, n) in self.exhibits.boundary(self, id) {
+            for piece in n
+                .map_or([None; 2], |n| self.line((t, n)))
+                .into_iter()
+                .flatten()
+            {
+                let wall = self.shapes[piece].is_some_and(|s| s.tank.wall);
+                if wall && !found.contains(&piece) {
+                    found.push(piece);
+                }
+            }
+        }
+        found
     }
 
     /// The tile outside the first pair of the boundary of exhibit `id`, where an animal or a

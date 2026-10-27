@@ -58,6 +58,22 @@ impl Interface {
         }
     }
 
+    /// Whether the element under the pointer (the one a held button captured, if any) is the map
+    /// view: only then does the map view's cursor show (string tables 6.1).
+    pub fn pointer_on_map(&mut self) -> bool {
+        let at = self.input.pointer;
+        let target = self.input.capture.or_else(|| self.hit(at));
+        target.is_some() && target == self.map_view
+    }
+
+    /// Whether the element under the pointer (the one a held button captured, if any) is an
+    /// editable text field: it shows the text cursor (string tables 6.1).
+    pub fn pointer_on_text(&mut self) -> bool {
+        let at = self.input.pointer;
+        let target = self.input.capture.or_else(|| self.hit(at));
+        target.is_some_and(|t| matches!(self.tree.elements[t].kind, Kind::EditableText(_)))
+    }
+
     // ---- Hit testing (7.1)
 
     /// The element at a point of the screen, aliases followed: the last drawn first.

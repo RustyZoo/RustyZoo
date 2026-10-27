@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::entity::Catalogue;
 use crate::menu::{Menu, Start};
 use crate::money::Money;
-use crate::render::tests::{cache_install, frame_file};
+use crate::render::tests::{cache_install, cache_install_with, frame_file};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{HIDDEN, Tree};
@@ -24,13 +24,20 @@ impl UiStrings for Texts {
             318 => "Cannot open",
             11645 => "save-failed-text",
             11646 => "name-too-long-text",
+            9001 => "Name",
+            9101 => "Keep %d zoos",
+            16100 => "Done",
+            16101 => "Failed",
             _ => "",
         }
         .into()
     }
 
-    fn text_entry(&self, _: &[u8]) -> Vec<u8> {
-        vec![]
+    fn text_entry(&self, name: &[u8]) -> Vec<u8> {
+        match name {
+            b"SCN_STORY" => b"Story".to_vec(),
+            _ => vec![],
+        }
     }
 }
 
@@ -47,7 +54,9 @@ pub(super) fn interface(install: &Install) -> Interface {
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
         [n]\ntype=UILayout\nlayout=ui/name.lyt\n\
         [l]\ntype=UILayout\nlayout=ui/list.lyt\n\
-        [e]\ntype=UILayout\nlayout=ui/panel.lyt\n";
+        [e]\ntype=UILayout\nlayout=ui/panel.lyt\n\
+        [w]\ntype=UILayout\nlayout=ui/end.lyt\n\
+        [o]\ntype=UILayout\nlayout=ui/obj.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
         "[LayoutInfo]\nid=26\nlayer=2\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
@@ -97,7 +106,30 @@ pub(super) fn interface(install: &Install) -> Interface {
             (
                 "ui/panel.lyt",
                 b"[LayoutInfo]\nid=2\nlayer=1\nx=0\ny=40\ndx=64\ndy=8\nstate=1\n\
-                  [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n"
+                  [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
+                  [b]\ntype=UIButton\nid=4107\nx=8\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
+                  action=3\ntarget=803\n"
+                    .to_vec(),
+            ),
+            (
+                "ui/end.lyt",
+                b"[LayoutInfo]\nid=45200\nlayer=7\nx=0\ny=0\ndx=40\ndy=10\nstate=1\n\
+                  [m]\ntype=UIText\nid=45206\nx=0\ny=0\ndx=40\ndy=10\n\
+                  [p]\ntype=UIImage\nid=45204\nx=0\ny=0\n\
+                  [y]\ntype=UIButton\nid=45210\nx=0\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
+                  target=6\naction=5\n\
+                  [n]\ntype=UIButton\nid=45211\nx=10\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
+                  target=7\naction=5\n\
+                  [o]\ntype=UIButton\nid=45212\nx=20\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
+                  target=1\naction=5\n"
+                    .to_vec(),
+            ),
+            (
+                "ui/obj.lyt",
+                b"[LayoutInfo]\nid=803\nlayer=1\nx=0\ny=0\ndx=40\ndy=40\nstate=1\n\
+                  [n]\ntype=UIText\nid=4142\nx=0\ny=0\ndx=40\ndy=8\n\
+                  [s]\ntype=UIText\nid=4143\nx=0\ny=8\ndx=40\ndy=8\n\
+                  [l]\ntype=UIListBox\nid=4145\nx=0\ny=16\ndx=40\ndy=24\nborder=0\n"
                     .to_vec(),
             ),
         ],
@@ -122,7 +154,27 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
     let ui = interface(&files);
     let ini = Config::parse(ini.as_bytes()).unwrap();
     let menu = Menu::new(ini.clone(), &files.0, Some(files.0.join("user")), None, 0);
-    let game = cache_install(&format!("start-game-{name}"), frame_file());
+    let scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=t\n[t]\ntrulea=2\n\
+        [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=1\n";
+    let goal = |kind: &str| {
+        format!(
+            "[desc]\nname=9001\nstory=SCN_STORY\n[completion]\nunlock=7\n[goals]\ngoal=g\n\
+             [g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n{kind}\n"
+        )
+        .into_bytes()
+    };
+    let extra = [
+        ("s/play.scn", scn.to_vec()),
+        ("s/win.scn", goal("")),
+        ("s/lose.scn", goal("type=7")),
+        // Two tutorials: the first has a next one, which has a map to start.
+        ("scenario/scn01a/scn01a.scn", goal("")),
+        (
+            "scenario/scn01/scn01.scn",
+            [goal("").as_slice(), b"[start]\nsavegame=saved.zoo\n"].concat(),
+        ),
+    ];
+    let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut app = App::menu(
@@ -516,6 +568,7 @@ fn only_the_first_fade_waits_and_a_freeform_start_counts_one_update_of_the_wait(
             cash: Default::default(),
             reset: false,
             reset_fences: false,
+            scenario: None,
         };
         app.begin(&start);
         let steps: Vec<u64> = (1..8)
@@ -553,9 +606,58 @@ fn a_saved_zoo_starts_on_its_date_and_a_new_game_on_the_first_of_january_2001() 
             cash: Default::default(),
             reset: false,
             reset_fences: false,
+            scenario: None,
         };
         app.begin(&start);
         let date = app.calendar().unwrap().date();
         assert_eq!((date.year, date.month, date.day), (2001, 1, 1));
+    });
+}
+
+#[test]
+fn a_scenario_start_prepares_its_goals_and_a_later_game_drops_them() {
+    with_menu("scenario-goals", "", |app, _| {
+        let start = |scenario: Option<&str>| Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: scenario.map(String::from),
+        };
+        let seen = |app: &mut App, from: u64| -> Vec<String> {
+            let mut lines = Vec::new();
+            for p in from..from + 60 {
+                app.pass(66 * p, &[]);
+                lines
+                    .extend((app.log_lines(p, 66 * p).into_iter()).filter_map(|l| {
+                        l.split_once(" sim scenario ").map(|(_, r)| r.to_string())
+                    }));
+            }
+            lines
+        };
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.begin(&start(Some("s/play.scn")));
+        let lines = seen(app, 1);
+        assert_eq!(
+            lines,
+            [
+                "start s/play.scn 2",
+                "trigger t start 2 0 0 0",
+                "trigger g 1 1 0 0 0"
+            ]
+        );
+        // Another game is opened: the scenario is over, whatever its state.
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.begin(&start(None));
+        assert!(seen(app, 100).is_empty());
+        // A scenario file that cannot be read starts a plain game.
+        app.begin(&start(Some("s/none.scn")));
+        assert!(seen(app, 200).is_empty());
     });
 }

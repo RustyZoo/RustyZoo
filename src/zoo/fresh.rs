@@ -1,11 +1,11 @@
 //! The class fields of an entity made in play, which has no body read from a file (zoo format 6.7
 //! to 6.13), in the form of version 106. They come from the model where the entity has the figures
 //! and are the values of a new one elsewhere: what the unit keeps while it runs is written by the
-//! sub-issues of the animal, guest and staff records.
+//! sub-issues of the animal and guest records; a staff member is written from its record.
 
 use super::upgrade::NEVER;
 use super::write::Out;
-use super::{BuildingRecord, Common, Entity, Fence, GuestRecord};
+use super::{BuildingRecord, Common, Entity, Fence, GuestRecord, StaffRecord};
 
 /// The fields before the unit block or the entity base, and the fields after them.
 pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8>), String> {
@@ -37,15 +37,12 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
             pre.bytes(&guest(None, &record.unwrap_or(guest_new(40, now)))?);
         }
         "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
-            // The own fields of the class, then the common staff block: all 0, the lists empty.
-            let own = match e.class.as_str() {
-                "keeper" => 21,
-                "maint" => 18,
-                "tour" => 13,
-                "helicopter" => 12,
-                _ => 0,
-            };
-            pre.bytes(&vec![0; own + 16]);
+            let new = StaffRecord::default();
+            super::staff::write(
+                &mut pre,
+                e.class.as_bytes(),
+                c.staff.as_deref().unwrap_or(&new),
+            );
         }
         _ => {
             return Err(format!(
