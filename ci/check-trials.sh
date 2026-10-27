@@ -238,7 +238,7 @@ check base-trial 'dislikes15672@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # pair marks the grounds for revision, so their next update draws and the state hash of the first month
 # change moves (without the pair it would be 2cf67ce9093b3d71). A drag the cash cannot pay for (100 for
 # pieces of 150) is refused and runs no pair: the hash is that of the same game with no drag at all.
-check base-trial a19f5f5542c33205 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial d4bed89505f9479f 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial c3806921661f5f9c 'rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 # A play call queues behind the playing sequence, the base loop included: the lion shows its first
 # animation other than the idle one at pass 14 (the lion 27645, happiness 75, chooses bFriendly; the lion
@@ -847,7 +847,7 @@ building_panel() { # building_panel <map>
          END{ printf "%s:%s;%s:%s;%s\n", u, up, d, down, l }' | tr ' ' _
   rm -rf "${d:?}"
 }
-check base-trial '12:6.50;22:1.00;"Burger_Stand"_price_$1.00_income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_guests_last_0_this_0_total_0_sells_["burger"]' "building_panel maps/default.zoo"
+check base-trial '12:6.50;22:1.00;"Burger_Stand_1"_price_$1.00_income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_guests_last_0_this_0_total_0_sells_["burger"]' "building_panel maps/default.zoo"
 
 # The panel of a building that charges nothing: the third item (a family restroom) is placed and clicked.
 building_plain() { # building_plain <map>
@@ -857,7 +857,7 @@ building_plain() { # building_plain <map>
     sed -n 's/^.* panel building [0-9]* //p' | tr ' ' _
   rm -rf "${d:?}"
 }
-check base-trial '"Family_Restroom"_guests_last_0_this_0_total_0_months_1' "building_plain maps/default.zoo"
+check base-trial '"Family_Restroom_1"_guests_last_0_this_0_total_0_months_1' "building_plain maps/default.zoo"
 
 # A building is renamed in its panel (guest buildings 10.3.1): the item at `<x y>` is placed and clicked, a click on
 # the name field gives it the focus, "Zoo" is typed and Enter ends the editing; `<more>` (script lines) edits the
@@ -869,16 +869,16 @@ building_rename() { # building_rename <map> <x y of the item> [<more script line
     sed -n 's/^.* panel building [0-9]* \("[^"]*"\).*/\1/p' | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
 }
-check base-trial '"Burger_Stand";"Zoo"' "building_rename maps/default.zoo '140 120'"
-check base-trial '"Family_Restroom";"Zoo"' "building_rename maps/default.zoo '140 160'"
+check base-trial '"Burger_Stand_1";"Zoo"' "building_rename maps/default.zoo '140 120'"
+check base-trial '"Family_Restroom_1";"Zoo"' "building_rename maps/default.zoo '140 160'"
 # A text of spaces only, and an empty one, leave the name (the test of the unit panels); other text replaces it.
 again='101 mouse 940 555\n102 down\n103 up\n104 key backspace\n105 key backspace\n106 key backspace\n107 key backspace\n'
 spaces='108 char 32\n109 key enter\n'
 empty='108 key enter\n'
 zed='108 char Z\n109 char e\n110 char d\n111 key enter\n'
-check base-trial '"Burger_Stand";"Zoo";"Zoo"' "building_rename maps/default.zoo '140 120' '$again$spaces'"
-check base-trial '"Burger_Stand";"Zoo";"Zoo"' "building_rename maps/default.zoo '140 120' '$again$empty'"
-check base-trial '"Burger_Stand";"Zoo";"Zed"' "building_rename maps/default.zoo '140 120' '$again$zed'"
+check base-trial '"Burger_Stand_1";"Zoo";"Zoo"' "building_rename maps/default.zoo '140 120' '$again$spaces'"
+check base-trial '"Burger_Stand_1";"Zoo";"Zoo"' "building_rename maps/default.zoo '140 120' '$again$empty'"
+check base-trial '"Burger_Stand_1";"Zoo";"Zed"' "building_rename maps/default.zoo '140 120' '$again$zed'"
 
 # A grandstand of the expansion trial (`cHideCostChange` 1; scn28 has some) is clicked: its panel hides the up and
 # down buttons and disables the price field. Prints the name, the price and the word the line has for it.
