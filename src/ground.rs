@@ -366,10 +366,7 @@ impl Renderer {
                 count += 1;
                 if let (Some(number), Some(texture)) = (section.get("type"), section.get("texture"))
                 {
-                    types.push((
-                        config::to_int(number),
-                        String::from_utf8_lossy(texture).into_owned(),
-                    ));
+                    types.push((config::to_int(number), crate::vfs::name_from_bytes(texture)));
                 }
             }
         }

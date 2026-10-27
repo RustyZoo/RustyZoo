@@ -106,6 +106,36 @@ fn a_unit_is_selected_picked_up_refused_where_another_stands_and_put_down() {
 }
 
 #[test]
+fn a_click_on_the_gate_of_an_exhibit_selects_it_and_the_ground_clears_the_selection() {
+    with_game("gate-marker", "", |s| {
+        let pieces: Vec<u32> = [0, 2, 4, 6].map(|side| s.fence(1, 20, 20, side)).to_vec();
+        s.app.exhibits_told();
+        s.app.game.as_mut().unwrap().world.set_gate(1, pieces[0]);
+        s.pass(&[]);
+        let selected = |s: &Session| {
+            let game = s.app.game.as_ref().unwrap();
+            (game.selected, game.extra.selected)
+        };
+        assert_eq!(selected(s), (None, None));
+        // The gate is on the north edge of the tile: the exhibit panel opens and the gate carries
+        // the marker.
+        s.click(s.near(20 * 64 + 32, 20 * 64, (0, 0)));
+        s.pass(&[]);
+        assert_eq!(selected(s), (Some(pieces[0]), Some(pieces[0])));
+        assert!(
+            s.app
+                .ui
+                .as_ref()
+                .unwrap()
+                .shown(crate::panel::exhibit::LAYOUT)
+        );
+        s.click(s.at(20, 22, 32, 32));
+        s.pass(&[]);
+        assert_eq!(selected(s), (None, None));
+    });
+}
+
+#[test]
 fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() {
     with_game("panels", "", |s| {
         for side in [0, 2, 4, 6] {
@@ -158,6 +188,36 @@ fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() 
             s.app.panel_animal(row);
             s.pass(&[]);
             assert_eq!(shown(s), ((Some(id), Some(id)), true, false));
+        }
+    });
+}
+
+#[test]
+fn a_crated_egg_takes_the_egg_footprint() {
+    with_game("egg-marker", "", |s| {
+        let zebra = s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        s.click(s.at(21, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(zebra));
+        // The egg flag is tested first: a crated egg takes the egg's footprint, the crate's
+        // only when it is not an egg.
+        for ((egg, crated), form) in [
+            ((true, false), Form::Egg),
+            ((true, true), Form::Egg),
+            ((false, true), Form::Crate),
+            ((false, false), Form::Plain),
+        ] {
+            let unit = s.app.game.as_mut().unwrap().world.units.get_mut(zebra);
+            if let Some(crate::unit::Part::Animal(a)) = unit.map(|u| &mut u.part) {
+                (a.egg, a.crated) = (egg, crated);
+            }
+            s.pass(&[]);
+            assert_eq!(
+                s.app.game.as_ref().unwrap().extra.form,
+                form,
+                "{egg} {crated}"
+            );
         }
     });
 }
