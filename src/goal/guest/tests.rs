@@ -606,6 +606,11 @@ fn a_guest_that_feels_sick_draws_its_chance_is_sick_on_the_spot_and_wanders_on()
 /// The catalogue of `types()` with a statue of weight 60 whose bonus gives the man (9503) 8, and
 /// two thoughts.
 fn statued() -> Catalogue {
+    statued_named(0)
+}
+
+/// `statued()` with the statue's name id `name_id`.
+fn statued_named(name_id: i32) -> Catalogue {
     let man = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\ncLeaveChanceDone=0\n";
     let mut cat = types_with(man);
     cat.push(crate::entity::EntityType {
@@ -620,7 +625,7 @@ fn statued() -> Catalogue {
             )
             .unwrap(),
         )),
-        name_id: 0,
+        name_id,
         footprint: [1, 1, 1],
         height: 0,
     });
@@ -696,6 +701,30 @@ fn the_choice_between_the_exhibit_and_the_scenery_is_one_draw_over_their_sites()
     let task = w.units.get(1).unwrap().goal.record.task;
     // r < H = 1 is the exhibit (task 0x65); else the scenery (0x80).
     assert_eq!(task, if r < 1 { 101 } else { 128 }, "{r}");
+}
+
+#[test]
+fn user_scenery_is_gawked_at_and_thinks_nothing_but_the_draw_is_kept() {
+    // Name 19000 is the first user-created name (localisation 8.2).
+    let cat = statued_named(19000);
+    let (mut w, mut rng, mut by_hand) = (statue_visit(), Rng::default(), Rng::default());
+    w.units.get_mut(1).unwrap().goal.record.target.id = 50;
+    by_hand.pick(2);
+    assert!(with_cx_in(&cat, &walks(), &mut w, &mut rng, |cx| cx.do_scenery_init()));
+    assert!(
+        w.units
+            .get(1)
+            .unwrap()
+            .runner
+            .top()
+            .is_some_and(|s| s.starts_with("bGawkObject"))
+    );
+    assert_eq!(rng.state(), by_hand.state());
+    let lines = w.units.take_guest_lines();
+    assert!(
+        !lines.iter().any(|l| l.starts_with("thought ")),
+        "{lines:?}"
+    );
 }
 
 #[test]
