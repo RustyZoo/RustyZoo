@@ -355,6 +355,7 @@ fn pens(records: [Option<StaffRecord>; 3]) -> World {
             name: "Pen".into(),
             stats: [0; 9],
             created: 0,
+            viewing: 0,
             serviced: 0,
         };
         zoo.habitat_info = vec![info.clone(), info];

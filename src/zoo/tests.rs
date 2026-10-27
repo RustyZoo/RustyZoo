@@ -2651,6 +2651,20 @@ fn an_animal_record_of_any_size_is_written_whole() {
     assert_eq!(animal_back(&none), none);
 }
 
+#[test]
+fn the_viewing_time_is_read_and_written() {
+    for v in [70, 73, 106] {
+        let bytes = file(v, 3, 3, &[(false, false), (true, false)], &[]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        // Zero, a value past 32 bits, and the largest value.
+        for viewing in [0, 0x1_0000_0002, u64::MAX] {
+            zoo.habitat_info[1].viewing = viewing;
+            let (back, _) = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap();
+            assert_eq!(back.habitat_info[1].viewing, viewing, "version {v}");
+        }
+    }
+}
+
 /// A staff body of version 106 up to the end of the staff block: the own fields of `class`, then
 /// the work and chase counters, two assigned tiles and the captured animal.
 fn staff_106(class: &str) -> Vec<u8> {

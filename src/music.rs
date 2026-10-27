@@ -82,7 +82,7 @@ impl Music {
         let music = Music {
             file: ini_value(ini, "UI", "menuMusic").map_or_else(
                 || "sounds/mainmenu.wav".to_string(),
-                |name| String::from_utf8_lossy(name).into_owned(),
+                crate::vfs::name_from_bytes,
             ),
             global: global_term(ini),
             base: ini_whole(ini, "UI", "menuMusicAttenuation").unwrap_or(0),
