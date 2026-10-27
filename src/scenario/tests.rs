@@ -316,3 +316,142 @@ fn an_extra_value_names_every_file_its_prefix_and_suffix_match_and_no_other() {
     let names: Vec<&str> = s.goals.iter().map(|g| g.name.as_str()).collect();
     assert_eq!(names, ["timer", "a", "b", "c", "d"]);
 }
+
+#[test]
+fn the_end_dialog_text_follows_the_file_the_result_and_the_expansions() {
+    let text = |file, won, x| end_text(file, won, x);
+    let table = [
+        ("scenario/scn01/scn01.scn", [16104, 16104]),
+        ("scenario/scn01a/scn01a.scn", [16104, 16104]),
+        ("scenario/scn27/scn27.scn", [16104, 16104]),
+        ("scenario/scn28/scn28.scn", [16104, 16104]),
+        ("scenario/scn28b/scn28b.scn", [16102, 16102]),
+        ("scenario/scn03/scn03.scn", [16100, 16100]),
+    ];
+    for (file, [with, without]) in table {
+        assert_eq!(
+            (text(file, true, 3), text(file, true, 0)),
+            (with, without),
+            "{file}"
+        );
+        assert_eq!(text(file, false, 0), without + 1, "{file} lost");
+    }
+    // Scenario 2 wants any expansion, scenario 19 the second one; the path may use either slash.
+    let scn2 = "scenario\\SCN02\\scn02.scn";
+    assert_eq!(
+        [0, 1, 2, 3].map(|x| text(scn2, true, x)),
+        [16102, 16104, 16104, 16104]
+    );
+    let scn19 = "scenario/scn19/scn19.scn";
+    assert_eq!(
+        [0, 1, 2, 3].map(|x| text(scn19, false, x)),
+        [16103, 16103, 16105, 16105]
+    );
+    assert_eq!(text("", true, i32::MIN), 16100);
+}
+
+#[test]
+fn the_objectives_list_holds_the_timer_and_the_goals_that_have_a_text_and_are_not_hidden() {
+    let text = "[duration]\nnummonths=3\ntext=100\n[goals]\ngoal=a\ngoal=b\ngoal=c\ngoal=g\n\
+        [a]\ntext=11\nvalue=5\narga=6\nargb=7\n[b]\nvalue=1\n[c]\ntext=13\nhidden=1\n\
+        [g]\nrtype=2\nchild=d\nchild=h\n[d]\ntext=14\n[h]\nrtype=1\nchild=e\n[e]\ntext=15\n";
+    let s = build(text, &[]);
+    let line = |text, values, state| Line {
+        text,
+        values,
+        state,
+    };
+    assert_eq!(
+        s.lines(),
+        [
+            line(100, [3, 0, 0], 0),
+            line(11, [5, 6, 7], 0),
+            line(14, [0, 0, 0], 0),
+            line(15, [0, 0, 0], 0),
+        ]
+    );
+    // No text for the timer: no line for it; a goal's line takes its state.
+    let mut s = build(
+        "[goals]\ngoal=a\n[a]\ntext=11\nrulea=99\narga=1\nvalue=1\n",
+        &[],
+    );
+    assert_eq!(s.lines().len(), 1);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    assert_eq!(s.lines()[0].state, 1);
+}
+
+#[test]
+fn the_scenario_ends_once_and_a_win_brings_its_unlocks() {
+    let text = "[completion]\nunlock=7\nunlock=-3\n[goals]\ngoal=a\n\
+        [a]\nrulea=99\narga=1\nvalue=1\n";
+    let mut won = build(text, &[]);
+    assert_eq!(won.ended(), None, "still running");
+    pass(&mut won, &env(1, 0), &mut Vec::new());
+    let end = Ended {
+        file: "s.scn".into(),
+        won: true,
+        unlocks: vec![7, -3],
+    };
+    assert_eq!(won.ended(), Some(end));
+    assert_eq!(won.ended(), None, "told once");
+    // A loss unlocks nothing.
+    let lost = "[completion]\nunlock=7\n[goals]\ngoal=a\n[a]\nrulea=99\narga=1\nvalue=1\ntype=7\n";
+    let mut lost = build(lost, &[]);
+    pass(&mut lost, &env(1, 0), &mut Vec::new());
+    assert_eq!(
+        lost.ended().map(|e| (e.won, e.unlocks)),
+        Some((false, vec![]))
+    );
+}
+
+#[test]
+fn the_title_and_the_icons_come_from_the_desc_section() {
+    let s = build(
+        "[desc]\nname=16001\nstory=STORY\niconp=a\niconc=b\niconf=c\n",
+        &[],
+    );
+    assert_eq!(
+        (s.title(), s.icons()),
+        ((16001, &b"STORY"[..]), &["a", "b", "c"].map(String::from))
+    );
+    let s = build("", &[]);
+    assert_eq!(
+        (s.title(), s.icons()),
+        ((0, &b""[..]), &[""; 3].map(String::from))
+    );
+}
+
+#[test]
+fn the_tutorial_chain_follows_the_expansions_installed() {
+    let next = |f: &str, x| next_tutorial(f, x);
+    let file = |n: &str| Some(format!("scenario/{n}/{n}.scn"));
+    // (file, expansion flags, next)
+    let table = [
+        ("scenario/scn01a/scn01a.scn", 0, file("scn01")),
+        ("scenario/scn01/scn01.scn", 0, file("scn02")),
+        ("scenario/scn02/scn02.scn", 0, None),
+        ("scenario/scn02/scn02.scn", 1, file("scn19")),
+        ("scenario/scn02/scn02.scn", 2, file("scn27")),
+        ("scenario/scn02/scn02.scn", 3, file("scn19")),
+        ("scenario/scn19/scn19.scn", 1, None),
+        ("scenario/scn19/scn19.scn", 3, file("scn27")),
+        ("scenario/scn27/scn27.scn", 0, file("scn28")),
+        ("scenario/scn28/scn28.scn", 0, file("scn28b")),
+        ("scenario/scn28b/scn28b.scn", 3, None),
+        (r"Scenario\SCN01\scn01.SCN", 0, file("scn02")),
+        ("scenario/scn03/scn03.scn", 3, None),
+        ("", 3, None),
+    ];
+    for (f, x, want) in table {
+        assert_eq!(next(f, x), want, "{f} {x}");
+    }
+    for (f, want) in [
+        ("scenario/scn28b/scn28b.scn", true),
+        (r"Scenario\SCN19\scn19.scn", true),
+        ("scenario/scn03/scn03.scn", false),
+        ("s/scn01.scn", false),
+        ("", false),
+    ] {
+        assert_eq!(is_tutorial(f), want, "{f}");
+    }
+}

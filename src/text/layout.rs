@@ -208,9 +208,10 @@ pub fn measure(font: &Font, text: &[u8], width: i32) -> (i32, i32) {
 /// `maxShortTooltipWidth`, or `maxLongTooltipWidth` with long help).
 ///
 /// The whole text is measured as one line, one line high; a small font (under 9 points, or 9
-/// points bold) with an alignment other than left adds 2 pixels; only if that is wider than
-/// `max_width` does the width become the smaller of `max_width` and three fifths of it, and the
-/// text is measured again wrapped in that width, which gives the width and the height.
+/// points with " Bold" in the face string) with an alignment other than left adds 2 pixels; only
+/// if that is wider than `max_width` does the width become the smaller of `max_width` and three
+/// fifths of it, and the text is measured again wrapped in that width, which gives the width and
+/// the height.
 pub fn tooltip_size(
     font: &Font,
     text: &[u8],
@@ -220,7 +221,7 @@ pub fn tooltip_size(
     yborder: i32,
 ) -> (i32, i32) {
     let (mut w, mut h) = (font.width(text), font.line_height());
-    let small = font.ppem() < 12 || (font.ppem() == 12 && font.is_bold());
+    let small = font.ppem() < 12 || (font.ppem() == 12 && font.bold_word());
     if small && aligned {
         w += 2;
     }

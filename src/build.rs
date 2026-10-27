@@ -8,6 +8,7 @@
 
 pub mod terrain;
 
+use crate::avail::Availability;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
@@ -71,33 +72,31 @@ fn listed(ty: &EntityType, tag: &str, expansions: i32) -> bool {
     own.is_empty() || own.iter().any(|bit| expansions & bit != 0)
 }
 
-/// Whether the type is available at the start of a game: `[Global] AvailableAtStartup` is 1 or
-/// missing (entity types 10.4).
-fn available(ty: &EntityType) -> bool {
-    ty.config
-        .as_deref()
-        .and_then(|c| c.section("Global")?.get("AvailableAtStartup"))
-        .is_none_or(|v| to_int(v) == Some(1))
-}
-
 /// The types of the purchase list `tag` that a panel shows, as indices into the catalogue, in the
 /// order of the tab: the filtered types in catalogue order, then a stable sort by [`order`]
 /// (placing 3.4).
-pub fn items(catalogue: &Catalogue, tag: &str, expansions: i32) -> Vec<usize> {
-    items_of(catalogue, tag, expansions, |_| true)
+pub fn items(
+    catalogue: &Catalogue,
+    avail: &Availability,
+    tag: &str,
+    expansions: i32,
+) -> Vec<usize> {
+    items_of(catalogue, avail, tag, expansions, |_| true)
 }
 
 /// [`items`] keeping the types that satisfy `keep`.
 fn items_of(
     catalogue: &Catalogue,
+    avail: &Availability,
     tag: &str,
     expansions: i32,
     keep: impl Fn(&EntityType) -> bool,
 ) -> Vec<usize> {
-    let shown = |ty: &EntityType| available(ty) && listed(ty, tag, expansions) && keep(ty);
-    let mut list: Vec<usize> = (0..catalogue.types.len())
-        .filter(|&i| shown(&catalogue.types[i]))
-        .collect();
+    let shown = |i: usize| {
+        let ty = &catalogue.types[i];
+        avail.is(catalogue, i) && listed(ty, tag, expansions) && keep(ty)
+    };
+    let mut list: Vec<usize> = (0..catalogue.types.len()).filter(|&i| shown(i)).collect();
     let key = |&i: &usize| order(&catalogue.types[i], tag);
     list.sort_by(|a, b| key(a).partial_cmp(&key(b)).unwrap_or(Ordering::Equal));
     list
@@ -420,6 +419,8 @@ struct Last {
 /// What the player has done in the panels.
 pub struct Build {
     expansions: i32,
+    /// Which types the lists show (entity types 10.4).
+    avail: Availability,
     /// The panel shown, a position in [`PANELS`].
     open: Option<usize>,
     /// The types of the open tab, in the order of its list.
@@ -466,6 +467,7 @@ impl Build {
     pub fn new(expansions: i32) -> Build {
         Build {
             expansions,
+            avail: Availability::default(),
             open: None,
             list: Vec::new(),
             chosen: [[None; 4]; PANEL_COUNT],
@@ -491,6 +493,30 @@ impl Build {
     /// member for each.
     pub fn take_made(&mut self) -> Vec<usize> {
         std::mem::take(&mut self.made)
+    }
+
+    /// Applies the rewards of the ini file after a load or a start (entity types 10.4).
+    pub fn unlocked(mut self, cat: &Catalogue, ini: &Config) -> Build {
+        self.avail.unlock(cat, ini);
+        self
+    }
+
+    /// Makes every type with this name id available or not, whatever its subtype, and makes the
+    /// open list again when a flag changed (research 6.2). Whether a flag changed.
+    pub fn set_available(
+        &mut self,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        cat: &Catalogue,
+        name_id: i32,
+        on: bool,
+        log: &mut Vec<String>,
+    ) -> bool {
+        let changed = self.avail.set(cat, name_id, on);
+        if let (true, Some(p)) = (changed, self.open) {
+            self.fill(ui, vfs, cat, p, log);
+        }
+        changed
     }
 
     /// The sex of the staff the Hire panel lists.
@@ -974,11 +1000,11 @@ impl Build {
             (None, _) => Vec::new(),
             (Some(_), Some(male)) => {
                 let sex = [&b"f"[..], b"m"][usize::from(male)];
-                items_of(cat, &tag, self.expansions, |ty| {
+                items_of(cat, &self.avail, &tag, self.expansions, |ty| {
                     is_unit(ty) && ty.subtype == sex
                 })
             }
-            (Some(_), None) => items(cat, &tag, self.expansions),
+            (Some(_), None) => items(cat, &self.avail, &tag, self.expansions),
         };
         if panel.empty != 0 {
             ui.set_hidden(panel.empty, !self.list.is_empty());

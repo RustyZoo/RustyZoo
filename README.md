@@ -26,10 +26,6 @@ RustyZoo is not finished, but you can already play a freeform zoo.
 | | Feature |
 | :---: | --- |
 | ✅ | Main menu, freeform maps, starting cash |
-| ✅ | Paths, fences, tanks, terrain, scenery and buildings |
-| ✅ | Animals, keepers, maintenance workers and tour guides |
-| ✅ | Guests who visit, eat, drop litter and leave |
-| ✅ | Saving and loading your zoo |
 | 🚧 | Research, scenarios, awards and translations |
 | 🔜 | Ready-to-run downloads for Windows, macOS and Linux |
 
