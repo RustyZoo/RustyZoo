@@ -14,6 +14,7 @@ use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::path::{Finder, Settings};
 use crate::render::corner_elevation;
 use crate::render::order::{Held, Kind, Object, Scene, ground_height};
+use crate::strings::Language;
 use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
@@ -231,12 +232,25 @@ pub struct World {
     paused: bool,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
+    /// The install language: the exhibit names of a loaded zoo are kept when its stored locale is
+    /// this one, and a save writes it.
+    language: Language,
 }
 
 impl World {
-    /// The world of a zoo, with the exterior of the zoo marked (exhibits and money 3.1). `shape`
-    /// tells how each entity takes its place.
+    /// The world of a test zoo in the shipped language (see [`World::with_language`]).
+    #[cfg(test)]
     pub fn new(zoo: Zoo, shape: impl Fn(&Entity) -> Option<Shape>) -> World {
+        World::with_language(zoo, shape, Language::shipped())
+    }
+
+    /// The world of a zoo in the install language `language`, with the exterior of the zoo marked
+    /// (exhibits and money 3.1). `shape` tells how each entity takes its place.
+    pub fn with_language(
+        zoo: Zoo,
+        shape: impl Fn(&Entity) -> Option<Shape>,
+        language: Language,
+    ) -> World {
         let shapes: Vec<_> = zoo.entities.iter().map(shape).collect();
         let (scene, owner) = index(&zoo, &shapes);
         let mut world = World {
@@ -244,7 +258,6 @@ impl World {
             exhibits: Exhibits::default(),
             events: Vec::new(),
             waiting: Vec::new(),
-            words: ["Exhibit".into(), "Tank".into(), "Show Tank".into()],
             water: Vec::new(),
             tank_config: TankConfig::default(),
             connectors: Vec::new(),
@@ -260,12 +273,15 @@ impl World {
             edits: 0,
             paused: false,
             told_water: BTreeMap::new(),
+            words: language.exhibit_words.clone(),
+            language,
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
         world.load_gates();
         world.load_tanks();
         world.retank(false);
+        world.name_loaded();
         world.relink();
         for at in 0..world.zoo.entities.len() {
             world.filter_added(at);
