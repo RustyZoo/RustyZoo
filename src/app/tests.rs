@@ -1020,11 +1020,21 @@ fn the_cursor_over_the_interface_is_the_default() {
         assert_eq!(app.cursor(), 201, "over a text field");
         app.pass(80, &[Command::Mouse(Mouse::Move(30, 30))]);
         assert_eq!(app.cursor(), 209);
-        // The assign tool over a valid target has the hover cursor, over an invalid one not.
-        let game = app.game.as_mut().unwrap();
-        game.staff.over = Some((1, true));
-        assert_eq!(app.cursor(), 210);
-        app.game.as_mut().unwrap().staff.over = Some((1, false));
+    });
+}
+
+#[test]
+fn the_assign_tool_shows_the_hover_cursor_over_a_bad_exhibit_too() {
+    with_app("app-cursor-assign", |app, _| {
+        app.start_game(None);
+        app.set_interface(interface("paint"));
+        app.pass(0, &[Command::Mouse(Mouse::Move(30, 30))]);
+        assert_eq!(app.cursor(), 209, "off the exhibits");
+        for good in [true, false] {
+            app.game.as_mut().unwrap().staff.over = Some((1, good));
+            assert_eq!(app.cursor(), 210, "good: {good}");
+        }
+        app.game.as_mut().unwrap().staff.over = None;
         assert_eq!(app.cursor(), 209);
     });
 }
@@ -1410,14 +1420,6 @@ fn path_catalogue() -> Catalogue {
         height: 0,
     });
     cat
-}
-
-#[test]
-fn rotating_zooming_saving_and_loading_are_the_busy_commands() {
-    let busy = |c: Command| c.busy();
-    assert!(busy(Command::Rotate(true)) && busy(Command::Zoom(false)));
-    assert!(busy(Command::Save("a.zoo")) && busy(Command::Load("a.zoo")));
-    assert!(!busy(Command::Pause) && !busy(Command::Mouse(Mouse::Down)));
 }
 
 #[test]
@@ -1895,6 +1897,14 @@ fn a_closed_tile_is_an_exhibit_the_player_names_in_a_dialog() {
 struct Seen {
     chosen_gate: crate::zoo::Fence,
     old_gate: (crate::zoo::Fence, crate::zoo::Fence),
+    /// The cursor over a piece with a valid pending gate, over one with an invalid gate, and away
+    /// from every piece.
+    cursors: [u32; 3],
+}
+
+#[test]
+fn the_gate_tool_shows_the_hover_cursor_over_a_piece_and_the_normal_one_elsewhere() {
+    assert_eq!(gate_tool_run().cursors, [210, 210, 209]);
 }
 
 #[test]
@@ -2035,6 +2045,7 @@ fn gate_tool_run() -> Seen {
         told(&app, &["tool pending"]),
         ["tool pending fences/iron/g 20,20 q 1 valid"]
     );
+    let over_valid = app.cursor();
     assert_eq!(app.game.as_ref().unwrap().cost(), Some(0));
     app.pass(205, &[Command::Mouse(Mouse::Down)]);
     app.pass(210, &[Command::Mouse(Mouse::Up)]);
@@ -2107,6 +2118,7 @@ fn gate_tool_run() -> Seen {
         told(&app, &["tool pending"]),
         ["tool pending fences/iron/g 20,20 q 3 invalid"]
     );
+    let over_invalid = app.cursor();
     assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
     click(&mut app, 316, to);
     assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
@@ -2135,9 +2147,12 @@ fn gate_tool_run() -> Seen {
     assert_eq!(fence.life, 7);
     // And it drew a wear interval, which the countdown starts at.
     assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
+    // Away from every piece the gate tool shows the normal cursor.
+    app.pass(340, &[at(19, 19, 32, 32)]);
     Seen {
         chosen_gate,
         old_gate,
+        cursors: [over_valid, over_invalid, app.cursor()],
     }
 }
 
