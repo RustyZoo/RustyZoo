@@ -1239,7 +1239,11 @@ mod tests {
         dir.ini(".");
         for (name, content) in [(&b"a\xE9.txt"[..], "one"), (b"a\xE8.txt", "two")] {
             let path = dir.0.join(std::ffi::OsStr::from_bytes(name));
-            std::fs::write(path, content).unwrap();
+            if let Err(e) = std::fs::write(path, content) {
+                // APFS and similar refuse names that are not valid UTF-8.
+                eprintln!("skipped: the file system refuses the name: {e}");
+                return;
+            }
         }
         let vfs = Vfs::open(&dir.0).unwrap();
         assert_eq!(text(&vfs, &name_from_bytes(b"a\xE9.txt")), "one");
