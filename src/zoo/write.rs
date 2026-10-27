@@ -184,7 +184,7 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
     }
     // The date after the price (from 71) is 1 January 2000 when the file has none.
     match zoo.version >= 71 {
-        true => o.bytes(b.get(kept.at[0] - 8..kept.at[0]).ok_or_else(short)?),
+        true => o.bytes(b.get(kept.at - 8..kept.at).ok_or_else(short)?),
         false => o.bytes(&upgrade::NEVER.to_le_bytes()),
     }
     // The calendar: year, month, day of week (Sunday is 0), day, hour, minute, second, millisecond.
@@ -203,10 +203,7 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
         o.u16(n as u16);
     }
     o.u32(money.cash.to_bits());
-    match zoo.version >= 73 {
-        true => o.bytes(b.get(kept.at[1] + 4..kept.at[1] + 8).ok_or_else(short)?),
-        false => o.u32(0),
-    }
+    o.u32(zoo.clocks.play_time);
     Ok(o.0)
 }
 

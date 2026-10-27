@@ -164,7 +164,7 @@ fn tail(w: &mut W, v: u32, scripts: u32) {
     }
     w.u32(1234.5f32.to_bits()); // cash
     if v >= 73 {
-        w.z(4);
+        w.u32(123_456); // the play time
     }
     w.u32(2).z(40); // two thoughts, all 0
     w.u32(7).u32(8); // the AI clock: milliseconds left over, ticks
@@ -405,6 +405,21 @@ fn a_refused_game_date_is_the_start_of_the_calendar() {
     ] {
         let zoo = parse(&with_date(&file(VERSIONS[0], 2, 2, &[], &[]), date));
         assert_eq!(zoo.clocks.calendar, 0, "{date:?}");
+    }
+}
+
+#[test]
+fn the_play_time_is_read_from_version_73_and_always_written() {
+    for v in [71, 73, 106] {
+        let (zoo, money) = Zoo::parse_money(&file(v, 2, 2, &[], &[])).unwrap();
+        let time = if v >= 73 { 123_456 } else { 0 };
+        assert_eq!(zoo.clocks.play_time, time, "version {v}");
+        for set in [0, 7, u32::MAX] {
+            let mut zoo = zoo.clone();
+            zoo.clocks.play_time = set;
+            let back = parse(&zoo.write(&money).unwrap());
+            assert_eq!(back.clocks.play_time, set, "{v}");
+        }
     }
 }
 
@@ -1515,13 +1530,13 @@ fn the_game_block_of_an_old_file_gets_the_rows_and_words_it_lacked() {
             [31u32.to_le_bytes(), 20u32.to_le_bytes()].concat()
         );
         // The date after the price is 1 January 2000 when the file has none (before 71).
-        let date = u64::from_le_bytes(f[at[0] - 8..at[0]].try_into().unwrap());
+        let date = u64::from_le_bytes(f[at - 8..at].try_into().unwrap());
         assert_eq!(
             date,
             if v < 71 { 125_911_584_000_000_000 } else { 0 },
             "version {v}"
         );
-        assert_eq!(f.len(), at[1] + 8, "version {v}");
+        assert_eq!(f.len(), at + 24, "version {v}");
     }
 }
 
