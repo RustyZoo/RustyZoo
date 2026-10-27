@@ -300,7 +300,7 @@ pub(super) fn list_icon(ty: &EntityType) -> Option<String> {
         .flatten()
         .filter_map(|name| config.section(name))
         .find_map(|section| section.get_all("Icon").first().map(|v| v.to_vec()))
-        .map(|v| String::from_utf8_lossy(&v).into_owned())
+        .map(|v| crate::vfs::name_from_bytes(&v))
 }
 
 /// The refresh clock of a panel (5.1): the due time and a refresh that is asked for.

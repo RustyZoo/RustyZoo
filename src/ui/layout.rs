@@ -445,7 +445,7 @@ impl Pictures {
     /// The picture the value names: an image if it ends in `.tga` (any case), else the animation
     /// without extension. A failure is a warning, once per name.
     fn get(&mut self, vfs: &Vfs, value: &[u8], warnings: &mut Vec<String>) -> Option<Picture> {
-        let name = String::from_utf8_lossy(value);
+        let name = crate::vfs::name_from_bytes(value);
         let image =
             name.len() >= 4 && name.as_bytes()[name.len() - 4..].eq_ignore_ascii_case(b".tga");
         let member = match image || name.contains(".ani") {
@@ -680,7 +680,12 @@ impl Tree {
                     self.add(vfs, Kind::Layout, &empty, Some(this));
                     return Err(stop(&name, "no layout".into()));
                 };
-                self.load_layout(vfs, &String::from_utf8_lossy(path), Some(this), depth + 1)?;
+                self.load_layout(
+                    vfs,
+                    &crate::vfs::name_from_bytes(path),
+                    Some(this),
+                    depth + 1,
+                )?;
                 continue;
             }
             let kind =
