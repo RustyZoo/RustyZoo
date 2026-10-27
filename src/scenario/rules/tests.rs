@@ -295,7 +295,7 @@ fn rule_16_counts_the_tanks_by_wall_height() {
 
 #[test]
 fn rules_5_and_6_average_the_suitability_of_the_animals_of_each_exhibit() {
-    let mut p = Parts::new(world(), zoo_types());
+    let p = Parts::new(world(), zoo_types());
     let shown = |p: &Parts, id| {
         let at = p.world.find(id).unwrap();
         i64::from(crate::panel::animal::suitability(&p.world, &p.cat, at))
@@ -323,35 +323,105 @@ fn rules_5_and_6_average_the_suitability_of_the_animals_of_each_exhibit() {
     );
     // No exhibit with a matching animal, an unknown filter: 0.
     assert_eq!(value(&p, [5, 3, 9999, 0], -1000), 0);
-    assert_eq!(value(&p, [5, 7, 1, 0], -1000), 0);
-    assert_eq!(value(&p, [5, -1, 1, 0], -1000), 0);
-    // Rule 6: `arga` exhibits average `value` or more, the filter value is `argb`.
+    // A kind outside 1 to 6 filters nothing, as 0 does.
+    for b in [7, -1, i32::MAX, i32::MIN] {
+        assert_eq!(value(&p, [5, b, 1, 0], low), low as i32, "ruleb {b}");
+        assert_eq!(value(&p, [5, b, 1, 0], low + 1), 0, "ruleb {b}");
+    }
+    // Rule 6: `arga` exhibits average `value` or more, the filter value is `argb`. The tank
+    // keeps its shark only; the land keeps the bears (the tank's too) and the goat, all rated
+    // against it.
+    let (t, l) = exhibit_ids(&p);
+    let rated = |id: u32, key: &str| {
+        i64::from(crate::panel::animal::suitability_in(
+            &p.world, &p.cat, id, key,
+        ))
+    };
+    let tank = rated(t, "shark");
+    let land = (2 * rated(l, "polar") + rated(l, "goat")) / 3;
     let (best, worst) = (tank.max(land), tank.min(land));
     assert_eq!(value(&p, [6, 0, 1, 0], best), best as i32);
     assert_eq!(value(&p, [6, 0, 1, 0], best + 1), 0);
     assert_eq!(value(&p, [6, 0, 2, 0], worst), worst as i32);
     assert_eq!(value(&p, [6, 0, 2, 0], worst + 1), 0);
     assert_eq!(value(&p, [6, 0, 3, 0], -1000), 0, "only two exhibits");
-    assert_eq!(
-        value(&p, [6, 3, 1, 5001], bear_tank.max(bear_land)),
-        bear_tank.max(bear_land) as i32
-    );
+    let bears = rated(l, "polar");
+    assert_eq!(value(&p, [6, 3, 1, 5001], bears), bears as i32);
+    assert_eq!(value(&p, [6, 3, 1, 5001], bears + 1), 0);
     assert_eq!(value(&p, [6, 3, 1, 9999], -1000), 0);
-    // A show neighbour adds its animals to the exhibit's.
-    let (a, b) = (
-        p.world.exhibits().list()[0].id,
-        p.world.exhibits().list()[1].id,
+}
+
+#[test]
+fn rules_5_and_6_average_eggs_and_crated_animals() {
+    let mut p = Parts::new(world(), zoo_types());
+    let shown = |p: &Parts, id| {
+        let at = p.world.find(id).unwrap();
+        i64::from(crate::panel::animal::suitability(&p.world, &p.cat, at))
+    };
+    let (tank, land) = (
+        (shown(&p, 1) + shown(&p, 2)) / 2,
+        (shown(&p, 3) + shown(&p, 4)) / 2,
     );
-    p.world.exhibits_mut().get_mut(b).unwrap().show_near = vec![a];
-    let all = (bear_tank + shark + bear_land + goat) / 4;
-    assert_eq!(value(&p, [6, 0, 2, 0], all.min(tank)), all.min(tank) as i32);
-    assert_eq!(value(&p, [6, 0, 2, 0], all.min(tank) + 1), 0);
-    // Eggs and crated animals have no suitability to average.
-    for id in [1, 2, 3] {
+    let low = tank.min(land) as i32;
+    // The bears are crated and the goat is an egg: no state is tested, all of them stay.
+    for id in [1, 3] {
         p.animal(id).crated = true;
     }
     p.animal(4).egg = true;
-    assert_eq!(value(&p, [5, 0, 0, 0], -1000), 0);
+    assert_eq!(p.value([5, 0, 0, 0], low), low);
+    assert_eq!(p.value([5, 0, 0, 0], low + 1), 0);
+    assert_eq!(
+        p.value([5, 3, 5003, 0], low.min(shown(&p, 4) as i32)),
+        shown(&p, 4).min(low as i64) as i32
+    );
+    assert_eq!(p.value([6, 0, 2, 0], low), low);
+    assert_eq!(p.value([6, 0, 2, 0], low + 1), 0);
+    // Only crated bears and an egg stand there: a filter on them still finds the exhibits.
+    assert_eq!(p.value([5, 3, 5001, 0], -1000), -1000);
+    assert_eq!(p.value([6, 3, 1, 5003], -1000), -1000);
+}
+
+/// The ids of the tank and the land exhibit of [`world`].
+fn exhibit_ids(p: &Parts) -> (u32, u32) {
+    let list = p.world.exhibits().list();
+    let tank = list.iter().find(|x| x.tank.is_some()).unwrap().id;
+    (tank, list.iter().find(|x| x.tank.is_none()).unwrap().id)
+}
+
+#[test]
+fn rule_6_keeps_the_animals_whose_home_is_the_exhibit() {
+    let mut p = Parts::new(world(), zoo_types());
+    // The bears are amphibious and the land beside their tank is their home; the shark and the
+    // goat have their own. `arga` 2 asks for both exhibits, the value -1000 only counts them.
+    let n = |p: &Parts, b, x, arga| p.value([6, b, arga, x], -1000);
+    // The shark is kept by the tank only, the goat by the land only: one exhibit each.
+    assert_eq!([n(&p, 3, 5002, 1), n(&p, 3, 5002, 2)], [-1000, 0]);
+    assert_eq!([n(&p, 3, 5003, 1), n(&p, 3, 5003, 2)], [-1000, 0]);
+    // The bears are the land's, even those that swim in the tank.
+    assert_eq!([n(&p, 3, 5001, 1), n(&p, 3, 5001, 2)], [-1000, 0]);
+    // With no gate on the land the bears have no home: the tank keeps its own.
+    let (_, land) = exhibit_ids(&p);
+    p.world.exhibits_mut().get_mut(land).unwrap().gate = None;
+    assert_eq!(n(&p, 3, 5001, 2), -1000);
+    // The land gathers the tank's animals too: the shark has its home in the tank, so the land
+    // still ignores it.
+    assert_eq!(n(&p, 3, 5002, 2), 0);
+}
+
+#[test]
+fn rule_6_needs_one_counted_exhibit() {
+    let p = Parts::new(world(), zoo_types());
+    // No animal passes the filter: no exhibit has an average, whatever `arga`.
+    for arga in [0, -1, i32::MIN, 1, i32::MAX] {
+        assert_eq!(p.value([6, 3, arga, 9999], -1000), 0, "arga {arga}");
+    }
+    // One exhibit counted: `arga` of 0 or less asks for that one only.
+    for arga in [0, -1, i32::MIN, 1] {
+        assert_eq!(p.value([6, 3, arga, 5003], -1000), -1000, "arga {arga}");
+    }
+    assert_eq!(p.value([6, 3, i32::MAX, 5003], -1000), 0);
+    // Counted, but below the value.
+    assert_eq!(p.value([6, 3, 0, 5003], i32::MAX), 0);
 }
 
 #[test]

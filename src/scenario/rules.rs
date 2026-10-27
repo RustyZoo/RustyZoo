@@ -12,11 +12,13 @@ use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::Env;
+use crate::animal::home::home;
 use crate::build::{number, plain};
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
+use crate::exhibit::rating::Likes;
 use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
-use crate::panel::animal::suitability;
+use crate::panel::animal::{suitability, suitability_in};
 use crate::panel::exhibit::animals_exhibit;
 use crate::status::zoo::Status;
 use crate::world::World;
@@ -142,8 +144,8 @@ fn homes<'e>(env: &'e Env, g: &Game) -> &'e Homes {
         let mut homes = Homes::new();
         let mut seen: HashMap<(u32, &str), i32> = HashMap::new();
         for (i, f) in facts(env, g).iter().enumerate() {
-            let alive = f.animal.as_ref().is_some_and(|a| !a.egg && !a.crated);
-            let Some(x) = animals_exhibit(g.world, f.at).filter(|_| alive) else {
+            // No state is tested: eggs and crated animals standing there count (scenarios 6).
+            let Some(x) = animals_exhibit(g.world, f.at).filter(|_| f.animal.is_some()) else {
                 continue;
             };
             let kind = g.world.zoo.entities[f.at].type_name.as_str();
@@ -209,51 +211,78 @@ fn exhibit_count(env: &Env, g: &Game, b: i32) -> i32 {
     }
 }
 
-/// The average of the suitability of the animals of `x` that pass the filter of rule 5 or 6
-/// (`b`, `v`), or none when there is no such animal.
-fn average(env: &Env, g: &Game, ids: &[u32], b: i32, v: i32) -> Option<i64> {
-    let facts = facts(env, g);
-    let keep = |&&(i, _): &&(usize, i32)| {
-        let a = facts[i].animal.as_ref();
-        let k = a.map(keys);
-        match b {
-            0 => true,
-            1..=4 => k.is_some_and(|k| k[b as usize - 1] == v),
-            5 => k.is_some_and(|k| k[5] == v),
-            6 => k.is_some_and(|k| k[4] == v),
-            _ => false,
-        }
-    };
-    let homes = homes(env, g);
-    let shown: Vec<i64> = (ids.iter().filter_map(|x| homes.get(x)))
-        .flatten()
-        .filter(keep)
-        .map(|&(_, s)| i64::from(s))
-        .collect();
+/// The rule 5 and 6 filter (`b`, `v`): whether the animal passes. A kind outside 1 to 6 filters
+/// nothing, as 0.
+fn passes(a: &Animal, b: i32, v: i32) -> bool {
+    let k = keys(a);
+    match b {
+        1..=4 => k[b as usize - 1] == v,
+        5 => k[5] == v,
+        6 => k[4] == v,
+        _ => true,
+    }
+}
+
+/// The integer average of `shown`, or none when it is empty.
+fn mean(shown: &[i64]) -> Option<i64> {
     (!shown.is_empty()).then(|| shown.iter().sum::<i64>() / shown.len() as i64)
 }
 
-/// Rule 5: `value` when every exhibit with a matching animal averages `value` or more.
+/// Rule 5: `value` when at least one exhibit has a matching animal and every one that has
+/// averages `value` or more.
 fn all_suit(env: &Env, g: &Game, rule: &[i32; 4], value: i32) -> i32 {
-    let ids = homes(env, g).keys().copied();
-    let averages: Vec<i64> = ids
-        .filter_map(|x| average(env, g, &[x], rule[1], rule[2]))
+    let facts = facts(env, g);
+    let matching = |&&(i, _): &&(usize, i32)| {
+        (facts[i].animal.as_ref()).is_some_and(|a| passes(a, rule[1], rule[2]))
+    };
+    let averages: Vec<i64> = (homes(env, g).values())
+        .filter_map(|list| {
+            let shown: Vec<i64> = (list.iter().filter(matching))
+                .map(|&(_, s)| i64::from(s))
+                .collect();
+            mean(&shown)
+        })
         .collect();
     let good = !averages.is_empty() && averages.iter().all(|&a| a >= i64::from(value));
     if good { value } else { 0 }
 }
 
-/// Rule 6: `value` when `arga` exhibits, each with its show neighbours' animals, average `value`
-/// or more.
+/// Rule 6: `value` when at least one exhibit, and at least `arga` of them, average `value` or
+/// more. Each gathers the animals of its tiles and its amphibious and show neighbours', keeps
+/// those whose home is it or that have none, and rates them against itself.
 fn some_suit(env: &Env, g: &Game, rule: &[i32; 4], value: i32) -> i32 {
-    let exhibits = g.world.exhibits();
-    let good = exhibits.list().iter().filter(|x| {
-        let ids: Vec<u32> = std::iter::once(x.id)
-            .chain(x.show_near.iter().copied())
-            .collect();
-        average(env, g, &ids, rule[1], rule[3]).is_some_and(|a| a >= i64::from(value))
+    let facts = facts(env, g);
+    let list = g.world.exhibits().list();
+    let good = list.iter().filter(|x| {
+        let near = |id| x.id == id || x.amphibious.contains(&id) || x.show_near.contains(&id);
+        let mut seen: HashMap<&str, i32> = HashMap::new();
+        let mut shown = Vec::new();
+        for f in facts {
+            if !(f.animal.as_ref()).is_some_and(|a| passes(a, rule[1], rule[3])) {
+                continue;
+            }
+            let Some(h) = animals_exhibit(g.world, f.at).filter(|&h| near(h)) else {
+                continue;
+            };
+            let e = &g.world.zoo.entities[f.at];
+            let Some(ty) = g
+                .cat
+                .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
+            else {
+                continue;
+            };
+            if home(g.world, g.cat, h, &Likes::of(ty)).is_some_and(|home| home != x.id) {
+                continue;
+            }
+            let s = *seen
+                .entry(e.type_name.as_str())
+                .or_insert_with(|| suitability_in(g.world, g.cat, x.id, &e.type_name));
+            shown.push(i64::from(s));
+        }
+        mean(&shown).is_some_and(|a| a >= i64::from(value))
     });
-    if good.count() as i64 >= i64::from(rule[2]) {
+    // Whatever `arga` says, one exhibit has to be counted.
+    if good.count() as i64 >= i64::from(rule[2]).max(1) {
         value
     } else {
         0
