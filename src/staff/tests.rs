@@ -491,8 +491,10 @@ fn a_saved_staff_member_writes_its_live_state_over_the_record_it_was_read_with()
 #[test]
 fn a_duty_kind_the_data_lacks_is_off_and_not_counted_when_saved() {
     let mut s = Staff::default();
-    let saved =
-        |s: &Staff, kinds: usize| s.record(StaffRecord::default(), Vec::new(), kinds).duties;
+    let saved = |s: &Staff, kinds: usize| {
+        s.record(StaffRecord::default(), Vec::new(), kinds, false)
+            .duties
+    };
     assert_eq!(saved(&s, 3), [true, true, true, false]);
     assert_eq!(saved(&s, 4), [true; 4]);
     assert_eq!(saved(&s, 0), [false; 4]);
@@ -500,4 +502,14 @@ fn a_duty_kind_the_data_lacks_is_off_and_not_counted_when_saved() {
     s.off[1] = true;
     assert_eq!(saved(&s, 4), [true, false, true, true]);
     assert_eq!(saved(&s, 3), [true, false, true, false]);
+}
+
+#[test]
+fn only_a_guide_saves_its_crowd_countdown() {
+    let s = Staff {
+        crowd: 7,
+        ..Staff::default()
+    };
+    let saved = |guide: bool| s.record(StaffRecord::default(), Vec::new(), 0, guide).crowd;
+    assert_eq!((saved(false), saved(true)), (None, Some(7)));
 }
