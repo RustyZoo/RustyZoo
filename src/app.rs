@@ -714,6 +714,7 @@ impl<'a> App<'a> {
             world.units.names = (types.filter(|t| t.name_id != 0))
                 .map(|t| (t.name_id, ui.string(t.name_id)))
                 .collect();
+            world.name_loaded_entities(self.renderer.catalogue());
         }
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
