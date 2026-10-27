@@ -768,6 +768,38 @@ fn the_selected_row_of_a_transparent_list_is_filled_even_in_the_colour_of_the_ba
 }
 
 #[test]
+fn a_transparent_list_skips_its_background_even_when_a_row_covers_the_top_left_pixel() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=36\nborder=0\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         transparent=1\nminiconwidth=6\nminiconheight=1\n\
+         [b]\ntype=UIImage\nid=3\nx=60\ny=40\nanimation=ui/b/b\n"
+    );
+    let mut tree = tree("transparent-icon", &root, &animation("b"));
+    show_all(&mut tree);
+    let icon = tree.elements[2].look.animation[0];
+    tree.elements[2].state |= HIDDEN;
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = vec![Row {
+        icon,
+        ..Row::default()
+    }];
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert_eq!(
+        at(&frame, 4, 4),
+        [255, 0, 0],
+        "the icon covers the top left pixel"
+    );
+    assert_eq!(
+        at(&frame, 43, 30),
+        [0, 0, 0],
+        "the background shows what is behind"
+    );
+}
+
+#[test]
 fn a_row_is_as_tall_as_its_wrapped_text_or_its_icon_and_spacing_goes_between_rows() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\
