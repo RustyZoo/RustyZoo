@@ -383,7 +383,7 @@ fn show(bytes: &[u8]) -> String {
 }
 
 fn lossy(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
+    crate::vfs::name_from_bytes(bytes)
 }
 
 /// The types a registry produces, entries in ascending byte order of their keys. Lazy: a
