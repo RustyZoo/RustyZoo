@@ -1599,10 +1599,10 @@ fn new_animal() -> AnimalRecord {
             words: [5, 6, 7],
             last: 8,
         }),
-        life: 4319,
+        life: Some(4319),
         baby: 999,
         interval: 1600,
-        mate_delay: 2,
+        mate_delay: Some(2),
         boxed: 1,
         home: [30, 40],
         spare: (1..=74).collect(),
@@ -2500,10 +2500,10 @@ fn animal_back(a: &AnimalRecord) -> AnimalRecord {
 #[test]
 fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
     let new = AnimalRecord {
-        life: 4319,
+        life: Some(4319),
         baby: 999,
         interval: 1600,
-        mate_delay: 2,
+        mate_delay: Some(2),
         boxed: 1,
         ..animal_new(75, 120, 7)
     };
@@ -2525,7 +2525,7 @@ fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
             back.mate_delay,
             back.boxed
         ),
-        (4319, 999, 1600, 2, 1)
+        (Some(4319), 999, 1600, Some(2), 1)
     );
     // The keeper-visit level and the five rate multipliers are 1.
     let ones: Vec<usize> = (0..74).filter(|&i| back.spare[i] != 0).collect();
@@ -2703,4 +2703,13 @@ fn a_staff_record_with_a_count_past_the_end_or_cut_short_is_an_error() {
     let mut w = W::default();
     w.u32(0).i32(0).u32(0).u8(0).i32(0).i32(0).u32(0).u32(0);
     assert!(staff_read(106, "tour", &w.0).unwrap().members.is_empty());
+}
+
+#[test]
+fn a_guide_written_with_a_zero_countdown_reads_it_back() {
+    let mut tour = staff_read(106, "tour", &staff_106("tour")).unwrap();
+    tour.crowd = Some(0);
+    let mut o = Out(Vec::new());
+    staff::write(&mut o, b"tour", &tour);
+    assert_eq!(staff_read(106, "tour", &o.0).unwrap().crowd, Some(0));
 }
