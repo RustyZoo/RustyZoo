@@ -420,3 +420,38 @@ fn the_title_and_the_icons_come_from_the_desc_section() {
         ((0, &b""[..]), &[""; 3].map(String::from))
     );
 }
+
+#[test]
+fn the_tutorial_chain_follows_the_expansions_installed() {
+    let next = |f: &str, x| next_tutorial(f, x);
+    let file = |n: &str| Some(format!("scenario/{n}/{n}.scn"));
+    // (file, expansion flags, next)
+    let table = [
+        ("scenario/scn01a/scn01a.scn", 0, file("scn01")),
+        ("scenario/scn01/scn01.scn", 0, file("scn02")),
+        ("scenario/scn02/scn02.scn", 0, None),
+        ("scenario/scn02/scn02.scn", 1, file("scn19")),
+        ("scenario/scn02/scn02.scn", 2, file("scn27")),
+        ("scenario/scn02/scn02.scn", 3, file("scn19")),
+        ("scenario/scn19/scn19.scn", 1, None),
+        ("scenario/scn19/scn19.scn", 3, file("scn27")),
+        ("scenario/scn27/scn27.scn", 0, file("scn28")),
+        ("scenario/scn28/scn28.scn", 0, file("scn28b")),
+        ("scenario/scn28b/scn28b.scn", 3, None),
+        (r"Scenario\SCN01\scn01.SCN", 0, file("scn02")),
+        ("scenario/scn03/scn03.scn", 3, None),
+        ("", 3, None),
+    ];
+    for (f, x, want) in table {
+        assert_eq!(next(f, x), want, "{f} {x}");
+    }
+    for (f, want) in [
+        ("scenario/scn28b/scn28b.scn", true),
+        (r"Scenario\SCN19\scn19.scn", true),
+        ("scenario/scn03/scn03.scn", false),
+        ("s/scn01.scn", false),
+        ("", false),
+    ] {
+        assert_eq!(is_tutorial(f), want, "{f}");
+    }
+}

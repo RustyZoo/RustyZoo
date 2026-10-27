@@ -81,7 +81,7 @@ fn a_won_scenario_stores_its_result_asks_and_leaves_for_the_scenario_screen() {
         app.pass(now + 66, &[]);
         assert!(app.camera().is_some());
         // The answer stops the game and shows the scenario screen of the result.
-        app.interface().unwrap().answer(1);
+        app.interface().unwrap().answer(7);
         app.pass(now + 132, &[]);
         let lines = said(app, 99, now + 132);
         assert_eq!(lines[0], "menu game stop");
@@ -152,5 +152,91 @@ fn the_o_key_and_the_button_fill_the_objectives_panel() {
         // Pressed again with the panel open, the lines come again (the game's state is the same).
         app.pass(now + 132, &[Command::Char(b'O')]);
         assert_eq!(said(app, 2, now + 132), ["menu scenario list 1"]);
+    });
+}
+
+/// Whether the button of the end dialog is shown.
+fn button(app: &mut App, id: i32) -> bool {
+    shown(app, id)
+}
+
+#[test]
+fn the_end_dialog_has_yes_and_no_and_only_no_stops_the_game() {
+    with_menu("end-yes-no", "", |app, _| {
+        let now = play(app, "s/win.scn");
+        let (now, _) = until_asked(app, now);
+        assert!(button(app, 45210) && button(app, 45211) && !button(app, 45212));
+        // Yes: the dialog closes and the game goes on.
+        app.interface().unwrap().answer(6);
+        app.pass(now + 66, &[]);
+        assert!(app.camera().is_some() && !shown(app, DIALOG) && !app.quit());
+        assert!(
+            said(app, 1, now + 66)
+                .iter()
+                .all(|l| !l.starts_with("menu game"))
+        );
+        // The end was told once: no second dialog.
+        for p in 2..40 {
+            app.pass(now + 66 * p, &[]);
+            assert!(!app.interface().unwrap().modal_open());
+        }
+    });
+    // No stops it and shows the scenario screen of the result.
+    with_menu("end-no", "", |app, _| {
+        let now = play(app, "s/win.scn");
+        let (now, _) = until_asked(app, now);
+        app.interface().unwrap().answer(7);
+        app.pass(now + 66, &[]);
+        assert!(app.camera().is_none());
+        assert!(
+            said(app, 1, now + 66)
+                .iter()
+                .any(|l| l.starts_with("menu scenario select"))
+        );
+    });
+}
+
+#[test]
+fn yes_after_a_tutorial_starts_the_next_tutorial() {
+    with_menu("end-next", "", |app, _| {
+        let now = play(app, "scenario/scn01a/scn01a.scn");
+        let (now, _) = until_asked(app, now);
+        app.interface().unwrap().answer(6);
+        app.pass(now + 66, &[]);
+        let lines = said(app, 1, now + 66);
+        assert!(
+            lines.contains(&"menu game start scenario saved.zoo".to_string()),
+            "{lines:?}"
+        );
+        assert!(app.camera().is_some() && !shown(app, DIALOG));
+        let next = app.sim.scenario().map(|s| s.file().to_string());
+        assert_eq!(next.as_deref(), Some("scenario/scn01/scn01.scn"));
+    });
+    // A tutorial without a next one (scn01 with no expansion goes to scn02, which is missing here
+    // from the files) and a plain scenario start nothing.
+    with_menu("end-no-next", "", |app, _| {
+        let now = play(app, "s/win.scn");
+        let (now, _) = until_asked(app, now);
+        app.interface().unwrap().answer(6);
+        app.pass(now + 66, &[]);
+        assert!(app.sim.scenario().is_some_and(|s| s.file() == "s/win.scn"));
+    });
+}
+
+#[test]
+fn no_after_a_tutorial_shows_the_main_menu() {
+    with_menu("end-tutorial-no", "", |app, _| {
+        let now = play(app, "scenario/scn01a/scn01a.scn");
+        let (now, _) = until_asked(app, now);
+        app.interface().unwrap().answer(7);
+        app.pass(now + 66, &[]);
+        let lines = said(app, 1, now + 66);
+        assert_eq!(lines[0], "menu game stop");
+        // The scenario screen is not shown, though the tutorial is in the list.
+        assert!(
+            lines.iter().all(|l| !l.starts_with("menu scenario")),
+            "{lines:?}"
+        );
+        assert!(app.camera().is_none() && shown(app, 26));
     });
 }

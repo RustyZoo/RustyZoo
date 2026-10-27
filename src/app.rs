@@ -1944,7 +1944,7 @@ impl<'a> App<'a> {
     /// on, Cancel stays.
     fn answered(&mut self, code: i32) {
         if self.ending {
-            return self.end_answered();
+            return self.end_answered(code);
         }
         if let Some(saving) = self.saving.take() {
             return self.save_answered(code, saving);

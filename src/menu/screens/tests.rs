@@ -719,3 +719,20 @@ fn the_screen_after_the_end_selects_the_scenario_and_shows_the_story_of_its_resu
     menu.scenario_ended(&ended("f/m1.scn", true, &[]));
     assert!(menu.show_result(&vfs, &mut ui).is_empty());
 }
+
+#[test]
+fn an_unlock_id_of_zero_or_less_is_not_listed() {
+    let (install, vfs, _) = fixture("unlock-zero", true, false);
+    let mut first = menu("", &install, &vfs);
+    let log = first.scenario_ended(&ended("s/aa.scn", true, &[0, -3, i32::MIN, 7]));
+    let log: Vec<_> = log.iter().filter(|l| l.contains("unlock ")).collect();
+    assert_eq!(log, ["scenario unlock 7"]);
+    let file = written(&install).unwrap();
+    assert!(file.contains("unlockCount=1") && file.contains("unlockEntity0=7"));
+    assert!(!file.contains("unlockEntity1"));
+    // Only such ids: nothing is written at all.
+    let (install, vfs, _) = fixture("unlock-none", true, false);
+    let mut other = menu("", &install, &vfs);
+    other.scenario_ended(&ended("s/aa.scn", true, &[0, -1]));
+    assert!(!written(&install).unwrap_or_default().contains("unlock"));
+}

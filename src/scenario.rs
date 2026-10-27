@@ -252,6 +252,40 @@ pub struct Ended {
     pub unlocks: Vec<i32>,
 }
 
+/// The seven tutorial files (9.1), in the order of their chain.
+const TUTORIALS: [&str; 7] = [
+    "scn01a", "scn01", "scn02", "scn19", "scn27", "scn28", "scn28b",
+];
+
+/// The name of a tutorial among the seven (9.1), from a scenario file path, or "".
+fn tutorial(file: &str) -> &'static str {
+    let name = file.replace('\\', "/").to_ascii_lowercase();
+    TUTORIALS
+        .into_iter()
+        .find(|t| name == format!("scenario/{t}/{t}.scn"))
+        .unwrap_or("")
+}
+
+/// Whether `file` is one of the seven tutorial files (9.1), listed or not.
+pub fn is_tutorial(file: &str) -> bool {
+    !tutorial(file).is_empty()
+}
+
+/// The file of the tutorial that follows the tutorial `file` (9.1), given the expansion flags
+/// (bit 1 the first expansion, bit 2 the second). None for any other file or without a next one.
+pub fn next_tutorial(file: &str, expansions: i32) -> Option<String> {
+    let next = match tutorial(file) {
+        "scn01a" => "scn01",
+        "scn01" => "scn02",
+        "scn02" if expansions & 1 != 0 => "scn19",
+        "scn02" | "scn19" if expansions & 2 != 0 => "scn27",
+        "scn27" => "scn28",
+        "scn28" => "scn28b",
+        _ => return None,
+    };
+    Some(format!("scenario/{next}/{next}.scn"))
+}
+
 /// The string of the end dialog's text (9.1) for the scenario `file` and the expansion flags
 /// (bit 1 the first expansion, bit 2 the second), plus 1 when lost.
 pub fn end_text(file: &str, won: bool, expansions: i32) -> i32 {
@@ -366,6 +400,11 @@ impl Scenario {
 
     pub fn run(&self) -> Run {
         self.run
+    }
+
+    /// The scenario file.
+    pub fn file(&self) -> &str {
+        &self.file
     }
 
     /// The string id of the name and the name of the text of the story (`[desc]`).

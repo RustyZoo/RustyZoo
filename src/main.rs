@@ -480,10 +480,11 @@ usage: rustyzoo [--data <dir>] <command>
                       the stored one, and a win appends its `[completion] unlock` types to `[user]
                       unlockEntityN` (`menu scenario ended won|lost`, `menu scenario result KEY N`,
                       `menu scenario unlock ID`); the game's layouts hide and a dialog (layout
-                      45200, `menu scenario dialog TEXTID`) tells the result; its answer stops
-                      the game and shows the scenario screen with the win or lose picture and
-                      story of the scenario (the main menu for a freeform map); closing the window
-                      meanwhile ends the run. The Scenario button (4107, the O character) fills
+                      45200, `menu scenario dialog TEXTID`) tells the result with Yes and
+                      No; No stops the game and shows the scenario screen with the win or lose
+                      picture and story (the main menu for a tutorial or a freeform map); Yes
+                      starts the next tutorial after a tutorial, else the game goes on; closing
+                      the window meanwhile ends the run. The Scenario button (4107, the O character) fills
                       panel 803 with the scenario's name and story and one line per goal
                       (`menu scenario list N`). The lines are `menu game start LABEL
                       FILE`; a file that cannot

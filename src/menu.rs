@@ -204,7 +204,10 @@ impl Menu {
     pub fn scenario_ended(&mut self, end: &Ended) -> Vec<String> {
         let mut log = Vec::new();
         let found = self.scenarios.iter().position(|s| s.file == end.file);
-        self.ended = found.map(|i| (i, end.won));
+        // A tutorial goes back to the main menu, not to the scenario screen (9.1).
+        self.ended = found
+            .filter(|_| !crate::scenario::is_tutorial(&end.file))
+            .map(|i| (i, end.won));
         if let Some(i) = found {
             let key = self.scenarios[i].result_key.clone();
             let new = if end.won { 1 } else { 2 };
@@ -217,7 +220,7 @@ impl Menu {
         let count = ini_whole(&self.ini, "user", "unlockCount").unwrap_or(0);
         let start = count.clamp(0, 4096);
         let mut n = start;
-        for &id in &end.unlocks {
+        for &id in end.unlocks.iter().filter(|&&id| id > 0) {
             let listed = (0..n)
                 .any(|i| ini_whole(&self.ini, "user", &format!("unlockEntity{i}")) == Some(id));
             if !listed {

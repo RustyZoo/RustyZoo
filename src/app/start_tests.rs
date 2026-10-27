@@ -116,6 +116,10 @@ pub(super) fn interface(install: &Install) -> Interface {
                 b"[LayoutInfo]\nid=45200\nlayer=7\nx=0\ny=0\ndx=40\ndy=10\nstate=1\n\
                   [m]\ntype=UIText\nid=45206\nx=0\ny=0\ndx=40\ndy=10\n\
                   [p]\ntype=UIImage\nid=45204\nx=0\ny=0\n\
+                  [y]\ntype=UIButton\nid=45210\nx=0\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
+                  target=6\naction=5\n\
+                  [n]\ntype=UIButton\nid=45211\nx=10\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
+                  target=7\naction=5\n\
                   [o]\ntype=UIButton\nid=45212\nx=20\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
                   target=1\naction=5\n"
                     .to_vec(),
@@ -163,6 +167,12 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
         ("s/play.scn", scn.to_vec()),
         ("s/win.scn", goal("")),
         ("s/lose.scn", goal("type=7")),
+        // Two tutorials: the first has a next one, which has a map to start.
+        ("scenario/scn01a/scn01a.scn", goal("")),
+        (
+            "scenario/scn01/scn01.scn",
+            [goal("").as_slice(), b"[start]\nsavegame=saved.zoo\n"].concat(),
+        ),
     ];
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();

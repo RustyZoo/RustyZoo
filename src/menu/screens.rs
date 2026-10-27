@@ -162,6 +162,18 @@ impl Menu {
 
     // ---- The scenario screen (5)
 
+    /// Starts the scenario `file` as the play button does (the next tutorial, scenarios 9.1): the
+    /// request is the start of its map.
+    pub fn start_file(&mut self, vfs: &Vfs, file: &str) {
+        let listed = self
+            .scenarios
+            .iter()
+            .find(|s| s.file.eq_ignore_ascii_case(file));
+        let label = format!("scenario {}", listed.map_or("", |s| &s.section));
+        let file = listed.map_or(file, |s| &s.file).to_string();
+        self.open_from(vfs, &file, label.trim_end().to_string(), None);
+    }
+
     /// The screen after a scenario ended (5.3): the finished scenario is selected and shows its
     /// win or lose picture and story. Nothing if it is not in the list (a freeform map).
     pub fn show_result(&mut self, vfs: &Vfs, ui: &mut Interface) -> Vec<String> {
