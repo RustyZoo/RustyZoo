@@ -6,7 +6,7 @@
 
 use std::fs::File;
 use std::io::BufWriter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rustyzoo::Framebuffer;
 use rustyzoo::app::{App, Command, Mouse, frame_hash};
@@ -345,6 +345,11 @@ impl Iterator for Passes {
     }
 }
 
+/// Creates the folder that `--png-every` writes its pictures into, when it does not exist yet.
+fn create_out_dir(out: &Path) -> Result<(), CliError> {
+    std::fs::create_dir_all(out).map_err(|e| format!("cannot create {}: {e}", out.display()).into())
+}
+
 /// Plays `member`, or, without one, starts up to the main menu.
 pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliError> {
     let flags = flags(words)?;
@@ -398,6 +403,9 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
+    if flags.png_every.is_some() {
+        create_out_dir(&out)?;
+    }
     let png = |pass: u64, frame: &Framebuffer| -> Result<(), CliError> {
         if flags.png_every.is_some_and(|k| pass.is_multiple_of(k)) {
             let file = out.join(format!("frame-{pass:06}.png"));
@@ -547,6 +555,17 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn out_dir_is_created_when_missing() {
+        let dir = std::env::temp_dir().join(format!("rustyzoo-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let nested = dir.join("a").join("b");
+        assert!(create_out_dir(&nested).is_ok());
+        assert!(nested.is_dir());
+        assert!(create_out_dir(&nested).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn flags_come_in_any_order_and_bad_ones_are_refused() {
