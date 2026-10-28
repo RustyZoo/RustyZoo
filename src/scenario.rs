@@ -493,11 +493,16 @@ pub struct Scenario {
 }
 
 impl Scenario {
-    /// Reads and prepares the scenario `file` (4.1). `None` when the file cannot be read. An
+    /// Reads and prepares the scenario `file` (4.1). `None` when the file cannot be read: missing,
+    /// empty or without a section header (zoo format 7.2). An
     /// extra file that cannot be read is skipped.
     pub fn prepare(vfs: &Vfs, file: &str) -> Option<Scenario> {
         let read = |name: &str| Config::parse(&vfs.read(name).ok()?).ok();
         let main = read(file)?;
+        // An empty file or one with no section header is as unreadable as a missing one.
+        if !main.has_header() {
+            return None;
+        }
         // An `extragoals` value is a pattern: the text before its last dot is the prefix, the dot
         // and the rest the suffix. A value with no dot, or ending in one, lists nothing.
         let extra = |s: Option<&Section>| -> Vec<Config> {

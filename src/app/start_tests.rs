@@ -202,6 +202,10 @@ pub(super) fn with_game(
             [goal("").as_slice(), b"[start]\nsavegame=saved.zoo\n"].concat(),
         ),
         ("s/res.scn", b"[start]\nresearch=resx.cfg\n".to_vec()),
+        // Unreadable scenarios: empty, or text with no line starting with `[` (7.2); and one header.
+        ("s/empty.scn", Vec::new()),
+        ("s/garbage.scn", b"goal=a\n; [x]\nplain text [y]\n".to_vec()),
+        ("s/header.scn", b"  [x]".to_vec()),
         // The scenario the test maps name: a saved game of it loads.
         ("scn/x", b"[start]\n".to_vec()),
         ("resx.cfg", b"[branches]\nbranch=rb.cfg\n".to_vec()),
@@ -908,11 +912,16 @@ fn a_saved_game_whose_scenario_cannot_be_read_is_refused_and_the_game_open_stays
         app.open_zoo(zoo("s/res.scn"), Money::default(), true)
             .unwrap();
         assert_eq!(app.sim.research_share(), 100);
-        // The old-version message, and the game open before is kept.
-        let refused = zoo("s/none.scn");
-        let message = format!("unsupported old version {}", refused.version);
-        assert_eq!(app.open_zoo(refused, Money::default(), true), Err(message));
-        assert_eq!(app.sim.research_share(), 100);
+        // A missing file, an empty one and one with no section header are refused with the
+        // old-version message, and the game open before is kept; one header is enough to load.
+        for name in ["s/none.scn", "s/empty.scn", "s/garbage.scn"] {
+            let refused = zoo(name);
+            let message = format!("unsupported old version {}", refused.version);
+            assert_eq!(app.open_zoo(refused, Money::default(), true), Err(message));
+            assert_eq!(app.sim.research_share(), 100);
+        }
+        app.open_zoo(zoo("s/header.scn"), Money::default(), true)
+            .unwrap();
     });
 }
 

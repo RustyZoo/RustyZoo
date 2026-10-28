@@ -306,6 +306,28 @@ fn a_scenario_is_read_from_the_install_and_an_unreadable_extra_file_is_skipped()
 }
 
 #[test]
+fn a_scenario_file_needs_a_line_starting_with_a_bracket() {
+    use crate::sprite::tests::Install;
+    let install = Install::new(
+        "scenario-header",
+        &[
+            ("x/empty.scn", Vec::new()),
+            ("x/text.scn", b"goal=a\n; [x]\nkey=[y]\n".to_vec()),
+            ("x/one.scn", b" \t[x]".to_vec()),
+            ("x/open.scn", b"[x\n".to_vec()),
+            ("x/noname.scn", b"[]\n".to_vec()),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    for name in ["empty", "text"] {
+        assert!(Scenario::prepare(&vfs, &format!("x/{name}.scn")).is_none());
+    }
+    for name in ["one", "open", "noname"] {
+        assert!(Scenario::prepare(&vfs, &format!("x/{name}.scn")).is_some());
+    }
+}
+
+#[test]
 fn an_extra_value_names_every_file_its_prefix_and_suffix_match_and_no_other() {
     use crate::sprite::tests::Install;
     let main =
