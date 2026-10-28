@@ -200,8 +200,9 @@ impl Menu {
 
     /// A scenario ended (scenarios 5.4, 9.2): its result is written to `[scenario]` when it is
     /// lower than the stored one, and a win appends the types it unlocks to `[user]`
-    /// `unlockEntityN` (the types already listed are not listed twice). The lines for the log.
-    pub fn scenario_ended(&mut self, end: &Ended) -> Vec<String> {
+    /// `unlockEntityN` (the types already listed are not listed twice). The lines for the log, and
+    /// the ids newly listed.
+    pub fn scenario_ended(&mut self, end: &Ended) -> (Vec<String>, Vec<i32>) {
         let mut log = Vec::new();
         let found = self.scenarios.iter().position(|s| s.file == end.file);
         // A tutorial goes back to the main menu, not to the scenario screen (9.1).
@@ -216,12 +217,14 @@ impl Menu {
                 log.push(format!("scenario result {key} {new}"));
             }
         }
-        log.extend(
-            self.unlock(&end.unlocks)
-                .iter()
-                .map(|id| format!("scenario unlock {id}")),
-        );
-        log
+        let listed = self.unlock(&end.unlocks);
+        log.extend(listed.iter().map(|id| format!("scenario unlock {id}")));
+        (log, listed)
+    }
+
+    /// The settings as they are now: the rewards unlocked during this run are in them.
+    pub fn settings(&self) -> &Config {
+        &self.ini
     }
 
     /// Appends types to the rewards of `[user] unlockEntityN` (the ids already listed are not
