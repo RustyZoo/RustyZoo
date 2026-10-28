@@ -139,6 +139,9 @@ pub struct TankConfig {
     /// `wallHeightPriceDivisor` (0 makes the walls free) (4.7).
     pub water: [f32; 2],
     pub divisor: f32,
+    /// The price of one ground step of one tile: `[Map] elevationCost` of the ini file, which
+    /// does not come from `tanks.cfg` (4.7).
+    pub ground: f32,
 }
 
 impl Default for TankConfig {
@@ -160,6 +163,7 @@ impl Default for TankConfig {
             decay: 30_000,
             water: [0.0; 2],
             divisor: 0.0,
+            ground: crate::terrain::elevation_cost(b""),
         }
     }
 }
@@ -167,10 +171,15 @@ impl Default for TankConfig {
 impl TankConfig {
     /// The `tanks.cfg` of the game, or the default without one (or one that cannot be read).
     pub fn load(vfs: &Vfs) -> TankConfig {
-        vfs.read("tanks.cfg")
+        let found = vfs
+            .read("tanks.cfg")
             .ok()
             .and_then(|bytes| Config::parse(&bytes).ok())
-            .map_or_else(TankConfig::default, |c| TankConfig::read(&c))
+            .map_or_else(TankConfig::default, |c| TankConfig::read(&c));
+        TankConfig {
+            ground: crate::terrain::elevation_cost(vfs.ini()),
+            ..found
+        }
     }
 
     /// Reads the `[tank]` section of a `tanks.cfg`; a key that is missing keeps the default, and

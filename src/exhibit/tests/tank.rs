@@ -319,6 +319,7 @@ pub(super) const CONFIG: TankConfig = TankConfig {
     decay: 30_000,
     water: [1.5, 1.0],
     divisor: 5.0,
+    ground: 8.0,
 };
 
 /// A map of tiles with these elevations by tile (0 elsewhere), and the pieces, with the
@@ -760,6 +761,7 @@ fn the_numbers_of_tanks_cfg_are_read_and_cut_to_what_a_tank_can_hold() {
             decay: 30_000,
             water: [1.5, 0.0],
             divisor: 0.0,
+            ground: 8.0,
         }
     );
     // The time before the purity drops: any whole number, below 0 none.

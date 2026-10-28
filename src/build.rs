@@ -243,7 +243,7 @@ fn icons(ty: &EntityType) -> Vec<String> {
         .map_or_else(Vec::new, |values| {
             values
                 .iter()
-                .map(|v| String::from_utf8_lossy(v).into_owned())
+                .map(|v| crate::vfs::name_from_bytes(v))
                 .collect()
         })
 }
@@ -499,6 +499,13 @@ impl Build {
     pub fn unlocked(mut self, cat: &Catalogue, ini: &Config) -> Build {
         self.avail.unlock(cat, ini);
         self
+    }
+
+    /// The tree of a new game is built (research 7.4): its programs not done make their targets
+    /// unavailable, then the ini rewards apply again.
+    pub fn start_research(&mut self, cat: &Catalogue, ini: &Config, tree: &crate::research::Tree) {
+        tree.apply(cat, &mut self.avail);
+        self.avail.unlock(cat, ini);
     }
 
     /// Makes every type with this name id available or not, whatever its subtype, and makes the

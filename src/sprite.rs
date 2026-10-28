@@ -650,7 +650,7 @@ impl Sprite {
         let path_len = reader.len("palette path length")?;
         let path = reader.take(path_len, "palette path")?;
         let path = path.split(|&b| b == 0).next().unwrap_or_default();
-        let palette = String::from_utf8_lossy(path).into_owned();
+        let palette = crate::vfs::name_from_bytes(path);
         let count = reader.len("frame count")?;
         // Every frame takes at least its size field and a header: a larger count cannot be true.
         if count > reader.data.len() / (4 + MIN_FRAME_SIZE) {

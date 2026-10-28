@@ -5,7 +5,7 @@ use super::*;
 use crate::entity::Catalogue;
 use crate::menu::Start;
 use crate::money::{CONSTRUCTION, NET, StartCash};
-use crate::render::tests::{cache_install, flat_map, frame_file, tile_with};
+use crate::render::tests::{cache_install_with, flat_map, frame_file, tile_with};
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{Kind, Tree};
@@ -21,6 +21,7 @@ impl UiStrings for Texts {
             22012 => "MMM' of Era' y",
             22013 => "ddd MMM d",
             1030 => "Date: %s",
+            29001 => "Exhibit design",
             _ => "",
         }
         .into()
@@ -79,7 +80,8 @@ fn status_interface(name: &str, first_tab: &str) -> Interface {
         [i]\ntype=UIButton\nid=4104\nx=50\ny=30\ndx=10\ndy=5\nlayer=1\nstate=4096\n{first_tab}\naction=3\ntarget=800\n\
         [p]\ntype=UILayout\nlayout=ui/info.lyt\nstate=1\n\
         [f]\ntype=UIButton\nid=4154\nx=50\ny=40\ndx=10\ndy=5\nlayer=1\ntransparent=0\nstate=4096\naction=3\ntarget=110\n\
-        [t]\ntype=UILayout\nlayout=ui/finances.lyt\nstate=1\n"
+        [t]\ntype=UILayout\nlayout=ui/finances.lyt\nstate=1\n\
+        [a]\ntype=UIListBox\nid=4124\nx=0\ny=0\ndx=30\ndy=30\n"
     );
     let mut finances = "[LayoutInfo]\nid=110\nx=0\ny=0\ndx=64\ndy=48\nstate=1\n".to_string();
     for id in (3920..=3924)
@@ -119,7 +121,12 @@ fn status_interface(name: &str, first_tab: &str) -> Interface {
 
 /// Runs `body` on a game with a status bar.
 fn with_game(name: &str, body: impl FnOnce(&mut App)) {
-    let install = cache_install(&format!("app-money-{name}"), frame_file());
+    with_members(name, &[], body)
+}
+
+/// As [`with_game`], with more members in the install.
+fn with_members(name: &str, extra: &[(&str, Vec<u8>)], body: impl FnOnce(&mut App)) {
+    let install = cache_install_with(&format!("app-money-{name}"), frame_file(), extra);
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut app = App::new(
@@ -453,6 +460,43 @@ fn the_z_key_opens_the_zoo_status_window_and_its_finances_table_follows_the_acco
         assert!(!ui.press_button(99_999) && !ui.press_button(1016));
         ui.tree.hide(ui.tree.find(2).unwrap());
         assert!(!ui.press_button(1014));
+    });
+}
+
+/// The text and help of the rows of the awards list.
+fn award_rows(app: &mut App) -> Vec<(Vec<u8>, i32)> {
+    let ui = app.interface().unwrap();
+    match &ui.tree.elements[ui.tree.find(4124).unwrap()].kind {
+        Kind::ListBox(l) => (l.rows.rows.iter())
+            .map(|r| (r.text.clone(), r.help))
+            .collect(),
+        _ => panic!("not a list"),
+    }
+}
+
+#[test]
+fn the_awards_page_is_rebuilt_each_time_the_z_key_shows_the_window() {
+    let file = b"[Version]\nversion = 1\n[Awards]\naward = a\n\
+        [a]\nid = 1\nnameID = 29001\ntooltipID = 29101\n"
+        .to_vec();
+    with_members("awards", &[("award001.cfg", file)], |app| {
+        app.set_interface(status_interface("awards", "state=8"));
+        let held: Vec<(Vec<u8>, i32)> = vec![(b"Exhibit design".to_vec(), 29101)];
+        // 0, a huge id and an id with no definition give no row; the held one gives one.
+        let given = [
+            Command::Award(1),
+            Command::Award(0),
+            Command::Award(i32::MAX),
+        ];
+        app.pass(0, &given);
+        assert!(award_rows(app).is_empty());
+        app.pass(20, &[Command::Char(b'z')]);
+        assert_eq!(award_rows(app), held);
+        // An award given while the window is open shows at the next opening.
+        app.pass(40, &[Command::Award(-1)]);
+        app.pass(60, &[Command::Char(b'Z')]);
+        app.pass(80, &[Command::Char(b'z')]);
+        assert_eq!(award_rows(app), held);
     });
 }
 

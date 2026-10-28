@@ -70,7 +70,7 @@ fn info_image(ty: &EntityType) -> Option<String> {
         .as_deref()?
         .section("Characteristics/Strings")?
         .get("cInfoImageName")?;
-    let name = String::from_utf8_lossy(value.trim_ascii()).into_owned();
+    let name = crate::vfs::name_from_bytes(value.trim_ascii());
     (!name.is_empty()).then_some(name)
 }
 

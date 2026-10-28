@@ -16,6 +16,7 @@ use crate::exhibit::viewing::{self, Wear};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
 use crate::panel::guest::{thought_rows, thought_texts};
 use crate::status::Words;
+use crate::terrain::shape::LIMIT;
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
@@ -45,7 +46,8 @@ pub const WALL_UP: i32 = 4875;
 pub const SALT: i32 = 4869;
 pub const FRESH: i32 = 4870;
 pub const DRAIN: i32 = 4885;
-const GROUND: [i32; 2] = [4879, 4880];
+pub const GROUND_DOWN: i32 = 4879;
+pub const GROUND_UP: i32 = 4880;
 const WALL_COST: i32 = 4877;
 const FILL_COST: [i32; 2] = [4871, 4872];
 const SALINITY_TEXT: i32 = 4868;
@@ -134,7 +136,8 @@ const TANK_ICONS: [[&str; 3]; 2] = [
 /// raise and of the two fills, the salinity, and which buttons work. By the filled flag, not the
 /// water level: a filled tank shows the name of its water and the drain button, a tank that is
 /// not shows the fill group (its buttons work while the water is at 0). The wall buttons stop at
-/// the lowest height the tank takes and at the highest. The ground buttons do nothing yet.
+/// the lowest height the tank takes and at the highest. The ground buttons stop at the limits of
+/// the ground.
 fn tank_tab(
     ui: &mut Interface,
     world: &World,
@@ -154,7 +157,7 @@ fn tank_tab(
     let water = ui.string(WATERS[usize::from(!tank.salt)]);
     ui.set_text(WALL_COST, &to_cp1252(&whole(next)));
     ui.set_text(SALINITY_TEXT, &to_cp1252(&water));
-    ui.set_text(GROUND_COST, b"");
+    ui.set_text(GROUND_COST, &to_cp1252(&whole(prices.ground)));
     for (i, text) in FILL_COST.into_iter().enumerate() {
         ui.set_text(text, &to_cp1252(&whole(prices.fill[i])));
     }
@@ -169,9 +172,9 @@ fn tank_tab(
     }
     ui.set_enabled(WALL_DOWN, tank.height > low);
     ui.set_enabled(WALL_UP, tank.height < high);
-    for button in GROUND {
-        ui.set_enabled(button, false);
-    }
+    let ground = world.ground(id)?;
+    ui.set_enabled(GROUND_DOWN, ground > -LIMIT);
+    ui.set_enabled(GROUND_UP, ground < LIMIT);
     Some(format!(
         "tank {id} walls {} level {} min {low} max {high} next {} water {} fill {} {}",
         tank.height,
@@ -300,7 +303,7 @@ pub(super) fn list_icon(ty: &EntityType) -> Option<String> {
         .flatten()
         .filter_map(|name| config.section(name))
         .find_map(|section| section.get_all("Icon").first().map(|v| v.to_vec()))
-        .map(|v| String::from_utf8_lossy(&v).into_owned())
+        .map(|v| crate::vfs::name_from_bytes(&v))
 }
 
 /// The refresh clock of a panel (5.1): the due time and a refresh that is asked for.

@@ -703,3 +703,90 @@ fn the_drink_goal_tries_the_shore_tiles_in_order() {
     // The later direction comes first on a tie: the west tile (1, 3), not the north one (2, 2).
     assert_eq!(destination, Some((64 + 32, 3 * 64 + 32, 0)));
 }
+
+/// Loads the first pen's animals with `saved`, and with `set` as the saved behaviour set and
+/// `goal` as the saved active goal; steps `ms` and returns the log and the animal 500 with its task.
+fn loaded_with(saved: AnimalRecord, set: &str, goal: i32, ms: u32) -> (Vec<String>, Animal, u8) {
+    let cat = zebras_with("cEnergyThreshold=500", "");
+    let mut world = pens();
+    for e in &mut world.zoo.entities {
+        if e.class == "animals" {
+            let mut block = crate::zoo::UnitBlock::default();
+            block.behaviour.levels[0].name = set.into();
+            block.target.active = goal;
+            let c = e.common.as_mut().unwrap();
+            (c.animal, c.unit) = (Some(Box::new(saved.clone())), Some(Box::new(block)));
+        }
+    }
+    let data = Life::new().idling().with("bSleep", "fPlay(sleep)");
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let mut log = Vec::new();
+    for _ in 0..ms / 67 {
+        sim.step_with(&data, &cat, &mut world, 67, |_, _, _| {});
+        log.extend(world.units.take_animal_lines());
+        log.extend(world.units.take_lines());
+    }
+    let unit = world.units.get(500).unwrap();
+    let Part::Animal(a) = &unit.part else {
+        panic!("not an animal");
+    };
+    (log, a.clone(), unit.goal.record.task)
+}
+
+#[test]
+fn a_loaded_sleeper_goes_on_with_its_saved_sleep_set() {
+    let saved = AnimalRecord {
+        sleeping: true,
+        energy: 100,
+        ..record()
+    };
+    let at = |log: &[String], line: &str| log.iter().position(|l| l == line);
+    // The saved set is the sleep set: it starts again at the first checks, before any waking.
+    let (log, _, _) = loaded_with(saved.clone(), "bSleep", 1, 3000);
+    let slept = at(&log, "set 500 bSleep");
+    assert!(slept.is_some() && slept < at(&log, "wake 500").or(Some(usize::MAX)));
+    // Any other saved set: nothing holds the flag, the first sleep check wakes the animal.
+    let (log, a, _) = loaded_with(saved.clone(), "bChasePrey", 116, 3000);
+    assert!(at(&log, "set 500 bSleep").is_none() && at(&log, "wake 500").is_some());
+    assert!(!a.sleeping && a.energy == 0);
+    // Not saved asleep, with the sleep set: nothing starts.
+    let (log, a, _) = loaded_with(
+        AnimalRecord {
+            sleeping: false,
+            ..saved
+        },
+        "bSleep",
+        1,
+        3000,
+    );
+    assert!(at(&log, "set 500 bSleep").is_none() && !a.sleeping);
+}
+
+#[test]
+fn a_loaded_drinker_goes_on_only_in_its_drink_goal() {
+    let saved = AnimalRecord {
+        drinking: true,
+        eating: true,
+        ..record()
+    };
+    // Saved in the drink goal: the flags come back and the goal starts.
+    let (_, a, task) = loaded_with(saved.clone(), "bEat", 122, 0);
+    assert!(a.drinking && a.eating && task == 122);
+    // Saved in another goal: the drinking flag would hold the ladder for good, so it is dropped.
+    let (_, a, task) = loaded_with(saved.clone(), "bEat", 114, 0);
+    assert!(!a.drinking && a.eating && task == 0);
+    // Not saved drinking, in the drink goal: no goal starts.
+    let (_, a, task) = loaded_with(
+        AnimalRecord {
+            drinking: false,
+            ..saved
+        },
+        "bEat",
+        122,
+        0,
+    );
+    assert!(!a.drinking && task == 0);
+}

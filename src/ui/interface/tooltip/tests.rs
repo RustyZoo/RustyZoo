@@ -304,6 +304,19 @@ fn the_tooltip_is_never_hit_and_a_tree_without_one_has_no_tooltips() {
 }
 
 #[test]
+fn a_popup_delay_of_zero_or_less_never_closes_it() {
+    for delay in [0, -5, i32::MIN] {
+        let mut ui = interface("popup");
+        ui.settings.popup_delay = delay;
+        assert!(ui.notify(100, b"", crate::ui::interface::dialog::Buttons::OK));
+        ui.update(0);
+        ui.update(1_000_000);
+        ui.update(u64::from(u32::MAX));
+        assert!(ui.shown(100), "delay {delay}");
+    }
+}
+
+#[test]
 fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the_rest() {
     let read = |ini: &str| Settings::from_config(&Config::parse(ini.as_bytes()).unwrap());
     let d = Settings::default();
@@ -317,8 +330,17 @@ fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the
             long_help: true,
             max_short_width: 120,
             max_long_width: 300,
+            popup_delay: d.popup_delay,
         }
     );
+    // The popup delay: up to an hour; 0 and below are kept as read; a wrong kind of number is not set.
+    let delay = |v: &str| read(&format!("[UI]\nNonmodalDialogDelay={v}\n")).popup_delay;
+    assert_eq!(delay("2500"), 2500);
+    assert_eq!(delay("1"), 1);
+    assert_eq!(delay("2000000000"), 3_600_000);
+    assert_eq!([delay("0"), delay("-5")], [0, -5]);
+    assert_eq!(delay("abc"), 10_000);
+    assert_eq!(read("").popup_delay, 10_000);
     // 0 delay is no delay; below 0 is 0; a number of the wrong kind is not a setting.
     assert_eq!(read("[UI]\nTooltipDelay=0\n").tooltip_delay, 0);
     assert_eq!(read("[UI]\nTooltipDelay=-5\n").tooltip_delay, 0);
