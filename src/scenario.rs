@@ -6,8 +6,8 @@
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
 //! entities and the interface (rules 10 and 11); the research, awards and shows rules read 0. The
 //! triggers are stubs but for trigger 2 (popups and elements) and triggers 4 and 7 (availability,
-//! without their messages): a trigger logs `scenario trigger` and does nothing else. The objectives list (4.5) and the end (5.4, 9) are here; saving comes
-//! with a later issue.
+//! without their messages): a trigger logs `scenario trigger` and does nothing else. The
+//! objectives list (4.5) and the end (5.4, 9) are here; saving comes with a later issue.
 //!
 //! Trigger 2 (scenarios 7.1) and the interface rules 10 and 11 reach the interface through
 //! [`gui::Gui`]: a trigger leaves an [`Effect`] for the application, which tells back which
@@ -121,19 +121,16 @@ impl Trigger {
     }
 }
 
-/// Triggers 4 and 7 (7.3): `truleb` says on or off (even is on), `targa` the name id or the block
-/// of ids. Trigger 4 only: 6 / 7 every animal type, 8 / 9 every type. The message or popup of 2 to
-/// 5 and the permanent unlock of 10 are not done.
+/// Triggers 4 and 7 (7.3): `truleb` is tested against the listed values only, so 0, 2, 4 (and 6, 8
+/// for trigger 4) make the types available and every other value unavailable. `targa` is the name
+/// id or the block of ids. Trigger 4 only: 6 / 7 every animal type, 8 / 9 every type. The message or
+/// popup of 2 to 5 and the permanent unlock of 10 are not done.
 fn avail(cfg: &Config, [a, b, t, _]: [i32; 4]) -> Option<Avail> {
     let (which, on) = match (a, b) {
-        (4 | 7, 0..=5) => (
-            match a {
-                4 => Which::Name(t),
-                _ => Which::Names(popup::ids(cfg, t)),
-            },
-            b % 2 == 0,
-        ),
+        (4, 10) => return None,
         (4, 6..=9) => (if b < 8 { Which::Animals } else { Which::All }, b % 2 == 0),
+        (4, _) => (Which::Name(t), matches!(b, 0 | 2 | 4)),
+        (7, _) => (Which::Names(popup::ids(cfg, t)), matches!(b, 0 | 2 | 4)),
         _ => return None,
     };
     Some(Avail { which, on })

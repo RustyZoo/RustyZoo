@@ -81,11 +81,11 @@ pub enum Op {
     Show,
 }
 
-/// The `id` keys of the section `[block]`.
+/// The `id` keys of the section `[block]`; a value that does not parse (`0x` without a digit) is 0.
 pub fn ids(cfg: &Config, block: i32) -> Vec<i32> {
     let s = cfg.section(block.to_string());
     let all = s.map_or(&[][..], |s| s.get_all("id"));
-    all.iter().filter_map(|v| to_int(v)).collect()
+    all.iter().map(|v| to_int(v).unwrap_or(0)).collect()
 }
 
 /// The entries `<id>=<letter>` of the section `[block]`: the first letter of the value, `d`, `e`,
