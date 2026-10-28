@@ -2,7 +2,7 @@
 //! to the scenario, and what its triggers asked of the interface is done here.
 
 use super::{Action, App};
-use crate::scenario::{Tell, Which};
+use crate::scenario::{Avail, Tell, Which};
 use crate::text::to_cp1252;
 
 impl App<'_> {
@@ -106,9 +106,10 @@ impl App<'_> {
         }
     }
 
-    /// The scenario ended (entity types 10.4): the rewards are looked up again, the ones this
-    /// win appended included, and the purchase lists follow.
-    pub(super) fn end_rewards(&mut self) {
+    /// The scenario ended (entity types 10.4): a win runs the unlock step once for each of its own
+    /// ids (`unlocks`, empty after a loss); the recorded list is not looked up again. The purchase
+    /// lists follow.
+    pub(super) fn end_rewards(&mut self, unlocks: &[i32]) {
         let (Some(game), vfs, cat) = (
             &mut self.game,
             self.renderer.vfs(),
@@ -116,9 +117,15 @@ impl App<'_> {
         ) else {
             return;
         };
-        let changed = game
-            .build
-            .after_triggers(cat, &reward_ini(&self.menu, vfs), &[]);
+        let made: Vec<_> = unlocks
+            .iter()
+            .map(|&id| Avail {
+                which: Which::Unlock(id),
+                on: true,
+                tell: None,
+            })
+            .collect();
+        let changed = game.build.change(cat, &made);
         if let Some(ui) = &mut self.ui {
             let mut log = Vec::new();
             game.build.refill(changed, ui, vfs, cat, &mut log);

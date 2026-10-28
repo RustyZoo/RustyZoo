@@ -384,3 +384,39 @@ fn the_rewards_unlocked_in_this_run_apply_when_the_next_scenario_starts() {
         assert_eq!(flags(app), [false, true]);
     });
 }
+
+/// A type of an earlier reward that the game hid stays hidden at the end, win or loss.
+fn hidden_reward_stays_hidden_at_the_end(name: &str, kind: &str) {
+    let text = format!(
+        "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=4\ntruleb=9\n\
+         [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n{kind}\n"
+    );
+    let files = [("s/rw.scn", text.into_bytes())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game(name, "", &files, cat, |app, _| {
+        app.pass(0, &[]);
+        app.menu.as_mut().unwrap().unlock(&[6]);
+        let now = play(app, "s/rw.scn");
+        assert_eq!(flags(app), [false, true]);
+        let hide = crate::scenario::Avail {
+            which: crate::scenario::Which::Name(6),
+            on: false,
+            tell: None,
+        };
+        let cat = app.renderer.catalogue();
+        app.game.as_mut().unwrap().build.change(cat, &[hide]);
+        assert_eq!(flags(app), [false, false]);
+        until_asked(app, now);
+        assert_eq!(flags(app), [false, false]);
+    });
+}
+
+#[test]
+fn a_win_leaves_a_hidden_earlier_reward_hidden() {
+    hidden_reward_stays_hidden_at_the_end("end-hidden-win", "");
+}
+
+#[test]
+fn a_loss_leaves_a_hidden_earlier_reward_hidden() {
+    hidden_reward_stays_hidden_at_the_end("end-hidden-loss", "type=7");
+}
