@@ -148,7 +148,7 @@ fn a_food_price_is_changed_in_hundredths_and_only_for_the_foods_of_the_expansion
 fn the_life_counter_of_live_animals_takes_the_change_and_a_percent_only_above_0() {
     let (cat, mut over) = (cat(), Overlay::default());
     let life = over.apply(&cat, 4, 1, [4, 25, 2]);
-    assert_eq!(life.len(), 1, "one type of the Dinosaur Digs");
+    assert_eq!(life.len(), 1, "one type of the first expansion");
     assert_eq!(int(&over, &cat, REX, "cTimeDeath", 5001), 6251);
     assert_eq!(
         (life[0].of(100), life[0].of(0), life[0].of(-8)),
