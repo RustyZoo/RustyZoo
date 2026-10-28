@@ -38,7 +38,7 @@ use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::guest;
 use crate::money::{self, Money};
-use crate::research::Tree;
+use crate::research::{Done, Tree};
 use crate::scenario::{Env, Game, Scenario};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
@@ -177,6 +177,8 @@ pub struct Sim {
     /// The research tree of a scenario or freeform game; none for a saved game, which counts as
     /// no research done until its research section is read.
     research: Option<Tree>,
+    /// The programs the research step completed, for the caller to apply.
+    research_done: Vec<Done>,
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
     /// first seeding, and after every hire (unit placing 4.3).
     pub hire_male: bool,
@@ -208,6 +210,7 @@ impl Sim {
             lines: Vec::new(),
             scenario: None,
             research: None,
+            research_done: Vec::new(),
             hire_male: false,
         };
         sim.reseed();
@@ -271,6 +274,7 @@ impl Sim {
         self.bulldozed.clear();
         self.scenario = None;
         self.research = None;
+        self.research_done.clear();
         self.events.restore(&clocks.queue);
         if tiles != self.tiles {
             self.tiles = tiles;
@@ -282,6 +286,11 @@ impl Sim {
     /// its programs from the next check on.
     pub fn set_research(&mut self, tree: Tree) {
         self.research = Some(tree);
+    }
+
+    /// The programs completed since the last call (research 5.4).
+    pub fn take_research_done(&mut self) -> Vec<Done> {
+        std::mem::take(&mut self.research_done)
     }
 
     /// The research share of the zoo status: the tree's, 0 while a game has none.
@@ -651,7 +660,14 @@ impl Sim {
             let env = Env::new(money.month as i32, money.year as i32, Some(game));
             scenario.update(step, &env, &mut self.lines);
         }
-        // The research and marketing managers have nothing to do before M7.
+        // The research manager; marketing has nothing to do before M7.
+        if let Some(tree) = &mut self.research {
+            let done = tree.step(step, money, &mut || self.rng.rand());
+            for d in &done {
+                self.lines.push(format!("research done {}", d.name));
+            }
+            self.research_done.extend(done);
+        }
         Report {
             month_end,
             clear_unreachable,

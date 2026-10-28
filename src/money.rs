@@ -16,6 +16,8 @@ pub const ADMISSIONS: usize = 4;
 /// What the guests pay at the entrance.
 pub const ADMISSIONS_INCOME: usize = 5;
 pub const DONATIONS: usize = 8;
+/// Research expenditure.
+pub const RESEARCH: usize = 19;
 /// What guests pay at the guest buildings.
 pub const CONCESSIONS: usize = 6;
 pub const CONSTRUCTION_REFUND: usize = 9;

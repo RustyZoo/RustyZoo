@@ -968,6 +968,7 @@ impl<'a> App<'a> {
                 self.exhibits_told();
             }
             self.status_told(report.bars);
+            self.research_done();
             self.scenario_over();
         }
         self.scenario_effects();
@@ -1946,7 +1947,10 @@ impl<'a> App<'a> {
         }
         if let Some(file) = &start.scenario {
             // The research tree is built before the start triggers (research 7.4).
-            if let Some(tree) = crate::research::Tree::of_scenario(self.renderer.vfs(), file) {
+            let rng = &mut self.sim.rng;
+            if let Some(tree) =
+                crate::research::Tree::of_scenario(self.renderer.vfs(), file, &mut || rng.rand())
+            {
                 if let Some(game) = &mut self.game {
                     let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
                     game.build
@@ -2515,6 +2519,7 @@ mod exhibits;
 mod gates;
 mod guest_panel;
 mod panel;
+mod research;
 mod saves;
 mod scenario;
 mod scenario_ui;
