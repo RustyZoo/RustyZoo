@@ -84,7 +84,9 @@ usage: rustyzoo [--data <dir>] <command>
                       if the file cannot be read or a frame cannot be decoded. With --dump,
                       write every Kth decoded frame (K at least 1, frame 0 first) to
                       <dir>/frame-<number>.png
-  map-info <member>   print the version, size, tiles and entities of a map or saved game (a .zoo)
+  map-info <member|path>
+                      print the version, size, tiles and entities of a map or saved game (a .zoo):
+                      the file of this path if it exists, else the member of the game
   check-maps          read every .zoo file; list those that fail; exit 1 if one is corrupted
   check-exhibits <map>
                       find the exhibits of the maps matching <map> (a member, or a pattern with *
@@ -614,7 +616,7 @@ fn run(args: Vec<OsString>) -> Result<(), CliError> {
             let k = k.parse().ok().filter(|k| *k > 0).ok_or(CliError::Usage)?;
             movie_info(data_dir, source, Some((k, Path::new(dir))))
         }
-        ["map-info", member] => map_info(&open_game(data_dir)?, member),
+        ["map-info", source] => map_info(data_dir, source),
         ["check-maps"] => check_maps(&open_game(data_dir)?),
         ["check-exhibits", map] => check_exhibits(&open_game(data_dir)?, map),
         ["check-rating", map] => check_rating(&open_game(data_dir)?, map),
@@ -1135,14 +1137,9 @@ fn movie_info(
     source: &str,
     dump: Option<(usize, &Path)>,
 ) -> Result<(), CliError> {
-    let bytes = if Path::new(source).is_file() {
-        std::fs::read(source).map_err(|e| format!("cannot read {}: {e}", source.escape_debug()))?
-    } else {
-        open_game(data_dir)?.read(source)?
-    };
-    let movie = Movie::parse(bytes)?;
+    let movie = Movie::parse(read_source(data_dir, source)?)?;
     let mut report = Report::new();
-    report.line(format_args!("movie: {}", source.escape_debug()));
+    report.line(format_args!("movie: {source}"));
     report.line(format_args!("size: {}x{}", movie.size().0, movie.size().1));
     report.line(format_args!("frames: {}", movie.frame_count()));
     let (rate, scale) = movie.frame_rate();
@@ -1185,10 +1182,19 @@ fn movie_info(
     report.finish()
 }
 
-fn map_info(vfs: &Vfs, member: &str) -> Result<(), CliError> {
-    let zoo = load_map(vfs, member)?;
+/// The bytes of a file that exists at `source`, else of the game member of that name.
+fn read_source(data_dir: Option<OsString>, source: &str) -> Result<Vec<u8>, CliError> {
+    if Path::new(source).is_file() {
+        std::fs::read(source).map_err(|e| format!("cannot read {source}: {e}").into())
+    } else {
+        Ok(open_game(data_dir)?.read(source)?)
+    }
+}
+
+fn map_info(data_dir: Option<OsString>, source: &str) -> Result<(), CliError> {
+    let zoo = Zoo::parse(&read_source(data_dir, source)?).map_err(|e| format!("{source}: {e}"))?;
     let mut report = Report::new();
-    report.line(format_args!("member: {}", member.escape_debug()));
+    report.line(format_args!("member: {source}"));
     report.line(format_args!("version: {}", zoo.version));
     report.line(format_args!("locale: {}", zoo.locale));
     report.line(format_args!("expansion: {}", zoo.expansion));
@@ -2155,7 +2161,7 @@ fn window_smoke() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{escape, frame_file_name, render_flags};
+    use super::{escape, frame_file_name, read_source, render_flags};
 
     #[test]
     fn frame_files_are_named_by_number_shadow_and_extra() {
@@ -2163,6 +2169,15 @@ mod tests {
         assert_eq!(frame_file_name(12, true, false), "012-shadow.png");
         assert_eq!(frame_file_name(1234, false, true), "1234-extra.png");
         assert_eq!(frame_file_name(21, true, true), "021-shadow-extra.png");
+    }
+
+    #[test]
+    fn a_path_that_exists_is_read_as_a_file() {
+        let path = std::env::temp_dir().join(format!("rustyzoo-source-{}", std::process::id()));
+        std::fs::write(&path, b"zoo").unwrap();
+        let read = read_source(None, path.to_str().unwrap());
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(read.ok(), Some(b"zoo".to_vec()));
     }
 
     #[test]
