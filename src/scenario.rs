@@ -5,8 +5,8 @@
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
 //! entities and the interface (rules 10 and 11); the research, awards and shows rules read 0. The
-//! triggers are stubs but for trigger 2 (popups and elements): a trigger logs `scenario trigger`
-//! and does nothing else. The objectives list (4.5) and the end (5.4, 9) are here; saving comes
+//! triggers are stubs but for trigger 2 (popups and elements) and triggers 4 and 7 (availability,
+//! without their messages): a trigger logs `scenario trigger` and does nothing else. The objectives list (4.5) and the end (5.4, 9) are here; saving comes
 //! with a later issue.
 //!
 //! Trigger 2 (scenarios 7.1) and the interface rules 10 and 11 reach the interface through
@@ -23,7 +23,7 @@ use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
 
 pub use apply::Marks;
-pub use gui::{Effect, Gui};
+pub use gui::{Avail, Effect, Gui, Which};
 pub use popup::{Hint, Op, Popup};
 pub use rules::Game;
 
@@ -78,13 +78,15 @@ pub enum Run {
     Lost,
 }
 
-/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Only trigger 2
-/// does anything; the others are stubs.
+/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Only triggers 2,
+/// 4 and 7 do anything; the others are stubs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Trigger {
     v: [i32; 4],
     /// What trigger 2 leaves for the interface.
     effect: Option<Box<Effect>>,
+    /// What trigger 4 or 7 leaves for the application.
+    avail: Option<Avail>,
 }
 
 impl Trigger {
@@ -92,7 +94,11 @@ impl Trigger {
         let s = cfg.section(name);
         let v = ["trulea", "truleb", "targa", "targb"].map(|k| int(s, k));
         let effect = (v[0] == 2).then(|| effect(cfg, v)).flatten().map(Box::new);
-        Trigger { v, effect }
+        Trigger {
+            v,
+            effect,
+            avail: avail(cfg, v),
+        }
     }
 
     fn fire(&self, who: &str, state: &str, log: &mut Vec<String>, gui: &Gui) {
@@ -105,11 +111,32 @@ impl Trigger {
 
     /// The trigger runs, fresh or again after a load (7).
     fn run(&self, fresh: bool, gui: &Gui) {
+        if let Some(avail) = &self.avail {
+            gui.push_avail(avail.clone());
+        }
         let effect = self.effect.as_deref().cloned();
         if let Some(effect) = effect.and_then(|e| if fresh { Some(e) } else { e.quiet() }) {
             gui.push(effect);
         }
     }
+}
+
+/// Triggers 4 and 7 (7.3): `truleb` says on or off (even is on), `targa` the name id or the block
+/// of ids. Trigger 4 only: 6 / 7 every animal type, 8 / 9 every type. The message or popup of 2 to
+/// 5 and the permanent unlock of 10 are not done.
+fn avail(cfg: &Config, [a, b, t, _]: [i32; 4]) -> Option<Avail> {
+    let (which, on) = match (a, b) {
+        (4 | 7, 0..=5) => (
+            match a {
+                4 => Which::Name(t),
+                _ => Which::Names(popup::ids(cfg, t)),
+            },
+            b % 2 == 0,
+        ),
+        (4, 6..=9) => (if b < 8 { Which::Animals } else { Which::All }, b % 2 == 0),
+        _ => return None,
+    };
+    Some(Avail { which, on })
 }
 
 /// Trigger 2 (7.1): `truleb` says what, `targa` and `targb` which element or block and which popup.
