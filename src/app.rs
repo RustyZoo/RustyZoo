@@ -1959,10 +1959,10 @@ impl<'a> App<'a> {
                 }
             }
         }
-        if let Some(file) = &start.scenario {
-            if let Some(scenario) = Scenario::prepare(self.renderer.vfs(), file) {
-                self.sim.start_scenario(scenario);
-            }
+        if let Some(file) = &start.scenario
+            && let Some(scenario) = Scenario::prepare(self.renderer.vfs(), file)
+        {
+            self.sim.start_scenario(scenario);
         }
         let music = self.music.take();
         self.start_game(music);
