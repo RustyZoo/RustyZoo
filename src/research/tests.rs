@@ -205,14 +205,14 @@ fn building_the_tree_makes_unfinished_targets_unavailable_and_free_ones_availabl
         // Another effect leaves the flag alone.
         program(5, "10", 5004, 2),
     ];
-    let t = tree("apply", "research=r.cfg\n", files);
+    let mut t = tree("apply", "research=r.cfg\n", files);
     let mut cat = Catalogue::default();
     cat.types = vec![5001, 5002, 5003, 5004, 5005]
         .into_iter()
         .map(ty)
         .collect();
     let mut avail = Availability::default();
-    t.apply(&cat, &mut avail);
+    t.apply(&cat, &mut avail, &mut Overlay::default());
     let flags: Vec<bool> = (0..5).map(|i| avail.is(&cat, i)).collect();
     assert_eq!(flags, [false, true, true, true, true]);
 }
@@ -258,6 +258,7 @@ fn plain(cost: f32, work: f32, programs: &[(f32, i32)]) -> Tree {
         progress: 0.0,
         target: 5,
         effect: 0,
+        vals: [0; 3],
         order,
     };
     let mut tree = Tree {
@@ -726,7 +727,7 @@ fn a_loaded_tree_makes_the_targets_of_its_complete_programs_available() {
     let mut cat = Catalogue::default();
     cat.types = [5001, 5002, 5003, 5004].into_iter().map(ty).collect();
     let mut avail = Availability::default();
-    t.apply(&cat, &mut avail);
+    t.apply(&cat, &mut avail, &mut Overlay::default());
     let flags: Vec<bool> = (0..4).map(|i| avail.is(&cat, i)).collect();
     // Program 2 is free; program 3 reached its cost; 1 and 4 did not.
     assert_eq!(flags, [false, true, true, false]);

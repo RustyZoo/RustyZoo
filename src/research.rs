@@ -1,7 +1,7 @@
 //! The research tree of a game: branches, categories and programs, read from the research lists
 //! of the scenario at its start (research 3, 4, 7.4) and counted by the zoo status (research 9.1).
 //! The step (research 5) runs the funded branches; the section of a saved game is read and written
-//! here (research 7). The other effects than availability come later.
+//! here (research 7). The characteristic effects (6.4, 6.7) are in [`effects`].
 
 use crate::avail::Availability;
 use crate::config::{Config, Section, to_float, to_int};
@@ -9,8 +9,11 @@ use crate::entity::Catalogue;
 use crate::money::{Money, RESEARCH};
 use crate::vfs::Vfs;
 
+mod effects;
 #[cfg(test)]
 mod tests;
+
+pub use effects::{Life, Overlay};
 
 /// The most programs a tree takes: more than any game has, and a bound on a mod whose files name
 /// each other many times.
@@ -32,6 +35,8 @@ pub struct Program {
     pub progress: f32,
     pub target: i32,
     pub effect: i32,
+    /// `effectval1` to `effectval3`.
+    pub vals: [i32; 3],
     /// The rank: lower first.
     pub order: i32,
 }
@@ -42,6 +47,7 @@ pub struct Done {
     pub name: i32,
     pub target: i32,
     pub effect: i32,
+    pub vals: [i32; 3],
 }
 
 /// The float 2.3148148e-05 the step multiplies by instead of dividing by 43 200 (5.3).
@@ -208,12 +214,50 @@ impl Tree {
         (done * 100).checked_div(all).unwrap_or(100) as i32
     }
 
-    /// Resets or completes every program as the tree is built (3.3): the target of an effect 0
-    /// is unavailable, or available when the program is complete, in tree order.
-    pub fn apply(&self, cat: &Catalogue, avail: &mut Availability) {
-        for p in self.programs().filter(|p| p.effect == 0) {
-            avail.set(cat, p.target, p.done());
+    /// Resets or completes every program as the tree is built (3.3) or loaded (7.2), in tree order:
+    /// the target of an effect 0 is unavailable, or available when the program is complete, and
+    /// the effects 2 to 7 of the complete ones are laid on `over`, which starts empty (6.9, R4).
+    pub fn apply(&mut self, cat: &Catalogue, avail: &mut Availability, over: &mut Overlay) {
+        *over = Overlay::default();
+        for n in 0..self.programs().count() {
+            let Some(p) = self.programs().nth(n) else {
+                break;
+            };
+            let done = Done {
+                name: p.name,
+                target: p.target,
+                effect: p.effect,
+                vals: p.vals,
+            };
+            if p.effect == 0 {
+                avail.set(cat, p.target, p.done());
+            } else if p.done() {
+                self.complete(cat, over, &done);
+            }
         }
+    }
+
+    /// Applies the characteristic effect of a completed program (6.4, 6.7): a change of the types
+    /// (2, 4, 5), or a discount on the other programs and a training mark (7). The changes of the
+    /// life counter are returned for the live animals.
+    pub fn complete(&mut self, cat: &Catalogue, over: &mut Overlay, d: &Done) -> Vec<Life> {
+        let [percent, staff, mark] = d.vals;
+        match d.effect {
+            2 | 4 | 5 => return over.apply(cat, d.effect, d.target, d.vals),
+            7 => {
+                let kept = 100i32.wrapping_sub(percent) as f32;
+                let all = self.branches.iter_mut().flat_map(|b| &mut b.categories);
+                for p in all
+                    .flat_map(|c| &mut c.programs)
+                    .filter(|p| p.effect == d.target)
+                {
+                    p.cost = kept * p.cost / 100.0;
+                }
+                over.train(cat, staff, mark);
+            }
+            _ => {}
+        }
+        Vec::new()
     }
 }
 
@@ -375,6 +419,7 @@ impl Branch {
                 name: program.name,
                 target: program.target,
                 effect: program.effect,
+                vals: program.vals,
             });
             self.choose(off, rand);
         }
@@ -425,6 +470,7 @@ impl Category {
                 progress: 0.0,
                 target: int(p, "target", -1),
                 effect: int(p, "effect", -1),
+                vals: [1, 2, 3].map(|n| int(p, &format!("effectval{n}"), 0)),
                 order: int(p, "order", 0),
             });
         }

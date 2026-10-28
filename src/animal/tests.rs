@@ -2412,3 +2412,36 @@ fn a_reset_animal_starts_its_dates_at_the_game_date() {
     super::run(&mut a, &keys(), &class, &env, &mut Rng::default());
     assert_eq!((a.fed, a.slept), (99, 99));
 }
+
+#[test]
+fn research_changes_the_keys_of_the_type_and_the_life_of_the_live_animals() {
+    let (mut world, cat) = (pens(), zebras());
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let at = world.find(500).unwrap();
+    let before = super::keys(&world, &cat, at);
+    let life = |w: &World| match &w.units.get(500).unwrap().part {
+        Part::Animal(a) => a.life,
+        _ => unreachable!(),
+    };
+    for id in [500, 501] {
+        if let Part::Animal(a) = &mut world.units.get_mut(id).unwrap().part {
+            a.life = 5000;
+        }
+    }
+    assert_eq!((before.time_death, life(&world)), (5001, 5000));
+    // Longevity +25 %, sick chance set to 3, keeper arrives +5.
+    let mut changes = world.research.apply(&cat, 4, 0, [4, 25, 2]);
+    changes.extend(world.research.apply(&cat, 4, 0, [3, 3, 1]));
+    world.research.apply(&cat, 4, 0, [0, 5, 0]);
+    lengthen(&mut world, &changes);
+    let after = super::keys(&world, &cat, at);
+    assert_eq!((after.time_death, life(&world)), (6251, 6250));
+    assert_eq!(
+        (after.sick_chance, after.keeper_arrives),
+        (3, before.keeper_arrives + 5)
+    );
+    assert_eq!(after.number_max, before.number_max, "the other keys stay");
+}

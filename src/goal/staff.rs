@@ -629,10 +629,14 @@ impl<'c> Cx<'_, 'c> {
         if let (Some(tile), Some(x), Some((name, ty)), true) =
             (tile, x, self.food_type(), self.food_short())
         {
-            let per = self
-                .who()
-                .and_then(|w| number(w, "cFoodPerTile"))
-                .unwrap_or(100.0);
+            let over = &self.world.research;
+            let per = self.who().map_or(100, |w| {
+                over.int(
+                    w,
+                    "cFoodPerTile",
+                    number(w, "cFoodPerTile").unwrap_or(100.0) as i32,
+                )
+            });
             let facing = self.ctx.rng.rand() & 7;
             let w = self.world.zoo.width as usize;
             let at = ((tile % w) as i32 * 64 + 32, (tile / w) as i32 * 64 + 32);
@@ -644,9 +648,10 @@ impl<'c> Cx<'_, 'c> {
                 .map(|p| p.2)
                 .filter(|_| in_water);
             let names = ("food", "food", name);
-            if dirt::put_z(self.world, ty, names, (at.0, at.1, z), facing, per as i32) {
+            if dirt::put_z(self.world, ty, names, (at.0, at.1, z), facing, per) {
                 self.world.mark_rating(tile);
-                self.spend(x, crate::money::ANIMAL_FOOD, cost(ty));
+                let price = self.world.research.price(ty, cost(ty));
+                self.spend(x, crate::money::ANIMAL_FOOD, price);
             }
         }
         self.job_end();

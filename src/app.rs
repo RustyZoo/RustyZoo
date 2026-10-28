@@ -722,7 +722,17 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
-        let tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
+        let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
+        // The programs complete come before the animals are read: their life counters are cut by
+        // the changed types (research 7.2).
+        let cat = self.renderer.catalogue();
+        let mut build = Build::new(installed_expansions(self.renderer.vfs())).unlocked(
+            cat,
+            &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+        );
+        if let Some(tree) = &mut tree {
+            build.start_research(cat, tree, &mut world.research);
+        }
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
@@ -761,12 +771,7 @@ impl<'a> App<'a> {
             bars: None,
             finances: Finances::default(),
             awards_page: Awards::default(),
-            build: Build::new(installed_expansions(self.renderer.vfs()))
-                .with_exhibits(exhibits)
-                .unlocked(
-                    self.renderer.catalogue(),
-                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
-                ),
+            build: build.with_exhibits(exhibits),
             pending: None,
             made: None,
             gate: None,
@@ -799,8 +804,7 @@ impl<'a> App<'a> {
             carry: None,
             held: None,
         });
-        if let (Some(tree), Some(game)) = (tree, &mut self.game) {
-            game.build.start_research(self.renderer.catalogue(), &tree);
+        if let Some(tree) = tree {
             self.sim.set_research(tree);
         }
         if let Some(ui) = &mut self.ui {
@@ -1943,11 +1947,13 @@ impl<'a> App<'a> {
         if let Some(file) = &start.scenario {
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
-            if let Some(tree) =
+            if let Some(mut tree) =
                 crate::research::Tree::of_scenario(self.renderer.vfs(), file, &mut || rng.rand())
             {
                 if let Some(game) = &mut self.game {
-                    game.build.start_research(self.renderer.catalogue(), &tree);
+                    let cat = self.renderer.catalogue();
+                    game.build
+                        .start_research(cat, &mut tree, &mut game.world.research);
                 }
                 self.sim.set_research(tree);
             }

@@ -222,10 +222,23 @@ fn a_new_guide_draws_its_crowd_countdown_after_the_two_counters_and_nobody_else_
 }
 
 #[test]
+fn a_researched_guide_bonus_replaces_the_types_value() {
+    let mut ty = staff_type("tour", "[m/Characteristics/Integers]\ncTourGuideBonus=3\n");
+    ty.name_id = 500;
+    let mut over = Overlay::default();
+    let mut cat = Catalogue::default();
+    cat.types.push(staff_type("tour", ""));
+    cat.types[0].name_id = 500;
+    over.apply(&cat, 2, 500, [0, 40, 1]);
+    assert_eq!(Crowd::of(Some(&cat.types[0]), &over).bonus, 40);
+    assert_eq!(Crowd::of(Some(&ty), &Default::default()).bonus, 3);
+}
+
+#[test]
 fn the_keys_of_a_guides_group_read_the_programs_values_for_a_missing_key() {
     let read = |keys: &str| {
         let ty = staff_type("tour", &format!("[m/Characteristics/Integers]\n{keys}"));
-        Crowd::of(Some(&ty))
+        Crowd::of(Some(&ty), &Default::default())
     };
     let own = Crowd {
         bonus: 30,
@@ -245,7 +258,7 @@ fn the_keys_of_a_guides_group_read_the_programs_values_for_a_missing_key() {
         max: 12,
     };
     assert_eq!(read(""), missing);
-    assert_eq!(Crowd::of(None), missing);
+    assert_eq!(Crowd::of(None, &Default::default()), missing);
     // Zero, negative and huge numbers are kept as numbers.
     let odd = read("cCrowdCheck=-3\ncCrowdRadius=99999999999\ncMaxGroupSize=0\n");
     assert_eq!((odd.check, odd.radius, odd.max), (-3, i32::MAX, 0));
