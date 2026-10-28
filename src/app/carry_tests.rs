@@ -54,12 +54,18 @@ fn a_unit_is_selected_picked_up_refused_where_another_stands_and_put_down() {
             s.at(19, 20, 32, 32),
             s.at(20, 20, 32, 32),
         );
+        // The cursor turns to the hover one over a unit, the pending one while it is carried.
+        s.pass(&[here]);
+        assert_eq!(s.app.cursor(), 210, "over a unit");
+        s.pass(&[s.at(20, 21, 32, 32)]);
+        assert_eq!(s.app.cursor(), 209, "over bare ground");
         // The first click selects, the second picks the unit up: it is off the map and stopped.
         assert_eq!(told(s.click_log(here)), [format!("tool select {a}")]);
         // The staged picture carries the marker over the selected unit, and not any more over
         // the one that is picked up.
         assert_eq!(s.app.game.as_ref().unwrap().extra.selected, Some(a));
         assert_eq!(told(s.click_log(here)), [format!("world carry {a}")]);
+        assert_eq!(s.app.cursor(), 208, "a carried unit follows the pointer");
         assert_eq!(s.app.game.as_ref().unwrap().extra.selected, None);
         let game = s.app.game.as_ref().unwrap();
         assert_eq!(
@@ -96,6 +102,36 @@ fn a_unit_is_selected_picked_up_refused_where_another_stands_and_put_down() {
             Vec::<String>::new()
         );
         assert_eq!(s.app.game.as_ref().unwrap().selected, None);
+    });
+}
+
+#[test]
+fn a_click_on_the_gate_of_an_exhibit_selects_it_and_the_ground_clears_the_selection() {
+    with_game("gate-marker", "", |s| {
+        let pieces: Vec<u32> = [0, 2, 4, 6].map(|side| s.fence(1, 20, 20, side)).to_vec();
+        s.app.exhibits_told();
+        s.app.game.as_mut().unwrap().world.set_gate(1, pieces[0]);
+        s.pass(&[]);
+        let selected = |s: &Session| {
+            let game = s.app.game.as_ref().unwrap();
+            (game.selected, game.extra.selected)
+        };
+        assert_eq!(selected(s), (None, None));
+        // The gate is on the north edge of the tile: the exhibit panel opens and the gate carries
+        // the marker.
+        s.click(s.near(20 * 64 + 32, 20 * 64, (0, 0)));
+        s.pass(&[]);
+        assert_eq!(selected(s), (Some(pieces[0]), Some(pieces[0])));
+        assert!(
+            s.app
+                .ui
+                .as_ref()
+                .unwrap()
+                .shown(crate::panel::exhibit::LAYOUT)
+        );
+        s.click(s.at(20, 22, 32, 32));
+        s.pass(&[]);
+        assert_eq!(selected(s), (None, None));
     });
 }
 
@@ -152,6 +188,36 @@ fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() 
             s.app.panel_animal(row);
             s.pass(&[]);
             assert_eq!(shown(s), ((Some(id), Some(id)), true, false));
+        }
+    });
+}
+
+#[test]
+fn a_crated_egg_takes_the_egg_footprint() {
+    with_game("egg-marker", "", |s| {
+        let zebra = s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        s.click(s.at(21, 20, 32, 32));
+        s.pass(&[]);
+        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(zebra));
+        // The egg flag is tested first: a crated egg takes the egg's footprint, the crate's
+        // only when it is not an egg.
+        for ((egg, crated), form) in [
+            ((true, false), Form::Egg),
+            ((true, true), Form::Egg),
+            ((false, true), Form::Crate),
+            ((false, false), Form::Plain),
+        ] {
+            let unit = s.app.game.as_mut().unwrap().world.units.get_mut(zebra);
+            if let Some(crate::unit::Part::Animal(a)) = unit.map(|u| &mut u.part) {
+                (a.egg, a.crated) = (egg, crated);
+            }
+            s.pass(&[]);
+            assert_eq!(
+                s.app.game.as_ref().unwrap().extra.form,
+                form,
+                "{egg} {crated}"
+            );
         }
     });
 }

@@ -302,7 +302,7 @@ impl Session<'_> {
 
     /// A window point `(dx, dy)` view pixels from the anchor of the world position (`x`, `y`) on
     /// the ground.
-    fn near(&self, x: i32, y: i32, (dx, dy): (i32, i32)) -> Command {
+    pub(super) fn near(&self, x: i32, y: i32, (dx, dy): (i32, i32)) -> Command {
         let c = self.app.camera().unwrap();
         let p = project(c.rotation, x, y, 0);
         Command::Mouse(Mouse::Move(p.0 + dx - c.scroll.0, p.1 + dy - c.scroll.1))
@@ -395,6 +395,8 @@ fn the_delete_key_and_the_button_make_the_bulldozer_the_tool_and_escape_drops_it
     with_game("tool", "", |s| {
         assert_eq!(s.pass(&[DELETE]), ["tool bulldozer on"]);
         assert!(s.app.game.as_ref().unwrap().build.bulldozing());
+        s.pass(&[s.at(20, 20, 32, 32)]);
+        assert_eq!(s.app.cursor(), 207, "the bulldozer");
         // Delete again presses the button again: it ends the tool.
         assert_eq!(s.pass(&[DELETE]), ["tool bulldozer off"]);
         // The button does the same.

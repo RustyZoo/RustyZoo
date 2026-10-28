@@ -11,6 +11,7 @@ fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
         edges: 0,
     };
     Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
@@ -576,4 +577,93 @@ fn a_save_writes_the_install_language() {
     saved.locale = 1033;
     world.finish_save(&mut saved, &crate::entity::Catalogue::default());
     assert_eq!(saved.locale, 1036);
+}
+
+#[test]
+fn a_loaded_entity_takes_its_type_name_in_the_install_language_when_the_locale_differs() {
+    let lion = crate::entity::EntityType {
+        class: "animals",
+        type_name: b"lion".to_vec(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: None,
+        name_id: 5006,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = crate::entity::Catalogue::default();
+    cat.push(lion);
+    let world_of = |locale: u32, install: u32| {
+        let mut z = zoo(4, 4, (0, 0));
+        z.locale = locale;
+        let mut e = typed("animals", "lion", 0, 0, 0);
+        e.subtype = "f".into();
+        e.common.as_mut().unwrap().name = "Simba 2".into();
+        z.entities.push(e);
+        let language = Language {
+            number: install,
+            ..Language::shipped()
+        };
+        let mut world = World::with_language(z, |_| None, language);
+        world.units.names = [(5006, "Lion".to_string())].into();
+        world.name_loaded_entities(&cat);
+        world.zoo.entities[0].common.as_ref().unwrap().name.clone()
+    };
+    assert_eq!(
+        world_of(1036, 1036),
+        "Simba 2",
+        "same language keeps the name"
+    );
+    assert_eq!(
+        world_of(1033, 1036),
+        "Lion 1",
+        "English file, French install"
+    );
+    assert_eq!(
+        world_of(1036, 1033),
+        "Lion 1",
+        "French file, English install"
+    );
+}
+
+#[test]
+fn a_loaded_numbered_entity_gets_a_numbered_name_on_a_locale_mismatch() {
+    let ty = |class: &'static str, name: &[u8], id: i32| crate::entity::EntityType {
+        class,
+        type_name: name.to_vec(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: None,
+        name_id: id,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = crate::entity::Catalogue::default();
+    cat.push(ty("animals", b"lion", 5006));
+    cat.push(ty("scenery", b"tree", 5007));
+    let mut z = zoo(4, 4, (0, 0));
+    z.locale = 1033;
+    z.names.insert("lion".into(), 7);
+    for (class, name) in [
+        ("animals", "lion"),
+        ("scenery", "tree"),
+        ("animals", "lion"),
+    ] {
+        let mut e = typed(class, name, 0, 0, 0);
+        e.subtype = "f".into();
+        e.common.as_mut().unwrap().name = "Old".into();
+        z.entities.push(e);
+    }
+    let language = Language {
+        number: 1036,
+        ..Language::shipped()
+    };
+    let mut world = World::with_language(z, |_| None, language);
+    world.units.names = [(5006, "Lion".to_string()), (5007, "Tree".to_string())].into();
+    world.name_loaded_entities(&cat);
+    let names: Vec<_> = (world.zoo.entities.iter())
+        .map(|e| e.common.as_ref().unwrap().name.clone())
+        .collect();
+    assert_eq!(names, ["Lion 1", "Tree", "Lion 2"]);
+    assert_eq!(world.zoo.names["lion"], 7, "the file's counters are kept");
 }

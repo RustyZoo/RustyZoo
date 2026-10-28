@@ -93,6 +93,7 @@ pub fn world(size: (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity
 /// The same, with the whole zoo to edit.
 pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
     let mut zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
@@ -218,6 +219,7 @@ pub fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -
             name: String::new(),
             stats: [0; 9],
             created: 0,
+            viewing: 0,
             serviced: 0,
         }];
     });

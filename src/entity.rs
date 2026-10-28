@@ -23,10 +23,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt;
 use std::iter;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use crate::behaviour::{Behaviours, Call, Row};
 use crate::config::{Config, Section, to_int};
+use crate::strings::is_user_id;
+use crate::usertext;
 use crate::vfs::{Vfs, normalise};
 
 /// The most registry entries (types created or listed again) one catalogue takes. The full game
@@ -85,6 +88,26 @@ pub struct EntityType {
 }
 
 impl EntityType {
+    /// The footprint `(x, y)` in half tiles of an animal in its egg (`cEggFootprintX/Y`) or in its
+    /// crate (`cBoxFootprintX/Y`), read like the plain footprint; 2 by 2 when the file gives none.
+    pub fn form_footprint(&self, egg: bool) -> [i32; 2] {
+        let (x, y) = match egg {
+            true => ("cEggFootprintX", "cEggFootprintY"),
+            false => ("cBoxFootprintX", "cBoxFootprintY"),
+        };
+        let mut out = [2, 2];
+        if let Some(config) = self.config.as_deref() {
+            for prefix in unit_prefixes(self, config) {
+                let section = config.section([&prefix[..], b"Characteristics/Integers"].concat());
+                if let Some(section) = section {
+                    set(section, x, &mut out[0]);
+                    set(section, y, &mut out[1]);
+                }
+            }
+        }
+        out
+    }
+
     /// The number of palettes of each replaceable colour group of a staff or guest type, in the
     /// order of its `colorrep` section (sprite drawing 8.1; the section of the subtype, or of the
     /// type name for a guest); empty for a type with none.
@@ -185,7 +208,7 @@ impl EntityType {
         let section = self.animation_section()?;
         let key = section
             .keys()
-            .find(|key| String::from_utf8_lossy(key) == name)?;
+            .find(|key| crate::vfs::name_from_bytes(key) == name)?;
         Some(self.animation(section, key))
     }
 
@@ -224,6 +247,11 @@ pub struct Catalogue {
     files: HashMap<String, Definition>,
     /// The item types guests buy, by lower-case name.
     pub items: BTreeMap<String, crate::building::items::Item>,
+    /// `cNonPathCost` of the unit class file `ztunit.ai` (pathfinding 6.5): the guests' cost off the
+    /// paths; `None` when the file or the key is missing.
+    pub guest_non_path_cost: Option<u32>,
+    /// The award definitions (`award*.cfg`), read with the types.
+    pub awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
     behaviours: BTreeMap<String, Behaviours>,
     /// The bytes of the definition files loaded.
@@ -378,7 +406,7 @@ fn show(bytes: &[u8]) -> String {
 }
 
 fn lossy(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
+    crate::vfs::name_from_bytes(bytes)
 }
 
 /// The types a registry produces, entries in ascending byte order of their keys. Lazy: a
@@ -527,8 +555,19 @@ impl Catalogue {
                 }
             }
         }
+        let refused = number_user_names(&mut catalogue.types, usertext::NAMES);
+        if refused > 0 {
+            catalogue.warn(|| format!("{refused} user names without an id: the ids are used up"));
+        }
         let (items, warnings) = crate::building::items::load(vfs);
         catalogue.items = items;
+        catalogue.guest_non_path_cost = vfs
+            .read("ztunit.ai")
+            .ok()
+            .and_then(|b| Config::parse(&b).ok())
+            .and_then(|c| crate::timing::ini_whole(&c, "Characteristics/Integers", "cNonPathCost"))
+            .map(|v| v.max(0) as u32);
+        catalogue.awards = crate::award::Definitions::load(vfs);
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {
             let more = catalogue.suppressed;
@@ -750,6 +789,37 @@ impl Catalogue {
     }
 }
 
+/// Gives each user type (a name id that `is_user_id` accepts, entity types 10.3) its own name id
+/// from `ids`, in order: the same name always gets the same id. The name is the type name for
+/// units and the subtype name for the other classes. A name past the last id gets 0. Returns how
+/// many got none.
+fn number_user_names(types: &mut [EntityType], ids: RangeInclusive<i32>) -> usize {
+    let mut given: HashMap<Vec<u8>, i32> = HashMap::new();
+    let mut next = *ids.start();
+    let mut refused = 0;
+    for ty in types.iter_mut().filter(|t| is_user_id(t.name_id)) {
+        let name = if ty.class == "animals" {
+            ty.type_name.clone()
+        } else {
+            ty.subtype.clone()
+        };
+        let id = match given.get(&name) {
+            Some(&id) => id,
+            None if next <= *ids.end() => {
+                given.insert(name, next);
+                next += 1;
+                next - 1
+            }
+            None => {
+                refused += 1;
+                0
+            }
+        };
+        ty.name_id = id;
+    }
+    refused
+}
+
 /// Whether two names stand for the same copy of the same file.
 fn same_copy(vfs: &Vfs, a: Option<&str>, b: Option<&str>) -> bool {
     let first = |name: Option<&str>| {
@@ -799,6 +869,28 @@ fn default_subtype(config: &Config) -> &[u8] {
         .unwrap_or_default()
 }
 
+/// The prefixes of the sections a unit type reads its integers from, in the order they apply:
+/// the default subtype's (the plain ones when there is none), then the type's own, unless it is
+/// the default. With an empty own name and a default, the prefix is `/`, which matches nothing.
+fn unit_prefixes(ty: &EntityType, config: &Config) -> Vec<Vec<u8>> {
+    let default = default_subtype(config);
+    let own = if ty.class == "guests" {
+        &ty.type_name
+    } else {
+        &ty.subtype
+    };
+    let first = if default.is_empty() {
+        Vec::new()
+    } else {
+        [default, b"/"].concat()
+    };
+    let mut prefixes = vec![first];
+    if own[..] != *default {
+        prefixes.push([&own[..], b"/"].concat());
+    }
+    prefixes
+}
+
 /// Reads the values of a type by the rules of its class (specification 6).
 fn read_values(ty: &mut EntityType, config: &Config) {
     match ty.class {
@@ -807,21 +899,8 @@ fn read_values(ty: &mut EntityType, config: &Config) {
         // as a fallback), then the type's own on top. Guests use their type name where the
         // others use the subtype name.
         "animals" | "guests" | "keeper" | "tour" | "maint" | "helicopter" => {
-            let default = default_subtype(config);
-            let own = if ty.class == "guests" {
-                ty.type_name.clone()
-            } else {
-                ty.subtype.clone()
-            };
-            let first = if default.is_empty() {
-                Vec::new()
-            } else {
-                [default, b"/"].concat()
-            };
-            read_keys(ty, config, &first);
-            // With an empty own name and a default, the prefix is `/`, which matches nothing.
-            if own != default {
-                read_keys(ty, config, &[&own, &b"/"[..]].concat());
+            for prefix in unit_prefixes(ty, config) {
+                read_keys(ty, config, &prefix);
             }
         }
         // The scenery keys from the plain sections, then name id and height again from the
@@ -937,6 +1016,30 @@ mod tests {
     /// The catalogue of an installation with these members.
     fn catalogue(name: &str, members: &[(&str, &str)]) -> Catalogue {
         Install::new(name, members).load().unwrap()
+    }
+
+    #[test]
+    fn the_guests_non_path_cost_is_the_unit_class_files_or_none() {
+        let cost = |ai: Option<&str>| {
+            let members: Vec<(&str, &str)> = ai.map(|t| ("ztunit.ai", t)).into_iter().collect();
+            catalogue("ztunit", &members).guest_non_path_cost
+        };
+        assert_eq!(
+            cost(Some("[Characteristics/Integers]\ncNonPathCost=5\n")),
+            Some(5)
+        );
+        assert_eq!(
+            cost(Some("[Characteristics/Integers]\ncNonPathCost=-3\n")),
+            Some(0)
+        );
+        assert_eq!(
+            cost(Some(
+                "[Characteristics/Integers]\ncNonPathCost=2147483647\n"
+            )),
+            Some(i32::MAX as u32)
+        );
+        assert_eq!(cost(Some("[Characteristics/Integers]\n")), None);
+        assert_eq!(cost(None), None);
     }
 
     #[test]
@@ -1178,6 +1281,64 @@ mod tests {
         );
     }
 
+    fn typed(class: &'static str, type_name: &[u8], subtype: &[u8], name_id: i32) -> EntityType {
+        EntityType {
+            class,
+            type_name: type_name.to_vec(),
+            subtype: subtype.to_vec(),
+            file: None,
+            config: None,
+            name_id,
+            footprint: [1, 1, 1],
+            height: 0,
+        }
+    }
+
+    #[test]
+    fn user_names_get_their_own_ids_from_19000_and_a_name_keeps_its_id() {
+        let mut types = vec![
+            typed("animals", b"lion", b"m", 19000),
+            typed("animals", b"lion", b"f", 19000),
+            typed("animals", b"bear", b"f", 19000),
+            typed("building", b"building", b"shop", 19000),
+            typed("objects", b"other", b"rock", 19000),
+            typed("objects", b"other", b"rock", 19000),
+            typed("objects", b"other", b"tree", 0),
+            typed("objects", b"other", b"sign", -5),
+            typed("objects", b"other", b"bush", i32::MAX),
+            typed("objects", b"other", b"stone", 49000),
+        ];
+        assert_eq!(number_user_names(&mut types, usertext::NAMES), 0);
+        let ids: Vec<i32> = types.iter().map(|t| t.name_id).collect();
+        assert_eq!(
+            ids,
+            [
+                19000,
+                19000,
+                19001,
+                19002,
+                19003,
+                19003,
+                0,
+                -5,
+                i32::MAX,
+                19004
+            ]
+        );
+    }
+
+    #[test]
+    fn a_user_name_past_the_last_id_gets_none_and_is_counted() {
+        let mut types = vec![
+            typed("objects", b"other", b"a", 19000),
+            typed("objects", b"other", b"b", 19000),
+            typed("objects", b"other", b"a", 19000),
+        ];
+        assert_eq!(number_user_names(&mut types, 19000..=19000), 1);
+        let ids: Vec<i32> = types.iter().map(|t| t.name_id).collect();
+        assert_eq!(ids, [19000, 0, 19000]);
+    }
+
     #[test]
     fn user_files_come_after_the_registries_of_their_class() {
         let user = "[Global]\n[Characteristics/Integers]\ncNameID = 19000\n";
@@ -1216,6 +1377,16 @@ mod tests {
             Some("home.ucb")
         );
         assert!(c.warnings.iter().any(|w| w.contains("another file")));
+        // Each user name gets its own id from 19000, in creation order (the classes in their
+        // order); the three subtypes of a unit share one. The yak's file names a user id too, so
+        // it is numbered; the rock has no user id.
+        assert_eq!(get(&c, "building", "building", "home").name_id, 19000);
+        assert_eq!(get(&c, "animals", "yak", "").name_id, 19001);
+        for subtype in ["m", "f", "y"] {
+            assert_eq!(get(&c, "animals", "pony", subtype).name_id, 19002);
+        }
+        assert_eq!(get(&c, "objects", "other", "f554b047").name_id, 19003);
+        assert_eq!(get(&c, "objects", "other", "rock").name_id, 0);
 
         // Without a loaded registry of the class, its user files are not looked at.
         let c = catalogue(
@@ -1556,8 +1727,8 @@ mod tests {
     fn values_follow_the_passes_of_their_class() {
         let rates = "cSlowRate=1\ncMediumRate=2\ncFastRate=3\n";
         let lion = format!(
-            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\n{rates}\
-             [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\n[Characteristics/Integers]\ncNameID = 999\n"
+            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\ncEggFootprintX = -3\ncEggFootprintY = 99999999999\n{rates}\
+             [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\ncBoxFootprintX = 0\n[Characteristics/Integers]\ncNameID = 999\n"
         );
         // Name id and footprint are read at the ZT unit level, which never falls back to the
         // plain sections when there is a default subtype: the plain name id is not used.
@@ -1614,6 +1785,16 @@ mod tests {
         // Scenery never reads a prefixed section.
         assert_eq!(values("objects", "foliage", "tree"), (7, [5, 6, 1], 0));
         assert!(get(&c, "objects", "foliage", "tree").config.is_some());
+        // The egg and crate footprints are 2 by 2 unless given: negative and huge values as they
+        // come, the own pass on top of the default one.
+        let forms = |subtype, egg| get(&c, "animals", "lion", subtype).form_footprint(egg);
+        assert_eq!(forms("f", true), [-3, 99999999999i64 as i32]);
+        assert_eq!(forms("f", false), [2, 2]);
+        assert_eq!(forms("m", false), [0, 2]);
+        assert_eq!(
+            get(&c, "animals", "tiger", "m").form_footprint(true),
+            [2, 2]
+        );
     }
 
     #[test]

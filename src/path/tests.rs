@@ -95,6 +95,7 @@ fn sized((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)
     let mut entities = vec![entity("gate", "", "", (w - 1, h - 1), 2)];
     edit(&mut tiles, &mut entities);
     let zoo = Zoo {
+        awards: Vec::new(),
         kept: Default::default(),
         version: 0,
         locale: 0,
@@ -165,7 +166,16 @@ fn step_costs_by_unit_kind() {
     assert_eq!(cost(&w, &unit(animal, (5, 5)), (5, 5), (6, 5)), 2);
     let m = unit(keeper, (5, 5));
     let diagonal = path_cost(&w, &m, &[t((5, 5)), t((6, 4))]);
-    assert!((diagonal - 3.0 * std::f64::consts::SQRT_2).abs() < 1e-9);
+    // The product and the sum are single-precision (3.3).
+    let product = f64::from((super::search::DIAGONAL * 3.0) as f32);
+    assert_ne!(product, super::search::DIAGONAL * 3.0);
+    assert_eq!(diagonal, product);
+    let long: Vec<usize> = [(1, 5), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4)]
+        .map(t)
+        .to_vec();
+    let sum = (0..4).fold(product, |a, _| f64::from((a + 3.0) as f32));
+    assert_eq!(path_cost(&w, &m, &long), sum);
+    assert_ne!(sum, product + 12.0);
     assert_eq!(cost(&w, &unit(keeper, (1, 1)), (1, 1), (2, 1)), 2);
     assert_eq!(cost(&w, &unit(animal, (1, 1)), (1, 1), (2, 1)), 17);
     // A guest on a path pays the non-path cost for grass, and keeps to the paths when going to one.

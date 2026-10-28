@@ -33,10 +33,10 @@ use crate::panel::building as panel_building;
 use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
-use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
+use crate::render::{Extra, Form, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::scenario::Scenario;
 use crate::sim::Sim;
-use crate::status::{Finances, STATUS_BUTTON, Words};
+use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
 use crate::terrain::{Tool, habit};
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
@@ -157,6 +157,8 @@ pub enum Command {
     Char(u8),
     /// A key or a mouse button was pressed: stops the intro movie that plays. Ignored by the game.
     Skip,
+    /// `award add ID`: the zoo holds the award (`awards.md` 4.1).
+    Award(i32),
     Save(&'static str),
     Load(&'static str),
 }
@@ -194,6 +196,7 @@ impl fmt::Display for Command {
             }
             Command::Char(byte) => write!(f, "char {byte}"),
             Command::Skip => f.write_str("skip"),
+            Command::Award(id) => write!(f, "award add {id}"),
             Command::Save(file) => write!(f, "save {file}"),
             Command::Load(file) => write!(f, "load {file}"),
         }
@@ -211,6 +214,7 @@ impl FromStr for Command {
             _ => Err(format!("{word} takes a file name: {text:?}")),
         };
         Ok(match words.as_slice() {
+            ["award", "add", id] => Command::Award(number(id)?),
             ["save", ..] => Command::Save(file("save")?),
             ["load", ..] => Command::Load(file("load")?),
             ["scroll", x, y] => {
@@ -313,6 +317,8 @@ struct Game {
     bars: Option<[i32; 3]>,
     /// What the Finances table of the zoo status window holds.
     finances: Finances,
+    /// Whether the status window was shown at the last look, for the Awards page.
+    awards_page: Awards,
     /// The building panels and the tool they choose.
     build: Build,
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
@@ -433,6 +439,12 @@ pub struct App<'a> {
     pointer: Option<(i32, i32)>,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
     on_map: bool,
+    /// Whether it is over an editable text field.
+    on_text: bool,
+    /// Whether the last pass began a long operation: rotating or zooming a map, loading a game.
+    busy: bool,
+    /// Told when a long operation begins, so the window can show the busy cursor around it.
+    busy_hook: Option<Box<dyn FnMut() + 'a>>,
     frame: Framebuffer,
     /// The interface drawn over the map, if the game has one.
     ui: Option<Interface>,
@@ -517,6 +529,9 @@ pub struct App<'a> {
     /// whether a game opens without the main panel.
     faded: bool,
     bare: bool,
+    /// What the scenario's triggers changed in the interface.
+    marks: crate::scenario::Marks,
+    scenario_lines: Vec<String>,
 }
 
 /// The layouts of the game screen that stopping or ending a game hides.
@@ -625,6 +640,9 @@ impl<'a> App<'a> {
             quit: false,
             pointer: None,
             on_map: true,
+            on_text: false,
+            busy: false,
+            busy_hook: None,
             frame: Framebuffer::new(size.0, size.1),
             ui: None,
             map: Framebuffer::new(0, 0),
@@ -672,6 +690,8 @@ impl<'a> App<'a> {
             last_file,
             faded: false,
             bare: false,
+            marks: Default::default(),
+            scenario_lines: Vec::new(),
         })
     }
 
@@ -691,6 +711,7 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
+        self.scenario_clean();
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
@@ -701,6 +722,7 @@ impl<'a> App<'a> {
             world.units.names = (types.filter(|t| t.name_id != 0))
                 .map(|t| (t.name_id, ui.string(t.name_id)))
                 .collect();
+            world.name_loaded_entities(self.renderer.catalogue());
         }
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
@@ -733,6 +755,7 @@ impl<'a> App<'a> {
             bar: None,
             bars: None,
             finances: Finances::default(),
+            awards_page: Awards::default(),
             build: Build::new(installed_expansions(self.renderer.vfs()))
                 .with_exhibits(exhibits)
                 .unlocked(
@@ -795,12 +818,14 @@ impl<'a> App<'a> {
     }
 
     /// Puts the interface around the game. The window is the size it was resolved for.
-    pub fn set_interface(&mut self, ui: Interface) {
+    pub fn set_interface(&mut self, mut ui: Interface) {
         self.map = Framebuffer::new(self.frame.width, self.frame.height);
         self.painted = None;
+        crate::usertext::serve(&mut ui, self.renderer.catalogue());
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();
+            game.awards_page = Awards::default();
         }
     }
 
@@ -843,6 +868,7 @@ impl<'a> App<'a> {
         self.dev_lines = Vec::new();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
+        self.busy = false;
         (self.music_changed, self.music_restarted) = (false, false);
         if let Some(ui) = &mut self.ui {
             ui.set_time(now);
@@ -858,6 +884,7 @@ impl<'a> App<'a> {
             return None;
         }
         self.on_map = self.ui.as_mut().is_none_or(Interface::pointer_on_map);
+        self.on_text = self.ui.as_mut().is_some_and(Interface::pointer_on_text);
         if let Some(ui) = &mut self.ui {
             self.ui_events.extend(ui.take_events());
             self.ui_sounds.extend(ui.take_sounds());
@@ -904,6 +931,7 @@ impl<'a> App<'a> {
         }
         let modal = self.modal();
         let mut month_end = false;
+        self.scenario_sync();
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
@@ -934,6 +962,7 @@ impl<'a> App<'a> {
             self.status_told(report.bars);
             self.scenario_over();
         }
+        self.scenario_effects();
         self.undo_button();
         self.panel_pass(now);
         self.tell_money(now);
@@ -1129,6 +1158,9 @@ impl<'a> App<'a> {
     }
 
     fn apply(&mut self, command: Command) {
+        if matches!(command, Command::Rotate(_) | Command::Zoom(_)) && self.game.is_some() {
+            self.start_busy();
+        }
         match command {
             Command::Close => return self.close(),
             Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
@@ -1145,6 +1177,12 @@ impl<'a> App<'a> {
                 return;
             }
             Command::Save(file) => return self.save_game(file),
+            Command::Award(id) => {
+                if let Some(game) = &mut self.game {
+                    crate::award::add(&mut game.world.zoo.awards, id);
+                }
+                return;
+            }
             Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
                 return self.save_key();
             }
@@ -1653,6 +1691,7 @@ impl<'a> App<'a> {
         self.build(None);
         let actions: Vec<Action> = self.ui_actions[self.acted..].to_vec();
         self.acted = self.ui_actions.len();
+        self.scenario_pressed(&selected, &actions);
         for action in actions {
             match action {
                 Action::Answer(code) => self.answered(code),
@@ -1813,6 +1852,7 @@ impl<'a> App<'a> {
     fn requested(&mut self) {
         match self.menu.as_mut().and_then(Menu::take_request) {
             Some(Request::Open(start)) => {
+                self.start_busy();
                 let Some(menu) = &self.menu else { return };
                 let zoo = menu.load(&start.path, self.renderer.catalogue());
                 self.open(&start, zoo);
@@ -1841,6 +1881,7 @@ impl<'a> App<'a> {
 
     /// `load FILE` of a script: a saved game opens as a Continue does. Whether it opened.
     fn load_saved(&mut self, file: &str) -> bool {
+        self.start_busy();
         let catalogue = self.renderer.catalogue();
         let read = std::fs::read(file).map_err(|e| format!("{file}: {e}"));
         let read = read.and_then(|bytes| {
@@ -1895,10 +1936,19 @@ impl<'a> App<'a> {
                 }
             }
         }
-        if let Some(scenario) = &start.scenario
-            && let Some(scenario) = Scenario::prepare(self.renderer.vfs(), scenario)
-        {
-            self.sim.start_scenario(scenario);
+        if let Some(file) = &start.scenario {
+            // The research tree is built before the start triggers (research 7.4).
+            if let Some(tree) = crate::research::Tree::of_scenario(self.renderer.vfs(), file) {
+                if let Some(game) = &mut self.game {
+                    let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
+                    game.build
+                        .start_research(self.renderer.catalogue(), &ini, &tree);
+                }
+                self.sim.set_research(tree);
+            }
+            if let Some(scenario) = Scenario::prepare(self.renderer.vfs(), file) {
+                self.sim.start_scenario(scenario);
+            }
         }
         let music = self.music.take();
         self.start_game(music);
@@ -2051,6 +2101,7 @@ impl<'a> App<'a> {
             return;
         };
         self.game = None;
+        self.marks.clean(ui);
         (self.painted, self.drawn_at) = (None, None);
         for id in GAME_LAYOUTS {
             if let Some(i) = ui.tree.find(id) {
@@ -2143,6 +2194,17 @@ impl<'a> App<'a> {
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
         want.selected = game.selected;
+        let animal = game
+            .selected
+            .and_then(|id| match &game.world.units.get(id)?.part {
+                crate::unit::Part::Animal(a) => Some((a.egg, a.crated)),
+                _ => None,
+            });
+        want.form = match animal {
+            Some((true, _)) => Form::Egg,
+            Some((_, true)) => Form::Crate,
+            _ => Form::Plain,
+        };
         want.faces.clone_from(&game.world.units.reactions);
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
@@ -2216,14 +2278,58 @@ impl<'a> App<'a> {
     }
 
     /// The cursor to show, by its number without the 50 of the alternate set ([`crate::cursor`]):
-    /// over the map view the terrain tool's while it is the map view's tool, else the normal one;
-    /// over the interface the default.
+    /// over the interface the text cursor on an editable field, else the default; over the map
+    /// view the terrain tool's, the bulldozer's, the drag's, the pending object's, the hover's
+    /// (an exhibit under the assign tool, a fence piece under the gate tool, or, with no tool, a
+    /// selectable entity), else the normal one.
     pub fn cursor(&self) -> u32 {
+        use crate::cursor as c;
         if !self.on_map {
-            return crate::cursor::DEFAULT;
+            return if self.on_text { c::TEXT } else { c::DEFAULT };
         }
-        let tool = self.game.as_ref().and_then(|g| g.terrain.cursor());
-        tool.unwrap_or(crate::cursor::NORMAL)
+        let Some(game) = &self.game else {
+            return c::NORMAL;
+        };
+        if let Some(tool) = game.terrain.cursor() {
+            return tool;
+        }
+        let over =
+            game.staff.over.is_some() || (self.assigning().is_none() && self.over_selectable());
+        let b = &game.build;
+        match () {
+            _ if b.bulldozing() => c::BULLDOZER,
+            _ if b.dragging() || !game.run.is_empty() => c::DRAG,
+            // The gate tool's pending gate is the hover, not a pending object.
+            _ if b.gating() => {
+                if game.gate.is_some() {
+                    c::HOVER
+                } else {
+                    c::NORMAL
+                }
+            }
+            _ if game.pending.is_some() => c::PLACING,
+            _ if over => c::HOVER,
+            _ => c::NORMAL,
+        }
+    }
+
+    /// Whether the last pass began a long operation, which shows the busy cursor (string tables
+    /// 6.1): rotating or zooming a map, loading a game from the interface or a script. A save
+    /// never does.
+    pub fn busy(&self) -> bool {
+        self.busy
+    }
+
+    /// Sets what is called when a long operation begins.
+    pub fn on_busy(&mut self, hook: impl FnMut() + 'a) {
+        self.busy_hook = Some(Box::new(hook));
+    }
+
+    fn start_busy(&mut self) {
+        self.busy = true;
+        if let Some(hook) = &mut self.busy_hook {
+            hook();
+        }
     }
 
     pub fn paused(&self) -> bool {
@@ -2296,10 +2402,21 @@ impl<'a> App<'a> {
     /// `unit gate ID open|close GATE` for the units of the world. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
+    /// How many awards the zoo holds (none without a game).
+    pub fn awards(&self) -> usize {
+        self.game.as_ref().map_or(0, |g| g.world.zoo.awards.len())
+    }
+
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
         let mut lines = Vec::new();
         let lead = format!("pass {pass} t={now}");
         lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
+        // One count line per pass that gave an award: the awards the zoo holds after it.
+        let given = self
+            .applied
+            .iter()
+            .filter(|c| matches!(c, Command::Award(_)));
+        lines.extend(given.map(|_| format!("{lead} awards {}", self.awards())));
         lines.extend(self.ui_events.iter().map(|e| format!("{lead} ui {e}")));
         lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
         lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
@@ -2392,6 +2509,7 @@ mod guest_panel;
 mod panel;
 mod saves;
 mod scenario;
+mod scenario_ui;
 mod staff_panel;
 mod tank_panel;
 mod terrain;

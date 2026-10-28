@@ -66,6 +66,14 @@ impl Interface {
         target.is_some() && target == self.map_view
     }
 
+    /// Whether the element under the pointer (the one a held button captured, if any) is an
+    /// editable text field: it shows the text cursor (string tables 6.1).
+    pub fn pointer_on_text(&mut self) -> bool {
+        let at = self.input.pointer;
+        let target = self.input.capture.or_else(|| self.hit(at));
+        target.is_some_and(|t| matches!(self.tree.elements[t].kind, Kind::EditableText(_)))
+    }
+
     // ---- Hit testing (7.1)
 
     /// The element at a point of the screen, aliases followed: the last drawn first.
@@ -378,7 +386,7 @@ impl Interface {
     }
 
     /// The other members of the radio sets that `b` belongs to.
-    fn radio_members(&self, b: usize) -> Vec<usize> {
+    pub(super) fn radio_members(&self, b: usize) -> Vec<usize> {
         let id = self.id(b);
         let mut members = Vec::new();
         for e in &self.tree.elements {
@@ -440,7 +448,7 @@ impl Interface {
     }
 
     /// A toggle member released as deselected: every member is deselected that way.
-    fn radio_deselect_all(&mut self, b: usize) {
+    pub(super) fn radio_deselect_all(&mut self, b: usize) {
         for m in self.radio_members(b) {
             self.flag(m, SELECTED, false);
             self.deselect(m);

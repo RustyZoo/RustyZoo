@@ -1257,3 +1257,34 @@ fn a_flag_change_makes_the_open_list_again() {
     build.sync(&mut ui, &vfs, &cat, &mut log);
     assert!(build.list.is_empty());
 }
+
+#[test]
+fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_theirs() {
+    use crate::research::{Branch, Category, Program, Tree};
+    let program = |target, cost| Program {
+        name: 1,
+        cost,
+        progress: 0.0,
+        target,
+        effect: 0,
+    };
+    let tree = Tree {
+        branches: vec![Branch {
+            name: 1,
+            funding: vec![],
+            level: 0,
+            categories: vec![Category {
+                name: 1,
+                expansion: 0,
+                tick: true,
+                programs: vec![program(101, 5.0), program(102, 5.0), program(103, 0.0)],
+            }],
+        }],
+    };
+    let cat = types();
+    let ini = Config::parse(b"[user]\nunlockCount=1\nunlockEntity0=102\n").unwrap();
+    let mut build = Build::new(3);
+    build.start_research(&cat, &ini, &tree);
+    let flags: Vec<bool> = (0..4).map(|i| build.avail.is(&cat, i)).collect();
+    assert_eq!(flags, [false, true, true, true]);
+}

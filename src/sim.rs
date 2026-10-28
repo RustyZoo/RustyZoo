@@ -7,7 +7,7 @@
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
 //! so far: the shows, the water ripples, the ambient creatures, and the research and marketing
-//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (its rules and
+//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (most of its rules and
 //! triggers are stubs).
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
@@ -38,7 +38,8 @@ use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::guest;
 use crate::money::{self, Money};
-use crate::scenario::{Env, Scenario};
+use crate::research::Tree;
+use crate::scenario::{Env, Game, Scenario};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -154,6 +155,8 @@ pub struct Sim {
     calendar: Calendar,
     /// Simulated time since the zoo began, in milliseconds.
     total: u32,
+    /// The play time of the file plus the steps since the load, in simulated milliseconds.
+    play_time: u32,
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     ai_rem: u32,
     ai_ticks: u32,
@@ -171,6 +174,9 @@ pub struct Sim {
     lines: Vec<String>,
     /// The scenario being played, if the game is one.
     scenario: Option<Scenario>,
+    /// The research tree of a scenario or freeform game; none for a saved game, which counts as
+    /// no research done until its research section is read.
+    research: Option<Tree>,
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
     /// first seeding, and after every hire (unit placing 4.3).
     pub hire_male: bool,
@@ -191,6 +197,7 @@ impl Sim {
             tiles: 0,
             calendar: Calendar::new(),
             total: 0,
+            play_time: 0,
             ai_rem: 0,
             ai_ticks: 0,
             next_clear: 0,
@@ -200,6 +207,7 @@ impl Sim {
             bulldozed: Vec::new(),
             lines: Vec::new(),
             scenario: None,
+            research: None,
             hire_male: false,
         };
         sim.reseed();
@@ -256,16 +264,29 @@ impl Sim {
         self.status = Status::start(&clocks.status, self.economy.as_ref());
         self.calendar = Calendar::at(clocks.calendar);
         self.total = 0;
+        self.play_time = clocks.play_time;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
         self.bulldozed.clear();
         self.scenario = None;
+        self.research = None;
         self.events.restore(&clocks.queue);
         if tiles != self.tiles {
             self.tiles = tiles;
             self.reseed();
         }
+    }
+
+    /// The research tree of the game just opened is built (research 7.4): the zoo status counts
+    /// its programs from the next check on.
+    pub fn set_research(&mut self, tree: Tree) {
+        self.research = Some(tree);
+    }
+
+    /// The research share of the zoo status: the tree's, 0 while a game has none.
+    pub fn research_share(&self) -> i32 {
+        self.research.as_ref().map_or(0, Tree::share)
     }
 
     /// The scenario of the game just opened starts: its start triggers fire.
@@ -274,9 +295,14 @@ impl Sim {
         self.scenario = Some(scenario);
     }
 
-    /// The scenario being played.
+    /// The scenario being played, if the game is one.
     pub fn scenario(&self) -> Option<&Scenario> {
         self.scenario.as_ref()
+    }
+
+    /// Adds a line to the `sim` log.
+    pub fn note(&mut self, line: String) {
+        self.lines.push(line);
     }
 
     /// How the scenario ended, once, when it has.
@@ -297,9 +323,9 @@ impl Sim {
 
     /// A zoo has just been loaded (Continue, Load, the command line, or the file of a new game
     /// before its set-up): the load ends with a rating check with the stored cash and the entities
-    /// as loaded, research at 0 points, which restarts the rating timer (zoo status 16).
+    /// as loaded, research as the tree counts it, which restarts the rating timer (zoo status 16).
     pub fn loaded(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
-        let sums = Sums::of(world, cat, money.cash, 0);
+        let sums = Sums::of(world, cat, money.cash, self.research_share());
         self.status.rating_check(sums, money, &mut self.lines);
     }
 
@@ -394,6 +420,7 @@ impl Sim {
             ai_ticks: self.ai_ticks,
             world_rem: self.world_rem,
             world_secs: self.world_secs,
+            play_time: self.play_time,
             queue: self.events.queue(),
             calendar: self.calendar.elapsed_ms(),
         }
@@ -485,6 +512,7 @@ impl Sim {
         // The game manager: the time, the calendar, whose month flag of the step before is acted
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);
+        self.play_time = self.play_time.saturating_add(step);
         let month_end = self.calendar.advance(step);
         guest::mega::update(world, cat, step);
         guest::gawk::update(world, cat);
@@ -614,10 +642,13 @@ impl Sim {
         self.world_secs = self.world_secs.wrapping_add(total / 1000);
         // The scenario manager.
         if let Some(scenario) = &mut self.scenario {
-            let env = Env {
-                month: money.month as i32,
-                year: money.year as i32,
+            let game = Game {
+                world,
+                cat,
+                money,
+                status: &self.status,
             };
+            let env = Env::new(money.month as i32, money.year as i32, Some(game));
             scenario.update(step, &env, &mut self.lines);
         }
         // The research and marketing managers have nothing to do before M7.
@@ -641,7 +672,7 @@ impl Sim {
     ) -> Option<[i32; 3]> {
         let due = self.status.due(step, month_end);
         if due.rating {
-            let sums = Sums::of(world, cat, money.cash, 0);
+            let sums = Sums::of(world, cat, money.cash, self.research_share());
             self.status.rating_check(sums, money, &mut self.lines);
         }
         if due.message {

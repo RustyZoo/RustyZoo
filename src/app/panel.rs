@@ -30,12 +30,16 @@ impl App<'_> {
                 .find(|e| e.gate == Some(id))
                 .map(|e| e.id)
         });
-        if let Some(gate) = gate {
-            return self.open_exhibit(gate);
-        }
         let id = hit
             .and_then(|at| world.zoo.entities[at].common.as_ref())
             .map(|c| c.id);
+        if let Some(gate) = gate {
+            // The gate is the selected entity too, and carries the marker (information panels 4.1).
+            if let Some(game) = &mut self.game {
+                game.selected = id;
+            }
+            return self.open_exhibit(gate);
+        }
         if let Some(id) = id.filter(|&id| self.building_layout(id).is_some())
             && let Some(game) = &mut self.game
         {
@@ -43,6 +47,27 @@ impl App<'_> {
             self.tool_lines.push(format!("tool select {id}"));
             self.type_sound(id, "placesound");
         }
+    }
+
+    /// Whether a click here would select what is under the pointer ([`App::pick_or_select`] and
+    /// [`App::select`]: a unit, a building with a panel, the gate of an exhibit); false while a
+    /// tool or a carried unit takes the click.
+    pub(super) fn over_selectable(&self) -> bool {
+        let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
+            return false;
+        };
+        let world = &game.world;
+        if game.build.tool().is_some() || game.build.gating() || game.carry.is_some() {
+            return false;
+        }
+        let Some(id) = (game.staged).pick(game.camera.view_point(ui.pointer()), 0, |id| {
+            world.find(id).is_some()
+        }) else {
+            return false;
+        };
+        let gate = world.find(id).is_some_and(|at| world.is_door(at))
+            && world.exhibits().list().iter().any(|e| e.gate == Some(id));
+        world.units.get(id).is_some() || self.building_layout(id).is_some() || gate
     }
 
     /// Shows the exhibit panel, with the exhibit list button down, on exhibit `id`.
@@ -300,6 +325,8 @@ impl App<'_> {
             self.panel_lines
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
+        game.awards_page
+            .refresh(ui, &game.world.zoo.awards, &cat.awards, vfs);
         let layout = game.building.layout;
         // The panel of a building that charges nothing is filled when shown, never by the clock.
         let ticks = ticking && layout == building::CHARGING;
