@@ -734,12 +734,12 @@ fn a_loaded_tree_makes_the_targets_of_its_complete_programs_available() {
 
 /// A saved game resumes its scenario through the start's set-up (3.5, 7.2): the same entries are
 /// disabled, so the build and the load skip the category of a disabled expansion. Both kinds of
-/// scenario: a base game one (both expansions off) and a Marine Mania one (Dinosaur Digs off).
+/// scenario: a base game one (both expansions off) and a second-expansion one (first expansion off).
 #[test]
 fn a_saved_game_resumes_with_the_expansions_disabled_as_a_start() {
     let files = vec![
         list("r.cfg", &["b.cfg"]),
-        // Category 10 belongs to Dinosaur Digs, so a start and a resume both skip it.
+        // Category 10 belongs to the first expansion, so a start and a resume both skip it.
         branch("b.cfg", 7, 0, &[10, 11]),
         category(10, 1, &[1]),
         category(11, 0, &[2]),
@@ -748,7 +748,7 @@ fn a_saved_game_resumes_with_the_expansions_disabled_as_a_start() {
     ];
     for (name, desc) in [
         ("base", "name=16000\n"),
-        ("marine", "expansionLocked=1\nexpansion=3\n"),
+        ("locked", "expansionLocked=1\nexpansion=3\n"),
     ] {
         let start = format!("research=r.cfg\n[desc]\n{desc}");
         let (_i, vfs) = vfs(&format!("resume-{name}"), &start, files.clone());
