@@ -1924,6 +1924,20 @@ impl<'a> App<'a> {
         if start.forget_last {
             self.sim.restart_calendar();
         }
+        if let Some(file) = &start.scenario {
+            // The research tree and its picks come before the fence repairs of the start (7.4).
+            let rng = &mut self.sim.rng;
+            if let Some(tree) =
+                crate::research::Tree::of_scenario(self.renderer.vfs(), file, &mut || rng.rand())
+            {
+                if let Some(game) = &mut self.game {
+                    let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
+                    game.build
+                        .start_research(self.renderer.catalogue(), &ini, &tree);
+                }
+                self.sim.set_research(tree);
+            }
+        }
         if let Some(game) = &mut self.game {
             game.money.start(start.cash, start.reset);
             if start.reset {
@@ -1946,18 +1960,6 @@ impl<'a> App<'a> {
             }
         }
         if let Some(file) = &start.scenario {
-            // The research tree is built before the start triggers (research 7.4).
-            let rng = &mut self.sim.rng;
-            if let Some(tree) =
-                crate::research::Tree::of_scenario(self.renderer.vfs(), file, &mut || rng.rand())
-            {
-                if let Some(game) = &mut self.game {
-                    let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
-                    game.build
-                        .start_research(self.renderer.catalogue(), &ini, &tree);
-                }
-                self.sim.set_research(tree);
-            }
             if let Some(scenario) = Scenario::prepare(self.renderer.vfs(), file) {
                 self.sim.start_scenario(scenario);
             }

@@ -5,7 +5,7 @@ use super::*;
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::menu::Start;
-use crate::render::tests::{cache_install, flat_map, frame_file, tile_with};
+use crate::render::tests::{cache_install, cache_install_with, flat_map, frame_file, tile_with};
 use crate::sim::Rng;
 use crate::vfs::Vfs;
 use crate::zoo::{Common, Fence};
@@ -71,13 +71,15 @@ fn timers(app: &App) -> Vec<[u32; 2]> {
 }
 
 /// The intervals the pieces draw one after the other from the generator seeded with the last
-/// of the `seeds`: the first seeding is the start of the program, the second the map.
-fn drawn(app: &App) -> Vec<[u32; 2]> {
+/// of the `seeds` after `skip` draws: the first seeding is the start of the program, the second
+/// the map.
+fn drawn(app: &App, skip: usize) -> Vec<[u32; 2]> {
     let game = app.game.as_ref().unwrap();
     let mut world = World::new(game.world.zoo.clone(), |_| None);
     world.set_decay(crate::world::Decay::load(app.renderer.vfs()));
     let mut rng = Rng::default();
     rng.seed(SEEDS[1]);
+    (0..skip).for_each(|_| _ = rng.rand());
     (1..=4)
         .map(|id| [world.heal(app.renderer.catalogue(), id, &mut || rng.rand())])
         .map(|i| [i[0].unwrap(); 2])
@@ -113,7 +115,7 @@ fn a_scenario_start_that_resets_the_fences_draws_them_from_the_seeds_of_the_repl
     app.open_game(map(106, true), Money::default()).unwrap();
     assert_eq!(timers(&app), vec![[7; 2]; 4], "stored until the start");
     app.begin(&start(true));
-    let want = drawn(&app);
+    let want = drawn(&app, 0);
     assert!(want.iter().all(|t| t[0] != 7));
     assert_eq!(timers(&app), want);
 }
@@ -132,7 +134,7 @@ fn a_file_older_than_version_55_draws_its_fences_from_the_seeds_of_the_replay() 
     )
     .unwrap();
     app.set_seeds(SEEDS.to_vec());
-    let want = drawn(&app);
+    let want = drawn(&app, 0);
     assert_eq!(timers(&app), want);
     // The log tells the seedings of the replay and then the intervals drawn from them, once.
     let mut told: Vec<String> = vec!["sim seed 5".into(), "sim seed 6".into()];
@@ -148,4 +150,37 @@ fn a_file_older_than_version_55_draws_its_fences_from_the_seeds_of_the_replay() 
         .filter(|l| l.starts_with("sim fence") || l.starts_with("sim seed"))
         .collect();
     assert_eq!(sim, told);
+}
+
+#[test]
+fn the_tree_picks_draw_before_the_fences_are_made_healthy() {
+    let research = [
+        ("s/res.scn", b"[start]\nresearch=resx.cfg\n".to_vec()),
+        ("resx.cfg", b"[branches]\nbranch=rb.cfg\n".to_vec()),
+        ("rb.cfg", b"[branch]\nname=1\ncategory=rc.cfg\n".to_vec()),
+        (
+            "rc.cfg",
+            b"[category]\nname=2\nprogram=ra.cfg\nprogram=rd.cfg\n".to_vec(),
+        ),
+        ("ra.cfg", b"[research]\ncost=5\n".to_vec()),
+        ("rd.cfg", b"[research]\ncost=6\n".to_vec()),
+    ];
+    let install = cache_install_with("app-replay-tree", frame_file(), &research);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let cat = catalogue();
+    let mut app = App::empty(
+        MapRenderer::new(&vfs, &cat),
+        Timers::new(66, 16, 200),
+        SIZE,
+        Settings::default(),
+    )
+    .unwrap();
+    app.set_seeds(SEEDS.to_vec());
+    app.open_game(map(106, true), Money::default()).unwrap();
+    let mut scenario = start(true);
+    scenario.scenario = Some("s/res.scn".into());
+    app.begin(&scenario);
+    // The one branch drew once, then the four pieces drew their intervals.
+    assert!(app.sim.research_share() < 100);
+    assert_eq!(timers(&app), drawn(&app, 1));
 }
