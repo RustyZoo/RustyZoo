@@ -444,9 +444,14 @@ pub struct View {
 }
 
 impl Zoo {
-    /// The name of the scenario file the zoo holds (save games 7), if it holds one.
+    /// The name of the scenario file the zoo holds (save games 7), if it holds one. Every goal
+    /// of a file before version 51 restarts at 0 ([`Zoo::scenario_states`] is empty).
     pub fn scenario_file(&self) -> Option<String> {
-        let block = self.kept.scenario.get(4..).filter(|_| self.version >= 51)?;
+        let block = self.kept.scenario.get(4..).filter(|b| !b.is_empty())?;
+        if self.version < 51 {
+            // Before 51 the block is the name alone, with no length word.
+            return Some(latin1(block));
+        }
         let len = u32::from_le_bytes(block.get(..4)?.try_into().ok()?) as usize;
         Some(latin1(block.get(4..)?.get(..len)?))
     }

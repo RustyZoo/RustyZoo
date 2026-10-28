@@ -936,3 +936,24 @@ fn a_saved_game_resumes_its_scenario_with_the_stored_goal_states_and_writes_them
         assert_eq!(saved(app), [3, 1]);
     });
 }
+
+#[test]
+fn a_version_45_block_is_the_name_alone_and_the_scenario_resumes() {
+    with_menu("rv804-v45", "", |app, _| {
+        app.pass(0, &[]);
+        let mut bytes = crate::zoo::tests::file(45, 2, 2, &[], &[]);
+        let old = [5, 0, 0, 0, 1, 0, 0, 0, b'x'];
+        let at = bytes.windows(9).position(|w| w == old).unwrap();
+        let name = b"s/play.scn";
+        let block = [&(name.len() as u32).to_le_bytes()[..], name].concat();
+        bytes.splice(at..at + 9, block);
+        let zoo = Zoo::parse(&bytes).unwrap();
+        assert_eq!(zoo.version, 45);
+        app.open_game_as(zoo, Money::default(), true).unwrap();
+        let scenario = app.sim.scenario().expect("the named scenario resumes");
+        assert_eq!(
+            (scenario.file(), scenario.states()),
+            ("s/play.scn", vec![0, 0])
+        );
+    });
+}

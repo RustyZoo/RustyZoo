@@ -1015,8 +1015,19 @@ fn the_scenario_file_is_the_name_of_the_block_from_version_51() {
         parse(&file(51, 2, 2, &[], &[])).scenario_file().as_deref(),
         Some("scn/x")
     );
-    // Before 51 the block is the name alone; a block of size 0 or a cut one names nothing.
-    assert_eq!(parse(&file(50, 2, 2, &[], &[])).scenario_file(), None);
+    // Before 51 the block is the name alone (the file's 4 + 1 bytes after its size word).
+    assert_eq!(
+        parse(&file(50, 2, 2, &[], &[])).scenario_file().as_deref(),
+        Some("\u{1}\0\0\0x")
+    );
+    let mut old = parse(&file(45, 2, 2, &[], &[]));
+    old.kept.scenario = [&[3, 0, 0, 0][..], b"a/b"].concat();
+    assert_eq!(old.scenario_file().as_deref(), Some("a/b"));
+    old.kept.scenario = vec![0; 4];
+    assert_eq!(old.scenario_file(), None);
+    old.kept.scenario = vec![];
+    assert_eq!(old.scenario_file(), None);
+    // A block of size 0 or a cut one names nothing.
     let mut zoo = parse(&file(106, 2, 2, &[], &[]));
     let whole = zoo.kept.scenario.clone();
     for block in [
