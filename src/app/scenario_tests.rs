@@ -468,3 +468,27 @@ fn a_win_does_not_show_a_hidden_reward_again_when_it_unlocks_a_listed_id() {
         assert_eq!(flags(app), [false, false]);
     });
 }
+
+#[test]
+fn a_trigger_unlock_of_a_listed_id_shows_no_hidden_type_during_play() {
+    // The goal's trigger unlocks the zebra (6) when the goal is won, after the start rewards.
+    let text = "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=4\ntruleb=0\n\
+        [goals]\ngoal=g\n[g]\nrulea=99\narga=1\ntype=0\nvalue=1\ntrulea=4\ntruleb=10\ntarga=6\n";
+    let files = [("s/tu.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("trigger-relisted", "", &files, cat, |app, _| {
+        app.pass(0, &[]);
+        app.menu.as_mut().unwrap().unlock(&[6]);
+        let now = play(app, "s/tu.scn");
+        let hide = crate::scenario::Avail {
+            which: crate::scenario::Which::Name(6),
+            on: false,
+            tell: None,
+        };
+        let cat = app.renderer.catalogue();
+        app.game.as_mut().unwrap().build.change(cat, &[hide]);
+        assert_eq!(flags(app), [true, false]);
+        until_asked(app, now);
+        assert_eq!(flags(app), [true, false]);
+    });
+}
