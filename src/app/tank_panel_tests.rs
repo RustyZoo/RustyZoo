@@ -234,3 +234,89 @@ fn a_fill_press_while_the_flag_is_set_pays_nothing() {
         assert!(told(s).is_empty());
     });
 }
+
+fn ground(s: &Session) -> i32 {
+    s.app.game.as_ref().unwrap().world.ground(1).unwrap()
+}
+
+fn set_ground(s: &mut Session, level: i32) {
+    s.app.game.as_mut().unwrap().world.flatten(1, level, false);
+}
+
+#[test]
+fn a_ground_step_pays_the_tiles_times_the_elevation_price_both_ways() {
+    with_game("tank-ground", "", |s| {
+        tank(s);
+        let start = ground(s);
+        s.app.tank_ground(true);
+        assert_eq!((ground(s), s.cash()), (start + 1, 50_000.0 - 8.0));
+        // A lowering is paid too, nothing is given back.
+        s.app.tank_ground(false);
+        s.app.tank_ground(false);
+        assert_eq!((ground(s), s.cash()), (start - 1, 50_000.0 - 24.0));
+    });
+}
+
+#[test]
+fn the_ground_stops_at_plus_and_minus_12_and_a_press_there_costs_nothing() {
+    with_game("tank-ground-limit", "", |s| {
+        tank(s);
+        set_ground(s, 12);
+        s.app.tank_ground(true);
+        assert_eq!((ground(s), s.cash()), (12, 50_000.0));
+        set_ground(s, -12);
+        s.app.tank_ground(false);
+        assert_eq!((ground(s), s.cash()), (-12, 50_000.0));
+        s.app.tank_ground(true);
+        assert_eq!((ground(s), s.cash()), (-11, 50_000.0 - 8.0));
+    });
+}
+
+#[test]
+fn a_ground_step_the_cash_does_not_cover_is_refused_with_10002() {
+    with_game("tank-ground-poor", "", |s| {
+        tank(s);
+        let start = ground(s);
+        set_cash(s, 7.0);
+        s.app.tank_ground(true);
+        assert_eq!((ground(s), s.cash()), (start, 7.0));
+        assert_eq!(told(s), ["tool message 10002"]);
+    });
+}
+
+#[test]
+fn the_tab_writes_the_ground_price_and_the_ground_buttons_stop_at_the_limits() {
+    with_game("tank-ground-tab", "", |s| {
+        tank(s);
+        refresh(s);
+        let ui = s.app.ui.as_ref().unwrap();
+        let text = &ui.tree.elements[ui.tree.find(4882).unwrap()].text;
+        assert_eq!(text.as_deref(), Some(&b"$8"[..]));
+        // 4879 lowers, 4880 raises (disabled flags only: the tab itself is hidden here).
+        let off =
+            |s: &Session| -> Vec<bool> { state(s, &[4879, 4880]).iter().map(|e| e.1).collect() };
+        assert_eq!(off(s), vec![false, false]);
+        set_ground(s, 12);
+        refresh(s);
+        assert_eq!(off(s), vec![false, true]);
+        set_ground(s, -12);
+        refresh(s);
+        assert_eq!(off(s), vec![true, false]);
+    });
+}
+
+#[test]
+fn the_ground_price_comes_from_the_ini_not_from_tanks_cfg() {
+    for (ini, price) in [
+        ("[Map]\nelevationCost=12\n", 12.0),
+        ("[Map]\nelevationCost=0\n", 0.0),
+        ("[Map]\nelevationCost=-3\n", 8.0),
+        ("[Map]\nelevationCost=1e30\n", 8.0),
+        ("", 8.0),
+    ] {
+        with_game("tank-ground-ini", ini, |s| {
+            let config = TankConfig::load(s.app.renderer.vfs());
+            assert_eq!(config.ground, price, "{ini:?}");
+        });
+    }
+}

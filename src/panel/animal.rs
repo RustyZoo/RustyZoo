@@ -109,12 +109,16 @@ pub(crate) fn suitability(world: &World, cat: &Catalogue, at: usize) -> i32 {
     let Some(exhibit) = animals_exhibit(world, at) else {
         return 0;
     };
+    suitability_in(world, cat, exhibit, &world.zoo.entities[at].type_name)
+}
+
+/// The rating species `key` shows in `exhibit`, its amphibious neighbours followed.
+pub(crate) fn suitability_in(world: &World, cat: &Catalogue, exhibit: u32, key: &str) -> i32 {
     let near = world
         .exhibits()
         .get(exhibit)
         .map_or(Vec::new(), |e| e.amphibious.clone());
     let read = &mut |x| rating::rate(&rating::input(world, cat, x));
-    let key = &world.zoo.entities[at].type_name;
     rating::rating(exhibit, &near, key, read)
         .map_or(0, |r| rating::shown(r).min(i32::MAX as u32) as i32)
 }

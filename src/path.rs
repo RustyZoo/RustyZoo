@@ -181,15 +181,17 @@ pub fn allowed_deep(
 }
 
 /// The move cost of a path (3.6): each step's cost times its length factor, with the last tile as
-/// the goal.
+/// the goal; the product and each add are rounded to single precision (3.3).
 pub fn path_cost(w: &World, m: &Mover, path: &[usize]) -> f64 {
     let goal = path.last().copied();
     let step = |p: &[usize]| {
         let d = search::direction(w, p[0], p[1]);
         let length = [1.0, search::DIAGONAL][d % 2];
-        length * f64::from(cost::step(w, m, p[0], p[1], d, goal))
+        search::single(length * f64::from(cost::step(w, m, p[0], p[1], d, goal)))
     };
-    path.windows(2).map(step).fold(0.0, |a, b| a + b)
+    path.windows(2)
+        .map(step)
+        .fold(0.0, |a, b| search::single(a + b))
 }
 
 /// What to do with the unit's destination tile after a request.

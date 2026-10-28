@@ -30,12 +30,16 @@ impl App<'_> {
                 .find(|e| e.gate == Some(id))
                 .map(|e| e.id)
         });
-        if let Some(gate) = gate {
-            return self.open_exhibit(gate);
-        }
         let id = hit
             .and_then(|at| world.zoo.entities[at].common.as_ref())
             .map(|c| c.id);
+        if let Some(gate) = gate {
+            // The gate is the selected entity too, and carries the marker (information panels 4.1).
+            if let Some(game) = &mut self.game {
+                game.selected = id;
+            }
+            return self.open_exhibit(gate);
+        }
         if let Some(id) = id.filter(|&id| self.building_layout(id).is_some())
             && let Some(game) = &mut self.game
         {
@@ -321,6 +325,8 @@ impl App<'_> {
             self.panel_lines
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
+        game.awards_page
+            .refresh(ui, &game.world.zoo.awards, &cat.awards, vfs);
         let layout = game.building.layout;
         // The panel of a building that charges nothing is filled when shown, never by the clock.
         let ticks = ticking && layout == building::CHARGING;

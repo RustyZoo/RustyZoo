@@ -239,7 +239,9 @@ impl Painter {
                 let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
                     painter.list(pictures, e, list, strings, canvas);
                 });
-                copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
+                // The key is the cleared canvas, not the top left pixel a row's icon may cover.
+                let [r, g, b, _] = fill_color(e.look.back_color);
+                blit(frame, canvas, (sx, sy), e.transparent.then_some([r, g, b]));
             }
             // A bar with nothing to scroll is not shown.
             Kind::ScrollBar(bar) if bar.bar.scrollable() => {

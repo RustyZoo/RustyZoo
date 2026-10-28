@@ -88,6 +88,26 @@ pub struct EntityType {
 }
 
 impl EntityType {
+    /// The footprint `(x, y)` in half tiles of an animal in its egg (`cEggFootprintX/Y`) or in its
+    /// crate (`cBoxFootprintX/Y`), read like the plain footprint; 2 by 2 when the file gives none.
+    pub fn form_footprint(&self, egg: bool) -> [i32; 2] {
+        let (x, y) = match egg {
+            true => ("cEggFootprintX", "cEggFootprintY"),
+            false => ("cBoxFootprintX", "cBoxFootprintY"),
+        };
+        let mut out = [2, 2];
+        if let Some(config) = self.config.as_deref() {
+            for prefix in unit_prefixes(self, config) {
+                let section = config.section([&prefix[..], b"Characteristics/Integers"].concat());
+                if let Some(section) = section {
+                    set(section, x, &mut out[0]);
+                    set(section, y, &mut out[1]);
+                }
+            }
+        }
+        out
+    }
+
     /// The number of palettes of each replaceable colour group of a staff or guest type, in the
     /// order of its `colorrep` section (sprite drawing 8.1; the section of the subtype, or of the
     /// type name for a guest); empty for a type with none.
@@ -188,7 +208,7 @@ impl EntityType {
         let section = self.animation_section()?;
         let key = section
             .keys()
-            .find(|key| String::from_utf8_lossy(key) == name)?;
+            .find(|key| crate::vfs::name_from_bytes(key) == name)?;
         Some(self.animation(section, key))
     }
 
@@ -227,6 +247,9 @@ pub struct Catalogue {
     files: HashMap<String, Definition>,
     /// The item types guests buy, by lower-case name.
     pub items: BTreeMap<String, crate::building::items::Item>,
+    /// `cNonPathCost` of the unit class file `ztunit.ai` (pathfinding 6.5): the guests' cost off the
+    /// paths; `None` when the file or the key is missing.
+    pub guest_non_path_cost: Option<u32>,
     /// The award definitions (`award*.cfg`), read with the types.
     pub awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
@@ -383,7 +406,7 @@ fn show(bytes: &[u8]) -> String {
 }
 
 fn lossy(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
+    crate::vfs::name_from_bytes(bytes)
 }
 
 /// The types a registry produces, entries in ascending byte order of their keys. Lazy: a
@@ -538,6 +561,12 @@ impl Catalogue {
         }
         let (items, warnings) = crate::building::items::load(vfs);
         catalogue.items = items;
+        catalogue.guest_non_path_cost = vfs
+            .read("ztunit.ai")
+            .ok()
+            .and_then(|b| Config::parse(&b).ok())
+            .and_then(|c| crate::timing::ini_whole(&c, "Characteristics/Integers", "cNonPathCost"))
+            .map(|v| v.max(0) as u32);
         catalogue.awards = crate::award::Definitions::load(vfs);
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {
@@ -840,6 +869,28 @@ fn default_subtype(config: &Config) -> &[u8] {
         .unwrap_or_default()
 }
 
+/// The prefixes of the sections a unit type reads its integers from, in the order they apply:
+/// the default subtype's (the plain ones when there is none), then the type's own, unless it is
+/// the default. With an empty own name and a default, the prefix is `/`, which matches nothing.
+fn unit_prefixes(ty: &EntityType, config: &Config) -> Vec<Vec<u8>> {
+    let default = default_subtype(config);
+    let own = if ty.class == "guests" {
+        &ty.type_name
+    } else {
+        &ty.subtype
+    };
+    let first = if default.is_empty() {
+        Vec::new()
+    } else {
+        [default, b"/"].concat()
+    };
+    let mut prefixes = vec![first];
+    if own[..] != *default {
+        prefixes.push([&own[..], b"/"].concat());
+    }
+    prefixes
+}
+
 /// Reads the values of a type by the rules of its class (specification 6).
 fn read_values(ty: &mut EntityType, config: &Config) {
     match ty.class {
@@ -848,21 +899,8 @@ fn read_values(ty: &mut EntityType, config: &Config) {
         // as a fallback), then the type's own on top. Guests use their type name where the
         // others use the subtype name.
         "animals" | "guests" | "keeper" | "tour" | "maint" | "helicopter" => {
-            let default = default_subtype(config);
-            let own = if ty.class == "guests" {
-                ty.type_name.clone()
-            } else {
-                ty.subtype.clone()
-            };
-            let first = if default.is_empty() {
-                Vec::new()
-            } else {
-                [default, b"/"].concat()
-            };
-            read_keys(ty, config, &first);
-            // With an empty own name and a default, the prefix is `/`, which matches nothing.
-            if own != default {
-                read_keys(ty, config, &[&own, &b"/"[..]].concat());
+            for prefix in unit_prefixes(ty, config) {
+                read_keys(ty, config, &prefix);
             }
         }
         // The scenery keys from the plain sections, then name id and height again from the
@@ -978,6 +1016,30 @@ mod tests {
     /// The catalogue of an installation with these members.
     fn catalogue(name: &str, members: &[(&str, &str)]) -> Catalogue {
         Install::new(name, members).load().unwrap()
+    }
+
+    #[test]
+    fn the_guests_non_path_cost_is_the_unit_class_files_or_none() {
+        let cost = |ai: Option<&str>| {
+            let members: Vec<(&str, &str)> = ai.map(|t| ("ztunit.ai", t)).into_iter().collect();
+            catalogue("ztunit", &members).guest_non_path_cost
+        };
+        assert_eq!(
+            cost(Some("[Characteristics/Integers]\ncNonPathCost=5\n")),
+            Some(5)
+        );
+        assert_eq!(
+            cost(Some("[Characteristics/Integers]\ncNonPathCost=-3\n")),
+            Some(0)
+        );
+        assert_eq!(
+            cost(Some(
+                "[Characteristics/Integers]\ncNonPathCost=2147483647\n"
+            )),
+            Some(i32::MAX as u32)
+        );
+        assert_eq!(cost(Some("[Characteristics/Integers]\n")), None);
+        assert_eq!(cost(None), None);
     }
 
     #[test]
@@ -1665,8 +1727,8 @@ mod tests {
     fn values_follow_the_passes_of_their_class() {
         let rates = "cSlowRate=1\ncMediumRate=2\ncFastRate=3\n";
         let lion = format!(
-            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\n{rates}\
-             [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\n[Characteristics/Integers]\ncNameID = 999\n"
+            "[Global]\nDefaultSubtype = f\n[f/Characteristics/Integers]\ncNameID = 5006\ncFootprintX = 1\ncFootprintY = 2\ncHeight = 0x10\ncEggFootprintX = -3\ncEggFootprintY = 99999999999\n{rates}\
+             [m/Characteristics/Integers]\ncFootprintY = 3\ncNameID =\ncBoxFootprintX = 0\n[Characteristics/Integers]\ncNameID = 999\n"
         );
         // Name id and footprint are read at the ZT unit level, which never falls back to the
         // plain sections when there is a default subtype: the plain name id is not used.
@@ -1723,6 +1785,16 @@ mod tests {
         // Scenery never reads a prefixed section.
         assert_eq!(values("objects", "foliage", "tree"), (7, [5, 6, 1], 0));
         assert!(get(&c, "objects", "foliage", "tree").config.is_some());
+        // The egg and crate footprints are 2 by 2 unless given: negative and huge values as they
+        // come, the own pass on top of the default one.
+        let forms = |subtype, egg| get(&c, "animals", "lion", subtype).form_footprint(egg);
+        assert_eq!(forms("f", true), [-3, 99999999999i64 as i32]);
+        assert_eq!(forms("f", false), [2, 2]);
+        assert_eq!(forms("m", false), [0, 2]);
+        assert_eq!(
+            get(&c, "animals", "tiger", "m").form_footprint(true),
+            [2, 2]
+        );
     }
 
     #[test]

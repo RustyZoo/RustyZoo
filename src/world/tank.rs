@@ -40,8 +40,19 @@ impl World {
             .map(|&t| i64::from(self.zoo.tiles[t].elevation))
             .sum();
         let mean = i32::try_from(sum / tiles.len().max(1) as i64).unwrap_or(0);
-        let level = mean.saturating_sub(sink).clamp(-LIMIT, LIMIT);
-        for t in tiles {
+        self.flatten(id, mean.saturating_sub(sink), record);
+    }
+
+    /// The ground level of tank `id` (4.7): the level of its first tile.
+    pub fn ground(&self, id: u32) -> Option<i32> {
+        let first = *self.exhibits.get(id)?.order.first()?;
+        Some(self.zoo.tiles[first].elevation)
+    }
+
+    /// Makes the tiles of exhibit `id` flat at `level`, cut to the limits of the ground.
+    pub fn flatten(&mut self, id: u32, level: i32, record: bool) {
+        let level = level.clamp(-LIMIT, LIMIT);
+        for t in self.tiles_of(id) {
             let tile = self.zoo.tiles[t];
             if (tile.elevation, tile.shape) != (level, 0) {
                 self.put_tile(t, level, 0, tile.terrain, record);

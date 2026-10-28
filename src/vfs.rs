@@ -226,7 +226,8 @@ impl Vfs {
         let ini = read_ini(&ini_path)
             .map_err(|e| VfsError(format!("cannot read {}: {e}", ini_path.display()), false))?;
         // Without a path the game uses the install folder itself.
-        let search_path = resource_path(&String::from_utf8_lossy(&ini)).unwrap_or(".".to_string());
+        let search_path =
+            resource_path(&crate::vfs::name_from_bytes(&ini)).unwrap_or(".".to_string());
 
         let real_root = install_dir.canonicalize().map_err(|e| {
             VfsError(
@@ -665,7 +666,7 @@ fn open_archive(path: &Path, warnings: &mut Vec<String>) -> Result<Source, Failu
         if name.is_empty() || size == 0 {
             continue;
         }
-        let name = normalise(&String::from_utf8_lossy(&name));
+        let name = normalise(&name_from_bytes(&name));
         let member = Member { offset, size };
         match members.entry(name) {
             Entry::Vacant(slot) => {
@@ -697,6 +698,23 @@ fn first_record_wins(name: &str) -> bool {
     [".cfg", ".uca", ".ucb", ".ucs", ".scn"]
         .iter()
         .any(|extension| name.ends_with(extension))
+}
+
+/// A name from raw bytes, without losing any: valid UTF-8 stays as it is and each byte that is not
+/// part of a valid sequence becomes the private-use character U+F700 plus the byte, so two names
+/// that differ in such bytes stay distinct. Names are compared byte for byte after `normalise`.
+pub fn name_from_bytes(bytes: &[u8]) -> String {
+    let mut name = String::with_capacity(bytes.len());
+    for chunk in bytes.utf8_chunks() {
+        name.push_str(chunk.valid());
+        name.extend(
+            chunk
+                .invalid()
+                .iter()
+                .filter_map(|&b| char::from_u32(0xF700 + b as u32)),
+        );
+    }
+    name
 }
 
 /// Lower-cases ASCII letters and turns `\` into `/`.
@@ -854,6 +872,14 @@ fn resolve_directory(
     }
 }
 
+/// A loose file name with the bytes that are not UTF-8 kept apart (see `name_from_bytes`).
+fn file_name(name: &std::ffi::OsStr) -> String {
+    #[cfg(unix)]
+    return name_from_bytes(std::os::unix::ffi::OsStrExt::as_bytes(name));
+    #[cfg(not(unix))]
+    return name.to_string_lossy().into_owned();
+}
+
 /// Every file below `root`, at any depth: normalised path relative to `root` to the file.
 ///
 /// Symbolic links are not followed, neither to files nor to folders: a link could lead out of the
@@ -885,7 +911,7 @@ fn index_directory(
                 Err(e) => return Err(cannot(e)),
             };
             let path = entry.path();
-            let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
+            let name = format!("{prefix}{}", file_name(&entry.file_name()));
             let kind = match entry.file_type() {
                 Ok(kind) => kind,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
@@ -1184,6 +1210,46 @@ mod tests {
         let why = vfs.read("e.txt").unwrap_err().to_string();
         assert!(why.contains("the file is empty"), "{why}");
         assert_eq!(vfs.which("e.txt").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn names_with_bytes_that_are_not_utf8_stay_distinct() {
+        let dir = TempDir::new("bytes");
+        dir.ini(".");
+        // Placeholders 1 and 2 become the bytes E9 and E8 in the file, as in a Latin-1 name.
+        let mut zip = zip_bytes(&[("a\u{1}.txt", "one"), ("a\u{2}.txt", "two")], "");
+        for (from, to) in [(b"a\x01.txt", b"a\xE9.txt"), (b"a\x02.txt", b"a\xE8.txt")] {
+            for at in find_all(&zip, from) {
+                zip[at..at + to.len()].copy_from_slice(to);
+            }
+        }
+        dir.write("p.ztd", &zip);
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert_eq!(text(&vfs, &name_from_bytes(b"a\xE9.txt")), "one");
+        assert_eq!(text(&vfs, &name_from_bytes(b"A\xE8.TXT")), "two");
+        assert!(vfs.read("a\u{FFFD}.txt").is_err());
+        assert!(vfs.read("a\u{E9}.txt").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn loose_files_with_bytes_that_are_not_utf8_stay_distinct() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = TempDir::new("loosebytes");
+        dir.ini(".");
+        for (name, content) in [(&b"a\xE9.txt"[..], "one"), (b"a\xE8.txt", "two")] {
+            let path = dir.0.join(std::ffi::OsStr::from_bytes(name));
+            if let Err(e) = std::fs::write(path, content) {
+                // APFS and similar refuse names that are not valid UTF-8.
+                eprintln!("skipped: the file system refuses the name: {e}");
+                return;
+            }
+        }
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert_eq!(text(&vfs, &name_from_bytes(b"a\xE9.txt")), "one");
+        assert_eq!(text(&vfs, &name_from_bytes(b"a\xE8.txt")), "two");
+        assert_eq!(name_from_bytes("a\u{E9}".as_bytes()), "a\u{E9}");
+        assert_eq!(name_from_bytes(b""), "");
     }
 
     #[test]

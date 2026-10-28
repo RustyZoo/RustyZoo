@@ -94,7 +94,7 @@ pub fn types(vfs: &Vfs) -> Vec<Type> {
             let text = |key: &str| {
                 section
                     .get(key)
-                    .map_or(String::new(), |v| String::from_utf8_lossy(v).into_owned())
+                    .map_or(String::new(), crate::vfs::name_from_bytes)
             };
             let new = Type {
                 kind,

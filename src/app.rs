@@ -33,10 +33,10 @@ use crate::panel::building as panel_building;
 use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
-use crate::render::{Extra, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
+use crate::render::{Extra, Form, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::scenario::Scenario;
 use crate::sim::Sim;
-use crate::status::{Finances, STATUS_BUTTON, Words};
+use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
 use crate::terrain::{Tool, habit};
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
@@ -317,6 +317,8 @@ struct Game {
     bars: Option<[i32; 3]>,
     /// What the Finances table of the zoo status window holds.
     finances: Finances,
+    /// Whether the status window was shown at the last look, for the Awards page.
+    awards_page: Awards,
     /// The building panels and the tool they choose.
     build: Build,
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
@@ -527,6 +529,9 @@ pub struct App<'a> {
     /// whether a game opens without the main panel.
     faded: bool,
     bare: bool,
+    /// What the scenario's triggers changed in the interface.
+    marks: crate::scenario::Marks,
+    scenario_lines: Vec<String>,
 }
 
 /// The layouts of the game screen that stopping or ending a game hides.
@@ -685,6 +690,8 @@ impl<'a> App<'a> {
             last_file,
             faded: false,
             bare: false,
+            marks: Default::default(),
+            scenario_lines: Vec::new(),
         })
     }
 
@@ -704,6 +711,7 @@ impl<'a> App<'a> {
         self.drawn_at = Some((camera.scroll, camera.zoom, camera.rotation, false));
         self.painted = None;
         self.timers.forget_simulation();
+        self.scenario_clean();
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
@@ -711,6 +719,7 @@ impl<'a> App<'a> {
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
             world.units.names = self.type_names(ui);
+            world.name_loaded_entities(self.renderer.catalogue());
         }
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
@@ -743,6 +752,7 @@ impl<'a> App<'a> {
             bar: None,
             bars: None,
             finances: Finances::default(),
+            awards_page: Awards::default(),
             build: Build::new(installed_expansions(self.renderer.vfs()))
                 .with_exhibits(exhibits)
                 .unlocked(
@@ -814,6 +824,7 @@ impl<'a> App<'a> {
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();
             game.world.units.names = names;
+            game.awards_page = Awards::default();
         }
     }
 
@@ -928,6 +939,7 @@ impl<'a> App<'a> {
         }
         let modal = self.modal();
         let mut month_end = false;
+        self.scenario_sync();
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
             && !(game.paused || modal)
@@ -958,6 +970,7 @@ impl<'a> App<'a> {
             self.status_told(report.bars);
             self.scenario_over();
         }
+        self.scenario_effects();
         self.undo_button();
         self.panel_pass(now);
         self.tell_money(now);
@@ -1686,6 +1699,7 @@ impl<'a> App<'a> {
         self.build(None);
         let actions: Vec<Action> = self.ui_actions[self.acted..].to_vec();
         self.acted = self.ui_actions.len();
+        self.scenario_pressed(&selected, &actions);
         for action in actions {
             match action {
                 Action::Answer(code) => self.answered(code),
@@ -1737,6 +1751,9 @@ impl<'a> App<'a> {
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
                 exhibit::WALL_DOWN | exhibit::WALL_UP if self.game.is_some() => {
                     self.tank_wall(id == exhibit::WALL_UP);
+                }
+                exhibit::GROUND_DOWN | exhibit::GROUND_UP if self.game.is_some() => {
+                    self.tank_ground(id == exhibit::GROUND_UP);
                 }
                 exhibit::SALT | exhibit::FRESH if self.game.is_some() => {
                     self.tank_fill(id == exhibit::SALT);
@@ -1927,10 +1944,19 @@ impl<'a> App<'a> {
                 }
             }
         }
-        if let Some(scenario) = &start.scenario
-            && let Some(scenario) = Scenario::prepare(self.renderer.vfs(), scenario)
-        {
-            self.sim.start_scenario(scenario);
+        if let Some(file) = &start.scenario {
+            // The research tree is built before the start triggers (research 7.4).
+            if let Some(tree) = crate::research::Tree::of_scenario(self.renderer.vfs(), file) {
+                if let Some(game) = &mut self.game {
+                    let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
+                    game.build
+                        .start_research(self.renderer.catalogue(), &ini, &tree);
+                }
+                self.sim.set_research(tree);
+            }
+            if let Some(scenario) = Scenario::prepare(self.renderer.vfs(), file) {
+                self.sim.start_scenario(scenario);
+            }
         }
         let music = self.music.take();
         self.start_game(music);
@@ -2083,6 +2109,7 @@ impl<'a> App<'a> {
             return;
         };
         self.game = None;
+        self.marks.clean(ui);
         (self.painted, self.drawn_at) = (None, None);
         for id in GAME_LAYOUTS {
             if let Some(i) = ui.tree.find(id) {
@@ -2175,6 +2202,17 @@ impl<'a> App<'a> {
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
         want.selected = game.selected;
+        let animal = game
+            .selected
+            .and_then(|id| match &game.world.units.get(id)?.part {
+                crate::unit::Part::Animal(a) => Some((a.egg, a.crated)),
+                _ => None,
+            });
+        want.form = match animal {
+            Some((true, _)) => Form::Egg,
+            Some((_, true)) => Form::Crate,
+            _ => Form::Plain,
+        };
         want.faces.clone_from(&game.world.units.reactions);
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
@@ -2479,6 +2517,7 @@ mod guest_panel;
 mod panel;
 mod saves;
 mod scenario;
+mod scenario_ui;
 mod staff_panel;
 mod tank_panel;
 mod terrain;

@@ -57,7 +57,9 @@ const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
     [d]\ntype=UIText\nid=4883\ndx=8\ndy=8\n[e]\ntype=UIText\nid=4891\ndx=8\ndy=8\n\
     [f]\ntype=UIText\nid=4893\ndx=8\ndy=8\n[g]\ntype=UIText\nid=4871\ndx=8\ndy=8\n\
     [h]\ntype=UIText\nid=4872\ndx=8\ndy=8\n[i]\ntype=UIButton\nid=4869\ndx=8\ndy=8\n\
-    [j]\ntype=UIButton\nid=4870\ndx=8\ndy=8\n[k]\ntype=UIButton\nid=4885\ndx=8\ndy=8\n";
+    [j]\ntype=UIButton\nid=4870\ndx=8\ndy=8\n[k]\ntype=UIButton\nid=4885\ndx=8\ndy=8\n\
+    [l]\ntype=UIText\nid=4882\ndx=8\ndy=8\n[m]\ntype=UIButton\nid=4879\ndx=8\ndy=8\n\
+    [n]\ntype=UIButton\nid=4880\ndx=8\ndy=8\n";
 const GUEST: &str = "[LayoutInfo]\nid=9\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3413\ndx=8\ndy=8\ntarget=9\naction=2\ntransparent=0\n";
 const STAFF: &str = "[LayoutInfo]\nid=17\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
@@ -300,7 +302,7 @@ impl Session<'_> {
 
     /// A window point `(dx, dy)` view pixels from the anchor of the world position (`x`, `y`) on
     /// the ground.
-    fn near(&self, x: i32, y: i32, (dx, dy): (i32, i32)) -> Command {
+    pub(super) fn near(&self, x: i32, y: i32, (dx, dy): (i32, i32)) -> Command {
         let c = self.app.camera().unwrap();
         let p = project(c.rotation, x, y, 0);
         Command::Mouse(Mouse::Move(p.0 + dx - c.scroll.0, p.1 + dy - c.scroll.1))
