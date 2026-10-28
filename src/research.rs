@@ -114,22 +114,14 @@ impl Tree {
     /// The tree of the scenario `file` (3.1): the files its `[start] research` values name.
     /// `None` when the scenario cannot be read; a scenario with no value has an empty tree.
     /// Each branch file read gives its branch a current program, by a draw from `rand` (5.5).
-    /// A `resume` (a saved game's scenario, 7.2) disables no expansion entry (3.5).
-    pub fn of_scenario(
-        vfs: &Vfs,
-        file: &str,
-        resume: bool,
-        rand: &mut dyn FnMut() -> u32,
-    ) -> Option<Tree> {
+    /// A saved game's scenario gets the same expansion entries as a start (3.5, 7.2).
+    pub fn of_scenario(vfs: &Vfs, file: &str, rand: &mut dyn FnMut() -> u32) -> Option<Tree> {
         let main = Config::parse(&vfs.read(file).ok()?).ok()?;
         let values = main
             .section("start")
             .map_or(&[][..], |s| s.get_all("research"));
         let mut tree = Tree {
-            off: match resume {
-                true => [false; 4],
-                false => expansions_off(main.section("desc")),
-            },
+            off: expansions_off(main.section("desc")),
             ..Tree::default()
         };
         let mut left = MAX_PROGRAMS;

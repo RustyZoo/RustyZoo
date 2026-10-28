@@ -48,7 +48,7 @@ fn vfs(name: &str, start: &str, files: Vec<(String, Vec<u8>)>) -> (Install, Vfs)
 
 fn tree(name: &str, start: &str, files: Vec<(String, Vec<u8>)>) -> Tree {
     let (_i, vfs) = vfs(name, start, files);
-    Tree::of_scenario(&vfs, "s.scn", false, &mut || 0).unwrap()
+    Tree::of_scenario(&vfs, "s.scn", &mut || 0).unwrap()
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn an_unreadable_file_or_a_branch_without_a_name_is_dropped() {
     assert_eq!(t.branches[0].categories[0].programs.len(), 1);
     // A scenario that cannot be read has no tree.
     let (_i, vfs) = vfs("gone", "", vec![]);
-    assert!(Tree::of_scenario(&vfs, "none.scn", false, &mut || 0).is_none());
+    assert!(Tree::of_scenario(&vfs, "none.scn", &mut || 0).is_none());
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn the_full_install_gives_two_branches_22_categories_and_about_120_programs_at_9
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     // Every freeform start says `research=research.cfg`.
     let map = crate::lists::freeform_list(&vfs).remove(0);
-    let t = Tree::of_scenario(&vfs, &map.file, false, &mut || 0).unwrap();
+    let t = Tree::of_scenario(&vfs, &map.file, &mut || 0).unwrap();
     let categories = t.branches.iter().map(|b| b.categories.len()).sum::<usize>();
     // 118 programs, or 122 with the content update that adds four to the category 23204.
     let programs = t.programs().count();
@@ -492,7 +492,7 @@ fn each_branch_file_read_draws_once_for_its_current_program() {
         draws.push(());
         1
     };
-    let t = Tree::of_scenario(&vfs, "s.scn", false, &mut rand).unwrap();
+    let t = Tree::of_scenario(&vfs, "s.scn", &mut rand).unwrap();
     // The first branch has two candidates (draw 1 picks the second); the second has none.
     assert_eq!(draws.len(), 1);
     assert_eq!(t.branches[0].current, Some((0, 1)));
@@ -732,22 +732,33 @@ fn a_loaded_tree_makes_the_targets_of_its_complete_programs_available() {
     assert_eq!(flags, [false, true, true, false]);
 }
 
+/// A saved game resumes its scenario through the start's set-up (3.5, 7.2): the same entries are
+/// disabled, so the build and the load skip the category of a disabled expansion. Both kinds of
+/// scenario: a base game one (both expansions off) and a Marine Mania one (Dinosaur Digs off).
 #[test]
-fn a_saved_game_resumes_with_no_expansion_disabled() {
+fn a_saved_game_resumes_with_the_expansions_disabled_as_a_start() {
     let files = vec![
         list("r.cfg", &["b.cfg"]),
-        branch("b.cfg", 7, 0, &[10]),
+        // Category 10 belongs to Dinosaur Digs, so a start and a resume both skip it.
+        branch("b.cfg", 7, 0, &[10, 11]),
         category(10, 1, &[1]),
+        category(11, 0, &[2]),
         program(1, "10", 5001, 0),
+        program(2, "10", 5002, 0),
     ];
-    // A base game scenario: a start disables the first and second expansions, a resume does not.
-    let (_i, vfs) = vfs("resume", "research=r.cfg\n[desc]\nname=16000\n", files);
-    let start = Tree::of_scenario(&vfs, "s.scn", false, &mut || 0).unwrap();
-    let resume = Tree::of_scenario(&vfs, "s.scn", true, &mut || 0).unwrap();
-    assert_eq!(
-        (start.off, resume.off),
-        ([false, false, true, true], [false; 4])
-    );
+    for (name, desc) in [
+        ("base", "name=16000\n"),
+        ("marine", "expansionLocked=1\nexpansion=3\n"),
+    ] {
+        let start = format!("research=r.cfg\n[desc]\n{desc}");
+        let (_i, vfs) = vfs(&format!("resume-{name}"), &start, files.clone());
+        let begin = Tree::of_scenario(&vfs, "s.scn", &mut || 0).unwrap();
+        let mut resume = Tree::of_scenario(&vfs, "s.scn", &mut || 0).unwrap();
+        assert_eq!(resume.off, begin.off, "{name}: entries");
+        assert_eq!(resume.branches[0].current, Some((1, 0)), "{name}: build");
+        resume.load(&section(&[]), &mut || 0);
+        assert_eq!(resume.branches[0].current, Some((1, 0)), "{name}: load");
+    }
 }
 
 /// The research section of every shipped file that names a scenario reads and writes back the same
@@ -765,12 +776,12 @@ fn full_game_sections_round_trip() {
         let Some(scenario) = zoo.scenario_file() else {
             continue;
         };
-        let Some(mut tree) = Tree::of_scenario(&vfs, &scenario, true, &mut || 0) else {
+        let Some(mut tree) = Tree::of_scenario(&vfs, &scenario, &mut || 0) else {
             continue;
         };
         tree.load(zoo.research(), &mut || 0);
         let out = tree.save();
-        let mut again = Tree::of_scenario(&vfs, &scenario, true, &mut || 0).unwrap();
+        let mut again = Tree::of_scenario(&vfs, &scenario, &mut || 0).unwrap();
         again.load(&out, &mut || 0);
         assert_eq!(again.save(), out, "{member}: second write");
         files += 1;

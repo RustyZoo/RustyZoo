@@ -12,7 +12,7 @@ impl App<'_> {
     /// a warning, when the scenario cannot be read: the section is then written as it was read.
     pub(super) fn loaded_research(&mut self, file: String, section: &[u8]) -> Option<Tree> {
         let rng = &mut self.sim.rng;
-        let tree = Tree::of_scenario(self.renderer.vfs(), &file, true, &mut || rng.rand());
+        let tree = Tree::of_scenario(self.renderer.vfs(), &file, &mut || rng.rand());
         let mut tree = tree.or_else(|| {
             eprintln!(
                 "rustyzoo: warning: scenario {file} cannot be read: its research is kept as read"

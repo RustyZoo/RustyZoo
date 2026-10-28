@@ -1890,7 +1890,8 @@ impl<'a> App<'a> {
         // A saved game loads its research section; a start ignores it (research 7.4).
         let saved = start.scenario.is_none();
         let opened = read.and_then(|(zoo, money)| {
-            (self.open_game_as(zoo, money, saved)).map_err(|e| e.to_string())
+            self.open_game_as(zoo, money, saved)
+                .map_err(|e| e.to_string())
         });
         match opened {
             Ok(()) => {
@@ -1945,9 +1946,7 @@ impl<'a> App<'a> {
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(tree) =
-                crate::research::Tree::of_scenario(self.renderer.vfs(), file, false, &mut || {
-                    rng.rand()
-                })
+                crate::research::Tree::of_scenario(self.renderer.vfs(), file, &mut || rng.rand())
             {
                 if let Some(game) = &mut self.game {
                     let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
