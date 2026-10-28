@@ -330,3 +330,26 @@ fn truleb_10_makes_the_type_available_for_good_and_stores_it_with_the_rewards() 
         },
     );
 }
+
+#[test]
+fn truleb_10_for_an_id_already_listed_changes_no_flag_and_a_new_one_does() {
+    // 6 is listed in the settings already: hiding it and unlocking it again changes nothing. 5 is
+    // not listed: its unlock makes it available.
+    let text = "[duration]\nnummonths=-1\n[start]\ntriggers=t0\ntriggers=t1\ntriggers=t2\n\
+        triggers=t3\n[t0]\ntrulea=4\ntruleb=1\ntarga=6\n[t1]\ntrulea=4\ntruleb=1\ntarga=5\n\
+        [t2]\ntrulea=4\ntruleb=10\ntarga=6\n[t3]\ntrulea=4\ntruleb=10\ntarga=5\n";
+    let files = [("s/av.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game(
+        "avail-listed",
+        "[user]\nunlockCount=1\nunlockEntity0=6\n",
+        &files,
+        cat,
+        |app, _| {
+            play(app, "s/av.scn");
+            let cat = app.renderer.catalogue();
+            let build = &app.game.as_ref().unwrap().build;
+            assert_eq!([0, 1].map(|i| build.is_available(cat, i)), [true, false]);
+        },
+    );
+}

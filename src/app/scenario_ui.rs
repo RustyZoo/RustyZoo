@@ -63,21 +63,36 @@ impl App<'_> {
         ) else {
             return;
         };
-        let (mut changed, mut told, mut unlocked) = (false, Vec::new(), Vec::new());
+        let unlocks: Vec<i32> = made
+            .iter()
+            .flatten()
+            .filter_map(|a| match a.which {
+                Which::Unlock(id) => Some(id),
+                _ => None,
+            })
+            .collect();
+        // An unlock (truleb 10) changes flags only for the ids the table newly lists (9.2).
+        let newly = match &mut self.menu {
+            Some(menu) => {
+                let listed = menu.unlock(&unlocks);
+                self.menu_events
+                    .extend(listed.iter().map(|id| format!("scenario unlock {id}")));
+                listed
+            }
+            None => unlocks,
+        };
+        let (mut changed, mut told) = (false, Vec::new());
         for a in made.iter().flatten() {
+            if matches!(a.which, Which::Unlock(id) if !newly.contains(&id)) {
+                continue;
+            }
             let did = game.build.change(cat, std::slice::from_ref(a));
             changed |= did;
-            if let Which::Unlock(id) = a.which {
-                unlocked.push(id);
-            }
             told.extend(a.tell.clone().filter(|_| did));
         }
         if rewards {
             let ini = crate::config::Config::parse(vfs.ini()).unwrap_or_default();
             changed |= game.build.after_triggers(cat, &ini, &[]);
-        }
-        if let Some(menu) = &mut self.menu {
-            self.menu_events.extend(menu.unlock(&unlocked));
         }
         let Some(ui) = &mut self.ui else {
             return;
