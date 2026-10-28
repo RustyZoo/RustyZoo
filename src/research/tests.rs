@@ -740,7 +740,7 @@ fn a_saved_game_resumes_with_no_expansion_disabled() {
         category(10, 1, &[1]),
         program(1, "10", 5001, 0),
     ];
-    // A base game scenario: a start disables Dinosaur Digs, a resume does not.
+    // A base game scenario: a start disables the first and second expansions, a resume does not.
     let (_i, vfs) = vfs("resume", "research=r.cfg\n[desc]\nname=16000\n", files);
     let start = Tree::of_scenario(&vfs, "s.scn", false, &mut || 0).unwrap();
     let resume = Tree::of_scenario(&vfs, "s.scn", true, &mut || 0).unwrap();
