@@ -317,6 +317,13 @@ impl Sim {
         self.scenario = Some(scenario);
     }
 
+    /// A saved game that holds `scenario` opened (scenarios 5.3): its goals read the stored
+    /// `words`, `groups` when the file's version is 86 or later.
+    pub fn resume_scenario(&mut self, mut scenario: Scenario, words: &[u32], groups: bool) {
+        scenario.resume(words, groups, &mut self.lines);
+        self.scenario = Some(scenario);
+    }
+
     /// The scenario being played, if the game is one.
     pub fn scenario(&self) -> Option<&Scenario> {
         self.scenario.as_ref()

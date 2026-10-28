@@ -705,7 +705,9 @@ impl<'a> App<'a> {
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
     /// tree and its research section is read (research 7.2, before the entities' own steps).
     fn open_game_as(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), RenderError> {
-        let research = saved.then(|| (zoo.scenario_file(), zoo.research().to_vec()));
+        let file = zoo.scenario_file().filter(|_| saved);
+        let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
+        let goals = (zoo.scenario_states(), zoo.version >= 86);
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
@@ -724,15 +726,10 @@ impl<'a> App<'a> {
         world.units.set_period(self.sim.ai.status_period);
         let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
         // The programs complete come before the animals are read: their life counters are cut by
-        // the changed types (research 7.2).
-        let cat = self.renderer.catalogue();
-        let mut build = Build::new(installed_expansions(self.renderer.vfs())).unlocked(
-            cat,
-            &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
-        );
-        if let Some(tree) = &mut tree {
-            build.start_research(cat, tree, &mut world.research);
-        }
+        // the changed types (research 7.2). Their availability follows the scenario's resume.
+        let flags = tree
+            .as_mut()
+            .map(|t| t.apply(self.renderer.catalogue(), &mut world.research));
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
@@ -771,7 +768,12 @@ impl<'a> App<'a> {
             bars: None,
             finances: Finances::default(),
             awards_page: Awards::default(),
-            build: build.with_exhibits(exhibits),
+            build: Build::new(installed_expansions(self.renderer.vfs()))
+                .with_exhibits(exhibits)
+                .unlocked(
+                    self.renderer.catalogue(),
+                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+                ),
             pending: None,
             made: None,
             gate: None,
@@ -804,7 +806,17 @@ impl<'a> App<'a> {
             carry: None,
             held: None,
         });
-        if let Some(tree) = tree {
+        // The scenario resumes first (its triggers, then the goal states), then the research
+        // section completes the programs over their availability, then the ini rewards (7.3).
+        if let Some(scenario) = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f)) {
+            self.sim.resume_scenario(scenario, &goals.0, goals.1);
+            self.scenario_avail(false);
+        }
+        if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
+            let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
+            game.build.start_research(self.renderer.catalogue(), &flags);
+            game.build
+                .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
         }
         if let Some(ui) = &mut self.ui {
@@ -1952,8 +1964,8 @@ impl<'a> App<'a> {
             {
                 if let Some(game) = &mut self.game {
                     let cat = self.renderer.catalogue();
-                    game.build
-                        .start_research(cat, &mut tree, &mut game.world.research);
+                    let flags = tree.apply(cat, &mut game.world.research);
+                    game.build.start_research(cat, &flags);
                 }
                 self.sim.set_research(tree);
             }

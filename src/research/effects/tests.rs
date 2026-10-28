@@ -248,8 +248,8 @@ fn a_completed_discount_makes_the_programs_of_its_effect_cheaper_and_marks_the_s
         program(3, 40.0, 0.0, 5, 3, [0; 3]),
         program(4, 10.0, 10.0, 6, 7, [10, 9552, 2]),
     ]);
-    let (mut over, mut avail) = (Overlay::default(), Default::default());
-    t.apply(&cat, &mut avail, &mut over);
+    let mut over = Overlay::default();
+    t.apply(&cat, &mut over);
     let costs: Vec<f32> = t.branches[0].categories[0]
         .programs
         .iter()
@@ -266,7 +266,7 @@ fn a_completed_discount_makes_the_programs_of_its_effect_cheaper_and_marks_the_s
         program(1, 20.0, 0.0, 5, 6, [0; 3]),
         program(4, 10.0, 9.0, 6, 7, [10, 9552, 2]),
     ]);
-    t.apply(&cat, &mut avail, &mut over);
+    t.apply(&cat, &mut over);
     assert_eq!(t.branches[0].categories[0].programs[0].cost, 20.0);
     assert_eq!(
         mask(&over, &cat, MARINE),
@@ -282,14 +282,14 @@ fn a_build_lays_the_complete_programs_on_an_empty_overlay_and_does_not_stack_acr
         program(1, 10.0, 10.0, 0, 4, [0, 5, 0]),
         program(2, 10.0, 3.0, 0, 4, [0, 100, 0]),
     ]);
-    let (mut over, mut avail) = (Overlay::default(), Default::default());
+    let mut over = Overlay::default();
     for _ in 0..2 {
-        t.apply(&cat, &mut avail, &mut over);
+        t.apply(&cat, &mut over);
         assert_eq!(int(&over, &cat, 0, "cKeeperArrivesChange", 100), 105);
     }
     // A load sets the progress and builds it again: the second program counts now.
     t.branches[0].categories[0].programs[1].progress = 10.0;
-    t.apply(&cat, &mut avail, &mut over);
+    t.apply(&cat, &mut over);
     assert_eq!(int(&over, &cat, 0, "cKeeperArrivesChange", 100), 205);
 }
 
@@ -302,7 +302,9 @@ fn a_program_before_the_discount_in_tree_order_is_judged_against_its_full_cost()
         program(2, 10.0, 10.0, 0, 7, [10, 0, 0]),
         program(3, 20.0, 19.0, 200, 0, [0; 3]),
     ]);
-    t.apply(&cat, &mut avail, &mut Overlay::default());
+    for (target, on) in t.apply(&cat, &mut Overlay::default()) {
+        avail.set(&cat, target, on);
+    }
     assert!(!avail.is(&cat, 0), "before: 19 of 20");
     assert!(avail.is(&cat, REX), "after: 19 of 18");
 }

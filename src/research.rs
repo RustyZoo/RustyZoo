@@ -3,7 +3,6 @@
 //! The step (research 5) runs the funded branches; the section of a saved game is read and written
 //! here (research 7). The characteristic effects (6.4, 6.7) are in [`effects`].
 
-use crate::avail::Availability;
 use crate::config::{Config, Section, to_float, to_int};
 use crate::entity::Catalogue;
 use crate::money::{Money, RESEARCH};
@@ -215,10 +214,11 @@ impl Tree {
     }
 
     /// Resets or completes every program as the tree is built (3.3) or loaded (7.2), in tree order:
-    /// the target of an effect 0 is unavailable, or available when the program is complete, and
+    /// the targets of the effect 0 programs, with whether each is available (the program is complete), and
     /// the effects 2 to 7 of the complete ones are laid on `over`, which starts empty (6.9, R4).
-    pub fn apply(&mut self, cat: &Catalogue, avail: &mut Availability, over: &mut Overlay) {
+    pub fn apply(&mut self, cat: &Catalogue, over: &mut Overlay) -> Vec<(i32, bool)> {
         *over = Overlay::default();
+        let mut flags = Vec::new();
         for n in 0..self.programs().count() {
             let Some(p) = self.programs().nth(n) else {
                 break;
@@ -230,11 +230,12 @@ impl Tree {
                 vals: p.vals,
             };
             if p.effect == 0 {
-                avail.set(cat, p.target, p.done());
+                flags.push((p.target, p.done()));
             } else if p.done() {
                 self.complete(cat, over, &done);
             }
         }
+        flags
     }
 
     /// Applies the characteristic effect of a completed program (6.4, 6.7): a change of the types

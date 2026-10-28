@@ -504,13 +504,10 @@ impl Build {
 
     /// The tree of a new game is built (research 7.4): its programs not done make their targets
     /// unavailable. The start triggers and the ini rewards ([`Build::after_triggers`]) follow.
-    pub fn start_research(
-        &mut self,
-        cat: &Catalogue,
-        tree: &mut crate::research::Tree,
-        over: &mut crate::research::Overlay,
-    ) {
-        tree.apply(cat, &mut self.avail, over);
+    pub fn start_research(&mut self, cat: &Catalogue, flags: &[(i32, bool)]) {
+        for &(target, on) in flags {
+            self.avail.set(cat, target, on);
+        }
     }
 
     /// The start triggers made these types available or not, then the ini rewards apply last

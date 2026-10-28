@@ -1,4 +1,5 @@
 use super::*;
+use crate::avail::Availability;
 use crate::config::Config;
 use crate::entity::EntityType;
 use crate::money::Money;
@@ -212,7 +213,9 @@ fn building_the_tree_makes_unfinished_targets_unavailable_and_free_ones_availabl
         .map(ty)
         .collect();
     let mut avail = Availability::default();
-    t.apply(&cat, &mut avail, &mut Overlay::default());
+    for (target, on) in t.apply(&cat, &mut Overlay::default()) {
+        avail.set(&cat, target, on);
+    }
     let flags: Vec<bool> = (0..5).map(|i| avail.is(&cat, i)).collect();
     assert_eq!(flags, [false, true, true, true, true]);
 }
@@ -727,7 +730,9 @@ fn a_loaded_tree_makes_the_targets_of_its_complete_programs_available() {
     let mut cat = Catalogue::default();
     cat.types = [5001, 5002, 5003, 5004].into_iter().map(ty).collect();
     let mut avail = Availability::default();
-    t.apply(&cat, &mut avail, &mut Overlay::default());
+    for (target, on) in t.apply(&cat, &mut Overlay::default()) {
+        avail.set(&cat, target, on);
+    }
     let flags: Vec<bool> = (0..4).map(|i| avail.is(&cat, i)).collect();
     // Program 2 is free; program 3 reached its cost; 1 and 4 did not.
     assert_eq!(flags, [false, true, true, false]);
