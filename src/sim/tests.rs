@@ -1300,6 +1300,29 @@ fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_comp
 }
 
 #[test]
+fn an_exhibit_whose_animal_count_falls_to_0_loses_its_viewing_time() {
+    let mut w = world(0);
+    let part = |tile| crate::exhibit::Part {
+        tiles: vec![tile],
+        grounds: false,
+    };
+    let (emptied, kept) = (
+        w.exhibits_mut().add(&part(5), String::new()),
+        w.exhibits_mut().add(&part(10), String::new()),
+    );
+    for (id, counts) in [(emptied, (1, 1)), (kept, (1, 0))] {
+        let x = w.exhibits_mut().get_mut(id).unwrap();
+        x.stats.viewing = 7;
+        x.rating.counts = counts;
+    }
+    let mut s = sim("");
+    s.step(&mut w, 1000, |_, _, _| {});
+    // The count fell from 1 to 0: its time is cleared. The other had no animal: it keeps its time.
+    assert_eq!(w.exhibits().get(emptied).unwrap().stats.viewing, 0);
+    assert_eq!(w.exhibits().get(kept).unwrap().stats.viewing, 7);
+}
+
+#[test]
 fn the_hash_follows_the_statistics_of_an_exhibit() {
     let hash = |change: &dyn Fn(&mut crate::exhibit::Stats)| {
         let mut w = world(0);

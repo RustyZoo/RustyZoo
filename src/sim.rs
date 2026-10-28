@@ -622,10 +622,13 @@ impl Sim {
                 .map(|r| format!(" {} {}", r.key, r.shown()))
                 .collect();
             world.exhibits_mut().list_mut()[at].rating = state;
-            // An exhibit whose last animal went calls the workers for its dung and food (5.1).
-            let emptied = &mut world.exhibits_mut().list_mut()[at].rating.emptied;
-            if std::mem::take(emptied) && world.exhibits().get(id).is_some_and(|e| e.tank.is_none())
-            {
+            // An exhibit whose last animal went loses its viewing time (13.2) and calls the workers
+            // for its dung and food (5.1).
+            let gone = std::mem::take(&mut world.exhibits_mut().list_mut()[at].rating.emptied);
+            if gone {
+                world.exhibits_mut().list_mut()[at].stats.viewing = 0;
+            }
+            if gone && world.exhibits().get(id).is_some_and(|e| e.tank.is_none()) {
                 let tiles = world
                     .exhibits()
                     .get(id)
