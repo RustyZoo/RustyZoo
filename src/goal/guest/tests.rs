@@ -48,8 +48,8 @@ pub(super) fn sim() -> Sim {
 }
 
 /// A guest type whose sets `bWalk`, `bEatStanding`, and `bSick` end at once, the sets `bGawkObject1` to `6` end at once without moving and whose set `bGawk` never
-/// does.
-pub(super) struct Walks(Vec<Call>, Vec<Call>, Vec<Call>);
+/// does; `bbenchenergy0` and `btableeat0` enter the building, stay 5 seconds and leave it.
+pub(super) struct Walks(Vec<Call>, Vec<Call>, Vec<Call>, Vec<Call>);
 
 impl Data for Walks {
     fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[Call]> {
@@ -57,6 +57,7 @@ impl Data for Walks {
             "bWalk" | "bEatStanding" | "bSick" => Some(&self.0[..]),
             n if n.starts_with("bGawkObject") => Some(&self.2[..]),
             "bGawk" => Some(&self.1[..]),
+            "bbenchenergy0" | "btableeat0" => Some(&self.3[..]),
             _ => None,
         }
     }
@@ -64,7 +65,7 @@ impl Data for Walks {
         &[]
     }
     fn timing(&self, _: &crate::zoo::Entity, name: &str) -> Option<Timing> {
-        let walks = ["idle", "walk", "trot", "run"].contains(&name);
+        let walks = ["idle", "walk", "trot", "run", "sit"].contains(&name);
         walks.then_some(Timing {
             count: 1,
             delay: 100,
@@ -84,6 +85,15 @@ pub(super) fn walks() -> Walks {
         vec![call(b"fWalk(0,0)")],
         vec![call(b"fKeepControl()")],
         vec![call(b"fFaceTowardTarget()")],
+        // A bench or a table: sit down, stay 5 seconds, get up.
+        [
+            "fEnterBuilding()",
+            "fPlayTime(sit,5)",
+            "fPlay(idle)",
+            "fExitBuilding()",
+        ]
+        .map(|c| call(c.as_bytes()))
+        .to_vec(),
     )
 }
 

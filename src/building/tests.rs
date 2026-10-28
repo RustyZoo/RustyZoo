@@ -20,6 +20,26 @@ fn ty(text: &str) -> EntityType {
 }
 
 #[test]
+fn an_outside_user_faces_the_building_only_for_a_set_user_facing_of_1() {
+    // Missing: on; any other value than 1 (0, negative, huge): off.
+    for (text, on) in [
+        ("", true),
+        ("0", false),
+        ("-1", false),
+        ("2", false),
+        ("99999999999", false),
+        ("1", true),
+    ] {
+        let file = if text.is_empty() {
+            String::new()
+        } else {
+            format!("[Characteristics/Integers]\ncSetUserFacing={text}\n")
+        };
+        assert_eq!(Kind::of(&ty(&file), 3.0).faces_user, on, "{text:?}");
+    }
+}
+
+#[test]
 fn a_type_declares_its_slots_prices_items_and_needs_with_the_defaults_of_the_program() {
     let k = Kind::of(
         &ty(
@@ -227,6 +247,7 @@ fn an_exit_must_be_on_the_terrain_its_slot_allows() {
 /// `large` for a footprint above 3.
 fn animal(swims: bool, large: bool) -> Species {
     Species {
+        animal: true,
         id: 0,
         subtype: "f".into(),
         swims,
@@ -277,6 +298,7 @@ fn an_animal_leaves_into_the_exhibit_it_stands_in() {
         w.exhibits_mut().add(&part, String::new());
     }
     let standing = |tile| Species {
+        animal: true,
         tile: Some(tile),
         ..animal(true, false)
     };
