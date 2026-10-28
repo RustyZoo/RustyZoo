@@ -457,6 +457,7 @@ fn gated(inside: bool) -> World {
             name: String::new(),
             stats: [0; 9],
             created: 0,
+            viewing: 0,
             serviced: 0,
         }];
     })

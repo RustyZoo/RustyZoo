@@ -34,6 +34,11 @@ const EIGHT: [(i32, i32); 8] = [
 pub(super) const DIAGONAL: f64 = 1.414_213_562_373;
 const FOUR: [(i32, i32); 4] = [(-1, 0), (0, -1), (1, 0), (0, 1)];
 
+/// A result of the 24-bit unit: rounded to a `float`, kept as a double (3.3, `main-loop` 5.4).
+pub(super) fn single(x: f64) -> f64 {
+    f64::from(x as f32)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum State {
     New,
@@ -163,11 +168,12 @@ impl Search<'_> {
             0.0
         };
         let k = f64::from(self.s.min_cost);
+        // Each operation is rounded: the whole number, the square root, the multiply by `k`.
         match self.s.estimate {
-            0 => (dx * dx + dy * dy + dz * dz) * k,
-            1 => (dx.abs() + dy.abs() + dz.abs()) * k,
-            2 => dx.abs().max(dy.abs()).max(dz.abs()) * k,
-            _ => (dx * dx + dy * dy + dz * dz).sqrt() * k,
+            0 => single(single(dx * dx + dy * dy + dz * dz) * k),
+            1 => single(single(dx.abs() + dy.abs() + dz.abs()) * k),
+            2 => single(dx.abs().max(dy.abs()).max(dz.abs()) * k),
+            _ => single(single(single(dx * dx + dy * dy + dz * dz).sqrt()) * k),
         }
     }
 
@@ -315,13 +321,16 @@ impl Search<'_> {
         let mut length = LENGTH[(dx.abs() + dy.abs() + dz.abs()) as usize - 1];
         if self.deep {
             // A turn costs 0.1 more, and so does a change of the level change.
-            length += 0.1 * f64::from(u8::from(entered.0 != d));
-            length += 0.1 * f64::from(u8::from(entered.1 != dz));
+            for changed in [entered.0 != d, entered.1 != dz] {
+                if changed {
+                    length = single(length + 0.1);
+                }
+            }
         }
-        let g = self.nodes[c].g + length * f64::from(cost);
+        let g = single(self.nodes[c].g + single(length * f64::from(cost)));
         if self.nodes[n].state == State::New || g < self.nodes[n].g {
             let node = &mut self.nodes[n];
-            (node.g, node.parent, node.f, node.entered) = (g, Some(c), g + node.h, (d, dz));
+            (node.g, node.parent, node.f, node.entered) = (g, Some(c), single(g + node.h), (d, dz));
             if node.state == State::Open {
                 self.rebuild();
             } else {
@@ -464,7 +473,7 @@ mod tests {
     }
 
     #[test]
-    fn the_search_uses_the_original_length_factors_and_a_double_estimate() {
+    fn the_search_uses_the_original_length_factors_and_a_single_precision_estimate() {
         let w = crate::path::tests::world(|_, _| {});
         let at = |x: usize, y: usize| y * 10 + x;
         let m = Mover::new(Kind::Keeper, Some(at(5, 5)));
@@ -484,15 +493,33 @@ mod tests {
             heap: Vec::new(),
             capped: false,
         };
-        // The square root of 2 times `MinCost`, in double precision.
-        assert_eq!(f.estimate(at(1, 1), 0), 2f64.sqrt() * 2.0);
+        // The square root of 2 times `MinCost`, each rounded to single precision (3.5).
+        let root = f64::from(2f64.sqrt() as f32);
+        assert_eq!(f.estimate(at(1, 1), 0), f64::from((root * 2.0) as f32));
+        assert_ne!(f.estimate(at(1, 1), 0), 2f64.sqrt() * 2.0);
+        // The other formulas round the whole number and the product by `k = 2`.
+        let squares = Settings {
+            estimate: 0,
+            min_cost: 3,
+            ..Settings::default()
+        };
+        let huge = Settings {
+            min_cost: i32::MAX,
+            ..Settings::default()
+        };
+        f.s = &squares;
+        assert_eq!(f.estimate(at(3, 2), 0), 39.0);
+        f.s = &huge;
+        assert_eq!(f.estimate(at(3, 2), 0), 5.0 * f64::from(i32::MAX as f32));
+        f.s = &s;
         // A diagonal step of step cost 3 (edge 1, open ground 2) adds the table's constant times 3.
         let start = f.node(at(5, 5), 0).unwrap();
         f.nodes[start].state = State::Closed;
         f.expand(start);
         let n = f.at[&(at(6, 6), 0)];
         assert_eq!(DIAGONAL.to_bits(), 0x3FF6_A09E_667F_3A21);
-        assert_eq!(f.nodes[n].g, DIAGONAL * 3.0);
+        assert_eq!(f.nodes[n].g, f64::from((DIAGONAL * 3.0) as f32));
+        assert_ne!(f.nodes[n].g, DIAGONAL * 3.0);
         assert_ne!(f.nodes[n].g, std::f64::consts::SQRT_2 * 3.0);
     }
 
@@ -523,12 +550,45 @@ mod tests {
             (g(at(6, 5)), g(at(6, 6)))
         };
         // Straight ahead at the unit's vertical direction: nothing is added.
-        let (step, diagonal) = (first(2, 0).0, first(3, 0).1);
-        // Another facing pays 0.1 times the step's cost, another vertical direction the same.
-        let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
-        assert!(close(first(3, 0).0, step + 0.1 * step));
-        assert!(close(first(2, 1).0, step + 0.1 * step));
-        assert!(close(first(0, -1).0, step + 0.2 * step));
-        assert!(close(first(2, 0).1, diagonal + 0.1 * step));
+        let step = first(2, 0).0;
+        // Another facing pays 0.1 more length, another vertical direction the same, each add and
+        // each product rounded to single precision (3.6).
+        let once = single(1.0 + 0.1);
+        let twice = single(once + 0.1);
+        assert_eq!(first(3, 0).0, single(once * step));
+        assert_eq!(first(2, 1).0, single(once * step));
+        assert_eq!(first(0, -1).0, single(twice * step));
+        assert_eq!(first(2, 0).1, single(single(DIAGONAL + 0.1) * step));
+        assert_ne!(twice, 1.0 + 0.1 + 0.1);
+        assert_ne!(first(0, -1).0, (1.0 + 0.1 + 0.1) * step);
+    }
+
+    #[test]
+    fn g_and_f_are_rounded_at_each_add() {
+        let w = crate::path::tests::world(|_, _| {});
+        let at = |x: usize, y: usize| y * 10 + x;
+        let m = Mover::new(Kind::Keeper, Some(at(5, 5)));
+        let s = Settings::default();
+        let mut f = Search {
+            w: &w,
+            m: &m,
+            s: &s,
+            goal: at(0, 0),
+            deep: false,
+            goal_level: 0,
+            nodes: Vec::new(),
+            at: HashMap::new(),
+            heap: Vec::new(),
+            capped: false,
+        };
+        let start = f.start(at(5, 5), 0).unwrap();
+        f.nodes[start].g = 0.1;
+        f.expand(start);
+        // East: step cost 3, estimate 2 * (6 + 5).
+        let n = &f.nodes[f.at[&(at(6, 5), 0)]];
+        assert_eq!((n.g, n.h), (f64::from(3.1f32), 22.0));
+        assert_ne!(n.g, 0.1 + 3.0);
+        assert_eq!(n.f, f64::from(3.1f32 + 22.0));
+        assert_ne!(n.f, n.g + n.h);
     }
 }

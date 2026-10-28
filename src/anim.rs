@@ -73,7 +73,7 @@ impl AnimSet {
             section
                 .and_then(|section| section.get(key))
                 .filter(|value| !value.is_empty())
-                .map(|value| String::from_utf8_lossy(value).into_owned())
+                .map(crate::vfs::name_from_bytes)
         };
         let number = |key: &str| {
             section
@@ -97,7 +97,13 @@ impl AnimSet {
             .map(|section| section.get_all("animation"))
             .unwrap_or_default()
             .iter()
-            .map(|name| format!("{}/{}", directory.join("/"), String::from_utf8_lossy(name)))
+            .map(|name| {
+                format!(
+                    "{}/{}",
+                    directory.join("/"),
+                    crate::vfs::name_from_bytes(name)
+                )
+            })
             .collect();
         if files.is_empty() {
             return error("no animation entry");

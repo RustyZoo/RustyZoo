@@ -156,7 +156,7 @@ pub fn convert(bitmap: &[u8]) -> Result<(Frame, Palette), String> {
 
 /// The member path of a bitmap named in a configuration file.
 pub fn member_name(value: &[u8]) -> String {
-    String::from_utf8_lossy(value).trim().replace('\\', "/")
+    crate::vfs::name_from_bytes(value).trim().replace('\\', "/")
 }
 
 /// The bitmaps the terrain loads: the `highlight`, `northgrid` and `eastgrid` of every section of

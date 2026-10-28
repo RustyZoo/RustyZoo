@@ -696,6 +696,7 @@ fn tank_world_with(level: u32, more: Vec<Entity>) -> World {
             name: String::new(),
             stats: [0; 9],
             created: 0,
+            viewing: 0,
             serviced: 0,
         }];
     });
