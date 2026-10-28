@@ -1,10 +1,11 @@
 //! The research tree of a game: branches, categories and programs, read from the research lists
 //! of the scenario at its start (research 3, 4, 7.4) and counted by the zoo status (research 9.1).
-//! Funding, the step and the other effects than availability come later.
+//! The step (research 5) runs the funded branches; the other effects than availability come later.
 
 use crate::avail::Availability;
 use crate::config::{Config, Section, to_float, to_int};
 use crate::entity::Catalogue;
+use crate::money::{Money, RESEARCH};
 use crate::vfs::Vfs;
 
 #[cfg(test)]
@@ -30,7 +31,20 @@ pub struct Program {
     pub progress: f32,
     pub target: i32,
     pub effect: i32,
+    /// The rank: lower first.
+    pub order: i32,
 }
+
+/// A program the step completed: the caller applies its effect (5.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Done {
+    pub name: i32,
+    pub target: i32,
+    pub effect: i32,
+}
+
+/// The float 2.3148148e-05 the step multiplies by instead of dividing by 43 200 (5.3).
+const PER_MINUTE: f32 = 2.314_814_8e-5;
 
 impl Program {
     /// Whether the program is complete: its progress has reached its cost.
@@ -48,6 +62,17 @@ pub struct Category {
     pub programs: Vec<Program>,
 }
 
+impl Category {
+    /// Whether the entry of its expansion is disabled (3.5): its programs are never chosen nor
+    /// worked on.
+    fn skipped(&self, off: &[bool; 4]) -> bool {
+        let entry = usize::try_from(self.expansion)
+            .ok()
+            .and_then(|e| e.checked_add(1));
+        entry.is_some_and(|e| off.get(e) == Some(&true))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Branch {
     pub name: i32,
@@ -55,12 +80,18 @@ pub struct Branch {
     /// The index of the funding level; it starts at 0.
     pub level: usize,
     pub categories: Vec<Category>,
+    /// The category and program the branch works on; not saved.
+    pub current: Option<(usize, usize)>,
 }
 
 /// The branches in load order.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tree {
     pub branches: Vec<Branch>,
+    /// The expansion entries that are disabled (3.5): all, base game, first expansion, second expansion.
+    pub off: [bool; 4],
+    /// The manager's accumulator, in milliseconds (5.1).
+    pub(crate) acc: u32,
 }
 
 /// An integer key of a section, `default` when the key or the section is missing.
@@ -81,12 +112,16 @@ fn read(vfs: &Vfs, path: &[u8]) -> Option<Config> {
 impl Tree {
     /// The tree of the scenario `file` (3.1): the files its `[start] research` values name.
     /// `None` when the scenario cannot be read; a scenario with no value has an empty tree.
-    pub fn of_scenario(vfs: &Vfs, file: &str) -> Option<Tree> {
+    /// Each branch file read gives its branch a current program, by a draw from `rand` (5.5).
+    pub fn of_scenario(vfs: &Vfs, file: &str, rand: &mut dyn FnMut() -> u32) -> Option<Tree> {
         let main = Config::parse(&vfs.read(file).ok()?).ok()?;
         let values = main
             .section("start")
             .map_or(&[][..], |s| s.get_all("research"));
-        let mut tree = Tree::default();
+        let mut tree = Tree {
+            off: expansions_off(main.section("desc")),
+            ..Tree::default()
+        };
         let mut left = MAX_PROGRAMS;
         for value in values {
             // `NAME.EXT` lists the files that start with the first 6 characters of NAME and end
@@ -104,7 +139,7 @@ impl Tree {
                     .section("branches")
                     .map_or(&[][..], |s| s.get_all("branch"))
                 {
-                    tree.add_branch(vfs, path, &mut left);
+                    tree.add_branch(vfs, path, &mut left, rand);
                 }
             }
         }
@@ -113,7 +148,13 @@ impl Tree {
 
     /// Reads a branch file (3.2, 3.3): a branch whose name id is already in the tree is reused,
     /// with the new funding levels and the new categories after its own.
-    fn add_branch(&mut self, vfs: &Vfs, path: &[u8], left: &mut usize) {
+    fn add_branch(
+        &mut self,
+        vfs: &Vfs,
+        path: &[u8],
+        left: &mut usize,
+        rand: &mut dyn FnMut() -> u32,
+    ) {
         let Some(cfg) = read(vfs, path) else {
             return;
         };
@@ -137,6 +178,7 @@ impl Tree {
                 funding: Vec::new(),
                 level: 0,
                 categories: Vec::new(),
+                current: None,
             });
             self.branches.len() - 1
         });
@@ -148,6 +190,7 @@ impl Tree {
                 branch.categories.push(category);
             }
         }
+        branch.choose(&self.off, rand);
     }
 
     /// Every program in tree order.
@@ -172,6 +215,105 @@ impl Tree {
     }
 }
 
+/// The disabled expansion entries a scenario starts with (3.5).
+fn expansions_off(desc: Option<&Section>) -> [bool; 4] {
+    let name = int(desc, "name", 0);
+    if (16000..=16015).contains(&name) || name == 16022 {
+        [false, false, true, true]
+    } else if int(desc, "expansionLocked", 0) != 0 {
+        let own = int(desc, "expansion", 0);
+        [false, false, own != 2, own != 3]
+    } else {
+        [false; 4]
+    }
+}
+
+impl Tree {
+    /// One step of `ms` milliseconds of the research manager (5.1): every 3 s of simulated time
+    /// each branch pays and works (5.3). The programs completed, in order, are returned.
+    pub fn step(&mut self, ms: u32, money: &mut Money, rand: &mut dyn FnMut() -> u32) -> Vec<Done> {
+        self.acc = self.acc.wrapping_add(ms);
+        let minutes = self.acc.wrapping_mul(7200) / 60000;
+        let mut done = Vec::new();
+        if minutes >= 360 {
+            self.acc = 0;
+            for b in &mut self.branches {
+                b.update(minutes, &self.off, money, rand, &mut done);
+            }
+        }
+        done
+    }
+}
+
+impl Branch {
+    /// The program the branch works on, if its category is ticked and not skipped.
+    fn working(&self, off: &[bool; 4]) -> Option<(usize, usize)> {
+        let (c, p) = self.current?;
+        let category = self.categories.get(c)?;
+        let on = category.tick && !category.skipped(off);
+        (on && p < category.programs.len()).then_some((c, p))
+    }
+
+    /// One branch update with `m` game minutes (5.3). Every operation is a `f32` one, rounded as
+    /// the original's unit rounds it.
+    fn update(
+        &mut self,
+        m: u32,
+        off: &[bool; 4],
+        money: &mut Money,
+        rand: &mut dyn FnMut() -> u32,
+        done: &mut Vec<Done>,
+    ) {
+        let Some((c, p)) = self.working(off) else {
+            self.choose(off, rand);
+            return;
+        };
+        if let Some(level) = self.funding.get(self.level) {
+            let by = |x: f32| (f64::from(m) * f64::from(x)) as f32 * PER_MINUTE;
+            let (pay, gain) = (by(level.cost), by(level.work));
+            if pay <= money.cash {
+                if pay != 0.0 {
+                    money.spend(RESEARCH, pay);
+                }
+                self.categories[c].programs[p].progress += gain;
+            }
+        }
+        let program = &self.categories[c].programs[p];
+        if program.done() {
+            done.push(Done {
+                name: program.name,
+                target: program.target,
+                effect: program.effect,
+            });
+            self.choose(off, rand);
+        }
+    }
+
+    /// Chooses the current program (5.5): a program that was started first, else one of the
+    /// lowest rank, by one draw.
+    pub fn choose(&mut self, off: &[bool; 4], rand: &mut dyn FnMut() -> u32) {
+        let eligible =
+            (self.categories.iter().enumerate()).filter(|(_, c)| c.tick && !c.skipped(off));
+        let open: Vec<(usize, usize)> = eligible
+            .flat_map(|(ci, c)| {
+                let programs = c.programs.iter().enumerate();
+                programs
+                    .filter(|(_, p)| p.progress < p.cost && p.cost > 0.0)
+                    .map(move |(pi, _)| (ci, pi))
+            })
+            .collect();
+        let program = |&(c, p): &(usize, usize)| &self.categories[c].programs[p];
+        let mut current = open.iter().find(|&a| program(a).progress > 0.0).copied();
+        if current.is_none()
+            && let Some(lowest) = open.iter().map(program).map(|p| p.order).min()
+        {
+            let first: Vec<_> = open.iter().filter(|a| program(a).order <= lowest).collect();
+            current = first.get(rand() as usize % first.len()).map(|a| **a);
+        }
+        self.current = current;
+    }
+}
+
 impl Category {
     fn read(vfs: &Vfs, path: &[u8], left: &mut usize) -> Option<Category> {
         let cfg = read(vfs, path)?;
@@ -192,6 +334,7 @@ impl Category {
                 progress: 0.0,
                 target: int(p, "target", -1),
                 effect: int(p, "effect", -1),
+                order: int(p, "order", 0),
             });
         }
         Some(Category {

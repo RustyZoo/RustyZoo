@@ -1267,12 +1267,14 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
         progress: 0.0,
         target,
         effect: 0,
+        order: 0,
     };
     let tree = Tree {
         branches: vec![Branch {
             name: 1,
             funding: vec![],
             level: 0,
+            current: None,
             categories: vec![Category {
                 name: 1,
                 expansion: 0,
@@ -1280,6 +1282,7 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
                 programs: vec![program(101, 5.0), program(102, 5.0), program(103, 0.0)],
             }],
         }],
+        ..Tree::default()
     };
     let cat = types();
     let ini = Config::parse(b"[user]\nunlockCount=1\nunlockEntity0=102\n").unwrap();

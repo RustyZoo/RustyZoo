@@ -1211,12 +1211,14 @@ fn the_research_share_of_the_checks_is_the_trees_and_a_game_without_one_counts_0
         progress: 0.0,
         target: 0,
         effect: 0,
+        order: 0,
     };
     let tree = |programs| Tree {
         branches: vec![Branch {
             name: 1,
             funding: vec![],
             level: 0,
+            current: None,
             categories: vec![Category {
                 name: 1,
                 expansion: 0,
@@ -1224,6 +1226,7 @@ fn the_research_share_of_the_checks_is_the_trees_and_a_game_without_one_counts_0
                 programs,
             }],
         }],
+        ..Tree::default()
     };
     let mut run = game(0);
     run.sim.loaded(&run.world, &run.cat, &mut run.money);
@@ -1244,6 +1247,56 @@ fn the_research_share_of_the_checks_is_the_trees_and_a_game_without_one_counts_0
     let clocks = run.world.zoo.clocks.clone();
     run.sim.start_game(run.world.zoo.tiles.len(), clocks);
     assert_eq!(run.sim.research_share(), 0);
+}
+
+#[test]
+fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_completes() {
+    use crate::research::{Branch, Category, Done, Level, Program, Tree};
+    let program = Program {
+        name: 7,
+        cost: 0.5,
+        progress: 0.0,
+        target: 5,
+        effect: 0,
+        order: 1,
+    };
+    let tree = Tree {
+        branches: vec![Branch {
+            name: 1,
+            funding: vec![Level {
+                name: 1,
+                cost: 120.0,
+                work: 100.0,
+            }],
+            level: 0,
+            current: Some((0, 0)),
+            categories: vec![Category {
+                name: 1,
+                expansion: 0,
+                tick: true,
+                programs: vec![program],
+            }],
+        }],
+        ..Tree::default()
+    };
+    let mut run = game(0);
+    run.money.set_cash(1000.0);
+    run.sim.set_research(tree);
+    run.step(2999);
+    assert_eq!(run.money.total[crate::money::RESEARCH], 0.0);
+    let lines = run.step(1);
+    assert!(lines.contains(&"sim research done 7".into()));
+    assert_eq!(
+        run.money.total[crate::money::RESEARCH],
+        360.0_f32 * 120.0 * 2.314_814_8e-5
+    );
+    let done = Done {
+        name: 7,
+        target: 5,
+        effect: 0,
+    };
+    assert_eq!(run.sim.take_research_done(), [done]);
+    assert!(run.sim.take_research_done().is_empty());
 }
 
 #[test]
