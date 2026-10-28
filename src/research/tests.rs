@@ -498,3 +498,300 @@ fn each_branch_file_read_draws_once_for_its_current_program() {
     assert_eq!(t.branches[0].current, Some((0, 1)));
     assert_eq!(t.branches[1].current, None);
 }
+
+/// Two branches: 7 (two levels; categories 10 with programs 1, 2 and 11 with program 3) and 8
+/// (category 12 with program 4). Programs 1 to 4 cost 10, 0, 20 and 30.
+fn saved() -> Tree {
+    let files = vec![
+        list("r.cfg", &["b1.cfg", "b2.cfg"]),
+        branch("b1.cfg", 7, 100, &[10, 11]),
+        branch("b2.cfg", 8, 100, &[12]),
+        category(10, 0, &[1, 2]),
+        category(11, 0, &[3]),
+        category(12, 0, &[4]),
+        program(1, "10", 5001, 0),
+        program(2, "0", 5002, 0),
+        program(3, "20", 5003, 0),
+        program(4, "30", 5004, 0),
+    ];
+    tree("saved", "research=r.cfg\n", files)
+}
+
+fn word(n: i32) -> [u8; 4] {
+    n.to_le_bytes()
+}
+
+/// The records of a section: the leading word, the records, the end record.
+fn section(records: &[Vec<u8>]) -> Vec<u8> {
+    let mut o = word(0).to_vec();
+    o.extend(records.concat());
+    o.extend(word(-1));
+    o
+}
+
+fn rec(kind: i32, name: i32, value: &[u8]) -> Vec<u8> {
+    [&word(kind)[..], &word(name), value].concat()
+}
+
+fn loaded(t: &mut Tree, records: &[Vec<u8>]) {
+    t.load(&section(records), &mut || 0);
+}
+
+fn levels_ticks_progress(t: &Tree) -> (Vec<usize>, Vec<bool>, Vec<f32>) {
+    let cats = || t.branches.iter().flat_map(|b| &b.categories);
+    (
+        t.branches.iter().map(|b| b.level).collect(),
+        cats().map(|c| c.tick).collect(),
+        t.programs().map(|p| p.progress).collect(),
+    )
+}
+
+#[test]
+fn a_tree_is_written_branch_then_its_categories_then_their_programs_and_ends_with_minus_one() {
+    let mut t = saved();
+    t.branches[0].level = 1;
+    t.branches[0].categories[1].tick = false;
+    t.branches[1].categories[0].programs[0].progress = 12.5;
+    let want = [
+        rec(0, 7, &word(1)),
+        rec(1, 10, &[1]),
+        rec(2, 1, &0f32.to_le_bytes()),
+        rec(2, 2, &0f32.to_le_bytes()),
+        rec(1, 11, &[0]),
+        rec(2, 3, &0f32.to_le_bytes()),
+        rec(0, 8, &word(0)),
+        rec(1, 12, &[1]),
+        rec(2, 4, &12.5f32.to_le_bytes()),
+    ];
+    assert_eq!(t.save(), section(&want));
+    // The leading word and the end record alone for an empty tree.
+    assert_eq!(Tree::default().save(), section(&[]));
+}
+
+#[test]
+fn what_is_written_reads_back_and_writes_again_the_same_bytes() {
+    let mut t = saved();
+    t.branches[0].level = 1;
+    t.branches[1].categories[0].tick = false;
+    t.branches[0].categories[0].programs[0].progress = 4.25;
+    t.branches[0].categories[1].programs[0].progress = -3.0;
+    let bytes = t.save();
+    let mut back = saved();
+    back.load(&bytes, &mut || 0);
+    assert_eq!(levels_ticks_progress(&back), levels_ticks_progress(&t));
+    assert_eq!(back.save(), bytes);
+    // A started program is the current one of its branch.
+    assert_eq!(back.branches[0].current, Some((0, 0)));
+}
+
+#[test]
+fn a_load_resets_everything_first_and_a_file_without_a_section_leaves_the_tree_as_built() {
+    let mut t = saved();
+    t.branches[0].level = 1;
+    t.branches[0].categories[0].tick = false;
+    t.branches[0].categories[0].programs[0].progress = 9.0;
+    t.load(&[], &mut || 0);
+    let fresh = saved();
+    assert_eq!(levels_ticks_progress(&t), levels_ticks_progress(&fresh));
+    // Only the end record, or a section that is cut short, read nothing.
+    t.branches[1].level = 1;
+    t.load(&section(&[]), &mut || 0);
+    assert_eq!(t.branches[1].level, 0);
+    for cut in 0..12 {
+        t.load(&section(&[rec(0, 7, &word(1))])[..cut], &mut || 0);
+        assert_eq!(levels_ticks_progress(&t), levels_ticks_progress(&fresh));
+    }
+}
+
+#[test]
+fn an_unknown_id_is_ignored_and_the_first_match_of_a_name_is_the_one_set() {
+    let files = vec![
+        list("r.cfg", &["b.cfg"]),
+        branch("b.cfg", 7, 0, &[10, 10]),
+        category(10, 0, &[1, 1]),
+        program(1, "10", 5001, 0),
+    ];
+    let mut t = tree("twice", "research=r.cfg\n", files);
+    loaded(
+        &mut t,
+        &[
+            rec(0, 99, &word(1)),
+            rec(1, 99, &[0]),
+            rec(2, 99, &1f32.to_le_bytes()),
+            rec(1, 10, &[0]),
+            rec(2, 1, &3f32.to_le_bytes()),
+        ],
+    );
+    let (_, ticks, progress) = levels_ticks_progress(&t);
+    assert_eq!(ticks, [false, true]);
+    assert_eq!(progress, [3.0, 0.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_funding_level_out_of_range_is_0() {
+    // The branch has two levels.
+    for (stored, want) in [
+        (0, 0),
+        (1, 1),
+        (2, 0),
+        (7, 0),
+        (u32::MAX, 0),
+        (i32::MIN as u32, 0),
+    ] {
+        let mut t = saved();
+        loaded(&mut t, &[rec(0, 7, &stored.to_le_bytes())]);
+        assert_eq!(t.branches[0].level, want, "{stored}");
+    }
+    // A branch with no level at all takes 0.
+    let mut t = saved();
+    t.branches[0].funding.clear();
+    loaded(&mut t, &[rec(0, 7, &word(0))]);
+    assert_eq!(t.branches[0].level, 0);
+}
+
+#[test]
+fn a_tick_is_set_by_any_non_zero_byte_and_a_progress_is_taken_as_stored() {
+    let mut t = saved();
+    t.branches[0].categories[0].tick = false;
+    loaded(
+        &mut t,
+        &[
+            rec(1, 10, &[0x80]),
+            rec(1, 11, &[0]),
+            rec(2, 1, &(-5f32).to_le_bytes()),
+            rec(2, 2, &1e30f32.to_le_bytes()),
+            rec(2, 3, &f32::NAN.to_le_bytes()),
+        ],
+    );
+    let (_, ticks, progress) = levels_ticks_progress(&t);
+    assert_eq!(ticks, [true, false, true]);
+    assert_eq!(progress[..2], [-5.0, 1e30]);
+    assert!(progress[2].is_nan());
+    // A program is done when its progress reached its cost: not a negative one, not a NaN.
+    let done: Vec<bool> = t.programs().map(Program::done).collect();
+    assert_eq!(done, [false, true, false, false]);
+    // And what is written is what was read, a NaN included.
+    assert_eq!(t.save().len(), saved().save().len());
+}
+
+#[test]
+fn a_record_of_another_type_or_a_negative_one_ends_the_read() {
+    for kind in [3, 100, -1, -2, i32::MIN, i32::MAX] {
+        let mut t = saved();
+        loaded(
+            &mut t,
+            &[
+                rec(0, 7, &word(1)),
+                rec(kind, 7, &word(1)),
+                rec(0, 8, &word(1)),
+            ],
+        );
+        let levels: Vec<usize> = t.branches.iter().map(|b| b.level).collect();
+        assert_eq!(levels, [1, 0], "{kind}");
+    }
+}
+
+#[test]
+fn the_load_chooses_each_branchs_program_with_one_draw_when_none_was_started() {
+    let mut t = saved();
+    let mut draws = 0;
+    t.load(&section(&[]), &mut || {
+        draws += 1;
+        0
+    });
+    // Both branches have candidates.
+    assert_eq!(draws, 2);
+    assert_eq!(t.branches[0].current, Some((0, 0)));
+    // Branch 7 has a started program (no draw) and branch 8 is finished (no candidate, no draw).
+    let mut draws = 0;
+    t.load(
+        &section(&[
+            rec(2, 3, &1f32.to_le_bytes()),
+            rec(2, 4, &30f32.to_le_bytes()),
+        ]),
+        &mut || {
+            draws += 1;
+            0
+        },
+    );
+    assert_eq!(draws, 0);
+    assert_eq!(t.branches[0].current, Some((1, 0)));
+    assert_eq!(t.branches[1].current, None);
+}
+
+#[test]
+fn a_loaded_tree_makes_the_targets_of_its_complete_programs_available() {
+    let mut t = saved();
+    loaded(&mut t, &[rec(2, 3, &20f32.to_le_bytes())]);
+    let mut cat = Catalogue::default();
+    cat.types = [5001, 5002, 5003, 5004].into_iter().map(ty).collect();
+    let mut avail = Availability::default();
+    t.apply(&cat, &mut avail);
+    let flags: Vec<bool> = (0..4).map(|i| avail.is(&cat, i)).collect();
+    // Program 2 is free; program 3 reached its cost; 1 and 4 did not.
+    assert_eq!(flags, [false, true, true, false]);
+}
+
+/// A saved game resumes its scenario through the start's set-up (3.5, 7.2): the same entries are
+/// disabled, so the build and the load skip the category of a disabled expansion. Both kinds of
+/// scenario: a base game one (both expansions off) and a second-expansion one (first expansion off).
+#[test]
+fn a_saved_game_resumes_with_the_expansions_disabled_as_a_start() {
+    let files = vec![
+        list("r.cfg", &["b.cfg"]),
+        // Category 10 belongs to the first expansion, so a start and a resume both skip it.
+        branch("b.cfg", 7, 0, &[10, 11]),
+        category(10, 1, &[1]),
+        category(11, 0, &[2]),
+        program(1, "10", 5001, 0),
+        program(2, "10", 5002, 0),
+    ];
+    for (name, desc) in [
+        ("base", "name=16000\n"),
+        ("locked", "expansionLocked=1\nexpansion=3\n"),
+    ] {
+        let start = format!("research=r.cfg\n[desc]\n{desc}");
+        let (_i, vfs) = vfs(&format!("resume-{name}"), &start, files.clone());
+        let begin = Tree::of_scenario(&vfs, "s.scn", &mut || 0).unwrap();
+        let mut resume = Tree::of_scenario(&vfs, "s.scn", &mut || 0).unwrap();
+        assert_eq!(resume.off, begin.off, "{name}: entries");
+        assert_eq!(resume.branches[0].current, Some((1, 0)), "{name}: build");
+        resume.load(&section(&[]), &mut || 0);
+        assert_eq!(resume.branches[0].current, Some((1, 0)), "{name}: load");
+    }
+}
+
+/// The research section of every shipped file that names a scenario reads and writes back the same
+/// bytes a second time; the saved game of the install reads back the section it holds.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_sections_round_trip() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let (mut files, mut same) = (0, 0);
+    for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
+        let Ok(zoo) = crate::zoo::Zoo::parse(&vfs.read(member).unwrap()) else {
+            continue;
+        };
+        let Some(scenario) = zoo.scenario_file() else {
+            continue;
+        };
+        let Some(mut tree) = Tree::of_scenario(&vfs, &scenario, &mut || 0) else {
+            continue;
+        };
+        tree.load(zoo.research(), &mut || 0);
+        let out = tree.save();
+        let mut again = Tree::of_scenario(&vfs, &scenario, &mut || 0).unwrap();
+        again.load(&out, &mut || 0);
+        assert_eq!(again.save(), out, "{member}: second write");
+        files += 1;
+        same += usize::from(out == zoo.research());
+        // The saved game of the install, when it has one, is the reference of research 3.4.
+        if member.to_lowercase().ends_with("saved games/test.zoo") {
+            assert!(out == zoo.research(), "{member}: {} bytes", out.len());
+        }
+    }
+    eprintln!("{files} files, {same} with the same section");
+    // The saved game is in the English install only (the French one lacks it).
+    assert!(files > 0);
+}

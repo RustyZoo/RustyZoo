@@ -306,6 +306,28 @@ fn file_with(
     w.0
 }
 
+/// A file of [`file`] whose scenario block names `scenario`, or holds none.
+pub(crate) fn naming(mut bytes: Vec<u8>, scenario: Option<&str>) -> Vec<u8> {
+    let at = bytes.windows(5).position(|w| w == b"scn/x").unwrap() - 8;
+    let block = match scenario {
+        Some(name) => [
+            &(name.len() as u32 + 16).to_le_bytes()[..],
+            &(name.len() as u32).to_le_bytes(),
+            name.as_bytes(),
+        ]
+        .concat(),
+        None => 0u32.to_le_bytes().to_vec(),
+    };
+    // The old block: size 21, the name (4 + 5) and the goals (4 + 8).
+    let goals = if scenario.is_some() {
+        vec![8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    } else {
+        vec![]
+    };
+    bytes.splice(at..at + 25, [block, goals].concat());
+    bytes
+}
+
 #[test]
 fn keeps_the_cash_and_the_accounts() {
     for v in [39, 71, 106] {
@@ -981,6 +1003,53 @@ fn the_awards_section_is_the_held_list_written_largest_first() {
         back.kept.research,
         parse(&file(106, 2, 2, &[], &[])).kept.research
     );
+}
+
+#[test]
+fn the_scenario_file_is_the_name_of_the_block_from_version_51() {
+    assert_eq!(
+        parse(&file(106, 2, 2, &[], &[])).scenario_file().as_deref(),
+        Some("scn/x")
+    );
+    assert_eq!(
+        parse(&file(51, 2, 2, &[], &[])).scenario_file().as_deref(),
+        Some("scn/x")
+    );
+    // Before 51 the block is the name alone; a block of size 0 or a cut one names nothing.
+    assert_eq!(parse(&file(50, 2, 2, &[], &[])).scenario_file(), None);
+    let mut zoo = parse(&file(106, 2, 2, &[], &[]));
+    let whole = zoo.kept.scenario.clone();
+    for block in [
+        vec![0; 4],
+        vec![],
+        whole[..10].to_vec(),
+        whole[..4].to_vec(),
+    ] {
+        zoo.kept.scenario = block;
+        assert_eq!(zoo.scenario_file(), None);
+    }
+    // A name longer than the block.
+    zoo.kept.scenario = [&whole[..4], &u32::MAX.to_le_bytes()[..], b"ab"].concat();
+    assert_eq!(zoo.scenario_file(), None);
+}
+
+#[test]
+fn the_research_section_written_is_the_one_given_and_reads_back() {
+    let (mut zoo, money) = Zoo::parse_money(&file(106, 2, 2, &[], &[])).unwrap();
+    let read = zoo.research().to_vec();
+    assert_eq!(
+        zoo.write(&money)
+            .unwrap()
+            .windows(read.len())
+            .filter(|w| *w == read)
+            .count(),
+        1
+    );
+    let mut section = 0u32.to_le_bytes().to_vec();
+    section.extend([0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 255, 255, 255, 255]);
+    zoo.set_research(section.clone());
+    let back = parse(&zoo.write(&money).unwrap());
+    assert_eq!(back.research(), section);
 }
 
 #[test]

@@ -444,6 +444,24 @@ pub struct View {
 }
 
 impl Zoo {
+    /// The name of the scenario file the zoo holds (save games 7), if it holds one.
+    pub fn scenario_file(&self) -> Option<String> {
+        let block = self.kept.scenario.get(4..).filter(|_| self.version >= 51)?;
+        let len = u32::from_le_bytes(block.get(..4)?.try_into().ok()?) as usize;
+        Some(latin1(block.get(4..)?.get(..len)?))
+    }
+
+    /// The research section as read, from its leading word to its end record (empty before
+    /// version 40).
+    pub fn research(&self) -> &[u8] {
+        &self.kept.research
+    }
+
+    /// Replaces the research section written (research 7.5).
+    pub fn set_research(&mut self, section: Vec<u8>) {
+        self.kept.research = section;
+    }
+
     /// The thoughts as stored, newest first.
     pub fn thoughts(&self) -> &[[u32; 5]] {
         &self.kept.thoughts

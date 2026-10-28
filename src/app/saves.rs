@@ -81,6 +81,9 @@ impl App<'_> {
         let mut zoo = (game.world).saved(crate::zoo::knows(cat));
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
         game.world.finish_save(&mut zoo, cat);
+        if let Some(section) = self.sim.research_section() {
+            zoo.set_research(section);
+        }
         let bytes = zoo.write(&game.money)?;
         let mut aside = path.as_os_str().to_owned();
         aside.push(".tmp");

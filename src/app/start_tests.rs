@@ -194,8 +194,8 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
             "rc.cfg",
             b"[category]\nname=2\nprogram=ra.cfg\nprogram=rd.cfg\n".to_vec(),
         ),
-        ("ra.cfg", b"[research]\ncost=0\n".to_vec()),
-        ("rd.cfg", b"[research]\ncost=5\n".to_vec()),
+        ("ra.cfg", b"[research]\nname=10\ncost=0\n".to_vec()),
+        ("rd.cfg", b"[research]\nname=11\ncost=5\n".to_vec()),
     ];
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
@@ -804,5 +804,72 @@ fn a_scenario_start_builds_the_research_tree_and_the_next_game_drops_it() {
             .unwrap();
         app.begin(&start(Some("s/none.scn")));
         assert_eq!(app.sim.research_share(), 0);
+    });
+}
+
+#[test]
+fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back() {
+    with_menu("research-load", "", |app, files| {
+        app.pass(0, &[]);
+        let mut section = 0u32.to_le_bytes().to_vec();
+        // Branch 1 at level 0, category 2 ticked, the program 11 done, one unknown program.
+        for (kind, id, value) in [(0i32, 1u32, 0u32), (2, 11, 5f32.to_bits()), (2, 99, 1)] {
+            section.extend(kind.to_le_bytes());
+            section.extend(id.to_le_bytes());
+            section.extend(value.to_le_bytes());
+        }
+        section.extend((-1i32).to_le_bytes());
+        let zoo = |scenario: Option<&str>| {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), scenario)).unwrap();
+            zoo.set_research(section.clone());
+            zoo
+        };
+        let saved_section = |app: &mut App| {
+            let file = files.0.join("out.zoo");
+            app.save_game(file.to_str().unwrap());
+            Zoo::parse(&std::fs::read(file).unwrap())
+                .unwrap()
+                .research()
+                .to_vec()
+        };
+        // A saved game of a scenario: the tree is built (half done), then the section is read.
+        app.open_game_as(zoo(Some("s/res.scn")), Money::default(), true)
+            .unwrap();
+        assert_eq!(app.sim.research_share(), 100);
+        let mut written = section.clone();
+        // The program that no tree holds is not written, the others are, in tree order.
+        written.truncate(4);
+        for (kind, id, value) in [
+            (0i32, 1u32, 0u32),
+            (1, 2, 1),
+            (2, 10, 0),
+            (2, 11, 5f32.to_bits()),
+        ] {
+            written.extend(kind.to_le_bytes());
+            written.extend(id.to_le_bytes());
+            written.extend(&value.to_le_bytes()[..if kind == 1 { 1 } else { 4 }]);
+        }
+        written.extend((-1i32).to_le_bytes());
+        assert_eq!(saved_section(app), written);
+        // `load FILE` and Continue open a saved game as one.
+        let file = files.0.join("res.zoo");
+        std::fs::write(
+            &file,
+            zoo(Some("s/res.scn")).write(&Money::default()).unwrap(),
+        )
+        .unwrap();
+        assert!(app.load_saved(file.to_str().unwrap()));
+        assert_eq!(app.sim.research_share(), 100);
+        // A start ignores the section of its file (7.4).
+        app.open_game_as(zoo(Some("s/res.scn")), Money::default(), false)
+            .unwrap();
+        assert_eq!(app.sim.research_share(), 0);
+        // No scenario or one that cannot be read: no tree, the section is kept as read.
+        for scenario in [None, Some("s/none.scn")] {
+            app.open_game_as(zoo(scenario), Money::default(), true)
+                .unwrap();
+            assert_eq!(app.sim.research_share(), 0);
+            assert_eq!(saved_section(app), section);
+        }
     });
 }
