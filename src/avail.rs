@@ -43,12 +43,20 @@ impl Availability {
     /// Makes every type with this name id, whatever its subtype, available or not. A name id of
     /// 0 sets the nameless types; a negative one matches no type. Whether a flag changed.
     pub fn set(&mut self, cat: &Catalogue, name_id: i32, on: bool) -> bool {
+        self.set_where(cat, |ty| ty.name_id == name_id, on)
+    }
+
+    /// Makes every type `keep` accepts available or not (a user type never changes). Whether a
+    /// flag changed.
+    pub fn set_where(
+        &mut self,
+        cat: &Catalogue,
+        keep: impl Fn(&EntityType) -> bool,
+        on: bool,
+    ) -> bool {
         let mut changed = false;
         for (i, ty) in cat.types.iter().enumerate() {
-            if ty.name_id == name_id
-                && !crate::strings::is_user_id(ty.name_id)
-                && self.is(cat, i) != on
-            {
+            if keep(ty) && !crate::strings::is_user_id(ty.name_id) && self.is(cat, i) != on {
                 self.0.insert(i, on);
                 changed = true;
             }

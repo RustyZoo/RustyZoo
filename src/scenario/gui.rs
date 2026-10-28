@@ -25,6 +25,34 @@ pub enum Effect {
     },
 }
 
+/// Which types an availability trigger reaches (7.3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Which {
+    Name(i32),
+    Names(Vec<i32>),
+    Animals,
+    All,
+}
+
+/// An availability trigger: the types it reaches are made available or not.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Avail {
+    pub which: Which,
+    pub on: bool,
+}
+
+impl Avail {
+    /// Whether the trigger reaches the type.
+    pub fn reaches(&self, ty: &crate::entity::EntityType) -> bool {
+        match &self.which {
+            Which::Name(id) => ty.name_id == *id,
+            Which::Names(ids) => ids.contains(&ty.name_id),
+            Which::Animals => ty.class == "animals",
+            Which::All => true,
+        }
+    }
+}
+
 /// A press the rules have not read yet: a list box adds the row selected and its text.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Press {
@@ -43,6 +71,7 @@ struct Inner {
     /// The string of the first goal in progress, for a hint of -1.
     goal_text: i32,
     out: Vec<Effect>,
+    avail: Vec<Avail>,
 }
 
 /// The state shared by the rules and the triggers. Rules read it through `&self`.
@@ -108,6 +137,15 @@ impl Gui {
             p.hint.short = goal_text;
         }
         g.out.push(effect);
+    }
+
+    pub(super) fn push_avail(&self, avail: Avail) {
+        self.0.borrow_mut().avail.push(avail);
+    }
+
+    /// The availability changes the triggers left since the last call.
+    pub fn take_avail(&self) -> Vec<Avail> {
+        std::mem::take(&mut self.0.borrow_mut().avail)
     }
 
     /// The effects the triggers left since the last call.

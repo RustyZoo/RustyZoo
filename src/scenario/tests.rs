@@ -864,3 +864,69 @@ fn the_tutorial_chain_follows_the_expansions_installed() {
         assert_eq!(is_tutorial(f), want, "{f}");
     }
 }
+
+#[test]
+fn triggers_4_and_7_leave_an_availability_change_and_a_bad_one_nothing() {
+    let made = |keys: &str| {
+        let s = build(
+            &format!("[start]\ntriggers=t\n[t]\n{keys}\n[5]\nid=1\nid=3\n"),
+            &[],
+        );
+        s.start(&mut Vec::new());
+        s.gui().take_avail()
+    };
+    let one = |which, on| vec![Avail { which, on }];
+    assert_eq!(
+        made("trulea=4\ntruleb=0\ntarga=7"),
+        one(Which::Name(7), true)
+    );
+    assert_eq!(
+        made("trulea=4\ntruleb=3\ntarga=7"),
+        one(Which::Name(7), false)
+    );
+    assert_eq!(made("trulea=4\ntruleb=4"), one(Which::Name(0), true));
+    assert_eq!(
+        made("trulea=4\ntruleb=-1\ntarga=-5"),
+        one(Which::Name(-5), false)
+    );
+    assert_eq!(made("trulea=4\ntruleb=6"), one(Which::Animals, true));
+    assert_eq!(made("trulea=4\ntruleb=9"), one(Which::All, false));
+    assert_eq!(made("trulea=4\ntruleb=10\ntarga=7"), vec![]);
+    assert_eq!(
+        made("trulea=4\ntruleb=11\ntarga=7"),
+        one(Which::Name(7), false)
+    );
+    assert_eq!(
+        made("trulea=4\ntruleb=99999999999"),
+        one(Which::Name(0), false)
+    );
+    assert_eq!(
+        made("trulea=7\ntruleb=1\ntarga=5"),
+        one(Which::Names(vec![1, 3]), false)
+    );
+    assert_eq!(
+        made("trulea=7\ntruleb=1\ntarga=999"),
+        one(Which::Names(vec![]), false)
+    );
+    let off = one(Which::Names(vec![1, 3]), false);
+    for b in ["6", "9", "11", "-1", "99999999999"] {
+        assert_eq!(made(&format!("trulea=7\ntruleb={b}\ntarga=5")), off, "{b}");
+    }
+    assert_eq!(made("trulea=7\ntruleb=9"), one(Which::Names(vec![]), false));
+    assert_eq!(made("trulea=7\ntruleb=0"), one(Which::Names(vec![]), true));
+    assert_eq!(made("trulea=3\ntruleb=0\ntarga=7"), vec![]);
+}
+
+#[test]
+fn a_block_id_without_hex_digit_reads_as_0() {
+    let s = build(
+        "[start]\ntriggers=t\n[t]\ntrulea=7\ntruleb=0\ntarga=5\n[5]\nid=3\nid=0x\nid=0xzz\nid=abc\n",
+        &[],
+    );
+    s.start(&mut Vec::new());
+    let want = vec![Avail {
+        which: Which::Names(vec![3, 0, 0, 0]),
+        on: true,
+    }];
+    assert_eq!(s.gui().take_avail(), want);
+}

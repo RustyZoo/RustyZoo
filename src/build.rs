@@ -14,6 +14,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
 use crate::place::unit::{is_unit, price};
 use crate::place::{Class, Leg, MIDDLE, fence_run, path_run, side};
+use crate::scenario::Avail;
 use crate::staff;
 use crate::terrain::Mode;
 use crate::text::format::whole_units;
@@ -502,10 +503,32 @@ impl Build {
     }
 
     /// The tree of a new game is built (research 7.4): its programs not done make their targets
-    /// unavailable, then the ini rewards apply again.
-    pub fn start_research(&mut self, cat: &Catalogue, ini: &Config, tree: &crate::research::Tree) {
+    /// unavailable. The start triggers and the ini rewards ([`Build::after_triggers`]) follow.
+    pub fn start_research(&mut self, cat: &Catalogue, tree: &crate::research::Tree) {
         tree.apply(cat, &mut self.avail);
-        self.avail.unlock(cat, ini);
+    }
+
+    /// The start triggers made these types available or not, then the ini rewards apply last
+    /// (research 7.4). Whether a flag changed.
+    pub fn after_triggers(&mut self, cat: &Catalogue, ini: &Config, made: &[Avail]) -> bool {
+        let mut changed = self.change(cat, made);
+        changed |= self.avail.unlock(cat, ini);
+        changed
+    }
+
+    /// Whether the type at `index` of the catalogue is available.
+    #[cfg(test)]
+    pub(crate) fn is_available(&self, cat: &Catalogue, index: usize) -> bool {
+        self.avail.is(cat, index)
+    }
+
+    /// Applies availability triggers (scenarios 7.3), in order. Whether a flag changed.
+    pub fn change(&mut self, cat: &Catalogue, made: &[Avail]) -> bool {
+        let mut changed = false;
+        for a in made {
+            changed |= self.avail.set_where(cat, |ty| a.reaches(ty), a.on);
+        }
+        changed
     }
 
     /// Makes every type with this name id available or not, whatever its subtype, and makes the
@@ -520,10 +543,22 @@ impl Build {
         log: &mut Vec<String>,
     ) -> bool {
         let changed = self.avail.set(cat, name_id, on);
+        self.refill(changed, ui, vfs, cat, log);
+        changed
+    }
+
+    /// Makes the open list again when `changed`.
+    pub fn refill(
+        &mut self,
+        changed: bool,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        cat: &Catalogue,
+        log: &mut Vec<String>,
+    ) {
         if let (true, Some(p)) = (changed, self.open) {
             self.fill(ui, vfs, cat, p, log);
         }
-        changed
     }
 
     /// The sex of the staff the Hire panel lists.
