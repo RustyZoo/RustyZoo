@@ -757,7 +757,7 @@ fn a_saved_game_resumes_with_no_expansion_disabled() {
 fn full_game_sections_round_trip() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
-    let (mut files, mut same, mut reference) = (0, 0, false);
+    let (mut files, mut same) = (0, 0);
     for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
         let Ok(zoo) = crate::zoo::Zoo::parse(&vfs.read(member).unwrap()) else {
             continue;
@@ -775,12 +775,12 @@ fn full_game_sections_round_trip() {
         assert_eq!(again.save(), out, "{member}: second write");
         files += 1;
         same += usize::from(out == zoo.research());
-        // The saved game of the install is the reference of research 3.4.
+        // The saved game of the install, when it has one, is the reference of research 3.4.
         if member.to_lowercase().ends_with("saved games/test.zoo") {
             assert!(out == zoo.research(), "{member}: {} bytes", out.len());
-            reference = true;
         }
     }
     eprintln!("{files} files, {same} with the same section");
-    assert!(files > 0 && reference);
+    // The saved game is in the English install only (the French one lacks it).
+    assert!(files > 0);
 }
