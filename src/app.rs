@@ -699,13 +699,30 @@ impl<'a> App<'a> {
     /// the cap, as after the original's blocking load (main loop 3.5). A failure leaves the app
     /// as it was.
     fn open_game(&mut self, zoo: Zoo, money: Money) -> Result<(), RenderError> {
-        self.open_game_as(zoo, money, false)
+        self.open_game_as(zoo, money, None)
     }
 
-    /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
-    /// tree and its research section is read (research 7.2, before the entities' own steps).
-    fn open_game_as(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), RenderError> {
-        let research = saved.then(|| (zoo.scenario_file(), zoo.research().to_vec()));
+    /// Opens a file the game read ([`App::open_game`]). A saved game (`saved`) first reads its
+    /// research section with the tree of its scenario; a scenario that cannot be read refuses the
+    /// load, and the app stays as it was (research 7.2).
+    fn open_zoo(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), String> {
+        let tree = if saved {
+            self.loaded_research(&zoo)?
+        } else {
+            None
+        };
+        self.open_game_as(zoo, money, tree)
+            .map_err(|e| e.to_string())
+    }
+
+    /// [`App::open_game`] with the research tree of a saved game, when it has one, already read
+    /// (research 7.2, before the entities' own steps).
+    fn open_game_as(
+        &mut self,
+        zoo: Zoo,
+        money: Money,
+        tree: Option<crate::research::Tree>,
+    ) -> Result<(), RenderError> {
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
@@ -722,7 +739,6 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
-        let tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
@@ -1887,10 +1903,7 @@ impl<'a> App<'a> {
     fn open(&mut self, start: &Start, read: Result<(Zoo, Money), String>) -> bool {
         // A saved game loads its research section; a start ignores it (research 7.4).
         let saved = start.scenario.is_none();
-        let opened = read.and_then(|(zoo, money)| {
-            self.open_game_as(zoo, money, saved)
-                .map_err(|e| e.to_string())
-        });
+        let opened = read.and_then(|(zoo, money)| self.open_zoo(zoo, money, saved));
         match opened {
             Ok(()) => {
                 self.loaded_check();
