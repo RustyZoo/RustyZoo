@@ -444,11 +444,41 @@ pub struct View {
 }
 
 impl Zoo {
-    /// The name of the scenario file the zoo holds (save games 7), if it holds one.
+    /// The name of the scenario file the zoo holds (save games 7), if it holds one. Every goal
+    /// of a file before version 51 restarts at 0 ([`Zoo::scenario_states`] is empty).
     pub fn scenario_file(&self) -> Option<String> {
-        let block = self.kept.scenario.get(4..).filter(|_| self.version >= 51)?;
+        let block = self.kept.scenario.get(4..).filter(|b| !b.is_empty())?;
+        if self.version < 51 {
+            // Before 51 the block is the name alone, with no length word.
+            return Some(latin1(block));
+        }
         let len = u32::from_le_bytes(block.get(..4)?.try_into().ok()?) as usize;
         Some(latin1(block.get(4..)?.get(..len)?))
+    }
+
+    /// The goal states of the scenario block, one word per goal as stored (zoo format 7.2); none
+    /// when the zoo holds no scenario or its version is before 51.
+    pub fn scenario_states(&self) -> Vec<u32> {
+        let words = || {
+            let block = self.kept.scenario.get(4..).filter(|_| self.version >= 51)?;
+            let name = 4 + u32::from_le_bytes(block.get(..4)?.try_into().ok()?) as usize;
+            block.get(name + 4..)
+        };
+        let (words, _) = words().unwrap_or_default().as_chunks::<4>();
+        words.iter().map(|w| u32::from_le_bytes(*w)).collect()
+    }
+
+    /// Replaces the scenario block written: the scenario `file` and its goal states.
+    pub fn set_scenario(&mut self, file: &str, states: &[u32]) {
+        let name: Vec<u8> = file.chars().map(|c| c as u8).collect();
+        let count = 4 * states.len() as u32;
+        let size = 8 + name.len() as u32 + count;
+        let mut block = size.to_le_bytes().to_vec();
+        block.extend((name.len() as u32).to_le_bytes());
+        block.extend(name);
+        block.extend(count.to_le_bytes());
+        block.extend(states.iter().flat_map(|s| s.to_le_bytes()));
+        self.kept.scenario = block;
     }
 
     /// The research section as read, from its leading word to its end record (empty before

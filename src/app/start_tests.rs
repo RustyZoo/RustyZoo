@@ -915,3 +915,75 @@ fn a_saved_game_whose_scenario_cannot_be_read_is_refused_and_the_game_open_stays
         assert_eq!(app.sim.research_share(), 100);
     });
 }
+
+#[test]
+fn a_saved_game_resumes_its_scenario_with_the_stored_goal_states_and_writes_them_back() {
+    with_menu("goals-load", "", |app, files| {
+        app.pass(0, &[]);
+        let zoo = |scenario: &str, states: &[u32], version: u32| {
+            let bytes = crate::zoo::tests::naming(map(), Some(scenario));
+            let mut zoo = Zoo::parse(&bytes).unwrap();
+            zoo.version = version;
+            zoo.set_scenario(scenario, states);
+            zoo
+        };
+        let saved = |app: &mut App| {
+            let file = files.0.join("out.zoo");
+            app.save_game(file.to_str().unwrap());
+            Zoo::parse(&std::fs::read(file).unwrap())
+                .unwrap()
+                .scenario_states()
+        };
+        // The timer and the goal of `play.scn`: the states come back, and are written.
+        for states in [[0, 0], [3, 1], [0, 2]] {
+            app.open_game_as(zoo("s/play.scn", &states, 106), Money::default(), true)
+                .unwrap();
+            let scenario = app.sim.scenario().unwrap();
+            assert_eq!(
+                (scenario.file(), scenario.states()),
+                ("s/play.scn", states.to_vec())
+            );
+            assert_eq!(saved(app), states);
+        }
+        // Extra words are dropped, missing ones are 0.
+        app.open_game_as(zoo("s/play.scn", &[1, 1, 1], 106), Money::default(), true)
+            .unwrap();
+        assert_eq!(saved(app), [1, 1]);
+        app.open_game_as(zoo("s/play.scn", &[], 106), Money::default(), true)
+            .unwrap();
+        assert_eq!(saved(app), [0, 0]);
+        // A start does not resume: the next game has no scenario until one begins.
+        app.open_game_as(zoo("s/play.scn", &[3, 1], 106), Money::default(), false)
+            .unwrap();
+        assert!(app.sim.scenario().is_none());
+        // A scenario that cannot be read refuses the load, from version 70 to 85 as from 86, and
+        // the game open before stays.
+        for version in [80, 106] {
+            let refused = zoo("s/none.scn", &[3, 1], version);
+            let message = format!("unsupported old version {version}");
+            assert_eq!(app.open_zoo(refused, Money::default(), true), Err(message));
+            assert!(app.sim.scenario().is_none());
+        }
+    });
+}
+
+#[test]
+fn a_version_45_block_is_the_name_alone_and_the_scenario_resumes() {
+    with_menu("rv804-v45", "", |app, _| {
+        app.pass(0, &[]);
+        let mut bytes = crate::zoo::tests::file(45, 2, 2, &[], &[]);
+        let old = [5, 0, 0, 0, 1, 0, 0, 0, b'x'];
+        let at = bytes.windows(9).position(|w| w == old).unwrap();
+        let name = b"s/play.scn";
+        let block = [&(name.len() as u32).to_le_bytes()[..], name].concat();
+        bytes.splice(at..at + 9, block);
+        let zoo = Zoo::parse(&bytes).unwrap();
+        assert_eq!(zoo.version, 45);
+        app.open_game_as(zoo, Money::default(), true).unwrap();
+        let scenario = app.sim.scenario().expect("the named scenario resumes");
+        assert_eq!(
+            (scenario.file(), scenario.states()),
+            ("s/play.scn", vec![0, 0])
+        );
+    });
+}
