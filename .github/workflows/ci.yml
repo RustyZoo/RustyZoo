@@ -24,6 +24,13 @@ jobs:
             system: windows
             artifact: rustyzoo-windows-x86_64
             path: target/release/rustyzoo.exe
+          # 32-bit: a pointer-width bug (the many `as usize` / `as u32` casts) would go unseen
+          # otherwise. The runner is 64-bit Windows, which runs the 32-bit executables.
+          - os: windows-2025
+            system: windows32
+            target: i686-pc-windows-msvc
+            artifact: rustyzoo-windows-i686
+            path: target/i686-pc-windows-msvc/release/rustyzoo.exe
           - os: macos-15
             system: macos
             artifact: rustyzoo-macos-universal
@@ -37,6 +44,7 @@ jobs:
       linux: ${{ steps.simhash.outputs.linux }}
       windows: ${{ steps.simhash.outputs.windows }}
       macos: ${{ steps.simhash.outputs.macos }}
+      windows32: ${{ steps.simhash.outputs.windows32 }}
     # No display, GPU or sound card on the runners: the same headless SDL settings on every OS.
     # The dummy video driver and the software renderer need no OpenGL, which the offscreen
     # video driver could not initialize on macOS. The dates use the English names whatever the
@@ -77,6 +85,14 @@ jobs:
         name: Install the Rust toolchain from rust-toolchain.toml
         run: rustup toolchain install --profile minimal
 
+      # Every cargo command of the leg then builds, tests and runs for the target (SDL builds
+      # the same way as on the 64-bit leg).
+      - name: Add the Rust target
+        if: matrix.target
+        run: |
+          rustup target add ${{ matrix.target }}
+          echo "CARGO_BUILD_TARGET=${{ matrix.target }}" >> "$GITHUB_ENV"
+
       - &cargo-cache
         uses: actions/cache@v6
         with:
@@ -85,8 +101,8 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ matrix.target }}-
 
       # No simulation code walks a hash map (the order differs at every run).
       - if: runner.os == 'Linux'
@@ -104,7 +120,7 @@ jobs:
       - name: Check that the executable does not need the Visual C++ runtime DLLs
         if: runner.os == 'Windows'
         run: |
-          if grep -aqi vcruntime140 target/release/rustyzoo.exe; then
+          if grep -aqi vcruntime140 ${{ matrix.path }}; then
             echo "rustyzoo.exe still references VCRUNTIME140"
             exit 1
           fi
@@ -305,7 +321,7 @@ jobs:
           exit "$status"
 
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
-  # and long) is the same on the three systems, and no map fails to run; so are the last frame and
+  # and long) is the same on the three systems and on 32-bit Windows, and no map fails to run; so are the last frame and
   # state hashes of each played game. A system without trial data is skipped with a warning.
   hashes:
     name: hashes
@@ -315,26 +331,28 @@ jobs:
       LINUX: ${{ needs.build.outputs.linux }}
       WINDOWS: ${{ needs.build.outputs.windows }}
       MACOS: ${{ needs.build.outputs.macos }}
+      WINDOWS32: ${{ needs.build.outputs.windows32 }}
       PLAY_LINUX: ${{ needs.play.outputs.linux }}
       PLAY_WINDOWS: ${{ needs.play.outputs.windows }}
       PLAY_MACOS: ${{ needs.play.outputs.macos }}
     steps:
       - run: |
           failed=0
-          same() { # same <what> <linux> <windows> <macos>
+          same() { # same <what> <linux> <windows> <macos> [<windows 32-bit>]
             printf '%s\n  linux:   %s\n  windows: %s\n  macos:   %s\n' "$1" "$2" "$3" "$4"
+            [ "$#" -lt 5 ] || printf '  win32:   %s\n' "$5"
             seen=0 first=
-            for hashes in "$2" "$3" "$4"; do
+            for hashes in "${@:2}"; do
               [ -n "$hashes" ] || continue
               seen=$((seen + 1))
               [ "$hashes" = "${first:=$hashes}" ] || { echo "the $1 differ between systems"; failed=1; return; }
             done
-            if [ "$seen" -lt 3 ]; then
-              echo "::warning title=$1::Only $seen of 3 systems had trial data, so the hashes were not all compared."
+            if [ "$seen" -lt "$(($# - 1))" ]; then
+              echo "::warning title=$1::Only $seen of $(($# - 1)) systems had trial data, so the hashes were not all compared."
             fi
           }
-          same "state hashes of the simulation" "$LINUX" "$WINDOWS" "$MACOS"
-          case "$LINUX$WINDOWS$MACOS" in
+          same "state hashes of the simulation" "$LINUX" "$WINDOWS" "$MACOS" "$WINDOWS32"
+          case "$LINUX$WINDOWS$MACOS$WINDOWS32" in
             *=failed*)
               echo "a map did not run"
               failed=1
