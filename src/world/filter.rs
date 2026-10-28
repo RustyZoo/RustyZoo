@@ -9,9 +9,11 @@
 
 use super::{Shape, TankKind, World, piece_event};
 use crate::build::number;
+use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::BUILDING_UPKEEP;
 use crate::place::bulldozer::{refund, type_of};
+use crate::render::FilterLook;
 use crate::render::order::Kind;
 use crate::zoo::{Common, Entity, Event, Filter};
 
@@ -22,6 +24,16 @@ const BROKEN: u16 = 10036;
 const TOO_MURKY: i32 = 10549;
 /// The purity at and below which guests cannot see the animals (tank staff 7.4).
 const EXTREME: u32 = 1;
+/// How long the bubbles of a cycle stay, in milliseconds (tank staff 7.3 point 4.3).
+const BUBBLES_MS: i32 = 3000;
+
+/// What a filter shows besides its record (tank staff 7.3): switched off, and the milliseconds the
+/// bubbles of its last cycle have left.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct View {
+    off: bool,
+    bubbles: i32,
+}
 
 /// The numbers of a filter type, with the program's value for a missing key (tank staff 7.1).
 struct Keys {
@@ -75,7 +87,53 @@ pub fn sell_rate(ty: &EntityType, health: u32) -> f32 {
     }
 }
 
+/// The loop a filter plays: the sound file, and its attenuation as the base term.
+pub struct Loop {
+    pub id: u32,
+    pub file: String,
+    pub base: i32,
+}
+
 impl World {
+    /// The filters that are switched off or show bubbles, for the picture (tank staff 7.3, 7.5).
+    pub fn filter_looks(&self) -> Vec<FilterLook> {
+        (self.filter_view.iter())
+            .map(|(&id, v)| FilterLook {
+                id,
+                off: v.off,
+                bubbles: v.bubbles > 0,
+            })
+            .collect()
+    }
+
+    /// The loop each filter plays now (tank staff 7.3 point 7): the healthy one while its health is
+    /// above `cDecayedHealth`, else the decayed one, with the attenuation next to the file name
+    /// (`[FilterSounds]`, sound 8.2). A filter whose type names no such sound plays nothing.
+    pub fn filter_loops(&self, cat: &Catalogue) -> Vec<Loop> {
+        let mut loops = Vec::new();
+        for e in &self.zoo.entities {
+            let Some((c, f)) = e.common.as_ref().and_then(|c| Some((c, c.filter?))) else {
+                continue;
+            };
+            let Some(ty) = type_of(cat, e) else { continue };
+            let (file, atten) = match i64::from(f.health) > Keys::of(ty).decayed {
+                true => ("cHealthySound", "cHealthyAtten"),
+                false => ("cDecayedSound", "cDecayedAtten"),
+            };
+            let section = ty.config.as_deref().and_then(|c| c.section("FilterSounds"));
+            let Some(name) = section.and_then(|s| s.get(file)).filter(|v| !v.is_empty()) else {
+                continue;
+            };
+            let base = section.and_then(|s| s.get(atten)).and_then(to_int);
+            loops.push(Loop {
+                id: c.id,
+                file: ty.sound_member(name),
+                base: base.unwrap_or(0),
+            });
+        }
+        loops
+    }
+
     /// Sets the purity of tank `id` to `purity` cut to 0 and `initialWaterPurity` (tank staff 7.4):
     /// the water too murky to see through is told once. The tank is not marked for a new rating
     /// (habitat rating 4).
@@ -277,6 +335,13 @@ impl World {
         };
         let [mut decay, mut timer] = f.timers.unwrap_or_else(|| fresh(&keys));
         let tank = faced.filter(|&t| self.tank(t).is_some_and(|k| k.level > 0));
+        // A filter with no water to serve is off and shows no bubbles (7.3 points 2 and 3).
+        let mut view = self.filter_view.get(&id).copied().unwrap_or_default();
+        view.off = tank.is_none();
+        view.bubbles = match view.off {
+            true => 0,
+            false => ms(i64::from(view.bubbles) - step).max(0),
+        };
         // The cycle: only a tank holding water is cleaned.
         if let Some(tank) = tank {
             timer = ms(i64::from(timer) - step);
@@ -294,6 +359,7 @@ impl World {
                 self.units
                     .world_note(format!("filter {id} {} {now}", f.health));
                 timer = ms(k.delay_ms);
+                view.bubbles = BUBBLES_MS;
             }
         }
         // The wear, on or off.
@@ -317,6 +383,10 @@ impl World {
                 .world_note(format!("filter {id} {} {purity} worn", f.health));
         }
         f.timers = Some([decay, timer]);
+        match view == View::default() {
+            true => self.filter_view.remove(&id),
+            false => self.filter_view.insert(id, view),
+        };
         if let Some(c) = self.zoo.entities[at].common.as_mut() {
             c.filter = Some(f);
         }

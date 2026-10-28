@@ -244,20 +244,22 @@ impl Audio {
         })
     }
 
-    /// Starts a positional one-shot: the sound with its pan, at the volume of the sum `sum`,
-    /// whose distance term is `x`; `None` if the sum is over 6000. The voice keeps the sound as
-    /// it is, so that [`Voice::set_pan`] can move the pan of what is left to play.
+    /// Starts a positional sound, a one-shot or with `looping` a loop: the sound with its pan, at
+    /// the volume of the sum `sum`, whose distance term is `x`; `None` if the sum is over 6000. The
+    /// voice keeps the sound as it is, so that [`Voice::set_pan`] can move the pan of what is
+    /// left to play (a loop starts again with the pan it began with).
     pub fn play_at(
         &self,
         sound: Sound,
         pan: i32,
         sum: i32,
         x: i32,
+        looping: bool,
     ) -> Result<Option<Voice>, Box<dyn Error>> {
         if sum > START_LIMIT {
             return Ok(None);
         }
-        let mut voice = self.start(sound.clone().panned(pan), sum, false, false)?;
+        let mut voice = self.start(sound.clone().panned(pan), sum, looping, false)?;
         voice.x.set(x);
         voice.source = Some(sound);
         Ok(Some(voice))
@@ -500,8 +502,16 @@ mod tests {
 
         // Ten seconds of silence, long enough to be playing throughout the test.
         let wave = Sound::decode(&wav(1, 1, 22050, 16, &[0; 441_000])).unwrap();
-        assert!(audio.play_at(wave.clone(), 0, 6001, 0).unwrap().is_none());
-        let voice = audio.play_at(wave, 600, 1650, 1650).unwrap().unwrap();
+        assert!(
+            audio
+                .play_at(wave.clone(), 0, 6001, 0, false)
+                .unwrap()
+                .is_none()
+        );
+        let voice = audio
+            .play_at(wave, 600, 1650, 1650, false)
+            .unwrap()
+            .unwrap();
         assert!((voice.gain().unwrap() - gain(1650)).abs() < 1e-6);
         // The distance goes, the global and base terms stay: 5000 plus 0 here.
         voice.mute(true).unwrap();

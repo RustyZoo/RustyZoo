@@ -417,3 +417,96 @@ fn the_sell_rate_of_a_filter_follows_its_decayed_health() {
         assert_eq!(rate(keys, health), expected, "{keys} {health}");
     }
 }
+
+fn looks(world: &World) -> Vec<(bool, bool)> {
+    (world.filter_looks().iter())
+        .map(|l| (l.off, l.bubbles))
+        .collect()
+}
+
+#[test]
+fn a_cycle_shows_bubbles_for_3000_ms_and_a_filter_without_water_is_off_with_none() {
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+    // Placed, it cycles at its first update: the bubbles come with the cycle.
+    assert!(looks(&world).is_empty());
+    world.filter_step(&cat, at, 67);
+    assert_eq!(looks(&world), [(false, true)]);
+    assert_eq!(world.filter_looks()[0].id, id);
+    world.filter_step(&cat, at, 2_999);
+    assert_eq!(looks(&world), [(false, true)]);
+    world.filter_step(&cat, at, 1);
+    assert!(looks(&world).is_empty(), "3000 ms after the cycle");
+    // The next cycle is 50 s after the first and brings them again; a step of 0 changes nothing.
+    world.filter_step(&cat, at, 0);
+    world.filter_step(&cat, at, 46_999);
+    assert!(looks(&world).is_empty());
+    world.filter_step(&cat, at, 1);
+    assert_eq!(looks(&world), [(false, true)]);
+    // Without water it is off, and its bubbles are removed at once.
+    world.set_paused(true);
+    world.drain(1);
+    world.filter_step(&cat, at, 1);
+    assert_eq!(looks(&world), [(true, false)]);
+    // The water comes back: on again, no bubbles until its next cycle.
+    world.fill(1);
+    (0..4).for_each(|_| _ = world.step_water());
+    world.filter_step(&cat, at, 1);
+    assert!(looks(&world).is_empty());
+    // A removed filter keeps no look.
+    world.set_paused(false);
+    world.filter_step(&cat, at, 50_000);
+    assert_eq!(looks(&world), [(false, true)]);
+    assert!(world.remove(id));
+    assert!(looks(&world).is_empty());
+}
+
+#[test]
+fn a_broken_filter_makes_no_bubbles_and_odd_steps_do_not_panic() {
+    let (mut world, cat, at) = filtered(0, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, 67);
+    assert!(looks(&world).is_empty());
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, u32::MAX);
+    assert_eq!(looks(&world), [(false, true)]);
+    // The bubbles of that cycle last 3000 ms from its step.
+    world.filter_step(&cat, at, 1);
+    assert_eq!(looks(&world), [(false, true)]);
+    world.filter_step(&cat, at, 3_000);
+    assert!(looks(&world).is_empty());
+    // A type with a huge delay still shows the bubbles of the first cycle.
+    let (mut world, cat, at) = filtered(10, [200_000, 0], "cFilterDelay=99999999999");
+    world.filter_step(&cat, at, 1);
+    assert_eq!(looks(&world), [(false, true)]);
+}
+
+#[test]
+fn a_filter_plays_its_healthy_loop_above_the_decayed_health_and_its_decayed_one_otherwise() {
+    let sounds = "\n[FilterSounds]\ncHealthySound=scenery/building/h.wav\ncHealthyAtten=1700\n\
+                  cDecayedSound=d.wav\ncDecayedAtten=-20";
+    let heard = |health: u32, keys: &str| {
+        let (world, cat, _) = filtered(health, [1, 1], keys);
+        (world.filter_loops(&cat).iter())
+            .map(|l| (l.file.clone(), l.base))
+            .collect::<Vec<_>>()
+    };
+    let healthy = ("scenery/building/h.wav".to_string(), 1700);
+    let decayed = ("d.wav".to_string(), -20);
+    assert_eq!(heard(10, sounds), vec![healthy.clone()]);
+    assert_eq!(heard(6, sounds), vec![healthy]);
+    for health in [5, 1, 0] {
+        assert_eq!(heard(health, sounds), vec![decayed.clone()], "{health}");
+    }
+    // The threshold is the type's.
+    let moved = format!("cDecayedHealth=8{sounds}");
+    assert_eq!(heard(8, &moved)[0].1, -20);
+    assert_eq!(heard(9, &moved)[0].1, 1700);
+    // No section, no file or an empty one is silence; a missing or bad attenuation is 0.
+    assert!(heard(10, "").is_empty());
+    assert!(heard(10, "\n[FilterSounds]\ncHealthyAtten=5").is_empty());
+    assert!(heard(10, "\n[FilterSounds]\ncHealthySound=").is_empty());
+    for atten in ["", "cHealthyAtten=x", "cHealthyAtten=-"] {
+        let text = format!("\n[FilterSounds]\ncHealthySound=h.wav\n{atten}");
+        assert_eq!(heard(10, &text), [("h.wav".to_string(), 0)], "{atten}");
+    }
+}

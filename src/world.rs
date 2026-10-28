@@ -27,7 +27,7 @@ mod tank;
 mod water;
 mod wear;
 pub use exhibit::Event;
-pub use filter::{placed as placed_filter, sell_rate as filter_sell_rate};
+pub use filter::{Loop as FilterLoop, placed as placed_filter, sell_rate as filter_sell_rate};
 pub use wear::Decay;
 pub(crate) use wear::piece_event;
 
@@ -236,6 +236,9 @@ pub struct World {
     paused: bool,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
+    /// What each tank filter shows besides its record: switched off, or showing bubbles (not
+    /// saved, not hashed).
+    filter_view: BTreeMap<u32, filter::View>,
     /// The install language: the exhibit names of a loaded zoo are kept when its stored locale is
     /// this one, and a save writes it.
     language: Language,
@@ -277,6 +280,7 @@ impl World {
             edits: 0,
             paused: false,
             told_water: BTreeMap::new(),
+            filter_view: BTreeMap::new(),
             words: language.exhibit_words.clone(),
             language,
         };
@@ -699,6 +703,9 @@ impl World {
         }
         let entity = self.zoo.entities.remove(at);
         let shape = self.shapes.remove(at);
+        if let Some(c) = &entity.common {
+            self.filter_view.remove(&c.id);
+        }
         self.changed();
         if fence {
             self.settle(slot, false);

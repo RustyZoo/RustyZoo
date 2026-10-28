@@ -6,6 +6,34 @@ use crate::timing::{ini_value, ini_whole};
 
 /// The most a sound may be attenuated for it to start (sound specification 4.2).
 pub const START_LIMIT: i32 = 6000;
+/// The most a playing positional sound may be attenuated at a position refresh before it is
+/// stopped (sound specification 4.2).
+pub const REFRESH_LIMIT: i32 = 9000;
+
+/// What an owner does with a positional loop at an update, given the attenuation sum it would
+/// have (sound specification 4.2).
+#[derive(Debug, PartialEq, Eq)]
+pub enum LoopTurn {
+    /// It is not playing and starts.
+    Start,
+    /// It is playing and gets its volume and pan.
+    Refresh,
+    /// It is playing and is stopped.
+    Stop,
+    /// It is not playing and stays so.
+    Idle,
+}
+
+/// The turn of a positional loop that is `playing` or not, whose sum is `sum`: a start needs the
+/// sum not over [`START_LIMIT`], a refresh stops it over [`REFRESH_LIMIT`].
+pub fn loop_turn(playing: bool, sum: i32) -> LoopTurn {
+    match (playing, sum) {
+        (false, ..=START_LIMIT) => LoopTurn::Start,
+        (false, _) => LoopTurn::Idle,
+        (true, ..=REFRESH_LIMIT) => LoopTurn::Refresh,
+        (true, _) => LoopTurn::Stop,
+    }
+}
 /// The most the fade term `F` may reach before the music is stopped.
 const FADE_END: i32 = 3000;
 /// A step of this many milliseconds or more does not advance the fade.
@@ -200,6 +228,25 @@ mod tests {
         assert_eq!(positional((9000, 0), (0, 0)), (10_000, 10_000));
         assert_eq!(positional((i64::MAX, i64::MIN), (0, 0)), (10_000, 10_000));
         assert_eq!(positional((i64::MIN, 0), (i64::MAX, 0)), (10_000, -10_000));
+    }
+
+    #[test]
+    fn a_loop_starts_up_to_6000_and_stops_over_9000() {
+        use LoopTurn::*;
+        for (playing, sum, want) in [
+            (false, i32::MIN, Start),
+            (false, 0, Start),
+            (false, 6000, Start),
+            (false, 6001, Idle),
+            (false, i32::MAX, Idle),
+            (true, i32::MIN, Refresh),
+            (true, 6001, Refresh),
+            (true, 9000, Refresh),
+            (true, 9001, Stop),
+            (true, i32::MAX, Stop),
+        ] {
+            assert_eq!(loop_turn(playing, sum), want, "{playing} {sum}");
+        }
     }
 
     #[test]
