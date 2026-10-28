@@ -84,6 +84,9 @@ impl App<'_> {
         if let Some(section) = self.sim.research_section() {
             zoo.set_research(section);
         }
+        if let Some(scenario) = self.sim.scenario() {
+            zoo.set_scenario(scenario.file(), &scenario.states());
+        }
         let bytes = zoo.write(&game.money)?;
         let mut aside = path.as_os_str().to_owned();
         aside.push(".tmp");

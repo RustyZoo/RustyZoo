@@ -888,3 +888,51 @@ fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back()
         }
     });
 }
+
+#[test]
+fn a_saved_game_resumes_its_scenario_with_the_stored_goal_states_and_writes_them_back() {
+    with_menu("goals-load", "", |app, files| {
+        app.pass(0, &[]);
+        let zoo = |scenario: &str, states: &[u32], version: u32| {
+            let bytes = crate::zoo::tests::naming(map(), Some(scenario));
+            let mut zoo = Zoo::parse(&bytes).unwrap();
+            zoo.version = version;
+            zoo.set_scenario(scenario, states);
+            zoo
+        };
+        let saved = |app: &mut App| {
+            let file = files.0.join("out.zoo");
+            app.save_game(file.to_str().unwrap());
+            Zoo::parse(&std::fs::read(file).unwrap())
+                .unwrap()
+                .scenario_states()
+        };
+        // The timer and the goal of `play.scn`: the states come back, and are written.
+        for states in [[0, 0], [3, 1], [0, 2]] {
+            app.open_game_as(zoo("s/play.scn", &states, 106), Money::default(), true)
+                .unwrap();
+            let scenario = app.sim.scenario().unwrap();
+            assert_eq!(
+                (scenario.file(), scenario.states()),
+                ("s/play.scn", states.to_vec())
+            );
+            assert_eq!(saved(app), states);
+        }
+        // Extra words are dropped, missing ones are 0.
+        app.open_game_as(zoo("s/play.scn", &[1, 1, 1], 106), Money::default(), true)
+            .unwrap();
+        assert_eq!(saved(app), [1, 1]);
+        app.open_game_as(zoo("s/play.scn", &[], 106), Money::default(), true)
+            .unwrap();
+        assert_eq!(saved(app), [0, 0]);
+        // A start does not resume: the next game has no scenario until one begins.
+        app.open_game_as(zoo("s/play.scn", &[3, 1], 106), Money::default(), false)
+            .unwrap();
+        assert!(app.sim.scenario().is_none());
+        // A scenario that cannot be read is no scenario, and its block is written as read.
+        app.open_game_as(zoo("s/none.scn", &[3, 1], 106), Money::default(), true)
+            .unwrap();
+        assert!(app.sim.scenario().is_none());
+        assert_eq!(saved(app), [3, 1]);
+    });
+}

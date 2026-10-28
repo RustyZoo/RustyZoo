@@ -1034,6 +1034,44 @@ fn the_scenario_file_is_the_name_of_the_block_from_version_51() {
 }
 
 #[test]
+fn the_goal_states_of_the_block_are_read_and_written_back_byte_for_byte() {
+    assert_eq!(parse(&file(106, 2, 2, &[], &[])).scenario_states(), [0, 0]);
+    // Before 51 the block is the name alone; no scenario, no words.
+    assert!(
+        parse(&file(50, 2, 2, &[], &[]))
+            .scenario_states()
+            .is_empty()
+    );
+    let bytes = naming(file(106, 2, 2, &[], &[]), Some("s/a.scn"));
+    let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+    assert_eq!(zoo.scenario_states(), [0, 0]);
+    zoo.set_scenario("s/a.scn", &[0, 0]);
+    assert_eq!(
+        zoo.write(&money).unwrap(),
+        Zoo::parse_money(&bytes).unwrap().0.write(&money).unwrap()
+    );
+    zoo.set_scenario("s/a.scn", &[3, 1, 2]);
+    let back = parse(&zoo.write(&money).unwrap());
+    assert_eq!(back.scenario_states(), [3, 1, 2]);
+    assert_eq!(back.scenario_file().as_deref(), Some("s/a.scn"));
+    // No goal, a long name, a state word that no goal has.
+    zoo.set_scenario("", &[]);
+    assert!(
+        parse(&zoo.write(&money).unwrap())
+            .scenario_states()
+            .is_empty()
+    );
+    zoo.set_scenario(&"n".repeat(300), &[u32::MAX]);
+    assert_eq!(
+        parse(&zoo.write(&money).unwrap()).scenario_states(),
+        [u32::MAX]
+    );
+    // A cut block names no state.
+    zoo.kept.scenario.truncate(9);
+    assert!(zoo.scenario_states().is_empty());
+}
+
+#[test]
 fn the_research_section_written_is_the_one_given_and_reads_back() {
     let (mut zoo, money) = Zoo::parse_money(&file(106, 2, 2, &[], &[])).unwrap();
     let read = zoo.research().to_vec();
