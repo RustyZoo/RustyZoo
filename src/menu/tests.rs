@@ -10,12 +10,10 @@ struct Texts;
 impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            1526 => "Build %s".into(),
-            7123 => "Go on with %s".into(),
-            37123 => "Long: go on with %s".into(),
-            7127 => "Nothing saved".into(),
-            318 => "Cannot open".into(),
-            37127 => "Long: nothing saved".into(),
+            1526 => "text-1526 %s".into(),
+            7123 => "text-7123 %s".into(),
+            37123 => "text-37123 %s".into(),
+            7127 | 318 | 37127 => format!("text-{id}"),
             _ => String::new(),
         }
     }
@@ -130,11 +128,11 @@ fn continue_is_enabled_for_a_file_that_exists_and_its_tooltip_names_it() {
     assert_eq!(log, ["continue enabled saved.zoo"]);
     assert!(!disabled(&ui, 7113));
     assert_eq!(tip(&ui, 7113), 7123);
-    assert_eq!(ui.string(7123), "Go on with saved.zoo");
+    assert_eq!(ui.string(7123), "text-7123 saved.zoo");
     assert_eq!(written(&install), None, "nothing is written back");
     // Shown again, the name is put into the template again, not into the first result.
     menu.show(&mut ui);
-    assert_eq!(ui.string(7123), "Go on with saved.zoo");
+    assert_eq!(ui.string(7123), "text-7123 saved.zoo");
 }
 
 #[test]
@@ -172,15 +170,15 @@ fn long_help_takes_the_strings_30000_further() {
     let mut ui = interface(&install);
     let ini = "[UI]\nhelpType=1\n[user]\nlastfile=saved.zoo\n";
     menu(ini, &install, None, 0).show(&mut ui);
-    assert_eq!(ui.string(37123), "Long: go on with saved.zoo");
+    assert_eq!(ui.string(37123), "text-37123 saved.zoo");
     assert_eq!(
         ui.string(7123),
-        "Go on with %s",
+        "text-7123 %s",
         "the short one is untouched"
     );
     let ini = "[UI]\nhelpType=0\n[user]\nlastfile=saved.zoo\n";
     menu(ini, &install, None, 0).show(&mut ui);
-    assert_eq!(ui.string(7123), "Go on with saved.zoo");
+    assert_eq!(ui.string(7123), "text-7123 saved.zoo");
 }
 
 #[test]
@@ -235,7 +233,7 @@ fn the_picture_follows_the_flags_zoo_items_is_off_and_the_version_is_shown() {
         assert_eq!(log, ["continue disabled", "version 1.2.3"]);
         let label = &ui.tree.elements[ui.tree.find(7119).unwrap()].look;
         assert_eq!(label.text_id, [1526]);
-        assert_eq!(ui.string(1526), "Build 1.2.3");
+        assert_eq!(ui.string(1526), "text-1526 1.2.3");
     }
     // The flags beyond the two bits are not a picture; without a version the label is empty.
     let mut ui = interface(&install);
@@ -444,7 +442,7 @@ fn continue_asks_for_the_last_file_and_tells_the_player_when_it_is_gone() {
     menu.selected(&vfs, &mut ui, 7113);
     assert_eq!(
         menu.take_request(),
-        Some(Request::Message("Cannot open".into()))
+        Some(Request::Message("text-318".into()))
     );
     // No last file: nothing to ask. A directory is no file.
     for last in ["", "dir.zoo", "Old", "../saved.zoo"] {
