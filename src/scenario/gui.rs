@@ -39,8 +39,9 @@ pub enum Which {
 /// What an availability trigger tells when it really changed a flag (fresh runs only).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tell {
-    /// The message line: the string with the name id of the type for its `%r`.
-    Message(i32, i32),
+    /// The message line: the string, with the name id of the type for its `%r` (trigger 4 only;
+    /// trigger 7 shows the string as it is).
+    Message(i32, Option<i32>),
     Popup(Box<Popup>),
 }
 

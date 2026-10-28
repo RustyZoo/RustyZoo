@@ -87,7 +87,10 @@ impl App<'_> {
         for tell in told {
             match tell {
                 Tell::Message(template, name) => {
-                    let text = ui.string(template).replacen("%r", &ui.string(name), 1);
+                    let text = match name {
+                        Some(name) => ui.string(template).replacen("%r", &ui.string(name), 1),
+                        None => ui.string(template),
+                    };
                     ui.message(&to_cp1252(&text));
                 }
                 Tell::Popup(popup) => {

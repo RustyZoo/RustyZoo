@@ -141,14 +141,7 @@ fn avail(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Avail> {
         _ => return None,
     };
     let tell = match b {
-        2 | 3 if p > 0 => {
-            let name = if a == 4 {
-                t
-            } else {
-                ids().first().copied().unwrap_or(0)
-            };
-            Some(Tell::Message(p, name))
-        }
+        2 | 3 if p > 0 => Some(Tell::Message(p, (a == 4).then_some(t))),
         4 | 5 => Popup::read(cfg, p).map(|p| Tell::Popup(Box::new(p))),
         _ => None,
     };

@@ -950,29 +950,25 @@ fn made(body: &str) -> Vec<Avail> {
 }
 
 #[test]
-fn truleb_2_and_3_tell_the_string_of_targb_with_the_name_of_the_type() {
+fn truleb_2_and_3_tell_the_string_of_targb_and_only_trigger_4_adds_the_name() {
     let msg = |a: i32, b: i32| {
         made(&format!(
             "trulea={a}\ntruleb={b}\ntarga={}\ntargb=9",
             if a == 4 { 7 } else { 5 }
         ))
     };
-    let want = |on, name| {
+    let want = |on, which, name| {
         vec![Avail {
-            which: if name == 7 {
-                Which::Name(7)
-            } else {
-                Which::Names(vec![1, 3])
-            },
+            which,
             on,
             tell: Some(Tell::Message(9, name)),
         }]
     };
-    assert_eq!(msg(4, 2), want(true, 7));
-    assert_eq!(msg(4, 3), want(false, 7));
-    // A block names its first id.
-    assert_eq!(msg(7, 2), want(true, 1));
-    assert_eq!(msg(7, 3), want(false, 1));
+    assert_eq!(msg(4, 2), want(true, Which::Name(7), Some(7)));
+    assert_eq!(msg(4, 3), want(false, Which::Name(7), Some(7)));
+    // A block tells its string as it is: no name, a `%r` shows as is.
+    assert_eq!(msg(7, 2), want(true, Which::Names(vec![1, 3]), None));
+    assert_eq!(msg(7, 3), want(false, Which::Names(vec![1, 3]), None));
     // No string, or a negative one: nothing to tell; 0, 1 and 10 tell nothing even with one.
     for b in ["targb=0", "targb=-3", ""] {
         let got = made(&format!("trulea=4\ntruleb=2\ntarga=7\n{b}"));
@@ -1069,7 +1065,7 @@ fn the_resume_list_runs_as_fresh_triggers_so_its_message_comes_again() {
     );
     s.resume(&[], &mut Vec::new());
     let got = s.gui().take_avail();
-    assert_eq!(got[0].tell, Some(Tell::Message(9, 7)));
+    assert_eq!(got[0].tell, Some(Tell::Message(9, Some(7))));
     // The start list is another list.
     s.start(&mut Vec::new());
     assert!(s.gui().take_avail().is_empty());
