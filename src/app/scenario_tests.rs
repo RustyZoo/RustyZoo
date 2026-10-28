@@ -330,3 +330,57 @@ fn truleb_10_makes_the_type_available_for_good_and_stores_it_with_the_rewards() 
         },
     );
 }
+
+/// A scenario that hides every type at its start, then wins (or loses) at once with these unlocks;
+/// `body` runs when the end dialog is open.
+fn rewarded(name: &str, unlock: &str, kind: &str, body: impl FnOnce(&mut App)) {
+    let text = format!(
+        "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=4\ntruleb=9\n\
+         [completion]\n{unlock}\n[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n{kind}\n"
+    );
+    let files = [("s/rw.scn", text.into_bytes())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game(name, "", &files, cat, |app, _| {
+        let now = play(app, "s/rw.scn");
+        until_asked(app, now);
+        body(app);
+    });
+}
+
+fn flags(app: &App) -> [bool; 2] {
+    let cat = app.renderer.catalogue();
+    let build = &app.game.as_ref().unwrap().build;
+    [0, 1].map(|i| build.is_available(cat, i))
+}
+
+#[test]
+fn a_win_makes_its_unlocked_types_available_at_once() {
+    // The zebra is unlocked; the ids 0, -3, and 99 (no such type) change nothing.
+    rewarded(
+        "end-reward",
+        "unlock=0\nunlock=-3\nunlock=99\nunlock=6",
+        "",
+        |app| assert_eq!(flags(app), [false, true]),
+    );
+    // A loss unlocks nothing, and a win with no unlock leaves everything hidden.
+    rewarded("end-lost", "unlock=6", "type=7", |app| {
+        assert_eq!(flags(app), [false, false]);
+    });
+    rewarded("end-none", "", "", |app| {
+        assert_eq!(flags(app), [false, false]);
+    });
+}
+
+#[test]
+fn the_rewards_unlocked_in_this_run_apply_when_the_next_scenario_starts() {
+    let text = "[duration]\nnummonths=-1\n[start]\ntriggers=t\n[t]\ntrulea=4\ntruleb=9\n";
+    let files = [("s/hide.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("next-start", "", &files, cat, |app, _| {
+        // The settings of the install hold no reward: the menu's unlock is all there is.
+        app.pass(0, &[]);
+        app.menu.as_mut().unwrap().unlock(&[6]);
+        play(app, "s/hide.scn");
+        assert_eq!(flags(app), [false, true]);
+    });
+}

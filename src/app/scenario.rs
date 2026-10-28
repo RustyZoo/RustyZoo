@@ -42,6 +42,7 @@ impl App<'_> {
         let message = to_cp1252(&ui.string(text));
         self.ending = ui.ask(DIALOG, &message, Buttons::YES_NO);
         self.menu_events.push(format!("scenario dialog {text}"));
+        self.end_rewards();
         if !self.ending {
             self.end_answered(NO);
         }

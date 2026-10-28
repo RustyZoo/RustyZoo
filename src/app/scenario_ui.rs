@@ -73,8 +73,9 @@ impl App<'_> {
             told.extend(a.tell.clone().filter(|_| did));
         }
         if rewards {
-            let ini = crate::config::Config::parse(vfs.ini()).unwrap_or_default();
-            changed |= game.build.after_triggers(cat, &ini, &[]);
+            changed |= game
+                .build
+                .after_triggers(cat, &reward_ini(&self.menu, vfs), &[]);
         }
         if let Some(menu) = &mut self.menu {
             self.menu_events.extend(menu.unlock(&unlocked));
@@ -105,10 +106,44 @@ impl App<'_> {
         }
     }
 
+    /// The scenario ended (entity types 10.4): the rewards are looked up again, the ones this
+    /// win appended included, and the purchase lists follow.
+    pub(super) fn end_rewards(&mut self) {
+        let (Some(game), vfs, cat) = (
+            &mut self.game,
+            self.renderer.vfs(),
+            self.renderer.catalogue(),
+        ) else {
+            return;
+        };
+        let changed = game
+            .build
+            .after_triggers(cat, &reward_ini(&self.menu, vfs), &[]);
+        if let Some(ui) = &mut self.ui {
+            let mut log = Vec::new();
+            game.build.refill(changed, ui, vfs, cat, &mut log);
+            for line in log {
+                self.sim.note(line);
+            }
+        }
+    }
+
     /// A game opens or stops: the interface is given back what the last scenario changed (8.4).
     pub(super) fn scenario_clean(&mut self) {
         if let Some(ui) = &mut self.ui {
             self.marks.clean(ui);
         }
+    }
+}
+
+/// The ini rewards to apply: the settings of the menu, which hold what this run unlocked, else
+/// those of the install.
+pub(super) fn reward_ini(
+    menu: &Option<crate::menu::Menu>,
+    vfs: &crate::vfs::Vfs,
+) -> crate::config::Config {
+    match menu {
+        Some(menu) => menu.settings().clone(),
+        None => crate::config::Config::parse(vfs.ini()).unwrap_or_default(),
     }
 }
