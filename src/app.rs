@@ -2378,6 +2378,11 @@ impl<'a> App<'a> {
         format!("size {}x{}", self.frame.width, self.frame.height)
     }
 
+    /// How many awards the zoo holds (none without a game).
+    pub fn awards(&self) -> usize {
+        self.game.as_ref().map_or(0, |g| g.world.zoo.awards.len())
+    }
+
     /// The lines of the last pass, each led by the pass index and the clock: one per command it
     /// applied, in the text form of a script, then one per thing the interface did (`ui hover 7111`,
     /// `ui press ...`, `ui sound uiclick`, `ui select`, `ui show`, `ui hide`, `ui drag`), then one per thing the main menu did
@@ -2410,11 +2415,6 @@ impl<'a> App<'a> {
     /// `unit gate ID open|close GATE` for the units of the world. A pass that did nothing has no line.
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
-    /// How many awards the zoo holds (none without a game).
-    pub fn awards(&self) -> usize {
-        self.game.as_ref().map_or(0, |g| g.world.zoo.awards.len())
-    }
-
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
         let mut lines = Vec::new();
         let lead = format!("pass {pass} t={now}");
