@@ -19,18 +19,25 @@ fn config() -> TankConfig {
     }
 }
 
-/// The tank at 20,20 with its panel on it, in a game that has the config.
-fn tank(s: &mut Session) {
+/// The tank at 20,20 with its panel on it, in a game that has the config. It has no gate; the
+/// piece on its first side is returned.
+fn tank(s: &mut Session) -> u32 {
     let game = s.app.game.as_mut().unwrap();
     game.world.set_tank_config(config());
     game.world.begin();
-    for side in [0, 2, 4, 6] {
-        s.fence(5, 20, 20, side);
-    }
+    let pieces = [0, 2, 4, 6].map(|side| s.fence(5, 20, 20, side));
     s.app.exhibits_told();
     let game = s.app.game.as_mut().unwrap();
     assert_eq!(game.world.tank(1).map(|t| t.height), Some(5));
     game.panel.current = Some(1);
+    pieces[0]
+}
+
+/// The tank with a gate, where the water messages are shown.
+fn gated(s: &mut Session) {
+    let piece = tank(s);
+    let world = &mut s.app.game.as_mut().unwrap().world;
+    world.exhibits_mut().get_mut(1).unwrap().gate = Some(piece);
 }
 
 fn set_cash(s: &mut Session, cash: f32) {
@@ -124,7 +131,7 @@ fn a_fill_the_cash_does_not_cover_is_refused_with_10002() {
 #[test]
 fn an_object_that_cannot_be_in_water_refuses_the_fill_and_keeps_the_price() {
     with_game("tank-fill-bench", "", |s| {
-        tank(s);
+        gated(s);
         s.app.game.as_mut().unwrap().world.drain(1);
         s.add(8, 20 * 64 + 16, 20 * 64 + 16, 0);
         s.app.tank_fill(true);
@@ -136,7 +143,7 @@ fn an_object_that_cannot_be_in_water_refuses_the_fill_and_keeps_the_price() {
 #[test]
 fn an_animal_in_the_tank_refuses_the_drain_with_10551() {
     with_game("tank-drain", "", |s| {
-        tank(s);
+        gated(s);
         s.app.tank_drain();
         assert!(!water(s).2, "free, with no animal in it");
         s.app.game.as_mut().unwrap().world.fill(1);
@@ -145,6 +152,21 @@ fn an_animal_in_the_tank_refuses_the_drain_with_10551() {
         assert!(water(s).2);
         assert_eq!(told(s), ["tool message 10551"]);
         assert_eq!(s.cash(), 50_000.0);
+    });
+}
+
+#[test]
+fn a_tank_without_a_gate_refuses_the_water_silently() {
+    with_game("tank-no-gate", "", |s| {
+        tank(s);
+        s.app.game.as_mut().unwrap().world.drain(1);
+        s.add(8, 20 * 64 + 16, 20 * 64 + 16, 0);
+        s.app.tank_fill(true);
+        assert_eq!((water(s), s.cash()), ((5, 0, false, true), 50_000.0 - 7.5));
+        s.add(17, 20 * 64 + 40, 20 * 64 + 40, 0);
+        s.app.game.as_mut().unwrap().world.fill(1);
+        s.app.tank_drain();
+        assert!(told(s).is_empty());
     });
 }
 
@@ -167,7 +189,7 @@ fn the_tab_tells_the_walls_the_limits_and_the_prices() {
 #[test]
 fn a_new_salinity_on_an_empty_tank_with_an_animal_says_10551_and_still_fills_and_charges() {
     with_game("tank-fill-animal", "", |s| {
-        tank(s);
+        gated(s);
         s.app.game.as_mut().unwrap().world.drain(1);
         s.add(17, 20 * 64 + 40, 20 * 64 + 40, 0);
         s.app.tank_fill(false);

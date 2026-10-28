@@ -1,7 +1,7 @@
 //! The tank tab of the exhibit panel (exhibits and money 3.10, 4.7): the wall and ground
 //! buttons, the two fill buttons and the drain button. Each press pays as the other tools do
 //! (refused with 10002 when the cash does not cover it, booked as construction), and a refusal of
-//! the water shows its message in the message line (`tool message N`).
+//! the water of a tank with a gate shows its message in the message line (`tool message N`).
 
 use super::*;
 use crate::exhibit::price::Prices;
@@ -29,6 +29,19 @@ impl App<'_> {
         if let Some(ui) = &mut self.ui {
             let text = ui.string(id).replacen("%s", name, 1);
             ui.message(&to_cp1252(&text));
+        }
+    }
+
+    /// Tells the water message `id` (3.10): only a tank with a gate shows it.
+    fn water_message(&mut self, tank: u32, id: i32, name: &str) {
+        let game = self.game.as_ref();
+        if game.is_some_and(|g| {
+            g.world
+                .exhibits()
+                .get(tank)
+                .is_some_and(|x| x.gate.is_some())
+        }) {
+            self.tank_message(id, name);
         }
     }
 
@@ -86,8 +99,9 @@ impl App<'_> {
 
     /// The fill buttons (4.7), enabled while the tank is empty and not filled: the cash is
     /// checked, the salinity set (a change drains first; an animal in the tank refuses that with
-    /// 10551, and the rest goes on), the price paid, then the tank filled. An object that may not be in water refuses the fill with 10550
-    /// naming it; the price stays paid.
+    /// 10551, and the rest goes on), the price paid, then the tank filled. An object that may not
+    /// be in water refuses the fill with 10550 naming it; the price stays paid. Both messages
+    /// need a gate.
     pub(super) fn tank_fill(&mut self, salt: bool) {
         let Some((id, prices)) = self.panel_tank() else {
             return;
@@ -106,7 +120,7 @@ impl App<'_> {
         let refused = game.world.fill(id);
         game.panel.clock.force = true;
         if told {
-            self.tank_message(NOT_DRAINED, "");
+            self.water_message(id, NOT_DRAINED, "");
         }
         let Some(game) = &mut self.game else { return };
         if let Some(object) = refused {
@@ -117,12 +131,12 @@ impl App<'_> {
             let name = name.map_or(String::new(), |n| {
                 self.ui.as_ref().map_or(String::new(), |u| u.string(n))
             });
-            self.tank_message(NOT_FILLED, &name);
+            self.water_message(id, NOT_FILLED, &name);
         }
         self.exhibits_told();
     }
 
-    /// The drain button (4.7): free; refused with 10551 while an animal is in the tank.
+    /// The drain button (4.7): free; refused while an animal is in the tank (10551, with a gate).
     pub(super) fn tank_drain(&mut self) {
         let Some((id, _)) = self.panel_tank() else {
             return;
@@ -131,7 +145,7 @@ impl App<'_> {
         let drained = game.world.drain(id);
         game.panel.clock.force = true;
         if !drained {
-            self.tank_message(NOT_DRAINED, "");
+            self.water_message(id, NOT_DRAINED, "");
         }
         self.exhibits_told();
     }
