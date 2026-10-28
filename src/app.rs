@@ -782,7 +782,7 @@ impl<'a> App<'a> {
                 .with_exhibits(exhibits)
                 .unlocked(
                     self.renderer.catalogue(),
-                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+                    &scenario_ui::reward_ini(&self.menu, self.renderer.vfs()),
                 ),
             pending: None,
             made: None,
