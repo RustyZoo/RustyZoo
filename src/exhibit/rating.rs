@@ -338,7 +338,8 @@ impl Record {
         for part in rest {
             sum += 0.1f32 * part;
         }
-        if self.show && self.amphibious && !self.show_linked {
+        // A show tank loses 50 only without a show neighbour, any other tank always (6).
+        if self.tank && self.amphibious && !(self.show && self.show_linked) {
             sum -= 50.0;
         }
         sum

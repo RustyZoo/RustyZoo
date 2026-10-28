@@ -585,13 +585,40 @@ fn an_amphibious_animal_in_a_tank_takes_the_best_rating_of_the_land_beside_it() 
         amphibious: true,
         ..Record::default()
     };
-    assert_eq!(full.rating(), 100.0);
-    // A show tank without a show neighbour: an amphibious species loses 50.
+    // A tank that is not a show tank: an amphibious species loses 50 (6).
+    assert_eq!(full.rating(), 50.0);
+    // A show tank loses it only without a show neighbour.
     let show = Record {
         show: true,
         ..full.clone()
     };
     assert_eq!(show.rating(), 50.0);
+    assert_eq!(
+        Record {
+            show_linked: true,
+            ..show
+        }
+        .rating(),
+        100.0
+    );
+    // A species that is not amphibious, and a land exhibit, lose nothing.
+    assert_eq!(
+        Record {
+            amphibious: false,
+            ..full.clone()
+        }
+        .rating(),
+        100.0
+    );
+    assert_eq!(
+        Record {
+            tank: false,
+            terrain: 100.0,
+            ..full.clone()
+        }
+        .rating(),
+        100.0
+    );
     // The land exhibits 2 and 3 rate it 70 and 87.
     let land = |terrain| Record {
         tank: false,
@@ -606,7 +633,7 @@ fn an_amphibious_animal_in_a_tank_takes_the_best_rating_of_the_land_beside_it() 
     };
     let best = rating(1, &[2, 3], "otter", &mut records).unwrap();
     assert!((best - 87.0).abs() < 0.01, "{best}");
-    assert_eq!(rating(1, &[], "otter", &mut records), Some(100.0));
+    assert_eq!(rating(1, &[], "otter", &mut records), Some(50.0));
     // A neighbour without the species counts nothing; none at all leaves -1000.
     assert_eq!(rating(1, &[4], "otter", &mut records), Some(-1000.0));
     assert_eq!(rating(1, &[2], "zebra", &mut records), None);

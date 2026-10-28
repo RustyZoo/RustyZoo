@@ -141,6 +141,20 @@ fn a_show_tank_rates_an_amphibious_species_50_lower_only_without_a_show_neighbou
 }
 
 #[test]
+fn a_plain_tank_rates_an_amphibious_species_50_lower_whatever_its_show_neighbours() {
+    let w = world();
+    let (t, _, _) = ids(&w);
+    let records = rate(&input(&w, &catalogue(), t));
+    let orca = records.iter().find(|r| r.key == "orca").unwrap();
+    assert!(orca.tank && !orca.show && orca.amphibious && orca.show_linked);
+    let plain = Record {
+        amphibious: false,
+        ..orca.clone()
+    };
+    assert_eq!(plain.rating() - orca.rating(), 50.0);
+}
+
+#[test]
 fn the_home_of_an_animal_in_a_show_tank_is_the_plain_tank_beside_it() {
     let cat = catalogue();
     let mut w = gated(world());

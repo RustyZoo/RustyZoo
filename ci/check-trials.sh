@@ -1217,13 +1217,15 @@ check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happin
 # land exhibit counts the tank's water for the bears (habitat rating 5.3), so its bear is content;
 # every recomputation ends with the reachability test (5.8), which draws: the tank bear goes ashore
 # at step 602 and is home at step 1192 (and again at 4780 and 5729); the land bear swims back ashore
-# and into the tank again.
+# and into the tank again. The bears' ratings are unchanged; the walrus alone in a tank with no
+# land beside it drops from 78 to 28. Its different draws shift the shared random generator, so
+# the bears cross at other steps.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>
   rz sim "$1" --ticks 14000 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@422,1@2905,2@13768;97902:1@1156" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@422,1@3054,2@3637,1@5272,2@10214,1@11860;97902:1@1156,2@9559,1@11601" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
