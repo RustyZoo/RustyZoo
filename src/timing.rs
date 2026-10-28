@@ -393,7 +393,7 @@ impl Date {
 
     /// Game milliseconds from the calendar's start to this date, negative before it. A date the
     /// system's conversion refuses (a field out of range, a day the month does not have, a year
-    /// before 1601) is the start, 0.
+    /// before 1601 or after 30827) is the start, 0.
     pub fn game_ms(&self) -> i64 {
         let ok = (1..=12).contains(&self.month)
             && (1..=days_in_month(self.year, self.month)).contains(&self.day)
@@ -401,7 +401,7 @@ impl Date {
             && self.minute < 60
             && self.second < 60
             && self.millisecond < 1000
-            && self.year >= 1601;
+            && (1601..=30827).contains(&self.year);
         let start = DAYS_TO_2001 * DAY_MS as i64;
         if ok { self.millis() - start } else { 0 }
     }
@@ -491,7 +491,9 @@ mod tests {
         ] {
             assert_eq!(bad.game_ms(), 0, "{bad:?}");
         }
-        assert!(at(65535, 12, 31, 23).game_ms() > 0);
+        assert!(at(30827, 12, 31, 23).game_ms() > 0);
+        assert_eq!(at(30828, 1, 1, 0).game_ms(), 0);
+        assert_eq!(at(65535, 12, 31, 23).game_ms(), 0);
     }
 
     #[test]
