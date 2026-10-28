@@ -88,7 +88,7 @@ pub struct Branch {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tree {
     pub branches: Vec<Branch>,
-    /// The expansion entries that are disabled (3.5): all, base game, Dinosaur Digs, Marine Mania.
+    /// The expansion entries that are disabled (3.5): all, base game, first expansion, second expansion.
     pub off: [bool; 4],
     /// The manager's accumulator, in milliseconds (5.1).
     pub(crate) acc: u32,
