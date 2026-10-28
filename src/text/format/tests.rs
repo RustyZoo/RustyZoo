@@ -373,3 +373,141 @@ fn the_installed_strings_format_as_the_game_does() {
     assert_eq!(graph_month(&tables, 12), "Dec");
     assert!(build(&tables, 1030, &[Text("X")]).contains('X'));
 }
+
+const NB: &str = "\u{a0}";
+
+/// A French profile: "1 234,5", "12,50 $", "-12,50 $".
+fn french() -> Profile {
+    let marks = Marks::new(",", " ", 3);
+    Profile::from_c(marks.clone(), marks, (0, 1), (0, 1, 1))
+}
+
+#[test]
+fn a_french_profile_writes_its_own_marks_and_money_forms() {
+    let p = french();
+    let g = game();
+    assert_eq!(p.number.group, NB, "a space separator is a no-break space");
+    assert_eq!(
+        integer_in(&p.number, 1234567, true),
+        format!("1{NB}234{NB}567")
+    );
+    assert_eq!(integer_in(&p.number, -5, true), "-5");
+    assert_eq!(integer_in(&p.number, 1234567, false), "1234567");
+    assert_eq!(money_in(&p, &g, 74878, true), format!("74{NB}878{NB}$"));
+    assert_eq!(money_in(&p, &g, 74878, false), format!("74878{NB}$"));
+    assert_eq!(money_in(&p, &g, -74878, true), format!("-74{NB}878{NB}$"));
+    assert_eq!(money_cents_in(&p, &g, 12.5, true), format!("12,50{NB}$"));
+    assert_eq!(
+        money_cents_in(&p, &g, -1234.5, true),
+        format!("-1{NB}234,50{NB}$")
+    );
+    assert_eq!(money_cents_in(&p, &g, -0.001, true), format!("0,00{NB}$"));
+    // The cents of a number that is not one are 0.
+    assert_eq!(money_cents_in(&p, &g, f64::NAN, true), format!("0,00{NB}$"));
+    assert_eq!(
+        money_in(&p, &g, i64::MIN, true),
+        "-9 223 372 036 854 775 808 $".replace(' ', NB)
+    );
+}
+
+#[test]
+fn the_us_profile_is_the_default_forms() {
+    let p = Profile::us();
+    assert_eq!(integer_in(&p.number, 1234567, true), "1,234,567");
+    assert_eq!(money_in(&p, &game(), -1234, true), "($1,234)");
+    assert_eq!(money_cents_in(&p, &game(), 12.5, true), "$12.50");
+    // The C library's US form: the sign before the symbol.
+    let marks = Marks::new(".", ",", 3);
+    let host = Profile::from_c(marks.clone(), marks, (1, 0), (1, 0, 1));
+    assert_eq!(money_in(&host, &game(), -1234, true), "-$1,234");
+}
+
+#[test]
+fn a_group_size_of_0_means_no_grouping_and_other_sizes_work() {
+    let m = |size| Marks::new(".", ",", size);
+    assert_eq!(m(0).group("1234567"), "1234567");
+    assert_eq!(m(2).group("1234567"), "1,23,45,67");
+    assert_eq!(m(3).group(""), "");
+    assert_eq!(m(3).group("12"), "12");
+    assert_eq!(m(usize::MAX).group("1234567"), "1234567");
+    assert_eq!(Marks::new(".", "", 3).group("1234"), "1234");
+}
+
+#[test]
+fn unspecified_c_values_keep_the_us_forms() {
+    let m = Marks::new(".", ",", 3);
+    for bad in [127, -1, 3, 255, i32::MAX, i32::MIN] {
+        let p = Profile::from_c(m.clone(), m.clone(), (bad, bad), (bad, bad, bad));
+        assert_eq!(p, Profile::us(), "{bad}");
+    }
+    // A sign position out of range with a valid precedence is unspecified too.
+    let p = Profile::from_c(m.clone(), m.clone(), (1, 0), (1, 0, 5));
+    assert_eq!(money_in(&p, &game(), -3, true), "($3)");
+}
+
+#[test]
+fn the_sixteen_windows_negative_forms() {
+    let want = [
+        "($1.1)", "-$1.1", "$-1.1", "$1.1-", "(1.1$)", "-1.1$", "1.1-$", "1.1$-", "-1.1 $",
+        "-$ 1.1", "1.1 $-", "$ 1.1-", "$ -1.1", "1.1- $", "($ 1.1)", "(1.1 $)",
+    ];
+    for (code, want) in want.iter().enumerate() {
+        let p = Profile::from_windows(Marks::new(".", ",", 3), Marks::new(".", ",", 3), 0, code);
+        assert_eq!(p.amount("$", "1.1", true), want.replace(' ', NB), "{code}");
+    }
+    let positive = ["$1.1", "1.1$", "$ 1.1", "1.1 $"];
+    for (code, want) in positive.iter().enumerate() {
+        let p = Profile::from_windows(Marks::new(".", ",", 3), Marks::new(".", ",", 3), code, 0);
+        assert_eq!(p.amount("$", "1.1", false), want.replace(' ', NB), "{code}");
+    }
+    // A code out of range is the US form.
+    let p = Profile::from_windows(
+        Marks::new(".", ",", 3),
+        Marks::new(".", ",", 3),
+        99,
+        usize::MAX,
+    );
+    assert_eq!(p, Profile::us());
+}
+
+#[test]
+fn english_dates_set_to_1_forces_the_us_forms() {
+    assert_eq!(Profile::of_user(Some("1".as_ref())), Profile::us());
+    // Any other value, or none, leaves the regional settings (US where the system has none).
+    let system = locale::profile("").unwrap_or_else(Profile::us);
+    for value in [
+        None,
+        Some(""),
+        Some("0"),
+        Some("-1"),
+        Some("99999999999999999999"),
+    ] {
+        assert_eq!(
+            Profile::of_user(value.map(|v| v.as_ref())),
+            system,
+            "{value:?}"
+        );
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn a_locale_gives_its_own_marks_and_forms() {
+    // The C locale specifies nothing: the US forms.
+    assert_eq!(locale::profile("C"), Some(Profile::us()));
+    assert_eq!(locale::profile("no_such_locale"), None);
+    let Some(french) = locale::profile("fr_FR.UTF-8") else {
+        eprintln!("skipped: the fr_FR.UTF-8 locale is not installed");
+        return;
+    };
+    assert_eq!(french.number.decimal, ",");
+    assert_eq!(
+        french.number.group, NB,
+        "glibc's narrow no-break space becomes U+00A0"
+    );
+    assert_eq!(french.number.size, 3);
+    assert_eq!(
+        money_cents_in(&french, &game(), 1234.5, true),
+        format!("1{NB}234,50{NB}$")
+    );
+}

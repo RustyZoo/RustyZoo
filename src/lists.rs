@@ -234,13 +234,15 @@ impl Cash {
         self.set(self.amount.saturating_sub(self.step));
     }
 
-    /// Reads what was typed: the currency symbol and the grouping symbol are taken out, then the
-    /// number is limited to the bounds. Anything that is no number reads as 0 (the lower bound).
+    /// Reads what was typed: the currency symbol, the group separator of the user's locale and
+    /// the spaces are taken out, then the number is limited to the bounds. Anything that is no number reads as 0 (the lower bound).
     pub fn typed(&mut self, typed: &[u8], symbol: &str) {
-        let mut text = text(typed).replace(',', "");
+        let mut text = text(typed);
         if !symbol.is_empty() {
             text = text.replace(symbol, "");
         }
+        text = text.replace(crate::text::format::money_group(), "");
+        text.retain(|c| !c.is_whitespace());
         if let Some(n) = to_int(text.as_bytes()) {
             self.set(i64::from(n));
         }

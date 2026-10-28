@@ -94,8 +94,9 @@ pub fn figures(live: &Live, months: i64) -> ([i64; 3], [i64; 3]) {
 }
 
 /// The number the player typed into the price field (guest buildings 7.2): the first currency
-/// `symbol` and then the first thousands separator cut out, the rest read as `atof` does.
-pub fn typed(text: &[u8], symbol: &[u8]) -> f64 {
+/// `symbol` and then the first money group separator `group` (the host's, in the field's code
+/// page) cut out, the rest read as `atof` does.
+pub fn typed(text: &[u8], symbol: &[u8], group: &[u8]) -> f64 {
     let mut text = text.to_vec();
     let cut = |text: &mut Vec<u8>, part: &[u8]| {
         if let Some(at) = text.windows(part.len()).position(|w| w == part) {
@@ -105,7 +106,9 @@ pub fn typed(text: &[u8], symbol: &[u8]) -> f64 {
     if !symbol.is_empty() {
         cut(&mut text, symbol);
     }
-    cut(&mut text, b",");
+    if !group.is_empty() {
+        cut(&mut text, group);
+    }
     to_double(&text)
 }
 
