@@ -7,8 +7,8 @@
 //! entities and the interface (rules 10 and 11); the research, awards and shows rules read 0. The
 //! triggers are stubs but for trigger 2 (popups and elements) and triggers 4 and 7 (availability):
 //! a trigger logs `scenario trigger` and does nothing else. The
-//! objectives list (4.5) and the end (5.4, 9) are here; the saving of the goal states comes with a
-//! later issue, the resuming of them ([`Scenario::resume`]) is here.
+//! objectives list (4.5) and the end (5.4, 9) are here, and so are the goal states of a saved game:
+//! [`Scenario::states`] writes them and [`Scenario::resume`] reads them (5.3).
 //!
 //! Trigger 2 (scenarios 7.1) and the interface rules 10 and 11 reach the interface through
 //! [`gui::Gui`]: a trigger leaves an [`Effect`] for the application, which tells back which
@@ -291,8 +291,18 @@ impl Goal {
         })
     }
 
-    /// Reads this goal's state word and its children's (5.3).
-    fn load(&mut self, words: &mut impl Iterator<Item = u32>, gui: &Gui, log: &mut Vec<String>) {
+    /// Reads this goal's state word and its children's (5.3). Without `groups` (a save before
+    /// version 86) a complex or chain goal and its children read nothing.
+    fn load(
+        &mut self,
+        words: &mut impl Iterator<Item = u32>,
+        groups: bool,
+        gui: &Gui,
+        log: &mut Vec<String>,
+    ) {
+        if !groups && matches!(self.body, Body::Complex(_) | Body::Chain(_)) {
+            return;
+        }
         self.state = words.next().filter(|&w| w <= 3).map_or(0, |w| w as u8);
         match &mut self.body {
             Body::Timer(_) => {}
@@ -302,7 +312,17 @@ impl Goal {
                         .fire(&self.name, &self.state.to_string(), false, log, gui);
                 }
             }
-            Body::Complex(c) | Body::Chain(c) => c.iter_mut().for_each(|g| g.load(words, gui, log)),
+            Body::Complex(c) | Body::Chain(c) => {
+                c.iter_mut().for_each(|g| g.load(words, groups, gui, log))
+            }
+        }
+    }
+
+    /// Adds this goal's state word and its children's (5.3).
+    fn save(&self, out: &mut Vec<u32>) {
+        out.push(u32::from(self.state));
+        if let Body::Complex(c) | Body::Chain(c) = &self.body {
+            c.iter().for_each(|g| g.save(out));
         }
     }
 
@@ -633,8 +653,9 @@ impl Scenario {
     /// then the goals read their states from `words`, one `u32` each in list order (a complex or
     /// chain goal writes its own, then its children's). A word above 3 reads as 0, a missing one
     /// leaves 0 and extra ones are skipped; a simple goal with a state runs its trigger again,
-    /// quietly. A save before version 51 has no words.
-    pub fn resume(&mut self, words: &[u32], log: &mut Vec<String>) {
+    /// quietly. A save before version 51 has no words, and one before version 86 has none for
+    /// complex and chain goals (`groups` false): they and their children stay at 0.
+    pub fn resume(&mut self, words: &[u32], groups: bool, log: &mut Vec<String>) {
         log.push(format!(
             "scenario resume {} {}",
             self.file,
@@ -645,9 +666,17 @@ impl Scenario {
         }
         let mut words = words.iter().copied();
         for g in &mut self.goals {
-            g.load(&mut words, &self.gui, log);
+            g.load(&mut words, groups, &self.gui, log);
         }
         self.reported = self.goals.iter().map(Goal::reported).collect();
+    }
+
+    /// The state words a saved game stores (5.3), one per goal in list order, a complex or chain
+    /// goal's own before its children's.
+    pub fn states(&self) -> Vec<u32> {
+        let mut out = Vec::new();
+        self.goals.iter().for_each(|g| g.save(&mut out));
+        out
     }
 
     /// The timer is the first goal; the others are updated in list order.
