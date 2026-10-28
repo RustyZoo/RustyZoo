@@ -738,8 +738,8 @@ fn a_scenario_disables_an_element_shows_popups_and_a_hint_sees_presses_and_gives
         assert!(app.interface().unwrap().modal_open() && shown(app, 45000));
         assert!(shown(app, 45400));
         let ui = app.interface().unwrap();
-        assert_eq!(ui.text(45406), Some(b"Exit?".to_vec()));
-        assert_eq!(ui.text(45006), Some(b"Leave?".to_vec()));
+        assert_eq!(ui.text(45406), Some(b"text-151".to_vec()));
+        assert_eq!(ui.text(45006), Some(b"text-153".to_vec()));
         assert_eq!(lines.borrow()[3..], ["popup 45000 modal", "hint 45400"]);
         // The picture of the popup is in its image, which took its size.
         let ui = app.interface().unwrap();
