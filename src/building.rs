@@ -389,8 +389,7 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
     }
     let kind = Kind::of(ty, world.units.prices.default);
     let id = e.common.as_ref().map_or(0, |c| c.id);
-    let start = crate::timing::Calendar::new().date().millis();
-    let built = Date::from_file_time(record.built).millis() - start;
+    let built = Date::from_file_time(record.built).game_ms();
     let live = Live {
         guests: record.guests,
         income: record.income.map(f32::from_bits),

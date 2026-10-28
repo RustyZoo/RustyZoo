@@ -598,7 +598,8 @@ fn a_record_before_version_68_has_no_upkeep_and_the_extremes_do_not_panic() {
         ("can", 8, Some(wild.clone())),
     ]);
     assert_eq!(w.units.buildings[&7].guests, [u32::MAX; 3]);
-    assert!(w.units.buildings[&7].built > 0);
+    // A built date past 30827 is refused: the calendar's start (zoo format 7.4).
+    assert_eq!(w.units.buildings[&7].built, 0);
     assert_eq!(w.units.buildings[&8].fill, u32::MAX);
     assert_eq!(loaded_events(&w).len(), 1);
     let w = loaded(&[(
@@ -607,6 +608,30 @@ fn a_record_before_version_68_has_no_upkeep_and_the_extremes_do_not_panic() {
         Some(crate::zoo::BuildingRecord { built: 0, ..wild }),
     )]);
     assert!(w.units.buildings[&7].built < 0);
+}
+
+#[test]
+fn a_built_date_past_30827_is_the_start_of_the_calendar() {
+    let start = crate::timing::Calendar::new().date().millis();
+    let jan_1 = |year| {
+        let date = crate::timing::Date {
+            year,
+            month: 1,
+            day: 1,
+            weekday: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+        };
+        crate::timing::file_time(date.millis() - start)
+    };
+    let w = loaded(&[
+        ("stand", 7, Some(record(0, jan_1(30827)))),
+        ("stand", 8, Some(record(0, jan_1(30828)))),
+    ]);
+    assert!(w.units.buildings[&7].built > 0);
+    assert_eq!(w.units.buildings[&8].built, 0);
 }
 
 #[test]
