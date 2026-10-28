@@ -800,9 +800,7 @@ impl<'a> App<'a> {
             held: None,
         });
         if let (Some(tree), Some(game)) = (tree, &mut self.game) {
-            let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
-            game.build
-                .start_research(self.renderer.catalogue(), &ini, &tree);
+            game.build.start_research(self.renderer.catalogue(), &tree);
             self.sim.set_research(tree);
         }
         if let Some(ui) = &mut self.ui {
