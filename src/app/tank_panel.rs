@@ -1,7 +1,7 @@
-//! The tank tab of the exhibit panel (exhibits and money 3.10, 4.7): the wall buttons, the two
-//! fill buttons and the drain button. Each press pays as the other tools do (refused with 10002
-//! when the cash does not cover it, booked as construction), and a refusal of the water shows its
-//! message in the message line (`tool message N`).
+//! The tank tab of the exhibit panel (exhibits and money 3.10, 4.7): the wall and ground
+//! buttons, the two fill buttons and the drain button. Each press pays as the other tools do
+//! (refused with 10002 when the cash does not cover it, booked as construction), and a refusal of
+//! the water shows its message in the message line (`tool message N`).
 
 use super::*;
 use crate::exhibit::price::Prices;
@@ -56,6 +56,30 @@ impl App<'_> {
         if moved {
             game.money.charge(CONSTRUCTION, price);
         }
+        game.panel.clock.force = true;
+        self.exhibits_told();
+    }
+
+    /// The ground buttons (4.7): the tank's ground goes one level up or down, within the limits of
+    /// the ground. The price of a step (the tiles times the price of elevation) is the same both
+    /// ways and is paid, not given back, only when the level really changed.
+    pub(super) fn tank_ground(&mut self, up: bool) {
+        let Some((id, prices)) = self.panel_tank() else {
+            return;
+        };
+        let Some(game) = &mut self.game else { return };
+        let Some(ground) = game.world.ground(id) else {
+            return;
+        };
+        let next = ground.saturating_add(if up { 1 } else { -1 });
+        if next.abs() > crate::terrain::shape::LIMIT {
+            return;
+        }
+        if prices.ground > 0.0 && !game.money.can_pay(prices.ground) {
+            return self.tank_message(NO_FUNDS, "");
+        }
+        game.world.flatten(id, next, false);
+        game.money.charge(CONSTRUCTION, prices.ground);
         game.panel.clock.force = true;
         self.exhibits_told();
     }

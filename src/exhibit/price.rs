@@ -14,6 +14,8 @@ pub struct Prices {
     pub water: f32,
     /// What a fill with salt and one with fresh water cost at the wall height now.
     pub fill: [f32; 2],
+    /// The price of one ground step: the tiles times the price of a step of elevation.
+    pub ground: f32,
 }
 
 impl Prices {
@@ -36,6 +38,7 @@ impl Prices {
             wall,
             water: tiles * config.water[usize::from(!tank.salt)],
             fill: config.water.map(|w| height * tiles * w),
+            ground: tiles * config.ground,
         })
     }
 
