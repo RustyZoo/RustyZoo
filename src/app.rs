@@ -1941,6 +1941,22 @@ impl<'a> App<'a> {
             self.sim.restart_calendar();
         }
         if let Some(file) = &start.scenario {
+            // The scenario's own economy file comes over the game's (zoo status 3.1).
+            let vfs = self.renderer.vfs();
+            let name = Config::parse(&vfs.read(file).unwrap_or_default())
+                .ok()
+                .and_then(|c| {
+                    let name = c.section("start")?.get("economy")?;
+                    Some(String::from_utf8_lossy(name).into_owned())
+                });
+            if let Some(name) = name {
+                match vfs.read(&name) {
+                    Ok(economy) => self.sim.scenario_economy(&economy),
+                    Err(why) => {
+                        eprintln!("rustyzoo: warning: {name}: {why}; the economy settings are kept")
+                    }
+                }
+            }
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(tree) =

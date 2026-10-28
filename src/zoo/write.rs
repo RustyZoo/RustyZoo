@@ -186,11 +186,8 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
     for f in floats.chain(&money.total).chain([&status.price]) {
         o.u32(f.to_bits());
     }
-    // The date after the price (from 71) is 1 January 2000 when the file has none.
-    match zoo.version >= 71 {
-        true => o.bytes(b.get(kept.at - 8..kept.at).ok_or_else(short)?),
-        false => o.bytes(&upgrade::NEVER.to_le_bytes()),
-    }
+    // The date of the last escape follows the price.
+    o.bytes(&status.escape.to_le_bytes());
     // The calendar: year, month, day of week (Sunday is 0), day, hour, minute, second, millisecond.
     let d = Calendar::at(zoo.clocks.calendar).date();
     let fields = [
