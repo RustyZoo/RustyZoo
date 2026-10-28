@@ -354,7 +354,7 @@ fn hidden_layouts_templates_and_layers_and_the_dirty_flag() {
 fn a_button_text_is_drawn_over_its_picture_without_a_background() {
     let blue = [0, 0, 255];
     let row = [blue; 60];
-    let image = tga(&vec![&row[..]; 20]);
+    let image = tga(&[&row[..]; 20]);
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\
          [a]\ntype=UIButton\nid=2\nx=2\ny=2\nnormal=ui/b.tga\ntransparent=0\ntextid=1\n\
