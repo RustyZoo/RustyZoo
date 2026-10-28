@@ -175,10 +175,10 @@ pub(super) fn guest(kept: Option<Vec<u8>>, g: &GuestRecord) -> Result<Vec<u8>, S
     let short = || "the guest record is short".to_string();
     let (head, tail) = (ITEMS_AT + 4, b.len().checked_sub(TAIL).ok_or_else(short)?);
     let n = b.get(ITEMS_AT..head).ok_or_else(short)?;
-    let end = head + 4 * u32::from_le_bytes(n.try_into().unwrap()) as usize;
-    if end > tail {
-        return Err(short());
-    }
+    // checked: on a 32-bit target `4 * count` overflows for a wild count.
+    let count = u32::from_le_bytes(n.try_into().unwrap()) as usize;
+    let end = count.checked_mul(4).and_then(|c| c.checked_add(head));
+    let end = end.filter(|&e| e <= tail).ok_or_else(short)?;
     // Five item slots, the way the original writes them.
     let items = g.items.iter().flat_map(|n| n.to_le_bytes());
     b.splice(ITEMS_AT..end, [5, 0, 0, 0].into_iter().chain(items));
