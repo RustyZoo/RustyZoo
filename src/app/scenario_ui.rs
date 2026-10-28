@@ -2,6 +2,7 @@
 //! to the scenario, and what its triggers asked of the interface is done here.
 
 use super::{Action, App};
+use crate::scenario::{Tell, Which};
 use crate::text::to_cp1252;
 
 impl App<'_> {
@@ -51,7 +52,8 @@ impl App<'_> {
     }
 
     /// Carries out the availability triggers: with `rewards`, at the start of a game, the ini
-    /// rewards apply after them (research 7.4).
+    /// rewards apply after them (research 7.4). A trigger that changed a flag tells its message or
+    /// popup, and an unlock (`truleb` 10) is stored with the rewards.
     pub(super) fn scenario_avail(&mut self, rewards: bool) {
         let made = self.sim.scenario().map(|s| s.gui().take_avail());
         let (Some(game), vfs, cat) = (
@@ -61,20 +63,45 @@ impl App<'_> {
         ) else {
             return;
         };
-        let made = made.unwrap_or_default();
-        let changed = match rewards {
-            true => {
-                let ini = crate::config::Config::parse(vfs.ini()).unwrap_or_default();
-                game.build.after_triggers(cat, &ini, &made)
+        let (mut changed, mut told, mut unlocked) = (false, Vec::new(), Vec::new());
+        for a in made.iter().flatten() {
+            let did = game.build.change(cat, std::slice::from_ref(a));
+            changed |= did;
+            if let Which::Unlock(id) = a.which {
+                unlocked.push(id);
             }
-            false => game.build.change(cat, &made),
+            told.extend(a.tell.clone().filter(|_| did));
+        }
+        if rewards {
+            let ini = crate::config::Config::parse(vfs.ini()).unwrap_or_default();
+            changed |= game.build.after_triggers(cat, &ini, &[]);
+        }
+        if let Some(menu) = &mut self.menu {
+            self.menu_events.extend(menu.unlock(&unlocked));
+        }
+        let Some(ui) = &mut self.ui else {
+            return;
         };
-        if let Some(ui) = &mut self.ui {
-            let mut log = Vec::new();
-            game.build.refill(changed, ui, vfs, cat, &mut log);
-            for line in log {
-                self.sim.note(line);
+        let mut log = Vec::new();
+        game.build.refill(changed, ui, vfs, cat, &mut log);
+        for tell in told {
+            match tell {
+                Tell::Message(template, name) => {
+                    let text = match name {
+                        Some(name) => ui.string(template).replacen("%r", &ui.string(name), 1),
+                        None => ui.string(template),
+                    };
+                    ui.message(&to_cp1252(&text));
+                }
+                Tell::Popup(popup) => {
+                    if let Some(s) = self.sim.scenario() {
+                        s.gui().popup(*popup);
+                    }
+                }
             }
+        }
+        for line in log {
+            self.sim.note(line);
         }
     }
 

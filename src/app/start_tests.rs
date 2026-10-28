@@ -20,6 +20,8 @@ impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
             9101 => "text-9101 %d".into(),
+            9201 => "told %r".into(),
+            5 => "lion".into(),
             151 | 153 | 318 | 11645 | 11646 | 9001 | 16100 | 16101 => format!("text-{id}"),
             _ => String::new(),
         }
@@ -41,6 +43,7 @@ impl UiStrings for Texts {
 pub(super) fn interface(install: &Install) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
+        [mq]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=40\ndy=8\n\
         [b]\ntype=UILayout\nlayout=ui/menu.lyt\n\
         [c]\ntype=UILayout\nlayout=ui/q.lyt\n\
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
@@ -149,6 +152,17 @@ pub(super) fn map() -> Vec<u8> {
 /// Runs `body` on the main menu over a folder that has `saved.zoo` (a good map), `bad.zoo` (not
 /// a map), and the settings `ini`.
 pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Install)) {
+    with_game(name, ini, &[], None, body);
+}
+
+/// [`with_menu`] with more files in the game's install and, if given, this catalogue.
+pub(super) fn with_game(
+    name: &str,
+    ini: &str,
+    more: &[(&str, Vec<u8>)],
+    catalogue: Option<Catalogue>,
+    body: impl FnOnce(&mut App, &Install),
+) {
     let files = Install::new(&format!("start-{name}"), &[]);
     std::fs::write(files.0.join("saved.zoo"), map()).unwrap();
     std::fs::write(files.0.join("bad.zoo"), b"not a map").unwrap();
@@ -197,9 +211,10 @@ pub(super) fn with_menu(name: &str, ini: &str, body: impl FnOnce(&mut App, &Inst
         ("ra.cfg", b"[research]\nname=10\ncost=0\n".to_vec()),
         ("rd.cfg", b"[research]\nname=11\ncost=5\n".to_vec()),
     ];
+    let extra = [&extra[..], more].concat();
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
-    let catalogue = Catalogue::load(&vfs).unwrap();
+    let catalogue = catalogue.unwrap_or_else(|| Catalogue::load(&vfs).unwrap());
     let mut app = App::menu(
         MapRenderer::new(&vfs, &catalogue),
         Settings::default(),

@@ -14,7 +14,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
 use crate::place::unit::{is_unit, price};
 use crate::place::{Class, Leg, MIDDLE, fence_run, path_run, side};
-use crate::scenario::Avail;
+use crate::scenario::{Avail, Which};
 use crate::staff;
 use crate::terrain::Mode;
 use crate::text::format::whole_units;
@@ -526,7 +526,10 @@ impl Build {
     pub fn change(&mut self, cat: &Catalogue, made: &[Avail]) -> bool {
         let mut changed = false;
         for a in made {
-            changed |= self.avail.set_where(cat, |ty| a.reaches(ty), a.on);
+            changed |= match a.which {
+                Which::Unlock(id) => self.avail.unlock_id(cat, id),
+                _ => self.avail.set_where(cat, |ty| a.reaches(ty), a.on),
+            };
         }
         changed
     }

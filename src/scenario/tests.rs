@@ -875,7 +875,13 @@ fn triggers_4_and_7_leave_an_availability_change_and_a_bad_one_nothing() {
         s.start(&mut Vec::new());
         s.gui().take_avail()
     };
-    let one = |which, on| vec![Avail { which, on }];
+    let one = |which, on| {
+        vec![Avail {
+            which,
+            on,
+            tell: None,
+        }]
+    };
     assert_eq!(
         made("trulea=4\ntruleb=0\ntarga=7"),
         one(Which::Name(7), true)
@@ -891,7 +897,10 @@ fn triggers_4_and_7_leave_an_availability_change_and_a_bad_one_nothing() {
     );
     assert_eq!(made("trulea=4\ntruleb=6"), one(Which::Animals, true));
     assert_eq!(made("trulea=4\ntruleb=9"), one(Which::All, false));
-    assert_eq!(made("trulea=4\ntruleb=10\ntarga=7"), vec![]);
+    assert_eq!(
+        made("trulea=4\ntruleb=10\ntarga=7"),
+        one(Which::Unlock(7), true)
+    );
     assert_eq!(
         made("trulea=4\ntruleb=11\ntarga=7"),
         one(Which::Name(7), false)
@@ -927,6 +936,187 @@ fn a_block_id_without_hex_digit_reads_as_0() {
     let want = vec![Avail {
         which: Which::Names(vec![3, 0, 0, 0]),
         on: true,
+        tell: None,
     }];
     assert_eq!(s.gui().take_avail(), want);
+}
+
+/// The availability changes the start triggers of `body` leave, with `[5]` (ids 1 and 3) and `[8]`.
+fn made(body: &str) -> Vec<Avail> {
+    let text = format!("[start]\ntriggers=t\n[t]\n{body}\n[5]\nid=1\nid=3\n[8]\nlayout=45000\n");
+    let s = build(&text, &[]);
+    s.start(&mut Vec::new());
+    s.gui().take_avail()
+}
+
+#[test]
+fn truleb_2_and_3_tell_the_string_of_targb_and_only_trigger_4_adds_the_name() {
+    let msg = |a: i32, b: i32| {
+        made(&format!(
+            "trulea={a}\ntruleb={b}\ntarga={}\ntargb=9",
+            if a == 4 { 7 } else { 5 }
+        ))
+    };
+    let want = |on, which, name| {
+        vec![Avail {
+            which,
+            on,
+            tell: Some(Tell::Message(9, name)),
+        }]
+    };
+    assert_eq!(msg(4, 2), want(true, Which::Name(7), Some(7)));
+    assert_eq!(msg(4, 3), want(false, Which::Name(7), Some(7)));
+    // A block tells its string as it is: no name, a `%r` shows as is.
+    assert_eq!(msg(7, 2), want(true, Which::Names(vec![1, 3]), None));
+    assert_eq!(msg(7, 3), want(false, Which::Names(vec![1, 3]), None));
+    // No string, or a negative one: nothing to tell; 0, 1 and 10 tell nothing even with one.
+    for b in ["targb=0", "targb=-3", ""] {
+        let got = made(&format!("trulea=4\ntruleb=2\ntarga=7\n{b}"));
+        assert_eq!(got[0].tell, None, "{b}");
+    }
+    for b in [0, 1, 6, 9, 10, 11, -2] {
+        let got = made(&format!("trulea=4\ntruleb={b}\ntarga=7\ntargb=9"));
+        assert_eq!(got[0].tell, None, "{b}");
+    }
+}
+
+#[test]
+fn truleb_4_and_5_tell_the_popup_targb_and_a_missing_popup_tells_nothing() {
+    let got = made("trulea=4\ntruleb=4\ntarga=7\ntargb=8");
+    assert_eq!((got[0].on, &got[0].which), (true, &Which::Name(7)));
+    let Some(Tell::Popup(p)) = &got[0].tell else {
+        panic!("{got:?}");
+    };
+    assert_eq!(p.layout, 45000);
+    let got = made("trulea=7\ntruleb=5\ntarga=5\ntargb=8");
+    assert_eq!(
+        (got[0].on, &got[0].which),
+        (false, &Which::Names(vec![1, 3]))
+    );
+    assert!(matches!(&got[0].tell, Some(Tell::Popup(_))));
+    for b in ["targb=0", "targb=-1", ""] {
+        let got = made(&format!("trulea=4\ntruleb=4\ntarga=7\n{b}"));
+        assert_eq!(got[0].tell, None, "{b}");
+    }
+}
+
+#[test]
+fn truleb_10_unlocks_for_trigger_4_only() {
+    let got = made("trulea=4\ntruleb=10\ntarga=7\ntargb=8");
+    assert_eq!(
+        got,
+        [Avail {
+            which: Which::Unlock(7),
+            on: true,
+            tell: None
+        }]
+    );
+    // Not an id: still an unlock, the ini rewards skip it.
+    assert_eq!(
+        made("trulea=4\ntruleb=10\ntarga=-4")[0].which,
+        Which::Unlock(-4)
+    );
+    assert_eq!(made("trulea=4\ntruleb=10")[0].which, Which::Unlock(0));
+    // Trigger 7 has no unlock: its block is made unavailable.
+    let got = made("trulea=7\ntruleb=10\ntarga=5\ntargb=8");
+    assert_eq!(
+        got,
+        [Avail {
+            which: Which::Names(vec![1, 3]),
+            on: false,
+            tell: None
+        }]
+    );
+}
+
+#[test]
+fn a_goal_trigger_run_again_after_a_load_keeps_the_change_and_the_unlock_and_tells_nothing() {
+    let goals = [
+        ("a", "trulea=4\ntruleb=3\ntarga=7\ntargb=9"),
+        ("b", "trulea=4\ntruleb=4\ntarga=6\ntargb=8"),
+        ("c", "trulea=4\ntruleb=10\ntarga=5"),
+        ("d", "trulea=7\ntruleb=5\ntarga=5\ntargb=8"),
+    ];
+    let mut text =
+        String::from("[goals]\ngoal=a\ngoal=b\ngoal=c\ngoal=d\n[5]\nid=1\n[8]\nlayout=45000\n");
+    for (name, keys) in goals {
+        text += &goal(name, 0, 2, 1, keys);
+    }
+    let mut s = build(&text, &[]);
+    s.resume(&[0, 1, 1, 1, 1], &mut Vec::new());
+    let wants = [
+        (Which::Name(7), false),
+        (Which::Name(6), true),
+        (Which::Unlock(5), true),
+        (Which::Names(vec![1]), false),
+    ];
+    let got = s.gui().take_avail();
+    assert_eq!(got.len(), 4);
+    for (a, (which, on)) in got.iter().zip(wants) {
+        assert_eq!((&a.which, a.on, &a.tell), (&which, on, &None));
+    }
+}
+
+#[test]
+fn the_resume_list_runs_as_fresh_triggers_so_its_message_comes_again() {
+    let mut s = build(
+        "[resume]\ntriggers=m\n[m]\ntrulea=4\ntruleb=3\ntarga=7\ntargb=9\n",
+        &[],
+    );
+    s.resume(&[], &mut Vec::new());
+    let got = s.gui().take_avail();
+    assert_eq!(got[0].tell, Some(Tell::Message(9, Some(7))));
+    // The start list is another list.
+    s.start(&mut Vec::new());
+    assert!(s.gui().take_avail().is_empty());
+}
+
+#[test]
+fn a_resume_runs_the_resume_triggers_then_reads_the_states_of_the_goals_in_order() {
+    let main = format!(
+        "[duration]\nnummonths=-1\n[goals]\ngoal=a\ngoal=c\ngoal=z\n{}\
+         [a]\nrulea=99\narga=0\ntype=2\nvalue=1\ntrulea=4\ntruleb=1\ntarga=7\n\
+         [c]\nrtype=1\nchild=k1\nchild=k2\n{}{}\
+         [z]\nrulea=99\narga=0\ntype=2\nvalue=1\ntrulea=4\ntruleb=0\ntarga=9\n",
+        "[resume]\ntriggers=r\n[r]\ntrulea=4\ntruleb=9\n",
+        goal("k1", 0, 2, 1, "trulea=4\ntruleb=1\ntarga=11"),
+        goal("k2", 0, 2, 1, "trulea=4\ntruleb=1\ntarga=12"),
+    );
+    let mut s = build(&main, &[]);
+    let mut log = Vec::new();
+    // Words: the timer, a, the group c with its two children, z; extra words are skipped.
+    s.resume(&[3, 1, 0, 2, 0, 1, 77, 77], &mut log);
+    assert_eq!(states(&s)[..2], [3, 1]);
+    let (c, z) = (&s.goals[2], &s.goals[3]);
+    assert_eq!((c.state, z.state), (0, 1));
+    let Body::Complex(kids) = &c.body else {
+        panic!()
+    };
+    assert_eq!((kids[0].state, kids[1].state), (2, 0));
+    assert_eq!(s.reported, [3, 1, 0, 1]);
+    // The resume list ran first (as a fresh trigger), then the goals with a state, in order.
+    let got: Vec<_> = s
+        .gui()
+        .take_avail()
+        .iter()
+        .map(|a| (a.which.clone(), a.on))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (Which::All, false),
+            (Which::Name(7), false),
+            (Which::Name(11), false),
+            (Which::Name(9), true),
+        ]
+    );
+    assert!(log.iter().any(|l| l.starts_with("scenario resume s.scn")));
+    // A word above 3 reads as 0 and a missing one leaves 0: no trigger runs for them.
+    let mut s = build(&main, &[]);
+    s.resume(&[0, 4, 1], &mut Vec::new());
+    assert_eq!(states(&s), [0, 0, 1, 0]);
+    let got = s.gui().take_avail();
+    assert_eq!(got.len(), 1, "{got:?}");
+    s.resume(&[], &mut Vec::new());
+    assert_eq!(states(&s), [0; 4]);
 }

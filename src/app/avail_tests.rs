@@ -9,7 +9,7 @@ use crate::vfs::Vfs;
 
 const SIZE: (u32, u32) = (64, 48);
 
-fn catalogue() -> Catalogue {
+pub(super) fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     for (name, id) in [("lion", 5), ("zebra", 6)] {
         cat.push(EntityType {

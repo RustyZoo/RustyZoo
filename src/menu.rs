@@ -216,11 +216,19 @@ impl Menu {
                 log.push(format!("scenario result {key} {new}"));
             }
         }
+        log.extend(self.unlock(&end.unlocks));
+        log
+    }
+
+    /// Appends types to the rewards of `[user] unlockEntityN` (the ids already listed are not
+    /// listed twice, an id of 0 or less is skipped). The lines for the log.
+    pub fn unlock(&mut self, ids: &[i32]) -> Vec<String> {
+        let mut log = Vec::new();
         // The scan is bounded: a list that long is a hostile file.
         let count = ini_whole(&self.ini, "user", "unlockCount").unwrap_or(0);
         let start = count.clamp(0, 4096);
         let mut n = start;
-        for &id in end.unlocks.iter().filter(|&&id| id > 0) {
+        for &id in ids.iter().filter(|&&id| id > 0) {
             let listed = (0..n)
                 .any(|i| ini_whole(&self.ini, "user", &format!("unlockEntity{i}")) == Some(id));
             if !listed {
