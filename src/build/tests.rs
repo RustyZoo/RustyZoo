@@ -1287,7 +1287,41 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
     let cat = types();
     let ini = Config::parse(b"[user]\nunlockCount=1\nunlockEntity0=102\n").unwrap();
     let mut build = Build::new(3);
-    build.start_research(&cat, &ini, &tree);
+    build.start_research(&cat, &tree);
+    build.after_triggers(&cat, &ini, &[]);
     let flags: Vec<bool> = (0..4).map(|i| build.avail.is(&cat, i)).collect();
     assert_eq!(flags, [false, true, true, true]);
+}
+
+#[test]
+fn the_ini_rewards_apply_after_the_start_triggers_whatever_they_hide() {
+    use crate::scenario::{Avail, Which};
+    let cat = types();
+    let ini = Config::parse(b"[user]\nunlockCount=1\nunlockEntity0=102\n").unwrap();
+    let flags = |build: &Build| -> Vec<bool> { (0..7).map(|i| build.avail.is(&cat, i)).collect() };
+    let hide = |which| Avail { which, on: false };
+    // Hide all: the reward stays, and a trigger after hide-all can make another one available.
+    let mut build = Build::new(3);
+    let made = [
+        hide(Which::All),
+        Avail {
+            which: Which::Name(105),
+            on: true,
+        },
+    ];
+    assert!(build.after_triggers(&cat, &ini, &made));
+    assert_eq!(
+        flags(&build),
+        [false, true, false, false, true, false, false]
+    );
+    // A block, a name id of 0 or a negative one that no type has; and nothing to do.
+    let mut build = Build::new(3);
+    let made = [
+        hide(Which::Names(vec![101, 103])),
+        hide(Which::Name(0)),
+        hide(Which::Name(-4)),
+    ];
+    build.after_triggers(&cat, &Config::default(), &made);
+    assert_eq!(flags(&build), [false, true, false, true, true, true, true]);
+    assert!(!build.after_triggers(&cat, &Config::default(), &[]));
 }

@@ -1949,9 +1949,7 @@ impl<'a> App<'a> {
                 crate::research::Tree::of_scenario(self.renderer.vfs(), file, &mut || rng.rand())
             {
                 if let Some(game) = &mut self.game {
-                    let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
-                    game.build
-                        .start_research(self.renderer.catalogue(), &ini, &tree);
+                    game.build.start_research(self.renderer.catalogue(), &tree);
                 }
                 self.sim.set_research(tree);
             }
@@ -1981,6 +1979,10 @@ impl<'a> App<'a> {
             && let Some(scenario) = Scenario::prepare(self.renderer.vfs(), file)
         {
             self.sim.start_scenario(scenario);
+        }
+        if start.scenario.is_some() {
+            // The triggers set the availability over the tree, the ini rewards come last (7.4).
+            self.scenario_avail(true);
         }
         let music = self.music.take();
         self.start_game(music);
@@ -2558,6 +2560,9 @@ mod carry_tests;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod avail_tests;
 
 #[cfg(test)]
 mod replay_tests;

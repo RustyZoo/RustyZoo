@@ -37,6 +37,7 @@ impl App<'_> {
 
     /// Does what the triggers asked of the interface.
     pub(super) fn scenario_effects(&mut self) {
+        self.scenario_avail(false);
         let effects = self.sim.scenario().map(|s| s.gui().take_effects());
         if let (Some(effects), Some(ui)) = (effects, &mut self.ui) {
             for effect in effects {
@@ -46,6 +47,34 @@ impl App<'_> {
         }
         for line in self.scenario_lines.drain(..) {
             self.sim.note(line);
+        }
+    }
+
+    /// Carries out the availability triggers: with `rewards`, at the start of a game, the ini
+    /// rewards apply after them (research 7.4).
+    pub(super) fn scenario_avail(&mut self, rewards: bool) {
+        let made = self.sim.scenario().map(|s| s.gui().take_avail());
+        let (Some(game), vfs, cat) = (
+            &mut self.game,
+            self.renderer.vfs(),
+            self.renderer.catalogue(),
+        ) else {
+            return;
+        };
+        let made = made.unwrap_or_default();
+        let changed = match rewards {
+            true => {
+                let ini = crate::config::Config::parse(vfs.ini()).unwrap_or_default();
+                game.build.after_triggers(cat, &ini, &made)
+            }
+            false => game.build.change(cat, &made),
+        };
+        if let Some(ui) = &mut self.ui {
+            let mut log = Vec::new();
+            game.build.refill(changed, ui, vfs, cat, &mut log);
+            for line in log {
+                self.sim.note(line);
+            }
         }
     }
 
