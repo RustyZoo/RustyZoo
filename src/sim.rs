@@ -174,8 +174,8 @@ pub struct Sim {
     lines: Vec<String>,
     /// The scenario being played, if the game is one.
     scenario: Option<Scenario>,
-    /// The research tree of a scenario or freeform game; none for a saved game, which counts as
-    /// no research done until its research section is read.
+    /// The research tree of a scenario or freeform game, or of a saved game that names a
+    /// scenario; none otherwise, which counts as no research done.
     research: Option<Tree>,
     /// The programs the research step completed, for the caller to apply.
     research_done: Vec<Done>,
@@ -286,6 +286,12 @@ impl Sim {
     /// its programs from the next check on.
     pub fn set_research(&mut self, tree: Tree) {
         self.research = Some(tree);
+    }
+
+    /// The research section of a saved game for the writer; none when the game has no tree
+    /// (research 7.5).
+    pub fn research_section(&self) -> Option<Vec<u8>> {
+        self.research.as_ref().map(Tree::save)
     }
 
     /// The programs completed since the last call (research 5.4).

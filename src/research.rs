@@ -1,6 +1,7 @@
 //! The research tree of a game: branches, categories and programs, read from the research lists
 //! of the scenario at its start (research 3, 4, 7.4) and counted by the zoo status (research 9.1).
-//! The step (research 5) runs the funded branches; the other effects than availability come later.
+//! The step (research 5) runs the funded branches; the section of a saved game is read and written
+//! here (research 7). The other effects than availability come later.
 
 use crate::avail::Availability;
 use crate::config::{Config, Section, to_float, to_int};
@@ -113,13 +114,22 @@ impl Tree {
     /// The tree of the scenario `file` (3.1): the files its `[start] research` values name.
     /// `None` when the scenario cannot be read; a scenario with no value has an empty tree.
     /// Each branch file read gives its branch a current program, by a draw from `rand` (5.5).
-    pub fn of_scenario(vfs: &Vfs, file: &str, rand: &mut dyn FnMut() -> u32) -> Option<Tree> {
+    /// A `resume` (a saved game's scenario, 7.2) disables no expansion entry (3.5).
+    pub fn of_scenario(
+        vfs: &Vfs,
+        file: &str,
+        resume: bool,
+        rand: &mut dyn FnMut() -> u32,
+    ) -> Option<Tree> {
         let main = Config::parse(&vfs.read(file).ok()?).ok()?;
         let values = main
             .section("start")
             .map_or(&[][..], |s| s.get_all("research"));
         let mut tree = Tree {
-            off: expansions_off(main.section("desc")),
+            off: match resume {
+                true => [false; 4],
+                false => expansions_off(main.section("desc")),
+            },
             ..Tree::default()
         };
         let mut left = MAX_PROGRAMS;
@@ -212,6 +222,95 @@ impl Tree {
         for p in self.programs().filter(|p| p.effect == 0) {
             avail.set(cat, p.target, p.done());
         }
+    }
+}
+
+/// Reads the bytes of the research records (7.1): `(kind, name id, value)` until the end record or
+/// the end of the bytes; the value is the raw word, a tick's byte included.
+fn records(bytes: &[u8]) -> Vec<(i32, u32, u32)> {
+    let word = |at: usize| Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?));
+    let mut out = Vec::new();
+    let mut at = 4;
+    while let Some(kind) = word(at).map(|k| k as i32).filter(|&k| k >= 0) {
+        let Some(name) = word(at + 4) else { break };
+        let (value, size) = match kind {
+            1 => (bytes.get(at + 8).map(|&b| u32::from(b)), 9),
+            0 | 2 => (word(at + 8), 12),
+            _ => break,
+        };
+        let Some(value) = value else { break };
+        out.push((kind, name, value));
+        at += size;
+    }
+    out
+}
+
+impl Tree {
+    /// The research section of a saved game is read (7.2): everything is reset (funding level 0,
+    /// ticks set, no progress), the records set what they name (the first match by name id;
+    /// an unknown id is ignored, a funding level out of range is 0), the effects of the programs
+    /// complete are the caller's (`apply`), and each branch chooses its current program.
+    /// `bytes` is empty for a file with no section (before version 40).
+    pub fn load(&mut self, bytes: &[u8], rand: &mut dyn FnMut() -> u32) {
+        for b in &mut self.branches {
+            b.level = 0;
+            for c in &mut b.categories {
+                c.tick = true;
+                c.programs.iter_mut().for_each(|p| p.progress = 0.0);
+            }
+        }
+        for (kind, name, value) in records(bytes) {
+            let name = name as i32;
+            match kind {
+                0 => {
+                    if let Some(b) = self.branches.iter_mut().find(|b| b.name == name) {
+                        b.level = Some(value as usize)
+                            .filter(|&l| l < b.funding.len())
+                            .unwrap_or(0);
+                    }
+                }
+                1 => {
+                    let mut all = self.branches.iter_mut().flat_map(|b| &mut b.categories);
+                    if let Some(c) = all.find(|c| c.name == name) {
+                        c.tick = value != 0;
+                    }
+                }
+                _ => {
+                    let categories = self.branches.iter_mut().flat_map(|b| &mut b.categories);
+                    let mut all = categories.flat_map(|c| &mut c.programs);
+                    if let Some(p) = all.find(|p| p.name == name) {
+                        p.progress = f32::from_bits(value);
+                    }
+                }
+            }
+        }
+        for b in &mut self.branches {
+            b.choose(&self.off, rand);
+        }
+    }
+
+    /// The research section as the writer makes it from the live tree (7.1, 7.5): the leading word,
+    /// then a record for each branch, its categories and their programs, then the end record.
+    pub fn save(&self) -> Vec<u8> {
+        let mut o = 0u32.to_le_bytes().to_vec();
+        let word = |o: &mut Vec<u8>, kind: i32, name: i32| {
+            o.extend(kind.to_le_bytes());
+            o.extend(name.to_le_bytes());
+        };
+        for b in &self.branches {
+            word(&mut o, 0, b.name);
+            o.extend((b.level as u32).to_le_bytes());
+            for c in &b.categories {
+                word(&mut o, 1, c.name);
+                o.push(c.tick.into());
+                for p in &c.programs {
+                    word(&mut o, 2, p.name);
+                    o.extend(p.progress.to_le_bytes());
+                }
+            }
+        }
+        o.extend((-1i32).to_le_bytes());
+        o
     }
 }
 
