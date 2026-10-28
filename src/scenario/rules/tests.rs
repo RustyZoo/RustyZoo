@@ -431,6 +431,24 @@ fn rule_6_needs_one_counted_exhibit() {
 }
 
 #[test]
+fn rule_10_answers_a_press_for_every_non_zero_ruleb() {
+    let env = Env::new(1, 0, None);
+    let gui = Gui::default();
+    let ask = |b| eval(&[10, b, 5, 0], 7, &env, &[], &gui);
+    assert_eq!(ask(2), 0, "the first question makes the entry, not a press");
+    gui.pressed(5, None);
+    assert_eq!(ask(2), 7, "ruleb 2 answers the press");
+    assert_eq!(ask(2), 0, "the press is consumed");
+    gui.pressed(5, None);
+    assert_eq!(ask(-1), 7, "a negative ruleb is a press too");
+    gui.pressed(5, None);
+    assert_eq!(ask(0), 0, "ruleb 0 reads the shown state, not a press");
+    gui.sync(&|id| id == 5, &|_| Vec::new());
+    assert_eq!(ask(0), 7, "ruleb 0 reads shown");
+    assert_eq!(ask(1), 7, "ruleb 0 did not consume the press");
+}
+
+#[test]
 fn rules_that_read_the_game_read_0_without_one() {
     let env = Env::new(1, 0, None);
     for rule in [0, 1, 2, 3, 4, 5, 6, 16] {
