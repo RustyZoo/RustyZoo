@@ -39,7 +39,7 @@ use crate::exhibit::rating;
 use crate::guest;
 use crate::money::{self, Money};
 use crate::research::Tree;
-use crate::scenario::{Env, Scenario};
+use crate::scenario::{Env, Game, Scenario};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -642,10 +642,13 @@ impl Sim {
         self.world_secs = self.world_secs.wrapping_add(total / 1000);
         // The scenario manager.
         if let Some(scenario) = &mut self.scenario {
-            let env = Env {
-                month: money.month as i32,
-                year: money.year as i32,
+            let game = Game {
+                world,
+                cat,
+                money,
+                status: &self.status,
             };
+            let env = Env::new(money.month as i32, money.year as i32, Some(game));
             scenario.update(step, &env, &mut self.lines);
         }
         // The research and marketing managers have nothing to do before M7.

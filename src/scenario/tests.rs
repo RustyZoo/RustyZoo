@@ -6,13 +6,18 @@ fn build(main: &str, extras: &[&str]) -> Scenario {
     Scenario::build("s.scn", &parse(main), &extras)
 }
 
-fn env(month: i32, year: i32) -> Env {
-    Env { month, year }
+/// The value of a rule with no interface.
+fn eval(rule: &[i32; 4], e: &Env) -> i32 {
+    rules::eval(rule, 0, e, &[], &Gui::default())
 }
 
-/// The value of a rule with no interface.
-fn read(rule: &[i32; 4], env: &Env) -> i32 {
-    eval(rule, 0, env, &Gui::default())
+/// The value of a rule with this interface.
+fn with_gui(rule: &[i32; 4], value: i32, e: &Env, gui: &Gui) -> i32 {
+    rules::eval(rule, value, e, &[], gui)
+}
+
+fn env(month: i32, year: i32) -> Env<'static> {
+    Env::new(month, year, None)
 }
 
 /// One pass of the manager.
@@ -273,12 +278,12 @@ fn start_triggers_fire_in_order_and_a_trigger_0_is_silent() {
 }
 
 #[test]
-fn rule_7_reads_the_date_and_rule_99_its_argument_and_others_are_stubs_that_read_0() {
+fn rule_7_reads_the_date_and_rule_99_its_argument_and_the_stubs_read_0() {
     let e = env(5, 2);
-    assert_eq!([0, 1, 2, 3].map(|b| read(&[7, b, 0, 0], &e)), [5, 2, 29, 0]);
-    assert_eq!(read(&[99, 0, -4, 0], &e), -4);
-    for rule in [0, 1, 4, 9, 10, 16, 100, -1] {
-        assert_eq!(read(&[rule, 0, 3, 0], &e), 0, "rule {rule}");
+    assert_eq!([0, 1, 2, 3].map(|b| eval(&[7, b, 0, 0], &e)), [5, 2, 29, 0]);
+    assert_eq!(eval(&[99, 0, -4, 0], &e), -4);
+    for rule in [0, 1, 4, 8, 9, 10, 12, 13, 14, 15, 16, 100, -1] {
+        assert_eq!(eval(&[rule, 0, 3, 0], &e), 0, "rule {rule}");
     }
     assert_eq!(env(12, i32::MAX).total_months(), i32::MAX);
 }
@@ -575,8 +580,8 @@ fn a_goal_of_an_extra_file_reads_the_popup_of_its_own_file() {
 #[test]
 fn rule_10_reads_whether_an_element_is_shown_or_was_pressed_since_the_last_question() {
     let (gui, e) = (Gui::default(), env(1, 0));
-    let shown = |gui: &Gui| eval(&[10, 0, 1000, 0], 5, &e, gui);
-    let pressed = |gui: &Gui, id| eval(&[10, 1, id, 0], 5, &e, gui);
+    let shown = |gui: &Gui| with_gui(&[10, 0, 1000, 0], 5, &e, gui);
+    let pressed = |gui: &Gui, id| with_gui(&[10, 1, id, 0], 5, &e, gui);
     // Nothing is known of an element until the application tells; asking registers it.
     assert_eq!(shown(&gui), 0);
     gui.sync(&|id| id == 1000, &|_| vec![]);
@@ -590,16 +595,16 @@ fn rule_10_reads_whether_an_element_is_shown_or_was_pressed_since_the_last_quest
     assert_eq!(pressed(&gui, 1001), 5, "seen once");
     assert_eq!(pressed(&gui, 1001), 0, "the question consumed it");
     // Another ruleb or an element of no interest: 0.
-    assert_eq!(eval(&[10, 2, 1000, 0], 5, &e, &gui), 0);
-    assert_eq!(eval(&[10, -1, 1000, 0], 5, &e, &gui), 0);
-    assert_eq!(eval(&[10, 0, i32::MIN, 0], 5, &e, &gui), 0);
+    assert_eq!(with_gui(&[10, 2, 1000, 0], 5, &e, &gui), 0);
+    assert_eq!(with_gui(&[10, -1, 1000, 0], 5, &e, &gui), 0);
+    assert_eq!(with_gui(&[10, 0, i32::MIN, 0], 5, &e, &gui), 0);
 }
 
 #[test]
 fn rule_11_reads_the_row_of_a_list_that_was_pressed() {
     let (gui, e) = (Gui::default(), env(1, 0));
-    let by_row = |gui: &Gui| eval(&[11, 0, 22900, 0], 0, &e, gui);
-    let by_text = |gui: &Gui| eval(&[11, 1, 22900, 22903], 0, &e, gui);
+    let by_row = |gui: &Gui| with_gui(&[11, 0, 22900, 0], 0, &e, gui);
+    let by_text = |gui: &Gui| with_gui(&[11, 1, 22900, 22903], 0, &e, gui);
     assert_eq!(
         (by_row(&gui), by_text(&gui)),
         (-2, -2),
@@ -647,6 +652,78 @@ fn rule_10_reads_a_shown_element_in_the_first_pass() {
     s.gui().sync(&|id| id == 1000, &|_| vec![]);
     pass(&mut s, &env(1, 0), &mut Vec::new());
     assert_eq!(states(&s)[1], 1);
+}
+
+#[test]
+fn rule_9_counts_the_goals_of_the_list_that_report_a_state_itself_included() {
+    // The timer holds 1 (no limit). `b` counts the goals reporting 1; the optional ones report 1.
+    let counts = |optional: &str, want: i32| {
+        let text = format!(
+            "[goals]\ngoal=a\ngoal=b\ngoal=c\n[a]\nrulea=99\narga=0\ntype=2\nvalue=1\n{optional}\n\
+             [b]\nrulea=9\nruleb=1\ntype=0\nvalue={want}\n[c]\nrulea=99\narga=0\ntype=2\nvalue=1\n{optional}\n"
+        );
+        let mut s = build(&text, &[]);
+        pass(&mut s, &env(1, 0), &mut Vec::new());
+        s.goals[2].state
+    };
+    // Alone the timer reports 1; with two optional goals, three.
+    assert_eq!([counts("", 1), counts("", 2)], [1, 0]);
+    assert_eq!([counts("optional=1", 3), counts("optional=1", 4)], [1, 0]);
+    // The goal itself is in the count: `b` is the only goal in progress.
+    let text = "[goals]\ngoal=b\n[b]\nrulea=9\nruleb=0\ntype=2\nvalue=1\nsticky=1\n";
+    let mut s = build(text, &[]);
+    pass(&mut s, &env(1, 0), &mut Vec::new());
+    assert_eq!(s.goals[1].state, 1);
+    // Any other state counts nothing.
+    let e = env(1, 0);
+    for b in [4, -1, i32::MAX] {
+        assert_eq!(
+            rules::eval(&[9, b, 0, 0], 0, &e, &[0, 1, 2, 3], &Gui::default()),
+            0
+        );
+    }
+    assert_eq!(
+        rules::eval(&[9, 2, 0, 0], 0, &e, &[0, 1, 2, 3, 2], &Gui::default()),
+        2
+    );
+}
+
+#[test]
+fn the_sim_step_reads_the_cash_and_the_zoo_status_for_a_goal() {
+    use crate::entity::Catalogue;
+    use crate::money::Money;
+    use crate::sim::Sim;
+    use crate::unit::testing::world_with;
+    use crate::zoo::Clocks;
+    // Goal `rich` completes at 1000 in cash; `rated` when the zoo rating, as the status keeps it, is 50.
+    let text = "[goals]\ngoal=rich\ngoal=rated\n\
+        [rich]\nrulea=1\nruleb=7\ntype=0\nvalue=1000\ntrulea=4\n\
+        [rated]\nrulea=1\nruleb=2\ntype=2\nvalue=50\ntrulea=5\n";
+    let (cat, mut w) = (Catalogue::default(), world_with((4, 4), |_| {}));
+    let (mut sim, mut money) = (Sim::new(b""), Money::default());
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim.start_scenario(build(text, &[]));
+    let step = |sim: &mut Sim, money: &mut Money, w: &mut crate::world::World| {
+        let data = &crate::behaviour::NoData;
+        sim.step_game(data, &cat, w, money, 1500, |_, _, _| {});
+        sim.take_lines()
+            .into_iter()
+            .filter(|l| l.starts_with("scenario trigger"))
+            .collect::<Vec<_>>()
+    };
+    money.cash = 999.0;
+    assert!(step(&mut sim, &mut money, &mut w).is_empty());
+    money.cash = 1000.0;
+    sim.status.rating = 50;
+    let lines = step(&mut sim, &mut money, &mut w);
+    assert_eq!(
+        lines,
+        [
+            "scenario trigger rich 1 4 0 0 0",
+            "scenario trigger rated 1 5 0 0 0"
+        ]
+    );
 }
 
 #[test]

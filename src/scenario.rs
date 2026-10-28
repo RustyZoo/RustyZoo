@@ -3,10 +3,11 @@
 //!
 //! The goal list is the timer, the goals of the file's `[goals]`, then those of each `[start]
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
-//! The rules and triggers are stubs but for rule 7 (the date), rule 99 (a constant), rules 10 and
-//! 11 (the interface) and trigger 2 (popups and elements): a trigger logs `scenario trigger` and
-//! does nothing else. The objectives list (4.5) and the end (5.4, 9) are here; saving comes with a
-//! later issue.
+//! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
+//! entities and the interface (rules 10 and 11); the research, awards and shows rules read 0. The
+//! triggers are stubs but for trigger 2 (popups and elements): a trigger logs `scenario trigger`
+//! and does nothing else. The objectives list (4.5) and the end (5.4, 9) are here; saving comes
+//! with a later issue.
 //!
 //! Trigger 2 (scenarios 7.1) and the interface rules 10 and 11 reach the interface through
 //! [`gui::Gui`]: a trigger leaves an [`Effect`] for the application, which tells back which
@@ -24,10 +25,12 @@ use crate::vfs::Vfs;
 pub use apply::Marks;
 pub use gui::{Effect, Gui};
 pub use popup::{Hint, Op, Popup};
+pub use rules::Game;
 
 mod apply;
 mod gui;
 mod popup;
+mod rules;
 
 #[cfg(test)]
 mod tests;
@@ -41,15 +44,26 @@ const PERIOD: u32 = 1500;
 const MAX_GOALS: u32 = 4096;
 const MAX_DEPTH: u32 = 16;
 
-/// What the rules read from the game.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Env {
+/// What the rules read from the game. Without a `game` the rules that read the zoo give 0.
+#[derive(Default)]
+pub struct Env<'a> {
     /// The accounts' month index (1 to 12) and year index (0 to 19).
     pub month: i32,
     pub year: i32,
+    pub game: Option<Game<'a>>,
+    cache: rules::Cache,
 }
 
-impl Env {
+impl<'a> Env<'a> {
+    pub fn new(month: i32, year: i32, game: Option<Game<'a>>) -> Env<'a> {
+        Env {
+            month,
+            year,
+            game,
+            cache: Default::default(),
+        }
+    }
+
     /// The month index plus 12 times the year index: 1 on the first day of a scenario.
     fn total_months(&self) -> i32 {
         self.month.saturating_add(self.year.saturating_mul(12))
@@ -184,37 +198,6 @@ fn int(s: Option<&Section>, key: &str) -> i32 {
     s.and_then(|s| s.get(key)).and_then(to_int).unwrap_or(0)
 }
 
-/// The value a rule reads; `value` is what the interface rules answer when they hold.
-fn eval(rule: &[i32; 4], value: i32, env: &Env, gui: &Gui) -> i32 {
-    match rule[0] {
-        7 => match rule[1] {
-            0 => env.month,
-            1 => env.year,
-            2 => env.total_months(),
-            _ => 0,
-        },
-        // The element `arga` is shown (`ruleb` 0) or was pressed since the last question (1).
-        10 => match rule[1] {
-            0 if gui.shown(rule[2]) => value,
-            1 if gui.take_press(rule[2]).is_some() => value,
-            _ => 0,
-        },
-        // A list box that was pressed: the row (`ruleb` 0), or 1 if the row's text is the string
-        // `argb`; -2 for the rest.
-        11 => {
-            let text = (rule[1] != 0).then(|| gui.text(rule[3]));
-            let row = gui.take_press(rule[2]).and_then(|p| p.row);
-            match (row, text) {
-                (Some((row, _)), None) => i32::try_from(row).unwrap_or(i32::MAX),
-                (Some((_, shown)), Some(text)) if shown == text => 1,
-                _ => -2,
-            }
-        }
-        99 => rule[2],
-        _ => 0,
-    }
-}
-
 impl Simple {
     /// The state the rule value gives (4.2), or none for a type that is not 0 to 8.
     fn judge(&self, r: i32) -> Option<u8> {
@@ -305,18 +288,18 @@ impl Goal {
     }
 
     /// One update (4.2, 4.4). The timer is updated by the manager, which knows the other goals.
-    fn update(&mut self, env: &Env, gui: &Gui, log: &mut Vec<String>) {
+    fn update(&mut self, env: &Env, states: &[u8], gui: &Gui, log: &mut Vec<String>) {
         let new = match &mut self.body {
             Body::Timer(_) => return,
             Body::Simple(s) => {
                 if s.sticky && self.state != 0 {
                     return;
                 }
-                s.judge(eval(&s.rule, s.value, env, gui))
+                s.judge(rules::eval(&s.rule, s.value, env, states, gui))
             }
             Body::Complex(children) => {
                 for c in children.iter_mut() {
-                    c.update(env, gui, log);
+                    c.update(env, states, gui, log);
                 }
                 let of = |c: &Goal| c.reported();
                 Some(if children.iter().any(|c| of(c) == 2) {
@@ -330,7 +313,7 @@ impl Goal {
             Body::Chain(children) => {
                 let mut state = 1;
                 for c in children.iter_mut() {
-                    c.update(env, gui, log);
+                    c.update(env, states, gui, log);
                     if c.reported() != 1 {
                         state = c.reported();
                         break;
@@ -425,6 +408,8 @@ pub struct Scenario {
     /// Whether the end was told.
     told: bool,
     goals: Vec<Goal>,
+    /// The state each goal of the list reports, kept in step with the goals for rule 9.
+    reported: Vec<u8>,
     /// The sections `[start] triggers` names, fired at the start.
     start: Vec<(String, Trigger)>,
     gathered: u32,
@@ -494,6 +479,7 @@ impl Scenario {
             .map_or(&[][..], |s| s.get_all("unlock"));
         Scenario {
             file: file.to_string(),
+            reported: goals.iter().map(Goal::reported).collect(),
             name: int(desc, "name"),
             story: desc
                 .and_then(|d| d.get("story"))
@@ -590,20 +576,26 @@ impl Scenario {
         let first = self.goals.iter().find(|g| g.reported() == 0 && g.text > 0);
         gui.set_goal_text(first.map_or(0, |g| g.text));
         let (timer, rest) = self.goals.split_first_mut().expect("the timer");
+        let seen = &mut self.reported;
         if at > 0 {
-            return rest[at - 1].update(env, gui, log);
+            rest[at - 1].update(env, seen, gui, log);
+            seen[at] = rest[at - 1].reported();
+            return;
         }
         if let Body::Timer(months) = timer.body
             && timer.state == 0
             && (0..total).contains(&months)
         {
             timer.state = 3;
-            for g in rest.iter_mut() {
-                g.update(env, gui, log);
+            seen[0] = 3;
+            for (i, g) in rest.iter_mut().enumerate() {
+                g.update(env, seen, gui, log);
+                seen[i + 1] = g.reported();
             }
             if rest.iter().any(|g| !matches!(g.reported(), 1 | 3)) {
                 timer.state = 2;
             }
+            seen[0] = timer.reported();
         }
     }
 
