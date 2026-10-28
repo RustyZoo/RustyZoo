@@ -349,12 +349,16 @@ pub(super) fn eval(rule: &[i32; 4], value: i32, env: &Env, states: &[u8], gui: &
             _ => 0,
         },
         9 => states.iter().filter(|&&s| i32::from(s) == rule[1]).count() as i32,
-        // The element `arga` is shown (`ruleb` 0) or was pressed since the last question (1).
-        10 => match rule[1] {
-            0 if gui.shown(rule[2]) => value,
-            1 if gui.take_press(rule[2]).is_some() => value,
-            _ => 0,
-        },
+        // The element `arga` is shown (`ruleb` 0) or was pressed since the last question (any other
+        // `ruleb`).
+        10 => {
+            let hit = if rule[1] == 0 {
+                gui.shown(rule[2])
+            } else {
+                gui.take_press(rule[2]).is_some()
+            };
+            if hit { value } else { 0 }
+        }
         // A list box that was pressed: the row (`ruleb` 0), or 1 if the row's text is the string
         // `argb`; -2 for the rest.
         11 => {
