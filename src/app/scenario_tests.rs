@@ -5,6 +5,7 @@ use super::*;
 use crate::lists::Scenario as Listed;
 use crate::menu::Start;
 use crate::money::Money;
+use crate::sprite::tests::Install;
 use crate::zoo::Zoo;
 
 const MAIN_PANEL: i32 = 2;
@@ -239,4 +240,93 @@ fn no_after_a_tutorial_shows_the_main_menu() {
         );
         assert!(app.camera().is_none() && shown(app, 26));
     });
+}
+
+/// Plays a start with these availability triggers over a lion (5) and a zebra (6), both
+/// available; the flags at the end, the message line and what the pass said.
+fn availability(name: &str, triggers: &[&str], body: impl FnOnce(&mut App, [bool; 2], &Install)) {
+    let list: String = (0..triggers.len())
+        .map(|i| format!("triggers=t{i}\n"))
+        .collect();
+    let sections: String = triggers
+        .iter()
+        .enumerate()
+        .map(|(i, t)| format!("[t{i}]\n{t}\n"))
+        .collect();
+    let text = format!(
+        "[duration]\nnummonths=-1\n[start]\n{list}{sections}\
+         [8]\nlayout=45000\nshortText1=153\nmodal=1\n"
+    );
+    let files = [("s/av.scn", text.into_bytes())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game(name, "", &files, cat, |app, install| {
+        play(app, "s/av.scn");
+        let cat = app.renderer.catalogue();
+        let build = &app.game.as_ref().unwrap().build;
+        let flags = [0, 1].map(|i| build.is_available(cat, i));
+        body(app, flags, install);
+    });
+}
+
+#[test]
+fn a_start_trigger_that_changed_a_flag_tells_its_message_or_popup() {
+    // Hide all, then the lion available with a message: the lion's name fills the string.
+    availability(
+        "avail-msg",
+        &[
+            "trulea=4\ntruleb=9",
+            "trulea=4\ntruleb=2\ntarga=5\ntargb=9201",
+        ],
+        |app, flags, _| {
+            assert_eq!(flags, [true, false]);
+            assert_eq!(app.interface().unwrap().text(7001).unwrap(), b"told lion");
+            assert!(!app.interface().unwrap().modal_open());
+        },
+    );
+    // The zebra hidden with a popup: the dialog opens with its text.
+    availability(
+        "avail-pop",
+        &["trulea=4\ntruleb=5\ntarga=6\ntargb=8"],
+        |app, flags, _| {
+            assert_eq!(flags, [true, false]);
+            let ui = app.interface().unwrap();
+            assert!(ui.modal_open());
+            assert_eq!(ui.text(45006).unwrap(), b"text-153");
+            assert_eq!(ui.text(7001).unwrap(), b"");
+        },
+    );
+    // Nothing changed (the lion is available already; no zebra has the id 99): nothing told.
+    availability(
+        "avail-none",
+        &[
+            "trulea=4\ntruleb=2\ntarga=5\ntargb=9201",
+            "trulea=4\ntruleb=5\ntarga=99\ntargb=8",
+        ],
+        |app, flags, _| {
+            assert_eq!(flags, [true, true]);
+            let ui = app.interface().unwrap();
+            assert!(!ui.modal_open());
+            assert_eq!(ui.text(7001).unwrap(), b"");
+        },
+    );
+}
+
+#[test]
+fn truleb_10_makes_the_type_available_for_good_and_stores_it_with_the_rewards() {
+    availability(
+        "avail-unlock",
+        &[
+            "trulea=4\ntruleb=9",
+            "trulea=4\ntruleb=10\ntarga=6\ntargb=9201",
+        ],
+        |app, flags, install| {
+            assert_eq!(flags, [false, true]);
+            let ini = std::fs::read_to_string(install.0.join("user/zoo.ini")).unwrap();
+            assert!(
+                ini.contains("unlockEntity0=6") && ini.contains("unlockCount=1"),
+                "{ini}"
+            );
+            assert_eq!(app.interface().unwrap().text(7001).unwrap(), b"");
+        },
+    );
 }

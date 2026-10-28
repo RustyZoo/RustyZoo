@@ -32,6 +32,16 @@ pub enum Which {
     Names(Vec<i32>),
     Animals,
     All,
+    /// Trigger 4 of `truleb` 10: the type is unlocked for good, like an ini reward.
+    Unlock(i32),
+}
+
+/// What an availability trigger tells when it really changed a flag (fresh runs only).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Tell {
+    /// The message line: the string with the name id of the type for its `%r`.
+    Message(i32, i32),
+    Popup(Box<Popup>),
 }
 
 /// An availability trigger: the types it reaches are made available or not.
@@ -39,6 +49,7 @@ pub enum Which {
 pub struct Avail {
     pub which: Which,
     pub on: bool,
+    pub tell: Option<Tell>,
 }
 
 impl Avail {
@@ -49,6 +60,7 @@ impl Avail {
             Which::Names(ids) => ids.contains(&ty.name_id),
             Which::Animals => ty.class == "animals",
             Which::All => true,
+            Which::Unlock(_) => false,
         }
     }
 }
@@ -137,6 +149,11 @@ impl Gui {
             p.hint.short = goal_text;
         }
         g.out.push(effect);
+    }
+
+    /// Shows a popup after the effects already left.
+    pub fn popup(&self, popup: Popup) {
+        self.push(Effect::Popup(popup));
     }
 
     pub(super) fn push_avail(&self, avail: Avail) {

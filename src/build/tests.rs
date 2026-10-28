@@ -1299,7 +1299,11 @@ fn the_ini_rewards_apply_after_the_start_triggers_whatever_they_hide() {
     let cat = types();
     let ini = Config::parse(b"[user]\nunlockCount=1\nunlockEntity0=102\n").unwrap();
     let flags = |build: &Build| -> Vec<bool> { (0..7).map(|i| build.avail.is(&cat, i)).collect() };
-    let hide = |which| Avail { which, on: false };
+    let hide = |which| Avail {
+        which,
+        on: false,
+        tell: None,
+    };
     // Hide all: the reward stays, and a trigger after hide-all can make another one available.
     let mut build = Build::new(3);
     let made = [
@@ -1307,6 +1311,7 @@ fn the_ini_rewards_apply_after_the_start_triggers_whatever_they_hide() {
         Avail {
             which: Which::Name(105),
             on: true,
+            tell: None,
         },
     ];
     assert!(build.after_triggers(&cat, &ini, &made));
@@ -1324,4 +1329,27 @@ fn the_ini_rewards_apply_after_the_start_triggers_whatever_they_hide() {
     build.after_triggers(&cat, &Config::default(), &made);
     assert_eq!(flags(&build), [false, true, false, true, true, true, true]);
     assert!(!build.after_triggers(&cat, &Config::default(), &[]));
+}
+
+#[test]
+fn an_unlock_trigger_makes_the_type_available_whatever_the_run_and_hide_all_comes_before() {
+    use crate::scenario::{Avail, Which};
+    let cat = types();
+    let tell = |which, on| Avail {
+        which,
+        on,
+        tell: None,
+    };
+    let mut build = Build::new(3);
+    assert!(build.change(&cat, &[tell(Which::All, false)]));
+    assert!(!build.avail.is(&cat, 1));
+    assert!(build.change(&cat, &[tell(Which::Unlock(102), true)]));
+    assert!(build.avail.is(&cat, 1) && !build.avail.is(&cat, 0));
+    // Again, a bad id and a missing type change nothing.
+    for id in [102, 0, -5, 9999] {
+        assert!(
+            !build.change(&cat, &[tell(Which::Unlock(id), true)]),
+            "{id}"
+        );
+    }
 }

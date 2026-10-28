@@ -71,22 +71,27 @@ impl Availability {
         let count = ini_whole(ini, "user", "unlockCount").unwrap_or(0);
         let mut changed = false;
         for n in 0..count.clamp(0, MAX_UNLOCKS) {
-            let Some(id) = ini_whole(ini, "user", &format!("unlockEntity{n}")).filter(|&id| id > 0)
-            else {
-                continue;
-            };
-            let Some(first) = cat.types.iter().find(|t| t.name_id == id) else {
-                continue;
-            };
-            for (i, ty) in cat.types.iter().enumerate() {
-                if ty.name_id == id
-                    && ty.class == first.class
-                    && ty.type_name == first.type_name
-                    && !self.is(cat, i)
-                {
-                    self.0.insert(i, true);
-                    changed = true;
-                }
+            let id = ini_whole(ini, "user", &format!("unlockEntity{n}")).unwrap_or(0);
+            changed |= self.unlock_id(cat, id);
+        }
+        changed
+    }
+
+    /// One reward: every type of the class and type name of the first type with this name id, and
+    /// that name id, becomes available. An id of 0 or less is skipped. Whether a flag changed.
+    pub fn unlock_id(&mut self, cat: &Catalogue, id: i32) -> bool {
+        let Some(first) = cat.types.iter().find(|t| t.name_id == id && id > 0) else {
+            return false;
+        };
+        let mut changed = false;
+        for (i, ty) in cat.types.iter().enumerate() {
+            if ty.name_id == id
+                && ty.class == first.class
+                && ty.type_name == first.type_name
+                && !self.is(cat, i)
+            {
+                self.0.insert(i, true);
+                changed = true;
             }
         }
         changed

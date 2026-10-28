@@ -150,3 +150,17 @@ fn bad_rewards_unlock_nothing() {
     );
     assert!(!a.is(&cat, 0), "beyond the bound");
 }
+
+#[test]
+fn one_reward_raises_the_group_of_the_first_type_with_the_id_and_skips_a_bad_id() {
+    let (cat, mut a) = (catalogue(), Availability::default());
+    for id in [0, -1, i32::MIN, 9999] {
+        assert!(!a.unlock_id(&cat, id), "{id}");
+    }
+    assert!(a.unlock_id(&cat, 5006));
+    assert_eq!(
+        flags(&a, &cat),
+        [true, true, true, false, true, false, false]
+    );
+    assert!(!a.unlock_id(&cat, 5006), "nothing left to change");
+}
