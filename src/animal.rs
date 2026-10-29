@@ -1281,6 +1281,7 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     if let Some(female) = unit.sex.take() {
         a.female = female;
     }
+    a.crated = std::mem::take(&mut unit.boxed);
 }
 
 /// The update of the values at a status tick (animals 3.3).

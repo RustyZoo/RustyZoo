@@ -66,6 +66,51 @@ impl Avail {
     }
 }
 
+/// What triggers 1, 3, 5, 8 and 9 ask of the game (7.2, 7.4, 7.5). The popup comes after it, when
+/// there is one and the run is fresh.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Deed {
+    /// Trigger 1: the message of string `text` built with `value`, of kind `kind`.
+    Say { kind: i32, text: i32, value: i32 },
+    /// Trigger 3: `how` 0 a donation, 1 cash added, 2 cash set to `amount`; then the message of
+    /// string `text` (kind 4) with the money text of `amount` (with cents), when `text` is above 0.
+    Cash { how: i32, amount: i32, text: i32 },
+    /// Trigger 5: an animal of name id `name` and subtype `sub`, in its crate near the gate; the
+    /// popup only when there was a place for it.
+    Boxed {
+        sub: u8,
+        name: i32,
+        popup: Option<Popup>,
+    },
+    /// Trigger 8: every entity of the name id (`by` 0), family (1), genus (2) or species (3) `id`
+    /// goes.
+    Remove {
+        by: i32,
+        id: i32,
+        popup: Option<Popup>,
+    },
+    /// Trigger 9: whether the animal panel's sell button works.
+    Sale { allowed: bool, popup: Option<Popup> },
+}
+
+impl Deed {
+    /// What a trigger run again after a load keeps (7): the removal and the switch, no popup.
+    pub(super) fn quiet(self) -> Option<Deed> {
+        match self {
+            Deed::Remove { by, id, .. } => Some(Deed::Remove {
+                by,
+                id,
+                popup: None,
+            }),
+            Deed::Sale { allowed, .. } => Some(Deed::Sale {
+                allowed,
+                popup: None,
+            }),
+            _ => None,
+        }
+    }
+}
+
 /// A press the rules have not read yet: a list box adds the row selected and its text.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Press {
@@ -83,6 +128,7 @@ struct Inner {
     texts: HashMap<i32, Vec<u8>>,
     out: Vec<Effect>,
     avail: Vec<Avail>,
+    deeds: Vec<Deed>,
 }
 
 /// The state shared by the rules and the triggers. Rules read it through `&self`.
@@ -143,6 +189,15 @@ impl Gui {
 
     pub(super) fn push_avail(&self, avail: Avail) {
         self.0.borrow_mut().avail.push(avail);
+    }
+
+    pub(super) fn push_deed(&self, deed: Deed) {
+        self.0.borrow_mut().deeds.push(deed);
+    }
+
+    /// The deeds the triggers left since the last call.
+    pub fn take_deeds(&self) -> Vec<Deed> {
+        std::mem::take(&mut self.0.borrow_mut().deeds)
     }
 
     /// The availability changes the triggers left since the last call.

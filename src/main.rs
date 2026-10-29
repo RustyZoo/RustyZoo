@@ -480,11 +480,16 @@ usage: rustyzoo [--data <dir>] <command>
                       first step of the simulation is the cap; scenarios and freeform maps empty
                       `lastfile` and run the goals of their `.scn` file (`sim scenario start
                       FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; the
-                      triggers are stubs but for trigger 2, which shows popups (`sim scenario popup
+                      trigger 2 shows popups (`sim scenario popup
                       LAYOUT modal|open`, with a hint line, `sim scenario hint LAYOUT`) and
                       disables, enables, hides, shows and presses elements by id (`sim scenario
-                      element ID disable|enable|hide|show|press`); the research, awards and shows
-                      rules are stubs, and rules 10 and 11 read what the interface shows and what
+                      element ID disable|enable|hide|show|press`); trigger 1 shows a message
+                      (`sim scenario message TEXT kind K`), 3 changes the cash (`sim scenario cash
+                      HOW AMOUNT`), 5 boxes an animal at the gate (`sim scenario boxed NAME id N`,
+                      or `none`), 8 removes animals (`sim scenario remove BY ID count N`) and 9
+                      switches the animal panel's sell button (`sim scenario sale on|off`);
+                      triggers 6 and 10 (awards, forced research) do nothing yet; the research,
+                      awards and shows rules are stubs, and rules 10 and 11 read what the interface shows and what
                       was pressed; a game that opens gives the elements back). When the scenario
                       ends, its result is
                       written to `[scenario]` of the settings of the user folder if lower than

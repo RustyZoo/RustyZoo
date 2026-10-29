@@ -491,10 +491,15 @@ pub fn place(
 /// rings of Manhattan distance 3 to 50, each scored 0 to 3 (a passable quarter, flat, all four
 /// quarters empty); the first with 3 wins, else the best. `None` when no tile qualifies.
 pub fn crate_spot(world: &World, start: usize) -> Option<usize> {
+    crate_spot_in(world, start, CRATE_RANGE)
+}
+
+/// [`crate_spot`] with the rings going up to Manhattan distance `range`.
+pub fn crate_spot_in(world: &World, start: usize, range: i32) -> Option<usize> {
     let width = world.zoo.width as usize;
     let (sx, sy) = ((start % width) as i32, (start / width) as i32);
     let mut best: Option<(u32, usize)> = None;
-    for r in 3..=CRATE_RANGE {
+    for r in 3..=range {
         for dx in -r..=r {
             let k = r - dx.abs();
             for dy in [-k, k] {

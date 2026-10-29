@@ -1247,3 +1247,131 @@ fn full_game_goal_states_round_trip() {
     eprintln!("{files} files, {exact} with the goals they hold");
     assert!(exact > 0);
 }
+
+/// The deeds the start triggers of `body` leave, with `[9]` a popup.
+fn deeds(body: &str) -> Vec<Deed> {
+    let s = build(
+        &format!("[start]\ntriggers=t\n[t]\n{body}\n[9]\nlayout=45200\n"),
+        &[],
+    );
+    s.start(&mut Vec::new());
+    s.gui().take_deeds()
+}
+
+#[test]
+fn triggers_1_3_5_8_and_9_leave_a_deed_and_a_truleb_they_do_not_know_nothing() {
+    let nine = || Popup::read(&Config::parse(b"[9]\nlayout=45200\n").unwrap(), 9);
+    assert_eq!(
+        deeds("trulea=1\ntruleb=2\ntarga=7\ntargb=40"),
+        [Deed::Say {
+            kind: 2,
+            text: 7,
+            value: 40
+        }]
+    );
+    let cash = |how, amount, text| Deed::Cash { how, amount, text };
+    assert_eq!(
+        deeds("trulea=3\ntruleb=1\ntarga=-500\ntargb=9"),
+        [cash(1, -500, 9)]
+    );
+    // A missing amount or text is 0; a huge amount stays; a mode out of 0 to 2 still leaves the
+    // deed, which changes no cash but tells (7.2).
+    assert_eq!(deeds("trulea=3"), [cash(0, 0, 0)]);
+    assert_eq!(
+        deeds("trulea=3\ntruleb=2\ntarga=2147483647"),
+        [cash(2, i32::MAX, 0)]
+    );
+    for b in [-1, 3, 2_000_000_000] {
+        assert_eq!(
+            deeds(&format!("trulea=3\ntruleb={b}\ntarga=5")),
+            [cash(b, 5, 0)],
+            "{b}"
+        );
+    }
+    let boxed = |sub, name| Deed::Boxed {
+        sub,
+        name,
+        popup: nine(),
+    };
+    assert_eq!(deeds("trulea=5\ntarga=7\ntargb=9"), [boxed(b'm', 7)]);
+    assert_eq!(
+        deeds("trulea=5\ntruleb=1\ntarga=7\ntargb=9"),
+        [boxed(b'f', 7)]
+    );
+    assert_eq!(
+        deeds("trulea=5\ntruleb=2\ntarga=-7\ntargb=9"),
+        [boxed(b'y', -7)]
+    );
+    for b in [-1, 3, i32::MAX] {
+        assert!(
+            deeds(&format!("trulea=5\ntruleb={b}\ntarga=7")).is_empty(),
+            "{b}"
+        );
+    }
+    let remove = |by, id, popup| Deed::Remove { by, id, popup };
+    assert_eq!(deeds("trulea=8\ntruleb=3\ntarga=12"), [remove(3, 12, None)]);
+    assert_eq!(
+        deeds("trulea=8\ntarga=12\ntargb=9"),
+        [remove(0, 12, nine())]
+    );
+    // A kind out of 0 to 3 removes nothing, the popup still follows (7.5).
+    for b in [-1, 4, i32::MAX] {
+        assert_eq!(
+            deeds(&format!("trulea=8\ntruleb={b}\ntarga=7")),
+            [remove(b, 7, None)],
+            "{b}"
+        );
+    }
+    // The switch: above 0 allowed; 0, negative or missing forbids.
+    let sale = |allowed| Deed::Sale {
+        allowed,
+        popup: None,
+    };
+    assert_eq!(deeds("trulea=9\ntarga=1"), [sale(true)]);
+    assert_eq!(deeds("trulea=9\ntarga=2147483647"), [sale(true)]);
+    for a in ["targa=0", "targa=-1", ""] {
+        assert_eq!(deeds(&format!("trulea=9\n{a}")), [sale(false)], "{a}");
+    }
+    // Triggers 6 and 10 (awards, forced research) are not here yet.
+    assert!(deeds("trulea=6\ntarga=1").is_empty());
+    assert!(deeds("trulea=10").is_empty());
+}
+
+#[test]
+fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_without_a_popup() {
+    let goal = |body: &str| {
+        format!("[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\n{body}\n[9]\nlayout=45200\n")
+    };
+    for (body, want) in [
+        (
+            "trulea=8\ntarga=12\ntargb=9",
+            Some(Deed::Remove {
+                by: 0,
+                id: 12,
+                popup: None,
+            }),
+        ),
+        (
+            "trulea=9\ntarga=0\ntargb=9",
+            Some(Deed::Sale {
+                allowed: false,
+                popup: None,
+            }),
+        ),
+        ("trulea=1\ntarga=7", None),
+        ("trulea=3\ntruleb=1\ntarga=5", None),
+        ("trulea=5\ntarga=7\ntargb=9", None),
+    ] {
+        let mut s = build(&goal(body), &[]);
+        s.resume(&[0, 1], true, &mut Vec::new());
+        assert_eq!(
+            s.gui().take_deeds(),
+            want.into_iter().collect::<Vec<_>>(),
+            "{body}"
+        );
+        // Fresh, at the pass that completes the goal: the deed comes whole.
+        let mut s = build(&goal(body), &[]);
+        pass(&mut s, &env(1, 0), &mut Vec::new());
+        assert_eq!(s.gui().take_deeds().len(), 1, "{body}");
+    }
+}
