@@ -22,6 +22,15 @@ impl UiStrings for Texts {
             9101 => "text-9101 %d".into(),
             9201 => "told %r".into(),
             5 => "lion".into(),
+            1 | 2 => format!("branch-{id}"),
+            4001 => "status".into(),
+            23020 => "done %r".into(),
+            23021 => "all %s".into(),
+            23030 => "Not Funded".into(),
+            23031 => "no-program".into(),
+            23032 => "no-category".into(),
+            23103 => "%s max".into(),
+            23400..=23499 => format!("p{id}"),
             151 | 153 | 318 | 11645 | 11646 | 9001 | 16100 | 16101 => format!("text-{id}"),
             _ => String::new(),
         }
@@ -52,7 +61,8 @@ pub(super) fn interface(install: &Install) -> Interface {
         [e]\ntype=UILayout\nlayout=ui/panel.lyt\n\
         [h]\ntype=UILayout\nlayout=ui/hint.lyt\n\
         [w]\ntype=UILayout\nlayout=ui/end.lyt\n\
-        [o]\ntype=UILayout\nlayout=ui/obj.lyt\n";
+        [o]\ntype=UILayout\nlayout=ui/obj.lyt\n\
+        [r]\ntype=UILayout\nlayout=ui/res.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
         "[LayoutInfo]\nid=26\nlayer=2\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
@@ -106,7 +116,9 @@ pub(super) fn interface(install: &Install) -> Interface {
                   [a]\ntype=UIButton\nid=2001\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
                   [b]\ntype=UIButton\nid=2002\nx=10\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
                   [c]\ntype=UIButton\nid=4107\nx=20\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
-                  action=3\ntarget=803\n"
+                  action=3\ntarget=803\n\
+                  [r]\ntype=UIButton\nid=1019\nx=30\ny=0\ndx=8\ndy=8\ncolorasicon=1\nstate=2048\n\
+                  action=3\ntarget=15\n"
                     .to_vec(),
             ),
             (
@@ -126,6 +138,18 @@ pub(super) fn interface(install: &Install) -> Interface {
                   target=7\naction=5\n\
                   [o]\ntype=UIButton\nid=45212\nx=20\ny=0\ndx=10\ndy=10\ncolorasicon=1\n\
                   target=1\naction=5\n"
+                    .to_vec(),
+            ),
+            (
+                "ui/res.lyt",
+                b"[LayoutInfo]\nid=15\nlayer=1\nx=0\ny=0\ndx=40\ndy=40\nstate=1\n\
+                  [t]\ntype=UIRadioSet\nid=4007\nbutton=4008\nbutton=4009\nbutton=4010\n\
+                  [a]\ntype=UIButton\nid=4008\nx=0\ny=0\ndx=4\ndy=4\nstate=8\nstate=4096\n\
+                  [b]\ntype=UIButton\nid=4009\nx=4\ny=0\ndx=4\ndy=4\nstate=4096\n\
+                  [c]\ntype=UIButton\nid=4010\nx=8\ny=0\ndx=4\ndy=4\nstate=4096\n\
+                  [m]\ntype=UIButton\nid=4003\nx=0\ny=4\ndx=4\ndy=4\n\
+                  [p]\ntype=UIButton\nid=4004\nx=4\ny=4\ndx=4\ndy=4\n\
+                  [l]\ntype=UIListBox\nid=4022\nx=0\ny=8\ndx=30\ndy=30\n"
                     .to_vec(),
             ),
             (
@@ -1205,6 +1229,162 @@ fn a_version_45_block_is_the_name_alone_and_the_scenario_resumes() {
         assert_eq!(
             (scenario.file(), scenario.states()),
             ("s/play.scn", vec![0, 0])
+        );
+    });
+}
+
+/// A scenario of one branch (levels none and max) with two programs and one of its own.
+fn research_files() -> Vec<(&'static str, Vec<u8>)> {
+    vec![
+        ("s/rp.scn", b"[start]\nresearch=resp.cfg\n".to_vec()),
+        ("resp.cfg", b"[branches]\nbranch=pb.cfg\n".to_vec()),
+        (
+            "pb.cfg",
+            b"[branch]\nname=1\ncategory=pc.cfg\nfunding=none\nfunding=max\n\
+              [none]\nname=23100\n[max]\nname=23103\ncost=2000\nwork=45\n"
+                .to_vec(),
+        ),
+        (
+            "pc.cfg",
+            b"[category]\nname=2\nprogram=pa.cfg\nprogram=pd.cfg\n".to_vec(),
+        ),
+        (
+            "pa.cfg",
+            b"[research]\nname=23401\ncost=90\norder=1\n".to_vec(),
+        ),
+        (
+            "pd.cfg",
+            b"[research]\nname=23402\ncost=10\norder=2\n".to_vec(),
+        ),
+    ]
+}
+
+fn research_start(app: &mut App) {
+    app.pass(0, &[]);
+    app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+        .unwrap();
+    app.begin(&Start {
+        path: "saved.zoo".into(),
+        label: "scenario".into(),
+        forget_last: true,
+        freeform: false,
+        cash: Default::default(),
+        reset: false,
+        reset_fences: false,
+        scenario: Some("s/rp.scn".into()),
+    });
+}
+
+#[test]
+fn the_r_key_opens_the_research_panel_and_its_buttons_change_the_tree() {
+    with_game("research-panel", "", &research_files(), None, |app, _| {
+        research_start(app);
+        let tree = |app: &App| app.sim.research().unwrap().branches[0].clone();
+        assert!(!shown(app, 15));
+        let mut now = 100;
+        let mut told = |app: &mut App, commands: &[Command]| {
+            app.pass(now / 20, commands);
+            let lead = format!("pass {} t={now} panel ", now / 20);
+            now += 100;
+            app.log_lines((now - 100) / 20, now - 100)
+                .iter()
+                .filter_map(|l| l.strip_prefix(&lead))
+                .map(String::from)
+                .collect::<Vec<_>>()
+        };
+        // The key shows the panel, which is filled at once (the game is not paused).
+        let lines = told(app, &[Command::Char(b'r')]);
+        assert!(shown(app, 15));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with("research tab 0 side 0 \"p23401\" \"Not Funded\""),
+            "{lines:?}"
+        );
+        // The key again closes it.
+        told(app, &[Command::Char(b'R')]);
+        assert!(!shown(app, 15));
+        told(app, &[Command::Char(b'r')]);
+        // The Research tab, then the plus button: the level goes to max, the minus button back.
+        app.interface().unwrap().press_button(4009);
+        let lines = told(app, &[]);
+        assert!(lines[0].contains("research tab 1"), "{lines:?}");
+        app.interface().unwrap().press_button(4004);
+        let lines = told(app, &[]);
+        assert_eq!(tree(app).level, 1);
+        assert!(lines[0].contains("funding \"$67 max\""), "{lines:?}");
+        app.interface().unwrap().press_button(4004);
+        told(app, &[]);
+        assert_eq!(tree(app).level, 1, "held at the last level");
+        app.interface().unwrap().press_button(4003);
+        app.interface().unwrap().press_button(4003);
+        told(app, &[]);
+        assert_eq!(tree(app).level, 0);
+        // A row flips its category's tick; a row that is not there flips nothing.
+        for row in [-1, 5, i32::MIN, i32::MAX] {
+            app.research_tick(row);
+        }
+        assert!(tree(app).categories[0].tick);
+        app.research_tick(0);
+        let lines = told(app, &[]);
+        assert!(!tree(app).categories[0].tick);
+        assert!(lines[0].contains("ticks 0"), "{lines:?}");
+        // On the Status tab the buttons change nothing.
+        app.interface().unwrap().press_button(4008);
+        app.research_fund(true);
+        app.research_tick(0);
+        assert_eq!((tree(app).level, tree(app).categories[0].tick), (0, false));
+    });
+}
+
+#[test]
+fn a_completion_opens_a_dialog_and_a_branch_with_nothing_left_a_second_one() {
+    use crate::research::Done;
+    with_game("research-dialog", "", &research_files(), None, |app, _| {
+        research_start(app);
+        let done = |name| Done {
+            name,
+            target: 0,
+            effect: 5,
+            vals: [0; 3],
+        };
+        // The branch still has a program: one dialog, with the message of the line.
+        app.sim.push_research_done(done(23401));
+        app.research_done();
+        let ui = app.interface().unwrap();
+        assert_eq!(
+            ui.take_events()
+                .iter()
+                .filter(|e| *e == "notify 45000")
+                .count(),
+            1
+        );
+        assert_eq!(ui.text(45006).unwrap(), b"done p23401");
+        assert!(!ui.modal_open(), "the game runs on");
+        // Every program done: the second dialog names the branch.
+        for b in &mut app.sim.research_mut().unwrap().branches {
+            b.current = None;
+        }
+        app.sim.push_research_done(done(23402));
+        app.research_done();
+        let ui = app.interface().unwrap();
+        assert_eq!(
+            ui.take_events()
+                .iter()
+                .filter(|e| *e == "notify 45000")
+                .count(),
+            2
+        );
+        assert_eq!(ui.text(45006).unwrap(), b"all branch-1");
+        // A program the tree does not know opens the one dialog only.
+        app.sim.push_research_done(done(99));
+        app.research_done();
+        let ui = app.interface().unwrap();
+        assert_eq!(
+            ui.take_events()
+                .iter()
+                .filter(|e| *e == "notify 45000")
+                .count(),
+            1
         );
     });
 }

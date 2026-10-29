@@ -22,6 +22,8 @@ const LONG_HELP: i32 = 30000;
 const MAX_WIDTH: i32 = 4096;
 /// The longest a setting can keep a popup open: one hour.
 const MAX_POPUP_DELAY: i32 = 3_600_000;
+/// The string numbers that carry the tooltips of [`Interface::set_tip`]: this plus the element's id.
+const OWN_TIPS: i32 = 1_000_000_000;
 
 /// The settings of the section `[UI]` that the interface reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,6 +87,18 @@ impl Interface {
     /// Replaces the settings the interface reads from the ini file.
     pub fn set_settings(&mut self, settings: Settings) {
         self.settings = settings;
+    }
+
+    /// Gives the element `id` a tooltip of its own, `text`; an empty text takes it away. `false`
+    /// if there is no such element.
+    pub fn set_tip(&mut self, id: i32, text: String) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let key = OWN_TIPS.saturating_add(id);
+        self.strings.replaced.insert(key, text.clone());
+        self.tree.elements[i].help_id = if text.is_empty() { vec![] } else { vec![key] };
+        true
     }
 
     /// The tooltip element is never hit.

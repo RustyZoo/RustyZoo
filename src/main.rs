@@ -341,7 +341,10 @@ usage: rustyzoo [--data <dir>] <command>
                       not while the game is paused; its pick-up button picks it up and its follow button (showing its type's picture, set likewise) keeps the view
                       on it. `panel guest ID \"NAME\" happiness H drink D food F restroom R energy E time \"TEXT\"
                       favourite \"NAME\" thoughts [TEXTS]` tells what it shows, when it opens and when a value changes, and
-                      `panel guest none` when it closes. A click on a guest building (a burger stand, a restroom) opens its
+                      `panel guest none` when it closes. The research button (or the R key) shows the research panel of a game with a research tree
+                      (a scenario or freeform start, a saved game that names one): the Status tab, and the Research and Conservation tabs with the category ticks, the funding buttons and the
+                      current program, refreshed every second of clock while shown and not while the game is paused; `panel research tab N ...` tells what it shows when it changes.
+                      A completed program opens an OK dialog the game runs on under, and a second one when its branch has nothing left to research. A click on a guest building (a burger stand, a restroom) opens its
                       panel: a building that charges has the price field with up and down buttons (0.25 a press, within the
                       economy's building price maximum and the type's low and high cost; the field of the full game can be
                       typed into, the number going through the same bounds), the income, upkeep and profit since built and per month, the months open

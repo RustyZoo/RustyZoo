@@ -1,11 +1,14 @@
 //! The research step's meeting with the interface (research 5.4): what a completed program does.
 
-use super::App;
+use super::{App, QUESTION};
+use crate::panel::research::branch_of_tab;
 use crate::research::Tree;
 use crate::text::to_cp1252;
+use crate::ui::interface::Buttons;
 
-/// The string of "%r is now available."
+/// The strings of "%r is now available." and of "%s: All selected programs have been completed."
 const COMPLETED: i32 = 23020;
+const ALL_DONE: i32 = 23021;
 
 /// The upgrade lists of the building types for a tree just built or loaded (research 6.3, 7.2).
 pub(super) fn upgrades(tree: &Tree) -> crate::building::upgrade::Upgrades {
@@ -63,6 +66,41 @@ impl App<'_> {
             }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
             ui.message(&to_cp1252(&text));
+            ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
+            // A branch with no program left says so in a second dialog (5.4).
+            let idle = self.sim.research().and_then(|t| t.branch_of(d.name));
+            if let Some(branch) = idle.filter(|b| b.current.is_none()) {
+                let text = ui
+                    .string(ALL_DONE)
+                    .replacen("%s", &ui.string(branch.name), 1);
+                ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
+            }
+        }
+    }
+
+    /// A funding button of the panel (8.5): the level of the tab's branch moves one step.
+    pub(super) fn research_fund(&mut self, up: bool) {
+        let branch = self.ui.as_ref().and_then(branch_of_tab);
+        if let (Some(b), Some(tree), Some(game)) = (branch, self.sim.research_mut(), &mut self.game)
+        {
+            tree.fund(b, up);
+            game.research.clock.force = true;
+        }
+    }
+
+    /// A row of the category list was selected (8.3): the tick of that category flips.
+    pub(super) fn research_tick(&mut self, row: i32) {
+        let branch = self.ui.as_ref().and_then(branch_of_tab);
+        if let (Some(b), Some(tree), Some(game)) = (branch, self.sim.research_mut(), &mut self.game)
+        {
+            if let Ok(row) = usize::try_from(row) {
+                tree.toggle(b, row);
+            }
+            game.research.clock.force = true;
+        }
+        // A second click on the row would deselect it and say -1: no row stays selected.
+        if let Some(ui) = &mut self.ui {
+            ui.select_row(crate::panel::research::LIST, None);
         }
     }
 }
