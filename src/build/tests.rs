@@ -2,7 +2,7 @@ use super::*;
 use crate::config::Config;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
-use crate::ui::layout::{DISABLED, Tree};
+use crate::ui::layout::{DISABLED, Expansion, Kind, Tree};
 
 /// A type of the class with a definition file of this text.
 fn ty(class: &'static str, type_name: &str, subtype: &str, ini: &str) -> EntityType {
@@ -262,6 +262,10 @@ impl Strings for Texts {
         match id {
             22100 => "$".into(),
             22900 => "All".into(),
+            22901 => "Base".into(),
+            22902 => "Dino".into(),
+            22903 => "Aqua".into(),
+            2024 => "Dinosaurs".into(),
             11 => "Fences".into(),
             12 => "Paths".into(),
             13 => "Foliage".into(),
@@ -286,7 +290,8 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [b]\ntype=UILayout\nlayout=ui/c.lyt\n[c]\ntype=UILayout\nlayout=ui/o.lyt\n\
     [d]\ntype=UIButton\nid=1002\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=8\n\
     [e]\ntype=UIButton\nid=1001\ndx=5\ndy=5\nstate=2048\naction=3\ntarget=4\n\
-    [f]\ntype=UILayout\nlayout=ui/a.lyt\n[h]\ntype=UILayout\nlayout=ui/p.lyt\n";
+    [f]\ntype=UILayout\nlayout=ui/a.lyt\n[h]\ntype=UILayout\nlayout=ui/p.lyt\n\
+    [g]\ntype=UILayout\nlayout=ui/x.lyt\n";
 
 /// One panel: the layout `id`, title, expansion button, list (with its radio set, template and
 /// bar from `list` + 1 to + 3), the tabs, the rotate buttons, the name and the cost.
@@ -400,6 +405,12 @@ pub(crate) fn interface(name: &str) -> (Interface, Vfs, Install) {
             ("ui/p.lyt", hire.into_bytes()),
             ("ui/c.lyt", construction.into_bytes()),
             ("ui/o.lyt", objects.into_bytes()),
+            (
+                "ui/x.lyt",
+                b"[LayoutInfo]\nid=152\nx=0\ny=0\ndx=60\ndy=60\nstate=1\n\
+                  [l]\ntype=UIListBox\nid=22900\nx=0\ny=0\ndx=50\ndy=50\n"
+                    .to_vec(),
+            ),
             (
                 "ui/infoimg.cfg",
                 b"[Images]\n; c\n9400 =  ui/h.tga \nlabel\n9600=ui/l.tga\n9601=ui/gone.tga\n"
@@ -1216,7 +1227,8 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
     assert_eq!(build.take_made(), [1]);
     // With the expansion the scientist is listed with the zookeeper, before the tour guide.
     assert_eq!(
-        items_of(&cat, &Availability::default(), "staff", 1, |t| t.subtype
+        items_of(&cat, &Availability::default(), "staff", 1.into(), |t| t
+            .subtype
             == b"m"),
         [0, 4, 7, 2]
     );
@@ -1357,5 +1369,207 @@ fn an_unlock_trigger_makes_the_type_available_whatever_the_run_and_hide_all_come
             !build.change(&cat, &[tell(Which::Unlock(id), true)]),
             "{id}"
         );
+    }
+}
+
+// ---- The expansion selector
+
+/// A path type of these expansion members (none: the base game's).
+fn member(name: &str, members: &str) -> EntityType {
+    path(name, &format!("paths\n{members}"), 10, 1)
+}
+
+#[test]
+fn the_selected_expansion_filters_the_list() {
+    let cat = catalogue(vec![
+        member("none", ""),
+        member("zoo", "zoo"),
+        member("dino", "dinosaur"),
+        member("aqua", "aqua"),
+        member("both", "dinosaur\naqua"),
+        member("all", "aqua\nall"),
+    ]);
+    let shown = |on, pick| {
+        let filter = Filter { on, pick };
+        names(
+            &cat,
+            &items(&cat, &Availability::default(), "paths", filter),
+        )
+    };
+    // On one expansion: its members and the types of no expansion under the base game, whatever
+    // is installed or off.
+    assert_eq!(shown(7, Some(1)), ["none", "zoo", "all"]);
+    assert_eq!(shown(0, Some(2)), ["dino", "both", "all"]);
+    assert_eq!(shown(0, Some(3)), ["aqua", "both", "all"]);
+    // On All: unless every expansion the type is a member of is off.
+    assert_eq!(
+        shown(7, None),
+        ["none", "zoo", "dino", "aqua", "both", "all"]
+    );
+    assert_eq!(shown(4, None), ["none", "zoo", "all"]);
+    assert_eq!(shown(1, None), ["none", "dino", "both", "all"]);
+    assert_eq!(shown(0, None), ["none", "all"]);
+}
+
+/// The Dino-and-Aqua install of the fixture: rows 1 to 3 are the entries 0 to 2.
+fn selector(stored: u32) -> Build {
+    let entry = |id| Expansion {
+        id,
+        list: 22901 + id,
+    };
+    Build::new(3).with_selector(
+        vec![entry(0), entry(1), entry(2), entry(7), entry(-1)],
+        stored,
+    )
+}
+
+#[test]
+fn the_selector_fills_its_list_and_the_value_comes_from_a_file() {
+    let (mut ui, vfs, _install) = interface("selector-rows");
+    let (cat, mut log) = (types(), vec![]);
+    let mut build = selector(2);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    let Kind::ListBox(l) = &ui.tree.elements[ui.tree.find(22900).unwrap()].kind else {
+        panic!("not a list");
+    };
+    let rows: Vec<_> = l.rows.rows.iter().map(|r| r.text.clone()).collect();
+    let rows: Vec<_> = rows.iter().map(|t| String::from_utf8_lossy(t)).collect();
+    assert_eq!(
+        rows,
+        ["All", "Base", "Dino", "Aqua"],
+        "ids out of 0 to 2 have no row"
+    );
+    assert_eq!(l.rows.selected, Some(2));
+    assert_eq!((build.value(), build.stored()), (2, 2));
+    // A value with no row counts as All, and is stored as it was read; the biggest and the
+    // negative ones are 0.
+    for (stored, value, kept) in [(0, 0, 0), (4, 0, 4), (9, 0, 9), (u32::MAX, 0, 0)] {
+        let build = selector(stored);
+        assert_eq!((build.value(), build.stored()), (value, kept), "{stored}");
+    }
+    let mut build = selector(2);
+    build.set_scenario([false; 4], Some(-3));
+    assert_eq!((build.value(), build.stored()), (0, 0));
+    build.set_scenario([false; 4], Some(i32::MAX));
+    assert_eq!(build.value(), 0);
+    build.set_scenario([false, false, true, false], None);
+    assert_eq!(build.value(), 0, "no value leaves it");
+    build.set_scenario([false; 4], Some(3));
+    assert_eq!(build.value(), 3);
+    // Without rows (the base trial) nothing can be selected.
+    assert_eq!(Build::new(0).with_selector(vec![], 3).value(), 0);
+}
+
+#[test]
+fn choosing_a_row_filters_the_open_panel_and_forgets_what_the_tabs_chose() {
+    let (mut ui, vfs, _install) = interface("selector-pick");
+    let cat = catalogue(vec![
+        scenery("paths", "paths", "dirt", "paths\nzoo", 10, 101),
+        scenery("paths", "paths", "sand", "paths\ndinosaur", 20, 102),
+        scenery("paths", "paths", "ice", "paths", 30, 103),
+        scenery("building", "building", "shop", "structures\naqua", 50, 106),
+    ]);
+    let (mut build, mut log) = (selector(0), vec![]);
+    assert!(ui.show(8));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    tab(&mut ui, &mut build, (&vfs, &cat), 3056, &mut log);
+    assert_eq!(build.list, [0, 1, 2]);
+    // The Objects panel's tab, chosen before: it will reopen on its first tab.
+    ui.set_button(3053, true, true);
+    ui.set_button(3050, false, true);
+    // The list opens from the button and closes on a choice.
+    assert!(ui.show(152));
+    log.clear();
+    build.pick_row(&mut ui, &vfs, &cat, 3, &mut log);
+    assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN);
+    assert_eq!(log[0], "tool expansion 3");
+    assert!(build.list.is_empty(), "no path of Marine Mania");
+    assert_eq!(text(&ui, 3204), "Aqua");
+    assert_eq!(
+        state_of(&ui, 3053) & SELECTED,
+        0,
+        "the closed panel: first tab"
+    );
+    assert_ne!(
+        state_of(&ui, 3056) & SELECTED,
+        0,
+        "the open one keeps its tab"
+    );
+    log.clear();
+    build.pick_row(&mut ui, &vfs, &cat, 2, &mut log);
+    assert_eq!(build.list, [1]);
+    assert_eq!((build.tool(), text(&ui, 3204)), (Some(1), "Dino".into()));
+    build.pick_row(&mut ui, &vfs, &cat, 1, &mut log);
+    assert_eq!(
+        build.list,
+        [0, 2],
+        "the base game: and the types of no expansion"
+    );
+    build.pick_row(&mut ui, &vfs, &cat, 0, &mut log);
+    assert_eq!(
+        (build.list.clone(), text(&ui, 3204)),
+        (vec![0, 1, 2], "All".into())
+    );
+    assert_eq!(
+        build.tool(),
+        Some(0),
+        "the first item again, not the remembered one"
+    );
+    // The same row again changes nothing; none, a row out of the list and a huge one only close it.
+    log.clear();
+    for row in [0, -1, 4, 5, i32::MIN, i32::MAX] {
+        assert!(ui.show(152));
+        build.pick_row(&mut ui, &vfs, &cat, row, &mut log);
+        assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN, "{row}");
+    }
+    assert!(log.is_empty(), "{log:?}");
+    assert_eq!(build.value(), 0);
+    // A closed panel hides the list too.
+    assert!(ui.show(152));
+    Build::hide_panels(&mut ui);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN);
+}
+
+#[test]
+fn a_scenario_turns_expansions_off_for_the_all_list() {
+    let (mut ui, vfs, _install) = interface("selector-off");
+    let cat = catalogue(vec![
+        scenery("paths", "paths", "dirt", "paths", 10, 101),
+        scenery("paths", "paths", "sand", "paths\ndinosaur", 20, 102),
+        scenery("paths", "paths", "ice", "paths\naqua", 30, 103),
+    ]);
+    let (mut build, mut log) = (selector(0), vec![]);
+    build.set_scenario([false, false, true, false], None);
+    assert!(ui.show(8));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    tab(&mut ui, &mut build, (&vfs, &cat), 3056, &mut log);
+    assert_eq!(build.list, [0, 2]);
+    build.set_scenario([false, false, true, true], Some(1));
+    assert_eq!(build.value(), 1);
+    build.pick_row(&mut ui, &vfs, &cat, 0, &mut log);
+    assert_eq!(
+        (build.list.clone(), build.value()),
+        (vec![0], 0),
+        "All with both off"
+    );
+}
+
+#[test]
+fn the_animals_title_follows_the_selector() {
+    let (mut ui, vfs, _install) = interface("selector-title");
+    let cat = types();
+    let (mut build, mut log) = (selector(0), vec![]);
+    assert!(ui.show(3));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(text(&ui, 2023), "Creatures");
+    for (row, want) in [
+        (3, "Buildings"),
+        (2, "Dinosaurs"),
+        (1, "Buildings"),
+        (0, "Creatures"),
+    ] {
+        build.pick_row(&mut ui, &vfs, &cat, row, &mut log);
+        assert_eq!(text(&ui, 2023), want, "row {row}");
     }
 }

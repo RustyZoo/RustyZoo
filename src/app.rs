@@ -43,7 +43,7 @@ use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
-use crate::ui::layout::installed_expansions;
+use crate::ui::layout::{expansion_entries, installed_expansions};
 use crate::world::World;
 use crate::zoo::{Entity, Zoo};
 
@@ -759,6 +759,7 @@ impl<'a> App<'a> {
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
         let goals = (zoo.scenario_states(), zoo.version >= 86);
+        let stored = zoo.expansion;
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
@@ -828,6 +829,7 @@ impl<'a> App<'a> {
             finances: Finances::default(),
             awards_page: Awards::default(),
             build: Build::new(installed_expansions(self.renderer.vfs()))
+                .with_selector(expansion_entries(self.renderer.vfs()), stored)
                 .with_exhibits(exhibits)
                 .unlocked(
                     self.renderer.catalogue(),
@@ -877,6 +879,8 @@ impl<'a> App<'a> {
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
+            // The file's selector value stands: the scenario's set-up only disables entries.
+            game.build.set_scenario(tree.off, None);
             game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
@@ -1812,6 +1816,9 @@ impl<'a> App<'a> {
                 }
                 Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
                 Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),
+                Action::Row(crate::build::SELECTOR_LIST, row) if self.game.is_some() => {
+                    self.expansion_row(row);
+                }
                 Action::Row(research_panel::LIST, row) if self.game.is_some() => {
                     self.research_tick(row);
                 }
@@ -2067,6 +2074,7 @@ impl<'a> App<'a> {
                     // A free program changes the animals the map placed (7.4).
                     crate::animal::lengthen(&mut game.world, &life);
                     game.build.start_research(cat, &flags);
+                    game.build.set_scenario(tree.off, tree.selection);
                     game.world.units.upgrades = research::upgrades(&tree);
                 }
                 self.sim.set_research(tree);

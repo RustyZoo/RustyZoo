@@ -333,3 +333,29 @@ fn showing_a_layout_shows_its_whole_subtree_but_not_what_is_never_shown() {
         assert_eq!(state(&tree, id) & HIDDEN, HIDDEN, "{id}");
     }
 }
+
+#[test]
+fn the_expansions_are_the_xpac_files_by_id() {
+    let files: Vec<(&str, Vec<u8>)> = [
+        ("xpac02.cfg", "[expansion]\nid = 2\nlistid = 22903\n"),
+        (
+            "xpac00.cfg",
+            "[expansion]\nid = 0\nname = zoo\nlistid = 22901\n",
+        ),
+        ("xpac05.cfg", "[expansion]\nid = 0\nlistid = 5\n"),
+        ("xpac06.cfg", "[expansion]\nid = x\nlistid = 6\n"),
+        ("xpac07.cfg", "[expansion]\nid = 7\n"),
+        ("xpac08.cfg", "[other]\nid = 8\nlistid = 8\n"),
+        ("xpac10.cfg", "[expansion]\nid = -1\nlistid = 9\n"),
+    ]
+    .map(|(n, t)| (n, t.as_bytes().to_vec()))
+    .into();
+    let install = Install::new("ui-expansions", &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let entry = |id, list| Expansion { id, list };
+    assert_eq!(
+        expansion_entries(&vfs),
+        [entry(-1, 9), entry(0, 22901), entry(2, 22903)]
+    );
+    assert!(expansion_entries(&Vfs::open(&Install::new("ui-none", &[]).0).unwrap()).is_empty());
+}

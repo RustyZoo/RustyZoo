@@ -334,7 +334,10 @@ impl App<'_> {
         }
         game.research.shown = shown;
         if shown && game.research.clock.due(now, ticking, research::PERIOD) {
-            let line = game.research.refresh(ui, self.sim.research(), vfs);
+            let selector = (game.build.value(), game.build.label(ui));
+            let line =
+                game.research
+                    .refresh(ui, self.sim.research(), vfs, (selector.0, &selector.1));
             self.panel_lines.extend(line);
         }
         game.awards_page

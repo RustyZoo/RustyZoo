@@ -119,6 +119,8 @@ pub struct Tree {
     pub branches: Vec<Branch>,
     /// The expansion entries that are disabled (3.5): all, base game, first expansion, second expansion.
     pub off: [bool; 4],
+    /// The value a start sets the purchase panels' selector to (3.5); none leaves it as it was.
+    pub selection: Option<i32>,
     /// The manager's accumulator, in milliseconds (5.1).
     pub(crate) acc: u32,
 }
@@ -158,6 +160,7 @@ impl Tree {
             .map_or(&[][..], |s| s.get_all("research"));
         let mut tree = Tree {
             off: expansions_off(main.section("desc")),
+            selection: expansion_selection(main.section("desc")),
             ..Tree::default()
         };
         let mut left = MAX_PROGRAMS;
@@ -405,6 +408,19 @@ fn expansions_off(desc: Option<&Section>) -> [bool; 4] {
         [false, false, own != 2, own != 3]
     } else {
         [false; 4]
+    }
+}
+
+/// The value the selector is set to at a start (3.5): the base game for the base scenarios, the
+/// scenario's `defaultExpansion` (else its `expansion`) for a locked one, else nothing.
+fn expansion_selection(desc: Option<&Section>) -> Option<i32> {
+    let name = int(desc, "name", 0);
+    if (16000..=16015).contains(&name) || name == 16022 {
+        Some(1)
+    } else if int(desc, "expansionLocked", 0) != 0 {
+        Some(int(desc, "defaultExpansion", int(desc, "expansion", 0)))
+    } else {
+        None
     }
 }
 

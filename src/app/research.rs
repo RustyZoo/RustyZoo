@@ -89,13 +89,24 @@ impl App<'_> {
         }
     }
 
+    /// A row of the expansion selector was chosen (entity types 10.2): the purchase list is made
+    /// again and the research panel follows (research 8.3).
+    pub(super) fn expansion_row(&mut self, row: i32) {
+        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
+        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        game.build.pick_row(ui, vfs, cat, row, &mut self.tool_lines);
+        game.research.clock.force = true;
+    }
+
     /// A row of the category list was selected (8.3): the tick of that category flips.
     pub(super) fn research_tick(&mut self, row: i32) {
         let branch = self.ui.as_ref().and_then(branch_of_tab);
         if let (Some(b), Some(tree), Some(game)) = (branch, self.sim.research_mut(), &mut self.game)
         {
             if let Ok(row) = usize::try_from(row) {
-                tree.toggle(b, row);
+                tree.toggle(b, row, game.build.value());
             }
             game.research.clock.force = true;
         }

@@ -20,14 +20,21 @@ use crate::terrain::Mode;
 use crate::text::format::whole_units;
 use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
-use crate::ui::layout::{HIDDEN, Picture, SELECTED};
+use crate::ui::layout::{Expansion, HIDDEN, Picture, SELECTED};
+use crate::ui::widgets::Row;
 use crate::vfs::Vfs;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-/// The expansions a type can be a member of, with their bit in [`crate::ui::layout::installed_expansions`].
-const EXPANSIONS: [(&str, i32); 2] = [("dinosaur", 1), ("aqua", 2)];
-/// The string of "All" (the expansion selector, which stays there).
+/// The expansions a type can be a member of, by selector value minus 1 (the entry ids of
+/// research 3.5: base game 1, Dinosaur Digs 2, Marine Mania 3), with their bit in a [`Filter`]'s
+/// `on`: the base game is bit 4, the others are those of [`crate::ui::layout::installed_expansions`].
+const EXPANSIONS: [(&str, i32); 3] = [("zoo", 4), ("dinosaur", 1), ("aqua", 2)];
+/// The string of "All", the selector's first row and its text while nothing is chosen.
+const ALL: i32 = 22900;
+/// The selector's layout and its list.
+const SELECTOR: i32 = 152;
+pub const SELECTOR_LIST: i32 = 22900;
 pub const CONSTRUCTION: i32 = 8;
 pub const OBJECTS: i32 = 4;
 pub const ADOPT: i32 = 3;
@@ -41,9 +48,10 @@ const PANEL_COUNT: usize = 4;
 const HIRE_PANEL: usize = 3;
 /// The string of the Animals tab's sub-title while the expansion selector is on All.
 const CREATURES: i32 = 2025;
+/// The Animals tab's sub-title on Dinosaur Digs (unit placing 3.2).
+const DINOSAURS: i32 = 2024;
 /// The preferred object's picture and its border on the Adopt panel.
 const PREFERRED: (i32, i32) = (2060, 2070);
-const ALL: i32 = 22900;
 /// The bulldozer button of the left bar.
 pub const BULLDOZER: i32 = 1028;
 /// A bulldozer press becomes an area drag when the pointer moves more than this many pixels.
@@ -52,10 +60,26 @@ const SWEEP_PIXELS: i64 = 16;
 const NO_HABITAT: f32 = 9410.0;
 const BAD_HABITAT: f32 = 9414.0;
 
-/// Whether the type is a member of the purchase list `tag` (entity types 10.2, with the selector
-/// on All): a member of the tag, and either of `all` or not only of expansions that are not
-/// installed (`expansions`, a mask).
-fn listed(ty: &EntityType, tag: &str, expansions: i32) -> bool {
+/// What the purchase lists filter by: the expansions that are on (a mask) and the selector.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Filter {
+    on: i32,
+    /// The selector's value, 1 to 3 for an expansion; none for All.
+    pick: Option<usize>,
+}
+
+/// A mask of the installed expansions with the selector on All (the base game is always on).
+impl From<i32> for Filter {
+    fn from(on: i32) -> Filter {
+        Filter {
+            on: on | EXPANSIONS[0].1,
+            pick: None,
+        }
+    }
+}
+
+/// Whether the type is a member of the purchase list `tag` (entity types 10.2).
+fn listed(ty: &EntityType, tag: &str, filter: Filter) -> bool {
     let Some(members) = ty.config.as_deref().and_then(|c| c.section("Member")) else {
         return false;
     };
@@ -65,12 +89,14 @@ fn listed(ty: &EntityType, tag: &str, expansions: i32) -> bool {
     if tag == "developer" || members.has("all") {
         return true;
     }
-    let own: Vec<i32> = EXPANSIONS
-        .iter()
-        .filter(|(name, _)| members.has(name))
-        .map(|e| e.1)
+    let own: Vec<usize> = (0..EXPANSIONS.len())
+        .filter(|&i| members.has(EXPANSIONS[i].0))
         .collect();
-    own.is_empty() || own.iter().any(|bit| expansions & bit != 0)
+    match filter.pick {
+        // On one expansion: its members, and the types of no expansion under the base game.
+        Some(v) => own.contains(&(v - 1)) || (own.is_empty() && v == 1),
+        None => own.is_empty() || own.iter().any(|&i| filter.on & EXPANSIONS[i].1 != 0),
+    }
 }
 
 /// The types of the purchase list `tag` that a panel shows, as indices into the catalogue, in the
@@ -80,9 +106,9 @@ pub fn items(
     catalogue: &Catalogue,
     avail: &Availability,
     tag: &str,
-    expansions: i32,
+    filter: impl Into<Filter>,
 ) -> Vec<usize> {
-    items_of(catalogue, avail, tag, expansions, |_| true)
+    items_of(catalogue, avail, tag, filter.into(), |_| true)
 }
 
 /// [`items`] keeping the types that satisfy `keep`.
@@ -90,12 +116,12 @@ fn items_of(
     catalogue: &Catalogue,
     avail: &Availability,
     tag: &str,
-    expansions: i32,
+    filter: Filter,
     keep: impl Fn(&EntityType) -> bool,
 ) -> Vec<usize> {
     let shown = |i: usize| {
         let ty = &catalogue.types[i];
-        avail.is(catalogue, i) && listed(ty, tag, expansions) && keep(ty)
+        avail.is(catalogue, i) && listed(ty, tag, filter) && keep(ty)
     };
     let mut list: Vec<usize> = (0..catalogue.types.len()).filter(|&i| shown(i)).collect();
     let key = |&i: &usize| order(&catalogue.types[i], tag);
@@ -419,7 +445,17 @@ struct Last {
 
 /// What the player has done in the panels.
 pub struct Build {
+    /// The expansions installed (a mask).
     expansions: i32,
+    /// The rows of the selector after All, and its value: 0 for All, else the entry id plus 1.
+    /// Kept as stored in a file, even when no row has it (see [`Build::value`]).
+    entries: Vec<Expansion>,
+    selector: i32,
+    /// The expansion entries a scenario disables (research 3.5): all, base game, Dinosaur Digs,
+    /// Marine Mania.
+    off: [bool; 4],
+    /// The selector's list was filled.
+    rowed: bool,
     /// Which types the lists show (entity types 10.4).
     avail: Availability,
     /// The panel shown, a position in [`PANELS`].
@@ -468,6 +504,10 @@ impl Build {
     pub fn new(expansions: i32) -> Build {
         Build {
             expansions,
+            entries: Vec::new(),
+            selector: 0,
+            off: [false; 4],
+            rowed: false,
             avail: Availability::default(),
             open: None,
             list: Vec::new(),
@@ -500,6 +540,115 @@ impl Build {
     pub fn unlocked(mut self, cat: &Catalogue, ini: &Config) -> Build {
         self.avail.unlock(cat, ini);
         self
+    }
+
+    /// The selector has the rows of `entries` (those of the three known expansions) and the value
+    /// a file stored (zoo format 9.2).
+    pub fn with_selector(mut self, entries: Vec<Expansion>, stored: u32) -> Build {
+        entries
+            .into_iter()
+            .filter(|e| (0..EXPANSIONS.len() as i32).contains(&e.id))
+            .for_each(|e| self.entries.push(e));
+        self.selector = i32::try_from(stored).unwrap_or(0);
+        self
+    }
+
+    /// A scenario's start sets the entries it disables and, for a start, the selector (research
+    /// 3.5). It comes before a panel opens.
+    pub fn set_scenario(&mut self, off: [bool; 4], selection: Option<i32>) {
+        self.off = off;
+        if let Some(value) = selection {
+            self.selector = value;
+        }
+    }
+
+    /// The value a file stores: the selector as it is held.
+    pub fn stored(&self) -> u32 {
+        u32::try_from(self.selector).unwrap_or(0)
+    }
+
+    /// The selector's value: 0 for All, else the entry id plus 1 of a row it has. A value with no
+    /// row (a file's, or an install without that expansion) counts as All.
+    pub fn value(&self) -> i32 {
+        let known = self.entries.iter().any(|e| e.id + 1 == self.selector);
+        if known { self.selector } else { 0 }
+    }
+
+    /// What the purchase lists filter by now.
+    fn filter(&self) -> Filter {
+        let mut on = 0;
+        for (i, (_, bit)) in EXPANSIONS.iter().enumerate() {
+            let installed = *bit == EXPANSIONS[0].1 || self.expansions & bit != 0;
+            if installed && !self.off[i + 1] {
+                on |= bit;
+            }
+        }
+        Filter {
+            on,
+            pick: usize::try_from(self.value()).ok().filter(|&v| v > 0),
+        }
+    }
+
+    /// The text of the selector: the string of the selected row.
+    pub fn label(&self, ui: &Interface) -> String {
+        let entry = self.entries.iter().find(|e| e.id + 1 == self.value());
+        ui.string(entry.map_or(ALL, |e| e.list))
+    }
+
+    /// The selector's list gets its rows: All, then the entries; the selected one is marked.
+    fn fill_selector(&mut self, ui: &mut Interface) {
+        let row = |id| Row {
+            text: to_cp1252(&ui.string(id)),
+            ..Row::default()
+        };
+        let rows = (std::iter::once(ALL).chain(self.entries.iter().map(|e| e.list)))
+            .map(row)
+            .collect();
+        ui.refill_rows(SELECTOR_LIST, rows);
+        self.mark_selector(ui);
+    }
+
+    fn mark_selector(&self, ui: &mut Interface) {
+        let at = self.entries.iter().position(|e| e.id + 1 == self.value());
+        ui.select_row(SELECTOR_LIST, Some(at.map_or(0, |i| i + 1)));
+    }
+
+    /// A row of the selector's list was chosen (-1 for none): the list closes. A new value makes
+    /// every tab forget its item, both panels' rotation steps 0 and the panels that are not open
+    /// reopen on their first tab (placing 3.5), and the open list is made again (placing 3.4).
+    pub fn pick_row(
+        &mut self,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        cat: &Catalogue,
+        row: i32,
+        log: &mut Vec<String>,
+    ) {
+        let value = match usize::try_from(row) {
+            Ok(0) => Some(0),
+            Ok(r) => self.entries.get(r - 1).map(|e| e.id + 1),
+            Err(_) => None,
+        };
+        if let Some(i) = ui.tree.find(SELECTOR) {
+            ui.tree.hide(i);
+            ui.touch();
+        }
+        let Some(value) = value.filter(|&v| v != self.value()) else {
+            return self.mark_selector(ui);
+        };
+        self.selector = value;
+        self.chosen = [[None; 4]; PANEL_COUNT];
+        self.step = [0; PANEL_COUNT];
+        for (p, panel) in PANELS.iter().enumerate() {
+            if self.open != Some(p) {
+                Self::first_tab(ui, panel);
+            }
+        }
+        log.push(format!("tool expansion {value}"));
+        if let Some(p) = self.open {
+            self.fill(ui, vfs, cat, p, log);
+        }
+        self.mark_selector(ui);
     }
 
     /// The tree of a new game is built (research 7.4): its programs not done make their targets
@@ -817,12 +966,16 @@ impl Build {
     /// A game was opened: both panels reopen on their first tab (placing 3.5).
     pub fn first_tabs(ui: &mut Interface) {
         for panel in &PANELS {
-            for (n, &tab) in panel.tabs.iter().chain(panel.other_tabs).enumerate() {
-                ui.set_button(tab, n == 0, true);
-            }
-            for (n, &sex) in panel.sexes.iter().enumerate() {
-                ui.set_button(sex, n == 0, true);
-            }
+            Self::first_tab(ui, panel);
+        }
+    }
+
+    fn first_tab(ui: &mut Interface, panel: &Panel) {
+        for (n, &tab) in panel.tabs.iter().chain(panel.other_tabs).enumerate() {
+            ui.set_button(tab, n == 0, true);
+        }
+        for (n, &sex) in panel.sexes.iter().enumerate() {
+            ui.set_button(sex, n == 0, true);
         }
     }
 
@@ -873,6 +1026,9 @@ impl Build {
 
     /// Notices that a panel was shown or hidden since the last call, and acts on it.
     pub fn sync(&mut self, ui: &mut Interface, vfs: &Vfs, cat: &Catalogue, log: &mut Vec<String>) {
+        if !std::mem::replace(&mut self.rowed, true) {
+            self.fill_selector(ui);
+        }
         self.notice_bulldozer(ui, log);
         self.notice_gate(ui, log);
         let shown = PANELS.iter().position(|p| {
@@ -902,6 +1058,9 @@ impl Build {
         }
         ui.set_button(PANELS[p].bar, false, true);
         ui.touch();
+        if let Some(i) = ui.tree.find(SELECTOR) {
+            ui.tree.hide(i);
+        }
         self.stop_gate(ui, log);
         (self.open, self.held, self.terrain, self.drag) = (None, None, None, None);
         log.push("tool panel none".into());
@@ -1032,9 +1191,14 @@ impl Build {
             }
         }
         ui.set_text(panel.title, &to_cp1252(&ui.string(title)));
-        ui.set_text(panel.expansion, &to_cp1252(&ui.string(ALL)));
+        ui.set_text(panel.expansion, &to_cp1252(&self.label(ui)));
         if panel.layout == ADOPT && tag == "animals" {
-            ui.set_text(panel.title, &to_cp1252(&ui.string(CREATURES)));
+            let title = match self.value() {
+                0 => CREATURES,
+                2 => DINOSAURS,
+                _ => title,
+            };
+            ui.set_text(panel.title, &to_cp1252(&ui.string(title)));
         }
         // The Animals tab lists each species once, as the sex of the sex buttons, and the Hire
         // panel the staff of the sex drawn.
@@ -1047,11 +1211,11 @@ impl Build {
             (None, _) => Vec::new(),
             (Some(_), Some(male)) => {
                 let sex = [&b"f"[..], b"m"][usize::from(male)];
-                items_of(cat, &self.avail, &tag, self.expansions, |ty| {
+                items_of(cat, &self.avail, &tag, self.filter(), |ty| {
                     is_unit(ty) && ty.subtype == sex
                 })
             }
-            (Some(_), None) => items(cat, &self.avail, &tag, self.expansions),
+            (Some(_), None) => items(cat, &self.avail, &tag, self.filter()),
         };
         if panel.empty != 0 {
             ui.set_hidden(panel.empty, !self.list.is_empty());

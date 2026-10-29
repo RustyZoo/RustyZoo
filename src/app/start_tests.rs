@@ -1087,6 +1087,91 @@ fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back()
 }
 
 #[test]
+fn a_scenario_start_sets_the_selector_and_leaves_a_freeform_start_the_files_value() {
+    let more = [
+        ("xpac00.cfg", b"[expansion]\nid=0\nlistid=22901\n".to_vec()),
+        ("xpac02.cfg", b"[expansion]\nid=2\nlistid=22903\n".to_vec()),
+        ("s/base.scn", b"[desc]\nname=16001\n".to_vec()),
+        (
+            "s/locked.scn",
+            b"[desc]\nexpansionLocked=1\nexpansion=3\ndefaultExpansion=1\n".to_vec(),
+        ),
+        ("s/none.scn", b"[desc]\nname=17000\n".to_vec()),
+    ];
+    with_game("selector-start", "", &more, None, |app, _| {
+        app.pass(0, &[]);
+        let started = |app: &mut App, scenario: &str, stored| {
+            let mut zoo = Zoo::parse(&map()).unwrap();
+            zoo.expansion = stored;
+            app.open_game(zoo, Money::default()).unwrap();
+            let start = Start {
+                path: "saved.zoo".into(),
+                label: "scenario".into(),
+                forget_last: true,
+                freeform: false,
+                cash: Default::default(),
+                reset: false,
+                reset_fences: false,
+                scenario: Some(scenario.into()),
+            };
+            app.begin(&start);
+            app.game.as_ref().map(|g| g.build.value())
+        };
+        assert_eq!(started(app, "s/base.scn", 3), Some(1), "the base game");
+        assert_eq!(started(app, "s/locked.scn", 0), Some(1), "defaultExpansion");
+        assert_eq!(started(app, "s/none.scn", 3), Some(3), "the file's value");
+        assert_eq!(started(app, "s/none.scn", 7), Some(0), "no such row");
+    });
+}
+
+#[test]
+fn the_selector_takes_the_files_value_and_the_save_writes_the_value_it_holds() {
+    let more = [
+        (
+            "xpac00.cfg",
+            b"[expansion]\nid=0\nname=zoo\nlistid=22901\n".to_vec(),
+        ),
+        (
+            "xpac02.cfg",
+            b"[expansion]\nid=2\nname=aqua\nlistid=22903\n".to_vec(),
+        ),
+    ];
+    with_game("selector-save", "", &more, None, |app, files| {
+        app.pass(0, &[]);
+        let written = |app: &mut App| {
+            let file = files.0.join("out.zoo");
+            app.save_game(file.to_str().unwrap());
+            Zoo::parse(&std::fs::read(file).unwrap()).unwrap().expansion
+        };
+        let value = |app: &App| {
+            app.game
+                .as_ref()
+                .map(|g| (g.build.value(), g.build.stored()))
+        };
+        let open = |app: &mut App, stored: u32| {
+            let mut zoo = Zoo::parse(&map()).unwrap();
+            zoo.expansion = stored;
+            app.open_zoo(zoo, Money::default(), true).unwrap();
+        };
+        // A row of the file is the value; a value without a row counts as All and is kept.
+        open(app, 3);
+        assert_eq!((value(app), written(app)), (Some((3, 3)), 3));
+        open(app, 2);
+        assert_eq!((value(app), written(app)), (Some((0, 2)), 2));
+        open(app, u32::MAX);
+        assert_eq!((value(app), written(app)), (Some((0, 0)), 0));
+        // Choosing a row (the first is All, then the files' ids in order) is what a save writes.
+        app.expansion_row(2);
+        assert_eq!((value(app), written(app)), (Some((3, 3)), 3));
+        app.expansion_row(0);
+        assert_eq!((value(app), written(app)), (Some((0, 0)), 0));
+        app.expansion_row(-1);
+        app.expansion_row(9);
+        assert_eq!(value(app), Some((0, 0)));
+    });
+}
+
+#[test]
 fn a_saved_game_whose_scenario_cannot_be_read_is_refused_and_the_game_open_stays() {
     with_menu("research-refused", "", |app, _| {
         app.pass(0, &[]);
