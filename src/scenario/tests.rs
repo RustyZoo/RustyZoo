@@ -306,6 +306,28 @@ fn a_scenario_is_read_from_the_install_and_an_unreadable_extra_file_is_skipped()
 }
 
 #[test]
+fn a_scenario_file_needs_a_line_starting_with_a_bracket() {
+    use crate::sprite::tests::Install;
+    let install = Install::new(
+        "scenario-header",
+        &[
+            ("x/empty.scn", Vec::new()),
+            ("x/text.scn", b"goal=a\n; [x]\nkey=[y]\n".to_vec()),
+            ("x/one.scn", b" \t[x]".to_vec()),
+            ("x/open.scn", b"[x\n".to_vec()),
+            ("x/noname.scn", b"[]\n".to_vec()),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    for name in ["empty", "text"] {
+        assert!(Scenario::prepare(&vfs, &format!("x/{name}.scn")).is_none());
+    }
+    for name in ["one", "open", "noname"] {
+        assert!(Scenario::prepare(&vfs, &format!("x/{name}.scn")).is_some());
+    }
+}
+
+#[test]
 fn an_extra_value_names_every_file_its_prefix_and_suffix_match_and_no_other() {
     use crate::sprite::tests::Install;
     let main =
@@ -1043,7 +1065,7 @@ fn a_goal_trigger_run_again_after_a_load_keeps_the_change_and_the_unlock_and_tel
         text += &goal(name, 0, 2, 1, keys);
     }
     let mut s = build(&text, &[]);
-    s.resume(&[0, 1, 1, 1, 1], &mut Vec::new());
+    s.resume(&[0, 1, 1, 1, 1], true, &mut Vec::new());
     let wants = [
         (Which::Name(7), false),
         (Which::Name(6), true),
@@ -1063,7 +1085,7 @@ fn the_resume_list_runs_as_fresh_triggers_so_its_message_comes_again() {
         "[resume]\ntriggers=m\n[m]\ntrulea=4\ntruleb=3\ntarga=7\ntargb=9\n",
         &[],
     );
-    s.resume(&[], &mut Vec::new());
+    s.resume(&[], true, &mut Vec::new());
     let got = s.gui().take_avail();
     assert_eq!(got[0].tell, Some(Tell::Message(9, Some(7))));
     // The start list is another list.
@@ -1085,7 +1107,7 @@ fn a_resume_runs_the_resume_triggers_then_reads_the_states_of_the_goals_in_order
     let mut s = build(&main, &[]);
     let mut log = Vec::new();
     // Words: the timer, a, the group c with its two children, z; extra words are skipped.
-    s.resume(&[3, 1, 0, 2, 0, 1, 77, 77], &mut log);
+    s.resume(&[3, 1, 0, 2, 0, 1, 77, 77], true, &mut log);
     assert_eq!(states(&s)[..2], [3, 1]);
     let (c, z) = (&s.goals[2], &s.goals[3]);
     assert_eq!((c.state, z.state), (0, 1));
@@ -1113,10 +1135,90 @@ fn a_resume_runs_the_resume_triggers_then_reads_the_states_of_the_goals_in_order
     assert!(log.iter().any(|l| l.starts_with("scenario resume s.scn")));
     // A word above 3 reads as 0 and a missing one leaves 0: no trigger runs for them.
     let mut s = build(&main, &[]);
-    s.resume(&[0, 4, 1], &mut Vec::new());
+    s.resume(&[0, 4, 1], true, &mut Vec::new());
     assert_eq!(states(&s), [0, 0, 1, 0]);
     let got = s.gui().take_avail();
     assert_eq!(got.len(), 1, "{got:?}");
-    s.resume(&[], &mut Vec::new());
+    s.resume(&[], true, &mut Vec::new());
     assert_eq!(states(&s), [0; 4]);
+}
+
+/// A scenario with a goal, a group of two goals and a goal.
+const GROUPED: &str = "[duration]\nnummonths=-1\n[goals]\ngoal=a\ngoal=c\ngoal=z\n\
+    [a]\nrulea=99\narga=0\ntype=2\nvalue=1\n\
+    [c]\nrtype=1\nchild=k1\nchild=k2\n\
+    [k1]\nrulea=99\narga=0\ntype=2\nvalue=1\n[k2]\nrulea=99\narga=0\ntype=2\nvalue=1\n\
+    [z]\nrulea=99\narga=0\ntype=2\nvalue=1\n";
+
+#[test]
+fn the_states_stored_are_one_word_per_goal_a_group_before_its_children() {
+    let mut s = build(GROUPED, &[]);
+    assert_eq!(s.states(), [0; 6]);
+    let words = [3, 1, 0, 2, 0, 1];
+    s.resume(&words, true, &mut Vec::new());
+    assert_eq!(s.states(), words);
+    // Extra words are dropped, a missing one is 0, a word above 3 is 0.
+    s.resume(&[1, 2, 3, 4, 9, 2, 5, 5], true, &mut Vec::new());
+    assert_eq!(s.states(), [1, 2, 3, 0, 0, 2]);
+    s.resume(&[2], true, &mut Vec::new());
+    assert_eq!(s.states(), [2, 0, 0, 0, 0, 0]);
+    s.resume(&[u32::MAX; 6], true, &mut Vec::new());
+    assert_eq!(s.states(), [0; 6]);
+}
+
+#[test]
+fn a_save_before_version_86_has_no_words_for_a_group_or_its_children() {
+    let mut s = build(GROUPED, &[]);
+    // The timer, a and z only.
+    s.resume(&[3, 1, 2], false, &mut Vec::new());
+    assert_eq!(s.states(), [3, 1, 0, 0, 0, 2]);
+    // No words at all (before version 51): everything restarts at 0.
+    let mut s = build(GROUPED, &[]);
+    s.resume(&[], false, &mut Vec::new());
+    assert_eq!(s.states(), [0; 6]);
+}
+
+/// Every shipped file of version 86 or later that names a scenario resumes it and gives back the
+/// words it holds. Some maps were made when a freeform scenario had fewer goals: their missing
+/// words read 0 and are written (5.3); the others are written byte for byte as read.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_goal_states_round_trip() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let (mut files, mut exact) = (0, 0);
+    for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
+        let bytes = vfs.read(member).unwrap();
+        let Ok((mut zoo, money)) = crate::zoo::Zoo::parse_money(&bytes) else {
+            continue;
+        };
+        let Some(file) = zoo.scenario_file() else {
+            continue;
+        };
+        let Some(mut scenario) = Scenario::prepare(&vfs, &file) else {
+            eprintln!("{member}: {file} cannot be prepared");
+            continue;
+        };
+        let stored = zoo.scenario_states();
+        scenario.resume(&stored, zoo.version >= 86, &mut Vec::new());
+        files += 1;
+        if zoo.version < 86 {
+            continue;
+        }
+        let got = scenario.states();
+        let kept = got.len().min(stored.len());
+        let (a, b) = got.split_at(kept);
+        assert!(
+            a == &stored[..kept] && b.iter().all(|&w| w == 0),
+            "{member}: {file}"
+        );
+        if got.len() == stored.len() {
+            exact += 1;
+            let before = zoo.write(&money);
+            zoo.set_scenario(&file, &got);
+            assert!(before == zoo.write(&money), "{member}: block");
+        }
+    }
+    eprintln!("{files} files, {exact} with the goals they hold");
+    assert!(exact > 0);
 }

@@ -735,10 +735,27 @@ impl<'a> App<'a> {
         self.open_game_as(zoo, money, false)
     }
 
+    /// Opens a file the game read ([`App::open_game`]). A saved game (`saved`) whose scenario cannot
+    /// be read is refused before anything changes: the load fails with the old-version message
+    /// (research 7.2).
+    fn open_zoo(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), String> {
+        let unread = zoo
+            .scenario_file()
+            .filter(|_| saved)
+            .is_some_and(|file| Scenario::prepare(self.renderer.vfs(), &file).is_none());
+        if unread {
+            return Err(crate::zoo::ZooError::TooOld(zoo.version).to_string());
+        }
+        self.open_game_as(zoo, money, saved)
+            .map_err(|e| e.to_string())
+    }
+
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
     /// tree and its research section is read (research 7.2, before the entities' own steps).
     fn open_game_as(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), RenderError> {
-        let research = saved.then(|| (zoo.scenario_file(), zoo.research().to_vec()));
+        let file = zoo.scenario_file().filter(|_| saved);
+        let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
+        let goals = (zoo.scenario_states(), zoo.version >= 86);
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
@@ -798,7 +815,7 @@ impl<'a> App<'a> {
                 .with_exhibits(exhibits)
                 .unlocked(
                     self.renderer.catalogue(),
-                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+                    &scenario_ui::reward_ini(&self.menu, self.renderer.vfs()),
                 ),
             pending: None,
             made: None,
@@ -832,8 +849,17 @@ impl<'a> App<'a> {
             carry: None,
             held: None,
         });
+        // The scenario resumes first (its triggers, then the goal states), then the research
+        // section completes the programs over their availability, then the ini rewards (7.3).
+        if let Some(scenario) = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f)) {
+            self.sim.resume_scenario(scenario, &goals.0, goals.1);
+            self.scenario_avail(false);
+        }
         if let (Some(tree), Some(game)) = (tree, &mut self.game) {
+            let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
             game.build.start_research(self.renderer.catalogue(), &tree);
+            game.build
+                .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
         }
         if let Some(ui) = &mut self.ui {
@@ -1917,10 +1943,7 @@ impl<'a> App<'a> {
     fn open(&mut self, start: &Start, read: Result<(Zoo, Money), String>) -> bool {
         // A saved game loads its research section; a start ignores it (research 7.4).
         let saved = start.scenario.is_none();
-        let opened = read.and_then(|(zoo, money)| {
-            self.open_game_as(zoo, money, saved)
-                .map_err(|e| e.to_string())
-        });
+        let opened = read.and_then(|(zoo, money)| self.open_zoo(zoo, money, saved));
         match opened {
             Ok(()) => {
                 self.loaded_check();
