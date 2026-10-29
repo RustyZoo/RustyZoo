@@ -315,7 +315,10 @@ game_round() { # game_round <y of Continue> <last file>
 check base-trial 2 'rz run --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
 check base-trial 0 'rz run maps/default.zoo --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
 check base-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'game_round 489 "maps\\default.zoo"'
-check expansion-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'game_round 474 "maps\\scn19.zoo"'
+# The expansion trial's maps all name freeform/ff01.scn, which the trial does not ship: a saved game
+# whose scenario file is missing is refused (the original refuses them through Continue too), so the
+# round has no game, no step and no restart of the music.
+check expansion-trial ',,' 'game_round 474 "maps\\scn19.zoo"'
 # Play on a scenario and on a freeform map opens the map their file names, and empties the last
 # file (so Continue is off when the menu comes back): the start lines and the last file left.
 play_map() { # play_map <y of the menu button>
@@ -343,7 +346,8 @@ windowed_game() { # windowed_game <y of Continue> <last file>
   rm -rf "${d:?}"
 }
 check base-trial 2,same 'windowed_game 489 "maps\\default.zoo" | paste -sd, -'
-check expansion-trial 2,same 'windowed_game 474 "maps\\scn19.zoo" | paste -sd, -'
+# The same refusal in a window: no game starts, and the log replays to the same lines.
+check expansion-trial 0,same 'windowed_game 474 "maps\\scn19.zoo" | paste -sd, -'
 
 # The same in a window of the dummy video driver (the start-up picture is presented as the bar
 # moves): a click on Exit at y ends the run, and its log replays headless to the same lines.
