@@ -403,8 +403,8 @@ impl Sim {
 
     /// A new game (not a saved one) has just been set up: with `fences` (the map file's
     /// `resetfences` above 0) every fence piece is made healthy and draws its wear interval,
-    /// otherwise the pieces stay as the map stores them (placing 7.4); the timers and the donation
-    /// counter start again and the rating check of the set-up runs, with no cash, the built-in
+    /// otherwise the pieces stay as the map stores them (placing 7.4); the timers, the donation
+    /// counter and the date of the last escape start again and the rating check of the set-up runs, with no cash, the built-in
     /// settings and every research program counted as done (zoo status 6.4).
     pub fn new_game(
         &mut self,
@@ -418,6 +418,8 @@ impl Sim {
         }
         self.status.timers = [0; 3];
         self.status.given = 0.0;
+        // The defaults also reset the date of the last escape, over the one the map stored.
+        self.status.escape = crate::zoo::NEVER;
         let mut built = Settings::builtin();
         let old = &self.status.settings;
         (built.escaped_change, built.escaped_time) = (old.escaped_change, old.escaped_time);

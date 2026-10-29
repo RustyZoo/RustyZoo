@@ -506,8 +506,11 @@ fn the_month_end_endowment_draws_for_each_member_then_once_for_the_gift() {
         "[characteristics]\ncEndowmentGiftLow=5\ncEndowmentGiftHigh=1\n",
     );
     assert_eq!((money.total[money::MEMBERS], money.cash), (3.0, 15.0));
-    let (money, _, _) = run(3.0, -1000, "");
+    // When every member leaves there is no gift draw and no payment.
+    let (money, log, r) = run(3.0, -1000, "");
     assert_eq!(money.total[money::MEMBERS], 0.0);
+    assert_eq!((r.state(), log.len(), money.cash), (rng(3).state(), 3, 0.0));
+    assert_eq!(money.total[money::ENDOWMENT], 0.0);
     // A count a file stores out of all measure draws a bounded number of times.
     let (money, log, _) = run(1e30, 100, "[characteristics]\ncMembershipJoinFactor=0\n");
     assert_eq!(log.len(), MAX_MEMBERS as usize + 1);
@@ -538,10 +541,10 @@ fn the_rating_loses_the_escape_change_less_the_time_per_day_since_the_last_escap
     );
     assert_eq!(at(&mut s, 0, 15 * DAY), base);
     assert_eq!(at(&mut s, 0, 400 * DAY), base);
-    // An escape that lies in the future (a map saved in play, its calendar then reset) gives
-    // negative days, as the formula reads; a time of 0 or less and a huge change are bounded, the
-    // rating stays 0 to 100.
-    assert_eq!(at(&mut s, 3 * DAY, 0), base - 36);
+    // An escape that lies in the future has not happened: no penalty. A time of 0 or less and a
+    // huge change are bounded, the rating stays 0 to 100.
+    assert_eq!(at(&mut s, 3 * DAY, 0), base);
+    assert_eq!(at(&mut s, 3 * DAY, 3 * DAY - 1), base);
     s.settings.escaped_time = 0;
     assert_eq!(at(&mut s, 0, 400 * DAY), base - 30);
     s.settings.escaped_time = -5;

@@ -1144,8 +1144,8 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:23@31,42;29726:25@25,42;29745:42@29,34;29748:21@32,34;29750:21@20,50" "guest_pace maps/scn01a.zoo"
-check base-trial "29699:28@29,53;29726:21@22,45;29745:18@36,33;29748:21@32,34;29750:21@20,50" "guest_pace maps/scn01a.zoo 0"
+check base-trial "29699:25@29,50;29726:12@21,51;29745:18@36,33;29748:21@32,34;29750:21@20,50" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:28@29,53;29726:20@22,44;29745:21@34,34;29748:21@32,34;29750:21@20,50" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -1299,7 +1299,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@;young:" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@9865;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to

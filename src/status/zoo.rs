@@ -480,6 +480,10 @@ impl Status {
     /// time per whole game day since the last escape. 0 or less is no penalty.
     fn penalty(&self, now: i64) -> i64 {
         let since = i128::from(file_time(now)) - i128::from(self.escape);
+        // A date later than the calendar's is no escape yet: no penalty.
+        if since < 0 {
+            return 0;
+        }
         let days = since / 36_000_000_000 / 24;
         let s = &self.settings;
         let p = i128::from(s.escaped_change) - i128::from(s.escaped_time) * days;
@@ -628,8 +632,8 @@ impl Status {
 
     /// The endowment of the month-end check (9 item 3), before the accounts move on: with members,
     /// one draw each (0 to 100), and a member leaves when the rating is below the draw less the
-    /// factor; then one draw for the gift, `(low + draw * (high - low) / 100)` per member that
-    /// stays, booked as the endowment. The log tells each draw and the gift.
+    /// factor; then, when members remain, one draw for the gift, `(low + draw * (high - low) /
+    /// 100)` per member that stays, booked as the endowment. The log tells each draw and the gift.
     pub fn endowment(&mut self, rng: &mut Rng, money: &mut Money, log: &mut Vec<String>) {
         let members = money.total[money::MEMBERS];
         if members.is_nan() || members <= 0.0 {
@@ -648,9 +652,14 @@ impl Status {
                 money.member_left();
             }
         }
+        // Only members that stay pay, and the gift is drawn only then.
+        let stay = money.total[money::MEMBERS];
+        if stay <= 0.0 {
+            return;
+        }
         let m = (rng.rand() % 101) as f32;
         let range = s.gift_high.saturating_sub(s.gift_low).max(0) as f32;
-        let gift = (s.gift_low as f32 + m * range * 0.01) * money.total[money::MEMBERS];
+        let gift = (s.gift_low as f32 + m * range * 0.01) * stay;
         money.refund(money::ENDOWMENT, gift);
         log.push(format!("endowment {m} {gift}"));
     }

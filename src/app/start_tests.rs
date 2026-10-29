@@ -931,6 +931,18 @@ fn a_scenario_start_reads_its_economy_file_over_the_games_and_the_next_game_drop
         open(app);
         app.begin(&start("s/play.scn"));
         assert_eq!(app.sim.status.settings.donation_chance, 0);
+        // A saved game that holds the scenario sets the economy up again and keeps its stored
+        // price, outside the range or not, and the stored date of the last escape; one that holds
+        // none keeps the price too.
+        for (scenario, donation, max) in [(Some("s/eco.scn"), 9, 12.0), (None, 0, 100.0)] {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), scenario)).unwrap();
+            zoo.clocks.status.price = 70.0;
+            zoo.clocks.status.escape = 5;
+            app.open_game_as(zoo, Money::default(), true).unwrap();
+            let s = &app.sim.status;
+            assert_eq!((s.price, s.settings.donation_chance), (70.0, donation));
+            assert_eq!((s.escape, s.settings.max_price), (5, max));
+        }
     });
 }
 

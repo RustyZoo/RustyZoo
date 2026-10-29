@@ -1221,6 +1221,11 @@ fn a_game_takes_the_escape_keys_of_the_ini_and_a_scenario_economy_limits_the_pri
     run.sim
         .new_game(&mut run.world, &run.cat, &mut run.money, false);
     assert_eq!(run.sim.status.settings.escaped_change, 33);
+    // The defaults of a new game reset the date of the last escape.
+    run.sim.status.escape = 7;
+    run.sim
+        .new_game(&mut run.world, &run.cat, &mut run.money, false);
+    assert_eq!(run.sim.status.escape, crate::zoo::NEVER);
     // The scenario's file comes over the settings and the price follows its range.
     let mut s = sim("");
     s.status.price = 70.0;

@@ -724,6 +724,14 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
+        if saved {
+            // The resume of a scenario sets the defaults up again, the game section then restores
+            // the price as saved, whatever the range (zoo status 3.1, 11).
+            if let Some(file) = &file {
+                self.scenario_economy(file);
+            }
+            self.sim.status.price = world.zoo.clocks.status.price;
+        }
         let tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
@@ -1938,6 +1946,25 @@ impl<'a> App<'a> {
         self.open(&start, read)
     }
 
+    /// The economy file the scenario `file` names under `[start] economy` comes over the settings
+    /// (zoo status 3.1); a file that cannot be read is a warning.
+    fn scenario_economy(&mut self, file: &str) {
+        let vfs = self.renderer.vfs();
+        let name = Config::parse(&vfs.read(file).unwrap_or_default())
+            .ok()
+            .and_then(|c| {
+                let name = c.section("start")?.get("economy")?;
+                Some(String::from_utf8_lossy(name).into_owned())
+            });
+        let Some(name) = name else { return };
+        match vfs.read(&name) {
+            Ok(economy) => self.sim.scenario_economy(&economy),
+            Err(why) => {
+                eprintln!("rustyzoo: warning: {name}: {why}; the economy settings are kept")
+            }
+        }
+    }
+
     /// A game was opened from the menu: the menu layouts are hidden, the main panel and the map
     /// view show, the menu music starts to fade and the simulation runs from the next pass (main
     /// menu 8.1). A freeform start also updates the music once with 2000 ms, which counts as one of
@@ -1952,22 +1979,7 @@ impl<'a> App<'a> {
             self.sim.restart_calendar();
         }
         if let Some(file) = &start.scenario {
-            // The scenario's own economy file comes over the game's (zoo status 3.1).
-            let vfs = self.renderer.vfs();
-            let name = Config::parse(&vfs.read(file).unwrap_or_default())
-                .ok()
-                .and_then(|c| {
-                    let name = c.section("start")?.get("economy")?;
-                    Some(String::from_utf8_lossy(name).into_owned())
-                });
-            if let Some(name) = name {
-                match vfs.read(&name) {
-                    Ok(economy) => self.sim.scenario_economy(&economy),
-                    Err(why) => {
-                        eprintln!("rustyzoo: warning: {name}: {why}; the economy settings are kept")
-                    }
-                }
-            }
+            self.scenario_economy(file);
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(tree) =
