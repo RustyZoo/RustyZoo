@@ -1220,12 +1220,14 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
             == b"m"),
         [0, 4, 7, 2]
     );
-    // Nothing of the kind: the empty text shows and no item is chosen.
+    // Nothing of the sex drawn: the empty text shows, the list is empty and the choice, the
+    // details and the pending staff member stay (unit placing 4.3).
     let none = catalogue(vec![]);
     build.rehire(&mut ui, &vfs, &none, &mut log);
-    assert_eq!((build.tool(), state_of(&ui, 3609) & HIDDEN), (None, 0));
+    assert!(build.list.is_empty());
+    assert_eq!((build.tool(), state_of(&ui, 3609) & HIDDEN), (Some(1), 0));
     assert!(build.take_made().is_empty(), "nothing chosen, nothing made");
-    assert_eq!(text(&ui, 3620), "");
+    assert_eq!(text(&ui, 3620), "Name101");
 }
 
 #[test]
