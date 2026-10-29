@@ -27,9 +27,9 @@ pub const PERIOD: u64 = 1000;
 const TITLE: i32 = 4001;
 /// The status page of one branch: program name, picture, bar, bar background.
 const SIDES: [[i32; 4]; 2] = [[4016, 4019, 4018, 4017], [4012, 4020, 4014, 4013]];
-/// The category page: tab title, funding text, category name, program name, picture, bar, bar
-/// background.
-const TAB_TITLE: i32 = 4021;
+/// The category page: funding text, category name, program name, picture, bar, bar background,
+/// and the text shown when the list has no row. The selector 4021 is not written (8.3).
+const NO_ITEM: i32 = 4030;
 const FUNDING: i32 = 4006;
 const CATEGORY: i32 = 4024;
 const PROGRAM: i32 = 4025;
@@ -68,13 +68,14 @@ impl Panel {
         let branches = tree.map_or(&[][..], |t| &t.branches);
         let tab = TABS.iter().position(|&t| ui.is_down(t)).unwrap_or(0);
         let mut told = format!("research tab {tab}");
+        // A missing branch leaves the title as it was (8.1).
         let title = match tab {
-            0 => ui.string(TITLE),
-            n => branches
-                .get(n - 1)
-                .map_or(String::new(), |b| ui.string(b.name)),
+            0 => Some(ui.string(TITLE)),
+            n => branches.get(n - 1).map(|b| ui.string(b.name)),
         };
-        ui.set_text(TITLE, &to_cp1252(&title));
+        if let Some(title) = title {
+            ui.set_text(TITLE, &to_cp1252(&title));
+        }
         for (side, ids) in SIDES.iter().enumerate() {
             let tip = status(ui, vfs, branches.get(side), ids);
             told += &format!(" side {side} {tip}");
@@ -143,10 +144,7 @@ fn time_left(ui: &mut Interface, branch: Option<&Branch>, bar: [i32; 2]) -> Stri
 
 /// One branch of the Status tab; returns what it tells.
 fn status(ui: &mut Interface, vfs: &Vfs, branch: Option<&Branch>, ids: &[i32; 4]) -> String {
-    let name = match branch {
-        Some(_) => program_name(ui, branch),
-        None => String::new(),
-    };
+    let name = program_name(ui, branch);
     ui.set_text(ids[0], &to_cp1252(&name));
     set_picture(ui, vfs, branch, ids[1]);
     let tip = time_left(ui, branch, [ids[2], ids[3]]);
@@ -176,29 +174,26 @@ fn category_page(ui: &mut Interface, vfs: &Vfs, shown: Option<(Vec<usize>, &Bran
     let ticks: String = (shown.iter())
         .flat_map(|(l, b)| l.iter().map(|&c| tick(b.categories[c].tick)))
         .collect();
-    ui.set_hidden(LIST, rows.is_empty());
+    // The list is never hidden: the no-item text shows when it has no row (8.3).
+    ui.set_hidden(NO_ITEM, !rows.is_empty());
     ui.refill_rows(LIST, rows);
-    let title = branch.map_or(String::new(), |b| ui.string(b.name));
-    ui.set_text(TAB_TITLE, &to_cp1252(&title));
     let words = Words::new(|id| ui.string(id as i32));
-    let funding = branch
-        .and_then(Branch::funding_text)
-        .map_or(String::new(), |(name, cost)| {
+    // A missing branch leaves the funding text and buttons as they were (8.1).
+    let mut funding = String::new();
+    if let Some(b) = branch {
+        if let Some((name, cost)) = b.funding_text() {
             let money = format::money(&words, cost, true);
-            format::expand(&words, &ui.string(name), &[Arg::Text(&money)])
-        });
-    ui.set_text(FUNDING, &to_cp1252(&funding));
-    ui.set_enabled(LESS, branch.is_some_and(|b| b.decrease() != b.level));
-    ui.set_enabled(MORE, branch.is_some_and(|b| b.increase() != b.level));
+            funding = format::expand(&words, &ui.string(name), &[Arg::Text(&money)]);
+        }
+        ui.set_text(FUNDING, &to_cp1252(&funding));
+        ui.set_enabled(LESS, b.decrease() != b.level);
+        ui.set_enabled(MORE, b.increase() != b.level);
+    }
     let category = match branch.and_then(Branch::program) {
         Some((c, _)) => ui.string(c.name),
         None => ui.string(NO_CATEGORY),
     };
     let program = program_name(ui, branch);
-    let (category, program) = match branch {
-        Some(_) => (category, program),
-        None => (String::new(), String::new()),
-    };
     ui.set_text(CATEGORY, &to_cp1252(&category));
     ui.set_text(PROGRAM, &to_cp1252(&program));
     set_picture(ui, vfs, branch, PICTURE);

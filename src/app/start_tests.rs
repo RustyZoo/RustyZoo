@@ -145,12 +145,26 @@ pub(super) fn interface(install: &Install) -> Interface {
                 b"[LayoutInfo]\nid=15\nlayer=1\nx=0\ny=0\ndx=40\ndy=40\nstate=1\n\
                   [t]\ntype=UIRadioSet\nid=4007\nbutton=4008\nbutton=4009\nbutton=4010\n\
                   [a]\ntype=UIButton\nid=4008\nx=0\ny=0\ndx=4\ndy=4\nstate=8\nstate=4096\n\
+                  action=3\ntarget=150\n\
                   [b]\ntype=UIButton\nid=4009\nx=4\ny=0\ndx=4\ndy=4\nstate=4096\n\
+                  action=3\ntarget=151\n\
                   [c]\ntype=UIButton\nid=4010\nx=8\ny=0\ndx=4\ndy=4\nstate=4096\n\
+                  action=3\ntarget=151\n\
+                  [e]\ntype=UIText\nid=4001\nx=0\ny=20\ndx=10\ndy=4\n\
+                  [s]\ntype=UILayout\nlayout=ui/pg150.lyt\n\
+                  [u]\ntype=UILayout\nlayout=ui/pg151.lyt\n\
                   [m]\ntype=UIButton\nid=4003\nx=0\ny=4\ndx=4\ndy=4\n\
                   [p]\ntype=UIButton\nid=4004\nx=4\ny=4\ndx=4\ndy=4\n\
                   [l]\ntype=UIListBox\nid=4022\nx=0\ny=8\ndx=30\ndy=30\n"
                     .to_vec(),
+            ),
+            (
+                "ui/pg150.lyt",
+                b"[LayoutInfo]\nid=150\nlayer=1\nx=0\ny=24\ndx=10\ndy=10\nstate=1\n".to_vec(),
+            ),
+            (
+                "ui/pg151.lyt",
+                b"[LayoutInfo]\nid=151\nlayer=1\nx=0\ny=24\ndx=10\ndy=10\nstate=1\n".to_vec(),
             ),
             (
                 "ui/obj.lyt",
@@ -1337,6 +1351,28 @@ fn the_r_key_opens_the_research_panel_and_its_buttons_change_the_tree() {
 }
 
 #[test]
+fn the_panel_shown_again_runs_its_last_tab() {
+    with_game("research-reopen", "", &research_files(), None, |app, _| {
+        research_start(app);
+        let mut at = 0;
+        let mut pass = |app: &mut App, commands: &[Command]| {
+            at += 5;
+            app.pass(at, commands);
+        };
+        pass(app, &[Command::Char(b'r')]);
+        app.interface().unwrap().press_button(4009);
+        pass(app, &[]);
+        assert!(shown(app, 151));
+        pass(app, &[Command::Char(b'r')]);
+        assert!(!shown(app, 15));
+        pass(app, &[Command::Char(b'r')]);
+        assert!(shown(app, 15));
+        assert!(shown(app, 151), "the page of the branch tab is back");
+        assert_eq!(app.interface().unwrap().text(4001).unwrap(), b"branch-1");
+    });
+}
+
+#[test]
 fn a_completion_opens_a_dialog_and_a_branch_with_nothing_left_a_second_one() {
     use crate::research::Done;
     with_game("research-dialog", "", &research_files(), None, |app, _| {
@@ -1375,6 +1411,7 @@ fn a_completion_opens_a_dialog_and_a_branch_with_nothing_left_a_second_one() {
             2
         );
         assert_eq!(ui.text(45006).unwrap(), b"all branch-1");
+        assert_eq!(ui.text(7001).unwrap(), b"all branch-1", "the line too");
         // A program the tree does not know opens the one dialog only.
         app.sim.push_research_done(done(99));
         app.research_done();

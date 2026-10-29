@@ -44,7 +44,7 @@ fn panel_in_game(name: &str) -> (Interface, Vfs) {
     };
     let picture = |id: i32| format!("[p{id}]\ntype=UIImage\nid={id}\nx=0\ny=0\n");
     let button = |id: i32| format!("[u{id}]\ntype=UIButton\nid={id}\nx=0\ny=0\ndx=4\ndy=4\n");
-    let layout = [4001, 4021, 4006, 4024, 4025, 4016, 4012]
+    let layout = [4001, 4021, 4006, 4024, 4025, 4016, 4012, 4030]
         .map(text)
         .concat()
         + &[4018, 4014, 4027, 4017, 4013, 4026].map(bar).concat()
@@ -166,9 +166,9 @@ fn the_status_tab_shows_the_programs_and_the_time_left() {
     assert_eq!(tip(&ui, 4018), "Unfunded");
     t.branches.truncate(1);
     panel.refresh(&mut ui, Some(&t), &vfs);
-    assert_eq!(ui.text(4012).unwrap(), b"");
+    assert_eq!(ui.text(4012).unwrap(), b"Empty Plan");
     panel.refresh(&mut ui, None, &vfs);
-    assert_eq!(ui.text(4016).unwrap(), b"");
+    assert_eq!(ui.text(4016).unwrap(), b"Empty Plan");
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
         "{told}"
     );
     assert_eq!(ui.text(4001).unwrap(), b"Surveys");
-    assert_eq!(ui.text(4021).unwrap(), b"Surveys");
+    assert_eq!(ui.text(4021).unwrap(), b"", "the selector is not written");
     assert_eq!(ui.text(4024).unwrap(), b"name10");
     assert_eq!(ui.text(4025).unwrap(), b"name11");
     // At the last level the plus button is off, the minus button is on; the list is shown.
@@ -197,7 +197,7 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
     assert_eq!(state(&ui, 4004) & DISABLED, 0);
     assert_ne!(state(&ui, 4003) & DISABLED, 0);
     assert_eq!(tip(&ui, 4027), "Unfunded");
-    // The second branch has no category and no program; its list is hidden.
+    // The second branch has no category and no program; its list stays and shows the no-item text.
     ui.set_button(TABS[1], false, true);
     ui.set_button(TABS[2], true, true);
     assert_eq!(branch_of_tab(&ui), Some(1));
@@ -208,23 +208,47 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
         ),
         "{told}"
     );
-    assert_ne!(state(&ui, 4022) & HIDDEN, 0);
-    // A tab with no branch, or no tree, is empty; the Status tab has no branch.
+    assert_eq!(state(&ui, 4022) & HIDDEN, 0);
+    assert_eq!(state(&ui, 4030) & HIDDEN, 0);
+    // A tab with no branch, or no tree, says no category and no program and leaves the title,
+    // the funding text and the buttons as they were.
     t.branches.truncate(1);
     let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
     assert!(
-        told.contains("ticks  funding \"\" category \"\" program \"\""),
+        told.contains("ticks  funding \"\" category \"Empty Group\" program \"Empty Plan\""),
         "{told}"
     );
+    assert_eq!(ui.text(4001).unwrap(), b"Habitats");
+    assert_eq!(ui.text(4006).unwrap(), b"$0 nothing");
     assert_eq!(
         (
             state(&ui, 4003) & DISABLED != 0,
             state(&ui, 4004) & DISABLED != 0
         ),
-        (true, true)
+        (true, false)
     );
     panel.refresh(&mut ui, None, &vfs);
     ui.set_button(TABS[2], false, true);
     ui.set_button(TABS[0], true, true);
     assert_eq!(branch_of_tab(&ui), None);
+}
+
+#[test]
+fn a_missing_branch_shows_the_empty_texts_and_the_list_its_no_item_text() {
+    let (mut ui, vfs) = panel_in_game("research-panel-missing");
+    let mut panel = Panel::default();
+    panel.refresh(&mut ui, None, &vfs);
+    assert_eq!(ui.text(4016).unwrap(), b"Empty Plan");
+    assert_eq!(ui.text(4012).unwrap(), b"Empty Plan");
+    ui.set_button(TABS[2], true, true);
+    panel.refresh(&mut ui, None, &vfs);
+    assert_eq!(ui.text(4024).unwrap(), b"Empty Group");
+    assert_eq!(ui.text(4025).unwrap(), b"Empty Plan");
+    assert_eq!(state(&ui, 4022) & HIDDEN, 0, "the list stays");
+    assert_eq!(state(&ui, 4030) & HIDDEN, 0, "the no-item text shows");
+    panel.refresh(&mut ui, Some(&tree()), &vfs);
+    ui.set_button(TABS[2], false, true);
+    ui.set_button(TABS[1], true, true);
+    panel.refresh(&mut ui, Some(&tree()), &vfs);
+    assert_ne!(state(&ui, 4030) & HIDDEN, 0, "rows hide it");
 }

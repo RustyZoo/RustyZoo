@@ -326,8 +326,12 @@ impl App<'_> {
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
         let shown = ui.shown(research::LAYOUT);
-        // A panel just shown is filled at once, a paused game or not.
-        game.research.clock.force |= shown && !game.research.shown;
+        // A panel just shown runs its last tab again and is filled at once, a paused game or not
+        // (research 8.1).
+        if shown && !game.research.shown {
+            ui.reselect(&research::TABS);
+            game.research.clock.force = true;
+        }
         game.research.shown = shown;
         if shown && game.research.clock.due(now, ticking, research::PERIOD) {
             let line = game.research.refresh(ui, self.sim.research(), vfs);

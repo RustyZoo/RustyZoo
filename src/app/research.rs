@@ -73,6 +73,7 @@ impl App<'_> {
                 let text = ui
                     .string(ALL_DONE)
                     .replacen("%s", &ui.string(branch.name), 1);
+                ui.message(&to_cp1252(&text));
                 ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
             }
         }
