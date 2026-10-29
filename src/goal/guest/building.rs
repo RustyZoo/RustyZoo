@@ -59,7 +59,7 @@ impl Cx<'_, '_> {
         Some((e, kind))
     }
 
-    /// The species of the unit when it is an animal (guest buildings 6.1 point 7).
+    /// The type of the unit, which the slots of a building test (guest buildings 6.1 point 7).
     fn species(&self) -> Option<building::Species> {
         let e = self.world.zoo.entities.get(self.at)?;
         let egg = matches!(&self.unit.part, Part::Animal(a) if a.egg);
@@ -81,7 +81,9 @@ impl Cx<'_, '_> {
         crowded: bool,
     ) -> Result<u32, Option<u32>> {
         let here = self.tile().ok_or(None)?;
-        let (all, ties) = building::satisfiers(self.world, self.ctx.cat, here, need, radius, None);
+        let who = self.species();
+        let (all, ties) =
+            building::satisfiers(self.world, self.ctx.cat, here, need, radius, who.as_ref());
         let rng = &mut *self.ctx.rng;
         match ties.len() {
             0 if crowded && !all.is_empty() => Err(Some(all[rng.pick(all.len() as u32) as usize])),
@@ -320,9 +322,9 @@ impl Cx<'_, '_> {
     }
 
     /// Whether the user of a building of this kind is released by its use set (guest buildings
-    /// 6.4.1, 6.5, 12.1): an animal that is visible inside. A guest ends by the time inside.
+    /// 6.4.1, 6.5, 12.1): a guest or an animal that is visible inside (bench, picnic table, shelter).
     fn uses_set(&self, kind: &Kind) -> bool {
-        matches!(self.unit.part, Part::Animal(_)) && !kind.hide && !kind.outside
+        matches!(self.unit.part, Part::Animal(_) | Part::Guest(_)) && !kind.hide && !kind.outside
     }
 
     /// 0x68 complete: the building takes the unit as a user; a user visible inside starts its use
@@ -333,7 +335,8 @@ impl Cx<'_, '_> {
         let set = self.building(id).filter(|(_, k)| self.uses_set(k));
         let started = match set {
             Some((e, _)) if self.may_add(id, slot) => {
-                let name = format!("b{}{}{slot}", e.subtype, crate::animal::NEED);
+                let need = self.need().unwrap_or_default();
+                let name = format!("b{}{need}{slot}", e.subtype);
                 self.start_with(&name, false, true);
                 true
             }
@@ -410,7 +413,12 @@ impl Cx<'_, '_> {
         if kind.hide {
             self.unit.hidden = true;
             self.world.hide_unit(self.at);
-        } else if !kind.outside {
+        } else if kind.outside {
+            let tile = (e.common.as_ref()).map(|c| (c.x.div_euclid(64), c.y.div_euclid(64)));
+            if let Some(t) = tile.filter(|_| kind.faces_user) {
+                crate::animal::food::turn(self.unit, self.world, self.at, t);
+            }
+        } else {
             let (x, y) = building::place(&e, kind.slots[slot].at);
             let z = e.common.as_ref().map_or(0, |c| c.z);
             let facing = building::facing(&e, kind.slots[slot].facing);
