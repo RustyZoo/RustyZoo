@@ -135,6 +135,26 @@ fn a_game_that_is_not_a_scenario_never_asks_and_a_running_one_waits() {
 }
 
 #[test]
+fn a_hint_of_minus_1_shows_the_built_text_of_the_goal_in_progress() {
+    // The goal is in progress (10 is not reached by 5): its template takes the value and the name.
+    let scn = b"[desc]\nname=9001\nstory=SCN_STORY\n[start]\ntriggers=t\n[t]\ntrulea=2\n\
+        truleb=0\ntarga=9\n[goals]\ngoal=g\n[g]\nrulea=99\narga=5\nvalue=10\ntext=9102\n\
+        [9]\nlayout=45300\npersistentTextLayout=45400\npersistentShortText=-1\n";
+    with_game(
+        "hint-text",
+        "",
+        &[("s/hint.scn", scn.to_vec())],
+        None,
+        |app, _| {
+            play(app, "s/hint.scn");
+            assert!(shown(app, 45400));
+            let ui = app.interface().unwrap();
+            assert_eq!(ui.text(45406), Some(b"hint 10 lion".to_vec()));
+        },
+    );
+}
+
+#[test]
 fn the_o_key_and_the_button_fill_the_objectives_panel() {
     with_menu("objectives", "", |app, _| {
         let now = play(app, "s/win.scn");
