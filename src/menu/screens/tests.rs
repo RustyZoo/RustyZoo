@@ -616,25 +616,27 @@ fn the_result_is_written_only_when_lower_than_the_stored_one_and_a_stranger_leav
     let mut menu = menu("", &install, &vfs);
     // Never played is 3: a loss writes 2, a win then 1, and neither is replaced by a worse one.
     assert_eq!(
-        menu.scenario_ended(&ended("s/aa.scn", false, &[])),
+        menu.scenario_ended(&ended("s/aa.scn", false, &[])).0,
         ["scenario result aa 2"]
     );
     assert_eq!(
-        menu.scenario_ended(&ended("s/aa.scn", false, &[])),
+        menu.scenario_ended(&ended("s/aa.scn", false, &[])).0,
         Vec::<String>::new()
     );
     assert_eq!(
-        menu.scenario_ended(&ended("s/aa.scn", true, &[])),
+        menu.scenario_ended(&ended("s/aa.scn", true, &[])).0,
         ["scenario result aa 1"]
     );
     assert!(
         menu.scenario_ended(&ended("s/aa.scn", false, &[]))
+            .0
             .is_empty()
     );
     assert!(written(&install).unwrap().contains("aa=1"));
     // A scenario that is not in the list (a freeform map) stores nothing.
     assert!(
         menu.scenario_ended(&ended("f/m1.scn", true, &[]))
+            .0
             .is_empty()
     );
     assert_eq!(menu.ended, None);
@@ -675,7 +677,7 @@ fn a_win_appends_the_unlocked_types_once_whatever_the_stored_count() {
     for (n, (ini, types, want)) in table.into_iter().enumerate() {
         let (install, vfs, _) = fixture(&format!("unlock{n}"), true, false);
         let mut menu = menu(ini, &install, &vfs);
-        let log = menu.scenario_ended(&ended("s/aa.scn", true, types));
+        let (log, _) = menu.scenario_ended(&ended("s/aa.scn", true, types));
         let log: Vec<_> = log.iter().filter(|l| l.contains("unlock ")).collect();
         let file = written(&install).unwrap();
         for line in want.lines() {
@@ -724,7 +726,7 @@ fn the_screen_after_the_end_selects_the_scenario_and_shows_the_story_of_its_resu
 fn an_unlock_id_of_zero_or_less_is_not_listed() {
     let (install, vfs, _) = fixture("unlock-zero", true, false);
     let mut first = menu("", &install, &vfs);
-    let log = first.scenario_ended(&ended("s/aa.scn", true, &[0, -3, i32::MIN, 7]));
+    let (log, _) = first.scenario_ended(&ended("s/aa.scn", true, &[0, -3, i32::MIN, 7]));
     let log: Vec<_> = log.iter().filter(|l| l.contains("unlock ")).collect();
     assert_eq!(log, ["scenario unlock 7"]);
     let file = written(&install).unwrap();

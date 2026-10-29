@@ -2,7 +2,7 @@
 //! to the scenario, and what its triggers asked of the interface is done here.
 
 use super::{Action, App};
-use crate::scenario::{Tell, Which};
+use crate::scenario::{Avail, Tell, Which};
 use crate::text::to_cp1252;
 
 impl App<'_> {
@@ -63,21 +63,37 @@ impl App<'_> {
         ) else {
             return;
         };
-        let (mut changed, mut told, mut unlocked) = (false, Vec::new(), Vec::new());
+        let unlocks: Vec<i32> = made
+            .iter()
+            .flatten()
+            .filter_map(|a| match a.which {
+                Which::Unlock(id) => Some(id),
+                _ => None,
+            })
+            .collect();
+        // An unlock (truleb 10) changes flags only for the ids the table newly lists (9.2).
+        let newly = match &mut self.menu {
+            Some(menu) => {
+                let listed = menu.unlock(&unlocks);
+                self.menu_events
+                    .extend(listed.iter().map(|id| format!("scenario unlock {id}")));
+                listed
+            }
+            None => unlocks,
+        };
+        let (mut changed, mut told) = (false, Vec::new());
         for a in made.iter().flatten() {
+            if matches!(a.which, Which::Unlock(id) if !newly.contains(&id)) {
+                continue;
+            }
             let did = game.build.change(cat, std::slice::from_ref(a));
             changed |= did;
-            if let Which::Unlock(id) = a.which {
-                unlocked.push(id);
-            }
             told.extend(a.tell.clone().filter(|_| did));
         }
         if rewards {
-            let ini = crate::config::Config::parse(vfs.ini()).unwrap_or_default();
-            changed |= game.build.after_triggers(cat, &ini, &[]);
-        }
-        if let Some(menu) = &mut self.menu {
-            self.menu_events.extend(menu.unlock(&unlocked));
+            changed |= game
+                .build
+                .after_triggers(cat, &reward_ini(&self.menu, vfs), &[]);
         }
         let Some(ui) = &mut self.ui else {
             return;
@@ -105,10 +121,51 @@ impl App<'_> {
         }
     }
 
+    /// The scenario ended (entity types 10.4): a win runs the unlock step once for each of its own
+    /// ids that `Menu::unlock` newly listed (`unlocks`, empty after a loss); an id already listed
+    /// changes no flag. The purchase lists follow.
+    pub(super) fn end_rewards(&mut self, unlocks: &[i32]) {
+        let (Some(game), vfs, cat) = (
+            &mut self.game,
+            self.renderer.vfs(),
+            self.renderer.catalogue(),
+        ) else {
+            return;
+        };
+        let made: Vec<_> = unlocks
+            .iter()
+            .map(|&id| Avail {
+                which: Which::Unlock(id),
+                on: true,
+                tell: None,
+            })
+            .collect();
+        let changed = game.build.change(cat, &made);
+        if let Some(ui) = &mut self.ui {
+            let mut log = Vec::new();
+            game.build.refill(changed, ui, vfs, cat, &mut log);
+            for line in log {
+                self.sim.note(line);
+            }
+        }
+    }
+
     /// A game opens or stops: the interface is given back what the last scenario changed (8.4).
     pub(super) fn scenario_clean(&mut self) {
         if let Some(ui) = &mut self.ui {
             self.marks.clean(ui);
         }
+    }
+}
+
+/// The ini rewards to apply: the settings of the menu, which hold what this run unlocked, else
+/// those of the install.
+pub(super) fn reward_ini(
+    menu: &Option<crate::menu::Menu>,
+    vfs: &crate::vfs::Vfs,
+) -> crate::config::Config {
+    match menu {
+        Some(menu) => menu.settings().clone(),
+        None => crate::config::Config::parse(vfs.ini()).unwrap_or_default(),
     }
 }
