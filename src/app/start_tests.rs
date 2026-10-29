@@ -26,10 +26,10 @@ impl UiStrings for Texts {
             4001 => "status".into(),
             23020 => "done %r".into(),
             23021 => "all %s".into(),
-            23030 => "Not Funded".into(),
+            23030 => "Unfunded".into(),
             23031 => "no-program".into(),
             23032 => "no-category".into(),
-            23103 => "%s max".into(),
+            23103 => "%s top".into(),
             23400..=23499 => format!("p{id}"),
             151 | 153 | 318 | 11645 | 11646 | 9001 | 16100 | 16101 => format!("text-{id}"),
             _ => String::new(),
@@ -1297,7 +1297,7 @@ fn the_r_key_opens_the_research_panel_and_its_buttons_change_the_tree() {
         assert!(shown(app, 15));
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(
-            lines[0].starts_with("research tab 0 side 0 \"p23401\" \"Not Funded\""),
+            lines[0].starts_with("research tab 0 side 0 \"p23401\" \"Unfunded\""),
             "{lines:?}"
         );
         // The key again closes it.
@@ -1311,7 +1311,7 @@ fn the_r_key_opens_the_research_panel_and_its_buttons_change_the_tree() {
         app.interface().unwrap().press_button(4004);
         let lines = told(app, &[]);
         assert_eq!(tree(app).level, 1);
-        assert!(lines[0].contains("funding \"$67 max\""), "{lines:?}");
+        assert!(lines[0].contains("funding \"$67 top\""), "{lines:?}");
         app.interface().unwrap().press_button(4004);
         told(app, &[]);
         assert_eq!(tree(app).level, 1, "held at the last level");

@@ -9,17 +9,17 @@ struct Texts;
 impl Strings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            1 => "Research".into(),
-            2 => "Conservation".into(),
-            4001 => "Status".into(),
-            4026 => "Done in %s day.".into(),
-            4028 => "Done in %s days.".into(),
+            1 => "Surveys".into(),
+            2 => "Habitats".into(),
+            4001 => "Overview".into(),
+            4026 => "Ready after %s turn.".into(),
+            4028 => "Ready after %s turns.".into(),
             22100 => "$".into(),
-            23030 => "Not Funded".into(),
-            23031 => "No Program".into(),
-            23032 => "No Category".into(),
-            23100 => "%s none".into(),
-            23103 => "%s max".into(),
+            23030 => "Unfunded".into(),
+            23031 => "Empty Plan".into(),
+            23032 => "Empty Group".into(),
+            23100 => "%s nothing".into(),
+            23103 => "%s top".into(),
             n @ 10..=19 => format!("name{n}"),
             _ => String::new(),
         }
@@ -135,28 +135,35 @@ fn the_status_tab_shows_the_programs_and_the_time_left() {
     let mut t = tree();
     let mut panel = Panel::default();
     let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
-    assert!(told.starts_with("research tab 0 side 0 \"name11\" \"Done in 60 days.\" side 1 \"No Program\" \"Not Funded\""), "{told}");
-    assert_eq!(ui.text(4001).unwrap(), b"Status");
+    assert!(told.starts_with("research tab 0 side 0 \"name11\" \"Ready after 60 turns.\" side 1 \"Empty Plan\" \"Unfunded\""), "{told}");
+    assert_eq!(ui.text(4001).unwrap(), b"Overview");
     assert_eq!(ui.text(4016).unwrap(), b"name11");
-    assert_eq!(ui.text(4012).unwrap(), b"No Program");
+    assert_eq!(ui.text(4012).unwrap(), b"Empty Plan");
     // The bar and its background carry the tooltip; the other branch is not funded.
     assert_eq!(
         (tip(&ui, 4018), tip(&ui, 4017)),
-        ("Done in 60 days.".into(), "Done in 60 days.".into())
+        (
+            "Ready after 60 turns.".into(),
+            "Ready after 60 turns.".into()
+        )
     );
-    assert_eq!(tip(&ui, 4014), "Not Funded");
+    assert_eq!(tip(&ui, 4014), "Unfunded");
     assert_eq!(panel.refresh(&mut ui, Some(&t), &vfs), None, "unchanged");
     // A day or less left takes the singular and rounds up: 0.5 day is 1 day.
     t.branches[0].categories[0].programs[0].progress = 89.0;
     panel.refresh(&mut ui, Some(&t), &vfs);
-    assert_eq!(tip(&ui, 4018), "Done in 1 day.");
+    assert_eq!(tip(&ui, 4018), "Ready after 1 turn.");
     t.branches[0].categories[0].programs[0].progress = 80.0;
     panel.refresh(&mut ui, Some(&t), &vfs);
-    assert_eq!(tip(&ui, 4018), "Done in 7 days.", "10 * 30 / 45 = 6.67");
-    // No funding is "Not Funded"; no tree and a tree of one branch leave the other side empty.
+    assert_eq!(
+        tip(&ui, 4018),
+        "Ready after 7 turns.",
+        "10 * 30 / 45 = 6.67"
+    );
+    // No funding is "Unfunded"; no tree and a tree of one branch leave the other side empty.
     t.branches[0].level = 0;
     panel.refresh(&mut ui, Some(&t), &vfs);
-    assert_eq!(tip(&ui, 4018), "Not Funded");
+    assert_eq!(tip(&ui, 4018), "Unfunded");
     t.branches.truncate(1);
     panel.refresh(&mut ui, Some(&t), &vfs);
     assert_eq!(ui.text(4012).unwrap(), b"");
@@ -174,11 +181,11 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
     let mut panel = Panel::default();
     let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
     assert!(
-        told.contains("ticks 10 funding \"$67 max\" category \"name10\" program \"name11\""),
+        told.contains("ticks 10 funding \"$67 top\" category \"name10\" program \"name11\""),
         "{told}"
     );
-    assert_eq!(ui.text(4001).unwrap(), b"Research");
-    assert_eq!(ui.text(4021).unwrap(), b"Research");
+    assert_eq!(ui.text(4001).unwrap(), b"Surveys");
+    assert_eq!(ui.text(4021).unwrap(), b"Surveys");
     assert_eq!(ui.text(4024).unwrap(), b"name10");
     assert_eq!(ui.text(4025).unwrap(), b"name11");
     // At the last level the plus button is off, the minus button is on; the list is shown.
@@ -189,14 +196,16 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
     panel.refresh(&mut ui, Some(&t), &vfs);
     assert_eq!(state(&ui, 4004) & DISABLED, 0);
     assert_ne!(state(&ui, 4003) & DISABLED, 0);
-    assert_eq!(tip(&ui, 4027), "Not Funded");
+    assert_eq!(tip(&ui, 4027), "Unfunded");
     // The second branch has no category and no program; its list is hidden.
     ui.set_button(TABS[1], false, true);
     ui.set_button(TABS[2], true, true);
     assert_eq!(branch_of_tab(&ui), Some(1));
     let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
     assert!(
-        told.contains("ticks  funding \"$0 none\" category \"No Category\" program \"No Program\""),
+        told.contains(
+            "ticks  funding \"$0 nothing\" category \"Empty Group\" program \"Empty Plan\""
+        ),
         "{told}"
     );
     assert_ne!(state(&ui, 4022) & HIDDEN, 0);
