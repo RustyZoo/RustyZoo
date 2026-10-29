@@ -1229,6 +1229,23 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
 }
 
 #[test]
+fn the_hire_list_falls_back_to_the_other_sex_when_the_data_has_none_of_the_drawn_one() {
+    let (mut ui, vfs, _install) = interface("hire");
+    let cat = catalogue(vec![
+        hand("keeper", "keeper", "f", "staff", 101),
+        hand("maint", "maint", "f", "staff", 102),
+    ]);
+    let (mut build, mut log) = (Build::new(0), vec![]);
+    assert!(ui.show(10));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    for male in [true, false] {
+        build.set_hire(male);
+        build.rehire(&mut ui, &vfs, &cat, &mut log);
+        assert_eq!(build.list, [0, 1], "male: {male}");
+    }
+}
+
+#[test]
 fn a_flag_change_makes_the_open_list_again() {
     let (mut ui, vfs, _install) = interface("avail");
     let cat = types();
