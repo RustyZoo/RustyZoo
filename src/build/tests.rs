@@ -1288,7 +1288,7 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
     let cat = types();
     let ini = Config::parse(b"[user]\nunlockCount=1\nunlockEntity0=102\n").unwrap();
     let mut build = Build::new(3);
-    let flags = tree.apply(&cat, &mut Default::default());
+    let flags = tree.apply(&cat, &mut Default::default()).0;
     build.start_research(&cat, &flags);
     build.after_triggers(&cat, &ini, &[]);
     let flags: Vec<bool> = (0..4).map(|i| build.avail.is(&cat, i)).collect();

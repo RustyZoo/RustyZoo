@@ -215,10 +215,11 @@ impl Tree {
 
     /// Resets or completes every program as the tree is built (3.3) or loaded (7.2), in tree order:
     /// the targets of the effect 0 programs, with whether each is available (the program is complete), and
-    /// the effects 2 to 7 of the complete ones are laid on `over`, which starts empty (6.9, R4).
-    pub fn apply(&mut self, cat: &Catalogue, over: &mut Overlay) -> Vec<(i32, bool)> {
+    /// the effects 2 to 7 of the complete ones are laid on `over`, which starts empty (6.9, R4). The
+    /// changes of the life counter come back for the animals the map already holds (7.4).
+    pub fn apply(&mut self, cat: &Catalogue, over: &mut Overlay) -> (Vec<(i32, bool)>, Vec<Life>) {
         *over = Overlay::default();
-        let mut flags = Vec::new();
+        let (mut flags, mut life) = (Vec::new(), Vec::new());
         for n in 0..self.programs().count() {
             let Some(p) = self.programs().nth(n) else {
                 break;
@@ -232,10 +233,10 @@ impl Tree {
             if p.effect == 0 {
                 flags.push((p.target, p.done()));
             } else if p.done() {
-                self.complete(cat, over, &done);
+                life.extend(self.complete(cat, over, &done));
             }
         }
-        flags
+        (flags, life)
     }
 
     /// Applies the characteristic effect of a completed program (6.4, 6.7): a change of the types
@@ -252,7 +253,7 @@ impl Tree {
                     .flat_map(|c| &mut c.programs)
                     .filter(|p| p.effect == d.target)
                 {
-                    p.cost = kept * p.cost / 100.0;
+                    p.cost = (f64::from(kept) * f64::from(p.cost) * f64::from(0.01_f32)) as f32;
                 }
                 over.train(cat, staff, mark);
             }

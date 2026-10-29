@@ -213,7 +213,7 @@ fn building_the_tree_makes_unfinished_targets_unavailable_and_free_ones_availabl
         .map(ty)
         .collect();
     let mut avail = Availability::default();
-    for (target, on) in t.apply(&cat, &mut Overlay::default()) {
+    for (target, on) in t.apply(&cat, &mut Overlay::default()).0 {
         avail.set(&cat, target, on);
     }
     let flags: Vec<bool> = (0..5).map(|i| avail.is(&cat, i)).collect();
@@ -730,7 +730,7 @@ fn a_loaded_tree_makes_the_targets_of_its_complete_programs_available() {
     let mut cat = Catalogue::default();
     cat.types = [5001, 5002, 5003, 5004].into_iter().map(ty).collect();
     let mut avail = Availability::default();
-    for (target, on) in t.apply(&cat, &mut Overlay::default()) {
+    for (target, on) in t.apply(&cat, &mut Overlay::default()).0 {
         avail.set(&cat, target, on);
     }
     let flags: Vec<bool> = (0..4).map(|i| avail.is(&cat, i)).collect();

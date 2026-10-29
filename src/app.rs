@@ -729,7 +729,7 @@ impl<'a> App<'a> {
         // the changed types (research 7.2). Their availability follows the scenario's resume.
         let flags = tree
             .as_mut()
-            .map(|t| t.apply(self.renderer.catalogue(), &mut world.research));
+            .map(|t| t.apply(self.renderer.catalogue(), &mut world.research).0);
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
@@ -1964,7 +1964,9 @@ impl<'a> App<'a> {
             {
                 if let Some(game) = &mut self.game {
                     let cat = self.renderer.catalogue();
-                    let flags = tree.apply(cat, &mut game.world.research);
+                    let (flags, life) = tree.apply(cat, &mut game.world.research);
+                    // A free program changes the animals the map placed (7.4).
+                    crate::animal::lengthen(&mut game.world, &life);
                     game.build.start_research(cat, &flags);
                 }
                 self.sim.set_research(tree);

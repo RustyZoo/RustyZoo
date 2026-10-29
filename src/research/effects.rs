@@ -24,6 +24,11 @@ fn changed(old: i32, how: i32, value: i32) -> Option<i32> {
     }
 }
 
+/// `hundredths` times the single-precision 0.01, with one rounding (6.4, 6.7).
+fn hundredth(hundredths: i32) -> f32 {
+    (f64::from(hundredths) * f64::from(0.01_f32)) as f32
+}
+
 /// A change of the life counter of the live animals of a type (6.4): its type, the way and the
 /// value. A percent change leaves a counter that is not above 0.
 pub struct Life {
@@ -115,10 +120,12 @@ impl Overlay {
         if self.changes.is_empty() {
             return base;
         }
+        let changed =
+            (self.changes.get(&key_of(ty)).into_iter().flatten()).any(|c| c.0 == "cPurchaseCost");
         let hundredths = (base * 100.0).round() as i32;
-        match self.int(ty, "cPurchaseCost", hundredths) {
-            h if h == hundredths => base,
-            h => h as f32 / 100.0,
+        match changed {
+            false => base,
+            true => hundredth(self.int(ty, "cPurchaseCost", hundredths)),
         }
     }
 
@@ -163,11 +170,14 @@ impl Overlay {
             };
             hit.extend((0..cat.types.len()).filter(|&j| j == i || same(&cat.types[j])));
         }
-        // A "keeper arrives" change of the animals of an expansion trains its keepers, and a
-        // change of a tank filter the maintenance workers.
+        // A "keeper arrives" change of animals (effects 2 and 4) trains the keepers of their
+        // expansion, and a change of a tank filter the maintenance workers (6.5).
+        let trained: BTreeSet<i32> = (hit.iter().map(|&i| &cat.types[i]))
+            .filter(|t| which == 0 && t.class == "animals")
+            .map(expansion)
+            .collect();
         for ty in &cat.types {
-            let keeper =
-                effect == 4 && which == 0 && ty.class == "keeper" && expansion(ty) == target;
+            let keeper = ty.class == "keeper" && trained.contains(&expansion(ty));
             let filter = effect == 2
                 && which == 0
                 && ty.class == "maint"

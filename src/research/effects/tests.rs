@@ -302,7 +302,7 @@ fn a_program_before_the_discount_in_tree_order_is_judged_against_its_full_cost()
         program(2, 10.0, 10.0, 0, 7, [10, 0, 0]),
         program(3, 20.0, 19.0, 200, 0, [0; 3]),
     ]);
-    for (target, on) in t.apply(&cat, &mut Overlay::default()) {
+    for (target, on) in t.apply(&cat, &mut Overlay::default()).0 {
         avail.set(&cat, target, on);
     }
     assert!(!avail.is(&cat, 0), "before: 19 of 20");
@@ -322,4 +322,71 @@ fn a_step_completion_applies_through_the_tree() {
     };
     assert!(t.complete(&cat, &mut over, &done).is_empty());
     assert_eq!(mask(&over, &cat, MARINE), 2);
+}
+
+#[test]
+fn a_species_keeper_change_trains_the_keepers_of_its_expansion() {
+    let (cat, mut over) = (cat(), Overlay::default());
+    over.apply(&cat, 2, 200, [0, 5, 0]);
+    assert_eq!(int(&over, &cat, REX, "cKeeperArrivesChange", 100), 105);
+    assert_eq!(mask(&over, &cat, SCIENTIST), 1);
+    for at in ZOOKEEPER.into_iter().chain([MARINE]) {
+        assert_eq!(mask(&over, &cat, at), 0);
+    }
+    // A way that names nothing changes no number and still trains.
+    over.apply(&cat, 2, 100, [0, 5, 9]);
+    assert_eq!(int(&over, &cat, 0, "cKeeperArrivesChange", 100), 100);
+    for at in ZOOKEEPER {
+        assert_eq!(mask(&over, &cat, at), 1);
+    }
+    // Another number of the animals trains nobody; a target that names no animal neither.
+    over.apply(&cat, 2, 700, [0, 5, 0]);
+    over.apply(&cat, 2, 999, [0, 5, 0]);
+    assert_eq!(mask(&over, &cat, MARINE), 0);
+}
+
+#[test]
+fn a_price_and_a_discount_use_the_single_precision_hundredth() {
+    let (cat, mut over) = (cat(), Overlay::default());
+    // 80 put on a price of 1.0 is 80 * 0.01f, not 0.8.
+    over.apply(&cat, 5, 0, [0, 80, 1]);
+    assert_eq!(over.price(&cat.types[CHOW], 1.0).to_bits(), 0x3f4c_cccc);
+    // A change that leaves the hundredths as they were stores them the same way.
+    let mut same = Overlay::default();
+    same.apply(&cat, 5, 0, [0, 0, 0]);
+    assert_eq!(same.price(&cat.types[CHOW], 0.8).to_bits(), 0x3f4c_cccc);
+    // Cost 1.125 at 10 percent is 90 * 1.125 * 0.01f, not a division by 100.
+    let program = |effect, cost| Program {
+        name: 1,
+        cost,
+        progress: 0.0,
+        target: 6,
+        effect,
+        vals: [10, 9552, 2],
+        order: 1,
+    };
+    let mut tree = Tree {
+        branches: vec![Branch {
+            name: 1,
+            funding: Vec::new(),
+            level: 0,
+            categories: vec![Category {
+                name: 1,
+                expansion: 0,
+                tick: true,
+                programs: vec![program(6, 1.125), program(7, 1.0)],
+            }],
+            current: None,
+        }],
+        ..Tree::default()
+    };
+    let done = Done {
+        name: 1,
+        target: 6,
+        effect: 7,
+        vals: [10, 9552, 2],
+    };
+    tree.complete(&cat, &mut over, &done);
+    let cost = tree.programs().next().unwrap().cost;
+    assert_eq!(cost.to_bits(), 0x3f81_9999);
 }
