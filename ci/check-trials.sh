@@ -319,6 +319,18 @@ check base-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'g
 # whose scenario file is missing is refused (the original refuses them through Continue too), so the
 # round has no game, no step and no restart of the music.
 check expansion-trial ',,' 'game_round 474 "maps\\scn19.zoo"'
+# The round on a save the engine made: a freeform start of sm_aqua (its scenario, freeform/sm_aqua.scn,
+# is shipped, so the save names one that loads) saved by script, then the round on that save. Its
+# lines are those of the base trial's round: two starts, one music restart.
+saved_round() { # saved_round <y of Continue>
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 405\n2 down\n3 up\n4 mouse 831 657\n5 down\n6 up\n10 save %s\n' "$tmp/saved.zoo" >"$tmp/make"
+  rz run --headless --passes 12 --clock 100 --script "$tmp/make" >/dev/null
+  game_round "$1" "$tmp/saved.zoo"
+}
+check expansion-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'saved_round 474'
 # Play on a scenario and on a freeform map opens the map their file names, and empties the last
 # file (so Continue is off when the menu comes back): the start lines and the last file left.
 play_map() { # play_map <y of the menu button>
