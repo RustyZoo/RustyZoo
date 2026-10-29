@@ -474,7 +474,9 @@ fn the_sixteen_windows_negative_forms() {
 fn english_dates_set_to_1_forces_the_us_forms() {
     assert_eq!(Profile::of_user(Some("1".as_ref())), Profile::us());
     // Any other value, or none, leaves the regional settings (US where the system has none).
-    let system = locale::profile("").unwrap_or_else(Profile::us);
+    let system = locale::profile("")
+        .map(Profile::in_code_page)
+        .unwrap_or_else(Profile::us);
     for value in [
         None,
         Some(""),
@@ -510,4 +512,27 @@ fn a_locale_gives_its_own_marks_and_forms() {
         money_cents_in(&french, &game(), 1234.5, true),
         format!("1{NB}234,50{NB}$")
     );
+}
+
+#[test]
+fn a_mark_the_code_page_lacks_gives_the_us_marks() {
+    // Arabic: the decimal mark U+066B and the group separator U+066C are not in Windows-1252.
+    let arabic = Marks::new("\u{66b}", "\u{66c}", 3);
+    let p = Profile::from_c(arabic.clone(), arabic, (1, 0), (1, 0, 1)).in_code_page();
+    assert_eq!(p.number, Marks::new(".", ",", 3));
+    assert_eq!(p.money, Marks::new(".", ",", 3));
+    assert_eq!(p.amount("$", "1,234", true), "-$1,234");
+    // One lacking character is enough: a group separator alone gives the US marks too.
+    let half = Marks::new(".", "\u{66c}", 3);
+    assert_eq!(
+        Profile::from_c(half.clone(), half, (0, 1), (0, 1, 1))
+            .in_code_page()
+            .number,
+        Marks::new(".", ",", 3)
+    );
+    // The French marks, the no-break space included, are kept.
+    let french = Marks::new(",", " ", 3);
+    let p = Profile::from_c(french.clone(), french.clone(), (0, 1), (0, 1, 1)).in_code_page();
+    assert_eq!(p.number, french);
+    assert_eq!(p.money, french);
 }
