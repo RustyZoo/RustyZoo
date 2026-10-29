@@ -10,11 +10,11 @@
 //! [`Panel`] holds the selected building and the clock; [`Panel::refresh`] writes the layout from
 //! the world and returns the `panel` log line when what it shows changed.
 
-use crate::building::{Kind, Live, moveable};
+use crate::building::{Kind, Live, moveable, upgrade};
 use crate::config::to_double;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
-use crate::month::upkeep;
+use crate::month::upkeep_of;
 use crate::panel::exhibit::{Clock, type_at};
 use crate::text::format;
 use crate::text::to_cp1252;
@@ -58,6 +58,12 @@ pub const PLAIN_SELL: i32 = 4616;
 const PLAIN_GUESTS: [i32; 3] = [4664, 4666, 4662];
 const PLAIN_MONTHS: i32 = 4668;
 const PLAIN_UPKEEP: i32 = 4696;
+/// The Programs tab of that panel (research 6.3): its tab button, the five upgrade buttons, the
+/// upkeep field, and the adult and child bonus, each with its label and icon.
+const PROGRAMS_TAB: i32 = 4678;
+pub const UPGRADES: [i32; 5] = [4631, 4632, 4633, 4634, 4635];
+const UPGRADE_UPKEEP: i32 = 4642;
+const BONUS: [[i32; 3]; 2] = [[4644, 4643, 4647], [4646, 4645, 4648]];
 
 /// The status and finance tab buttons, hidden when the type hides its commerce info.
 const HIDDEN_TABS: [i32; 2] = [4575, 4576];
@@ -206,10 +212,12 @@ impl Panel {
             // The full game's layout also shows the monthly upkeep, money with two decimals.
             if ui.tree.find(PLAIN_UPKEEP).is_some() {
                 let symbol = Symbol::new(ui.string(SYMBOL));
-                let upkeep = format::money_cents(&symbol, f64::from(upkeep(ty)), false);
+                let upkeep = f64::from(upkeep_of(&world.units, ty, id));
+                let upkeep = format::money_cents(&symbol, upkeep, false);
                 ui.set_text(PLAIN_UPKEEP, &to_cp1252(&upkeep));
                 told += &format!(" upkeep {upkeep}");
             }
+            told += &Self::programs(ui, world, vfs, ty, id);
             told
         };
         let told = format!("building {id} {name:?} {told}");
@@ -219,6 +227,62 @@ impl Panel {
                 self.told.clone_from(&told);
                 Some(told)
             }
+        }
+    }
+
+    /// The Programs tab (research 6.3): one button for each of the first five upgrades of the
+    /// type, the current one pressed, and the current upgrade's upkeep and bonuses; a bonus of -1
+    /// is hidden with its label and icon. With no upgrade the tab is hidden. Returns the part of
+    /// the log line.
+    fn programs(ui: &mut Interface, world: &World, vfs: &Vfs, ty: &EntityType, id: u32) -> String {
+        let held = world
+            .units
+            .upgrades
+            .get(&ty.name_id)
+            .map_or(&[][..], Vec::as_slice);
+        ui.set_hidden(PROGRAMS_TAB, held.is_empty());
+        ui.set_enabled(PROGRAMS_TAB, !held.is_empty());
+        let now = upgrade::current(&world.units, ty.name_id, id);
+        let index = world.units.upgrade_index.get(&id).copied().unwrap_or(0) as usize;
+        for (n, &button) in UPGRADES.iter().enumerate() {
+            let up = held.get(n);
+            ui.set_hidden(button, up.is_none());
+            ui.set_button(button, up.is_some() && n == index, up.is_some());
+            let picture = up.and_then(|u| ui.tree.picture(vfs, &u.icon));
+            ui.set_icon(button, picture);
+            if let Some(i) = ui.tree.find(button) {
+                ui.tree.elements[i].help_id = up.map(|u| u.name).into_iter().collect();
+            }
+        }
+        let symbol = Symbol::new(ui.string(SYMBOL));
+        let upkeep = now.map(|u| format::money_cents(&symbol, f64::from(u.upkeep), false));
+        ui.set_text(
+            UPGRADE_UPKEEP,
+            &to_cp1252(upkeep.as_deref().unwrap_or_default()),
+        );
+        for (shown, [field, label, icon]) in [now.map(|u| u.adult), now.map(|u| u.child)]
+            .into_iter()
+            .zip(BONUS)
+        {
+            let shown = shown.filter(|&v| v != -1);
+            ui.set_text(
+                field,
+                shown.map(|v| v.to_string()).unwrap_or_default().as_bytes(),
+            );
+            for element in [field, label, icon] {
+                ui.set_hidden(element, shown.is_none());
+            }
+        }
+        match now {
+            Some(u) => format!(
+                " upgrades {} current {index} upkeep {} adult {} child {}",
+                held.len(),
+                u.upkeep,
+                u.adult,
+                u.child
+            ),
+            None if held.is_empty() => String::new(),
+            None => format!(" upgrades {} current none", held.len()),
         }
     }
 

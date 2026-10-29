@@ -383,6 +383,36 @@ struct Game {
 }
 
 impl Game {
+    /// Places sounds (entity, file, voice, base term) at their entity's position in the view
+    /// space of the camera, heard from the centre of the map view (sound 5). A sound whose entity
+    /// is gone is dropped.
+    fn placed(&self, sounds: impl Iterator<Item = (u32, String, String, i32)>) -> Vec<UnitSound> {
+        let camera = &self.camera;
+        let (w, h) = (i64::from(camera.size.0), i64::from(camera.size.1));
+        let listener = (
+            i64::from(camera.scroll.0) + w / 2,
+            i64::from(camera.scroll.1) + h / 2,
+        );
+        let world = &self.world;
+        sounds
+            .filter_map(|(id, file, voice, base)| {
+                let c = world.zoo.entities[world.find(id)?].common.as_ref()?;
+                let view = project(camera.rotation, c.x, c.y, c.z);
+                let at = zoom_view(camera.zoom, view);
+                let (distance, pan) = positional(at, listener);
+                Some(UnitSound {
+                    id,
+                    file,
+                    voice,
+                    base,
+                    at,
+                    distance,
+                    pan,
+                })
+            })
+            .collect()
+    }
+
     /// The animation and frame each unit holds, for the picture.
     fn shown(&self) -> Vec<Shown> {
         (self.world.units.iter())
@@ -494,6 +524,8 @@ pub struct App<'a> {
     building_lines: Vec<String>,
     /// The sounds the units' animations began in the last pass.
     unit_sounds: Vec<UnitSound>,
+    /// The loops the tank filters play now, placed in the view (tank staff 7.3 point 7).
+    loop_sounds: Vec<UnitSound>,
     /// The sounds of a type's own that a selection or a pick-up asked for in this pass, not placed
     /// in the view: they join the unit sounds at its end (unit placing 8.1, 8.2).
     type_sounds: Vec<UnitSound>,
@@ -675,6 +707,7 @@ impl<'a> App<'a> {
             staff_lines: Vec::new(),
             building_lines: Vec::new(),
             unit_sounds: Vec::new(),
+            loop_sounds: Vec::new(),
             type_sounds: Vec::new(),
             timings: Timings::default(),
             music: None,
@@ -739,6 +772,14 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
+        if saved {
+            // The resume of a scenario sets the defaults up again, the game section then restores
+            // the price as saved, whatever the range (zoo status 3.1, 11).
+            if let Some(file) = &file {
+                self.scenario_economy(file);
+            }
+            self.sim.status.price = world.zoo.clocks.status.price;
+        }
         let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
         // The programs complete come before the animals are read: their life counters are cut by
         // the changed types (research 7.2). Their availability follows the scenario's resume.
@@ -830,8 +871,9 @@ impl<'a> App<'a> {
         // The lookup of the recorded rewards follows the open's triggers (entity types 10.4).
         self.look_up_unlocks();
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
-            let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
+            let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
+            game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
@@ -1031,6 +1073,7 @@ impl<'a> App<'a> {
             (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.animal_told();
         self.unit_sounds = self.unit_sounds_placed();
+        self.loop_sounds = self.loop_sounds_placed();
         self.unit_sounds.append(&mut self.type_sounds);
         let sounds = self
             .unit_sounds
@@ -1046,31 +1089,26 @@ impl<'a> App<'a> {
         let Some(game) = &mut self.game else {
             return Vec::new();
         };
-        let camera = &game.camera;
-        let (w, h) = (i64::from(camera.size.0), i64::from(camera.size.1));
-        let listener = (
-            i64::from(camera.scroll.0) + w / 2,
-            i64::from(camera.scroll.1) + h / 2,
-        );
         let sounds = game.world.units.take_sounds();
-        let world = &game.world;
-        (sounds.into_iter())
-            .filter_map(|(id, heard)| {
-                let c = world.zoo.entities[world.find(id)?].common.as_ref()?;
-                let view = project(camera.rotation, c.x, c.y, c.z);
-                let at = zoom_view(camera.zoom, view);
-                let (distance, pan) = positional(at, listener);
-                Some(UnitSound {
-                    id,
-                    file: heard.file,
-                    voice: heard.voice,
-                    base: heard.base,
-                    at,
-                    distance,
-                    pan,
-                })
-            })
-            .collect()
+        game.placed(
+            sounds
+                .into_iter()
+                .map(|(id, heard)| (id, heard.file, heard.voice, heard.base)),
+        )
+    }
+
+    /// The loops the tank filters play now, each placed in the view like a unit's sound; the voice
+    /// of a loop is its filter's.
+    fn loop_sounds_placed(&self) -> Vec<UnitSound> {
+        let Some(game) = &self.game else {
+            return Vec::new();
+        };
+        let loops = game.world.filter_loops(self.renderer.catalogue());
+        game.placed(
+            loops
+                .into_iter()
+                .map(|l| (l.id, l.file, format!("filter {}", l.id), l.base)),
+        )
     }
 
     /// Writes the three bars (when they changed), and the date and the money text at each refresh, and
@@ -1311,6 +1349,7 @@ impl<'a> App<'a> {
                 let extra = Extra {
                     marks: game.marks.clone(),
                     shown: game.shown(),
+                    filters: game.world.filter_looks(),
                     ..Extra::default()
                 };
                 match self
@@ -1820,6 +1859,9 @@ impl<'a> App<'a> {
                     self.building_sell();
                 }
                 panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
+                t if panel_building::UPGRADES.contains(&t) && self.game.is_some() => {
+                    self.building_upgrade(t);
+                }
                 t if panel_building::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.building.clock.force = true;
@@ -1957,6 +1999,25 @@ impl<'a> App<'a> {
         self.open(&start, read)
     }
 
+    /// The economy file the scenario `file` names under `[start] economy` comes over the settings
+    /// (zoo status 3.1); a file that cannot be read is a warning.
+    fn scenario_economy(&mut self, file: &str) {
+        let vfs = self.renderer.vfs();
+        let name = Config::parse(&vfs.read(file).unwrap_or_default())
+            .ok()
+            .and_then(|c| {
+                let name = c.section("start")?.get("economy")?;
+                Some(String::from_utf8_lossy(name).into_owned())
+            });
+        let Some(name) = name else { return };
+        match vfs.read(&name) {
+            Ok(economy) => self.sim.scenario_economy(&economy),
+            Err(why) => {
+                eprintln!("rustyzoo: warning: {name}: {why}; the economy settings are kept")
+            }
+        }
+    }
+
     /// A game was opened from the menu: the menu layouts are hidden, the main panel and the map
     /// view show, the menu music starts to fade and the simulation runs from the next pass (main
     /// menu 8.1). A freeform start also updates the music once with 2000 ms, which counts as one of
@@ -1971,6 +2032,7 @@ impl<'a> App<'a> {
             self.sim.restart_calendar();
         }
         if let Some(file) = &start.scenario {
+            self.scenario_economy(file);
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(mut tree) =
@@ -1982,6 +2044,7 @@ impl<'a> App<'a> {
                     // A free program changes the animals the map placed (7.4).
                     crate::animal::lengthen(&mut game.world, &life);
                     game.build.start_research(cat, &flags);
+                    game.world.units.upgrades = research::upgrades(&tree);
                 }
                 self.sim.set_research(tree);
             }
@@ -2273,6 +2336,7 @@ impl<'a> App<'a> {
             _ => Form::Plain,
         };
         want.faces.clone_from(&game.world.units.reactions);
+        want.filters = game.world.filter_looks();
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         want.marks.extend(game.assign_marks());
@@ -2412,6 +2476,12 @@ impl<'a> App<'a> {
     /// shell plays them as positional one-shots.
     pub fn unit_sounds(&self) -> &[UnitSound] {
         &self.unit_sounds
+    }
+
+    /// The loops the tank filters play now, each placed in the view: the shell keeps one voice for
+    /// each, starts it, moves it and stops it (sound 4.2, 8.2).
+    pub fn loop_sounds(&self) -> &[UnitSound] {
+        &self.loop_sounds
     }
 
     /// The sounds the interface, the placing of objects and the animals' reactions to a change
@@ -2614,6 +2684,9 @@ mod terrain_tests;
 
 #[cfg(test)]
 mod bulldozer_tests;
+
+#[cfg(test)]
+mod filter_tests;
 
 #[cfg(test)]
 mod money_tests;

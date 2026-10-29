@@ -41,6 +41,10 @@ const RIDE: &str = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=2\ncTimeI
     [Characteristics/Floats]\ncDefaultCost=2\ncPriceFactor=3\n[Satisfies]\nbuilding\nfun\n\
     [slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\n\
     exitpos=48\ncapacity=2\n";
+/// A bench: visible inside, one seat, left by the exit; the time inside is one tick.
+const BENCH: &str = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=1\n\
+    cUserStaysOutside=0\ncUserUsesExit=1\n[Satisfies]\nbuilding\nenergy\n[slots]\nname=slot\n\
+    [slot]\nslotpos=0\nslotpos=16\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=1\n";
 const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\n\
     cPriceHappy1Change=5\ncPriceAngry1Change=-5\n";
 
@@ -60,15 +64,32 @@ fn ty(class: &'static str, name: &str, text: &str) -> EntityType {
 }
 
 fn types() -> Catalogue {
+    types_with(STAND)
+}
+
+/// The types with a stand of this file.
+fn types_with(stand: &str) -> Catalogue {
+    types_of(stand, BENCH)
+}
+
+/// The same, with a bench of this file.
+fn types_of(stand: &str, bench: &str) -> Catalogue {
     let mut cat = Catalogue::default();
     cat.push(ty("guests", "man", MAN));
-    cat.push(ty("building", "stand", STAND));
+    cat.push(ty("building", "stand", stand));
     cat.push(ty("building", "restroom", RESTROOM));
-    cat.push(ty("building", "table", TABLE));
+    cat.push(EntityType {
+        subtype: b"table".to_vec(),
+        ..ty("building", "building", TABLE)
+    });
     cat.push(ty("building", "booth", BOOTH));
     cat.push(ty("building", "can", CAN));
     cat.push(ty("building", "kiosk", KIOSK));
     cat.push(ty("building", "ride", RIDE));
+    cat.push(EntityType {
+        subtype: b"bench".to_vec(),
+        ..ty("building", "building", bench)
+    });
     let trash = EntityType {
         subtype: b"trash".to_vec(),
         ..ty("objects", "other", "")
@@ -108,8 +129,17 @@ fn zoo_with(table: bool) -> World {
 fn zoo_of(name: Option<&str>) -> World {
     world_with((10, 10), |zoo| {
         if let Some(name) = name {
-            zoo.entities
-                .push(entity("building", name, 9, centre((5, 3)), 4));
+            // A table and a bench are visible inside: their use set is named from the key.
+            let keyed = ["table", "bench"].contains(&name);
+            let mut e = entity(
+                "building",
+                if keyed { "building" } else { name },
+                9,
+                centre((5, 3)),
+                4,
+            );
+            e.subtype = if keyed { name.into() } else { String::new() };
+            zoo.entities.push(e);
         }
         zoo.entities
             .push(entity("guests", "man", 1, centre((2, 6)), 0));
@@ -132,11 +162,12 @@ fn with_cx<R>(cat: &Catalogue, w: &mut World, f: impl FnOnce(&mut Cx) -> R) -> R
         cat,
     };
     let data = walks();
+    let at = w.find(1).unwrap();
     let mut cx = Cx {
         unit: &mut u,
         world: w,
         ctx: &mut ctx,
-        at: 0,
+        at,
         data: &data,
     };
     let r = f(&mut cx);
@@ -1192,6 +1223,7 @@ fn saved(cat: &Catalogue, id: u32, price: f32, stamp: Option<u32>) -> World {
         guests: [0; 3],
         income: [0; 3],
         upkeep: None,
+        upgrade: 0,
         price: price.to_bits(),
         users: vec![(1, 0)],
         users_now: 1,
@@ -1699,4 +1731,125 @@ fn the_site_goal_sets_the_need_fun_for_the_attraction_it_chooses() {
     let (cat, mut w) = (types(), at_the_ride());
     with_cx(&cat, &mut w, |cx| cx.site_decide());
     assert_eq!((guest(&w).need, guest(&w).building), (Some("fun"), 9));
+}
+
+/// The zoo with a bench 9 (the registry key `bench`) at (5, 3), whose entrance is on row 4, and a
+/// tired guest.
+fn bench() -> World {
+    let mut w = zoo_of(Some("bench"));
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        (g.values[crate::guest::ENERGY], g.countdowns, g.saw_animal) = (90, [1000; 11], 1000);
+    }
+    w
+}
+
+#[test]
+fn a_guest_on_a_bench_stays_for_its_use_set_not_for_the_time_inside() {
+    let (cat, mut w, mut money) = (types(), bench(), Money::default());
+    let mut s = game();
+    assert!(with_cx(&cat, &mut w, |cx| {
+        cx.seek("energy");
+        cx.record().task == GO
+    }));
+    let log = run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    assert_eq!(log, ["use 9 1"]);
+    // The set added the guest: seated at the slot, listed, visible.
+    let seated = w.units.ai_ticks;
+    assert!(!w.units.get(1).unwrap().hidden && w.units.buildings[&9].users.len() == 1);
+    // Past the one tick of the type the guest is still seated, in the set.
+    while w.units.ai_ticks < seated + 3 {
+        run(&mut s, &cat, &mut w, &mut money, 1, "never");
+        assert_eq!(w.units.buildings[&9].users.len(), 1);
+        assert_eq!(task(&w), USE);
+    }
+    // The set's exit call releases it: no user, no goal on the bench.
+    until(&mut s, &cat, &mut w, &mut money, 1000, |w| {
+        w.units.buildings[&9].users.is_empty()
+    });
+    assert!(w.units.ai_ticks >= seated + 4);
+    assert_ne!(task(&w), USE);
+}
+
+#[test]
+fn a_guest_saved_on_a_bench_leaves_it_at_once_after_the_load() {
+    let (cat, mut w, mut money) = (types(), bench(), Money::default());
+    w.zoo.version = 106;
+    let at = w.find(9).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
+        guests: [0; 3],
+        income: [0; 3],
+        upkeep: None,
+        price: 0,
+        users: vec![(1, 0)],
+        users_now: 1,
+        fill: 0,
+        built: 0,
+        upgrade: 0,
+    });
+    for at in 0..w.zoo.entities.len() {
+        crate::building::load(&mut w, &cat, at);
+    }
+    crate::building::users::restore(&mut w, &cat, 100);
+    // Its set is not saved: no set runs, and the seat is held until the guest goes out.
+    assert_eq!(
+        (w.units.buildings[&9].users.len(), task(&w)),
+        (1, crate::goal::EXIT_BUILDING)
+    );
+    let mut s = game_at(100);
+    until(&mut s, &cat, &mut w, &mut money, 1000, |w| {
+        w.units.buildings[&9].users.is_empty()
+    });
+    assert_ne!(task(&w), USE);
+}
+
+#[test]
+fn a_guest_on_a_bench_without_the_set_is_never_a_user() {
+    let (mut cat, mut w, mut money) = (types(), bench(), Money::default());
+    let mut s = game();
+    // Another subtype name: no set of the bench's name.
+    let at = w.find(9).unwrap();
+    w.zoo.entities[at].subtype = "chair".into();
+    cat.push(EntityType {
+        subtype: b"chair".to_vec(),
+        ..ty("building", "building", BENCH)
+    });
+    with_cx(&cat, &mut w, |cx| cx.seek("energy"));
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    run(&mut s, &cat, &mut w, &mut money, 1000, "never");
+    assert!(w.units.buildings.get(&9).is_none_or(|l| l.users.is_empty()));
+    assert_eq!(task(&w), USE);
+}
+
+#[test]
+fn an_outside_user_turns_towards_the_building_unless_the_type_says_not() {
+    let mut facings = Vec::new();
+    for turns in [true, false] {
+        let cat = match turns {
+            true => types(),
+            false => types_with(&STAND.replace("cCapacity", "cSetUserFacing=0\ncCapacity")),
+        };
+        let (mut w, mut money) = (zoo(), Money::default());
+        let mut s = game();
+        hungry(&mut w);
+        with_cx(&cat, &mut w, |cx| cx.seek("food"));
+        run(&mut s, &cat, &mut w, &mut money, 600, "use");
+        let at = w.find(1).unwrap();
+        let c = w.zoo.entities[at].common.as_ref().unwrap();
+        facings.push((c.x.div_euclid(64), c.y.div_euclid(64), c.rotation));
+    }
+    // The guest stands on (5, 6) below the stand on (5, 5): it faces direction 0 (up the map).
+    assert_eq!(facings[0], (5, 6, 0));
+    assert_ne!(facings[1].2, 0, "{facings:?}");
+}
+
+#[test]
+fn a_slot_that_lists_other_guest_types_is_not_sought_by_a_guest() {
+    // The slot lists type ids: the guest type here has the id 0.
+    for (id, sought) in [(9505, false), (0, true)] {
+        let text = BENCH.replace("[slot]\n", &format!("[slot]\nid={id}\n"));
+        let cat = types_of(STAND, &text);
+        let mut w = bench();
+        with_cx(&cat, &mut w, |cx| cx.seek("energy"));
+        assert_eq!(guest(&w).building == 9, sought, "{id}");
+    }
 }

@@ -186,11 +186,8 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
     for f in floats.chain(&money.total).chain([&status.price]) {
         o.u32(f.to_bits());
     }
-    // The date after the price (from 71) is 1 January 2000 when the file has none.
-    match zoo.version >= 71 {
-        true => o.bytes(b.get(kept.at - 8..kept.at).ok_or_else(short)?),
-        false => o.bytes(&upgrade::NEVER.to_le_bytes()),
-    }
+    // The date of the last escape follows the price.
+    o.bytes(&status.escape.to_le_bytes());
     // The calendar: year, month, day of week (Sunday is 0), day, hour, minute, second, millisecond.
     let d = Calendar::at(zoo.clocks.calendar).date();
     let fields = [
@@ -264,6 +261,10 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
         true => super::body::transcode(v, e.class.as_bytes(), b)?,
         false => fresh::parts(e, c, now)?,
     };
+    // The current upgrade of a building is the live one.
+    if let (true, "building", Some(b)) = (read && v >= 70, e.class.as_str(), &c.building) {
+        fresh::set_upgrade(&mut post, b.upgrade);
+    }
     // The guest's fields come from the model, the rest of the record as read.
     if let (true, Some(g)) = (read && e.class == "guests", c.guest.as_deref()) {
         pre = fresh::guest(Some(pre), g)?;

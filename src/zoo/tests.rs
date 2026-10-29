@@ -156,7 +156,7 @@ fn tail(w: &mut W, v: u32, scripts: u32) {
         w.u32(22.5f32.to_bits()); // the adult admission price
     }
     if v >= 71 {
-        w.z(8);
+        w.bytes(&130_000_000_000_000_000u64.to_le_bytes()); // the date of the last escape
     }
     // The calendar: Friday 14 March 2003, 06:30:15.250.
     for n in [2003, 3, 5, 14, 6, 30, 15, 250] {
@@ -470,6 +470,16 @@ fn reads_what_the_zoo_status_stores() {
         assert_eq!(
             status.price,
             if v >= 39 { 22.5 } else { 49.0 },
+            "version {v}"
+        );
+        // The date of the last escape; a file without the field has 1 January 2000.
+        assert_eq!(
+            status.escape,
+            if v >= 71 {
+                130_000_000_000_000_000
+            } else {
+                125_911_584_000_000_000
+            },
             "version {v}"
         );
     }
@@ -1487,7 +1497,7 @@ fn reads_the_figures_of_a_building() {
             b.u32(bits(100.0));
         }
         if v >= 74 {
-            b.z(4);
+            b.u32(5);
         }
         if v >= 75 {
             b.u32(0);
@@ -1514,6 +1524,59 @@ fn reads_the_figures_of_a_building() {
         assert_eq!(r.built, 0x01d0_0000_1234_5678, "version {v}");
         let upkeep = r.upkeep.map(f32::from_bits);
         assert_eq!(upkeep, (v >= 68).then_some(100.0), "version {v}");
+        assert_eq!(r.upgrade, if v >= 74 { 5 } else { 0 }, "version {v}");
+    }
+}
+
+#[test]
+fn the_upgrade_index_of_a_loaded_building_is_written_from_the_record() {
+    for v in [70, 74, 75, 106] {
+        let mut b = W::default();
+        b.z(4);
+        base(&mut b, v, 4, 9, "House");
+        b.u32(2).u32(40).u32(0).u32(0);
+        // Two users, to move the word the writer patches.
+        b.u32(2).u32(77).u32(2).u32(78).u32(1);
+        b.u32(14).z(16).z(8).u32(100);
+        if v >= 74 {
+            b.u32(5);
+        }
+        if v >= 75 {
+            b.u32(0);
+        }
+        let bytes = file(v, 1, 1, &[], &[("building", "building", "shop", b.0)]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        let record = |zoo: &mut Zoo| {
+            zoo.entities[0]
+                .common
+                .as_mut()
+                .unwrap()
+                .building
+                .as_mut()
+                .unwrap()
+                .upgrade
+        };
+        assert_eq!(record(&mut zoo), if v >= 74 { 5 } else { 0 }, "version {v}");
+        for index in [2, 0, u32::MAX] {
+            *zoo.entities[0]
+                .common
+                .as_mut()
+                .unwrap()
+                .building
+                .as_mut()
+                .map(|b| &mut b.upgrade)
+                .unwrap() = index;
+            let mut back = parse_to_the_end(&zoo.write(&money).unwrap());
+            assert_eq!(record(&mut back), index, "version {v}");
+            let r = back.entities[0]
+                .common
+                .as_ref()
+                .unwrap()
+                .building
+                .as_ref()
+                .unwrap();
+            assert_eq!((r.users.len(), r.fill), (2, 14), "version {v}");
+        }
     }
 }
 
@@ -1587,6 +1650,7 @@ fn the_fields_of_the_model_are_written() {
         zoo.clocks.world_secs = 11;
         zoo.clocks.status.rating = 42;
         zoo.clocks.status.price = 31.5;
+        zoo.clocks.status.escape = 131_000_000_000_000_000;
         zoo.clocks.calendar = 123_456_789;
         let c = zoo.entities[0].common.as_mut().unwrap();
         (c.x, c.y, c.z, c.rotation, c.id) = (1, 2, 3, 6, 99);
@@ -1602,6 +1666,7 @@ fn the_fields_of_the_model_are_written() {
         let money_back = Zoo::parse_money(&zoo.write(&money).unwrap()).unwrap().1;
         assert_eq!(back, upgraded(zoo, &back), "version {v}");
         assert_eq!(money_back, money, "version {v}");
+        assert_eq!(back.clocks.status.escape, 131_000_000_000_000_000);
         assert_eq!(
             back.entities[0].common.as_ref().unwrap().name,
             "A longer name"
@@ -1641,7 +1706,8 @@ fn the_writer_puts_names_thoughts_and_habitat_figures_over_the_file() {
 fn the_game_block_of_an_old_file_gets_the_rows_and_words_it_lacked() {
     for v in [70, 71, 73, 106] {
         let back = again(&lean(v)).2;
-        let (f, at) = (&back.kept.finances, back.kept.at);
+        let f = &back.kept.finances;
+        let at = f.len() - 24;
         // 31 rows and 20 columns, whatever the file had.
         assert_eq!(
             f[45..53],
@@ -1651,7 +1717,11 @@ fn the_game_block_of_an_old_file_gets_the_rows_and_words_it_lacked() {
         let date = u64::from_le_bytes(f[at - 8..at].try_into().unwrap());
         assert_eq!(
             date,
-            if v < 71 { 125_911_584_000_000_000 } else { 0 },
+            if v < 71 {
+                125_911_584_000_000_000
+            } else {
+                130_000_000_000_000_000
+            },
             "version {v}"
         );
         assert_eq!(f.len(), at + 24, "version {v}");
@@ -1776,6 +1846,7 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         guests: [1, 2, 3],
         income: [4, 5, 6],
         upkeep: Some(7),
+        upgrade: 3,
         price: 8,
         users: vec![(9, 1)],
         users_now: 2,

@@ -99,6 +99,7 @@ pub(crate) fn building_new(price: f32, now: u64) -> BuildingRecord {
         guests: [0; 3],
         income: [0; 3],
         upkeep: Some(0),
+        upgrade: 0,
         price: price.to_bits(),
         users: Vec::new(),
         users_now: 0,
@@ -124,8 +125,19 @@ fn building(o: &mut Out, b: &BuildingRecord) {
     }
     o.bytes(&b.built.to_le_bytes());
     o.u32(b.upkeep.unwrap_or(0));
-    // The unknown word and the empty list of members.
-    o.bytes(&[0; 8]);
+    // The index of the current upgrade and the empty list of members.
+    o.u32(b.upgrade);
+    o.u32(0);
+}
+
+/// Writes the index of the current upgrade into the building fields `post` of version 106 (they
+/// come from a body of version 70 or later, the oldest the writer upgrades): it follows the users and the figures.
+pub(super) fn set_upgrade(post: &mut [u8], index: u32) {
+    let users = post.get(16..20).and_then(|n| <[u8; 4]>::try_from(n).ok());
+    let at = users.map(|n| 52 + 8 * u32::from_le_bytes(n) as usize);
+    if let Some(word) = at.and_then(|at| post.get_mut(at..at + 4)) {
+        word.copy_from_slice(&index.to_le_bytes());
+    }
 }
 
 /// A new guest (save games 11.3) with no live state: the type's initial happiness, every need at 0,

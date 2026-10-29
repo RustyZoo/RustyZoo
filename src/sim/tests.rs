@@ -1171,6 +1171,78 @@ fn the_month_end_rating_check_belongs_to_the_old_month_and_the_accounts_then_mov
 }
 
 #[test]
+fn the_endowment_is_drawn_and_booked_at_the_month_end_in_the_old_month() {
+    let (mut w, mut s, mut money) = (world(0), sim(""), Money::default());
+    money.total[crate::money::MEMBERS] = 3.0;
+    let mut step = || {
+        s.step_game(
+            &NoData,
+            &Catalogue::default(),
+            &mut w,
+            &mut money,
+            1000,
+            |_, _, _| {},
+        )
+    };
+    (0..373).for_each(|_| _ = step());
+    let lines = s.take_lines();
+    let at = lines.iter().position(|l| l.starts_with("month 2")).unwrap();
+    let after: Vec<&str> = lines[at + 1..].iter().map(String::as_str).collect();
+    let members: Vec<&String> = lines.iter().filter(|l| l.starts_with("member")).collect();
+    // The rating of the empty zoo is 24: every draw above 34 leaves.
+    assert_eq!(members.len(), 3, "{lines:?}");
+    assert!(
+        lines.iter().any(|l| l.starts_with("endowment ")),
+        "{lines:?}"
+    );
+    // They come after the seeding and the month line, and before the first booking of the new month.
+    assert!(lines.iter().position(|l| l.starts_with("member")) > Some(at));
+    assert!(after.iter().any(|l| l.starts_with("endowment ")));
+    let left = members.iter().filter(|l| l.ends_with("leaves")).count() as f32;
+    use crate::money::{ENDOWMENT, MEMBERS, MEMBERS_LEFT};
+    assert_eq!(money.monthly[MEMBERS_LEFT][0], left);
+    assert_eq!(money.monthly[MEMBERS][0], -left);
+    assert!(money.monthly[ENDOWMENT][0] > 0.0 || left == 3.0);
+    assert_eq!(
+        money.monthly[ENDOWMENT][1], 0.0,
+        "booked in the month that ended"
+    );
+    assert_eq!(money.total[MEMBERS], 3.0 - left);
+}
+
+#[test]
+fn a_game_takes_the_escape_keys_of_the_ini_and_a_scenario_economy_limits_the_price() {
+    let s = sim("[AI]\ncEscapedAnimalChange=33\ncEscapedAnimalTime=4\n");
+    let settings = &s.status.settings;
+    assert_eq!((settings.escaped_change, settings.escaped_time), (33, 4));
+    // The set-up check keeps them.
+    let mut run = game(0);
+    run.sim.status.settings.escaped_change = 33;
+    run.sim
+        .new_game(&mut run.world, &run.cat, &mut run.money, false);
+    assert_eq!(run.sim.status.settings.escaped_change, 33);
+    // The defaults of a new game reset the date of the last escape.
+    run.sim.status.escape = 7;
+    run.sim
+        .new_game(&mut run.world, &run.cat, &mut run.money, false);
+    assert_eq!(run.sim.status.escape, crate::zoo::NEVER);
+    // The scenario's file comes over the settings and the price follows its range.
+    let mut s = sim("");
+    s.status.price = 70.0;
+    s.scenario_economy(b"[characteristics]\ncMaxAdultAdmissionPrice=25\ncDonationChance=7\n");
+    assert_eq!(
+        (s.status.price, s.status.settings.donation_chance),
+        (25.0, 7)
+    );
+    // A minimum above the maximum swaps the two.
+    s.scenario_economy(b"[characteristics]\ncMinAdultAdmissionPrice=30\n");
+    assert_eq!(
+        (s.status.settings.min_price, s.status.settings.max_price),
+        (25.0, 30.0)
+    );
+}
+
+#[test]
 fn a_new_game_starts_the_timers_again_and_runs_the_set_up_check() {
     let mut run = game(0);
     let first = run.sim.take_lines();
@@ -1213,6 +1285,7 @@ fn the_research_share_of_the_checks_is_the_trees_and_a_game_without_one_counts_0
         effect: 0,
         vals: [0; 3],
         order: 0,
+        icon: String::new(),
     };
     let tree = |programs| Tree {
         branches: vec![Branch {
@@ -1261,6 +1334,7 @@ fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_comp
         effect: 0,
         vals: [0; 3],
         order: 1,
+        icon: String::new(),
     };
     let tree = Tree {
         branches: vec![Branch {

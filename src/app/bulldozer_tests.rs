@@ -174,6 +174,10 @@ pub(super) fn catalogue() -> Catalogue {
     // 17: a seal, an animal that lives under water.
     let seal = "[m/Characteristics/Integers]\ncUnderwater=1\n";
     cat.push(ty("animals", b"seal", b"m", seal, [1, 1, 1]));
+    // 18: a tank filter with a healthy and a decayed loop.
+    let filter = "[Characteristics/Integers]\ncDecayedHealth=5\n[FilterSounds]\n\
+        cHealthySound=h.wav\ncHealthyAtten=1700\ncDecayedSound=d.wav\ncDecayedAtten=1800\n";
+    cat.push(ty("filter", b"filter1", b"f", filter, [2, 2, 1]));
     cat
 }
 
@@ -572,6 +576,43 @@ fn the_sell_button_of_the_building_panel_sells_as_the_bulldozer_does() {
         let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
         assert!(removed.ends_with("refund 280"), "{removed}");
         assert_eq!((s.count(), s.cash()), (0, 50_280.0));
+    });
+}
+
+#[test]
+fn an_upgrade_button_of_the_programs_tab_sets_the_index_of_the_selected_building() {
+    use crate::building::upgrade::{self, Upgrade};
+    with_game("upgrade-button", "", |s| {
+        let id = s.add(2, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        let name = |n| Upgrade {
+            name: n,
+            icon: String::new(),
+            upkeep: 10 * n,
+            adult: 1,
+            child: 1,
+        };
+        let units = &mut s.app.game.as_mut().unwrap().world.units;
+        // Every type of this test has the name id 9001.
+        upgrade::add(&mut units.upgrades, 9001, name(1));
+        upgrade::add(&mut units.upgrades, 9001, name(2));
+        let index = |s: &Session| {
+            let units = &s.app.game.as_ref().unwrap().world.units;
+            units.upgrade_index.get(&id).copied().unwrap_or(0)
+        };
+        // Nothing selected: nothing happens.
+        s.app.building_upgrade(4632);
+        assert_eq!(index(s), 0);
+        s.app.game.as_mut().unwrap().building.select(id, 20);
+        s.app.building_upgrade(4632);
+        assert_eq!(index(s), 1);
+        // The first button, a position the type lacks, and an element that is no such button.
+        s.app.building_upgrade(4635);
+        s.app.building_upgrade(4636);
+        s.app.building_upgrade(0);
+        assert_eq!(index(s), 1);
+        s.app.building_upgrade(4631);
+        assert_eq!(index(s), 0);
     });
 }
 

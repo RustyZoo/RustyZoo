@@ -16,7 +16,8 @@
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
 //! `building buy <id> <item> <price>` when it buys an item, and `building price <id> <price>` when
-//! the player sets the price in the panel.
+//! the player sets the price in the panel, `building upgrade <id> <n>` when the player picks the
+//! upgrade at position `n` of the Programs tab.
 
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
@@ -31,6 +32,7 @@ use std::collections::BTreeMap;
 
 pub mod items;
 pub mod leave;
+pub mod upgrade;
 pub mod users;
 
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
@@ -102,11 +104,12 @@ pub struct Slot {
     pub filter: String,
 }
 
-/// The species and subtype of an animal, which the slots of a building test (guest buildings 6.1
-/// point 7), and what the animal needs of its place (6.3 point 5); guests are passed as `None`, no
-/// guest building lists a species or a filter.
+/// The type id and subtype of a guest or an animal, which the slots of a building test (guest
+/// buildings 6.1 point 7), and what an animal needs of its place (6.3 point 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Species {
+    /// An animal, not a guest: the place test of 6.3 point 5 applies.
+    pub animal: bool,
     pub id: i32,
     pub subtype: String,
     /// `cSwims` is 1 and the animal is no egg: it may stand on water.
@@ -118,11 +121,13 @@ pub struct Species {
 }
 
 impl Species {
-    /// The species of the animal entity `e`, none for another entity; `egg` is the animal's egg
-    /// flag, which an egg never swims by.
+    /// The species of the animal or guest entity `e`, none for another entity; `egg` is the
+    /// animal's egg flag, which an egg never swims by.
     pub fn of(cat: &Catalogue, e: &Entity, egg: bool) -> Option<Species> {
-        let ty = crate::place::bulldozer::type_of(cat, e).filter(|_| e.class == "animals")?;
+        let ty = crate::place::bulldozer::type_of(cat, e)
+            .filter(|_| ["animals", "guests"].contains(&e.class.as_str()))?;
         Some(Species {
+            animal: e.class == "animals",
             id: ty.name_id,
             subtype: e.subtype.clone(),
             swims: !egg && crate::build::number(ty, "cSwims") == Some(1.0),
@@ -167,6 +172,8 @@ pub struct Kind {
     pub change: [i32; 6],
     pub hide: bool,
     pub outside: bool,
+    /// An outside user turns towards the building (`cSetUserFacing`).
+    pub faces_user: bool,
     /// A user is put inside without a walk (`cUserTeleportsInside`).
     pub teleports: bool,
     pub uses_exit: bool,
@@ -256,6 +263,7 @@ impl Kind {
             .map(|k| int(k, 0)),
             hide: flag("cHideUser", false),
             outside: flag("cUserStaysOutside", true),
+            faces_user: flag("cSetUserFacing", true),
             teleports: flag("cUserTeleportsInside", false),
             uses_exit: flag("cUserUsesExit", false),
             direct: flag("cDirectEntrance", false),
@@ -399,6 +407,10 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
         ..Live::new(&kind)
     };
     world.units.buildings.insert(id, live);
+    match record.upgrade {
+        0 => world.units.upgrade_index.remove(&id),
+        index => world.units.upgrade_index.insert(id, index),
+    };
     if kind.satisfies("trash") {
         set_fill(world, id, record.fill);
     }
@@ -679,12 +691,15 @@ fn fits(world: &World, (x, y): Point, exit: Option<&Slot>, animal: &dyn Fn(usize
 /// a tile that is not flat or raised along one side (the path shapes of placing 5.3); and not water
 /// for a non-swimmer.
 fn animal_place(world: &World, t: usize, who: &Species, home: Option<u32>, exempt: bool) -> bool {
+    if !who.animal {
+        return true;
+    }
     let own = exempt || world.exhibits().region(t) == home;
     own && !(who.large && !path_shape(world.zoo.tiles[t].shape))
         && (who.swims || !world.is_water(t))
 }
 
-/// Whether the unit (`who` for an animal) may use slot `slot` of a building (guest buildings 6.1):
+/// Whether the unit (`who`) may use slot `slot` of a building (guest buildings 6.1):
 /// the building and the slot have room, the slot's species and filter let it in, and an exit exists
 /// (6.3: an entrance, or the slot's exit for a type that uses it, that passes the place test).
 pub fn can_add(

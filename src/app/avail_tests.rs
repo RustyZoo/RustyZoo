@@ -28,11 +28,12 @@ pub(super) fn catalogue() -> Catalogue {
 
 /// Starts the scenario `text` with the reward of the name id 5 and tells the two flags.
 fn flags(name: &str, text: &str) -> [bool; 2] {
-    flags_of(name, text, None)
+    flags_of(name, text, None, &[])
 }
 
-/// [`flags`] for a saved game of the scenario with these goal states instead of a start.
-fn flags_of(name: &str, text: &str, saved: Option<&[u32]>) -> [bool; 2] {
+/// [`flags`] for a saved game of the scenario with these goal states instead of a start. The
+/// types `won` are unlocked by a win of this run first (its menu settings hold them, not the ini).
+fn flags_of(name: &str, text: &str, saved: Option<&[u32]>, won: &[i32]) -> [bool; 2] {
     let files = [("s/a.scn", text.as_bytes().to_vec())];
     let install = cache_install_with(name, frame_file(), &files);
     let mut vfs = Vfs::open(&install.0).unwrap();
@@ -47,6 +48,16 @@ fn flags_of(name: &str, text: &str, saved: Option<&[u32]>) -> [bool; 2] {
     )
     .unwrap();
     if let Some(states) = saved {
+        if !won.is_empty() {
+            let mut menu = Menu::new(ini, &install.0, None, None, 0);
+            let end = crate::scenario::Ended {
+                file: "s/a.scn".into(),
+                won: true,
+                unlocks: won.to_vec(),
+            };
+            menu.scenario_ended(&end);
+            app.menu = Some(menu);
+        }
         let bytes = crate::zoo::tests::naming(
             crate::zoo::tests::file(106, 2, 2, &[], &[]),
             Some("s/a.scn"),
@@ -93,10 +104,21 @@ fn a_hide_all_start_trigger_does_not_undo_an_ini_reward() {
 }
 
 #[test]
+fn a_reward_won_in_the_run_still_applies_after_a_load() {
+    // The resume triggers hide every type: the install ini leaves only the lion, and the zebra
+    // is the reward of a win of this run, which the menu settings hold.
+    let resume = "[resume]\ntriggers=r\n[r]\ntrulea=4\ntruleb=9\n";
+    let text = format!("[duration]\nnummonths=-1\n{resume}");
+    let won = flags_of("load-won", &text, Some(&[0, 0]), &[6]);
+    assert_eq!(won, [true, true]);
+}
+
+#[test]
 fn a_saved_game_runs_the_resume_triggers_and_the_triggers_of_its_goal_states_the_reward_last() {
     let goal = "[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=4\ntruleb=1\ntarga=6\n";
     let text = |extra: &str| format!("[duration]\nnummonths=-1\n{extra}{goal}");
-    let load = |name: &str, extra: &str, states: &[u32]| flags_of(name, &text(extra), Some(states));
+    let load =
+        |name: &str, extra: &str, states: &[u32]| flags_of(name, &text(extra), Some(states), &[]);
     // The goal's trigger hides the zebra only when its state is stored.
     assert_eq!(load("load-0", "", &[0, 0]), [true, true]);
     assert_eq!(load("load-1", "", &[0, 1]), [true, false]);
