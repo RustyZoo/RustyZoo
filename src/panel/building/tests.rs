@@ -425,9 +425,7 @@ fn the_programs_tab_shows_the_upgrades_of_the_type_and_the_current_one() {
     assert_eq!(ui.text(BONUS[0][0]).unwrap(), b"5");
     assert_eq!(ui.text(BONUS[1][0]).unwrap(), b"3");
     // The second: its own numbers, and the child bonus of -1 is hidden with its label and icon.
-    let at = world.find(1).unwrap();
-    let kind = Kind::of(type_at(&world, &cat, at).unwrap(), 2.0);
-    assert!(upgrade::choose(&mut world.units, &kind, 1, 1));
+    assert!(upgrade::choose(&mut world.units, 0, 1, 1));
     panel.clock.force = true;
     let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
     assert!(
@@ -440,7 +438,7 @@ fn the_programs_tab_shows_the_upgrades_of_the_type_and_the_current_one() {
     assert!(BONUS[0].iter().all(|&e| !hidden(&ui, e)));
     assert!(BONUS[1].iter().all(|&e| hidden(&ui, e)));
     // An index past the list has no current upgrade: nothing is pressed and no bonus is shown.
-    world.units.buildings.get_mut(&1).unwrap().upgrade = u32::MAX;
+    world.units.upgrade_index.insert(1, u32::MAX);
     let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
     assert!(told.ends_with(" upgrades 2 current none"), "{told}");
     assert_eq!(pressed(&ui), [false; 5]);

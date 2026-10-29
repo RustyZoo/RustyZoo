@@ -155,13 +155,9 @@ fn a_building_pays_the_upkeep_of_its_current_upgrade() {
     upgrade::add(&mut w.units.upgrades, 0, up(1, 200));
     upgrade::add(&mut w.units.upgrades, 0, up(2, -30));
     upgrade::add(&mut w.units.upgrades, 8031, up(3, 999));
-    let live = |index| crate::building::Live {
-        upgrade: index,
-        ..Default::default()
-    };
-    // Building 1: no live entry, the first upgrade; 2: the second; 3: past the list, the type's.
-    w.units.buildings.insert(2, live(1));
-    w.units.buildings.insert(3, live(u32::MAX));
+    // Building 1: no index, the first upgrade; 2: the second; 3: past the list, the type's.
+    w.units.upgrade_index.insert(2, 1);
+    w.units.upgrade_index.insert(3, u32::MAX);
     let (mut money, mut log) = (Money::default(), Vec::new());
     charge(&mut w, &catalogue(), &mut money, &mut log);
     // 200 - 30 + 50 for the shops; the helicopter base costs nothing whatever it holds.

@@ -243,7 +243,7 @@ impl Panel {
         ui.set_hidden(PROGRAMS_TAB, held.is_empty());
         ui.set_enabled(PROGRAMS_TAB, !held.is_empty());
         let now = upgrade::current(&world.units, ty.name_id, id);
-        let index = world.units.buildings.get(&id).map_or(0, |l| l.upgrade) as usize;
+        let index = world.units.upgrade_index.get(&id).copied().unwrap_or(0) as usize;
         for (n, &button) in UPGRADES.iter().enumerate() {
             let up = held.get(n);
             ui.set_hidden(button, up.is_none());

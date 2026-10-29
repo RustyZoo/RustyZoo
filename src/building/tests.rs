@@ -992,11 +992,11 @@ fn the_upgrade_index_is_loaded_kept_by_a_reset_start_and_saved() {
         ..record(0, START)
     };
     let mut w = loaded(&[("stand", 7, Some(stored.clone())), ("stand", 8, None)]);
-    assert_eq!(w.units.buildings[&7].upgrade, 3);
+    assert_eq!(w.units.upgrade_index[&7], 3);
     reset_all(&mut w, 0);
-    assert_eq!(w.units.buildings[&7].upgrade, 3, "a reset start keeps it");
+    assert_eq!(w.units.upgrade_index[&7], 3, "a reset start keeps it");
     // The save takes the live index; a building without a live entry keeps the record's.
-    w.units.buildings.get_mut(&7).unwrap().upgrade = 1;
+    w.units.upgrade_index.insert(7, 1);
     let mut zoo = w.saved(|_| true);
     w.finish_save(&mut zoo, &types());
     let index = |at: usize| zoo.entities[at].common.as_ref().unwrap().building.as_ref();
@@ -1046,7 +1046,7 @@ fn the_current_upgrade_changes_the_adult_and_child_happiness_of_a_leaving_user()
         (leave(&mut w, false), leave(&mut w, true)),
         ((20, -3), (30, -3))
     );
-    assert!(upgrade::choose(&mut w.units, &kind, 9, 1));
+    assert!(upgrade::choose(&mut w.units, kind.name_id, 9, 1));
     assert_eq!(
         (leave(&mut w, false), leave(&mut w, true)),
         ((-4, -3), (-1, -3))
@@ -1057,6 +1057,6 @@ fn the_current_upgrade_changes_the_adult_and_child_happiness_of_a_leaving_user()
     let Part::Animal(a) = &a.part else { panic!() };
     assert_eq!((a.happiness_change, a.hunger_change), (-4, -3));
     // An index past the list is no upgrade: the type's values.
-    w.units.buildings.get_mut(&9).unwrap().upgrade = u32::MAX;
+    w.units.upgrade_index.insert(9, u32::MAX);
     assert_eq!(leave(&mut w, false), (8, -3));
 }

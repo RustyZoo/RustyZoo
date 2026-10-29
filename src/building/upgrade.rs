@@ -1,8 +1,7 @@
 //! The upgrades of the building types (research 6.3; guest buildings 6.6, 9, 10.3): the list a
 //! type holds, filled by the programs that are complete, and the index of the upgrade each
-//! building uses ([`Live::upgrade`](super::Live::upgrade)).
+//! building uses ([`Units::upgrade_index`]).
 
-use super::{Kind, Live};
 use crate::unit::Units;
 use std::collections::BTreeMap;
 
@@ -35,18 +34,20 @@ pub fn add(list: &mut Upgrades, target: i32, upgrade: Upgrade) {
 /// The upgrade building `id` of the type named `name` uses: the list entry at its index, none
 /// when the index is out of range or the list is empty.
 pub fn current(units: &Units, name: i32, id: u32) -> Option<&Upgrade> {
-    let index = units.buildings.get(&id).map_or(0, |live| live.upgrade);
+    let index = units.upgrade_index.get(&id).copied().unwrap_or(0);
     units.upgrades.get(&name)?.get(usize::try_from(index).ok()?)
 }
 
-/// The player picked the button at position `n`: the index of building `id` of kind `kind`
-/// becomes `n`, when the type has such an upgrade. Whether it did.
-pub fn choose(units: &mut Units, kind: &Kind, id: u32, n: usize) -> bool {
-    if n >= units.upgrades.get(&kind.name_id).map_or(0, Vec::len) {
+/// The player picked the button at position `n`: the index of building `id` of the type named
+/// `name` becomes `n`, when the type has such an upgrade. Whether it did.
+pub fn choose(units: &mut Units, name: i32, id: u32, n: usize) -> bool {
+    if n >= units.upgrades.get(&name).map_or(0, Vec::len) {
         return false;
     }
-    let live = units.buildings.entry(id).or_insert_with(|| Live::new(kind));
-    live.upgrade = n as u32;
+    match n {
+        0 => units.upgrade_index.remove(&id),
+        _ => units.upgrade_index.insert(id, n as u32),
+    };
     true
 }
 

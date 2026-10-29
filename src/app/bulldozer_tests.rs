@@ -593,29 +593,22 @@ fn an_upgrade_button_of_the_programs_tab_sets_the_index_of_the_selected_building
         upgrade::add(&mut units.upgrades, 9001, name(1));
         upgrade::add(&mut units.upgrades, 9001, name(2));
         let index = |s: &Session| {
-            s.app
-                .game
-                .as_ref()
-                .unwrap()
-                .world
-                .units
-                .buildings
-                .get(&id)
-                .map(|l| l.upgrade)
+            let units = &s.app.game.as_ref().unwrap().world.units;
+            units.upgrade_index.get(&id).copied().unwrap_or(0)
         };
         // Nothing selected: nothing happens.
         s.app.building_upgrade(4632);
-        assert_eq!(index(s), None);
+        assert_eq!(index(s), 0);
         s.app.game.as_mut().unwrap().building.select(id, 20);
         s.app.building_upgrade(4632);
-        assert_eq!(index(s), Some(1));
+        assert_eq!(index(s), 1);
         // The first button, a position the type lacks, and an element that is no such button.
         s.app.building_upgrade(4635);
         s.app.building_upgrade(4636);
         s.app.building_upgrade(0);
-        assert_eq!(index(s), Some(1));
+        assert_eq!(index(s), 1);
         s.app.building_upgrade(4631);
-        assert_eq!(index(s), Some(0));
+        assert_eq!(index(s), 0);
     });
 }
 

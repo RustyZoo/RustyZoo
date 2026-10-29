@@ -127,9 +127,8 @@ impl App<'_> {
         let cat = self.renderer.catalogue();
         let at = game.world.find(id);
         let ty = at.and_then(|at| type_of(cat, &game.world.zoo.entities[at]));
-        let kind = ty.map(|ty| Kind::of(ty, game.world.units.prices.default));
-        if let Some(kind) = kind
-            && crate::building::upgrade::choose(&mut game.world.units, &kind, id, n)
+        if let Some(ty) = ty
+            && crate::building::upgrade::choose(&mut game.world.units, ty.name_id, id, n)
         {
             game.world.units.building_note(format!("upgrade {id} {n}"));
         }
