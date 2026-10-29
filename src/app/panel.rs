@@ -6,7 +6,7 @@
 use super::*;
 use crate::panel::building;
 use crate::panel::exhibit::{BUTTON, LAYOUT, NAME, PLAQUE};
-use crate::panel::{animal, guest, staff};
+use crate::panel::{animal, guest, research, staff};
 use crate::text::from_cp1252;
 use crate::unit::Part;
 
@@ -324,6 +324,18 @@ impl App<'_> {
             let date = self.sim.calendar().date();
             self.panel_lines
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
+        }
+        let shown = ui.shown(research::LAYOUT);
+        // A panel just shown runs its last tab again and is filled at once, a paused game or not
+        // (research 8.1).
+        if shown && !game.research.shown {
+            ui.reselect(&research::TABS);
+            game.research.clock.force = true;
+        }
+        game.research.shown = shown;
+        if shown && game.research.clock.due(now, ticking, research::PERIOD) {
+            let line = game.research.refresh(ui, self.sim.research(), vfs);
+            self.panel_lines.extend(line);
         }
         game.awards_page
             .refresh(ui, &game.world.zoo.awards, &cat.awards, vfs);
