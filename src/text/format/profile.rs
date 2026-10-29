@@ -78,7 +78,25 @@ impl Profile {
         system
             .then(|| locale::profile(""))
             .flatten()
+            .map(Profile::in_code_page)
             .unwrap_or_else(Profile::us)
+    }
+
+    /// The marks with a character that Windows-1252 lacks (an Arabic decimal mark, say) replaced
+    /// by the US ones, which the game can write; the money forms stay.
+    pub fn in_code_page(mut self) -> Profile {
+        let us = Marks::new(".", ",", 3);
+        for marks in [&mut self.number, &mut self.money] {
+            if !marks
+                .decimal
+                .chars()
+                .chain(marks.group.chars())
+                .all(crate::text::in_cp1252)
+            {
+                *marks = us.clone();
+            }
+        }
+        self
     }
 
     /// The forms of the Windows currency settings (the numbers of the two items).
