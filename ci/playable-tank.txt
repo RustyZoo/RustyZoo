@@ -1,8 +1,11 @@
 # The exit test of milestone M6 on the expansion trial: the game of its freeform screen (the map of
-# the aquarium and 75000 of cash), played to the fourth month: a tank of 6 x 6 tiles built with
+# the aquarium and 75000 of cash), played to the seventh month: a tank of 6 x 6 tiles built with
 # tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
 # maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
-# reads the log. The run is long enough for the can to have 13 uses (the check fails below that).
+# reads the log. The run is long enough for the can to have 13 uses (the check fails below that):
+# on each of the seeds 40 to 80 that hire the three staff members the can has them before pass
+# 10700 (the guests use it about once per 700 passes after the first 5000), so the check does not
+# depend on the seed.
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
@@ -18,9 +21,9 @@
 # check (the can has 15 uses).
 # The hires come before the adoption: an animal placed rates its exhibit at once (habitat rating 9.4),
 # which draws from the shared stream, and the seed 46 draws women for the hires made first.
-#run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 6500 --clock 200
+#run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 12000 --clock 200
 #exhibit 16,35,21,40
-#months 3
+#months 6
 #expect 1 exhibit gate [0-9]+
 #expect 2 unit add [0-9]+ animal
 #expect 1 unit add [0-9]+ keeper
@@ -208,5 +211,5 @@
 228 key escape
 # run unpaused
 262 pause
-# the fourth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
-5700 char Z
+# the seventh month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
+11500 char Z
