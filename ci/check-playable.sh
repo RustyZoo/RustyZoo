@@ -173,13 +173,40 @@ else
   else ok "trash can: $uses uses, the first worker went to it after $first"; fi
 fi
 
+# The type name of an animal: from the line that added it, else from its mother's (`animal birth MOTHER ID`).
+species() { # species <animal id>
+  id=$1
+  for _ in 1 2 3 4 5 6 7 8; do
+    [ -n "$id" ] || return
+    s=$(awk -v id="$id" '$4 == "world" && $5 == "add" && $9 == id { split($6, p, "/"); if (p[1] == "animals") { print p[2]; exit } }' "$tmp/log")
+    if [ -n "$s" ]; then echo "$s"; return; fi
+    id=$(awk -v id="$id" '$4 == "animal" && $5 == "birth" && $7 == id { print $6; exit }' "$tmp/log")
+  done
+}
+# The earliest a new animal of this type can be hungry, in ms of the clock; nothing when the data does not say.
+# Hunger starts at 0 and rises by cHungerIncrement at each hunger check, which runs every cHungerCheck status
+# ticks (animals-needs 1 and 4.1); the animal wants food at cHungerThreshold or more, so after
+# ceil(threshold / increment) checks. The first check can come at the animal's first status tick (its counter
+# starts at a random value below the period, animals 1), the others follow one period apart: at least
+# (checks - 1) x cHungerCheck status ticks of mStatusPeriod (1000 ms by default), and the animal only eats later.
+first_hunger_ms() { # first_hunger_ms <type>
+  one=$("$bin" --data "$data" cat "animals/$1.ai" 2>/dev/null | tr -d '\r')
+  all=$("$bin" --data "$data" cat animals.ai 2>/dev/null | tr -d '\r')
+  key() { printf '%s\n' "$2" | awk -F= -v k="$1" '{ n = $1; gsub(/[ \t]/, "", n) } n == k { v = $2; gsub(/[ \t]/, "", v); print v; exit }'; }
+  thr=$(key cHungerThreshold "$one"); inc=$(key cHungerIncrement "$one"); per=$(key cHungerCheck "$all")
+  case "$thr$inc$per" in ''|*[!0-9]*) return ;; esac
+  [ "$inc" -gt 0 ] || return
+  echo $(((((thr + inc - 1) / inc) - 1) * per * 1000))
+}
+
 # The animals: the adopted ones (a line `unit add ID animal`), none gone, each fed, all in their exhibit.
 animals=$(awk '$4 == "unit" && $5 == "add" && $7 == "animal" { print $6 }' "$tmp/log" | tr '\n' ' ')
 n=$(echo "$animals" | wc -w | tr -d ' ')
 if [ "$n" = 0 ]; then
   fail "animals: none adopted"
 else
-  lost=0 early="" died="" hungry=""
+  lost=0 early="" died="" hungry="" young=""
+  end_ms=$(awk '$3 ~ /^t=/ { t = substr($3, 3) + 0 } END { print t + 0 }' "$tmp/log")
   for a in $animals; do
     # The time of the clock, in ms, at which the animal left the game, and 1 if a line `animal dying`
     # of it came before; nothing if it did not leave.
@@ -189,7 +216,12 @@ else
       lost=$((lost + 1))
       if [ "${left% *}" -ge "$OLD_AGE_MS" ] && [ "${left#* }" = 1 ]; then died="$died $a"; else early="$early $a"; fi
     fi
-    [ "$(count '$4 == "animal" && $5 == "eat" && $6 == '"$a")" -gt 0 ] || hungry="$hungry $a"
+    if [ "$(count '$4 == "animal" && $5 == "eat" && $6 == '"$a")" -eq 0 ]; then
+      # An animal added so late that it cannot be hungry before the run ends is not expected to have eaten.
+      born=$(awk -v id="$a" '$4 == "unit" && $5 == "add" && $6 == id { print substr($3, 3) + 0; exit }' "$tmp/log")
+      soon=$(first_hunger_ms "$(species "$a")")
+      if [ -n "$born" ] && [ -n "$soon" ] && [ $((born + soon)) -gt "$end_ms" ]; then young="$young $a"; else hungry="$hungry $a"; fi
+    fi
   done
   # The shortest life of the species of the data is 4320 s (cTimeDeath of a gazelle, a zebra, a walrus):
   # an animal may be gone after $OLD_AGE_MS ms of the clock only if it died of old age (it posted
@@ -198,7 +230,9 @@ else
   elif [ "$lost" = 0 ]; then ok "animals: $n alive at the end"
   else ok "animals: $((n - lost)) of $n alive at the end, died of old age:$died"; fi
   if pending fed; then :
-  elif [ -z "$hungry" ]; then ok "animals: all $n fed"; else fail "animals: never ate:$hungry"; fi
+  elif [ -n "$hungry" ]; then fail "animals: never ate:$hungry"
+  elif [ -n "$young" ]; then ok "animals: all $n fed, too young to eat:$young"
+  else ok "animals: all $n fed"; fi
   # Happiness above the start value of the animal (its first status line; the species differ) at some
   # time of the run; the exhibit of the base trial has no raked dung (its keeper has no cDirt), so it
   # falls later. The young (the ids of the `animal birth FATHER ID ...` lines) are left out: a young

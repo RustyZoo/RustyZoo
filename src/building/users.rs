@@ -4,6 +4,7 @@
 
 use super::{Kind, Live};
 use crate::entity::Catalogue;
+use crate::goal::{EXIT_BUILDING, USE};
 use crate::unit::Part;
 use crate::world::World;
 
@@ -14,8 +15,9 @@ use crate::world::World;
 /// record as its entry time (0: `now`, the AI tick of the load), hidden when the type hides its
 /// users, and goes on with the task its unit block stores when that is entering, using or leaving,
 /// so a user leaves after the time it has left (a guest pays then); a unit saved in another task
-/// ends its use at once. The stored count of users is not brought back to the list: the pairs
-/// dropped stay counted (`Live::extra`).
+/// ends its use at once, and a guest on a seat visible inside leaves (its saved use set is not resumed).
+/// The stored count of users is not brought back to the list: the pairs dropped stay counted
+/// (`Live::extra`).
 /// A file before version 80 restores none of the users of a type whose users are visible inside
 /// (a bench, a picnic table): their pairs are skipped and counted off the guest figures
 /// (guest buildings 4.2).
@@ -69,6 +71,13 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     if !matches!(u.part, Part::Guest(_) | Part::Animal(_)) {
         return;
     }
+    // A guest on a seat visible inside ran a use set, which a load does not bring back: it leaves at
+    // once (guest buildings 6.5).
+    let using = saved.is_none_or(|t| t == i32::from(USE));
+    let saved = match u.part {
+        Part::Guest(_) if using && !kind.hide && !kind.outside => Some(i32::from(EXIT_BUILDING)),
+        _ => saved,
+    };
     crate::goal::resume_use(u, id, slot, now, saved);
     u.hidden = kind.hide;
     if kind.hide {
