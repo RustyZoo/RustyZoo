@@ -6,7 +6,7 @@ use crate::research::Tree;
 use crate::text::to_cp1252;
 use crate::ui::interface::Buttons;
 
-/// The strings of "%r is now available." and of "%s: All selected programs have been completed."
+/// The message strings: a program made available, and a branch with no program left.
 const COMPLETED: i32 = 23020;
 const ALL_DONE: i32 = 23021;
 

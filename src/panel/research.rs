@@ -1,5 +1,5 @@
 //! The research panel (research 8): the Status tab with the current program of the first two
-//! branches, and the Research and Conservation tabs with the category ticks, the funding buttons
+//! branches, and the two branch tabs with the category ticks, the funding buttons
 //! and the current program of one branch. It is refreshed every second of the interface clock
 //! while shown and at once by what the player does; [`Panel::refresh`] writes the layouts from the
 //! tree and returns the `panel` log line when what they show changed.
@@ -14,7 +14,7 @@ use crate::ui::interface::Interface;
 use crate::ui::widgets::Row;
 use crate::vfs::Vfs;
 
-/// The layout, the main strip's button, the tab buttons (Status, Research, Conservation).
+/// The layout, the main strip's button, the tab buttons (status and the two branches).
 pub const LAYOUT: i32 = 15;
 pub const BUTTON: i32 = 1019;
 pub const TABS: [i32; 3] = [4008, 4009, 4010];
@@ -42,7 +42,7 @@ const NOT_FUNDED: i32 = 23030;
 const NO_PROGRAM: i32 = 23031;
 const NO_CATEGORY: i32 = 23032;
 
-/// The branch the tab shows: 0 for Research, 1 for Conservation, none for Status.
+/// The branch the tab shows: 0 for the first branch, 1 for the second, none for Status.
 pub fn branch_of_tab(ui: &Interface) -> Option<usize> {
     [TABS[1], TABS[2]].iter().position(|&t| ui.is_down(t))
 }
@@ -153,7 +153,7 @@ fn status(ui: &mut Interface, vfs: &Vfs, branch: Option<&Branch>, ids: &[i32; 4]
     format!("{name:?} {tip:?}")
 }
 
-/// The page of the Research or Conservation tab for `shown`, the categories listed and the
+/// The page of a branch tab for `shown`, the categories listed and the
 /// branch (none on the Status tab or for a missing branch); returns what it tells.
 fn category_page(ui: &mut Interface, vfs: &Vfs, shown: Option<(Vec<usize>, &Branch)>) -> String {
     let branch = shown.as_ref().map(|(_, b)| *b);
