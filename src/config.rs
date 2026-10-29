@@ -64,6 +64,8 @@ pub struct Config {
     pub ignored_before_first_header: usize,
     /// The same, after a header without `]` or with an empty name.
     pub ignored_after_broken_header: usize,
+    /// Whether a line began with `[`, even a header with no name or no `]`, or a key was set.
+    header_seen: bool,
 }
 
 /// The keys of one section by exact name, in ascending byte order, each with its values in file
@@ -148,6 +150,7 @@ impl Config {
             }
         }
         config.close(current);
+        config.header_seen = header_seen;
         Ok(config)
     }
 
@@ -160,6 +163,12 @@ impl Config {
     /// Whether no section was created: the original counts such a file as not loaded.
     pub fn is_empty(&self) -> bool {
         self.sections.is_empty()
+    }
+
+    /// Whether a line of the file began with `[` (or a key was set): the original counts a file
+    /// with none as not loaded.
+    pub fn has_header(&self) -> bool {
+        self.header_seen
     }
 
     /// The section with exactly this name.
@@ -192,6 +201,7 @@ impl Config {
     }
 
     fn set_values(&mut self, section: &[u8], key: &[u8], values: Vec<Vec<u8>>) {
+        self.header_seen = true;
         let name = self
             .sections
             .keys()

@@ -331,6 +331,30 @@ fn truleb_10_makes_the_type_available_for_good_and_stores_it_with_the_rewards() 
     );
 }
 
+#[test]
+fn truleb_10_for_an_id_already_listed_changes_no_flag_and_a_new_one_does() {
+    // 6 is listed in the settings already: its unlock changes no flag, and the listed rewards
+    // apply at the start, so it is available even after its hiding. 5 is not listed: its unlock
+    // makes it available.
+    let text = "[duration]\nnummonths=-1\n[start]\ntriggers=t0\ntriggers=t1\ntriggers=t2\n\
+        triggers=t3\n[t0]\ntrulea=4\ntruleb=1\ntarga=6\n[t1]\ntrulea=4\ntruleb=1\ntarga=5\n\
+        [t2]\ntrulea=4\ntruleb=10\ntarga=6\n[t3]\ntrulea=4\ntruleb=10\ntarga=5\n";
+    let files = [("s/av.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game(
+        "avail-listed",
+        "[user]\nunlockCount=1\nunlockEntity0=6\n",
+        &files,
+        cat,
+        |app, _| {
+            play(app, "s/av.scn");
+            let cat = app.renderer.catalogue();
+            let build = &app.game.as_ref().unwrap().build;
+            assert_eq!([0, 1].map(|i| build.is_available(cat, i)), [true, true]);
+        },
+    );
+}
+
 /// A scenario that hides every type at its start, then wins (or loses) at once with these unlocks;
 /// `body` runs when the end dialog is open.
 fn rewarded(name: &str, unlock: &str, kind: &str, body: impl FnOnce(&mut App)) {
@@ -419,4 +443,52 @@ fn a_win_leaves_a_hidden_earlier_reward_hidden() {
 #[test]
 fn a_loss_leaves_a_hidden_earlier_reward_hidden() {
     hidden_reward_stays_hidden_at_the_end("end-hidden-loss", "type=7");
+}
+
+#[test]
+fn a_win_does_not_show_a_hidden_reward_again_when_it_unlocks_a_listed_id() {
+    let text = "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=4\ntruleb=9\n\
+        [completion]\nunlock=6\n[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n";
+    let files = [("s/rw.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("end-relisted", "", &files, cat, |app, _| {
+        app.pass(0, &[]);
+        app.menu.as_mut().unwrap().unlock(&[6]);
+        let now = play(app, "s/rw.scn");
+        assert_eq!(flags(app), [false, true]);
+        let hide = crate::scenario::Avail {
+            which: crate::scenario::Which::Name(6),
+            on: false,
+            tell: None,
+        };
+        let cat = app.renderer.catalogue();
+        app.game.as_mut().unwrap().build.change(cat, &[hide]);
+        assert_eq!(flags(app), [false, false]);
+        until_asked(app, now);
+        assert_eq!(flags(app), [false, false]);
+    });
+}
+
+#[test]
+fn a_trigger_unlock_of_a_listed_id_shows_no_hidden_type_during_play() {
+    // The goal's trigger unlocks the zebra (6) when the goal is won, after the start rewards.
+    let text = "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=4\ntruleb=0\n\
+        [goals]\ngoal=g\n[g]\nrulea=99\narga=1\ntype=0\nvalue=1\ntrulea=4\ntruleb=10\ntarga=6\n";
+    let files = [("s/tu.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("trigger-relisted", "", &files, cat, |app, _| {
+        app.pass(0, &[]);
+        app.menu.as_mut().unwrap().unlock(&[6]);
+        let now = play(app, "s/tu.scn");
+        let hide = crate::scenario::Avail {
+            which: crate::scenario::Which::Name(6),
+            on: false,
+            tell: None,
+        };
+        let cat = app.renderer.catalogue();
+        app.game.as_mut().unwrap().build.change(cat, &[hide]);
+        assert_eq!(flags(app), [true, false]);
+        until_asked(app, now);
+        assert_eq!(flags(app), [true, false]);
+    });
 }
