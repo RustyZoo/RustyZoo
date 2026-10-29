@@ -3,15 +3,15 @@
 # tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
 # maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
 # reads the log. The run is long enough for the can to have 13 uses (the check fails below that):
-# on 38 of the seeds 40 to 80 the can has them (the guests use it about once per 700 passes after
-# the first 5000); the seeds 52, 56 and 59 leave it 10 to 12.
+# on each of the seeds 40 to 80 that hire the three staff members the can has them before pass
+# 10700 (the guests use it about once per 700 passes after the first 5000), so the check does not
+# depend on the seed.
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
 # rocks and plants cost points) and want 70; with these they rate it 91.
-# The staff of the trials are women only: when a man is drawn the Hire list shows the women (it was
-# empty, and the staff were not all hired on 31 of the seeds 40 to 80). The seed 46 draws women for
-# the three hires when the game starts on its map. The seed was 5 before the
+# The seed 46 draws women for the three hires (the staff of the trials are women only, and the Hire
+# list is empty when a man is drawn) when the game starts on its map. The seed was 5 before the
 # closing wall piece drew once for the new tank (the exhibit is rated when the pen closes), which
 # shifted the shared stream, and 6 before a staff member drew its colours and counters at its
 # creation and a hire made two pending staff members (staff 4.2), which put those draws before the

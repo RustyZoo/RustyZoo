@@ -1046,20 +1046,10 @@ impl Build {
         self.list = match (tab, male) {
             (None, _) => Vec::new(),
             (Some(_), Some(male)) => {
-                let of = |male: bool| {
-                    let sex = [&b"f"[..], b"m"][usize::from(male)];
-                    items_of(cat, &self.avail, &tag, self.expansions, |ty| {
-                        is_unit(ty) && ty.subtype == sex
-                    })
-                };
-                let list = of(male);
-                // Data with staff of one sex only (the trials) would leave the Hire list empty
-                // whenever the other sex is drawn, with no way to draw again but a hire.
-                if list.is_empty() && panel.layout == HIRE {
-                    of(!male)
-                } else {
-                    list
-                }
+                let sex = [&b"f"[..], b"m"][usize::from(male)];
+                items_of(cat, &self.avail, &tag, self.expansions, |ty| {
+                    is_unit(ty) && ty.subtype == sex
+                })
             }
             (Some(_), None) => items(cat, &self.avail, &tag, self.expansions),
         };
