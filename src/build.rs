@@ -447,8 +447,8 @@ struct Last {
 pub struct Build {
     /// The expansions installed (a mask).
     expansions: i32,
-    /// The rows of the selector after All, and its value: 0 for All, else the entry id plus 1.
-    /// Kept as stored in a file, even when no row has it (see [`Build::value`]).
+    /// The rows of the selector after All, and its value: 0 for All, else the entry id plus 1 of
+    /// one of them (a value with no row is held as 0).
     entries: Vec<Expansion>,
     selector: i32,
     /// The expansion entries a scenario disables (research 3.5): all, base game, Dinosaur Digs,
@@ -456,6 +456,8 @@ pub struct Build {
     off: [bool; 4],
     /// The selector's list was filled.
     rowed: bool,
+    /// The open list has taken the focus.
+    taken: bool,
     /// Which types the lists show (entity types 10.4).
     avail: Availability,
     /// The panel shown, a position in [`PANELS`].
@@ -508,6 +510,7 @@ impl Build {
             selector: 0,
             off: [false; 4],
             rowed: false,
+            taken: false,
             avail: Availability::default(),
             open: None,
             list: Vec::new(),
@@ -549,29 +552,30 @@ impl Build {
             .into_iter()
             .filter(|e| (0..EXPANSIONS.len() as i32).contains(&e.id))
             .for_each(|e| self.entries.push(e));
-        self.selector = i32::try_from(stored).unwrap_or(0);
+        self.set(i32::try_from(stored).unwrap_or(0));
         self
     }
 
-    /// A scenario's start sets the entries it disables and, for a start, the selector (research
-    /// 3.5). It comes before a panel opens.
+    /// Sets the selector's value: the one of a row, else All (entity types 10.5).
+    fn set(&mut self, value: i32) {
+        let known = self.entries.iter().any(|e| e.id + 1 == value);
+        self.selector = if known { value } else { 0 };
+    }
+
+    /// A scenario's start sets the entries it disables and the selector, if it has a value for it
+    /// (research 3.5). It comes before a panel opens.
     pub fn set_scenario(&mut self, off: [bool; 4], selection: Option<i32>) {
         self.off = off;
+        self.rowed = false;
         if let Some(value) = selection {
-            self.selector = value;
+            self.set(value);
         }
     }
 
-    /// The value a file stores: the selector as it is held.
-    pub fn stored(&self) -> u32 {
-        u32::try_from(self.selector).unwrap_or(0)
-    }
-
-    /// The selector's value: 0 for All, else the entry id plus 1 of a row it has. A value with no
-    /// row (a file's, or an install without that expansion) counts as All.
+    /// The selector's value: 0 for All, else the entry id plus 1 of one of its rows. It is what a
+    /// file stores.
     pub fn value(&self) -> i32 {
-        let known = self.entries.iter().any(|e| e.id + 1 == self.selector);
-        if known { self.selector } else { 0 }
+        self.selector
     }
 
     /// What the purchase lists filter by now.
@@ -597,11 +601,14 @@ impl Build {
 
     /// The selector's list gets its rows: All, then the entries; the selected one is marked.
     fn fill_selector(&mut self, ui: &mut Interface) {
-        let row = |id| Row {
+        // A row of an entry the scenario disables is disabled (entity types 10.5).
+        let row = |(id, value): (i32, usize)| Row {
             text: to_cp1252(&ui.string(id)),
+            disabled: self.off[value],
             ..Row::default()
         };
-        let rows = (std::iter::once(ALL).chain(self.entries.iter().map(|e| e.list)))
+        let rows = (std::iter::once((ALL, 0)))
+            .chain(self.entries.iter().map(|e| (e.list, (e.id + 1) as usize)))
             .map(row)
             .collect();
         ui.refill_rows(SELECTOR_LIST, rows);
@@ -613,9 +620,38 @@ impl Build {
         ui.select_row(SELECTOR_LIST, Some(at.map_or(0, |i| i + 1)));
     }
 
-    /// A row of the selector's list was chosen (-1 for none): the list closes. A new value makes
-    /// every tab forget its item, both panels' rotation steps 0 and the panels that are not open
-    /// reopen on their first tab (placing 3.5), and the open list is made again (placing 3.4).
+    /// Whether the selector's list is open and has the focus.
+    pub fn selector_open(&self, ui: &Interface) -> bool {
+        ui.shown(SELECTOR) && ui.has_focus(SELECTOR_LIST)
+    }
+
+    /// Hides the selector's list and takes the focus from it.
+    pub fn close_selector(&mut self, ui: &mut Interface) {
+        if let Some(i) = ui.tree.find(SELECTOR) {
+            ui.tree.hide(i);
+            ui.touch();
+        }
+        ui.unfocus(SELECTOR_LIST);
+        self.taken = false;
+    }
+
+    /// The list takes the focus when it opens and closes when it loses it (a press on another
+    /// control, the map view included; entity types 10.5).
+    fn watch_selector(&mut self, ui: &mut Interface) {
+        if !ui.shown(SELECTOR) {
+            self.taken = false;
+            ui.unfocus(SELECTOR_LIST);
+        } else if !self.taken {
+            self.taken = ui.focus(SELECTOR_LIST);
+        } else if !ui.has_focus(SELECTOR_LIST) {
+            self.close_selector(ui);
+        }
+    }
+
+    /// A row of the selector's list was chosen (-1 for none, which leaves the list open). A row
+    /// closes it and sets the value, whether new or not: every tab forgets its item, both panels'
+    /// rotation steps are 0 and the panels that are not open reopen on their first tab (placing
+    /// 3.5), and the open list is made again (placing 3.4).
     pub fn pick_row(
         &mut self,
         ui: &mut Interface,
@@ -629,13 +665,10 @@ impl Build {
             Ok(r) => self.entries.get(r - 1).map(|e| e.id + 1),
             Err(_) => None,
         };
-        if let Some(i) = ui.tree.find(SELECTOR) {
-            ui.tree.hide(i);
-            ui.touch();
-        }
-        let Some(value) = value.filter(|&v| v != self.value()) else {
+        let Some(value) = value else {
             return self.mark_selector(ui);
         };
+        self.close_selector(ui);
         self.selector = value;
         self.chosen = [[None; 4]; PANEL_COUNT];
         self.step = [0; PANEL_COUNT];
@@ -1029,6 +1062,7 @@ impl Build {
         if !std::mem::replace(&mut self.rowed, true) {
             self.fill_selector(ui);
         }
+        self.watch_selector(ui);
         self.notice_bulldozer(ui, log);
         self.notice_gate(ui, log);
         let shown = PANELS.iter().position(|p| {
@@ -1058,9 +1092,7 @@ impl Build {
         }
         ui.set_button(PANELS[p].bar, false, true);
         ui.touch();
-        if let Some(i) = ui.tree.find(SELECTOR) {
-            ui.tree.hide(i);
-        }
+        self.close_selector(ui);
         self.stop_gate(ui, log);
         (self.open, self.held, self.terrain, self.drag) = (None, None, None, None);
         log.push("tool panel none".into());

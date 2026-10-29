@@ -63,7 +63,8 @@ pub(super) fn interface(install: &Install) -> Interface {
         [h]\ntype=UILayout\nlayout=ui/hint.lyt\n\
         [w]\ntype=UILayout\nlayout=ui/end.lyt\n\
         [o]\ntype=UILayout\nlayout=ui/obj.lyt\n\
-        [r]\ntype=UILayout\nlayout=ui/res.lyt\n";
+        [r]\ntype=UILayout\nlayout=ui/res.lyt\n\
+        [x]\ntype=UILayout\nlayout=ui/sel.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
         "[LayoutInfo]\nid=26\nlayer=2\nx=0\ny=0\ndx=whole\ndy=whole\nstate=1\n\
@@ -157,6 +158,12 @@ pub(super) fn interface(install: &Install) -> Interface {
                   [m]\ntype=UIButton\nid=4003\nx=0\ny=4\ndx=4\ndy=4\n\
                   [p]\ntype=UIButton\nid=4004\nx=4\ny=4\ndx=4\ndy=4\n\
                   [l]\ntype=UIListBox\nid=4022\nx=0\ny=8\ndx=30\ndy=30\n"
+                    .to_vec(),
+            ),
+            (
+                "ui/sel.lyt",
+                b"[LayoutInfo]\nid=152\nlayer=4\nx=0\ny=0\ndx=20\ndy=20\nstate=1\n\
+                  [l]\ntype=UIListBox\nid=22900\nx=0\ny=0\ndx=20\ndy=20\n"
                     .to_vec(),
             ),
             (
@@ -1086,9 +1093,9 @@ fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back()
     });
 }
 
-#[test]
-fn a_scenario_start_sets_the_selector_and_leaves_a_freeform_start_the_files_value() {
-    let more = [
+/// The two expansions of the made-up install, and scenarios that say what they want.
+fn selector_files() -> Vec<(&'static str, Vec<u8>)> {
+    vec![
         ("xpac00.cfg", b"[expansion]\nid=0\nlistid=22901\n".to_vec()),
         ("xpac02.cfg", b"[expansion]\nid=2\nlistid=22903\n".to_vec()),
         ("s/base.scn", b"[desc]\nname=16001\n".to_vec()),
@@ -1097,8 +1104,14 @@ fn a_scenario_start_sets_the_selector_and_leaves_a_freeform_start_the_files_valu
             b"[desc]\nexpansionLocked=1\nexpansion=3\ndefaultExpansion=1\n".to_vec(),
         ),
         ("s/none.scn", b"[desc]\nname=17000\n".to_vec()),
-    ];
-    with_game("selector-start", "", &more, None, |app, _| {
+        ("s/two.scn", b"[desc]\nname=17000\nexpansion=3\n".to_vec()),
+        ("s/nine.scn", b"[desc]\nname=17000\nexpansion=9\n".to_vec()),
+    ]
+}
+
+#[test]
+fn a_start_sets_the_selector_to_the_raw_expansion_first() {
+    with_game("selector-start", "", &selector_files(), None, |app, _| {
         app.pass(0, &[]);
         let started = |app: &mut App, scenario: &str, stored| {
             let mut zoo = Zoo::parse(&map()).unwrap();
@@ -1119,8 +1132,68 @@ fn a_scenario_start_sets_the_selector_and_leaves_a_freeform_start_the_files_valu
         };
         assert_eq!(started(app, "s/base.scn", 3), Some(1), "the base game");
         assert_eq!(started(app, "s/locked.scn", 0), Some(1), "defaultExpansion");
-        assert_eq!(started(app, "s/none.scn", 3), Some(3), "the file's value");
-        assert_eq!(started(app, "s/none.scn", 7), Some(0), "no such row");
+        // Whatever the map file stores: the key's value, or All without the key.
+        assert_eq!(started(app, "s/none.scn", 3), Some(0), "no key");
+        assert_eq!(started(app, "s/two.scn", 1), Some(3), "the key");
+        assert_eq!(started(app, "s/nine.scn", 3), Some(0), "no such row");
+        assert_eq!(started(app, "s/gone.scn", 3), Some(0), "no scenario file");
+    });
+}
+
+#[test]
+fn a_resumed_scenario_sets_the_selector_over_the_files_value() {
+    with_game("selector-resume", "", &selector_files(), None, |app, _| {
+        app.pass(0, &[]);
+        let resumed = |app: &mut App, scenario: Option<&str>, stored| {
+            let bytes = crate::zoo::tests::naming(map(), scenario);
+            let mut zoo = Zoo::parse(&bytes).unwrap();
+            zoo.expansion = stored;
+            app.open_game_as(zoo, Money::default(), true).unwrap();
+            app.game.as_ref().map(|g| g.build.value())
+        };
+        assert_eq!(
+            resumed(app, Some("s/base.scn"), 3),
+            Some(1),
+            "the base game"
+        );
+        assert_eq!(
+            resumed(app, Some("s/locked.scn"), 0),
+            Some(1),
+            "defaultExpansion"
+        );
+        // The other scenarios and the files with none keep the file's value.
+        assert_eq!(resumed(app, Some("s/none.scn"), 3), Some(3));
+        assert_eq!(
+            resumed(app, Some("s/two.scn"), 3),
+            Some(3),
+            "not the raw key"
+        );
+        assert_eq!(resumed(app, None, 3), Some(3));
+        assert_eq!(resumed(app, None, 7), Some(0), "no such row");
+    });
+}
+
+#[test]
+fn escape_and_a_press_on_the_map_close_the_selector_without_a_choice() {
+    with_game("selector-close", "", &selector_files(), None, |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        let open = |app: &mut App| {
+            app.ui.as_mut().unwrap().show(152);
+            app.pass(33, &[]);
+            assert!(app.selector_open());
+        };
+        let key = Command::Key(Key::Escape, false, false);
+        let press = click(60, 5);
+        for command in [&[key][..], &press[..]] {
+            open(app);
+            app.pass(66, command);
+            app.pass(99, &[]);
+            assert!(!app.selector_open(), "{command:?}");
+            assert!(!app.ui.as_ref().unwrap().shown(152));
+            assert_eq!(app.game.as_ref().map(|g| g.build.value()), Some(0));
+        }
     });
 }
 
@@ -1143,31 +1216,27 @@ fn the_selector_takes_the_files_value_and_the_save_writes_the_value_it_holds() {
             app.save_game(file.to_str().unwrap());
             Zoo::parse(&std::fs::read(file).unwrap()).unwrap().expansion
         };
-        let value = |app: &App| {
-            app.game
-                .as_ref()
-                .map(|g| (g.build.value(), g.build.stored()))
-        };
+        let value = |app: &App| app.game.as_ref().map(|g| g.build.value());
         let open = |app: &mut App, stored: u32| {
             let mut zoo = Zoo::parse(&map()).unwrap();
             zoo.expansion = stored;
             app.open_zoo(zoo, Money::default(), true).unwrap();
         };
-        // A row of the file is the value; a value without a row counts as All and is kept.
+        // A row of the file is the value; a value without a row is held and saved as All.
         open(app, 3);
-        assert_eq!((value(app), written(app)), (Some((3, 3)), 3));
+        assert_eq!((value(app), written(app)), (Some(3), 3));
         open(app, 2);
-        assert_eq!((value(app), written(app)), (Some((0, 2)), 2));
+        assert_eq!((value(app), written(app)), (Some(0), 0));
         open(app, u32::MAX);
-        assert_eq!((value(app), written(app)), (Some((0, 0)), 0));
+        assert_eq!((value(app), written(app)), (Some(0), 0));
         // Choosing a row (the first is All, then the files' ids in order) is what a save writes.
         app.expansion_row(2);
-        assert_eq!((value(app), written(app)), (Some((3, 3)), 3));
+        assert_eq!((value(app), written(app)), (Some(3), 3));
         app.expansion_row(0);
-        assert_eq!((value(app), written(app)), (Some((0, 0)), 0));
+        assert_eq!((value(app), written(app)), (Some(0), 0));
         app.expansion_row(-1);
         app.expansion_row(9);
-        assert_eq!(value(app), Some((0, 0)));
+        assert_eq!(value(app), Some(0));
     });
 }
 

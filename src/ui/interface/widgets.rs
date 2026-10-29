@@ -343,6 +343,20 @@ impl Interface {
         }
     }
 
+    /// Whether the element `id` has the keyboard focus.
+    pub fn has_focus(&self, id: i32) -> bool {
+        self.tree
+            .find(id)
+            .is_some_and(|i| self.tree.elements[i].state & FOCUSED != 0)
+    }
+
+    /// Takes the keyboard focus from the element `id`, if it has it.
+    pub fn unfocus(&mut self, id: i32) {
+        if self.has_focus(id) {
+            self.set_focus(None);
+        }
+    }
+
     // ---- Owners and their bars
 
     /// The scroll bar a text or a list names.

@@ -119,7 +119,10 @@ pub struct Tree {
     pub branches: Vec<Branch>,
     /// The expansion entries that are disabled (3.5): all, base game, first expansion, second expansion.
     pub off: [bool; 4],
-    /// The value a start sets the purchase panels' selector to (3.5); none leaves it as it was.
+    /// The raw `[desc] expansion` (0 when absent): what a start sets the purchase panels' selector
+    /// to first (3.5).
+    pub expansion: i32,
+    /// The value the base and locked scenarios set it to after that; none for the others.
     pub selection: Option<i32>,
     /// The manager's accumulator, in milliseconds (5.1).
     pub(crate) acc: u32,
@@ -160,6 +163,7 @@ impl Tree {
             .map_or(&[][..], |s| s.get_all("research"));
         let mut tree = Tree {
             off: expansions_off(main.section("desc")),
+            expansion: int(main.section("desc"), "expansion", 0),
             selection: expansion_selection(main.section("desc")),
             ..Tree::default()
         };

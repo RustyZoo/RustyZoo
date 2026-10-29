@@ -100,6 +100,11 @@ impl App<'_> {
         game.research.clock.force = true;
     }
 
+    /// Whether the expansion selector's list is open (entity types 10.5).
+    pub(super) fn selector_open(&self) -> bool {
+        matches!((&self.game, &self.ui), (Some(game), Some(ui)) if game.build.selector_open(ui))
+    }
+
     /// A row of the category list was selected (8.3): the tick of that category flips.
     pub(super) fn research_tick(&mut self, row: i32) {
         let branch = self.ui.as_ref().and_then(branch_of_tab);

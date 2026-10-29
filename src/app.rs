@@ -879,8 +879,8 @@ impl<'a> App<'a> {
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
-            // The file's selector value stands: the scenario's set-up only disables entries.
-            game.build.set_scenario(tree.off, None);
+            // The resumed scenario sets the selector over the file's value if it has a rule for it.
+            game.build.set_scenario(tree.off, tree.selection);
             game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
@@ -1263,6 +1263,13 @@ impl<'a> App<'a> {
         }
         match command {
             Command::Close => return self.close(),
+            // Escape closes the expansion selector's list without a choice (entity types 10.5).
+            Command::Key(Key::Escape, ..) if self.selector_open() && !self.question_open() => {
+                if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
+                    game.build.close_selector(ui);
+                }
+                return;
+            }
             Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
                 return self.close_list();
             }
@@ -2074,10 +2081,14 @@ impl<'a> App<'a> {
                     // A free program changes the animals the map placed (7.4).
                     crate::animal::lengthen(&mut game.world, &life);
                     game.build.start_research(cat, &flags);
-                    game.build.set_scenario(tree.off, tree.selection);
+                    // A start sets the raw expansion first, then the scenario's rules (research 3.5).
+                    let value = tree.selection.unwrap_or(tree.expansion);
+                    game.build.set_scenario(tree.off, Some(value));
                     game.world.units.upgrades = research::upgrades(&tree);
                 }
                 self.sim.set_research(tree);
+            } else if let Some(game) = &mut self.game {
+                game.build.set_scenario([false; 4], Some(0));
             }
         }
         if let Some(game) = &mut self.game {

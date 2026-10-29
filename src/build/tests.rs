@@ -1,7 +1,9 @@
 use super::*;
+use crate::app::Mouse;
 use crate::config::Config;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
+use crate::ui::interface::Action;
 use crate::ui::layout::{DISABLED, Expansion, Kind, Tree};
 
 /// A type of the class with a definition file of this text.
@@ -1440,20 +1442,21 @@ fn the_selector_fills_its_list_and_the_value_comes_from_a_file() {
         "ids out of 0 to 2 have no row"
     );
     assert_eq!(l.rows.selected, Some(2));
-    assert_eq!((build.value(), build.stored()), (2, 2));
-    // A value with no row counts as All, and is stored as it was read; the biggest and the
-    // negative ones are 0.
-    for (stored, value, kept) in [(0, 0, 0), (4, 0, 4), (9, 0, 9), (u32::MAX, 0, 0)] {
-        let build = selector(stored);
-        assert_eq!((build.value(), build.stored()), (value, kept), "{stored}");
+    assert_eq!(build.value(), 2);
+    // A value with no row is held as All: it is what a save writes.
+    for stored in [0, 4, 9, u32::MAX] {
+        assert_eq!(selector(stored).value(), 0, "{stored}");
     }
     let mut build = selector(2);
     build.set_scenario([false; 4], Some(-3));
-    assert_eq!((build.value(), build.stored()), (0, 0));
+    assert_eq!(build.value(), 0);
     build.set_scenario([false; 4], Some(i32::MAX));
     assert_eq!(build.value(), 0);
     build.set_scenario([false, false, true, false], None);
     assert_eq!(build.value(), 0, "no value leaves it");
+    build.set_scenario([false; 4], Some(2));
+    build.set_scenario([false, false, true, false], None);
+    assert_eq!(build.value(), 2, "no value leaves it");
     build.set_scenario([false; 4], Some(3));
     assert_eq!(build.value(), 3);
     // Without rows (the base trial) nothing can be selected.
@@ -1515,12 +1518,12 @@ fn choosing_a_row_filters_the_open_panel_and_forgets_what_the_tabs_chose() {
         Some(0),
         "the first item again, not the remembered one"
     );
-    // The same row again changes nothing; none, a row out of the list and a huge one only close it.
+    // None, a row out of the list and a huge one choose nothing and leave the list open.
     log.clear();
-    for row in [0, -1, 4, 5, i32::MIN, i32::MAX] {
+    for row in [-1, 4, 5, i32::MIN, i32::MAX] {
         assert!(ui.show(152));
         build.pick_row(&mut ui, &vfs, &cat, row, &mut log);
-        assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN, "{row}");
+        assert_eq!(state_of(&ui, 152) & HIDDEN, 0, "{row}");
     }
     assert!(log.is_empty(), "{log:?}");
     assert_eq!(build.value(), 0);
@@ -1528,6 +1531,127 @@ fn choosing_a_row_filters_the_open_panel_and_forgets_what_the_tabs_chose() {
     assert!(ui.show(152));
     Build::hide_panels(&mut ui);
     build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN);
+}
+
+/// Presses and releases the left button on the list row `n` of the selector (the rows are
+/// scanned from the top) and gives the actions of the click.
+fn click_row(ui: &mut Interface, n: usize) -> Vec<Action> {
+    let y = (0..60)
+        .find(|&y| {
+            ui.mouse(Mouse::Move(5, y));
+            ui.mouse(Mouse::Down);
+            let found = ui.selected_row(22900) == Some(n);
+            ui.mouse(Mouse::Up);
+            ui.take_actions();
+            found
+        })
+        .unwrap_or_else(|| panic!("no row {n}"));
+    ui.mouse(Mouse::Move(5, y));
+    ui.mouse(Mouse::Down);
+    ui.mouse(Mouse::Up);
+    ui.take_actions()
+}
+
+#[test]
+fn a_press_outside_the_open_list_closes_it_without_a_choice() {
+    let (mut ui, vfs, _install) = interface("selector-blur");
+    let (cat, mut log) = (types(), vec![]);
+    let mut build = selector(0);
+    assert!(ui.show(8));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    log.clear();
+    for _ in 0..2 {
+        assert!(ui.show(152));
+        build.sync(&mut ui, &vfs, &cat, &mut log);
+        assert!(ui.has_focus(22900) && build.selector_open(&ui));
+        // A press on a row keeps the focus; one on the map view (a corner the list does not cover)
+        // takes it, and the list closes without a choice.
+        ui.mouse(Mouse::Move(5, 5));
+        ui.mouse(Mouse::Down);
+        ui.mouse(Mouse::Up);
+        ui.take_actions();
+        build.sync(&mut ui, &vfs, &cat, &mut log);
+        assert_eq!(state_of(&ui, 152) & HIDDEN, 0);
+        ui.mouse(Mouse::Move(150, 150));
+        ui.mouse(Mouse::Down);
+        ui.mouse(Mouse::Up);
+        build.sync(&mut ui, &vfs, &cat, &mut log);
+        assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN);
+        assert!(!ui.has_focus(22900) && !build.selector_open(&ui));
+    }
+    assert!(log.is_empty() && build.value() == 0, "{log:?}");
+    // Escape does the same.
+    assert!(ui.show(152));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    build.close_selector(&mut ui);
+    assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN);
+    assert!(!ui.has_focus(22900));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN);
+}
+
+#[test]
+fn a_disabled_row_of_the_selector_chooses_nothing() {
+    let (mut ui, vfs, _install) = interface("selector-disabled");
+    let (cat, mut log) = (types(), vec![]);
+    let mut build = selector(0);
+    build.set_scenario([false, false, true, true], Some(1));
+    assert!(ui.show(8));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    log.clear();
+    assert!(ui.show(152));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    let Kind::ListBox(l) = &ui.tree.elements[ui.tree.find(22900).unwrap()].kind else {
+        panic!("not a list");
+    };
+    let off: Vec<bool> = l.rows.rows.iter().map(|r| r.disabled).collect();
+    assert_eq!(off, [false, false, true, true]);
+    for row in [2, 3] {
+        let actions = click_row(&mut ui, row);
+        assert_eq!(actions, [Action::Row(22900, -1)], "row {row}");
+        for action in actions {
+            if let Action::Row(_, r) = action {
+                build.pick_row(&mut ui, &vfs, &cat, r, &mut log);
+            }
+        }
+        build.sync(&mut ui, &vfs, &cat, &mut log);
+        assert_eq!(state_of(&ui, 152) & HIDDEN, 0, "the list stays open");
+        assert!(log.is_empty() && build.value() == 1, "{log:?}");
+        assert_eq!(
+            ui.selected_row(22900),
+            Some(2 - 1),
+            "the chosen row stays marked"
+        );
+    }
+    // A new scenario enables them again.
+    build.set_scenario([false; 4], None);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(click_row(&mut ui, 3), [Action::Row(22900, 3)]);
+}
+
+#[test]
+fn choosing_the_selected_row_again_still_clears() {
+    let (mut ui, vfs, _install) = interface("selector-again");
+    let (cat, mut log) = (types(), vec![]);
+    let mut build = selector(2);
+    assert!(ui.show(8));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    tab(&mut ui, &mut build, (&vfs, &cat), 3056, &mut log);
+    build.chosen[1][1] = Some(1);
+    build.step[0] = 3;
+    build.step[1] = 2;
+    // The Objects panel is not open: its tab goes back to the first.
+    ui.set_button(3053, true, true);
+    ui.set_button(3050, false, true);
+    assert!(ui.show(152));
+    log.clear();
+    build.pick_row(&mut ui, &vfs, &cat, 2, &mut log);
+    assert_eq!(build.value(), 2);
+    assert_eq!(build.chosen, [[None; 4]; 4]);
+    assert_eq!(build.step, [0; 4]);
+    assert_eq!(state_of(&ui, 3053) & SELECTED, 0);
+    assert_eq!(log[0], "tool expansion 2");
     assert_eq!(state_of(&ui, 152) & HIDDEN, HIDDEN);
 }
 
