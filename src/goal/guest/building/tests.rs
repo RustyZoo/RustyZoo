@@ -1770,6 +1770,37 @@ fn a_guest_on_a_bench_stays_for_its_use_set_not_for_the_time_inside() {
 }
 
 #[test]
+fn a_guest_saved_on_a_bench_leaves_it_at_once_after_the_load() {
+    let (cat, mut w, mut money) = (types(), bench(), Money::default());
+    w.zoo.version = 106;
+    let at = w.find(9).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
+        guests: [0; 3],
+        income: [0; 3],
+        upkeep: None,
+        price: 0,
+        users: vec![(1, 0)],
+        users_now: 1,
+        fill: 0,
+        built: 0,
+    });
+    for at in 0..w.zoo.entities.len() {
+        crate::building::load(&mut w, &cat, at);
+    }
+    crate::building::users::restore(&mut w, &cat, 100);
+    // Its set is not saved: no set runs, and the seat is held until the guest goes out.
+    assert_eq!(
+        (w.units.buildings[&9].users.len(), task(&w)),
+        (1, crate::goal::EXIT_BUILDING)
+    );
+    let mut s = game_at(100);
+    until(&mut s, &cat, &mut w, &mut money, 1000, |w| {
+        w.units.buildings[&9].users.is_empty()
+    });
+    assert_ne!(task(&w), USE);
+}
+
+#[test]
 fn a_guest_on_a_bench_without_the_set_is_never_a_user() {
     let (mut cat, mut w, mut money) = (types(), bench(), Money::default());
     let mut s = game();
