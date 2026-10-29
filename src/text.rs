@@ -212,6 +212,11 @@ pub fn from_cp1252(byte: u8) -> char {
     }
 }
 
+/// Whether Windows-1252 has the character `c`.
+pub fn in_cp1252(c: char) -> bool {
+    (0..=255u8).any(|b| from_cp1252(b) == c)
+}
+
 /// The Windows-1252 bytes of `text`; a character the code page lacks becomes `?`.
 pub fn to_cp1252(text: &str) -> Vec<u8> {
     text.chars()

@@ -15,10 +15,11 @@
 //! do the rest; a nested terrain or tank set is the land one.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
-use super::{Call, Gait, Number, Op, Place, Play, Routine, Row, Target};
+use super::{Call, Gait, Number, Op, Place, Play, Routine, Row, Target, parse_call};
 use crate::sim::Rng;
-use crate::zoo::Entity;
+use crate::zoo::{Behaviour as Saved, Entity};
 
 /// The longest nesting of sets (behaviours O8): the original has no limit.
 const DEPTH: usize = 16;
@@ -310,6 +311,11 @@ struct Level {
     /// The index of the current call, and whether it has finished.
     call: usize,
     done: bool,
+    /// Started by a forced start and not yet run: the first run cuts the animation.
+    forced: bool,
+    /// The calls of a set loaded from a saved game, the current one first, in place of the type's
+    /// set of that name (behaviours 4.7); `call` counts in this list.
+    own: Option<Arc<[Call]>>,
 }
 
 /// What a unit needs to run its set.
@@ -329,6 +335,9 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
+    /// Taken from a saved game and not yet stepped: the player holds no sequence of the unit's
+    /// own, so its first play call is shown at once, not behind the base loop (behaviours 4.7).
+    fresh: bool,
     /// Where the unit is for its ambient table: set by the unit before each run.
     pub place: Place,
     /// The unit's tank mode and whether its tile is a water tile, which alone choose the set of
@@ -373,6 +382,7 @@ impl Default for Runner {
             interruptible: true,
             ready: true,
             playing: false,
+            fresh: false,
             place: Place::Land,
             tank_mode: 0,
             wet: false,
@@ -480,7 +490,10 @@ impl Runner {
         let Some(top) = self.chain.first().filter(|l| l.running && l.loaded) else {
             return 0;
         };
-        let calls = data.set(unit, &top.name).map_or(0, <[Call]>::len);
+        let calls = match &top.own {
+            Some(own) => own.len(),
+            None => data.set(unit, &top.name).map_or(0, <[Call]>::len),
+        };
         calls.saturating_sub(top.call)
     }
 
@@ -519,7 +532,44 @@ impl Runner {
             running: true,
             call: 0,
             done: false,
+            forced: false,
+            own: None,
         });
+    }
+
+    /// Takes the set a saved game holds as the unit's own (behaviours 4.7): each level of the
+    /// chain as read, its remaining calls kept as texts, the name not looked up again. The play
+    /// state and the animation stay as for a new unit, so the current call runs again from its
+    /// start. A set that was not running counts as ended, and the unit stays as it is. Returns
+    /// whether a set was taken.
+    pub fn restore(&mut self, saved: &Saved) -> bool {
+        let top = saved.levels.first();
+        if top.is_none_or(|l| l.name.is_empty() || l.tail[2] == 0) {
+            return false;
+        }
+        let call = |text: &String| {
+            parse_call(text.as_bytes()).map_or(
+                Call {
+                    name: "",
+                    op: Op::Fail,
+                },
+                |(call, _)| call,
+            )
+        };
+        self.interruptible = top.is_some_and(|l| l.flag != 0);
+        self.chain = (saved.levels.iter().take(DEPTH))
+            .map(|l| Level {
+                name: l.name.clone(),
+                loaded: l.tail[0] != 0,
+                running: l.tail[2] != 0,
+                call: 0,
+                done: l.tail[1] != 0,
+                forced: l.tail[3] != 0,
+                own: Some(l.list_b.iter().map(call).collect()),
+            })
+            .collect();
+        (self.ready, self.playing, self.fresh) = (true, false, true);
+        true
     }
 
     /// The unit's behaviour hook (behaviours 4.6): a pending set starts, else an ambient one is
@@ -536,6 +586,7 @@ impl Runner {
         if self.running() {
             self.execute(0, anim, env);
         }
+        self.fresh = false;
     }
 
     /// The ambient choice of the animals' checks: only when no set runs and none is pending.
@@ -558,10 +609,17 @@ impl Runner {
     fn execute(&mut self, k: usize, anim: &mut Animation, env: &mut Env) -> bool {
         loop {
             let level = &mut self.chain[k];
-            let calls = env.data.set(env.unit, &level.name).unwrap_or_default();
+            let own = level.own.clone();
+            let calls = own
+                .as_deref()
+                .or_else(|| env.data.set(env.unit, &level.name))
+                .unwrap_or_default();
             if !level.loaded {
                 level.running = false;
                 return true;
+            }
+            if std::mem::take(&mut level.forced) {
+                anim.cut();
             }
             if level.done {
                 (level.call, level.done) = (level.call + 1, false);
@@ -749,7 +807,11 @@ impl Runner {
         if entries.is_empty() {
             return false;
         }
+        let base = anim.shows_base();
         anim.queue(entries);
+        if self.fresh && base {
+            anim.finish(&timing);
+        }
         (self.playing, self.ready) = (true, false);
         true
     }
