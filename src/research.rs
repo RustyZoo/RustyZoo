@@ -12,6 +12,7 @@ use crate::vfs::Vfs;
 mod effects;
 #[cfg(test)]
 mod tests;
+mod view;
 
 pub use effects::{Life, Overlay};
 
@@ -28,7 +29,7 @@ pub struct Level {
 }
 
 /// One research program.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Program {
     pub name: i32,
     pub cost: f32,
@@ -41,6 +42,9 @@ pub struct Program {
     pub order: i32,
     /// `entityIcon`: the picture of a building upgrade's button.
     pub icon: String,
+    /// `icon` and `helpid`: the picture of the panel and the string of its tooltip.
+    pub picture: String,
+    pub help: i32,
 }
 
 /// A program the step completed: the caller applies its effect (5.4).
@@ -74,9 +78,11 @@ impl Program {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Category {
     pub name: i32,
+    /// `helpid`: the string of the tooltip of its row.
+    pub help: i32,
     pub expansion: i32,
     /// The tick of the panel; it starts set.
     pub tick: bool,
@@ -94,9 +100,11 @@ impl Category {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Branch {
     pub name: i32,
+    /// `noprogicon`: the picture shown while it has no current program.
+    pub no_icon: String,
     pub funding: Vec<Level>,
     /// The index of the funding level; it starts at 0.
     pub level: usize,
@@ -124,6 +132,14 @@ fn int(s: Option<&Section>, key: &str, default: i32) -> i32 {
 
 fn float(s: Option<&Section>, key: &str) -> f32 {
     s.and_then(|s| s.get(key)).map_or(0.0, to_float)
+}
+
+/// The name of a picture a key gives, empty when there is none.
+fn picture(s: Option<&Section>, key: &str) -> String {
+    let value = s.and_then(|s| s.get(key));
+    value.map_or(String::new(), |v| {
+        crate::vfs::name_from_bytes(v.trim_ascii())
+    })
 }
 
 fn read(vfs: &Vfs, path: &[u8]) -> Option<Config> {
@@ -197,10 +213,8 @@ impl Tree {
         let at = at.unwrap_or_else(|| {
             self.branches.push(Branch {
                 name,
-                funding: Vec::new(),
-                level: 0,
-                categories: Vec::new(),
-                current: None,
+                no_icon: picture(section, "noprogicon"),
+                ..Branch::default()
             });
             self.branches.len() - 1
         });
@@ -503,14 +517,14 @@ impl Category {
                 effect: int(p, "effect", -1),
                 vals: [1, 2, 3].map(|n| int(p, &format!("effectval{n}"), 0)),
                 order: int(p, "order", 0),
-                icon: p
-                    .and_then(|s| s.get("entityIcon"))
-                    .map(|v| crate::vfs::name_from_bytes(v.trim_ascii()))
-                    .unwrap_or_default(),
+                icon: picture(p, "entityIcon"),
+                picture: picture(p, "icon"),
+                help: int(p, "helpid", 0),
             });
         }
         Some(Category {
             name: int(section, "name", 0),
+            help: int(section, "helpid", 0),
             expansion: int(section, "expansion", 0),
             tick: true,
             programs,

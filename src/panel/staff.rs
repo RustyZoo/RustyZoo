@@ -44,7 +44,7 @@ const SALARY: i32 = 3503;
 const DUTY: i32 = 3505;
 /// The string of the first duty kind, and the pictures of a check box off and on.
 const DUTY_STRING: i32 = 3530;
-const CHECKS: [&str; 2] = [
+pub(crate) const CHECKS: [&str; 2] = [
     "ui/sharedui/checkbx1/checkbx1",
     "ui/sharedui/checkbx2/checkbx2",
 ];

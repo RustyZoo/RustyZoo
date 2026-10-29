@@ -30,6 +30,7 @@ use crate::menu::{self, Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
 use crate::panel::building as panel_building;
+use crate::panel::research as research_panel;
 use crate::panel::{animal, exhibit, guest, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
@@ -373,6 +374,8 @@ struct Game {
     staff: crate::panel::staff::Panel,
     /// The guest panel and the guest selected.
     guest: crate::panel::guest::Panel,
+    /// The research panel.
+    research: crate::panel::research::Panel,
     /// The building panels and the building selected.
     building: crate::panel::building::Panel,
     /// The unit the player selected, and the one it carries (unit placing 8).
@@ -857,6 +860,7 @@ impl<'a> App<'a> {
             animal: Default::default(),
             staff: Default::default(),
             guest: Default::default(),
+            research: Default::default(),
             building: Default::default(),
             selected: None,
             carry: None,
@@ -1421,6 +1425,12 @@ impl<'a> App<'a> {
                     ui.press_button(STATUS_BUTTON);
                 }
             }
+            // The R key presses the research button (input 10).
+            (Command::Char(b'r' | b'R'), Some(_)) if keys => {
+                if let Some(ui) = &mut self.ui {
+                    ui.press_button(research_panel::BUTTON);
+                }
+            }
             // The O key presses the Scenario button (input 10).
             (Command::Char(b'o' | b'O'), Some(_)) if keys => {
                 if let Some(ui) = &mut self.ui {
@@ -1802,6 +1812,9 @@ impl<'a> App<'a> {
                 }
                 Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
                 Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),
+                Action::Row(research_panel::LIST, row) if self.game.is_some() => {
+                    self.research_tick(row);
+                }
                 Action::Row(staff::LIST, row) if self.game.is_some() => self.staff_row(row),
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
@@ -1847,6 +1860,14 @@ impl<'a> App<'a> {
                 exhibit::TANK_TAB if self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.panel.clock.force = true;
+                    }
+                }
+                research_panel::LESS | research_panel::MORE if self.game.is_some() => {
+                    self.research_fund(id == research_panel::MORE);
+                }
+                t if research_panel::TABS.contains(&t) && self.game.is_some() => {
+                    if let Some(game) = &mut self.game {
+                        game.research.clock.force = true;
                     }
                 }
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
