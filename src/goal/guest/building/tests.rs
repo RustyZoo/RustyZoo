@@ -1784,6 +1784,7 @@ fn a_guest_saved_on_a_bench_leaves_it_at_once_after_the_load() {
         users_now: 1,
         fill: 0,
         built: 0,
+        upgrade: 0,
     });
     for at in 0..w.zoo.entities.len() {
         crate::building::load(&mut w, &cat, at);
