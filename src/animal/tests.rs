@@ -2412,3 +2412,82 @@ fn a_reset_animal_starts_its_dates_at_the_game_date() {
     super::run(&mut a, &keys(), &class, &env, &mut Rng::default());
     assert_eq!((a.fed, a.slept), (99, 99));
 }
+
+#[test]
+fn research_changes_the_keys_of_the_type_and_the_life_of_the_live_animals() {
+    let (mut world, cat) = (pens(), zebras());
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let at = world.find(500).unwrap();
+    let before = super::keys(&world, &cat, at);
+    let life = |w: &World| match &w.units.get(500).unwrap().part {
+        Part::Animal(a) => a.life,
+        _ => unreachable!(),
+    };
+    for id in [500, 501] {
+        if let Part::Animal(a) = &mut world.units.get_mut(id).unwrap().part {
+            a.life = 5000;
+        }
+    }
+    assert_eq!((before.time_death, life(&world)), (5001, 5000));
+    // Longevity +25 %, sick chance set to 3, keeper arrives +5.
+    let mut changes = world.research.apply(&cat, 4, 0, [4, 25, 2]);
+    changes.extend(world.research.apply(&cat, 4, 0, [3, 3, 1]));
+    world.research.apply(&cat, 4, 0, [0, 5, 0]);
+    lengthen(&mut world, &changes);
+    let after = super::keys(&world, &cat, at);
+    assert_eq!((after.time_death, life(&world)), (6251, 6250));
+    assert_eq!(
+        (after.sick_chance, after.keeper_arrives),
+        (3, before.keeper_arrives + 5)
+    );
+    assert_eq!(after.number_max, before.number_max, "the other keys stay");
+}
+
+#[test]
+fn a_free_life_program_changes_the_animals_the_map_placed() {
+    use crate::research::{Branch, Category, Program, Tree};
+    let (mut world, cat) = (pens(), zebras());
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let life = |w: &World| match &w.units.get(500).unwrap().part {
+        Part::Animal(a) => a.life,
+        _ => unreachable!(),
+    };
+    if let Part::Animal(a) = &mut world.units.get_mut(500).unwrap().part {
+        a.life = 5000;
+    }
+    // The tree of a new game is built after the map: longevity +25 %, cost 0.
+    let program = |cost| Program {
+        name: 1,
+        cost,
+        progress: 0.0,
+        target: 0,
+        effect: 4,
+        vals: [4, 25, 2],
+        order: 1,
+    };
+    let mut tree = Tree {
+        branches: vec![Branch {
+            name: 1,
+            funding: Vec::new(),
+            level: 0,
+            categories: vec![Category {
+                name: 1,
+                expansion: 0,
+                tick: true,
+                programs: vec![program(0.0), program(10.0)],
+            }],
+            current: None,
+        }],
+        ..Tree::default()
+    };
+    let (_, changes) = tree.apply(&cat, &mut world.research);
+    assert_eq!(changes.len(), 1, "only the free program is complete");
+    lengthen(&mut world, &changes);
+    assert_eq!(life(&world), 6250);
+}

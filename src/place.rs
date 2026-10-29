@@ -23,6 +23,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::money::{CONSTRUCTION, Money, Symbol};
 use crate::render::order::{Kind, ground_height};
 use crate::render::{Extra, Ghost};
+use crate::research::Overlay;
 use crate::terrain::{self, Habits};
 use crate::text::format::{money, whole_units};
 use crate::timing::ini_whole;
@@ -932,7 +933,7 @@ fn smarter(p: &Pending, world: &World, cat: &Catalogue) -> bool {
 
 /// The entity a pending object of the type `ty` becomes when it is placed; `colors` are the colour
 /// choices a new building starts with (see `MapRenderer::default_colors`).
-pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>) -> Entity {
+pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>, over: &Overlay) -> Entity {
     let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
     Entity {
         class: ty.class.into(),
@@ -954,7 +955,7 @@ pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>) -> Entity {
                 portal: false,
             }),
             food: number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32,
-            filter: (ty.class == "filter").then(|| crate::world::placed_filter(ty)),
+            filter: (ty.class == "filter").then(|| crate::world::placed_filter(ty, over)),
             ..Default::default()
         }),
     }
@@ -1001,7 +1002,7 @@ pub fn place(
     if !money.can_pay(p.price) {
         return Outcome::Refused(Some(NO_FUNDS));
     }
-    let mut entity = entity(ty, p, colors);
+    let mut entity = entity(ty, p, colors, &world.research);
     if let Some(common) = entity.common.as_mut() {
         common.name = unit::named(world, ty);
     }

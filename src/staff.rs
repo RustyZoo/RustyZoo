@@ -12,6 +12,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
 use crate::place::bulldozer::type_of;
+use crate::research::Overlay;
 use crate::sim::Rng;
 use crate::unit::{Ctx, Kind, Part, Staff, Unit};
 use crate::world::World;
@@ -66,11 +67,12 @@ pub struct Crowd {
 }
 
 impl Crowd {
-    pub fn of(ty: Option<&EntityType>) -> Crowd {
+    pub fn of(ty: Option<&EntityType>, over: &Overlay) -> Crowd {
         let key =
             |k: &str, fallback: i32| ty.and_then(|t| number(t, k)).map_or(fallback, |v| v as i32);
+        let bonus = key("cTourGuideBonus", 5);
         Crowd {
-            bonus: key("cTourGuideBonus", 5),
+            bonus: ty.map_or(bonus, |t| over.int(t, "cTourGuideBonus", bonus)),
             check: key("cCrowdCheck", 10),
             radius: key("cCrowdRadius", 2),
             chance: key("cFollowChance", 50),

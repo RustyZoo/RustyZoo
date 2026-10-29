@@ -79,7 +79,7 @@ impl Cx<'_, '_> {
     /// 4: the countdown of the gathering, lowered at each status tick; at 0 it starts again and,
     /// while the guide talks or walks a leg, a gathering runs.
     pub(in crate::goal) fn crowd_check(&mut self) {
-        let check = Crowd::of(self.who()).check;
+        let check = Crowd::of(self.who(), &self.world.research).check;
         let Some(due) = self.guide_state(|s| {
             let was = s.crowd;
             s.crowd = was.saturating_sub(1);
@@ -199,7 +199,7 @@ impl Cx<'_, '_> {
     /// 8: every guest within `cCrowdRadius` tiles draws `cFollowChance` and, while the group has
     /// room, is offered to follow. The sex bonus of the original never applies.
     fn gather(&mut self) {
-        let k = Crowd::of(self.who());
+        let k = Crowd::of(self.who(), &self.world.research);
         // A member that left the map is forgotten.
         let members = self.guide_state(|s| s.members.clone()).unwrap_or_default();
         let alive: Vec<u32> = (members.into_iter())

@@ -158,3 +158,76 @@ fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
     refresh(&mut ui, &world, &mut panel);
     assert_eq!(shown(&ui), (false, None), "a periodic one does not");
 }
+
+#[test]
+fn the_training_icons_show_for_the_bits_of_the_mask_with_the_tooltips_of_the_type() {
+    use crate::panel::follow::tests as follow;
+    use crate::unit::testing::{centre, entity, world};
+    let image = |id: i32| format!("[i{id}]\ntype=UIImage\nid={id}\nx=0\ny=0\n");
+    let layout = format!(
+        "[LayoutInfo]\nid=17\nx=0\ny=0\ndx=40\ndy=40\n{}",
+        ICONS.map(image).concat()
+    );
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+                [b]\ntype=UILayout\nlayout=ui/p.lyt\n";
+    let mut files = vec![
+        ("ui/root.lyt", root.as_bytes().to_vec()),
+        ("ui/p.lyt", layout.into_bytes()),
+    ];
+    let members = follow::members();
+    files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
+    let install = crate::sprite::tests::Install::new("staff-panel-training", &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = crate::ui::layout::Tree::load(&vfs, "ui/root.lyt", 0);
+    tree.resolve(100, 80, |_| 12);
+    let mut ui = Interface::new(tree, Box::new(follow::Texts));
+    ui.show(17);
+    let mut world = world((4, 4), |_, e| {
+        let mut keeper = entity("keeper", "keeper", 1, centre((1, 1)), 0);
+        keeper.subtype = "m".into();
+        e.push(keeper);
+    });
+    let mut cat = crate::entity::Catalogue::default();
+    cat.push(EntityType {
+        class: "keeper",
+        type_name: b"keeper".to_vec(),
+        subtype: b"m".to_vec(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(
+                b"[m/Characteristics/Strings]\ncTrainingIconName = ui/z/z\ncTrainingIconName = ui/z/z\n\
+                  [m/Characteristics/Integers]\ncTrainingTooltip = 24241\ncTrainingTooltip = 24243\n",
+            )
+            .unwrap(),
+        )),
+        name_id: 9552,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let mut panel = Panel::default();
+    panel.select(1);
+    let state = |ui: &Interface, id: i32| {
+        let e = &ui.tree.elements[ui.tree.find(id).unwrap()];
+        (
+            e.look.normal.is_some() || !e.look.animation.is_empty(),
+            e.help_id.clone(),
+        )
+    };
+    let mut icons = |world: &World, ui: &mut Interface| {
+        panel.clock.force = true;
+        panel.refresh(ui, world, &cat, &vfs, false);
+        ICONS.map(|id| state(ui, id))
+    };
+    let none: [(bool, Vec<i32>); 5] = Default::default();
+    assert_eq!(icons(&world, &mut ui), none, "no mask, no icon");
+    // Mark 2 of the program sets bit 1: the second icon and its tooltip.
+    world.research.train(&cat, 9552, 2);
+    let shown = icons(&world, &mut ui);
+    assert_eq!(shown[0], (false, vec![]));
+    assert_eq!(shown[1], (true, vec![24243]));
+    // A bit with no entry in the list (the third) shows nothing.
+    world.research.train(&cat, 9552, 3);
+    let shown = icons(&world, &mut ui);
+    assert_eq!(shown[2], (false, vec![]));
+    assert!(shown[1].0);
+}
