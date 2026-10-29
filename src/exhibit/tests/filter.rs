@@ -8,8 +8,20 @@ use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::BUILDING_UPKEEP;
 use crate::staff::ladder::Ladder;
-use crate::zoo::Filter;
+use crate::timing::{DAY_MS, file_time};
+use crate::zoo::{FILTER_CHECK_MS, Filter};
 use std::sync::Arc;
+
+/// The figures of a filter built at game time 0, with nothing paid.
+fn fresh_dates() -> Filter {
+    Filter {
+        built: file_time(0),
+        serviced: file_time(0),
+        months: 1,
+        check: FILTER_CHECK_MS,
+        ..Filter::default()
+    }
+}
 
 /// A tank (2..3, 2..3) with its gate, full to level 4 and purity 90, and a filter on (4, 2)
 /// facing west into it: its health and timers, and the keys of its type.
@@ -21,6 +33,7 @@ fn filtered(health: u32, timers: [i32; 2], keys: &str) -> (World, Catalogue, usi
     e.common.as_mut().unwrap().filter = Some(Filter {
         health,
         timers: Some(timers),
+        ..fresh_dates()
     });
     let id = world.add(e, None).unwrap();
     let mut cat = Catalogue::default();
@@ -214,6 +227,7 @@ fn another(world: &mut World, (tx, ty): (i32, i32), rotation: u32) -> u32 {
     e.common.as_mut().unwrap().filter = Some(Filter {
         health: 10,
         timers: Some([200_000, 0]),
+        ..fresh_dates()
     });
     world.add(e, None).unwrap()
 }
@@ -416,6 +430,142 @@ fn the_sell_rate_of_a_filter_follows_its_decayed_health() {
     ] {
         assert_eq!(rate(keys, health), expected, "{keys} {health}");
     }
+}
+
+const DAY: i64 = DAY_MS as i64;
+
+#[test]
+fn each_cycle_adds_its_upkeep_to_the_current_and_the_total_figure() {
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, 1);
+    assert_eq!(record(&world, at).upkeep, [0, 50, 50]);
+    world.filter_step(&cat, at, 50_000);
+    assert_eq!(record(&world, at).upkeep, [0, 100, 100]);
+    // A broken filter, or one with no water to clean, charges and counts nothing.
+    let (mut world, cat, at) = filtered(0, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, 1);
+    assert_eq!(record(&world, at).upkeep, [0; 3]);
+    // The program's 350 for a missing key, and a negative or huge one cut to whole money.
+    for (keys, paid) in [
+        ("", 350),
+        ("cFilterUpkeep=-5", 0),
+        ("cFilterUpkeep=99999999999", u32::MAX),
+    ] {
+        let (mut world, cat, at) = filtered(10, [200_000, 0], keys);
+        world.filter_step(&cat, at, 1);
+        assert_eq!(record(&world, at).upkeep, [0, paid, paid], "{keys}");
+    }
+}
+
+#[test]
+fn the_periods_roll_over_from_the_build_date_at_the_check_every_three_seconds() {
+    let (mut world, cat, at) = filtered(10, [i32::MAX, 0], KEYS);
+    let months = |w: &World| (record(w, at).months, record(w, at).upkeep);
+    // Day 30 is still the first month: the check changes nothing.
+    world.units.now = 30 * DAY;
+    world.filter_step(&cat, at, 3000);
+    assert_eq!(
+        (months(&world), record(&world, at).check),
+        ((1, [0, 50, 50]), 3000)
+    );
+    // Day 31 is the second: this period becomes the last one, and the next check is not early.
+    world.units.now = 31 * DAY;
+    world.filter_step(&cat, at, 2999);
+    assert_eq!(months(&world), (1, [0, 50, 50]));
+    world.filter_step(&cat, at, 1);
+    assert_eq!(months(&world), (2, [50, 0, 50]));
+    // A cycle in the new period counts there; the same month again changes nothing.
+    world.filter_step(&cat, at, 50_000);
+    world.units.now = 60 * DAY;
+    world.filter_step(&cat, at, 3000);
+    assert_eq!(months(&world), (2, [50, 50, 100]));
+    world.units.now = 61 * DAY;
+    world.filter_step(&cat, at, 3000);
+    assert_eq!(months(&world), (3, [50, 0, 100]));
+}
+
+#[test]
+fn a_build_date_in_the_future_or_extreme_times_never_panic_or_roll_the_periods_wrongly() {
+    let months = |from: u64, now: i64| crate::world::filter_months_since(from, now);
+    // The program's `trunc(d + 29.9) / 30`: a date 1 to 59 days ahead is 0, 60 to 89 days -1.
+    assert_eq!(
+        [-5, -29, -30, -31, -59, -60, -89, -90].map(|d| months(file_time(0), d * DAY)),
+        [0, 0, 0, 0, 0, -1, -1, -2]
+    );
+    // 0 days is 0 months, 1 to 30 days the first, 31 to 60 the second.
+    let days = |d: i64| months(file_time(0), d * DAY + DAY - 1);
+    assert_eq!(
+        [
+            days(0),
+            days(1),
+            days(29),
+            days(30),
+            days(31),
+            days(60),
+            days(61)
+        ],
+        [0, 1, 1, 1, 2, 2, 3]
+    );
+    for (from, now) in [
+        (0, i64::MAX),
+        (u64::MAX, i64::MIN),
+        (u64::MAX, i64::MAX),
+        (0, i64::MIN),
+    ] {
+        months(from, now);
+    }
+    // A filter whose check finds a count of 0 keeps its figures.
+    let (mut world, cat, at) = filtered(10, [i32::MAX, 0], KEYS);
+    world.units.now = -5 * DAY;
+    world.filter_step(&cat, at, 3000);
+    assert_eq!(
+        (record(&world, at).months, record(&world, at).upkeep),
+        (1, [0, 50, 50])
+    );
+    world.units.now = i64::MAX;
+    world.filter_step(&cat, at, 3000);
+    assert_eq!(record(&world, at).upkeep, [50, 0, 50]);
+}
+
+#[test]
+fn a_filter_placed_or_serviced_takes_the_date_of_the_day() {
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+    world.units.now = 10 * DAY;
+    assert!(world.service_filter(&cat, id));
+    let f = record(&world, at);
+    assert_eq!((f.built, f.serviced), (file_time(0), file_time(10 * DAY)));
+    // Placed during play: both dates are today, the count 1 and nothing paid.
+    world.units.now = 20 * DAY;
+    let tile = world.tile_index(4, 3).unwrap();
+    assert!(world.add_filter(&cat.types[0], tile, 6));
+    let last = world.zoo.entities.len() - 1;
+    let f = record(&world, last);
+    assert_eq!(
+        (f.built, f.serviced, f.months),
+        (file_time(20 * DAY), file_time(20 * DAY), 1)
+    );
+    assert_eq!((f.upkeep, f.check), ([0; 3], FILTER_CHECK_MS));
+}
+
+#[test]
+fn a_start_with_reset_zeroes_the_figures_and_sets_the_dates() {
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, 1);
+    world.zoo.entities[at]
+        .common
+        .as_mut()
+        .unwrap()
+        .filter
+        .as_mut()
+        .unwrap()
+        .months = 7;
+    world.reset_filters(3 * DAY);
+    let f = record(&world, at);
+    assert_eq!(
+        (f.upkeep, f.months, f.built, f.serviced, f.health),
+        ([0; 3], 1, file_time(3 * DAY), file_time(3 * DAY), 10)
+    );
 }
 
 fn looks(world: &World) -> Vec<(bool, bool)> {

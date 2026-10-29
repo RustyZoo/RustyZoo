@@ -458,6 +458,7 @@ fn a_loaded_zoo_posts_its_can_fence_and_filter_events_in_entity_list_order() {
     filter.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
         health: 0,
         timers: None,
+        ..Default::default()
     });
     world.zoo.entities.push(filter);
     let mut can = entity("building", "can", 9, (96, 160), 0);
@@ -465,6 +466,7 @@ fn a_loaded_zoo_posts_its_can_fence_and_filter_events_in_entity_list_order() {
         guests: [0; 3],
         income: [0; 3],
         upkeep: None,
+        upgrade: 0,
         price: 0,
         users: Vec::new(),
         users_now: 0,

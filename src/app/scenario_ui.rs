@@ -121,6 +121,14 @@ impl App<'_> {
         }
     }
 
+    /// The lookup of the recorded rewards at a game load or a scenario start (entity types 10.4).
+    pub(super) fn look_up_unlocks(&mut self) {
+        let cat = self.renderer.catalogue();
+        if let Some(menu) = &mut self.menu {
+            menu.look_up(|id| cat.types.iter().any(|t| t.name_id == id));
+        }
+    }
+
     /// The scenario ended (entity types 10.4): a win runs the unlock step once for each of its own
     /// ids that `Menu::unlock` newly listed (`unlocks`, empty after a loss); an id already listed
     /// changes no flag. The purchase lists follow.

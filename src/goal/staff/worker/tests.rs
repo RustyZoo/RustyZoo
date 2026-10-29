@@ -540,6 +540,7 @@ fn filter(g: &mut Game, health: u32, urgent: bool) -> u32 {
     e.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
         health,
         timers: Some([1_000_000, 1_000_000]),
+        ..Default::default()
     });
     let shape = crate::world::Shape {
         kind: crate::render::order::Kind::Fixed,

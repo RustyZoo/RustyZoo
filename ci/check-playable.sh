@@ -8,7 +8,7 @@
 #                         --passes 22300 --clock 200` (the run adds --headless and --script)
 #   #exhibit X0,Y0,X1,Y1  the tiles of the land exhibit with the animals (none for a tank)
 #   #months N             the month changes (`sim month` lines) the run must show: 12 for the thirteenth
-#                         month, 3 for the fourth
+#                         month, 6 for the seventh
 #   #expect N <words>     what the script builds and hires: at least N lines of the log start (after the
 #                         pass and the time) with the words, each an extended regular expression that
 #                         must match a whole word (`unit add [0-9]+ keeper`); N 0 means no such line.

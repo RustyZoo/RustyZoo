@@ -40,20 +40,28 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
             let mut common = scenery(r)?;
             r.copy_on();
             let health = r.u32()?;
-            // From 95 the upkeep of last month, this month and since built, two dates and one word
-            // follow; the timers are not saved (zoo format 6.8).
+            // From 95 the upkeep of last month, this month and since built, the build and service
+            // dates and the months count follow; the timers are not saved (zoo format 6.8).
+            let mut filter = Filter {
+                health,
+                built: NEVER,
+                serviced: NEVER,
+                months: 1,
+                check: super::FILTER_CHECK_MS,
+                ..Filter::default()
+            };
             if v >= 95 {
-                r.skip(3 * 4 + 2 * 8 + 4)?;
+                filter.upkeep = [r.u32()?, r.u32()?, r.u32()?];
+                (filter.built, filter.serviced) = (r.u64()?, r.u64()?);
+                filter.months = r.u32()? as i32;
             } else {
+                // The copy is in the form of 106 (the figures of a new filter).
                 r.put(&[0; 12]);
                 r.put(&NEVER.to_le_bytes());
                 r.put(&NEVER.to_le_bytes());
                 r.put(&1u32.to_le_bytes());
             }
-            common.filter = Some(Filter {
-                health,
-                timers: None,
-            });
+            common.filter = Some(filter);
             common
         }
         b"rubble" => {
@@ -182,8 +190,9 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
     if v >= 68 {
         upkeep = Some(r.u32()?);
     }
+    let mut upgrade = 0;
     if v >= 74 {
-        r.skip(4)?;
+        upgrade = r.u32()?;
     } else {
         r.put(&[0; 4]);
     }
@@ -196,6 +205,7 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
         guests: [guests_this, guests_last, guests_since],
         income: [income_this, income_last, income_since],
         upkeep,
+        upgrade,
         price,
         users,
         users_now,

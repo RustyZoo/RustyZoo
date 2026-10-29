@@ -74,17 +74,22 @@ pub(crate) fn pay(
     id: u32,
     kind: &Kind,
 ) {
+    // The current upgrade's changes replace the type's adult and child ones (research 6.3).
+    let mut change = kind.change;
+    if let Some(u) = super::upgrade::current(&world.units, kind.name_id, id) {
+        (change[0], change[1]) = (u.adult, u.child);
+    }
     if let Part::Animal(a) = &mut unit.part {
         // Animals 6: an adult gets the adult happiness change, a young one the young one, any other
         // subtype none; hunger and energy change for all. No money.
         let happy = match world.zoo.entities[at].subtype.as_str() {
-            "m" | "f" => kind.change[0],
-            "y" => kind.change[1],
+            "m" | "f" => change[0],
+            "y" => change[1],
             _ => 0,
         };
         a.happiness_change = a.happiness_change.saturating_add(happy);
-        a.hunger_change = a.hunger_change.saturating_add(kind.change[2]);
-        a.energy_change = a.energy_change.saturating_add(kind.change[5]);
+        a.hunger_change = a.hunger_change.saturating_add(change[2]);
+        a.energy_change = a.energy_change.saturating_add(change[5]);
         return;
     }
     if !matches!(unit.part, Part::Guest(_)) {
@@ -103,7 +108,7 @@ pub(crate) fn pay(
             world.units.concessions.push(income);
         }
     }
-    apply(unit, kind.change);
+    apply(unit, change);
 }
 
 /// Guest buildings 11.1: building `id` is being taken off the map (deleted, or picked up), so

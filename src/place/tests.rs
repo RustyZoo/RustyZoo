@@ -1425,6 +1425,7 @@ fn a_new_food_entity_starts_at_the_max_food_units_of_its_type() {
             &p,
             Vec::new(),
             &Default::default(),
+            0,
         )
     };
     let food = |e: Entity| e.common.unwrap().food;
@@ -1822,6 +1823,11 @@ fn a_tank_filter_goes_beside_a_tank_no_filter_serves_and_faces_it() {
     let record = crate::zoo::Filter {
         health: 10,
         timers: Some([200_000, 0]),
+        built: crate::timing::file_time(0),
+        serviced: crate::timing::file_time(0),
+        months: 1,
+        check: crate::zoo::FILTER_CHECK_MS,
+        ..Default::default()
     };
     assert_eq!((c.rotation, c.filter), (2, Some(record)));
     assert_eq!(money.cash, 900.0);

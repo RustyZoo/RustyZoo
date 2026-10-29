@@ -5,7 +5,22 @@
 
 use super::upgrade::NEVER;
 use super::write::Out;
-use super::{BuildingRecord, Common, Entity, Fence, GuestRecord, StaffRecord, Target, UnitBlock};
+use super::{
+    BuildingRecord, Common, Entity, Fence, Filter, GuestRecord, StaffRecord, Target, UnitBlock,
+};
+
+/// The fields of a filter after its scenery part (zoo format 6.8): the health, the three upkeep
+/// figures, the build and service dates and the months count.
+pub(super) fn filter(f: &Filter) -> Vec<u8> {
+    let mut o = Out(Vec::new());
+    o.u32(f.health);
+    f.upkeep.iter().for_each(|&n| o.u32(n));
+    [f.built, f.serviced]
+        .iter()
+        .for_each(|d| o.bytes(&d.to_le_bytes()));
+    o.u32(f.months as u32);
+    o.0
+}
 
 /// The fields before the unit block or the entity base, and the fields after them.
 pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8>), String> {
@@ -14,13 +29,12 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
         // The fence figures are written from the model for every fence.
         "objects" | "food" | "paths" | "fences" | "tankwall" => {}
         "ambient" => pre.bytes(&[0; 8]),
-        "filter" => {
-            // Health, the three upkeep figures, built and serviced, and the word that is 1 when absent.
-            post.u32(c.filter.map_or(0, |f| f.health));
-            post.bytes(&[0; 12]);
-            [now, now].iter().for_each(|d| post.bytes(&d.to_le_bytes()));
-            post.u32(1);
-        }
+        "filter" => post.bytes(&filter(&c.filter.unwrap_or(Filter {
+            built: now,
+            serviced: now,
+            months: 1,
+            ..Filter::default()
+        }))),
         // An empty list of pieces and one word.
         "rubble" => post.bytes(&[0; 8]),
         "building" => building(
@@ -99,6 +113,7 @@ pub(crate) fn building_new(price: f32, now: u64) -> BuildingRecord {
         guests: [0; 3],
         income: [0; 3],
         upkeep: Some(0),
+        upgrade: 0,
         price: price.to_bits(),
         users: Vec::new(),
         users_now: 0,
@@ -124,8 +139,19 @@ fn building(o: &mut Out, b: &BuildingRecord) {
     }
     o.bytes(&b.built.to_le_bytes());
     o.u32(b.upkeep.unwrap_or(0));
-    // The unknown word and the empty list of members.
-    o.bytes(&[0; 8]);
+    // The index of the current upgrade and the empty list of members.
+    o.u32(b.upgrade);
+    o.u32(0);
+}
+
+/// Writes the index of the current upgrade into the building fields `post` of version 106 (they
+/// come from a body of version 70 or later, the oldest the writer upgrades): it follows the users and the figures.
+pub(super) fn set_upgrade(post: &mut [u8], index: u32) {
+    let users = post.get(16..20).and_then(|n| <[u8; 4]>::try_from(n).ok());
+    let at = users.map(|n| 52 + 8 * u32::from_le_bytes(n) as usize);
+    if let Some(word) = at.and_then(|at| post.get_mut(at..at + 4)) {
+        word.copy_from_slice(&index.to_le_bytes());
+    }
 }
 
 /// A new guest (save games 11.3) with no live state: the type's initial happiness, every need at 0,

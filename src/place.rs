@@ -932,8 +932,9 @@ fn smarter(p: &Pending, world: &World, cat: &Catalogue) -> bool {
 }
 
 /// The entity a pending object of the type `ty` becomes when it is placed; `colors` are the colour
-/// choices a new building starts with (see `MapRenderer::default_colors`).
-pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>, over: &Overlay) -> Entity {
+/// choices a new building starts with (see `MapRenderer::default_colors`); `over` are the changes of
+/// the completed research and `now` the game time (ms) a new filter takes its dates from.
+pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>, over: &Overlay, now: i64) -> Entity {
     let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
     Entity {
         class: ty.class.into(),
@@ -955,7 +956,7 @@ pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>, over: &Overlay) -> 
                 portal: false,
             }),
             food: number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32,
-            filter: (ty.class == "filter").then(|| crate::world::placed_filter(ty, over)),
+            filter: (ty.class == "filter").then(|| crate::world::placed_filter(ty, over, now)),
             ..Default::default()
         }),
     }
@@ -1002,7 +1003,7 @@ pub fn place(
     if !money.can_pay(p.price) {
         return Outcome::Refused(Some(NO_FUNDS));
     }
-    let mut entity = entity(ty, p, colors, &world.research);
+    let mut entity = entity(ty, p, colors, &world.research, world.units.now);
     if let Some(common) = entity.common.as_mut() {
         common.name = unit::named(world, ty);
     }

@@ -772,6 +772,14 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
+        if saved {
+            // The resume of a scenario sets the defaults up again, the game section then restores
+            // the price as saved, whatever the range (zoo status 3.1, 11).
+            if let Some(file) = &file {
+                self.scenario_economy(file);
+            }
+            self.sim.status.price = world.zoo.clocks.status.price;
+        }
         let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
         // The programs complete come before the animals are read: their life counters are cut by
         // the changed types (research 7.2). Their availability follows the scenario's resume.
@@ -860,9 +868,12 @@ impl<'a> App<'a> {
             self.sim.resume_scenario(scenario, &goals.0, goals.1);
             self.scenario_avail(false);
         }
+        // The lookup of the recorded rewards follows the open's triggers (entity types 10.4).
+        self.look_up_unlocks();
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
+            game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
@@ -1795,9 +1806,9 @@ impl<'a> App<'a> {
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
                 Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
-                Action::Edited(panel_building::NAME | panel_building::PLAIN_NAME)
-                    if self.game.is_some() =>
-                {
+                Action::Edited(
+                    panel_building::NAME | panel_building::PLAIN_NAME | panel_building::FILTER_NAME,
+                ) if self.game.is_some() => {
                     self.building_rename();
                 }
                 Action::Edited(panel_building::PRICE) if self.game.is_some() => {
@@ -1844,10 +1855,15 @@ impl<'a> App<'a> {
                 panel_building::UP | panel_building::DOWN if self.game.is_some() => {
                     self.building_price(id == panel_building::UP);
                 }
-                panel_building::SELL | panel_building::PLAIN_SELL if self.game.is_some() => {
+                panel_building::SELL | panel_building::PLAIN_SELL | panel_building::FILTER_SELL
+                    if self.game.is_some() =>
+                {
                     self.building_sell();
                 }
                 panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
+                t if panel_building::UPGRADES.contains(&t) && self.game.is_some() => {
+                    self.building_upgrade(t);
+                }
                 t if panel_building::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.building.clock.force = true;
@@ -1985,6 +2001,25 @@ impl<'a> App<'a> {
         self.open(&start, read)
     }
 
+    /// The economy file the scenario `file` names under `[start] economy` comes over the settings
+    /// (zoo status 3.1); a file that cannot be read is a warning.
+    fn scenario_economy(&mut self, file: &str) {
+        let vfs = self.renderer.vfs();
+        let name = Config::parse(&vfs.read(file).unwrap_or_default())
+            .ok()
+            .and_then(|c| {
+                let name = c.section("start")?.get("economy")?;
+                Some(String::from_utf8_lossy(name).into_owned())
+            });
+        let Some(name) = name else { return };
+        match vfs.read(&name) {
+            Ok(economy) => self.sim.scenario_economy(&economy),
+            Err(why) => {
+                eprintln!("rustyzoo: warning: {name}: {why}; the economy settings are kept")
+            }
+        }
+    }
+
     /// A game was opened from the menu: the menu layouts are hidden, the main panel and the map
     /// view show, the menu music starts to fade and the simulation runs from the next pass (main
     /// menu 8.1). A freeform start also updates the music once with 2000 ms, which counts as one of
@@ -1999,6 +2034,7 @@ impl<'a> App<'a> {
             self.sim.restart_calendar();
         }
         if let Some(file) = &start.scenario {
+            self.scenario_economy(file);
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(mut tree) =
@@ -2010,6 +2046,7 @@ impl<'a> App<'a> {
                     // A free program changes the animals the map placed (7.4).
                     crate::animal::lengthen(&mut game.world, &life);
                     game.build.start_research(cat, &flags);
+                    game.world.units.upgrades = research::upgrades(&tree);
                 }
                 self.sim.set_research(tree);
             }
@@ -2019,6 +2056,7 @@ impl<'a> App<'a> {
             if start.reset {
                 crate::guest::arrive_all(&mut game.world, self.sim.calendar().date());
                 let now = self.sim.calendar().elapsed_ms();
+                game.world.reset_filters(now);
                 for id in crate::building::reset_all(&mut game.world, now) {
                     self.sim.remove(id);
                 }
@@ -2043,6 +2081,7 @@ impl<'a> App<'a> {
         if start.scenario.is_some() {
             // The triggers set the availability over the tree, the ini rewards come last (7.4).
             self.scenario_avail(true);
+            self.look_up_unlocks();
         }
         let music = self.music.take();
         self.start_game(music);

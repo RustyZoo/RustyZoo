@@ -364,6 +364,12 @@ pub struct Units {
     /// The live state of the guest buildings and the prices of the economy file (guest buildings).
     pub buildings: crate::building::Table,
     pub prices: crate::building::Prices,
+    /// The upgrades of the building types, filled by the research programs (research 6.3).
+    pub upgrades: crate::building::upgrade::Upgrades,
+    /// The index of the upgrade each building uses in its type's list, by building id; a building
+    /// with none listed uses the first (research 6.3). Kept apart from [`Units::buildings`] so
+    /// that the state hash of a game with no chosen upgrade is the same.
+    pub upgrade_index: std::collections::BTreeMap<u32, u32>,
     /// What guests paid buildings during the step, which the step books as concessions.
     pub concessions: Vec<f32>,
     /// What the compost paid for dung during the step, which the step books as a construction refund.
@@ -418,6 +424,8 @@ impl Default for Units {
             donation_factor: 2.8e-13,
             buildings: Default::default(),
             prices: Default::default(),
+            upgrades: Default::default(),
+            upgrade_index: Default::default(),
             concessions: Vec::new(),
             recycled: Vec::new(),
             building_lines: Vec::new(),
@@ -654,12 +662,13 @@ impl Units {
         for live in self.buildings.values_mut() {
             live.users.retain(|u| self.index.contains_key(&u.0));
         }
-        if !self.buildings.is_empty() {
+        if !self.buildings.is_empty() || !self.upgrade_index.is_empty() {
             let ids: std::collections::HashSet<u32> = (entities.iter())
                 .filter(|e| e.class == "building")
                 .filter_map(|e| e.common.as_ref().map(|c| c.id))
                 .collect();
             self.buildings.retain(|id, _| ids.contains(id));
+            self.upgrade_index.retain(|id, _| ids.contains(id));
         }
     }
 
@@ -675,6 +684,9 @@ impl Units {
             h.word((v >> 32) as u32);
         }
         h.bytes(format!("{:?}", self.buildings).as_bytes());
+        if !self.upgrade_index.is_empty() {
+            h.bytes(format!("{:?}", self.upgrade_index).as_bytes());
+        }
         h.bytes(format!("{:?}{:?}{:?}", self.thoughts, self.mega, self.gawk).as_bytes());
         h.bytes(format!("{:?}", self.pool).as_bytes());
         for &(id, likes, age) in &self.reactions {

@@ -512,3 +512,22 @@ fn a_trigger_unlock_of_a_listed_id_shows_no_hidden_type_during_play() {
         assert_eq!(flags(app), [true, false]);
     });
 }
+
+#[test]
+fn an_untyped_id_a_start_trigger_unlocked_is_listed_again_by_a_win() {
+    // The start trigger unlocks 99, which has no type: the lookup after the triggers does not mark
+    // it, so the win of 99 lists it again (entity types 10.4).
+    let text = "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=4\ntruleb=10\ntarga=99\n\
+        [completion]\nunlock=99\n[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n";
+    let files = [("s/un.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("untyped-relisted", "", &files, cat, |app, install| {
+        let now = play(app, "s/un.scn");
+        until_asked(app, now);
+        let ini = std::fs::read_to_string(install.0.join("user/zoo.ini")).unwrap();
+        assert!(
+            ini.contains("unlockCount=2") && ini.contains("unlockEntity1=99"),
+            "{ini}"
+        );
+    });
+}

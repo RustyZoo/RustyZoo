@@ -39,6 +39,9 @@ pub const GUESTS_CREATED: usize = 26;
 pub const GUESTS_GONE: usize = 27;
 pub const MEMBERS: usize = 21;
 pub const MEMBERS_JOINED: usize = 22;
+pub const MEMBERS_LEFT: usize = 23;
+/// What the endowment members pay each month.
+pub const ENDOWMENT: usize = 20;
 /// Income minus expenses.
 pub const NET: usize = 14;
 /// Admissions since the start, copied at each month change.
@@ -243,6 +246,12 @@ impl Money {
         if category < CATEGORIES {
             self.book(category, 1.0);
         }
+    }
+
+    /// An endowment member leaves: the net count goes down by one, the count of leavers up.
+    pub fn member_left(&mut self) {
+        self.book(MEMBERS, -1.0);
+        self.book(MEMBERS_LEFT, 1.0);
     }
 
     /// Sets a statistic of the current month, the current year and the total.

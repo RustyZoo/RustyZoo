@@ -16,7 +16,8 @@
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
 //! `building buy <id> <item> <price>` when it buys an item, and `building price <id> <price>` when
-//! the player sets the price in the panel.
+//! the player sets the price in the panel, `building upgrade <id> <n>` when the player picks the
+//! upgrade at position `n` of the Programs tab.
 
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
@@ -31,6 +32,7 @@ use std::collections::BTreeMap;
 
 pub mod items;
 pub mod leave;
+pub mod upgrade;
 pub mod users;
 
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
@@ -405,6 +407,10 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
         ..Live::new(&kind)
     };
     world.units.buildings.insert(id, live);
+    match record.upgrade {
+        0 => world.units.upgrade_index.remove(&id),
+        index => world.units.upgrade_index.insert(id, index),
+    };
     if kind.satisfies("trash") {
         set_fill(world, id, record.fill);
     }

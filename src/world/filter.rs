@@ -16,7 +16,8 @@ use crate::place::bulldozer::{refund, type_of};
 use crate::render::FilterLook;
 use crate::render::order::Kind;
 use crate::research::Overlay;
-use crate::zoo::{Common, Entity, Event, Filter};
+use crate::timing::file_time;
+use crate::zoo::{Common, Entity, Event, FILTER_CHECK_MS, Filter};
 
 /// The events a worn filter posts: decayed (a task) and broken (an urgent one).
 const DECAYED: u16 = 10035;
@@ -76,24 +77,61 @@ fn ms(v: i64) -> i32 {
     v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
-/// What a filter of type `ty` placed during play starts with (tank staff 7.2): the starting
-/// health, its decay timer full and a filter timer of 0, so that it filters (and charges) at its
-/// first update.
-pub fn placed(ty: &EntityType, over: &Overlay) -> Filter {
+/// What a filter of type `ty` placed during play at game time `now` (ms) starts with (tank staff
+/// 7.2): the starting health, its decay timer full (with the completed research `over`) and a
+/// filter timer of 0, so that it filters (and charges) at its first update, no upkeep paid, today
+/// as its build and service dates and a count of 1 month.
+pub fn placed(ty: &EntityType, over: &Overlay, now: i64) -> Filter {
     let keys = Keys::of(ty).researched(ty, over);
+    let today = file_time(now);
     Filter {
         health: keys.start.max(0) as u32,
         timers: Some([ms(keys.decay_ms), 0]),
+        built: today,
+        serviced: today,
+        months: 1,
+        check: FILTER_CHECK_MS,
+        ..Filter::default()
+    }
+}
+
+/// The months from file time `from` to game time `now` (ms): `(d + 29) / 30` for `d` the whole days
+/// between them (information panels 18.3, 18.6). The program truncates `d + 29.9` and then divides
+/// by 30 toward zero, so from 30 days in the future on the numerator is `d + 30` (a date 1 to 59
+/// days ahead gives 0, 60 to 89 days -1).
+pub fn months_since(from: u64, now: i64) -> i32 {
+    let ticks = i128::from(file_time(now)) - i128::from(from);
+    let days = (ticks / 864_000_000_000).clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i64;
+    let whole = if days >= -29 { days + 29 } else { days + 30 };
+    (whole / 30) as i32
+}
+
+/// How worn a filter is, by its health (tank staff 7.5; information panels 18.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Wear {
+    /// Health 0.
+    Broken,
+    /// Health 1 to `cDecayedHealth`.
+    Decayed,
+    Healthy,
+}
+
+/// The wear of a filter of type `ty` with `health`.
+pub fn wear(ty: &EntityType, health: u32) -> Wear {
+    match i64::from(health) {
+        0 => Wear::Broken,
+        h if h <= Keys::of(ty).decayed => Wear::Decayed,
+        _ => Wear::Healthy,
     }
 }
 
 /// The sell price of a filter of type `ty` with `health` as a part of its purchase cost (tank
 /// staff 7.2): 0.8, halved once decayed, 0 once broken.
 pub fn sell_rate(ty: &EntityType, health: u32) -> f32 {
-    match i64::from(health) {
-        0 => 0.0,
-        h if h <= Keys::of(ty).decayed => 0.4,
-        _ => 0.8,
+    match wear(ty, health) {
+        Wear::Broken => 0.0,
+        Wear::Decayed => 0.4,
+        Wear::Healthy => 0.8,
     }
 }
 
@@ -266,7 +304,7 @@ impl World {
             name,
             colors: Vec::new(),
             fence: None,
-            filter: Some(placed(ty, &self.research)),
+            filter: Some(placed(ty, &self.research, self.units.now)),
             ..Default::default()
         };
         let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
@@ -367,6 +405,10 @@ impl World {
                     false => k.decayed_clean,
                 };
                 self.units.spent.push((BUILDING_UPKEEP, k.upkeep));
+                // Whole money, in the figure of the current period and the one since built.
+                let paid = k.upkeep as u32;
+                f.upkeep[1] = f.upkeep[1].saturating_add(paid);
+                f.upkeep[2] = f.upkeep[2].saturating_add(paid);
                 let purity = self.tank(tank).map_or(0, |t| i64::from(t.purity));
                 self.set_purity(tank, purity + amount);
                 let now = self.tank(tank).map_or(0, |t| t.purity);
@@ -397,6 +439,17 @@ impl World {
                 .world_note(format!("filter {id} {} {purity} worn", f.health));
         }
         f.timers = Some([decay, timer]);
+        // The periods of the upkeep, counted from the build date (tank staff 7.3 point 6).
+        f.check = ms(i64::from(f.check) - step);
+        if f.check < 1 {
+            f.check = FILTER_CHECK_MS;
+            let months = months_since(f.built, self.units.now);
+            if months != 0 && months != f.months {
+                f.months = months;
+                f.upkeep[0] = f.upkeep[1];
+                f.upkeep[1] = 0;
+            }
+        }
         match view == View::default() {
             true => self.filter_view.remove(&id),
             false => self.filter_view.insert(id, view),
@@ -419,6 +472,20 @@ impl World {
         gone
     }
 
+    /// A start with `reset` or `resetdate` resets every filter (guest buildings 4.1): the upkeep
+    /// figures go to 0, the count to 1 and the build and service dates to game time `now` (ms).
+    pub fn reset_filters(&mut self, now: i64) {
+        let today = file_time(now);
+        for f in self
+            .zoo
+            .entities
+            .iter_mut()
+            .filter_map(|e| e.common.as_mut()?.filter.as_mut())
+        {
+            (f.upkeep, f.months, f.built, f.serviced) = ([0; 3], 1, today, today);
+        }
+    }
+
     /// The filter with this id is serviced (tank staff 7.6): its health is the starting health.
     /// Whether there is such a filter.
     pub fn service_filter(&mut self, cat: &Catalogue, id: u32) -> bool {
@@ -431,6 +498,7 @@ impl World {
             return false;
         };
         f.health = start.max(0) as u32;
+        f.serviced = file_time(self.units.now);
         let tank = self.filter_tank(at);
         let purity = tank.and_then(|t| self.tank(t)).map_or(0, |t| t.purity);
         self.units

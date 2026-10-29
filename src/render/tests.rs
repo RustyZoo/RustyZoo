@@ -2398,6 +2398,7 @@ fn a_tank_filter_shows_off_broken_decayed_or_idle_by_its_water_and_its_health() 
         c.filter = health.map(|health| crate::zoo::Filter {
             health,
             timers: None,
+            ..Default::default()
         });
         let extra = Extra {
             filters: vec![FilterLook {

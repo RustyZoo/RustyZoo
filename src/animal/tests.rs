@@ -2470,6 +2470,7 @@ fn a_free_life_program_changes_the_animals_the_map_placed() {
         effect: 4,
         vals: [4, 25, 2],
         order: 1,
+        icon: String::new(),
     };
     let mut tree = Tree {
         branches: vec![Branch {

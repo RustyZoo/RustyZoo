@@ -42,6 +42,7 @@ mod staff;
 pub(crate) mod tests;
 mod unit;
 mod upgrade;
+pub(crate) use upgrade::NEVER;
 mod write;
 pub(crate) use animal::animal_new;
 pub use animal::{AnimalRecord, Escape};
@@ -199,8 +200,6 @@ pub struct Kept {
     scenario: Vec<u8>,
     /// The game block, from the zoo status to the cash and the word after it.
     finances: Vec<u8>,
-    /// Where the calendar starts in it.
-    at: usize,
     /// Where the statistics of each habitat start in `habitats`.
     stats_at: Vec<usize>,
     /// Where the name of each habitat is in `habitats`, its length word included.
@@ -232,6 +231,8 @@ pub struct BuildingRecord {
     /// The money figures as the bits of a single precision number.
     pub income: [u32; 3],
     pub upkeep: Option<u32>,
+    /// The index of the building's current upgrade (from version 74, else 0).
+    pub upgrade: u32,
     /// The price as the bits of a single precision number.
     pub price: u32,
     pub users: Vec<(u32, u32)>,
@@ -240,13 +241,24 @@ pub struct BuildingRecord {
     pub built: u64,
 }
 
-/// What a tank filter keeps (tank staff 7): its health, and the milliseconds left before it loses
-/// a point and before it filters again. A loaded filter has none, since a record does not save them
-/// (zoo format 6.8): the first update starts them from the type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The milliseconds between two checks of a filter's period (tank staff 7.3 point 6).
+pub const FILTER_CHECK_MS: i32 = 3000;
+
+/// What a tank filter keeps (tank staff 7): its health, the milliseconds left before it loses a
+/// point and before it filters again, the upkeep it paid in the last 30-day period, the current one
+/// and since it was built (whole money), its build and last service dates (file times), the months
+/// count of its periods (starts at 1) and the milliseconds before the next check of the period. A
+/// loaded filter has no timers, since a record does not save them (zoo format 6.8): the first
+/// update starts them from the type; the period check restarts at 3,000.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Filter {
     pub health: u32,
     pub timers: Option<[i32; 2]>,
+    pub upkeep: [u32; 3],
+    pub built: u64,
+    pub serviced: u64,
+    pub months: i32,
+    pub check: i32,
 }
 
 /// What a guest record stores: the five status values (happiness, hunger, thirst, energy,
@@ -376,15 +388,28 @@ pub struct HabitatInfo {
 }
 
 /// What the zoo status keeps in a saved file (zoo status 16): its three timers in milliseconds, the
-/// rating, the donation counter and the adult admission price. The price of a file without the
-/// field is 49.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// rating, the donation counter, the adult admission price and the date of the last escape (a file
+/// time). The price of a file without the field is 49, the date 1 January 2000.
+#[derive(Debug, Clone, PartialEq)]
 pub struct StatusRecord {
     /// The rating, message and new guest timers.
     pub timers: [u32; 3],
     pub rating: u32,
     pub given: f32,
     pub price: f32,
+    pub escape: u64,
+}
+
+impl Default for StatusRecord {
+    fn default() -> Self {
+        StatusRecord {
+            timers: [0; 3],
+            rating: 0,
+            given: 0.0,
+            price: 0.0,
+            escape: upgrade::NEVER,
+        }
+    }
 }
 
 /// The clocks and the event queue a map stores (simulation 4.3, 8.3): a new game on it starts from
@@ -1166,8 +1191,7 @@ fn after_entities(
         }
     }
     clocks.status.price = if v >= 39 { r.f32()? } else { 49.0 };
-    r.skip(if v >= 71 { 8 } else { 0 })?;
-    kept.at = from.len() - r.data.len();
+    clocks.status.escape = if v >= 71 { r.u64()? } else { upgrade::NEVER };
     // The calendar: year, month, day of week, day, hour, minute, second, millisecond.
     let [year, month, _, day, hour, minute, second, millisecond] = [(); 8].map(|_| r.u16());
     clocks.calendar = crate::timing::Date {

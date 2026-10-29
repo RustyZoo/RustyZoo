@@ -4,7 +4,7 @@
 use super::{Bad, HABITAT_MIN, Kept, R, Reader, bad, show_info};
 
 /// The date the original puts in a date field that has none: 1 January 2000.
-pub(super) const NEVER: u64 = 125_911_584_000_000_000;
+pub(crate) const NEVER: u64 = 125_911_584_000_000_000;
 
 /// The habitat records of a file of version `v`. A habitat that holds a show is refused below 106,
 /// where the show's record differs.
