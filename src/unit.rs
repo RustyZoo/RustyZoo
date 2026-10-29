@@ -58,6 +58,7 @@ pub fn draw_colours(ty: Option<&EntityType>, count: usize, rng: &mut Rng) -> Vec
 
 pub mod gate;
 pub mod movement;
+pub mod resume;
 pub mod swim;
 #[cfg(test)]
 pub(crate) mod testing;

@@ -941,9 +941,10 @@ fn a_listed_user_keeps_the_task_its_record_stores() {
 }
 
 #[test]
-fn a_user_visible_inside_goes_on_with_its_saved_use_set_and_a_hider_does_not() {
+fn a_user_goes_on_with_its_saved_use_set_hidden_or_not() {
     // The shop shows its users inside: guests 1 and 2 saved in the use run the rest of the set,
-    // the current call (the 30 s) again, then the exit. The restroom hides its user: no set.
+    // the current call (the 30 s) again, then the exit. The restroom hides its user, which
+    // keeps its set too.
     let (w, _) = seated_with(
         106,
         [vec![(1, 0), (2, 1)], vec![(3, 0)]],
@@ -966,7 +967,7 @@ fn a_user_visible_inside_goes_on_with_its_saved_use_set_and_a_hider_does_not() {
         );
     }
     let u = w.units.get(3).unwrap();
-    assert!(!u.runner.running() && u.hidden);
+    assert!(u.runner.running() && u.hidden);
 }
 
 #[test]

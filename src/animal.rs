@@ -1236,12 +1236,8 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
     let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
     animal.restore(&saved, &k, &world.units.class);
-    // What the saved unit was doing: the outer behaviour set and the active goal.
+    // What the saved unit was doing: the active goal (its set is taken by `unit::resume`).
     let block = entity.common.as_ref().and_then(|c| c.unit.as_ref());
-    let set = block.and_then(|b| b.behaviour.levels.first().map(|l| l.name.as_str()));
-    // An animal loaded asleep in its sleep set goes on with the rest of it (animals-needs 6.1).
-    let asleep = animal.sleeping && set == Some("bSleep");
-    let saved_set = block.map(|b| b.behaviour.clone());
     // A drink only goes on in its goal: without it the flag would hold the ladder for good.
     let drink = block.is_some_and(|b| b.target.active == i32::from(crate::goal::DRINK));
     animal.drinking &= drink;
@@ -1262,9 +1258,6 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
         }
         unit.part = Part::Animal(animal);
         unit.started = true;
-        if asleep && let Some(b) = saved_set {
-            unit.runner.restore(&b);
-        }
     }
 }
 
