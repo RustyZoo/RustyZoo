@@ -2,7 +2,8 @@
 //! to the scenario, and what its triggers asked of the interface is done here.
 
 use super::{Action, App};
-use crate::scenario::{Avail, Tell, Which};
+use crate::money::{SYMBOL, Symbol};
+use crate::scenario::{self, Avail, Deed, Line, Tell, Which};
 use crate::text::to_cp1252;
 
 impl App<'_> {
@@ -39,6 +40,7 @@ impl App<'_> {
     /// Does what the triggers asked of the interface.
     pub(super) fn scenario_effects(&mut self) {
         self.scenario_avail(false);
+        self.scenario_deeds();
         let effects = self.sim.scenario().map(|s| s.effects());
         if let (Some(effects), Some(ui)) = (effects, &mut self.ui) {
             for effect in effects {
@@ -48,6 +50,76 @@ impl App<'_> {
         }
         for line in self.scenario_lines.drain(..) {
             self.sim.note(line);
+        }
+    }
+
+    /// Carries out triggers 1, 3, 5, 8 and 9 (scenarios 7.2, 7.4, 7.5): a message, the cash, a
+    /// boxed animal, a removal and the sell switch. A popup follows its deed, to be shown by the
+    /// effects that come after.
+    fn scenario_deeds(&mut self) {
+        let (Some(game), ui) = (&mut self.game, &mut self.ui) else {
+            return;
+        };
+        let Some(scenario) = self.sim.scenario() else {
+            return;
+        };
+        let (gui, cat, log) = (
+            scenario.gui(),
+            self.renderer.catalogue(),
+            &mut self.scenario_lines,
+        );
+        for deed in gui.take_deeds() {
+            let popup = match deed {
+                Deed::Say { kind, text, value } => {
+                    // A string of 0 or less is no string: nothing shows.
+                    if let Some(ui) = ui.as_mut().filter(|_| text > 0) {
+                        let line = Line {
+                            text,
+                            values: [value, 0, 0],
+                            state: 0,
+                        };
+                        ui.message(&to_cp1252(&scenario::built_line(ui, line)));
+                        log.push(format!("scenario message {text} kind {kind}"));
+                    }
+                    None
+                }
+                Deed::Cash { how, amount, text } => {
+                    scenario::cash(&mut game.money, how, amount);
+                    log.push(format!("scenario cash {how} {amount}"));
+                    if let Some(ui) = ui.as_mut().filter(|_| text > 0) {
+                        let money = Symbol::new(ui.string(SYMBOL)).text(i64::from(amount));
+                        ui.message(&to_cp1252(&ui.string(text).replacen("%s", &money, 1)));
+                    }
+                    None
+                }
+                Deed::Boxed { sub, name, popup } => {
+                    let renderer = &self.renderer;
+                    let id =
+                        scenario::boxed(&mut game.world, cat, name, sub, |e| renderer.shape(e));
+                    log.push(match id {
+                        Some(id) => format!("scenario boxed {name} id {id}"),
+                        None => format!("scenario boxed {name} none"),
+                    });
+                    popup.filter(|_| id.is_some())
+                }
+                Deed::Remove { by, id, popup } => {
+                    let n = scenario::remove(&mut game.world, cat, by, id);
+                    log.push(format!("scenario remove {by} {id} count {n}"));
+                    popup
+                }
+                Deed::Sale { allowed, popup } => {
+                    game.animal.no_sale = !allowed;
+                    game.animal.clock.force = true;
+                    log.push(format!(
+                        "scenario sale {}",
+                        if allowed { "on" } else { "off" }
+                    ));
+                    popup
+                }
+            };
+            if let Some(popup) = popup {
+                gui.popup(popup);
+            }
         }
     }
 
