@@ -7,6 +7,7 @@
 //! the program; Continue, and Play on a scenario or a freeform map, ask the game to open a file
 //! ([`Request`]), which [`Menu::load`] reads and the app starts.
 
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Config, to_int};
@@ -152,6 +153,9 @@ pub struct Menu {
     cash: Cash,
     /// What the last button asked of the game, until [`Menu::take_request`].
     request: Option<Request>,
+    /// The table of unlocked ids (entity types 10.4): emptied and refilled at each lookup, and each
+    /// id the append step lists is marked, whether it has a type or not.
+    marked: HashSet<i32>,
 }
 
 /// [`Menu::last_path`] for the settings `ini` of the install folder `root`.
@@ -185,6 +189,7 @@ impl Menu {
             freeform: None,
             cash: Cash::from_settings(&Config::default()),
             request: None,
+            marked: HashSet::new(),
         }
     }
 
@@ -227,8 +232,20 @@ impl Menu {
         &self.ini
     }
 
-    /// Appends types to the rewards of `[user] unlockEntityN` (the ids already listed are not
-    /// listed twice, an id of 0 or less is skipped). Returns the ids newly listed.
+    /// The lookup of the recorded rewards at a game load or a scenario start (entity types 10.4):
+    /// the table of unlocked ids is emptied and refilled with the recorded ids that `typed` says
+    /// have a type. The scan is bounded.
+    pub fn look_up(&mut self, typed: impl Fn(i32) -> bool) {
+        let count = ini_whole(&self.ini, "user", "unlockCount").unwrap_or(0);
+        self.marked = (0..count.clamp(0, 4096))
+            .filter_map(|n| ini_whole(&self.ini, "user", &format!("unlockEntity{n}")))
+            .filter(|&id| id > 0 && typed(id))
+            .collect();
+    }
+
+    /// Appends types to the rewards of `[user] unlockEntityN` (an id already in the table of
+    /// unlocked ids is not listed again, an id of 0 or less is skipped). Returns the ids newly
+    /// listed.
     pub fn unlock(&mut self, ids: &[i32]) -> Vec<i32> {
         let mut listed_now = Vec::new();
         // The scan is bounded: a list that long is a hostile file.
@@ -236,9 +253,7 @@ impl Menu {
         let start = count.clamp(0, 4096);
         let mut n = start;
         for &id in ids.iter().filter(|&&id| id > 0) {
-            let listed = (0..n)
-                .any(|i| ini_whole(&self.ini, "user", &format!("unlockEntity{i}")) == Some(id));
-            if !listed {
+            if self.marked.insert(id) {
                 self.write_back("user", &format!("unlockEntity{n}"), &id.to_string());
                 listed_now.push(id);
                 n += 1;

@@ -142,6 +142,8 @@ fn menu(ini: &str, install: &Install, vfs: &Vfs) -> Menu {
         0,
     );
     menu.set_lists(scenario_list(vfs, 0), freeform_list(vfs));
+    // Every recorded id has a type, as in a full catalogue.
+    menu.look_up(|_| true);
     menu
 }
 
@@ -642,6 +644,39 @@ fn the_result_is_written_only_when_lower_than_the_stored_one_and_a_stranger_leav
     assert_eq!(menu.ended, None);
     // The win unlocked the next scenario.
     assert_eq!(menu.scenarios[1].status(&menu.ini), Status::Playable);
+}
+
+#[test]
+fn a_recorded_id_with_no_type_is_listed_again_by_a_win_after_a_restart() {
+    let (install, vfs, _) = fixture("untyped-restart", true, false);
+    // 99 has no type in this catalogue; 6 has one.
+    let mut menu = menu("", &install, &vfs);
+    menu.look_up(|id| id != 99);
+    assert_eq!(
+        menu.scenario_ended(&ended("s/aa.scn", true, &[99, 6])).1,
+        [99, 6]
+    );
+    // The restart reads the list again: the typed 6 is marked, the untyped 99 is not.
+    let file = written(&install).unwrap();
+    let mut restarted = Menu::new(
+        Config::parse(file.as_bytes()).unwrap(),
+        &install.0,
+        Some(install.0.join("user")),
+        None,
+        0,
+    );
+    restarted.look_up(|id| id != 99);
+    assert_eq!(
+        restarted
+            .scenario_ended(&ended("s/ab.scn", true, &[99, 6]))
+            .1,
+        [99]
+    );
+    let file = written(&install).unwrap();
+    assert!(
+        file.contains("unlockCount=3") && file.contains("unlockEntity2=99"),
+        "{file}"
+    );
 }
 
 #[test]

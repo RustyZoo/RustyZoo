@@ -868,6 +868,8 @@ impl<'a> App<'a> {
             self.sim.resume_scenario(scenario, &goals.0, goals.1);
             self.scenario_avail(false);
         }
+        // The lookup of the recorded rewards follows the open's triggers (entity types 10.4).
+        self.look_up_unlocks();
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
@@ -2076,6 +2078,7 @@ impl<'a> App<'a> {
         if start.scenario.is_some() {
             // The triggers set the availability over the tree, the ini rewards come last (7.4).
             self.scenario_avail(true);
+            self.look_up_unlocks();
         }
         let music = self.music.take();
         self.start_game(music);
