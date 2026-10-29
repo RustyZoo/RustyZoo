@@ -1,7 +1,7 @@
 //! The end of a scenario (scenarios 5.4, 9) and the objectives panel (4.5).
 
 use super::*;
-use crate::scenario;
+use crate::scenario::{self, built_line};
 use crate::ui::widgets::Row;
 
 /// The Scenario button and the panel it opens: the name, the story and the list of goals.
@@ -89,10 +89,8 @@ impl App<'_> {
         let story = ui.text_entry(story);
         ui.set_text(STORY, &story);
         let icons = scenario.icons().clone().map(|n| ui.tree.picture(vfs, &n));
-        let words = Words::new(|_| String::new());
         let rows = scenario.lines().into_iter().map(|l| {
-            let args = l.values.map(|v| Arg::Int(i64::from(v)));
-            let text = format::expand(&words, &ui.template(l.text), &args);
+            let text = built_line(ui, l);
             let icon = icons[match l.state {
                 0 => 0,
                 2 => 2,

@@ -1,10 +1,31 @@
 //! The interface side of the scenario: what the application does with an [`Effect`], and the
 //! clean-up (scenarios 7.1, 8.1, 8.3, 8.4).
 
-use super::{Effect, Op, Popup};
+use super::{Effect, Line, Op, Popup};
+use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
 use crate::ui::interface::{Buttons, Interface};
 use crate::vfs::Vfs;
+
+/// The built text of a goal line (4.2, 4.5): the template of its string filled in with `value`,
+/// `arga` and `argb`, where a `%r` takes the string of the value in its place (the name of `arga`).
+pub fn built_line(ui: &Interface, line: Line) -> String {
+    /// The strings of the values' ids, the only ones a `%r` of the line can name.
+    struct Names(Vec<(u32, String)>);
+    impl format::Strings for Names {
+        fn string(&self, id: u32) -> &str {
+            self.0.iter().find(|(n, _)| *n == id).map_or("", |(_, s)| s)
+        }
+    }
+    let names = Names(
+        line.values
+            .iter()
+            .filter_map(|&v| Some((u32::try_from(v).ok()?, ui.string(v))))
+            .collect(),
+    );
+    let args = line.values.map(|v| Arg::Int(i64::from(v)));
+    format::expand(&names, &ui.template(line.text), &args)
+}
 
 /// Where the dialog layouts keep their pictures and texts, from the layout's id.
 const BACKGROUND: i32 = 1;
@@ -121,7 +142,13 @@ impl Marks {
                 }
             }
         }
-        let line = text(ui, &p.hint.long, p.hint.short);
+        let line = match p.hint.short {
+            -1 if p.hint.long.is_empty() => p
+                .hint
+                .goal
+                .map_or(Vec::new(), |g| to_cp1252(&built_line(ui, g))),
+            _ => text(ui, &p.hint.long, p.hint.short),
+        };
         if p.hint.layout > 0 && !line.is_empty() && ui.set_text(p.hint.button, &line) {
             ui.show(p.hint.layout);
             self.hint = Some(p.hint.layout);

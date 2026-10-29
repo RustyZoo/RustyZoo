@@ -39,7 +39,7 @@ impl App<'_> {
     /// Does what the triggers asked of the interface.
     pub(super) fn scenario_effects(&mut self) {
         self.scenario_avail(false);
-        let effects = self.sim.scenario().map(|s| s.gui().take_effects());
+        let effects = self.sim.scenario().map(|s| s.effects());
         if let (Some(effects), Some(ui)) = (effects, &mut self.ui) {
             for effect in effects {
                 self.marks

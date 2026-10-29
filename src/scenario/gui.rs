@@ -81,8 +81,6 @@ struct Inner {
     strings: BTreeSet<i32>,
     shown: HashMap<i32, bool>,
     texts: HashMap<i32, Vec<u8>>,
-    /// The string of the first goal in progress, for a hint of -1.
-    goal_text: i32,
     out: Vec<Effect>,
     avail: Vec<Avail>,
 }
@@ -134,22 +132,8 @@ impl Gui {
         }
     }
 
-    pub(super) fn set_goal_text(&self, id: i32) {
-        self.0.borrow_mut().goal_text = id;
-    }
-
-    /// Leaves an effect; the hint of -1 of its popups gets the text of the first goal in progress.
-    pub(super) fn push(&self, mut effect: Effect) {
-        let mut g = self.0.borrow_mut();
-        let goal_text = g.goal_text;
-        let popups = match &mut effect {
-            Effect::Popup(p) => Some(p),
-            Effect::Press(_, p) | Effect::Set { popup: p, .. } => p.as_mut(),
-        };
-        if let Some(p) = popups.filter(|p| p.hint.short == -1) {
-            p.hint.short = goal_text;
-        }
-        g.out.push(effect);
+    pub(super) fn push(&self, effect: Effect) {
+        self.0.borrow_mut().out.push(effect);
     }
 
     /// Shows a popup after the effects already left.
@@ -173,6 +157,14 @@ impl Gui {
 }
 
 impl Effect {
+    /// The popup the effect shows, if it shows one.
+    pub(super) fn popup_mut(&mut self) -> Option<&mut Popup> {
+        match self {
+            Effect::Popup(p) => Some(p),
+            Effect::Press(_, p) | Effect::Set { popup: p, .. } => p.as_mut(),
+        }
+    }
+
     /// What a trigger run again after a load keeps (7.1): no popup, no press.
     pub(super) fn quiet(self) -> Option<Effect> {
         match self {
