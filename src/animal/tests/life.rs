@@ -712,7 +712,12 @@ fn loaded_with(saved: AnimalRecord, set: &str, goal: i32, ms: u32) -> (Vec<Strin
     for e in &mut world.zoo.entities {
         if e.class == "animals" {
             let mut block = crate::zoo::UnitBlock::default();
-            block.behaviour.levels[0].name = set.into();
+            block.behaviour.levels[0] = crate::zoo::Level {
+                name: set.into(),
+                list_b: vec!["fPlayTime(sleep,4)".into(), "fPlay(sleep)".into()],
+                tail: [1, 0, 1, 0],
+                ..Default::default()
+            };
             block.target.active = goal;
             let c = e.common.as_mut().unwrap();
             (c.animal, c.unit) = (Some(Box::new(saved.clone())), Some(Box::new(block)));
@@ -744,10 +749,12 @@ fn a_loaded_sleeper_goes_on_with_its_saved_sleep_set() {
         ..record()
     };
     let at = |log: &[String], line: &str| log.iter().position(|l| l == line);
-    // The saved set is the sleep set: it starts again at the first checks, before any waking.
-    let (log, _, _) = loaded_with(saved.clone(), "bSleep", 1, 3000);
-    let slept = at(&log, "set 500 bSleep");
-    assert!(slept.is_some() && slept < at(&log, "wake 500").or(Some(usize::MAX)));
+    // The saved set is the sleep set: it goes on with its saved calls (4 s of sleep, not the
+    // type's one call) without being started again, and the animal wakes when they are over.
+    let (log, a, _) = loaded_with(saved.clone(), "bSleep", 1, 3000);
+    assert!(a.sleeping && at(&log, "wake 500").is_none() && at(&log, "set 500 bSleep").is_none());
+    let (log, a, _) = loaded_with(saved.clone(), "bSleep", 1, 9000);
+    assert!(!a.sleeping && at(&log, "wake 500").is_some() && at(&log, "set 500 bSleep").is_none());
     // Any other saved set: nothing holds the flag, the first sleep check wakes the animal.
     let (log, a, _) = loaded_with(saved.clone(), "bChasePrey", 116, 3000);
     assert!(at(&log, "set 500 bSleep").is_none() && at(&log, "wake 500").is_some());

@@ -811,6 +811,12 @@ fn seated_with(
     for (i, task) in tasks.into_iter().enumerate() {
         let mut block = crate::zoo::UnitBlock::default();
         block.target.active = task.unwrap_or(-1);
+        block.behaviour.levels[0] = crate::zoo::Level {
+            name: "bshopfood0".into(),
+            list_b: vec!["fPlayTime(sit,30)".into(), "fExitBuilding()".into()],
+            tail: [1, 0, 1, 0],
+            ..Default::default()
+        };
         let c = w.zoo.entities[2 + i].common.as_mut().unwrap();
         c.unit = task.map(|_| Box::new(block));
     }
@@ -831,7 +837,7 @@ fn the_users_of_a_record_are_back_in_their_slots_with_the_time_they_entered_at()
     assert_eq!(w.units.buildings[&7].users, [(1, 0, 5), (2, 1, 9)]);
     assert_eq!(w.units.buildings[&8].users, [(3, 0, 7)]);
     // Each takes up the building as its target; the guest of the type that hides its users goes on
-    // with the use (task 0x6a) and is hidden, the others leave (a use set is not resumed).
+    // with the use (task 0x6a) and is hidden, the others leave (they have no unit block).
     for (id, building, slot, hidden) in [(1, 7, 0, false), (2, 7, 1, false), (3, 8, 0, true)] {
         let u = w.units.get(id).unwrap();
         let Part::Guest(g) = &u.part else {
@@ -894,10 +900,10 @@ fn a_pair_whose_unit_is_missing_or_unfit_is_dropped() {
 fn a_listed_user_keeps_the_task_its_record_stores() {
     use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
     // Saved leaving and entering stay so; any other task, a task that is no task and a record without
-    // a unit block: the last uses, the others end the use at once. The shop shows its users inside, so
-    // a guest saved using it leaves (the hider keeps its user in the use: the next test).
+    // a unit block: the saved tasks of the use stay, the others end the use at once, and a guest
+    // without a unit block leaves. The set is taken back only with a task that stays.
     let cases = [
-        (Some(106), (EXIT_BUILDING, false)),
+        (Some(106), (USE, false)),
         (Some(105), (EXIT_BUILDING, false)),
         (Some(104), (ENTER_BUILDING, false)),
         (Some(100), (USE, true)),
@@ -922,7 +928,38 @@ fn a_listed_user_keeps_the_task_its_record_stores() {
             (7, u8::from(r.task == EXIT_BUILDING))
         );
         assert_eq!(w.units.buildings[&7].users, [(1, 0, 9)], "{saved:?}");
+        let kept = matches!(saved, Some(104..=106));
+        assert_eq!(w.units.get(1).unwrap().runner.running(), kept, "{saved:?}");
     }
+}
+
+#[test]
+fn a_user_visible_inside_goes_on_with_its_saved_use_set_and_a_hider_does_not() {
+    // The shop shows its users inside: guests 1 and 2 saved in the use run the rest of the set,
+    // the current call (the 30 s) again, then the exit. The restroom hides its user: no set.
+    let (w, _) = seated_with(
+        106,
+        [vec![(1, 0), (2, 1)], vec![(3, 0)]],
+        [2, 1],
+        [Some(106); 3],
+        [None; 3],
+    );
+    for id in [1, 2] {
+        let u = w.units.get(id).unwrap();
+        assert_eq!(u.runner.top(), Some("bshopfood0"), "{id}");
+        assert_eq!(
+            u.runner
+                .calls_left(&crate::behaviour::NoData, &w.zoo.entities[0]),
+            2
+        );
+        assert_eq!(
+            (u.goal.record.task, u.hidden),
+            (crate::goal::USE, false),
+            "{id}"
+        );
+    }
+    let u = w.units.get(3).unwrap();
+    assert!(!u.runner.running() && u.hidden);
 }
 
 #[test]
