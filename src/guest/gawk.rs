@@ -92,11 +92,12 @@ pub fn update(world: &mut World, cat: &Catalogue) {
     };
 }
 
-/// 3.2: the ids and the help ids of the entities on the tiles of the seen list.
+/// 3.2: the ids and the help ids of the entities held by the last quadrant (offsets 32 or more) of
+/// the tiles of the seen list.
 pub fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSet<i32>) {
     let (mut ids, mut helps) = (HashSet::new(), HashSet::new());
     for &t in &g.seen {
-        for e in (0..4).filter_map(|q| world.quadrant(t, q)) {
+        if let Some(e) = world.quadrant(t, 3) {
             let e = &world.zoo.entities[e];
             ids.extend(e.common.as_ref().map(|c| c.id));
             helps.extend(help_id(cat, e));
