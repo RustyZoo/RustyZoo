@@ -1419,7 +1419,15 @@ fn the_smart_fences_setting_reads_the_ini_file_and_defaults_to_on() {
 fn a_new_food_entity_starts_at_the_max_food_units_of_its_type() {
     let (w, cat) = (world((0, 0), vec![], |_| {}), catalogue());
     let p = at(&w, &cat, 0, 0, 40, 40).unwrap();
-    let units = |ini: &str| super::entity(&ty("food", "chow", ini, [1, 1, 1]), &p, Vec::new(), 0);
+    let units = |ini: &str| {
+        super::entity(
+            &ty("food", "chow", ini, [1, 1, 1]),
+            &p,
+            Vec::new(),
+            &Default::default(),
+            0,
+        )
+    };
     let food = |e: Entity| e.common.unwrap().food;
     assert_eq!(
         food(units("[Characteristics/Integers]\ncMaxFoodUnits=1000\n")),

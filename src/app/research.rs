@@ -23,8 +23,8 @@ impl App<'_> {
         Some(tree)
     }
 
-    /// Applies the effect of each program the step completed (an availability here) and says so
-    /// in the message line.
+    /// Applies the effect of each program the step completed (an availability, a change of the
+    /// types or a discount) and says so in the message line.
     pub(super) fn research_done(&mut self) {
         for d in self.sim.take_research_done() {
             let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
@@ -38,6 +38,12 @@ impl App<'_> {
                 for line in log {
                     self.sim.note(line);
                 }
+            } else {
+                let cat = self.renderer.catalogue();
+                let life = self.sim.research_effect(cat, &mut game.world.research, &d);
+                crate::animal::lengthen(&mut game.world, &life);
+                // The open staff panel shows the new training (6.4).
+                game.staff.clock.force = true;
             }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
             ui.message(&to_cp1252(&text));

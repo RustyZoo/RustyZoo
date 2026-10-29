@@ -1211,6 +1211,7 @@ fn the_research_share_of_the_checks_is_the_trees_and_a_game_without_one_counts_0
         progress: 0.0,
         target: 0,
         effect: 0,
+        vals: [0; 3],
         order: 0,
     };
     let tree = |programs| Tree {
@@ -1258,6 +1259,7 @@ fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_comp
         progress: 0.0,
         target: 5,
         effect: 0,
+        vals: [0; 3],
         order: 1,
     };
     let tree = Tree {
@@ -1294,6 +1296,7 @@ fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_comp
         name: 7,
         target: 5,
         effect: 0,
+        vals: [0; 3],
     };
     assert_eq!(run.sim.take_research_done(), [done]);
     assert!(run.sim.take_research_done().is_empty());

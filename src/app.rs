@@ -739,7 +739,12 @@ impl<'a> App<'a> {
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         world.units.set_period(self.sim.ai.status_period);
-        let tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
+        let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
+        // The programs complete come before the animals are read: their life counters are cut by
+        // the changed types (research 7.2). Their availability follows the scenario's resume.
+        let flags = tree
+            .as_mut()
+            .map(|t| t.apply(self.renderer.catalogue(), &mut world.research).0);
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
@@ -822,9 +827,9 @@ impl<'a> App<'a> {
             self.sim.resume_scenario(scenario, &goals.0, goals.1);
             self.scenario_avail(false);
         }
-        if let (Some(tree), Some(game)) = (tree, &mut self.game) {
+        if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
-            game.build.start_research(self.renderer.catalogue(), &tree);
+            game.build.start_research(self.renderer.catalogue(), &flags);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
@@ -1968,11 +1973,15 @@ impl<'a> App<'a> {
         if let Some(file) = &start.scenario {
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
-            if let Some(tree) =
+            if let Some(mut tree) =
                 crate::research::Tree::of_scenario(self.renderer.vfs(), file, &mut || rng.rand())
             {
                 if let Some(game) = &mut self.game {
-                    game.build.start_research(self.renderer.catalogue(), &tree);
+                    let cat = self.renderer.catalogue();
+                    let (flags, life) = tree.apply(cat, &mut game.world.research);
+                    // A free program changes the animals the map placed (7.4).
+                    crate::animal::lengthen(&mut game.world, &life);
+                    game.build.start_research(cat, &flags);
                 }
                 self.sim.set_research(tree);
             }

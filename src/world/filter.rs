@@ -13,6 +13,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::money::BUILDING_UPKEEP;
 use crate::place::bulldozer::{refund, type_of};
 use crate::render::order::Kind;
+use crate::research::Overlay;
 use crate::timing::file_time;
 use crate::zoo::{Common, Entity, Event, FILTER_CHECK_MS, Filter};
 
@@ -50,17 +51,26 @@ impl Keys {
     }
 }
 
+impl Keys {
+    /// The keys with the changes of the completed research programs (research 6.4).
+    fn researched(mut self, ty: &EntityType, over: &Overlay) -> Keys {
+        let decay = over.int(ty, "cDecayTime", (self.decay_ms / 1000) as i32);
+        self.decay_ms = i64::from(decay).saturating_mul(1000);
+        self
+    }
+}
+
 /// A time kept in the record: whole milliseconds in 32 bits.
 fn ms(v: i64) -> i32 {
     v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 /// What a filter of type `ty` placed during play at game time `now` (ms) starts with (tank staff
-/// 7.2): the starting health, its decay timer full and a filter timer of 0, so that it filters (and
-/// charges) at its first update, no upkeep paid, today as its build and service dates and a count
-/// of 1 month.
-pub fn placed(ty: &EntityType, now: i64) -> Filter {
-    let keys = Keys::of(ty);
+/// 7.2): the starting health, its decay timer full (with the completed research `over`) and a
+/// filter timer of 0, so that it filters (and charges) at its first update, no upkeep paid, today
+/// as its build and service dates and a count of 1 month.
+pub fn placed(ty: &EntityType, over: &Overlay, now: i64) -> Filter {
+    let keys = Keys::of(ty).researched(ty, over);
     let today = file_time(now);
     Filter {
         health: keys.start.max(0) as u32,
@@ -230,7 +240,7 @@ impl World {
             name,
             colors: Vec::new(),
             fence: None,
-            filter: Some(placed(ty, self.units.now)),
+            filter: Some(placed(ty, &self.research, self.units.now)),
             ..Default::default()
         };
         let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
@@ -305,7 +315,7 @@ impl World {
             x.filter = Some(id);
         }
         let ty = type_of(cat, &self.zoo.entities[at]);
-        let keys = ty.map(Keys::of);
+        let keys = ty.map(|t| Keys::of(t).researched(t, &self.research));
         let step = i64::from(step);
         let fresh = |k: &Option<Keys>| {
             k.as_ref()

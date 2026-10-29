@@ -1098,7 +1098,7 @@ fn a_piece_the_bulldozer_takes_to_join_two_pens_marks_and_rates_the_one_left() {
 fn filter_at(s: &mut Session, health: u32) -> u32 {
     let (mut entity, shape) = s.entity(18, 20 * 64 + 32, 20 * 64 + 32, 0);
     let ty = &s.app.renderer.catalogue().types[18];
-    let f = crate::world::placed_filter(ty, 0);
+    let f = crate::world::placed_filter(ty, &Default::default(), 0);
     entity.common.as_mut().unwrap().filter = Some(crate::zoo::Filter { health, ..f });
     s.app
         .game
