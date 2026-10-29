@@ -818,6 +818,7 @@ fn seated_with(
     for (i, task) in tasks.into_iter().enumerate() {
         let mut block = crate::zoo::UnitBlock::default();
         block.target.active = task.unwrap_or(-1);
+        block.pending = "bpending".into();
         block.behaviour.levels[0] = crate::zoo::Level {
             name: "bshopfood0".into(),
             list_b: vec!["fPlayTime(sit,30)".into(), "fExitBuilding()".into()],
@@ -968,6 +969,8 @@ fn a_user_goes_on_with_its_saved_use_set_hidden_or_not() {
     }
     let u = w.units.get(3).unwrap();
     assert!(u.runner.running() && u.hidden);
+    // The pending set name is kept as saved.
+    assert!((1..=3).all(|id| w.units.get(id).unwrap().runner.queued() == Some("bpending")));
 }
 
 #[test]
