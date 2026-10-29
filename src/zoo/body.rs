@@ -182,8 +182,9 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
     if v >= 68 {
         upkeep = Some(r.u32()?);
     }
+    let mut upgrade = 0;
     if v >= 74 {
-        r.skip(4)?;
+        upgrade = r.u32()?;
     } else {
         r.put(&[0; 4]);
     }
@@ -196,6 +197,7 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
         guests: [guests_this, guests_last, guests_since],
         income: [income_this, income_last, income_since],
         upkeep,
+        upgrade,
         price,
         users,
         users_now,

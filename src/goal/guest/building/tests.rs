@@ -1223,6 +1223,7 @@ fn saved(cat: &Catalogue, id: u32, price: f32, stamp: Option<u32>) -> World {
         guests: [0; 3],
         income: [0; 3],
         upkeep: None,
+        upgrade: 0,
         price: price.to_bits(),
         users: vec![(1, 0)],
         users_now: 1,
@@ -1783,6 +1784,7 @@ fn a_guest_saved_on_a_bench_leaves_it_at_once_after_the_load() {
         users_now: 1,
         fill: 0,
         built: 0,
+        upgrade: 0,
     });
     for at in 0..w.zoo.entities.len() {
         crate::building::load(&mut w, &cat, at);

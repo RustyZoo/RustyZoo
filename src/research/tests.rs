@@ -263,6 +263,7 @@ fn plain(cost: f32, work: f32, programs: &[(f32, i32)]) -> Tree {
         effect: 0,
         vals: [0; 3],
         order,
+        icon: String::new(),
     };
     let mut tree = Tree {
         branches: vec![Branch {
@@ -800,4 +801,43 @@ fn full_game_sections_round_trip() {
     eprintln!("{files} files, {same} with the same section");
     // The saved game is in the English install only (the French one lacks it).
     assert!(files > 0);
+}
+
+#[test]
+fn a_complete_effect_1_program_gives_its_building_an_upgrade_in_tree_order() {
+    let up = |name: i32, cost: &str, target: i32| {
+        let body = format!(
+            "[research]\nname={name}\ncost={cost}\ntarget={target}\neffect=1\n\
+             effectval1=200\neffectval2=-1\neffectval3=15\nentityIcon=ui/up{name}\n"
+        );
+        (format!("p/{name}.cfg"), body.into_bytes())
+    };
+    let files = vec![
+        list("research.cfg", &["b.cfg"]),
+        branch("b.cfg", 1, 100, &[10]),
+        category(10, 0, &[1, 2, 3, 4]),
+        // Free, paid, free for another type, and an effect 0 program.
+        up(1, "0", 7),
+        up(2, "50", 7),
+        up(3, "0", 8),
+        program(4, "0", 7, 0),
+    ];
+    let mut t = tree("upgrades", "research=research.cfg\n", files);
+    let free = |t: &Tree| {
+        t.upgrades()
+            .into_iter()
+            .map(|(b, u)| (b, u.name))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(free(&t), [(7, 1), (8, 3)]);
+    let (target, u) = t.upgrade_of(1).unwrap();
+    assert_eq!(
+        (target, u.icon.as_str(), u.upkeep, u.adult, u.child),
+        (7, "ui/up1", 200, -1, 15)
+    );
+    // Neither a program of another effect nor an unknown one gives an upgrade.
+    assert!(t.upgrade_of(4).is_none() && t.upgrade_of(99).is_none());
+    // The paid one counts once its progress reaches its cost, in tree order.
+    t.branches[0].categories[0].programs[1].progress = 50.0;
+    assert_eq!(free(&t), [(7, 1), (7, 2), (8, 3)]);
 }

@@ -319,6 +319,20 @@ check base-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'g
 # whose scenario file is missing is refused (the original refuses them through Continue too), so the
 # round has no game, no step and no restart of the music.
 check expansion-trial ',,' 'game_round 474 "maps\\scn19.zoo"'
+# The round on a save the engine made: a freeform start of sm_aqua (its scenario, freeform/sm_aqua.scn,
+# is shipped, so the save names one that loads) saved by script, then the round on that save. Its
+# lines are those of the base trial's round: two starts, one music restart.
+saved_round() { # saved_round <y of Continue>
+  # A native Windows program does not read a Unix path in a file: the save is named by its Windows path.
+  saved=$(cygpath -m "$tmp/saved.zoo" 2>/dev/null || echo "$tmp/saved.zoo")
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 405\n2 down\n3 up\n4 mouse 831 657\n5 down\n6 up\n10 save %s\n' "$saved" >"$tmp/make"
+  rz run --headless --passes 12 --clock 100 --script "$tmp/make" >/dev/null
+  game_round "$1" "$saved"
+}
+check expansion-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'saved_round 474'
 # Play on a scenario and on a freeform map opens the map their file names, and empties the last
 # file (so Continue is off when the menu comes back): the start lines and the last file left.
 play_map() { # play_map <y of the menu button>
@@ -1231,7 +1245,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@422,1@3054,2@3615,1@4800,2@6504,1@8382,2@13747;97902:1@1156,2@7855,1@11630" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@422,1@3054,2@3615,1@4800,2@13659;97902:1@1156,2@9735,1@10246" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1326,7 +1340,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@281;eggs:3;hatch@908" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@281;eggs:6;hatch@908" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

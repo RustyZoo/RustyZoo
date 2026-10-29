@@ -218,6 +218,7 @@ fn program(
         effect,
         vals,
         order: 0,
+        icon: String::new(),
     }
 }
 
@@ -364,6 +365,7 @@ fn a_price_and_a_discount_use_the_single_precision_hundredth() {
         effect,
         vals: [10, 9552, 2],
         order: 1,
+        icon: String::new(),
     };
     let mut tree = Tree {
         branches: vec![Branch {
