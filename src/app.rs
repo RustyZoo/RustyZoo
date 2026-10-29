@@ -871,6 +871,7 @@ impl<'a> App<'a> {
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
+            game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
@@ -1856,6 +1857,9 @@ impl<'a> App<'a> {
                     self.building_sell();
                 }
                 panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
+                t if panel_building::UPGRADES.contains(&t) && self.game.is_some() => {
+                    self.building_upgrade(t);
+                }
                 t if panel_building::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.building.clock.force = true;
@@ -2038,6 +2042,7 @@ impl<'a> App<'a> {
                     // A free program changes the animals the map placed (7.4).
                     crate::animal::lengthen(&mut game.world, &life);
                     game.build.start_research(cat, &flags);
+                    game.world.units.upgrades = research::upgrades(&tree);
                 }
                 self.sim.set_research(tree);
             }

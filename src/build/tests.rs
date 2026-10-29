@@ -1269,6 +1269,7 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
         effect: 0,
         vals: [0; 3],
         order: 0,
+        icon: String::new(),
     };
     let mut tree = Tree {
         branches: vec![Branch {

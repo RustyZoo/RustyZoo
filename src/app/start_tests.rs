@@ -829,6 +829,103 @@ fn a_scenario_start_builds_the_research_tree_and_the_next_game_drops_it() {
 }
 
 #[test]
+fn building_upgrades_come_from_the_free_programs_and_from_each_completion() {
+    use crate::building::upgrade::Upgrade;
+    use crate::research::Done;
+    let program = |name: i32, cost: i32, upkeep: i32| {
+        format!(
+            "[research]\nname={name}\ncost={cost}\ntarget=3\neffect=1\neffectval1={upkeep}\n\
+             effectval2=4\neffectval3=-1\nentityIcon=ui/i{name}\n"
+        )
+        .into_bytes()
+    };
+    let files = [
+        ("s/up.scn", b"[start]\nresearch=resu.cfg\n".to_vec()),
+        ("resu.cfg", b"[branches]\nbranch=ub.cfg\n".to_vec()),
+        ("ub.cfg", b"[branch]\nname=1\ncategory=uc.cfg\n".to_vec()),
+        (
+            "uc.cfg",
+            b"[category]\nname=2\nprogram=u1.cfg\nprogram=u2.cfg\nprogram=u3.cfg\n".to_vec(),
+        ),
+        ("u1.cfg", program(21, 0, 0)),
+        ("u2.cfg", program(22, 50, 200)),
+        // The same name again: not added twice.
+        ("u3.cfg", program(21, 70, 999)),
+    ];
+    with_game("upgrades", "", &files, None, |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        let start = Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: Some("s/up.scn".into()),
+        };
+        app.begin(&start);
+        let held = |app: &App| {
+            let lists = &app.game.as_ref().unwrap().world.units.upgrades;
+            lists
+                .get(&3)
+                .map_or_else(Vec::new, |l| l.iter().map(|u: &Upgrade| u.name).collect())
+        };
+        // The free program is there from the start, with its numbers.
+        assert_eq!(held(app), [21]);
+        let first = &app.game.as_ref().unwrap().world.units.upgrades[&3][0];
+        assert_eq!(
+            (first.icon.as_str(), first.upkeep, first.adult, first.child),
+            ("ui/i21", 0, 4, -1)
+        );
+        // A completion adds its upgrade; the same program again adds nothing.
+        let done = |name| Done {
+            name,
+            target: 3,
+            effect: 1,
+            vals: [0; 3],
+        };
+        app.sim.push_research_done(done(22));
+        app.sim.push_research_done(done(22));
+        app.research_done();
+        assert_eq!(held(app), [21, 22]);
+        assert_eq!(
+            app.game.as_ref().unwrap().world.units.upgrades[&3][1].upkeep,
+            200
+        );
+        // A program of another effect, or an unknown one, adds nothing.
+        app.sim.push_research_done(Done {
+            effect: 0,
+            ..done(22)
+        });
+        app.sim.push_research_done(done(99));
+        app.research_done();
+        assert_eq!(held(app), [21, 22]);
+        // A saved game takes the upgrades of the programs its section completes, in tree order:
+        // 22 is done in its file, 21 is not (its second program of that name is the paid one); a
+        // game opened with no start builds no tree.
+        let mut section = 0u32.to_le_bytes().to_vec();
+        for (id, value) in [(22u32, 50f32), (21, 0.0)] {
+            section.extend(2i32.to_le_bytes());
+            section.extend(id.to_le_bytes());
+            section.extend(value.to_bits().to_le_bytes());
+        }
+        section.extend((-1i32).to_le_bytes());
+        let zoo = || {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), Some("s/up.scn"))).unwrap();
+            zoo.set_research(section.clone());
+            zoo
+        };
+        app.open_zoo(zoo(), Money::default(), true).unwrap();
+        assert_eq!(held(app), [21, 22]);
+        app.open_zoo(zoo(), Money::default(), false).unwrap();
+        assert!(held(app).is_empty());
+    });
+}
+
+#[test]
 fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back() {
     with_menu("research-load", "", |app, files| {
         app.pass(0, &[]);

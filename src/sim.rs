@@ -305,6 +305,18 @@ impl Sim {
         std::mem::take(&mut self.research_done)
     }
 
+    /// A program the research step completed, as the step reports it.
+    #[cfg(test)]
+    pub(crate) fn push_research_done(&mut self, done: Done) {
+        self.research_done.push(done);
+    }
+
+    /// The building upgrade the completed program named `name` gives, with the name id of the
+    /// building type it is for (research 6.3).
+    pub fn research_upgrade(&self, name: i32) -> Option<(i32, crate::building::upgrade::Upgrade)> {
+        self.research.as_ref()?.upgrade_of(name)
+    }
+
     /// The characteristic effect of a program the step completed (research 6.4, 6.7), laid on
     /// `over`. The changes of the life counter come back for the live animals.
     pub fn research_effect(&mut self, cat: &Catalogue, over: &mut Overlay, d: &Done) -> Vec<Life> {
