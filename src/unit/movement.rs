@@ -387,8 +387,9 @@ pub fn call(
             Some((anim.as_str(), data.number(entity, percent))),
         ),
         _ => {
-            let key = Number::Characteristic(unit.band.names().1.into());
-            (data.number(entity, &key), None)
+            let name = unit.band.names().1;
+            let rate = data.number(entity, &Number::Characteristic(name.into()));
+            (world.research.int_of(entity, name, rate), None)
         }
     };
     if !animate(unit, world, data, at, own) {

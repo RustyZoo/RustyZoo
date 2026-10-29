@@ -30,7 +30,8 @@ impl App<'_> {
         let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) else {
             return;
         };
-        self.menu_events.extend(menu.scenario_ended(&end));
+        let (lines, newly) = menu.scenario_ended(&end);
+        self.menu_events.extend(lines);
         for id in GAME_LAYOUTS {
             if let Some(i) = ui.tree.find(id) {
                 ui.tree.hide(i);
@@ -42,7 +43,7 @@ impl App<'_> {
         let message = to_cp1252(&ui.string(text));
         self.ending = ui.ask(DIALOG, &message, Buttons::YES_NO);
         self.menu_events.push(format!("scenario dialog {text}"));
-        self.end_rewards(&end.unlocks);
+        self.end_rewards(&newly);
         if !self.ending {
             self.end_answered(NO);
         }

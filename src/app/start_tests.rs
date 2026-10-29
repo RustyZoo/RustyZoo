@@ -202,6 +202,12 @@ pub(super) fn with_game(
             [goal("").as_slice(), b"[start]\nsavegame=saved.zoo\n"].concat(),
         ),
         ("s/res.scn", b"[start]\nresearch=resx.cfg\n".to_vec()),
+        // Unreadable scenarios: empty, or text with no line starting with `[` (7.2); and one header.
+        ("s/empty.scn", Vec::new()),
+        ("s/garbage.scn", b"goal=a\n; [x]\nplain text [y]\n".to_vec()),
+        ("s/header.scn", b"  [x]".to_vec()),
+        // The scenario the test maps name: a saved game of it loads.
+        ("scn/x", b"[start]\n".to_vec()),
         ("resx.cfg", b"[branches]\nbranch=rb.cfg\n".to_vec()),
         ("rb.cfg", b"[branch]\nname=1\ncategory=rc.cfg\n".to_vec()),
         (
@@ -848,7 +854,7 @@ fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back()
                 .to_vec()
         };
         // A saved game of a scenario: the tree is built (half done), then the section is read.
-        app.open_game_as(zoo(Some("s/res.scn")), Money::default(), true)
+        app.open_zoo(zoo(Some("s/res.scn")), Money::default(), true)
             .unwrap();
         assert_eq!(app.sim.research_share(), 100);
         let mut written = section.clone();
@@ -876,16 +882,46 @@ fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back()
         assert!(app.load_saved(file.to_str().unwrap()));
         assert_eq!(app.sim.research_share(), 100);
         // A start ignores the section of its file (7.4).
-        app.open_game_as(zoo(Some("s/res.scn")), Money::default(), false)
+        app.open_zoo(zoo(Some("s/res.scn")), Money::default(), false)
             .unwrap();
         assert_eq!(app.sim.research_share(), 0);
-        // No scenario or one that cannot be read: no tree, the section is kept as read.
-        for scenario in [None, Some("s/none.scn")] {
-            app.open_game_as(zoo(scenario), Money::default(), true)
-                .unwrap();
-            assert_eq!(app.sim.research_share(), 0);
-            assert_eq!(saved_section(app), section);
+        // No scenario: no tree, the section is kept as read.
+        app.open_zoo(zoo(None), Money::default(), true).unwrap();
+        assert_eq!(app.sim.research_share(), 0);
+        assert_eq!(saved_section(app), section);
+    });
+}
+
+#[test]
+fn a_saved_game_whose_scenario_cannot_be_read_is_refused_and_the_game_open_stays() {
+    with_menu("research-refused", "", |app, _| {
+        app.pass(0, &[]);
+        // Branch 1 at level 0 and the program 11 done: the share is 100 once it is read.
+        let mut section = 0u32.to_le_bytes().to_vec();
+        for (kind, id, value) in [(0i32, 1u32, 0u32), (2, 11, 5f32.to_bits())] {
+            section.extend(kind.to_le_bytes());
+            section.extend(id.to_le_bytes());
+            section.extend(value.to_le_bytes());
         }
+        section.extend((-1i32).to_le_bytes());
+        let zoo = |scenario: &str| {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), Some(scenario))).unwrap();
+            zoo.set_research(section.clone());
+            zoo
+        };
+        app.open_zoo(zoo("s/res.scn"), Money::default(), true)
+            .unwrap();
+        assert_eq!(app.sim.research_share(), 100);
+        // A missing file, an empty one and one with no section header are refused with the
+        // old-version message, and the game open before is kept; one header is enough to load.
+        for name in ["s/none.scn", "s/empty.scn", "s/garbage.scn"] {
+            let refused = zoo(name);
+            let message = format!("unsupported old version {}", refused.version);
+            assert_eq!(app.open_zoo(refused, Money::default(), true), Err(message));
+            assert_eq!(app.sim.research_share(), 100);
+        }
+        app.open_zoo(zoo("s/header.scn"), Money::default(), true)
+            .unwrap();
     });
 }
 
@@ -986,11 +1022,14 @@ fn a_saved_game_resumes_its_scenario_with_the_stored_goal_states_and_writes_them
         app.open_game_as(zoo("s/play.scn", &[3, 1], 106), Money::default(), false)
             .unwrap();
         assert!(app.sim.scenario().is_none());
-        // A scenario that cannot be read is no scenario, and its block is written as read.
-        app.open_game_as(zoo("s/none.scn", &[3, 1], 106), Money::default(), true)
-            .unwrap();
-        assert!(app.sim.scenario().is_none());
-        assert_eq!(saved(app), [3, 1]);
+        // A scenario that cannot be read refuses the load, from version 70 to 85 as from 86, and
+        // the game open before stays.
+        for version in [80, 106] {
+            let refused = zoo("s/none.scn", &[3, 1], version);
+            let message = format!("unsupported old version {version}");
+            assert_eq!(app.open_zoo(refused, Money::default(), true), Err(message));
+            assert!(app.sim.scenario().is_none());
+        }
     });
 }
 

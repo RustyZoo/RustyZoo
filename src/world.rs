@@ -239,6 +239,8 @@ pub struct World {
     /// The install language: the exhibit names of a loaded zoo are kept when its stored locale is
     /// this one, and a save writes it.
     language: Language,
+    /// What the completed research programs did to the entity types of this game (research 6.4).
+    pub research: crate::research::Overlay,
 }
 
 impl World {
@@ -279,6 +281,7 @@ impl World {
             told_water: BTreeMap::new(),
             words: language.exhibit_words.clone(),
             language,
+            research: Default::default(),
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
