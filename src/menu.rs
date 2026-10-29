@@ -220,6 +220,11 @@ impl Menu {
         log
     }
 
+    /// The settings as they are now: the rewards unlocked during this run are in them.
+    pub fn settings(&self) -> &Config {
+        &self.ini
+    }
+
     /// Appends types to the rewards of `[user] unlockEntityN` (the ids already listed are not
     /// listed twice, an id of 0 or less is skipped). The lines for the log.
     pub fn unlock(&mut self, ids: &[i32]) -> Vec<String> {

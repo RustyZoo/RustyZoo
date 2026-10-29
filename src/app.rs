@@ -705,7 +705,9 @@ impl<'a> App<'a> {
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
     /// tree and its research section is read (research 7.2, before the entities' own steps).
     fn open_game_as(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), RenderError> {
-        let research = saved.then(|| (zoo.scenario_file(), zoo.research().to_vec()));
+        let file = zoo.scenario_file().filter(|_| saved);
+        let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
+        let goals = (zoo.scenario_states(), zoo.version >= 86);
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
@@ -765,7 +767,7 @@ impl<'a> App<'a> {
                 .with_exhibits(exhibits)
                 .unlocked(
                     self.renderer.catalogue(),
-                    &Config::parse(self.renderer.vfs().ini()).unwrap_or_default(),
+                    &scenario_ui::reward_ini(&self.menu, self.renderer.vfs()),
                 ),
             pending: None,
             made: None,
@@ -799,8 +801,17 @@ impl<'a> App<'a> {
             carry: None,
             held: None,
         });
+        // The scenario resumes first (its triggers, then the goal states), then the research
+        // section completes the programs over their availability, then the ini rewards (7.3).
+        if let Some(scenario) = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f)) {
+            self.sim.resume_scenario(scenario, &goals.0, goals.1);
+            self.scenario_avail(false);
+        }
         if let (Some(tree), Some(game)) = (tree, &mut self.game) {
+            let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
             game.build.start_research(self.renderer.catalogue(), &tree);
+            game.build
+                .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
         }
         if let Some(ui) = &mut self.ui {
