@@ -861,7 +861,7 @@ impl<'a> App<'a> {
             self.scenario_avail(false);
         }
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
-            let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
+            let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
