@@ -487,16 +487,24 @@ fn the_periods_roll_over_from_the_build_date_at_the_check_every_three_seconds() 
 #[test]
 fn a_build_date_in_the_future_or_extreme_times_never_panic_or_roll_the_periods_wrongly() {
     let months = |from: u64, now: i64| crate::world::filter_months_since(from, now);
-    // The whole division cuts toward zero: up to 58 days ahead is 0, then -1.
+    // The program's `trunc(d + 29.9) / 30`: a date 1 to 59 days ahead is 0, 60 to 89 days -1.
     assert_eq!(
-        [-5, -58, -59, -60, -89].map(|d| months(file_time(0), d * DAY)),
-        [0, 0, -1, -1, -2]
+        [-5, -29, -30, -31, -59, -60, -89, -90].map(|d| months(file_time(0), d * DAY)),
+        [0, 0, 0, 0, 0, -1, -1, -2]
     );
     // 0 days is 0 months, 1 to 30 days the first, 31 to 60 the second.
     let days = |d: i64| months(file_time(0), d * DAY + DAY - 1);
     assert_eq!(
-        [days(0), days(1), days(30), days(31), days(60), days(61)],
-        [0, 1, 1, 2, 2, 3]
+        [
+            days(0),
+            days(1),
+            days(29),
+            days(30),
+            days(31),
+            days(60),
+            days(61)
+        ],
+        [0, 1, 1, 1, 2, 2, 3]
     );
     for (from, now) in [
         (0, i64::MAX),

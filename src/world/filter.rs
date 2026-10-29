@@ -84,12 +84,14 @@ pub fn placed(ty: &EntityType, over: &Overlay, now: i64) -> Filter {
 }
 
 /// The months from file time `from` to game time `now` (ms): `(d + 29) / 30` for `d` the whole days
-/// between them (information panels 18.3, 18.6; the whole division cuts toward zero, so a date in
-/// the future gives 0 up to 29 days ahead and a negative count beyond).
+/// between them (information panels 18.3, 18.6). The program truncates `d + 29.9` and then divides
+/// by 30 toward zero, so from 30 days in the future on the numerator is `d + 30` (a date 1 to 59
+/// days ahead gives 0, 60 to 89 days -1).
 pub fn months_since(from: u64, now: i64) -> i32 {
     let ticks = i128::from(file_time(now)) - i128::from(from);
-    let days = (ticks / 864_000_000_000).clamp(i128::from(i32::MIN), i128::from(i32::MAX));
-    ((days as i64 + 29) / 30) as i32
+    let days = (ticks / 864_000_000_000).clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i64;
+    let whole = if days >= -29 { days + 29 } else { days + 30 };
+    (whole / 30) as i32
 }
 
 /// How worn a filter is, by its health (tank staff 7.5; information panels 18.3).
