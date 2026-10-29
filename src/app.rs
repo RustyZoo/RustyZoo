@@ -720,6 +720,7 @@ impl<'a> App<'a> {
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
     /// tree and its research section is read (research 7.2, before the entities' own steps).
     fn open_game_as(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), RenderError> {
+        self.look_up_unlocks();
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
         let goals = (zoo.scenario_states(), zoo.version >= 86);
@@ -2012,6 +2013,7 @@ impl<'a> App<'a> {
         }
         if start.scenario.is_some() {
             // The triggers set the availability over the tree, the ini rewards come last (7.4).
+            self.look_up_unlocks();
             self.scenario_avail(true);
         }
         let music = self.music.take();
