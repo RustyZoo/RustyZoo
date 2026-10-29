@@ -6,12 +6,12 @@
 use rustyzoo::app::App;
 use rustyzoo::config::Config;
 use rustyzoo::intro::{Intro, attenuation};
-use rustyzoo::music::{Music, START_LIMIT, global_term};
+use rustyzoo::music::{LoopTurn, Music, START_LIMIT, global_term, loop_turn};
 use rustyzoo::timing::ini_whole;
 use rustyzoo::vfs::Vfs;
 
 use sdl3::audio::AudioFormat;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::audio::{Audio, Sound as Wave, Voice};
 
@@ -26,6 +26,10 @@ pub struct Sound {
     /// each type has one sound object (sound 9.1), so two units that call it while it plays give
     /// one voice.
     units: HashMap<String, Voice>,
+    /// The loop each tank filter plays, by voice, with its file (sound 8.2).
+    loops: HashMap<String, (String, Voice)>,
+    /// The files of loops that could not be played, which are not tried again.
+    failed: HashSet<String>,
     /// The global term `G`, from `userAttenuation`: the attenuation sum of the click, whose `B` and
     /// `F` are 0.
     click_sum: i32,
@@ -87,6 +91,8 @@ impl Sound {
             music: None,
             clicks: HashMap::new(),
             units: HashMap::new(),
+            loops: HashMap::new(),
+            failed: HashSet::new(),
             click_sum: global_term(ini),
             quiet: Quiet::default(),
             paused: false,
@@ -104,7 +110,8 @@ impl Sound {
         self.paused = paused;
         let voices = (self.music.iter())
             .chain(self.clicks.values())
-            .chain(self.units.values());
+            .chain(self.units.values())
+            .chain(self.loops.values().map(|(_, voice)| voice));
         for voice in voices {
             if let Err(e) = voice.mute(paused) {
                 eprintln!("rustyzoo: a sound cannot be muted: {e}");
@@ -212,7 +219,7 @@ impl Sound {
                 }
             } else {
                 let played = (audio.load(vfs, &s.file))
-                    .and_then(|wave| audio.play_at(wave, s.pan, sum, s.distance));
+                    .and_then(|wave| audio.play_at(wave, s.pan, sum, s.distance, false));
                 match played {
                     Ok(Some(voice)) => {
                         self.units.insert(s.voice.clone(), voice);
@@ -231,6 +238,53 @@ impl Sound {
             ));
         }
         lines
+    }
+
+    /// Keeps the loops the tank filters play (sound 4.2, 8.2): a loop that is no longer asked for,
+    /// or that has another file, is stopped; one that is not playing starts when its sum is not over
+    /// 6,000; one that is playing gets its volume and pan, and stops over 9,000. A file that cannot
+    /// be read or decoded is silence and a warning.
+    pub fn loops(&mut self, vfs: &Vfs, app: &App) {
+        let wanted = app.loop_sounds();
+        self.loops
+            .retain(|key, (file, _)| (wanted.iter()).any(|s| s.voice == *key && s.file == *file));
+        let Some(audio) = &self.audio else { return };
+        for s in wanted {
+            let sum = (self.click_sum.saturating_add(s.base)).saturating_add(s.distance);
+            let playing = self.loops.contains_key(&s.voice);
+            if self.failed.contains(&s.file) {
+                continue;
+            }
+            match loop_turn(playing, sum) {
+                LoopTurn::Start => {
+                    let played = (audio.load(vfs, &s.file))
+                        .and_then(|wave| audio.play_at(wave, s.pan, sum, s.distance, true));
+                    match played {
+                        Ok(voice) => {
+                            let voice = voice.map(|v| (s.file.clone(), v));
+                            self.loops.extend(voice.map(|v| (s.voice.clone(), v)));
+                        }
+                        Err(e) => {
+                            eprintln!("rustyzoo: {e}");
+                            self.failed.insert(s.file.clone());
+                        }
+                    }
+                }
+                LoopTurn::Refresh => {
+                    if let Some((_, voice)) = self.loops.get(&s.voice) {
+                        let moved =
+                            (voice.set_sum_x(sum, s.distance)).and_then(|()| voice.set_pan(s.pan));
+                        if let Err(e) = moved {
+                            eprintln!("rustyzoo: {}: {e}", s.file);
+                        }
+                    }
+                }
+                LoopTurn::Stop => {
+                    self.loops.remove(&s.voice);
+                }
+                LoopTurn::Idle => {}
+            }
+        }
     }
 
     /// The fade of the menu music: the volume follows the model, which ends by stopping it.

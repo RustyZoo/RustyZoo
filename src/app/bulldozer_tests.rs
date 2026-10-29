@@ -174,6 +174,10 @@ pub(super) fn catalogue() -> Catalogue {
     // 17: a seal, an animal that lives under water.
     let seal = "[m/Characteristics/Integers]\ncUnderwater=1\n";
     cat.push(ty("animals", b"seal", b"m", seal, [1, 1, 1]));
+    // 18: a tank filter with a healthy and a decayed loop.
+    let filter = "[Characteristics/Integers]\ncDecayedHealth=5\n[FilterSounds]\n\
+        cHealthySound=h.wav\ncHealthyAtten=1700\ncDecayedSound=d.wav\ncDecayedAtten=1800\n";
+    cat.push(ty("filter", b"filter1", b"f", filter, [2, 2, 1]));
     cat
 }
 

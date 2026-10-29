@@ -20,6 +20,26 @@ fn ty(text: &str) -> EntityType {
 }
 
 #[test]
+fn an_outside_user_faces_the_building_only_for_a_set_user_facing_of_1() {
+    // Missing: on; any other value than 1 (0, negative, huge): off.
+    for (text, on) in [
+        ("", true),
+        ("0", false),
+        ("-1", false),
+        ("2", false),
+        ("99999999999", false),
+        ("1", true),
+    ] {
+        let file = if text.is_empty() {
+            String::new()
+        } else {
+            format!("[Characteristics/Integers]\ncSetUserFacing={text}\n")
+        };
+        assert_eq!(Kind::of(&ty(&file), 3.0).faces_user, on, "{text:?}");
+    }
+}
+
+#[test]
 fn a_type_declares_its_slots_prices_items_and_needs_with_the_defaults_of_the_program() {
     let k = Kind::of(
         &ty(
@@ -227,6 +247,7 @@ fn an_exit_must_be_on_the_terrain_its_slot_allows() {
 /// `large` for a footprint above 3.
 fn animal(swims: bool, large: bool) -> Species {
     Species {
+        animal: true,
         id: 0,
         subtype: "f".into(),
         swims,
@@ -277,6 +298,7 @@ fn an_animal_leaves_into_the_exhibit_it_stands_in() {
         w.exhibits_mut().add(&part, String::new());
     }
     let standing = |tile| Species {
+        animal: true,
         tile: Some(tile),
         ..animal(true, false)
     };
@@ -808,8 +830,8 @@ fn the_users_of_a_record_are_back_in_their_slots_with_the_time_they_entered_at()
     // In entering order, the stamp of the guest as the entry time and 0 (none) as the load's tick.
     assert_eq!(w.units.buildings[&7].users, [(1, 0, 5), (2, 1, 9)]);
     assert_eq!(w.units.buildings[&8].users, [(3, 0, 7)]);
-    // Each takes up the building as its target and goes on with the use (task 0x6a); only the
-    // type that hides its users hides them.
+    // Each takes up the building as its target; the guest of the type that hides its users goes on
+    // with the use (task 0x6a) and is hidden, the others leave (a use set is not resumed).
     for (id, building, slot, hidden) in [(1, 7, 0, false), (2, 7, 1, false), (3, 8, 0, true)] {
         let u = w.units.get(id).unwrap();
         let Part::Guest(g) = &u.part else {
@@ -821,10 +843,12 @@ fn the_users_of_a_record_are_back_in_their_slots_with_the_time_they_entered_at()
             "{id}"
         );
         let r = &u.goal.record;
-        assert_eq!(
-            (r.task, r.target.id, r.start),
-            (crate::goal::USE, building, 9)
-        );
+        let task = if hidden {
+            crate::goal::USE
+        } else {
+            crate::goal::EXIT_BUILDING
+        };
+        assert_eq!((r.task, r.target.id, r.start), (task, building, 9));
     }
 }
 
@@ -869,10 +893,11 @@ fn a_pair_whose_unit_is_missing_or_unfit_is_dropped() {
 #[test]
 fn a_listed_user_keeps_the_task_its_record_stores() {
     use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
-    // Saved using, leaving and entering stay so; any other task, a task that is no task and a record
-    // without a unit block: the last uses, the others end the use at once.
+    // Saved leaving and entering stay so; any other task, a task that is no task and a record without
+    // a unit block: the last uses, the others end the use at once. The shop shows its users inside, so
+    // a guest saved using it leaves (the hider keeps its user in the use: the next test).
     let cases = [
-        (Some(106), (USE, false)),
+        (Some(106), (EXIT_BUILDING, false)),
         (Some(105), (EXIT_BUILDING, false)),
         (Some(104), (ENTER_BUILDING, false)),
         (Some(100), (USE, true)),
@@ -880,7 +905,7 @@ fn a_listed_user_keeps_the_task_its_record_stores() {
         (Some(-1), (USE, true)),
         (Some(i32::MAX), (USE, true)),
         (Some(106 + 256), (USE, true)),
-        (None, (USE, false)),
+        (None, (EXIT_BUILDING, false)),
     ];
     for (saved, want) in cases {
         let (w, _) = seated_with(
