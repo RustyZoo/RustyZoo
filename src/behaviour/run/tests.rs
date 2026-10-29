@@ -1,5 +1,6 @@
 use super::*;
 use crate::behaviour::parse_call;
+use crate::zoo::Behaviour as Saved;
 use std::collections::HashMap;
 
 /// A unit type made of text: the sets as lists of calls, the ambient rows and the animations
@@ -691,4 +692,179 @@ fn a_huge_time_is_cut_and_a_huge_step_skips_whole_animations() {
     assert_eq!((anim.entry, anim.frame, anim.elapsed), (2, 0, 50));
     anim.advance(u32::MAX, &timing);
     assert!(anim.shows_base());
+}
+
+/// A saved set: its name, its remaining calls as texts and its flags loaded, call done, running,
+/// forced.
+fn saved(name: &str, calls: &[&str], flags: [u8; 4]) -> Saved {
+    let level = crate::zoo::Level {
+        name: name.into(),
+        list_b: calls.iter().map(|c| c.to_string()).collect(),
+        tail: flags,
+        ..Default::default()
+    };
+    Saved {
+        levels: vec![level],
+    }
+}
+
+/// The animations shown over `n` steps of 100 ms.
+fn shown(rig: &mut Rig, n: usize) -> Vec<String> {
+    (0..n).map(|_| rig.tick(100).0).collect()
+}
+
+#[test]
+fn a_saved_set_runs_its_saved_calls_from_the_current_one_and_is_not_looked_up() {
+    // The type's set of that name differs from the saved calls: the saved ones run.
+    let mut rig = Rig::new(&[("bUse", &["fPlay(d)"])]);
+    assert!(
+        rig.runner
+            .restore(&saved("bUse", &["fPlay(a)", "fPlay(c)"], [1, 0, 1, 0]))
+    );
+    assert_eq!(rig.runner.top(), Some("bUse"));
+    assert_eq!(rig.runner.calls_left(&rig.data, &rig.unit), 2);
+    let names = shown(&mut rig, 6);
+    assert!(
+        names.contains(&"a".into()) && names.contains(&"c".into()),
+        "{names:?}"
+    );
+    assert!(!names.contains(&"d".into()), "{names:?}");
+    // The set was not started: no start note.
+    assert!(!rig.notes().contains(&set("bUse")));
+    // A call played for a time plays all its turns again, then the rest follows.
+    let mut rig = Rig::new(&[]);
+    rig.runner.restore(&saved(
+        "bUse",
+        &["fPlayTime(b,2)", "fPlay(c)"],
+        [1, 0, 1, 0],
+    ));
+    let names = shown(&mut rig, 4);
+    assert_eq!(names[..2], ["b", "b"]);
+    assert!((0..12).map(|_| rig.tick(500).0).any(|n| n == "c"));
+}
+
+#[test]
+fn a_saved_current_call_starts_on_the_first_step_not_behind_the_base_loop() {
+    // A long idle loop would hold the call back for its whole length.
+    let mut rig = Rig::new(&[]);
+    rig.data.timings.insert(
+        "idle".into(),
+        Timing {
+            count: 50,
+            delay: 100,
+        },
+    );
+    rig.runner
+        .restore(&saved("bUse", &["fPlay(a)", "fPlay(c)"], [1, 0, 1, 0]));
+    assert_eq!(rig.tick(100), ("a".into(), 0));
+    // A set started in play, not restored, still queues behind the loop.
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)"])]);
+    rig.data.timings.insert(
+        "idle".into(),
+        Timing {
+            count: 50,
+            delay: 100,
+        },
+    );
+    assert_eq!(rig.tick(100).0, "idle");
+}
+
+#[test]
+fn a_saved_call_that_was_done_is_dropped_not_run_again() {
+    let mut rig = Rig::new(&[]);
+    rig.runner
+        .restore(&saved("bUse", &["fPlay(a)", "fPlay(c)"], [1, 1, 1, 0]));
+    let names = shown(&mut rig, 4);
+    assert!(
+        names.contains(&"c".into()) && !names.contains(&"a".into()),
+        "{names:?}"
+    );
+    // The last call done and nothing left: the set ends without failing the unit.
+    let mut rig = Rig::new(&[]);
+    rig.runner
+        .restore(&saved("bUse", &["fPlay(a)"], [1, 1, 1, 0]));
+    rig.tick(100);
+    assert!(!rig.runner.running());
+}
+
+#[test]
+fn a_saved_set_that_is_not_running_or_has_nothing_to_run_is_ended() {
+    let mut rig = Rig::new(&[]);
+    // Not running, no name, no levels: nothing is taken.
+    assert!(
+        !rig.runner
+            .restore(&saved("bUse", &["fPlay(a)"], [1, 0, 0, 0]))
+    );
+    assert!(!rig.runner.restore(&saved("", &["fPlay(a)"], [1, 0, 1, 0])));
+    assert!(!rig.runner.restore(&Saved { levels: Vec::new() }));
+    assert_eq!(rig.runner.top(), None);
+    // Running with no call left (a negative count reads as none): it ends at its first run.
+    assert!(rig.runner.restore(&saved("bUse", &[], [1, 0, 1, 0])));
+    assert!(rig.runner.running());
+    rig.tick(100);
+    assert!(!rig.runner.running());
+    // A call that cannot run, a text that is no call and a set no longer loaded end the chain.
+    for calls in [
+        &["fNoSuchCall(a)"][..],
+        &["fPlay(zzz"],
+        &[""],
+        &["fPlay(nothing)"],
+    ] {
+        let mut rig = Rig::new(&[]);
+        rig.runner.restore(&saved("bUse", calls, [1, 0, 1, 0]));
+        rig.tick(100);
+        assert!(!rig.runner.running(), "{calls:?}");
+    }
+    let mut rig = Rig::new(&[]);
+    rig.runner
+        .restore(&saved("bUse", &["fPlay(a)"], [0, 0, 1, 0]));
+    rig.tick(100);
+    assert!(!rig.runner.running());
+}
+
+#[test]
+fn a_saved_nested_set_resumes_inside_its_parent_and_the_depth_is_bounded() {
+    let level = |name: &str, calls: &[&str], done: u8| crate::zoo::Level {
+        name: name.into(),
+        list_b: calls.iter().map(|c| c.to_string()).collect(),
+        tail: [1, done, 1, 0],
+        child: 1,
+        ..Default::default()
+    };
+    let mut rig = Rig::new(&[]);
+    let nested = Saved {
+        levels: vec![
+            level("bTop", &["fPlaySet(bIn)", "fPlay(c)"], 0),
+            level("bIn", &["fPlay(d)"], 0),
+        ],
+    };
+    assert!(rig.runner.restore(&nested));
+    let names = shown(&mut rig, 6);
+    assert!(
+        names.contains(&"d".into()) && names.contains(&"c".into()),
+        "{names:?}"
+    );
+    // A chain of a thousand levels is cut at the depth the runner allows.
+    let mut rig = Rig::new(&[]);
+    let deep = Saved {
+        levels: (0..1000)
+            .map(|_| level("bTop", &["fPlaySet(bTop)"], 0))
+            .collect(),
+    };
+    assert!(rig.runner.restore(&deep));
+    rig.tick(100);
+    assert!(rig.runner.chain.len() <= DEPTH);
+}
+
+#[test]
+fn a_saved_forced_set_cuts_the_animation_at_its_first_run_once() {
+    let mut rig = Rig::new(&[]);
+    rig.runner
+        .restore(&saved("bUse", &["fPlay(a)", "fPlay(c)"], [1, 0, 1, 1]));
+    assert!(!rig.anim.cut);
+    rig.tick(0);
+    assert!(rig.anim.cut);
+    rig.anim.cut = false;
+    rig.tick(0);
+    assert!(!rig.anim.cut);
 }

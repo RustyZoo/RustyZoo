@@ -4,7 +4,7 @@
 
 use super::{Kind, Live};
 use crate::entity::Catalogue;
-use crate::goal::{EXIT_BUILDING, USE};
+use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
 use crate::unit::Part;
 use crate::world::World;
 
@@ -15,7 +15,8 @@ use crate::world::World;
 /// record as its entry time (0: `now`, the AI tick of the load), hidden when the type hides its
 /// users, and goes on with the task its unit block stores when that is entering, using or leaving,
 /// so a user leaves after the time it has left (a guest pays then); a unit saved in another task
-/// ends its use at once, and a guest on a seat visible inside leaves (its saved use set is not resumed).
+/// ends its use at once. A user visible inside (a seat, a shelter) goes on with its saved use set
+/// (behaviours 4.7); a guest whose record has no unit block leaves at once.
 /// The stored count of users is not brought back to the list: the pairs dropped stay counted
 /// (`Live::extra`).
 /// A file before version 80 restores none of the users of a type whose users are visible inside
@@ -64,21 +65,33 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     };
     let common = world.zoo.entities[at].common.as_ref();
     let stamp = common.and_then(|c| c.stamp);
-    let saved = common.and_then(|c| Some(c.unit.as_ref()?.target.active));
+    let block = common.and_then(|c| c.unit.as_ref());
+    let saved = block.map(|b| b.target.active);
+    let set = block.map(|b| b.behaviour.clone());
     let Some(u) = world.units.get_mut(unit) else {
         return;
     };
     if !matches!(u.part, Part::Guest(_) | Part::Animal(_)) {
         return;
     }
-    // A guest on a seat visible inside ran a use set, which a load does not bring back: it leaves at
-    // once (guest buildings 6.5).
-    let using = saved.is_none_or(|t| t == i32::from(USE));
-    let saved = match u.part {
-        Part::Guest(_) if using && !kind.hide && !kind.outside => Some(i32::from(EXIT_BUILDING)),
+    let (inside, guest) = (
+        !kind.hide && !kind.outside,
+        matches!(u.part, Part::Guest(_)),
+    );
+    // A record without a unit block has no use set: a guest on a seat leaves at once.
+    let saved = match saved {
+        None if inside && guest => Some(i32::from(EXIT_BUILDING)),
         _ => saved,
     };
     crate::goal::resume_use(u, id, slot, now, saved);
+    // A user visible inside that keeps its task goes on with its saved use set: the current call
+    // again from its start, then the rest, and the set's `fExitBuilding` releases it (behaviours
+    // 4.7, guest buildings 6.5).
+    let kept = (saved.and_then(|t| u8::try_from(t).ok()))
+        .is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
+    if let (true, true, Some(set)) = (inside, kept, &set) {
+        u.runner.restore(set);
+    }
     u.hidden = kind.hide;
     if kind.hide {
         world.hide_unit(at);

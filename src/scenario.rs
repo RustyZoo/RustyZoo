@@ -23,7 +23,7 @@
 use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
 
-pub use apply::Marks;
+pub use apply::{Marks, built_line};
 pub use gui::{Avail, Effect, Gui, Tell, Which};
 pub use popup::{Hint, Op, Popup};
 pub use rules::Game;
@@ -225,8 +225,6 @@ pub struct Goal {
     name: String,
     state: u8,
     optional: bool,
-    /// The string id of the goal's line (`text`); 0 for none.
-    text: i32,
     body: Body,
 }
 
@@ -286,7 +284,6 @@ impl Goal {
             name: String::from_utf8_lossy(name).into_owned(),
             state: 0,
             optional: int(s, "optional") != 0,
-            text: int(s, "text"),
             body,
         })
     }
@@ -343,13 +340,25 @@ impl Goal {
     fn lines(&self, out: &mut Vec<Line>) {
         match &self.body {
             Body::Timer(_) => {}
-            Body::Simple(s) if s.text != 0 && !s.hidden => out.push(Line {
+            Body::Simple(_) => out.extend(self.text()),
+            Body::Complex(c) | Body::Chain(c) => c.iter().for_each(|c| c.lines(out)),
+        }
+    }
+
+    /// The line this goal's text is built from (`getText`, 4.2): none when hidden or without a
+    /// text; a complex or chain goal gives the text of its first child whose state is 0 (4.4).
+    fn text(&self) -> Option<Line> {
+        match &self.body {
+            Body::Timer(_) => None,
+            Body::Simple(s) if s.text != 0 && !s.hidden => Some(Line {
                 text: s.text,
                 values: [s.value, s.rule[2], s.rule[3]],
                 state: self.state,
             }),
-            Body::Simple(_) => {}
-            Body::Complex(c) | Body::Chain(c) => c.iter().for_each(|c| c.lines(out)),
+            Body::Simple(_) => None,
+            Body::Complex(c) | Body::Chain(c) => {
+                c.iter().find(|c| c.reported() == 0).and_then(Goal::text)
+            }
         }
     }
 
@@ -527,7 +536,6 @@ impl Scenario {
             // No limit stated: nothing to wait for.
             state: u8::from(months == 0),
             optional: false,
-            text: 0,
             body: Body::Timer(months),
         };
         let mut goals = vec![timer];
@@ -588,6 +596,19 @@ impl Scenario {
         &self.gui
     }
 
+    /// The effects the triggers left since the last call. A popup whose hint is -1 takes the line
+    /// of the goal in progress now (8.3): the text it shows is built from that line.
+    pub fn effects(&self) -> Vec<Effect> {
+        let line = self.hint_line();
+        let mut effects = self.gui.take_effects();
+        for popup in effects.iter_mut().filter_map(Effect::popup_mut) {
+            if popup.hint.short == -1 {
+                popup.hint.goal = line;
+            }
+        }
+        effects
+    }
+
     pub fn run(&self) -> Run {
         self.run
     }
@@ -607,24 +628,36 @@ impl Scenario {
         &self.icons
     }
 
-    /// The lines of the objectives list (4.5): the timer's, when it has a text, then the goals'.
-    pub fn lines(&self) -> Vec<Line> {
-        let mut out = Vec::new();
-        if let Some(Goal {
-            body: Body::Timer(months),
-            state,
-            ..
-        }) = self.goals.first()
-            && self.timer_text != 0
-        {
-            out.push(Line {
+    /// The timer's line, when it has a text (3.3).
+    fn timer_line(&self) -> Option<Line> {
+        match self.goals.first() {
+            Some(Goal {
+                body: Body::Timer(months),
+                state,
+                ..
+            }) if self.timer_text != 0 => Some(Line {
                 text: self.timer_text,
                 values: [*months, 0, 0],
                 state: *state,
-            });
+            }),
+            _ => None,
         }
+    }
+
+    /// The lines of the objectives list (4.5): the timer's, when it has a text, then the goals'.
+    pub fn lines(&self) -> Vec<Line> {
+        let mut out: Vec<Line> = self.timer_line().into_iter().collect();
         self.goals.iter().for_each(|g| g.lines(&mut out));
         out
+    }
+
+    /// The line a hint of -1 shows (8.3): the first goal in progress, timer first, that has a text.
+    fn hint_line(&self) -> Option<Line> {
+        self.goals.iter().find_map(|g| match g.body {
+            _ if g.reported() != 0 => None,
+            Body::Timer(_) => self.timer_line(),
+            _ => g.text(),
+        })
     }
 
     /// How the scenario ended, once, when it has (5.4).
@@ -688,9 +721,6 @@ impl Scenario {
     fn update_goal(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
         let total = env.total_months();
         let gui = &self.gui;
-        // The line a hint of -1 shows: the first goal in progress that has one (8.3).
-        let first = self.goals.iter().find(|g| g.reported() == 0 && g.text > 0);
-        gui.set_goal_text(first.map_or(0, |g| g.text));
         let (timer, rest) = self.goals.split_first_mut().expect("the timer");
         let seen = &mut self.reported;
         if at > 0 {

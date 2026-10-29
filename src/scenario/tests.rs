@@ -354,7 +354,7 @@ fn effects(text: &str) -> Vec<Effect> {
     let mut s = build(text, &[]);
     s.start(&mut Vec::new());
     pass(&mut s, &env(1, 0), &mut Vec::new());
-    s.gui().take_effects()
+    s.effects()
 }
 
 /// A scenario whose one start trigger is trigger 2 with these keys, and the sections `body`.
@@ -412,11 +412,8 @@ fn a_popup_is_its_section_over_the_default_one_with_its_defaults() {
 #[test]
 fn trigger_2_popups_and_presses_and_single_elements() {
     let e = |keys: &str| trigger(keys, POPUPS);
-    // The hint of -1 is the text of the first goal in progress: none here.
-    let popup = Popup::read(&Config::parse(POPUPS.as_bytes()).unwrap(), 9).map(|mut p| {
-        p.hint.short = 0;
-        p
-    });
+    // The hint of -1 has no goal in progress here, so no text.
+    let popup = Popup::read(&Config::parse(POPUPS.as_bytes()).unwrap(), 9);
     let set = |op, always| Effect::Set {
         ops: vec![(1002, op)],
         popup: popup.clone(),
@@ -554,28 +551,56 @@ fn a_trigger_run_again_after_a_load_keeps_the_elements_and_drops_popups_and_pres
 }
 
 #[test]
-fn a_hint_of_minus_1_shows_the_text_of_the_first_goal_in_progress() {
+fn a_hint_of_minus_1_is_the_line_of_the_first_goal_in_progress_with_a_text() {
     let text = format!(
         "[start]\ntriggers=t\n[goals]\ngoal=a\ngoal=b\ngoal=c\n\
          [t]\ntrulea=2\ntruleb=0\ntarga=9\n{POPUPS}\
          [a]\nrulea=99\narga=1\nvalue=1\ntext=11\n[b]\nrulea=99\narga=0\nvalue=1\ntext=22\n\
          [c]\nrulea=99\narga=0\nvalue=1\ntext=33\n"
     );
-    let mut s = build(&text, &[]);
-    pass(&mut s, &env(1, 0), &mut Vec::new());
-    s.start(&mut Vec::new());
-    let [Effect::Popup(p)] = &s.gui().take_effects()[..] else {
-        panic!()
+    let hint = |text: &str| {
+        let mut s = build(text, &[]);
+        pass(&mut s, &env(1, 0), &mut Vec::new());
+        s.start(&mut Vec::new());
+        let [Effect::Popup(p)] = &s.effects()[..] else {
+            panic!()
+        };
+        p.hint.goal
     };
-    assert_eq!(p.hint.short, 22, "a is done, b is the first in progress");
+    let line = |text, values| {
+        Some(Line {
+            text,
+            values,
+            state: 0,
+        })
+    };
+    assert_eq!(
+        hint(&text),
+        line(22, [1, 0, 0]),
+        "a is done, b is the first in progress"
+    );
     // Nothing in progress: no text.
-    let mut s = build(&text.replace("arga=0", "arga=1"), &[]);
-    pass(&mut s, &env(1, 0), &mut Vec::new());
+    assert_eq!(hint(&text.replace("arga=0", "arga=1")), None);
+    // A hidden goal has no text and is passed over; a complex goal gives its first child in progress.
+    let hidden = text.replace("text=22", "text=22\nhidden=1");
+    assert_eq!(hint(&hidden), line(33, [1, 0, 0]));
+    let group = text.replace("goal=b\ngoal=c", "goal=g").replace(
+        "[c]",
+        "[g]\nrtype=1\nchild=h\nchild=c\n[h]\nrulea=99\narga=0\nvalue=1\ntext=44\n[c]",
+    );
+    assert_eq!(hint(&group), line(44, [1, 0, 0]));
+    // The timer's line comes first while the time runs.
+    let timed = format!("[duration]\nnummonths=3\ntext=100\n{text}");
+    let s = build(&timed, &[]);
+    assert_eq!(s.hint_line(), line(100, [3, 0, 0]));
+    // A positive id is the string itself: the goal's line is not taken.
+    let plain = text.replace("persistentShortText=-1", "persistentShortText=22");
+    let s = build(&plain, &[]);
     s.start(&mut Vec::new());
-    let [Effect::Popup(p)] = &s.gui().take_effects()[..] else {
+    let [Effect::Popup(p)] = &s.effects()[..] else {
         panic!()
     };
-    assert_eq!(p.hint.short, 0);
+    assert_eq!((p.hint.short, p.hint.goal), (22, None));
 }
 
 #[test]
