@@ -101,21 +101,25 @@ impl World {
             .map(|(&id, v)| FilterLook {
                 id,
                 off: v.off,
-                bubbles: v.bubbles > 0,
+                bubbles: (v.bubbles > 0).then(|| (BUBBLES_MS - v.bubbles) as u32),
             })
             .collect()
     }
 
-    /// The loop each filter plays now (tank staff 7.3 point 7): the healthy one while its health is
-    /// above `cDecayedHealth`, else the decayed one, with the attenuation next to the file name
-    /// (`[FilterSounds]`, sound 8.2). A filter whose type names no such sound plays nothing.
+    /// The loop each filter plays now (tank staff 7.7): the healthy one while its health is above
+    /// `cDecayedHealth`, the decayed one from 1 to it, with the attenuation next to the file name
+    /// (`[FilterSounds]`, sound 8.2). A filter that is switched off or broken, or whose type names
+    /// no such sound, plays nothing.
     pub fn filter_loops(&self, cat: &Catalogue) -> Vec<Loop> {
         let mut loops = Vec::new();
         for e in &self.zoo.entities {
             let Some((c, f)) = e.common.as_ref().and_then(|c| Some((c, c.filter?))) else {
                 continue;
             };
-            let Some(ty) = type_of(cat, e) else { continue };
+            let off = self.filter_view.get(&c.id).is_some_and(|v| v.off);
+            let Some(ty) = type_of(cat, e).filter(|_| !off && f.health > 0) else {
+                continue;
+            };
             let (file, atten) = match i64::from(f.health) > Keys::of(ty).decayed {
                 true => ("cHealthySound", "cHealthyAtten"),
                 false => ("cDecayedSound", "cDecayedAtten"),

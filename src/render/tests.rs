@@ -2140,7 +2140,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         colors: &[],
         life: None,
         off: false,
-        bubbles: false,
+        bubbles: None,
         mode,
         portal: false,
         food: 0,
@@ -2403,7 +2403,7 @@ fn a_tank_filter_shows_off_broken_decayed_or_idle_by_its_water_and_its_health() 
             filters: vec![FilterLook {
                 id: 1,
                 off,
-                bubbles: false,
+                bubbles: None,
             }],
             ..Extra::default()
         };
@@ -2438,8 +2438,24 @@ fn a_tank_filter_shows_off_broken_decayed_or_idle_by_its_water_and_its_health() 
     }
 }
 
+/// A catalogue with the type of the bubbles.
+fn bubble_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "objects",
+        type_name: b"other".to_vec(),
+        subtype: b"tankbub1".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    cat
+}
+
 #[test]
-fn the_bubbles_of_a_filter_stand_on_the_floor_of_the_tank_it_faces_and_only_then() {
+fn the_bubbles_of_a_filter_face_away_from_it_and_stand_at_the_wall_edge_facing_it() {
     // A filter on tile (0, 1) of the 4 by 4 map of `tank_scene`, centred at (32, 96).
     let mut zoo = tile_with(&[("filter", "filter1", "f")]);
     let place = |zoo: &mut Zoo, x: i32, y: i32, rotation: u32| {
@@ -2447,17 +2463,7 @@ fn the_bubbles_of_a_filter_stand_on_the_floor_of_the_tank_it_faces_and_only_then
         (c.x, c.y, c.rotation) = (x, y, rotation);
     };
     place(&mut zoo, 32, 96, 2);
-    let mut cat = Catalogue::default();
-    cat.push(EntityType {
-        class: "filter",
-        type_name: b"filter1".to_vec(),
-        subtype: b"f".to_vec(),
-        file: None,
-        config: None,
-        name_id: 0,
-        footprint: [2, 2, 1],
-        height: 0,
-    });
+    let cat = bubble_catalogue();
     let scene = tank_scene(0, 5, 3, Vec::new());
     let extra = |id, off, bubbles| Extra {
         filters: vec![FilterLook { id, off, bubbles }],
@@ -2465,36 +2471,92 @@ fn the_bubbles_of_a_filter_stand_on_the_floor_of_the_tank_it_faces_and_only_then
     };
     let found = |zoo: &Zoo, cat: &Catalogue, extra: &Extra| {
         (bubbles(&scene, zoo, cat, extra).into_iter())
-            .map(|(_, tile, o)| (tile, o.x, o.y, o.z, o.facing))
+            .map(|(_, tile, age, o)| (tile, age, o.x, o.y, o.z, o.facing))
             .collect::<Vec<_>>()
     };
-    // On tank tile (1, 1), 24 units in from its centre (96, 96) towards the filter.
+    // On tank tile (1, 1), at the middle of its west edge, which faces the filter: its wall is
+    // there. They face away from the filter (2 + 4).
     assert_eq!(
-        found(&zoo, &cat, &extra(1, false, true)),
-        [(5, 72, 96, 0, 2)]
+        found(&zoo, &cat, &extra(1, false, Some(80))),
+        [(5, 80, 64, 96, 0, 6)]
     );
     // None when off, when the filter shows none, or for another id.
-    assert!(found(&zoo, &cat, &extra(1, true, true)).is_empty());
-    assert!(found(&zoo, &cat, &extra(1, false, false)).is_empty());
-    assert!(found(&zoo, &cat, &extra(2, false, true)).is_empty());
-    // None when it faces a tile that is no tank, is off the map or has no type.
+    assert!(found(&zoo, &cat, &extra(1, true, Some(0))).is_empty());
+    assert!(found(&zoo, &cat, &extra(1, false, None)).is_empty());
+    assert!(found(&zoo, &cat, &extra(2, false, Some(0))).is_empty());
+    // None when it faces a tile that is no tank, is off the map, or the catalogue has no `tankbub1`.
+    let some = extra(1, false, Some(0));
     place(&mut zoo, 32, 96, 0);
-    assert!(found(&zoo, &cat, &extra(1, false, true)).is_empty());
+    assert!(found(&zoo, &cat, &some).is_empty());
     place(&mut zoo, 32, 96, 6);
-    assert!(found(&zoo, &cat, &extra(1, false, true)).is_empty());
+    assert!(found(&zoo, &cat, &some).is_empty());
     place(&mut zoo, -500, i32::MAX, 2);
-    assert!(found(&zoo, &cat, &extra(1, false, true)).is_empty());
+    assert!(found(&zoo, &cat, &some).is_empty());
     place(&mut zoo, 32, 96, 2);
-    assert!(found(&zoo, &Catalogue::default(), &extra(1, false, true)).is_empty());
-    // Another side of the tank: from the north and from the south.
+    assert!(found(&zoo, &Catalogue::default(), &some).is_empty());
+    assert_eq!(found(&zoo, &cat, &some).len(), 1);
+    // The other sides: the middle of the north edge, of the south edge and of the east edge.
     place(&mut zoo, 96, 32, 4);
-    assert_eq!(
-        found(&zoo, &cat, &extra(1, false, true)),
-        [(5, 96, 72, 0, 4)]
-    );
+    assert_eq!(found(&zoo, &cat, &some), [(5, 0, 96, 64, 0, 0)]);
     place(&mut zoo, 224, 160, 6);
-    assert_eq!(
-        found(&zoo, &cat, &extra(1, false, true)),
-        [(10, 184, 160, 0, 6)]
-    );
+    assert_eq!(found(&zoo, &cat, &some), [(10, 0, 191, 160, 0, 2)]);
+    place(&mut zoo, 96, 224, 0);
+    assert_eq!(found(&zoo, &cat, &some), [(9, 0, 96, 191, 0, 4)]);
+    // From inside the tank no piece stands on the edge: the centre of the tank tile.
+    place(&mut zoo, 160, 160, 6);
+    assert_eq!(found(&zoo, &cat, &some), [(9, 0, 96, 160, 0, 2)]);
+}
+
+#[test]
+fn the_bubbles_stand_three_steps_under_the_water_and_never_over_the_filter() {
+    let mut zoo = tile_with(&[("filter", "filter1", "f")]);
+    let cat = bubble_catalogue();
+    let extra = Extra {
+        filters: vec![FilterLook {
+            id: 1,
+            off: false,
+            bubbles: Some(0),
+        }],
+        ..Extra::default()
+    };
+    let height = |zoo: &mut Zoo, level: i32, filter_z: i32| {
+        let c = zoo.entities[0].common.as_mut().unwrap();
+        (c.x, c.y, c.rotation, c.z) = (32, 96, 2, filter_z);
+        let scene = tank_scene(0, 5, level, Vec::new());
+        bubbles(&scene, zoo, &cat, &extra)[0].3.z
+    };
+    // The floor is at 0 and the surface at 16 times the level. At the height of the filter the
+    // bubbles are not adjusted; otherwise the lower of the filter and 48 under the surface.
+    for (level, filter_z, z) in [
+        (5, 200, 32),
+        (5, 20, 20),
+        (5, 32, 32),
+        (4, 200, 16),
+        (3, 200, 0),
+        (1, 20, -32),
+        (1, 0, 0),
+        (0, 20, -48),
+        (5, i32::MIN, i32::MIN),
+    ] {
+        assert_eq!(height(&mut zoo, level, filter_z), z, "{level} {filter_z}");
+    }
+}
+
+#[test]
+fn the_bubbles_go_round_their_frames_from_the_cycle() {
+    // 17 frames of 83 ms: a loop of 1,411 ms, begun anew with each cycle.
+    for (age, frame) in [
+        (0, 0),
+        (82, 0),
+        (83, 1),
+        (1_410, 16),
+        (1_411, 0),
+        (2_999, 2),
+    ] {
+        assert_eq!(bubble_frame(age, 83, 17), frame, "{age}");
+    }
+    // A picture without frames or a delay shows the first.
+    assert_eq!(bubble_frame(500, 0, 17), 0);
+    assert_eq!(bubble_frame(500, 83, 0), 0);
+    assert_eq!(bubble_frame(u32::MAX, 1, 3), (u32::MAX % 3) as usize);
 }

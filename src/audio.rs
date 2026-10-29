@@ -5,7 +5,7 @@
 use std::cell::Cell;
 use std::error::Error;
 use std::ffi::{c_int, c_void};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use rustyzoo::music::{Music, START_LIMIT, gain};
 use rustyzoo::vfs::Vfs;
@@ -223,10 +223,13 @@ impl Audio {
         }
         stream.put_data(&sound.data)?;
         let sound = Arc::new(sound);
-        if looping {
-            let data = Arc::as_ptr(&sound).cast_mut().cast();
-            // SAFETY: `data` points into the shared sound, which lives as long as the voice, and
-            // the voice destroys the stream before it drops the sound (see [`Voice`]).
+        let shared = looping.then(|| Box::new(Mutex::new(sound.clone())));
+        if let Some(shared) = &shared {
+            let data = std::ptr::from_ref::<Mutex<Arc<Sound>>>(shared)
+                .cast_mut()
+                .cast();
+            // SAFETY: `data` points into the box of the voice, which lives as long as the voice,
+            // and the voice destroys the stream before it drops the box (see [`Voice`]).
             let set = unsafe {
                 sdl3::sys::audio::SDL_SetAudioStreamGetCallback(stream.raw(), Some(refill), data)
             };
@@ -236,8 +239,10 @@ impl Audio {
         }
         Ok(Voice {
             stream,
+            shared,
             sound,
             source: None,
+            pan: Cell::new(0),
             sum: Cell::new(sum),
             x: Cell::new(0),
             muted: Cell::new(false),
@@ -247,7 +252,7 @@ impl Audio {
     /// Starts a positional sound, a one-shot or with `looping` a loop: the sound with its pan, at
     /// the volume of the sum `sum`, whose distance term is `x`; `None` if the sum is over 6000. The
     /// voice keeps the sound as it is, so that [`Voice::set_pan`] can move the pan of what is
-    /// left to play (a loop starts again with the pan it began with).
+    /// left to play and, for a loop, every pass that follows.
     pub fn play_at(
         &self,
         sound: Sound,
@@ -261,6 +266,7 @@ impl Audio {
         }
         let mut voice = self.start(sound.clone().panned(pan), sum, looping, false)?;
         voice.x.set(x);
+        voice.pan.set(pan);
         voice.source = Some(sound);
         Ok(Some(voice))
     }
@@ -288,9 +294,10 @@ unsafe extern "C" fn refill(
     additional: c_int,
     _total: c_int,
 ) {
-    // SAFETY: `sound` is the sound of the voice that owns the stream, alive until the
-    // stream is destroyed; nothing writes to it.
-    let sound = unsafe { &*sound.cast::<Sound>() };
+    // SAFETY: `sound` is the box of the voice that owns the stream, alive until the stream is
+    // destroyed.
+    let sound = unsafe { &*sound.cast::<Mutex<Arc<Sound>>>() };
+    let sound = sound.lock().unwrap_or_else(|e| e.into_inner());
     if let (true, Ok(len)) = (additional > 0, c_int::try_from(sound.data.len()))
         && len > 0
     {
@@ -307,9 +314,13 @@ pub struct Voice {
     // The stream comes first so that it is destroyed, and its callback stops, before the sound
     // that the callback reads is dropped.
     stream: AudioStreamOwner,
+    /// For a loop, the sound the audio thread queues again: [`Voice::set_pan`] swaps it.
+    shared: Option<Box<Mutex<Arc<Sound>>>>,
     sound: Arc<Sound>,
     /// The sound before its pan, for a voice that can be panned again.
     source: Option<Sound>,
+    /// The pan the sound has now.
+    pan: Cell<i32>,
     /// The attenuation sum last set, of which `x` is the per-play term (sound 4.1).
     sum: Cell<i32>,
     x: Cell<i32>,
@@ -356,14 +367,23 @@ impl Voice {
         Ok(())
     }
 
-    /// Moves the pan of what is left to play (sound 9.1). Nothing changes for a voice that has
-    /// no source or has played to its end.
+    /// Moves the pan of what is left to play (sound 9.1), and for a loop of every pass that follows.
+    /// Nothing changes for a voice that has no source or the pan it has, nor for the rest of a
+    /// one-shot that has played to its end.
     pub fn set_pan(&self, pan: i32) -> Result<(), Box<dyn Error>> {
         let Some(source) = &self.source else {
             return Ok(());
         };
+        if pan == self.pan.replace(pan) {
+            return Ok(());
+        }
+        let panned = source.clone().panned(pan);
+        if let Some(shared) = &self.shared {
+            // Not held across a call into SDL, which the audio thread's callback is called from.
+            *shared.lock().unwrap_or_else(|e| e.into_inner()) = Arc::new(panned.clone());
+        }
         if let Ok(left @ 1..) = usize::try_from(self.queued_bytes()?) {
-            let rest = source.clone().panned(pan).tail(left);
+            let rest = panned.tail(left);
             self.stream.clear()?;
             self.stream.put_data(&rest.data)?;
         }
@@ -537,6 +557,20 @@ mod tests {
             let after = voice.queued_bytes().unwrap();
             assert!(0 < after && after <= before, "{pan}: {after} of {before}");
         }
+        // A loop goes on with the pan it was given last, not the one it began with, and a pan it
+        // already has changes nothing.
+        let tone = Sound::decode(&wav(1, 1, 22050, 16, &[100; 4096])).unwrap();
+        let looped = audio
+            .play_at(tone.clone(), 600, 0, 0, true)
+            .unwrap()
+            .unwrap();
+        let queued = |v: &Voice| v.shared.as_ref().unwrap().lock().unwrap().data.clone();
+        assert_eq!(queued(&looped), tone.clone().panned(600).data);
+        for pan in [-10_000, 0, 10_000, i32::MIN, i32::MAX] {
+            looped.set_pan(pan).unwrap();
+            assert_eq!(queued(&looped), tone.clone().panned(pan).data, "{pan}");
+        }
+        assert!(once.shared.is_none());
         // A voice without a source and one that has played out ignore it.
         let plain = audio
             .play(

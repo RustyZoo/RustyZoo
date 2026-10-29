@@ -168,8 +168,9 @@ pub struct FilterLook {
     pub id: u32,
     /// It is switched off: it faces no water.
     pub off: bool,
-    /// The bubbles of its last cycle are shown on the tank side of its wall.
-    pub bubbles: bool,
+    /// The bubbles of its last cycle are shown on the tank side of its wall, this many
+    /// milliseconds old.
+    pub bubbles: Option<u32>,
 }
 
 /// What an animal is, as far as its footprint goes: its plain one, its egg's or its crate's.
@@ -990,7 +991,7 @@ impl<'a> MapRenderer<'a> {
                         .map(|f| i32::try_from(f.health).unwrap_or(i32::MAX))
                 }),
                 off: extra.filters.iter().any(|l| l.id == c.id && l.off),
-                bubbles: false,
+                bubbles: None,
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
                 food: c.food,
@@ -1025,7 +1026,7 @@ impl<'a> MapRenderer<'a> {
                 colors: &[],
                 life: None,
                 off: false,
-                bubbles: false,
+                bubbles: None,
                 mode: 0,
                 portal: false,
                 food: 0,
@@ -1068,7 +1069,7 @@ impl<'a> MapRenderer<'a> {
                 colors: &[],
                 life: None,
                 off: false,
-                bubbles: false,
+                bubbles: None,
                 mode: 0,
                 portal: false,
                 food: 0,
@@ -1078,14 +1079,14 @@ impl<'a> MapRenderer<'a> {
             });
         }
         // So is the column of bubbles a filter's cycle leaves on the tank side of its wall.
-        for (ty, tile, obj) in bubbles(&scene, zoo, self.catalogue, extra) {
+        for (ty, tile, age, obj) in bubbles(&scene, zoo, self.catalogue, extra) {
             scene.add_transient(tile, obj);
             metas.push(Meta {
                 ty,
                 colors: &[],
                 life: None,
                 off: false,
-                bubbles: true,
+                bubbles: Some(age),
                 mode: 0,
                 portal: false,
                 food: 0,
@@ -1441,9 +1442,6 @@ impl<'a> MapRenderer<'a> {
     /// The `.ani` member an object shows at rest.
     fn member(&self, scene: &Scene, o: usize, meta: &Meta) -> Option<String> {
         let (obj, ty) = (&scene.objects[o], meta.ty);
-        if meta.bubbles {
-            return Some(BUBBLES.into());
-        }
         let wanted = match ty.class {
             // A tank filter shows `off` without water, else `broken`, `decayed` or `idle` by its
             // health (sprite drawing 3).
@@ -1647,7 +1645,11 @@ impl<'a> MapRenderer<'a> {
             .sprites
             .get(view.file)
             .map_or(0, |s| s.0.frames.len().saturating_sub(1));
-        let frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
+        let mut frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
+        // The bubbles go round their frames from the start of the cycle.
+        if let (Some(age), Some(sprite)) = (meta.bubbles, anim.sprites.get(view.file)) {
+            frame = bubble_frame(age, sprite.0.delay_ms, sprite.0.frames.len());
+        }
         let palette = anim.sprites.get(view.file).and_then(|sprite| {
             let own = self.recoloured(ty, sprite, meta.colors);
             match meta.tint {
@@ -1697,8 +1699,8 @@ struct Meta<'a> {
     food: i32,
     /// A tank filter that is switched off.
     off: bool,
-    /// The object is the bubbles of a tank filter, not the filter.
-    bubbles: bool,
+    /// The object is the bubbles of a tank filter, not the filter: their age in milliseconds.
+    bubbles: Option<u32>,
     /// The colour the object is drawn tinted with (sprite drawing 9.1).
     tint: Option<[u8; 3]>,
     /// The wall height of a pending tank gate, 0 for anything else.
@@ -1836,47 +1838,80 @@ fn shape_index(codes: &[Option<i32>], key: i32) -> usize {
     find(key).or_else(|| find(100)).unwrap_or(0)
 }
 
-/// The picture of the bubbles a filter's cycle leaves (tank staff 7.3 point 4.3).
-const BUBBLES: &str = "objects/bubbles/idle/idle.ani";
+/// The frame of the bubbles `age` milliseconds old, in a loop of `count` frames of `delay`
+/// milliseconds that starts with the cycle.
+fn bubble_frame(age: u32, delay: u32, count: usize) -> usize {
+    (age.checked_div(delay).unwrap_or(0) as usize)
+        .checked_rem(count)
+        .unwrap_or(0)
+}
 
-/// The bubbles of the filters of `extra` that show some, as transient objects of the tank tile
-/// their filter faces: on its floor, a little way in from the wall. Each comes with the filter's
-/// type, which the picture is made with, and the tile. A filter that is off, that has no record
-/// or that faces no tank has none.
+/// The bubbles of the filters of `extra` that show some (tank staff 7.7), as transient objects of
+/// the tank tile their filter faces, with their type `tankbub1` (none without it), that tile and
+/// their age. They face away from the filter and stand at the middle of the edge of the tank tile
+/// that faces it, or at the centre of the tile when the edge has no tank wall. Their height is the
+/// floor, or three elevation steps below the water surface and no higher than the filter once that
+/// differs from the filter's. A filter that is off, that has no record or that faces no tank has
+/// none.
 fn bubbles<'a>(
     scene: &Scene,
     zoo: &Zoo,
     catalogue: &'a Catalogue,
     extra: &Extra,
-) -> Vec<(&'a EntityType, usize, Object)> {
+) -> Vec<(&'a EntityType, usize, u32, Object)> {
     let mut found = Vec::new();
-    for look in extra.filters.iter().filter(|l| l.bubbles && !l.off) {
+    let Some(ty) = catalogue.find("objects", b"other", b"tankbub1") else {
+        return found;
+    };
+    for look in &extra.filters {
+        let Some(age) = look.bubbles.filter(|_| !look.off) else {
+            continue;
+        };
         let Some(e) =
             (zoo.entities.iter()).find(|e| e.common.as_ref().is_some_and(|c| c.id == look.id))
         else {
             continue;
         };
-        let (Some(c), Some(ty)) = (&e.common, crate::place::bulldozer::type_of(catalogue, e))
-        else {
-            continue;
-        };
+        let Some(c) = &e.common else { continue };
         let faced = (scene.tile_at(c.x, c.y)).and_then(|t| scene.neighbour(t, c.rotation as usize));
-        let Some(tile) = faced.filter(|&t| scene.tank_of(t).is_some()) else {
+        let Some((tile, k)) = faced.and_then(|t| Some((t, scene.tank_of(t)?))) else {
             continue;
         };
-        let centre = |v: usize| i32::try_from(v).unwrap_or(0) * 64 + 32;
-        let (tx, ty_) = (centre(tile % scene.width), centre(tile / scene.width));
-        // 24 of the 64 units from the centre of the tank tile towards the filter.
-        let (x, y) = (tx + (c.x - tx) * 24 / 64, ty_ + (c.y - ty_) * 24 / 64);
+        // The edge of the tank tile that faces the filter.
+        let side = (c.rotation as usize + 4) % 8;
+        let piece = (scene
+            .edge_object(tile, side)
+            .filter(|_| side.is_multiple_of(2)))
+        .filter(|&w| scene.wall_tank(w) == Some(k));
+        let (dx, dy) = match (piece, side) {
+            (None, _) => (32, 32),
+            (_, 0) => (32, 0),
+            (_, 2) => (63, 32),
+            (_, 4) => (32, 63),
+            _ => (0, 32),
+        };
+        let origin = |v: usize| i32::try_from(v).unwrap_or(0) * 64;
+        let floor = match piece {
+            Some(w) => scene.objects[w].z,
+            None => order::ground_height(&scene.tiles[tile], 32, 32),
+        };
+        // The water surface over the first tile of the tank, 16 per step of elevation and level.
+        let first = scene.tanks[k].tile;
+        let first = scene.index(first.0, first.1).unwrap_or(tile);
+        let z = match floor == c.z {
+            true => floor,
+            false => (scene.surface(first).map_or(c.z, |s| s - 48)).min(c.z),
+        };
         found.push((
             ty,
             tile,
+            age,
             Object {
                 kind: Kind::Unit,
-                x,
-                y,
-                z: order::ground_height(&scene.tiles[tile], 32, 32),
-                facing: c.rotation % 8,
+                x: origin(tile % scene.width) + dx,
+                y: origin(tile / scene.width) + dy,
+                z,
+                facing: side as u32,
                 footprint: (1, 1),
                 late: false,
                 height: 0,

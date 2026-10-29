@@ -40,17 +40,21 @@ fn the_loops_of_the_filters_are_placed_in_the_view_and_follow_their_health_and_t
         assert_eq!(sounds[0].distance, sounds[1].distance);
         assert!(sounds[0].distance > 0);
         assert!(sounds[0].pan * sounds[1].pan < 0, "one on each side");
-        // At or below the decayed health, or broken, the decayed loop.
+        // At or below the decayed health, the decayed loop; a broken filter is silent.
         health(s, left, 5);
         health(s, right, 0);
+        s.pass(&[]);
+        assert_eq!(looped(s), [want(left, "d.wav", 1800)]);
+        health(s, right, 1);
         s.pass(&[]);
         assert_eq!(
             looped(s),
             [want(right, "d.wav", 1800), want(left, "d.wav", 1800)]
         );
-        // Only a filter in the zoo plays: a removed one stops.
+        // Only a filter in the zoo plays: a removed one stops. (This map has no water, so by now
+        // the other has been switched off by a step and is silent.)
         assert!(s.app.game.as_mut().unwrap().world.remove(right));
         s.pass(&[]);
-        assert_eq!(looped(s), [want(left, "d.wav", 1800)]);
+        assert!(looped(s).iter().all(|l| l.0 != right));
     });
 }
