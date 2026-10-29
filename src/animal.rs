@@ -50,6 +50,7 @@ use crate::config::{Config, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::rating::Record;
 use crate::exhibit::{EXTERIOR, GROUNDS, rating};
+use crate::research::Overlay;
 use crate::sim::Rng;
 use crate::timing::{Date, file_time};
 use crate::unit::{Ctx, Part, Unit};
@@ -379,6 +380,20 @@ impl Keys {
         let mut keys = Keys::read(&int, class);
         keys.salt = prefers_salt(config);
         keys
+    }
+
+    /// The keys with the changes of the completed research programs (research 6.4). The amphibious
+    /// keeper-arrives key is another key and stays.
+    pub fn researched(mut self, ty: &EntityType, over: &Overlay) -> Keys {
+        if !self.amphibious {
+            self.keeper_arrives = over.int(ty, "cKeeperArrivesChange", self.keeper_arrives);
+        }
+        self.food_value = over.int(ty, "cFoodUnitValue", self.food_value);
+        self.reproduction_chance = over.int(ty, "cReproductionChance", self.reproduction_chance);
+        self.sick_chance = over.int(ty, "cSickChance", self.sick_chance);
+        self.time_death = over.int(ty, "cTimeDeath", self.time_death);
+        self.number_max = over.int(ty, "cNumberAnimalsMax", self.number_max);
+        self
     }
 }
 
@@ -1189,8 +1204,23 @@ fn kinds(world: &World, near: &[u32]) -> [usize; 3] {
 pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
     let class = &world.units.class;
     match find(cat, &world.zoo.entities[at]) {
-        Some(ty) => Keys::of(ty, class),
+        Some(ty) => Keys::of(ty, class).researched(ty, &world.research),
         None => Keys::read(&|_, fallback| fallback, class),
+    }
+}
+
+/// A research change of the life counter reaches the live animals of its type (research 6.4).
+pub fn lengthen(world: &mut World, changes: &[crate::research::Life]) {
+    for change in changes {
+        let ids = (world.zoo.entities.iter())
+            .filter(|e| e.class == "animals" && change.reaches(e))
+            .filter_map(|e| Some(e.common.as_ref()?.id));
+        let ids: Vec<u32> = ids.collect();
+        for id in ids {
+            if let Some(Part::Animal(a)) = world.units.get_mut(id).map(|u| &mut u.part) {
+                a.life = change.of(a.life);
+            }
+        }
     }
 }
 

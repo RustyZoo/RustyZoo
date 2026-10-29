@@ -15,6 +15,7 @@ use crate::money::BUILDING_UPKEEP;
 use crate::place::bulldozer::{refund, type_of};
 use crate::render::FilterLook;
 use crate::render::order::Kind;
+use crate::research::Overlay;
 use crate::zoo::{Common, Entity, Event, Filter};
 
 /// The events a worn filter posts: decayed (a task) and broken (an urgent one).
@@ -61,6 +62,15 @@ impl Keys {
     }
 }
 
+impl Keys {
+    /// The keys with the changes of the completed research programs (research 6.4).
+    fn researched(mut self, ty: &EntityType, over: &Overlay) -> Keys {
+        let decay = over.int(ty, "cDecayTime", (self.decay_ms / 1000) as i32);
+        self.decay_ms = i64::from(decay).saturating_mul(1000);
+        self
+    }
+}
+
 /// A time kept in the record: whole milliseconds in 32 bits.
 fn ms(v: i64) -> i32 {
     v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
@@ -69,8 +79,8 @@ fn ms(v: i64) -> i32 {
 /// What a filter of type `ty` placed during play starts with (tank staff 7.2): the starting
 /// health, its decay timer full and a filter timer of 0, so that it filters (and charges) at its
 /// first update.
-pub fn placed(ty: &EntityType) -> Filter {
-    let keys = Keys::of(ty);
+pub fn placed(ty: &EntityType, over: &Overlay) -> Filter {
+    let keys = Keys::of(ty).researched(ty, over);
     Filter {
         health: keys.start.max(0) as u32,
         timers: Some([ms(keys.decay_ms), 0]),
@@ -256,7 +266,7 @@ impl World {
             name,
             colors: Vec::new(),
             fence: None,
-            filter: Some(placed(ty)),
+            filter: Some(placed(ty, &self.research)),
             ..Default::default()
         };
         let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
@@ -331,7 +341,7 @@ impl World {
             x.filter = Some(id);
         }
         let ty = type_of(cat, &self.zoo.entities[at]);
-        let keys = ty.map(Keys::of);
+        let keys = ty.map(|t| Keys::of(t).researched(t, &self.research));
         let step = i64::from(step);
         let fresh = |k: &Option<Keys>| {
             k.as_ref()
