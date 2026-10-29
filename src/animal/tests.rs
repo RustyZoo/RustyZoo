@@ -613,6 +613,25 @@ fn a_loaded_animal_keeps_its_record_and_draws_nothing_at_its_turn() {
     assert_eq!(sim.rng, other.rng, "no draw at the first turn");
 }
 
+#[test]
+fn an_animal_marked_boxed_is_crated_at_its_first_turn_and_the_others_are_not() {
+    let cat = zebras();
+    let mut world = pens();
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    world.units.get_mut(510).unwrap().boxed = true;
+    sim.step_in(&mut world, &cat, 67, |_, _, _| {});
+    let crated = |world: &World, id| match &world.units.get(id).unwrap().part {
+        Part::Animal(a) => a.crated,
+        _ => panic!("not an animal"),
+    };
+    assert!(world.units.get(510).unwrap().started);
+    assert!(crated(&world, 510));
+    assert!(!crated(&world, 511));
+    assert!(!world.units.get(510).unwrap().boxed, "the mark is used up");
+}
+
 /// One run of the checks of an animal on a fresh generator, with the generator it leaves.
 fn once(a: &mut Animal, k: &Keys, class: &Class, env: &Env) -> (Out, Rng) {
     let mut rng = Rng::default();

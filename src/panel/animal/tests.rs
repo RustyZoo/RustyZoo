@@ -247,6 +247,14 @@ fn a_refresh_writes_the_bars_the_time_rows_and_the_buttons_and_tells_what_change
         None,
         "unchanged"
     );
+    // A scenario that forbids sales disables the sell button alone, and allows it again.
+    panel.no_sale = true;
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    assert_ne!(flags(&ui, 3111) & DISABLED, 0);
+    assert_eq!(flags(&ui, 3115) & DISABLED, 0);
+    panel.no_sale = false;
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    assert_eq!(flags(&ui, 3111) & DISABLED, 0);
     // The thoughts about it, five at most, are told by their ids, newest first.
     for text in [10096, 10098, 10098, 10098, 10098, 10098] {
         world
