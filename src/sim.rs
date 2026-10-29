@@ -264,7 +264,13 @@ impl Sim {
     /// and the generator is seeded again if the map has another number of tiles than the last one
     /// (main loop 9.2, the second moment).
     pub fn start_game(&mut self, tiles: usize, clocks: Clocks) {
-        self.status = Status::start(&clocks.status, self.economy.as_ref());
+        self.status = Status::start(&clocks.status, None);
+        let s = &mut self.status.settings;
+        (s.escaped_change, s.escaped_time) =
+            (self.ai.escaped_animal_change, self.ai.escaped_animal_time);
+        if let Some(file) = &self.economy {
+            self.status.economy(file);
+        }
         self.calendar = Calendar::at(clocks.calendar);
         self.total = 0;
         self.play_time = clocks.play_time;
@@ -345,6 +351,13 @@ impl Sim {
         self.calendar = Calendar::new();
     }
 
+    /// A scenario's own economy file over the settings of the game just started (zoo status 3.1).
+    pub fn scenario_economy(&mut self, file: &[u8]) {
+        if let Ok(file) = Config::parse(file) {
+            self.status.economy(&file);
+        }
+    }
+
     /// Gives the economy file that every later game's zoo status starts from.
     pub fn set_economy(&mut self, file: &[u8]) {
         self.economy = Config::parse(file).ok();
@@ -355,7 +368,8 @@ impl Sim {
     /// as loaded, research as the tree counts it, which restarts the rating timer (zoo status 16).
     pub fn loaded(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
         let sums = Sums::of(world, cat, money.cash, self.research_share());
-        self.status.rating_check(sums, money, &mut self.lines);
+        self.status
+            .rating_check(sums, self.calendar.elapsed_ms(), money, &mut self.lines);
     }
 
     /// The trash cans, fence pieces and filters of a zoo just loaded post their events, after the
@@ -396,8 +410,8 @@ impl Sim {
 
     /// A new game (not a saved one) has just been set up: with `fences` (the map file's
     /// `resetfences` above 0) every fence piece is made healthy and draws its wear interval,
-    /// otherwise the pieces stay as the map stores them (placing 7.4); the timers and the donation
-    /// counter start again and the rating check of the set-up runs, with no cash, the built-in
+    /// otherwise the pieces stay as the map stores them (placing 7.4); the timers, the donation
+    /// counter and the date of the last escape start again and the rating check of the set-up runs, with no cash, the built-in
     /// settings and every research program counted as done (zoo status 6.4).
     pub fn new_game(
         &mut self,
@@ -411,9 +425,15 @@ impl Sim {
         }
         self.status.timers = [0; 3];
         self.status.given = 0.0;
-        let set = std::mem::replace(&mut self.status.settings, Settings::builtin());
+        // The defaults also reset the date of the last escape, over the one the map stored.
+        self.status.escape = crate::zoo::NEVER;
+        let mut built = Settings::builtin();
+        let old = &self.status.settings;
+        (built.escaped_change, built.escaped_time) = (old.escaped_change, old.escaped_time);
+        let set = std::mem::replace(&mut self.status.settings, built);
         let sums = Sums::of(world, cat, 0.0, 100);
-        self.status.rating_check(sums, money, &mut self.lines);
+        self.status
+            .rating_check(sums, self.calendar.elapsed_ms(), money, &mut self.lines);
         self.status.settings = set;
     }
 
@@ -712,7 +732,8 @@ impl Sim {
         let due = self.status.due(step, month_end);
         if due.rating {
             let sums = Sums::of(world, cat, money.cash, self.research_share());
-            self.status.rating_check(sums, money, &mut self.lines);
+            self.status
+                .rating_check(sums, self.calendar.elapsed_ms(), money, &mut self.lines);
         }
         if due.message {
             let (say, log) = (&mut self.messages, &mut self.lines);
@@ -742,6 +763,7 @@ impl Sim {
                 .push(format!("month {} {}", date.month, date.year));
             // The endowment goes before the accounts move on, the wages and the upkeep after, in
             // the new month's column.
+            self.status.endowment(&mut self.rng, money, &mut self.lines);
             money.month_change();
             world.exhibits_mut().enter_new_month();
             crate::month::charge(world, cat, money, &mut self.lines);

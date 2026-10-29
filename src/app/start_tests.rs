@@ -926,6 +926,63 @@ fn a_saved_game_whose_scenario_cannot_be_read_is_refused_and_the_game_open_stays
 }
 
 #[test]
+fn a_scenario_start_reads_its_economy_file_over_the_games_and_the_next_game_drops_it() {
+    let more = [
+        ("s/eco.scn", b"[start]\neconomy=s/eco.cfg\n".to_vec()),
+        ("s/gone.scn", b"[start]\neconomy=s/gone.cfg\n".to_vec()),
+        (
+            "s/eco.cfg",
+            b"[characteristics]\ncMaxAdultAdmissionPrice=12\ncDonationChance=9\n".to_vec(),
+        ),
+    ];
+    with_game("scenario-economy", "", &more, None, |app, _| {
+        let start = |scenario: &str| Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: Some(scenario.into()),
+        };
+        app.pass(0, &[]);
+        let open = |app: &mut App| {
+            app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+                .unwrap()
+        };
+        open(app);
+        let before = app.sim.status.price;
+        assert!(
+            before > 12.0,
+            "the map's price is above the scenario's maximum"
+        );
+        app.begin(&start("s/eco.scn"));
+        let s = &app.sim.status;
+        assert_eq!((s.price, s.settings.donation_chance), (12.0, 9));
+        // A file that is missing or a scenario without one changes nothing; a new game starts over.
+        open(app);
+        app.begin(&start("s/gone.scn"));
+        assert_eq!(app.sim.status.price, before);
+        open(app);
+        app.begin(&start("s/play.scn"));
+        assert_eq!(app.sim.status.settings.donation_chance, 0);
+        // A saved game that holds the scenario sets the economy up again and keeps its stored
+        // price, outside the range or not, and the stored date of the last escape; one that holds
+        // none keeps the price too.
+        for (scenario, donation, max) in [(Some("s/eco.scn"), 9, 12.0), (None, 0, 100.0)] {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), scenario)).unwrap();
+            zoo.clocks.status.price = 70.0;
+            zoo.clocks.status.escape = 5;
+            app.open_game_as(zoo, Money::default(), true).unwrap();
+            let s = &app.sim.status;
+            assert_eq!((s.price, s.settings.donation_chance), (70.0, donation));
+            assert_eq!((s.escape, s.settings.max_price), (5, max));
+        }
+    });
+}
+
+#[test]
 fn a_saved_game_resumes_its_scenario_with_the_stored_goal_states_and_writes_them_back() {
     with_menu("goals-load", "", |app, files| {
         app.pass(0, &[]);
