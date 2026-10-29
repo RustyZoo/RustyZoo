@@ -1822,6 +1822,11 @@ fn an_entity_made_in_play_is_written_and_read_back() {
                 c.filter = Some(Filter {
                     health: 55,
                     timers: None,
+                    upkeep: [1, 2, 3],
+                    built: 7,
+                    serviced: 9,
+                    months: 4,
+                    check: super::FILTER_CHECK_MS,
                 })
             }),
         ),

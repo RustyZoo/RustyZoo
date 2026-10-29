@@ -5,7 +5,22 @@
 
 use super::upgrade::NEVER;
 use super::write::Out;
-use super::{BuildingRecord, Common, Entity, Fence, GuestRecord, StaffRecord, Target, UnitBlock};
+use super::{
+    BuildingRecord, Common, Entity, Fence, Filter, GuestRecord, StaffRecord, Target, UnitBlock,
+};
+
+/// The fields of a filter after its scenery part (zoo format 6.8): the health, the three upkeep
+/// figures, the build and service dates and the months count.
+pub(super) fn filter(f: &Filter) -> Vec<u8> {
+    let mut o = Out(Vec::new());
+    o.u32(f.health);
+    f.upkeep.iter().for_each(|&n| o.u32(n));
+    [f.built, f.serviced]
+        .iter()
+        .for_each(|d| o.bytes(&d.to_le_bytes()));
+    o.u32(f.months as u32);
+    o.0
+}
 
 /// The fields before the unit block or the entity base, and the fields after them.
 pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8>), String> {
@@ -14,13 +29,12 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
         // The fence figures are written from the model for every fence.
         "objects" | "food" | "paths" | "fences" | "tankwall" => {}
         "ambient" => pre.bytes(&[0; 8]),
-        "filter" => {
-            // Health, the three upkeep figures, built and serviced, and the word that is 1 when absent.
-            post.u32(c.filter.map_or(0, |f| f.health));
-            post.bytes(&[0; 12]);
-            [now, now].iter().for_each(|d| post.bytes(&d.to_le_bytes()));
-            post.u32(1);
-        }
+        "filter" => post.bytes(&filter(&c.filter.unwrap_or(Filter {
+            built: now,
+            serviced: now,
+            months: 1,
+            ..Filter::default()
+        }))),
         // An empty list of pieces and one word.
         "rubble" => post.bytes(&[0; 8]),
         "building" => building(

@@ -1419,7 +1419,7 @@ fn the_smart_fences_setting_reads_the_ini_file_and_defaults_to_on() {
 fn a_new_food_entity_starts_at_the_max_food_units_of_its_type() {
     let (w, cat) = (world((0, 0), vec![], |_| {}), catalogue());
     let p = at(&w, &cat, 0, 0, 40, 40).unwrap();
-    let units = |ini: &str| super::entity(&ty("food", "chow", ini, [1, 1, 1]), &p, Vec::new());
+    let units = |ini: &str| super::entity(&ty("food", "chow", ini, [1, 1, 1]), &p, Vec::new(), 0);
     let food = |e: Entity| e.common.unwrap().food;
     assert_eq!(
         food(units("[Characteristics/Integers]\ncMaxFoodUnits=1000\n")),
@@ -1815,6 +1815,11 @@ fn a_tank_filter_goes_beside_a_tank_no_filter_serves_and_faces_it() {
     let record = crate::zoo::Filter {
         health: 10,
         timers: Some([200_000, 0]),
+        built: crate::timing::file_time(0),
+        serviced: crate::timing::file_time(0),
+        months: 1,
+        check: crate::zoo::FILTER_CHECK_MS,
+        ..Default::default()
     };
     assert_eq!((c.rotation, c.filter), (2, Some(record)));
     assert_eq!(money.cash, 900.0);

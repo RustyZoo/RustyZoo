@@ -10,7 +10,7 @@ use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree};
 use crate::vfs::Vfs;
-use crate::zoo::Zoo;
+use crate::zoo::{Common, Zoo};
 
 pub(super) const SIZE: (u32, u32) = (64, 48);
 
@@ -655,6 +655,64 @@ fn a_saved_zoo_starts_on_its_date_and_a_new_game_on_the_first_of_january_2001() 
         app.begin(&start);
         let date = app.calendar().unwrap().date();
         assert_eq!((date.year, date.month, date.day), (2001, 1, 1));
+    });
+}
+
+#[test]
+fn a_start_with_reset_zeroes_the_upkeep_of_the_filters_and_dates_them_today() {
+    with_menu("filter-reset", "", |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        let filter = crate::zoo::Filter {
+            health: 4,
+            upkeep: [5, 6, 7],
+            built: 1,
+            serviced: 2,
+            months: 9,
+            ..Default::default()
+        };
+        let entity = Entity {
+            class: "filter".into(),
+            type_name: "filter1".into(),
+            subtype: String::new(),
+            body_size: None,
+            common: Some(Common {
+                x: 32,
+                y: 32,
+                filter: Some(filter),
+                ..Default::default()
+            }),
+        };
+        let world = &mut app.game.as_mut().unwrap().world;
+        world.add(entity, None).unwrap();
+        let start = |reset| Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset,
+            reset_fences: false,
+            scenario: None,
+        };
+        let kept = |app: &App| {
+            let world = &app.game.as_ref().unwrap().world;
+            let c = world.zoo.entities.last().unwrap().common.as_ref();
+            c.unwrap().filter.unwrap()
+        };
+        app.begin(&start(false));
+        assert_eq!(kept(app), filter);
+        app.begin(&start(true));
+        let today = crate::timing::file_time(0);
+        let reset = crate::zoo::Filter {
+            upkeep: [0; 3],
+            built: today,
+            serviced: today,
+            months: 1,
+            ..filter
+        };
+        assert_eq!(kept(app), reset);
     });
 }
 
