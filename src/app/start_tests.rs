@@ -21,6 +21,7 @@ impl UiStrings for Texts {
         match id {
             9101 => "text-9101 %d".into(),
             9201 => "told %r".into(),
+            9102 => "hint %d %r".into(),
             5 => "lion".into(),
             1 | 2 => format!("branch-{id}"),
             4001 => "status".into(),

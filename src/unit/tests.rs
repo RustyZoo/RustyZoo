@@ -477,7 +477,6 @@ fn the_hash_covers_the_animals() {
         terrain: _,
         sleeping: _,
         drinking: _,
-        resume: _,
         life: _,
         starving: _,
         mate: _,
@@ -492,7 +491,7 @@ fn the_hash_covers_the_animals() {
         slot: _,
         entrance: _,
     } = Animal::default();
-    let changes: [fn(&mut Animal); 53] = [
+    let changes: [fn(&mut Animal); 52] = [
         |a| a.happiness = 1,
         |a| a.hunger = 1,
         |a| a.health = 1,
@@ -532,7 +531,6 @@ fn the_hash_covers_the_animals() {
         |a| a.terrain = 2,
         |a| a.sleeping = true,
         |a| a.drinking = true,
-        |a| a.resume = true,
         |a| a.life = 1,
         |a| a.starving = 1,
         |a| a.mate = 1,

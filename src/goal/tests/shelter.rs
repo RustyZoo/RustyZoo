@@ -596,6 +596,46 @@ fn an_animal_visible_inside_stays_for_its_use_set_and_leaves_by_the_exit() {
 }
 
 #[test]
+fn a_loaded_animal_in_a_rock_plays_the_rest_of_its_saved_set_and_leaves_by_the_exit() {
+    // The type has no use set: only the saved calls run. The current one (3 s) plays again.
+    let (mut w, cat, sets) = rock(&[]);
+    let mut s = sim();
+    w.units.buildings.insert(8, Live::default());
+    let saved = crate::zoo::Behaviour {
+        levels: vec![crate::zoo::Level {
+            name: "brockanimalrest0".into(),
+            list_b: ["fPlayTime(a,3)", "fPlay(a)", "fExitBuilding()"]
+                .map(String::from)
+                .to_vec(),
+            tail: [1, 0, 1, 0],
+            ..Default::default()
+        }],
+    };
+    let now = w.units.ai_ticks;
+    let u = w.units.get_mut(1).unwrap();
+    crate::goal::resume_use(u, 8, 0, now, Some(i32::from(USE)));
+    assert!(u.runner.restore(&saved));
+    w.units
+        .buildings
+        .get_mut(&8)
+        .unwrap()
+        .users
+        .push((1, 0, now));
+    let mut ticks = 0;
+    for _ in 0..1000 {
+        step_in(&mut w, &mut s, &cat, &sets);
+        w.units.get_mut(1).unwrap().status_timer = i32::MAX / 2;
+        if users(&w, 8) == 0 {
+            break;
+        }
+        ticks = w.units.ai_ticks - now;
+    }
+    assert_eq!(users(&w, 8), 0);
+    assert!((3..=6).contains(&ticks), "{ticks}");
+    assert_eq!(animal(&w).building, 0);
+}
+
+#[test]
 fn a_missing_use_set_leaves_the_animal_in_task_0x6a_and_never_a_user() {
     let (mut w, cat, sets) = rock(&[]);
     let mut s = sim();
