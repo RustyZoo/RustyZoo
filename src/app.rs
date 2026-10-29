@@ -825,6 +825,7 @@ impl<'a> App<'a> {
         if let (Some(tree), Some(game)) = (tree, &mut self.game) {
             let ini = Config::parse(self.renderer.vfs().ini()).unwrap_or_default();
             game.build.start_research(self.renderer.catalogue(), &tree);
+            game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
             self.sim.set_research(tree);
@@ -1813,6 +1814,9 @@ impl<'a> App<'a> {
                     self.building_sell();
                 }
                 panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
+                t if panel_building::UPGRADES.contains(&t) && self.game.is_some() => {
+                    self.building_upgrade(t);
+                }
                 t if panel_building::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.building.clock.force = true;
@@ -1971,6 +1975,7 @@ impl<'a> App<'a> {
             {
                 if let Some(game) = &mut self.game {
                     game.build.start_research(self.renderer.catalogue(), &tree);
+                    game.world.units.upgrades = research::upgrades(&tree);
                 }
                 self.sim.set_research(tree);
             }

@@ -138,6 +138,39 @@ fn a_building_that_never_had_a_guest_still_adds_its_upkeep() {
 }
 
 #[test]
+fn a_building_pays_the_upkeep_of_its_current_upgrade() {
+    let up = |name, upkeep| upgrade::Upgrade {
+        name,
+        icon: String::new(),
+        upkeep,
+        adult: 0,
+        child: 0,
+    };
+    let mut w = world((4, 4), |_, entities| {
+        for (i, name) in ["shop", "shop", "shop", "heliport"].into_iter().enumerate() {
+            entities.push(entity("building", name, i as u32 + 1, centre((1, 1)), 0));
+        }
+    });
+    // The shops have name id 0 (and so has any type without a text), the heliport 8031.
+    upgrade::add(&mut w.units.upgrades, 0, up(1, 200));
+    upgrade::add(&mut w.units.upgrades, 0, up(2, -30));
+    upgrade::add(&mut w.units.upgrades, 8031, up(3, 999));
+    let live = |index| crate::building::Live {
+        upgrade: index,
+        ..Default::default()
+    };
+    // Building 1: no live entry, the first upgrade; 2: the second; 3: past the list, the type's.
+    w.units.buildings.insert(2, live(1));
+    w.units.buildings.insert(3, live(u32::MAX));
+    let (mut money, mut log) = (Money::default(), Vec::new());
+    charge(&mut w, &catalogue(), &mut money, &mut log);
+    // 200 - 30 + 50 for the shops; the helicopter base costs nothing whatever it holds.
+    assert_eq!(log, ["upkeep 220"]);
+    assert_eq!(w.units.buildings[&2].upkeep, -30.0);
+    assert_eq!(w.units.buildings[&3].upkeep, 50.0);
+}
+
+#[test]
 fn a_hostile_upkeep_is_no_charge() {
     let mut t = ty(
         "building",

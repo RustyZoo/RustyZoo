@@ -4,6 +4,7 @@
 //! here (research 7). The other effects than availability come later.
 
 use crate::avail::Availability;
+use crate::building::upgrade::Upgrade;
 use crate::config::{Config, Section, to_float, to_int};
 use crate::entity::Catalogue;
 use crate::money::{Money, RESEARCH};
@@ -32,8 +33,12 @@ pub struct Program {
     pub progress: f32,
     pub target: i32,
     pub effect: i32,
+    /// `effectval1` to `effectval3`.
+    pub vals: [i32; 3],
     /// The rank: lower first.
     pub order: i32,
+    /// `entityIcon`: the picture of a building upgrade's button.
+    pub icon: String,
 }
 
 /// A program the step completed: the caller applies its effect (5.4).
@@ -51,6 +56,18 @@ impl Program {
     /// Whether the program is complete: its progress has reached its cost.
     pub fn done(&self) -> bool {
         self.cost <= self.progress
+    }
+
+    /// The building upgrade the program gives (6.3): its name, picture, upkeep and the changes.
+    fn upgrade(&self) -> Upgrade {
+        let [upkeep, adult, child] = self.vals;
+        Upgrade {
+            name: self.name,
+            icon: self.icon.clone(),
+            upkeep,
+            adult,
+            child,
+        }
     }
 }
 
@@ -206,6 +223,20 @@ impl Tree {
         let all = self.programs().count() as i64;
         let done = self.programs().filter(|p| p.done()).count() as i64;
         (done * 100).checked_div(all).unwrap_or(100) as i32
+    }
+
+    /// The building upgrades of the programs complete, as `(building name id, upgrade)` in tree
+    /// order (research 6.3, 7.2): the lists of a game that starts or loads.
+    pub fn upgrades(&self) -> Vec<(i32, Upgrade)> {
+        let done = self.programs().filter(|p| p.effect == 1 && p.done());
+        done.map(|p| (p.target, p.upgrade())).collect()
+    }
+
+    /// The upgrade of the program named `name` and the building it is for, when it is an effect 1
+    /// program: what a completion adds.
+    pub fn upgrade_of(&self, name: i32) -> Option<(i32, Upgrade)> {
+        let p = self.programs().find(|p| p.name == name && p.effect == 1)?;
+        Some((p.target, p.upgrade()))
     }
 
     /// Resets or completes every program as the tree is built (3.3): the target of an effect 0
@@ -425,7 +456,12 @@ impl Category {
                 progress: 0.0,
                 target: int(p, "target", -1),
                 effect: int(p, "effect", -1),
+                vals: [1, 2, 3].map(|n| int(p, &format!("effectval{n}"), 0)),
                 order: int(p, "order", 0),
+                icon: p
+                    .and_then(|s| s.get("entityIcon"))
+                    .map(|v| crate::vfs::name_from_bytes(v.trim_ascii()))
+                    .unwrap_or_default(),
             });
         }
         Some(Category {

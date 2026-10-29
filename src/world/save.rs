@@ -143,6 +143,10 @@ impl World {
                 }
                 _ => {}
             }
+            // The current upgrade of a building is the live one (research 6.3).
+            if let (Some(b), Some(live)) = (c.building.as_mut(), self.units.buildings.get(&c.id)) {
+                b.upgrade = live.upgrade;
+            }
             if matches!(
                 e.class.as_str(),
                 "staff" | "keeper" | "maint" | "tour" | "helicopter"

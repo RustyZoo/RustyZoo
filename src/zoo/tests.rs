@@ -1487,7 +1487,7 @@ fn reads_the_figures_of_a_building() {
             b.u32(bits(100.0));
         }
         if v >= 74 {
-            b.z(4);
+            b.u32(5);
         }
         if v >= 75 {
             b.u32(0);
@@ -1514,6 +1514,59 @@ fn reads_the_figures_of_a_building() {
         assert_eq!(r.built, 0x01d0_0000_1234_5678, "version {v}");
         let upkeep = r.upkeep.map(f32::from_bits);
         assert_eq!(upkeep, (v >= 68).then_some(100.0), "version {v}");
+        assert_eq!(r.upgrade, if v >= 74 { 5 } else { 0 }, "version {v}");
+    }
+}
+
+#[test]
+fn the_upgrade_index_of_a_loaded_building_is_written_from_the_record() {
+    for v in [70, 74, 75, 106] {
+        let mut b = W::default();
+        b.z(4);
+        base(&mut b, v, 4, 9, "House");
+        b.u32(2).u32(40).u32(0).u32(0);
+        // Two users, to move the word the writer patches.
+        b.u32(2).u32(77).u32(2).u32(78).u32(1);
+        b.u32(14).z(16).z(8).u32(100);
+        if v >= 74 {
+            b.u32(5);
+        }
+        if v >= 75 {
+            b.u32(0);
+        }
+        let bytes = file(v, 1, 1, &[], &[("building", "building", "shop", b.0)]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        let record = |zoo: &mut Zoo| {
+            zoo.entities[0]
+                .common
+                .as_mut()
+                .unwrap()
+                .building
+                .as_mut()
+                .unwrap()
+                .upgrade
+        };
+        assert_eq!(record(&mut zoo), if v >= 74 { 5 } else { 0 }, "version {v}");
+        for index in [2, 0, u32::MAX] {
+            *zoo.entities[0]
+                .common
+                .as_mut()
+                .unwrap()
+                .building
+                .as_mut()
+                .map(|b| &mut b.upgrade)
+                .unwrap() = index;
+            let mut back = parse_to_the_end(&zoo.write(&money).unwrap());
+            assert_eq!(record(&mut back), index, "version {v}");
+            let r = back.entities[0]
+                .common
+                .as_ref()
+                .unwrap()
+                .building
+                .as_ref()
+                .unwrap();
+            assert_eq!((r.users.len(), r.fill), (2, 14), "version {v}");
+        }
     }
 }
 
@@ -1776,6 +1829,7 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         guests: [1, 2, 3],
         income: [4, 5, 6],
         upkeep: Some(7),
+        upgrade: 3,
         price: 8,
         users: vec![(9, 1)],
         users_now: 2,

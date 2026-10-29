@@ -576,6 +576,50 @@ fn the_sell_button_of_the_building_panel_sells_as_the_bulldozer_does() {
 }
 
 #[test]
+fn an_upgrade_button_of_the_programs_tab_sets_the_index_of_the_selected_building() {
+    use crate::building::upgrade::{self, Upgrade};
+    with_game("upgrade-button", "", |s| {
+        let id = s.add(2, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        let name = |n| Upgrade {
+            name: n,
+            icon: String::new(),
+            upkeep: 10 * n,
+            adult: 1,
+            child: 1,
+        };
+        let units = &mut s.app.game.as_mut().unwrap().world.units;
+        // Every type of this test has the name id 9001.
+        upgrade::add(&mut units.upgrades, 9001, name(1));
+        upgrade::add(&mut units.upgrades, 9001, name(2));
+        let index = |s: &Session| {
+            s.app
+                .game
+                .as_ref()
+                .unwrap()
+                .world
+                .units
+                .buildings
+                .get(&id)
+                .map(|l| l.upgrade)
+        };
+        // Nothing selected: nothing happens.
+        s.app.building_upgrade(4632);
+        assert_eq!(index(s), None);
+        s.app.game.as_mut().unwrap().building.select(id, 20);
+        s.app.building_upgrade(4632);
+        assert_eq!(index(s), Some(1));
+        // The first button, a position the type lacks, and an element that is no such button.
+        s.app.building_upgrade(4635);
+        s.app.building_upgrade(4636);
+        s.app.building_upgrade(0);
+        assert_eq!(index(s), Some(1));
+        s.app.building_upgrade(4631);
+        assert_eq!(index(s), Some(0));
+    });
+}
+
+#[test]
 fn the_sell_button_does_not_test_cdeletable_but_the_bulldozer_does() {
     with_game("sell-undeletable", "", |s| {
         let id = s.add(16, 20 * 64 + 32, 20 * 64 + 32, 0);

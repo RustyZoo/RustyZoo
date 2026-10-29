@@ -1211,7 +1211,9 @@ fn the_research_share_of_the_checks_is_the_trees_and_a_game_without_one_counts_0
         progress: 0.0,
         target: 0,
         effect: 0,
+        vals: [0; 3],
         order: 0,
+        icon: String::new(),
     };
     let tree = |programs| Tree {
         branches: vec![Branch {
@@ -1258,7 +1260,9 @@ fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_comp
         progress: 0.0,
         target: 5,
         effect: 0,
+        vals: [0; 3],
         order: 1,
+        icon: String::new(),
     };
     let tree = Tree {
         branches: vec![Branch {

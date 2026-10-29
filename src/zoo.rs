@@ -232,6 +232,8 @@ pub struct BuildingRecord {
     /// The money figures as the bits of a single precision number.
     pub income: [u32; 3],
     pub upkeep: Option<u32>,
+    /// The index of the building's current upgrade (from version 74, else 0).
+    pub upgrade: u32,
     /// The price as the bits of a single precision number.
     pub price: u32,
     pub users: Vec<(u32, u32)>,

@@ -364,6 +364,8 @@ pub struct Units {
     /// The live state of the guest buildings and the prices of the economy file (guest buildings).
     pub buildings: crate::building::Table,
     pub prices: crate::building::Prices,
+    /// The upgrades of the building types, filled by the research programs (research 6.3).
+    pub upgrades: crate::building::upgrade::Upgrades,
     /// What guests paid buildings during the step, which the step books as concessions.
     pub concessions: Vec<f32>,
     /// What the compost paid for dung during the step, which the step books as a construction refund.
@@ -418,6 +420,7 @@ impl Default for Units {
             donation_factor: 2.8e-13,
             buildings: Default::default(),
             prices: Default::default(),
+            upgrades: Default::default(),
             concessions: Vec::new(),
             recycled: Vec::new(),
             building_lines: Vec::new(),

@@ -91,7 +91,7 @@ use crate::entity::EntityType;
 use crate::panel::follow::tests as follow;
 use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
-use crate::ui::layout::{DISABLED, HIDDEN, Tree};
+use crate::ui::layout::{DISABLED, HIDDEN, SELECTED, Tree};
 use crate::unit::testing::{centre, entity, world};
 
 struct Texts;
@@ -110,17 +110,19 @@ impl Strings for Texts {
 /// a type with the idle animation of [`follow::members`] and the integer settings `ints`.
 fn panel_in(name: &str, layout: i32, ints: &str) -> (Interface, Vfs, World, Catalogue) {
     let ids = [
-        ("UIImage", [4550, 4650, 4567, 4568].as_slice()),
+        ("UIImage", [4550, 4650, 4567, 4568, 4647, 4648].as_slice()),
         ("UIEditableText", &[4502, 4602, 4555]),
         (
             "UIButton",
-            &[4557, 4556, 4516, 4580, 4616, 4575, 4576, 4577],
+            &[
+                4557, 4556, 4516, 4580, 4616, 4575, 4576, 4577, 4678, 4631, 4632, 4633, 4634, 4635,
+            ],
         ),
         (
             "UIText",
             &[
                 4531, 4533, 4535, 4559, 4561, 4591, 4573, 4563, 4565, 4592, 4664, 4666, 4662, 4668,
-                4696,
+                4696, 4642, 4643, 4644, 4645, 4646,
             ],
         ),
     ];
@@ -384,4 +386,63 @@ fn the_panel_of_a_building_that_charges_nothing_does_not_test_the_commerce_flag(
     assert!(told.contains(" months 1"), "{told}");
     assert_eq!(ui.text(PLAIN_MONTHS).unwrap(), b"1");
     assert_eq!(ui.text(PLAIN_GUESTS[0]).unwrap(), b"0");
+}
+
+#[test]
+fn the_programs_tab_shows_the_upgrades_of_the_type_and_the_current_one() {
+    let (mut ui, vfs, mut world, cat) = panel_in("building-panel-programs", PLAIN, "");
+    let mut panel = Panel::default();
+    let hidden = |ui: &Interface, id| state(ui, id) & HIDDEN != 0;
+    // No upgrade: the tab and the buttons are hidden.
+    panel.select(1, PLAIN);
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+    assert!(hidden(&ui, PROGRAMS_TAB) && UPGRADES.iter().all(|&b| hidden(&ui, b)));
+    assert!(!told.contains("upgrades"), "{told}");
+    let up = |name, upkeep, adult, child| upgrade::Upgrade {
+        name,
+        icon: "ui/z/z".into(),
+        upkeep,
+        adult,
+        child,
+    };
+    upgrade::add(&mut world.units.upgrades, 0, up(31, 0, 5, 3));
+    upgrade::add(&mut world.units.upgrades, 0, up(32, 200, 10, -1));
+    panel.select(1, PLAIN);
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+    // The first is current: its upkeep (also in the panel's own field), both bonuses.
+    assert!(
+        told.ends_with(" upgrades 2 current 0 upkeep 0 adult 5 child 3"),
+        "{told}"
+    );
+    assert!(!hidden(&ui, PROGRAMS_TAB));
+    let pressed = |ui: &Interface| UPGRADES.map(|b| state(ui, b) & SELECTED != 0);
+    assert_eq!(pressed(&ui), [true, false, false, false, false]);
+    assert_eq!(
+        UPGRADES.map(|b| hidden(&ui, b)),
+        [false, false, true, true, true]
+    );
+    assert_eq!(ui.text(PLAIN_UPKEEP).unwrap(), b"$0.00");
+    assert_eq!(ui.text(BONUS[0][0]).unwrap(), b"5");
+    assert_eq!(ui.text(BONUS[1][0]).unwrap(), b"3");
+    // The second: its own numbers, and the child bonus of -1 is hidden with its label and icon.
+    let at = world.find(1).unwrap();
+    let kind = Kind::of(type_at(&world, &cat, at).unwrap(), 2.0);
+    assert!(upgrade::choose(&mut world.units, &kind, 1, 1));
+    panel.clock.force = true;
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+    assert!(
+        told.contains(" current 1 upkeep 200 adult 10 child -1"),
+        "{told}"
+    );
+    assert_eq!(pressed(&ui), [false, true, false, false, false]);
+    assert_eq!(ui.text(PLAIN_UPKEEP).unwrap(), b"$200.00");
+    assert_eq!(ui.text(UPGRADE_UPKEEP).unwrap(), b"$200.00");
+    assert!(BONUS[0].iter().all(|&e| !hidden(&ui, e)));
+    assert!(BONUS[1].iter().all(|&e| hidden(&ui, e)));
+    // An index past the list has no current upgrade: nothing is pressed and no bonus is shown.
+    world.units.buildings.get_mut(&1).unwrap().upgrade = u32::MAX;
+    let told = panel.refresh(&mut ui, &world, &cat, &vfs, 0).unwrap();
+    assert!(told.ends_with(" upgrades 2 current none"), "{told}");
+    assert_eq!(pressed(&ui), [false; 5]);
+    assert!(BONUS.iter().flatten().all(|&e| hidden(&ui, e)));
 }

@@ -114,6 +114,28 @@ impl App<'_> {
         }
     }
 
+    /// An upgrade button of the Programs tab (research 6.3): the selected building takes the
+    /// upgrade at the button's position and the panel shows it at once. Logs `building upgrade ID N`.
+    pub(super) fn building_upgrade(&mut self, button: i32) {
+        let Some(game) = &mut self.game else { return };
+        let Some(n) = panel::UPGRADES.iter().position(|&b| b == button) else {
+            return;
+        };
+        let Some(id) = game.building.selected else {
+            return;
+        };
+        let cat = self.renderer.catalogue();
+        let at = game.world.find(id);
+        let ty = at.and_then(|at| type_of(cat, &game.world.zoo.entities[at]));
+        let kind = ty.map(|ty| Kind::of(ty, game.world.units.prices.default));
+        if let Some(kind) = kind
+            && crate::building::upgrade::choose(&mut game.world.units, &kind, id, n)
+        {
+            game.world.units.building_note(format!("upgrade {id} {n}"));
+        }
+        game.building.clock.force = true;
+    }
+
     /// The sell button (placing 7): the selected building goes as the bulldozer removes it, after
     /// the question with its refund when `[UI] confirmSell` asks for one; its users are pushed out.
     pub(super) fn building_sell(&mut self) {

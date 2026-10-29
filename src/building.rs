@@ -16,7 +16,8 @@
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
 //! `building buy <id> <item> <price>` when it buys an item, and `building price <id> <price>` when
-//! the player sets the price in the panel.
+//! the player sets the price in the panel, `building upgrade <id> <n>` when the player picks the
+//! upgrade at position `n` of the Programs tab.
 
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
@@ -31,6 +32,7 @@ use std::collections::BTreeMap;
 
 pub mod items;
 pub mod leave;
+pub mod upgrade;
 pub mod users;
 
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
@@ -336,6 +338,8 @@ pub struct Live {
     pub guests: [u32; 3],
     pub income: [f32; 3],
     pub upkeep: f32,
+    /// The index of the upgrade the building uses in its type's list (research 6.3).
+    pub upgrade: u32,
     /// The calendar time the building was built at (ms of game time since the calendar's start):
     /// the stored construction date for one that was there when the zoo was loaded, so it may be
     /// before the start or after now.
@@ -394,6 +398,7 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
         guests: record.guests,
         income: record.income.map(f32::from_bits),
         upkeep: record.upkeep.map_or(0.0, f32::from_bits),
+        upgrade: record.upgrade,
         price: f32::from_bits(record.price),
         built,
         ..Live::new(&kind)
@@ -418,6 +423,7 @@ pub fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
             removed.extend(live.users.iter().map(|u| u.0));
             *live = Live {
                 price: live.price,
+                upgrade: live.upgrade,
                 built: now,
                 ..Live::default()
             };

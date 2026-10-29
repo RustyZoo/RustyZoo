@@ -1192,6 +1192,7 @@ fn saved(cat: &Catalogue, id: u32, price: f32, stamp: Option<u32>) -> World {
         guests: [0; 3],
         income: [0; 3],
         upkeep: None,
+        upgrade: 0,
         price: price.to_bits(),
         users: vec![(1, 0)],
         users_now: 1,

@@ -264,6 +264,10 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
         true => super::body::transcode(v, e.class.as_bytes(), b)?,
         false => fresh::parts(e, c, now)?,
     };
+    // The current upgrade of a building is the live one.
+    if let (true, "building", Some(b)) = (read && v >= 70, e.class.as_str(), &c.building) {
+        fresh::set_upgrade(&mut post, b.upgrade);
+    }
     // The guest's fields come from the model, the rest of the record as read.
     if let (true, Some(g)) = (read && e.class == "guests", c.guest.as_deref()) {
         pre = fresh::guest(Some(pre), g)?;

@@ -518,6 +518,7 @@ fn record(fill: u32, built: u64) -> crate::zoo::BuildingRecord {
         guests: [3, 2, 9],
         income: [bits(10.5), bits(20.0), bits(30.5)],
         upkeep: Some(bits(75.0)),
+        upgrade: 0,
         price: bits(5.5),
         users: Vec::new(),
         users_now: 0,
@@ -526,12 +527,17 @@ fn record(fill: u32, built: u64) -> crate::zoo::BuildingRecord {
     }
 }
 
-/// A zoo with the buildings `(type, id, record)` on tiles in a row, loaded with the types.
-fn loaded(list: &[(&str, u32, Option<crate::zoo::BuildingRecord>)]) -> World {
+fn types() -> Catalogue {
     let mut cat = Catalogue::default();
     for (name, text) in [("stand", STAND), ("can", CAN), ("compost", COMPOST)] {
         cat.push(named(name, text));
     }
+    cat
+}
+
+/// A zoo with the buildings `(type, id, record)` on tiles in a row, loaded with the types.
+fn loaded(list: &[(&str, u32, Option<crate::zoo::BuildingRecord>)]) -> World {
+    let cat = types();
     let mut w = world_with((12, 4), |zoo| {
         for (i, &(name, id, _)) in list.iter().enumerate() {
             let at = (i as i32, 1);
@@ -587,6 +593,7 @@ fn a_record_before_version_68_has_no_upkeep_and_the_extremes_do_not_panic() {
         guests: [u32::MAX; 3],
         income: [f32::NAN.to_bits(), f32::INFINITY.to_bits(), u32::MAX],
         upkeep: Some(u32::MAX),
+        upgrade: 0,
         price: f32::NAN.to_bits(),
         users: vec![(u32::MAX, u32::MAX)],
         users_now: u32::MAX,
@@ -976,4 +983,80 @@ fn a_file_before_version_80_restores_no_user_of_a_type_visible_inside() {
     let w = seated_in(80, [vec![(1, 0), (2, 1)], Vec::new()], [None; 3]);
     assert_eq!(w.units.buildings[&7].guests, [3, 2, 9]);
     assert_eq!(w.units.buildings[&7].users.len(), 2);
+}
+
+#[test]
+fn the_upgrade_index_is_loaded_kept_by_a_reset_start_and_saved() {
+    let stored = crate::zoo::BuildingRecord {
+        upgrade: 3,
+        ..record(0, START)
+    };
+    let mut w = loaded(&[("stand", 7, Some(stored.clone())), ("stand", 8, None)]);
+    assert_eq!(w.units.buildings[&7].upgrade, 3);
+    reset_all(&mut w, 0);
+    assert_eq!(w.units.buildings[&7].upgrade, 3, "a reset start keeps it");
+    // The save takes the live index; a building without a live entry keeps the record's.
+    w.units.buildings.get_mut(&7).unwrap().upgrade = 1;
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &types());
+    let index = |at: usize| zoo.entities[at].common.as_ref().unwrap().building.as_ref();
+    assert_eq!(index(0).map(|b| b.upgrade), Some(1));
+    assert_eq!(index(1).map(|b| b.upgrade), Some(0));
+}
+
+#[test]
+fn the_current_upgrade_changes_the_adult_and_child_happiness_of_a_leaving_user() {
+    use crate::guest::{HAPPINESS, HUNGER};
+    use crate::unit::{Kind as UnitKind, Unit};
+    let ty = named(
+        "stand",
+        "[Characteristics/Integers]\ncAdultChange=8\ncChildChange=2\ncHungerChange=-3\n",
+    );
+    let kind = Kind::of(&ty, 1.0);
+    let cat = Catalogue::default();
+    let mut w = world_with((4, 4), |zoo| {
+        let mut zebra = entity("animals", "zebra", 5, centre((1, 1)), 0);
+        zebra.subtype = "m".into();
+        zoo.entities.push(zebra);
+    });
+    let up = |name, adult, child| upgrade::Upgrade {
+        name,
+        icon: String::new(),
+        upkeep: 0,
+        adult,
+        child,
+    };
+    let leave = |w: &mut World, child: bool| {
+        let mut u = Unit::new(1, UnitKind::Guest);
+        if let Part::Guest(g) = &mut u.part {
+            g.child = child;
+        }
+        leave::pay(w, &cat, 0, &mut u, 9, &kind);
+        let Part::Guest(g) = &u.part else { panic!() };
+        (g.pending[HAPPINESS], g.pending[HUNGER])
+    };
+    assert_eq!(
+        (leave(&mut w, false), leave(&mut w, true)),
+        ((8, -3), (2, -3))
+    );
+    upgrade::add(&mut w.units.upgrades, kind.name_id, up(1, 20, 30));
+    upgrade::add(&mut w.units.upgrades, kind.name_id, up(2, -4, -1));
+    // The building has no live entry: the first upgrade; the other changes are the type's.
+    assert_eq!(
+        (leave(&mut w, false), leave(&mut w, true)),
+        ((20, -3), (30, -3))
+    );
+    assert!(upgrade::choose(&mut w.units, &kind, 9, 1));
+    assert_eq!(
+        (leave(&mut w, false), leave(&mut w, true)),
+        ((-4, -3), (-1, -3))
+    );
+    // An animal gets the same adult change.
+    let mut a = Unit::new(5, UnitKind::Animal);
+    leave::pay(&mut w, &cat, 0, &mut a, 9, &kind);
+    let Part::Animal(a) = &a.part else { panic!() };
+    assert_eq!((a.happiness_change, a.hunger_change), (-4, -3));
+    // An index past the list is no upgrade: the type's values.
+    w.units.buildings.get_mut(&9).unwrap().upgrade = u32::MAX;
+    assert_eq!(leave(&mut w, false), (8, -3));
 }

@@ -299,6 +299,18 @@ impl Sim {
         std::mem::take(&mut self.research_done)
     }
 
+    /// A program the research step completed, as the step reports it.
+    #[cfg(test)]
+    pub(crate) fn push_research_done(&mut self, done: Done) {
+        self.research_done.push(done);
+    }
+
+    /// The building upgrade the completed program named `name` gives, with the name id of the
+    /// building type it is for (research 6.3).
+    pub fn research_upgrade(&self, name: i32) -> Option<(i32, crate::building::upgrade::Upgrade)> {
+        self.research.as_ref()?.upgrade_of(name)
+    }
+
     /// The research share of the zoo status: the tree's, 0 while a game has none.
     pub fn research_share(&self) -> i32 {
         self.research.as_ref().map_or(0, Tree::share)

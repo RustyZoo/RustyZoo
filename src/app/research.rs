@@ -7,6 +7,15 @@ use crate::text::to_cp1252;
 /// The string of "%r is now available."
 const COMPLETED: i32 = 23020;
 
+/// The upgrade lists of the building types for a tree just built or loaded (research 6.3, 7.2).
+pub(super) fn upgrades(tree: &Tree) -> crate::building::upgrade::Upgrades {
+    let mut lists = Default::default();
+    for (target, up) in tree.upgrades() {
+        crate::building::upgrade::add(&mut lists, target, up);
+    }
+    lists
+}
+
 impl App<'_> {
     /// The tree of a saved game's scenario with the file's research section read (7.2); none, with
     /// a warning, when the scenario cannot be read: the section is then written as it was read.
@@ -30,6 +39,13 @@ impl App<'_> {
             let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
                 continue;
             };
+            if d.effect == 1
+                && let Some((target, up)) = self.sim.research_upgrade(d.name)
+            {
+                crate::building::upgrade::add(&mut game.world.units.upgrades, target, up);
+                // The open building panel shows the new button.
+                game.building.clock.force = true;
+            }
             if d.effect == 0 {
                 let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
                 let mut log = Vec::new();

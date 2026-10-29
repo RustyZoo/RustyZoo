@@ -1267,7 +1267,9 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
         progress: 0.0,
         target,
         effect: 0,
+        vals: [0; 3],
         order: 0,
+        icon: String::new(),
     };
     let tree = Tree {
         branches: vec![Branch {
