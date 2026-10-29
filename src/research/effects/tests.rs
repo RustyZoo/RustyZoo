@@ -219,6 +219,7 @@ fn program(
         vals,
         order: 0,
         icon: String::new(),
+        ..Default::default()
     }
 }
 
@@ -234,7 +235,9 @@ fn tree(programs: Vec<Program>) -> Tree {
                 expansion: 0,
                 tick: true,
                 programs,
+                ..Default::default()
             }],
+            ..Default::default()
         }],
         ..Tree::default()
     }
@@ -366,6 +369,7 @@ fn a_price_and_a_discount_use_the_single_precision_hundredth() {
         vals: [10, 9552, 2],
         order: 1,
         icon: String::new(),
+        ..Default::default()
     };
     let mut tree = Tree {
         branches: vec![Branch {
@@ -377,8 +381,10 @@ fn a_price_and_a_discount_use_the_single_precision_hundredth() {
                 expansion: 0,
                 tick: true,
                 programs: vec![program(6, 1.125), program(7, 1.0)],
+                ..Default::default()
             }],
             current: None,
+            ..Default::default()
         }],
         ..Tree::default()
     };

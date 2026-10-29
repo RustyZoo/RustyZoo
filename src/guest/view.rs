@@ -247,8 +247,8 @@ pub fn sites(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<u32>) {
 }
 
 /// 3.3 and 3.4: the attractions (the buildings that satisfy `fun`, in the order of the list) with
-/// the tile each stands on, and of them those the guest has not seen (3.2): the seen list holds
-/// the building, or an entity of the same help id, on one of its tiles.
+/// the tile each stands on, and of them those the guest has not seen (3.2): the last quadrant of
+/// a tile of the seen list holds the building or an entity of the same help id.
 pub fn attractions(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<(u32, usize)>) {
     let (ids, helps) = gawk::marks(world, cat, g);
     let default = world.units.prices.default;
@@ -264,9 +264,7 @@ pub fn attractions(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<(u3
             continue;
         };
         all += 1;
-        let seen = g.seen.contains(&tile)
-            || ids.contains(&c.id)
-            || gawk::help_id(cat, e).is_some_and(|h| helps.contains(&h));
+        let seen = ids.contains(&c.id) || gawk::help_id(cat, e).is_some_and(|h| helps.contains(&h));
         if !seen {
             unseen.push((c.id, tile));
         }

@@ -294,6 +294,16 @@ impl Sim {
         self.research = Some(tree);
     }
 
+    /// The research tree, for the research panel.
+    pub fn research(&self) -> Option<&Tree> {
+        self.research.as_ref()
+    }
+
+    /// The research tree the player's clicks change.
+    pub fn research_mut(&mut self) -> Option<&mut Tree> {
+        self.research.as_mut()
+    }
+
     /// The research section of a saved game for the writer; none when the game has no tree
     /// (research 7.5).
     pub fn research_section(&self) -> Option<Vec<u8>> {

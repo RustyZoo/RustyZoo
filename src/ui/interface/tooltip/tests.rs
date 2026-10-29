@@ -419,3 +419,27 @@ fn a_list_row_without_help_or_below_the_last_row_clears_the_tooltip() {
     ui.update(300);
     assert!(!tip_shown(&ui));
 }
+
+#[test]
+fn an_element_gets_a_tooltip_of_its_own_and_an_empty_text_takes_it_away() {
+    let mut ui = interface("own");
+    // Button 22 has no help; two elements keep their own texts apart.
+    assert!(ui.set_tip(22, "Ready after 3 turns.".into()));
+    assert!(ui.set_tip(23, "Unfunded".into()));
+    assert!(!ui.set_tip(9999, "x".into()), "no such element");
+    ui.mouse(Mouse::Move(29, 5));
+    ui.update(0);
+    ui.update(66);
+    assert_eq!(ui.text(7003), Some(b"Ready after 3 turns.".to_vec()));
+    ui.mouse(Mouse::Move(41, 5));
+    ui.update(100);
+    ui.update(200);
+    assert_eq!(ui.text(7003), Some(b"Unfunded".to_vec()));
+    // Another text replaces it; an empty one leaves no help.
+    ui.set_tip(23, "Later".into());
+    ui.set_tip(22, String::new());
+    let help =
+        |ui: &Interface, id: i32| ui.tree.elements[ui.tree.find(id).unwrap()].help_id.clone();
+    assert_eq!(help(&ui, 22), Vec::<i32>::new());
+    assert_eq!(ui.string(help(&ui, 23)[0]), "Later");
+}

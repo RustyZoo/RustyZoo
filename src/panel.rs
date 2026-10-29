@@ -6,4 +6,5 @@ pub mod building;
 pub mod exhibit;
 pub mod follow;
 pub mod guest;
+pub mod research;
 pub mod staff;

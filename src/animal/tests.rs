@@ -2490,6 +2490,7 @@ fn a_free_life_program_changes_the_animals_the_map_placed() {
         vals: [4, 25, 2],
         order: 1,
         icon: String::new(),
+        ..Program::default()
     };
     let mut tree = Tree {
         branches: vec![Branch {
@@ -2501,8 +2502,10 @@ fn a_free_life_program_changes_the_animals_the_map_placed() {
                 expansion: 0,
                 tick: true,
                 programs: vec![program(0.0), program(10.0)],
+                ..Default::default()
             }],
             current: None,
+            ..Default::default()
         }],
         ..Tree::default()
     };
