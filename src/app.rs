@@ -702,6 +702,21 @@ impl<'a> App<'a> {
         self.open_game_as(zoo, money, false)
     }
 
+    /// Opens a file the game read ([`App::open_game`]). A saved game (`saved`) whose scenario cannot
+    /// be read is refused before anything changes: the load fails with the old-version message
+    /// (research 7.2).
+    fn open_zoo(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), String> {
+        let unread = zoo
+            .scenario_file()
+            .filter(|_| saved)
+            .is_some_and(|file| Scenario::prepare(self.renderer.vfs(), &file).is_none());
+        if unread {
+            return Err(crate::zoo::ZooError::TooOld(zoo.version).to_string());
+        }
+        self.open_game_as(zoo, money, saved)
+            .map_err(|e| e.to_string())
+    }
+
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
     /// tree and its research section is read (research 7.2, before the entities' own steps).
     fn open_game_as(&mut self, zoo: Zoo, money: Money, saved: bool) -> Result<(), RenderError> {
@@ -1903,10 +1918,7 @@ impl<'a> App<'a> {
     fn open(&mut self, start: &Start, read: Result<(Zoo, Money), String>) -> bool {
         // A saved game loads its research section; a start ignores it (research 7.4).
         let saved = start.scenario.is_none();
-        let opened = read.and_then(|(zoo, money)| {
-            self.open_game_as(zoo, money, saved)
-                .map_err(|e| e.to_string())
-        });
+        let opened = read.and_then(|(zoo, money)| self.open_zoo(zoo, money, saved));
         match opened {
             Ok(()) => {
                 self.loaded_check();
