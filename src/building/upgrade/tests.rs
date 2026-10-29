@@ -61,3 +61,28 @@ fn a_button_sets_the_index_only_within_the_list() {
     assert_eq!(u.upgrade_index.len(), 1);
     assert_eq!(u.upgrade_index[&4], 1);
 }
+
+#[test]
+fn a_paid_upgrade_completed_before_a_free_one_comes_second() {
+    let mut list = Upgrades::new();
+    add(&mut list, 7, up(1, 150));
+    add(&mut list, 7, up(2, 0));
+    add(&mut list, 7, up(3, -10));
+    add(&mut list, 7, up(4, i32::MAX));
+    assert_eq!(
+        list[&7].iter().map(|u| u.name).collect::<Vec<_>>(),
+        [3, 2, 1, 4]
+    );
+}
+
+#[test]
+fn equal_upkeeps_keep_the_order_they_were_added_in() {
+    let mut list = Upgrades::new();
+    for name in [1, 2, 3, 4] {
+        add(&mut list, 7, up(name, if name % 2 == 1 { 50 } else { 0 }));
+    }
+    assert_eq!(
+        list[&7].iter().map(|u| u.name).collect::<Vec<_>>(),
+        [2, 4, 1, 3]
+    );
+}

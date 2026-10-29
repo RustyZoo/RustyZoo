@@ -155,14 +155,16 @@ fn a_building_pays_the_upkeep_of_its_current_upgrade() {
     upgrade::add(&mut w.units.upgrades, 0, up(1, 200));
     upgrade::add(&mut w.units.upgrades, 0, up(2, -30));
     upgrade::add(&mut w.units.upgrades, 8031, up(3, 999));
-    // Building 1: no index, the first upgrade; 2: the second; 3: past the list, the type's.
+    // The list is sorted by upkeep: -30 then 200. Building 1: no index, the first upgrade; 2: the
+    // second; 3: past the list, the type's.
     w.units.upgrade_index.insert(2, 1);
     w.units.upgrade_index.insert(3, u32::MAX);
     let (mut money, mut log) = (Money::default(), Vec::new());
     charge(&mut w, &catalogue(), &mut money, &mut log);
     // 200 - 30 + 50 for the shops; the helicopter base costs nothing whatever it holds.
     assert_eq!(log, ["upkeep 220"]);
-    assert_eq!(w.units.buildings[&2].upkeep, -30.0);
+    assert_eq!(w.units.buildings[&1].upkeep, -30.0);
+    assert_eq!(w.units.buildings[&2].upkeep, 200.0);
     assert_eq!(w.units.buildings[&3].upkeep, 50.0);
 }
 

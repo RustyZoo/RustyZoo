@@ -19,15 +19,17 @@ pub struct Upgrade {
     pub child: i32,
 }
 
-/// The upgrades of each building type, by its name id, in the order they were added.
+/// The upgrades of each building type, by its name id, sorted by upkeep (ascending, ties in the
+/// order they were added).
 pub type Upgrades = BTreeMap<i32, Vec<Upgrade>>;
 
 /// Adds `upgrade` to the type named `target`, unless it holds one of the same program name id
-/// already.
+/// already, then sorts the list by upkeep (stable: research 6.3).
 pub fn add(list: &mut Upgrades, target: i32, upgrade: Upgrade) {
     let held = list.entry(target).or_default();
     if held.iter().all(|u| u.name != upgrade.name) {
         held.push(upgrade);
+        held.sort_by_key(|u| u.upkeep);
     }
 }
 
