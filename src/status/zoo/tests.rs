@@ -82,7 +82,7 @@ fn the_economy_file_gives_the_happiness_and_chance_of_joining_the_endowment() {
 fn the_rating_adds_seven_parts_as_the_specification_works_it_out() {
     let s = status("[characteristics]\ncSpeciesAvailable=20");
     // 17.2: healthy 13, species 3, animals 20, guests 17, value 4, research 1, esthetics 1.
-    assert_eq!(s.compute(&running()), 59);
+    assert_eq!(s.compute(&running(), 0), 59);
     // An empty zoo is 12 and 12 for the happiness and 10 for a value of 30000; the esthetics
     // part is trunc(clamp(10 * esthetics, 0, 100) * 0.1).
     let empty = |esthetics, value| Sums {
@@ -90,7 +90,7 @@ fn the_rating_adds_seven_parts_as_the_specification_works_it_out() {
         zoo_value: value,
         ..Sums::default()
     };
-    let rated = |e, v| s.compute(&empty(e, v));
+    let rated = |e, v| s.compute(&empty(e, v), 0);
     assert_eq!(
         [
             rated(3.415, 560_000),
@@ -115,11 +115,11 @@ fn the_rating_adds_seven_parts_as_the_specification_works_it_out() {
         research: 100,
         ..Sums::default()
     };
-    assert_eq!(s.compute(&best), 100);
+    assert_eq!(s.compute(&best, 0), 100);
     // A species limit of 0 or less skips its part.
     for limit in [0, -3] {
         let s = status(&format!("[characteristics]\ncSpeciesAvailable={limit}"));
-        assert_eq!(s.compute(&running()), 56);
+        assert_eq!(s.compute(&running(), 0), 56);
     }
 }
 
@@ -127,7 +127,7 @@ fn the_rating_adds_seven_parts_as_the_specification_works_it_out() {
 fn the_rating_check_sets_the_statistics_and_restarts_its_timer() {
     let (mut s, mut money, mut log) = (status(""), Money::default(), Vec::new());
     s.timers = [5000, 6, 7];
-    s.rating_check(running(), &mut money, &mut log);
+    s.rating_check(running(), 0, &mut money, &mut log);
     // With the built-in 44 species: 13 + 1 + 20 + 17 + 4 + 1 + 1.
     assert_eq!((s.rating, s.timers), (57, [0, 6, 7]));
     let stat = |c: usize| (money.monthly[c][0], money.yearly[c][0], money.total[c]);
@@ -428,4 +428,144 @@ fn the_economy_file_sets_what_the_compost_pays_for_dung() {
         paid("[characteristics]\ncZooDooRecyclingAmount=1e30\n"),
         1e30
     );
+}
+
+#[test]
+fn the_price_is_kept_in_the_range_at_the_start_and_after_the_economy_file() {
+    let start = |price: f32, economy: Option<&str>| {
+        let record = StatusRecord {
+            price,
+            ..StatusRecord::default()
+        };
+        Status::start(&record, economy.map(config).as_ref()).price
+    };
+    // The built-in range 0 to 100: huge, negative and not a number.
+    assert_eq!(
+        [22.0, 150.0, 1e30, -5.0, f32::NAN, 100.0].map(|p| start(p, None)),
+        [22.0, 100.0, 100.0, 0.0, 100.0, 100.0]
+    );
+    // The file's range holds after it; a missing key keeps the built-in one, and the two are
+    // swapped when the maximum is below the minimum.
+    let range = "[characteristics]\ncMinAdultAdmissionPrice=10\ncMaxAdultAdmissionPrice=40\n";
+    assert_eq!(
+        [(5.0, range), (25.0, range), (70.0, range), (70.0, "")].map(|(p, f)| start(p, Some(f))),
+        [10.0, 25.0, 40.0, 70.0]
+    );
+    let swapped = "[characteristics]\ncMinAdultAdmissionPrice=40\ncMaxAdultAdmissionPrice=10\n";
+    assert_eq!(start(70.0, Some(swapped)), 40.0);
+    assert_eq!(start(2.0, Some(swapped)), 10.0);
+    let text = "[characteristics]\ncMinAdultAdmissionPrice=x\ncMaxAdultAdmissionPrice=-3\n";
+    assert_eq!(start(70.0, Some(text)), 0.0, "text is 0");
+    // A price equal to the minimum stays; a price at the maximum stays.
+    assert_eq!([10.0, 40.0].map(|p| start(p, Some(range))), [10.0, 40.0]);
+}
+
+#[test]
+fn the_month_end_endowment_draws_for_each_member_then_once_for_the_gift() {
+    let rng = |n: usize| {
+        let mut rng = Rng::default();
+        rng.seed(1);
+        (0..n).for_each(|_| _ = rng.rand());
+        rng
+    };
+    let mut first = rng(0);
+    let draws: Vec<i32> = (0..4).map(|_| (first.rand() % 101) as i32).collect();
+    let economy = "[characteristics]\ncEndowmentGiftLow=100\ncEndowmentGiftHigh=300\n";
+    let run = |members: f32, rating: i32, economy: &str| {
+        let (mut s, mut money, mut log) = (status(economy), Money::default(), Vec::new());
+        s.rating = rating;
+        money.total[money::MEMBERS] = members;
+        let mut r = rng(0);
+        s.endowment(&mut r, &mut money, &mut log);
+        (money, log, r)
+    };
+    // Three members: a draw each, one for the gift; those whose draw less 10 is above the rating
+    // leave.
+    let rating = 55;
+    let (money, log, r) = run(3.0, rating, economy);
+    let left = draws[..3].iter().filter(|&&n| rating < n - 10).count();
+    assert!(left > 0 && left < 3, "{draws:?}");
+    assert_eq!(r.state(), rng(4).state());
+    assert_eq!(money.total[money::MEMBERS], (3 - left) as f32);
+    assert_eq!(money.total[money::MEMBERS_LEFT], left as f32);
+    let gift = (100.0 + draws[3] as f32 * 200.0 * 0.01) * (3 - left) as f32;
+    assert_eq!((money.cash, money.total[money::ENDOWMENT]), (gift, gift));
+    assert_eq!(money.total[money::NET], gift, "the gift is income");
+    assert_eq!(log.len(), 4);
+    assert_eq!(log[3], format!("endowment {} {gift}", draws[3]));
+    // Without members nothing is drawn or booked: none, negative, not a number.
+    for members in [0.0, -2.0, f32::NAN] {
+        let (money, log, r) = run(members, rating, economy);
+        assert_eq!((r.state(), log.len(), money.cash), (rng(0).state(), 0, 0.0));
+    }
+    // A rating of 100 keeps everyone, a rating below zero loses those with a draw above the factor;
+    // a gift range below zero pays the low amount.
+    let (money, _, _) = run(
+        3.0,
+        100,
+        "[characteristics]\ncEndowmentGiftLow=5\ncEndowmentGiftHigh=1\n",
+    );
+    assert_eq!((money.total[money::MEMBERS], money.cash), (3.0, 15.0));
+    // When every member leaves there is no gift draw and no payment.
+    let (money, log, r) = run(3.0, -1000, "");
+    assert_eq!(money.total[money::MEMBERS], 0.0);
+    assert_eq!((r.state(), log.len(), money.cash), (rng(3).state(), 3, 0.0));
+    assert_eq!(money.total[money::ENDOWMENT], 0.0);
+    // A count a file stores out of all measure draws a bounded number of times.
+    let (money, log, _) = run(1e30, 100, "[characteristics]\ncMembershipJoinFactor=0\n");
+    assert_eq!(log.len(), MAX_MEMBERS as usize + 1);
+    assert_eq!(money.total[money::MEMBERS_LEFT], 0.0);
+}
+
+#[test]
+fn the_rating_loses_the_escape_change_less_the_time_per_day_since_the_last_escape() {
+    use crate::timing::file_time;
+    const DAY: i64 = 86_400_000;
+    let mut s = status("");
+    let sums = running();
+    let base = s.compute(&sums, 0);
+    s.settings.escaped_change = 30;
+    s.settings.escaped_time = 2;
+    // An escape on the day of the check takes the full change; after 5 whole days, 20; after 15
+    // days or more, nothing.
+    let at = |s: &mut Status, escape: i64, now: i64| {
+        s.escape = file_time(escape);
+        s.compute(&sums, now)
+    };
+    assert_eq!(at(&mut s, 0, 0), base - 30);
+    assert_eq!(at(&mut s, 0, 5 * DAY + 23 * 3_600_000), base - 20);
+    assert_eq!(
+        at(&mut s, 0, 6 * DAY - 1),
+        base - 20,
+        "whole hours, then days"
+    );
+    assert_eq!(at(&mut s, 0, 15 * DAY), base);
+    assert_eq!(at(&mut s, 0, 400 * DAY), base);
+    // An escape that lies in the future has not happened: no penalty. A time of 0 or less and a
+    // huge change are bounded, the rating stays 0 to 100.
+    assert_eq!(at(&mut s, 3 * DAY, 0), base);
+    assert_eq!(at(&mut s, 3 * DAY, 3 * DAY - 1), base);
+    s.settings.escaped_time = 0;
+    assert_eq!(at(&mut s, 0, 400 * DAY), base - 30);
+    s.settings.escaped_time = -5;
+    assert_eq!(
+        at(&mut s, 0, 10 * DAY),
+        (base - 80).max(0),
+        "a negative time adds to the penalty"
+    );
+    s.settings.escaped_change = i32::MAX;
+    assert_eq!(at(&mut s, 0, 0), 0);
+    s.settings.escaped_change = i32::MIN;
+    assert_eq!(at(&mut s, 0, 0), base);
+    // A zoo that never had one stores 1 January 2000: a year before the first day, no penalty.
+    let mut fresh = status("");
+    assert_eq!(fresh.compute(&sums, 0), base);
+    fresh.settings.escaped_change = 50;
+    assert_eq!(fresh.compute(&sums, 0), base);
+    // The date is what a file stores.
+    let record = StatusRecord {
+        escape: 7,
+        ..StatusRecord::default()
+    };
+    assert_eq!(Status::start(&record, None).record().escape, 7);
 }

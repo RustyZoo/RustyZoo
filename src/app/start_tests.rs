@@ -887,6 +887,103 @@ fn a_scenario_start_builds_the_research_tree_and_the_next_game_drops_it() {
 }
 
 #[test]
+fn building_upgrades_come_from_the_free_programs_and_from_each_completion() {
+    use crate::building::upgrade::Upgrade;
+    use crate::research::Done;
+    let program = |name: i32, cost: i32, upkeep: i32| {
+        format!(
+            "[research]\nname={name}\ncost={cost}\ntarget=3\neffect=1\neffectval1={upkeep}\n\
+             effectval2=4\neffectval3=-1\nentityIcon=ui/i{name}\n"
+        )
+        .into_bytes()
+    };
+    let files = [
+        ("s/up.scn", b"[start]\nresearch=resu.cfg\n".to_vec()),
+        ("resu.cfg", b"[branches]\nbranch=ub.cfg\n".to_vec()),
+        ("ub.cfg", b"[branch]\nname=1\ncategory=uc.cfg\n".to_vec()),
+        (
+            "uc.cfg",
+            b"[category]\nname=2\nprogram=u1.cfg\nprogram=u2.cfg\nprogram=u3.cfg\n".to_vec(),
+        ),
+        ("u1.cfg", program(21, 0, 0)),
+        ("u2.cfg", program(22, 50, 200)),
+        // The same name again: not added twice.
+        ("u3.cfg", program(21, 70, 999)),
+    ];
+    with_game("upgrades", "", &files, None, |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        let start = Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: Some("s/up.scn".into()),
+        };
+        app.begin(&start);
+        let held = |app: &App| {
+            let lists = &app.game.as_ref().unwrap().world.units.upgrades;
+            lists
+                .get(&3)
+                .map_or_else(Vec::new, |l| l.iter().map(|u: &Upgrade| u.name).collect())
+        };
+        // The free program is there from the start, with its numbers.
+        assert_eq!(held(app), [21]);
+        let first = &app.game.as_ref().unwrap().world.units.upgrades[&3][0];
+        assert_eq!(
+            (first.icon.as_str(), first.upkeep, first.adult, first.child),
+            ("ui/i21", 0, 4, -1)
+        );
+        // A completion adds its upgrade; the same program again adds nothing.
+        let done = |name| Done {
+            name,
+            target: 3,
+            effect: 1,
+            vals: [0; 3],
+        };
+        app.sim.push_research_done(done(22));
+        app.sim.push_research_done(done(22));
+        app.research_done();
+        assert_eq!(held(app), [21, 22]);
+        assert_eq!(
+            app.game.as_ref().unwrap().world.units.upgrades[&3][1].upkeep,
+            200
+        );
+        // A program of another effect, or an unknown one, adds nothing.
+        app.sim.push_research_done(Done {
+            effect: 0,
+            ..done(22)
+        });
+        app.sim.push_research_done(done(99));
+        app.research_done();
+        assert_eq!(held(app), [21, 22]);
+        // A saved game takes the upgrades of the programs its section completes, in tree order:
+        // 22 is done in its file, 21 is not (its second program of that name is the paid one); a
+        // game opened with no start builds no tree.
+        let mut section = 0u32.to_le_bytes().to_vec();
+        for (id, value) in [(22u32, 50f32), (21, 0.0)] {
+            section.extend(2i32.to_le_bytes());
+            section.extend(id.to_le_bytes());
+            section.extend(value.to_bits().to_le_bytes());
+        }
+        section.extend((-1i32).to_le_bytes());
+        let zoo = || {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), Some("s/up.scn"))).unwrap();
+            zoo.set_research(section.clone());
+            zoo
+        };
+        app.open_zoo(zoo(), Money::default(), true).unwrap();
+        assert_eq!(held(app), [21, 22]);
+        app.open_zoo(zoo(), Money::default(), false).unwrap();
+        assert!(held(app).is_empty());
+    });
+}
+
+#[test]
 fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back() {
     with_menu("research-load", "", |app, files| {
         app.pass(0, &[]);
@@ -980,6 +1077,63 @@ fn a_saved_game_whose_scenario_cannot_be_read_is_refused_and_the_game_open_stays
         }
         app.open_zoo(zoo("s/header.scn"), Money::default(), true)
             .unwrap();
+    });
+}
+
+#[test]
+fn a_scenario_start_reads_its_economy_file_over_the_games_and_the_next_game_drops_it() {
+    let more = [
+        ("s/eco.scn", b"[start]\neconomy=s/eco.cfg\n".to_vec()),
+        ("s/gone.scn", b"[start]\neconomy=s/gone.cfg\n".to_vec()),
+        (
+            "s/eco.cfg",
+            b"[characteristics]\ncMaxAdultAdmissionPrice=12\ncDonationChance=9\n".to_vec(),
+        ),
+    ];
+    with_game("scenario-economy", "", &more, None, |app, _| {
+        let start = |scenario: &str| Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: Some(scenario.into()),
+        };
+        app.pass(0, &[]);
+        let open = |app: &mut App| {
+            app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+                .unwrap()
+        };
+        open(app);
+        let before = app.sim.status.price;
+        assert!(
+            before > 12.0,
+            "the map's price is above the scenario's maximum"
+        );
+        app.begin(&start("s/eco.scn"));
+        let s = &app.sim.status;
+        assert_eq!((s.price, s.settings.donation_chance), (12.0, 9));
+        // A file that is missing or a scenario without one changes nothing; a new game starts over.
+        open(app);
+        app.begin(&start("s/gone.scn"));
+        assert_eq!(app.sim.status.price, before);
+        open(app);
+        app.begin(&start("s/play.scn"));
+        assert_eq!(app.sim.status.settings.donation_chance, 0);
+        // A saved game that holds the scenario sets the economy up again and keeps its stored
+        // price, outside the range or not, and the stored date of the last escape; one that holds
+        // none keeps the price too.
+        for (scenario, donation, max) in [(Some("s/eco.scn"), 9, 12.0), (None, 0, 100.0)] {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), scenario)).unwrap();
+            zoo.clocks.status.price = 70.0;
+            zoo.clocks.status.escape = 5;
+            app.open_game_as(zoo, Money::default(), true).unwrap();
+            let s = &app.sim.status;
+            assert_eq!((s.price, s.settings.donation_chance), (70.0, donation));
+            assert_eq!((s.escape, s.settings.max_price), (5, max));
+        }
     });
 }
 
