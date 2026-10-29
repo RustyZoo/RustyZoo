@@ -1250,11 +1250,10 @@ check expansion-trial "93962:2@422,1@3054,2@3615,1@4800,2@13659;97902:1@1156,2@9
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
 # mode its walks end on water tiles too, where it chooses from its water table (`bInWater`). Prints
-# each tile a walk ended on with the set chosen there and the change of mode, for 3500 steps. Since
-# the loaded keepers keep their assigned exhibits, the animal is in the water mode from step 18 and
-# the sequence (a land walk, the mode at step 3003, then `bInWater`) comes once, at the end: 1200
-# steps no longer show it, a longer run does, so the seed stays 11 (the guests choose attractions as
-# sites and walk to a building slot forced).
+# each tile a walk ended on with the set chosen there and the change of mode, for 3500 steps. The
+# loaded seat users go on with their use sets (behaviours 4.7), which moves the shared draws: the
+# animal then walks on land to step 615, sleeps, and the sequence (a land walk, the mode at step
+# 3003, then `bInWater`) comes once, at the end; the seed stays 11.
 water_mode() { # water_mode <map> <animal>
   rz sim "$1" --ticks 3500 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
@@ -1263,7 +1262,7 @@ water_mode() { # water_mode <map> <animal>
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;27,27:bInWater;22,27:bInWater;23,26:bWalk;mode0@615;27,27:bInWater;25,27:bInWater;25,25:bInWater;19,24:bInWater;19,26:bWalk;mode0@1809;16,24:bWalk;mode1@2406;24,24:bWalk;mode0@3003;25,23:bHappy" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@615;25,23:bSleep;30,20:bWalk;mode1@3003;28,24:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1340,7 +1339,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@281;eggs:6;hatch@908" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3951;eggs:3;hatch@4696" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1377,6 +1376,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial 227408,0,34e3873b9291660c "save_load maps/scn19.zoo"
+check expansion-trial 227408,0,9269e4043403f035 "save_load maps/scn19.zoo"
 
 exit $failed
