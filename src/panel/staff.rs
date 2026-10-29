@@ -4,10 +4,10 @@
 //! shown and not while the game is paused.
 //!
 //! [`Panel`] holds the selected staff member and the clock; [`Panel::refresh`] writes the layout
-//! from the world and returns the `panel` log line when what it shows changed. The training icons
-//! stay hidden: the training mask is set by research (M7).
+//! from the world and returns the `panel` log line when what it shows changed.
 
-use crate::entity::Catalogue;
+use crate::config::to_int;
+use crate::entity::{Catalogue, EntityType};
 use crate::goal;
 use crate::money::{SYMBOL, Symbol};
 use crate::panel::exhibit::{Clock, type_at};
@@ -38,6 +38,8 @@ pub const REMOVE_ALL: i32 = 3580;
 pub const EXHIBITS_LAYOUT: i32 = 601;
 /// The list of the worker's duty switches.
 pub const DUTIES: i32 = 3587;
+/// The training icons, one per bit of the type's training mask (research 6.5).
+pub const ICONS: [i32; 5] = [3581, 3582, 3583, 3584, 3585];
 const SALARY: i32 = 3503;
 const DUTY: i32 = 3505;
 /// The string of the first duty kind, and the pictures of a check box off and on.
@@ -164,7 +166,64 @@ pub struct Panel {
     told: String,
 }
 
+/// The values of a repeated key of a unit type's section, taken from its subtype or else from its
+/// default subtype (entity types 6.2).
+fn list(ty: &EntityType, section: &str, key: &str) -> Vec<Vec<u8>> {
+    let Some(config) = ty.config.as_deref() else {
+        return Vec::new();
+    };
+    let default = config
+        .section("Global")
+        .and_then(|g| g.get("DefaultSubtype"));
+    let lists = [&ty.subtype[..], default.unwrap_or_default()].map(|prefix| {
+        let name = [prefix, b"/", section.as_bytes()].concat();
+        config
+            .section(name)
+            .map_or(Vec::new(), |s| s.get_all(key).to_vec())
+    });
+    lists
+        .into_iter()
+        .find(|l| !l.is_empty())
+        .unwrap_or_default()
+}
+
 impl Panel {
+    /// Shows icon `i` of the type's `cTrainingIconName` with the tooltip `i` of `cTrainingTooltip`
+    /// when bit `i` of the training mask is set, else nothing (information panels 9.1). The text
+    /// for the log line: the icons shown.
+    fn training(
+        &self,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        ty: Option<&EntityType>,
+        mask: u16,
+    ) -> String {
+        let icons = ty.map_or(Vec::new(), |t| {
+            list(t, "Characteristics/Strings", "cTrainingIconName")
+        });
+        let tips = ty.map_or(Vec::new(), |t| {
+            list(t, "Characteristics/Integers", "cTrainingTooltip")
+        });
+        let mut shown = String::new();
+        for (i, &element) in ICONS.iter().enumerate() {
+            let name = icons.get(i).filter(|_| mask >> i & 1 == 1);
+            let name = name.map(|n| String::from_utf8_lossy(n.trim_ascii()).into_owned());
+            let picture = name.as_deref().and_then(|n| ui.tree.picture(vfs, n));
+            if picture.is_some() {
+                shown += &format!(" icon{i}");
+            }
+            ui.set_picture(element, picture);
+            let tip = tips
+                .get(i)
+                .and_then(|t| to_int(t))
+                .filter(|_| picture.is_some());
+            if let Some(e) = ui.tree.find(element) {
+                ui.tree.elements[e].help_id = tip.into_iter().collect();
+            }
+        }
+        shown
+    }
+
     /// Selects the staff member with entity id `id`: the panel is filled at once (4.3).
     pub fn select(&mut self, id: u32) {
         self.selected = Some(id);
@@ -242,6 +301,7 @@ impl Panel {
             ui.set_enabled(button, !unit.carried);
         }
         ui.set_enabled(ASSIGN, !unit.carried && !placing);
+        let trained = self.training(ui, vfs, ty, world.research.training_of(ty));
         let told = match unit.kind {
             Kind::Worker => {
                 let kinds = staff::duty_kinds(cat);
@@ -276,7 +336,7 @@ impl Panel {
                 format!("exhibits {names:?}")
             }
         };
-        let told = format!("staff {id} {name:?} salary {salary} duty {text:?} {told}");
+        let told = format!("staff {id} {name:?} salary {salary} duty {text:?}{trained} {told}");
         match told == self.told {
             true => None,
             false => {

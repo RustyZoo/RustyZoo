@@ -195,7 +195,9 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
         let mut guides = (world.zoo.entities.iter().enumerate())
             .filter(|(at, e)| e.class == "tour" && tile_of(world, *at) == Some(t));
         guides.find_map(|(_, e)| {
-            let b = crate::staff::Crowd::of(crate::place::bulldozer::type_of(cat, e)).bonus;
+            let b =
+                crate::staff::Crowd::of(crate::place::bulldozer::type_of(cat, e), &world.research)
+                    .bonus;
             let carried = e.common.as_ref().is_none_or(|c| world.is_carried(c.id));
             (b != 0 && !carried).then_some(b)
         })
