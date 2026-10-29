@@ -462,8 +462,6 @@ pub struct Animal {
     /// Asleep (the sleep check, animals-needs 6) and drinking at the water (the drink goal).
     pub sleeping: bool,
     pub drinking: bool,
-    /// Loaded asleep with `bSleep` as its saved set: the set starts at the first checks.
-    pub resume: bool,
     /// Status ticks left before old age rolls death, and the health checks in a row at health 0
     /// with full hunger (animals-needs 9, 10.1).
     pub life: i32,
@@ -1241,7 +1239,9 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     // What the saved unit was doing: the outer behaviour set and the active goal.
     let block = entity.common.as_ref().and_then(|c| c.unit.as_ref());
     let set = block.and_then(|b| b.behaviour.levels.first().map(|l| l.name.as_str()));
-    animal.resume = animal.sleeping && set == Some("bSleep");
+    // An animal loaded asleep in its sleep set goes on with the rest of it (animals-needs 6.1).
+    let asleep = animal.sleeping && set == Some("bSleep");
+    let saved_set = block.map(|b| b.behaviour.clone());
     // A drink only goes on in its goal: without it the flag would hold the ladder for good.
     let drink = block.is_some_and(|b| b.target.active == i32::from(crate::goal::DRINK));
     animal.drinking &= drink;
@@ -1262,6 +1262,9 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
         }
         unit.part = Part::Animal(animal);
         unit.started = true;
+        if asleep && let Some(b) = saved_set {
+            unit.runner.restore(&b);
+        }
     }
 }
 
@@ -1278,6 +1281,7 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     if let Some(female) = unit.sex.take() {
         a.female = female;
     }
+    a.crated = std::mem::take(&mut unit.boxed);
 }
 
 /// The update of the values at a status tick (animals 3.3).
@@ -1307,11 +1311,6 @@ fn begin(unit: &mut Unit, world: &World, ctx: &mut Ctx, at: usize, data: &dyn Da
 
 /// The conditional checks of a status tick (animals 4.2).
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
-    if let Part::Animal(a) = &mut unit.part
-        && std::mem::take(&mut a.resume)
-    {
-        begin(unit, world, ctx, at, data, "bSleep");
-    }
     let task = unit.goal.record.task;
     let meal = food::meal(unit, world, data, at);
     let sets = life::sets(unit, world, data, at);

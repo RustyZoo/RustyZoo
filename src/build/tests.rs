@@ -1272,6 +1272,7 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
         vals: [0; 3],
         order: 0,
         icon: String::new(),
+        ..Program::default()
     };
     let mut tree = Tree {
         branches: vec![Branch {
@@ -1284,7 +1285,9 @@ fn a_new_games_tree_hides_its_unfinished_targets_before_the_ini_rewards_raise_th
                 expansion: 0,
                 tick: true,
                 programs: vec![program(101, 5.0), program(102, 5.0), program(103, 0.0)],
+                ..Default::default()
             }],
+            ..Default::default()
         }],
         ..Tree::default()
     };

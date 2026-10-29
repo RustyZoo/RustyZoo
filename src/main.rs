@@ -341,7 +341,10 @@ usage: rustyzoo [--data <dir>] <command>
                       not while the game is paused; its pick-up button picks it up and its follow button (showing its type's picture, set likewise) keeps the view
                       on it. `panel guest ID \"NAME\" happiness H drink D food F restroom R energy E time \"TEXT\"
                       favourite \"NAME\" thoughts [TEXTS]` tells what it shows, when it opens and when a value changes, and
-                      `panel guest none` when it closes. A click on a guest building (a burger stand, a restroom) opens its
+                      `panel guest none` when it closes. The research button (or the R key) shows the research panel of a game with a research tree
+                      (a scenario or freeform start, a saved game that names one): the Status tab, and the two branch tabs with the category ticks, the funding buttons and the
+                      current program, refreshed every second of clock while shown and not while the game is paused; `panel research tab N ...` tells what it shows when it changes.
+                      A completed program opens an OK dialog the game runs on under, and a second one when its branch has nothing left to research. A click on a guest building (a burger stand, a restroom) opens its
                       panel: a building that charges has the price field with up and down buttons (0.25 a press, within the
                       economy's building price maximum and the type's low and high cost; the field of the full game can be
                       typed into, the number going through the same bounds), the income, upkeep and profit since built and per month, the months open
@@ -477,11 +480,16 @@ usage: rustyzoo [--data <dir>] <command>
                       first step of the simulation is the cap; scenarios and freeform maps empty
                       `lastfile` and run the goals of their `.scn` file (`sim scenario start
                       FILE GOALS`, `sim scenario trigger ...`, `sim scenario end won|lost`; the
-                      triggers are stubs but for trigger 2, which shows popups (`sim scenario popup
+                      trigger 2 shows popups (`sim scenario popup
                       LAYOUT modal|open`, with a hint line, `sim scenario hint LAYOUT`) and
                       disables, enables, hides, shows and presses elements by id (`sim scenario
-                      element ID disable|enable|hide|show|press`); the research, awards and shows
-                      rules are stubs, and rules 10 and 11 read what the interface shows and what
+                      element ID disable|enable|hide|show|press`); trigger 1 shows a message
+                      (`sim scenario message TEXT kind K`), 3 changes the cash (`sim scenario cash
+                      HOW AMOUNT`), 5 boxes an animal at the gate (`sim scenario boxed NAME id N`,
+                      or `none`), 8 removes animals (`sim scenario remove BY ID count N`) and 9
+                      switches the animal panel's sell button (`sim scenario sale on|off`);
+                      triggers 6 and 10 (awards, forced research) do nothing yet; the research,
+                      awards and shows rules are stubs, and rules 10 and 11 read what the interface shows and what
                       was pressed; a game that opens gives the elements back). When the scenario
                       ends, its result is
                       written to `[scenario]` of the settings of the user folder if lower than

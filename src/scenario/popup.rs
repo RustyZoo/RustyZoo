@@ -3,6 +3,7 @@
 //! Both are read when the goal is made, from the file the goal belongs to, so a goal of an extra
 //! file reads its own sections.
 
+use super::Line;
 use crate::config::{Config, Section, to_int};
 
 /// The element that shows the last popup again, when the file names none.
@@ -33,6 +34,8 @@ pub struct Hint {
     /// A string id, or -1 for the text of the first goal in progress; the name of a text wins.
     pub short: i32,
     pub long: String,
+    /// The goal line a hint of -1 shows, taken when the popup is given (none: no text).
+    pub goal: Option<Line>,
     /// The element that shows the last popup again.
     pub button: i32,
 }
@@ -66,6 +69,7 @@ impl Popup {
                 layout: int("persistentTextLayout", 0),
                 short: int("persistentShortText", 0),
                 long: text(get("persistentLongText")),
+                goal: None,
                 button: int("persistentButton", HINT_BUTTON),
             },
         })

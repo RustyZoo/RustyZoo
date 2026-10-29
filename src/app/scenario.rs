@@ -1,7 +1,7 @@
 //! The end of a scenario (scenarios 5.4, 9) and the objectives panel (4.5).
 
 use super::*;
-use crate::scenario;
+use crate::scenario::{self, built_line};
 use crate::ui::widgets::Row;
 
 /// The Scenario button and the panel it opens: the name, the story and the list of goals.
@@ -25,6 +25,11 @@ impl App<'_> {
         let Some(end) = self.sim.scenario_ended() else {
             return;
         };
+        // The clean-up before the dialog allows selling again (8.4).
+        if let Some(game) = &mut self.game {
+            game.animal.no_sale = false;
+            game.animal.clock.force = true;
+        }
         let result = if end.won { "won" } else { "lost" };
         self.menu_events.push(format!("scenario ended {result}"));
         let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) else {
@@ -89,10 +94,8 @@ impl App<'_> {
         let story = ui.text_entry(story);
         ui.set_text(STORY, &story);
         let icons = scenario.icons().clone().map(|n| ui.tree.picture(vfs, &n));
-        let words = Words::new(|_| String::new());
         let rows = scenario.lines().into_iter().map(|l| {
-            let args = l.values.map(|v| Arg::Int(i64::from(v)));
-            let text = format::expand(&words, &ui.template(l.text), &args);
+            let text = built_line(ui, l);
             let icon = icons[match l.state {
                 0 => 0,
                 2 => 2,

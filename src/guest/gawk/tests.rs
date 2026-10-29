@@ -324,3 +324,26 @@ fn a_ring_with_a_path_piece_lists_those_tiles_only() {
     // No path left on the ring: all eight tiles.
     assert_eq!(tiles(&w).len(), 8);
 }
+
+#[test]
+fn the_seen_test_looks_at_the_last_quadrant_of_a_tile_only() {
+    let (cat, mut w) = (catalogue(), zoo_map());
+    let place = |w: &mut World, at: (i32, i32)| {
+        let e = entity("building", "statue", 0, at, 0);
+        w.add(e, shape(&entity("building", "", 0, (0, 0), 0)))
+            .unwrap();
+    };
+    // A statue in the first quadrant of tile (5, 6) and one at the centre of tile (5, 7).
+    place(&mut w, (5 * 64 + 16, 6 * 64 + 16));
+    place(&mut w, centre((5, 7)));
+    update(&mut w, &cat);
+    let mut g = Guest::default();
+    let all = |w: &World, g: &Guest| unseen(w, &cat, g).iter().map(|j| j.id).collect::<Vec<_>>();
+    let (corner, middle) = (w.tile_index(5, 6).unwrap(), w.tile_index(5, 7).unwrap());
+    assert!(w.quadrant(corner, 0).is_some() && w.quadrant(corner, 3).is_none());
+    // The statue in another quadrant is not seen by its tile, and its help id is not compared.
+    g.seen = vec![corner];
+    assert_eq!(all(&w, &g), [50, 51, 54, 101, 102]);
+    g.seen = vec![middle];
+    assert_eq!(all(&w, &g), [54]);
+}

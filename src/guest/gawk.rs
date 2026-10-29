@@ -92,11 +92,12 @@ pub fn update(world: &mut World, cat: &Catalogue) {
     };
 }
 
-/// 3.2: the ids and the help ids of the entities on the tiles of the seen list.
+/// 3.2: the ids and the help ids of the entities held by the last quadrant (offsets 32 or more) of
+/// the tiles of the seen list.
 pub fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSet<i32>) {
     let (mut ids, mut helps) = (HashSet::new(), HashSet::new());
     for &t in &g.seen {
-        for e in (0..4).filter_map(|q| world.quadrant(t, q)) {
+        if let Some(e) = world.quadrant(t, 3) {
             let e = &world.zoo.entities[e];
             ids.extend(e.common.as_ref().map(|c| c.id));
             helps.extend(help_id(cat, e));
@@ -106,14 +107,12 @@ pub fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSe
 }
 
 /// 3.2: the members of the list the guest has not seen, in list order. An object is seen when
-/// the entity on some tile of the seen list is that object or has the same help id.
+/// the entity held by the last quadrant of some tile of the seen list is that object or has the
+/// same help id; its own tile in the list counts for nothing.
 pub fn unseen(world: &World, cat: &Catalogue, g: &Guest) -> Vec<Judged> {
     let (ids, helps) = marks(world, cat, g);
     (world.units.gawk.members())
-        .filter(|j| {
-            let own = g.seen.contains(&j.tile) || ids.contains(&j.id);
-            !(own || j.help.is_some_and(|h| helps.contains(&h)))
-        })
+        .filter(|j| !(ids.contains(&j.id) || j.help.is_some_and(|h| helps.contains(&h))))
         .copied()
         .collect()
 }

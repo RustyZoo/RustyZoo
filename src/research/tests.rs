@@ -264,6 +264,7 @@ fn plain(cost: f32, work: f32, programs: &[(f32, i32)]) -> Tree {
         vals: [0; 3],
         order,
         icon: String::new(),
+        ..Default::default()
     };
     let mut tree = Tree {
         branches: vec![Branch {
@@ -286,8 +287,10 @@ fn plain(cost: f32, work: f32, programs: &[(f32, i32)]) -> Tree {
                 expansion: 0,
                 tick: true,
                 programs: programs.iter().map(program).collect(),
+                ..Default::default()
             }],
             current: None,
+            ..Default::default()
         }],
         ..Tree::default()
     };
@@ -840,4 +843,137 @@ fn a_complete_effect_1_program_gives_its_building_an_upgrade_in_tree_order() {
     // The paid one counts once its progress reaches its cost, in tree order.
     t.branches[0].categories[0].programs[1].progress = 50.0;
     assert_eq!(free(&t), [(7, 1), (7, 2), (8, 3)]);
+}
+
+#[test]
+fn the_pictures_and_the_help_strings_are_read_from_the_files() {
+    let files = vec![
+        list("research.cfg", &["b.cfg"]),
+        (
+            "b.cfg".into(),
+            b"[branch]\nname=7\nnoprogicon=ui/n/n\ncategory=c/1.cfg\n".to_vec(),
+        ),
+        (
+            "c/1.cfg".into(),
+            b"[category]\nname=1\nhelpid=4500\nprogram=p/1.cfg\n".to_vec(),
+        ),
+        (
+            "p/1.cfg".into(),
+            b"[research]\nname=1\ncost=5\nicon=ui/a/a\nentityIcon=ui/e/e\nhelpid=4501\n".to_vec(),
+        ),
+    ];
+    let t = tree("pictures", "research=research.cfg\n", files);
+    let b = &t.branches[0];
+    assert_eq!((b.no_icon.as_str(), b.categories[0].help), ("ui/n/n", 4500));
+    let p = &b.categories[0].programs[0];
+    assert_eq!(
+        (p.picture.as_str(), p.icon.as_str(), p.help),
+        ("ui/a/a", "ui/e/e", 4501)
+    );
+}
+
+#[test]
+fn the_panel_reads_the_days_the_percent_the_funding_and_the_next_levels() {
+    // A program of cost 90 at max (cost 2000, work 45 a month): 60 days, all of it to do.
+    let mut t = plain(2000.0, 45.0, &[(90.0, 1)]);
+    let b = &t.branches[0];
+    assert_eq!(
+        (b.days_remaining(), b.percent_remaining()),
+        (Some(60.0), Some(100))
+    );
+    assert_eq!(b.funding_text(), Some((2, 67)));
+    assert_eq!((b.increase(), b.decrease()), (1, 0));
+    t.branches[0].categories[0].programs[0].progress = 45.0;
+    let b = &t.branches[0];
+    assert_eq!(
+        (b.days_remaining(), b.percent_remaining()),
+        (Some(30.0), Some(50))
+    );
+    // Nothing is funded at level 0: no days, no percent, and the level can go up only.
+    t.fund(0, false);
+    let b = &t.branches[0];
+    assert_eq!(
+        (b.days_remaining(), b.percent_remaining(), b.level),
+        (None, None, 0)
+    );
+    assert_eq!((b.increase(), b.decrease()), (1, 0));
+    // A level out of range (a mod's file) shows no text and does not panic.
+    t.branches[0].level = 9;
+    let b = &t.branches[0];
+    assert_eq!((b.days_remaining(), b.funding_text()), (None, None));
+    assert_eq!((b.increase(), b.decrease()), (1, 8));
+    // No program, no levels.
+    let b = Branch::default();
+    assert_eq!(
+        (
+            b.days_remaining(),
+            b.percent_remaining(),
+            b.increase(),
+            b.decrease()
+        ),
+        (None, None, 0, 0)
+    );
+}
+
+#[test]
+fn a_funding_button_steps_the_level_and_a_row_flips_the_tick_of_a_listed_category() {
+    let mut t = plain(2000.0, 45.0, &[(90.0, 1)]);
+    t.branches[0].categories.push(Category {
+        name: 2,
+        expansion: 1,
+        tick: true,
+        ..Default::default()
+    });
+    t.fund(0, false);
+    assert_eq!(t.branches[0].level, 0);
+    t.fund(0, true);
+    t.fund(0, true);
+    assert_eq!(t.branches[0].level, 1);
+    // A branch that is not there changes nothing.
+    t.fund(7, true);
+    assert_eq!(t.listed(0), [0, 1]);
+    t.toggle(0, 1);
+    assert_eq!(
+        t.branches[0]
+            .categories
+            .iter()
+            .map(|c| c.tick)
+            .collect::<Vec<_>>(),
+        [true, false]
+    );
+    t.toggle(0, 1);
+    t.toggle(0, 0);
+    assert!(!t.branches[0].categories[0].tick);
+    // A row out of the list, a branch that is not there: nothing.
+    for (b, row) in [(0, 2), (0, usize::MAX), (3, 0)] {
+        t.toggle(b, row);
+    }
+    assert_eq!(
+        t.branches[0]
+            .categories
+            .iter()
+            .map(|c| c.tick)
+            .collect::<Vec<_>>(),
+        [false, true]
+    );
+    // The category of a disabled expansion is not listed, so the rows count the others only.
+    t.off[2] = true;
+    assert_eq!(t.listed(0), [0]);
+    t.toggle(0, 1);
+    assert!(t.branches[0].categories[1].tick);
+    assert!(t.listed(5).is_empty());
+}
+
+#[test]
+fn a_ticked_off_category_stops_the_work_at_the_next_update() {
+    let mut t = plain(2000.0, 45.0, &[(20.0, 1)]);
+    let mut money = cash(1000.0);
+    t.toggle(0, 0);
+    t.step(3000, &mut money, &mut || 0);
+    assert_eq!((progress(&t), money.cash), (0.0, 1000.0));
+    assert_eq!(
+        t.branches[0].current, None,
+        "no category is eligible: no program"
+    );
+    assert!(t.branch_of(1).is_some() && t.branch_of(99).is_none());
 }

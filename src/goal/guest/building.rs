@@ -227,9 +227,11 @@ impl Cx<'_, '_> {
     }
 
     /// Guests visit 3.5: a guest that has used an attraction (the stay's check done, the release
-    /// of a user visible inside), or gives it up at a step of the chain, has seen it; its tile joins the seen list. Any other building is not a site.
+    /// of a user visible inside), or gives it up at a step of the chain, has seen it; its tile joins the seen list. Only a building that satisfies `fun` or `showtrick` is a site.
     fn saw(&mut self, id: u32) {
-        let at = self.building(id).filter(|(_, k)| k.satisfies("fun"));
+        let at = self
+            .building(id)
+            .filter(|(_, k)| k.satisfies("fun") || k.satisfies("showtrick"));
         let tile = at.and_then(|(e, _)| e.common.and_then(|c| self.tile_at((c.x, c.y))));
         if let (Some(t), Some(g)) = (tile, self.guest()) {
             crate::guest::view::see(g, t);
@@ -256,7 +258,7 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 0x67 complete: a charging building with an expensive price turns the guest away angry;
+    /// 0x67 complete: a charging attraction or show building with an expensive price turns the guest away angry;
     /// else it takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
     /// walk at the next update.
     pub(in crate::goal) fn entrance_arrived(&mut self) {
@@ -266,7 +268,9 @@ impl Cx<'_, '_> {
         let Some((_, kind)) = self.building(id) else {
             return self.reset();
         };
-        if kind.commerce && self.mood(id, &kind) == Mood::Angry {
+        // Guest buildings 7.3: only a building that satisfies `fun` or `showtrick` refuses.
+        let shown = kind.satisfies("fun") || kind.satisfies("showtrick");
+        if kind.commerce && shown && self.mood(id, &kind) == Mood::Angry {
             self.react(Mood::Angry, id);
             self.saw(id);
             return self.reset();

@@ -343,6 +343,18 @@ impl Interface {
         true
     }
 
+    /// Runs the select action of the first of the buttons `ids` that is down, as a press would
+    /// (a radio set settled by a show has hidden its page).
+    pub fn reselect(&mut self, ids: &[i32]) {
+        if let Some(b) = ids
+            .iter()
+            .find(|&&id| self.is_down(id))
+            .and_then(|&id| self.tree.find(id))
+        {
+            self.select(b);
+        }
+    }
+
     fn released(&mut self, b: usize, inside: bool) {
         let id = self.id(b);
         self.event(format!(

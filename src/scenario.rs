@@ -5,10 +5,10 @@
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
 //! entities and the interface (rules 10 and 11); the research, awards and shows rules read 0. The
-//! triggers are stubs but for trigger 2 (popups and elements) and triggers 4 and 7 (availability):
-//! a trigger logs `scenario trigger` and does nothing else. The
-//! objectives list (4.5) and the end (5.4, 9) are here, and so are the goal states of a saved game:
-//! [`Scenario::states`] writes them and [`Scenario::resume`] reads them (5.3).
+//! triggers 1 to 5 and 7 to 9 do their work (messages, popups and elements, cash, availability, a
+//! boxed animal, removal, the sell switch); 6 and 10 (awards, forced research) only log
+//! `scenario trigger`. The objectives list (4.5) and the end (5.4, 9) are here, and so are the
+//! goal states of a saved game: [`Scenario::states`] writes them and [`Scenario::resume`] reads them (5.3).
 //!
 //! Trigger 2 (scenarios 7.1) and the interface rules 10 and 11 reach the interface through
 //! [`gui::Gui`]: a trigger leaves an [`Effect`] for the application, which tells back which
@@ -23,10 +23,13 @@
 use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
 
-pub use apply::Marks;
-pub use gui::{Avail, Effect, Gui, Tell, Which};
+pub use apply::{Marks, built_line};
+pub use gui::{Avail, Deed, Effect, Gui, Tell, Which};
 pub use popup::{Hint, Op, Popup};
 pub use rules::Game;
+
+mod deed;
+pub use deed::{boxed, cash, remove};
 
 mod apply;
 mod gui;
@@ -79,8 +82,8 @@ pub enum Run {
     Lost,
 }
 
-/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Only triggers 2,
-/// 4 and 7 do anything; the others are stubs.
+/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Triggers 6
+/// (awards) and 10 (forced research) are stubs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Trigger {
     v: [i32; 4],
@@ -88,6 +91,8 @@ struct Trigger {
     effect: Option<Box<Effect>>,
     /// What trigger 4 or 7 leaves for the application.
     avail: Option<Avail>,
+    /// What trigger 1, 3, 5, 8 or 9 leaves for the application.
+    deed: Option<Box<Deed>>,
 }
 
 impl Trigger {
@@ -99,6 +104,7 @@ impl Trigger {
             v,
             effect,
             avail: avail(cfg, v),
+            deed: deed(cfg, v).map(Box::new),
         }
     }
 
@@ -119,6 +125,10 @@ impl Trigger {
                 tell,
                 ..avail.clone()
             });
+        }
+        let deed = self.deed.as_deref().cloned();
+        if let Some(deed) = deed.and_then(|d| if fresh { Some(d) } else { d.quiet() }) {
+            gui.push_deed(deed);
         }
         let effect = self.effect.as_deref().cloned();
         if let Some(effect) = effect.and_then(|e| if fresh { Some(e) } else { e.quiet() }) {
@@ -146,6 +156,39 @@ fn avail(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Avail> {
         _ => None,
     };
     Some(Avail { which, on, tell })
+}
+
+/// Triggers 1, 3, 5, 8 and 9 (7.2, 7.4, 7.5): a `truleb` trigger 3 or 8 does not know changes nothing,
+/// but their message or popup still follows; trigger 5 with one does nothing.
+fn deed(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Deed> {
+    let popup = || Popup::read(cfg, p);
+    match (a, b) {
+        (1, _) => Some(Deed::Say {
+            kind: b,
+            text: t,
+            value: p,
+        }),
+        (3, _) => Some(Deed::Cash {
+            how: b,
+            amount: t,
+            text: p,
+        }),
+        (5, 0..=2) => Some(Deed::Boxed {
+            sub: b"mfy"[b as usize],
+            name: t,
+            popup: popup(),
+        }),
+        (8, _) => Some(Deed::Remove {
+            by: b,
+            id: t,
+            popup: popup(),
+        }),
+        (9, _) => Some(Deed::Sale {
+            allowed: t > 0,
+            popup: popup(),
+        }),
+        _ => None,
+    }
 }
 
 /// Trigger 2 (7.1): `truleb` says what, `targa` and `targb` which element or block and which popup.
@@ -225,8 +268,6 @@ pub struct Goal {
     name: String,
     state: u8,
     optional: bool,
-    /// The string id of the goal's line (`text`); 0 for none.
-    text: i32,
     body: Body,
 }
 
@@ -286,7 +327,6 @@ impl Goal {
             name: String::from_utf8_lossy(name).into_owned(),
             state: 0,
             optional: int(s, "optional") != 0,
-            text: int(s, "text"),
             body,
         })
     }
@@ -343,13 +383,25 @@ impl Goal {
     fn lines(&self, out: &mut Vec<Line>) {
         match &self.body {
             Body::Timer(_) => {}
-            Body::Simple(s) if s.text != 0 && !s.hidden => out.push(Line {
+            Body::Simple(_) => out.extend(self.text()),
+            Body::Complex(c) | Body::Chain(c) => c.iter().for_each(|c| c.lines(out)),
+        }
+    }
+
+    /// The line this goal's text is built from (`getText`, 4.2): none when hidden or without a
+    /// text; a complex or chain goal gives the text of its first child whose state is 0 (4.4).
+    fn text(&self) -> Option<Line> {
+        match &self.body {
+            Body::Timer(_) => None,
+            Body::Simple(s) if s.text != 0 && !s.hidden => Some(Line {
                 text: s.text,
                 values: [s.value, s.rule[2], s.rule[3]],
                 state: self.state,
             }),
-            Body::Simple(_) => {}
-            Body::Complex(c) | Body::Chain(c) => c.iter().for_each(|c| c.lines(out)),
+            Body::Simple(_) => None,
+            Body::Complex(c) | Body::Chain(c) => {
+                c.iter().find(|c| c.reported() == 0).and_then(Goal::text)
+            }
         }
     }
 
@@ -527,7 +579,6 @@ impl Scenario {
             // No limit stated: nothing to wait for.
             state: u8::from(months == 0),
             optional: false,
-            text: 0,
             body: Body::Timer(months),
         };
         let mut goals = vec![timer];
@@ -588,6 +639,19 @@ impl Scenario {
         &self.gui
     }
 
+    /// The effects the triggers left since the last call. A popup whose hint is -1 takes the line
+    /// of the goal in progress now (8.3): the text it shows is built from that line.
+    pub fn effects(&self) -> Vec<Effect> {
+        let line = self.hint_line();
+        let mut effects = self.gui.take_effects();
+        for popup in effects.iter_mut().filter_map(Effect::popup_mut) {
+            if popup.hint.short == -1 {
+                popup.hint.goal = line;
+            }
+        }
+        effects
+    }
+
     pub fn run(&self) -> Run {
         self.run
     }
@@ -607,24 +671,36 @@ impl Scenario {
         &self.icons
     }
 
-    /// The lines of the objectives list (4.5): the timer's, when it has a text, then the goals'.
-    pub fn lines(&self) -> Vec<Line> {
-        let mut out = Vec::new();
-        if let Some(Goal {
-            body: Body::Timer(months),
-            state,
-            ..
-        }) = self.goals.first()
-            && self.timer_text != 0
-        {
-            out.push(Line {
+    /// The timer's line, when it has a text (3.3).
+    fn timer_line(&self) -> Option<Line> {
+        match self.goals.first() {
+            Some(Goal {
+                body: Body::Timer(months),
+                state,
+                ..
+            }) if self.timer_text != 0 => Some(Line {
                 text: self.timer_text,
                 values: [*months, 0, 0],
                 state: *state,
-            });
+            }),
+            _ => None,
         }
+    }
+
+    /// The lines of the objectives list (4.5): the timer's, when it has a text, then the goals'.
+    pub fn lines(&self) -> Vec<Line> {
+        let mut out: Vec<Line> = self.timer_line().into_iter().collect();
         self.goals.iter().for_each(|g| g.lines(&mut out));
         out
+    }
+
+    /// The line a hint of -1 shows (8.3): the first goal in progress, timer first, that has a text.
+    fn hint_line(&self) -> Option<Line> {
+        self.goals.iter().find_map(|g| match g.body {
+            _ if g.reported() != 0 => None,
+            Body::Timer(_) => self.timer_line(),
+            _ => g.text(),
+        })
     }
 
     /// How the scenario ended, once, when it has (5.4).
@@ -688,9 +764,6 @@ impl Scenario {
     fn update_goal(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
         let total = env.total_months();
         let gui = &self.gui;
-        // The line a hint of -1 shows: the first goal in progress that has one (8.3).
-        let first = self.goals.iter().find(|g| g.reported() == 0 && g.text > 0);
-        gui.set_goal_text(first.map_or(0, |g| g.text));
         let (timer, rest) = self.goals.split_first_mut().expect("the timer");
         let seen = &mut self.reported;
         if at > 0 {

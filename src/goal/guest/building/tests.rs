@@ -267,9 +267,10 @@ fn a_hungry_guest_walks_to_the_stand_buys_a_hot_dog_and_pays_when_it_leaves() {
 
 #[test]
 fn an_expensive_stand_turns_the_guest_away_and_a_cheap_one_makes_it_happy() {
-    let (cat, mut money) = (types(), Money::default());
+    let mut money = Money::default();
     // The default price is 2.00: 4.00 and more is expensive, 1.00 and less cheap.
     for (price, change, buys) in [(4.0, -5, false), (3.0, 0, true), (1.0, 5, true)] {
+        let cat = types();
         let mut w = zoo();
         hungry(&mut w);
         let live = crate::building::Live {
@@ -286,7 +287,9 @@ fn an_expensive_stand_turns_the_guest_away_and_a_cheap_one_makes_it_happy() {
             -5 => assert!(happiness <= -5, "{price}"),
             c => assert_eq!(happiness, c, "{price}"),
         }
-        assert_eq!(log.iter().any(|l| l.starts_with("use")), buys);
+        // Guest buildings 7.3: a stand that is no attraction is entered whatever its price; the
+        // refusal comes at the sale.
+        assert!(log.iter().any(|l| l.starts_with("use")), "{log:?}");
         // The price is also a thought: 10073 too high, 10072 really low.
         let want = match change {
             -5 => Some(10073),
@@ -294,6 +297,46 @@ fn an_expensive_stand_turns_the_guest_away_and_a_cheap_one_makes_it_happy() {
             _ => None,
         };
         assert!(want.is_none_or(|t| thoughts(&w).contains(&t)), "{price}");
+    }
+}
+
+#[test]
+fn an_expensive_attraction_or_show_is_refused_at_the_entrance_and_added_to_the_seen_list() {
+    let mut money = Money::default();
+    for need in ["fun", "showtrick"] {
+        for (price, refused) in [
+            (4.0, true),
+            (3.0, false),
+            (0.0, false),
+            (-1.0, false),
+            (1e9, true),
+        ] {
+            let cat = types_with(&STAND.replace("food", &format!("food\n{need}")));
+            let mut w = zoo();
+            hungry(&mut w);
+            let live = crate::building::Live {
+                price,
+                ..Default::default()
+            };
+            w.units.buildings.insert(7, live);
+            with_cx(&cat, &mut w, |cx| cx.seek("food"));
+            let log = run(&mut game(), &cat, &mut w, &mut money, 600, "buy");
+            let used = log.iter().any(|l| l.starts_with("use"));
+            assert_eq!(used, !refused, "{need} {price} {log:?}");
+            let seen = guest(&w).seen.len();
+            assert_eq!(seen > 0, refused, "{need} {price}");
+            assert_eq!(thoughts(&w).contains(&10073), refused, "{need} {price}");
+        }
+    }
+}
+
+#[test]
+fn a_show_building_joins_the_seen_list_and_a_plain_stand_never_does() {
+    for (need, seen) in [("fun", 1), ("showtrick", 1), ("", 0)] {
+        let cat = types_with(&STAND.replace("food", &format!("food\n{need}")));
+        let mut w = zoo();
+        with_cx(&cat, &mut w, |cx| cx.saw(7));
+        assert_eq!(guest(&w).seen.len(), seen, "{need}");
     }
 }
 
