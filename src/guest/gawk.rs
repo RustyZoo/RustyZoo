@@ -107,14 +107,12 @@ pub fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSe
 }
 
 /// 3.2: the members of the list the guest has not seen, in list order. An object is seen when
-/// the entity on some tile of the seen list is that object or has the same help id.
+/// the entity held by the last quadrant of some tile of the seen list is that object or has the
+/// same help id; its own tile in the list counts for nothing.
 pub fn unseen(world: &World, cat: &Catalogue, g: &Guest) -> Vec<Judged> {
     let (ids, helps) = marks(world, cat, g);
     (world.units.gawk.members())
-        .filter(|j| {
-            let own = g.seen.contains(&j.tile) || ids.contains(&j.id);
-            !(own || j.help.is_some_and(|h| helps.contains(&h)))
-        })
+        .filter(|j| !(ids.contains(&j.id) || j.help.is_some_and(|h| helps.contains(&h))))
         .copied()
         .collect()
 }

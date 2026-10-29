@@ -341,9 +341,9 @@ fn the_seen_test_looks_at_the_last_quadrant_of_a_tile_only() {
     let all = |w: &World, g: &Guest| unseen(w, &cat, g).iter().map(|j| j.id).collect::<Vec<_>>();
     let (corner, middle) = (w.tile_index(5, 6).unwrap(), w.tile_index(5, 7).unwrap());
     assert!(w.quadrant(corner, 0).is_some() && w.quadrant(corner, 3).is_none());
-    // The statue in another quadrant is seen by its tile only, its help id is not compared.
+    // The statue in another quadrant is not seen by its tile, and its help id is not compared.
     g.seen = vec![corner];
-    assert_eq!(all(&w, &g), [50, 51, 54, 102]);
+    assert_eq!(all(&w, &g), [50, 51, 54, 101, 102]);
     g.seen = vec![middle];
     assert_eq!(all(&w, &g), [54]);
 }
