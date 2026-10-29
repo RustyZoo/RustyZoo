@@ -1806,9 +1806,9 @@ impl<'a> App<'a> {
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
                 Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
-                Action::Edited(panel_building::NAME | panel_building::PLAIN_NAME)
-                    if self.game.is_some() =>
-                {
+                Action::Edited(
+                    panel_building::NAME | panel_building::PLAIN_NAME | panel_building::FILTER_NAME,
+                ) if self.game.is_some() => {
                     self.building_rename();
                 }
                 Action::Edited(panel_building::PRICE) if self.game.is_some() => {
@@ -1855,7 +1855,9 @@ impl<'a> App<'a> {
                 panel_building::UP | panel_building::DOWN if self.game.is_some() => {
                     self.building_price(id == panel_building::UP);
                 }
-                panel_building::SELL | panel_building::PLAIN_SELL if self.game.is_some() => {
+                panel_building::SELL | panel_building::PLAIN_SELL | panel_building::FILTER_SELL
+                    if self.game.is_some() =>
+                {
                     self.building_sell();
                 }
                 panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
@@ -2054,6 +2056,7 @@ impl<'a> App<'a> {
             if start.reset {
                 crate::guest::arrive_all(&mut game.world, self.sim.calendar().date());
                 let now = self.sim.calendar().elapsed_ms();
+                game.world.reset_filters(now);
                 for id in crate::building::reset_all(&mut game.world, now) {
                     self.sim.remove(id);
                 }

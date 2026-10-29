@@ -8,7 +8,12 @@
 //! runs; the other one is filled when shown, never by the clock.
 //!
 //! [`Panel`] holds the selected building and the clock; [`Panel::refresh`] writes the layout from
-//! the world and returns the `panel` log line when what it shows changed.
+//! the world and returns the `panel` log line when what it shows changed. The tank filter's panel
+//! is a third layout of the same [`Panel`], written by [`filter`].
+
+mod filter;
+
+pub use filter::{LAYOUT as FILTER, NAME as FILTER_NAME, SELL as FILTER_SELL};
 
 use crate::building::{Kind, Live, moveable, upgrade};
 use crate::config::to_double;
@@ -34,6 +39,8 @@ pub const TABS: [i32; 6] = [4575, 4576, 4577, 4675, 4678, 4677];
 /// The period of the interface clock between two refreshes of the charging panel (ms; guest
 /// buildings 10.3).
 pub const PERIOD: u64 = 5000;
+/// The period of the filter panel's refresh (information panels 18.5).
+pub const FILTER_PERIOD: u64 = 1000;
 
 /// The elements of the charging panel.
 pub const NAME: i32 = 4502;
@@ -162,6 +169,9 @@ impl Panel {
         vfs: &Vfs,
         now: i64,
     ) -> Option<String> {
+        if self.layout == FILTER {
+            return self.filter(ui, world, cat, vfs, now);
+        }
         let id = self.selected?;
         let at = world.find(id)?;
         let ty = type_at(world, cat, at)?;

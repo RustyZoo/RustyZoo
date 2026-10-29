@@ -241,13 +241,24 @@ pub struct BuildingRecord {
     pub built: u64,
 }
 
-/// What a tank filter keeps (tank staff 7): its health, and the milliseconds left before it loses
-/// a point and before it filters again. A loaded filter has none, since a record does not save them
-/// (zoo format 6.8): the first update starts them from the type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The milliseconds between two checks of a filter's period (tank staff 7.3 point 6).
+pub const FILTER_CHECK_MS: i32 = 3000;
+
+/// What a tank filter keeps (tank staff 7): its health, the milliseconds left before it loses a
+/// point and before it filters again, the upkeep it paid in the last 30-day period, the current one
+/// and since it was built (whole money), its build and last service dates (file times), the months
+/// count of its periods (starts at 1) and the milliseconds before the next check of the period. A
+/// loaded filter has no timers, since a record does not save them (zoo format 6.8): the first
+/// update starts them from the type; the period check restarts at 3,000.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Filter {
     pub health: u32,
     pub timers: Option<[i32; 2]>,
+    pub upkeep: [u32; 3],
+    pub built: u64,
+    pub serviced: u64,
+    pub months: i32,
+    pub check: i32,
 }
 
 /// What a guest record stores: the five status values (happiness, hunger, thirst, energy,

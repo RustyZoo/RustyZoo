@@ -11,6 +11,7 @@ fn health(s: &mut Session, id: u32, health: u32) {
     c.filter = Some(Filter {
         health,
         timers: None,
+        ..Filter::default()
     });
 }
 

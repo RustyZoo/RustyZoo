@@ -13,7 +13,7 @@ use crate::unit::Part;
 impl App<'_> {
     /// A release on the map with no tool and no unit under the pointer (those are
     /// [`App::pick_or_select`]'s, and [`App::units_sync`] shows their panels): the gate of an
-    /// exhibit opens the exhibit panel on that exhibit, and a guest building becomes the
+    /// exhibit opens the exhibit panel on that exhibit, and a guest building or a tank filter becomes the
     /// selected entity, which shows its panel (`tool select ID`).
     pub(super) fn select(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
@@ -329,8 +329,13 @@ impl App<'_> {
             .refresh(ui, &game.world.zoo.awards, &cat.awards, vfs);
         let layout = game.building.layout;
         // The panel of a building that charges nothing is filled when shown, never by the clock.
-        let ticks = ticking && layout == building::CHARGING;
-        if ui.shown(layout) && game.building.clock.due(now, ticks, building::PERIOD) {
+        // The filter panel refreshes every second (information panels 18.5).
+        let (ticks, period) = match layout {
+            building::CHARGING => (ticking, building::PERIOD),
+            building::FILTER => (ticking, building::FILTER_PERIOD),
+            _ => (false, building::PERIOD),
+        };
+        if ui.shown(layout) && game.building.clock.due(now, ticks, period) {
             let when = self.sim.calendar().elapsed_ms();
             self.panel_lines
                 .extend(game.building.refresh(ui, &game.world, cat, vfs, when));

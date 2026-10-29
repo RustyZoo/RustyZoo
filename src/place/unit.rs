@@ -468,7 +468,7 @@ pub fn place(
     if !money.can_pay(p.price) {
         return Outcome::Refused(Some(NO_FUNDS));
     }
-    let mut unit = entity(ty, p, Vec::new(), &world.research);
+    let mut unit = entity(ty, p, Vec::new(), &world.research, world.units.now);
     if let Some(common) = unit.common.as_mut() {
         common.name = name(world, ty, text);
     }

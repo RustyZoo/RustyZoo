@@ -458,6 +458,7 @@ fn a_loaded_zoo_posts_its_can_fence_and_filter_events_in_entity_list_order() {
     filter.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
         health: 0,
         timers: None,
+        ..Default::default()
     });
     world.zoo.entities.push(filter);
     let mut can = entity("building", "can", 9, (96, 160), 0);

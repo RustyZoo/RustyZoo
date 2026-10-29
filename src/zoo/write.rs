@@ -282,7 +282,7 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     match (&e.class[..], &c.fence, &c.filter) {
         ("fences" | "tankwall", Some(f), _) => post = fresh::fence(&e.class, f),
         ("fences" | "tankwall", None, _) => return Err("no fence figures".into()),
-        ("filter", _, Some(f)) if read => post[..4].copy_from_slice(&f.health.to_le_bytes()),
+        ("filter", _, Some(f)) => post = fresh::filter(f),
         _ => {}
     }
     let unit = c.unit.as_deref().cloned().unwrap_or_else(|| {

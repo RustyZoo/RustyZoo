@@ -208,12 +208,14 @@ fn a_tank_filter_sells_for_less_once_decayed_and_for_nothing_broken() {
         filter.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
             health,
             timers: None,
+            ..Default::default()
         });
         assert_eq!(refund(&cat, &filter), price, "health {health}");
     }
     filter.common.as_mut().unwrap().filter = Some(crate::zoo::Filter {
         health: u32::MAX,
         timers: None,
+        ..Default::default()
     });
     assert_eq!(refund(&cat, &filter), 160.0);
 }

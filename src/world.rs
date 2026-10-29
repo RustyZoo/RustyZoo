@@ -27,7 +27,10 @@ mod tank;
 mod water;
 mod wear;
 pub use exhibit::Event;
-pub use filter::{Loop as FilterLoop, placed as placed_filter, sell_rate as filter_sell_rate};
+pub use filter::{
+    Loop as FilterLoop, Wear, months_since as filter_months_since, placed as placed_filter,
+    sell_rate as filter_sell_rate, wear as filter_wear,
+};
 pub use wear::Decay;
 pub(crate) use wear::piece_event;
 

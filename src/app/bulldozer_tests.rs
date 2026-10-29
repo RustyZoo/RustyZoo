@@ -29,6 +29,10 @@ impl UiStrings for Texts {
             10571 => "no merge".into(),
             159 => "blocked: %s".into(),
             6208 => "Exhibit".into(),
+            4999 => "Oak".into(),
+            4914 => "Elm".into(),
+            4913 => "Fir".into(),
+            4916 => "%s mo".into(),
             22100 => "$".into(),
             9001 => "Shop".into(),
             _ => String::new(),
@@ -48,7 +52,8 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [f]\ntype=UILayout\nlayout=ui/animal.lyt\nstate=1\n\
     [g]\ntype=UILayout\nlayout=ui/staff.lyt\nstate=1\n\
     [i]\ntype=UILayout\nlayout=ui/guest.lyt\nstate=1\n\
-    [h]\ntype=UILayout\nlayout=ui/exhibit.lyt\nstate=1\n";
+    [h]\ntype=UILayout\nlayout=ui/exhibit.lyt\nstate=1\n\
+    [j]\ntype=UILayout\nlayout=ui/filter.lyt\nstate=1\n";
 const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n";
 const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
@@ -62,6 +67,12 @@ const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
     [n]\ntype=UIButton\nid=4880\ndx=8\ndy=8\n";
 const GUEST: &str = "[LayoutInfo]\nid=9\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3413\ndx=8\ndy=8\ntarget=9\naction=2\ntransparent=0\n";
+const FILTER: &str = "[LayoutInfo]\nid=46\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
+    [a]\ntype=UIText\nid=4913\ndx=8\ndy=8\n[b]\ntype=UIText\nid=4916\ndx=8\ndy=8\n\
+    [c]\ntype=UIText\nid=4918\ndx=8\ndy=8\n[d]\ntype=UIText\nid=4921\ndx=8\ndy=8\n\
+    [e]\ntype=UIText\nid=4923\ndx=8\ndy=8\n[f]\ntype=UIText\nid=4925\ndx=8\ndy=8\n\
+    [g]\ntype=UIEditableText\nid=4904\ndx=8\ndy=8\n\
+    [h]\ntype=UIButton\nid=4906\nx=20\ndx=8\ndy=8\ntransparent=0\n";
 const STAFF: &str = "[LayoutInfo]\nid=17\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
 const QUESTION: &str = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ntransparent=0\n\
@@ -174,10 +185,13 @@ pub(super) fn catalogue() -> Catalogue {
     // 17: a seal, an animal that lives under water.
     let seal = "[m/Characteristics/Integers]\ncUnderwater=1\n";
     cat.push(ty("animals", b"seal", b"m", seal, [1, 1, 1]));
-    // 18: a tank filter with a healthy and a decayed loop.
-    let filter = "[Characteristics/Integers]\ncDecayedHealth=5\n[FilterSounds]\n\
-        cHealthySound=h.wav\ncHealthyAtten=1700\ncDecayedSound=d.wav\ncDecayedAtten=1800\n";
-    cat.push(ty("filter", b"filter1", b"f", filter, [2, 2, 1]));
+    // 18: a tank filter (200) with a healthy and a decayed loop.
+    let filter = format!(
+        "{}cNeedsConfirm=1\n[Characteristics/Integers]\ncDecayedHealth=5\n[FilterSounds]\n\
+        cHealthySound=h.wav\ncHealthyAtten=1700\ncDecayedSound=d.wav\ncDecayedAtten=1800\n",
+        cost(200)
+    );
+    cat.push(ty("filter", b"filter1", b"f", &filter, [2, 2, 1]));
     cat
 }
 
@@ -220,6 +234,7 @@ fn install(name: &str, ini: &str) -> crate::sprite::tests::Install {
         ("ui/staff.lyt", STAFF.as_bytes().to_vec()),
         ("ui/guest.lyt", GUEST.as_bytes().to_vec()),
         ("ui/exhibit.lyt", EXHIBIT.as_bytes().to_vec()),
+        ("ui/filter.lyt", FILTER.as_bytes().to_vec()),
         ("zoo.ini", ini.as_bytes().to_vec()),
     ];
     cache_install_with(&format!("app-dozer-{name}"), frame_file(), &ui)
@@ -1117,5 +1132,91 @@ fn a_piece_the_bulldozer_takes_to_join_two_pens_marks_and_rates_the_one_left() {
             !world.exhibits().get(pen).unwrap().rating.dirty,
             "rated by the pair"
         );
+    });
+}
+
+/// A filter of the catalogue (18) on tile (20, 20) with this health, as placed at game time 0.
+fn filter_at(s: &mut Session, health: u32) -> u32 {
+    let (mut entity, shape) = s.entity(18, 20 * 64 + 32, 20 * 64 + 32, 0);
+    let ty = &s.app.renderer.catalogue().types[18];
+    let f = crate::world::placed_filter(ty, &Default::default(), 0);
+    entity.common.as_mut().unwrap().filter = Some(crate::zoo::Filter { health, ..f });
+    s.app
+        .game
+        .as_mut()
+        .unwrap()
+        .world
+        .add(entity, shape)
+        .unwrap()
+}
+
+#[test]
+fn a_selected_filter_shows_its_panel_and_the_sell_button_refunds_its_own_price() {
+    with_game("filter-panel", "", |s| {
+        let id = filter_at(s, 10);
+        assert_eq!(s.app.building_layout(id), Some(46));
+        s.app.game.as_mut().unwrap().selected = Some(id);
+        let told = s.log(&[]);
+        assert!(
+            told.iter().any(|l| l.contains(&format!("filter {id} "))),
+            "{told:?}"
+        );
+        assert!(s.app.interface().unwrap().shown(46));
+        // The sell button asks (the type needs confirmation) and a Yes books the filter's price:
+        // 0.8 of 200 healthy, half of that decayed.
+        assert!(s.app.interface().unwrap().press_button(4906));
+        s.pass(&[]);
+        assert!(s.asking());
+        assert_eq!(s.app.game.as_ref().unwrap().selected, None);
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
+        assert!(removed.ends_with("refund 160"), "{removed}");
+        assert_eq!((s.count(), s.cash()), (0, 50_160.0));
+        // A decayed one gives 80; the panel shows when selected again, then a closed panel clears
+        // the selection.
+        let id = filter_at(s, 5);
+        s.app.game.as_mut().unwrap().selected = Some(id);
+        s.pass(&[]);
+        assert!(s.app.interface().unwrap().shown(46));
+        s.app.interface().unwrap().set_hidden(46, true);
+        let told = s.log(&[]);
+        assert!(told.iter().any(|l| l == "panel filter none"), "{told:?}");
+        assert_eq!(s.app.game.as_ref().unwrap().selected, None);
+        s.app.game.as_mut().unwrap().selected = Some(id);
+        s.pass(&[]);
+        s.app.building_sell();
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
+        assert!(removed.ends_with("refund 80"), "{removed}");
+    });
+}
+
+#[test]
+fn the_filter_panel_refreshes_every_second_of_the_clock() {
+    with_game("filter-panel-clock", "", |s| {
+        let id = filter_at(s, 10);
+        s.app.game.as_mut().unwrap().selected = Some(id);
+        // A count that changes at every pass tells each refresh by its line.
+        let mut seen = Vec::new();
+        for pass in 0..260u32 {
+            let game = s.app.game.as_mut().unwrap();
+            let at = game.world.find(id).unwrap();
+            let f = game.world.zoo.entities[at]
+                .common
+                .as_mut()
+                .unwrap()
+                .filter
+                .as_mut();
+            f.unwrap().months = pass as i32 + 100;
+            let told = s.log(&[]);
+            if told.iter().any(|l| l.starts_with("panel filter ")) {
+                seen.push(pass);
+            }
+        }
+        // Shown at once, then once more as the forced refresh sets its due time (information
+        // panels 5.1), then about every 50 passes of 20 ms (the interface timer ticks between).
+        assert!(seen.len() >= 5, "{seen:?}");
+        let gaps: Vec<u32> = seen.windows(2).skip(1).map(|w| w[1] - w[0]).collect();
+        assert!(gaps.iter().all(|g| (50..=53).contains(g)), "{seen:?}");
     });
 }
