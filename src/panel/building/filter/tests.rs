@@ -16,10 +16,10 @@ struct Texts;
 impl Strings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            4999 => "Broken".into(),
-            4914 => "Minimum".into(),
-            4913 => "Maximum".into(),
-            4916 => "%s month(s) ago".into(),
+            4999 => "Oak".into(),
+            4914 => "Elm".into(),
+            4913 => "Fir".into(),
+            4916 => "%s mo".into(),
             SYMBOL => "$".into(),
             _ => String::new(),
         }
@@ -112,14 +112,14 @@ fn the_state_text_follows_the_health_and_there_is_no_off_text() {
     };
     assert_eq!(
         [0, 1, 5, 6, 10].map(|h| state(h, "")),
-        ["Broken", "Minimum", "Minimum", "Maximum", "Maximum"]
+        ["Oak", "Elm", "Elm", "Fir", "Fir"]
     );
     // The type's cDecayedHealth moves the threshold; 0, negative and huge values still answer.
-    assert_eq!(state(1, "cDecayedHealth=0\n"), "Maximum");
-    assert_eq!(state(0, "cDecayedHealth=0\n"), "Broken");
-    assert_eq!(state(1, "cDecayedHealth=-4\n"), "Maximum");
-    assert_eq!(state(u32::MAX, "cDecayedHealth=99999999999\n"), "Minimum");
-    assert_eq!(state(7, "cDecayedHealth=7\n"), "Minimum");
+    assert_eq!(state(1, "cDecayedHealth=0\n"), "Fir");
+    assert_eq!(state(0, "cDecayedHealth=0\n"), "Oak");
+    assert_eq!(state(1, "cDecayedHealth=-4\n"), "Fir");
+    assert_eq!(state(u32::MAX, "cDecayedHealth=99999999999\n"), "Elm");
+    assert_eq!(state(7, "cDecayedHealth=7\n"), "Elm");
 }
 
 #[test]
@@ -139,11 +139,11 @@ fn the_months_since_the_service_the_count_and_the_three_upkeeps_are_shown() {
             .join("|")
     };
     refreshed(&mut ui, &vfs, &world, &cat, 31 * DAY);
-    assert_eq!(shown(&ui), "2 month(s) ago|3|$12|$1250|$0");
+    assert_eq!(shown(&ui), "2 mo|3|$12|$1250|$0");
     // The day of the service is 0 months, then 1 for the days 1 to 30.
     for (now, months) in [(0, 0), (DAY - 1, 0), (DAY, 1), (30 * DAY, 1), (31 * DAY, 2)] {
         refreshed(&mut ui, &vfs, &world, &cat, now);
-        assert_eq!(text(&ui, 4916), format!("{months} month(s) ago"), "{now}");
+        assert_eq!(text(&ui, 4916), format!("{months} mo"), "{now}");
     }
     // The extremes show numbers and do not panic: a count below 0, the largest figures.
     set(
