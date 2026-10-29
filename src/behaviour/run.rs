@@ -335,6 +335,9 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
+    /// Taken from a saved game and not yet stepped: the player holds no sequence of the unit's
+    /// own, so its first play call is shown at once, not behind the base loop (behaviours 4.7).
+    fresh: bool,
     /// Where the unit is for its ambient table: set by the unit before each run.
     pub place: Place,
     /// The unit's tank mode and whether its tile is a water tile, which alone choose the set of
@@ -379,6 +382,7 @@ impl Default for Runner {
             interruptible: true,
             ready: true,
             playing: false,
+            fresh: false,
             place: Place::Land,
             tank_mode: 0,
             wet: false,
@@ -564,7 +568,7 @@ impl Runner {
                 own: Some(l.list_b.iter().map(call).collect()),
             })
             .collect();
-        (self.ready, self.playing) = (true, false);
+        (self.ready, self.playing, self.fresh) = (true, false, true);
         true
     }
 
@@ -582,6 +586,7 @@ impl Runner {
         if self.running() {
             self.execute(0, anim, env);
         }
+        self.fresh = false;
     }
 
     /// The ambient choice of the animals' checks: only when no set runs and none is pending.
@@ -802,7 +807,11 @@ impl Runner {
         if entries.is_empty() {
             return false;
         }
+        let base = anim.shows_base();
         anim.queue(entries);
+        if self.fresh && base {
+            anim.finish(&timing);
+        }
         (self.playing, self.ready) = (true, false);
         true
     }

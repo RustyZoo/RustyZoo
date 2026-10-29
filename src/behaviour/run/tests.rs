@@ -739,8 +739,34 @@ fn a_saved_set_runs_its_saved_calls_from_the_current_one_and_is_not_looked_up() 
         [1, 0, 1, 0],
     ));
     let names = shown(&mut rig, 4);
-    assert_eq!(names[..2], ["idle", "b"]);
+    assert_eq!(names[..2], ["b", "b"]);
     assert!((0..12).map(|_| rig.tick(500).0).any(|n| n == "c"));
+}
+
+#[test]
+fn a_saved_current_call_starts_on_the_first_step_not_behind_the_base_loop() {
+    // A long idle loop would hold the call back for its whole length.
+    let mut rig = Rig::new(&[]);
+    rig.data.timings.insert(
+        "idle".into(),
+        Timing {
+            count: 50,
+            delay: 100,
+        },
+    );
+    rig.runner
+        .restore(&saved("bUse", &["fPlay(a)", "fPlay(c)"], [1, 0, 1, 0]));
+    assert_eq!(rig.tick(100), ("a".into(), 0));
+    // A set started in play, not restored, still queues behind the loop.
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)"])]);
+    rig.data.timings.insert(
+        "idle".into(),
+        Timing {
+            count: 50,
+            delay: 100,
+        },
+    );
+    assert_eq!(rig.tick(100).0, "idle");
 }
 
 #[test]
