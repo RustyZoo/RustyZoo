@@ -885,6 +885,7 @@ fn building_upgrades_come_from_the_free_programs_and_from_each_completion() {
             name,
             target: 3,
             effect: 1,
+            vals: [0; 3],
         };
         app.sim.push_research_done(done(22));
         app.sim.push_research_done(done(22));

@@ -38,7 +38,7 @@ use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::guest;
 use crate::money::{self, Money};
-use crate::research::{Done, Tree};
+use crate::research::{Done, Life, Overlay, Tree};
 use crate::scenario::{Env, Game, Scenario};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
@@ -309,6 +309,13 @@ impl Sim {
     /// building type it is for (research 6.3).
     pub fn research_upgrade(&self, name: i32) -> Option<(i32, crate::building::upgrade::Upgrade)> {
         self.research.as_ref()?.upgrade_of(name)
+    }
+
+    /// The characteristic effect of a program the step completed (research 6.4, 6.7), laid on
+    /// `over`. The changes of the life counter come back for the live animals.
+    pub fn research_effect(&mut self, cat: &Catalogue, over: &mut Overlay, d: &Done) -> Vec<Life> {
+        let tree = self.research.as_mut();
+        tree.map_or_else(Vec::new, |t| t.complete(cat, over, d))
     }
 
     /// The research share of the zoo status: the tree's, 0 while a game has none.

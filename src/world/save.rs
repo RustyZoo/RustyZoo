@@ -105,7 +105,7 @@ impl World {
             }
             match e.class.as_str() {
                 "animals" => {
-                    let k = animal::Keys::of(ty, &self.units.class);
+                    let k = animal::Keys::of(ty, &self.units.class).researched(ty, &self.research);
                     let class = &self.units.class;
                     let new = || {
                         let mut a = animal_new(k.initial_happiness, k.max_hits, now);

@@ -330,7 +330,7 @@ pub fn born(
         }
     };
     let class = world.units.class.clone();
-    let k = Keys::of(young, &class);
+    let k = Keys::of(young, &class).researched(young, &world.research);
     let sickly = sickly(cat);
     let mother = father.mate;
     let mut placed = 0u32;

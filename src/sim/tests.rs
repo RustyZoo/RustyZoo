@@ -1298,6 +1298,7 @@ fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_comp
         name: 7,
         target: 5,
         effect: 0,
+        vals: [0; 3],
     };
     assert_eq!(run.sim.take_research_done(), [done]);
     assert!(run.sim.take_research_done().is_empty());

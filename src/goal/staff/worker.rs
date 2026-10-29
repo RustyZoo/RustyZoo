@@ -81,7 +81,9 @@ impl Cx<'_, '_> {
 
     /// Whether the worker's type has `key` above 0.
     fn raised(&self, key: &str) -> bool {
-        self.who().and_then(|w| number(w, key)).unwrap_or(0.0) > 0.0
+        let base = |w| number(w, key).unwrap_or(0.0) as i32;
+        self.who()
+            .is_some_and(|w| self.world.research.int(w, key, base(w)) > 0)
     }
 
     /// The worker's reset (goals 12.1) gives his task back.
