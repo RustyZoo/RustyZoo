@@ -616,3 +616,67 @@ fn trigger_9_forbids_or_allows_the_sell_button_and_triggers_5_and_8_report_what_
         },
     );
 }
+
+#[test]
+fn trigger_3_message_writes_the_amount_with_cents_and_grouping() {
+    let body = "trulea=3\ntruleb=1\ntarga=1500\ntargb=9301";
+    availability("deed-cents", &[body], |app, _, _| {
+        assert_eq!(
+            app.interface().unwrap().text(7001).unwrap(),
+            b"gift $1,500.00"
+        );
+    });
+}
+
+#[test]
+fn trigger_3_with_an_unknown_mode_changes_no_cash_but_still_tells() {
+    for how in [3, 7, -1, i32::MAX] {
+        let body = format!("trulea=3\ntruleb={how}\ntarga=1500\ntargb=9301");
+        availability("deed-cash-other", &[&body], |app, _, _| {
+            assert_eq!(app.game.as_ref().unwrap().money.cash, Money::default().cash);
+            let said = app.interface().unwrap().text(7001).unwrap();
+            assert!(said.starts_with(b"gift $1,500"), "{how}");
+        });
+    }
+    // Missing mode is 0, a donation: unchanged. No message when targb is missing.
+    availability(
+        "deed-cash-nomsg",
+        &["trulea=3\ntruleb=7\ntarga=1500"],
+        |app, _, _| {
+            assert_eq!(app.interface().unwrap().text(7001).unwrap(), b"");
+        },
+    );
+}
+
+#[test]
+fn trigger_8_with_an_unknown_kind_removes_nothing_but_still_pops_up() {
+    for by in [4, 7, -1, i32::MAX] {
+        let body = format!("trulea=8\ntruleb={by}\ntarga=5\ntargb=8");
+        availability("deed-remove-other", &[&body], |app, _, _| {
+            assert!(app.interface().unwrap().modal_open(), "{by}");
+            assert!(told(app).contains(&format!("scenario remove {by} 5 count 0")));
+        });
+    }
+    // Without a popup number nothing shows.
+    availability(
+        "deed-remove-nopopup",
+        &["trulea=8\ntruleb=7\ntarga=5"],
+        |app, _, _| {
+            assert!(!app.interface().unwrap().modal_open());
+        },
+    );
+}
+
+#[test]
+fn a_scenario_end_allows_selling_again() {
+    let text = "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=9\ntarga=0\n\
+                [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n";
+    let files = [("s/sell.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("sell-end", "", &files, cat, |app, _| {
+        let now = play(app, "s/sell.scn");
+        assert!(app.game.as_ref().unwrap().animal.no_sale);
+        until_asked(app, now);
+        assert!(!app.game.as_ref().unwrap().animal.no_sale);
+    });
+}

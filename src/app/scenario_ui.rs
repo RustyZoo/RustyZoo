@@ -4,7 +4,7 @@
 use super::{Action, App};
 use crate::money::{SYMBOL, Symbol};
 use crate::scenario::{self, Avail, Deed, Line, Tell, Which};
-use crate::text::to_cp1252;
+use crate::text::{format, to_cp1252};
 
 impl App<'_> {
     /// Tells the scenario which of the buttons and rows it asked about were pressed, and the hint's
@@ -87,7 +87,8 @@ impl App<'_> {
                     scenario::cash(&mut game.money, how, amount);
                     log.push(format!("scenario cash {how} {amount}"));
                     if let Some(ui) = ui.as_mut().filter(|_| text > 0) {
-                        let money = Symbol::new(ui.string(SYMBOL)).text(i64::from(amount));
+                        let symbol = Symbol::new(ui.string(SYMBOL));
+                        let money = format::money_cents(&symbol, f64::from(amount), true);
                         ui.message(&to_cp1252(&ui.string(text).replacen("%s", &money, 1)));
                     }
                     None

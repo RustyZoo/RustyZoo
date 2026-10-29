@@ -73,7 +73,7 @@ pub enum Deed {
     /// Trigger 1: the message of string `text` built with `value`, of kind `kind`.
     Say { kind: i32, text: i32, value: i32 },
     /// Trigger 3: `how` 0 a donation, 1 cash added, 2 cash set to `amount`; then the message of
-    /// string `text` (kind 4) with the money text of `amount`, when `text` is above 0.
+    /// string `text` (kind 4) with the money text of `amount` (with cents), when `text` is above 0.
     Cash { how: i32, amount: i32, text: i32 },
     /// Trigger 5: an animal of name id `name` and subtype `sub`, in its crate near the gate; the
     /// popup only when there was a place for it.

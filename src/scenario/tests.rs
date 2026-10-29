@@ -1274,15 +1274,17 @@ fn triggers_1_3_5_8_and_9_leave_a_deed_and_a_truleb_they_do_not_know_nothing() {
         deeds("trulea=3\ntruleb=1\ntarga=-500\ntargb=9"),
         [cash(1, -500, 9)]
     );
-    // A missing amount or text is 0; a huge amount stays; a mode out of 0 to 2 does nothing.
+    // A missing amount or text is 0; a huge amount stays; a mode out of 0 to 2 still leaves the
+    // deed, which changes no cash but tells (7.2).
     assert_eq!(deeds("trulea=3"), [cash(0, 0, 0)]);
     assert_eq!(
         deeds("trulea=3\ntruleb=2\ntarga=2147483647"),
         [cash(2, i32::MAX, 0)]
     );
     for b in [-1, 3, 2_000_000_000] {
-        assert!(
-            deeds(&format!("trulea=3\ntruleb={b}\ntarga=5")).is_empty(),
+        assert_eq!(
+            deeds(&format!("trulea=3\ntruleb={b}\ntarga=5")),
+            [cash(b, 5, 0)],
             "{b}"
         );
     }
@@ -1312,9 +1314,11 @@ fn triggers_1_3_5_8_and_9_leave_a_deed_and_a_truleb_they_do_not_know_nothing() {
         deeds("trulea=8\ntarga=12\ntargb=9"),
         [remove(0, 12, nine())]
     );
+    // A kind out of 0 to 3 removes nothing, the popup still follows (7.5).
     for b in [-1, 4, i32::MAX] {
-        assert!(
-            deeds(&format!("trulea=8\ntruleb={b}\ntarga=7")).is_empty(),
+        assert_eq!(
+            deeds(&format!("trulea=8\ntruleb={b}\ntarga=7")),
+            [remove(b, 7, None)],
             "{b}"
         );
     }

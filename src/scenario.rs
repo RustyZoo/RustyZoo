@@ -158,7 +158,8 @@ fn avail(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Avail> {
     Some(Avail { which, on, tell })
 }
 
-/// Triggers 1, 3, 5, 8 and 9 (7.2, 7.4, 7.5): a value of `truleb` they do not know does nothing.
+/// Triggers 1, 3, 5, 8 and 9 (7.2, 7.4, 7.5): a `truleb` trigger 3 or 8 does not know changes nothing,
+/// but their message or popup still follows; trigger 5 with one does nothing.
 fn deed(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Deed> {
     let popup = || Popup::read(cfg, p);
     match (a, b) {
@@ -167,7 +168,7 @@ fn deed(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Deed> {
             text: t,
             value: p,
         }),
-        (3, 0..=2) => Some(Deed::Cash {
+        (3, _) => Some(Deed::Cash {
             how: b,
             amount: t,
             text: p,
@@ -177,7 +178,7 @@ fn deed(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Deed> {
             name: t,
             popup: popup(),
         }),
-        (8, 0..=3) => Some(Deed::Remove {
+        (8, _) => Some(Deed::Remove {
             by: b,
             id: t,
             popup: popup(),
