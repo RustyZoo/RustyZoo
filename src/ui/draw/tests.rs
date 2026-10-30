@@ -272,6 +272,51 @@ fn an_icon_with_a_sprite_file_is_centred_in_the_button_and_clipped_to_it() {
 }
 
 #[test]
+fn an_icon_with_a_sprite_file_plays_on_its_own_clock_from_its_first_frame() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIButton\nid=2\nx=10\ny=5\ndx=2\ndy=1\n\
+         [b]\ntype=UIButton\nid=3\nx=20\ny=5\ndx=2\ndy=1\nupdateWhilePaused=0\n\
+         [i]\ntype=UIImage\nid=4\nx=0\ny=40\nanimation=ui/b/b\n"
+    );
+    let mut tree = tree("icon-clock", &root, &two_frames("b"));
+    for e in &mut tree.elements {
+        e.state &= !HIDDEN;
+    }
+    let icon = tree.elements[3].look.animation[0];
+    for button in [1, 2] {
+        tree.elements[button].look.icon = icon;
+        tree.elements[button].look.icon_file = Some(0);
+    }
+    let (mut painter, texts) = (Painter::default(), Texts::default());
+    let colors = |painter: &mut Painter, tree: &mut Tree| {
+        let frame = paint(tree, painter, &texts);
+        [at(&frame, 11, 5), at(&frame, 21, 5)]
+    };
+    let (red, green) = ([255, 0, 0], [0, 255, 0]);
+    assert_eq!(colors(&mut painter, &mut tree), [red, red]);
+    assert!(!painter.animate(&tree, 1000, false));
+    assert!(!painter.animate(&tree, 1124, false));
+    assert!(painter.animate(&tree, 1125, false));
+    assert_eq!(colors(&mut painter, &mut tree), [green, green]);
+    // Paused: the button that does not update while paused holds its frame.
+    assert!(painter.animate(&tree, 1250, true));
+    assert_eq!(colors(&mut painter, &mut tree), [red, green]);
+    // Setting the icon again starts its clock over: the first frame, then the next after 125 ms.
+    painter.restart_icon(1);
+    painter.animate(&tree, 1260, false);
+    assert_eq!(colors(&mut painter, &mut tree)[0], red);
+    painter.animate(&tree, 1384, false);
+    assert_eq!(colors(&mut painter, &mut tree)[0], red);
+    painter.animate(&tree, 1385, false);
+    assert_eq!(colors(&mut painter, &mut tree)[0], green);
+    // Without a file there is no clock: the icon stays on its first frame.
+    tree.elements[1].look.icon_file = None;
+    painter.animate(&tree, 1510, false);
+    assert_eq!(colors(&mut painter, &mut tree)[0], red);
+}
+
+#[test]
 fn a_button_text_takes_the_colour_of_its_state() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\
