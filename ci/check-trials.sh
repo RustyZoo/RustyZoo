@@ -227,9 +227,11 @@ check base-trial same,animated,changing 'animating maps/scn01a.zoo'
 # The sim command runs the sets too.
 check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 2>/dev/null | grep -q " unit set " && echo yes'
 # A hungry lion (27645) goes to the pile of 50 units that the script puts down, takes bites of 20, 20 and
-# what is left, and the pile goes. Seed 1 reaches the pile in the run, at 900 steps: the loaded lion goes on with its
-# saved set first (behaviours 4.7), and at 600 steps it is still on its way.
-check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 900 --seed 1 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+# what is left, and the pile goes. Seed 2 reaches the pile in the run, at 900 steps: the loaded lion goes on with its
+# saved set first (behaviours 4.7), and at 600 steps it is still on its way. The lion's shelter walk (it aims at a
+# building that serves rest) takes the walk over, so a seed where the lion rests longer never reaches the pile: with
+# the saved goals of every task restored, seed 1 is one (it is cut off at step 691), seeds 2, 3 and 7 are not.
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 900 --seed 2 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # An animal placed (habitat rating 9.4, animals 10): ci/reactions.txt adopts a gazelle and a lion into a
 # pen. The lion's cat family is at -20 in the gazelle's compatible animals, so the gazelle (15672)
 # dislikes the newcomer at pass 131, and the frown plays once.
@@ -1331,15 +1333,16 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream. Seeds searched from 1: seed 5 gives a clutch and a hatching inside the 7200 steps
-# (seeds 1 to 4 lay no egg in them).
+# random stream. Seeds searched from 1: seed 1 gives a clutch and a hatching inside the 7200 steps (with the
+# saved goals of every task restored the units draw otherwise: seed 5 lays no egg in them, seeds 1, 2, 4, 8, 10 to
+# 12 do).
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 7200
-  rz sim "$1" --ticks 7200 --dt 200 --seed 5 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@4761;eggs:3;hatch@5557" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@281;eggs:3;hatch@928" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
