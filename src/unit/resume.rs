@@ -422,6 +422,11 @@ mod tests {
                 kinds.insert(task);
             }
         }
-        assert!(checked >= 100 && kinds.len() >= 10, "{checked} {kinds:?}");
+        // The tasks that both the English and the French install hold (the French one lacks 122).
+        let held = [100, 101, 102, 103, 113, 114, 118, 124, 128];
+        assert!(
+            checked >= 100 && held.iter().all(|t| kinds.contains(t)),
+            "{checked} {kinds:?}"
+        );
     }
 }
