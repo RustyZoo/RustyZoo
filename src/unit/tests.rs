@@ -822,3 +822,5 @@ fn colours_are_drawn_per_group_modulo_its_palettes_and_always_the_same_number_of
         assert_eq!(rng, expect);
     }
 }
+
+mod live_set;
