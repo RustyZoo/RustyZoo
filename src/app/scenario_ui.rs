@@ -3,7 +3,7 @@
 
 use super::{Action, App};
 use crate::money::{SYMBOL, Symbol};
-use crate::scenario::{self, Avail, Deed, Line, Tell, Which};
+use crate::scenario::{self, Act, Avail, Deed, Line, Tell, Which};
 use crate::text::{format, to_cp1252};
 
 impl App<'_> {
@@ -37,15 +37,26 @@ impl App<'_> {
         }
     }
 
-    /// Does what the triggers asked of the interface.
+    /// Does what the triggers asked of the interface, in the order they ran: the award, its
+    /// popup and its cash of one pass come in the order of the file (`awards.md` 6.2).
     pub(super) fn scenario_effects(&mut self) {
         self.scenario_avail(false);
-        self.scenario_deeds();
-        let effects = self.sim.scenario().map(|s| s.effects());
-        if let (Some(effects), Some(ui)) = (effects, &mut self.ui) {
-            for effect in effects {
-                self.marks
-                    .apply(effect, ui, self.renderer.vfs(), &mut self.scenario_lines);
+        while let Some(act) = self.sim.scenario().and_then(|s| s.next_act()) {
+            match act {
+                Act::Avail(made) => self.avail_run(made, false),
+                Act::Deed(deeds) => self.scenario_deeds(deeds),
+                Act::Effects(effects) => {
+                    if let Some(ui) = &mut self.ui {
+                        for effect in effects {
+                            self.marks.apply(
+                                effect,
+                                ui,
+                                self.renderer.vfs(),
+                                &mut self.scenario_lines,
+                            );
+                        }
+                    }
+                }
             }
         }
         for line in self.scenario_lines.drain(..) {
@@ -56,7 +67,7 @@ impl App<'_> {
     /// Carries out triggers 1, 3, 5, 6, 8 and 9 (scenarios 7.2, 7.4, 7.5): a message, the cash, a
     /// boxed animal, an award, a removal and the sell switch. A popup follows its deed, to be shown by the
     /// effects that come after.
-    fn scenario_deeds(&mut self) {
+    fn scenario_deeds(&mut self, deeds: Vec<Deed>) {
         let (Some(game), ui) = (&mut self.game, &mut self.ui) else {
             return;
         };
@@ -68,7 +79,7 @@ impl App<'_> {
             self.renderer.catalogue(),
             &mut self.scenario_lines,
         );
-        for deed in gui.take_deeds() {
+        for deed in deeds {
             let popup = match deed {
                 Deed::Say { kind, text, value } => {
                     // A string of 0 or less is no string: nothing shows.
@@ -158,6 +169,11 @@ impl App<'_> {
     /// popup, and an unlock (`truleb` 10) is stored with the rewards.
     pub(super) fn scenario_avail(&mut self, rewards: bool) {
         let made = self.sim.scenario().map(|s| s.gui().take_avail());
+        self.avail_run(made.unwrap_or_default(), rewards);
+    }
+
+    /// [`scenario_avail`](Self::scenario_avail) for these changes.
+    fn avail_run(&mut self, made: Vec<Avail>, rewards: bool) {
         let (Some(game), vfs, cat) = (
             &mut self.game,
             self.renderer.vfs(),
@@ -167,7 +183,6 @@ impl App<'_> {
         };
         let unlocks: Vec<i32> = made
             .iter()
-            .flatten()
             .filter_map(|a| match a.which {
                 Which::Unlock(id) => Some(id),
                 _ => None,
@@ -184,7 +199,7 @@ impl App<'_> {
             None => unlocks,
         };
         let (mut changed, mut told) = (false, Vec::new());
-        for a in made.iter().flatten() {
+        for a in &made {
             if matches!(a.which, Which::Unlock(id) if !newly.contains(&id)) {
                 continue;
             }

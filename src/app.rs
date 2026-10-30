@@ -2729,6 +2729,9 @@ mod saves_tests;
 mod scenario_tests;
 
 #[cfg(test)]
+mod award_tests;
+
+#[cfg(test)]
 mod terrain_tests;
 
 #[cfg(test)]

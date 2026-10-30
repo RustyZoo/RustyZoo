@@ -24,7 +24,7 @@ use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
 
 pub use apply::{Marks, built_line};
-pub use gui::{Avail, Deed, Effect, Gui, Tell, Which};
+pub use gui::{Act, Avail, Deed, Effect, Gui, Tell, Which};
 pub use popup::{Hint, Op, Popup};
 pub use rules::Game;
 
@@ -647,14 +647,27 @@ impl Scenario {
     /// The effects the triggers left since the last call. A popup whose hint is -1 takes the line
     /// of the goal in progress now (8.3): the text it shows is built from that line.
     pub fn effects(&self) -> Vec<Effect> {
-        let line = self.hint_line();
         let mut effects = self.gui.take_effects();
+        self.give_hint(&mut effects);
+        effects
+    }
+
+    /// The oldest run of what the triggers left, in the order they ran.
+    pub fn next_act(&self) -> Option<Act> {
+        let mut act = self.gui.take_run()?;
+        if let Act::Effects(effects) = &mut act {
+            self.give_hint(effects);
+        }
+        Some(act)
+    }
+
+    fn give_hint(&self, effects: &mut [Effect]) {
+        let line = self.hint_line();
         for popup in effects.iter_mut().filter_map(Effect::popup_mut) {
             if popup.hint.short == -1 {
                 popup.hint.goal = line;
             }
         }
-        effects
     }
 
     pub fn run(&self) -> Run {

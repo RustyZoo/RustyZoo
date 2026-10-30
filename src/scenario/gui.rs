@@ -135,6 +135,24 @@ struct Inner {
     out: Vec<Effect>,
     avail: Vec<Avail>,
     deeds: Vec<Deed>,
+    /// Which queue each thing left by the triggers went to, in the order they ran.
+    order: Vec<Queue>,
+}
+
+/// The three queues the triggers leave things in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Queue {
+    Avail,
+    Deed,
+    Effect,
+}
+
+/// A run of things left one after the other in the same queue.
+#[derive(Debug)]
+pub enum Act {
+    Avail(Vec<Avail>),
+    Deed(Vec<Deed>),
+    Effects(Vec<Effect>),
 }
 
 /// The state shared by the rules and the triggers. Rules read it through `&self`.
@@ -185,7 +203,9 @@ impl Gui {
     }
 
     pub(super) fn push(&self, effect: Effect) {
-        self.0.borrow_mut().out.push(effect);
+        let mut g = self.0.borrow_mut();
+        g.out.push(effect);
+        g.order.push(Queue::Effect);
     }
 
     /// Shows a popup after the effects already left.
@@ -194,26 +214,50 @@ impl Gui {
     }
 
     pub(super) fn push_avail(&self, avail: Avail) {
-        self.0.borrow_mut().avail.push(avail);
+        let mut g = self.0.borrow_mut();
+        g.avail.push(avail);
+        g.order.push(Queue::Avail);
     }
 
     pub(super) fn push_deed(&self, deed: Deed) {
-        self.0.borrow_mut().deeds.push(deed);
+        let mut g = self.0.borrow_mut();
+        g.deeds.push(deed);
+        g.order.push(Queue::Deed);
     }
 
     /// The deeds the triggers left since the last call.
     pub fn take_deeds(&self) -> Vec<Deed> {
-        std::mem::take(&mut self.0.borrow_mut().deeds)
+        let mut g = self.0.borrow_mut();
+        g.order.retain(|&q| q != Queue::Deed);
+        std::mem::take(&mut g.deeds)
     }
 
     /// The availability changes the triggers left since the last call.
     pub fn take_avail(&self) -> Vec<Avail> {
-        std::mem::take(&mut self.0.borrow_mut().avail)
+        let mut g = self.0.borrow_mut();
+        g.order.retain(|&q| q != Queue::Avail);
+        std::mem::take(&mut g.avail)
     }
 
     /// The effects the triggers left since the last call.
     pub fn take_effects(&self) -> Vec<Effect> {
-        std::mem::take(&mut self.0.borrow_mut().out)
+        let mut g = self.0.borrow_mut();
+        g.order.retain(|&q| q != Queue::Effect);
+        std::mem::take(&mut g.out)
+    }
+
+    /// The oldest run of things the triggers left, of one kind: triggers that ran one after the
+    /// other are carried out in that order, whatever they do (`awards.md` 6.2).
+    pub fn take_run(&self) -> Option<Act> {
+        let mut g = self.0.borrow_mut();
+        let first = *g.order.first()?;
+        let n = g.order.iter().take_while(|&&q| q == first).count();
+        g.order.drain(..n);
+        Some(match first {
+            Queue::Avail => Act::Avail(g.avail.drain(..n).collect()),
+            Queue::Deed => Act::Deed(g.deeds.drain(..n).collect()),
+            Queue::Effect => Act::Effects(g.out.drain(..n).collect()),
+        })
     }
 }
 
