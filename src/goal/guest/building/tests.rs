@@ -1845,6 +1845,79 @@ fn a_guest_saved_on_a_bench_leaves_it_at_once_after_the_load() {
     assert_ne!(task(&w), USE);
 }
 
+/// A bench file of version `version` that lists guest 1 on slot 0, saved in the task `task` with
+/// the need index `need`; the load has run.
+fn bench_loaded(version: u32, task: i32, need: u8) -> (World, Catalogue) {
+    let (cat, mut w) = (types(), bench());
+    w.zoo.version = version;
+    let at = w.find(9).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
+        guests: [3, 2, 9],
+        income: [0; 3],
+        upkeep: None,
+        price: 0,
+        users: vec![(1, 0)],
+        users_now: 1,
+        fill: 0,
+        built: 0,
+        upgrade: 0,
+    });
+    let mut block = crate::zoo::UnitBlock::default();
+    (block.target.active, block.need) = (task, need);
+    let at = w.find(1).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().unit = Some(Box::new(block));
+    for at in 0..w.zoo.entities.len() {
+        crate::building::load(&mut w, &cat, at);
+    }
+    crate::building::users::restore(&mut w, &cat, 100);
+    (w, cat)
+}
+
+#[test]
+fn a_guest_saved_on_a_bench_before_version_80_restarts_its_use_set_and_sits_again() {
+    let (mut w, cat) = bench_loaded(79, i32::from(USE), 5);
+    // Not listed yet, and the set is asked for from its first call.
+    assert!(w.units.buildings[&9].users.is_empty());
+    assert_eq!((task(&w), guest(&w).need), (USE, Some("energy")));
+    assert_eq!(
+        w.units.get(1).unwrap().use_set.as_deref(),
+        Some("bbenchenergy0")
+    );
+    let (mut s, mut money) = (game_at(100), Money::default());
+    let log = run(&mut s, &cat, &mut w, &mut money, 50, "use");
+    assert_eq!(log, ["use 9 1"]);
+    assert_eq!(w.units.buildings[&9].users.len(), 1);
+    // The set releases it as any user visible inside.
+    until(&mut s, &cat, &mut w, &mut money, 1000, |w| {
+        w.units.buildings[&9].users.is_empty()
+    });
+    assert_ne!(task(&w), USE);
+    // A file of version 80 has the listed user back at once, with no set asked for.
+    let (w, _) = bench_loaded(80, i32::from(USE), 5);
+    assert_eq!(w.units.buildings[&9].users.len(), 1);
+    assert_eq!(w.units.get(1).unwrap().use_set.as_deref(), None);
+}
+
+#[test]
+fn a_pre_80_bench_user_with_no_need_or_out_of_a_building_task_gets_no_set() {
+    // A need index beyond the list and 255 (none) name no set; a task outside the building tasks
+    // leaves the unit alone.
+    for (task, need, set) in [
+        (i32::from(USE), 200, Some("bbench0")),
+        (i32::from(USE), 255, Some("bbench0")),
+        (0, 5, None),
+        (-1, 5, None),
+    ] {
+        let (w, _) = bench_loaded(79, task, need);
+        assert!(w.units.buildings[&9].users.is_empty());
+        assert_eq!(
+            w.units.get(1).unwrap().use_set.as_deref(),
+            set,
+            "{task} {need}"
+        );
+    }
+}
+
 #[test]
 fn a_guest_on_a_bench_without_the_set_is_never_a_user() {
     let (mut cat, mut w, mut money) = (types(), bench(), Money::default());

@@ -547,6 +547,7 @@ pub fn stop_use(unit: &mut Unit) {
     unit.destination = None;
     (unit.through_building, unit.aborted) = (false, false);
     unit.runner = Default::default();
+    unit.use_set = None;
     unit.animation = Default::default();
     match &mut unit.part {
         Part::Guest(g) => (g.need, g.building, g.stand) = (None, 0, false),
