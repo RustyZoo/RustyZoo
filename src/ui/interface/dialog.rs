@@ -7,7 +7,7 @@
 
 use super::{Action, Interface};
 use crate::app::Key;
-use crate::ui::layout::{HIDDEN, Kind};
+use crate::ui::layout::{HIDDEN, Kind, Picture};
 
 #[cfg(test)]
 mod tests;
@@ -68,11 +68,24 @@ impl Buttons {
 /// The offsets of the buttons from the layout's id, in the order Yes, No, OK, Cancel.
 const BUTTONS: [i32; 4] = [10, 11, 12, 13];
 const MESSAGE: i32 = 6;
+/// The icon: a question shows the question picture on it and clears it when it closes.
+const ICON: i32 = 2;
 
 impl Interface {
     /// Whether a question is open: the game stands still meanwhile.
     pub fn modal_open(&self) -> bool {
         self.modal.is_some()
+    }
+
+    /// Sets the picture a question shows on its icon, the layout's own default (`D + 2`).
+    pub fn set_question_picture(&mut self, picture: Option<Picture>) {
+        self.question_picture = picture;
+    }
+
+    /// Puts `picture` on the icon of the question layout `layout` (`D + 2`); none clears it.
+    /// `false` if there is no such element.
+    pub fn set_question_icon(&mut self, layout: i32, picture: Option<Picture>) -> bool {
+        self.set_picture(layout + ICON, picture)
     }
 
     /// Opens the question layout `layout` (`ui/confirm.lyt` is 45000) with a message and the
@@ -110,6 +123,9 @@ impl Interface {
         self.set_focus(None);
         if let Some(text) = self.tree.find(layout + MESSAGE) {
             self.put_text(text, message);
+        }
+        if modal {
+            self.set_question_icon(layout, self.question_picture);
         }
         self.tree.show(layout);
         let wanted = [buttons.yes, buttons.no, buttons.ok, buttons.cancel];
@@ -153,6 +169,8 @@ impl Interface {
         let code = if code > 9 { OK } else { code };
         self.set_focus(None);
         self.hide_element(d);
+        let layout = self.tree.elements[d].id;
+        self.set_question_icon(layout, None);
         self.event(format!("answer {code}"));
         self.actions.push(Action::Answer(code));
     }
