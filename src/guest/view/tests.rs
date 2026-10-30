@@ -224,6 +224,13 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
     assert_eq!(w.units.donated, [x.stats.donations[1]]);
     assert_eq!(w.units.take_guest_lines().len(), 1);
     assert_eq!(g.va, None);
+    // Every product is rounded to single precision: 22 s at an average of 50 give 0.32557532,
+    // where one rounding at the end gives 0.32557535.
+    let mut w = pen(&[40, 60]);
+    (w.units.donation_factor, w.units.now) = (4.1108e-13, 1000 + 22 * 7_200_000);
+    g.va = lookup(&mut w, &cat, Some(55), &mut rng);
+    leave_area(&mut g, 1, &mut w, &cat, Some(55));
+    assert_eq!(w.units.donated, [0.32557532]);
     // A long view is capped at 10; a sick animal in view, or a view of nothing, gives none.
     w.units.donated.clear();
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
@@ -481,4 +488,20 @@ fn the_animal_of_a_thought_is_picked_in_the_tile_order_of_the_exhibit() {
     let got = check(&mut Guest::default(), &k, &mut w, &cat, &mut rng, Some(55));
     assert_eq!(got, [(10282, Some(11))]);
     assert_eq!(drew(&before, &rng), 2);
+}
+
+#[test]
+fn the_donation_constant_is_the_single_precision_one() {
+    // 13 days at an average of 50: the single-precision constant gives 0.19238544, the double
+    // one 0.19238545.
+    let (mut w, cat) = (pen(&[40, 60]), catalogue());
+    let mut rng = Rng::default();
+    let mut g = Guest {
+        viewed_at: 1000,
+        ..Guest::default()
+    };
+    (w.units.donation_factor, w.units.now) = (4.1108e-13, 1000 + 13 * 7_200_000);
+    g.va = lookup(&mut w, &cat, Some(55), &mut rng);
+    leave_area(&mut g, 1, &mut w, &cat, Some(55));
+    assert_eq!(w.units.donated, [0.19238544]);
 }

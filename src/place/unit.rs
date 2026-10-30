@@ -67,13 +67,12 @@ pub fn price(ty: &EntityType, october: bool) -> f32 {
     cost(ty) * if half { 0.5 } else { 1.0 }
 }
 
-/// The sell price of an animal (unit placing 10.2), computed in double with the single-precision
-/// constants of the original and rounded to `f32`. At minimum health it is halved again.
+/// The sell price of an animal (unit placing 10.2): every operation in `f32`, in the order of
+/// the formula. At minimum health it is halved again.
 pub fn sell_price(cost: f32, happiness: f32, health: f32, max_hits: f32, minimum: bool) -> f32 {
-    let (rate, step) = (f64::from(0.8_f32), f64::from(0.005_f32));
-    let kept = (f64::from(happiness) + 100.0) * step + f64::from(health) / f64::from(max_hits);
-    let price = f64::from(cost) * rate * kept * 0.5;
-    (if minimum { price * 0.5 } else { price }) as f32
+    let kept = (happiness + 100.0) * 0.005 + health / max_hits;
+    let price = cost * 0.8 * kept * 0.5;
+    if minimum { price * 0.5 } else { price }
 }
 
 /// The sell price of an animal of the type that is as new: its initial happiness and full health

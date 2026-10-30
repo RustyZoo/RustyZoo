@@ -43,7 +43,7 @@ use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
 use crate::timing::{Calendar, Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
-use crate::ui::layout::installed_expansions;
+use crate::ui::layout::{expansion_entries, installed_expansions};
 use crate::world::World;
 use crate::zoo::{Entity, Zoo};
 
@@ -759,6 +759,7 @@ impl<'a> App<'a> {
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
         let goals = (zoo.scenario_states(), zoo.version >= 86);
+        let stored = zoo.expansion;
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
@@ -828,6 +829,7 @@ impl<'a> App<'a> {
             finances: Finances::default(),
             awards_page: Awards::default(),
             build: Build::new(installed_expansions(self.renderer.vfs()))
+                .with_selector(expansion_entries(self.renderer.vfs()), stored)
                 .with_exhibits(exhibits)
                 .unlocked(
                     self.renderer.catalogue(),
@@ -877,6 +879,8 @@ impl<'a> App<'a> {
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
             game.build.start_research(self.renderer.catalogue(), &flags);
+            // The resumed scenario sets the selector over the file's value if it has a rule for it.
+            game.build.set_scenario(tree.off, tree.selection);
             game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
@@ -1259,6 +1263,13 @@ impl<'a> App<'a> {
         }
         match command {
             Command::Close => return self.close(),
+            // Escape closes the expansion selector's list without a choice (entity types 10.5).
+            Command::Key(Key::Escape, ..) if self.selector_open() && !self.question_open() => {
+                if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
+                    game.build.close_selector(ui);
+                }
+                return;
+            }
             Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
                 return self.close_list();
             }
@@ -1812,6 +1823,9 @@ impl<'a> App<'a> {
                 }
                 Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
                 Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),
+                Action::Row(crate::build::SELECTOR_LIST, row) if self.game.is_some() => {
+                    self.expansion_row(row);
+                }
                 Action::Row(research_panel::LIST, row) if self.game.is_some() => {
                     self.research_tick(row);
                 }
@@ -2067,9 +2081,14 @@ impl<'a> App<'a> {
                     // A free program changes the animals the map placed (7.4).
                     crate::animal::lengthen(&mut game.world, &life);
                     game.build.start_research(cat, &flags);
+                    // A start sets the raw expansion first, then the scenario's rules (research 3.5).
+                    let value = tree.selection.unwrap_or(tree.expansion);
+                    game.build.set_scenario(tree.off, Some(value));
                     game.world.units.upgrades = research::upgrades(&tree);
                 }
                 self.sim.set_research(tree);
+            } else if let Some(game) = &mut self.game {
+                game.build.set_scenario([false; 4], Some(0));
             }
         }
         if let Some(game) = &mut self.game {

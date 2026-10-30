@@ -81,6 +81,7 @@ impl App<'_> {
         let mut zoo = (game.world).saved(crate::zoo::knows(cat));
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
         game.world.finish_save(&mut zoo, cat);
+        zoo.expansion = game.build.value() as u32;
         if let Some(section) = self.sim.research_section() {
             zoo.set_research(section);
         }

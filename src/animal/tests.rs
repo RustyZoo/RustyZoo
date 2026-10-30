@@ -288,6 +288,30 @@ fn the_social_check_judges_the_number_the_room_and_the_guests() {
 }
 
 #[test]
+fn the_too_many_limit_is_rounded_to_single_precision() {
+    // Size 7, habitat size 3, maximum 27: the limit is 62.999996, not 63 (animals 5.1).
+    let k = Keys {
+        habitat_size: 3,
+        number_min: 0,
+        number_max: 27,
+        ..keys()
+    };
+    for (adults, many) in [(63, true), (62, false)] {
+        let env = Env {
+            size: 7,
+            census: Census {
+                adults,
+                ..in_exhibit().census
+            },
+            ..in_exhibit()
+        };
+        let mut a = animal();
+        fires(&mut a, SOCIAL, &k, &env);
+        assert_eq!(a.advice >> MANY & 1 == 1, many, "{adults} adults");
+    }
+}
+
+#[test]
 fn the_other_checks_change_the_happiness_and_raise_the_flags() {
     let (k, env, class) = (keys(), in_exhibit(), Class::default());
     // A keeper's visit and mourning count once per tick.
