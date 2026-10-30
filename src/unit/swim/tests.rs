@@ -189,7 +189,11 @@ fn a_swimmer_at_the_edge_of_its_tank_always_finds_somewhere_to_go() {
                 let mut unit =
                     std::mem::replace(w.units.get_mut(1).unwrap(), Unit::new(1, Kind::Animal));
                 assert!(super::super::walk::random_walk(
-                    &mut unit, &mut w, &mut rng, at
+                    &mut unit,
+                    &mut w,
+                    &crate::entity::Catalogue::default(),
+                    &mut rng,
+                    at
                 ));
                 let to = unit.path.last().copied();
                 assert!(unit.path.len() > 1, "{tile_xy:?} {facing} {seed}");

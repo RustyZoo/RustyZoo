@@ -929,7 +929,7 @@ impl Hooks for Standard<'_> {
         let mut moved = false;
         while let Some(go) = unit.runner.take_move() {
             moved = true;
-            let flow = movement::call(unit, world, self.data, ctx.rng, at, &go);
+            let flow = movement::call(unit, world, self.data, ctx.cat, ctx.rng, at, &go);
             if flow == Flow::Running {
                 break;
             }

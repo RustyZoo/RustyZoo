@@ -666,6 +666,7 @@ fn an_aborted_walk_ends_its_move_call_as_done() {
         &mut u,
         &mut w,
         &walker,
+        &Catalogue::default(),
         &mut Rng::default(),
         at,
         &(Gait::Slow, Target::None),
@@ -685,7 +686,15 @@ fn a_target_0_keeps_the_3d_target() {
         u.walking = false;
         u.path = vec![tile(5, 5), tile(6, 5)];
         u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
-        call(u, w, &walker, &mut rng, at, &(Gait::Slow, target));
+        call(
+            u,
+            w,
+            &walker,
+            &Catalogue::default(),
+            &mut rng,
+            at,
+            &(Gait::Slow, target),
+        );
     };
     let held = |u: &mut Unit| u.goal.record.target.id = 7;
     u.target = Target::Dive;

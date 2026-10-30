@@ -4,15 +4,18 @@
 //! Kept as the original has it: with no suitable tile on the ring, the corner of the ring is the
 //! destination (engine issue 304). An animal in the tank mode picks a tile of its tank not behind
 //! it and a level for it (tank fauna 6), one in the water mode a water tile. Not here yet: the
-//! exhibits a worker or a guide is assigned to, the exhibits a keeper without assignments may
-//! serve, the escape of an animal.
+//! exhibits a worker is assigned to, the escape of an animal.
 
 use super::{Kind, Part, Unit, movement, swim};
 use crate::animal::tank::kind;
 use crate::config::Config;
+use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::guest::view;
 use crate::path::{self, Dest, Finder, MAX, Mover};
+use crate::place::bulldozer::type_of;
 use crate::sim::Rng;
+use crate::staff::assign;
 use crate::timing::ini_whole;
 use crate::world::World;
 
@@ -53,14 +56,26 @@ impl Ring {
 /// 10.2: the unit at position `at` of the entity list looks for a place to walk to and a path
 /// to it. True when a search succeeded; the unit then holds the path and its destination, and a
 /// move call starts the walk ([`movement::call`]). A unit that has a path does nothing.
-pub fn random_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize) -> bool {
-    walking(unit, world, rng, at, |walk| walk.run())
+pub fn random_walk(
+    unit: &mut Unit,
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    at: usize,
+) -> bool {
+    walking(unit, world, cat, rng, at, |walk| walk.run())
 }
 
 /// The walk of the surface goal (tank fauna 10.2): the destination of the unit's terrain mode and a
 /// path to it that is not partial, with no fallback.
-pub fn surface_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize) -> bool {
-    walking(unit, world, rng, at, |walk| {
+pub fn surface_walk(
+    unit: &mut Unit,
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    at: usize,
+) -> bool {
+    walking(unit, world, cat, rng, at, |walk| {
         let pick = walk.pick();
         pick.is_some_and(|to| walk.search(to, false))
     })
@@ -70,6 +85,7 @@ pub fn surface_walk(unit: &mut Unit, world: &mut World, rng: &mut Rng, at: usize
 fn walking(
     unit: &mut Unit,
     world: &mut World,
+    cat: &Catalogue,
     rng: &mut Rng,
     at: usize,
     how: impl FnOnce(&mut Walk) -> bool,
@@ -91,8 +107,10 @@ fn walking(
         unit,
         world,
         finder: &mut finder,
+        cat,
         rng,
         mover,
+        at,
         here,
         level: z.div_euclid(16),
         facing,
@@ -116,8 +134,11 @@ struct Walk<'a> {
     unit: &'a mut Unit,
     world: &'a mut World,
     finder: &'a mut Finder,
+    cat: &'a Catalogue,
     rng: &'a mut Rng,
     mover: Mover,
+    /// The position of the unit in the entity list.
+    at: usize,
     here: usize,
     level: i32,
     facing: u32,
@@ -251,7 +272,8 @@ impl Walk<'_> {
                 Some(dry[self.rng.pick(dry.len() as u32) as usize])
             }
             (_, Some(id)) => self.gate_neighbour(id),
-            (Kind::Keeper, None) => self.assigned_gate().or_else(|| self.stroll()),
+            (Kind::Keeper, None) => self.keeper_gate().or_else(|| self.stroll()),
+            (Kind::Guide, None) => self.guide_gate().or_else(|| self.stroll()),
             _ => self.stroll(),
         }
     }
@@ -371,22 +393,40 @@ impl Walk<'_> {
         })
     }
 
-    /// A keeper on the grounds with exhibits assigned: the outside of the gate of one of them, drawn
-    /// at random, unless he stands there (then the ring serves). Without assignments the
-    /// exhibits that give 0 in `blockService` come in with the catalogue (staff 7.10).
-    fn assigned_gate(&mut self) -> Option<usize> {
-        let Part::Staff(s) = &self.unit.part else {
-            return None;
-        };
-        let gates: Vec<usize> = (s.assigned.iter())
-            .filter_map(|&x| crate::staff::service::gate_tiles(self.world, x))
-            .map(|(_, outside)| outside)
-            .collect();
-        if gates.is_empty() {
-            return None;
+    /// The list of exhibits a staff member is assigned to.
+    fn assignments(&self) -> Vec<u32> {
+        match &self.unit.part {
+            Part::Staff(s) => s.assigned.clone(),
+            _ => Vec::new(),
         }
-        let gate = gates[self.rng.pick(gates.len() as u32) as usize];
-        Some(gate).filter(|&t| t != self.here)
+    }
+
+    /// A keeper on the grounds (staff 7.10): the assigned exhibits, else every exhibit that gives
+    /// 0 in `block_service` with the arguments `(false, true)`.
+    fn keeper_gate(&mut self) -> Option<usize> {
+        let mut list = self.assignments();
+        if list.is_empty() {
+            let who = type_of(self.cat, self.world.zoo.entities.get(self.at)?)?;
+            let (world, cat) = (&*self.world, self.cat);
+            list = (world.exhibits().list().iter().map(|x| x.id))
+                .filter(|&x| assign::block_service(world, cat, x, who, (false, true)) == 0)
+                .collect();
+        }
+        self.gate_of_one(&list)
+    }
+
+    /// A guide on the grounds (tour guide 12.4): the exhibit is chosen as for a leg.
+    fn guide_gate(&mut self) -> Option<usize> {
+        let list = view::tour_exhibits(self.world, self.cat, &self.assignments());
+        self.gate_of_one(&list)
+    }
+
+    /// The tile outside the gate of one of the exhibits `list`, one draw when it has any; none
+    /// when the exhibit has no gate or the unit stands on the tile (the ring serves then).
+    fn gate_of_one(&mut self, list: &[u32]) -> Option<usize> {
+        let x = *list.get(self.rng.pick(list.len() as u32) as usize)?;
+        let (_, outside) = crate::staff::service::gate_tiles(self.world, x)?;
+        Some(outside).filter(|&t| t != self.here)
     }
 
     /// The `rx` and `ry` of the ring: two draws.

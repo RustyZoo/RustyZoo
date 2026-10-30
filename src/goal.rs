@@ -980,7 +980,7 @@ impl Cx<'_, '_> {
             return;
         }
         self.unit.path.clear();
-        let walked = walk::random_walk(self.unit, self.world, self.ctx.rng, self.at);
+        let walked = walk::random_walk(self.unit, self.world, self.ctx.cat, self.ctx.rng, self.at);
         if let Some(to) = self.unit.sent.take() {
             return self.send_to(to);
         }

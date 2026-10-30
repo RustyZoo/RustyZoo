@@ -126,14 +126,7 @@ impl Cx<'_, '_> {
 
     fn leg_walk(&mut self) -> Option<()> {
         let assigned = self.guide_state(|s| s.assigned.clone())?;
-        let held = view::beasts(self.world, self.ctx.cat);
-        let exhibits = self.world.exhibits().list().iter().map(|x| x.id);
-        let list: Vec<u32> = match assigned.is_empty() {
-            true => exhibits
-                .filter(|x| held.iter().any(|b| b.exhibit == *x))
-                .collect(),
-            false => assigned,
-        };
+        let list = view::tour_exhibits(self.world, self.ctx.cat, &assigned);
         let x = *list.get(self.ctx.rng.pick(list.len() as u32) as usize)?;
         let guests = self.guests();
         let areas = view::viewing_areas(self.world, self.ctx.cat, x);
