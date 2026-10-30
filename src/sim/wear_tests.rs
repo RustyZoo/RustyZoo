@@ -78,6 +78,9 @@ fn the_interval_is_the_lower_bound_plus_the_rounded_share_of_the_range() {
     assert_eq!(at(d(1000, 3000), 0x7fff), 3000);
     assert_eq!(at(d(1000, 3000), 41), 1003);
     assert_eq!(at(d(480_000, 1_200_000), 18467), 480_000 + 405_781);
+    // Single precision all along: 881 and 3093 differ by 1 from the `/ 32767` form.
+    assert_eq!(at(d(480_000, 1_200_000), 881), 480_000 + 19358);
+    assert_eq!(at(d(480_000, 1_200_000), 3093), 480_000 + 67964);
     // Equal bounds, upside-down bounds, zero and huge ones, a draw out of range.
     assert_eq!(at(d(500, 500), 9000), 500);
     assert_eq!(at(d(3000, 1000), 0x7fff), 1000);

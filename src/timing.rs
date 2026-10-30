@@ -12,6 +12,7 @@
 //! `MaxSimTick=0` uses the default.
 
 use crate::config::{self, Config};
+use crate::single;
 
 /// Period of the update timer when `UpdateRate` is absent or out of range: 10 per second.
 const FALLBACK_UPDATE_PERIOD: u32 = 100;
@@ -65,16 +66,15 @@ impl Speed {
     }
 
     /// A character key: `.` adds 0.1, `,` subtracts 0.1 and `/` sets 1.0, in developer mode.
-    /// The tenths are plain double arithmetic (1.2000000000000002 after two `.`). The original
-    /// stops `,` only when the factor is not above 0.1 and so reaches 1.4e-16; here `,` never
-    /// goes below 0.1 (main loop O7). Whether the key was one of these and acted.
+    /// Each sum is rounded to `f32` (main loop 5.2, 5.4): 1.2000000476837158 after two `.`, and
+    /// `,` stops at 0.09999992698431015, which is not above 0.1. Whether the key acted.
     pub fn key(&mut self, byte: u8) -> bool {
         if !self.developer {
             return false;
         }
         match byte {
-            b'.' => self.factor += 0.1,
-            b',' if self.factor - 0.1 >= 0.1 - 1e-9 => self.factor -= 0.1,
+            b'.' => self.factor = single(self.factor + 0.1),
+            b',' if self.factor > 0.1 => self.factor = single(self.factor - 0.1),
             b',' => {}
             b'/' => self.factor = 1.0,
             _ => return false,
@@ -163,8 +163,8 @@ impl Timers {
             .map_or(u64::from(u32::MAX), |last| now.saturating_sub(last));
         let step = (elapsed > u64::from(self.update_period)).then(|| {
             self.last_simulation = Some(now);
-            // Product in double precision, truncated toward zero (a saturating cast), capped.
-            (((elapsed as f64) * speed) as u64).min(u64::from(self.cap)) as u32
+            // Product rounded to 24 bits, truncated toward zero (a saturating cast), capped.
+            (single(elapsed as f64 * speed) as u64).min(u64::from(self.cap)) as u32
         });
         Pass {
             draw,
@@ -641,7 +641,7 @@ mod tests {
         assert!(!s.key(b'x') && !s.key(0));
         s.key(b'.');
         s.key(b'.');
-        assert_eq!(s.factor(), 1.2000000000000002);
+        assert_eq!(s.factor(), 1.2000000476837158);
         s.key(b'/');
         assert_eq!(s.factor(), 1.0);
         let down: Vec<f64> = (0..11)
@@ -650,9 +650,20 @@ mod tests {
                 s.factor()
             })
             .collect();
-        assert_eq!(down[2], 0.7000000000000001);
-        assert_eq!(down[8], 0.10000000000000014, "the lowest ordinary value");
-        assert_eq!(down[10], down[8], "never below a tenth");
+        assert_eq!(down[4], 0.49999991059303284);
+        assert_eq!(down[7], 0.19999992847442627);
+        assert_eq!(down[8], 0.09999992698431015, "below 0.1: the lowest value");
+        assert_eq!(down[10], down[8], "the next press does nothing");
+        s.key(b'/');
+        let up: Vec<f64> = (0..10)
+            .map(|_| {
+                s.key(b'.');
+                s.factor()
+            })
+            .collect();
+        assert_eq!(up[0], 1.100000023841858);
+        assert_eq!(up[4], 1.5000001192092896);
+        assert_eq!(up[9], 2.000000238418579);
         for _ in 0..1000 {
             s.key(b'.');
         }
@@ -809,13 +820,22 @@ mod tests {
             (16, [None; 5]),
             (66, [None; 5]),
             (67, [Some(33), Some(67), Some(100), Some(134), Some(200)]),
-            (80, [Some(40), Some(80), Some(120), Some(160), Some(200)]),
-            (100, [Some(50), Some(100), Some(150), Some(200), Some(200)]),
-            (200, [Some(100), Some(200), Some(200), Some(200), Some(200)]),
+            (80, [Some(39), Some(80), Some(120), Some(160), Some(200)]),
+            (100, [Some(49), Some(100), Some(150), Some(200), Some(200)]),
+            (200, [Some(99), Some(200), Some(200), Some(200), Some(200)]),
             (500, [Some(200); 5]),
         ];
         for (elapsed, expected) in table {
-            for (speed, expected) in [0.5, 1.0, 1.5, 2.0, 3.0].into_iter().zip(expected) {
+            for (speed, expected) in [
+                0.49999991059303284,
+                1.0,
+                1.5000001192092896,
+                2.000000238418579,
+                3.0,
+            ]
+            .into_iter()
+            .zip(expected)
+            {
                 let mut t = Timers::new(66, 16, 200);
                 t.pass(1000, 1.0);
                 assert_eq!(
@@ -825,10 +845,14 @@ mod tests {
                 );
             }
         }
+        // The product is rounded to 24 bits before it is truncated: 70 * 0.9 is 63, not 62.
+        let mut t = Timers::new(66, 16, 200);
+        t.pass(1000, 1.0);
+        assert_eq!(t.pass(1070, 0.8999999761581421).step, Some(63));
         // The lowest ordinary developer speed.
         let mut t = Timers::new(66, 16, 200);
         t.pass(1000, 1.0);
-        assert_eq!(t.pass(1067, 0.10000000000000014).step, Some(6));
+        assert_eq!(t.pass(1067, 0.09999992698431015).step, Some(6));
         // Zero speed gives steps of 0; a negative or NaN product gives 0 too.
         let mut t = Timers::new(66, 16, 200);
         t.pass(1000, 1.0);

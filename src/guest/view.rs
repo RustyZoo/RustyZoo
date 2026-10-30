@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use super::*;
 use crate::exhibit::viewing::{self, Area, Ground, Plan};
 use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::single;
 
 /// The viewing areas of the exhibits and, per tile, the area each of the eight directions looks
 /// through, as (position of the exhibit, position of the area).
@@ -360,7 +361,9 @@ pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, ti
     // The calendar's milliseconds (it runs 7,200 times faster than the play) in units of 100 ns.
     let t = (world.units.now.saturating_sub(g.viewed_at).max(0) as u64).saturating_mul(10_000);
     let factor = f64::from(world.units.donation_factor);
-    let raw = t as f64 * factor * (f64::from(s.average) + f64::from(s.bonus)) * 0.01;
+    // Each operation rounded to 24 bits: h + b first, then the products in the order written.
+    let happy = single(f64::from(s.average) + f64::from(s.bonus));
+    let raw = single(single(single(t as f64 * factor) * happy) * f64::from(0.01_f32));
     let d = if raw.is_nan() { 0.0 } else { raw.min(10.0) } as f32;
     let give = s.animals > 0 && s.sick == 0 && s.crowd < 50 && d > 0.0;
     let Some(x) = world.exhibits_mut().get_mut(s.exhibit) else {

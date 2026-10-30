@@ -52,6 +52,7 @@ use crate::exhibit::rating::Record;
 use crate::exhibit::{EXTERIOR, GROUNDS, rating};
 use crate::research::Overlay;
 use crate::sim::Rng;
+use crate::single;
 use crate::timing::{Date, file_time};
 use crate::unit::{Ctx, Part, Unit};
 use crate::vfs::Vfs;
@@ -950,11 +951,12 @@ fn social(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
         few = true;
         a.mark(FEW, k.number_min_change < -5);
     } else {
+        // Quotient and product each rounded to 24 bits (animals 5.1).
         let f = match size {
             0 => 1.0,
-            n => (n as f64 / f64::from(k.habitat_size)).max(1.0),
+            n => single(n as f64 / f64::from(k.habitat_size)).max(1.0),
         };
-        if adults > f * f64::from(k.number_max) {
+        if adults > single(f * f64::from(k.number_max)) {
             many = true;
             a.mark(MANY, k.number_max_change < -5);
         }

@@ -239,6 +239,8 @@ fn the_sell_price_follows_the_worked_examples() {
     assert_eq!(sell_price(800.0, 75.0, 120.0, 120.0, false), 600.0);
     assert_eq!(sell_price(800.0, 30.0, 120.0, 120.0, false), 528.0);
     assert_eq!(sell_price(800.0, 0.0, 60.0, 120.0, false), 320.0);
+    // Every operation rounds to f32: 331.19998, where one rounding at the end gives 331.2.
+    assert_eq!(sell_price(800.0, -93.0, 120.0, 120.0, false), 331.19998);
     assert_eq!(sell_price(800.0, -100.0, 0.0, 120.0, true), 0.0);
     assert_eq!(sell_price(800.0, -100.0, 120.0, 120.0, true), 160.0);
     // A new zebra is as happy as its type says and has all its hit points.
