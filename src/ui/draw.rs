@@ -96,6 +96,8 @@ pub struct Painter {
     /// The frame an animated element shows, the milliseconds it has been shown and the clock when
     /// it was last drawn.
     frames: HashMap<usize, (usize, u64, u64)>,
+    /// The same for the animated icon of a button (its own clock, started when the icon is set).
+    icons: HashMap<usize, (usize, u64, u64)>,
 }
 
 impl Painter {
@@ -118,7 +120,9 @@ impl Painter {
     /// the whole time (sprite drawing 6.2: a frame lasts the delay of its sprite file, the
     /// sequence starts again at the end and the time left over is dropped). An element with
     /// `updateWhilePaused=0` does not advance while `paused`, but its time moves on. Returns
-    /// whether some frame changed, so the interface has to be painted again.
+    /// whether some frame changed, so the interface has to be painted again. The animated icon of
+    /// a button (information panels 4.3.1) has its own clock, which [`Painter::restart_icon`]
+    /// starts over, and the same pause rule.
     pub fn animate(&mut self, tree: &Tree, now: u64, paused: bool) -> bool {
         let mut changed = false;
         for i in shown(tree) {
@@ -136,26 +140,40 @@ impl Painter {
                 continue;
             };
             let (count, delay) = (sprite.frames.len(), u64::from(sprite.delay_ms));
-            let (frame, time, seen) = self.frames.entry(i).or_insert((0, 0, now));
-            let ms = now.saturating_sub(*seen);
-            *seen = now;
-            if *frame >= count {
-                (*frame, *time) = (0, 0);
-            }
-            if count < 2 || delay == 0 || (paused && !e.look.update_while_paused) {
+            let run = !paused || e.look.update_while_paused;
+            changed |= step(
+                self.frames.entry(i).or_insert((0, 0, now)),
+                (count, delay),
+                now,
+                run,
+            );
+        }
+        for i in shown(tree) {
+            let e = &tree.elements[i];
+            let (Some(Picture::Animation(a)), Some(file)) = (e.look.icon, e.look.icon_file) else {
                 continue;
-            }
-            *time = time.saturating_add(ms);
-            while *time >= delay {
-                *time -= delay;
-                *frame += 1;
-                changed = true;
-                if *frame >= count {
-                    (*frame, *time) = (0, 0);
-                }
-            }
+            };
+            let Some(sprite) = (tree.pictures.animations.get(a))
+                .and_then(|a| a.sprites.get(file))
+                .map(|s| &s.0)
+            else {
+                continue;
+            };
+            let (count, delay) = (sprite.frames.len(), u64::from(sprite.delay_ms));
+            let run = !paused || e.look.update_while_paused;
+            changed |= step(
+                self.icons.entry(i).or_insert((0, 0, now)),
+                (count, delay),
+                now,
+                run,
+            );
         }
         changed
+    }
+
+    /// Starts the icon clock of element `i` over: its next frame is the first.
+    pub fn restart_icon(&mut self, i: usize) {
+        self.icons.remove(&i);
     }
 
     fn widget(
@@ -192,11 +210,11 @@ impl Painter {
             Kind::Button(_) => {
                 let set = button_set(e.state);
                 if e.look.icon_first {
-                    self.icon(pictures, e, screen, frame);
+                    self.icon(pictures, i, e, screen, frame);
                 }
                 self.picture(pictures, i, e, set, screen, frame);
                 if !e.look.icon_first {
-                    self.icon(pictures, e, screen, frame);
+                    self.icon(pictures, i, e, screen, frame);
                 }
                 color_as_icon(frame, e, screen);
                 let text = element_text(e, strings);
@@ -347,19 +365,21 @@ impl Painter {
         }
     }
 
-    /// The icon of a button, at its first frame, placed like the button's picture. An icon with
-    /// a sprite file (the unit's picture on a panel's follow button) is centred in the button and
-    /// clipped to its rectangle.
+    /// The icon of a button, placed like the button's picture, at the frame of its own clock. An
+    /// icon with a sprite file (the unit's picture on a panel's follow button) is centred in the
+    /// button and clipped to its rectangle.
     fn icon(
         &mut self,
         pictures: &Pictures,
+        i: usize,
         e: &Element,
         (sx, sy, w, h): (i32, i32, i32, i32),
         frame: &mut Framebuffer,
     ) {
         let Some(icon) = e.look.icon else { return };
         let file = e.look.icon_file;
-        let Some(cut) = self.cut(pictures, icon, file.unwrap_or(0), 0) else {
+        let at = file.and_then(|_| self.icons.get(&i)).map_or(0, |f| f.0);
+        let Some(cut) = self.cut(pictures, icon, file.unwrap_or(0), at) else {
             return;
         };
         let (x, y) = match cut.animation {
@@ -911,6 +931,32 @@ fn shown(tree: &Tree) -> Vec<usize> {
         }
     }
     order
+}
+
+/// Advances the clock `(frame, time, seen)` of a sprite file of `(count, delay)` frames and ms to
+/// `now`: by the time since it was last seen when `run`, the sequence starting again at its end
+/// with the time left over dropped. Returns whether the frame changed.
+fn step(clock: &mut (usize, u64, u64), (count, delay): (usize, u64), now: u64, run: bool) -> bool {
+    let (frame, time, seen) = clock;
+    let ms = now.saturating_sub(*seen);
+    *seen = now;
+    if *frame >= count {
+        (*frame, *time) = (0, 0);
+    }
+    if count < 2 || delay == 0 || !run {
+        return false;
+    }
+    let mut changed = false;
+    *time = time.saturating_add(ms);
+    while *time >= delay {
+        *time -= delay;
+        *frame += 1;
+        changed = true;
+        if *frame >= count {
+            (*frame, *time) = (0, 0);
+        }
+    }
+    changed
 }
 
 /// The set a widget draws: its state's for a button, else 0.

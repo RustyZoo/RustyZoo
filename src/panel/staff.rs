@@ -295,7 +295,7 @@ impl Panel {
             ui.set_button(FOLLOW, false, !unit.carried);
         }
         if fresh || self.clock.forced {
-            set_follow_icon(ui, vfs, FOLLOW, ty);
+            set_follow_icon(ui, vfs, FOLLOW, ty, "idle");
         }
         for button in [PICK_UP, FIRE] {
             ui.set_enabled(button, !unit.carried);

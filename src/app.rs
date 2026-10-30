@@ -598,6 +598,10 @@ const GUEST_NAME: i32 = 9507;
 /// The layout of the question boxes with a message, the main panel and the options panel, and the
 /// buttons of the options panel that leave the game.
 const QUESTION: i32 = 45000;
+/// The picture a question shows on its icon, and the exclamation picture of a research completion
+/// (research 5.4.1).
+const QUESTION_PICTURE: &str = "ui/sharedui/question/question";
+const EXCLAIM_PICTURE: &str = "ui/sharedui/exclaim/exclaim";
 const MAIN_PANEL: i32 = 2;
 /// The cash on the status bar, and its bars of animal happiness, guest happiness and zoo rating.
 const STATUS_MONEY: i32 = 1016;
@@ -918,6 +922,8 @@ impl<'a> App<'a> {
         self.map = Framebuffer::new(self.frame.width, self.frame.height);
         self.painted = None;
         crate::usertext::serve(&mut ui, self.renderer.catalogue());
+        let question = ui.tree.picture(self.renderer.vfs(), QUESTION_PICTURE);
+        ui.set_question_picture(question);
         let names = self.type_names(&ui);
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {

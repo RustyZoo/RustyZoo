@@ -157,14 +157,13 @@ impl Marks {
         self.last = Some(p);
     }
 
-    /// Gives back what the triggers changed and hides the hint (8.4).
+    /// Gives back what the triggers changed and hides the hint (8.4). An element a trigger hid
+    /// stays hidden: only its mark goes, so the next show of its layout brings it back.
     pub fn clean(&mut self, ui: &mut Interface) {
         for id in self.disabled.drain(..) {
             ui.disable(id, false);
         }
-        for id in self.hidden.drain(..) {
-            ui.conceal(id, false);
-        }
+        self.hidden.clear();
         if let Some(hint) = self.hint.take() {
             ui.conceal(hint, true);
         }

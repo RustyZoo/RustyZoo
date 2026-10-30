@@ -279,7 +279,16 @@ fn availability(name: &str, triggers: &[&str], body: impl FnOnce(&mut App, [bool
          [8]\nlayout=45000\nshortText1=153\nmodal=1\n"
     );
     let files = [("s/av.scn", text.into_bytes())];
-    let cat = Some(super::avail_tests::catalogue());
+    let mut cat = super::avail_tests::catalogue();
+    cat.awards = crate::award::Definitions::of(&[(
+        3,
+        crate::award::Definition {
+            name: 29001,
+            tooltip: 0,
+            icon: String::new(),
+        },
+    )]);
+    let cat = Some(cat);
     with_game(name, "", &files, cat, |app, install| {
         play(app, "s/av.scn");
         let cat = app.renderer.catalogue();
@@ -562,6 +571,69 @@ fn trigger_1_shows_its_string_built_with_the_value_in_the_message_line() {
 }
 
 #[test]
+fn trigger_6_gives_the_award_once_and_names_it_in_the_message_line() {
+    let defined = |name: &str, triggers: &[&str], held: &[i32], said: &str| {
+        availability(name, triggers, |app, _, _| {
+            let game = app.game.as_ref().unwrap();
+            // The map of the tests holds award 0 already.
+            let mut got = game.world.zoo.awards.clone();
+            got.retain(|&a| a != 0 || held.contains(&0));
+            assert_eq!(got, held, "{name}");
+            let line = app.interface().unwrap().text(7001).unwrap();
+            assert_eq!(String::from_utf8_lossy(&line), said, "{name}");
+        });
+    };
+    // The award 3 has a definition (see `catalogue`); the string names it.
+    defined(
+        "award-3",
+        &["trulea=6\ntarga=3\ntargb=9401"],
+        &[3],
+        "won Gold",
+    );
+    // A duplicate is ignored; the larger id comes first.
+    defined(
+        "award-twice",
+        &[
+            "trulea=6\ntarga=3",
+            "trulea=6\ntarga=3",
+            "trulea=6\ntarga=8",
+        ],
+        &[8, 3],
+        "",
+    );
+    // No definition, no text, or a text of 0 or less: the award is given, nothing shows.
+    defined(
+        "award-undefined",
+        &["trulea=6\ntarga=4\ntargb=9401"],
+        &[4],
+        "",
+    );
+    for text in ["", "targb=0", "targb=-2"] {
+        let body = format!("trulea=6\ntarga=3\n{text}");
+        defined("award-silent", &[&body], &[3], "");
+    }
+    // A `truleb` other than 0 gives nothing but the message still shows.
+    defined(
+        "award-truleb",
+        &["trulea=6\ntruleb=1\ntarga=3\ntargb=9401"],
+        &[],
+        "won Gold",
+    );
+    // A missing or negative id and a huge one are held as read.
+    defined("award-missing", &["trulea=6"], &[0], "");
+    availability("award-log", &["trulea=6\ntarga=-5"], |app, _, _| {
+        assert!(told(app).contains("scenario award -5"));
+    });
+    defined("award-negative", &["trulea=6\ntarga=-5"], &[-5], "");
+    defined(
+        "award-huge",
+        &["trulea=6\ntarga=2147483647"],
+        &[i32::MAX],
+        "",
+    );
+}
+
+#[test]
 fn trigger_3_donates_adds_or_sets_the_cash_and_tells_the_amount() {
     let cash = |name: &str, how: i32, amount: i32, text: i32| {
         let trigger = format!("trulea=3\ntruleb={how}\ntarga={amount}\ntargb={text}");
@@ -732,8 +804,9 @@ fn trigger_8_cancels_the_carry_and_the_selection_of_the_entity_it_removes() {
 }
 
 #[test]
-fn a_scenario_end_gives_back_the_elements_a_trigger_took() {
-    // The start disables the button 2001 and hides 7001; a win or a loss gives both back.
+fn a_scenario_end_enables_what_a_trigger_disabled_and_keeps_what_it_hid() {
+    // The start disables the button 2001 and hides 7001; a win or a loss enables the button and
+    // leaves 7001 hidden (8.4).
     for (name, kind) in [("win", ""), ("lose", "type=7\n")] {
         let text = format!(
             "[desc]\nname=9001\n[start]\ntriggers=t\ntriggers=u\n[t]\ntrulea=2\ntruleb=3\ntarga=2001\n\
@@ -754,7 +827,10 @@ fn a_scenario_end_gives_back_the_elements_a_trigger_took() {
             assert!(!shown(app, 7001), "{name}");
             until_asked(app, now);
             assert!(!off(app), "{name} disabled");
-            assert!(shown(app, 7001), "{name} hidden");
+            assert!(!shown(app, 7001), "{name} stays hidden");
+            // The mark is gone: the next show of the root layout brings the element back.
+            app.interface().unwrap().show(1);
+            assert!(shown(app, 7001), "{name} shown again");
         });
     }
 }

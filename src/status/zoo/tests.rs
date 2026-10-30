@@ -378,8 +378,9 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
     // Zoo status 17.5: the set-up check and the first one, 4 s later. The original's 78 at its
     // first check is a coincidence: it rates 17 animals, no guests and research 5 points, while
     // the engine rates 19 animals, the stored guests and research 0. Those differences cancel
-    // while no animal is ill. At step 30 one animal falls ill by the random illness draw, so the
-    // healthy part drops from 15 to 14, giving 77.
+    // while no animal is ill. Whether one falls ill in these 4 s is the random illness draw, which
+    // follows the draws of the loaded units' goals: with their saved goals none does, so the
+    // healthy part stays 15 and the rating is the original's 78.
     let table = [
         ("dinosmal", 45, 42),
         ("deathmtn", 42, 37),
@@ -391,7 +392,7 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
         ("lg_resrt", 47, 42),
         ("beach", 49, 44),
         ("tundra", 42, 37),
-        ("med_kids", 81, 77),
+        ("med_kids", 81, 78),
     ];
     for (map, setup, first) in table {
         let catalogue = Catalogue::load(&vfs).unwrap();

@@ -1,14 +1,21 @@
 //! The research step's meeting with the interface (research 5.4): what a completed program does.
 
-use super::{App, QUESTION};
+use super::{App, EXCLAIM_PICTURE, QUESTION};
 use crate::panel::research::branch_of_tab;
 use crate::research::Tree;
 use crate::text::to_cp1252;
-use crate::ui::interface::Buttons;
+use crate::ui::interface::{Buttons, Interface};
+use crate::vfs::Vfs;
 
 /// The message strings: a program made available, and a branch with no program left.
 const COMPLETED: i32 = 23020;
 const ALL_DONE: i32 = 23021;
+
+/// The exclamation picture on the icon of the completion dialog, set before it is shown (5.4.1).
+fn exclaim(ui: &mut Interface, vfs: &Vfs) {
+    let picture = ui.tree.picture(vfs, EXCLAIM_PICTURE);
+    ui.set_question_icon(QUESTION, picture);
+}
 
 /// The upgrade lists of the building types for a tree just built or loaded (research 6.3, 7.2).
 pub(super) fn upgrades(tree: &Tree) -> crate::building::upgrade::Upgrades {
@@ -42,6 +49,7 @@ impl App<'_> {
             let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
                 continue;
             };
+            let vfs = self.renderer.vfs();
             if d.effect == 1
                 && let Some((target, up)) = self.sim.research_upgrade(d.name)
             {
@@ -66,6 +74,7 @@ impl App<'_> {
             }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
             ui.message(&to_cp1252(&text));
+            exclaim(ui, vfs);
             ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
             // A branch with no program left says so in a second dialog (5.4).
             let idle = self.sim.research().and_then(|t| t.branch_of(d.name));
@@ -74,6 +83,7 @@ impl App<'_> {
                     .string(ALL_DONE)
                     .replacen("%s", &ui.string(branch.name), 1);
                 ui.message(&to_cp1252(&text));
+                exclaim(ui, vfs);
                 ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
             }
         }

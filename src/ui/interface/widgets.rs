@@ -174,6 +174,7 @@ impl Interface {
         };
         let look = &mut self.tree.elements[i].look;
         (look.icon, look.icon_file) = (icon, file);
+        self.painter.restart_icon(i);
         self.dirty = true;
         true
     }

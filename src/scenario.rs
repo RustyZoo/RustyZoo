@@ -4,9 +4,9 @@
 //! The goal list is the timer, the goals of the file's `[goals]`, then those of each `[start]
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
-//! entities and the interface (rules 10 and 11); the research, awards and shows rules read 0. The
-//! triggers 1 to 5 and 7 to 10 do their work (messages, popups and elements, cash, availability, a
-//! boxed animal, removal, the sell switch, forced research); 6 (awards) only logs
+//! entities and the interface (rules 10 and 11); the research and shows rules read 0. The
+//! triggers 1 to 10 do their work (messages, popups and elements, cash, availability, a
+//! boxed animal, an award, removal, the sell switch, forced research), and every trigger is also logged as
 //! `scenario trigger`. The objectives list (4.5) and the end (5.4, 9) are here, and so are the
 //! goal states of a saved game: [`Scenario::states`] writes them and [`Scenario::resume`] reads them (5.3).
 //!
@@ -82,8 +82,7 @@ pub enum Run {
     Lost,
 }
 
-/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Trigger 6
-/// (awards) is a stub.
+/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Trigger {
     v: [i32; 4],
@@ -161,7 +160,7 @@ fn avail(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Avail> {
     Some(Avail { which, on, tell })
 }
 
-/// Triggers 1, 3, 5, 8 and 9 (7.2, 7.4, 7.5): a `truleb` trigger 3 or 8 does not know changes nothing,
+/// Triggers 1, 3, 5, 6, 8 and 9 (7.2, 7.4, 7.5): a `truleb` trigger 3 or 8 does not know changes nothing,
 /// but their message or popup still follows; trigger 5 with one does nothing.
 fn deed(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Deed> {
     let popup = || Popup::read(cfg, p);
@@ -180,6 +179,11 @@ fn deed(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Deed> {
             sub: b"mfy"[b as usize],
             name: t,
             popup: popup(),
+        }),
+        (6, _) => Some(Deed::Award {
+            give: b == 0,
+            id: t,
+            text: p,
         }),
         (8, _) => Some(Deed::Remove {
             by: b,
