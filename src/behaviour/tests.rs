@@ -432,3 +432,10 @@ fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
     assert!(library.set(&other, "bZooRoutine").is_none() && library.ambient(&other, 0).is_empty());
     assert_eq!(library.timing(&other, "idle"), None);
 }
+
+#[test]
+fn a_call_keeps_its_text_but_the_debug_form_does_not_show_it() {
+    let (call, _) = parse_call(b"fPlay(a)").unwrap();
+    assert_eq!(call.text, "fPlay(a)");
+    assert!(!format!("{call:?}").contains("fPlay(a)"));
+}

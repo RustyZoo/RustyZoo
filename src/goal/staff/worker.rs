@@ -257,11 +257,13 @@ impl Cx<'_, '_> {
             }
             // Nothing left to bag on the grounds or in an empty exhibit ends the walk (staff 8.6).
             pool::ZOO_DOO if !chores::poo_left(self.world, self.unit.id) => self.work_finish(),
-            pool::TRASH_PILE | pool::ZOO_DOO | pool::GO_TO_FENCE if self.tile() == Some(tile) => {
+            pool::TRASH_PILE | pool::ZOO_DOO if self.tile() == Some(tile) => {
                 self.record().job_done = true;
             }
             pool::TRASH_PILE if !chores::litter_left(self.world) => self.work_finish(),
-            pool::GO_TO_FILTER if self.reached(true) => self.record().job_done = true,
+            pool::GO_TO_FENCE | pool::GO_TO_FILTER if self.reached(true) => {
+                self.record().job_done = true;
+            }
             BAG => {
                 let top = self.unit.runner.top();
                 let bagging = matches!(top, Some("bBag" | "bBagDino"));
@@ -276,7 +278,8 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Decide of a job with no target yet: the way to the tile of the task.
+    /// Decide of a job with no target yet: the way to the tile of the task, or for a fence to the
+    /// worker's side of its piece (8.7).
     pub(in crate::goal) fn work_decide(&mut self, job: u8) {
         if self.record().job_target.tile.is_some() {
             return;
@@ -286,19 +289,22 @@ impl Cx<'_, '_> {
         };
         let urgent = self.held().is_some_and(|t| t.urgent);
         let cat = self.ctx.cat;
-        match job {
+        let walk = match job {
             pool::TRASH_CAN => return self.can_decide(tile),
             pool::GO_TO_FILTER => return self.filter_decide(tile, urgent),
             // An exhibit with animals again is the keepers' work: the task is void.
             pool::ZOO_DOO if self.keepers_own(tile) => return self.work_finish(),
             pool::GO_TO_FENCE => match chores::decayed_near(self.world, cat, tile) {
-                Some((piece, _)) => self.record().job_target.id = piece,
+                Some((piece, at)) => {
+                    self.record().job_target.id = piece;
+                    self.world.worker_tile(at) as usize
+                }
                 // A piece mended since the event leaves nothing to do: the task is void.
                 None => return self.work_finish(),
             },
-            _ => {}
-        }
-        if !self.go_work(tile, urgent) {
+            _ => tile,
+        };
+        if !self.go_work(walk, urgent) {
             self.list(tile);
             self.work_fail();
         }

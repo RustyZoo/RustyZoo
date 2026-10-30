@@ -81,7 +81,8 @@ pub(super) fn interface(install: &Install) -> Interface {
          [b]\nid=45011\nx=10\ny=0\ntarget=7\naction=5\n{button}\
          [c]\nid=45012\nx=20\ny=0\ntarget=1\naction=5\n{button}\
          [d]\nid=45013\nx=30\ny=0\ntarget=2\naction=5\n{button}\
-         [i]\ntype=UIImage\nid=45004\nx=0\ny=0\nlayer=1\n"
+         [i]\ntype=UIImage\nid=45004\nx=0\ny=0\nlayer=1\n\
+         [g]\ntype=UIImage\nid=45002\nx=0\ny=0\nlayer=1\n"
     );
     let options = format!(
         "[LayoutInfo]\nid=5\nlayer=3\nx=40\ny=20\ndx=20\ndy=20\nstate=1\n\
@@ -932,6 +933,57 @@ fn a_scenario_start_builds_the_research_tree_and_the_next_game_drops_it() {
             .unwrap();
         app.begin(&start(Some("s/none.scn")));
         assert_eq!(app.sim.research_share(), 0);
+    });
+}
+
+/// Whether the icon element `45002` of the question layout holds the picture `name`.
+fn icon_holds(app: &mut App, name: &str) -> bool {
+    let vfs = app.renderer.vfs();
+    let ui = app.interface().unwrap();
+    let picture = ui.tree.picture(vfs, name);
+    let i = ui.tree.find(45002).unwrap();
+    picture.is_some() && ui.tree.elements[i].look.animation == [picture]
+}
+
+#[test]
+fn a_research_completion_puts_the_exclamation_on_the_dialog_icon_and_a_question_its_own() {
+    use crate::research::Done;
+    use crate::ui::interface::Buttons;
+    const EXCLAIM: &str = "ui/sharedui/exclaim/exclaim";
+    const QUESTION: &str = "ui/sharedui/question/question";
+    // The two icon pictures, each a one-frame animation (its sprite files are shared).
+    let animation = |name: &str| {
+        let frames = crate::ui::draw::tests::two_frames("exclaim");
+        let (_, bytes) = frames.iter().find(|(n, _)| n.ends_with(".ani")).unwrap();
+        (format!("{name}.ani"), bytes.clone())
+    };
+    let mut pictures = vec![animation(EXCLAIM), animation(QUESTION)];
+    let sprites = crate::ui::draw::tests::two_frames("exclaim");
+    pictures.extend(sprites.into_iter().filter(|(n, _)| !n.ends_with(".ani")));
+    let files: Vec<(&str, Vec<u8>)> = pictures
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.clone()))
+        .collect();
+    with_game("research-icon", "", &files, None, |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        app.sim.push_research_done(Done {
+            name: 22,
+            target: 3,
+            effect: 1,
+            vals: [0; 3],
+        });
+        app.research_done();
+        // The completion dialog is open with the exclamation on its icon.
+        assert!(shown(app, 45000) && icon_holds(app, EXCLAIM));
+        app.interface().unwrap().answer(1);
+        assert!(!shown(app, 45000));
+        // A question shows its own picture on the icon, and the icon is cleared when it closes.
+        assert!(app.interface().unwrap().ask(45000, b"?", Buttons::YES_NO));
+        assert!(icon_holds(app, QUESTION));
+        app.interface().unwrap().answer(1);
+        assert!(!shown(app, 45002));
     });
 }
 

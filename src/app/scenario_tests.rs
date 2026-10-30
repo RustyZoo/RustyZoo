@@ -804,8 +804,9 @@ fn trigger_8_cancels_the_carry_and_the_selection_of_the_entity_it_removes() {
 }
 
 #[test]
-fn a_scenario_end_gives_back_the_elements_a_trigger_took() {
-    // The start disables the button 2001 and hides 7001; a win or a loss gives both back.
+fn a_scenario_end_enables_what_a_trigger_disabled_and_keeps_what_it_hid() {
+    // The start disables the button 2001 and hides 7001; a win or a loss enables the button and
+    // leaves 7001 hidden (8.4).
     for (name, kind) in [("win", ""), ("lose", "type=7\n")] {
         let text = format!(
             "[desc]\nname=9001\n[start]\ntriggers=t\ntriggers=u\n[t]\ntrulea=2\ntruleb=3\ntarga=2001\n\
@@ -826,7 +827,10 @@ fn a_scenario_end_gives_back_the_elements_a_trigger_took() {
             assert!(!shown(app, 7001), "{name}");
             until_asked(app, now);
             assert!(!off(app), "{name} disabled");
-            assert!(shown(app, 7001), "{name} hidden");
+            assert!(!shown(app, 7001), "{name} stays hidden");
+            // The mark is gone: the next show of the root layout brings the element back.
+            app.interface().unwrap().show(1);
+            assert!(shown(app, 7001), "{name} shown again");
         });
     }
 }
