@@ -99,20 +99,32 @@ fn trigger_8_removes_by_name_id_family_genus_or_species_and_nothing_else() {
     ];
     for (by, id, want) in table {
         let mut w = world();
-        let n = remove(&mut w, &cat, by, id);
+        let n = remove(&mut w, &cat, by, id, |_| ());
         assert_eq!(left(&w), want, "by {by} id {id}");
         assert_eq!(n, 5 - want.len());
     }
     let mut w = world();
-    assert_eq!(remove(&mut w, &cat, -1, 5001), 0);
+    assert_eq!(remove(&mut w, &cat, -1, 5001, |_| ()), 0);
     assert_eq!(left(&w).len(), 5);
+}
+
+#[test]
+fn trigger_8_tells_each_entity_just_before_it_goes() {
+    let cat = types();
+    let mut w = world();
+    let mut told = Vec::new();
+    remove(&mut w, &cat, 0, 5001, |id| told.push(id));
+    assert_eq!(told, [1, 2]);
+    let mut none = Vec::new();
+    remove(&mut w, &cat, 0, 5001, |id| none.push(id));
+    assert!(none.is_empty());
 }
 
 #[test]
 fn trigger_8_leaves_the_undo_list_and_the_cash_alone() {
     let cat = types();
     let mut w = world();
-    remove(&mut w, &cat, 1, 1);
+    remove(&mut w, &cat, 1, 1, |_| ());
     assert!(!w.undoes(1) && !w.undoes(3));
 }
 

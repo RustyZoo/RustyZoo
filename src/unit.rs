@@ -205,6 +205,9 @@ pub struct Unit {
     /// The next tile step was refused: the goal has to give up (movement 4.7). The goals read
     /// and clear it.
     pub aborted: bool,
+    /// The use set of a building to start at the next behaviour step, forced and not interruptible
+    /// (guest buildings 4.2, 6.4.1).
+    pub use_set: Option<String>,
     /// The tile a change of the terrain mode by the random walk sends the animal to (tank fauna
     /// 5), for its turn to act on once the walk is over.
     pub sent: Option<usize>,
@@ -267,6 +270,7 @@ impl Unit {
             gate: None,
             through_building: false,
             aborted: false,
+            use_set: None,
             sent: None,
             mover: Mover::new(kind.mover(), None),
             animation: Animation::default(),
@@ -911,6 +915,10 @@ impl Hooks for Standard<'_> {
             unit: &world.zoo.entities[at],
             rng: ctx.rng,
         };
+        if let Some(name) = unit.use_set.take() {
+            unit.runner
+                .start(&mut unit.animation, &env, &name, false, true, true);
+        }
         unit.runner.step(&mut unit.animation, &mut env, key);
         self.building_calls(unit, world, ctx, at);
         if choosing {
