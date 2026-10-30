@@ -782,10 +782,11 @@ fn a_loaded_drinker_goes_on_only_in_its_drink_goal() {
     // Saved in the drink goal: the flags come back and the goal starts.
     let (_, a, task) = loaded_with(saved.clone(), "bEat", 122, 0);
     assert!(a.drinking && a.eating && task == 122);
-    // Saved in another goal: the drinking flag would hold the ladder for good, so it is dropped.
+    // Saved in another goal: the drinking flag would hold the ladder for good, so it is dropped;
+    // the goal comes back as saved.
     let (_, a, task) = loaded_with(saved.clone(), "bEat", 114, 0);
-    assert!(!a.drinking && a.eating && task == 0);
-    // Not saved drinking, in the drink goal: no goal starts.
+    assert!(!a.drinking && a.eating && task == 114);
+    // Not saved drinking, in the drink goal: the goal comes back, the flag stays down.
     let (_, a, task) = loaded_with(
         AnimalRecord {
             drinking: false,
@@ -795,5 +796,5 @@ fn a_loaded_drinker_goes_on_only_in_its_drink_goal() {
         122,
         0,
     );
-    assert!(!a.drinking && task == 0);
+    assert!(!a.drinking && task == 122);
 }

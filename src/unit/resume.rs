@@ -1,9 +1,10 @@
 //! The units of a zoo just loaded go on with their saved behaviour set (behaviours 4.7): a mover,
 //! a sleeper, a member of staff, whatever it was doing. A unit that was entering, using or leaving
 //! a building that is gone is stopped instead. The saved path and pending set name come back with
-//! the set, so a restored move call walks on (behaviours 4.7).
+//! the set, so a restored move call walks on, and so do the goal's task, target and 3D target
+//! name, whatever the task (behaviours 4.7).
 
-use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, RANDOM, Record, USE, stop_use};
+use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, Record, USE, active_goal, stop_use};
 use crate::unit::Unit;
 use crate::world::World;
 use crate::zoo::UnitBlock;
@@ -53,13 +54,21 @@ pub fn keep_pending(unit: &mut Unit, name: &str) {
     }
 }
 
-/// The plain move goal of unit `id` as saved: its task, its target `aim` (a position, none when
-/// below 0) and the 3D target `name` the unit's move calls compare.
-fn walk_on(world: &mut World, id: u32, now: u32, aim: [i32; 3], name: &str) {
+/// The goal of unit `id` as saved: its task, its target `aim` (a position, none when below 0) and
+/// the 3D target `name` the unit's move calls compare. A task that has no goal object for the
+/// kind of unit is not restored (the save writes none for it, save games S7): the unit keeps
+/// the goal it has.
+fn goal_back(world: &mut World, id: u32, now: u32, task: u8, aim: [i32; 3], name: &str) {
     let [x, y, z] = aim;
     let pos = (x >= 0 && y >= 0).then_some((x, y, z));
+    let Some(kind) = world.units.get(id).map(|u| u.kind) else {
+        return;
+    };
+    if active_goal(task, kind) < 0 {
+        return;
+    }
     let mut record = Record {
-        task: RANDOM,
+        task,
         mode: 1,
         start: now,
         ..Record::default()
@@ -72,10 +81,10 @@ fn walk_on(world: &mut World, id: u32, now: u32, aim: [i32; 3], name: &str) {
     unit.target = crate::behaviour::target(name);
 }
 
-/// Gives every loaded unit its saved set, path, pending set name, and, for a unit walking its path
-/// with the plain move goal, that goal with its target and the 3D target name; or stops it when its
-/// saved task is in a building and the stored tile of that building holds none (shown, goal reset,
-/// path emptied, set and pending name cleared). A unit whose building is there is the building's: its users pair decides
+/// Gives every loaded unit its saved set, path, pending set name, goal task with its target and
+/// the 3D target name (whatever the task); or stops it when its saved task is in a building and
+/// the stored tile of that building holds none (shown, goal reset, path emptied, set and pending
+/// name cleared). A unit whose building is there is the building's: its users pair decides
 /// ([`crate::building::users::restore`], which runs after this).
 pub fn load(world: &mut World, now: u32) {
     for at in 0..world.zoo.entities.len() {
@@ -109,8 +118,8 @@ pub fn load(world: &mut World, now: u32) {
             unit.runner.restore(&set);
             (unit.path, unit.levels, unit.destination) = way;
             keep_pending(unit, &pending);
-            if task == Some(RANDOM) && !unit.path.is_empty() {
-                walk_on(world, id, now, aim, &name);
+            if let Some(task) = task {
+                goal_back(world, id, now, task, aim, &name);
             }
         }
     }
@@ -309,27 +318,39 @@ mod tests {
     }
 
     #[test]
-    fn a_unit_saved_with_the_plain_move_goal_has_its_goal_and_3d_target_back() {
+    fn a_unit_saved_with_a_goal_has_its_task_target_and_3d_target_back() {
         let way = vec![[1, 1, 0], [2, 1, 0], [3, 1, 0]];
         let w = saved_goal(104, way.clone(), "", (1, [3 * 64, 64, 0], "surface"));
         let u = w.units.get(1).unwrap();
         let r = &u.goal.record;
         assert_eq!((r.task, r.target.tile), (1, w.tile_index(3, 1)));
         assert_eq!(u.target, crate::behaviour::Target::Surface);
-        // Another goal, or no path, or no target: the goal stays as it was.
-        for (task, aim, records) in [
-            (101, [3 * 64, 64, 0], way.clone()),
-            (-1, [3 * 64, 64, 0], way.clone()),
-            (1, [3 * 64, 64, 0], Vec::new()),
-        ] {
-            let w = saved_goal(104, records, "", (task, aim, "surface"));
-            assert_ne!(w.units.get(1).unwrap().goal.record.task, 1, "{task}");
+        // Every task that has a goal for a keeper, with a path, with none, and the base one.
+        for (task, records) in [(101, way.clone()), (110, way.clone()), (127, Vec::new())] {
+            let w = saved_goal(104, records, "", (task, [3 * 64, 64, 0], "surface"));
+            let u = w.units.get(1).unwrap();
+            let r = &u.goal.record;
+            assert_eq!(
+                (i32::from(r.task), r.target.tile),
+                (task, w.tile_index(3, 1))
+            );
+            assert_eq!(u.target, crate::behaviour::Target::Surface, "{task}");
+        }
+        let w = saved_goal(104, Vec::new(), "", (1, [3 * 64, 64, 0], ""));
+        assert_eq!(w.units.get(1).unwrap().goal.record.task, 1);
+        // No goal object for a keeper (a guide's leg, a negative or a huge number): the goal and
+        // the 3D target stay as they were.
+        for task in [118, -1, 1000, i32::MIN] {
+            let w = saved_goal(104, way.clone(), "", (task, [3 * 64, 64, 0], "surface"));
+            let u = w.units.get(1).unwrap();
+            assert_eq!(u.goal.record.target.tile, None, "{task}");
+            assert_ne!(u.target, crate::behaviour::Target::Surface, "{task}");
         }
         let w = saved_goal(104, way.clone(), "", (1, [-1; 3], ""));
         let r = &w.units.get(1).unwrap().goal.record;
         assert_eq!((r.task, r.target.tile), (1, None));
         // Huge and off-map targets are no tile.
-        let w = saved_goal(104, way, "", (1, [i32::MAX, i32::MIN, 0], "x"));
+        let w = saved_goal(104, way, "", (101, [i32::MAX, i32::MIN, 0], "x"));
         assert_eq!(w.units.get(1).unwrap().goal.record.target.tile, None);
     }
 
@@ -342,5 +363,65 @@ mod tests {
         let (w, tile) = walked(w, 100);
         assert_eq!(tile.1, 1);
         assert!(w.units.get(1).unwrap().goal.record.task == 1);
+    }
+
+    /// The units of the shipped games saved with a goal other than the plain move, a target and
+    /// a path have that task and target back after a load (behaviours 4.7).
+    #[test]
+    #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+    fn the_units_of_the_game_saved_in_another_task_have_their_goal_back() {
+        use crate::{animal::Class, exhibit::TankConfig, place, sim::Sim, terrain};
+        let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+        let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+        let cat = crate::entity::Catalogue::load(&vfs).unwrap();
+        let renderer = crate::render::MapRenderer::new(&vfs, &cat);
+        let (mut checked, mut kinds) = (0, std::collections::BTreeSet::new());
+        for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
+            let Ok((zoo, _)) = crate::zoo::Zoo::parse_money(&vfs.read(member).unwrap())
+                .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+            else {
+                continue;
+            };
+            let saved: Vec<_> = (zoo.entities.iter())
+                .filter_map(|e| {
+                    let c = e.common.as_ref()?;
+                    let b = c.unit.as_deref()?;
+                    let task = u8::try_from(b.target.active).ok()?;
+                    let off =
+                        [ENTER_BUILDING, EXIT_BUILDING, USE, crate::goal::RANDOM].contains(&task);
+                    let [x, y, _] = b.target.target.map(|n| n.div_euclid(64));
+                    (!off && !b.records.is_empty() && b.target.target[0] >= 0).then_some((
+                        c.id,
+                        task,
+                        (x, y),
+                    ))
+                })
+                .collect();
+            // A file whose tasks all came up already adds nothing (a load takes seconds).
+            if saved.iter().all(|(_, t, _)| kinds.contains(t)) {
+                continue;
+            }
+            let mut world = World::new(zoo, |e| renderer.shape(e));
+            world.set_water(place::water(&terrain::types(&vfs)));
+            world.set_tank_config(TankConfig::load(&vfs));
+            let mut sim = Sim::new(vfs.ini());
+            world.units.set_period(sim.ai.status_period);
+            world.units.class = Class::load(&vfs);
+            sim.load(&mut world, &cat);
+            for (id, task, (x, y)) in saved {
+                let tile = world.tile_index(x, y);
+                let Some(u) = world.units.get(id) else {
+                    continue;
+                };
+                if active_goal(task, u.kind) < 0 {
+                    continue;
+                }
+                assert_eq!(u.goal.record.task, task, "{member} unit {id}");
+                assert_eq!(u.goal.record.target.tile, tile, "{member} unit {id}");
+                checked += 1;
+                kinds.insert(task);
+            }
+        }
+        assert!(checked >= 100 && kinds.len() >= 10, "{checked} {kinds:?}");
     }
 }
