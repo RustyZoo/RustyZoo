@@ -134,7 +134,7 @@ fn the_status_tab_shows_the_programs_and_the_time_left() {
     let (mut ui, vfs) = panel_in_game("research-panel-status");
     let mut t = tree();
     let mut panel = Panel::default();
-    let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
+    let told = panel.refresh(&mut ui, Some(&t), &vfs, (0, "")).unwrap();
     assert!(told.starts_with("research tab 0 side 0 \"name11\" \"Ready after 60 turns.\" side 1 \"Empty Plan\" \"Unfunded\""), "{told}");
     assert_eq!(ui.text(4001).unwrap(), b"Overview");
     assert_eq!(ui.text(4016).unwrap(), b"name11");
@@ -148,13 +148,17 @@ fn the_status_tab_shows_the_programs_and_the_time_left() {
         )
     );
     assert_eq!(tip(&ui, 4014), "Unfunded");
-    assert_eq!(panel.refresh(&mut ui, Some(&t), &vfs), None, "unchanged");
+    assert_eq!(
+        panel.refresh(&mut ui, Some(&t), &vfs, (0, "")),
+        None,
+        "unchanged"
+    );
     // A day or less left takes the singular and rounds up: 0.5 day is 1 day.
     t.branches[0].categories[0].programs[0].progress = 89.0;
-    panel.refresh(&mut ui, Some(&t), &vfs);
+    panel.refresh(&mut ui, Some(&t), &vfs, (0, ""));
     assert_eq!(tip(&ui, 4018), "Ready after 1 turn.");
     t.branches[0].categories[0].programs[0].progress = 80.0;
-    panel.refresh(&mut ui, Some(&t), &vfs);
+    panel.refresh(&mut ui, Some(&t), &vfs, (0, ""));
     assert_eq!(
         tip(&ui, 4018),
         "Ready after 7 turns.",
@@ -162,12 +166,12 @@ fn the_status_tab_shows_the_programs_and_the_time_left() {
     );
     // No funding is "Unfunded"; no tree and a tree of one branch leave the other side empty.
     t.branches[0].level = 0;
-    panel.refresh(&mut ui, Some(&t), &vfs);
+    panel.refresh(&mut ui, Some(&t), &vfs, (0, ""));
     assert_eq!(tip(&ui, 4018), "Unfunded");
     t.branches.truncate(1);
-    panel.refresh(&mut ui, Some(&t), &vfs);
+    panel.refresh(&mut ui, Some(&t), &vfs, (0, ""));
     assert_eq!(ui.text(4012).unwrap(), b"Empty Plan");
-    panel.refresh(&mut ui, None, &vfs);
+    panel.refresh(&mut ui, None, &vfs, (0, ""));
     assert_eq!(ui.text(4016).unwrap(), b"Empty Plan");
 }
 
@@ -179,7 +183,7 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
     ui.set_button(TABS[1], true, true);
     assert_eq!(branch_of_tab(&ui), Some(0));
     let mut panel = Panel::default();
-    let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
+    let told = panel.refresh(&mut ui, Some(&t), &vfs, (0, "")).unwrap();
     assert!(
         told.contains("ticks 10 funding \"$67 top\" category \"name10\" program \"name11\""),
         "{told}"
@@ -193,7 +197,7 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
     assert_eq!(state(&ui, 4003) & DISABLED, 0);
     assert_eq!(state(&ui, 4022) & HIDDEN, 0);
     t.fund(0, false);
-    panel.refresh(&mut ui, Some(&t), &vfs);
+    panel.refresh(&mut ui, Some(&t), &vfs, (0, ""));
     assert_eq!(state(&ui, 4004) & DISABLED, 0);
     assert_ne!(state(&ui, 4003) & DISABLED, 0);
     assert_eq!(tip(&ui, 4027), "Unfunded");
@@ -201,7 +205,7 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
     ui.set_button(TABS[1], false, true);
     ui.set_button(TABS[2], true, true);
     assert_eq!(branch_of_tab(&ui), Some(1));
-    let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
+    let told = panel.refresh(&mut ui, Some(&t), &vfs, (0, "")).unwrap();
     assert!(
         told.contains(
             "ticks  funding \"$0 nothing\" category \"Empty Group\" program \"Empty Plan\""
@@ -213,7 +217,7 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
     // A tab with no branch, or no tree, says no category and no program and leaves the title,
     // the funding text and the buttons as they were.
     t.branches.truncate(1);
-    let told = panel.refresh(&mut ui, Some(&t), &vfs).unwrap();
+    let told = panel.refresh(&mut ui, Some(&t), &vfs, (0, "")).unwrap();
     assert!(
         told.contains("ticks  funding \"\" category \"Empty Group\" program \"Empty Plan\""),
         "{told}"
@@ -227,7 +231,7 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
         ),
         (true, false)
     );
-    panel.refresh(&mut ui, None, &vfs);
+    panel.refresh(&mut ui, None, &vfs, (0, ""));
     ui.set_button(TABS[2], false, true);
     ui.set_button(TABS[0], true, true);
     assert_eq!(branch_of_tab(&ui), None);
@@ -237,18 +241,43 @@ fn a_category_tab_shows_the_list_the_funding_and_the_current_program() {
 fn a_missing_branch_shows_the_empty_texts_and_the_list_its_no_item_text() {
     let (mut ui, vfs) = panel_in_game("research-panel-missing");
     let mut panel = Panel::default();
-    panel.refresh(&mut ui, None, &vfs);
+    panel.refresh(&mut ui, None, &vfs, (0, ""));
     assert_eq!(ui.text(4016).unwrap(), b"Empty Plan");
     assert_eq!(ui.text(4012).unwrap(), b"Empty Plan");
     ui.set_button(TABS[2], true, true);
-    panel.refresh(&mut ui, None, &vfs);
+    panel.refresh(&mut ui, None, &vfs, (0, ""));
     assert_eq!(ui.text(4024).unwrap(), b"Empty Group");
     assert_eq!(ui.text(4025).unwrap(), b"Empty Plan");
     assert_eq!(state(&ui, 4022) & HIDDEN, 0, "the list stays");
     assert_eq!(state(&ui, 4030) & HIDDEN, 0, "the no-item text shows");
-    panel.refresh(&mut ui, Some(&tree()), &vfs);
+    panel.refresh(&mut ui, Some(&tree()), &vfs, (0, ""));
     ui.set_button(TABS[2], false, true);
     ui.set_button(TABS[1], true, true);
-    panel.refresh(&mut ui, Some(&tree()), &vfs);
+    panel.refresh(&mut ui, Some(&tree()), &vfs, (0, ""));
     assert_ne!(state(&ui, 4030) & HIDDEN, 0, "rows hide it");
+}
+
+#[test]
+fn the_selector_button_shows_the_selected_row_and_filters_the_list() {
+    let (mut ui, vfs) = panel_in_game("research-panel-selector");
+    let t = tree();
+    ui.set_button(TABS[1], true, true);
+    // The base trial's page has a plain text there: not written.
+    Panel::default().refresh(&mut ui, Some(&t), &vfs, (0, "All"));
+    assert_eq!(ui.text(4021).unwrap(), b"");
+    let i = ui.tree.find(4021).unwrap();
+    ui.tree.elements[i].action = 1;
+    let mut ticks = |pick, label| {
+        let told = Panel::default().refresh(&mut ui, Some(&t), &vfs, (pick, label));
+        (ui.text(4021).unwrap(), told.unwrap())
+    };
+    let (text, told) = ticks(0, "All");
+    assert_eq!(text, b"All");
+    assert!(told.contains("ticks 11 "), "{told}");
+    // The second category is of the first expansion: only it is listed under that row.
+    let (text, told) = ticks(2, "Dino");
+    assert_eq!(text, b"Dino");
+    assert!(told.contains("ticks 1 "), "{told}");
+    let (_, told) = ticks(3, "Aqua");
+    assert!(told.contains("ticks  "), "{told}");
 }

@@ -18,6 +18,8 @@ use crate::vfs::Vfs;
 pub const LAYOUT: i32 = 15;
 pub const BUTTON: i32 = 1019;
 pub const TABS: [i32; 3] = [4008, 4009, 4010];
+/// The expansion selector button, which the panel writes with the selected row.
+const SELECTOR: i32 = 4021;
 /// The category list and the funding buttons.
 pub const LIST: i32 = 4022;
 pub const LESS: i32 = 4003;
@@ -28,7 +30,7 @@ const TITLE: i32 = 4001;
 /// The status page of one branch: program name, picture, bar, bar background.
 const SIDES: [[i32; 4]; 2] = [[4016, 4019, 4018, 4017], [4012, 4020, 4014, 4013]];
 /// The category page: funding text, category name, program name, picture, bar, bar background,
-/// and the text shown when the list has no row. The selector 4021 is not written (8.3).
+/// and the text shown when the list has no row.
 const NO_ITEM: i32 = 4030;
 const FUNDING: i32 = 4006;
 const CATEGORY: i32 = 4024;
@@ -64,6 +66,7 @@ impl Panel {
         ui: &mut Interface,
         tree: Option<&Tree>,
         vfs: &Vfs,
+        selector: (i32, &str),
     ) -> Option<String> {
         let branches = tree.map_or(&[][..], |t| &t.branches);
         let tab = TABS.iter().position(|&t| ui.is_down(t)).unwrap_or(0);
@@ -81,7 +84,12 @@ impl Panel {
             told += &format!(" side {side} {tip}");
         }
         let branch = tab.checked_sub(1).zip(tree);
-        let shown = branch.and_then(|(b, t)| Some((t.listed(b), t.branches.get(b)?)));
+        let shown = branch.and_then(|(b, t)| Some((t.listed(b, selector.0), t.branches.get(b)?)));
+        // The base trial's page has a plain text there, not the selector button (8.3).
+        let button = ui.tree.find(SELECTOR).map(|i| &ui.tree.elements[i]);
+        if button.is_some_and(|e| e.action == 1) {
+            ui.set_text(SELECTOR, &to_cp1252(selector.1));
+        }
         told += &category_page(ui, vfs, shown);
         match told == self.told {
             true => None,

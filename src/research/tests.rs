@@ -483,6 +483,52 @@ fn the_scenario_disables_the_expansions_it_does_not_have() {
 }
 
 #[test]
+fn a_start_sets_the_selector_from_the_scenario() {
+    for (desc, want) in [
+        ("name=16000", Some(1)),
+        ("name=16022", Some(1)),
+        ("name=16027\nexpansionLocked=1\nexpansion=3", Some(3)),
+        (
+            "name=16027\nexpansionLocked=1\nexpansion=3\ndefaultExpansion=2",
+            Some(2),
+        ),
+        ("expansionLocked=1", Some(0)),
+        ("expansionLocked=1\ndefaultExpansion=-5", Some(-5)),
+        ("name=16050\nexpansionLocked=0\nexpansion=3", None),
+        ("", None),
+    ] {
+        let t = tree("sel", &format!("\n[desc]\n{desc}\n"), vec![]);
+        assert_eq!(t.selection, want, "{desc}");
+    }
+}
+
+#[test]
+fn the_selector_filters_the_category_list() {
+    let category = |expansion| Category {
+        expansion,
+        ..Category::default()
+    };
+    let mut t = Tree {
+        branches: vec![Branch {
+            categories: [0, 1, 2, i32::MAX, -1].map(category).to_vec(),
+            ..Branch::default()
+        }],
+        ..Tree::default()
+    };
+    assert_eq!(t.listed(0, 0), [0, 1, 2, 3, 4], "All");
+    assert_eq!(t.listed(0, 1), [0]);
+    assert_eq!(t.listed(0, 3), [2]);
+    assert!(t.listed(0, 4).is_empty(), "no category of that entry");
+    assert!(t.listed(0, -1).is_empty());
+    assert!(t.listed(0, i32::MIN).is_empty());
+    // A row counts in the filtered list; an off expansion stays out of it.
+    t.toggle(0, 0, 3);
+    assert!(t.branches[0].categories[2].tick && !t.branches[0].categories[0].tick);
+    t.off[3] = true;
+    assert!(t.listed(0, 3).is_empty());
+}
+
+#[test]
 fn each_branch_file_read_draws_once_for_its_current_program() {
     let files = vec![
         list("research.cfg", &["b1.cfg", "b3.cfg"]),
@@ -931,8 +977,8 @@ fn a_funding_button_steps_the_level_and_a_row_flips_the_tick_of_a_listed_categor
     assert_eq!(t.branches[0].level, 1);
     // A branch that is not there changes nothing.
     t.fund(7, true);
-    assert_eq!(t.listed(0), [0, 1]);
-    t.toggle(0, 1);
+    assert_eq!(t.listed(0, 0), [0, 1]);
+    t.toggle(0, 1, 0);
     assert_eq!(
         t.branches[0]
             .categories
@@ -941,12 +987,12 @@ fn a_funding_button_steps_the_level_and_a_row_flips_the_tick_of_a_listed_categor
             .collect::<Vec<_>>(),
         [true, false]
     );
-    t.toggle(0, 1);
-    t.toggle(0, 0);
+    t.toggle(0, 1, 0);
+    t.toggle(0, 0, 0);
     assert!(!t.branches[0].categories[0].tick);
     // A row out of the list, a branch that is not there: nothing.
     for (b, row) in [(0, 2), (0, usize::MAX), (3, 0)] {
-        t.toggle(b, row);
+        t.toggle(b, row, 0);
     }
     assert_eq!(
         t.branches[0]
@@ -958,17 +1004,17 @@ fn a_funding_button_steps_the_level_and_a_row_flips_the_tick_of_a_listed_categor
     );
     // The category of a disabled expansion is not listed, so the rows count the others only.
     t.off[2] = true;
-    assert_eq!(t.listed(0), [0]);
-    t.toggle(0, 1);
+    assert_eq!(t.listed(0, 0), [0]);
+    t.toggle(0, 1, 0);
     assert!(t.branches[0].categories[1].tick);
-    assert!(t.listed(5).is_empty());
+    assert!(t.listed(5, 0).is_empty());
 }
 
 #[test]
 fn a_ticked_off_category_stops_the_work_at_the_next_update() {
     let mut t = plain(2000.0, 45.0, &[(20.0, 1)]);
     let mut money = cash(1000.0);
-    t.toggle(0, 0);
+    t.toggle(0, 0, 0);
     t.step(3000, &mut money, &mut || 0);
     assert_eq!((progress(&t), money.cash), (0.0, 1000.0));
     assert_eq!(

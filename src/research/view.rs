@@ -52,19 +52,22 @@ impl Branch {
 }
 
 impl Tree {
-    /// The categories of branch `b` the panel lists: those whose expansion is not off (8.3).
-    pub fn listed(&self, b: usize) -> Vec<usize> {
+    /// The categories of branch `b` the panel lists: those whose expansion is not off and, with
+    /// the selector on an expansion (`pick`, its value; 0 for All), those of that expansion (8.3).
+    pub fn listed(&self, b: usize, pick: i32) -> Vec<usize> {
         let categories = self.branches.get(b).map_or(&[][..], |b| &b.categories);
         let shown = categories.iter().enumerate();
         shown
-            .filter(|(_, c)| !c.skipped(&self.off))
+            .filter(|(_, c)| {
+                !c.skipped(&self.off) && (pick == 0 || c.expansion.checked_add(1) == Some(pick))
+            })
             .map(|(i, _)| i)
             .collect()
     }
 
     /// The row of a list is clicked: the tick of its category flips (8.3).
-    pub fn toggle(&mut self, b: usize, row: usize) {
-        let category = self.listed(b).get(row).copied();
+    pub fn toggle(&mut self, b: usize, row: usize, pick: i32) {
+        let category = self.listed(b, pick).get(row).copied();
         let category = category.and_then(|c| self.branches.get_mut(b)?.categories.get_mut(c));
         if let Some(c) = category {
             c.tick = !c.tick;

@@ -534,6 +534,34 @@ pub fn installed_expansions(vfs: &Vfs) -> i32 {
         .fold(0, |mask, id| mask | id)
 }
 
+/// An expansion of the selector of the purchase panels: the `id` of an `xpac*.cfg` and the string
+/// of its row (`listid`; entity types 10.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Expansion {
+    pub id: i32,
+    pub list: i32,
+}
+
+/// The `xpac*.cfg` files with an `[expansion] id` and `listid`, by ascending id (one per id).
+pub fn expansion_entries(vfs: &Vfs) -> Vec<Expansion> {
+    let mut entries: Vec<Expansion> = vfs
+        .list(Some("xpac*.cfg"))
+        .iter()
+        .filter_map(|member| {
+            let config = Config::parse(&vfs.read(member).ok()?).ok()?;
+            let section = config.section("expansion")?;
+            let number = |key| section.get(key).and_then(to_int);
+            Some(Expansion {
+                id: number("id")?,
+                list: number("listid")?,
+            })
+        })
+        .collect();
+    entries.sort_by_key(|e| e.id);
+    entries.dedup_by_key(|e| e.id);
+    entries
+}
+
 impl Tree {
     /// Loads the layout file `root` (`ui/gamescrn.lyt`) and every layout below it, for the
     /// expansions in the mask. Never fails: see [`Tree::failure`].
