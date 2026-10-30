@@ -40,6 +40,7 @@ impl App<'_> {
     /// Does what the triggers asked of the interface, in the order they ran: the award, its
     /// popup and its cash of one pass come in the order of the file (`awards.md` 6.2).
     pub(super) fn scenario_effects(&mut self) {
+        self.scenario_forced();
         self.scenario_avail(false);
         while let Some(act) = self.sim.scenario().and_then(|s| s.next_act()) {
             match act {
@@ -61,6 +62,14 @@ impl App<'_> {
         }
         for line in self.scenario_lines.drain(..) {
             self.sim.note(line);
+        }
+    }
+
+    /// Carries out trigger 10: every research program is completed (research 6.8).
+    pub(super) fn scenario_forced(&mut self) {
+        let forced = self.sim.scenario().map(|s| s.gui().take_forced());
+        for progress in forced.into_iter().flatten() {
+            self.force_research(progress);
         }
     }
 

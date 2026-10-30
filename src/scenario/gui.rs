@@ -135,6 +135,8 @@ struct Inner {
     out: Vec<Effect>,
     avail: Vec<Avail>,
     deeds: Vec<Deed>,
+    /// Trigger 10: for each forced research, whether the progress is set too.
+    forced: Vec<bool>,
     /// Which queue each thing left by the triggers went to, in the order they ran.
     order: Vec<Queue>,
 }
@@ -223,6 +225,16 @@ impl Gui {
         let mut g = self.0.borrow_mut();
         g.deeds.push(deed);
         g.order.push(Queue::Deed);
+    }
+
+    pub(super) fn push_forced(&self, progress: bool) {
+        self.0.borrow_mut().forced.push(progress);
+    }
+
+    /// The forced researches trigger 10 left since the last call, each with whether the progress
+    /// is set too (research 6.8).
+    pub fn take_forced(&self) -> Vec<bool> {
+        std::mem::take(&mut self.0.borrow_mut().forced)
     }
 
     /// The deeds the triggers left since the last call.

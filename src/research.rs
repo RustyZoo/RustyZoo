@@ -289,6 +289,44 @@ impl Tree {
         (flags, life)
     }
 
+    /// Completes every program not complete, in tree order (6.8, `force(all, set_progress)`): the
+    /// effects 2 to 7 are laid on `over` here, with `set_progress` the progress is also set to the
+    /// cost, and each branch then chooses its current program. The programs forced come back for
+    /// the caller to apply their effects 0 and 1 (and tell no one); with the changes of the life
+    /// counter for the live animals.
+    pub fn force(
+        &mut self,
+        cat: &Catalogue,
+        over: &mut Overlay,
+        set_progress: bool,
+        rand: &mut dyn FnMut() -> u32,
+    ) -> (Vec<Done>, Vec<Life>) {
+        let (mut forced, mut life) = (Vec::new(), Vec::new());
+        for n in 0..self.programs().count() {
+            let Some(p) = self.programs().nth(n).filter(|p| !p.done()) else {
+                continue;
+            };
+            let done = Done {
+                name: p.name,
+                target: p.target,
+                effect: p.effect,
+                vals: p.vals,
+            };
+            life.extend(self.complete(cat, over, &done));
+            if set_progress
+                && let Some(p) = (self.branches.iter_mut().flat_map(|b| &mut b.categories))
+                    .flat_map(|c| &mut c.programs)
+                    .nth(n)
+            {
+                p.progress = p.cost;
+            }
+            forced.push(done);
+        }
+        let off = self.off;
+        self.branches.iter_mut().for_each(|b| b.choose(&off, rand));
+        (forced, life)
+    }
+
     /// Applies the characteristic effect of a completed program (6.4, 6.7): a change of the types
     /// (2, 4, 5), or a discount on the other programs and a training mark (7). The changes of the
     /// life counter are returned for the live animals.
@@ -296,6 +334,7 @@ impl Tree {
         let [percent, staff, mark] = d.vals;
         match d.effect {
             2 | 4 | 5 => return over.apply(cat, d.effect, d.target, d.vals),
+            6 => over.unlock_trick(cat, d.target, d.vals[0]),
             7 => {
                 let kept = 100i32.wrapping_sub(percent) as f32;
                 let all = self.branches.iter_mut().flat_map(|b| &mut b.categories);

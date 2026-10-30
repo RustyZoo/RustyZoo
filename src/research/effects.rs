@@ -59,6 +59,8 @@ impl Life {
 pub struct Overlay {
     changes: HashMap<Key, Vec<(&'static str, i32, i32)>>,
     training: HashMap<Key, u16>,
+    /// The tricks research made available, by animal type (6.6).
+    tricks: BTreeSet<(Key, i32)>,
 }
 
 /// The characteristic of a type that `effectval1` names (6.4), with the training bit a change of
@@ -209,6 +211,21 @@ impl Overlay {
             }
         }
         life
+    }
+
+    /// Effect 6 (6.6): the trick `trick` of the animal types of name id `target` is available.
+    pub fn unlock_trick(&mut self, cat: &Catalogue, target: i32, trick: i32) {
+        let hit = cat
+            .types
+            .iter()
+            .filter(|t| t.class == "animals" && t.name_id == target);
+        self.tricks.extend(hit.map(|t| (key_of(t), trick)));
+    }
+
+    /// Whether the show editor offers trick `trick` of an animal type (6.6): the trick's own
+    /// `defaultavailable` flag, or research made it available. A tree load does not clear it.
+    pub fn trick_available(&self, ty: &EntityType, trick: i32, default: bool) -> bool {
+        default || self.tricks.contains(&(key_of(ty), trick))
     }
 
     /// Marks the staff types of name id `staff` with training bit `mark - 1` (6.7).
