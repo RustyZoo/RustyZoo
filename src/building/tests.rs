@@ -974,6 +974,21 @@ fn a_user_goes_on_with_its_saved_use_set_hidden_or_not() {
 }
 
 #[test]
+fn a_user_saved_in_another_task_keeps_no_pending_set() {
+    // The building's stop clears the pending name; only a user that keeps its task keeps it.
+    for (saved, want) in [(106, Some("bpending")), (100, None), (0, None), (-1, None)] {
+        let (w, _) = seated_with(
+            106,
+            [vec![(1, 0)], Vec::new()],
+            [1, 0],
+            [Some(saved), None, None],
+            [None; 3],
+        );
+        assert_eq!(w.units.get(1).unwrap().runner.queued(), want, "{saved}");
+    }
+}
+
+#[test]
 fn a_dropped_pair_stays_counted_against_the_capacity() {
     // The shop takes 3 users. Unit 99 is gone, so one user is listed; the stored count decides how
     // many more the shop takes (and a count below the pairs is raised to them by the reader).

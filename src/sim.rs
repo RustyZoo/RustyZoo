@@ -480,7 +480,7 @@ impl Sim {
         }
         // The units go on with their saved sets; the users come once every guest is made,
         // whatever the order of the file.
-        crate::unit::resume::load(world);
+        crate::unit::resume::load(world, self.ai_ticks);
         crate::building::users::restore(world, cat, self.ai_ticks);
     }
 

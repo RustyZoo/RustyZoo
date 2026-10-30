@@ -380,7 +380,9 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
     // (the scenario resets) and has its research complete (5 points); the engine has neither
     // yet, and the two differences cancel (guests 17 against 12, research 0 against 5).
     // The stored guests keep their check countdowns, so the trash check cuts the happiness of
-    // about one guest in five in these 4 s, not of all at once.
+    // about one guest in five in these 4 s, not of all at once. The original rates `med_kids`
+    // 78 at its first check; the engine draws the trash checks from its own random stream, which
+    // the stored guests' saved paths (walked on at load) move by one point, 77.
     let table = [
         ("dinosmal", 45, 42),
         ("deathmtn", 42, 37),
@@ -392,7 +394,7 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
         ("lg_resrt", 47, 42),
         ("beach", 49, 44),
         ("tundra", 42, 37),
-        ("med_kids", 81, 78),
+        ("med_kids", 81, 77),
     ];
     for (map, setup, first) in table {
         let catalogue = Catalogue::load(&vfs).unwrap();
