@@ -238,8 +238,18 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// A building with no free slot (goals 11.3): a guest thinks it is crowded, the building joins
+    /// its seen list when it is a site, and the goal ends.
+    fn crowded(&mut self, id: u32) {
+        if self.guest().is_some() {
+            self.think(CROWDED, Some(id));
+        }
+        self.saw(id);
+        self.reset();
+    }
+
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
-    /// (0x67), else it gives up.
+    /// (0x67), else it finds the building crowded.
     pub(in crate::goal) fn building_arrived(&mut self) {
         let id = self.target().0;
         let slot = self.open_slot(id);
@@ -251,15 +261,13 @@ impl Cx<'_, '_> {
                 }
                 self.set_task(ENTRANCE, 0, id, Some(t));
             }
-            _ => {
-                self.saw(id);
-                self.reset();
-            }
+            _ => self.crowded(id),
         }
     }
 
-    /// 0x67 complete: a charging attraction or show building with an expensive price turns the guest away angry;
-    /// else it takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
+    /// 0x67 complete: with no free slot the building is crowded, whatever its price; a charging
+    /// attraction or show building with an expensive price turns the guest away angry; else the
+    /// guest takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
     /// walk at the next update.
     pub(in crate::goal) fn entrance_arrived(&mut self) {
         let Some(id) = self.aim().map(|(b, _, _)| *b) else {
@@ -268,6 +276,9 @@ impl Cx<'_, '_> {
         let Some((_, kind)) = self.building(id) else {
             return self.reset();
         };
+        let Some((slot, _)) = self.open_slot(id) else {
+            return self.crowded(id);
+        };
         // Guest buildings 7.3: only a building that satisfies `fun` or `showtrick` refuses.
         let shown = kind.satisfies("fun") || kind.satisfies("showtrick");
         if kind.commerce && shown && self.mood(id, &kind) == Mood::Angry {
@@ -275,10 +286,6 @@ impl Cx<'_, '_> {
             self.saw(id);
             return self.reset();
         }
-        let Some((slot, _)) = self.open_slot(id) else {
-            self.saw(id);
-            return self.reset();
-        };
         if let Some((_, s, _)) = self.aim() {
             *s = slot;
         }
@@ -349,10 +356,8 @@ impl Cx<'_, '_> {
         };
         match started {
             true => self.set_task(USE, 0, id, None),
-            false => {
-                self.saw(id);
-                self.reset();
-            }
+            false if self.building(id).is_some() => self.crowded(id),
+            false => self.reset(),
         }
     }
 
