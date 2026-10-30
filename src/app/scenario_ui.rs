@@ -39,6 +39,7 @@ impl App<'_> {
 
     /// Does what the triggers asked of the interface.
     pub(super) fn scenario_effects(&mut self) {
+        self.scenario_forced();
         self.scenario_avail(false);
         self.scenario_deeds();
         let effects = self.sim.scenario().map(|s| s.effects());
@@ -50,6 +51,14 @@ impl App<'_> {
         }
         for line in self.scenario_lines.drain(..) {
             self.sim.note(line);
+        }
+    }
+
+    /// Carries out trigger 10: every research program is completed (research 6.8).
+    pub(super) fn scenario_forced(&mut self) {
+        let forced = self.sim.scenario().map(|s| s.gui().take_forced());
+        for progress in forced.into_iter().flatten() {
+            self.force_research(progress);
         }
     }
 

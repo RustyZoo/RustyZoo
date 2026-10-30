@@ -1332,7 +1332,7 @@ fn triggers_1_3_5_8_and_9_leave_a_deed_and_a_truleb_they_do_not_know_nothing() {
     for a in ["targa=0", "targa=-1", ""] {
         assert_eq!(deeds(&format!("trulea=9\n{a}")), [sale(false)], "{a}");
     }
-    // Triggers 6 and 10 (awards, forced research) are not here yet.
+    // Trigger 6 (awards) is not here yet; trigger 10 has its own queue.
     assert!(deeds("trulea=6\ntarga=1").is_empty());
     assert!(deeds("trulea=10").is_empty());
 }
@@ -1374,4 +1374,19 @@ fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_without_a_popu
         pass(&mut s, &env(1, 0), &mut Vec::new());
         assert_eq!(s.gui().take_deeds().len(), 1, "{body}");
     }
+}
+
+#[test]
+fn trigger_10_leaves_a_forced_research_with_whether_targa_is_above_0() {
+    let forced = |body: &str| {
+        let s = build(&format!("[start]\ntriggers=t\n[t]\n{body}\n"), &[]);
+        s.start(&mut Vec::new());
+        s.gui().take_forced()
+    };
+    assert_eq!(forced("trulea=10"), [false]);
+    assert_eq!(forced("trulea=10\ntarga=1"), [true]);
+    assert_eq!(forced("trulea=10\ntarga=-1"), [false]);
+    assert_eq!(forced("trulea=10\ntarga=2147483647"), [true]);
+    assert_eq!(forced("trulea=11\ntarga=1"), Vec::<bool>::new());
+    assert_eq!(forced(""), Vec::<bool>::new());
 }

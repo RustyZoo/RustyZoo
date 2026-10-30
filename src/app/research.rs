@@ -79,6 +79,40 @@ impl App<'_> {
         }
     }
 
+    /// Completes every research program with no dialog (research 6.8): the targets become
+    /// available, the building upgrades and the changes of the types are laid, as for a program
+    /// the step completed. With `progress` the progress is also set to the cost.
+    pub(super) fn force_research(&mut self, progress: bool) {
+        let Some(game) = &mut self.game else {
+            return;
+        };
+        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        let (forced, life) = self
+            .sim
+            .force_research(cat, &mut game.world.research, progress);
+        crate::animal::lengthen(&mut game.world, &life);
+        let mut flags = Vec::new();
+        for d in &forced {
+            if d.effect == 0 {
+                flags.push((d.target, true));
+            } else if d.effect == 1
+                && let Some((target, up)) = self.sim.research_upgrade(d.name)
+            {
+                crate::building::upgrade::add(&mut game.world.units.upgrades, target, up);
+            }
+        }
+        game.build.start_research(cat, &flags);
+        // The open lists and panels follow.
+        game.building.clock.force = true;
+        game.staff.clock.force = true;
+        game.research.clock.force = true;
+        if let Some(ui) = &mut self.ui {
+            let mut log = Vec::new();
+            game.build.refill(!flags.is_empty(), ui, vfs, cat, &mut log);
+            log.into_iter().for_each(|line| self.sim.note(line));
+        }
+    }
+
     /// A funding button of the panel (8.5): the level of the tab's branch moves one step.
     pub(super) fn research_fund(&mut self, up: bool) {
         let branch = self.ui.as_ref().and_then(branch_of_tab);

@@ -488,7 +488,7 @@ usage: rustyzoo [--data <dir>] <command>
                       HOW AMOUNT`), 5 boxes an animal at the gate (`sim scenario boxed NAME id N`,
                       or `none`), 8 removes animals (`sim scenario remove BY ID count N`) and 9
                       switches the animal panel's sell button (`sim scenario sale on|off`);
-                      triggers 6 and 10 (awards, forced research) do nothing yet; the research,
+                      trigger 10 completes every research program (`sim research forced N`, N programs); trigger 6 (awards) does nothing yet; the research,
                       awards and shows rules are stubs, and rules 10 and 11 read what the interface shows and what
                       was pressed; a game that opens gives the elements back). When the scenario
                       ends, its result is

@@ -129,6 +129,8 @@ struct Inner {
     out: Vec<Effect>,
     avail: Vec<Avail>,
     deeds: Vec<Deed>,
+    /// Trigger 10: for each forced research, whether the progress is set too.
+    forced: Vec<bool>,
 }
 
 /// The state shared by the rules and the triggers. Rules read it through `&self`.
@@ -193,6 +195,16 @@ impl Gui {
 
     pub(super) fn push_deed(&self, deed: Deed) {
         self.0.borrow_mut().deeds.push(deed);
+    }
+
+    pub(super) fn push_forced(&self, progress: bool) {
+        self.0.borrow_mut().forced.push(progress);
+    }
+
+    /// The forced researches trigger 10 left since the last call, each with whether the progress
+    /// is set too (research 6.8).
+    pub fn take_forced(&self) -> Vec<bool> {
+        std::mem::take(&mut self.0.borrow_mut().forced)
     }
 
     /// The deeds the triggers left since the last call.

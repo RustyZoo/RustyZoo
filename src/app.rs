@@ -872,6 +872,10 @@ impl<'a> App<'a> {
         // section completes the programs over their availability, then the ini rewards (7.3).
         if let Some(scenario) = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f)) {
             self.sim.resume_scenario(scenario, &goals.0, goals.1);
+            // The research section replaces what a forced research would do (7.3).
+            if let Some(s) = self.sim.scenario() {
+                s.gui().take_forced();
+            }
             self.scenario_avail(false);
         }
         // The lookup of the recorded rewards follows the open's triggers (entity types 10.4).
@@ -2120,6 +2124,7 @@ impl<'a> App<'a> {
         }
         if start.scenario.is_some() {
             // The triggers set the availability over the tree, the ini rewards come last (7.4).
+            self.scenario_forced();
             self.scenario_avail(true);
             self.look_up_unlocks();
         }
