@@ -5,10 +5,10 @@
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
 //! entities and the interface (rules 10 and 11); the research, awards and shows rules read 0. The
-//! triggers are stubs but for trigger 2 (popups and elements) and triggers 4 and 7 (availability):
-//! a trigger logs `scenario trigger` and does nothing else. The
-//! objectives list (4.5) and the end (5.4, 9) are here, and so are the goal states of a saved game:
-//! [`Scenario::states`] writes them and [`Scenario::resume`] reads them (5.3).
+//! triggers 1 to 5 and 7 to 9 do their work (messages, popups and elements, cash, availability, a
+//! boxed animal, removal, the sell switch); 6 and 10 (awards, forced research) only log
+//! `scenario trigger`. The objectives list (4.5) and the end (5.4, 9) are here, and so are the
+//! goal states of a saved game: [`Scenario::states`] writes them and [`Scenario::resume`] reads them (5.3).
 //!
 //! Trigger 2 (scenarios 7.1) and the interface rules 10 and 11 reach the interface through
 //! [`gui::Gui`]: a trigger leaves an [`Effect`] for the application, which tells back which
@@ -24,9 +24,12 @@ use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
 
 pub use apply::{Marks, built_line};
-pub use gui::{Avail, Effect, Gui, Tell, Which};
+pub use gui::{Avail, Deed, Effect, Gui, Tell, Which};
 pub use popup::{Hint, Op, Popup};
 pub use rules::Game;
+
+mod deed;
+pub use deed::{boxed, cash, remove};
 
 mod apply;
 mod gui;
@@ -79,8 +82,8 @@ pub enum Run {
     Lost,
 }
 
-/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Only triggers 2,
-/// 4 and 7 do anything; the others are stubs.
+/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Triggers 6
+/// (awards) and 10 (forced research) are stubs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Trigger {
     v: [i32; 4],
@@ -88,6 +91,8 @@ struct Trigger {
     effect: Option<Box<Effect>>,
     /// What trigger 4 or 7 leaves for the application.
     avail: Option<Avail>,
+    /// What trigger 1, 3, 5, 8 or 9 leaves for the application.
+    deed: Option<Box<Deed>>,
 }
 
 impl Trigger {
@@ -99,6 +104,7 @@ impl Trigger {
             v,
             effect,
             avail: avail(cfg, v),
+            deed: deed(cfg, v).map(Box::new),
         }
     }
 
@@ -119,6 +125,10 @@ impl Trigger {
                 tell,
                 ..avail.clone()
             });
+        }
+        let deed = self.deed.as_deref().cloned();
+        if let Some(deed) = deed.and_then(|d| if fresh { Some(d) } else { d.quiet() }) {
+            gui.push_deed(deed);
         }
         let effect = self.effect.as_deref().cloned();
         if let Some(effect) = effect.and_then(|e| if fresh { Some(e) } else { e.quiet() }) {
@@ -146,6 +156,39 @@ fn avail(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Avail> {
         _ => None,
     };
     Some(Avail { which, on, tell })
+}
+
+/// Triggers 1, 3, 5, 8 and 9 (7.2, 7.4, 7.5): a `truleb` trigger 3 or 8 does not know changes nothing,
+/// but their message or popup still follows; trigger 5 with one does nothing.
+fn deed(cfg: &Config, [a, b, t, p]: [i32; 4]) -> Option<Deed> {
+    let popup = || Popup::read(cfg, p);
+    match (a, b) {
+        (1, _) => Some(Deed::Say {
+            kind: b,
+            text: t,
+            value: p,
+        }),
+        (3, _) => Some(Deed::Cash {
+            how: b,
+            amount: t,
+            text: p,
+        }),
+        (5, 0..=2) => Some(Deed::Boxed {
+            sub: b"mfy"[b as usize],
+            name: t,
+            popup: popup(),
+        }),
+        (8, _) => Some(Deed::Remove {
+            by: b,
+            id: t,
+            popup: popup(),
+        }),
+        (9, _) => Some(Deed::Sale {
+            allowed: t > 0,
+            popup: popup(),
+        }),
+        _ => None,
+    }
 }
 
 /// Trigger 2 (7.1): `truleb` says what, `targa` and `targb` which element or block and which popup.

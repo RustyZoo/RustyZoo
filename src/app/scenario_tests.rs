@@ -531,3 +531,152 @@ fn an_untyped_id_a_start_trigger_unlocked_is_listed_again_by_a_win() {
         );
     });
 }
+
+/// The lines the passes since the start told, with the start's own.
+fn told(app: &App) -> String {
+    app.log_lines(1, 66).join("\n")
+}
+
+#[test]
+fn trigger_1_shows_its_string_built_with_the_value_in_the_message_line() {
+    availability(
+        "deed-say",
+        &["trulea=1\ntruleb=1\ntarga=9101\ntargb=42"],
+        |app, _, _| {
+            assert_eq!(
+                app.interface().unwrap().text(7001).unwrap(),
+                b"text-9101 42"
+            );
+            assert!(told(app).contains("scenario message 9101 kind 1"));
+        },
+    );
+    // A string of 0 or less shows nothing.
+    for text in [0, -4] {
+        let body = format!("trulea=1\ntarga={text}\ntargb=42");
+        availability("deed-say-none", &[&body], |app, _, _| {
+            assert_eq!(app.interface().unwrap().text(7001).unwrap(), b"");
+            assert!(!told(app).contains("scenario message"));
+        });
+    }
+}
+
+#[test]
+fn trigger_3_donates_adds_or_sets_the_cash_and_tells_the_amount() {
+    let cash = |name: &str, how: i32, amount: i32, text: i32| {
+        let trigger = format!("trulea=3\ntruleb={how}\ntarga={amount}\ntargb={text}");
+        let base = Money::default();
+        availability(name, &[&trigger], |app, _, _| {
+            let money = &app.game.as_ref().unwrap().money;
+            let want = match how {
+                0 | 1 => base.cash + amount as f32,
+                _ => amount as f32,
+            };
+            assert_eq!(money.cash, want, "{name}");
+            let donated = money.total[crate::money::DONATIONS];
+            assert_eq!(donated, if how == 0 { amount as f32 } else { 0.0 });
+            let said = app.interface().unwrap().text(7001).unwrap();
+            let said = String::from_utf8_lossy(&said).into_owned();
+            assert_eq!(said.starts_with("gift"), text > 0, "{said}");
+            assert!(told(app).contains(&format!("scenario cash {how} {amount}")));
+        });
+    };
+    cash("deed-donate", 0, 500, 9301);
+    cash("deed-add", 1, 250, 0);
+    cash("deed-set", 2, 1000, 9301);
+    cash("deed-set-negative", 2, -40, -1);
+}
+
+#[test]
+fn trigger_9_forbids_or_allows_the_sell_button_and_triggers_5_and_8_report_what_they_did() {
+    let no_sale = |name, body: &str| {
+        availability(name, &[body], |app, _, _| {
+            assert!(app.game.as_ref().unwrap().animal.no_sale, "{name}");
+            assert!(told(app).contains("scenario sale off"));
+        });
+    };
+    no_sale("deed-sale-0", "trulea=9\ntarga=0");
+    no_sale("deed-sale-negative", "trulea=9\ntarga=-3");
+    no_sale("deed-sale-missing", "trulea=9");
+    availability("deed-sale-1", &["trulea=9\ntarga=1"], |app, _, _| {
+        assert!(!app.game.as_ref().unwrap().animal.no_sale);
+        assert!(told(app).contains("scenario sale on"));
+    });
+    // The map has no animals and no tile three tiles from the entrance: no crate, so no popup.
+    availability("deed-5", &["trulea=5\ntarga=5\ntargb=8"], |app, _, _| {
+        assert!(told(app).contains("scenario boxed 5 none"), "{}", told(app));
+        assert!(!app.interface().unwrap().modal_open());
+    });
+    // A removal that finds nothing still shows its popup.
+    availability(
+        "deed-8",
+        &["trulea=8\ntruleb=1\ntarga=5\ntargb=8"],
+        |app, _, _| {
+            assert!(told(app).contains("scenario remove 1 5 count 0"));
+            assert!(app.interface().unwrap().modal_open());
+        },
+    );
+}
+
+#[test]
+fn trigger_3_message_writes_the_amount_with_cents_and_grouping() {
+    let body = "trulea=3\ntruleb=1\ntarga=1500\ntargb=9301";
+    availability("deed-cents", &[body], |app, _, _| {
+        assert_eq!(
+            app.interface().unwrap().text(7001).unwrap(),
+            b"gift $1,500.00"
+        );
+    });
+}
+
+#[test]
+fn trigger_3_with_an_unknown_mode_changes_no_cash_but_still_tells() {
+    for how in [3, 7, -1, i32::MAX] {
+        let body = format!("trulea=3\ntruleb={how}\ntarga=1500\ntargb=9301");
+        availability("deed-cash-other", &[&body], |app, _, _| {
+            assert_eq!(app.game.as_ref().unwrap().money.cash, Money::default().cash);
+            let said = app.interface().unwrap().text(7001).unwrap();
+            assert!(said.starts_with(b"gift $1,500"), "{how}");
+        });
+    }
+    // Missing mode is 0, a donation: unchanged. No message when targb is missing.
+    availability(
+        "deed-cash-nomsg",
+        &["trulea=3\ntruleb=7\ntarga=1500"],
+        |app, _, _| {
+            assert_eq!(app.interface().unwrap().text(7001).unwrap(), b"");
+        },
+    );
+}
+
+#[test]
+fn trigger_8_with_an_unknown_kind_removes_nothing_but_still_pops_up() {
+    for by in [4, 7, -1, i32::MAX] {
+        let body = format!("trulea=8\ntruleb={by}\ntarga=5\ntargb=8");
+        availability("deed-remove-other", &[&body], |app, _, _| {
+            assert!(app.interface().unwrap().modal_open(), "{by}");
+            assert!(told(app).contains(&format!("scenario remove {by} 5 count 0")));
+        });
+    }
+    // Without a popup number nothing shows.
+    availability(
+        "deed-remove-nopopup",
+        &["trulea=8\ntruleb=7\ntarga=5"],
+        |app, _, _| {
+            assert!(!app.interface().unwrap().modal_open());
+        },
+    );
+}
+
+#[test]
+fn a_scenario_end_allows_selling_again() {
+    let text = "[desc]\nname=9001\n[start]\ntriggers=t\n[t]\ntrulea=9\ntarga=0\n\
+                [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n";
+    let files = [("s/sell.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("sell-end", "", &files, cat, |app, _| {
+        let now = play(app, "s/sell.scn");
+        assert!(app.game.as_ref().unwrap().animal.no_sale);
+        until_asked(app, now);
+        assert!(!app.game.as_ref().unwrap().animal.no_sale);
+    });
+}

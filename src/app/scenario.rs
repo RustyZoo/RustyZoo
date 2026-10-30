@@ -25,6 +25,11 @@ impl App<'_> {
         let Some(end) = self.sim.scenario_ended() else {
             return;
         };
+        // The clean-up before the dialog allows selling again (8.4).
+        if let Some(game) = &mut self.game {
+            game.animal.no_sale = false;
+            game.animal.clock.force = true;
+        }
         let result = if end.won { "won" } else { "lost" };
         self.menu_events.push(format!("scenario ended {result}"));
         let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) else {

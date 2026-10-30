@@ -234,6 +234,8 @@ pub struct Unit {
     pub typed: bool,
     /// The sex a script gave the animal, which its first turn keeps (the `sim` command).
     pub sex: Option<bool>,
+    /// The animal is put in its crate on its first turn (scenario trigger 5).
+    pub boxed: bool,
 }
 
 impl Unit {
@@ -279,6 +281,7 @@ impl Unit {
             started: false,
             typed: false,
             sex: None,
+            boxed: false,
         }
     }
 

@@ -131,6 +131,8 @@ pub struct Panel {
     pub clock: Clock,
     /// The recommendations plaque was shown at the last look.
     pub plaque_shown: bool,
+    /// A scenario forbids selling animals (scenario trigger 9): the sell button stays disabled.
+    pub no_sale: bool,
     /// Just selected: the next refresh also sets the name, the icon and the follow button.
     fresh: bool,
     told: String,
@@ -205,7 +207,7 @@ impl Panel {
             set_follow_icon(ui, vfs, FOLLOW, ty);
         }
         let moveable = ty.is_none_or(|t| number(t, "cMoveable").is_none_or(|v| v != 0.0));
-        ui.set_enabled(SELL, !carried);
+        ui.set_enabled(SELL, !carried && !self.no_sale);
         ui.set_enabled(PICK_UP, moveable && !carried);
         ui.set_enabled(EXHIBIT, !carried);
         let list = world.units.thoughts.about(id);
