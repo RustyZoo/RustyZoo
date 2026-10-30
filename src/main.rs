@@ -487,9 +487,10 @@ usage: rustyzoo [--data <dir>] <command>
                       (`sim scenario message TEXT kind K`), 3 changes the cash (`sim scenario cash
                       HOW AMOUNT`), 5 boxes an animal at the gate (`sim scenario boxed NAME id N`,
                       or `none`), 8 removes animals (`sim scenario remove BY ID count N`) and 9
-                      switches the animal panel's sell button (`sim scenario sale on|off`);
-                      triggers 6 and 10 (awards, forced research) do nothing yet; the research,
-                      awards and shows rules are stubs, and rules 10 and 11 read what the interface shows and what
+                      switches the animal panel's sell button (`sim scenario sale on|off`), 6
+                      gives an award (`sim scenario award ID`, none for a `truleb` other than 0);
+                      trigger 10 (forced research) does nothing yet; the research and shows
+                      rules are stubs, rule 1 `ruleb` 11 counts the awards held, and rules 10 and 11 read what the interface shows and what
                       was pressed; a game that opens gives the elements back). When the scenario
                       ends, its result is
                       written to `[scenario]` of the settings of the user folder if lower than

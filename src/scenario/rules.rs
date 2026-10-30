@@ -5,7 +5,7 @@
 //! first time a rule asks, and kept in the [`Env`].
 //!
 //! Not read yet, they give 0: rule 8 (research makes types available), rule 13 (research), rule 15
-//! (shows), rule 1 with `ruleb` 11 (awards), the escaped animals of rule 4, and the rules and
+//! (shows), the escaped animals of rule 4, and the rules and
 //! `ruleb` values no shipped file uses. The interface rules 10 and 11 read the [`Gui`].
 
 use std::cell::OnceCell;
@@ -333,6 +333,8 @@ fn status(env: &Env, g: &Game, rule: &[i32; 4]) -> i32 {
         5 => sums.sick,
         6 => sums.species,
         7 => g.money.cash.round() as i32,
+        // The awards held, whether or not they have a definition (`awards.md` 4.3).
+        11 => i32::try_from(g.world.zoo.awards.len()).unwrap_or(i32::MAX),
         _ => 0,
     }
 }

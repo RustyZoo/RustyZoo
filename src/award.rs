@@ -77,6 +77,12 @@ impl Definitions {
         self.0.get(&id)
     }
 
+    /// A set of definitions made in a test.
+    #[cfg(test)]
+    pub fn of(list: &[(i32, Definition)]) -> Definitions {
+        Definitions(list.iter().cloned().collect())
+    }
+
     /// The definitions in ascending order of id.
     pub fn iter(&self) -> impl Iterator<Item = (i32, &Definition)> {
         self.0.iter().map(|(&id, d)| (id, d))
