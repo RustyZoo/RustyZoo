@@ -15,8 +15,8 @@ use crate::world::World;
 /// record as its entry time (0: `now`, the AI tick of the load), hidden when the type hides its
 /// users, and goes on with the task its unit block stores when that is entering, using or leaving,
 /// so a user leaves after the time it has left (a guest pays then); a unit saved in another task
-/// ends its use at once. A user visible inside (a seat, a shelter) goes on with its saved use set
-/// (behaviours 4.7); a guest whose record has no unit block leaves at once.
+/// ends its use at once. A user that keeps its task goes on with its saved set
+/// and its pending set name (behaviours 4.7); a guest whose record has no unit block leaves at once.
 /// The stored count of users is not brought back to the list: the pairs dropped stay counted
 /// (`Live::extra`).
 /// A file before version 80 restores none of the users of a type whose users are visible inside
@@ -68,6 +68,7 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     let block = common.and_then(|c| c.unit.as_ref());
     let saved = block.map(|b| b.target.active);
     let set = block.map(|b| b.behaviour.clone());
+    let pending = block.map(|b| b.pending.clone());
     let Some(u) = world.units.get_mut(unit) else {
         return;
     };
@@ -84,13 +85,14 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
         _ => saved,
     };
     crate::goal::resume_use(u, id, slot, now, saved);
-    // A user visible inside that keeps its task goes on with its saved use set: the current call
-    // again from its start, then the rest, and the set's `fExitBuilding` releases it (behaviours
-    // 4.7, guest buildings 6.5).
+    // A user that keeps its task goes on with its saved set: the current call again from its
+    // start, then the rest; for a user visible inside the set's `fExitBuilding` releases it
+    // (behaviours 4.7, guest buildings 6.5).
     let kept = (saved.and_then(|t| u8::try_from(t).ok()))
         .is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
-    if let (true, true, Some(set)) = (inside, kept, &set) {
+    if let (true, Some(set), Some(name)) = (kept, &set, &pending) {
         u.runner.restore(set);
+        crate::unit::resume::keep_pending(u, name);
     }
     u.hidden = kind.hide;
     if kind.hide {

@@ -375,12 +375,11 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     let economy = vfs.read("economy.cfg").unwrap();
-    // Zoo status 17.5: the set-up check and the first one, 4 s later. `med_kids` counts its 51
-    // stored guests in the set-up check (6.4). At its first check the original has removed them
-    // (the scenario resets) and has its research complete (5 points); the engine has neither
-    // yet, and the two differences cancel (guests 17 against 12, research 0 against 5).
-    // The stored guests keep their check countdowns, so the trash check cuts the happiness of
-    // about one guest in five in these 4 s, not of all at once.
+    // Zoo status 17.5: the set-up check and the first one, 4 s later. The original's 78 at its
+    // first check is a coincidence: it rates 17 animals, no guests and research 5 points, while
+    // the engine rates 19 animals, the stored guests and research 0. Those differences cancel
+    // while no animal is ill. At step 30 one animal falls ill by the random illness draw, so the
+    // healthy part drops from 15 to 14, giving 77.
     let table = [
         ("dinosmal", 45, 42),
         ("deathmtn", 42, 37),
@@ -392,7 +391,7 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
         ("lg_resrt", 47, 42),
         ("beach", 49, 44),
         ("tundra", 42, 37),
-        ("med_kids", 81, 78),
+        ("med_kids", 81, 77),
     ];
     for (map, setup, first) in table {
         let catalogue = Catalogue::load(&vfs).unwrap();

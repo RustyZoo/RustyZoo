@@ -818,6 +818,7 @@ fn seated_with(
     for (i, task) in tasks.into_iter().enumerate() {
         let mut block = crate::zoo::UnitBlock::default();
         block.target.active = task.unwrap_or(-1);
+        block.pending = "bpending".into();
         block.behaviour.levels[0] = crate::zoo::Level {
             name: "bshopfood0".into(),
             list_b: vec!["fPlayTime(sit,30)".into(), "fExitBuilding()".into()],
@@ -941,9 +942,10 @@ fn a_listed_user_keeps_the_task_its_record_stores() {
 }
 
 #[test]
-fn a_user_visible_inside_goes_on_with_its_saved_use_set_and_a_hider_does_not() {
+fn a_user_goes_on_with_its_saved_use_set_hidden_or_not() {
     // The shop shows its users inside: guests 1 and 2 saved in the use run the rest of the set,
-    // the current call (the 30 s) again, then the exit. The restroom hides its user: no set.
+    // the current call (the 30 s) again, then the exit. The restroom hides its user, which
+    // keeps its set too.
     let (w, _) = seated_with(
         106,
         [vec![(1, 0), (2, 1)], vec![(3, 0)]],
@@ -966,7 +968,24 @@ fn a_user_visible_inside_goes_on_with_its_saved_use_set_and_a_hider_does_not() {
         );
     }
     let u = w.units.get(3).unwrap();
-    assert!(!u.runner.running() && u.hidden);
+    assert!(u.runner.running() && u.hidden);
+    // The pending set name is kept as saved.
+    assert!((1..=3).all(|id| w.units.get(id).unwrap().runner.queued() == Some("bpending")));
+}
+
+#[test]
+fn a_user_saved_in_another_task_keeps_no_pending_set() {
+    // The building's stop clears the pending name; only a user that keeps its task keeps it.
+    for (saved, want) in [(106, Some("bpending")), (100, None), (0, None), (-1, None)] {
+        let (w, _) = seated_with(
+            106,
+            [vec![(1, 0)], Vec::new()],
+            [1, 0],
+            [Some(saved), None, None],
+            [None; 3],
+        );
+        assert_eq!(w.units.get(1).unwrap().runner.queued(), want, "{saved}");
+    }
 }
 
 #[test]
