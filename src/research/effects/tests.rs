@@ -398,3 +398,121 @@ fn a_price_and_a_discount_use_the_single_precision_hundredth() {
     let cost = tree.programs().next().unwrap().cost;
     assert_eq!(cost.to_bits(), 0x3f81_9999);
 }
+
+fn programs(t: &Tree) -> Vec<(f32, f32)> {
+    let all = t.branches[0].categories[0].programs.iter();
+    all.map(|p| (p.cost, p.progress)).collect()
+}
+
+#[test]
+fn forcing_completes_every_program_not_done_in_order_and_only_sets_progress_when_asked() {
+    let cat = cat();
+    let mut seen = Vec::new();
+    for progress in [false, true] {
+        let mut t = tree(vec![
+            program(1, 20.0, 0.0, 100, 0, [0; 3]),
+            program(2, 30.0, 30.0, 200, 0, [0; 3]),
+            program(3, 10.0, 0.0, 0, 4, [0, 5, 0]),
+            program(4, 10.0, 0.0, 6, 7, [50, 9552, 2]),
+            program(5, 40.0, 0.0, 100, 6, [11204, 0, 0]),
+        ]);
+        let mut over = Overlay::default();
+        let (done, _) = t.force(&cat, &mut over, progress, &mut || 0);
+        let names: Vec<i32> = done.iter().map(|d| d.name).collect();
+        assert_eq!(names, [1, 3, 4, 5], "the program already done is left");
+        assert_eq!(int(&over, &cat, 0, "cKeeperArrivesChange", 100), 105);
+        assert_eq!(mask(&over, &cat, MARINE), 2);
+        seen.push(programs(&t));
+    }
+    // The discount is laid when its turn comes: the later program gets the lower cost.
+    assert_eq!(seen[0][4], (20.0, 0.0), "no progress");
+    assert_eq!(
+        seen[1],
+        [
+            (20.0, 20.0),
+            (30.0, 30.0),
+            (10.0, 10.0),
+            (10.0, 10.0),
+            (20.0, 20.0)
+        ]
+    );
+}
+
+#[test]
+fn forcing_chooses_a_current_program_again_and_a_tree_without_programs_does_nothing() {
+    let cat = cat();
+    let mut t = tree(vec![
+        program(1, 20.0, 0.0, 100, 0, [0; 3]),
+        program(2, 30.0, 0.0, 200, 0, [0; 3]),
+    ]);
+    t.branches[0].current = Some((0, 0));
+    let mut draws = 0;
+    t.force(&cat, &mut Overlay::default(), true, &mut || {
+        draws += 1;
+        0
+    });
+    assert_eq!((t.branches[0].current, draws), (None, 0), "nothing is left");
+    let mut t = tree(vec![program(1, 20.0, 0.0, 100, 0, [0; 3])]);
+    t.force(&cat, &mut Overlay::default(), false, &mut || {
+        draws += 1;
+        0
+    });
+    assert_eq!(
+        (t.branches[0].current, draws),
+        (Some((0, 0)), 1),
+        "one draw"
+    );
+    let mut empty = Tree::default();
+    let (done, life) = empty.force(&cat, &mut Overlay::default(), true, &mut || 0);
+    assert!(done.is_empty() && life.is_empty());
+}
+
+#[test]
+fn a_trick_program_makes_the_trick_of_the_animal_type_available_and_a_load_keeps_it() {
+    let cat = cat();
+    let mut over = Overlay::default();
+    // 0, a negative id, a huge id, a target that is no animal, a missing type: nothing breaks.
+    for (target, trick) in [
+        (100, 11204),
+        (100, 0),
+        (100, -1),
+        (100, i32::MAX),
+        (300, 5),
+        (999, 6),
+    ] {
+        over.unlock_trick(&cat, target, trick);
+    }
+    let zebra = &cat.types[0];
+    assert!(over.trick_available(zebra, 11204, false));
+    assert!(
+        over.trick_available(&cat.types[1], 11204, false),
+        "both subtypes"
+    );
+    assert!(
+        !over.trick_available(&cat.types[REX], 11204, false),
+        "another type"
+    );
+    assert!(!over.trick_available(zebra, 11205, false));
+    assert!(
+        over.trick_available(zebra, 11205, true),
+        "the default flag stays"
+    );
+    assert!(
+        !over.trick_available(&cat.types[ZOOKEEPER[0]], 5, false),
+        "not an animal"
+    );
+    // A tree load lays the complete trick programs again.
+    let mut t = tree(vec![program(1, 10.0, 10.0, 100, 6, [11204, 0, 0])]);
+    let mut over = Overlay::default();
+    t.apply(&cat, &mut over);
+    assert!(over.trick_available(zebra, 11204, false));
+    let mut t = tree(vec![program(1, 10.0, 0.0, 100, 6, [11204, 0, 0])]);
+    t.force(&cat, &mut over, false, &mut || 0);
+    t.apply(&cat, &mut over);
+    assert!(
+        !over.trick_available(zebra, 11204, false),
+        "not complete, rebuilt empty"
+    );
+    t.force(&cat, &mut over, false, &mut || 0);
+    assert!(over.trick_available(zebra, 11204, false));
+}

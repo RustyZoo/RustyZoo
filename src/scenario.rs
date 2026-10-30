@@ -5,8 +5,8 @@
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
 //! entities and the interface (rules 10 and 11); the research and shows rules read 0. The
-//! triggers 1 to 5 and 7 to 9 do their work (messages, popups and elements, cash, availability, a
-//! boxed animal, removal, the sell switch); 10 (forced research) only logs
+//! triggers 1 to 10 do their work (messages, popups and elements, cash, availability, a
+//! boxed animal, an award, removal, the sell switch, forced research), and every trigger is also logged as
 //! `scenario trigger`. The objectives list (4.5) and the end (5.4, 9) are here, and so are the
 //! goal states of a saved game: [`Scenario::states`] writes them and [`Scenario::resume`] reads them (5.3).
 //!
@@ -82,8 +82,7 @@ pub enum Run {
     Lost,
 }
 
-/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`. Trigger 10
-/// (forced research) is a stub.
+/// What a goal does when its state changes: `trulea`, `truleb`, `targa`, `targb`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Trigger {
     v: [i32; 4],
@@ -125,6 +124,9 @@ impl Trigger {
                 tell,
                 ..avail.clone()
             });
+        }
+        if self.v[0] == 10 {
+            gui.push_forced(self.v[2] > 0);
         }
         let deed = self.deed.as_deref().cloned();
         if let Some(deed) = deed.and_then(|d| if fresh { Some(d) } else { d.quiet() }) {
