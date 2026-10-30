@@ -311,7 +311,8 @@ fn number(text: &str) -> Number {
     }
 }
 
-fn target(text: &str) -> Target {
+/// The 3D target a name stands for (the saved name of a unit, an argument of a move call).
+pub fn target(text: &str) -> Target {
     match text {
         "level" => Target::Level,
         "surface" => Target::Surface,
