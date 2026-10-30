@@ -66,7 +66,7 @@ impl Avail {
     }
 }
 
-/// What triggers 1, 3, 5, 8 and 9 ask of the game (7.2, 7.4, 7.5). The popup comes after it, when
+/// What triggers 1, 3, 5, 6, 8 and 9 ask of the game (7.2, 7.4, 7.5). The popup comes after it, when
 /// there is one and the run is fresh.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Deed {
@@ -91,10 +91,15 @@ pub enum Deed {
     },
     /// Trigger 9: whether the animal panel's sell button works.
     Sale { allowed: bool, popup: Option<Popup> },
+    /// Trigger 6 (`awards.md` 5.1): award `id` is given when `give` (`truleb` 0, a duplicate is
+    /// ignored); then, if the award has a definition and `text` is above 0, the message of that
+    /// string built with the award's name. A run again after a load has no `text`.
+    Award { give: bool, id: i32, text: i32 },
 }
 
 impl Deed {
-    /// What a trigger run again after a load keeps (7): the removal and the switch, no popup.
+    /// What a trigger run again after a load keeps (7): the removal, the switch and the award, no
+    /// popup and no message.
     pub(super) fn quiet(self) -> Option<Deed> {
         match self {
             Deed::Remove { by, id, .. } => Some(Deed::Remove {
@@ -106,6 +111,7 @@ impl Deed {
                 allowed,
                 popup: None,
             }),
+            Deed::Award { give, id, .. } => Some(Deed::Award { give, id, text: 0 }),
             _ => None,
         }
     }

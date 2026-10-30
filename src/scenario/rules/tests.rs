@@ -154,7 +154,7 @@ fn rule_1_reads_the_zoo_status_after_month_arga_and_cash_rounded() {
     assert_eq!(read(&p, 2), [0; 8], "month 2 is later");
     assert_eq!(read(&p, i32::MAX), [0; 8]);
     assert_eq!(read(&p, i32::MIN)[2], 61);
-    for b in [8, 9, 10, 11, 12, -1, i32::MAX] {
+    for b in [8, 9, 10, 12, -1, i32::MAX] {
         assert_eq!(p.read([1, b, 0, 0]), 0, "ruleb {b} reads 0");
     }
     for (cash, want) in [
@@ -166,6 +166,20 @@ fn rule_1_reads_the_zoo_status_after_month_arga_and_cash_rounded() {
         p.money.cash = cash;
         assert_eq!(p.read([1, 7, 0, 0]), want, "cash {cash}");
     }
+}
+
+#[test]
+fn rule_1_ruleb_11_counts_the_awards_held_with_or_without_a_definition() {
+    let mut p = Parts::new(world(), zoo_types());
+    assert_eq!(p.read([1, 11, 0, 0]), 0);
+    for id in [i32::MAX, 0, -1, 7, 7] {
+        crate::award::add(&mut p.world.zoo.awards, id);
+    }
+    assert_eq!(p.read([1, 11, 0, 0]), 4);
+    assert_eq!(p.read([1, 11, 1, 0]), 4, "month 1 is now");
+    assert_eq!(p.read([1, 11, 2, 0]), 0, "month 2 is later");
+    assert_eq!(p.read([1, 11, i32::MAX, 0]), 0);
+    assert_eq!(p.read([1, 11, i32::MIN, 0]), 4);
 }
 
 #[test]

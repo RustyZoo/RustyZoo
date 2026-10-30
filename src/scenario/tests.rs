@@ -1332,8 +1332,22 @@ fn triggers_1_3_5_8_and_9_leave_a_deed_and_a_truleb_they_do_not_know_nothing() {
     for a in ["targa=0", "targa=-1", ""] {
         assert_eq!(deeds(&format!("trulea=9\n{a}")), [sale(false)], "{a}");
     }
-    // Triggers 6 and 10 (awards, forced research) are not here yet.
-    assert!(deeds("trulea=6\ntarga=1").is_empty());
+    // The award: given on `truleb` 0 only; the text is 0 when missing, and ids are kept as read.
+    let award = |give, id, text| Deed::Award { give, id, text };
+    assert_eq!(deeds("trulea=6\ntarga=1"), [award(true, 1, 0)]);
+    assert_eq!(
+        deeds("trulea=6\ntarga=-3\ntargb=2147483647"),
+        [award(true, -3, i32::MAX)]
+    );
+    assert_eq!(deeds("trulea=6"), [award(true, 0, 0)]);
+    for b in [1, -1, i32::MAX] {
+        assert_eq!(
+            deeds(&format!("trulea=6\ntruleb={b}\ntarga=2\ntargb=5")),
+            [award(false, 2, 5)],
+            "{b}"
+        );
+    }
+    // Trigger 10 (forced research) is not here yet.
     assert!(deeds("trulea=10").is_empty());
 }
 
@@ -1356,6 +1370,14 @@ fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_without_a_popu
             Some(Deed::Sale {
                 allowed: false,
                 popup: None,
+            }),
+        ),
+        (
+            "trulea=6\ntarga=4\ntargb=9",
+            Some(Deed::Award {
+                give: true,
+                id: 4,
+                text: 0,
             }),
         ),
         ("trulea=1\ntarga=7", None),
