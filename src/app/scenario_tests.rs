@@ -6,6 +6,7 @@ use crate::lists::Scenario as Listed;
 use crate::menu::Start;
 use crate::money::Money;
 use crate::sprite::tests::Install;
+use crate::ui::layout::DISABLED;
 use crate::zoo::Zoo;
 
 const MAIN_PANEL: i32 = 2;
@@ -679,4 +680,81 @@ fn a_scenario_end_allows_selling_again() {
         until_asked(app, now);
         assert!(!app.game.as_ref().unwrap().animal.no_sale);
     });
+}
+
+/// Adds a lion (name id 5) to the game and returns its id.
+fn add_lion(app: &mut App) -> u32 {
+    let lion = Entity {
+        class: "animals".into(),
+        type_name: "lion".into(),
+        subtype: "m".into(),
+        body_size: None,
+        common: Some(crate::zoo::Common {
+            x: 5 * 64 + 32,
+            y: 5 * 64 + 32,
+            id: 0,
+            ..Default::default()
+        }),
+    };
+    app.game.as_mut().unwrap().world.add(lion, None).unwrap()
+}
+
+#[test]
+fn trigger_8_cancels_the_carry_and_the_selection_of_the_entity_it_removes() {
+    // A goal that sees the button 2002 shown removes the entities of name id 5 (a lion) or 6.
+    for (target, goes) in [(5, true), (6, false)] {
+        let text = format!(
+            "[duration]\nnummonths=-1\n[desc]\nname=9001\n[goals]\ngoal=g\n[g]\nrulea=10\nruleb=0\n\
+             arga=2002\nvalue=1\ntrulea=8\ntruleb=0\ntarga={target}\n"
+        );
+        let files = [("s/rm.scn", text.into_bytes())];
+        let cat = Some(super::avail_tests::catalogue());
+        with_game("remove-carry", "", &files, cat, |app, _| {
+            app.pass(0, &[]);
+            app.interface().unwrap().set_hidden(2002, true);
+            let mut now = play(app, "s/rm.scn");
+            let id = add_lion(app);
+            app.carry_up(id);
+            let game = app.game.as_mut().unwrap();
+            assert_eq!(game.carry.as_ref().map(|c| c.id), Some(id));
+            game.selected = Some(id);
+            app.interface().unwrap().set_hidden(2002, false);
+            for _ in 0..70 {
+                now += 66;
+                app.pass(now, &[]);
+            }
+            let game = app.game.as_ref().unwrap();
+            assert_eq!(game.world.find(id).is_none(), goes, "{target}");
+            assert_eq!(game.carry.is_none(), goes, "{target}");
+            assert_eq!(game.selected.is_none(), goes, "{target}");
+        });
+    }
+}
+
+#[test]
+fn a_scenario_end_gives_back_the_elements_a_trigger_took() {
+    // The start disables the button 2001 and hides 7001; a win or a loss gives both back.
+    for (name, kind) in [("win", ""), ("lose", "type=7\n")] {
+        let text = format!(
+            "[desc]\nname=9001\n[start]\ntriggers=t\ntriggers=u\n[t]\ntrulea=2\ntruleb=3\ntarga=2001\n\
+             [u]\ntrulea=2\ntruleb=7\ntarga=7001\n[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\n{kind}"
+        );
+        let file = format!("s/{name}-clean.scn");
+        let files = [(file.as_str(), text.into_bytes())];
+        let cat = Some(super::avail_tests::catalogue());
+        with_game(&format!("end-clean-{name}"), "", &files, cat, |app, _| {
+            app.pass(0, &[]);
+            app.interface().unwrap().set_hidden(7001, false);
+            let now = play(app, &file);
+            let off = |app: &mut App| {
+                let ui = app.interface().unwrap();
+                ui.tree.elements[ui.tree.find(2001).unwrap()].state & DISABLED != 0
+            };
+            assert!(off(app), "{name}");
+            assert!(!shown(app, 7001), "{name}");
+            until_asked(app, now);
+            assert!(!off(app), "{name} disabled");
+            assert!(shown(app, 7001), "{name} hidden");
+        });
+    }
 }
