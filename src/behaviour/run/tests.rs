@@ -868,3 +868,75 @@ fn a_saved_forced_set_cuts_the_animation_at_its_first_run_once() {
     rig.tick(0);
     assert!(!rig.anim.cut);
 }
+
+#[test]
+fn a_running_set_is_saved_with_its_remaining_calls_and_restores_the_same() {
+    let calls = ["fPlay(a)", "fPlayTime(b,2)", "fPlay(c)"];
+    let mut rig = Rig::new(&[("bAmbient", &calls)]);
+    let none = Saved { levels: Vec::new() };
+    // No set run yet: nothing to write.
+    assert!(rig.runner.saved(&none, |_| None).is_none());
+    // The first call has run and is done, the second is current: the type's set is written
+    // from the current call on, with the flags of the level.
+    rig.tick(100);
+    rig.tick(100);
+    let got = rig.runner.saved(&none, |n| rig.data.set(&rig.unit, n));
+    let got = got.unwrap();
+    let top = &got.levels[0];
+    assert_eq!((top.name.as_str(), top.flag, top.child), ("bAmbient", 1, 0));
+    assert_eq!(top.list_a, ["bAmbient"]);
+    assert_eq!(top.list_b, calls[1..]);
+    assert_eq!(
+        (top.text.as_str(), top.call.as_str()),
+        (calls[1], "fPlayTime")
+    );
+    assert_eq!(top.args, ["b", "2"]);
+    assert_eq!(top.tail, [1, 0, 1, 0]);
+    // It loads back into a runner that writes the very same set.
+    let mut other = Rig::new(&[]);
+    assert!(other.runner.restore(&got));
+    assert_eq!(other.runner.saved(&got, |_| None), Some(got.clone()));
+    // A level that has ended is written as not running.
+    rig.data.rows.clear();
+    for _ in 0..20 {
+        rig.tick(500);
+    }
+    assert!(!rig.runner.running());
+    let ended = rig.runner.saved(&got, |n| rig.data.set(&rig.unit, n));
+    assert_eq!(ended.unwrap().levels[0].tail[2], 0);
+}
+
+#[test]
+fn a_nested_set_is_saved_inside_its_parent_with_the_chain_of_names() {
+    let level = |name: &str, calls: &[&str]| crate::zoo::Level {
+        name: name.into(),
+        list_b: calls.iter().map(|c| c.to_string()).collect(),
+        tail: [1, 0, 1, 0],
+        child: 1,
+        ..Default::default()
+    };
+    let mut rig = Rig::new(&[]);
+    let nested = Saved {
+        levels: vec![
+            level("bTop", &["fPlaySet(bIn)", "fPlay(c)"]),
+            level("bIn", &["fPlay(d)", "fPlay(a)"]),
+        ],
+    };
+    rig.runner.restore(&nested);
+    rig.tick(100);
+    let got = rig.runner.saved(&nested, |_| None).unwrap();
+    assert_eq!(got.levels.len(), 2);
+    let names = |l: &crate::zoo::Level| (l.name.clone(), l.child, l.list_b.len());
+    assert_eq!(names(&got.levels[0]), ("bTop".into(), 1, 2));
+    assert_eq!(names(&got.levels[1]), ("bIn".into(), 0, 2));
+    assert_eq!(got.levels[0].list_a, ["bTop", "bIn"]);
+    assert_eq!(got.levels[1].text, "fPlay(d)");
+    // A text that is no call is kept as written.
+    let mut rig = Rig::new(&[]);
+    let odd = saved("bUse", &["fNoSuchCall(a)"], [1, 0, 1, 0]);
+    rig.runner.restore(&odd);
+    assert_eq!(
+        rig.runner.saved(&odd, |_| None).unwrap().levels[0].list_b,
+        ["fNoSuchCall(a)"]
+    );
+}

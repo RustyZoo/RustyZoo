@@ -17,7 +17,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use super::{Call, Gait, Number, Op, Place, Play, Routine, Row, Target, parse_call};
+use super::{Call, Gait, Number, Op, Place, Play, Routine, Row, Target, parse_call, split_call};
 use crate::sim::Rng;
 use crate::zoo::{Behaviour as Saved, Entity};
 
@@ -552,6 +552,7 @@ impl Runner {
                 Call {
                     name: "",
                     op: Op::Fail,
+                    text: text.clone(),
                 },
                 |(call, _)| call,
             )
@@ -570,6 +571,48 @@ impl Runner {
             .collect();
         (self.ready, self.playing, self.fresh) = (true, false, true);
         true
+    }
+
+    /// The set the unit runs now, in the form of a saved game (behaviours 4.1, 4.7; the inverse of
+    /// [`Runner::restore`]): each level of the chain with its remaining calls as texts, the
+    /// current one first, taken from the set `sets` finds by name unless the level holds its own.
+    /// `base` is the set the unit's record was read with, whose fields nothing here changes are
+    /// kept. `None` when the unit has run no set since it was made or loaded.
+    pub fn saved<'a>(
+        &self,
+        base: &Saved,
+        sets: impl Fn(&str) -> Option<&'a [Call]>,
+    ) -> Option<Saved> {
+        let last = self.chain.len().checked_sub(1)?;
+        let names: Vec<String> = self.chain.iter().map(|l| l.name.clone()).collect();
+        let levels = (self.chain.iter().enumerate())
+            .map(|(i, l)| {
+                let mut out = base.levels.get(i).cloned().unwrap_or_default();
+                let calls = l
+                    .own
+                    .as_deref()
+                    .or_else(|| sets(&l.name))
+                    .unwrap_or_default();
+                let rest = calls.get(l.call..).unwrap_or_default();
+                let current = rest.first();
+                let text = current.map_or("", |c| c.text.as_str());
+                let (_, args) = split_call(text.as_bytes());
+                out.name = l.name.clone();
+                if i == 0 {
+                    out.flag = u8::from(self.interruptible);
+                    out.list_a = names.clone();
+                }
+                out.text = text.to_string();
+                out.call = current.map_or(String::new(), |c| c.name.to_string());
+                out.args = if current.is_some() { args } else { Vec::new() };
+                out.flags[0] = u8::from(l.done);
+                out.child = u8::from(i < last);
+                out.list_b = rest.iter().map(|c| c.text.clone()).collect();
+                out.tail = [l.loaded, l.done, l.running, l.forced].map(u8::from);
+                out
+            })
+            .collect();
+        Some(Saved { levels })
     }
 
     /// The unit's behaviour hook (behaviours 4.6): a pending set starts, else an ambient one is
