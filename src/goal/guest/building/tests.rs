@@ -1896,3 +1896,33 @@ fn a_slot_that_lists_other_guest_types_is_not_sought_by_a_guest() {
         assert_eq!(guest(&w).building == 9, sought, "{id}");
     }
 }
+
+#[test]
+fn a_full_building_is_crowded_at_every_step_before_the_price_is_looked_at() {
+    let prices = [4.0, 0.0, -1.0, 1e9, f32::NAN];
+    for (price, step) in prices.into_iter().flat_map(|p| (0..3).map(move |s| (p, s))) {
+        let cat = types_with(&STAND.replace("food", "food\nfun"));
+        let mut w = zoo();
+        let live = Live {
+            price,
+            users: vec![(2, 0, 0), (3, 0, 0)],
+            ..Default::default()
+        };
+        w.units.buildings.insert(7, live);
+        with_cx(&cat, &mut w, |cx| {
+            if let Some(g) = cx.guest() {
+                (g.need, g.building) = (Some("food"), 7);
+            }
+            match step {
+                0 => cx.building_arrived(),
+                1 => cx.entrance_arrived(),
+                _ => cx.enter_arrived(),
+            }
+        });
+        let seen = w.units.thoughts.of(1);
+        let about: Vec<_> = seen.iter().map(|t| (t.text, t.object)).collect();
+        assert_eq!(about, [(10243, Some(7))], "{price} {step}");
+        assert_eq!(guest(&w).seen.len(), 1, "{price} {step}");
+        assert_eq!(guest(&w).building, 0, "{price} {step}");
+    }
+}
