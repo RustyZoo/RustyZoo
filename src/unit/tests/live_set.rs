@@ -69,7 +69,6 @@ fn a_save_writes_the_live_set_and_it_loads_back_the_same() {
     assert!(w.units.get_mut(1).unwrap().runner.restore(&live()));
     let block = saved_block(&w);
     let (top, nested) = (&block.behaviour.levels[0], &block.behaviour.levels[1]);
-    assert_eq!(top.list_a, ["bTop", "bIn"]);
     assert_eq!((top.name.as_str(), top.child), ("bTop", 1));
     assert_eq!(top.list_b, ["fPlaySet(bIn)", "fPlay(c)"]);
     assert_eq!((nested.name.as_str(), nested.child), ("bIn", 0));

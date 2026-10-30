@@ -884,7 +884,6 @@ fn a_running_set_is_saved_with_its_remaining_calls_and_restores_the_same() {
     let got = got.unwrap();
     let top = &got.levels[0];
     assert_eq!((top.name.as_str(), top.flag, top.child), ("bAmbient", 1, 0));
-    assert_eq!(top.list_a, ["bAmbient"]);
     assert_eq!(top.list_b, calls[1..]);
     assert_eq!(
         (top.text.as_str(), top.call.as_str()),
@@ -907,7 +906,7 @@ fn a_running_set_is_saved_with_its_remaining_calls_and_restores_the_same() {
 }
 
 #[test]
-fn a_nested_set_is_saved_inside_its_parent_with_the_chain_of_names() {
+fn a_nested_set_is_saved_inside_its_parent() {
     let level = |name: &str, calls: &[&str]| crate::zoo::Level {
         name: name.into(),
         list_b: calls.iter().map(|c| c.to_string()).collect(),
@@ -929,7 +928,6 @@ fn a_nested_set_is_saved_inside_its_parent_with_the_chain_of_names() {
     let names = |l: &crate::zoo::Level| (l.name.clone(), l.child, l.list_b.len());
     assert_eq!(names(&got.levels[0]), ("bTop".into(), 1, 2));
     assert_eq!(names(&got.levels[1]), ("bIn".into(), 0, 2));
-    assert_eq!(got.levels[0].list_a, ["bTop", "bIn"]);
     assert_eq!(got.levels[1].text, "fPlay(d)");
     // A text that is no call is kept as written.
     let mut rig = Rig::new(&[]);

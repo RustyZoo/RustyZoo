@@ -163,11 +163,21 @@ pub enum Op {
 
 /// A call, the name it was written with (one of [`NAMES`]) and the text it was parsed from, which
 /// a save writes back.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Call {
     pub name: &'static str,
     pub op: Op,
     pub text: String,
+}
+
+/// Without the text: the state hash of a run is made of this form.
+impl std::fmt::Debug for Call {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (f.debug_struct("Call"))
+            .field("name", &self.name)
+            .field("op", &self.op)
+            .finish()
+    }
 }
 
 /// One row of an ambient table: the set for a happiness from `lo` to `hi`.

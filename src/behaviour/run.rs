@@ -584,7 +584,6 @@ impl Runner {
         sets: impl Fn(&str) -> Option<&'a [Call]>,
     ) -> Option<Saved> {
         let last = self.chain.len().checked_sub(1)?;
-        let names: Vec<String> = self.chain.iter().map(|l| l.name.clone()).collect();
         let levels = (self.chain.iter().enumerate())
             .map(|(i, l)| {
                 let mut out = base.levels.get(i).cloned().unwrap_or_default();
@@ -600,7 +599,6 @@ impl Runner {
                 out.name = l.name.clone();
                 if i == 0 {
                     out.flag = u8::from(self.interruptible);
-                    out.list_a = names.clone();
                 }
                 out.text = text.to_string();
                 out.call = current.map_or(String::new(), |c| c.name.to_string());
