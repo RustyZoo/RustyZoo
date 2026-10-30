@@ -161,11 +161,23 @@ pub enum Op {
     Fail,
 }
 
-/// A call and the name it was written with (one of [`NAMES`]).
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A call, the name it was written with (one of [`NAMES`]) and the text it was parsed from, which
+/// a save writes back.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Call {
     pub name: &'static str,
     pub op: Op,
+    pub text: String,
+}
+
+/// Without the text: the state hash of a run is made of this form.
+impl std::fmt::Debug for Call {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (f.debug_struct("Call"))
+            .field("name", &self.name)
+            .field("op", &self.op)
+            .finish()
+    }
 }
 
 /// One row of an ambient table: the set for a happiness from `lo` to `hi`.
@@ -474,9 +486,17 @@ fn build(name: &str, args: &[String]) -> Result<Op, &'static str> {
 pub fn parse_call(text: &[u8]) -> Option<(Call, Option<&'static str>)> {
     let (name, args) = split_call(text);
     let name = NAMES.iter().find(|n| Some(n.as_bytes()) == name)?;
+    let text = String::from_utf8_lossy(text).into_owned();
     Some(match build(name, &args) {
-        Ok(op) => (Call { name, op }, None),
-        Err(why) => (Call { name, op: Op::Fail }, Some(why)),
+        Ok(op) => (Call { name, op, text }, None),
+        Err(why) => (
+            Call {
+                name,
+                op: Op::Fail,
+                text,
+            },
+            Some(why),
+        ),
     })
 }
 

@@ -3,7 +3,7 @@
 
 use super::World;
 use crate::building::Kind;
-use crate::entity::Catalogue;
+use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::goal;
 use crate::guest::thought::Thought;
@@ -179,7 +179,7 @@ impl World {
                     .guest_non_path_cost
                     .unwrap_or(fresh::DEFAULT_NON_PATH_COST);
                 self.unit_made(c, &e.class, cost);
-                self.live_way(c);
+                self.live_way(c, cat, ty);
             }
         }
     }
@@ -207,9 +207,10 @@ impl World {
         c.unit = Some(Box::new(block));
     }
 
-    /// A started unit writes its live path (with its levels, -1 for none), destination and
-    /// pending set name, not the ones its block was read with (behaviours 4.7, zoo format 6.14).
-    fn live_way(&self, c: &mut Common) {
+    /// A started unit writes its live path (with its levels, -1 for none), destination, pending
+    /// set name and behaviour set (the chain of calls it runs), not the ones its block was read
+    /// with (behaviours 4.7, zoo format 6.14).
+    fn live_way(&self, c: &mut Common, cat: &Catalogue, ty: &EntityType) {
         let Some(u) = self.units.get(c.id).filter(|u| u.started) else {
             return;
         };
@@ -225,6 +226,10 @@ impl World {
             .collect();
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
         block.pending = u.runner.queued().unwrap_or_default().to_string();
+        let sets = |name: &str| cat.behaviour_set(ty, name.as_bytes());
+        if let Some(set) = u.runner.saved(&block.behaviour, sets) {
+            block.behaviour = set;
+        }
     }
 
     /// A guest record takes the live guest's fields (a guest made in play has its drawn countdowns
