@@ -104,7 +104,19 @@ impl App<'_> {
                     popup.filter(|_| id.is_some())
                 }
                 Deed::Remove { by, id, popup } => {
-                    let n = scenario::remove(&mut game.world, cat, by, id);
+                    let (carry, selected, pending) =
+                        (&mut game.carry, &mut game.selected, &mut game.pending);
+                    let held = &mut game.held;
+                    let n = scenario::remove(&mut game.world, cat, by, id, |gone| {
+                        // The map view lets it go: its move is cancelled, it is no longer
+                        // selected (7.5).
+                        if carry.as_ref().is_some_and(|c| c.id == gone) {
+                            (*carry, *held, *pending) = (None, None, None);
+                        }
+                        if *selected == Some(gone) {
+                            *selected = None;
+                        }
+                    });
                     log.push(format!("scenario remove {by} {id} count {n}"));
                     popup
                 }

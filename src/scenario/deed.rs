@@ -26,8 +26,15 @@ pub fn cash(money: &mut Money, how: i32, amount: i32) {
 
 /// Trigger 8 (7.5): removes every entity whose name id (`by` 0), or for an animal whose family (1),
 /// genus (2) or species (3), is `id`. Nothing is paid back and nothing is undone. Returns the
-/// number removed.
-pub fn remove(world: &mut World, cat: &Catalogue, by: i32, id: i32) -> usize {
+/// number removed. `before` is told each id just before its removal, while the entity is still
+/// there: the map view lets it go first (7.5).
+pub fn remove(
+    world: &mut World,
+    cat: &Catalogue,
+    by: i32,
+    id: i32,
+    mut before: impl FnMut(u32),
+) -> usize {
     let key = ["", "cFamily", "cGenus"].get(by as usize).copied();
     let hit = |e: &Entity| {
         let Some(ty) = type_of(cat, e) else {
@@ -45,6 +52,7 @@ pub fn remove(world: &mut World, cat: &Catalogue, by: i32, id: i32) -> usize {
         .filter_map(|e| e.common.as_ref().map(|c| c.id))
         .collect();
     for &id in &ids {
+        before(id);
         crate::building::leave::push_out(world, cat, id);
         world.unrecorded(|w| w.remove(id));
     }

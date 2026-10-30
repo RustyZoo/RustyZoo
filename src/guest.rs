@@ -61,6 +61,27 @@ pub const HUNGER: usize = 1;
 pub const THIRST: usize = 2;
 pub const ENERGY: usize = 3;
 pub const BATHROOM: usize = 4;
+
+/// The need list of the shipped building types, by the index a unit record stores for the need
+/// being served (guests 7.4).
+pub const NEED_LIST: [&str; 16] = [
+    "bathroom",
+    "building",
+    "compost",
+    "drink",
+    "eat",
+    "energy",
+    "familybathroom",
+    "food",
+    "fun",
+    "gift",
+    "trash",
+    "animalrest",
+    "animalsex",
+    "grandstand",
+    "showtrick",
+    "fungift",
+];
 /// The replaceable colours of a guest type, one draw each at creation.
 const COLOURS: usize = 4;
 /// The checks, in the order of their countdowns: hunger, thirst, bathroom, leave, gift, energy,

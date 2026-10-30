@@ -20,8 +20,8 @@ use crate::world::World;
 /// The stored count of users is not brought back to the list: the pairs dropped stay counted
 /// (`Live::extra`).
 /// A file before version 80 restores none of the users of a type whose users are visible inside
-/// (a bench, a picnic table): their pairs are skipped and counted off the guest figures
-/// (guest buildings 4.2).
+/// (a bench, a picnic table): the list stays empty, the pairs are counted off the guest figures and
+/// each unit in a building task restarts its use set, which adds it again (guest buildings 4.2).
 pub fn restore(world: &mut World, cat: &Catalogue, now: u32) {
     for at in 0..world.zoo.entities.len() {
         let e = &world.zoo.entities[at];
@@ -37,9 +37,13 @@ pub fn restore(world: &mut World, cat: &Catalogue, now: u32) {
             continue;
         }
         // A file before version 80 restores no user of a type whose users are visible inside: the
-        // list is emptied, and the guest figures go down by the pairs that were kept.
+        // list is emptied, the guest figures go down by the pairs that were kept, and each kept
+        // unit restarts its use set.
         if world.zoo.version < 80 && !kind.hide && !kind.outside {
-            let kept = pairs.iter().filter(|p| world.find(p.0).is_some()).count();
+            let key = world.zoo.entities[at].subtype.clone();
+            let kept = (pairs.iter())
+                .filter(|&&(unit, slot)| restart(world, id, &key, unit, slot as usize, now))
+                .count();
             if let Some(live) = world.units.buildings.get_mut(&id) {
                 let kept = u32::try_from(kept).unwrap_or(u32::MAX);
                 live.guests = live.guests.map(|g| g.saturating_sub(kept));
@@ -55,6 +59,39 @@ pub fn restore(world: &mut World, cat: &Catalogue, now: u32) {
             live.extra = record_now.saturating_sub(counted);
         }
     }
+}
+
+/// A kept pair of a file before version 80 for a type visible inside: the unit goes on in its
+/// task and starts its use set again from the first call (guest buildings 4.2 point 3, 6.4.1);
+/// the set adds it as a user. Whether the unit exists.
+fn restart(world: &mut World, id: u32, key: &str, unit: u32, slot: usize, now: u32) -> bool {
+    let Some(at) = world.find(unit) else {
+        return false;
+    };
+    let block = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .and_then(|c| c.unit.as_ref());
+    let saved = block.map(|b| b.target.active);
+    let need = block.and_then(|b| crate::guest::NEED_LIST.get(usize::from(b.need)).copied());
+    let inside = [ENTER_BUILDING, EXIT_BUILDING, USE];
+    let kept = saved
+        .and_then(|t| u8::try_from(t).ok())
+        .filter(|t| inside.contains(t));
+    let (Some(u), Some(_)) = (world.units.get_mut(unit), kept) else {
+        return true;
+    };
+    let need = match &mut u.part {
+        Part::Guest(_) => need,
+        Part::Animal(_) => Some(crate::animal::NEED),
+        _ => return true,
+    };
+    crate::goal::resume_use(u, id, slot, now, saved);
+    if let Part::Guest(g) = &mut u.part {
+        g.need = need;
+    }
+    u.use_set = Some(format!("b{key}{}{slot}", need.unwrap_or_default()));
+    true
 }
 
 /// One pair of `restore`.

@@ -429,4 +429,83 @@ mod tests {
             "{checked} {kinds:?}"
         );
     }
+
+    /// The keeper's block in the zoo a save of the world of [`walking`] writes.
+    fn saved_block(w: &World) -> UnitBlock {
+        let mut cat = crate::entity::Catalogue::default();
+        cat.push(crate::entity::EntityType {
+            class: "keeper",
+            type_name: b"x".to_vec(),
+            subtype: Vec::new(),
+            file: None,
+            config: None,
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+        let mut zoo = w.saved(|_| true);
+        w.finish_save(&mut zoo, &cat);
+        *zoo.entities[0]
+            .common
+            .as_ref()
+            .unwrap()
+            .unit
+            .clone()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_save_writes_the_live_path_destination_and_pending_name() {
+        let mut w = walking(104, vec![[1, 1, 0], [2, 1, 0], [3, 1, 0]], "bEat");
+        let tile = |w: &World, x, y| w.tile_index(x, y).unwrap();
+        let live = (vec![tile(&w, 4, 2), tile(&w, 5, 2)], vec![1, -1]);
+        let u = w.units.get_mut(1).unwrap();
+        u.started = true;
+        (u.path, u.levels, u.destination) = (live.0, live.1, Some((5 * 64 + 32, 2 * 64 + 32, 0)));
+        u.runner.request("bDrink");
+        let b = saved_block(&w);
+        assert_eq!(b.records, [[4, 2, 1], [5, 2, u32::MAX]]);
+        assert_eq!(
+            (b.p3, b.pending.as_str()),
+            ([5 * 64 + 32, 2 * 64 + 32, 0], "bDrink")
+        );
+        // No path, no destination, no pending set, no levels: none and -1.
+        let one = vec![tile(&w, 4, 2)];
+        let u = w.units.get_mut(1).unwrap();
+        (u.path, u.levels, u.destination) = (one, Vec::new(), None);
+        u.runner.forget();
+        let b = saved_block(&w);
+        assert_eq!(
+            (b.records, b.p3, b.pending),
+            (vec![[4, 2, u32::MAX]], [-1; 3], String::new())
+        );
+        let u = w.units.get_mut(1).unwrap();
+        u.path.clear();
+        assert!(saved_block(&w).records.is_empty());
+        // A unit that has not started keeps the block it was read with.
+        let mut w = walking(104, vec![[1, 1, 0], [2, 1, 0]], "bEat");
+        w.units.get_mut(1).unwrap().path.clear();
+        let b = saved_block(&w);
+        assert_eq!((b.records.len(), b.pending.as_str()), (2, "bEat"));
+    }
+
+    #[test]
+    fn a_saved_moving_unit_loads_with_the_same_path() {
+        let mut w = walking(104, vec![[1, 1, 0], [2, 1, 0], [3, 1, 0]], "");
+        let tiles = [(2, 1), (3, 1), (4, 1)].map(|(x, y)| w.tile_index(x, y).unwrap());
+        let u = w.units.get_mut(1).unwrap();
+        u.started = true;
+        (u.path, u.levels) = (tiles.to_vec(), vec![0, 0, 2]);
+        u.destination = Some((4 * 64 + 32, 64 + 32, 0));
+        u.runner.request("bSleep");
+        let block = saved_block(&w);
+        let mut loaded = walking(104, Vec::new(), "");
+        loaded.zoo.entities[0].common.as_mut().unwrap().unit = Some(Box::new(block));
+        load(&mut loaded, 0);
+        let (a, b) = (w.units.get(1).unwrap(), loaded.units.get(1).unwrap());
+        assert_eq!(
+            (&b.path, &b.levels, b.destination, b.runner.queued()),
+            (&a.path, &a.levels, a.destination, Some("bSleep"))
+        );
+    }
 }

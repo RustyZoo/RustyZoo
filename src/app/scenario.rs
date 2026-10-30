@@ -25,7 +25,8 @@ impl App<'_> {
         let Some(end) = self.sim.scenario_ended() else {
             return;
         };
-        // The clean-up before the dialog allows selling again (8.4).
+        // The clean-up before the dialog gives the elements back and allows selling again (8.4).
+        self.scenario_clean();
         if let Some(game) = &mut self.game {
             game.animal.no_sale = false;
             game.animal.clock.force = true;

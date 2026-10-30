@@ -1576,6 +1576,45 @@ fn a_saved_game_opens_as_it_was_saved() {
     }
 }
 
+/// A shipped file of version 70 lists two guests on a bench: the load restarts their use set (guest
+/// buildings 4.2), and the set seats them again.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn the_bench_users_of_a_shipped_old_file_sit_again_by_their_use_set() {
+    use crate::{exhibit::TankConfig, place, terrain, vfs::Vfs, world::Decay};
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let cat = Catalogue::load(&vfs).unwrap();
+    let bytes = vfs.read("maps/scn01a.zoo").unwrap();
+    let (zoo, money) = crate::zoo::Zoo::parse_money(&bytes)
+        .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+        .unwrap();
+    assert!(zoo.version < 80);
+    let renderer = crate::render::MapRenderer::new(&vfs, &cat);
+    let mut world = World::new(zoo, |e| renderer.shape(e));
+    world.set_water(place::water(&terrain::types(&vfs)));
+    world.set_tank_config(TankConfig::load(&vfs));
+    world.set_decay(Decay::load(&vfs));
+    let types = (cat, Class::load(&vfs));
+    let mut run = Run::resume((vfs.ini(), &[][..]), types, world, money, 1);
+    let bench = 35267;
+    let users = |run: &Run| run.world.units.buildings[&bench].users.len();
+    // Two guests are on the bench in the file; none is listed after the load, each asks for its set.
+    assert_eq!(users(&run), 0);
+    for (id, set) in [(29853, "bbenchenergy1"), (29915, "bbenchenergy0")] {
+        assert_eq!(
+            run.world.units.get(id).unwrap().use_set.as_deref(),
+            Some(set)
+        );
+    }
+    let mut steps = 0;
+    while users(&run) < 2 && steps < 100 {
+        run.step_with(67, Some(&vfs));
+        steps += 1;
+    }
+    assert_eq!(users(&run), 2, "both sit again within {steps} steps");
+}
+
 #[test]
 fn award_add_gives_a_signed_id_to_the_zoo() {
     let ok = |text: &str| text.parse::<drive::Command>();

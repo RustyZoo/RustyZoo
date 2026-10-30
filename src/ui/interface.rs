@@ -20,7 +20,7 @@ use std::collections::HashMap;
 pub use tooltip::Settings;
 
 use super::draw::{Painter, Rect4, Strings};
-use super::layout::{DIRTY, FOCUSED, HIDDEN, Kind, TIMED, Tree};
+use super::layout::{DIRTY, FOCUSED, HIDDEN, Kind, Picture, TIMED, Tree};
 use crate::Framebuffer;
 use crate::app::Key;
 
@@ -93,6 +93,8 @@ pub struct Interface {
     popup: Option<(usize, i64)>,
     /// The clock of the last interface update; `None` before the first.
     updated: Option<u64>,
+    /// The picture a question shows on its icon.
+    question_picture: Option<Picture>,
 }
 
 impl Interface {
@@ -124,6 +126,7 @@ impl Interface {
             modal: None,
             popup: None,
             updated: None,
+            question_picture: None,
         };
         ui.start_tooltip();
         ui.sync_owners();
