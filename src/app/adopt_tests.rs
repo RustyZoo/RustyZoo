@@ -92,6 +92,11 @@ fn point(camera: &Camera, wx: i32, wy: i32) -> Command {
 /// Runs `test` on a game with the pen map, the fences, a zebra (2) and a zookeeper (3) in the
 /// catalogue, 2000 in cash, and the clock stopped.
 fn with_app(name: &str, test: impl FnOnce(&mut App)) {
+    with_staff(name, &["m", "f"], test);
+}
+
+/// [`with_app`] with the zookeeper of these subtypes only.
+fn with_staff(name: &str, sexes: &[&str], test: impl FnOnce(&mut App)) {
     let install: Install = cache_install(name, frame_file());
     let vfs = Vfs::open(&install.0).unwrap();
     let mut catalogue = Catalogue::default();
@@ -110,7 +115,7 @@ fn with_app(name: &str, test: impl FnOnce(&mut App)) {
     }
     catalogue.push(animal("m", 800));
     let ini = "[Global]\nDefaultSubtype=m\n[Member]\nstaff\n[m/Characteristics/Integers]\ncPurchaseCost=800\n";
-    for sub in ["m", "f"] {
+    for &sub in sexes {
         catalogue.push(EntityType {
             class: "keeper",
             type_name: b"keeper".to_vec(),
@@ -301,5 +306,59 @@ fn a_hire_draws_a_pending_staff_member_before_the_sex_and_another_after_it() {
         assert_eq!((colors, colors.len()), (&s.colours, 2));
         let ty = if male { 3 } else { 4 };
         assert_eq!(made(app), Some((ty, next.0, next.1)));
+    });
+}
+
+#[test]
+fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_again() {
+    // The data has women only: when a man is drawn the list is empty, and the pending woman is
+    // hired by the next placement (unit placing 4.3).
+    with_staff("app-hire-empty", &["f"], |app| {
+        app.game.as_mut().unwrap().paused = true;
+        app.set_money(Money {
+            cash: 1e6,
+            ..Money::default()
+        });
+        let (mut ui, _vfs, _install) = crate::build::tests::interface("app-hire-empty-ui");
+        ui.tree.resolve(SIZE.0 as i32, SIZE.1 as i32, |_| 12);
+        assert!(ui.show(10));
+        app.set_interface(ui);
+        let camera = app.camera().unwrap().clone();
+        let at = |n: i32| point(&camera, (19 - n % 6) * 64 + 32, (20 - n / 6) * 64 + 32);
+        let mut n = 0;
+        // A seed makes the draws the same on every run.
+        app.sim.set_seed(3);
+        // The panel opens on a woman and draws no sex.
+        app.sim.hire_male = false;
+        app.pass(1, &[]);
+        assert!(app.game.as_ref().unwrap().made.is_some());
+        assert!(!app.sim.hire_male);
+        while !app.sim.hire_male {
+            assert!(n < 40, "no man drawn");
+            click(app, 10 + 10 * n as u64, at(n));
+            n += 1;
+        }
+        let game = app.game.as_ref().unwrap();
+        let units = game.world.units.len();
+        let ui = app.ui.as_ref().unwrap();
+        let empty = ui.tree.elements[ui.tree.find(3609).unwrap()].state;
+        assert_eq!(
+            empty & crate::ui::layout::HIDDEN,
+            0,
+            "the empty label shows"
+        );
+        let pending = game.made.as_ref().map(|m| m.0);
+        assert!(pending.is_some(), "pending kept");
+        assert!(game.build.tool().is_some(), "tool kept");
+        // The next placement hires the pending woman and draws the sex again.
+        let state = app.sim.rng.clone();
+        click(app, 10 + 10 * n as u64, at(n));
+        let game = app.game.as_ref().unwrap();
+        assert_eq!(game.world.units.len(), units + 1);
+        assert_ne!(app.sim.rng, state, "the hire drew the next sex");
+        assert!(
+            game.made.is_some(),
+            "the hire made the next pending staff member"
+        );
     });
 }

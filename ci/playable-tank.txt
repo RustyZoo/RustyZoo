@@ -3,24 +3,16 @@
 # tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
 # maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
 # reads the log. The run is long enough for the can to have 13 uses (the check fails below that):
-# on each of the seeds 40 to 80 that hire the three staff members the can has them before pass
-# 10700 (the guests use it about once per 700 passes after the first 5000), so the check does not
-# depend on the seed.
+# on each of the seeds 40 to 80 that hire the three staff members (19 of 41) the can has them (the
+# guests use it about once per 700 passes after the first 5000).
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
 # rocks and plants cost points) and want 70; with these they rate it 91.
-# The seed 46 draws women for the three hires (the staff of the trials are women only, and the Hire
-# list is empty when a man is drawn) when the game starts on its map. The seed was 5 before the
-# closing wall piece drew once for the new tank (the exhibit is rated when the pen closes), which
-# shifted the shared stream, and 6 before a staff member drew its colours and counters at its
-# creation and a hire made two pending staff members (staff 4.2), which put those draws before the
-# sex draws of the hires; seeds 1 to 43 now hire two staff members at most.
-# The seed was 44 before the month end drew for the map's endowment member (zoo status 9), which
-# shifted the shared stream and left the can 9 uses; of the seeds 44 to 74 only 46 passes every
-# check (the can has 15 uses).
-# The hires come before the adoption: an animal placed rates its exhibit at once (habitat rating 9.4),
-# which draws from the shared stream, and the seed 46 draws women for the hires made first.
+# The staff of the trials are women only, so the Hire list is empty whenever a man is drawn (a hire
+# draws the sex of the next one), and a game whose first draw is a man hires nobody: 21 of the seeds
+# 40 to 80. The seed 46 starts on a woman. The hires come before the adoption: an animal placed rates
+# its exhibit at once (habitat rating 9.4), which draws from the shared stream.
 #run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 12000 --clock 200
 #exhibit 16,35,21,40
 #months 6
@@ -78,7 +70,13 @@
 52 down
 53 up
 54 key escape
-# hire panel: a marine specialist, a tour guide, a maintenance worker
+# hire panel: a marine specialist, a tour guide, a maintenance worker. A hire draws the sex of
+# the next one, and the list is empty when a man is drawn (the staff of the trials are women
+# only): the staff member chosen last stays pending, so a placement hires it again and draws again.
+# The script cannot see the list, so it chooses a kind again before each of 6 placements, the first
+# 5 on tiles to the east that only draw the sex again; the last is on the tile that the assignments
+# below click. The first kind is chosen while the list shows on a seed that starts on a woman (a
+# seed that starts on a man hires nobody).
 56 mouse 25 175
 57 down
 58 up
@@ -91,125 +89,185 @@
 67 mouse 140 120
 68 down
 69 up
-70 mouse 636 147
+70 mouse 668 99
 71 down
 72 up
-74 mouse 70 160
+74 mouse 140 120
 75 down
 76 up
-77 mouse 508 83
+77 mouse 700 115
 78 down
 79 up
-81 key escape
-# adopt panel: two manta rays
-83 mouse 25 81
-84 down
-85 up
-87 mouse 140 120
-88 down
-89 up
-90 mouse 380 179
-91 down
-92 up
-94 mouse 140 120
-95 down
-96 up
-97 mouse 444 179
-98 down
-99 up
-101 key escape
-# assign the marine specialist and the tour guide to the tank, one after the other
-103 mouse 572 105
-104 down
-105 up
-108 mouse 1006 665
-109 down
-110 up
-113 mouse 992 587
-114 down
-115 up
-118 mouse 380 179
-119 down
-120 up
-123 key escape
-126 mouse 220 291
+81 mouse 140 120
+82 down
+83 up
+84 mouse 732 131
+85 down
+86 up
+88 mouse 140 120
+89 down
+90 up
+91 mouse 764 147
+92 down
+93 up
+95 mouse 140 120
+96 down
+97 up
+98 mouse 700 83
+99 down
+100 up
+102 mouse 140 120
+103 down
+104 up
+105 mouse 636 147
+106 down
+107 up
+109 mouse 70 160
+110 down
+111 up
+112 mouse 732 99
+113 down
+114 up
+116 mouse 70 160
+117 down
+118 up
+119 mouse 764 115
+120 down
+121 up
+123 mouse 70 160
+124 down
+125 up
+126 mouse 796 131
 127 down
 128 up
-131 mouse 636 137
-132 down
-133 up
-136 mouse 1006 665
-137 down
-138 up
-141 mouse 992 587
-142 down
-143 up
-146 mouse 380 179
-147 down
-148 up
-151 key escape
-154 mouse 220 291
+130 mouse 70 160
+131 down
+132 up
+133 mouse 732 67
+134 down
+135 up
+137 mouse 70 160
+138 down
+139 up
+140 mouse 764 83
+141 down
+142 up
+144 mouse 70 160
+145 down
+146 up
+147 mouse 508 83
+148 down
+149 up
+152 key escape
+# adopt panel: two manta rays
+154 mouse 25 81
 155 down
 156 up
-# construction panel, fence tab: a tank filter beside the tank, on the side away from the gate
-158 mouse 25 34
+158 mouse 140 120
 159 down
 160 up
-162 mouse 183 74
-163 down
-164 up
-166 mouse 70 80
-167 down
-168 up
-170 mouse 268 220
-171 down
-172 up
-# rocks tab, scrolled down: a rock of 2 x 2 tiles in a corner of the tank (the rays want rocks on
-# about 14 % of its slots, a value that this rock gives them)
-174 mouse 183 174
+161 mouse 380 179
+162 down
+163 up
+165 mouse 140 120
+166 down
+167 up
+168 mouse 444 179
+169 down
+170 up
+172 key escape
+# assign the marine specialist and the tour guide to the tank, one after the other
+174 mouse 572 105
 175 down
 176 up
-178 mouse 100 200
-179 wheel -10
-181 mouse 70 200
-182 down
-183 up
-185 mouse 508 196
-186 down
-187 up
-# foliage tab, scrolled down: a plant the rays value on seven tiles of the tank (they want plants on
-# about 20 % of its tiles)
-189 mouse 183 141
+179 mouse 1006 665
+180 down
+181 up
+184 mouse 992 587
+185 down
+186 up
+189 mouse 380 179
 190 down
 191 up
-193 mouse 100 200
-194 wheel -10
-196 mouse 70 120
-197 down
-198 up
-200 mouse 300 180
-201 down
-202 up
-204 mouse 332 228
-205 down
-206 up
-208 mouse 332 164
-209 down
-210 up
-212 mouse 364 212
+194 key escape
+197 mouse 220 291
+198 down
+199 up
+202 mouse 636 137
+203 down
+204 up
+207 mouse 1006 665
+208 down
+209 up
+212 mouse 992 587
 213 down
 214 up
-216 mouse 364 148
-217 down
-218 up
-220 mouse 396 196
-221 down
-222 up
-224 mouse 396 132
-225 down
-226 up
-228 key escape
+217 mouse 380 179
+218 down
+219 up
+222 key escape
+225 mouse 220 291
+226 down
+227 up
+# construction panel, fence tab: a tank filter beside the tank, on the side away from the gate
+229 mouse 25 34
+230 down
+231 up
+233 mouse 183 74
+234 down
+235 up
+237 mouse 70 80
+238 down
+239 up
+241 mouse 268 220
+242 down
+243 up
+# rocks tab, scrolled down: a rock of 2 x 2 tiles in a corner of the tank (the rays want rocks on
+# about 14 % of its slots, a value that this rock gives them)
+245 mouse 183 174
+246 down
+247 up
+249 mouse 100 200
+250 wheel -10
+252 mouse 70 200
+253 down
+254 up
+256 mouse 508 196
+257 down
+258 up
+# foliage tab, scrolled down: a plant the rays value on seven tiles of the tank (they want plants on
+# about 20 % of its tiles)
+260 mouse 183 141
+261 down
+262 up
+264 mouse 100 200
+265 wheel -10
+267 mouse 70 120
+268 down
+269 up
+271 mouse 300 180
+272 down
+273 up
+275 mouse 332 228
+276 down
+277 up
+279 mouse 332 164
+280 down
+281 up
+283 mouse 364 212
+284 down
+285 up
+287 mouse 364 148
+288 down
+289 up
+291 mouse 396 196
+292 down
+293 up
+295 mouse 396 132
+296 down
+297 up
+299 key escape
 # run unpaused
-262 pause
+333 pause
 # the seventh month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
 11500 char Z

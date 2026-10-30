@@ -1281,6 +1281,9 @@ impl Build {
             .or((!self.list.is_empty()).then_some(0));
         match want {
             Some(at) => self.choose(ui, vfs, cat, p, at, log),
+            // An empty Hire list does not call the select step: the choice, the details and the
+            // pending staff member stay (unit placing 4.3).
+            None if panel.layout == HIRE && self.list.is_empty() => {}
             None => {
                 self.held = None;
                 Self::no_item(ui, panel);
