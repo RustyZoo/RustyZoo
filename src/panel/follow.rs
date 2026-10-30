@@ -6,14 +6,35 @@ use crate::ui::interface::Interface;
 use crate::ui::layout::Picture;
 use crate::vfs::Vfs;
 
+/// The animation of an animal's follow button: its egg's, its crate's, else the idle one.
+pub fn animal_animation(egg: bool, crated: bool) -> &'static str {
+    match (egg, crated) {
+        (true, _) => "egg_idle",
+        (_, true) => "box_idle",
+        _ => "idle",
+    }
+}
+
 /// Gives the follow button `button` the picture of the unit's type (information panels 4.3.1):
-/// its `idle` animation (else the type's base one) seen from the south-east at rotation 0, first
-/// frame, never mirrored, whatever the unit does and the camera shows; the button centres it and
-/// clips it. A type without such an animation keeps its list icon, if it has one.
-pub fn set_follow_icon(ui: &mut Interface, vfs: &Vfs, button: i32, ty: Option<&EntityType>) {
+/// its animation `name` (`idle`, or an animal's egg or crate one; else `idle`, else the type's
+/// base one) seen from the south-east at rotation 0, never mirrored, whatever the unit does and
+/// the camera shows; the button centres it, clips it and plays it from its first frame, looping,
+/// on its own clock. A type without such an animation keeps its list icon, if it has one.
+pub fn set_follow_icon(
+    ui: &mut Interface,
+    vfs: &Vfs,
+    button: i32,
+    ty: Option<&EntityType>,
+    name: &str,
+) {
     let member = ty.and_then(|t| {
-        let idle = t.animations().into_iter().find(|a| a.name == "idle");
-        idle.or_else(|| t.base_animation())?.member
+        let all = t.animations();
+        let by = |n: &str| all.iter().position(|a| a.name == n);
+        let found = by(name).or_else(|| by("idle")).map(|i| &all[i]);
+        match found {
+            Some(a) => a.member.clone(),
+            None => t.base_animation()?.member,
+        }
     });
     let shown = member.and_then(|m| ui.tree.picture(vfs, &m));
     let Some(Picture::Animation(a)) = shown else {
