@@ -330,7 +330,8 @@ pub struct Env<'a> {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Runner {
     chain: Vec<Level>,
-    pending: Option<String>,
+    /// The pending call: the name and its own interruptible flag (behaviours 4.2).
+    pending: Option<(String, bool)>,
     interruptible: bool,
     /// No play call is in progress; `playing`: one is.
     ready: bool,
@@ -487,7 +488,12 @@ impl Runner {
 
     /// The set asked to follow the current one, if any.
     pub fn queued(&self) -> Option<&str> {
-        self.pending.as_deref()
+        self.pending.as_ref().map(|p| p.0.as_str())
+    }
+
+    /// The interruptible flag of the pending call; up when there is none.
+    pub fn queued_flag(&self) -> bool {
+        self.pending.as_ref().is_none_or(|p| p.1)
     }
 
     /// Forgets the set asked to follow the current one (animals-needs 5.4).
@@ -514,9 +520,31 @@ impl Runner {
         }
     }
 
-    /// Asks for a set to start when the running one ends (behaviours 4.2).
-    pub fn request(&mut self, name: &str) {
-        self.pending = Some(name.to_string());
+    /// Writes the pending call as it is, name and flag (a saved game, a restored use; behaviours
+    /// 4.7). An empty name is none.
+    pub fn keep(&mut self, name: &str, interruptible: bool) {
+        self.pending = (!name.is_empty()).then(|| (name.to_string(), interruptible));
+    }
+
+    /// Asks for a set to start when the running one ends (behaviours 4.2): the pending call is
+    /// replaced only if it is interruptible (an empty one is) or `force`. Whether it was written.
+    pub fn queue(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
+        if !force && !self.queued_flag() {
+            return false;
+        }
+        self.pending = Some((name.to_string(), interruptible));
+        true
+    }
+
+    /// Whether [`Runner::queue_if_new`] would write: the name is not the top set's and the
+    /// pending call may be replaced.
+    pub fn can_queue(&self, name: &str, force: bool) -> bool {
+        self.top() != Some(name) && (force || self.queued_flag())
+    }
+
+    /// `queue`, unless the top set already has this name (behaviours 4.2).
+    pub fn queue_if_new(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
+        self.can_queue(name, force) && self.queue(name, interruptible, force)
     }
 
     /// The calls the top set has left, the current one included: none when no set runs, and a
@@ -654,8 +682,8 @@ impl Runner {
     pub fn step(&mut self, anim: &mut Animation, env: &mut Env, key: Option<i32>) {
         if !self.running() {
             match self.pending.take() {
-                Some(name) => {
-                    self.start(anim, env, &name, true, false, true);
+                Some((name, interruptible)) => {
+                    self.start(anim, env, &name, interruptible, false, true);
                 }
                 None => key.map_or((), |key| self.choose(anim, env, key)),
             }

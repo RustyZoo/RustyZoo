@@ -626,7 +626,7 @@ fn sets_start_by_name_and_a_set_that_cannot_be_interrupted_refuses() {
     );
     assert_eq!(rig.runner.top(), Some("bSick"));
     // A pending set waits for the running one to end.
-    rig.runner.request("bAmbient");
+    rig.runner.queue("bAmbient", true, true);
     let tops: Vec<_> = (0..12)
         .map(|_| {
             rig.tick(100);
@@ -647,6 +647,54 @@ fn sets_start_by_name_and_a_set_that_cannot_be_interrupted_refuses() {
     );
     rig.tick(100);
     assert!(rig.anim.shows_base());
+}
+
+#[test]
+fn the_pending_call_keeps_its_flag_and_a_write_needs_room() {
+    let mut rig = Rig::new(&[
+        ("bAmbient", &["fPlay(a)", "fPlay(c)"]),
+        ("bSick", &["fPlay(d)"; 8]),
+    ]);
+    rig.tick(100);
+    let r = &mut rig.runner;
+    assert!(r.queued_flag());
+    // An empty pending call takes any write; a non-interruptible one refuses a plain write.
+    assert!(r.queue("bSick", false, false));
+    assert_eq!((r.queued(), r.queued_flag()), (Some("bSick"), false));
+    assert!(!r.queue("bAmbient", true, false));
+    assert!(!r.queue_if_new("bAmbient", true, false));
+    assert_eq!((r.queued(), r.queued_flag()), (Some("bSick"), false));
+    // Forced, it replaces both name and flag; an interruptible one takes a plain write again.
+    assert!(r.queue("bAmbient", true, true));
+    assert_eq!((r.queued(), r.queued_flag()), (Some("bAmbient"), true));
+    assert!(r.queue("bSick", false, false));
+    // The name of the top set is not queued again.
+    let top = r.top().map(String::from).unwrap();
+    assert!(!r.queue_if_new(&top, true, true));
+    // The hook starts the pending call with its own flag, not forced.
+    for flag in [false, true] {
+        let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)"; 8]), ("bSick", &["fPlay(d)"; 8])]);
+        rig.tick(100);
+        rig.runner.forget();
+        rig.runner.queue("bSick", flag, true);
+        for _ in 0..40 {
+            if rig.runner.top() == Some("bSick") {
+                break;
+            }
+            rig.tick(100);
+        }
+        assert_eq!(rig.runner.top(), Some("bSick"));
+        assert!(rig.runner.queued().is_none() && rig.runner.queued_flag());
+        let env = Env {
+            data: &rig.data,
+            unit: &rig.unit,
+            rng: &mut rig.rng,
+        };
+        let replaced = rig
+            .runner
+            .start(&mut rig.anim, &env, "bAmbient", true, false, true);
+        assert_eq!(replaced, flag, "a set queued interruptible can be replaced");
+    }
 }
 
 #[test]
