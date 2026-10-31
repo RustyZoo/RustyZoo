@@ -1240,13 +1240,14 @@ check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happin
 # at step 602 and is home at step 1192 (and again at 4780 and 5729); the land bear swims back ashore
 # and into the tank again. The bears' ratings are unchanged; the walrus alone in a tank with no
 # land beside it drops from 78 to 28. Its different draws shift the shared random generator, so
-# the bears cross at other steps.
+# the bears cross at other steps. The sleep check queues `bSleep` instead of starting it over the running set, which
+# moves the draws again: the tank bear crosses four times and the land bear once in the 14000 steps.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>
   rz sim "$1" --ticks 14000 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@226,1@374,2@5081,1@6547,2@7354,1@8167,2@8883,1@10681,2@11512,1@11729;97902:1@1241,2@12081,1@13829" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@226,1@374,2@5081,1@6622;97902:1@1241" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1254,6 +1255,7 @@ check expansion-trial "93962:2@226,1@374,2@5081,1@6547,2@7354,1@8167,2@8883,1@10
 # each tile a walk ended on with the set chosen there and the change of mode, for 3500 steps. The
 # loaded units go on with their saved sets, paths and pending sets from the first step (behaviours 4.7), which moves
 # the shared draws: the animal is in the water mode from step 18, on land from 1212, in the water from 1809, on land from 2406 and in the water again from 3003;
+# the sleep check queues `bSleep` (it starts at rest), which ends the print on `bSleep` at another tile;
 # seed 8 (the entities of types the trial does not list are dropped: with seed 11 the animal stays in the water; seeds 1 to 7 tried, 7 and 8 give the cycle).
 water_mode() { # water_mode <map> <animal>
   rz sim "$1" --ticks 3500 --seed 8 --reset-fences --log 2>/dev/null | awk -v a="$2" '
@@ -1263,7 +1265,7 @@ water_mode() { # water_mode <map> <animal>
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;23,25:bInWater;21,23:bWalk;mode0@615;24,23:bWalk;mode1@1212;27,30:bInWater;27,30:bWalk;mode0@1809;30,22:bWalk;mode1@2406;25,23:bHappy" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;23,25:bInWater;21,23:bWalk;mode0@615;24,23:bWalk;mode1@1212;27,30:bInWater;27,30:bWalk;mode0@1809;30,22:bWalk;mode1@2406;17,25:bSleep" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1321,7 +1323,8 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@1029;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+# The sleep check queues `bSleep` instead of starting it over the running set: four mates, the same birth.
+check base-trial "mates:4;birth@1029;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1341,7 +1344,8 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rz sim "$1" --ticks 7200 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@581;eggs:6;hatch@1208" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+# The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
+check expansion-trial "egg@581;eggs:3;hatch@1208" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
