@@ -406,3 +406,32 @@ fn a_selection_and_a_pick_up_play_the_sound_of_a_type_that_has_one() {
         }
     });
 }
+
+#[test]
+fn a_tour_guide_picked_up_releases_its_followers_at_once_with_one_draw_each() {
+    with_game("guide-pick-up", "", |s| {
+        let guide = s.add(19, 21 * 64 + 32, 20 * 64 + 32, 0);
+        let guests =
+            [(14, 3), (14, 5), (14, 7)].map(|(t, x)| s.add(t, x * 64 + 32, 30 * 64 + 32, 0));
+        s.pass(&[]);
+        let game = s.app.game.as_mut().unwrap();
+        for &id in &guests[..2] {
+            if let Some(crate::unit::Part::Guest(g)) =
+                game.world.units.get_mut(id).map(|u| &mut u.part)
+            {
+                g.guide = guide;
+            }
+        }
+        let mut expected = s.app.sim.rng.clone();
+        s.app.carry_up(guide);
+        expected.rand();
+        expected.rand();
+        assert_eq!(s.app.sim.rng.state(), expected.state());
+        assert!(unit(s, guide).carried);
+        let followers = guests.map(|id| match &unit(s, id).part {
+            crate::unit::Part::Guest(g) => g.guide,
+            _ => 99,
+        });
+        assert_eq!(followers, [0, 0, 0]);
+    });
+}

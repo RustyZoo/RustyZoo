@@ -15,6 +15,7 @@ use crate::unit::{Part, Staff, movement};
 use tank::{CLEAN_TANK, CLIMB_DOWN_INSIDE, is_tank_job};
 
 mod guide;
+pub use guide::release_group;
 mod tank;
 mod worker;
 

@@ -301,6 +301,8 @@ pub fn remove(
     let (animal, staff) = type_of(cat, &world.zoo.entities[at]).map_or((false, false), |ty| {
         (unit::is_animal(ty), staff::is_staff(ty))
     });
+    // A tour guide fired lets its group go at once (tour guide 12.1).
+    crate::goal::release_group(world, cat, rng, id);
     crate::building::leave::push_out(world, cat, id);
     crate::guest::litter::spill(world, cat, id, rng);
     world.remove(id);

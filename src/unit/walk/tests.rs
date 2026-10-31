@@ -540,3 +540,28 @@ fn a_guide_strolls_to_the_gate_of_an_assigned_exhibit_else_of_one_holding_an_ani
     assert_eq!(after, r);
     assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (30 + rx, 20 + ry))));
 }
+
+#[test]
+fn a_worker_strolls_to_the_gate_of_an_assigned_exhibit_else_the_ring() {
+    let cat = staff_catalogue();
+    // No list, whatever the animals: no pick, the ring (the corner, two draws).
+    let mut w = pens(&['a'], "maint", (5, 20));
+    let (_, after) = walk_in(&mut w, &cat, 1, 3);
+    let mut r = rng(3);
+    let (rx, ry) = (r.pick(5) as i32 + 2, r.pick(5) as i32 + 2);
+    assert_eq!(after, r);
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (5 + rx, 20 + ry))));
+    // Assigned to B (no animal): one draw, its gate.
+    let b = w.exhibits().region(tile_of(&w, (21, 11))).unwrap();
+    w.units.get_mut(1).unwrap().part = Part::Staff(Staff {
+        assigned: vec![b],
+        ..Staff::default()
+    });
+    w.units.get_mut(1).unwrap().path.clear();
+    let (ok, after) = walk_in(&mut w, &cat, 1, 3);
+    let mut r = rng(3);
+    r.pick(1);
+    assert!(ok);
+    assert_eq!(after, r, "one draw");
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (21, 9))));
+}
