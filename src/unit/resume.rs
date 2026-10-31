@@ -5,7 +5,6 @@
 //! start, duration) and the 3D target name, whatever the task (behaviours 4.7).
 
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, Record, USE, active_goal, stop_use};
-use crate::unit::Unit;
 use crate::world::World;
 use crate::zoo::{Target, UnitBlock};
 
@@ -43,15 +42,6 @@ fn saved_way(world: &World, block: &UnitBlock) -> Way {
     let [x, y, z] = block.p3;
     let there = (!path.is_empty() && x >= 0 && y >= 0).then_some((x, y, z));
     (path, levels, there)
-}
-
-/// The pending set name a unit record stores, as saved: the hook starts it when no set runs
-/// (behaviours 4.6, 4.7). An empty name is none.
-pub fn keep_pending(unit: &mut Unit, name: &str) {
-    unit.runner.forget();
-    if !name.is_empty() {
-        unit.runner.request(name);
-    }
 }
 
 /// The goal record of unit `id` as saved (`block`, zoo format 6.14): task and job with their targets
@@ -115,6 +105,7 @@ pub fn load(world: &mut World, now: u32) {
         };
         let (id, set, tile) = (c.id, block.behaviour.clone(), block.building);
         let (way, pending) = (saved_way(world, block), block.pending.clone());
+        let flag = block.pending_flag != 0;
         let (goal, name) = (block.target.clone(), block.text.clone());
         let task = u8::try_from(block.target.goal).ok();
         let inside = task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
@@ -136,7 +127,8 @@ pub fn load(world: &mut World, now: u32) {
         } else {
             unit.runner.restore(&set);
             (unit.path, unit.levels, unit.destination) = way;
-            keep_pending(unit, &pending);
+            // The pending call as saved: the hook starts it when no set runs (behaviours 4.6, 4.7).
+            unit.runner.keep(&pending, flag);
             goal_back(world, id, now, &goal, world.zoo.version, &name);
         }
     }
@@ -178,7 +170,7 @@ mod tests {
             w.zoo.entities[1 + i].common.as_mut().unwrap().unit = Some(Box::new(block));
             let u = w.units.get_mut(1 + i as u32).unwrap();
             u.hidden = true;
-            u.runner.request("bPending");
+            u.runner.queue("bPending", true, true);
         }
         load(&mut w, 0);
         w
@@ -648,7 +640,7 @@ mod tests {
         let u = w.units.get_mut(1).unwrap();
         u.started = true;
         (u.path, u.levels, u.destination) = (live.0, live.1, Some((5 * 64 + 32, 2 * 64 + 32, 0)));
-        u.runner.request("bDrink");
+        u.runner.queue("bDrink", true, true);
         let b = saved_block(&w);
         assert_eq!(b.records, [[4, 2, 1], [5, 2, u32::MAX]]);
         assert_eq!(
@@ -755,8 +747,12 @@ mod tests {
         u.started = true;
         (u.path, u.levels) = (tiles.to_vec(), vec![0, 0, 2]);
         u.destination = Some((4 * 64 + 32, 64 + 32, 0));
-        u.runner.request("bSleep");
+        u.runner.queue("bSleep", true, true);
+        assert_eq!(saved_block(&w).pending_flag, 1);
+        let u = w.units.get_mut(1).unwrap();
+        u.runner.queue("bSleep", false, true);
         let block = saved_block(&w);
+        assert_eq!(block.pending_flag, 0);
         let mut loaded = walking(104, Vec::new(), "");
         loaded.zoo.entities[0].common.as_mut().unwrap().unit = Some(Box::new(block));
         load(&mut loaded, 0);
@@ -765,5 +761,7 @@ mod tests {
             (&b.path, &b.levels, b.destination, b.runner.queued()),
             (&a.path, &a.levels, a.destination, Some("bSleep"))
         );
+        // The pending call's own flag comes back with it.
+        assert!(!b.runner.queued_flag());
     }
 }

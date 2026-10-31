@@ -1447,7 +1447,12 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.units.tell(format!("message {m} {}", unit.id));
     }
     for set in &out.sets {
-        begin(unit, world, ctx, at, data, set);
+        if *set == "bSick" {
+            // Queued, not interruptible, not forced (behaviours 4.2.1).
+            unit.runner.queue_if_new(set, false, false);
+        } else {
+            begin(unit, world, ctx, at, data, set);
+        }
     }
     if out.dung {
         dirt::put_down(unit, world, ctx, at, &k);

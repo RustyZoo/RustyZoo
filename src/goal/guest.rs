@@ -112,9 +112,10 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// 0x79 init (goals 11.10): the guest starts being sick and thinks 10285; it always succeeds.
+    /// 0x79 init (goals 11.10): the guest queues being sick and thinks 10285; it always succeeds.
     pub(super) fn sick_init(&mut self) -> bool {
-        if self.start_set("bSick", false) {
+        // Queued, forced and not interruptible (behaviours 4.2.1).
+        if self.unit.runner.queue_if_new("bSick", false, true) {
             self.think(10285, None);
         }
         true

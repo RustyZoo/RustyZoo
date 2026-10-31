@@ -244,6 +244,9 @@ impl World {
             .collect();
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
         block.pending = u.runner.queued().unwrap_or_default().to_string();
+        if u.runner.queued().is_some() {
+            block.pending_flag = u8::from(u.runner.queued_flag());
+        }
         let sets = |name: &str| cat.behaviour_set(ty, name.as_bytes());
         if let Some(set) = u.runner.saved(&block.behaviour, sets) {
             block.behaviour = set;

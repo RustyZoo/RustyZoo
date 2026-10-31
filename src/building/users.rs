@@ -105,7 +105,7 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     let block = common.and_then(|c| c.unit.as_ref());
     let saved = block.map(|b| b.target.goal);
     let set = block.map(|b| b.behaviour.clone());
-    let pending = block.map(|b| b.pending.clone());
+    let pending = block.map(|b| (b.pending.clone(), b.pending_flag));
     let Some(u) = world.units.get_mut(unit) else {
         return;
     };
@@ -127,9 +127,9 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     // (behaviours 4.7, guest buildings 6.5).
     let kept = (saved.and_then(|t| u8::try_from(t).ok()))
         .is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
-    if let (true, Some(set), Some(name)) = (kept, &set, &pending) {
+    if let (true, Some(set), Some((name, flag))) = (kept, &set, &pending) {
         u.runner.restore(set);
-        crate::unit::resume::keep_pending(u, name);
+        u.runner.keep(name, *flag != 0);
     }
     u.hidden = kind.hide;
     if kind.hide {

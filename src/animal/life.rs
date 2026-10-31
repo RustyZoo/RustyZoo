@@ -22,10 +22,11 @@ pub struct Sets {
     pub has_sleep: bool,
     pub has_sick: bool,
     pub has_die: bool,
-    /// `bSleep` is the current or the queued set; `bSick` the current one; `bDie` the current one
-    /// and it runs.
+    /// `bSleep` is the current or the queued set; `bDie` the current one and it runs.
     pub sleep_now: bool,
-    pub sick_now: bool,
+    /// Queueing `bSick` (not forced) would write nothing: it is the top set's name, or the pending
+    /// call may not be replaced (behaviours 4.2).
+    pub sick_refused: bool,
     pub dying_now: bool,
     /// The type has `bHatch`, and it is the current set.
     pub has_hatch: bool,
@@ -94,7 +95,7 @@ pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng,
     let low = i64::from(a.health) * 100 <= i64::from(k.pct_hits) * i64::from(k.max_hits);
     let mut unwell = low;
     if low && !env.wet && !a.egg {
-        if !env.sets.sick_now && env.sets.has_sick {
+        if !env.sets.sick_refused && env.sets.has_sick {
             out.sets.push("bSick");
         } else {
             unwell = false;
@@ -166,7 +167,7 @@ pub fn sets(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Sets {
         has_sick: has("bSick"),
         has_die: has("bDie"),
         sleep_now: now("bSleep") || runner.queued() == Some("bSleep"),
-        sick_now: now("bSick"),
+        sick_refused: !runner.can_queue("bSick", false),
         dying_now: now("bDie"),
         has_hatch: has("bHatch"),
         hatch_now: now("bHatch"),
