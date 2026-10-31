@@ -246,6 +246,24 @@ fn bulldozing_the_piece_that_closed_an_exhibit_is_undone_with_its_name_and_gate(
     });
 }
 
+#[test]
+fn undoing_a_bulldozed_exhibit_piece_gives_back_the_name_for_the_hook() {
+    with_game("exhibit-name", "[UI]\nconfirmSell=0\n", |s| {
+        let pieces: Vec<u32> = [0, 2, 4, 6].map(|d| s.fence(1, 20, 20, d)).to_vec();
+        s.app.exhibits_told();
+        let game = s.app.game.as_mut().unwrap();
+        game.world.rename(1, "Lions".into());
+        game.world.set_gate(1, pieces[1]);
+        s.pass(&[DELETE]);
+        s.click(s.at(20, 20, 32, 4));
+        s.pass(&[Command::Key(Key::Y, false, false)]);
+        let game = s.app.game.as_mut().unwrap();
+        let done = game.world.undo();
+        assert_eq!(done.names, ["Lions"]);
+        assert!(game.world.undo().names.is_empty(), "nothing left");
+    });
+}
+
 /// How many times the last pass asked for the exhibit sound.
 fn exhibit_sounds(s: &Session) -> usize {
     s.app.sounds().iter().filter(|&&n| n == "exhibit").count()

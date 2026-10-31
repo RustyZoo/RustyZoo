@@ -263,6 +263,7 @@ impl App<'_> {
     /// The player ended editing the animal's name field: a text with a visible character is its
     /// name (exhibits and money 3.6); the field shows the name again either way.
     pub(super) fn animal_rename(&mut self) {
+        self.entity_hook(Subject::Animal, animal::NAME);
         let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
             return;
         };
@@ -284,12 +285,13 @@ impl App<'_> {
         };
         let Some(id) = game.panel.current else { return };
         let bytes = ui.text(NAME).unwrap_or_default();
+        game.panel.clock.force = true;
         if exhibits::visible(&bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
             self.exhibit_lines.push(format!("name {id} {text:?}"));
-            game.world.rename(id, text);
+            game.world.rename(id, text.clone());
+            self.name_hook(Subject::Exhibit, &text);
         }
-        game.panel.clock.force = true;
     }
 
     /// Refreshes the panel and the plaque when due (5.1): at the interface update, not while the

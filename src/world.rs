@@ -191,12 +191,14 @@ pub struct Undone {
     /// A removed object that cannot be put back because something stands in its place: the undo
     /// stopped there and the rest of the list is kept.
     pub blocked: Option<Entity>,
+    /// The names an undo gave back to exhibits, for the name hook (cheats 2.2).
+    pub names: Vec<String>,
 }
 
 impl Undone {
     /// Whether nothing was taken back.
     pub fn is_empty(&self) -> bool {
-        self.steps.is_empty() && self.blocked.is_none()
+        self.steps.is_empty() && self.blocked.is_none() && self.names.is_empty()
     }
 }
 
@@ -1053,7 +1055,7 @@ impl World {
                     if std::mem::take(&mut stale) {
                         self.settle(None, true);
                     }
-                    self.restore_exhibit(tile, name, gate);
+                    done.names.extend(self.restore_exhibit(tile, name, gate));
                 }
             }
         }
@@ -1202,15 +1204,18 @@ impl World {
     }
 
     /// Gives the exhibit on tile `tile` its name, and its gate on the line of the recorded slot
-    /// (the piece there, on either tile's slot); the gate it had becomes a fence again.
-    fn restore_exhibit(&mut self, tile: usize, name: String, gate: Option<(usize, usize)>) {
-        let Some(id) = self
+    /// (the piece there, on either tile's slot); the gate it had becomes a fence again. Gives back
+    /// the name it set.
+    fn restore_exhibit(
+        &mut self,
+        tile: usize,
+        name: String,
+        gate: Option<(usize, usize)>,
+    ) -> Option<String> {
+        let id = self
             .exhibits
             .region(tile)
-            .filter(|&r| r != GROUNDS && r != EXTERIOR)
-        else {
-            return;
-        };
+            .filter(|&r| r != GROUNDS && r != EXTERIOR)?;
         let piece = gate.and_then(|(t, d)| {
             let across = self.neighbour(t, d).and_then(|n| self.edge(n, (d + 4) % 8));
             let at = self.edge(t, d).or(across)?;
@@ -1226,14 +1231,16 @@ impl World {
         {
             self.make_fence(old);
         }
-        if let Some(e) = self.exhibits.get_mut(id) {
-            e.name = name;
+        let named = self.exhibits.get_mut(id).map(|e| {
+            e.name = name.clone();
             e.gate = new;
-        }
+            name
+        });
         self.dirty = true;
         if new.is_some() {
             self.events.push(Event::Gate(id));
         }
+        named
     }
 
     /// Whether anything changed since the last call, and clears the mark: the picture is due.
