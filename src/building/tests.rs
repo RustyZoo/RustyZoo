@@ -817,7 +817,7 @@ fn seated_with(
     }
     for (i, task) in tasks.into_iter().enumerate() {
         let mut block = crate::zoo::UnitBlock::default();
-        block.target.active = task.unwrap_or(-1);
+        block.target.goal = task.unwrap_or(-1);
         block.pending = "bpending".into();
         block.behaviour.levels[0] = crate::zoo::Level {
             name: "bshopfood0".into(),

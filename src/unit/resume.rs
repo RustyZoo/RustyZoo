@@ -116,7 +116,7 @@ pub fn load(world: &mut World, now: u32) {
         let (id, set, tile) = (c.id, block.behaviour.clone(), block.building);
         let (way, pending) = (saved_way(world, block), block.pending.clone());
         let (goal, name) = (block.target.clone(), block.text.clone());
-        let task = u8::try_from(block.target.active).ok();
+        let task = u8::try_from(block.target.goal).ok();
         let inside = task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
         let here = tile
             .iter()
@@ -152,6 +152,11 @@ mod tests {
     /// tile (3, 1), each saved with the task `tasks[i]`, the building tile `tile` and the set
     /// `tail` (loaded, call done, running, forced); `resume::load` has run.
     fn loaded(tasks: [i32; 4], tile: [i32; 2], tail: [u8; 4]) -> World {
+        loaded_held(tasks, tasks, tile, tail)
+    }
+
+    /// The same, the units' active goal numbers being `held`.
+    fn loaded_held(tasks: [i32; 4], held: [i32; 4], tile: [i32; 2], tail: [u8; 4]) -> World {
         let mut w = world_with((12, 4), |zoo| {
             zoo.entities
                 .push(entity("building", "hall", 9, centre((0, 1)), 0));
@@ -162,7 +167,7 @@ mod tests {
         });
         for (i, task) in tasks.into_iter().enumerate() {
             let mut block = UnitBlock::default();
-            block.target.active = task;
+            (block.target.goal, block.target.active) = (task, held[i]);
             block.building = tile;
             block.behaviour.levels[0] = Level {
                 name: "bWalk".into(),
@@ -206,6 +211,18 @@ mod tests {
                 assert!(!u.runner.running() && u.runner.queued().is_none(), "{id}");
                 assert!(!u.hidden && u.path.is_empty(), "{id} {tile:?}");
             }
+        }
+    }
+
+    #[test]
+    fn the_building_tasks_are_read_from_the_wanted_goal_not_the_active_number() {
+        // Gone building: a wanted task of 104 to 106 stops the unit whatever goal object it held; a
+        // held object of 104 to 106 with another wanted task changes nothing (behaviours 4.7).
+        let w = loaded_held([106, 105, 0, 5], [0, -1, 106, 104], [5, 2], [1, 0, 1, 0]);
+        for (id, stopped) in [(1, true), (2, true), (3, false), (4, false)] {
+            let u = w.units.get(id).unwrap();
+            assert_eq!(!u.runner.running(), stopped, "{id}");
+            assert_eq!(u.hidden, !stopped, "{id}");
         }
     }
 
@@ -656,6 +673,78 @@ mod tests {
         w.units.get_mut(1).unwrap().path.clear();
         let b = saved_block(&w);
         assert_eq!((b.records.len(), b.pending.as_str()), (2, "bEat"));
+    }
+
+    /// The keeper of `w` as a unit read from a file that has had its first turn.
+    fn read_unit(w: &mut World) {
+        w.zoo.entities[0].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+        let u = w.units.get_mut(1).unwrap();
+        (u.started, u.typed) = (true, true);
+    }
+
+    #[test]
+    fn a_loaded_unit_that_changed_goal_saves_it_and_a_second_round_trip_agrees() {
+        // Stored: task 110, job 5, objects 110 and 5. After the load the unit takes task 101 and
+        // job 2 with new targets, done flags, start and duration (objects not built yet).
+        let mut stored = UnitBlock::default();
+        stored.target.goal = 110;
+        stored.target.sub_goal = 5;
+        (stored.target.active, stored.target.active_sub) = (110, 5);
+        stored.target.extra = [40, 12];
+        let mut w = saved_block_in(104, stored.clone());
+        read_unit(&mut w);
+        let (target, job) = (w.tile_index(3, 1), w.tile_index(2, 2));
+        let u = w.units.get_mut(1).unwrap();
+        assert_eq!(u.goal.held(), (110, 5));
+        let r = &mut u.goal.record;
+        (r.task, r.job, r.done, r.job_done, r.start, r.duration) = (101, 2, false, true, 77, 9);
+        (r.target.id, r.job_target.id) = (3, 4);
+        r.target.pos = target.map(|_| (3 * 64, 64, 16));
+        r.job_target.pos = job.map(|_| (2 * 64, 2 * 64, 0));
+        let first = saved_block(&w).target;
+        assert_eq!(
+            (first.goal, first.sub_goal, first.active, first.active_sub),
+            (101, 2, 110, 5)
+        );
+        assert_eq!(
+            (first.words, first.bytes, first.extra),
+            ([3, 4], [0, 1], [77, 9])
+        );
+        assert_eq!(
+            (first.target, first.sub_target),
+            ([192, 64, 16], [128, 128, 0])
+        );
+        // A load of that block gives the live record back, and saved again before its first turn
+        // (the objects of the other numbers are not built until then) it writes the same block.
+        let mut back = saved_block_in(104, saved_block(&w));
+        let (a, b) = (
+            &w.units.get(1).unwrap().goal,
+            &back.units.get(1).unwrap().goal,
+        );
+        let key = |r: &Record| (r.task, r.job, r.done, r.job_done, r.start, r.duration);
+        assert_eq!(key(&a.record), key(&b.record));
+        assert_eq!(a.record.target.pos, b.record.target.pos);
+        back.zoo.entities[0].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+        assert_eq!(saved_block(&back).target, first);
+        // A started unit with no goal object (no goal update since the load) keeps its stored record.
+        let mut fresh = saved_block_in(104, UnitBlock::default());
+        fresh.zoo.entities[0]
+            .common
+            .as_mut()
+            .unwrap()
+            .unit
+            .as_mut()
+            .unwrap()
+            .target
+            .goal = 116;
+        read_unit(&mut fresh);
+        fresh.units.get_mut(1).unwrap().goal = Default::default();
+        assert_eq!(saved_block(&fresh).target.goal, 116);
+        // A unit that has not started keeps the block it was read with.
+        let mut idle = saved_block_in(104, stored);
+        idle.zoo.entities[0].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+        idle.units.get_mut(1).unwrap().goal.record.task = 101;
+        assert_eq!(saved_block(&idle).target.goal, 110);
     }
 
     #[test]

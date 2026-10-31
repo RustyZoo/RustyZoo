@@ -9,10 +9,25 @@ use crate::goal;
 use crate::guest::thought::Thought;
 use crate::place::bulldozer::type_of;
 use crate::render::tank_kind;
-use crate::unit::Part;
-use crate::zoo::{Common, Entity, Zoo, animal_new, fresh};
+use crate::unit::{Part, Unit};
+use crate::zoo::{Common, Entity, Target, Zoo, animal_new, fresh};
 use crate::{animal, guest};
 use std::collections::HashSet;
+
+/// The target block of a unit from its live state: the numbers of the goal and job objects it holds
+/// (-1 for none) and the goal record (task, job, targets and ids, done flags, start, duration).
+fn live_goal(u: &Unit, t: &mut Target) {
+    let record = &u.goal.record;
+    (t.active, t.active_sub) = u.goal.held();
+    let pos = |p: &goal::Target| p.pos.map_or([-1; 3], |(x, y, z)| [x, y, z]);
+    (t.goal, t.sub_goal) = (i32::from(record.task), i32::from(record.job));
+    (t.words, t.bytes) = (
+        [record.target.id, record.job_target.id],
+        [u8::from(record.done), u8::from(record.job_done)],
+    );
+    (t.target, t.sub_target) = (pos(&record.target), pos(&record.job_target));
+    t.extra = [record.start, record.duration];
+}
 
 impl World {
     /// Takes the thoughts of the file, in file order, as the original's load does: one whose
@@ -196,17 +211,7 @@ impl World {
         let guest = (class == "guests").then_some(cost);
         let mut block = c.unit.take().map_or_else(|| fresh::unit_new(guest), |b| *b);
         if let Some(u) = self.units.get(c.id).filter(|u| u.typed) {
-            let record = &u.goal.record;
-            let t = &mut block.target;
-            (t.active, t.active_sub) = u.goal.held();
-            let pos = |p: &goal::Target| p.pos.map_or([-1; 3], |(x, y, z)| [x, y, z]);
-            (t.goal, t.sub_goal) = (i32::from(record.task), i32::from(record.job));
-            (t.words, t.bytes) = (
-                [record.target.id, record.job_target.id],
-                [u8::from(record.done), u8::from(record.job_done)],
-            );
-            (t.target, t.sub_target) = (pos(&record.target), pos(&record.job_target));
-            t.extra = [record.start, record.duration];
+            live_goal(u, &mut block.target);
             block.move_kind = 2;
             if guest.is_some() {
                 block.w4 = u.mover.non_path_cost;
@@ -215,9 +220,9 @@ impl World {
         c.unit = Some(Box::new(block));
     }
 
-    /// A started unit writes its live path (with its levels, -1 for none), destination, pending
-    /// set name and behaviour set (the chain of calls it runs), not the ones its block was read
-    /// with (behaviours 4.7, zoo format 6.14).
+    /// A started unit writes its live path (with its levels, -1 for none), destination, pending set
+    /// name and behaviour set (the chain of calls it runs), and, once it has a goal object, its live
+    /// goal record, not the ones its block was read with (behaviours 4.7, goals 3.4, zoo format 6.14).
     fn live_way(&self, c: &mut Common, cat: &Catalogue, ty: &EntityType) {
         let Some(u) = self.units.get(c.id).filter(|u| u.started) else {
             return;
@@ -225,6 +230,11 @@ impl World {
         let Some(block) = c.unit.as_deref_mut() else {
             return;
         };
+        // A unit with no goal object has had no goal update since its load: its record is the one
+        // the file gave, and may hold a task the engine does not run.
+        if u.goal.held() != (-1, -1) {
+            live_goal(u, &mut block.target);
+        }
         let width = self.zoo.width;
         block.records = (u.path.iter().enumerate())
             .map(|(i, &t)| {
