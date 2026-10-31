@@ -2231,9 +2231,17 @@ fn a_saved_unit_holds_its_live_goal_and_job() {
     world.units.get_mut(500).unwrap().typed = true;
     world.units.get_mut(500).unwrap().goal.record.task = crate::goal::DRINK;
     world.units.get_mut(500).unwrap().goal.record.job = 3;
+    let built = |world: &mut World| {
+        let u = world.units.get_mut(500).unwrap();
+        u.goal.built(u.kind, i32::from(u.goal.record.task), 3);
+    };
+    built(&mut world);
     assert_eq!(active(&world), (i32::from(crate::goal::DRINK), 3));
-    // A task with no goal object for an animal is none.
+    // A task with no goal object for an animal is none; until the object is replaced the old one
+    // is held.
     world.units.get_mut(500).unwrap().goal.record.task = crate::goal::MAINT;
+    assert_eq!(active(&world), (i32::from(crate::goal::DRINK), 3));
+    built(&mut world);
     assert_eq!(active(&world), (-1, 3));
 }
 

@@ -133,11 +133,11 @@ check expansion-trial 3,3924,187 "rz strings | awk '/^LIB/{l++} /^TEXT/{t++} /^[
 check expansion-trial 5,5,0,0 "rz check-exhibits '*.zoo' | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 check expansion-trial 5 "rz check-exhibits '*.zoo' | grep -c 'stored first tiles in distinct exhibits'"
 check expansion-trial 5,5,0 "rz check-rating '*.zoo' | tail -1 | grep -o '[0-9]*' | paste -sd, -"
-check expansion-trial 5,5,0,0,28125,3870 "rz check-maps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+check expansion-trial 5,5,0,0,28125,4160 "rz check-maps | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # The expansion trial ships no ground cache, so every tile is rendered at run time. It ships no
 # converted cliff pieces either (only their bitmaps), so they are converted in memory: all 2434
 # are drawn.
-check expansion-trial 5,0,0,0,28125,0,2434,0,3421,0,449 "rz check-render | tail -1 | grep -o '[0-9]*' | paste -sd, -"
+check expansion-trial 5,0,0,0,28125,0,2434,0,3421,290,449 "rz check-render | tail -1 | grep -o '[0-9]*' | paste -sd, -"
 # Behaviour sets: files with sets or tables, sets, calls, ambient tables, calls of unknown names, calls with
 # defective arguments (the numbers of the specification's survey).
 check expansion-trial 13,987,2728,25,5,1 "rz check-behaviours 2>/dev/null | tail -1 | grep -o '[0-9]*' | paste -sd, -"
@@ -231,7 +231,7 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # saved set first (behaviours 4.7), and at 600 steps it is still on its way. The lion's shelter walk (it aims at a
 # building that serves rest) takes the walk over, so a seed where the lion rests longer never reaches the pile: with
 # the saved goals of every task restored, seed 1 is one (it is cut off at step 691), seeds 2, 3 and 7 are not.
-check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 900 --seed 2 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 2 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # An animal placed (habitat rating 9.4, animals 10): ci/reactions.txt adopts a gazelle and a lion into a
 # pen. The lion's cat family is at -20 in the gazelle's compatible animals, so the gazelle (15672)
 # dislikes the newcomer at pass 131, and the frown plays once.
@@ -604,7 +604,7 @@ paint_text() { # paint_text <map> <script>
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;a5b3e85a3e274ffa" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;53a554b353ce5925" "paint_text maps/scn19.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;2c1a4c807860b59d" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -676,7 +676,7 @@ bulldozer_area() { # bulldozer_area <map>
   rm -rf "$d"
 }
 check base-trial "8,49960,b656d74441897b68" "bulldozer_area maps/default.zoo"
-check expansion-trial 16,50156,8047a4c04fd7c2a5 "bulldozer_area maps/scn19.zoo"
+check expansion-trial 16,50156,63933bae34587c6f "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
@@ -990,14 +990,14 @@ check expansion-trial "31076/51817;Sell;200;0" "sold_with_user maps/scn19.zoo"
 
 # A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
 # gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
-# user (with seed 2, the first from 1 whose pick-up pushes a user out and where two users paid: 1 pushes none, the guests of the types the trial does not list are gone) pushed out when the
+# user (with seed 1, the first from 1 whose pick-up pushes a user out; with seed 4 it pushes none) pushed out when the
 # pick-up button (871 573) is pressed at pass 1150, and it is put down at the pixel 520 310 (tile 37,42). Prints
 # the carry, the push and the drop lines, then what the panel shows once it is down: the stand keeps its figures
 # (the $430 its saved record stores and the $10 of each of two users, the one that left before and the one pushed out).
 building_moved() { # building_moved <map>
   d=$(mktemp -d)
   printf '2 mouse 300 375\n3 down\n4 up\n1149 mouse 871 573\n1150 down\n1151 up\n1153 mouse 500 300\n1155 mouse 520 310\n1156 down\n1157 up\n1159 mouse 871 573\n' >"$d/script"
-  rz run "$1" --headless --passes 1169 --clock 67 --seed 2 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1169 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "drop") { w = w $5 "," $6 "," $7 ";" }
       $4 == "building" && $5 == "push" && $6 == 29780 { w = w "push;" }
       $4 == "panel" && $5 == "building" && $6 == 29780 { for (i = 7; i < NF; i++) if ($i == "income") l = "income " $(i + 1) }
@@ -1007,13 +1007,13 @@ building_moved() { # building_moved <map>
 check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$450' "building_moved maps/scn19.zoo"
 
 # A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
-# stand of scn19 (seed 4, the first from 1 where a guest is inside to be picked up: the guests of the types the trial does not list are gone) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
+# stand of scn19 (seed 1: with seed 8 no guest is inside to be picked up) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
 # click (1091) and put back by Escape (1093); it leaves the stand as a normal leave, so the stand's panel read at
 # pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed).
 guest_picked() { # guest_picked <map>
   d=$(mktemp -d)
   printf '1086 mouse 830 230\n1087 down\n1088 up\n1090 down\n1091 up\n1093 key escape\n1096 mouse 875 230\n1097 down\n1098 up\n' >"$d/script"
-  rz run "$1" --headless --passes 1102 --clock 67 --seed 4 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1102 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 ";" }
       $4 == "panel" && $5 == "building" && $6 == 31076 { for (i = 7; i < NF; i++) if ($i == "income") l = "income_" $(i + 1) }
       END { print w l }'
@@ -1056,8 +1056,8 @@ check expansion-trial 'none' 'scripted "2 mouse 875 230\n3 down\n4 up\n20 mouse 
 
 # An undo while a building is held (placing 8, unit placing 8.7): a gift stand is bought (130), placed, picked up by
 # a second click and Backspace pressed: its move is cancelled and it is removed with its whole price (one
-# removal told, the cash back to its start: seed 1 is the first where no guest pays meanwhile).
-check expansion-trial '75000;1' 'scripted "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n" maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed 1 | awk "/ money cash /{c=\$6} / world remove .* undo\$/{n++} END{print c \";\" n+0}"'
+# removal told, the cash back to its start).
+check expansion-trial '75000;1' 'scripted "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n" maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed 5 | awk "/ money cash /{c=\$6} / world remove .* undo\$/{n++} END{print c \";\" n+0}"'
 
 # The pick-up and the drop record nothing for the undo: the burger stand is sold, the gift stand picked up and
 # put down, then Backspace gives the burger stand back.
@@ -1150,7 +1150,7 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" fixed ";worker:" w ";rays:" n ";second-half-bites>=10:" (m>=10 ? "yes" : "no(" m ")") }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>85;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;rays:2;second-half-bites>=10:yes" "marine_round maps/scn27.zoo"
+check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>90;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;rays:2;second-half-bites>=10:yes" "marine_round maps/scn27.zoo"
 
 # The pace of the guests (movement 7.2): the first five guests the map loads walk for 1500 steps;
 # prints, for each, the tiles it entered and the last of them. Each guest has its own pace, so the
@@ -1165,8 +1165,8 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:21@29,46;29726:22@27,43;29745:21@36,32;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo"
-check base-trial "29699:17@22,43;29726:18@22,46;29745:22@36,33;29748:25@32,34;29750:21@23,49" "guest_pace maps/scn01a.zoo 0"
+check base-trial "29699:22@29,47;29726:12@20,48;29745:20@36,33;29748:25@32,34;29750:21@23,49" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:20@28,44;29726:21@22,43;29745:38@29,42;29748:25@32,34;29750:30@24,49" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -1196,12 +1196,12 @@ check expansion-trial "447:92;99>100;1:100,2:100,3:100,4:100,5:100,6:100,7:100" 
 # under water (30 status ticks, 448 steps of 67 ms), takes the surface task at the second, when it
 # has the 20 of its threshold, breathes there, and its next run-out falls at the surface: the check
 # never runs again. A run-out at the surface kills the counter for good, which happens to the bear
-# at its first run-out under half of the seeds; seed 1 is the first (from 1) where it does not: with the assigned exhibits of the loaded keepers and the loaded animals on their saved sets and the entities of types the trial does not list dropped, seed 3 loses it, as 3000 steps or 10000 do not bring the gain back (seeds 1 to 3 tried in order). Prints the steps
+# at its first run-out under half of the seeds; seed 3 is the first (from 1) where it does not: with the assigned exhibits of the loaded keepers and the loaded animals on their saved sets, seeds 1 and 2 lose it, as 3000 steps or 10000 do not bring the gain back (seeds 1 to 3 tried in order). Prints the steps
 # and breath of the gains, the step of the surface task and of `bBreathe`, and the gains after it.
 tank_breath() { # tank_breath <map> <x,y>
   d=$(mktemp -d)
   printf '0 animal polarbr %s male\n' "$2" >"$d/script"
-  rz sim "$1" --ticks 3000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+  rz sim "$1" --ticks 3000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ animal /{id=$5}
     $5==id && / animal breath /{ if (done) later++; else gains=gains (gains ? "," : "") $2 ":" $6 }
     $5==id && / unit goal [0-9]+ surfacebreath /{ surface=$2 }
@@ -1209,7 +1209,7 @@ tank_breath() { # tank_breath <map> <x,y>
     END{ print gains ";surface@" surface ";breathe@" breathe ";later:" later+0 }'
   rm -rf "$d"
 }
-check expansion-trial "87:10,535:20;surface@535;breathe@765;later:0" "tank_breath maps/scn28b.zoo 22,23"
+check expansion-trial "57:10,505:20;surface@522;breathe@912;later:0" "tank_breath maps/scn28b.zoo 22,23"
 
 # Murky water: scn28's filters are taken away and a manta ray joins tank 2, which holds water of
 # purity 93 and loses a point every 448 steps. The ray's happiness is set to 0 every second so that
@@ -1246,7 +1246,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@226,1@1091,2@8289,1@8824;97902:1@1278,2@2416,1@4350" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@226,1@374;97902:1@1317,2@2387,1@4356,2@5204,1@6185,2@6875,1@9564,2@10528,1@13284" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1254,16 +1254,16 @@ check expansion-trial "93962:2@226,1@1091,2@8289,1@8824;97902:1@1278,2@2416,1@43
 # each tile a walk ended on with the set chosen there and the change of mode, for 3500 steps. The
 # loaded units go on with their saved sets, paths and pending sets from the first step (behaviours 4.7), which moves
 # the shared draws: the animal is in the water mode from step 18, on land from 1212, in the water from 1809, on land from 2406 and in the water again from 3003;
-# seed 8 (the entities of types the trial does not list are dropped: with seed 11 the animal stays in the water; seeds 1 to 7 tried, 7 and 8 give the cycle).
+# the seed stays 11.
 water_mode() { # water_mode <map> <animal>
-  rz sim "$1" --ticks 3500 --seed 8 --reset-fences --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 3500 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
     $5 == a && / unit tile /{ t = $6 }
     $5 == a && / unit goal [0-9]+ none /{ ended = t }
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;23,25:bInWater;25,24:bWalk;mode0@1212;25,24:bSleep;19,22:bWalk;mode1@1809;mode0@2406;25,23:bHappy;25,23:bWalk;mode1@3003;25,23:bHappy" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;27,30:bInWater;26,25:bInWater;24,24:bWalk;mode0@1212;23,19:bSleep;23,19:bWalk;mode1@1809;mode0@2406;25,23:bHappy;mode1@3003;26,22:bHappy" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1279,7 +1279,7 @@ tank_over() { # tank_over <map> <ray>
     END{ print n + 0 ";" low ";" first }'
   rm -rf "$d"
 }
-check expansion-trial "21;-80;169" "tank_over maps/scn27.zoo 36659"
+check expansion-trial "22;-65;167" "tank_over maps/scn27.zoo 36659"
 
 # The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
 # are put down: one beside the tank, which then serves it and filters (and charges) at its first
@@ -1312,7 +1312,7 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # restored), which moved the first birth to 19229 (four pairs, the same two young). With the dates and the life of
 # the saved animals restored too (master), it is 9865 (three pairs, the same two young). Guests that sit on benches and picnic tables
 # through their use sets and keep out of the slots of other guest types draw otherwise: it is 1790 (the same). The loaded
-# units go on with their paths and pending sets too (no random walk at the first move call): it is 16626 (the same). The saved goal of every task comes back too: it is 15432 (the same).
+# units go on with their paths and pending sets too (no random walk at the first move call): it is 16626 (the same). The saved goal of every task comes back too: it is 15432 (the same). The whole goal record comes back too (start, duration, ids, done flags and job; the map is version 71, so init still runs there): it is 9089 (the same).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
@@ -1321,7 +1321,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@15432;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@9089;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1333,15 +1333,16 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream. Seeds searched from 1: seed 2 gives a clutch and a hatching inside the 7200 steps (seed 1 lays no
-# egg once the entities of types the trial does not list are dropped; seeds 2, 4, 5, 7, 9, 10 and 12 do).
+# random stream. Seeds searched from 1: seed 1 gives a clutch and a hatching inside the 7200 steps (with the
+# saved goals of every task restored the units draw otherwise: seed 5 lays no egg in them, seeds 1, 2, 4, 8, 10 to
+# 12 do).
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 7200
-  rz sim "$1" --ticks 7200 --dt 200 --seed 2 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@581;eggs:3;hatch@1208" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@5516;eggs:3;hatch@6147" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1378,6 +1379,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial 227408,0,3a946efdfd385c83 "save_load maps/scn19.zoo"
+check expansion-trial 227408,0,8316adf7d404801a "save_load maps/scn19.zoo"
 
 exit $failed

@@ -500,18 +500,67 @@ pub(crate) fn active_goal(task: u8, kind: Kind) -> i32 {
 
 /// The goal state of a unit: the record, the objects built from it and the flags of the base
 /// goal.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Goals {
     pub record: Record,
     object: Option<Goal>,
     stale: bool,
     sub: Option<Sub>,
     sub_stale: bool,
+    /// The type numbers of the goal and job objects, the ones a save writes (save games 11.2):
+    /// the task and job they were built for, which a stale object keeps until it is replaced.
+    held: (Option<u8>, Option<u8>),
     /// Raised by the guest's ladder to let an idle unit wander again (7.1).
     pub wants_to_decide: bool,
     /// A guest made a random walk and stands until a draw or its status tick lets it walk again
     /// (7.3); the status tick lowers it (`guest::checks`).
     pub wandered: bool,
+}
+
+/// The state hash of a run reads this text: `held` is not in it (it follows from the objects), so
+/// the hashes stay as they were.
+impl std::fmt::Debug for Goals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Goals")
+            .field("record", &self.record)
+            .field("object", &self.object)
+            .field("stale", &self.stale)
+            .field("sub", &self.sub)
+            .field("sub_stale", &self.sub_stale)
+            .field("wants_to_decide", &self.wants_to_decide)
+            .field("wandered", &self.wandered)
+            .finish()
+    }
+}
+
+impl Goals {
+    /// A load (behaviours 4.7): from version 72 the object whose number the file holds as active is
+    /// built, and marked neither stale nor to be initialised, when it is the record's task (or job).
+    /// Any other case leaves the object to be built, init included, at the first update.
+    pub(crate) fn built(&mut self, kind: Kind, active: i32, active_sub: i32) {
+        let r = &self.record;
+        if active == i32::from(r.task) {
+            (self.object, self.stale) = (Goal::build(r.task, kind), false);
+            self.held.0 = self.object.map(|_| r.task);
+        }
+        if active_sub == i32::from(r.job) {
+            (self.sub, self.sub_stale) = (Sub::build(r.job, kind), false);
+            self.held.1 = self.sub.map(|_| r.job);
+        }
+    }
+
+    /// The numbers the unit's goal and job objects hold, -1 for no object (save games 11.2, behaviours
+    /// 4.7): a stale object still has its old number.
+    pub(crate) fn held(&self) -> (i32, i32) {
+        let n = |h: Option<u8>| h.map_or(-1, i32::from);
+        (n(self.held.0), n(self.held.1))
+    }
+
+    /// Whether the goal object and the job object exist.
+    #[cfg(test)]
+    pub(crate) fn built_pair(&self) -> (bool, bool) {
+        (self.object.is_some(), self.sub.is_some())
+    }
 }
 
 /// What a goal update works on: the unit taken out of the table for its turn, the world, the
@@ -872,10 +921,12 @@ impl Cx<'_, '_> {
         if self.unit.goal.object.is_none() {
             let task = self.record().task;
             self.unit.goal.object = Goal::build(task, self.unit.kind);
+            self.unit.goal.held.0 = self.unit.goal.object.map(|_| task);
             if let Some(goal) = self.unit.goal.object
                 && !goal.init(self)
             {
                 self.unit.goal.object = None;
+                self.unit.goal.held.0 = None;
                 self.set_task(NONE, 0, 0, None);
             }
         }
@@ -887,10 +938,12 @@ impl Cx<'_, '_> {
     fn run_sub(&mut self) {
         if std::mem::take(&mut self.unit.goal.sub_stale) {
             self.unit.goal.sub = None;
+            self.unit.goal.held.1 = None;
         }
         if self.unit.goal.sub.is_none() {
             let job = self.record().job;
             self.unit.goal.sub = Sub::build(job, self.unit.kind);
+            self.unit.goal.held.1 = self.unit.goal.sub.map(|_| job);
             let refused = match self.unit.goal.sub {
                 Some(Sub::Keeper(job)) => !self.job_init(job),
                 Some(Sub::Worker(job)) => !self.work_init(job),
@@ -898,6 +951,7 @@ impl Cx<'_, '_> {
             };
             if refused {
                 self.unit.goal.sub = None;
+                self.unit.goal.held.1 = None;
                 self.set_job(0, 0, None);
             }
         }
