@@ -378,9 +378,14 @@ impl Cx<'_, '_> {
             .need()
             .is_some_and(|n| self.building(id).is_some_and(|(_, k)| k.satisfies(n)));
         if self.record().task == USE && !(serves && self.add_user(id, slot)) {
-            let pending = self.unit.runner.queued().map(String::from);
+            let runner = &self.unit.runner;
+            let pending = runner
+                .queued()
+                .map(|p| (p.to_string(), runner.queued_flag()));
             super::super::stop_use(self.unit);
-            pending.iter().for_each(|p| self.unit.runner.request(p));
+            pending
+                .iter()
+                .for_each(|(p, f)| self.unit.runner.keep(p, *f));
         }
     }
 
