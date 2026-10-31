@@ -738,27 +738,66 @@ fn user_scenery_is_gawked_at_and_thinks_nothing_but_the_draw_is_kept() {
 }
 
 #[test]
-fn scenery_that_is_gone_ends_the_walk_and_cannot_be_gawked_at() {
+fn scenery_that_is_gone_is_found_out_on_arrival_and_cannot_be_gawked_at() {
     let cat = statued();
     let mut w = statue_visit();
     let (mut s, mut money) = (sim(), Money::default());
     let mut log = Vec::new();
-    for n in 0..120 {
-        if n == 30 {
-            assert!(w.remove(50));
+    let mut removed = false;
+    for _ in 0..600 {
+        // Removed as soon as the walk has started.
+        if !removed
+            && log
+                .iter()
+                .any(|l: &String| l.starts_with("goal 1 scenery 0 50 "))
+        {
+            removed = w.remove(50);
         }
         s.step_game(&walks(), &cat, &mut w, &mut money, 67, |_, _, _| {});
         log.extend(w.units.take_lines());
     }
     let at = |text: &str| log.iter().position(|l| l.starts_with(text));
-    assert!(at("goal 1 scenery 0 50 ").is_some(), "{log:?}");
-    assert!(at("goal 1 none").is_some() && at("goal 1 doscenery").is_none());
+    assert!(removed, "{log:?}");
+    let line = &log[at("goal 1 scenery 0 50 ").unwrap()];
+    let place = line.rsplit(' ').next().unwrap();
+    // The goal ran on until the guest stood on the viewing tile; the gawk then failed its init.
+    let (arrived, gawk, ended) = (
+        at(&format!("tile 1 {place}")),
+        at("goal 1 doscenery"),
+        at("goal 1 none"),
+    );
+    assert!(
+        arrived.is_some() && arrived < gawk && gawk < ended,
+        "{log:?}"
+    );
+    assert!(at("set 1 bGawkObject").is_none(), "{log:?}");
     // The init of the gawk refuses an object that is gone, and no thought is given.
     let (mut w, mut rng) = (statue_visit(), Rng::default());
     w.units.get_mut(1).unwrap().goal.record.target.id = 999;
     assert!(!with_cx_in(&cat, &walks(), &mut w, &mut rng, |cx| cx.do_scenery_init()));
     assert_eq!(rng.state(), Rng::default().state());
     assert!(w.units.take_guest_lines().is_empty());
+}
+
+#[test]
+fn the_guest_walks_to_the_viewing_tile_at_the_objects_offset_in_its_own_tile() {
+    for (dx, dy) in [(0, 0), (8, 16), (-8, -24)] {
+        let mut w = statue_visit();
+        let at = w.find(50).unwrap();
+        let c = w.zoo.entities[at].common.as_mut().unwrap();
+        (c.x, c.y) = (c.x + dx, c.y + dy);
+        let (x, y) = (c.x.rem_euclid(64), c.y.rem_euclid(64));
+        let (mut rng, _) = stream_giving(8, 3);
+        let (task, target) = scenery_choice(&mut w, &mut rng);
+        let width = w.zoo.width as usize;
+        let t = target.unwrap();
+        assert_eq!(task, 128);
+        let d = w.units.get(1).unwrap().destination.unwrap();
+        assert_eq!(
+            (d.0, d.1),
+            ((t % width) as i32 * 64 + x, (t / width) as i32 * 64 + y)
+        );
+    }
 }
 
 /// A stream whose next `pick(n)` gives `v`, and the stream after that draw.

@@ -6,7 +6,7 @@ use crate::lists::Scenario as Listed;
 use crate::menu::Start;
 use crate::money::Money;
 use crate::sprite::tests::Install;
-use crate::ui::layout::DISABLED;
+use crate::ui::layout::{DISABLED, SELECTED};
 use crate::zoo::Zoo;
 
 const MAIN_PANEL: i32 = 2;
@@ -76,9 +76,9 @@ fn a_won_scenario_stores_its_result_asks_and_leaves_for_the_scenario_screen() {
             ini.contains("aa=1") && ini.contains("unlockEntity0=7"),
             "{ini}"
         );
-        // The game stands still behind the dialog, and the game's layouts are hidden.
+        // The game stands still behind the dialog; the main bar stays (5.4.1).
         assert!(app.interface().unwrap().modal_open() && shown(app, DIALOG));
-        assert!(!shown(app, MAIN_PANEL));
+        assert!(shown(app, MAIN_PANEL));
         assert_eq!(app.interface().unwrap().text(45206).unwrap(), b"text-16100");
         app.pass(now + 66, &[]);
         assert!(app.camera().is_some());
@@ -754,6 +754,39 @@ fn a_scenario_end_allows_selling_again() {
     });
 }
 
+#[test]
+fn a_scenario_end_hides_the_panels_and_the_selection_and_yes_shows_none() {
+    let text = "[desc]\nname=9001\n[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n";
+    let files = [("s/hide.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("end-hide", "", &files, cat, |app, _| {
+        let now = play(app, "s/hide.scn");
+        let id = add_lion(app);
+        app.game.as_mut().unwrap().selected = Some(id);
+        app.interface().unwrap().show(15);
+        app.interface().unwrap().set_button(1019, true, true);
+        let now = until_asked(app, now).0;
+        let game = app.game.as_ref().unwrap();
+        assert!(game.selected.is_none() && game.animal.selected.is_none());
+        assert!(!shown(app, 15) && !shown(app, animal::LAYOUT) && shown(app, MAIN_PANEL));
+        let ui = app.interface().unwrap();
+        assert_eq!(
+            ui.tree.elements[ui.tree.find(1019).unwrap()].state & SELECTED,
+            0
+        );
+        // Yes (no next tutorial) closes the dialog and shows none of them again.
+        ui.answer(6);
+        let now = now + 66;
+        app.pass(now, &[]);
+        for step in 1..30 {
+            app.pass(now + step * 66, &[]);
+        }
+        let game = app.game.as_ref().unwrap();
+        assert!(game.selected.is_none() && game.animal.selected.is_none());
+        assert!(!shown(app, 15) && !shown(app, animal::LAYOUT) && !shown(app, DIALOG));
+    });
+}
+
 /// Adds a lion (name id 5) to the game and returns its id.
 fn add_lion(app: &mut App) -> u32 {
     let lion = Entity {
@@ -833,4 +866,112 @@ fn a_scenario_end_enables_what_a_trigger_disabled_and_keeps_what_it_hid() {
             assert!(shown(app, 7001), "{name} shown again");
         });
     }
+}
+
+/// A zoo of the made-up map that holds these awards, written as the game writes them.
+fn holding(awards: &[i32]) -> Zoo {
+    let mut zoo = Zoo::parse(&map()).unwrap();
+    zoo.awards = awards.to_vec();
+    zoo
+}
+
+fn held(app: &App) -> Vec<i32> {
+    app.game.as_ref().unwrap().world.zoo.awards.clone()
+}
+
+#[test]
+fn a_load_replaces_the_held_list_and_a_zoo_without_the_section_gives_an_empty_one() {
+    with_game("awards-load", "", &[], None, |app, _| {
+        app.pass(0, &[]);
+        app.open_game(holding(&[1, 8]), Money::default()).unwrap();
+        // A zoo older than the awards section does not keep the list of the game before.
+        let old = Zoo::parse(&crate::zoo::tests::file(58, 2, 2, &[], &[])).unwrap();
+        app.open_zoo(old, Money::default(), true).unwrap();
+        assert_eq!(held(app), Vec::<i32>::new());
+        assert_eq!(app.awards(), 0);
+        // Any other load replaces the list too.
+        app.open_game(holding(&[8, 1]), Money::default()).unwrap();
+        assert_eq!(held(app), [8, 1]);
+        app.open_game(holding(&[]), Money::default()).unwrap();
+        assert_eq!(held(app), Vec::<i32>::new());
+    });
+}
+
+#[test]
+fn a_scenario_start_keeps_the_awards_its_map_carries() {
+    for map_awards in [vec![8, 1], vec![], vec![-2, i32::MAX]] {
+        with_game("awards-start", "", &[], None, |app, _| {
+            let file = "s/av.scn";
+            app.pass(0, &[]);
+            app.open_game(holding(&map_awards), Money::default())
+                .unwrap();
+            app.begin(&Start {
+                path: "saved.zoo".into(),
+                label: "scenario".into(),
+                forget_last: true,
+                freeform: false,
+                cash: Default::default(),
+                reset: true,
+                reset_fences: true,
+                scenario: Some(file.into()),
+            });
+            app.pass(66, &[]);
+            assert_eq!(held(app), map_awards);
+            assert_eq!(app.awards(), map_awards.len());
+        });
+    }
+}
+
+#[test]
+fn a_saved_game_keeps_the_awards_given_in_play_in_order_and_announces_nothing_on_load() {
+    // The goal gives award 3 at the first pass; the award is named in the message line.
+    let scn = b"[duration]\nnummonths=-1\n[goals]\ngoal=g\ngoal=h\n\
+        [g]\nrulea=99\narga=1\nvalue=1\ntrulea=6\ntarga=3\ntargb=9401\n[h]\nrulea=99\narga=0\nvalue=1\n"
+        .to_vec();
+    let mut cat = super::avail_tests::catalogue();
+    cat.awards = crate::award::Definitions::of(&[(
+        3,
+        crate::award::Definition {
+            name: 29001,
+            tooltip: 0,
+            icon: String::new(),
+        },
+    )]);
+    with_game(
+        "awards-save",
+        "",
+        &[("s/aw.scn", scn)],
+        Some(cat),
+        |app, install| {
+            let mut now = play(app, "s/aw.scn");
+            for _ in 0..60 {
+                now += 66;
+                app.pass(now, &[]);
+            }
+            assert_eq!(held(app), [3, 0]);
+            assert_eq!(app.interface().unwrap().text(7001).unwrap(), b"won Gold");
+            // Awards given by a script come in largest first.
+            app.pass(
+                now + 66,
+                &[Command::Award(1), Command::Award(8), Command::Award(-4)],
+            );
+            assert_eq!(held(app), [8, 3, 1, 0, -4]);
+            let file = install.0.join("awards.zoo");
+            app.save_game(file.to_str().unwrap());
+            let saved = Zoo::parse(&std::fs::read(&file).unwrap()).unwrap();
+            assert_eq!(saved.awards, [8, 3, 1, 0, -4]);
+            // Another game, then the load: same list, same order, and no message or award line.
+            app.open_game(holding(&[]), Money::default()).unwrap();
+            assert_eq!(held(app), Vec::<i32>::new());
+            app.ui.as_mut().unwrap().message(b"");
+            assert!(app.load_saved(file.to_str().unwrap()));
+            assert_eq!(held(app), [8, 3, 1, 0, -4]);
+            app.pass(now + 132, &[]);
+            assert_eq!(app.interface().unwrap().text(7001).unwrap(), b"");
+            // The saved goal state gives the award again (once), without a message or a popup.
+            assert!(!app.interface().unwrap().modal_open());
+            assert!(!told(app).contains("scenario message"), "{}", told(app));
+            assert_eq!(held(app), [8, 3, 1, 0, -4]);
+        },
+    );
 }
