@@ -26,7 +26,7 @@ const PANEL: &str = "[LayoutInfo]\nid=34\nlayer=7\nx=20\ny=20\ndx=200\ndy=20\nst
 
 /// The lion and the zebra start available and are the targets of two programs; the gnu starts
 /// unavailable and is no program's target.
-fn catalogue() -> Catalogue {
+pub(super) fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     for (name, id, start) in [("lion", 5, 1), ("zebra", 6, 1), ("gnu", 7, 0)] {
         let ini = format!("[Global]\nAvailableAtStartup={start}\n");
@@ -82,9 +82,19 @@ pub(super) fn with_game(
     dev_key: bool,
     body: impl FnOnce(&mut App, &Catalogue),
 ) {
+    with_world(name, (research, dev_key), (catalogue(), &[]), body);
+}
+
+/// As [`with_game`] with the types `cat` and the entities `(class, type, subtype)` in the map,
+/// their ids counting from 1.
+pub(super) fn with_world(
+    name: &str,
+    (research, dev_key): (bool, bool),
+    (cat, entities): (Catalogue, &[(&str, &str, &str)]),
+    body: impl FnOnce(&mut App, &Catalogue),
+) {
     let install = cache_install_with(name, frame_file(), &files(research));
     let vfs = Vfs::open(&install.0).unwrap();
-    let cat = catalogue();
     let mut app = App::empty(
         MapRenderer::new(&vfs, &cat),
         Timers::new(66, 16, 200),
@@ -92,7 +102,11 @@ pub(super) fn with_game(
         Settings::default(),
     )
     .unwrap();
-    app.open_game(tile_with(&[]), Money::default()).unwrap();
+    let mut zoo = tile_with(entities);
+    for (i, e) in zoo.entities.iter_mut().enumerate() {
+        e.common.as_mut().unwrap().id = i as u32 + 1;
+    }
+    app.open_game(zoo, Money::default()).unwrap();
     app.begin(&Start {
         path: "scenario.zoo".into(),
         label: "scenario".into(),

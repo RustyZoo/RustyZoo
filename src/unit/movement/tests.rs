@@ -591,6 +591,45 @@ fn a_move_call_takes_the_rate_the_animation_and_the_animation_speed_of_its_band(
 }
 
 #[test]
+fn the_speed_cheat_doubles_the_walk_of_the_scientist_only() {
+    let types = |class, name_id| {
+        let mut cat = crate::entity::Catalogue::default();
+        cat.push(crate::entity::EntityType {
+            class,
+            type_name: Vec::new(),
+            subtype: Vec::new(),
+            file: None,
+            config: None,
+            name_id,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+        cat
+    };
+    for (class, name_id, flag, want) in [
+        ("keeper", crate::cheat::SCIENTIST, false, 20),
+        ("keeper", crate::cheat::SCIENTIST, true, 40),
+        ("keeper", 0, true, 20),
+        ("keeper", -crate::cheat::SCIENTIST, true, 20),
+        ("keeper", i32::MAX, true, 20),
+        ("maint", crate::cheat::SCIENTIST, true, 20),
+    ] {
+        let mut w = map(vec![entity(class, "", 1, centre((5, 5)), 2)]);
+        w.units.cheat.keeper_speed_double = flag;
+        let (mut s, walker) = (sim(), Walker::new("fWalk(0,0)"));
+        let cat = types(class, name_id);
+        s.step_with(&walker, &cat, &mut w, 67, |_, _, _| {});
+        let u = w.units.get_mut(1).unwrap();
+        u.path = vec![tile(5, 5), tile(6, 5), tile(9, 5)];
+        u.destination = Some((9 * 64 + 32, 5 * 64 + 32, 0));
+        walker.start(&mut w, 1);
+        s.step_with(&walker, &cat, &mut w, 67, |_, _, _| {});
+        let speed = w.units.get(1).unwrap().speed;
+        assert_eq!(speed, want, "{class} {name_id} {flag}");
+    }
+}
+
+#[test]
 fn a_move_call_without_a_path_walks_at_random_and_an_idle_guest_starts_one() {
     let mut w = world((40, 30), |_, e| {
         (0..40).for_each(|x| e.push(entity("paths", "", 0, centre((x, 20)), 0)));

@@ -518,6 +518,30 @@ fn a_repair_with_a_modifier_mends_the_lines_beside_too() {
 }
 
 #[test]
+fn the_bear_cheat_makes_the_grizzly_bash_without_the_key() {
+    use crate::unit::testing::amphibious_world;
+    // The bear has no bash strength of its own; the flag gives one to the grizzly only.
+    for (name_id, flag, bashes) in [
+        (crate::cheat::GRIZZLY, true, true),
+        (crate::cheat::GRIZZLY, false, false),
+        (crate::cheat::GRIZZLY + 1, true, false),
+        (0, true, false),
+        (-crate::cheat::GRIZZLY, true, false),
+    ] {
+        let mut g = Game::new("");
+        g.w = amphibious_world(2, &[(5, "bear", (3, 3))]);
+        let mut bear = ty("animals", "bear", "", "[Characteristics/Integers]\n");
+        bear.name_id = name_id;
+        g.cat.push(bear);
+        g.w.units.cheat.bears_bash = flag;
+        let tank = g.w.exhibits().region(2 * 12 + 2).unwrap();
+        g.run(2);
+        let got = g.w.exhibits().get(tank).unwrap().rating.bash;
+        assert_eq!(got, bashes, "{name_id} {flag}");
+    }
+}
+
+#[test]
 fn a_piece_made_healthy_by_a_worker_sets_the_escape_flag_decayed_or_not() {
     use crate::unit::testing::amphibious_world;
     // The amphibious world with a bear that bashes in the tank. The decayed piece on the north edge

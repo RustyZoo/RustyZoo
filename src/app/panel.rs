@@ -263,7 +263,8 @@ impl App<'_> {
     /// The player ended editing the animal's name field: a text with a visible character is its
     /// name (exhibits and money 3.6); the field shows the name again either way.
     pub(super) fn animal_rename(&mut self) {
-        self.entity_hook(Subject::Animal, animal::NAME);
+        let selected = self.game.as_ref().and_then(|g| g.animal.selected);
+        self.entity_hook(Subject::Animal, animal::NAME, selected);
         let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
             return;
         };
