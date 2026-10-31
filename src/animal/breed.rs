@@ -171,16 +171,17 @@ pub fn reproduction(
     if a.mate == 0 && !find(a, env, rng, out) && monogamous {
         a.mark(NO_MATE, true);
     }
-    // 4: the birth.
-    if a.happiness >= k.happy_reproduce
-        && env.male
-        && ready
-        && (a.mate != 0 || find(a, env, rng, out))
-        && rng.chance(k.reproduction_chance)
-        && birth(a, rng)
-    {
-        a.interval = 0;
-        a.change(k.baby_born_change);
+    // 4: the birth. The breeding cheat stands in for the happiness; its roll cannot fail and
+    // lowers the flag (11.4 point 1).
+    let happy = a.happiness >= k.happy_reproduce;
+    let boosted = !happy && env.boost;
+    if (happy || boosted) && env.male && ready && (a.mate != 0 || find(a, env, rng, out)) {
+        let rolled = rng.chance(k.reproduction_chance);
+        out.boost_used = boosted;
+        if (rolled || boosted) && birth(a, rng) {
+            a.interval = 0;
+            a.change(k.baby_born_change);
+        }
     }
 }
 

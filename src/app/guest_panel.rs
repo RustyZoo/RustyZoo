@@ -50,7 +50,8 @@ impl App<'_> {
 
     /// The player ended editing the name field: a text with a visible character is the name.
     pub(super) fn guest_rename(&mut self) {
-        self.entity_hook(Subject::Guest, guest::NAME);
+        let selected = self.game.as_ref().and_then(|g| g.guest.selected);
+        self.entity_hook(Subject::Guest, guest::NAME, selected);
         let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
             return;
         };

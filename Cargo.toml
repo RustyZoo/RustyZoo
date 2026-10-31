@@ -26,3 +26,9 @@ libc = "0.2"
 [dev-dependencies]
 # Writes the small archives that the tests need.
 zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+# Dev builds: line tables only (panics keep file and line) and split debug info,
+# so each build writes far less to disk.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"

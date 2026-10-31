@@ -185,7 +185,7 @@ impl Cx<'_, '_> {
             return;
         }
         if !drinking && !wet && !escaped && self.start_set("bEat", false) {
-            self.unit.runner.request("bEat");
+            self.unit.runner.queue("bEat", false, true);
         } else {
             self.reset();
         }

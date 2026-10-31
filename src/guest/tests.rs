@@ -452,6 +452,33 @@ fn a_start_with_a_reset_sets_the_arrival_of_every_guest_to_the_game_date() {
 }
 
 #[test]
+fn a_bonus_moves_the_rating_to_the_row_it_makes() {
+    let check = |rating: i32, bonus: i32, price: f32| {
+        let mut s = Status::start(&StatusRecord::default(), None);
+        s.settings.limits = [49.0, 29.0, 19.0, 9.0];
+        s.settings.create_chance = [100; 5];
+        (s.rating, s.price) = (rating, price);
+        s.new_guest_check(true, bonus, &mut seeded(1))
+    };
+    for price in [49.01, 29.0, 19.0, 9.0] {
+        for rating in [-5, 0, 29, 30, 59, 60, 80, 81, 100] {
+            for bonus in [0, 30, -30] {
+                assert_eq!(
+                    check(rating, bonus, price),
+                    check(rating + bonus, 0, price),
+                    "{rating} {bonus} {price}"
+                );
+            }
+        }
+    }
+    // The bonus really changes the answer, and a huge one cannot overflow.
+    assert_ne!(check(50, 0, 49.01), check(50, 31, 49.01));
+    assert_eq!(check(i32::MAX, 30, 9.0), check(i32::MAX, 0, 9.0));
+    assert_eq!(check(0, i32::MAX, 49.01), check(81, 0, 49.01));
+    assert_eq!(check(i32::MIN, -30, 9.0), check(i32::MIN, 0, 9.0));
+}
+
+#[test]
 fn every_cell_of_the_arrival_table_has_its_chance_and_its_advice() {
     // Rows: 81 and above, 60 to 80, 30 to 59, below 30; columns: the price against 49, 29, 19, 9.
     #[rustfmt::skip]
@@ -474,7 +501,7 @@ fn every_cell_of_the_arrival_table_has_its_chance_and_its_advice() {
                 s.settings.create_chance[key] = 100;
                 (s.rating, s.price) = (rating, price);
                 let mut rng = seeded(1);
-                let got = s.new_guest_check(true, &mut rng);
+                let got = s.new_guest_check(true, 0, &mut rng);
                 let want = table[r][column]
                     .filter(|&(k, _)| k == key)
                     .map(|(_, advice)| advice);
@@ -491,7 +518,7 @@ fn every_cell_of_the_arrival_table_has_its_chance_and_its_advice() {
     let mut s = Status::start(&StatusRecord::default(), None);
     assert_eq!(s.column, 2, "the column starts at 2");
     s.timers[2] = 5;
-    assert_eq!(s.new_guest_check(false, &mut seeded(1)), None);
+    assert_eq!(s.new_guest_check(false, 0, &mut seeded(1)), None);
     assert_eq!(
         (s.column, s.timers[2]),
         (2, 0),

@@ -314,7 +314,7 @@ pub fn apply(
             .start(&mut unit.animation, &env, "bEat", true, false, true);
     }
     if m.queue {
-        unit.runner.request("bEat");
+        unit.runner.queue("bEat", false, true);
     }
     if m.stop {
         halt(unit, world, ctx, at, data);

@@ -716,7 +716,7 @@ fn behave(w: &mut World, data: &Once, id: u32, name: &str) {
     let at = w.find(id).unwrap();
     let kind = w.units.get(id).unwrap().kind;
     let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, kind));
-    unit.runner.request(name);
+    unit.runner.queue(name, true, true);
     let (mut rng, mut removals) = (Rng::default(), Vec::new());
     let mut ctx = Ctx {
         rng: &mut rng,

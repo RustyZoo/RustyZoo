@@ -170,10 +170,10 @@ fn health_counts_the_starving_checks_and_takes_the_animal_away_when_no_keeper_wo
 fn low_health_starts_the_sick_set_and_costs_happiness() {
     let k = keys();
     // 100 of 500 hit points are 20 percent.
-    let env = |has_sick, sick_now| Env {
+    let env = |has_sick, sick_refused| Env {
         sets: Sets {
             has_sick,
-            sick_now,
+            sick_refused,
             ..Sets::default()
         },
         ..in_exhibit()
@@ -223,7 +223,7 @@ fn the_sick_reason_bits_are_always_important() {
     };
     let current = Env {
         sets: Sets {
-            sick_now: true,
+            sick_refused: true,
             ..sick.sets
         },
         ..sick
@@ -672,6 +672,28 @@ fn a_tired_idle_animal_chooses_no_ambient_row() {
     let data = Life::new().idling().with("bSleep", "fPlay(sleep)");
     let log = lived_data(&mut world, &cat, &data, 3000, tire);
     assert!(log.iter().any(|l| l == "set 500 bSleep"));
+}
+
+#[test]
+fn a_low_health_animal_falls_ill_only_when_its_running_set_has_ended() {
+    // The health check queues `bSick` (behaviours 4.2.1): the idle set of 30 plays is not cut.
+    let cat = zebras_with("cPctHits=50\ncMaxHits=500", "");
+    let weaken = |w: &mut World| {
+        let Part::Animal(a) = &mut w.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        a.health = 1;
+        a.at_minimum_health = false;
+    };
+    let mut data = Life::new().idling().with("bSick", "fPlay(sick)");
+    let play = parse_call(b"fPlay(idle)").unwrap().0;
+    data.0.insert("bIdle", vec![play; 30]);
+    let sick = |ms| {
+        let log = lived_data(&mut pens(), &cat, &data, ms, weaken);
+        log.iter().any(|l| l == "set 500 bSick")
+    };
+    assert!(!sick(11_000));
+    assert!(sick(16_000));
 }
 
 #[test]
