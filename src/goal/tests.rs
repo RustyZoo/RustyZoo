@@ -328,7 +328,23 @@ fn a_task_change_replaces_the_object_at_the_next_update() {
 
 #[test]
 fn an_idle_animal_wanders_to_a_tile_and_then_picks_another_walk() {
-    let mut w = map("animals");
+    // In a pen: an animal loose on the grounds is escaped and never sleeps.
+    let mut w = world((10, 10), |_, e| {
+        for t in 0..3 {
+            for (x, y, d) in [(4 + t, 4, 0), (4 + t, 6, 4), (4, 4 + t, 6), (6, 4 + t, 2)] {
+                let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
+                let id = 100 + e.len() as u32;
+                e.push(entity(
+                    "fences",
+                    "iron",
+                    id,
+                    (x * 64 + side.0, y * 64 + side.1),
+                    d,
+                ));
+            }
+        }
+        e.push(entity("animals", "", 1, centre((5, 5)), 1))
+    });
     let mut s = sim();
     let log = run(&mut w, &mut s, 1500);
     let goals: Vec<&str> = (log.iter())

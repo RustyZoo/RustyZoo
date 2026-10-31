@@ -6,8 +6,7 @@
 //! [`Status`] keeps the three timers, the last sums and the rating; the [`crate::sim::Sim`] step
 //! calls its checks in the original's order. The new guest check decides whether a guest arrives
 //! (the chance table of the rating and the admission price); the guest module makes it. Missing
-//! so far: the guests' gift and litter flags (their counts stay 0), the escape date set by a loose
-//! animal (M7; the saved date and the penalty it gives are here), and the admission price window
+//! so far: the guests' gift and litter flags (their counts stay 0), and the admission price window
 //! (the price is the map's, limited). The wages and the building upkeep of the month-end check are
 //! [`crate::month`]'s.
 //!
@@ -235,6 +234,8 @@ pub struct Sums {
     pub esthetics: f32,
     /// The share of research programs completed, in percent.
     pub research: i32,
+    /// The animals loose on the zoo grounds.
+    pub loose: i32,
 }
 
 /// The bonus of the type for the four guest types: its `[EstheticBonus]` list holds a guest id,
@@ -314,6 +315,7 @@ impl Sums {
                 if let Some(Part::Animal(a)) = part.map(|u| &u.part) {
                     sums.animal_happiness = sums.animal_happiness.wrapping_add(a.happiness);
                     sums.sick += i32::from(a.at_minimum_health);
+                    sums.loose += i32::from(a.escaped);
                 }
             } else if let Some(ty) = ty {
                 let wall = world.shape(at).is_some_and(|s| s.wall);
@@ -512,6 +514,10 @@ impl Status {
 
     /// The rating check (6): the sums again, the rating, the statistics, the timer back to 0.
     pub fn rating_check(&mut self, sums: Sums, now: i64, money: &mut Money, log: &mut Vec<String>) {
+        // A loose animal moves the date of the last escape to now before the penalty is read.
+        if sums.loose > 0 {
+            self.escape = file_time(now);
+        }
         self.rating = self.compute(&sums, now);
         for (category, value) in [
             (money::ZOO_VALUE, sums.zoo_value as f32),
@@ -556,8 +562,8 @@ impl Status {
         }
     }
 
-    /// The new guest check (guests 3.1) with `occupied` true when an exhibit holds an animal (no
-    /// animal is ever loose before M7): the price column is kept, the chance of the rating and
+    /// The new guest check (guests 3.1) with `occupied` true when an exhibit holds an animal and
+    /// no animal is loose: the price column is kept, the chance of the rating and
     /// the column decides with one draw (none when the chance is 0). Says whether a guest is to
     /// be created and whether the creation posts the advice about the fee.
     pub fn new_guest_check(&mut self, occupied: bool, rng: &mut Rng) -> Option<bool> {

@@ -31,9 +31,11 @@
 //! The shelter check picks a building to rest in; the goals walk the animal there and the building
 //! holds it for its time inside (`crate::goal`, `crate::building`).
 //!
-//! Not here yet: the effects of the escape, rampage and zap checks (M7: only their counters and
-//! draws run). The ambient choice is taken at the end of the checks by the behaviour runner
-//! ([`Animal::ambient`]).
+//! An animal that stands on the zoo grounds when its escape counter fires is escaped; the checks
+//! have their escaped cases (eating, the sleep, health and water checks, thirst). Not here yet:
+//! how an animal leaves its exhibit, the sets of an escaped animal, and the effects of the
+//! rampage and zap checks (M7: only their counters and draws run). The ambient choice is taken at
+//! the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
 //! The log family `animal`: `animal status <id> <happiness> <hunger> <energy> <health>` right
 //! after each update of the values, `animal message <string> <id>` for a message posted,
@@ -42,8 +44,9 @@
 //! `animal shelter <id> <building>` when the check takes a shelter, `animal heal <id>`,
 //! `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
 //! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>`, `animal hatch <id>`,
-//! `animal breath <id> <breath>` when the breath rises and `animal terrain <id> <mode>` when the
-//! water check changes the terrain mode (0 land, 1 water, 2 tank).
+//! `animal breath <id> <breath>` when the breath rises, `animal terrain <id> <mode>` when the
+//! water check changes the terrain mode (0 land, 1 water, 2 tank) and `animal escape <id>` when
+//! the animal escapes.
 
 use crate::behaviour::Data;
 use crate::config::{Config, to_int};
@@ -484,6 +487,9 @@ pub struct Animal {
     /// check; nothing else follows from them before M7.
     pub rampaging: bool,
     pub rampage: i32,
+    /// It stands loose on the zoo grounds (animals 11): set by the escape check, lowered when it
+    /// is picked up.
+    pub escaped: bool,
     /// The zap counter (animals 4.1): it starts at 0 and fires when it was below 1.
     pub zap: i32,
     /// Status ticks until the creation runs again (`AnimalResetInterval`).
@@ -568,6 +574,7 @@ impl Animal {
         self.thirsty = r.thirsty;
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
+        self.escaped = r.escape.is_some();
         (self.sleeping, self.eating, self.drinking) = (r.sleeping, r.eating, r.drinking);
     }
 
@@ -584,7 +591,16 @@ impl Animal {
             true => date,
             false => file_time(live),
         };
+        // The record of an animal that escaped here has no tile (-1, -1) and no word: the
+        // meaning of the fields is not known.
+        let escape = self.escaped.then(|| {
+            base.escape.unwrap_or(crate::zoo::Escape {
+                tiles: [[-1; 2]; 2],
+                ..Default::default()
+            })
+        });
         AnimalRecord {
+            escape,
             happiness: self.happiness,
             hunger: self.hunger,
             health: self.health,
@@ -865,7 +881,7 @@ pub fn run_with(
         a.stop_eating(false, &mut out.meal);
         a.fed = env.now;
     }
-    escape(a, k, class, rng);
+    escape(a, k, class, env, rng, &mut out);
     if a.eating {
         food::eat(a, k, &mut out.meal);
     }
@@ -894,9 +910,9 @@ pub fn run_with(
     out
 }
 
-/// The escape check (animals 11): the rampage, then the counter. Nothing follows from either in
-/// M6 but the flag and the counter of the rampage: the escape and the sets are M7's.
-fn escape(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
+/// The escape check (animals 11): the rampage, then the counter; when it fires, an animal that
+/// stands on the zoo grounds is escaped. The rampage has no other effect before M7.
+fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
     if a.in_show {
         return;
     }
@@ -919,7 +935,10 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, rng: &mut Rng) {
             }
         }
     }
-    fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]);
+    if fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) && env.grounds && !a.escaped {
+        a.escaped = true;
+        out.log.push("escape");
+    }
 }
 
 /// The captivity tick (animals 4.5): the change, and below the threshold two draws that may
@@ -1054,7 +1073,7 @@ fn bored(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out:
     let (drink, play) = (k.drink, if alone { 0 } else { k.chase });
     let total = drink.wrapping_add(play);
     if total > 0 && rng.rand() as i32 % total < drink {
-        a.thirsty |= !env.wet;
+        a.thirsty |= !env.wet && !a.escaped;
     }
 }
 

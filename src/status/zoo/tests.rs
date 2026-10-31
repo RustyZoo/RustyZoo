@@ -569,3 +569,31 @@ fn the_rating_loses_the_escape_change_less_the_time_per_day_since_the_last_escap
     };
     assert_eq!(Status::start(&record, None).record().escape, 7);
 }
+
+#[test]
+fn a_rating_check_that_finds_a_loose_animal_dates_the_escape_before_the_penalty() {
+    use crate::timing::file_time;
+    const DAY: i64 = 86_400_000;
+    let mut s = status("");
+    s.settings.escaped_change = 30;
+    s.settings.escaped_time = 2;
+    let (mut money, mut log) = (Money::default(), Vec::new());
+    let mut check = |s: &mut Status, loose: i32, now: i64| {
+        let sums = Sums { loose, ..running() };
+        s.rating_check(sums, now, &mut money, &mut log);
+        s.rating
+    };
+    let base = check(&mut s, 0, 10 * DAY);
+    assert_eq!(s.escape, crate::zoo::NEVER, "none loose: the date stays");
+    // One loose animal, or a huge count: the date is now and the penalty full.
+    for loose in [1, i32::MAX] {
+        s.escape = crate::zoo::NEVER;
+        assert_eq!(check(&mut s, loose, 10 * DAY), base - 30);
+        assert_eq!(s.escape, file_time(10 * DAY));
+    }
+    // A count of 0 or less is no loose animal; the date keeps the last escape.
+    for loose in [0, -3, i32::MIN] {
+        assert_eq!(check(&mut s, loose, 13 * DAY), base - 24, "{loose}");
+        assert_eq!(s.escape, file_time(10 * DAY));
+    }
+}

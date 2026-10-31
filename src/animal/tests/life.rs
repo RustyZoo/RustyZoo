@@ -447,7 +447,12 @@ fn lived(world: &mut World, cat: &Catalogue, ms: u32) -> Vec<String> {
 }
 
 /// The same, with `prepare` run on the world after the first step, when the animals have started.
-fn lived_with(world: &mut World, cat: &Catalogue, ms: u32, prepare: fn(&mut World)) -> Vec<String> {
+pub(super) fn lived_with(
+    world: &mut World,
+    cat: &Catalogue,
+    ms: u32,
+    prepare: fn(&mut World),
+) -> Vec<String> {
     lived_data(world, cat, &Life::new(), ms, prepare)
 }
 
