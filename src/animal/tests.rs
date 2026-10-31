@@ -2039,6 +2039,64 @@ fn a_hungry_zebra_walks_to_the_food_a_script_puts_down_eats_it_and_the_pile_goes
 }
 
 #[test]
+fn the_walk_to_keeper_food_ends_on_the_pile_or_on_a_neighbour_where_the_animal_eats() {
+    use crate::sim::drive::{Command, Run};
+    let width = usize::try_from(SIZE).unwrap();
+    let pile = 2 * width + 3;
+    let (mut onto, mut beside) = (0, 0);
+    for seed in 1..40 {
+        let mut run = Run::new(
+            (b"", b""),
+            (feeding(), Class::default()),
+            pens(),
+            Default::default(),
+            seed,
+        );
+        let data = Eats::new();
+        step_log(&mut run, &data);
+        let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.hunger, a.counters[HUNGER]) = (60, 0);
+        assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+        let (mut target, mut eaten_on) = (None, None);
+        for _ in 0..40 * 15 {
+            let log = step_log(&mut run, &data);
+            let unit = run.world.units.get(500).unwrap();
+            if target.is_none() && log.iter().any(|l| l == "unit set 500 bFindKeeperFood") {
+                target = unit.goal.record.target.tile;
+            }
+            if log.iter().any(|l| l.starts_with("animal eat 500")) {
+                eaten_on = run
+                    .world
+                    .find(500)
+                    .and_then(|at| crate::guest::view::tile_of(&run.world, at));
+                break;
+            }
+        }
+        let target = target.expect("the walk started");
+        let (x, y) = (target % width, target / width);
+        let (px, py) = (pile % width, pile / width);
+        let step = x.abs_diff(px) + y.abs_diff(py);
+        assert!(
+            step <= 1,
+            "seed {seed}: target {target} is not the pile or beside it"
+        );
+        // The animal eats on its target tile, the pile or the neighbour.
+        assert_eq!(eaten_on, Some(target), "seed {seed}");
+        if step == 0 {
+            onto += 1;
+        } else {
+            beside += 1;
+        }
+    }
+    assert!(
+        onto > 0 && beside > 0,
+        "{onto} onto the pile, {beside} beside it"
+    );
+}
+
+#[test]
 fn the_bite_that_empties_a_pile_stops_every_animal_that_aims_at_it_at_once() {
     use crate::sim::drive::{Command, Run};
     let mut run = Run::new(
