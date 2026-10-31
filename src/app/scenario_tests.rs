@@ -6,7 +6,7 @@ use crate::lists::Scenario as Listed;
 use crate::menu::Start;
 use crate::money::Money;
 use crate::sprite::tests::Install;
-use crate::ui::layout::DISABLED;
+use crate::ui::layout::{DISABLED, SELECTED};
 use crate::zoo::Zoo;
 
 const MAIN_PANEL: i32 = 2;
@@ -76,9 +76,9 @@ fn a_won_scenario_stores_its_result_asks_and_leaves_for_the_scenario_screen() {
             ini.contains("aa=1") && ini.contains("unlockEntity0=7"),
             "{ini}"
         );
-        // The game stands still behind the dialog, and the game's layouts are hidden.
+        // The game stands still behind the dialog; the main bar stays (5.4.1).
         assert!(app.interface().unwrap().modal_open() && shown(app, DIALOG));
-        assert!(!shown(app, MAIN_PANEL));
+        assert!(shown(app, MAIN_PANEL));
         assert_eq!(app.interface().unwrap().text(45206).unwrap(), b"text-16100");
         app.pass(now + 66, &[]);
         assert!(app.camera().is_some());
@@ -751,6 +751,39 @@ fn a_scenario_end_allows_selling_again() {
         assert!(app.game.as_ref().unwrap().animal.no_sale);
         until_asked(app, now);
         assert!(!app.game.as_ref().unwrap().animal.no_sale);
+    });
+}
+
+#[test]
+fn a_scenario_end_hides_the_panels_and_the_selection_and_yes_shows_none() {
+    let text = "[desc]\nname=9001\n[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntext=9101\n";
+    let files = [("s/hide.scn", text.as_bytes().to_vec())];
+    let cat = Some(super::avail_tests::catalogue());
+    with_game("end-hide", "", &files, cat, |app, _| {
+        let now = play(app, "s/hide.scn");
+        let id = add_lion(app);
+        app.game.as_mut().unwrap().selected = Some(id);
+        app.interface().unwrap().show(15);
+        app.interface().unwrap().set_button(1019, true, true);
+        let now = until_asked(app, now).0;
+        let game = app.game.as_ref().unwrap();
+        assert!(game.selected.is_none() && game.animal.selected.is_none());
+        assert!(!shown(app, 15) && !shown(app, animal::LAYOUT) && shown(app, MAIN_PANEL));
+        let ui = app.interface().unwrap();
+        assert_eq!(
+            ui.tree.elements[ui.tree.find(1019).unwrap()].state & SELECTED,
+            0
+        );
+        // Yes (no next tutorial) closes the dialog and shows none of them again.
+        ui.answer(6);
+        let now = now + 66;
+        app.pass(now, &[]);
+        for step in 1..30 {
+            app.pass(now + step * 66, &[]);
+        }
+        let game = app.game.as_ref().unwrap();
+        assert!(game.selected.is_none() && game.animal.selected.is_none());
+        assert!(!shown(app, 15) && !shown(app, animal::LAYOUT) && !shown(app, DIALOG));
     });
 }
 
