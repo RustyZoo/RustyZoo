@@ -334,6 +334,22 @@ impl Sim {
         tree.map_or_else(Vec::new, |t| t.complete(cat, over, d))
     }
 
+    /// Completes every research program of the game (research 6.8). The programs forced come back
+    /// for the caller to apply their effects 0 and 1, with the changes of the life counter.
+    pub fn force_research(
+        &mut self,
+        cat: &Catalogue,
+        over: &mut Overlay,
+        progress: bool,
+    ) -> (Vec<Done>, Vec<Life>) {
+        let Some(tree) = &mut self.research else {
+            return Default::default();
+        };
+        let out = tree.force(cat, over, progress, &mut || self.rng.rand());
+        self.lines.push(format!("research forced {}", out.0.len()));
+        out
+    }
+
     /// The research share of the zoo status: the tree's, 0 while a game has none.
     pub fn research_share(&self) -> i32 {
         self.research.as_ref().map_or(0, Tree::share)
