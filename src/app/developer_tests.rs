@@ -5,6 +5,7 @@ use super::*;
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::menu::Start;
+use crate::money::{DONATIONS, Money, NET};
 use crate::render::tests::{cache_install_with, frame_file, tile_with};
 use crate::ui::layout::Tree;
 use crate::vfs::Vfs;
@@ -19,8 +20,9 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     action=3\ntarget=34\nstate=16\nstate=2048\n\
     [c]\ntype=UILayout\nlayout=ui/panel.lyt\nstate=1\n\
     [d]\ntype=UIText\nid=3402\nx=40\ny=30\ndx=8\ndy=8\n";
-const PANEL: &str = "[LayoutInfo]\nid=34\nlayer=7\nx=20\ny=20\ndx=20\ndy=20\nstate=1\n\
-    [a]\ntype=UIButton\nid=5013\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n";
+const PANEL: &str = "[LayoutInfo]\nid=34\nlayer=7\nx=20\ny=20\ndx=200\ndy=20\nstate=1\n\
+    [a]\ntype=UIButton\nid=5013\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
+    [e]\ntype=UIEditableText\nid=5012\nx=0\ny=10\ndx=180\ndy=8\n";
 
 /// The lion and the zebra start available and are the targets of two programs; the gnu starts
 /// unavailable and is no program's target.
@@ -179,5 +181,63 @@ fn the_panel_research_button_without_a_tree_still_makes_every_type_available() {
         assert_eq!(available(app, cat), [true, true, true]);
         app.developer_research();
         assert_eq!(available(app, cat), [true, true, true]);
+    });
+}
+
+/// Clicks the cash field of the panel, then sends `keys` (the text replaces the selection) and
+/// Enter, which ends the edit.
+fn edit_cash(app: &mut App, now: u64, keys: &[Command]) {
+    click(app, now, (22, 32));
+    let mut all = keys.to_vec();
+    all.push(Command::Key(Key::Enter, false, false));
+    app.pass(now + 10, &all);
+}
+
+/// The cash, and the donations of the accounts (the net is the same: nothing else is booked).
+fn cash_and_donations(app: &App) -> (f32, f32) {
+    let m = app.money().unwrap();
+    assert_eq!(m.total[NET], m.total[DONATIONS]);
+    (m.cash, m.total[DONATIONS])
+}
+
+#[test]
+fn the_panel_cash_field_sets_the_cash_and_books_the_difference_as_a_donation() {
+    with_game("dev-cash", false, true, |app, _| {
+        app.set_money(Money {
+            cash: 1000.0,
+            ..Money::default()
+        });
+        app.pass(20, &[Command::DevMode]);
+        click(app, 40, (2, 2));
+        assert!(shown(app, 34));
+        let typed = |text: &[u8]| text.iter().map(|&b| Command::Char(b)).collect::<Vec<_>>();
+        let backspace = [Command::Key(Key::Backspace, false, false)];
+        // Escape takes the edit back to the text the field had (never applied): no change.
+        click(app, 50, (22, 32));
+        app.pass(
+            55,
+            &[Command::Char(b'9'), Command::Key(Key::Escape, false, false)],
+        );
+        assert_eq!(cash_and_donations(app), (1000.0, 0.0));
+        // Less cash: a negative donation.
+        edit_cash(app, 60, &typed(b"400"));
+        assert_eq!(cash_and_donations(app), (400.0, -600.0));
+        // Zero and a negative amount are amounts.
+        edit_cash(app, 80, &typed(b"0"));
+        assert_eq!(cash_and_donations(app), (0.0, -1000.0));
+        edit_cash(app, 100, &typed(b"-50"));
+        assert_eq!(cash_and_donations(app), (-50.0, -1050.0));
+        // A decimal number keeps its fraction.
+        edit_cash(app, 120, &typed(b"12.5"));
+        assert_eq!(cash_and_donations(app), (12.5, -987.5));
+        // Text that is no number reads as 0, as the price fields do; an empty field too.
+        edit_cash(app, 140, &typed(b"abc"));
+        assert_eq!(cash_and_donations(app), (0.0, -1000.0));
+        edit_cash(app, 160, &backspace);
+        assert_eq!(cash_and_donations(app), (0.0, -1000.0));
+        // A huge amount stays finite and is booked as a donation.
+        edit_cash(app, 180, &typed(b"1000000000000"));
+        let big = 1_000_000_000_000_f64 as f32;
+        assert_eq!(cash_and_donations(app), (big, -1000.0 + big));
     });
 }

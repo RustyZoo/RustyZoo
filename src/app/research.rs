@@ -1,6 +1,7 @@
 //! The research step's meeting with the interface (research 5.4): what a completed program does.
 
 use super::{App, EXCLAIM_PICTURE, QUESTION};
+use crate::money::SYMBOL;
 use crate::panel::research::branch_of_tab;
 use crate::research::{Done, Life, Tree};
 use crate::text::to_cp1252;
@@ -30,6 +31,8 @@ pub(super) fn upgrades(tree: &Tree) -> crate::building::upgrade::Upgrades {
 pub(super) const DEV_BUTTON: i32 = 1098;
 /// The research button of the developer panel (research 6.8).
 pub(super) const DEV_RESEARCH: i32 = 5013;
+/// The cash field of the developer panel (exhibits and money 4.6).
+pub(super) const DEV_CASH: i32 = 5012;
 
 impl App<'_> {
     /// The tree of a saved game's scenario with the file's research section read (7.2); none, with
@@ -107,6 +110,25 @@ impl App<'_> {
                 log.into_iter().for_each(|line| self.sim.note(line));
             }
         }
+    }
+
+    /// The developer panel's cash field was ended (exhibits and money 4.6): the cash becomes the
+    /// typed amount and the difference is booked as a donation. The text is read as the price
+    /// fields are (no number is 0).
+    pub(super) fn developer_cash(&mut self) {
+        let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
+            return;
+        };
+        let text = ui.text(DEV_CASH).unwrap_or_default();
+        let symbol = ui.string(SYMBOL);
+        let symbol = if symbol.trim().is_empty() {
+            "$"
+        } else {
+            &symbol
+        };
+        let group = crate::text::format::money_group();
+        let amount = crate::panel::building::typed(&text, &to_cp1252(symbol), &to_cp1252(group));
+        game.money.set_cash_donation(amount as f32);
     }
 
     /// Completes every research program with no dialog (research 6.8): the targets become

@@ -223,6 +223,17 @@ impl Money {
         }
     }
 
+    /// The developer panel's cash field (exhibits and money 4.6): the cash becomes `amount` and the
+    /// difference is booked as a donation, negative when the cash goes down. Nothing when `amount`
+    /// or the difference is no number.
+    pub fn set_cash_donation(&mut self, amount: f32) {
+        let diff = amount - self.cash;
+        if amount.is_finite() && diff.is_finite() {
+            self.cash = amount;
+            self.book(DONATIONS, diff);
+        }
+    }
+
     /// Undoes a charge: the cash comes back and the category goes down by `cost`; nothing is
     /// booked as a refund.
     pub fn undo_charge(&mut self, category: usize, cost: f32) {
