@@ -318,7 +318,7 @@ fn account(m: &Money, rule: &[i32; 4]) -> i32 {
 }
 
 /// Rule 1: a figure of the zoo status, 0 before month `arga`.
-fn status(env: &Env, g: &Game, rule: &[i32; 4]) -> i32 {
+fn status(env: &Env, g: &Game, rule: &[i32; 4], gui: &Gui) -> i32 {
     if rule[2] > env.total_months() {
         return 0;
     }
@@ -333,8 +333,13 @@ fn status(env: &Env, g: &Game, rule: &[i32; 4]) -> i32 {
         5 => sums.sick,
         6 => sums.species,
         7 => g.money.cash.round() as i32,
-        // The awards held, whether or not they have a definition (`awards.md` 4.3).
-        11 => i32::try_from(g.world.zoo.awards.len()).unwrap_or(i32::MAX),
+        // The awards held, whether or not they have a definition (`awards.md` 4.3), and those a
+        // goal earlier in this pass has just given.
+        11 => {
+            let mut all: BTreeSet<i32> = g.world.zoo.awards.iter().copied().collect();
+            all.extend(gui.given());
+            i32::try_from(all.len()).unwrap_or(i32::MAX)
+        }
         _ => 0,
     }
 }
@@ -377,7 +382,7 @@ pub(super) fn eval(rule: &[i32; 4], value: i32, env: &Env, states: &[u8], gui: &
             let Some(g) = env.game else { return 0 };
             match rule[0] {
                 0 => account(g.money, rule),
-                1 => status(env, &g, rule),
+                1 => status(env, &g, rule, gui),
                 2 => {
                     let (id, sub) = (rule[2], rule[3]);
                     let by_name = |f: &Fact| f.name_id == id;
