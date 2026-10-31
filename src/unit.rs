@@ -202,6 +202,9 @@ pub struct Unit {
     pub gate: Option<u32>,
     /// The unit goes in or out of a building: the tile step test looks at the edge cost only.
     pub through_building: bool,
+    /// A goal started a walk set in the last step: a nested walk set reaches its move call one
+    /// step later, which does not end a walk in progress.
+    pub walk_restarted: bool,
     /// The next tile step was refused: the goal has to give up (movement 4.7). The goals read
     /// and clear it.
     pub aborted: bool,
@@ -269,6 +272,7 @@ impl Unit {
             flip: false,
             gate: None,
             through_building: false,
+            walk_restarted: false,
             aborted: false,
             use_set: None,
             sent: None,
@@ -942,8 +946,10 @@ impl Hooks for Standard<'_> {
             unit.runner.resume(&mut unit.animation, &mut env);
             self.building_calls(unit, world, ctx, at);
         }
-        // Another set took the place of the move call: the walk ends.
-        if unit.walking && !moved {
+        // Another set took the place of the move call: the walk ends, unless a goal has just
+        // started the walk set, whose move call comes a step later when it is nested.
+        let started = std::mem::take(&mut unit.walk_restarted);
+        if unit.walking && !moved && !started {
             movement::stop(unit);
         }
         if let Some(to) = unit.sent.take() {
