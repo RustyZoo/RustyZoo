@@ -12,7 +12,7 @@ use crate::build::number;
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::panel::exhibit::{Clock, animals_exhibit, type_at};
-use crate::panel::follow::set_follow_icon;
+use crate::panel::follow::{animal_animation, set_follow_icon};
 use crate::panel::guest::{thought_rows, thought_texts};
 use crate::status::Words;
 use crate::text::format::{self, Arg};
@@ -204,7 +204,7 @@ impl Panel {
             ui.set_button(FOLLOW, false, !carried);
         }
         if fresh || self.clock.forced {
-            set_follow_icon(ui, vfs, FOLLOW, ty);
+            set_follow_icon(ui, vfs, FOLLOW, ty, animal_animation(a.egg, a.crated));
         }
         let moveable = ty.is_none_or(|t| number(t, "cMoveable").is_none_or(|v| v != 0.0));
         ui.set_enabled(SELL, !carried && !self.no_sale);

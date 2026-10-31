@@ -382,6 +382,39 @@ fn a_task_with_nothing_left_to_do_is_dropped() {
 }
 
 #[test]
+fn a_worn_fence_is_mended_from_the_worker_side_of_its_lowest_piece() {
+    // The lowest piece (15) is on the east edge of the tile west of the task's tile (14, 9); that
+    // tile is open and on the grounds, so the worker walks to (13, 9), not to the task's tile.
+    let mut piece = entity("fences", "iron", 15, centre((13, 9)), 2);
+    piece.subtype = "f".into();
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &[piece]);
+    g.w.heal(&g.cat, 15, &mut || 0);
+    (g.piece(15).strength, g.piece(15).life) = (100, 2);
+    // The fence of the task's tile keeps its life: only the piece 15 wears.
+    for id in [FENCE, 15] {
+        g.piece(id).timers = [600_000; 2];
+    }
+    let tile = Game::tile(FENCE_TILE) as u32;
+    g.sim.events.post(piece_event(FENCE, 10033, tile));
+    for _ in 0..1000 {
+        g.run(1);
+        if !g.lines(&["world fence"]).is_empty() {
+            break;
+        }
+    }
+    assert_eq!(
+        g.lines(&["world fence"]),
+        ["world fence 15 3"],
+        "{:?}",
+        g.lines(&["staff"])
+    );
+    assert!(g.jobs().contains(&"FixFence"));
+    let at = g.w.find(WORKER).unwrap();
+    let c = g.w.zoo.entities[at].common.as_ref().unwrap();
+    assert_eq!((c.x.div_euclid(64), c.y.div_euclid(64)), (13, 9));
+}
+
+#[test]
 fn a_worker_skips_the_duties_switched_off_and_the_tiles_he_could_not_reach() {
     // Duty kind 0 (the cans) switched off: the task waits in the pool.
     let mut g = Game::new("");
@@ -488,8 +521,9 @@ fn a_repair_with_a_modifier_mends_the_lines_beside_too() {
 fn a_piece_made_healthy_by_a_worker_sets_the_escape_flag_decayed_or_not() {
     use crate::unit::testing::amphibious_world;
     // The amphibious world with a bear that bashes in the tank. The decayed piece on the north edge
-    // of the land exhibit is mended by a worker inside it and, with the modifier, the wall it shares
-    // with the tank, which borders the tank only: sound or decayed, it sets the tank's flag.
+    // of the land exhibit is mended by a worker on the grounds beside it (his side, staff 8.7) and,
+    // with the modifier, the wall it shares with the tank, which borders the tank only: sound or
+    // decayed, it sets the tank's flag.
     let mut g = Game::new("cFixFenceModifier=1");
     g.w = amphibious_world(2, &[(5, "bear", (3, 3))]);
     let bear = "[Characteristics/Integers]\ncBashStrength=1\n";
@@ -503,7 +537,7 @@ fn a_piece_made_healthy_by_a_worker_sets_the_escape_flag_decayed_or_not() {
         min: 600_000,
         max: 600_000,
     });
-    let worker = entity("maint", "maint", 0, centre((8, 3)), 2);
+    let worker = entity("maint", "maint", 0, centre((6, 1)), 2);
     g.w.add(worker, None).unwrap();
     g.w.zoo
         .entities

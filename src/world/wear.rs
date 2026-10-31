@@ -258,7 +258,7 @@ impl World {
 
     /// The tile a worker stands on to mend the piece at `at` (placing 7.4 "The events"): its tile or
     /// the one across, the open one on the zoo grounds first.
-    fn worker_tile(&self, at: usize) -> u32 {
+    pub(crate) fn worker_tile(&self, at: usize) -> u32 {
         let Some((t, d)) = self.slot(at) else {
             return 0;
         };

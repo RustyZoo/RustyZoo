@@ -322,3 +322,25 @@ fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
     panel.refresh(&mut ui, &world, &cat, &vfs, 0);
     assert_eq!(shown(&ui), (false, None), "a periodic one does not");
 }
+
+#[test]
+fn the_follow_button_of_an_egg_or_a_crated_animal_shows_its_own_animation() {
+    let (mut ui, vfs, mut world) = panel_in_game("animal-panel-follow-egg");
+    let all = "idle = ui/z/z.ani\negg_idle = ui/y/y.ani\nbox_idle = ui/x/x.ani\n";
+    let cat = follow::animals_catalogue("animals", "zebra", all);
+    let mut panel = Panel::default();
+    let mut icon = |ui: &mut Interface, world: &mut World, egg, crated| {
+        let Part::Animal(a) = &mut world.units.get_mut(1).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.egg, a.crated) = (egg, crated);
+        panel.select(1);
+        panel.refresh(ui, world, &cat, &vfs, 0);
+        ui.tree.elements[ui.tree.find(FOLLOW).unwrap()].look.icon
+    };
+    let idle = icon(&mut ui, &mut world, false, false);
+    let egg = icon(&mut ui, &mut world, true, false);
+    let boxed = icon(&mut ui, &mut world, false, true);
+    assert!(idle.is_some() && egg.is_some() && boxed.is_some());
+    assert!(idle != egg && idle != boxed && egg != boxed);
+}

@@ -39,6 +39,7 @@ impl App<'_> {
 
     /// Does what the triggers asked of the interface.
     pub(super) fn scenario_effects(&mut self) {
+        self.scenario_forced();
         self.scenario_avail(false);
         self.scenario_deeds();
         let effects = self.sim.scenario().map(|s| s.effects());
@@ -53,8 +54,16 @@ impl App<'_> {
         }
     }
 
-    /// Carries out triggers 1, 3, 5, 8 and 9 (scenarios 7.2, 7.4, 7.5): a message, the cash, a
-    /// boxed animal, a removal and the sell switch. A popup follows its deed, to be shown by the
+    /// Carries out trigger 10: every research program is completed (research 6.8).
+    pub(super) fn scenario_forced(&mut self) {
+        let forced = self.sim.scenario().map(|s| s.gui().take_forced());
+        for progress in forced.into_iter().flatten() {
+            self.force_research(progress);
+        }
+    }
+
+    /// Carries out triggers 1, 3, 5, 6, 8 and 9 (scenarios 7.2, 7.4, 7.5): a message, the cash, a
+    /// boxed animal, an award, a removal and the sell switch. A popup follows its deed, to be shown by the
     /// effects that come after.
     fn scenario_deeds(&mut self) {
         let (Some(game), ui) = (&mut self.game, &mut self.ui) else {
@@ -102,6 +111,23 @@ impl App<'_> {
                         None => format!("scenario boxed {name} none"),
                     });
                     popup.filter(|_| id.is_some())
+                }
+                Deed::Award { give, id, text } => {
+                    if give {
+                        crate::award::add(&mut game.world.zoo.awards, id);
+                        log.push(format!("scenario award {id}"));
+                    }
+                    // The lookup is made whatever `truleb` says (`awards.md` 5.1).
+                    if let (Some(ui), Some(def), true) = (ui.as_mut(), cat.awards.get(id), text > 0)
+                    {
+                        let line = Line {
+                            text,
+                            values: [def.name, 0, 0],
+                            state: 0,
+                        };
+                        ui.message(&to_cp1252(&scenario::built_line(ui, line)));
+                    }
+                    None
                 }
                 Deed::Remove { by, id, popup } => {
                     let (carry, selected, pending) =

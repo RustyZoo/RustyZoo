@@ -198,7 +198,7 @@ impl Panel {
             ui.set_button(FOLLOW, false, !unit.carried);
         }
         if fresh || self.clock.forced {
-            set_follow_icon(ui, vfs, FOLLOW, ty);
+            set_follow_icon(ui, vfs, FOLLOW, ty, "idle");
         }
         let moveable =
             ty.is_none_or(|t| crate::build::number(t, "cMoveable").is_none_or(|v| v != 0.0));

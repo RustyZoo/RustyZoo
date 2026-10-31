@@ -318,7 +318,7 @@ usage: rustyzoo [--data <dir>] <command>
                       yellow or red as its habitat check judges it), the sex and when it last ate and slept,
                       and the five newest thoughts about it, refreshed every 5 s of clock while shown and not while the game is paused; its
                       recommendations button shows the plaque of that animal, its exhibit button the
-                      exhibit panel on its exhibit, its follow button (showing its type's idle picture seen from the south-east, centred and clipped, set when the panel opens and at a forced refresh such as a tab click) keeps the view on it, and a click
+                      exhibit panel on its exhibit, its follow button (showing its type's idle animation, or its egg's or crate's, seen from the south-east, centred and clipped, playing from its first frame while the game is not paused, set when the panel opens and at a forced refresh such as a tab click) keeps the view on it, and a click
                       anywhere else on the map closes it (the sell and pick-up buttons do nothing yet). `panel animal ID
                       \"NAME\" happiness H hunger N health L suitability S fed WORDS slept WORDS` tells what it
                       shows (` thoughts [IDS]` closes the line when guests have thoughts about it: their string ids,
@@ -487,9 +487,11 @@ usage: rustyzoo [--data <dir>] <command>
                       (`sim scenario message TEXT kind K`), 3 changes the cash (`sim scenario cash
                       HOW AMOUNT`), 5 boxes an animal at the gate (`sim scenario boxed NAME id N`,
                       or `none`), 8 removes animals (`sim scenario remove BY ID count N`) and 9
-                      switches the animal panel's sell button (`sim scenario sale on|off`);
-                      triggers 6 and 10 (awards, forced research) do nothing yet; the research,
-                      awards and shows rules are stubs, and rules 10 and 11 read what the interface shows and what
+                      switches the animal panel's sell button (`sim scenario sale on|off`), 6
+                      gives an award (`sim scenario award ID`, none for a `truleb` other than 0)
+                      and 10 completes every research program (`sim research forced N`, N
+                      programs); the research and shows rules are stubs, rule 1 `ruleb` 11 counts
+                      the awards held, and rules 10 and 11 read what the interface shows and what
                       was pressed; a game that opens gives the elements back). When the scenario
                       ends, its result is
                       written to `[scenario]` of the settings of the user folder if lower than
