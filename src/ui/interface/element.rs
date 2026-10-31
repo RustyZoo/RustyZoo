@@ -1,7 +1,7 @@
 //! What the scenarios do to elements by id: disable, hide, and read a row of a list.
 
 use super::Interface;
-use crate::ui::layout::{DISABLED, HIDDEN, Kind, SELECTED};
+use crate::ui::layout::{DISABLED, HIDDEN, Kind, NEVER_SHOWN, SELECTED};
 
 impl Interface {
     /// Disables (`off`) or enables the element `id`; whether it changed. A selected member of a
@@ -38,6 +38,17 @@ impl Interface {
             }
             _ => self.flag(i, HIDDEN, hide),
         }
+        true
+    }
+
+    /// Shows (`on`) or hides the element `id` by the program, as an element kept out of its layout
+    /// by the never-shown flag: that flag goes with the hidden one, so the layout's own shows leave
+    /// it alone and a hidden one is never hit. `false` for an element that does not exist.
+    pub fn reveal(&mut self, id: i32, on: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.flag(i, HIDDEN | NEVER_SHOWN, !on);
         true
     }
 

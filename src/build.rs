@@ -692,6 +692,12 @@ impl Build {
         }
     }
 
+    /// Makes every entity type available (the developer panel's research button, research 6.8).
+    /// Whether a flag changed.
+    pub fn make_all_available(&mut self, cat: &Catalogue) -> bool {
+        self.avail.set_where(cat, |_| true, true)
+    }
+
     /// The start triggers made these types available or not, then the ini rewards apply last
     /// (research 7.4). Whether a flag changed.
     pub fn after_triggers(&mut self, cat: &Catalogue, ini: &Config, made: &[Avail]) -> bool {

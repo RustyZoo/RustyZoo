@@ -1400,6 +1400,10 @@ impl<'a> App<'a> {
                     let on = self.timers.speed.developer();
                     self.dev_lines.push(if on { "on" } else { "off" }.into());
                     self.painted = None;
+                    // The same press shows or hides the developer button (main loop 5.2).
+                    if let Some(ui) = &mut self.ui {
+                        ui.reveal(research::DEV_BUTTON, on);
+                    }
                 }
             }
             // The speed keys go before the interface's characters (input 3.2, main loop 5.2).
@@ -1894,6 +1898,7 @@ impl<'a> App<'a> {
                         game.research.clock.force = true;
                     }
                 }
+                research::DEV_RESEARCH if self.game.is_some() => self.developer_research(),
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
@@ -2750,3 +2755,6 @@ mod money_tests;
 
 #[cfg(test)]
 mod undo_tests;
+
+#[cfg(test)]
+mod developer_tests;
