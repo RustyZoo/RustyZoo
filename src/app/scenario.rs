@@ -16,11 +16,34 @@ const DIALOG_PICTURE: i32 = 45204;
 const YES: i32 = 6;
 const NO: i32 = 7;
 const GENERIC: &str = "ui/event/generic/generic";
+/// The layouts the end hides (5.4.1), in the order of the general hide-all routine: the buy and hire
+/// panels, the game options, the research and developer panels, the unit lists and the exhibit list.
+/// Then the selection is cleared, and the zoo status, the scenario panel and the show panel are hidden.
+const HIDDEN: [i32; 11] = [
+    crate::build::CONSTRUCTION,
+    crate::build::ADOPT,
+    crate::build::OBJECTS,
+    crate::build::HIRE,
+    crate::panel::research::LAYOUT,
+    OPTIONS_PANEL,
+    34,
+    16,
+    12,
+    31,
+    crate::panel::exhibit::LAYOUT,
+];
+const HIDDEN_LAST: [i32; 3] = [14, 803, 41];
+/// The toolbar buttons that open the hidden layouts: each is released with its layout.
+const BUTTONS: [i32; 3] = [
+    crate::status::STATUS_BUTTON,
+    crate::panel::research::BUTTON,
+    crate::panel::exhibit::BUTTON,
+];
 
 impl App<'_> {
-    /// The scenario has ended (5.4): the result and the unlocks are stored, the game's layouts
-    /// are hidden and the end dialog asks Yes or No; without an interface, or a dialog to show,
-    /// the game stops at once.
+    /// The scenario has ended (5.4): the result and the unlocks are stored, the panels of the
+    /// hide-all routine are hidden and the selection cleared (5.4.1), and the end dialog asks Yes
+    /// or No; without an interface, or a dialog to show, the game stops at once.
     pub(super) fn scenario_over(&mut self) {
         let Some(end) = self.sim.scenario_ended() else {
             return;
@@ -38,10 +61,13 @@ impl App<'_> {
         };
         let (lines, newly) = menu.scenario_ended(&end);
         self.menu_events.extend(lines);
-        for id in GAME_LAYOUTS {
-            if let Some(i) = ui.tree.find(id) {
-                ui.tree.hide(i);
-            }
+        hide_layouts(ui, &HIDDEN);
+        if let Some(game) = &mut self.game {
+            game.selected = None;
+        }
+        hide_layouts(ui, &HIDDEN_LAST);
+        for id in BUTTONS {
+            ui.set_button(id, false, true);
         }
         let text = scenario::end_text(&end.file, end.won, menu.expansions());
         let picture = ui.tree.picture(self.renderer.vfs(), GENERIC);
@@ -112,5 +138,14 @@ impl App<'_> {
         self.menu_events
             .push(format!("scenario list {}", rows.len()));
         ui.set_rows(LIST, rows);
+    }
+}
+
+/// Hides the layouts that the interface has (a layout the scenario's interface lacks is skipped).
+fn hide_layouts(ui: &mut Interface, layouts: &[i32]) {
+    for &id in layouts {
+        if let Some(i) = ui.tree.find(id) {
+            ui.tree.hide(i);
+        }
     }
 }

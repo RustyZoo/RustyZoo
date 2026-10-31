@@ -91,6 +91,18 @@ pub fn beasts(world: &World, cat: &Catalogue) -> Vec<Beast> {
     list
 }
 
+/// The exhibits a tour guide with the assignments `assigned` leads guests to (tour guide 6.1): its
+/// assignments in their order, else the exhibits in list order that hold an animal.
+pub fn tour_exhibits(world: &World, cat: &Catalogue, assigned: &[u32]) -> Vec<u32> {
+    if !assigned.is_empty() {
+        return assigned.to_vec();
+    }
+    let held = beasts(world, cat);
+    (world.exhibits().list().iter().map(|x| x.id))
+        .filter(|x| held.iter().any(|b| b.exhibit == *x))
+        .collect()
+}
+
 /// Builds the areas again when the map changed since they were.
 fn refresh(world: &mut World, cat: &Catalogue) {
     if world.units.views.edits == Some(world.edits) {

@@ -497,10 +497,10 @@ usage: rustyzoo [--data <dir>] <command>
                       written to `[scenario]` of the settings of the user folder if lower than
                       the stored one, and a win appends its `[completion] unlock` types to `[user]
                       unlockEntityN` (`menu scenario ended won|lost`, `menu scenario result KEY N`,
-                      `menu scenario unlock ID`); the game's layouts hide and a dialog (layout
-                      45200, `menu scenario dialog TEXTID`) tells the result with Yes and
-                      No; No stops the game and shows the scenario screen with the win or lose
-                      picture and story (the main menu for a tutorial or a freeform map); Yes
+                      `menu scenario unlock ID`); the panels of the hide-all routine hide, the
+                      selection clears and a dialog (layout 45200, `menu scenario dialog TEXTID`)
+                      tells the result with Yes and No; No stops the game and shows the
+                      scenario screen with the win or lose picture and story (the main menu for a tutorial or a freeform map); Yes
                       starts the next tutorial after a tutorial, else the game goes on; closing
                       the window meanwhile ends the run. The Scenario button (4107, the O character) fills
                       panel 803 with the scenario's name and story and one line per goal

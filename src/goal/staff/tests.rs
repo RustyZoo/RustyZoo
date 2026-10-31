@@ -503,7 +503,7 @@ fn an_assigned_keeper_strolls_to_the_outside_of_the_gate_of_his_exhibit() {
     unit.path.clear();
     let mut rng = crate::sim::Rng::default();
     assert!(crate::unit::walk::random_walk(
-        &mut unit, &mut g.w, &mut rng, at
+        &mut unit, &mut g.w, &g.cat, &mut rng, at
     ));
     let outside = 6 * 22 + 14;
     assert_eq!(unit.path.last(), Some(&outside));
