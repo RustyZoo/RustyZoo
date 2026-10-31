@@ -1113,7 +1113,6 @@ impl Cx<'_, '_> {
         if !started {
             return false;
         }
-        self.unit.walk_restarted = true;
         let (world, dest) = (&*self.world, self.unit.destination);
         let r = &mut self.unit.goal.record;
         (if job {

@@ -371,7 +371,8 @@ pub fn call(
             return Flow::Failed;
         }
     }
-    if unit.path.len() < 2 {
+    // The 3D move goes on with one entry (8.2 step 1).
+    if unit.path.len() < 2 && mode_of(world, at) != Some(3) {
         stop(unit);
         idle(unit, world, data, at);
         return Flow::Done;
@@ -395,7 +396,6 @@ pub fn call(
         }
     };
     if !animate(unit, world, data, at, own) {
-        stop(unit);
         return Flow::Failed;
     }
     let rate = rate.max(0) as u32;
@@ -428,7 +428,6 @@ fn mode_of(world: &World, at: usize) -> Option<u32> {
 /// destination the goal set. Fails without a destination or the animation.
 fn start_fly(unit: &mut Unit, world: &World, data: &dyn Data, at: usize, speed: &Number) -> Flow {
     if unit.destination.is_none() || !animate(unit, world, data, at, Some(("climb", 100))) {
-        stop(unit);
         return Flow::Failed;
     }
     unit.band = Band::Slow;

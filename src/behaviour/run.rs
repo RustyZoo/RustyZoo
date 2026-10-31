@@ -327,7 +327,7 @@ pub struct Env<'a> {
 
 /// The set a unit runs: the chain from the top set down to the innermost nested one, the set it
 /// will start when the top one ends, and the play state the play calls share.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Runner {
     chain: Vec<Level>,
     pending: Option<String>,
@@ -335,6 +335,8 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
+    /// A start was accepted since the unit last looked (movement 8.3).
+    started: bool,
     /// Taken from a saved game and not yet stepped: the player holds no sequence of the unit's
     /// own, so its first play call is shown at once, not behind the base loop (behaviours 4.7).
     fresh: bool,
@@ -365,6 +367,33 @@ pub struct Runner {
     exit: bool,
 }
 
+/// The state hash of a run reads this text: `started` is not in it (the walk it feeds is hashed
+/// through the moving flag), so the hashes stay as they were.
+impl std::fmt::Debug for Runner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Runner")
+            .field("chain", &self.chain)
+            .field("pending", &self.pending)
+            .field("interruptible", &self.interruptible)
+            .field("ready", &self.ready)
+            .field("playing", &self.playing)
+            .field("fresh", &self.fresh)
+            .field("place", &self.place)
+            .field("tank_mode", &self.tank_mode)
+            .field("wet", &self.wet)
+            .field("talking", &self.talking)
+            .field("moving", &self.moving)
+            .field("face", &self.face)
+            .field("target", &self.target)
+            .field("halt", &self.halt)
+            .field("die", &self.die)
+            .field("hatch", &self.hatch)
+            .field("enter", &self.enter)
+            .field("exit", &self.exit)
+            .finish()
+    }
+}
+
 /// The answer to a move call (movement 8.2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flow {
@@ -382,6 +411,7 @@ impl Default for Runner {
             interruptible: true,
             ready: true,
             playing: false,
+            started: false,
             fresh: false,
             place: Place::Land,
             tank_mode: 0,
@@ -408,6 +438,11 @@ impl Runner {
     /// The name of the top set, if the unit has started one.
     pub fn top(&self) -> Option<&str> {
         self.chain.first().map(|l| l.name.as_str())
+    }
+
+    /// Whether a set start was accepted since the last time, once.
+    pub fn take_started(&mut self) -> bool {
+        std::mem::take(&mut self.started)
     }
 
     /// The move call the set reached, once.
@@ -513,6 +548,7 @@ impl Runner {
             return false;
         }
         (self.ready, self.playing, self.interruptible) = (true, false, interruptible);
+        self.started = true;
         self.chain.clear();
         self.nest(env, name);
         if !keep {
