@@ -10,6 +10,7 @@ impl App<'_> {
     pub(super) fn name_hook(&mut self, class: Subject, text: &str) {
         match self.cheats.find(class, text) {
             Some(Cheat::ResearchCategory(name)) => self.complete_category(name),
+            Some(cheat) => self.guest_cheat(cheat),
             None => {}
         }
     }

@@ -633,6 +633,45 @@ fn an_egg_laying_pair_lays_eggs_that_hatch_when_a_keeper_has_healed_them() {
     assert_eq!(unit.animation.name, "idle");
 }
 
+/// The hatch counter of the first egg a pair lays, for a species with this `cTimeToHatch`, with
+/// the `eggs_hatch_fast` cheat on or off.
+fn hatch_of_first_egg(time: &str, fast: bool) -> i32 {
+    let keys = format!(
+        "cLaysEggs=1\ncTimeToHatch={time}\ncMaxHits=100\ncOffspring=1\ncReproductionInterval=100000\n"
+    );
+    let cat = breeders(&keys);
+    let data = Life::new();
+    let mut world = pen(&[(600, "m"), (601, "f")]);
+    world.units.eggs_hatch_fast = fast;
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    for _ in 0..60_000 / 67 {
+        sim.step_with(&data, &cat, &mut world, 67, |_, _, _| {});
+        let told = world.units.take_animal_lines();
+        let laid = told.iter().find_map(|l| l.strip_prefix("egg 600 "));
+        if let Some(id) = laid.and_then(|l| l.split(' ').next()?.parse::<u32>().ok()) {
+            let Part::Animal(a) = &world.units.get(id).unwrap().part else {
+                panic!("not an animal");
+            };
+            return a.hatch;
+        }
+    }
+    panic!("no egg was laid");
+}
+
+#[test]
+fn the_fast_egg_cheat_lays_every_egg_with_a_hatch_counter_of_5() {
+    for time in ["10", "0", "-7", "2147483647", "3"] {
+        let plain: i32 = time.parse().unwrap();
+        assert_eq!(hatch_of_first_egg(time, false), plain, "{time}");
+        assert_eq!(hatch_of_first_egg(time, true), 5, "{time}");
+    }
+    // A species whose key is empty lays the same egg.
+    assert_eq!(hatch_of_first_egg("", true), 5);
+}
+
 #[test]
 fn the_candidates_are_the_unmated_of_the_other_sex_that_are_not_family() {
     let mut world = pen(&[

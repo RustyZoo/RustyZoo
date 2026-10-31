@@ -1067,6 +1067,7 @@ impl<'a> App<'a> {
                 vfs: self.renderer.vfs(),
                 timings: &self.timings,
             };
+            game.world.units.eggs_hatch_fast = self.cheats.eggs_hatch_fast;
             let report = self.sim.step_game(
                 &data,
                 self.renderer.catalogue(),
@@ -2720,6 +2721,7 @@ mod building_panel;
 mod bulldozer;
 mod carry;
 mod cheat;
+mod cheat_guest;
 mod exhibits;
 mod gates;
 mod guest_panel;
@@ -2741,6 +2743,8 @@ mod tank_panel_tests;
 #[cfg(test)]
 mod carry_tests;
 
+#[cfg(test)]
+mod cheat_guest_tests;
 #[cfg(test)]
 mod cheat_tests;
 
