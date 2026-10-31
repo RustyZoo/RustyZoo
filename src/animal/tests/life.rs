@@ -707,6 +707,16 @@ fn the_drink_goal_tries_the_shore_tiles_in_order() {
 /// Loads the first pen's animals with `saved`, and with `set` as the saved behaviour set and
 /// `goal` as the saved active goal; steps `ms` and returns the log and the animal 500 with its task.
 fn loaded_with(saved: AnimalRecord, set: &str, goal: i32, ms: u32) -> (Vec<String>, Animal, u8) {
+    loaded_with_active(saved, set, (goal, goal), ms)
+}
+
+/// The same with the wanted goal and the active one apart.
+fn loaded_with_active(
+    saved: AnimalRecord,
+    set: &str,
+    goals: (i32, i32),
+    ms: u32,
+) -> (Vec<String>, Animal, u8) {
     let cat = zebras_with("cEnergyThreshold=500", "");
     let mut world = pens();
     for e in &mut world.zoo.entities {
@@ -718,7 +728,7 @@ fn loaded_with(saved: AnimalRecord, set: &str, goal: i32, ms: u32) -> (Vec<Strin
                 tail: [1, 0, 1, 0],
                 ..Default::default()
             };
-            (block.target.goal, block.target.active) = (goal, goal);
+            (block.target.goal, block.target.active) = goals;
             let c = e.common.as_mut().unwrap();
             (c.animal, c.unit) = (Some(Box::new(saved.clone())), Some(Box::new(block)));
         }
@@ -773,7 +783,7 @@ fn a_loaded_sleeper_goes_on_with_its_saved_sleep_set() {
 }
 
 #[test]
-fn a_loaded_drinker_goes_on_only_in_its_drink_goal() {
+fn a_loaded_drinker_reads_its_drink_task_from_the_wanted_goal() {
     let saved = AnimalRecord {
         drinking: true,
         eating: true,
@@ -782,10 +792,17 @@ fn a_loaded_drinker_goes_on_only_in_its_drink_goal() {
     // Saved in the drink goal: the flags come back and the goal starts.
     let (_, a, task) = loaded_with(saved.clone(), "bEat", 122, 0);
     assert!(a.drinking && a.eating && task == 122);
-    // Saved in another goal: the drinking flag would hold the ladder for good, so it is dropped;
-    // the goal comes back as saved.
-    let (_, a, task) = loaded_with(saved.clone(), "bEat", 114, 0);
-    assert!(!a.drinking && a.eating && task == 114);
+    // Saved in another goal: the goal comes back as saved and the flag stays up, with no drink task
+    // from it (animals-needs 6.1); so for a goal of 0, none, or a number beyond a byte.
+    for goal in [114, 0, -1, i32::MAX] {
+        let (_, a, task) = loaded_with(saved.clone(), "bEat", goal, 0);
+        assert!(a.drinking && a.eating && task != 122, "goal {goal}");
+    }
+    let (_, _, task) = loaded_with(saved.clone(), "bEat", 114, 0);
+    assert_eq!(task, 114);
+    // Only the wanted goal counts: a drink saved as the active goal alone is not one.
+    let (_, a, task) = loaded_with_active(saved.clone(), "bEat", (114, 122), 0);
+    assert!(a.drinking && task == 114);
     // Not saved drinking, in the drink goal: the goal comes back, the flag stays down.
     let (_, a, task) = loaded_with(
         AnimalRecord {

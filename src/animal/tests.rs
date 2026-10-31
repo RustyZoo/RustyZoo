@@ -1681,7 +1681,7 @@ fn a_zebra_in_a_show_without_food_is_not_told_but_pays_and_shows_the_bit() {
 }
 
 #[test]
-fn a_hungry_animal_that_finds_food_wants_it_and_forgets_its_thirst() {
+fn a_hungry_animal_that_finds_food_wants_it_and_forgets_its_thirst_and_its_drink() {
     let k = hungry_zebra();
     let env = Env {
         food_total: 1,
@@ -1690,10 +1690,26 @@ fn a_hungry_animal_that_finds_food_wants_it_and_forgets_its_thirst() {
     let mut a = Animal {
         hunger: 50,
         thirsty: true,
+        drinking: true,
         ..animal()
     };
     let out = hunger_check(&mut a, &k, &env);
-    assert!(a.wants_food && !a.thirsty && !a.no_food && out.messages.is_empty());
+    assert!(a.wants_food && !a.thirsty && !a.drinking && !a.no_food && out.messages.is_empty());
+    // In a show it wants nothing and keeps drinking; with no food the flag stays too.
+    for (in_show, total) in [(true, 1), (false, 0)] {
+        let mut a = Animal {
+            hunger: 50,
+            drinking: true,
+            in_show,
+            ..animal()
+        };
+        let env = Env {
+            food_total: total,
+            ..Env::default()
+        };
+        hunger_check(&mut a, &k, &env);
+        assert!(a.drinking && !a.wants_food);
+    }
     // Not hungry enough, already on its way, or on the keeper food task: nothing.
     for (hunger, wants, task) in [(49, false, false), (50, true, false), (50, false, true)] {
         let mut a = Animal {
@@ -2290,8 +2306,8 @@ fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     };
     // Loaded, then saved at once: the same record, with the counters creation drew.
     let a = saved(&world);
-    // No drink goal was saved: the drinking flag is not taken.
-    assert_eq!((a.sleeping, a.eating, a.drinking), (true, true, false));
+    // The flag comes back as saved, whatever the saved goal (animals-needs 6.1).
+    assert_eq!((a.sleeping, a.eating, a.drinking), (true, true, true));
     assert_eq!(
         (a.happiness, a.hunger, a.health, a.energy),
         (38, 7, 250, 15)
