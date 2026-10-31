@@ -10,10 +10,14 @@
 
 use super::super::{Cx, LEG, NONE, RANDOM, TALK};
 use crate::animal::food::nearest_direction;
+use crate::behaviour::{Data, NoData};
+use crate::entity::Catalogue;
 use crate::exhibit::GROUNDS;
 use crate::guest::{self, HAPPINESS, view};
+use crate::sim::{Events, Rng};
 use crate::staff::Crowd;
-use crate::unit::{Kind, Part, Unit, movement};
+use crate::unit::{Ctx, Kind, Part, Unit, movement};
+use crate::world::World;
 
 /// The tasks that keep a guest from following (guests visit 10.1): the building chain, finding
 /// food and eating, leaving, avoiding a predator, being sick and the way back to a building.
@@ -21,40 +25,87 @@ fn busy(task: u8) -> bool {
     (103..=109).contains(&task) || [113, 117, 121, 130].contains(&task)
 }
 
+/// Runs `f` on the goal update context of the guest `id`, taken out of the table for it.
+fn with_guest<R>(
+    world: &mut World,
+    ctx: &mut Ctx,
+    data: &dyn Data,
+    id: u32,
+    f: impl FnOnce(&mut Cx) -> R,
+) -> Option<R> {
+    let at = world.find(id)?;
+    let slot = world.units.get_mut(id)?;
+    let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
+    let r = f(&mut Cx {
+        unit: &mut unit,
+        world: &mut *world,
+        ctx,
+        at,
+        data,
+    });
+    if let Some(slot) = world.units.get_mut(id) {
+        *slot = unit;
+    }
+    Some(r)
+}
+
+/// The guests on the map, in entity order, with the tile each stands on.
+fn guests(w: &World) -> Vec<(u32, usize)> {
+    let on_map = |(at, e): (usize, &crate::zoo::Entity)| {
+        let id = e.common.as_ref()?.id;
+        let u = w.units.get(id).filter(|u| !u.carried && !u.hidden)?;
+        (e.class == "guests" && u.kind == Kind::Guest).then_some((id, view::tile_of(w, at)?))
+    };
+    w.zoo
+        .entities
+        .iter()
+        .enumerate()
+        .filter_map(on_map)
+        .collect()
+}
+
+/// 9.1: every guest that follows `guide` is released, in entity order, one draw each (every caller
+/// passes 100 per cent).
+fn release_followers(world: &mut World, ctx: &mut Ctx, data: &dyn Data, guide: u32) {
+    let follows = |u: &Unit| matches!(&u.part, Part::Guest(g) if g.guide == guide);
+    let ids: Vec<u32> = (guests(world).into_iter())
+        .filter(|&(id, _)| world.units.get(id).is_some_and(follows))
+        .map(|g| g.0)
+        .collect();
+    for id in ids {
+        ctx.rng.chance(100);
+        with_guest(world, ctx, data, id, |cx| cx.reset());
+    }
+}
+
+/// 12.1: the guide `id` is taken off the map for good (fired) or picked up: it releases its group
+/// at once, its list and leg-start flag go, and the draws come from `rng`.
+pub fn release_group(world: &mut World, cat: &Catalogue, rng: &mut Rng, id: u32) {
+    if world.units.get(id).is_none_or(|u| u.kind != Kind::Guide) {
+        return;
+    }
+    let (events, mut removals) = (Events::default(), Vec::new());
+    let mut ctx = Ctx {
+        rng,
+        events: &events,
+        removals: &mut removals,
+        step: 0,
+        cat,
+    };
+    release_followers(world, &mut ctx, &NoData, id);
+    if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
+        s.members.clear();
+        s.leg = false;
+    }
+}
+
 impl Cx<'_, '_> {
-    /// Runs `f` on the goal update context of the guest `id`, taken out of the table for it.
     fn with_guest<R>(&mut self, id: u32, f: impl FnOnce(&mut Cx) -> R) -> Option<R> {
-        let at = self.world.find(id)?;
-        let slot = self.world.units.get_mut(id)?;
-        let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
-        let mut cx = Cx {
-            unit: &mut unit,
-            world: &mut *self.world,
-            ctx: &mut *self.ctx,
-            at,
-            data: self.data,
-        };
-        let r = f(&mut cx);
-        if let Some(slot) = self.world.units.get_mut(id) {
-            *slot = unit;
-        }
-        Some(r)
+        with_guest(self.world, self.ctx, self.data, id, f)
     }
 
-    /// The guests on the map, in entity order, with the tile each stands on.
     fn guests(&self) -> Vec<(u32, usize)> {
-        let w = &*self.world;
-        let on_map = |(at, e): (usize, &crate::zoo::Entity)| {
-            let id = e.common.as_ref()?.id;
-            let u = w.units.get(id).filter(|u| !u.carried && !u.hidden)?;
-            (e.class == "guests" && u.kind == Kind::Guest).then_some((id, view::tile_of(w, at)?))
-        };
-        w.zoo
-            .entities
-            .iter()
-            .enumerate()
-            .filter_map(on_map)
-            .collect()
+        guests(self.world)
     }
 
     // ---- the ladder and the status tick
@@ -230,16 +281,7 @@ impl Cx<'_, '_> {
     /// 9.1: every guest that follows this guide is released, one draw each (every caller passes
     /// 100 per cent), and the list is emptied.
     fn release(&mut self) {
-        let me = self.unit.id;
-        let follows = |u: &Unit| matches!(&u.part, Part::Guest(g) if g.guide == me);
-        let ids: Vec<u32> = (self.guests().into_iter())
-            .filter(|&(id, _)| self.world.units.get(id).is_some_and(follows))
-            .map(|g| g.0)
-            .collect();
-        for id in ids {
-            self.ctx.rng.chance(100);
-            self.with_guest(id, |cx| cx.reset());
-        }
+        release_followers(self.world, self.ctx, self.data, self.unit.id);
         self.guide_reset();
     }
 

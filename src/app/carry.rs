@@ -59,6 +59,8 @@ impl App<'_> {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
         if let Some(carry) = place::unit::pick_up(&mut game.world, cat, id, game.camera.rotation) {
+            // A tour guide picked up lets its group go at once (tour guide 12.1).
+            crate::goal::release_group(&mut game.world, cat, &mut self.sim.rng, id);
             game.selected = None;
             game.carry = Some(carry);
             self.world_lines.push(format!("carry {id}"));

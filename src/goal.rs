@@ -29,6 +29,7 @@ mod tests;
 
 pub use animal::{DRINK, KEEPER_FOOD, SURFACE};
 pub use guest::LEAVE;
+pub use staff::release_group;
 
 pub const NONE: u8 = 0;
 /// The wander.
