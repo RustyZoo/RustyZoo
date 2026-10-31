@@ -511,3 +511,55 @@ fn a_run_starts_with_the_events_of_the_loaded_zoo() {
     let run = run(cat, world, 1);
     assert!(run.sim.events.buffers()[1].iter().any(|e| e.kind == 10034));
 }
+
+/// The break cheat on a world with `subtype` pieces of these keys; the world, the lines and the
+/// event kinds.
+fn broken(subtype: &str, keys: &str, life: i32) -> (World, Vec<String>, Vec<u16>) {
+    let mut w = world(subtype);
+    w.zoo.entities[0].common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
+        strength: 50,
+        life,
+        timers: [5, 6],
+        portal: false,
+    });
+    let mut lines = Vec::new();
+    let events = w.break_fences(&types(keys), &mut lines);
+    (w, lines, events.iter().map(|e| e.kind).collect())
+}
+
+#[test]
+fn the_break_cheat_breaks_every_piece_that_wears_and_tells_the_workers() {
+    // From any life: healthy, decayed, the last one, and a huge or negative one that is not broken.
+    for life in [3, 2, 1, i32::MAX] {
+        let (w, lines, kinds) = broken("f", WEARING, life);
+        let f = w.zoo.entities[0].common.as_ref().unwrap().fence.unwrap();
+        assert_eq!((f.life, f.strength), (0, 0), "{life}");
+        assert!(kinds.contains(&10034), "{life}");
+        assert!(lines.iter().any(|l| l.ends_with("broken")), "{life}");
+    }
+    // A piece already broken (life 0 or less) stays as it is and posts nothing.
+    for life in [0, -1, i32::MIN] {
+        let (w, lines, kinds) = broken("f", WEARING, life);
+        let f = w.zoo.entities[0].common.as_ref().unwrap().fence.unwrap();
+        assert_eq!((f.life, f.strength), (life, 50), "{life}");
+        assert!(lines.is_empty() && kinds.is_empty(), "{life}");
+    }
+}
+
+#[test]
+fn the_break_cheat_spares_what_never_wears() {
+    for (subtype, keys) in [
+        ("g", WEARING),
+        ("f", "cStrength=500\ncLife=3"),
+        ("f", "cLife=3"),
+        ("f", &format!("{WEARING}\ncIndestructible=1")),
+    ] {
+        let (w, lines, kinds) = broken(subtype, keys, 3);
+        let f = w.zoo.entities[0].common.as_ref().unwrap().fence.unwrap();
+        assert_eq!((f.life, f.strength), (3, 50), "{keys}");
+        assert!(lines.is_empty() && kinds.is_empty(), "{keys}");
+    }
+    // No piece at all.
+    let mut w = world_with((4, 4), |_| {});
+    assert!(w.break_fences(&types(WEARING), &mut Vec::new()).is_empty());
+}
