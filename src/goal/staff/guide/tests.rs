@@ -377,6 +377,44 @@ fn a_release_resets_every_follower_with_one_draw_each_and_empties_the_list() {
     );
 }
 
+/// A guide taken off the map releases its followers at that moment: one draw each from the
+/// simulation generator, every goal reset, the list and the leg-start flag gone.
+#[test]
+fn a_guide_fired_or_picked_up_releases_its_group_at_once_with_one_draw_each() {
+    for fired in [false, true] {
+        let mut g = crowd("", TALK);
+        with_cx(&mut g, GUIDE, |cx| cx.gather());
+        // The guest at (9, 9) is out of the radius: not a follower, no draw, untouched.
+        assert_eq!(g.guide().members, [1, 3, 4]);
+        let mut expected = Rng::default();
+        expected.rand();
+        expected.rand();
+        expected.rand();
+        let mut rng = Rng::default();
+        if fired {
+            let mut money = Money::default();
+            crate::place::bulldozer::remove(&mut g.w, &mut money, &g.cat, GUIDE, &mut rng).unwrap();
+        } else {
+            g.w.units.get_mut(GUIDE).unwrap().carried = true;
+            release_group(&mut g.w, &g.cat, &mut rng, GUIDE);
+            assert!(g.guide().members.is_empty() && !g.guide().leg);
+        }
+        assert_eq!(rng.state(), expected.state(), "fired {fired}");
+        for id in [1, 3, 4] {
+            let task = g.w.units.get(id).unwrap().goal.record.task;
+            assert_eq!((g.guest(id).guide, task), (0, 0), "{id}");
+        }
+        assert_eq!(g.w.units.get(5).unwrap().goal.record.task, 134);
+    }
+    // Not a guide, or nobody following: no draw.
+    let mut g = crowd("", TALK);
+    let mut rng = Rng::default();
+    release_group(&mut g.w, &g.cat, &mut rng, 1);
+    release_group(&mut g.w, &g.cat, &mut rng, GUIDE);
+    release_group(&mut g.w, &g.cat, &mut rng, 999);
+    assert_eq!(rng.state(), Rng::default().state());
+}
+
 #[test]
 fn a_guest_that_arrives_while_the_guide_talks_gets_the_bonus_of_its_area_once() {
     let mut g = crowd("", TALK);

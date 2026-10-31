@@ -192,6 +192,8 @@ pub(super) fn catalogue() -> Catalogue {
         cost(200)
     );
     cat.push(ty("filter", b"filter1", b"f", &filter, [2, 2, 1]));
+    // 19: a tour guide.
+    cat.push(ty("tour", b"tour", b"m", "", [1, 1, 1]));
     cat
 }
 

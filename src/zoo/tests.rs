@@ -3003,3 +3003,44 @@ fn a_guide_written_with_a_zero_countdown_reads_it_back() {
     staff::write(&mut o, b"tour", &tour);
     assert_eq!(staff_read(106, "tour", &o.0).unwrap().crowd, Some(0));
 }
+
+#[test]
+fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "objects",
+        type_name: b"tree".to_vec(),
+        subtype: b"oak".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let ents = [
+        ("objects", "tree", "oak", scenery(70, 1, "Tree")),
+        ("objects", "zqgone", "bin", scenery(70, 2, "Gone")),
+        ("objects", "tree", "oak", scenery(70, 3, "Tree")),
+    ];
+    let ids = |z: &Zoo| -> Vec<u32> {
+        z.entities
+            .iter()
+            .map(|e| e.common.as_ref().unwrap().id)
+            .collect()
+    };
+    let z = parse(&file(70, 1, 1, &[], &ents)).checked(&cat).unwrap();
+    assert_eq!(ids(&z), [1, 3]);
+    // Before version 70 the file is refused.
+    let old = parse(&file(69, 1, 1, &[], &ents));
+    assert!(
+        old.checked(&cat)
+            .unwrap_err()
+            .to_string()
+            .contains("entity 1")
+    );
+    // Nothing of an unknown type: the entity list is empty, and the file still loads.
+    let z = parse(&file(70, 1, 1, &[], &ents[1..2]))
+        .checked(&cat)
+        .unwrap();
+    assert!(z.entities.is_empty());
+}

@@ -718,7 +718,7 @@ fn loaded_with(saved: AnimalRecord, set: &str, goal: i32, ms: u32) -> (Vec<Strin
                 tail: [1, 0, 1, 0],
                 ..Default::default()
             };
-            block.target.active = goal;
+            (block.target.goal, block.target.active) = (goal, goal);
             let c = e.common.as_mut().unwrap();
             (c.animal, c.unit) = (Some(Box::new(saved.clone())), Some(Box::new(block)));
         }

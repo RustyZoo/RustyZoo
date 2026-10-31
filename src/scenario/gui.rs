@@ -204,6 +204,17 @@ impl Gui {
         }
     }
 
+    /// The awards trigger 6 has given and the application has not carried out yet: a goal later
+    /// in the same pass counts them as held, as the original adds the award at once.
+    pub(super) fn given(&self) -> Vec<i32> {
+        let g = self.0.borrow();
+        let ids = g.deeds.iter().filter_map(|d| match d {
+            Deed::Award { give: true, id, .. } => Some(*id),
+            _ => None,
+        });
+        ids.collect()
+    }
+
     pub(super) fn push(&self, effect: Effect) {
         let mut g = self.0.borrow_mut();
         g.out.push(effect);

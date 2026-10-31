@@ -579,7 +579,9 @@ fn a_staff_member_saved_before_its_first_update_has_no_goal() {
         (-1, -1, -1)
     );
     // After its first turn it writes the goal and job it has (the keeper's task 0 has one).
-    w.units.get_mut(1).unwrap().typed = true;
+    let u = w.units.get_mut(1).unwrap();
+    u.typed = true;
+    u.goal.built(u.kind, 0, 0);
     let b = block(&w);
     assert_eq!(
         (b.target.active, b.target.active_sub, b.move_kind),

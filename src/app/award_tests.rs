@@ -186,3 +186,144 @@ fn full_game_award_goals_are_followed_by_their_popup() {
     let seventeen = seventeen.unwrap();
     assert_eq!((int(seventeen, "type"), int(seventeen, "value")), (4, 0));
 }
+
+/// A chain of the shape of the Marine Mania file: the condition, the award goal, then the cash,
+/// the popup and a permanent unlock.
+fn chain(name: &str, rule: &str, id: i32, cash: i32, unlock: i32) -> String {
+    let trigger =
+        |kind: &str, t: &str| format!("[{name}_{kind}]\nrulea=99\nhidden=1\noptional=0\n{t}\n");
+    format!(
+        "[{name}]\nrtype=2\noptional=1\nchild={name}_rule\nchild={name}_award\n\
+         child={name}_cash\nchild={name}_popup\nchild={name}_unlock\n\
+         [{name}_rule]\nrtype=1\nchild={name}_held\n[{name}_held]\n{rule}\n\
+         sticky=0\nhidden=1\noptional=0\n{}{}{}{}",
+        trigger("award", &format!("trulea=6\ntruleb=0\ntarga={id}")),
+        trigger("cash", &format!("trulea=3\ntruleb=0\ntarga={cash}")),
+        trigger("popup", &format!("trulea=2\ntruleb=0\ntarga={id}")),
+        trigger("unlock", &format!("trulea=4\ntruleb=10\ntarga={unlock}")),
+    )
+}
+
+#[test]
+fn a_chain_goal_gives_award_cash_popup_and_unlock_and_the_next_one_counts_the_award() {
+    // The first chain has no condition to wait for; the second wants three awards held, the
+    // map's own and the ones of the first chain and of this pass.
+    let always = "rulea=99\narga=1\nvalue=1";
+    let two = "rulea=1\nruleb=11\nvalue=2";
+    let text = format!(
+        "[duration]\nnummonths=-1\n[goals]\ngoal=open\ngoal=a\ngoal=b\n\
+         [open]\nrulea=99\ntype=0\nvalue=1\n{}{}\
+         [default]\nlayout=45200\n[7]\nlongText1=AWD_SEVEN \n[9]\nlongText1=AWD_NINE \n",
+        chain("a", always, 7, 100, 8001),
+        chain("b", two, 9, 50, 8002),
+    );
+    let files = [("s/aw.scn", text.into_bytes())];
+    with_game("award-chain", "", &files, None, |app, install| {
+        play(app, "s/aw.scn");
+        let (mut lines, mut passes) = (Vec::new(), std::collections::BTreeSet::new());
+        for p in 1..=60u64 {
+            app.pass(66 * p, &[]);
+            let seen = app.log_lines(p, 66 * p).into_iter();
+            let before = lines.len();
+            lines.extend(seen.filter_map(|l| {
+                let (_, r) = l.split_once(" sim scenario ")?;
+                (!r.starts_with("trigger")).then(|| r.to_string())
+            }));
+            if lines.len() > before {
+                passes.insert(p);
+            }
+        }
+        assert_eq!(passes.len(), 1, "both chains in the same pass: {passes:?}");
+        // Awards in order, each followed by its cash and popup; the map holds award 0.
+        assert_eq!(
+            lines,
+            [
+                "award 7",
+                "cash 0 100",
+                "popup 45200 open",
+                "award 9",
+                "cash 0 50",
+                "popup 45200 open",
+            ]
+        );
+        assert_eq!(held(app), [9, 7, 0]);
+        assert_eq!(
+            app.game.as_ref().unwrap().money.cash - Money::default().cash,
+            150.0
+        );
+        let ini = std::fs::read_to_string(install.0.join("user/zoo.ini")).unwrap();
+        assert!(ini.contains("unlockEntity0=8001") && ini.contains("unlockEntity1=8002"));
+    });
+}
+
+/// The leaf rules of a goal, whatever its nesting: `rulea`, `ruleb`.
+fn leaves(cfg: &crate::config::Config, name: &[u8]) -> Vec<(i32, i32)> {
+    let int = |key: &str| {
+        let value = cfg.section(name).and_then(|s| s.get(key));
+        value.and_then(crate::config::to_int).unwrap_or(0)
+    };
+    if int("rtype") == 0 {
+        return vec![(int("rulea"), int("ruleb"))];
+    }
+    let kids = cfg.section(name).map_or(&[][..], |s| s.get_all("child"));
+    kids.iter().flat_map(|k| leaves(cfg, k)).collect()
+}
+
+/// A trigger as (`trulea`, `truleb`, `targa`).
+type Trigger = (i32, i32, i32);
+
+/// The shipped Marine Mania file has one chain goal per award 19 to 31, in this order: the
+/// condition (a group of rules, or one rule), the award goal, then the cash, the popup and the
+/// extras. The cash is trigger 3, the popup 2, a boxed animal 5, a permanent unlock 4 of
+/// `truleb` 10 (`awards.md` 6.3).
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_award_chains_have_the_condition_the_award_and_the_companions_of_the_spec() {
+    use crate::config::{Config, to_int};
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let cfg = Config::parse(&vfs.read("freeform/unlock02.scn").unwrap()).unwrap();
+    let int = |name: &[u8], key: &str| {
+        let value = cfg.section(name).and_then(|s| s.get(key));
+        value.and_then(to_int).unwrap_or(0)
+    };
+    let chains: Vec<Vec<u8>> = (cfg.section("goals").unwrap().get_all("goal").iter())
+        .filter(|g| int(g, "rtype") == 2)
+        .cloned()
+        .collect();
+    assert_eq!(chains.len(), 13);
+    // Per award: the count of rules of the condition, the first rule, and the triggers after
+    // the award goal as (trulea, truleb, targa).
+    let cash = |n| (3, 0, n);
+    let popup = |n| (2, 0, n);
+    let unlock = |n| (4, 10, n);
+    #[rustfmt::skip]
+    let spec: [(usize, (i32, i32), Vec<Trigger>); 13] = [
+        (4, (6, 3), vec![cash(10_000), popup(19)]),
+        (5, (6, 3), vec![popup(20), cash(20_000)]),
+        (2, (6, 3), vec![popup(21), cash(5_000)]),
+        (3, (6, 3), vec![(5, 0, 5039), (5, 1, 5039), popup(22)]),
+        (5, (6, 3), vec![cash(25_000), popup(23)]),
+        (7, (6, 3), vec![cash(50_000), popup(24), unlock(9240)]),
+        (1, (1, 11), vec![cash(100_000), popup(25), (5, 2, 5001)]),
+        (4, (1, 0), vec![popup(26), cash(150_000), unlock(6800)]),
+        (1, (15, 3), vec![popup(27), unlock(6498)]),
+        (1, (15, 3), vec![popup(28), cash(10_000)]),
+        (1, (15, 3), vec![popup(29), cash(5_000), unlock(6496)]),
+        (1, (15, 3), vec![popup(30), cash(10_000), unlock(6497)]),
+        (19, (6, 3), vec![popup(31), cash(50_000)]),
+    ];
+    for (at, (chain, (count, first, tail))) in chains.iter().zip(spec).enumerate() {
+        let id = 19 + at as i32;
+        let kids = cfg.section(chain).unwrap().get_all("child");
+        let rules = leaves(&cfg, &kids[0]);
+        assert_eq!((rules.len(), rules[0]), (count, first), "{id}");
+        let award = &kids[1];
+        assert_eq!((int(award, "trulea"), int(award, "targa")), (6, id), "{id}");
+        assert_eq!(int(award, "truleb"), 0, "{id}");
+        let after: Vec<Trigger> = (kids[2..].iter())
+            .map(|k| (int(k, "trulea"), int(k, "truleb"), int(k, "targa")))
+            .collect();
+        assert_eq!(after, tail, "{id}");
+    }
+}

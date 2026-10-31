@@ -327,7 +327,7 @@ pub struct Env<'a> {
 
 /// The set a unit runs: the chain from the top set down to the innermost nested one, the set it
 /// will start when the top one ends, and the play state the play calls share.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Runner {
     chain: Vec<Level>,
     pending: Option<String>,
@@ -365,6 +365,33 @@ pub struct Runner {
     /// the unit (guest buildings 6.4.1).
     enter: bool,
     exit: bool,
+}
+
+/// The state hash of a run reads this text: `started` is not in it (the walk it feeds is hashed
+/// through the moving flag), so the hashes stay as they were.
+impl std::fmt::Debug for Runner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Runner")
+            .field("chain", &self.chain)
+            .field("pending", &self.pending)
+            .field("interruptible", &self.interruptible)
+            .field("ready", &self.ready)
+            .field("playing", &self.playing)
+            .field("fresh", &self.fresh)
+            .field("place", &self.place)
+            .field("tank_mode", &self.tank_mode)
+            .field("wet", &self.wet)
+            .field("talking", &self.talking)
+            .field("moving", &self.moving)
+            .field("face", &self.face)
+            .field("target", &self.target)
+            .field("halt", &self.halt)
+            .field("die", &self.die)
+            .field("hatch", &self.hatch)
+            .field("enter", &self.enter)
+            .field("exit", &self.exit)
+            .finish()
+    }
 }
 
 /// The answer to a move call (movement 8.2).

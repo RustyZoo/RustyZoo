@@ -37,6 +37,8 @@ mod popup;
 mod rules;
 
 #[cfg(test)]
+mod chain_tests;
+#[cfg(test)]
 mod tests;
 
 /// The question layout a trigger 2 of `truleb` 11 shows.

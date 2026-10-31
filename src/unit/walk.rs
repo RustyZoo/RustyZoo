@@ -274,6 +274,7 @@ impl Walk<'_> {
             (_, Some(id)) => self.gate_neighbour(id),
             (Kind::Keeper, None) => self.keeper_gate().or_else(|| self.stroll()),
             (Kind::Guide, None) => self.guide_gate().or_else(|| self.stroll()),
+            (Kind::Worker, None) => self.worker_gate().or_else(|| self.stroll()),
             _ => self.stroll(),
         }
     }
@@ -412,6 +413,12 @@ impl Walk<'_> {
                 .filter(|&x| assign::block_service(world, cat, x, who, (false, true)) == 0)
                 .collect();
         }
+        self.gate_of_one(&list)
+    }
+
+    /// A worker on the grounds (movement 10.3): the assigned exhibits only, no fallback list.
+    fn worker_gate(&mut self) -> Option<usize> {
+        let list = self.assignments();
         self.gate_of_one(&list)
     }
 

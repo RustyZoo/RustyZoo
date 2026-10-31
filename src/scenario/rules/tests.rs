@@ -236,6 +236,39 @@ fn rule_2_counts_every_entity_by_name_id_and_subtype() {
 }
 
 #[test]
+fn rule_2_counts_a_colony_of_any_sex_age_and_state_by_the_species_name_id() {
+    let mut cat = Catalogue::default();
+    for sub in ["m", "f", "y"] {
+        cat.push(kind("animals", "pen", sub, 5039, ""));
+    }
+    cat.push(kind("animals", "owl", "m", 5040, ""));
+    let (w, h) = (8, 4);
+    let world = world_with((w, h), |z| {
+        for i in 0..18u32 {
+            let (name, sub) = match i {
+                16 | 17 => ("owl", "m"),
+                _ => ("pen", ["m", "f", "y"][i as usize % 3]),
+            };
+            let at = centre((i as i32 % w, i as i32 / w));
+            let mut e = entity("animals", name, i + 1, at, 0);
+            e.subtype = sub.into();
+            z.entities.push(e);
+        }
+    });
+    let mut p = Parts::new(world, cat);
+    // Sixteen of the species, whatever the sex; another species does not count.
+    assert_eq!(p.read([2, 0, 5039, 0]), 16);
+    assert_eq!(p.read([2, 0, 5040, 0]), 2);
+    // A crated one and an egg are in the list and count.
+    p.animal(1).crated = true;
+    p.animal(2).egg = true;
+    assert_eq!(p.read([2, 0, 5039, 0]), 16);
+    assert_eq!(p.read([2, 0, 5039, 3]), 16);
+    assert_eq!(p.read([2, 0, 0, 0]), 0, "no name id 0");
+    assert_eq!(p.read([2, 0, -5039, 0]), 0);
+}
+
+#[test]
 fn rule_3_counts_the_exhibits_with_the_grounds_in_the_list() {
     let p = Parts::new(world(), zoo_types());
     // The tank and the land exhibit, and the grounds.

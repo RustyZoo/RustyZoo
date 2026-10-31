@@ -22,8 +22,8 @@
 //!
 //! The parser knows nothing of the entity definitions. The original also refuses a file of a
 //! version below 70 whose entity has a type it has no definition for, even if its class is
-//! known; [`Zoo::check_types`] does the same once the caller has the definitions, and
-//! [`Zoo::drop_unknown`] drops the entities of an unknown type, which the engine does when it writes.
+//! known; [`Zoo::check_types`] does the same once the caller has the definitions. From version 70
+//! such an entity is skipped, and [`Zoo::checked`] drops it ([`Zoo::drop_unknown`]) after the load.
 //!
 //! [`Zoo::write`] mirrors the reader and always writes version 106 (from 70 on). What the engine
 //! does not model is kept as read ([`Kept`], and the body of each entity in [`Common`]), converted to
@@ -553,14 +553,16 @@ impl Zoo {
 
     /// Drops the entities whose type `known` does not find, as the original's loader does when it
     /// skips their records: it makes no unit for them and so never saves them (zoo format 6.2).
-    /// The engine keeps them in play and drops them when it writes.
+    /// [`Zoo::checked`] calls it after the load; the engine drops them again when it writes.
     pub fn drop_unknown(&mut self, known: impl Fn(&Entity) -> bool) {
         self.entities.retain(known);
     }
 
-    /// Applies [`Zoo::check_types`] with the types of `catalogue`.
-    pub fn checked(self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
+    /// Applies [`Zoo::check_types`] with the types of `catalogue`, then drops the entities of an
+    /// unknown type, so the world built from the zoo has no unit or id for them.
+    pub fn checked(mut self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
         self.check_types(knows(catalogue))?;
+        self.drop_unknown(knows(catalogue));
         Ok(self)
     }
 
