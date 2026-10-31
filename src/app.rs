@@ -1820,7 +1820,8 @@ impl<'a> App<'a> {
         let actions: Vec<Action> = self.ui_actions[self.acted..].to_vec();
         self.acted = self.ui_actions.len();
         self.scenario_pressed(&selected, &actions);
-        for action in actions {
+        let mut actions = actions.into_iter().peekable();
+        while let Some(action) = actions.next() {
             match action {
                 Action::Answer(code) => self.answered(code),
                 action if self.listing_open() => self.listed(action),
@@ -1847,6 +1848,12 @@ impl<'a> App<'a> {
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
                 Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
+                Action::Edited(research::DEV_CASH) if self.game.is_some() => {
+                    // Escape takes the edit back: its key follows the edit at once.
+                    if !matches!(actions.peek(), Some(Action::Key(_, Key::Escape))) {
+                        self.developer_cash();
+                    }
+                }
                 Action::Edited(
                     panel_building::NAME | panel_building::PLAIN_NAME | panel_building::FILTER_NAME,
                 ) if self.game.is_some() => {

@@ -269,3 +269,23 @@ fn a_statistic_is_set_not_added_and_leaves_the_cash_and_the_net_line() {
         (37.0, 10.0, 0.0)
     );
 }
+
+#[test]
+fn a_cash_set_by_the_developer_books_the_difference_and_nothing_for_no_number() {
+    let mut m = money(100.0);
+    m.set_cash_donation(-25.0);
+    assert_eq!(
+        (m.cash, row(&m, DONATIONS)),
+        (-25.0, (-125.0, -125.0, -125.0))
+    );
+    // No number: an infinite amount, or a difference that overflows, changes nothing.
+    m.set_cash_donation(f32::INFINITY);
+    m.set_cash_donation(f32::NAN);
+    assert_eq!(
+        (m.cash, row(&m, DONATIONS)),
+        (-25.0, (-125.0, -125.0, -125.0))
+    );
+    let mut m = money(f32::MAX);
+    m.set_cash_donation(-f32::MAX);
+    assert_eq!((m.cash, row(&m, DONATIONS)), (f32::MAX, (0.0, 0.0, 0.0)));
+}
