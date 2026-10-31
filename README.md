@@ -51,6 +51,8 @@ On Windows use the Visual Studio build tools (MSVC); on macOS, the Xcode command
 cargo build --release
 ```
 
+Dev builds (`cargo build`) keep only line tables, so panics still show file and line, and write less to disk.
+
 > [!NOTE]
 > On Linux, install SDL's development packages first if you want a real window and sound: the list is in [docs/usage.md](docs/usage.md#linux-packages).
 
