@@ -4,6 +4,7 @@
 use super::{BUILDING, Cx, GO_BUILDING, NONE, RANDOM};
 use crate::animal::{NEED, food, tank};
 use crate::behaviour::Target;
+use crate::path;
 use crate::unit::{Part, walk};
 
 /// Task 0x72, keeper food, 0x7a, drink water, and 0x7c, go to the surface for air.
@@ -113,63 +114,71 @@ impl Cx<'_, '_> {
     }
 
     /// 11.9 decide: with no target, the nearest water tile of the exhibit under the animal that is
-    /// not salt (the first in the exhibit's tile order on a tie); the animal then goes to one of
-    /// the four straight neighbours of it, nearest to the animal first and the later direction
-    /// first on a tie, each valid when the step from the water to it is allowed for the animal
-    /// (pathfinding 4.2); the first with a path wins, with `bFindOtherFood`. With none the goal
-    /// resets. The thirst goes down either way.
+    /// not salt (the first in the exhibit's tile order on a tie); the animal then goes next to it
+    /// (`next_to`, never straight onto it) with `bFindOtherFood`. With no way the goal resets. The
+    /// thirst goes down either way.
     pub(super) fn drink_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
         }
-        let (world, here) = (&*self.world, self.tile());
-        let width = world.zoo.width as usize;
-        let at = |t: usize| {
-            (
-                (t % width) as i64,
-                (t / width) as i64,
-                world.zoo.tiles[t].elevation as i64,
-            )
+        let water = {
+            let (world, here) = (&*self.world, self.tile());
+            let distance = squared_distance(world, here);
+            // The salt water of a tank is terrain 10.
+            here.and_then(|t| food::exhibit_of(world, t)).and_then(|x| {
+                let tiles = world.tiles_of(x).into_iter();
+                let fresh =
+                    tiles.filter(|&t| world.is_water(t) && world.zoo.tiles[t].terrain != 10);
+                fresh.min_by_key(|&t| distance(t))
+            })
         };
-        let (hx, hy, hz) = here.map_or((0, 0, 0), at);
-        let distance = |t: usize| {
-            let (x, y, z) = at(t);
-            (x - hx).pow(2) + (y - hy).pow(2) + (z - hz).pow(2)
-        };
-        // The salt water of a tank is terrain 10.
-        let water = here.and_then(|t| food::exhibit_of(world, t)).and_then(|x| {
-            let tiles = world.tiles_of(x).into_iter();
-            let fresh = tiles.filter(|&t| world.is_water(t) && world.zoo.tiles[t].terrain != 10);
-            fresh.min_by_key(|&t| distance(t))
-        });
-        let mut walking = false;
-        if let Some(w) = water {
-            let mut shore: Vec<(usize, usize)> = [6, 4, 2, 0]
-                .into_iter()
-                .filter_map(|d| Some((world.neighbour(w, d)?, d)))
-                .collect();
-            shore.sort_by_key(|&(t, _)| distance(t));
-            let mover = crate::unit::movement::mover(self.unit, self.world, self.at, w);
-            let settings = &self.world.units.finder.settings;
-            let valid = |&(t, d): &(usize, usize)| {
-                crate::path::allowed(
-                    self.world,
-                    &mover,
-                    settings,
-                    (w, t, d),
-                    self.unit.through_building,
-                )
-            };
-            let shore: Vec<usize> = shore.iter().filter(|c| valid(c)).map(|&(t, _)| t).collect();
-            walking = shore.into_iter().any(|t| self.path_to(t, false))
-                && self.walk_set("bFindOtherFood", false, false);
-        }
+        let walking = water.is_some_and(|w| self.next_to(w, false))
+            && self.walk_set("bFindOtherFood", false, false);
         if let Part::Animal(a) = &mut self.unit.part {
             a.thirsty = false;
         }
         if !walking {
             self.reset();
         }
+    }
+
+    /// Animals needs 7.1, the "go next to a tile" helper: one draw `rand() % 100` on every call.
+    /// With `direct` set, a draw below 50 and the unit not in a tank, the path goes to `to`
+    /// itself. Otherwise to the first of its four straight neighbours (nearest to the unit first,
+    /// the later direction first on a tie) that the unit may step onto from `to` and that has a
+    /// path. A successful request leaves the unit's destination on the tile it was asked for, which
+    /// the walk then takes as the goal's target. The `cKeepMoving` extension is not ported (M7).
+    fn next_to(&mut self, to: usize, direct: bool) -> bool {
+        let draw = self.ctx.rng.rand() % 100;
+        let mover = crate::unit::movement::mover(self.unit, self.world, self.at, to);
+        if direct && draw < 50 && !mover.deep {
+            return self.path_to(to, false);
+        }
+        let near: Vec<usize> = {
+            let world = &*self.world;
+            let distance = squared_distance(world, self.tile());
+            let mut near: Vec<(usize, usize)> = [6, 4, 2, 0]
+                .into_iter()
+                .filter_map(|d| Some((world.neighbour(to, d)?, d)))
+                .collect();
+            near.sort_by_key(|&(t, _)| distance(t));
+            let settings = &world.units.finder.settings;
+            // A unit in a tank steps between tank tiles at its own level (tank fauna 7.1).
+            let level = mover.levels.1;
+            let through = self.unit.through_building;
+            let valid = |&(t, d): &(usize, usize)| match mover.deep {
+                true => path::allowed_deep(
+                    world,
+                    &mover,
+                    settings,
+                    ((to, level), (t, level), d),
+                    through,
+                ),
+                false => path::allowed(world, &mover, settings, (to, t, d), through),
+            };
+            near.iter().filter(|c| valid(c)).map(|&(t, _)| t).collect()
+        };
+        near.into_iter().any(|t| self.path_to(t, false))
     }
 
     /// 11.9 complete: at the water an animal that is not drinking starts `bEat` and another after
@@ -197,7 +206,8 @@ impl Cx<'_, '_> {
     /// 11.8 decide: with no target, a piece of the species' food in the exhibit under the animal
     /// (not its home exhibit), chosen by up to three draws (the nearest, else the piece with the
     /// least left, else a random one); then the walk to it with `bFindKeeperFood`. With no piece
-    /// or no way there the task is cleared. The flag that started it goes down. With no exhibit
+    /// or no way there the task is cleared (the walk is `next_to`, half of the time straight to the
+    /// piece, else onto a neighbour of it, which then is the goal's target). The flag that started it goes down. With no exhibit
     /// under the animal nothing happens at all.
     pub(super) fn keeper_food_decide(&mut self) {
         if self.record().target.tile.is_some() {
@@ -222,7 +232,7 @@ impl Cx<'_, '_> {
         let (hx, hy) = here.map_or((0, 0), at);
         let distance = |tile: usize| (at(tile).0 - hx).pow(2) + (at(tile).1 - hy).pow(2);
         let chosen = food::choose(&groups, distance, self.ctx.rng);
-        let walking = chosen.is_some_and(|p| self.path_to(p.tile, false))
+        let walking = chosen.is_some_and(|p| self.next_to(p.tile, true))
             && self.walk_set("bFindKeeperFood", false, false);
         match chosen {
             Some(p) if walking => {
@@ -250,5 +260,25 @@ impl Cx<'_, '_> {
         } else {
             self.reset();
         }
+    }
+}
+
+/// The squared distance in tiles and height from tile `here` (the origin when none).
+fn squared_distance(
+    world: &crate::world::World,
+    here: Option<usize>,
+) -> impl Fn(usize) -> i64 + '_ {
+    let width = world.zoo.width as usize;
+    let at = move |t: usize| {
+        (
+            (t % width) as i64,
+            (t / width) as i64,
+            world.zoo.tiles[t].elevation as i64,
+        )
+    };
+    let (hx, hy, hz) = here.map_or((0, 0, 0), at);
+    move |t| {
+        let (x, y, z) = at(t);
+        (x - hx).pow(2) + (y - hy).pow(2) + (z - hz).pow(2)
     }
 }

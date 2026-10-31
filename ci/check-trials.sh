@@ -1007,13 +1007,13 @@ building_moved() { # building_moved <map>
 check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$450' "building_moved maps/scn19.zoo"
 
 # A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
-# stand of scn19 (seed 4, the first from 1 where a guest is inside to be picked up: the guests of the types the trial does not list are gone) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
+# stand of scn19 (seed 2, the first from 1 where a guest is inside to be picked up: the guests of the types the trial does not list are gone) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
 # click (1091) and put back by Escape (1093); it leaves the stand as a normal leave, so the stand's panel read at
 # pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed).
 guest_picked() { # guest_picked <map>
   d=$(mktemp -d)
   printf '1086 mouse 830 230\n1087 down\n1088 up\n1090 down\n1091 up\n1093 key escape\n1096 mouse 875 230\n1097 down\n1098 up\n' >"$d/script"
-  rz run "$1" --headless --passes 1102 --clock 67 --seed 4 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1102 --clock 67 --seed 2 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 ";" }
       $4 == "panel" && $5 == "building" && $6 == 31076 { for (i = 7; i < NF; i++) if ($i == "income") l = "income_" $(i + 1) }
       END { print w l }'
@@ -1165,8 +1165,8 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:22@29,47;29726:12@20,48;29745:20@36,33;29748:25@32,34;29750:21@23,49" "guest_pace maps/scn01a.zoo"
-check base-trial "29699:21@29,46;29726:21@22,43;29745:44@40,43;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo 0"
+check base-trial "29699:13@24,49;29726:12@20,48;29745:21@36,32;29748:26@32,35;29750:20@24,49" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:29@29,52;29726:22@22,42;29745:20@36,33;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
