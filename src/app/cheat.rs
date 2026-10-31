@@ -16,7 +16,10 @@ impl App<'_> {
     fn hook(&mut self, class: Subject, named: &Named, who: Option<u32>, text: &str) {
         match self.cheats.find_named(class, named, text) {
             Some(Cheat::ResearchCategory(name)) => self.complete_category(name),
-            Some(cheat) => self.exhibit_and_staff_cheat(cheat, who),
+            Some(cheat) => {
+                self.guest_cheat(cheat);
+                self.exhibit_and_staff_cheat(cheat, who);
+            }
             None => {}
         }
     }

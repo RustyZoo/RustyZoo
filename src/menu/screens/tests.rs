@@ -647,6 +647,27 @@ fn the_result_is_written_only_when_lower_than_the_stored_one_and_a_stranger_leav
 }
 
 #[test]
+fn the_unlock_cheat_sets_every_result_to_0_even_a_win_and_can_be_repeated() {
+    let (install, vfs, _) = fixture("unlock-all", true, false);
+    let mut menu = menu("", &install, &vfs);
+    menu.scenario_ended(&ended("s/aa.scn", true, &[]));
+    assert_eq!(menu.scenarios[1].status(&menu.ini), Status::Playable);
+    let count = menu.scenarios.len();
+    let lines = menu.unlock_all_scenarios();
+    assert_eq!(lines.len(), count);
+    assert!(lines.contains(&"scenario result aa 0".to_string()));
+    for s in &menu.scenarios {
+        assert_eq!(crate::lists::result(&menu.ini, &s.result_key), 0);
+        assert_eq!(s.status(&menu.ini), Status::Won);
+    }
+    assert!(written(&install).unwrap().contains("aa=0"));
+    // Nothing is left to write the second time; no scenario at all is no line either.
+    assert!(menu.unlock_all_scenarios().is_empty());
+    menu.scenarios.clear();
+    assert!(menu.unlock_all_scenarios().is_empty());
+}
+
+#[test]
 fn a_recorded_id_with_no_type_is_listed_again_by_a_win_after_a_restart() {
     let (install, vfs, _) = fixture("untyped-restart", true, false);
     // 99 has no type in this catalogue; 6 has one.

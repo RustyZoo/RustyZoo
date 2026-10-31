@@ -239,6 +239,9 @@ pub struct Unit {
     pub sex: Option<bool>,
     /// The animal is put in its crate on its first turn (scenario trigger 5).
     pub boxed: bool,
+    /// The contagion byte of a guest named by one of the guest-name cheats (cheats 4.2 E); not
+    /// saved, not part of the state hash.
+    pub spreads: u8,
 }
 
 impl Unit {
@@ -286,6 +289,7 @@ impl Unit {
             typed: false,
             sex: None,
             boxed: false,
+            spreads: 0,
         }
     }
 
@@ -334,6 +338,8 @@ pub struct Units {
     /// `[AI] useAttractionAttractiveness` is not 0: guests choose an attraction by a score of the
     /// distance, not by its place in the list (guests visit 3.7).
     pub attraction_score: bool,
+    /// The session flag `eggs_hatch_fast` (cheats 4.2 C): a laid egg gets a hatch counter of 5.
+    pub eggs_hatch_fast: bool,
     /// What the keepers spent during the step, as (category, cost), which the step books.
     pub spent: Vec<(usize, f32)>,
     lines: Vec<String>,
@@ -416,6 +422,7 @@ impl Default for Units {
             ring: walk::Ring::default(),
             service_interval: 90,
             attraction_score: false,
+            eggs_hatch_fast: false,
             spent: Vec::new(),
             lines: Vec::new(),
             animal_lines: Vec::new(),

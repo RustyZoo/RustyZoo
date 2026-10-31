@@ -390,6 +390,11 @@ impl Sim {
         self.scenario.as_ref()
     }
 
+    /// Posts an event to the queue, as a unit's change does.
+    pub fn post(&mut self, event: Event) {
+        self.events.post(event);
+    }
+
     /// Adds a line to the `sim` log.
     pub fn note(&mut self, line: String) {
         self.lines.push(line);

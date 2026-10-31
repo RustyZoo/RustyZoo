@@ -221,6 +221,24 @@ impl World {
             .collect()
     }
 
+    /// The `fences_break` cheat (cheats 4.2 C): every piece that wears is brought to its last
+    /// life and given a step longer than any countdown, so it breaks as a worn piece does (lines
+    /// and events as [`World::wear`]). A piece already broken stays so.
+    pub fn break_fences(&mut self, cat: &Catalogue, lines: &mut Vec<String>) -> Vec<Event> {
+        let mut events = Vec::new();
+        for at in 0..self.zoo.entities.len() {
+            if !self.wears(cat, at) {
+                continue;
+            }
+            let fence = (self.zoo.entities[at].common.as_mut()).and_then(|c| c.fence.as_mut());
+            if let Some(f) = fence.filter(|f| f.life > 1) {
+                f.life = 1;
+            }
+            events.extend(self.wear(cat, at, u32::MAX, lines));
+        }
+        events
+    }
+
     /// The events a zoo just loaded posts for its fence pieces (placing 7.4 "The events"), in
     /// entity list order: a piece with life below 1 that can break is broken again (10034), else one at or below
     /// the `cDecayedLife` of its type is decayed (10033, 10034 when electrified).

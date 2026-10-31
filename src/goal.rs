@@ -28,7 +28,7 @@ mod staff;
 mod tests;
 
 pub use animal::{DRINK, KEEPER_FOOD, SURFACE};
-pub use guest::LEAVE;
+pub use guest::{IN_BUILDING, LEAVE};
 pub use staff::release_group;
 
 pub const NONE: u8 = 0;
@@ -877,6 +877,7 @@ impl Cx<'_, '_> {
     /// Point 1 (a guest in an exhibit or a tank leaves it) and point 2 (a guest that is to leave
     /// takes the leave task) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
+        self.spread();
         if self.exit_ladder()
             || self.leave_ladder()
             || self.sick_ladder()

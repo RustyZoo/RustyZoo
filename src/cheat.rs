@@ -100,6 +100,28 @@ pub enum Cheat {
     KeeperSpeedDouble,
     MarketingDouble,
     HealChangesSpecies,
+    // The guest-name cheats (cheats 4.2), apart from the research ones.
+    /// `palette_set_N`: every guest takes the shirt, trousers (male) and skirt (female) palettes,
+    /// and every recolourable building the two it lists.
+    Palette {
+        guests: [u8; 3],
+        buildings: [u8; 2],
+    },
+    /// `guests_flee_birds`: every guest decides to leave (the birds are skipped, cheats 10 O3).
+    GuestsLeave,
+    /// `fences_break`: every fence piece that can deteriorate breaks.
+    FencesBreak,
+    /// `guests_sick_recolour`: every guest is recoloured and, unless busy, made sick.
+    GuestsSick,
+    /// `unlock_all_scenarios`: every scenario result becomes 0, "unlocked by a cheat".
+    UnlockScenarios,
+    /// `eggs_hatch_fast`: session flag, an egg is laid with a hatch counter of 5.
+    EggsHatchFast,
+    /// `cars_to_rubble`: the car scenery goes and donations and cash gain 5500.
+    CarsToRubble,
+    /// `guest_spreads_sickness` and its kin: the named guest passes the effect of `bit` (one of
+    /// [`spread`]) to the guests on its tile. All but the first need a man to be named.
+    Spread(u8),
 }
 
 /// One row of the table: the hash of the exact text, the class it applies to, and the cheat.
@@ -201,12 +223,58 @@ fn exhibit_and_staff_rows() -> Vec<Entry> {
     rows
 }
 
-/// The cheats the program knows. Session flags (cheats 2.4) will live here too: they belong to the
+/// The bits of a guest's contagion byte (cheats 4.2 E), not saved.
+pub mod spread {
+    pub const SICKNESS: u8 = 2;
+    pub const SCARE_WOMEN: u8 = 4;
+    pub const SCARE_CHILDREN: u8 = 8;
+    pub const YELLOW: u8 = 16;
+    pub const RED: u8 = 32;
+    /// The shirt palettes of the two painting bits.
+    pub const YELLOW_SHIRT: u8 = 9;
+    pub const RED_SHIRT: u8 = 1;
+}
+
+// The guest-name cheats other than the research ones (cheats 4.2): the hash of the text and the
+// cheat, all of the guest class.
+const fn palette(guests: [u8; 3], buildings: [u8; 2]) -> Cheat {
+    Cheat::Palette { guests, buildings }
+}
+const GUEST_NAME: [(u64, Cheat); 17] = [
+    (14_892_135_562_109_524_636, palette([8, 0, 0], [21, 16])),
+    (3_657_051_404_038_028_442, palette([10, 1, 0], [7, 11])),
+    (10_919_150_525_679_640_940, palette([14, 5, 0], [14, 19])),
+    (12_275_381_737_552_333_213, palette([0, 6, 1], [23, 4])),
+    (16_190_317_490_462_175_820, palette([15, 0, 3], [0, 22])),
+    (17_712_366_998_183_474_644, palette([9, 1, 4], [15, 12])),
+    (3_655_295_719_408_693_313, Cheat::GuestsLeave),
+    (11_567_513_591_041_160_000, Cheat::FencesBreak),
+    (11_901_318_460_961_946_479, Cheat::GuestsSick),
+    (2_002_055_578_063_764_932, Cheat::UnlockScenarios),
+    (18_144_294_961_631_575_098, Cheat::EggsHatchFast),
+    (12_631_782_597_625_929_863, Cheat::CarsToRubble),
+    (7_335_757_701_157_520_529, Cheat::Spread(spread::SICKNESS)),
+    (
+        16_981_303_017_011_423_432,
+        Cheat::Spread(spread::SCARE_WOMEN),
+    ),
+    (
+        1_789_208_750_258_418_929,
+        Cheat::Spread(spread::SCARE_CHILDREN),
+    ),
+    (2_414_308_895_739_376_539, Cheat::Spread(spread::YELLOW)),
+    (13_280_212_346_771_292_184, Cheat::Spread(spread::RED)),
+];
+
+/// The cheats the program knows. Session flags (cheats 2.4) live here too: they belong to the
 /// program, are not saved and are not cleared by a load or a new game.
 #[derive(Debug, Clone)]
 pub struct Cheats {
     table: Vec<Entry>,
     pub flags: Flags,
+    // The session flags of the guest-name cheats.
+    /// `eggs_hatch_fast`.
+    pub eggs_hatch_fast: bool,
 }
 
 impl Default for Cheats {
@@ -217,11 +285,18 @@ impl Default for Cheats {
             cond: Cond::Any,
             cheat: Cheat::ResearchCategory(name),
         });
-        let mut table: Vec<Entry> = research.collect();
+        let guest = GUEST_NAME.iter().map(|&(hash, cheat)| Entry {
+            hash,
+            class: Subject::Guest,
+            cond: Cond::Any,
+            cheat,
+        });
+        let mut table: Vec<Entry> = research.chain(guest).collect();
         table.extend(exhibit_and_staff_rows());
         Cheats {
             table,
             flags: Flags::default(),
+            eggs_hatch_fast: false,
         }
     }
 }
@@ -296,13 +371,13 @@ mod tests {
     }
 
     #[test]
-    fn the_table_holds_the_nine_research_categories_on_distinct_texts() {
+    fn the_table_holds_the_guest_cheats_on_distinct_texts() {
         let c = Cheats::default();
         let guests = c.table.iter().filter(|e| e.class == Subject::Guest);
         let mut hashes: Vec<u64> = guests.map(|e| e.hash).collect();
         hashes.sort_unstable();
         hashes.dedup();
-        assert_eq!(hashes.len(), 9);
+        assert_eq!(hashes.len(), 9 + GUEST_NAME.len());
     }
 
     #[test]

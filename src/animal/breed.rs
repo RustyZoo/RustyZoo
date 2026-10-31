@@ -47,6 +47,9 @@ pub enum Mate {
 /// animal was put in the exhibit.
 pub type Birth<'a> = &'a mut dyn FnMut(&mut Animal, &mut Rng) -> bool;
 
+/// The hatch counter of an egg laid under the `eggs_hatch_fast` cheat (cheats 4.2 C).
+const EGG_HATCH_FAST: i32 = 5;
+
 /// The hit points an egg must keep to count its time down: `cMinHatchHits`, or 60 percent of
 /// `cMaxHits` when that is 0 (13.1).
 fn threshold(k: &Keys) -> i32 {
@@ -331,7 +334,10 @@ pub fn born(
         }
     };
     let class = world.units.class.clone();
-    let k = Keys::of(young, &class).researched(young, &world.research);
+    let mut k = Keys::of(young, &class).researched(young, &world.research);
+    if world.units.eggs_hatch_fast {
+        k.time_to_hatch = EGG_HATCH_FAST;
+    }
     let sickly = sickly(cat);
     let mother = father.mate;
     let mut placed = 0u32;
