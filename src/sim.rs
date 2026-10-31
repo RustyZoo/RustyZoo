@@ -463,6 +463,16 @@ impl Sim {
         }
     }
 
+    /// The repair cheat (placing 7.4): every fence piece that is broken or at or below its type's
+    /// decayed life is made healthy.
+    pub fn repair_fences(&mut self, world: &mut World, cat: &Catalogue) {
+        for at in 0..world.zoo.entities.len() {
+            if world.decayed(cat, at) {
+                self.heal(world, cat, at);
+            }
+        }
+    }
+
     /// A new game (not a saved one) has just been set up: with `fences` (the map file's
     /// `resetfences` above 0) every fence piece is made healthy and draws its wear interval,
     /// otherwise the pieces stay as the map stores them (placing 7.4); the timers, the donation
@@ -798,7 +808,9 @@ impl Sim {
         }
         if due.new_guest {
             let occupied = guest::occupied(world, cat);
-            if let Some(advice) = self.status.new_guest_check(occupied, &mut self.rng) {
+            // The effective rating: a cheat adds to it (zoo status 8).
+            let bonus = world.units.cheat.rating_points();
+            if let Some(advice) = self.status.new_guest_check(occupied, bonus, &mut self.rng) {
                 let s = &self.status;
                 let arrival = guest::Arrival {
                     price: s.price,

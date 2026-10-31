@@ -103,6 +103,11 @@ pub(crate) fn pay(
         if let Some(live) = world.units.buildings.get_mut(&id) {
             // A hostile factor or price books nothing.
             let income = (kind.factor * live.price).max(0.0);
+            // The shop income cheat doubles it (cheats 3).
+            let income = match world.units.cheat.shop_income_double {
+                true => income + income,
+                false => income,
+            };
             live.income[0] += income;
             live.income[2] += income;
             world.units.concessions.push(income);

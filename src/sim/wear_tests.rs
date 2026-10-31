@@ -167,6 +167,35 @@ fn a_piece_of_a_file_from_version_55_keeps_its_condition_until_a_map_asks_for_a_
 }
 
 #[test]
+fn the_repair_cheat_mends_the_broken_and_decayed_pieces_and_leaves_the_others() {
+    // Life 3 is healthy, 2 is the decayed life, 0 is broken; the piece of an old type that does
+    // not wear is not touched.
+    for (life, mended) in [(3, false), (2, true), (1, true), (0, true), (-4, true)] {
+        let mut run = stored(55);
+        let piece = run.world.zoo.entities[0].common.as_mut().unwrap();
+        piece.fence = Some(crate::zoo::Fence {
+            strength: 9,
+            life,
+            timers: [5, 6],
+            portal: false,
+        });
+        run.sim.repair_fences(&mut run.world, &run.cat);
+        let f = fence(&run);
+        match mended {
+            true => assert_eq!((f.strength, f.life, f.timers[0]), (300, 3, f.timers[1])),
+            false => assert_eq!((f.strength, f.life, f.timers), (9, life, [5, 6])),
+        }
+    }
+    // A piece that never wears stays as it is, and so does a world with no piece.
+    let mut run = run_with("f", "cLife=3");
+    let before = fence(&run);
+    run.sim.repair_fences(&mut run.world, &run.cat);
+    assert_eq!(fence(&run), before);
+    run.world.zoo.entities.clear();
+    run.sim.repair_fences(&mut run.world, &run.cat);
+}
+
+#[test]
 fn the_start_of_a_game_logs_the_healthy_pieces_that_wear() {
     // The wear steps of the same run are logged by the step.
     let mut run = run(types(WEARING), world("f"), 1);

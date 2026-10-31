@@ -369,6 +369,9 @@ pub struct Units {
     pub donated: Vec<f32>,
     /// `cDonationFactor`, set by the step from the economy file.
     pub donation_factor: f32,
+    /// The session flags of the cheats, set by the step from the program's (cheats 2.4). The
+    /// breeding flag goes down here when a roll uses it, and the step hands that back.
+    pub cheat: crate::cheat::Flags,
     /// The live state of the guest buildings and the prices of the economy file (guest buildings).
     pub buildings: crate::building::Table,
     pub prices: crate::building::Prices,
@@ -430,6 +433,7 @@ impl Default for Units {
             views: Default::default(),
             donated: Vec::new(),
             donation_factor: 2.8e-13,
+            cheat: Default::default(),
             buildings: Default::default(),
             prices: Default::default(),
             upgrades: Default::default(),

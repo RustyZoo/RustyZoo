@@ -1,4 +1,4 @@
-//! The name cheats (cheats 1, 2, 8): a name set on an animal, a guest, a staff member or an
+//! The name cheats (cheats 1 to 6, 8): a name set on an animal, a guest, a staff member or an
 //! exhibit is first compared, whole and case-sensitive, with the cheat texts of its class; a
 //! match runs the cheat. The texts are game text, so the table keeps only the 64-bit FNV-1a hash
 //! of each, and a typed name is hashed and compared.
@@ -8,8 +8,73 @@
 pub enum Subject {
     Animal,
     Guest,
-    Staff,
+    Keeper,
+    Worker,
+    Guide,
     Exhibit,
+}
+
+/// What a row asks of the named thing besides its class (cheats 2.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cond {
+    Any,
+    /// The subtype letter of its type: the sex of a staff member, `m` or `f`.
+    Subtype(u8),
+    /// The name id of its type.
+    NameId(i32),
+}
+
+/// The thing a name was set on, as far as the conditions look.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Named {
+    pub subtype: u8,
+    pub name_id: i32,
+}
+
+impl Cond {
+    fn holds(self, n: &Named) -> bool {
+        match self {
+            Cond::Any => true,
+            Cond::Subtype(s) => n.subtype == s,
+            Cond::NameId(id) => n.name_id == id,
+        }
+    }
+}
+
+/// The session flags (cheats 2.4): they belong to the program, are not saved and are not cleared
+/// by a load or a new game. The step hands them to the rules that read them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Flags {
+    /// `rating_bonus_30`: +30 to the effective rating of the guest arrival check.
+    pub rating_bonus: bool,
+    /// `donation_double`: what a guest donates is doubled.
+    pub donation_double: bool,
+    /// `shop_income_double`: what a charging building earns per customer is doubled.
+    pub shop_income_double: bool,
+    /// `bears_break_fences`: the grizzly bears bash fences.
+    pub bears_bash: bool,
+    /// `breeding_boost`: the next check of a bear lets it breed regardless of happiness.
+    pub breeding_boost: bool,
+    /// `keeper_speed_double`: the scientists walk twice as fast.
+    pub keeper_speed_double: bool,
+    /// `marketing_double_a` and `_b`: the marketing benefit is doubled.
+    pub marketing_double: bool,
+    /// `heal_changes_species`: a healed animal sometimes turns into another species.
+    pub heal_changes_species: bool,
+}
+
+/// The name id of the grizzly bear (cheats 4.1), the species the bears' cheats act on.
+pub const GRIZZLY: i32 = 5016;
+/// The name ids of the species the breeding cheat works for (cheats 4.5).
+pub const BREEDERS: [i32; 2] = [5016, 5017];
+/// The name id of the scientist, the keeper type of Dinosaur Digs (cheats 4.5).
+pub const SCIENTIST: i32 = 9551;
+
+impl Flags {
+    /// What the effective rating of the guest arrival check gains from the flags (zoo status 8).
+    pub fn rating_points(&self) -> i32 {
+        if self.rating_bonus { 30 } else { 0 }
+    }
 }
 
 /// What a matching name does.
@@ -18,6 +83,23 @@ pub enum Cheat {
     /// `research_cat_NN`: completes every program of the research categories with this name id,
     /// as a plain completion (research 6.8).
     ResearchCategory(i32),
+    // The exhibit names (cheats 3).
+    RatingBonus,
+    DonationDouble,
+    ShopIncomeDouble,
+    /// `unlock_animal_*`: the types with this name id become available.
+    Unlock(i32),
+    // The animal names (cheats 4.1).
+    BearsBreakFences,
+    DinosaursVanish,
+    // The maintenance workers' names (cheats 4.4).
+    FoliageClearBonus,
+    FencesRepair,
+    // The keepers' names (cheats 4.5).
+    BreedingBoost,
+    KeeperSpeedDouble,
+    MarketingDouble,
+    HealChangesSpecies,
 }
 
 /// One row of the table: the hash of the exact text, the class it applies to, and the cheat.
@@ -25,6 +107,7 @@ pub enum Cheat {
 pub struct Entry {
     pub hash: u64,
     pub class: Subject,
+    pub cond: Cond,
     pub cheat: Cheat,
 }
 
@@ -49,11 +132,81 @@ const RESEARCH: [(u64, i32); 9] = [
     (15_232_229_614_914_872_326, 23214),
 ];
 
+// Cheats 3, 4.1, 4.4, 4.5: the exhibit, animal, worker and keeper rows, as the hash of the text,
+// the condition and the cheat, in the order of the spec's tables.
+const EXHIBIT: [(u64, Cheat); 7] = [
+    (6_905_518_711_216_013_203, Cheat::RatingBonus),
+    (9_915_814_017_009_738_727, Cheat::DonationDouble),
+    (17_584_139_552_020_099_469, Cheat::ShopIncomeDouble),
+    (1_235_722_152_005_907_628, Cheat::Unlock(5049)),
+    (3_730_055_665_491_434_908, Cheat::Unlock(5046)),
+    (14_204_585_667_529_478_428, Cheat::Unlock(5047)),
+    (15_253_207_984_280_970_367, Cheat::Unlock(5332)),
+];
+const ANIMALS: [(u64, Cond, Cheat); 2] = [
+    (
+        15_012_478_273_526_456_181,
+        Cond::NameId(GRIZZLY),
+        Cheat::BearsBreakFences,
+    ),
+    (
+        3_252_289_375_139_617_263,
+        Cond::NameId(5300),
+        Cheat::DinosaursVanish,
+    ),
+];
+const MALE: Cond = Cond::Subtype(b'm');
+const WORKERS: [(u64, Cond, Cheat); 2] = [
+    (8_393_534_450_899_611_877, MALE, Cheat::FoliageClearBonus),
+    (8_468_693_752_337_878_622, MALE, Cheat::FencesRepair),
+];
+const KEEPERS: [(u64, Cond, Cheat); 5] = [
+    (16_097_477_701_174_231_208, MALE, Cheat::BreedingBoost),
+    (
+        6_564_901_469_703_517_242,
+        Cond::NameId(SCIENTIST),
+        Cheat::KeeperSpeedDouble,
+    ),
+    (
+        3_802_782_351_409_478_448,
+        Cond::Subtype(b'f'),
+        Cheat::MarketingDouble,
+    ),
+    (6_179_931_578_302_753_876, MALE, Cheat::MarketingDouble),
+    (
+        6_698_033_928_044_733_853,
+        Cond::NameId(SCIENTIST),
+        Cheat::HealChangesSpecies,
+    ),
+];
+
+/// The rows of cheats 3 and 4.1 to 4.5.
+fn exhibit_and_staff_rows() -> Vec<Entry> {
+    let row = |class, cond, (hash, cheat)| Entry {
+        hash,
+        class,
+        cond,
+        cheat,
+    };
+    let exhibit = EXHIBIT.iter().map(|&r| row(Subject::Exhibit, Cond::Any, r));
+    let of = |class, rows: &[(u64, Cond, Cheat)]| -> Vec<Entry> {
+        let rows = rows.iter();
+        rows.map(|&(hash, cond, cheat)| row(class, cond, (hash, cheat)))
+            .collect()
+    };
+    let mut rows: Vec<Entry> = exhibit.collect();
+    rows.extend(of(Subject::Animal, &ANIMALS));
+    rows.extend(of(Subject::Worker, &WORKERS));
+    rows.extend(of(Subject::Keeper, &KEEPERS));
+    rows
+}
+
 /// The cheats the program knows. Session flags (cheats 2.4) will live here too: they belong to the
 /// program, are not saved and are not cleared by a load or a new game.
 #[derive(Debug, Clone)]
 pub struct Cheats {
     table: Vec<Entry>,
+    pub flags: Flags,
 }
 
 impl Default for Cheats {
@@ -61,31 +214,51 @@ impl Default for Cheats {
         let research = RESEARCH.iter().map(|&(hash, name)| Entry {
             hash,
             class: Subject::Guest,
+            cond: Cond::Any,
             cheat: Cheat::ResearchCategory(name),
         });
+        let mut table: Vec<Entry> = research.collect();
+        table.extend(exhibit_and_staff_rows());
         Cheats {
-            table: research.collect(),
+            table,
+            flags: Flags::default(),
         }
     }
 }
 
 impl Cheats {
-    /// The cheat of this class whose text is exactly `text`: no trimming, no case folding. The
-    /// first row in table order wins.
+    /// The cheat of this class whose text is exactly `text`, for a thing no condition holds on:
+    /// no trimming, no case folding. The first row in table order wins.
     pub fn find(&self, class: Subject, text: &str) -> Option<Cheat> {
+        self.find_named(class, &Named::default(), text)
+    }
+
+    /// As [`Cheats::find`], for the thing `named`: a row whose condition fails is skipped.
+    pub fn find_named(&self, class: Subject, named: &Named, text: &str) -> Option<Cheat> {
         let hash = hash(text);
         let row = self
             .table
             .iter()
-            .find(|e| e.class == class && e.hash == hash);
+            .find(|e| e.class == class && e.hash == hash && e.cond.holds(named));
         row.map(|e| e.cheat)
     }
 
     /// Adds a row after the others.
     #[cfg(test)]
     pub fn push(&mut self, class: Subject, text: &str, cheat: Cheat) {
+        self.push_when(class, Cond::Any, text, cheat);
+    }
+
+    /// Adds a row with a condition after the others.
+    #[cfg(test)]
+    pub fn push_when(&mut self, class: Subject, cond: Cond, text: &str, cheat: Cheat) {
         let hash = hash(text);
-        self.table.push(Entry { hash, class, cheat });
+        self.table.push(Entry {
+            hash,
+            class,
+            cond,
+            cheat,
+        });
     }
 }
 
@@ -125,10 +298,117 @@ mod tests {
     #[test]
     fn the_table_holds_the_nine_research_categories_on_distinct_texts() {
         let c = Cheats::default();
-        let mut hashes: Vec<u64> = c.table.iter().map(|e| e.hash).collect();
+        let guests = c.table.iter().filter(|e| e.class == Subject::Guest);
+        let mut hashes: Vec<u64> = guests.map(|e| e.hash).collect();
         hashes.sort_unstable();
         hashes.dedup();
         assert_eq!(hashes.len(), 9);
-        assert!(c.table.iter().all(|e| e.class == Subject::Guest));
+    }
+
+    #[test]
+    fn the_exhibit_and_staff_rows_are_distinct_and_in_their_classes() {
+        let c = Cheats::default();
+        let count = |class| c.table.iter().filter(|e| e.class == class).count();
+        let counts = [
+            Subject::Exhibit,
+            Subject::Animal,
+            Subject::Worker,
+            Subject::Keeper,
+        ]
+        .map(count);
+        assert_eq!(counts, [7, 2, 2, 5]);
+        assert_eq!(count(Subject::Guide), 0);
+        let mut seen: Vec<(Subject, u64, Cheat)> = Vec::new();
+        for e in &c.table {
+            assert!(!seen.iter().any(|&(k, h, _)| (k, h) == (e.class, e.hash)));
+            seen.push((e.class, e.hash, e.cheat));
+        }
+    }
+
+    #[test]
+    fn the_rows_carry_the_conditions_of_the_spec() {
+        let c = Cheats::default();
+        let rows = |class| -> Vec<(Cond, Cheat)> {
+            let of = c.table.iter().filter(|e| e.class == class);
+            of.map(|e| (e.cond, e.cheat)).collect()
+        };
+        let (male, female) = (Cond::Subtype(b'm'), Cond::Subtype(b'f'));
+        assert_eq!(
+            rows(Subject::Keeper),
+            [
+                (male, Cheat::BreedingBoost),
+                (Cond::NameId(SCIENTIST), Cheat::KeeperSpeedDouble),
+                (female, Cheat::MarketingDouble),
+                (male, Cheat::MarketingDouble),
+                (Cond::NameId(SCIENTIST), Cheat::HealChangesSpecies),
+            ]
+        );
+        assert_eq!(
+            rows(Subject::Worker),
+            [
+                (male, Cheat::FoliageClearBonus),
+                (male, Cheat::FencesRepair)
+            ]
+        );
+        assert_eq!(
+            rows(Subject::Animal),
+            [
+                (Cond::NameId(GRIZZLY), Cheat::BearsBreakFences),
+                (Cond::NameId(5300), Cheat::DinosaursVanish),
+            ]
+        );
+        let unlocks: Vec<i32> = rows(Subject::Exhibit)
+            .iter()
+            .filter_map(|&(_, c)| {
+                if let Cheat::Unlock(n) = c {
+                    Some(n)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(unlocks, [5049, 5046, 5047, 5332]);
+        assert!(rows(Subject::Exhibit).iter().all(|r| r.0 == Cond::Any));
+    }
+
+    #[test]
+    fn the_rating_bonus_is_thirty_points_once_the_flag_is_up() {
+        let mut flags = Flags::default();
+        assert_eq!(flags.rating_points(), 0);
+        flags.rating_bonus = true;
+        assert_eq!(flags.rating_points(), 30);
+    }
+
+    #[test]
+    fn a_condition_that_fails_skips_the_row() {
+        let mut c = Cheats::default();
+        c.table.clear();
+        c.push_when(
+            Subject::Keeper,
+            Cond::Subtype(b'f'),
+            "Zed",
+            Cheat::MarketingDouble,
+        );
+        c.push_when(
+            Subject::Keeper,
+            Cond::NameId(7),
+            "Zed",
+            Cheat::BreedingBoost,
+        );
+        let named = |subtype, name_id| Named { subtype, name_id };
+        let find = |n: Named| c.find_named(Subject::Keeper, &n, "Zed");
+        assert_eq!(find(named(b'f', 0)), Some(Cheat::MarketingDouble));
+        assert_eq!(find(named(b'm', 7)), Some(Cheat::BreedingBoost));
+        // The first row whose condition holds wins.
+        assert_eq!(find(named(b'f', 7)), Some(Cheat::MarketingDouble));
+        for no in [
+            named(b'm', 0),
+            named(0, 0),
+            named(b'F', -7),
+            named(0, i32::MAX),
+        ] {
+            assert_eq!(find(no), None, "{no:?}");
+        }
+        assert_eq!(c.find(Subject::Keeper, "Zed"), None);
     }
 }

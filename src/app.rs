@@ -1067,6 +1067,8 @@ impl<'a> App<'a> {
                 vfs: self.renderer.vfs(),
                 timings: &self.timings,
             };
+            // The session flags go in with the step, and come back as the rules left them.
+            game.world.units.cheat = self.cheats.flags;
             let report = self.sim.step_game(
                 &data,
                 self.renderer.catalogue(),
@@ -1075,6 +1077,7 @@ impl<'a> App<'a> {
                 step,
                 |_, _, _| {},
             );
+            self.cheats.flags = game.world.units.cheat;
             month_end = report.month_end;
             if report.month_end {
                 self.money_events.push(format!(
@@ -2713,6 +2716,9 @@ mod building_panel;
 mod bulldozer;
 mod carry;
 mod cheat;
+mod cheat_staff;
+#[cfg(test)]
+mod cheat_staff_tests;
 mod exhibits;
 mod gates;
 mod guest_panel;

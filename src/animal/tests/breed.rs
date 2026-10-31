@@ -87,6 +87,38 @@ fn each_condition_of_the_birth_is_needed_and_the_roll_is_drawn_only_when_all_hol
 }
 
 #[test]
+fn the_breeding_cheat_stands_in_for_the_happiness_and_its_roll_cannot_fail() {
+    // A sad male with the cheat: one draw, the young are made though the chance is 0, and the
+    // roll says the flag is used.
+    for chance in [0, 100, -5, i32::MAX] {
+        let (mut a, mut k, mut env) = father();
+        (a.happiness, k.reproduction_chance, env.boost) = (49, chance, true);
+        let mut rng = Rng::default();
+        let (out, asked) = go(&mut a, &k, &env, &mut rng, true);
+        assert!(asked == 1 && drew(&rng, 1) && out.boost_used, "{chance}");
+        assert_eq!((a.interval, a.happiness_change), (0, 7));
+    }
+    // A happy male does not use it; a sad one without it, or one that cannot breed, neither.
+    type Change = fn(&mut Animal, &mut Env);
+    let cases: [(&str, Change); 4] = [
+        ("happy", |a, _| a.happiness = 50),
+        ("no flag", |_, e| e.boost = false),
+        ("female", |_, e| e.male = false),
+        ("not ready", |a, _| a.interval = 9),
+    ];
+    for (what, change) in cases {
+        let (mut a, k, mut env) = father();
+        (a.happiness, env.boost) = (49, true);
+        change(&mut a, &mut env);
+        let (out, _) = go(&mut a, &k, &env, &mut Rng::default(), true);
+        assert!(!out.boost_used, "{what}");
+    }
+    let (mut a, k, mut env) = father();
+    (a.happiness, env.boost) = (49, false);
+    assert_eq!(go(&mut a, &k, &env, &mut Rng::default(), true).1, 0);
+}
+
+#[test]
 fn the_interval_counts_up_at_every_tick_and_stops_at_its_key() {
     let (mut a, k, env) = father();
     a.counters[REPRODUCTION] = 100;
@@ -485,6 +517,29 @@ fn a_pair_in_a_good_exhibit_has_young_that_grow_up_and_two_runs_agree() {
     assert_eq!((a.father, a.mother), (600, 601));
     // The same seed, the same log.
     assert_eq!(log, run().0);
+}
+
+#[test]
+fn the_breeding_cheat_lets_a_sad_pair_of_a_bear_species_have_young_once() {
+    // Nobody is ever happy enough to breed; the flag makes one birth and goes down.
+    for (name_id, flag, births, left) in [
+        (crate::cheat::BREEDERS[0], true, 2, false),
+        (crate::cheat::BREEDERS[1], true, 2, false),
+        (1, true, 0, true),
+        (crate::cheat::BREEDERS[0], false, 0, false),
+    ] {
+        let mut cat = breeders("cHappyReproduceThreshold=101\n");
+        cat.types.iter_mut().for_each(|t| t.name_id = name_id);
+        let mut world = pen(&[(600, "m"), (601, "f")]);
+        world.units.cheat.breeding_boost = flag;
+        let log = lived(&mut world, &cat, &Life::new(), 150_000);
+        let born = log.iter().filter(|l| l.starts_with("birth 600 ")).count();
+        assert_eq!(
+            (born, world.units.cheat.breeding_boost),
+            (births, left),
+            "{name_id} {flag}"
+        );
+    }
 }
 
 #[test]

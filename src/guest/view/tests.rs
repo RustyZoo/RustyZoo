@@ -491,6 +491,31 @@ fn the_animal_of_a_thought_is_picked_in_the_tile_order_of_the_exhibit() {
 }
 
 #[test]
+fn the_donation_cheat_doubles_the_donation_before_the_cap() {
+    // 13 days at an average of 50 give 0.19238544; a long view still stops at 10.
+    for (on, days, factor, want) in [
+        (false, 13, 4.1108e-13, vec![0.19238544]),
+        (true, 13, 4.1108e-13, vec![0.38477087]),
+        (true, 1_000_000, 4.1108e-13, vec![10.0]),
+        (true, 13, 0.0, vec![]),
+        (true, 13, -1.0, vec![]),
+        (true, 13, f32::NAN, vec![]),
+        (true, 13, f32::INFINITY, vec![10.0]),
+    ] {
+        let (mut w, cat) = (pen(&[40, 60]), catalogue());
+        let mut g = Guest {
+            viewed_at: 1000,
+            ..Guest::default()
+        };
+        w.units.cheat.donation_double = on;
+        (w.units.donation_factor, w.units.now) = (factor, 1000 + days * 7_200_000);
+        g.va = lookup(&mut w, &cat, Some(55), &mut Rng::default());
+        leave_area(&mut g, 1, &mut w, &cat, Some(55));
+        assert_eq!(w.units.donated, want, "{on} {days} {factor}");
+    }
+}
+
+#[test]
 fn the_donation_constant_is_the_single_precision_one() {
     // 13 days at an average of 50: the single-precision constant gives 0.19238544, the double
     // one 0.19238545.
