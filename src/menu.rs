@@ -227,6 +227,24 @@ impl Menu {
         (log, listed)
     }
 
+    /// The `unlock_all_scenarios` cheat (cheats 4.2 C): the result of every scenario becomes 0,
+    /// "unlocked by a cheat", a win included. The lines for the log.
+    pub fn unlock_all_scenarios(&mut self) -> Vec<String> {
+        let keys: Vec<String> = self
+            .scenarios
+            .iter()
+            .map(|s| s.result_key.clone())
+            .collect();
+        let mut log = Vec::new();
+        for key in keys {
+            if lists::result(&self.ini, &key) != 0 {
+                self.write_back("scenario", &key, "0");
+                log.push(format!("scenario result {key} 0"));
+            }
+        }
+        log
+    }
+
     /// The settings as they are now: the rewards unlocked during this run are in them.
     pub fn settings(&self) -> &Config {
         &self.ini

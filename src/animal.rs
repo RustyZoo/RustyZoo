@@ -1312,17 +1312,6 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     world.units.tell(line);
 }
 
-/// Starts the behaviour set `name` of the animal at position `at`.
-fn begin(unit: &mut Unit, world: &World, ctx: &mut Ctx, at: usize, data: &dyn Data, name: &str) {
-    let env = crate::behaviour::Env {
-        data,
-        unit: &world.zoo.entities[at],
-        rng: &mut *ctx.rng,
-    };
-    let (anim, runner) = (&mut unit.animation, &mut unit.runner);
-    runner.start(anim, &env, name, true, false, true);
-}
-
 /// The conditional checks of a status tick (animals 4.2).
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     let task = unit.goal.record.task;
@@ -1466,7 +1455,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.units.tell(format!("message {m} {}", unit.id));
     }
     for set in &out.sets {
-        begin(unit, world, ctx, at, data, set);
+        life::start_or_queue(unit, world, ctx, at, data, set);
     }
     if out.dung {
         dirt::put_down(unit, world, ctx, at, &k);
