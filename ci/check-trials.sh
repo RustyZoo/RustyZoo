@@ -1241,13 +1241,16 @@ check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happin
 # and into the tank again. The bears' ratings are unchanged; the walrus alone in a tank with no
 # land beside it drops from 78 to 28. Its different draws shift the shared random generator, so
 # the bears cross at other steps. The sleep check queues `bSleep` instead of starting it over the running set, which
-# moves the draws again: the tank bear crosses four times and the land bear once in the 14000 steps.
+# moves the draws again: with seed 3 the land bear no longer swims back into the tank (even in 30000 steps). Seed 2 is
+# the first seed (from 1; seed 1 has no crossing after step 374) where the tank bear crosses several times and the land
+# bear goes back into the tank. It is not tuned to the change: seeds 2 to 20 cross in the same way with the sleep set
+# started at once, and seed 2 gives the same line either way.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>
-  rz sim "$1" --ticks 14000 --seed 3 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
+  rz sim "$1" --ticks 14000 --seed 2 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@226,1@374,2@5081,1@6622;97902:1@1241" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@226,1@374,2@6539,1@8340,2@9049,1@10065,2@11052;97902:1@1293,2@2157,1@2444,2@13296" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
