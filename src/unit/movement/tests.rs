@@ -49,7 +49,7 @@ fn send(w: &mut World, id: u32, path: &[(usize, usize)], speed: u32) {
     unit.destination = Some((64 * end.0 as i32 + 32, 64 * end.1 as i32 + 32, 0));
     let tiles = path.iter().map(|&(x, y)| tile(x, y)).collect();
     assert!(start(unit, tiles, speed, 100));
-    Walker::new("fWalk(0,0)").start(w, id);
+    Walker::new("fWalk(0,0)").resume(w, id);
 }
 
 fn step_all(w: &mut World, s: &mut Sim, steps: &[u32]) {
@@ -330,7 +330,7 @@ fn a_path_of_one_tile_does_not_go_and_the_last_tile_is_not_left() {
     let u = w.units.get_mut(1).unwrap();
     (u.path, u.moving, u.walking, u.speed, u.travel) = (vec![tile(5, 5)], true, true, 40, 2);
     u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
-    Walker::new("fWalk(0,0)").start(&mut w, 1);
+    Walker::new("fWalk(0,0)").resume(&mut w, 1);
     step_all(&mut w, &mut s, &[67]);
     assert_eq!(position(&w, 1), (5 * 64 + 63, 5 * 64 + 32));
     assert!(w.units.get(1).unwrap().moving);
@@ -475,7 +475,7 @@ fn through_the_gate(mut w: World, inside: bool) -> Vec<String> {
     let u = w.units.get_mut(1).unwrap();
     u.destination = Some((to[2].0 * 64 + 32, to[2].1 * 64 + 32, 0));
     assert!(start(u, end.to_vec(), 40, 100));
-    Walker::new("fWalk(0,0)").start(&mut w, 1);
+    Walker::new("fWalk(0,0)").resume(&mut w, 1);
     w.units.take_lines();
     step_all(&mut w, &mut s, &[67; 60]);
     w.units.take_lines()
@@ -1076,4 +1076,24 @@ fn a_unit_in_the_air_is_not_put_on_the_ground_by_the_snap() {
     w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 1;
     snap(&mut w, at);
     assert_eq!(w.zoo.entities[at].common.as_ref().unwrap().z, 50);
+}
+
+#[test]
+fn a_first_run_without_its_animation_fails_and_stops_nothing() {
+    let mut w = map(vec![entity("guests", "", 1, (1000, 1000), 2)]);
+    let mut s = sim();
+    let path = vec![tile(15, 15), tile(16, 15), tile(17, 15)];
+    let u = w.units.get_mut(1).unwrap();
+    (u.path, u.speed, u.moving) = (path.clone(), 44, true);
+    u.destination = Some((17 * 64 + 32, 15 * 64 + 32, 0));
+    Walker::new("fMove(0,0,nosuch,20)").start(&mut w, 1);
+    s.step_with(
+        &Walker::new("fMove(0,0,nosuch,20)"),
+        &Default::default(),
+        &mut w,
+        67,
+        |_, _, _| {},
+    );
+    let u = w.units.get(1).unwrap();
+    assert!(!u.walking && u.moving && u.speed == 44 && u.path.len() >= 2);
 }

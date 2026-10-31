@@ -335,6 +335,8 @@ pub struct Runner {
     /// No play call is in progress; `playing`: one is.
     ready: bool,
     playing: bool,
+    /// A start was accepted since the unit last looked (movement 8.3).
+    started: bool,
     /// Taken from a saved game and not yet stepped: the player holds no sequence of the unit's
     /// own, so its first play call is shown at once, not behind the base loop (behaviours 4.7).
     fresh: bool,
@@ -382,6 +384,7 @@ impl Default for Runner {
             interruptible: true,
             ready: true,
             playing: false,
+            started: false,
             fresh: false,
             place: Place::Land,
             tank_mode: 0,
@@ -408,6 +411,11 @@ impl Runner {
     /// The name of the top set, if the unit has started one.
     pub fn top(&self) -> Option<&str> {
         self.chain.first().map(|l| l.name.as_str())
+    }
+
+    /// Whether a set start was accepted since the last time, once.
+    pub fn take_started(&mut self) -> bool {
+        std::mem::take(&mut self.started)
     }
 
     /// The move call the set reached, once.
@@ -513,6 +521,7 @@ impl Runner {
             return false;
         }
         (self.ready, self.playing, self.interruptible) = (true, false, interruptible);
+        self.started = true;
         self.chain.clear();
         self.nest(env, name);
         if !keep {
