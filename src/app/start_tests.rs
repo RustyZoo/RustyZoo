@@ -43,6 +43,8 @@ impl UiStrings for Texts {
     fn text_entry(&self, name: &[u8]) -> Vec<u8> {
         match name {
             b"SCN_STORY" => b"text-story".to_vec(),
+            b"AWD_SEVEN" => b"seven won".to_vec(),
+            b"AWD_NINE" => b"nine won".to_vec(),
             _ => vec![],
         }
     }

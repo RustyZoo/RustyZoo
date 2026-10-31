@@ -13,7 +13,7 @@ const MAIN_PANEL: i32 = 2;
 const DIALOG: i32 = 45200;
 
 /// Plays the scenario `file` (listed as `aa`) for a pass and returns the clock.
-fn play(app: &mut App, file: &str) -> u64 {
+pub(super) fn play(app: &mut App, file: &str) -> u64 {
     app.pass(0, &[]);
     let listed = Listed {
         section: "aa".into(),
