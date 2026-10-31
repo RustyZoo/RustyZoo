@@ -1863,7 +1863,7 @@ fn bench_loaded(version: u32, task: i32, need: u8) -> (World, Catalogue) {
         upgrade: 0,
     });
     let mut block = crate::zoo::UnitBlock::default();
-    (block.target.active, block.need) = (task, need);
+    (block.target.goal, block.need) = (task, need);
     let at = w.find(1).unwrap();
     w.zoo.entities[at].common.as_mut().unwrap().unit = Some(Box::new(block));
     for at in 0..w.zoo.entities.len() {

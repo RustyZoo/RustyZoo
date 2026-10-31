@@ -169,6 +169,15 @@ pub struct Raw {
 }
 
 impl Raw {
+    /// The raw record of an entity read from a file, for tests of a loaded unit.
+    #[cfg(test)]
+    pub fn read() -> Raw {
+        Raw {
+            body: vec![0],
+            ..Raw::default()
+        }
+    }
+
     /// Whether the entity was made in play: no body was read for it.
     pub fn is_new(&self) -> bool {
         self.body.is_empty()

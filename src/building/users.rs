@@ -72,7 +72,7 @@ fn restart(world: &mut World, id: u32, key: &str, unit: u32, slot: usize, now: u
         .common
         .as_ref()
         .and_then(|c| c.unit.as_ref());
-    let saved = block.map(|b| b.target.active);
+    let saved = block.map(|b| b.target.goal);
     let need = block.and_then(|b| crate::guest::NEED_LIST.get(usize::from(b.need)).copied());
     let inside = [ENTER_BUILDING, EXIT_BUILDING, USE];
     let kept = saved
@@ -103,7 +103,7 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     let common = world.zoo.entities[at].common.as_ref();
     let stamp = common.and_then(|c| c.stamp);
     let block = common.and_then(|c| c.unit.as_ref());
-    let saved = block.map(|b| b.target.active);
+    let saved = block.map(|b| b.target.goal);
     let set = block.map(|b| b.behaviour.clone());
     let pending = block.map(|b| b.pending.clone());
     let Some(u) = world.units.get_mut(unit) else {
