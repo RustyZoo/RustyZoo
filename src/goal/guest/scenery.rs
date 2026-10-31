@@ -6,17 +6,16 @@ use crate::strings::is_user_id;
 use crate::unit::Part;
 
 impl Cx<'_, '_> {
-    /// 0x80, check done: a scenery object that is gone ends the goal; at the viewing place the guest
-    /// faces the object and the object joins its seen list, and the goal is done.
+    /// 0x80, check done: the goal does not look at the object while the guest walks. At the viewing
+    /// place the guest faces the object, when it is still there, and the object joins its seen list;
+    /// the goal is done either way (an object that is gone is found out by 0x81's init).
     pub(in crate::goal) fn scenery_check_done(&mut self) {
-        let id = self.record().target.id;
-        let Some(at) = self.world.find(id) else {
-            return self.reset();
-        };
         if !self.reached(false) {
             return;
         }
-        if let Some(tile) = view::tile_of(self.world, at) {
+        let id = self.record().target.id;
+        let at = self.world.find(id);
+        if let Some(tile) = at.and_then(|at| view::tile_of(self.world, at)) {
             self.face(tile);
             if let Part::Guest(g) = &mut self.unit.part {
                 view::see(g, tile);

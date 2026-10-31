@@ -147,7 +147,20 @@ impl Cx<'_, '_> {
             return;
         }
         let place = ring[self.ctx.rng.pick(ring.len() as u32) as usize];
-        if self.path_to(place, false) && self.start_walk(false, false, false) {
+        if !self.path_to(place, false) {
+            return;
+        }
+        // The destination is the viewing tile's origin plus the object's offset in its own tile.
+        let own = (self.world.find(object.id))
+            .and_then(|e| self.world.zoo.entities[e].common.as_ref())
+            .map(|c| (c.x.rem_euclid(64), c.y.rem_euclid(64)));
+        if let (Some((ox, oy)), Some(d)) = (own, self.unit.destination.as_mut()) {
+            (d.0, d.1) = (
+                (place % width) as i32 * 64 + ox,
+                (place / width) as i32 * 64 + oy,
+            );
+        }
+        if self.start_walk(false, false, false) {
             self.set_task(SCENERY, 0, object.id, Some(place));
         }
     }

@@ -574,7 +574,7 @@ pending_object() { # pending_object <map> <script>
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;b96f4eb79b9f987f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;061dde0b578c0cf3" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;b36103ee77cc6dac" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;8c236b55bad8943a" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
@@ -589,8 +589,8 @@ path_drag() { # path_drag <map> <first move>
 }
 check base-trial "8,49800,40076d8b2dbe27f3" "path_drag maps/default.zoo '632 384'"
 check base-trial "8,49800,748d30093a68402c" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49920,1668720ccbc0dd27" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49920,87ee75c1adbb08c1" "path_drag maps/scn19.zoo '632 416'"
+check expansion-trial "8,49920,dc6ce9e1783545f0" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,be6341f02ad1954a" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -604,7 +604,7 @@ paint_text() { # paint_text <map> <script>
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;a5b3e85a3e274ffa" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;9551929fb8d73d43" "paint_text maps/scn19.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;2c1a4c807860b59d" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -618,7 +618,7 @@ fence_drag() { # fence_drag <map> <last move>
   rm -rf "$d"
 }
 check base-trial "6,48920,ca28e88f552e7b7b" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial 6,49250,8955226515a960b3 "fence_drag maps/scn19.zoo '878 332'"
+check expansion-trial 6,49250,b1e1c37394cfe20c "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -676,7 +676,7 @@ bulldozer_area() { # bulldozer_area <map>
   rm -rf "$d"
 }
 check base-trial "8,49960,b656d74441897b68" "bulldozer_area maps/default.zoo"
-check expansion-trial 16,50156,f5328f9ddfe0f7cd "bulldozer_area maps/scn19.zoo"
+check expansion-trial 16,50156,63933bae34587c6f "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
@@ -690,7 +690,7 @@ building_place() { # building_place <map>
   rm -rf "$d"
 }
 check base-trial "building/building/vendfood,16,45,2;message10555;49950;54c1c4d355b2e07d" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49900;de473570a7639c6e" "building_place maps/scn19.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;a120a58bd17e4f71" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)
@@ -1019,7 +1019,7 @@ guest_picked() { # guest_picked <map>
       END { print w l }'
   rm -rf "${d:?}"
 }
-check expansion-trial 'carry,31554;putback,31554;income_$896' "guest_picked maps/scn19.zoo"
+check expansion-trial 'carry,32647;putback,32647;income_$896' "guest_picked maps/scn19.zoo"
 
 # The same stand picked up by a second click on it while it is selected, put back by Escape and picked
 # up again by the same click (it is selected again): the lines they give, with no user in the stand (so
@@ -1209,7 +1209,7 @@ tank_breath() { # tank_breath <map> <x,y>
     END{ print gains ";surface@" surface ";breathe@" breathe ";later:" later+0 }'
   rm -rf "$d"
 }
-check expansion-trial "57:10,505:20;surface@522;breathe@1140;later:0" "tank_breath maps/scn28b.zoo 22,23"
+check expansion-trial "57:10,505:20;surface@522;breathe@912;later:0" "tank_breath maps/scn28b.zoo 22,23"
 
 # Murky water: scn28's filters are taken away and a manta ray joins tank 2, which holds water of
 # purity 93 and loses a point every 448 steps. The ray's happiness is set to 0 every second so that
@@ -1246,7 +1246,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@226,1@2926,2@3631,1@8459;97902:1@1593,2@6206,1@7846,2@9232,1@9674" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@226,1@374;97902:1@1317,2@2387,1@4356,2@5204,1@6185,2@6875,1@9564,2@10528,1@13284" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1263,7 +1263,7 @@ water_mode() { # water_mode <map> <animal>
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;21,28:bInWater;25,24:bWalk;mode0@1212;22,23:bSleep;22,23:bWalk;mode1@1809;25,23:bHappy;25,23:bWalk;mode1@3003;25,23:bHappy" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;27,30:bInWater;26,34:bInWater;24,33:bWalk;mode0@615;20,21:bWalk;mode1@1809;25,23:bHappy;mode1@3003" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1342,7 +1342,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@281;eggs:3;hatch@928" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@5516;eggs:3;hatch@6147" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1379,6 +1379,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial 227408,0,e5450f17a743bf12 "save_load maps/scn19.zoo"
+check expansion-trial 227408,0,3a946efdfd385c83 "save_load maps/scn19.zoo"
 
 exit $failed
