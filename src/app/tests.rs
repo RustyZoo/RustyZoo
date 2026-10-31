@@ -631,7 +631,7 @@ fn the_menu_music_fades_from_the_start_of_the_game_and_the_log_tells_it() {
     });
 }
 
-struct NoTexts;
+pub(super) struct NoTexts;
 
 impl crate::ui::draw::Strings for NoTexts {
     fn string(&self, _: i32) -> String {

@@ -26,6 +26,11 @@ pub(super) fn upgrades(tree: &Tree) -> crate::building::upgrade::Upgrades {
     lists
 }
 
+/// The hidden developer button of the game screen, which Ctrl+D shows and hides (main loop 5.2).
+pub(super) const DEV_BUTTON: i32 = 1098;
+/// The research button of the developer panel (research 6.8).
+pub(super) const DEV_RESEARCH: i32 = 5013;
+
 impl App<'_> {
     /// The tree of a saved game's scenario with the file's research section read (7.2); none, with
     /// a warning, when the scenario cannot be read: the section is then written as it was read.
@@ -85,6 +90,21 @@ impl App<'_> {
                 ui.message(&to_cp1252(&text));
                 exclaim(ui, vfs);
                 ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
+            }
+        }
+    }
+
+    /// The developer panel's research button (research 6.8): every program is completed with no
+    /// progress set, then every entity type is made available.
+    pub(super) fn developer_research(&mut self) {
+        self.force_research(false);
+        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        if let Some(game) = &mut self.game {
+            let changed = game.build.make_all_available(cat);
+            if let Some(ui) = &mut self.ui {
+                let mut log = Vec::new();
+                game.build.refill(changed, ui, vfs, cat, &mut log);
+                log.into_iter().for_each(|line| self.sim.note(line));
             }
         }
     }
