@@ -127,3 +127,83 @@ fn a_saved_game_runs_the_resume_triggers_and_the_triggers_of_its_goal_states_the
     let resume = "[resume]\ntriggers=r\n[r]\ntrulea=4\ntruleb=9\n";
     assert_eq!(load("load-resume", resume, &[0, 0]), [true, false]);
 }
+
+/// Starts a scenario of two programs (free of progress, making the lion and the zebra available)
+/// with `trigger` as its start trigger; the types' flags and the programs' progress.
+fn forced(name: &str, trigger: &str) -> ([bool; 2], Vec<f32>) {
+    let scn = format!("[start]\nresearch=r.cfg\ntriggers=t\n[t]\n{trigger}\n");
+    let files = [
+        ("s/a.scn", scn.into_bytes()),
+        ("r.cfg", b"[branches]\nbranch=b.cfg\n".to_vec()),
+        (
+            "b.cfg",
+            b"[branch]\nname=1\ncategory=c.cfg\nfunding=none\n[none]\nname=2\n".to_vec(),
+        ),
+        (
+            "c.cfg",
+            b"[category]\nname=3\nprogram=p1.cfg\nprogram=p2.cfg\n".to_vec(),
+        ),
+        (
+            "p1.cfg",
+            b"[research]\nname=11\ncost=90\ntarget=5\neffect=0\n".to_vec(),
+        ),
+        (
+            "p2.cfg",
+            b"[research]\nname=12\ncost=10\ntarget=6\neffect=0\n".to_vec(),
+        ),
+    ];
+    let install = cache_install_with(name, frame_file(), &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let cat = catalogue();
+    let mut app = App::empty(
+        MapRenderer::new(&vfs, &cat),
+        Timers::new(66, 16, 200),
+        SIZE,
+        Settings::default(),
+    )
+    .unwrap();
+    app.open_game(tile_with(&[]), Money::default()).unwrap();
+    app.begin(&Start {
+        path: "scenario.zoo".into(),
+        label: "scenario".into(),
+        forget_last: true,
+        freeform: false,
+        cash: Default::default(),
+        reset: false,
+        reset_fences: false,
+        scenario: Some("s/a.scn".into()),
+    });
+    let build = &app.game.as_ref().unwrap().build;
+    let flags = [0, 1].map(|i| build.is_available(&cat, i));
+    let tree = app.sim.research().unwrap();
+    let programs = tree.branches[0].categories[0].programs.iter();
+    (flags, programs.map(|p| p.progress).collect())
+}
+
+#[test]
+fn trigger_10_completes_every_program_at_the_start_and_sets_the_progress_when_targa_is_above_0() {
+    assert_eq!(
+        forced("force-none", "trulea=0"),
+        ([false, false], vec![0.0, 0.0])
+    );
+    assert_eq!(
+        forced("force-0", "trulea=10"),
+        ([true, true], vec![0.0, 0.0])
+    );
+    for targa in ["0", "-5"] {
+        let t = format!("trulea=10\ntarga={targa}");
+        assert_eq!(
+            forced("force-neg", &t),
+            ([true, true], vec![0.0, 0.0]),
+            "{targa}"
+        );
+    }
+    for targa in ["1", "2147483647"] {
+        let t = format!("trulea=10\ntarga={targa}");
+        assert_eq!(
+            forced("force-set", &t),
+            ([true, true], vec![90.0, 10.0]),
+            "{targa}"
+        );
+    }
+}
