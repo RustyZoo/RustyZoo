@@ -69,6 +69,30 @@ pub fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mut Out) 
     }
 }
 
+/// Starts the behaviour set `name` of the animal at position `at`. The sleep and sick checks only
+/// queue it as the pending call, not interruptible and not forced: the hook starts it once the top
+/// set no longer runs (behaviours 4.2.1), so an animal does not fall asleep in the middle of a walk.
+pub(super) fn start_or_queue(
+    unit: &mut Unit,
+    world: &World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    name: &str,
+) {
+    if name == "bSleep" || name == "bSick" {
+        unit.runner.queue_if_new(name, false, false);
+        return;
+    }
+    let env = Run {
+        data,
+        unit: &world.zoo.entities[at],
+        rng: &mut *ctx.rng,
+    };
+    unit.runner
+        .start(&mut unit.animation, &env, name, true, false, true);
+}
+
 /// The health check (9): the starving count, the unwell animal, the sick company and the three
 /// ways to fall ill.
 pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
@@ -225,13 +249,7 @@ pub fn ambient_sleep(
     sleep(a, &k, &class, &env, &mut out);
     let id = unit.id;
     for set in &out.sets {
-        let env = Run {
-            data,
-            unit: &world.zoo.entities[at],
-            rng: &mut *ctx.rng,
-        };
-        unit.runner
-            .start(&mut unit.animation, &env, set, true, false, true);
+        start_or_queue(unit, world, ctx, at, data, set);
     }
     out.log
         .iter()

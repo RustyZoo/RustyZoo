@@ -692,6 +692,28 @@ fn a_low_health_animal_falls_ill_only_when_its_running_set_has_ended() {
 }
 
 #[test]
+fn a_tired_animal_sleeps_only_when_its_running_set_has_ended() {
+    // The sleep check queues `bSleep` (behaviours 4.2): the idle set of 30 plays of 100 ms is
+    // not cut.
+    let cat = zebras_with("cEnergyThreshold=50\ncEnergyIncrement=0", "");
+    let tire = |w: &mut World| {
+        let Part::Animal(a) = &mut w.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        a.energy = 50;
+    };
+    let mut data = Life::new().idling().with("bSleep", "fPlay(sleep)");
+    let play = parse_call(b"fPlay(idle)").unwrap().0;
+    data.0.insert("bIdle", vec![play; 30]);
+    let slept = |ms| {
+        let log = lived_data(&mut pens(), &cat, &data, ms, tire);
+        log.iter().any(|l| l == "set 500 bSleep")
+    };
+    assert!(!slept(2000));
+    assert!(slept(6000));
+}
+
+#[test]
 fn the_drink_goal_tries_the_shore_tiles_in_order() {
     let cat = zebras_with("cDrinkWaterChance=0", "");
     // Water at (2, 3) and (3, 3) of the first pen. The nearest water to the animal at (1, 2) is
