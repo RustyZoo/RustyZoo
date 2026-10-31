@@ -557,6 +557,8 @@ mod tests {
         let r = &mut u.goal.record;
         (r.task, r.job, r.done, r.job_done, r.start, r.duration) = (110, 5, true, false, 40, 12);
         (r.target.id, r.job_target.id) = (7, 9);
+        u.goal.built(u.kind, 110, 5);
+        let r = &mut u.goal.record;
         r.target.pos = target.map(|_| (3 * 64, 64, 16));
         r.job_target.pos = job.map(|_| (2 * 64, 2 * 64, 0));
         let before = r.clone();
@@ -577,6 +579,48 @@ mod tests {
         );
         assert_eq!((r.target.tile, r.job_target.tile), (target, job));
         assert_eq!(r.target.pos, before.target.pos);
+    }
+
+    /// A keeper built for task 110 and job 5, then set to task 101 and job 2 (the new objects are
+    /// not built yet), saved with `typed` as it is after its first turn.
+    fn keeper_that_changed_task(changed: bool) -> World {
+        let mut w = walking(104, Vec::new(), "");
+        let u = w.units.get_mut(1).unwrap();
+        u.typed = true;
+        (u.goal.record.task, u.goal.record.job) = (110, 5);
+        u.goal.built(u.kind, 110, 5);
+        if changed {
+            (u.goal.record.task, u.goal.record.job) = (101, 2);
+        }
+        w
+    }
+
+    #[test]
+    fn a_save_writes_the_numbers_of_the_objects_the_unit_holds() {
+        let t = saved_block(&keeper_that_changed_task(true)).target;
+        assert_eq!(
+            (t.goal, t.sub_goal, t.active, t.active_sub),
+            (101, 2, 110, 5),
+            "the old objects while the new ones are not built"
+        );
+        let t = saved_block(&keeper_that_changed_task(false)).target;
+        assert_eq!((t.active, t.active_sub), (110, 5));
+        // No object: -1.
+        let mut w = keeper_that_changed_task(false);
+        w.units.get_mut(1).unwrap().goal = Default::default();
+        let t = saved_block(&w).target;
+        assert_eq!((t.active, t.active_sub), (-1, -1));
+    }
+
+    #[test]
+    fn a_unit_saved_before_its_goal_object_is_built_is_initialised_after_a_load() {
+        // The saved numbers differ from the record's: nothing is built at the load, the first update
+        // builds both objects and runs their init (behaviours 4.7).
+        let back = saved_block_in(104, saved_block(&keeper_that_changed_task(true)));
+        assert_eq!(back.units.get(1).unwrap().goal.built_pair(), (false, false));
+        // A unit that did not change task has its objects built, without init.
+        let back = saved_block_in(104, saved_block(&keeper_that_changed_task(false)));
+        assert_eq!(back.units.get(1).unwrap().goal.built_pair(), (true, true));
     }
 
     #[test]

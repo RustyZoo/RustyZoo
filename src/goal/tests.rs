@@ -623,6 +623,8 @@ fn the_hash_covers_the_goals() {
         stale: _,
         sub: _,
         sub_stale: _,
+        // Not hashed: it follows from the objects.
+        held: _,
         wants_to_decide: _,
         wandered: _,
     } = Goals::default();

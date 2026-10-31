@@ -186,7 +186,7 @@ impl World {
 
     /// The unit block of a unit made in play (save games 11.2, 11.3). A unit that has had its first
     /// turn (`typed`, set by the first turn; a staff member is started at hiring, before it) writes
-    /// its live goal and job numbers and is on the ground, and a guest its live non-path cost; one
+    /// the numbers of the goal and job objects it holds (-1 for none) and is on the ground, and a guest its live non-path cost; one
     /// that has not writes the values of a new one, a guest's cost being its type's. A loaded unit
     /// keeps its stored block.
     fn unit_made(&self, c: &mut Common, class: &str, cost: u32) {
@@ -198,8 +198,7 @@ impl World {
         if let Some(u) = self.units.get(c.id).filter(|u| u.typed) {
             let record = &u.goal.record;
             let t = &mut block.target;
-            t.active = goal::active_goal(record.task, u.kind);
-            t.active_sub = i32::from(record.job);
+            (t.active, t.active_sub) = u.goal.held();
             let pos = |p: &goal::Target| p.pos.map_or([-1; 3], |(x, y, z)| [x, y, z]);
             (t.goal, t.sub_goal) = (i32::from(record.task), i32::from(record.job));
             (t.words, t.bytes) = (
