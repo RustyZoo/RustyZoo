@@ -419,7 +419,7 @@ fn prefers_salt(config: &Config) -> bool {
 
 /// The live state of an animal: the values, their pending changes, the counters, the flags that
 /// the checks read and raise.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Animal {
     pub happiness: i32,
     pub hunger: i32,
@@ -505,6 +505,67 @@ pub struct Animal {
     pub building: u32,
     pub slot: usize,
     pub entrance: crate::building::Point,
+}
+
+/// The state hash of a run reads this text: `escaped` is not in it, so the hashes of the runs
+/// that never have a loose animal stay as they were.
+impl std::fmt::Debug for Animal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Animal")
+            .field("happiness", &self.happiness)
+            .field("hunger", &self.hunger)
+            .field("health", &self.health)
+            .field("energy", &self.energy)
+            .field("dung", &self.dung)
+            .field("happiness_change", &self.happiness_change)
+            .field("hunger_change", &self.hunger_change)
+            .field("health_change", &self.health_change)
+            .field("energy_change", &self.energy_change)
+            .field("dung_change", &self.dung_change)
+            .field("breath", &self.breath)
+            .field("counters", &self.counters)
+            .field("female", &self.female)
+            .field("fed", &self.fed)
+            .field("slept", &self.slept)
+            .field("advice", &self.advice)
+            .field("important", &self.important)
+            .field("pressure", &self.pressure)
+            .field("crowd_direction", &self.crowd_direction)
+            .field("egg", &self.egg)
+            .field("crated", &self.crated)
+            .field("dying", &self.dying)
+            .field("in_show", &self.in_show)
+            .field("very_unhappy", &self.very_unhappy)
+            .field("at_minimum_health", &self.at_minimum_health)
+            .field("keeper_visited", &self.keeper_visited)
+            .field("mourning", &self.mourning)
+            .field("thirsty", &self.thirsty)
+            .field("wants_food", &self.wants_food)
+            .field("eating", &self.eating)
+            .field("no_food", &self.no_food)
+            .field("sleeping", &self.sleeping)
+            .field("drinking", &self.drinking)
+            .field("life", &self.life)
+            .field("starving", &self.starving)
+            .field("mate", &self.mate)
+            .field("mate_delay", &self.mate_delay)
+            .field("interval", &self.interval)
+            .field("baby", &self.baby)
+            .field("hatch", &self.hatch)
+            .field("mother", &self.mother)
+            .field("father", &self.father)
+            .field("food", &self.food)
+            .field("rampaging", &self.rampaging)
+            .field("rampage", &self.rampage)
+            .field("zap", &self.zap)
+            .field("reset", &self.reset)
+            .field("ambient", &self.ambient)
+            .field("terrain", &self.terrain)
+            .field("building", &self.building)
+            .field("slot", &self.slot)
+            .field("entrance", &self.entrance)
+            .finish()
+    }
 }
 
 impl Animal {
