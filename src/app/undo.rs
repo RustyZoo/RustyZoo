@@ -56,9 +56,13 @@ impl App<'_> {
         if held {
             game.selected = None;
         }
-        let done = game.world.undo();
+        let mut done = game.world.undo();
+        let names = std::mem::take(&mut done.names);
         if !done.is_empty() {
             self.undone(done);
+        }
+        for name in names {
+            self.name_hook(Subject::Exhibit, &name);
         }
     }
 

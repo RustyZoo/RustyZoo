@@ -24,6 +24,7 @@ use crate::behaviour::{Library, Timings};
 use crate::build::terrain::{MINUS, PLUS};
 use crate::build::{BULLDOZER, Build};
 use crate::camera::{Camera, Settings, zoom_view};
+use crate::cheat::Subject;
 use crate::config::Config;
 use crate::exhibit::rating;
 use crate::menu::{self, Menu, Request, Start};
@@ -467,6 +468,8 @@ pub struct App<'a> {
     renderer: MapRenderer<'a>,
     /// The zoo being played; `None` in the main menu.
     game: Option<Game>,
+    /// The name cheats; its flags last as long as the program.
+    cheats: crate::cheat::Cheats,
     timers: Timers,
     quit: bool,
     pointer: Option<(i32, i32)>,
@@ -675,6 +678,7 @@ impl<'a> App<'a> {
         Ok(App {
             renderer,
             game: None,
+            cheats: Default::default(),
             timers,
             quit: false,
             pointer: None,
@@ -896,6 +900,15 @@ impl<'a> App<'a> {
         }
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
+        }
+        // The load sets every exhibit's stored name again (cheats 2.2).
+        let names = self
+            .game
+            .as_ref()
+            .filter(|_| saved)
+            .map(|g| g.world.loaded_names());
+        for name in names.unwrap_or_default() {
+            self.name_hook(Subject::Exhibit, &name);
         }
         Ok(())
     }
@@ -2706,6 +2719,7 @@ mod adopt;
 mod building_panel;
 mod bulldozer;
 mod carry;
+mod cheat;
 mod exhibits;
 mod gates;
 mod guest_panel;
@@ -2726,6 +2740,9 @@ mod tank_panel_tests;
 
 #[cfg(test)]
 mod carry_tests;
+
+#[cfg(test)]
+mod cheat_tests;
 
 #[cfg(test)]
 mod tests;

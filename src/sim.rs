@@ -350,6 +350,23 @@ impl Sim {
         out
     }
 
+    /// Completes every program of the research categories named `name` as a cheat does (research
+    /// 6.8); the programs come back as for [`Sim::force_research`].
+    pub fn complete_category(
+        &mut self,
+        cat: &Catalogue,
+        over: &mut Overlay,
+        name: i32,
+    ) -> (Vec<Done>, Vec<Life>) {
+        let Some(tree) = &mut self.research else {
+            return Default::default();
+        };
+        let out = tree.complete_category(cat, over, name);
+        self.lines
+            .push(format!("research category {name} {}", out.0.len()));
+        out
+    }
+
     /// The research share of the zoo status: the tree's, 0 while a game has none.
     pub fn research_share(&self) -> i32 {
         self.research.as_ref().map_or(0, Tree::share)

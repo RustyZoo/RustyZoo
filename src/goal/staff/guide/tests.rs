@@ -530,3 +530,49 @@ fn a_walk_set_started_again_during_a_walk_does_not_end_the_walk() {
     g.run(3);
     assert!(walking(&g));
 }
+
+#[test]
+fn a_walk_set_nested_two_levels_deep_keeps_the_walk_when_it_starts_again() {
+    let mut g = Game::new("", &[]);
+    let call = |c: &str| vec![parse_call(c.as_bytes()).unwrap().0];
+    g.data.0.insert("bWalk".into(), call("fPlaySet(bOuter)"));
+    g.data.0.insert("bOuter".into(), call("fPlaySet(bInner)"));
+    g.data.0.insert("bInner".into(), call("fWalk(0,0)"));
+    let walking = |g: &Game| {
+        let u = g.w.units.get(GUIDE).unwrap();
+        u.walking && u.moving && u.path.len() > 2
+    };
+    let mut steps = 0;
+    while !walking(&g) && steps < 1000 {
+        g.run(1);
+        steps += 1;
+    }
+    assert!(walking(&g));
+    assert!(with_cx(&mut g, GUIDE, |cx| cx.start_walk(false, false, true)));
+    // The move call is two steps away; the unit walks on meanwhile and the call takes over.
+    for _ in 0..6 {
+        let before = g.w.units.get(GUIDE).unwrap().path.len();
+        g.run(1);
+        let u = g.w.units.get(GUIDE).unwrap();
+        assert!(u.moving && !u.path.is_empty() && u.path.len() <= before);
+    }
+    assert!(walking(&g));
+}
+
+#[test]
+fn a_goal_reset_empties_the_path_and_keeps_the_moving_flag_and_the_speed() {
+    let mut g = Game::new("", &[]);
+    let call = |c: &str| vec![parse_call(c.as_bytes()).unwrap().0];
+    g.data.0.insert("bWalk".into(), call("fWalk(0,0)"));
+    let mut steps = 0;
+    while !g.w.units.get(GUIDE).unwrap().moving && steps < 1000 {
+        g.run(1);
+        steps += 1;
+    }
+    let u = g.w.units.get(GUIDE).unwrap();
+    let (speed, anim_speed) = (u.speed, u.anim_speed);
+    assert!(u.moving && speed > 0 && !u.path.is_empty());
+    with_cx(&mut g, GUIDE, |cx| cx.reset());
+    let u = g.w.units.get(GUIDE).unwrap();
+    assert!(u.path.is_empty() && u.moving && u.speed == speed && u.anim_speed == anim_speed);
+}

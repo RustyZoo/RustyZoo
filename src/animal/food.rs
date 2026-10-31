@@ -113,7 +113,7 @@ pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &m
         && !(a.wants_food || env.food_task || a.rampaging)
     {
         match env.food_total - out.meal.bites >= 1 {
-            true if !a.in_show => (a.wants_food, a.thirsty) = (true, false),
+            true if !a.in_show => (a.wants_food, a.thirsty, a.drinking) = (true, false, false),
             true => {}
             false => no_food(a, k, out),
         }

@@ -327,6 +327,34 @@ impl Tree {
         (forced, life)
     }
 
+    /// Completes every program of the categories named `name` with the plain completion (6.8, the
+    /// category cheats): in tree order, effects 2 to 7 are laid on `over`, a program already
+    /// complete is done again, and no progress, current program or expansion filter is looked at.
+    /// The programs come back for the caller to apply their effects 0 and 1, with the changes of
+    /// the life counter.
+    pub fn complete_category(
+        &mut self,
+        cat: &Catalogue,
+        over: &mut Overlay,
+        name: i32,
+    ) -> (Vec<Done>, Vec<Life>) {
+        let all = self.branches.iter().flat_map(|b| &b.categories);
+        let all = all.filter(|c| c.name == name).flat_map(|c| &c.programs);
+        let programs: Vec<Done> = all
+            .map(|p| Done {
+                name: p.name,
+                target: p.target,
+                effect: p.effect,
+                vals: p.vals,
+            })
+            .collect();
+        let mut life = Vec::new();
+        for d in &programs {
+            life.extend(self.complete(cat, over, d));
+        }
+        (programs, life)
+    }
+
     /// Applies the characteristic effect of a completed program (6.4, 6.7): a change of the types
     /// (2, 4, 5), or a discount on the other programs and a training mark (7). The changes of the
     /// life counter are returned for the live animals.

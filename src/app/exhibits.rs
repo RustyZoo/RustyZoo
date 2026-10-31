@@ -295,13 +295,18 @@ impl App<'_> {
         }
         let id = game.naming.remove(0);
         let bytes = ui.text(NAME_FIELD).unwrap_or_default();
+        let mut hooked = None;
         if visible(&bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
             self.exhibit_lines.push(format!("name {id} {text:?}"));
-            game.world.rename(id, text);
+            game.world.rename(id, text.clone());
+            hooked = Some(text);
         }
         game.world.give_gate(id);
         self.exhibits_told();
+        if let Some(text) = hooked {
+            self.name_hook(Subject::Exhibit, &text);
+        }
         let Some(game) = &mut self.game else { return };
         if !game.naming_open {
             let rest = std::mem::take(&mut game.rest);

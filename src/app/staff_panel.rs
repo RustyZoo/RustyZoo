@@ -361,6 +361,7 @@ impl App<'_> {
 
     /// The player ended editing the name field: a text with a visible character is the name.
     pub(super) fn staff_rename(&mut self) {
+        self.entity_hook(Subject::Staff, staff::NAME);
         let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
             return;
         };

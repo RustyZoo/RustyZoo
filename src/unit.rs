@@ -202,9 +202,6 @@ pub struct Unit {
     pub gate: Option<u32>,
     /// The unit goes in or out of a building: the tile step test looks at the edge cost only.
     pub through_building: bool,
-    /// A goal started a walk set in the last step: a nested walk set reaches its move call one
-    /// step later, which does not end a walk in progress.
-    pub walk_restarted: bool,
     /// The next tile step was refused: the goal has to give up (movement 4.7). The goals read
     /// and clear it.
     pub aborted: bool,
@@ -272,7 +269,6 @@ impl Unit {
             flip: false,
             gate: None,
             through_building: false,
-            walk_restarted: false,
             aborted: false,
             use_set: None,
             sent: None,
@@ -890,6 +886,7 @@ impl Standard<'_> {
 
 impl Hooks for Standard<'_> {
     fn movement(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        lower_walk(unit);
         movement::step(unit, world, ctx.step, at);
         movement::reanimate(unit, world, self.data, at);
     }
@@ -930,9 +927,8 @@ impl Hooks for Standard<'_> {
         }
         // A move call is the unit's to run (movement 8.2); when it is done the set goes on in
         // the same step.
-        let mut moved = false;
+        lower_walk(unit);
         while let Some(go) = unit.runner.take_move() {
-            moved = true;
             let flow = movement::call(unit, world, self.data, ctx.cat, ctx.rng, at, &go);
             if flow == Flow::Running {
                 break;
@@ -945,12 +941,7 @@ impl Hooks for Standard<'_> {
             };
             unit.runner.resume(&mut unit.animation, &mut env);
             self.building_calls(unit, world, ctx, at);
-        }
-        // Another set took the place of the move call: the walk ends, unless a goal has just
-        // started the walk set, whose move call comes a step later when it is nested.
-        let started = std::mem::take(&mut unit.walk_restarted);
-        if unit.walking && !moved && !started {
-            movement::stop(unit);
+            lower_walk(unit);
         }
         if let Some(to) = unit.sent.take() {
             crate::goal::send(unit, world, ctx, at, self.data, to);
@@ -1016,6 +1007,15 @@ impl Hooks for Standard<'_> {
     fn goals(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::goal::update(unit, world, ctx, at, self.data);
         self.tell(unit, world, at);
+    }
+}
+
+/// An accepted set start lowers the move handler's started flag and touches nothing else of the
+/// walk (movement 8.3): the next move call takes its first-run branch with the path the unit
+/// still has.
+fn lower_walk(unit: &mut Unit) {
+    if unit.runner.take_started() {
+        unit.walking = false;
     }
 }
 

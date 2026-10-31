@@ -340,3 +340,23 @@ fn a_keeper_on_a_ladder_is_in_the_ladder_mode_and_kept_between_its_foot_and_its_
     w.units.get_mut(id).unwrap().tank = 0;
     assert_eq!((checked(&mut w, id), height(&w, id)), ((4, 3), 40));
 }
+
+#[test]
+fn a_3d_move_call_goes_on_with_one_path_entry() {
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 32)]);
+    crate::goal::quiet(&mut w);
+    fish(&mut w, 1, 1, |u| {
+        u.mover.swims = true;
+        u.path = vec![tile((4, 3))];
+        u.levels = vec![2];
+        u.destination = Some((4 * 64 + 32, 3 * 64 + 32, 32));
+    });
+    let mut s = Sim::new(b"");
+    s.set_seed(1);
+    s.start_game(1200, Clocks::default());
+    let walker = Walker::new("fSwim(level,0)");
+    walker.start(&mut w, 1);
+    s.step_with(&walker, &Default::default(), &mut w, 67, |_, _, _| {});
+    let u = w.units.get(1).unwrap();
+    assert!(u.walking && !u.path.is_empty());
+}

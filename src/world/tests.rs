@@ -667,3 +667,34 @@ fn a_loaded_numbered_entity_gets_a_numbered_name_on_a_locale_mismatch() {
     assert_eq!(names, ["Lion 1", "Tree", "Lion 2"]);
     assert_eq!(world.zoo.names["lion"], 7, "the file's counters are kept");
 }
+
+#[test]
+fn the_names_a_load_sets_again_on_the_exhibits_are_given_only_in_the_install_language() {
+    let names = |locale: u32, install: u32| {
+        let mut z = zoo(4, 4, (0, 0));
+        z.locale = locale;
+        let language = Language {
+            number: install,
+            ..Language::shipped()
+        };
+        let mut world = World::with_language(z, |_| None, language);
+        let part = crate::exhibit::Part {
+            tiles: vec![5],
+            grounds: false,
+        };
+        world.exhibits.add(&part, "Lions".into());
+        world.exhibits.add(
+            &crate::exhibit::Part {
+                tiles: vec![6],
+                grounds: false,
+            },
+            "Tigers".into(),
+        );
+        world.loaded_names()
+    };
+    assert_eq!(names(1036, 1036), ["Lions", "Tigers"]);
+    assert!(
+        names(1033, 1036).is_empty(),
+        "another language: none is set"
+    );
+}

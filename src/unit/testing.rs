@@ -139,6 +139,13 @@ impl Walker {
         self.start_set(w, id, "bWalk", true);
     }
 
+    /// The same for a unit the test has already put on its walk (path, speed, flags): the call
+    /// goes on with that walk, not through its first run (movement 8.2).
+    pub fn resume(&self, w: &mut World, id: u32) {
+        self.start(w, id);
+        w.units.get_mut(id).unwrap().runner.take_started();
+    }
+
     /// Starts the set `name` (`bWalk`, or `bZoo`, which does nothing for ever).
     pub fn start_set(&self, w: &mut World, id: u32, name: &str, force: bool) {
         let at = w.find(id).unwrap();

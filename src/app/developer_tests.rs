@@ -18,7 +18,8 @@ const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     forecolor=255\nforecolor=218\nforecolor=90\n\
     [b]\ntype=UIButton\nid=1098\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\nlayer=5\n\
     action=3\ntarget=34\nstate=16\nstate=2048\n\
-    [c]\ntype=UILayout\nlayout=ui/panel.lyt\nstate=1\n";
+    [c]\ntype=UILayout\nlayout=ui/panel.lyt\nstate=1\n\
+    [d]\ntype=UIText\nid=3402\nx=40\ny=30\ndx=8\ndy=8\n";
 const PANEL: &str = "[LayoutInfo]\nid=34\nlayer=7\nx=20\ny=20\ndx=200\ndy=20\nstate=1\n\
     [a]\ntype=UIButton\nid=5013\nx=0\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
     [e]\ntype=UIEditableText\nid=5012\nx=0\ny=10\ndx=180\ndy=8\n";
@@ -75,7 +76,12 @@ fn files(research: bool) -> Vec<(&'static str, Vec<u8>)> {
 
 /// A game of the scenario (with a research tree or not) and the interface above, the developer
 /// ini key set or not.
-fn with_game(name: &str, research: bool, dev_key: bool, body: impl FnOnce(&mut App, &Catalogue)) {
+pub(super) fn with_game(
+    name: &str,
+    research: bool,
+    dev_key: bool,
+    body: impl FnOnce(&mut App, &Catalogue),
+) {
     let install = cache_install_with(name, frame_file(), &files(research));
     let vfs = Vfs::open(&install.0).unwrap();
     let cat = catalogue();
@@ -122,7 +128,7 @@ fn shown(app: &mut App, id: i32) -> bool {
     app.interface().unwrap().shown(id)
 }
 
-fn available(app: &App, cat: &Catalogue) -> [bool; 3] {
+pub(super) fn available(app: &App, cat: &Catalogue) -> [bool; 3] {
     let build = &app.game.as_ref().unwrap().build;
     [0, 1, 2].map(|i| build.is_available(cat, i))
 }

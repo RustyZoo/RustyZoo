@@ -252,6 +252,19 @@ impl World {
         }
     }
 
+    /// The names the load of a saved game sets again on its exhibits, for the name hook (cheats
+    /// 2.2): none when the file's locale is not the install language.
+    pub fn loaded_names(&self) -> Vec<String> {
+        if self.zoo.locale != self.language.number {
+            return Vec::new();
+        }
+        self.exhibits
+            .list()
+            .iter()
+            .map(|e| e.name.clone())
+            .collect()
+    }
+
     /// Records that exhibit `id` was made on this date.
     pub fn set_created(&mut self, id: u32, date: Date) {
         if let Some(e) = self.exhibits.get_mut(id) {

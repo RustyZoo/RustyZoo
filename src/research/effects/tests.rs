@@ -516,3 +516,47 @@ fn a_trick_program_makes_the_trick_of_the_animal_type_available_and_a_load_keeps
     t.force(&cat, &mut over, false, &mut || 0);
     assert!(over.trick_available(zebra, 11204, false));
 }
+
+#[test]
+fn a_category_cheat_applies_every_program_of_the_category_again_and_touches_nothing_else() {
+    let cat = cat();
+    let mut t = tree(vec![
+        program(1, 20.0, 20.0, 0, 4, [0, 5, 0]),
+        program(2, 30.0, 0.0, 0, 4, [0, 5, 0]),
+    ]);
+    t.branches[0].categories.push(Category {
+        name: 2,
+        programs: vec![program(3, 10.0, 0.0, 0, 4, [0, 7, 0])],
+        ..Default::default()
+    });
+    t.branches[0].current = Some((0, 1));
+    // Every expansion entry is disabled: the cheat does not look.
+    t.off = [true; 4];
+    let before = t.clone();
+    let mut over = Overlay::default();
+    let (done, _) = t.complete_category(&cat, &mut over, 1);
+    let names: Vec<i32> = done.iter().map(|d| d.name).collect();
+    assert_eq!(names, [1, 2], "in order, the program already done too");
+    assert_eq!(int(&over, &cat, 0, "cKeeperArrivesChange", 100), 110);
+    t.complete_category(&cat, &mut over, 1);
+    assert_eq!(
+        int(&over, &cat, 0, "cKeeperArrivesChange", 100),
+        120,
+        "again"
+    );
+    assert_eq!(t, before, "no progress, cost or current program changes");
+}
+
+#[test]
+fn a_category_cheat_for_an_unknown_name_or_an_empty_tree_does_nothing() {
+    let cat = cat();
+    let mut t = tree(vec![program(1, 20.0, 0.0, 0, 4, [0, 5, 0])]);
+    for name in [0, -1, 2, i32::MAX] {
+        let mut over = Overlay::default();
+        let (done, life) = t.complete_category(&cat, &mut over, name);
+        assert!(done.is_empty() && life.is_empty(), "{name}");
+        assert_eq!(int(&over, &cat, 0, "cKeeperArrivesChange", 100), 100);
+    }
+    let (done, _) = Tree::default().complete_category(&cat, &mut Overlay::default(), 1);
+    assert!(done.is_empty());
+}

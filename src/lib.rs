@@ -10,6 +10,7 @@ pub mod bitmap;
 pub mod build;
 pub mod building;
 pub mod camera;
+pub mod cheat;
 pub mod config;
 pub mod cursor;
 pub mod entity;

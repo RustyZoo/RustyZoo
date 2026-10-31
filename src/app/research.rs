@@ -3,7 +3,7 @@
 use super::{App, EXCLAIM_PICTURE, QUESTION};
 use crate::money::SYMBOL;
 use crate::panel::research::branch_of_tab;
-use crate::research::Tree;
+use crate::research::{Done, Life, Tree};
 use crate::text::to_cp1252;
 use crate::ui::interface::{Buttons, Interface};
 use crate::vfs::Vfs;
@@ -138,13 +138,37 @@ impl App<'_> {
         let Some(game) = &mut self.game else {
             return;
         };
-        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        let cat = self.renderer.catalogue();
         let (forced, life) = self
             .sim
             .force_research(cat, &mut game.world.research, progress);
-        crate::animal::lengthen(&mut game.world, &life);
+        self.research_laid(&forced, &life);
+    }
+
+    /// The research cheat of one category (cheats 5): every program of the categories with this
+    /// name id is completed with no dialog, no progress and no current program changed.
+    pub(super) fn complete_category(&mut self, name: i32) {
+        let Some(game) = &mut self.game else {
+            return;
+        };
+        let cat = self.renderer.catalogue();
+        let (done, life) = self
+            .sim
+            .complete_category(cat, &mut game.world.research, name);
+        self.research_laid(&done, &life);
+    }
+
+    /// The programs completed without a dialog (a forced completion, a cheat) take effect: the
+    /// life counters follow the changed types, the targets become available and the building
+    /// upgrades are added; the open lists and panels follow.
+    fn research_laid(&mut self, done: &[Done], life: &[Life]) {
+        let Some(game) = &mut self.game else {
+            return;
+        };
+        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        crate::animal::lengthen(&mut game.world, life);
         let mut flags = Vec::new();
-        for d in &forced {
+        for d in done {
             if d.effect == 0 {
                 flags.push((d.target, true));
             } else if d.effect == 1
