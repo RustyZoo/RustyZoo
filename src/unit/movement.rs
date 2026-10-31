@@ -371,7 +371,8 @@ pub fn call(
             return Flow::Failed;
         }
     }
-    if unit.path.len() < 2 {
+    // The 3D move goes on with one entry (8.2 step 1).
+    if unit.path.len() < 2 && mode_of(world, at) != Some(3) {
         stop(unit);
         idle(unit, world, data, at);
         return Flow::Done;

@@ -1165,7 +1165,7 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:21@29,46;29726:22@27,43;29745:21@36,32;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:18@28,44;29726:12@20,48;29745:21@36,32;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo"
 check base-trial "29699:17@22,43;29726:18@22,46;29745:22@36,33;29748:25@32,34;29750:21@23,49" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
@@ -1209,7 +1209,7 @@ tank_breath() { # tank_breath <map> <x,y>
     END{ print gains ";surface@" surface ";breathe@" breathe ";later:" later+0 }'
   rm -rf "$d"
 }
-check expansion-trial "57:10,505:20;surface@522;breathe@912;later:0" "tank_breath maps/scn28b.zoo 22,23"
+check expansion-trial "57:10,505:20;surface@522;breathe@980;later:0" "tank_breath maps/scn28b.zoo 22,23"
 
 # Murky water: scn28's filters are taken away and a manta ray joins tank 2, which holds water of
 # purity 93 and loses a point every 448 steps. The ray's happiness is set to 0 every second so that
@@ -1246,15 +1246,15 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@226,1@374;97902:1@1317,2@2387,1@4356,2@5204,1@6185,2@6875,1@9564,2@10528,1@13284" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@226,1@374,2@8391,1@8759,2@11808,1@13691;97902:1@1317,2@2387,1@4356,2@5204,1@6185,2@6875,1@7279,2@8328,1@12525" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
 # mode its walks end on water tiles too, where it chooses from its water table (`bInWater`). Prints
 # each tile a walk ended on with the set chosen there and the change of mode, for 3500 steps. The
 # loaded units go on with their saved sets, paths and pending sets from the first step (behaviours 4.7), which moves
-# the shared draws: the animal is in the water mode from step 18, on land from 1212, in the water from 1809, on land from 2406 and in the water again from 3003;
-# the seed stays 11.
+# the shared draws: the animal is in the water mode from step 18, on land from 615, in the water from 1212, on land from 1809 and in the water again from 2406
+# (a set that replaces a walk no longer stops it or cuts its animation, movement 8.3); the seed stays 11.
 water_mode() { # water_mode <map> <animal>
   rz sim "$1" --ticks 3500 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
@@ -1263,7 +1263,7 @@ water_mode() { # water_mode <map> <animal>
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;27,30:bInWater;26,25:bInWater;24,24:bWalk;mode0@1212;23,19:bSleep;23,19:bWalk;mode1@1809;mode0@2406;25,23:bHappy;mode1@3003;26,22:bHappy" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;27,30:bInWater;27,30:bWalk;mode0@615;30,22:bWalk;mode1@1212;24,29:bWalk;mode0@1809;16,25:bWalk;mode1@2406;25,23:bHappy" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1279,7 +1279,7 @@ tank_over() { # tank_over <map> <ray>
     END{ print n + 0 ";" low ";" first }'
   rm -rf "$d"
 }
-check expansion-trial "20;-65;256" "tank_over maps/scn27.zoo 36659"
+check expansion-trial "30;-65;256" "tank_over maps/scn27.zoo 36659"
 
 # The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
 # are put down: one beside the tank, which then serves it and filters (and charges) at its first
@@ -1312,7 +1312,7 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # restored), which moved the first birth to 19229 (four pairs, the same two young). With the dates and the life of
 # the saved animals restored too (master), it is 9865 (three pairs, the same two young). Guests that sit on benches and picnic tables
 # through their use sets and keep out of the slots of other guest types draw otherwise: it is 1790 (the same). The loaded
-# units go on with their paths and pending sets too (no random walk at the first move call): it is 16626 (the same). The saved goal of every task comes back too: it is 15432 (the same).
+# units go on with their paths and pending sets too (no random walk at the first move call): it is 16626 (the same). The saved goal of every task comes back too: it is 15432 (the same). A set start no longer stops the walk or cuts the animation (movement 8.3): it is 5372 (the same).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
@@ -1321,7 +1321,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@15432;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@5372;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1333,16 +1333,16 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream. Seeds searched from 1: seed 1 gives a clutch and a hatching inside the 7200 steps (with the
-# saved goals of every task restored the units draw otherwise: seed 5 lays no egg in them, seeds 1, 2, 4, 8, 10 to
-# 12 do).
+# random stream. Seeds searched from 1: seed 10 is the first that gives a clutch and a hatching inside the 7200
+# steps (a set start no longer stops a walk or cuts its animation, movement 8.3, which moved the draws: seeds 1 to 5
+# and 8 lay no egg, 6 lays at step 6, 7 and 9 lay late and see no hatching).
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 7200
-  rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  rz sim "$1" --ticks 7200 --dt 200 --seed 10 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
-check expansion-trial "egg@5516;eggs:3;hatch@6147" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3311;eggs:3;hatch@3997" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1379,6 +1379,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial 227408,0,3a946efdfd385c83 "save_load maps/scn19.zoo"
+check expansion-trial 227408,0,0756428ede5255a7 "save_load maps/scn19.zoo"
 
 exit $failed
