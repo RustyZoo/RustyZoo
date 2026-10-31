@@ -42,8 +42,8 @@ const BUTTONS: [i32; 3] = [
 
 impl App<'_> {
     /// The scenario has ended (5.4): the result and the unlocks are stored, the panels of the
-    /// hide-all routine are hidden and the selection cleared (5.4.1), and the end dialog asks Yes or No; without an interface, or a dialog to show,
-    /// the game stops at once.
+    /// hide-all routine are hidden and the selection cleared (5.4.1), and the end dialog asks Yes
+    /// or No; without an interface, or a dialog to show, the game stops at once.
     pub(super) fn scenario_over(&mut self) {
         let Some(end) = self.sim.scenario_ended() else {
             return;
