@@ -470,3 +470,25 @@ fn a_guide_picked_up_lets_go_of_its_group_and_the_guests_notice() {
         (0, 0)
     );
 }
+
+#[test]
+fn a_walk_set_started_again_during_a_walk_does_not_end_the_walk() {
+    let mut g = Game::new("", &[]);
+    // The walk set reaches its move call through a nested set: one step after it starts.
+    let call = |c: &str| vec![parse_call(c.as_bytes()).unwrap().0];
+    g.data.0.insert("bWalk".into(), call("fPlaySet(bWalkland)"));
+    g.data.0.insert("bWalkland".into(), call("fWalk(0,0)"));
+    let walking = |g: &Game| {
+        let u = g.w.units.get(GUIDE).unwrap();
+        u.walking && u.path.len() > 2
+    };
+    let mut steps = 0;
+    while !walking(&g) && steps < 1000 {
+        g.run(1);
+        steps += 1;
+    }
+    assert!(walking(&g));
+    assert!(with_cx(&mut g, GUIDE, |cx| cx.start_walk(false, false, true)));
+    g.run(3);
+    assert!(walking(&g));
+}

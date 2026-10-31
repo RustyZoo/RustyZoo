@@ -990,14 +990,14 @@ check expansion-trial "31076/51817;Sell;200;0" "sold_with_user maps/scn19.zoo"
 
 # A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
 # gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected, its
-# user (with seed 4, the first from 1 whose pick-up pushes a user out: 1, 2 and 3 push none) pushed out when the
+# user (with seed 1, the first from 1 whose pick-up pushes a user out; with seed 4 it pushes none) pushed out when the
 # pick-up button (871 573) is pressed at pass 1150, and it is put down at the pixel 520 310 (tile 37,42). Prints
 # the carry, the push and the drop lines, then what the panel shows once it is down: the stand keeps its figures
 # (the $430 its saved record stores and the $10 of each of two users, the one that left before and the one pushed out).
 building_moved() { # building_moved <map>
   d=$(mktemp -d)
   printf '2 mouse 300 375\n3 down\n4 up\n1149 mouse 871 573\n1150 down\n1151 up\n1153 mouse 500 300\n1155 mouse 520 310\n1156 down\n1157 up\n1159 mouse 871 573\n' >"$d/script"
-  rz run "$1" --headless --passes 1169 --clock 67 --seed 4 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1169 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "drop") { w = w $5 "," $6 "," $7 ";" }
       $4 == "building" && $5 == "push" && $6 == 29780 { w = w "push;" }
       $4 == "panel" && $5 == "building" && $6 == 29780 { for (i = 7; i < NF; i++) if ($i == "income") l = "income " $(i + 1) }
@@ -1007,19 +1007,19 @@ building_moved() { # building_moved <map>
 check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$450' "building_moved maps/scn19.zoo"
 
 # A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
-# stand of scn19 (seed 8: with seed 1 another guest stands in the entrance tile at the second click) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
+# stand of scn19 (seed 1: with seed 8 no guest is inside to be picked up) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
 # click (1091) and put back by Escape (1093); it leaves the stand as a normal leave, so the stand's panel read at
 # pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed).
 guest_picked() { # guest_picked <map>
   d=$(mktemp -d)
   printf '1086 mouse 830 230\n1087 down\n1088 up\n1090 down\n1091 up\n1093 key escape\n1096 mouse 875 230\n1097 down\n1098 up\n' >"$d/script"
-  rz run "$1" --headless --passes 1102 --clock 67 --seed 8 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1102 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 ";" }
       $4 == "panel" && $5 == "building" && $6 == 31076 { for (i = 7; i < NF; i++) if ($i == "income") l = "income_" $(i + 1) }
       END { print w l }'
   rm -rf "${d:?}"
 }
-check expansion-trial 'carry,32647;putback,32647;income_$896' "guest_picked maps/scn19.zoo"
+check expansion-trial 'carry,31554;putback,31554;income_$896' "guest_picked maps/scn19.zoo"
 
 # The same stand picked up by a second click on it while it is selected, put back by Escape and picked
 # up again by the same click (it is selected again): the lines they give, with no user in the stand (so
@@ -1253,7 +1253,7 @@ check expansion-trial "93962:2@226,1@374;97902:1@1317,2@2387,1@4356,2@5204,1@618
 # mode its walks end on water tiles too, where it chooses from its water table (`bInWater`). Prints
 # each tile a walk ended on with the set chosen there and the change of mode, for 3500 steps. The
 # loaded units go on with their saved sets, paths and pending sets from the first step (behaviours 4.7), which moves
-# the shared draws: the animal is in the water mode from step 18, on land from 1809 and in the water again from 3003;
+# the shared draws: the animal is in the water mode from step 18, on land from 1212, in the water from 1809, on land from 2406 and in the water again from 3003;
 # the seed stays 11.
 water_mode() { # water_mode <map> <animal>
   rz sim "$1" --ticks 3500 --seed 11 --reset-fences --log 2>/dev/null | awk -v a="$2" '
@@ -1263,7 +1263,7 @@ water_mode() { # water_mode <map> <animal>
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;27,30:bInWater;26,34:bInWater;24,33:bWalk;mode0@615;20,21:bWalk;mode1@1809;25,23:bHappy;mode1@3003" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;27,30:bInWater;26,25:bInWater;24,24:bWalk;mode0@1212;23,19:bSleep;23,19:bWalk;mode1@1809;mode0@2406;25,23:bHappy;mode1@3003;26,22:bHappy" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,

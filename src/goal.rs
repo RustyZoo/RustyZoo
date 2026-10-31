@@ -980,7 +980,7 @@ impl Cx<'_, '_> {
             return;
         }
         self.unit.path.clear();
-        let walked = walk::random_walk(self.unit, self.world, self.ctx.rng, self.at);
+        let walked = walk::random_walk(self.unit, self.world, self.ctx.cat, self.ctx.rng, self.at);
         if let Some(to) = self.unit.sent.take() {
             return self.send_to(to);
         }
@@ -1058,6 +1058,7 @@ impl Cx<'_, '_> {
         if !started {
             return false;
         }
+        self.unit.walk_restarted = true;
         let (world, dest) = (&*self.world, self.unit.destination);
         let r = &mut self.unit.goal.record;
         (if job {

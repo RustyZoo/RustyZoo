@@ -198,7 +198,7 @@ impl Cx<'_, '_> {
             return;
         }
         let (unit, world) = (&mut *self.unit, &mut *self.world);
-        if crate::unit::walk::random_walk(unit, world, self.ctx.rng, self.at) {
+        if crate::unit::walk::random_walk(unit, world, self.ctx.cat, self.ctx.rng, self.at) {
             self.start_walk(false, false, false);
         }
     }

@@ -1,6 +1,8 @@
 //! The random walk on synthetic maps: the destination by class, the fallbacks and the draws.
 
 use super::*;
+use crate::entity::{Catalogue, EntityType};
+use crate::unit::Staff;
 use crate::unit::testing::{centre, entity, world, world_with};
 use crate::zoo::{Entity, HabitatInfo};
 
@@ -13,10 +15,14 @@ fn rng(seed: u32) -> Rng {
 /// Lets unit `id` take a random walk with a generator seeded with `seed`; returns the answer and
 /// the generator.
 fn walk(w: &mut World, id: u32, seed: u32) -> (bool, Rng) {
+    walk_in(w, &Catalogue::default(), id, seed)
+}
+
+fn walk_in(w: &mut World, cat: &Catalogue, id: u32, seed: u32) -> (bool, Rng) {
     let mut rng = rng(seed);
     let at = w.find(id).unwrap();
     let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, Kind::Animal));
-    let ok = random_walk(&mut unit, w, &mut rng, at);
+    let ok = random_walk(&mut unit, w, cat, &mut rng, at);
     *w.units.get_mut(id).unwrap() = unit;
     (ok, rng)
 }
@@ -379,4 +385,158 @@ fn a_send_by_the_random_walk_gives_way_to_its_fallbacks() {
     // In the water mode the lenient tile test refuses the tank's tiles and the land beside it:
     // the walk ends on the last fallback, from here to here.
     assert_eq!(u.path, vec![here]);
+}
+
+fn kind_of(class: &'static str, name_id: i32) -> EntityType {
+    EntityType {
+        class,
+        type_name: Vec::new(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(b"[Characteristics/Integers]\ncCleanTankThreshold=100\n")
+                .unwrap(),
+        )),
+        name_id,
+        footprint: [1, 1, 1],
+        height: 0,
+    }
+}
+
+fn staff_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    for t in [kind_of("keeper", 9500), kind_of("animals", 5)] {
+        cat.push(t);
+    }
+    cat
+}
+
+/// Two pens, A round (10..12, 10..12) and B round (20..22, 10..12), with a gate on the north side
+/// of the middle tile each (outside tiles (11, 9) and (21, 9)); a zebra in each pen of `zebras`,
+/// and the unit `class` with id 1 standing at `at`.
+fn pens(zebras: &[char], class: &str, at: (i32, i32)) -> World {
+    let mut w = world_with((40, 30), |zoo| {
+        for (n, x) in [10, 20].into_iter().enumerate() {
+            fences(&mut zoo.entities, (x, 10), (x + 2, 12));
+            let gate = zoo.entities.iter_mut().find(|f| {
+                let c = f.common.as_ref().unwrap();
+                (c.x / 64, c.y / 64, c.rotation) == (x + 1, 10, 0) && f.class == "fences"
+            });
+            gate.unwrap().subtype = "g".into();
+            zoo.habitat_tiles.push((x, 10));
+            zoo.habitat_gates.push(((x + 1, 10), 0));
+            zoo.habitat_info.push(HabitatInfo {
+                name: format!("Pen {n}"),
+                stats: [0; 9],
+                created: 0,
+                viewing: 0,
+                serviced: 0,
+            });
+        }
+        for (n, &z) in zebras.iter().enumerate() {
+            let x = if z == 'a' { 11 } else { 21 };
+            zoo.entities
+                .push(entity("animals", "", 10 + n as u32, centre((x, 11)), 0));
+        }
+        if class == "tour" {
+            // A guide keeps to the paths.
+            paths(
+                &mut zoo.entities,
+                (9..=20).map(|y| (5, y)).chain((6..=22).map(|x| (x, 9))),
+            );
+        }
+        zoo.entities.push(entity(class, "", 1, centre(at), 2));
+    });
+    for n in 0..zebras.len() as u32 {
+        w.units.get_mut(10 + n).unwrap().part = Part::Animal(crate::animal::Animal::default());
+    }
+    w
+}
+
+fn gates(w: &World) -> Vec<usize> {
+    let ids: Vec<u32> = w.exhibits().list().iter().map(|x| x.id).collect();
+    ids.iter()
+        .map(|&x| crate::staff::service::gate_tiles(w, x).unwrap().1)
+        .collect()
+}
+
+/// The pens of `pens`: A holds the animal of the keeper, B holds none.
+#[test]
+fn a_keeper_without_assignments_strolls_to_the_gate_of_an_exhibit_he_may_serve() {
+    let cat = staff_catalogue();
+    let mut w = pens(&['a'], "keeper", (5, 20));
+    let (ok, after) = walk_in(&mut w, &cat, 1, 3);
+    let mut r = rng(3);
+    r.pick(1);
+    assert!(ok);
+    assert_eq!(after, r, "one draw");
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (11, 9))));
+    // Both hold an animal: one draw among the two, in the order of the exhibit list.
+    let mut w = pens(&['a', 'b'], "keeper", (5, 20));
+    let list = gates(&w);
+    for seed in 1..6 {
+        let mut w = pens(&['a', 'b'], "keeper", (5, 20));
+        let (_, after) = walk_in(&mut w, &cat, 1, seed);
+        let mut r = rng(seed);
+        let to = list[r.pick(2) as usize];
+        assert_eq!(after, r, "{seed}");
+        assert_eq!(goes_to(&w, 1), Some(to), "{seed}");
+    }
+    // His own list, when it has an exhibit, comes first: B has no animal and is taken.
+    let b = w.exhibits().region(tile_of(&w, (21, 11))).unwrap();
+    w.units.get_mut(1).unwrap().part = Part::Staff(Staff {
+        assigned: vec![b],
+        ..Staff::default()
+    });
+    walk_in(&mut w, &cat, 1, 3);
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (21, 9))));
+}
+
+#[test]
+fn a_keeper_with_no_exhibit_to_serve_or_on_the_gate_takes_the_ring() {
+    let cat = staff_catalogue();
+    // No animal: no candidate, no draw for the pick; the ring finds no path tile and sends him
+    // to the corner of its rectangle (two draws).
+    let mut w = pens(&[], "keeper", (5, 20));
+    let (_, after) = walk_in(&mut w, &cat, 1, 3);
+    let mut r = rng(3);
+    let (rx, ry) = (r.pick(5) as i32 + 2, r.pick(5) as i32 + 2);
+    assert_eq!(after, r);
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (5 + rx, 20 + ry))));
+    // On the gate tile of the only candidate: the draw, then the ring.
+    let mut w = pens(&['a'], "keeper", (11, 9));
+    let (_, after) = walk_in(&mut w, &cat, 1, 3);
+    let mut r = rng(3);
+    r.pick(1);
+    let (rx, ry) = (r.pick(5) as i32 + 2, r.pick(5) as i32 + 2);
+    assert_eq!(after, r);
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (11 + rx, 9 + ry))));
+}
+
+#[test]
+fn a_guide_strolls_to_the_gate_of_an_assigned_exhibit_else_of_one_holding_an_animal() {
+    let cat = staff_catalogue();
+    let mut w = pens(&['a'], "tour", (5, 20));
+    let (ok, after) = walk_in(&mut w, &cat, 1, 3);
+    let mut r = rng(3);
+    r.pick(1);
+    assert!(ok);
+    assert_eq!(after, r, "one draw");
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (11, 9))));
+    // Assigned: only that exhibit, animal or not.
+    let b = w.exhibits().region(tile_of(&w, (21, 11))).unwrap();
+    w.units.get_mut(1).unwrap().part = Part::Staff(Staff {
+        assigned: vec![b],
+        ..Staff::default()
+    });
+    w.units.get_mut(1).unwrap().path.clear();
+    walk_in(&mut w, &cat, 1, 3);
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (21, 9))));
+    // Without an animal and an assignment: the ring (the corner, two draws).
+    let mut w = pens(&[], "tour", (30, 20));
+    let (_, after) = walk_in(&mut w, &cat, 1, 3);
+    let mut r = rng(3);
+    let (rx, ry) = (r.pick(5) as i32 + 2, r.pick(5) as i32 + 2);
+    assert_eq!(after, r);
+    assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (30 + rx, 20 + ry))));
 }

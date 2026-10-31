@@ -80,7 +80,7 @@ impl Cx<'_, '_> {
         }
         self.unit.target = Target::Surface;
         self.unit.path.clear();
-        let found = walk::surface_walk(self.unit, self.world, self.ctx.rng, self.at);
+        let found = walk::surface_walk(self.unit, self.world, self.ctx.cat, self.ctx.rng, self.at);
         if let Some(to) = self.unit.sent.take() {
             return self.send_to(to);
         }

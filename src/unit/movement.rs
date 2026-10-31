@@ -18,6 +18,7 @@
 
 use super::{Kind, Part, Unit, swim};
 use crate::behaviour::{Data, Flow, Gait, Number, Target};
+use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::guest::ENERGY;
 use crate::path;
@@ -319,6 +320,7 @@ pub fn call(
     unit: &mut Unit,
     world: &mut World,
     data: &dyn Data,
+    cat: &Catalogue,
     rng: &mut Rng,
     at: usize,
     (gait, target): &(Gait, Target),
@@ -365,7 +367,7 @@ pub fn call(
             return Flow::Done;
         }
         unit.aborted = false;
-        if !super::walk::random_walk(unit, world, rng, at) {
+        if !super::walk::random_walk(unit, world, cat, rng, at) {
             return Flow::Failed;
         }
     }
