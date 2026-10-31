@@ -48,7 +48,9 @@ fn only_the_exact_text_of_the_right_class_runs_a_cheat() {
             app.guest_rename();
         }
         app.name_hook(Subject::Animal, "Zed Zed");
-        app.name_hook(Subject::Staff, "Zed Zed");
+        for staff in [Subject::Keeper, Subject::Worker, Subject::Guide] {
+            app.name_hook(staff, "Zed Zed");
+        }
         app.name_hook(Subject::Exhibit, "Zed Zed");
         assert_eq!(available(app, cat), NONE);
         app.name_hook(Subject::Guest, "Zed Zed");
@@ -77,6 +79,6 @@ fn without_a_game_or_a_field_the_hook_does_nothing() {
         assert_eq!(available(app, cat), NONE);
         app.game = None;
         app.name_hook(Subject::Guest, "Zed Zed");
-        app.entity_hook(Subject::Guest, 3402);
+        app.entity_hook(Subject::Guest, 3402, None);
     });
 }

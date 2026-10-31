@@ -804,6 +804,22 @@ fn a_deleted_stand_pushes_its_customer_out_to_an_entrance_after_it_has_been_paid
 }
 
 #[test]
+fn the_shop_income_cheat_doubles_what_a_customer_pays() {
+    for (on, paid) in [(false, 6.0), (true, 12.0)] {
+        let (cat, mut w, mut money) = (types(), zoo(), Money::default());
+        w.units.cheat.shop_income_double = on;
+        let mut s = game();
+        hungry(&mut w);
+        with_cx(&cat, &mut w, |cx| cx.seek("food"));
+        run(&mut s, &cat, &mut w, &mut money, 600, "buy");
+        w.units.concessions.clear();
+        delete(&mut w, &cat, 7);
+        assert_eq!(w.units.concessions, [paid], "{on}");
+        assert_eq!(w.units.buildings.get(&7).map(|b| b.income[0]), None);
+    }
+}
+
+#[test]
 fn a_deleted_restroom_shows_its_hidden_user_at_the_entrance_with_the_change_record() {
     let (cat, mut w, mut money) = (types(), zoo(), Money::default());
     let mut s = game();

@@ -735,6 +735,8 @@ pub struct Env {
     pub sick_near: u32,
     /// A keeper is at work in its exhibit.
     pub keeper_working: bool,
+    /// The breeding cheat is up and the species is one it works for (cheats 4.5).
+    pub boost: bool,
     /// Its subtype is `m` or `f` (an adult, animals-needs 11.2).
     pub adult: bool,
     /// Its subtype is `y` (it grows up, 12).
@@ -793,6 +795,8 @@ pub struct Out {
     /// of it goes too (animals-needs 11.2, 11.3).
     pub pair: Option<u32>,
     pub unpair: Option<u32>,
+    /// The breeding cheat was used by the roll: the flag goes down.
+    pub boost_used: bool,
     /// A young animal grows up.
     pub grow: bool,
     /// The water check asks for this terrain mode, and the draw that picks the tile it sends the
@@ -1337,6 +1341,9 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         food_task: matches!(task, 114 | 115),
         meal,
         sets,
+        boost: world.units.cheat.breeding_boost
+            && crate::place::bulldozer::type_of(ctx.cat, entity)
+                .is_some_and(|t| crate::cheat::BREEDERS.contains(&t.name_id)),
         adult: matches!(entity.subtype.as_str(), "m" | "f"),
         baby: entity.subtype == "y",
         male: entity.subtype == "m",
@@ -1415,6 +1422,9 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.units.tell(format!("shelter {id} {b}"));
     }
     breed::pair(world, id, &out);
+    if out.boost_used {
+        world.units.cheat.breeding_boost = false;
+    }
     for word in &out.log {
         world.units.tell(format!("{word} {id}"));
     }

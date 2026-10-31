@@ -559,8 +559,9 @@ impl Status {
     /// The new guest check (guests 3.1) with `occupied` true when an exhibit holds an animal (no
     /// animal is ever loose before M7): the price column is kept, the chance of the rating and
     /// the column decides with one draw (none when the chance is 0). Says whether a guest is to
-    /// be created and whether the creation posts the advice about the fee.
-    pub fn new_guest_check(&mut self, occupied: bool, rng: &mut Rng) -> Option<bool> {
+    /// be created and whether the creation posts the advice about the fee. `bonus` is added to the
+    /// rating (the effective rating, zoo status 8).
+    pub fn new_guest_check(&mut self, occupied: bool, bonus: i32, rng: &mut Rng) -> Option<bool> {
         self.timers[2] = 0;
         if !occupied {
             return None;
@@ -577,7 +578,7 @@ impl Status {
             [(0, false), (1, false), (3, false), (3, false), (4, true)],
             [(0, false), (0, false), (1, false), (2, false), (3, false)],
         ];
-        let row = match self.rating {
+        let row = match self.rating.saturating_add(bonus) {
             81.. => 0,
             60..=80 => 1,
             30..=59 => 2,

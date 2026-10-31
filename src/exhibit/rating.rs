@@ -1401,7 +1401,9 @@ fn water(t: Tank) -> Water {
 fn animals_on(world: &World, catalogue: &Catalogue, order: &[usize]) -> (Vec<Likes>, Vec<usize>) {
     let (mut species, mut animals): (Vec<Likes>, Vec<usize>) = (Vec::new(), Vec::new());
     for (_, ty) in animals_at(world, catalogue, order) {
-        let likes = Likes::of(ty);
+        let mut likes = Likes::of(ty);
+        // The bears' cheat gives the grizzly a bash strength (cheats 4.1).
+        likes.bash |= world.units.cheat.bears_bash && likes.ids[0] == crate::cheat::GRIZZLY;
         let at = (species.iter())
             .position(|s| (&s.key, &s.subtype) == (&likes.key, &likes.subtype))
             .unwrap_or_else(|| {
