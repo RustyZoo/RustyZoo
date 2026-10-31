@@ -514,6 +514,27 @@ pub struct Goals {
     pub wandered: bool,
 }
 
+impl Goals {
+    /// A load (behaviours 4.7): from version 72 the object whose number the file holds as active is
+    /// built, and marked neither stale nor to be initialised, when it is the record's task (or job).
+    /// Any other case leaves the object to be built, init included, at the first update.
+    pub(crate) fn built(&mut self, kind: Kind, active: i32, active_sub: i32) {
+        let r = &self.record;
+        if active == i32::from(r.task) {
+            (self.object, self.stale) = (Goal::build(r.task, kind), false);
+        }
+        if active_sub == i32::from(r.job) {
+            (self.sub, self.sub_stale) = (Sub::build(r.job, kind), false);
+        }
+    }
+
+    /// Whether the goal object and the job object exist.
+    #[cfg(test)]
+    pub(crate) fn built_pair(&self) -> (bool, bool) {
+        (self.object.is_some(), self.sub.is_some())
+    }
+}
+
 /// What a goal update works on: the unit taken out of the table for its turn, the world, the
 /// managers' context, the unit's place in the entity list and the data of the sets.
 pub struct Cx<'a, 'c> {

@@ -1,13 +1,13 @@
 //! The units of a zoo just loaded go on with their saved behaviour set (behaviours 4.7): a mover,
 //! a sleeper, a member of staff, whatever it was doing. A unit that was entering, using or leaving
 //! a building that is gone is stopped instead. The saved path and pending set name come back with
-//! the set, so a restored move call walks on, and so do the goal's task, target and 3D target
-//! name, whatever the task (behaviours 4.7).
+//! the set, so a restored move call walks on, and so do the goal record (task, job, targets, done flags,
+//! start, duration) and the 3D target name, whatever the task (behaviours 4.7).
 
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, Record, USE, active_goal, stop_use};
 use crate::unit::Unit;
 use crate::world::World;
-use crate::zoo::UnitBlock;
+use crate::zoo::{Target, UnitBlock};
 
 /// Whether a building stands on tile `t`: one of its quarters holds it, or it is anchored there.
 fn building_on(world: &World, t: usize) -> bool {
@@ -54,30 +54,49 @@ pub fn keep_pending(unit: &mut Unit, name: &str) {
     }
 }
 
-/// The goal of unit `id` as saved: its task, its target `aim` (a position, none when below 0) and
-/// the 3D target `name` the unit's move calls compare. A task that has no goal object for the
-/// kind of unit is not restored (the save writes none for it, save games S7): the unit keeps
-/// the goal it has.
-fn goal_back(world: &mut World, id: u32, now: u32, task: u8, aim: [i32; 3], name: &str) {
-    let [x, y, z] = aim;
-    let pos = (x >= 0 && y >= 0).then_some((x, y, z));
+/// The goal record of unit `id` as saved (`block`, zoo format 6.14): task and job with their targets
+/// and done flags, start and duration, and the 3D target `name` the unit's move calls compare.
+/// From version 72 the goal and job objects the file holds are built and not initialised again
+/// ([`crate::goal::Goals::built`], behaviours 4.7). A task that has no goal object for the kind of
+/// unit is not restored (the save writes none for it, save games S7): the unit keeps the goal it
+/// has.
+fn goal_back(world: &mut World, id: u32, now: u32, block: &Target, version: u32, name: &str) {
     let Some(kind) = world.units.get(id).map(|u| u.kind) else {
+        return;
+    };
+    let Ok(task) = u8::try_from(block.goal) else {
         return;
     };
     if active_goal(task, kind) < 0 {
         return;
     }
+    let pos = |p: [i32; 3]| (p[0] >= 0 && p[1] >= 0).then_some((p[0], p[1], p[2]));
+    let (start, duration) = if version >= 53 {
+        (block.extra[0], block.extra[1])
+    } else {
+        (now, 0)
+    };
     let mut record = Record {
         task,
         mode: 1,
-        start: now,
+        job: u8::try_from(block.sub_goal).unwrap_or(0),
+        start,
+        duration,
+        done: block.bytes[0] != 0,
+        job_done: block.bytes[1] != 0,
         ..Record::default()
     };
-    record.target.set_pos(world, pos);
+    record.target.id = block.words[0];
+    record.target.set_pos(world, pos(block.target));
+    record.job_target.id = block.words[1];
+    record.job_target.set_pos(world, pos(block.sub_target));
     let Some(unit) = world.units.get_mut(id) else {
         return;
     };
     unit.goal.record = record;
+    if version >= 72 {
+        unit.goal.built(kind, block.active, block.active_sub);
+    }
     unit.target = crate::behaviour::target(name);
 }
 
@@ -96,7 +115,7 @@ pub fn load(world: &mut World, now: u32) {
         };
         let (id, set, tile) = (c.id, block.behaviour.clone(), block.building);
         let (way, pending) = (saved_way(world, block), block.pending.clone());
-        let (aim, name) = (block.target.target, block.text.clone());
+        let (goal, name) = (block.target.clone(), block.text.clone());
         let task = u8::try_from(block.target.active).ok();
         let inside = task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
         let here = tile
@@ -118,9 +137,7 @@ pub fn load(world: &mut World, now: u32) {
             unit.runner.restore(&set);
             (unit.path, unit.levels, unit.destination) = way;
             keep_pending(unit, &pending);
-            if let Some(task) = task {
-                goal_back(world, id, now, task, aim, &name);
-            }
+            goal_back(world, id, now, &goal, world.zoo.version, &name);
         }
     }
 }
@@ -215,14 +232,6 @@ mod tests {
         pending: &str,
         (task, aim, name): (i32, [i32; 3], &str),
     ) -> World {
-        let mut w = world_with((12, 4), |zoo| {
-            zoo.version = version;
-            zoo.entities
-                .push(entity("keeper", "x", 1, centre((1, 1)), 0));
-        });
-        if task != 1 {
-            crate::goal::quiet(&mut w);
-        }
         let end = records.last().map_or([-1; 3], |r| {
             [r[0] as i32 * 64 + 32, r[1] as i32 * 64 + 32, 0]
         });
@@ -233,8 +242,20 @@ mod tests {
             text: name.into(),
             ..Default::default()
         };
-        block.target.active = task;
+        (block.target.goal, block.target.active) = (task, task);
         block.target.target = aim;
+        saved_block_in(version, block)
+    }
+
+    /// A keeper at tile (1, 1) saved with `block`, in a file of version `version`; `resume::load`
+    /// has run.
+    fn saved_block_in(version: u32, mut block: UnitBlock) -> World {
+        let mut w = world_with((12, 4), |zoo| {
+            zoo.version = version;
+            zoo.entities
+                .push(entity("keeper", "x", 1, centre((1, 1)), 0));
+        });
+        crate::goal::quiet(&mut w);
         block.behaviour.levels[0] = Level {
             name: "bWalk".into(),
             list_b: vec!["fWalk(0,0)".into()],
@@ -354,6 +375,72 @@ mod tests {
         assert_eq!(w.units.get(1).unwrap().goal.record.target.tile, None);
     }
 
+    /// The target block of a keeper saved in task `goal` and job `sub_goal`, with these active numbers.
+    fn job_block(goal: i32, sub_goal: i32, active: (i32, i32)) -> UnitBlock {
+        let mut block = UnitBlock::default();
+        let t = &mut block.target;
+        (t.goal, t.sub_goal, t.active, t.active_sub) = (goal, sub_goal, active.0, active.1);
+        t.words = [7, 9];
+        (t.target, t.sub_target) = ([3 * 64, 64, 16], [2 * 64, 2 * 64, 0]);
+        (t.bytes, t.extra) = ([1, 1], [40, 12]);
+        block
+    }
+
+    #[test]
+    fn a_unit_saved_in_a_job_has_the_whole_record_back() {
+        let w = saved_block_in(104, job_block(110, 5, (110, 5)));
+        let r = &w.units.get(1).unwrap().goal.record;
+        assert_eq!((r.task, r.job, r.done, r.job_done), (110, 5, true, true));
+        assert_eq!(
+            (r.target.id, r.job_target.id, r.start, r.duration),
+            (7, 9, 40, 12)
+        );
+        assert_eq!(r.target.tile, w.tile_index(3, 1));
+        assert_eq!(r.job_target.tile, w.tile_index(2, 2));
+        // Done flags down and no target; a file before version 53 has no start and no duration.
+        let mut block = job_block(110, 5, (110, 5));
+        (block.target.bytes, block.target.target) = ([0, 0], [-1; 3]);
+        let w = saved_block_in(52, block);
+        let r = &w.units.get(1).unwrap().goal.record;
+        assert_eq!((r.done, r.job_done, r.target.tile), (false, false, None));
+        assert_eq!((r.start, r.duration), (0, 0));
+    }
+
+    #[test]
+    fn a_job_number_that_is_no_job_is_no_job_and_a_task_with_no_goal_keeps_the_unit_as_it_is() {
+        for job in [-1, 256, i32::MIN, i32::MAX] {
+            let w = saved_block_in(104, job_block(110, job, (110, job)));
+            let r = &w.units.get(1).unwrap().goal.record;
+            assert_eq!((r.task, r.job), (110, 0), "{job}");
+        }
+        // The record is the wanted task: an active goal that differs does not change it.
+        let w = saved_block_in(104, job_block(0, 0, (110, 5)));
+        assert_eq!(w.units.get(1).unwrap().goal.record.task, 0);
+        for task in [118, -1, 1000, i32::MIN] {
+            let w = saved_block_in(104, job_block(task, 5, (task, 5)));
+            assert_eq!(w.units.get(1).unwrap().goal.record.job, 0, "{task}");
+        }
+    }
+
+    #[test]
+    fn the_objects_are_built_from_version_72_when_the_active_numbers_match_the_record() {
+        // Which of the two objects the load built: the goal's, the job's.
+        let built = |version, active| {
+            let w = saved_block_in(version, job_block(110, 2, active));
+            w.units.get(1).unwrap().goal.built_pair()
+        };
+        assert_eq!(built(104, (110, 2)), (true, true));
+        assert_eq!(built(72, (110, 2)), (true, true));
+        assert_eq!(built(71, (110, 2)), (false, false));
+        // Only the job object differs: the goal object stays built (the original's slip is not kept).
+        assert_eq!(built(104, (110, 1)), (true, false));
+        assert_eq!(built(104, (110, -1)), (true, false));
+        assert_eq!(built(104, (109, 2)), (false, true));
+        for active in [(-1, -1), (0, 0), (i32::MIN, i32::MAX), (110 + 256, 2 + 256)] {
+            assert_eq!(built(104, active), (false, false), "{active:?}");
+        }
+    }
+
     #[test]
     fn a_unit_saved_with_the_plain_move_goal_walks_its_path_on() {
         // The goal's first update leaves the path (a target and a path): the unit goes on along
@@ -366,7 +453,8 @@ mod tests {
     }
 
     /// The units of the shipped games saved with a goal other than the plain move, a target and
-    /// a path have that task and target back after a load (behaviours 4.7).
+    /// a path have that task and target back after a load, and the units saved in a job have it
+    /// back (behaviours 4.7).
     #[test]
     #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
     fn the_units_of_the_game_saved_in_another_task_have_their_goal_back() {
@@ -375,7 +463,7 @@ mod tests {
         let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
         let cat = crate::entity::Catalogue::load(&vfs).unwrap();
         let renderer = crate::render::MapRenderer::new(&vfs, &cat);
-        let (mut checked, mut kinds) = (0, std::collections::BTreeSet::new());
+        let (mut checked, mut jobs, mut kinds) = (0, 0, std::collections::BTreeSet::new());
         for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
             let Ok((zoo, _)) = crate::zoo::Zoo::parse_money(&vfs.read(member).unwrap())
                 .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
@@ -386,19 +474,20 @@ mod tests {
                 .filter_map(|e| {
                     let c = e.common.as_ref()?;
                     let b = c.unit.as_deref()?;
-                    let task = u8::try_from(b.target.active).ok()?;
+                    let task = u8::try_from(b.target.goal).ok()?;
                     let off =
                         [ENTER_BUILDING, EXIT_BUILDING, USE, crate::goal::RANDOM].contains(&task);
                     let [x, y, _] = b.target.target.map(|n| n.div_euclid(64));
-                    (!off && !b.records.is_empty() && b.target.target[0] >= 0).then_some((
-                        c.id,
-                        task,
-                        (x, y),
-                    ))
+                    let job = u8::try_from(b.target.sub_goal).ok()?;
+                    let aimed = !off && !b.records.is_empty() && b.target.target[0] >= 0;
+                    (aimed || job != 0).then_some((c.id, task, job, aimed.then_some((x, y))))
                 })
                 .collect();
             // A file whose tasks all came up already adds nothing (a load takes seconds).
-            if saved.iter().all(|(_, t, _)| kinds.contains(t)) {
+            if saved
+                .iter()
+                .all(|(_, t, j, _)| kinds.contains(t) && *j == 0)
+            {
                 continue;
             }
             let mut world = World::new(zoo, |e| renderer.shape(e));
@@ -408,8 +497,7 @@ mod tests {
             world.units.set_period(sim.ai.status_period);
             world.units.class = Class::load(&vfs);
             sim.load(&mut world, &cat);
-            for (id, task, (x, y)) in saved {
-                let tile = world.tile_index(x, y);
+            for (id, task, job, aim) in saved {
                 let Some(u) = world.units.get(id) else {
                     continue;
                 };
@@ -417,16 +505,21 @@ mod tests {
                     continue;
                 }
                 assert_eq!(u.goal.record.task, task, "{member} unit {id}");
-                assert_eq!(u.goal.record.target.tile, tile, "{member} unit {id}");
+                assert_eq!(u.goal.record.job, job, "{member} unit {id}");
+                jobs += usize::from(job != 0);
+                if let Some((x, y)) = aim {
+                    let tile = world.tile_index(x, y);
+                    assert_eq!(u.goal.record.target.tile, tile, "{member} unit {id}");
+                }
                 checked += 1;
                 kinds.insert(task);
             }
         }
         // The tasks that both the English and the French install hold (the French one lacks 122).
-        let held = [100, 101, 102, 103, 113, 114, 118, 124, 128];
+        let held = [101, 102, 103, 113, 114, 118, 124, 128];
         assert!(
-            checked >= 100 && held.iter().all(|t| kinds.contains(t)),
-            "{checked} {kinds:?}"
+            checked >= 100 && jobs >= 5 && held.iter().all(|t| kinds.contains(t)),
+            "{checked} {jobs} {kinds:?}"
         );
     }
 
@@ -452,6 +545,38 @@ mod tests {
             .unit
             .clone()
             .unwrap()
+    }
+
+    #[test]
+    fn a_save_writes_the_whole_record_and_a_load_gives_it_back() {
+        let mut w = walking(104, Vec::new(), "");
+        let u = w.units.get_mut(1).unwrap();
+        u.typed = true;
+        let (target, job) = (w.tile_index(3, 1), w.tile_index(2, 2));
+        let u = w.units.get_mut(1).unwrap();
+        let r = &mut u.goal.record;
+        (r.task, r.job, r.done, r.job_done, r.start, r.duration) = (110, 5, true, false, 40, 12);
+        (r.target.id, r.job_target.id) = (7, 9);
+        r.target.pos = target.map(|_| (3 * 64, 64, 16));
+        r.job_target.pos = job.map(|_| (2 * 64, 2 * 64, 0));
+        let before = r.clone();
+        let b = saved_block(&w);
+        let t = &b.target;
+        assert_eq!(
+            (t.goal, t.sub_goal, t.active, t.active_sub),
+            (110, 5, 110, 5)
+        );
+        assert_eq!((t.words, t.bytes, t.extra), ([7, 9], [1, 0], [40, 12]));
+        assert_eq!((t.target, t.sub_target), ([192, 64, 16], [128, 128, 0]));
+        let back = saved_block_in(104, b);
+        let r = &back.units.get(1).unwrap().goal.record;
+        assert_eq!((r.task, r.job, r.done, r.job_done), (110, 5, true, false));
+        assert_eq!(
+            (r.start, r.duration, r.target.id, r.job_target.id),
+            (40, 12, 7, 9)
+        );
+        assert_eq!((r.target.tile, r.job_target.tile), (target, job));
+        assert_eq!(r.target.pos, before.target.pos);
     }
 
     #[test]

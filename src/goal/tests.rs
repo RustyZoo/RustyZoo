@@ -182,6 +182,53 @@ fn the_factory_builds_the_base_goal_outside_the_table_and_nothing_for_tasks_not_
     assert_eq!(Goal::build(134, Kind::Guest), None, "returnfromshow, later");
 }
 
+/// A unit of `class` whose record has the task and job, loaded with these active numbers, after one
+/// step: the unit.
+fn loaded_goal(class: &str, task: u8, job: u8, active: (i32, i32)) -> World {
+    let mut w = map(class);
+    let u = w.units.get_mut(1).unwrap();
+    (u.goal.record.task, u.goal.record.job) = (task, job);
+    u.goal.built(u.kind, active.0, active.1);
+    sim().step(&mut w, 67, |_, _, _| {});
+    w
+}
+
+#[test]
+fn a_built_goal_object_is_not_initialised_and_any_other_case_is() {
+    // A guest's gawk finds no viewing area: its init fails and clears the record.
+    let w = loaded_goal("guests", GAWK, 0, (112, 0));
+    assert_eq!(
+        (unit(&w).goal.record.task, unit(&w).goal.object),
+        (GAWK, Some(Goal::Gawk))
+    );
+    for active in [-1, 0, 113, i32::MIN, i32::MAX, 112 + 256] {
+        let w = loaded_goal("guests", GAWK, 0, (active, 0));
+        assert_eq!(unit(&w).goal.record.task, NONE, "{active}");
+    }
+}
+
+#[test]
+fn a_built_job_object_is_not_initialised_and_any_other_case_is() {
+    // A keeper's job of putting food without a target is refused by its init and cleared (its
+    // object goes); a built one is updated at once, whatever the update then does with the job.
+    // Task 134 has no goal object, so only the job is at play.
+    let w = loaded_goal("keeper", 134, 2, (134, 2));
+    assert_eq!(unit(&w).goal.sub, Some(Sub::Keeper(2)));
+    for active_sub in [-1, 0, 1, i32::MIN, i32::MAX, 2 + 256] {
+        let w = loaded_goal("keeper", 134, 2, (134, active_sub));
+        assert_eq!(unit(&w).goal.sub, None, "{active_sub}");
+        assert_eq!(unit(&w).goal.record.job, 0, "{active_sub}");
+    }
+    // The original marks the goal object stale when only the job object differs; the engine does not.
+    let mut g = Goals::default();
+    (g.record.task, g.record.job) = (DUTIES, 2);
+    g.built(Kind::Keeper, i32::from(DUTIES), -1);
+    assert_eq!(
+        (g.object, g.stale, g.sub),
+        (Some(Goal::Duties), false, None)
+    );
+}
+
 #[test]
 fn a_duration_is_over_with_strictly_more_ticks_than_it_says() {
     let r = Record {

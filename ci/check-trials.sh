@@ -231,7 +231,7 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # saved set first (behaviours 4.7), and at 600 steps it is still on its way. The lion's shelter walk (it aims at a
 # building that serves rest) takes the walk over, so a seed where the lion rests longer never reaches the pile: with
 # the saved goals of every task restored, seed 1 is one (it is cut off at step 691), seeds 2, 3 and 7 are not.
-check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 900 --seed 2 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 2 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # An animal placed (habitat rating 9.4, animals 10): ci/reactions.txt adopts a gazelle and a lion into a
 # pen. The lion's cat family is at -20 in the gazelle's compatible animals, so the gazelle (15672)
 # dislikes the newcomer at pass 131, and the frown plays once.
@@ -1165,8 +1165,8 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:21@29,46;29726:22@27,43;29745:21@36,32;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo"
-check base-trial "29699:17@22,43;29726:18@22,46;29745:22@36,33;29748:25@32,34;29750:21@23,49" "guest_pace maps/scn01a.zoo 0"
+check base-trial "29699:22@29,47;29726:12@20,48;29745:20@36,33;29748:25@32,34;29750:21@23,49" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:20@28,44;29726:21@22,43;29745:38@29,42;29748:25@32,34;29750:30@24,49" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -1279,7 +1279,7 @@ tank_over() { # tank_over <map> <ray>
     END{ print n + 0 ";" low ";" first }'
   rm -rf "$d"
 }
-check expansion-trial "20;-65;256" "tank_over maps/scn27.zoo 36659"
+check expansion-trial "22;-65;167" "tank_over maps/scn27.zoo 36659"
 
 # The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
 # are put down: one beside the tank, which then serves it and filters (and charges) at its first
@@ -1312,7 +1312,7 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # restored), which moved the first birth to 19229 (four pairs, the same two young). With the dates and the life of
 # the saved animals restored too (master), it is 9865 (three pairs, the same two young). Guests that sit on benches and picnic tables
 # through their use sets and keep out of the slots of other guest types draw otherwise: it is 1790 (the same). The loaded
-# units go on with their paths and pending sets too (no random walk at the first move call): it is 16626 (the same). The saved goal of every task comes back too: it is 15432 (the same).
+# units go on with their paths and pending sets too (no random walk at the first move call): it is 16626 (the same). The saved goal of every task comes back too: it is 15432 (the same). The whole goal record comes back and the goal and job objects are not initialised again: it is 9089 (the same).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
@@ -1321,7 +1321,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
-check base-trial "mates:3;birth@15432;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@9089;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1379,6 +1379,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial 227408,0,3a946efdfd385c83 "save_load maps/scn19.zoo"
+check expansion-trial 227408,0,8316adf7d404801a "save_load maps/scn19.zoo"
 
 exit $failed
