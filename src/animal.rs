@@ -1240,12 +1240,12 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     animal.restore(&saved, &k, &world.units.class);
     // What the saved unit was doing: the active goal (its set is taken by `unit::resume`).
     let block = entity.common.as_ref().and_then(|c| c.unit.as_ref());
-    // A drink only goes on in its goal: without it the flag would hold the ladder for good.
-    let drink = block.is_some_and(|b| b.target.active == i32::from(crate::goal::DRINK));
-    animal.drinking &= drink;
+    // The drink task is the wanted goal's (behaviours 4.7); a drinking flag saved outside it stays
+    // up until the hunger check that finds food lowers it (animals-needs 6.1).
+    let drink = block.is_some_and(|b| b.target.goal == i32::from(crate::goal::DRINK));
     let now = world.units.ai_ticks;
     if let Some(unit) = world.units.get_mut(id) {
-        if animal.drinking {
+        if animal.drinking && drink {
             let task = crate::goal::Record {
                 task: crate::goal::DRINK,
                 mode: 1,
