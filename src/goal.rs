@@ -784,15 +784,21 @@ impl Cx<'_, '_> {
         self.clear_target();
         match &mut self.unit.part {
             Part::Guest(g) => g.stand = false,
-            // An animal's reset lowers its need flags too (12.1, animals 9.2); the afraid, playing,
-            // prey and chase-partner ones belong to M7.
-            Part::Animal(a) => (a.drinking, a.wants_food, a.thirsty) = (false, false, false),
+            // An animal's reset lowers its need flags too and ends its escape walk (12.1, animals
+            // 9.2, 11.3); the afraid, playing, prey and chase-partner ones belong to M7.
+            Part::Animal(a) => {
+                (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None)
+            }
             _ => {}
         }
     }
 
-    /// 12.3: empties the path and invalidates the targets; the task stays.
+    /// 12.3: empties the path and invalidates the targets; the task stays. An animal's escape walk
+    /// ends (animals 11.3).
     pub fn abort(&mut self) {
+        if let Part::Animal(a) = &mut self.unit.part {
+            a.walk = None;
+        }
         self.unit.path.clear();
         self.record().target.clear();
         self.record().job_target.clear();
@@ -1006,8 +1012,15 @@ impl Cx<'_, '_> {
     }
 
     /// 7.2: the unit reached its target, which is cleared; a wander is done when the top set has
-    /// fewer than two calls left. With more the task stays and the decide draws a new place.
+    /// fewer than two calls left. With more the task stays and the decide draws a new place. An
+    /// animal's escape walk decides nothing here; it ends on its last tile (animals 11.3).
     fn check_done(&mut self) {
+        let here = self.tile();
+        if self.record().task == RANDOM
+            && crate::animal::escape::walk_done(self.unit, self.world, here)
+        {
+            return;
+        }
         if self.reached(false) {
             self.record().target.clear();
             if self.calls_left() < 2 && self.record().task == RANDOM {
@@ -1047,6 +1060,19 @@ impl Cx<'_, '_> {
             if let Some(dest) = self.unit.destination {
                 let world = &*self.world;
                 self.unit.goal.record.target.set_pos(world, Some(dest));
+            }
+            // On an escape walk it runs (goals 7.2, animals 11.3); with neither set the walk ends.
+            let escaping = matches!(&self.unit.part, Part::Animal(a) if a.walk.is_some());
+            let run = |cx: &mut Self, set| {
+                let can = !cx.unit.suspended() && cx.unit.destination.is_some();
+                can && cx.start_with(set, false, true)
+            };
+            if escaping
+                && !run(self, "bRun")
+                && !run(self, "bRunFromPredator")
+                && let Part::Animal(a) = &mut self.unit.part
+            {
+                a.walk = None;
             }
         } else {
             self.start_walk(false, job, true);
