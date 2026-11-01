@@ -310,6 +310,9 @@ impl App<'_> {
         };
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         if ui.shown(LAYOUT) && game.panel.clock.due(now, ticking, exhibit::PERIOD) {
+            if let Some(x) = game.panel.current {
+                exhibit::sort_animals(&mut game.world, cat, x, &mut self.sim.rng);
+            }
             let lines = game.panel.refresh(ui, &game.world, cat, vfs);
             self.panel_lines.extend(lines);
         }
