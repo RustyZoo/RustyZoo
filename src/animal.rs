@@ -358,6 +358,7 @@ keys! {
     underwater_needed: "cUnderwaterNeeded" = 10,
     land_needed: "cLandNeeded" = 1,
     lays_eggs: "cLaysEggs" = 0,
+    stay_sick: "cStaySick" = 0,
     time_to_hatch: "cTimeToHatch" = 0,
     min_hatch_hits: "cMinHatchHits" = 0,
 }
