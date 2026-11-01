@@ -199,8 +199,9 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
     } else {
         r.put(&[0; 4]);
     }
+    let mut members = Vec::new();
     if v >= 75 {
-        r.skip_list(4)?;
+        members = (0..r.count(4)?).map(|_| r.u32()).collect::<R<_>>()?;
     } else {
         r.put(&[0; 4]);
     }
@@ -214,6 +215,7 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
         users_now,
         fill,
         built,
+        members,
     })
 }
 

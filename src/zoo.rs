@@ -244,7 +244,7 @@ impl Eq for Kept {}
 /// guests and the income this month, last month and since construction, the upkeep paid since
 /// construction (from version 68), the price, the users as (unit id, slot) pairs in entering
 /// order, the count of users (the stored one, or the number of pairs if that is more), the trash
-/// can's fill and the construction date (a file time).
+/// can's fill, the construction date (a file time) and the members (unit ids, from version 75).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildingRecord {
     pub guests: [u32; 3],
@@ -259,6 +259,7 @@ pub struct BuildingRecord {
     pub users_now: u32,
     pub fill: u32,
     pub built: u64,
+    pub members: Vec<u32>,
 }
 
 /// The milliseconds between two checks of a filter's period (tank staff 7.3 point 6).

@@ -20,7 +20,7 @@ pub mod unit;
 use crate::build::{cost, number};
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
-use crate::money::{CONSTRUCTION, Money, Symbol};
+use crate::money::{CONSTRUCTION, KEEPER_WAGES, Money, Symbol};
 use crate::render::order::{Kind, ground_height};
 use crate::render::{Extra, Ghost};
 use crate::research::Overlay;
@@ -972,11 +972,12 @@ pub enum Outcome {
 }
 
 /// Releases the button over the pending object (placing 6.1): a valid place is paid with the cash
-/// and gets the object, booked as construction; one the cash does not cover shows the message of
-/// insufficient funds, an invalid one its stored message, or else, when the type only lives in
-/// water and its own tile is not water, the water message (the second look of 5.1). Scenery,
-/// buildings, paths and fences are placed here: a path on water paints its tile first, one on a
-/// path and a fence on a held slot take the old piece's place (placing 5.3, 6.3).
+/// and gets the object, booked as construction (the DRT base in keeper wages, with no undo); one
+/// the cash does not cover shows the message of insufficient funds, an invalid one its stored
+/// message, or else, when the type only lives in water and its own tile is not water, the water
+/// message (the second look of 5.1). Scenery, buildings, paths and fences are placed here: a path
+/// on water paints its tile first, one on a path and a fence on a held slot take the old piece's
+/// place (placing 5.3, 6.3).
 /// `shape` tells how the new entity takes its place, `water` which terrain types are water and
 /// `colors` the colour choices a new building starts with.
 pub fn place(
@@ -1038,7 +1039,15 @@ pub fn place(
             if !quiet {
                 world.priced(p.price - paint);
             }
-            money.charge(CONSTRUCTION, p.price);
+            // The DRT base is booked in keeper wages and clears the undo list (unit placing 7.1).
+            let category = match crate::build::drt_base(ty) {
+                true => {
+                    world.clear_undo();
+                    KEEPER_WAGES
+                }
+                false => CONSTRUCTION,
+            };
+            money.charge(category, p.price);
             Outcome::Placed(id)
         }
         None => Outcome::Refused(None),

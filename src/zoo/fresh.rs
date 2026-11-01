@@ -124,6 +124,7 @@ pub(crate) fn building_new(price: f32, now: u64) -> BuildingRecord {
         users_now: 0,
         fill: 0,
         built: now,
+        members: Vec::new(),
     }
 }
 
@@ -144,9 +145,10 @@ fn building(o: &mut Out, b: &BuildingRecord) {
     }
     o.bytes(&b.built.to_le_bytes());
     o.u32(b.upkeep.unwrap_or(0));
-    // The index of the current upgrade and the empty list of members.
+    // The index of the current upgrade and the members.
     o.u32(b.upgrade);
-    o.u32(0);
+    o.u32(b.members.len() as u32);
+    b.members.iter().for_each(|&m| o.u32(m));
 }
 
 /// Writes the index of the current upgrade into the building fields `post` of version 106 (they

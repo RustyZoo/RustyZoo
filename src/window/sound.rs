@@ -204,6 +204,10 @@ impl Sound {
             return Vec::new();
         };
         let mut lines = Vec::new();
+        // A rubble voice is its piece's: it goes when it has played out.
+        self.units.retain(|k, v| {
+            !k.starts_with("rubble/") || v.queued_bytes().is_ok_and(|bytes| bytes > 0)
+        });
         for s in app.unit_sounds() {
             let sum = (self.click_sum.saturating_add(s.base)).saturating_add(s.distance);
             let what = if let Some(voice) = self.units.get(&s.voice)
