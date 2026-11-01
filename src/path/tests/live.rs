@@ -287,6 +287,13 @@ fn a_guest_avoiding_a_predator_pays_the_emergency_cost_and_leaves_the_paths() {
         ..fleeing
     };
     assert_eq!(terrain(&w, &slow, t((1, 2)), None), 7);
+    // An afraid guest on its way out keeps the emergency cost.
+    let out = Mover {
+        leaving: true,
+        emergency: true,
+        ..slow
+    };
+    assert_eq!(terrain(&w, &out, t((1, 2)), None), 1);
 }
 
 #[test]

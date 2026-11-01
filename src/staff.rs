@@ -1,7 +1,7 @@
 //! Staff (staff 3 to 5): the types the Hire panel lists, what hiring books and where, the monthly
 //! cost, and the colours and counters a new staff member draws when it is created (the pending one
 //! when an item of the Hire panel is chosen, the staff of a loaded map at the load); a keeper's
-//! status tick and what leaving does to the exhibit he was going to.
+//! status tick (with the look for a predator) and what leaving does to the exhibit he was going to.
 //!
 //! The keeper class (the zookeeper, the scientist and the marine specialist), the tour guide and
 //! the maintenance worker are staff; the helicopter comes with the scenarios.
@@ -230,22 +230,37 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     }
 }
 
-/// A staff member's status tick: a guide's gathering countdown (tour guide 4); a keeper's
-/// assigned exhibits with fewer than 2 tiles go (staff 4.2).
+/// A staff member's status tick (staff 4.2): a keeper's assigned exhibits with fewer than 2 tiles
+/// go; then every member's chase counter, which looks for a predator when it fires (unless he
+/// avoids one already) and raises or lowers his frightened flag; then a guide's gathering
+/// countdown (tour guide 4).
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
-    if unit.kind == Kind::Guide {
-        return crate::goal::crowd(unit, world, ctx, at, data);
-    }
     let Part::Staff(s) = &unit.part else {
         return;
     };
     let who = type_of(ctx.cat, &world.zoo.entities[at]);
-    let small = |x: &u32| {
-        who.is_some_and(|w| assign::block_service(world, ctx.cat, *x, w, (false, false)) == 1)
-    };
-    let kept: Vec<u32> = s.assigned.iter().copied().filter(|x| !small(x)).collect();
-    if let (true, Part::Staff(s)) = (unit.kind == Kind::Keeper, &mut unit.part) {
-        s.assigned = kept;
+    if unit.kind == Kind::Keeper {
+        let small = |x: &u32| {
+            who.is_some_and(|w| assign::block_service(world, ctx.cat, *x, w, (false, false)) == 1)
+        };
+        let kept: Vec<u32> = s.assigned.iter().copied().filter(|x| !small(x)).collect();
+        if let Part::Staff(s) = &mut unit.part {
+            s.assigned = kept;
+        }
+    }
+    let period = who
+        .and_then(|t| number(t, "cChaseCheck"))
+        .map_or(2, |n| n as i32);
+    if let Part::Staff(s) = &mut unit.part {
+        let fired = s.chase == 0;
+        s.chase = if fired { period } else { s.chase }.wrapping_sub(1);
+        if fired && unit.goal.record.task != crate::goal::AVOID {
+            let (cat, removed) = (ctx.cat, &*ctx.removals);
+            unit.frightened = crate::unit::predator::find(world, cat, removed, unit, at, 0) != 0;
+        }
+    }
+    if unit.kind == Kind::Guide {
+        crate::goal::crowd(unit, world, ctx, at, data);
     }
 }
 

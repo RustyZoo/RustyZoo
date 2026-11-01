@@ -113,6 +113,8 @@ pub struct Keys {
     pub max_energy: i32,
     pub periods: [i32; PERIODS.len()],
     pub saw_animal_reset: i32,
+    /// `cEscapedAnimalChange`: the happiness a fright costs (6.2).
+    pub escaped_change: i32,
     /// `cRandomStatNth` and the start ranges of hunger, thirst, energy and bathroom.
     pub random_nth: i32,
     pub random: [(i32, i32); 4],
@@ -198,6 +200,7 @@ impl Keys {
             max_energy: int("cMaxEnergy", 100),
             periods: PERIODS.map(|(key, period)| int(key, period)),
             saw_animal_reset: int("cSawAnimalReset", 20),
+            escaped_change: int("cEscapedAnimalChange", -20),
             random_nth: int("cRandomStatNth", 0),
             random: ["Hunger", "Thirst", "Energy", "Bathroom"].map(range),
             needs: NEEDS.map(|row| row.map(|(key, fallback)| int(key, fallback))),
@@ -311,10 +314,10 @@ pub struct Guest {
 }
 
 impl Guest {
-    /// What a record stores of this guest, `base` being the one it was loaded with or made as: the
-    /// afraid flag, which nothing raises, and a favourite or arrival date that did not change are
-    /// kept as they were. The guest follows a guide exactly when it is in a group.
-    pub fn record(&self, base: &GuestRecord, wandered: bool) -> GuestRecord {
+    /// What a record stores of this guest, `base` being the one it was loaded with or made as, with
+    /// the unit's wandered and afraid flags: a favourite or arrival date that did not change is kept
+    /// as it was. The guest follows a guide exactly when it is in a group.
+    pub fn record(&self, base: &GuestRecord, wandered: bool, afraid: bool) -> GuestRecord {
         let arrived = match self.arrived {
             Some(d) if d != Date::from_file_time(base.arrived) => file_time(d.game_ms()),
             _ => base.arrived,
@@ -330,13 +333,13 @@ impl Guest {
             child: self.child,
             items: self.items.map(|i| i.map_or(0, |n| n as u32)),
             leave: self.leave,
+            afraid,
             gift: self.gift,
             wandered,
             stand: self.stand,
             in_group: self.guide != 0,
             listening: self.listening,
             guide: self.guide,
-            ..*base
         }
     }
 
@@ -491,7 +494,7 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: 
     (guest.leave, guest.gift, guest.stand) = (record.leave, record.gift, record.stand);
     (guest.guide, guest.listening) = (record.guide, record.listening);
     if let Some(unit) = world.units.get_mut(id) {
-        unit.goal.wandered = record.wandered;
+        (unit.goal.wandered, unit.afraid) = (record.wandered, record.afraid);
         unit.part = Part::Guest(guest);
     }
 }

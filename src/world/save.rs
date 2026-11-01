@@ -214,15 +214,21 @@ impl World {
             live_goal(u, &mut block.target);
             block.move_kind = 2;
             if guest.is_some() {
-                block.w4 = u.mover.non_path_cost;
+                let m = &u.mover;
+                block.w4 = if m.emergency {
+                    m.emergency_cost
+                } else {
+                    m.non_path_cost
+                };
             }
         }
         c.unit = Some(Box::new(block));
     }
 
     /// A started unit writes its live path (with its levels, -1 for none), destination, pending set
-    /// name and behaviour set (the chain of calls it runs), and, once it has a goal object, its live
-    /// goal record, not the ones its block was read with (behaviours 4.7, goals 3.4, zoo format 6.14).
+    /// name and behaviour set (the chain of calls it runs), its frightened flag and kept predator,
+    /// and, once it has a goal object, its live goal record, not the ones its block was read with
+    /// (behaviours 4.7, goals 3.4, zoo format 6.14).
     fn live_way(&self, c: &mut Common, cat: &Catalogue, ty: &EntityType) {
         let Some(u) = self.units.get(c.id).filter(|u| u.started) else {
             return;
@@ -243,6 +249,7 @@ impl World {
             })
             .collect();
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
+        (block.b1, block.w1) = (u8::from(u.frightened), u.predator);
         block.pending = u.runner.queued().unwrap_or_default().to_string();
         if u.runner.queued().is_some() {
             block.pending_flag = u8::from(u.runner.queued_flag());
@@ -259,11 +266,11 @@ impl World {
     fn live_guest(&self, c: &mut Common) {
         let unit = self.units.get(c.id);
         let live = unit.and_then(|u| match &u.part {
-            Part::Guest(g) if g.arrived.is_some() => Some((g, u.goal.wandered)),
+            Part::Guest(g) if g.arrived.is_some() => Some((g, u.goal.wandered, u.afraid)),
             _ => None,
         });
-        if let (Some(base), Some((g, wandered))) = (c.guest.as_deref().copied(), live) {
-            c.guest = Some(Box::new(g.record(&base, wandered)));
+        if let (Some(base), Some((g, wandered, afraid))) = (c.guest.as_deref().copied(), live) {
+            c.guest = Some(Box::new(g.record(&base, wandered, afraid)));
         }
     }
 }

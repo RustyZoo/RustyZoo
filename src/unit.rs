@@ -58,6 +58,7 @@ pub fn draw_colours(ty: Option<&EntityType>, count: usize, rng: &mut Rng) -> Vec
 
 pub mod gate;
 pub mod movement;
+pub mod predator;
 pub mod resume;
 pub mod swim;
 #[cfg(test)]
@@ -242,6 +243,12 @@ pub struct Unit {
     /// The contagion byte of a guest named by one of the guest-name cheats (cheats 4.2 E); not
     /// saved, not part of the state hash.
     pub spreads: u8,
+    /// Frightened: the look for a predator found one, the ladder starts the avoid task (guests 6.2,
+    /// staff 4.2); and the kept predator, 0 for none (animals 11.8).
+    pub frightened: bool,
+    pub predator: u32,
+    /// A guest saw a predator (guests 6.2, 6.12): it leaves at a run.
+    pub afraid: bool,
 }
 
 impl Unit {
@@ -290,6 +297,9 @@ impl Unit {
             sex: None,
             boxed: false,
             spreads: 0,
+            frightened: false,
+            predator: 0,
+            afraid: false,
         }
     }
 
@@ -408,6 +418,9 @@ pub struct Units {
     pub reactions: Vec<(u32, bool, u32)>,
     /// The exhibit sounds the changes asked for (`smile`, `frown`), which the interface plays.
     cheers: Vec<&'static str>,
+    /// The escaped list (animals 11.1): the animals loose at the load in file order, then those
+    /// that escaped in play in the order they did; see [`predator::escaped`].
+    pub escapes: Vec<u32>,
 }
 
 impl Default for Units {
@@ -457,6 +470,7 @@ impl Default for Units {
             world_lines: Vec::new(),
             reactions: Vec::new(),
             cheers: Vec::new(),
+            escapes: Vec::new(),
         }
     }
 }

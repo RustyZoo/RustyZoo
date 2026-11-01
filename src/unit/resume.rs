@@ -2,7 +2,8 @@
 //! a sleeper, a member of staff, whatever it was doing. A unit that was entering, using or leaving
 //! a building that is gone is stopped instead. The saved path and pending set name come back with
 //! the set, so a restored move call walks on, and so do the goal record (task, job, targets, done flags,
-//! start, duration) and the 3D target name, whatever the task (behaviours 4.7).
+//! start, duration) and the 3D target name, whatever the task (behaviours 4.7), and the frightened
+//! flag and the kept predator.
 
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, Record, USE, active_goal, stop_use};
 use crate::world::World;
@@ -107,6 +108,7 @@ pub fn load(world: &mut World, now: u32) {
         let (way, pending) = (saved_way(world, block), block.pending.clone());
         let flag = block.pending_flag != 0;
         let (goal, name) = (block.target.clone(), block.text.clone());
+        let fright = (block.b1 != 0, block.w1);
         let task = u8::try_from(block.target.goal).ok();
         let inside = task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
         let here = tile
@@ -115,6 +117,9 @@ pub fn load(world: &mut World, now: u32) {
             .then(|| world.tile_index(tile[0], tile[1]))
             .flatten();
         let present = here.is_some_and(|t| building_on(world, t));
+        if let Some(unit) = world.units.get_mut(id) {
+            (unit.frightened, unit.predator) = fright;
+        }
         if inside && present {
             continue;
         }

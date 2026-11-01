@@ -317,6 +317,8 @@ fn a_loose_animal_is_found_on_the_grounds_and_the_pick_up_catches_it() {
         log.extend(world.units.take_animal_lines());
     }
     assert_eq!(log.iter().filter(|l| *l == "escape 700").count(), 1);
+    // It is on the escaped list, in the order of escape.
+    assert_eq!(world.units.escapes, [700]);
     assert!(!crate::guest::occupied(&world, &cat), "no guest arrives");
     let sums = crate::status::zoo::Sums::of(&world, &cat, 0.0, 0);
     assert_eq!(sums.loose, 1);
@@ -334,6 +336,27 @@ fn a_loose_animal_is_found_on_the_grounds_and_the_pick_up_catches_it() {
     crate::place::unit::pick_up(&mut world, &cat, 700, 0).unwrap();
     assert!(crate::guest::occupied(&world, &cat));
     assert_eq!(crate::status::zoo::Sums::of(&world, &cat, 0.0, 0).loose, 0);
+}
+
+#[test]
+fn a_loaded_loose_animal_joins_the_escaped_list() {
+    let cat = zebras();
+    let mut world = pens_with(|n, _| match n {
+        0 => vec![entity("animals", "f", (4, 6), 0, 700)],
+        _ => vec![entity("animals", "f", (6, 2), 0, 710)],
+    });
+    for e in &mut world.zoo.entities {
+        if let Some(c) = e.common.as_mut().filter(|c| c.id == 710) {
+            c.animal = Some(Box::new(AnimalRecord {
+                escaped: true,
+                ..record()
+            }));
+        }
+    }
+    let mut sim = Sim::new(b"");
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    assert_eq!(world.units.escapes, [710]);
 }
 
 /// The thirst of animal 500, and with `escaped` its escape too, which its escape check in the pen

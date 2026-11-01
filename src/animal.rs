@@ -1302,6 +1302,14 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
         unit.part = Part::Animal(animal);
         unit.started = true;
     }
+    // A loose animal joins the escaped list in file order (animals 11.1).
+    if world
+        .units
+        .get(id)
+        .is_some_and(|u| matches!(&u.part, Part::Animal(a) if a.escaped))
+    {
+        world.units.escapes.push(id);
+    }
 }
 
 /// The first turn of an animal that was not on the map at its load (adopted, born): its values
@@ -1465,6 +1473,10 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.units.cheat.breeding_boost = false;
     }
     for word in &out.log {
+        if *word == "escape" {
+            world.units.escapes.retain(|&e| e != id);
+            world.units.escapes.push(id);
+        }
         world.units.tell(format!("{word} {id}"));
     }
     if let Some(change) = out.terrain {

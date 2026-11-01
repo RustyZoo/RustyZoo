@@ -97,6 +97,9 @@ pub struct Mover {
     pub recovering: bool,
     pub avoiding: bool,
     pub emergency_cost: u32,
+    /// The guest's non-path cost is `cNonPathCostEmergency` since it took the avoid task or an
+    /// afraid one chose its way out; its goal reset puts `cNonPathCost` back (6.5).
+    pub emergency: bool,
     /// The ids of the units that are predators for this guest (M7 decides who they are).
     pub predators: Vec<u32>,
 }
@@ -110,6 +113,7 @@ impl Mover {
             footprint: 1,
             non_path_cost: 7,
             emergency_cost: 1,
+            emergency: false,
             ..Mover::default()
         }
     }

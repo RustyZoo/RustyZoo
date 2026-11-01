@@ -135,9 +135,13 @@ impl<'c> Cx<'_, 'c> {
         }
     }
 
-    /// 7.1 points 3 and 4: with nothing to do on the grounds he goes to an exhibit; done in the
-    /// exhibit of his target tile he starts his duties unless two keepers work there.
+    /// 7.1: a frightened keeper avoids his predator; with nothing to do on the grounds he goes to
+    /// an exhibit; done in the exhibit of his target tile he starts his duties unless two keepers
+    /// work there.
     pub(super) fn keeper_ladder(&mut self, task: u8, done: bool) {
+        if self.staff_fright(task) {
+            return;
+        }
         let here = self.exhibit();
         if task == NONE || (done && here.is_none()) {
             // Standing in a tank he leaves it first (point 3.1).

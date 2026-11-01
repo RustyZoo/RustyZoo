@@ -331,7 +331,7 @@ fn a_loaded_guest_takes_its_items_flags_and_guide() {
     load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
     let g = guest_of(&world, id);
     assert_eq!((g.items, g.guide), ([Some(-1); 5], u32::MAX));
-    assert_eq!(g.record(&wild, false), wild);
+    assert_eq!(g.record(&wild, false, wild.afraid), wild);
 }
 
 #[test]
@@ -339,7 +339,10 @@ fn a_guest_gives_back_its_record_with_what_changed() {
     let (mut world, cat, id) = stored(RECORD);
     load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
     let mut g = guest_of(&world, id);
-    assert_eq!(g.record(&RECORD, true), RECORD);
+    // The afraid flag is the unit's.
+    assert!(RECORD.afraid && world.units.get(id).unwrap().afraid);
+    assert_eq!(g.record(&RECORD, true, true), RECORD);
+    assert!(!g.record(&RECORD, true, false).afraid);
     g.values = [-100, 100, 0, 7, 8];
     g.countdowns = [-1; 11];
     g.items = [Some(1), None, None, None, None];
@@ -348,7 +351,7 @@ fn a_guest_gives_back_its_record_with_what_changed() {
     g.stand = false;
     g.favourite = None;
     g.arrived = Some(date(2, 3));
-    let r = g.record(&RECORD, false);
+    let r = g.record(&RECORD, false, RECORD.afraid);
     assert_eq!((r.values, r.countdowns), ([-100, 100, 0, 7, 8], [-1; 11]));
     assert_eq!(
         (r.items, r.guide, r.in_group, r.listening),
