@@ -956,6 +956,20 @@ fn the_attractions_count_in_the_sites_a_guest_must_have_seen_before_it_forgets()
 }
 
 #[test]
+fn a_ride_seen_counts_as_unseen_while_the_guest_holds_a_return_building() {
+    // The ride is the only site left unseen; with a return building the pen is a site again.
+    for (returning, n, v, want) in [(None, 1, 0, (101, 0)), (Some(7), 2, 1, (102, 50))] {
+        let mut w = visit_with(50, &[("building", "ride", 50, (7, 3))]);
+        let ride = w.tile_index(7, 3).unwrap();
+        if let Some(Part::Guest(g)) = w.units.get_mut(1).map(|u| &mut u.part) {
+            (g.seen, g.seen_count, g.returning) = (vec![ride], 1, returning);
+        }
+        let (mut rng, _) = stream_giving(n, v);
+        assert_eq!(site_choice(&mut w, &mut rng), want, "{returning:?}");
+    }
+}
+
+#[test]
 fn an_attraction_is_the_nth_of_the_list_or_by_default_the_farthest_with_the_setting() {
     // Rides 50 at (7, 3) and 51 at (1, 9); the pen is seen, so r is the index in the list. The
     // guest stands at (8, 2): the second ride is the farther one.
