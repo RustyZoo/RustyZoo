@@ -274,15 +274,12 @@ pub fn leaves(world: &mut World, id: u32) {
         world.units.release_gate_of(id);
         return;
     };
-    let (job, held) = (keeper.goal.record.job, keeper.goal.record.job_target.id);
     let tile = match &mut keeper.part {
         Part::Staff(s) => s.target.take(),
         _ => None,
     };
-    // The animal he was to heal waits no more.
-    if let (3 | 4, Some(a)) = (job, world.units.get_mut(held)) {
-        a.wait = 0;
-    }
+    // The animal he was to heal stays held: only a later heal or its own pick-up lowers the hold
+    // (staff 7.7).
     let exhibit = tile.and_then(|t| crate::animal::food::exhibit_of(world, t));
     if let Some(x) = exhibit.and_then(|e| world.exhibits_mut().get_mut(e)) {
         x.rating.coming = x.rating.coming.saturating_sub(1);
