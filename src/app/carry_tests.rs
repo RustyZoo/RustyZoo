@@ -435,3 +435,48 @@ fn a_tour_guide_picked_up_releases_its_followers_at_once_with_one_draw_each() {
         assert_eq!(followers, [0, 0, 0]);
     });
 }
+
+#[test]
+fn the_exhibit_button_does_nothing_on_the_grounds() {
+    with_game("exhibit-button", "", |s| {
+        for side in [0, 2, 4, 6] {
+            s.fence(1, 20, 20, side);
+        }
+        let (zebra, inside) = (
+            s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0),
+            s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0),
+        );
+        s.pass(&[]);
+        let exhibit = s.app.game.as_ref().unwrap().world.exhibits().list()[0].id;
+        let shown = |s: &Session| {
+            s.app
+                .ui
+                .as_ref()
+                .unwrap()
+                .shown(crate::panel::exhibit::LAYOUT)
+        };
+        let select = |s: &mut Session, id| {
+            s.app.game.as_mut().unwrap().animal.selected = Some(id);
+        };
+        // On the grounds: nothing opens, and a shown panel stays.
+        select(s, zebra);
+        s.app.animal_exhibit();
+        assert!(!shown(s));
+        s.app.open_exhibit(exhibit);
+        s.pass(&[]);
+        assert!(shown(s));
+        select(s, zebra);
+        s.app.animal_exhibit();
+        s.pass(&[]);
+        assert!(shown(s));
+        // In the pen: the button closes a shown panel and opens a hidden one.
+        select(s, inside);
+        s.app.animal_exhibit();
+        s.pass(&[]);
+        assert!(!shown(s));
+        select(s, inside);
+        s.app.animal_exhibit();
+        s.pass(&[]);
+        assert!(shown(s));
+    });
+}
