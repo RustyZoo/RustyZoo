@@ -1136,3 +1136,37 @@ fn a_first_run_without_its_animation_fails_and_stops_nothing() {
     let u = w.units.get(1).unwrap();
     assert!(!u.walking && u.moving && u.speed == 44 && u.path.len() >= 2);
 }
+
+#[test]
+fn a_free_move_sets_the_pace_through_the_class_like_a_walk() {
+    // The call gives 33; the guest has offset 10 and energy 50, so it flies at 38.
+    for (variable, want) in [(true, [38, 33]), (false, [33, 33])] {
+        let mut w = map(vec![
+            entity("guests", "", 1, centre((5, 5)), 2),
+            entity("animals", "", 2, centre((5, 8)), 2),
+        ]);
+        w.units.variable_speeds = variable;
+        let mut speeds = Vec::new();
+        for id in [1, 2] {
+            let at = w.find(id).unwrap();
+            w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 1;
+            let mut u = w.units.get(id).unwrap().clone();
+            u.destination = Some((9 * 64, 5 * 64, 0));
+            if let Part::Guest(g) = &mut u.part {
+                (g.speed_offset, g.values[ENERGY]) = (10, 50);
+            }
+            let flow = call(
+                &mut u,
+                &mut w,
+                &Walker::new("fFly(0,33)"),
+                &Catalogue::default(),
+                &mut Rng::default(),
+                at,
+                &(Gait::Fly(crate::behaviour::Number::Int(33)), Target::Keep),
+            );
+            assert_eq!(flow, Flow::Running);
+            speeds.push(u.speed);
+        }
+        assert_eq!(speeds, want, "variable {variable}");
+    }
+}
