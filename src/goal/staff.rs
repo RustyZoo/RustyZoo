@@ -6,6 +6,7 @@
 
 use super::{Cx, DUTIES, ENTER_TANK, EXIT_TANK, HABITAT, NONE, RANDOM};
 use crate::animal::{self, dirt, food};
+use crate::behaviour::Env;
 use crate::build::{cost, number};
 use crate::entity::EntityType;
 use crate::path::{self, MAX};
@@ -118,13 +119,36 @@ impl<'c> Cx<'_, 'c> {
     pub(super) fn keeper_reset(&mut self) {
         if matches!(self.record().job, HEAL | HEALING) {
             let id = self.record().job_target.id;
-            self.hold(id, false);
+            self.hold(id, false, false);
         }
         self.keeper_target(None);
     }
 
-    /// The animal `id` stops where it stands and waits for the keeper, or goes on (7.7).
-    fn hold(&mut self, id: u32, on: bool) {
+    /// The animal `id` waits for the keeper (7.7): a species with `cStaySick` 1 starts `bSick`
+    /// (unless it is the top set, forced, not interruptible) and `bDoneSick` only at the heal's
+    /// complete (`healed`), never at a goal reset; the others stop where they stand and are held
+    /// until healed.
+    fn hold(&mut self, id: u32, on: bool, healed: bool) {
+        let Some(at) = self.world.find(id) else {
+            return;
+        };
+        let stay = animal::keys(self.world, self.ctx.cat, at).stay_sick == 1;
+        if let (true, Some(u)) = (stay, self.world.units.get_mut(id)) {
+            if !on && !healed {
+                return;
+            }
+            let name = if on { "bSick" } else { "bDoneSick" };
+            if !on || u.runner.top() != Some(name) {
+                let env = Env {
+                    data: self.data,
+                    unit: &self.world.zoo.entities[at],
+                    rng: &mut *self.ctx.rng,
+                };
+                u.runner
+                    .start(&mut u.animation, &env, name, false, true, true);
+            }
+            return;
+        }
         if let Some(a) = self.world.units.get_mut(id) {
             if on {
                 (a.destination, a.wait) = (None, i32::MAX);
@@ -686,7 +710,7 @@ impl<'c> Cx<'_, 'c> {
         }
         self.record().job_target.id = a.id;
         self.keeper_target(Some(a.tile));
-        self.hold(a.id, true);
+        self.hold(a.id, true, false);
     }
 
     /// 7.7 job 4 complete: a fifth of the purchase cost is paid as animal health and the animal
@@ -708,7 +732,7 @@ impl<'c> Cx<'_, 'c> {
                 }
             }
         }
-        self.hold(id, false);
+        self.hold(id, false, true);
         self.job_end();
     }
 
