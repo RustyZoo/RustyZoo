@@ -777,6 +777,12 @@ fn the_candidates_are_the_unmated_of_the_other_sex_that_are_not_family() {
     );
 }
 
+/// Marks exhibit `x` and recomputes it, as a reader does.
+fn recompute(world: &mut World, cat: &Catalogue, x: u32) {
+    world.exhibits_mut().mark(x);
+    crate::exhibit::rating::refresh(world, cat, x, &mut || 0);
+}
+
 #[test]
 fn the_candidates_follow_the_tiles_of_the_exhibit_then_the_unit_list_of_a_tile() {
     // Females on four tiles, two of them on the same one (604 after 603); 600 is the male.
@@ -834,6 +840,7 @@ fn the_candidates_follow_the_tiles_of_the_exhibit_then_the_unit_list_of_a_tile()
             a.female = true;
         }
     }
+    recompute(&mut world, &cat, x);
     let at600 = world.find(600).unwrap();
     assert_eq!(breed::candidates(&world, at600, x, &me), want);
 }
@@ -874,6 +881,13 @@ fn the_candidates_follow_the_unit_list_of_a_tile_not_the_entity_order() {
         .map(|c| (c.x, c.y, c.z));
     world.lift_unit(first);
     world.place_unit(first, point.unwrap(), 0);
+    // The stored list keeps its order until the exhibit is recomputed.
+    let stored = crate::animal::exhibit_animals(&world, x);
+    assert_eq!(
+        stored.iter().filter(|&&i| i != m).collect::<Vec<_>>(),
+        [&first, &second]
+    );
+    recompute(&mut world, &cat, x);
     assert_eq!(
         crate::animal::exhibit_animals(&world, x)
             .into_iter()
