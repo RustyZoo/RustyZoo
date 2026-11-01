@@ -171,12 +171,21 @@ fn through(world: &World, tile: usize, k: u8) -> Option<(usize, usize)> {
 }
 
 /// 4.2 and 4.3: what the guest on `tile` sees looking in direction `k`.
-pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<Sight> {
+pub fn sight(
+    world: &mut World,
+    cat: &Catalogue,
+    tile: usize,
+    k: u8,
+    rng: &mut Rng,
+) -> Option<Sight> {
     refresh(world, cat);
     if world.exhibits().region(tile) != Some(GROUNDS) {
         return None;
     }
     let (e, a) = through(world, tile, k)?;
+    // The animal list is read through a recomputation of a dirty exhibit (6.3).
+    let id = world.units.views.areas[e].0;
+    crate::exhibit::rating::refresh(world, cat, id, &mut || rng.rand());
     let (exhibit, areas) = &world.units.views.areas[e];
     let area = &areas[a];
     // The exhibit's animal list (6.3): the tiles in their own order, then each tile's unit list.
@@ -321,7 +330,7 @@ pub fn check(
     g.va = lookup(world, cat, tile, rng);
     let Some(s) = tile
         .zip(g.va)
-        .and_then(|(t, dir)| sight(world, cat, t, dir))
+        .and_then(|(t, dir)| sight(world, cat, t, dir, rng))
     else {
         return Vec::new();
     };
@@ -363,10 +372,17 @@ pub fn check(
 
 /// 7: the guest on `tile` stops viewing: the exhibit gets the time it watched and, when it saw
 /// animals, none sick and no crowd, a donation.
-pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, tile: Option<usize>) {
+pub fn leave_area(
+    g: &mut Guest,
+    id: u32,
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    tile: Option<usize>,
+) {
     let sight = tile
         .zip(g.va.take())
-        .and_then(|(t, dir)| sight(world, cat, t, dir));
+        .and_then(|(t, dir)| sight(world, cat, t, dir, rng));
     let Some(s) = sight else {
         return;
     };

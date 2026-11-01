@@ -180,7 +180,7 @@ impl Cx<'_, '_> {
         g.va = found;
         let Some(s) = tile
             .zip(found)
-            .and_then(|(t, dir)| view::sight(self.world, self.ctx.cat, t, dir))
+            .and_then(|(t, dir)| view::sight(self.world, self.ctx.cat, t, dir, self.ctx.rng))
         else {
             return false;
         };
@@ -305,7 +305,7 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn gawk_complete(&mut self) {
         let (id, tile) = (self.unit.id, self.tile());
         if let Part::Guest(g) = &mut self.unit.part {
-            view::leave_area(g, id, self.world, self.ctx.cat, tile);
+            view::leave_area(g, id, self.world, self.ctx.cat, self.ctx.rng, tile);
         }
         self.reset();
         self.unit.goal.wandered = true;

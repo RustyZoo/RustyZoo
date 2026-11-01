@@ -71,6 +71,11 @@ fn pen(zebras: &[i32]) -> World {
         });
         w.units.get_mut(10 + n as u32).unwrap().part = part;
     }
+    // The exhibit's animal list holds what the last recomputation left (6.3).
+    let ids: Vec<u32> = w.exhibits().list().iter().map(|e| e.id).collect();
+    for id in ids {
+        crate::exhibit::rating::refresh(&mut w, &catalogue(), id, &mut || 0);
+    }
     w
 }
 
@@ -103,7 +108,7 @@ fn a_guest_on_a_path_beside_a_pen_finds_its_area_and_sees_the_animals() {
         },
         "one draw"
     );
-    let s = sight(&mut w, &cat, tile, dir).unwrap();
+    let s = sight(&mut w, &cat, tile, dir, &mut Rng::default()).unwrap();
     assert_eq!((s.exhibit, s.all.len(), s.animals), (1, 2, 2));
     assert_eq!((s.species, s.sick, s.average), (vec![5], 0, 50));
     // The guest alone on a 3-tile area: ten times one third, rounded.
@@ -114,7 +119,7 @@ fn a_guest_on_a_path_beside_a_pen_finds_its_area_and_sees_the_animals() {
     assert_eq!(lookup(&mut w, &cat, None, &mut rng), None);
     assert_eq!(drew(&Rng::default(), &rng), 2);
     // Inside the pen a guest has no area, and a tile of the exhibit is not a viewing tile.
-    assert!(sight(&mut w, &cat, 5 * 10 + 2, dir).is_none());
+    assert!(sight(&mut w, &cat, 5 * 10 + 2, dir, &mut Rng::default()).is_none());
     let areas = viewing_areas(&mut w, &cat, 1);
     assert!(
         !areas.is_empty() && areas.concat().iter().all(|t| t % 10 == 5 || t % 10 == 4),
@@ -211,7 +216,7 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
     };
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
     w.units.now = 201_601_000;
-    leave_area(&mut g, 1, &mut w, &cat, Some(55));
+    leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
     // 28 s of play are 201,600 calendar seconds; the average happiness is 50.
     let x = w.exhibits().get(1).unwrap();
     assert_eq!(x.stats.viewing, 2_016_000_000_000);
@@ -229,13 +234,13 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
     let mut w = pen(&[40, 60]);
     (w.units.donation_factor, w.units.now) = (4.1108e-13, 1000 + 22 * 7_200_000);
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
-    leave_area(&mut g, 1, &mut w, &cat, Some(55));
+    leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
     assert_eq!(w.units.donated, [0.32557532]);
     // A long view is capped at 10; a sick animal in view, or a view of nothing, gives none.
     w.units.donated.clear();
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
     w.units.now = i64::MAX / 1000;
-    leave_area(&mut g, 1, &mut w, &cat, Some(55));
+    leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
     assert_eq!(w.units.donated, [10.0]);
     let mut sick = pen(&[40, 60]);
     sick.units.get_mut(10).unwrap().part = Part::Animal(Animal {
@@ -245,7 +250,7 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
     sick.units.donation_factor = 4.1108e-13;
     sick.units.now = 201_601_000;
     g.va = lookup(&mut sick, &cat, Some(55), &mut rng);
-    leave_area(&mut g, 1, &mut sick, &cat, Some(55));
+    leave_area(&mut g, 1, &mut sick, &cat, &mut Rng::default(), Some(55));
     assert!(sick.units.donated.is_empty());
     assert!(
         sick.exhibits().get(1).unwrap().stats.viewing > 0,
@@ -261,16 +266,16 @@ fn leaving_the_area_gives_the_time_watched_and_a_donation() {
         let mut w = pen(&[40]);
         (w.units.donation_factor, w.units.now) = (factor, 201_601_000);
         g.va = lookup(&mut w, &cat, Some(55), &mut rng);
-        leave_area(&mut g, 1, &mut w, &cat, Some(55));
+        leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
         assert_eq!(w.units.donated, expected, "{factor}");
     }
     // Negative happiness gives nothing, and a guest with no area changes nothing.
     let mut sad = pen(&[-50]);
     (sad.units.donation_factor, sad.units.now) = (4.1108e-13, 201_601_000);
     g.va = lookup(&mut sad, &cat, Some(55), &mut rng);
-    leave_area(&mut g, 1, &mut sad, &cat, Some(55));
+    leave_area(&mut g, 1, &mut sad, &cat, &mut Rng::default(), Some(55));
     assert!(sad.units.donated.is_empty());
-    leave_area(&mut g, 1, &mut sad, &cat, None);
+    leave_area(&mut g, 1, &mut sad, &cat, &mut Rng::default(), None);
 }
 
 #[test]
@@ -469,8 +474,9 @@ fn the_animal_of_a_thought_is_picked_in_the_tile_order_of_the_exhibit() {
     order.retain(|&t| t != 63);
     order.insert(0, 63);
     w.exhibits_mut().reorder(1, order);
+    w.exhibits_mut().mark(1);
     let dir = lookup(&mut w, &cat, Some(55), &mut Rng::default()).unwrap();
-    let s = sight(&mut w, &cat, 55, dir);
+    let s = sight(&mut w, &cat, 55, dir, &mut Rng::default());
     assert_eq!(
         s.unwrap().all.iter().map(|a| a.0).collect::<Vec<_>>(),
         [11, 10]
@@ -510,7 +516,7 @@ fn the_donation_cheat_doubles_the_donation_before_the_cap() {
         w.units.cheat.donation_double = on;
         (w.units.donation_factor, w.units.now) = (factor, 1000 + days * 7_200_000);
         g.va = lookup(&mut w, &cat, Some(55), &mut Rng::default());
-        leave_area(&mut g, 1, &mut w, &cat, Some(55));
+        leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
         assert_eq!(w.units.donated, want, "{on} {days} {factor}");
     }
 }
@@ -527,6 +533,6 @@ fn the_donation_constant_is_the_single_precision_one() {
     };
     (w.units.donation_factor, w.units.now) = (4.1108e-13, 1000 + 13 * 7_200_000);
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
-    leave_area(&mut g, 1, &mut w, &cat, Some(55));
+    leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
     assert_eq!(w.units.donated, [0.19238544]);
 }

@@ -557,6 +557,9 @@ fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
     let (x, y) = centre((5, 5));
     w.place_unit(0, (x, y, 0), 0);
     let order = w.exhibits().list()[0].order.clone();
+    // The exhibit was rated before (a recomputation's reachability test draws).
+    let id = w.exhibits().list()[0].id;
+    crate::exhibit::rating::refresh(&mut w, &cat, id, &mut || 0);
     let (mut rng, mut by_hand) = (Rng::default(), Rng::default());
     by_hand.rand();
     let drawn = order[by_hand.pick(order.len() as u32) as usize];
@@ -567,9 +570,7 @@ fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
         let mut r = Rng::default();
         r.rand();
         r.pick(order.len() as u32);
-        // The duration of the gawk (5.3) follows; reading the attractiveness rates the exhibit
-        // just made, whose reachability test draws its target (habitat rating 5.8).
-        r.rand();
+        // The duration of the gawk (5.3) follows.
         r.rand();
         r.rand();
         r.state()
