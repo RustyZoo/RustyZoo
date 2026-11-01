@@ -787,6 +787,7 @@ fn the_keeper_feeds_from_the_stored_list_recomputed_first() {
     assert_eq!(pick(vec![ZEBRA_A, ZEBRA_B], false), ZEBRA_A);
     // A dirty exhibit is recomputed first: an empty stale list is filled again.
     assert_eq!(pick(vec![], true), ZEBRA_A, "recomputed");
+}
 
 /// The zebra of the pen with `cStaySick` as the ini text says (`""` leaves it out), heals once.
 fn stay_game(key: &str) -> Game {
