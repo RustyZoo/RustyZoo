@@ -206,7 +206,7 @@ fn cheat_cars(
     let mut kit = crate::rubble::Kit {
         cat,
         rng,
-        template: "R %s",
+        template: "piece-%s",
         shape: &shape,
     };
     remove_cars((w, money), &mut kit, |id| told.push(id))

@@ -61,7 +61,7 @@ fn run(w: &mut World, cat: &Catalogue, rng: &mut Rng) -> Vec<(String, i32, i32, 
     let mut kit = Kit {
         cat,
         rng,
-        template: "Rubble of %s",
+        template: "piece-%s",
         shape: &shape,
     };
     assert!(turn_to_rubble(w, &mut kit, 5));
@@ -101,7 +101,7 @@ fn a_car_leaves_a_piece_per_quadrant_with_a_skip_draw_and_a_rotation_draw() {
         .collect();
     for e in &w.zoo.entities {
         let c = e.common.as_ref().unwrap();
-        assert_eq!(c.name, "Rubble of Thing");
+        assert_eq!(c.name, "piece-Thing");
         assert_eq!(
             c.rubble,
             Some(Rubble {
