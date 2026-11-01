@@ -1167,23 +1167,19 @@ fn records(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> Vec<Rec
 }
 
 /// Counts the animals of the regions `near` (an exhibit and its amphibious neighbours) for an
-/// animal of species `key`; the species and the very unhappy ones only in the exhibit `x`.
+/// animal of species `key`, from their stored animal lists (habitat rating 5.1; a reader
+/// refreshes a dirty exhibit first); the species and the very unhappy ones only in the exhibit
+/// `x`.
 fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
     let mut c = Census::default();
-    for e in &world.zoo.entities {
-        let Some(com) = e.common.as_ref().filter(|_| e.class == "animals") else {
+    let listed = near
+        .iter()
+        .flat_map(|&r| exhibit_animals(world, r).into_iter().map(move |at| (r, at)));
+    for (region, at) in listed {
+        let e = &world.zoo.entities[at];
+        let Some(com) = e.common.as_ref() else {
             continue;
         };
-        if world.is_carried(com.id) {
-            continue;
-        }
-        let tile = world.tile_index(com.x.div_euclid(64), com.y.div_euclid(64));
-        let Some(region) = tile.and_then(|t| world.exhibits().region(t)) else {
-            continue;
-        };
-        if !near.contains(&region) {
-            continue;
-        }
         let adult = matches!(e.subtype.as_str(), "m" | "f");
         let same = e.type_name == key;
         let state = world.units.get(com.id).and_then(|u| match &u.part {
@@ -1412,6 +1408,9 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             .filter_map(|&n| world.exhibits().get(n))
             .map(|e| e.tiles)
             .sum();
+        for &n in &near {
+            rating::refresh(world, ctx.cat, n, &mut || ctx.rng.rand());
+        }
         env.census = census(world, x, &near, &key);
         env.sick_near = env
             .census
@@ -1495,7 +1494,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         ctx.remove(world, id);
     }
     if let (true, Some(x)) = (out.mourn, x) {
-        dirt::mourn(world, x);
+        dirt::mourn(world, ctx, x);
     }
     food::apply(unit, world, ctx, at, data, meal);
     if out.grow && !out.remove {

@@ -84,10 +84,20 @@ pub fn distance(world: &World, a: usize, b: usize) -> i64 {
 
 /// The animals of exhibit `x` that are of the keeper's kind (`cKeeper`, default 9500).
 pub fn animals(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<Seen> {
+    seen(world, cat, x, who, animals_in(world, x))
+}
+
+/// The same animals in the order of the exhibit's stored animal list (habitat rating 5.1); the
+/// caller recomputes a dirty exhibit first.
+pub fn listed(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<Seen> {
+    seen(world, cat, x, who, crate::animal::exhibit_animals(world, x))
+}
+
+fn seen(world: &World, cat: &Catalogue, x: u32, who: &EntityType, ats: Vec<usize>) -> Vec<Seen> {
     let percent = number(who, "cSicklyAnimalPct").map_or(10, |p| p as i64);
     let percent = percent.clamp(0, 100);
     let mut found = Vec::new();
-    for at in animals_in(world, x) {
+    for at in ats {
         let e = &world.zoo.entities[at];
         let (Some(ty), Some(c)) = (type_of(cat, e), e.common.as_ref()) else {
             continue;

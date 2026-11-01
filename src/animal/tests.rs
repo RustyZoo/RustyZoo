@@ -1461,6 +1461,11 @@ fn the_census_counts_species_and_unhappy_animals_in_the_exhibit_and_adults_aroun
     };
     a.very_unhappy = true;
     let ids: Vec<u32> = world.exhibits().list().iter().map(|e| e.id).collect();
+    // The census reads the stored lists, which a recomputation fills.
+    let cat = zebras();
+    assert_eq!(census(&world, ids[0], &ids, "zebra").all_adults, 0);
+    ids.iter()
+        .for_each(|&n| rating::refresh(&mut world, &cat, n, &mut || 0));
     let alone = census(&world, ids[0], &ids[..1], "zebra");
     // The subtype `f` is an adult.
     assert_eq!(
@@ -1479,6 +1484,40 @@ fn the_census_counts_species_and_unhappy_animals_in_the_exhibit_and_adults_aroun
         (2, 4, 4, 1)
     );
     assert_eq!(census(&world, ids[0], &ids, "lion").adults, 0);
+}
+
+#[test]
+fn the_exhibit_mourns_from_its_stored_list_recomputed_first() {
+    let mut world = pens();
+    let cat = zebras();
+    let ids: Vec<u32> = world.exhibits().list().iter().map(|e| e.id).collect();
+    let mourning = |world: &World, id| match &world.units.get(id).unwrap().part {
+        Part::Animal(a) => a.mourning,
+        _ => false,
+    };
+    let (events, mut removals, mut rng) =
+        (crate::sim::Events::default(), Vec::new(), Rng::default());
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    // A dirty exhibit is recomputed first: all its animals mourn, the other pen's do not.
+    assert!(world.exhibits().get(ids[0]).unwrap().rating.dirty);
+    dirt::mourn(&mut world, &mut ctx, ids[0]);
+    assert!(!world.exhibits().get(ids[0]).unwrap().rating.dirty);
+    assert_eq!(
+        [500, 501, 510, 511].map(|id| mourning(&world, id)),
+        [true, true, false, false]
+    );
+    // Only the animals of the stored list mourn.
+    let e = world.exhibits_mut().get_mut(ids[1]).unwrap();
+    e.rating.dirty = false;
+    e.rating.animals = vec![511];
+    dirt::mourn(&mut world, &mut ctx, ids[1]);
+    assert_eq!([510, 511].map(|id| mourning(&world, id)), [false, true]);
 }
 
 #[test]

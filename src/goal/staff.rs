@@ -359,7 +359,10 @@ impl<'c> Cx<'_, 'c> {
             return;
         }
         let (tiles, animals) = self.lost();
-        let mine: Vec<_> = service::animals(self.world, cat, x, who);
+        // The animal to feed and the heal count read the stored list, recomputed first (7.5, 7.6).
+        let rng = &mut *self.ctx.rng;
+        crate::exhibit::rating::refresh(self.world, cat, x, &mut || rng.rand());
+        let mine: Vec<_> = service::listed(self.world, cat, x, who);
         let claimed = service::claimed(self.world);
         let bare: Vec<_> = (mine.iter())
             .filter(|a| !animals.contains(&a.id) && !a.egg && a.bare)
