@@ -871,6 +871,8 @@ pub enum Read {
     Sick,
     /// The species record, the animal counts and the rating (social check).
     Exhibit,
+    /// The animal list, read by the bite that emptied the pile (animals-needs 5.1).
+    Emptied,
 }
 
 /// Fills the part of the [`Env`] that `Read` names from the world, given the animal, the meal
@@ -936,7 +938,7 @@ pub fn run_read(
     }
     escape(a, k, class, env, rng, &mut out);
     if a.eating {
-        food::eat(a, k, &mut out.meal);
+        food::bite(a, k, env, rng, &mut out, read);
     }
     food::hunger(a, k, class, env, rng, &mut out, read);
     tank::breath(a, k, class, env);
@@ -1232,7 +1234,7 @@ fn read_exhibit(
         food::settle(world, a, meal);
     }
     let regions = match read {
-        Read::Mates | Read::Keeper => vec![x],
+        Read::Mates | Read::Keeper | Read::Emptied => vec![x],
         Read::Food => food::near(world, x, &keys(world, cat, at)),
         Read::Sick | Read::Exhibit => region_and_neighbours(world, x),
     };
@@ -1241,7 +1243,7 @@ fn read_exhibit(
     }
     match read {
         Read::Mates => env.candidates = breed::candidates(world, at, x, a),
-        Read::Food => {}
+        Read::Food | Read::Emptied => {}
         Read::Keeper => env.keeper_working = life::keeper_at_work(world, x),
         Read::Sick => {
             let sick = census(world, x, &regions, key).sick;

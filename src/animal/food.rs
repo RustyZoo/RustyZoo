@@ -100,6 +100,16 @@ pub fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
     m.queue = m.left > 0;
 }
 
+/// `fEat` among the checks: the bite that empties the pile reads the exhibit's animal list at
+/// once, which recomputes the exhibit with its draws inside the bite (5.1).
+pub fn bite(a: &mut Animal, k: &Keys, env: &mut Env, rng: &mut Rng, out: &mut Out, read: Reader) {
+    let left = out.meal.left;
+    eat(a, k, &mut out.meal);
+    if left > 0 && out.meal.left <= 0 {
+        read(Read::Emptied, a, &out.meal, env, rng);
+    }
+}
+
 /// The hunger check (4): the rise, and what a hungry animal does about food.
 pub fn hunger(
     a: &mut Animal,
@@ -116,7 +126,7 @@ pub fn hunger(
     a.hunger_change = a.hunger_change.saturating_add(k.hunger_increment);
     // The test sees the hunger before this check's rise.
     if a.eating {
-        eat(a, k, &mut out.meal);
+        bite(a, k, env, rng, out, read);
     } else if !a.sleeping
         && a.hunger >= k.hunger_threshold
         && !(a.wants_food || env.food_task || a.rampaging)
@@ -270,9 +280,8 @@ fn tile_at(world: &World, at: usize) -> Option<usize> {
 }
 
 /// A pile was emptied: every other animal of the eater's exhibit that aims at it stops eating and
-/// resets its goal in the same bite (5.1). The animals are the exhibit's stored list, recomputed
-/// first (the bite marked it dirty); an amphibious animal swimming in a neighbour exhibit keeps
-/// its goal.
+/// resets its goal in the same bite (5.1). The animals are the exhibit's stored list, which the
+/// bite recomputed; an amphibious animal swimming in a neighbour exhibit keeps its goal.
 pub(super) fn stop_others(
     world: &mut World,
     ctx: &mut Ctx,
@@ -283,7 +292,6 @@ pub(super) fn stop_others(
     let Some(area) = tile_at(world, at).and_then(|t| exhibit_of(world, t)) else {
         return;
     };
-    crate::exhibit::rating::refresh(world, ctx.cat, area, &mut || ctx.rng.rand());
     let listed = world.exhibits().get(area).map(|e| e.rating.animals.clone());
     let aiming: Vec<u32> = (listed.into_iter().flatten())
         .filter(|&id| id != eater)
@@ -365,8 +373,15 @@ pub fn apply(
 pub fn feed(cx: &mut Cx) {
     let k = super::keys(cx.world, cx.ctx.cat, cx.at);
     let mut m = meal(cx.unit, cx.world, cx.data, cx.at);
+    let left = m.left;
     if let Part::Animal(a) = &mut cx.unit.part {
         eat(a, &k, &mut m);
+        // The bite that empties the pile recomputes the exhibit under the eater (5.1).
+        let area = tile_at(cx.world, cx.at).and_then(|t| exhibit_of(cx.world, t));
+        if let Some(x) = area.filter(|_| left > 0 && m.left <= 0) {
+            settle(cx.world, a, &m);
+            crate::exhibit::rating::refresh(cx.world, cx.ctx.cat, x, &mut || cx.ctx.rng.rand());
+        }
     }
     apply(cx.unit, cx.world, cx.ctx, cx.at, cx.data, m);
 }
