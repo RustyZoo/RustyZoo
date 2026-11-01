@@ -762,6 +762,33 @@ fn a_keeper_heal_under_the_rename_cheat_sometimes_changes_the_species() {
     assert!(changed.is_some());
 }
 
+#[test]
+fn the_keeper_feeds_from_the_stored_list_recomputed_first() {
+    // Two hungry zebras in one pen; the keeper's pick is the first hungry one of the exhibit's
+    // stored animal list (habitat rating 5.1), recomputed first when dirty.
+    let pick = |stored: Vec<u32>, dirty: bool| {
+        let mut g = Game::with(&[PEN_A], &[animal(ZEBRA_B, (6, 4))], b"");
+        let pen = g.exhibit((4, 3));
+        for id in [ZEBRA_A, ZEBRA_B] {
+            zebra(&mut g.w, id).hunger = 100;
+        }
+        // The stored state is set before every step, the world manager recomputes it after.
+        for _ in 0..3000 {
+            let rating = &mut g.w.exhibits_mut().get_mut(pen).unwrap().rating;
+            (rating.animals, rating.dirty) = (stored.clone(), dirty);
+            g.run(1);
+            if g.w.units.get(KEEPER).unwrap().goal.record.job == 1 {
+                break;
+            }
+        }
+        g.w.units.get(KEEPER).unwrap().goal.record.job_target.id
+    };
+    assert_eq!(pick(vec![ZEBRA_B, ZEBRA_A], false), ZEBRA_B, "list order");
+    assert_eq!(pick(vec![ZEBRA_A, ZEBRA_B], false), ZEBRA_A);
+    // A dirty exhibit is recomputed first: an empty stale list is filled again.
+    assert_eq!(pick(vec![], true), ZEBRA_A, "recomputed");
+}
+
 /// The zebra of the pen with `cStaySick` as the ini text says (`""` leaves it out), heals once.
 fn stay_game(key: &str) -> Game {
     let mut g = layers();

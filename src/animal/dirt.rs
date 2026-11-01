@@ -138,16 +138,12 @@ pub fn put_down(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, k:
     }
 }
 
-/// Every animal of exhibit `x` mourns at its next tick (animals-needs 10.4).
-pub fn mourn(world: &mut World, x: u32) {
-    let ids: Vec<u32> = (world.zoo.entities.iter())
-        .filter(|e| e.class == "animals")
-        .filter_map(|e| e.common.as_ref())
-        .filter(|c| {
-            let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
-            tile.and_then(|t| world.exhibits().region(t)) == Some(x)
-        })
-        .map(|c| c.id)
+/// Every animal of exhibit `x` mourns at its next tick (animals-needs 10.4): the exhibit's stored
+/// list, recomputed first when it is dirty.
+pub fn mourn(world: &mut World, ctx: &mut Ctx, x: u32) {
+    crate::exhibit::rating::refresh(world, ctx.cat, x, &mut || ctx.rng.rand());
+    let ids: Vec<u32> = (crate::animal::exhibit_animals(world, x).into_iter())
+        .filter_map(|at| world.zoo.entities[at].common.as_ref().map(|c| c.id))
         .collect();
     for id in ids {
         if let Some(Part::Animal(a)) = world.units.get_mut(id).map(|u| &mut u.part) {
@@ -166,7 +162,7 @@ pub fn die(unit: &Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         .as_ref()
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
     if let Some(x) = tile.and_then(|t| super::food::exhibit_of(world, t)) {
-        mourn(world, x);
+        mourn(world, ctx, x);
     }
 }
 
