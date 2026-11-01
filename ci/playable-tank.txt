@@ -3,16 +3,15 @@
 # tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
 # maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
 # reads the log. The run is long enough for the can to have 13 uses (the check fails below that):
-# on each of the seeds 40 to 80 that hire the three staff members (19 of 41) the can has them (the
+# on each of the seeds 40 to 80 that hire the three staff members (10 of 41) the can has them (the
 # guests use it about once per 700 passes after the first 5000).
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
 # rocks and plants cost points) and want 70; with these they rate it 91.
-# The staff of the trials are women only, so the Hire list is empty whenever a man is drawn (a hire
-# draws the sex of the next one), and a game whose first draw is a man hires nobody: 21 of the seeds
-# 40 to 80. The seed 46 starts on a woman. The hires come before the adoption: an animal placed rates
-# its exhibit at once (habitat rating 9.4), which draws from the shared stream.
+# The seed 46 draws women for the three hires (see the hire panel below). The hires come before the
+# adoption: an animal placed rates its exhibit at once (habitat rating 9.4), which draws from the
+# shared stream.
 #run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 12000 --clock 200
 #exhibit 16,35,21,40
 #months 6
@@ -70,13 +69,10 @@
 52 down
 53 up
 54 key escape
-# hire panel: a marine specialist, a tour guide, a maintenance worker. A hire draws the sex of
-# the next one, and the list is empty when a man is drawn (the staff of the trials are women
-# only): the staff member chosen last stays pending, so a placement hires it again and draws again.
-# The script cannot see the list, so it chooses a kind again before each of 6 placements, the first
-# 5 on tiles to the east that only draw the sex again; the last is on the tile that the assignments
-# below click. The first kind is chosen while the list shows on a seed that starts on a woman (a
-# seed that starts on a man hires nobody).
+# hire panel: a marine specialist, a tour guide, a maintenance worker, one placement each (the
+# kind is chosen before it). A hire draws the sex of the next one, and the list shows only the DRT
+# base when a man is drawn (the staff of the trials are women only), which then stays chosen and
+# hires nobody: the seed 46 draws women for the start and the first two hires.
 56 mouse 25 175
 57 down
 58 up
@@ -86,72 +82,12 @@
 63 mouse 572 115
 64 down
 65 up
-67 mouse 140 120
-68 down
-69 up
-70 mouse 668 99
-71 down
-72 up
-74 mouse 140 120
-75 down
-76 up
-77 mouse 700 115
-78 down
-79 up
-81 mouse 140 120
-82 down
-83 up
-84 mouse 732 131
-85 down
-86 up
-88 mouse 140 120
-89 down
-90 up
-91 mouse 764 147
-92 down
-93 up
-95 mouse 140 120
-96 down
-97 up
-98 mouse 700 83
-99 down
-100 up
 102 mouse 140 120
 103 down
 104 up
 105 mouse 636 147
 106 down
 107 up
-109 mouse 70 160
-110 down
-111 up
-112 mouse 732 99
-113 down
-114 up
-116 mouse 70 160
-117 down
-118 up
-119 mouse 764 115
-120 down
-121 up
-123 mouse 70 160
-124 down
-125 up
-126 mouse 796 131
-127 down
-128 up
-130 mouse 70 160
-131 down
-132 up
-133 mouse 732 67
-134 down
-135 up
-137 mouse 70 160
-138 down
-139 up
-140 mouse 764 83
-141 down
-142 up
 144 mouse 70 160
 145 down
 146 up
