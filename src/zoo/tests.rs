@@ -1858,6 +1858,7 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         users_now: 2,
         fill: 10,
         built: 11,
+        members: vec![12, 13],
     };
     let at = Common {
         x: 96,
@@ -1987,12 +1988,12 @@ fn an_entity_made_in_play_is_written_and_read_back() {
             if c.guest.is_some() {
                 assert_eq!(b.guest, c.guest, "{what}");
             }
-            // A unit is on the ground with the blocks of a new one.
+            // A unit is on the ground with the blocks of a new one, a helicopter free.
             if let Some(u) = &b.unit {
                 assert_eq!(
                     (b.movement_mode, u.as_ref()),
                     (
-                        2,
+                        if e.class == "helicopter" { 1 } else { 2 },
                         &fresh::unit_new(
                             (e.class == "guests").then_some(fresh::DEFAULT_NON_PATH_COST)
                         )

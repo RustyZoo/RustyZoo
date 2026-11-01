@@ -1791,6 +1791,33 @@ impl<'a> App<'a> {
                     let held = held.map_or(String::new(), |n| format!(" quadrants {n}"));
                     let line = format!("add {name} {tile} id {id}{held}");
                     self.world_lines.push(line);
+                    // The DRT base makes its helicopter (unit placing 7.4).
+                    if ty.class == "building" {
+                        let built = crate::timing::file_time(self.sim.calendar().elapsed_ms());
+                        let (rng, shape) = (&mut self.sim.rng, |e: &_| renderer.shape(e));
+                        let made = crate::building::birth::births(
+                            &mut game.world,
+                            cat,
+                            id,
+                            rng,
+                            built,
+                            shape,
+                        );
+                        for heli in made.into_iter().filter_map(|h| game.world.find(h)) {
+                            let e = &game.world.zoo.entities[heli];
+                            let c = e.common.as_ref().expect("added");
+                            self.world_lines.push(format!(
+                                "add {}/{}/{} {},{} id {} name={}",
+                                e.class,
+                                e.type_name,
+                                e.subtype,
+                                c.x.div_euclid(64),
+                                c.y.div_euclid(64),
+                                c.id,
+                                c.name
+                            ));
+                        }
+                    }
                     first = first.or(Some(p.ty));
                     if !game.world.waiting().is_empty() {
                         game.rest = pieces[n + 1..].to_vec();
