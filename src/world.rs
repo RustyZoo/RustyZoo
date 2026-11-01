@@ -693,8 +693,26 @@ impl World {
     }
 
     /// Removes the entity with this id; whether there was one. A fence piece that opens its line
-    /// records the exhibits it opens, with their names and gates, first.
+    /// records the exhibits it opens, with their names and gates, first. A rubble piece takes the
+    /// rest of its group with it, before itself so that a price told next belongs to it (cheats 4.6).
     pub fn remove(&mut self, id: u32) -> bool {
+        let group = (self.find(id))
+            .and_then(|at| self.zoo.entities[at].common.as_ref()?.rubble.as_ref())
+            .map_or_else(Vec::new, |r| r.group.clone());
+        for g in group.into_iter().filter(|&g| g != id) {
+            // A saved group may name anything: only rubble goes.
+            if self
+                .find(g)
+                .is_some_and(|at| self.zoo.entities[at].class == "rubble")
+            {
+                self.remove_one(g);
+            }
+        }
+        self.remove_one(id)
+    }
+
+    /// Removes the entity with this id alone.
+    fn remove_one(&mut self, id: u32) -> bool {
         let Some(at) = self.find(id) else {
             return false;
         };

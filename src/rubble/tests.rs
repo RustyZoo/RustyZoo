@@ -262,3 +262,78 @@ fn a_rubble_piece_stands_on_the_ground_at_its_point() {
         }
     }
 }
+
+#[test]
+fn taking_off_one_piece_takes_the_whole_group_with_it() {
+    let cat = cat(&ALL);
+    let mut w = world(("objects", "car"), (64, 64));
+    // A bystander that a saved group wrongly names stays.
+    let mut other = entity("objects", "tree", 9, (640, 640), 0);
+    other.common.as_mut().unwrap().name = "Bystander".into();
+    let other = w.add(other, None).unwrap();
+    run(&mut w, &cat, &mut Rng::default());
+    let ids: Vec<u32> = w
+        .zoo
+        .entities
+        .iter()
+        .filter(|e| e.class == "rubble")
+        .map(|e| e.common.as_ref().unwrap().id)
+        .collect();
+    assert!(ids.len() >= 3);
+    for e in w.zoo.entities.iter_mut().filter(|e| e.class == "rubble") {
+        e.common
+            .as_mut()
+            .unwrap()
+            .rubble
+            .as_mut()
+            .unwrap()
+            .group
+            .extend([other, 999]);
+    }
+    // The last piece named, then a missing id, go the same way.
+    assert!(w.remove(*ids.last().unwrap()));
+    assert!(w.zoo.entities.iter().all(|e| e.class != "rubble"));
+    assert_eq!(w.zoo.entities.len(), 1);
+    assert!(!w.remove(ids[0]));
+}
+
+#[test]
+fn a_piece_alone_in_its_group_and_a_plain_entity_go_alone() {
+    let cat = cat(&ALL);
+    let mut w = world(("objects", "car"), (64, 64));
+    run(&mut w, &cat, &mut Rng::default());
+    let first = w.zoo.entities[0].common.as_ref().unwrap().id;
+    w.zoo.entities[0].common.as_mut().unwrap().rubble = Some(Rubble::default());
+    let count = w.zoo.entities.len();
+    assert!(w.remove(first));
+    assert_eq!(w.zoo.entities.len(), count - 1);
+    let rest = w.zoo.entities[0].common.as_ref().unwrap().id;
+    w.zoo.entities[0].common.as_mut().unwrap().rubble = None;
+    assert!(w.remove(rest));
+    assert_eq!(w.zoo.entities.len(), count - 2);
+}
+
+#[test]
+fn an_undo_brings_the_whole_group_back_with_the_price_on_the_piece_removed() {
+    let cat = cat(&ALL);
+    let mut w = world(("objects", "car"), (64, 64));
+    run(&mut w, &cat, &mut Rng::default());
+    let n = w.zoo.entities.len();
+    let id = w.zoo.entities[1].common.as_ref().unwrap().id;
+    w.begin();
+    w.remove(id);
+    w.priced(3.0);
+    assert!(w.zoo.entities.is_empty());
+    let undone = w.undo();
+    assert_eq!(w.zoo.entities.len(), n);
+    let prices: Vec<f32> = undone
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            crate::world::Step::Back(_, p) => Some(*p),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(prices.iter().filter(|&&p| p == 3.0).count(), 1);
+    assert_eq!(prices.iter().sum::<f32>(), 3.0);
+}
