@@ -148,7 +148,8 @@ struct Sets(HashMap<String, Vec<Call>>);
 fn sets() -> Sets {
     let call = |c: &str| vec![parse_call(c.as_bytes()).unwrap().0];
     let walk = ("bWalk", call("fWalk(0,0)"));
-    let play = ["bFeedHerb", "bHeal", "bClean"].map(|n| (n, call("fPlay(a)")));
+    let play =
+        ["bFeedHerb", "bHeal", "bClean", "bSick", "bDoneSick"].map(|n| (n, call("fPlay(a)")));
     Sets(HashMap::from_iter(
         std::iter::once(walk)
             .chain(play)
@@ -670,4 +671,200 @@ fn a_visit_with_nothing_to_do_ends_at_once_and_is_not_started_again_by_the_ladde
         g.lines(&["staff job"])
     );
     assert!(g.w.exhibits().get(pen).unwrap().rating.serviced > 0);
+}
+
+/// A game whose catalogue also has the egg layers emu (f, m) and kiwi (f), with names.
+fn layers() -> Game {
+    let mut g = Game::new(&[PEN_A]);
+    for (name, sub, id) in [("emu", "f", 2), ("emu", "m", 3), ("kiwi", "f", 4)] {
+        g.cat.push(ty("animals", name, sub, id, "cLaysEggs=1"));
+    }
+    g.w.units.names.insert(2, "Emu".into());
+    g.w.units.names.insert(4, "Kiwi".into());
+    g
+}
+
+/// The first seed of the heal draws whose first `% 10` is zero (or not).
+fn seed_where(zero: bool) -> u32 {
+    (1..)
+        .find(|&s| {
+            let mut r = crate::sim::Rng::default();
+            r.seed(s);
+            (r.pick(10) == 0) == zero
+        })
+        .unwrap()
+}
+
+fn species_of(g: &Game) -> (String, String) {
+    let e = &g.w.zoo.entities[g.w.find(ZEBRA_A).unwrap()];
+    (e.type_name.clone(), e.subtype.clone())
+}
+
+#[test]
+fn the_rename_cheat_turns_a_healed_animal_into_an_egg_layer_of_its_subtype() {
+    let mut g = layers();
+    let at = g.w.find(ZEBRA_A).unwrap();
+    g.w.zoo.entities[at].common.as_mut().unwrap().name = "Stripes".into();
+    let mut rng = crate::sim::Rng::default();
+    // The flag down: nothing is drawn, nothing changes.
+    rng.seed(seed_where(true));
+    let before = rng.clone();
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!((rng.clone(), species_of(&g).0), (before, "zebra".into()));
+    // The flag up and the first draw not 0: one draw, no change.
+    g.w.units.cheat.heal_changes_species = true;
+    rng.seed(seed_where(false));
+    let mut one = rng.clone();
+    one.rand();
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!((rng, species_of(&g).0), (one, "zebra".into()));
+    // The first draw 0: the second picks among emu f and kiwi f (not emu m, not the zebra).
+    let mut rng = crate::sim::Rng::default();
+    rng.seed(seed_where(true));
+    let mut two = rng.clone();
+    let pick = (two.rand(), two.pick(2)).1;
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!(rng, two, "two draws");
+    let want = ["emu", "kiwi"][pick as usize];
+    assert_eq!(species_of(&g), (want.into(), "f".into()));
+    let name = &g.w.zoo.entities[at].common.as_ref().unwrap().name;
+    assert_eq!(
+        name,
+        &format!("{} 1", want[..1].to_uppercase() + &want[1..])
+    );
+    assert!(g.w.units.get_mut(ZEBRA_A).is_some_and(|u| !u.typed));
+}
+
+#[test]
+fn the_rename_cheat_with_no_candidate_draws_once_and_changes_nothing() {
+    let mut g = Game::new(&[PEN_A]);
+    g.w.units.cheat.heal_changes_species = true;
+    let mut rng = crate::sim::Rng::default();
+    rng.seed(seed_where(true));
+    let mut one = rng.clone();
+    one.rand();
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!((rng, species_of(&g).0), (one, "zebra".into()));
+}
+
+#[test]
+fn a_keeper_heal_under_the_rename_cheat_sometimes_changes_the_species() {
+    let changed = (1..80).find(|&seed| {
+        let mut g = layers();
+        g.sim.set_seed(seed);
+        g.w.units.cheat.heal_changes_species = true;
+        assert!(g.put("herbchow", (6, 4), 1000));
+        zebra(&mut g.w, ZEBRA_A).health = 100;
+        g.run(2500);
+        assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed either way");
+        species_of(&g).0 != "zebra"
+    });
+    assert!(changed.is_some());
+}
+
+/// The zebra of the pen with `cStaySick` as the ini text says (`""` leaves it out), heals once.
+fn stay_game(key: &str) -> Game {
+    let mut g = layers();
+    let keys = format!("cNeededFood=100\ncPurchaseCost=1000\n{key}");
+    let at = g
+        .cat
+        .types
+        .iter()
+        .position(|t| t.type_name == b"zebra")
+        .unwrap();
+    g.cat.types[at] = ty("animals", "zebra", "f", 1, &keys);
+    assert!(g.put("herbchow", (6, 4), 1000));
+    zebra(&mut g.w, ZEBRA_A).health = 100;
+    g
+}
+
+fn sets_of_zebra(g: &Game) -> Vec<&str> {
+    let line = format!("unit set {ZEBRA_A} ");
+    let sets = g.log.iter().filter_map(|l| l.strip_prefix(&line));
+    sets.filter(|s| s.starts_with("bSick") || s.starts_with("bDoneSick"))
+        .collect()
+}
+
+#[test]
+fn a_species_with_stay_sick_starts_sick_at_the_decide_and_done_sick_after_the_heal() {
+    let mut g = stay_game("cStaySick=1");
+    while g.lines(&["HealAnimal"]).is_empty() {
+        g.run(1);
+        assert!(g.log.len() < 1000, "the decide");
+    }
+    assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, 0, "not held");
+    g.run(2500);
+    assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed");
+    assert_eq!(sets_of_zebra(&g), ["bSick", "bDoneSick"]);
+}
+
+#[test]
+fn stay_sick_other_than_1_holds_the_animal_and_starts_no_set() {
+    for key in ["cStaySick=0", "cStaySick=-1", "cStaySick=2147483647", ""] {
+        let mut g = stay_game(key);
+        while g.lines(&["HealAnimal"]).is_empty() {
+            g.run(1);
+            assert!(g.log.len() < 1000, "the decide");
+        }
+        assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, i32::MAX, "held {key}");
+        g.run(2500);
+        assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed {key}");
+        assert!(
+            sets_of_zebra(&g).is_empty(),
+            "{key}: {:?}",
+            sets_of_zebra(&g)
+        );
+    }
+}
+
+#[test]
+fn the_stay_sick_after_a_species_change_is_the_new_types() {
+    let changed = (1..80).find_map(|seed| {
+        let mut g = stay_game("");
+        for t in g.cat.types.iter_mut().filter(|t| t.name_id > 1) {
+            t.config = ty("animals", "", "f", 0, "cLaysEggs=1\ncStaySick=1").config;
+        }
+        g.sim.set_seed(seed);
+        g.w.units.cheat.heal_changes_species = true;
+        g.run(2500);
+        (species_of(&g).0 != "zebra").then_some(g)
+    });
+    let g = changed.expect("a seed changes the species");
+    assert_eq!(
+        sets_of_zebra(&g),
+        ["bDoneSick"],
+        "new type: done sick, never sick"
+    );
+}
+
+#[test]
+fn a_goal_reset_in_the_heal_job_starts_no_done_sick() {
+    let mut g = stay_game("cStaySick=1");
+    while g.lines(&["HealAnimal"]).is_empty() {
+        g.run(1);
+        assert!(g.log.len() < 1000, "the decide");
+    }
+    let mut u = g.w.units.get(KEEPER).unwrap().clone();
+    let mut rng = crate::sim::Rng::default();
+    let events = crate::sim::Events::default();
+    let mut removals = Vec::new();
+    let mut ctx = crate::unit::Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &g.cat,
+    };
+    let at = g.w.find(KEEPER).unwrap();
+    let mut cx = Cx {
+        unit: &mut u,
+        world: &mut g.w,
+        ctx: &mut ctx,
+        at,
+        data: &g.data,
+    };
+    cx.reset();
+    *g.w.units.get_mut(KEEPER).unwrap() = u;
+    g.run(3);
+    assert_eq!(sets_of_zebra(&g), ["bSick"], "no bDoneSick without a heal");
 }

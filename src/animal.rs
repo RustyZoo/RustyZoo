@@ -32,8 +32,8 @@
 //! holds it for its time inside (`crate::goal`, `crate::building`).
 //!
 //! An animal that stands on the zoo grounds when its escape counter fires is escaped; the checks
-//! have their escaped cases (eating, the sleep, health and water checks, thirst). Not here yet:
-//! how an animal leaves its exhibit, the sets of an escaped animal, and the effects of the
+//! have their escaped cases (eating, the sleep, health and water checks, thirst). How it leaves
+//! its exhibit and the set of an escaped animal are [`escape`]. Not here yet: the effects of the
 //! rampage and zap checks (M7: only their counters and draws run). The ambient choice is taken at
 //! the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
@@ -42,6 +42,7 @@
 //! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
 //! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down,
 //! `animal shelter <id> <building>` when the check takes a shelter, `animal heal <id>`,
+//! `animal species <id> <type>` when the rename cheat changes it,
 //! `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
 //! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>`, `animal hatch <id>`,
 //! `animal breath <id> <breath>` when the breath rises, `animal terrain <id> <mode>` when the
@@ -64,6 +65,7 @@ use crate::zoo::{AnimalRecord, Entity};
 
 pub mod breed;
 pub mod dirt;
+pub mod escape;
 pub mod food;
 pub mod home;
 pub mod life;
@@ -357,6 +359,7 @@ keys! {
     underwater_needed: "cUnderwaterNeeded" = 10,
     land_needed: "cLandNeeded" = 1,
     lays_eggs: "cLaysEggs" = 0,
+    stay_sick: "cStaySick" = 0,
     time_to_hatch: "cTimeToHatch" = 0,
     min_hatch_hits: "cMinHatchHits" = 0,
 }
@@ -487,9 +490,13 @@ pub struct Animal {
     /// check; nothing else follows from them before M7.
     pub rampaging: bool,
     pub rampage: i32,
-    /// It stands loose on the zoo grounds (animals 11): set by the escape check, lowered when it
-    /// is picked up.
+    /// It stands loose on the zoo grounds (animals 11.1): set by the escape check on the grounds,
+    /// lowered by the escape check in an exhibit and when it is picked up.
     pub escaped: bool,
+    /// The escape walk (animals 11.3): its record while the flag is up.
+    pub walk: Option<crate::zoo::Escape>,
+    /// The crossing animation the escape walk forces (11.3), for the turn to play.
+    pub force: Option<&'static str>,
     /// The zap counter (animals 4.1): it starts at 0 and fires when it was below 1.
     pub zap: i32,
     /// Status ticks until the creation runs again (`AnimalResetInterval`).
@@ -574,7 +581,14 @@ impl Animal {
         self.thirsty = r.thirsty;
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
-        self.escaped = r.escape.is_some();
+        self.escaped = r.escaped;
+        // The flags are rebuilt from their words (animals 11.3).
+        self.walk = r.escape.map(|e| crate::zoo::Escape {
+            reached: u32::from(e.reached == 1),
+            across: u32::from(e.across == 1),
+            broken: u32::from(e.broken != 0),
+            ..e
+        });
         (self.sleeping, self.eating, self.drinking) = (r.sleeping, r.eating, r.drinking);
     }
 
@@ -591,16 +605,9 @@ impl Animal {
             true => date,
             false => file_time(live),
         };
-        // The record of an animal that escaped here has no tile (-1, -1) and no word: the
-        // meaning of the fields is not known.
-        let escape = self.escaped.then(|| {
-            base.escape.unwrap_or(crate::zoo::Escape {
-                tiles: [[-1; 2]; 2],
-                ..Default::default()
-            })
-        });
         AnimalRecord {
-            escape,
+            escaped: self.escaped,
+            escape: self.walk,
             happiness: self.happiness,
             hunger: self.hunger,
             health: self.health,
@@ -914,8 +921,9 @@ pub fn run_with(
     out
 }
 
-/// The escape check (animals 11): the rampage, then the counter; when it fires, an animal that
-/// stands on the zoo grounds is escaped. The rampage has no other effect before M7.
+/// The escape check (animals 11.1): the rampage, then the counter; when it fires, an animal that
+/// stands on the zoo grounds is escaped and takes the land mode (11.5; the send off water is not
+/// made), one in an exhibit is not escaped any more.
 fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
     if a.in_show {
         return;
@@ -939,9 +947,17 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out
             }
         }
     }
-    if fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) && env.grounds && !a.escaped {
-        a.escaped = true;
-        out.log.push("escape");
+    if !fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) {
+        return;
+    }
+    if env.grounds {
+        a.terrain = if k.only_underwater { 2 } else { 0 };
+        if !std::mem::replace(&mut a.escaped, true) {
+            (a.thirsty, a.drinking) = (false, false);
+            out.log.push("escape");
+        }
+    } else {
+        a.escaped = false;
     }
 }
 
@@ -1178,18 +1194,13 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
 }
 
 /// The animals (positions in the entity list) of exhibit `x` in the order of the exhibit's
-/// animal list (habitat rating 5.1, guests visit 6.3): its tiles in the order of the last fill,
-/// then each tile's unit list. An animal counts on its own tile only; a carried one is on none.
+/// stored animal list (habitat rating 5.1, guests visit 6.3). The list is rebuilt only at a
+/// recomputation, so a reader refreshes the exhibit first ([`rating::refresh`]).
 pub fn exhibit_animals(world: &World, x: u32) -> Vec<usize> {
-    let mut found = Vec::new();
-    for t in world.tiles_of(x) {
-        found.extend(
-            world
-                .units_on(t)
-                .filter(|&i| world.zoo.entities[i].class == "animals"),
-        );
-    }
-    found
+    let list = world.exhibits().get(x).map(|e| &e.rating.animals);
+    (list.into_iter().flatten())
+        .filter_map(|&id| world.find(id))
+        .collect()
 }
 
 /// The shelters for the check of an animal on tile `tile` that aims at building `target` (animals
@@ -1385,6 +1396,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             env.stands = tile.map_or(0, |t| tank::kind(world, t));
         }
         if env.adult && !a.dying && a.counters[REPRODUCTION] == 0 {
+            rating::refresh(world, ctx.cat, x, &mut || ctx.rng.rand());
             env.candidates = breed::candidates(world, at, x, a);
         }
         env.size = (near.iter())

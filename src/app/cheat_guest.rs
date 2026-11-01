@@ -9,8 +9,10 @@ use crate::goal::{IN_BUILDING, stop_use};
 use crate::guest::Guest;
 use crate::money::Money;
 use crate::place::bulldozer::type_of;
+use crate::rubble::{Kit, PIECE_NAME, turn_to_rubble};
 use crate::unit::Part;
 use crate::world::World;
+use crate::zoo::Entity;
 
 /// The scenery of the cars and the lab jeep: name ids (cheats 4.2 D).
 const CARS: [i32; 6] = [6138, 6139, 6140, 6142, 6145, 6167];
@@ -87,20 +89,26 @@ pub(super) fn guests_sick(world: &mut World) {
     }
 }
 
-/// `cars_to_rubble` (4.2 D): the car scenery goes, as the scenario rule that removes by name id
-/// does it (the pile of rubble is not made: the spec does not name it), and when at least one went
-/// the donations and the cash gain 5500. `before` is told each id just before. The number removed.
+/// `cars_to_rubble` (4.2 D): every car turns to rubble (4.6), and when at least one did the
+/// donations and the cash gain 5500. `before` is told each id just before. The number of cars.
 pub(super) fn remove_cars(
     (world, money): (&mut World, &mut Money),
-    cat: &Catalogue,
+    kit: &mut Kit,
     mut before: impl FnMut(u32),
 ) -> usize {
-    let gone = CARS.map(|name| crate::scenario::remove(world, cat, 0, name, &mut before));
-    let gone = gone.iter().sum();
-    if gone > 0 {
+    let car = |e: &&Entity| type_of(kit.cat, e).is_some_and(|t| CARS.contains(&t.name_id));
+    let ids: Vec<u32> = (world.zoo.entities.iter())
+        .filter(car)
+        .filter_map(|e| Some(e.common.as_ref()?.id))
+        .collect();
+    for &id in &ids {
+        before(id);
+        turn_to_rubble(world, kit, id);
+    }
+    if !ids.is_empty() {
         money.refund(crate::money::DONATIONS, CAR_GIFT);
     }
-    gone
+    ids.len()
 }
 
 /// The contagion cheats (4.2 E): the guest at `at` takes the bit. Sickness needs any guest, the
@@ -155,7 +163,16 @@ impl App<'_> {
                 let (carry, selected, pending) =
                     (&mut game.carry, &mut game.selected, &mut game.pending);
                 let held = &mut game.held;
-                remove_cars((&mut game.world, &mut game.money), cat, |id| {
+                let template = (self.ui.as_ref()).map_or(String::new(), |u| u.string(PIECE_NAME));
+                let renderer = &self.renderer;
+                let shape = |e: &Entity| renderer.shape(e);
+                let mut kit = Kit {
+                    cat,
+                    rng: &mut self.sim.rng,
+                    template: &template,
+                    shape: &shape,
+                };
+                remove_cars((&mut game.world, &mut game.money), &mut kit, |id| {
                     // The map view lets it go (scenarios 7.5).
                     if carry.as_ref().is_some_and(|c| c.id == id) {
                         (*carry, *held, *pending) = (None, None, None);

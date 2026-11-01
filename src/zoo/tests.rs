@@ -717,6 +717,8 @@ fn reads_the_common_part_of_fixed_entities() {
             assert_eq!((c.x, c.y, c.z), (100, -5, 32));
             assert_eq!(c.colors, [3, 9], "{class} at {v}");
         }
+        let r = z.entities[6].common.as_ref().unwrap().rubble.as_ref();
+        assert_eq!(r.map(|r| (&r.group[..], r.name_id)), Some((&[0][..], 0)));
         let c = z.entities[3].common.as_ref().unwrap();
         assert_eq!((c.rotation, c.id, &*c.name), (4, 9, "House"));
         // The words after the health are upkeep and dates, never timers (zoo format 6.8).
@@ -1774,6 +1776,7 @@ fn new_animal() -> AnimalRecord {
         counters[*at] = Some(i as i32 + 1);
     }
     AnimalRecord {
+        escaped: true,
         happiness: 71,
         hunger: 12,
         health: 88,
@@ -1798,9 +1801,12 @@ fn new_animal() -> AnimalRecord {
         rampage: 9,
         dates: [0x01d0_0000_1234_5678, 0x01d0_0000_8765_4321],
         escape: Some(Escape {
-            tiles: [[1, 2], [-3, 4]],
-            words: [5, 6, 7],
-            last: 8,
+            a: [1, 2],
+            b: [-3, 4],
+            kind: 5,
+            reached: 6,
+            across: 7,
+            broken: 8,
         }),
         life: Some(4319),
         baby: 999,
@@ -1808,7 +1814,7 @@ fn new_animal() -> AnimalRecord {
         mate_delay: Some(2),
         boxed: 1,
         home: [30, 40],
-        spare: (1..=74).collect(),
+        spare: (1..=73).collect(),
     }
 }
 
@@ -1875,6 +1881,16 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         made("paths", "path", at.clone()),
         made("ambient", "bird", at.clone()),
         made("rubble", "r", at.clone()),
+        made(
+            "rubble",
+            "r",
+            with(&|c| {
+                c.rubble = Some(crate::zoo::Rubble {
+                    group: vec![7, 8, 9],
+                    name_id: 6138,
+                })
+            }),
+        ),
         made("fences", "f", with(&|c| c.fence = Some(fence))),
         made(
             "tankwall",
@@ -1959,6 +1975,10 @@ fn an_entity_made_in_play_is_written_and_read_back() {
             assert_eq!(b.food, if keeps { c.food } else { 0 }, "{what}");
             assert_eq!((b.fence, b.filter), (c.fence, c.filter), "{what}");
             assert_eq!(b.building, c.building, "{what}");
+            if e.class == "rubble" {
+                let empty = Some(crate::zoo::Rubble::default());
+                assert_eq!(b.rubble, c.rubble.clone().or(empty), "{what}");
+            }
             assert_eq!(b.animal.is_some(), e.class == "animals", "{what}");
             assert_eq!(b.guest.is_some(), e.class == "guests", "{what}");
             if c.animal.is_some() {
@@ -2804,8 +2824,8 @@ fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
         (Some(4319), 999, 1600, Some(2), 1)
     );
     // The keeper-visit level and the five rate multipliers are 1.
-    let ones: Vec<usize> = (0..74).filter(|&i| back.spare[i] != 0).collect();
-    assert_eq!((back.spare.len(), ones), (74, vec![1, 6, 10, 14, 18, 22]));
+    let ones: Vec<usize> = (0..73).filter(|&i| back.spare[i] != 0).collect();
+    assert_eq!((back.spare.len(), ones), (73, vec![1, 6, 10, 14, 18, 22]));
     assert!(back.spare.iter().filter(|&&b| b > 1).count() == 0);
 }
 
@@ -2831,12 +2851,12 @@ fn an_animal_record_of_any_size_is_written_whole() {
     );
     assert_eq!(back.breath, Some(i32::MAX));
     assert_eq!(back.spare[..3], [9, 1, 0]);
-    assert_eq!(back.spare.len(), 74);
+    assert_eq!(back.spare.len(), 73);
     let long = AnimalRecord {
         spare: vec![1; 500],
         ..full
     };
-    assert_eq!(animal_back(&long).spare, vec![1; 74]);
+    assert_eq!(animal_back(&long).spare, vec![1; 73]);
     // An escape record is kept only with the flag 1.
     let none = AnimalRecord {
         escape: None,

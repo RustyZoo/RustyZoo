@@ -56,7 +56,8 @@ pub struct Mover {
     pub relaxed: bool,
     /// A guest on its way out of the zoo (task 0x71).
     pub leaving: bool,
-    /// An animal in the exhibit's reachability test, and one in water mode (terrain mode 1).
+    /// An animal in the exhibit's reachability test or on an escape walk (its escape flag,
+    /// animals 11.3), and one in water mode (terrain mode 1).
     pub test: bool,
     pub water_mode: bool,
     /// The unit's own id, to leave it out of the units on a tile.
@@ -72,6 +73,12 @@ pub struct Mover {
     pub start: (usize, i32),
     /// `cAvoidEdges` of the animal's type: the radius, in tiles, of the fences it keeps off.
     pub avoid_edges: u32,
+    /// `cIsJumper`, `cIsClimber`, `cBashStrength` and `cCrushesFences` of the animal's type: how
+    /// it crosses a fence with its escape flag up (5.3).
+    pub jumper: bool,
+    pub climber: bool,
+    pub bash: i32,
+    pub crush: i32,
     /// The tile the unit is going to now (before a new request sets it).
     pub dest: Option<usize>,
     /// An animal going to or from a show tank (tasks 0x85 and 0x86).

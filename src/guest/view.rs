@@ -32,21 +32,17 @@ pub struct Beast {
     pub sick: bool,
 }
 
-/// What a viewing area shows of its exhibit (4.3).
+/// What a viewing area shows of its exhibit (4.3), read from the tiles of the area alone.
 #[derive(Debug, PartialEq)]
 pub struct Sight {
     pub exhibit: u32,
-    /// The animals the exhibit holds as (id, happiness), in list order, and how many stand on the
-    /// tiles the area sees.
-    pub all: Vec<(u32, i32)>,
+    /// How many animals stand on the tiles the area sees, the species among them (name ids, in
+    /// order) and how many of them are sick.
     pub animals: usize,
-    /// The species in view (name ids, in order) and how many animals in view are sick.
     pub species: Vec<i32>,
     pub sick: usize,
     /// The crowding of the area: ten times the guests per tile, rounded.
     pub crowd: i32,
-    /// The average happiness of all the animals of the exhibit.
-    pub average: i32,
     /// The tour bonus of the area: `cTourGuideBonus` of the first guide on its tiles (habitat
     /// rating 10.4).
     pub bonus: i32,
@@ -170,7 +166,8 @@ fn through(world: &World, tile: usize, k: u8) -> Option<(usize, usize)> {
     (!world.units.views.areas[e].1[a].seen.is_empty()).then_some((e, a))
 }
 
-/// 4.2 and 4.3: what the guest on `tile` sees looking in direction `k`.
+/// 4.2 and 4.3: what the guest on `tile` sees looking in direction `k`. The exhibit is not
+/// recomputed.
 pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<Sight> {
     refresh(world, cat);
     if world.exhibits().region(tile) != Some(GROUNDS) {
@@ -179,20 +176,15 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
     let (e, a) = through(world, tile, k)?;
     let (exhibit, areas) = &world.units.views.areas[e];
     let area = &areas[a];
-    // The exhibit's animal list (6.3): the tiles in their own order, then each tile's unit list.
-    let mut held = beasts(world, cat);
-    let all: Vec<Beast> = crate::animal::exhibit_animals(world, *exhibit)
-        .into_iter()
-        .filter_map(|at| {
+    // The animals standing on the tiles the area sees, each tile's unit list in order; an
+    // animal counts at its own tile only.
+    let held = beasts(world, cat);
+    let seen: Vec<&Beast> = (area.seen.iter())
+        .flat_map(|&t| world.units_on(t).map(move |at| (t, at)))
+        .filter_map(|(t, at)| {
             let id = world.zoo.entities[at].common.as_ref()?.id;
-            let i = held.iter().position(|b| b.id == id)?;
-            Some(held.swap_remove(i))
+            held.iter().find(|b| b.id == id && b.tile == t)
         })
-        .collect();
-    let seen: Vec<&Beast> = area
-        .seen
-        .iter()
-        .flat_map(|&t| all.iter().filter(move |b| b.tile == t))
         .collect();
     let mut species: Vec<i32> = Vec::new();
     for b in &seen {
@@ -217,19 +209,29 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
     });
     Some(Sight {
         exhibit: *exhibit,
-        all: all.iter().map(|b| (b.id, b.happy)).collect(),
         animals: seen.len(),
         sick: seen.iter().filter(|b| b.sick).count(),
         species,
         crowd: (10.0 * guests as f32 / area.tiles.len() as f32).round_ties_even() as i32,
-        average: all
-            .iter()
-            .map(|b| b.happy)
-            .sum::<i32>()
-            .checked_div(all.len() as i32)
-            .unwrap_or(0),
         bonus: bonus.unwrap_or(0),
     })
+}
+
+/// The animals of exhibit `x` as (id, happiness) in the order of its stored list (6.3) and
+/// their average happiness h (4.3), read through a recomputation of a dirty exhibit.
+pub fn herd(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> (Vec<(u32, i32)>, i32) {
+    crate::exhibit::rating::refresh(world, cat, x, &mut || rng.rand());
+    let held = beasts(world, cat);
+    let all: Vec<(u32, i32)> = crate::animal::exhibit_animals(world, x)
+        .into_iter()
+        .filter_map(|at| {
+            let id = world.zoo.entities[at].common.as_ref()?.id;
+            held.iter().find(|b| b.id == id).map(|b| (b.id, b.happy))
+        })
+        .collect();
+    let sum = all.iter().map(|a| a.1).sum::<i32>();
+    let average = sum.checked_div(all.len() as i32).unwrap_or(0);
+    (all, average)
 }
 
 /// Whether the guest has seen exhibit `id` (3.2): a tile of its list belongs to it.
@@ -328,17 +330,19 @@ pub fn check(
     if s.animals == 0 {
         return Vec::new();
     }
+    // The first reader of the exhibit (the sick pick, else h) recomputes it when dirty (4.3).
+    let (all, average) = herd(world, cat, s.exhibit, rng);
     let (v, mut change, mut thoughts) = (&k.view, 0i32, Vec::new());
     if s.sick > 0 {
         change += v.sick;
         if s.sick > 1 {
             thoughts.push((10096, None));
         }
-        let sick = pick(rng, &s.all, -100..=100);
+        let sick = pick(rng, &all, -100..=100);
         thoughts.extend(sick.map(|a| (10545, Some(a))));
     }
     let (band, thought);
-    (change, band, thought) = match s.average {
+    (change, band, thought) = match average {
         81.. => (change + v.happy[0], 81..=100, 10098),
         61..=80 => (change + v.happy[1], 61..=80, 10281),
         0..=60 => (change + v.angry[0], 0..=60, 10282),
@@ -346,7 +350,7 @@ pub fn check(
         -80..=-61 => (change + v.angry[1], -80..=-61, 10283),
         _ => (change + v.angry[2], -100..=-81, 10099),
     };
-    let mood = pick(rng, &s.all, band);
+    let mood = pick(rng, &all, band);
     thoughts.extend(mood.map(|a| (thought, Some(a))));
     if s.species.len() as i32 >= v.species.0 {
         change += v.species.1;
@@ -354,7 +358,7 @@ pub fn check(
     }
     if s.crowd >= v.crowd.0 {
         change += v.crowd.1;
-        let hidden = pick(rng, &s.all, -100..=100);
+        let hidden = pick(rng, &all, -100..=100);
         thoughts.extend(hidden.map(|a| (10102, Some(a))));
     }
     g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(change);
@@ -363,18 +367,32 @@ pub fn check(
 
 /// 7: the guest on `tile` stops viewing: the exhibit gets the time it watched and, when it saw
 /// animals, none sick and no crowd, a donation.
-pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, tile: Option<usize>) {
+pub fn leave_area(
+    g: &mut Guest,
+    id: u32,
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    tile: Option<usize>,
+) {
     let sight = tile
         .zip(g.va.take())
         .and_then(|(t, dir)| sight(world, cat, t, dir));
     let Some(s) = sight else {
         return;
     };
+    // h is read, recomputing the exhibit when dirty, only when the donation is considered (4.3).
+    let considered = s.animals > 0 && s.sick == 0 && s.crowd < 50;
+    let average = if considered {
+        herd(world, cat, s.exhibit, rng).1
+    } else {
+        0
+    };
     // The calendar's milliseconds (it runs 7,200 times faster than the play) in units of 100 ns.
     let t = (world.units.now.saturating_sub(g.viewed_at).max(0) as u64).saturating_mul(10_000);
     let factor = f64::from(world.units.donation_factor);
     // Each operation rounded to 24 bits: h + b first, then the products in the order written.
-    let happy = single(f64::from(s.average) + f64::from(s.bonus));
+    let happy = single(f64::from(average) + f64::from(s.bonus));
     let raw = single(single(single(t as f64 * factor) * happy) * f64::from(0.01_f32));
     // The donation cheat doubles it (cheats 3).
     let raw = if world.units.cheat.donation_double {
@@ -383,7 +401,7 @@ pub fn leave_area(g: &mut Guest, id: u32, world: &mut World, cat: &Catalogue, ti
         raw
     };
     let d = if raw.is_nan() { 0.0 } else { raw.min(10.0) } as f32;
-    let give = s.animals > 0 && s.sick == 0 && s.crowd < 50 && d > 0.0;
+    let give = considered && d > 0.0;
     let Some(x) = world.exhibits_mut().get_mut(s.exhibit) else {
         return;
     };
