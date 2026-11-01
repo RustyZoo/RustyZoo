@@ -932,9 +932,10 @@ impl Hooks for Standard<'_> {
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         let took = unit.kind == Kind::Animal
             && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
-        // An egg chooses nothing: only the set that hatches it runs.
-        let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
-        let key = (!took && !egg).then(|| ambient_key(unit));
+        // An egg or a crate chooses nothing (behaviours 6.4): only the set that hatches the egg or
+        // shakes the crate runs.
+        let held = matches!(&unit.part, Part::Animal(a) if a.egg || a.crated);
+        let key = (!took && !held).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
         swim::nesting(unit, world, at);
         // The terrain mode follows the animal where an ambient set is chosen (tank fauna 9.4).

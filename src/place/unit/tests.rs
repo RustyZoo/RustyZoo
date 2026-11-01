@@ -997,3 +997,54 @@ fn a_guest_put_down_has_lost_its_wish_to_leave() {
     };
     assert!(!g.leave);
 }
+
+#[test]
+fn a_picked_up_escaped_animal_is_a_crate_that_may_stand_on_the_grounds() {
+    let mut cat = catalogue();
+    let crate_ini = "[m/Characteristics/Integers]\ncBoxFootprintX=4\ncBoxFootprintY=4\n";
+    cat.push(ty("m", "zebra", crate_ini));
+    let wide = cat.types.len() - 1;
+    let mut w = world(square("fences", 2, 2));
+    let zebra = animal("m", (4, 4));
+    let id = w.add(zebra.clone(), shape(&zebra)).unwrap();
+    let state = |w: &mut World, escaped: bool| {
+        let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) else {
+            panic!("not an animal");
+        };
+        (a.escaped, a.thirsty, a.walk) = (escaped, true, Some(Default::default()));
+    };
+    let looks = |w: &World| match w.units.get(id).map(|u| &u.part) {
+        Some(crate::unit::Part::Animal(a)) => (a.crated, a.escaped, a.thirsty, a.walk.is_some()),
+        _ => panic!("not an animal"),
+    };
+    let judged = |w: &World, carry: &Carry, ty: usize, tile: (i64, i64)| {
+        let carry = Carry {
+            ty,
+            ..carry.clone()
+        };
+        let point = (tile.0 * 64 + 32, tile.1 * 64 + 32, 0);
+        let p = carried(w, &cat, &[false, true], &carry, 0, aim(0, point)).unwrap();
+        (p.verdict, p.message)
+    };
+    // An animal that is not escaped is carried as itself: refused on the grounds.
+    state(&mut w, false);
+    let carry = pick_up(&mut w, &cat, id, 0).unwrap();
+    assert_eq!(looks(&w), (false, false, true, false));
+    let refused = (Verdict::Invalid, Some(IN_AN_EXHIBIT));
+    assert_eq!(judged(&w, &carry, ZEBRA, (4, 4)), refused);
+    assert!(put_down(&mut w, id, carry.from, 0));
+    // An escaped one is crated: no longer loose, its walk and its need flags gone.
+    state(&mut w, true);
+    let carry = pick_up(&mut w, &cat, id, 0).unwrap();
+    assert_eq!(looks(&w), (true, false, false, false));
+    // The crate may stand on the grounds, even for a species that lives only under water.
+    let valid = (Verdict::Valid, None);
+    assert_eq!(judged(&w, &carry, ZEBRA, (4, 4)), valid);
+    assert_eq!(judged(&w, &carry, ZEBRA, (2, 2)), valid);
+    assert_eq!(judged(&w, &carry, ORCA, (4, 4)), valid);
+    // A crate takes its own footprint: 2 by 2 by default, so the long stegosaurus is not large;
+    // a 4 by 4 crate is, and its quarters may not touch water (tile 5, 5).
+    assert_eq!(judged(&w, &carry, BIG, (6, 2)), valid);
+    assert_eq!(judged(&w, &carry, wide, (5, 2)), valid);
+    assert_eq!(judged(&w, &carry, wide, (5, 4)).0, Verdict::Invalid);
+}
