@@ -207,7 +207,7 @@ impl Panel {
             set_follow_icon(ui, vfs, FOLLOW, ty, animal_animation(a.egg, a.crated));
         }
         let moveable = ty.is_none_or(|t| number(t, "cMoveable").is_none_or(|v| v != 0.0));
-        ui.set_enabled(SELL, !carried && !self.no_sale);
+        ui.set_enabled(SELL, !carried && !a.escaped && !self.no_sale);
         ui.set_enabled(PICK_UP, moveable && !carried);
         ui.set_enabled(EXHIBIT, !carried);
         let list = world.units.thoughts.about(id);

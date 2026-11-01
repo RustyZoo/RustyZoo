@@ -78,7 +78,7 @@ impl Animal {
 /// bite's worth (an assignment: the increment of this tick is lost, 5.5).
 pub fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
     let bite = m.left.min(k.bite).max(0);
-    if bite == 0 || m.wet {
+    if bite == 0 || m.wet || a.escaped {
         return a.stop_eating(false, m);
     }
     if !m.in_set {

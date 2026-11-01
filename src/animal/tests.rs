@@ -10,6 +10,7 @@ use crate::world::{Shape, TankKind};
 use crate::zoo::{Clocks, Common, Escape, Tile, View, Zoo};
 
 mod breed;
+mod escape;
 mod life;
 mod tank;
 

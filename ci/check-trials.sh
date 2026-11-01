@@ -236,6 +236,9 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # (animals needs 7.1) and draw once per call, which moves the shared draws again: seed 1 no longer reaches the pile; seed 3 is the first
 # that eats the pile both with and without the neighbour walk (seed 2 only with it).
 check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 3 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+# A fence piece of the lions' pen removed (the bulldozer's deletion) opens the pen onto the grounds: the pen is
+# deleted and its three lions stand loose, each escaping at its next escape check (animals 11).
+check base-trial 27646,44033,27645 'printf "5 bulldoze 18548\n" >"$tmp/open"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --script "$tmp/open" --log 2>/dev/null | awk "/ animal escape /{l=l (l?\",\":\"\") \$NF} END{print l}"'
 # An animal placed (habitat rating 9.4, animals 10): ci/reactions.txt adopts a gazelle and a lion into a
 # pen. The lion's cat family is at -20 in the gazelle's compatible animals, so the gazelle (15672)
 # dislikes the newcomer at pass 131, and the frown plays once.
@@ -1394,6 +1397,6 @@ save_load() { # save_load <map>
 check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
 check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial 227408,0,8316adf7d404801a "save_load maps/scn19.zoo"
+check expansion-trial 227408,0,8374ec0c467c71cf "save_load maps/scn19.zoo"
 
 exit $failed

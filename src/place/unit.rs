@@ -543,7 +543,8 @@ pub struct Carry {
 
 /// Picks the unit `id` up (unit placing 8.2): it is taken off the map, stops everything (its move,
 /// its behaviour set and its animation, the goals being the goal issues') and is marked carried,
-/// so its update is suspended; the exhibit it left is marked for a new rating. `None` when `id` is
+/// so its update is suspended; the exhibit it left is marked for a new rating. An escaped animal
+/// is no longer escaped (the crate it goes into is not modelled). `None` when `id` is
 /// no unit, is carried already, or its type is not moveable (`cMoveable` 0).
 pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<Carry> {
     let at = world.find(id)?;
@@ -575,6 +576,10 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     let unit = world.units.get_mut(id)?;
     unit.tank = 0;
     unit.carried = true;
+    // An animal picked up is no longer loose (unit placing 8.2, 9.1).
+    if let crate::unit::Part::Animal(a) = &mut unit.part {
+        a.escaped = false;
+    }
     unit.moving = false;
     unit.destination = None;
     unit.path.clear();

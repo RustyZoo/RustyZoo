@@ -55,7 +55,7 @@ pub fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mut Out) 
     if !a.sleeping {
         // An animal in the water or a tank cannot act here: it only tires, like a rested one. A
         // tired one whose set does not start gets nothing.
-        if env.wet || a.energy < k.energy_threshold {
+        if env.wet || a.escaped || a.energy < k.energy_threshold {
             a.energy_change = a.energy_change.saturating_add(k.energy_increment);
         } else if !asleep && sets.has_sleep {
             (a.sleeping, asleep) = (true, true);
@@ -116,7 +116,8 @@ pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng,
         removed = true;
     }
     // Low health: the set, and the unhappiness (without a set that starts: not at all).
-    let low = i64::from(a.health) * 100 <= i64::from(k.pct_hits) * i64::from(k.max_hits);
+    let low =
+        !a.escaped && i64::from(a.health) * 100 <= i64::from(k.pct_hits) * i64::from(k.max_hits);
     let mut unwell = low;
     if low && !env.wet && !a.egg {
         if !env.sets.sick_refused && env.sets.has_sick {

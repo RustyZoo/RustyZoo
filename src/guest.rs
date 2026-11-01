@@ -423,11 +423,17 @@ pub struct Arrival {
     pub reset: i32,
 }
 
-/// Whether an exhibit holds an animal (guests 3.1 step 1).
+/// Whether an animal is loose on the zoo grounds.
+fn loose(world: &World) -> bool {
+    (world.units.iter()).any(|u| matches!(&u.part, crate::unit::Part::Animal(a) if a.escaped))
+}
+
+/// Whether an exhibit holds an animal and none is loose (guests 3.1 steps 1 to 3: a guest
+/// arrives in neither case otherwise).
 pub fn occupied(world: &World, cat: &Catalogue) -> bool {
     let list = world.exhibits().list();
-    list.iter()
-        .any(|x| !rating::input(world, cat, x.id).animals.is_empty())
+    let held = (list.iter()).any(|x| !rating::input(world, cat, x.id).animals.is_empty());
+    held && !loose(world)
 }
 
 /// The name ids of the species that are not special animals, in order, one per name id: the

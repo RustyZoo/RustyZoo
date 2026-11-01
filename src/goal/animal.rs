@@ -187,19 +187,19 @@ impl Cx<'_, '_> {
         let Part::Animal(a) = &self.unit.part else {
             return;
         };
-        let drinking = a.drinking;
+        let (drinking, escaped) = (a.drinking, a.escaped);
         let wet = self.tile().is_some_and(|t| self.world.is_water(t));
         let eating = self.unit.runner.top() == Some("bEat") && self.unit.runner.running();
         if drinking && eating {
             return;
         }
-        if !drinking && !wet && self.start_set("bEat", false) {
+        if !drinking && !wet && !escaped && self.start_set("bEat", false) {
             self.unit.runner.queue("bEat", false, true);
         } else {
             self.reset();
         }
         if let Part::Animal(a) = &mut self.unit.part {
-            a.drinking = !drinking && !wet && self.unit.goal.record.task == DRINK;
+            a.drinking = !drinking && !wet && !escaped && self.unit.goal.record.task == DRINK;
         }
     }
 

@@ -82,8 +82,9 @@ pub fn water(
     if a.egg || a.in_show || !fire(&mut a.counters[WATER], class.periods[WATER]) {
         return None;
     }
-    // A sick animal takes no part in the first two rules (an escaped one, M7, would not either).
-    let sick = a.at_minimum_health;
+    // A sick or escaped animal takes no part in the first two rules, nor in the draw of the land
+    // rule.
+    let sick = a.at_minimum_health || a.escaped;
     let [land, water, tank] = env.kinds;
     let over = |count: usize, needed: i32| count as i64 > i64::from(needed);
     let tank_rule = |rng: &mut Rng| {
@@ -91,7 +92,7 @@ pub fn water(
     };
     let water_rule =
         |rng: &mut Rng| !sick && k.swims && roll(rng, k.enter_water) && over(water, k.water_needed);
-    // A sick animal skips the draw of the land rule.
+    // A sick or escaped animal skips the draw of the land rule.
     let land_rule = |rng: &mut Rng| (sick || roll(rng, k.enter_land)) && over(land, k.land_needed);
     let mode = match a.terrain {
         0 if tank_rule(rng) => 2,
