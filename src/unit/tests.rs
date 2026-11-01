@@ -491,8 +491,12 @@ fn the_hash_covers_the_animals() {
         building: _,
         slot: _,
         entrance: _,
+        walk: _,
+        force: _,
     } = Animal::default();
-    let changes: [fn(&mut Animal); 53] = [
+    let changes: [fn(&mut Animal); 55] = [
+        |a| a.walk = Some(crate::zoo::Escape::default()),
+        |a| a.force = Some("run"),
         |a| a.happiness = 1,
         |a| a.hunger = 1,
         |a| a.health = 1,
