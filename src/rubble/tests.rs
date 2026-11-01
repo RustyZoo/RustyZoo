@@ -85,7 +85,7 @@ fn a_car_leaves_a_piece_per_quadrant_with_a_skip_draw_and_a_rotation_draw() {
     for (i, j) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
         let (x, y) = (64 - 32 + 16 + 32 * i, 64 - 32 + 16 + 32 * j);
         if mirror.pick(100) != 0 {
-            want.push(("brubls1".to_string(), x, y, 35 % 16, mirror.rand() & 7));
+            want.push(("brubls1".to_string(), x, y, 0, mirror.rand() & 7));
         }
     }
     assert!(want.len() >= 3);
@@ -243,4 +243,22 @@ fn nothing_is_made_for_an_entity_that_is_not_there() {
     }
     assert_eq!(w.zoo.entities.len(), 1);
     assert_eq!(rng, Rng::default());
+}
+
+#[test]
+fn a_rubble_piece_stands_on_the_ground_at_its_point() {
+    let cat = cat(&ALL);
+    // A car at z 35 on tiles at elevation 2: flat, then rising along x.
+    for (shape, slope) in [(0u8, false), (0x50, true)] {
+        let mut w = world(("objects", "car"), (64, 64));
+        for t in [0, 1, 10, 11] {
+            w.zoo.tiles[t].elevation = 2;
+            w.zoo.tiles[t].shape = shape;
+        }
+        let pieces = run(&mut w, &cat, &mut Rng::default());
+        assert!(pieces.len() >= 3);
+        for p in pieces {
+            assert_eq!(p.3, 32 + if slope { p.1 % 64 / 4 } else { 0 });
+        }
+    }
 }

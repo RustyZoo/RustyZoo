@@ -5,6 +5,7 @@ use crate::build::number;
 use crate::building::lift;
 use crate::entity::{Catalogue, EntityType};
 use crate::place::bulldozer::type_of;
+use crate::render::order::ground_height;
 use crate::sim::Rng;
 use crate::world::{Shape, World};
 use crate::zoo::{Common, Entity, Rubble};
@@ -86,15 +87,12 @@ pub fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
                 kinds[0]
             };
             let Some(tile) = tile else { continue };
-            let base = world.zoo.tiles[tile].elevation * 16;
-            let (x, y, z) = match by_tile {
-                true => (
-                    cx.div_euclid(64) * 64 + 32,
-                    cy.div_euclid(64) * 64 + 32,
-                    base,
-                ),
-                false => (cx, cy, base + c.z.rem_euclid(16)),
+            // The piece stands on the ground at its point.
+            let (x, y) = match by_tile {
+                true => (cx.div_euclid(64) * 64 + 32, cy.div_euclid(64) * 64 + 32),
+                false => (cx, cy),
             };
+            let z = ground_height(&world.zoo.tiles[tile], x.rem_euclid(64), y.rem_euclid(64));
             let name = kit.template.replacen("%s", &c.name, 1);
             let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
             let piece = Entity {
