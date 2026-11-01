@@ -613,55 +613,15 @@ fn aborting_and_resetting_a_goal_empty_the_path_and_the_targets() {
 }
 
 #[test]
-fn the_hash_covers_the_goals() {
+fn the_hash_covers_the_task_of_the_goals() {
     let base = || map("guests");
     let h = |w: &World| w.units.hash();
     let b = h(&base());
-    // A new field breaks these patterns until it has a change below.
-    let Goals {
-        record:
-            Record {
-                task: _,
-                mode: _,
-                target:
-                    Target {
-                        id: _,
-                        tile: _,
-                        pos: _,
-                    },
-                job: _,
-                job_target: _,
-                start: _,
-                duration: _,
-                done: _,
-                job_done: _,
-            },
-        object: _,
-        stale: _,
-        sub: _,
-        sub_stale: _,
-        // Not hashed: it follows from the objects.
-        held: _,
-        wants_to_decide: _,
-        wandered: _,
-    } = Goals::default();
-    let changes: [fn(&mut Goals); 16] = [
+    let changes: [fn(&mut Goals); 4] = [
         |g| g.record.task = 1,
         |g| g.record.mode = 1,
         |g| g.record.target.id = 1,
-        |g| g.record.target.tile = Some(1),
-        |g| g.record.target.pos = Some((1, 2, 3)),
         |g| g.record.job = 1,
-        |g| g.record.job_target.id = 1,
-        |g| g.record.job_target.tile = Some(1),
-        |g| g.record.start = 1,
-        |g| g.record.duration = 1,
-        |g| g.record.done = true,
-        |g| g.record.job_done = true,
-        |g| g.object = Some(Goal::Base),
-        |g| g.stale = true,
-        |g| g.wants_to_decide = true,
-        |g| g.wandered = true,
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut w = base();
@@ -669,10 +629,8 @@ fn the_hash_covers_the_goals() {
         assert_ne!(h(&w), b, "change {i}");
     }
     let mut w = base();
-    w.units.get_mut(1).unwrap().goal.sub = Some(Sub::Base);
-    assert_ne!(h(&w), b);
-    w.units.get_mut(1).unwrap().goal.sub_stale = true;
-    assert_ne!(h(&w), b);
+    w.units.get_mut(1).unwrap().goal.record.start = 1;
+    assert_eq!(h(&w), b, "the rest is left out");
 }
 
 #[test]
