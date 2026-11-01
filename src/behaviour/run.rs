@@ -117,7 +117,7 @@ impl Entry {
 
 /// The animation a unit holds: the sequence being played, the sequences queued, the base
 /// animation that loops when nothing else plays, and the frame (sprite drawing 6).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Animation {
     /// The animation shown.
     pub name: String,
@@ -126,6 +126,8 @@ pub struct Animation {
     /// Milliseconds the frame has been shown.
     pub elapsed: u32,
     reverse: bool,
+    /// The base animation plays reversed (`fMoveReverse`, `fFlyReverse`); not in the state hash.
+    base_reverse: bool,
     /// The frames of the animation shown; 0 if it has none.
     count: u32,
     base: String,
@@ -153,6 +155,7 @@ impl Default for Animation {
             frame: 0,
             elapsed: 0,
             reverse: false,
+            base_reverse: false,
             count: 0,
             base: "idle".to_string(),
             cut: false,
@@ -164,6 +167,28 @@ impl Default for Animation {
             sound: None,
             notes: Vec::new(),
         }
+    }
+}
+
+/// The state hash reads this text: `base_reverse` is not in it, so the hashes stay as they were.
+impl std::fmt::Debug for Animation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Animation")
+            .field("name", &self.name)
+            .field("frame", &self.frame)
+            .field("elapsed", &self.elapsed)
+            .field("reverse", &self.reverse)
+            .field("count", &self.count)
+            .field("base", &self.base)
+            .field("cut", &self.cut)
+            .field("seq", &self.seq)
+            .field("stop", &self.stop)
+            .field("stopped", &self.stopped)
+            .field("entry", &self.entry)
+            .field("queue", &self.queue)
+            .field("sound", &self.sound)
+            .field("notes", &self.notes)
+            .finish()
     }
 }
 
@@ -186,6 +211,12 @@ impl Animation {
     /// to its end, the loop of the old base included (movement 8.2 step 1).
     pub fn base_to(&mut self, name: &str) {
         self.base = name.to_string();
+        self.base_reverse = false;
+    }
+
+    /// Makes the base loop reversed, from its next start (`fMoveReverse`, `fFlyReverse`).
+    pub fn reverse_base(&mut self) {
+        self.base_reverse = true;
     }
 
     /// Sets the cut (sprite drawing 6.2): a forced set start, the stop of a walk, the resets of
@@ -203,8 +234,9 @@ impl Animation {
     /// next advance.
     fn enter(&mut self, timing: &dyn Fn(&str) -> Option<Timing>) {
         let entry = self.seq.get(self.entry);
-        let (name, reverse) =
-            entry.map_or((self.base.clone(), false), |e| (e.name.clone(), e.reverse));
+        let (name, reverse) = entry.map_or((self.base.clone(), self.base_reverse), |e| {
+            (e.name.clone(), e.reverse)
+        });
         self.sound = entry.and_then(|e| e.sound.clone());
         self.count = timing(&name).map_or(0, |t| t.count);
         self.reverse = reverse;
@@ -351,7 +383,7 @@ pub struct Runner {
     /// (behaviours 5.5). Set by the unit before each run.
     pub talking: bool,
     /// The move call the last execution stopped at, for the unit to run.
-    moving: Option<(Gait, Target)>,
+    moving: Option<(Gait, Target, bool)>,
     /// A `fFaceTowardFood` call ran, for the unit to turn.
     face: bool,
     /// A `fFaceTowardTarget` call ran, for a guest or staff member to turn to its own target.
@@ -447,7 +479,7 @@ impl Runner {
     }
 
     /// The move call the set reached, once.
-    pub fn take_move(&mut self) -> Option<(Gait, Target)> {
+    pub fn take_move(&mut self) -> Option<(Gait, Target, bool)> {
         self.moving.take()
     }
 
@@ -889,8 +921,13 @@ impl Runner {
                 self.chain[k].done = true;
                 return true;
             }
-            Op::Move { gait, target, .. } => {
-                self.moving = Some((gait.clone(), *target));
+            Op::Move {
+                gait,
+                target,
+                reverse,
+                ..
+            } => {
+                self.moving = Some((gait.clone(), *target, *reverse));
                 return true;
             }
             Op::Fail => return false,
