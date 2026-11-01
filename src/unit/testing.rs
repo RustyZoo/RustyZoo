@@ -39,7 +39,7 @@ pub fn centre((tx, ty): (i32, i32)) -> (i32, i32) {
 /// Units take their place by their position, `paths` are path pieces, `fences` exhibit fences,
 /// `bush` and `building` a one-quarter object (a `bush` of type `grass` is walkable, a `building`
 /// of type `hall` takes a whole tile).
-fn shape(e: &Entity) -> Option<Shape> {
+pub fn shape(e: &Entity) -> Option<Shape> {
     let thing = |kind, footprint, fence| Shape {
         kind,
         footprint,
@@ -174,7 +174,7 @@ impl crate::behaviour::Data for Walker {
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
         [
-            "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise",
+            "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise", "climb",
         ]
         .contains(&name)
         .then_some(crate::behaviour::Timing {

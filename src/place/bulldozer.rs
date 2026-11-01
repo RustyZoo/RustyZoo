@@ -131,12 +131,30 @@ pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
             let health = e.common.as_ref().and_then(|c| c.filter).map(|f| f.health);
             health.map_or(0.8, |h| crate::world::filter_sell_rate(ty, h))
         }
+        _ if e.class == "rubble" => return rubble_price(cat, e),
         _ if unit::is_animal(ty) => return unit::new_sell_price(ty),
         // Firing refunds nothing (unit placing 10.2).
         _ if staff::is_staff(ty) => return 0.0,
         _ => 0.8,
     };
     cost(ty) * rate
+}
+
+/// The sell price of a rubble piece (cheats 4.6): half the purchase cost of the type that turned
+/// to rubble, 0.1 when that is 0, 1 when the catalogue no longer has the type.
+fn rubble_price(cat: &Catalogue, e: &Entity) -> f32 {
+    let id = e
+        .common
+        .as_ref()
+        .and_then(|c| c.rubble.as_ref())
+        .map_or(0, |r| r.name_id);
+    let Some(ty) = cat.types.iter().find(|t| id != 0 && t.name_id == id) else {
+        return 1.0;
+    };
+    match cost(ty) * 0.5 {
+        0.0 => 0.1,
+        price => price,
+    }
 }
 
 /// The entities a rectangle of tiles collects, each once (placing 7.1 area drag): for each tile

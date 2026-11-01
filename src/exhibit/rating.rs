@@ -442,6 +442,17 @@ pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
 /// amphibious neighbours and a tank those of its show neighbours, which computes those that are
 /// dirty first (9.2), then the reachability test runs (5.8).
 pub fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
+    // The exhibit's animal list is emptied and refilled at the recomputation (5.1): its tiles in
+    // the order of the last fill, then each tile's unit list.
+    let list: Vec<u32> = (world.tiles_of(x).into_iter())
+        .flat_map(|t| world.units_on(t))
+        .filter_map(|i| Some(&world.zoo.entities[i]).filter(|e| e.class == "animals"))
+        .filter_map(|e| e.common.as_ref().map(|c| c.id))
+        .collect();
+    let Some(e) = world.exhibits_mut().get_mut(x) else {
+        return;
+    };
+    e.rating.animals = list;
     let Some(e) = world.exhibits().get(x) else {
         return;
     };
@@ -474,7 +485,7 @@ pub fn tests() -> u32 {
 /// check flag set or the counter at 30, the counter and the flag are cleared, a target is drawn
 /// among the candidate tiles of 10.2 that belong to no amphibious neighbour, and the last animal
 /// of each type searches its way there with its test flag up (no diagonals). The types that get
-/// there make the escape table, which the escapes read (M7).
+/// there make the escape table, which the escape walk reads (animals 11.3).
 pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     let tests = TESTS.get().saturating_add(1);
     TESTS.set(tests);
@@ -772,6 +783,7 @@ pub fn react(world: &mut World, cat: &Catalogue, before: Sums, change: Option<Ch
             let home = |p: u32| l.and_then(|l| crate::animal::home::home(world, cat, p, l));
             let mut places = vec![x];
             places.extend(near.iter().filter(|&&p| amphibious && home(p) == Some(x)));
+            places.iter().for_each(|&p| refresh(world, cat, p, rand));
             let ids: Vec<u32> = (places.into_iter())
                 .flat_map(|p| crate::animal::exhibit_animals(world, p))
                 .map(|at| &world.zoo.entities[at])
@@ -1133,6 +1145,9 @@ pub struct State {
     pub species_ms: u32,
     pub rating_ms: u32,
     pub records: Vec<Record>,
+    /// The exhibit's animal list (5.1): the ids of its animals as the last recomputation left
+    /// them, or in name order once the exhibit panel sorted it. Not saved.
+    pub animals: Vec<u32>,
     /// The species list: `key/subtype` of each type on the tiles, as last revised.
     pub types: Vec<String>,
     /// The tile (index into the exhibit's tile list) of each species' ambient sound.
