@@ -537,6 +537,11 @@ impl Units {
         std::mem::take(&mut self.staff_lines)
     }
 
+    /// Asks for a sound at the place of entity `id` (nothing when there is none).
+    pub fn push_sound(&mut self, id: u32, heard: Option<Heard>) {
+        self.sounds.extend(heard.map(|h| (id, h)));
+    }
+
     /// The sounds asked for since the last call: the unit and the sound its `[Sounds]` names.
     pub fn take_sounds(&mut self) -> Vec<(u32, Heard)> {
         std::mem::take(&mut self.sounds)
