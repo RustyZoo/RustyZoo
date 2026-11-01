@@ -7,6 +7,7 @@ use crate::entity::{Catalogue, EntityType};
 use crate::place::bulldozer::type_of;
 use crate::render::order::ground_height;
 use crate::sim::Rng;
+use crate::unit::gate::heard_of;
 use crate::world::{Shape, World};
 use crate::zoo::{Common, Entity, Rubble};
 
@@ -110,7 +111,14 @@ pub fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
                 }),
             };
             let shape = (kit.shape)(&piece);
-            made.extend(world.unrecorded(|w| w.add(piece, shape)));
+            let id = world.unrecorded(|w| w.add(piece, shape));
+            made.extend(id);
+            // The first piece of each column explodes with the sound of its own type.
+            if let (0, Some(id)) = (j, id) {
+                let voice = format!("{id}/cExplosionSound");
+                let heard = heard_of(kind, "cExplosionSound", "cExplosionSoundAtten", &voice);
+                world.units.push_sound(id, heard);
+            }
         }
     }
     // The pieces of one call share a group and keep the name id of the type they replace.
