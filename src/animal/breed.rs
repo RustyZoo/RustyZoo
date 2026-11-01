@@ -435,6 +435,7 @@ fn put(
             staff: None,
             filter: None,
             building: None,
+            rubble: None,
             raw: Default::default(),
         }),
     };

@@ -3,7 +3,7 @@
 
 use super::unit::{behaviour_set, read};
 use super::upgrade::NEVER;
-use super::{BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Spans};
+use super::{BuildingRecord, Common, Fence, Filter, GuestRecord, R, Reader, Rubble, Spans};
 
 /// Reads one body. `None` is a class this reader does not know.
 pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
@@ -67,9 +67,12 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
         b"rubble" => {
             let common = scenery(r)?;
             r.copy_on();
-            r.skip_list(4)?;
-            r.skip(4)?;
-            common
+            let group = (0..r.count(4)?).map(|_| r.u32()).collect::<R<Vec<_>>>()?;
+            let name_id = r.i32()?;
+            Common {
+                rubble: Some(Rubble { group, name_id }),
+                ..common
+            }
         }
         b"building" => {
             let common = scenery(r)?;

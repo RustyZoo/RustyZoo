@@ -671,3 +671,92 @@ fn a_visit_with_nothing_to_do_ends_at_once_and_is_not_started_again_by_the_ladde
     );
     assert!(g.w.exhibits().get(pen).unwrap().rating.serviced > 0);
 }
+
+/// A game whose catalogue also has the egg layers emu (f, m) and kiwi (f), with names.
+fn layers() -> Game {
+    let mut g = Game::new(&[PEN_A]);
+    for (name, sub, id) in [("emu", "f", 2), ("emu", "m", 3), ("kiwi", "f", 4)] {
+        g.cat.push(ty("animals", name, sub, id, "cLaysEggs=1"));
+    }
+    g.w.units.names.insert(2, "Emu".into());
+    g.w.units.names.insert(4, "Kiwi".into());
+    g
+}
+
+/// The first seed of the heal draws whose first `% 10` is zero (or not).
+fn seed_where(zero: bool) -> u32 {
+    (1..)
+        .find(|&s| {
+            let mut r = crate::sim::Rng::default();
+            r.seed(s);
+            (r.pick(10) == 0) == zero
+        })
+        .unwrap()
+}
+
+fn species_of(g: &Game) -> (String, String) {
+    let e = &g.w.zoo.entities[g.w.find(ZEBRA_A).unwrap()];
+    (e.type_name.clone(), e.subtype.clone())
+}
+
+#[test]
+fn the_rename_cheat_turns_a_healed_animal_into_an_egg_layer_of_its_subtype() {
+    let mut g = layers();
+    let at = g.w.find(ZEBRA_A).unwrap();
+    g.w.zoo.entities[at].common.as_mut().unwrap().name = "Stripes".into();
+    let mut rng = crate::sim::Rng::default();
+    // The flag down: nothing is drawn, nothing changes.
+    rng.seed(seed_where(true));
+    let before = rng.clone();
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!((rng.clone(), species_of(&g).0), (before, "zebra".into()));
+    // The flag up and the first draw not 0: one draw, no change.
+    g.w.units.cheat.heal_changes_species = true;
+    rng.seed(seed_where(false));
+    let mut one = rng.clone();
+    one.rand();
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!((rng, species_of(&g).0), (one, "zebra".into()));
+    // The first draw 0: the second picks among emu f and kiwi f (not emu m, not the zebra).
+    let mut rng = crate::sim::Rng::default();
+    rng.seed(seed_where(true));
+    let mut two = rng.clone();
+    let pick = (two.rand(), two.pick(2)).1;
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!(rng, two, "two draws");
+    let want = ["emu", "kiwi"][pick as usize];
+    assert_eq!(species_of(&g), (want.into(), "f".into()));
+    let name = &g.w.zoo.entities[at].common.as_ref().unwrap().name;
+    assert_eq!(
+        name,
+        &format!("{} 1", want[..1].to_uppercase() + &want[1..])
+    );
+    assert!(g.w.units.get_mut(ZEBRA_A).is_some_and(|u| !u.typed));
+}
+
+#[test]
+fn the_rename_cheat_with_no_candidate_draws_once_and_changes_nothing() {
+    let mut g = Game::new(&[PEN_A]);
+    g.w.units.cheat.heal_changes_species = true;
+    let mut rng = crate::sim::Rng::default();
+    rng.seed(seed_where(true));
+    let mut one = rng.clone();
+    one.rand();
+    dirt::change_species(&mut g.w, &g.cat, &mut rng, &g.data, ZEBRA_A);
+    assert_eq!((rng, species_of(&g).0), (one, "zebra".into()));
+}
+
+#[test]
+fn a_keeper_heal_under_the_rename_cheat_sometimes_changes_the_species() {
+    let changed = (1..80).find(|&seed| {
+        let mut g = layers();
+        g.sim.set_seed(seed);
+        g.w.units.cheat.heal_changes_species = true;
+        assert!(g.put("herbchow", (6, 4), 1000));
+        zebra(&mut g.w, ZEBRA_A).health = 100;
+        g.run(2500);
+        assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed either way");
+        species_of(&g).0 != "zebra"
+    });
+    assert!(changed.is_some());
+}

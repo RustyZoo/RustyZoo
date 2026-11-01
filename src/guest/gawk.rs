@@ -93,9 +93,12 @@ pub fn update(world: &mut World, cat: &Catalogue) {
 }
 
 /// 3.2: the ids and the help ids of the entities held by the last quadrant (offsets 32 or more) of
-/// the tiles of the seen list.
+/// the tiles of the seen list; none while the guest holds a return building.
 pub fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSet<i32>) {
     let (mut ids, mut helps) = (HashSet::new(), HashSet::new());
+    if g.returning.is_some() {
+        return (ids, helps);
+    }
     for &t in &g.seen {
         if let Some(e) = world.quadrant(t, 3) {
             let e = &world.zoo.entities[e];
