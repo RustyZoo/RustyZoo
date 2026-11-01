@@ -35,8 +35,13 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
             months: 1,
             ..Filter::default()
         }))),
-        // An empty list of pieces and one word.
-        "rubble" => post.bytes(&[0; 8]),
+        // The group (a count and the ids) and the name id of the type.
+        "rubble" => {
+            let r = c.rubble.clone().unwrap_or_default();
+            post.u32(r.group.len() as u32);
+            r.group.iter().for_each(|&id| post.u32(id));
+            post.i32(r.name_id);
+        }
         "building" => building(
             &mut post,
             &c.building.clone().unwrap_or(building_new(0.0, now)),

@@ -105,6 +105,7 @@ impl Fnv {
             staff: _,
             unit: _,
             building: _,
+            rubble: _,
             filter,
             raw: _,
         }) = &e.common

@@ -327,3 +327,59 @@ fn the_bear_cheat_rates_again_the_exhibits_of_grizzlies_and_flags_them_for_the_e
         }
     }
 }
+
+#[test]
+fn the_buildings_cheat_rubbles_each_rubbleable_building_once_and_nothing_else() {
+    use crate::app::cheat_staff::rubble_buildings;
+    use crate::unit::testing::{centre, entity, world_with};
+    let typed = |class, kind: &str, sub: &str, keys: &str| {
+        let text = format!("[Characteristics/Integers]\ncFootprintX=2\ncFootprintY=2\n{keys}\n");
+        EntityType {
+            class,
+            type_name: kind.into(),
+            subtype: sub.into(),
+            file: None,
+            config: Some(std::sync::Arc::new(Config::parse(text.as_bytes()).unwrap())),
+            name_id: 0,
+            footprint: [2, 2, 1],
+            height: 0,
+        }
+    };
+    let mut cat = Catalogue::default();
+    cat.push(typed("rubble", "other", "brubble1", ""));
+    cat.push(typed("building", "hall", "", ""));
+    cat.push(typed("building", "bunker", "", "cRubbleable=0"));
+    cat.push(typed("objects", "bush", "", ""));
+    let mut w = world_with((10, 10), |zoo| {
+        for (id, class, kind, at) in [
+            (1, "building", "hall", (2, 2)),
+            (2, "building", "bunker", (5, 2)),
+            (3, "objects", "bush", (2, 5)),
+            (4, "building", "hall", (5, 5)),
+            (5, "building", "ghost", (7, 7)),
+        ] {
+            zoo.entities.push(entity(class, kind, id, centre(at), 0));
+        }
+    });
+    let shape = |_: &Entity| None;
+    let mut rng = crate::sim::Rng::default();
+    let mut kit = crate::rubble::Kit {
+        cat: &cat,
+        rng: &mut rng,
+        template: "",
+        shape: &shape,
+    };
+    rubble_buildings(&mut w, &mut kit);
+    let of = |class: &str| -> Vec<u32> {
+        (w.zoo.entities.iter())
+            .filter(|e| e.class == class)
+            .map(|e| e.common.as_ref().unwrap().id)
+            .collect()
+    };
+    // The bunker (not rubbleable), the bush and the building of an unknown type stay.
+    assert_eq!(of("building"), [2, 5]);
+    assert_eq!(of("objects"), [3]);
+    // A 2 x 2 hall leaves one piece, which is neither in the undo list nor on the old ids.
+    assert_eq!(of("rubble").len(), 2);
+    assert!(w.undo().is_empty());
+}
