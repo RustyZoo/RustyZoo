@@ -11,7 +11,7 @@ use crate::unit::Units;
 use crate::world::World;
 
 /// The name id of the helicopter base, which costs nothing (guest buildings 9).
-const HELICOPTER_BASE: i32 = 8031;
+pub(crate) const HELICOPTER_BASE: i32 = 8031;
 
 /// Whether the type is a guest building: a building that satisfies the need `building` (guest
 /// buildings 3.4). The compost does not, and pays nothing.
