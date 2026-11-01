@@ -836,3 +836,35 @@ fn the_stay_sick_after_a_species_change_is_the_new_types() {
         "new type: done sick, never sick"
     );
 }
+
+#[test]
+fn a_goal_reset_in_the_heal_job_starts_no_done_sick() {
+    let mut g = stay_game("cStaySick=1");
+    while g.lines(&["HealAnimal"]).is_empty() {
+        g.run(1);
+        assert!(g.log.len() < 1000, "the decide");
+    }
+    let mut u = g.w.units.get(KEEPER).unwrap().clone();
+    let mut rng = crate::sim::Rng::default();
+    let events = crate::sim::Events::default();
+    let mut removals = Vec::new();
+    let mut ctx = crate::unit::Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &g.cat,
+    };
+    let at = g.w.find(KEEPER).unwrap();
+    let mut cx = Cx {
+        unit: &mut u,
+        world: &mut g.w,
+        ctx: &mut ctx,
+        at,
+        data: &g.data,
+    };
+    cx.reset();
+    *g.w.units.get_mut(KEEPER).unwrap() = u;
+    g.run(3);
+    assert_eq!(sets_of_zebra(&g), ["bSick"], "no bDoneSick without a heal");
+}
