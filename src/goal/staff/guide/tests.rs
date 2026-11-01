@@ -421,9 +421,7 @@ fn a_guest_that_arrives_while_the_guide_talks_gets_the_bonus_of_its_area_once() 
     // The guest on the path looks at the pen in some direction.
     let tile = 5 * 10 + 5;
     let cat = catalogue("");
-    let dir = (0..8).find(|&k| {
-        crate::guest::view::sight(&mut g.w, &cat, tile, k, &mut Rng::default()).is_some()
-    });
+    let dir = (0..8).find(|&k| crate::guest::view::sight(&mut g.w, &cat, tile, k).is_some());
     let guest = g.w.units.get_mut(3).unwrap();
     guest.goal.record.task = LEG;
     if let Part::Guest(guest) = &mut guest.part {
@@ -457,9 +455,7 @@ fn the_view_of_an_area_under_a_guide_carries_its_bonus_into_the_donation() {
     let mut g = crowd("", TALK);
     let tile = 5 * 10 + 5;
     let sight = |g: &mut Game| {
-        let see = |g: &mut Game, k| {
-            crate::guest::view::sight(&mut g.w, &g.cat, tile, k, &mut Rng::default())
-        };
+        let see = |g: &mut Game, k| crate::guest::view::sight(&mut g.w, &g.cat, tile, k);
         let dir = (0..8).find(|&k| see(g, k).is_some());
         see(g, dir.unwrap()).unwrap()
     };

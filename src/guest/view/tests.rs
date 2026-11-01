@@ -108,9 +108,11 @@ fn a_guest_on_a_path_beside_a_pen_finds_its_area_and_sees_the_animals() {
         },
         "one draw"
     );
-    let s = sight(&mut w, &cat, tile, dir, &mut Rng::default()).unwrap();
-    assert_eq!((s.exhibit, s.all.len(), s.animals), (1, 2, 2));
-    assert_eq!((s.species, s.sick, s.average), (vec![5], 0, 50));
+    let s = sight(&mut w, &cat, tile, dir).unwrap();
+    assert_eq!((s.exhibit, s.animals), (1, 2));
+    assert_eq!((s.species, s.sick), (vec![5], 0));
+    let (all, average) = herd(&mut w, &cat, 1, &mut Rng::default());
+    assert_eq!((all.len(), average), (2, 50));
     // The guest alone on a 3-tile area: ten times one third, rounded.
     assert_eq!(s.crowd, 3);
     // Elsewhere there is nothing to look through, and the lookup draws all the same.
@@ -119,7 +121,7 @@ fn a_guest_on_a_path_beside_a_pen_finds_its_area_and_sees_the_animals() {
     assert_eq!(lookup(&mut w, &cat, None, &mut rng), None);
     assert_eq!(drew(&Rng::default(), &rng), 2);
     // Inside the pen a guest has no area, and a tile of the exhibit is not a viewing tile.
-    assert!(sight(&mut w, &cat, 5 * 10 + 2, dir, &mut Rng::default()).is_none());
+    assert!(sight(&mut w, &cat, 5 * 10 + 2, dir).is_none());
     let areas = viewing_areas(&mut w, &cat, 1);
     assert!(
         !areas.is_empty() && areas.concat().iter().all(|t| t % 10 == 5 || t % 10 == 4),
@@ -475,12 +477,8 @@ fn the_animal_of_a_thought_is_picked_in_the_tile_order_of_the_exhibit() {
     order.insert(0, 63);
     w.exhibits_mut().reorder(1, order);
     w.exhibits_mut().mark(1);
-    let dir = lookup(&mut w, &cat, Some(55), &mut Rng::default()).unwrap();
-    let s = sight(&mut w, &cat, 55, dir, &mut Rng::default());
-    assert_eq!(
-        s.unwrap().all.iter().map(|a| a.0).collect::<Vec<_>>(),
-        [11, 10]
-    );
+    let (all, _) = herd(&mut w, &cat, 1, &mut Rng::default());
+    assert_eq!(all.iter().map(|a| a.0).collect::<Vec<_>>(), [11, 10]);
     // With the draw 0 the first in tile order is picked, and the draws are the same as ever.
     let seed = (0..99).find(|&n| {
         let mut r = Rng::default();
@@ -535,4 +533,56 @@ fn the_donation_constant_is_the_single_precision_one() {
     g.va = lookup(&mut w, &cat, Some(55), &mut rng);
     leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
     assert_eq!(w.units.donated, [0.19238544]);
+}
+
+/// Whether exhibit 1 of a pen waits for its recomputation.
+fn dirty(w: &World) -> bool {
+    w.exhibits().get(1).unwrap().rating.dirty
+}
+
+#[test]
+fn a_viewing_check_with_no_animal_in_view_leaves_the_exhibit_dirty() {
+    let (cat, k) = (catalogue(), keys());
+    for (zebras, recomputed) in [(&[][..], false), (&[50][..], true)] {
+        let mut w = pen(zebras);
+        w.exhibits_mut().mark(1);
+        // The escape check flag makes the recomputation draw its reachability target.
+        w.exhibits_mut().get_mut(1).unwrap().rating.escape = true;
+        let (before, mut rng) = (Rng::default(), Rng::default());
+        check(&mut Guest::default(), &k, &mut w, &cat, &mut rng, Some(55));
+        assert_eq!(dirty(&w), !recomputed, "{zebras:?}");
+        // The lookup, then for an animal in view the recomputation's target and the mood's pick.
+        let draws = if recomputed { 3 } else { 1 };
+        assert_eq!(drew(&before, &rng), draws, "{zebras:?}");
+    }
+}
+
+#[test]
+fn leaving_and_the_tour_bonus_recompute_only_for_a_donation() {
+    let cat = catalogue();
+    for (sick, recomputed) in [(true, false), (false, true)] {
+        let mut w = pen(&[40]);
+        w.units.get_mut(10).unwrap().part = Part::Animal(Animal {
+            happiness: 40,
+            dying: sick,
+            ..Animal::default()
+        });
+        (w.units.donation_factor, w.units.now) = (4.1108e-13, 201_601_000);
+        let mut g = Guest {
+            viewed_at: 1000,
+            ..Guest::default()
+        };
+        g.va = lookup(&mut w, &cat, Some(55), &mut Rng::default());
+        w.exhibits_mut().mark(1);
+        // The tour bonus reads the area alone.
+        assert_eq!(sight(&mut w, &cat, 55, g.va.unwrap()).unwrap().bonus, 0);
+        assert!(dirty(&w));
+        leave_area(&mut g, 1, &mut w, &cat, &mut Rng::default(), Some(55));
+        assert_eq!(dirty(&w), !recomputed, "sick {sick}");
+        assert_eq!(
+            w.units.donated.len(),
+            usize::from(recomputed),
+            "sick {sick}"
+        );
+    }
 }

@@ -180,7 +180,7 @@ impl Cx<'_, '_> {
         g.va = found;
         let Some(s) = tile
             .zip(found)
-            .and_then(|(t, dir)| view::sight(self.world, self.ctx.cat, t, dir, self.ctx.rng))
+            .and_then(|(t, dir)| view::sight(self.world, self.ctx.cat, t, dir))
         else {
             return false;
         };
@@ -215,9 +215,11 @@ impl Cx<'_, '_> {
         if !self.start_set("bGawk", false) {
             return false;
         }
+        // h recomputes the exhibit when dirty, before the duration's draws (4.3).
+        let (_, average) = view::herd(self.world, self.ctx.cat, s.exhibit, self.ctx.rng);
         let rng = &mut *self.ctx.rng;
         let fallback = 10 + (rng.rand() & 3) as i32;
-        let band = match s.average {
+        let band = match average {
             -100..=-60 => Some((0, 0)),
             -59..=20 => Some((1, 6)),
             21..=60 => Some((2, 6)),

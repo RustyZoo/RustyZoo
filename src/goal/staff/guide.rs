@@ -391,8 +391,7 @@ impl Cx<'_, '_> {
                 self.world.units.note(format!("face {id} {face}"));
             }
         }
-        let bonus = (me.zip(va))
-            .and_then(|(t, k)| view::sight(self.world, self.ctx.cat, t, k, self.ctx.rng));
+        let bonus = (me.zip(va)).and_then(|(t, k)| view::sight(self.world, self.ctx.cat, t, k));
         if let Part::Guest(g) = &mut self.unit.part {
             g.pending[HAPPINESS] =
                 g.pending[HAPPINESS].saturating_add(bonus.map_or(0, |s| s.bonus));
