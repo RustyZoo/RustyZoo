@@ -160,10 +160,15 @@ fn exhibit_at(world: &World, [x, y]: [i32; 2]) -> Option<u32> {
     (world.exhibits().region(t)).filter(|&r| r != GROUNDS && r != EXTERIOR)
 }
 
-/// The tile inside the gate of exhibit `x`, as the file stores an assignment; `None` for an exhibit
+/// The tile inside the gate of exhibit `x`, as the file stores an assignment (the gate's own tile
+/// when it belongs to the exhibit, even if the tile across is off the map); `None` for an exhibit
 /// without a gate.
 pub fn gate_tile(world: &World, x: u32) -> Option<[i32; 2]> {
-    let (inside, _) = service::gate_tiles(world, x)?;
+    let (tile, side) = world.gate_slot(x)?;
+    let inside = match world.exhibits().region(tile) == Some(x) {
+        true => tile,
+        false => world.neighbour(tile, side)?,
+    };
     let width = world.zoo.width as usize;
     Some([(inside % width) as i32, (inside / width) as i32])
 }
