@@ -159,6 +159,16 @@ fn only_a_man_takes_the_scare_and_paint_bits_and_any_guest_the_sickness_one() {
 /// Scenery of the type `car` with these name ids, and the cat that knows them.
 fn cars(ids: &[i32]) -> (World, Catalogue) {
     let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "rubble",
+        type_name: b"other".to_vec(),
+        subtype: b"brubls1".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
     let w = world_with((10, 10), |zoo| {
         for (n, &name) in ids.iter().enumerate() {
             let kind = format!("car{n}");
@@ -184,34 +194,50 @@ fn cars(ids: &[i32]) -> (World, Catalogue) {
     (w, cat)
 }
 
+/// Runs the car cheat on the world with the generator `rng`.
+fn cheat_cars(
+    w: &mut World,
+    cat: &Catalogue,
+    money: &mut Money,
+    told: &mut Vec<u32>,
+    rng: &mut crate::sim::Rng,
+) -> usize {
+    let shape = |_: &crate::zoo::Entity| None;
+    let mut kit = crate::rubble::Kit {
+        cat,
+        rng,
+        template: "piece-%s",
+        shape: &shape,
+    };
+    remove_cars((w, money), &mut kit, |id| told.push(id))
+}
+
 #[test]
-fn the_cars_go_by_name_id_and_pay_the_gift_once_when_any_went() {
+fn the_cars_turn_to_rubble_by_name_id_and_pay_the_gift_once_when_any_went() {
     let (mut w, cat) = cars(&[6138, 6140, 6167, 7000, 0, -1, i32::MAX]);
-    let mut money = Money::default();
-    let mut told = Vec::new();
-    assert_eq!(
-        remove_cars((&mut w, &mut money), &cat, |id| told.push(id)),
-        3
-    );
+    let (mut money, mut told, mut rng) = (Money::default(), Vec::new(), crate::sim::Rng::default());
+    assert_eq!(cheat_cars(&mut w, &cat, &mut money, &mut told, &mut rng), 3);
     assert_eq!(told, [100, 101, 102]);
-    let left: Vec<u32> = (w.zoo.entities.iter())
-        .map(|e| e.common.as_ref().unwrap().id)
-        .collect();
-    assert_eq!(left, [103, 104, 105, 106]);
+    let left = |w: &World, class: &str| -> Vec<u32> {
+        (w.zoo.entities.iter())
+            .filter(|e| e.class == class)
+            .map(|e| e.common.as_ref().unwrap().id)
+            .collect()
+    };
+    assert_eq!(left(&w, "objects"), [103, 104, 105, 106]);
+    // A one-quadrant car leaves at most one piece, and the generator was used.
+    assert!(left(&w, "rubble").len() <= 3);
+    assert_ne!(rng, crate::sim::Rng::default());
     assert_eq!(
         (money.cash, money.total[crate::money::DONATIONS]),
         (5500.0, 5500.0)
     );
-    // None to take: nothing is told and nothing is paid.
-    assert_eq!(
-        remove_cars((&mut w, &mut money), &cat, |_| panic!("none")),
-        0
-    );
+    // None to take: nothing is told, nothing is drawn and nothing is paid.
+    let before = rng.clone();
+    let none = cheat_cars(&mut w, &cat, &mut money, &mut Vec::new(), &mut rng);
+    assert_eq!((none, &rng), (0, &before));
     let (mut w, cat) = cars(&[]);
-    assert_eq!(
-        remove_cars((&mut w, &mut money), &cat, |_| panic!("none")),
-        0
-    );
+    assert_eq!(cheat_cars(&mut w, &cat, &mut money, &mut told, &mut rng), 0);
     assert_eq!(money.cash, 5500.0);
 }
 
