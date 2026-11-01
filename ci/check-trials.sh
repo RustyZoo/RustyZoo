@@ -1360,7 +1360,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
-check expansion-trial "egg@1926;eggs:6;hatch@2743" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3026;eggs:6;hatch@3738" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
