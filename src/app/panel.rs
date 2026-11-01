@@ -242,21 +242,21 @@ impl App<'_> {
         }
     }
 
-    /// The exhibit button of the animal panel (4.5): the exhibit panel closes when shown, else
-    /// opens on the animal's exhibit; an animal on the grounds does nothing.
+    /// The exhibit button of the animal panel (4.5): an animal on the grounds does nothing, shown
+    /// panel or not (the grounds test comes first); else the exhibit panel closes when shown and
+    /// opens on the animal's exhibit when hidden.
     pub(super) fn animal_exhibit(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &mut self.ui) else {
             return;
         };
-        if ui.shown(LAYOUT) {
-            if !ui.press_button(BUTTON) {
-                ui.set_hidden(LAYOUT, true);
-            }
+        let at = game.animal.selected.and_then(|id| game.world.find(id));
+        let Some(x) = at.and_then(|at| exhibit::animals_exhibit(&game.world, at)) else {
             return;
-        }
-        let exhibit = game.animal.selected.and_then(|id| game.world.find(id));
-        if let Some(x) = exhibit.and_then(|at| exhibit::animals_exhibit(&game.world, at)) {
+        };
+        if !ui.shown(LAYOUT) {
             self.open_exhibit(x);
+        } else if !ui.press_button(BUTTON) {
+            ui.set_hidden(LAYOUT, true);
         }
     }
 

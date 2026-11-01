@@ -85,3 +85,24 @@ fn with_no_animal_drawn_the_keeper_has_no_cost_test() {
     let mut w = tank_world(5, 4, &[(1, (0, 0), 0)]);
     assert!(keeper_place(&mut w, false, Vec::new()).is_some());
 }
+
+#[test]
+fn the_drawn_animal_comes_from_the_stored_list_of_a_recomputed_tank() {
+    // The dirty tank is recomputed first, so its list holds the ray and the only tile it can
+    // swim to is taken.
+    let (mut w, _) = tank();
+    let x = w.tank_at(tile((3, 3))).unwrap();
+    assert!(w.exhibits().get(x).unwrap().rating.dirty);
+    assert_eq!(
+        keeper_place(&mut w, true, Vec::new()).map(|p| p.0),
+        Some(tile((4, 3)))
+    );
+    assert!(!w.exhibits().get(x).unwrap().rating.dirty);
+    assert_eq!(w.exhibits().get(x).unwrap().rating.animals, [1]);
+    // A list that does not hold the ray draws no animal: no cost test, any of the 11 tiles.
+    w.exhibits_mut().get_mut(x).unwrap().rating.animals.clear();
+    assert_ne!(
+        keeper_place(&mut w, true, Vec::new()).map(|p| p.0),
+        Some(tile((4, 3)))
+    );
+}

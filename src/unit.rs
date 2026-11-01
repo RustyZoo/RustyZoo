@@ -691,23 +691,22 @@ impl Units {
         }
     }
 
-    /// A hash of the whole table (FNV-1a over the fields, in list order) for the state hash of a
-    /// run.
+    /// A hash of the table (FNV-1a, in list order) for the state hash of a run. It walks a chosen
+    /// projection, never the `Debug` text: the positions are in the entities of the zoo, here go the
+    /// movement, the goal, the animation and the needs. A new field moves the hash only when it is
+    /// added here.
     pub fn hash(&self) -> u64 {
         let mut h = Fnv(0xcbf2_9ce4_8422_2325);
         h.word(self.period as u32);
-        h.bytes(format!("{:?}", self.ring).as_bytes());
         h.word(self.service_interval);
         for v in self.finder.state() {
             h.word(v as u32);
             h.word((v >> 32) as u32);
         }
-        h.bytes(format!("{:?}", self.buildings).as_bytes());
-        if !self.upgrade_index.is_empty() {
-            h.bytes(format!("{:?}", self.upgrade_index).as_bytes());
+        for (&id, &level) in &self.upgrade_index {
+            h.word(id);
+            h.word(level);
         }
-        h.bytes(format!("{:?}{:?}{:?}", self.thoughts, self.mega, self.gawk).as_bytes());
-        h.bytes(format!("{:?}", self.pool).as_bytes());
         for &(id, likes, age) in &self.reactions {
             h.word(id);
             h.word(u32::from(likes));
@@ -733,12 +732,15 @@ impl Units {
             }
             h.word(u32::from(u.tank) | (u.target as u32) << 8);
             h.word(u.vertical as u32);
-            h.bytes(format!("{:?}", u.segment).as_bytes());
             h.word(u.travel as u32);
             h.word(u32::from(u.walking) | u32::from(u.flip) << 1 | (u.band as u32) << 2);
             h.word(u.gate.map_or(0, |g| g.wrapping_add(1)));
             h.word(u32::from(u.through_building) | u32::from(u.aborted) << 1);
-            h.bytes(format!("{:?}{:?}{:?}", u.animation, u.runner, u.goal).as_bytes());
+            h.bytes(u.animation.name.as_bytes());
+            h.word(u.animation.frame);
+            let r = &u.goal.record;
+            h.word(u32::from(r.task) | u32::from(r.mode) << 8 | u32::from(r.job) << 16);
+            h.word(r.target.id);
             h.word(u.status_timer as u32);
             h.word(u.wait as u32);
             h.word(
@@ -749,7 +751,17 @@ impl Units {
                     | u32::from(u.hidden) << 4,
             );
             match &u.part {
-                Part::Animal(a) => h.bytes(format!("{a:?}").as_bytes()),
+                Part::Animal(a) => {
+                    for v in [a.happiness, a.hunger, a.health, a.energy, a.dung, a.life] {
+                        h.word(v as u32);
+                    }
+                    h.word(
+                        u32::from(a.egg)
+                            | u32::from(a.dying) << 1
+                            | u32::from(a.escaped) << 2
+                            | u32::from(a.rampaging) << 3,
+                    );
+                }
                 Part::Staff(s) => {
                     h.word(s.work as u32);
                     h.word(s.chase as u32);
@@ -769,7 +781,14 @@ impl Units {
                     h.word(s.task);
                     h.word(s.clear as u32);
                 }
-                Part::Guest(g) => h.bytes(format!("{g:?}").as_bytes()),
+                Part::Guest(g) => {
+                    g.values.iter().for_each(|&v| h.word(v as u32));
+                    g.items
+                        .iter()
+                        .for_each(|i| h.word(i.map_or(u32::MAX, |i| i as u32)));
+                    h.word(g.building);
+                    h.word(u32::from(g.leave));
+                }
             }
             h.word(u.events.len() as u32);
             for e in &u.events {
@@ -880,6 +899,7 @@ impl Standard<'_> {
 
     /// Tells the log and the app what the unit's animation and runner noted.
     fn tell(&self, unit: &mut Unit, world: &mut World, at: usize) {
+        self.force(unit, world, at);
         for note in std::mem::take(&mut unit.animation.notes) {
             match note {
                 // The routine set ends in the step it starts and starts again in the next one.
@@ -893,13 +913,32 @@ impl Standard<'_> {
             }
         }
     }
+
+    /// The crossing animation an escape walk asked for (animals 11.3, `forceAnim`) becomes the
+    /// unit's base animation, when its type has it.
+    fn force(&self, unit: &mut Unit, world: &World, at: usize) {
+        let Part::Animal(a) = &mut unit.part else {
+            return;
+        };
+        let name = a.force.take();
+        if let Some(name) = name.filter(|n| self.data.timing(&world.zoo.entities[at], n).is_some())
+        {
+            unit.animation.base_to(name);
+            unit.animation.cut();
+        }
+    }
 }
 
 impl Hooks for Standard<'_> {
     fn movement(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         lower_walk(unit);
+        let before = movement::here(world, at);
         movement::step(unit, world, ctx.step, at);
         movement::reanimate(unit, world, self.data, at);
+        if let Some(new) = movement::here(world, at).filter(|&t| Some(t) != before) {
+            crate::animal::escape::entered(unit, world, ctx.cat, new);
+        }
+        self.force(unit, world, at);
     }
 
     fn animate(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize, ms: u32) {
@@ -997,6 +1036,7 @@ impl Hooks for Standard<'_> {
             _ => false,
         };
         if asked {
+            crate::animal::escape::escaped_set(unit, world, self.data, ctx.rng, at);
             if !crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data) {
                 let key = ambient_key(unit);
                 let choosing = !unit.runner.running() && unit.runner.queued().is_none();

@@ -135,7 +135,7 @@ usage: rustyzoo [--data <dir>] <command>
   sim <map> --ticks N [--dt MS] [--seed S] [--script FILE] [--reset-fences] [--hash|--log]
                       run a map (a .zoo member) for N steps of MS milliseconds (default 67)
                       without an interface, with the generator seeded from S (default 1), and
-                      print the hash of the whole state, the same on every system (--hash, the
+                      print the hash of the state, the same on every system (--hash, the
                       default), or the log lines of each step (--log; the units run their behaviour sets as in
                       `run`). The events a loaded zoo posts (cans, fence pieces, filters) are posted. The fence pieces stay as the map stores them; --reset-fences makes
                       them all healthy first, as a start whose map file has `resetfences` above 0
@@ -318,7 +318,7 @@ usage: rustyzoo [--data <dir>] <command>
                       yellow or red as its habitat check judges it), the sex and when it last ate and slept,
                       and the five newest thoughts about it, refreshed every 5 s of clock while shown and not while the game is paused; its
                       recommendations button shows the plaque of that animal, its exhibit button the
-                      exhibit panel on its exhibit, its follow button (showing its type's idle animation, or its egg's or crate's, seen from the south-east, centred and clipped, playing from its first frame while the game is not paused, set when the panel opens and at a forced refresh such as a tab click) keeps the view on it, and a click
+                      exhibit panel on its exhibit (nothing on the grounds), its follow button (showing its type's idle animation, or its egg's or crate's, seen from the south-east, centred and clipped, playing from its first frame while the game is not paused, set when the panel opens and at a forced refresh such as a tab click) keeps the view on it, and a click
                       anywhere else on the map closes it (the sell and pick-up buttons do nothing yet). `panel animal ID
                       \"NAME\" happiness H hunger N health L suitability S fed WORDS slept WORDS` tells what it
                       shows (` thoughts [IDS]` closes the line when guests have thoughts about it: their string ids,

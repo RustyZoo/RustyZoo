@@ -39,7 +39,7 @@ pub fn centre((tx, ty): (i32, i32)) -> (i32, i32) {
 /// Units take their place by their position, `paths` are path pieces, `fences` exhibit fences,
 /// `bush` and `building` a one-quarter object (a `bush` of type `grass` is walkable, a `building`
 /// of type `hall` takes a whole tile).
-fn shape(e: &Entity) -> Option<Shape> {
+pub fn shape(e: &Entity) -> Option<Shape> {
     let thing = |kind, footprint, fence| Shape {
         kind,
         footprint,
@@ -125,7 +125,7 @@ pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
 }
 
 /// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`,
-/// `run`, `swim` and the tank animations, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
+/// `run`, `swim`, `climb` (3 frames) and the tank animations, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
 pub struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
 
 impl Walker {
@@ -173,6 +173,12 @@ impl crate::behaviour::Data for Walker {
         &[]
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        if name == "climb" {
+            return Some(crate::behaviour::Timing {
+                count: 3,
+                delay: 100,
+            });
+        }
         [
             "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise", "climb",
         ]

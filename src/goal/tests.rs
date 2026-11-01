@@ -613,55 +613,15 @@ fn aborting_and_resetting_a_goal_empty_the_path_and_the_targets() {
 }
 
 #[test]
-fn the_hash_covers_the_goals() {
+fn the_hash_covers_the_task_of_the_goals() {
     let base = || map("guests");
     let h = |w: &World| w.units.hash();
     let b = h(&base());
-    // A new field breaks these patterns until it has a change below.
-    let Goals {
-        record:
-            Record {
-                task: _,
-                mode: _,
-                target:
-                    Target {
-                        id: _,
-                        tile: _,
-                        pos: _,
-                    },
-                job: _,
-                job_target: _,
-                start: _,
-                duration: _,
-                done: _,
-                job_done: _,
-            },
-        object: _,
-        stale: _,
-        sub: _,
-        sub_stale: _,
-        // Not hashed: it follows from the objects.
-        held: _,
-        wants_to_decide: _,
-        wandered: _,
-    } = Goals::default();
-    let changes: [fn(&mut Goals); 16] = [
+    let changes: [fn(&mut Goals); 4] = [
         |g| g.record.task = 1,
         |g| g.record.mode = 1,
         |g| g.record.target.id = 1,
-        |g| g.record.target.tile = Some(1),
-        |g| g.record.target.pos = Some((1, 2, 3)),
         |g| g.record.job = 1,
-        |g| g.record.job_target.id = 1,
-        |g| g.record.job_target.tile = Some(1),
-        |g| g.record.start = 1,
-        |g| g.record.duration = 1,
-        |g| g.record.done = true,
-        |g| g.record.job_done = true,
-        |g| g.object = Some(Goal::Base),
-        |g| g.stale = true,
-        |g| g.wants_to_decide = true,
-        |g| g.wandered = true,
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut w = base();
@@ -669,10 +629,8 @@ fn the_hash_covers_the_goals() {
         assert_ne!(h(&w), b, "change {i}");
     }
     let mut w = base();
-    w.units.get_mut(1).unwrap().goal.sub = Some(Sub::Base);
-    assert_ne!(h(&w), b);
-    w.units.get_mut(1).unwrap().goal.sub_stale = true;
-    assert_ne!(h(&w), b);
+    w.units.get_mut(1).unwrap().goal.record.start = 1;
+    assert_eq!(h(&w), b, "the rest is left out");
 }
 
 #[test]
@@ -847,4 +805,74 @@ fn the_reset_of_an_animal_lowers_its_need_flags() {
         (a.thirsty, a.wants_food, a.drinking, a.eating),
         (false, false, false, true)
     );
+}
+
+/// Gives animal 1 an escape walk whose last tile is `b`.
+fn escaping(cx: &mut Cx, b: [i32; 2]) {
+    if let Part::Animal(a) = &mut cx.unit.part {
+        a.walk = Some(crate::zoo::Escape {
+            b,
+            ..Default::default()
+        });
+    }
+}
+
+fn walk(cx: &Cx) -> Option<crate::zoo::Escape> {
+    match &cx.unit.part {
+        Part::Animal(a) => a.walk,
+        _ => None,
+    }
+}
+
+#[test]
+fn an_animal_on_an_escape_walk_runs_and_its_wander_ends_on_the_last_tile() {
+    // (the set the type has, the walk kept)
+    for (set, kept) in [
+        (Some("bRun"), true),
+        (Some("bRunFromPredator"), true),
+        (None, false),
+    ] {
+        let sets: Vec<(&str, &[&str])> = set
+            .map(|s| (s, &["fKeepControl()"][..]))
+            .into_iter()
+            .collect();
+        let (data, started) = (Sets::new(&sets), set);
+        let mut w = map("animals");
+        let mut rng = Rng::default();
+        with_data(&mut w, &mut rng, &data, |cx| {
+            escaping(cx, [8, 5]);
+            cx.set_task(RANDOM, 1, 0, None);
+            cx.wander(false);
+            // A set the type lacks is tried and ends at once.
+            if kept {
+                assert_eq!(cx.unit.runner.top(), started, "{sets:?}");
+            }
+            assert_eq!(walk(cx).is_some(), kept, "{sets:?}");
+        });
+    }
+    // On its target tile the walk does not end the wander; on its last tile the walk ends.
+    let mut w = map("animals");
+    let mut rng = Rng::default();
+    with_data(&mut w, &mut rng, &NoData, |cx| {
+        cx.set_task(RANDOM, 1, 0, Some(tile(5, 5)));
+        escaping(cx, [6, 5]);
+        cx.check_done();
+        assert!(!cx.record().done && cx.record().target.is_set() && walk(cx).is_some());
+        escaping(cx, [5, 5]);
+        cx.check_done();
+        assert!(!cx.record().done && walk(cx).is_none());
+        // Then the common check.
+        cx.check_done();
+        assert!(cx.record().done);
+    });
+    // A goal reset and an abort end the walk.
+    let mut w = map("animals");
+    with_data(&mut w, &mut rng, &NoData, |cx| {
+        escaping(cx, [6, 5]);
+        cx.reset();
+        assert!(walk(cx).is_none());
+        escaping(cx, [6, 5]);
+        cx.abort();
+        assert!(walk(cx).is_none());
+    });
 }

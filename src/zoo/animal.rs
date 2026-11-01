@@ -46,7 +46,9 @@ pub struct AnimalRecord {
     pub boxed: i32,
     /// The two dates (zoo format 6.11), as file times.
     pub dates: [u64; 2],
-    /// Where the animal escaped from, when the escape flag is 1.
+    /// The escaped flag: the animal stands loose on the zoo grounds (animals 11.1).
+    pub escaped: bool,
+    /// The escape walk record, when the escape walk flag is 1 (animals 11.3).
     pub escape: Option<Escape>,
     /// The home exhibit's gate tile, (-1, -1) for none.
     pub home: [i32; 2],
@@ -55,13 +57,19 @@ pub struct AnimalRecord {
     pub spare: Vec<u8>,
 }
 
-/// The escape record of an animal that escaped (zoo format 6.11).
+/// The record of an animal on an escape walk (zoo format 6.11, animals 11.3).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Escape {
-    pub tiles: [[i32; 2]; 2],
-    pub words: [u32; 3],
-    /// The word of version 81, 0 before.
-    pub last: u32,
+    /// The crossing tile `A` and the last tile `B` as (x, y); a tile off the map is none.
+    pub a: [i32; 2],
+    pub b: [i32; 2],
+    /// How it crosses: 0 walks, 1 jumps, 2 climbs, 3 bashes, 4 leaves a tank.
+    pub kind: u32,
+    /// `reached` (`A` was entered), `ends-across` (the walk ends on the tile across the fence) and
+    /// `broken` (the fence was dealt with; 0 before version 81).
+    pub reached: u32,
+    pub across: u32,
+    pub broken: u32,
 }
 
 /// A new animal (save games 11.3): the type's initial happiness and full health, not hungry, no
@@ -106,7 +114,8 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
     a.counters[12] = Some(r.i32()?);
     a.dung = r.i32()?;
     a.keeper_visited = r.u8()? != 0;
-    spare.extend(r.take(2)?);
+    spare.extend(r.take(1)?);
+    a.escaped = r.u8()? != 0;
     a.counters[4] = Some(r.i32()?);
     spare.extend(r.take(6)?);
     (a.baby, a.interval) = (r.i32()?, r.i32()?);
@@ -133,10 +142,17 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
     // The escape flag counts only when it is exactly 1.
     if v >= 47 && r.u32()? == 1 {
         let tile = |r: &mut Reader| -> R<[i32; 2]> { Ok([r.i32()?, r.i32()?]) };
-        let tiles = [tile(r)?, tile(r)?];
-        let words = [r.u32()?, r.u32()?, r.u32()?];
-        let last = if v >= 81 { r.u32()? } else { 0 };
-        a.escape = Some(Escape { tiles, words, last });
+        let (cross, last) = (tile(r)?, tile(r)?);
+        let (kind, reached, across) = (r.u32()?, r.u32()?, r.u32()?);
+        let broken = if v >= 81 { r.u32()? } else { 0 };
+        a.escape = Some(Escape {
+            a: cross,
+            b: last,
+            kind,
+            reached,
+            across,
+            broken,
+        });
     }
     // The crate counter, a word and a byte, then the crated flag.
     match v >= 52 {
@@ -223,7 +239,8 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
     o.i32(c(12));
     o.i32(a.dung);
     o.u8(flag(a.keeper_visited));
-    s.put(o, &[0; 2]);
+    s.put(o, &[0]);
+    o.u8(flag(a.escaped));
     o.i32(c(4));
     s.put(o, &[0; 6]);
     o.i32(a.baby);
@@ -241,9 +258,10 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
     match &a.escape {
         Some(e) => {
             o.u32(1);
-            e.tiles.iter().flatten().for_each(|&n| o.i32(n));
-            e.words.iter().for_each(|&n| o.u32(n));
-            o.u32(e.last);
+            e.a.iter().chain(&e.b).for_each(|&n| o.i32(n));
+            [e.kind, e.reached, e.across, e.broken]
+                .iter()
+                .for_each(|&n| o.u32(n));
         }
         None => o.u32(0),
     }

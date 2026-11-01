@@ -251,8 +251,8 @@ check base-trial 'dislikes15672@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # pair marks the grounds for revision, so their next update draws and the state hash of the first month
 # change moves (without the pair it would be 2cf67ce9093b3d71). A drag the cash cannot pay for (100 for
 # pieces of 150) is refused and runs no pair: the hash is that of the same game with no drag at all.
-check base-trial d4bed89505f9479f 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check base-trial c3806921661f5f9c 'rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial 134fbf422ba248c8 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial 5da29f6db549b4e2 'rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 # A play call queues behind the playing sequence, the base loop included: the lion shows its first
 # animation other than the idle one at pass 14 (the loaded lions go on with the sets and goals they were saved in,
 # behaviours 4.7: no set starts in these 40 passes, and the lion 27646 shows no second one); a sound
@@ -1360,7 +1360,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
-check expansion-trial "egg@1926;eggs:6;hatch@2743" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3026;eggs:6;hatch@3738" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1394,9 +1394,9 @@ save_load() { # save_load <map>
   echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
   rm -rf "$d"
 }
-check base-trial "102822,0,3e576766d5fdeaa7" "save_load maps/default.zoo"
-check expansion-trial "109491,0,9aef338e4ed4af50" "save_load maps/sm_aqua.zoo"
+check base-trial "102822,0,2bd2aa037ca51fd5" "save_load maps/default.zoo"
+check expansion-trial "109491,0,83c6f6431c96e8c2" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
-check expansion-trial 227408,0,9c1f18fb1997dabb "save_load maps/scn19.zoo"
+check expansion-trial 227408,0,f2b5f54a03954f02 "save_load maps/scn19.zoo"
 
 exit $failed

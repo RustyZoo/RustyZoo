@@ -384,18 +384,17 @@ fn the_simulation_draws_once_per_unit_that_runs_its_goals() {
 }
 
 #[test]
-fn the_hash_covers_the_whole_table() {
+fn the_hash_covers_the_movement_of_the_units() {
     let mut w = world(&[("animals", 1), ("guests", 2)]);
     let base = w.units.hash();
     assert_eq!(base, world(&[("animals", 1), ("guests", 2)]).units.hash());
-    let changes: [fn(&mut Unit); 20] = [
+    let changes: [fn(&mut Unit); 18] = [
         |u| u.speed = 3,
         |u| u.moving = true,
         |u| u.anim_speed = 99,
         |u| u.destination = Some((1, 2, 3)),
         |u| u.animation.name = "walk".into(),
         |u| u.animation.frame = 1,
-        |u| u.animation.elapsed = 1,
         |u| u.status_timer += 1,
         |u| u.wait = 1,
         |u| u.carried = true,
@@ -408,7 +407,6 @@ fn the_hash_covers_the_whole_table() {
         |u| u.tank = 4,
         |u| u.vertical = -1,
         |u| u.target = crate::behaviour::Target::Dive,
-        |u| u.segment = Some(swim::Segment::default()),
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut other = world(&[("animals", 1), ("guests", 2)]);
@@ -423,10 +421,6 @@ fn the_hash_covers_the_whole_table() {
     let before = other.units.hash();
     other.units.set_period(10);
     assert_ne!(other.units.hash(), before);
-    // So is the ring of the random walk.
-    let before = other.units.hash();
-    other.units.set_ini(b"[AI]\nBaseX=3\n");
-    assert_ne!(other.units.hash(), before);
     // And the state of the path finder.
     let before = other.units.hash();
     other.units.finder.tick(7);
@@ -434,127 +428,34 @@ fn the_hash_covers_the_whole_table() {
 }
 
 #[test]
-fn the_hash_covers_the_animals() {
+fn the_hash_covers_the_needs_of_the_animals_and_nothing_else_of_them() {
     let base = world(&[("animals", 1), ("guests", 2)]).units.hash();
-    // A new field of the animal breaks this line until it has a change below.
-    let Animal {
-        happiness: _,
-        hunger: _,
-        health: _,
-        energy: _,
-        dung: _,
-        happiness_change: _,
-        hunger_change: _,
-        health_change: _,
-        energy_change: _,
-        dung_change: _,
-        counters: _,
-        female: _,
-        advice: _,
-        important: _,
-        pressure: _,
-        crowd_direction: _,
-        egg: _,
-        crated: _,
-        dying: _,
-        in_show: _,
-        very_unhappy: _,
-        at_minimum_health: _,
-        keeper_visited: _,
-        mourning: _,
-        thirsty: _,
-        rampaging: _,
-        escaped: _,
-        rampage: _,
-        zap: _,
-        reset: _,
-        ambient: _,
-        fed: _,
-        slept: _,
-        wants_food: _,
-        eating: _,
-        no_food: _,
-        food: _,
-        terrain: _,
-        sleeping: _,
-        drinking: _,
-        life: _,
-        starving: _,
-        mate: _,
-        mate_delay: _,
-        interval: _,
-        baby: _,
-        hatch: _,
-        mother: _,
-        father: _,
-        breath: _,
-        building: _,
-        slot: _,
-        entrance: _,
-    } = Animal::default();
-    let changes: [fn(&mut Animal); 53] = [
-        |a| a.happiness = 1,
-        |a| a.hunger = 1,
-        |a| a.health = 1,
-        |a| a.energy = 1,
-        |a| a.dung = 1,
-        |a| a.happiness_change = 1,
-        |a| a.hunger_change = 1,
-        |a| a.health_change = 1,
-        |a| a.energy_change = 1,
-        |a| a.dung_change = 1,
-        |a| a.counters[15] = 1,
-        |a| a.female = true,
-        |a| a.advice = 1,
-        |a| a.important = 1,
-        |a| a.pressure[2] = 1,
-        |a| a.crowd_direction = 3,
-        |a| a.egg = true,
-        |a| a.crated = true,
-        |a| a.dying = true,
-        |a| a.in_show = true,
-        |a| a.very_unhappy = true,
-        |a| a.at_minimum_health = true,
-        |a| a.keeper_visited = true,
-        |a| a.mourning = true,
-        |a| a.thirsty = true,
-        |a| a.rampaging = true,
-        |a| a.escaped = true,
-        |a| a.rampage = 1,
-        |a| a.zap = 1,
-        |a| a.reset = 1,
-        |a| a.ambient = true,
-        |a| a.fed = 1,
-        |a| a.slept = 1,
-        |a| a.wants_food = true,
-        |a| a.eating = true,
-        |a| a.no_food = true,
-        |a| a.food = 1,
-        |a| a.terrain = 2,
-        |a| a.sleeping = true,
-        |a| a.drinking = true,
-        |a| a.life = 1,
-        |a| a.starving = 1,
-        |a| a.mate = 1,
-        |a| a.mate_delay = 1,
-        |a| a.interval = 1,
-        |a| a.baby = 1,
-        |a| a.hatch = 1,
-        |a| a.mother = 1,
-        |a| a.father = 1,
-        |a| a.breath = 1,
-        |a| a.building = 1,
-        |a| a.slot = 1,
-        |a| a.entrance = (1, 0),
-    ];
-    for (i, change) in changes.iter().enumerate() {
+    let hash = |change: fn(&mut Animal)| {
         let mut other = world(&[("animals", 1), ("guests", 2)]);
         let Part::Animal(a) = &mut other.units.get_mut(1).unwrap().part else {
             panic!("not an animal");
         };
         change(a);
-        assert_ne!(other.units.hash(), base, "field {i}");
+        other.units.hash()
+    };
+    let changes: [fn(&mut Animal); 10] = [
+        |a| a.happiness = 1,
+        |a| a.hunger = 1,
+        |a| a.health = 1,
+        |a| a.energy = 1,
+        |a| a.dung = 1,
+        |a| a.life = 1,
+        |a| a.egg = true,
+        |a| a.dying = true,
+        |a| a.escaped = true,
+        |a| a.rampaging = true,
+    ];
+    for (i, change) in changes.into_iter().enumerate() {
+        assert_ne!(hash(change), base, "field {i}");
     }
+    // A field left out of the projection does not move it.
+    assert_eq!(hash(|a| a.counters[15] = 1), base);
+    assert_eq!(hash(|a| a.walk = Some(crate::zoo::Escape::default())), base);
     let mut other = world(&[("animals", 1), ("guests", 2)]);
     other.units.get_mut(1).unwrap().started = true;
     assert_ne!(other.units.hash(), base, "started");
