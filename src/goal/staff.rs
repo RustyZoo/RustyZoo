@@ -691,8 +691,9 @@ impl<'c> Cx<'_, 'c> {
     fn healed(&mut self, id: u32) {
         let (cat, x) = (self.ctx.cat, self.exhibit());
         if let Some(at) = self.world.find(id) {
-            let k = animal::keys(self.world, cat, at);
             let price = type_of(cat, &self.world.zoo.entities[at]).map_or(0.0, |t| 0.2 * cost(t));
+            dirt::change_species(self.world, cat, self.ctx.rng, self.data, id);
+            let k = animal::keys(self.world, cat, at);
             if let Some(Part::Animal(a)) = self.world.units.get_mut(id).map(|u| &mut u.part) {
                 a.heal(&k);
             }

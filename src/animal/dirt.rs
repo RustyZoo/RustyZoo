@@ -6,6 +6,11 @@
 //! maintenance worker (staff 8.2); the keepers rake the piles of an exhibit.
 
 use super::{DIED, Keys};
+use crate::behaviour::Data;
+use crate::build::number;
+use crate::entity::Catalogue;
+use crate::place::bulldozer::type_of;
+use crate::sim::Rng;
 
 /// The event a pile of dung on the zoo grounds posts for the maintenance task pool (the same
 /// number as the one an exhibit posts for what an emptied exhibit leaves).
@@ -171,4 +176,49 @@ impl super::Animal {
         (self.health, self.at_minimum_health) = (k.max_hits, false);
         self.unmark(super::SICK);
     }
+}
+
+/// The rename cheat of a heal (staff 7.7 point 2), with the flag `heal_changes_species` up: one
+/// draw, `% 10`, at every heal; on 0 a second draw picks, among the egg-laying animal types of the
+/// same subtype and another name id (catalogue order), the type the animal at `id` turns into in
+/// place. It gets a fresh default name, an idle picture and the type's values; everything else
+/// stays. An empty list changes nothing and draws nothing more.
+pub fn change_species(world: &mut World, cat: &Catalogue, rng: &mut Rng, data: &dyn Data, id: u32) {
+    if !world.units.cheat.heal_changes_species || rng.pick(10) != 0 {
+        return;
+    }
+    let Some(at) = world.find(id) else {
+        return;
+    };
+    let Some(old) = type_of(cat, &world.zoo.entities[at]) else {
+        return;
+    };
+    let same = |t: &&EntityType| {
+        t.class == "animals"
+            && number(t, "cLaysEggs") == Some(1.0)
+            && t.subtype == old.subtype
+            && t.name_id != old.name_id
+    };
+    let list: Vec<&EntityType> = cat.types.iter().filter(same).collect();
+    let Some(&new) = list.get(rng.pick(list.len() as u32) as usize) else {
+        return;
+    };
+    let name = crate::place::unit::named(world, new);
+    let latin1 = |b: &[u8]| b.iter().map(|&c| char::from(c)).collect::<String>();
+    world.zoo.entities[at].type_name = latin1(&new.type_name);
+    let subtype = latin1(&new.subtype);
+    world.retype(at, &subtype, super::breed::shape(new));
+    if let Some(c) = world.zoo.entities[at].common.as_mut() {
+        c.name = name;
+    }
+    let idle = data.timing(&world.zoo.entities[at], "idle").is_some();
+    if let Some(u) = world.units.get_mut(id) {
+        u.typed = false;
+        if idle {
+            u.animation.base_to("idle");
+        }
+    }
+    world
+        .units
+        .tell(format!("species {id} {}", latin1(&new.type_name)));
 }
