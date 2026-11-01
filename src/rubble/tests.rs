@@ -314,18 +314,21 @@ fn a_piece_alone_in_its_group_and_a_plain_entity_go_alone() {
 }
 
 #[test]
-fn an_undo_brings_the_whole_group_back_with_the_price_on_the_piece_removed() {
+fn an_undo_brings_back_only_the_piece_removed_without_its_group() {
     let cat = cat(&ALL);
     let mut w = world(("objects", "car"), (64, 64));
     run(&mut w, &cat, &mut Rng::default());
-    let n = w.zoo.entities.len();
+    assert!(w.zoo.entities.len() > 1);
     let id = w.zoo.entities[1].common.as_ref().unwrap().id;
     w.begin();
     w.remove(id);
     w.priced(3.0);
     assert!(w.zoo.entities.is_empty());
     let undone = w.undo();
-    assert_eq!(w.zoo.entities.len(), n);
+    assert_eq!(w.zoo.entities.len(), 1);
+    let back = w.zoo.entities[0].common.as_ref().unwrap();
+    assert_eq!(back.id, id);
+    assert!(back.rubble.as_ref().unwrap().group.is_empty());
     let prices: Vec<f32> = undone
         .steps
         .iter()
@@ -334,6 +337,5 @@ fn an_undo_brings_the_whole_group_back_with_the_price_on_the_piece_removed() {
             _ => None,
         })
         .collect();
-    assert_eq!(prices.iter().filter(|&&p| p == 3.0).count(), 1);
-    assert_eq!(prices.iter().sum::<f32>(), 3.0);
+    assert_eq!(prices, [3.0]);
 }
