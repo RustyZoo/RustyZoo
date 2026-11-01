@@ -125,6 +125,23 @@ pub fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
     }
 }
 
+/// The record of a new helicopter of type `ty` for the base `base` (staff 4.2): no colour, the work
+/// and the chase counter, one draw each; its own fields are the base, not flying and no flight
+/// direction (zoo format 6.13).
+pub fn helicopter(ty: &EntityType, base: u32, rng: &mut Rng) -> StaffRecord {
+    let work = counter(Some(ty), "cWorkCheck", 5.0, rng);
+    let chase = counter(Some(ty), "cChaseCheck", 2.0, rng);
+    let own = [base, 0, u32::MAX]
+        .into_iter()
+        .flat_map(|n| n.to_le_bytes());
+    StaffRecord {
+        work,
+        chase,
+        own: own.collect(),
+        ..StaffRecord::default()
+    }
+}
+
 /// Creates the staff member of the entity at position `at` of the entity list, as the loader of a
 /// map does (staff 4.2; the `sim` command hires through it too): the draws of [`create`], in file
 /// order with the animals and the guests.
