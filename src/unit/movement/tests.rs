@@ -708,7 +708,7 @@ fn an_aborted_walk_ends_its_move_call_as_done() {
         &Catalogue::default(),
         &mut Rng::default(),
         at,
-        &(Gait::Slow, Target::None),
+        &(Gait::Slow, Target::None, false),
     );
     assert_eq!(flow, Flow::Done);
     assert!(!u.walking && !u.moving && u.path.is_empty());
@@ -732,7 +732,7 @@ fn a_target_0_keeps_the_3d_target() {
             &Catalogue::default(),
             &mut rng,
             at,
-            &(Gait::Slow, target),
+            &(Gait::Slow, target, false),
         );
     };
     let held = |u: &mut Unit| u.goal.record.target.id = 7;
@@ -1135,4 +1135,30 @@ fn a_first_run_without_its_animation_fails_and_stops_nothing() {
     );
     let u = w.units.get(1).unwrap();
     assert!(!u.walking && u.moving && u.speed == 44 && u.path.len() >= 2);
+}
+
+#[test]
+fn a_reversed_climb_shows_its_frames_from_the_last() {
+    let (x, y) = centre((5, 5));
+    let walker = Walker::new("fWalk(0,0)");
+    let frames = |reverse| {
+        let mut w = map(vec![entity("keeper", "keeper", 1, (x, y), 0)]);
+        let at = w.find(1).unwrap();
+        w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 1;
+        let mut unit = w.units.get(1).unwrap().clone();
+        unit.destination = Some((x, y, 50));
+        let go = (Gait::Fly(Number::Int(33)), Target::None, reverse);
+        let (cat, rng) = (Catalogue::default(), &mut Rng::default());
+        assert_eq!(
+            call(&mut unit, &mut w, &walker, &cat, rng, at, &go),
+            Flow::Running
+        );
+        let timing = |n: &str| walker.timing(&w.zoo.entities[at], n);
+        [0, 100, 100].map(|ms| {
+            unit.animation.advance(ms, &timing);
+            unit.animation.shown()
+        })
+    };
+    assert_eq!(frames(false), [0, 1, 2]);
+    assert_eq!(frames(true), [2, 1, 0]);
 }

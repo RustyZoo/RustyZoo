@@ -323,7 +323,7 @@ pub fn call(
     cat: &Catalogue,
     rng: &mut Rng,
     at: usize,
-    (gait, target): &(Gait, Target),
+    (gait, target, reverse): &(Gait, Target, bool),
 ) -> Flow {
     if unit.walking {
         // 2: the unit moves from the next step's move on, once the player shows the move
@@ -350,7 +350,7 @@ pub fn call(
     // The climb of a ladder is a free move to the destination point; its second argument is the
     // speed (tank staff 3).
     if let (Gait::Fly(speed), Some(1)) = (gait, mode_of(world, at)) {
-        return start_fly(unit, world, data, at, speed);
+        return start_fly(unit, world, data, at, speed, *reverse);
     }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.
@@ -398,6 +398,9 @@ pub fn call(
     if !animate(unit, world, data, at, own) {
         return Flow::Failed;
     }
+    if *reverse {
+        unit.animation.reverse_base();
+    }
     let rate = rate.max(0) as u32;
     // A guest walks at its own pace (7.2), set when the move starts.
     unit.speed = match &unit.part {
@@ -435,9 +438,19 @@ fn mode_of(world: &World, at: usize) -> Option<u32> {
 
 /// The start of a free move: the `climb` animation at the speed the call gives, toward the
 /// destination the goal set. Fails without a destination or the animation.
-fn start_fly(unit: &mut Unit, world: &World, data: &dyn Data, at: usize, speed: &Number) -> Flow {
+fn start_fly(
+    unit: &mut Unit,
+    world: &World,
+    data: &dyn Data,
+    at: usize,
+    speed: &Number,
+    reverse: bool,
+) -> Flow {
     if unit.destination.is_none() || !animate(unit, world, data, at, Some(("climb", 100))) {
         return Flow::Failed;
+    }
+    if reverse {
+        unit.animation.reverse_base();
     }
     unit.band = Band::Slow;
     unit.speed = data.number(&world.zoo.entities[at], speed).max(0) as u32;
