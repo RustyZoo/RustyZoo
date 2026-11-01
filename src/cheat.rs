@@ -117,8 +117,10 @@ pub enum Cheat {
     UnlockScenarios,
     /// `eggs_hatch_fast`: session flag, an egg is laid with a hatch counter of 5.
     EggsHatchFast,
-    /// `cars_to_rubble`: the car scenery goes and donations and cash gain 5500.
+    /// `cars_to_rubble`: the cars turn to rubble and donations and cash gain 5500.
     CarsToRubble,
+    /// `buildings_to_rubble`: every rubbleable building turns to rubble.
+    BuildingsToRubble,
     /// `guest_spreads_sickness` and its kin: the named guest passes the effect of `bit` (one of
     /// [`spread`]) to the guests on its tile. All but the first need a man to be named.
     Spread(u8),
@@ -178,9 +180,10 @@ const ANIMALS: [(u64, Cond, Cheat); 2] = [
     ),
 ];
 const MALE: Cond = Cond::Subtype(b'm');
-const WORKERS: [(u64, Cond, Cheat); 2] = [
+const WORKERS: [(u64, Cond, Cheat); 3] = [
     (8_393_534_450_899_611_877, MALE, Cheat::FoliageClearBonus),
     (8_468_693_752_337_878_622, MALE, Cheat::FencesRepair),
+    (2_810_728_018_963_006_213, MALE, Cheat::BuildingsToRubble),
 ];
 const KEEPERS: [(u64, Cond, Cheat); 5] = [
     (16_097_477_701_174_231_208, MALE, Cheat::BreedingBoost),
@@ -391,7 +394,7 @@ mod tests {
             Subject::Keeper,
         ]
         .map(count);
-        assert_eq!(counts, [7, 2, 2, 5]);
+        assert_eq!(counts, [7, 2, 3, 5]);
         assert_eq!(count(Subject::Guide), 0);
         let mut seen: Vec<(Subject, u64, Cheat)> = Vec::new();
         for e in &c.table {
@@ -422,7 +425,8 @@ mod tests {
             rows(Subject::Worker),
             [
                 (male, Cheat::FoliageClearBonus),
-                (male, Cheat::FencesRepair)
+                (male, Cheat::FencesRepair),
+                (male, Cheat::BuildingsToRubble)
             ]
         );
         assert_eq!(
