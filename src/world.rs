@@ -703,8 +703,27 @@ impl World {
     }
 
     /// Removes the entity with this id; whether there was one. A fence piece that opens its line
-    /// records the exhibits it opens, with their names and gates, first.
+    /// records the exhibits it opens, with their names and gates, first. A rubble piece takes the
+    /// rest of its group with it, destroyed with no undo record, before itself so that a price told
+    /// next belongs to it; it is recorded alone, its group emptied (cheats 4.6).
     pub fn remove(&mut self, id: u32) -> bool {
+        let group = (self.find(id))
+            .and_then(|at| self.zoo.entities[at].common.as_mut()?.rubble.as_mut())
+            .map_or_else(Vec::new, |r| std::mem::take(&mut r.group));
+        for g in group.into_iter().filter(|&g| g != id) {
+            // A saved group may name anything: only rubble goes.
+            if self
+                .find(g)
+                .is_some_and(|at| self.zoo.entities[at].class == "rubble")
+            {
+                self.remove_one(g, false);
+            }
+        }
+        self.remove_one(id, true)
+    }
+
+    /// Removes the entity with this id alone; `undoable` records it for the undo.
+    fn remove_one(&mut self, id: u32, undoable: bool) -> bool {
         let Some(at) = self.find(id) else {
             return false;
         };
@@ -729,12 +748,14 @@ impl World {
             self.settle(slot, false);
         }
         rated.into_iter().for_each(|t| self.mark_rating(t));
-        self.record(Action::Removed {
-            at,
-            entity,
-            shape,
-            price: 0.0,
-        });
+        if undoable {
+            self.record(Action::Removed {
+                at,
+                entity,
+                shape,
+                price: 0.0,
+            });
+        }
         true
     }
 
