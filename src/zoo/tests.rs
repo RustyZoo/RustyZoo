@@ -717,6 +717,8 @@ fn reads_the_common_part_of_fixed_entities() {
             assert_eq!((c.x, c.y, c.z), (100, -5, 32));
             assert_eq!(c.colors, [3, 9], "{class} at {v}");
         }
+        let r = z.entities[6].common.as_ref().unwrap().rubble.as_ref();
+        assert_eq!(r.map(|r| (&r.group[..], r.name_id)), Some((&[0][..], 0)));
         let c = z.entities[3].common.as_ref().unwrap();
         assert_eq!((c.rotation, c.id, &*c.name), (4, 9, "House"));
         // The words after the health are upkeep and dates, never timers (zoo format 6.8).
@@ -1879,6 +1881,16 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         made("paths", "path", at.clone()),
         made("ambient", "bird", at.clone()),
         made("rubble", "r", at.clone()),
+        made(
+            "rubble",
+            "r",
+            with(&|c| {
+                c.rubble = Some(crate::zoo::Rubble {
+                    group: vec![7, 8, 9],
+                    name_id: 6138,
+                })
+            }),
+        ),
         made("fences", "f", with(&|c| c.fence = Some(fence))),
         made(
             "tankwall",
@@ -1963,6 +1975,10 @@ fn an_entity_made_in_play_is_written_and_read_back() {
             assert_eq!(b.food, if keeps { c.food } else { 0 }, "{what}");
             assert_eq!((b.fence, b.filter), (c.fence, c.filter), "{what}");
             assert_eq!(b.building, c.building, "{what}");
+            if e.class == "rubble" {
+                let empty = Some(crate::zoo::Rubble::default());
+                assert_eq!(b.rubble, c.rubble.clone().or(empty), "{what}");
+            }
             assert_eq!(b.animal.is_some(), e.class == "animals", "{what}");
             assert_eq!(b.guest.is_some(), e.class == "guests", "{what}");
             if c.animal.is_some() {

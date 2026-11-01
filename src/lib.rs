@@ -31,6 +31,7 @@ pub mod pe;
 pub mod place;
 pub mod render;
 pub mod research;
+pub mod rubble;
 pub mod scenario;
 pub mod sim;
 pub mod sprite;

@@ -164,6 +164,23 @@ fn the_seen_test_goes_by_the_object_or_its_help_id() {
 }
 
 #[test]
+fn a_guest_with_a_return_building_has_seen_no_scenery() {
+    let (cat, mut w) = (catalogue(), zoo_map());
+    update(&mut w, &cat);
+    let tile = w.tile_index(6, 1).unwrap();
+    let mut g = Guest {
+        seen: vec![tile],
+        ..Guest::default()
+    };
+    let all = |g: &Guest| unseen(&w, &cat, g).len();
+    assert_eq!(all(&g), 1);
+    g.returning = Some(0);
+    assert_eq!(all(&g), 3);
+    g.returning = None;
+    assert_eq!(all(&g), 1);
+}
+
+#[test]
 fn unseen_scenery_weighs_a_hundredth_of_its_weight_and_at_least_one_site() {
     let j = |weight| Judged {
         id: 1,

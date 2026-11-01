@@ -42,6 +42,7 @@
 //! `animal trample <id> <x>,<y>` for a tile trampled, `animal sleep|wake|ill|infected|dying <id>`
 //! for the changes of state, `animal dung <id> <x>,<y> <size>` for a pile put down,
 //! `animal shelter <id> <building>` when the check takes a shelter, `animal heal <id>`,
+//! `animal species <id> <type>` when the rename cheat changes it,
 //! `animal mate <id> <id>`, `animal birth <father> <id> <subtype> <x>,<y>`,
 //! `animal egg <father> <id> <x>,<y>`, `animal grow <id> <subtype>`, `animal hatch <id>`,
 //! `animal breath <id> <breath>` when the breath rises, `animal terrain <id> <mode>` when the

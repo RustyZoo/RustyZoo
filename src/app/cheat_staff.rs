@@ -8,6 +8,7 @@ use crate::entity::Catalogue;
 use crate::money::CONSTRUCTION_REFUND;
 use crate::panel::exhibit::animals_exhibit;
 use crate::place::bulldozer::type_of;
+use crate::rubble::{Kit, PIECE_NAME, turn_to_rubble};
 use crate::world::World;
 use crate::zoo::Entity;
 
@@ -40,6 +41,7 @@ impl App<'_> {
             Cheat::DinosaursVanish => self.dinosaurs_vanish(),
             Cheat::FoliageClearBonus => self.foliage_clear(),
             Cheat::FencesRepair => self.fences_repair(),
+            Cheat::BuildingsToRubble => self.buildings_to_rubble(),
             _ => {}
         }
         // The rules the world reads see the flags at once, not at the next step.
@@ -120,11 +122,41 @@ impl App<'_> {
         game.money.refund(CONSTRUCTION_REFUND, FOLIAGE_BONUS);
     }
 
+    /// Every rubbleable building turns to rubble (cheats 4.4): no refund, no message.
+    fn buildings_to_rubble(&mut self) {
+        let Some(game) = &mut self.game else { return };
+        let template = (self.ui.as_ref()).map_or(String::new(), |u| u.string(PIECE_NAME));
+        let renderer = &self.renderer;
+        let shape = |e: &Entity| renderer.shape(e);
+        let mut kit = Kit {
+            cat: renderer.catalogue(),
+            rng: &mut self.sim.rng,
+            template: &template,
+            shape: &shape,
+        };
+        rubble_buildings(&mut game.world, &mut kit);
+    }
+
     /// Every fence piece that is broken or at or below its decayed life is made healthy.
     fn fences_repair(&mut self) {
         let Some(game) = &mut self.game else { return };
         let cat = self.renderer.catalogue();
         self.sim.repair_fences(&mut game.world, cat);
+    }
+}
+
+/// Every building whose type has `cRubbleable` 1 (the default) turns to rubble, each once.
+pub(super) fn rubble_buildings(world: &mut World, kit: &mut Kit) {
+    let rubbleable = |e: &&Entity| {
+        e.class == "building"
+            && type_of(kit.cat, e).is_some_and(|t| number(t, "cRubbleable").unwrap_or(1.0) == 1.0)
+    };
+    let ids: Vec<u32> = (world.zoo.entities.iter())
+        .filter(rubbleable)
+        .filter_map(|e| Some(e.common.as_ref()?.id))
+        .collect();
+    for id in ids {
+        turn_to_rubble(world, kit, id);
     }
 }
 

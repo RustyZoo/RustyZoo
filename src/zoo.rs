@@ -107,6 +107,15 @@ pub struct Tile {
     pub edges: u8,
 }
 
+/// What a rubble piece stores besides its scenery fields (cheats 4.6).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Rubble {
+    /// The ids of all the pieces made by the same call.
+    pub group: Vec<u32>,
+    /// The name id of the type that turned to rubble.
+    pub name_id: i32,
+}
+
 /// The part every entity body ends with.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Common {
@@ -146,6 +155,8 @@ pub struct Common {
     pub filter: Option<Filter>,
     /// The figures a guest building record stores; `None` for everything else.
     pub building: Option<BuildingRecord>,
+    /// The group and the type name id of a rubble piece; `None` for everything else.
+    pub rubble: Option<Rubble>,
     /// The body as read, which the writer patches with the fields above.
     pub raw: Raw,
 }
