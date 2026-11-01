@@ -33,12 +33,14 @@ run() { # run <name> <command...>: log in $logs/<name>, status and seconds in $l
   name=$1
   shift
   start=$SECONDS
+  rm -f "$logs/$name.st"
   "$@" >"$logs/$name" 2>&1
   echo "$? $((SECONDS - start))" >"$logs/$name.st"
 }
 
 report() { # report <name>: the summary line, the tail of the log of a failed step
-  read -r status secs <"$logs/$1.st"
+  status=1 secs=0 # a step that died before writing its status file counts as failed
+  read -r status secs <"$logs/$1.st" 2>/dev/null || { status=1; secs=0; }
   if [ "$status" = 0 ]; then
     printf 'ok      %-11s %ss\n' "$1" "$secs"
     ok=$((ok + 1))
