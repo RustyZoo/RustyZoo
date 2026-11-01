@@ -135,7 +135,7 @@ usage: rustyzoo [--data <dir>] <command>
   sim <map> --ticks N [--dt MS] [--seed S] [--script FILE] [--reset-fences] [--hash|--log]
                       run a map (a .zoo member) for N steps of MS milliseconds (default 67)
                       without an interface, with the generator seeded from S (default 1), and
-                      print the hash of the whole state, the same on every system (--hash, the
+                      print the hash of the state, the same on every system (--hash, the
                       default), or the log lines of each step (--log; the units run their behaviour sets as in
                       `run`). The events a loaded zoo posts (cans, fence pieces, filters) are posted. The fence pieces stay as the map stores them; --reset-fences makes
                       them all healthy first, as a start whose map file has `resetfences` above 0
