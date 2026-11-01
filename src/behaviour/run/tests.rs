@@ -330,6 +330,23 @@ fn a_new_base_waits_for_the_loop_in_progress_and_a_cut_ends_it() {
 }
 
 #[test]
+fn a_reversed_base_loops_from_its_last_frame() {
+    let rig = Rig::new(&[]);
+    let timing = |n: &str| rig.data.timing(&rig.unit, n);
+    let mut anim = Animation::default();
+    anim.base_to("a");
+    anim.reverse_base();
+    anim.advance(0, &timing);
+    assert_eq!((anim.name.as_str(), anim.shown()), ("a", 2));
+    anim.advance(100, &timing);
+    assert_eq!(anim.shown(), 1);
+    // A new base plays forward again, from the next loop.
+    anim.base_to("a");
+    anim.advance(200, &timing);
+    assert_eq!(anim.shown(), 0);
+}
+
+#[test]
 fn a_routine_call_shows_the_idle_animation_after_a_walk() {
     let mut rig = Rig::new(&[("bAmbient", &["fGuestRoutine()"])]);
     rig.unit.class = "guests".into();
@@ -383,7 +400,10 @@ fn a_move_call_waits_for_the_units_answer_and_the_set_goes_on_when_it_is_done() 
     let mut rig = Rig::new(&[("bAmbient", &["fRun(0,0)", "fPlay(d)"])]);
     for _ in 0..3 {
         rig.tick(100);
-        assert_eq!(rig.runner.take_move(), Some((Gait::Fast, Target::Keep)));
+        assert_eq!(
+            rig.runner.take_move(),
+            Some((Gait::Fast, Target::Keep, false))
+        );
         assert_eq!(rig.runner.take_move(), None, "taken once");
     }
     // Still running: the next call waits. Done: it starts in the same step.

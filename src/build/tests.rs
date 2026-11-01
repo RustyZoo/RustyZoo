@@ -1245,6 +1245,67 @@ fn the_hire_panel_lists_the_staff_of_the_sex_drawn_by_kind_with_salary_and_dutie
 }
 
 #[test]
+fn the_hire_panel_ends_with_the_drt_base_that_shows_the_helicopter_details() {
+    let (_ui, vfs, _install) = interface("hire-drt");
+    let heli = || EntityType {
+        name_id: 150,
+        ..ty(
+            "helicopter",
+            "helicopter",
+            "",
+            "[Member]\nstaff\ndinosaur\n[Characteristics/Integers]\ncMonthlyCost=2000\n\
+             cDutiesTextID=3614\n",
+        )
+    };
+    let base = |ini: &str| EntityType {
+        name_id: 8031,
+        ..ty("building", "helibase", "", ini)
+    };
+    let cat = |base: EntityType| {
+        catalogue(vec![
+            base,
+            heli(),
+            hand("keeper", "keeper", "m", "staff", 101),
+            hand("maint", "maint", "m", "staff", 102),
+        ])
+    };
+    let dino = "[Member]\nstaff\ndinosaur\n[Characteristics/Integers]\ncPurchaseCost=2000\n";
+    let (cat_on, cat_off) = (
+        cat(base(dino)),
+        cat(base(&dino.replace("dinosaur", "aqua"))),
+    );
+    let sync = |cat: &Catalogue, on: i32| {
+        let (mut ui, vfs, _install) = interface("hire-drt");
+        let (mut build, mut log) = (Build::new(on), vec![]);
+        build.set_hire(true);
+        assert!(ui.show(10));
+        build.sync(&mut ui, &vfs, cat, &mut log);
+        (build, ui)
+    };
+    // With the expansion: after the staff, choosing it shows the rotate buttons and the helicopter.
+    let (mut build, mut ui) = sync(&cat_on, 1);
+    assert_eq!(build.list, [2, 3, 0]);
+    build.take_made();
+    build.choose(&mut ui, &vfs, &cat_on, HIRE_PANEL, 2, &mut vec![]);
+    assert_eq!(state_of(&ui, 3676) & HIDDEN, 0);
+    assert_eq!(
+        (text(&ui, 3620), text(&ui, 3611), text(&ui, 3613)),
+        ("Name150".into(), "$2,000".into(), "Cares".into())
+    );
+    assert!(
+        build.take_made().is_empty(),
+        "a building is no pending staff member"
+    );
+    // Without it, or not a member of the expansion, or not available, the base is not listed.
+    assert_eq!(sync(&cat_on, 0).0.list, [2, 3]);
+    assert_eq!(sync(&cat_off, 1).0.list, [2, 3]);
+    let (mut build, mut ui) = sync(&cat_on, 1);
+    let mut log = vec![];
+    assert!(build.set_available(&mut ui, &vfs, &cat_on, 8031, false, &mut log));
+    assert_eq!(build.list, [2, 3]);
+}
+
+#[test]
 fn a_flag_change_makes_the_open_list_again() {
     let (mut ui, vfs, _install) = interface("avail");
     let cat = types();

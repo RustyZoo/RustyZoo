@@ -12,6 +12,7 @@ use crate::avail::Availability;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{SYMBOL, Symbol};
+use crate::month::HELICOPTER_BASE;
 use crate::place::unit::{is_unit, price};
 use crate::place::{Class, Leg, MIDDLE, fence_run, path_run, side};
 use crate::scenario::{Avail, Which};
@@ -76,6 +77,11 @@ impl From<i32> for Filter {
             pick: None,
         }
     }
+}
+
+/// Whether the type is the DRT base building, the last item of the Hire panel (unit placing 4.2).
+fn drt_base(ty: &EntityType) -> bool {
+    ty.class == "building" && ty.name_id == HELICOPTER_BASE
 }
 
 /// Whether the type is a member of the purchase list `tag` (entity types 10.2).
@@ -1249,9 +1255,14 @@ impl Build {
             (None, _) => Vec::new(),
             (Some(_), Some(male)) => {
                 let sex = [&b"f"[..], b"m"][usize::from(male)];
-                items_of(cat, &self.avail, &tag, self.filter(), |ty| {
+                let mut list = items_of(cat, &self.avail, &tag, self.filter(), |ty| {
                     is_unit(ty) && ty.subtype == sex
-                })
+                });
+                // The DRT base comes after the sort (unit placing 4.2).
+                if panel.layout == HIRE {
+                    list.extend(items_of(cat, &self.avail, &tag, self.filter(), drt_base));
+                }
+                list
             }
             (Some(_), None) => items(cat, &self.avail, &tag, self.filter()),
         };
@@ -1385,17 +1396,22 @@ impl Build {
         }
         self.turn = self.step[p];
         ui.select_item(panel.list, Some(at));
-        let name = ui.string(ty.name_id);
+        // The DRT base shows its helicopter's details (unit placing 4.2).
+        let facts = Some(ty)
+            .filter(|t| drt_base(t))
+            .and_then(|_| cat.types.iter().find(|t| t.class == "helicopter"))
+            .unwrap_or(ty);
+        let name = ui.string(facts.name_id);
         // The Hire panel shows the monthly salary and the duties instead of the price.
         let hire = panel.layout == HIRE;
         let shown = if hire {
-            staff::monthly(ty)
+            staff::monthly(facts)
         } else {
             price(ty, self.october)
         };
         let price = Symbol::new(ui.string(SYMBOL)).text(whole_units(f64::from(shown)));
         if hire {
-            ui.set_text(HIRE_DUTIES, &to_cp1252(&ui.string(staff::duties(ty))));
+            ui.set_text(HIRE_DUTIES, &to_cp1252(&ui.string(staff::duties(facts))));
         }
         ui.set_text(panel.name_text, &to_cp1252(&name));
         ui.set_text(panel.cost_text, &to_cp1252(&price));
