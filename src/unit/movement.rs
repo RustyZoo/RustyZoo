@@ -351,7 +351,7 @@ pub fn call(
     // The climb of a ladder is a free move to the destination point; its second argument is the
     // speed (tank staff 3).
     if let (Gait::Fly(speed), Some(1)) = (gait, mode_of(world, at)) {
-        return start_fly(unit, world, data, at, speed);
+        return start_fly(unit, world, data, cat, at, speed);
     }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.
@@ -399,8 +399,14 @@ pub fn call(
     if !animate(unit, world, data, at, own) {
         return Flow::Failed;
     }
-    let rate = rate.max(0) as u32;
-    // A guest walks at its own pace (7.2), set when the move starts.
+    set_speed(unit, world, cat, at, rate.max(0) as u32);
+    unit.walking = true;
+    Flow::Running
+}
+
+/// Sets the speed of a move through the unit's class (7.2): a guest walks at its own pace, a
+/// scientist keeper twice as fast under the cheat, any other unit at the rate as given.
+fn set_speed(unit: &mut Unit, world: &World, cat: &Catalogue, at: usize, rate: u32) {
     unit.speed = match &unit.part {
         Part::Guest(g) => guest_speed(
             rate,
@@ -410,7 +416,6 @@ pub fn call(
         ),
         _ => rate,
     };
-    // The speed cheat doubles the scientists' (7.2).
     let entity = &world.zoo.entities[at];
     if world.units.cheat.keeper_speed_double
         && entity.class == "keeper"
@@ -419,8 +424,6 @@ pub fn call(
     {
         unit.speed = unit.speed.saturating_mul(2);
     }
-    unit.walking = true;
-    Flow::Running
 }
 
 /// The movement mode of the unit at position `at` of the entity list.
@@ -436,12 +439,20 @@ fn mode_of(world: &World, at: usize) -> Option<u32> {
 
 /// The start of a free move: the `climb` animation at the speed the call gives, toward the
 /// destination the goal set. Fails without a destination or the animation.
-fn start_fly(unit: &mut Unit, world: &World, data: &dyn Data, at: usize, speed: &Number) -> Flow {
+fn start_fly(
+    unit: &mut Unit,
+    world: &World,
+    data: &dyn Data,
+    cat: &Catalogue,
+    at: usize,
+    speed: &Number,
+) -> Flow {
     if unit.destination.is_none() || !animate(unit, world, data, at, Some(("climb", 100))) {
         return Flow::Failed;
     }
     unit.band = Band::Slow;
-    unit.speed = data.number(&world.zoo.entities[at], speed).max(0) as u32;
+    let rate = data.number(&world.zoo.entities[at], speed).max(0) as u32;
+    set_speed(unit, world, cat, at, rate);
     unit.walking = true;
     Flow::Running
 }

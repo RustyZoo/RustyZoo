@@ -174,7 +174,7 @@ impl crate::behaviour::Data for Walker {
     }
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
         [
-            "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise",
+            "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise", "climb",
         ]
         .contains(&name)
         .then_some(crate::behaviour::Timing {

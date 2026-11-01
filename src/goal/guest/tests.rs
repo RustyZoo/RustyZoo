@@ -557,6 +557,9 @@ fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
     let (x, y) = centre((5, 5));
     w.place_unit(0, (x, y, 0), 0);
     let order = w.exhibits().list()[0].order.clone();
+    // The exhibit was rated before (a recomputation's reachability test draws).
+    let id = w.exhibits().list()[0].id;
+    crate::exhibit::rating::refresh(&mut w, &cat, id, &mut || 0);
     let (mut rng, mut by_hand) = (Rng::default(), Rng::default());
     by_hand.rand();
     let drawn = order[by_hand.pick(order.len() as u32) as usize];
@@ -567,9 +570,7 @@ fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
         let mut r = Rng::default();
         r.rand();
         r.pick(order.len() as u32);
-        // The duration of the gawk (5.3) follows; reading the attractiveness rates the exhibit
-        // just made, whose reachability test draws its target (habitat rating 5.8).
-        r.rand();
+        // The duration of the gawk (5.3) follows.
         r.rand();
         r.rand();
         r.state()
@@ -584,6 +585,61 @@ fn the_gawk_start_faces_the_viewing_direction_and_keeps_the_drawn_tile() {
     );
     assert_ne!(va, 0, "the guest started facing 0");
     assert_eq!(rotation, u32::from(va));
+}
+
+#[test]
+fn the_gawk_start_recomputes_the_exhibit_after_the_tile_draw() {
+    let (cat, walks) = (types(), walks());
+    let mut w = visit(50);
+    let (cx, cy) = centre((5, 5));
+    w.place_unit(0, (cx, cy, 0), 0);
+    let (id, order) = (
+        w.exhibits().list()[0].id,
+        w.exhibits().list()[0].order.clone(),
+    );
+    let k = crate::guest::keys(&w, &cat, 0).unwrap();
+    // The lookup, the tile, the recomputation's reachability test, then the duration's two.
+    let mut r = Rng::default();
+    r.rand();
+    let drawn = order[r.pick(order.len() as u32) as usize];
+    r.rand();
+    r.rand();
+    let spread = r.pick(6) as i32;
+    w.exhibits_mut().mark(id);
+    let mut rng = Rng::default();
+    assert!(with_cx_in(&cat, &walks, &mut w, &mut rng, |cx| cx.gawk_init()));
+    assert_eq!(rng.state(), r.state());
+    let x = w.exhibits().get(id).unwrap();
+    assert!(!x.rating.dirty);
+    let more = [20, 50, 90, 150, 200]
+        .iter()
+        .take_while(|&&limit| x.rating.attractiveness >= limit)
+        .count();
+    let u = w.units.get(1).unwrap();
+    assert_eq!(
+        u.goal.record.duration as i32,
+        k.gawk[2] + spread + k.gawk_attr.get(more).copied().unwrap_or(0)
+    );
+    let Part::Guest(g) = &u.part else {
+        panic!("a guest");
+    };
+    assert_eq!(g.seen, vec![drawn]);
+    // A seen exhibit fails the start and recomputes nothing.
+    let mut w = visit(50);
+    w.place_unit(0, (cx, cy, 0), 0);
+    let first = w.exhibits().list()[0].first;
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        g.seen = vec![first];
+    }
+    w.exhibits_mut().mark(id);
+    assert!(!with_cx_in(
+        &cat,
+        &walks,
+        &mut w,
+        &mut Rng::default(),
+        |cx| cx.gawk_init()
+    ));
+    assert!(w.exhibits().get(id).unwrap().rating.dirty);
 }
 
 #[test]

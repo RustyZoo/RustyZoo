@@ -1193,18 +1193,13 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
 }
 
 /// The animals (positions in the entity list) of exhibit `x` in the order of the exhibit's
-/// animal list (habitat rating 5.1, guests visit 6.3): its tiles in the order of the last fill,
-/// then each tile's unit list. An animal counts on its own tile only; a carried one is on none.
+/// stored animal list (habitat rating 5.1, guests visit 6.3). The list is rebuilt only at a
+/// recomputation, so a reader refreshes the exhibit first ([`rating::refresh`]).
 pub fn exhibit_animals(world: &World, x: u32) -> Vec<usize> {
-    let mut found = Vec::new();
-    for t in world.tiles_of(x) {
-        found.extend(
-            world
-                .units_on(t)
-                .filter(|&i| world.zoo.entities[i].class == "animals"),
-        );
-    }
-    found
+    let list = world.exhibits().get(x).map(|e| &e.rating.animals);
+    (list.into_iter().flatten())
+        .filter_map(|&id| world.find(id))
+        .collect()
 }
 
 /// The shelters for the check of an animal on tile `tile` that aims at building `target` (animals
@@ -1400,6 +1395,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             env.stands = tile.map_or(0, |t| tank::kind(world, t));
         }
         if env.adult && !a.dying && a.counters[REPRODUCTION] == 0 {
+            rating::refresh(world, ctx.cat, x, &mut || ctx.rng.rand());
             env.candidates = breed::candidates(world, at, x, a);
         }
         env.size = (near.iter())
