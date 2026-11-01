@@ -1330,16 +1330,17 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # units go on with their paths and pending sets too (no random walk at the first move call): it is 16626 (the same). The saved goal of every task comes back too: it is 15432 (the same). The whole goal record comes back too (start, duration, ids, done flags and job; the map is version 71, so init still runs there): it is 9089 (the same).
 # Two loaded lions hold the use set of a shelter as their pending set with the interruptible flag down, as saved; the hook now starts it
 # with that flag (behaviours 4.2.1), not interruptible: the first birth is at 4477 (894 before the neighbour walk of keeper food), with three mates (the same young).
+# Guests read the exhibit's stored average happiness (guests visit 4.3), which moves the shared stream: seed 3 gave no birth; seed 4 is the first seed from 1 that gives one with and without that change, at 4193.
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
-  once() { rz sim "$1" --ticks 20000 --seed 3 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  once() { rz sim "$1" --ticks 20000 --seed 4 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: four mates, the same birth.
-check base-trial "mates:3;birth@4477;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@4193;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
