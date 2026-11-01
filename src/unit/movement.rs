@@ -13,8 +13,8 @@
 //! A unit in a tank (move kind 3) moves by [`swim`]'s 3D move instead, and the tank position check
 //! runs after every move step.
 //!
-//! Not here yet: the escape of an animal (6.3), the repeat time and the reverse of a move call,
-//! the index block of a unit larger than a tile (the map index holds the unit on one tile).
+//! Not here yet: the escape of an animal (6.3), the repeat time, the index block of a unit
+//! larger than a tile (the map index holds the unit on one tile).
 
 use super::{Kind, Part, Unit, swim};
 use crate::behaviour::{Data, Flow, Gait, Number, Target};
@@ -350,7 +350,7 @@ pub fn call(
     // The climb of a ladder is a free move to the destination point; its second argument is the
     // speed (tank staff 3).
     if let (Gait::Fly(speed), Some(1)) = (gait, mode_of(world, at)) {
-        return start_fly(unit, world, data, at, speed, *reverse);
+        return start_fly(unit, world, data, cat, at, speed, *reverse);
     }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.
@@ -401,8 +401,14 @@ pub fn call(
     if *reverse {
         unit.animation.reverse_base();
     }
-    let rate = rate.max(0) as u32;
-    // A guest walks at its own pace (7.2), set when the move starts.
+    set_speed(unit, world, cat, at, rate.max(0) as u32);
+    unit.walking = true;
+    Flow::Running
+}
+
+/// Sets the speed of a move through the unit's class (7.2): a guest walks at its own pace, a
+/// scientist keeper twice as fast under the cheat, any other unit at the rate as given.
+fn set_speed(unit: &mut Unit, world: &World, cat: &Catalogue, at: usize, rate: u32) {
     unit.speed = match &unit.part {
         Part::Guest(g) => guest_speed(
             rate,
@@ -412,7 +418,6 @@ pub fn call(
         ),
         _ => rate,
     };
-    // The speed cheat doubles the scientists' (7.2).
     let entity = &world.zoo.entities[at];
     if world.units.cheat.keeper_speed_double
         && entity.class == "keeper"
@@ -421,8 +426,6 @@ pub fn call(
     {
         unit.speed = unit.speed.saturating_mul(2);
     }
-    unit.walking = true;
-    Flow::Running
 }
 
 /// The movement mode of the unit at position `at` of the entity list.
@@ -442,6 +445,7 @@ fn start_fly(
     unit: &mut Unit,
     world: &World,
     data: &dyn Data,
+    cat: &Catalogue,
     at: usize,
     speed: &Number,
     reverse: bool,
@@ -453,7 +457,8 @@ fn start_fly(
         unit.animation.reverse_base();
     }
     unit.band = Band::Slow;
-    unit.speed = data.number(&world.zoo.entities[at], speed).max(0) as u32;
+    let rate = data.number(&world.zoo.entities[at], speed).max(0) as u32;
+    set_speed(unit, world, cat, at, rate);
     unit.walking = true;
     Flow::Running
 }

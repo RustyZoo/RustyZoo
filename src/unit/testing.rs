@@ -180,7 +180,7 @@ impl crate::behaviour::Data for Walker {
             });
         }
         [
-            "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise",
+            "idle", "walk", "trot", "run", "swim", "subswim", "surfswim", "dive", "rise", "climb",
         ]
         .contains(&name)
         .then_some(crate::behaviour::Timing {

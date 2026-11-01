@@ -27,21 +27,31 @@ fn entity(class: &str, tx: i32, ty: i32, id: u32) -> Entity {
 }
 
 fn shape(e: &Entity) -> Option<Shape> {
-    (e.class == "fences").then_some(Shape {
-        kind: Kind::Edge,
+    let thing = |kind, fence| Shape {
+        kind,
         footprint: (1, 1),
-        fence: true,
+        fence,
         wall: false,
         gate: false,
-        gated: true,
+        gated: fence,
         walkable: (false, false),
         tank: TankKind::NONE,
-    })
+    };
+    match e.class.as_str() {
+        "fences" => Some(thing(Kind::Edge, true)),
+        "animals" => Some(thing(Kind::Unit, false)),
+        _ => None,
+    }
 }
 
 /// A 6 by 6 map with a square exhibit of the tiles 1..=2 and one animal in it, one on the
 /// grounds, one off the map and a tree.
 fn world() -> World {
+    world_of(&[])
+}
+
+/// The same, with one more animal named in `names` for each entry, in the exhibit.
+fn world_of(names: &[&str]) -> World {
     let tile = Tile {
         elevation: 0,
         shape: 0,
@@ -62,6 +72,12 @@ fn world() -> World {
     add("animals", 4, 4);
     add("animals", -3, 1);
     add("objects", 2, 2);
+    for _ in names {
+        add("animals", 2, 1);
+    }
+    for (e, name) in entities.iter_mut().rev().zip(names.iter().rev()) {
+        e.common.as_mut().unwrap().name = name.to_string();
+    }
     let mut zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
@@ -511,6 +527,7 @@ fn the_thoughts_about_the_exhibit_are_listed_with_the_exhibits_name_for_the_perc
         current: Some(id),
         ..Panel::default()
     };
+    sort_animals(&mut w, &cat, id, &mut crate::sim::Rng::default());
     let told = p.refresh(&mut ui, &w, &cat, &vfs);
     assert_eq!(told[3], "animals 1 thoughts 2 [10098, 10096]");
     // Twenty-five thoughts: the twenty newest.
@@ -519,4 +536,33 @@ fn the_thoughts_about_the_exhibit_are_listed_with_the_exhibits_name_for_the_perc
     }
     assert_eq!(texts(&ui, &w).len(), 20);
     assert!(p.refresh(&mut ui, &w, &cat, &vfs)[3].starts_with("animals 1 thoughts 20 [10096,"));
+}
+
+#[test]
+fn the_panel_sorts_the_stored_animal_list_by_name_in_place() {
+    let mut w = world_of(&["b", "B", "a", "ab", "a", "\u{e9}"]);
+    let (cat, mut rng) = (Catalogue::default(), crate::sim::Rng::default());
+    let id = w.exhibits().list()[0].id;
+    let names = |w: &World| -> Vec<String> {
+        let list = crate::animal::exhibit_animals(w, id).into_iter();
+        let name = |at: usize| w.zoo.entities[at].common.as_ref().unwrap().name.clone();
+        list.map(name).collect()
+    };
+    assert!(
+        names(&w).is_empty(),
+        "nothing is listed before a recomputation"
+    );
+    rating::refresh(&mut w, &cat, id, &mut || 0);
+    // The tile order: (1,1) holds e3, then (2,1) the added ones in their unit order.
+    let tiles = names(&w);
+    assert_eq!(tiles.len(), 7);
+    sort_animals(&mut w, &cat, id, &mut rng);
+    // Bytes, unsigned: capitals first, a prefix before its extensions, the accent last.
+    assert_eq!(names(&w), ["B", "a", "a", "ab", "b", "e3", "\u{e9}"]);
+    // Other readers see the name order until the next recomputation.
+    w.exhibits_mut().mark(id);
+    sort_animals(&mut w, &cat, id + 100, &mut rng);
+    assert_eq!(names(&w).len(), 7, "no such exhibit");
+    rating::refresh(&mut w, &cat, id, &mut || 0);
+    assert_eq!(names(&w), tiles);
 }
