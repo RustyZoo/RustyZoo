@@ -300,7 +300,7 @@ fn check(
     };
     let flag = |key: &str| number(t, key) == Some(1.0);
     // The messages about water read `cOnlyUnderwater`, whatever the class (unit placing 6.1).
-    let (swims, only) = (flag("cSwims"), flag("cOnlyUnderwater") && !crated);
+    let (swims, only) = (flag("cSwims"), flag("cOnlyUnderwater"));
     let (fx, fy) = footprint(t, p.facing, crated);
     // A large animal runs the footprint check of placing 5.2 (items 1, 3 to 6): its quarters.
     let large = fx > 2 || fy > 2;
@@ -381,7 +381,7 @@ fn check(
         if let Some(message) = message {
             fail(p, Some(message));
         }
-    } else if only {
+    } else if only && !crated {
         fail(p, Some(NEEDS_WATER));
     }
     // What is in the way: the objects holding the tile's quarters and every unit on it.

@@ -1048,3 +1048,36 @@ fn a_picked_up_escaped_animal_is_a_crate_that_may_stand_on_the_grounds() {
     assert_eq!(judged(&w, &carry, wide, (5, 2)), valid);
     assert_eq!(judged(&w, &carry, wide, (5, 4)).0, Verdict::Invalid);
 }
+
+#[test]
+fn a_crated_fish_over_water_needs_a_tank() {
+    let mut w = world(square("fences", 2, 2));
+    let id = w
+        .add(animal("m", (4, 4)), shape(&animal("m", (4, 4))))
+        .unwrap();
+    let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) else {
+        panic!("not an animal");
+    };
+    a.escaped = true;
+    // A shark: lives only under water, does not swim.
+    let mut cat = catalogue();
+    let shark = "[m/Characteristics/Integers]\ncOnlyUnderwater=1\n";
+    cat.push(ty("m", "shark", shark));
+    let fish = cat.types.len() - 1;
+    let carry = pick_up(&mut w, &cat, id, 0).unwrap();
+    let judged = |ty: usize, tile: (i64, i64)| {
+        let carry = Carry {
+            ty,
+            ..carry.clone()
+        };
+        let point = (tile.0 * 64 + 32, tile.1 * 64 + 32, 0);
+        carried(&w, &cat, &[false, true], &carry, 0, aim(0, point))
+            .unwrap()
+            .message
+    };
+    // Over water outside a tank: the water message, for a fish and for any other crate.
+    assert_eq!(judged(fish, (5, 5)), Some(NEEDS_WATER));
+    assert_eq!(judged(ZEBRA, (5, 5)), Some(10569));
+    // On dry land the crate of a fish is fine.
+    assert_eq!(judged(fish, (2, 2)), None);
+}
