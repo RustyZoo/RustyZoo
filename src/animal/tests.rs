@@ -1519,6 +1519,90 @@ fn the_exhibit_mourns_from_its_stored_list_recomputed_first() {
     assert_eq!([510, 511].map(|id| mourning(&world, id)), [false, true]);
 }
 
+/// The exhibit reads of a tick of checks, with the bites the meal held at each.
+fn reads(a: &mut Animal, k: &Keys, env: &Env) -> Vec<(Read, i32)> {
+    let mut seen = Vec::new();
+    let mut read =
+        |r: Read, _: &Animal, m: &Meal, _: &mut Env, _: &mut Rng| seen.push((r, m.bites));
+    let mut env = env.clone();
+    let (class, mut rng) = (Class::default(), Rng::default());
+    run_read(
+        a,
+        k,
+        &class,
+        &mut env,
+        &mut rng,
+        &mut |_, _| false,
+        &mut read,
+    );
+    seen
+}
+
+#[test]
+fn the_exhibit_is_read_at_the_social_check_after_the_bite_and_not_for_an_egg_a_crate_or_a_dying_animal()
+ {
+    let k = Keys { bite: 5, ..keys() };
+    let env = Env {
+        meal: Meal {
+            left: 20,
+            in_set: true,
+            has_set: true,
+            ..Meal::default()
+        },
+        ..in_exhibit()
+    };
+    // The social check reads at every tick, with the bite of the tick made.
+    let mut eating = Animal {
+        eating: true,
+        hunger: 50,
+        ..animal()
+    };
+    assert_eq!(reads(&mut eating, &k, &env), [(Read::Exhibit, 5)]);
+    // The health check reads after the bite, the reproduction check before it.
+    let mut due = Animal {
+        eating: true,
+        hunger: 50,
+        ..animal()
+    };
+    (due.counters[HEALTH], due.counters[REPRODUCTION]) = (0, 0);
+    let adult = Env {
+        adult: true,
+        ..env.clone()
+    };
+    let seen = reads(&mut due, &k, &adult);
+    assert_eq!(
+        seen,
+        [(Read::Mates, 0), (Read::Sick, 5), (Read::Exhibit, 5)]
+    );
+    for (name, a) in [
+        (
+            "egg",
+            Animal {
+                egg: true,
+                ..animal()
+            },
+        ),
+        (
+            "crate",
+            Animal {
+                crated: true,
+                ..animal()
+            },
+        ),
+        (
+            "dying",
+            Animal {
+                dying: true,
+                ..animal()
+            },
+        ),
+    ] {
+        let mut a = a;
+        a.counters = [0; COUNTERS];
+        assert!(reads(&mut a, &k, &adult).is_empty(), "{name}");
+    }
+}
+
 #[test]
 fn the_links_and_the_other_animals_sum_are_part_of_the_state_hash() {
     let hash = |world: &World| {
@@ -2173,6 +2257,46 @@ fn the_bite_that_empties_a_pile_stops_every_animal_that_aims_at_it_at_once() {
         };
         assert!(!a.eating);
     }
+}
+
+#[test]
+fn an_emptied_pile_stops_the_eaters_of_the_stored_list_recomputed_first() {
+    let mut world = pens();
+    let cat = zebras();
+    let ids: Vec<u32> = world.exhibits().list().iter().map(|e| e.id).collect();
+    let (events, mut removals, mut rng) =
+        (crate::sim::Events::default(), Vec::new(), Rng::default());
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    let eating = |world: &mut World| {
+        for id in [501, 510] {
+            let Part::Animal(a) = &mut world.units.get_mut(id).unwrap().part else {
+                panic!("not an animal");
+            };
+            (a.food, a.eating) = (77, true);
+        }
+    };
+    let eats = |world: &World, id| match &world.units.get(id).unwrap().part {
+        Part::Animal(a) => a.eating,
+        _ => false,
+    };
+    let at = world.find(500).unwrap();
+    // A dirty exhibit is recomputed first; only its own animals stop, not the other pen's.
+    eating(&mut world);
+    assert!(world.exhibits().get(ids[0]).unwrap().rating.dirty);
+    food::stop_others(&mut world, &mut ctx, &Eats::new(), 77, (500, at));
+    assert!(!world.exhibits().get(ids[0]).unwrap().rating.dirty);
+    assert_eq!([501, 510].map(|id| eats(&world, id)), [false, true]);
+    // Only the animals of the stored list stop.
+    eating(&mut world);
+    world.exhibits_mut().get_mut(ids[0]).unwrap().rating.animals = vec![500];
+    food::stop_others(&mut world, &mut ctx, &Eats::new(), 77, (500, at));
+    assert_eq!([501, 510].map(|id| eats(&world, id)), [true, true]);
 }
 
 #[test]

@@ -10,7 +10,7 @@
 //!
 //! The log line `animal eat <animal> <food> <left> <state>` follows each bite.
 
-use super::{Animal, Env, Keys, NO_FOOD, Out, find, fire};
+use super::{Animal, Env, Keys, NO_FOOD, Out, Read, Reader, find, fire};
 use crate::behaviour::{Data, Env as Sets};
 use crate::build::number;
 use crate::entity::Catalogue;
@@ -101,7 +101,15 @@ pub fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
 }
 
 /// The hunger check (4): the rise, and what a hungry animal does about food.
-pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &mut Out) {
+pub fn hunger(
+    a: &mut Animal,
+    k: &Keys,
+    class: &super::Class,
+    env: &mut Env,
+    rng: &mut Rng,
+    out: &mut Out,
+    read: Reader,
+) {
     if !fire(&mut a.counters[super::HUNGER], class.periods[super::HUNGER]) {
         return;
     }
@@ -113,6 +121,7 @@ pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &m
         && a.hunger >= k.hunger_threshold
         && !(a.wants_food || env.food_task || a.rampaging)
     {
+        read(Read::Food, a, &out.meal, env, rng);
         match env.food_total - out.meal.bites >= 1 {
             true if !a.in_show => (a.wants_food, a.thirsty, a.drinking) = (true, false, false),
             true => {}
@@ -261,9 +270,10 @@ fn tile_at(world: &World, at: usize) -> Option<usize> {
 }
 
 /// A pile was emptied: every other animal of the eater's exhibit that aims at it stops eating and
-/// resets its goal in the same bite (5.1). An amphibious animal swimming in a neighbour exhibit
-/// keeps its goal.
-fn stop_others(
+/// resets its goal in the same bite (5.1). The animals are the exhibit's stored list, recomputed
+/// first (the bite marked it dirty); an amphibious animal swimming in a neighbour exhibit keeps
+/// its goal.
+pub(super) fn stop_others(
     world: &mut World,
     ctx: &mut Ctx,
     data: &dyn Data,
@@ -273,13 +283,11 @@ fn stop_others(
     let Some(area) = tile_at(world, at).and_then(|t| exhibit_of(world, t)) else {
         return;
     };
-    let aiming: Vec<u32> = (world.units.iter())
-        .filter(|u| u.id != eater && matches!(&u.part, Part::Animal(a) if a.food == food))
-        .filter(|u| {
-            let tile = world.find(u.id).and_then(|i| tile_at(world, i));
-            tile.and_then(|t| exhibit_of(world, t)) == Some(area)
-        })
-        .map(|u| u.id)
+    crate::exhibit::rating::refresh(world, ctx.cat, area, &mut || ctx.rng.rand());
+    let listed = world.exhibits().get(area).map(|e| e.rating.animals.clone());
+    let aiming: Vec<u32> = (listed.into_iter().flatten())
+        .filter(|&id| id != eater)
+        .filter(|&id| matches!(world.units.get(id).map(|u| &u.part), Some(Part::Animal(a)) if a.food == food))
         .collect();
     for id in aiming {
         let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
@@ -293,6 +301,17 @@ fn stop_others(
         if let Some(slot) = world.units.get_mut(id) {
             *slot = unit;
         }
+    }
+}
+
+/// The bites of the tick so far take their units from the pile, once: the exhibit is marked
+/// where the bite is, before the checks that read it.
+pub fn settle(world: &mut World, a: &Animal, m: &Meal) {
+    let Some(i) = world.find(a.food).filter(|_| m.bites > 0) else {
+        return;
+    };
+    if world.zoo.entities[i].common.as_ref().map(|c| c.food) != Some(m.left) {
+        world.set_food(i, m.left);
     }
 }
 
@@ -328,7 +347,7 @@ pub fn apply(
     };
     let (id, max) = (a.food, max_units(ctx.cat, &world.zoo.entities[i]));
     // At 0 the food goes at the next removal pass.
-    world.set_food(i, m.left);
+    settle(world, a, &m);
     if m.left <= 0 {
         ctx.remove(world, id);
         stop_others(world, ctx, data, id, (unit.id, at));
