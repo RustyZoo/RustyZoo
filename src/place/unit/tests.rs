@@ -997,3 +997,28 @@ fn a_guest_put_down_has_lost_its_wish_to_leave() {
     };
     assert!(!g.leave);
 }
+
+#[test]
+fn a_guest_forgets_its_return_building_when_picked_up_and_when_put_down() {
+    let cat = catalogue();
+    let mut w = world(vec![entity_at(
+        "guests",
+        "guest",
+        "m",
+        3 * 64 + 32,
+        3 * 64 + 32,
+        0,
+    )]);
+    let id = w.zoo.entities[0].common.as_ref().unwrap().id;
+    let set = |w: &mut World, v| {
+        let Some(crate::unit::Part::Guest(g)) = w.units.get_mut(id).map(|u| &mut u.part) else {
+            panic!("a guest");
+        };
+        std::mem::replace(&mut g.returning, v)
+    };
+    set(&mut w, Some(0x1f7b));
+    pick_up(&mut w, &cat, id, 0).unwrap();
+    assert_eq!(set(&mut w, Some(5)), None, "pick-up");
+    assert!(put_down(&mut w, id, (4 * 64, 4 * 64, 0), 0));
+    assert_eq!(set(&mut w, None), None, "drop");
+}

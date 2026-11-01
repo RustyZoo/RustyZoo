@@ -306,7 +306,7 @@ pub struct Guest {
     /// The last drop of litter failed (guests 10).
     pub littered: bool,
     /// The name id of the return building the guest means to come back to; while set, no
-    /// attraction or scenery object counts as seen (guests visit 3.2). Nothing sets it before M7.
+    /// attraction or scenery object counts as seen (guests visit 3.2). A pick-up and a drop clear it; nothing sets it before M7 (shows).
     pub returning: Option<i32>,
 }
 

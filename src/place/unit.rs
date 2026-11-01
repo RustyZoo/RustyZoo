@@ -577,8 +577,11 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     unit.tank = 0;
     unit.carried = true;
     // An animal picked up is no longer loose and its escape walk ends (unit placing 8.2, 9.1).
-    if let crate::unit::Part::Animal(a) = &mut unit.part {
-        (a.escaped, a.walk) = (false, None);
+    match &mut unit.part {
+        crate::unit::Part::Animal(a) => (a.escaped, a.walk) = (false, None),
+        // A guest forgets the building it meant to return to (unit placing 8.2 point 5).
+        crate::unit::Part::Guest(g) => g.returning = None,
+        _ => {}
     }
     unit.moving = false;
     unit.destination = None;
@@ -609,9 +612,11 @@ pub fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facing: u32)
     world.place_unit(at, point, facing);
     if let Some(unit) = world.units.get_mut(id) {
         unit.carried = false;
-        // A guest put down has lost its wish to leave (guests 8).
+        // A guest put down has lost its wish to leave (guests 8) and its return building
+        // (unit placing 8.5, pathfinding 6.5).
         if let crate::unit::Part::Guest(g) = &mut unit.part {
             g.leave = false;
+            g.returning = None;
         }
     }
     crate::unit::swim::put(world, id);
