@@ -148,7 +148,8 @@ struct Sets(HashMap<String, Vec<Call>>);
 fn sets() -> Sets {
     let call = |c: &str| vec![parse_call(c.as_bytes()).unwrap().0];
     let walk = ("bWalk", call("fWalk(0,0)"));
-    let play = ["bFeedHerb", "bHeal", "bClean"].map(|n| (n, call("fPlay(a)")));
+    let play =
+        ["bFeedHerb", "bHeal", "bClean", "bSick", "bDoneSick"].map(|n| (n, call("fPlay(a)")));
     Sets(HashMap::from_iter(
         std::iter::once(walk)
             .chain(play)
@@ -759,4 +760,111 @@ fn a_keeper_heal_under_the_rename_cheat_sometimes_changes_the_species() {
         species_of(&g).0 != "zebra"
     });
     assert!(changed.is_some());
+}
+
+/// The zebra of the pen with `cStaySick` as the ini text says (`""` leaves it out), heals once.
+fn stay_game(key: &str) -> Game {
+    let mut g = layers();
+    let keys = format!("cNeededFood=100\ncPurchaseCost=1000\n{key}");
+    let at = g
+        .cat
+        .types
+        .iter()
+        .position(|t| t.type_name == b"zebra")
+        .unwrap();
+    g.cat.types[at] = ty("animals", "zebra", "f", 1, &keys);
+    assert!(g.put("herbchow", (6, 4), 1000));
+    zebra(&mut g.w, ZEBRA_A).health = 100;
+    g
+}
+
+fn sets_of_zebra(g: &Game) -> Vec<&str> {
+    let line = format!("unit set {ZEBRA_A} ");
+    let sets = g.log.iter().filter_map(|l| l.strip_prefix(&line));
+    sets.filter(|s| s.starts_with("bSick") || s.starts_with("bDoneSick"))
+        .collect()
+}
+
+#[test]
+fn a_species_with_stay_sick_starts_sick_at_the_decide_and_done_sick_after_the_heal() {
+    let mut g = stay_game("cStaySick=1");
+    while g.lines(&["HealAnimal"]).is_empty() {
+        g.run(1);
+        assert!(g.log.len() < 1000, "the decide");
+    }
+    assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, 0, "not held");
+    g.run(2500);
+    assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed");
+    assert_eq!(sets_of_zebra(&g), ["bSick", "bDoneSick"]);
+}
+
+#[test]
+fn stay_sick_other_than_1_holds_the_animal_and_starts_no_set() {
+    for key in ["cStaySick=0", "cStaySick=-1", "cStaySick=2147483647", ""] {
+        let mut g = stay_game(key);
+        while g.lines(&["HealAnimal"]).is_empty() {
+            g.run(1);
+            assert!(g.log.len() < 1000, "the decide");
+        }
+        assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, i32::MAX, "held {key}");
+        g.run(2500);
+        assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed {key}");
+        assert!(
+            sets_of_zebra(&g).is_empty(),
+            "{key}: {:?}",
+            sets_of_zebra(&g)
+        );
+    }
+}
+
+#[test]
+fn the_stay_sick_after_a_species_change_is_the_new_types() {
+    let changed = (1..80).find_map(|seed| {
+        let mut g = stay_game("");
+        for t in g.cat.types.iter_mut().filter(|t| t.name_id > 1) {
+            t.config = ty("animals", "", "f", 0, "cLaysEggs=1\ncStaySick=1").config;
+        }
+        g.sim.set_seed(seed);
+        g.w.units.cheat.heal_changes_species = true;
+        g.run(2500);
+        (species_of(&g).0 != "zebra").then_some(g)
+    });
+    let g = changed.expect("a seed changes the species");
+    assert_eq!(
+        sets_of_zebra(&g),
+        ["bDoneSick"],
+        "new type: done sick, never sick"
+    );
+}
+
+#[test]
+fn a_goal_reset_in_the_heal_job_starts_no_done_sick() {
+    let mut g = stay_game("cStaySick=1");
+    while g.lines(&["HealAnimal"]).is_empty() {
+        g.run(1);
+        assert!(g.log.len() < 1000, "the decide");
+    }
+    let mut u = g.w.units.get(KEEPER).unwrap().clone();
+    let mut rng = crate::sim::Rng::default();
+    let events = crate::sim::Events::default();
+    let mut removals = Vec::new();
+    let mut ctx = crate::unit::Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &g.cat,
+    };
+    let at = g.w.find(KEEPER).unwrap();
+    let mut cx = Cx {
+        unit: &mut u,
+        world: &mut g.w,
+        ctx: &mut ctx,
+        at,
+        data: &g.data,
+    };
+    cx.reset();
+    *g.w.units.get_mut(KEEPER).unwrap() = u;
+    g.run(3);
+    assert_eq!(sets_of_zebra(&g), ["bSick"], "no bDoneSick without a heal");
 }
