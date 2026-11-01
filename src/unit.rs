@@ -880,6 +880,7 @@ impl Standard<'_> {
 
     /// Tells the log and the app what the unit's animation and runner noted.
     fn tell(&self, unit: &mut Unit, world: &mut World, at: usize) {
+        self.force(unit, world, at);
         for note in std::mem::take(&mut unit.animation.notes) {
             match note {
                 // The routine set ends in the step it starts and starts again in the next one.
@@ -893,13 +894,32 @@ impl Standard<'_> {
             }
         }
     }
+
+    /// The crossing animation an escape walk asked for (animals 11.3, `forceAnim`) becomes the
+    /// unit's base animation, when its type has it.
+    fn force(&self, unit: &mut Unit, world: &World, at: usize) {
+        let Part::Animal(a) = &mut unit.part else {
+            return;
+        };
+        let name = a.force.take();
+        if let Some(name) = name.filter(|n| self.data.timing(&world.zoo.entities[at], n).is_some())
+        {
+            unit.animation.base_to(name);
+            unit.animation.cut();
+        }
+    }
 }
 
 impl Hooks for Standard<'_> {
     fn movement(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         lower_walk(unit);
+        let before = movement::here(world, at);
         movement::step(unit, world, ctx.step, at);
         movement::reanimate(unit, world, self.data, at);
+        if let Some(new) = movement::here(world, at).filter(|&t| Some(t) != before) {
+            crate::animal::escape::entered(unit, world, ctx.cat, new);
+        }
+        self.force(unit, world, at);
     }
 
     fn animate(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize, ms: u32) {
@@ -997,6 +1017,7 @@ impl Hooks for Standard<'_> {
             _ => false,
         };
         if asked {
+            crate::animal::escape::escaped_set(unit, world, self.data, ctx.rng, at);
             if !crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data) {
                 let key = ambient_key(unit);
                 let choosing = !unit.runner.running() && unit.runner.queued().is_none();

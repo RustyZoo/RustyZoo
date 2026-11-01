@@ -56,33 +56,125 @@ fn the_animal_on_the_grounds_escapes_when_its_counter_fires() {
         ..animal()
     };
     assert!(tick(a, ESCAPE, &k, &grounds()).1.log.is_empty());
+    // On the grounds it takes the land mode and drops its thirst; in an exhibit it is caught.
+    let a = Animal {
+        terrain: 1,
+        thirsty: true,
+        drinking: true,
+        ..animal()
+    };
+    let a = tick(a, ESCAPE, &k, &grounds()).0;
+    assert_eq!((a.terrain, a.thirsty, a.drinking), (0, false, false));
+    let back = tick(a, ESCAPE, &k, &in_exhibit()).0;
+    assert!(!back.escaped && back.terrain == 0);
 }
 
 #[test]
-fn the_escape_flag_is_the_record_of_the_escape() {
+fn an_escaped_animal_on_dry_land_that_stands_starts_its_escaped_set() {
+    let data = Life::new().with("bEscaped", "fPlay(idle)");
+    let set = |prepare: fn(&mut Unit)| {
+        let world = pens();
+        let at = world.find(500).unwrap();
+        let mut unit = world.units.get(500).unwrap().clone();
+        if let Part::Animal(a) = &mut unit.part {
+            a.escaped = true;
+        }
+        prepare(&mut unit);
+        let mut rng = Rng::default();
+        crate::animal::escape::escaped_set(&mut unit, &world, &data, &mut rng, at);
+        let r = &unit.runner;
+        (
+            r.running().then(|| r.top()).flatten().map(str::to_string),
+            r.queued().map(str::to_string),
+        )
+    };
+    let escaped = Some("bEscaped".to_string());
+    assert_eq!(set(|_| {}), (escaped.clone(), None));
+    // A pending escaped set goes.
+    assert_eq!(
+        set(|u| _ = u.runner.queue("bEscaped", true, true)),
+        (escaped, None)
+    );
+    // Moving, rampaging or not escaped, it starts nothing.
+    assert_eq!(set(|u| u.moving = true), (None, None));
+    fn change(u: &mut Unit, f: fn(&mut Animal)) {
+        if let Part::Animal(a) = &mut u.part {
+            f(a);
+        }
+    }
+    assert_eq!(set(|u| change(u, |a| a.rampaging = true)), (None, None));
+    assert_eq!(set(|u| change(u, |a| a.escaped = false)), (None, None));
+}
+
+#[test]
+fn an_escaped_animal_that_sleeps_is_sick_or_hatches_keeps_its_set() {
+    let data = Life::new()
+        .with("bEscaped", "fPlay(idle)")
+        .with("bSleep", "fPlay(idle)")
+        .with("bSick", "fPlay(idle)")
+        .with("bHatch", "fPlay(idle)");
+    for name in ["bSleep", "bSick", "bHatch"] {
+        for pending in [false, true] {
+            let world = pens();
+            let at = world.find(500).unwrap();
+            let mut unit = world.units.get(500).unwrap().clone();
+            if let Part::Animal(a) = &mut unit.part {
+                a.escaped = true;
+            }
+            let mut rng = Rng::default();
+            if pending {
+                unit.runner.queue(name, true, true);
+            } else {
+                let env = crate::behaviour::Env {
+                    data: &data,
+                    unit: &world.zoo.entities[at],
+                    rng: &mut rng,
+                };
+                unit.runner
+                    .start(&mut unit.animation, &env, name, true, true, true);
+            }
+            crate::animal::escape::escaped_set(&mut unit, &world, &data, &mut rng, at);
+            let r = &unit.runner;
+            let top = r.running().then(|| r.top()).flatten();
+            assert_ne!(top, Some("bEscaped"), "{name} {pending}");
+            assert_ne!(r.queued(), Some("bEscaped"), "{name} {pending}");
+            assert!(pending || top == Some(name), "{name}");
+        }
+    }
+}
+
+#[test]
+fn the_escaped_flag_and_the_escape_walk_are_saved_apart() {
     let (k, class) = (keys(), Class::default());
     let mut a = animal();
     assert_eq!(a.record(AnimalRecord::default()).escape, None);
     a.escaped = true;
-    assert!(a.record(AnimalRecord::default()).escape.is_some());
-    // A record that stores a record keeps it, and a loaded animal is escaped.
+    let r = a.record(AnimalRecord::default());
+    assert!(r.escaped && r.escape.is_none());
+    // A loaded walk record comes back with its flags read from their words.
     let saved = AnimalRecord {
         escape: Some(Escape {
-            tiles: [[1, 2], [3, 4]],
-            words: [5, 6, 7],
-            last: 8,
+            a: [1, 2],
+            b: [3, 4],
+            kind: 5,
+            reached: 6,
+            across: 1,
+            broken: 8,
         }),
         ..record()
     };
     let mut b = animal();
     b.restore(&saved, &k, &class);
-    assert!(b.escaped);
-    assert_eq!(b.record(saved.clone()).escape, saved.escape);
-    b.restore(&record(), &k, &class);
     assert!(!b.escaped);
-    // Lowered, the flag takes the record away.
-    a.escaped = false;
-    assert_eq!(a.record(saved).escape, None);
+    let walk = Escape {
+        reached: 0,
+        broken: 1,
+        ..saved.escape.unwrap()
+    };
+    assert_eq!(b.walk, Some(walk));
+    assert_eq!(b.record(saved.clone()).escape, Some(walk));
+    b.restore(&record(), &k, &class);
+    assert!(b.walk.is_none());
 }
 
 #[test]
@@ -236,20 +328,21 @@ fn a_loose_animal_is_found_on_the_grounds_and_the_pick_up_catches_it() {
         .iter()
         .find_map(|e| e.common.as_ref().filter(|c| c.id == 700))
         .and_then(|c| c.animal.as_ref())
-        .map(|a| a.escape.is_some());
-    assert_eq!(stored, Some(true));
+        .map(|a| (a.escaped, a.escape.is_some()));
+    assert_eq!(stored, Some((true, false)));
     // Picking it up makes it a carried animal again, no longer loose.
     crate::place::unit::pick_up(&mut world, &cat, 700, 0).unwrap();
     assert!(crate::guest::occupied(&world, &cat));
     assert_eq!(crate::status::zoo::Sums::of(&world, &cat, 0.0, 0).loose, 0);
 }
 
-/// The thirst of animal 500, and with `escaped` its escape too.
+/// The thirst of animal 500, and with `escaped` its escape too, which its escape check in the pen
+/// does not lower in time.
 fn thirsty(w: &mut World, escaped: bool) {
     let Part::Animal(a) = &mut w.units.get_mut(500).unwrap().part else {
         panic!("not an animal");
     };
-    (a.thirsty, a.escaped) = (true, escaped);
+    (a.thirsty, a.escaped, a.counters[ESCAPE]) = (true, escaped, i32::MAX);
 }
 
 #[test]

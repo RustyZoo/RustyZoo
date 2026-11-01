@@ -576,9 +576,9 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     let unit = world.units.get_mut(id)?;
     unit.tank = 0;
     unit.carried = true;
-    // An animal picked up is no longer loose (unit placing 8.2, 9.1).
+    // An animal picked up is no longer loose and its escape walk ends (unit placing 8.2, 9.1).
     if let crate::unit::Part::Animal(a) = &mut unit.part {
-        a.escaped = false;
+        (a.escaped, a.walk) = (false, None);
     }
     unit.moving = false;
     unit.destination = None;

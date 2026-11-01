@@ -32,8 +32,8 @@
 //! holds it for its time inside (`crate::goal`, `crate::building`).
 //!
 //! An animal that stands on the zoo grounds when its escape counter fires is escaped; the checks
-//! have their escaped cases (eating, the sleep, health and water checks, thirst). Not here yet:
-//! how an animal leaves its exhibit, the sets of an escaped animal, and the effects of the
+//! have their escaped cases (eating, the sleep, health and water checks, thirst). How it leaves
+//! its exhibit and the set of an escaped animal are [`escape`]. Not here yet: the effects of the
 //! rampage and zap checks (M7: only their counters and draws run). The ambient choice is taken at
 //! the end of the checks by the behaviour runner ([`Animal::ambient`]).
 //!
@@ -65,6 +65,7 @@ use crate::zoo::{AnimalRecord, Entity};
 
 pub mod breed;
 pub mod dirt;
+pub mod escape;
 pub mod food;
 pub mod home;
 pub mod life;
@@ -488,9 +489,13 @@ pub struct Animal {
     /// check; nothing else follows from them before M7.
     pub rampaging: bool,
     pub rampage: i32,
-    /// It stands loose on the zoo grounds (animals 11): set by the escape check, lowered when it
-    /// is picked up.
+    /// It stands loose on the zoo grounds (animals 11.1): set by the escape check on the grounds,
+    /// lowered by the escape check in an exhibit and when it is picked up.
     pub escaped: bool,
+    /// The escape walk (animals 11.3): its record while the flag is up.
+    pub walk: Option<crate::zoo::Escape>,
+    /// The crossing animation the escape walk forces (11.3), for the turn to play.
+    pub force: Option<&'static str>,
     /// The zap counter (animals 4.1): it starts at 0 and fires when it was below 1.
     pub zap: i32,
     /// Status ticks until the creation runs again (`AnimalResetInterval`).
@@ -575,7 +580,14 @@ impl Animal {
         self.thirsty = r.thirsty;
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
-        self.escaped = r.escape.is_some();
+        self.escaped = r.escaped;
+        // The flags are rebuilt from their words (animals 11.3).
+        self.walk = r.escape.map(|e| crate::zoo::Escape {
+            reached: u32::from(e.reached == 1),
+            across: u32::from(e.across == 1),
+            broken: u32::from(e.broken != 0),
+            ..e
+        });
         (self.sleeping, self.eating, self.drinking) = (r.sleeping, r.eating, r.drinking);
     }
 
@@ -592,16 +604,9 @@ impl Animal {
             true => date,
             false => file_time(live),
         };
-        // The record of an animal that escaped here has no tile (-1, -1) and no word: the
-        // meaning of the fields is not known.
-        let escape = self.escaped.then(|| {
-            base.escape.unwrap_or(crate::zoo::Escape {
-                tiles: [[-1; 2]; 2],
-                ..Default::default()
-            })
-        });
         AnimalRecord {
-            escape,
+            escaped: self.escaped,
+            escape: self.walk,
             happiness: self.happiness,
             hunger: self.hunger,
             health: self.health,
@@ -915,8 +920,9 @@ pub fn run_with(
     out
 }
 
-/// The escape check (animals 11): the rampage, then the counter; when it fires, an animal that
-/// stands on the zoo grounds is escaped. The rampage has no other effect before M7.
+/// The escape check (animals 11.1): the rampage, then the counter; when it fires, an animal that
+/// stands on the zoo grounds is escaped and takes the land mode (11.5; the send off water is not
+/// made), one in an exhibit is not escaped any more.
 fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
     if a.in_show {
         return;
@@ -940,9 +946,17 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out
             }
         }
     }
-    if fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) && env.grounds && !a.escaped {
-        a.escaped = true;
-        out.log.push("escape");
+    if !fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) {
+        return;
+    }
+    if env.grounds {
+        a.terrain = if k.only_underwater { 2 } else { 0 };
+        if !std::mem::replace(&mut a.escaped, true) {
+            (a.thirsty, a.drinking) = (false, false);
+            out.log.push("escape");
+        }
+    } else {
+        a.escaped = false;
     }
 }
 
