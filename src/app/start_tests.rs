@@ -1637,3 +1637,68 @@ fn a_completion_opens_a_dialog_and_a_branch_with_nothing_left_a_second_one() {
         );
     });
 }
+
+#[test]
+fn a_saved_game_trains_the_staff_types_of_the_programs_its_section_completes() {
+    let keeper = |class, name: &[u8], id| crate::entity::EntityType {
+        class,
+        type_name: name.to_vec(),
+        subtype: b"m".to_vec(),
+        file: None,
+        config: None,
+        name_id: id,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = Catalogue::default();
+    cat.push(keeper("keeper", b"zookeeper", 9552));
+    cat.push(keeper("keeper", b"scientist", 9553));
+    let more = [
+        ("s/tr.scn", b"[start]\nresearch=tr.cfg\n".to_vec()),
+        ("tr.cfg", b"[branches]\nbranch=trb.cfg\n".to_vec()),
+        ("trb.cfg", b"[branch]\nname=1\ncategory=trc.cfg\n".to_vec()),
+        (
+            "trc.cfg",
+            b"[category]\nname=2\nprogram=tra.cfg\nprogram=trd.cfg\n".to_vec(),
+        ),
+        (
+            "tra.cfg",
+            b"[research]\nname=30\ncost=5\neffect=7\ntarget=99\neffectval2=9552\neffectval3=2\n"
+                .to_vec(),
+        ),
+        (
+            "trd.cfg",
+            b"[research]\nname=31\ncost=5\neffect=7\ntarget=99\neffectval2=9553\neffectval3=1\n"
+                .to_vec(),
+        ),
+    ];
+    with_game("train-load", "", &more, Some(cat), |app, _| {
+        app.pass(0, &[]);
+        // Program 30 is done in the file and 31 is not.
+        let mut section = 0u32.to_le_bytes().to_vec();
+        for (id, value) in [(30u32, 5f32), (31, 4.0)] {
+            section.extend(2i32.to_le_bytes());
+            section.extend(id.to_le_bytes());
+            section.extend(value.to_bits().to_le_bytes());
+        }
+        section.extend((-1i32).to_le_bytes());
+        let masks = |app: &App| {
+            let world = &app.game.as_ref().unwrap().world;
+            let cat = app.renderer.catalogue();
+            [0, 1].map(|n| world.research.training(&cat.types[n]))
+        };
+        let zoo = || {
+            let bytes = crate::zoo::tests::naming(map(), Some("s/tr.scn"));
+            let mut zoo = Zoo::parse(&bytes).unwrap();
+            zoo.set_research(section.clone());
+            zoo
+        };
+        app.open_zoo(zoo(), Money::default(), true).unwrap();
+        assert_eq!(masks(app), [2, 0]);
+        // A new game of the map starts with no training, and a load again gives the same.
+        app.open_zoo(zoo(), Money::default(), false).unwrap();
+        assert_eq!(masks(app), [0, 0]);
+        app.open_zoo(zoo(), Money::default(), true).unwrap();
+        assert_eq!(masks(app), [2, 0]);
+    });
+}
