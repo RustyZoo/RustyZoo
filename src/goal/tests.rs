@@ -848,3 +848,73 @@ fn the_reset_of_an_animal_lowers_its_need_flags() {
         (false, false, false, true)
     );
 }
+
+/// Gives animal 1 an escape walk whose last tile is `b`.
+fn escaping(cx: &mut Cx, b: [i32; 2]) {
+    if let Part::Animal(a) = &mut cx.unit.part {
+        a.walk = Some(crate::zoo::Escape {
+            b,
+            ..Default::default()
+        });
+    }
+}
+
+fn walk(cx: &Cx) -> Option<crate::zoo::Escape> {
+    match &cx.unit.part {
+        Part::Animal(a) => a.walk,
+        _ => None,
+    }
+}
+
+#[test]
+fn an_animal_on_an_escape_walk_runs_and_its_wander_ends_on_the_last_tile() {
+    // (the set the type has, the walk kept)
+    for (set, kept) in [
+        (Some("bRun"), true),
+        (Some("bRunFromPredator"), true),
+        (None, false),
+    ] {
+        let sets: Vec<(&str, &[&str])> = set
+            .map(|s| (s, &["fKeepControl()"][..]))
+            .into_iter()
+            .collect();
+        let (data, started) = (Sets::new(&sets), set);
+        let mut w = map("animals");
+        let mut rng = Rng::default();
+        with_data(&mut w, &mut rng, &data, |cx| {
+            escaping(cx, [8, 5]);
+            cx.set_task(RANDOM, 1, 0, None);
+            cx.wander(false);
+            // A set the type lacks is tried and ends at once.
+            if kept {
+                assert_eq!(cx.unit.runner.top(), started, "{sets:?}");
+            }
+            assert_eq!(walk(cx).is_some(), kept, "{sets:?}");
+        });
+    }
+    // On its target tile the walk does not end the wander; on its last tile the walk ends.
+    let mut w = map("animals");
+    let mut rng = Rng::default();
+    with_data(&mut w, &mut rng, &NoData, |cx| {
+        cx.set_task(RANDOM, 1, 0, Some(tile(5, 5)));
+        escaping(cx, [6, 5]);
+        cx.check_done();
+        assert!(!cx.record().done && cx.record().target.is_set() && walk(cx).is_some());
+        escaping(cx, [5, 5]);
+        cx.check_done();
+        assert!(!cx.record().done && walk(cx).is_none());
+        // Then the common check.
+        cx.check_done();
+        assert!(cx.record().done);
+    });
+    // A goal reset and an abort end the walk.
+    let mut w = map("animals");
+    with_data(&mut w, &mut rng, &NoData, |cx| {
+        escaping(cx, [6, 5]);
+        cx.reset();
+        assert!(walk(cx).is_none());
+        escaping(cx, [6, 5]);
+        cx.abort();
+        assert!(walk(cx).is_none());
+    });
+}

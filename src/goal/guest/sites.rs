@@ -215,9 +215,11 @@ impl Cx<'_, '_> {
         if !self.start_set("bGawk", false) {
             return false;
         }
+        // h recomputes the exhibit when dirty, before the duration's draws (4.3).
+        let (_, average) = view::herd(self.world, self.ctx.cat, s.exhibit, self.ctx.rng);
         let rng = &mut *self.ctx.rng;
         let fallback = 10 + (rng.rand() & 3) as i32;
-        let band = match s.average {
+        let band = match average {
             -100..=-60 => Some((0, 0)),
             -59..=20 => Some((1, 6)),
             21..=60 => Some((2, 6)),
@@ -305,7 +307,7 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn gawk_complete(&mut self) {
         let (id, tile) = (self.unit.id, self.tile());
         if let Part::Guest(g) = &mut self.unit.part {
-            view::leave_area(g, id, self.world, self.ctx.cat, tile);
+            view::leave_area(g, id, self.world, self.ctx.cat, self.ctx.rng, tile);
         }
         self.reset();
         self.unit.goal.wandered = true;
