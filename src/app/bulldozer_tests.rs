@@ -64,7 +64,8 @@ const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
     [h]\ntype=UIText\nid=4872\ndx=8\ndy=8\n[i]\ntype=UIButton\nid=4869\ndx=8\ndy=8\n\
     [j]\ntype=UIButton\nid=4870\ndx=8\ndy=8\n[k]\ntype=UIButton\nid=4885\ndx=8\ndy=8\n\
     [l]\ntype=UIText\nid=4882\ndx=8\ndy=8\n[m]\ntype=UIButton\nid=4879\ndx=8\ndy=8\n\
-    [n]\ntype=UIButton\nid=4880\ndx=8\ndy=8\n";
+    [n]\ntype=UIButton\nid=4880\ndx=8\ndy=8\n\
+    [o]\ntype=UIButton\nid=4311\ndx=8\ndy=8\ntransparent=0\n";
 const GUEST: &str = "[LayoutInfo]\nid=9\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3413\ndx=8\ndy=8\ntarget=9\naction=2\ntransparent=0\n";
 const FILTER: &str = "[LayoutInfo]\nid=46\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\

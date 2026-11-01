@@ -435,3 +435,45 @@ fn a_tour_guide_picked_up_releases_its_followers_at_once_with_one_draw_each() {
         assert_eq!(followers, [0, 0, 0]);
     });
 }
+
+#[test]
+fn a_click_on_the_animals_tab_sorts_the_exhibit_list_at_once() {
+    with_game("animals-tab", "", |s| {
+        let pieces: Vec<u32> = [0, 2, 4, 6].map(|side| s.fence(1, 20, 20, side)).to_vec();
+        s.app.exhibits_told();
+        let game = s.app.game.as_mut().unwrap();
+        game.world.set_gate(1, pieces[0]);
+        game.world.set_paused(true);
+        for name in ["b", "c", "a"] {
+            let id = s.add(13, 20 * 64 + 20, 20 * 64 + 20, 0);
+            let world = &mut s.app.game.as_mut().unwrap().world;
+            let at = world.find(id).unwrap();
+            world.zoo.entities[at].common.as_mut().unwrap().name = name.into();
+        }
+        s.app
+            .interface()
+            .unwrap()
+            .show(crate::panel::exhibit::LAYOUT);
+        s.pass(&[]);
+        s.app.game.as_mut().unwrap().panel.current = Some(1);
+        let names = |s: &Session| -> String {
+            let w = &s.app.game.as_ref().unwrap().world;
+            let name = |at: usize| w.zoo.entities[at].common.as_ref().unwrap().name.clone();
+            let list = crate::animal::exhibit_animals(w, 1);
+            list.into_iter().map(name).collect()
+        };
+        // Back to the order of the tiles, as after a recomputation; the paused clock keeps it.
+        let (world, cat) = (
+            &mut s.app.game.as_mut().unwrap().world,
+            crate::entity::Catalogue::default(),
+        );
+        world.exhibits_mut().mark(1);
+        crate::exhibit::rating::refresh(world, &cat, 1, &mut || 0);
+        assert_eq!(names(s), "bca");
+        s.pass(&[]);
+        assert_eq!(names(s), "bca", "nothing is due");
+        assert!(s.app.interface().unwrap().press_button(4311));
+        s.pass(&[]);
+        assert_eq!(names(s), "abc");
+    });
+}
