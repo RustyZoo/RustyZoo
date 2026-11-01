@@ -73,9 +73,15 @@ pub struct TankKind {
     pub life: i32,
     pub strength: u32,
     /// `cDepth` and `cHeight`: the levels below and above its own that an object blocks in a
-    /// tank (tank fauna 7.3).
+    /// tank (tank fauna 7.3); `cHeight` is also what a fence-crushing animal measures.
     pub depth: i32,
     pub height: i32,
+    /// `cIsJumpable`, `cIsClimbable` and `cIsElectrified` of a fence type, and its `cDecayedLife`
+    /// (pathfinding 5.3).
+    pub jumpable: bool,
+    pub climbable: bool,
+    pub electrified: bool,
+    pub decayed: i32,
 }
 
 impl TankKind {
@@ -92,6 +98,10 @@ impl TankKind {
         strength: 0,
         depth: 0,
         height: 0,
+        jumpable: false,
+        climbable: false,
+        electrified: false,
+        decayed: 0,
     };
 }
 

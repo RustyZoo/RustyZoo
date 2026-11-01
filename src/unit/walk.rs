@@ -3,8 +3,9 @@
 //!
 //! Kept as the original has it: with no suitable tile on the ring, the corner of the ring is the
 //! destination (engine issue 304). An animal in the tank mode picks a tile of its tank not behind
-//! it and a level for it (tank fauna 6), one in the water mode a water tile. Not here yet: the
-//! exhibits a worker is assigned to, the escape of an animal.
+//! it and a level for it (tank fauna 6), one in the water mode a water tile. An animal whose
+//! exhibit's escape table holds its type first tries the escape walk (animals 11.3). Not here yet:
+//! the exhibits a worker is assigned to.
 
 use super::{Kind, Part, Unit, movement, swim};
 use crate::animal::tank::kind;
@@ -77,7 +78,7 @@ pub fn surface_walk(
 ) -> bool {
     walking(unit, world, cat, rng, at, |walk| {
         let pick = walk.pick();
-        pick.is_some_and(|to| walk.search(to, false))
+        pick.is_some_and(|to| !walk.unit.path.is_empty() || walk.search(to, false))
     })
 }
 
@@ -148,12 +149,13 @@ struct Walk<'a> {
 
 impl Walk<'_> {
     fn run(&mut self) -> bool {
-        // 1 and 2: the pick of the class, unless it is where the unit stands.
+        // 1 and 2: the pick of the class, unless it is where the unit stands; an escape walk
+        // leaves its path on the unit.
         let pick = self.pick();
         let far =
             |t: &usize| *t != self.here || self.goal.unwrap_or(self.base(*t) / 16) != self.level;
         if let Some(to) = pick.filter(far)
-            && self.search(to, true)
+            && (!self.unit.path.is_empty() || self.search(to, true))
         {
             return true;
         }
@@ -251,6 +253,12 @@ impl Walk<'_> {
             Part::Animal(a) => a.terrain,
             _ => 0,
         };
+        if let Some(b) = exhibit
+            .filter(|_| self.unit.kind == Kind::Animal)
+            .and_then(|id| self.escape(id))
+        {
+            return Some(b);
+        }
         match (self.unit.kind, exhibit) {
             (Kind::Animal, None) => None,
             (Kind::Animal, Some(id)) if mode == 2 => self.tank_tile(id),
@@ -277,6 +285,92 @@ impl Walk<'_> {
             (Kind::Worker, None) => self.worker_gate().or_else(|| self.stroll()),
             _ => self.stroll(),
         }
+    }
+
+    /// Animals 11.3, the escape attempt of an animal in exhibit `id` whose escape table holds its
+    /// type: the old walk is dropped and a path to the table's tile is searched with the escape
+    /// flag up. The path is cut after the first step that crosses a fence piece, one tile further
+    /// when the animal crosses it by a jump, a climb, a bash or out of a tank and the ordinary
+    /// rules allow the step; the walk's last tile `B` is then its destination. With no path of two
+    /// tiles nothing changes and the ordinary pick follows. No draw.
+    fn escape(&mut self, id: u32) -> Option<usize> {
+        let e = &self.world.zoo.entities[self.at];
+        let name = format!("{}/{}", e.type_name, e.subtype);
+        let Part::Animal(a) = &mut self.unit.part else {
+            return None;
+        };
+        if a.egg || a.in_show {
+            return None;
+        }
+        let table = &self.world.exhibits().get(id)?.rating.escapes;
+        let target = table.iter().find(|(n, _)| *n == name)?.1;
+        a.walk = None;
+        let w = &*self.world;
+        let water = w.tank_at(target).and_then(|t| w.tank(t));
+        let mut m = Mover {
+            test: true,
+            ..self.mover.clone()
+        };
+        m.levels.1 = w.zoo.tiles[target].elevation + water.map_or(0, |t| t.steps().1);
+        let reply = self.finder.request(w, &m, target, false);
+        let path = reply.path.filter(|p| reply.ok && p.len() >= 2)?;
+        let mut levels = reply.levels;
+        let width = (w.zoo.width as usize).max(1);
+        let xy = |t: usize| [(t % width) as i32, (t / width) as i32];
+        let mut walk = crate::zoo::Escape {
+            a: [-1; 2],
+            b: xy(target),
+            ..Default::default()
+        };
+        let mut kept = vec![path[0]];
+        let tank = w.exhibits().get(id).is_some_and(|e| e.tank.is_some());
+        for pair in path.windows(2) {
+            let (t1, t2) = (pair[0], pair[1]);
+            kept.push(t2);
+            let Ok(d) = usize::try_from(movement::direction(w, t1, t2)) else {
+                continue;
+            };
+            let pieces = (w.edge(t1, d), w.edge(t2, (d + 4) % 8));
+            if pieces == (None, None) {
+                continue;
+            }
+            walk.a = xy(t1);
+            walk.kind = crate::animal::escape::kind(w, &m, tank, pieces);
+            let mut point = t2;
+            if walk.kind != 0
+                && let Some(c) = w.neighbour(t2, d)
+            {
+                let ordinary = Mover {
+                    at: Some(t2),
+                    test: false,
+                    turn: None,
+                    ..self.mover.clone()
+                };
+                let step = self.finder.request(w, &ordinary, c, false);
+                if step.ok && step.path.is_some_and(|p| p.len() == 2) {
+                    kept.push(c);
+                    levels.extend(step.levels.last());
+                    point = c;
+                }
+            }
+            walk.across = u32::from(point == t2);
+            walk.b = xy(point);
+            break;
+        }
+        levels.truncate(kept.len());
+        let b = w.tile_index(walk.b[0], walk.b[1])?;
+        let z = levels.last().map_or(self.base(b), |l| 16 * l);
+        self.unit.destination = Some((64 * walk.b[0] + 32, 64 * walk.b[1] + 32, z));
+        (self.unit.path, self.unit.levels) = (kept, levels);
+        let Part::Animal(a) = &mut self.unit.part else {
+            return None;
+        };
+        // An animal that stands on the crossing tile already starts the crossing now.
+        if walk.a == xy(self.here) {
+            a.force = crate::animal::escape::crossing(walk.kind);
+        }
+        a.walk = Some(walk);
+        Some(b)
     }
 
     /// The tiles of exhibit `id` and then of its amphibious neighbours that suit the terrain

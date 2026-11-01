@@ -1738,6 +1738,10 @@ pub(crate) fn tank_kind(ty: &EntityType) -> TankKind {
         strength: crate::build::number(ty, "cStrength").unwrap_or(crate::place::STRENGTH) as u32,
         depth: crate::build::number(ty, "cDepth").unwrap_or(0.0) as i32,
         height: crate::build::number(ty, "cHeight").unwrap_or(0.0) as i32,
+        jumpable: crate::build::number(ty, "cIsJumpable").is_some_and(|n| n != 0.0),
+        climbable: crate::build::number(ty, "cIsClimbable").is_some_and(|n| n != 0.0),
+        electrified: crate::build::number(ty, "cIsElectrified").is_some_and(|n| n != 0.0),
+        decayed: crate::build::number(ty, "cDecayedLife").unwrap_or(0.0) as i32,
     }
 }
 
