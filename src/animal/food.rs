@@ -66,10 +66,11 @@ pub struct Meal {
 }
 
 impl Animal {
-    /// `stopEating` (5.4): the need flags of the reset goal go down too.
+    /// `stopEating` (5.4): the need flags of the reset goal go down too, and the escape walk ends
+    /// (animals 11.3).
     pub fn stop_eating(&mut self, found: bool, meal: &mut Meal) {
         (self.no_food, self.eating) = (found, false);
-        (self.wants_food, self.thirsty) = (false, false);
+        (self.wants_food, self.thirsty, self.walk) = (false, false, None);
         (meal.stop, meal.queue) = (true, false);
     }
 }

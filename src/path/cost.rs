@@ -226,7 +226,8 @@ fn straight(w: &World, m: &Mover, t: usize, d: usize) -> u32 {
         return MAX;
     }
     let low = |p: &usize| w.shape(*p).is_some_and(|s| !s.fence && !s.wall);
-    let marked = |p: &usize| w.shape(*p).is_some_and(|s| !s.tank.wall) && !low(p);
+    // The escape search sets no mark.
+    let marked = |p: &usize| !m.test && w.shape(*p).is_some_and(|s| !s.tank.wall) && !low(p);
     // A random walk turns only from the unit's own tile: a quarter turn costs 2, a turn back 4.
     let turn = match m.turn.filter(|_| m.at == Some(t)) {
         Some(f) => match (d + 8 - f % 8) % 8 {
@@ -280,11 +281,42 @@ fn passes(w: &World, m: &Mover, t: usize, n: usize, pieces: &[usize]) -> bool {
         Kind::Keeper | Kind::Worker => every(&|p| broken(p) || low(p) || gate(p, true)),
         Kind::Guest => every(&|p| gate(p, false)) && !(grounds(t) && !grounds(n)),
         Kind::Guide => every(&|p| broken(p) || gate(p, false)),
-        // An amphibious species crosses a connector wall (tank fauna 12.3).
+        // An amphibious species crosses a connector wall (tank fauna 12.3), but not on an
+        // escape walk.
         Kind::Animal => every(&|p| {
-            low(p) || broken(p) || m.show && show_gate(p) || amphibious && w.connector(p)
+            low(p)
+                || broken(p)
+                || m.show && show_gate(p)
+                || amphibious && !m.test && w.connector(p)
+                || m.test && !grounds(t) && escapes(w, m, (t, n), p)
         }),
     }
+}
+
+/// 5.3 points 2, 6 and 7: an animal with its escape flag up, in an exhibit, gets past the piece at
+/// `p` on the line between `t` and `n`: never a wall, a zoo gate, a gate, a powered electric fence
+/// or a connector wall; always a tank wall of a tank with no height; else a piece it jumps,
+/// climbs, bashes (its strength below the bash) or crushes (its height at most the crush).
+pub(super) fn escapes(w: &World, m: &Mover, (t, n): (usize, usize), p: usize) -> bool {
+    let (Some(s), Some(c)) = (w.shape(p), w.zoo.entities[p].common.as_ref()) else {
+        return false;
+    };
+    let k = s.tank;
+    let (life, strength) = c
+        .fence
+        .map_or((k.life, k.strength), |f| (f.life, f.strength));
+    if s.wall || s.gate || w.is_door(p) || k.electrified && life > 0 && life > k.decayed {
+        return false;
+    }
+    if k.wall && w.connector(p) {
+        return false;
+    }
+    let tank = w.tank_at(t).or(w.tank_at(n)).and_then(|id| w.tank(id));
+    k.wall && tank.is_some_and(|k| k.height == 0)
+        || m.climber && k.climbable
+        || m.jumper && k.jumpable
+        || i64::from(strength) < i64::from(m.bash)
+        || m.crush != 0 && k.height <= m.crush
 }
 
 /// 4.3 point 1: whether quarter 3 of tile `t` holds a building other than the unit's building

@@ -2324,9 +2324,12 @@ fn a_saved_unit_holds_its_live_goal_and_job() {
 fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     let cat = zebras();
     let escape = Escape {
-        tiles: [[1, 2], [3, 4]],
-        words: [5, 6, 7],
-        last: 8,
+        a: [1, 2],
+        b: [3, 4],
+        kind: 2,
+        reached: 1,
+        across: 0,
+        broken: 1,
     };
     let mut world = pens();
     for e in &mut world.zoo.entities {

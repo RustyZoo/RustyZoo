@@ -474,7 +474,7 @@ pub fn tests() -> u32 {
 /// check flag set or the counter at 30, the counter and the flag are cleared, a target is drawn
 /// among the candidate tiles of 10.2 that belong to no amphibious neighbour, and the last animal
 /// of each type searches its way there with its test flag up (no diagonals). The types that get
-/// there make the escape table, which the escapes read (M7).
+/// there make the escape table, which the escape walk reads (animals 11.3).
 pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     let tests = TESTS.get().saturating_add(1);
     TESTS.set(tests);

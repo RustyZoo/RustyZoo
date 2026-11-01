@@ -13,7 +13,8 @@
 //! A unit in a tank (move kind 3) moves by [`swim`]'s 3D move instead, and the tank position check
 //! runs after every move step.
 //!
-//! Not here yet: the escape of an animal (6.3), the repeat time and the reverse of a move call,
+//! An animal on an escape walk moves with its escape flag up (animals 11.3), which lets it over
+//! the fence of its walk. Not here yet: the repeat time and the reverse of a move call,
 //! the index block of a unit larger than a tile (the map index holds the unit on one tile).
 
 use super::{Kind, Part, Unit, swim};
@@ -245,7 +246,7 @@ fn ended(unit: &Unit, world: &World, at: usize) -> bool {
 }
 
 /// The tile of the unit at position `at` of the entity list.
-fn here(world: &World, at: usize) -> Option<usize> {
+pub(crate) fn here(world: &World, at: usize) -> Option<usize> {
     point(world, at).and_then(|(x, y, _)| tile_of(world, (x, y)))
 }
 
@@ -517,9 +518,10 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) 
     (m.tall, m.climbs) = (flag("cTall"), flag("cClimbsCliffs"));
     m.surface = flag("cSurface");
     m.depth = data.number(entity, &Number::Characteristic("cDepth".into()));
-    m.avoid_edges = data
-        .number(entity, &Number::Characteristic("cAvoidEdges".into()))
-        .max(0) as u32;
+    let number = |key: &str| data.number(entity, &Number::Characteristic(key.into()));
+    m.avoid_edges = number("cAvoidEdges").max(0) as u32;
+    (m.jumper, m.climber) = (number("cIsJumper") != 0, number("cIsClimber") != 0);
+    (m.bash, m.crush) = (number("cBashStrength"), number("cCrushesFences"));
     // The guest's costs off the paths are the unit class file's; a missing key keeps the fallback.
     if unit.kind == Kind::Guest {
         let cost = |key, fallback: u32| data.unit_class(key).map_or(fallback, |v| v.max(0) as u32);
@@ -570,6 +572,7 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
     let record = &unit.goal.record;
     task(&mut m, record.task, record.target.id);
     m.water_mode = matches!(&unit.part, Part::Animal(a) if a.terrain == 1);
+    m.test |= matches!(&unit.part, Part::Animal(a) if a.walk.is_some());
     m
 }
 

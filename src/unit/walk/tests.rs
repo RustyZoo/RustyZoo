@@ -565,3 +565,206 @@ fn a_worker_strolls_to_the_gate_of_an_assigned_exhibit_else_the_ring() {
     assert_eq!(after, r, "one draw");
     assert_eq!(goes_to(&w, 1), Some(tile_of(&w, (21, 9))));
 }
+
+/// A pen from (2, 2) to (4, 4) whose fence pieces (strength and life 5) have the type keys `keys`
+/// makes, with animal 1 at `at`.
+fn pen(at: (i32, i32), keys: impl Fn(&mut crate::world::TankKind)) -> World {
+    let w = world((12, 12), |_, e| {
+        fences(e, (2, 2), (4, 4));
+        e.push(entity("animals", "", 1, centre(at), 2));
+    });
+    let shape = |e: &Entity| {
+        let mut s = crate::unit::testing::shape(e)?;
+        if s.fence {
+            keys(&mut s.tank);
+        }
+        Some(s)
+    };
+    World::new(w.zoo, shape)
+}
+
+/// Whether an animal at (4, 3) with its escape flag up and the values `m` gives crosses the east
+/// fence of the pen whose pieces `keys` makes, whether it crosses it back from the grounds, and
+/// the crossing it chooses (animals 11.3).
+fn cross(keys: impl Fn(&mut crate::world::TankKind), m: impl Fn(&mut Mover)) -> (bool, bool, u32) {
+    let w = pen((3, 3), keys);
+    let (a, b) = (tile_of(&w, (4, 3)), tile_of(&w, (5, 3)));
+    let mut mover = Mover {
+        test: true,
+        ..Mover::new(path::Kind::Animal, Some(a))
+    };
+    m(&mut mover);
+    let out = path::step(&w, &mover, a, b, 2, None) < MAX;
+    mover.at = Some(b);
+    let back = path::step(&w, &mover, b, a, 6, None) < MAX;
+    let kind = crate::animal::escape::kind(&w, &mover, false, (w.edge(a, 2), w.edge(b, 6)));
+    (out, back, kind)
+}
+
+#[test]
+fn an_escaping_animal_gets_over_the_fence_it_jumps_climbs_bashes_or_crushes() {
+    let plain = |_: &mut crate::world::TankKind| {};
+    let jumpable = |k: &mut crate::world::TankKind| k.jumpable = true;
+    assert_eq!(cross(plain, |_| {}), (false, false, 0));
+    assert_eq!(cross(jumpable, |m| m.jumper = true), (true, false, 1));
+    // The flag down, or a species that does not jump: the fence holds.
+    let down = |m: &mut Mover| (m.jumper, m.test) = (true, false);
+    assert_eq!(cross(jumpable, down), (false, false, 1));
+    assert_eq!(cross(jumpable, |_| {}), (false, false, 0));
+    let climbable = |k: &mut crate::world::TankKind| k.climbable = true;
+    assert_eq!(cross(climbable, |m| m.climber = true), (true, false, 2));
+    // A powered electric fence holds; at its decayed life it does not.
+    let live = |k: &mut crate::world::TankKind| (k.jumpable, k.electrified) = (true, true);
+    assert_eq!(cross(live, |m| m.jumper = true), (false, false, 1));
+    let decayed =
+        |k: &mut crate::world::TankKind| (k.jumpable, k.electrified, k.decayed) = (true, true, 5);
+    assert_eq!(cross(decayed, |m| m.jumper = true), (true, false, 1));
+    // The bash beats the strength 5; the crush, when not 0, the height 0 of the type.
+    for (bash, open) in [
+        (6, true),
+        (i32::MAX, true),
+        (5, false),
+        (0, false),
+        (-1, false),
+    ] {
+        let kind = if open { 3 } else { 0 };
+        assert_eq!(
+            cross(plain, |m| m.bash = bash),
+            (open, false, kind),
+            "{bash}"
+        );
+    }
+    for (crush, open) in [(1, true), (i32::MAX, true), (0, false), (-1, false)] {
+        let kind = if open { 3 } else { 0 };
+        assert_eq!(
+            cross(plain, |m| m.crush = crush),
+            (open, false, kind),
+            "{crush}"
+        );
+    }
+}
+
+/// The escape walk of animal 1 in `w`.
+fn walk_of(w: &World) -> Option<crate::zoo::Escape> {
+    match &w.units.get(1).unwrap().part {
+        Part::Animal(a) => a.walk,
+        _ => None,
+    }
+}
+
+#[test]
+fn an_animal_whose_exhibit_lets_it_out_walks_one_tile_past_the_fence_with_no_draw() {
+    let escaping = |at: (i32, i32), keys: fn(&mut crate::world::TankKind), m: fn(&mut Mover)| {
+        let mut w = pen(at, keys);
+        let x = w.exhibits().region(tile_of(&w, (3, 3))).unwrap();
+        let target = tile_of(&w, (8, 3));
+        w.exhibits_mut().get_mut(x).unwrap().rating.escapes = vec![("/".into(), target)];
+        m(&mut w.units.get_mut(1).unwrap().mover);
+        let (ok, after) = walk(&mut w, 1, 1);
+        assert!(ok);
+        (w, after)
+    };
+    let (w, after) = escaping((3, 3), |_| {}, |m| m.bash = 6);
+    assert_eq!(after, rng(1), "no draw");
+    let tiles = [(3, 3), (4, 3), (5, 3), (6, 3)].map(|p| tile_of(&w, p));
+    assert_eq!(w.units.get(1).unwrap().path, tiles);
+    assert_eq!(
+        destination(&w, 1),
+        Some(centre((6, 3))).map(|(x, y)| (x, y, 0))
+    );
+    let walk = crate::zoo::Escape {
+        a: [4, 3],
+        b: [6, 3],
+        kind: 3,
+        ..Default::default()
+    };
+    assert_eq!(walk_of(&w), Some(walk));
+    // On the crossing tile already, a jumper starts its jump.
+    let (w, _) = escaping((4, 3), |k| k.jumpable = true, |m| m.jumper = true);
+    assert_eq!(walk_of(&w).map(|e| (e.kind, e.reached)), Some((1, 0)));
+    let force = match &w.units.get(1).unwrap().part {
+        Part::Animal(a) => a.force,
+        _ => None,
+    };
+    assert_eq!(force, Some("jump_high"));
+    // An animal the fence holds, or one whose type the table lacks, picks a tile of its pen.
+    let (w, after) = escaping((3, 3), |_| {}, |_| {});
+    assert_eq!(walk_of(&w), None);
+    assert_ne!(after, rng(1));
+    let x = w.exhibits().region(tile_of(&w, (3, 3)));
+    assert_eq!(w.exhibits().region(goes_to(&w, 1).unwrap()), x);
+}
+
+#[test]
+fn a_bash_breaks_the_fence_once_the_animal_leaves_the_crossing_tile_and_the_walk_ends_on_its_last_tile()
+ {
+    let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "fences",
+        type_name: b"exhibit".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(b"[Characteristics/Integers]\ncStrength=5\n").unwrap(),
+        )),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let steps = |kind: u32, bash: i32| {
+        let mut w = pen((3, 3), |_| {});
+        let mut unit = w.units.get(1).unwrap().clone();
+        unit.mover.bash = bash;
+        if let Part::Animal(a) = &mut unit.part {
+            a.walk = Some(crate::zoo::Escape {
+                a: [4, 3],
+                b: [6, 3],
+                kind,
+                ..Default::default()
+            });
+        }
+        let piece = w.edge(tile_of(&w, (4, 3)), 2).unwrap();
+        let mut seen = Vec::new();
+        for p in [(4, 3), (5, 3), (6, 3)] {
+            let t = tile_of(&w, p);
+            crate::animal::escape::entered(&mut unit, &mut w, &cat, t);
+            let life = w.zoo.entities[piece]
+                .common
+                .as_ref()
+                .unwrap()
+                .fence
+                .unwrap()
+                .life;
+            let Part::Animal(a) = &mut unit.part else {
+                unreachable!()
+            };
+            let walk = a.walk.unwrap();
+            seen.push((a.force.take(), walk.reached, walk.broken, life));
+        }
+        // The walk ends on its last tile only.
+        let ends =
+            |unit: &mut Unit, p| crate::animal::escape::walk_done(unit, &w, Some(tile_of(&w, p)));
+        assert!(ends(&mut unit, (5, 3)) && ends(&mut unit, (6, 3)));
+        assert!(!ends(&mut unit, (6, 3)));
+        (seen, w.units.posts.len())
+    };
+    let (seen, posts) = steps(3, 6);
+    assert_eq!(
+        seen,
+        [(None, 1, 0, 5), (None, 1, 1, 0), (None, 1, 1, 0)],
+        "broken on the tile across, once"
+    );
+    // Broken, and at its decayed life 0 too.
+    assert_eq!(posts, 2, "the broken piece's events");
+    // A jumper that does not bash leaves the fence whole and runs on.
+    let (seen, posts) = steps(1, 0);
+    let jump = [
+        (Some("jump_high"), 1, 0, 5),
+        (None, 1, 0, 5),
+        (Some("run"), 1, 0, 5),
+    ];
+    assert_eq!((seen, posts), (jump.to_vec(), 0));
+    // One that bashes breaks it on the way too; a climber climbs.
+    assert_eq!(steps(1, 1).0[1], (None, 1, 1, 0));
+    assert_eq!(steps(2, 0).0[0].0, Some("climb_up"));
+}
