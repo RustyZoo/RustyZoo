@@ -266,6 +266,29 @@ pub(crate) fn type_at<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Optio
     crate::place::bulldozer::type_of(cat, world.zoo.entities.get(at)?)
 }
 
+/// The panel's fill of the animals tab (info-panels 10.5): exhibit `x` is recomputed when dirty,
+/// then its stored animal list is sorted in place by name (bytes, the shorter name first when one
+/// starts the other; a stable sort), which other readers then see until the next recomputation.
+pub fn sort_animals(world: &mut World, cat: &Catalogue, x: u32, rng: &mut crate::sim::Rng) {
+    rating::refresh(world, cat, x, &mut || rng.rand());
+    let Some(mut list) = world
+        .exhibits_mut()
+        .get_mut(x)
+        .map(|e| std::mem::take(&mut e.rating.animals))
+    else {
+        return;
+    };
+    let name = |id: &u32| {
+        let at = world.find(*id);
+        let c = at.and_then(|at| world.zoo.entities[at].common.as_ref());
+        c.map(|c| to_cp1252(&c.name)).unwrap_or_default()
+    };
+    list.sort_by_cached_key(name);
+    if let Some(e) = world.exhibits_mut().get_mut(x) {
+        e.rating.animals = list;
+    }
+}
+
 /// The entities of class animals that stand in exhibit `id`, in the order of the entity list.
 pub fn animals_in(world: &World, id: u32) -> Vec<usize> {
     let width = i64::from(world.zoo.width);
@@ -482,7 +505,7 @@ impl Panel {
         ui.set_text(KEEPER, &to_cp1252(&staff));
         ui.set_image(STARS, star);
         // The animals of the exhibit, each with its type's list icon.
-        let at_all = current.map_or_else(Vec::new, |c| animals_in(world, c.id));
+        let at_all = current.map_or_else(Vec::new, |c| crate::animal::exhibit_animals(world, c.id));
         let (mut rows, mut ids) = (Vec::new(), Vec::new());
         for at in at_all {
             let (Some(entity), ty) = (world.zoo.entities.get(at), type_at(world, cat, at)) else {
