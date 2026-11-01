@@ -132,11 +132,20 @@ pub fn walk_done(unit: &mut Unit, world: &World, here: Option<usize>) -> bool {
 
 /// Behaviours 6.4 point 1, the escaped branch: an escaped animal that stands on dry land, is not
 /// moving and is not rampaging starts `bEscaped` unless it runs already (interruptible, forced,
-/// the queued sequences kept; a pending `bEscaped` is cleared).
+/// the queued sequences kept; a pending `bEscaped` is cleared). With `bSleep`, `bSick` or `bHatch`
+/// as the top or pending set it starts nothing.
 pub fn escaped_set(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut Rng, at: usize) {
-    let Part::Animal(a) = &unit.part else {
+    // Point 0: those sets must end first; the rampage is dropped and nothing starts.
+    let ending = [unit.runner.top(), unit.runner.queued()]
+        .iter()
+        .any(|n| matches!(n, Some("bSleep" | "bSick" | "bHatch")));
+    let Part::Animal(a) = &mut unit.part else {
         return;
     };
+    if ending {
+        (a.rampaging, a.rampage) = (false, 0);
+        return;
+    }
     let tile = (world.zoo.entities[at].common.as_ref())
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
     let dry = tile.is_some_and(|t| !world.is_water(t) && world.tank_at(t).is_none());

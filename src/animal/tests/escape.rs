@@ -107,6 +107,43 @@ fn an_escaped_animal_on_dry_land_that_stands_starts_its_escaped_set() {
 }
 
 #[test]
+fn an_escaped_animal_that_sleeps_is_sick_or_hatches_keeps_its_set() {
+    let data = Life::new()
+        .with("bEscaped", "fPlay(idle)")
+        .with("bSleep", "fPlay(idle)")
+        .with("bSick", "fPlay(idle)")
+        .with("bHatch", "fPlay(idle)");
+    for name in ["bSleep", "bSick", "bHatch"] {
+        for pending in [false, true] {
+            let world = pens();
+            let at = world.find(500).unwrap();
+            let mut unit = world.units.get(500).unwrap().clone();
+            if let Part::Animal(a) = &mut unit.part {
+                a.escaped = true;
+            }
+            let mut rng = Rng::default();
+            if pending {
+                unit.runner.queue(name, true, true);
+            } else {
+                let env = crate::behaviour::Env {
+                    data: &data,
+                    unit: &world.zoo.entities[at],
+                    rng: &mut rng,
+                };
+                unit.runner
+                    .start(&mut unit.animation, &env, name, true, true, true);
+            }
+            crate::animal::escape::escaped_set(&mut unit, &world, &data, &mut rng, at);
+            let r = &unit.runner;
+            let top = r.running().then(|| r.top()).flatten();
+            assert_ne!(top, Some("bEscaped"), "{name} {pending}");
+            assert_ne!(r.queued(), Some("bEscaped"), "{name} {pending}");
+            assert!(pending || top == Some(name), "{name}");
+        }
+    }
+}
+
+#[test]
 fn the_escaped_flag_and_the_escape_walk_are_saved_apart() {
     let (k, class) = (keys(), Class::default());
     let mut a = animal();
