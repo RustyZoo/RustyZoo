@@ -392,7 +392,7 @@ impl Life {
     }
 
     /// The same with an ambient row for every happiness that starts `bIdle`.
-    fn idling(mut self) -> Life {
+    pub(super) fn idling(mut self) -> Life {
         let (lo, hi, set) = (i32::MIN, i32::MAX, "bIdle".to_string());
         self.1.push(Row { lo, hi, set });
         self
