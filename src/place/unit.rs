@@ -106,11 +106,12 @@ pub fn pending(
     october: bool,
 ) -> Option<Pending> {
     let price = price(cat.types.get(ty)?, october);
-    pending_of(world, cat, water, ty, facing(0, view), view, aim, price)
+    let dir = facing(0, view);
+    pending_of(world, cat, water, ty, dir, view, aim, price, false)
 }
 
 /// The pending unit of the one the player carries (8.3): its own facing turned with the view, so
-/// that it keeps its screen facing, and no cost.
+/// that it keeps its screen facing, and no cost. A crated animal is judged as a crate (6.2).
 pub fn carried(
     world: &World,
     cat: &Catalogue,
@@ -128,6 +129,8 @@ pub fn carried(
         view,
         aim,
         0.0,
+        matches!(world.units.get(carry.id).map(|u| &u.part),
+            Some(crate::unit::Part::Animal(a)) if a.crated),
     )
 }
 
@@ -148,6 +151,7 @@ fn pending_of(
     view: u8,
     aim: Aim,
     price: f32,
+    crated: bool,
 ) -> Option<Pending> {
     let t = cat.types.get(ty)?;
     let ground = (
@@ -181,7 +185,7 @@ fn pending_of(
         blocking: Vec::new(),
         wall: 0,
     };
-    check(&mut p, world, t, water, lifted.is_some());
+    check(&mut p, world, t, water, lifted.is_some(), crated);
     Some(p)
 }
 
@@ -228,9 +232,14 @@ fn tank_point(
     found
 }
 
-/// The footprint of the type in quarters, along the axes of the map for the facing.
-fn footprint(t: &EntityType, dir: u32) -> (i32, i32) {
-    let own = (t.footprint[0].clamp(0, 64), t.footprint[1].clamp(0, 64));
+/// The footprint of the type in quarters, or of its crate, along the axes of the map for the
+/// facing.
+fn footprint(t: &EntityType, dir: u32, crated: bool) -> (i32, i32) {
+    let [x, y] = match crated {
+        true => t.form_footprint(false),
+        false => [t.footprint[0], t.footprint[1]],
+    };
+    let own = (x.clamp(0, 64), y.clamp(0, 64));
     match dir % 4 {
         0 => own,
         _ => (own.1, own.0),
@@ -270,9 +279,17 @@ fn lets_through(world: &World, object: usize) -> bool {
     world.shape(object).is_some_and(|s: Shape| s.walkable.0)
 }
 
-/// The checks of 6.1 for an animal that is not crated, of 6.3 for a staff member or of 6.4 for a
-/// guest, in order. `tanked`: the tank point found a tank, so the unit is in tank mode.
-fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked: bool) {
+/// The checks of 6.1 for an animal (6.2: a crate may stand on the zoo grounds), of 6.3 for a staff
+/// member or of 6.4 for a guest, in order. `tanked`: the tank point found a tank, so the unit is in
+/// tank mode.
+fn check(
+    p: &mut Pending,
+    world: &World,
+    t: &EntityType,
+    water: &[bool],
+    tanked: bool,
+    crated: bool,
+) {
     let staff = staff::is_staff(t);
     let guest = t.class == "guests";
     let Some(tile) = world
@@ -284,7 +301,7 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
     let flag = |key: &str| number(t, key) == Some(1.0);
     // The messages about water read `cOnlyUnderwater`, whatever the class (unit placing 6.1).
     let (swims, only) = (flag("cSwims"), flag("cOnlyUnderwater"));
-    let (fx, fy) = footprint(t, p.facing);
+    let (fx, fy) = footprint(t, p.facing, crated);
     // A large animal runs the footprint check of placing 5.2 (items 1, 3 to 6): its quarters.
     let large = fx > 2 || fy > 2;
     let (x0, y0) = (p.x - 16 * (fx - 1), p.y - 16 * (fy - 1));
@@ -324,10 +341,11 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
     if (guest || !staff && fx * fy >= 4) && !path_shape(world.zoo.tiles[tile].shape) {
         fail(p, None);
     }
-    let wet = water
-        .get(usize::from(world.zoo.tiles[tile].terrain))
-        .copied()
-        .unwrap_or(false);
+    let wet_at = |at: usize| {
+        let terrain = usize::from(world.zoo.tiles[at].terrain);
+        water.get(terrain).copied().unwrap_or(false)
+    };
+    let wet = wet_at(tile);
     if wet && !swims && !guest {
         let message = if only { NEEDS_WATER } else { NOT_ON_WATER_UNIT };
         fail(p, (!staff).then_some(message));
@@ -343,9 +361,17 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
     if large && (!held.is_empty() || uneven(world, &tiles) || fenced(world, x0, y0, (fx, fy))) {
         fail(p, None);
     }
+    // A large crate's quarters take the ground test of placing 5.2 item 2.
+    let ground = |&(at, _): &(usize, usize)| match super::only_swims(t) {
+        true => !wet_at(at),
+        false => !swims && wet_at(at),
+    };
+    if large && crated && quads.iter().any(ground) {
+        fail(p, None);
+    }
     // It stands in an exhibit.
     let region = world.exhibits().region(tile);
-    if !staff && !guest && region.is_none_or(|r| r == GROUNDS) {
+    if !staff && !guest && !crated && region.is_none_or(|r| r == GROUNDS) {
         fail(p, Some(if only { NEEDS_WATER } else { IN_AN_EXHIBIT }));
     }
     let tank = world.tank_at(tile);
@@ -355,7 +381,7 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
         if let Some(message) = message {
             fail(p, Some(message));
         }
-    } else if only {
+    } else if only && !crated {
         fail(p, Some(NEEDS_WATER));
     }
     // What is in the way: the objects holding the tile's quarters and every unit on it.
@@ -544,7 +570,7 @@ pub struct Carry {
 /// Picks the unit `id` up (unit placing 8.2): it is taken off the map, stops everything (its move,
 /// its behaviour set and its animation, the goals being the goal issues') and is marked carried,
 /// so its update is suspended; the exhibit it left is marked for a new rating. An escaped animal
-/// is no longer escaped (the crate it goes into is not modelled). `None` when `id` is
+/// is crated (9.1). `None` when `id` is
 /// no unit, is carried already, or its type is not moveable (`cMoveable` 0).
 pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<Carry> {
     let at = world.find(id)?;
@@ -576,9 +602,12 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     let unit = world.units.get_mut(id)?;
     unit.tank = 0;
     unit.carried = true;
-    // An animal picked up is no longer loose and its escape walk ends (unit placing 8.2, 9.1).
+    // An escaped animal is crated (8.2 point 4); any other one's escape walk ends.
     if let crate::unit::Part::Animal(a) = &mut unit.part {
-        (a.escaped, a.walk) = (false, None);
+        match a.escaped {
+            true => crate::animal::boxed::crate_up(a),
+            false => a.walk = None,
+        }
     }
     unit.moving = false;
     unit.destination = None;

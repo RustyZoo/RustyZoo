@@ -63,6 +63,7 @@ use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{AnimalRecord, Entity};
 
+pub mod boxed;
 pub mod breed;
 pub mod dirt;
 pub mod escape;
@@ -175,6 +176,8 @@ pub struct Class {
     pub mate_pick_delay: i32,
     /// `cBoxedCheck`: the period of the crate counter, which creation does not draw.
     pub boxed: i32,
+    /// `cRattleChance`: the percent chance a crate check shakes the crate (unit placing 9.2).
+    pub rattle: i32,
 }
 
 impl Default for Class {
@@ -227,6 +230,7 @@ impl Class {
             death_chance: int("cDeathChance", 99),
             mate_pick_delay: int("cMatePickDelay", 3),
             boxed: int("cBoxedCheck", 2),
+            rattle: int("cRattleChance", 10),
         }
     }
 }
@@ -499,6 +503,8 @@ pub struct Animal {
     pub force: Option<&'static str>,
     /// The zap counter (animals 4.1): it starts at 0 and fires when it was below 1.
     pub zap: i32,
+    /// The crate counter (`cBoxedCheck`), which runs only while the animal is crated.
+    pub crate_count: i32,
     /// Status ticks until the creation runs again (`AnimalResetInterval`).
     pub reset: i32,
     /// The end of the checks asks for the ambient choice (behaviours 6.4): the behaviour runner
@@ -540,6 +546,7 @@ impl Animal {
             interval: k.reproduction_interval,
             baby: k.baby_to_adult.wrapping_sub(1),
             reset: class.reset_interval,
+            crate_count: class.boxed.wrapping_sub(1),
             crowd_direction: -1,
             ..Animal::default()
         }
@@ -576,7 +583,7 @@ impl Animal {
         self.keeper_visited = r.keeper_visited;
         self.mourning = r.mourning;
         self.dying = r.dying;
-        self.crated = r.crated;
+        (self.crated, self.crate_count) = (r.crated, r.boxed);
         self.egg = r.egg;
         self.thirsty = r.thirsty;
         self.rampaging = r.rampaging;
@@ -622,6 +629,7 @@ impl Animal {
             mourning: self.mourning,
             dying: self.dying,
             crated: self.crated,
+            boxed: self.crate_count,
             egg: self.egg,
             thirsty: self.thirsty,
             rampaging: self.rampaging,
@@ -1325,6 +1333,7 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 
 /// The conditional checks of a status tick (animals 4.2).
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    boxed::check(unit, world, ctx, at);
     let task = unit.goal.record.task;
     let meal = food::meal(unit, world, data, at);
     let sets = life::sets(unit, world, data, at);
