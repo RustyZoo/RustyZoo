@@ -2984,6 +2984,22 @@ fn the_other_check_counts_the_very_unhappy_animals_of_the_last_rating_pass() {
 }
 
 #[test]
+fn the_other_check_counts_the_amphibious_neighbours() {
+    let (mut world, cat, x, at) = rated(|_| ());
+    let next = world.exhibits().list()[1].id;
+    crate::exhibit::rating::refresh(&mut world, &cat, next, &mut || 0);
+    world.exhibits_mut().get_mut(x).unwrap().amphibious = vec![next];
+    let Part::Animal(a) = &mut world.units.get_mut(511).unwrap().part else {
+        panic!("not an animal");
+    };
+    a.very_unhappy = true;
+    let read = (Read::Exhibit, x, at);
+    assert_eq!(read_of(&mut world, &cat, read).census.unhappy, 0);
+    world.exhibits_mut().get_mut(next).unwrap().rating.dirty = true;
+    assert_eq!(read_of(&mut world, &cat, read).census.unhappy, 1);
+}
+
+#[test]
 fn the_hunger_check_counts_the_food_of_the_last_rating_pass() {
     use crate::sim::drive::{Command, Run};
     let mut run = Run::new(

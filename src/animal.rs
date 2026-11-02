@@ -1293,9 +1293,17 @@ fn read_exhibit(
         }
         Read::Exhibit => {
             env.census = census(world, x, &regions, key);
-            env.census.unhappy = (world.exhibits().get(x)).map_or(0, |e| {
-                e.rating.unhappy.saturating_sub(u32::from(a.very_unhappy))
+            // The counters of the exhibit and its amphibious neighbours at the last rating pass,
+            // capped at their animal counts (animals 5.2).
+            let seen = regions.iter().filter_map(|&n| world.exhibits().get(n));
+            let (unhappy, animals) = seen.fold((0u32, 0usize), |(u, n), e| {
+                (
+                    u.saturating_add(e.rating.unhappy),
+                    n + e.rating.animals.len(),
+                )
             });
+            let capped = unhappy.min(u32::try_from(animals).unwrap_or(u32::MAX));
+            env.census.unhappy = capped.saturating_sub(u32::from(a.very_unhappy));
             let own = records(world, cat, x, rng)
                 .into_iter()
                 .find(|r| r.key == key);
