@@ -744,3 +744,27 @@ fn a_drag_pays_one_piece_per_rubble_group() {
     assert_eq!(refunds(&w, &cat, &[1, 0]), 1.0);
     assert_eq!(refunds(&w, &cat, &[]), 0.0);
 }
+
+#[test]
+fn a_building_removed_hides_its_members_from_the_end_and_a_missing_one_is_skipped() {
+    let cat = catalogue();
+    let mut money = Money::default();
+    let mut w = world(vec![
+        entity("building", "shop", "", 3 * 64 + 32, 3 * 64 + 32, 0),
+        entity("keeper", "keeper", "m", 5 * 64, 5 * 64, 0),
+        entity("keeper", "keeper", "m", 6 * 64, 5 * 64, 0),
+    ]);
+    let record = crate::zoo::fresh::building_new(0.0, 0);
+    let members = vec![2, 99, 3];
+    w.zoo.entities[0].common.as_mut().unwrap().building =
+        Some(crate::zoo::BuildingRecord { members, ..record });
+    let removed = remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
+    assert_eq!(removed.members, [3, 2]);
+    // The base itself is sold as any building: 0.8 of its cost; the members wait for the pass.
+    assert_eq!((removed.refund, money.cash), (280.0, 280.0));
+    assert_eq!(w.zoo.entities.len(), 2);
+    // A plain building has no members.
+    let mut w = world(vec![entity("building", "shop", "", 3 * 64, 3 * 64, 0)]);
+    let removed = remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
+    assert!(removed.members.is_empty());
+}

@@ -1308,3 +1308,35 @@ fn the_show_soon_flag_of_a_grandstand_is_loaded_from_the_fill_word() {
         (1, 0)
     );
 }
+
+#[test]
+fn a_building_made_in_play_is_saved_with_the_users_it_has_now() {
+    let cat = types();
+    let saved = |users: Vec<User>, extra: u32, live: bool| {
+        let mut w = loaded(&[("stand", 7, None), ("compost", 8, None)]);
+        if live {
+            w.units.buildings.insert(
+                7,
+                Live {
+                    users,
+                    extra,
+                    ..Live::default()
+                },
+            );
+        }
+        let mut zoo = w.saved(|_| true);
+        w.finish_save(&mut zoo, &cat);
+        let r = zoo.entities[0].common.as_ref().unwrap().building.clone();
+        let r = r.unwrap();
+        (r.users, r.users_now)
+    };
+    // In entering order, with the users counted that are not listed.
+    assert_eq!(
+        saved(vec![(5, 1, 9), (6, 0, 3)], 2, true),
+        (vec![(5, 1), (6, 0)], 4)
+    );
+    assert_eq!(saved(Vec::new(), 0, true), (Vec::new(), 0));
+    // A huge count saturates, nothing wraps; no live state writes the record of a new one.
+    assert_eq!(saved(vec![(1, 0, 0)], u32::MAX, true).1, u32::MAX);
+    assert_eq!(saved(vec![(5, 1, 9)], 0, false), (Vec::new(), 0));
+}

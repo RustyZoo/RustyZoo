@@ -983,6 +983,21 @@ fn a_script_applies_its_commands_to_the_run() {
 }
 
 #[test]
+fn the_members_of_a_bulldozed_building_go_at_the_next_pass() {
+    let mut run = game(3);
+    let record = crate::zoo::fresh::building_new(0.0, 0);
+    run.world.zoo.entities[0].common.as_mut().unwrap().building =
+        Some(crate::zoo::BuildingRecord {
+            members: vec![2, 3],
+            ..record
+        });
+    assert!(run.apply(&drive::Command::Bulldoze(1)));
+    assert_eq!(run.world.zoo.entities.len(), 2, "only the building at once");
+    run.step(67);
+    assert!(run.world.zoo.entities.is_empty(), "the members at the pass");
+}
+
+#[test]
 fn a_bad_script_is_an_error() {
     for bad in [
         "x remove 1",

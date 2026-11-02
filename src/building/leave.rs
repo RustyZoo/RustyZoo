@@ -130,9 +130,40 @@ pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
     let Some(kind) = kind_of(cat, &e, world.units.prices.default) else {
         return;
     };
-    let users = (world.units.buildings.get_mut(&id)).map(|l| std::mem::take(&mut l.users));
-    for (unit, slot, _) in users.unwrap_or_default() {
-        let (Some(at), Some(entry)) = (world.find(unit), world.units.get_mut(unit)) else {
+    let mut users = (world.units.buildings.get_mut(&id))
+        .map(|l| std::mem::take(&mut l.users))
+        .unwrap_or_default();
+    // A unit only the record lists (the helicopter of a base made in play) leaves too.
+    let record = (e.common.as_ref()).and_then(|c| c.building.as_ref());
+    for &(unit, slot) in record.map_or(&[][..], |b| &b.users) {
+        if !users.iter().any(|u| u.0 == unit) {
+            users.push((unit, slot as usize, 0));
+        }
+    }
+    // The building is left with no user: users now 0 (guest buildings 6.8).
+    if let Some(b) =
+        (world.find(id)).and_then(|at| world.zoo.entities[at].common.as_mut()?.building.as_mut())
+    {
+        (b.users, b.users_now) = (Vec::new(), 0);
+    }
+    if let Some(l) = world.units.buildings.get_mut(&id) {
+        l.extra = 0;
+    }
+    for (unit, slot, _) in users {
+        let Some(at) = world.find(unit) else {
+            continue;
+        };
+        let Some(entry) = world.units.get_mut(unit) else {
+            // A unit the table does not run (the helicopter): its stored goal is stopped.
+            let block = world.zoo.entities[at]
+                .common
+                .as_mut()
+                .and_then(|c| c.unit.as_mut());
+            if let Some(b) = block {
+                (b.target.goal, b.target.sub_goal) = (0, 0);
+            }
+            let mut u = Unit::new(unit, crate::unit::Kind::Worker);
+            put_out(world, cat, at, &mut u, &e, &kind, slot);
             continue;
         };
         // The unit leaves the table for its leave, so that the world can be used freely.
