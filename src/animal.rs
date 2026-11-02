@@ -250,6 +250,8 @@ macro_rules! keys {
             pub amphibious: bool,
             /// `cSwims`, `cUnderwater` and `cOnlyUnderwater` of the type.
             pub swims: bool,
+            /// `cHeliRecovery` is 1: the helicopter and the scientist recover the species.
+            pub heli_recovery: bool,
             pub underwater: bool,
             pub only_underwater: bool,
             /// The species prefers salt water: its value for terrain 10 is at least that of
@@ -271,6 +273,7 @@ macro_rules! keys {
                     death_chance: int("cDeathChance", class.death_chance),
                     amphibious,
                     swims: int("cSwims", 0) == 1,
+                    heli_recovery: int("cHeliRecovery", 0) == 1,
                     underwater: int("cUnderwater", 0) == 1,
                     only_underwater: int("cOnlyUnderwater", 0) == 1,
                     salt: false,
@@ -364,7 +367,6 @@ keys! {
     land_needed: "cLandNeeded" = 1,
     lays_eggs: "cLaysEggs" = 0,
     stay_sick: "cStaySick" = 0,
-    heli_recovery: "cHeliRecovery" = 0,
     time_to_hatch: "cTimeToHatch" = 0,
     min_hatch_hits: "cMinHatchHits" = 0,
 }

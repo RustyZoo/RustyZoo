@@ -34,6 +34,8 @@ fn types(range: &str) -> Catalogue {
     cat.push(ty("keeper", "scient", 9551, ""));
     cat.push(ty("animals", "zebra", 5100, "cMaxEnergy=80"));
     cat.push(ty("animals", "heron", 5200, "cHeliRecovery=1"));
+    cat.push(ty("animals", "ibis", 5300, "cHeliRecovery=2"));
+    cat.push(ty("animals", "kiwi", 5400, "cHeliRecovery=-1"));
     cat.push(ty("animals", "trex", 7001, "cPrey=9500"));
     cat
 }
@@ -241,7 +243,6 @@ fn an_animal_on_water_is_left_alone() {
 fn the_keeper_closes_in_on_a_path_that_may_be_partial_and_fires_within_his_weapon_range() {
     // The animal is 13 squared tiles away.
     let ranges = [
-        ("", false),
         ("cWeaponRange=3", false),
         ("cWeaponRange=4", true),
         ("cWeaponRange=-4", true),
@@ -265,7 +266,7 @@ fn the_keeper_closes_in_on_a_path_that_may_be_partial_and_fires_within_his_weapo
         assert_eq!(r.job_target.pos, u.destination, "{key}");
     }
     // The leg ends where he stands on the tile he aimed at, and the animal is elsewhere.
-    let cat = types("");
+    let cat = types("cWeaponRange=0");
     let mut w = zoo(&[(BEAST, "zebra", (13, 10))]);
     tick(&mut w, &cat);
     let aim = record(&w).job_target.tile.unwrap();
@@ -274,6 +275,63 @@ fn the_keeper_closes_in_on_a_path_that_may_be_partial_and_fires_within_his_weapo
     put(&mut w, ((aim % 20) as i32, (aim / 20) as i32));
     tick(&mut w, &cat);
     assert_eq!((record(&w).job, record(&w).job_target.tile), (13, None));
+}
+
+#[test]
+fn only_a_heli_recovery_of_one_calls_for_the_helicopter() {
+    let cat = types("");
+    for (kind, takes) in [
+        ("heron", false),
+        ("ibis", true),
+        ("kiwi", true),
+        ("zebra", true),
+    ] {
+        let mut w = zoo(&[(BEAST, kind, (13, 10))]);
+        tick(&mut w, &cat);
+        assert_eq!(record(&w).task == CAPTURE, takes, "{kind}");
+    }
+}
+
+#[test]
+fn a_staff_type_without_a_weapon_range_darts_within_five_tiles() {
+    let cat = types("");
+    // 13 squared tiles away: inside the range of 5 (25).
+    let mut w = zoo(&[(BEAST, "zebra", (13, 10))]);
+    tick(&mut w, &cat);
+    assert_eq!(record(&w).job, 14);
+    // 6 tiles away (36): he closes in.
+    let mut w = zoo(&[(BEAST, "zebra", (16, 12))]);
+    tick(&mut w, &cat);
+    assert_eq!(record(&w).job, 13);
+}
+
+#[test]
+fn the_first_qualifying_animal_is_taken_when_no_distance_is_known() {
+    let cat = types("");
+    let lost = |w: &mut World, id: u32| {
+        let at = w.find(id).unwrap();
+        w.zoo.entities[at].common.as_mut().unwrap().x = -100_000;
+    };
+    let found = |w: &mut World| {
+        with(w, &cat, KEEPER, |cx| cx.keeper_ladder(NONE, false));
+        captured(w)
+    };
+    let two = [(BEAST, "zebra", (13, 10)), (OTHER, "zebra", (11, 12))];
+    // A keeper with no tile takes the first, and so does a lone animal with no tile.
+    let mut w = zoo(&two);
+    lost(&mut w, KEEPER);
+    assert_eq!(found(&mut w), BEAST);
+    let mut w = zoo(&two[..1]);
+    lost(&mut w, BEAST);
+    assert_eq!(found(&mut w), BEAST);
+    // One with a tile replaces a first with none, but a first with a tile keeps its place against
+    // a later one with none.
+    let mut w = zoo(&two);
+    lost(&mut w, BEAST);
+    assert_eq!(found(&mut w), OTHER);
+    let mut w = zoo(&two);
+    lost(&mut w, OTHER);
+    assert_eq!(found(&mut w), BEAST);
 }
 
 #[test]

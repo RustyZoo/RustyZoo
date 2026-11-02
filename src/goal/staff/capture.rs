@@ -41,7 +41,7 @@ impl Cx<'_, '_> {
         if !a.escaped || wet {
             return false;
         }
-        let heli = animal::keys(self.world, self.ctx.cat, at).heli_recovery != 0;
+        let heli = animal::keys(self.world, self.ctx.cat, at).heli_recovery;
         let fits = match (heli, a.tranq) {
             (false, _) => ZOOKEEPER,
             (true, false) => HELICOPTER,
@@ -68,7 +68,8 @@ impl Cx<'_, '_> {
 
     /// `foundEscapedAnimal` (animals 11.6): his capture id goes, then the escaped animals with no
     /// live claim he may capture are walked in order and the one nearest by the Manhattan
-    /// distance wins, the first of equal ones. It is written as his capture id and he is the
+    /// distance wins: the first qualifying animal is taken whatever its distance, a later one
+    /// replaces it only when strictly nearer. It is written as his capture id and he is the
     /// animal's claim. Whether one was found.
     fn found_escaped(&mut self) -> bool {
         if let Some(s) = self.staff() {
@@ -95,7 +96,7 @@ impl Cx<'_, '_> {
                 }
                 _ => NOWHERE,
             };
-            if d < best {
+            if found == 0 || d < best {
                 (best, found) = (d, id);
             }
         }
@@ -170,7 +171,7 @@ impl Cx<'_, '_> {
     /// Job 13 check done: the animal is within the weapon range (a squared distance), else the
     /// tile of the leg is given up on arrival.
     pub(super) fn chase_check_done(&mut self) {
-        let range = (self.who().and_then(|w| number(w, "cWeaponRange"))).map_or(0, |n| n as i32);
+        let range = (self.who().and_then(|w| number(w, "cWeaponRange"))).map_or(5, |n| n as i32);
         let target = self.record().target.id;
         if self.distance(target) <= range.wrapping_mul(range) {
             self.record().job_done = true;
