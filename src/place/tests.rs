@@ -2012,3 +2012,53 @@ fn a_base_without_a_helicopter_type_makes_nothing_and_draws_nothing() {
     assert!(w.can_undo());
     assert_eq!(money.monthly[CONSTRUCTION][0], 2000.0);
 }
+
+/// A DRT base with its helicopter waiting at the pad (task 0x6a), entrance place one tile south.
+fn base_with_helicopter() -> (World, Catalogue, Money, u32, u32) {
+    use crate::building::birth::births;
+    let ini = helibase("birthUser=9550\nentrpos=0\nentrpos=64");
+    let cat = drt(&ini, true);
+    let mut w = world((0, 0), vec![], |_| {});
+    let mut money = zoo_money(50_000.0);
+    let base = place_base(&mut w, &cat, &mut money, (3, 3), 0);
+    let mut rng = crate::sim::Rng::default();
+    let heli = births(&mut w, &cat, base, &mut rng, 9, shape)[0];
+    (w, cat, money, base, heli)
+}
+
+#[test]
+fn a_sold_base_puts_its_helicopter_out_before_hiding_it() {
+    use crate::place::bulldozer::remove;
+    let (mut w, cat, mut money, base, heli) = base_with_helicopter();
+    let at = |w: &World| {
+        let c = w.zoo.entities[w.find(heli).unwrap()]
+            .common
+            .clone()
+            .unwrap();
+        (c.x, c.y)
+    };
+    let pad = at(&w);
+    let mut rng = crate::sim::Rng::default();
+    let removed = remove(&mut w, &mut money, &cat, base, &mut rng).unwrap();
+    assert_eq!(removed.members, [heli]);
+    // Its goal is stopped and it stands at the exit place, not at the pad.
+    let c = w.zoo.entities[w.find(heli).unwrap()]
+        .common
+        .as_ref()
+        .unwrap();
+    assert_eq!(c.unit.as_ref().unwrap().target.goal, 0);
+    assert_ne!(at(&w), pad);
+}
+
+#[test]
+fn an_undone_sale_of_the_base_brings_it_back_without_users_or_members() {
+    use crate::place::bulldozer::remove;
+    let (mut w, cat, mut money, base, _) = base_with_helicopter();
+    let mut rng = crate::sim::Rng::default();
+    remove(&mut w, &mut money, &cat, base, &mut rng).unwrap();
+    w.undo();
+    let at = w.find(base).expect("the base is back");
+    let b = w.zoo.entities[at].common.as_ref().unwrap();
+    let r = b.building.as_ref().unwrap();
+    assert_eq!((&r.users, r.users_now, &r.members), (&vec![], 0, &vec![]));
+}

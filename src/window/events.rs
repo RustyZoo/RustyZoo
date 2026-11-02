@@ -55,6 +55,9 @@ pub struct State {
     pub interface: bool,
     /// The mouse messages of the left button, the right button's release, the pointer and the wheel, in order.
     pub mouse: Vec<Raw>,
+    /// A script drives the run: the real mouse is ignored, as a headless run has none (its
+    /// moves and clicks would land between the script's `mouse` and `down`).
+    pub scripted: bool,
 }
 
 impl State {
@@ -120,13 +123,17 @@ impl State {
 
 impl State {
     /// Turns the mouse messages noted so far into commands. `place` gives the pixel of the game
-    /// under a point of the window. A button message first moves the pointer to its position.
+    /// under a point of the window. A button message first moves the pointer to its position. A
+    /// scripted run drops them.
     pub fn mouse_commands<E>(
         &mut self,
         mut place: impl FnMut((f32, f32)) -> Result<(i32, i32), E>,
         commands: &mut Vec<Command>,
     ) -> Result<(), E> {
         for raw in std::mem::take(&mut self.mouse) {
+            if self.scripted {
+                continue;
+            }
             match raw {
                 Raw::Move(x, y) => {
                     let (px, py) = place((x, y))?;
@@ -285,5 +292,21 @@ mod tests {
             ]
         );
         assert!(state.mouse.is_empty());
+    }
+
+    #[test]
+    fn a_scripted_run_ignores_the_real_mouse() {
+        let mut state = State {
+            interface: true,
+            scripted: true,
+            ..State::default()
+        };
+        let mut commands = Vec::new();
+        state.mouse.push(Raw::Move(1.0, 2.0));
+        state.mouse.push(Raw::Down(1.0, 2.0));
+        state
+            .mouse_commands(|(x, y)| Ok::<_, ()>((x as i32, y as i32)), &mut commands)
+            .unwrap();
+        assert!(commands.is_empty() && state.mouse.is_empty());
     }
 }

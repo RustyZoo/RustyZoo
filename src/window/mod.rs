@@ -144,6 +144,7 @@ pub fn run(
     cursors.borrow_mut().show(busy_number(alternate));
     let mut sound = Sound::open(&sdl, ini);
     let mut pump = sdl.event_pump()?;
+    let scripted = !flags.script.is_empty();
     let mut script = flags.script.into_iter().peekable();
     let mut commands = Vec::new();
     // The ini file starts the game in full screen; the camera is told before the first pass, so
@@ -248,6 +249,7 @@ pub fn run(
     let mut state = State {
         interface: app.interface().is_some(),
         alternate,
+        scripted,
         ..State::default()
     };
     // A long operation of the game shows the busy cursor before it begins: the pass that ends
@@ -276,8 +278,9 @@ pub fn run(
     let start = sdl3::timer::ticks();
     let mut shown = false;
     let mut pointer = None;
-    // The dummy driver has no pointer and reports one in the corner, which would scroll the view.
-    let has_pointer = video.current_video_driver() != "dummy";
+    // The dummy driver has no pointer and reports one in the corner, which would scroll the view;
+    // a script moves its own pointer, and a real one at the edge would scroll the view under it.
+    let has_pointer = !scripted && video.current_video_driver() != "dummy";
     let mut wait = Wait::default();
     let mut seen = false;
     loop {

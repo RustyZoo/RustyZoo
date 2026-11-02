@@ -104,7 +104,7 @@ impl World {
     /// transient type keeps no body (zoo format 6.2, the original refuses a file where it has one;
     /// a fence keeps its figures), an animal gets the record of its live state over the one it was
     /// read with (or the record of a new one, save games 11.3), a guest or a building made in play
-    /// gets the record of a new one, a guest's record takes the live guest's fields, and a staff
+    /// gets the record of a new one (the building with the users it has now), a guest's record takes the live guest's fields, and a staff
     /// member's record takes its live state.
     pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         // A save writes the install language, whatever the file loaded said (localisation 10).
@@ -153,8 +153,14 @@ impl World {
                 }
                 "building" if c.raw.is_new() => {
                     let price = Kind::of(ty, self.units.prices.default).price;
-                    c.building
-                        .get_or_insert_with(|| fresh::building_new(price, now));
+                    let b = (c.building).get_or_insert_with(|| fresh::building_new(price, now));
+                    // The users it has now, in entering order (guest buildings 4).
+                    if let Some(live) = self.units.buildings.get(&c.id) {
+                        b.users = (live.users.iter())
+                            .map(|&(u, s, _)| (u, s as u32))
+                            .collect();
+                        b.users_now = (b.users.len() as u32).saturating_add(live.extra);
+                    }
                 }
                 _ => {}
             }
