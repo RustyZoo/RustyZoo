@@ -1340,7 +1340,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: four mates, the same birth.
-check base-trial "mates:3;birth@4193;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@13984;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1361,7 +1361,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
-check expansion-trial "egg@3026;eggs:6;hatch@3738" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3036;eggs:6;hatch@3687" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

@@ -43,10 +43,6 @@ pub enum Mate {
     Away,
 }
 
-/// What the birth makes of the young, called when the roll succeeded: whether at least one young
-/// animal was put in the exhibit.
-pub type Birth<'a> = &'a mut dyn FnMut(&mut Animal, &mut Rng) -> bool;
-
 /// The hatch counter of an egg laid under the `eggs_hatch_fast` cheat (cheats 4.2 C).
 const EGG_HATCH_FAST: i32 = 5;
 
@@ -130,7 +126,7 @@ pub fn reproduction(
     env: &Env,
     rng: &mut Rng,
     out: &mut Out,
-    birth: Birth,
+    fx: &mut dyn super::Effects,
 ) {
     let ready = a.interval >= k.reproduction_interval;
     if !ready {
@@ -178,7 +174,7 @@ pub fn reproduction(
     if (happy || boosted) && env.male && ready && (a.mate != 0 || find(a, env, rng, out)) {
         let rolled = rng.chance(k.reproduction_chance);
         out.boost_used = boosted;
-        if (rolled || boosted) && birth(a, rng) {
+        if (rolled || boosted) && fx.birth(a, rng) {
             a.interval = 0;
             a.change(k.baby_born_change);
         }

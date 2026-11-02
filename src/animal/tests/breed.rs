@@ -7,12 +7,16 @@ use crate::animal::breed::{self, Mate};
 /// The checks with the birth of `born` (which says whether the young are made) and how often it
 /// was asked for.
 fn go(a: &mut Animal, k: &Keys, env: &Env, rng: &mut Rng, born: bool) -> (Out, u32) {
-    let mut asked = 0;
-    let out = crate::animal::run_with(a, k, &Class::default(), env, rng, &mut |_, _| {
-        asked += 1;
-        born
-    });
-    (out, asked)
+    struct Born(bool, u32);
+    impl Effects for Born {
+        fn birth(&mut self, _: &mut Animal, _: &mut Rng) -> bool {
+            self.1 += 1;
+            self.0
+        }
+    }
+    let mut fx = Born(born, 0);
+    let out = crate::animal::run_with(a, k, &Class::default(), env, rng, &mut fx);
+    (out, fx.1)
 }
 
 /// A male that may breed at its next reproduction check: happy, ready, with a mate.

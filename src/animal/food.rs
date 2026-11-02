@@ -101,7 +101,14 @@ pub fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
 }
 
 /// The hunger check (4): the rise, and what a hungry animal does about food.
-pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &mut Out) {
+pub fn hunger(
+    a: &mut Animal,
+    k: &Keys,
+    class: &super::Class,
+    env: &Env,
+    (rng, fx): (&mut Rng, &mut dyn super::Effects),
+    out: &mut Out,
+) {
     if !fire(&mut a.counters[super::HUNGER], class.periods[super::HUNGER]) {
         return;
     }
@@ -122,6 +129,10 @@ pub fn hunger(a: &mut Animal, k: &Keys, class: &super::Class, env: &Env, out: &m
     // The dung meter is tested before its own rise, like the hunger (8.1, 18.2).
     out.dung = a.dung >= k.dirty_threshold;
     a.dung_change = a.dung_change.saturating_add(k.dirty_increment);
+    // The pile is put down here, among the draws and before the later checks read the exhibit.
+    if out.dung && fx.pile(rng) {
+        a.dung = 0;
+    }
 }
 
 /// 4.3: no food for a hungry animal.

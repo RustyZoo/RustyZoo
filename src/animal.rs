@@ -62,6 +62,7 @@ use crate::unit::{Ctx, Part, Unit};
 use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{AnimalRecord, Entity};
+use std::borrow::Cow;
 
 pub mod breed;
 pub mod dirt;
@@ -829,21 +830,43 @@ pub struct Out {
     pub shelter: Option<u32>,
 }
 
+/// What the checks do to the world in the middle of a tick, among their draws (animals 4.2); the
+/// default does nothing.
+pub trait Effects {
+    /// The reproduction check succeeded (animals-needs 11.4): whether at least one young animal
+    /// was put in the exhibit.
+    fn birth(&mut self, _father: &mut Animal, _rng: &mut Rng) -> bool {
+        false
+    }
+    /// The hunger check puts a dung pile down (animals-needs 8.1): whether it is done.
+    fn pile(&mut self, _rng: &mut Rng) -> bool {
+        false
+    }
+    /// The captivity tick tramples the ground under the animal (animals 4.5).
+    fn trample(&mut self) {}
+    /// A check reads the animal's exhibit: when it was marked dirty it is rated again, which
+    /// draws, and the values the checks read are renewed.
+    fn read(&mut self, _a: &Animal, _rng: &mut Rng) -> Option<Env> {
+        None
+    }
+}
+
+impl Effects for () {}
+
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
 /// generator, drawn from in that order. No young animal is ever born.
 pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) -> Out {
-    run_with(a, k, class, env, rng, &mut |_, _| false)
+    run_with(a, k, class, env, rng, &mut ())
 }
 
-/// The same, with `birth` making the young when the reproduction check succeeds, among the
-/// draws (animals-needs 11.4).
+/// The same, with `fx` doing what the checks do to the world among the draws.
 pub fn run_with(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
     env: &Env,
     rng: &mut Rng,
-    birth: breed::Birth,
+    fx: &mut dyn Effects,
 ) -> Out {
     let mut out = Out {
         meal: env.meal.clone(),
@@ -875,7 +898,7 @@ pub fn run_with(
         }
     }
     breed::grow(a, k, env, &mut out);
-    breed::reproduction(a, k, class, env, rng, &mut out, birth);
+    breed::reproduction(a, k, class, env, rng, &mut out, fx);
     if a.dying {
         // Removed unless its death set still runs.
         out.remove |= !(env.sets.dying_now || out.sets.contains(&"bDie"));
@@ -896,12 +919,20 @@ pub fn run_with(
     if a.eating {
         food::eat(a, k, &mut out.meal);
     }
-    food::hunger(a, k, class, env, &mut out);
+    food::hunger(a, k, class, env, (&mut *rng, &mut *fx), &mut out);
     tank::breath(a, k, class, env);
     tank::murky(a, k, class, env);
-    life::health(a, k, class, env, rng, &mut out);
-    life::sleep(a, k, class, env, &mut out);
-    captivity(a, k, class, env, rng, &mut out);
+    // The checks that read the exhibit rate it again first when the pile or the trampled ground
+    // marked it (animals-needs 9, animals 5.1).
+    let mut env = Cow::Borrowed(env);
+    if a.counters[HEALTH] == 0 {
+        env = fx.read(a, rng).map_or(env, Cow::Owned);
+    }
+    life::health(a, k, class, &env, rng, &mut out);
+    life::sleep(a, k, class, &env, &mut out);
+    captivity(a, k, class, &env, (rng, &mut *fx), &mut out);
+    env = fx.read(a, rng).map_or(env, Cow::Owned);
+    let env = &*env;
     social(a, k, class, env);
     fire(&mut a.counters[KEEPER], class.periods[KEEPER]);
     habitat(a, k, class, env, &mut out.messages);
@@ -963,7 +994,14 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out
 
 /// The captivity tick (animals 4.5): the change, and below the threshold two draws that may
 /// trample the ground under the animal.
-fn captivity(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
+fn captivity(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &Env,
+    (rng, fx): (&mut Rng, &mut dyn Effects),
+    out: &mut Out,
+) {
     if !fire(&mut a.counters[CAPTIVITY], class.periods[CAPTIVITY]) {
         return;
     }
@@ -975,6 +1013,9 @@ fn captivity(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, 
         && rng.chance(k.dirt_chance)
     {
         out.trample = env.grass;
+        if out.trample {
+            fx.trample();
+        }
     }
 }
 
@@ -1309,6 +1350,108 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     a.crated = std::mem::take(&mut unit.boxed);
 }
 
+/// The exhibit-dependent values of `env` for the animal `a`, standing in exhibit `x`: the exhibit
+/// and its amphibious neighbours are rated again first when dirty (habitat rating 5.1).
+fn view(
+    env: &mut Env,
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    x: u32,
+    key: &str,
+    a: &Animal,
+) {
+    let exhibit = world.exhibits().get(x);
+    let near: Vec<u32> = (exhibit.iter())
+        .flat_map(|e| std::iter::once(x).chain(e.amphibious.iter().copied()))
+        .collect();
+    env.size = (near.iter())
+        .filter_map(|&n| world.exhibits().get(n))
+        .map(|e| e.tiles)
+        .sum();
+    for &n in &near {
+        rating::refresh(world, cat, n, &mut || rng.rand());
+    }
+    env.census = census(world, x, &near, key);
+    env.sick_near = env
+        .census
+        .sick
+        .saturating_sub(u32::from(a.at_minimum_health));
+    env.keeper_working = a.at_minimum_health && a.hunger >= 100 && life::keeper_at_work(world, x);
+    let own = records(world, cat, x, rng)
+        .into_iter()
+        .find(|r| r.key == key);
+    if let Some(r) = own {
+        let near = world
+            .exhibits()
+            .get(x)
+            .map_or(Vec::new(), |e| e.amphibious.clone());
+        let read = &mut |n| records(world, cat, n, rng);
+        let seen = rating::rating(x, &near, key, read).unwrap_or_default();
+        env.species = r.animals as i32;
+        env.rating = rating::shown(seen) as i32;
+        env.other = r.other.round() as i32;
+    }
+}
+
+/// What the checks of the animal at position `at` do to the world among their draws.
+struct Touch<'a> {
+    world: &'a mut World,
+    cat: &'a Catalogue,
+    data: &'a dyn Data,
+    id: u32,
+    at: usize,
+    k: &'a Keys,
+    /// The values the checks were given.
+    env: &'a Env,
+    /// The tile under the animal, its coordinates and its exhibit.
+    tile: Option<usize>,
+    xy: (i32, i32),
+    x: Option<u32>,
+    /// The terrain type of trampled ground.
+    paint: u8,
+    key: &'a str,
+}
+
+impl Effects for Touch<'_> {
+    fn birth(&mut self, father: &mut Animal, rng: &mut Rng) -> bool {
+        let bonus = self.k.baby_born_change;
+        let from = (&mut *self.world, self.cat, self.data);
+        breed::born(father, self.id, from, (self.at, bonus), rng)
+    }
+
+    fn pile(&mut self, rng: &mut Rng) -> bool {
+        dirt::put_down(self.world, self.cat, rng, self.id, self.at, self.k)
+    }
+
+    fn trample(&mut self) {
+        let Some(t) = self.tile else {
+            return;
+        };
+        let (tile, world) = (self.world.zoo.tiles[t], &mut *self.world);
+        let (tx, ty) = self.xy;
+        let painted =
+            world.unrecorded(|w| w.set_tile(tx, ty, tile.elevation, tile.shape, self.paint));
+        // The ground of the exhibit changed: it is rated again.
+        if let Some(x) = self.x.filter(|_| painted) {
+            world.exhibits_mut().mark(x);
+        }
+        world.units.tell(format!("trample {} {tx},{ty}", self.id));
+    }
+
+    fn read(&mut self, a: &Animal, rng: &mut Rng) -> Option<Env> {
+        let x = self.x?;
+        let dirty = |n| self.world.exhibits().get(n).is_some_and(|e| e.rating.dirty);
+        let near = (self.world.exhibits().get(x)).map_or(Vec::new(), |e| e.amphibious.clone());
+        if !(dirty(x) || near.into_iter().any(dirty)) {
+            return None;
+        }
+        let mut env = self.env.clone();
+        view(&mut env, self.world, self.cat, rng, x, self.key, a);
+        Some(env)
+    }
+}
+
 /// The update of the values at a status tick (animals 3.3).
 pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let k = keys(world, ctx.cat, at);
@@ -1395,55 +1538,32 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             rating::refresh(world, ctx.cat, x, &mut || ctx.rng.rand());
             env.candidates = breed::candidates(world, at, x, a);
         }
-        env.size = (near.iter())
-            .filter_map(|&n| world.exhibits().get(n))
-            .map(|e| e.tiles)
-            .sum();
-        for &n in &near {
-            rating::refresh(world, ctx.cat, n, &mut || ctx.rng.rand());
-        }
-        env.census = census(world, x, &near, &key);
-        env.sick_near = env
-            .census
-            .sick
-            .saturating_sub(u32::from(a.at_minimum_health));
-        env.keeper_working =
-            a.at_minimum_health && a.hunger >= 100 && life::keeper_at_work(world, x);
+        view(&mut env, world, ctx.cat, ctx.rng, x, &key, a);
         let regions = food::near(world, x, &k);
         let pieces = food::pieces(world, ctx.cat, &regions, k.food_kind);
         env.food_total = pieces.iter().map(|p| p.left).fold(0, i32::saturating_add);
-        let own = records(world, ctx.cat, x, ctx.rng)
-            .into_iter()
-            .find(|r| r.key == key);
-        if let Some(r) = own {
-            let near = world
-                .exhibits()
-                .get(x)
-                .map_or(Vec::new(), |e| e.amphibious.clone());
-            let read = &mut |n| records(world, ctx.cat, n, ctx.rng);
-            let seen = rating::rating(x, &near, &key, read).unwrap_or_default();
-            env.species = r.animals as i32;
-            env.rating = rating::shown(seen) as i32;
-            env.other = r.other.round() as i32;
-        }
     }
     if a.counters[SHELTER] == 0 && k.building_use > 0 {
         let who = crate::building::Species::of(ctx.cat, &world.zoo.entities[at], a.egg);
         env.shelter = shelters(world, ctx.cat, a.building, tile, who.as_ref());
     }
     let id = unit.id;
-    let cat = ctx.cat;
-    let mut birth = |father: &mut Animal, rng: &mut Rng| {
-        breed::born(
-            father,
-            id,
-            (&mut *world, cat, data),
-            (at, k.baby_born_change),
-            rng,
-        )
+    let mut fx = Touch {
+        world: &mut *world,
+        cat: ctx.cat,
+        data,
+        id,
+        at,
+        k: &k,
+        env: &env,
+        tile,
+        xy: (tx, ty_),
+        x,
+        paint: class.trample,
+        key: &key,
     };
     let breath = a.breath;
-    let mut out = run_with(a, &k, &class, &env, ctx.rng, &mut birth);
+    let mut out = run_with(a, &k, &class, &env, ctx.rng, &mut fx);
     if a.breath != breath {
         world.units.tell(format!("breath {id} {}", a.breath));
     }
@@ -1461,25 +1581,12 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     if let Some(change) = out.terrain {
         tank::switch(unit, world, ctx, at, data, change);
     }
-    if let Some(t) = tile.filter(|_| out.trample) {
-        let tile = world.zoo.tiles[t];
-        let painted =
-            world.unrecorded(|w| w.set_tile(tx, ty_, tile.elevation, tile.shape, class.trample));
-        // The ground of the exhibit changed: it is rated again.
-        if let Some(x) = x.filter(|_| painted) {
-            world.exhibits_mut().mark(x);
-        }
-        world.units.tell(format!("trample {} {tx},{ty_}", unit.id));
-    }
     for m in out.messages {
         world.units.post(m, unit.id);
         world.units.tell(format!("message {m} {}", unit.id));
     }
     for set in &out.sets {
         life::start_or_queue(unit, world, ctx, at, data, set);
-    }
-    if out.dung {
-        dirt::put_down(unit, world, ctx, at, &k);
     }
     if out.remove {
         ctx.remove(world, id);

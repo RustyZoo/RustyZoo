@@ -96,14 +96,21 @@ pub fn put_z(
 
 /// `putDownDirt` (8.1) for the animal at position `at`: in a tank the water loses purity; on land
 /// a pile of its size goes in the middle of the tile, if the quarter there is free; in the water
-/// nothing happens. When it is done the dung meter restarts at 0.
-pub fn put_down(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, k: &Keys) {
+/// nothing happens. Whether it is done (the dung meter then restarts at 0).
+pub fn put_down(
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    id: u32,
+    at: usize,
+    k: &Keys,
+) -> bool {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
-        return;
+        return false;
     };
     let (x, y) = (c.x.div_euclid(64), c.y.div_euclid(64));
     let Some(tile) = world.tile_index(x, y) else {
-        return;
+        return false;
     };
     let done = if let Some(tank) = world.tank_at(tile) {
         world.pollute(tank, k.poo_impact.max(0) as u32);
@@ -115,9 +122,9 @@ pub fn put_down(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, k:
         } else {
             i32::from(k.small_dung == 1)
         };
-        let ty = ctx.cat.find("objects", b"other", name.as_bytes());
+        let ty = cat.find("objects", b"other", name.as_bytes());
         // The facing is drawn before the pile is added.
-        let facing = ctx.rng.rand() & 7;
+        let facing = rng.rand() & 7;
         let free = world.quadrant(tile, 3).is_none();
         let made = ty
             .filter(|_| free)
@@ -125,17 +132,17 @@ pub fn put_down(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, k:
         world.mark_rating(tile);
         // A pile on the zoo grounds calls a maintenance worker (8.1 point 3).
         if made && world.exhibits().region(tile) == Some(crate::exhibit::GROUNDS) {
-            let event = crate::world::piece_event(unit.id, DUNG, tile as u32);
+            let event = crate::world::piece_event(id, DUNG, tile as u32);
             world.units.posts.push(event);
         }
         made
     } else {
         false
     };
-    if let (true, Part::Animal(a)) = (done, &mut unit.part) {
-        a.dung = 0;
-        world.units.tell(format!("dung {} {x},{y}", unit.id));
+    if done {
+        world.units.tell(format!("dung {id} {x},{y}"));
     }
+    done
 }
 
 /// Every animal of exhibit `x` mourns at its next tick (animals-needs 10.4): the exhibit's stored
