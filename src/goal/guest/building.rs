@@ -153,6 +153,8 @@ impl Cx<'_, '_> {
         if let Some(g) = self.guest() {
             (g.need, g.building) = (Some(need), b);
         }
+        // The building target and its tiles are set: the cost is written back (pathfinding 6.5).
+        self.cost_back();
         let started = self.set_out(b);
         if !started {
             self.clear_target();
@@ -251,6 +253,7 @@ impl Cx<'_, '_> {
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
     /// (0x67), else it finds the building crowded.
     pub(in crate::goal) fn building_arrived(&mut self) {
+        self.cost_back();
         let id = self.target().0;
         let slot = self.open_slot(id);
         let tile = slot.and_then(|(_, p)| self.tile_at(p));
@@ -270,6 +273,7 @@ impl Cx<'_, '_> {
     /// guest takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
     /// walk at the next update.
     pub(in crate::goal) fn entrance_arrived(&mut self) {
+        self.cost_back();
         let Some(id) = self.aim().map(|(b, _, _)| *b) else {
             return;
         };

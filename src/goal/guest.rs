@@ -193,7 +193,7 @@ impl Cx<'_, '_> {
         if let Some(entrance) = self.entrance() {
             // The way out is searched at the normal cost; only an afraid guest then pays the
             // emergency one and runs.
-            (self.unit.mover.emergency, self.unit.mover.word) = (false, None);
+            self.cost_back();
             if self.path_to(entrance, true) {
                 self.unit.mover.emergency = afraid;
                 let started = match afraid {
