@@ -151,3 +151,33 @@ fn snapping_takes_the_crate_footprint_while_crated() {
     };
     assert_eq!([snapped(true), snapped(false)], [(0, 32), (48, 16)]);
 }
+
+#[test]
+fn an_opened_crate_snaps_with_its_footprint_turned_by_the_facing() {
+    let cat = zebras_with(
+        "cBoxFootprintX=4\ncBoxFootprintY=2\ncEggFootprintX=1\ncEggFootprintY=2",
+        "",
+    );
+    let mut world = pens_with(|n, x0| match n {
+        0 => vec![entity("animals", "f", (x0, 2), 0, 500)],
+        _ => Vec::new(),
+    });
+    let mut sim = Sim::new(b"");
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let at = world.find(500).unwrap();
+    let mut snapped = |crated: bool, rotation: u32| {
+        let c = world.zoo.entities[at].common.as_mut().unwrap();
+        (c.x, c.y) = (c.x.div_euclid(64) * 64 + 41, c.y.div_euclid(64) * 64 + 9);
+        c.rotation = rotation;
+        if let Part::Animal(a) = &mut world.units.get_mut(500).unwrap().part {
+            (a.crated, a.egg) = (crated, !crated);
+        }
+        crate::animal::boxed::snap(&mut world, &cat, at);
+        let (x, y) = spot(&world, 500);
+        (x.rem_euclid(64), y.rem_euclid(64))
+    };
+    let egg = [0, 1, 2, 3, 4].map(|r| snapped(false, r));
+    assert_eq!(egg, [(48, 32), (32, 16), (32, 16), (32, 16), (48, 32)]);
+    assert_eq!([snapped(true, 0), snapped(true, 1)], [(0, 32), (32, 0)]);
+}

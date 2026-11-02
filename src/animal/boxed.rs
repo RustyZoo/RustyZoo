@@ -18,7 +18,7 @@ pub fn crate_up(a: &mut Animal) {
 }
 
 /// Snaps the unit at `at` to the tile grid where it stands (unit placing 9.1, 9.2): the position
-/// of `placing.md` 4.2 for its footprint now, the crate's while crated, and the ground under it.
+/// of `placing.md` 4.2 for its footprint now (turned by the facing), the crate's while crated, and the ground under it.
 pub fn snap(world: &mut World, cat: &Catalogue, at: usize) {
     let Some(shape) = world.shape(at) else {
         return;
@@ -27,7 +27,13 @@ pub fn snap(world: &mut World, cat: &Catalogue, at: usize) {
         return;
     };
     let (point, z, rotation) = ((c.x, c.y), c.z, c.rotation);
-    let fp = unit_footprint(world, cat, at, shape);
+    let (fx, fy) = unit_footprint(world, cat, at, shape);
+    // The footprint is turned by the facing (unit placing 9.1.1).
+    let fp = if rotation % 4 == 0 {
+        (fx, fy)
+    } else {
+        (fy, fx)
+    };
     let (x, y) = grid(Class::Fixed, point, fp, 0);
     world.place_unit(at, (x, y, z), rotation);
     movement::snap(world, at);
