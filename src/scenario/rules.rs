@@ -12,6 +12,7 @@ use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::{Env, Gui};
+use crate::animal::exhibit_animals;
 use crate::animal::home::home;
 use crate::build::{number, plain};
 use crate::entity::Catalogue;
@@ -19,7 +20,6 @@ use crate::exhibit::rating;
 use crate::exhibit::rating::Likes;
 use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
 use crate::panel::animal::{suitability, suitability_in};
-use crate::panel::exhibit::animals_exhibit;
 use crate::status::zoo::Status;
 use crate::world::World;
 
@@ -143,19 +143,29 @@ fn homes<'e>(env: &'e Env, g: &Game) -> &'e Homes {
     env.cache.homes.get_or_init(|| {
         let mut homes = Homes::new();
         let mut seen: HashMap<(u32, &str), i32> = HashMap::new();
-        for (i, f) in facts(env, g).iter().enumerate() {
-            // No state is tested: eggs and crated animals standing there count (scenarios 6).
-            let Some(x) = animals_exhibit(g.world, f.at).filter(|_| f.animal.is_some()) else {
-                continue;
-            };
-            let kind = g.world.zoo.entities[f.at].type_name.as_str();
-            let shown = *seen
-                .entry((x, kind))
-                .or_insert_with(|| suitability(g.world, g.cat, f.at));
-            homes.entry(x).or_default().push((i, shown));
+        let facts = facts(env, g);
+        // The exhibits whose animal count is not 0, each one's stored animal list (habitat rating
+        // 5.1; the world manager of the step has recomputed every dirty exhibit before the
+        // scenario pass). No state is tested: eggs and crated animals standing there count.
+        for x in (g.world.exhibits().list().iter()).filter(|x| x.rating.counts.1 != 0) {
+            for at in exhibit_animals(g.world, x.id) {
+                let Some(i) = fact(facts, at).filter(|&i| facts[i].animal.is_some()) else {
+                    continue;
+                };
+                let kind = g.world.zoo.entities[at].type_name.as_str();
+                let shown = *seen
+                    .entry((x.id, kind))
+                    .or_insert_with(|| suitability(g.world, g.cat, at));
+                homes.entry(x.id).or_default().push((i, shown));
+            }
         }
         homes
     })
+}
+
+/// The index in `facts` (in entity order) of the entity at `at`.
+fn fact(facts: &[Fact], at: usize) -> Option<usize> {
+    facts.binary_search_by_key(&at, |f| f.at).ok()
 }
 
 /// The values of an animal that rules 4 to 6 compare: family, genus, species, location,
@@ -254,17 +264,27 @@ fn some_suit(env: &Env, g: &Game, rule: &[i32; 4], value: i32) -> i32 {
     let facts = facts(env, g);
     let list = g.world.exhibits().list();
     let good = list.iter().filter(|x| {
-        let near = |id| x.id == id || x.amphibious.contains(&id) || x.show_near.contains(&id);
+        // The exhibit's stored list, then those of its linked exhibits (one set).
+        let mut near = vec![x.id];
+        for &id in x.amphibious.iter().chain(&x.show_near) {
+            if !near.contains(&id) {
+                near.push(id);
+            }
+        }
         let mut seen: HashMap<&str, i32> = HashMap::new();
         let mut shown = Vec::new();
-        for f in facts {
+        for (h, at) in near.iter().flat_map(|&h| {
+            exhibit_animals(g.world, h)
+                .into_iter()
+                .map(move |at| (h, at))
+        }) {
+            let Some(f) = fact(facts, at).map(|i| &facts[i]) else {
+                continue;
+            };
             if !(f.animal.as_ref()).is_some_and(|a| passes(a, rule[1], rule[3])) {
                 continue;
             }
-            let Some(h) = animals_exhibit(g.world, f.at).filter(|&h| near(h)) else {
-                continue;
-            };
-            let e = &g.world.zoo.entities[f.at];
+            let e = &g.world.zoo.entities[at];
             let Some(ty) = g
                 .cat
                 .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))

@@ -340,8 +340,10 @@ impl Cx<'_, '_> {
     /// 5.3: the place for a pile of food in the water and the way there. The job ends when no
     /// tile of the tank is free. Returns the tile and the level of the pile.
     pub(super) fn tank_food_place(&mut self, x: u32) -> Option<(usize, i32)> {
-        use crate::panel::exhibit::animals_in;
-        let animals = animals_in(self.world, x);
+        // The exhibit's stored animal list, recomputed first when it is dirty (habitat rating 5.1).
+        let (cat, rng) = (self.ctx.cat, &mut *self.ctx.rng);
+        crate::exhibit::rating::refresh(self.world, cat, x, &mut || rng.rand());
+        let animals = crate::animal::exhibit_animals(self.world, x);
         let n = animals.len() as u32;
         let drawn = (n > 0).then(|| animals[self.ctx.rng.pick(n) as usize]);
         // The cost of a tile is the drawn animal's; with none, there is no cost test.

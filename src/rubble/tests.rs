@@ -262,3 +262,130 @@ fn a_rubble_piece_stands_on_the_ground_at_its_point() {
         }
     }
 }
+
+#[test]
+fn taking_off_one_piece_takes_the_whole_group_with_it() {
+    let cat = cat(&ALL);
+    let mut w = world(("objects", "car"), (64, 64));
+    // A bystander that a saved group wrongly names stays.
+    let mut other = entity("objects", "tree", 9, (640, 640), 0);
+    other.common.as_mut().unwrap().name = "Bystander".into();
+    let other = w.add(other, None).unwrap();
+    run(&mut w, &cat, &mut Rng::default());
+    let ids: Vec<u32> = w
+        .zoo
+        .entities
+        .iter()
+        .filter(|e| e.class == "rubble")
+        .map(|e| e.common.as_ref().unwrap().id)
+        .collect();
+    assert!(ids.len() >= 3);
+    for e in w.zoo.entities.iter_mut().filter(|e| e.class == "rubble") {
+        e.common
+            .as_mut()
+            .unwrap()
+            .rubble
+            .as_mut()
+            .unwrap()
+            .group
+            .extend([other, 999]);
+    }
+    // The last piece named, then a missing id, go the same way.
+    assert!(w.remove(*ids.last().unwrap()));
+    assert!(w.zoo.entities.iter().all(|e| e.class != "rubble"));
+    assert_eq!(w.zoo.entities.len(), 1);
+    assert!(!w.remove(ids[0]));
+}
+
+#[test]
+fn a_piece_alone_in_its_group_and_a_plain_entity_go_alone() {
+    let cat = cat(&ALL);
+    let mut w = world(("objects", "car"), (64, 64));
+    run(&mut w, &cat, &mut Rng::default());
+    let first = w.zoo.entities[0].common.as_ref().unwrap().id;
+    w.zoo.entities[0].common.as_mut().unwrap().rubble = Some(Rubble::default());
+    let count = w.zoo.entities.len();
+    assert!(w.remove(first));
+    assert_eq!(w.zoo.entities.len(), count - 1);
+    let rest = w.zoo.entities[0].common.as_ref().unwrap().id;
+    w.zoo.entities[0].common.as_mut().unwrap().rubble = None;
+    assert!(w.remove(rest));
+    assert_eq!(w.zoo.entities.len(), count - 2);
+}
+
+#[test]
+fn an_undo_brings_back_only_the_piece_removed_without_its_group() {
+    let cat = cat(&ALL);
+    let mut w = world(("objects", "car"), (64, 64));
+    run(&mut w, &cat, &mut Rng::default());
+    assert!(w.zoo.entities.len() > 1);
+    let id = w.zoo.entities[1].common.as_ref().unwrap().id;
+    w.begin();
+    w.remove(id);
+    w.priced(3.0);
+    assert!(w.zoo.entities.is_empty());
+    let undone = w.undo();
+    assert_eq!(w.zoo.entities.len(), 1);
+    let back = w.zoo.entities[0].common.as_ref().unwrap();
+    assert_eq!(back.id, id);
+    assert!(back.rubble.as_ref().unwrap().group.is_empty());
+    let prices: Vec<f32> = undone
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            crate::world::Step::Back(_, p) => Some(*p),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(prices, [3.0]);
+}
+
+/// The ids of the pieces whose first cell of their column made a piece, with their sound.
+fn explosions(keys: &str, seed: Option<u32>) -> (Vec<u32>, Vec<(u32, crate::behaviour::Heard)>) {
+    let mut cat = cat(&[]);
+    cat.push(ty("rubble", "other", "brubls1", 0, [1, 1], keys));
+    let mut w = world(("objects", "car"), (64, 64));
+    let mut rng = Rng::default();
+    seed.into_iter().for_each(|s| rng.seed(s));
+    run(&mut w, &cat, &mut rng);
+    let firsts = (w.zoo.entities.iter())
+        .filter_map(|e| e.common.as_ref().filter(|c| c.y == 48))
+        .map(|c| c.id)
+        .collect();
+    (firsts, w.units.take_sounds())
+}
+
+#[test]
+fn the_first_piece_of_each_column_explodes_with_the_sound_of_its_type() {
+    let keys = "cExplosionSound=sounds/rubble4.wav\ncExplosionSoundAtten=1100";
+    let (firsts, sounds) = explosions(keys, None);
+    assert_eq!(firsts.len(), 2);
+    assert_eq!(sounds.iter().map(|s| s.0).collect::<Vec<_>>(), firsts);
+    for (id, heard) in &sounds {
+        assert_eq!(
+            (heard.file.as_str(), heard.base),
+            ("sounds/rubble4.wav", 1100)
+        );
+        assert_eq!(heard.voice, format!("rubble/other/{id}/cExplosionSound"));
+    }
+    // No attenuation key: 0.
+    let (_, sounds) = explosions("cExplosionSound=sounds/rubble4.wav", None);
+    assert!(sounds.iter().all(|s| s.1.base == 0));
+    // No sound key, or an empty one: nothing, whatever the attenuation.
+    assert!(explosions("cExplosionSoundAtten=1100", None).1.is_empty());
+    assert!(explosions("cExplosionSound=", None).1.is_empty());
+}
+
+#[test]
+fn a_column_whose_first_cell_was_skipped_plays_nothing() {
+    let seed = (1..)
+        .find(|&s| {
+            let mut r = Rng::default();
+            r.seed(s);
+            r.pick(100) == 0
+        })
+        .unwrap();
+    let (firsts, sounds) = explosions("cExplosionSound=sounds/rubble4.wav", Some(seed));
+    assert!(firsts.len() < 2);
+    assert_eq!(sounds.iter().map(|s| s.0).collect::<Vec<_>>(), firsts);
+}

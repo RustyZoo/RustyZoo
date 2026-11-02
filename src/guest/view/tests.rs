@@ -137,6 +137,24 @@ fn a_guest_on_a_path_beside_a_pen_finds_its_area_and_sees_the_animals() {
 }
 
 #[test]
+fn h_is_the_average_stored_at_the_last_recomputation() {
+    let (mut w, cat) = (pen(&[40, 60]), catalogue());
+    let set = |w: &mut World, happiness: i32| {
+        w.units.get_mut(10).unwrap().part = Part::Animal(Animal {
+            happiness,
+            ..Animal::default()
+        });
+    };
+    // An animal's happiness changes: h keeps the stored 50 until the exhibit is recomputed.
+    set(&mut w, -100);
+    assert_eq!(herd(&mut w, &cat, 1, &mut Rng::default()).1, 50);
+    w.exhibits_mut().mark(1);
+    assert_eq!(herd(&mut w, &cat, 1, &mut Rng::default()).1, -20);
+    // An empty exhibit stores 0; a missing one reads 0.
+    assert_eq!(herd(&mut w, &cat, 99, &mut Rng::default()).1, 0);
+}
+
+#[test]
 fn the_viewing_check_changes_happiness_by_the_average_of_the_exhibit() {
     let (cat, tile, k) = (catalogue(), Some(55), keys());
     for (happiness, change) in [

@@ -199,8 +199,9 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
     } else {
         r.put(&[0; 4]);
     }
+    let mut members = Vec::new();
     if v >= 75 {
-        r.skip_list(4)?;
+        members = (0..r.count(4)?).map(|_| r.u32()).collect::<R<_>>()?;
     } else {
         r.put(&[0; 4]);
     }
@@ -214,6 +215,7 @@ fn building(r: &mut Reader) -> R<BuildingRecord> {
         users_now,
         fill,
         built,
+        members,
     })
 }
 
@@ -246,6 +248,7 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         }
     }
     r.skip_list(4)?;
+    let mut ret = 0;
     if v <= 93 {
         r.quiet(|r| {
             r.string()?;
@@ -253,7 +256,7 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         })?;
         r.put(&[0; 8]);
     } else {
-        r.skip(4)?;
+        ret = r.u32()?;
         r.string()?;
     }
     r.skip_list(8)?;
@@ -287,6 +290,7 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         items,
         leave,
         afraid,
+        ret,
         gift,
         wandered,
         stand,

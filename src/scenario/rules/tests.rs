@@ -70,8 +70,13 @@ struct Parts {
 }
 
 impl Parts {
-    fn new(world: World, cat: Catalogue) -> Parts {
+    fn new(mut world: World, cat: Catalogue) -> Parts {
         let (money, status) = (Money::default(), Status::default());
+        // The step recomputes the dirty exhibits before the pass (habitat rating 5.1).
+        let ids: Vec<u32> = world.exhibits().list().iter().map(|x| x.id).collect();
+        for id in ids {
+            crate::exhibit::rating::refresh(&mut world, &cat, id, &mut || 0);
+        }
         Parts {
             world,
             cat,
@@ -505,4 +510,33 @@ fn rules_that_read_the_game_read_0_without_one() {
             "rule {rule}"
         );
     }
+}
+
+fn listed(p: &mut Parts, x: u32) -> &mut Vec<u32> {
+    &mut p.world.exhibits_mut().get_mut(x).unwrap().rating.animals
+}
+
+#[test]
+fn rules_5_and_6_read_the_stored_animal_lists_recomputed_first() {
+    let mut p = Parts::new(world(), zoo_types());
+    let (tank, _) = exhibit_ids(&p);
+    let shark = p.world.find(2).unwrap();
+    let shown = |p: &Parts| i64::from(crate::panel::animal::suitability(&p.world, &p.cat, shark));
+    let low = shown(&p);
+    // The shark stands in the tank but is not in its stored list: rule 5 no longer sees it
+    // and rule 6 gives the tank no animal, so only the land counts.
+    listed(&mut p, tank).retain(|&id| id != 2);
+    assert_eq!(
+        p.value([6, 3, 1, 5002], -1000),
+        0,
+        "the list is the shark's"
+    );
+    assert_eq!(
+        p.value([5, 3, 5002, 0], low as i32),
+        0,
+        "no exhibit counted"
+    );
+    // Back in the list, it counts.
+    listed(&mut p, tank).push(2);
+    assert_eq!(p.value([5, 3, 5002, 0], low as i32), low as i32);
 }

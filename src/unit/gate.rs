@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use super::{Kind, Unit, Units};
 use crate::behaviour::{Data, Heard, Timing};
-use crate::entity::Catalogue;
+use crate::entity::{Catalogue, EntityType};
 use crate::render::slope_name;
 use crate::world::World;
 
@@ -126,6 +126,12 @@ fn heard(world: &World, cat: &Catalogue, at: usize, open: bool) -> Option<Heard>
         true => ("cOpenSound", "cOpenSoundAtten"),
         false => ("cCloseSound", "cCloseSoundAtten"),
     };
+    heard_of(ty, key, atten, key)
+}
+
+/// The sound a type names under `key` in its characteristics, with the base attenuation of
+/// `atten` (0 when absent); `None` without a name. The voice is `class/type/voice`.
+pub fn heard_of(ty: &EntityType, key: &str, atten: &str, voice: &str) -> Option<Heard> {
     let config = ty.config.as_deref()?;
     let read = |prefix: &[u8]| {
         let section = config.section([prefix, b"Characteristics/Integers"].concat())?;
@@ -137,7 +143,7 @@ fn heard(world: &World, cat: &Catalogue, at: usize, open: bool) -> Option<Heard>
         file: ty.sound_member(value),
         base,
         voice: format!(
-            "{}/{}/{key}",
+            "{}/{}/{voice}",
             ty.class,
             String::from_utf8_lossy(&ty.type_name)
         ),

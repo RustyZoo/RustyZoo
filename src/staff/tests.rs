@@ -341,11 +341,21 @@ fn a_worker_starts_the_countdown_of_its_unreachable_lists_and_nobody_else_does()
 /// inside tile is (2, 3)), the keeper 1, the worker 2 and the guide 3 on the grounds, a guest 4,
 /// and a second pen from (6, 1) with no gate. `records` go to the three staff members.
 fn pens(records: [Option<StaffRecord>; 3]) -> World {
+    pens_at(records, 1, ((2, 3), 4))
+}
+
+/// The two pens with their top row at `y0` and the first one's gate as given.
+fn pens_at(records: [Option<StaffRecord>; 3], y0: i32, gate: ((i32, i32), i32)) -> World {
     world_with((12, 8), |zoo| {
         let mut id = 100;
         for x0 in [1, 6] {
-            for (x, y) in (x0..x0 + 3).flat_map(|x| (1..4).map(move |y| (x, y))) {
-                for (d, edge) in [(0, y == 1), (2, x == x0 + 2), (4, y == 3), (6, x == x0)] {
+            for (x, y) in (x0..x0 + 3).flat_map(|x| (y0..y0 + 3).map(move |y| (x, y))) {
+                for (d, edge) in [
+                    (0, y == y0),
+                    (2, x == x0 + 2),
+                    (4, y == y0 + 2),
+                    (6, x == x0),
+                ] {
                     if edge {
                         id += 1;
                         zoo.entities
@@ -362,8 +372,8 @@ fn pens(records: [Option<StaffRecord>; 3]) -> World {
             member.common.as_mut().unwrap().staff = record.map(Box::new);
             zoo.entities.push(member);
         }
-        zoo.habitat_tiles = vec![(1, 1), (6, 1)];
-        zoo.habitat_gates = vec![((2, 3), 4), ((-1, -1), -1)];
+        zoo.habitat_tiles = vec![(1, y0), (6, y0)];
+        zoo.habitat_gates = vec![gate, ((-1, -1), -1)];
         let info = crate::zoo::HabitatInfo {
             name: "Pen".into(),
             stats: [0; 9],
@@ -500,6 +510,30 @@ fn a_saved_staff_member_writes_its_live_state_over_the_record_it_was_read_with()
     let r = saved(&w, 2);
     assert_eq!(r.duties, [true, true, true, false]);
     assert_eq!((r.tiles.len(), r.members.len(), r.leg), (0, 0, false));
+}
+
+#[test]
+fn a_gate_whose_outer_tile_is_off_the_map_is_saved_by_its_own_tile() {
+    let cat = staff_types();
+    // The gate is the north piece of tile (2, 0); the tile across is off the map.
+    let tiles = vec![[2, 0]];
+    let assigned = StaffRecord { tiles, ..record() };
+    let mut w = pens_at([Some(assigned), None, None], 0, ((2, 0), 0));
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim.load(&mut w, &cat);
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let at = w.find(1).unwrap();
+    let r = zoo.entities[at]
+        .common
+        .as_ref()
+        .unwrap()
+        .staff
+        .clone()
+        .unwrap();
+    assert_eq!(r.tiles, [[2, 0]]);
 }
 
 #[test]

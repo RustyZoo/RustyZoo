@@ -218,7 +218,8 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
 }
 
 /// The animals of exhibit `x` as (id, happiness) in the order of its stored list (6.3) and
-/// their average happiness h (4.3), read through a recomputation of a dirty exhibit.
+/// the exhibit's stored average happiness h (4.3; the one its last recomputation left, not the
+/// animals' happiness now), read through a recomputation of a dirty exhibit.
 pub fn herd(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> (Vec<(u32, i32)>, i32) {
     crate::exhibit::rating::refresh(world, cat, x, &mut || rng.rand());
     let held = beasts(world, cat);
@@ -229,8 +230,7 @@ pub fn herd(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> (Vec<(
             held.iter().find(|b| b.id == id).map(|b| (b.id, b.happy))
         })
         .collect();
-    let sum = all.iter().map(|a| a.1).sum::<i32>();
-    let average = sum.checked_div(all.len() as i32).unwrap_or(0);
+    let average = world.exhibits().get(x).map_or(0, |e| e.rating.happiness);
     (all, average)
 }
 

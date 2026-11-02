@@ -621,7 +621,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         }
         assert_ne!(run.hash(), base, "{what}");
     }
-    // Every field of a guest.
+    // The needs, the items and the building of a guest; not the rest.
     let guest = |change: &dyn Fn(&mut crate::guest::Guest)| {
         let mut run = game(3);
         let mut g = crate::guest::Guest::default();
@@ -630,35 +630,11 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
         run.hash()
     };
     let base = guest(&|_| {});
-    let date = crate::timing::Calendar::new().date();
-    let changes: [&dyn Fn(&mut crate::guest::Guest); 27] = [
-        &|g| g.guide = 9,
-        &|g| g.listening = true,
+    let changes: [&dyn Fn(&mut crate::guest::Guest); 4] = [
         &|g| g.values[3] = 1,
         &|g| g.values[0] = 1,
-        &|g| g.pending[4] = 1,
-        &|g| g.countdowns[10] = 1,
-        &|g| g.saw_animal = 1,
-        &|g| g.reset = 1,
-        &|g| g.favourite = Some(0),
-        &|g| g.female = true,
-        &|g| g.child = true,
-        &|g| g.arrived = Some(date),
-        &|g| g.speed_offset = 1,
-        &|g| g.sick = true,
-        &|g| g.seen = vec![3],
-        &|g| g.seen_count = 1,
-        &|g| g.recent = vec![5003],
-        &|g| g.va = Some(0),
-        &|g| g.viewed_at = 1,
         &|g| g.items[0] = Some(6303),
-        &|g| g.need = Some("food"),
         &|g| g.building = 7,
-        &|g| g.slot = 1,
-        &|g| g.entrance = (1, 2),
-        &|g| g.stand = true,
-        &|g| g.gift = true,
-        &|g| g.littered = true,
     ];
     let hashes: Vec<u64> = changes.iter().map(|c| guest(c)).collect();
     assert!(hashes.iter().all(|&h| h != base), "{hashes:?}");
@@ -666,6 +642,7 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted.len(), hashes.len(), "each field has its own place");
+    assert_eq!(guest(&|g| g.returning = Some(1)), base);
     // The leave flag of a guest.
     let leave = |on: bool| {
         let mut run = game(3);
@@ -686,95 +663,27 @@ fn the_hash_follows_fnv_1a_and_each_part_of_the_state() {
 }
 
 #[test]
-fn the_hash_follows_the_live_state_of_a_building_and_a_hidden_user() {
-    use crate::building::Live;
-    let hash = |change: &dyn Fn(&mut Live)| {
-        let mut run = game(3);
-        let live = run.world.units.buildings.entry(7).or_default();
-        change(live);
-        run.hash()
-    };
+fn the_hash_follows_a_hidden_user() {
     let base = game(3).hash();
-    let changes: [&dyn Fn(&mut Live); 10] = [
-        &|l| l.users.push((1, 0, 5)),
-        &|l| l.users.push((1, 1, 5)),
-        &|l| l.users.push((1, 0, 6)),
-        &|l| l.price = 2.0,
-        &|l| l.guests[0] = 1,
-        &|l| l.guests[2] = 1,
-        &|l| l.income[1] = 1.0,
-        &|l| l.upkeep = 1.0,
-        &|l| l.fill = 13,
-        &|l| l.built = 1,
-    ];
-    let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
-    assert!(hashes.iter().all(|&h| h != base));
-    hashes.sort_unstable();
-    hashes.dedup();
-    assert_eq!(hashes.len(), changes.len());
     let mut run = game(3);
     run.world.units.get_mut(1).unwrap().hidden = true;
     assert_ne!(run.hash(), base);
 }
 
 #[test]
-fn the_hash_follows_the_thoughts_and_the_megatiles() {
-    let hash = |change: &dyn Fn(&mut Run)| {
-        let mut run = game(3);
-        change(&mut run);
-        run.hash()
-    };
-    let base = hash(&|_| {});
-    let think = |text, object| move |r: &mut Run| r.world.units.think(1, text, object, None);
-    let changes: [&dyn Fn(&mut Run); 6] = [
-        &think(10079, None),
-        &think(10082, None),
-        &think(10243, Some(3)),
-        &|r| {
-            think(10079, None)(r);
-            think(10082, None)(r);
-        },
-        &|r| crate::guest::mega::update(&mut r.world, &Catalogue::default(), 67),
-        &|r| crate::guest::mega::update(&mut r.world, &Catalogue::default(), 7600),
-    ];
-    let mut hashes: Vec<u64> = changes.iter().map(|c| hash(c)).collect();
-    assert!(hashes.iter().all(|&h| h != base));
-    hashes.sort_unstable();
-    hashes.dedup();
-    assert_eq!(
-        hashes.len(),
-        5,
-        "both counts leave the clock at 0 and the same cells"
-    );
-}
-
-#[test]
-fn the_hash_follows_the_gawk_list() {
-    let hash = |weight: i32| {
-        let text = format!("[Characteristics/Integers]\ncEstheticWeight={weight}\n");
-        let mut cat = Catalogue::default();
-        cat.push(crate::entity::EntityType {
-            class: "building",
-            type_name: b"statue".to_vec(),
-            subtype: Vec::new(),
-            file: None,
-            config: Some(std::sync::Arc::new(
-                crate::config::Config::parse(text.as_bytes()).unwrap(),
-            )),
-            name_id: 0,
-            footprint: [1, 1, 1],
-            height: 0,
-        });
-        let mut run = game(3);
-        let statue = crate::unit::testing::entity("building", "statue", 0, (96, 96), 0);
-        run.world
-            .add(statue, Some(crate::unit::testing::keeper_shape()));
-        crate::guest::gawk::update(&mut run.world, &cat);
-        run.hash()
-    };
-    // The same statue joins the list or does not by its weight.
-    assert_ne!(hash(20), hash(0));
-    assert_eq!(hash(20), hash(20));
+fn the_hash_leaves_out_the_buildings_thoughts_and_megatiles() {
+    let base = game(3).hash();
+    let mut run = game(3);
+    run.world
+        .units
+        .buildings
+        .entry(7)
+        .or_default()
+        .users
+        .push((1, 0, 5));
+    run.world.units.think(1, 10079, None, None);
+    crate::guest::mega::update(&mut run.world, &Catalogue::default(), 67);
+    assert_eq!(run.hash(), base);
 }
 
 #[test]

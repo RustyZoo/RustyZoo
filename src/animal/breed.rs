@@ -10,7 +10,7 @@
 //! <id>` when an egg hatches.
 
 use super::life;
-use super::{Animal, Class, Env, Keys, Out, fire};
+use super::{Animal, Class, Env, Keys, Out, Read, Reader, fire};
 use crate::behaviour::Data;
 use crate::entity::{Catalogue, EntityType};
 use crate::path;
@@ -102,11 +102,12 @@ pub fn grow(a: &mut Animal, k: &Keys, env: &Env, out: &mut Out) {
 
 /// Picks a mate among `env.candidates` (11.3): its id is cleared, then one candidate is drawn and
 /// both take each other's id. Only in an exhibit.
-fn find(a: &mut Animal, env: &Env, rng: &mut Rng, out: &mut Out) -> bool {
+fn find(a: &mut Animal, env: &mut Env, rng: &mut Rng, out: &mut Out, read: Reader) -> bool {
     if !env.exhibit {
         return false;
     }
     a.mate = 0;
+    read(Read::Mates, a, &out.meal, env, rng);
     let Some(&mate) = env
         .candidates
         .get(rng.pick(env.candidates.len() as u32) as usize)
@@ -127,10 +128,10 @@ pub fn reproduction(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
-    env: &Env,
+    env: &mut Env,
     rng: &mut Rng,
     out: &mut Out,
-    birth: Birth,
+    (birth, read): (Birth, Reader),
 ) {
     let ready = a.interval >= k.reproduction_interval;
     if !ready {
@@ -154,7 +155,7 @@ pub fn reproduction(
     if lost {
         // 3: another mate at once, or after the delay of a monogamous animal that mourns.
         if !monogamous {
-            find(a, env, rng, out);
+            find(a, env, rng, out, read);
             a.mate_delay = full;
         } else {
             if a.mate_delay == full {
@@ -162,20 +163,20 @@ pub fn reproduction(
                 a.mark(LOST_MATE, true);
             }
             if fire(&mut a.mate_delay, delay) {
-                find(a, env, rng, out);
+                find(a, env, rng, out, read);
             }
         }
         return;
     }
     // 2: no mate yet.
-    if a.mate == 0 && !find(a, env, rng, out) && monogamous {
+    if a.mate == 0 && !find(a, env, rng, out, read) && monogamous {
         a.mark(NO_MATE, true);
     }
     // 4: the birth. The breeding cheat stands in for the happiness; its roll cannot fail and
     // lowers the flag (11.4 point 1).
     let happy = a.happiness >= k.happy_reproduce;
     let boosted = !happy && env.boost;
-    if (happy || boosted) && env.male && ready && (a.mate != 0 || find(a, env, rng, out)) {
+    if (happy || boosted) && env.male && ready && (a.mate != 0 || find(a, env, rng, out, read)) {
         let rolled = rng.chance(k.reproduction_chance);
         out.boost_used = boosted;
         if (rolled || boosted) && birth(a, rng) {

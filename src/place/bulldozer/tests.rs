@@ -684,3 +684,62 @@ fn a_deleted_trash_can_puts_its_pieces_back_on_the_ground_round_it() {
     remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
     assert!(litter(&w).is_empty());
 }
+
+#[test]
+fn a_rubble_piece_sells_for_half_the_cost_of_its_type_with_two_floors() {
+    let mut cat = catalogue();
+    cat.push(ty("rubble", "other", "brubls1", "", [1, 1, 1]));
+    for (name_id, cost) in [(7, 90), (8, 0)] {
+        let mut t = ty(
+            "objects",
+            &format!("t{name_id}"),
+            "",
+            &format!("[Characteristics/Integers]\ncPurchaseCost={cost}\n"),
+            [1, 1, 1],
+        );
+        t.name_id = name_id;
+        cat.push(t);
+    }
+    let piece = |name_id| {
+        let mut e = entity("rubble", "other", "brubls1", 0, 0, 0);
+        e.common.as_mut().unwrap().rubble = Some(crate::zoo::Rubble {
+            group: vec![],
+            name_id,
+        });
+        e
+    };
+    // Half the cost; 0.1 when the cost is 0; 1 when the type is gone (or has no id).
+    assert_eq!(refund(&cat, &piece(7)), 45.0);
+    assert_eq!(refund(&cat, &piece(8)), 0.1);
+    assert_eq!(refund(&cat, &piece(9)), 1.0);
+    assert_eq!(refund(&cat, &piece(0)), 1.0);
+    assert_eq!(refund(&cat, &piece(-1)), 1.0);
+    let mut plain = piece(7);
+    plain.common.as_mut().unwrap().rubble = None;
+    assert_eq!(refund(&cat, &plain), 1.0);
+}
+
+#[test]
+fn a_drag_pays_one_piece_per_rubble_group() {
+    let mut cat = catalogue();
+    cat.push(ty("rubble", "other", "brubls1", "", [1, 1, 1]));
+    let piece = |id, group: Vec<u32>| {
+        let mut e = entity("rubble", "other", "brubls1", 0, 0, 0);
+        let c = e.common.as_mut().unwrap();
+        c.id = id;
+        c.rubble = Some(crate::zoo::Rubble { group, name_id: 0 });
+        e
+    };
+    let w = world(vec![
+        piece(1, vec![1, 2]),
+        piece(2, vec![1, 2]),
+        piece(3, vec![3, 4]),
+        piece(4, vec![3, 4]),
+        piece(5, vec![]),
+    ]);
+    let all: Vec<usize> = (0..5).collect();
+    // Three groups, 1.0 each (the type has no id); the first piece met pays.
+    assert_eq!(refunds(&w, &cat, &all), 3.0);
+    assert_eq!(refunds(&w, &cat, &[1, 0]), 1.0);
+    assert_eq!(refunds(&w, &cat, &[]), 0.0);
+}

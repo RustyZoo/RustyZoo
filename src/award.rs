@@ -125,8 +125,17 @@ mod tests {
         assert_eq!(held(&[-1, -1]), [-1]);
     }
 
+    /// The folder of an install, removed when dropped.
+    struct Dir(std::path::PathBuf);
+
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// An install with the given loose files and a `zoo.ini`.
-    fn install(name: &str, files: &[(&str, &str)]) -> Vfs {
+    fn install(name: &str, files: &[(&str, &str)]) -> (Vfs, Dir) {
         let dir =
             std::env::temp_dir().join(format!("rustyzoo-award-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -137,7 +146,7 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, text).unwrap();
         }
-        Vfs::open(&dir).unwrap()
+        (Vfs::open(&dir).unwrap(), Dir(dir))
     }
 
     const ONE: &str = "[Version]\nversion = 1\n[Awards]\naward = 13\naward = 14\n\
@@ -146,7 +155,7 @@ mod tests {
 
     #[test]
     fn definitions_are_read_and_merged_by_id() {
-        let vfs = install(
+        let (vfs, _dir) = install(
             "merge",
             &[
                 ("awards/award001.cfg", ONE),
@@ -176,7 +185,7 @@ mod tests {
     #[test]
     fn a_file_without_a_version_is_ignored() {
         let text = "[Awards]\naward = 1\n[1]\nid = 1\nnameID = 2\n";
-        let vfs = install(
+        let (vfs, _dir) = install(
             "version",
             &[
                 ("awards/award001.cfg", text),
@@ -191,7 +200,7 @@ mod tests {
 
     #[test]
     fn the_icon_and_the_tooltip_are_read() {
-        let vfs = install("icon", &[("awards/award001.cfg", ONE)]);
+        let (vfs, _dir) = install("icon", &[("awards/award001.cfg", ONE)]);
         let found = Definitions::load(&vfs);
         assert_eq!(
             found.get(13),

@@ -131,12 +131,30 @@ pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
             let health = e.common.as_ref().and_then(|c| c.filter).map(|f| f.health);
             health.map_or(0.8, |h| crate::world::filter_sell_rate(ty, h))
         }
+        _ if e.class == "rubble" => return rubble_price(cat, e),
         _ if unit::is_animal(ty) => return unit::new_sell_price(ty),
         // Firing refunds nothing (unit placing 10.2).
         _ if staff::is_staff(ty) => return 0.0,
         _ => 0.8,
     };
     cost(ty) * rate
+}
+
+/// The sell price of a rubble piece (cheats 4.6): half the purchase cost of the type that turned
+/// to rubble, 0.1 when that is 0, 1 when the catalogue no longer has the type.
+fn rubble_price(cat: &Catalogue, e: &Entity) -> f32 {
+    let id = e
+        .common
+        .as_ref()
+        .and_then(|c| c.rubble.as_ref())
+        .map_or(0, |r| r.name_id);
+    let Some(ty) = cat.types.iter().find(|t| id != 0 && t.name_id == id) else {
+        return 1.0;
+    };
+    match cost(ty) * 0.5 {
+        0.0 => 0.1,
+        price => price,
+    }
 }
 
 /// The entities a rectangle of tiles collects, each once (placing 7.1 area drag): for each tile
@@ -165,6 +183,28 @@ pub fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
         }
     }
     found
+}
+
+/// The sum of the refunds of the entities at positions `at`, a rubble group counted once: the
+/// first piece met pays, the others are tinted but not collected (placing 7.1, issue 930).
+pub fn refunds(world: &World, cat: &Catalogue, at: &[usize]) -> f32 {
+    let mut paid: Vec<u32> = Vec::new();
+    let mut sum = 0.0;
+    for &e in at {
+        let entity = &world.zoo.entities[e];
+        let rubble = entity.common.as_ref().filter(|_| entity.class == "rubble");
+        if let Some(c) = rubble {
+            if c.rubble
+                .as_ref()
+                .is_some_and(|r| r.group.iter().any(|g| paid.contains(g)))
+            {
+                continue;
+            }
+            paid.push(c.id);
+        }
+        sum += refund(cat, entity);
+    }
+    sum
 }
 
 /// What is asked before an object is removed.

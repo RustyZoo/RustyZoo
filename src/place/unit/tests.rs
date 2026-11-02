@@ -1048,3 +1048,64 @@ fn a_picked_up_escaped_animal_is_a_crate_that_may_stand_on_the_grounds() {
     assert_eq!(judged(&w, &carry, wide, (5, 2)), valid);
     assert_eq!(judged(&w, &carry, wide, (5, 4)).0, Verdict::Invalid);
 }
+
+#[test]
+fn a_crated_fish_over_water_needs_a_tank() {
+    let mut w = world(square("fences", 2, 2));
+    let id = w
+        .add(animal("m", (4, 4)), shape(&animal("m", (4, 4))))
+        .unwrap();
+    let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) else {
+        panic!("not an animal");
+    };
+    a.escaped = true;
+    // A shark: lives only under water, does not swim.
+    let mut cat = catalogue();
+    let shark = "[m/Characteristics/Integers]\ncOnlyUnderwater=1\n";
+    cat.push(ty("m", "shark", shark));
+    let fish = cat.types.len() - 1;
+    let carry = pick_up(&mut w, &cat, id, 0).unwrap();
+    let judged = |ty: usize, tile: (i64, i64)| {
+        let carry = Carry {
+            ty,
+            ..carry.clone()
+        };
+        let point = (tile.0 * 64 + 32, tile.1 * 64 + 32, 0);
+        carried(&w, &cat, &[false, true], &carry, 0, aim(0, point))
+            .unwrap()
+            .message
+    };
+    // Over water outside a tank: the water message, for a fish and for any other crate.
+    assert_eq!(judged(fish, (5, 5)), Some(NEEDS_WATER));
+    assert_eq!(judged(ZEBRA, (5, 5)), Some(10569));
+    // On dry land the crate of a fish is fine.
+    assert_eq!(judged(fish, (2, 2)), None);
+}
+
+/// A keeper (job 3) holding the animal of a heal, which is held (`wait` raised).
+fn healing() -> (World, u32, u32) {
+    let mut w = world(vec![animal("m", (3, 3))]);
+    let a = w.zoo.entities.last().unwrap().common.as_ref().unwrap().id;
+    let keeper = entity_at("keeper", "marine", "m", 6 * 64 + 20, 6 * 64 + 20, 2);
+    let k = w.add(keeper.clone(), shape(&keeper)).unwrap();
+    w.units.get_mut(a).unwrap().wait = i32::MAX;
+    let r = &mut w.units.get_mut(k).unwrap().goal.record;
+    (r.job, r.job_target.id) = (3, a);
+    (w, k, a)
+}
+
+#[test]
+fn a_keeper_reset_or_picked_up_leaves_the_animal_of_his_heal_held() {
+    let cat = catalogue();
+    let (mut w, k, a) = healing();
+    pick_up(&mut w, &cat, k, 0).unwrap();
+    assert_eq!(w.units.get(a).unwrap().wait, i32::MAX);
+}
+
+#[test]
+fn an_animal_picked_up_is_no_longer_held() {
+    let cat = catalogue();
+    let (mut w, _, a) = healing();
+    pick_up(&mut w, &cat, a, 0).unwrap();
+    assert_eq!(w.units.get(a).unwrap().wait, 0);
+}

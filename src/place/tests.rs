@@ -1875,3 +1875,140 @@ fn a_new_object_is_named_from_its_type_and_numbered_only_when_the_type_says_so()
         assert_eq!(w.zoo.names.get("tree"), None, "{numbers:?}");
     }
 }
+
+/// The DRT base of the full game: one slot whose `birthUser` is `birth`.
+fn helibase(birth: &str) -> String {
+    format!(
+        "[Characteristics/Integers]\ncPurchaseCost=2000\n[slots]\nname=slot0\n[slot0]\n\
+         slotpos=-64\nslotpos=0\nslotposz=80\nfacing=7\n{birth}\n"
+    )
+}
+
+/// The DRT base (name id 8031) of `ini` and, when `heli`, the helicopter (9550).
+fn drt(ini: &str, heli: bool) -> Catalogue {
+    let mut cat = Catalogue::default();
+    let base = ty("building", "helibase", ini, [2, 2, 1]);
+    cat.push(EntityType {
+        name_id: 8031,
+        ..base
+    });
+    if heli {
+        let t = ty("helicopter", "helicopter", "", [1, 1, 1]);
+        cat.push(EntityType { name_id: 9550, ..t });
+    }
+    cat
+}
+
+/// Places the base of `cat` at tile (`tx`, `ty`), height 16, rotation `r`: its id.
+fn place_base(w: &mut World, cat: &Catalogue, money: &mut Money, tile: (i64, i64), r: u32) -> u32 {
+    let mut p = at(w, cat, 0, 0, tile.0 * 64 + 32, tile.1 * 64 + 32).unwrap();
+    (p.z, p.facing) = (16, r);
+    let water = [false, true];
+    match place(w, money, &cat.types[0], &p, &water, Vec::new(), shape) {
+        Outcome::Placed(id) => id,
+        refused => panic!("{refused:?}"),
+    }
+}
+
+#[test]
+fn the_drt_base_is_booked_in_keeper_wages_and_its_helicopter_waits_at_its_slot() {
+    use crate::building::birth::births;
+    let cat = drt(&helibase("birthUser=9550"), true);
+    let mut w = world((0, 0), vec![], |_| {});
+    w.units.names.insert(9550, "Heli".into());
+    w.units.ai_ticks = 33;
+    let mut money = zoo_money(50_000.0);
+    let base = place_base(&mut w, &cat, &mut money, (3, 3), 0);
+    assert_eq!(
+        (money.cash, money.monthly[KEEPER_WAGES][0]),
+        (48_000.0, 2000.0)
+    );
+    assert_eq!(money.monthly[CONSTRUCTION][0], 0.0);
+    assert!(!w.can_undo(), "the base clears the undo list");
+    // Two draws: the work counter, then the chase counter.
+    let mut rng = crate::sim::Rng::default();
+    let mut two = rng.clone();
+    let (work, chase) = ((two.rand() % 5) as i32, (two.rand() % 2) as i32);
+    assert_eq!(births(&mut w, &cat, base, &mut rng, 9, shape), [base + 1]);
+    assert_eq!(rng, two);
+    assert!(!w.can_undo(), "nor does the helicopter record an undo step");
+    let (b, h) = (&w.zoo.entities[0], &w.zoo.entities[1]);
+    let (b, c) = (b.common.as_ref().unwrap(), h.common.as_ref().unwrap());
+    assert_eq!(
+        (h.class.as_str(), h.type_name.as_str()),
+        ("helicopter", "helicopter")
+    );
+    assert_eq!(
+        (c.x, c.y, c.z, c.rotation, c.name.as_str(), c.movement_mode),
+        (b.x + 64, b.y, 16 + 80, 7, "Heli 1", 1)
+    );
+    let s = c.staff.as_deref().unwrap();
+    let own = [base, 0, u32::MAX].map(u32::to_le_bytes).concat();
+    assert_eq!((s.work, s.chase, &s.own), (work, chase, &own));
+    let u = c.unit.as_deref().unwrap();
+    assert_eq!((u.slot, u.target.goal, u.target.extra[0]), (0, 0x6a, 33));
+    let r = b.building.as_ref().unwrap();
+    assert_eq!(
+        (&r.users, r.users_now, &r.members, r.built),
+        (&vec![(base + 1, 0)], 1, &vec![base + 1], 9)
+    );
+    // The other rotations turn the slot; an odd one puts it on the base, at its height.
+    for (tile, r, offset, z, facing) in [
+        ((1, 1), 2, (0, 64), 96, 1),
+        ((1, 5), 4, (-64, 0), 96, 3),
+        ((5, 1), 6, (0, -64), 96, 5),
+        ((5, 5), 3, (0, 0), 16, 2),
+    ] {
+        let base = place_base(&mut w, &cat, &mut money, tile, r);
+        let heli = births(&mut w, &cat, base, &mut rng, 9, shape);
+        let b = w.zoo.entities[w.find(base).unwrap()]
+            .common
+            .clone()
+            .unwrap();
+        let c = w.zoo.entities[w.find(heli[0]).unwrap()]
+            .common
+            .clone()
+            .unwrap();
+        let at = (b.x + offset.0, b.y + offset.1, z, facing);
+        assert_eq!((c.x, c.y, c.z, c.rotation), at, "rotation {r}");
+    }
+    assert_eq!(w.zoo.names.get("helicopter"), Some(&5));
+}
+
+#[test]
+fn a_base_without_a_helicopter_type_makes_nothing_and_draws_nothing() {
+    use crate::building::birth::births;
+    // No type with the name id, one that is no helicopter (the base itself), and slots without
+    // one: 0, negative, huge, missing.
+    for (birth, heli) in [
+        ("birthUser=9550", false),
+        ("birthUser=8031", true),
+        ("birthUser=0", true),
+        ("birthUser=-9550", true),
+        ("birthUser=99999999999", true),
+        ("", true),
+    ] {
+        let cat = drt(&helibase(birth), heli);
+        let mut w = world((0, 0), vec![], |_| {});
+        let mut money = zoo_money(50_000.0);
+        let base = place_base(&mut w, &cat, &mut money, (3, 3), 0);
+        let mut rng = crate::sim::Rng::default();
+        let before = rng.clone();
+        assert!(
+            births(&mut w, &cat, base, &mut rng, 9, shape).is_empty(),
+            "{birth}"
+        );
+        assert_eq!((rng, w.zoo.entities.len()), (before, 1), "{birth}");
+        assert_eq!(money.monthly[KEEPER_WAGES][0], 2000.0, "{birth}");
+    }
+    // Another building is construction and keeps its undo step.
+    let mut cat = drt(&helibase(""), true);
+    cat.types[0].name_id = 0;
+    let mut w = world((0, 0), vec![], |_| {});
+    let mut money = zoo_money(50_000.0);
+    let base = place_base(&mut w, &cat, &mut money, (3, 3), 0);
+    let mut rng = crate::sim::Rng::default();
+    assert!(births(&mut w, &cat, base, &mut rng, 9, shape).is_empty());
+    assert!(w.can_undo());
+    assert_eq!(money.monthly[CONSTRUCTION][0], 2000.0);
+}

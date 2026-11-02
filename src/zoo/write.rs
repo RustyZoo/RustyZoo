@@ -289,11 +289,11 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
         fresh::unit_new((e.class == "guests").then_some(fresh::DEFAULT_NON_PATH_COST))
     });
     if is_unit(&e.class) {
-        // A unit made in play is on the ground.
-        let mode = if read {
-            c.movement_mode
-        } else {
-            c.movement_mode.max(2)
+        // A unit made in play is on the ground, a helicopter free (zoo format 6.14).
+        let mode = match read {
+            true => c.movement_mode,
+            false if e.class == "helicopter" => 1,
+            false => c.movement_mode.max(2),
         };
         unit::write(&mut o, MAX_VERSION, e.class == "guests", mode, &unit)?;
     }

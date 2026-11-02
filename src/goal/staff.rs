@@ -6,6 +6,7 @@
 
 use super::{Cx, DUTIES, ENTER_TANK, EXIT_TANK, HABITAT, NONE, RANDOM};
 use crate::animal::{self, dirt, food};
+use crate::behaviour::Env;
 use crate::build::{cost, number};
 use crate::entity::EntityType;
 use crate::path::{self, MAX};
@@ -114,17 +115,33 @@ impl<'c> Cx<'_, 'c> {
         }
     }
 
-    /// A held animal is let go (7.7), when its keeper's goal ends.
+    /// The keeper's goal ends: his target tile is cleared. A held animal stays held (7.7).
     pub(super) fn keeper_reset(&mut self) {
-        if matches!(self.record().job, HEAL | HEALING) {
-            let id = self.record().job_target.id;
-            self.hold(id, false);
-        }
         self.keeper_target(None);
     }
 
-    /// The animal `id` stops where it stands and waits for the keeper, or goes on (7.7).
+    /// The animal `id` waits for the keeper (7.7): a species with `cStaySick` 1 starts `bSick`
+    /// (unless it is the top set, forced, not interruptible) and `bDoneSick` only at the heal's
+    /// complete (`on` false), never at a goal reset; the others stop where they stand and are held
+    /// until healed.
     fn hold(&mut self, id: u32, on: bool) {
+        let Some(at) = self.world.find(id) else {
+            return;
+        };
+        let stay = animal::keys(self.world, self.ctx.cat, at).stay_sick == 1;
+        if let (true, Some(u)) = (stay, self.world.units.get_mut(id)) {
+            let name = if on { "bSick" } else { "bDoneSick" };
+            if !on || u.runner.top() != Some(name) {
+                let env = Env {
+                    data: self.data,
+                    unit: &self.world.zoo.entities[at],
+                    rng: &mut *self.ctx.rng,
+                };
+                u.runner
+                    .start(&mut u.animation, &env, name, false, true, true);
+            }
+            return;
+        }
         if let Some(a) = self.world.units.get_mut(id) {
             if on {
                 (a.destination, a.wait) = (None, i32::MAX);
@@ -339,7 +356,10 @@ impl<'c> Cx<'_, 'c> {
             return;
         }
         let (tiles, animals) = self.lost();
-        let mine: Vec<_> = service::animals(self.world, cat, x, who);
+        // The animal to feed and the heal count read the stored list, recomputed first (7.5, 7.6).
+        let rng = &mut *self.ctx.rng;
+        crate::exhibit::rating::refresh(self.world, cat, x, &mut || rng.rand());
+        let mine: Vec<_> = service::listed(self.world, cat, x, who);
         let claimed = service::claimed(self.world);
         let bare: Vec<_> = (mine.iter())
             .filter(|a| !animals.contains(&a.id) && !a.egg && a.bare)
