@@ -866,6 +866,32 @@ fn a_deleted_trash_can_pushes_out_its_user_and_spills_its_pieces() {
 }
 
 #[test]
+fn a_forced_leave_posts_the_abort_event_of_the_unit_to_itself() {
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    holding(&mut w);
+    run(&mut game(), &cat, &mut w, &mut money, 1500, "use");
+    w.units.posts.clear();
+    crate::building::leave::push_out(&mut w, &cat, 9);
+    let e = &w.units.posts[..];
+    assert_eq!(e.len(), 1);
+    assert_eq!(
+        (e[0].sender, e[0].target, e[0].kind, e[0].delay),
+        (1, 1, 0x2722, 1)
+    );
+    assert_eq!(
+        (e[0].data, e[0].extra, e[0].sender_channel, e[0].channel),
+        (0, 0, 0x55, 0x55)
+    );
+}
+
+#[test]
+fn a_building_with_no_user_posts_no_abort_event() {
+    let (cat, mut w) = (types(), zoo_with(true));
+    crate::building::leave::push_out(&mut w, &cat, 9);
+    assert!(w.units.posts.is_empty());
+}
+
+#[test]
 fn a_user_of_a_building_with_no_exit_on_the_map_is_taken_off_it_and_stays_hidden() {
     let (cat, mut w) = (types(), zoo());
     // The stand at the last row has its entrances below the map: nobody could enter it.
