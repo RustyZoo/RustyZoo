@@ -520,3 +520,178 @@ fn the_tank_keys_at_their_edges() {
     assert!(goes(100, 0, 5) && goes(i32::MAX, 0, 5));
     assert!(!goes(100, 5, 5) && goes(100, 4, 5) && goes(100, -1, 0) && !goes(100, i32::MAX, 5));
 }
+
+/// The sets of a manta that swims to its food: its walk, the walk to the food, and the meal.
+struct Manta(
+    crate::unit::testing::Walker,
+    Vec<crate::behaviour::Call>,
+    Vec<crate::behaviour::Call>,
+);
+
+impl Manta {
+    fn new() -> Manta {
+        let call = |c: &str| crate::behaviour::parse_call(c.as_bytes()).unwrap().0;
+        Manta(
+            crate::unit::testing::Walker::new("fSwim(level,0)"),
+            vec![call("fSwim(0,0)"), call("fPlaySet(bEat)")],
+            vec![call("fFaceTowardFood()"), call("fPlay(idle)")],
+        )
+    }
+}
+
+impl crate::behaviour::Data for Manta {
+    fn set(&self, e: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
+        match name {
+            "bFindKeeperFood" => Some(&self.1),
+            "bEat" => Some(&self.2),
+            _ => self.0.set(e, name),
+        }
+    }
+    fn ambient(&self, e: &Entity, place: usize) -> &[crate::behaviour::Row] {
+        self.0.ambient(e, place)
+    }
+    fn timing(&self, e: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        self.0.timing(e, name)
+    }
+    fn number(&self, e: &Entity, number: &crate::behaviour::Number) -> i32 {
+        self.0.number(e, number)
+    }
+    fn sound(&self, e: &Entity, key: &str) -> Option<crate::behaviour::Heard> {
+        self.0.sound(e, key)
+    }
+}
+
+/// The food task one step after it was set: its target, how far south in its tile the manta is,
+/// and whether it is still moving.
+#[derive(Debug)]
+struct Set {
+    task: u8,
+    target: Option<usize>,
+    y: i32,
+    moving: bool,
+}
+
+/// What a manta did when it got hungry `delay` steps into its random swim.
+#[derive(Debug)]
+struct Meal {
+    ate: bool,
+    /// The task, the target tile, the sub-tile position and the movement flag, one step after the
+    /// food task was set.
+    set: Option<Set>,
+    /// The tile and the task at the end.
+    end: (Option<usize>, u8),
+}
+
+/// Manta 1 in the tank (tiles x 2 to 5, y 2 to 4) with a pile of food at tile (4, 3), species key
+/// `keys`: it swims at random from tile (3, 3), gets hungry at step `delay`, and has 300 steps.
+fn manta_meal(keys: &str, seed: u32, delay: usize) -> Meal {
+    use crate::unit::testing::tank_world;
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 32)]);
+    let species = |class: &'static str, name: &[u8], sub: &[u8], keys: &str, id| EntityType {
+        class,
+        type_name: name.to_vec(),
+        subtype: sub.to_vec(),
+        file: None,
+        config: Some(Arc::new(config(keys))),
+        name_id: id,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = Catalogue::default();
+    let manta =
+        format!("[Characteristics/Integers]\ncHungerIncrement=1\ncHungerThreshold=50\n{keys}");
+    cat.push(species("animals", b"fish", b"", &manta, 1));
+    cat.push(species(
+        "food",
+        b"food",
+        b"herbchow",
+        "[Characteristics/Integers]\ncMaxFoodUnits=100\n",
+        2,
+    ));
+    let ty = cat.find("food", b"food", b"herbchow").unwrap();
+    assert!(crate::animal::dirt::put(
+        &mut w,
+        ty,
+        ("food", "food", "herbchow"),
+        (4, 3),
+        0,
+        45
+    ));
+    let u = w.units.get_mut(1).unwrap();
+    (u.typed, u.started, u.mover.underwater, u.mover.depth) = (true, true, true, 1);
+    u.mover.swims = true;
+    u.goal.record.task = crate::goal::RANDOM;
+    if let Part::Animal(a) = &mut u.part {
+        (a.terrain, a.counters) = (2, [100_000; COUNTERS]);
+    }
+    let mut sim = Sim::new(b"");
+    sim.set_seed(seed);
+    sim.start_game(1200, Clocks::default());
+    let data = Manta::new();
+    let mut meal = Meal {
+        ate: false,
+        set: None,
+        end: (None, 0),
+    };
+    for step in 0..delay + 300 {
+        if step == delay
+            && let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part
+        {
+            (a.hunger, a.counters[HUNGER]) = (60, 0);
+        }
+        let u = w.units.get(1).unwrap();
+        if u.goal.record.task == crate::goal::RANDOM && !u.walking && !u.runner.running() {
+            data.0.start(&mut w, 1);
+        }
+        sim.step_with(&data, &cat, &mut w, 67, |_, _, _| {});
+        let lines = w.units.take_lines();
+        meal.ate |= w
+            .units
+            .take_animal_lines()
+            .iter()
+            .any(|l| l.starts_with("eat 1"));
+        let u = w.units.get(1).unwrap();
+        let c = w.zoo.entities[w.find(1).unwrap()].common.as_ref().unwrap();
+        if meal.set.is_none() && lines.iter().any(|l| l == "set 1 bFindKeeperFood") {
+            let (task, target, moving) = (u.goal.record.task, u.goal.record.target.tile, u.moving);
+            meal.set = Some(Set {
+                task,
+                target,
+                y: c.y.rem_euclid(64),
+                moving,
+            });
+        }
+        if meal.ate {
+            break;
+        }
+    }
+    let u = w.units.get(1).unwrap();
+    meal.end = (
+        crate::unit::movement::here(&w, w.find(1).unwrap()),
+        u.goal.record.task,
+    );
+    meal
+}
+
+/// Animals needs 7.1 step 4: a manta that keeps moving, still swimming on the tile north of its
+/// food with less than a step to the edge it shares with it, gets the food task there. It leaves
+/// the tile before the arrival test sees it, goes over the food and ends on the tile past it: the
+/// task stays and it never eats (the original does the same, issue 1013).
+#[test]
+fn a_keep_moving_swimmer_on_the_neighbour_edge_is_carried_past_and_keeps_its_food_task() {
+    let tile = |x: usize, y: usize| y * 12 + x;
+    let m = manta_meal("cKeepMoving=1\n", 1, 60);
+    // The food task is set on the neighbour (4, 2), 63 of 64 along its southern edge, still moving.
+    let set = m.set.expect("the food task was set");
+    assert_eq!(
+        (set.task, set.target, set.y, set.moving),
+        (crate::goal::KEEPER_FOOD, Some(tile(4, 2)), 63, true)
+    );
+    // It ends on the tile past the food (4, 3), (4, 4), with the same task, and has not eaten.
+    assert_eq!(m.end, (Some(tile(4, 4)), crate::goal::KEEPER_FOOD));
+    assert!(!m.ate);
+    // The same hunger without the key: it eats on the neighbour; with it, but earlier in the
+    // walk, too.
+    assert!(manta_meal("cKeepMoving=0\n", 1, 60).ate);
+    assert!(manta_meal("cKeepMoving=1\n", 1, 0).ate);
+}
