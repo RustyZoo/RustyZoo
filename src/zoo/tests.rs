@@ -3300,6 +3300,43 @@ fn the_scripts_and_the_two_counters_are_fields() {
 }
 
 #[test]
+fn a_show_in_the_middle_of_its_cycle_is_written_back_as_it_is_and_its_unit_lists_are_not_saved() {
+    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    let info = zoo.shows.infos[0]
+        .as_mut()
+        .expect("the habitat holds a show");
+    let state = |animal, item| ItemState {
+        script: 0,
+        animal,
+        item,
+        finished: item == 2,
+        aborted: false,
+        cue_sent: true,
+        ready: item == 2,
+        started: false,
+        done: item == 3,
+    };
+    info.schedule = vec![5400, 5401];
+    info.index = 1;
+    info.upkeep = [15.5f32.to_bits(), 7.25f32.to_bits(), 90.0f32.to_bits()];
+    info.records = vec![TypeRecord {
+        units: vec![21, 22],
+        ..info.records.first().cloned().expect("a type record")
+    }];
+    info.show.ready = true;
+    info.show.running = true;
+    info.show.stopped = false;
+    info.show.items = vec![state(21, -1), state(22, 2), state(23, 3)];
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let read = back.shows.infos[0].as_ref().unwrap();
+    assert_eq!(read.show, zoo.shows.infos[0].as_ref().unwrap().show);
+    assert_eq!(read.upkeep, zoo.shows.infos[0].as_ref().unwrap().upkeep);
+    assert_eq!((read.schedule.clone(), read.index), (vec![5400, 5401], 1));
+    assert!(read.records[0].units.is_empty());
+    assert_eq!(back.write(&money).unwrap(), zoo.write(&money).unwrap());
+}
+
+#[test]
 fn a_changed_show_is_written_into_its_habitat_and_a_removed_one_leaves_none() {
     let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
     let info = zoo.shows.infos[0]
