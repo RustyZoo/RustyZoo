@@ -815,6 +815,7 @@ impl<'a> App<'a> {
         self.sim.load(&mut world, self.renderer.catalogue());
         self.sim.fences_loaded(&world, self.renderer.catalogue());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
+        world.units.show = crate::show::Params::load(self.renderer.vfs());
         let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
         // outside 1 to 5 leaves the default.
@@ -1751,6 +1752,7 @@ impl<'a> App<'a> {
             );
             if let Outcome::Placed(id) = outcome {
                 crate::building::built(&mut game.world, ty, id, self.sim.calendar().elapsed_ms());
+                crate::show::added(&mut game.world, cat, id);
                 let (habitat, name) = rating::object(ty);
                 let change = (!fence).then_some(rating::Change::Object {
                     habitat,

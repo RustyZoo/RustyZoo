@@ -2,7 +2,7 @@
 //! order of the format, from the model where the engine has one and from the bytes kept as read
 //! elsewhere. The version written is 106, whatever the version read.
 
-use super::{Behaviour, Common, Entity, MAX_VERSION, MIN_VERSION, Zoo};
+use super::{Behaviour, Common, Entity, Event, MAX_VERSION, MIN_VERSION, Zoo};
 use super::{fresh, unit, upgrade};
 use crate::money::{CATEGORIES, Money, YEARS};
 use crate::timing::Calendar;
@@ -24,6 +24,17 @@ impl Out {
     }
     pub(super) fn bytes(&mut self, b: &[u8]) {
         self.0.extend(b);
+    }
+    /// An event record of 20 bytes.
+    pub(super) fn event(&mut self, e: &Event) {
+        self.u32(e.sender);
+        self.u32(e.target);
+        self.u32(e.data);
+        self.u16(e.extra);
+        self.u16(e.kind);
+        self.u16(e.delay);
+        self.u8(e.sender_channel);
+        self.u8(e.channel);
     }
     /// A string of one byte per character, below 4096 bytes.
     pub(super) fn string(&mut self, s: &str) -> Result<(), String> {
@@ -63,7 +74,7 @@ impl Zoo {
         o.u32(self.entrance.0);
         o.u32(self.entrance.1);
         o.bytes(&upgrade::habitats(v, &habitats(self)?)?);
-        o.bytes(&upgrade::shows(v, kept)?);
+        o.bytes(&upgrade::shows(v, &self.shows)?);
         o.u32(self.id_counter);
         if self.tiles.len() as u64 != u64::from(self.width) * u64::from(self.height) {
             return Err("the tiles do not fill the map".into());
@@ -104,16 +115,7 @@ impl Zoo {
         let q = &self.clocks.queue;
         for list in [&q.first, &q.second] {
             o.u32(list.len() as u32);
-            for e in list {
-                o.u32(e.sender);
-                o.u32(e.target);
-                o.u32(e.data);
-                o.u16(e.extra);
-                o.u16(e.kind);
-                o.u16(e.delay);
-                o.u8(e.sender_channel);
-                o.u8(e.channel);
-            }
+            list.iter().for_each(|e| o.event(e));
         }
         o.u8(q.next_is_first.into());
         o.bytes(&kept.research);
@@ -155,11 +157,32 @@ fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
             put(service, info.serviced);
         }
     }
-    // The names last, from the end, so that the places of the earlier ones stay right.
-    for (&(from, to), info) in zoo.kept.names_at.iter().zip(&zoo.habitat_info).rev() {
+    // The names and the show infos last, from the end, so that the places of the earlier ones stay
+    // right. A show info is written from the model for a file of version 106; below that the upgrade
+    // refuses the file.
+    let mut parts: Vec<(usize, usize, Out)> = Vec::new();
+    for (&(from, to), info) in zoo.kept.names_at.iter().zip(&zoo.habitat_info) {
         let mut name = Out(Vec::new());
         name.string(&info.name)?;
-        b.splice(from..to, name.0);
+        parts.push((from, to, name));
+    }
+    for (n, at) in zoo.kept.show_at.iter().enumerate() {
+        let (Some(&(from, to)), true) = (at.as_ref(), zoo.version >= 106) else {
+            continue;
+        };
+        let mut show = Out(Vec::new());
+        match zoo.shows.info(n) {
+            Some(info) => {
+                show.u8(1);
+                info.write(&mut show);
+            }
+            None => show.u8(0),
+        }
+        parts.push((from, to, show));
+    }
+    parts.sort_by_key(|p| std::cmp::Reverse(p.0));
+    for (from, to, bytes) in parts {
+        b.splice(from..to, bytes.0);
     }
     Ok(b)
 }

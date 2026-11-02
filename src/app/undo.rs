@@ -93,6 +93,7 @@ impl App<'_> {
                     told("retype", spot, " undo")
                 }
                 Step::Back(spot, price) => {
+                    crate::show::added(&mut game.world, cat, spot.id);
                     let category = match spot.name.starts_with("animals/") {
                         true => ANIMAL_REFUND,
                         false => CONSTRUCTION_REFUND,
