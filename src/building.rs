@@ -108,6 +108,10 @@ pub struct Slot {
     /// The name id of the unit type made in the slot when the building is placed (`birthUser`,
     /// unit placing 7.4), 0 for none.
     pub birth: i32,
+    /// The draw places of a slot with the drawn-users flag (`cHasDrawSlots`; shows 4.3): the
+    /// positions relative to the building, as the slot's, and their heights; `None` for a slot
+    /// without the flag.
+    pub places: Option<Vec<(i32, i32, i32)>>,
 }
 
 /// The type id and subtype of a guest or an animal, which the slots of a building test (guest
@@ -155,6 +159,26 @@ impl Slot {
         (self.species.is_empty() || self.species.contains(&who.id))
             && (self.filter.is_empty() || !self.filter.contains(&who.subtype))
     }
+}
+
+/// The draw places of a slot section (shows 4.3): `cHasDrawSlots` names a section of `p` values read
+/// in triples (x, y, height), one per place, and of `order` names of lists of `o` values; the
+/// first list counts the places. A section that is missing gives a flag with no places.
+fn draw_places(
+    config: Option<&crate::config::Config>,
+    slot: &crate::config::Section,
+) -> Option<Vec<(i32, i32, i32)>> {
+    let name = slot.get("cHasDrawSlots")?;
+    let section = config.and_then(|c| c.section(name));
+    let count = (section.and_then(|s| s.get_all("order").first()))
+        .and_then(|list| config?.section(list))
+        .map_or(0, |list| list.get_all("o").len());
+    let values: Vec<i32> = (section.map(|s| s.get_all("p")).unwrap_or_default())
+        .iter()
+        .map(|v| to_int(v).unwrap_or(0))
+        .collect();
+    let triples = values.as_chunks::<3>().0.iter();
+    Some(triples.take(count).map(|&[x, y, z]| (x, y, z)).collect())
 }
 
 /// What a building type declares (guest buildings 3.1).
@@ -246,6 +270,7 @@ impl Kind {
                 species: s.get_all("id").iter().filter_map(|v| to_int(v)).collect(),
                 filter: String::from_utf8_lossy(s.get("filter").unwrap_or_default()).into(),
                 birth: number("birthUser"),
+                places: draw_places(config, s),
             }
         })
         .collect();
@@ -356,6 +381,19 @@ pub struct Live {
     /// the stored construction date for one that was there when the zoo was loaded, so it may be
     /// before the start or after now.
     pub built: i64,
+    /// The show a grandstand belongs to, 0 for none (shows 3.5, 4.2); not saved, made again at
+    /// load. The flag "show soon" of a grandstand is `fill`.
+    pub show_id: u16,
+    /// The draw place each user of a slot with draw places sits on (shows 4.3); not saved.
+    pub seats: Vec<Seat>,
+}
+
+/// A user on a draw place of a slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Seat {
+    pub unit: u32,
+    pub slot: usize,
+    pub place: usize,
 }
 
 impl Live {
@@ -364,6 +402,40 @@ impl Live {
             price: kind.price,
             ..Live::default()
         }
+    }
+
+    /// Seats `unit` on a free draw place of slot `slot` and returns the place and its position
+    /// relative to the building (shows 4.3): `pick(capacity)` is drawn until the place is free (a
+    /// draw per try). Nothing is drawn when the slot has no free place; a draw past the places is
+    /// a place that is taken. The seats of users that left are dropped first.
+    pub fn seat(
+        &mut self,
+        slot: usize,
+        capacity: i32,
+        places: &[(i32, i32, i32)],
+        unit: u32,
+        pick: &mut dyn FnMut(u32) -> u32,
+    ) -> Option<(i32, i32, i32)> {
+        let users = &self.users;
+        self.seats
+            .retain(|s| users.iter().any(|u| u.0 == s.unit) && s.unit != unit);
+        let range = usize::try_from(capacity).unwrap_or(0).min(places.len());
+        let taken = |place| {
+            self.seats
+                .iter()
+                .any(|s| s.slot == slot && s.place == place)
+        };
+        if (0..range).all(taken) {
+            return None;
+        }
+        let place = loop {
+            let place = pick(capacity as u32) as usize;
+            if place < range && !taken(place) {
+                break place;
+            }
+        };
+        self.seats.push(Seat { unit, slot, place });
+        Some(places[place])
     }
 
     /// The month changes (guest buildings 9): this month's figures become last month's.
@@ -421,6 +493,13 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
     };
     if kind.satisfies("trash") {
         set_fill(world, id, record.fill);
+    }
+    // The "show soon" flag of a grandstand is stored as the fill (shows 3.5).
+    if let (true, Some(live)) = (
+        kind.satisfies("grandstand"),
+        world.units.buildings.get_mut(&id),
+    ) {
+        live.fill = record.fill;
     }
 }
 
@@ -639,6 +718,17 @@ pub fn place(e: &Entity, rel: Point) -> Point {
         6 => (x - sy, y + sx),
         _ => (x, y),
     }
+}
+
+/// Where a user of slot `slot` is put inside the building `e`: the slot's position, or the draw
+/// place `seat` it sits on (shows 4.3), turned by the building's rotation; the height is the
+/// building's, plus the place's height unless the rotation is odd.
+pub fn seat_at(e: &Entity, slot: &Slot, seat: Option<(i32, i32, i32)>) -> (i32, i32, i32) {
+    let (x, y) = place(e, seat.map_or(slot.at, |p| (p.0, p.1)));
+    let c = e.common.as_ref();
+    let z = c.map_or(0, |c| c.z);
+    let lift = seat.filter(|_| c.is_some_and(|c| c.rotation % 2 == 0));
+    (x, y, z + lift.map_or(0, |p| p.2))
 }
 
 /// The direction of a user put at a slot with the file's `facing`, turned by the building's

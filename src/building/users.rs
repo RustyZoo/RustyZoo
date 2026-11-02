@@ -5,6 +5,7 @@
 use super::{Kind, Live};
 use crate::entity::Catalogue;
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
+use crate::sim::Rng;
 use crate::unit::Part;
 use crate::world::World;
 
@@ -138,5 +139,39 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     let entered = stamp.unwrap_or(now);
     if let Some(Live { users, .. }) = world.units.buildings.get_mut(&id) {
         users.push((unit, slot, entered));
+    }
+}
+
+/// Seats the users restored for a type whose users sit visible on draw places (shows 4.3), in
+/// entering order, one draw for each try, as a user entering is: each is put at its place. Runs
+/// after [`restore`].
+pub fn seat_loaded(world: &mut World, cat: &Catalogue, rng: &mut Rng) {
+    for at in 0..world.zoo.entities.len() {
+        let e = world.zoo.entities[at].clone();
+        let Some(kind) = super::kind_of(cat, &e, world.units.prices.default) else {
+            continue;
+        };
+        let id = e.common.as_ref().map_or(0, |c| c.id);
+        if kind.hide || kind.outside {
+            continue;
+        }
+        let users = world
+            .units
+            .buildings
+            .get(&id)
+            .map_or_else(Vec::new, |l| l.users.clone());
+        for (unit, slot, _) in users {
+            let Some(s) = kind.slots.get(slot) else {
+                continue;
+            };
+            let seat = (s.places.as_ref()).and_then(|p| {
+                let live = world.units.buildings.get_mut(&id)?;
+                live.seat(slot, s.capacity, p, unit, &mut |n| rng.pick(n))
+            });
+            if let (Some(seat), Some(unit_at)) = (seat, world.find(unit)) {
+                let spot = super::seat_at(&e, s, Some(seat));
+                world.place_unit(unit_at, spot, super::facing(&e, s.facing));
+            }
+        }
     }
 }

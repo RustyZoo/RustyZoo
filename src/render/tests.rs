@@ -420,6 +420,7 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
     let zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         view: Default::default(),
         clocks: Default::default(),
         names: Default::default(),
@@ -488,6 +489,7 @@ pub(crate) fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
     Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         view: Default::default(),
         clocks: Default::default(),
         names: Default::default(),
@@ -1275,6 +1277,7 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
     let zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         view: Default::default(),
         clocks: Default::default(),
         names: Default::default(),
@@ -1321,6 +1324,7 @@ fn a_tile_the_cache_lacks_is_rendered_at_run_time() {
     let zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         view: Default::default(),
         clocks: Default::default(),
         names: Default::default(),
@@ -1368,6 +1372,7 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
     let zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         view: Default::default(),
         clocks: Default::default(),
         names: Default::default(),
@@ -1693,6 +1698,7 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
         let zoo = Zoo {
             awards: Vec::new(),
             kept: Default::default(),
+            shows: Default::default(),
             view: Default::default(),
             clocks: Default::default(),
             names: Default::default(),

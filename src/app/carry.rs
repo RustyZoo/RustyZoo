@@ -159,6 +159,7 @@ impl App<'_> {
             let rand = &mut || self.sim.rng.rand();
             let before = rating::entity(&mut game.world, cat, tile, true, rand);
             crate::building::set_down(&mut game.world, held, (p.x, p.y, p.z), p.facing);
+            crate::show::associate(&mut game.world, cat);
             let (habitat, name) = rating::object(ty);
             let change = rating::Change::Object {
                 habitat,

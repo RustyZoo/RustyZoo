@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::config::Config;
+use crate::sim::Rng;
 use crate::unit::Part;
 use crate::unit::testing::{centre, entity, world_with};
 use std::sync::Arc;
@@ -1142,4 +1143,160 @@ fn the_current_upgrade_changes_the_adult_and_child_happiness_of_a_leaving_user()
     // An index past the list is no upgrade: the type's values.
     w.units.upgrade_index.insert(9, u32::MAX);
     assert_eq!(leave(&mut w, false), (8, -3));
+}
+
+/// A grandstand slot of `cap` users with three draw places, the first order list naming `order` of them.
+fn grandstand(cap: i32, order: usize) -> String {
+    let mut text = format!(
+        "[Characteristics/Integers]\ncCapacity={cap}\ncUserStaysOutside=0\n[Satisfies]\n\
+         building\ngrandstand\n[slots]\nname=a\n[a]\nslotpos=0\nslotpos=0\nentrpos=0\n\
+         entrpos=48\nexitpos=0\nexitpos=48\ncapacity={cap}\ncHasDrawSlots=seats\n[seats]\n"
+    );
+    for (x, y, z) in [(-13, -102, 50), (13, -102, 50), (0, 58, 2)] {
+        text += &format!("p={x}\np={y}\np={z}\n");
+    }
+    text += "order=first\norder=second\n[first]\n";
+    (0..order).for_each(|o| text += &format!("o={o}\n"));
+    text + "[second]\no=0\n"
+}
+
+#[test]
+fn a_slot_names_its_draw_places_and_the_first_order_list_counts_them() {
+    let places = |text: &str| Kind::of(&ty(text), 3.0).slots[0].places.clone();
+    let (a, b, c) = ((-13, -102, 50), (13, -102, 50), (0, 58, 2));
+    assert_eq!(places(&grandstand(3, 3)), Some(vec![a, b, c]));
+    // Fewer places in the list than triples: the list counts; more: the triples do.
+    assert_eq!(places(&grandstand(3, 2)), Some(vec![a, b]));
+    assert_eq!(places(&grandstand(3, 9)), Some(vec![a, b, c]));
+    // A flag with no list, and a flag whose section is missing, has no place; no flag has none.
+    assert_eq!(places(&grandstand(3, 0)), Some(vec![]));
+    let text = grandstand(3, 3).replace("cHasDrawSlots=seats", "cHasDrawSlots=nowhere");
+    assert_eq!(places(&text), Some(vec![]));
+    let text = grandstand(3, 3).replace("cHasDrawSlots=seats", "");
+    assert_eq!(places(&text), None);
+    // A half triple is dropped; a word reads 0.
+    let text = grandstand(3, 3)
+        .replace("p=2\n", "p=x\n")
+        .replace("[second]", "p=7\n[second]");
+    assert_eq!(places(&text).map(|p| p.len()), Some(3));
+}
+
+/// Seats unit `unit` of a live state with the draws `picks`, in turn.
+fn sit(
+    live: &mut Live,
+    unit: u32,
+    places: &[(i32, i32, i32)],
+    picks: &[u32],
+) -> Option<(usize, (i32, i32, i32))> {
+    let mut draws = picks.iter().copied();
+    let spot = live.seat(0, 3, places, unit, &mut |n| draws.next().unwrap() % n)?;
+    // Every draw given was used when the place was free at the last one.
+    assert!(draws.next().is_none(), "unused draws for {unit}");
+    Some((live.seats.last()?.place, spot))
+}
+
+#[test]
+fn a_user_sits_on_the_place_a_draw_gives_and_draws_again_while_it_is_taken() {
+    let places = [(1, 2, 3), (4, 5, 6), (7, 8, 9)];
+    let mut live = Live {
+        users: vec![(1, 0, 0), (2, 0, 0), (3, 0, 0)],
+        ..Live::default()
+    };
+    assert_eq!(sit(&mut live, 1, &places, &[1]), Some((1, (4, 5, 6))));
+    // The draws 4 (place 1: taken) and 1 (taken) and 5 (place 2: free).
+    assert_eq!(sit(&mut live, 2, &places, &[4, 1, 5]), Some((2, (7, 8, 9))));
+    assert_eq!(sit(&mut live, 3, &places, &[3]), Some((0, (1, 2, 3))));
+}
+
+#[test]
+fn a_slot_with_no_free_place_draws_nothing_and_a_leaving_user_frees_its_place() {
+    let places = [(1, 2, 3), (4, 5, 6)];
+    let mut live = Live {
+        users: vec![(1, 0, 0), (2, 0, 0), (3, 0, 0)],
+        ..Live::default()
+    };
+    sit(&mut live, 1, &places, &[0]).unwrap();
+    sit(&mut live, 2, &places, &[1]).unwrap();
+    let mut never = |_: u32| -> u32 { panic!("a draw on a full slot") };
+    assert_eq!(live.seat(0, 3, &places, 3, &mut never), None);
+    // A capacity of 0 or below seats nobody either, and a huge one is cut to the places.
+    assert_eq!(live.seat(0, 0, &places, 3, &mut never), None);
+    assert_eq!(live.seat(0, -5, &places, 3, &mut never), None);
+    live.users.remove(0);
+    assert_eq!(sit(&mut live, 3, &places, &[0]), Some((0, (1, 2, 3))));
+    // A draw past the places is a place that is taken.
+    let mut one = Live {
+        users: vec![(2, 0, 0)],
+        ..Live::default()
+    };
+    assert_eq!(
+        sit(&mut one, 2, &[(1, 2, 3)], &[7, 0]).map(|s| s.0),
+        Some(0)
+    );
+    // A unit seated again takes a new place.
+    one.users.push((3, 0, 0));
+    sit(&mut one, 2, &[(1, 2, 3), (4, 5, 6)], &[0]).unwrap();
+    assert_eq!(one.seats.iter().filter(|s| s.unit == 2).count(), 1);
+}
+
+#[test]
+fn the_users_of_a_loaded_grandstand_are_seated_in_entering_order_with_a_draw_each() {
+    let mut cat = Catalogue::default();
+    cat.push(named("stand", &grandstand(3, 3)));
+    let mut w = world_with((12, 4), |zoo| {
+        zoo.entities
+            .push(entity("building", "stand", 7, centre((3, 1)), 4));
+        for id in [1, 2] {
+            zoo.entities
+                .push(entity("guests", "man", id, centre((0, 3)), 0));
+        }
+    });
+    w.zoo.version = 106;
+    w.zoo.entities[0].common.as_mut().unwrap().building = Some(crate::zoo::BuildingRecord {
+        users: vec![(1, 0), (2, 0)],
+        users_now: 2,
+        ..record(0, START)
+    });
+    load(&mut w, &cat, 0);
+    users::restore(&mut w, &cat, 9);
+    let mut rng = Rng::default();
+    let mut fresh = Rng::default();
+    users::seat_loaded(&mut w, &cat, &mut rng);
+    let seats = w.units.buildings[&7].seats.clone();
+    assert_eq!(seats.len(), 2);
+    assert_eq!(seats[0].place, (fresh.rand() % 3) as usize);
+    assert_ne!(seats[0].place, seats[1].place);
+    // At least two draws were made, and each guest is at its place, turned with the building.
+    assert_ne!(rng.rand(), Rng::default().rand());
+    let table = [(-13, -102, 50), (13, -102, 50), (0, 58, 2)];
+    for s in &seats {
+        let c = w.zoo.entities[w.find(s.unit).unwrap()]
+            .common
+            .as_ref()
+            .unwrap();
+        let (dx, dy, dz) = table[s.place];
+        assert_eq!((c.x, c.y, c.z), (3 * 64 + 32 + dx, 64 + 32 + dy, dz));
+    }
+}
+
+#[test]
+fn the_show_soon_flag_of_a_grandstand_is_loaded_from_the_fill_word() {
+    let mut cat = Catalogue::default();
+    cat.push(named("stand", &grandstand(3, 3)));
+    cat.push(named("shop", SHOP));
+    let mut w = world_with((12, 4), |zoo| {
+        zoo.entities
+            .push(entity("building", "stand", 7, centre((0, 1)), 4));
+        zoo.entities
+            .push(entity("building", "shop", 8, centre((4, 1)), 4));
+    });
+    for at in 0..2 {
+        w.zoo.entities[at].common.as_mut().unwrap().building = Some(record(1, START));
+        load(&mut w, &cat, at);
+    }
+    // The grandstand's fill is its flag; the shop's is not a can's, so it keeps none.
+    assert_eq!(
+        (w.units.buildings[&7].fill, w.units.buildings[&8].fill),
+        (1, 0)
+    );
 }

@@ -36,6 +36,7 @@ fn world(units: &[(&str, u32)]) -> World {
     let zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,

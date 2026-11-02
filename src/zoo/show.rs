@@ -1,0 +1,436 @@
+//! The shows of a file (zoo format 4.2 and 4.3, shows 3 and 11): the scripts and the two id
+//! counters of the shows section, and the show info inside the record of a tank. Both are read
+//! into fields and written back from them as version 106.
+
+use super::write::Out;
+use super::{Event, R, Reader};
+
+/// The first script id and the first show id of a fresh map.
+const FIRST_SCRIPT: u16 = 2000;
+const FIRST_SHOW: u16 = 1000;
+
+/// What a file stores of the shows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shows {
+    pub scripts: Vec<Script>,
+    /// The next script id and the next show id (from version 97; a fresh map holds 2000 and 1000).
+    pub next_script: u16,
+    pub next_show: u16,
+    /// The show info of each habitat record, in file order: `None` for a habitat that has none. Shorter
+    /// than the records for a zoo made in memory.
+    pub infos: Vec<Option<ShowInfo>>,
+}
+
+impl Default for Shows {
+    fn default() -> Shows {
+        Shows {
+            scripts: Vec::new(),
+            next_script: FIRST_SCRIPT,
+            next_show: FIRST_SHOW,
+            infos: Vec::new(),
+        }
+    }
+}
+
+impl Shows {
+    /// The show info of habitat record `n`.
+    pub fn info(&self, n: usize) -> Option<&ShowInfo> {
+        self.infos.get(n)?.as_ref()
+    }
+
+    /// The scripts section (from version 89) and the counters (from 97), which replace the ones held.
+    pub(super) fn read_section(&mut self, r: &mut Reader) -> R<()> {
+        let v = r.v;
+        if v >= 89 {
+            self.scripts = (0..r.count(2 + 4 + 4 + 4)?)
+                .map(|_| Script::read(r))
+                .collect::<R<_>>()?;
+        }
+        if v >= 97 {
+            (self.next_script, self.next_show) = (r.u16()?, r.u16()?);
+        }
+        Ok(())
+    }
+
+    /// The section as version 106 stores it.
+    pub(super) fn write_section(&self, o: &mut Out) -> Result<(), String> {
+        o.u32(self.scripts.len() as u32);
+        for s in &self.scripts {
+            s.write(o)?;
+        }
+        o.u16(self.next_script);
+        o.u16(self.next_show);
+        Ok(())
+    }
+}
+
+/// A numbered list of tricks for one species (zoo format 4.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Script {
+    pub id: u16,
+    /// 0xffffffff when fresh.
+    pub marker: u32,
+    /// The script type.
+    pub kind: u32,
+    pub items: Vec<Item>,
+}
+
+/// One trick of a script. The satisfaction is the item's possible gain, `current` the one it
+/// gives now (shows 8.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Item {
+    /// Available by default, visible.
+    pub available: u8,
+    pub visible: u8,
+    pub id: u16,
+    /// 3 is an item that scores nothing (shows 8.1).
+    pub kind: u32,
+    pub marker: u32,
+    /// The trick name, the animation, the keeper's pre-trick and post-trick.
+    pub names: [String; 4],
+    pub building: u32,
+    pub complexity: u32,
+    pub returns: u8,
+    pub satisfaction: i32,
+    pub delta: i32,
+    pub current: i32,
+    pub depth: i32,
+    /// The help ids and the names of the normal and the greyed icon (from version 103).
+    pub help: [u32; 2],
+    pub icons: [String; 2],
+}
+
+impl Script {
+    fn read(r: &mut Reader) -> R<Script> {
+        let (id, marker, kind) = (r.u16()?, r.u32()?, r.u32()?);
+        let items = (0..r.count(53)?).map(|_| Item::read(r)).collect::<R<_>>()?;
+        Ok(Script {
+            id,
+            marker,
+            kind,
+            items,
+        })
+    }
+
+    fn write(&self, o: &mut Out) -> Result<(), String> {
+        o.u16(self.id);
+        o.u32(self.marker);
+        o.u32(self.kind);
+        o.u32(self.items.len() as u32);
+        self.items.iter().try_for_each(|i| i.write(o))
+    }
+}
+
+impl Item {
+    fn read(r: &mut Reader) -> R<Item> {
+        let (available, visible, id) = (r.u8()?, r.u8()?, r.u16()?);
+        let (kind, marker) = (r.u32()?, r.u32()?);
+        let names = [r.text()?, r.text()?, r.text()?, r.text()?];
+        let (building, complexity, returns) = (r.u32()?, r.u32()?, r.u8()?);
+        let [satisfaction, delta, current, depth] = [r.i32()?, r.i32()?, r.i32()?, r.i32()?];
+        let (mut help, mut icons) = ([0; 2], [String::new(), String::new()]);
+        if r.v >= 103 {
+            help = [r.u32()?, r.u32()?];
+            icons = [r.text()?, r.text()?];
+        }
+        Ok(Item {
+            available,
+            visible,
+            id,
+            kind,
+            marker,
+            names,
+            building,
+            complexity,
+            returns,
+            satisfaction,
+            delta,
+            current,
+            depth,
+            help,
+            icons,
+        })
+    }
+
+    fn write(&self, o: &mut Out) -> Result<(), String> {
+        o.u8(self.available);
+        o.u8(self.visible);
+        o.u16(self.id);
+        o.u32(self.kind);
+        o.u32(self.marker);
+        for s in &self.names {
+            o.string(s)?;
+        }
+        o.u32(self.building);
+        o.u32(self.complexity);
+        o.u8(self.returns);
+        for n in [self.satisfaction, self.delta, self.current, self.depth] {
+            o.i32(n);
+        }
+        o.u32(self.help[0]);
+        o.u32(self.help[1]);
+        o.string(&self.icons[0])?;
+        o.string(&self.icons[1])
+    }
+}
+
+/// The show info of a tank (shows 3.2). The money figures are the bits of single precision
+/// numbers; each trio is this month, last month and the total.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShowInfo {
+    /// AI ticks between two shows, -1 for never.
+    pub frequency: i32,
+    /// The index of the scheduled species in `schedule`.
+    pub index: u32,
+    /// The species type ids that have a script.
+    pub schedule: Vec<u32>,
+    pub records: Vec<TypeRecord>,
+    /// The info's own event list (channel 0x53).
+    pub events: Vec<Event>,
+    /// The next show time in AI ticks, -1 for never.
+    pub next: i32,
+    pub id: u16,
+    pub upkeep: [u32; 3],
+    pub receipts: [u32; 3],
+    pub attendance: [u32; 3],
+    pub show: Show,
+}
+
+/// The record of one entity type in a show info: a species, or the marine specialist.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeRecord {
+    pub key: u32,
+    pub script: u16,
+    /// The script the show editor chose, 0xffff for none; 0 in a file before version 99.
+    pub pending: u16,
+    /// The admission as the bits of a single precision number.
+    pub admission: u32,
+    pub receipts: [u32; 3],
+    pub attendance: [u32; 3],
+    /// The creation date (a file time); 0 in a file before version 99.
+    pub date: u64,
+}
+
+/// The running part of a show info (shows 3.3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Show {
+    pub script: u16,
+    pub id: u16,
+    pub species: u32,
+    pub keeper: u32,
+    pub word: u32,
+    pub state_word: u16,
+    pub ready: bool,
+    pub running: bool,
+    pub stopped: bool,
+    pub start: u32,
+    pub done: u32,
+    pub possible: u32,
+    pub achieved: u32,
+    pub items: Vec<ItemState>,
+}
+
+impl Default for Show {
+    /// A new show: no script, everything 0, stopped.
+    fn default() -> Show {
+        Show {
+            script: 0,
+            id: 0,
+            species: 0,
+            keeper: 0,
+            word: 0,
+            state_word: 0,
+            ready: false,
+            running: false,
+            stopped: true,
+            start: 0,
+            done: 0,
+            possible: 0,
+            achieved: 0,
+            items: Vec::new(),
+        }
+    }
+}
+
+/// The state of one animal in a show (shows 3.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemState {
+    pub word: u16,
+    pub animal: u32,
+    /// -1 before the first item.
+    pub item: i16,
+    pub finished: bool,
+    pub aborted: bool,
+    pub cue_sent: bool,
+    pub ready: bool,
+    pub started: bool,
+    pub done: bool,
+}
+
+impl ShowInfo {
+    /// Reads a show info of the version being read; the fields it lacks stay as a fresh info has
+    /// them.
+    pub(super) fn read(r: &mut Reader) -> R<ShowInfo> {
+        let v = r.v;
+        let (frequency, index) = (r.i32()?, r.u32()?);
+        let schedule = (0..r.count(4)?).map(|_| r.u32()).collect::<R<Vec<_>>>()?;
+        if v <= 98 {
+            r.skip_list(8)?;
+        }
+        let records = (0..r.count(if v >= 99 { 44 } else { 6 })?)
+            .map(|_| TypeRecord::read(r))
+            .collect::<R<_>>()?;
+        let mut info = ShowInfo {
+            frequency,
+            index,
+            schedule,
+            records,
+            events: Vec::new(),
+            next: 0,
+            id: 0,
+            upkeep: [0; 3],
+            receipts: [0; 3],
+            attendance: [0; 3],
+            show: Show::default(),
+        };
+        if v >= 97 {
+            info.events = r.events()?;
+            (info.next, info.id) = (r.i32()?, r.u16()?);
+        }
+        if v >= 105 {
+            info.upkeep = [r.u32()?, r.u32()?, r.u32()?];
+        }
+        if v >= 106 {
+            info.receipts = [r.u32()?, r.u32()?, r.u32()?];
+            info.attendance = [r.u32()?, r.u32()?, r.u32()?];
+        }
+        if v >= 97 {
+            info.show = Show::read(r)?;
+        }
+        if v == 101 {
+            r.skip(1)?;
+        }
+        Ok(info)
+    }
+
+    /// The info as version 106 stores it.
+    pub(super) fn write(&self, o: &mut Out) {
+        o.i32(self.frequency);
+        o.u32(self.index);
+        o.u32(self.schedule.len() as u32);
+        self.schedule.iter().for_each(|&n| o.u32(n));
+        o.u32(self.records.len() as u32);
+        self.records.iter().for_each(|t| t.write(o));
+        o.u32(self.events.len() as u32);
+        for e in &self.events {
+            o.event(e);
+        }
+        o.i32(self.next);
+        o.u16(self.id);
+        for n in [self.upkeep, self.receipts, self.attendance].concat() {
+            o.u32(n);
+        }
+        self.show.write(o);
+    }
+}
+
+impl TypeRecord {
+    fn read(r: &mut Reader) -> R<TypeRecord> {
+        let (key, script) = (r.u32()?, r.u16()?);
+        let mut record = TypeRecord {
+            key,
+            script,
+            pending: 0,
+            admission: 0,
+            receipts: [0; 3],
+            attendance: [0; 3],
+            date: 0,
+        };
+        if r.v >= 99 {
+            record.pending = r.u16()?;
+            record.admission = r.u32()?;
+            record.receipts = [r.u32()?, r.u32()?, r.u32()?];
+            record.attendance = [r.u32()?, r.u32()?, r.u32()?];
+            record.date = r.u64()?;
+        }
+        Ok(record)
+    }
+
+    fn write(&self, o: &mut Out) {
+        o.u32(self.key);
+        o.u16(self.script);
+        o.u16(self.pending);
+        o.u32(self.admission);
+        for n in self.receipts.into_iter().chain(self.attendance) {
+            o.u32(n);
+        }
+        o.bytes(&self.date.to_le_bytes());
+    }
+}
+
+impl Show {
+    fn read(r: &mut Reader) -> R<Show> {
+        let (script, id) = (r.u16()?, r.u16()?);
+        let (species, keeper, word) = (r.u32()?, r.u32()?, r.u32()?);
+        let state_word = r.u16()?;
+        let (ready, running, stopped) = (r.u8()? != 0, r.u8()? != 0, r.u8()? != 0);
+        let [start, done, possible, achieved] = [r.u32()?, r.u32()?, r.u32()?, r.u32()?];
+        let items = (0..r.count(14)?)
+            .map(|_| {
+                Ok(ItemState {
+                    word: r.u16()?,
+                    animal: r.u32()?,
+                    item: r.u16()? as i16,
+                    finished: r.u8()? != 0,
+                    aborted: r.u8()? != 0,
+                    cue_sent: r.u8()? != 0,
+                    ready: r.u8()? != 0,
+                    started: r.u8()? != 0,
+                    done: r.u8()? != 0,
+                })
+            })
+            .collect::<R<_>>()?;
+        Ok(Show {
+            script,
+            id,
+            species,
+            keeper,
+            word,
+            state_word,
+            ready,
+            running,
+            stopped,
+            start,
+            done,
+            possible,
+            achieved,
+            items,
+        })
+    }
+
+    fn write(&self, o: &mut Out) {
+        o.u16(self.script);
+        o.u16(self.id);
+        o.u32(self.species);
+        o.u32(self.keeper);
+        o.u32(self.word);
+        o.u16(self.state_word);
+        for b in [self.ready, self.running, self.stopped] {
+            o.u8(b.into());
+        }
+        for n in [self.start, self.done, self.possible, self.achieved] {
+            o.u32(n);
+        }
+        o.u32(self.items.len() as u32);
+        for s in &self.items {
+            o.u16(s.word);
+            o.u32(s.animal);
+            o.u16(s.item as u16);
+            for b in [
+                s.finished, s.aborted, s.cue_sent, s.ready, s.started, s.done,
+            ] {
+                o.u8(b.into());
+            }
+        }
+    }
+}

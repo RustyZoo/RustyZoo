@@ -1751,6 +1751,7 @@ fn an_entity_without_a_body_is_not_written_unless_the_model_builds_it() {
     assert!(zoo.write(&money).is_err());
     let blank = Zoo {
         kept: Kept::default(),
+        shows: Default::default(),
         ..Zoo::parse(&lean(106)).unwrap()
     };
     assert!(blank.write(&money).is_err());
@@ -2239,8 +2240,12 @@ fn habitats_and_shows_of_an_old_file_are_written_as_106() {
         if v < 97 {
             // No script, and the counters of a fresh map.
             assert_eq!(
-                back.kept.shows,
-                [0, 0, 0, 0, 0xd0, 7, 0xe8, 3],
+                (
+                    back.shows.scripts.len(),
+                    back.shows.next_script,
+                    back.shows.next_show
+                ),
+                (0, 2000, 1000),
                 "version {v}"
             );
         }
@@ -2259,11 +2264,7 @@ fn habitats_and_shows_of_an_old_file_are_written_as_106() {
     for (v, file) in [(103, file_with(103, 3, 3, &[], &[], 1)), (106, rich(106))] {
         let (zoo, money) = Zoo::parse_money(&file).unwrap();
         let out = zoo.write(&money).unwrap();
-        assert_eq!(
-            parse_to_the_end(&out).kept.shows,
-            zoo.kept.shows,
-            "version {v}"
-        );
+        assert_eq!(parse_to_the_end(&out).shows, zoo.shows, "version {v}");
     }
 }
 
@@ -3088,4 +3089,193 @@ fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
         .checked(&cat)
         .unwrap();
     assert!(z.entities.is_empty());
+}
+
+/// A show info of version 106 with a different number in every field.
+fn marked_show_info() -> Vec<u8> {
+    let mut w = W::default();
+    w.i32(-1).u32(2); // frequency (never), schedule index
+    w.u32(2).u32(5400).u32(5401); // schedule
+    w.u32(1).u32(5400).u16(2001).u16(0xffff); // a type record
+    w.u32(550).u32(1).u32(2).u32(3).u32(4).u32(5).u32(6);
+    w.bytes(&126_227_808_000_000_000u64.to_le_bytes());
+    w.u32(1)
+        .u32(40)
+        .u32(41)
+        .u32(42)
+        .u16(43)
+        .u16(0x2711)
+        .u16(45)
+        .u8(46)
+        .u8(47); // an event
+    w.i32(77).u16(1003); // next show time, show id
+    for n in 8..17 {
+        w.u32(n); // upkeep, receipts, attendance
+    }
+    w.u16(2001).u16(1003).u32(5400).u32(9552).u32(99); // the show
+    w.u16(7).u8(1).u8(0).u8(1);
+    w.u32(20).u32(21).u32(22).u32(23);
+    w.u32(1)
+        .u16(0xaaaa)
+        .u32(31)
+        .u16(0xffff)
+        .bytes(&[0, 1, 0, 1, 0, 1]); // an item state
+    w.0
+}
+
+#[test]
+fn a_show_info_is_read_into_its_fields_in_file_order_and_written_back_the_same() {
+    let bytes = marked_show_info();
+    let mut r = Reader::new(&bytes, 106);
+    let info = ShowInfo::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0));
+    assert!(r.data.is_empty());
+    assert_eq!(
+        (info.frequency, info.index, info.schedule.clone()),
+        (-1, 2, vec![5400, 5401])
+    );
+    let t = &info.records[0];
+    assert_eq!(
+        (t.key, t.script, t.pending, t.admission),
+        (5400, 2001, 0xffff, 550)
+    );
+    assert_eq!((t.receipts, t.attendance), ([1, 2, 3], [4, 5, 6]));
+    assert_eq!(t.date, 126_227_808_000_000_000);
+    let e = &info.events[0];
+    assert_eq!(
+        (e.sender, e.target, e.data, e.extra, e.kind),
+        (40, 41, 42, 43, 0x2711)
+    );
+    assert_eq!((info.next, info.id), (77, 1003));
+    // The upkeep, then the receipts, then the attendance.
+    assert_eq!(
+        (info.upkeep, info.receipts, info.attendance),
+        ([8, 9, 10], [11, 12, 13], [14, 15, 16])
+    );
+    let s = &info.show;
+    assert_eq!(
+        (s.script, s.id, s.species, s.keeper, s.word),
+        (2001, 1003, 5400, 9552, 99)
+    );
+    assert_eq!(
+        (s.state_word, s.ready, s.running, s.stopped),
+        (7, true, false, true)
+    );
+    assert_eq!((s.start, s.done, s.possible, s.achieved), (20, 21, 22, 23));
+    let i = &s.items[0];
+    assert_eq!(
+        (i.animal, i.item, i.finished, i.aborted, i.done),
+        (31, -1, false, true, true)
+    );
+    assert_eq!((i.cue_sent, i.ready, i.started), (false, true, false));
+    let mut o = Out(Vec::new());
+    info.write(&mut o);
+    assert_eq!(o.0, bytes);
+    // A file cut short anywhere is an error, never a panic.
+    for n in 0..bytes.len() {
+        assert!(
+            ShowInfo::read(&mut Reader::new(&bytes[..n], 106)).is_err(),
+            "{n}"
+        );
+    }
+}
+
+#[test]
+fn a_show_info_of_an_older_version_lacks_the_later_fields() {
+    // Version 98: the old list is dropped, the type record is 6 bytes (no pending id, figures or
+    // date), and neither the upkeep nor the receipts are stored.
+    let mut w = W::default();
+    w.i32(90).u32(0).u32(0); // frequency, index, no schedule
+    w.u32(1).z(8); // the old list
+    w.u32(1).u32(5400).u16(2001);
+    w.u32(0).i32(5).u16(1003); // no event, next time, show id
+    w.z(16 + 5 + 16).u32(0);
+    let mut r = Reader::new(&w.0, 98);
+    let info = ShowInfo::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0));
+    assert!(r.data.is_empty());
+    let t = &info.records[0];
+    assert_eq!(
+        (t.key, t.script, t.pending, t.admission, t.date),
+        (5400, 2001, 0, 0, 0)
+    );
+    assert_eq!(
+        (info.next, info.id, info.upkeep, info.receipts),
+        (5, 1003, [0; 3], [0; 3])
+    );
+    // Before 97 there is no show and no show id either.
+    let mut w = W::default();
+    w.i32(90).u32(0).u32(0).u32(0).u32(0); // the old list and the records are empty
+    let info = ShowInfo::read(&mut Reader::new(&w.0, 96)).unwrap_or_else(|e| panic!("{}", e.0));
+    assert_eq!((info.id, info.show.stopped, info.show.script), (0, true, 0));
+}
+
+#[test]
+fn the_scripts_and_the_two_counters_are_fields() {
+    let mut w = W::default();
+    w.u32(1).u16(2001).u32(u32::MAX).u32(4).u32(1); // a script of one item
+    w.u8(1).u8(1).u16(77).u32(3).u32(u32::MAX);
+    w.str("Tricktailwalk").str("anim").str("pre").str("post");
+    w.u32(5)
+        .u32(6)
+        .u8(1)
+        .u32(10)
+        .u32(20)
+        .u32(30)
+        .u32((-4i32) as u32);
+    w.u32(8).u32(9).str("icon").str("grey");
+    w.u16(2005).u16(1010);
+    let mut r = Reader::new(&w.0, 106);
+    let mut shows = Shows::default();
+    shows
+        .read_section(&mut r)
+        .unwrap_or_else(|e| panic!("{}", e.0));
+    assert!(r.data.is_empty());
+    assert_eq!((shows.next_script, shows.next_show), (2005, 1010));
+    let s = &shows.scripts[0];
+    assert_eq!((s.id, s.marker, s.kind), (2001, u32::MAX, 4));
+    let i = &s.items[0];
+    assert_eq!(
+        (i.id, i.kind, i.names[0].as_str(), i.names[3].as_str()),
+        (77, 3, "Tricktailwalk", "post")
+    );
+    assert_eq!((i.building, i.complexity, i.returns), (5, 6, 1));
+    assert_eq!(
+        (i.satisfaction, i.delta, i.current, i.depth),
+        (10, 20, 30, -4)
+    );
+    assert_eq!(
+        (i.help, i.icons.clone()),
+        ([8, 9], ["icon".to_string(), "grey".to_string()])
+    );
+    let mut o = Out(Vec::new());
+    shows.write_section(&mut o).unwrap();
+    assert_eq!(o.0, w.0);
+    // Before 97 the counters are not stored: a fresh map's stay.
+    let mut shows = Shows::default();
+    let mut r = Reader::new(&[0, 0, 0, 0], 90);
+    shows
+        .read_section(&mut r)
+        .unwrap_or_else(|e| panic!("{}", e.0));
+    assert_eq!((shows.next_script, shows.next_show), (2000, 1000));
+}
+
+#[test]
+fn a_changed_show_is_written_into_its_habitat_and_a_removed_one_leaves_none() {
+    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    let info = zoo.shows.infos[0]
+        .as_mut()
+        .expect("the habitat holds a show");
+    (info.frequency, info.next, info.id) = (-1, -1, 1234);
+    info.schedule = vec![5400];
+    info.show.running = true;
+    info.show.items.clear();
+    zoo.shows.next_show = 1235;
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    assert_eq!(back.shows, zoo.shows);
+    assert_eq!(back.habitat_info, zoo.habitat_info);
+    // The tank fields that follow the show are still in place.
+    assert_eq!(back.tanks, zoo.tanks);
+    zoo.shows.infos[0] = None;
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    assert_eq!(back.shows.infos, [None, None]);
+    assert_eq!(back.tanks, zoo.tanks);
 }
