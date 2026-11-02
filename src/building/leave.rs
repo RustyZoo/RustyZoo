@@ -7,6 +7,7 @@ use crate::entity::Catalogue;
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
 use crate::guest::{BATHROOM, ENERGY, HAPPINESS, HUNGER, THIRST};
 use crate::render::order::ground_height;
+use crate::sim::{Event, UNIT_CHANNEL};
 use crate::unit::{Part, Unit};
 use crate::world::World;
 use crate::zoo::Entity;
@@ -119,8 +120,23 @@ pub(crate) fn pay(
     apply(unit, change);
 }
 
+/// Guest buildings 6.6 point 4: the unit's own abort of a forced leave posts one event to itself
+/// (type 0x2722, channel 0x55, delay 1), whatever the unit class.
+fn post_abort(world: &mut World, unit: u32) {
+    world.units.posts.push(Event {
+        sender: unit,
+        target: unit,
+        data: 0,
+        extra: 0,
+        kind: 0x2722,
+        delay: 1,
+        sender_channel: UNIT_CHANNEL,
+        channel: UNIT_CHANNEL,
+    });
+}
+
 /// Guest buildings 11.1: building `id` is being taken off the map (deleted, or picked up), so
-/// every user is removed as a forced leave, in entering order: it pays, gets the change record
+/// every user is removed as a forced leave, in entering order: it posts its abort event, pays, gets the change record
 /// and is put at an exit (6.7), shown and with its goal stopped. The building keeps its figures.
 /// A building that is no guest building has no users, and nothing happens.
 pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
@@ -153,6 +169,7 @@ pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
         let Some(at) = world.find(unit) else {
             continue;
         };
+        post_abort(world, unit);
         let Some(entry) = world.units.get_mut(unit) else {
             // A unit the table does not run (the helicopter): its stored goal is stopped.
             let block = world.zoo.entities[at]

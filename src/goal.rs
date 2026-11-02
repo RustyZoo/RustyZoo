@@ -22,6 +22,7 @@ use crate::world::World;
 use crate::zoo::Entity;
 
 mod animal;
+mod avoid;
 mod guest;
 mod staff;
 #[cfg(test)]
@@ -244,6 +245,8 @@ pub enum Goal {
     Eating,
     /// 0x79 of a guest: be sick on the spot (11.10).
     Sick,
+    /// 0x75 of a guest or a staff member: run from a predator (11.11).
+    Avoid,
 }
 
 impl Goal {
@@ -279,6 +282,8 @@ impl Goal {
             (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
             (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
             (SICK, Kind::Guest) => Some(Goal::Sick),
+            (AVOID, Kind::Animal) => None,
+            (AVOID, _) => Some(Goal::Avoid),
             _ => None,
         }
     }
@@ -310,6 +315,7 @@ impl Goal {
             Goal::EatStand => EAT_STANDING,
             Goal::Eating => EATING_STANDING,
             Goal::Sick => SICK,
+            Goal::Avoid => AVOID,
         }
     }
 
@@ -327,6 +333,7 @@ impl Goal {
             Goal::Sick => cx.sick_init(),
             Goal::Surface => cx.surface_init(),
             Goal::EnterTank => cx.enter_init(),
+            Goal::Leave => cx.leave_init(),
             Goal::ExitTank => cx.exit_init(),
             _ => true,
         }
@@ -355,6 +362,7 @@ impl Goal {
     fn check_done(self, cx: &mut Cx) {
         match self {
             Goal::Leave => return cx.leave_check_done(),
+            Goal::Avoid => return cx.avoid_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
             Goal::Scenery => return cx.scenery_check_done(),
             Goal::DoScenery => return cx.do_scenery_check_done(),
@@ -390,6 +398,7 @@ impl Goal {
             Goal::Duties => cx.duties_decide(),
             Goal::Maint => cx.maint_decide(),
             Goal::Leave => cx.leave_decide(),
+            Goal::Avoid => cx.avoid_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Surface => cx.surface_decide(),
             Goal::Site => cx.site_decide(),
@@ -429,6 +438,7 @@ impl Goal {
             Goal::EatStand => cx.set_task(EATING_STANDING, 1, 0, None),
             Goal::Eating => cx.reset(),
             Goal::Sick => cx.sick_done(),
+            Goal::Avoid => cx.avoid_exit(),
             Goal::Base | Goal::Site | Goal::Maint => {}
         }
     }
@@ -782,6 +792,8 @@ impl Cx<'_, '_> {
         self.unit.goal.wants_to_decide = false;
         // A guest's building target goes with it, and so does the eat-standing flag (guests 8).
         self.clear_target();
+        // A guest pays its own cost off the paths again (pathfinding 6.5).
+        self.unit.mover.emergency = false;
         match &mut self.unit.part {
             Part::Guest(g) => g.stand = false,
             // An animal's reset lowers its need flags too and ends its escape walk (12.1, animals
@@ -880,12 +892,13 @@ impl Cx<'_, '_> {
 
     /// 10.2 point 8: the task goes on. Point 10: the guest stands while its wandered flag is up,
     /// else it picks again: the sites to see, else the seen count goes and it may decide to leave.
-    /// Point 1 (a guest in an exhibit or a tank leaves it) and point 2 (a guest that is to leave
-    /// takes the leave task) come first.
+    /// Point 1 (a guest in an exhibit or a tank leaves it), point 2 (a guest that is to leave
+    /// takes the leave task) and point 3 (a frightened guest avoids its predator) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
         self.spread();
         if self.exit_ladder()
             || self.leave_ladder()
+            || self.fright_ladder(task)
             || self.sick_ladder()
             || self.stand_ladder(task)
         {

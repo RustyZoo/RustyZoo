@@ -365,6 +365,7 @@ impl App<'_> {
         });
         let removed =
             bulldozer::remove(&mut game.world, &mut game.money, cat, id, &mut self.sim.rng);
+        self.sim.absorb(&mut game.world);
         let Some(r) = removed else { return };
         r.members.iter().for_each(|&m| self.sim.remove(m));
         if let Some((mut before, change, tile, near)) = object {
