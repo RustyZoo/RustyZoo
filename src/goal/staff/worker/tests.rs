@@ -1093,6 +1093,23 @@ fn the_dung_check_recomputes_the_exhibit_of_the_food_it_meets() {
 }
 
 #[test]
+fn the_dung_check_recomputes_every_dirty_exhibit_of_the_food_it_meets() {
+    // Food on the grounds is listed first and already answers yes; the food of a dirty empty
+    // exhibit listed after it is still met, so its exhibit is clean when the check answers.
+    let (mut g, x) = rated_pen(false);
+    g.dung((8, 8), "food", false);
+    g.dung((4, 3), "food", false);
+    stored(&mut g, x, 0, true);
+    assert!(crate::staff::chores::poo_left(
+        &mut g.w,
+        &g.cat,
+        WORKER,
+        &mut || 0
+    ));
+    assert!(!dirty(&g, x));
+}
+
+#[test]
 fn the_dung_job_adds_the_amphibious_neighbours_counts_recomputed_first() {
     let mut other = pen((10, 2, 12, 5, 11));
     other

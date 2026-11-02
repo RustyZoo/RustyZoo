@@ -59,8 +59,8 @@ pub fn rated_around(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> u
 /// Whether the check done of a dung job goes on for worker `me` (staff 8.6): a pile of dung on a
 /// tile of the zoo grounds (the tiles beyond the zoo wall too), or food on the grounds or in an
 /// exhibit with no rated animal, unless it is the target tile of another worker. A pile in an
-/// exhibit counts for nothing. The exhibit of a food object is recomputed when it is dirty, where
-/// the scan meets the food.
+/// exhibit counts for nothing. The scan has no early exit: it meets every food object and
+/// recomputes each dirty exhibit before it answers.
 pub fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool {
     let others: Vec<usize> = (world.units.iter())
         .filter(|u| u.id != me && u.kind == Kind::Worker)
@@ -69,6 +69,7 @@ pub fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool
             _ => None,
         })
         .collect();
+    let mut left = false;
     for at in 0..world.zoo.entities.len() {
         let e = &world.zoo.entities[at];
         let Some(t) = tile_of(world, e) else {
@@ -76,9 +77,7 @@ pub fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool
         };
         let region = world.exhibits().region(t);
         if is_poo(e) {
-            if matches!(region, Some(GROUNDS | EXTERIOR)) {
-                return true;
-            }
+            left |= matches!(region, Some(GROUNDS | EXTERIOR));
             continue;
         }
         if e.class != "food" {
@@ -89,11 +88,9 @@ pub fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool
             Some(EXTERIOR) | None => false,
             Some(x) => rated(world, cat, x, &mut *rand) == 0,
         };
-        if open && !others.contains(&t) {
-            return true;
-        }
+        left |= open && !others.contains(&t);
     }
-    false
+    left
 }
 
 /// The object in the centre slot of tile `t` (staff 8.6): its id, whether it is dinosaur dung and
