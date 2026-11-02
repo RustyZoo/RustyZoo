@@ -74,17 +74,28 @@ pub fn decide_all(world: &mut World, cat: &Catalogue) {
     }
 }
 
+/// Validates again the buildings on every tank whose water level or wall height moved since the
+/// last call: the simulation's water step and the app's edits both call it, each tank once.
+pub fn wet_changed(world: &mut World, cat: &Catalogue) {
+    for tank in world.take_wet() {
+        tank_changed(world, cat, tank);
+    }
+}
+
 /// The water level or the wall height of tank `tank` moved: the buildings standing on its tiles
 /// are validated again, and each one found dead puts all its users out.
 pub fn tank_changed(world: &mut World, cat: &Catalogue, tank: u32) {
     for at in 0..world.zoo.entities.len() {
+        let Some(kind) = guest_kind(world, cat, at) else {
+            continue;
+        };
         let on = world
             .footprint(at)
             .and_then(|(own, _)| own)
             .is_some_and(|t| world.tank_at(t) == Some(tank));
-        let Some(kind) = guest_kind(world, cat, at).filter(|_| on) else {
+        if !on {
             continue;
-        };
+        }
         if decide_at(world, &kind, at)
             && let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id)
         {

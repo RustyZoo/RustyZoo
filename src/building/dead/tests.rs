@@ -230,3 +230,18 @@ fn a_cave_on_the_ground_is_dead_when_it_is_placed() {
     crate::building::built(&mut w, ty, id, 0);
     assert!(w.units.buildings[&id].dead);
 }
+
+#[test]
+fn a_drained_tank_puts_the_users_of_a_cave_out_in_a_headless_run() {
+    let (mut w, cat, tank) = flooded();
+    decide_all(&mut w, &cat);
+    w.set_paused(false);
+    let mut sim = crate::sim::Sim::new(b"");
+    assert!(w.drain(tank));
+    for _ in 0..8 {
+        sim.step_in(&mut w, &cat, 100, |_, _, _| {});
+    }
+    assert!(w.tank(tank).unwrap().level < 7);
+    let live = &w.units.buildings[&7];
+    assert!(live.dead && live.users.is_empty());
+}

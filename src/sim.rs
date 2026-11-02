@@ -781,6 +781,8 @@ impl Sim {
             }
         }
         let water_moved = world.step_water();
+        // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
+        crate::building::dead::wet_changed(world, cat);
         world.decay_water(step);
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;

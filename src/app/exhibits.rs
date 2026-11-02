@@ -47,10 +47,7 @@ impl App<'_> {
         let Some(game) = &mut self.game else { return };
         let events = game.world.take_events();
         // Buildings on a tank whose water or walls moved are validated again (guest buildings 11.1.1).
-        let cat = self.renderer.catalogue();
-        for id in game.world.take_wet() {
-            crate::building::dead::tank_changed(&mut game.world, cat, id);
-        }
+        crate::building::dead::wet_changed(&mut game.world, self.renderer.catalogue());
         let world = &game.world;
         let slot = |id: u32| match world.gate_slot(id) {
             Some((t, d)) => format!(
