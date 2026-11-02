@@ -248,6 +248,7 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         }
     }
     r.skip_list(4)?;
+    let mut ret = 0;
     if v <= 93 {
         r.quiet(|r| {
             r.string()?;
@@ -255,7 +256,7 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         })?;
         r.put(&[0; 8]);
     } else {
-        r.skip(4)?;
+        ret = r.u32()?;
         r.string()?;
     }
     r.skip_list(8)?;
@@ -289,6 +290,7 @@ fn guest(r: &mut Reader) -> R<GuestRecord> {
         items,
         leave,
         afraid,
+        ret,
         gift,
         wandered,
         stand,

@@ -35,6 +35,8 @@ pub const LIST: i32 = 4305;
 // The list of the animals, the thoughts and the tabs that can be selected without a click: status
 // and tank modification, each with its sub-layout.
 pub const ANIMALS: i32 = 4326;
+/// The animals tab button: a click fills the list at once (10.5).
+pub const ANIMALS_TAB: i32 = 4311;
 const THOUGHTS: i32 = 4330;
 const STATUS_TAB: i32 = 4310;
 /// The tank tab button: showing its layout shows all of it, so the panel is written again.
@@ -73,7 +75,7 @@ const TANK_LAYOUT: i32 = 704;
 const TABS: [(i32, i32); 5] = [
     (STATUS_TAB, STATUS_LAYOUT),
     (4313, 703),
-    (4311, 701),
+    (ANIMALS_TAB, 701),
     (4312, 702),
     (TANK_TAB, TANK_LAYOUT),
 ];
