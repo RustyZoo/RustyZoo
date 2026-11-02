@@ -144,10 +144,10 @@ impl<'c> Cx<'_, 'c> {
         }
         if let Some(a) = self.world.units.get_mut(id) {
             if on {
-                (a.destination, a.wait) = (None, i32::MAX);
+                (a.destination, a.held) = (None, true);
                 movement::stop(a);
             } else {
-                a.wait = 0;
+                a.held = false;
             }
         }
     }

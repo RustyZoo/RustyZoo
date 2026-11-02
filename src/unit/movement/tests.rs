@@ -715,6 +715,26 @@ fn an_aborted_walk_ends_its_move_call_as_done() {
 }
 
 #[test]
+fn a_held_unit_starts_no_move() {
+    let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
+    let mut u = w.units.get(1).unwrap().clone();
+    let at = w.find(1).unwrap();
+    let (mut rng, walker) = (Rng::default(), Walker::new("fWalk(0,0)"));
+    let mut run = |u: &mut Unit, w: &mut World| {
+        u.path = vec![tile(5, 5), tile(6, 5)];
+        u.destination = Some((6 * 64 + 32, 5 * 64 + 32, 0));
+        let go = (Gait::Slow, Target::None, false);
+        call(u, w, &walker, &Catalogue::default(), &mut rng, at, &go)
+    };
+    u.held = true;
+    assert_eq!(run(&mut u, &mut w), Flow::Failed);
+    assert!(!u.walking && !u.moving);
+    u.held = false;
+    assert_eq!(run(&mut u, &mut w), Flow::Running);
+    assert!(u.walking);
+}
+
+#[test]
 fn a_target_0_keeps_the_3d_target() {
     let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
     let mut u = w.units.get(1).unwrap().clone();

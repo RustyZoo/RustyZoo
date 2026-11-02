@@ -353,6 +353,10 @@ pub fn call(
     if let (Gait::Fly(speed), Some(1)) = (gait, mode_of(world, at)) {
         return start_fly(unit, world, data, cat, at, speed, *reverse);
     }
+    // A held unit starts no walk (staff 7.7).
+    if unit.held {
+        return Flow::Failed;
+    }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.
     if unit.path.is_empty() {

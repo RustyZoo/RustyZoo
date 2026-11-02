@@ -347,7 +347,7 @@ fn a_keeper_heals_a_sick_animal_then_rakes_the_dung_and_pays_the_medicine() {
         type_of(&g.cat, &g.w.zoo.entities[g.w.find(KEEPER).unwrap()]).unwrap(),
     );
     assert!(dung.is_empty());
-    assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, 0);
+    assert!(!g.w.units.get(ZEBRA_A).unwrap().held);
 }
 
 #[test]
@@ -819,7 +819,7 @@ fn a_species_with_stay_sick_starts_sick_at_the_decide_and_done_sick_after_the_he
         g.run(1);
         assert!(g.log.len() < 1000, "the decide");
     }
-    assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, 0, "not held");
+    assert!(!g.w.units.get(ZEBRA_A).unwrap().held, "not held");
     g.run(2500);
     assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed");
     assert_eq!(sets_of_zebra(&g), ["bSick", "bDoneSick"]);
@@ -833,7 +833,7 @@ fn stay_sick_other_than_1_holds_the_animal_and_starts_no_set() {
             g.run(1);
             assert!(g.log.len() < 1000, "the decide");
         }
-        assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, i32::MAX, "held {key}");
+        assert!(g.w.units.get(ZEBRA_A).unwrap().held, "held {key}");
         g.run(2500);
         assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 500, "healed {key}");
         assert!(
@@ -909,5 +909,5 @@ fn a_goal_reset_in_the_heal_job_leaves_the_animal_held() {
         assert!(g.log.len() < 1000, "the decide");
     }
     reset_keeper(&mut g);
-    assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, i32::MAX);
+    assert!(g.w.units.get(ZEBRA_A).unwrap().held);
 }

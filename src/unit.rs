@@ -223,6 +223,9 @@ pub struct Unit {
     pub status_timer: i32,
     /// While above 0 the unit runs no behaviour and no goal.
     pub wait: i32,
+    /// The hold of a heal (staff 7.7): no walk starts and no move, the goals and sets go on. It
+    /// has no timer; the heal or the pick-up of the unit lowers it.
+    pub held: bool,
     /// The events read at the start of this step, for the hooks; empty between steps.
     pub events: Vec<Event>,
     /// The player holds the unit.
@@ -281,6 +284,7 @@ impl Unit {
             goal: Goals::default(),
             status_timer: 0,
             wait: 0,
+            held: false,
             events: Vec::new(),
             carried: false,
             hidden: false,
@@ -753,7 +757,8 @@ impl Units {
                     | u32::from(u.repositioning) << 1
                     | u32::from(u.started) << 2
                     | u32::from(u.typed) << 3
-                    | u32::from(u.hidden) << 4,
+                    | u32::from(u.hidden) << 4
+                    | u32::from(u.held) << 5,
             );
             match &u.part {
                 Part::Animal(a) => {

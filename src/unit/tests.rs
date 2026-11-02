@@ -261,6 +261,24 @@ fn the_wait_stops_the_behaviour_and_the_goals_but_not_the_status_tick() {
 }
 
 #[test]
+fn a_held_unit_has_no_timer_and_keeps_its_behaviour_and_goals() {
+    let mut w = world(&[("animals", 1)]);
+    let mut hooks = Recorder::default();
+    let unit = w.units.get_mut(1).unwrap();
+    (unit.held, unit.wait) = (true, 500);
+    // The hold is no wait: the wait counts down, the held unit still has its flag afterwards.
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    assert_eq!(w.units.get(1).unwrap().wait, 433);
+    assert!(w.units.get(1).unwrap().held);
+    let unit = w.units.get_mut(1).unwrap();
+    unit.wait = 0;
+    hooks.calls.clear();
+    turn_of(&mut w, &Events::default(), &mut hooks, 67);
+    assert_eq!(hooks.calls, ["move", "behaviour", "goals"]);
+    assert!(w.units.get(1).unwrap().held && w.units.get(1).unwrap().wait == 0);
+}
+
+#[test]
 fn a_carried_or_repositioning_unit_skips_the_move_the_status_and_the_goals() {
     for flag in 0..2 {
         let mut w = world(&[("animals", 1)]);

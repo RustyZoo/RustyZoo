@@ -1135,8 +1135,10 @@ impl Cx<'_, '_> {
 
     /// The same with the walk set the goal names (`bFindKeeperFood`).
     pub fn walk_set(&mut self, set: &str, job: bool, force: bool) -> bool {
-        let started =
-            !self.unit.suspended() && self.unit.destination.is_some() && self.start_set(set, force);
+        let started = !self.unit.suspended()
+            && !self.unit.held
+            && self.unit.destination.is_some()
+            && self.start_set(set, force);
         if !started {
             return false;
         }
