@@ -236,6 +236,7 @@ const RECORD: crate::zoo::GuestRecord = crate::zoo::GuestRecord {
     items: [0, 6491, 0, 6319, 6310],
     leave: true,
     afraid: true,
+    ret: 0,
     gift: true,
     wandered: true,
     stand: true,
@@ -332,6 +333,32 @@ fn a_loaded_guest_takes_its_items_flags_and_guide() {
     let g = guest_of(&world, id);
     assert_eq!((g.items, g.guide), ([Some(-1); 5], u32::MAX));
     assert_eq!(g.record(&wild, false), wild);
+}
+
+#[test]
+fn a_loaded_guest_holds_a_return_building_when_the_low_bits_of_its_word_are_set() {
+    // 0 and the recovering bit alone: none; a name id, the extremes and a changed building.
+    for (ret, want) in [
+        (0, None),
+        (0x8_0000, None),
+        (0xfff0_0000, None),
+        (0x1f7d, Some(0x1f7d)),
+        (0x8_1f7b, Some(0x1f7b)),
+        (u32::MAX, Some(0x7_ffff)),
+    ] {
+        let rec = crate::zoo::GuestRecord { ret, ..RECORD };
+        let (mut world, cat, id) = stored(rec);
+        load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
+        let mut g = guest_of(&world, id);
+        assert_eq!(g.returning, want, "{ret:#x}");
+        assert_eq!(g.record(&rec, true), rec, "{ret:#x}");
+        g.returning = None;
+        assert_eq!(g.record(&rec, true).ret, ret & !0x7_ffff, "{ret:#x}");
+        g.returning = Some(0x1f7d);
+        assert_eq!(g.record(&rec, true).ret, ret & !0x7_ffff | 0x1f7d);
+        g.returning = Some(0);
+        assert_eq!(g.record(&rec, true).ret, ret & !0x7_ffff);
+    }
 }
 
 #[test]

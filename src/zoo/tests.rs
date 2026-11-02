@@ -1831,6 +1831,7 @@ fn new_guest() -> GuestRecord {
         items: [0, 6491, 0, 6319, 6310],
         leave: true,
         afraid: true,
+        ret: 0x8_1f7b,
         gift: true,
         wandered: true,
         stand: true,
@@ -2687,6 +2688,8 @@ fn marked_guest() -> (Vec<u8>, usize) {
         body[tail + at] = v;
     }
     body[tail + 38] = 77;
+    // The return word follows the empty list of seen things.
+    body[117..121].copy_from_slice(&0x8_1f7bu32.to_le_bytes());
     (body, tail)
 }
 
@@ -2712,7 +2715,7 @@ fn a_guest_record_reads_and_writes_its_items_flags_and_guide() {
         g.in_group,
         g.listening,
     ];
-    assert_eq!((flags, g.guide), ([true; 7], 77));
+    assert_eq!((flags, g.guide, g.ret), ([true; 7], 77, 0x8_1f7b));
     // What was read is written back as it was.
     let same = parse_to_the_end(&zoo.write(&money).unwrap());
     let kept = |z: &Zoo| z.entities[0].common.as_ref().unwrap().raw.body.clone();
@@ -2724,6 +2727,7 @@ fn a_guest_record_reads_and_writes_its_items_flags_and_guide() {
         leave: false,
         wandered: false,
         guide: 0,
+        ret: 0x8_0000,
         values: [1, -2, 3, 4, 5],
         ..g
     }));
@@ -2731,6 +2735,7 @@ fn a_guest_record_reads_and_writes_its_items_flags_and_guide() {
     let c = back.entities[0].common.as_ref().unwrap();
     let r = *c.guest.as_deref().unwrap();
     assert_eq!(r.items, [5003, 0, 0, 0, u32::MAX]);
+    assert_eq!(r.ret, 0x8_0000);
     assert_eq!(
         (r.leave, r.wandered, r.guide, r.values),
         (false, false, 0, [1, -2, 3, 4, 5])
@@ -2741,6 +2746,25 @@ fn a_guest_record_reads_and_writes_its_items_flags_and_guide() {
     );
     let b = &c.raw.body;
     assert_eq!((b[21], b[tail + 10], b[tail + 34]), (7, 9, 3));
+}
+
+#[test]
+fn the_return_word_is_found_after_a_list_of_seen_things_and_refused_when_cut() {
+    let (mut body, _) = marked_guest();
+    body[113] = 2;
+    body.splice(117..117, [9u8; 8]);
+    let (pre, _) = body::transcode(106, b"guests", &body).unwrap();
+    let model = GuestRecord {
+        ret: u32::MAX,
+        ..new_guest()
+    };
+    let out = fresh::guest(Some(pre.clone()), &model).unwrap();
+    assert_eq!(out[117..125], [9; 8]);
+    assert_eq!(out[125..129], u32::MAX.to_le_bytes());
+    // A count of seen things that runs past the record is an error, not a panic.
+    let mut wild = pre;
+    wild[113..117].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(fresh::guest(Some(wild), &model).is_err());
 }
 
 #[test]
@@ -2769,7 +2793,7 @@ fn the_guest_record_of_every_version_takes_the_model_without_changing_its_length
 #[test]
 fn a_short_or_wild_guest_record_is_refused_and_never_panics() {
     let g = fresh::guest_new(1, 1);
-    for n in [0, 1, 41, 42, 88, 89, 92, 93, 100, 134] {
+    for n in [0, 1, 41, 42, 88, 89, 92, 93, 100, 134, 135] {
         assert!(fresh::guest(Some(vec![0; n]), &g).is_err(), "{n} bytes");
     }
     // A count of items that passes the end.
@@ -2781,7 +2805,7 @@ fn a_short_or_wild_guest_record_is_refused_and_never_panics() {
     let out = fresh::guest(Some(wild), &g).unwrap();
     assert_eq!(out.len(), 200 - 28 + 20);
     // The smallest record there is.
-    assert!(fresh::guest(Some(vec![0; 135]), &g).is_ok());
+    assert!(fresh::guest(Some(vec![0; 151]), &g).is_ok());
 }
 
 /// An animal record written as 106 and read back.
