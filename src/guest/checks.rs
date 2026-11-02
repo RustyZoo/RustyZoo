@@ -1,6 +1,10 @@
 //! The status tick of a guest: the update of the values (guests 5.3) and the checks (6.1 to 6.9,
 //! 6.12) with their countdowns.
 //!
+//! The saw-animal test and the chase check look for a predator ([`crate::unit::predator`]): one in
+//! sight makes the guest afraid and frightened, and its ladder starts the avoid task
+//! ([`crate::goal`]).
+//!
 //! [`run`] is the checks on the guest's own state and the generator; [`checks`] is the hook that
 //! reads the world for it: after the need checks it runs their seek parts, which look for a
 //! building that satisfies the need ([`Cx::seek`]), then the trash check and the seek for a trash
@@ -9,7 +13,8 @@
 
 use super::*;
 use crate::behaviour::Data;
-use crate::goal::{Cx, LEAVE};
+use crate::exhibit::{EXTERIOR, GROUNDS};
+use crate::goal::{AVOID, Cx, EXIT_TANK, LEAVE};
 use crate::sim::Rng;
 use crate::unit::{Ctx, Kind, Part, Unit};
 
@@ -100,20 +105,66 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 /// `skip` is set while the guest is on water, in a tank or leaving, when checks 6.3 to 6.9 do
 /// nothing.
 pub fn run(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -> Out {
+    countdowns(g, k);
     let mut out = needs_part(g, k, wandered, skip, rng);
     trash(g, k, (wandered, skip), &mut out);
     rest(g, k, (wandered, skip), rng, &mut out);
     out
 }
 
+/// The saw-animal countdown (6.12) and the chase countdown (6.2): whether each fired.
+fn countdowns(g: &mut Guest, k: &Keys) -> (bool, bool) {
+    let saw = g.saw_animal == 0;
+    g.saw_animal = match saw {
+        true => k.saw_animal_reset.wrapping_sub(1),
+        false => g.saw_animal.wrapping_sub(1),
+    };
+    (saw, tick(&mut g.countdowns[CHASE], k.periods[CHASE]))
+}
+
+/// The saw-animal test (6.12): an afraid guest stays afraid on the grounds while any animal is
+/// loose, elsewhere while it sees a predator; otherwise it calms down and, moving, walks on.
+fn calm(cx: &mut Cx, grounds: bool) {
+    if !cx.unit.afraid {
+        return;
+    }
+    let afraid = match grounds {
+        true => !crate::unit::predator::escaped(cx.world).is_empty(),
+        false => cx.predator(0) != 0,
+    };
+    if !afraid {
+        cx.unit.afraid = false;
+        if cx.unit.moving {
+            cx.walk_set("bWalk", false, true);
+        }
+    }
+}
+
+/// The chase check (6.2), unless the guest avoids or leaves an exhibit: a guest that sees a
+/// predator is afraid and frightened, forgets leaving, loses `cEscapedAnimalChange` of happiness
+/// and thinks of it (10245 about the animal on the grounds, 10248 elsewhere); one that sees none
+/// is not frightened any more.
+fn chase(cx: &mut Cx, g: &mut Guest, k: &Keys, grounds: bool) {
+    if [AVOID, EXIT_TANK].contains(&cx.unit.goal.record.task) {
+        return;
+    }
+    let p = cx.predator(0);
+    if p == 0 {
+        cx.unit.frightened = false;
+        return;
+    }
+    (cx.unit.afraid, cx.unit.frightened, g.leave) = (true, true, false);
+    g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(k.escaped_change);
+    match grounds {
+        true => cx.think(10245, Some(p)),
+        false => cx.think(10248, None),
+    }
+    g.saw_animal = k.saw_animal_reset.wrapping_sub(1);
+}
+
 /// The checks up to the need checks (6.3 to 6.7), whose seek parts are due in the result.
 fn needs_part(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -> Out {
     let mut out = Out::default();
-    g.saw_animal = match g.saw_animal {
-        0 => k.saw_animal_reset.wrapping_sub(1),
-        n => n.wrapping_sub(1),
-    };
-    tick(&mut g.countdowns[CHASE], k.periods[CHASE]);
     if !skip {
         // 6.3: while the wandered flag is up the countdown is not asked and the draws are made.
         let due = match wandered {
@@ -233,7 +284,8 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     });
     let skip = wet || unit.goal.record.task == LEAVE;
     let wandered = unit.goal.wandered;
-    let mut out = needs_part(&mut g, &k, wandered, skip, ctx.rng);
+    let region = tile.and_then(|t| world.exhibits().region(t));
+    let grounds = matches!(region, Some(GROUNDS | EXTERIOR));
     // The seek parts look at the guest as it stands, in the order of the checks.
     let mut cx = Cx {
         unit: &mut *unit,
@@ -242,6 +294,14 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         at,
         data,
     };
+    let (saw, chased) = countdowns(&mut g, &k);
+    if saw {
+        calm(&mut cx, grounds);
+    }
+    if chased {
+        chase(&mut cx, &mut g, &k, grounds);
+    }
+    let mut out = needs_part(&mut g, &k, wandered, skip, cx.ctx.rng);
     for text in std::mem::take(&mut out.thoughts) {
         cx.think(text, None);
     }
