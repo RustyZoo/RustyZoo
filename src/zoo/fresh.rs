@@ -176,6 +176,7 @@ pub(crate) fn guest_new(happiness: i32, now: u64) -> GuestRecord {
         items: [0; 5],
         leave: false,
         afraid: false,
+        ret: 0,
         gift: false,
         wandered: false,
         stand: false,
@@ -216,6 +217,13 @@ pub(super) fn guest(kept: Option<Vec<u8>>, g: &GuestRecord) -> Result<Vec<u8>, S
     let items = g.items.iter().flat_map(|n| n.to_le_bytes());
     b.splice(ITEMS_AT..end, [5, 0, 0, 0].into_iter().chain(items));
     let tail = b.len() - TAIL;
+    // The return word follows the list of seen things, which comes after the five slots.
+    let seen = head + 20;
+    let n = b.get(seen..seen + 4).ok_or_else(short)?;
+    let n = u32::from_le_bytes(n.try_into().unwrap()) as usize;
+    let ret = n.checked_mul(4).and_then(|c| c.checked_add(seen + 4));
+    let ret = ret.filter(|&r| r + 4 <= tail).ok_or_else(short)?;
+    b[ret..ret + 4].copy_from_slice(&g.ret.to_le_bytes());
     let word = |b: &mut [u8], at: usize, n: u32| b[at..at + 4].copy_from_slice(&n.to_le_bytes());
     for (i, v) in g.values.iter().enumerate() {
         word(&mut b, 4 * i, *v as u32);

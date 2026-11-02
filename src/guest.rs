@@ -306,14 +306,18 @@ pub struct Guest {
     /// The last drop of litter failed (guests 10).
     pub littered: bool,
     /// The name id of the return building the guest means to come back to; while set, no
-    /// attraction or scenery object counts as seen (guests visit 3.2). Nothing sets it before M7.
+    /// attraction or scenery object counts as seen (guests visit 3.2). Nothing sets it before M7;
+    /// a loaded guest has it when the low 19 bits of its return word are not 0 (never `Some(0)`).
     pub returning: Option<i32>,
 }
 
+/// The bits of the return word that hold the return building's name id (zoo format 6.12).
+const RETURN_MASK: u32 = 0x7_ffff;
+
 impl Guest {
     /// What a record stores of this guest, `base` being the one it was loaded with or made as: the
-    /// afraid flag, which nothing raises, and a favourite or arrival date that did not change are
-    /// kept as they were. The guest follows a guide exactly when it is in a group.
+    /// afraid flag, which nothing raises, the recovering bit of the return word, and a favourite or
+    /// arrival date that did not change are kept as they were. The guest follows a guide exactly when it is in a group.
     pub fn record(&self, base: &GuestRecord, wandered: bool) -> GuestRecord {
         let arrived = match self.arrived {
             Some(d) if d != Date::from_file_time(base.arrived) => file_time(d.game_ms()),
@@ -336,6 +340,7 @@ impl Guest {
             in_group: self.guide != 0,
             listening: self.listening,
             guide: self.guide,
+            ret: base.ret & !RETURN_MASK | self.returning.map_or(0, |n| n as u32 & RETURN_MASK),
             ..*base
         }
     }
@@ -456,9 +461,9 @@ fn favourites(cat: &Catalogue) -> Vec<i32> {
 /// 6.12): through its type, with all the draws of a creation, and then the fields its record
 /// stores: the five status values, the sick flag, female and child, the check countdowns, the
 /// saw-animal countdown, the item slots, the leave, wants-a-gift, wandered and eat-standing flags,
-/// the arrival date, the favourite species, the listening flag and the guide id. A favourite that
-/// is not a loaded species is drawn anew among the species that are not special animals, as at
-/// arrival; with none, the guest has no favourite. `date` is the game date of the load and `reset`
+/// the arrival date, the favourite species, the listening flag, the guide id and the return
+/// building. A favourite that is not a loaded species is drawn anew among the species that are not
+/// special animals, as at arrival; with none, the guest has no favourite. `date` is the game date of the load and `reset`
 /// is `[AI] GuestResetInterval`. The caller goes in file order before the first step; a guest
 /// whose type is unknown is left as it is.
 pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: Date, reset: i32) {
@@ -490,6 +495,9 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: 
     guest.items = record.items.map(|n| (n != 0).then_some(n as i32));
     (guest.leave, guest.gift, guest.stand) = (record.leave, record.gift, record.stand);
     (guest.guide, guest.listening) = (record.guide, record.listening);
+    guest.returning = Some(record.ret & RETURN_MASK)
+        .filter(|&n| n != 0)
+        .map(|n| n as i32);
     if let Some(unit) = world.units.get_mut(id) {
         unit.goal.wandered = record.wandered;
         unit.part = Part::Guest(guest);
