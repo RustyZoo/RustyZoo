@@ -666,12 +666,8 @@ fn a_built_date_past_30827_is_the_start_of_the_calendar() {
 }
 
 #[test]
-fn a_building_without_a_record_or_a_guest_building_or_a_known_type_keeps_no_live_state() {
-    let w = loaded(&[
-        ("stand", 7, None),
-        ("compost", 8, Some(record(0, START))),
-        ("unknown", 9, Some(record(0, START))),
-    ]);
+fn a_building_without_a_record_or_a_known_type_keeps_no_live_state() {
+    let w = loaded(&[("stand", 7, None), ("unknown", 9, Some(record(0, START)))]);
     assert!(w.units.buildings.is_empty());
 }
 
@@ -1237,4 +1233,36 @@ fn a_building_made_in_play_is_saved_with_its_live_figures_and_its_own_date() {
     let c = c.unwrap();
     assert_eq!((c.guests, c.fill, c.upkeep), ([0; 3], 0, Some(0)));
     assert_eq!(c.built, START + 86_400_000 * 40 * 10_000);
+}
+
+#[test]
+fn a_compost_that_earned_is_saved_with_its_stored_figures_and_date() {
+    let cat = types();
+    let day = crate::timing::DAY_MS * 10_000;
+    let mut w = loaded(&[("compost", 8, Some(record(0, START + 7 * day)))]);
+    w.zoo.entities[0].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+    // Placed in play: a compost starts its figures with the placing date.
+    let mut placed = world_with((12, 4), |_| {});
+    built(
+        &mut placed,
+        &named("compost", COMPOST),
+        9,
+        3 * crate::timing::DAY_MS as i64,
+    );
+    assert_eq!(
+        placed.units.buildings[&9].built,
+        3 * crate::timing::DAY_MS as i64
+    );
+    crate::staff::chores::recycle(&mut w, &cat, 0, false);
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let b = zoo.entities[0].common.as_ref().unwrap().building.clone();
+    let b = b.unwrap();
+    // The stored price, date and figures, grown by the payment (price x factor 1).
+    assert_eq!(
+        (b.guests, b.price, b.built),
+        ([3, 2, 9], 5.5f32.to_bits(), START + 7 * day)
+    );
+    assert_eq!(b.upkeep.map(f32::from_bits), Some(75.0));
+    assert_eq!(b.income.map(f32::from_bits), [16.0, 20.0, 36.0]);
 }

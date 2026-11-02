@@ -395,16 +395,23 @@ impl Live {
 }
 
 /// Building `id` of type `ty` was built at calendar time `now` (ms of game time): a guest
-/// building starts its live state, with the date its months open are counted from (guest
+/// building or a compost starts its live state, with the date its months open are counted from (guest
 /// buildings 4).
 pub fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
-    if crate::month::is_guest_building(ty) {
-        let live = Live::new(&Kind::of(ty, world.units.prices.default));
+    let kind = Kind::of(ty, world.units.prices.default);
+    if keeps_figures(ty, &kind) {
+        let live = Live::new(&kind);
         world
             .units
             .buildings
             .insert(id, Live { built: now, ..live });
     }
+}
+
+/// Whether a building of this type has figures of its own: a guest building, and the compost,
+/// which earns from the dung it recycles (zoo format 6.9).
+fn keeps_figures(ty: &EntityType, kind: &Kind) -> bool {
+    crate::month::is_guest_building(ty) || kind.satisfies("compost")
 }
 
 /// The building at position `at` of the entity list of a zoo just loaded takes the figures its
@@ -420,10 +427,10 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
     let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
         return;
     };
-    if !crate::month::is_guest_building(ty) {
+    let kind = Kind::of(ty, world.units.prices.default);
+    if !keeps_figures(ty, &kind) {
         return;
     }
-    let kind = Kind::of(ty, world.units.prices.default);
     let id = e.common.as_ref().map_or(0, |c| c.id);
     let built = Date::from_file_time(record.built).game_ms();
     let live = Live {
