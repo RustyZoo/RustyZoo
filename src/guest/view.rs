@@ -1,25 +1,21 @@
 //! What a guest sees: the viewing area it stands on (guests visit 4), the sites it can still
 //! visit (3), the viewing check (6) and the donation when it walks away (7).
 //!
-//! The areas of every exhibit and the slots of the tiles are built once after each change of the
-//! map ([`Views`], kept in `World::units`). A guest keeps only the direction in which it found
+//! The areas of every exhibit and the slots of the tiles are kept by the world (`Exhibit::areas`,
+//! `Exhibits::views`); what each area sees is found again after each change of the map
+//! ([`Views`], kept in `World::units`). A guest keeps only the direction in which it found
 //! its area ([`Guest::va`]) and looks again from the tile it stands on at each use, as the
 //! original does.
-
-use std::collections::HashMap;
 
 use super::*;
 use crate::exhibit::viewing::{self, Area, Ground, Plan};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::single;
 
-/// The viewing areas of the exhibits and, per tile, the area each of the eight directions looks
-/// through, as (position of the exhibit, position of the area).
+/// The map change the areas last saw.
 #[derive(Debug, Default)]
 pub struct Views {
     edits: Option<u64>,
-    areas: Vec<(u32, Vec<Area>)>,
-    slots: HashMap<usize, [Option<(usize, usize)>; 8]>,
 }
 
 /// An animal of an exhibit as the guests judge it.
@@ -99,38 +95,33 @@ pub fn tour_exhibits(world: &World, cat: &Catalogue, assigned: &[u32]) -> Vec<u3
         .collect()
 }
 
-/// Builds the areas again when the map changed since they were.
+/// Finds what the areas see again when the map changed since they did.
 fn refresh(world: &mut World, cat: &Catalogue) {
     if world.units.views.edits == Some(world.edits) {
         return;
     }
     let ground = Ground::of(world, viewing::bodies(cat));
-    let mut views = Views {
-        edits: Some(world.edits),
-        ..Views::default()
-    };
-    for (e, x) in world.exhibits().list().iter().enumerate() {
+    let mut seen = Vec::new();
+    for x in world.exhibits().list() {
         let plan = Plan::of(world, x.id);
-        let mut areas = viewing::areas(&plan);
-        for (a, area) in areas.iter_mut().enumerate() {
-            area.observe(&plan, &ground);
-            for (&t, &looks) in area.tiles.iter().zip(&area.looks) {
-                for k in (0..8).filter(|k| looks >> k & 1 == 1) {
-                    views.slots.entry(t).or_default()[k] = Some((e, a));
-                }
-            }
-        }
-        views.areas.push((x.id, areas));
+        let mut areas = x.areas.clone();
+        areas.iter_mut().for_each(|a| a.observe(&plan, &ground));
+        seen.push((x.id, areas));
     }
-    world.units.views = views;
+    for (id, areas) in seen {
+        if let Some(x) = world.exhibits_mut().get_mut(id) {
+            x.areas = areas;
+        }
+    }
+    world.units.views.edits = Some(world.edits);
 }
 
 /// The tile lists of the areas of exhibit `id`, in the order of its areas, of those that see a
 /// tile (goals 11.1).
 pub fn viewing_areas(world: &mut World, cat: &Catalogue, id: u32) -> Vec<Vec<usize>> {
     refresh(world, cat);
-    let areas = world.units.views.areas.iter().find(|(x, _)| *x == id);
-    let kept = areas.into_iter().flat_map(|(_, areas)| areas);
+    let areas = world.exhibits().get(id).map(|x| &x.areas);
+    let kept = areas.into_iter().flatten();
     kept.filter(|a| !a.seen.is_empty())
         .map(|a| a.tiles.clone())
         .collect()
@@ -161,9 +152,10 @@ pub fn lookup(
 }
 
 /// The area the tile looks through in direction `k`, if it sees any tile (4.1 point 3).
-fn through(world: &World, tile: usize, k: u8) -> Option<(usize, usize)> {
-    let (e, a) = world.units.views.slots.get(&tile)?[usize::from(k)]?;
-    (!world.units.views.areas[e].1[a].seen.is_empty()).then_some((e, a))
+fn through(world: &World, tile: usize, k: u8) -> Option<(u32, &Area)> {
+    let (e, a) = world.exhibits().views.slots.get(&tile)?[usize::from(k)]?;
+    let area = world.exhibits().get(e)?.areas.iter().find(|x| x.id == a)?;
+    (!area.seen.is_empty()).then_some((e, area))
 }
 
 /// 4.2 and 4.3: what the guest on `tile` sees looking in direction `k`. The exhibit is not
@@ -173,9 +165,7 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
     if world.exhibits().region(tile) != Some(GROUNDS) {
         return None;
     }
-    let (e, a) = through(world, tile, k)?;
-    let (exhibit, areas) = &world.units.views.areas[e];
-    let area = &areas[a];
+    let (exhibit, area) = through(world, tile, k)?;
     // The animals standing on the tiles the area sees, each tile's unit list in order; an
     // animal counts at its own tile only.
     let held = beasts(world, cat);
@@ -208,7 +198,7 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
         })
     });
     Some(Sight {
-        exhibit: *exhibit,
+        exhibit,
         animals: seen.len(),
         sick: seen.iter().filter(|b| b.sick).count(),
         species,

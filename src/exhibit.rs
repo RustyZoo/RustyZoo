@@ -50,6 +50,11 @@ pub struct Exhibit {
     pub rating: rating::State,
     /// What its panel shows besides the rating.
     pub stats: Stats,
+    /// Its viewing areas (habitat rating 10), kept up to date per path change.
+    pub areas: Vec<viewing::Area>,
+    /// The tile list and the fenced tiles the areas were built from; the areas are built again
+    /// when either differs.
+    pub built: (Vec<usize>, Vec<usize>),
 }
 
 /// The statistics of an exhibit (habitat rating 13.2 and 13.3). The simulation writes them: the
@@ -270,6 +275,8 @@ pub struct Exhibits {
     /// The zoo grounds' figures, which the month end moves like an exhibit's. No file stores them
     /// and nothing writes them yet (habitat rating 13.3).
     pub grounds_stats: Stats,
+    /// The slots of the viewing areas.
+    pub views: viewing::Store,
 }
 
 /// The tiles of the region of `start` in the original's order (exhibits and money 3.1): a stack of
@@ -437,6 +444,7 @@ impl Exhibits {
             counter: self.counter,
             grounds: self.grounds.clone(),
             grounds_stats: self.grounds_stats.clone(),
+            views: self.views.clone(),
         }
     }
 
@@ -465,6 +473,8 @@ impl Exhibits {
             show_near: Vec::new(),
             rating: rating::State::new(),
             stats: Stats::default(),
+            areas: Vec::new(),
+            built: Default::default(),
         });
         self.assign(id, part);
         id

@@ -1443,7 +1443,7 @@ fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
                 state.attractiveness,
             ));
             let plan = viewing::Plan::of(&world, exhibit.id);
-            let mut areas = viewing::areas(&plan);
+            let mut areas = exhibit.areas.clone();
             report.line(format_args!(
                 "  {} viewing areas, deterioration {:?}",
                 areas.len(),

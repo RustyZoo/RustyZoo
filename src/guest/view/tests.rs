@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::animal::Animal;
-use crate::unit::testing::{centre, entity, world_with};
+use crate::unit::testing::{centre, entity, shape, world_with};
 
 fn kind(class: &'static str, name: &str, name_id: i32) -> EntityType {
     EntityType {
@@ -603,4 +603,97 @@ fn leaving_and_the_tour_bonus_recompute_only_for_a_donation() {
             "sick {sick}"
         );
     }
+}
+
+/// The tiles of the areas of exhibit 1 as (x, y), area by area.
+fn stored(w: &World) -> Vec<Vec<(usize, usize)>> {
+    let areas = &w.exhibits().get(1).unwrap().areas;
+    (areas.iter())
+        .map(|a| a.tiles.iter().map(|&t| (t % 10, t / 10)).collect())
+        .collect()
+}
+
+fn lay(w: &mut World, at: (i32, i32)) {
+    let path = entity("paths", "stone", 0, centre(at), 0);
+    let shape = shape(&path);
+    w.add(path, shape).unwrap();
+}
+
+/// What a rebuild of exhibit 1 would group.
+fn rebuilt(w: &World) -> Vec<Vec<(usize, usize)>> {
+    let mut again = w.exhibits().clone();
+    again.rebuild(&Plan::of(w, 1), 1);
+    (again.get(1).unwrap().areas.iter())
+        .map(|a| a.tiles.iter().map(|&t| (t % 10, t / 10)).collect())
+        .collect()
+}
+
+#[test]
+fn a_removed_path_tile_leaves_its_area_without_regrouping() {
+    let mut w = pen(&[]);
+    assert_eq!(stored(&w), [[(5, 4), (5, 5), (5, 6)]]);
+    assert!(w.remove(201));
+    assert_eq!(stored(&w), [[(5, 4), (5, 6)]]);
+    assert_eq!(
+        rebuilt(&w),
+        [[(5, 4)], [(5, 6)]],
+        "a rebuild groups them apart"
+    );
+    let slots = &w.exhibits().views.slots;
+    assert!(!slots.contains_key(&55), "the tile holds no slot any more");
+    // The last tile of an area takes the area with it.
+    assert!(w.remove(200) && w.remove(202));
+    assert!(stored(&w).is_empty());
+}
+
+#[test]
+fn a_placed_path_tile_joins_the_area_of_its_neighbour_where_a_rebuild_orders_it_differently() {
+    let mut w = pen(&[]);
+    assert!(w.remove(201));
+    lay(&mut w, (5, 5));
+    assert_eq!(stored(&w), [[(5, 4), (5, 6), (5, 5)]]);
+    assert_eq!(rebuilt(&w), [[(5, 4), (5, 5), (5, 6)]]);
+    // The tile looks at the pen in the directions of its slots.
+    let held = w.exhibits().views.slots[&55];
+    assert!(held[6].is_some() && held[0].is_none());
+}
+
+#[test]
+fn a_path_tile_far_from_the_pen_joins_no_area_and_an_edit_does_not_regroup() {
+    let mut w = pen(&[]);
+    assert!(w.remove(201));
+    lay(&mut w, (9, 9));
+    lay(&mut w, (5, 9));
+    assert_eq!(
+        stored(&w),
+        [[(5, 4), (5, 6)]],
+        "more than 2 tiles from the pen"
+    );
+    assert!(w.set_tile(8, 8, 1, 0, 0));
+    assert_eq!(stored(&w), [[(5, 4), (5, 6)]]);
+}
+
+#[test]
+fn the_areas_of_an_exhibit_that_opens_are_gone_with_their_slots() {
+    let mut w = pen(&[]);
+    assert!(
+        w.exhibits()
+            .views
+            .slots
+            .values()
+            .flatten()
+            .flatten()
+            .any(|s| s.0 == 1)
+    );
+    assert!(w.remove(101));
+    assert!(w.exhibits().get(1).is_none());
+    assert!(
+        !w.exhibits()
+            .views
+            .slots
+            .values()
+            .flatten()
+            .flatten()
+            .any(|s| s.0 == 1)
+    );
 }

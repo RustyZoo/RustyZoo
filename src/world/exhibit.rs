@@ -557,6 +557,7 @@ impl World {
             .flat_map(|e| (0..self.zoo.tiles.len()).filter(|&t| old.region(t) == Some(e.id)))
             .collect();
         self.exhibits = next;
+        self.resize_areas();
         self.edits += 1;
         let mut changed = self.retank(quiet);
         if !quiet {
