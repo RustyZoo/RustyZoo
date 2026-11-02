@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 /// The dolphin's file: the default subtype `m` lists a hoop (needs its toy, 4 deep), a walk, a ball
 /// (not available until researched), a spin (invisible), the same walk again, a trick with no
-/// section and the treat; the young list is empty.
+/// section and the treat; the young list only empties.
 const DOLPHIN: &str = "[Global]\nDefaultSubtype=m\n\
     [m/tricks]\ntrick=empty\ntrick=hoop\ntrick=tail\ntrick=ball\ntrick=spin\ntrick=tail\n\
-    trick=ghost\ntrick=food\n[y/tricks]\ntrick=empty\ntrick=tail\n\
+    trick=ghost\ntrick=food\n[y/tricks]\ntrick=empty\n\
     [m/tricks/food]\nid=11299\ntype=3\nname=foodtrick\ncomplexity=0\nsatisfaction=0\n\
     satisfactiondelta=0\nminimumdepth=3\ndefaultavailable=1\nkeeperposttrick=bTrickFeed\nvisible=0\n\
     [m/tricks/hoop]\nid=11208\ntype=1\nname=hoopjump\ncomplexity=5\nsatisfaction=4\n\
@@ -118,10 +118,10 @@ fn ids(items: &[Item]) -> Vec<u16> {
 fn a_type_lists_its_tricks_in_order_without_a_repeat_a_missing_section_or_a_young_animal() {
     let cat = types();
     let adult = tricks(&cat.types[0]);
-    // The default subtype's list serves the type with no own section; the same walk twice and
-    // the name with no section add nothing.
-    assert_eq!(ids(&adult), [11208, 11209, 11210, 11214, 11299]);
-    // The young list empties itself and then names the walk, whose section is the adults' only.
+    // The default subtype's list serves the type with no own section; the same walk twice adds
+    // nothing, the name with no section adds a fresh item.
+    assert_eq!(ids(&adult), [11208, 11209, 11210, 11214, 0, 11299]);
+    // The young list empties the default one.
     assert!(tricks(&cat.types[1]).is_empty());
     // A subtype with no list of its own reads the default subtype's (open point O13).
     let female = animal("dolphin", "f", 5402, DOLPHIN);
@@ -142,7 +142,7 @@ fn a_type_lists_its_tricks_in_order_without_a_repeat_a_missing_section_or_a_youn
         (hoop.help, hoop.icons[1].as_str()),
         ([11308, 11408], "objects/hoop2")
     );
-    let food = &adult[4];
+    let food = &adult[5];
     assert_eq!(
         (food.marker, food.visible, food.names[3].as_str()),
         (3, 0, "bTrickFeed")
@@ -155,7 +155,10 @@ fn a_trick_section_with_no_key_is_a_fresh_item() {
     let ty = animal("seal", "x", 7, text);
     let [a] = &tricks(&ty)[..] else { panic!() };
     // Visible, 1 everywhere a number counts, not available.
-    assert_eq!((a.id, a.visible, a.available, a.marker), (0, 1, 0, 0));
+    assert_eq!(
+        (a.id, a.visible, a.available, a.marker),
+        (0, 1, 0, u32::MAX)
+    );
     assert_eq!(
         (a.complexity, a.satisfaction, a.delta, a.current, a.depth),
         (1, 1, 1, 1, 1)
@@ -167,6 +170,55 @@ fn a_trick_section_with_no_key_is_a_fresh_item() {
         panic!()
     };
     assert_eq!((a.id, a.depth), (0, 99999999999i64 as i32));
+}
+
+#[test]
+fn an_own_subtype_list_is_appended_to_the_default_subtype_list() {
+    let text = "[Global]\nDefaultSubtype=m\n[m/tricks]\ntrick=a\ntrick=b\n\
+        [m/tricks/a]\nid=1\n[m/tricks/b]\nid=2\n[x/tricks]\ntrick=c\ntrick=a\n\
+        [x/tricks/c]\nid=3\n[x/tricks/a]\nid=1\n[z/tricks]\ntrick=empty\ntrick=c\n\
+        [z/tricks/c]\nid=3\n";
+    // Own list without `empty` adds to the default one; a repeated id adds nothing.
+    assert_eq!(ids(&tricks(&animal("seal", "x", 7, text))), [1, 2, 3]);
+    // `empty` clears what the default list made.
+    assert_eq!(ids(&tricks(&animal("seal", "z", 7, text))), [3]);
+    // The default subtype itself is read once; an own subtype with no list adds nothing.
+    assert_eq!(ids(&tricks(&animal("seal", "m", 7, text))), [1, 2]);
+    assert_eq!(ids(&tricks(&animal("seal", "f", 7, text))), [1, 2]);
+}
+
+#[test]
+fn a_listed_trick_with_no_section_is_a_fresh_item_of_type_minus_one() {
+    let text = "[Global]\n[tricks]\ntrick=ghost\ntrick=b\ntrick=c\n\
+        [tricks/b]\nid=2\ndefaultavailable=7\nvisible=-3\nreturntokeeper=9\n\
+        [tricks/c]\nid=3\nvisible=0\n";
+    let ty = animal("seal", "", 7, text);
+    let [g, b, c] = &tricks(&ty)[..] else {
+        panic!()
+    };
+    // The missing section gives a fresh item; it performs.
+    assert_eq!(
+        (g.id, g.marker, g.visible, g.available),
+        (0, u32::MAX, 1, 0)
+    );
+    assert!(crate::show::trick::performs(&ty));
+    // The three flags are 1 when the number is not 0.
+    assert_eq!((b.available, b.visible, b.returns), (1, 1, 1));
+    assert_eq!((c.available, c.visible, c.returns), (0, 0, 0));
+    // An id-0 trick that is listed already stops the fresh item.
+    let text = "[tricks]\ntrick=a\ntrick=ghost\n[tricks/a]\nid=0\n";
+    assert_eq!(tricks(&animal("seal", "", 7, text)).len(), 1);
+}
+
+#[test]
+fn an_animal_that_grows_up_does_not_join_the_show_lists() {
+    let (mut w, cat) = world(&[]);
+    let young = adopt(&mut w, "dolphin", (7, 3));
+    w.take_moves();
+    let at = w.find(young).unwrap();
+    w.retype(at, "", shape(&w.zoo.entities[at]).unwrap());
+    settle(&mut w, &cat);
+    assert!(units(&w).is_empty());
 }
 
 #[test]
@@ -390,7 +442,7 @@ fn the_first_rating_of_an_exhibit_adds_its_animals_once() {
 }
 
 #[test]
-fn pick_up_put_down_death_and_growth_tell_the_lists() {
+fn pick_up_put_down_and_death_tell_the_lists() {
     let (mut w, cat) = world(&[(40, "dolphin", (7, 3))]);
     let (_, plain) = tanks(&w);
     w.show_moved(w.find(40).unwrap(), true);
@@ -409,13 +461,13 @@ fn pick_up_put_down_death_and_growth_tell_the_lists() {
     assert!(w.remove(40));
     settle(&mut w, &cat);
     assert!(units(&w).is_empty());
-    // An animal that grows up changes subtype in place: the adult joins.
+    // An animal that grows up changes subtype in place: the adult does not join (shows 20).
     let young = adopt(&mut w, "dolphin", (7, 3));
     w.take_moves();
     let at = w.find(young).unwrap();
     w.retype(at, "", shape(&w.zoo.entities[at]).unwrap());
     settle(&mut w, &cat);
-    assert_eq!(units(&w), [young]);
+    assert!(units(&w).is_empty());
 }
 
 #[test]

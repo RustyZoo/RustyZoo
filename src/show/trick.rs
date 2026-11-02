@@ -3,7 +3,7 @@
 use super::Params;
 use crate::building::kind_of;
 use crate::config::{Section, to_int};
-use crate::entity::{Catalogue, EntityType, default_subtype};
+use crate::entity::{Catalogue, EntityType, unit_prefixes};
 use crate::place::bulldozer::type_of;
 use crate::world::World;
 use crate::zoo::Item;
@@ -11,34 +11,33 @@ use crate::zoo::Item;
 /// The trick that is the treat: every list ends with it and a default script offers it.
 pub const FOOD: u16 = 11299;
 
-/// The tricks of an animal type in order (shows 19.1): the names of `trick` in the section
-/// `<subtype>/tricks`, the section of the default subtype when the type's own is missing (O13).
-/// `empty` empties the list so far; a name reads `<subtype>/tricks/<name>` as one trick unless the
-/// list holds one with the same id already; a name with no section adds nothing. A type that is no
-/// animal has none.
+/// The tricks of an animal type in order (shows 19.1): for the default subtype's prefix, then the
+/// type's own when it differs, the names of `trick` in the section `<prefix>tricks`, all in one
+/// list. `empty` empties the list so far; a name reads `<prefix>tricks/<name>` as one trick, a
+/// fresh item when the section is missing, unless the list holds one with the same id already. A
+/// type that is no animal has none.
 pub fn tricks(ty: &EntityType) -> Vec<Item> {
     let Some(config) = ty.config.as_deref().filter(|_| ty.class == "animals") else {
         return Vec::new();
     };
-    let section = |sub: &[u8], rest: &[u8]| config.section([sub, b"/tricks", rest].concat());
-    let sub = [&ty.subtype[..], default_subtype(config)]
-        .into_iter()
-        .find(|sub| section(sub, b"").is_some());
-    let Some((sub, list)) = sub.and_then(|sub| Some((sub, section(sub, b"")?))) else {
-        return Vec::new();
-    };
     let mut out: Vec<Item> = Vec::new();
-    for name in list.get_all("trick") {
-        if name == b"empty" {
-            out.clear();
-            continue;
-        }
-        let Some(one) = section(sub, &[b"/", &name[..]].concat()) else {
+    for prefix in unit_prefixes(ty, config) {
+        let section = |rest: &[u8]| config.section([&prefix[..], b"tricks", rest].concat());
+        let Some(list) = section(b"") else {
             continue;
         };
-        let item = item(one, ty.name_id as u32);
-        if !out.iter().any(|t| t.id == item.id) {
-            out.push(item);
+        for name in list.get_all("trick") {
+            if name == b"empty" {
+                out.clear();
+                continue;
+            }
+            let item = match section(&[b"/", &name[..]].concat()) {
+                Some(one) => item(one, ty.name_id as u32),
+                None => item(&Section::default(), ty.name_id as u32),
+            };
+            if !out.iter().any(|t| t.id == item.id) {
+                out.push(item);
+            }
         }
     }
     out
@@ -50,20 +49,22 @@ pub fn performs(ty: &EntityType) -> bool {
 }
 
 /// One trick from its section; a fresh item has a satisfaction, a delta, a depth and a complexity
-/// of 1 and is visible, and a key that is missing or cannot be read leaves the fresh value.
+/// of 1, is visible and has the type -1, and a key that is missing or cannot be read leaves the
+/// fresh value; the three flags are stored as 1 when the number is not 0.
 fn item(section: &Section, species: u32) -> Item {
     let int = |key: &str, fresh: i32| section.get(key).and_then(to_int).unwrap_or(fresh);
+    let flag = |key: &str, fresh: i32| u8::from(int(key, fresh) != 0);
     let text = |key: &str| {
         let bytes = section.get(key).unwrap_or_default();
         bytes.iter().map(|&b| b as char).collect::<String>()
     };
     let satisfaction = int("satisfaction", 1);
     Item {
-        available: int("defaultavailable", 0) as u8,
-        visible: int("visible", 1) as u8,
+        available: flag("defaultavailable", 0),
+        visible: flag("visible", 1),
         id: int("id", 0) as u16,
         kind: species,
-        marker: int("type", 0) as u32,
+        marker: int("type", -1) as u32,
         names: [
             text("name"),
             text("anim"),
@@ -72,7 +73,7 @@ fn item(section: &Section, species: u32) -> Item {
         ],
         building: int("building", 0) as u32,
         complexity: int("complexity", 1) as u32,
-        returns: int("returntokeeper", 0) as u8,
+        returns: flag("returntokeeper", 0),
         satisfaction,
         delta: int("satisfactiondelta", 1),
         current: satisfaction,

@@ -877,7 +877,7 @@ pub(crate) fn default_subtype(config: &Config) -> &[u8] {
 /// The prefixes of the sections a unit type reads its integers from, in the order they apply:
 /// the default subtype's (the plain ones when there is none), then the type's own, unless it is
 /// the default. With an empty own name and a default, the prefix is `/`, which matches nothing.
-fn unit_prefixes(ty: &EntityType, config: &Config) -> Vec<Vec<u8>> {
+pub(crate) fn unit_prefixes(ty: &EntityType, config: &Config) -> Vec<Vec<u8>> {
     let default = default_subtype(config);
     let own = if ty.class == "guests" {
         &ty.type_name
