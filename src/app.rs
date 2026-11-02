@@ -877,6 +877,8 @@ impl<'a> App<'a> {
             carry: None,
             held: None,
         });
+        // The start of a game comes before the scenario's triggers and the research (cheats 6).
+        self.game_started();
         // The scenario resumes first (its triggers, then the goal states), then the research
         // section completes the programs over their availability, then the ini rewards (7.3).
         if let Some(scenario) = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f)) {
@@ -1091,6 +1093,9 @@ impl<'a> App<'a> {
                 self.exhibits_told();
             }
             self.status_told(report.bars);
+            if report.arrived {
+                self.guest_created();
+            }
             self.research_done();
             self.scenario_over();
         }
@@ -2780,6 +2785,8 @@ mod carry_tests;
 
 #[cfg(test)]
 mod cheat_guest_tests;
+#[cfg(test)]
+mod cheat_season_tests;
 #[cfg(test)]
 mod cheat_tests;
 

@@ -752,3 +752,41 @@ fn the_species_of_the_neighbours_join_a_tank_but_not_its_surrounding_list() {
     input.site.water = None;
     assert_eq!(rate(&input)[0].other, -10.0);
 }
+
+#[test]
+fn a_lion_a_tiger_and_a_grizzly_bear_in_one_exhibit_raise_the_trio_flag() {
+    let species = |ids: &[i32]| Input {
+        species: ids
+            .iter()
+            .map(|&id| Likes {
+                key: id.to_string(),
+                ids: [id, 0, 0],
+                ..Likes::default()
+            })
+            .collect(),
+        ..flat()
+    };
+    let revised = |ids: &[i32]| {
+        let mut state = State {
+            revise: true,
+            ..State::default()
+        };
+        state.revise_list(&species(ids), &mut draws(&[]));
+        state.trio
+    };
+    assert!(revised(&[5016, 5006, 5007]));
+    assert!(revised(&[1, 5007, 2, 5016, 5006]));
+    // Two of the three, or the same animal twice, do not.
+    assert!(!revised(&[5006, 5007]));
+    assert!(!revised(&[5006, 5016, 5016]));
+    assert!(!revised(&[]));
+    assert!(!revised(&[i32::MAX, -5006, 0]));
+    // A later revision without one lowers the exhibit's own flag.
+    let mut state = State {
+        revise: true,
+        ..State::default()
+    };
+    state.revise_list(&species(&[5006, 5007, 5016]), &mut draws(&[]));
+    state.revise_list(&species(&[5006, 5007]), &mut draws(&[]));
+    assert!(!state.trio);
+}
