@@ -188,6 +188,21 @@ fn a_grandstand_keeps_the_show_it_had_when_it_no_longer_faces_a_tank() {
 }
 
 #[test]
+fn placing_a_building_that_is_not_a_grandstand_leaves_the_show_ids() {
+    // Stand 7 faces the tank but has no id yet: a bench set down runs no pass, a grandstand does.
+    let (mut w, mut cat) = world(9, "glass", &[(7, (1, 2), 2), (8, (1, 0), 4)]);
+    cat.push(kind("building", "bench", "[Satisfies]\nbuilding\n"));
+    w.zoo
+        .entities
+        .push(entity("building", "bench", 9, centre((0, 4)), 0));
+    added(&mut w, &cat, 9);
+    added(&mut w, &cat, 404);
+    assert_eq!(show_of(&w, 7), 0);
+    added(&mut w, &cat, 8);
+    assert_eq!(show_of(&w, 7), 1001);
+}
+
+#[test]
 fn a_show_info_without_a_show_id_is_not_a_show() {
     let (mut w, cat) = world(9, "glass", &[(7, (1, 2), 2)]);
     w.zoo.shows.infos = vec![Some(info(0))];

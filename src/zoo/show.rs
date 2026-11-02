@@ -201,7 +201,7 @@ pub struct ShowInfo {
 pub struct TypeRecord {
     pub key: u32,
     pub script: u16,
-    /// The script the show editor chose, 0xffff for none; 0 in a file before version 99.
+    /// The script the show editor chose, 0xffff for none (also in a file before version 99).
     pub pending: u16,
     /// The admission as the bits of a single precision number.
     pub admission: u32,
@@ -303,6 +303,16 @@ impl ShowInfo {
         if v >= 106 {
             info.receipts = [r.u32()?, r.u32()?, r.u32()?];
             info.attendance = [r.u32()?, r.u32()?, r.u32()?];
+        } else {
+            // Not stored before 106: the sums of the type records (shows 11), receipts in single
+            // precision.
+            for n in 0..3 {
+                let sum =
+                    (info.records.iter()).fold(0.0f32, |a, t| a + f32::from_bits(t.receipts[n]));
+                info.receipts[n] = sum.to_bits();
+                info.attendance[n] =
+                    (info.records.iter()).fold(0u32, |a, t| a.wrapping_add(t.attendance[n]));
+            }
         }
         if v >= 97 {
             info.show = Show::read(r)?;
@@ -340,7 +350,7 @@ impl TypeRecord {
         let mut record = TypeRecord {
             key,
             script,
-            pending: 0,
+            pending: u16::MAX,
             admission: 0,
             receipts: [0; 3],
             attendance: [0; 3],

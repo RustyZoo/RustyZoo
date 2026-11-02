@@ -736,6 +736,14 @@ fn a_reset_start_zeroes_every_building_and_keeps_its_price() {
 }
 
 #[test]
+fn a_reset_start_keeps_the_show_id_of_a_grandstand() {
+    let mut w = loaded(&[("stand", 7, Some(record(0, START)))]);
+    w.units.buildings.get_mut(&7).unwrap().show_id = 1001;
+    reset_all(&mut w, 0);
+    assert_eq!(w.units.buildings[&7].show_id, 1001);
+}
+
+#[test]
 fn a_loaded_building_keeps_the_price_its_record_stores_whatever_it_is() {
     let price = |bits: u32| {
         let r = crate::zoo::BuildingRecord {

@@ -1752,7 +1752,7 @@ impl<'a> App<'a> {
             );
             if let Outcome::Placed(id) = outcome {
                 crate::building::built(&mut game.world, ty, id, self.sim.calendar().elapsed_ms());
-                crate::show::associate(&mut game.world, cat);
+                crate::show::added(&mut game.world, cat, id);
                 let (habitat, name) = rating::object(ty);
                 let change = (!fence).then_some(rating::Change::Object {
                     habitat,

@@ -3195,7 +3195,7 @@ fn a_show_info_of_an_older_version_lacks_the_later_fields() {
     let t = &info.records[0];
     assert_eq!(
         (t.key, t.script, t.pending, t.admission, t.date),
-        (5400, 2001, 0, 0, 0)
+        (5400, 2001, 0xffff, 0, 0)
     );
     assert_eq!(
         (info.next, info.id, info.upkeep, info.receipts),
@@ -3206,6 +3206,47 @@ fn a_show_info_of_an_older_version_lacks_the_later_fields() {
     w.i32(90).u32(0).u32(0).u32(0).u32(0); // the old list and the records are empty
     let info = ShowInfo::read(&mut Reader::new(&w.0, 96)).unwrap_or_else(|e| panic!("{}", e.0));
     assert_eq!((info.id, info.show.stopped, info.show.script), (0, true, 0));
+}
+
+#[test]
+fn an_older_show_info_has_no_pending_script_and_sums_its_type_records() {
+    // Version 98: no pending id in the record; the stop would apply 0 as a script.
+    let mut w = W::default();
+    w.i32(90).u32(0).u32(0).u32(0).u32(1).u32(5400).u16(2001);
+    w.u32(0).i32(5).u16(1003).z(16 + 5 + 16).u32(0);
+    let info = ShowInfo::read(&mut Reader::new(&w.0, 98)).unwrap_or_else(|e| panic!("{}", e.0));
+    assert_eq!(info.records[0].pending, 0xffff);
+    // Version 105 stores the figures of the records but not those of the info: their sums, the
+    // receipts in single precision.
+    let mut w = W::default();
+    w.i32(90).u32(0).u32(0).u32(2);
+    for (key, receipts, attendance) in [
+        (5400, [1.5f32, 2.0, 0.5], 4u32),
+        (5401, [0.25, 3.0, 1.0], 7),
+    ] {
+        w.u32(key).u16(2001).u16(0xffff).u32(0);
+        receipts.iter().for_each(|r| {
+            w.u32(r.to_bits());
+        });
+        w.u32(attendance).u32(attendance + 1).u32(attendance + 2);
+        w.bytes(&0u64.to_le_bytes());
+    }
+    w.u32(0).i32(5).u16(1003).u32(1).u32(2).u32(3); // no event, next, show id, upkeep
+    let tail = marked_show_info();
+    w.bytes(&tail[tail.len() - 55..]);
+    let mut r = Reader::new(&w.0, 105);
+    let info = ShowInfo::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0));
+    assert!(r.data.is_empty());
+    let receipts = info.receipts.map(f32::from_bits);
+    assert_eq!(
+        (receipts, info.attendance),
+        ([1.75, 5.0, 1.5], [11, 13, 15])
+    );
+    assert_eq!(info.upkeep, [1, 2, 3]);
+    // From 106 the info's own figures are read, not summed.
+    let bytes = marked_show_info();
+    let info = ShowInfo::read(&mut Reader::new(&bytes, 106)).unwrap_or_else(|e| panic!("{}", e.0));
+    assert_eq!(info.attendance, [14, 15, 16]);
 }
 
 #[test]

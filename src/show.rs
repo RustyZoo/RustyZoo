@@ -141,9 +141,21 @@ fn faces(world: &World, ground: &Ground, exhibit: u32, at: usize) -> bool {
     world.exhibits().region(t4) == Some(exhibit) && ground.sees(t3, t5)
 }
 
+/// The pass for the building `id` just added to the map (placed, set down, put back): it runs only
+/// when the building is a grandstand (shows 4.2); any other building runs none.
+pub fn added(world: &mut World, cat: &Catalogue, id: u32) {
+    let default = world.units.prices.default;
+    let stand = world.find(id).is_some_and(|at| {
+        kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand"))
+    });
+    if stand {
+        associate(world, cat);
+    }
+}
+
 /// The association pass (shows 4.2): every grandstand that faces a show tank takes the show id of the
 /// first one it faces. A grandstand that faces none keeps the id it has. Run after a zoo is
-/// loaded and when a building is set down.
+/// loaded and when a grandstand is added to the map.
 pub fn associate(world: &mut World, cat: &Catalogue) {
     let tanks = show_tanks(world);
     let stands = grandstands(world, cat);

@@ -518,6 +518,8 @@ pub fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
             *live = Live {
                 price: live.price,
                 built: now,
+                // A start with reset leaves the show id of a grandstand alone (shows 3.5).
+                show_id: live.show_id,
                 ..Live::default()
             };
         }
