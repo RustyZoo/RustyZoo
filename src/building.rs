@@ -26,7 +26,7 @@ use crate::place::path_shape;
 use crate::sim::Rng;
 use crate::timing::Date;
 use crate::world::{Shape, World};
-use crate::zoo::Entity;
+use crate::zoo::{BuildingRecord, Entity};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
@@ -364,6 +364,26 @@ impl Live {
             price: kind.price,
             ..Live::default()
         }
+    }
+
+    /// The record a save writes (zoo format 6.9): the figures, the price and the users now, over
+    /// `base`, which keeps the fill of a type that is not a trash can (a grandstand's flag is not
+    /// modelled) and the members.
+    pub fn record(&self, mut base: BuildingRecord, trash: bool) -> BuildingRecord {
+        let users: Vec<(u32, u32)> = (self.users.iter())
+            .map(|&(u, s, _)| (u, s as u32))
+            .collect();
+        base.users_now = (users.len() as u32).saturating_add(self.extra);
+        base.users = users;
+        base.guests = self.guests;
+        base.income = self.income.map(f32::to_bits);
+        base.upkeep = Some(self.upkeep.to_bits());
+        base.price = self.price.to_bits();
+        base.built = crate::timing::file_time(self.built);
+        if trash {
+            base.fill = self.fill;
+        }
+        base
     }
 
     /// The month changes (guest buildings 9): this month's figures become last month's.
