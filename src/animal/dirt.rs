@@ -55,9 +55,21 @@ pub fn put_z(
     world: &mut World,
     ty: &EntityType,
     names: (&str, &str, &str),
-    (x, y, z): (i32, i32, Option<i32>),
+    at: (i32, i32, Option<i32>),
     rotation: u32,
     food: i32,
+) -> bool {
+    place(world, ty, names, at, (rotation, food), true)
+}
+
+/// The same; `rated` is whether the exhibit is marked for a new rating.
+fn place(
+    world: &mut World,
+    ty: &EntityType,
+    names: (&str, &str, &str),
+    (x, y, z): (i32, i32, Option<i32>),
+    (rotation, food): (u32, i32),
+    rated: bool,
 ) -> bool {
     let Some(tile) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
         return false;
@@ -91,7 +103,7 @@ pub fn put_z(
         tank: crate::render::tank_kind(ty),
         walkable: (false, false),
     };
-    world.add(entity, Some(shape)).is_some()
+    world.add_rated(entity, Some(shape), rated).is_some()
 }
 
 /// `putDownDirt` (8.1) for the animal at position `at`: in a tank the water loses purity; on land
@@ -126,10 +138,22 @@ pub fn put_down(
         // The facing is drawn before the pile is added.
         let facing = rng.rand() & 7;
         let free = world.quadrant(tile, 3).is_none();
-        let made = ty
-            .filter(|_| free)
-            .is_some_and(|ty| put(world, ty, ("objects", "other", name), (x, y), facing, size));
-        world.mark_rating(tile);
+        let made = ty.filter(|_| free).is_some_and(|ty| {
+            // The plain entity add: the exhibit is not marked (habitat rating 4).
+            let at = (
+                x.saturating_mul(64).saturating_add(32),
+                y.saturating_mul(64).saturating_add(32),
+                None,
+            );
+            place(
+                world,
+                ty,
+                ("objects", "other", name),
+                at,
+                (facing, size),
+                false,
+            )
+        });
         // A pile on the zoo grounds calls a maintenance worker (8.1 point 3).
         if made && world.exhibits().region(tile) == Some(crate::exhibit::GROUNDS) {
             let event = crate::world::piece_event(id, DUNG, tile as u32);

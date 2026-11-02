@@ -865,9 +865,9 @@ fn a_loaded_drinker_reads_its_drink_task_from_the_wanted_goal() {
     assert!(!a.drinking && task == 122);
 }
 
-/// The calls the checks make to the world in one tick, with the draw each call makes there (the
-/// pile's facing, a read's recomputation) taken from the shared generator; `piled` is the answer
-/// to the pile.
+/// The calls the checks make to the world in one tick that a pile or the paint is: the draw the
+/// pile makes for its facing is taken from the shared generator; `piled` is the answer to the
+/// pile.
 fn world_calls(
     a: &mut Animal,
     k: &Keys,
@@ -876,18 +876,12 @@ fn world_calls(
     piled: bool,
 ) -> Vec<(Read, u32)> {
     let mut calls = Vec::new();
-    let mut dirty = false;
     let mut read = |r: Read, _: &Animal, _: &Meal, env: &mut Env, rng: &mut Rng| match r {
         Read::Pile => {
             calls.push((r, rng.rand() & 7));
-            (dirty, env.piled) = (true, piled);
+            env.piled = piled;
         }
-        Read::Trample => {
-            calls.push((r, 0));
-            dirty = true;
-        }
-        // A read recomputes the exhibit only when a pile or the paint marked it.
-        _ if std::mem::take(&mut dirty) => calls.push((r, rng.rand() & 7)),
+        Read::Trample => calls.push((r, 0)),
         _ => {}
     };
     let mut env = env.clone();
@@ -904,7 +898,7 @@ fn world_calls(
 }
 
 #[test]
-fn the_pile_is_put_down_in_the_hunger_check_and_the_next_read_recomputes_the_exhibit() {
+fn the_pile_is_put_down_in_the_hunger_check_and_draws_its_facing_first() {
     let k = Keys {
         // The health check's random fall draws once.
         sick_random: 100,
@@ -918,21 +912,14 @@ fn the_pile_is_put_down_in_the_hunger_check_and_the_next_read_recomputes_the_exh
         };
         (a.counters[HUNGER], a.counters[HEALTH]) = (0, 0);
         let calls = world_calls(&mut a, &k, &Class::default(), &in_exhibit(), piled);
-        // The facing is the first draw of the tick, the health check's read of the sick
-        // animals (which rates the exhibit again) the second.
-        let mut check = Rng::default();
-        let (first, second) = (check.rand() & 7, check.rand() & 7);
-        assert_eq!(
-            calls,
-            [(Read::Pile, first), (Read::Sick, second)],
-            "piled {piled}"
-        );
+        let first = Rng::default().rand() & 7;
+        assert_eq!(calls, [(Read::Pile, first)], "piled {piled}");
         assert_eq!(a.dung, if piled { 0 } else { 70 });
     }
 }
 
 #[test]
-fn the_trampled_ground_is_painted_in_the_captivity_tick_and_the_social_check_reads_after_it() {
+fn the_trampled_ground_is_painted_in_the_captivity_tick_on_bare_grass_only() {
     let class = Class {
         ui_threshold: 75,
         dirt_chance_chance: 100,
@@ -953,12 +940,8 @@ fn the_trampled_ground_is_painted_in_the_captivity_tick_and_the_social_check_rea
             ..in_exhibit()
         };
         let calls = world_calls(&mut a, &k, &class, &env, false);
-        // The two draws of the captivity tick come first; the read rates the exhibit again with
-        // the third.
-        let mut check = Rng::default();
-        let third = (0..3).map(|_| check.rand()).last().unwrap() & 7;
         let want = if grass {
-            vec![(Read::Trample, 0), (Read::Exhibit, third)]
+            vec![(Read::Trample, 0)]
         } else {
             Vec::new()
         };

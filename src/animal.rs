@@ -1229,23 +1229,10 @@ fn records(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> Vec<Rec
         .map_or_else(Vec::new, |e| e.rating.records.clone())
 }
 
-/// Paints the tile `tile` at `(tx, ty)` of exhibit `x` as trampled ground of type `paint` for the
-/// animal `id`; the exhibit is rated again.
-fn trample(
-    world: &mut World,
-    tile: Option<usize>,
-    (tx, ty): (i32, i32),
-    (x, paint): (Option<u32>, u8),
-    id: u32,
-) {
-    let Some(t) = tile else {
-        return;
-    };
-    let tile = world.zoo.tiles[t];
-    let painted = world.unrecorded(|w| w.set_tile(tx, ty, tile.elevation, tile.shape, paint));
-    if let Some(x) = x.filter(|_| painted) {
-        world.exhibits_mut().mark(x);
-    }
+/// Paints the tile `(tx, ty)` as trampled ground of type `paint` for the animal `id`; the bare
+/// cell paint marks no exhibit (animals 4.5).
+fn trample(world: &mut World, (tx, ty): (i32, i32), paint: u8, id: u32) {
+    world.paint_cell(tx, ty, paint);
     world.units.tell(format!("trample {id} {tx},{ty}"));
 }
 
@@ -1566,7 +1553,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         match r {
             Read::Pile => env.piled = dirt::put_down(&mut world, cat, rng, id, at, &k),
             Read::Trample => {
-                trample(&mut world, tile, (tx, ty_), (x, class.trample), id);
+                trample(&mut world, (tx, ty_), class.trample, id);
             }
             _ => {
                 if let Some(x) = x {
