@@ -865,74 +865,69 @@ fn a_loaded_drinker_reads_its_drink_task_from_the_wanted_goal() {
     assert!(!a.drinking && task == 122);
 }
 
-/// Records what the checks ask of the world, with the draws they make there, in order.
-#[derive(Default)]
-struct Spy {
-    calls: Vec<(&'static str, u32)>,
-    pile: bool,
-    dirty: bool,
-}
-
-impl Effects for Spy {
-    fn pile(&mut self, rng: &mut Rng) -> bool {
-        self.calls.push(("pile", rng.rand() & 7));
-        self.dirty = true;
-        self.pile
-    }
-    fn trample(&mut self) {
-        self.calls.push(("trample", 0));
-        self.dirty = true;
-    }
-    fn read(&mut self, _: &Animal, rng: &mut Rng) -> Option<Env> {
-        let dirty = std::mem::take(&mut self.dirty);
-        dirty.then(|| {
-            self.calls.push(("read", rng.rand() & 7));
-            Env::default()
-        })
-    }
+/// The calls the checks make to the world in one tick, with the draw each call makes there (the
+/// pile's facing, a read's recomputation) taken from the shared generator; `piled` is the answer
+/// to the pile.
+fn world_calls(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &Env,
+    piled: bool,
+) -> Vec<(Read, u32)> {
+    let mut calls = Vec::new();
+    let mut dirty = false;
+    let mut read = |r: Read, _: &Animal, _: &Meal, env: &mut Env, rng: &mut Rng| match r {
+        Read::Pile => {
+            calls.push((r, rng.rand() & 7));
+            (dirty, env.piled) = (true, piled);
+        }
+        Read::Trample => {
+            calls.push((r, 0));
+            dirty = true;
+        }
+        // A read recomputes the exhibit only when a pile or the paint marked it.
+        _ if std::mem::take(&mut dirty) => calls.push((r, rng.rand() & 7)),
+        _ => {}
+    };
+    let mut env = env.clone();
+    run_read(
+        a,
+        k,
+        class,
+        &mut env,
+        &mut Rng::default(),
+        &mut |_, _| false,
+        &mut read,
+    );
+    calls
 }
 
 #[test]
-fn the_pile_is_put_down_in_the_hunger_check_before_the_later_draws_and_the_social_read_follows() {
-    let (k, class) = (
-        Keys {
-            // The health check's random fall draws once.
-            sick_random: 100,
-            ..keys()
-        },
-        Class::default(),
-    );
-    for pile in [true, false] {
+fn the_pile_is_put_down_in_the_hunger_check_and_the_next_read_recomputes_the_exhibit() {
+    let k = Keys {
+        // The health check's random fall draws once.
+        sick_random: 100,
+        ..keys()
+    };
+    for piled in [true, false] {
         let mut a = Animal {
             dung: 70,
             health: 500,
             ..animal()
         };
         (a.counters[HUNGER], a.counters[HEALTH]) = (0, 0);
-        let mut spy = Spy {
-            pile,
-            ..Spy::default()
-        };
-        let mut rng = Rng::default();
-        let env = Env {
-            exhibit: true,
-            ..in_exhibit()
-        };
-        let out = run_with(&mut a, &k, &class, &env, &mut rng, &mut spy);
-        // The facing draw is the first of the tick, the health check's reading of the exhibit
-        // (which rates it again) the second, the health check's own draws come after.
-        let names: Vec<_> = spy.calls.iter().map(|c| c.0).collect();
-        assert_eq!(names, ["pile", "read"], "pile {pile}");
-        assert!(out.dung);
-        assert_eq!(a.dung, if pile { 0 } else { 70 });
+        let calls = world_calls(&mut a, &k, &Class::default(), &in_exhibit(), piled);
+        // The facing is the first draw of the tick, the health check's read of the sick
+        // animals (which rates the exhibit again) the second.
         let mut check = Rng::default();
-        let first = check.rand() & 7;
-        let second = check.rand() & 7;
+        let (first, second) = (check.rand() & 7, check.rand() & 7);
         assert_eq!(
-            spy.calls,
-            [("pile", first), ("read", second)],
-            "pile {pile}"
+            calls,
+            [(Read::Pile, first), (Read::Sick, second)],
+            "piled {piled}"
         );
+        assert_eq!(a.dung, if piled { 0 } else { 70 });
     }
 }
 
@@ -957,24 +952,16 @@ fn the_trampled_ground_is_painted_in_the_captivity_tick_and_the_social_check_rea
             grass,
             ..in_exhibit()
         };
-        let mut spy = Spy::default();
-        let mut rng = Rng::default();
-        run_with(&mut a, &k, &class, &env, &mut rng, &mut spy);
-        let names: Vec<_> = spy.calls.iter().map(|c| c.0).collect();
+        let calls = world_calls(&mut a, &k, &class, &env, false);
         // The two draws of the captivity tick come first; the read rates the exhibit again with
         // the third.
-        assert_eq!(
-            names,
-            if grass {
-                ["trample", "read"][..].to_vec()
-            } else {
-                vec![]
-            }
-        );
-        if grass {
-            let mut check = Rng::default();
-            let third = (0..3).map(|_| check.rand()).last().unwrap() & 7;
-            assert_eq!(spy.calls[1], ("read", third));
-        }
+        let mut check = Rng::default();
+        let third = (0..3).map(|_| check.rand()).last().unwrap() & 7;
+        let want = if grass {
+            vec![(Read::Trample, 0), (Read::Exhibit, third)]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(calls, want, "grass {grass}");
     }
 }
