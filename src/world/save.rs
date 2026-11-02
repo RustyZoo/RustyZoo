@@ -219,6 +219,14 @@ impl World {
     /// keeps its stored block.
     fn unit_made(&self, c: &mut Common, class: &str, cost: u32) {
         if !c.raw.is_new() {
+            // A loaded guest writes the cost it runs with now (pathfinding 6.5).
+            if let (true, Some(b), Some(u)) = (
+                class == "guests",
+                c.unit.as_deref_mut(),
+                self.units.get(c.id),
+            ) {
+                b.w4 = u.mover.cost_word();
+            }
             return;
         }
         let guest = (class == "guests").then_some(cost);
@@ -227,12 +235,7 @@ impl World {
             live_goal(u, &mut block.target);
             block.move_kind = 2;
             if guest.is_some() {
-                let m = &u.mover;
-                block.w4 = if m.emergency {
-                    m.emergency_cost
-                } else {
-                    m.non_path_cost
-                };
+                block.w4 = u.mover.cost_word();
             }
         }
         c.unit = Some(Box::new(block));

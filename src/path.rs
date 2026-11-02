@@ -100,11 +100,24 @@ pub struct Mover {
     /// The guest's non-path cost is `cNonPathCostEmergency` since it took the avoid task or an
     /// afraid one chose its way out; its goal reset puts `cNonPathCost` back (6.5).
     pub emergency: bool,
+    /// The non-path cost a loaded guest was saved with, read instead of its type's until a goal
+    /// reset or a leave goal's way out writes the cost again (6.5).
+    pub word: Option<u32>,
     /// The ids of the units that are predators for this guest (M7 decides who they are).
     pub predators: Vec<u32>,
 }
 
 impl Mover {
+    /// The guest's non-path cost as it stands: the one it was loaded with, the emergency one, or its
+    /// type's (6.5).
+    pub fn cost_word(&self) -> u32 {
+        match (self.word, self.emergency) {
+            (Some(w), _) => w,
+            (_, true) => self.emergency_cost,
+            _ => self.non_path_cost,
+        }
+    }
+
     /// A unit of this kind on tile `at` with plain values.
     pub fn new(kind: Kind, at: Option<usize>) -> Mover {
         Mover {

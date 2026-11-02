@@ -586,6 +586,47 @@ fn a_placed_guest_holds_the_non_path_cost_of_its_type() {
 }
 
 #[test]
+fn a_loaded_guest_saves_the_non_path_cost_it_runs_with() {
+    let mut cat = staff_types();
+    cat.push(staff_type("guests", ""));
+    let mut w = pens([None, None, None]);
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(16, Clocks::default());
+    sim.load(&mut w, &cat);
+    let at = w.find(4).unwrap();
+    let common = w.zoo.entities[at].common.as_mut().unwrap();
+    common.raw = crate::zoo::Raw::read();
+    common.unit = Some(Box::default());
+    let saved = |w: &World| {
+        let mut zoo = w.saved(|_| true);
+        w.finish_save(&mut zoo, &cat);
+        zoo.entities[at]
+            .common
+            .as_ref()
+            .unwrap()
+            .unit
+            .clone()
+            .unwrap()
+            .w4
+    };
+    // The word it was loaded with is kept, then the one an afraid run writes.
+    w.zoo.entities[at]
+        .common
+        .as_mut()
+        .unwrap()
+        .unit
+        .as_mut()
+        .unwrap()
+        .w4 = 9;
+    w.units.get_mut(4).unwrap().mover.word = Some(9);
+    assert_eq!(saved(&w), 9);
+    let m = &mut w.units.get_mut(4).unwrap().mover;
+    (m.word, m.emergency, m.emergency_cost) = (None, true, 2);
+    assert_eq!(saved(&w), 2);
+}
+
+#[test]
 fn a_staff_member_saved_before_its_first_update_has_no_goal() {
     let cat = staff_types();
     let mut w = pens([None, None, None]);

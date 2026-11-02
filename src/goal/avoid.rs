@@ -104,6 +104,12 @@ impl Cx<'_, '_> {
         if self.unit.kind != Kind::Guest || !region.is_some_and(|r| r != GROUNDS && r != EXTERIOR) {
             return;
         }
+        self.stop_and_exit();
+    }
+
+    /// Stops everything (goal reset, sets and pending set dropped, movement stopped), calms the
+    /// unit, thinks 10568 and takes the exit task, mode 0 (goals 10.2 point 1, 11.11).
+    pub(super) fn stop_and_exit(&mut self) {
         self.reset();
         self.unit.runner = Default::default();
         movement::stop(self.unit);

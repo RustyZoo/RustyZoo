@@ -793,7 +793,7 @@ impl Cx<'_, '_> {
         // A guest's building target goes with it, and so does the eat-standing flag (guests 8).
         self.clear_target();
         // A guest pays its own cost off the paths again (pathfinding 6.5).
-        self.unit.mover.emergency = false;
+        (self.unit.mover.emergency, self.unit.mover.word) = (false, None);
         match &mut self.unit.part {
             Part::Guest(g) => g.stand = false,
             // An animal's reset lowers its need flags too and ends its escape walk (12.1, animals
