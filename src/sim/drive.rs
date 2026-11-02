@@ -277,7 +277,13 @@ impl Run {
             }
             Command::Bulldoze(id) => {
                 let (world, money, cat) = (&mut self.world, &mut self.money, &self.cat);
-                crate::place::bulldozer::remove(world, money, cat, id, &mut self.sim.rng).is_some()
+                let removed =
+                    crate::place::bulldozer::remove(world, money, cat, id, &mut self.sim.rng);
+                let members = removed
+                    .as_ref()
+                    .map_or_else(Vec::new, |r| r.members.clone());
+                members.into_iter().for_each(|m| self.sim.remove(m));
+                removed.is_some()
             }
             Command::Tile(x, y, elevation, shape, terrain) => {
                 let rand = &mut || self.sim.rng.rand();

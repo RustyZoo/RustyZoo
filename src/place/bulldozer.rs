@@ -309,6 +309,9 @@ pub struct Removed {
     /// The side of a fence.
     pub side: Option<u32>,
     pub refund: f32,
+    /// The members of a building, from the end of its list: hidden, for the caller to queue at the
+    /// removal pass (unit placing 7.4).
+    pub members: Vec<u32>,
 }
 
 /// Removes the entity with this id and books its refund as a construction refund (placing 7.2).
@@ -331,6 +334,7 @@ pub fn remove(
         tile: (c.x.div_euclid(64), c.y.div_euclid(64)),
         side: fence.then_some(c.rotation % 8),
         refund: refund(cat, entity),
+        members: Vec::new(),
     };
     let slot = world.slot(at);
     if let Some((t, d)) = slot {
@@ -345,7 +349,20 @@ pub fn remove(
     crate::goal::release_group(world, cat, rng, id);
     crate::building::leave::push_out(world, cat, id);
     crate::guest::litter::spill(world, cat, id, rng);
+    // The members of a building go with it, the last first.
+    // The list is emptied: the building kept for the undo has none (unit placing 7.4).
+    let record = (world.find(id))
+        .and_then(|at| world.zoo.entities[at].common.as_mut()?.building.as_mut())
+        .map(|b| std::mem::take(&mut b.members));
+    let members = record.map_or_else(Vec::new, |m| m.into_iter().rev().collect());
     world.remove(id);
+    // Hidden once the list has settled, and removed at the next pass.
+    for m in members {
+        if let Some(unit) = world.find(m) {
+            world.hide_unit(unit);
+            removed.members.push(m);
+        }
+    }
     world.priced(removed.refund);
     let category = if animal {
         ANIMAL_REFUND
