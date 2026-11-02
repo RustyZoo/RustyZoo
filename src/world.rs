@@ -259,6 +259,9 @@ pub struct World {
     language: Language,
     /// What the completed research programs did to the entity types of this game (research 6.4).
     pub research: crate::research::Overlay,
+    /// The animals that came onto the map or left it, and the show-neighbour links made or dropped,
+    /// that the show lists have not seen yet (shows 20; not saved, not hashed).
+    show_moves: Vec<crate::show::Move>,
 }
 
 impl World {
@@ -301,6 +304,7 @@ impl World {
             words: language.exhibit_words.clone(),
             language,
             research: Default::default(),
+            show_moves: Vec::new(),
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
@@ -309,6 +313,8 @@ impl World {
         world.retank(false);
         world.name_loaded();
         world.relink();
+        // The loaded animals join the show lists at the first rating of their exhibits.
+        world.show_moves.clear();
         for at in 0..world.zoo.entities.len() {
             world.filter_added(at);
         }
@@ -563,6 +569,43 @@ impl World {
             .collect()
     }
 
+    /// The exhibit the entity at position `at` stands in, if it stands in one.
+    pub fn exhibit_of(&self, at: usize) -> Option<u32> {
+        let c = self.zoo.entities.get(at)?.common.as_ref()?;
+        let t = self.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
+        let x = self.exhibits.region(t)?;
+        self.exhibits.get(x).map(|_| x)
+    }
+
+    /// Notes for the show lists that the animal at position `at` came onto the map (`on`) or is
+    /// about to leave it (shows 20.1); any other entity is no news.
+    pub fn show_moved(&mut self, at: usize, on: bool) {
+        let e = &self.zoo.entities[at];
+        let Some(id) = e
+            .common
+            .as_ref()
+            .map(|c| c.id)
+            .filter(|_| e.class == "animals")
+        else {
+            return;
+        };
+        let m = match on {
+            true => crate::show::Move::On(id),
+            false => crate::show::Move::Off {
+                id,
+                type_name: e.type_name.clone(),
+                subtype: e.subtype.clone(),
+                exhibit: self.exhibit_of(at),
+            },
+        };
+        self.show_moves.push(m);
+    }
+
+    /// The moves the show lists have not seen yet.
+    pub fn take_moves(&mut self) -> Vec<crate::show::Move> {
+        std::mem::take(&mut self.show_moves)
+    }
+
     /// Sets the escape check flag of the exhibit that tile `t` belongs to (habitat rating 5.8);
     /// the zoo grounds have none.
     pub fn escape_check(&mut self, t: usize) {
@@ -688,6 +731,7 @@ impl World {
         notes.into_iter().for_each(|note| self.record(note));
         self.record(Action::Placed { id, price: 0.0 });
         self.filter_added(self.zoo.entities.len() - 1);
+        self.show_moved(self.zoo.entities.len() - 1, true);
         Some(id)
     }
 
@@ -713,6 +757,7 @@ impl World {
         self.zoo.entities[at].subtype = subtype.into();
         self.shapes[at] = Some(shape);
         self.changed();
+        self.show_moved(at, true);
     }
 
     /// Removes the entity with this id; whether there was one. A fence piece that opens its line
@@ -747,6 +792,9 @@ impl World {
             self.note_opening(slot, false);
         }
         let rated = self.rated_tiles(at);
+        if !self.is_carried(id) {
+            self.show_moved(at, false);
+        }
         // A fence piece removed sets the escape check flag on both sides (habitat rating 5.8).
         if fence {
             rated.iter().for_each(|&t| self.escape_check(t));

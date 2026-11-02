@@ -64,6 +64,27 @@ impl Shows {
     }
 }
 
+#[cfg(test)]
+impl Shows {
+    /// The section and each show info written as version 106 and read back, as a save and a load
+    /// do (the unit lists are not stored).
+    pub fn saved_and_read(&self) -> Shows {
+        let mut o = Out(Vec::new());
+        self.write_section(&mut o).unwrap();
+        let infos: Vec<_> = self.infos.iter().flatten().collect();
+        infos.iter().for_each(|i| i.write(&mut o));
+        let mut r = Reader::new(&o.0, 106);
+        let mut back = Shows::default();
+        back.read_section(&mut r)
+            .unwrap_or_else(|e| panic!("{}", e.0));
+        back.infos = (infos.iter())
+            .map(|_| Some(ShowInfo::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0))))
+            .collect();
+        assert!(r.data.is_empty());
+        back
+    }
+}
+
 /// A numbered list of tricks for one species (zoo format 4.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Script {
@@ -83,8 +104,9 @@ pub struct Item {
     pub available: u8,
     pub visible: u8,
     pub id: u16,
-    /// 3 is an item that scores nothing (shows 8.1).
+    /// The type id of the animal the item was made for (the word the item's maker sets).
     pub kind: u32,
+    /// The trick type: 0 behaviour, 1 toy, 3 food, which scores nothing (shows 8.1, 19.1).
     pub marker: u32,
     /// The trick name, the animation, the keeper's pre-trick and post-trick.
     pub names: [String; 4],
@@ -209,6 +231,9 @@ pub struct TypeRecord {
     pub attendance: [u32; 3],
     /// The creation date (a file time); 0 in a file before version 99.
     pub date: u64,
+    /// The ids of the performing animals of the type that take part (shows 20); not saved: the
+    /// animals rebuild it.
+    pub units: Vec<u32>,
 }
 
 /// The running part of a show info (shows 3.3).
@@ -345,17 +370,23 @@ impl ShowInfo {
 }
 
 impl TypeRecord {
-    fn read(r: &mut Reader) -> R<TypeRecord> {
-        let (key, script) = (r.u32()?, r.u16()?);
-        let mut record = TypeRecord {
+    /// A record with no script and no pending one, no figures and no unit.
+    pub fn new(key: u32, script: u16, date: u64) -> TypeRecord {
+        TypeRecord {
             key,
             script,
             pending: u16::MAX,
             admission: 0,
             receipts: [0; 3],
             attendance: [0; 3],
-            date: 0,
-        };
+            date,
+            units: Vec::new(),
+        }
+    }
+
+    fn read(r: &mut Reader) -> R<TypeRecord> {
+        let (key, script) = (r.u32()?, r.u16()?);
+        let mut record = TypeRecord::new(key, script, 0);
         if r.v >= 99 {
             record.pending = r.u16()?;
             record.admission = r.u32()?;

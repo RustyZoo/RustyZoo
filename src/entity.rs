@@ -867,7 +867,7 @@ fn read_keys(ty: &mut EntityType, config: &Config, prefix: &[u8]) {
     set(section, "cHeight", &mut ty.height);
 }
 
-fn default_subtype(config: &Config) -> &[u8] {
+pub(crate) fn default_subtype(config: &Config) -> &[u8] {
     config
         .section("Global")
         .and_then(|global| global.get("DefaultSubtype"))

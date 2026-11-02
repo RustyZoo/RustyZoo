@@ -7,16 +7,20 @@
 //! to the cycle.
 
 use crate::building::{kind_of, leave::push_out};
-use crate::config::{Config, to_int};
+use crate::config::{Config, to_float, to_int};
 use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
 use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::ShowInfo;
 
+pub mod trick;
+mod units;
+pub use units::{Move, counted, settle};
+
 /// The numbers of `shows.cfg` that the cycle reads (shows 3.1). The built-in values hold without
 /// the file, which only Marine Mania has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Params {
     /// The satisfaction of a trick at or below which it is bad, at or above which it is good and great.
     pub trick: [i32; 3],
@@ -24,6 +28,10 @@ pub struct Params {
     pub ideal: [i32; 2],
     /// The percent of a show at or below which it is bad, at or above which it is good and great.
     pub show: [i32; 3],
+    /// The complexity a default script adds up to before it offers the food trick (shows 19.2).
+    pub threshold: i32,
+    /// The admission a type record takes when a script gives it its first (`defaultShowAdmission`).
+    pub admission: f32,
 }
 
 impl Default for Params {
@@ -32,6 +40,8 @@ impl Default for Params {
             trick: [0, 3, 6],
             ideal: [6, 6],
             show: [25, 50, 75],
+            threshold: 5,
+            admission: 0.0,
         }
     }
 }
@@ -65,6 +75,11 @@ impl Params {
             show: std::array::from_fn(|i| {
                 number("showSatisfactionThresholds", show[i], found.show[i])
             }),
+            threshold: number("behavior", "returnToKeeperThreshold", found.threshold),
+            admission: config
+                .section("cost")
+                .and_then(|s| s.get("defaultShowAdmission"))
+                .map_or(found.admission, to_float),
         }
     }
 }
@@ -91,11 +106,16 @@ fn show_tanks(world: &World) -> Vec<(u32, u16)> {
 
 /// The show info of the habitat record whose first tile lies in exhibit `id`.
 pub fn info_of(world: &World, id: u32) -> Option<&ShowInfo> {
+    world.zoo.shows.info(info_slot(world, id)?)
+}
+
+/// The position in the shows section of the show info of exhibit `id`, if it has one.
+fn info_slot(world: &World, id: u32) -> Option<usize> {
     let tiles = world.zoo.habitat_tiles.iter();
     let n = tiles
         .map(|&(x, y)| world.tile_index(x, y))
-        .position(|t| t.is_some_and(|t| world.exhibits().region(t) == Some(id)));
-    world.zoo.shows.info(n?)
+        .position(|t| t.is_some_and(|t| world.exhibits().region(t) == Some(id)))?;
+    world.zoo.shows.info(n).map(|_| n)
 }
 
 /// The exhibit of the show info whose show id is `id`.
