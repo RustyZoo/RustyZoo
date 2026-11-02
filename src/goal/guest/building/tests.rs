@@ -885,6 +885,29 @@ fn a_forced_leave_posts_the_abort_event_of_the_unit_to_itself() {
 }
 
 #[test]
+fn a_forced_leave_puts_the_abort_event_in_the_saved_queue() {
+    use crate::sim::drive::{Command, Run};
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    holding(&mut w);
+    let mut s = game();
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    let mut run = Run::new((b"", b""), (cat, Default::default()), w, money, 1);
+    run.sim = s;
+    let held = |run: &Run| {
+        let q = run.sim.clocks().queue;
+        [q.first, q.second]
+            .concat()
+            .iter()
+            .filter(|e| e.kind == 0x2722 && e.target == 1)
+            .count()
+    };
+    let before = held(&run);
+    assert!(run.apply(&Command::Bulldoze(9)));
+    assert_eq!(held(&run), before + 1);
+    assert!(run.world.units.posts.is_empty());
+}
+
+#[test]
 fn a_building_with_no_user_posts_no_abort_event() {
     let (cat, mut w) = (types(), zoo_with(true));
     crate::building::leave::push_out(&mut w, &cat, 9);

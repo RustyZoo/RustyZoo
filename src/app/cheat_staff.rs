@@ -135,6 +135,7 @@ impl App<'_> {
             shape: &shape,
         };
         rubble_buildings(&mut game.world, &mut kit);
+        self.sim.absorb(&mut game.world);
     }
 
     /// Every fence piece that is broken or at or below its decayed life is made healthy.

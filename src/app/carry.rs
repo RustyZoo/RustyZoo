@@ -125,6 +125,7 @@ impl App<'_> {
             view: game.camera.rotation,
         };
         game.held = crate::building::lift(&mut game.world, cat, id, &mut self.sim.rng);
+        self.sim.absorb(&mut game.world);
         game.selected = None;
         game.carry = Some(carry);
         self.world_lines.push(format!("carry {id}"));
