@@ -319,7 +319,7 @@ impl Cycle<'_> {
             let idle = self.show(shown, |i| !i.is_started());
             if idle == Some(true) || !self.in_show(u) {
                 self.info.show.items.push(ItemState {
-                    word: 0,
+                    script: self.info.show.script,
                     animal: u,
                     item: -1,
                     finished: false,
@@ -619,11 +619,11 @@ impl Cycle<'_> {
         let f = if show.possible == 0 || show.achieved == 0 {
             0.0
         } else if show.achieved < show.possible {
-            show.achieved as f32 / show.possible as f32
+            f64::from(show.achieved) / f64::from(show.possible as i32)
         } else {
             1.0
         };
-        let p = i64::from((f * 100.0).round_ties_even() as i32);
+        let p = i64::from((f * 100.0) as i32);
         let percent = if penalty >= 1 {
             (p - penalty).max(0)
         } else {

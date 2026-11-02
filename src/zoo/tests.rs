@@ -3306,7 +3306,7 @@ fn a_show_in_the_middle_of_its_cycle_is_written_back_as_it_is_and_its_unit_lists
         .as_mut()
         .expect("the habitat holds a show");
     let state = |animal, item| ItemState {
-        word: 0,
+        script: 0,
         animal,
         item,
         finished: item == 2,

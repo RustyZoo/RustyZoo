@@ -116,14 +116,14 @@ fn a_start_reaches_the_grandstands_as_the_start_note_and_the_tank_as_the_start()
 }
 
 #[test]
-fn the_data_of_a_relayed_event_is_cut_to_sixteen_bits() {
+fn the_relayed_data_word_is_passed_whole() {
     let (w, cat) = two_shows();
     let mut events = queue(vec![shown(0x2715, 1001, 0x1_0064, 95)]);
     relay(&w, &cat, &mut events);
     let sent = waiting(&events);
-    assert_eq!((sent[0].3, sent[0].4), (0x64, 95));
-    assert_eq!((sent[1].3, sent[1].4), (0x64, 95));
-    // The cheer carries the percent as it came, in the half word it fits.
+    assert_eq!((sent[0].3, sent[0].4), (0x1_0064, 95));
+    assert_eq!((sent[1].3, sent[1].4), (0x1_0064, 95));
+    // The cheer carries the percent in the half word it fits.
     assert_eq!(sent[2], (0x2735, 0, WORLD_CHANNEL, 1001, 100, 135, 0));
 }
 

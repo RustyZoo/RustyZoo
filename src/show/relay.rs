@@ -94,7 +94,7 @@ pub fn listen_world(world: &World, cat: &Catalogue, events: &mut Events, rng: &m
         if ev.kind == event::ANNOUNCE && !has_keeper(world, show) {
             continue;
         }
-        let data = ev.data & 0xffff;
+        let data = ev.data;
         events.post(world_event(ev.kind, show, TANK_CHANNEL, data, ev.extra, 0));
         let kind = match ev.kind {
             event::STARTED => event::START_NOTE,

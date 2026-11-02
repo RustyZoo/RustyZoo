@@ -258,7 +258,8 @@ impl Default for Show {
 /// The state of one animal in a show (shows 3.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemState {
-    pub word: u16,
+    /// The show's current script when the state is made.
+    pub script: u16,
     pub animal: u32,
     /// -1 before the first item.
     pub item: i16,
@@ -418,7 +419,7 @@ impl Show {
         let items = (0..r.count(14)?)
             .map(|_| {
                 Ok(ItemState {
-                    word: r.u16()?,
+                    script: r.u16()?,
                     animal: r.u32()?,
                     item: r.u16()? as i16,
                     finished: r.u8()? != 0,
@@ -463,7 +464,7 @@ impl Show {
         }
         o.u32(self.items.len() as u32);
         for s in &self.items {
-            o.u16(s.word);
+            o.u16(s.script);
             o.u32(s.animal);
             o.u16(s.item as u16);
             for b in [

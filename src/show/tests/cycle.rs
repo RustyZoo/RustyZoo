@@ -342,7 +342,7 @@ fn an_animal_already_in_a_running_show_gets_no_item_state_in_another() {
     other.show.running = true;
     other.show.stopped = false;
     other.show.items = vec![ItemState {
-        word: 0,
+        script: 2000,
         animal: 21,
         item: -1,
         finished: false,
@@ -470,7 +470,6 @@ fn the_end_figures_are_the_percent_of_the_satisfaction_less_the_length_penalty()
         // A penalty of 100 or more.
         (0, 0, 0, 6, [150, 150], 0, 100),
         (3, 30, 30, 6, [-3, -1], 96, 96),
-        // Rounding to the nearest even: 0.125 of 100 is 12.5.
         (6, 8, 1, 6, [6, 6], 12, 100),
     ];
     for (done, possible, achieved, count, ideal, percent, bonus) in table {
@@ -489,6 +488,29 @@ fn the_end_figures_are_the_percent_of_the_satisfaction_less_the_length_penalty()
             "{done} {possible} {achieved} {count}"
         );
     }
+}
+
+#[test]
+fn the_end_percent_is_truncated_toward_zero_in_double_precision() {
+    for (possible, achieved, percent) in [(8, 3, 37), (29, 19, 65), (100, 29, 28)] {
+        let (mut w, cat, mut events) = started(vec![item(0, 5, 5)]);
+        w.units.show.ideal = [6, 6];
+        let show = &mut info_mut(&mut w).show;
+        (show.done, show.possible, show.achieved) = (6, possible, achieved);
+        events.clear();
+        abort(&mut w, &cat, &mut events, 1001);
+        events.age();
+        let ended = heard(&events).into_iter().find(|e| e.0 == 0x2715).unwrap();
+        assert_eq!(ended.4, percent, "{achieved} of {possible}");
+    }
+}
+
+#[test]
+fn a_new_item_state_holds_the_current_script_id() {
+    let (w, _, _) = started(vec![item(0, 3, 5)]);
+    let items = &info_of_show(&w).show.items;
+    assert!(!items.is_empty());
+    assert!(items.iter().all(|s| s.script == 2000));
 }
 
 #[test]
