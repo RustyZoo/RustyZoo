@@ -302,6 +302,9 @@ pub struct GuestRecord {
     pub leave: bool,
     /// Seen a predator; nothing in the engine raises it yet.
     pub afraid: bool,
+    /// The return word, as stored (zoo format 6.12): the return building's name id in the low 19
+    /// bits, the recovering flag in bit 19. Versions before 94 have none (0).
+    pub ret: u32,
     pub gift: bool,
     pub wandered: bool,
     /// Eating standing.
