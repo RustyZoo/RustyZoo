@@ -471,7 +471,7 @@ fn point(world: &World, at: usize) -> Option<(i32, i32, i32)> {
 
 /// A walking unit on the ground stands on it (5): its height is the ground's at its point. Not
 /// done in a tank, where the unit swims, nor on a ladder.
-fn snap(world: &mut World, at: usize) {
+pub(crate) fn snap(world: &mut World, at: usize) {
     let Some(c) = world.zoo.entities.get(at).and_then(|e| e.common.as_ref()) else {
         return;
     };

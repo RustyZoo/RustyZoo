@@ -792,7 +792,12 @@ fn check(
 /// The footprint of the unit at `at` in half tiles for the blocking rectangle (placing 5.2 item 4):
 /// an animal in its egg takes its type's egg footprint, else one in its crate the crate's, else
 /// the shape's.
-fn unit_footprint(world: &World, cat: &Catalogue, at: usize, shape: Shape) -> (i32, i32) {
+pub(crate) fn unit_footprint(
+    world: &World,
+    cat: &Catalogue,
+    at: usize,
+    shape: Shape,
+) -> (i32, i32) {
     let entity = &world.zoo.entities[at];
     let form = (entity.common.as_ref())
         .and_then(|c| world.units.get(c.id))
