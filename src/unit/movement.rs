@@ -326,6 +326,21 @@ pub fn call(
     at: usize,
     (gait, target, reverse): &(Gait, Target, bool),
 ) -> Flow {
+    // The 3D target is recorded while the unit's goal is the plain wander: `0` and the name it
+    // has leave it alone, any other first argument clears the goal's destination and is recorded
+    // (behaviours 5.4, tank fauna 6.2).
+    if unit.goal.record.task == crate::goal::RANDOM
+        && !matches!(*target, Target::Keep)
+        && *target != unit.target
+    {
+        unit.goal.record.target.clear();
+        unit.target = *target;
+    }
+    // A held unit's call is done at once with success, whatever it was doing (staff 7.7, movement
+    // 8.2 point 0).
+    if unit.held {
+        return Flow::Done;
+    }
     if unit.walking {
         // 2: the unit moves from the next step's move on, once the player shows the move
         // animation. 3: the call ends with the walk, an aborted one included (4.7).
@@ -338,24 +353,10 @@ pub fn call(
         stop(unit);
         return Flow::Done;
     }
-    // The 3D target is recorded while the unit's goal is the plain wander: `0` and the name it
-    // has leave it alone, any other first argument clears the goal's destination and is recorded
-    // (behaviours 5.4, tank fauna 6.2).
-    if unit.goal.record.task == crate::goal::RANDOM
-        && !matches!(*target, Target::Keep)
-        && *target != unit.target
-    {
-        unit.goal.record.target.clear();
-        unit.target = *target;
-    }
     // The climb of a ladder is a free move to the destination point; its second argument is the
     // speed (tank staff 3).
     if let (Gait::Fly(speed), Some(1)) = (gait, mode_of(world, at)) {
         return start_fly(unit, world, data, cat, at, speed, *reverse);
-    }
-    // A held unit starts no walk (staff 7.7).
-    if unit.held {
-        return Flow::Failed;
     }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.

@@ -7,7 +7,7 @@ use crate::render::order::Kind;
 use crate::sim::Sim;
 use crate::timing::file_time;
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Clocks, Common, Escape, Tile, View, Zoo};
+use crate::zoo::{Clocks, Common, Escape, Tile, UnitBlock, View, Zoo};
 
 mod boxed;
 mod breed;
@@ -2896,4 +2896,47 @@ fn a_free_life_program_changes_the_animals_the_map_placed() {
     assert_eq!(changes.len(), 1, "only the free program is complete");
     lengthen(&mut world, &changes);
     assert_eq!(life(&world), 6250);
+}
+
+#[test]
+fn a_held_animal_is_saved_and_loaded_held() {
+    let cat = zebras();
+    let mut world = pens();
+    // The hold is the first byte of the unit block (staff 7.7): any non-zero byte holds.
+    for (id, held) in [(500, 1), (501, 0), (510, 255)] {
+        let c = (world.zoo.entities.iter_mut())
+            .filter_map(|e| e.common.as_mut())
+            .find(|c| c.id == id)
+            .unwrap();
+        c.unit = Some(Box::new(UnitBlock {
+            b7: held,
+            ..Default::default()
+        }));
+    }
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    let held = |w: &World, id| w.units.get(id).unwrap().held;
+    assert!(held(&world, 500) && !held(&world, 501) && held(&world, 510) && !held(&world, 511));
+    let byte = |zoo: &Zoo, id| {
+        let c = (zoo.entities.iter())
+            .filter_map(|e| e.common.as_ref())
+            .find(|c| c.id == id);
+        c.and_then(|c| c.unit.as_ref()).map(|b| b.b7)
+    };
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    assert_eq!(byte(&zoo, 500), Some(1));
+    assert_eq!(byte(&zoo, 501), Some(0));
+    // A started unit writes its live flag: a held one 1, a lowered one 0.
+    for id in [500, 510, 511] {
+        world.units.get_mut(id).unwrap().started = true;
+    }
+    world.units.get_mut(511).unwrap().held = true;
+    world.units.get_mut(500).unwrap().held = false;
+    let mut zoo = world.saved(|_| true);
+    world.finish_save(&mut zoo, &cat);
+    assert_eq!(byte(&zoo, 511), Some(1));
+    assert_eq!((byte(&zoo, 500), byte(&zoo, 510)), (Some(0), Some(1)));
 }

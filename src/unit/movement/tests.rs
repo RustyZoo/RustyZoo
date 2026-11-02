@@ -715,7 +715,7 @@ fn an_aborted_walk_ends_its_move_call_as_done() {
 }
 
 #[test]
-fn a_held_unit_starts_no_move() {
+fn a_held_unit_ends_its_move_call_done_at_once() {
     let mut w = map(vec![entity("keeper", "", 1, centre((5, 5)), 2)]);
     let mut u = w.units.get(1).unwrap().clone();
     let at = w.find(1).unwrap();
@@ -727,9 +727,13 @@ fn a_held_unit_starts_no_move() {
         call(u, w, &walker, &Catalogue::default(), &mut rng, at, &go)
     };
     u.held = true;
-    assert_eq!(run(&mut u, &mut w), Flow::Failed);
-    assert!(!u.walking && !u.moving);
-    u.held = false;
+    assert_eq!(run(&mut u, &mut w), Flow::Done);
+    assert!(!u.walking && !u.moving && u.path.len() == 2);
+    // A walk in progress is left as it is, ahead of its own checks.
+    (u.walking, u.aborted) = (true, true);
+    assert_eq!(run(&mut u, &mut w), Flow::Done);
+    assert!(u.walking, "not stopped");
+    (u.walking, u.aborted, u.held) = (false, false, false);
     assert_eq!(run(&mut u, &mut w), Flow::Running);
     assert!(u.walking);
 }

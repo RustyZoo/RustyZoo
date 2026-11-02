@@ -228,7 +228,8 @@ impl World {
 
     /// A started unit writes its live path (with its levels, -1 for none), destination, pending set
     /// name and behaviour set (the chain of calls it runs), and, once it has a goal object, its live
-    /// goal record, not the ones its block was read with (behaviours 4.7, goals 3.4, zoo format 6.14).
+    /// goal record, not the ones its block was read with (behaviours 4.7, goals 3.4, zoo format 6.14),
+    /// and its held flag (staff 7.7).
     fn live_way(&self, c: &mut Common, cat: &Catalogue, ty: &EntityType) {
         let Some(u) = self.units.get(c.id).filter(|u| u.started) else {
             return;
@@ -248,6 +249,7 @@ impl World {
                 [t as u32 % width, t as u32 / width, level]
             })
             .collect();
+        block.b7 = u8::from(u.held);
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
         block.pending = u.runner.queued().unwrap_or_default().to_string();
         if u.runner.queued().is_some() {
