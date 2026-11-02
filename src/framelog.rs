@@ -117,6 +117,39 @@ impl Lines {
     }
 }
 
+/// [`Lines`] with its output: the held lines are written when it is finished or dropped, so a run
+/// that stops on an error or a panic still prints every pass it did.
+pub struct Flushed<F: FnMut(&str)> {
+    lines: Lines,
+    out: F,
+}
+
+impl<F: FnMut(&str)> Flushed<F> {
+    pub fn new(out: F) -> Self {
+        Flushed {
+            lines: Lines::default(),
+            out,
+        }
+    }
+
+    /// See [`Lines::pass`].
+    pub fn pass(&mut self, app: &App, pass: u64, now: u64) -> Result<(), String> {
+        self.lines.pass(app, pass, now, &mut self.out)
+    }
+
+    /// Writes the lines of the passes still held.
+    pub fn finish(mut self) -> Result<(), String> {
+        self.lines.finish(&mut self.out)
+    }
+}
+
+impl<F: FnMut(&str)> Drop for Flushed<F> {
+    fn drop(&mut self) {
+        // Nothing left to do for a failure here: the run is over.
+        let _ = self.lines.finish(&mut self.out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,5 +190,38 @@ mod tests {
         assert_eq!(got, want);
         assert!(lines.held.is_empty() && lines.known.is_empty() && lines.running.is_empty());
         assert!(lines.waiting.is_empty() && !lines.spare.is_empty());
+    }
+
+    #[test]
+    fn held_lines_are_written_when_the_run_stops_early() {
+        use std::cell::RefCell;
+        let got = RefCell::new(Vec::new());
+        let held = |count: usize| {
+            let mut flushed = Flushed::new(|l: &str| got.borrow_mut().push(l.to_string()));
+            for pass in 0..count {
+                let frame = Framebuffer {
+                    width: 1,
+                    height: 1,
+                    pixels: vec![pass as u8; 4],
+                };
+                let log = vec![format!("pass {pass} draw {HOLE}")];
+                let Flushed { lines, out } = &mut flushed;
+                lines.push(out, log, Some(frame)).unwrap();
+            }
+            flushed
+        };
+        // An error: the guard is dropped on the way out.
+        drop(held(20));
+        assert_eq!(got.borrow().len(), 20);
+        assert!(got.borrow()[19].starts_with("pass 19 draw "));
+        assert!(!got.borrow()[19].contains('\u{1}'));
+        // A panic unwinds through it the same way.
+        got.borrow_mut().clear();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _flushed = held(5);
+            panic!("stop");
+        }));
+        assert!(result.is_err());
+        assert_eq!(got.borrow().len(), 5);
     }
 }

@@ -1245,6 +1245,91 @@ fn each_reaction_draws_its_face_over_its_unit_at_the_frame_of_its_age() {
 }
 
 #[test]
+fn a_face_that_ends_is_mended_where_it_was_drawn() {
+    use crate::sprite::tests::{sized, sprite_file};
+    // A one pixel frame of the palette colour `index`.
+    let frame = |index: u8| {
+        let mut data = Vec::new();
+        for field in [1u16, 1, 0, 0, 0] {
+            data.extend(field.to_le_bytes());
+        }
+        data.extend([1, 0, 1, index]);
+        sized(&data)
+    };
+    let ani = |dirs: &str| format!("[animation]\n{dirs}animation = N\n").into_bytes();
+    let face = |name: &str| {
+        let dirs = format!("dir0 = objects\ndir1 = {name}\ndir2 = idle\n");
+        [
+            (format!("objects/{name}/idle/idle.ani"), ani(&dirs)),
+            (
+                format!("objects/{name}/idle/N"),
+                sprite_file(None, 3, &[frame(1), frame(1), frame(2)]),
+            ),
+        ]
+    };
+    let mut members = vec![
+        (
+            "guests.cfg".to_string(),
+            b"[guests]\nman = man.ai\n".to_vec(),
+        ),
+        (
+            "man.ai".to_string(),
+            b"[Animations]\nidle = idle\n[Characteristics/Integers]\ncFacesYOffset = 20\n".to_vec(),
+        ),
+        (
+            "guests/man/idle/idle.ani".to_string(),
+            ani("dir0 = a\ndir1 = idle\n"),
+        ),
+        ("a/idle/N".to_string(), sprite_file(None, 1, &[frame(1)])),
+        (
+            "animals/Lion/lion.pal".to_string(),
+            palette_file(&[[255, 0, 255], [200, 0, 0], [0, 200, 0]]),
+        ),
+    ];
+    members.extend(face("smile"));
+    members.extend(face("frown"));
+    let members: Vec<_> = members
+        .iter()
+        .map(|(n, d)| (n.as_str(), d.clone()))
+        .collect();
+    let install = cache_install_with("render-face-mend", frame_file(), &members);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let mut stage = |faces: Vec<(u32, bool, u32)>| {
+        let extra = Extra {
+            faces,
+            ..Extra::default()
+        };
+        let zoo = tile_with(&[("guests", "man", "")]);
+        renderer.stage_with(&zoo, 0, false, &extra).unwrap()
+    };
+    // The face rises 20 pixels above its unit: a smile, a frown at another frame, none.
+    let (smile, frown, none) = (
+        stage(vec![(1, true, 0)]),
+        stage(vec![(1, false, 250)]),
+        stage(vec![]),
+    );
+    for zoom in [0, 2] {
+        let b = none.bounds_at(zoom);
+        let (x, y) = (b[0] as i32 - 8, b[1] as i32 - 60);
+        let size = (160, 160);
+        let draw = |staged: &Staged| {
+            let mut canvas = Framebuffer::new(size.0, size.1);
+            staged.draw(&mut canvas, x, y, zoom, false);
+            canvas
+        };
+        for (old, new) in [(&smile, &none), (&none, &smile), (&smile, &frown)] {
+            let mut canvas = draw(old);
+            assert!(canvas.pixels != draw(new).pixels, "zoom {zoom}");
+            let rects = new.changes(old, size, (x, y), zoom, false).unwrap();
+            new.redraw(&mut canvas, x, y, zoom, false, &rects);
+            assert!(canvas.pixels == draw(new).pixels, "zoom {zoom}");
+        }
+    }
+}
+
+#[test]
 fn the_faces_offset_is_in_pixels_of_the_zoom() {
     let install = marker_install("render-faces-zoom", 1);
     let vfs = Vfs::open(&install.0).unwrap();

@@ -489,8 +489,9 @@ pub struct App<'a> {
     map: Framebuffer,
     /// The look of the map in `map` (`frame` without an interface); `None` before the first.
     painted: Option<Look>,
-    /// The rectangles of the map that a staging changed since it was painted for `painted`.
-    stale: Vec<[i32; 4]>,
+    /// The rectangles of the map that a staging changed since it was painted for `painted`
+    /// (`Some` when there was a staging, even one that changed nothing in the window).
+    stale: Option<Vec<[i32; 4]>>,
     /// What the last pass did: the commands it applied and the timers it fired.
     applied: Vec<Command>,
     fired: Pass,
@@ -692,7 +693,7 @@ impl<'a> App<'a> {
             ui: None,
             map: Framebuffer::new(0, 0),
             painted: None,
-            stale: Vec::new(),
+            stale: None,
             applied: Vec::new(),
             fired: IDLE,
             drew: false,
@@ -2376,7 +2377,7 @@ impl<'a> App<'a> {
         let look = self.look();
         let moved = self.painted != look;
         let stale = std::mem::take(&mut self.stale);
-        if !moved && stale.is_empty() && !self.ui.as_ref().is_some_and(Interface::dirty) {
+        if !moved && stale.is_none() && !self.ui.as_ref().is_some_and(Interface::dirty) {
             return false;
         }
         // The one place that draws the map; the zoom of the camera applies here.
@@ -2385,14 +2386,19 @@ impl<'a> App<'a> {
             None => &mut self.frame,
         };
         if let Some(game) = &self.game
-            && (moved || !stale.is_empty())
+            && (moved || stale.is_some())
         {
             let (x, y) = game.camera.scroll;
             match moved {
                 true => game.staged.draw(target, x, y, game.camera.zoom, game.grid),
-                false => game
-                    .staged
-                    .redraw(target, x, y, game.camera.zoom, game.grid, &stale),
+                false => game.staged.redraw(
+                    target,
+                    x,
+                    y,
+                    game.camera.zoom,
+                    game.grid,
+                    &stale.unwrap_or_default(),
+                ),
             }
             self.painted = look;
         }
@@ -2485,8 +2491,8 @@ impl<'a> App<'a> {
                     })
                     .flatten();
                 match changes {
-                    Some(rects) => self.stale.extend(rects),
-                    None => (self.painted, self.stale) = (None, Vec::new()),
+                    Some(rects) => self.stale.get_or_insert_default().extend(rects),
+                    None => (self.painted, self.stale) = (None, None),
                 }
                 if dirty {
                     self.world_lines.push("stage".to_string());
