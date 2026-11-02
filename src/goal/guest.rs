@@ -10,7 +10,7 @@
 //! task by chance and is sick on the spot ([`Cx::sick_ladder`]). The log lines are those of the
 //! `guest` family of [`crate::guest`].
 
-use super::{Cx, SICK};
+use super::{Cx, DROWN, SICK};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Part;
 
@@ -23,10 +23,9 @@ mod sites;
 const EGG: i32 = 10250;
 /// The leave task.
 pub const LEAVE: u8 = 113;
-/// The avoid and exit tasks, which keep a guest from leaving, and the drowning task.
+/// The avoid and exit tasks, which keep a guest from leaving.
 const AVOID: u8 = 117;
 const EXIT: u8 = 127;
-const DROWN: u8 = 132;
 /// The tasks of using a building: entering, leaving and using it.
 pub const IN_BUILDING: std::ops::RangeInclusive<u8> = 104..=106;
 

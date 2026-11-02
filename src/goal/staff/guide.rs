@@ -8,6 +8,7 @@
 //! the viewing area when it arrives while the guide talks. The log lines are `staff job <id>
 //! va|speak|random` and `guest follow <id> <guide>` (0 when it leaves the group).
 
+use super::super::dropped::with_unit as with_guest;
 use super::super::{Cx, LEG, NONE, RANDOM, TALK};
 use crate::animal::food::nearest_direction;
 use crate::behaviour::{Data, NoData};
@@ -23,30 +24,6 @@ use crate::world::World;
 /// food and eating, leaving, avoiding a predator, being sick and the way back to a building.
 fn busy(task: u8) -> bool {
     (103..=109).contains(&task) || [113, 117, 121, 130].contains(&task)
-}
-
-/// Runs `f` on the goal update context of the guest `id`, taken out of the table for it.
-fn with_guest<R>(
-    world: &mut World,
-    ctx: &mut Ctx,
-    data: &dyn Data,
-    id: u32,
-    f: impl FnOnce(&mut Cx) -> R,
-) -> Option<R> {
-    let at = world.find(id)?;
-    let slot = world.units.get_mut(id)?;
-    let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
-    let r = f(&mut Cx {
-        unit: &mut unit,
-        world: &mut *world,
-        ctx,
-        at,
-        data,
-    });
-    if let Some(slot) = world.units.get_mut(id) {
-        *slot = unit;
-    }
-    Some(r)
 }
 
 /// The guests on the map, in entity order, with the tile each stands on.
