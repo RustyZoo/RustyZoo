@@ -324,6 +324,7 @@ impl World {
             gated: false,
             tank: TankKind::NONE,
             walkable: (false, false),
+            forms: None,
         };
         self.add(entity, Some(shape)).is_some()
     }

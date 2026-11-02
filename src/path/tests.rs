@@ -49,6 +49,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gated: fence,
         tank: TankKind::NONE,
         walkable: (gate, gate),
+        forms: None,
     };
     match (e.class.as_str(), e.type_name.as_str()) {
         ("fences", "low") => Some(thing(Class::Edge, (1, 1), false, false)),
@@ -69,6 +70,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         }),
         ("animals" | "guests", kind) => Some(Shape {
             walkable: (kind == "soft", kind == "soft"),
+            forms: None,
             ..thing(Class::Unit, (1, 1), false, false)
         }),
         ("gate", _) => Some(thing(Class::Fixed, (2, 2), false, true)),
@@ -529,6 +531,7 @@ fn an_object_in_a_tank_blocks_only_its_own_levels() {
                 gated: false,
                 tank,
                 walkable: (false, false),
+                forms: None,
             };
             w.add(e, Some(shape)).unwrap();
         }
