@@ -149,7 +149,7 @@ pub fn escaped_set(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut Rn
     let tile = (world.zoo.entities[at].common.as_ref())
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
     let dry = tile.is_some_and(|t| !world.is_water(t) && world.tank_at(t).is_none());
-    let held = a.dying || a.crated || a.egg || a.in_show;
+    let held = a.dying || a.crated || a.egg || a.in_show || a.tranq;
     if held || !a.escaped || !dry || a.rampaging || unit.moving {
         return;
     }

@@ -1,18 +1,46 @@
-//! The crate (animals 7, unit placing 9): an escaped animal the player picks up is crated, and the
-//! crate's own check opens it in an exhibit or shakes it. The crate's pictures are not drawn yet.
+//! The crate (animals 7, unit placing 9): an escaped animal the player picks up or a keeper
+//! retrieves is crated, and the crate's own check opens it in an exhibit or shakes it. The dart of
+//! the keeper's capture is here too. The crate's pictures are not drawn yet.
 
-use super::{Animal, fire};
+use super::{Animal, ENERGY, Keys, fire};
 use crate::behaviour::{Animation, Runner};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::{Ctx, Part, Unit, swim};
 use crate::world::World;
 
-/// Crates the animal (unit placing 9.1): it is no longer escaped, and the status reset drops its
-/// escape walk and its need flags.
+/// Crates the animal (unit placing 9.1): it is no longer escaped nor darted, no keeper has a
+/// claim on it, and the status reset drops its escape walk and its need flags.
 pub fn crate_up(a: &mut Animal) {
     a.crated = true;
-    a.escaped = false;
+    (a.escaped, a.tranq, a.claim) = (false, false, 0);
     (a.walk, a.drinking, a.wants_food, a.thirsty) = (None, false, false, false);
+}
+
+/// A keeper's crate job (staff 7.11): the animal `id` is crated where it stands, stops everything
+/// and is put on the map again, taking the terrain mode of its tile.
+pub fn crate_in_place(world: &mut World, id: u32) {
+    let Some(unit) = world.units.get_mut(id) else {
+        return;
+    };
+    if let Part::Animal(a) = &mut unit.part {
+        crate_up(a);
+    }
+    crate::goal::stop_all(unit);
+    unit.animation = Animation::default();
+    swim::put(world, id);
+}
+
+/// A keeper's dart (staff 7.11): the animal is tranquilised, its chase stopped (nothing is caught
+/// before the chase spec) and its energy full with the sleep check due, so that it falls asleep
+/// at the next one, which also clears the flag when it wakes.
+pub fn tranquilise(unit: &mut Unit, k: &Keys) {
+    let Part::Animal(a) = &mut unit.part else {
+        return;
+    };
+    a.tranq = true;
+    a.energy = k.max_energy;
+    a.counters[ENERGY] = 0;
+    crate::goal::stop_all(unit);
 }
 
 /// The crate's own check (unit placing 9.2), first of the status checks and only for a crated

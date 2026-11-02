@@ -364,6 +364,7 @@ keys! {
     land_needed: "cLandNeeded" = 1,
     lays_eggs: "cLaysEggs" = 0,
     stay_sick: "cStaySick" = 0,
+    heli_recovery: "cHeliRecovery" = 0,
     time_to_hatch: "cTimeToHatch" = 0,
     min_hatch_hits: "cMinHatchHits" = 0,
 }
@@ -497,6 +498,11 @@ pub struct Animal {
     /// It stands loose on the zoo grounds (animals 11.1): set by the escape check on the grounds,
     /// lowered by the escape check in an exhibit and when it is picked up.
     pub escaped: bool,
+    /// The keeper's dart put it to sleep: it has no goals and chooses no ambient set until the
+    /// sleep check wakes it or it is crated (animals 9.1, 11.6).
+    pub tranq: bool,
+    /// The id of the staff member who has taken it as his capture job, 0 for none (animals 11.6).
+    pub claim: u32,
     /// The escape walk (animals 11.3): its record while the flag is up.
     pub walk: Option<crate::zoo::Escape>,
     /// The crossing animation the escape walk forces (11.3), for the turn to play.
@@ -589,6 +595,7 @@ impl Animal {
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
         self.escaped = r.escaped;
+        (self.claim, self.tranq) = (r.claim, r.tranq);
         // The flags are rebuilt from their words (animals 11.3).
         self.walk = r.escape.map(|e| crate::zoo::Escape {
             reached: u32::from(e.reached == 1),
@@ -630,6 +637,8 @@ impl Animal {
             dying: self.dying,
             crated: self.crated,
             boxed: self.crate_count,
+            claim: self.claim,
+            tranq: self.tranq,
             egg: self.egg,
             thirsty: self.thirsty,
             rampaging: self.rampaging,
@@ -1016,7 +1025,7 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out
             out.log.push("escape");
         }
     } else {
-        a.escaped = false;
+        (a.escaped, a.claim) = (false, 0);
     }
 }
 
