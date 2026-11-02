@@ -422,7 +422,7 @@ usage: rustyzoo [--data <dir>] <command>
                       only when one was painted. Closing the window ends it (it asks first, in a game: see
                       below). --passes ends it
                       after N passes, --script applies commands as above before the pass of
-                      their index (fullscreen asks the window to switch), --log writes the
+                      their index (fullscreen asks the window to switch; the real mouse is then ignored and no edge scroll runs), --log writes the
                       lines a headless run prints, so that
                       `run --headless --replay` plays it again with the same frame hashes. It
                       prints the game size and the factor, the window size, the size in pixels
