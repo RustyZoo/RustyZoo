@@ -1022,3 +1022,31 @@ fn a_guest_forgets_its_return_building_when_picked_up_and_when_put_down() {
     assert!(put_down(&mut w, id, (4 * 64, 4 * 64, 0), 0));
     assert_eq!(set(&mut w, None), None, "drop");
 }
+
+/// A keeper (job 3) holding the animal of a heal, which is held (`wait` raised).
+fn healing() -> (World, u32, u32) {
+    let mut w = world(vec![animal("m", (3, 3))]);
+    let a = w.zoo.entities.last().unwrap().common.as_ref().unwrap().id;
+    let keeper = entity_at("keeper", "marine", "m", 6 * 64 + 20, 6 * 64 + 20, 2);
+    let k = w.add(keeper.clone(), shape(&keeper)).unwrap();
+    w.units.get_mut(a).unwrap().wait = i32::MAX;
+    let r = &mut w.units.get_mut(k).unwrap().goal.record;
+    (r.job, r.job_target.id) = (3, a);
+    (w, k, a)
+}
+
+#[test]
+fn a_keeper_reset_or_picked_up_leaves_the_animal_of_his_heal_held() {
+    let cat = catalogue();
+    let (mut w, k, a) = healing();
+    pick_up(&mut w, &cat, k, 0).unwrap();
+    assert_eq!(w.units.get(a).unwrap().wait, i32::MAX);
+}
+
+#[test]
+fn an_animal_picked_up_is_no_longer_held() {
+    let cat = catalogue();
+    let (mut w, _, a) = healing();
+    pick_up(&mut w, &cat, a, 0).unwrap();
+    assert_eq!(w.units.get(a).unwrap().wait, 0);
+}
