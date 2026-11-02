@@ -747,7 +747,7 @@ fn check(
         .filter_map(|(i, e)| {
             let (c, shape) = (e.common.as_ref()?, world.shape(i)?);
             let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
-            let (fx, fy) = shape.footprint;
+            let (fx, fy) = unit_footprint(world, cat, i, shape);
             let rect = match c.rotation % 4 {
                 0 => (fx, fy),
                 _ if c.rotation % 2 != 0 => (fx.max(fy), fx.max(fy)),
@@ -786,6 +786,26 @@ fn check(
                 p.blocking.push(i);
             }
         }
+    }
+}
+
+/// The footprint of the unit at `at` in half tiles for the blocking rectangle (placing 5.2 item 4):
+/// an animal in its egg takes its type's egg footprint, else one in its crate the crate's, else
+/// the shape's.
+fn unit_footprint(world: &World, cat: &Catalogue, at: usize, shape: Shape) -> (i32, i32) {
+    let entity = &world.zoo.entities[at];
+    let form = (entity.common.as_ref())
+        .and_then(|c| world.units.get(c.id))
+        .and_then(|u| match &u.part {
+            crate::unit::Part::Animal(a) if a.egg || a.crated => Some(a.egg),
+            _ => None,
+        });
+    match (form, bulldozer::type_of(cat, entity)) {
+        (Some(egg), Some(t)) => {
+            let [x, y] = t.form_footprint(egg);
+            (x, y)
+        }
+        _ => shape.footprint,
     }
 }
 
