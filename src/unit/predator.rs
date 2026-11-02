@@ -68,8 +68,8 @@ struct Looker {
 /// playmate that chases the unit). An animal that is crated or an egg is none. For a guest the
 /// mode is ignored and a species whose prey list holds the man is one, whatever the animal does.
 /// For staff in mode 0 it must be an adult (or of a species with `cBabiesAttack` 1) whose prey
-/// list holds the member's type, and he must stand on the grounds; nothing tranquilises an animal
-/// yet. Mode 1 asks for an animal chasing the unit, which no staff member ever is.
+/// list holds the member's type, and he must stand on the grounds and the animal must not be darted.
+/// Mode 1 asks for an animal chasing the unit, which no staff member ever is.
 fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -> bool {
     let entity = &world.zoo.entities[e];
     let Some(id) = entity.common.as_ref().map(|c| c.id) else {
@@ -87,7 +87,7 @@ fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -
         _ => {
             let adult = entity.subtype.starts_with(['m', 'f']);
             let babies = crate::build::number(ty, "cBabiesAttack").is_some_and(|v| v as i32 == 1);
-            (adult || babies) && preys_on(ty, looker.prey) && looker.grounds
+            (adult || babies) && preys_on(ty, looker.prey) && looker.grounds && !a.tranq
         }
     }
 }
