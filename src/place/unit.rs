@@ -411,18 +411,18 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
 }
 
 /// The default name of a new entity of the type, `text` being the type's name: with
-/// `cUseNumbersInName` (on by default for a unit, a building and a tank filter, off for anything
-/// else) a space and the next number of the counter of its key, started at 1 (unit placing 7.2).
-/// The key is the type name for a unit (`giraffe`, not the text) and the subtype for a building or
-/// a filter (`vendfood`, `f`). Scenery, fences, paths, tank walls, rubble, ambient animals
-/// and food the bare text whatever the flag says.
+/// `cUseNumbersInName` (on by default for a unit, a helicopter, a building and a tank filter, off
+/// for anything else) a space and the next number of the counter of its key, started at 1 (unit
+/// placing 7.2). The key is the type name for a unit (`giraffe`, not the text) and the subtype for
+/// a building or a filter (`vendfood`, `f`). Scenery, fences, paths, tank walls, rubble, ambient
+/// animals and food the bare text whatever the flag says.
 pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
     let bare = matches!(
         ty.class,
         "objects" | "fences" | "paths" | "tankwall" | "rubble" | "ambient" | "food"
     );
     let subtyped = matches!(ty.class, "building" | "filter");
-    let counted = is_unit(ty) || subtyped;
+    let counted = is_unit(ty) || subtyped || ty.class == "helicopter";
     let numbered = plain(ty, "cUseNumbersInName").unwrap_or(f32::from(u8::from(counted)));
     if bare || numbered != 1.0 {
         return text.into();
@@ -576,6 +576,8 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     let unit = world.units.get_mut(id)?;
     unit.tank = 0;
     unit.carried = true;
+    // The pick-up of the animal itself lowers the hold of an aborted heal (staff 7.7).
+    unit.wait = 0;
     // An animal picked up is no longer loose and its escape walk ends (unit placing 8.2, 9.1).
     if let crate::unit::Part::Animal(a) = &mut unit.part {
         (a.escaped, a.walk) = (false, None);

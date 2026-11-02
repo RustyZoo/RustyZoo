@@ -30,6 +30,7 @@ use crate::zoo::Entity;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
+pub mod birth;
 pub mod items;
 pub mod leave;
 pub mod upgrade;
@@ -91,6 +92,8 @@ pub type Point = (i32, i32);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Slot {
     pub at: Point,
+    /// The height of `at` (`slotposz`).
+    pub height: i32,
     pub entrances: Vec<Point>,
     pub exit: Option<Point>,
     pub capacity: i32,
@@ -102,6 +105,9 @@ pub struct Slot {
     /// (`filter`; guest buildings 6.1 point 7).
     pub species: Vec<i32>,
     pub filter: String,
+    /// The name id of the unit type made in the slot when the building is placed (`birthUser`,
+    /// unit placing 7.4), 0 for none.
+    pub birth: i32,
 }
 
 /// The type id and subtype of a guest or an animal, which the slots of a building test (guest
@@ -230,6 +236,7 @@ impl Kind {
             };
             Slot {
                 at: points("slotpos").first().copied().unwrap_or((0, 0)),
+                height: number("slotposz"),
                 entrances: points("entrpos"),
                 exit: points("exitpos").first().copied(),
                 capacity: number("capacity"),
@@ -238,6 +245,7 @@ impl Kind {
                 exit_water: flag("exitonwater", false),
                 species: s.get_all("id").iter().filter_map(|v| to_int(v)).collect(),
                 filter: String::from_utf8_lossy(s.get("filter").unwrap_or_default()).into(),
+                birth: number("birthUser"),
             }
         })
         .collect();
