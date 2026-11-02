@@ -9,6 +9,7 @@ use crate::timing::file_time;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Clocks, Common, Escape, Tile, View, Zoo};
 
+mod boxed;
 mod breed;
 mod escape;
 mod life;

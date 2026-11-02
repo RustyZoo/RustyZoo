@@ -455,6 +455,7 @@ fn the_hash_covers_the_needs_of_the_animals_and_nothing_else_of_them() {
     }
     // A field left out of the projection does not move it.
     assert_eq!(hash(|a| a.counters[15] = 1), base);
+    assert_eq!(hash(|a| a.crate_count = 1), base);
     assert_eq!(hash(|a| a.walk = Some(crate::zoo::Escape::default())), base);
     let mut other = world(&[("animals", 1), ("guests", 2)]);
     other.units.get_mut(1).unwrap().started = true;
