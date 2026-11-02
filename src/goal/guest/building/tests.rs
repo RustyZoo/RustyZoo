@@ -2018,3 +2018,25 @@ fn a_full_building_is_crowded_at_every_step_before_the_price_is_looked_at() {
         assert_eq!(guest(&w).building, 0, "{price} {step}");
     }
 }
+
+/// A grandstand of three draw places, visible inside.
+const GRANDSTAND: &str = "[Characteristics/Integers]\ncCapacity=3\ncUserStaysOutside=0\n\
+    cUserUsesExit=1\n[Satisfies]\nbuilding\ngrandstand\n[slots]\nname=slot\n[slot]\nslotpos=0\n\
+    slotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=3\ncHasDrawSlots=seats\n\
+    [seats]\np=-13\np=-102\np=50\np=13\np=-102\np=50\np=0\np=58\np=2\norder=o\n[o]\no=0\no=1\no=2\n";
+
+#[test]
+fn a_guest_entering_a_grandstand_is_put_on_the_draw_place_the_first_draw_gives() {
+    let mut cat = types();
+    cat.push(ty("building", "gstand", GRANDSTAND));
+    let mut w = zoo_of(Some("gstand"));
+    assert!(with_cx(&cat, &mut w, |cx| cx.add_user(9, 0)));
+    // The building stands at (5, 3) turned by 4: the place is added to its position.
+    let places = [(-13, -102, 50), (13, -102, 50), (0, 58, 2)];
+    let want = places[Rng::default().pick(3) as usize];
+    let at = w.find(1).unwrap();
+    let c = w.zoo.entities[at].common.as_ref().unwrap();
+    assert_eq!((c.x, c.y, c.z), (352 + want.0, 224 + want.1, want.2));
+    let seats = &w.units.buildings[&9].seats;
+    assert_eq!((seats.len(), seats[0].unit), (1, 1));
+}

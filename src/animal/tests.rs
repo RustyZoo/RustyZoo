@@ -498,6 +498,7 @@ fn pens_with(animals: impl Fn(usize, i32) -> Vec<Entity>) -> World {
     let zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,
@@ -1402,7 +1403,7 @@ fn a_herd_below_the_threshold_tramples_the_grass_it_stands_on() {
         lines.iter().all(|l| !l.starts_with("trample 51")),
         "the bare pen is not grass"
     );
-    // The exhibit was rated again: the ground it has left is worth less.
+    // Once the exhibit is rated again, the ground it has left is worth less.
     let pen = world.exhibits().region(2 * 8 + 1).unwrap();
     assert!(
         world
@@ -1422,6 +1423,53 @@ fn a_herd_below_the_threshold_tramples_the_grass_it_stands_on() {
             && crate::sim::hash::state(&sim, &world, &money)
                 == crate::sim::hash::state(&sim2, &other, &money)
     );
+}
+
+#[test]
+fn a_dung_pile_put_down_by_an_animal_marks_no_exhibit_dirty() {
+    let (mut world, mut cat) = (pens(), zebras());
+    cat.push(EntityType {
+        class: "objects",
+        type_name: b"other".to_vec(),
+        subtype: b"poo".to_vec(),
+        file: None,
+        config: None,
+        name_id: 2,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let x = world.exhibits().list()[0].id;
+    crate::exhibit::rating::refresh(&mut world, &cat, x, &mut || 0);
+    assert!(!world.exhibits().get(x).unwrap().rating.dirty);
+    let (at, mut rng) = (world.find(500).unwrap(), Rng::default());
+    assert!(dirt::put_down(&mut world, &cat, &mut rng, 500, at, &keys()));
+    assert!(world.zoo.entities.iter().any(|e| e.subtype == "poo"));
+    assert!(!world.exhibits().get(x).unwrap().rating.dirty);
+    // Any other placement on the tile still marks it.
+    let poo = cat.find("objects", b"other", b"poo").unwrap();
+    assert!(dirt::put(
+        &mut world,
+        poo,
+        ("objects", "other", "poo"),
+        (2, 2),
+        0,
+        0
+    ));
+    assert!(world.exhibits().get(x).unwrap().rating.dirty);
+}
+
+#[test]
+fn trampled_ground_marks_no_exhibit_dirty() {
+    let (mut world, cat) = (pens(), zebras());
+    let x = world.exhibits().list()[0].id;
+    crate::exhibit::rating::refresh(&mut world, &cat, x, &mut || 0);
+    assert!(!world.exhibits().get(x).unwrap().rating.dirty);
+    trample(&mut world, (1, 2), 16, 500);
+    assert_eq!(world.zoo.tiles[2 * 8 + 1].terrain, 16);
+    assert!(!world.exhibits().get(x).unwrap().rating.dirty);
+    // A terrain change still marks it.
+    world.set_tile(1, 2, 0, 0, 0);
+    assert!(world.exhibits().get(x).unwrap().rating.dirty);
 }
 
 #[test]

@@ -385,6 +385,8 @@ pub struct Units {
     /// The live state of the guest buildings and the prices of the economy file (guest buildings).
     pub buildings: crate::building::Table,
     pub prices: crate::building::Prices,
+    /// The numbers of `shows.cfg` (shows 3.1).
+    pub show: crate::show::Params,
     /// The upgrades of the building types, filled by the research programs (research 6.3).
     pub upgrades: crate::building::upgrade::Upgrades,
     /// The index of the upgrade each building uses in its type's list, by building id; a building
@@ -447,6 +449,7 @@ impl Default for Units {
             cheat: Default::default(),
             buildings: Default::default(),
             prices: Default::default(),
+            show: Default::default(),
             upgrades: Default::default(),
             upgrade_index: Default::default(),
             concessions: Vec::new(),

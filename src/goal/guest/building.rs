@@ -433,10 +433,14 @@ impl Cx<'_, '_> {
                 crate::animal::food::turn(self.unit, self.world, self.at, t);
             }
         } else {
-            let (x, y) = building::place(&e, kind.slots[slot].at);
-            let z = e.common.as_ref().map_or(0, |c| c.z);
-            let facing = building::facing(&e, kind.slots[slot].facing);
-            self.world.place_unit(self.at, (x, y, z), facing);
+            let s = &kind.slots[slot];
+            let seat = (s.places.as_ref()).and_then(|p| {
+                let live = self.world.units.buildings.get_mut(&id)?;
+                live.seat(slot, s.capacity, p, unit, &mut |n| self.ctx.rng.pick(n))
+            });
+            let (x, y, z) = building::seat_at(&e, s, seat);
+            self.world
+                .place_unit(self.at, (x, y, z), building::facing(&e, s.facing));
         }
         // Guest buildings 6.4 step 7, for a guest: the used thought, the items the building removes,
         // the sale.

@@ -33,6 +33,7 @@ pub mod render;
 pub mod research;
 pub mod rubble;
 pub mod scenario;
+pub mod show;
 pub mod sim;
 pub mod sprite;
 pub mod staff;

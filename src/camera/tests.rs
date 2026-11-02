@@ -15,6 +15,7 @@ fn map(width: u32, height: u32, elevation: i32) -> Zoo {
     Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,

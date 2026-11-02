@@ -1331,16 +1331,17 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # Two loaded lions hold the use set of a shelter as their pending set with the interruptible flag down, as saved; the hook now starts it
 # with that flag (behaviours 4.2.1), not interruptible: the first birth is at 4477 (894 before the neighbour walk of keeper food), with three mates (the same young).
 # Guests read the exhibit's stored average happiness (guests visit 4.3), which moves the shared stream: seed 3 gave no birth; seed 4 is the first seed from 1 that gives one with and without that change, at 4193.
+# The dung pile and the trampled ground are made inside the checks (their draws move the stream): seed 4 gave no birth on master, seed 1 neither; seed 2 is the first seed from 1 that gives one on both builds (at 18014 before, 3297 now).
 lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   d=$(mktemp -d)
   printf '0 animal lion %s female\n0 animal lion %s female\n0 animal lion %s female\n' "$2" "$3" "$4" >"$d/script"
-  once() { rz sim "$1" --ticks 20000 --seed 4 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
+  once() { rz sim "$1" --ticks 20000 --seed 2 --script "$d/script" --log 2>/dev/null | awk '/ animal mate /{m++} / animal birth /{n++; if (!s) s=$2} END{print "mates:" m ";birth@" s ";young:" n}'; }
   a=$(once "$1"); b=$(once "$1")
   if [ "$a" = "$b" ]; then echo "$a"; else echo different; fi
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: four mates, the same birth.
-check base-trial "mates:3;birth@;young:" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@3297;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1357,11 +1358,12 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 7200
-  rz sim "$1" --ticks 7200 --dt 200 --seed 1 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
+  rz sim "$1" --ticks 7200 --dt 200 --seed 5 --reset-fences --script "$d/script" --log 2>/dev/null | awk '/ animal egg /{n++; if (!e) e=$2} / animal hatch /{if (!h) h=$2} END{print "egg@" e ";eggs:" n ";hatch@" h}'
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
-check expansion-trial "egg@3536;eggs:3;hatch@4167" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+# The dung pile and the trampled ground are made inside the checks, which lays no egg at seed 1 now: seed 5 is the first seed from 1 that gives a clutch and a hatching on both builds (the same steps).
+check expansion-trial "egg@426;eggs:3;hatch@1053" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
