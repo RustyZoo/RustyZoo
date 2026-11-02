@@ -77,16 +77,34 @@ fn info(id: u16) -> ShowInfo {
 /// 1001, behind a fence of type `wall`. The stands are given as (id, tile, rotation); guests 1 to 3
 /// stand at the top left.
 fn world(width: i32, wall: &str, stands: &[(u32, (i32, i32), u32)]) -> (World, Catalogue) {
+    world_in(width, wall, stands, true)
+}
+
+/// [`world`] with the fence entities read before the stands (`walls_first`) or after them.
+fn world_in(
+    width: i32,
+    wall: &str,
+    stands: &[(u32, (i32, i32), u32)],
+    walls_first: bool,
+) -> (World, Catalogue) {
     let cat = types();
     let w = world_with((width, 5), |z| {
-        for y in 0..5 {
-            let at = (5 * 64, y * 64 + 32);
-            z.entities
-                .push(entity("fences", wall, 500 + y as u32, at, 6));
+        let walls = |z: &mut crate::zoo::Zoo| {
+            for y in 0..5 {
+                let at = (5 * 64, y * 64 + 32);
+                z.entities
+                    .push(entity("fences", wall, 500 + y as u32, at, 6));
+            }
+        };
+        if walls_first {
+            walls(z);
         }
         for &(id, tile, rotation) in stands {
             z.entities
                 .push(entity("building", "stand", id, centre(tile), rotation));
+        }
+        if !walls_first {
+            walls(z);
         }
         for id in 1..=3 {
             z.entities
@@ -199,6 +217,44 @@ fn placing_a_building_that_is_not_a_grandstand_leaves_the_show_ids() {
     added(&mut w, &cat, 404);
     assert_eq!(show_of(&w, 7), 0);
     added(&mut w, &cat, 8);
+    assert_eq!(show_of(&w, 7), 1001);
+}
+
+#[test]
+fn a_grandstand_read_before_the_wall_that_blocks_its_view_keeps_the_show_it_got() {
+    // Stand 7 is the first entity: the pass run as it is read sees no wall yet. Once the zoo
+    // is read the full pass finds none, but the id stays.
+    let (mut w, cat) = world_in(9, "iron", &[(7, (1, 2), 2)], false);
+    loaded(&mut w, &cat, 0);
+    assert_eq!(show_of(&w, 7), 1001);
+    associate(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 1001);
+    // The wall read first blocks it.
+    let (mut w, cat) = world(9, "iron", &[(7, (1, 2), 2)]);
+    loaded(&mut w, &cat, 5);
+    assert_eq!(show_of(&w, 7), 0);
+}
+
+#[test]
+fn a_zoo_load_gives_a_grandstand_the_show_it_faced_when_it_was_read() {
+    // The wall comes after the stand in the file: the pass at the stand finds the show; the
+    // pass after the load finds none and leaves the id.
+    let (mut w, cat) = world_in(9, "iron", &[(7, (1, 2), 2)], false);
+    let mut sim = crate::sim::Sim::new(b"");
+    sim.load(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 1001);
+    // With the wall read first the stand never faces the show.
+    let (mut w, cat) = world(9, "iron", &[(7, (1, 2), 2)]);
+    sim.load(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 0);
+}
+
+#[test]
+fn reading_an_entity_that_is_not_a_grandstand_runs_no_pass() {
+    let (mut w, cat) = world_in(9, "glass", &[(7, (1, 2), 2)], false);
+    loaded(&mut w, &cat, 1);
+    assert_eq!(show_of(&w, 7), 0);
+    loaded(&mut w, &cat, 0);
     assert_eq!(show_of(&w, 7), 1001);
 }
 
