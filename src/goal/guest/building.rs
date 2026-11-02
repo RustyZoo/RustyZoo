@@ -153,8 +153,6 @@ impl Cx<'_, '_> {
         if let Some(g) = self.guest() {
             (g.need, g.building) = (Some(need), b);
         }
-        // The building target and its tiles are set: the cost is written back (pathfinding 6.5).
-        self.cost_back();
         let started = self.set_out(b);
         if !started {
             self.clear_target();
@@ -170,6 +168,8 @@ impl Cx<'_, '_> {
         if IN_BUILDING.contains(&self.record().task) {
             return true;
         }
+        // The building target and its tiles are set: the cost is written back (pathfinding 6.5).
+        self.cost_back();
         let Some((slot, p)) = self.open_slot(b) else {
             return false;
         };

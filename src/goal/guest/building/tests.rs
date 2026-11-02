@@ -2126,6 +2126,19 @@ fn a_site_goal_writes_the_cost_back_over_the_saved_one() {
 }
 
 #[test]
+fn a_guest_inside_a_building_keeps_its_saved_cost_when_the_tiles_update() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        for task in IN_BUILDING {
+            loaded(cx);
+            cx.set_task(task, 0, 8, w_tile((5, 9)));
+            assert!(cx.head_for(8, "bathroom"));
+            assert_eq!(cost(cx), (Some(9), true), "{task}");
+        }
+    });
+}
+
+#[test]
 fn a_building_goal_writes_the_cost_back_over_the_saved_one() {
     let (cat, mut w) = (types(), at_the_entrance());
     with_cx(&cat, &mut w, |cx| {
@@ -2141,8 +2154,9 @@ fn a_building_goal_writes_the_cost_back_over_the_saved_one() {
             (cx.record().task, cost(cx)),
             (ENTER_BUILDING, (None, false))
         );
-        // The update of the building tiles.
+        // The update of the building tiles, for a guest outside.
         loaded(cx);
+        cx.set_task(0, 0, 0, None);
         assert!(cx.head_for(8, "bathroom"));
         assert_eq!(cost(cx), (None, false));
     });
