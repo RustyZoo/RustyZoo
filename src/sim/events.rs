@@ -13,6 +13,13 @@ pub const TASK_CHANNEL: u8 = 0x4d;
 /// The channel keepers read (the cues of shows).
 pub const KEEPER_CHANNEL: u8 = 0x4b;
 
+/// The channel a show info reads (shows 5.7), the one the world manager reads for the shows (6.2),
+/// the one a grandstand reads (6.3) and the one a show tank is told on (read by nobody).
+pub const SHOW_CHANNEL: u8 = 0x53;
+pub const WORLD_CHANNEL: u8 = 0x57;
+pub const BUILDING_CHANNEL: u8 = 0x42;
+pub const TANK_CHANNEL: u8 = 0x48;
+
 #[derive(Debug, Default)]
 pub struct Events {
     current: Vec<Event>,
@@ -31,6 +38,12 @@ impl Events {
         self.current.iter().filter(move |e| {
             (e.target == id || e.target == 0) && e.channel == channel && e.delay < 2
         })
+    }
+
+    /// The events of a channel the world manager reads in this step, whatever their target: those
+    /// whose delay is below 2, in buffer order.
+    pub fn listen_all(&self, channel: u8) -> impl Iterator<Item = &Event> {
+        (self.current.iter()).filter(move |e| e.channel == channel && e.delay < 2)
     }
 
     /// The end of the AI manager's update: the events still waiting go on after the ones posted
