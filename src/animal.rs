@@ -758,6 +758,8 @@ pub struct Env {
     pub food_task: bool,
     /// The food of its species' kind in its exhibit, in units (hunger check 4.1).
     pub food_total: i32,
+    /// The dung pile of the hunger check was put down.
+    pub piled: bool,
     /// What eating reads of the food it aims at and of its type.
     pub meal: Meal,
     /// What the sleep, health and death checks read of its sets.
@@ -881,6 +883,11 @@ pub enum Read {
     Exhibit,
     /// The animal list, read by the bite that emptied the pile (animals-needs 5.1).
     Emptied,
+    /// Not a read: the hunger check puts a dung pile down (animals-needs 8.1); `Env::piled` says
+    /// whether it is done.
+    Pile,
+    /// Not a read: the captivity tick paints the ground under the animal as trampled (animals 4.5).
+    Trample,
 }
 
 /// Fills the part of the [`Env`] that `Read` names from the world, given the animal, the meal
@@ -953,7 +960,7 @@ pub fn run_read(
     tank::murky(a, k, class, env);
     life::health(a, k, class, env, rng, &mut out, read);
     life::sleep(a, k, class, env, &mut out);
-    captivity(a, k, class, env, rng, &mut out);
+    captivity(a, k, class, env, rng, &mut out, read);
     social(a, k, class, env, rng, &out.meal, read);
     fire(&mut a.counters[KEEPER], class.periods[KEEPER]);
     habitat(a, k, class, env, &mut out.messages);
@@ -1015,7 +1022,15 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out
 
 /// The captivity tick (animals 4.5): the change, and below the threshold two draws that may
 /// trample the ground under the animal.
-fn captivity(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
+fn captivity(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &mut Env,
+    rng: &mut Rng,
+    out: &mut Out,
+    read: Reader,
+) {
     if !fire(&mut a.counters[CAPTIVITY], class.periods[CAPTIVITY]) {
         return;
     }
@@ -1027,6 +1042,9 @@ fn captivity(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, 
         && rng.chance(k.dirt_chance)
     {
         out.trample = env.grass;
+        if out.trample {
+            read(Read::Trample, a, &out.meal, env, rng);
+        }
     }
 }
 
@@ -1219,6 +1237,13 @@ fn records(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> Vec<Rec
         .map_or_else(Vec::new, |e| e.rating.records.clone())
 }
 
+/// Paints the tile `(tx, ty)` as trampled ground of type `paint` for the animal `id`; the bare
+/// cell paint marks no exhibit (animals 4.5).
+fn trample(world: &mut World, (tx, ty): (i32, i32), paint: u8, id: u32) {
+    world.paint_cell(tx, ty, paint);
+    world.units.tell(format!("trample {id} {tx},{ty}"));
+}
+
 /// An exhibit and its amphibious neighbours.
 fn region_and_neighbours(world: &World, x: u32) -> Vec<u32> {
     let neighbours = world.exhibits().get(x).map(|e| e.amphibious.clone());
@@ -1243,6 +1268,7 @@ fn read_exhibit(
     }
     let regions = match read {
         Read::Mates | Read::Keeper | Read::Emptied => vec![x],
+        Read::Pile | Read::Trample => Vec::new(),
         Read::Food => food::near(world, x, &keys(world, cat, at)),
         Read::Sick | Read::Exhibit => region_and_neighbours(world, x),
     };
@@ -1251,7 +1277,7 @@ fn read_exhibit(
     }
     match read {
         Read::Mates => env.candidates = breed::candidates(world, at, x, a),
-        Read::Food | Read::Emptied => {}
+        Read::Food | Read::Emptied | Read::Pile | Read::Trample => {}
         Read::Keeper => env.keeper_working = life::keeper_at_work(world, x),
         Read::Sick => {
             let sick = census(world, x, &regions, key).sick;
@@ -1532,11 +1558,18 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         )
     };
     let mut read = |r: Read, a: &Animal, meal: &Meal, env: &mut Env, rng: &mut Rng| {
-        let Some(x) = x else {
-            return;
-        };
         let mut world = shared.borrow_mut();
-        read_exhibit(&mut world, cat, (r, x, at), (a, meal, &key), env, rng);
+        match r {
+            Read::Pile => env.piled = dirt::put_down(&mut world, cat, rng, id, at, &k),
+            Read::Trample => {
+                trample(&mut world, (tx, ty_), class.trample, id);
+            }
+            _ => {
+                if let Some(x) = x {
+                    read_exhibit(&mut world, cat, (r, x, at), (a, meal, &key), env, rng);
+                }
+            }
+        }
     };
     let breath = a.breath;
     let mut out = run_read(a, &k, &class, &mut env, ctx.rng, &mut birth, &mut read);
@@ -1557,25 +1590,12 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
     if let Some(change) = out.terrain {
         tank::switch(unit, world, ctx, at, data, change);
     }
-    if let Some(t) = tile.filter(|_| out.trample) {
-        let tile = world.zoo.tiles[t];
-        let painted =
-            world.unrecorded(|w| w.set_tile(tx, ty_, tile.elevation, tile.shape, class.trample));
-        // The ground of the exhibit changed: it is rated again.
-        if let Some(x) = x.filter(|_| painted) {
-            world.exhibits_mut().mark(x);
-        }
-        world.units.tell(format!("trample {} {tx},{ty_}", unit.id));
-    }
     for m in out.messages {
         world.units.post(m, unit.id);
         world.units.tell(format!("message {m} {}", unit.id));
     }
     for set in &out.sets {
         life::start_or_queue(unit, world, ctx, at, data, set);
-    }
-    if out.dung {
-        dirt::put_down(unit, world, ctx, at, &k);
     }
     if out.remove {
         ctx.remove(world, id);

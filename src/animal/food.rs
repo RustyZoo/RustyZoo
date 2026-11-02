@@ -141,6 +141,14 @@ pub fn hunger(
     // The dung meter is tested before its own rise, like the hunger (8.1, 18.2).
     out.dung = a.dung >= k.dirty_threshold;
     a.dung_change = a.dung_change.saturating_add(k.dirty_increment);
+    // The pile is put down here, among the draws, before the later checks read the exhibit.
+    if out.dung {
+        env.piled = false;
+        read(Read::Pile, a, &out.meal, env, rng);
+        if env.piled {
+            a.dung = 0;
+        }
+    }
 }
 
 /// 4.3: no food for a hungry animal.

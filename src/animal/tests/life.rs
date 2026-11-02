@@ -864,3 +864,87 @@ fn a_loaded_drinker_reads_its_drink_task_from_the_wanted_goal() {
     );
     assert!(!a.drinking && task == 122);
 }
+
+/// The calls the checks make to the world in one tick that a pile or the paint is: the draw the
+/// pile makes for its facing is taken from the shared generator; `piled` is the answer to the
+/// pile.
+fn world_calls(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &Env,
+    piled: bool,
+) -> Vec<(Read, u32)> {
+    let mut calls = Vec::new();
+    let mut read = |r: Read, _: &Animal, _: &Meal, env: &mut Env, rng: &mut Rng| match r {
+        Read::Pile => {
+            calls.push((r, rng.rand() & 7));
+            env.piled = piled;
+        }
+        Read::Trample => calls.push((r, 0)),
+        _ => {}
+    };
+    let mut env = env.clone();
+    run_read(
+        a,
+        k,
+        class,
+        &mut env,
+        &mut Rng::default(),
+        &mut |_, _| false,
+        &mut read,
+    );
+    calls
+}
+
+#[test]
+fn the_pile_is_put_down_in_the_hunger_check_and_draws_its_facing_first() {
+    let k = Keys {
+        // The health check's random fall draws once.
+        sick_random: 100,
+        ..keys()
+    };
+    for piled in [true, false] {
+        let mut a = Animal {
+            dung: 70,
+            health: 500,
+            ..animal()
+        };
+        (a.counters[HUNGER], a.counters[HEALTH]) = (0, 0);
+        let calls = world_calls(&mut a, &k, &Class::default(), &in_exhibit(), piled);
+        let first = Rng::default().rand() & 7;
+        assert_eq!(calls, [(Read::Pile, first)], "piled {piled}");
+        assert_eq!(a.dung, if piled { 0 } else { 70 });
+    }
+}
+
+#[test]
+fn the_trampled_ground_is_painted_in_the_captivity_tick_on_bare_grass_only() {
+    let class = Class {
+        ui_threshold: 75,
+        dirt_chance_chance: 100,
+        ..Class::default()
+    };
+    let k = Keys {
+        dirt_chance: 100,
+        ..keys()
+    };
+    for grass in [true, false] {
+        let mut a = Animal {
+            happiness: -60,
+            ..animal()
+        };
+        a.counters[CAPTIVITY] = 0;
+        let env = Env {
+            grass,
+            ..in_exhibit()
+        };
+        let calls = world_calls(&mut a, &k, &class, &env, false);
+        let want = if grass {
+            vec![(Read::Trample, 0)]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(calls, want, "grass {grass}");
+    }
+}
