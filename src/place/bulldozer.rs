@@ -350,9 +350,11 @@ pub fn remove(
     crate::building::leave::push_out(world, cat, id);
     crate::guest::litter::spill(world, cat, id, rng);
     // The members of a building go with it, the last first.
-    let record =
-        (world.find(id)).and_then(|at| world.zoo.entities[at].common.as_ref()?.building.clone());
-    let members = record.map_or_else(Vec::new, |b| b.members.into_iter().rev().collect());
+    // The list is emptied: the building kept for the undo has none (unit placing 7.4).
+    let record = (world.find(id))
+        .and_then(|at| world.zoo.entities[at].common.as_mut()?.building.as_mut())
+        .map(|b| std::mem::take(&mut b.members));
+    let members = record.map_or_else(Vec::new, |m| m.into_iter().rev().collect());
     world.remove(id);
     // Hidden once the list has settled, and removed at the next pass.
     for m in members {
