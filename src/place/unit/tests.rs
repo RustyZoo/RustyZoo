@@ -329,24 +329,24 @@ fn another_unit_on_the_tile_is_in_the_way_and_a_neighbour_is_not() {
 #[test]
 fn a_crate_in_the_way_of_a_new_animal_overlaps_with_its_crate_footprint() {
     let mut cat = catalogue();
-    let crate_ini = "[m/Characteristics/Integers]\ncBoxFootprintX=4\ncBoxFootprintY=4\n";
+    let crate_ini = "[m/Characteristics/Integers]\ncBoxFootprintX=4\ncBoxFootprintY=4\n\
+                     cEggFootprintX=3\ncEggFootprintY=3\n";
     cat.push(ty("m", "gnu", crate_ini));
-    // The zebra stands in the quarter at x 16 of tile (2, 2); the gnu is 34 away along x: clear
-    // of a 1 by 1 body (16 + 16), inside a crate of 4 by 4 (16 + 64).
-    let blocked = |crated: bool| {
+    // The units the new animal meets on its tile: the half sides of the gnu's rectangle.
+    let sides = |egg: bool, crated: bool| {
         let gnu = entity_at("animals", "gnu", "m", 2 * 64 + 50, 2 * 64 + 16, 0);
         let mut w = world(vec![gnu]);
         let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(1).map(|u| &mut u.part) else {
             panic!("not an animal");
         };
-        a.crated = crated;
-        let aim = aim(0, (2 * 64 + 10, 2 * 64 + 16, 0));
-        pending(&w, &cat, &[false, true], ZEBRA, 0, aim, false)
-            .unwrap()
-            .blocking
+        (a.egg, a.crated) = (egg, crated);
+        let found = units_on(&w, &cat, &[w.tile_index(2, 2).unwrap()]);
+        found[0].3
     };
-    assert_eq!(blocked(false), Vec::<usize>::new());
-    assert_eq!(blocked(true), [0]);
+    assert_eq!(sides(false, false), (16, 16));
+    assert_eq!(sides(false, true), (64, 64));
+    assert_eq!(sides(true, false), (48, 48));
+    assert_eq!(sides(true, true), (48, 48));
 }
 
 #[test]
