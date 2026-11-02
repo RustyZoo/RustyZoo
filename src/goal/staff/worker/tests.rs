@@ -52,6 +52,8 @@ fn catalogue(worker: &str) -> Catalogue {
             ..ty("objects", "other", "trash", "")
         },
         ty("fences", "iron", "f", fence),
+        ty("animals", "zebra", "m", ""),
+        ty("animals", "zebra", "z", ""),
         ty(
             "building",
             "compost",
@@ -824,6 +826,8 @@ fn food_in_an_exhibit_is_left_to_the_keepers_while_its_amphibious_neighbour_hold
             _ => Vec::new(),
         };
     }
+    // The zebra was rated when it came.
+    g.w.mark_rating(Game::tile((11, 3)));
     g.run(1000);
     // The keepers' work: the task is void, the food stays and no worker walks to it.
     assert!(!g.jobs().contains(&"BagDoo"), "{:?}", g.jobs());
@@ -905,14 +909,24 @@ fn a_loaded_zoo_calls_the_workers_for_the_dung_outside_the_zoo_wall() {
 fn a_pile_beyond_the_zoo_wall_keeps_the_dung_check_of_the_job_going() {
     let mut g = Game::with("", &[(WORKER, (1, 9))], &wall_beyond_column_one());
     g.dung((0, 5), "poo", false);
-    assert!(crate::staff::chores::poo_left(&g.w, WORKER));
+    assert!(crate::staff::chores::poo_left(
+        &mut g.w,
+        &g.cat,
+        WORKER,
+        &mut || 0
+    ));
 }
 
 #[test]
 fn food_beyond_the_zoo_wall_does_not_keep_the_dung_check_going() {
     let mut g = Game::with("", &[(WORKER, (1, 9))], &wall_beyond_column_one());
     g.dung((0, 5), "food", false);
-    assert!(!crate::staff::chores::poo_left(&g.w, WORKER));
+    assert!(!crate::staff::chores::poo_left(
+        &mut g.w,
+        &g.cat,
+        WORKER,
+        &mut || 0
+    ));
 }
 
 #[test]
@@ -1009,4 +1023,95 @@ fn a_worker_bags_the_old_dung_of_a_loaded_zoo() {
     g.run(400);
     assert_eq!(g.jobs(), ["ZooDoo", "BagDoo", "none"]);
     assert!(!g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));
+}
+
+/// The dung pen (a zebra at (5, 3)) with its exhibit's id, rated once so that nothing is dirty.
+fn rated_pen(with_zebra: bool) -> (Game, u32) {
+    let mut zebra = entity("animals", "zebra", 300, centre((5, 3)), 0);
+    zebra.subtype = "z".into();
+    let extra = [pen(PEN), if with_zebra { vec![zebra] } else { vec![] }].concat();
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &extra);
+    let x = g.w.exhibits().region(Game::tile((4, 3))).unwrap();
+    g.w.mark_rating(Game::tile((4, 3)));
+    crate::exhibit::rating::refresh(&mut g.w, &g.cat, x, &mut || 0);
+    (g, x)
+}
+
+fn stored(g: &mut Game, x: u32, count: usize, dirty: bool) {
+    let e = g.w.exhibits_mut().get_mut(x).unwrap();
+    (e.rating.counts.1, e.rating.dirty) = (count, dirty);
+}
+
+fn dirty(g: &Game, x: u32) -> bool {
+    g.w.exhibits().get(x).unwrap().rating.dirty
+}
+
+#[test]
+fn the_dung_job_counts_the_animals_the_exhibit_was_rated_with() {
+    // Rated empty, a zebra since in the list but not rated: the exhibit holds no animal.
+    let (mut g, x) = rated_pen(false);
+    g.dung((4, 3), "food", false);
+    stored(&mut g, x, 1, false);
+    assert!(!crate::staff::chores::poo_left(
+        &mut g.w,
+        &g.cat,
+        WORKER,
+        &mut || 0
+    ));
+    stored(&mut g, x, 0, false);
+    assert!(crate::staff::chores::poo_left(
+        &mut g.w,
+        &g.cat,
+        WORKER,
+        &mut || 0
+    ));
+}
+
+#[test]
+fn the_dung_job_recomputes_a_dirty_exhibit_before_it_reads_the_count() {
+    let (mut g, x) = rated_pen(true);
+    stored(&mut g, x, 0, true);
+    assert_eq!(
+        crate::staff::chores::rated_around(&mut g.w, &g.cat, x, &mut || 0),
+        1
+    );
+    assert!(!dirty(&g, x));
+}
+
+#[test]
+fn the_dung_check_recomputes_the_exhibit_of_the_food_it_meets() {
+    let (mut g, x) = rated_pen(true);
+    g.dung((4, 3), "food", false);
+    stored(&mut g, x, 0, true);
+    assert!(!crate::staff::chores::poo_left(
+        &mut g.w,
+        &g.cat,
+        WORKER,
+        &mut || 0
+    ));
+    assert!(!dirty(&g, x));
+}
+
+#[test]
+fn the_dung_job_adds_the_amphibious_neighbours_counts_recomputed_first() {
+    let mut other = pen((10, 2, 12, 5, 11));
+    other
+        .iter_mut()
+        .for_each(|e| e.common.as_mut().unwrap().id += 100);
+    let mut zebra = entity("animals", "zebra", 400, centre((11, 3)), 0);
+    zebra.subtype = "z".into();
+    let extra: Vec<Entity> = pen(PEN).into_iter().chain(other).chain([zebra]).collect();
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &extra);
+    let (x, next) = (
+        g.w.exhibits().region(Game::tile((4, 3))).unwrap(),
+        g.w.exhibits().region(Game::tile((11, 3))).unwrap(),
+    );
+    g.w.exhibits_mut().get_mut(x).unwrap().amphibious = vec![next];
+    stored(&mut g, x, 0, false);
+    stored(&mut g, next, 0, true);
+    assert_eq!(
+        crate::staff::chores::rated_around(&mut g.w, &g.cat, x, &mut || 0),
+        1
+    );
+    assert!(!dirty(&g, next));
 }

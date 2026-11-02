@@ -5,6 +5,7 @@
 use crate::build::number;
 use crate::building;
 use crate::entity::Catalogue;
+use crate::exhibit::rating::Rand;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::panel::exhibit::animals_in;
 use crate::place::bulldozer::type_of;
@@ -37,11 +38,30 @@ fn tile_of(world: &World, e: &Entity) -> Option<usize> {
     world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
 }
 
+/// The rated animal count of exhibit `x` (habitat rating 5.1 point 5), which is recomputed first
+/// when it is dirty: the count getter of the dung job (staff 8.6).
+pub fn rated(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> usize {
+    crate::exhibit::rating::refresh(world, cat, x, rand);
+    world.exhibits().get(x).map_or(0, |e| e.rating.counts.1)
+}
+
+/// The rated animal count of exhibit `x` and of its amphibious neighbours added (staff 8.6,
+/// failure A), each read recomputed first when it is dirty.
+pub fn rated_around(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> usize {
+    let mut total = rated(world, cat, x, &mut *rand);
+    let near = (world.exhibits().get(x)).map_or_else(Vec::new, |e| e.amphibious.clone());
+    for n in near {
+        total += rated(world, cat, n, &mut *rand);
+    }
+    total
+}
+
 /// Whether the check done of a dung job goes on for worker `me` (staff 8.6): a pile of dung on a
 /// tile of the zoo grounds (the tiles beyond the zoo wall too), or food on the grounds or in an
-/// exhibit with no animals, unless it is the target tile of another worker. A pile in an exhibit
-/// counts for nothing.
-pub fn poo_left(world: &World, me: u32) -> bool {
+/// exhibit with no rated animal, unless it is the target tile of another worker. A pile in an
+/// exhibit counts for nothing. The exhibit of a food object is recomputed when it is dirty, where
+/// the scan meets the food.
+pub fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool {
     let others: Vec<usize> = (world.units.iter())
         .filter(|u| u.id != me && u.kind == Kind::Worker)
         .filter_map(|u| match &u.part {
@@ -49,21 +69,31 @@ pub fn poo_left(world: &World, me: u32) -> bool {
             _ => None,
         })
         .collect();
-    world.zoo.entities.iter().any(|e| {
+    for at in 0..world.zoo.entities.len() {
+        let e = &world.zoo.entities[at];
         let Some(t) = tile_of(world, e) else {
-            return false;
+            continue;
         };
         let region = world.exhibits().region(t);
         if is_poo(e) {
-            return matches!(region, Some(GROUNDS | EXTERIOR));
+            if matches!(region, Some(GROUNDS | EXTERIOR)) {
+                return true;
+            }
+            continue;
+        }
+        if e.class != "food" {
+            continue;
         }
         let open = match region {
             Some(GROUNDS) => true,
             Some(EXTERIOR) | None => false,
-            Some(x) => animals_in(world, x).is_empty(),
+            Some(x) => rated(world, cat, x, &mut *rand) == 0,
         };
-        e.class == "food" && open && !others.contains(&t)
-    })
+        if open && !others.contains(&t) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The object in the centre slot of tile `t` (staff 8.6): its id, whether it is dinosaur dung and
