@@ -265,7 +265,7 @@ fn clamp32(n: i64) -> i32 {
 }
 
 impl Placed {
-    /// The box `[left, top, right, bottom)` of the pixels the picture can cover.
+    /// The box `[left, top, right, bottom)` of the pixels the picture can cover, raised by its lift.
     fn bounds(&self) -> Option<[i64; 4]> {
         if let Pic::Rendered(picture) = &self.pic {
             let left = i64::from(self.x) - i64::from(picture.x_offset);
@@ -283,7 +283,7 @@ impl Placed {
                 false => i64::from(self.x) - xo,
                 true => i64::from(self.x) + xo - (w - 1),
             };
-            let top = i64::from(self.y) - yo;
+            let top = i64::from(self.y) - i64::from(self.lift) - yo;
             [left, top, left + w, top + h]
         };
         let (frames, mirror) = match &self.pic {
