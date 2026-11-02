@@ -317,6 +317,7 @@ keys! {
     food_kind: "cKeeperFoodType" = 0,
     bite: "cKeeperFoodUnitsEaten" = 20,
     food_value: "cFoodUnitValue" = 1,
+    keep_moving: "cKeepMoving" = 0,
     energy_increment: "cEnergyIncrement" = 15,
     dirty_increment: "cDirtyIncrement" = 15,
     dirty_threshold: "cDirtyThreshold" = 70,

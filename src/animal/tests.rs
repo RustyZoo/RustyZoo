@@ -2332,6 +2332,77 @@ fn the_walk_to_keeper_food_ends_on_the_pile_or_on_a_neighbour_where_the_animal_e
     );
 }
 
+/// The path of zebra 500 and the target of its walk to the pile at tile (3, 2) when the walk
+/// starts, with the extra zebra keys `keys`, for each seed from 1 to 39.
+fn walks_to_the_pile(keys: &str) -> Vec<(Vec<usize>, usize)> {
+    use crate::sim::drive::{Command, Run};
+    let mut found = vec![];
+    for seed in 1..40 {
+        let mut run = Run::new(
+            (b"", b""),
+            (feeding_of(keys), Class::default()),
+            pens(),
+            Default::default(),
+            seed,
+        );
+        let data = Eats::new();
+        step_log(&mut run, &data);
+        let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.hunger, a.counters[HUNGER]) = (60, 0);
+        assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+        for _ in 0..40 * 15 {
+            let log = step_log(&mut run, &data);
+            if log.iter().any(|l| l == "unit set 500 bFindKeeperFood") {
+                let unit = run.world.units.get(500).unwrap();
+                let target = unit.goal.record.target.tile.unwrap();
+                found.push((unit.path.clone(), target));
+                break;
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn a_keep_moving_animal_goes_on_over_the_pile_and_one_step_past_it() {
+    let width = usize::try_from(SIZE).unwrap();
+    let pile = 2 * width + 3;
+    let mut beside = 0;
+    for (path, target) in walks_to_the_pile("cKeepMoving=1\n") {
+        if target == pile {
+            assert_eq!(path.last(), Some(&pile), "straight onto the pile");
+            continue;
+        }
+        beside += 1;
+        // The goal's target stays the neighbour; the path goes over the pile to the tile past it.
+        let past = 2 * pile - target;
+        let n = path.len();
+        assert_eq!(path[n - 3..], [target, pile, past], "{path:?}");
+    }
+    assert!(beside > 0);
+}
+
+#[test]
+fn an_animal_that_does_not_keep_moving_ends_its_path_on_the_neighbour() {
+    let width = usize::try_from(SIZE).unwrap();
+    let pile = 2 * width + 3;
+    for keys in ["", "cKeepMoving=0\n", "cKeepMoving=-1\n", "cKeepMoving=2\n"] {
+        let walks = walks_to_the_pile(keys);
+        assert!(walks.iter().any(|&(_, target)| target != pile), "{keys}");
+        for (path, target) in walks {
+            assert_eq!(path.last(), Some(&target), "{keys}: {path:?}");
+        }
+    }
+    let huge = format!("cKeepMoving={}\n", i32::MAX);
+    assert!(
+        walks_to_the_pile(&huge)
+            .iter()
+            .all(|(p, t)| p.last() == Some(t))
+    );
+}
+
 #[test]
 fn the_bite_that_empties_a_pile_stops_every_animal_that_aims_at_it_at_once() {
     use crate::sim::drive::{Command, Run};
