@@ -1286,6 +1286,7 @@ fn saved(cat: &Catalogue, id: u32, price: f32, stamp: Option<u32>) -> World {
         price: price.to_bits(),
         users: vec![(1, 0)],
         users_now: 1,
+        members: Vec::new(),
         fill: 0,
         built: 0,
     });
@@ -1841,6 +1842,7 @@ fn a_guest_saved_on_a_bench_leaves_it_at_once_after_the_load() {
         price: 0,
         users: vec![(1, 0)],
         users_now: 1,
+        members: Vec::new(),
         fill: 0,
         built: 0,
         upgrade: 0,
@@ -1874,6 +1876,7 @@ fn bench_loaded(version: u32, task: i32, need: u8) -> (World, Catalogue) {
         price: 0,
         users: vec![(1, 0)],
         users_now: 1,
+        members: Vec::new(),
         fill: 0,
         built: 0,
         upgrade: 0,

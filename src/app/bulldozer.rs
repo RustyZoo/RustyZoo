@@ -141,10 +141,7 @@ impl App<'_> {
                 .into_iter()
                 .filter(|&e| bulldozer::removable(world, cat, e))
                 .collect();
-            let refund = at
-                .iter()
-                .map(|&e| bulldozer::refund(cat, &world.zoo.entities[e]))
-                .sum();
+            let refund = bulldozer::refunds(world, cat, &at);
             let shown = match rect {
                 Some(_) => before.shown || refund != 0.0,
                 None => !at.is_empty(),

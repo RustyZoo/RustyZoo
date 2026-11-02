@@ -339,3 +339,53 @@ fn an_undo_brings_back_only_the_piece_removed_without_its_group() {
         .collect();
     assert_eq!(prices, [3.0]);
 }
+
+/// The ids of the pieces whose first cell of their column made a piece, with their sound.
+fn explosions(keys: &str, seed: Option<u32>) -> (Vec<u32>, Vec<(u32, crate::behaviour::Heard)>) {
+    let mut cat = cat(&[]);
+    cat.push(ty("rubble", "other", "brubls1", 0, [1, 1], keys));
+    let mut w = world(("objects", "car"), (64, 64));
+    let mut rng = Rng::default();
+    seed.into_iter().for_each(|s| rng.seed(s));
+    run(&mut w, &cat, &mut rng);
+    let firsts = (w.zoo.entities.iter())
+        .filter_map(|e| e.common.as_ref().filter(|c| c.y == 48))
+        .map(|c| c.id)
+        .collect();
+    (firsts, w.units.take_sounds())
+}
+
+#[test]
+fn the_first_piece_of_each_column_explodes_with_the_sound_of_its_type() {
+    let keys = "cExplosionSound=sounds/rubble4.wav\ncExplosionSoundAtten=1100";
+    let (firsts, sounds) = explosions(keys, None);
+    assert_eq!(firsts.len(), 2);
+    assert_eq!(sounds.iter().map(|s| s.0).collect::<Vec<_>>(), firsts);
+    for (id, heard) in &sounds {
+        assert_eq!(
+            (heard.file.as_str(), heard.base),
+            ("sounds/rubble4.wav", 1100)
+        );
+        assert_eq!(heard.voice, format!("rubble/other/{id}/cExplosionSound"));
+    }
+    // No attenuation key: 0.
+    let (_, sounds) = explosions("cExplosionSound=sounds/rubble4.wav", None);
+    assert!(sounds.iter().all(|s| s.1.base == 0));
+    // No sound key, or an empty one: nothing, whatever the attenuation.
+    assert!(explosions("cExplosionSoundAtten=1100", None).1.is_empty());
+    assert!(explosions("cExplosionSound=", None).1.is_empty());
+}
+
+#[test]
+fn a_column_whose_first_cell_was_skipped_plays_nothing() {
+    let seed = (1..)
+        .find(|&s| {
+            let mut r = Rng::default();
+            r.seed(s);
+            r.pick(100) == 0
+        })
+        .unwrap();
+    let (firsts, sounds) = explosions("cExplosionSound=sounds/rubble4.wav", Some(seed));
+    assert!(firsts.len() < 2);
+    assert_eq!(sounds.iter().map(|s| s.0).collect::<Vec<_>>(), firsts);
+}

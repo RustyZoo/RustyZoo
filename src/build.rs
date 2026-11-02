@@ -80,7 +80,7 @@ impl From<i32> for Filter {
 }
 
 /// Whether the type is the DRT base building, the last item of the Hire panel (unit placing 4.2).
-fn drt_base(ty: &EntityType) -> bool {
+pub(crate) fn drt_base(ty: &EntityType) -> bool {
     ty.class == "building" && ty.name_id == HELICOPTER_BASE
 }
 

@@ -273,6 +273,8 @@ pub struct Input {
     pub site: Site,
     pub species: Vec<Likes>,
     pub animals: Vec<usize>,
+    /// The sum of their happiness (5.1 point 3).
+    pub happy: i32,
     /// The first keeper-class staff member that holds the exhibit in his list (habitat rating 11.2).
     pub keeper: Option<u32>,
     /// The exhibit has an amphibious neighbour.
@@ -1165,6 +1167,9 @@ pub struct State {
     pub escape: bool,
     /// The species and the animals the last recomputation counted (5.1 point 5).
     pub counts: (usize, usize),
+    /// The exhibit's average happiness h as the last recomputation left it (5.1 point 6): the
+    /// guests' viewing reads this, not the animals' happiness now. Not saved.
+    pub happiness: i32,
     /// The animal count fell to 0 at a recomputation: the step posts the call for the leftovers.
     pub emptied: bool,
     /// The surrounding species list holds a species with `cBashStrength` above 0 (12).
@@ -1243,6 +1248,7 @@ impl State {
         self.escape |= counts != self.counts;
         self.emptied |= counts.1 == 0 && self.counts.1 != 0;
         self.counts = counts;
+        self.happiness = input.happy.checked_div(counts.1 as i32).unwrap_or(0);
         self.bash = surrounding(input).iter().any(|l| l.bash);
         self.keeper = input.keeper;
         self.attractiveness = (input.animals.iter())
@@ -1292,7 +1298,7 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
     let Some(exhibit) = world.exhibits().get(id) else {
         return Input::default();
     };
-    let (species, animals) = animals_on(world, catalogue, &exhibit.order);
+    let (species, animals, happy) = animals_on(world, catalogue, &exhibit.order);
     let keeper = (world.units.iter())
         .filter(|u| u.kind == Kind::Keeper)
         .find(|u| matches!(&u.part, Part::Staff(s) if s.assigned.contains(&id)))
@@ -1330,6 +1336,7 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
         site: site(world, catalogue, &exhibit.order, exhibit.tank.map(water)),
         species,
         animals,
+        happy,
         keeper,
         linked: !exhibit.amphibious.is_empty(),
         near,
@@ -1413,9 +1420,18 @@ fn water(t: Tank) -> Water {
 
 /// The animal types on the tiles `order`, each once in the order they first appear tile by
 /// tile, and the type of each animal.
-fn animals_on(world: &World, catalogue: &Catalogue, order: &[usize]) -> (Vec<Likes>, Vec<usize>) {
+fn animals_on(
+    world: &World,
+    catalogue: &Catalogue,
+    order: &[usize],
+) -> (Vec<Likes>, Vec<usize>, i32) {
     let (mut species, mut animals): (Vec<Likes>, Vec<usize>) = (Vec::new(), Vec::new());
-    for (_, ty) in animals_at(world, catalogue, order) {
+    let mut happy = 0;
+    for (at, ty) in animals_at(world, catalogue, order) {
+        let unit = (world.zoo.entities[at].common.as_ref()).and_then(|c| world.units.get(c.id));
+        if let Some(Part::Animal(a)) = unit.map(|u| &u.part) {
+            happy += a.happiness;
+        }
         let mut likes = Likes::of(ty);
         // The bears' cheat gives the grizzly a bash strength (cheats 4.1).
         likes.bash |= world.units.cheat.bears_bash && likes.ids[0] == crate::cheat::GRIZZLY;
@@ -1427,7 +1443,7 @@ fn animals_on(world: &World, catalogue: &Catalogue, order: &[usize]) -> (Vec<Lik
             });
         animals.push(at);
     }
-    (species, animals)
+    (species, animals, happy)
 }
 
 /// The animals whose own tile is one of `order` (5.1 point 3), tile by tile in that order: the

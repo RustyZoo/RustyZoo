@@ -185,6 +185,28 @@ pub fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
     found
 }
 
+/// The sum of the refunds of the entities at positions `at`, a rubble group counted once: the
+/// first piece met pays, the others are tinted but not collected (placing 7.1, issue 930).
+pub fn refunds(world: &World, cat: &Catalogue, at: &[usize]) -> f32 {
+    let mut paid: Vec<u32> = Vec::new();
+    let mut sum = 0.0;
+    for &e in at {
+        let entity = &world.zoo.entities[e];
+        let rubble = entity.common.as_ref().filter(|_| entity.class == "rubble");
+        if let Some(c) = rubble {
+            if c.rubble
+                .as_ref()
+                .is_some_and(|r| r.group.iter().any(|g| paid.contains(g)))
+            {
+                continue;
+            }
+            paid.push(c.id);
+        }
+        sum += refund(cat, entity);
+    }
+    sum
+}
+
 /// What is asked before an object is removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Question {

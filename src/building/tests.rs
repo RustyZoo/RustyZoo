@@ -544,6 +544,7 @@ fn record(fill: u32, built: u64) -> crate::zoo::BuildingRecord {
         price: bits(5.5),
         users: Vec::new(),
         users_now: 0,
+        members: Vec::new(),
         fill,
         built,
     }
@@ -619,6 +620,7 @@ fn a_record_before_version_68_has_no_upkeep_and_the_extremes_do_not_panic() {
         price: f32::NAN.to_bits(),
         users: vec![(u32::MAX, u32::MAX)],
         users_now: u32::MAX,
+        members: Vec::new(),
         fill: u32::MAX,
         built: u64::MAX,
     };
