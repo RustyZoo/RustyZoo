@@ -1691,8 +1691,11 @@ fn a_loaded_building_is_saved_with_the_figures_it_was_loaded_with() {
         "maps/scn28.zoo",
         "saved games/test.zoo",
     ] {
+        let Ok(bytes) = vfs.read(member) else {
+            continue; // the saved game is in the English install only
+        };
         let cat = Catalogue::load(&vfs).unwrap();
-        let Ok((zoo, money)) = crate::zoo::Zoo::parse_money(&vfs.read(member).unwrap())
+        let Ok((zoo, money)) = crate::zoo::Zoo::parse_money(&bytes)
             .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
         else {
             continue;
