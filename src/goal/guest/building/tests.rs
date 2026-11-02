@@ -2040,3 +2040,19 @@ fn a_guest_entering_a_grandstand_is_put_on_the_draw_place_the_first_draw_gives()
     let seats = &w.units.buildings[&9].seats;
     assert_eq!((seats.len(), seats[0].unit), (1, 1));
 }
+
+#[test]
+fn a_user_of_a_type_that_stays_outside_is_seated_all_the_same() {
+    // The seating is done for every type with the flag, before the hide and stay-outside tests.
+    for key in ["cUserStaysOutside=1", "cHideUser=1\ncUserStaysOutside=0"] {
+        let mut cat = types();
+        let text = GRANDSTAND.replace("cUserStaysOutside=0", key);
+        cat.push(ty("building", "gstand", &text));
+        let mut w = zoo_of(Some("gstand"));
+        let mut fresh = Rng::default();
+        assert!(with_cx(&cat, &mut w, |cx| cx.add_user(9, 0)), "{key}");
+        let seats = &w.units.buildings[&9].seats;
+        assert_eq!(seats.len(), 1, "{key}");
+        assert_eq!(seats[0].place, fresh.pick(3) as usize, "{key}");
+    }
+}

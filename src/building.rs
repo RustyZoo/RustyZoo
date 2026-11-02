@@ -109,8 +109,8 @@ pub struct Slot {
     /// unit placing 7.4), 0 for none.
     pub birth: i32,
     /// The draw places of a slot with the drawn-users flag (`cHasDrawSlots`; shows 4.3): the
-    /// positions relative to the building, as the slot's, and their heights; `None` for a slot
-    /// without the flag.
+    /// positions relative to the building, as the slot's, and their heights, `p / 2` of them;
+    /// `None` for a slot without the flag.
     pub places: Option<Vec<(i32, i32, i32)>>,
 }
 
@@ -162,23 +162,27 @@ impl Slot {
 }
 
 /// The draw places of a slot section (shows 4.3): `cHasDrawSlots` names a section of `p` values read
-/// in triples (x, y, height), one per place, and of `order` names of lists of `o` values; the
-/// first list counts the places. A section that is missing gives a flag with no places.
+/// in triples (x, y, height). The table has `p / 2` places, the first `p / 3` from the values and
+/// the rest (0, 0, 0); the order lists play no part. A section that is missing gives a flag with
+/// no places, and a slot of no capacity has no flag.
 fn draw_places(
     config: Option<&crate::config::Config>,
     slot: &crate::config::Section,
 ) -> Option<Vec<(i32, i32, i32)>> {
     let name = slot.get("cHasDrawSlots")?;
+    if slot.get("capacity").and_then(to_int).unwrap_or(0) <= 0 {
+        return None;
+    }
     let section = config.and_then(|c| c.section(name));
-    let count = (section.and_then(|s| s.get_all("order").first()))
-        .and_then(|list| config?.section(list))
-        .map_or(0, |list| list.get_all("o").len());
     let values: Vec<i32> = (section.map(|s| s.get_all("p")).unwrap_or_default())
         .iter()
         .map(|v| to_int(v).unwrap_or(0))
         .collect();
-    let triples = values.as_chunks::<3>().0.iter();
-    Some(triples.take(count).map(|&[x, y, z]| (x, y, z)).collect())
+    let mut places = vec![(0, 0, 0); values.len() / 2];
+    for (place, &[x, y, z]) in places.iter_mut().zip(values.as_chunks::<3>().0) {
+        *place = (x, y, z);
+    }
+    Some(places)
 }
 
 /// What a building type declares (guest buildings 3.1).
@@ -406,8 +410,9 @@ impl Live {
 
     /// Seats `unit` on a free draw place of slot `slot` and returns the place and its position
     /// relative to the building (shows 4.3): `pick(capacity)` is drawn until the place is free (a
-    /// draw per try). Nothing is drawn when the slot has no free place; a draw past the places is
-    /// a place that is taken. The seats of users that left are dropped first.
+    /// draw per try), over the `capacity` seats of the slot. Nothing is drawn when the slot has no
+    /// free seat. A seat past the place table sits at (0, 0, 0). The seats of users that left are
+    /// dropped first.
     pub fn seat(
         &mut self,
         slot: usize,
@@ -419,7 +424,7 @@ impl Live {
         let users = &self.users;
         self.seats
             .retain(|s| users.iter().any(|u| u.0 == s.unit) && s.unit != unit);
-        let range = usize::try_from(capacity).unwrap_or(0).min(places.len());
+        let range = usize::try_from(capacity).unwrap_or(0);
         let taken = |place| {
             self.seats
                 .iter()
@@ -435,7 +440,7 @@ impl Live {
             }
         };
         self.seats.push(Seat { unit, slot, place });
-        Some(places[place])
+        Some(places.get(place).copied().unwrap_or_default())
     }
 
     /// The month changes (guest buildings 9): this month's figures become last month's.

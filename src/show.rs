@@ -153,16 +153,33 @@ pub fn added(world: &mut World, cat: &Catalogue, id: u32) {
     }
 }
 
+/// The pass of a zoo being loaded, for the entity `at` just read (shows 4.2): it runs only when
+/// that entity is a grandstand, and sees only the entities read so far.
+pub fn loaded(world: &mut World, cat: &Catalogue, at: usize) {
+    let default = world.units.prices.default;
+    if kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand")) {
+        associate_upto(world, cat, at);
+    }
+}
+
 /// The association pass (shows 4.2): every grandstand that faces a show tank takes the show id of the
-/// first one it faces. A grandstand that faces none keeps the id it has. Run after a zoo is
+/// first one it faces. A grandstand that faces none keeps the id it has. Run once after a zoo is
 /// loaded and when a grandstand is added to the map.
 pub fn associate(world: &mut World, cat: &Catalogue) {
+    associate_upto(world, cat, usize::MAX);
+}
+
+/// The pass over the entities up to index `last` only.
+fn associate_upto(world: &mut World, cat: &Catalogue, last: usize) {
     let tanks = show_tanks(world);
-    let stands = grandstands(world, cat);
+    let stands: Vec<_> = grandstands(world, cat)
+        .into_iter()
+        .filter(|&(_, at)| at <= last)
+        .collect();
     if tanks.is_empty() || stands.is_empty() {
         return;
     }
-    let ground = Ground::of(world, viewing::bodies(cat));
+    let ground = Ground::until(world, viewing::bodies(cat), last);
     for (id, at) in stands {
         let Some(&(_, show)) = tanks.iter().find(|&&(x, _)| faces(world, &ground, x, at)) else {
             continue;
