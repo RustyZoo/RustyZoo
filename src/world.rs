@@ -655,7 +655,18 @@ impl World {
 
     /// Adds an entity with a fresh id and returns the id; `None` for one without a body. The
     /// price paid is told with [`World::priced`].
-    pub fn add(&mut self, mut entity: Entity, shape: Option<Shape>) -> Option<u32> {
+    pub fn add(&mut self, entity: Entity, shape: Option<Shape>) -> Option<u32> {
+        self.add_rated(entity, shape, true)
+    }
+
+    /// The same; `rated` is whether the exhibits it touches are marked for a new rating (the
+    /// plain entity add of an animal's dung pile marks none).
+    pub fn add_rated(
+        &mut self,
+        mut entity: Entity,
+        shape: Option<Shape>,
+        rated: bool,
+    ) -> Option<u32> {
         let common = entity.common.as_mut()?;
         let id = self.zoo.id_counter.checked_add(1)?;
         (self.zoo.id_counter, common.id) = (id, id);
@@ -663,7 +674,7 @@ impl World {
         self.shapes.push(shape);
         self.changed();
         let mut notes = Vec::new();
-        let rated = self.rated_tiles(self.zoo.entities.len() - 1);
+        let tiles = self.rated_tiles(self.zoo.entities.len() - 1);
         if shape.is_some_and(|s| s.fence) {
             let slot = self.slot_of(self.zoo.entities.len() - 1);
             let seen = self.events.len();
@@ -671,7 +682,9 @@ impl World {
             self.settle(slot, false);
             notes = self.changed_by(before, seen);
         }
-        rated.into_iter().for_each(|t| self.mark_rating(t));
+        if rated {
+            tiles.into_iter().for_each(|t| self.mark_rating(t));
+        }
         notes.into_iter().for_each(|note| self.record(note));
         self.record(Action::Placed { id, price: 0.0 });
         self.filter_added(self.zoo.entities.len() - 1);
@@ -851,6 +864,16 @@ impl World {
         };
         self.put_tile(t, elevation, shape, terrain, true);
         true
+    }
+
+    /// Paints tile `(tx, ty)` with terrain `terrain` as the bare cell paint of trampled ground
+    /// (animals 4.5): no undo entry, no terrain change pair, so no exhibit is marked.
+    pub fn paint_cell(&mut self, tx: i32, ty: i32, terrain: u8) {
+        if let Some(t) = self.tile_index(tx, ty) {
+            self.zoo.tiles[t].terrain = terrain;
+            self.edges_around(t);
+            self.changed();
+        }
     }
 
     /// The last two actions, when both are tiles with no price, become one: the levelling and the
