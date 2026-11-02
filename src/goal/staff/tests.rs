@@ -864,13 +864,8 @@ fn the_stay_sick_after_a_species_change_is_the_new_types() {
     );
 }
 
-#[test]
-fn a_goal_reset_in_the_heal_job_starts_no_done_sick() {
-    let mut g = stay_game("cStaySick=1");
-    while g.lines(&["HealAnimal"]).is_empty() {
-        g.run(1);
-        assert!(g.log.len() < 1000, "the decide");
-    }
+/// Runs the goal reset of the keeper, as a pick-up or a removal's reset would.
+fn reset_keeper(g: &mut Game) {
     let mut u = g.w.units.get(KEEPER).unwrap().clone();
     let mut rng = crate::sim::Rng::default();
     let events = crate::sim::Events::default();
@@ -892,6 +887,27 @@ fn a_goal_reset_in_the_heal_job_starts_no_done_sick() {
     };
     cx.reset();
     *g.w.units.get_mut(KEEPER).unwrap() = u;
+}
+
+#[test]
+fn a_goal_reset_in_the_heal_job_starts_no_done_sick() {
+    let mut g = stay_game("cStaySick=1");
+    while g.lines(&["HealAnimal"]).is_empty() {
+        g.run(1);
+        assert!(g.log.len() < 1000, "the decide");
+    }
+    reset_keeper(&mut g);
     g.run(3);
     assert_eq!(sets_of_zebra(&g), ["bSick"], "no bDoneSick without a heal");
+}
+
+#[test]
+fn a_goal_reset_in_the_heal_job_leaves_the_animal_held() {
+    let mut g = stay_game("");
+    while g.lines(&["HealAnimal"]).is_empty() {
+        g.run(1);
+        assert!(g.log.len() < 1000, "the decide");
+    }
+    reset_keeper(&mut g);
+    assert_eq!(g.w.units.get(ZEBRA_A).unwrap().wait, i32::MAX);
 }
