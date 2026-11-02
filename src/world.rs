@@ -251,6 +251,9 @@ pub struct World {
     paused: bool,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
+    /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
+    /// objects on their tiles are validated again (guest buildings 11.1.1; not saved).
+    wet: Vec<u32>,
     /// What each tank filter shows besides its record: switched off, or showing bubbles (not
     /// saved, not hashed).
     filter_view: BTreeMap<u32, filter::View>,
@@ -297,6 +300,7 @@ impl World {
             edits: 0,
             paused: false,
             told_water: BTreeMap::new(),
+            wet: Vec::new(),
             filter_view: BTreeMap::new(),
             words: language.exhibit_words.clone(),
             language,
@@ -316,6 +320,7 @@ impl World {
         world.units.sync(&world.zoo.entities);
         world.load_thoughts();
         world.dirty = false;
+        world.wet.clear();
         world
     }
 
@@ -638,6 +643,17 @@ impl World {
         let t = self.scene.tile_at(obj.x, obj.y)?;
         let d = obj.facing as usize;
         (self.scene.edge_object(t, d) == Some(o)).then_some((t, d))
+    }
+
+    /// The own tile and the footprint tiles of the object at position `e` of the entity list
+    /// (guest buildings 11.1.1); `None` for an entity the map index does not hold.
+    pub fn footprint(&self, e: usize) -> Option<(Option<usize>, Vec<usize>)> {
+        let o = self.owner.iter().position(|&owner| owner == e)?;
+        let obj = &self.scene.objects[o];
+        Some((
+            self.scene.tile_at(obj.x, obj.y),
+            self.scene.footprint_tiles(o),
+        ))
     }
 
     /// The position of the entity with this id.

@@ -320,14 +320,26 @@ impl Scene {
     /// ceil(fx / 2)` and `0 <= b < ceil(fy / 2)`, a point's tile being its coordinates divided by
     /// 64 and cut towards zero; points off the map are left out. Not the quadrants of the object.
     pub fn large_tiles(&self, o: usize) -> Vec<usize> {
+        let (fx, fy) = self.turned(o);
+        match fx <= 2 && fy <= 2 {
+            true => Vec::new(),
+            false => self.footprint_tiles(o),
+        }
+    }
+
+    /// The footprint of object `o` in half tiles after its turn.
+    fn turned(&self, o: usize) -> (i32, i32) {
         let obj = &self.objects[o];
-        let (fx, fy) = match obj.facing.is_multiple_of(4) {
+        match obj.facing.is_multiple_of(4) {
             true => obj.footprint,
             false => (obj.footprint.1, obj.footprint.0),
-        };
-        if fx <= 2 && fy <= 2 {
-            return Vec::new();
         }
+    }
+
+    /// The tiles under object `o`, whatever its size: the points of [`Scene::large_tiles`].
+    pub fn footprint_tiles(&self, o: usize) -> Vec<usize> {
+        let obj = &self.objects[o];
+        let (fx, fy) = self.turned(o);
         let at = |v: i32, f: i32, k: i32| {
             i32::try_from((i64::from(v) - 16 * i64::from(f) + 64 * i64::from(k)) / 64).ok()
         };

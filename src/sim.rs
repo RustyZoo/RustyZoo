@@ -542,6 +542,8 @@ impl Sim {
         crate::show::associate(world, cat);
         crate::building::users::restore(world, cat, self.ai_ticks);
         crate::building::users::seat_loaded(world, cat, &mut self.rng);
+        // The dead state is decided with no user put out: a zoo file is being loaded.
+        crate::building::dead::decide_all(world, cat);
     }
 
     /// The clocks, the status and the event queue a file stores (the inverse of

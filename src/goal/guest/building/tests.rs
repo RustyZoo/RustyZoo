@@ -1303,6 +1303,7 @@ fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and
     live.price = 4.5;
     w.units.buildings.insert(7, live);
     let at = w.find(7).unwrap();
+    let stand = w.zoo.entities[at].clone();
     let held = crate::building::lift(&mut w, &cat, 7, &mut Rng::default()).unwrap();
     // The customer paid and stands at the first entrance; the stand is off the map and no
     // undo records it; there is nothing to lift twice.
@@ -1313,7 +1314,8 @@ fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and
     assert!(crate::building::lift(&mut w, &cat, 7, &mut Rng::default()).is_none());
     // Set down elsewhere, facing another way: the same id, the same place in the list, the
     // price it had, and the figures the customer left.
-    crate::building::set_down(&mut w, held, (352, 160, 0), 2);
+    let ty = crate::place::bulldozer::type_of(&cat, &stand).unwrap();
+    crate::building::set_down(&mut w, ty, held, (352, 160, 0), 2);
     assert_eq!(w.find(7), Some(at));
     let c = w.zoo.entities[at].common.clone().unwrap();
     assert_eq!((c.x, c.y, c.rotation), (352, 160, 2));
