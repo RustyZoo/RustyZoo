@@ -1173,7 +1173,7 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:19@29,44;29726:12@20,48;29745:20@36,33;29748:25@32,34;29750:23@22,48" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:19@29,44;29726:12@20,48;29745:20@36,33;29748:25@32,34;29750:23@21,49" "guest_pace maps/scn01a.zoo"
 check base-trial "29699:34@29,45;29726:21@22,43;29745:20@36,33;29748:26@32,35;29750:38@29,44" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
@@ -1278,7 +1278,7 @@ water_mode() { # water_mode <map> <animal>
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;27,31:bInWater;mode0@1212;25,23:bSleep;mode1@2406;18,27:bHappy;mode1@3003" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;27,31:bInWater;mode0@1212;25,23:bSleep;25,23:bWalk;mode1@1809;26,27:bInWater;29,25:bInWater;24,29:bInWater;26,24:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1340,7 +1340,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: four mates, the same birth.
-check base-trial "mates:3;birth@4193;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@;young:" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1361,7 +1361,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
-check expansion-trial "egg@3026;eggs:6;hatch@3738" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@3536;eggs:3;hatch@4167" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

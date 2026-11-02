@@ -5,7 +5,8 @@
 //! a death) goes into the [`Out`] of the tick.
 
 use super::{
-    Animal, CAUGHT_ILL, Class, Env, ILL, Keys, Out, SICK, SICK_NEAR, TAKEN_AWAY, VERY_SICK, fire,
+    Animal, CAUGHT_ILL, Class, Env, ILL, Keys, Out, Read, Reader, SICK, SICK_NEAR, TAKEN_AWAY,
+    VERY_SICK, fire,
 };
 use crate::behaviour::{Data, Env as Run};
 use crate::sim::Rng;
@@ -95,7 +96,15 @@ pub(super) fn start_or_queue(
 
 /// The health check (9): the starving count, the unwell animal, the sick company and the three
 /// ways to fall ill.
-pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
+pub fn health(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &mut Env,
+    rng: &mut Rng,
+    out: &mut Out,
+    read: Reader,
+) {
     if !fire(&mut a.counters[super::HEALTH], class.periods[super::HEALTH]) {
         return;
     }
@@ -112,8 +121,9 @@ pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng,
         if a.at_minimum_health {
             out.messages.push(VERY_SICK);
         }
-    } else if !env.keeper_working {
-        removed = true;
+    } else {
+        read(Read::Keeper, a, &out.meal, env, rng);
+        removed = !env.keeper_working;
     }
     // Low health: the set, and the unhappiness (without a set that starts: not at all).
     let low =
@@ -131,6 +141,7 @@ pub fn health(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng,
         a.mark(SICK, true);
     }
     if !a.egg {
+        read(Read::Sick, a, &out.meal, env, rng);
         if env.sick_near > 0 {
             a.change(k.other_sick_change);
             a.mark(SICK_NEAR, true);
