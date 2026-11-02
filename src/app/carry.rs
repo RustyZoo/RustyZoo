@@ -160,6 +160,7 @@ impl App<'_> {
             let rand = &mut || self.sim.rng.rand();
             let before = rating::entity(&mut game.world, cat, tile, true, rand);
             crate::building::set_down(&mut game.world, held, (p.x, p.y, p.z), p.facing);
+            crate::show::added(&mut game.world, cat, carry.id);
             let (habitat, name) = rating::object(ty);
             let change = rating::Change::Object {
                 habitat,
@@ -205,6 +206,7 @@ impl App<'_> {
         let ty = &self.renderer.catalogue().types[carry.ty];
         if let Some(held) = game.held.take() {
             crate::building::set_down(&mut game.world, held, carry.from, carry.facing);
+            crate::show::added(&mut game.world, self.renderer.catalogue(), carry.id);
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);

@@ -164,6 +164,13 @@ impl World {
                 }
                 _ => {}
             }
+            // The "show soon" flag of a grandstand is the live one (shows 3.5).
+            if let (Some(b), Some(live)) = (c.building.as_mut(), self.units.buildings.get(&c.id)) {
+                let default = self.units.prices.default;
+                if Kind::of(ty, default).satisfies("grandstand") {
+                    b.fill = live.fill;
+                }
+            }
             // The current upgrade of a building is the live one (research 6.3).
             if let (Some(b), true) = (
                 c.building.as_mut(),

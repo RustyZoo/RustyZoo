@@ -498,6 +498,7 @@ fn pens_with(animals: impl Fn(usize, i32) -> Vec<Entity>) -> World {
     let zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,

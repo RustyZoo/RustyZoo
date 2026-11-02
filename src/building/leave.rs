@@ -111,7 +111,10 @@ pub(crate) fn pay(
             };
             live.income[0] += income;
             live.income[2] += income;
-            world.units.concessions.push(income);
+            // A grandstand of a show booked the show's income when the guest came in (shows 7.3).
+            if live.show_id == 0 {
+                world.units.concessions.push(income);
+            }
         }
     }
     apply(unit, change);

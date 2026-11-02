@@ -95,6 +95,7 @@ pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
     let mut zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
+        shows: Default::default(),
         version: 0,
         locale: 0,
         expansion: 0,
@@ -200,6 +201,16 @@ impl crate::behaviour::Data for Walker {
 /// `height` high and the water at `level`; its first tile is (2, 2). The animals are the given
 /// ids at a tile and a height.
 pub fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -> World {
+    tank_world_with(height, level, animals, Vec::new())
+}
+
+/// [`tank_world`] with more entities in the zoo.
+pub fn tank_world_with(
+    height: u32,
+    level: u32,
+    animals: &[(u32, (i32, i32), i32)],
+    more: Vec<Entity>,
+) -> World {
     let wall = |(x, y): (i32, i32), d: u32| {
         let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
         entity(
@@ -221,6 +232,7 @@ pub fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -
     }
     let mut w = world_with((12, 8), |z| {
         z.entities.extend(walls);
+        z.entities.extend(more);
         for &(id, tile, height) in animals {
             let mut fish = entity("animals", "fish", id, centre(tile), 0);
             fish.common.as_mut().unwrap().z = height;

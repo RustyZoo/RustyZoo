@@ -115,6 +115,7 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         let mut world = World::with_language(zoo, |e| renderer.shape(e), language.clone());
         world.set_water(place::water(&terrain::types(vfs)));
         world.set_tank_config(TankConfig::load(vfs));
+        world.units.show = rustyzoo::show::Params::load(vfs);
         world.set_decay(Decay::load(vfs));
         let files = (vfs.ini(), &economy[..]);
         let types = (catalogue, Class::load(vfs));
