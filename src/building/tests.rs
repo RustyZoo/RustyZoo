@@ -1169,24 +1169,39 @@ fn grandstand(cap: i32, order: usize) -> String {
 }
 
 #[test]
-fn a_slot_names_its_draw_places_and_the_first_order_list_counts_them() {
+fn a_slot_names_its_draw_places_and_the_values_alone_size_the_table() {
     let places = |text: &str| Kind::of(&ty(text), 3.0).slots[0].places.clone();
-    let (a, b, c) = ((-13, -102, 50), (13, -102, 50), (0, 58, 2));
-    assert_eq!(places(&grandstand(3, 3)), Some(vec![a, b, c]));
-    // Fewer places in the list than triples: the list counts; more: the triples do.
-    assert_eq!(places(&grandstand(3, 2)), Some(vec![a, b]));
-    assert_eq!(places(&grandstand(3, 9)), Some(vec![a, b, c]));
-    // A flag with no list, and a flag whose section is missing, has no place; no flag has none.
-    assert_eq!(places(&grandstand(3, 0)), Some(vec![]));
+    let (a, b, c, z) = ((-13, -102, 50), (13, -102, 50), (0, 58, 2), (0, 0, 0));
+    // Nine values: four places, the first three from the values, the fourth empty.
+    assert_eq!(places(&grandstand(3, 3)), Some(vec![a, b, c, z]));
+    // The order lists play no part: none, a short one or a long one change nothing.
+    for order in [0, 1, 2, 9] {
+        assert_eq!(
+            places(&grandstand(3, order)),
+            Some(vec![a, b, c, z]),
+            "{order}"
+        );
+    }
+    // A flag whose section is missing has no place; no flag has none.
     let text = grandstand(3, 3).replace("cHasDrawSlots=seats", "cHasDrawSlots=nowhere");
     assert_eq!(places(&text), Some(vec![]));
     let text = grandstand(3, 3).replace("cHasDrawSlots=seats", "");
     assert_eq!(places(&text), None);
-    // A half triple is dropped; a word reads 0.
+    // A slot of capacity 0, a negative one or none has no flag.
+    for cap in ["capacity=0", "capacity=-4", "capacity=x"] {
+        let text = grandstand(3, 3).replace("capacity=3", cap);
+        assert_eq!(places(&text), None, "{cap}");
+    }
+    let text = grandstand(3, 3).replace("capacity=3\n", "");
+    assert_eq!(places(&text), None);
+    // A word reads 0; two more values (11 / 2).
     let text = grandstand(3, 3)
         .replace("p=2\n", "p=x\n")
-        .replace("[second]", "p=7\n[second]");
-    assert_eq!(places(&text).map(|p| p.len()), Some(3));
+        .replace("order=first", "p=7\np=8\norder=first");
+    assert_eq!(places(&text).map(|p| p.len()), Some(5));
+    // Ten values give five places, the fourth and fifth empty.
+    let text = grandstand(3, 3).replace("order=first", "p=7\norder=first");
+    assert_eq!(places(&text).map(|p| p.len()), Some(5));
 }
 
 /// Seats unit `unit` of a live state with the draws `picks`, in turn.
@@ -1225,22 +1240,22 @@ fn a_slot_with_no_free_place_draws_nothing_and_a_leaving_user_frees_its_place() 
     };
     sit(&mut live, 1, &places, &[0]).unwrap();
     sit(&mut live, 2, &places, &[1]).unwrap();
+    // The seat table has `capacity` seats, not one per place: the third sits at (0, 0, 0).
+    assert_eq!(sit(&mut live, 3, &places, &[2]), Some((2, (0, 0, 0))));
+    live.users.push((4, 0, 0));
     let mut never = |_: u32| -> u32 { panic!("a draw on a full slot") };
-    assert_eq!(live.seat(0, 3, &places, 3, &mut never), None);
-    // A capacity of 0 or below seats nobody either, and a huge one is cut to the places.
-    assert_eq!(live.seat(0, 0, &places, 3, &mut never), None);
-    assert_eq!(live.seat(0, -5, &places, 3, &mut never), None);
+    assert_eq!(live.seat(0, 3, &places, 4, &mut never), None);
+    // A capacity of 0 or below seats nobody either.
+    assert_eq!(live.seat(0, 0, &places, 4, &mut never), None);
+    assert_eq!(live.seat(0, -5, &places, 4, &mut never), None);
     live.users.remove(0);
-    assert_eq!(sit(&mut live, 3, &places, &[0]), Some((0, (1, 2, 3))));
-    // A draw past the places is a place that is taken.
+    assert_eq!(sit(&mut live, 4, &places, &[0]), Some((0, (1, 2, 3))));
+    // A draw past the place table is a free seat at (0, 0, 0).
     let mut one = Live {
         users: vec![(2, 0, 0)],
         ..Live::default()
     };
-    assert_eq!(
-        sit(&mut one, 2, &[(1, 2, 3)], &[7, 0]).map(|s| s.0),
-        Some(0)
-    );
+    assert_eq!(sit(&mut one, 2, &[(1, 2, 3)], &[7]), Some((1, (0, 0, 0))));
     // A unit seated again takes a new place.
     one.users.push((3, 0, 0));
     sit(&mut one, 2, &[(1, 2, 3), (4, 5, 6)], &[0]).unwrap();

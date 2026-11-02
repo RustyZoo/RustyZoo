@@ -1700,6 +1700,52 @@ fn a_units_rectangle_is_its_footprint_centred_with_the_larger_side_at_odd_rotati
     assert_eq!(verdict(63, 48, 0), valid);
 }
 
+#[test]
+fn an_animal_in_a_crate_or_an_egg_blocks_with_the_footprint_of_that_form() {
+    let mut cat = catalogue();
+    // A crate 4 by 4 and an egg 1 by 1 (lion), and the other way round (emu).
+    let lion = "[Characteristics/Integers]\ncBoxFootprintX=4\ncBoxFootprintY=4\n\
+                cEggFootprintX=1\ncEggFootprintY=1\n";
+    let emu = "[Characteristics/Integers]\ncBoxFootprintX=1\ncBoxFootprintY=1\n\
+               cEggFootprintX=4\ncEggFootprintY=4\n";
+    cat.push(ty("animals", "lion", lion, [1, 1, 1]));
+    cat.push(ty("animals", "emu", emu, [1, 1, 1]));
+    // The tree holds x and y 0..32 of tile (3, 2); the animal stands 50 along x, 34 from its
+    // centre: clear of a 1 by 1 body (16 + 16), inside a 4 by 4 one (16 + 64).
+    let verdict = |name: &str, egg: bool, crated: bool| {
+        let mut animal = entity("animals", name, 3 * 64 + 50, 2 * 64 + 16, 0);
+        animal.common.as_mut().unwrap().id = 7;
+        let mut w = world((0, 0), vec![animal], |_| {});
+        let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(7).map(|u| &mut u.part) else {
+            panic!("not an animal");
+        };
+        (a.egg, a.crated) = (egg, crated);
+        at(&w, &cat, 0, 0, 3 * 64 + 10, 2 * 64 + 10)
+            .unwrap()
+            .verdict
+    };
+    let (valid, invalid) = (Verdict::Valid, Verdict::Invalid);
+    // The plain footprint of both is 1 by 1.
+    assert_eq!(
+        [verdict("lion", false, false), verdict("emu", false, false)],
+        [valid; 2]
+    );
+    // A crate takes the crate's footprint, an egg the egg's.
+    assert_eq!(
+        [verdict("lion", false, true), verdict("emu", false, true)],
+        [invalid, valid]
+    );
+    assert_eq!(
+        [verdict("lion", true, false), verdict("emu", true, false)],
+        [valid, invalid]
+    );
+    // A crated egg takes the egg's.
+    assert_eq!(
+        [verdict("lion", true, true), verdict("emu", true, true)],
+        [valid, invalid]
+    );
+}
+
 /// The walls of class `tankwall` and type `name` round the tiles `(2..=3, 2..=3)`.
 fn tank_walls(name: &str) -> Vec<Entity> {
     let mut walls = Vec::new();

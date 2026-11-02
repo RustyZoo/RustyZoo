@@ -1,5 +1,8 @@
 //! The numbers of `shows.cfg`, which show a grandstand belongs to, and the emptying routines.
 
+mod cycle;
+mod relay;
+
 use super::*;
 use crate::building::Live;
 use crate::config::Config;
@@ -10,7 +13,7 @@ use std::sync::Arc;
 
 /// A grandstand: 12 places in two columns, a slot of 12, users that sit and use the exit.
 fn stand() -> String {
-    let mut text = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=12\ncUserStaysOutside=0\n\
+    let mut text = "[Characteristics/Floats]\ncUpkeep=15\n[Characteristics/Integers]\ncCommerce=1\ncCapacity=12\ncUserStaysOutside=0\n\
         cUserUsesExit=1\ncHoldsOntoUser=1\n[Satisfies]\nbuilding\ngrandstand\n[slots]\nname=slot\n\
         [slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=144\nexitpos=0\nexitpos=144\ncapacity=12\n\
         cHasDrawSlots=drawslots\n[drawslots]\n"
@@ -77,16 +80,34 @@ fn info(id: u16) -> ShowInfo {
 /// 1001, behind a fence of type `wall`. The stands are given as (id, tile, rotation); guests 1 to 3
 /// stand at the top left.
 fn world(width: i32, wall: &str, stands: &[(u32, (i32, i32), u32)]) -> (World, Catalogue) {
+    world_in(width, wall, stands, true)
+}
+
+/// [`world`] with the fence entities read before the stands (`walls_first`) or after them.
+fn world_in(
+    width: i32,
+    wall: &str,
+    stands: &[(u32, (i32, i32), u32)],
+    walls_first: bool,
+) -> (World, Catalogue) {
     let cat = types();
     let w = world_with((width, 5), |z| {
-        for y in 0..5 {
-            let at = (5 * 64, y * 64 + 32);
-            z.entities
-                .push(entity("fences", wall, 500 + y as u32, at, 6));
+        let walls = |z: &mut crate::zoo::Zoo| {
+            for y in 0..5 {
+                let at = (5 * 64, y * 64 + 32);
+                z.entities
+                    .push(entity("fences", wall, 500 + y as u32, at, 6));
+            }
+        };
+        if walls_first {
+            walls(z);
         }
         for &(id, tile, rotation) in stands {
             z.entities
                 .push(entity("building", "stand", id, centre(tile), rotation));
+        }
+        if !walls_first {
+            walls(z);
         }
         for id in 1..=3 {
             z.entities
@@ -203,6 +224,44 @@ fn placing_a_building_that_is_not_a_grandstand_leaves_the_show_ids() {
 }
 
 #[test]
+fn a_grandstand_read_before_the_wall_that_blocks_its_view_keeps_the_show_it_got() {
+    // Stand 7 is the first entity: the pass run as it is read sees no wall yet. Once the zoo
+    // is read the full pass finds none, but the id stays.
+    let (mut w, cat) = world_in(9, "iron", &[(7, (1, 2), 2)], false);
+    loaded(&mut w, &cat, 0);
+    assert_eq!(show_of(&w, 7), 1001);
+    associate(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 1001);
+    // The wall read first blocks it.
+    let (mut w, cat) = world(9, "iron", &[(7, (1, 2), 2)]);
+    loaded(&mut w, &cat, 5);
+    assert_eq!(show_of(&w, 7), 0);
+}
+
+#[test]
+fn a_zoo_load_gives_a_grandstand_the_show_it_faced_when_it_was_read() {
+    // The wall comes after the stand in the file: the pass at the stand finds the show; the
+    // pass after the load finds none and leaves the id.
+    let (mut w, cat) = world_in(9, "iron", &[(7, (1, 2), 2)], false);
+    let mut sim = crate::sim::Sim::new(b"");
+    sim.load(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 1001);
+    // With the wall read first the stand never faces the show.
+    let (mut w, cat) = world(9, "iron", &[(7, (1, 2), 2)]);
+    sim.load(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 0);
+}
+
+#[test]
+fn reading_an_entity_that_is_not_a_grandstand_runs_no_pass() {
+    let (mut w, cat) = world_in(9, "glass", &[(7, (1, 2), 2)], false);
+    loaded(&mut w, &cat, 1);
+    assert_eq!(show_of(&w, 7), 0);
+    loaded(&mut w, &cat, 0);
+    assert_eq!(show_of(&w, 7), 1001);
+}
+
+#[test]
 fn a_show_info_without_a_show_id_is_not_a_show() {
     let (mut w, cat) = world(9, "glass", &[(7, (1, 2), 2)]);
     w.zoo.shows.infos = vec![Some(info(0))];
@@ -255,12 +314,12 @@ fn emptying_a_show_that_has_no_info_or_no_tank_does_nothing() {
 #[test]
 fn emptying_a_grandstand_lowers_its_flag_and_empties_its_show() {
     let (mut w, cat) = crowded();
-    empty_grandstands(&mut w, &cat, 7);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 7);
     assert!(w.units.buildings[&7].users.is_empty() && w.units.buildings[&7].fill == 0);
     // A grandstand that holds the show but faces away loses its flag and keeps its users; the
     // grandstands that face the tank are emptied all the same.
     let (mut w, cat) = crowded();
-    empty_grandstands(&mut w, &cat, 8);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 8);
     let (a, b) = (&w.units.buildings[&7], &w.units.buildings[&8]);
     assert_eq!((a.users.len(), b.users.len(), b.fill), (0, 1, 0));
 }
@@ -269,19 +328,19 @@ fn emptying_a_grandstand_lowers_its_flag_and_empties_its_show() {
 fn emptying_a_grandstand_with_no_show_leaves_its_users() {
     let (mut w, cat) = crowded();
     w.units.buildings.get_mut(&7).unwrap().show_id = 0;
-    empty_grandstands(&mut w, &cat, 7);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 7);
     let live = &w.units.buildings[&7];
     assert_eq!((live.users.len(), live.fill), (2, 1));
     // A building that is no grandstand, and an id that is nothing.
-    empty_grandstands(&mut w, &cat, 1);
-    empty_grandstands(&mut w, &cat, 99);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 1);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 99);
 }
 
 #[test]
 fn a_grandstand_of_a_show_whose_info_is_gone_is_not_emptied() {
     let (mut w, cat) = crowded();
     w.zoo.shows.infos = vec![None];
-    empty_grandstands(&mut w, &cat, 7);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 7);
     let live = &w.units.buildings[&7];
     assert_eq!((live.users.len(), live.fill), (2, 1));
 }

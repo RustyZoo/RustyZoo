@@ -249,6 +249,9 @@ pub struct Unit {
     pub predator: u32,
     /// A guest saw a predator (guests 6.2, 6.12): it leaves at a run.
     pub afraid: bool,
+    /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Not saved
+    /// until Shows 2 stores the unit blocks' show fields.
+    pub show: u16,
 }
 
 impl Unit {
@@ -300,6 +303,7 @@ impl Unit {
             frightened: false,
             predator: 0,
             afraid: false,
+            show: 0,
         }
     }
 
