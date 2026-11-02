@@ -534,6 +534,7 @@ impl Sim {
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
             crate::staff::make(world, cat, &mut self.rng, at);
             crate::building::load(world, cat, at);
+            crate::show::loaded(world, cat, at);
         }
         // The units go on with their saved sets; the users come once every guest is made,
         // whatever the order of the file.

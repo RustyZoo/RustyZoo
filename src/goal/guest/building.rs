@@ -424,6 +424,17 @@ impl Cx<'_, '_> {
         }
         let price = live.price;
         self.world.units.building_note(format!("use {id} {unit}"));
+        // The slot's seating comes first, whatever the type does with its user (shows 4.3).
+        let s = &kind.slots[slot];
+        let seat = (s.places.as_ref()).and_then(|p| {
+            let live = self.world.units.buildings.get_mut(&id)?;
+            live.seat(slot, s.capacity, p, unit, &mut |n| self.ctx.rng.pick(n))
+        });
+        let spot = building::seat_at(&e, s, seat);
+        let face = building::facing(&e, s.facing);
+        if seat.is_some() {
+            self.world.place_unit(self.at, spot, face);
+        }
         if kind.hide {
             self.unit.hidden = true;
             self.world.hide_unit(self.at);
@@ -432,15 +443,8 @@ impl Cx<'_, '_> {
             if let Some(t) = tile.filter(|_| kind.faces_user) {
                 crate::animal::food::turn(self.unit, self.world, self.at, t);
             }
-        } else {
-            let s = &kind.slots[slot];
-            let seat = (s.places.as_ref()).and_then(|p| {
-                let live = self.world.units.buildings.get_mut(&id)?;
-                live.seat(slot, s.capacity, p, unit, &mut |n| self.ctx.rng.pick(n))
-            });
-            let (x, y, z) = building::seat_at(&e, s, seat);
-            self.world
-                .place_unit(self.at, (x, y, z), building::facing(&e, s.facing));
+        } else if seat.is_none() {
+            self.world.place_unit(self.at, spot, face);
         }
         // Guest buildings 6.4 step 7, for a guest: the used thought, the items the building removes,
         // the sale.

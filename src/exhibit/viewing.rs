@@ -225,12 +225,18 @@ impl Ground {
 
     /// Reads the ground of a world; `body` tells what blocks of each entity.
     pub fn of(world: &World, body: impl Fn(&Entity) -> Body) -> Ground {
+        Ground::until(world, body, usize::MAX)
+    }
+
+    /// The ground as it stands when only the entities up to index `last` are read (a zoo being
+    /// loaded); the later ones block nothing.
+    pub fn until(world: &World, body: impl Fn(&Entity) -> Body, last: usize) -> Ground {
         let mut ground = Ground::new(world.zoo.width as usize, world.zoo.height as usize);
         for (t, tile) in world.zoo.tiles.iter().enumerate() {
             ground.base[t] = tile.elevation;
             // The corner read for each quadrant, the last two the diagonally opposite ones.
             for (q, corner) in [7, 5, 1, 3].into_iter().enumerate() {
-                if let Some(e) = world.quadrant(t, q) {
+                if let Some(e) = world.quadrant(t, q).filter(|&e| e <= last) {
                     let b = body(&world.zoo.entities[e]);
                     if b.blocks {
                         ground.scenery[t][q] = corner_elevation(tile, corner) + b.height;
@@ -239,7 +245,9 @@ impl Ground {
             }
             let tank = world.tank_at(t).and_then(|id| world.tank(id));
             for d in [0, 2, 4, 6] {
-                let Some(e) = world.edge(t, d) else { continue };
+                let Some(e) = world.edge(t, d).filter(|&e| e <= last) else {
+                    continue;
+                };
                 let b = body(&world.zoo.entities[e]);
                 let wall = world.shape(e).is_some_and(|s| s.tank.wall);
                 let murky = tank.is_some_and(|tank| tank.purity <= MURKY);
