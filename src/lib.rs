@@ -15,6 +15,7 @@ pub mod config;
 pub mod cursor;
 pub mod entity;
 pub mod exhibit;
+pub mod framelog;
 pub mod goal;
 pub mod ground;
 pub mod guest;

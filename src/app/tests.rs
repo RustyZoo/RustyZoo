@@ -1153,6 +1153,32 @@ fn an_edit_stages_the_map_again_once_at_the_next_draw() {
     });
 }
 
+#[test]
+fn frames_hashed_together_give_the_hashes_they_give_alone() {
+    let frame = |size: usize, seed: usize| Framebuffer {
+        width: size as u32,
+        height: 1,
+        pixels: (0..size * 4)
+            .map(|i| (i * 31 + seed * 7 + i / 5) as u8)
+            .collect(),
+    };
+    // From none to more than four frames (hashed one by one), and frames of other sizes.
+    for count in 0..=6 {
+        let frames: Vec<_> = (0..count).map(|k| frame(100, k)).collect();
+        let refs: Vec<_> = frames.iter().collect();
+        let want: Vec<_> = frames.iter().map(frame_hash).collect();
+        assert_eq!(frame_hashes(&refs), want, "{count} frames");
+    }
+    let mixed = [frame(100, 1), frame(7, 2), frame(0, 3)];
+    let refs: Vec<_> = mixed.iter().collect();
+    assert_eq!(
+        frame_hashes(&refs),
+        mixed.iter().map(frame_hash).collect::<Vec<_>>()
+    );
+    // The hash of the empty frame is the offset basis.
+    assert_eq!(frame_hash(&frame(0, 0)), 0xcbf2_9ce4_8422_2325);
+}
+
 fn frame_hash_of(pixels: &[u8]) -> u64 {
     frame_hash(&Framebuffer {
         width: SIZE.0,

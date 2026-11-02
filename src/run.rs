@@ -13,6 +13,7 @@ use rustyzoo::app::{App, Command, Mouse, frame_hash};
 use rustyzoo::camera::Settings;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
+use rustyzoo::framelog::Lines;
 use rustyzoo::intro::{self, Player};
 use rustyzoo::music::Music;
 use rustyzoo::render::MapRenderer;
@@ -538,17 +539,17 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             app
         }
     };
+    let mut lines = Lines::default();
     for (pass, now, due) in passes {
         if let Some(frame) = app.pass(now, &due) {
             png(pass, frame)?;
         }
-        for line in app.log_lines(pass, now) {
-            report.line(format_args!("{line}"));
-        }
+        lines.pass(&app, pass, now, &mut |l| report.line(format_args!("{l}")))?;
         if app.quit() {
             break;
         }
     }
+    lines.finish(&mut |l| report.line(format_args!("{l}")))?;
     report.finish()
 }
 
