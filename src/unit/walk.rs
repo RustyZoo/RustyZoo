@@ -568,57 +568,60 @@ impl Walk<'_> {
 
     /// Whether the unit's tile test accepts tile `t` (10.3), in its strict or its lenient form.
     fn fits(&self, t: usize, lenient: bool) -> bool {
-        let w = &*self.world;
-        let m = &self.mover;
-        let (region, here) = (w.exhibits().region(t), w.exhibits().region(self.here));
-        let off_path = lenient && w.path(self.here).is_none();
-        match self.unit.kind {
-            Kind::Guest => {
-                let grounds = |r: Option<u32>| r == Some(GROUNDS) || r == Some(EXTERIOR);
-                let tank = here.is_some_and(|r| w.tank(r).is_some());
-                w.in_zoo(t)
-                    && self.room(t)
-                    && (w.path(t).is_some() || off_path)
-                    && region.is_some()
-                    && here.is_some()
-                    && !tank
-                    && (!grounds(here) || grounds(region))
-            }
-            Kind::Keeper | Kind::Worker => {
-                w.in_zoo(t)
-                    && (!w.is_water(t) || m.swims)
-                    && (w.tank_at(t).is_none() || m.underwater)
-            }
-            Kind::Guide => w.in_zoo(t) && (w.path(t).is_some() || off_path) && self.room(t),
-            Kind::Animal => {
-                // The terrain mode: the tank mode takes tank tiles, the water mode water tiles, the
-                // land mode neither.
-                let mode = match &self.unit.part {
-                    Part::Animal(a) => a.terrain,
-                    _ => 0,
-                };
-                let ground = match mode {
-                    2 => w.tank_at(t).is_some(),
-                    1 => kind(w, t) == 1,
-                    _ => !w.is_water(t) && w.tank_at(t).is_none(),
-                };
-                region == here
-                    && w.in_zoo(t)
-                    && (w.path(t).is_none() || lenient)
-                    && ground
-                    && self.room(t)
-                    && (0..4).all(|q| w.quadrant(t, q).is_none())
-            }
+        fits(self.unit, self.world, self.here, t, lenient)
+    }
+}
+
+/// Whether the tile test of the unit standing on tile `here` accepts tile `t` (10.3), in its
+/// strict or its lenient form.
+pub fn fits(unit: &Unit, w: &World, here: usize, t: usize, lenient: bool) -> bool {
+    let m = &unit.mover;
+    let (region, from) = (w.exhibits().region(t), w.exhibits().region(here));
+    let off_path = lenient && w.path(here).is_none();
+    match unit.kind {
+        Kind::Guest => {
+            let grounds = |r: Option<u32>| r == Some(GROUNDS) || r == Some(EXTERIOR);
+            let tank = from.is_some_and(|r| w.tank(r).is_some());
+            w.in_zoo(t)
+                && room(w, t)
+                && (w.path(t).is_some() || off_path)
+                && region.is_some()
+                && from.is_some()
+                && !tank
+                && (!grounds(from) || grounds(region))
+        }
+        Kind::Keeper | Kind::Worker => {
+            w.in_zoo(t) && (!w.is_water(t) || m.swims) && (w.tank_at(t).is_none() || m.underwater)
+        }
+        Kind::Guide => w.in_zoo(t) && (w.path(t).is_some() || off_path) && room(w, t),
+        Kind::Animal => {
+            // The terrain mode: the tank mode takes tank tiles, the water mode water tiles, the
+            // land mode neither.
+            let mode = match &unit.part {
+                Part::Animal(a) => a.terrain,
+                _ => 0,
+            };
+            let ground = match mode {
+                2 => w.tank_at(t).is_some(),
+                1 => kind(w, t) == 1,
+                _ => !w.is_water(t) && w.tank_at(t).is_none(),
+            };
+            region == from
+                && w.in_zoo(t)
+                && (w.path(t).is_none() || lenient)
+                && ground
+                && room(w, t)
+                && (0..4).all(|q| w.quadrant(t, q).is_none())
         }
     }
+}
 
-    /// Whether tile `t` has room for a unit: one of its four unit slots is empty or holds an
-    /// entity the unit can walk through.
-    fn room(&self, t: usize) -> bool {
-        let units: Vec<usize> = self.world.units_on(t).collect();
-        units.len() < 4
-            || units
-                .iter()
-                .any(|&e| self.world.shape(e).is_some_and(|s| s.walkable.0))
-    }
+/// Whether tile `t` has room for a unit: one of its four unit slots is empty or holds an entity
+/// the unit can walk through.
+fn room(w: &World, t: usize) -> bool {
+    let units: Vec<usize> = w.units_on(t).collect();
+    units.len() < 4
+        || units
+            .iter()
+            .any(|&e| w.shape(e).is_some_and(|s| s.walkable.0))
 }

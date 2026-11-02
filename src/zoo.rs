@@ -37,6 +37,7 @@
 mod animal;
 mod body;
 pub(crate) mod fresh;
+mod show;
 mod staff;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -46,6 +47,7 @@ pub(crate) use upgrade::NEVER;
 mod write;
 pub(crate) use animal::animal_new;
 pub use animal::{AnimalRecord, Escape};
+pub use show::{Item, ItemState, Script, Show, ShowInfo, Shows, TypeRecord};
 pub use staff::StaffRecord;
 pub use unit::{Behaviour, Level, Target, UnitBlock};
 
@@ -210,10 +212,9 @@ impl Eq for Raw {}
 pub struct Kept {
     /// From the habitat count to the end of the habitat records.
     habitats: Vec<u8>,
-    /// The shows that precede the id counter (from version 97).
-    shows: Vec<u8>,
-    /// The shows after the marketing (versions 89 to 96).
-    late_shows: Vec<u8>,
+    /// Where the has-show byte of each habitat record starts and where its show info ends in
+    /// `habitats` (from version 90).
+    show_at: Vec<Option<(usize, usize)>>,
     /// The cheats (from version 104).
     cheats: Vec<u8>,
     /// The scenario block: its size and content.
@@ -380,6 +381,8 @@ pub struct Zoo {
     pub habitat_info: Vec<HabitatInfo>,
     /// The tank exhibits, in file order.
     pub tanks: Vec<Tank>,
+    /// The show scripts, the id counters and the show info of each habitat (shows 3, 11).
+    pub shows: Shows,
     /// The highest entity id handed out so far.
     pub id_counter: u32,
     /// `width * height` tiles, row by row: the tile in column x and row y is `y * width + x`.
@@ -855,10 +858,14 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let mut habitat_info = Vec::new();
     let mut stats_at = Vec::new();
     let mut names_at = Vec::new();
+    let mut shows = Shows::default();
+    let mut show_at = Vec::new();
     for _ in 0..habitat_count {
-        let (tile, gate, tank, info, at, name) = habitat(r, from.len())?;
+        let (tile, gate, tank, info, at, name, show) = habitat(r, from.len())?;
         stats_at.push(at);
         names_at.push(name);
+        shows.infos.push(show.0);
+        show_at.push(show.1);
         habitat_tiles.push(tile);
         habitat_gates.push(gate);
         habitat_info.push(info);
@@ -868,12 +875,9 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         r.skip(4)?;
     }
     let habitats = taken(from, r);
-    let mut early_shows = Vec::new();
     if v >= 97 {
         *section = "shows";
-        let from = r.data;
-        shows(r)?;
-        early_shows = taken(from, r);
+        shows.read_section(r)?;
     }
 
     *section = "id counter";
@@ -919,8 +923,9 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
 
     *section = "later sections";
     let mut awards = Vec::new();
-    let (view, clocks, names, mut kept) = after_entities(r, money, &mut awards)?;
-    (kept.habitats, kept.shows) = (habitats, early_shows);
+    let (view, clocks, names, mut kept) = after_entities(r, money, &mut awards, &mut shows)?;
+    kept.habitats = habitats;
+    kept.show_at = show_at;
     kept.stats_at = stats_at;
     kept.names_at = names_at;
     Ok(Zoo {
@@ -934,6 +939,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         habitat_gates,
         habitat_info,
         tanks,
+        shows,
         id_counter,
         tiles,
         entities,
@@ -960,6 +966,7 @@ type Habitat = (
     HabitatInfo,
     usize,
     (usize, usize),
+    (Option<ShowInfo>, Option<(usize, usize)>),
 );
 
 /// Reads a habitat record; `size` is the length of the bytes the section started with, and the last
@@ -988,12 +995,13 @@ fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
         serviced,
     };
     let is_tank = v >= 85 && r.u8()? != 0;
+    let show_from = size - r.data.len();
     let has_show = v >= 90 && r.u8()? != 0;
-    if has_show {
-        show_info(r)?;
-    }
+    let show = has_show.then(|| ShowInfo::read(r)).transpose()?;
+    let show_at = (v >= 90).then_some((show_from, size - r.data.len()));
+    let show = (show, show_at);
     if !is_tank {
-        return Ok((tile, (gate, side), None, info, at, (name_at, name_to)));
+        return Ok((tile, (gate, side), None, info, at, (name_at, name_to), show));
     }
     let (height, level) = (r.u32()?, r.u32()?);
     if v >= 88 {
@@ -1019,63 +1027,8 @@ fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
         info,
         at,
         (name_at, name_to),
+        show,
     ))
-}
-
-fn show_info(r: &mut Reader) -> R<()> {
-    let v = r.v;
-    r.skip(8)?;
-    r.skip_list(4)?;
-    if v <= 98 {
-        r.skip_list(8)?;
-    }
-    r.skip_list(if v >= 99 { 6 + 2 + 28 + 8 } else { 6 })?;
-    if v >= 97 {
-        r.skip_list(20)?;
-        r.skip(6)?;
-    }
-    if v >= 105 {
-        r.skip(12)?;
-    }
-    if v >= 106 {
-        r.skip(24)?;
-    }
-    if v >= 97 {
-        // A show: ids and values, its state, and a list of script states.
-        r.skip(16 + 5 + 16)?;
-        r.skip_list(14)?;
-    }
-    if v == 101 {
-        r.skip(1)?;
-    }
-    Ok(())
-}
-
-/// The show scripts (from version 89) and the two id counters (from 97).
-fn shows(r: &mut Reader) -> R<()> {
-    let v = r.v;
-    if v >= 89 {
-        // A script: id, two values and a list of items of at least 53 bytes.
-        for _ in 0..r.count(2 + 4 + 4 + 4)? {
-            r.skip(10)?;
-            for _ in 0..r.count(53)? {
-                r.skip(12)?;
-                for _ in 0..4 {
-                    r.string()?;
-                }
-                r.skip(8 + 1 + 16)?;
-                if v >= 103 {
-                    r.skip(8)?;
-                    r.string()?;
-                    r.string()?;
-                }
-            }
-        }
-    }
-    if v >= 97 {
-        r.skip(4)?;
-    }
-    Ok(())
 }
 
 fn entity(r: &mut Reader) -> R<Entity> {
@@ -1138,6 +1091,7 @@ fn after_entities(
     r: &mut Reader,
     money: &mut Money,
     awards: &mut Vec<i32>,
+    shows: &mut Shows,
 ) -> R<(View, Clocks, BTreeMap<String, u32>, Kept)> {
     let mut clocks = Clocks::default();
     let mut kept = Kept::default();
@@ -1275,9 +1229,7 @@ fn after_entities(
     }
     kept.marketing = taken(from, r);
     if (89..=96).contains(&v) {
-        let from = r.data;
-        shows(r)?;
-        kept.late_shows = taken(from, r);
+        shows.read_section(r)?;
     }
     if v >= 104 {
         let from = r.data;

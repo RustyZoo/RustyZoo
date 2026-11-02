@@ -395,6 +395,15 @@ impl Sim {
         self.events.post(event);
     }
 
+    /// Moves the events the world has posted since the last step into the queue at once, so a save
+    /// or a hash taken before the next step holds them, ahead of that step's own posts
+    /// (guest buildings 6.6 point 4).
+    pub fn absorb(&mut self, world: &mut World) {
+        for event in std::mem::take(&mut world.units.posts) {
+            self.events.post(event);
+        }
+    }
+
     /// Adds a line to the `sim` log.
     pub fn note(&mut self, line: String) {
         self.lines.push(line);
@@ -529,7 +538,9 @@ impl Sim {
         // The units go on with their saved sets; the users come once every guest is made,
         // whatever the order of the file.
         crate::unit::resume::load(world, self.ai_ticks);
+        crate::show::associate(world, cat);
         crate::building::users::restore(world, cat, self.ai_ticks);
+        crate::building::users::seat_loaded(world, cat, &mut self.rng);
     }
 
     /// The clocks, the status and the event queue a file stores (the inverse of

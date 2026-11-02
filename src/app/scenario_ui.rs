@@ -171,6 +171,7 @@ impl App<'_> {
                 gui.popup(popup);
             }
         }
+        self.sim.absorb(&mut game.world);
     }
 
     /// Carries out the availability triggers: with `rewards`, at the start of a game, the ini

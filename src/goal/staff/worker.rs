@@ -21,8 +21,9 @@ const FIX_FILTER: u8 = 27;
 const CLEARING: i32 = 10_000;
 
 impl Cx<'_, '_> {
-    /// 8.1: the worker with no task, or whose task is done, takes the maintenance duties. Before
-    /// anything the countdown of his unreachable lists runs (staff 4.3).
+    /// 8.1: a frightened worker avoids his predator; else the worker with no task, or whose task
+    /// is done, takes the maintenance duties. Before anything the countdown of his unreachable
+    /// lists runs (staff 4.3).
     pub(in crate::goal) fn worker_ladder(&mut self, task: u8, done: bool) {
         let every = (self.who())
             .and_then(|w| number(w, "cClearInvalidListInterval"))
@@ -33,6 +34,9 @@ impl Cx<'_, '_> {
             if s.clear <= 0 {
                 (s.clear, s.lost_tiles) = (every, Vec::new());
             }
+        }
+        if self.staff_fright(task) {
+            return;
         }
         if task == NONE || done {
             self.set_task(MAINT, 4, 0, None);
