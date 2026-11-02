@@ -15,9 +15,10 @@ use crate::world::World;
 /// The type name id of the man: a species whose prey list holds it frightens every guest.
 pub const MAN: i32 = 9503;
 
-/// `cPredatorRadius` of the unit class file, 5 when it has none.
-pub fn radius(cat: &Catalogue) -> i64 {
-    i64::from(cat.predator_radius.unwrap_or(5))
+/// `cPredatorRadius` of the unit class file, 5 when it has none. Everything computed from it is
+/// 32-bit wrapping arithmetic, as in the original (animals 11.8).
+pub fn radius(cat: &Catalogue) -> i32 {
+    cat.predator_radius.unwrap_or(5)
 }
 
 /// The escaped list (animals 11.1), as entity positions: the animals still loose and on the map,
@@ -104,8 +105,8 @@ pub fn find(
     let Some(here) = tile_of(world, at) else {
         return 0;
     };
-    let (w, h) = (i64::from(world.zoo.width), i64::from(world.zoo.height));
-    let xy = |t: usize| (t as i64 % w, t as i64 / w);
+    let (w, h) = (world.zoo.width as i32, world.zoo.height as i32);
+    let xy = |t: usize| (t as i32 % w, t as i32 / w);
     let (tx, ty) = xy(here);
     let region = world.exhibits().region(here);
     let looker = Looker {
@@ -130,16 +131,21 @@ pub fn find(
     }
     let d2 = |t: usize| {
         let (x, y) = xy(t);
-        (x - tx).pow(2) + (y - ty).pow(2)
+        (x - tx)
+            .wrapping_pow(2)
+            .wrapping_add((y - ty).wrapping_pow(2))
     };
     let id = |e: usize| world.zoo.entities[e].common.as_ref().map_or(0, |c| c.id);
-    let (mut best, mut found) = (r.saturating_mul(r), 0);
+    let (mut best, mut found) = (r.wrapping_mul(r), 0);
     match region {
         None => {}
         Some(x) if !looker.grounds => {
-            for cx in (tx - r).max(0)..=(tx + r).min(w - 1) {
-                for cy in (ty - r).max(0)..=(ty + r).min(h - 1) {
-                    let Some(t) = world.tile_index(cx as i32, cy as i32) else {
+            // A bound that overflows leaves the scan empty.
+            let (x0, x1) = (tx.wrapping_sub(r).max(0), tx.wrapping_add(r).min(w - 1));
+            let (y0, y1) = (ty.wrapping_sub(r).max(0), ty.wrapping_add(r).min(h - 1));
+            for cx in x0..=x1 {
+                for cy in y0..=y1 {
+                    let Some(t) = world.tile_index(cx, cy) else {
                         continue;
                     };
                     if world.exhibits().region(t) != Some(x) {

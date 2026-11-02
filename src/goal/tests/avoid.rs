@@ -354,3 +354,84 @@ fn a_frightened_guest_does_not_take_the_leave_task_and_an_afraid_one_runs_out() 
     });
     assert_eq!(w.units.thoughts.of(GUEST)[0].text, 10247);
 }
+
+#[test]
+fn an_afraid_guest_looks_for_the_way_out_at_the_normal_cost() {
+    let cat = cat("");
+    // The entrance ends a path that bends: at the normal cost the way follows it, at the
+    // emergency cost the grass would be cut across.
+    let road = [
+        (10, 10),
+        (11, 10),
+        (12, 10),
+        (13, 10),
+        (14, 10),
+        (14, 9),
+        (14, 8),
+        (14, 7),
+    ];
+    let out = |entrance: (u32, u32)| {
+        let mut w = zoo("lion", (19, 19), false, (10, 10));
+        for (i, t) in road.iter().enumerate().skip(1) {
+            w.zoo
+                .entities
+                .push(entity("paths", "stone", 400 + i as u32, centre(*t), 0));
+        }
+        w.zoo.entrance = entrance;
+        w.units.get_mut(GUEST).unwrap().afraid = true;
+        guest(&mut w).leave = true;
+        w
+    };
+    let mut w = out((14, 7));
+    with(&mut w, &cat, GUEST, &[], |cx| {
+        cx.unit.mover.emergency = true;
+        cx.leave_decide();
+        let on_road = |t: &usize| road.contains(&((*t % 20) as i32, (*t / 20) as i32));
+        assert!(!cx.unit.path.is_empty() && cx.unit.path.iter().all(on_road));
+        // Then the guest runs at the emergency cost.
+        assert!(cx.unit.mover.emergency);
+        assert_eq!(cx.unit.runner.top(), Some("bRunFromPredator"));
+    });
+    // Without an entrance nothing is written.
+    let mut w = out((u32::MAX, u32::MAX));
+    with(&mut w, &cat, GUEST, &[], |cx| {
+        cx.unit.mover.emergency = false;
+        cx.leave_decide();
+        assert!(!cx.unit.mover.emergency);
+    });
+}
+
+#[test]
+fn a_frightened_guest_in_an_exhibit_is_calmed_and_sent_out() {
+    let cat = cat("");
+    let mut w = zoo("lion", (4, 4), true, (3, 3));
+    w.units.get_mut(GUEST).unwrap().frightened = true;
+    with(&mut w, &cat, GUEST, &[], |cx| {
+        assert!(cx.exit_ladder());
+        assert!(!cx.unit.frightened);
+        assert_eq!(cx.record().task, 127);
+    });
+}
+
+#[test]
+fn the_flee_ring_is_32_bit_arithmetic() {
+    let mut cat = cat("");
+    let run = |cat: &Catalogue, lion: i32| {
+        let mut w = zoo("lion", (lion, 10), true, (10, 10));
+        w.units.get_mut(GUEST).unwrap().frightened = true;
+        with(&mut w, cat, GUEST, &[], |cx| {
+            assert!(cx.fright_ladder(NONE));
+            assert_eq!(cx.record().task, AVOID);
+            cx.avoid_decide();
+            cx.record().target.tile
+        })
+    };
+    assert_eq!(run(&cat, 13), Some(10 * 20 + 3));
+    // A radius of i32::MAX - 1 sees a lion next door (4 > 1) but its ring R wraps to a negative
+    // one: no ring holds a tile and the guest walks at random.
+    cat.predator_radius = Some(i32::MAX - 1);
+    assert_eq!(run(&cat, 11), Some(10 * 20 + 7));
+    // So does a negative ring.
+    cat.predator_radius = Some(-5);
+    assert_eq!(run(&cat, 13), Some(10 * 20 + 7));
+}

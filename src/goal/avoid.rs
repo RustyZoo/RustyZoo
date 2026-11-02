@@ -128,15 +128,17 @@ impl Cx<'_, '_> {
         let away = movement::direction(self.world, from, here);
         let width = i64::from(self.world.zoo.width);
         let (x, y) = (here as i64 % width, here as i64 / width);
-        // Beyond the map's side a ring holds no tile.
-        let side = width.max(i64::from(self.world.zoo.height));
-        let mut r = (predator::radius(self.ctx.cat) + 2).min(side);
-        while r >= 1 {
+        // The ring is `cPredatorRadius + 2` in 32 bits; beyond the map's side it holds no tile, and
+        // a negative one is empty. The first ring is looked at before the `R < 1` test.
+        let side = width.max(i64::from(self.world.zoo.height)) as i32;
+        let mut r = predator::radius(self.ctx.cat).wrapping_add(2).min(side);
+        loop {
             let mut cand = VecDeque::new();
-            for ox in -r..=r {
-                let column: Vec<i64> = match ox.abs() == r {
-                    true => (-r..=r).collect(),
-                    false => vec![-r, r],
+            let r64 = i64::from(r);
+            for ox in if r < 0 { 0..0 } else { -r64..r64 + 1 } {
+                let column: Vec<i64> = match ox.abs() == r64 {
+                    true => (-r64..=r64).collect(),
+                    false => vec![-r64, r64],
                 };
                 for oy in column {
                     let p = self.world.tile_index((x + ox) as i32, (y + oy) as i32);
@@ -153,7 +155,10 @@ impl Cx<'_, '_> {
             if cand.into_iter().any(|p| self.path_to(p, false)) {
                 return true;
             }
-            r -= 1;
+            r = r.saturating_sub(1);
+            if r < 1 {
+                break;
+            }
         }
         self.unit.path.clear();
         let (unit, world) = (&mut *self.unit, &mut *self.world);

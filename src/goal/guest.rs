@@ -75,9 +75,9 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// Ladder point 1: a guest standing in an exhibit or a tank (put there, or fallen in) gets the
-    /// exit task, mode 0, and thinks 10568, unless it has the task already or is drowning or
-    /// avoiding. Whether it did.
+    /// Ladder point 1: a guest standing in an exhibit or a tank (put there, or fallen in) loses its
+    /// fright, gets the exit task, mode 0, and thinks 10568, unless it has the task already or is
+    /// drowning or avoiding. Whether it did.
     pub(super) fn exit_ladder(&mut self) -> bool {
         let task = self.record().task;
         let inside = self.tile().and_then(|t| self.world.exhibits().region(t));
@@ -86,6 +86,7 @@ impl Cx<'_, '_> {
         {
             return false;
         }
+        self.unit.frightened = false;
         self.think(10568, None);
         self.set_task(EXIT, 0, 0, None);
         true
@@ -182,31 +183,34 @@ impl Cx<'_, '_> {
     /// 11.6, decide: the frightened flag goes down. Only a goal without a target tile looks for the
     /// exit, and the path is not emptied first. The exit is a path to the entrance tile that may end
     /// short of it (a guest on the entrance asks like any other) and the walk started, a run from
-    /// the predator for an afraid guest, which pays the emergency cost off the paths; the leave
-    /// flag goes down when the destination is the entrance. Without an exit the guest walks at
-    /// random, not forced.
+    /// the predator for an afraid guest, which pays the emergency cost off the paths only once the
+    /// request succeeded (nothing is written without an entrance); the leave flag goes down when
+    /// the destination is the entrance. Without an exit the guest walks at random, not forced.
     pub(super) fn leave_decide(&mut self) {
         self.unit.frightened = false;
         if self.record().target.tile.is_some() {
             return;
         }
-        let entrance = self.entrance();
         let afraid = self.unit.afraid;
-        self.unit.mover.emergency = afraid;
-        let walk = |cx: &mut Self| match afraid {
-            true => cx.walk_set("bRunFromPredator", false, true),
-            false => cx.start_walk(false, false, true),
-        };
-        if let Some(entrance) = entrance
-            && self.path_to(entrance, true)
-            && walk(self)
-        {
-            if self.destination_tile() == Some(entrance)
-                && let Part::Guest(g) = &mut self.unit.part
-            {
-                g.leave = false;
+        if let Some(entrance) = self.entrance() {
+            // The way out is searched at the normal cost; only an afraid guest then pays the
+            // emergency one and runs.
+            self.unit.mover.emergency = false;
+            if self.path_to(entrance, true) {
+                self.unit.mover.emergency = afraid;
+                let started = match afraid {
+                    true => self.walk_set("bRunFromPredator", false, true),
+                    false => self.start_walk(false, false, true),
+                };
+                if started {
+                    if self.destination_tile() == Some(entrance)
+                        && let Part::Guest(g) = &mut self.unit.part
+                    {
+                        g.leave = false;
+                    }
+                    return;
+                }
             }
-            return;
         }
         let (unit, world) = (&mut *self.unit, &mut *self.world);
         if crate::unit::walk::random_walk(unit, world, self.ctx.cat, self.ctx.rng, self.at) {

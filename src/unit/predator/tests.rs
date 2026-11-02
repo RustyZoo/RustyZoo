@@ -187,9 +187,22 @@ fn the_radius_at_zero_negative_and_huge() {
     assert_eq!(look(&w, &cat(Some(0)), GUEST, 50), 0);
     // A negative radius scans nothing but its square still bounds the escaped list.
     assert_eq!(look(&w, &cat(Some(-2)), GUEST, 0), 50);
-    let far = zoo((0, 0), &[(50, "lion", "m", (19, 19), true)]);
-    assert_eq!(look(&far, &cat(Some(i32::MAX)), GUEST, 0), 50);
-    assert_eq!(look(&far, &cat(Some(i32::MIN)), GUEST, 0), 50);
+}
+
+#[test]
+fn the_predator_radius_is_32_bit_arithmetic() {
+    // r * r wraps: from 46341 it is negative, so no new threat is found.
+    let w = zoo((10, 10), &[(50, "lion", "m", (10, 11), true)]);
+    assert_eq!(look(&w, &cat(Some(46340)), GUEST, 0), 50);
+    assert_eq!(look(&w, &cat(Some(46341)), GUEST, 0), 0);
+    // i32::MAX squares to 1: only a threat on the guest's own tile; i32::MIN squares to 0.
+    assert_eq!(look(&w, &cat(Some(i32::MAX)), GUEST, 0), 0);
+    assert_eq!(look(&w, &cat(Some(i32::MIN)), GUEST, 0), 0);
+    let own = zoo((10, 10), &[(50, "lion", "m", (10, 10), true)]);
+    assert_eq!(look(&own, &cat(Some(i32::MAX)), GUEST, 0), 50);
+    assert_eq!(look(&own, &cat(Some(i32::MIN)), GUEST, 0), 0);
+    // Inside an exhibit the same: nothing is found at the huge radius.
     let pen = zoo((2, 2), &[(50, "lion", "m", (4, 4), false)]);
-    assert_eq!(look(&pen, &cat(Some(i32::MAX)), GUEST, 0), 50);
+    assert_eq!(look(&pen, &cat(Some(3)), GUEST, 0), 50);
+    assert_eq!(look(&pen, &cat(Some(i32::MAX)), GUEST, 0), 0);
 }
