@@ -414,6 +414,29 @@ fn a_frightened_guest_in_an_exhibit_is_calmed_and_sent_out() {
 }
 
 #[test]
+fn a_guest_dropped_in_an_exhibit_stops_everything_before_exiting() {
+    let cat = cat("");
+    let mut w = zoo("lion", (4, 4), true, (3, 3));
+    let u = w.units.get_mut(GUEST).unwrap();
+    u.path = vec![23, 24];
+    (u.speed, u.moving, u.walking) = (3, true, true);
+    u.runner.queue("bPending", true, true);
+    u.goal.record.task = 100;
+    u.mover.emergency = true;
+    with(&mut w, &cat, GUEST, &[], |cx| {
+        assert!(cx.exit_ladder());
+        assert!(cx.unit.path.is_empty());
+        assert_eq!(
+            (cx.unit.speed, cx.unit.moving, cx.unit.walking),
+            (0, false, false)
+        );
+        assert_eq!(cx.unit.runner.queued(), None);
+        assert!(!cx.unit.mover.emergency);
+        assert_eq!(cx.record().task, 127);
+    });
+}
+
+#[test]
 fn the_flee_ring_is_32_bit_arithmetic() {
     let mut cat = cat("");
     let run = |cat: &Catalogue, lion: i32| {
