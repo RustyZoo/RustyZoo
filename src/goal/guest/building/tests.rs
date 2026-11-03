@@ -12,6 +12,8 @@ use crate::unit::{Ctx, Unit};
 use crate::world::World;
 use std::sync::Arc;
 
+mod placed;
+
 const STAND: &str = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=2\ncTimeInside=3\n\
     [Characteristics/Floats]\ncDefaultCost=2\ncPriceFactor=3\n[Sells]\nhotdog\n\
     [Satisfies]\nbuilding\nfood\n[slots]\nname=slot\n[slot]\nslotpos=-16\nslotpos=48\n\

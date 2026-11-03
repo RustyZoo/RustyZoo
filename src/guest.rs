@@ -318,6 +318,11 @@ pub struct Guest {
 const RETURN_MASK: u32 = 0x7_ffff;
 
 impl Guest {
+    /// Whether hunger, thirst, energy or bathroom is at or above its threshold (guests 8).
+    pub fn pressing(&self, k: &Keys) -> bool {
+        (0..4).any(|i| self.values[1 + i] >= k.needs[i][1])
+    }
+
     /// What a record stores of this guest, `base` being the one it was loaded with or made as, with
     /// the unit's wandered and afraid flags: the recovering bit of the return word and a favourite
     /// or arrival date that did not change are kept as they were. The guest follows a guide exactly

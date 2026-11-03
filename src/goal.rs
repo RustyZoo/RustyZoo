@@ -23,12 +23,15 @@ use crate::zoo::Entity;
 
 mod animal;
 mod avoid;
+mod dropped;
 mod guest;
+mod recover;
 mod staff;
 #[cfg(test)]
 mod tests;
 
 pub use animal::{DRINK, KEEPER_FOOD, SURFACE};
+pub use dropped::{dropped, picked_up};
 pub use guest::{IN_BUILDING, LEAVE};
 pub use staff::release_group;
 
@@ -73,6 +76,7 @@ pub const CHASE: u8 = 116;
 pub const AVOID: u8 = 117;
 pub const RETURN_TO_BUILDING: u8 = 130;
 pub const RECOVER: u8 = 131;
+pub const DROWN: u8 = 132;
 pub const GO_TO_SHOW: u8 = 133;
 pub const RETURN_FROM_SHOW: u8 = 134;
 /// The tasks of the building chain, 0x66 to 0x6a.
@@ -251,6 +255,8 @@ pub enum Goal {
     Sick,
     /// 0x75 of a guest or a staff member: run from a predator (11.11).
     Avoid,
+    /// The recover task (131) of a guest: climb out of the water (tank fauna 13).
+    Recover,
 }
 
 impl Goal {
@@ -287,6 +293,7 @@ impl Goal {
             (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
             (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
             (SICK, Kind::Guest) => Some(Goal::Sick),
+            (RECOVER, Kind::Guest) => Some(Goal::Recover),
             (AVOID, Kind::Animal) => None,
             (AVOID, _) => Some(Goal::Avoid),
             _ => None,
@@ -322,6 +329,7 @@ impl Goal {
             Goal::Eating => EATING_STANDING,
             Goal::Sick => SICK,
             Goal::Avoid => AVOID,
+            Goal::Recover => RECOVER,
         }
     }
 
@@ -338,6 +346,7 @@ impl Goal {
             Goal::Capture => cx.capture_init(),
             Goal::Eating => cx.eating_init(),
             Goal::Sick => cx.sick_init(),
+            Goal::Recover => cx.recover_init(),
             Goal::Surface => cx.surface_init(),
             Goal::EnterTank => cx.enter_init(),
             Goal::Leave => cx.leave_init(),
@@ -374,6 +383,7 @@ impl Goal {
         match self {
             Goal::Leave => return cx.leave_check_done(),
             Goal::Avoid => return cx.avoid_check_done(),
+            Goal::Recover => return cx.recover_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
             Goal::Scenery => return cx.scenery_check_done(),
             Goal::DoScenery => return cx.do_scenery_check_done(),
@@ -411,6 +421,7 @@ impl Goal {
             Goal::Maint => cx.maint_decide(),
             Goal::Leave => cx.leave_decide(),
             Goal::Avoid => cx.avoid_decide(),
+            Goal::Recover => cx.recover_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Surface => cx.surface_decide(),
             Goal::Site => cx.site_decide(),
@@ -455,6 +466,7 @@ impl Goal {
             Goal::Eating => cx.reset(),
             Goal::Sick => cx.sick_done(),
             Goal::Avoid => cx.avoid_exit(),
+            Goal::Recover => cx.reset(),
             Goal::Base | Goal::Site | Goal::Maint => {}
         }
     }
@@ -542,6 +554,8 @@ pub struct Goals {
     /// A guest made a random walk and stands until a draw or its status tick lets it walk again
     /// (7.3); the status tick lowers it (`guest::checks`).
     pub wandered: bool,
+    /// The tries a guest has left to climb out of the water (tank fauna 13); not saved.
+    tries: Option<u8>,
 }
 
 /// The state hash of a run reads this text: `held` is not in it (it follows from the objects), so

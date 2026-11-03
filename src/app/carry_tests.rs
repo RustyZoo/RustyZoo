@@ -408,6 +408,69 @@ fn a_selection_and_a_pick_up_play_the_sound_of_a_type_that_has_one() {
 }
 
 #[test]
+fn a_unit_put_down_plays_the_place_sound_of_its_type_else_place_wav() {
+    with_game("drop-sounds", "", |s| {
+        for side in [0, 2, 4, 6] {
+            s.fence(1, 20, 20, side);
+        }
+        let zebra = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        let keeper = s.add(12, 19 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        let heard = |s: &Session| {
+            let sounds = s.app.unit_sounds().iter();
+            let all = sounds.map(|u| (u.id, u.file.clone()));
+            (all.collect::<Vec<_>>(), s.app.sounds().contains(&"place"))
+        };
+        let (pen, outside) = (s.at(20, 20, 32, 32), s.at(19, 20, 32, 32));
+        // The zebra: its own place sound at the drop, not `place.wav`.
+        s.click(pen);
+        s.click(pen);
+        s.click(pen);
+        let want = (zebra, "animals/zebra/zplace.wav".to_string());
+        assert_eq!(heard(s), (vec![want], false));
+        // The keeper has none: `place.wav` alone.
+        for _ in 0..3 {
+            s.click(outside);
+        }
+        assert_eq!((heard(s), tile(s, keeper)), ((vec![], true), (19, 20)));
+    });
+}
+
+#[test]
+fn a_keeper_put_down_or_put_back_in_an_exhibit_starts_its_duties_and_a_pick_up_ends_them() {
+    // The release in the pen, Escape (put back in the pen), the release on the grounds.
+    for (name, ends, duties) in [
+        ("drop", 0, true),
+        ("putback", 1, true),
+        ("grounds", 2, false),
+    ] {
+        with_game(&format!("drop-duties-{name}"), "", |s| {
+            for side in [0, 2, 4, 6] {
+                s.fence(1, 20, 20, side);
+            }
+            let keeper = s.add(12, 20 * 64 + 32, 20 * 64 + 32, 0);
+            s.pass(&[]);
+            let task = |s: &Session| unit(s, keeper).goal.record.task;
+            let pen = s.at(20, 20, 32, 32);
+            // On its way somewhere when it is picked up.
+            let game = s.app.game.as_mut().unwrap();
+            game.world.units.get_mut(keeper).unwrap().goal.record.task = crate::goal::HABITAT;
+            s.click(pen);
+            s.click(pen);
+            assert!(unit(s, keeper).carried);
+            assert_eq!(task(s), crate::goal::NONE);
+            match ends {
+                0 => s.click(pen),
+                1 => s.pass(&[Command::Key(Key::Escape, false, false)]),
+                _ => s.click(s.at(19, 20, 32, 32)),
+            };
+            assert!(!unit(s, keeper).carried);
+            assert_eq!(task(s) == crate::goal::DUTIES, duties, "{name}");
+        });
+    }
+}
+
+#[test]
 fn a_tour_guide_picked_up_releases_its_followers_at_once_with_one_draw_each() {
     with_game("guide-pick-up", "", |s| {
         let guide = s.add(19, 21 * 64 + 32, 20 * 64 + 32, 0);
