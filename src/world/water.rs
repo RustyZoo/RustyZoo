@@ -48,6 +48,9 @@ impl World {
                     .world_note(format!("water {id} level {level} purity {purity}"));
             }
             self.events.push(super::Event::Tank(id));
+            if (now.level, now.height) != (before.level, before.height) && !self.wet.contains(&id) {
+                self.wet.push(id);
+            }
             self.sync_tanks();
             // The top of the walls moved or the fill state changed: the links (tank fauna 12.2,
             // exhibits and money 3.11). A new height sets the escape check flag;
@@ -67,6 +70,11 @@ impl World {
                 }
             }
         }
+    }
+
+    /// The tanks whose water level or wall height moved since the last call.
+    pub fn take_wet(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.wet)
     }
 
     /// An animal's dung lowers the purity of the water of tank `id` (animals-needs 8.1).

@@ -545,6 +545,8 @@ impl Sim {
         crate::show::associate(world, cat);
         crate::building::users::restore(world, cat, self.ai_ticks);
         crate::building::users::seat_loaded(world, cat, &mut self.rng);
+        // The dead state is decided with no user put out: a zoo file is being loaded.
+        crate::building::dead::decide_all(world, cat);
     }
 
     /// The clocks, the status and the event queue a file stores (the inverse of
@@ -780,6 +782,8 @@ impl Sim {
             }
         }
         let water_moved = world.step_water();
+        // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
+        crate::building::dead::wet_changed(world, cat);
         world.decay_water(step);
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;
