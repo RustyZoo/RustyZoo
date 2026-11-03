@@ -210,9 +210,8 @@ impl PartialEq for Raw {
 impl Eq for Raw {}
 
 /// The bytes of the sections the engine does not model, as read (save games 7): written back
-/// unchanged, so they never make two zoos differ. The offsets tell where the modelled values lie in
-/// `finances`.
-#[derive(Debug, Clone, Default)]
+/// unchanged. The offsets tell where the modelled values lie in `finances`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Kept {
     /// From the habitat count to the end of the habitat records.
     habitats: Vec<u8>,
@@ -236,14 +235,6 @@ pub struct Kept {
     /// The marketing word (from version 60).
     marketing: Vec<u8>,
 }
-
-impl PartialEq for Kept {
-    fn eq(&self, _: &Kept) -> bool {
-        true
-    }
-}
-
-impl Eq for Kept {}
 
 /// What a guest building record stores of its figures (zoo format 6.9, guest buildings 4): the
 /// guests and the income this month, last month and since construction, the upkeep paid since
