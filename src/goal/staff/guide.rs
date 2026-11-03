@@ -20,6 +20,16 @@ use crate::staff::Crowd;
 use crate::unit::{Ctx, Kind, Part, Unit, movement};
 use crate::world::World;
 
+/// The job the log names for a guide's task: `staff job <id> <job>` (tour guide 18).
+pub(in crate::goal) fn guide_job(task: u8) -> Option<&'static str> {
+    match task {
+        LEG => Some("va"),
+        TALK => Some("speak"),
+        RANDOM => Some("random"),
+        _ => None,
+    }
+}
+
 /// The tasks that keep a guest from following (guests visit 10.1): the building chain, finding
 /// food and eating, leaving, avoiding a predator, being sick and the way back to a building.
 fn busy(task: u8) -> bool {

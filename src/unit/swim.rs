@@ -41,6 +41,10 @@ fn diver(unit: &Unit) -> bool {
 /// below the surface, unless its type stays at the surface, else it is put on the surface (3); a
 /// dry tank holds it on the floor. A change of mode restarts its animation.
 pub fn check(unit: &mut Unit, world: &mut World, at: usize) {
+    // A helicopter's movement mode is always the free move (staff 7.11.1 point 1).
+    if unit.kind == Kind::Heli {
+        return;
+    }
     let Some(c) = world.zoo.entities.get(at).and_then(|e| e.common.as_ref()) else {
         return;
     };

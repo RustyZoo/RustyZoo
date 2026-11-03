@@ -173,6 +173,7 @@ pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
             .map_or(2, |c| c.movement_mode);
         let done = match mode {
             3 => swim::progress(unit, world, distance, at),
+            1 if unit.kind == Kind::Heli => crate::staff::heli::fly(unit, world, distance, at),
             1 => fly(unit, world, distance, at),
             _ => progress(unit, world, distance, at),
         };
@@ -356,7 +357,7 @@ pub fn call(
     // The climb of a ladder is a free move to the destination point; its second argument is the
     // speed (tank staff 3).
     if let (Gait::Fly(speed), Some(1)) = (gait, mode_of(world, at)) {
-        return start_fly(unit, world, data, cat, at, speed, *reverse);
+        return start_fly(unit, world, data, cat, at, (speed, *target), *reverse);
     }
     // 1: a new move. A unit with a destination to go to waits for the path its goal finds; one
     // with none, or standing in it, walks at random.
@@ -453,10 +454,16 @@ fn start_fly(
     data: &dyn Data,
     cat: &Catalogue,
     at: usize,
-    speed: &Number,
+    (speed, target): (&Number, Target),
     reverse: bool,
 ) -> Flow {
-    if unit.destination.is_none() || !animate(unit, world, data, at, Some(("climb", 100))) {
+    // The animation is the call's first argument (a helicopter flies in `fly` and `level`).
+    let name = match target {
+        Target::Fly => "fly",
+        Target::Level => "level",
+        _ => "climb",
+    };
+    if unit.destination.is_none() || !animate(unit, world, data, at, Some((name, 100))) {
         return Flow::Failed;
     }
     if reverse {

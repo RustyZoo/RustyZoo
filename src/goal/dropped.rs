@@ -84,7 +84,7 @@ impl Cx<'_, '_> {
                 self.keeper_dropped();
             }
             Kind::Worker | Kind::Guide => self.forget_unreached(),
-            Kind::Animal => {}
+            Kind::Animal | Kind::Heli => {}
         }
     }
 

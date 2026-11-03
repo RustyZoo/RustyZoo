@@ -4,7 +4,7 @@
 
 use super::{Kind, facing, place};
 use crate::entity::Catalogue;
-use crate::goal::USE;
+use crate::goal::{Record, USE};
 use crate::place::bulldozer::type_of;
 use crate::sim::Rng;
 use crate::world::{Shape, World};
@@ -74,6 +74,18 @@ pub fn births(
         let Some(id) = world.add(heli, shape) else {
             continue;
         };
+        if let Some(at) = world.find(id) {
+            crate::staff::make(world, cat, rng, at);
+        }
+        // It waits at the base, as the block it stores says.
+        let now = world.units.ai_ticks;
+        if let Some(u) = world.units.get_mut(id) {
+            u.goal.record = Record {
+                task: USE,
+                start: now,
+                ..Record::default()
+            };
+        }
         let price = kind.price;
         let c = world.zoo.entities[at].common.as_mut();
         if let Some(r) = c.map(|c| {

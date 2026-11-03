@@ -100,6 +100,12 @@ impl Units {
                     if s.captured != 0 {
                         h.word(s.captured);
                     }
+                    if u.kind == Kind::Heli {
+                        let t = &s.heli;
+                        h.word(t.base);
+                        h.word(u32::from(t.flying) | (t.dir as u32) << 1);
+                        h.word(t.level().map_or(u32::MAX, |l| l as u32));
+                    }
                 }
                 Part::Guest(g) => {
                     g.values.iter().for_each(|&v| h.word(v as u32));

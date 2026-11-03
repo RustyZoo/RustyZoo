@@ -94,10 +94,11 @@ fn the_table_holds_the_units_of_the_list_in_list_order() {
             (7, Kind::Guest),
             (8, Kind::Keeper),
             (9, Kind::Worker),
-            (10, Kind::Guide)
+            (10, Kind::Guide),
+            (12, Kind::Heli)
         ]
     );
-    assert_eq!(w.units.len(), 5);
+    assert_eq!(w.units.len(), 6);
     assert_eq!(
         w.units.take_lines(),
         [
@@ -105,7 +106,8 @@ fn the_table_holds_the_units_of_the_list_in_list_order() {
             "add 7 guest 1,1",
             "add 8 keeper 1,1",
             "add 9 worker 1,1",
-            "add 10 guide 1,1"
+            "add 10 guide 1,1",
+            "add 12 heli 1,1"
         ]
     );
     assert!(w.units.get(6).is_none() && w.units.get(7).is_some());
