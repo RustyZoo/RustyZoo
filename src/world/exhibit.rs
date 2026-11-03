@@ -333,301 +333,13 @@ impl World {
     }
 
     /// Whether the exhibit gate entity `gate` has gone from the map.
-    fn missing(&self, e: &Exhibit) -> bool {
+    pub(super) fn missing(&self, e: &Exhibit) -> bool {
         e.gate.is_some_and(|g| self.find(g).is_none())
-    }
-
-    /// The exhibits after the edit of an exhibit fence piece on side `d` of tile `a` (`hint`; none
-    /// for an undo, which also makes `quiet`: no gate is chosen and the counter stays).
-    #[allow(clippy::too_many_lines)] // #1045
-    pub(super) fn settle(&mut self, hint: Option<(usize, usize)>, quiet: bool) {
-        let old = std::mem::take(&mut self.exhibits);
-        let parts: Vec<Part> = exhibit::parts(self)
-            .into_iter()
-            .filter(|p| !p.grounds)
-            .collect();
-        let ra = hint.and_then(|(a, _)| old.region(a));
-        let rb = hint
-            .and_then(|(a, d)| self.neighbour(a, d))
-            .and_then(|b| old.region(b));
-        // The old exhibits each part holds tiles of, A's side first.
-        let olds: Vec<Vec<u32>> = parts
-            .iter()
-            .map(|p| {
-                let mut v: Vec<u32> = p
-                    .tiles
-                    .iter()
-                    .filter_map(|&t| old.region(t))
-                    .filter(|&r| r != GROUNDS && r != EXTERIOR)
-                    .collect();
-                v.sort_unstable();
-                v.dedup();
-                v.sort_by_key(|&x| match Some(x) {
-                    s if s == ra => 0,
-                    s if s == rb => 1,
-                    _ => 2,
-                });
-                v
-            })
-            .collect();
-        // Merges: each part with several old exhibits keeps the survivor.
-        let mut winner: Vec<Option<u32>> = Vec::new();
-        let mut lost: Vec<(u32, u32)> = Vec::new();
-        for list in &olds {
-            let mut it = list.iter().copied();
-            let mut w = it.next();
-            for y in it {
-                let x = w.unwrap_or(y);
-                let kept = self.survivor(&old, x, y);
-                lost.push((if kept == x { y } else { x }, kept));
-                w = Some(kept);
-            }
-            winner.push(w);
-        }
-        // Splits: an old exhibit held by several parts stays in one of them. The parts that leave
-        // it remember where they come from, and a tank that kept a part has its walls to bring
-        // to its side again.
-        let mut split_from: HashMap<usize, u32> = HashMap::new();
-        let mut split_land: Vec<Vec<usize>> = Vec::new();
-        let mut split_kept: Vec<u32> = Vec::new();
-        for e in old.list() {
-            let held: Vec<usize> = (0..parts.len())
-                .filter(|&i| winner[i] == Some(e.id))
-                .collect();
-            if held.len() < 2 {
-                continue;
-            }
-            let gate = e.gate.and_then(|g| self.slot_of(self.find(g)?));
-            let side = gate.map(|(t, d)| match old.region(t) == Some(e.id) {
-                true => t,
-                false => self.neighbour(t, d).unwrap_or(t),
-            });
-            let a = hint.map(|h| h.0).filter(|_| ra == Some(e.id));
-            let keeper = [side, a]
-                .into_iter()
-                .flatten()
-                .find_map(|t| held.iter().copied().find(|&i| parts[i].tiles.contains(&t)))
-                .unwrap_or(held[0]);
-            for &i in held.iter().filter(|&&i| i != keeper) {
-                winner[i] = None;
-                split_from.insert(i, e.id);
-            }
-            split_kept.extend(e.tank.map(|_| e.id));
-            if e.tank.is_none() {
-                split_land.push(held);
-            }
-            self.events.push(Event::Split(e.id));
-        }
-        // The kind of each part: a tank (a show tank or not) or land.
-        let other = |t: usize| {
-            old.region(t)
-                .and_then(|r| old.get(r))
-                .is_some_and(|e| e.tank.is_some())
-        };
-        let kinds: Vec<Option<bool>> = parts
-            .iter()
-            .map(|p| self.tank_test(&p.tiles, &other, quiet))
-            .collect();
-        // A land exhibit cut in two with a tank for a part names no land part (3.2 step 4): the
-        // tank is named when it is made.
-        let silent: Vec<usize> = (split_land.iter())
-            .filter(|held| held.iter().any(|&i| kinds[i].is_some()))
-            .flatten()
-            .copied()
-            .collect();
-        // The morph: an exhibit whose kind no longer fits its walls is replaced by a new one of
-        // the other kind on the same tiles (3.9).
-        let mut morphed: HashMap<usize, u32> = HashMap::new();
-        for (i, w) in winner.iter_mut().enumerate() {
-            let tank = |id: u32| old.get(id).is_some_and(|e| e.tank.is_some());
-            if let Some(id) = w.filter(|&id| tank(id) != kinds[i].is_some()) {
-                morphed.insert(i, id);
-                *w = None;
-            }
-        }
-        // The new list.
-        let mut next = old.blank(self.zoo.tiles.len());
-        let mut fresh = Vec::new();
-        let mut tanks = Vec::new();
-        let mut starts: Vec<(u32, Pair)> = Vec::new();
-        let mut regate = Vec::new();
-        let mut kept_ids = HashSet::new();
-        // The exhibits the original resizes: the ones made and the ones whose region changed.
-        let mut resized: Vec<u32> = Vec::new();
-        // The tiles beside the piece: the fill of a region that changed starts at the one it
-        // holds (3.1).
-        let beside: Vec<usize> = hint
-            .into_iter()
-            .flat_map(|(a, d)| [Some(a), self.neighbour(a, d)])
-            .flatten()
-            .collect();
-        for (i, ((part, w), kind)) in parts.iter().zip(&winner).zip(&kinds).enumerate() {
-            let filled = |from: Option<usize>, was: Option<u32>| {
-                let start = from.or_else(|| {
-                    let held = |t: &usize| part.tiles.contains(t);
-                    let mine = |t: &usize| was.is_some() && old.region(*t) == was;
-                    let side = beside.iter().copied().filter(held);
-                    side.clone().find(mine).or(side.clone().next())
-                });
-                let start = start.or(part.tiles.iter().copied().min());
-                Part {
-                    tiles: start.map_or(Vec::new(), |s| exhibit::fill(self, s)),
-                    grounds: false,
-                }
-            };
-            match w.and_then(|id| old.get(id)) {
-                Some(e) => {
-                    kept_ids.insert(e.id);
-                    let same = e.order.len() == part.tiles.len()
-                        && part.tiles.iter().all(|&t| old.region(t) == Some(e.id));
-                    if !same {
-                        resized.push(e.id);
-                    }
-                    let part = match same {
-                        true => &Part {
-                            tiles: e.order.clone(),
-                            grounds: false,
-                        },
-                        false => &filled(None, Some(e.id)),
-                    };
-                    next.keep(e.clone(), part);
-                    if self.missing(e) {
-                        regate.push(e.id);
-                    }
-                }
-                None => {
-                    let merged = (olds[i].len() > 1)
-                        .then(|| morphed.get(&i).map(|&x| filled(None, Some(x)).tiles))
-                        .flatten();
-                    let start = morphed
-                        .get(&i)
-                        .and_then(|&x| self.morph_start(&old, x, part, &beside, merged.as_deref()));
-                    let part = &filled(start.map(|s| s.0), None);
-                    // The land part of such a cut is the exhibit's own: its name, no number.
-                    let silent = kind.is_none() && silent.contains(&i);
-                    let number = next.counter;
-                    next.counter += u32::from(!quiet && !silent);
-                    let word = &self.words[kind.map_or(0, |show| 1 + usize::from(show))];
-                    let name = match split_from.get(&i).and_then(|&x| old.get(x)) {
-                        Some(x) if silent => x.name.clone(),
-                        _ => format!("{word} {number}"),
-                    };
-                    let id = next.add(part, name);
-                    fresh.push(id);
-                    resized.push(id);
-                    match kind {
-                        // A tank has its ground, walls and objects to deal with before its name.
-                        Some(_) => {
-                            let from = split_from.get(&i).and_then(|&x| old.get(x));
-                            tanks.push((id, from.and_then(|e| e.tank)));
-                        }
-                        None => self.events.push(Event::New {
-                            id,
-                            ask: !quiet && !silent,
-                        }),
-                    }
-                    if let Some(start) = start {
-                        starts.push((id, start));
-                    }
-                }
-            }
-        }
-        next.list_mut().sort_by_key(|e| e.id);
-        // The exhibits that are gone: their gate is a fence again.
-        let into: HashMap<u32, u32> = lost.iter().copied().collect();
-        for e in old.list().iter().filter(|e| !kept_ids.contains(&e.id)) {
-            self.units.thoughts.drop_exhibit(e.id);
-            if let Some(at) = e.gate.and_then(|g| self.find(g)) {
-                self.make_fence(at);
-            }
-            self.events.push(Event::Left(e.order.clone()));
-            self.events.push(match into.get(&e.id) {
-                Some(&kept) => Event::Merged { kept, gone: e.id },
-                None => Event::Removed(e.id),
-            });
-        }
-        next.exterior(self);
-        // A morph refills the region across its start pair from that tile (3.1).
-        for &(id, (_, out)) in &starts {
-            if let Some(r) = next
-                .region(out)
-                .filter(|&r| r != GROUNDS && r != EXTERIOR && r != id)
-            {
-                next.reorder(r, exhibit::fill(self, out));
-                if !resized.contains(&r) {
-                    resized.push(r);
-                }
-            }
-        }
-        // The tiles of the tanks that are gone, which keep their ground as sand (3.9).
-        let gone: Vec<usize> = old
-            .list()
-            .iter()
-            .filter(|e| e.tank.is_some() && !kept_ids.contains(&e.id) && !quiet)
-            .flat_map(|e| (0..self.zoo.tiles.len()).filter(|&t| old.region(t) == Some(e.id)))
-            .collect();
-        self.exhibits = next;
-        self.resize_areas(&resized);
-        self.edits += 1;
-        let mut changed = self.retank(quiet);
-        if !quiet {
-            self.paint(&gone, false);
-            changed.extend(lost.iter().map(|l| l.1).chain(split_kept.iter().copied()));
-            self.floors(&changed);
-        }
-        for (id, inherited) in tanks {
-            self.make_tank(id, inherited, !quiet);
-        }
-        if !quiet && !split_kept.is_empty() {
-            for &id in &split_kept {
-                self.rewall(id);
-            }
-            let mut changed = self.retank(false);
-            changed.extend(split_kept);
-            self.floors(&changed);
-        }
-        for &id in &regate {
-            if let Some(e) = self.exhibits.get_mut(id) {
-                e.gate = None;
-            }
-        }
-        if !quiet {
-            self.merge_tanks(&old, &lost);
-        }
-        self.relink();
-        let Some((a, d)) = hint.filter(|_| !quiet) else {
-            return;
-        };
-        let Some(b) = self.neighbour(a, d) else {
-            return;
-        };
-        for id in fresh {
-            let start = starts.iter().find(|s| s.0 == id).map_or_else(
-                || match self.exhibits.region(b) == Some(id) {
-                    true => (b, a),
-                    false => (a, b),
-                },
-                |s| s.1,
-            );
-            self.waiting.push((id, start, a));
-        }
-        // The gate of an exhibit went but its line is still closed: a new one on that line.
-        if self.closed(a, d) {
-            for id in regate {
-                let line = [(a, b), (b, a)];
-                if let Some(&(me, other)) = line
-                    .iter()
-                    .find(|(me, _)| self.exhibits.region(*me) == Some(id))
-                {
-                    self.regate(id, me, other);
-                }
-            }
-        }
     }
 
     /// The water of the tanks that merged (3.10): `lost` pairs each exhibit that went with the one
     /// that took it; a merged tank without a gate keeps its own values.
-    fn merge_tanks(&mut self, old: &Exhibits, lost: &[(u32, u32)]) {
+    pub(super) fn merge_tanks(&mut self, old: &Exhibits, lost: &[(u32, u32)]) {
         let mut now: HashMap<u32, (Tank, usize)> = HashMap::new();
         for &(gone, kept) in lost {
             let value = |now: &HashMap<u32, (Tank, usize)>, id: u32| {
@@ -682,7 +394,7 @@ impl World {
     /// slot passes when it is a show wall or the line holds a second piece (not while `strict`,
     /// an undo); a line with a piece across only, when that is a show wall or stands on a tile
     /// of another tank.
-    fn tank_test(
+    pub(super) fn tank_test(
         &self,
         tiles: &[usize],
         other: &dyn Fn(usize) -> bool,
@@ -842,7 +554,7 @@ impl World {
     /// old exhibit's tile on the changed line `beside` and the tile across, or after a merge the
     /// first pair of the boundary list of the survivor's new tile list `merged`, stepped by the
     /// gate walk while the tile outside is not in the zoo.
-    fn morph_start(
+    pub(super) fn morph_start(
         &self,
         old: &Exhibits,
         x: u32,
@@ -883,7 +595,7 @@ impl World {
 
     /// Which of two exhibits that became one stays (exhibits and money 3.3); a tank that joins a
     /// land exhibit goes into it whatever the rest says.
-    fn survivor(&self, old: &Exhibits, x: u32, y: u32) -> u32 {
+    pub(super) fn survivor(&self, old: &Exhibits, x: u32, y: u32) -> u32 {
         let (ex, ey) = (old.get(x), old.get(y));
         let tank = |e: Option<&Exhibit>| e.is_some_and(|e| e.tank.is_some());
         if tank(ex) != tank(ey) {
@@ -928,7 +640,7 @@ impl World {
     }
 
     /// Exhibit `id` lost its gate on the line between its tile `me` and `other`.
-    fn regate(&mut self, id: u32, me: usize, other: usize) {
+    pub(super) fn regate(&mut self, id: u32, me: usize, other: usize) {
         if self.exhibits.region(other) == Some(GROUNDS) {
             // The piece left on the line is the gate, whichever of the two slots it is on.
             let slot =

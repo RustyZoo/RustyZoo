@@ -12,6 +12,5 @@ src/ui/interface/widgets.rs 1010
 src/ui/layout.rs 1006
 src/unit.rs 1211
 src/vfs.rs 1962
-src/world/exhibit.rs 1136
 src/world.rs 1596
 src/zoo.rs 1245

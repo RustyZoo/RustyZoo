@@ -24,6 +24,7 @@ mod edges;
 mod exhibit;
 mod filter;
 mod save;
+mod settle;
 mod tank;
 mod water;
 mod wear;
