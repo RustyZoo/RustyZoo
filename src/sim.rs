@@ -49,22 +49,6 @@ use crate::unit;
 use crate::world::World;
 use crate::zoo::Clocks;
 
-/// Books what the units were paid during the step, list after list, into the accounts.
-fn book_income(units: &mut unit::Units, money: &mut Money) {
-    let lists = [
-        (std::mem::take(&mut units.donated), money::DONATIONS),
-        (std::mem::take(&mut units.concessions), money::CONCESSIONS),
-        (std::mem::take(&mut units.show_income), money::SHOW_INCOME),
-        (
-            std::mem::take(&mut units.recycled),
-            money::CONSTRUCTION_REFUND,
-        ),
-    ];
-    for (list, category) in lists {
-        list.into_iter().for_each(|d| money.refund(category, d));
-    }
-}
-
 /// The `[AI]` keys of the ini file that change the game, with the original's fallbacks
 /// (simulation 9.1). Those that belong to the path finder, the habitat manager or the goals are
 /// read here once and used by them.
@@ -743,17 +727,7 @@ impl Sim {
             self.events.post(event);
         }
         self.events.age();
-        for (category, cost) in std::mem::take(&mut world.units.spent) {
-            money.spend(category, cost);
-        }
-        book_income(&mut world.units, money);
-        for _ in 0..std::mem::take(&mut world.units.guests_gone) {
-            money.count(money::GUESTS_GONE);
-        }
-        for _ in 0..std::mem::take(&mut world.units.members_joined) {
-            money.count(money::MEMBERS);
-            money.count(money::MEMBERS_JOINED);
-        }
+        settle_money(world, money);
         // The world manager: the zoo grounds' timers, then the exhibits' timers and ratings, the
         // water of the tanks, the world clock.
         let mut grounds = std::mem::take(&mut world.exhibits_mut().grounds);
@@ -889,5 +863,31 @@ impl Sim {
         let (say, log) = (&mut self.messages, &mut self.lines);
         self.status.donation(&mut self.rng, money, say, log);
         self.status.bars(step)
+    }
+}
+
+/// Moves the money the units collected in this step into the books.
+fn settle_money(world: &mut World, money: &mut Money) {
+    for (category, cost) in std::mem::take(&mut world.units.spent) {
+        money.spend(category, cost);
+    }
+    for d in std::mem::take(&mut world.units.donated) {
+        money.refund(money::DONATIONS, d);
+    }
+    for d in std::mem::take(&mut world.units.concessions) {
+        money.refund(money::CONCESSIONS, d);
+    }
+    for d in std::mem::take(&mut world.units.show_income) {
+        money.refund(money::SHOW_INCOME, d);
+    }
+    for d in std::mem::take(&mut world.units.recycled) {
+        money.refund(money::CONSTRUCTION_REFUND, d);
+    }
+    for _ in 0..std::mem::take(&mut world.units.guests_gone) {
+        money.count(money::GUESTS_GONE);
+    }
+    for _ in 0..std::mem::take(&mut world.units.members_joined) {
+        money.count(money::MEMBERS);
+        money.count(money::MEMBERS_JOINED);
     }
 }
