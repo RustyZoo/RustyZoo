@@ -1,15 +1,17 @@
 //! The escape walk of an animal (animals 11.3): how it crosses the fence on its way out, what it
-//! does on the tiles of the walk, and the set of an escaped animal (behaviours 6.4 point 1). The
-//! search that starts the walk is the random walk's pick (`crate::unit::walk`).
-//!
-//! Not here yet: the rampage sets and the rampage's effects, the break sound.
+//! does on the tiles of the walk, the sets of an escaped or rampaging animal (behaviours 6.4
+//! points 1 and 2) and what a rampage does to the scenery (animals 11). The search that starts
+//! the walk is the random walk's pick (`crate::unit::walk`).
 
+use super::{Animal, Class, ESCAPE, Env, Keys, Out, fire};
 use crate::behaviour::{Data, Env as Run};
 use crate::entity::Catalogue;
+use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path::Mover;
+use crate::rubble::{Kit, leave_rubble};
 use crate::sim::Rng;
 use crate::unit::movement::DIR;
-use crate::unit::{Part, Unit};
+use crate::unit::{Ctx, Part, Unit};
 use crate::world::World;
 
 /// How an animal crosses the line that holds the fence pieces `(FA, FB)` (11.3 `choose_kind`):
@@ -89,6 +91,41 @@ pub fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: usize) 
     }
 }
 
+/// A rampaging animal that is not on an escape walk entered tile `t` (animals 11): each scenery
+/// item of its four quadrants whose type has `cRubbleable` 1, an item that spans several quadrants
+/// once, turns to rubble. The item leaves the list at the next removal pass.
+pub fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
+    if !matches!(&unit.part, Part::Animal(a) if a.rampaging && a.walk.is_none()) {
+        return;
+    }
+    let mut ids = Vec::new();
+    for q in 0..4 {
+        let Some(e) = world
+            .quadrant(t, q)
+            .filter(|&e| world.shape(e).is_some_and(|s| s.rubbleable))
+        else {
+            continue;
+        };
+        let id = world.zoo.entities[e].common.as_ref().map(|c| c.id);
+        if let Some(id) = id.filter(|id| !ids.contains(id) && !ctx.removals.contains(id)) {
+            ids.push(id);
+        }
+    }
+    let (cat, template) = (ctx.cat, world.units.piece_name.clone());
+    let shape = |e: &crate::zoo::Entity| crate::render::shape_of(cat, e);
+    let mut kit = Kit {
+        cat,
+        rng: &mut *ctx.rng,
+        template: &template,
+        shape: &shape,
+    };
+    for id in ids {
+        if leave_rubble(world, &mut kit, id) {
+            ctx.removals.push(id);
+        }
+    }
+}
+
 /// Breaks the fence behind tile `t` on the way from `A` to `B` (the sign direction `d`): the piece
 /// on `t`'s side `d + 4` and the one on side `d` of the neighbour that way, each only when it is a
 /// piece that can break.
@@ -130,12 +167,46 @@ pub fn walk_done(unit: &mut Unit, world: &World, here: Option<usize>) -> bool {
     true
 }
 
-/// Behaviours 6.4 point 1, the escaped branch: an escaped animal that stands on dry land, is not
-/// moving and is not rampaging starts `bEscaped` unless it runs already (interruptible, forced,
-/// the queued sequences kept; a pending `bEscaped` is cleared). With `bSleep`, `bSick` or `bHatch`
-/// as the top or pending set it starts nothing.
-pub fn escaped_set(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut Rng, at: usize) {
-    // Point 0: those sets must end first; the rampage is dropped and nothing starts.
+/// The unit's tile and whether it stands in an exhibit that is not the zoo grounds.
+fn place(world: &World, at: usize) -> (Option<usize>, bool) {
+    let tile = (world.zoo.entities[at].common.as_ref())
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
+    let region = (tile.and_then(|t| world.exhibits().region(t))).unwrap_or(GROUNDS);
+    (tile, region != GROUNDS && region != EXTERIOR)
+}
+
+/// `start_new` of a set (behaviours 4.2): nothing when it runs already; else it starts forced with
+/// the queued sequences kept, and a pending set of that name is forgotten.
+fn start_new(
+    unit: &mut Unit,
+    world: &World,
+    data: &dyn Data,
+    rng: &mut Rng,
+    at: usize,
+    set: (&str, bool),
+) {
+    let (name, interruptible) = set;
+    if unit.runner.running() && unit.runner.top() == Some(name) {
+        return;
+    }
+    let env = Run {
+        data,
+        unit: &world.zoo.entities[at],
+        rng,
+    };
+    unit.runner
+        .start(&mut unit.animation, &env, name, interruptible, true, true);
+    if unit.runner.queued() == Some(name) {
+        unit.runner.forget();
+    }
+}
+
+/// Behaviours 6.4 points 0 and 1, the escaped and rampage sets. An escaped animal on dry land
+/// that is not moving and not rampaging starts `bEscaped` (interruptible); a rampaging one that is
+/// loose runs `bEscapedRampage`, one in an exhibit `bHabitatRampage`, neither interruptible. A
+/// set that runs already is queued behind itself. With `bSleep`, `bSick` or `bHatch` as the top or
+/// pending set the rampage is dropped and nothing starts.
+pub fn ambient_sets(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut Rng, at: usize) {
     let ending = [unit.runner.top(), unit.runner.queued()]
         .iter()
         .any(|n| matches!(n, Some("bSleep" | "bSick" | "bHatch")));
@@ -146,25 +217,153 @@ pub fn escaped_set(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut Rn
         (a.rampaging, a.rampage) = (false, 0);
         return;
     }
-    let tile = (world.zoo.entities[at].common.as_ref())
-        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
+    let (tile, in_exhibit) = place(world, at);
     let dry = tile.is_some_and(|t| !world.is_water(t) && world.tank_at(t).is_none());
     let held = a.dying || a.crated || a.egg || a.in_show || a.tranq;
-    if held || !a.escaped || !dry || a.rampaging || unit.moving {
+    let (loose, rampaging) = (a.escaped && dry, a.rampaging);
+    if held {
         return;
     }
-    const SET: &str = "bEscaped";
-    if unit.runner.running() && unit.runner.top() == Some(SET) {
-        return;
-    }
-    let env = Run {
-        data,
-        unit: &world.zoo.entities[at],
-        rng,
+    let (name, ignore_moving) = match (loose, rampaging) {
+        (false, true) if in_exhibit => (HABITAT_RAMPAGE, true),
+        (true, true) => (LOOSE_RAMPAGE, false),
+        (true, false) if !unit.moving => {
+            return start_new(unit, world, data, rng, at, (ESCAPED, true));
+        }
+        _ => return,
     };
-    unit.runner
-        .start(&mut unit.animation, &env, SET, true, true, true);
-    if unit.runner.queued() == Some(SET) {
-        unit.runner.forget();
+    if unit.runner.top() == Some(name) {
+        if unit.runner.queued() != Some(name) {
+            unit.runner.queue(name, false, true);
+        }
+    } else if ignore_moving || !unit.moving {
+        start_new(unit, world, data, rng, at, (name, false));
+    }
+}
+
+/// Behaviours 6.4 point 2, before the table: the sleep check takes the choice (2.1), else a
+/// rampage in an exhibit starts its set (2.2). Whether either did, which ends the choice.
+pub fn chose(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+) -> bool {
+    super::life::ambient_sleep(unit, world, ctx, at, data)
+        || habitat_rampage(unit, world, data, ctx.rng, at)
+}
+
+/// Behaviours 6.4 point 2.2: an idle animal rampaging in an exhibit starts `bHabitatRampage`,
+/// which ends the choice. Whether it did.
+pub fn habitat_rampage(
+    unit: &mut Unit,
+    world: &World,
+    data: &dyn Data,
+    rng: &mut Rng,
+    at: usize,
+) -> bool {
+    let idle = !unit.runner.running() && unit.runner.queued().is_none();
+    let Part::Animal(a) = &unit.part else {
+        return false;
+    };
+    let held = a.dying || a.crated || a.egg || a.tranq;
+    if !idle || held || !a.rampaging || !place(world, at).1 {
+        return false;
+    }
+    start_new(unit, world, data, rng, at, (HABITAT_RAMPAGE, false));
+    true
+}
+
+/// What a tick of the checks asks after its escape check (animals 11): the status dates a loose
+/// animal's escape, a rampage that ended is cleared, and an animal on water is sent off it.
+pub fn after(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    out: &Out,
+) {
+    world.units.loose |= out.loose;
+    if out.calm {
+        calm(unit, world, data, at);
+    }
+    if let Some(pick) = out.sent {
+        let mode = if unit.mover.only_underwater { 2 } else { 0 };
+        super::tank::send(unit, world, ctx, at, data, (mode, Some(pick)));
+    }
+}
+
+/// A rampage ended (animals 11): when its set runs, the pending call and the set are cleared, the
+/// unit stops with its idle animation and the animal's status resets, which drops its escape
+/// record and its need flags.
+pub fn calm(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+    if !matches!(unit.runner.top(), Some(LOOSE_RAMPAGE | HABITAT_RAMPAGE)) {
+        return;
+    }
+    unit.runner = Default::default();
+    crate::unit::movement::stop(unit);
+    crate::unit::movement::idle(unit, world, data, at);
+    if let Part::Animal(a) = &mut unit.part {
+        (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
+    }
+}
+
+const ESCAPED: &str = "bEscaped";
+const LOOSE_RAMPAGE: &str = "bEscapedRampage";
+const HABITAT_RAMPAGE: &str = "bHabitatRampage";
+
+/// The escape check (animals 11.1): the rampage, then the counter; when it fires, an animal that
+/// stands on the zoo grounds is escaped and takes the land mode, sent off the water (11.5), one in
+/// an exhibit is not escaped any more.
+pub(super) fn check(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &Env,
+    rng: &mut Rng,
+    out: &mut Out,
+) {
+    if a.in_show {
+        return;
+    }
+    if a.rampaging {
+        a.rampage = a.rampage.wrapping_add(1);
+        if a.happiness > k.rampage_threshold || a.rampage > k.rampage_max {
+            (a.rampaging, a.rampage) = (false, 0);
+            out.calm = true;
+        }
+    } else {
+        a.rampage = 0;
+        if k.rampage_chance >= 1
+            && k.rampage_min >= 1
+            && a.happiness <= k.rampage_threshold
+            && rng.chance(k.rampage_chance)
+        {
+            let len = k.rampage_max.wrapping_sub(k.rampage_min);
+            if len >= 0 {
+                a.rampaging = true;
+                a.rampage = len - rng.rand() as i32 % len.wrapping_add(1);
+            }
+        }
+    }
+    if !fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) {
+        return;
+    }
+    if env.grounds {
+        let was = std::mem::replace(&mut a.escaped, true);
+        let mode = if k.only_underwater { 2 } else { 0 };
+        if a.terrain != mode && env.stands != mode && env.kinds[usize::from(mode)] > 0 {
+            out.sent = Some(rng.pick(env.kinds[usize::from(mode)] as u32) as usize);
+        }
+        a.terrain = mode;
+        out.loose = true;
+        if !was {
+            (a.thirsty, a.drinking) = (false, false);
+            out.log.push("escape");
+        }
+    } else {
+        (a.escaped, a.claim) = (false, 0);
     }
 }

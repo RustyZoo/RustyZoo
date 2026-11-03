@@ -27,7 +27,8 @@ fn quarters(w: &World, m: &Mover, t: usize, level: Option<i32>) -> [(bool, bool)
         None => (false, false),
         Some(e) => {
             let walk = w.shape(e).map(|s| s.walkable);
-            let stops = !walk.is_some_and(|k| if m.tall { k.1 } else { k.0 });
+            let rubble = m.rampaging && w.shape(e).is_some_and(|s| s.rubbleable);
+            let stops = !rubble && !walk.is_some_and(|k| if m.tall { k.1 } else { k.0 });
             (true, stops && level.is_none_or(|l| in_reach(w, e, t, l)))
         }
     })

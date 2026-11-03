@@ -244,6 +244,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gate,
         gated: fence,
         walkable: (false, false),
+        rubbleable: false,
         // The egg and crate footprints of the animals `an_animal_in_a_crate_or_an_egg_blocks...`
         // names (the render's shape reads them from the type).
         forms: match e.type_name.as_str() {

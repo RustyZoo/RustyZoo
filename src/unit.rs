@@ -433,6 +433,10 @@ pub struct Units {
     /// The escaped list (animals 11.1): the animals loose at the load in file order, then those
     /// that escaped in play in the order they did; see [`predator::escaped`].
     pub escapes: Vec<u32>,
+    /// An escape check found an animal loose this step: the status dates the escape (animals 11.1).
+    pub loose: bool,
+    /// The text of the name of a rubble piece (string 10512, cheats 4.6).
+    pub piece_name: String,
 }
 
 impl Default for Units {
@@ -484,6 +488,8 @@ impl Default for Units {
             reactions: Vec::new(),
             cheers: Vec::new(),
             escapes: Vec::new(),
+            loose: false,
+            piece_name: String::new(),
         }
     }
 }
@@ -977,6 +983,7 @@ impl Hooks for Standard<'_> {
         movement::reanimate(unit, world, self.data, at);
         if let Some(new) = movement::here(world, at).filter(|&t| Some(t) != before) {
             crate::animal::escape::entered(unit, world, ctx.cat, new);
+            crate::animal::escape::trample(unit, world, ctx, new);
         }
         self.force(unit, world, at);
     }
@@ -990,7 +997,7 @@ impl Hooks for Standard<'_> {
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         let took = unit.kind == Kind::Animal
-            && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
+            && crate::animal::escape::chose(unit, world, ctx, at, self.data);
         // An egg, a crate or a darted animal chooses nothing (behaviours 6.4): only the set that
         // hatches the egg or shakes the crate runs.
         let held = matches!(&unit.part, Part::Animal(a) if a.egg || a.crated || a.tranq);
@@ -1078,8 +1085,8 @@ impl Hooks for Standard<'_> {
             _ => false,
         };
         if asked {
-            crate::animal::escape::escaped_set(unit, world, self.data, ctx.rng, at);
-            if !crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data) {
+            crate::animal::escape::ambient_sets(unit, world, self.data, ctx.rng, at);
+            if !crate::animal::escape::chose(unit, world, ctx, at, self.data) {
                 let key = ambient_key(unit);
                 let choosing = !unit.runner.running() && unit.runner.queued().is_none();
                 unit.runner.place = swim::place(unit, world, at);

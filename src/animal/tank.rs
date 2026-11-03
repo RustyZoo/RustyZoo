@@ -119,6 +119,18 @@ pub fn kind(world: &World, t: usize) -> u8 {
     }
 }
 
+/// The tiles of region `x` that the picks of tank fauna 5 draw from: an exhibit's, or for the zoo
+/// grounds every tile of that region in map order (medium: the order of the original's list).
+pub fn tiles(world: &World, x: u32) -> Vec<usize> {
+    if x != GROUNDS {
+        return world.tiles_of(x);
+    }
+    let region = world.exhibits();
+    (0..world.zoo.tiles.len())
+        .filter(|&t| region.region(t) == Some(GROUNDS))
+        .collect()
+}
+
 /// The terrain mode change (tank fauna 5) after the water check: the animal takes the terrain
 /// mode (a species that lives only under water, always the tank mode); when it changes, the animal
 /// walks to the tile `pick` of the tiles of its exhibit and its amphibious neighbours that have
@@ -139,14 +151,27 @@ pub fn switch(
         return;
     }
     world.units.tell(format!("terrain {} {mode}", unit.id));
+    send(unit, world, ctx, at, data, (mode, pick));
+}
+
+/// The animal walks to the tile `pick` of the tiles of its region and its amphibious neighbours
+/// that have the kind `mode` (tank fauna 5 point 3).
+pub fn send(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    (mode, pick): (u8, Option<usize>),
+) {
     let tile = (world.zoo.entities.get(at).and_then(|e| e.common.as_ref()))
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
     let x = tile.and_then(|t| world.exhibits().region(t));
-    let Some((x, pick)) = x.filter(|&x| x != GROUNDS && x != EXTERIOR).zip(pick) else {
+    let Some((x, pick)) = x.filter(|&x| x != EXTERIOR).zip(pick) else {
         return;
     };
     let neighbours = (world.exhibits().get(x)).map_or(Vec::new(), |e| e.amphibious.clone());
-    let tiles = (world.tiles_of(x).into_iter())
+    let tiles = (tiles(world, x).into_iter())
         .chain(neighbours.into_iter().flat_map(|n| world.tiles_of(n)))
         .filter(|&t| kind(world, t) == mode);
     if let Some(to) = tiles.into_iter().nth(pick) {

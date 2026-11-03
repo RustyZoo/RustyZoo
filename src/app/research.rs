@@ -13,7 +13,7 @@ const COMPLETED: i32 = 23020;
 const ALL_DONE: i32 = 23021;
 
 /// The exclamation picture on the icon of the completion dialog, set before it is shown (5.4.1).
-fn exclaim(ui: &mut Interface, vfs: &Vfs) {
+pub(super) fn exclaim(ui: &mut Interface, vfs: &Vfs) {
     let picture = ui.tree.picture(vfs, EXCLAIM_PICTURE);
     ui.set_question_icon(QUESTION, picture);
 }

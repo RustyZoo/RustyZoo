@@ -275,6 +275,7 @@ pub fn shape(ty: &EntityType) -> Shape {
         tank: TankKind::NONE,
         walkable: (false, false),
         forms: Some(ty.forms()),
+        rubbleable: false,
     }
 }
 

@@ -220,6 +220,7 @@ pub(super) fn tank_shape(e: &Entity) -> Option<Shape> {
             tank,
             walkable: (false, false),
             forms: None,
+            rubbleable: false,
         })
     };
     let none = TankKind::NONE;
@@ -295,6 +296,7 @@ pub(super) fn tank_shape(e: &Entity) -> Option<Shape> {
             gated: true,
             walkable: (false, false),
             forms: None,
+            rubbleable: false,
             tank: TankKind {
                 wall: true,
                 underwater: true,

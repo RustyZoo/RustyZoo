@@ -136,6 +136,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         // A rock: walkable by tall units only.
         walkable: (false, kind == Kind::Fixed),
         forms: (e.type_name == "gnu").then_some([(3, 3), (4, 4)]),
+        rubbleable: false,
         tank: TankKind {
             wall: e.class == "tankwall",
             ..TankKind::NONE

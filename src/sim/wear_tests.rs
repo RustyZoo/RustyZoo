@@ -130,6 +130,34 @@ fn a_piece_goes_healthy_then_decayed_then_broken_at_the_drawn_times() {
     assert_eq!((log[4].0 + log[4].1, log[4].2.0), (0, 0));
 }
 
+#[test]
+fn a_piece_that_breaks_plays_its_break_sound_once_at_the_piece() {
+    let sounds = |keys: &str| {
+        let mut run = run(types(&format!("{WEARING}\n{keys}")), world("f"), 1);
+        let mut heard = Vec::new();
+        for ms in [1003, 1003, 1003, 5000] {
+            let lines = run.step(ms);
+            heard.extend(lines.into_iter().filter(|l| l.starts_with("unit sound")));
+        }
+        heard
+    };
+    let key = "cBreakSound=sounds/brokfenc.wav\ncBreakSoundAtten=1100";
+    assert_eq!(sounds(key), ["unit sound 7 sounds/brokfenc.wav"]);
+    assert!(sounds("cBreakSoundAtten=1100").is_empty());
+}
+
+#[test]
+fn a_loose_animal_found_in_a_step_dates_the_escape_at_that_moment() {
+    let mut run = run(types(WEARING), world("f"), 1);
+    run.step(100);
+    assert_eq!(run.sim.status.escape, crate::zoo::NEVER);
+    run.world.units.loose = true;
+    run.step(100);
+    let now = run.world.units.now;
+    assert_eq!(run.sim.status.escape, crate::timing::file_time(now));
+    assert!(!run.world.units.loose);
+}
+
 fn run_state(run: &Run) -> (i32, u32, u32) {
     let f = fence(run);
     (f.life, f.strength, f.timers[1])

@@ -805,6 +805,7 @@ impl<'a> App<'a> {
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
+            world.units.piece_name = ui.string(crate::rubble::PIECE_NAME);
             world.units.names = self.type_names(ui);
             world.name_loaded_entities(self.renderer.catalogue());
         }
@@ -945,10 +946,12 @@ impl<'a> App<'a> {
         let question = ui.tree.picture(self.renderer.vfs(), QUESTION_PICTURE);
         ui.set_question_picture(question);
         let names = self.type_names(&ui);
+        let piece = ui.string(crate::rubble::PIECE_NAME);
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();
             game.world.units.names = names;
+            game.world.units.piece_name = piece;
             game.awards_page = Awards::default();
         }
     }
@@ -1231,6 +1234,11 @@ impl<'a> App<'a> {
                 };
                 let text = (names.iter()).fold(ui.string(message), |t, n| t.replacen("%s", n, 1));
                 ui.message(&to_cp1252(&text));
+                // An animal that got out also raises the non-modal alert (animals 11.4).
+                if message == crate::animal::ESCAPED {
+                    research::exclaim(ui, self.renderer.vfs());
+                    ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
+                }
             }
         }
     }

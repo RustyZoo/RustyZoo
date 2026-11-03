@@ -307,7 +307,7 @@ pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
 
 /// The unit shows its idle animation again (8.2 step 1; the normal end of a walk keeps the move
 /// animation, step 3).
-fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+pub(crate) fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     let entity = &world.zoo.entities[at];
     let name = swim::idle_name(unit);
     if data.timing(entity, name).is_some() {
@@ -596,6 +596,7 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
     task(&mut m, record.task, record.target.id);
     m.water_mode = matches!(&unit.part, Part::Animal(a) if a.terrain == 1);
     m.test |= matches!(&unit.part, Part::Animal(a) if a.walk.is_some());
+    m.rampaging = matches!(&unit.part, Part::Animal(a) if a.rampaging);
     m
 }
 

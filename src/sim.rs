@@ -639,6 +639,33 @@ impl Sim {
         self.step_game(data, cat, world, &mut Money::default(), step, update)
     }
 
+    /// What the units asked of the status and the books during the step: the date of an escape
+    /// (animals 11.1), their spending, donations, concessions, recycling and the guest counts.
+    fn book_units(&mut self, world: &mut World, money: &mut Money) {
+        if std::mem::take(&mut world.units.loose) {
+            self.status.escape = crate::timing::file_time(world.units.now);
+        }
+        for (category, cost) in std::mem::take(&mut world.units.spent) {
+            money.spend(category, cost);
+        }
+        for d in std::mem::take(&mut world.units.donated) {
+            money.refund(money::DONATIONS, d);
+        }
+        for d in std::mem::take(&mut world.units.concessions) {
+            money.refund(money::CONCESSIONS, d);
+        }
+        for d in std::mem::take(&mut world.units.recycled) {
+            money.refund(money::CONSTRUCTION_REFUND, d);
+        }
+        for _ in 0..std::mem::take(&mut world.units.guests_gone) {
+            money.count(money::GUESTS_GONE);
+        }
+        for _ in 0..std::mem::take(&mut world.units.members_joined) {
+            money.count(money::MEMBERS);
+            money.count(money::MEMBERS_JOINED);
+        }
+    }
+
     /// [`Sim::step_with`] in a game whose cash and accounts are `money`: the zoo status checks
     /// read and book into them.
     pub fn step_game(
@@ -726,25 +753,7 @@ impl Sim {
             self.events.post(event);
         }
         self.events.age();
-        for (category, cost) in std::mem::take(&mut world.units.spent) {
-            money.spend(category, cost);
-        }
-        for d in std::mem::take(&mut world.units.donated) {
-            money.refund(money::DONATIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.concessions) {
-            money.refund(money::CONCESSIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.recycled) {
-            money.refund(money::CONSTRUCTION_REFUND, d);
-        }
-        for _ in 0..std::mem::take(&mut world.units.guests_gone) {
-            money.count(money::GUESTS_GONE);
-        }
-        for _ in 0..std::mem::take(&mut world.units.members_joined) {
-            money.count(money::MEMBERS);
-            money.count(money::MEMBERS_JOINED);
-        }
+        self.book_units(world, money);
         // The world manager: the zoo grounds' timers, then the exhibits' timers and ratings, the
         // water of the tanks, the world clock.
         let mut grounds = std::mem::take(&mut world.exhibits_mut().grounds);

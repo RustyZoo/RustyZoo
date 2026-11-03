@@ -161,7 +161,7 @@ impl World {
     /// one life and `cDecayDelta` strength (not below 1), restarts the countdown at its interval
     /// and, when its life is below 1, breaks: life and strength 0. A line tells the piece when it
     /// wears; the events 10033 and 10034 it posts are returned. A piece that becomes decayed or
-    /// broken sets the escape check flags of 12. The break sound waits for the animal milestone.
+    /// broken sets the escape check flags of 12. A broken piece plays its break sound.
     pub fn wear(
         &mut self,
         cat: &Catalogue,
@@ -211,6 +211,12 @@ impl World {
         ));
         let broken = f.life < 1;
         self.dirty = true;
+        if broken {
+            // The break sound plays once, at the piece (placing 7.4 "Breaking").
+            let voice = format!("{id}/cBreakSound");
+            let heard = crate::unit::gate::heard_of(ty, "cBreakSound", "cBreakSoundAtten", &voice);
+            self.units.push_sound(id, heard);
+        }
         if !state.is_empty() {
             self.fence_changed(at, broken);
         }

@@ -56,6 +56,9 @@ pub struct Shape {
     /// For an animal: its egg footprint (`cEggFootprintX/Y`) and its crate footprint
     /// (`cBoxFootprintX/Y`), in half tiles; `None` for the rest.
     pub forms: Option<[(i32, i32); 2]>,
+    /// A scenery item whose type has `cRubbleable` 1 (the default): a rampaging animal walks
+    /// through it and turns it to rubble (animals 11).
+    pub rubbleable: bool,
 }
 
 /// What a type says about tanks (exhibits and money 3.9).

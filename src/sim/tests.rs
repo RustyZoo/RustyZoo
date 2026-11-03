@@ -1372,6 +1372,7 @@ fn the_hash_follows_what_a_keeper_and_his_exhibit_keep() {
             tank: crate::world::TankKind::NONE,
             walkable: (false, false),
             forms: None,
+            rubbleable: false,
         };
         let keeper = crate::unit::testing::entity("keeper", "", 7, (32, 32), 0);
         w.add(keeper, Some(shape)).unwrap();

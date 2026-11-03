@@ -79,6 +79,8 @@ use life::Sets;
 
 /// The messages "not happy" and "dislikes its exhibit": string numbers whose text holds the name.
 pub const NOT_HAPPY: i32 = 10028;
+/// The message and alert of an animal that got out of its exhibit (animals 11.4).
+pub const ESCAPED: i32 = 10007;
 pub const DISLIKES_EXHIBIT: i32 = 10031;
 /// "Can't find any food".
 pub const NO_FOOD: i32 = 10030;
@@ -848,6 +850,13 @@ pub struct Out {
     pub terrain: Option<(u8, Option<usize>)>,
     /// The shelter it took as its target.
     pub shelter: Option<u32>,
+    /// A rampage ended: a running rampage set is cleared (animals 11).
+    pub calm: bool,
+    /// The escape check fired with the animal on the zoo grounds: the zoo status dates the
+    /// escape (animals 11.1).
+    pub loose: bool,
+    /// The draw that picks the land tile an escaped animal on water is sent to (animals 11.5).
+    pub sent: Option<usize>,
 }
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
@@ -962,7 +971,7 @@ pub fn run_read(
         a.stop_eating(false, &mut out.meal);
         a.fed = env.now;
     }
-    escape(a, k, class, env, rng, &mut out);
+    escape::check(a, k, class, env, rng, &mut out);
     if a.eating {
         food::bite(a, k, env, rng, &mut out, read);
     }
@@ -989,46 +998,6 @@ pub fn run_read(
         false => a.unmark(NEEDS_EXHIBIT),
     }
     out
-}
-
-/// The escape check (animals 11.1): the rampage, then the counter; when it fires, an animal that
-/// stands on the zoo grounds is escaped and takes the land mode (11.5; the send off water is not
-/// made), one in an exhibit is not escaped any more.
-fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
-    if a.in_show {
-        return;
-    }
-    if a.rampaging {
-        a.rampage = a.rampage.wrapping_add(1);
-        if a.happiness > k.rampage_threshold || a.rampage > k.rampage_max {
-            (a.rampaging, a.rampage) = (false, 0);
-        }
-    } else {
-        a.rampage = 0;
-        if k.rampage_chance >= 1
-            && k.rampage_min >= 1
-            && a.happiness <= k.rampage_threshold
-            && rng.chance(k.rampage_chance)
-        {
-            let len = k.rampage_max.wrapping_sub(k.rampage_min);
-            if len >= 0 {
-                a.rampaging = true;
-                a.rampage = len - rng.rand() as i32 % len.wrapping_add(1);
-            }
-        }
-    }
-    if !fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) {
-        return;
-    }
-    if env.grounds {
-        a.terrain = if k.only_underwater { 2 } else { 0 };
-        if !std::mem::replace(&mut a.escaped, true) {
-            (a.thirsty, a.drinking) = (false, false);
-            out.log.push("escape");
-        }
-    } else {
-        (a.escaped, a.claim) = (false, 0);
-    }
 }
 
 /// The captivity tick (animals 4.5): the change, and below the threshold two draws that may
@@ -1390,7 +1359,7 @@ pub(crate) fn shelters(
 /// The land, water and tank tiles of the exhibits `near` (animals-needs 7.2).
 fn kinds(world: &World, near: &[u32]) -> [usize; 3] {
     let mut count = [0; 3];
-    for t in near.iter().flat_map(|&x| world.tiles_of(x)) {
+    for t in near.iter().flat_map(|&x| tank::tiles(world, x)) {
         count[usize::from(tank::kind(world, t))] += 1;
     }
     count
@@ -1568,6 +1537,12 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             .filter_map(|&n| world.exhibits().get(n))
             .map(|e| e.tiles)
             .sum();
+    } else if a.counters[ESCAPE] == 0 {
+        // The escape check sends an animal off the water or the tank to a tile of the grounds.
+        env.stands = tile.map_or(0, |t| tank::kind(world, t));
+        if env.stands != 0 {
+            env.kinds = kinds(world, &[GROUNDS]);
+        }
     }
     if a.counters[SHELTER] == 0 && k.building_use > 0 {
         let who = crate::building::Species::of(ctx.cat, &world.zoo.entities[at], a.egg);
@@ -1617,9 +1592,11 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         if *word == "escape" {
             world.units.escapes.retain(|&e| e != id);
             world.units.escapes.push(id);
+            world.units.post(ESCAPED, id);
         }
         world.units.tell(format!("{word} {id}"));
     }
+    escape::after(unit, world, ctx, at, data, &out);
     if let Some(change) = out.terrain {
         tank::switch(unit, world, ctx, at, data, change);
     }

@@ -81,7 +81,7 @@ fn an_escaped_animal_on_dry_land_that_stands_starts_its_escaped_set() {
         }
         prepare(&mut unit);
         let mut rng = Rng::default();
-        crate::animal::escape::escaped_set(&mut unit, &world, &data, &mut rng, at);
+        crate::animal::escape::ambient_sets(&mut unit, &world, &data, &mut rng, at);
         let r = &unit.runner;
         (
             r.running().then(|| r.top()).flatten().map(str::to_string),
@@ -159,7 +159,7 @@ fn an_escaped_animal_that_sleeps_is_sick_or_hatches_keeps_its_set() {
                 unit.runner
                     .start(&mut unit.animation, &env, name, true, true, true);
             }
-            crate::animal::escape::escaped_set(&mut unit, &world, &data, &mut rng, at);
+            crate::animal::escape::ambient_sets(&mut unit, &world, &data, &mut rng, at);
             let r = &unit.runner;
             let top = r.running().then(|| r.top()).flatten();
             assert_ne!(top, Some("bEscaped"), "{name} {pending}");

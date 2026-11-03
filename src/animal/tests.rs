@@ -13,6 +13,7 @@ mod boxed;
 mod breed;
 mod escape;
 mod life;
+mod rampage;
 mod tank;
 
 fn keys() -> Keys {
@@ -457,6 +458,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gated: !gate && !unit,
         walkable: (gate, gate),
         forms: None,
+        rubbleable: false,
         tank: TankKind::NONE,
     })
 }

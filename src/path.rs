@@ -60,6 +60,8 @@ pub struct Mover {
     /// animals 11.3), and one in water mode (terrain mode 1).
     pub test: bool,
     pub water_mode: bool,
+    /// A rampaging animal walks through the scenery that turns to rubble (animals 11).
+    pub rampaging: bool,
     /// The unit's own id, to leave it out of the units on a tile.
     pub id: Option<u32>,
     /// The unit is in a tank (move kind 3), `cSurface` and `cDepth` of its type, and the levels
