@@ -7,7 +7,7 @@ How RustyZoo is built, and the choices contributors share. What is not written y
 One Cargo package, no workspace until a second consumer exists.
 
 - The core library (`src/lib.rs`) has no platform code. It reads the game data and draws into memory.
-- The program (`src/main.rs`) holds the commands and the window. SDL3 is used only here.
+- The program (`src/main.rs`, with the commands in `src/cli/`) holds the commands and the window. SDL3 is used only here.
 
 Modules of the core:
 
