@@ -81,7 +81,7 @@ Other people are bringing Zoo Tycoon back too. Have a look:
 
 | Project | Language | What it is |
 | --- | --- | --- |
-| [AlexC1991/zt1-engine](https://github.com/AlexC1991/zt1-engine) | C++ | An open-source engine for Zoo Tycoon on modern Windows, grown from Wouter Wijsman's zt1-engine. The first project to mention RustyZoo, thank you! 💚 |
+| [AlexC1991/zt1-engine](https://github.com/AlexC1991/zt1-engine) | C++ | Our sister project: a C++ engine for Windows with a playable weekly alpha. Same goal as RustyZoo, a different approach. Grown from Wouter Wijsman's zt1-engine, and the first project to mention RustyZoo, thank you! 💚 |
 | [sharkwouter/zt1-engine](https://github.com/sharkwouter/zt1-engine) | C++ | The original zt1-engine |
 | [OpenZT](https://github.com/openzt1/openzt) | Rust | A work-in-progress project that runs inside the original game to fix and extend it |
 
