@@ -324,6 +324,22 @@ impl ShowInfo {
         sold(&mut self.receipts, &mut self.attendance);
     }
 
+    /// The month change (shows 9.3): receipts and attendance of this month become last month's,
+    /// for the info and each type record; the upkeep takes the new rate `upkeep` and the total
+    /// adds it. The cumulative receipts and attendance stay.
+    pub fn new_month(&mut self, upkeep: f32) {
+        let shift = |f: &mut [u32; 3]| (f[1], f[0]) = (f[0], 0);
+        for t in &mut self.records {
+            shift(&mut t.receipts);
+            shift(&mut t.attendance);
+        }
+        shift(&mut self.receipts);
+        shift(&mut self.attendance);
+        let [this, last, total] = &mut self.upkeep;
+        (*last, *this) = (*this, upkeep.to_bits());
+        *total = (f32::from_bits(*total) + upkeep).to_bits();
+    }
+
     /// The units of type `t` that take part (shows 3.2).
     pub fn units(&self, t: u32) -> &[u32] {
         self.record(t).map_or(&[], |r| &r.units)

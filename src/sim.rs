@@ -866,6 +866,7 @@ impl Sim {
             self.status.endowment(&mut self.rng, money, &mut self.lines);
             money.month_change();
             world.exhibits_mut().enter_new_month();
+            crate::show::new_month(world, cat);
             crate::month::charge(world, cat, money, &mut self.lines);
         }
         let (say, log) = (&mut self.messages, &mut self.lines);
