@@ -18,6 +18,15 @@ pub(super) fn exclaim(ui: &mut Interface, vfs: &Vfs) {
     ui.set_question_icon(QUESTION, picture);
 }
 
+/// An animal that got out raises the non-modal alert, with the exclamation picture and the text
+/// already in the message line (animals 11.4); any other message of an animal opens nothing.
+pub(super) fn alert(ui: &mut Interface, vfs: &Vfs, message: i32, text: &str) {
+    if message == crate::animal::ESCAPED {
+        exclaim(ui, vfs);
+        ui.notify(QUESTION, &to_cp1252(text), Buttons::OK);
+    }
+}
+
 /// The upgrade lists of the building types for a tree just built or loaded (research 6.3, 7.2).
 pub(super) fn upgrades(tree: &Tree) -> crate::building::upgrade::Upgrades {
     let mut lists = Default::default();

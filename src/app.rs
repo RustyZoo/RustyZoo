@@ -1234,11 +1234,7 @@ impl<'a> App<'a> {
                 };
                 let text = (names.iter()).fold(ui.string(message), |t, n| t.replacen("%s", n, 1));
                 ui.message(&to_cp1252(&text));
-                // An animal that got out also raises the non-modal alert (animals 11.4).
-                if message == crate::animal::ESCAPED {
-                    research::exclaim(ui, self.renderer.vfs());
-                    ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
-                }
+                research::alert(ui, self.renderer.vfs(), message, &text);
             }
         }
     }

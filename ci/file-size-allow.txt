@@ -1,5 +1,5 @@
-src/animal.rs 1642
-src/app.rs 2892
+src/animal.rs 1620
+src/app.rs 2903
 src/build.rs 1464
 src/entity.rs 2037
 src/exhibit/rating.rs 1531
@@ -12,8 +12,8 @@ src/timing.rs 1092
 src/ui/draw.rs 1164
 src/ui/interface/widgets.rs 1010
 src/ui/layout.rs 1006
-src/unit.rs 1206
+src/unit.rs 1218
 src/vfs.rs 1962
 src/world/exhibit.rs 1122
-src/world.rs 1528
+src/world.rs 1599
 src/zoo.rs 1245
