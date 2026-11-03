@@ -8,7 +8,7 @@ use rustyzoo::app::frame_hash;
 use rustyzoo::sprite::write_png;
 use rustyzoo::text::{Font, Justify, Rect, Style, draw, fill_color, measure, to_cp1252};
 
-use crate::CliError;
+use crate::cli::CliError;
 
 /// The largest picture `draw-text` makes, in each direction.
 const MAX_SIDE: i64 = 16384;
@@ -85,7 +85,7 @@ fn flags<'a>(mut words: &[&'a str], drawing: bool) -> Result<Flags<'a>, CliError
 pub fn text_width(text: &str, words: &[&str]) -> Result<(), CliError> {
     let f = flags(words, false)?;
     let width = Font::request(f.face, f.size).width(&to_cp1252(text));
-    crate::ignore_closed_pipe(writeln!(io::stdout().lock(), "{width}"))
+    crate::cli::ignore_closed_pipe(writeln!(io::stdout().lock(), "{width}"))
 }
 
 /// Draws `text` wrapped to `--width` pixels on a canvas as tall as the text, into a PNG file,
@@ -118,7 +118,7 @@ pub fn draw_text(out: &str, text: &str, words: &[&str]) -> Result<(), CliError> 
     );
     let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;
     write_png(&canvas, io::BufWriter::new(file)).map_err(|e| format!("cannot write {out}: {e}"))?;
-    crate::ignore_closed_pipe(writeln!(
+    crate::cli::ignore_closed_pipe(writeln!(
         io::stdout().lock(),
         "{}x{} {:016x}",
         canvas.width,

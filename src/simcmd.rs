@@ -14,7 +14,7 @@ use rustyzoo::vfs::Vfs;
 use rustyzoo::world::{Decay, World};
 use rustyzoo::zoo::Zoo;
 
-use crate::{CliError, Report};
+use crate::cli::{CliError, Report};
 
 /// The length of a step in milliseconds when `--dt` is not given.
 const DEFAULT_DT: u32 = 67;

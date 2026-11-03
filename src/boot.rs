@@ -14,7 +14,7 @@ use rustyzoo::ui::layout::{Kind, installed_expansions};
 use rustyzoo::userdir;
 use rustyzoo::vfs::Vfs;
 
-use crate::CliError;
+use crate::cli::CliError;
 use crate::layout::{Fill, load_interface};
 
 /// What the start-up made: the types, the interface and the menu, and the lines that tell how it

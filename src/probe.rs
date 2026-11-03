@@ -14,7 +14,7 @@ use sdl3::pixels::PixelFormat;
 use sdl3::render::Canvas;
 use sdl3::video::Window;
 
-use crate::CliError;
+use crate::cli::CliError;
 
 /// The gaps (ms) between the firings of one timer.
 struct Gaps {

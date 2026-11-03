@@ -25,7 +25,7 @@ use rustyzoo::vfs::Vfs;
 use rustyzoo::zoo::Zoo;
 
 use super::boot::boot;
-use super::{CliError, Report};
+use crate::cli::{CliError, Report};
 
 /// The most rows `--rows` makes.
 const MAX_ROWS: usize = 100_000;
