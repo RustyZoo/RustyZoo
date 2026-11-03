@@ -7,7 +7,7 @@ impl Units {
     /// projection, never the `Debug` text: the positions are in the entities of the zoo, here go the
     /// movement, the goal, the animation and the needs. A new field moves the hash only when it is
     /// added here.
-    pub fn hash(&self) -> u64 {
+    pub(crate) fn hash(&self) -> u64 {
         let mut h = Fnv(0xcbf2_9ce4_8422_2325);
         h.word(self.period as u32);
         h.word(self.service_interval);

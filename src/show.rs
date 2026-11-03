@@ -8,7 +8,9 @@
 //! `performer`, a stub until Shows 2: a show that starts only ends by abort. The audience is
 //! `audience`: the search of a guest for a show and the price of a seat.
 
-use crate::building::{kind_of, leave::push_out};
+use crate::building::kind_of;
+#[cfg(test)]
+use crate::building::leave::push_out;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
@@ -24,36 +26,36 @@ mod relay;
 pub mod trick;
 mod units;
 
-pub use audience::{find, pay};
-pub use relay::{listen_grandstand, listen_world};
-pub use units::{Move, counted, settle};
+pub(crate) use audience::{find, pay};
+pub(crate) use relay::{listen_grandstand, listen_world};
+pub(crate) use units::{Move, counted, settle};
 
 /// The type id of the marine specialist, who conducts a show (shows 3.2).
 const KEEPER: u32 = 9552;
 
 /// The event types of a show (shows 6.1).
 pub(crate) mod event {
-    pub const ANNOUNCE: u16 = 0x2711;
-    pub const START_NOTE: u16 = 0x2712;
-    pub const STARTED: u16 = 0x2713;
-    pub const STOP: u16 = 0x2714;
-    pub const ENDED: u16 = 0x2715;
-    pub const ABORT: u16 = 0x2716;
-    pub const ABORTED: u16 = 0x2717;
+    pub(crate) const ANNOUNCE: u16 = 0x2711;
+    pub(crate) const START_NOTE: u16 = 0x2712;
+    pub(crate) const STARTED: u16 = 0x2713;
+    pub(crate) const STOP: u16 = 0x2714;
+    pub(crate) const ENDED: u16 = 0x2715;
+    pub(crate) const ABORT: u16 = 0x2716;
+    pub(crate) const ABORTED: u16 = 0x2717;
     /// Relayed by a grandstand like an end, but never posted by the world manager (shows 6.3).
-    pub const OVER: u16 = 0x2719;
-    pub const NEXT_ITEM: u16 = 0x271d;
-    pub const TRICK_DONE: u16 = 0x271f;
-    pub const CALL: u16 = 0x271a;
-    pub const ITEM_ABORTED: u16 = 0x2723;
-    pub const PREPARE: u16 = 0x2724;
-    pub const CUE: u16 = 0x2725;
-    pub const BAD: u16 = 0x272a;
-    pub const NEUTRAL: u16 = 0x272b;
-    pub const GOOD: u16 = 0x272c;
-    pub const GREAT: u16 = 0x272d;
-    pub const CHEER: u16 = 0x2735;
-    pub const BOO: u16 = 0x2736;
+    pub(crate) const OVER: u16 = 0x2719;
+    pub(crate) const NEXT_ITEM: u16 = 0x271d;
+    pub(crate) const TRICK_DONE: u16 = 0x271f;
+    pub(crate) const CALL: u16 = 0x271a;
+    pub(crate) const ITEM_ABORTED: u16 = 0x2723;
+    pub(crate) const PREPARE: u16 = 0x2724;
+    pub(crate) const CUE: u16 = 0x2725;
+    pub(crate) const BAD: u16 = 0x272a;
+    pub(crate) const NEUTRAL: u16 = 0x272b;
+    pub(crate) const GOOD: u16 = 0x272c;
+    pub(crate) const GREAT: u16 = 0x272d;
+    pub(crate) const CHEER: u16 = 0x2735;
+    pub(crate) const BOO: u16 = 0x2736;
 }
 
 /// The numbers of `shows.cfg` that the cycle reads (shows 3.1). The built-in values hold without
@@ -97,7 +99,7 @@ impl Params {
     }
 
     /// Reads a `shows.cfg`; a key that is missing keeps the built-in number.
-    pub fn read(config: &Config) -> Params {
+    pub(crate) fn read(config: &Config) -> Params {
         let number = |section: &str, key: &str, fallback: i32| {
             let value = config.section(section).and_then(|s| s.get(key));
             value.and_then(to_int).unwrap_or(fallback)
@@ -147,7 +149,7 @@ fn show_tanks(world: &World) -> Vec<(u32, u16)> {
 }
 
 /// The show info of the habitat record whose first tile lies in exhibit `id`.
-pub fn info_of(world: &World, id: u32) -> Option<&ShowInfo> {
+pub(crate) fn info_of(world: &World, id: u32) -> Option<&ShowInfo> {
     world.zoo.shows.info(info_slot(world, id)?)
 }
 
@@ -175,6 +177,7 @@ fn habitat_of(world: &World, id: u16) -> Option<usize> {
 }
 
 /// The exhibit of the show info whose show id is `id`.
+#[cfg(test)]
 fn exhibit_of(world: &World, id: u16) -> Option<u32> {
     tank_of(world, habitat_of(world, id)?)
 }
@@ -238,7 +241,7 @@ fn faces(world: &World, ground: &Ground, exhibit: u32, at: usize) -> bool {
 
 /// The pass for the building `id` just added to the map (placed, set down, put back): it runs only
 /// when the building is a grandstand (shows 4.2); any other building runs none.
-pub fn added(world: &mut World, cat: &Catalogue, id: u32) {
+pub(crate) fn added(world: &mut World, cat: &Catalogue, id: u32) {
     let default = world.units.prices.default;
     let stand = world.find(id).is_some_and(|at| {
         kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand"))
@@ -250,7 +253,7 @@ pub fn added(world: &mut World, cat: &Catalogue, id: u32) {
 
 /// The pass of a zoo being loaded, for the entity `at` just read (shows 4.2): it runs only when
 /// that entity is a grandstand, and sees only the entities read so far.
-pub fn loaded(world: &mut World, cat: &Catalogue, at: usize) {
+pub(crate) fn loaded(world: &mut World, cat: &Catalogue, at: usize) {
     let default = world.units.prices.default;
     if kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand")) {
         associate_upto(world, cat, at);
@@ -260,7 +263,7 @@ pub fn loaded(world: &mut World, cat: &Catalogue, at: usize) {
 /// The association pass (shows 4.2): every grandstand that faces a show tank takes the show id of the
 /// first one it faces. A grandstand that faces none keeps the id it has. Run once after a zoo is
 /// loaded and when a grandstand is added to the map.
-pub fn associate(world: &mut World, cat: &Catalogue) {
+pub(crate) fn associate(world: &mut World, cat: &Catalogue) {
     associate_upto(world, cat, usize::MAX);
 }
 
@@ -288,7 +291,7 @@ fn associate_upto(world: &mut World, cat: &Catalogue, last: usize) {
 /// The show manager's step (shows 5.1), first in the AI manager's update, at AI tick `now`: every
 /// show info in show id order listens, updates and refreshes its upkeep figure. Nothing happens
 /// in a world without a show info.
-pub fn update(world: &mut World, cat: &Catalogue, events: &mut Events, now: u32) {
+pub(crate) fn update(world: &mut World, cat: &Catalogue, events: &mut Events, now: u32) {
     let mut infos: Vec<(u16, usize)> = (world.zoo.shows.infos.iter().enumerate())
         .filter_map(|(n, i)| Some((i.as_ref()?.id, n)))
         .collect();
@@ -321,7 +324,7 @@ fn grandstand_upkeep(upkeep: &[(u16, f32)], id: u16) -> f32 {
 
 /// The month change of the show infos (shows 9.3), after the exhibits' and before the wages: the
 /// figures of the month that ended move to last month and the upkeep takes the current rate.
-pub fn new_month(world: &mut World, cat: &Catalogue) {
+pub(crate) fn new_month(world: &mut World, cat: &Catalogue) {
     if world.zoo.shows.infos.iter().all(Option::is_none) {
         return;
     }
@@ -334,7 +337,8 @@ pub fn new_month(world: &mut World, cat: &Catalogue) {
 /// Shows 10.1: the grandstand `id` is emptied when it belongs to a show whose info exists. The
 /// show is aborted first (shows 5.6), the grandstand's "show soon" flag goes down and the
 /// grandstands that face the show's tank lose their users.
-pub fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut Events, id: u32) {
+#[cfg(test)]
+pub(crate) fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut Events, id: u32) {
     let Some(at) = world.find(id) else { return };
     let default = world.units.prices.default;
     if !kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand")) {
@@ -354,6 +358,7 @@ pub fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut Events
 }
 
 /// Whether a show info with this show id exists.
+#[cfg(test)]
 fn has_info(world: &World, id: u16) -> bool {
     world.zoo.shows.infos.iter().flatten().any(|i| i.id == id)
 }
@@ -361,7 +366,8 @@ fn has_info(world: &World, id: u16) -> bool {
 /// Shows 10.2: every grandstand that faces the tank of show `id` loses all its users at once (a
 /// forced leave) and its "show soon" flag goes down. Nothing happens for a show with no info or
 /// whose tank is gone.
-pub fn empty_show_grandstands(world: &mut World, cat: &Catalogue, id: u16) {
+#[cfg(test)]
+pub(crate) fn empty_show_grandstands(world: &mut World, cat: &Catalogue, id: u16) {
     let Some(exhibit) = exhibit_of(world, id) else {
         return;
     };

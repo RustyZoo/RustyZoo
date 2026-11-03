@@ -17,7 +17,7 @@ const HELD: usize = 12;
 /// frames are hashed four at a time in a thread (see [`frame_hashes`]) while the next passes run,
 /// and the lines of a pass are written once its hash is known.
 #[derive(Default)]
-pub struct Lines {
+pub(crate) struct Lines {
     /// The lines of the passes, oldest first, and whether the pass drew a frame.
     held: VecDeque<(Vec<String>, bool)>,
     /// The frames not sent to a thread yet.
@@ -33,7 +33,7 @@ pub struct Lines {
 impl Lines {
     /// Takes the lines of the pass `pass` of `app` and writes, with `out`, those of the passes
     /// whose frame is hashed by now.
-    pub fn pass(
+    pub(crate) fn pass(
         &mut self,
         app: &App,
         pass: u64,
@@ -73,7 +73,7 @@ impl Lines {
     }
 
     /// Writes the lines of the passes still held.
-    pub fn finish(&mut self, out: &mut dyn FnMut(&str)) -> Result<(), String> {
+    pub(crate) fn finish(&mut self, out: &mut dyn FnMut(&str)) -> Result<(), String> {
         while !self.held.is_empty() {
             self.write_oldest(out)?;
         }

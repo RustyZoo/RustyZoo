@@ -31,14 +31,14 @@ pub struct Scenario {
 
 /// What the icon in front of a scenario says.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Status {
+pub(crate) enum Status {
     Won,
     Playable,
     Locked,
 }
 
 impl Status {
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Status::Won => "won",
             Status::Playable => "playable",
@@ -48,13 +48,13 @@ impl Status {
 }
 
 /// The result stored for a result key: 3 never finished, 2 lost, 1 won, 0 unlocked by a cheat.
-pub fn result(ini: &Config, key: &str) -> i32 {
+pub(crate) fn result(ini: &Config, key: &str) -> i32 {
     ini_whole(ini, "scenario", key).unwrap_or(NEVER)
 }
 
 impl Scenario {
     /// Won below 2; else playable when every lock is won; else locked.
-    pub fn status(&self, ini: &Config) -> Status {
+    pub(crate) fn status(&self, ini: &Config) -> Status {
         if result(ini, &self.result_key) < 2 {
             Status::Won
         } else if self.locks.iter().all(|key| result(ini, key) < 2) {
@@ -164,14 +164,14 @@ pub fn freeform_list(vfs: &Vfs) -> Vec<Freeform> {
 
 /// How hard a game with this much starting cash is, as the number of the string that says it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Difficulty {
+pub(crate) enum Difficulty {
     Hard,
     Middle,
     Easy,
 }
 
 impl Difficulty {
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Difficulty::Hard => "hard",
             Difficulty::Middle => "middle",
@@ -179,7 +179,7 @@ impl Difficulty {
         }
     }
 
-    pub fn string(self) -> i32 {
+    pub(crate) fn string(self) -> i32 {
         match self {
             Difficulty::Hard => 11538,
             Difficulty::Middle => 11537,
@@ -191,7 +191,7 @@ impl Difficulty {
 /// The starting cash of the freeform screen with its limits and step (`[UI] MSStartingCash`,
 /// `MSMinCash`, `MSMaxCash`, `MSCashIncrement`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cash {
+pub(crate) struct Cash {
     pub amount: i64,
     pub min: i64,
     pub max: i64,
@@ -200,7 +200,7 @@ pub struct Cash {
 
 impl Cash {
     /// The cash the settings say, limited to the two bounds (the upper one wins if they cross).
-    pub fn from_settings(ini: &Config) -> Cash {
+    pub(crate) fn from_settings(ini: &Config) -> Cash {
         let get = |key: &str, default: i64| ini_whole(ini, "UI", key).map_or(default, i64::from);
         let mut cash = Cash {
             amount: 0,
@@ -213,30 +213,30 @@ impl Cash {
     }
 
     /// Sets the amount, kept between the bounds.
-    pub fn set(&mut self, amount: i64) {
+    pub(crate) fn set(&mut self, amount: i64) {
         self.amount = amount.max(self.min).min(self.max);
     }
 
-    pub fn can_up(&self) -> bool {
+    pub(crate) fn can_up(&self) -> bool {
         self.amount < self.max
     }
 
-    pub fn can_down(&self) -> bool {
+    pub(crate) fn can_down(&self) -> bool {
         self.amount > self.min
     }
 
     /// One step more or less, stopping at the limit.
-    pub fn up(&mut self) {
+    pub(crate) fn up(&mut self) {
         self.set(self.amount.saturating_add(self.step));
     }
 
-    pub fn down(&mut self) {
+    pub(crate) fn down(&mut self) {
         self.set(self.amount.saturating_sub(self.step));
     }
 
     /// Reads what was typed: the currency symbol, the group separator of the user's locale and
     /// the spaces are taken out, then the number is limited to the bounds. Anything that is no number reads as 0 (the lower bound).
-    pub fn typed(&mut self, typed: &[u8], symbol: &str) {
+    pub(crate) fn typed(&mut self, typed: &[u8], symbol: &str) {
         let mut text = text(typed);
         if !symbol.is_empty() {
             text = text.replace(symbol, "");
@@ -249,7 +249,7 @@ impl Cash {
     }
 
     /// Below 25,000 hard, above 100,000 easy.
-    pub fn difficulty(&self) -> Difficulty {
+    pub(crate) fn difficulty(&self) -> Difficulty {
         match self.amount {
             ..25_000 => Difficulty::Hard,
             100_001.. => Difficulty::Easy,

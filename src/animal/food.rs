@@ -22,10 +22,10 @@ use crate::world::World;
 use crate::zoo::Entity;
 
 /// The animations of a food entity by fullness (5.1).
-pub const STATES: [&str; 3] = ["empty", "half", "full"];
+pub(crate) const STATES: [&str; 3] = ["empty", "half", "full"];
 
 /// The fullness of a pile: 0 below a third, 1 below two thirds, else 2 (5.1).
-pub fn fullness(left: i32, max: i32) -> usize {
+pub(crate) fn fullness(left: i32, max: i32) -> usize {
     let part = f64::from(left) / f64::from(max.max(1));
     match part {
         p if p < 0.3333 => 0,
@@ -35,14 +35,14 @@ pub fn fullness(left: i32, max: i32) -> usize {
 }
 
 /// The full amount of a food type (`cMaxFoodUnits`, 0 when absent).
-pub fn max_units(cat: &Catalogue, e: &Entity) -> i32 {
+pub(crate) fn max_units(cat: &Catalogue, e: &Entity) -> i32 {
     find(cat, e)
         .and_then(|t| number(t, "cMaxFoodUnits"))
         .unwrap_or(0.0) as i32
 }
 
 /// The kind of food a type holds or an animal eats (`cKeeperFoodType`).
-pub fn kind(cat: &Catalogue, e: &Entity) -> i32 {
+pub(crate) fn kind(cat: &Catalogue, e: &Entity) -> i32 {
     find(cat, e)
         .and_then(|t| number(t, "cKeeperFoodType"))
         .unwrap_or(0.0) as i32
@@ -50,7 +50,7 @@ pub fn kind(cat: &Catalogue, e: &Entity) -> i32 {
 
 /// What eating reads of the world and asks of it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Meal {
+pub(crate) struct Meal {
     /// The units left in the food it aims at, 0 for none; it falls with each bite.
     pub left: i32,
     /// It stands on a water tile; the current set is `bEat`; the type has a set `bEat`.
@@ -68,7 +68,7 @@ pub struct Meal {
 impl Animal {
     /// `stopEating` (5.4): the need flags of the reset goal go down too, and the escape walk ends
     /// (animals 11.3).
-    pub fn stop_eating(&mut self, found: bool, meal: &mut Meal) {
+    pub(crate) fn stop_eating(&mut self, found: bool, meal: &mut Meal) {
         (self.no_food, self.eating) = (found, false);
         (self.wants_food, self.thirsty, self.walk) = (false, false, None);
         (meal.stop, meal.queue) = (true, false);
@@ -77,7 +77,7 @@ impl Animal {
 
 /// `fEat` (5.3): a bite of the food it aims at. Its units fall, the pending hunger is set to the
 /// bite's worth (an assignment: the increment of this tick is lost, 5.5).
-pub fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
+pub(crate) fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
     let bite = m.left.min(k.bite).max(0);
     if bite == 0 || m.wet || a.escaped {
         return a.stop_eating(false, m);
@@ -102,7 +102,14 @@ pub fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
 
 /// `fEat` among the checks: the bite that empties the pile reads the exhibit's animal list at
 /// once, which recomputes the exhibit with its draws inside the bite (5.1).
-pub fn bite(a: &mut Animal, k: &Keys, env: &mut Env, rng: &mut Rng, out: &mut Out, read: Reader) {
+pub(crate) fn bite(
+    a: &mut Animal,
+    k: &Keys,
+    env: &mut Env,
+    rng: &mut Rng,
+    out: &mut Out,
+    read: Reader,
+) {
     let left = out.meal.left;
     eat(a, k, &mut out.meal);
     if left > 0 && out.meal.left <= 0 {
@@ -111,7 +118,7 @@ pub fn bite(a: &mut Animal, k: &Keys, env: &mut Env, rng: &mut Rng, out: &mut Ou
 }
 
 /// The hunger check (4): the rise, and what a hungry animal does about food.
-pub fn hunger(
+pub(crate) fn hunger(
     a: &mut Animal,
     k: &Keys,
     class: &super::Class,
@@ -170,14 +177,14 @@ fn no_food(a: &mut Animal, k: &Keys, out: &mut Out) {
 }
 
 /// The exhibit a tile belongs to, if it is not the grounds or outside the zoo.
-pub fn exhibit_of(world: &World, tile: usize) -> Option<u32> {
+pub(crate) fn exhibit_of(world: &World, tile: usize) -> Option<u32> {
     let region = world.exhibits().region(tile)?;
     Some(region).filter(|&r| r != GROUNDS && r != EXTERIOR)
 }
 
 /// The exhibits whose food an animal in `x` eats: its own, and the amphibious neighbours for an
 /// amphibious species (4.1).
-pub fn near(world: &World, x: u32, k: &Keys) -> Vec<u32> {
+pub(crate) fn near(world: &World, x: u32, k: &Keys) -> Vec<u32> {
     let neighbours = world.exhibits().get(x).map(|e| e.amphibious.clone());
     let neighbours = neighbours.filter(|_| k.amphibious).unwrap_or_default();
     std::iter::once(x).chain(neighbours).collect()
@@ -185,7 +192,7 @@ pub fn near(world: &World, x: u32, k: &Keys) -> Vec<u32> {
 
 /// A piece of food: its id, its place in the entity list, the tile it was found on and its units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Piece {
+pub(crate) struct Piece {
     pub id: u32,
     pub at: usize,
     pub tile: usize,
@@ -194,7 +201,7 @@ pub struct Piece {
 
 /// The pieces of food of the kind `wanted` in the exhibits `regions`, in the tile order of the exhibit and
 /// the slot order of the tile (habitat rating 5.1).
-pub fn pieces(world: &World, cat: &Catalogue, regions: &[u32], wanted: i32) -> Vec<Piece> {
+pub(crate) fn pieces(world: &World, cat: &Catalogue, regions: &[u32], wanted: i32) -> Vec<Piece> {
     let mut found: Vec<Piece> = Vec::new();
     let tiles = regions.iter().filter_map(|&x| world.exhibits().get(x));
     for &tile in tiles.flat_map(|e| &e.order) {
@@ -226,7 +233,7 @@ pub fn pieces(world: &World, cat: &Catalogue, regions: &[u32], wanted: i32) -> V
 /// by `distance` of its tile; a first 0 and a second `rand & 3` not 0 the one with the least left;
 /// two 0s a random one of the first exhibit with a piece, by a third draw `rand % n` made only for
 /// `n >= 1`. The first of equals wins.
-pub fn choose(
+pub(crate) fn choose(
     groups: &[Vec<Piece>],
     distance: impl Fn(usize) -> i64,
     rng: &mut Rng,
@@ -247,7 +254,7 @@ pub fn choose(
 }
 
 /// What eating reads of the animal at position `at`: the food it aims at and its place.
-pub fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
+pub(crate) fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
     let entity = &world.zoo.entities[at];
     let Part::Animal(a) = &unit.part else {
         return Meal::default();
@@ -322,7 +329,7 @@ pub(super) fn stop_others(
 
 /// The bites of the tick so far take their units from the pile, once: the exhibit is marked
 /// where the bite is, before the checks that read it.
-pub fn settle(world: &mut World, a: &Animal, m: &Meal) {
+pub(crate) fn settle(world: &mut World, a: &Animal, m: &Meal) {
     let Some(i) = world.find(a.food).filter(|_| m.bites > 0) else {
         return;
     };
@@ -332,7 +339,7 @@ pub fn settle(world: &mut World, a: &Animal, m: &Meal) {
 }
 
 /// Does what a meal asked: `bEat` started or queued, the goal reset, the food's units taken.
-pub fn apply(
+pub(crate) fn apply(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
@@ -378,7 +385,7 @@ pub fn apply(
 }
 
 /// `fEat` outside the checks, from the goal that reached the food.
-pub fn feed(cx: &mut Cx) {
+pub(crate) fn feed(cx: &mut Cx) {
     let k = super::keys(cx.world, cx.ctx.cat, cx.at);
     let mut m = meal(cx.unit, cx.world, cx.data, cx.at);
     let left = m.left;
@@ -419,7 +426,7 @@ pub(crate) fn nearest_direction(dx: i32, dy: i32) -> Option<u32> {
 }
 
 /// `fFaceTowardFood`: the animal turns to the tile of the food it aims at; nothing without one.
-pub fn face(unit: &Unit, world: &mut World, at: usize) {
+pub(crate) fn face(unit: &Unit, world: &mut World, at: usize) {
     let Part::Animal(a) = &unit.part else {
         return;
     };
@@ -440,7 +447,7 @@ fn tile_xy(e: &Entity) -> Option<(i32, i32)> {
 
 /// Turns the unit at `at` to the nearest direction of tile `to` (movement 9); nothing when it
 /// stands on that tile.
-pub fn turn(unit: &Unit, world: &mut World, at: usize, to: (i32, i32)) {
+pub(crate) fn turn(unit: &Unit, world: &mut World, at: usize, to: (i32, i32)) {
     let me = &world.zoo.entities[at];
     let (Some(c), Some(here)) = (me.common.as_ref(), tile_xy(me)) else {
         return;

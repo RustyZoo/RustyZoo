@@ -16,10 +16,10 @@ use crate::zoo::Entity;
 /// The timings read so far, by type (its position in the catalogue) and animation name; `None`
 /// for an animation the type lacks or whose files cannot be read.
 #[derive(Default)]
-pub struct Timings(RefCell<HashMap<usize, HashMap<String, Option<Timing>>>>);
+pub(crate) struct Timings(RefCell<HashMap<usize, HashMap<String, Option<Timing>>>>);
 
 /// The catalogue and the files, with the timings they filled.
-pub struct Library<'a> {
+pub(crate) struct Library<'a> {
     pub catalogue: &'a Catalogue,
     pub vfs: &'a Vfs,
     pub timings: &'a Timings,

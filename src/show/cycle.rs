@@ -47,6 +47,7 @@ pub(super) fn update(
 }
 
 /// `abort()` of the show whose show id is `id`, if it has an info (shows 5.6).
+#[cfg(test)]
 pub(super) fn abort(world: &mut World, cat: &Catalogue, events: &mut Events, id: u16) {
     let now = world.units.ai_ticks;
     if let Some(n) = super::habitat_of(world, id) {

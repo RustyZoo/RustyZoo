@@ -29,13 +29,13 @@
 
 use std::collections::HashMap;
 
-pub use crate::animal::Animal;
+pub(crate) use crate::animal::Animal;
 use crate::animal::Class;
 use crate::behaviour::{Animation, Data, Env, Flow, Heard, Note, Runner, Target};
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::goal::Goals;
-pub use crate::guest::Guest;
+pub(crate) use crate::guest::Guest;
 use crate::path::{self, Finder, Mover, Settings};
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, UNIT_CHANNEL};
 use crate::timing::ini_whole;
@@ -44,7 +44,7 @@ use crate::zoo::Entity;
 
 /// The colour choices of a new unit: `count` draws in a row, each `rand % palettes of the group`
 /// (0 for a group the type does not have), as the creation draws them (save games 11.2).
-pub fn draw_colours(ty: Option<&EntityType>, count: usize, rng: &mut Rng) -> Vec<u8> {
+pub(crate) fn draw_colours(ty: Option<&EntityType>, count: usize, rng: &mut Rng) -> Vec<u8> {
     let palettes = ty.map(EntityType::palettes).unwrap_or_default();
     (0..count)
         .map(|g| {
@@ -71,7 +71,7 @@ pub mod walk;
 
 /// What a unit is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Kind {
+pub(crate) enum Kind {
     #[default]
     Animal,
     Guest,
@@ -84,7 +84,7 @@ pub enum Kind {
 
 impl Kind {
     /// The kind of the units of an entity class; `None` for everything that is not a unit.
-    pub fn of_class(class: &str) -> Option<Kind> {
+    pub(crate) fn of_class(class: &str) -> Option<Kind> {
         Some(match class {
             "animals" => Kind::Animal,
             "guests" => Kind::Guest,
@@ -97,7 +97,7 @@ impl Kind {
     }
 
     /// The word the log uses.
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Kind::Animal => "animal",
             Kind::Guest => "guest",
@@ -130,7 +130,7 @@ impl Kind {
 
 /// The part of the state of a staff member: its exhibits and job (staff issues).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Staff {
+pub(crate) struct Staff {
     /// The colour choices drawn at the creation, one per colour group (save games 11.2).
     pub colours: Vec<u8>,
     /// The counters drawn at the creation (staff 4.2): -1 for a key of 0.
@@ -170,7 +170,7 @@ pub struct Staff {
 
 /// The kind-specific part of a unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Part {
+pub(crate) enum Part {
     Animal(Animal),
     Guest(Guest),
     Staff(Staff),
@@ -180,8 +180,8 @@ pub enum Part {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unit {
     pub id: u32,
-    pub kind: Kind,
-    pub part: Part,
+    pub(crate) kind: Kind,
+    pub(crate) part: Part,
     /// Whether the unit is moving, and at which speed in movement units per second.
     pub moving: bool,
     pub speed: u32,
@@ -197,7 +197,7 @@ pub struct Unit {
     pub tank: u8,
     /// The direction of the vertical move, -1 down, 0 level, +1 up, and the segment of the 3D move.
     pub vertical: i32,
-    pub segment: Option<swim::Segment>,
+    pub(crate) segment: Option<swim::Segment>,
     /// The 3D target the last move call named (tank fauna 6.2).
     pub target: Target,
     /// The direction of the last tile change, -1 for none (movement 2).
@@ -205,7 +205,7 @@ pub struct Unit {
     /// A move call has started the walk (movement 8.2: the call's started flag).
     pub walking: bool,
     /// The speed band of the move call, for picking the move animation again.
-    pub band: movement::Band,
+    pub(crate) band: movement::Band,
     /// A swimmer changed between land and water: the move animation is picked again.
     pub flip: bool,
     /// The gate the unit opened and has not left behind (movement 6.2).
@@ -224,11 +224,11 @@ pub struct Unit {
     /// What the costs of the path finder read of the unit's type; its tile is set for each use.
     pub mover: Mover,
     /// The animation the unit holds.
-    pub animation: Animation,
+    pub(crate) animation: Animation,
     /// The set the unit runs, which plays animations.
-    pub runner: Runner,
+    pub(crate) runner: Runner,
     /// The goal record and the objects built from it (goals).
-    pub goal: Goals,
+    pub(crate) goal: Goals,
     /// Milliseconds since the last status tick, started at `id % period`.
     pub status_timer: i32,
     /// While above 0 the unit runs no behaviour and no goal.
@@ -237,7 +237,7 @@ pub struct Unit {
     /// has no timer; the heal or the pick-up of the unit lowers it.
     pub held: bool,
     /// The events read at the start of this step, for the hooks; empty between steps.
-    pub events: Vec<Event>,
+    pub(crate) events: Vec<Event>,
     /// The player holds the unit.
     pub carried: bool,
     /// The unit is inside a building that hides its users: off the map, it does not move.
@@ -269,7 +269,7 @@ pub struct Unit {
 impl Unit {
     /// A new unit, as the original's initialisation leaves it (simulation 8.2); its timer is set
     /// by the table.
-    pub fn new(id: u32, kind: Kind) -> Unit {
+    pub(crate) fn new(id: u32, kind: Kind) -> Unit {
         Unit {
             id,
             kind,
@@ -321,7 +321,7 @@ impl Unit {
     }
 
     /// The unit leaves the first tile of its path (and its level).
-    pub fn pop_node(&mut self) {
+    pub(crate) fn pop_node(&mut self) {
         self.path.remove(0);
         if self.levels.len() > self.path.len() {
             self.levels.remove(0);
@@ -329,7 +329,7 @@ impl Unit {
     }
 
     /// Whether a flag keeps the unit from moving, from its status tick and from its goals.
-    pub fn suspended(&self) -> bool {
+    pub(crate) fn suspended(&self) -> bool {
         self.carried || self.repositioning
     }
 }
@@ -358,7 +358,7 @@ pub struct Units {
     /// The keys of `animals.ai` that every animal reads.
     pub class: Class,
     /// The `[AI]` settings of the ring of a random walk.
-    pub ring: walk::Ring,
+    pub(crate) ring: walk::Ring,
     /// `[AI] exhibitServiceInterval`, in AI ticks (staff 7.2): read as the unsigned number the
     /// original compares with, so a negative value is never reached.
     pub service_interval: u32,
@@ -397,21 +397,21 @@ pub struct Units {
     pub guests_gone: u32,
     pub members_joined: u32,
     /// The viewing areas of the exhibits, built again after the map changed.
-    pub views: crate::guest::view::Views,
+    pub(crate) views: crate::guest::view::Views,
     /// What guests donated during the step, which the step books.
     pub donated: Vec<f32>,
     /// `cDonationFactor`, set by the step from the economy file.
     pub donation_factor: f32,
     /// The session flags of the cheats, set by the step from the program's (cheats 2.4). The
     /// breeding flag goes down here when a roll uses it, and the step hands that back.
-    pub cheat: crate::cheat::Flags,
+    pub(crate) cheat: crate::cheat::Flags,
     /// The live state of the guest buildings and the prices of the economy file (guest buildings).
-    pub buildings: crate::building::Table,
-    pub prices: crate::building::Prices,
+    pub(crate) buildings: crate::building::Table,
+    pub(crate) prices: crate::building::Prices,
     /// The numbers of `shows.cfg` (shows 3.1).
     pub show: crate::show::Params,
     /// The upgrades of the building types, filled by the research programs (research 6.3).
-    pub upgrades: crate::building::upgrade::Upgrades,
+    pub(crate) upgrades: crate::building::upgrade::Upgrades,
     /// The index of the upgrade each building uses in its type's list, by building id; a building
     /// with none listed uses the first (research 6.3). Kept apart from [`Units::buildings`] so
     /// that the state hash of a game with no chosen upgrade is the same.
@@ -425,14 +425,14 @@ pub struct Units {
     building_lines: Vec<String>,
     /// The thoughts of the guests, newest first (guests visit 8), and the megatiles their
     /// surroundings check reads (guests 12).
-    pub thoughts: crate::guest::thought::Thoughts,
-    pub mega: crate::guest::mega::Mega,
+    pub(crate) thoughts: crate::guest::thought::Thoughts,
+    pub(crate) mega: crate::guest::mega::Mega,
     /// The scenery guests gawk at (guests visit 3.1).
-    pub gawk: crate::guest::gawk::Gawk,
+    pub(crate) gawk: crate::guest::gawk::Gawk,
     /// The events the units posted to the task pool during the step, which the step posts.
-    pub posts: Vec<Event>,
+    pub(crate) posts: Vec<Event>,
     /// The maintenance task pool (staff 8.2).
-    pub pool: crate::staff::pool::Pool,
+    pub(crate) pool: crate::staff::pool::Pool,
     world_lines: Vec<String>,
     /// The animals' reactions to a change of their exhibit (animals 10): the animal, whether it
     /// likes the change, and the milliseconds since.
@@ -502,29 +502,26 @@ impl Default for Units {
 }
 
 impl Units {
-    pub fn len(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
         self.list.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.list.is_empty()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &Unit> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Unit> {
         self.list.iter()
     }
 
-    pub fn get(&self, id: u32) -> Option<&Unit> {
+    pub(crate) fn get(&self, id: u32) -> Option<&Unit> {
         self.index.get(&id).map(|&i| &self.list[i])
     }
 
-    pub fn get_mut(&mut self, id: u32) -> Option<&mut Unit> {
+    pub(crate) fn get_mut(&mut self, id: u32) -> Option<&mut Unit> {
         let i = *self.index.get(&id)?;
         Some(&mut self.list[i])
     }
 
     /// Sets the status period and starts every unit's timer again at `id % period`, as at a load.
-    pub fn set_period(&mut self, period: i32) {
+    pub(crate) fn set_period(&mut self, period: i32) {
         self.period = period;
         for unit in &mut self.list {
             unit.status_timer = first_timer(unit.id, period);
@@ -532,7 +529,7 @@ impl Units {
     }
 
     /// Reads the settings of the path finder and of the random walk from the ini file.
-    pub fn set_ini(&mut self, ini: &[u8]) {
+    pub(crate) fn set_ini(&mut self, ini: &[u8]) {
         let config = Config::parse(ini).ok();
         self.finder = Finder::new(
             config
@@ -547,43 +544,43 @@ impl Units {
     }
 
     /// The `unit` log lines since the last call, without the family word.
-    pub fn take_lines(&mut self) -> Vec<String> {
+    pub(crate) fn take_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.lines)
     }
 
     /// The `animal` log lines since the last call, without the family word.
-    pub fn take_animal_lines(&mut self) -> Vec<String> {
+    pub(crate) fn take_animal_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.animal_lines)
     }
 
     /// The `guest` log lines since the last call, without the family word.
-    pub fn take_guest_lines(&mut self) -> Vec<String> {
+    pub(crate) fn take_guest_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.guest_lines)
     }
 
     /// The `building` log lines since the last call, without the family word.
-    pub fn take_building_lines(&mut self) -> Vec<String> {
+    pub(crate) fn take_building_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.building_lines)
     }
 
     /// The messages posted since the last call, as (string number, unit id, names); the string
     /// holds a `%s` for each name, for the unit's name when there are none.
-    pub fn take_messages(&mut self) -> Vec<(i32, u32, Vec<String>)> {
+    pub(crate) fn take_messages(&mut self) -> Vec<(i32, u32, Vec<String>)> {
         std::mem::take(&mut self.messages)
     }
 
     /// The `staff` log lines since the last call, without the family word.
-    pub fn take_staff_lines(&mut self) -> Vec<String> {
+    pub(crate) fn take_staff_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.staff_lines)
     }
 
     /// Asks for a sound at the place of entity `id` (nothing when there is none).
-    pub fn push_sound(&mut self, id: u32, heard: Option<Heard>) {
+    pub(crate) fn push_sound(&mut self, id: u32, heard: Option<Heard>) {
         self.sounds.extend(heard.map(|h| (id, h)));
     }
 
     /// The sounds asked for since the last call: the unit and the sound its `[Sounds]` names.
-    pub fn take_sounds(&mut self) -> Vec<(u32, Heard)> {
+    pub(crate) fn take_sounds(&mut self) -> Vec<(u32, Heard)> {
         std::mem::take(&mut self.sounds)
     }
 
@@ -597,7 +594,7 @@ impl Units {
     }
 
     /// The `world` lines the units told since the last call (`world fence ID LIFE`).
-    pub fn take_world_lines(&mut self) -> Vec<String> {
+    pub(crate) fn take_world_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.world_lines)
     }
 
@@ -648,12 +645,12 @@ impl Units {
     }
 
     /// The exhibit sounds asked for since the last call.
-    pub fn take_cheers(&mut self) -> Vec<&'static str> {
+    pub(crate) fn take_cheers(&mut self) -> Vec<&'static str> {
         std::mem::take(&mut self.cheers)
     }
 
     /// The reactions age by the step of `ms` milliseconds and go at 1250 ms, or with their animal.
-    pub fn fade(&mut self, ms: u32) {
+    pub(crate) fn fade(&mut self, ms: u32) {
         let mut reactions = std::mem::take(&mut self.reactions);
         reactions.retain_mut(|r| {
             r.2 = r.2.saturating_add(ms);
@@ -739,8 +736,8 @@ impl Units {
 
 /// What the managers hand to a unit's turn.
 pub struct Ctx<'a> {
-    pub rng: &'a mut Rng,
-    pub events: &'a Events,
+    pub(crate) rng: &'a mut Rng,
+    pub(crate) events: &'a Events,
     /// The ids that asked to be removed at the next step's removal pass.
     pub removals: &'a mut Vec<u32>,
     /// The step in milliseconds.
@@ -752,7 +749,7 @@ pub struct Ctx<'a> {
 impl Ctx<'_> {
     /// The unit's `setIsRemoved`: it goes at the next removal pass, and the undo list forgets it
     /// at once (an undo must neither bring back nor remove a destroyed entity).
-    pub fn remove(&mut self, world: &mut World, id: u32) {
+    pub(crate) fn remove(&mut self, world: &mut World, id: u32) {
         world.forget_undo(id);
         crate::staff::leaves(world, id);
         self.removals.push(id);
@@ -761,7 +758,7 @@ impl Ctx<'_> {
 
 /// The work of a unit's turn that later issues fill. Each gets the unit (taken out of the table
 /// for the turn), the world, the managers' context and the unit's position in the entity list.
-pub trait Hooks {
+pub(crate) trait Hooks {
     /// The unit's first turn, before `start`, for every unit: the characteristics of its type.
     fn typed(&mut self, _: &mut Unit, _: &mut World, _at: usize) {}
     /// The unit's first turn, before anything else (simulation 8.2: the creation of its state).
@@ -785,7 +782,7 @@ pub trait Hooks {
 
 /// The hooks of the game: the move, the animation and the behaviour set from the data, the
 /// animals' status work and the goals.
-pub struct Standard<'a> {
+pub(crate) struct Standard<'a> {
     pub data: &'a dyn Data,
 }
 
@@ -1024,7 +1021,7 @@ fn face_target(unit: &Unit, world: &mut World, at: usize) {
 
 /// One turn of the unit at position `at` of the entity list (simulation 6.1); nothing for an
 /// entity that is not a unit.
-pub fn update(hooks: &mut impl Hooks, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn update(hooks: &mut impl Hooks, world: &mut World, ctx: &mut Ctx, at: usize) {
     let Some(id) = (world.zoo.entities.get(at)).and_then(|e| e.common.as_ref().map(|c| c.id))
     else {
         return;

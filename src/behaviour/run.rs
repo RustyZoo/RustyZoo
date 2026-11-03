@@ -53,7 +53,7 @@ pub trait Data {
 }
 
 /// No data: no set, no animation.
-pub struct NoData;
+pub(crate) struct NoData;
 
 impl Data for NoData {
     fn set(&self, _: &Entity, _: &str) -> Option<&[Call]> {
@@ -88,7 +88,7 @@ pub struct Heard {
 
 /// What happened that the log and the app are told.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Note {
+pub(crate) enum Note {
     /// A top set was started.
     Set(String),
     /// The animation shown changed.
@@ -99,7 +99,7 @@ pub enum Note {
 
 /// One animation of a sequence, played forward or reversed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Entry {
+pub(crate) struct Entry {
     name: String,
     reverse: bool,
     sound: Option<String>,
@@ -118,7 +118,7 @@ impl Entry {
 /// The animation a unit holds: the sequence being played, the sequences queued, the base
 /// animation that loops when nothing else plays, and the frame (sprite drawing 6).
 #[derive(Clone, PartialEq, Eq)]
-pub struct Animation {
+pub(crate) struct Animation {
     /// The animation shown.
     pub name: String,
     /// The frame counted up from 0; [`Animation::shown`] is the one drawn.
@@ -195,7 +195,7 @@ impl std::fmt::Debug for Animation {
 impl Animation {
     /// The frame of the animation to draw: the counted one, or counted from the end when the
     /// entry is reversed (sprite drawing 6.3).
-    pub fn shown(&self) -> u32 {
+    pub(crate) fn shown(&self) -> u32 {
         match self.reverse {
             true => (self.count.saturating_sub(1)).saturating_sub(self.frame),
             false => self.frame,
@@ -203,25 +203,25 @@ impl Animation {
     }
 
     /// Whether the base animation shows, nothing else playing.
-    pub fn shows_base(&self) -> bool {
+    pub(crate) fn shows_base(&self) -> bool {
         self.seq.is_empty() && self.name == self.base
     }
 
     /// Makes `name` the base, without a cut and without clearing the player: what plays goes on
     /// to its end, the loop of the old base included (movement 8.2 step 1).
-    pub fn base_to(&mut self, name: &str) {
+    pub(crate) fn base_to(&mut self, name: &str) {
         self.base = name.to_string();
         self.base_reverse = false;
     }
 
     /// Makes the base loop reversed, from its next start (`fMoveReverse`, `fFlyReverse`).
-    pub fn reverse_base(&mut self) {
+    pub(crate) fn reverse_base(&mut self) {
         self.base_reverse = true;
     }
 
     /// Sets the cut (sprite drawing 6.2): a forced set start, the stop of a walk, the resets of
     /// the move and idle animations.
-    pub fn cut(&mut self) {
+    pub(crate) fn cut(&mut self) {
         self.cut = true;
     }
 
@@ -256,7 +256,7 @@ impl Animation {
 
     /// Advances by `dt` milliseconds (sprite drawing 6.2). A frame lasts the delay of its file;
     /// the time left when a sequence ends is dropped.
-    pub fn advance(&mut self, dt: u32, timing: &dyn Fn(&str) -> Option<Timing>) {
+    pub(crate) fn advance(&mut self, dt: u32, timing: &dyn Fn(&str) -> Option<Timing>) {
         if self.stopped {
             return;
         }
@@ -318,7 +318,7 @@ impl Animation {
     }
 
     /// Clears the player and shows `name` from its first frame as the base (`fSetBase`).
-    pub fn set_base(&mut self, name: &str, timing: &dyn Fn(&str) -> Option<Timing>) {
+    pub(crate) fn set_base(&mut self, name: &str, timing: &dyn Fn(&str) -> Option<Timing>) {
         self.reset();
         self.base = name.to_string();
         self.finish(timing);
@@ -351,7 +351,7 @@ struct Level {
 }
 
 /// What a unit needs to run its set.
-pub struct Env<'a> {
+pub(crate) struct Env<'a> {
     pub data: &'a dyn Data,
     pub unit: &'a Entity,
     pub rng: &'a mut Rng,
@@ -360,7 +360,7 @@ pub struct Env<'a> {
 /// The set a unit runs: the chain from the top set down to the innermost nested one, the set it
 /// will start when the top one ends, and the play state the play calls share.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Runner {
+pub(crate) struct Runner {
     chain: Vec<Level>,
     /// The pending call: the name and its own interruptible flag (behaviours 4.2).
     pending: Option<(String, bool)>,
@@ -429,7 +429,7 @@ impl std::fmt::Debug for Runner {
 
 /// The answer to a move call (movement 8.2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Flow {
+pub(crate) enum Flow {
     /// The call goes on in the next step.
     Running,
     Done,
@@ -464,77 +464,77 @@ impl Default for Runner {
 
 impl Runner {
     /// Whether the top set has a call in progress.
-    pub fn running(&self) -> bool {
+    pub(crate) fn running(&self) -> bool {
         self.chain.first().is_some_and(|l| l.running)
     }
 
     /// The name of the top set, if the unit has started one.
-    pub fn top(&self) -> Option<&str> {
+    pub(crate) fn top(&self) -> Option<&str> {
         self.chain.first().map(|l| l.name.as_str())
     }
 
     /// Whether a set start was accepted since the last time, once.
-    pub fn take_started(&mut self) -> bool {
+    pub(crate) fn take_started(&mut self) -> bool {
         std::mem::take(&mut self.started)
     }
 
     /// The move call the set reached, once.
-    pub fn take_move(&mut self) -> Option<(Gait, Target, bool)> {
+    pub(crate) fn take_move(&mut self) -> Option<(Gait, Target, bool)> {
         self.moving.take()
     }
 
     /// Whether a face-the-food call ran since the last time, once.
-    pub fn take_face(&mut self) -> bool {
+    pub(crate) fn take_face(&mut self) -> bool {
         std::mem::take(&mut self.face)
     }
 
     /// Whether a face-the-target call ran since the last time, once.
-    pub fn take_target(&mut self) -> bool {
+    pub(crate) fn take_target(&mut self) -> bool {
         std::mem::take(&mut self.target)
     }
 
     /// Whether a halt call ran since the last time, once.
-    pub fn take_halt(&mut self) -> bool {
+    pub(crate) fn take_halt(&mut self) -> bool {
         std::mem::take(&mut self.halt)
     }
 
     /// Whether an `fDie` call ran since the last time, once.
-    pub fn take_die(&mut self) -> bool {
+    pub(crate) fn take_die(&mut self) -> bool {
         std::mem::take(&mut self.die)
     }
 
     /// Whether an `fHatch` call ran since the last time, once.
-    pub fn take_hatch(&mut self) -> bool {
+    pub(crate) fn take_hatch(&mut self) -> bool {
         std::mem::take(&mut self.hatch)
     }
 
     /// Whether an `fEnterBuilding` call ran since the last time, once.
-    pub fn take_enter(&mut self) -> bool {
+    pub(crate) fn take_enter(&mut self) -> bool {
         std::mem::take(&mut self.enter)
     }
 
     /// Whether an `fExitBuilding` call ran since the last time, once.
-    pub fn take_exit(&mut self) -> bool {
+    pub(crate) fn take_exit(&mut self) -> bool {
         std::mem::take(&mut self.exit)
     }
 
     /// The set asked to follow the current one, if any.
-    pub fn queued(&self) -> Option<&str> {
+    pub(crate) fn queued(&self) -> Option<&str> {
         self.pending.as_ref().map(|p| p.0.as_str())
     }
 
     /// The interruptible flag of the pending call; up when there is none.
-    pub fn queued_flag(&self) -> bool {
+    pub(crate) fn queued_flag(&self) -> bool {
         self.pending.as_ref().is_none_or(|p| p.1)
     }
 
     /// Forgets the set asked to follow the current one (animals-needs 5.4).
-    pub fn forget(&mut self) {
+    pub(crate) fn forget(&mut self) {
         self.pending = None;
     }
 
     /// The unit's answer to the move call: it is done, or fails the set.
-    pub fn answer(&mut self, flow: Flow) {
+    pub(crate) fn answer(&mut self, flow: Flow) {
         let Some(level) = self.chain.last_mut() else {
             return;
         };
@@ -546,7 +546,7 @@ impl Runner {
     }
 
     /// Goes on with the set after an answer, without choosing a new one.
-    pub fn resume(&mut self, anim: &mut Animation, env: &mut Env) {
+    pub(crate) fn resume(&mut self, anim: &mut Animation, env: &mut Env) {
         if self.running() {
             self.execute(0, anim, env);
         }
@@ -554,13 +554,13 @@ impl Runner {
 
     /// Writes the pending call as it is, name and flag (a saved game, a restored use; behaviours
     /// 4.7). An empty name is none.
-    pub fn keep(&mut self, name: &str, interruptible: bool) {
+    pub(crate) fn keep(&mut self, name: &str, interruptible: bool) {
         self.pending = (!name.is_empty()).then(|| (name.to_string(), interruptible));
     }
 
     /// Asks for a set to start when the running one ends (behaviours 4.2): the pending call is
     /// replaced only if it is interruptible (an empty one is) or `force`. Whether it was written.
-    pub fn queue(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
+    pub(crate) fn queue(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
         if !force && !self.queued_flag() {
             return false;
         }
@@ -570,18 +570,18 @@ impl Runner {
 
     /// Whether [`Runner::queue_if_new`] would write: the name is not the top set's and the
     /// pending call may be replaced.
-    pub fn can_queue(&self, name: &str, force: bool) -> bool {
+    pub(crate) fn can_queue(&self, name: &str, force: bool) -> bool {
         self.top() != Some(name) && (force || self.queued_flag())
     }
 
     /// `queue`, unless the top set already has this name (behaviours 4.2).
-    pub fn queue_if_new(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
+    pub(crate) fn queue_if_new(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
         self.can_queue(name, force) && self.queue(name, interruptible, force)
     }
 
     /// The calls the top set has left, the current one included: none when no set runs, and a
     /// nested set is not counted (behaviours 4.1).
-    pub fn calls_left(&self, data: &dyn Data, unit: &Entity) -> usize {
+    pub(crate) fn calls_left(&self, data: &dyn Data, unit: &Entity) -> usize {
         let Some(top) = self.chain.first().filter(|l| l.running && l.loaded) else {
             return 0;
         };
@@ -595,7 +595,7 @@ impl Runner {
     /// Starts the set `name` as the top set. A running set that is not interruptible refuses
     /// unless `force`. Unless `keep`, the animation drops what it plays and has queued
     /// (behaviours 4.2). Returns whether it started and the type has calls for it.
-    pub fn start(
+    pub(crate) fn start(
         &mut self,
         anim: &mut Animation,
         env: &Env,
@@ -638,7 +638,7 @@ impl Runner {
     /// state and the animation stay as for a new unit, so the current call runs again from its
     /// start. A set that was not running counts as ended, and the unit stays as it is. Returns
     /// whether a set was taken.
-    pub fn restore(&mut self, saved: &Saved) -> bool {
+    pub(crate) fn restore(&mut self, saved: &Saved) -> bool {
         let top = saved.levels.first();
         if top.is_none_or(|l| l.name.is_empty() || l.tail[2] == 0) {
             return false;
@@ -674,7 +674,7 @@ impl Runner {
     /// current one first, taken from the set `sets` finds by name unless the level holds its own.
     /// `base` is the set the unit's record was read with, whose fields nothing here changes are
     /// kept. `None` when the unit has run no set since it was made or loaded.
-    pub fn saved<'a>(
+    pub(crate) fn saved<'a>(
         &self,
         base: &Saved,
         sets: impl Fn(&str) -> Option<&'a [Call]>,
@@ -711,7 +711,7 @@ impl Runner {
 
     /// The unit's behaviour hook (behaviours 4.6): a pending set starts, else an ambient one is
     /// chosen by `key` (none: no choice this time); then the top set executes.
-    pub fn step(&mut self, anim: &mut Animation, env: &mut Env, key: Option<i32>) {
+    pub(crate) fn step(&mut self, anim: &mut Animation, env: &mut Env, key: Option<i32>) {
         if !self.running() {
             match self.pending.take() {
                 Some((name, interruptible)) => {
@@ -727,7 +727,7 @@ impl Runner {
     }
 
     /// The ambient choice of the animals' checks: only when no set runs and none is pending.
-    pub fn ambient(&mut self, anim: &mut Animation, env: &mut Env, key: i32) {
+    pub(crate) fn ambient(&mut self, anim: &mut Animation, env: &mut Env, key: i32) {
         if !self.running() && self.pending.is_none() {
             self.choose(anim, env, key);
         }

@@ -14,7 +14,7 @@ use crate::world::World;
 use std::collections::HashMap;
 
 /// The side of a megatile in tiles, and the clock past which every megatile is counted again.
-pub const SIDE: usize = 5;
+pub(crate) const SIDE: usize = 5;
 const PERIOD: u32 = 7499;
 /// The thoughts of the check: a beautiful area, a crowd, a smell.
 const BEAUTIFUL: i32 = 10103;
@@ -23,7 +23,7 @@ const SMELLY: i32 = 10241;
 
 /// What one megatile holds.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct Cell {
+pub(crate) struct Cell {
     pub guests: u32,
     /// By guest type: man, woman, boy, girl.
     pub esthetic: [f32; 4],
@@ -32,14 +32,14 @@ pub struct Cell {
 
 /// The megatiles of the map in rows, and the clock of the last count.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Mega {
+pub(crate) struct Mega {
     clock: u32,
     cells: Vec<Cell>,
 }
 
 impl Mega {
     /// The megatile that holds tile `t` of a map `width` tiles wide.
-    pub fn at(&self, width: usize, t: usize) -> Option<&Cell> {
+    pub(crate) fn at(&self, width: usize, t: usize) -> Option<&Cell> {
         let row = (t / width.max(1) / SIDE) * width.div_ceil(SIDE);
         self.cells.get(row + t % width.max(1) / SIDE)
     }
@@ -47,7 +47,7 @@ impl Mega {
 
 /// The megatile manager's step: the clock grows by `step`, and past 7499 ms (or with no count
 /// yet for this map) every megatile is counted again.
-pub fn update(world: &mut World, cat: &Catalogue, step: u32) {
+pub(crate) fn update(world: &mut World, cat: &Catalogue, step: u32) {
     let width = world.zoo.width as usize;
     let want = width.div_ceil(SIDE) * (world.zoo.tiles.len() / width.max(1)).div_ceil(SIDE);
     let m = &mut world.units.mega;
@@ -109,7 +109,7 @@ fn count(world: &World, cat: &Catalogue, cells: usize) -> Vec<Cell> {
 
 /// 6.11: the check of a guest of the type with name id `k.name_id` in megatile `cell`; the
 /// thoughts it gives, in order.
-pub fn check(g: &mut Guest, k: &Keys, cell: &Cell) -> Vec<i32> {
+pub(crate) fn check(g: &mut Guest, k: &Keys, cell: &Cell) -> Vec<i32> {
     let [beauty, happy, stink, sick, _] = k.env;
     let mut thoughts = Vec::new();
     let own = GUESTS.iter().position(|&id| id == k.name_id);

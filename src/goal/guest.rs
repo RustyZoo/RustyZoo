@@ -22,12 +22,12 @@ mod sites;
 /// The thought about an egg.
 const EGG: i32 = 10250;
 /// The leave task.
-pub const LEAVE: u8 = 113;
+pub(crate) const LEAVE: u8 = 113;
 /// The avoid and exit tasks, which keep a guest from leaving.
 const AVOID: u8 = 117;
 const EXIT: u8 = 127;
 /// The tasks of using a building: entering, leaving and using it.
-pub const IN_BUILDING: std::ops::RangeInclusive<u8> = 104..=106;
+pub(crate) const IN_BUILDING: std::ops::RangeInclusive<u8> = 104..=106;
 
 impl Cx<'_, '_> {
     /// The guest thinks `text`, about the entity `object` if there is one (guests visit 8.1, 8.2):

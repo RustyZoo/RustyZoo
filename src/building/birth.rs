@@ -16,7 +16,7 @@ use crate::zoo::{Common, Entity, fresh};
 /// slot and a member of the base. A name id no type has, or a type that is no helicopter, makes
 /// nothing. `built` is the base's construction date (a file time) for its record; a unit made
 /// leaves the undo list empty.
-pub fn births(
+pub(crate) fn births(
     world: &mut World,
     cat: &Catalogue,
     base: u32,

@@ -15,7 +15,7 @@ fn middle(d: usize) -> (i32, i32) {
 
 impl World {
     /// The numbers that make a new tank.
-    pub fn tank_config(&self) -> &TankConfig {
+    pub(crate) fn tank_config(&self) -> &TankConfig {
         &self.tank_config
     }
 
@@ -44,13 +44,13 @@ impl World {
     }
 
     /// The ground level of tank `id` (4.7): the level of its first tile.
-    pub fn ground(&self, id: u32) -> Option<i32> {
+    pub(crate) fn ground(&self, id: u32) -> Option<i32> {
         let first = *self.exhibits.get(id)?.order.first()?;
         Some(self.zoo.tiles[first].elevation)
     }
 
     /// Makes the tiles of exhibit `id` flat at `level`, cut to the limits of the ground.
-    pub fn flatten(&mut self, id: u32, level: i32, record: bool) {
+    pub(crate) fn flatten(&mut self, id: u32, level: i32, record: bool) {
         let level = level.clamp(-LIMIT, LIMIT);
         for t in self.tiles_of(id) {
             let tile = self.zoo.tiles[t];
@@ -306,7 +306,7 @@ impl World {
     /// The entities (ids) in tank `id` that it does not allow (3.9): a unit whose type is not at
     /// home under water, a scenery object that neither lives under water nor on the surface,
     /// and in a show tank also anything that is not for shows; what is transient is left out.
-    pub fn refused(&self, id: u32) -> Vec<u32> {
+    pub(crate) fn refused(&self, id: u32) -> Vec<u32> {
         self.unfit(id, self.tank(id).is_some_and(|t| t.show))
     }
 
@@ -339,7 +339,7 @@ impl World {
 
     /// The wall pieces (entity indexes) of tank `id`, each once (4.7: the pieces on the lines of
     /// its boundary, on either slot).
-    pub fn wall_pieces(&self, id: u32) -> Vec<usize> {
+    pub(crate) fn wall_pieces(&self, id: u32) -> Vec<usize> {
         let mut found: Vec<usize> = Vec::new();
         for (t, n) in self.exhibits.boundary(self, id) {
             for piece in n
@@ -358,7 +358,7 @@ impl World {
 
     /// The tile outside the first pair of the boundary of exhibit `id`, where an animal or a
     /// staff member that has to leave is put.
-    pub fn outside(&self, id: u32) -> Option<usize> {
+    pub(crate) fn outside(&self, id: u32) -> Option<usize> {
         self.exhibits.boundary(self, id).first()?.1
     }
 
@@ -378,7 +378,7 @@ impl World {
     }
 
     /// Puts the unit with this id in the middle of tile `t`.
-    pub fn move_unit(&mut self, id: u32, t: usize) {
+    pub(crate) fn move_unit(&mut self, id: u32, t: usize) {
         let width = self.zoo.width as usize;
         let (x, y) = ((t % width) as i32 * 64 + 32, (t / width) as i32 * 64 + 32);
         let z = ground_height(&self.zoo.tiles[t], 32, 32);
@@ -393,13 +393,13 @@ impl World {
 
     /// The player said Yes to the question about the objects of tank `id`, which have been
     /// dealt with: it goes on to its name.
-    pub fn accept_tank(&mut self, id: u32) {
+    pub(crate) fn accept_tank(&mut self, id: u32) {
         self.fill(id);
         self.events.push(Event::New { id, ask: true });
     }
 
     /// The player said No: the operation that made tank `id` is undone, its number given back.
-    pub fn decline_tank(&mut self, id: u32) -> Undone {
+    pub(crate) fn decline_tank(&mut self, id: u32) -> Undone {
         self.waiting.retain(|w| w.0 != id);
         let done = self.undo();
         self.exhibits.counter = self.exhibits.counter.saturating_sub(1).max(1);

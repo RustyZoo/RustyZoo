@@ -6,7 +6,7 @@ use crate::unit::{Part, Unit};
 
 /// A maintenance worker loses its task (staff 8.3, 8.9): the link, the target and the goal go, the
 /// worker stands, and the ladder gives it the duties again at its next update.
-pub fn lose_task(unit: &mut Unit) {
+pub(crate) fn lose_task(unit: &mut Unit) {
     if let Part::Staff(s) = &mut unit.part {
         (s.task, s.target) = (0, None);
     }
@@ -18,7 +18,7 @@ pub fn lose_task(unit: &mut Unit) {
 
 /// A unit stops everything with the goal reset (staff 7.11, unit placing 9.1): its record and its
 /// need flags go, its walk and its set stop, and its hold is lowered.
-pub fn stop_all(unit: &mut Unit) {
+pub(crate) fn stop_all(unit: &mut Unit) {
     unit.goal.record = Record::default();
     (unit.goal.stale, unit.goal.sub_stale) = (true, true);
     unit.goal.wants_to_decide = false;
@@ -35,7 +35,7 @@ pub fn stop_all(unit: &mut Unit) {
 /// A user is pushed out of its building (guest buildings 6.7, 11.1): its walk, its set and its goal
 /// stop and a guest forgets the building it came for; the ladder gives it a task at its next
 /// update.
-pub fn stop_use(unit: &mut Unit) {
+pub(crate) fn stop_use(unit: &mut Unit) {
     unit.goal.record = Record::default();
     (unit.goal.stale, unit.goal.sub_stale) = (true, true);
     unit.goal.wants_to_decide = false;
@@ -57,7 +57,7 @@ pub fn stop_use(unit: &mut Unit) {
 /// the set it ran stop and the building is its target (for an animal, its shelter). A unit saved
 /// entering or leaving (`saved` 0x68 or 0x69) keeps that task; one saved in any other task (a
 /// record without a unit block counts as using) ends its use at once (guest buildings 4.2).
-pub fn resume_use(unit: &mut Unit, id: u32, slot: usize, now: u32, saved: Option<i32>) {
+pub(crate) fn resume_use(unit: &mut Unit, id: u32, slot: usize, now: u32, saved: Option<i32>) {
     stop_use(unit);
     let kept = saved.and_then(|t| u8::try_from(t).ok());
     let kept = kept.filter(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(t));

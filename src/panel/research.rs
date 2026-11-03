@@ -15,17 +15,17 @@ use crate::ui::widgets::Row;
 use crate::vfs::Vfs;
 
 /// The layout, the main strip's button, the tab buttons (status and the two branches).
-pub const LAYOUT: i32 = 15;
-pub const BUTTON: i32 = 1019;
-pub const TABS: [i32; 3] = [4008, 4009, 4010];
+pub(crate) const LAYOUT: i32 = 15;
+pub(crate) const BUTTON: i32 = 1019;
+pub(crate) const TABS: [i32; 3] = [4008, 4009, 4010];
 /// The expansion selector button, which the panel writes with the selected row.
 const SELECTOR: i32 = 4021;
 /// The category list and the funding buttons.
-pub const LIST: i32 = 4022;
-pub const LESS: i32 = 4003;
-pub const MORE: i32 = 4004;
+pub(crate) const LIST: i32 = 4022;
+pub(crate) const LESS: i32 = 4003;
+pub(crate) const MORE: i32 = 4004;
 /// The interface clock time between two refreshes (ms).
-pub const PERIOD: u64 = 1000;
+pub(crate) const PERIOD: u64 = 1000;
 const TITLE: i32 = 4001;
 /// The status page of one branch: program name, picture, bar, bar background.
 const SIDES: [[i32; 4]; 2] = [[4016, 4019, 4018, 4017], [4012, 4020, 4014, 4013]];
@@ -45,13 +45,13 @@ const NO_PROGRAM: i32 = 23031;
 const NO_CATEGORY: i32 = 23032;
 
 /// The branch the tab shows: 0 for the first branch, 1 for the second, none for Status.
-pub fn branch_of_tab(ui: &Interface) -> Option<usize> {
+pub(crate) fn branch_of_tab(ui: &Interface) -> Option<usize> {
     [TABS[1], TABS[2]].iter().position(|&t| ui.is_down(t))
 }
 
 /// The refresh clock and what was last told.
 #[derive(Debug, Default)]
-pub struct Panel {
+pub(crate) struct Panel {
     pub clock: Clock,
     /// The layout was shown at the last look.
     pub shown: bool,
@@ -61,7 +61,7 @@ pub struct Panel {
 impl Panel {
     /// Writes the panel from `tree` (a game with none shows no program) and returns the log line
     /// when something it shows changed.
-    pub fn refresh(
+    pub(crate) fn refresh(
         &mut self,
         ui: &mut Interface,
         tree: Option<&Tree>,

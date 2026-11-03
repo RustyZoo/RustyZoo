@@ -72,7 +72,7 @@ fn side(world: &World, own: usize, (x, y): (i32, i32), offset: i32) -> Option<us
 /// without the idle animation, faces it and starts `bTestFence` forced; when the set starts (or is
 /// the top set already) the chance drops to 0 under `cMinTestFenceChance` and the happiness
 /// changes by `cZapHappinessChange`.
-pub fn test(
+pub(crate) fn test(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,

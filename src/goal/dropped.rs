@@ -61,7 +61,13 @@ fn run(
 
 /// Unit placing 8.2 point 3: the unit picked up stops its goal (the reset of goals 12.1) and
 /// loses its fright (the clearing of the state variables, simulation 8.2).
-pub fn picked_up(world: &mut World, cat: &Catalogue, rng: &mut Rng, data: &dyn Data, id: u32) {
+pub(crate) fn picked_up(
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    data: &dyn Data,
+    id: u32,
+) {
     run(world, cat, rng, data, id, |cx| {
         cx.reset();
         cx.unit.frightened = false;
@@ -71,7 +77,7 @@ pub fn picked_up(world: &mut World, cat: &Catalogue, rng: &mut Rng, data: &dyn D
 }
 
 /// Unit placing 8.5: the drop rule of the unit `id`, put down on the map.
-pub fn dropped(world: &mut World, cat: &Catalogue, rng: &mut Rng, data: &dyn Data, id: u32) {
+pub(crate) fn dropped(world: &mut World, cat: &Catalogue, rng: &mut Rng, data: &dyn Data, id: u32) {
     run(world, cat, rng, data, id, |cx| cx.drop_rule());
 }
 

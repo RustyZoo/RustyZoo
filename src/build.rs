@@ -35,11 +35,11 @@ const EXPANSIONS: [(&str, i32); 3] = [("zoo", 4), ("dinosaur", 1), ("aqua", 2)];
 const ALL: i32 = 22900;
 /// The selector's layout and its list.
 const SELECTOR: i32 = 152;
-pub const SELECTOR_LIST: i32 = 22900;
-pub const CONSTRUCTION: i32 = 8;
-pub const OBJECTS: i32 = 4;
-pub const ADOPT: i32 = 3;
-pub const HIRE: i32 = 10;
+pub(crate) const SELECTOR_LIST: i32 = 22900;
+pub(crate) const CONSTRUCTION: i32 = 8;
+pub(crate) const OBJECTS: i32 = 4;
+pub(crate) const ADOPT: i32 = 3;
+pub(crate) const HIRE: i32 = 10;
 /// The Hire panel's title (string 3697) and the text of the duties of the chosen staff type
 /// (unit placing 4.1; its salary goes to the panel's cost text).
 const HIRE_TITLE: i32 = 3697;
@@ -54,7 +54,7 @@ const DINOSAURS: i32 = 2024;
 /// The preferred object's picture and its border on the Adopt panel.
 const PREFERRED: (i32, i32) = (2060, 2070);
 /// The bulldozer button of the left bar.
-pub const BULLDOZER: i32 = 1028;
+pub(crate) const BULLDOZER: i32 = 1028;
 /// A bulldozer press becomes an area drag when the pointer moves more than this many pixels.
 const SWEEP_PIXELS: i64 = 16;
 /// The `cHabitat` and `cLocation` of a type that has none, and the habitat of one that has no good one.
@@ -63,7 +63,7 @@ const BAD_HABITAT: f32 = 9414.0;
 
 /// What the purchase lists filter by: the expansions that are on (a mask) and the selector.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Filter {
+pub(crate) struct Filter {
     on: i32,
     /// The selector's value, 1 to 3 for an expansion; none for All.
     pick: Option<usize>,
@@ -108,7 +108,7 @@ fn listed(ty: &EntityType, tag: &str, filter: Filter) -> bool {
 /// The types of the purchase list `tag` that a panel shows, as indices into the catalogue, in the
 /// order of the tab: the filtered types in catalogue order, then a stable sort by [`order`]
 /// (placing 3.4).
-pub fn items(
+pub(crate) fn items(
     catalogue: &Catalogue,
     avail: &Availability,
     tag: &str,
@@ -194,7 +194,7 @@ fn unit_text(ty: &EntityType, key: &str) -> Option<String> {
 }
 
 /// `cPurchaseCost` of a type.
-pub fn cost(ty: &EntityType) -> f32 {
+pub(crate) fn cost(ty: &EntityType) -> f32 {
     number(ty, "cPurchaseCost").unwrap_or(0.0)
 }
 
@@ -450,7 +450,7 @@ struct Last {
 }
 
 /// What the player has done in the panels.
-pub struct Build {
+pub(crate) struct Build {
     /// The expansions installed (a mask).
     expansions: i32,
     /// The rows of the selector after All, and its value: 0 for All, else the entry id plus 1 of
@@ -509,7 +509,7 @@ pub struct Build {
 
 impl Build {
     /// The state at the start of a game on an install with these `expansions` (a mask).
-    pub fn new(expansions: i32) -> Build {
+    pub(crate) fn new(expansions: i32) -> Build {
         Build {
             expansions,
             entries: Vec::new(),
@@ -541,19 +541,19 @@ impl Build {
 
     /// The staff types chosen since the last call, in order: the app creates a pending staff
     /// member for each.
-    pub fn take_made(&mut self) -> Vec<usize> {
+    pub(crate) fn take_made(&mut self) -> Vec<usize> {
         std::mem::take(&mut self.made)
     }
 
     /// Applies the rewards of the ini file after a load or a start (entity types 10.4).
-    pub fn unlocked(mut self, cat: &Catalogue, ini: &Config) -> Build {
+    pub(crate) fn unlocked(mut self, cat: &Catalogue, ini: &Config) -> Build {
         self.avail.unlock(cat, ini);
         self
     }
 
     /// The selector has the rows of `entries` (those of the three known expansions) and the value
     /// a file stored (zoo format 9.2).
-    pub fn with_selector(mut self, entries: Vec<Expansion>, stored: u32) -> Build {
+    pub(crate) fn with_selector(mut self, entries: Vec<Expansion>, stored: u32) -> Build {
         entries
             .into_iter()
             .filter(|e| (0..EXPANSIONS.len() as i32).contains(&e.id))
@@ -570,7 +570,7 @@ impl Build {
 
     /// A scenario's start sets the entries it disables and the selector, if it has a value for it
     /// (research 3.5). It comes before a panel opens.
-    pub fn set_scenario(&mut self, off: [bool; 4], selection: Option<i32>) {
+    pub(crate) fn set_scenario(&mut self, off: [bool; 4], selection: Option<i32>) {
         self.off = off;
         self.rowed = false;
         if let Some(value) = selection {
@@ -580,7 +580,7 @@ impl Build {
 
     /// The selector's value: 0 for All, else the entry id plus 1 of one of its rows. It is what a
     /// file stores.
-    pub fn value(&self) -> i32 {
+    pub(crate) fn value(&self) -> i32 {
         self.selector
     }
 
@@ -600,7 +600,7 @@ impl Build {
     }
 
     /// The text of the selector: the string of the selected row.
-    pub fn label(&self, ui: &Interface) -> String {
+    pub(crate) fn label(&self, ui: &Interface) -> String {
         let entry = self.entries.iter().find(|e| e.id + 1 == self.value());
         ui.string(entry.map_or(ALL, |e| e.list))
     }
@@ -627,12 +627,12 @@ impl Build {
     }
 
     /// Whether the selector's list is open and has the focus.
-    pub fn selector_open(&self, ui: &Interface) -> bool {
+    pub(crate) fn selector_open(&self, ui: &Interface) -> bool {
         ui.shown(SELECTOR) && ui.has_focus(SELECTOR_LIST)
     }
 
     /// Hides the selector's list and takes the focus from it.
-    pub fn close_selector(&mut self, ui: &mut Interface) {
+    pub(crate) fn close_selector(&mut self, ui: &mut Interface) {
         if let Some(i) = ui.tree.find(SELECTOR) {
             ui.tree.hide(i);
             ui.touch();
@@ -658,7 +658,7 @@ impl Build {
     /// closes it and sets the value, whether new or not: every tab forgets its item, both panels'
     /// rotation steps are 0 and the panels that are not open reopen on their first tab (placing
     /// 3.5), and the open list is made again (placing 3.4).
-    pub fn pick_row(
+    pub(crate) fn pick_row(
         &mut self,
         ui: &mut Interface,
         vfs: &Vfs,
@@ -692,7 +692,7 @@ impl Build {
 
     /// The tree of a new game is built (research 7.4): its programs not done make their targets
     /// unavailable. The start triggers and the ini rewards ([`Build::after_triggers`]) follow.
-    pub fn start_research(&mut self, cat: &Catalogue, flags: &[(i32, bool)]) {
+    pub(crate) fn start_research(&mut self, cat: &Catalogue, flags: &[(i32, bool)]) {
         for &(target, on) in flags {
             self.avail.set(cat, target, on);
         }
@@ -700,13 +700,13 @@ impl Build {
 
     /// Makes every entity type available (the developer panel's research button, research 6.8).
     /// Whether a flag changed.
-    pub fn make_all_available(&mut self, cat: &Catalogue) -> bool {
+    pub(crate) fn make_all_available(&mut self, cat: &Catalogue) -> bool {
         self.avail.set_where(cat, |_| true, true)
     }
 
     /// The start triggers made these types available or not, then the ini rewards apply last
     /// (research 7.4). Whether a flag changed.
-    pub fn after_triggers(&mut self, cat: &Catalogue, ini: &Config, made: &[Avail]) -> bool {
+    pub(crate) fn after_triggers(&mut self, cat: &Catalogue, ini: &Config, made: &[Avail]) -> bool {
         let mut changed = self.change(cat, made);
         changed |= self.avail.unlock(cat, ini);
         changed
@@ -719,7 +719,7 @@ impl Build {
     }
 
     /// Applies availability triggers (scenarios 7.3), in order. Whether a flag changed.
-    pub fn change(&mut self, cat: &Catalogue, made: &[Avail]) -> bool {
+    pub(crate) fn change(&mut self, cat: &Catalogue, made: &[Avail]) -> bool {
         let mut changed = false;
         for a in made {
             changed |= match a.which {
@@ -732,7 +732,7 @@ impl Build {
 
     /// Makes every type with this name id available or not, whatever its subtype, and makes the
     /// open list again when a flag changed (research 6.2). Whether a flag changed.
-    pub fn set_available(
+    pub(crate) fn set_available(
         &mut self,
         ui: &mut Interface,
         vfs: &Vfs,
@@ -747,7 +747,7 @@ impl Build {
     }
 
     /// Makes the open list again when `changed`.
-    pub fn refill(
+    pub(crate) fn refill(
         &mut self,
         changed: bool,
         ui: &mut Interface,
@@ -761,12 +761,12 @@ impl Build {
     }
 
     /// The sex of the staff the Hire panel lists.
-    pub fn set_hire(&mut self, male: bool) {
+    pub(crate) fn set_hire(&mut self, male: bool) {
         self.hire_male = male;
     }
 
     /// A staff member was hired: the list of the open Hire panel is made again for the new sex.
-    pub fn rehire(
+    pub(crate) fn rehire(
         &mut self,
         ui: &mut Interface,
         vfs: &Vfs,
@@ -779,24 +779,24 @@ impl Build {
     }
 
     /// The month of the game's date, 1 to 12.
-    pub fn set_month(&mut self, month: u32) {
+    pub(crate) fn set_month(&mut self, month: u32) {
         self.october = month == 10;
     }
 
     /// Whether the game's month is October.
-    pub fn october(&self) -> bool {
+    pub(crate) fn october(&self) -> bool {
         self.october
     }
 
     /// The zoo has `n` exhibits at the start of a game.
-    pub fn with_exhibits(mut self, n: usize) -> Build {
+    pub(crate) fn with_exhibits(mut self, n: usize) -> Build {
         self.exhibits = n;
         self
     }
 
     /// The zoo has `n` exhibits now: the gate button is enabled while there is one, and the gate
     /// tool ends with the last one (placing 6.4).
-    pub fn set_exhibits(&mut self, ui: &mut Interface, n: usize, log: &mut Vec<String>) {
+    pub(crate) fn set_exhibits(&mut self, ui: &mut Interface, n: usize, log: &mut Vec<String>) {
         self.exhibits = n;
         if n == 0 {
             self.stop_gate(ui, log);
@@ -807,7 +807,7 @@ impl Build {
     }
 
     /// Whether the gate tool is the tool.
-    pub fn gating(&self) -> bool {
+    pub(crate) fn gating(&self) -> bool {
         self.gate
     }
 
@@ -852,13 +852,13 @@ impl Build {
     }
 
     /// Whether the bulldozer is the tool.
-    pub fn bulldozing(&self) -> bool {
+    pub(crate) fn bulldozing(&self) -> bool {
         self.bulldozer
     }
 
     /// The left button went down on the map with the bulldozer as the tool, at the window point
     /// `pixel`, on `tile` (none off the map).
-    pub fn sweep_press(&mut self, tile: Option<(u32, u32)>, pixel: (i32, i32)) {
+    pub(crate) fn sweep_press(&mut self, tile: Option<(u32, u32)>, pixel: (i32, i32)) {
         let tile = tile.and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)));
         self.sweep = tile.filter(|_| self.bulldozer).map(|start| Sweep {
             start,
@@ -872,7 +872,7 @@ impl Build {
     /// the press point on an axis; back on the press tile within 16 pixels on both it is a click
     /// again. A pointer
     /// off the map keeps the last tile it was on. `None` without a press or in a click.
-    pub fn sweep_area(
+    pub(crate) fn sweep_area(
         &mut self,
         tile: Option<(i32, i32)>,
         pixel: (i32, i32),
@@ -887,13 +887,8 @@ impl Build {
         (sweep.last != sweep.start || far).then_some((sweep.start, sweep.last))
     }
 
-    /// Whether a bulldozer press is held.
-    pub fn sweeping(&self) -> bool {
-        self.sweep.is_some()
-    }
-
     /// The bulldozer press is over: released, or dropped with the tool.
-    pub fn end_sweep(&mut self) {
+    pub(crate) fn end_sweep(&mut self) {
         self.sweep = None;
     }
 
@@ -939,7 +934,7 @@ impl Build {
     /// The left button went down on `tile` of the map, at the world point `point`: with a path or
     /// a fence as the tool, the tile starts a drag, and a fence keeps the side of the point
     /// (placing 6.2 item 1).
-    pub fn press(&mut self, cat: &Catalogue, tile: Option<(u32, u32)>, point: (i64, i64)) {
+    pub(crate) fn press(&mut self, cat: &Catalogue, tile: Option<(u32, u32)>, point: (i64, i64)) {
         let class = self.held.and_then(|ty| cat.types.get(ty)).map(Class::of);
         let tile = tile.and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)));
         let side = (class == Some(Class::Fence))
@@ -955,7 +950,7 @@ impl Build {
     }
 
     /// Whether a path or fence drag is in progress.
-    pub fn dragging(&self) -> bool {
+    pub(crate) fn dragging(&self) -> bool {
         self.drag.is_some()
     }
 
@@ -965,7 +960,7 @@ impl Build {
     /// the height step (`z / 16`) changes or the point is more than 16 world units from the last
     /// computation (in y, and in x for a fence; placing 6.2 item 2); otherwise the last run stays,
     /// and so does the last point.
-    pub fn run(&mut self, cell: (i32, i32), point: (i64, i64), z: i32) -> Vec<(i64, i64)> {
+    pub(crate) fn run(&mut self, cell: (i32, i32), point: (i64, i64), z: i32) -> Vec<(i64, i64)> {
         let Some(drag) = &mut self.drag else {
             return Vec::new();
         };
@@ -1004,12 +999,12 @@ impl Build {
     }
 
     /// The drag is over: released, or dropped with the tool.
-    pub fn end_drag(&mut self) {
+    pub(crate) fn end_drag(&mut self) {
         self.drag = None;
     }
 
     /// A game was opened: both panels reopen on their first tab (placing 3.5).
-    pub fn first_tabs(ui: &mut Interface) {
+    pub(crate) fn first_tabs(ui: &mut Interface) {
         for panel in &PANELS {
             Self::first_tab(ui, panel);
         }
@@ -1025,31 +1020,31 @@ impl Build {
     }
 
     /// The type that is the tool: an index into the catalogue.
-    pub fn tool(&self) -> Option<usize> {
+    pub(crate) fn tool(&self) -> Option<usize> {
         self.held
     }
 
     /// Makes the type `ty` (a position in the catalogue) the tool, as a test needs it without
     /// the panels.
     #[cfg(test)]
-    pub fn hold(&mut self, ty: usize) {
+    pub(crate) fn hold(&mut self, ty: usize) {
         self.held = Some(ty);
     }
 
     /// The staff type `ty` makes a pending staff member without a choice in the panels: the new
     /// pending unit of the same item after a hire (unit placing 7.1 step 6), or a test.
-    pub fn chose(&mut self, ty: usize) {
+    pub(crate) fn chose(&mut self, ty: usize) {
         self.made.push(ty);
     }
 
     /// The rotation step of the pending object, 0 to 3 (placing 4.4).
-    pub fn step(&self) -> usize {
+    pub(crate) fn step(&self) -> usize {
         self.turn
     }
 
     /// An object of the type was placed: a type with `cAutoRotate` turns by one step, so that a
     /// row of trees does not look cloned (placing 4.4). Whether it did.
-    pub fn placed(&mut self, ty: &EntityType) -> bool {
+    pub(crate) fn placed(&mut self, ty: &EntityType) -> bool {
         let turns = number(ty, "cAutoRotate") == Some(1.0);
         if turns {
             self.turn = (self.turn + 1) % 4;
@@ -1058,12 +1053,12 @@ impl Build {
     }
 
     /// The mode of the terrain tab that is the tool, if one is.
-    pub fn terrain_mode(&self) -> Option<Mode> {
+    pub(crate) fn terrain_mode(&self) -> Option<Mode> {
         self.terrain
     }
 
     /// Hides every tool panel: the next [`Build::sync`] closes the open one and drops its tool.
-    pub fn hide_panels(ui: &mut Interface) {
+    pub(crate) fn hide_panels(ui: &mut Interface) {
         for panel in &PANELS {
             ui.set_hidden(panel.layout, true);
         }
@@ -1112,7 +1107,7 @@ impl Build {
 
     /// Escape or the right button drops the tool and clears the list selection; the next one
     /// closes the panel (input 4.6 steps 7 and 10). Whether it did something.
-    pub fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
+    pub(crate) fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
         if self.bulldozer {
             self.stop_bulldozer(ui, log);
             log.push("tool drop".into());
@@ -1141,7 +1136,7 @@ impl Build {
     }
 
     /// A button of the interface was released as selected: a tab, a rotate button or an item.
-    pub fn selected(
+    pub(crate) fn selected(
         &mut self,
         ui: &mut Interface,
         vfs: &Vfs,

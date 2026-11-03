@@ -5,7 +5,7 @@
 
 /// The kind of thing that was named: a cheat belongs to one class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Subject {
+pub(crate) enum Subject {
     Animal,
     Guest,
     Keeper,
@@ -16,7 +16,7 @@ pub enum Subject {
 
 /// What a row asks of the named thing besides its class (cheats 2.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cond {
+pub(crate) enum Cond {
     Any,
     /// The subtype letter of its type: the sex of a staff member, `m` or `f`.
     Subtype(u8),
@@ -26,7 +26,7 @@ pub enum Cond {
 
 /// The thing a name was set on, as far as the conditions look.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Named {
+pub(crate) struct Named {
     pub subtype: u8,
     pub name_id: i32,
 }
@@ -44,7 +44,7 @@ impl Cond {
 /// The session flags (cheats 2.4): they belong to the program, are not saved and are not cleared
 /// by a load or a new game. The step hands them to the rules that read them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Flags {
+pub(crate) struct Flags {
     /// `rating_bonus_30`: +30 to the effective rating of the guest arrival check.
     pub rating_bonus: bool,
     /// `donation_double`: what a guest donates is doubled.
@@ -67,27 +67,27 @@ pub struct Flags {
 }
 
 /// The name id of the grizzly bear (cheats 4.1), the species the bears' cheats act on.
-pub const GRIZZLY: i32 = 5016;
+pub(crate) const GRIZZLY: i32 = 5016;
 /// The name ids of the species the breeding cheat works for (cheats 4.5).
-pub const BREEDERS: [i32; 2] = [5016, 5017];
+pub(crate) const BREEDERS: [i32; 2] = [5016, 5017];
 /// The name id of the scientist, the keeper type of Dinosaur Digs (cheats 4.5).
-pub const SCIENTIST: i32 = 9551;
+pub(crate) const SCIENTIST: i32 = 9551;
 
 /// The name ids of the lion and the tiger; with the grizzly they make the exhibit that holds all
 /// three unlock the yellow brick path.
-pub const LION: i32 = 5006;
-pub const TIGER: i32 = 5007;
+pub(crate) const LION: i32 = 5006;
+pub(crate) const TIGER: i32 = 5007;
 
 impl Flags {
     /// What the effective rating of the guest arrival check gains from the flags (zoo status 8).
-    pub fn rating_points(&self) -> i32 {
+    pub(crate) fn rating_points(&self) -> i32 {
         if self.rating_bonus { 30 } else { 0 }
     }
 }
 
 /// What a matching name does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cheat {
+pub(crate) enum Cheat {
     /// `research_cat_NN`: completes every program of the research categories with this name id,
     /// as a plain completion (research 6.8).
     ResearchCategory(i32),
@@ -136,7 +136,7 @@ pub enum Cheat {
 
 /// One row of the table: the hash of the exact text, the class it applies to, and the cheat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Entry {
+pub(crate) struct Entry {
     pub hash: u64,
     pub class: Subject,
     pub cond: Cond,
@@ -144,7 +144,7 @@ pub struct Entry {
 }
 
 /// FNV-1a, 64 bits, over the bytes of a text.
-pub fn hash(text: &str) -> u64 {
+pub(crate) fn hash(text: &str) -> u64 {
     text.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
         (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
     })
@@ -236,15 +236,15 @@ fn exhibit_and_staff_rows() -> Vec<Entry> {
 
 /// The name ids of the seasonal items the date hooks make available (cheats 6): the holiday
 /// tree, the jack-o'-lantern, the snowman and the yellow brick path.
-pub const HOLIDAY_TREE: i32 = 7077;
-pub const JACK_O_LANTERN: i32 = 7078;
-pub const SNOWMAN: i32 = 7079;
-pub const YELLOW_BRICK: i32 = 9111;
+pub(crate) const HOLIDAY_TREE: i32 = 7077;
+pub(crate) const JACK_O_LANTERN: i32 = 7078;
+pub(crate) const SNOWMAN: i32 = 7079;
+pub(crate) const YELLOW_BRICK: i32 = 9111;
 
 /// The date hooks' flags of the program run (cheats 6): not saved, not cleared by a load or a new
 /// game. The flying objects of the hooks (the sleigh, the witch, the biplane) are not made yet.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Season {
+pub(crate) struct Season {
     /// The snowman and the holiday tree are available for 25 December.
     snow: bool,
     /// The jack-o'-lantern is available for 31 October.
@@ -258,7 +258,7 @@ impl Season {
     /// [`Flags::lions_tigers_bears`]. The availability it sets, in order: the items of the day
     /// on the first creation of that day and not again after, the same items unavailable again on
     /// the first creation of another day, and the yellow brick path once ever.
-    pub fn guest_created(&mut self, month: u32, day: u32, trio: bool) -> Vec<(i32, bool)> {
+    pub(crate) fn guest_created(&mut self, month: u32, day: u32, trio: bool) -> Vec<(i32, bool)> {
         let mut set = Vec::new();
         if (month, day) == (12, 25) {
             if !self.snow {
@@ -288,21 +288,21 @@ impl Season {
     /// The start of a game (cheats 6): the four items become unavailable. The day flags stay as
     /// they are, as in the original: a game started on the day of the previous one keeps the
     /// items unavailable until the date leaves and comes back.
-    pub fn game_started() -> [(i32, bool); 4] {
+    pub(crate) fn game_started() -> [(i32, bool); 4] {
         [HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK].map(|id| (id, false))
     }
 }
 
 /// The bits of a guest's contagion byte (cheats 4.2 E), not saved.
 pub mod spread {
-    pub const SICKNESS: u8 = 2;
-    pub const SCARE_WOMEN: u8 = 4;
-    pub const SCARE_CHILDREN: u8 = 8;
-    pub const YELLOW: u8 = 16;
-    pub const RED: u8 = 32;
+    pub(crate) const SICKNESS: u8 = 2;
+    pub(crate) const SCARE_WOMEN: u8 = 4;
+    pub(crate) const SCARE_CHILDREN: u8 = 8;
+    pub(crate) const YELLOW: u8 = 16;
+    pub(crate) const RED: u8 = 32;
     /// The shirt palettes of the two painting bits.
-    pub const YELLOW_SHIRT: u8 = 9;
-    pub const RED_SHIRT: u8 = 1;
+    pub(crate) const YELLOW_SHIRT: u8 = 9;
+    pub(crate) const RED_SHIRT: u8 = 1;
 }
 
 // The guest-name cheats other than the research ones (cheats 4.2): the hash of the text and the
@@ -339,7 +339,7 @@ const GUEST_NAME: [(u64, Cheat); 17] = [
 /// The cheats the program knows. Session flags (cheats 2.4) live here too: they belong to the
 /// program, are not saved and are not cleared by a load or a new game.
 #[derive(Debug, Clone)]
-pub struct Cheats {
+pub(crate) struct Cheats {
     table: Vec<Entry>,
     pub flags: Flags,
     // The session flags of the guest-name cheats.
@@ -377,12 +377,13 @@ impl Default for Cheats {
 impl Cheats {
     /// The cheat of this class whose text is exactly `text`, for a thing no condition holds on:
     /// no trimming, no case folding. The first row in table order wins.
-    pub fn find(&self, class: Subject, text: &str) -> Option<Cheat> {
+    #[cfg(test)]
+    pub(crate) fn find(&self, class: Subject, text: &str) -> Option<Cheat> {
         self.find_named(class, &Named::default(), text)
     }
 
     /// As [`Cheats::find`], for the thing `named`: a row whose condition fails is skipped.
-    pub fn find_named(&self, class: Subject, named: &Named, text: &str) -> Option<Cheat> {
+    pub(crate) fn find_named(&self, class: Subject, named: &Named, text: &str) -> Option<Cheat> {
         let hash = hash(text);
         let row = self
             .table
@@ -393,13 +394,13 @@ impl Cheats {
 
     /// Adds a row after the others.
     #[cfg(test)]
-    pub fn push(&mut self, class: Subject, text: &str, cheat: Cheat) {
+    pub(crate) fn push(&mut self, class: Subject, text: &str, cheat: Cheat) {
         self.push_when(class, Cond::Any, text, cheat);
     }
 
     /// Adds a row with a condition after the others.
     #[cfg(test)]
-    pub fn push_when(&mut self, class: Subject, cond: Cond, text: &str, cheat: Cheat) {
+    pub(crate) fn push_when(&mut self, class: Subject, cond: Cond, text: &str, cheat: Cheat) {
         let hash = hash(text);
         self.table.push(Entry {
             hash,

@@ -41,7 +41,7 @@ pub mod users;
 /// which a price is expensive and cheap, and the default price of a type that names none; and the
 /// compost's pay for dung.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Prices {
+pub(crate) struct Prices {
     pub expensive: f32,
     pub cheap: f32,
     pub default: f32,
@@ -65,14 +65,14 @@ impl Default for Prices {
 
 /// How a price strikes a guest (guest buildings 7.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mood {
+pub(crate) enum Mood {
     Angry,
     Fair,
     Happy,
 }
 
 impl Prices {
-    pub fn mood(&self, price: f32, default: f32) -> Mood {
+    pub(crate) fn mood(&self, price: f32, default: f32) -> Mood {
         if price >= self.expensive * default {
             Mood::Angry
         } else if price <= self.cheap * default {
@@ -87,11 +87,11 @@ impl Prices {
 const STEP: f32 = 0.25;
 
 /// A point in world units: 64 to a tile.
-pub type Point = (i32, i32);
+pub(crate) type Point = (i32, i32);
 
 /// One slot of a building type (guest buildings 3.2), the positions relative to the building.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Slot {
+pub(crate) struct Slot {
     pub at: Point,
     /// The height of `at` (`slotposz`).
     pub height: i32,
@@ -120,7 +120,7 @@ pub struct Slot {
 /// The type id and subtype of a guest or an animal, which the slots of a building test (guest
 /// buildings 6.1 point 7), and what an animal needs of its place (6.3 point 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Species {
+pub(crate) struct Species {
     /// An animal, not a guest: the place test of 6.3 point 5 applies.
     pub animal: bool,
     pub id: i32,
@@ -139,7 +139,7 @@ pub struct Species {
 impl Species {
     /// The species of the animal or guest entity `e`, none for another entity; `egg` is the
     /// animal's egg flag, which an egg never swims by.
-    pub fn of(cat: &Catalogue, e: &Entity, egg: bool) -> Option<Species> {
+    pub(crate) fn of(cat: &Catalogue, e: &Entity, egg: bool) -> Option<Species> {
         let ty = crate::place::bulldozer::type_of(cat, e)
             .filter(|_| ["animals", "guests"].contains(&e.class.as_str()))?;
         Some(Species {
@@ -194,7 +194,7 @@ fn draw_places(
 
 /// What a building type declares (guest buildings 3.1).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Kind {
+pub(crate) struct Kind {
     /// The type's name id (`cNameID`).
     pub name_id: i32,
     pub capacity: i32,
@@ -233,7 +233,7 @@ pub struct Kind {
 
 impl Kind {
     /// The declarations of a building type; `default` is the economy's default price.
-    pub fn of(ty: &EntityType, default: f32) -> Kind {
+    pub(crate) fn of(ty: &EntityType, default: f32) -> Kind {
         let config = ty.config.as_deref();
         let section = |name: &str| config.and_then(|c| c.section(name));
         let (ints, floats) = (
@@ -333,24 +333,24 @@ impl Kind {
         }
     }
 
-    pub fn satisfies(&self, need: &str) -> bool {
+    pub(crate) fn satisfies(&self, need: &str) -> bool {
         self.satisfies.iter().any(|n| n == need)
     }
 
     /// The price after the up step by `amount` (guest buildings 7.2; the button's is 0.25): within
     /// the economy's ceiling and the type's, which are applied whatever they are (a `cHighCost`
     /// of 0 gives 0).
-    pub fn raised(&self, price: f32, max: f32, amount: f32) -> f32 {
+    pub(crate) fn raised(&self, price: f32, max: f32, amount: f32) -> f32 {
         (price + amount).min(max).min(self.high)
     }
 
     /// The price after the down step by `amount`: not below 0 or the type's floor.
-    pub fn lowered(&self, price: f32, amount: f32) -> f32 {
+    pub(crate) fn lowered(&self, price: f32, amount: f32) -> f32 {
         (price - amount).max(0.0).max(self.low)
     }
 
     /// The price after the up or down button (the step of 0.25).
-    pub fn pressed(&self, price: f32, max: f32, up: bool) -> f32 {
+    pub(crate) fn pressed(&self, price: f32, max: f32, up: bool) -> f32 {
         match up {
             true => self.raised(price, max, STEP),
             false => self.lowered(price, STEP),
@@ -360,7 +360,7 @@ impl Kind {
     /// The price after the player typed the number `typed` into the price field (7.2): the step up
     /// or down by the difference, so the bounds hold as for a button press; the same number is no
     /// change.
-    pub fn typed(&self, price: f32, max: f32, typed: f64) -> f32 {
+    pub(crate) fn typed(&self, price: f32, max: f32, typed: f64) -> f32 {
         let at = f64::from(price);
         match typed.partial_cmp(&at) {
             Some(Ordering::Less) => self.lowered(price, (at - typed) as f32),
@@ -370,22 +370,22 @@ impl Kind {
     }
 
     /// Whether the up button is enabled at this price (at exactly the economy's ceiling it is).
-    pub fn can_raise(&self, price: f32, max: f32) -> bool {
+    pub(crate) fn can_raise(&self, price: f32, max: f32) -> bool {
         !(self.high != 0.0 && price >= self.high || price > max)
     }
 
     /// Whether the down button is enabled at this price.
-    pub fn can_lower(&self, price: f32) -> bool {
+    pub(crate) fn can_lower(&self, price: f32) -> bool {
         !(self.low != 0.0 && price <= self.low || price <= 0.0)
     }
 }
 
 /// A user of a building: the unit, the slot it uses and the AI clock when it entered.
-pub type User = (u32, usize, u32);
+pub(crate) type User = (u32, usize, u32);
 
 /// The live state of a building (guest buildings 4).
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Live {
+pub(crate) struct Live {
     /// In entering order.
     pub users: Vec<User>,
     /// Users counted against the capacity that are not in the list: a loaded building keeps its
@@ -414,14 +414,14 @@ pub struct Live {
 
 /// A user on a draw place of a slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Seat {
+pub(crate) struct Seat {
     pub unit: u32,
     pub slot: usize,
     pub place: usize,
 }
 
 impl Live {
-    pub fn new(kind: &Kind) -> Live {
+    pub(crate) fn new(kind: &Kind) -> Live {
         Live {
             price: kind.price,
             ..Live::default()
@@ -431,7 +431,7 @@ impl Live {
     /// The record a save writes (zoo format 6.9): the figures, the price and the users now, over
     /// `base`, which keeps the fill of a type that is not a trash can (a grandstand's flag is not
     /// modelled) and the members.
-    pub fn record(&self, mut base: BuildingRecord, trash: bool) -> BuildingRecord {
+    pub(crate) fn record(&self, mut base: BuildingRecord, trash: bool) -> BuildingRecord {
         let users: Vec<(u32, u32)> = (self.users.iter())
             .map(|&(u, s, _)| (u, s as u32))
             .collect();
@@ -453,7 +453,7 @@ impl Live {
     /// draw per try), over the `capacity` seats of the slot. Nothing is drawn when the slot has no
     /// free seat. A seat past the place table sits at (0, 0, 0). The seats of users that left are
     /// dropped first.
-    pub fn seat(
+    pub(crate) fn seat(
         &mut self,
         slot: usize,
         capacity: i32,
@@ -484,7 +484,7 @@ impl Live {
     }
 
     /// The month changes (guest buildings 9): this month's figures become last month's.
-    pub fn roll(&mut self, upkeep: f32) {
+    pub(crate) fn roll(&mut self, upkeep: f32) {
         self.guests[1] = std::mem::take(&mut self.guests[0]);
         self.income[1] = std::mem::take(&mut self.income[0]);
         self.upkeep += upkeep;
@@ -494,7 +494,7 @@ impl Live {
 /// Building `id` of type `ty` was built at calendar time `now` (ms of game time): a guest
 /// building or a compost starts its live state, with the date its months open are counted from (guest
 /// buildings 4).
-pub fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
+pub(crate) fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
     let kind = Kind::of(ty, world.units.prices.default);
     if keeps_figures(ty, &kind) {
         let live = Live::new(&kind);
@@ -517,7 +517,7 @@ fn keeps_figures(ty: &EntityType, kind: &Kind) -> bool {
 /// last month and since construction, the upkeep paid since construction (from version 68), the
 /// trash can's fill, the construction date and the price. The users come after the guests are
 /// made ([`users::restore`]).
-pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
+pub(crate) fn load(world: &mut World, cat: &Catalogue, at: usize) {
     let e = &world.zoo.entities[at];
     let Some(record) = e.common.as_ref().and_then(|c| c.building.clone()) else {
         return;
@@ -561,7 +561,7 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
 /// the calendar's start); the price is kept. It runs after the load events, so a can that called a
 /// worker is empty with its task still in the pool. Every unit a building listed as a user is
 /// removed from the world, not released: the ids are returned for the caller to ask the removal.
-pub fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
+pub(crate) fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
     let ids: Vec<u32> = world.units.buildings.keys().copied().collect();
     let mut removed = Vec::new();
     for id in ids {
@@ -583,7 +583,7 @@ pub fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
 
 /// The events a zoo just loaded posts for its trash cans (staff 8.2): a can above 12 pieces calls
 /// a worker as it does when it reaches 13, with its tile, in entity list order.
-pub fn loaded_events(world: &World) -> Vec<crate::sim::Event> {
+pub(crate) fn loaded_events(world: &World) -> Vec<crate::sim::Event> {
     let mut events = Vec::new();
     for e in &world.zoo.entities {
         let Some(c) = e.common.as_ref() else {
@@ -604,14 +604,14 @@ pub fn loaded_events(world: &World) -> Vec<crate::sim::Event> {
 }
 
 /// Whether a building of the type can be picked up: `cMoveable` 1 (default 0; unit placing 8.7).
-pub fn moveable(ty: &EntityType) -> bool {
+pub(crate) fn moveable(ty: &EntityType) -> bool {
     crate::build::number(ty, "cMoveable") == Some(1.0)
 }
 
 /// A building the player holds (unit placing 8.7): taken off the map with its users pushed out,
 /// it keeps its id, its place in the entity list and its figures until it is set down again.
 #[derive(Debug, Clone)]
-pub struct Held {
+pub(crate) struct Held {
     at: usize,
     entity: Entity,
     shape: Option<Shape>,
@@ -621,7 +621,7 @@ pub struct Held {
 /// Picks building `id` up (guest buildings 11.1): its users are pushed out as a forced leave, a
 /// trash can spills its fill, and the building leaves the world, nothing recorded for the undo.
 /// `None` when there is no such building.
-pub fn lift(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> Option<Held> {
+pub(crate) fn lift(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> Option<Held> {
     let at = world.find(id)?;
     leave::push_out(world, cat, id);
     crate::guest::litter::spill(world, cat, id, rng);
@@ -637,7 +637,7 @@ pub fn lift(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> Optio
 }
 
 /// Sets the held building down at `point` facing `facing`, with the figures it had.
-pub fn set_down(
+pub(crate) fn set_down(
     world: &mut World,
     ty: &EntityType,
     held: Held,
@@ -664,7 +664,7 @@ pub fn set_down(
 /// Sets the price of building `id` of type `ty` to what `new` makes of the type and the price it
 /// has (guest buildings 7.2): the guests that come later pay it, nothing is booked. Returns the
 /// new price when it is another.
-pub fn set_price(
+pub(crate) fn set_price(
     world: &mut World,
     ty: &EntityType,
     id: u32,
@@ -681,7 +681,7 @@ pub fn set_price(
 
 /// Sets the pieces trash can `id` holds. Its picture follows the count (guest buildings 8): the
 /// entity keeps it in its counter, which the picture reads.
-pub fn set_fill(world: &mut World, id: u32, fill: u32) {
+pub(crate) fn set_fill(world: &mut World, id: u32, fill: u32) {
     if let Some(live) = world.units.buildings.get_mut(&id) {
         live.fill = fill;
     }
@@ -691,10 +691,10 @@ pub fn set_fill(world: &mut World, id: u32, fill: u32) {
 }
 
 /// The live states by building id.
-pub type Table = BTreeMap<u32, Live>;
+pub(crate) type Table = BTreeMap<u32, Live>;
 
 /// How the price of building `id` of kind `kind` strikes a guest (guest buildings 7.3).
-pub fn mood(world: &World, id: u32, kind: &Kind) -> Mood {
+pub(crate) fn mood(world: &World, id: u32, kind: &Kind) -> Mood {
     let price = world
         .units
         .buildings
@@ -706,7 +706,7 @@ pub fn mood(world: &World, id: u32, kind: &Kind) -> Mood {
 /// Guests 7.1: the buildings that satisfy `need`, and among them the ones nearest to tile `here`
 /// within `radius` tiles that lie in its area and have an open slot, the expensive ones farther
 /// and the cheap ones nearer; the draw among the ties is the caller's.
-pub fn satisfiers(
+pub(crate) fn satisfiers(
     world: &World,
     cat: &Catalogue,
     here: usize,
@@ -759,7 +759,7 @@ pub fn satisfiers(
 }
 
 /// The type of the building entity `e`.
-pub fn kind_of(cat: &Catalogue, e: &Entity, default: f32) -> Option<Kind> {
+pub(crate) fn kind_of(cat: &Catalogue, e: &Entity, default: f32) -> Option<Kind> {
     if e.class != "building" {
         return None;
     }
@@ -769,7 +769,7 @@ pub fn kind_of(cat: &Catalogue, e: &Entity, default: f32) -> Option<Kind> {
 /// A slot, entrance or exit position `rel` of the file on the map: turned by the building's
 /// rotation and added to its position (guest buildings 3.2). Rotation 0 subtracts the offset, 4
 /// adds it, 2 and 6 turn it a quarter; an odd rotation ignores it.
-pub fn place(e: &Entity, rel: Point) -> Point {
+pub(crate) fn place(e: &Entity, rel: Point) -> Point {
     let Some(c) = e.common.as_ref() else {
         return rel;
     };
@@ -786,7 +786,7 @@ pub fn place(e: &Entity, rel: Point) -> Point {
 /// Where a user of slot `slot` is put inside the building `e`: the slot's position, or the draw
 /// place `seat` it sits on (shows 4.3), turned by the building's rotation; the height is the
 /// building's, plus the place's height unless the rotation is odd.
-pub fn seat_at(e: &Entity, slot: &Slot, seat: Option<(i32, i32, i32)>) -> (i32, i32, i32) {
+pub(crate) fn seat_at(e: &Entity, slot: &Slot, seat: Option<(i32, i32, i32)>) -> (i32, i32, i32) {
     let (x, y) = place(e, seat.map_or(slot.at, |p| (p.0, p.1)));
     let c = e.common.as_ref();
     let z = c.map_or(0, |c| c.z);
@@ -796,7 +796,7 @@ pub fn seat_at(e: &Entity, slot: &Slot, seat: Option<(i32, i32, i32)>) -> (i32, 
 
 /// The direction of a user put at a slot with the file's `facing`, turned by the building's
 /// rotation (guest buildings 3.2).
-pub fn facing(e: &Entity, facing: u32) -> u32 {
+pub(crate) fn facing(e: &Entity, facing: u32) -> u32 {
     (e.common.as_ref().map_or(0, |c| c.rotation) + facing) % 8
 }
 
@@ -808,7 +808,7 @@ const SHELTER_OF_ANY_EXHIBIT: i32 = 7059;
 /// entrance, whose place passes [`fits`]. `who` is the animal that leaves, which its own place
 /// rules apply to too (6.3 point 5), its exhibit being the one of the tile it stands on; `None`
 /// for a guest. `None` when there is none, and the slot cannot be used.
-pub fn exit_of(
+pub(crate) fn exit_of(
     world: &World,
     e: &Entity,
     kind: &Kind,
@@ -863,7 +863,7 @@ fn animal_place(world: &World, t: usize, who: &Species, home: Option<u32>, exemp
 /// Whether the unit (`who`) may use slot `slot` of a building (guest buildings 6.1):
 /// the building and the slot have room, the slot's species and filter let it in, and an exit exists
 /// (6.3: an entrance, or the slot's exit for a type that uses it, that passes the place test).
-pub fn can_add(
+pub(crate) fn can_add(
     world: &World,
     e: &Entity,
     kind: &Kind,
@@ -888,7 +888,7 @@ pub fn can_add(
 }
 
 /// Whether some slot of the building is open (guest buildings 6.1).
-pub fn has_open_slot(
+pub(crate) fn has_open_slot(
     world: &World,
     e: &Entity,
     kind: &Kind,
@@ -900,7 +900,7 @@ pub fn has_open_slot(
 
 /// The entrances of the open slots with their squared distance from `from`, the nearest first and
 /// in slot order among equals (guest buildings 6.2).
-pub fn entrances(
+pub(crate) fn entrances(
     world: &World,
     e: &Entity,
     kind: &Kind,

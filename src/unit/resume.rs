@@ -96,7 +96,7 @@ fn goal_back(world: &mut World, id: u32, now: u32, block: &Target, version: u32,
 /// the stored tile of that building holds none (shown, goal reset, path emptied, set and pending
 /// name cleared). A unit whose building is there is the building's: its users pair decides
 /// ([`crate::building::users::restore`], which runs after this).
-pub fn load(world: &mut World, now: u32) {
+pub(crate) fn load(world: &mut World, now: u32) {
     for at in 0..world.zoo.entities.len() {
         let Some(c) = world.zoo.entities[at].common.as_ref() else {
             continue;

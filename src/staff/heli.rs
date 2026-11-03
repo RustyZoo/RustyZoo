@@ -17,14 +17,14 @@ const LEVEL: f64 = 0.00025 * 3000.0;
 
 /// The rotor sound of a helicopter: how far it has faded, and whether it is fading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Rotor {
+pub(crate) struct Rotor {
     pub counter: i32,
     pub fade: bool,
 }
 
 /// The three own words of a helicopter (zoo format 6.13), the band it flies in and its sound.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Heli {
+pub(crate) struct Heli {
     /// The entity id of its base.
     pub base: u32,
     pub flying: bool,
@@ -51,7 +51,7 @@ impl Default for Heli {
 impl Heli {
     /// The helicopter a record's own words stand for (zoo format 6.13); a short record is a
     /// helicopter with no base.
-    pub fn from_own(own: &[u8]) -> Heli {
+    pub(crate) fn from_own(own: &[u8]) -> Heli {
         let word = |i: usize| {
             own.get(4 * i..4 * i + 4)
                 .and_then(|b| <[u8; 4]>::try_from(b).ok())
@@ -72,7 +72,7 @@ impl Heli {
     }
 
     /// The own words as the record stores them.
-    pub fn own(&self) -> Vec<u8> {
+    pub(crate) fn own(&self) -> Vec<u8> {
         [self.base, u32::from(self.flying), self.dir as u32]
             .into_iter()
             .flat_map(u32::to_le_bytes)
@@ -81,7 +81,7 @@ impl Heli {
 
     /// Point 8.2: setting the word to what it is does nothing. Landing lets the sound fade out;
     /// taking off starts the sound, unless it has one, and fades it in.
-    pub fn set_flying(&mut self, on: bool) {
+    pub(crate) fn set_flying(&mut self, on: bool) {
         if self.flying == on {
             return;
         }
@@ -101,7 +101,7 @@ impl Heli {
     /// Point 8.3: the sound after an update of `ms` milliseconds. The counter runs down while
     /// flying and up after the landing; at the end of the climb the fading stops, and at the
     /// other end the sound is freed.
-    pub fn tick(&mut self, ms: u32) {
+    pub(crate) fn tick(&mut self, ms: u32) {
         let Some(r) = self.rotor.as_mut().filter(|r| r.fade) else {
             return;
         };
@@ -118,7 +118,7 @@ impl Heli {
     }
 
     /// The level of the sound (0 is full volume), when there is one.
-    pub fn level(&self) -> Option<i32> {
+    pub(crate) fn level(&self) -> Option<i32> {
         self.rotor
             .map(|r| (f64::from(r.counter) * LEVEL).round() as i32)
     }
@@ -126,7 +126,7 @@ impl Heli {
 
 /// The helicopter's destination setter (point 8.1): the point, and the flight direction towards
 /// it, -1 when it is where it stands.
-pub fn set_destination(unit: &mut Unit, world: &World, at: usize, to: (i32, i32, i32)) {
+pub(crate) fn set_destination(unit: &mut Unit, world: &World, at: usize, to: (i32, i32, i32)) {
     unit.destination = Some(to);
     let from = world.zoo.entities.get(at).and_then(|e| e.common.as_ref());
     let dir = from.and_then(|c| {
@@ -138,7 +138,7 @@ pub fn set_destination(unit: &mut Unit, world: &World, at: usize, to: (i32, i32,
 }
 
 /// The first turn: the band of the type's heights.
-pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &Entity) {
+pub(crate) fn read_type(unit: &mut Unit, data: &dyn Data, entity: &Entity) {
     let n = |key: &str| data.number(entity, &Number::Characteristic(key.into()));
     if let Part::Staff(s) = &mut unit.part {
         s.heli.band = (n("cMinHeight"), n("cMaxHeight"));
@@ -147,7 +147,7 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &Entity) {
 
 /// Point 8.4: with no set running and none pending, a helicopter idles on the ground or in the
 /// air; the set is interruptible and not forced.
-pub fn idle_set(unit: &mut Unit, env: &Env) {
+pub(crate) fn idle_set(unit: &mut Unit, env: &Env) {
     let Part::Staff(s) = &unit.part else { return };
     let name = if s.heli.flying {
         "bIdleAir"
@@ -161,24 +161,24 @@ pub fn idle_set(unit: &mut Unit, env: &Env) {
 }
 
 /// Point 8.3: the sound follows the update.
-pub fn rotor(unit: &mut Unit, ms: u32) {
+pub(crate) fn rotor(unit: &mut Unit, ms: u32) {
     if let Part::Staff(s) = &mut unit.part {
         s.heli.tick(ms);
     }
 }
 
 /// The base `id`, when it exists and is a building.
-pub fn base_at(world: &World, id: u32) -> Option<usize> {
+pub(crate) fn base_at(world: &World, id: u32) -> Option<usize> {
     let at = world.find(id)?;
     (world.zoo.entities[at].class == "building").then_some(at)
 }
 
 /// A point in world units, the height last.
-pub type Point3 = (i32, i32, i32);
+pub(crate) type Point3 = (i32, i32, i32);
 
 /// The slot point and the exit point of slot `slot` of the base at position `base` (guest buildings
 /// 3.2): turned by the rotation, the heights ignored at an odd one.
-pub fn points(
+pub(crate) fn points(
     world: &World,
     cat: &Catalogue,
     base: usize,
@@ -201,7 +201,7 @@ pub fn points(
 
 /// `add_user` of slot 0 for the helicopter (guest buildings 6.4): refused when the slot is full,
 /// else the users now and the list grow. Whether it was added.
-pub fn add_user(world: &mut World, cat: &Catalogue, base: usize, unit: u32) -> bool {
+pub(crate) fn add_user(world: &mut World, cat: &Catalogue, base: usize, unit: u32) -> bool {
     let e = &world.zoo.entities[base];
     let kind = building::kind_of(cat, e, world.units.prices.default);
     let room = kind
@@ -226,7 +226,7 @@ pub fn add_user(world: &mut World, cat: &Catalogue, base: usize, unit: u32) -> b
 
 /// `remove_user`, not forced: the helicopter leaves the list and the users now go down. It stays
 /// where it is (the base has `cUserUsesExit` 0).
-pub fn remove_user(world: &mut World, base: usize, unit: u32) {
+pub(crate) fn remove_user(world: &mut World, base: usize, unit: u32) {
     let b = world.zoo.entities[base]
         .common
         .as_mut()
@@ -239,7 +239,7 @@ pub fn remove_user(world: &mut World, base: usize, unit: u32) {
 
 /// The dart the helicopter fired: the base's fill word, which the original calls its user-data
 /// refresh after (nothing to see for this building).
-pub fn add_dart(world: &mut World, base: usize) {
+pub(crate) fn add_dart(world: &mut World, base: usize) {
     let b = world.zoo.entities[base]
         .common
         .as_mut()
@@ -317,7 +317,7 @@ fn next_point(
 
 /// The free move of a helicopter by the step (movement 11): true when it did not move and the
 /// facing did not change.
-pub fn fly(unit: &Unit, world: &mut World, distance: u32, at: usize) -> bool {
+pub(crate) fn fly(unit: &Unit, world: &mut World, distance: u32, at: usize) -> bool {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
         return true;
     };
@@ -330,7 +330,7 @@ pub fn fly(unit: &Unit, world: &mut World, distance: u32, at: usize) -> bool {
 
 /// Point 8.5: the landed helicopter at position `at` goes to the slot point of its stored slot of
 /// its base, facing as it did.
-pub fn land(world: &mut World, cat: &Catalogue, at: usize) {
+pub(crate) fn land(world: &mut World, cat: &Catalogue, at: usize) {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
         return;
     };

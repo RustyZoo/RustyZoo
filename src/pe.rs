@@ -28,7 +28,7 @@ fn error<T>(message: &str) -> Result<T, PeError> {
 
 /// The type, the name or the language of a resource: a number, or a text for named ones.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResKey {
+pub(crate) enum ResKey {
     Id(u32),
     Name(String),
 }
@@ -42,15 +42,15 @@ impl ResKey {
 /// One leaf of the resource tree: its data lies inside the file that was read.
 #[derive(Debug, Clone)]
 pub struct Resource<'a> {
-    pub kind: ResKey,
-    pub name: ResKey,
+    pub(crate) kind: ResKey,
+    pub(crate) name: ResKey,
     /// The language, as a Windows language identifier (0x409 is US English, 0 is neutral).
     pub language: u32,
     pub data: &'a [u8],
 }
 
 /// The resource type number of string tables (`RT_STRING`).
-pub const RT_STRING: u32 = 6;
+pub(crate) const RT_STRING: u32 = 6;
 
 /// The language identifier of the string tables of the installed `lang0.dll` (the full-game tests
 /// pick their expected values by it: 1033 is English, 1036 French).
@@ -62,8 +62,8 @@ pub(crate) fn installed_language(dir: &std::ffi::OsStr) -> u32 {
     table.expect("lang0.dll has no string table").language
 }
 /// The resource type numbers of bitmaps (`RT_BITMAP`) and version information (`RT_VERSION`).
-pub const RT_BITMAP: u32 = 2;
-pub const RT_VERSION: u32 = 16;
+pub(crate) const RT_BITMAP: u32 = 2;
+pub(crate) const RT_VERSION: u32 = 16;
 const MAX_NAME_CHARS: usize = 64;
 /// The Windows loader refuses more; the game's libraries have five or six.
 const MAX_SECTIONS: usize = 96;

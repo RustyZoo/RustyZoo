@@ -19,7 +19,7 @@ mod capture;
 mod guide;
 mod heli;
 pub(super) use guide::guide_job;
-pub use guide::release_group;
+pub(crate) use guide::release_group;
 mod tank;
 mod worker;
 

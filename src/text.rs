@@ -33,7 +33,7 @@ const MAX_POINTS: u32 = 200;
 /// The glyph of one character: a coverage bitmap (0 to 255, rows from top to bottom) and where
 /// it lies relative to the pen: `left` pixels right of the pen, `bottom` pixels above the
 /// baseline (negative below it).
-pub struct Glyph {
+pub(crate) struct Glyph {
     pub width: usize,
     pub height: usize,
     pub left: i32,
@@ -80,7 +80,7 @@ impl Font {
 
     /// The font at `ppem` pixels per em (the character height); `bold_word` is whether the face
     /// string holds " Bold".
-    pub fn new(bold: bool, ppem: u32, bold_word: bool) -> Font {
+    pub(crate) fn new(bold: bool, ppem: u32, bold_word: bool) -> Font {
         let face = face(bold);
         // At 2048 pixels per em one pixel is one font unit.
         let mut advances = [0; 256];
@@ -101,27 +101,27 @@ impl Font {
         }
     }
 
-    pub fn is_bold(&self) -> bool {
+    pub(crate) fn is_bold(&self) -> bool {
         self.bold
     }
 
     /// Whether the face string holds " Bold", in any language's text (text 5.5).
-    pub fn bold_word(&self) -> bool {
+    pub(crate) fn bold_word(&self) -> bool {
         self.bold_word
     }
 
     /// Pixels per em, the character height.
-    pub fn ppem(&self) -> u32 {
+    pub(crate) fn ppem(&self) -> u32 {
         self.ppem
     }
 
     /// Pixels from the top of a line to its baseline.
-    pub fn ascent(&self) -> i32 {
+    pub(crate) fn ascent(&self) -> i32 {
         div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32
     }
 
     /// Pixels from the baseline to the bottom of a line.
-    pub fn descent(&self) -> i32 {
+    pub(crate) fn descent(&self) -> i32 {
         div_round(WIN_DESCENT * i64::from(self.ppem), UNITS) as i32
     }
 
@@ -131,7 +131,7 @@ impl Font {
     }
 
     /// The advance of one character in whole pixels.
-    pub fn advance(&self, byte: u8) -> i32 {
+    pub(crate) fn advance(&self, byte: u8) -> i32 {
         i32::from(self.advances[usize::from(byte)])
     }
 
@@ -141,7 +141,7 @@ impl Font {
     }
 
     /// The glyph of a character, drawn at the first use.
-    pub fn glyph(&mut self, byte: u8) -> &Glyph {
+    pub(crate) fn glyph(&mut self, byte: u8) -> &Glyph {
         let (face, ppem) = (self.face, self.ppem);
         self.glyphs.entry(byte).or_insert_with(|| {
             let (m, coverage) = face.rasterize(from_cp1252(byte), ppem as f32);
@@ -200,7 +200,7 @@ fn digits(s: &str) -> u32 {
 }
 
 /// The Unicode character of a Windows-1252 byte.
-pub fn from_cp1252(byte: u8) -> char {
+pub(crate) fn from_cp1252(byte: u8) -> char {
     const HIGH: [char; 32] = [
         '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž',
         '\u{8f}', '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}',
@@ -213,7 +213,7 @@ pub fn from_cp1252(byte: u8) -> char {
 }
 
 /// Whether Windows-1252 has the character `c`.
-pub fn in_cp1252(c: char) -> bool {
+pub(crate) fn in_cp1252(c: char) -> bool {
     (0..=255u8).any(|b| from_cp1252(b) == c)
 }
 

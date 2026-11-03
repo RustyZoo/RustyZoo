@@ -14,7 +14,7 @@ const BOX_RANGE: i32 = 20;
 
 /// Trigger 3 (7.2): `how` 0 books `amount` as a donation, 1 adds it to the cash unbooked, 2 sets
 /// the cash to it; any other value does nothing.
-pub fn cash(money: &mut Money, how: i32, amount: i32) {
+pub(crate) fn cash(money: &mut Money, how: i32, amount: i32) {
     let amount = amount as f32;
     match how {
         0 => money.refund(money::DONATIONS, amount),
@@ -28,7 +28,7 @@ pub fn cash(money: &mut Money, how: i32, amount: i32) {
 /// genus (2) or species (3), is `id`. Nothing is paid back and nothing is undone. Returns the
 /// number removed. `before` is told each id just before its removal, while the entity is still
 /// there: the map view lets it go first (7.5).
-pub fn remove(
+pub(crate) fn remove(
     world: &mut World,
     cat: &Catalogue,
     by: i32,
@@ -62,7 +62,7 @@ pub fn remove(
 /// Trigger 5 (7.4): an animal of name id `name` and subtype `sub` (`m`, `f` or `y`) is made, put
 /// near the zoo entrance and boxed on its first turn. Returns its id; `None` without that type, an
 /// entrance tile or a place for the crate.
-pub fn boxed(
+pub(crate) fn boxed(
     world: &mut World,
     cat: &Catalogue,
     name: i32,

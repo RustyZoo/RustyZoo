@@ -29,9 +29,9 @@ use crate::world::{Shape, World};
 use crate::zoo::Entity;
 
 /// Animals can only be placed in exhibits.
-pub const IN_AN_EXHIBIT: i32 = 10108;
+pub(crate) const IN_AN_EXHIBIT: i32 = 10108;
 /// An underwater animal needs a tank with water in it.
-pub const NEEDS_WATER: i32 = 10554;
+pub(crate) const NEEDS_WATER: i32 = 10554;
 /// The animal needs a deeper tank than this one.
 const DEEPER: i32 = 10560;
 /// Only show types stand in a show tank.
@@ -51,25 +51,31 @@ const TANK_STEPS: i32 = 48;
 const CRATE_RANGE: i32 = 50;
 
 /// Whether the type is placed as an animal by the Adopt panel.
-pub fn is_animal(ty: &EntityType) -> bool {
+pub(crate) fn is_animal(ty: &EntityType) -> bool {
     ty.class == "animals"
 }
 
 /// Whether the type is placed as a unit by the Adopt or the Hire panel.
-pub fn is_unit(ty: &EntityType) -> bool {
+pub(crate) fn is_unit(ty: &EntityType) -> bool {
     is_animal(ty) || staff::is_staff(ty)
 }
 
 /// What the type costs to place now: `cPurchaseCost`, halved in October for an animal of Dinosaur
 /// Digs (`cExpansionID` 1; unit placing 5.3).
-pub fn price(ty: &EntityType, october: bool) -> f32 {
+pub(crate) fn price(ty: &EntityType, october: bool) -> f32 {
     let half = october && is_animal(ty) && plain(ty, "cExpansionID") == Some(1.0);
     cost(ty) * if half { 0.5 } else { 1.0 }
 }
 
 /// The sell price of an animal (unit placing 10.2): every operation in `f32`, in the order of
 /// the formula. At minimum health it is halved again.
-pub fn sell_price(cost: f32, happiness: f32, health: f32, max_hits: f32, minimum: bool) -> f32 {
+pub(crate) fn sell_price(
+    cost: f32,
+    happiness: f32,
+    health: f32,
+    max_hits: f32,
+    minimum: bool,
+) -> f32 {
     let kept = (happiness + 100.0) * 0.005 + health / max_hits;
     let price = cost * 0.8 * kept * 0.5;
     if minimum { price * 0.5 } else { price }
@@ -77,7 +83,7 @@ pub fn sell_price(cost: f32, happiness: f32, health: f32, max_hits: f32, minimum
 
 /// The sell price of an animal of the type that is as new: its initial happiness and full health
 /// (the status variables come with the animal's own state).
-pub fn new_sell_price(ty: &EntityType) -> f32 {
+pub(crate) fn new_sell_price(ty: &EntityType) -> f32 {
     let max_hits = number(ty, "cMaxHits").filter(|&m| m > 0.0).unwrap_or(500.0);
     let happiness = number(ty, "cInitialHappiness").unwrap_or(60.0);
     sell_price(cost(ty), happiness, max_hits, max_hits, false)
@@ -86,7 +92,7 @@ pub fn new_sell_price(ty: &EntityType) -> f32 {
 /// Where the pointer is: the ground point under it, its own screen row and the zoom, which the
 /// tank point reads (5.1).
 #[derive(Debug, Clone, Copy)]
-pub struct Aim {
+pub(crate) struct Aim {
     pub point: (i64, i64),
     /// The row of the pointer in the view's pixels at the current zoom.
     pub row: i64,
@@ -96,7 +102,7 @@ pub struct Aim {
 /// The pending animal of the type `ty` for the pointer `aim`, the view turned by `view`; `None`
 /// when the type is unknown or the point is off the map. `water` tells for each terrain type
 /// whether it is water.
-pub fn pending(
+pub(crate) fn pending(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
@@ -112,7 +118,7 @@ pub fn pending(
 
 /// The pending unit of the one the player carries (8.3): its own facing turned with the view, so
 /// that it keeps its screen facing, and no cost. A crated animal is judged as a crate (6.2).
-pub fn carried(
+pub(crate) fn carried(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
@@ -136,7 +142,7 @@ pub fn carried(
 
 /// The map direction the carried thing faces when the view is turned by `view`: it keeps its
 /// screen facing, `facing + 2 * (view at pick-up - view now)` (unit placing 8.3).
-pub fn turned(carry: &Carry, view: u8) -> u32 {
+pub(crate) fn turned(carry: &Carry, view: u8) -> u32 {
     let turn = 2 * (i32::from(carry.view) - i32::from(view));
     (i64::from(carry.facing) + i64::from(turn)).rem_euclid(8) as u32
 }
@@ -457,7 +463,7 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
 /// placing 7.2). The key is the type name for a unit (`giraffe`, not the text) and the subtype for
 /// a building or a filter (`vendfood`, `f`). Scenery, fences, paths, tank walls, rubble, ambient
 /// animals and food the bare text whatever the flag says.
-pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
+pub(crate) fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
     let bare = matches!(
         ty.class,
         "objects" | "fences" | "paths" | "tankwall" | "rubble" | "ambient" | "food"
@@ -477,7 +483,7 @@ pub fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
 
 /// The name of a new entity of the type from the type's name text (`world.units.names`): empty
 /// when the interface gave none.
-pub fn named(world: &mut World, ty: &EntityType) -> String {
+pub(crate) fn named(world: &mut World, ty: &EntityType) -> String {
     match world.units.names.get(&ty.name_id).cloned() {
         Some(text) => name(world, ty, &text),
         None => String::new(),
@@ -485,7 +491,7 @@ pub fn named(world: &mut World, ty: &EntityType) -> String {
 }
 
 /// The category a unit's purchase is booked in: animal purchase, or the wages of the staff's class.
-pub fn category(ty: &EntityType) -> usize {
+pub(crate) fn category(ty: &EntityType) -> usize {
     staff::wages(ty).unwrap_or(ANIMAL_PURCHASE)
 }
 
@@ -494,7 +500,7 @@ pub fn category(ty: &EntityType) -> usize {
 /// by [`name`]); a place that is not valid shows its stored message, a cash that does not cover
 /// the cost the message of insufficient funds. The undo list records the placement of an animal;
 /// hiring a staff member empties it.
-pub fn place(
+pub(crate) fn place(
     world: &mut World,
     money: &mut Money,
     ty: &EntityType,
@@ -530,12 +536,12 @@ pub fn place(
 /// placing 9.3): the tiles of the zoo grounds that are not water and hold no unit and no path, in
 /// rings of Manhattan distance 3 to 50, each scored 0 to 3 (a passable quarter, flat, all four
 /// quarters empty); the first with 3 wins, else the best. `None` when no tile qualifies.
-pub fn crate_spot(world: &World, start: usize) -> Option<usize> {
+pub(crate) fn crate_spot(world: &World, start: usize) -> Option<usize> {
     crate_spot_in(world, start, CRATE_RANGE)
 }
 
 /// [`crate_spot`] with the rings going up to Manhattan distance `range`.
-pub fn crate_spot_in(world: &World, start: usize, range: i32) -> Option<usize> {
+pub(crate) fn crate_spot_in(world: &World, start: usize, range: i32) -> Option<usize> {
     let width = world.zoo.width as usize;
     let (sx, sy) = ((start % width) as i32, (start / width) as i32);
     let mut best: Option<(u32, usize)> = None;
@@ -573,7 +579,7 @@ pub fn crate_spot_in(world: &World, start: usize, range: i32) -> Option<usize> {
 /// A unit the player holds (unit placing 8.2): which one, its type, and where it stood, which way
 /// it faced and how the view was turned, for the facing it keeps and for cancelling.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Carry {
+pub(crate) struct Carry {
     pub id: u32,
     /// The type, a position in the catalogue.
     pub ty: usize,
@@ -587,7 +593,7 @@ pub struct Carry {
 /// so its update is suspended; the exhibit it left is marked for a new rating. An escaped animal
 /// is crated (9.1). `None` when `id` is
 /// no unit, is carried already, or its type is not moveable (`cMoveable` 0).
-pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<Carry> {
+pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<Carry> {
     let at = world.find(id)?;
     let e = &world.zoo.entities[at];
     e.common.as_ref()?;
@@ -646,7 +652,7 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
 /// mode of its tile (tank fauna 4, 5), is no longer carried, and the exhibit of the tile is marked for a new rating. Its home is the
 /// exhibit it stands in; the goals then start anew at its next update. `false` when the unit is
 /// gone or not carried.
-pub fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facing: u32) -> bool {
+pub(crate) fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facing: u32) -> bool {
     let (Some(at), true) = (
         world.find(id),
         world.units.get(id).is_some_and(|u| u.carried),

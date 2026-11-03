@@ -8,6 +8,13 @@ use crate::unit::testing::{centre, entity, rates, world};
 use crate::zoo::Clocks;
 use std::collections::HashMap;
 
+impl Cx<'_, '_> {
+    /// 8.1: a path to `to`, then the walk.
+    pub(crate) fn go_to(&mut self, to: usize, run: bool, job: bool, force: bool) -> bool {
+        self.path_to(to, false) && self.start_walk(run, job, force)
+    }
+}
+
 mod avoid;
 mod capture;
 mod contagion;

@@ -7,7 +7,7 @@ use crate::unit::{Ctx, Unit};
 use crate::world::World;
 
 /// Tank fauna 5: the animal at position `at` is sent to tile `to`.
-pub fn send(
+pub(crate) fn send(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
@@ -27,7 +27,7 @@ pub fn send(
 
 /// A use set reaches the building (guest buildings 6.4.1): `fEnterBuilding` when `enter`, else
 /// `fExitBuilding`.
-pub fn use_call(
+pub(crate) fn use_call(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
@@ -49,7 +49,7 @@ pub fn use_call(
 }
 
 /// A guide's status tick: the countdown of its gathering (tour guide 4).
-pub fn crowd(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+pub(crate) fn crowd(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     Cx {
         unit,
         world,

@@ -13,12 +13,12 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub fn width(&self) -> i32 {
+    pub(crate) fn width(&self) -> i32 {
         self.right.saturating_sub(self.left)
     }
 
     /// The rectangle moved by `(dx, dy)`.
-    pub fn moved(&self, dx: i32, dy: i32) -> Rect {
+    pub(crate) fn moved(&self, dx: i32, dy: i32) -> Rect {
         Rect {
             left: self.left.saturating_add(dx),
             top: self.top.saturating_add(dy),
@@ -39,7 +39,7 @@ impl Rect {
 
     /// The rectangle a button's text is laid out in: moved so that one line of the font is
     /// centred vertically. A text of more than one line therefore starts above the centre.
-    pub fn centred_line(&self, font: &Font) -> Rect {
+    pub(crate) fn centred_line(&self, font: &Font) -> Rect {
         let (h, t) = (self.bottom.saturating_sub(self.top), font.line_height());
         // Divisions truncate toward zero; the top moves down and the bottom up by the same.
         let d = h.saturating_sub(t) / 2;
@@ -73,7 +73,7 @@ impl Justify {
 
     /// The left end of a line of `line` pixels in `rect`. A line wider than the rectangle gets
     /// a negative offset when centred.
-    pub fn start(self, rect: &Rect, line: i32) -> i32 {
+    pub(crate) fn start(self, rect: &Rect, line: i32) -> i32 {
         match self {
             Justify::Left => rect.left,
             Justify::Center => rect

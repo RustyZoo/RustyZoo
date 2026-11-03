@@ -13,7 +13,7 @@ const LIST: i32 = 4124;
 
 /// Whether the window was shown at the last look.
 #[derive(Default)]
-pub struct Awards {
+pub(crate) struct Awards {
     shown: bool,
 }
 
@@ -22,7 +22,13 @@ impl Awards {
     /// when its tab is clicked (7.3): one row for each held id that has a definition, in the
     /// order of the list, with the first frame of the icon, the name, and the help of the row
     /// (the tooltip layer adds the long-help offset).
-    pub fn refresh(&mut self, ui: &mut Interface, held: &[i32], defs: &Definitions, vfs: &Vfs) {
+    pub(crate) fn refresh(
+        &mut self,
+        ui: &mut Interface,
+        held: &[i32],
+        defs: &Definitions,
+        vfs: &Vfs,
+    ) {
         let shown = ui.shown(WINDOW);
         let opened = shown && !self.shown;
         self.shown = shown;

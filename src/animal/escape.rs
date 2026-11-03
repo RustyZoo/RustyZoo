@@ -18,7 +18,12 @@ use crate::world::World;
 /// out of a tank 4; else, for each intact piece in turn (life not 0), 1 when it jumps it, 2 when
 /// it climbs it, 3 when it bashes (the piece's strength below the bash) or crushes it; 0 walks
 /// through.
-pub fn kind(w: &World, m: &Mover, tank: bool, (fa, fb): (Option<usize>, Option<usize>)) -> u32 {
+pub(crate) fn kind(
+    w: &World,
+    m: &Mover,
+    tank: bool,
+    (fa, fb): (Option<usize>, Option<usize>),
+) -> u32 {
     if tank {
         return 4;
     }
@@ -47,7 +52,7 @@ pub fn kind(w: &World, m: &Mover, tank: bool, (fa, fb): (Option<usize>, Option<u
 }
 
 /// The animation a crossing of this kind plays on the crossing tile.
-pub fn crossing(kind: u32) -> Option<&'static str> {
+pub(crate) fn crossing(kind: u32) -> Option<&'static str> {
     match kind {
         1 => Some("jump_high"),
         2 => Some("climb_up"),
@@ -60,7 +65,7 @@ pub fn crossing(kind: u32) -> Option<&'static str> {
 /// plays the crossing animation; leaving it, or reaching the last tile `B` without having entered
 /// it, breaks the fence of a bash, or of a jump by a species that bashes; `B` plays `run` after a
 /// jump or a climb.
-pub fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: usize) {
+pub(crate) fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: usize) {
     let bash = unit.mover.bash > 0;
     let Part::Animal(a) = &mut unit.part else {
         return;
@@ -95,7 +100,7 @@ pub fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: usize) 
 /// object of its four quadrants, taken in the slot order (pathfinding 4.3), whose type has
 /// `cRubbleable` 1, one that spans several quadrants once, turns to rubble with the routine of its
 /// kind (cheats 4.6). The object leaves the list at the next removal pass and the undo list at once.
-pub fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
+pub(crate) fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
     if !matches!(&unit.part, Part::Animal(a) if a.rampaging && a.walk.is_none()) {
         return;
     }
@@ -164,7 +169,7 @@ fn break_line(world: &mut World, cat: &Catalogue, (a, b): ([i32; 2], [i32; 2]), 
 /// The walk ends on its last tile (11.3, the check done of the wander): with the animal on tile
 /// `here`, the record is dropped. Whether the animal is on an escape walk, which leaves the end of
 /// the wander undecided.
-pub fn walk_done(unit: &mut Unit, world: &World, here: Option<usize>) -> bool {
+pub(crate) fn walk_done(unit: &mut Unit, world: &World, here: Option<usize>) -> bool {
     let Part::Animal(a) = &mut unit.part else {
         return false;
     };
@@ -218,7 +223,13 @@ pub(super) fn start_new(
 /// loose runs `bEscapedRampage`, one in an exhibit `bHabitatRampage`, neither interruptible. A
 /// set that runs already is queued behind itself. With `bSleep`, `bSick` or `bHatch` as the top or
 /// pending set the rampage is dropped and nothing starts.
-pub fn ambient_sets(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut Rng, at: usize) {
+pub(crate) fn ambient_sets(
+    unit: &mut Unit,
+    world: &World,
+    data: &dyn Data,
+    rng: &mut Rng,
+    at: usize,
+) {
     let ending = [unit.runner.top(), unit.runner.queued()]
         .iter()
         .any(|n| matches!(n, Some("bSleep" | "bSick" | "bHatch")));
@@ -256,7 +267,7 @@ pub fn ambient_sets(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut R
 
 /// Behaviours 6.4 point 2, before the table: the sleep check takes the choice (2.1), else a
 /// rampage in an exhibit starts its set (2.2). Whether either did, which ends the choice.
-pub fn chose(
+pub(crate) fn chose(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
@@ -269,7 +280,7 @@ pub fn chose(
 
 /// Behaviours 6.4 point 2.2: an idle animal rampaging in an exhibit starts `bHabitatRampage`,
 /// which ends the choice. Whether it did.
-pub fn habitat_rampage(
+pub(crate) fn habitat_rampage(
     unit: &mut Unit,
     world: &World,
     data: &dyn Data,
@@ -291,7 +302,7 @@ pub fn habitat_rampage(
 /// What a tick of the checks asks after its escape check (animals 11): the status dates a loose
 /// animal's escape, the fence test starts when the zap draw succeeded (11.10), a rampage that
 /// ended is cleared, and an animal on water is sent off it.
-pub fn after(
+pub(crate) fn after(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
@@ -315,7 +326,7 @@ pub fn after(
 /// A rampage ended (animals 11): when its set runs, the pending call and the set are cleared, the
 /// unit stops with its idle animation and the animal's status resets, which drops its escape
 /// record and its need flags.
-pub fn calm(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+pub(crate) fn calm(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     if !matches!(unit.runner.top(), Some(LOOSE_RAMPAGE | HABITAT_RAMPAGE)) {
         return;
     }

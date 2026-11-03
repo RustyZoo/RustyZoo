@@ -10,7 +10,7 @@ use crate::vfs::Vfs;
 /// What the game keeps of an award: the string id of its name, the string id of its help text
 /// and the name of its icon animation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Definition {
+pub(crate) struct Definition {
     pub name: i32,
     pub tooltip: i32,
     pub icon: String,
@@ -18,12 +18,12 @@ pub struct Definition {
 
 /// The definitions by award id.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Definitions(BTreeMap<i32, Definition>);
+pub(crate) struct Definitions(BTreeMap<i32, Definition>);
 
 impl Definitions {
     /// The definitions of the `award*.cfg` files of the install, merged by id: the files in
     /// ascending order of their names, a later one replacing an earlier definition of the same id.
-    pub fn load(vfs: &Vfs) -> Definitions {
+    pub(crate) fn load(vfs: &Vfs) -> Definitions {
         let mut found = Definitions::default();
         for file in vfs.list(Some("award*.cfg")) {
             let Some(config) = vfs.read(&file).ok().and_then(|b| Config::parse(&b).ok()) else {
@@ -73,25 +73,26 @@ impl Definitions {
     }
 
     /// The definition of an award, if the install has one.
-    pub fn get(&self, id: i32) -> Option<&Definition> {
+    pub(crate) fn get(&self, id: i32) -> Option<&Definition> {
         self.0.get(&id)
     }
 
     /// A set of definitions made in a test.
     #[cfg(test)]
-    pub fn of(list: &[(i32, Definition)]) -> Definitions {
+    pub(crate) fn of(list: &[(i32, Definition)]) -> Definitions {
         Definitions(list.iter().cloned().collect())
     }
 
     /// The definitions in ascending order of id.
-    pub fn iter(&self) -> impl Iterator<Item = (i32, &Definition)> {
+    #[cfg(test)]
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (i32, &Definition)> {
         self.0.iter().map(|(&id, d)| (id, d))
     }
 }
 
 /// Gives an award to a held list (`awards.md` 4.1): nothing when the zoo has it already, else the
 /// id is kept in the list, which stays largest first. The id needs no definition.
-pub fn add(held: &mut Vec<i32>, id: i32) {
+pub(crate) fn add(held: &mut Vec<i32>, id: i32) {
     if let Err(at) = held.binary_search_by(|h| id.cmp(h)) {
         held.insert(at, id);
     }

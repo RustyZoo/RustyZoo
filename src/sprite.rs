@@ -33,16 +33,16 @@ use crate::zoom::Zoom;
 pub const MAX_DIMENSION: u16 = 4096;
 
 /// The most colours a palette keeps: a pixel indexes a palette with one byte.
-pub const MAX_COLORS: usize = 256;
+pub(crate) const MAX_COLORS: usize = 256;
 
 /// How strongly a shadow frame darkens what is behind it: three quarters of the destination
 /// stay. The ground shadow of an entity is drawn at this strength.
-pub const SHADOW_STRENGTH: f32 = 0.25;
+pub(crate) const SHADOW_STRENGTH: f32 = 0.25;
 
 /// A blended draw: `strength` is the weight of the sprite (0.25 or 0.5), `black` draws every
 /// pixel of a normal frame in black instead of its palette colour (the shadow of a unit).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Blend {
+pub(crate) struct Blend {
     pub strength: f32,
     pub black: bool,
 }
@@ -114,7 +114,7 @@ impl Palette {
     /// palettes of the game do) is cut to the colours present; bytes after the colours the
     /// header counts (a few palettes of the game have them) are ignored. Fails if the file is
     /// shorter than its 4 byte header.
-    pub fn parse(bytes: &[u8]) -> Result<Palette, SpriteError> {
+    pub(crate) fn parse(bytes: &[u8]) -> Result<Palette, SpriteError> {
         let mut reader = Reader { data: bytes };
         let count = reader.len("palette colour count")?;
         let colors = reader
@@ -129,11 +129,11 @@ impl Palette {
     }
 
     /// The number of colours.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.colors.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.colors.is_empty()
     }
 
@@ -141,13 +141,13 @@ impl Palette {
     /// (the marker), whatever its fourth byte. The art never uses value 0 under the marker,
     /// apart from a few stray pixels that are plain defects; palettes that start with another
     /// colour (terrain, interface) use 0 as a colour.
-    pub fn zero_is_transparent(&self) -> bool {
+    pub(crate) fn zero_is_transparent(&self) -> bool {
         matches!(self.color(0), Some([255, 0, 255, _]))
     }
 
     /// Overwrites the entries from `start` with the entries of `from` from `skip` on, at most
     /// `count` of them and none past the end of either palette.
-    pub fn overwrite(&mut self, start: usize, from: &Palette, skip: usize, count: usize) {
+    pub(crate) fn overwrite(&mut self, start: usize, from: &Palette, skip: usize, count: usize) {
         let source = from.colors.get(skip..).unwrap_or_default();
         for (slot, color) in self.colors.iter_mut().skip(start).zip(source).take(count) {
             *slot = *color;
@@ -156,7 +156,7 @@ impl Palette {
 
     /// The palette with every colour replaced by `rgb`, the alpha bytes kept. The transparent
     /// marker (see [`Palette::zero_is_transparent`]) is kept as it is.
-    pub fn solid(&self, rgb: [u8; 3]) -> Palette {
+    pub(crate) fn solid(&self, rgb: [u8; 3]) -> Palette {
         let keep = usize::from(self.zero_is_transparent());
         let mut colors = self.colors.clone();
         for c in colors.iter_mut().skip(keep) {
@@ -166,7 +166,7 @@ impl Palette {
     }
 
     /// The colour of a palette index, as R, G, B, A.
-    pub fn color(&self, index: u8) -> Option<[u8; 4]> {
+    pub(crate) fn color(&self, index: u8) -> Option<[u8; 4]> {
         self.colors.get(usize::from(index)).copied()
     }
 
@@ -174,7 +174,7 @@ impl Palette {
     /// a value that drawing reduces to the per-channel average, rounded down, of its own code and
     /// the code of the tint (`R >> 3`, `G >> 2`, `B >> 3`). The marker of entry 0
     /// stays, so the pixels that were transparent still are.
-    pub fn tinted(&self, tint: [u8; 3]) -> Palette {
+    pub(crate) fn tinted(&self, tint: [u8; 3]) -> Palette {
         let marker = self.zero_is_transparent();
         let colors = self
             .colors
@@ -224,7 +224,7 @@ impl Frame {
     ///
     /// Fails if the data is truncated, if width or height exceeds [`MAX_DIMENSION`], or if a
     /// row draws past the width. A frame with width and height 0 is valid and draws nothing.
-    pub fn parse(data: &[u8]) -> Result<Frame, SpriteError> {
+    pub(crate) fn parse(data: &[u8]) -> Result<Frame, SpriteError> {
         let mut reader = Reader { data };
         let raw_height = reader.u16("frame height")?;
         let width = reader.u16("frame width")?;
@@ -271,7 +271,7 @@ impl Frame {
 
     /// The palette index stored at column `col` of row `row` of the frame, or `None` where the
     /// frame is transparent, outside it or a shadow frame (which has no indexes).
-    pub fn pixel_at(&self, col: i32, row: i32) -> Option<u8> {
+    pub(crate) fn pixel_at(&self, col: i32, row: i32) -> Option<u8> {
         let inside =
             (0..i32::from(self.width)).contains(&col) && (0..i32::from(self.height)).contains(&row);
         if self.shadow || !inside {
@@ -318,35 +318,6 @@ impl Frame {
         );
     }
 
-    /// Like [`Frame::draw`], reflected left to right: pixel (`c`, `r`) of the frame goes to
-    /// (`x - c`, `y + r`), so the frame covers the columns `x - (width - 1)` to `x`.
-    pub fn draw_mirrored(&self, palette: &Palette, target: &mut Framebuffer, x: i32, y: i32) {
-        self.draw_at(
-            palette,
-            target,
-            self.anchor(x, y, true),
-            true,
-            None,
-            Zoom::Normal,
-        );
-    }
-
-    /// Like [`Frame::draw`] or [`Frame::draw_mirrored`], but blended with what is behind. Each
-    /// channel code of a normal frame becomes `floor((dst + src) / 2)` at strength 0.5 and
-    /// `floor((floor((dst + src) / 2) + dst) / 2)` at 0.25 (sprite drawing 7.5); a shadow frame
-    /// darkens as in [`Frame::draw`] but at the strength given.
-    pub fn draw_blended(
-        &self,
-        palette: &Palette,
-        target: &mut Framebuffer,
-        (x, y): (i32, i32),
-        mirror: bool,
-        blend: Blend,
-    ) {
-        let anchor = self.anchor(x, y, mirror);
-        self.draw_at(palette, target, anchor, mirror, Some(blend), Zoom::Normal);
-    }
-
     /// Draws the frame at a zoom with its anchor (the point the frame is placed by) at
     /// `anchor` in the framebuffer, `blend` and `mirror` as in [`Frame::draw_blended`]
     /// (sprite drawing 5.2 and 5.3, map drawing 8). Here `anchor` is already at the zoom.
@@ -355,7 +326,7 @@ impl Frame {
     /// every pixel becomes a 2x2 block, from (`X - 2 * x_offset + 2c`, `Y - 2 * y_offset + 2r`).
     /// Zoomed out: only the pixels at an even distance from the anchor in both directions are
     /// drawn, at half that distance. Mirrored, the columns are reflected about `X`.
-    pub fn draw_zoomed(
+    pub(crate) fn draw_zoomed(
         &self,
         palette: &Palette,
         target: &mut Framebuffer,
@@ -489,7 +460,7 @@ impl Frame {
 
     /// Fails if the frame uses a palette index that `palette` lacks. Drawing does not care (see
     /// [`Frame::draw`]); this is how a loader notices the defect.
-    pub fn check_palette(&self, palette: &Palette) -> Result<(), SpriteError> {
+    pub(crate) fn check_palette(&self, palette: &Palette) -> Result<(), SpriteError> {
         match self.max_index {
             Some(index) if usize::from(index) >= palette.len() => error(format!(
                 "palette index {index} but the palette has {} colours",
@@ -639,7 +610,7 @@ impl Sprite {
     ///
     /// Fails if the data is truncated, if a count or size exceeds the bytes left, or if a
     /// frame is malformed (see [`Frame::parse`]); the message says which frame.
-    pub fn parse(bytes: &[u8]) -> Result<Sprite, SpriteError> {
+    pub(crate) fn parse(bytes: &[u8]) -> Result<Sprite, SpriteError> {
         let mut reader = Reader { data: bytes };
         let mut has_extra = false;
         if bytes.starts_with(b"FATZ") {
@@ -685,13 +656,14 @@ impl Sprite {
     }
 
     /// Fails if some frame uses a palette index that `palette` lacks.
-    pub fn check_palette(&self, palette: &Palette) -> Result<(), SpriteError> {
+    pub(crate) fn check_palette(&self, palette: &Palette) -> Result<(), SpriteError> {
         self.all_frames()
             .try_for_each(|frame| frame.check_palette(palette))
     }
 
     /// Whether some frame draws palette indexes, that is, needs a palette.
-    pub fn needs_palette(&self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn needs_palette(&self) -> bool {
         self.all_frames().any(|frame| frame.max_index.is_some())
     }
 }
@@ -748,6 +720,9 @@ pub fn write_png(image: &Framebuffer, out: impl Write) -> Result<(), Box<dyn Err
     encoder.write_header()?.write_image_data(&image.pixels)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod draws;
 
 #[cfg(test)]
 pub(crate) mod tests {

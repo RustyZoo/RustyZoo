@@ -25,7 +25,7 @@ mod tests;
 
 /// The `[AI]` settings of the ring of a stroll (12).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ring {
+pub(crate) struct Ring {
     base: (i32, i32),
     random: (i32, i32),
 }
@@ -41,7 +41,7 @@ impl Default for Ring {
 
 impl Ring {
     /// `BaseX`, `BaseY` (below 0 gives 0), `RandomX` and `RandomY` (below 1 gives 1).
-    pub fn from_ini(ini: &Config) -> Ring {
+    pub(crate) fn from_ini(ini: &Config) -> Ring {
         let d = Ring::default();
         // No map is larger than the greatest value.
         let key = |k: &str, fallback: i32, least: i32| {
@@ -57,7 +57,7 @@ impl Ring {
 /// 10.2: the unit at position `at` of the entity list looks for a place to walk to and a path
 /// to it. True when a search succeeded; the unit then holds the path and its destination, and a
 /// move call starts the walk ([`movement::call`]). A unit that has a path does nothing.
-pub fn random_walk(
+pub(crate) fn random_walk(
     unit: &mut Unit,
     world: &mut World,
     cat: &Catalogue,
@@ -69,7 +69,7 @@ pub fn random_walk(
 
 /// The walk of the surface goal (tank fauna 10.2): the destination of the unit's terrain mode and a
 /// path to it that is not partial, with no fallback.
-pub fn surface_walk(
+pub(crate) fn surface_walk(
     unit: &mut Unit,
     world: &mut World,
     cat: &Catalogue,
@@ -574,7 +574,7 @@ impl Walk<'_> {
 
 /// Whether the tile test of the unit standing on tile `here` accepts tile `t` (10.3), in its
 /// strict or its lenient form.
-pub fn fits(unit: &Unit, w: &World, here: usize, t: usize, lenient: bool) -> bool {
+pub(crate) fn fits(unit: &Unit, w: &World, here: usize, t: usize, lenient: bool) -> bool {
     let m = &unit.mover;
     let (region, from) = (w.exhibits().region(t), w.exhibits().region(here));
     let off_path = lenient && w.path(here).is_none();

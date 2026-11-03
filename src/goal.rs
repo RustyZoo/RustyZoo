@@ -33,57 +33,57 @@ mod stops;
 #[cfg(test)]
 mod tests;
 
-pub use animal::{DRINK, KEEPER_FOOD, SURFACE};
-pub use dropped::{dropped, picked_up};
-pub use entry::{crowd, send, use_call};
-pub use guest::{IN_BUILDING, LEAVE};
-pub use staff::release_group;
-pub use stops::{lose_task, resume_use, stop_all, stop_use};
+pub(crate) use animal::{DRINK, KEEPER_FOOD, SURFACE};
+pub(crate) use dropped::{dropped, picked_up};
+pub(crate) use entry::{crowd, send, use_call};
+pub(crate) use guest::{IN_BUILDING, LEAVE};
+pub(crate) use staff::release_group;
+pub(crate) use stops::{lose_task, resume_use, stop_all, stop_use};
 
-pub const NONE: u8 = 0;
+pub(crate) const NONE: u8 = 0;
 /// The wander.
-pub const RANDOM: u8 = 1;
+pub(crate) const RANDOM: u8 = 1;
 /// A guest picks what to see next.
-pub const SITE: u8 = 100;
-pub const HABITAT: u8 = 101;
+pub(crate) const SITE: u8 = 100;
+pub(crate) const HABITAT: u8 = 101;
 /// The duties of a keeper (staff 7.5).
-pub const DUTIES: u8 = 110;
+pub(crate) const DUTIES: u8 = 110;
 /// A keeper darts and crates an escaped animal (staff 7.11).
-pub const CAPTURE: u8 = 111;
-pub const GAWK: u8 = 112;
+pub(crate) const CAPTURE: u8 = 111;
+pub(crate) const GAWK: u8 = 112;
 /// A guest walks to a scenery object and gawks at it (goals 11.12).
-pub const SCENERY: u8 = 128;
-pub const DO_SCENERY: u8 = 129;
+pub(crate) const SCENERY: u8 = 128;
+pub(crate) const DO_SCENERY: u8 = 129;
 /// The maintenance duties of a worker (staff 8).
-pub const MAINT: u8 = 120;
+pub(crate) const MAINT: u8 = 120;
 /// A keeper enters a tank by the ladders of its gate and leaves it (tank staff 4).
-pub const ENTER_TANK: u8 = 126;
-pub const EXIT_TANK: u8 = 127;
+pub(crate) const ENTER_TANK: u8 = 126;
+pub(crate) const EXIT_TANK: u8 = 127;
 /// A tour guide's leg to a viewing area and its talk there (tour guide 5 to 7); the first is also
 /// a guest's walk after a guide.
-pub const LEG: u8 = 118;
-pub const TALK: u8 = 119;
+pub(crate) const LEG: u8 = 118;
+pub(crate) const TALK: u8 = 119;
 /// A guest is sick on the spot (goals 11.10).
-pub const SICK: u8 = 121;
+pub(crate) const SICK: u8 = 121;
 /// The tasks the costs of the path finder look at (pathfinding 6.5, 6.6): entering a building,
 /// chasing, avoiding a predator, returning to a show building, recovering from a fall into water
 /// and the animal's trips to and from a show tank.
-pub const ENTER_BUILDING: u8 = 104;
+pub(crate) const ENTER_BUILDING: u8 = 104;
 /// The other tasks of the building chain and of eating (goals 11.3, 11.4).
-pub const GO_BUILDING: u8 = 102;
-pub const ENTRANCE: u8 = 103;
-pub const EXIT_BUILDING: u8 = 105;
-pub const USE: u8 = 106;
-pub const EAT: u8 = 107;
-pub const EAT_STANDING: u8 = 108;
-pub const EATING_STANDING: u8 = 109;
-pub const CHASE: u8 = 116;
-pub const AVOID: u8 = 117;
-pub const RETURN_TO_BUILDING: u8 = 130;
-pub const RECOVER: u8 = 131;
-pub const DROWN: u8 = 132;
-pub const GO_TO_SHOW: u8 = 133;
-pub const RETURN_FROM_SHOW: u8 = 134;
+pub(crate) const GO_BUILDING: u8 = 102;
+pub(crate) const ENTRANCE: u8 = 103;
+pub(crate) const EXIT_BUILDING: u8 = 105;
+pub(crate) const USE: u8 = 106;
+pub(crate) const EAT: u8 = 107;
+pub(crate) const EAT_STANDING: u8 = 108;
+pub(crate) const EATING_STANDING: u8 = 109;
+pub(crate) const CHASE: u8 = 116;
+pub(crate) const AVOID: u8 = 117;
+pub(crate) const RETURN_TO_BUILDING: u8 = 130;
+pub(crate) const RECOVER: u8 = 131;
+pub(crate) const DROWN: u8 = 132;
+pub(crate) const GO_TO_SHOW: u8 = 133;
+pub(crate) const RETURN_FROM_SHOW: u8 = 134;
 /// The tasks of the building chain, 0x66 to 0x6a.
 pub(crate) const BUILDING: std::ops::RangeInclusive<u8> = 102..=106;
 /// The names of the tasks 100 to 134, by the number less 100.
@@ -132,7 +132,7 @@ pub fn task_name(task: u8) -> &'static str {
 }
 
 /// The name the original gives a job.
-pub fn job_name(job: u8) -> &'static str {
+pub(crate) fn job_name(job: u8) -> &'static str {
     match job {
         0 => "none",
         j => JOBS.get(usize::from(j) - 1).unwrap_or(&"unknown"),
@@ -142,7 +142,7 @@ pub fn job_name(job: u8) -> &'static str {
 /// An entity and a place a task or a job aims at (3.1). The tile and the position follow each
 /// other: a tile gives its corner, a position its tile.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Target {
+pub(crate) struct Target {
     pub id: u32,
     pub tile: Option<usize>,
     /// In movement units; z in 16ths of a height step.
@@ -150,15 +150,15 @@ pub struct Target {
 }
 
 impl Target {
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         *self = Target::default();
     }
 
-    pub fn is_set(&self) -> bool {
+    pub(crate) fn is_set(&self) -> bool {
         self.id != 0 || self.tile.is_some()
     }
 
-    pub fn set_tile(&mut self, world: &World, tile: Option<usize>) {
+    pub(crate) fn set_tile(&mut self, world: &World, tile: Option<usize>) {
         self.tile = tile;
         let width = world.zoo.width as usize;
         self.pos = tile.and_then(|t| {
@@ -167,7 +167,7 @@ impl Target {
         });
     }
 
-    pub fn set_pos(&mut self, world: &World, pos: Option<(i32, i32, i32)>) {
+    pub(crate) fn set_pos(&mut self, world: &World, pos: Option<(i32, i32, i32)>) {
         self.pos = pos;
         self.tile = pos.and_then(|(x, y, _)| world.tile_index(x.div_euclid(64), y.div_euclid(64)));
     }
@@ -175,7 +175,7 @@ impl Target {
 
 /// The goal record of a unit (3.1).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Record {
+pub(crate) struct Record {
     pub task: u8,
     /// Stored and logged, never read (goals O2).
     pub mode: u8,
@@ -191,14 +191,14 @@ pub struct Record {
 
 impl Record {
     /// 8.3: strictly more ticks than the duration have passed since the task was set.
-    pub fn duration_over(&self, now: u32) -> bool {
+    pub(crate) fn duration_over(&self, now: u32) -> bool {
         now.wrapping_sub(self.start) > self.duration
     }
 }
 
 /// The goal object of a task. Each variant is a small state machine over the unit and its record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Goal {
+pub(crate) enum Goal {
     /// Tasks 0 and 1: nothing and the wander (7).
     Base,
     /// 0x65 of a guest: walk to the viewing tile of an exhibit (11.2).
@@ -498,7 +498,7 @@ impl Goal {
 /// The sub-goal object of a job: the keeper's jobs 1 to 6 and 13 to 15 (staff 7.6 to 7.8, 7.11), the worker's jobs 7 to
 /// 10, 16, 17, 26 and 27 (staff 8.4 to 8.7, tank staff 8), the base one (9.2) for every other job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Sub {
+pub(crate) enum Sub {
     Base,
     Keeper(u8),
     Worker(u8),
@@ -564,7 +564,7 @@ pub(crate) fn active_goal(task: u8, kind: Kind) -> i32 {
 /// The goal state of a unit: the record, the objects built from it and the flags of the base
 /// goal.
 #[derive(Clone, Default, PartialEq, Eq)]
-pub struct Goals {
+pub(crate) struct Goals {
     pub record: Record,
     object: Option<Goal>,
     stale: bool,
@@ -630,7 +630,7 @@ impl Goals {
 
 /// What a goal update works on: the unit taken out of the table for its turn, the world, the
 /// managers' context, the unit's place in the entity list and the data of the sets.
-pub struct Cx<'a, 'c> {
+pub(crate) struct Cx<'a, 'c> {
     pub unit: &'a mut Unit,
     pub world: &'a mut World,
     pub ctx: &'a mut Ctx<'c>,
@@ -660,7 +660,7 @@ pub fn update(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
 }
 
 impl Cx<'_, '_> {
-    pub fn record(&mut self) -> &mut Record {
+    pub(crate) fn record(&mut self) -> &mut Record {
         &mut self.unit.goal.record
     }
 
@@ -676,7 +676,7 @@ impl Cx<'_, '_> {
     }
 
     /// 3.2: sets the task. The object is marked stale, the job cleared.
-    pub fn set_task(&mut self, task: u8, mode: u8, id: u32, tile: Option<usize>) {
+    pub(crate) fn set_task(&mut self, task: u8, mode: u8, id: u32, tile: Option<usize>) {
         let (now, unit, guide) = (self.now(), self.unit.id, self.unit.kind == Kind::Guide);
         let world = &mut *self.world;
         let goal = &mut self.unit.goal;
@@ -701,7 +701,7 @@ impl Cx<'_, '_> {
     }
 
     /// 3.2: sets the job and its target; the task is untouched.
-    pub fn set_job(&mut self, job: u8, id: u32, tile: Option<usize>) {
+    pub(crate) fn set_job(&mut self, job: u8, id: u32, tile: Option<usize>) {
         let world = &mut *self.world;
         let goal = &mut self.unit.goal;
         let r = &mut goal.record;
@@ -727,7 +727,7 @@ impl Cx<'_, '_> {
     }
 
     /// 12.1: clears the record, empties the path, lowers the flags.
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         match self.unit.kind {
             Kind::Keeper => self.keeper_reset(),
             Kind::Guide => self.guide_reset(),
@@ -753,7 +753,7 @@ impl Cx<'_, '_> {
 
     /// 12.3: empties the path and invalidates the targets; the task stays. An animal's escape walk
     /// ends (animals 11.3).
-    pub fn abort(&mut self) {
+    pub(crate) fn abort(&mut self) {
         if let Part::Animal(a) = &mut self.unit.part {
             a.walk = None;
         }
@@ -1041,13 +1041,13 @@ impl Cx<'_, '_> {
 
     /// Asks the finder for a path to tile `to`; on success the unit holds the path and its
     /// destination (the tile's centre at its height, movement 8.1).
-    pub fn path_to(&mut self, to: usize, partial: bool) -> bool {
+    pub(crate) fn path_to(&mut self, to: usize, partial: bool) -> bool {
         self.path_to_level(to, partial, None)
     }
 
     /// The same for a unit in a tank, to the level `level` of the destination when it is given
     /// (else the unit's own).
-    pub fn path_to_level(&mut self, to: usize, partial: bool, level: Option<i32>) -> bool {
+    pub(crate) fn path_to_level(&mut self, to: usize, partial: bool, level: Option<i32>) -> bool {
         let Some(here) = self.tile() else {
             return false;
         };
@@ -1084,7 +1084,7 @@ impl Cx<'_, '_> {
     /// the goal says. It fails when the unit may not move, has no destination or the set does
     /// not start (refused, or the type has no calls for it); then nothing changes. On success
     /// the target becomes the destination.
-    pub fn start_walk(&mut self, run: bool, job: bool, force: bool) -> bool {
+    pub(crate) fn start_walk(&mut self, run: bool, job: bool, force: bool) -> bool {
         let set = match (self.mode(), run) {
             (1, _) => "bFly",
             (_, true) => "bRun",
@@ -1094,7 +1094,7 @@ impl Cx<'_, '_> {
     }
 
     /// The same with the walk set the goal names (`bFindKeeperFood`).
-    pub fn walk_set(&mut self, set: &str, job: bool, force: bool) -> bool {
+    pub(crate) fn walk_set(&mut self, set: &str, job: bool, force: bool) -> bool {
         let started = !self.unit.suspended()
             && !self.unit.held
             && self.unit.destination.is_some()
@@ -1115,12 +1115,12 @@ impl Cx<'_, '_> {
 
     /// The plain start of a set (behaviours 4.2): a running `name` starts again. Interruptible;
     /// the sequence playing goes on, the move call of the set puts the walk animation behind it.
-    pub fn start_set(&mut self, name: &str, force: bool) -> bool {
+    pub(crate) fn start_set(&mut self, name: &str, force: bool) -> bool {
         self.start_with(name, true, force)
     }
 
     /// The same, `interruptible` as the caller says.
-    pub fn start_with(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
+    pub(crate) fn start_with(&mut self, name: &str, interruptible: bool, force: bool) -> bool {
         let entity: &Entity = &self.world.zoo.entities[self.at];
         let env = Env {
             data: self.data,
@@ -1129,10 +1129,5 @@ impl Cx<'_, '_> {
         };
         let (anim, runner) = (&mut self.unit.animation, &mut self.unit.runner);
         runner.start(anim, &env, name, interruptible, force, true)
-    }
-
-    /// 8.1: a path to `to`, then the walk.
-    pub fn go_to(&mut self, to: usize, run: bool, job: bool, force: bool) -> bool {
-        self.path_to(to, false) && self.start_walk(run, job, force)
     }
 }

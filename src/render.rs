@@ -14,7 +14,7 @@
 pub mod order;
 mod pick;
 mod shape;
-pub use shape::shape_of;
+pub(crate) use shape::shape_of;
 mod tank;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -40,7 +40,7 @@ use crate::zoom::{Zoom, origin_offset, piece_anchor};
 use order::{Item, Kind, Object, Scene, TankSpec, map_direction, paint_order, project};
 
 /// The most pixels of the picture; a 150 by 150 map with its relief needs about 55 million.
-pub const MAX_PIXELS: u64 = 100_000_000;
+pub(crate) const MAX_PIXELS: u64 = 100_000_000;
 
 /// Why a map could not be drawn.
 #[derive(Debug)]
@@ -75,7 +75,7 @@ type Sprites = (Option<String>, Option<String>, Option<String>);
 
 /// A tile drawn with the highlight sprite of this colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Mark {
+pub(crate) struct Mark {
     pub tile: usize,
     pub color: [u8; 3],
 }
@@ -140,7 +140,7 @@ impl Summary {
 
 /// The transient items of the map view, given to the staging (placing 4.5).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Extra {
+pub(crate) struct Extra {
     /// The pending objects: one, or a piece for each tile of a drag.
     pub ghosts: Vec<Ghost>,
     /// Entities of the zoo (positions in `zoo.entities`) drawn tinted, with their tint.
@@ -165,7 +165,7 @@ pub struct Extra {
 
 /// What a tank filter shows besides its health.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FilterLook {
+pub(crate) struct FilterLook {
     /// The id of the filter.
     pub id: u32,
     /// It is switched off: it faces no water.
@@ -177,7 +177,7 @@ pub struct FilterLook {
 
 /// What an animal is, as far as its footprint goes: its plain one, its egg's or its crate's.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum Form {
+pub(crate) enum Form {
     #[default]
     Plain,
     Egg,
@@ -186,7 +186,7 @@ pub enum Form {
 
 /// The animation and frame a unit of the zoo holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Shown {
+pub(crate) struct Shown {
     /// The id of the entity.
     pub id: u32,
     pub animation: String,
@@ -197,7 +197,7 @@ pub struct Shown {
 /// An object that is not on the map: a pending object. It is painted like the temporary
 /// entities of the tile under it (map drawing 9.5), tinted.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ghost {
+pub(crate) struct Ghost {
     /// The type, a position in the catalogue.
     pub ty: usize,
     pub x: i32,
@@ -473,13 +473,14 @@ impl Staged {
     }
 
     /// The view-space point of the top left pixel of the picture of the whole map at normal zoom.
-    pub fn origin(&self) -> (i32, i32) {
+    #[cfg(test)]
+    pub(crate) fn origin(&self) -> (i32, i32) {
         (self.bounds[0] as i32, self.bounds[1] as i32)
     }
 
     /// The box `[left, top, right, bottom)` of the whole map in the view space of the zoom value
     /// `zoom`.
-    pub fn bounds_at(&self, zoom: i32) -> [i64; 4] {
+    pub(crate) fn bounds_at(&self, zoom: i32) -> [i64; 4] {
         let level = Zoom::from_value(zoom);
         if level == Zoom::Normal {
             return self.bounds;
@@ -505,7 +506,14 @@ impl Staged {
     /// only when `grid` is set (those a cliff forces are always drawn). The anchors are the camera's
     /// view positions at the zoom, the tile pieces' those of map drawing 8, and the blitter has
     /// the variant of the zoom level.
-    pub fn draw(&self, target: &mut Framebuffer, view_x: i32, view_y: i32, zoom: i32, grid: bool) {
+    pub(crate) fn draw(
+        &self,
+        target: &mut Framebuffer,
+        view_x: i32,
+        view_y: i32,
+        zoom: i32,
+        grid: bool,
+    ) {
         target.fill([0, 0, 0, 255]);
         let level = Zoom::from_value(zoom);
         let (left, top) = (i64::from(view_x), i64::from(view_y));
@@ -542,7 +550,7 @@ impl Staged {
     /// staging `old` of the same map, which was drawn there before: the boxes of the pictures
     /// that are in one and not in the other. `None` when that cannot be told (another rotation or
     /// ground, pictures that changed their order) or the rectangles cover too much to be worth it.
-    pub fn changes(
+    pub(crate) fn changes(
         &self,
         old: &Staged,
         (width, height): (u32, u32),
@@ -627,7 +635,7 @@ impl Staged {
     /// Draws again only the rectangles `rects` (as [`Staged::changes`] gives them) of `target`,
     /// which holds a drawing of the window `view_x`, `view_y`, `zoom`, `grid` from another staging
     /// of the same map: the result is what [`Staged::draw`] gives.
-    pub fn redraw(
+    pub(crate) fn redraw(
         &self,
         target: &mut Framebuffer,
         view_x: i32,
@@ -887,12 +895,12 @@ enum Entry {
 
 impl<'a> MapRenderer<'a> {
     /// The files of the game this renders from.
-    pub fn vfs(&self) -> &'a Vfs {
+    pub(crate) fn vfs(&self) -> &'a Vfs {
         self.vfs
     }
 
     /// The entity types this renders with.
-    pub fn catalogue(&self) -> &'a Catalogue {
+    pub(crate) fn catalogue(&self) -> &'a Catalogue {
         self.catalogue
     }
 
@@ -904,7 +912,7 @@ impl<'a> MapRenderer<'a> {
     /// The colour choices a new building of the type starts with, one byte per colour group (sprite
     /// drawing 8.1): the position of the `defaultpal` of each group among its variants. Empty for a
     /// type that is not recoloured.
-    pub fn default_colors(&self, ty: &EntityType) -> Vec<u8> {
+    pub(crate) fn default_colors(&self, ty: &EntityType) -> Vec<u8> {
         let Some(config) = ty.config.as_deref() else {
             return Vec::new();
         };
@@ -1082,7 +1090,8 @@ impl<'a> MapRenderer<'a> {
     }
 
     /// Draws the map seen from `rotation` (0 to 3), whole, on a black background.
-    pub fn render(
+    #[cfg(test)]
+    pub(crate) fn render(
         &mut self,
         zoo: &Zoo,
         rotation: u8,
@@ -1130,7 +1139,7 @@ impl<'a> MapRenderer<'a> {
     /// highlight sprite in their colour, after its ground and grid lines (map drawing 7); a tile
     /// that has a mark takes the grid lines off the two tiles behind it.
     #[allow(clippy::too_many_lines)] // #1045
-    pub fn stage_with(
+    pub(crate) fn stage_with(
         &mut self,
         zoo: &Zoo,
         rotation: u8,

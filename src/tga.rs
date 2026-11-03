@@ -16,7 +16,7 @@ impl Texture {
     /// Rows are turned top to bottom whatever their stored order.
     ///
     /// Fails if the file is another kind of image, has no pixels, is too large or is truncated.
-    pub fn parse(bytes: &[u8]) -> Result<Texture, String> {
+    pub(crate) fn parse(bytes: &[u8]) -> Result<Texture, String> {
         let header = bytes.get(..18).ok_or("truncated TGA header")?;
         let (id_len, color_map, kind, bits, descriptor) =
             (header[0], header[1], header[2], header[16], header[17]);
