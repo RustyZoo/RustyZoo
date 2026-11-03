@@ -107,6 +107,11 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let (id, set, tile) = (c.id, block.behaviour.clone(), block.building);
         let (way, pending) = (saved_way(world, block), block.pending.clone());
         let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
+        let show = if block.flags[1].0 == 1 {
+            block.flags[1].1
+        } else {
+            0
+        };
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1);
         let cost = block.w4;
@@ -120,7 +125,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let present = here.is_some_and(|t| building_on(world, t));
         // The heal hold is the base block's first byte (staff 7.7, zoo format 6.14).
         if let Some(unit) = world.units.get_mut(id) {
-            unit.held = held;
+            (unit.held, unit.show) = (held, show);
             (unit.frightened, unit.predator) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).
             if unit.kind == crate::unit::Kind::Guest {
@@ -786,5 +791,35 @@ mod tests {
         );
         // The pending call's own flag comes back with it.
         assert!(!b.runner.queued_flag());
+    }
+
+    #[test]
+    fn the_show_id_of_a_unit_is_saved_after_its_flag_and_comes_back_at_the_load() {
+        let mut w = walking(104, Vec::new(), "");
+        read_unit(&mut w);
+        let live = |w: &mut World, show: u16| w.units.get_mut(1).unwrap().show = show;
+        // A started unit with no show id writes none; with one, flag 1 and the id.
+        assert_eq!(saved_block(&w).flags[1], (0, 0));
+        live(&mut w, 1001);
+        let block = saved_block(&w);
+        assert_eq!(block.flags, [(0, 0), (1, 1001)]);
+        let back = saved_block_in(104, block);
+        assert_eq!(back.units.get(1).unwrap().show, 1001);
+        // The biggest id, and a unit that lost its show: the flag goes down with the id.
+        live(&mut w, u16::MAX);
+        assert_eq!(saved_block(&w).flags[1], (1, u16::MAX));
+        live(&mut w, 0);
+        let mut block = saved_block(&w);
+        assert_eq!(block.flags[1], (0, 0));
+        // A stored id with the flag at 1 is read, whatever flag 0 holds; any other flag reads as
+        // no show and is written back as it was while the unit has none.
+        block.flags = [(1, 7), (1, 55)];
+        assert_eq!(saved_block_in(104, block).units.get(1).unwrap().show, 55);
+        let mut odd = UnitBlock::default();
+        odd.flags[1] = (2, 9);
+        let mut loaded = saved_block_in(104, odd);
+        read_unit(&mut loaded);
+        assert_eq!(loaded.units.get(1).unwrap().show, 0);
+        assert_eq!(saved_block(&loaded).flags[1], (2, 9));
     }
 }

@@ -4,7 +4,7 @@
 //! The world notes each move (an animal on the map or off it, a show-neighbour link made or
 //! dropped) and [`settle`] applies them at the start of the next step, where the catalogue is at
 //! hand. A first rating of an exhibit adds the animals it counts ([`counted`]). The marine
-//! specialist joins with his job (Shows 2b).
+//! specialist joins with his job ([`join`]) and leaves with it ([`leave`]).
 
 use super::trick::{default_items, performs};
 use crate::entity::{Catalogue, EntityType};
@@ -82,6 +82,19 @@ pub(crate) fn counted(world: &mut World, cat: &Catalogue, x: u32, animals: &[u32
         if let Some(ty) = performer(cat, &e.type_name, &e.subtype) {
             walk(world, cat, x, id, ty, true, &mut Vec::new());
         }
+    }
+}
+
+/// The specialist `id` joins the show of exhibit `x` for the length of his job (shows 20 caller 4).
+pub(crate) fn join(world: &mut World, cat: &Catalogue, x: u32, id: u32, ty: &EntityType) {
+    walk(world, cat, x, id, ty, true, &mut Vec::new());
+}
+
+/// He leaves the list of his type in the show info of `show`, when there is one (shows 22.1 point
+/// 6); a missing record is made empty.
+pub(crate) fn leave(world: &mut World, show: u16, id: u32, key: u32) {
+    if let Some(n) = super::habitat_of(world, show) {
+        record(world, n, key).units.retain(|&u| u != id);
     }
 }
 

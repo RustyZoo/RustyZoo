@@ -556,6 +556,7 @@ impl Sim {
         // The units go on with their saved sets; the users come once every guest is made,
         // whatever the order of the file.
         crate::unit::resume::load(world, self.ai_ticks);
+        crate::show::rejoin(world, cat);
         crate::show::associate(world, cat);
         crate::building::users::restore(world, cat, self.ai_ticks);
         crate::building::users::seat_loaded(world, cat, &mut self.rng);
@@ -704,6 +705,7 @@ impl Sim {
         // Each animal's update ages its reactions (animals 10).
         world.units.fade(step);
         for id in std::mem::take(&mut self.removals) {
+            crate::show::removed(world, cat, id);
             world.unrecorded(|w| w.remove(id));
         }
         for id in std::mem::take(&mut self.bulldozed) {

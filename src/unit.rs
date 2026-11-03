@@ -255,8 +255,8 @@ pub struct Unit {
     pub predator: u32,
     /// A guest saw a predator (guests 6.2, 6.12): it leaves at a run.
     pub afraid: bool,
-    /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Not saved
-    /// until Shows 2 stores the unit blocks' show fields.
+    /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Saved as
+    /// the second flag field after the trick id, from version 97, and not for guests (shows 26).
     pub show: u16,
 }
 
@@ -919,6 +919,7 @@ impl Hooks for Standard<'_> {
     }
     fn events(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::guest::reaction::react(unit, world, ctx, at, self.data);
+        crate::show::cue(unit, world, ctx, at, self.data);
     }
     fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::start(unit, world, ctx, at);

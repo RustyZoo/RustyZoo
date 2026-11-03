@@ -494,7 +494,7 @@ pub(crate) enum Sub {
 impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
-            (Kind::Keeper, 1..=6 | 13..=15 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
+            (Kind::Keeper, 1..=6 | 13..=15 | 19..=25 | 28 | 29) => Some(Sub::Keeper(job)),
             (Kind::Worker, 7..=12 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
             _ => Some(Sub::Base),
         }
@@ -965,8 +965,7 @@ impl Cx<'_, '_> {
 
     fn run_sub(&mut self) {
         if std::mem::take(&mut self.unit.goal.sub_stale) {
-            self.unit.goal.sub = None;
-            self.unit.goal.held.1 = None;
+            self.sub_dropped();
         }
         if self.unit.goal.sub.is_none() {
             let job = self.record().job;
