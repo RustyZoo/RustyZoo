@@ -30,9 +30,7 @@ impl App<'_> {
     /// Selects the building with entity id `id` and shows its panel in `layout`, filled at once.
     pub(super) fn open_building(&mut self, id: u32, layout: i32) {
         self.close_building();
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         game.selected = Some(id);
         game.building.select(id, layout);
         ui.show(layout);
@@ -51,9 +49,7 @@ impl App<'_> {
     /// last look: a closed panel or a building that left the world clears the selection (`panel
     /// building none`), and the panel sits above the exhibit panel while it is shown (4.2).
     pub(super) fn building_sync(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let gone = (game.building.selected).is_some_and(|id| game.world.find(id).is_none());
         if gone || !ui.shown(game.building.layout) {
             if game.building.selected.is_some() {
@@ -132,7 +128,7 @@ impl App<'_> {
     /// An upgrade button of the Programs tab (research 6.3): the selected building takes the
     /// upgrade at the button's position and the panel shows it at once. Logs `building upgrade ID N`.
     pub(super) fn building_upgrade(&mut self, button: i32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(n) = panel::UPGRADES.iter().position(|&b| b == button) else {
             return;
         };
@@ -168,7 +164,7 @@ impl App<'_> {
 
     /// Sets the price of the selected building to what `new` makes of its type and price.
     fn set_price(&mut self, new: impl FnOnce(&Kind, f32) -> f32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         let Some(id) = game.building.selected else {
             return;

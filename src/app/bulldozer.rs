@@ -106,9 +106,7 @@ impl App<'_> {
     /// id N refund R name=NAME`, `tool bulldoze area X,Y X,Y objects N refund R`) and has the
     /// first hovered object's name shown as a tooltip.
     pub(super) fn dozer_aim(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         let before = std::mem::take(&mut game.dozer);
         if game.build.bulldozing() && game.hover {
@@ -191,7 +189,7 @@ impl App<'_> {
     /// The release of a bulldozer press on the map: the hovered object, or the objects of the
     /// dragged rectangle, are removed one after the other, each after its question if it has one.
     pub(super) fn bulldoze_release(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         game.build.end_sweep();
         if game.dozer.mixed {
             if let Some(ui) = &mut self.ui {
@@ -231,7 +229,7 @@ impl App<'_> {
     /// selection is cleared first, which closes the panel, so the entity a No keeps is no longer
     /// selected (placing 7.1).
     pub(super) fn remove_one(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         game.selected = None;
         game.sweep = Some(Sweep {
             queue: VecDeque::from([id]),
@@ -326,7 +324,7 @@ impl App<'_> {
     /// Removes the entity with this id, books its refund and logs it (`world remove CLASS/TYPE/
     /// SUBTYPE X,Y [side S] id N refund R`), then tells what happened to the exhibits.
     pub(super) fn bulldoze_remove(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         // The animals of the exhibit react to an object, a fence piece, an animal or a staff
         // member removed (habitat rating 9.4); an object or an animal decides an unchanged sum by
@@ -393,7 +391,7 @@ impl App<'_> {
     /// between the same two exhibits stay, their pair being stored already), anything else stops
     /// the removal.
     pub(super) fn sweep_answered(&mut self, code: i32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(id) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
             return;
         };

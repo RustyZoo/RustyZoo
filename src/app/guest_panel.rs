@@ -8,9 +8,7 @@ use crate::panel::guest;
 impl App<'_> {
     /// Selects the guest with entity id `id` and shows its panel, filled at once (4.3).
     pub(super) fn open_guest(&mut self, id: u32) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         game.selected = Some(id);
         game.guest.select(id);
         ui.show(guest::LAYOUT);
@@ -27,9 +25,7 @@ impl App<'_> {
     /// a closed panel or a guest that left the world clears the selection (`panel guest none`),
     /// and the panel sits above the exhibit panel while it is shown (4.2).
     pub(super) fn guest_sync(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let gone = (game.guest.selected).is_some_and(|id| game.world.find(id).is_none());
         if gone || !ui.shown(guest::LAYOUT) {
             if game.guest.selected.is_some() {

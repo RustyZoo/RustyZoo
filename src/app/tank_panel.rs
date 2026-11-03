@@ -51,7 +51,7 @@ impl App<'_> {
         let Some((id, prices)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let (Some(tank), floor) = (game.world.tank(id), game.world.tank_config().height) else {
             return;
         };
@@ -80,7 +80,7 @@ impl App<'_> {
         let Some((id, prices)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(ground) = game.world.ground(id) else {
             return;
         };
@@ -106,7 +106,7 @@ impl App<'_> {
         let Some((id, prices)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         if (game.world.tank(id)).is_none_or(|t| t.level > 0 || t.filled) {
             return;
         }
@@ -122,7 +122,7 @@ impl App<'_> {
         if told {
             self.water_message(id, NOT_DRAINED, "");
         }
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         if let Some(object) = refused {
             let cat = self.renderer.catalogue();
             let world = &game.world;
@@ -141,7 +141,7 @@ impl App<'_> {
         let Some((id, _)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let drained = game.world.drain(id);
         game.panel.clock.force = true;
         if !drained {

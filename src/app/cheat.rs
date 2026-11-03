@@ -75,7 +75,7 @@ impl App<'_> {
 
     /// Sets the availability of the types of each name id, and makes the open list again.
     fn make_available(&mut self, set: &[(i32, bool)]) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         match &mut self.ui {
             Some(ui) => {

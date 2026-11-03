@@ -44,7 +44,7 @@ impl App<'_> {
     /// the gate button follows the number of exhibits that are named, and
     /// each new exhibit queues its name dialog.
     pub(super) fn exhibits_told(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let events = game.world.take_events();
         // Buildings on a tank whose water or walls moved are validated again (guest buildings 11.1.1).
         crate::building::dead::wet_changed(&mut game.world, self.renderer.catalogue());
@@ -158,9 +158,7 @@ impl App<'_> {
 
     /// Asks about the objects of a new tank, if it has some and no question is open (3.9).
     fn tank_ask(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if game.refused.is_none() || self.asked.is_some() {
             return;
         }
@@ -184,7 +182,7 @@ impl App<'_> {
     }
 
     fn tank_yes(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(id) = game.refused.take() else {
             return;
         };
@@ -227,7 +225,7 @@ impl App<'_> {
     /// The operation that made the tank is undone and what it cost comes back (placing 8): every
     /// piece it placed gives its whole price back, every piece it removed takes its refund back.
     pub(super) fn tank_no(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(id) = game.refused.take() else {
             return;
         };
@@ -259,9 +257,7 @@ impl App<'_> {
     /// Opens the name dialog of the first exhibit waiting, if none is open: its default name in
     /// the field, which has the focus.
     pub(super) fn name_next(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if game.naming_open {
             return;
         }
@@ -309,7 +305,7 @@ impl App<'_> {
         if let Some(text) = hooked {
             self.name_hook(Subject::Exhibit, &text);
         }
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         if !game.naming_open {
             let rest = std::mem::take(&mut game.rest);
             self.buy(rest, true);

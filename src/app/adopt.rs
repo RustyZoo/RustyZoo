@@ -13,9 +13,7 @@ impl App<'_> {
     /// plays the refusal sound and shows its message (`tool message N`, or `tool refused`
     /// without one).
     pub(super) fn adopt(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let Some(p) = game.pending.clone() else {
             return;
         };

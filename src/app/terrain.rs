@@ -50,9 +50,7 @@ impl App<'_> {
     /// 8.6); the tool entered clears its session. The tools force the grid on and give it back
     /// to the player's choice (input 4.8).
     pub(super) fn terrain_sync(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let wanted = game.build.terrain_mode();
         let mut short = false;
         if wanted != game.terrain.mode() {
@@ -89,9 +87,7 @@ impl App<'_> {
 
     /// Writes the panel again when what it shows changed.
     pub(super) fn terrain_refresh(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let Some(mode) = game.terrain.mode() else {
             return;
         };
@@ -114,9 +110,7 @@ impl App<'_> {
     /// The mouse on the map reaches the tool (terrain editing 5.6 and 6.3). `on_map` says the
     /// message belongs to the map view.
     pub(super) fn terrain_mouse(&mut self, mouse: Mouse, on_map: bool) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if game.terrain.mode().is_none() {
             return;
         }
@@ -173,9 +167,7 @@ impl App<'_> {
     /// Every frame, button up, the tile under the pointer is looked at: a new one shows the help of
     /// its terrain type (terrain editing 7.3). A stroke released on another tile shows it too.
     pub(super) fn terrain_help(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if !game.hover {
             return;
         }
@@ -187,9 +179,7 @@ impl App<'_> {
 
     /// The button `id` of the interface was pressed: if it belongs to the terrain panel, it acts.
     pub(super) fn terrain_pressed(&mut self, id: i32) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let Some(mode) = game.terrain.mode() else {
             return;
         };

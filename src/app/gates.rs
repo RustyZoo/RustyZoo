@@ -11,9 +11,7 @@ impl App<'_> {
     /// not cover when the pointer reached it; one the cash no longer covers at the click shows 10002
     /// in the message line (`tool message 10002`).
     pub(super) fn gate_release(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let Some(gate) = game.gate.clone() else {
             return;
         };

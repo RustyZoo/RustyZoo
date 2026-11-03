@@ -26,9 +26,7 @@ fn told(word: &str, spot: &Spot, end: &str) -> String {
 impl App<'_> {
     /// The button follows the undo list: enabled while there is something to take back.
     pub(super) fn undo_button(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let can = game.world.can_undo();
         if can != game.undoable {
             game.undoable = can;
@@ -46,13 +44,13 @@ impl App<'_> {
     /// and then goes with the rest, its whole price given back, and nothing is held after; the
     /// undo of another operation leaves it held.
     pub(super) fn undo(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let held =
             (game.carry.as_ref()).is_some_and(|c| game.held.is_some() && game.world.undoes(c.id));
         if held {
             self.put_back();
         }
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         if held {
             game.selected = None;
         }
@@ -68,9 +66,7 @@ impl App<'_> {
 
     /// Moves the prices of the steps of an undo in the cash and tells what was done.
     pub(super) fn undone(&mut self, done: Undone) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         let mut tiles = None;
         for step in &done.steps {

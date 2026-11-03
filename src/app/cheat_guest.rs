@@ -140,7 +140,7 @@ impl App<'_> {
     /// Runs one of the guest-name cheats; the other cheats are the name hook's.
     pub(super) fn guest_cheat(&mut self, cheat: Cheat) {
         let cat = self.renderer.catalogue();
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         match cheat {
             Cheat::Palette { guests, buildings } => {
                 palette_set(&mut game.world, cat, guests, buildings)

@@ -48,6 +48,21 @@ use crate::ui::layout::{expansion_entries, installed_expansions};
 use crate::world::World;
 use crate::zoo::{Entity, Zoo};
 
+/// Binds `game` (and `ui`) of the zoo being played, or returns from the method without a game.
+/// A macro, not a method: the caller keeps borrowing the other fields of the app (the renderer).
+macro_rules! playing {
+    ($app:ident, $game:ident) => {
+        let Some($game) = &mut $app.game else {
+            return;
+        };
+    };
+    ($app:ident, $game:ident, $ui:ident) => {
+        let (Some($game), Some($ui)) = (&mut $app.game, &mut $app.ui) else {
+            return;
+        };
+    };
+}
+
 /// A key the interface reads, by the name a script gives it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -1160,9 +1175,7 @@ impl<'a> App<'a> {
     /// shows the zoo status' messages in the message line; a donation names its amount.
     fn status_told(&mut self, bars: Option<[i32; 3]>) {
         let messages = self.sim.take_messages();
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if bars.is_some() {
             let date = self.sim.calendar().date();
             let text = to_cp1252(&format::date(&ui.string(DATE_PATTERN), &date));
@@ -1520,9 +1533,7 @@ impl<'a> App<'a> {
 
     /// The pending object part of [`App::aim`].
     fn aim_pending(&mut self, log: bool) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         game.build.set_month(self.sim.calendar().date().month);
         let before = game.pending.take();
@@ -1670,9 +1681,7 @@ impl<'a> App<'a> {
         if let Some(id) = self.assigning() {
             return self.assign_release(id);
         }
-        let Some(game) = &mut self.game else {
-            return;
-        };
+        playing!(self, game);
         if game.build.bulldozing() {
             return self.bulldoze_release();
         }
@@ -1706,9 +1715,7 @@ impl<'a> App<'a> {
     /// of the drag, whose sound and turn were done. A piece that makes an exhibit stops the
     /// buying: its name is asked first, the rest of the pieces come after the answer.
     fn buy(&mut self, pieces: Vec<Pending>, resumed: bool) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if pieces.is_empty() {
             return;
         }
@@ -2021,9 +2028,7 @@ impl<'a> App<'a> {
     /// The building panels notice what the player did to them: the panel shown or hidden, and
     /// the button `selected`, if any.
     fn build(&mut self, selected: Option<i32>) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         let told = self.tool_lines.len();
         game.build.set_month(self.sim.calendar().date().month);
@@ -2049,7 +2054,7 @@ impl<'a> App<'a> {
     /// Makes the pending staff member of each staff item chosen since the last call: its two
     /// counters are drawn now (staff 4.2), the last one made is the pending one.
     pub(super) fn make_pending(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         for ty in game.build.take_made() {
             let t = &cat.types[ty];
@@ -2440,7 +2445,7 @@ impl<'a> App<'a> {
         if dirty {
             self.aim(false);
         }
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         // The pending object and the terrain highlights are transient items: the picture is made
         // again when they changed.
         let mut want = match game.run.is_empty() {

@@ -56,7 +56,7 @@ impl App<'_> {
     /// Picks the unit up (8.2): it follows the pointer as a pending unit, free of charge, and
     /// nothing is selected (`world carry ID`).
     pub(super) fn carry_up(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         if let Some(carry) = place::unit::pick_up(&mut game.world, cat, id, game.camera.rotation) {
             // A tour guide picked up lets its group go at once (tour guide 12.1).
@@ -122,7 +122,7 @@ impl App<'_> {
 
     /// The drop rule of the unit `id` put down (8.5).
     fn drop_rule(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         let data = Library {
             catalogue: cat,
@@ -171,9 +171,7 @@ impl App<'_> {
     /// animal that stands in an exhibit; a place that is not valid keeps it carried and shows its
     /// message, as a placement does.
     pub(super) fn drop_carried(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let (Some(carry), Some(p)) = (game.carry.clone(), game.pending.clone()) else {
             return;
         };
@@ -232,7 +230,7 @@ impl App<'_> {
     /// Ends the move without any check (8.6): the unit is put back where it stood, facing as it
     /// did, and selected again, `world putback ID X,Y`.
     pub(super) fn put_back(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(carry) = game.carry.take() else {
             return;
         };
