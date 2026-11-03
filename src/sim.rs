@@ -689,7 +689,8 @@ impl Sim {
         let tiles = world.zoo.tiles.len();
         (world.units.pool).listen(self.events.listen(0, TASK_CHANNEL), tiles);
         // The show manager updates the shows, before the AI clock moves (shows 5.1).
-        crate::show::update(world, cat, &mut self.events, self.ai_ticks);
+        let turn = (&mut self.events, &mut self.rng, data);
+        crate::show::update(world, cat, turn, self.ai_ticks);
         // The clock in whole ticks with the remainder kept, the removal pass,
         // the entities, the event queue.
         let total = self.ai_rem.wrapping_add(step);

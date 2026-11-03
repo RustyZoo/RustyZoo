@@ -398,6 +398,8 @@ pub(crate) struct Runner {
     /// the unit (guest buildings 6.4.1).
     enter: bool,
     exit: bool,
+    /// An `fEndTrick` call ran, for the unit to report its trick done (shows 23.3).
+    end_trick: bool,
 }
 
 /// The state hash of a run reads this text: `started` is not in it (the walk it feeds is hashed
@@ -456,6 +458,7 @@ impl Default for Runner {
             halt: false,
             die: false,
             hatch: false,
+            end_trick: false,
             enter: false,
             exit: false,
         }
@@ -506,6 +509,11 @@ impl Runner {
     /// Whether an `fHatch` call ran since the last time, once.
     pub(crate) fn take_hatch(&mut self) -> bool {
         std::mem::take(&mut self.hatch)
+    }
+
+    /// Whether an `fEndTrick` call ran since the last time, once.
+    pub(crate) fn take_end_trick(&mut self) -> bool {
+        std::mem::take(&mut self.end_trick)
     }
 
     /// Whether an `fEnterBuilding` call ran since the last time, once.
@@ -879,6 +887,11 @@ impl Runner {
             }
             Op::Hatch => {
                 self.hatch = true;
+                self.chain[k].done = true;
+                return true;
+            }
+            Op::EndTrick => {
+                self.end_trick = true;
                 self.chain[k].done = true;
                 return true;
             }

@@ -2,6 +2,7 @@
 
 mod audience;
 mod cycle;
+mod performer;
 mod relay;
 
 use super::*;

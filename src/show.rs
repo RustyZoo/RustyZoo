@@ -5,25 +5,27 @@
 //! The state itself, the scripts and the show info of each tank, is [`crate::zoo::Shows`], loaded
 //! and saved with the zoo. [`update`] is the show manager's step (the cycle is `cycle`), [`relay`]
 //! the world manager's and the grandstands' reading of the events. The animal side of an item is
-//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The marine specialist
-//! is `keeper`. The audience is `audience`: the search of a guest for a show and the price of a seat.
+//! `performer`, the events an animal reads, and `crate::goal::start_trick`, the trick it starts; its
+//! calls and validation are still stubs. The marine specialist is `keeper`. The audience is `audience`: the search of a guest for a show and the price of a seat.
 
+use crate::behaviour::Data;
 use crate::building::kind_of;
 #[cfg(test)]
 use crate::building::leave::push_out;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
-use crate::sim::Events;
+use crate::sim::{Events, Rng};
 use crate::vfs::Vfs;
 use crate::world::World;
-use crate::zoo::ShowInfo;
+use crate::zoo::{Item, ShowInfo};
 
 mod audience;
 mod cycle;
 mod keeper;
 mod performer;
 mod relay;
+pub(crate) mod toy;
 pub mod trick;
 mod units;
 
@@ -49,7 +51,10 @@ pub(crate) mod event {
     /// Relayed by a grandstand like an end, but never posted by the world manager (shows 6.3).
     pub(crate) const OVER: u16 = 0x2719;
     pub(crate) const NEXT_ITEM: u16 = 0x271d;
+    /// An animal reports its trick done, or failed (shows 24).
+    pub(crate) const FINISHED: u16 = 0x271e;
     pub(crate) const TRICK_DONE: u16 = 0x271f;
+    pub(crate) const FAILED: u16 = 0x2722;
     pub(crate) const CALL: u16 = 0x271a;
     pub(crate) const ITEM_ABORTED: u16 = 0x2723;
     pub(crate) const PREPARE: u16 = 0x2724;
@@ -164,6 +169,13 @@ fn info_slot(world: &World, id: u32) -> Option<usize> {
         .map(|&(x, y)| world.tile_index(x, y))
         .position(|t| t.is_some_and(|t| world.exhibits().region(t) == Some(id)))?;
     world.zoo.shows.info(n).map(|_| n)
+}
+
+/// The first item with trick id `trick` in the current script of the show info `show` (shows 23.2).
+pub(crate) fn trick_item(world: &World, show: u16, trick: u16) -> Option<Item> {
+    let info = (world.zoo.shows.infos.iter().flatten()).find(|i| i.id == show)?;
+    let script = (world.zoo.shows.scripts.iter()).find(|s| s.id == info.show.script)?;
+    script.items.iter().find(|i| i.id == trick).cloned()
 }
 
 /// The exhibit of habitat record `n`, from its first tile.
@@ -295,7 +307,12 @@ fn associate_upto(world: &mut World, cat: &Catalogue, last: usize) {
 /// The show manager's step (shows 5.1), first in the AI manager's update, at AI tick `now`: every
 /// show info in show id order listens, updates and refreshes its upkeep figure. Nothing happens
 /// in a world without a show info.
-pub(crate) fn update(world: &mut World, cat: &Catalogue, events: &mut Events, now: u32) {
+pub(crate) fn update(
+    world: &mut World,
+    cat: &Catalogue,
+    (events, rng, data): (&mut Events, &mut Rng, &dyn Data),
+    now: u32,
+) {
     let mut infos: Vec<(u16, usize)> = (world.zoo.shows.infos.iter().enumerate())
         .filter_map(|(n, i)| Some((i.as_ref()?.id, n)))
         .collect();
@@ -305,7 +322,8 @@ pub(crate) fn update(world: &mut World, cat: &Catalogue, events: &mut Events, no
     infos.sort_by_key(|&(id, _)| id);
     let upkeep = upkeeps(world, cat);
     for (id, n) in infos {
-        cycle::update(world, cat, events, now, n, grandstand_upkeep(&upkeep, id));
+        let turn = (&mut *events, &mut *rng, data);
+        cycle::update(world, cat, turn, now, n, grandstand_upkeep(&upkeep, id));
     }
 }
 

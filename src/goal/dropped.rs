@@ -4,7 +4,7 @@
 //! member forgets the targets it could not reach, a keeper in an exhibit starts its duties.
 
 use super::{Cx, DUTIES, RECOVER};
-use crate::behaviour::Data;
+use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
 use crate::sim::{Events, Rng};
 use crate::unit::{Ctx, Kind, Part, Unit};
@@ -40,7 +40,7 @@ pub(super) fn with_unit<R>(
 }
 
 /// Runs `f` on the unit `id` outside a step: nothing it does can ask for a removal.
-fn run(
+pub(super) fn run(
     world: &mut World,
     cat: &Catalogue,
     rng: &mut Rng,
@@ -57,6 +57,14 @@ fn run(
         cat,
     };
     with_unit(world, &mut ctx, data, id, f);
+}
+
+/// The goal of unit `id` is reset (goals 12.1) by code outside a unit's turn, as the show does for
+/// its animals.
+pub(crate) fn reset_unit(world: &mut World, cat: &Catalogue, id: u32) {
+    run(world, cat, &mut Rng::default(), &NoData, id, |cx| {
+        cx.reset()
+    });
 }
 
 /// Unit placing 8.2 point 3: the unit picked up stops its goal (the reset of goals 12.1) and

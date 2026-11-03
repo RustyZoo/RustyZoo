@@ -108,11 +108,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let flier = world.zoo.entities[at].class == "helicopter";
         let (way, pending) = (saved_way(world, block, flier), block.pending.clone());
         let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
-        let show = if block.flags[1].0 == 1 {
-            block.flags[1].1
-        } else {
-            0
-        };
+        let [trick, show] = block.flags.map(|f| if f.0 == 1 { f.1 } else { 0 });
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1);
         let cost = block.w4;
@@ -128,7 +124,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let present = here.is_some_and(|t| building_on(world, t));
         // The heal hold is the base block's first byte (staff 7.7, zoo format 6.14).
         if let Some(unit) = world.units.get_mut(id) {
-            (unit.held, unit.show) = (held, show);
+            (unit.held, unit.show, unit.trick) = (held, show, trick);
             (unit.frightened, unit.predator) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).
             if unit.kind == crate::unit::Kind::Guest {
@@ -824,5 +820,33 @@ mod tests {
         read_unit(&mut loaded);
         assert_eq!(loaded.units.get(1).unwrap().show, 0);
         assert_eq!(saved_block(&loaded).flags[1], (2, 9));
+    }
+
+    #[test]
+    fn the_trick_id_of_a_unit_is_saved_in_the_first_flag_and_comes_back_at_the_load() {
+        let mut w = walking(104, Vec::new(), "");
+        read_unit(&mut w);
+        let live = |w: &mut World, trick: u16| w.units.get_mut(1).unwrap().trick = trick;
+        // No trick writes none; a trick and the biggest id write flag 1 and the id, beside the show.
+        assert_eq!(saved_block(&w).flags, [(0, 0), (0, 0)]);
+        live(&mut w, 11299);
+        w.units.get_mut(1).unwrap().show = 1001;
+        let block = saved_block(&w);
+        assert_eq!(block.flags, [(1, 11299), (1, 1001)]);
+        assert_eq!(
+            saved_block_in(104, block).units.get(1).unwrap().trick,
+            11299
+        );
+        live(&mut w, u16::MAX);
+        assert_eq!(saved_block(&w).flags[0], (1, u16::MAX));
+        // A unit that lost its trick lowers the flag; any flag but 1 reads as none.
+        live(&mut w, 0);
+        assert_eq!(saved_block(&w).flags[0], (0, 0));
+        let mut odd = UnitBlock::default();
+        odd.flags[0] = (2, 9);
+        let mut loaded = saved_block_in(104, odd);
+        read_unit(&mut loaded);
+        assert_eq!(loaded.units.get(1).unwrap().trick, 0);
+        assert_eq!(saved_block(&loaded).flags[0], (2, 9));
     }
 }

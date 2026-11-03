@@ -32,13 +32,15 @@ mod staff;
 mod stops;
 #[cfg(test)]
 mod tests;
+mod trick;
 
 pub(crate) use animal::{DRINK, KEEPER_FOOD, SURFACE};
-pub(crate) use dropped::{dropped, picked_up};
+pub(crate) use dropped::{dropped, picked_up, reset_unit};
 pub(crate) use entry::{crowd, send, use_call};
 pub(crate) use guest::{IN_BUILDING, LEAVE};
 pub(crate) use staff::release_group;
 pub(crate) use stops::{lose_task, resume_use, stop_all, stop_use};
+pub(crate) use trick::{TRICK_FOOD, start_trick};
 
 pub(crate) const NONE: u8 = 0;
 /// The wander.
@@ -82,6 +84,7 @@ pub(crate) const AVOID: u8 = 117;
 pub(crate) const RETURN_TO_BUILDING: u8 = 130;
 pub(crate) const RECOVER: u8 = 131;
 pub(crate) const DROWN: u8 = 132;
+pub(crate) const SHOWTRICK: &str = "showtrick";
 pub(crate) const GO_TO_SHOW: u8 = 133;
 pub(crate) const RETURN_FROM_SHOW: u8 = 134;
 /// The tasks of the building chain, 0x66 to 0x6a.
@@ -222,6 +225,8 @@ pub(crate) enum Goal {
     DrinkWater,
     /// 0x7c of an animal: swim to the surface and breathe (tank fauna 10.2).
     Surface,
+    /// 0x7d of an animal: go to the platform for a treat (shows 23.5).
+    TrickFood,
     /// 100 of a guest: choose an exhibit to see (11.1).
     Site,
     /// 0x70 of a guest: view the animals from the viewing area (11.5).
@@ -282,6 +287,7 @@ impl Goal {
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
             (SURFACE, Kind::Animal) => Some(Goal::Surface),
+            (TRICK_FOOD, Kind::Animal) => Some(Goal::TrickFood),
             (SITE, Kind::Guest) => Some(Goal::Site),
             (GAWK, Kind::Guest) => Some(Goal::Gawk),
             (SCENERY, Kind::Guest) => Some(Goal::Scenery),
@@ -320,6 +326,7 @@ impl Goal {
             Goal::Leave => LEAVE,
             Goal::DrinkWater => DRINK,
             Goal::Surface => SURFACE,
+            Goal::TrickFood => TRICK_FOOD,
             Goal::Site => SITE,
             Goal::Gawk => GAWK,
             Goal::Scenery => SCENERY,
@@ -442,6 +449,7 @@ impl Goal {
             Goal::Recover => cx.recover_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Surface => cx.surface_decide(),
+            Goal::TrickFood => cx.trick_food_decide(),
             Goal::Site => cx.site_decide(),
             Goal::Gawk => cx.gawk_decide(),
             Goal::Leg => cx.leg_decide(),
@@ -469,6 +477,7 @@ impl Goal {
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
             Goal::Surface => cx.surface_complete(),
+            Goal::TrickFood => cx.trick_food_complete(),
             Goal::Gawk => cx.gawk_complete(),
             Goal::Scenery => cx.scenery_arrived(),
             Goal::DoScenery => cx.reset(),

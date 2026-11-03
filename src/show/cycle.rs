@@ -2,11 +2,12 @@
 //! the abort. It draws nothing; it posts events (shows 6.1) and asks messages.
 
 use super::{KEEPER, event, performer};
+use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
 use crate::place::bulldozer::type_of;
-use crate::sim::{Event, Events, KEEPER_CHANNEL, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
+use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::world::World;
-use crate::zoo::{ItemState, ShowInfo};
+use crate::zoo::{Item, ItemState, ShowInfo};
 
 /// The messages of a show, with the tank's name in them: about to start, started, ended.
 const SOON: i32 = 11490;
@@ -19,6 +20,9 @@ struct Cycle<'a> {
     world: &'a mut World,
     cat: &'a Catalogue,
     events: &'a mut Events,
+    /// The generator and the sets' data, for the tricks the animals are asked to start.
+    rng: &'a mut Rng,
+    data: &'a dyn Data,
     /// The AI clock.
     now: u32,
     info: ShowInfo,
@@ -31,12 +35,12 @@ struct Cycle<'a> {
 pub(super) fn update(
     world: &mut World,
     cat: &Catalogue,
-    events: &mut Events,
+    (events, rng, data): (&mut Events, &mut Rng, &dyn Data),
     now: u32,
     n: usize,
     upkeep: f32,
 ) {
-    with(world, cat, events, now, n, |c| {
+    with(world, cat, (events, rng, data), now, n, |c| {
         c.listen();
         c.update();
         c.info.events.clear();
@@ -50,14 +54,16 @@ pub(super) fn update(
 pub(super) fn abort(world: &mut World, cat: &Catalogue, events: &mut Events, id: u16) {
     let now = world.units.ai_ticks;
     if let Some(n) = super::habitat_of(world, id) {
-        with(world, cat, events, now, n, |c| c.abort());
+        // An abort starts no trick: it draws nothing and needs no sets.
+        let (rng, data) = (&mut Rng::default(), &NoData);
+        with(world, cat, (events, rng, data), now, n, |c| c.abort());
     }
 }
 
 fn with(
     world: &mut World,
     cat: &Catalogue,
-    events: &mut Events,
+    (events, rng, data): (&mut Events, &mut Rng, &dyn Data),
     now: u32,
     n: usize,
     f: impl FnOnce(&mut Cycle),
@@ -70,6 +76,8 @@ fn with(
         world,
         cat,
         events,
+        rng,
+        data,
         now,
         info,
         exhibit,
@@ -132,6 +140,15 @@ impl Cycle<'_> {
         let animal = (self.cat.types.iter())
             .any(|t| t.class == "animals" && u32::try_from(t.name_id) == Ok(species));
         if animal { KEEPER } else { 0 }
+    }
+
+    /// The first item with trick id `id` in the show's current script (shows 23.2).
+    fn first_item(&self, id: u16) -> Option<Item> {
+        let script = self.info.show.script;
+        let scripts = self.world.zoo.shows.scripts.iter();
+        (scripts.filter(|s| s.id == script).flat_map(|s| &s.items))
+            .find(|i| i.id == id)
+            .cloned()
     }
 
     /// The number of items of script `id`, 0 for a script that is missing.
@@ -476,7 +493,7 @@ impl Cycle<'_> {
                 self.post(event::NEXT_ITEM, 0, KEEPER_CHANNEL, 0, st.item as u16);
             }
         }
-        performer::read_events(self.world, u, st);
+        performer::read_events(self.world, self.cat, self.events, u, st);
         let r = self.run_current_item(u, st, count);
         if r != 0 {
             self.abort_item(u, st);
@@ -523,7 +540,16 @@ impl Cycle<'_> {
         if !self.is_unit(u) || usize::from(st.item as u16) >= count {
             return -1;
         }
-        let r = performer::start_trick(self.world, u, st.item as u16, self.id());
+        // The item is the first with the trick id of the script's item (shows 23.2).
+        let script = self.info.show.script;
+        let item = (self.world.zoo.shows.scripts.iter()).find(|s| s.id == script);
+        let item = item.and_then(|s| s.items.get(usize::from(st.item as u16)));
+        let item = item.and_then(|i| self.first_item(i.id));
+        let Some(item) = item else {
+            return 3;
+        };
+        let (world, cat, show) = (&mut *self.world, self.cat, self.info.id);
+        let r = crate::goal::start_trick(world, cat, self.rng, self.data, u, (&item, show));
         if r == 0 {
             st.started = true;
         }
@@ -544,7 +570,7 @@ impl Cycle<'_> {
         let item = (self.world.zoo.shows.scripts.iter())
             .find(|s| s.id == script)
             .and_then(|s| s.items.get(usize::try_from(st.item).ok()?));
-        let Some((kind, satisfaction, v)) = item.map(|i| (i.kind, i.satisfaction, i.current))
+        let Some((kind, satisfaction, v)) = item.map(|i| (i.marker, i.satisfaction, i.current))
         else {
             return;
         };

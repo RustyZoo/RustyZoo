@@ -1,7 +1,11 @@
-//! The animal side of a show (shows 18 to 25), a stub until Shows 2: no animal answers the show,
-//! so no item ever finishes and a show that starts ends only by abort. Each function is the
-//! place the cycle calls the animal at.
+//! The animal side of a show (shows 18 to 25): the events it reads. The rest is a stub until Shows
+//! 2: its calls, its validation and its release. The trick it starts is `goal::start_trick`. Each
+//! function is the place the cycle calls the animal at.
 
+use super::event;
+use crate::entity::Catalogue;
+use crate::goal::reset_unit;
+use crate::sim::{Events, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::ItemState;
 
@@ -11,12 +15,32 @@ pub(super) fn validate_item(_world: &World, _species: u32, _item: i16) -> i32 {
     0
 }
 
-/// Reads the events addressed to `animal` and sets the flags of its item state (shows 24).
-pub(super) fn read_events(_world: &mut World, _animal: u32, _state: &mut ItemState) {}
-
-/// Asks `animal` to start the trick of item `item` of show `show` (shows 23.2); 0 when it did.
-pub(super) fn start_trick(_world: &mut World, _animal: u32, _item: u16, _show: u16) -> i32 {
-    0
+/// Reads the events addressed to `animal` and sets the flags of its item state (shows 24), in
+/// order, each row's effects in its own order.
+pub(super) fn read_events(
+    world: &mut World,
+    cat: &Catalogue,
+    events: &Events,
+    animal: u32,
+    state: &mut ItemState,
+) {
+    let heard = events.listen(animal, UNIT_CHANNEL);
+    let heard: Vec<u16> = heard
+        .filter(|e| e.target == animal)
+        .map(|e| e.kind)
+        .collect();
+    for kind in heard {
+        match kind {
+            event::CUE => state.ready = true,
+            event::FINISHED => {
+                state.finished = true;
+                reset_unit(world, cat, animal);
+            }
+            event::FAILED => (state.finished, state.aborted) = (true, true),
+            event::ITEM_ABORTED => reset_unit(world, cat, animal),
+            _ => {}
+        }
+    }
 }
 
 /// The show is over for `animal`: its goal is reset and it is sent home (shows 5.6, 21).
