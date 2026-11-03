@@ -106,3 +106,40 @@ fn the_rattle_chance_is_the_class_key_or_ten() {
         [10, 0, -5, i32::MAX]
     );
 }
+
+#[test]
+fn the_claim_and_the_dart_are_saved_with_the_animal_and_the_crate_drops_them() {
+    let (k, class) = (keys(), Class::default());
+    for (claim, tranq) in [(0, false), (7, true), (u32::MAX, false), (1, true)] {
+        let saved = AnimalRecord {
+            claim,
+            tranq,
+            ..record()
+        };
+        let mut a = animal();
+        a.restore(&saved, &k, &class);
+        assert_eq!((a.claim, a.tranq), (claim, tranq));
+        let back = a.record(record());
+        assert_eq!((back.claim, back.tranq), (claim, tranq));
+    }
+    let mut a = Animal {
+        escaped: true,
+        claim: 7,
+        tranq: true,
+        ..animal()
+    };
+    crate::animal::boxed::crate_up(&mut a);
+    assert!(a.crated && !a.escaped && !a.tranq && a.claim == 0);
+}
+
+#[test]
+fn a_darted_animal_chooses_no_ambient_set() {
+    let (log, _) = crates(&Life::new().idling(), |w| {
+        // The crate at 700 is open and darted instead.
+        if let Part::Animal(a) = &mut w.units.get_mut(700).unwrap().part {
+            (a.crated, a.tranq) = (false, true);
+        }
+    });
+    assert!(!log.iter().any(|l| l == "set 700 bIdle"));
+    assert!(log.iter().any(|l| l == "set 500 bIdle"));
+}
