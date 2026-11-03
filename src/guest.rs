@@ -48,6 +48,7 @@ pub mod checks;
 pub mod gawk;
 pub mod litter;
 pub mod mega;
+pub mod reaction;
 #[cfg(test)]
 mod tests;
 pub mod thought;
