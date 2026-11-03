@@ -2152,6 +2152,27 @@ fn a_sold_base_puts_its_helicopter_out_before_hiding_it() {
 }
 
 #[test]
+fn a_sold_base_posts_one_abort_event_for_its_helicopter_listed_only_by_the_record() {
+    use crate::place::bulldozer::remove;
+    let (mut w, cat, mut money, base, heli) = base_with_helicopter();
+    // The helicopter is a user of the base's record and of no live list.
+    assert!(
+        w.units
+            .buildings
+            .get(&base)
+            .is_none_or(|l| l.users.is_empty())
+    );
+    w.units.posts.clear();
+    let mut rng = crate::sim::Rng::default();
+    remove(&mut w, &mut money, &cat, base, &mut rng).unwrap();
+    let aborts: Vec<_> = (w.units.posts.iter())
+        .filter(|e| e.kind == 0x2722)
+        .map(|e| (e.sender, e.target, e.sender_channel, e.channel, e.delay))
+        .collect();
+    assert_eq!(aborts, [(heli, heli, 0x55, 0x55, 1)]);
+}
+
+#[test]
 fn an_undone_sale_of_the_base_brings_it_back_without_users_or_members() {
     use crate::place::bulldozer::remove;
     let (mut w, cat, mut money, base, _) = base_with_helicopter();

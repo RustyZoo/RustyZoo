@@ -300,6 +300,36 @@ fn emptying_a_show_removes_every_user_of_the_grandstands_that_face_its_tank() {
     assert_eq!((c.x, c.y), (240, 160));
 }
 
+/// The targets of the abort events posted so far, in posting order.
+fn aborts(w: &World) -> Vec<u32> {
+    (w.units.posts.iter())
+        .filter(|e| e.kind == 0x2722)
+        .map(|e| e.target)
+        .collect()
+}
+
+#[test]
+fn two_users_of_a_building_get_one_abort_event_each_in_entering_order() {
+    let (mut w, cat) = crowded();
+    // Entering order, not id order.
+    w.units.buildings.get_mut(&7).unwrap().users = vec![(2, 0, 0), (1, 0, 0)];
+    w.units.posts.clear();
+    crate::building::leave::push_out(&mut w, &cat, 7);
+    assert_eq!(aborts(&w), [2, 1]);
+}
+
+#[test]
+fn a_user_listed_by_the_live_list_and_the_record_gets_one_abort_event() {
+    let (mut w, cat) = crowded();
+    let at = w.find(7).unwrap();
+    let mut b = crate::zoo::fresh::building_new(5.0, 0);
+    b.users = vec![(1, 0)];
+    w.zoo.entities[at].common.as_mut().unwrap().building = Some(b);
+    w.units.posts.clear();
+    crate::building::leave::push_out(&mut w, &cat, 7);
+    assert_eq!(aborts(&w), [1, 2]);
+}
+
 #[test]
 fn emptying_a_show_that_has_no_info_or_no_tank_does_nothing() {
     let (mut w, cat) = crowded();
