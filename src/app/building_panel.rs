@@ -58,7 +58,7 @@ impl App<'_> {
                 } else {
                     "building"
                 };
-                self.panel_lines.push(format!("{word} none"));
+                self.lines.panel.push(format!("{word} none"));
             }
             game.building.deselect();
             for layout in LAYOUTS {

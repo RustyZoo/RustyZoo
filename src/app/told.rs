@@ -81,18 +81,18 @@ impl App<'_> {
     /// name in them, in the message line.
     pub(super) fn animal_told(&mut self) {
         let Some(game) = &mut self.game else {
-            self.animal_lines.clear();
-            self.guest_lines.clear();
-            self.staff_lines.clear();
-            self.building_lines.clear();
+            self.lines.animal.clear();
+            self.lines.guest.clear();
+            self.lines.staff.clear();
+            self.lines.building.clear();
             return;
         };
-        self.animal_lines = game.world.units.take_animal_lines();
+        self.lines.animal = game.world.units.take_animal_lines();
         self.ui_sounds.extend(game.world.units.take_cheers());
-        self.guest_lines = game.world.units.take_guest_lines();
-        self.staff_lines = game.world.units.take_staff_lines();
-        self.world_lines.extend(game.world.units.take_world_lines());
-        self.building_lines = game.world.units.take_building_lines();
+        self.lines.guest = game.world.units.take_guest_lines();
+        self.lines.staff = game.world.units.take_staff_lines();
+        self.lines.world.extend(game.world.units.take_world_lines());
+        self.lines.building = game.world.units.take_building_lines();
         for (message, id, names) in game.world.units.take_messages() {
             let own = (game.world.find(id))
                 .and_then(|at| game.world.zoo.entities[at].common.as_ref())
@@ -134,6 +134,6 @@ impl App<'_> {
                 self.money_events.extend(lines);
             }
         }
-        self.money_lines = std::mem::take(&mut self.money_events);
+        self.lines.money = std::mem::take(&mut self.money_events);
     }
 }

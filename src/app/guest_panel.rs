@@ -29,7 +29,7 @@ impl App<'_> {
         let gone = (game.guest.selected).is_some_and(|id| game.world.find(id).is_none());
         if gone || !ui.shown(guest::LAYOUT) {
             if game.guest.selected.is_some() {
-                self.panel_lines.push("guest none".into());
+                self.lines.panel.push("guest none".into());
             }
             game.guest.deselect();
             ui.set_hidden(guest::LAYOUT, true);

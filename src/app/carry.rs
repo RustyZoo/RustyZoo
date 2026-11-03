@@ -45,7 +45,7 @@ impl App<'_> {
         };
         if game.selected != Some(id) {
             game.selected = Some(id);
-            self.tool_lines.push(format!("tool select {id}"));
+            self.lines.tool.push(format!("tool select {id}"));
             self.type_sound(id, "placesound");
             return true;
         }
@@ -70,7 +70,7 @@ impl App<'_> {
             crate::goal::picked_up(&mut game.world, cat, &mut self.sim.rng, &data, id);
             game.selected = None;
             game.carry = Some(carry);
-            self.world_lines.push(format!("carry {id}"));
+            self.lines.world.push(format!("carry {id}"));
             self.type_sound(id, "pickupsound");
             self.aim(false);
         }
@@ -160,7 +160,7 @@ impl App<'_> {
         self.sim.absorb(&mut game.world);
         game.selected = None;
         game.carry = Some(carry);
-        self.world_lines.push(format!("carry {id}"));
+        self.lines.world.push(format!("carry {id}"));
         self.type_sound(id, "pickupsound");
         self.aim(false);
         true
@@ -177,7 +177,7 @@ impl App<'_> {
         };
         if p.verdict == place::Verdict::Invalid {
             self.ui_sounds.push("noplace");
-            refusal(ui, &mut self.tool_lines, p.message);
+            refusal(ui, &mut self.lines.tool, p.message);
             return;
         }
         let cat = self.renderer.catalogue();
@@ -201,7 +201,7 @@ impl App<'_> {
             game.carry = None;
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             self.ui_sounds.push("place");
             return self.aim(false);
         }
@@ -220,7 +220,7 @@ impl App<'_> {
             rating::react(&mut game.world, cat, before, change, rand);
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             self.drop_rule(carry.id);
             self.drop_sound(carry.id);
         }
@@ -241,14 +241,14 @@ impl App<'_> {
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             return self.aim(false);
         }
         if place::unit::put_down(&mut game.world, carry.id, carry.from, carry.facing) {
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             self.drop_rule(carry.id);
         }
         self.aim(false);

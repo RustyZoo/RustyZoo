@@ -104,12 +104,14 @@ impl App<'_> {
                     continue;
                 }
             };
-            self.world_lines.push(line);
+            self.lines.world.push(line);
         }
-        self.tool_lines
+        self.lines
+            .tool
             .push(format!("tool undo {}", done.steps.len()));
         if let Some(price) = tiles {
-            self.terrain_lines
+            self.lines
+                .terrain
                 .push(format!("undo {}", whole_units(f64::from(price))));
             if game.terrain.mode().is_some() {
                 let habits = |e: &Entity| habit(cat, e);
@@ -120,7 +122,7 @@ impl App<'_> {
         let blocked = done.blocked.map(|entity| {
             let name = type_of(cat, &entity).map_or(String::new(), |t| ui.string(t.name_id));
             let spot = game.world.spot_of(&entity);
-            self.world_lines.push(told("blocked", &spot, ""));
+            self.lines.world.push(told("blocked", &spot, ""));
             ui.string(BLOCKED).replacen("%s", &name, 1)
         });
         self.exhibits_told();

@@ -55,7 +55,7 @@ impl App<'_> {
         let mut short = false;
         if wanted != game.terrain.mode() {
             if game.terrain.mode().is_some() {
-                let lines = &mut self.terrain_lines;
+                let lines = &mut self.lines.terrain;
                 let cat = self.renderer.catalogue();
                 let habits = |e: &Entity| habit(cat, e);
                 let (tool, money) = (&mut game.terrain, &mut game.money);
@@ -71,7 +71,7 @@ impl App<'_> {
                 game.terrain.enter(mode);
                 game.grid = true;
                 panel::show(ui, self.renderer.vfs(), &game.terrain, mode);
-                self.terrain_lines.push(format!("enter {}", mode.name()));
+                self.lines.terrain.push(format!("enter {}", mode.name()));
             }
             game.shown = None;
         }
@@ -80,7 +80,7 @@ impl App<'_> {
         self.terrain_refresh();
         if short {
             let text = self.ui.as_ref().map(|ui| ui.string(SHORT));
-            self.terrain_lines.push("short".into());
+            self.lines.terrain.push("short".into());
             self.say(&text.unwrap_or_default());
         }
     }
@@ -117,7 +117,7 @@ impl App<'_> {
         if !on_map {
             // The amount next to the pointer goes away with the pointer.
             ui.touch();
-            game.log_amount(&mut self.terrain_lines);
+            game.log_amount(&mut self.lines.terrain);
             return;
         }
         let cat = self.renderer.catalogue();
@@ -125,7 +125,7 @@ impl App<'_> {
         let at = ui.pointer();
         let camera = &game.camera;
         let zoom = Zoom::from_value(camera.zoom);
-        let lines = &mut self.terrain_lines;
+        let lines = &mut self.lines.terrain;
         let under = |world: &World, at| camera.tile_under(&world.zoo, at);
         match mouse {
             Mouse::Down | Mouse::Double => {
@@ -188,7 +188,7 @@ impl App<'_> {
         };
         let cat = self.renderer.catalogue();
         let habits = |e: &Entity| habit(cat, e);
-        let lines = &mut self.terrain_lines;
+        let lines = &mut self.lines.terrain;
         let size = game.terrain.size();
         match press {
             Press::Plus | Press::Minus => {

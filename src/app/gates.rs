@@ -37,10 +37,10 @@ impl App<'_> {
         match place::gate::place(world, &mut game.money, cat, &gate) {
             Outcome::Placed(_) => {
                 if let Some(line) = old.and_then(|id| named(world, id)) {
-                    self.world_lines.push(format!("ungate {line}"));
+                    self.lines.world.push(format!("ungate {line}"));
                 }
                 if let Some(line) = named(world, gate.piece) {
-                    self.world_lines.push(format!("gate {line}"));
+                    self.lines.world.push(format!("gate {line}"));
                 }
                 self.ui_sounds.push("place");
                 game.gate = None;
@@ -48,7 +48,7 @@ impl App<'_> {
             Outcome::Refused(Some(id)) => {
                 self.ui_sounds.push("noplace");
                 ui.message(&to_cp1252(&ui.string(id)));
-                self.tool_lines.push(format!("tool message {id}"));
+                self.lines.tool.push(format!("tool message {id}"));
             }
             Outcome::Refused(None) => {}
         }

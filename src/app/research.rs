@@ -198,7 +198,7 @@ impl App<'_> {
     pub(super) fn expansion_row(&mut self, row: i32) {
         playing!(self, game, ui);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
-        game.build.pick_row(ui, vfs, cat, row, &mut self.tool_lines);
+        game.build.pick_row(ui, vfs, cat, row, &mut self.lines.tool);
         game.research.clock.force = true;
     }
 

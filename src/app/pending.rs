@@ -130,7 +130,7 @@ impl App<'_> {
         }
         if let (true, Some(p)) = (log, &game.pending) {
             let ty = &cat.types[p.ty];
-            self.tool_lines.push(format!(
+            self.lines.tool.push(format!(
                 "tool pending {}/{}/{} {},{} q {} {}",
                 ty.class,
                 String::from_utf8_lossy(&ty.type_name),
@@ -272,18 +272,19 @@ impl App<'_> {
                             .heal(renderer.catalogue(), id, &mut || rng.rand());
                     }
                     if let Some(kind) = p.paint {
-                        self.world_lines.push(format!("paint {x},{y} {kind}"));
+                        self.lines.world.push(format!("paint {x},{y} {kind}"));
                     }
                     // A piece that keeps its id only takes the new type.
                     if old == Some(id) {
-                        self.world_lines
+                        self.lines
+                            .world
                             .push(format!("retype {name} {tile} id {id}"));
                         first = first.or(Some(p.ty));
                         continue;
                     }
                     if let Some(old) = old {
                         let line = format!("remove {name} {tile} id {old}");
-                        self.world_lines.push(line);
+                        self.lines.world.push(line);
                     }
                     // An object that takes quadrants says how many it holds.
                     let held = match Class::of(ty) == Class::Fixed {
@@ -292,7 +293,7 @@ impl App<'_> {
                     };
                     let held = held.map_or(String::new(), |n| format!(" quadrants {n}"));
                     let line = format!("add {name} {tile} id {id}{held}");
-                    self.world_lines.push(line);
+                    self.lines.world.push(line);
                     // The DRT base makes its helicopter (unit placing 7.4).
                     if ty.class == "building" {
                         let built = crate::timing::file_time(self.sim.calendar().elapsed_ms());
@@ -308,7 +309,7 @@ impl App<'_> {
                         for heli in made.into_iter().filter_map(|h| game.world.find(h)) {
                             let e = &game.world.zoo.entities[heli];
                             let c = e.common.as_ref().expect("added");
-                            self.world_lines.push(format!(
+                            self.lines.world.push(format!(
                                 "add {}/{}/{} {},{} id {} name={}",
                                 e.class,
                                 e.type_name,
@@ -334,7 +335,8 @@ impl App<'_> {
             Some(ty) => {
                 self.ui_sounds.push("place");
                 if game.build.placed(&cat.types[ty]) {
-                    self.tool_lines
+                    self.lines
+                        .tool
                         .push(format!("tool turn {}", game.build.step()));
                 }
             }
@@ -343,10 +345,10 @@ impl App<'_> {
         match refused {
             Some(id) => {
                 ui.message(&to_cp1252(&ui.string(id)));
-                self.tool_lines.push(format!("tool message {id}"));
+                self.lines.tool.push(format!("tool message {id}"));
             }
             // A refusal without a message (ground that is not flat, a quadrant off the zoo).
-            None if first.is_none() => self.tool_lines.push("tool refused".into()),
+            None if first.is_none() => self.lines.tool.push("tool refused".into()),
             None => {}
         }
         self.exhibits_told();
@@ -358,18 +360,18 @@ impl App<'_> {
     pub(super) fn build(&mut self, selected: Option<i32>) {
         playing!(self, game, ui);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
-        let told = self.tool_lines.len();
+        let told = self.lines.tool.len();
         game.build.set_month(self.sim.calendar().date().month);
         game.build.set_hire(self.sim.hire_male);
-        game.build.sync(ui, vfs, cat, &mut self.tool_lines);
+        game.build.sync(ui, vfs, cat, &mut self.lines.tool);
         if let Some(id) = selected {
-            game.build.selected(ui, vfs, cat, id, &mut self.tool_lines);
+            game.build.selected(ui, vfs, cat, id, &mut self.lines.tool);
             self.terrain_pressed(id);
         }
         self.terrain_sync();
         self.make_pending();
         // Every change of the tool or the step tells a line. Choosing an item ends a move (8.6).
-        if self.tool_lines.len() != told {
+        if self.lines.tool.len() != told {
             let b = self.game.as_ref().map(|g| &g.build);
             let tool = b.is_some_and(|b| b.tool().is_some() || b.bulldozing() || b.gating());
             if tool && self.game.as_ref().is_some_and(|g| g.carry.is_some()) {

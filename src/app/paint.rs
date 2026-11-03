@@ -128,10 +128,10 @@ impl App<'_> {
                     None => (self.painted, self.stale) = (None, None),
                 }
                 if dirty {
-                    self.world_lines.push("stage".to_string());
+                    self.lines.world.push("stage".to_string());
                 }
             }
-            Err(why) => self.world_lines.push(format!("stage failed: {why}")),
+            Err(why) => self.lines.world.push(format!("stage failed: {why}")),
         }
         game.extra = want;
     }

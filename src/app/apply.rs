@@ -89,7 +89,7 @@ impl App<'_> {
                 {
                     let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
                     let tile = tile.map_or("none".to_string(), |(x, y)| format!("{x},{y}"));
-                    self.tool_lines.push(format!("tool {phase} {tile}"));
+                    self.lines.tool.push(format!("tool {phase} {tile}"));
                 }
                 if let Mouse::Move(..) = mouse {
                     if let Some(game) = game.as_mut() {
@@ -135,7 +135,7 @@ impl App<'_> {
             (Command::DevMode, Some(_)) if keys => {
                 if self.timers.speed.toggle() {
                     let on = self.timers.speed.developer();
-                    self.dev_lines.push(if on { "on" } else { "off" }.into());
+                    self.lines.dev.push(if on { "on" } else { "off" }.into());
                     self.painted = None;
                     // The same press shows or hides the developer button (main loop 5.2).
                     if let Some(ui) = &mut self.ui {
@@ -147,7 +147,8 @@ impl App<'_> {
             (Command::Char(byte @ (b'.' | b',' | b'/')), Some(_))
                 if keys && self.timers.speed.key(byte) =>
             {
-                self.dev_lines
+                self.lines
+                    .dev
                     .push(format!("speed {}", self.timers.speed.factor()));
             }
             (Command::Fullscreen(on), Some(game)) => {

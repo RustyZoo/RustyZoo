@@ -2,6 +2,40 @@
 
 use super::*;
 
+/// What each part of the game did in the last pass, one line each, as the log leads them with the
+/// part's word (`tool down 12,40`, `world stage`, `dev on`, `dev speed 1.1`).
+#[derive(Default)]
+pub(super) struct Lines {
+    pub(super) menu: Vec<String>,
+    pub(super) tool: Vec<String>,
+    pub(super) world: Vec<String>,
+    pub(super) exhibit: Vec<String>,
+    pub(super) panel: Vec<String>,
+    pub(super) terrain: Vec<String>,
+    pub(super) money: Vec<String>,
+    pub(super) dev: Vec<String>,
+    pub(super) sim: Vec<String>,
+    pub(super) unit: Vec<String>,
+    pub(super) animal: Vec<String>,
+    pub(super) guest: Vec<String>,
+    pub(super) staff: Vec<String>,
+    pub(super) building: Vec<String>,
+    pub(super) scenario: Vec<String>,
+}
+
+impl Lines {
+    /// The start of a pass: the lines the pass itself fills are forgotten (the others are taken
+    /// from their managers at its end).
+    pub(super) fn begin_pass(&mut self) {
+        self.menu.clear();
+        (self.tool, self.world) = (Vec::new(), Vec::new());
+        self.exhibit = Vec::new();
+        self.panel = Vec::new();
+        self.terrain = Vec::new();
+        self.dev = Vec::new();
+    }
+}
+
 impl App<'_> {
     /// The first line of a log: the size of the window, which the frames depend on.
     pub fn log_header(&self) -> String {
@@ -62,22 +96,24 @@ impl App<'_> {
             .filter(|c| matches!(c, Command::Award(_)));
         lines.extend(given.map(|_| format!("{lead} awards {}", self.awards())));
         lines.extend(self.ui_events.iter().map(|e| format!("{lead} ui {e}")));
-        lines.extend(self.menu_lines.iter().map(|e| format!("{lead} menu {e}")));
-        lines.extend(self.tool_lines.iter().map(|e| format!("{lead} {e}")));
-        lines.extend(self.world_lines.iter().map(|e| format!("{lead} world {e}")));
+        lines.extend(self.lines.menu.iter().map(|e| format!("{lead} menu {e}")));
+        lines.extend(self.lines.tool.iter().map(|e| format!("{lead} {e}")));
+        lines.extend(self.lines.world.iter().map(|e| format!("{lead} world {e}")));
         lines.extend(
-            self.exhibit_lines
+            self.lines
+                .exhibit
                 .iter()
                 .map(|e| format!("{lead} exhibit {e}")),
         );
-        lines.extend(self.panel_lines.iter().map(|e| format!("{lead} panel {e}")));
+        lines.extend(self.lines.panel.iter().map(|e| format!("{lead} panel {e}")));
         lines.extend(
-            self.terrain_lines
+            self.lines
+                .terrain
                 .iter()
                 .map(|e| format!("{lead} terrain {e}")),
         );
-        lines.extend(self.money_lines.iter().map(|e| format!("{lead} money {e}")));
-        lines.extend(self.dev_lines.iter().map(|e| format!("{lead} dev {e}")));
+        lines.extend(self.lines.money.iter().map(|e| format!("{lead} money {e}")));
+        lines.extend(self.lines.dev.iter().map(|e| format!("{lead} dev {e}")));
         if self.fired.draw {
             let hash = match self.drew {
                 true => hash(&self.frame),
@@ -106,16 +142,17 @@ impl App<'_> {
                 d.year, d.month, d.day, d.hour, d.minute, d.second, d.millisecond
             ));
         }
-        lines.extend(self.sim_lines.iter().map(|e| format!("{lead} sim {e}")));
-        lines.extend(self.unit_lines.iter().map(|e| format!("{lead} unit {e}")));
+        lines.extend(self.lines.sim.iter().map(|e| format!("{lead} sim {e}")));
+        lines.extend(self.lines.unit.iter().map(|e| format!("{lead} unit {e}")));
         lines.extend(
-            self.animal_lines
+            self.lines
+                .animal
                 .iter()
                 .map(|e| format!("{lead} animal {e}")),
         );
-        lines.extend(self.guest_lines.iter().map(|e| format!("{lead} guest {e}")));
-        lines.extend(self.staff_lines.iter().map(|e| format!("{lead} staff {e}")));
-        lines.extend((self.building_lines.iter()).map(|e| format!("{lead} building {e}")));
+        lines.extend(self.lines.guest.iter().map(|e| format!("{lead} guest {e}")));
+        lines.extend(self.lines.staff.iter().map(|e| format!("{lead} staff {e}")));
+        lines.extend((self.lines.building.iter()).map(|e| format!("{lead} building {e}")));
         lines
     }
 }

@@ -156,7 +156,7 @@ impl App<'_> {
         let gone = (game.staff.selected).is_some_and(|id| game.world.find(id).is_none());
         if gone || !ui.shown(staff::LAYOUT) {
             if game.staff.selected.is_some() {
-                self.panel_lines.push("staff none".into());
+                self.lines.panel.push("staff none".into());
             }
             game.staff.deselect();
             ui.set_hidden(staff::LAYOUT, true);
@@ -229,7 +229,7 @@ impl App<'_> {
         }
         ui.help_tip(if over.is_some() { ASSIGN_HELP } else { 0 });
         ui.touch();
-        self.tool_lines.push(match over {
+        self.lines.tool.push(match over {
             Some((x, good)) => {
                 format!("tool assign over {x} {}", if good { "good" } else { "bad" })
             }
@@ -248,11 +248,11 @@ impl App<'_> {
         match assign::assign(&mut game.world, cat, id, exhibit) {
             Outcome::Assigned => {
                 game.staff.clock.force = true;
-                self.tool_lines.push(format!("tool assign {id} {exhibit}"));
+                self.lines.tool.push(format!("tool assign {id} {exhibit}"));
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");
-                carry::refusal(ui, &mut self.tool_lines, message);
+                carry::refusal(ui, &mut self.lines.tool, message);
             }
         }
     }
@@ -305,7 +305,7 @@ impl App<'_> {
         };
         assign::unassign(&mut game.world, id, row);
         game.staff.clock.force = true;
-        self.tool_lines.push(match row {
+        self.lines.tool.push(match row {
             Some(r) => format!("tool unassign {id} row {r}"),
             None => format!("tool unassign {id} all"),
         });

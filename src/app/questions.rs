@@ -118,7 +118,7 @@ impl App<'_> {
             return;
         }
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
-            if game.build.cancel(ui, &mut self.tool_lines) {
+            if game.build.cancel(ui, &mut self.lines.tool) {
                 self.terrain_sync();
                 return self.aim(false);
             }

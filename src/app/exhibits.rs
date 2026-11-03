@@ -86,10 +86,10 @@ impl App<'_> {
                 },
                 _ => continue,
             };
-            self.exhibit_lines.push(line);
+            self.lines.exhibit.push(line);
             // The exhibit sound plays once for each exhibit that asks for its name (sound 7).
             if let Event::New { id, ask: true } = event {
-                self.tool_lines.push(format!("sound exhibit {id}"));
+                self.lines.tool.push(format!("sound exhibit {id}"));
                 self.ui_sounds.push("exhibit");
             }
         }
@@ -149,7 +149,7 @@ impl App<'_> {
             .filter(|e| !game.naming.contains(&e.id) && game.refused != Some(e.id))
             .count();
         if let Some(ui) = &mut self.ui {
-            game.build.set_exhibits(ui, count, &mut self.tool_lines);
+            game.build.set_exhibits(ui, count, &mut self.lines.tool);
         }
         self.tank_ask();
         self.name_next();
@@ -165,7 +165,7 @@ impl App<'_> {
         let text = to_cp1252(&ui.string(TANK_OBJECTS));
         if ui.ask(QUESTION, &text, Buttons::YES_NO) {
             self.asked = Some(Asked::Tank);
-            self.tool_lines.push("tool tank ask".into());
+            self.lines.tool.push("tool tank ask".into());
         } else {
             // No dialog in this interface: the objects go.
             self.tank_answered(6);
@@ -186,7 +186,7 @@ impl App<'_> {
         let Some(id) = game.refused.take() else {
             return;
         };
-        self.tool_lines.push("tool tank answer yes".into());
+        self.lines.tool.push("tool tank answer yes".into());
         let world = &game.world;
         let outside = world.outside(id);
         // (id, a unit, a unit that moves, an animal): a staff member goes to the tile outside, an
@@ -229,7 +229,7 @@ impl App<'_> {
         let Some(id) = game.refused.take() else {
             return;
         };
-        self.tool_lines.push("tool tank answer no".into());
+        self.lines.tool.push("tool tank answer no".into());
         let done = game.world.decline_tank(id);
         game.rest.clear();
         self.undone(done);
@@ -251,7 +251,7 @@ impl App<'_> {
         let name = game.world.exhibits().get(id).map_or("", |e| &e.name);
         let text = ui.string(message).replacen("%s", name, 1);
         ui.message(&to_cp1252(&text));
-        self.tool_lines.push(format!("tool message {message}"));
+        self.lines.tool.push(format!("tool message {message}"));
     }
 
     /// Opens the name dialog of the first exhibit waiting, if none is open: its default name in
@@ -296,7 +296,7 @@ impl App<'_> {
         let mut hooked = None;
         if visible(&bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
-            self.exhibit_lines.push(format!("name {id} {text:?}"));
+            self.lines.exhibit.push(format!("name {id} {text:?}"));
             game.world.rename(id, text.clone());
             hooked = Some(text);
         }

@@ -182,7 +182,7 @@ impl App<'_> {
             ),
             (None, None) => "bulldoze none".to_string(),
         };
-        self.tool_lines.push(format!("tool {line}"));
+        self.lines.tool.push(format!("tool {line}"));
         ui.touch();
     }
 
@@ -195,7 +195,7 @@ impl App<'_> {
             if let Some(ui) = &mut self.ui {
                 ui.message(&to_cp1252(&ui.string(NOT_MERGED)));
             }
-            self.tool_lines.push(format!("tool message {NOT_MERGED}"));
+            self.lines.tool.push(format!("tool message {NOT_MERGED}"));
         }
         let queue: VecDeque<u32> = game
             .dozer
@@ -278,7 +278,7 @@ impl App<'_> {
                         && sweep.area
                         && sweep.removed > 0
                     {
-                        self.tool_lines.push(format!(
+                        self.lines.tool.push(format!(
                             "tool bulldoze removed {} refund {}",
                             sweep.removed,
                             whole_units(f64::from(sweep.refund))
@@ -309,7 +309,8 @@ impl App<'_> {
                             sweep.asked.extend(question.pair());
                         }
                         self.asked = Some(Asked::Sweep);
-                        self.tool_lines
+                        self.lines
+                            .tool
                             .push(format!("tool bulldoze ask {question:?}"));
                         return;
                     }
@@ -372,7 +373,7 @@ impl App<'_> {
             rating::react(&mut game.world, cat, before, change, rand);
         }
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));
-        self.world_lines.push(format!(
+        self.lines.world.push(format!(
             "remove {} {},{}{side} id {} refund {}",
             r.name,
             r.tile.0,
@@ -395,7 +396,7 @@ impl App<'_> {
         let Some(id) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
             return;
         };
-        self.tool_lines.push(format!(
+        self.lines.tool.push(format!(
             "tool bulldoze answer {}",
             match code {
                 6 => "yes",

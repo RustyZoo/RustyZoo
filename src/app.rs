@@ -296,31 +296,14 @@ pub struct App<'a> {
     acted: usize,
     /// The camera when the last draw fired, before the interface moved it; `None` without a game.
     drawn_at: Option<Look>,
-    /// What the map view's tool and the world did in the last pass, one line each (`tool down
-    /// 12,40`, `world stage`).
-    tool_lines: Vec<String>,
-    world_lines: Vec<String>,
-    /// What the exhibits did in the last pass, and the messages about gates that wait to be shown.
-    exhibit_lines: Vec<String>,
+    /// What the last pass did, one line each, by part of the game.
+    lines: log::Lines,
+    /// The messages about gates that wait to be shown.
     exhibit_messages: Vec<(u32, i32)>,
-    /// What the information panels did in the last pass.
-    panel_lines: Vec<String>,
-    /// What the terrain tool did in the last pass.
-    terrain_lines: Vec<String>,
-    /// What the cash and the accounts did and has not been logged yet, and what they did in the
-    /// last pass.
+    /// What the cash and the accounts did and has not been logged yet.
     money_events: Vec<String>,
-    money_lines: Vec<String>,
-    /// The managers of the simulation and the `sim` lines of the last pass.
+    /// The managers of the simulation.
     sim: Sim,
-    sim_lines: Vec<String>,
-    /// The developer mode and speed changes of the last pass (`dev on`, `dev speed 1.1`).
-    dev_lines: Vec<String>,
-    unit_lines: Vec<String>,
-    animal_lines: Vec<String>,
-    guest_lines: Vec<String>,
-    staff_lines: Vec<String>,
-    building_lines: Vec<String>,
     /// The sounds the units' animations began in the last pass.
     unit_sounds: Vec<UnitSound>,
     /// The loops the tank filters play now, placed in the view (tank staff 7.3 point 7).
@@ -333,9 +316,8 @@ pub struct App<'a> {
     /// The main menu, while the player is in it.
     menu: Option<Menu>,
     /// What the menu did and has not been logged yet, one line each (the lines of its first
-    /// show open the log of the first pass), and what it did in the last pass.
+    /// show open the log of the first pass).
     menu_events: Vec<String>,
-    menu_lines: Vec<String>,
     /// The menu music, until the game has none (`noMenuMusic`) or it is stopped.
     music: Option<Music>,
     /// Whether the interface update of the last pass changed the music's volume or stopped it.
@@ -362,7 +344,6 @@ pub struct App<'a> {
     bare: bool,
     /// What the scenario's triggers changed in the interface.
     marks: crate::scenario::Marks,
-    scenario_lines: Vec<String>,
 }
 
 /// The layouts of the game screen that stopping or ending a game hides.
@@ -494,23 +475,10 @@ impl<'a> App<'a> {
             drawn_at: None,
             menu: None,
             menu_events: Vec::new(),
-            menu_lines: Vec::new(),
-            tool_lines: Vec::new(),
-            world_lines: Vec::new(),
-            exhibit_lines: Vec::new(),
             exhibit_messages: Vec::new(),
-            panel_lines: Vec::new(),
-            terrain_lines: Vec::new(),
             money_events: Vec::new(),
-            money_lines: Vec::new(),
             sim,
-            sim_lines: Vec::new(),
-            dev_lines: Vec::new(),
-            unit_lines: Vec::new(),
-            animal_lines: Vec::new(),
-            guest_lines: Vec::new(),
-            staff_lines: Vec::new(),
-            building_lines: Vec::new(),
+            lines: Default::default(),
             unit_sounds: Vec::new(),
             loop_sounds: Vec::new(),
             type_sounds: Vec::new(),
@@ -529,7 +497,6 @@ impl<'a> App<'a> {
             faded: false,
             bare: false,
             marks: Default::default(),
-            scenario_lines: Vec::new(),
         })
     }
 
@@ -598,12 +565,7 @@ impl<'a> App<'a> {
     /// after it and the timers do not run (main loop 3.1), and neither does any later pass.
     pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
-        self.menu_lines.clear();
-        (self.tool_lines, self.world_lines) = (Vec::new(), Vec::new());
-        self.exhibit_lines = Vec::new();
-        self.panel_lines = Vec::new();
-        self.terrain_lines = Vec::new();
-        self.dev_lines = Vec::new();
+        self.lines.begin_pass();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
         self.acted = 0;
         self.busy = false;
@@ -630,7 +592,7 @@ impl<'a> App<'a> {
         }
         self.acts();
         if self.quit {
-            self.menu_lines = std::mem::take(&mut self.menu_events);
+            self.lines.menu = std::mem::take(&mut self.menu_events);
             return None;
         }
         self.fired = self.timers.pass(now, self.timers.speed.factor());
@@ -712,14 +674,14 @@ impl<'a> App<'a> {
         self.undo_button();
         self.panel_pass(now);
         self.tell_money(now);
-        self.menu_lines = std::mem::take(&mut self.menu_events);
-        self.sim_lines = self.sim.take_lines();
+        self.lines.menu = std::mem::take(&mut self.menu_events);
+        self.lines.sim = self.sim.take_lines();
         // The state hash at each month change, so that two runs of a game can be compared by it.
         if month_end && let Some(game) = &self.game {
             let hash = crate::sim::hash::state(&self.sim, &game.world, &game.money);
-            self.sim_lines.push(format!("hash {hash:016x}"));
+            self.lines.sim.push(format!("hash {hash:016x}"));
         }
-        self.unit_lines =
+        self.lines.unit =
             (self.game.as_mut()).map_or_else(Vec::new, |g| g.world.units.take_lines());
         self.animal_told();
         self.unit_sounds = self.unit_sounds_placed();
@@ -729,7 +691,7 @@ impl<'a> App<'a> {
             .unit_sounds
             .iter()
             .map(|s| format!("sound {} {}", s.id, s.file));
-        self.unit_lines.extend(sounds);
+        self.lines.unit.extend(sounds);
         self.drew.then_some(&self.frame)
     }
 

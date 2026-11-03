@@ -25,7 +25,7 @@ impl App<'_> {
 
     /// Shows message `id` (with `name` in its `%s`) in the message line, and logs it.
     fn tank_message(&mut self, id: i32, name: &str) {
-        self.tool_lines.push(format!("tool message {id}"));
+        self.lines.tool.push(format!("tool message {id}"));
         if let Some(ui) = &mut self.ui {
             let text = ui.string(id).replacen("%s", name, 1);
             ui.message(&to_cp1252(&text));

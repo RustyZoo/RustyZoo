@@ -44,7 +44,7 @@ impl App<'_> {
             && let Some(game) = &mut self.game
         {
             game.selected = Some(id);
-            self.tool_lines.push(format!("tool select {id}"));
+            self.lines.tool.push(format!("tool select {id}"));
             self.type_sound(id, "placesound");
         }
     }
@@ -183,7 +183,7 @@ impl App<'_> {
         });
         if gone || !ui.shown(animal::LAYOUT) {
             if game.animal.selected.is_some() {
-                self.panel_lines.push("animal none".into());
+                self.lines.panel.push("animal none".into());
             }
             game.animal.deselect();
             ui.set_hidden(animal::LAYOUT, true);
@@ -283,7 +283,7 @@ impl App<'_> {
         game.panel.clock.force = true;
         if exhibits::visible(&bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
-            self.exhibit_lines.push(format!("name {id} {text:?}"));
+            self.lines.exhibit.push(format!("name {id} {text:?}"));
             game.world.rename(id, text.clone());
             self.name_hook(Subject::Exhibit, &text);
         }
@@ -306,21 +306,24 @@ impl App<'_> {
                 exhibit::sort_animals(&mut game.world, cat, x, &mut self.sim.rng);
             }
             let lines = game.panel.refresh(ui, &game.world, cat, vfs);
-            self.panel_lines.extend(lines);
+            self.lines.panel.extend(lines);
         }
         if ui.shown(animal::LAYOUT) && game.animal.clock.due(now, ticking, animal::PERIOD) {
             let when = self.sim.calendar().elapsed_ms();
-            self.panel_lines
+            self.lines
+                .panel
                 .extend(game.animal.refresh(ui, &game.world, cat, vfs, when));
         }
         if ui.shown(staff::LAYOUT) && game.staff.clock.due(now, ticking, staff::PERIOD) {
             let placing = game.pending.is_some() || game.carry.is_some();
-            self.panel_lines
+            self.lines
+                .panel
                 .extend(game.staff.refresh(ui, &game.world, cat, vfs, placing));
         }
         if ui.shown(guest::LAYOUT) && game.guest.clock.due(now, ticking, guest::PERIOD) {
             let date = self.sim.calendar().date();
-            self.panel_lines
+            self.lines
+                .panel
                 .extend(game.guest.refresh(ui, &game.world, cat, vfs, date));
         }
         let shown = ui.shown(research::LAYOUT);
@@ -336,7 +339,7 @@ impl App<'_> {
             let line =
                 game.research
                     .refresh(ui, self.sim.research(), vfs, (selector.0, &selector.1));
-            self.panel_lines.extend(line);
+            self.lines.panel.extend(line);
         }
         game.awards_page
             .refresh(ui, &game.world.zoo.awards, &cat.awards, vfs);
@@ -350,13 +353,14 @@ impl App<'_> {
         };
         if ui.shown(layout) && game.building.clock.due(now, ticks, period) {
             let when = self.sim.calendar().elapsed_ms();
-            self.panel_lines
+            self.lines
+                .panel
                 .extend(game.building.refresh(ui, &game.world, cat, vfs, when));
         }
         if game.panel.plaque.is_some() && game.panel.plaque_clock.due(now, ticking, exhibit::PERIOD)
         {
             let lines = game.panel.refresh_plaque(ui, &game.world, cat, vfs);
-            self.panel_lines.extend(lines);
+            self.lines.panel.extend(lines);
         }
     }
 }

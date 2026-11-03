@@ -56,7 +56,7 @@ impl App<'_> {
                     unit.part = crate::unit::Part::Staff(made);
                     unit.started = true;
                 }
-                self.world_lines.push(format!(
+                self.lines.world.push(format!(
                     "add {}/{}/{} {},{} id {id} name={name}",
                     ty.class,
                     String::from_utf8_lossy(&ty.type_name),
@@ -76,14 +76,14 @@ impl App<'_> {
                     if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
                         game.build.set_hire(self.sim.hire_male);
                         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
-                        game.build.rehire(ui, vfs, cat, &mut self.tool_lines);
+                        game.build.rehire(ui, vfs, cat, &mut self.lines.tool);
                     }
                     self.make_pending();
                 }
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");
-                super::carry::refusal(ui, &mut self.tool_lines, message);
+                super::carry::refusal(ui, &mut self.lines.tool, message);
             }
         }
         self.aim(false);
