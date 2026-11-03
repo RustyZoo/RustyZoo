@@ -129,6 +129,9 @@ pub struct Species {
     pub large: bool,
     /// The tile it stands on (`x / 64`, `y / 64`): its exhibit is the one its place must be in.
     pub tile: Option<(i32, i32)>,
+    /// A guest whose need being served is `grandstand`: a grandstand with no show soon refuses it
+    /// (6.1 point 6).
+    pub grandstand: bool,
 }
 
 impl Species {
@@ -147,6 +150,7 @@ impl Species {
                 .common
                 .as_ref()
                 .map(|c| (c.x.div_euclid(64), c.y.div_euclid(64))),
+            grandstand: false,
         })
     }
 }
@@ -872,8 +876,10 @@ pub fn can_add(
         return false;
     };
     let in_slot = live.map_or(0, |l| l.users.iter().filter(|u| u.1 == slot).count());
+    let no_show = who.is_some_and(|w| w.grandstand) && live.is_none_or(|l| l.fill == 0);
     users < kind.capacity.max(0) as usize
         && in_slot < s.capacity.max(0) as usize
+        && !no_show
         && s.allows(who)
         && exit_of(world, e, kind, slot, who).is_some()
 }

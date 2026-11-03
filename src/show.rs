@@ -5,8 +5,8 @@
 //! The state itself, the scripts and the show info of each tank, is [`crate::zoo::Shows`], loaded
 //! and saved with the zoo. [`update`] is the show manager's step (the cycle is `cycle`), [`relay`]
 //! the world manager's and the grandstands' reading of the events. The animal side of an item is
-//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The audience and the
-//! figures are not here yet.
+//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The audience is
+//! `audience`: the search of a guest for a show and the price of a seat.
 
 use crate::building::{kind_of, leave::push_out};
 use crate::config::{Config, to_float, to_int};
@@ -17,12 +17,14 @@ use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::ShowInfo;
 
+mod audience;
 mod cycle;
 mod performer;
 mod relay;
 pub mod trick;
 mod units;
 
+pub use audience::{find, pay};
 pub use relay::{listen_grandstand, listen_world};
 pub use units::{Move, counted, settle};
 
@@ -68,6 +70,8 @@ pub struct Params {
     pub threshold: i32,
     /// The admission a type record takes when a script gives it its first (`defaultShowAdmission`).
     pub admission: f32,
+    /// `[AI] maxDistToGoToShow` of the ini file: how far a guest goes to a show (shows 7.1).
+    pub distance: i32,
 }
 
 impl Default for Params {
@@ -78,6 +82,7 @@ impl Default for Params {
             show: [25, 50, 75],
             threshold: 5,
             admission: 0.0,
+            distance: 150,
         }
     }
 }
@@ -116,6 +121,7 @@ impl Params {
                 .section("cost")
                 .and_then(|s| s.get("defaultShowAdmission"))
                 .map_or(found.admission, to_float),
+            distance: found.distance,
         }
     }
 }

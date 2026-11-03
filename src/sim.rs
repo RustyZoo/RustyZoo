@@ -49,6 +49,22 @@ use crate::unit;
 use crate::world::World;
 use crate::zoo::Clocks;
 
+/// Books what the units were paid during the step, list after list, into the accounts.
+fn book_income(units: &mut unit::Units, money: &mut Money) {
+    let lists = [
+        (std::mem::take(&mut units.donated), money::DONATIONS),
+        (std::mem::take(&mut units.concessions), money::CONCESSIONS),
+        (std::mem::take(&mut units.show_income), money::SHOW_INCOME),
+        (
+            std::mem::take(&mut units.recycled),
+            money::CONSTRUCTION_REFUND,
+        ),
+    ];
+    for (list, category) in lists {
+        list.into_iter().for_each(|d| money.refund(category, d));
+    }
+}
+
 /// The `[AI]` keys of the ini file that change the game, with the original's fallbacks
 /// (simulation 9.1). Those that belong to the path finder, the habitat manager or the goals are
 /// read here once and used by them.
@@ -692,6 +708,7 @@ impl Sim {
         world.units.donation_factor = settings.donation_factor;
         world.units.variable_speeds = self.ai.variable_unit_speeds != 0;
         world.units.attraction_score = self.ai.use_attraction_attractiveness != 0;
+        world.units.show.distance = self.ai.max_dist_to_go_to_show;
         world.units.prices = settings.prices;
         let count = world.zoo.entities.len();
         for at in 0..count {
@@ -729,15 +746,7 @@ impl Sim {
         for (category, cost) in std::mem::take(&mut world.units.spent) {
             money.spend(category, cost);
         }
-        for d in std::mem::take(&mut world.units.donated) {
-            money.refund(money::DONATIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.concessions) {
-            money.refund(money::CONCESSIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.recycled) {
-            money.refund(money::CONSTRUCTION_REFUND, d);
-        }
+        book_income(&mut world.units, money);
         for _ in 0..std::mem::take(&mut world.units.guests_gone) {
             money.count(money::GUESTS_GONE);
         }

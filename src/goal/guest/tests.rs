@@ -1,5 +1,7 @@
 //! The ladder rung that sends a guest out, and the leave goal on a synthetic map.
 
+mod show;
+
 use super::*;
 use crate::behaviour::{Call, Data, Heard, NoData, Number, Row, Timing, parse_call};
 use crate::entity::Catalogue;

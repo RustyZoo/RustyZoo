@@ -19,10 +19,31 @@ pub(super) fn site_score(attractiveness: i32, loved: bool, d: i64) -> i64 {
 }
 
 impl Cx<'_, '_> {
+    /// Ladder point 10.1 (shows 7.1): a guest goes to the nearest grandstand with a show soon that
+    /// it has not seen, serving the need `grandstand`; the walk is the building chain's. Whether
+    /// it found one, which ends the ladder.
+    fn show_rung(&mut self) -> bool {
+        let tile = self.tile();
+        let Part::Guest(g) = &self.unit.part else {
+            return false;
+        };
+        let reach = self.world.units.show.distance;
+        let Some(id) =
+            crate::show::find(self.world, self.ctx.cat, self.ctx.rng, tile, &g.seen, reach)
+        else {
+            return false;
+        };
+        self.head_for(id, "grandstand");
+        true
+    }
+
     /// Ladder point 10.2 and 10.3: a guest with an exhibit or scenery to see takes the site task,
     /// mode 4; with none the seen count goes and `checkLeaveZoo` may send it away. Whether the
     /// ladder ends there.
     pub(in crate::goal) fn next_site(&mut self) -> bool {
+        if self.show_rung() {
+            return true;
+        }
         let Part::Guest(g) = &self.unit.part else {
             return false;
         };

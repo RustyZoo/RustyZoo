@@ -300,6 +300,30 @@ impl ShowInfo {
         self.records.iter().find(|r| r.key == t)
     }
 
+    /// A seat of price `r` is sold (shows 7.3 point 3): the receipts of the type record of the
+    /// show's species (made when missing) and then of the info, this month and in all, and the
+    /// attendance in the same four places.
+    pub fn book(&mut self, r: f32) {
+        let species = self.show.species;
+        let at = self
+            .records
+            .iter()
+            .position(|t| t.key == species)
+            .unwrap_or_else(|| {
+                self.records.push(TypeRecord::new(species, 0, 0));
+                self.records.len() - 1
+            });
+        let sold = |receipts: &mut [u32; 3], attendance: &mut [u32; 3]| {
+            for n in [0, 2] {
+                receipts[n] = (f32::from_bits(receipts[n]) + r).to_bits();
+                attendance[n] = attendance[n].wrapping_add(1);
+            }
+        };
+        let record = &mut self.records[at];
+        sold(&mut record.receipts, &mut record.attendance);
+        sold(&mut self.receipts, &mut self.attendance);
+    }
+
     /// The units of type `t` that take part (shows 3.2).
     pub fn units(&self, t: u32) -> &[u32] {
         self.record(t).map_or(&[], |r| &r.units)

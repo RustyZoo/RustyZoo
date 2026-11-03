@@ -411,6 +411,8 @@ pub struct Units {
     pub upgrade_index: std::collections::BTreeMap<u32, u32>,
     /// What guests paid buildings during the step, which the step books as concessions.
     pub concessions: Vec<f32>,
+    /// What guests paid for seats at shows during the step, which the step books as show income.
+    pub show_income: Vec<f32>,
     /// What the compost paid for dung during the step, which the step books as a construction refund.
     pub recycled: Vec<f32>,
     building_lines: Vec<String>,
@@ -472,6 +474,7 @@ impl Default for Units {
             upgrades: Default::default(),
             upgrade_index: Default::default(),
             concessions: Vec::new(),
+            show_income: Vec::new(),
             recycled: Vec::new(),
             building_lines: Vec::new(),
             guest_lines: Vec::new(),
