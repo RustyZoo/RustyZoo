@@ -254,6 +254,7 @@ fn animal(swims: bool, large: bool) -> Species {
         swims,
         large,
         tile: Some((1, 1)),
+        grandstand: false,
     }
 }
 

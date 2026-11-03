@@ -692,6 +692,7 @@ impl Sim {
         world.units.donation_factor = settings.donation_factor;
         world.units.variable_speeds = self.ai.variable_unit_speeds != 0;
         world.units.attraction_score = self.ai.use_attraction_attractiveness != 0;
+        world.units.show.distance = self.ai.max_dist_to_go_to_show;
         world.units.prices = settings.prices;
         let count = world.zoo.entities.len();
         for at in 0..count {
@@ -875,6 +876,9 @@ fn settle_money(world: &mut World, money: &mut Money) {
     }
     for d in std::mem::take(&mut world.units.concessions) {
         money.refund(money::CONCESSIONS, d);
+    }
+    for d in std::mem::take(&mut world.units.show_income) {
+        money.refund(money::SHOW_INCOME, d);
     }
     for d in std::mem::take(&mut world.units.recycled) {
         money.refund(money::CONSTRUCTION_REFUND, d);

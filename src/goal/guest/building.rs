@@ -19,7 +19,7 @@ use crate::zoo::Entity;
 mod litter;
 
 /// The thought of a guest too crowded to be served by a building (guests 7.2).
-const CROWDED: i32 = 10243;
+pub(super) const CROWDED: i32 = 10243;
 
 /// The thoughts of a need: wanting it and finding nothing to serve it (guests 14).
 fn wants(need: &str) -> (i32, i32) {
@@ -63,7 +63,9 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn species(&self) -> Option<building::Species> {
         let e = self.world.zoo.entities.get(self.at)?;
         let egg = matches!(&self.unit.part, Part::Animal(a) if a.egg);
-        building::Species::of(self.ctx.cat, e, egg)
+        let mut who = building::Species::of(self.ctx.cat, e, egg)?;
+        who.grandstand = matches!(&self.unit.part, Part::Guest(g) if g.need == Some("grandstand"));
+        Some(who)
     }
 
     fn tile_at(&self, (x, y): Point) -> Option<usize> {
@@ -238,6 +240,16 @@ impl Cx<'_, '_> {
         if let (Some(t), Some(g)) = (tile, self.guest()) {
             crate::guest::view::see(g, t);
         }
+    }
+
+    /// Whether building `id` has no open slot for the guest.
+    pub(super) fn full(&mut self, id: u32) -> bool {
+        let Some((e, kind)) = self.building(id) else {
+            return false;
+        };
+        let who = self.species();
+        let live = self.world.units.buildings.get(&id);
+        !building::has_open_slot(self.world, &e, &kind, live, who.as_ref())
     }
 
     /// A building with no free slot (goals 11.3): a guest thinks it is crowded, the building joins
@@ -463,7 +475,18 @@ impl Cx<'_, '_> {
         let takes = (kind.removes.iter()).any(|n| items.get(n).is_some_and(|i| i.id == LITTER));
         self.bin_litter(id, takes);
         self.sell(id, &kind, price);
+        self.pay_show(id, &kind, price);
         true
+    }
+
+    /// Shows 7.3: a seat in a grandstand of a show is paid for, whoever sits (a returning guest
+    /// too): the show's figures and the cash take the price times the type's factor.
+    fn pay_show(&mut self, id: u32, kind: &Kind, price: f32) {
+        let show = self.world.units.buildings.get(&id).map_or(0, |l| l.show_id);
+        let r = kind.factor * price;
+        if show != 0 && crate::show::pay(self.world, show, r) {
+            self.world.units.show_income.push(r);
+        }
     }
 
     /// Guest buildings 7.4: a building that sells nothing consumes the guest's item for its need;
