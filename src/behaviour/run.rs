@@ -788,6 +788,7 @@ impl Runner {
 
     /// Runs the current call of the set at depth `k` once; returns whether it succeeded. It
     /// raises the level's `done` when the call has finished (behaviours 5).
+    #[allow(clippy::too_many_lines)] // #1045
     fn run(&mut self, k: usize, call: &Call, anim: &mut Animation, env: &mut Env) -> bool {
         let timing = |name: &str| env.data.timing(env.unit, name);
         let found = |name: &String| timing(name).is_some();

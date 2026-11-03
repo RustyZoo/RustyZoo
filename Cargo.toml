@@ -32,3 +32,6 @@ zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2
 [profile.dev]
 debug = "line-tables-only"
 split-debuginfo = "unpacked"
+
+[lints.clippy]
+too_many_lines = "warn"

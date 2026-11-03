@@ -836,6 +836,7 @@ fn surrounding(input: &Input) -> Vec<&Likes> {
 /// Rates the exhibit for each species in it, in the order the species first appear, then for
 /// those of its amphibious neighbours (rules 5.1 to 5.6). The fields that depend on the animals'
 /// own state (happiness sums, hunger counts) are not part of the rating and not kept.
+#[allow(clippy::too_many_lines)] // #1045
 pub fn rate(input: &Input) -> Vec<Record> {
     let site = &input.site;
     let (tank, show) = (site.water.is_some(), site.water.is_some_and(|w| w.show));

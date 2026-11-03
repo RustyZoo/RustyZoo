@@ -352,6 +352,7 @@ fn create_out_dir(out: &Path) -> Result<(), CliError> {
 }
 
 /// Plays `member`, or, without one, starts up to the main menu.
+#[allow(clippy::too_many_lines)] // #1045
 pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliError> {
     let flags = flags(words)?;
     // Only a game that opens with the run has a main panel to leave out.

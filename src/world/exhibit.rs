@@ -339,6 +339,7 @@ impl World {
 
     /// The exhibits after the edit of an exhibit fence piece on side `d` of tile `a` (`hint`; none
     /// for an undo, which also makes `quiet`: no gate is chosen and the counter stays).
+    #[allow(clippy::too_many_lines)] // #1045
     pub(super) fn settle(&mut self, hint: Option<(usize, usize)>, quiet: bool) {
         let old = std::mem::take(&mut self.exhibits);
         let parts: Vec<Part> = exhibit::parts(self)

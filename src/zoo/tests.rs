@@ -1845,6 +1845,7 @@ fn new_guest() -> GuestRecord {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // #1045
 fn an_entity_made_in_play_is_written_and_read_back() {
     let fence = Fence {
         strength: 30,

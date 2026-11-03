@@ -2025,6 +2025,7 @@ fn a_gate_chosen_by_the_game_is_made_healthy() {
     assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
 }
 
+#[allow(clippy::too_many_lines)] // #1045
 fn gate_tool_run() -> Seen {
     // Every fence piece is a square of 12 pixels around its anchor, which the gate tool picks.
     let mut square = Vec::new();

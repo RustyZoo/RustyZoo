@@ -43,6 +43,7 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 
 - `README.md` and `docs/architecture.md` merge as a union (`.gitattributes`), so a rebase can succeed while leaving the old and the new copy of a line side by side, and GitHub's own merge then conflicts.
 - After every rebase run `ci/check-doc-rows.sh` and keep one line per row. It fails on two table rows with the same first cell, two bullets with the same bold lead, and two command lines with the same command in a code block.
+- A function over 150 lines fails clippy (`too_many_lines`); a non-test file over 1000 lines fails `ci/check-file-size.sh` unless `ci/file-size-allow.txt` lists it, and a listed file may only shrink.
 
 ## Windows CI
 
