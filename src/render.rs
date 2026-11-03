@@ -376,19 +376,11 @@ impl Placed {
         (x, y - i64::from(self.lift))
     }
 
-    /// The box `b` of the picture at normal zoom, moved to the zoomed `anchor`: scaled about the
-    /// anchor by the blitter, with two pixels to spare for its rounding.
+    /// The box `b` of the picture at normal zoom, lift included, moved to the zoomed `anchor`
+    /// (which is raised by the lift as well): scaled about the anchor by the blitter, with two
+    /// pixels to spare for its rounding.
     fn zoomed_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom) -> [i64; 4] {
-        self.scaled_box(b, anchor, level, i64::from(self.y) - i64::from(self.lift))
-    }
-
-    /// The box where the picture is drawn: [`Placed::zoomed_box`] with the lift of a raised face
-    /// (which the culling box leaves out) applied after the zoom.
-    fn drawn_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom) -> [i64; 4] {
-        self.scaled_box(b, anchor, level, i64::from(self.y))
-    }
-
-    fn scaled_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom, y: i64) -> [i64; 4] {
+        let y = i64::from(self.y) - i64::from(self.lift);
         let rel = [
             b[0] - i64::from(self.x),
             b[1] - y,
@@ -607,7 +599,7 @@ impl Staged {
                     continue;
                 }
                 let anchor = placed.anchor(self.rotation, zoom, level);
-                let b = placed.drawn_box(b, anchor, level);
+                let b = placed.zoomed_box(b, anchor, level);
                 let rect = [
                     (b[0] - i64::from(view_x)).clamp(0, i64::from(width)) as i32,
                     (b[1] - i64::from(view_y)).clamp(0, i64::from(height)) as i32,
@@ -654,13 +646,12 @@ impl Staged {
         for (placed, b) in self.pictures().filter(|(p, _)| grid || !p.grid) {
             let anchor = placed.anchor(self.rotation, zoom, level);
             // As `draw` culls by the window, then where it draws.
-            let c = placed.zoomed_box(b, anchor, level);
+            let b = placed.zoomed_box(b, anchor, level);
             let (w, h) = (i64::from(target.width), i64::from(target.height));
             let (vx, vy) = (i64::from(view_x), i64::from(view_y));
-            if !(c[0] < vx + w && c[2] > vx && c[1] < vy + h && c[3] > vy) {
+            if !(b[0] < vx + w && b[2] > vx && b[1] < vy + h && b[3] > vy) {
                 continue;
             }
-            let b = placed.drawn_box(b, anchor, level);
             for (part, r) in parts.iter_mut().zip(rects) {
                 let (left, top) = (
                     i64::from(view_x) + i64::from(r[0]),
