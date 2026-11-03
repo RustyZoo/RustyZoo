@@ -11,6 +11,18 @@ use crate::text::from_cp1252;
 use crate::timing::ini_whole;
 use crate::world::Event;
 
+/// The new exhibits that wait for a name and the questions about them.
+#[derive(Default)]
+pub(super) struct Naming {
+    /// The exhibits that wait for a name, the first one's dialog being open or not.
+    pub(super) queue: Vec<u32>,
+    pub(super) open: bool,
+    /// The new tank whose objects the player is asked about (the question is open).
+    pub(super) refused: Option<u32>,
+    /// The pieces of the drag after the one that closed an exhibit, bought once it is named.
+    pub(super) rest: Vec<Pending>,
+}
+
 /// The layout of the name dialog, its message, its field and the string of its message.
 pub(super) const NAME_DIALOG: i32 = 45300;
 pub(super) const NAME_FIELD: i32 = 45308;
@@ -44,7 +56,7 @@ impl App<'_> {
     /// the gate button follows the number of exhibits that are named, and
     /// each new exhibit queues its name dialog.
     pub(super) fn exhibits_told(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let events = game.world.take_events();
         // Buildings on a tank whose water or walls moved are validated again (guest buildings 11.1.1).
         crate::building::dead::wet_changed(&mut game.world, self.renderer.catalogue());
@@ -86,10 +98,10 @@ impl App<'_> {
                 },
                 _ => continue,
             };
-            self.exhibit_lines.push(line);
+            self.lines.exhibit.push(line);
             // The exhibit sound plays once for each exhibit that asks for its name (sound 7).
             if let Event::New { id, ask: true } = event {
-                self.tool_lines.push(format!("sound exhibit {id}"));
+                self.lines.tool.push(format!("sound exhibit {id}"));
                 self.ui_sounds.push("exhibit");
             }
         }
@@ -98,7 +110,7 @@ impl App<'_> {
                 Event::New { id, ask } => {
                     game.world.set_created(id, self.sim.calendar().date());
                     if ask {
-                        game.naming.push(id);
+                        game.naming.queue.push(id);
                     }
                 }
                 // The piece made the gate, here or by the game, is made healthy; the old gate,
@@ -140,16 +152,16 @@ impl App<'_> {
                 // The panel shows this tank's water: it is written again.
                 Event::Tank(id) if game.panel.current == Some(id) => game.panel.clock.force = true,
                 Event::Blocked { id, message } => self.exhibit_messages.push((id, message)),
-                Event::Objects(id) => game.refused = Some(id),
+                Event::Objects(id) => game.naming.refused = Some(id),
                 _ => {}
             }
         }
         // An exhibit that is being named, or a tank that is being asked about, is not in the list yet.
         let count = (game.world.exhibits().list().iter())
-            .filter(|e| !game.naming.contains(&e.id) && game.refused != Some(e.id))
+            .filter(|e| !game.naming.queue.contains(&e.id) && game.naming.refused != Some(e.id))
             .count();
         if let Some(ui) = &mut self.ui {
-            game.build.set_exhibits(ui, count, &mut self.tool_lines);
+            game.build.set_exhibits(ui, count, &mut self.lines.tool);
         }
         self.tank_ask();
         self.name_next();
@@ -158,16 +170,14 @@ impl App<'_> {
 
     /// Asks about the objects of a new tank, if it has some and no question is open (3.9).
     fn tank_ask(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
-        if game.refused.is_none() || self.asked.is_some() {
+        playing!(self, game, ui);
+        if game.naming.refused.is_none() || self.asked.is_some() {
             return;
         }
         let text = to_cp1252(&ui.string(TANK_OBJECTS));
         if ui.ask(QUESTION, &text, Buttons::YES_NO) {
             self.asked = Some(Asked::Tank);
-            self.tool_lines.push("tool tank ask".into());
+            self.lines.tool.push("tool tank ask".into());
         } else {
             // No dialog in this interface: the objects go.
             self.tank_answered(6);
@@ -184,11 +194,11 @@ impl App<'_> {
     }
 
     fn tank_yes(&mut self) {
-        let Some(game) = &mut self.game else { return };
-        let Some(id) = game.refused.take() else {
+        playing!(self, game);
+        let Some(id) = game.naming.refused.take() else {
             return;
         };
-        self.tool_lines.push("tool tank answer yes".into());
+        self.lines.tool.push("tool tank answer yes".into());
         let world = &game.world;
         let outside = world.outside(id);
         // (id, a unit, a unit that moves, an animal): a staff member goes to the tile outside, an
@@ -227,13 +237,13 @@ impl App<'_> {
     /// The operation that made the tank is undone and what it cost comes back (placing 8): every
     /// piece it placed gives its whole price back, every piece it removed takes its refund back.
     pub(super) fn tank_no(&mut self) {
-        let Some(game) = &mut self.game else { return };
-        let Some(id) = game.refused.take() else {
+        playing!(self, game);
+        let Some(id) = game.naming.refused.take() else {
             return;
         };
-        self.tool_lines.push("tool tank answer no".into());
+        self.lines.tool.push("tool tank answer no".into());
         let done = game.world.decline_tank(id);
-        game.rest.clear();
+        game.naming.rest.clear();
         self.undone(done);
     }
 
@@ -253,19 +263,17 @@ impl App<'_> {
         let name = game.world.exhibits().get(id).map_or("", |e| &e.name);
         let text = ui.string(message).replacen("%s", name, 1);
         ui.message(&to_cp1252(&text));
-        self.tool_lines.push(format!("tool message {message}"));
+        self.lines.tool.push(format!("tool message {message}"));
     }
 
     /// Opens the name dialog of the first exhibit waiting, if none is open: its default name in
     /// the field, which has the focus.
     pub(super) fn name_next(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
-        if game.naming_open {
+        playing!(self, game, ui);
+        if game.naming.open {
             return;
         }
-        let Some(&first) = game.naming.first() else {
+        let Some(&first) = game.naming.queue.first() else {
             return;
         };
         let name = game.world.exhibits().get(first).map_or("", |e| &e.name);
@@ -275,10 +283,10 @@ impl App<'_> {
             ui.set_wide_text(NAME_FIELD, false);
             ui.set_text(NAME_FIELD, &to_cp1252(name));
             ui.focus(NAME_FIELD);
-            game.naming_open = true;
+            game.naming.open = true;
         } else {
             // No dialog in this interface: the default names stay.
-            for id in std::mem::take(&mut game.naming) {
+            for id in std::mem::take(&mut game.naming.queue) {
                 game.world.give_gate(id);
             }
             self.exhibits_told();
@@ -292,15 +300,15 @@ impl App<'_> {
         let (Some(game), Some(ui)) = (&mut self.game, &self.ui) else {
             return;
         };
-        if !std::mem::take(&mut game.naming_open) || game.naming.is_empty() {
+        if !std::mem::take(&mut game.naming.open) || game.naming.queue.is_empty() {
             return;
         }
-        let id = game.naming.remove(0);
+        let id = game.naming.queue.remove(0);
         let bytes = ui.text(NAME_FIELD).unwrap_or_default();
         let mut hooked = None;
         if visible(&bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
-            self.exhibit_lines.push(format!("name {id} {text:?}"));
+            self.lines.exhibit.push(format!("name {id} {text:?}"));
             game.world.rename(id, text.clone());
             hooked = Some(text);
         }
@@ -309,9 +317,9 @@ impl App<'_> {
         if let Some(text) = hooked {
             self.name_hook(Subject::Exhibit, &text);
         }
-        let Some(game) = &mut self.game else { return };
-        if !game.naming_open {
-            let rest = std::mem::take(&mut game.rest);
+        playing!(self, game);
+        if !game.naming.open {
+            let rest = std::mem::take(&mut game.naming.rest);
             self.buy(rest, true);
         }
     }

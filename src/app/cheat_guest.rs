@@ -140,7 +140,7 @@ impl App<'_> {
     /// Runs one of the guest-name cheats; the other cheats are the name hook's.
     pub(super) fn guest_cheat(&mut self, cheat: Cheat) {
         let cat = self.renderer.catalogue();
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         match cheat {
             Cheat::Palette { guests, buildings } => {
                 palette_set(&mut game.world, cat, guests, buildings)
@@ -160,8 +160,11 @@ impl App<'_> {
             }
             Cheat::EggsHatchFast => self.cheats.eggs_hatch_fast = true,
             Cheat::CarsToRubble => {
-                let (carry, selected, pending) =
-                    (&mut game.carry, &mut game.selected, &mut game.pending);
+                let (carry, selected, pending) = (
+                    &mut game.carry,
+                    &mut game.selected,
+                    &mut game.placing.pending,
+                );
                 let held = &mut game.held;
                 let template = (self.ui.as_ref()).map_or(String::new(), |u| u.string(PIECE_NAME));
                 let renderer = &self.renderer;

@@ -52,7 +52,7 @@ impl App<'_> {
 
     /// Makes the types with this name id available, as a research program does.
     fn unlock(&mut self, name: i32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         game.build.start_research(cat, &[(name, true)]);
         if let Some(ui) = &mut self.ui {
@@ -81,7 +81,7 @@ impl App<'_> {
 
     /// Every animal of Dinosaur Digs goes at once: no refund, no question, no message.
     fn dinosaurs_vanish(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         let digs = |e: &Entity| {
             e.class == "animals"
@@ -103,7 +103,7 @@ impl App<'_> {
     /// Every foliage item is taken out with no refund and no question; then the bonus is booked
     /// as a construction refund and goes into the cash, even when no foliage stood.
     fn foliage_clear(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         let foliage = |e: &Entity| {
             e.class == "objects"
@@ -124,7 +124,7 @@ impl App<'_> {
 
     /// Every rubbleable building turns to rubble (cheats 4.4): no refund, no message.
     fn buildings_to_rubble(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let template = (self.ui.as_ref()).map_or(String::new(), |u| u.string(PIECE_NAME));
         let renderer = &self.renderer;
         let shape = |e: &Entity| renderer.shape(e);
@@ -140,7 +140,7 @@ impl App<'_> {
 
     /// Every fence piece that is broken or at or below its decayed life is made healthy.
     fn fences_repair(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         self.sim.repair_fences(&mut game.world, cat);
     }

@@ -45,7 +45,7 @@ impl App<'_> {
         };
         if game.selected != Some(id) {
             game.selected = Some(id);
-            self.tool_lines.push(format!("tool select {id}"));
+            self.lines.tool.push(format!("tool select {id}"));
             self.type_sound(id, "placesound");
             return true;
         }
@@ -56,7 +56,7 @@ impl App<'_> {
     /// Picks the unit up (8.2): it follows the pointer as a pending unit, free of charge, and
     /// nothing is selected (`world carry ID`).
     pub(super) fn carry_up(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         if let Some(carry) = place::unit::pick_up(&mut game.world, cat, id, game.camera.rotation) {
             // A tour guide picked up lets its group go at once (tour guide 12.1).
@@ -70,7 +70,7 @@ impl App<'_> {
             crate::goal::picked_up(&mut game.world, cat, &mut self.sim.rng, &data, id);
             game.selected = None;
             game.carry = Some(carry);
-            self.world_lines.push(format!("carry {id}"));
+            self.lines.world.push(format!("carry {id}"));
             self.type_sound(id, "pickupsound");
             self.aim(false);
         }
@@ -122,7 +122,7 @@ impl App<'_> {
 
     /// The drop rule of the unit `id` put down (8.5).
     fn drop_rule(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         let data = Library {
             catalogue: cat,
@@ -160,7 +160,7 @@ impl App<'_> {
         self.sim.absorb(&mut game.world);
         game.selected = None;
         game.carry = Some(carry);
-        self.world_lines.push(format!("carry {id}"));
+        self.lines.world.push(format!("carry {id}"));
         self.type_sound(id, "pickupsound");
         self.aim(false);
         true
@@ -171,15 +171,13 @@ impl App<'_> {
     /// animal that stands in an exhibit; a place that is not valid keeps it carried and shows its
     /// message, as a placement does.
     pub(super) fn drop_carried(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
-        let (Some(carry), Some(p)) = (game.carry.clone(), game.pending.clone()) else {
+        playing!(self, game, ui);
+        let (Some(carry), Some(p)) = (game.carry.clone(), game.placing.pending.clone()) else {
             return;
         };
         if p.verdict == place::Verdict::Invalid {
             self.ui_sounds.push("noplace");
-            refusal(ui, &mut self.tool_lines, p.message);
+            refusal(ui, &mut self.lines.tool, p.message);
             return;
         }
         let cat = self.renderer.catalogue();
@@ -203,7 +201,7 @@ impl App<'_> {
             game.carry = None;
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             self.ui_sounds.push("place");
             return self.aim(false);
         }
@@ -222,7 +220,7 @@ impl App<'_> {
             rating::react(&mut game.world, cat, before, change, rand);
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             self.drop_rule(carry.id);
             self.drop_sound(carry.id);
         }
@@ -232,7 +230,7 @@ impl App<'_> {
     /// Ends the move without any check (8.6): the unit is put back where it stood, facing as it
     /// did, and selected again, `world putback ID X,Y`.
     pub(super) fn put_back(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(carry) = game.carry.take() else {
             return;
         };
@@ -243,14 +241,14 @@ impl App<'_> {
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             return self.aim(false);
         }
         if place::unit::put_down(&mut game.world, carry.id, carry.from, carry.facing) {
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);
-            self.world_lines.push(line);
+            self.lines.world.push(line);
             self.drop_rule(carry.id);
         }
         self.aim(false);

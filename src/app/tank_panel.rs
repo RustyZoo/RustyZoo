@@ -25,7 +25,7 @@ impl App<'_> {
 
     /// Shows message `id` (with `name` in its `%s`) in the message line, and logs it.
     fn tank_message(&mut self, id: i32, name: &str) {
-        self.tool_lines.push(format!("tool message {id}"));
+        self.lines.tool.push(format!("tool message {id}"));
         if let Some(ui) = &mut self.ui {
             let text = ui.string(id).replacen("%s", name, 1);
             ui.message(&to_cp1252(&text));
@@ -51,7 +51,7 @@ impl App<'_> {
         let Some((id, prices)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let (Some(tank), floor) = (game.world.tank(id), game.world.tank_config().height) else {
             return;
         };
@@ -80,7 +80,7 @@ impl App<'_> {
         let Some((id, prices)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(ground) = game.world.ground(id) else {
             return;
         };
@@ -106,7 +106,7 @@ impl App<'_> {
         let Some((id, prices)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         if (game.world.tank(id)).is_none_or(|t| t.level > 0 || t.filled) {
             return;
         }
@@ -122,7 +122,7 @@ impl App<'_> {
         if told {
             self.water_message(id, NOT_DRAINED, "");
         }
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         if let Some(object) = refused {
             let cat = self.renderer.catalogue();
             let world = &game.world;
@@ -141,7 +141,7 @@ impl App<'_> {
         let Some((id, _)) = self.panel_tank() else {
             return;
         };
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let drained = game.world.drain(id);
         game.panel.clock.force = true;
         if !drained {

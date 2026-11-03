@@ -51,7 +51,7 @@ fn water(s: &Session) -> (u32, u32, bool, bool) {
 
 /// The messages the buttons told since the last call.
 fn told(s: &mut Session) -> Vec<String> {
-    std::mem::take(&mut s.app.tool_lines)
+    std::mem::take(&mut s.app.lines.tool)
         .into_iter()
         .filter(|l| l.starts_with("tool message"))
         .collect()

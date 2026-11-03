@@ -1237,7 +1237,7 @@ fn rich(v: u32) -> Vec<u8> {
 }
 
 /// [`rich`] without a show, which the writer cannot upgrade below 106.
-fn lean(v: u32) -> Vec<u8> {
+pub(super) fn lean(v: u32) -> Vec<u8> {
     rich_with(v, false)
 }
 

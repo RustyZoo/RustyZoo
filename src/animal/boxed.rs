@@ -5,7 +5,8 @@
 use super::{Animal, ENERGY, Keys, fire};
 use crate::behaviour::{Animation, Runner};
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::unit::{Ctx, Part, Unit, swim};
+use crate::place::{Class, snap as grid};
+use crate::unit::{Ctx, Part, Unit, movement, swim};
 use crate::world::World;
 
 /// Crates the animal (unit placing 9.1): it is no longer escaped nor darted, no keeper has a
@@ -14,6 +15,28 @@ pub fn crate_up(a: &mut Animal) {
     a.crated = true;
     (a.escaped, a.tranq, a.claim) = (false, false, 0);
     (a.walk, a.drinking, a.wants_food, a.thirsty) = (None, false, false, false);
+}
+
+/// Snaps the unit at `at` to the tile grid where it stands (unit placing 9.1, 9.2): the position
+/// of `placing.md` 4.2 for its footprint now (turned by the facing), the crate's while crated, and
+/// the ground under it.
+pub fn snap(world: &mut World, at: usize) {
+    let Some(c) = world.zoo.entities[at].common.as_ref() else {
+        return;
+    };
+    let (point, z, rotation) = ((c.x, c.y), c.z, c.rotation);
+    let Some((fx, fy)) = world.unit_footprint(at) else {
+        return;
+    };
+    // The footprint is turned by the facing (unit placing 9.1.1).
+    let fp = if rotation % 4 == 0 {
+        (fx, fy)
+    } else {
+        (fy, fx)
+    };
+    let (x, y) = grid(Class::Fixed, point, fp, 0);
+    world.place_unit(at, (x, y, z), rotation);
+    movement::snap(world, at);
 }
 
 /// A keeper's crate job (staff 7.11): the animal `id` is crated where it stands, stops everything
@@ -76,6 +99,7 @@ pub fn check(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     unit.animation = Animation::default();
     (unit.moving, unit.destination) = (false, None);
     unit.path.clear();
+    snap(world, at);
     swim::check(unit, world, at);
     swim::add_to_map(unit, world, at);
     if let Some(t) = tile {

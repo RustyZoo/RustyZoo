@@ -44,9 +44,7 @@ impl App<'_> {
     pub(super) fn units_sync(&mut self) {
         let building = self.game.as_ref().and_then(|g| g.selected);
         let building = building.and_then(|id| Some((id, self.building_layout(id)?)));
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let world = &game.world;
         let live = |id: &u32| {
             world.find(*id).is_some()
@@ -121,9 +119,7 @@ impl App<'_> {
     /// worker has the duties tab and no assign button, anyone else the exhibits tab; the tab that
     /// was shown last is mapped to the class's own.
     pub(super) fn open_staff(&mut self, id: u32) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let worker = game
             .world
             .units
@@ -156,13 +152,11 @@ impl App<'_> {
     /// staff none`), the assign button starts the mode on its exhibits tab and ends with it, and
     /// the panel sits above the exhibit panel while it is shown (4.2).
     pub(super) fn staff_sync(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let gone = (game.staff.selected).is_some_and(|id| game.world.find(id).is_none());
         if gone || !ui.shown(staff::LAYOUT) {
             if game.staff.selected.is_some() {
-                self.panel_lines.push("staff none".into());
+                self.lines.panel.push("staff none".into());
             }
             game.staff.deselect();
             ui.set_hidden(staff::LAYOUT, true);
@@ -224,20 +218,18 @@ impl App<'_> {
     pub(super) fn assign_aim(&mut self) {
         let over = match (
             self.assigning(),
-            self.game.as_ref().is_some_and(|g| g.hover),
+            self.game.as_ref().is_some_and(|g| g.placing.hover),
         ) {
             (Some(id), true) => self.exhibit_under(id),
             _ => None,
         };
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if std::mem::replace(&mut game.staff.over, over) == over {
             return;
         }
         ui.help_tip(if over.is_some() { ASSIGN_HELP } else { 0 });
         ui.touch();
-        self.tool_lines.push(match over {
+        self.lines.tool.push(match over {
             Some((x, good)) => {
                 format!("tool assign over {x} {}", if good { "good" } else { "bad" })
             }
@@ -251,18 +243,16 @@ impl App<'_> {
         let Some((exhibit, _)) = self.exhibit_under(id) else {
             return;
         };
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         match assign::assign(&mut game.world, cat, id, exhibit) {
             Outcome::Assigned => {
                 game.staff.clock.force = true;
-                self.tool_lines.push(format!("tool assign {id} {exhibit}"));
+                self.lines.tool.push(format!("tool assign {id} {exhibit}"));
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");
-                carry::refusal(ui, &mut self.tool_lines, message);
+                carry::refusal(ui, &mut self.lines.tool, message);
             }
         }
     }
@@ -272,7 +262,7 @@ impl App<'_> {
     /// shown if hidden.
     pub(super) fn staff_row(&mut self, row: i32) {
         self.end_assign();
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         if let Some(ui) = &mut self.ui {
             ui.set_enabled(staff::REMOVE, row >= 0);
         }
@@ -315,7 +305,7 @@ impl App<'_> {
         };
         assign::unassign(&mut game.world, id, row);
         game.staff.clock.force = true;
-        self.tool_lines.push(match row {
+        self.lines.tool.push(match row {
             Some(r) => format!("tool unassign {id} row {r}"),
             None => format!("tool unassign {id} all"),
         });
@@ -323,9 +313,7 @@ impl App<'_> {
 
     /// A row of the worker's duty list was selected (9.4): the switch of that kind flips.
     pub(super) fn staff_duty(&mut self, row: i32) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         let kinds = crate::staff::duty_kinds(cat);
         let worker = game

@@ -1,5 +1,4 @@
 src/animal.rs 1643
-src/app.rs 2899
 src/build.rs 1464
 src/entity.rs 2037
 src/exhibit/rating.rs 1551

@@ -50,14 +50,12 @@ impl App<'_> {
     /// 8.6); the tool entered clears its session. The tools force the grid on and give it back
     /// to the player's choice (input 4.8).
     pub(super) fn terrain_sync(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let wanted = game.build.terrain_mode();
         let mut short = false;
         if wanted != game.terrain.mode() {
             if game.terrain.mode().is_some() {
-                let lines = &mut self.terrain_lines;
+                let lines = &mut self.lines.terrain;
                 let cat = self.renderer.catalogue();
                 let habits = |e: &Entity| habit(cat, e);
                 let (tool, money) = (&mut game.terrain, &mut game.money);
@@ -73,7 +71,7 @@ impl App<'_> {
                 game.terrain.enter(mode);
                 game.grid = true;
                 panel::show(ui, self.renderer.vfs(), &game.terrain, mode);
-                self.terrain_lines.push(format!("enter {}", mode.name()));
+                self.lines.terrain.push(format!("enter {}", mode.name()));
             }
             game.shown = None;
         }
@@ -82,16 +80,14 @@ impl App<'_> {
         self.terrain_refresh();
         if short {
             let text = self.ui.as_ref().map(|ui| ui.string(SHORT));
-            self.terrain_lines.push("short".into());
+            self.lines.terrain.push("short".into());
             self.say(&text.unwrap_or_default());
         }
     }
 
     /// Writes the panel again when what it shows changed.
     pub(super) fn terrain_refresh(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let Some(mode) = game.terrain.mode() else {
             return;
         };
@@ -114,16 +110,14 @@ impl App<'_> {
     /// The mouse on the map reaches the tool (terrain editing 5.6 and 6.3). `on_map` says the
     /// message belongs to the map view.
     pub(super) fn terrain_mouse(&mut self, mouse: Mouse, on_map: bool) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         if game.terrain.mode().is_none() {
             return;
         }
         if !on_map {
             // The amount next to the pointer goes away with the pointer.
             ui.touch();
-            game.log_amount(&mut self.terrain_lines);
+            game.log_amount(&mut self.lines.terrain);
             return;
         }
         let cat = self.renderer.catalogue();
@@ -131,7 +125,7 @@ impl App<'_> {
         let at = ui.pointer();
         let camera = &game.camera;
         let zoom = Zoom::from_value(camera.zoom);
-        let lines = &mut self.terrain_lines;
+        let lines = &mut self.lines.terrain;
         let under = |world: &World, at| camera.tile_under(&world.zoo, at);
         match mouse {
             Mouse::Down | Mouse::Double => {
@@ -173,10 +167,8 @@ impl App<'_> {
     /// Every frame, button up, the tile under the pointer is looked at: a new one shows the help of
     /// its terrain type (terrain editing 7.3). A stroke released on another tile shows it too.
     pub(super) fn terrain_help(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
-        if !game.hover {
+        playing!(self, game, ui);
+        if !game.placing.hover {
             return;
         }
         let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
@@ -187,9 +179,7 @@ impl App<'_> {
 
     /// The button `id` of the interface was pressed: if it belongs to the terrain panel, it acts.
     pub(super) fn terrain_pressed(&mut self, id: i32) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let Some(mode) = game.terrain.mode() else {
             return;
         };
@@ -198,7 +188,7 @@ impl App<'_> {
         };
         let cat = self.renderer.catalogue();
         let habits = |e: &Entity| habit(cat, e);
-        let lines = &mut self.terrain_lines;
+        let lines = &mut self.lines.terrain;
         let size = game.terrain.size();
         match press {
             Press::Plus | Press::Minus => {

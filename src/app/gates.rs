@@ -11,10 +11,8 @@ impl App<'_> {
     /// not cover when the pointer reached it; one the cash no longer covers at the click shows 10002
     /// in the message line (`tool message 10002`).
     pub(super) fn gate_release(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
-        let Some(gate) = game.gate.clone() else {
+        playing!(self, game, ui);
+        let Some(gate) = game.placing.gate.clone() else {
             return;
         };
         let world = &mut game.world;
@@ -39,18 +37,18 @@ impl App<'_> {
         match place::gate::place(world, &mut game.money, cat, &gate) {
             Outcome::Placed(_) => {
                 if let Some(line) = old.and_then(|id| named(world, id)) {
-                    self.world_lines.push(format!("ungate {line}"));
+                    self.lines.world.push(format!("ungate {line}"));
                 }
                 if let Some(line) = named(world, gate.piece) {
-                    self.world_lines.push(format!("gate {line}"));
+                    self.lines.world.push(format!("gate {line}"));
                 }
                 self.ui_sounds.push("place");
-                game.gate = None;
+                game.placing.gate = None;
             }
             Outcome::Refused(Some(id)) => {
                 self.ui_sounds.push("noplace");
                 ui.message(&to_cp1252(&ui.string(id)));
-                self.tool_lines.push(format!("tool message {id}"));
+                self.lines.tool.push(format!("tool message {id}"));
             }
             Outcome::Refused(None) => {}
         }
