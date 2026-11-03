@@ -1153,6 +1153,56 @@ fn an_edit_stages_the_map_again_once_at_the_next_draw() {
     });
 }
 
+#[test]
+fn a_change_out_of_the_window_still_draws_the_frame() {
+    with_app("app-restage-outside", |app, _| {
+        let first = app.pass(0, &[]).unwrap().pixels.clone();
+        // A reaction of a unit that is not there stages the map again with the same pictures.
+        app.game
+            .as_mut()
+            .unwrap()
+            .world
+            .units
+            .reactions
+            .push((99, true, 0));
+        let frame = app
+            .pass(40, &[])
+            .expect("the frame is drawn")
+            .pixels
+            .clone();
+        assert_eq!(frame, first);
+        let lines = app.log_lines(1, 40);
+        assert!(lines[0].starts_with("pass 1 t=40 draw "), "{lines:?}");
+        assert!(!lines[0].contains("draw -"), "{lines:?}");
+    });
+}
+
+#[test]
+fn frames_hashed_together_give_the_hashes_they_give_alone() {
+    let frame = |size: usize, seed: usize| Framebuffer {
+        width: size as u32,
+        height: 1,
+        pixels: (0..size * 4)
+            .map(|i| (i * 31 + seed * 7 + i / 5) as u8)
+            .collect(),
+    };
+    // From none to more than four frames (hashed one by one), and frames of other sizes.
+    for count in 0..=6 {
+        let frames: Vec<_> = (0..count).map(|k| frame(100, k)).collect();
+        let refs: Vec<_> = frames.iter().collect();
+        let want: Vec<_> = frames.iter().map(frame_hash).collect();
+        assert_eq!(frame_hashes(&refs), want, "{count} frames");
+    }
+    let mixed = [frame(100, 1), frame(7, 2), frame(0, 3)];
+    let refs: Vec<_> = mixed.iter().collect();
+    assert_eq!(
+        frame_hashes(&refs),
+        mixed.iter().map(frame_hash).collect::<Vec<_>>()
+    );
+    // The hash of the empty frame is the offset basis.
+    assert_eq!(frame_hash(&frame(0, 0)), 0xcbf2_9ce4_8422_2325);
+}
+
 fn frame_hash_of(pixels: &[u8]) -> u64 {
     frame_hash(&Framebuffer {
         width: SIZE.0,
