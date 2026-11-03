@@ -14,7 +14,7 @@ use rustyzoo::vfs::Vfs;
 use rustyzoo::world::World;
 use rustyzoo::zoo::Zoo;
 
-use crate::{CliError, Report};
+use crate::cli::{CliError, Report};
 
 /// `x,y` as a tile.
 fn tile(word: &str) -> Result<Tile, CliError> {

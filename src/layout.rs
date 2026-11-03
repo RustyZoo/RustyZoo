@@ -16,7 +16,7 @@ use rustyzoo::text::{Fonts, to_cp1252};
 use rustyzoo::ui::layout::{Tree, installed_expansions};
 use rustyzoo::vfs::Vfs;
 
-use crate::{CliError, Report, game_folder, open_game};
+use crate::cli::{CliError, Report, game_folder, open_game};
 
 /// The window of `dump-layout` without `--size`.
 const DEFAULT_SIZE: (i32, i32) = (1024, 768);

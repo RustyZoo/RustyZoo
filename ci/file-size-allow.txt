@@ -3,7 +3,6 @@ src/build.rs 1464
 src/entity.rs 2037
 src/exhibit/rating.rs 1551
 src/goal.rs 1242
-src/main.rs 2242
 src/place.rs 1068
 src/render.rs 2220
 src/sprite.rs 1979
