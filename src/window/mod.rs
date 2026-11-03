@@ -123,6 +123,7 @@ fn remember_cursors(on: bool) {
 }
 
 /// Plays the map `loaded` (its types and the zoo), or, without one, starts up to the main menu.
+#[allow(clippy::too_many_lines)] // #1045
 pub fn run(
     vfs: &Vfs,
     loaded: Option<(Catalogue, Zoo, Money)>,

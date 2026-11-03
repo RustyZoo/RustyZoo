@@ -1294,6 +1294,7 @@ impl<'a> App<'a> {
         self.timers.next_due(now)
     }
 
+    #[allow(clippy::too_many_lines)] // #1045
     fn apply(&mut self, command: Command) {
         if matches!(command, Command::Rotate(_) | Command::Zoom(_)) && self.game.is_some() {
             self.start_busy();

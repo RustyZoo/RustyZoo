@@ -1159,6 +1159,7 @@ impl<'a> MapRenderer<'a> {
     /// order but not in the zoo. The marks of `extra` give a tile (an index into the tiles) the
     /// highlight sprite in their colour, after its ground and grid lines (map drawing 7); a tile
     /// that has a mark takes the grid lines off the two tiles behind it.
+    #[allow(clippy::too_many_lines)] // #1045
     pub fn stage_with(
         &mut self,
         zoo: &Zoo,
