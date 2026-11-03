@@ -3093,6 +3093,43 @@ fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
     assert!(z.entities.is_empty());
 }
 
+#[test]
+fn a_loaded_building_is_written_from_its_record() {
+    for v in [70, 74, 75, 106] {
+        let mut b = W::default();
+        b.z(4);
+        base(&mut b, v, 4, 9, "House");
+        b.u32(2).u32(40).u32(0).u32(0);
+        b.u32(2).u32(77).u32(2).u32(78).u32(1);
+        b.u32(14).z(16).z(8).u32(100);
+        if v >= 74 {
+            b.u32(5);
+        }
+        if v >= 75 {
+            b.u32(0);
+        }
+        let bytes = file(v, 1, 1, &[], &[("building", "building", "shop", b.0)]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        let record = zoo.entities[0].common.as_mut().unwrap().building.as_mut();
+        let b = record.unwrap();
+        *b = BuildingRecord {
+            guests: [1, 2, 3],
+            income: [4, 5, 6],
+            upkeep: Some(7),
+            price: 8,
+            users: vec![(9, 1)],
+            users_now: 10,
+            fill: 11,
+            built: 12,
+            ..b.clone()
+        };
+        let want = b.clone();
+        let back = parse_to_the_end(&zoo.write(&money).unwrap());
+        let got = back.entities[0].common.as_ref().unwrap().building.clone();
+        assert_eq!(got, Some(want), "version {v}");
+    }
+}
+
 /// A show info of version 106 with a different number in every field.
 fn marked_show_info() -> Vec<u8> {
     let mut w = W::default();

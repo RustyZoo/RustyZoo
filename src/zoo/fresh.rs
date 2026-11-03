@@ -151,14 +151,11 @@ fn building(o: &mut Out, b: &BuildingRecord) {
     b.members.iter().for_each(|&m| o.u32(m));
 }
 
-/// Writes the index of the current upgrade into the building fields `post` of version 106 (they
-/// come from a body of version 70 or later, the oldest the writer upgrades): it follows the users and the figures.
-pub(super) fn set_upgrade(post: &mut [u8], index: u32) {
-    let users = post.get(16..20).and_then(|n| <[u8; 4]>::try_from(n).ok());
-    let at = users.map(|n| 52 + 8 * u32::from_le_bytes(n) as usize);
-    if let Some(word) = at.and_then(|at| post.get_mut(at..at + 4)) {
-        word.copy_from_slice(&index.to_le_bytes());
-    }
+/// The figures of a guest building as the fields after its colours.
+pub(super) fn building_post(b: &BuildingRecord) -> Vec<u8> {
+    let mut o = Out(Vec::new());
+    building(&mut o, b);
+    o.0
 }
 
 /// A new guest (save games 11.3) with no live state: the type's initial happiness, every need at 0,

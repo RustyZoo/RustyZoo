@@ -321,10 +321,16 @@ impl Scene {
     /// 64 and cut towards zero; points off the map are left out. Not the quadrants of the object.
     pub fn large_tiles(&self, o: usize) -> Vec<usize> {
         let obj = &self.objects[o];
-        let (fx, fy) = match obj.facing.is_multiple_of(4) {
+        let footprint = match obj.facing.is_multiple_of(4) {
             true => obj.footprint,
             false => (obj.footprint.1, obj.footprint.0),
         };
+        self.tiles_under(obj.x, obj.y, footprint)
+    }
+
+    /// The tiles of [`Scene::large_tiles`] for something at `(x, y)` whose footprint, already
+    /// turned with its facing, is `(fx, fy)`.
+    pub fn tiles_under(&self, x: i32, y: i32, (fx, fy): (i32, i32)) -> Vec<usize> {
         if fx <= 2 && fy <= 2 {
             return Vec::new();
         }
@@ -333,7 +339,7 @@ impl Scene {
         };
         let mut tiles: Vec<usize> = (0..(fy + 1) / 2)
             .flat_map(|b| (0..(fx + 1) / 2).map(move |a| (a, b)))
-            .filter_map(|(a, b)| self.index(at(obj.x, fx, a)?, at(obj.y, fy, b)?))
+            .filter_map(|(a, b)| self.index(at(x, fx, a)?, at(y, fy, b)?))
             .collect();
         tiles.sort_unstable();
         tiles.dedup();

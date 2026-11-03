@@ -1371,6 +1371,7 @@ fn the_hash_follows_what_a_keeper_and_his_exhibit_keep() {
             gated: false,
             tank: crate::world::TankKind::NONE,
             walkable: (false, false),
+            forms: None,
         };
         let keeper = crate::unit::testing::entity("keeper", "", 7, (32, 32), 0);
         w.add(keeper, Some(shape)).unwrap();
@@ -1673,4 +1674,61 @@ fn a_finished_zoo_has_new_values_and_no_transient_body() {
     assert_eq!(price(6), Some(run.world.units.prices.default));
     assert!(c(7).is_none(), "a transient type keeps no body");
     assert!(c(8).is_some(), "a fence keeps its figures");
+}
+
+/// A shipped map started and saved without a pass writes the figures of each of its buildings
+/// as it stored them (zoo format 6.9): the live state is their only source on a save.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn a_loaded_building_is_saved_with_the_figures_it_was_loaded_with() {
+    use crate::{terrain, vfs::Vfs};
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let (mut maps, mut buildings) = (0, 0);
+    for member in [
+        "maps/default.zoo",
+        "maps/airport.zoo",
+        "maps/med_aqua.zoo",
+        "maps/scn28.zoo",
+        "saved games/test.zoo",
+    ] {
+        let Ok(bytes) = vfs.read(member) else {
+            continue; // the saved game is in the English install only
+        };
+        let cat = Catalogue::load(&vfs).unwrap();
+        let Ok((zoo, money)) = crate::zoo::Zoo::parse_money(&bytes)
+            .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+        else {
+            continue;
+        };
+        let stored = zoo.clone();
+        let renderer = crate::render::MapRenderer::new(&vfs, &cat);
+        let mut world = World::new(zoo, |e| renderer.shape(e));
+        world.set_water(crate::place::water(&terrain::types(&vfs)));
+        let files = (vfs.ini(), &[][..]);
+        let run = Run::start(
+            files,
+            (Catalogue::load(&vfs).unwrap(), Class::load(&vfs)),
+            world,
+            money,
+            1,
+            false,
+        );
+        let mut written = run.world.saved(|_| true);
+        run.world.finish_save(&mut written, &run.cat);
+        maps += 1;
+        for (a, b) in stored.entities.iter().zip(&written.entities) {
+            let (Some(a), Some(b)) = (&a.common, &b.common) else {
+                continue;
+            };
+            if a.building.is_some() {
+                buildings += 1;
+            }
+            assert_eq!(a.building, b.building, "{member}: building {}", a.id);
+        }
+    }
+    assert!(
+        maps >= 4 && buildings >= 40,
+        "{maps} maps, {buildings} buildings"
+    );
 }

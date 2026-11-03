@@ -81,6 +81,7 @@ fn rock(at: (i32, i32)) -> (crate::zoo::Entity, Option<Shape>) {
         gated: false,
         tank: TankKind::NONE,
         walkable: (false, false),
+        forms: None,
     };
     (entity("bush", "rock", 0, centre(at), 0), Some(shape))
 }
