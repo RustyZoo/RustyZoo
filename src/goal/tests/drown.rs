@@ -189,3 +189,28 @@ fn only_a_guest_can_drown() {
     let mut w = map("keeper");
     assert!(!with_cx(&mut w, &mut Rng::default(), |cx| cx.drown_init()));
 }
+
+#[test]
+fn a_drowned_man_is_hidden_when_he_is_removed() {
+    let mut w = pond(man());
+    let at = w.find(1).unwrap();
+    assert!(w.is_drawn(at));
+    with_cx(&mut w, &mut Rng::default(), |cx| cx.drown_complete());
+    assert!(!w.is_drawn(at));
+}
+
+#[test]
+fn the_rescue_does_not_count_the_guest_herself() {
+    // She stands off the centre of a dry tile whose three tiles before hers in the scan are taken.
+    let others = vec![
+        entity("bush", "", 2, centre((4, 4)), 0),
+        entity("bush", "", 3, centre((4, 5)), 0),
+        entity("bush", "", 4, centre((5, 4)), 0),
+    ];
+    let mut w = crowded(kinds()[0].clone(), others);
+    let at = w.find(1).unwrap();
+    w.place_unit(at, (5 * 64 + 10, 5 * 64 + 50, 0), 0);
+    assert!(init(&mut w));
+    let c = w.zoo.entities[at].common.as_ref().unwrap();
+    assert_eq!((c.x, c.y), centre((5, 5)));
+}

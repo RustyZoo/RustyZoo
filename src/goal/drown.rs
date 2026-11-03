@@ -49,8 +49,8 @@ impl Cx<'_, '_> {
         self.record().done = !drowning;
     }
 
-    /// Complete (13.1 point 6): the record is cleared and the man is removed (the removal pass
-    /// takes him off the map, so he is not hidden first), with the message that names him.
+    /// Complete (13.1 point 6): the record is cleared, the man is removed and no longer drawn
+    /// (the removal pass takes him off the list), and the message names him.
     pub(super) fn drown_complete(&mut self) {
         let id = self.unit.id;
         let entity = &self.world.zoo.entities[self.at];
@@ -60,6 +60,7 @@ impl Cx<'_, '_> {
             .map_or_else(String::new, |c| c.name.clone());
         self.set_task(NONE, 0, 0, None);
         self.ctx.remove(self.world, id);
+        self.world.hide_unit(self.at);
         self.world.units.post_named(GONE, id, vec![name]);
     }
 
@@ -114,9 +115,9 @@ impl Cx<'_, '_> {
     }
 
     /// The footprint check of placing 5.2 for the guest on the ground at the centre of tile `t`,
-    /// no entity ignored: its quarters are on the map, in the zoo and free, flat at one height
-    /// and fence-free when large, and no unit's rectangle meets its own. The ground test of item 2
-    /// is not repeated: the tile is dry and a guest does not only swim.
+    /// the guest herself ignored: its quarters are on the map, in the zoo and free, flat at one
+    /// height and fence-free when large, and no other unit's rectangle meets its own. The ground
+    /// test of item 2 is not repeated: the tile is dry and a guest does not only swim.
     fn footprint_fits(&self, t: usize) -> bool {
         let world = &*self.world;
         let Some((fx, fy)) = world.unit_footprint(self.at) else {
@@ -163,7 +164,10 @@ impl Cx<'_, '_> {
         !crate::place::unit::units_on(world, &tiles)
             .into_iter()
             .any(|(i, x, y, (hx, hy))| {
-                !through(i) && meets(px, 16 * fx, x, hx) && meets(py, 16 * fy, y, hy)
+                i != self.at
+                    && !through(i)
+                    && meets(px, 16 * fx, x, hx)
+                    && meets(py, 16 * fy, y, hy)
             })
     }
 }
