@@ -255,8 +255,8 @@ pub struct Unit {
     pub predator: u32,
     /// A guest saw a predator (guests 6.2, 6.12): it leaves at a run.
     pub afraid: bool,
-    /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Not saved
-    /// until Shows 2 stores the unit blocks' show fields.
+    /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Saved as
+    /// the second flag field after the trick id, from version 97, and not for guests (shows 26).
     pub show: u16,
 }
 

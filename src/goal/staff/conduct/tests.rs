@@ -142,6 +142,20 @@ fn the_job_is_done_when_the_show_is_not_his_is_stopped_or_he_is_off_the_platform
 }
 
 #[test]
+fn with_no_show_info_and_show_id_0_the_job_is_not_done() {
+    let mut w = show_tank();
+    w.zoo.shows.infos = vec![None];
+    with_cx(&mut w, |cx| {
+        cx.unit.tank = 2;
+        assert!(cx.conduct_init());
+        assert_eq!(cx.unit.show, 0);
+        cx.record().job_done = false;
+        cx.conduct_check_done();
+        assert!(!cx.record().job_done);
+    });
+}
+
+#[test]
 fn with_no_exhibit_the_check_resets_his_goal() {
     let mut w = show_tank();
     let at = w.find(KEEPER).unwrap();

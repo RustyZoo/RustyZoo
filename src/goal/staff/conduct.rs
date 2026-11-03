@@ -52,15 +52,15 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// Check done: done when the show of his exhibit is not his, is stopped, or he is off the
-    /// platform; with no exhibit his goal is reset.
+    /// Check done: done when the show of his exhibit is not his, is stopped (no info is not
+    /// stopped), or he is off the platform; with no exhibit his goal is reset.
     pub(super) fn conduct_check_done(&mut self) {
         let Some(x) = self.exhibit() else {
             return self.reset();
         };
         let info = show::info_of(self.world, x);
         let other = info.map_or(0, |i| i.id) != self.unit.show;
-        let stopped = info.is_none_or(|i| !(i.show.ready || i.is_started()));
+        let stopped = info.is_some_and(|i| !(i.show.ready || i.is_started()));
         if other || stopped || self.unit.tank != 2 {
             self.record().job_done = true;
         }
