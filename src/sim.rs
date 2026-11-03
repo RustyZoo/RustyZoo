@@ -726,25 +726,7 @@ impl Sim {
             self.events.post(event);
         }
         self.events.age();
-        for (category, cost) in std::mem::take(&mut world.units.spent) {
-            money.spend(category, cost);
-        }
-        for d in std::mem::take(&mut world.units.donated) {
-            money.refund(money::DONATIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.concessions) {
-            money.refund(money::CONCESSIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.recycled) {
-            money.refund(money::CONSTRUCTION_REFUND, d);
-        }
-        for _ in 0..std::mem::take(&mut world.units.guests_gone) {
-            money.count(money::GUESTS_GONE);
-        }
-        for _ in 0..std::mem::take(&mut world.units.members_joined) {
-            money.count(money::MEMBERS);
-            money.count(money::MEMBERS_JOINED);
-        }
+        settle_money(world, money);
         // The world manager: the zoo grounds' timers, then the exhibits' timers and ratings, the
         // water of the tanks, the world clock.
         let mut grounds = std::mem::take(&mut world.exhibits_mut().grounds);
@@ -880,5 +862,28 @@ impl Sim {
         let (say, log) = (&mut self.messages, &mut self.lines);
         self.status.donation(&mut self.rng, money, say, log);
         self.status.bars(step)
+    }
+}
+
+/// Moves the money the units collected in this step into the books.
+fn settle_money(world: &mut World, money: &mut Money) {
+    for (category, cost) in std::mem::take(&mut world.units.spent) {
+        money.spend(category, cost);
+    }
+    for d in std::mem::take(&mut world.units.donated) {
+        money.refund(money::DONATIONS, d);
+    }
+    for d in std::mem::take(&mut world.units.concessions) {
+        money.refund(money::CONCESSIONS, d);
+    }
+    for d in std::mem::take(&mut world.units.recycled) {
+        money.refund(money::CONSTRUCTION_REFUND, d);
+    }
+    for _ in 0..std::mem::take(&mut world.units.guests_gone) {
+        money.count(money::GUESTS_GONE);
+    }
+    for _ in 0..std::mem::take(&mut world.units.members_joined) {
+        money.count(money::MEMBERS);
+        money.count(money::MEMBERS_JOINED);
     }
 }
