@@ -762,7 +762,7 @@ fn check(
     };
     for &(i, x, y, (fx, fy)) in &units {
         if !flag("walkable", false)
-            && world.zoo.entities[i].class != "helicopter"
+            && !unit::lets_through_object(world, i, t)
             && meets(p.x, 16 * fp.0, x, 16 * fx)
             && meets(p.y, 16 * fp.1, y, 16 * fy)
         {

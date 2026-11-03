@@ -1,5 +1,6 @@
 //! The world on synthetic maps.
 
+use super::edges::edge_states;
 use super::*;
 use crate::render::order::Held;
 use crate::zoo::{Common, View};
@@ -63,6 +64,7 @@ const FENCE: Shape = Shape {
     gated: false,
     walkable: (false, false),
     forms: None,
+    rubbleable: false,
     tank: TankKind {
         wall: false,
         show: false,
@@ -79,6 +81,7 @@ const NOTHING: Shape = Shape {
     gated: false,
     walkable: (false, false),
     forms: None,
+    rubbleable: false,
     tank: TankKind {
         wall: false,
         show: false,
@@ -95,6 +98,7 @@ const GATE: Shape = Shape {
     gated: false,
     walkable: (false, false),
     forms: None,
+    rubbleable: false,
     tank: TankKind {
         wall: false,
         show: false,

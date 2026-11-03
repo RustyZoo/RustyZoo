@@ -639,6 +639,14 @@ impl Sim {
         self.step_game(data, cat, world, &mut Money::default(), step, update)
     }
 
+    /// The date of an escape (animals 11.1), then the money the units collected.
+    fn book_units(&mut self, world: &mut World, money: &mut Money) {
+        if std::mem::take(&mut world.units.loose) {
+            self.status.escape = crate::timing::file_time(world.units.now);
+        }
+        settle_money(world, money);
+    }
+
     /// [`Sim::step_with`] in a game whose cash and accounts are `money`: the zoo status checks
     /// read and book into them.
     pub fn step_game(
@@ -727,7 +735,7 @@ impl Sim {
             self.events.post(event);
         }
         self.events.age();
-        settle_money(world, money);
+        self.book_units(world, money);
         // The world manager: the zoo grounds' timers, then the exhibits' timers and ratings, the
         // water of the tanks, the world clock.
         let mut grounds = std::mem::take(&mut world.exhibits_mut().grounds);
@@ -858,6 +866,7 @@ impl Sim {
             self.status.endowment(&mut self.rng, money, &mut self.lines);
             money.month_change();
             world.exhibits_mut().enter_new_month();
+            crate::show::new_month(world, cat);
             crate::month::charge(world, cat, money, &mut self.lines);
         }
         let (say, log) = (&mut self.messages, &mut self.lines);

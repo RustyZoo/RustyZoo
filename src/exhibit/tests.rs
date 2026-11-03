@@ -43,6 +43,7 @@ fn shape(e: &Entity) -> Option<Shape> {
             gated: fence && !wall,
             walkable: (false, false),
             forms: None,
+            rubbleable: false,
             tank: TankKind {
                 wall: tank,
                 show: e.class == "show",
@@ -62,6 +63,7 @@ fn shape(e: &Entity) -> Option<Shape> {
             gated: false,
             walkable: (true, true),
             forms: None,
+            rubbleable: false,
             tank: TankKind::NONE,
         }),
         _ => None,

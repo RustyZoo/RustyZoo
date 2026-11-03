@@ -67,6 +67,7 @@ pub mod boxed;
 pub mod breed;
 pub mod dirt;
 pub mod escape;
+pub mod fence;
 pub mod food;
 pub mod home;
 pub mod life;
@@ -79,6 +80,8 @@ use life::Sets;
 
 /// The messages "not happy" and "dislikes its exhibit": string numbers whose text holds the name.
 pub const NOT_HAPPY: i32 = 10028;
+/// The message and alert of an animal that got out of its exhibit (animals 11.4).
+pub const ESCAPED: i32 = 10007;
 pub const DISLIKES_EXHIBIT: i32 = 10031;
 /// "Can't find any food".
 pub const NO_FOOD: i32 = 10030;
@@ -314,6 +317,10 @@ keys! {
     rampage_min: "cRampageTimeMin" = 0,
     rampage_max: "cRampageTimeMax" = 0,
     test_fence: "cTestFenceChance" = 0,
+    fence_offset: "cTestFenceOffset" = 0,
+    fence_drop: "cTestFenceChanceDrop" = 0,
+    fence_min: "cMinTestFenceChance" = 0,
+    zap_change: "cZapHappinessChange" = -1,
     hunger_increment: "cHungerIncrement" = 10,
     hungry_health: "cHungryHealthChange" = 5,
     no_food_change: "cNoFoodChange" = -20,
@@ -512,6 +519,9 @@ pub struct Animal {
     pub force: Option<&'static str>,
     /// The zap counter (animals 4.1): it starts at 0 and fires when it was below 1.
     pub zap: i32,
+    /// The current fence-test chance (animals 11): `None` is the species' `cTestFenceChance`, as at
+    /// creation; a test that starts lowers it (11.10). The file does not hold it.
+    pub fence_chance: Option<i32>,
     /// The crate counter (`cBoxedCheck`), which runs only while the animal is crated.
     pub crate_count: i32,
     /// Status ticks until the creation runs again (`AnimalResetInterval`).
@@ -848,6 +858,15 @@ pub struct Out {
     pub terrain: Option<(u8, Option<usize>)>,
     /// The shelter it took as its target.
     pub shelter: Option<u32>,
+    /// A rampage ended: a running rampage set is cleared (animals 11).
+    pub calm: bool,
+    /// The draw of the zap check succeeded: the fence test starts (animals 11.10).
+    pub fence: bool,
+    /// The escape check fired with the animal on the zoo grounds: the zoo status dates the
+    /// escape (animals 11.1).
+    pub loose: bool,
+    /// The draw that picks the land tile an escaped animal on water is sent to (animals 11.5).
+    pub sent: Option<usize>,
 }
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
@@ -962,7 +981,7 @@ pub fn run_read(
         a.stop_eating(false, &mut out.meal);
         a.fed = env.now;
     }
-    escape(a, k, class, env, rng, &mut out);
+    escape::check(a, k, class, env, rng, &mut out);
     if a.eating {
         food::bite(a, k, env, rng, &mut out, read);
     }
@@ -979,7 +998,7 @@ pub fn run_read(
     out.terrain = tank::water(a, k, class, env, rng);
     shelter(a, k, class, env, rng, &mut out);
     other(a, k, class, env);
-    zap(a, k, class, env, rng);
+    zap(a, k, class, env, rng, &mut out);
     if fire(&mut a.counters[MESSAGE], class.periods[MESSAGE]) && a.happiness < -60 {
         out.messages.push(NOT_HAPPY);
     }
@@ -989,46 +1008,6 @@ pub fn run_read(
         false => a.unmark(NEEDS_EXHIBIT),
     }
     out
-}
-
-/// The escape check (animals 11.1): the rampage, then the counter; when it fires, an animal that
-/// stands on the zoo grounds is escaped and takes the land mode (11.5; the send off water is not
-/// made), one in an exhibit is not escaped any more.
-fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
-    if a.in_show {
-        return;
-    }
-    if a.rampaging {
-        a.rampage = a.rampage.wrapping_add(1);
-        if a.happiness > k.rampage_threshold || a.rampage > k.rampage_max {
-            (a.rampaging, a.rampage) = (false, 0);
-        }
-    } else {
-        a.rampage = 0;
-        if k.rampage_chance >= 1
-            && k.rampage_min >= 1
-            && a.happiness <= k.rampage_threshold
-            && rng.chance(k.rampage_chance)
-        {
-            let len = k.rampage_max.wrapping_sub(k.rampage_min);
-            if len >= 0 {
-                a.rampaging = true;
-                a.rampage = len - rng.rand() as i32 % len.wrapping_add(1);
-            }
-        }
-    }
-    if !fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) {
-        return;
-    }
-    if env.grounds {
-        a.terrain = if k.only_underwater { 2 } else { 0 };
-        if !std::mem::replace(&mut a.escaped, true) {
-            (a.thirsty, a.drinking) = (false, false);
-            out.log.push("escape");
-        }
-    } else {
-        (a.escaped, a.claim) = (false, 0);
-    }
 }
 
 /// The captivity tick (animals 4.5): the change, and below the threshold two draws that may
@@ -1219,8 +1198,8 @@ fn other(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
 
 /// The zap check (animals 11): nothing runs for an animal in a show; its counter fires when it
 /// was below 1, and the draw of a fence test is made when nothing occupies the animal and its
-/// chance is not 0. The test itself is M7's.
-fn zap(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
+/// chance is not 0; a success asks for the test itself ([`fence::test`]).
+fn zap(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
     if a.in_show {
         return;
     }
@@ -1228,9 +1207,8 @@ fn zap(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
     a.zap = old.wrapping_sub(1);
     if old < 1 {
         a.zap = class.zap.wrapping_sub(1);
-        if !a.occupied(env) && k.test_fence != 0 {
-            rng.chance(k.test_fence);
-        }
+        let current = a.fence_chance.unwrap_or(k.test_fence);
+        out.fence = !a.occupied(env) && current != 0 && rng.chance(k.test_fence);
     }
 }
 
@@ -1390,7 +1368,7 @@ pub(crate) fn shelters(
 /// The land, water and tank tiles of the exhibits `near` (animals-needs 7.2).
 fn kinds(world: &World, near: &[u32]) -> [usize; 3] {
     let mut count = [0; 3];
-    for t in near.iter().flat_map(|&x| world.tiles_of(x)) {
+    for t in near.iter().flat_map(|&x| tank::tiles(world, x)) {
         count[usize::from(tank::kind(world, t))] += 1;
     }
     count
@@ -1568,6 +1546,12 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             .filter_map(|&n| world.exhibits().get(n))
             .map(|e| e.tiles)
             .sum();
+    } else if a.counters[ESCAPE] == 0 {
+        // The escape check sends an animal off the water or the tank to a tile of the grounds.
+        env.stands = tile.map_or(0, |t| tank::kind(world, t));
+        if env.stands != 0 {
+            env.kinds = kinds(world, &[GROUNDS]);
+        }
     }
     if a.counters[SHELTER] == 0 && k.building_use > 0 {
         let who = crate::building::Species::of(ctx.cat, &world.zoo.entities[at], a.egg);
@@ -1617,9 +1601,11 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         if *word == "escape" {
             world.units.escapes.retain(|&e| e != id);
             world.units.escapes.push(id);
+            world.units.post(ESCAPED, id);
         }
         world.units.tell(format!("{word} {id}"));
     }
+    escape::after(unit, world, ctx, at, data, (&out, &k));
     if let Some(change) = out.terrain {
         tank::switch(unit, world, ctx, at, data, change);
     }

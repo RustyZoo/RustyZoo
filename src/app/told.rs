@@ -105,6 +105,7 @@ impl App<'_> {
                 };
                 let text = (names.iter()).fold(ui.string(message), |t, n| t.replacen("%s", n, 1));
                 ui.message(&to_cp1252(&text));
+                research::alert(ui, self.renderer.vfs(), message, &text);
             }
         }
     }

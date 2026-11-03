@@ -794,3 +794,39 @@ fn the_simulation_step_runs_the_show_manager_before_the_ai_clock_moves() {
     assert!(info_of_show(&w).show.ready);
     assert_eq!(sim.ai_clock().0, 1);
 }
+
+#[test]
+fn the_show_month_change_moves_the_figures_to_last_month_and_takes_the_upkeep_rate() {
+    let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    let info = info_mut(&mut w);
+    let f = |x: f32| x.to_bits();
+    (info.frequency, info.next) = (-1, -1);
+    info.upkeep = [0, f(9.0), f(100.0)];
+    info.receipts = [f(5.0), f(1.0), f(20.0)];
+    info.attendance = [3, 2, 9];
+    info.records[0].receipts = [f(4.0), f(1.5), f(8.0)];
+    info.records[0].attendance = [2, 1, 7];
+    let (mut sim, mut money) = (crate::sim::Sim::new(b""), crate::money::Money::default());
+    sim.set_seed(1);
+    sim.start_game(16, crate::zoo::Clocks::default());
+    let mut ended = 0;
+    for _ in 0..400 {
+        let report = sim.step_game(
+            &crate::behaviour::NoData,
+            &cat,
+            &mut w,
+            &mut money,
+            1000,
+            |_, _, _| {},
+        );
+        ended += usize::from(report.month_end);
+    }
+    assert_eq!(ended, 1);
+    // The stand facing the tank costs 15 a month: the step refreshed it, the change closed it.
+    let info = info_of_show(&w);
+    assert_eq!(info.upkeep, [f(15.0), f(15.0), f(130.0)]);
+    assert_eq!(info.receipts, [0, f(5.0), f(20.0)]);
+    assert_eq!(info.attendance, [0, 3, 9]);
+    assert_eq!(info.records[0].receipts, [0, f(4.0), f(8.0)]);
+    assert_eq!(info.records[0].attendance, [0, 2, 7]);
+}

@@ -8,7 +8,7 @@ use crate::world::World;
 
 /// The quarter of a tile in the spec's numbering (`(lx / 32) * 2 + ly / 32`) as the world numbers
 /// it (`qy * 2 + qx`).
-const SLOT: [usize; 4] = [0, 2, 1, 3];
+pub const SLOT: [usize; 4] = [0, 2, 1, 3];
 
 fn on_path(w: &World, t: usize) -> bool {
     w.path(t).is_some()
@@ -27,10 +27,17 @@ fn quarters(w: &World, m: &Mover, t: usize, level: Option<i32>) -> [(bool, bool)
         None => (false, false),
         Some(e) => {
             let walk = w.shape(e).map(|s| s.walkable);
-            let stops = !walk.is_some_and(|k| if m.tall { k.1 } else { k.0 });
+            let stops = !rubbled(w, m, e) && !walk.is_some_and(|k| if m.tall { k.1 } else { k.0 });
             (true, stops && level.is_none_or(|l| in_reach(w, e, t, l)))
         }
     })
+}
+
+/// 4.3 after the common answer: object `e` lets a rampaging animal through when its type has
+/// `cRubbleable` 1, and rubble lets through any animal whose species has `cRampageChance` above 0.
+pub fn rubbled(w: &World, m: &Mover, e: usize) -> bool {
+    let rubbleable = w.shape(e).is_some_and(|s| s.rubbleable);
+    m.rampaging && rubbleable || m.rampager && w.zoo.entities[e].class == "rubble"
 }
 
 /// Whether level `level` is one the entity `e` on tile `t` blocks (tank fauna 7.3): every level

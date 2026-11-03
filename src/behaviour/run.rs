@@ -884,7 +884,12 @@ impl Runner {
                 self.chain[k].done = self.ready;
                 return true;
             }
-            Op::KeepControl | Op::Spray | Op::FaceDirection | Op::TargetBuilding => {
+            Op::KeepControl | Op::Spray | Op::FaceDirection => {
+                return true;
+            }
+            // No target is found (animals 11.11 point 4): the call is done at once.
+            Op::TargetBuilding => {
+                self.chain[k].done = true;
                 return true;
             }
             Op::FaceFood => {

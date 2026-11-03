@@ -275,6 +275,7 @@ pub fn shape(ty: &EntityType) -> Shape {
         tank: TankKind::NONE,
         walkable: (false, false),
         forms: Some(ty.forms()),
+        rubbleable: false,
     }
 }
 
@@ -495,6 +496,9 @@ pub fn grow_up(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, dat
     crate::unit::movement::stop(unit);
     crate::animal::food::halt(unit, world, ctx, at, data);
     unit.typed = false;
+    if let Part::Animal(a) = &mut unit.part {
+        a.fence_chance = None;
+    }
     if let Some(t) = tile {
         world.mark_rating(t);
     }

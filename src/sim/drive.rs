@@ -404,6 +404,7 @@ impl Run {
             tank: crate::world::TankKind::NONE,
             walkable: (false, false),
             forms: None,
+            rubbleable: false,
         };
         let Some(id) = self.world.add(entity, Some(shape)) else {
             return false;
