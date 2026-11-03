@@ -54,18 +54,18 @@ mod tests;
 pub mod thought;
 pub mod view;
 
-pub use checks::{checks, needs};
+pub(crate) use checks::{checks, needs};
 
 /// The status values of a guest, in the order of [`Guest::values`].
-pub const HAPPINESS: usize = 0;
-pub const HUNGER: usize = 1;
-pub const THIRST: usize = 2;
-pub const ENERGY: usize = 3;
-pub const BATHROOM: usize = 4;
+pub(crate) const HAPPINESS: usize = 0;
+pub(crate) const HUNGER: usize = 1;
+pub(crate) const THIRST: usize = 2;
+pub(crate) const ENERGY: usize = 3;
+pub(crate) const BATHROOM: usize = 4;
 
 /// The need list of the shipped building types, by the index a unit record stores for the need
 /// being served (guests 7.4).
-pub const NEED_LIST: [&str; 16] = [
+pub(crate) const NEED_LIST: [&str; 16] = [
     "bathroom",
     "building",
     "compost",
@@ -109,7 +109,7 @@ const COUNTER: &str = "guests";
 /// The keys of a guest type that its creation reads (guests 5): its own section, the default
 /// subtype's and the plain one, which also holds the class keys of the random start.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Keys {
+pub(crate) struct Keys {
     pub initial_happiness: i32,
     pub max_energy: i32,
     pub periods: [i32; PERIODS.len()],
@@ -145,7 +145,7 @@ pub struct Keys {
 
 /// The changes of the viewing check (guests visit 6.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct View {
+pub(crate) struct View {
     pub sick: i32,
     /// `cHappyAnimalChange1`, `2`; `cAngryAnimalChange1` to `3`.
     pub happy: [i32; 2],
@@ -156,7 +156,7 @@ pub struct View {
 }
 
 impl Keys {
-    pub fn of(ty: &EntityType) -> Keys {
+    pub(crate) fn of(ty: &EntityType) -> Keys {
         let config = ty.config.as_deref();
         let default = (config.and_then(|c| c.section("Global")))
             .and_then(|g| g.get("DefaultSubtype"))
@@ -259,7 +259,7 @@ impl Keys {
 
 /// The live state of a guest.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Guest {
+pub(crate) struct Guest {
     /// The colour choices drawn at the creation, one per colour group (save games 11.2).
     pub colours: Vec<u8>,
     /// Happiness, hunger, thirst, energy and bathroom, and the changes added at the next status
@@ -323,7 +323,7 @@ const RETURN_MASK: u32 = 0x7_ffff;
 
 impl Guest {
     /// Whether hunger, thirst, energy or bathroom is at or above its threshold (guests 8).
-    pub fn pressing(&self, k: &Keys) -> bool {
+    pub(crate) fn pressing(&self, k: &Keys) -> bool {
         (0..4).any(|i| self.values[1 + i] >= k.needs[i][1])
     }
 
@@ -331,7 +331,7 @@ impl Guest {
     /// the unit's wandered and afraid flags: the recovering bit of the return word and a favourite
     /// or arrival date that did not change are kept as they were. The guest follows a guide exactly
     /// when it is in a group.
-    pub fn record(&self, base: &GuestRecord, wandered: bool, afraid: bool) -> GuestRecord {
+    pub(crate) fn record(&self, base: &GuestRecord, wandered: bool, afraid: bool) -> GuestRecord {
         let arrived = match self.arrived {
             Some(d) if d != Date::from_file_time(base.arrived) => file_time(d.game_ms()),
             _ => base.arrived,
@@ -359,7 +359,7 @@ impl Guest {
     }
 
     /// The guest forgets the sites it has seen (guests visit 3.6).
-    pub fn forget(&mut self) {
+    pub(crate) fn forget(&mut self) {
         self.seen.clear();
         self.seen_count = 0;
     }
@@ -367,7 +367,7 @@ impl Guest {
     /// A new guest of type `ty` with its keys `k` (guests 5.2, 13.2): the draws are four colours,
     /// the random start stat, female and child, one per check, the favourite among `favourites`
     /// and the speed offset. `reset` is `[AI] GuestResetInterval`.
-    pub fn create(
+    pub(crate) fn create(
         k: &Keys,
         ty: &EntityType,
         favourites: &[i32],
@@ -419,7 +419,7 @@ impl Guest {
 }
 
 /// The keys of the guest at position `at` of the entity list; none when its type is unknown.
-pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Option<Keys> {
+pub(crate) fn keys(world: &World, cat: &Catalogue, at: usize) -> Option<Keys> {
     type_of(world, cat, at).map(Keys::of)
 }
 
@@ -432,7 +432,7 @@ fn type_of<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a Entit
 
 /// What a creation needs besides the world.
 #[derive(Debug, Clone, Copy)]
-pub struct Arrival {
+pub(crate) struct Arrival {
     /// The adult admission price and what the economy multiplies it by.
     pub price: f32,
     pub multiple: f32,
@@ -451,7 +451,7 @@ fn loose(world: &World) -> bool {
 
 /// Whether an exhibit holds an animal and none is loose (guests 3.1 steps 1 to 3: a guest
 /// arrives in neither case otherwise).
-pub fn occupied(world: &World, cat: &Catalogue) -> bool {
+pub(crate) fn occupied(world: &World, cat: &Catalogue) -> bool {
     let list = world.exhibits().list();
     let held = (list.iter()).any(|x| !rating::input(world, cat, x.id).animals.is_empty());
     held && !loose(world)
@@ -479,7 +479,14 @@ fn favourites(cat: &Catalogue) -> Vec<i32> {
 /// special animals, as at arrival; with none, the guest has no favourite. `date` is the game date of the load and `reset`
 /// is `[AI] GuestResetInterval`. The caller goes in file order before the first step; a guest
 /// whose type is unknown is left as it is.
-pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: Date, reset: i32) {
+pub(crate) fn load(
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    at: usize,
+    date: Date,
+    reset: i32,
+) {
     let Some((id, record)) =
         (world.zoo.entities[at].common.as_ref()).and_then(|c| Some((c.id, *c.guest.as_deref()?)))
     else {
@@ -519,7 +526,7 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize, date: 
 
 /// Sets the arrival date of every guest to `date`: a start with `reset` or `resetdate` (zoo format
 /// 6.12).
-pub fn arrive_all(world: &mut World, date: Date) {
+pub(crate) fn arrive_all(world: &mut World, date: Date) {
     let ids: Vec<u32> = (world.zoo.entities.iter())
         .filter(|e| e.class == "guests")
         .filter_map(|e| e.common.as_ref().map(|c| c.id))
@@ -534,7 +541,7 @@ pub fn arrive_all(world: &mut World, date: Date) {
 /// Creates a guest at the zoo entrance (guests 3.2), the draws in the original's order, and books
 /// its admission. Whether one was made: not with the last sums at the limit, without an entrance
 /// tile or without a guest type.
-pub fn arrive(
+pub(crate) fn arrive(
     world: &mut World,
     cat: &Catalogue,
     rng: &mut Rng,

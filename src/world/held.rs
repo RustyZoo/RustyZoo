@@ -56,7 +56,7 @@ impl World {
     /// Takes the unit at position `at` of the entity list off the map, as the pick-up does (unit
     /// placing 8.2): it stays in the list, stands on no tile and is not drawn, until
     /// [`World::place_unit`] puts it down.
-    pub fn lift_unit(&mut self, at: usize) {
+    pub(crate) fn lift_unit(&mut self, at: usize) {
         if let Ok(o) = self.owner.binary_search(&at) {
             self.scene.lift_unit(o);
             self.dirty = true;
@@ -65,7 +65,7 @@ impl World {
 
     /// Stops painting the unit at position `at` of the entity list; it stays on its tile's unit
     /// list (a user hidden in a building, guest buildings 6.7.1).
-    pub fn hide_unit(&mut self, at: usize) {
+    pub(crate) fn hide_unit(&mut self, at: usize) {
         if let Ok(o) = self.owner.binary_search(&at) {
             self.scene.hide_unit(o);
             self.dirty = true;
@@ -75,7 +75,7 @@ impl World {
     /// Takes the unit at position `at` of the entity list off its tile's unit list only (guest
     /// buildings 6.7.1): it keeps its place, is drawn as before and joins a list again at its
     /// first change of tile.
-    pub fn unlist_unit(&mut self, at: usize) {
+    pub(crate) fn unlist_unit(&mut self, at: usize) {
         if let Ok(o) = self.owner.binary_search(&at) {
             self.scene.unlist_unit(o);
             self.dirty = true;
@@ -84,12 +84,12 @@ impl World {
 
     /// Whether the entity at position `at` is painted.
     #[cfg(test)]
-    pub fn is_drawn(&self, at: usize) -> bool {
+    pub(crate) fn is_drawn(&self, at: usize) -> bool {
         self.fits(at)
     }
 
     /// Paints the unit at position `at` where it stands, on no tile list.
-    pub fn paint_unit(&mut self, at: usize) {
+    pub(crate) fn paint_unit(&mut self, at: usize) {
         if let Ok(o) = self.owner.binary_search(&at) {
             self.scene.paint_unit(o);
             self.dirty = true;

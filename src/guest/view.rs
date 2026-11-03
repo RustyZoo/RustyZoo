@@ -14,12 +14,12 @@ use crate::single;
 
 /// The map change the areas last saw.
 #[derive(Debug, Default)]
-pub struct Views {
+pub(crate) struct Views {
     edits: Option<u64>,
 }
 
 /// An animal of an exhibit as the guests judge it.
-pub struct Beast {
+pub(crate) struct Beast {
     pub id: u32,
     pub exhibit: u32,
     pub tile: usize,
@@ -30,7 +30,7 @@ pub struct Beast {
 
 /// What a viewing area shows of its exhibit (4.3), read from the tiles of the area alone.
 #[derive(Debug, PartialEq)]
-pub struct Sight {
+pub(crate) struct Sight {
     pub exhibit: u32,
     /// How many animals stand on the tiles the area sees, the species among them (name ids, in
     /// order) and how many of them are sick.
@@ -45,13 +45,13 @@ pub struct Sight {
 }
 
 /// The tile a unit stands on.
-pub fn tile_of(world: &World, at: usize) -> Option<usize> {
+pub(crate) fn tile_of(world: &World, at: usize) -> Option<usize> {
     let c = world.zoo.entities.get(at)?.common.as_ref()?;
     world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
 }
 
 /// The animals that stand in exhibits, in entity order.
-pub fn beasts(world: &World, cat: &Catalogue) -> Vec<Beast> {
+pub(crate) fn beasts(world: &World, cat: &Catalogue) -> Vec<Beast> {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     let mut list = Vec::new();
     for (at, e) in world.zoo.entities.iter().enumerate() {
@@ -85,7 +85,7 @@ pub fn beasts(world: &World, cat: &Catalogue) -> Vec<Beast> {
 
 /// The exhibits a tour guide with the assignments `assigned` leads guests to (tour guide 6.1): its
 /// assignments in their order, else the exhibits in list order that hold an animal.
-pub fn tour_exhibits(world: &World, cat: &Catalogue, assigned: &[u32]) -> Vec<u32> {
+pub(crate) fn tour_exhibits(world: &World, cat: &Catalogue, assigned: &[u32]) -> Vec<u32> {
     if !assigned.is_empty() {
         return assigned.to_vec();
     }
@@ -118,7 +118,7 @@ fn refresh(world: &mut World, cat: &Catalogue) {
 
 /// The tile lists of the areas of exhibit `id`, in the order of its areas, of those that see a
 /// tile (goals 11.1).
-pub fn viewing_areas(world: &mut World, cat: &Catalogue, id: u32) -> Vec<Vec<usize>> {
+pub(crate) fn viewing_areas(world: &mut World, cat: &Catalogue, id: u32) -> Vec<Vec<usize>> {
     refresh(world, cat);
     let areas = world.exhibits().get(id).map(|x| &x.areas);
     let kept = areas.into_iter().flatten();
@@ -129,7 +129,12 @@ pub fn viewing_areas(world: &mut World, cat: &Catalogue, id: u32) -> Vec<Vec<usi
 
 /// A random viewing tile of exhibit `id` (goals 11.1): one draw picks one of the areas that see a
 /// tile, a second one a tile of that area's own list. None, and no draw, when no area sees a tile.
-pub fn viewing_tile(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> Option<usize> {
+pub(crate) fn viewing_tile(
+    world: &mut World,
+    cat: &Catalogue,
+    id: u32,
+    rng: &mut Rng,
+) -> Option<usize> {
     let areas = viewing_areas(world, cat, id);
     let tiles = areas.get(rng.pick(areas.len() as u32) as usize)?;
     tiles.get(rng.pick(tiles.len() as u32) as usize).copied()
@@ -137,7 +142,7 @@ pub fn viewing_tile(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) 
 
 /// 4.1: one draw gives the direction to start from; the first of the eight that holds an area
 /// the guest on `tile` looks through is kept.
-pub fn lookup(
+pub(crate) fn lookup(
     world: &mut World,
     cat: &Catalogue,
     tile: Option<usize>,
@@ -160,7 +165,7 @@ fn through(world: &World, tile: usize, k: u8) -> Option<(u32, &Area)> {
 
 /// 4.2 and 4.3: what the guest on `tile` sees looking in direction `k`. The exhibit is not
 /// recomputed.
-pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<Sight> {
+pub(crate) fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<Sight> {
     refresh(world, cat);
     if world.exhibits().region(tile) != Some(GROUNDS) {
         return None;
@@ -210,7 +215,12 @@ pub fn sight(world: &mut World, cat: &Catalogue, tile: usize, k: u8) -> Option<S
 /// The animals of exhibit `x` as (id, happiness) in the order of its stored list (6.3) and
 /// the exhibit's stored average happiness h (4.3; the one its last recomputation left, not the
 /// animals' happiness now), read through a recomputation of a dirty exhibit.
-pub fn herd(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> (Vec<(u32, i32)>, i32) {
+pub(crate) fn herd(
+    world: &mut World,
+    cat: &Catalogue,
+    x: u32,
+    rng: &mut Rng,
+) -> (Vec<(u32, i32)>, i32) {
     crate::exhibit::rating::refresh(world, cat, x, &mut || rng.rand());
     let held = beasts(world, cat);
     let all: Vec<(u32, i32)> = crate::animal::exhibit_animals(world, x)
@@ -225,14 +235,14 @@ pub fn herd(world: &mut World, cat: &Catalogue, x: u32, rng: &mut Rng) -> (Vec<(
 }
 
 /// Whether the guest has seen exhibit `id` (3.2): a tile of its list belongs to it.
-pub fn seen(world: &World, g: &Guest, id: u32) -> bool {
+pub(crate) fn seen(world: &World, g: &Guest, id: u32) -> bool {
     g.seen
         .iter()
         .any(|&t| world.exhibits().region(t) == Some(id))
 }
 
 /// 3.5: the tile of a site joins the list, which keeps 10, and the count.
-pub fn see(g: &mut Guest, tile: usize) {
+pub(crate) fn see(g: &mut Guest, tile: usize) {
     g.seen.push(tile);
     g.seen_count += 1;
     if g.seen.len() > 10 {
@@ -242,7 +252,7 @@ pub fn see(g: &mut Guest, tile: usize) {
 
 /// 3.3 and 3.4: the exhibits that hold an animal, and of them those the guest has not seen and
 /// that are not show tanks.
-pub fn sites(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<u32>) {
+pub(crate) fn sites(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<u32>) {
     let held = beasts(world, cat);
     let with = |x: &&crate::exhibit::Exhibit| held.iter().any(|b| b.exhibit == x.id);
     let all: Vec<_> = world.exhibits().list().iter().filter(with).collect();
@@ -254,7 +264,7 @@ pub fn sites(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<u32>) {
 /// 3.3 and 3.4: the attractions (the buildings that satisfy `fun`, in the order of the list) with
 /// the tile each stands on, and of them those the guest has not seen (3.2): the last quadrant of
 /// a tile of the seen list holds the building or an entity of the same help id.
-pub fn attractions(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<(u32, usize)>) {
+pub(crate) fn attractions(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<(u32, usize)>) {
     let (ids, helps) = gawk::marks(world, cat, g);
     let default = world.units.prices.default;
     let mut all = 0;
@@ -278,7 +288,7 @@ pub fn attractions(world: &World, cat: &Catalogue, g: &Guest) -> (usize, Vec<(u3
 }
 
 /// The attractiveness of an exhibit, rated first when it is marked (habitat rating 13.1).
-pub fn attractiveness(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> i32 {
+pub(crate) fn attractiveness(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> i32 {
     crate::exhibit::rating::refresh(world, cat, id, &mut || rng.rand());
     world
         .exhibits()
@@ -302,7 +312,7 @@ fn pick(rng: &mut Rng, all: &[(u32, i32)], band: std::ops::RangeInclusive<i32>) 
 
 /// 6: the viewing check of a guest on `tile`: the happiness changes by what the exhibit shows.
 /// The thoughts it gives are returned in order, as the string id and the animal they are about.
-pub fn check(
+pub(crate) fn check(
     g: &mut Guest,
     k: &Keys,
     world: &mut World,
@@ -357,7 +367,7 @@ pub fn check(
 
 /// 7: the guest on `tile` stops viewing: the exhibit gets the time it watched and, when it saw
 /// animals, none sick and no crowd, a donation.
-pub fn leave_area(
+pub(crate) fn leave_area(
     g: &mut Guest,
     id: u32,
     world: &mut World,

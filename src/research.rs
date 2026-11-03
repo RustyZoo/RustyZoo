@@ -14,7 +14,7 @@ mod effects;
 mod tests;
 mod view;
 
-pub use effects::{Life, Overlay};
+pub(crate) use effects::{Life, Overlay};
 
 /// The most programs a tree takes: more than any game has, and a bound on a mod whose files name
 /// each other many times.
@@ -22,7 +22,7 @@ const MAX_PROGRAMS: usize = 100_000;
 
 /// One funding level of a branch: its text, the money and the work per month.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Level {
+pub(crate) struct Level {
     pub name: i32,
     pub cost: f32,
     pub work: f32,
@@ -30,7 +30,7 @@ pub struct Level {
 
 /// One research program.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Program {
+pub(crate) struct Program {
     pub name: i32,
     pub cost: f32,
     pub progress: f32,
@@ -49,7 +49,7 @@ pub struct Program {
 
 /// A program the step completed: the caller applies its effect (5.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Done {
+pub(crate) struct Done {
     pub name: i32,
     pub target: i32,
     pub effect: i32,
@@ -61,7 +61,7 @@ const PER_MINUTE: f32 = 2.314_814_8e-5;
 
 impl Program {
     /// Whether the program is complete: its progress has reached its cost.
-    pub fn done(&self) -> bool {
+    pub(crate) fn done(&self) -> bool {
         self.cost <= self.progress
     }
 
@@ -79,7 +79,7 @@ impl Program {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Category {
+pub(crate) struct Category {
     pub name: i32,
     /// `helpid`: the string of the tooltip of its row.
     pub help: i32,
@@ -101,7 +101,7 @@ impl Category {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Branch {
+pub(crate) struct Branch {
     pub name: i32,
     /// `noprogicon`: the picture shown while it has no current program.
     pub no_icon: String,
@@ -115,7 +115,7 @@ pub struct Branch {
 
 /// The branches in load order.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Tree {
+pub(crate) struct Tree {
     pub branches: Vec<Branch>,
     /// The expansion entries that are disabled (3.5): all, base game, first expansion, second expansion.
     pub off: [bool; 4],
@@ -156,7 +156,11 @@ impl Tree {
     /// `None` when the scenario cannot be read; a scenario with no value has an empty tree.
     /// Each branch file read gives its branch a current program, by a draw from `rand` (5.5).
     /// A saved game's scenario gets the same expansion entries as a start (3.5, 7.2).
-    pub fn of_scenario(vfs: &Vfs, file: &str, rand: &mut dyn FnMut() -> u32) -> Option<Tree> {
+    pub(crate) fn of_scenario(
+        vfs: &Vfs,
+        file: &str,
+        rand: &mut dyn FnMut() -> u32,
+    ) -> Option<Tree> {
         let main = Config::parse(&vfs.read(file).ok()?).ok()?;
         let values = main
             .section("start")
@@ -243,7 +247,7 @@ impl Tree {
     }
 
     /// The percentage of programs complete, 100 when there is none (zoo status 5.5).
-    pub fn share(&self) -> i32 {
+    pub(crate) fn share(&self) -> i32 {
         let all = self.programs().count() as i64;
         let done = self.programs().filter(|p| p.done()).count() as i64;
         (done * 100).checked_div(all).unwrap_or(100) as i32
@@ -251,14 +255,14 @@ impl Tree {
 
     /// The building upgrades of the programs complete, as `(building name id, upgrade)` in tree
     /// order (research 6.3, 7.2): the lists of a game that starts or loads.
-    pub fn upgrades(&self) -> Vec<(i32, Upgrade)> {
+    pub(crate) fn upgrades(&self) -> Vec<(i32, Upgrade)> {
         let done = self.programs().filter(|p| p.effect == 1 && p.done());
         done.map(|p| (p.target, p.upgrade())).collect()
     }
 
     /// The upgrade of the program named `name` and the building it is for, when it is an effect 1
     /// program: what a completion adds.
-    pub fn upgrade_of(&self, name: i32) -> Option<(i32, Upgrade)> {
+    pub(crate) fn upgrade_of(&self, name: i32) -> Option<(i32, Upgrade)> {
         let p = self.programs().find(|p| p.name == name && p.effect == 1)?;
         Some((p.target, p.upgrade()))
     }
@@ -267,7 +271,11 @@ impl Tree {
     /// the targets of the effect 0 programs, with whether each is available (the program is complete), and
     /// the effects 2 to 7 of the complete ones are laid on `over`, which starts empty (6.9, R4). The
     /// changes of the life counter come back for the animals the map already holds (7.4).
-    pub fn apply(&mut self, cat: &Catalogue, over: &mut Overlay) -> (Vec<(i32, bool)>, Vec<Life>) {
+    pub(crate) fn apply(
+        &mut self,
+        cat: &Catalogue,
+        over: &mut Overlay,
+    ) -> (Vec<(i32, bool)>, Vec<Life>) {
         *over = Overlay::default();
         let (mut flags, mut life) = (Vec::new(), Vec::new());
         for n in 0..self.programs().count() {
@@ -294,7 +302,7 @@ impl Tree {
     /// cost, and each branch then chooses its current program. The programs forced come back for
     /// the caller to apply their effects 0 and 1 (and tell no one); with the changes of the life
     /// counter for the live animals.
-    pub fn force(
+    pub(crate) fn force(
         &mut self,
         cat: &Catalogue,
         over: &mut Overlay,
@@ -332,7 +340,7 @@ impl Tree {
     /// complete is done again, and no progress, current program or expansion filter is looked at.
     /// The programs come back for the caller to apply their effects 0 and 1, with the changes of
     /// the life counter.
-    pub fn complete_category(
+    pub(crate) fn complete_category(
         &mut self,
         cat: &Catalogue,
         over: &mut Overlay,
@@ -358,7 +366,7 @@ impl Tree {
     /// Applies the characteristic effect of a completed program (6.4, 6.7): a change of the types
     /// (2, 4, 5), or a discount on the other programs and a training mark (7). The changes of the
     /// life counter are returned for the live animals.
-    pub fn complete(&mut self, cat: &Catalogue, over: &mut Overlay, d: &Done) -> Vec<Life> {
+    pub(crate) fn complete(&mut self, cat: &Catalogue, over: &mut Overlay, d: &Done) -> Vec<Life> {
         let [percent, staff, mark] = d.vals;
         match d.effect {
             2 | 4 | 5 => return over.apply(cat, d.effect, d.target, d.vals),
@@ -406,7 +414,7 @@ impl Tree {
     /// an unknown id is ignored, a funding level out of range is 0), the effects of the programs
     /// complete are the caller's (`apply`), and each branch chooses its current program.
     /// `bytes` is empty for a file with no section (before version 40).
-    pub fn load(&mut self, bytes: &[u8], rand: &mut dyn FnMut() -> u32) {
+    pub(crate) fn load(&mut self, bytes: &[u8], rand: &mut dyn FnMut() -> u32) {
         for b in &mut self.branches {
             b.level = 0;
             for c in &mut b.categories {
@@ -446,7 +454,7 @@ impl Tree {
 
     /// The research section as the writer makes it from the live tree (7.1, 7.5): the leading word,
     /// then a record for each branch, its categories and their programs, then the end record.
-    pub fn save(&self) -> Vec<u8> {
+    pub(crate) fn save(&self) -> Vec<u8> {
         let mut o = 0u32.to_le_bytes().to_vec();
         let word = |o: &mut Vec<u8>, kind: i32, name: i32| {
             o.extend(kind.to_le_bytes());
@@ -498,7 +506,12 @@ fn expansion_selection(desc: Option<&Section>) -> Option<i32> {
 impl Tree {
     /// One step of `ms` milliseconds of the research manager (5.1): every 3 s of simulated time
     /// each branch pays and works (5.3). The programs completed, in order, are returned.
-    pub fn step(&mut self, ms: u32, money: &mut Money, rand: &mut dyn FnMut() -> u32) -> Vec<Done> {
+    pub(crate) fn step(
+        &mut self,
+        ms: u32,
+        money: &mut Money,
+        rand: &mut dyn FnMut() -> u32,
+    ) -> Vec<Done> {
         self.acc = self.acc.wrapping_add(ms);
         let minutes = self.acc.wrapping_mul(7200) / 60000;
         let mut done = Vec::new();
@@ -559,7 +572,7 @@ impl Branch {
 
     /// Chooses the current program (5.5): a program that was started first, else one of the
     /// lowest rank, by one draw.
-    pub fn choose(&mut self, off: &[bool; 4], rand: &mut dyn FnMut() -> u32) {
+    pub(crate) fn choose(&mut self, off: &[bool; 4], rand: &mut dyn FnMut() -> u32) {
         let eligible =
             (self.categories.iter().enumerate()).filter(|(_, c)| c.tick && !c.skipped(off));
         let open: Vec<(usize, usize)> = eligible

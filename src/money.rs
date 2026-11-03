@@ -6,64 +6,64 @@
 use crate::text::format::{Strings, money, whole_units};
 
 /// The categories of the accounts, by number.
-pub const CATEGORIES: usize = 31;
+pub(crate) const CATEGORIES: usize = 31;
 /// What the keepers spend on animal food and on healing.
-pub const ANIMAL_FOOD: usize = 0;
-pub const ANIMAL_HEALTH: usize = 1;
-pub const ANIMAL_PURCHASE: usize = 2;
-pub const CONSTRUCTION: usize = 3;
-pub const ADMISSIONS: usize = 4;
+pub(crate) const ANIMAL_FOOD: usize = 0;
+pub(crate) const ANIMAL_HEALTH: usize = 1;
+pub(crate) const ANIMAL_PURCHASE: usize = 2;
+pub(crate) const CONSTRUCTION: usize = 3;
+pub(crate) const ADMISSIONS: usize = 4;
 /// What the guests pay at the entrance.
-pub const ADMISSIONS_INCOME: usize = 5;
-pub const DONATIONS: usize = 8;
+pub(crate) const ADMISSIONS_INCOME: usize = 5;
+pub(crate) const DONATIONS: usize = 8;
 /// Research expenditure.
-pub const RESEARCH: usize = 19;
+pub(crate) const RESEARCH: usize = 19;
 /// What guests pay at the guest buildings.
-pub const CONCESSIONS: usize = 6;
-pub const CONSTRUCTION_REFUND: usize = 9;
+pub(crate) const CONCESSIONS: usize = 6;
+pub(crate) const CONSTRUCTION_REFUND: usize = 9;
 /// Show income: what guests pay for a seat at a show (shows 7.3).
-pub const SHOW_INCOME: usize = 30;
-pub const ANIMAL_REFUND: usize = 10;
+pub(crate) const SHOW_INCOME: usize = 30;
+pub(crate) const ANIMAL_REFUND: usize = 10;
 /// The wage categories: what hiring a staff member of the class books, and its monthly wage.
-pub const KEEPER_WAGES: usize = 11;
-pub const GUIDE_WAGES: usize = 12;
-pub const MAINT_WAGES: usize = 13;
+pub(crate) const KEEPER_WAGES: usize = 11;
+pub(crate) const GUIDE_WAGES: usize = 12;
+pub(crate) const MAINT_WAGES: usize = 13;
 /// The monthly upkeep of the guest buildings.
-pub const BUILDING_UPKEEP: usize = 28;
+pub(crate) const BUILDING_UPKEEP: usize = 28;
 /// The statistics of the zoo status (zoo status 13).
-pub const ZOO_VALUE: usize = 15;
-pub const RATING: usize = 16;
-pub const ANIMAL_HAPPINESS: usize = 17;
-pub const GUEST_HAPPINESS: usize = 18;
-pub const GUESTS: usize = 25;
+pub(crate) const ZOO_VALUE: usize = 15;
+pub(crate) const RATING: usize = 16;
+pub(crate) const ANIMAL_HAPPINESS: usize = 17;
+pub(crate) const GUEST_HAPPINESS: usize = 18;
+pub(crate) const GUESTS: usize = 25;
 /// The counts of guests created and gone, and of the endowment members (net and joined).
-pub const GUESTS_CREATED: usize = 26;
-pub const GUESTS_GONE: usize = 27;
-pub const MEMBERS: usize = 21;
-pub const MEMBERS_JOINED: usize = 22;
-pub const MEMBERS_LEFT: usize = 23;
+pub(crate) const GUESTS_CREATED: usize = 26;
+pub(crate) const GUESTS_GONE: usize = 27;
+pub(crate) const MEMBERS: usize = 21;
+pub(crate) const MEMBERS_JOINED: usize = 22;
+pub(crate) const MEMBERS_LEFT: usize = 23;
 /// What the endowment members pay each month.
-pub const ENDOWMENT: usize = 20;
+pub(crate) const ENDOWMENT: usize = 20;
 /// Income minus expenses.
-pub const NET: usize = 14;
+pub(crate) const NET: usize = 14;
 /// Admissions since the start, copied at each month change.
-pub const ADMISSIONS_TOTAL: usize = 24;
+pub(crate) const ADMISSIONS_TOTAL: usize = 24;
 
-pub const MONTHS: usize = 12;
-pub const YEARS: usize = 20;
+pub(crate) const MONTHS: usize = 12;
+pub(crate) const YEARS: usize = 20;
 
 /// What the `$` key donates (input 4.8).
-pub const DOLLAR_KEY: f32 = 10_000.0;
+pub(crate) const DOLLAR_KEY: f32 = 10_000.0;
 
 /// The string number of the currency symbol.
-pub const SYMBOL: i32 = 22100;
+pub(crate) const SYMBOL: i32 = 22100;
 
 /// The currency symbol of the interface strings, to write amounts with.
-pub struct Symbol(String);
+pub(crate) struct Symbol(String);
 
 impl Symbol {
     /// The symbol from string [`SYMBOL`]; a blank one reads as `$`.
-    pub fn new(string: String) -> Symbol {
+    pub(crate) fn new(string: String) -> Symbol {
         match string.trim() {
             "" => Symbol("$".into()),
             _ => Symbol(string),
@@ -71,7 +71,7 @@ impl Symbol {
     }
 
     /// An amount in whole units with grouping: `74878` is "$74,878", `-5` is "($5)".
-    pub fn text(&self, units: i64) -> String {
+    pub(crate) fn text(&self, units: i64) -> String {
         money(self, units, true)
     }
 }
@@ -104,14 +104,14 @@ fn kind(category: usize) -> Kind {
 
 /// The colour of the cash on the status bar (text 6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tone {
+pub(crate) enum Tone {
     Green,
     Yellow,
     Red,
 }
 
 impl Tone {
-    pub fn rgb(self) -> [u8; 3] {
+    pub(crate) fn rgb(self) -> [u8; 3] {
         match self {
             Tone::Green => [83, 219, 83],
             Tone::Yellow => [255, 212, 60],
@@ -119,7 +119,7 @@ impl Tone {
         }
     }
 
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Tone::Green => "green",
             Tone::Yellow => "yellow",
@@ -132,7 +132,7 @@ impl Tone {
 /// neither; a freeform start sets the amount of its screen; a scenario has its `[start] setcash`
 /// and `addcash`.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct StartCash {
+pub(crate) struct StartCash {
     pub set: Option<f32>,
     pub add: Option<f32>,
 }
@@ -172,7 +172,7 @@ impl Money {
     }
 
     /// Adds to the cash (or takes from it, if negative). Not booked.
-    pub fn add_cash(&mut self, amount: f32) {
+    pub(crate) fn add_cash(&mut self, amount: f32) {
         if amount.is_finite() {
             self.cash += amount;
         }
@@ -180,7 +180,7 @@ impl Money {
 
     /// A new game starts: the accounts are cleared if the start asks for it (5.4), then the cash
     /// is set and added to. None of it is booked.
-    pub fn start(&mut self, cash: StartCash, reset: bool) {
+    pub(crate) fn start(&mut self, cash: StartCash, reset: bool) {
         if reset {
             self.reset();
         }
@@ -193,13 +193,13 @@ impl Money {
     }
 
     /// Whether an action of cost `cost` is allowed: free (or paying), or covered by the cash.
-    pub fn can_pay(&self, cost: f32) -> bool {
+    pub(crate) fn can_pay(&self, cost: f32) -> bool {
         cost <= 0.0 || cost <= self.cash
     }
 
     /// Takes `cost` from the cash and books it in `category`, if the action is allowed;
     /// otherwise nothing changes.
-    pub fn charge(&mut self, category: usize, cost: f32) -> bool {
+    pub(crate) fn charge(&mut self, category: usize, cost: f32) -> bool {
         if category >= CATEGORIES || !cost.is_finite() || !self.can_pay(cost) {
             return false;
         }
@@ -210,7 +210,7 @@ impl Money {
     /// Takes `cost` from the cash and books it in `category` without the can-pay check: wages,
     /// upkeep, animal food and medicine are taken even when the cash does not cover them and
     /// can push it below 0 (4.3).
-    pub fn spend(&mut self, category: usize, cost: f32) {
+    pub(crate) fn spend(&mut self, category: usize, cost: f32) {
         if category < CATEGORIES && cost.is_finite() {
             self.cash -= cost;
             self.book(category, cost);
@@ -218,7 +218,7 @@ impl Money {
     }
 
     /// Adds `amount` to the cash and books it in `category` (a refund, a donation, any income).
-    pub fn refund(&mut self, category: usize, amount: f32) {
+    pub(crate) fn refund(&mut self, category: usize, amount: f32) {
         if category < CATEGORIES && amount.is_finite() {
             self.cash += amount;
             self.book(category, amount);
@@ -228,7 +228,7 @@ impl Money {
     /// The developer panel's cash field (exhibits and money 4.6): the cash becomes `amount` and the
     /// difference is booked as a donation, negative when the cash goes down. Nothing when `amount`
     /// or the difference is no number.
-    pub fn set_cash_donation(&mut self, amount: f32) {
+    pub(crate) fn set_cash_donation(&mut self, amount: f32) {
         let diff = amount - self.cash;
         if amount.is_finite() && diff.is_finite() {
             self.cash = amount;
@@ -238,7 +238,7 @@ impl Money {
 
     /// Undoes a charge: the cash comes back and the category goes down by `cost`; nothing is
     /// booked as a refund.
-    pub fn undo_charge(&mut self, category: usize, cost: f32) {
+    pub(crate) fn undo_charge(&mut self, category: usize, cost: f32) {
         if category < CATEGORIES && cost.is_finite() {
             self.cash += cost;
             self.book(category, -cost);
@@ -246,7 +246,7 @@ impl Money {
     }
 
     /// Undoes a refund: the cash goes down again and the refund category goes down by `amount`.
-    pub fn undo_refund(&mut self, category: usize, amount: f32) {
+    pub(crate) fn undo_refund(&mut self, category: usize, amount: f32) {
         if category < CATEGORIES && amount.is_finite() {
             self.cash -= amount;
             self.book(category, -amount);
@@ -255,20 +255,20 @@ impl Money {
 
     /// Counts one in a count category (admissions, guests created or gone, members), in the
     /// current month, the current year and the total.
-    pub fn count(&mut self, category: usize) {
+    pub(crate) fn count(&mut self, category: usize) {
         if category < CATEGORIES {
             self.book(category, 1.0);
         }
     }
 
     /// An endowment member leaves: the net count goes down by one, the count of leavers up.
-    pub fn member_left(&mut self) {
+    pub(crate) fn member_left(&mut self) {
         self.book(MEMBERS, -1.0);
         self.book(MEMBERS_LEFT, 1.0);
     }
 
     /// Sets a statistic of the current month, the current year and the total.
-    pub fn set_statistic(&mut self, category: usize, value: f32) {
+    pub(crate) fn set_statistic(&mut self, category: usize, value: f32) {
         if category < CATEGORIES && value.is_finite() {
             let (m, y) = (self.month_column(), self.year_column());
             self.monthly[category][m] = value;
@@ -303,7 +303,7 @@ impl Money {
 
     /// The calendar enters a new month: the column of the new month is cleared (it held the
     /// same month of the last year), after the year's column on January (5.3).
-    pub fn month_change(&mut self) {
+    pub(crate) fn month_change(&mut self) {
         let (month, year) = (self.month_column() + 1, self.year_column());
         (self.month, self.year) = (month as u32 + 1, year as u32);
         if self.month > MONTHS as u32 {
@@ -322,7 +322,7 @@ impl Money {
     }
 
     /// Clears the three tables and goes back to January of the first year (5.4). The cash stays.
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         let cash = self.cash;
         *self = Money {
             cash,
@@ -331,7 +331,7 @@ impl Money {
     }
 
     /// The cash as the status bar shows it: whole units and the colour of its sign (text 6.1).
-    pub fn bar(&self) -> (i64, Tone) {
+    pub(crate) fn bar(&self) -> (i64, Tone) {
         let units = whole_units(f64::from(self.cash));
         let tone = match units {
             ..0 => Tone::Red,

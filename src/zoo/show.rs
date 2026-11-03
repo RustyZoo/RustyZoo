@@ -11,7 +11,7 @@ const FIRST_SHOW: u16 = 1000;
 
 /// What a file stores of the shows.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Shows {
+pub(crate) struct Shows {
     pub scripts: Vec<Script>,
     /// The next script id and the next show id (from version 97; a fresh map holds 2000 and 1000).
     pub next_script: u16,
@@ -34,7 +34,7 @@ impl Default for Shows {
 
 impl Shows {
     /// The show info of habitat record `n`.
-    pub fn info(&self, n: usize) -> Option<&ShowInfo> {
+    pub(crate) fn info(&self, n: usize) -> Option<&ShowInfo> {
         self.infos.get(n)?.as_ref()
     }
 
@@ -68,7 +68,7 @@ impl Shows {
 impl Shows {
     /// The section and each show info written as version 106 and read back, as a save and a load
     /// do (the unit lists are not stored).
-    pub fn saved_and_read(&self) -> Shows {
+    pub(crate) fn saved_and_read(&self) -> Shows {
         let mut o = Out(Vec::new());
         self.write_section(&mut o).unwrap();
         let infos: Vec<_> = self.infos.iter().flatten().collect();
@@ -87,7 +87,7 @@ impl Shows {
 
 /// A numbered list of tricks for one species (zoo format 4.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Script {
+pub(crate) struct Script {
     pub id: u16,
     /// 0xffffffff when fresh.
     pub marker: u32,
@@ -99,7 +99,7 @@ pub struct Script {
 /// One trick of a script. The satisfaction is the item's possible gain, `current` the one it
 /// gives now (shows 8.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Item {
+pub(crate) struct Item {
     /// Available by default, visible.
     pub available: u8,
     pub visible: u8,
@@ -199,7 +199,7 @@ impl Item {
 /// The show info of a tank (shows 3.2). The money figures are the bits of single precision
 /// numbers; each trio is this month, last month and the total.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShowInfo {
+pub(crate) struct ShowInfo {
     /// AI ticks between two shows, -1 for never.
     pub frequency: i32,
     /// The index of the scheduled species in `schedule`.
@@ -220,7 +220,7 @@ pub struct ShowInfo {
 
 /// The record of one entity type in a show info: a species, or the marine specialist.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeRecord {
+pub(crate) struct TypeRecord {
     pub key: u32,
     pub script: u16,
     /// The script the show editor chose, 0xffff for none (also in a file before version 99).
@@ -238,7 +238,7 @@ pub struct TypeRecord {
 
 /// The running part of a show info (shows 3.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Show {
+pub(crate) struct Show {
     pub script: u16,
     pub id: u16,
     pub species: u32,
@@ -279,7 +279,7 @@ impl Default for Show {
 
 /// The state of one animal in a show (shows 3.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ItemState {
+pub(crate) struct ItemState {
     /// The show's current script when the state is made.
     pub script: u16,
     pub animal: u32,
@@ -296,7 +296,7 @@ pub struct ItemState {
 impl ShowInfo {
     /// The record of type `t`. The original makes an empty one on a lookup; nothing reads it, so
     /// none is made here.
-    pub fn record(&self, t: u32) -> Option<&TypeRecord> {
+    pub(crate) fn record(&self, t: u32) -> Option<&TypeRecord> {
         self.records.iter().find(|r| r.key == t)
     }
 
@@ -304,7 +304,7 @@ impl ShowInfo {
     /// type record of the show's species (made when missing, in key order, with no script and no
     /// pending one) and then of the info, this month and in all, and the attendance in the same
     /// four places.
-    pub fn book(&mut self, r: f32, date: u64) {
+    pub(crate) fn book(&mut self, r: f32, date: u64) {
         let species = self.show.species;
         let at = match self.records.binary_search_by_key(&species, |t| t.key) {
             Ok(at) => at,
@@ -327,7 +327,7 @@ impl ShowInfo {
     /// The month change (shows 9.3): receipts and attendance of this month become last month's,
     /// for the info and each type record; the upkeep takes the new rate `upkeep` and the total
     /// adds it. The cumulative receipts and attendance stay.
-    pub fn new_month(&mut self, upkeep: f32) {
+    pub(crate) fn new_month(&mut self, upkeep: f32) {
         let shift = |f: &mut [u32; 3]| (f[1], f[0]) = (f[0], 0);
         for t in &mut self.records {
             shift(&mut t.receipts);
@@ -341,22 +341,22 @@ impl ShowInfo {
     }
 
     /// The units of type `t` that take part (shows 3.2).
-    pub fn units(&self, t: u32) -> &[u32] {
+    pub(crate) fn units(&self, t: u32) -> &[u32] {
         self.record(t).map_or(&[], |r| &r.units)
     }
 
     /// The species whose turn it is.
-    pub fn scheduled(&self) -> Option<u32> {
+    pub(crate) fn scheduled(&self) -> Option<u32> {
         self.schedule.get(self.index as usize).copied()
     }
 
     /// The script id of the scheduled species, 0 for none (shows 5.2).
-    pub fn scheduled_script(&self) -> u16 {
+    pub(crate) fn scheduled_script(&self) -> u16 {
         (self.scheduled()).map_or(0, |t| self.record(t).map_or(0, |r| r.script))
     }
 
     /// Running the scheduled script (shows 3.3).
-    pub fn is_started(&self) -> bool {
+    pub(crate) fn is_started(&self) -> bool {
         self.show.running && self.show.script == self.scheduled_script()
     }
 
@@ -438,7 +438,7 @@ impl ShowInfo {
 
 impl TypeRecord {
     /// A record with no script and no pending one, no figures and no unit.
-    pub fn new(key: u32, script: u16, date: u64) -> TypeRecord {
+    pub(crate) fn new(key: u32, script: u16, date: u64) -> TypeRecord {
         TypeRecord {
             key,
             script,

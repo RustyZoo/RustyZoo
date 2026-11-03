@@ -9,13 +9,13 @@ use super::{R, Reader, bad};
 
 /// A behaviour set: the outermost level first, each level nested in the one before.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Behaviour {
+pub(crate) struct Behaviour {
     pub levels: Vec<Level>,
 }
 
 /// One level of a behaviour set.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Level {
+pub(crate) struct Level {
     /// The current behaviour (`bWalk` ...).
     pub name: String,
     pub flag: u8,
@@ -58,7 +58,7 @@ impl Default for Behaviour {
 
 /// The goal and target block.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Target {
+pub(crate) struct Target {
     /// The goal and sub-goal type wanted.
     pub goal: i32,
     pub sub_goal: i32,
@@ -75,7 +75,7 @@ pub struct Target {
 /// What the zoo unit block and the base unit block store, apart from the movement mode, which is
 /// `Common::movement_mode`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnitBlock {
+pub(crate) struct UnitBlock {
     /// Until version 57.
     pub old_flag: u8,
     pub b1: u8,

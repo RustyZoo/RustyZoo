@@ -25,39 +25,39 @@ const SALT: usize = 10;
 const NO_HABITAT: i32 = 9410;
 /// The species timer passes this to revise the species list, the rating timer that to rate again.
 /// The food kinds an exhibit sums the food of (5.1 point 2).
-pub const FOODS: usize = 16;
+pub(crate) const FOODS: usize = 16;
 const SPECIES_AFTER: u32 = 7999;
 const RATING_AFTER: u32 = 6999;
 
 /// Recommendation bits (rule 5.6): the animal panel shows the text 9901 plus the bit number.
 pub mod bit {
-    pub const TOO_SHALLOW: u32 = 8;
-    pub const TOO_DEEP: u32 = 9;
+    pub(crate) const TOO_SHALLOW: u32 = 8;
+    pub(crate) const TOO_DEEP: u32 = 9;
     /// The tank's water is not the species' (salinity).
-    pub const SALINITY: u32 = 11;
-    pub const FEW_TREES: u32 = 12;
-    pub const MANY_TREES: u32 = 13;
-    pub const TOO_FLAT: u32 = 17;
-    pub const TOO_STEEP: u32 = 18;
-    pub const FEW_ROCKS: u32 = 19;
-    pub const MANY_ROCKS: u32 = 20;
+    pub(crate) const SALINITY: u32 = 11;
+    pub(crate) const FEW_TREES: u32 = 12;
+    pub(crate) const MANY_TREES: u32 = 13;
+    pub(crate) const TOO_FLAT: u32 = 17;
+    pub(crate) const TOO_STEEP: u32 = 18;
+    pub(crate) const FEW_ROCKS: u32 = 19;
+    pub(crate) const MANY_ROCKS: u32 = 20;
     /// Bit of "not enough" of terrain `k`; "too much" is the next one.
-    pub fn terrain(k: usize) -> u32 {
+    pub(crate) fn terrain(k: usize) -> u32 {
         21 + 2 * k as u32
     }
-    pub const DIRTY_WATER: u32 = 55;
-    pub const UNUSED_SHELTER: u32 = 57;
-    pub const NEEDS_SHELTER: u32 = 58;
-    pub const UNUSED_TOYS: u32 = 59;
-    pub const NEEDS_TOYS: u32 = 60;
-    pub const STINK: u32 = 61;
+    pub(crate) const DIRTY_WATER: u32 = 55;
+    pub(crate) const UNUSED_SHELTER: u32 = 57;
+    pub(crate) const NEEDS_SHELTER: u32 = 58;
+    pub(crate) const UNUSED_TOYS: u32 = 59;
+    pub(crate) const NEEDS_TOYS: u32 = 60;
+    pub(crate) const STINK: u32 = 61;
     /// An amphibious animal in a tank with no land beside it.
-    pub const NO_LAND: u32 = 63;
+    pub(crate) const NO_LAND: u32 = 63;
 }
 
 /// What the rating reads of an animal type's file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Likes {
+pub(crate) struct Likes {
     /// The species key: the type name. Records are kept per key; the list per key and subtype.
     pub key: String,
     pub subtype: String,
@@ -102,13 +102,13 @@ impl Likes {
 
     /// Whether salt water suits the species (`isRightSalinity`, tank fauna 11): it wants salt
     /// water (terrain 10) at least as much as fresh water (terrain 9).
-    pub fn salt(&self) -> bool {
+    pub(crate) fn salt(&self) -> bool {
         self.terrain[SALT] >= self.terrain[FRESH]
     }
 
     /// The likes of an animal type. An integer is looked up in the sections of the subtype, of
     /// the default subtype, then in the plain ones (entity types 6.2); the lists are plain.
-    pub fn of(ty: &EntityType) -> Likes {
+    pub(crate) fn of(ty: &EntityType) -> Likes {
         let Some(config) = ty.config.as_deref() else {
             return Likes::default();
         };
@@ -182,7 +182,7 @@ impl Likes {
 
 /// An object (or a building) that holds slots in the exhibit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Item {
+pub(crate) struct Item {
     pub habitat: i32,
     pub name: i32,
     /// Its type as `class/type/subtype`; empty for a type that is not found.
@@ -212,7 +212,7 @@ impl Item {
 
 /// A tank's water, for the depth, water quality and salinity parts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Water {
+pub(crate) struct Water {
     pub level: i32,
     pub purity: i32,
     pub show: bool,
@@ -222,7 +222,7 @@ pub struct Water {
 
 /// The tiles of an exhibit as the rating reads them (rule 5.2).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Site {
+pub(crate) struct Site {
     /// `N`: the tiles of the exhibit.
     pub tiles: usize,
     /// The tiles of each terrain type that hold no path.
@@ -244,7 +244,7 @@ pub struct Site {
 /// The scenery of a site that the species dislikes (habitat rating 14), as name ids of its types
 /// in tile order, each type once: with `important` the path type first (all paths make one entry)
 /// and the objects worth less than -5 to the species, else those worth -5 to -1.
-pub fn disliked(site: &Site, likes: &Likes, important: bool) -> Vec<i32> {
+pub(crate) fn disliked(site: &Site, likes: &Likes, important: bool) -> Vec<i32> {
     let mut names: Vec<i32> = site
         .paths
         .first()
@@ -272,8 +272,8 @@ pub fn disliked(site: &Site, likes: &Likes, important: bool) -> Vec<i32> {
 /// type of each animal (an index into `species`) in the exhibit's animal order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Input {
-    pub site: Site,
-    pub species: Vec<Likes>,
+    pub(crate) site: Site,
+    pub(crate) species: Vec<Likes>,
     pub animals: Vec<usize>,
     /// The sum of their happiness (5.1 point 3).
     pub happy: i32,
@@ -288,12 +288,12 @@ pub struct Input {
     pub linked: bool,
     /// The animal types of its amphibious neighbours, each once (5.1 point 4, 9.2), and those
     /// neighbours' tiles, a tank's with its water (5.3).
-    pub near: Vec<Likes>,
-    pub neighbours: Vec<Site>,
+    pub(crate) near: Vec<Likes>,
+    pub(crate) neighbours: Vec<Site>,
     /// The exhibit has a show neighbour, and the animal types of its show neighbours, each once
     /// (5.1 point 4, 9.2).
     pub show_linked: bool,
-    pub show: Vec<Likes>,
+    pub(crate) show: Vec<Likes>,
 }
 
 /// The record of one species in an exhibit (rule 3): its part scores and the recommendation
@@ -355,7 +355,7 @@ impl Record {
     }
 
     /// `getSpeciesRating` (rule 6): the plain sum of the parts, the elevation left out in a tank.
-    pub fn sum(&self) -> f32 {
+    pub(crate) fn sum(&self) -> f32 {
         let (o, f, r) = (self.objects, self.foliage, self.rocks);
         let parts: &[f32] = if self.tank {
             &[
@@ -404,7 +404,7 @@ impl Record {
 }
 
 /// What an animal shows of a rating: `ceil(max(0, rating))`.
-pub fn shown(rating: f32) -> u32 {
+pub(crate) fn shown(rating: f32) -> u32 {
     rating.max(0.0).ceil() as u32
 }
 
@@ -412,7 +412,7 @@ pub fn shown(rating: f32) -> u32 {
 /// has no record of it. An amphibious species in a tank that is not a show tank takes the best
 /// of the ratings of the exhibit's amphibious `neighbours`, from -1000, when it has any.
 /// `records` gives the records of an exhibit.
-pub fn rating(
+pub(crate) fn rating(
     x: u32,
     neighbours: &[u32],
     key: &str,
@@ -428,12 +428,12 @@ pub fn rating(
 }
 
 /// The draws of the simulation's generator.
-pub type Rand<'a> = &'a mut dyn FnMut() -> u32;
+pub(crate) type Rand<'a> = &'a mut dyn FnMut() -> u32;
 
 /// Computes exhibit `x` again when it is dirty, as reading a part of it does (rule 4): the species
 /// list is revised first when it must be (5.1 point 1), which draws for a type that came with an
 /// ambient sound; the reachability test (5.8) draws last, all from `rand`.
-pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
+pub(crate) fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     if world.exhibits().get(x).is_some_and(|e| e.rating.dirty) {
         let input = input(world, cat, x);
         let mut trio = false;
@@ -453,7 +453,7 @@ pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
 /// The end of the recomputation of exhibit `x`: a land exhibit has read the species lists of its
 /// amphibious neighbours and a tank those of its show neighbours, which computes those that are
 /// dirty first (9.2), then the reachability test runs (5.8).
-pub fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
+pub(crate) fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     // The exhibit's animal list is emptied and refilled at the recomputation (5.1): its tiles in
     // the order of the last fill, then each tile's unit list.
     let list: Vec<u32> = (world.tiles_of(x).into_iter())
@@ -492,7 +492,7 @@ thread_local! {
 }
 
 /// The reachability tests since the last one that went on (5.8).
-pub fn tests() -> u32 {
+pub(crate) fn tests() -> u32 {
     TESTS.get()
 }
 
@@ -501,7 +501,7 @@ pub fn tests() -> u32 {
 /// among the candidate tiles of 10.2 that belong to no amphibious neighbour, and the last animal
 /// of each type searches its way there with its test flag up (no diagonals). The types that get
 /// there make the escape table, which the escape walk reads (animals 11.3).
-pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
+pub(crate) fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     let tests = TESTS.get().saturating_add(1);
     TESTS.set(tests);
     let due = tests >= 30;
@@ -567,7 +567,7 @@ pub fn reach(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
 
 /// The sums of each species (`getSpeciesRating`) of each exhibit read by a pair (9.4), with the
 /// species [`react`] compares there: `None` all of them, `Some(a)` those whose amphibious flag is `a`.
-pub type Sums = Vec<(u32, Vec<(String, f32)>, Option<bool>)>;
+pub(crate) type Sums = Vec<(u32, Vec<(String, f32)>, Option<bool>)>;
 
 /// The sum of each species in each exhibit of `tiles`, before a terrain change or an entity
 /// placed or removed there (9.4): every exhibit is marked and its species list marked for
@@ -575,7 +575,7 @@ pub type Sums = Vec<(u32, Vec<(String, f32)>, Option<bool>)>;
 /// revised first, the reachability test last, drawing from `rand`). With `grounds`, an entity's
 /// change, the zoo grounds under `tiles` are marked and flagged too, and listed with no sums:
 /// [`react`] marks them again and compares nothing.
-pub fn before(
+pub(crate) fn before(
     world: &mut World,
     cat: &Catalogue,
     tiles: &[usize],
@@ -606,7 +606,7 @@ pub fn before(
 /// member); with `near`, each of its neighbours is then read in turn (already marked with the
 /// tank, not flagged), to read and compare its amphibious species only. The sums are one table
 /// that each read empties first: every exhibit is compared against the last one read.
-pub fn entity(
+pub(crate) fn entity(
     world: &mut World,
     cat: &Catalogue,
     tile: Option<usize>,
@@ -636,7 +636,7 @@ pub fn entity(
 /// everything the after step reads comes from that one, as [`entity`] reads it from the exhibit
 /// of the before: its tank test, its amphibious neighbours when `near`, its rates flag. Only the
 /// table of sums read before stays (a species it lacks is an old sum of 0).
-pub fn again(world: &World, before: &mut Sums, tile: Option<usize>, near: bool) {
+pub(crate) fn again(world: &World, before: &mut Sums, tile: Option<usize>, near: bool) {
     let x = tile.and_then(|t| world.exhibits().region(t));
     let (Some(x), Some(last)) = (x.filter(|&x| x != EXTERIOR), before.last()) else {
         return;
@@ -684,7 +684,7 @@ fn touch(world: &mut World, x: u32) {
 
 /// Runs `edit`, a terrain change, then lets the animals of the exhibits of the tiles it changed
 /// react (9.4): their sums before are taken from the tiles as they were.
-pub fn terrain<T>(
+pub(crate) fn terrain<T>(
     world: &mut World,
     cat: &Catalogue,
     rand: Rand,
@@ -708,7 +708,7 @@ pub fn terrain<T>(
 /// as to a terrain change at the gate's tile, with the water at the full level of the old height
 /// (`from`) for the sums before and at that of the new height (`to`) for the sums after. The
 /// level is then put back and the tank marked again.
-pub fn depth(world: &mut World, cat: &Catalogue, rand: Rand, id: u32, from: u32, to: u32) {
+pub(crate) fn depth(world: &mut World, cat: &Catalogue, rand: Rand, id: u32, from: u32, to: u32) {
     let Some((tile, level)) =
         (world.exhibits().get(id)).and_then(|e| Some((e.order.first().copied()?, e.tank?.level)))
     else {
@@ -843,7 +843,7 @@ fn surrounding(input: &Input) -> Vec<&Likes> {
 /// those of its amphibious neighbours (rules 5.1 to 5.6). The fields that depend on the animals'
 /// own state (happiness sums, hunger counts) are not part of the rating and not kept.
 #[allow(clippy::too_many_lines)] // #1045
-pub fn rate(input: &Input) -> Vec<Record> {
+pub(crate) fn rate(input: &Input) -> Vec<Record> {
     let site = &input.site;
     let (tank, show) = (site.water.is_some(), site.water.is_some_and(|w| w.show));
     let all: Vec<&Likes> = (input.species.iter())
@@ -1218,7 +1218,7 @@ impl State {
     /// limit marks the list or the records, then the list is revised and the records computed,
     /// each restarting its timer at `rand() % 200`. `rand` is the simulation's generator;
     /// `input` is called only when something is due. Whether the records were computed.
-    pub fn update(
+    pub(crate) fn update(
         &mut self,
         ms: u32,
         rand: &mut dyn FnMut() -> u32,
@@ -1246,7 +1246,7 @@ impl State {
 
     /// Revises the species list (rule 9.1): a type that left loses its sound, a type that came
     /// and has an ambient sound gets one at a tile picked with `rand() % tiles`.
-    pub fn revise_list(&mut self, input: &Input, rand: &mut dyn FnMut() -> u32) {
+    pub(crate) fn revise_list(&mut self, input: &Input, rand: &mut dyn FnMut() -> u32) {
         self.revise = false;
         let now: Vec<String> = input
             .species
@@ -1295,13 +1295,13 @@ impl State {
 /// Whether the pair of an entity of type `ty` reads the neighbours of a tank ([`entity`]): an
 /// animal or a scenery piece (an object, a fence or tank wall piece, a path, a building), not a
 /// staff member or a guest.
-pub fn reads_neighbours(ty: &EntityType) -> bool {
+pub(crate) fn reads_neighbours(ty: &EntityType) -> bool {
     use crate::render::order::Kind;
     ty.class == "animals" || Kind::of_class(ty.class) != Kind::Unit
 }
 
 /// The habitat number and name id of an object type (habitat rating 2).
-pub fn object(ty: &EntityType) -> (i32, i32) {
+pub(crate) fn object(ty: &EntityType) -> (i32, i32) {
     let it = item(Some(ty), 1);
     (it.habitat, it.name)
 }

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// An item type.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Item {
+pub(crate) struct Item {
     /// The name id, which a guest holds in its slot.
     pub id: i32,
     /// The change record: adult happiness, child happiness, hunger, thirst, bathroom, energy.
@@ -22,9 +22,9 @@ pub struct Item {
 }
 
 /// The litter item's name id.
-pub const LITTER: i32 = 6310;
+pub(crate) const LITTER: i32 = 6310;
 /// The slots of a guest's items: food, drink, fun gift, gift and litter.
-pub const SLOTS: usize = 5;
+pub(crate) const SLOTS: usize = 5;
 
 impl Item {
     fn read(file: &Config) -> Option<Item> {
@@ -55,7 +55,7 @@ impl Item {
 
 /// The item types of the registries `items*.cfg` (a name per file), by lower-case name, and the
 /// warnings of the files that could not be used.
-pub fn load(vfs: &Vfs) -> (BTreeMap<String, Item>, Vec<String>) {
+pub(crate) fn load(vfs: &Vfs) -> (BTreeMap<String, Item>, Vec<String>) {
     let (mut items, mut warnings) = (BTreeMap::new(), Vec::new());
     let read = |name: &str| {
         let bytes = vfs.read(name).map_err(|e| format!("{name}: {e}"))?;

@@ -18,7 +18,7 @@ pub(super) struct Marks {
 impl Marks {
     /// A white space as separator becomes a no-break space, so a number is never split over two
     /// lines.
-    pub fn new(decimal: &str, group: &str, size: usize) -> Marks {
+    pub(crate) fn new(decimal: &str, group: &str, size: usize) -> Marks {
         let group = group.replace(char::is_whitespace, &NBSP.to_string());
         Marks {
             decimal: decimal.into(),
@@ -28,7 +28,7 @@ impl Marks {
     }
 
     /// `digits` (decimal digits only) with the separator between the groups.
-    pub fn group(&self, digits: &str) -> String {
+    pub(crate) fn group(&self, digits: &str) -> String {
         let mut out = String::with_capacity(digits.len() * 2);
         for (i, c) in digits.chars().enumerate() {
             if self.size > 0 && i > 0 && (digits.len() - i).is_multiple_of(self.size) {
@@ -61,7 +61,7 @@ const NEGATIVE: [&str; 16] = [
 
 impl Profile {
     /// The US form: "1,234,567", "$74,878", "($1,234)".
-    pub fn us() -> Profile {
+    pub(crate) fn us() -> Profile {
         let marks = Marks::new(".", ",", 3);
         Profile {
             number: marks.clone(),
@@ -73,7 +73,7 @@ impl Profile {
 
     /// The forms of the user's regional settings, or the US ones when `english` (the value of
     /// the environment variable of the English switch) is `1` or the system gives none.
-    pub fn of_user(english: Option<&std::ffi::OsStr>) -> Profile {
+    pub(crate) fn of_user(english: Option<&std::ffi::OsStr>) -> Profile {
         let system = english.is_none_or(|v| v != "1");
         system
             .then(|| locale::profile(""))
@@ -84,7 +84,7 @@ impl Profile {
 
     /// The marks with a character that Windows-1252 lacks (an Arabic decimal mark, say) replaced
     /// by the US ones, which the game can write; the money forms stay.
-    pub fn in_code_page(mut self) -> Profile {
+    pub(crate) fn in_code_page(mut self) -> Profile {
         let us = Marks::new(".", ",", 3);
         for marks in [&mut self.number, &mut self.money] {
             if !marks
@@ -101,7 +101,12 @@ impl Profile {
 
     /// The forms of the Windows currency settings (the numbers of the two items).
     #[cfg(any(windows, test))]
-    pub fn from_windows(number: Marks, money: Marks, positive: usize, negative: usize) -> Profile {
+    pub(crate) fn from_windows(
+        number: Marks,
+        money: Marks,
+        positive: usize,
+        negative: usize,
+    ) -> Profile {
         let pick = |table: &[&str], i, default: &str| table.get(i).unwrap_or(&default).to_string();
         Profile {
             number,
@@ -116,7 +121,7 @@ impl Profile {
     /// one also the sign position (0 parentheses, 1 before all, 2 after all, 3 before the
     /// symbol, 4 after it). A value out of range (unspecified: the C locale) keeps the US form.
     #[cfg(any(unix, test))]
-    pub fn from_c(
+    pub(crate) fn from_c(
         number: Marks,
         money: Marks,
         positive: (i32, i32),
@@ -160,7 +165,7 @@ impl Profile {
     }
 
     /// `body` (the number) with the symbol, in the positive or the negative form.
-    pub fn amount(&self, symbol: &str, body: &str, negative: bool) -> String {
+    pub(crate) fn amount(&self, symbol: &str, body: &str, negative: bool) -> String {
         let pattern = if negative {
             &self.negative
         } else {

@@ -31,7 +31,7 @@ use crate::world::World;
 mod tests;
 
 /// The eight directions as steps of a tile (movement 2).
-pub const DIR: [(i32, i32); 8] = [
+pub(crate) const DIR: [(i32, i32); 8] = [
     (0, -1),
     (1, -1),
     (1, 0),
@@ -45,7 +45,7 @@ pub const DIR: [(i32, i32); 8] = [
 /// The rate of a guest (7.2): its type's rate less 5 plus its individual `offset` (0 to 10), then
 /// 10 % up for an energy of 75 or more and 10 % down for 19 or less, truncated. With `variable`
 /// off (`[AI] VariableUnitSpeeds` is 0) the rate as it is.
-pub fn guest_speed(rate: u32, offset: u32, energy: i32, variable: bool) -> u32 {
+pub(crate) fn guest_speed(rate: u32, offset: u32, energy: i32, variable: bool) -> u32 {
     if !variable {
         return rate;
     }
@@ -60,7 +60,7 @@ pub fn guest_speed(rate: u32, offset: u32, energy: i32, variable: bool) -> u32 {
 
 /// The three speed bands of a move call (7.1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Band {
+pub(crate) enum Band {
     #[default]
     Slow,
     Medium,
@@ -88,7 +88,7 @@ impl Band {
 }
 
 /// Stops the walk: speed 0, no path, not moving, no call walking.
-pub fn stop(unit: &mut Unit) {
+pub(crate) fn stop(unit: &mut Unit) {
     (unit.speed, unit.moving, unit.walking) = (0, false, false);
     (unit.segment, unit.vertical) = (None, 0);
     unit.path.clear();
@@ -101,7 +101,7 @@ fn tile_of(world: &World, (x, y): (i32, i32)) -> Option<usize> {
 }
 
 /// The direction from tile `a` to tile `b` by the signs of the differences, -1 for the same tile.
-pub fn direction(world: &World, a: usize, b: usize) -> i32 {
+pub(crate) fn direction(world: &World, a: usize, b: usize) -> i32 {
     let width = world.zoo.width as usize;
     let d = |a: usize, b: usize| (b as i32 - a as i32).signum();
     let step = (d(a % width, b % width), d(a / width, b / width));
@@ -156,7 +156,7 @@ fn displacement(dir: i32, distance: i32, diagonals: bool, m: i32) -> (i32, i32) 
 
 /// The move of one step of `ms` milliseconds for the unit at position `at` of the entity list
 /// (3), then the check of its height (5).
-pub fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
+pub(crate) fn step(unit: &mut Unit, world: &mut World, ms: u32, at: usize) {
     let before = here(world, at);
     // A hidden user walking out of its building is moved but stays off the map (guest buildings
     // 6.6); one that stays inside is not touched.
@@ -293,7 +293,7 @@ fn animate(
 
 /// Picks the move animation again after a swimmer changed between land and water (6.2), or the
 /// idle one when the unit stands (tank fauna 4).
-pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+pub(crate) fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     if !std::mem::take(&mut unit.flip) {
         return;
     }
@@ -317,7 +317,7 @@ pub(crate) fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
 }
 
 /// The move call `gait` of the unit's set, run once per step (8.2).
-pub fn call(
+pub(crate) fn call(
     unit: &mut Unit,
     world: &mut World,
     data: &dyn Data,
@@ -523,7 +523,7 @@ fn allowed(unit: &Unit, world: &World, at: usize, here: usize, next: usize) -> b
 /// Tells the finder whether the unit at position `at` of the entity list is in a tank and at which
 /// level the depth search starts (and ends, until a destination says otherwise); the start node is
 /// entered with the unit's facing and its `vertical` direction (pathfinding 3.6).
-pub fn aim(m: &mut path::Mover, world: &World, at: usize, vertical: i32) {
+pub(crate) fn aim(m: &mut path::Mover, world: &World, at: usize, vertical: i32) {
     let c = world.zoo.entities.get(at).and_then(|e| e.common.as_ref());
     m.deep = c.is_some_and(|c| c.movement_mode == 3);
     m.start = (c.map_or(0, |c| c.rotation as usize), vertical);
@@ -533,7 +533,7 @@ pub fn aim(m: &mut path::Mover, world: &World, at: usize, vertical: i32) {
 
 /// What the costs of the path finder read of the unit's type (the characteristics of 7.1 and of
 /// the pathfinding specification).
-pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) {
+pub(crate) fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) {
     let flag = |key: &str| data.number(entity, &Number::Characteristic(key.into())) == 1;
     let m = &mut unit.mover;
     (m.swims, m.underwater, m.only_underwater) =

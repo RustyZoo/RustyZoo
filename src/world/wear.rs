@@ -92,13 +92,13 @@ impl World {
     }
 
     /// Whether the piece at `at` wears with time.
-    pub fn wears(&self, cat: &Catalogue, at: usize) -> bool {
+    pub(crate) fn wears(&self, cat: &Catalogue, at: usize) -> bool {
         self.wearing(cat, at).is_some()
     }
 
     /// Whether the piece at `at` is decayed or broken (staff 8.7): it wears with time and its life is at
     /// most the `cDecayedLife` of its type.
-    pub fn decayed(&self, cat: &Catalogue, at: usize) -> bool {
+    pub(crate) fn decayed(&self, cat: &Catalogue, at: usize) -> bool {
         let life = (self.zoo.entities[at].common.as_ref()).and_then(|c| Some(c.fence?.life));
         let limit = |ty: &EntityType| number(ty, "cDecayedLife").unwrap_or(0.0) as i64;
         let ty = self.wearing(cat, at);
@@ -107,7 +107,7 @@ impl World {
     }
 
     /// Whether the entity at `at` is a fence piece or a tank wall (the class of 6.7 of the zoo format).
-    pub fn is_fence(&self, at: usize) -> bool {
+    pub(crate) fn is_fence(&self, at: usize) -> bool {
         matches!(&*self.zoo.entities[at].class, "fences" | "tankwall")
     }
 
@@ -116,7 +116,12 @@ impl World {
     /// state change of the fence (`fence_changed`: the escape check flag beside a bashing species).
     /// Returns the interval; `None`, drawing nothing, for an entity that is no fence piece or has
     /// no type.
-    pub fn heal(&mut self, cat: &Catalogue, id: u32, rand: &mut dyn FnMut() -> u32) -> Option<u32> {
+    pub(crate) fn heal(
+        &mut self,
+        cat: &Catalogue,
+        id: u32,
+        rand: &mut dyn FnMut() -> u32,
+    ) -> Option<u32> {
         let at = self.find(id)?;
         let ty = type_of(cat, &self.zoo.entities[at])?;
         let strength = number(ty, "cStrength").unwrap_or(STRENGTH) as u32;
@@ -162,7 +167,7 @@ impl World {
     /// and, when its life is below 1, breaks: life and strength 0. A line tells the piece when it
     /// wears; the events 10033 and 10034 it posts are returned. A piece that becomes decayed or
     /// broken sets the escape check flags of 12. A broken piece plays its break sound.
-    pub fn wear(
+    pub(crate) fn wear(
         &mut self,
         cat: &Catalogue,
         at: usize,
@@ -230,7 +235,7 @@ impl World {
     /// The `fences_break` cheat (cheats 4.2 C): every piece that wears is brought to its last
     /// life and given a step longer than any countdown, so it breaks as a worn piece does (lines
     /// and events as [`World::wear`]). A piece already broken stays so.
-    pub fn break_fences(&mut self, cat: &Catalogue, lines: &mut Vec<String>) -> Vec<Event> {
+    pub(crate) fn break_fences(&mut self, cat: &Catalogue, lines: &mut Vec<String>) -> Vec<Event> {
         let mut events = Vec::new();
         for at in 0..self.zoo.entities.len() {
             if !self.wears(cat, at) {
@@ -248,7 +253,7 @@ impl World {
     /// The events a zoo just loaded posts for its fence pieces (placing 7.4 "The events"), in
     /// entity list order: a piece with life below 1 that can break is broken again (10034), else one at or below
     /// the `cDecayedLife` of its type is decayed (10033, 10034 when electrified).
-    pub fn loaded_events(&self, cat: &Catalogue) -> Vec<Event> {
+    pub(crate) fn loaded_events(&self, cat: &Catalogue) -> Vec<Event> {
         let mut events = Vec::new();
         for (at, e) in self.zoo.entities.iter().enumerate() {
             let Some((c, f)) = e.common.as_ref().and_then(|c| Some((c, c.fence?))) else {

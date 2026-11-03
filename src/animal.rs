@@ -79,37 +79,37 @@ use food::Meal;
 use life::Sets;
 
 /// The messages "not happy" and "dislikes its exhibit": string numbers whose text holds the name.
-pub const NOT_HAPPY: i32 = 10028;
+pub(crate) const NOT_HAPPY: i32 = 10028;
 /// The message and alert of an animal that got out of its exhibit (animals 11.4).
-pub const ESCAPED: i32 = 10007;
-pub const DISLIKES_EXHIBIT: i32 = 10031;
+pub(crate) const ESCAPED: i32 = 10007;
+pub(crate) const DISLIKES_EXHIBIT: i32 = 10031;
 /// "Can't find any food".
-pub const NO_FOOD: i32 = 10030;
+pub(crate) const NO_FOOD: i32 = 10030;
 /// "Taken away due to poor treatment", "very sick" and "has died of old age".
-pub const TAKEN_AWAY: i32 = 10010;
-pub const VERY_SICK: i32 = 10029;
-pub const DIED: i32 = 10242;
+pub(crate) const TAKEN_AWAY: i32 = 10010;
+pub(crate) const VERY_SICK: i32 = 10029;
+pub(crate) const DIED: i32 = 10242;
 /// "Is ill" and "has caught an illness from another animal".
-pub const ILL: i32 = 15000;
-pub const CAUGHT_ILL: i32 = 15001;
+pub(crate) const ILL: i32 = 15000;
+pub(crate) const CAUGHT_ILL: i32 = 15001;
 
 /// The counters of the checks, in the order the creation draws them (animals 3.2).
-pub const HUNGER: usize = 0;
-pub const BREATH: usize = 1;
-pub const HEALTH: usize = 2;
-pub const ENERGY: usize = 3;
-pub const ESCAPE: usize = 4;
-pub const OTHER: usize = 5;
-pub const KEEPER: usize = 6;
-pub const CAPTIVITY: usize = 7;
-pub const HABITAT: usize = 8;
-pub const BORED: usize = 9;
-pub const SOCIAL: usize = 10;
-pub const REPRODUCTION: usize = 11;
-pub const MESSAGE: usize = 12;
-pub const SHELTER: usize = 13;
-pub const WATER: usize = 14;
-pub const MURKY: usize = 15;
+pub(crate) const HUNGER: usize = 0;
+pub(crate) const BREATH: usize = 1;
+pub(crate) const HEALTH: usize = 2;
+pub(crate) const ENERGY: usize = 3;
+pub(crate) const ESCAPE: usize = 4;
+pub(crate) const OTHER: usize = 5;
+pub(crate) const KEEPER: usize = 6;
+pub(crate) const CAPTIVITY: usize = 7;
+pub(crate) const HABITAT: usize = 8;
+pub(crate) const BORED: usize = 9;
+pub(crate) const SOCIAL: usize = 10;
+pub(crate) const REPRODUCTION: usize = 11;
+pub(crate) const MESSAGE: usize = 12;
+pub(crate) const SHELTER: usize = 13;
+pub(crate) const WATER: usize = 14;
+pub(crate) const MURKY: usize = 15;
 const COUNTERS: usize = 16;
 
 /// The recommendation bits this part owns (animals 8).
@@ -129,7 +129,7 @@ const NEEDS_EXHIBIT: u32 = 62;
 
 /// The need a shelter serves, and the radius of the search for one (the square root of the largest
 /// whole number: no limit in practice).
-pub const NEED: &str = "animalrest";
+pub(crate) const NEED: &str = "animalrest";
 const SEARCH: i64 = 46_340;
 
 /// The terrain type of trampled ground.
@@ -242,7 +242,7 @@ impl Class {
 macro_rules! keys {
     ($($field:ident: $key:literal = $default:expr,)*) => {
         #[derive(Debug, Clone, PartialEq, Eq)]
-        pub struct Keys {
+        pub(crate) struct Keys {
             $(pub $field: i32,)*
             /// `cKeeperArrivesChange`, which falls back to the class file's.
             pub keeper_arrives: i32,
@@ -264,7 +264,7 @@ macro_rules! keys {
 
         impl Keys {
             /// The keys through `int`, which gives the value of a key or the fallback it is handed.
-            pub fn read(int: &dyn Fn(&str, i32) -> i32, class: &Class) -> Keys {
+            pub(crate) fn read(int: &dyn Fn(&str, i32) -> i32, class: &Class) -> Keys {
                 let amphibious = int("cUnderwater", 0) == 1 && int("cOnlyUnderwater", 0) == 0;
                 Keys {
                     $($field: int($key, $default),)*
@@ -382,7 +382,7 @@ keys! {
 impl Keys {
     /// The keys of an animal type: the section of its subtype, of the default subtype, then
     /// the plain one (entity types 6.2).
-    pub fn of(ty: &EntityType, class: &Class) -> Keys {
+    pub(crate) fn of(ty: &EntityType, class: &Class) -> Keys {
         let Some(config) = ty.config.as_deref() else {
             return Keys::read(&|_, fallback| fallback, class);
         };
@@ -406,7 +406,7 @@ impl Keys {
 
     /// The keys with the changes of the completed research programs (research 6.4). The amphibious
     /// keeper-arrives key is another key and stays.
-    pub fn researched(mut self, ty: &EntityType, over: &Overlay) -> Keys {
+    pub(crate) fn researched(mut self, ty: &EntityType, over: &Overlay) -> Keys {
         if !self.amphibious {
             self.keeper_arrives = over.int(ty, "cKeeperArrivesChange", self.keeper_arrives);
         }
@@ -438,7 +438,7 @@ fn prefers_salt(config: &Config) -> bool {
 /// The live state of an animal: the values, their pending changes, the counters, the flags that
 /// the checks read and raise.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Animal {
+pub(crate) struct Animal {
     pub happiness: i32,
     pub hunger: i32,
     pub health: i32,
@@ -542,7 +542,7 @@ pub struct Animal {
 impl Animal {
     /// The animal as creation leaves it (animals 3.2): the starts, every counter drawn from
     /// `rng` (16 draws, 17 for a young animal whose sex is drawn first).
-    pub fn create(k: &Keys, class: &Class, subtype: &str, rng: &mut Rng) -> Animal {
+    pub(crate) fn create(k: &Keys, class: &Class, subtype: &str, rng: &mut Rng) -> Animal {
         let female = match subtype {
             "m" => false,
             "f" | "p" => true,
@@ -576,7 +576,7 @@ impl Animal {
     /// below version 43 has neither: they keep creation's values), the dates are read as game
     /// milliseconds. The sleeping, eating and drinking flags come back as saved; [`load`] starts
     /// the behaviour that matches them.
-    pub fn restore(&mut self, saved: &AnimalRecord, k: &Keys, class: &Class) {
+    pub(crate) fn restore(&mut self, saved: &AnimalRecord, k: &Keys, class: &Class) {
         let r = saved;
         (self.life, self.mate_delay) = (
             r.life
@@ -621,7 +621,7 @@ impl Animal {
 
     /// The record of this animal: `base` with the live values written over it, so what the engine
     /// does not model stays as it was.
-    pub fn record(&self, base: AnimalRecord) -> AnimalRecord {
+    pub(crate) fn record(&self, base: AnimalRecord) -> AnimalRecord {
         let mut counters = base.counters;
         // The shelter and murky water counters are not stored.
         for at in (0..=12).chain([WATER]) {
@@ -672,7 +672,7 @@ impl Animal {
     }
 
     /// Applies the pending changes (animals 3.3).
-    pub fn update(&mut self, k: &Keys) {
+    pub(crate) fn update(&mut self, k: &Keys) {
         // The high limit first, then the low one: a low limit above the high one wins.
         fn apply(v: &mut i32, d: &mut i32, lo: i32, hi: i32) {
             *v = v.saturating_add(*d).min(hi).max(lo);
@@ -736,7 +736,7 @@ fn fire(counter: &mut i32, period: i32) -> bool {
 
 /// The animals the social, bored and other checks count.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Census {
+pub(crate) struct Census {
     /// Animals of its species in its exhibit, itself included.
     pub species: u32,
     /// Adults (subtype `m` or `f`) of its species, and of every species, in its exhibit and its
@@ -750,7 +750,7 @@ pub struct Census {
 
 /// Where the animal stands and what the checks read of it.
 #[derive(Debug, Clone, Default)]
-pub struct Env {
+pub(crate) struct Env {
     /// It stands in an exhibit and not on the grounds.
     pub exhibit: bool,
     /// The grounds or beyond the zoo wall.
@@ -821,14 +821,14 @@ pub struct Env {
 /// still serves the need `animalrest`, and the nearest buildings that do, in the list order
 /// (guests 7.1); the draw among them is the check's.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Shelter {
+pub(crate) struct Shelter {
     pub held: bool,
     pub nearest: Vec<u32>,
 }
 
 /// What a tick of checks asks of the world besides the animal's own state.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct Out {
+pub(crate) struct Out {
     /// The messages posted, by string number.
     pub messages: Vec<i32>,
     /// The tile under the animal is painted as trampled ground.
@@ -871,13 +871,15 @@ pub struct Out {
 
 /// The checks of one status tick, in the original's order (animals 4.2); `rng` is the shared
 /// generator, drawn from in that order. No young animal is ever born.
-pub fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) -> Out {
+#[cfg(test)]
+pub(crate) fn run(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) -> Out {
     run_with(a, k, class, env, rng, &mut |_, _| false)
 }
 
 /// The same, with `birth` making the young when the reproduction check succeeds, among the
 /// draws (animals-needs 11.4).
-pub fn run_with(
+#[cfg(test)]
+pub(crate) fn run_with(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
@@ -900,7 +902,7 @@ pub fn run_with(
 /// 4, "Reading"): the check asks for it where it reads, so the recomputation and its draws happen
 /// at that point of the tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Read {
+pub(crate) enum Read {
     /// The stored animal list, for the mate search (animals-needs 11.3).
     Mates,
     /// The food sums of the exhibit and its amphibious neighbours (hunger check).
@@ -922,10 +924,10 @@ pub enum Read {
 
 /// Fills the part of the [`Env`] that `Read` names from the world, given the animal, the meal
 /// of the tick so far and the generator.
-pub type Reader<'a> = &'a mut dyn FnMut(Read, &Animal, &Meal, &mut Env, &mut Rng);
+pub(crate) type Reader<'a> = &'a mut dyn FnMut(Read, &Animal, &Meal, &mut Env, &mut Rng);
 
 /// [`run_with`] with the reads of the exhibit made by `read` where the checks need them.
-pub fn run_read(
+pub(crate) fn run_read(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
@@ -1336,7 +1338,7 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
 /// The animals (positions in the entity list) of exhibit `x` in the order of the exhibit's
 /// stored animal list (habitat rating 5.1, guests visit 6.3). The list is rebuilt only at a
 /// recomputation, so a reader refreshes the exhibit first ([`rating::refresh`]).
-pub fn exhibit_animals(world: &World, x: u32) -> Vec<usize> {
+pub(crate) fn exhibit_animals(world: &World, x: u32) -> Vec<usize> {
     let list = world.exhibits().get(x).map(|e| &e.rating.animals);
     (list.into_iter().flatten())
         .filter_map(|&id| world.find(id))
@@ -1375,7 +1377,7 @@ fn kinds(world: &World, near: &[u32]) -> [usize; 3] {
 }
 
 /// The keys of the animal at position `at` of the entity list.
-pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
+pub(crate) fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
     let class = &world.units.class;
     match find(cat, &world.zoo.entities[at]) {
         Some(ty) => Keys::of(ty, class).researched(ty, &world.research),
@@ -1384,7 +1386,7 @@ pub fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
 }
 
 /// A research change of the life counter reaches the live animals of its type (research 6.4).
-pub fn lengthen(world: &mut World, changes: &[crate::research::Life]) {
+pub(crate) fn lengthen(world: &mut World, changes: &[crate::research::Life]) {
     for change in changes {
         let ids = (world.zoo.entities.iter())
             .filter(|e| e.class == "animals" && change.reaches(e))
@@ -1401,7 +1403,7 @@ pub fn lengthen(world: &mut World, changes: &[crate::research::Life]) {
 /// Creates the animal at position `at` of a loaded map as the loader does (animals 3.5): it gets
 /// its creation, with its draws, and then the values its record stores. The caller goes in file
 /// order before the first step; the first turn of the animal draws nothing.
-pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
+pub(crate) fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     let entity = &world.zoo.entities[at];
     let Some((id, saved)) = (entity.common.as_ref())
         .and_then(|c| Some((c.id, c.animal.clone()?)))
@@ -1447,7 +1449,7 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
 
 /// The first turn of an animal that was not on the map at its load (adopted, born): its values
 /// start and its counters are drawn.
-pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let Part::Animal(a) = &mut unit.part else {
         return;
     };
@@ -1462,7 +1464,7 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 }
 
 /// The update of the values at a status tick (animals 3.3).
-pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let k = keys(world, ctx.cat, at);
     let Part::Animal(a) = &mut unit.part else {
         return;
@@ -1476,7 +1478,13 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 }
 
 /// The conditional checks of a status tick (animals 4.2).
-pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+pub(crate) fn checks(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+) {
     boxed::check(unit, world, ctx, at);
     let task = unit.goal.record.task;
     let meal = food::meal(unit, world, data, at);

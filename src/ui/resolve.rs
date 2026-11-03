@@ -18,7 +18,7 @@ use super::widgets::Lengths;
 /// The numbers an element's words resolve to. Positions are relative to the reference (the
 /// anchor, else the layout, else the window); a negative one counts from its far edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Placed {
+pub(crate) struct Placed {
     pub x: i32,
     pub y: i32,
     pub alt_x: i32,
@@ -266,7 +266,7 @@ impl Tree {
     /// The lengths along a scroll bar (its own, its arrows' and its thumb's, from their
     /// pictures) and whether it is vertical: a bar wider than high is horizontal. Zero lengths
     /// for anything else.
-    pub fn bar_lengths(&self, i: usize) -> (Lengths, bool) {
+    pub(crate) fn bar_lengths(&self, i: usize) -> (Lengths, bool) {
         let e = &self.elements[i];
         let Kind::ScrollBar(s) = &e.kind else {
             return (Lengths::default(), true);
@@ -331,7 +331,7 @@ impl Tree {
     /// alternative one if the element is switched to it) from the screen position of its anchor,
     /// else of its layout, else from (0, 0); a negative coordinate is counted from the far edge
     /// of the reference. An element not resolved is at (0, 0) of its base.
-    pub fn screen(&self, i: usize) -> (i32, i32) {
+    pub(crate) fn screen(&self, i: usize) -> (i32, i32) {
         // The chain of bases up to the root, walked without recursion: a layout can hold a long
         // chain of anchors.
         let mut chain = vec![i];
@@ -373,7 +373,7 @@ impl Tree {
 
     /// Puts the top left corner of an element at (`x`, `y`) on the screen by changing its current
     /// position (the alternative one if it is switched to it), which stays relative to its base.
-    pub fn set_screen_position(&mut self, i: usize, (x, y): (i32, i32)) {
+    pub(crate) fn set_screen_position(&mut self, i: usize, (x, y): (i32, i32)) {
         let Some(placed) = self.elements[i].placed else {
             return;
         };
@@ -414,7 +414,7 @@ impl Tree {
 
     /// Moves an element to the end of its layout's list: drawn last, tested first, whatever its
     /// layer, until the next sort (ui layout 6.2).
-    pub fn bring_to_front(&mut self, i: usize) {
+    pub(crate) fn bring_to_front(&mut self, i: usize) {
         if let Some(parent) = self.elements[i].parent {
             let children = &mut self.elements[parent].children;
             children.retain(|&c| c != i);
@@ -423,7 +423,7 @@ impl Tree {
     }
 
     /// Hides an element and, if it is a layout, everything below it.
-    pub fn hide(&mut self, i: usize) {
+    pub(crate) fn hide(&mut self, i: usize) {
         let mut stack = vec![i];
         while let Some(i) = stack.pop() {
             self.elements[i].state |= super::layout::HIDDEN;
@@ -439,7 +439,7 @@ impl Tree {
     }
 
     /// Sorts the children of every layout by `layer`, ascending and stable.
-    pub fn sort_layers(&mut self) {
+    pub(crate) fn sort_layers(&mut self) {
         for i in 0..self.elements.len() {
             let mut children = std::mem::take(&mut self.elements[i].children);
             children.sort_by_key(|&c| self.elements[c].layer);

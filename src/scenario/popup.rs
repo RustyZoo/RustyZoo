@@ -11,7 +11,7 @@ const HINT_BUTTON: i32 = 45406;
 
 /// A popup: the section `[p]` over `[default]` of the same file.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Popup {
+pub(crate) struct Popup {
     /// The dialog layout; none (0 or less) shows nothing.
     pub layout: i32,
     /// The pictures of the background, the icon and the two images, by name; empty for none.
@@ -28,7 +28,7 @@ pub struct Popup {
 
 /// The line that stays on the screen after a popup.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Hint {
+pub(crate) struct Hint {
     /// The layout; 0 or less for none.
     pub layout: i32,
     /// A string id, or -1 for the text of the first goal in progress; the name of a text wins.
@@ -46,7 +46,7 @@ fn text(s: Option<&[u8]>) -> String {
 
 impl Popup {
     /// The popup `p` of `cfg`; none for an id of 0 or less.
-    pub fn read(cfg: &Config, p: i32) -> Option<Popup> {
+    pub(crate) fn read(cfg: &Config, p: i32) -> Option<Popup> {
         if p <= 0 {
             return None;
         }
@@ -78,7 +78,7 @@ impl Popup {
 
 /// What a trigger does to one element of a block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Op {
+pub(crate) enum Op {
     Disable,
     Enable,
     Hide,
@@ -86,7 +86,7 @@ pub enum Op {
 }
 
 /// The `id` keys of the section `[block]`; a value that does not parse (`0x` without a digit) is 0.
-pub fn ids(cfg: &Config, block: i32) -> Vec<i32> {
+pub(crate) fn ids(cfg: &Config, block: i32) -> Vec<i32> {
     let s = cfg.section(block.to_string());
     let all = s.map_or(&[][..], |s| s.get_all("id"));
     all.iter().map(|v| to_int(v).unwrap_or(0)).collect()
@@ -94,7 +94,7 @@ pub fn ids(cfg: &Config, block: i32) -> Vec<i32> {
 
 /// The entries `<id>=<letter>` of the section `[block]`: the first letter of the value, `d`, `e`,
 /// `h` or `s`, lower case only (the example file writes the words), says what to do.
-pub fn entries(cfg: &Config, block: i32) -> Vec<(i32, Op)> {
+pub(crate) fn entries(cfg: &Config, block: i32) -> Vec<(i32, Op)> {
     let Some(s) = cfg.section(block.to_string()) else {
         return Vec::new();
     };

@@ -11,7 +11,7 @@ use crate::world::World;
 
 /// Crates the animal (unit placing 9.1): it is no longer escaped nor darted, no keeper has a
 /// claim on it, and the status reset drops its escape walk and its need flags.
-pub fn crate_up(a: &mut Animal) {
+pub(crate) fn crate_up(a: &mut Animal) {
     a.crated = true;
     (a.escaped, a.tranq, a.claim) = (false, false, 0);
     (a.walk, a.drinking, a.wants_food, a.thirsty) = (None, false, false, false);
@@ -20,7 +20,7 @@ pub fn crate_up(a: &mut Animal) {
 /// Snaps the unit at `at` to the tile grid where it stands (unit placing 9.1, 9.2): the position
 /// of `placing.md` 4.2 for its footprint now (turned by the facing), the crate's while crated, and
 /// the ground under it.
-pub fn snap(world: &mut World, at: usize) {
+pub(crate) fn snap(world: &mut World, at: usize) {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
         return;
     };
@@ -41,7 +41,7 @@ pub fn snap(world: &mut World, at: usize) {
 
 /// A keeper's crate job (staff 7.11): the animal `id` is crated where it stands, stops everything
 /// and is put on the map again, taking the terrain mode of its tile.
-pub fn crate_in_place(world: &mut World, id: u32) {
+pub(crate) fn crate_in_place(world: &mut World, id: u32) {
     let Some(unit) = world.units.get_mut(id) else {
         return;
     };
@@ -56,7 +56,7 @@ pub fn crate_in_place(world: &mut World, id: u32) {
 /// A keeper's dart (staff 7.11): the animal is tranquilised, its chase stopped (nothing is caught
 /// before the chase spec) and its energy full with the sleep check due, so that it falls asleep
 /// at the next one, which also clears the flag when it wakes.
-pub fn tranquilise(unit: &mut Unit, k: &Keys) {
+pub(crate) fn tranquilise(unit: &mut Unit, k: &Keys) {
     let Part::Animal(a) = &mut unit.part else {
         return;
     };
@@ -70,7 +70,7 @@ pub fn tranquilise(unit: &mut Unit, k: &Keys) {
 /// animal: every `cBoxedCheck` ticks the crate opens where it stands in an exhibit (a tank holding
 /// water, else a land exhibit for a species that does not live only under water); otherwise one
 /// draw queues `bRattle` with the chance `cRattleChance`.
-pub fn check(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn check(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let period = world.units.class.boxed;
     let Part::Animal(a) = &mut unit.part else {
         return;

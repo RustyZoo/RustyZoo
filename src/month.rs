@@ -15,7 +15,7 @@ pub(crate) const HELICOPTER_BASE: i32 = 8031;
 
 /// Whether the type is a guest building: a building that satisfies the need `building` (guest
 /// buildings 3.4). The compost does not, and pays nothing.
-pub fn is_guest_building(ty: &EntityType) -> bool {
+pub(crate) fn is_guest_building(ty: &EntityType) -> bool {
     ty.class == "building"
         && ty
             .config
@@ -26,7 +26,7 @@ pub fn is_guest_building(ty: &EntityType) -> bool {
 
 /// The monthly upkeep of a building type: `cUpkeep`, 0 when the file has none or for the
 /// helicopter base (guest buildings 9).
-pub fn upkeep(ty: &EntityType) -> f32 {
+pub(crate) fn upkeep(ty: &EntityType) -> f32 {
     let key = ty
         .config
         .as_deref()
@@ -41,7 +41,7 @@ pub fn upkeep(ty: &EntityType) -> f32 {
 
 /// The monthly upkeep of building `id` of type `ty`: its current upgrade's, else the type's
 /// (research 6.3, guest buildings 9); the helicopter base costs nothing whatever it holds.
-pub fn upkeep_of(units: &Units, ty: &EntityType, id: u32) -> f32 {
+pub(crate) fn upkeep_of(units: &Units, ty: &EntityType, id: u32) -> f32 {
     match (ty.name_id, upgrade::current(units, ty.name_id, id)) {
         (HELICOPTER_BASE, _) => 0.0,
         (_, Some(u)) => u.upkeep as f32,
@@ -52,7 +52,7 @@ pub fn upkeep_of(units: &Units, ty: &EntityType, id: u32) -> f32 {
 /// The wages and then the upkeep of the month that ended, booked in the month that begins. One
 /// booking per staff member in list order, one for all the buildings, even when it is 0. The log
 /// gets `wages ID AMOUNT` for each member and `upkeep AMOUNT`.
-pub fn charge(world: &mut World, cat: &Catalogue, money: &mut Money, log: &mut Vec<String>) {
+pub(crate) fn charge(world: &mut World, cat: &Catalogue, money: &mut Money, log: &mut Vec<String>) {
     let mut total = 0.0_f32;
     for e in &world.zoo.entities {
         let Some(ty) = type_of(cat, e) else { continue };

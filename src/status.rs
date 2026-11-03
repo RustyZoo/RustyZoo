@@ -14,7 +14,7 @@ use std::collections::HashMap;
 /// The zoo status window, its Finances layout, and the button the Z key presses to open it.
 const WINDOW: i32 = 14;
 const FINANCES: i32 = 110;
-pub const STATUS_BUTTON: i32 = 1014;
+pub(crate) const STATUS_BUTTON: i32 = 1014;
 
 /// The first string of the currency symbol and the month names (text 8.3 and 8.5).
 const WORDS: u32 = 22100;
@@ -57,10 +57,10 @@ const ADMISSIONS: usize = 0;
 const TOTALS: usize = 11;
 
 /// The strings 22100 to 22112: the symbol of the currency and the names of the months.
-pub struct Words(Vec<String>);
+pub(crate) struct Words(Vec<String>);
 
 impl Words {
-    pub fn new(string: impl Fn(u32) -> String) -> Words {
+    pub(crate) fn new(string: impl Fn(u32) -> String) -> Words {
         Words((WORDS..=WORDS + 12).map(string).collect())
     }
 }
@@ -76,7 +76,7 @@ impl Strings for Words {
 /// A text of the table, with the colour the code gives it where the layout's own does not
 /// serve: the TOTALS cells and the three amounts below the table take one by their sign.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Cell {
+pub(crate) struct Cell {
     pub id: i32,
     pub text: String,
     pub colour: Option<Colour>,
@@ -85,7 +85,7 @@ pub struct Cell {
 /// Which cell of the layout gives its colour: the admissions income cell of `column` for a sum
 /// of 0 or more, its construction cell for a negative one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Colour {
+pub(crate) struct Colour {
     pub column: i32,
     pub negative: bool,
 }
@@ -103,7 +103,7 @@ fn month_before(money: &Money, back: i32) -> (u32, i64) {
 /// Every text of the table for these accounts: the four headers and thirteen rows of the four
 /// columns (blank for a month before the accounts began), then Total Cash, Zoo Value and Net
 /// Income.
-pub fn cells(accounts: &Money, words: &impl Strings) -> Vec<Cell> {
+pub(crate) fn cells(accounts: &Money, words: &impl Strings) -> Vec<Cell> {
     let mut cells = Vec::new();
     let write = |units: i64| money(words, units, true);
     for column in 0..4 {
@@ -161,7 +161,7 @@ pub fn cells(accounts: &Money, words: &impl Strings) -> Vec<Cell> {
 /// What the table holds in the interface (only a change is logged), when its update runs next,
 /// and whether the Finances layout was shown at the last look.
 #[derive(Default)]
-pub struct Finances {
+pub(crate) struct Finances {
     written: HashMap<i32, (String, [u8; 3])>,
     due: u64,
     shown: bool,
@@ -172,7 +172,7 @@ impl Finances {
     /// shown at the interface update (`updated`) at clock `now` ms when the update is due: the
     /// first time at once, then `GAP` ms after each run, the due time kept while the window is
     /// hidden (6.3). Returns the log lines `cell ID RRGGBB TEXT`, one for each cell that changed.
-    pub fn refresh(
+    pub(crate) fn refresh(
         &mut self,
         accounts: &Money,
         ui: &mut Interface,

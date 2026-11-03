@@ -6,7 +6,7 @@ use crate::entity::Catalogue;
 use crate::world::Shape;
 
 /// How an entity takes its place on the map, if its type is known.
-pub fn shape_of(catalogue: &Catalogue, entity: &crate::zoo::Entity) -> Option<Shape> {
+pub(crate) fn shape_of(catalogue: &Catalogue, entity: &crate::zoo::Entity) -> Option<Shape> {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     let ty = catalogue.find(
         &entity.class,

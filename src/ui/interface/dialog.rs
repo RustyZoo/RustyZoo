@@ -13,10 +13,10 @@ use crate::ui::layout::{HIDDEN, Kind, Picture};
 mod tests;
 
 /// The answers.
-pub const OK: i32 = 1;
-pub const CANCEL: i32 = 2;
-pub const YES: i32 = 6;
-pub const NO: i32 = 7;
+pub(crate) const OK: i32 = 1;
+pub(crate) const CANCEL: i32 = 2;
+pub(crate) const YES: i32 = 6;
+pub(crate) const NO: i32 = 7;
 
 /// Which buttons a question shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -28,13 +28,13 @@ pub struct Buttons {
 }
 
 impl Buttons {
-    pub const OK: Buttons = Buttons {
+    pub(crate) const OK: Buttons = Buttons {
         yes: false,
         no: false,
         ok: true,
         cancel: false,
     };
-    pub const OK_CANCEL: Buttons = Buttons {
+    pub(crate) const OK_CANCEL: Buttons = Buttons {
         ok: true,
         cancel: true,
         ..Buttons::NONE
@@ -44,7 +44,7 @@ impl Buttons {
         no: true,
         ..Buttons::NONE
     };
-    pub const YES_NO_CANCEL: Buttons = Buttons {
+    pub(crate) const YES_NO_CANCEL: Buttons = Buttons {
         yes: true,
         no: true,
         cancel: true,
@@ -73,18 +73,18 @@ const ICON: i32 = 2;
 
 impl Interface {
     /// Whether a question is open: the game stands still meanwhile.
-    pub fn modal_open(&self) -> bool {
+    pub(crate) fn modal_open(&self) -> bool {
         self.modal.is_some()
     }
 
     /// Sets the picture a question shows on its icon, the layout's own default (`D + 2`).
-    pub fn set_question_picture(&mut self, picture: Option<Picture>) {
+    pub(crate) fn set_question_picture(&mut self, picture: Option<Picture>) {
         self.question_picture = picture;
     }
 
     /// Puts `picture` on the icon of the question layout `layout` (`D + 2`); none clears it.
     /// `false` if there is no such element.
-    pub fn set_question_icon(&mut self, layout: i32, picture: Option<Picture>) -> bool {
+    pub(crate) fn set_question_icon(&mut self, layout: i32, picture: Option<Picture>) -> bool {
         self.set_picture(layout + ICON, picture)
     }
 
@@ -101,7 +101,7 @@ impl Interface {
     /// restricted to it, and an answer closes it with no [`Action::Answer`]. It closes by itself
     /// after `[UI] NonmodalDialogDelay` ms of interface updates (0 or less: never), and at once
     /// when a modal question opens or waits. One popup at a time: the one that was open is closed.
-    pub fn notify(&mut self, layout: i32, message: &[u8], buttons: Buttons) -> bool {
+    pub(crate) fn notify(&mut self, layout: i32, message: &[u8], buttons: Buttons) -> bool {
         self.open_dialog(layout, message, buttons, false)
     }
 
@@ -159,7 +159,7 @@ impl Interface {
 
     /// Answers the open question with `code` (values above 9 count as 1) and closes it; with no
     /// question open, closes the popup. Nothing if none is open.
-    pub fn answer(&mut self, code: i32) {
+    pub(crate) fn answer(&mut self, code: i32) {
         let Some(d) = self.modal.take() else {
             if let Some((d, _)) = self.popup.take() {
                 self.hide_element(d);

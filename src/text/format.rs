@@ -10,7 +10,7 @@ use profile::{Marks, Profile};
 use std::sync::OnceLock;
 
 /// The strings of the game, by number. [`StringTables`] is the real one.
-pub trait Strings {
+pub(crate) trait Strings {
     /// The text of string `id`, empty if there is none.
     fn string(&self, id: u32) -> &str;
 }
@@ -28,7 +28,7 @@ const GRAPH_MONTH: u32 = 22100;
 
 /// A value for a placeholder of a template.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Arg<'a> {
+pub(crate) enum Arg<'a> {
     /// For `%s`.
     Text(&'a str),
     /// For `%d` (digits), `%m` (money) and `%r` (a string number); `%s` writes its digits.
@@ -36,7 +36,8 @@ pub enum Arg<'a> {
 }
 
 /// Writes string `id` with its placeholders filled in: the game's `buildString`.
-pub fn build(strings: &impl Strings, id: u32, args: &[Arg]) -> String {
+#[cfg(test)]
+pub(crate) fn build(strings: &impl Strings, id: u32, args: &[Arg]) -> String {
     expand(strings, strings.string(id), args)
 }
 
@@ -49,7 +50,7 @@ pub fn build(strings: &impl Strings, id: u32, args: &[Arg]) -> String {
 /// 1 and 5 is the second value, wherever it stands in the template), then the plain
 /// placeholders in the order they appear. A position can be used twice. A `%` at the end is
 /// dropped, and a missing value, or one of the wrong kind, writes nothing.
-pub fn expand(strings: &impl Strings, template: &str, args: &[Arg]) -> String {
+pub(crate) fn expand(strings: &impl Strings, template: &str, args: &[Arg]) -> String {
     enum Part {
         Char(char),
         /// The position digit if there is one, and the kind letter.
@@ -110,7 +111,7 @@ pub fn expand(strings: &impl Strings, template: &str, args: &[Arg]) -> String {
 }
 
 /// An integer: `1234567` is "1,234,567" with grouping and "1234567" without, `-5` is "-5".
-pub fn integer(n: i64, grouping: bool) -> String {
+pub(crate) fn integer(n: i64, grouping: bool) -> String {
     integer_in(&profile().number, n, grouping)
 }
 
@@ -133,7 +134,7 @@ fn symbol(strings: &impl Strings) -> &str {
 
 /// An amount in whole units: `74878` is "$74,878", `0` is "$0", `-1234` is "($1,234)"; without
 /// `grouping` they are "$74878" and "($1234)".
-pub fn money(strings: &impl Strings, amount: i64, grouping: bool) -> String {
+pub(crate) fn money(strings: &impl Strings, amount: i64, grouping: bool) -> String {
     money_in(profile(), strings, amount, grouping)
 }
 
@@ -194,7 +195,7 @@ fn cents(x: f64) -> (String, String) {
 /// (see `cents`): `12.5` is "$12.50", `-1234.5` is "($1,234.50)", `1.125` is "$1.13". An amount
 /// that rounds to zero is "$0.00" whatever its sign, and one that is not a number is 0. Without
 /// `grouping` the whole part has no separators: "$1234.50".
-pub fn money_cents(strings: &impl Strings, amount: f64, grouping: bool) -> String {
+pub(crate) fn money_cents(strings: &impl Strings, amount: f64, grouping: bool) -> String {
     money_cents_in(profile(), strings, amount, grouping)
 }
 
@@ -217,12 +218,12 @@ fn money_cents_in(
 }
 
 /// The group separator of money, to take out of an amount typed by the player.
-pub fn money_group() -> &'static str {
+pub(crate) fn money_group() -> &'static str {
     &profile().money.group
 }
 
 /// An amount held as a decimal number, rounded to whole units: to the nearest, halves to even.
-pub fn whole_units(amount: f64) -> i64 {
+pub(crate) fn whole_units(amount: f64) -> i64 {
     amount.round_ties_even() as i64
 }
 
@@ -258,7 +259,7 @@ fn abbreviation(name: &str) -> &str {
 
 /// The environment variable that, set to `1`, makes the dates, numbers and money use the English
 /// forms whatever the regional settings (the tests, CI and the pinned runs set it).
-pub const ENGLISH_DATES: &str = "RUSTYZOO_ENGLISH_DATES";
+pub(crate) const ENGLISH_DATES: &str = "RUSTYZOO_ENGLISH_DATES";
 
 /// The month and weekday names of the dates, full and abbreviated; the weeks start on Monday.
 #[derive(Debug, PartialEq)]
@@ -324,7 +325,7 @@ fn names() -> &'static Names {
 /// text in single quotes is written as it is, any other character too. The names are those of
 /// the user's regional settings, as in the original, English where the system gives none or
 /// [`ENGLISH_DATES`] is `1`.
-pub fn date(pattern: &str, date: &Date) -> String {
+pub(crate) fn date(pattern: &str, date: &Date) -> String {
     let names = names();
     let month = (date.month as usize).wrapping_sub(1);
     let weekday = date.weekday as usize;
@@ -378,7 +379,7 @@ pub fn date(pattern: &str, date: &Date) -> String {
 /// The abbreviated name of month 1 to 12 on the axes of the graphs: strings 22101 to 22112,
 /// or the abbreviation of the dates (see [`date`]) where the string is empty. Any other month
 /// gives nothing.
-pub fn graph_month(strings: &impl Strings, month: u32) -> String {
+pub(crate) fn graph_month(strings: &impl Strings, month: u32) -> String {
     let Some(name) = names().short_months.get((month as usize).wrapping_sub(1)) else {
         return String::new();
     };

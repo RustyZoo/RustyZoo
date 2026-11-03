@@ -155,7 +155,7 @@ pub fn convert(bitmap: &[u8]) -> Result<(Frame, Palette), String> {
 }
 
 /// The member path of a bitmap named in a configuration file.
-pub fn member_name(value: &[u8]) -> String {
+pub(crate) fn member_name(value: &[u8]) -> String {
     crate::vfs::name_from_bytes(value).trim().replace('\\', "/")
 }
 
@@ -196,7 +196,7 @@ pub fn shipped(vfs: &Vfs, bitmap: &str) -> Option<(Frame, Palette)> {
 
 /// The picture of a bitmap: its shipped copy, or, when either file of the copy is missing, the
 /// bitmap converted.
-pub fn load(vfs: &Vfs, bitmap: &str) -> Option<(Frame, Palette)> {
+pub(crate) fn load(vfs: &Vfs, bitmap: &str) -> Option<(Frame, Palette)> {
     shipped(vfs, bitmap).or_else(|| convert(&vfs.read(bitmap).ok()?).ok())
 }
 

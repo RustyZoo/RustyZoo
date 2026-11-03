@@ -1075,13 +1075,13 @@ fn a_bulldozer_press_is_a_drag_once_it_leaves_its_tile_or_16_pixels() {
     let mut build = Build::new(0);
     // Without the tool a press holds nothing.
     build.sweep_press(Some((5, 5)), (100, 100));
-    assert!(!build.sweeping());
+    assert!(!build.sweep.is_some());
     build.bulldozer = true;
     // Off the map: no press.
     build.sweep_press(None, (100, 100));
-    assert!(!build.sweeping());
+    assert!(!build.sweep.is_some());
     build.sweep_press(Some((5, 5)), (100, 100));
-    assert!(build.sweeping());
+    assert!(build.sweep.is_some());
     // On the press tile within 16 pixels it is a click.
     assert_eq!(build.sweep_area(Some((5, 5)), (116, 100)), None);
     assert_eq!(build.sweep_area(Some((5, 5)), (110, 110)), None);

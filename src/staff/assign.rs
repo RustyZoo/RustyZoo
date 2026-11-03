@@ -18,7 +18,7 @@ const MARINE: (i32, i32) = (9552, 10328);
 
 /// What a click of the assign mode did.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Outcome {
+pub(crate) enum Outcome {
     /// The exhibit is in the list now (it was, or it is the last).
     Assigned,
     /// Nothing changed; the message to show, if the type has one.
@@ -36,7 +36,7 @@ fn keeper(ty: &EntityType) -> bool {
 /// kind or has nothing for him. A unit that is not a keeper is always 0. `check_kind` adds the
 /// tank or land test and the steps 6 and 7; `kind_only` leaves out the purity of a tank. The
 /// egg flag of step 4 comes with the eggs.
-pub fn block_service(
+pub(crate) fn block_service(
     world: &World,
     cat: &Catalogue,
     exhibit: u32,
@@ -89,7 +89,7 @@ fn refusal(world: &World, cat: &Catalogue, exhibit: u32, who: &EntityType) -> Op
 
 /// A click of the assign mode on exhibit `exhibit` for the staff member `id` (staff 6 point 1).
 /// Result 0 appends the exhibit to the list (one that is in it keeps its place: no duplicates); the other results change nothing and give their message.
-pub fn assign(world: &mut World, cat: &Catalogue, id: u32, exhibit: u32) -> Outcome {
+pub(crate) fn assign(world: &mut World, cat: &Catalogue, id: u32, exhibit: u32) -> Outcome {
     let Some(at) = world.find(id) else {
         return Outcome::Refused(None);
     };
@@ -115,7 +115,7 @@ pub fn assign(world: &mut World, cat: &Catalogue, id: u32, exhibit: u32) -> Outc
 
 /// Removes the exhibit of position `row` of the staff member's list, or all of them (info panels
 /// 9.3).
-pub fn unassign(world: &mut World, id: u32, row: Option<usize>) {
+pub(crate) fn unassign(world: &mut World, id: u32, row: Option<usize>) {
     if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
         match row {
             Some(r) if r < s.assigned.len() => {
@@ -129,7 +129,7 @@ pub fn unassign(world: &mut World, id: u32, row: Option<usize>) {
 
 /// `clearStaffHabitat`: the exhibit that is gone leaves the list of every staff member (staff 6
 /// point 3).
-pub fn clear_habitat(world: &mut World, exhibit: u32) {
+pub(crate) fn clear_habitat(world: &mut World, exhibit: u32) {
     let ids: Vec<u32> = world.units.iter().map(|u| u.id).collect();
     for id in ids {
         if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {

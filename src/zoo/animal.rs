@@ -9,7 +9,7 @@ use super::{R, Reader};
 /// The values, counters and flags an animal record stores (animals 3.5). A counter the record
 /// does not hold (by the version) is `None`: it keeps what creation gave it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AnimalRecord {
+pub(crate) struct AnimalRecord {
     pub happiness: i32,
     pub hunger: i32,
     pub health: i32,
@@ -63,7 +63,7 @@ pub struct AnimalRecord {
 
 /// The record of an animal on an escape walk (zoo format 6.11, animals 11.3).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Escape {
+pub(crate) struct Escape {
     /// The crossing tile `A` and the last tile `B` as (x, y); a tile off the map is none.
     pub a: [i32; 2],
     pub b: [i32; 2],

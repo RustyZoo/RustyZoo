@@ -34,11 +34,11 @@ use crate::vfs::{Vfs, normalise};
 
 /// The most registry entries (types created or listed again) one catalogue takes. The full game
 /// has 980 types; the limit only stops a registry made to multiply names.
-pub const MAX_ENTRIES: usize = 100_000;
+pub(crate) const MAX_ENTRIES: usize = 100_000;
 
 /// The most bytes of definition files kept. The full game has about 3 MB of them; the memory of a
 /// parsed file is a multiple of its size.
-pub const MAX_DEFINITION_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_DEFINITION_BYTES: usize = 8 * 1024 * 1024;
 
 /// The most warnings kept; the others are counted in a last line.
 const MAX_WARNINGS: usize = 100;
@@ -90,7 +90,7 @@ pub struct EntityType {
 impl EntityType {
     /// The egg and the crate footprints of an animal type, in that order (see
     /// [`EntityType::form_footprint`]).
-    pub fn forms(&self) -> [(i32, i32); 2] {
+    pub(crate) fn forms(&self) -> [(i32, i32); 2] {
         [true, false].map(|egg| {
             let [x, y] = self.form_footprint(egg);
             (x, y)
@@ -99,7 +99,7 @@ impl EntityType {
 
     /// The footprint `(x, y)` in half tiles of an animal in its egg (`cEggFootprintX/Y`) or in its
     /// crate (`cBoxFootprintX/Y`), read like the plain footprint; 2 by 2 when the file gives none.
-    pub fn form_footprint(&self, egg: bool) -> [i32; 2] {
+    pub(crate) fn form_footprint(&self, egg: bool) -> [i32; 2] {
         let (x, y) = match egg {
             true => ("cEggFootprintX", "cEggFootprintY"),
             false => ("cBoxFootprintX", "cBoxFootprintY"),
@@ -120,7 +120,7 @@ impl EntityType {
     /// The number of palettes of each replaceable colour group of a staff or guest type, in the
     /// order of its `colorrep` section (sprite drawing 8.1; the section of the subtype, or of the
     /// type name for a guest); empty for a type with none.
-    pub fn palettes(&self) -> Vec<usize> {
+    pub(crate) fn palettes(&self) -> Vec<usize> {
         let Some(config) = self.config.as_deref() else {
             return Vec::new();
         };
@@ -183,7 +183,7 @@ impl EntityType {
     /// The member a `[Sounds]` value names (behaviours 5.2): a value with `.wav` is the path as
     /// written; any other is `<value>.wav` in `<class folder>/<type name>/` for an animal or a
     /// guest and in the animation root of the other classes.
-    pub fn sound_member(&self, value: &[u8]) -> String {
+    pub(crate) fn sound_member(&self, value: &[u8]) -> String {
         let member = if value.windows(4).any(|w| w == b".wav") {
             value.to_vec()
         } else {
@@ -203,7 +203,7 @@ impl EntityType {
 
     /// The animations of the type, by name in ascending byte order; empty if it has no
     /// animation section.
-    pub fn animations(&self) -> Vec<Animation> {
+    pub(crate) fn animations(&self) -> Vec<Animation> {
         self.animation_section().map_or_else(Vec::new, |section| {
             section
                 .keys()
@@ -213,7 +213,7 @@ impl EntityType {
     }
 
     /// The first of [`EntityType::animations`] named `name`, without making the others.
-    pub fn animation_named(&self, name: &str) -> Option<Animation> {
+    pub(crate) fn animation_named(&self, name: &str) -> Option<Animation> {
         let section = self.animation_section()?;
         let key = section
             .keys()
@@ -255,14 +255,14 @@ pub struct Catalogue {
     /// Every definition file asked for so far, by normalised name, with the outcome.
     files: HashMap<String, Definition>,
     /// The item types guests buy, by lower-case name.
-    pub items: BTreeMap<String, crate::building::items::Item>,
+    pub(crate) items: BTreeMap<String, crate::building::items::Item>,
     /// `cNonPathCost` of the unit class file `ztunit.ai` (pathfinding 6.5): the guests' cost off the
     /// paths; `None` when the file or the key is missing.
     pub guest_non_path_cost: Option<u32>,
     /// `cPredatorRadius` of the same file (animals 11.8), in tiles; `None` when missing.
     pub predator_radius: Option<i32>,
     /// The award definitions (`award*.cfg`), read with the types.
-    pub awards: crate::award::Definitions,
+    pub(crate) awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
     behaviours: BTreeMap<String, Behaviours>,
     /// The bytes of the definition files loaded.
@@ -594,7 +594,7 @@ impl Catalogue {
 
     /// Adds a type that a test made, findable by its names.
     #[cfg(test)]
-    pub fn push(&mut self, ty: EntityType) {
+    pub(crate) fn push(&mut self, ty: EntityType) {
         let key = (ty.type_name.clone(), ty.subtype.clone());
         self.index.entry(key).or_default().push(self.types.len());
         self.types.push(ty);
@@ -612,15 +612,10 @@ impl Catalogue {
         self.behaviours.get(ty.file.as_deref()?)
     }
 
-    /// The definition files that have behaviour sets or ambient tables, by name.
-    pub fn behaviour_files(&self) -> impl Iterator<Item = (&str, &Behaviours)> {
-        self.behaviours.iter().map(|(file, b)| (file.as_str(), b))
-    }
-
     /// The set `name` that a unit of type `ty` starts (specification 3.1): an animal tries its
     /// subtype, then the default subtype, then the plain section; a guest does the same with its
     /// type name, except `bWalk` and `bZooRoutine`, which are plain; every other class is plain.
-    pub fn behaviour_set(&self, ty: &EntityType, name: &[u8]) -> Option<&[Call]> {
+    pub(crate) fn behaviour_set(&self, ty: &EntityType, name: &[u8]) -> Option<&[Call]> {
         let all = self.behaviours(ty)?;
         let default = default_subtype(ty.config.as_deref()?);
         let own = if ty.class == "guests" {
@@ -636,12 +631,12 @@ impl Catalogue {
     }
 
     /// The rows of an ambient table of `ty` (an index of [`crate::behaviour::TABLES`]).
-    pub fn ambient(&self, ty: &EntityType, table: usize) -> &[Row] {
+    pub(crate) fn ambient(&self, ty: &EntityType, table: usize) -> &[Row] {
         self.behaviours(ty).map_or(&[], |all| &all.tables[table])
     }
 
     /// The position in `types` of the type of this class, name and subtype.
-    pub fn position(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<usize> {
+    pub(crate) fn position(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<usize> {
         self.index
             .get(&(type_name.to_vec(), subtype.to_vec()))?
             .iter()
@@ -1607,7 +1602,7 @@ mod tests {
         let yak = get(&c, "animals", "yak", "m");
         assert_eq!(c.ambient(yak, 0).len(), 1);
         assert!(c.ambient(yak, 1).is_empty());
-        assert_eq!(c.behaviour_files().count(), 3);
+        assert_eq!(c.behaviours.len(), 3);
         // The file is parsed once however many types name it.
         assert!(std::ptr::eq(
             c.behaviours(yak).unwrap(),
